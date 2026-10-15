@@ -1,0 +1,9 @@
+{
+  "name": "smalt-sdk-full",
+  "version": "26.10.14",
+  "private": true,
+  "description": "Reality-grade TypeScript court: real Azure SDKs against the live smalt substrate.",
+  "scripts": {
+    "test": "node ts-run.mjs"
+  }
+}

@@ -1,0 +1,48 @@
+# smalt release notes (lane-owned documentation, 26.10.14)
+
+## mix.exs `releases` block — FOR COORDINATOR TO ADD (this lane does not edit mix.exs)
+
+mix.exs currently has NO `releases` block; `MIX_ENV=prod mix release` falls back
+to defaults (release name `smalt`, all apps). Add inside `def project do [...]`:
+
+```elixir
+releases: [
+  smalt: [
+    version: @version,
+    applications: [smalt: :permanent],
+    include_executables: [:smalt],
+    strip_beams: [compress: true]
+  ]
+]
+```
+
+Nothing else is required: `def application` already sets
+`start_permanent: Mix.env() == :prod` and `mod: {Smalt.Application, []}`.
+
+## Port overridability
+
+`Smalt.Application` reads `Application.get_env(:smalt, :arm_port, 9443)` and
+`:egress_port` (default 8443). In a release, override via a `rel/env.sh.e`
+snippet (coordinator owns `mix.exs`; `rel/env.sh.e` is lane-editable if needed):
+
+```elixir
+# rel/env.sh.e
+import Config
+config :smalt,
+  arm_port: String.to_integer(System.get_env("SMALT_ARM_PORT") || "9443"),
+  egress_port: String.to_integer(System.get_env("SMALT_EGRESS_PORT") || "8443")
+```
+
+Until that file lands, `scripts/release.sh` verifies boot against the default
+ports (doctor already gates that 9443/8443/5672 are free).
+
+## Scope executed this session
+
+- `scripts/doctor.py` gate: PASS (exit 0; binaries, 3 ports free, liveness NOT-RUNNING accepted).
+- `scripts/release.sh` written (bash -euo pipefail): doctor gate -> prod release
+  build (3 attempts, 30s wait) -> 15s foreground boot poll of 9443/8443 ->
+  tar to `tmp/smalt-<version>-<uname -m>.tar.gz` + sha256 -> receipt block.
+- Full `MIX_ENV=prod mix release` build: ATTEMPTED, outcome recorded in the
+  session receipt below (concurrent-lane compile state may BLOCK it; the script
+  fails with the exact compile error and exit 1 in that case).
+- Not done here: CI workflow (lane 19 owns), mix.exs edit (coordinator owns).

@@ -1,0 +1,224 @@
+{
+  "court": "s4_oauth_negatives",
+  "phase": "b",
+  "finishedAt": "2026-10-15T03:05:59.156Z",
+  "total": 12,
+  "securityPass": 12,
+  "knownGaps": 0,
+  "cases": [
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "positive.token-acquisition",
+      "observed": "raw POST fallback (SDK blocked: endpoints_resolution_error: See https://aka.ms/msal.js.errors#endpoints_resolution_error for details)",
+      "verdict": "SECURITY-PASS",
+      "note": "aud=https://management.azure.com exp in 3600s"
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "positive.subscriptions-bearer",
+      "observed": "GET /subscriptions with Bearer → 200",
+      "verdict": "SECURITY-PASS",
+      "note": ""
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.expired-token",
+      "observed": "GET /subscriptions with exp-past token → 401",
+      "verdict": "SECURITY-PASS",
+      "note": "validly signed by secret A; only exp is adversarial — 401 TokenExpired"
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.tampered-signature",
+      "observed": "GET /subscriptions with tampered sig → 401",
+      "verdict": "SECURITY-PASS",
+      "note": ""
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.wrong-aud",
+      "observed": "GET /subscriptions with aud=vault token → 401",
+      "verdict": "SECURITY-PASS",
+      "note": ""
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.no-auth.arm-subscriptions",
+      "observed": "GET /subscriptions anonymous → 401",
+      "verdict": "SECURITY-PASS",
+      "note": ""
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.no-auth.cosmos-doc",
+      "observed": "POST /dbs/negdb1792033556451/colls/negdb1792033556451/docs anonymous → 401",
+      "verdict": "SECURITY-PASS",
+      "note": ""
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.no-auth.blob-create-container",
+      "observed": "PUT /negacct/neg-container-1792033556452 anonymous → 401",
+      "verdict": "SECURITY-PASS",
+      "note": "401 = Smalt.Auth.Bearer gate (precedes x-ms-version wire gate)"
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.no-auth.blob-put",
+      "observed": "PUT /negacct/neg-container-1792033556452/anon.txt anonymous → 401",
+      "verdict": "SECURITY-PASS",
+      "note": "401 = Smalt.Auth.Bearer gate (precedes x-ms-version wire gate)"
+    },
+    {
+      "ts": "2026-10-15T03:05:53.075Z",
+      "phase": "a",
+      "case": "negative.no-auth.skr-release",
+      "observed": "POST /keys/:name/release anonymous → 401",
+      "verdict": "SECURITY-PASS",
+      "note": "401 = Smalt.Auth.Bearer gate (SKR attestation gate now preceded by bearer gate)"
+    },
+    {
+      "ts": "2026-10-15T03:05:59.156Z",
+      "phase": "b",
+      "case": "cross.control-b-token",
+      "observed": "substrate B token on B → 200",
+      "verdict": "SECURITY-PASS",
+      "note": "control: B must serve its own tokens"
+    },
+    {
+      "ts": "2026-10-15T03:05:59.156Z",
+      "phase": "b",
+      "case": "cross.a-token-on-b",
+      "observed": "substrate A token on B (secret mismatch) → 401",
+      "verdict": "SECURITY-PASS",
+      "note": "B validates HS256 signatures — secret rotation invalidates outstanding tokens"
+    }
+  ],
+  "phases": [
+    {
+      "court": "s4_oauth_negatives",
+      "phase": "a",
+      "finishedAt": "2026-10-15T03:05:53.075Z",
+      "total": 10,
+      "securityPass": 10,
+      "knownGaps": 0,
+      "cases": [
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "positive.token-acquisition",
+          "observed": "raw POST fallback (SDK blocked: endpoints_resolution_error: See https://aka.ms/msal.js.errors#endpoints_resolution_error for details)",
+          "verdict": "SECURITY-PASS",
+          "note": "aud=https://management.azure.com exp in 3600s"
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "positive.subscriptions-bearer",
+          "observed": "GET /subscriptions with Bearer → 200",
+          "verdict": "SECURITY-PASS",
+          "note": ""
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.expired-token",
+          "observed": "GET /subscriptions with exp-past token → 401",
+          "verdict": "SECURITY-PASS",
+          "note": "validly signed by secret A; only exp is adversarial — 401 TokenExpired"
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.tampered-signature",
+          "observed": "GET /subscriptions with tampered sig → 401",
+          "verdict": "SECURITY-PASS",
+          "note": ""
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.wrong-aud",
+          "observed": "GET /subscriptions with aud=vault token → 401",
+          "verdict": "SECURITY-PASS",
+          "note": ""
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.no-auth.arm-subscriptions",
+          "observed": "GET /subscriptions anonymous → 401",
+          "verdict": "SECURITY-PASS",
+          "note": ""
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.no-auth.cosmos-doc",
+          "observed": "POST /dbs/negdb1792033556451/colls/negdb1792033556451/docs anonymous → 401",
+          "verdict": "SECURITY-PASS",
+          "note": ""
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.no-auth.blob-create-container",
+          "observed": "PUT /negacct/neg-container-1792033556452 anonymous → 401",
+          "verdict": "SECURITY-PASS",
+          "note": "401 = Smalt.Auth.Bearer gate (precedes x-ms-version wire gate)"
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.no-auth.blob-put",
+          "observed": "PUT /negacct/neg-container-1792033556452/anon.txt anonymous → 401",
+          "verdict": "SECURITY-PASS",
+          "note": "401 = Smalt.Auth.Bearer gate (precedes x-ms-version wire gate)"
+        },
+        {
+          "ts": "2026-10-15T03:05:53.075Z",
+          "phase": "a",
+          "case": "negative.no-auth.skr-release",
+          "observed": "POST /keys/:name/release anonymous → 401",
+          "verdict": "SECURITY-PASS",
+          "note": "401 = Smalt.Auth.Bearer gate (SKR attestation gate now preceded by bearer gate)"
+        }
+      ]
+    },
+    {
+      "court": "s4_oauth_negatives",
+      "phase": "b",
+      "finishedAt": "2026-10-15T03:05:59.156Z",
+      "total": 2,
+      "securityPass": 2,
+      "knownGaps": 0,
+      "cases": [
+        {
+          "ts": "2026-10-15T03:05:59.156Z",
+          "phase": "b",
+          "case": "cross.control-b-token",
+          "observed": "substrate B token on B → 200",
+          "verdict": "SECURITY-PASS",
+          "note": "control: B must serve its own tokens"
+        },
+        {
+          "ts": "2026-10-15T03:05:59.156Z",
+          "phase": "b",
+          "case": "cross.a-token-on-b",
+          "observed": "substrate A token on B (secret mismatch) → 401",
+          "verdict": "SECURITY-PASS",
+          "note": "B validates HS256 signatures — secret rotation invalidates outstanding tokens"
+        }
+      ]
+    }
+  ]
+}

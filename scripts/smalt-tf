@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Intercepts standard Terraform invocations and redirects to Smalt loopback ports.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export ARM_ENDPOINT="http://localhost:9443"
+export ARM_RESOURCE_MANAGER_ENDPOINT="http://localhost:9443"
+export ARM_RESOURCE_MANAGER_AUDIENCE="https://management.azure.com"
+# NOTE: NOT ARM_SKIP_PROVIDER_REGISTRATION — azurerm 4.x hard-rejects that flag
+# combined with the fixture's resource_provider_registrations = "none" (lane 23).
+#
+# Authority routing (receipted 2026-10-14):
+# - ARM_ENDPOINT alone does NOT redirect auth: azurerm logs
+#   'Configuring built-in cloud environment by name: "public"' and POSTs the
+#   client-credentials token to login.microsoftonline.com (TF_LOG evidence).
+# - ARM_METADATA_HOSTNAME (correct env name; ARM_METADATA_HOST is NOT read)
+#   makes azurerm call environments.FromEndpoint -> GET
+#   {host}/metadata/endpoints, so the substrate serves a TLS twin of the
+#   ARM router on 9444.
+# - darwin: Go x509 does NOT honor SSL_CERT_FILE (crypto/x509/root_unix.go
+#   only covers non-darwin Unix; darwin always verifies through Apple
+#   Security.framework). The dev CA is therefore trusted in the macOS user
+#   keychain (no sudo: user-domain trust settings are honored by SecTrust).
+export ARM_METADATA_HOSTNAME="localhost:9444"
+export SSL_CERT_FILE="$ROOT/.smalt/tls/ca-cert.pem"
+
+# azidentity accepts an http authority ONLY for localhost hosts, so the token
+# endpoint stays plaintext on 9443 where the STS routes live.
+export AZURE_AUTHORITY_HOST="http://localhost:9443/"
+
+export AZAPI_ARM_ENDPOINT="http://localhost:9443"
+export AZAPI_ARM_RESOURCE_MANAGER_ENDPOINT="http://localhost:9443"
+export ARM_USE_MSI="false"
+export ARM_CLIENT_ID="00000000-0000-0000-0000-000000000000"
+export ARM_CLIENT_SECRET="smalt-sovereign-mock-secret"
+export ARM_SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
+export ARM_TENANT_ID="00000000-0000-0000-0000-000000000000"
+
+# The dev cert is minted by scripts/gen_dev_cert.sh (openssl, SAN localhost
+# + 127.0.0.1, CA:TRUE so it doubles as its own trust anchor).
+if [ ! -f "$SSL_CERT_FILE" ]; then
+  echo "[SMALT-TF] minting dev cert via scripts/gen_dev_cert.sh" >&2
+  bash "$ROOT/scripts/gen_dev_cert.sh" >&2
+fi
+if [ ! -f "$SSL_CERT_FILE" ]; then
+  echo "[SMALT-TF] FAULT: $SSL_CERT_FILE still missing after gen_dev_cert.sh" >&2
+  exit 1
+fi
+
+# darwin: trust the dev CA in the user keychain (no-op if already imported).
+# Note `security verify-cert` is NOT a usable gate here — it returns 1 for a
+# user-domain-trusted CA too — so gate on certificate presence by name.
+# Linux consumers honor SSL_CERT_FILE above; this branch is darwin-only.
+if [ "$(uname)" = "Darwin" ]; then
+  if ! security find-certificate -c smalt-dev-ca "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+    echo "[SMALT-TF] trusting dev CA in login keychain (user domain, no sudo)" >&2
+    security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$SSL_CERT_FILE" >&2 || true
+  fi
+fi
+
+echo "[SMALT-TF] Routing Terraform execution to sovereign substrate..."
+terraform "$@"

@@ -1,0 +1,13 @@
+PREFIX rtc: <https://smalt.local/ontology/runtime-contracts#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?id ?moduleName ?plane ?consumer ?sourcePack ?label WHERE {
+  ?contract a rtc:Contract ;
+    rtc:id ?id ;
+    rtc:moduleName ?moduleName ;
+    rtc:plane ?plane ;
+    rtc:consumer ?consumer ;
+    rtc:sourcePack ?sourcePack ;
+    rdfs:label ?label .
+}
+ORDER BY ?id

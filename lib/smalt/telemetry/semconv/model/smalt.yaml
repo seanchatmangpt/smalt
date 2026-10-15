@@ -1,0 +1,138 @@
+# Smalt semantic-convention model — weaver definition/2 style.
+#
+# Source of truth for Smalt.Telemetry.SemConv.Registry. The registry is the
+# sealed projection of this model (see docs/PACK_INTEGRATION/otel-weaver.md);
+# a name or attribute not in this model must not be emitted.
+file_format: definition/2
+
+attributes:
+  # -- shared -----------------------------------------------------------------
+  - key: smalt.route
+    type: string
+    brief: Request or delivery route path.
+    stability: development
+    examples: ["/arm/shapes"]
+  - key: smalt.duration_ms
+    type: int
+    brief: Duration in milliseconds.
+    stability: development
+    examples: [5]
+  - key: smalt.status
+    type: int
+    brief: HTTP response status.
+    stability: development
+    examples: [200]
+
+  # -- smalt.arm ---------------------------------------------------------------
+  - key: smalt.arm.verdict
+    type: string
+    brief: Shape-admission verdict atom rendered as string.
+    stability: development
+    examples: ["ok"]
+  - key: smalt.arm.code
+    type: string
+    brief: Typed refusal code atom rendered as string.
+    stability: development
+    examples: ["SHAPE_INVALID"]
+  - key: smalt.arm.refusal_code
+    type: string
+    brief: Explicit refusal code metadata (distinct from the event head).
+    stability: development
+    examples: ["UNAUTHORIZED_ROUTE"]
+
+  # -- smalt.cosmos --------------------------------------------------------------
+  - key: smalt.cosmos.method
+    type: string
+    brief: HTTP method of the request span.
+    stability: development
+    examples: ["GET"]
+
+  # -- smalt.amqp ---------------------------------------------------------------
+  - key: smalt.amqp.delivery_event
+    type: string
+    brief: Delivery kind atom rendered as string.
+    stability: development
+    examples: ["delivered"]
+
+  # -- reserved namespaces (closed vocabulary, not yet emitted) ------------------
+  - key: smalt.blob.event
+    type: string
+    brief: Blob custody event kind (reserved).
+    stability: development
+    examples: ["transition"]
+  - key: smalt.skr.event
+    type: string
+    brief: SKR release event kind (reserved).
+    stability: development
+    examples: ["release"]
+  - key: smalt.auth.event
+    type: string
+    brief: Auth challenge event kind (reserved).
+    stability: development
+    examples: ["challenge"]
+
+spans:
+  - type: smalt.cosmos.request
+    kind: server
+    brief: Inbound HTTP request normalized from [:bandit, :request, :stop].
+    stability: development
+    attributes:
+      - ref: smalt.route
+        requirement_level: required
+      - ref: smalt.status
+        requirement_level: required
+      - ref: smalt.duration_ms
+        requirement_level: required
+      - ref: smalt.cosmos.method
+        requirement_level: recommended
+
+events:
+  - name: smalt.arm.admit
+    brief: A shape admission verdict from the ARM gateway.
+    stability: development
+    attributes:
+      - ref: smalt.arm.verdict
+        requirement_level: required
+      - ref: smalt.route
+        requirement_level: recommended
+
+  - name: smalt.arm.refuse
+    brief: A typed refusal from the ARM gateway or egress router.
+    stability: development
+    attributes:
+      - ref: smalt.arm.code
+        required: true
+      - ref: smalt.arm.refusal_code
+        requirement_level: recommended
+      - ref: smalt.route
+        requirement_level: recommended
+
+  - name: smalt.amqp.delivery
+    brief: An AMQP service-bus delivery lifecycle event.
+    stability: development
+    attributes:
+      - ref: smalt.amqp.delivery_event
+        requirement_level: required
+      - ref: smalt.route
+        requirement_level: recommended
+
+  - name: smalt.blob.custody
+    brief: Blob custody transition (reserved — closed vocabulary, not yet emitted).
+    stability: development
+    attributes:
+      - ref: smalt.blob.event
+        requirement_level: required
+
+  - name: smalt.skr.release
+    brief: SKR release event (reserved — closed vocabulary, not yet emitted).
+    stability: development
+    attributes:
+      - ref: smalt.skr.event
+        requirement_level: required
+
+  - name: smalt.auth.challenge
+    brief: Auth challenge event (reserved — closed vocabulary, not yet emitted).
+    stability: development
+    attributes:
+      - ref: smalt.auth.event
+        requirement_level: required

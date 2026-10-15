@@ -1,0 +1,42 @@
+{
+  "entries": {
+    "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": {
+      "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": "sha256:c4ac0d76c4e6ef3d8b80b32778ef419b30548f44f833b9656e65c1e12149e4eb"
+      },
+      "pack_dir": null,
+      "template": "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl",
+      "updated_at": "2026-10-15T05:55:42.055684Z"
+    },
+    "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/info.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_info.ex": {
+      "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_info.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/ash_extension/generated_info.ex": "sha256:cd215fa49fcfac1eb210aec09d4e7b43bbfb2b1fc75d6a7d6c1497ce97538cf7"
+      },
+      "pack_dir": null,
+      "template": "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/info.ex.tmpl",
+      "updated_at": "2026-10-15T05:55:49.779218Z"
+    },
+    "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/persist.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_persist.ex": {
+      "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_persist.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/ash_extension/generated_persist.ex": "sha256:23a2482436d13b42336b90c089f75c10914061d59bca13a4eb996893cddae791"
+      },
+      "pack_dir": null,
+      "template": "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/persist.ex.tmpl",
+      "updated_at": "2026-10-15T05:54:18.096342Z"
+    },
+    "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/verify.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_verify.ex": {
+      "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_verify.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/ash_extension/generated_verify.ex": "sha256:9691fba991ec90905278406802daedae9c930fed3c55920c7eb10a3592462229"
+      },
+      "pack_dir": null,
+      "template": "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/verify.ex.tmpl",
+      "updated_at": "2026-10-15T05:54:20.943025Z"
+    }
+  },
+  "schema_version": "1",
+  "version": 1
+}

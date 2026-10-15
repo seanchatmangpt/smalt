@@ -1,0 +1,10 @@
+PREFIX ar: <https://ggen.dev/ontology/ash-revops-structural#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+# One row per projected Ash resource of the smalt RevOps surface.
+# Single-triple spec form: exactly one row per resource, no join fan-out.
+SELECT ?spec ?pack_iri WHERE {
+  ?res ar:resourceSpec ?spec .
+  OPTIONAL { ?res rdfs:seeAlso ?pack_iri }
+}
+ORDER BY ?spec

@@ -1,0 +1,20 @@
+[project]
+name = "smalt-runtime-contracts"
+version = "26.10.14"
+
+[ontology]
+source = "ontology.ttl"
+
+[templates]
+dir = "templates"
+
+[generation]
+output_dir = "generated"
+
+[[generation.rules]]
+name = "contract-catalog"
+query = { file = "queries/contract-catalog.rq" }
+template = { file = "templates/contract_catalog.ex.tmpl" }
+output_file = "{{ moduleName }}.ex"
+mode = "Overwrite"
+skip_empty = false

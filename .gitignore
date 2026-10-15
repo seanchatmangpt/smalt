@@ -1,0 +1,80 @@
+# The directory Mix will write compiled artifacts to (including multi-lane builds)
+/_build/
+/_build-*/
+
+# Compiled BEAM bytecode
+*.beam
+
+# If you run "mix test --cover", coverage assets end up here.
+/cover/
+
+# The directory Mix downloads your dependencies sources to.
+/deps/
+
+# Where third-party dependencies like ExDoc output generated docs.
+/doc/
+
+# Temporary files, for example, from tests.
+/tmp/
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Ignore package tarball (built via "mix hex.build").
+smalt-*.tar
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Local secrets & local dev certificates
+.env
+.env.*
+!.env.example
+.smalt/
+
+# Elixir language server
+.elixir_ls/
+
+# Python bytecode, caches & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# Rust / Cargo build artifacts
+target/
+cli/target/
+
+# Local agent & tooling runtime state
+.claude/
+.clap-noun-verb/
+
+# Logs & ephemeral test runs
+*.log
+.logs/
+.work/
+
+# SDK smoke tier
+test/sdk-smoke/.deps/
+test/sdk-smoke/.logs/
+
+# Terraform fixture
+test/terraform_fixture/.terraform*/
+*.tfstate*
+*.tfstate.backup
+*.tfplan
+
+# Node / JS dependencies
+node_modules/
+test/sdk-full/node_modules/
+

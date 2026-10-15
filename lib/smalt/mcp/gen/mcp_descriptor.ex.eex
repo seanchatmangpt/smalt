@@ -1,0 +1,55 @@
+# Generated MCP capability descriptor for the Smalt read-only surface.
+# Generated from lib/smalt/mcp/gen/smalt_mcp_surface.ttl via ggen_igniter.sync
+# using the elixir-mcp-a2a-pack queries (mcp_capabilities.rq) and this EEx
+# adaptation of the pack's mcp_descriptor.ex.tmpl. DO NOT hand-edit the
+# generated output; edit the TTL and re-run the sync command in the TTL header.
+defmodule Smalt.Mcp.Descriptor do
+  @moduledoc """
+  Per-capability metadata for Smalt's read-only MCP tool surface, generated
+  from one ema:CapabilitySurface (elixir-mcp-a2a-pack descriptor shape,
+  adapted to Smalt's capability list). A caller can check
+  `requires_authority?/1` or `read_only?/1` BEFORE invoking a tool, rather
+  than discovering refusal at runtime.
+  """
+
+  @capabilities %{
+<%= for row <- caps do %>    "<%= row["capability_id"] %>" => %{
+      name: "<%= row["capability_name"] %>",
+      description: "<%= row["capability_description"] %>",
+      observation_scope: :<%= row["observation_scope"] %>,
+      mutation_scope: :<%= row["mutation_scope"] %>,
+      requires_authority: <%= row["requires_authority"] %>,
+      reversible: <%= row["is_reversible"] %>,
+      consequence: :<%= row["consequence"] %>,
+      receipt_semantics: :logged
+    }<%= if row != List.last(caps), do: "," %>
+<% end %>  }
+
+  @doc "Full descriptor map, e.g. for an MCP `tools/list` response."
+  @spec capabilities() :: %{String.t() => map()}
+  def capabilities, do: @capabilities
+
+  @doc "Descriptor for one capability id, or :error if unregistered."
+  @spec describe(String.t()) :: {:ok, map()} | :error
+  def describe(capability_id), do: Map.fetch(@capabilities, capability_id)
+
+  @doc "True when every registered capability is read-only (mutation_scope :none)."
+  @spec read_only_surface?() :: boolean()
+  def read_only_surface? do
+    @capabilities
+    |> Map.values()
+    |> Enum.all?(&(&1.mutation_scope == :none and not &1.requires_authority))
+  end
+
+  @doc """
+  Fail-closed authority check per capability (elixir-mcp-a2a-pack convention):
+  an UNREGISTERED tool id is treated as authority-requiring, never callable.
+  """
+  @spec requires_authority?(String.t()) :: boolean()
+  def requires_authority?(capability_id) do
+    case describe(capability_id) do
+      {:ok, %{requires_authority: r}} -> r
+      :error -> true
+    end
+  end
+end

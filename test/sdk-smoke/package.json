@@ -1,0 +1,10 @@
+{
+  "name": "smalt-sdk-smoke",
+  "version": "26.10.14",
+  "private": true,
+  "description": "T3 SDK smoke tier: real Azure SDKs against the smalt substrate over loopback wire.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/sdk-smoke/"
+  }
+}

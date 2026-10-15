@@ -1,0 +1,202 @@
+{
+  "capabilities": [
+    {
+      "apiVersion": "2023-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.App/containerApps"
+    },
+    {
+      "apiVersion": "2020-10-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Attestation/attestationProviders"
+    },
+    {
+      "apiVersion": "2022-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Authorization/roleAssignments"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Compute/diskEncryptionSets"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Compute/disks"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "VirtualMachineShape",
+      "type": "Microsoft.Compute/virtualMachines"
+    },
+    {
+      "apiVersion": "2020-12-01-preview",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ConfidentialLedger/ledgers"
+    },
+    {
+      "apiVersion": "2023-06-27-preview",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ConfidentialLedger/managedCCFs"
+    },
+    {
+      "apiVersion": "2023-02-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ContainerService/managedClusters"
+    },
+    {
+      "apiVersion": "2018-09-15",
+      "shape": "DefaultShape",
+      "type": "Microsoft.DevTestLab/schedules"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "CosmosAccountShape",
+      "type": "Microsoft.DocumentDB/databaseAccounts"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.EventGrid/topics"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.EventHub/namespaces"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.EventHub/namespaces/eventhubs"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.EventHub/namespaces/eventhubs/consumergroups"
+    },
+    {
+      "apiVersion": "2021-05-01-preview",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Insights/diagnosticSettings"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "ManagedHsmShape",
+      "type": "Microsoft.KeyVault/managedHSMs"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "KeyVaultShape",
+      "type": "Microsoft.KeyVault/vaults"
+    },
+    {
+      "apiVersion": "2023-07-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.KeyVault/vaults/keys"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Network/networkInterfaces"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "NsgShape",
+      "type": "Microsoft.Network/networkSecurityGroups"
+    },
+    {
+      "apiVersion": "2018-09-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Network/privateDnsZones"
+    },
+    {
+      "apiVersion": "2018-09-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Network/privateEndpoints"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "SubnetShape",
+      "type": "Microsoft.Network/subnets"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "VNetShape",
+      "type": "Microsoft.Network/virtualNetworks"
+    },
+    {
+      "apiVersion": "2020-08-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.OperationalInsights/workspaces"
+    },
+    {
+      "apiVersion": "2021-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Purview/accounts"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "ResourceGroupShape",
+      "type": "Microsoft.Resources/resourceGroups"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.SecurityInsights/onboardingStates"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "ServiceBusNamespaceShape",
+      "type": "Microsoft.ServiceBus/namespaces"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ServiceBus/namespaces/queues"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ServiceBus/namespaces/topics"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "StorageAccountShape",
+      "type": "Microsoft.Storage/storageAccounts"
+    },
+    {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Storage/storageAccounts/blobServices"
+    },
+    {
+      "apiVersion": "2023-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers"
+    },
+    {
+      "apiVersion": "2023-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies"
+    }
+  ],
+  "endpoints": {
+    "amqp": 5672,
+    "controlPlane": 9443,
+    "dataPlane": 8443,
+    "eventHubs": 5673
+  },
+  "name": "smalt",
+  "schemaVersion": "v1"
+}

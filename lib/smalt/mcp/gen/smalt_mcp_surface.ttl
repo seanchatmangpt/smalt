@@ -1,0 +1,97 @@
+# Smalt MCP/A2A capability surface -- input to elixir-mcp-a2a-pack queries.
+# READ-ONLY surface by law: every row is observationScope "read_only",
+# mutationScope "none", requiresAuthority false, receiptSemantics "logged"
+# (audit-logged, never a DO receipt -- the substrate refuses unreceipted DO).
+# Regenerate the descriptor with:
+#   mix ggen_igniter.sync \
+#     --ontology lib/smalt/mcp/gen/smalt_mcp_surface.ttl \
+#     --query caps=<ggen-marketplace checkout>/packs/elixir-mcp-a2a-pack/queries/mcp_capabilities.rq \
+#     --template lib/smalt/mcp/gen/mcp_descriptor.ex.eex \
+#     --out lib/smalt/mcp/generated/mcp_descriptor.ex --engine sparql
+@prefix ema:   <http://seanchatmangpt.github.io/packs/elixir-mcp-a2a#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+
+# -- surface spec -----------------------------------------------------------
+[] a ema:CapabilitySurface ;
+    ema:appModule "Smalt" ;
+    ema:otpApp "smalt" ;
+    ema:mcpMountPath "/mcp" ;
+    ema:mcpProtocolVersion "2024-11-05" ;
+    ema:agentModule "Smalt.Mcp.Agent" ;
+    ema:agentName "smalt-substrate" ;
+    ema:agentDescription "Read-only MCP tool surface over the smalt local substrate for coding agents." ;
+    ema:agentMountPath "/a2a" .
+
+# -- capabilities (8 read-only tools) ---------------------------------------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "substrate.status" ;
+    ema:capabilityName "Substrate status" ;
+    ema:capabilityDescription "Liveness summary of the substrate: store, supervisor, listeners, ports, version." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 1 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "substrate.capabilities" ;
+    ema:capabilityName "Substrate capabilities" ;
+    ema:capabilityDescription "Registry-derived admitted resource types, api-versions, and SHACL shape bindings." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 2 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "arm.get" ;
+    ema:capabilityName "ARM resource get" ;
+    ema:capabilityDescription "Read one ARM resource record from the substrate store by resource-id parts." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 3 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cosmos.query" ;
+    ema:capabilityName "Cosmos document query" ;
+    ema:capabilityDescription "Read-only document query over a Cosmos container (cross-partition or per partition key)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 4 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "blob.list" ;
+    ema:capabilityName "Blob listing" ;
+    ema:capabilityDescription "Content-free metadata listing of blobs in one storage container." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 5 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "sb.peek" ;
+    ema:capabilityName "Service Bus peek" ;
+    ema:capabilityDescription "Peek messages from a Service Bus queue without locking or completing them." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 6 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "kv.get" ;
+    ema:capabilityName "Key Vault key get" ;
+    ema:capabilityDescription "Public record of one vault key (never key material) from the vault key table." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 7 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "doctor.summary" ;
+    ema:capabilityName "Doctor summary" ;
+    ema:capabilityDescription "Substrate health summary: supervisor children, store and cosmos readiness, listener ports." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 8 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .

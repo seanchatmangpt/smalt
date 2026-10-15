@@ -1,0 +1,227 @@
+@prefix cnv: <https://clap-noun-verb.dev/ontology#> .
+
+# smaltctl - native Rust CLI wrapping smalt's HTTP surface.
+# Projected to Rust by the clap-noun-verb pack family via ggen.
+
+cnv:SmaltCtlCli
+    a cnv:Cli ;
+    cnv:binaryName "smaltctl" ;
+    cnv:crateName "smaltctl" ;
+    cnv:version "0.1.0" ;
+    cnv:edition "2021" ;
+    cnv:rustVersion "1.85" ;
+    cnv:about "smaltctl - native control-plane CLI for the smalt sovereign substrate." ;
+    cnv:hasNoun cnv:StatusNoun, cnv:KvNoun, cnv:BlobNoun, cnv:CosmosNoun, cnv:SbNoun, cnv:DoctorNoun, cnv:CourtNoun .
+
+cnv:StatusNoun a cnv:Noun ;
+    cnv:name "status" ;
+    cnv:about "Substrate status: subscriptions and metadata endpoints." ;
+    cnv:hasCommand cnv:StatusList .
+
+cnv:StatusList a cnv:Command ;
+    cnv:name "list" ;
+    cnv:about "Fetch GET /subscriptions and /metadata/endpoints." ;
+    cnv:belongsToNoun cnv:StatusNoun ;
+    cnv:hasBehavior cnv:CustomStatusList .
+
+cnv:CustomStatusList a cnv:CustomBehavior .
+
+cnv:KvNoun a cnv:Noun ;
+    cnv:name "kv" ;
+    cnv:about "Key Vault surface: create, get, release, list keys." ;
+    cnv:hasCommand cnv:KvCreate, cnv:KvGet, cnv:KvRelease, cnv:KvList .
+
+cnv:KvCreate a cnv:Command ;
+    cnv:name "create" ;
+    cnv:about "Create a key (POST /keys/:name/create)." ;
+    cnv:belongsToNoun cnv:KvNoun ;
+    cnv:hasArgument cnv:KvCreateName, cnv:KvCreatePolicy ;
+    cnv:hasBehavior cnv:CustomKvCreate .
+
+cnv:KvGet a cnv:Command ;
+    cnv:name "get" ;
+    cnv:about "Get a key (GET /keys/:name)." ;
+    cnv:belongsToNoun cnv:KvNoun ;
+    cnv:hasArgument cnv:KvGetName ;
+    cnv:hasBehavior cnv:CustomKvGet .
+
+cnv:KvRelease a cnv:Command ;
+    cnv:name "release" ;
+    cnv:about "Release a key (POST /keys/:name/release)." ;
+    cnv:belongsToNoun cnv:KvNoun ;
+    cnv:hasArgument cnv:KvReleaseName ;
+    cnv:hasBehavior cnv:CustomKvRelease .
+
+cnv:KvList a cnv:Command ;
+    cnv:name "list" ;
+    cnv:about "List keys (GET /keys)." ;
+    cnv:belongsToNoun cnv:KvNoun ;
+    cnv:hasBehavior cnv:CustomKvList .
+
+cnv:KvCreateName a cnv:Argument ;
+    cnv:name "name" ; cnv:fieldName "name" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "smaltctl-key" ;
+    cnv:about "Key name." .
+
+cnv:KvGetName a cnv:Argument ;
+    cnv:name "name" ; cnv:fieldName "name" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "smaltctl-key" ;
+    cnv:about "Key name." .
+
+cnv:KvCreatePolicy a cnv:Argument ;
+    cnv:name "release-policy" ; cnv:fieldName "release_policy" ; cnv:valueKind "string" ;
+    cnv:required false ; cnv:position 0 ; cnv:testValue "{}" ;
+    cnv:longFlag "release-policy" ;
+    cnv:about "Optional release policy JSON (makes the key exportable)." .
+
+cnv:KvReleaseName a cnv:Argument ;
+    cnv:name "name" ; cnv:fieldName "name" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "smaltctl-key" ;
+    cnv:about "Key name." .
+
+cnv:CustomKvCreate a cnv:CustomBehavior .
+cnv:CustomKvGet a cnv:CustomBehavior .
+cnv:CustomKvRelease a cnv:CustomBehavior .
+cnv:CustomKvList a cnv:CustomBehavior .
+
+cnv:BlobNoun a cnv:Noun ;
+    cnv:name "blob" ;
+    cnv:about "Immutable blob storage: put, get, list, delete." ;
+    cnv:hasCommand cnv:BlobPut, cnv:BlobGet, cnv:BlobList, cnv:BlobDelete .
+
+cnv:BlobPut a cnv:Command ;
+    cnv:name "put" ;
+    cnv:about "Upload a file as a blob (PUT /{account}/{container}/{blob})." ;
+    cnv:belongsToNoun cnv:BlobNoun ;
+    cnv:hasArgument cnv:BlobPutContainer, cnv:BlobPutName, cnv:BlobPutFile ;
+    cnv:hasBehavior cnv:CustomBlobPut .
+
+cnv:BlobGet a cnv:Command ;
+    cnv:name "get" ;
+    cnv:about "Get a blob and print its body." ;
+    cnv:belongsToNoun cnv:BlobNoun ;
+    cnv:hasArgument cnv:BlobGetContainer, cnv:BlobGetName ;
+    cnv:hasBehavior cnv:CustomBlobGet .
+
+cnv:BlobList a cnv:Command ;
+    cnv:name "list" ;
+    cnv:about "List containers, or blobs in a container." ;
+    cnv:belongsToNoun cnv:BlobNoun ;
+    cnv:hasArgument cnv:BlobListContainer ;
+    cnv:hasBehavior cnv:CustomBlobList .
+
+cnv:BlobDelete a cnv:Command ;
+    cnv:name "delete" ;
+    cnv:about "Delete a blob (DELETE /{account}/{container}/{blob})." ;
+    cnv:belongsToNoun cnv:BlobNoun ;
+    cnv:hasArgument cnv:BlobDelContainer, cnv:BlobDelName ;
+    cnv:hasBehavior cnv:CustomBlobDelete .
+
+cnv:BlobPutContainer a cnv:Argument ;
+    cnv:name "container" ; cnv:fieldName "container" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "demo" ;
+    cnv:about "Container name." .
+
+cnv:BlobPutName a cnv:Argument ;
+    cnv:name "blob-name" ; cnv:fieldName "blob_name" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 2 ; cnv:testValue "hello.txt" ;
+    cnv:about "Blob name." .
+
+cnv:BlobPutFile a cnv:Argument ;
+    cnv:name "file" ; cnv:fieldName "file" ; cnv:valueKind "path" ;
+    cnv:required true ; cnv:position 3 ; cnv:testValue "README.md" ;
+    cnv:about "Local file to upload." .
+
+cnv:BlobGetContainer a cnv:Argument ;
+    cnv:name "container" ; cnv:fieldName "container" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "demo" ;
+    cnv:about "Container name." .
+
+cnv:BlobGetName a cnv:Argument ;
+    cnv:name "blob-name" ; cnv:fieldName "blob_name" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 2 ; cnv:testValue "hello.txt" ;
+    cnv:about "Blob name." .
+
+cnv:BlobDelContainer a cnv:Argument ;
+    cnv:name "container" ; cnv:fieldName "container" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "demo" ;
+    cnv:about "Container name." .
+
+cnv:BlobDelName a cnv:Argument ;
+    cnv:name "blob-name" ; cnv:fieldName "blob_name" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 2 ; cnv:testValue "hello.txt" ;
+    cnv:about "Blob name." .
+
+cnv:BlobListContainer a cnv:Argument ;
+    cnv:name "container" ; cnv:fieldName "container" ; cnv:valueKind "string" ;
+    cnv:required false ; cnv:position 1 ; cnv:testValue "demo" ;
+    cnv:about "Container name (omit to list containers)." .
+
+cnv:CustomBlobPut a cnv:CustomBehavior .
+cnv:CustomBlobGet a cnv:CustomBehavior .
+cnv:CustomBlobList a cnv:CustomBehavior .
+cnv:CustomBlobDelete a cnv:CustomBehavior .
+
+cnv:CosmosNoun a cnv:Noun ;
+    cnv:name "cosmos" ;
+    cnv:about "Cosmos / ResourceGraph query surface." ;
+    cnv:hasCommand cnv:CosmosQuery .
+
+cnv:CosmosQuery a cnv:Command ;
+    cnv:name "query" ;
+    cnv:about "Run a ResourceGraph query (POST /providers/Microsoft.ResourceGraph/resources)." ;
+    cnv:belongsToNoun cnv:CosmosNoun ;
+    cnv:hasArgument cnv:CosmosQueryText ;
+    cnv:hasBehavior cnv:CustomCosmosQuery .
+
+cnv:CosmosQueryText a cnv:Argument ;
+    cnv:name "query" ; cnv:fieldName "query" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "resources" ;
+    cnv:about "Query text." .
+
+cnv:CustomCosmosQuery a cnv:CustomBehavior .
+
+cnv:SbNoun a cnv:Noun ;
+    cnv:name "sb" ;
+    cnv:about "Event Hubs surface: peek events." ;
+    cnv:hasCommand cnv:SbPeek .
+
+cnv:SbPeek a cnv:Command ;
+    cnv:name "peek" ;
+    cnv:about "Peek events for a topic (GET /topics/:topic/events)." ;
+    cnv:belongsToNoun cnv:SbNoun ;
+    cnv:hasArgument cnv:SbTopic ;
+    cnv:hasBehavior cnv:CustomSbPeek .
+
+cnv:SbTopic a cnv:Argument ;
+    cnv:name "topic" ; cnv:fieldName "topic" ; cnv:valueKind "string" ;
+    cnv:required true ; cnv:position 1 ; cnv:testValue "evh-smalt-0" ;
+    cnv:about "Topic name." .
+
+cnv:CustomSbPeek a cnv:CustomBehavior .
+
+cnv:DoctorNoun a cnv:Noun ;
+    cnv:name "doctor" ;
+    cnv:about "Runtime preflight: proxy to scripts/doctor.py." ;
+    cnv:hasCommand cnv:DoctorRun .
+
+cnv:DoctorRun a cnv:Command ;
+    cnv:name "run" ;
+    cnv:about "Run scripts/doctor.py via python3." ;
+    cnv:belongsToNoun cnv:DoctorNoun ;
+    cnv:hasBehavior cnv:CustomDoctorRun .
+
+cnv:CustomDoctorRun a cnv:CustomBehavior .
+
+cnv:CourtNoun a cnv:Noun ;
+    cnv:name "court" ;
+    cnv:about "Full admission court: proxy to just court." ;
+    cnv:hasCommand cnv:CourtRun .
+
+cnv:CourtRun a cnv:Command ;
+    cnv:name "run" ;
+    cnv:about "Run the full admission court (just court)." ;
+    cnv:belongsToNoun cnv:CourtNoun ;
+    cnv:hasBehavior cnv:CustomCourtRun .
+
+cnv:CustomCourtRun a cnv:CustomBehavior .

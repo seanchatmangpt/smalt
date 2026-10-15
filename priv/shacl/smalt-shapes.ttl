@@ -1,0 +1,152 @@
+# shapes/smalt-shapes.ttl
+# SHACL shapes enforcing the hard-crash admission gate for every admitted
+# resource type.
+#
+# Closed semantics: the evaluator (lib/smalt/graphlaw/validator.ex) enforces
+# sh:closed true — an unknown payload property path yields a `closed`
+# violation, merged with minCount/datatype results. NO shape below is closed:
+# every shape declares sh:closed false EXPLICITLY because the declared
+# property vocabulary is incomplete relative to real ARM payloads (tags, sku,
+# dnsPrefix, addressSpace, template, ... all occur in conforming traffic).
+# A shape may be flipped to sh:closed true only after its property list is
+# complete against every payload that admitted traffic can carry.
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix smalt: <https://ggen.io/ontology/smalt#> .
+
+smalt:DefaultShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:DefaultShapeClass ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "A resource payload must carry exactly one location." ;
+    ] .
+
+smalt:ResourceGroupShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:ResourceGroup ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "resourceGroups require exactly one location." ;
+    ] .
+
+smalt:VNetShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:VNet ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "virtualNetworks require location." ;
+    ] , [
+        sh:path smalt:addressPrefixes ;
+        sh:minCount 1 ;
+        sh:message "virtualNetworks require addressPrefixes." ;
+    ] .
+
+smalt:SubnetShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:Subnet ;
+    sh:property [
+        sh:path smalt:addressPrefix ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "subnets require addressPrefix." ;
+    ] .
+
+smalt:NsgShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:Nsg ;
+    sh:description "No structural constraints beyond registry admission." .
+
+smalt:VirtualMachineShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:VirtualMachine ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "virtualMachines require location." ;
+    ] , [
+        sh:path smalt:vmSize ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "virtualMachines require exactly one vmSize." ;
+    ] .
+
+smalt:KeyVaultShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:KeyVault ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "vaults require location." ;
+    ] , [
+        sh:path smalt:skuName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "vaults require skuName (standard|premium)." ;
+    ] .
+
+smalt:ManagedHsmShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:ManagedHsm ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "managedHSMs require location." ;
+    ] , [
+        sh:path smalt:skuName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "managedHSMs require skuName." ;
+    ] .
+
+smalt:StorageAccountShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:StorageAccount ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "storageAccounts require location." ;
+    ] , [
+        sh:path smalt:skuName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "storageAccounts require sku.name." ;
+    ] .
+
+smalt:ServiceBusNamespaceShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:ServiceBusNamespace ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "serviceBus namespaces require location." ;
+    ] , [
+        sh:path smalt:skuName ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "serviceBus namespaces require skuName (Basic|Standard|Premium)." ;
+    ] .
+
+smalt:CosmosAccountShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:CosmosAccount ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "databaseAccounts require location." ;
+    ] .
+

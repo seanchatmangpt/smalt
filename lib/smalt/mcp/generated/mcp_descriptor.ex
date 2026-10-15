@@ -1,0 +1,130 @@
+# Generated MCP capability descriptor for the Smalt read-only surface.
+# Generated from lib/smalt/mcp/gen/smalt_mcp_surface.ttl via ggen_igniter.sync
+# using the elixir-mcp-a2a-pack queries (mcp_capabilities.rq) and this EEx
+# adaptation of the pack's mcp_descriptor.ex.tmpl. DO NOT hand-edit the
+# generated output; edit the TTL and re-run the sync command in the TTL header.
+defmodule Smalt.Mcp.Descriptor do
+  @moduledoc """
+  Per-capability metadata for Smalt's read-only MCP tool surface, generated
+  from one ema:CapabilitySurface (elixir-mcp-a2a-pack descriptor shape,
+  adapted to Smalt's capability list). A caller can check
+  `requires_authority?/1` or `read_only?/1` BEFORE invoking a tool, rather
+  than discovering refusal at runtime.
+  """
+
+  @capabilities %{
+    "arm.get" => %{
+      name: "ARM resource get",
+      description: "Read one ARM resource record from the substrate store by resource-id parts.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "sb.peek" => %{
+      name: "Service Bus peek",
+      description: "Peek messages from a Service Bus queue without locking or completing them.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "cosmos.query" => %{
+      name: "Cosmos document query",
+      description:
+        "Read-only document query over a Cosmos container (cross-partition or per partition key).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "kv.get" => %{
+      name: "Key Vault key get",
+      description:
+        "Public record of one vault key (never key material) from the vault key table.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "substrate.capabilities" => %{
+      name: "Substrate capabilities",
+      description:
+        "Registry-derived admitted resource types, api-versions, and SHACL shape bindings.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "substrate.status" => %{
+      name: "Substrate status",
+      description:
+        "Liveness summary of the substrate: store, supervisor, listeners, ports, version.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "doctor.summary" => %{
+      name: "Doctor summary",
+      description:
+        "Substrate health summary: supervisor children, store and cosmos readiness, listener ports.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "blob.list" => %{
+      name: "Blob listing",
+      description: "Content-free metadata listing of blobs in one storage container.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    }
+  }
+
+  @doc "Full descriptor map, e.g. for an MCP `tools/list` response."
+  @spec capabilities() :: %{String.t() => map()}
+  def capabilities, do: @capabilities
+
+  @doc "Descriptor for one capability id, or :error if unregistered."
+  @spec describe(String.t()) :: {:ok, map()} | :error
+  def describe(capability_id), do: Map.fetch(@capabilities, capability_id)
+
+  @doc "True when every registered capability is read-only (mutation_scope :none)."
+  @spec read_only_surface?() :: boolean()
+  def read_only_surface? do
+    @capabilities
+    |> Map.values()
+    |> Enum.all?(&(&1.mutation_scope == :none and not &1.requires_authority))
+  end
+
+  @doc """
+  Fail-closed authority check per capability (elixir-mcp-a2a-pack convention):
+  an UNREGISTERED tool id is treated as authority-requiring, never callable.
+  """
+  @spec requires_authority?(String.t()) :: boolean()
+  def requires_authority?(capability_id) do
+    case describe(capability_id) do
+      {:ok, %{requires_authority: r}} -> r
+      :error -> true
+    end
+  end
+end

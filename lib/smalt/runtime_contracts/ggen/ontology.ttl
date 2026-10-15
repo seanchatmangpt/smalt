@@ -1,0 +1,29 @@
+@prefix rtc: <https://smalt.local/ontology/runtime-contracts#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<https://smalt.local/runtime-contracts/arm-envelope> a rtc:Contract ;
+  rtc:id "arm_envelope" ;
+  rtc:module "Smalt.RuntimeContracts.ArmEnvelope" ;
+  rtc:plane "control_plane" ;
+  rtc:consumer "Smalt.ArmGateway.Router" ;
+  rtc:sourcePack "ash-runtime-integration-contract-pack" ;
+  rtc:moduleName "ArmEnvelope" ;
+  rdfs:label "ARM envelope contract" .
+
+<https://smalt.local/runtime-contracts/cosmos-header> a rtc:Contract ;
+  rtc:id "cosmos_header" ;
+  rtc:module "Smalt.RuntimeContracts.CosmosHeader" ;
+  rtc:plane "data_plane" ;
+  rtc:consumer "Smalt.EgressRouter (/dbs surface)" ;
+  rtc:sourcePack "ash-runtime-integration-contract-pack" ;
+  rtc:moduleName "CosmosHeader" ;
+  rdfs:label "Cosmos header contract" .
+
+<https://smalt.local/runtime-contracts/amqp-dialect> a rtc:Contract ;
+  rtc:id "amqp_dialect" ;
+  rtc:module "Smalt.RuntimeContracts.AmqpDialect" ;
+  rtc:plane "messaging_plane" ;
+  rtc:consumer "Smalt.Amqp.FrameCodec + Smalt.Amqp.DeliveryEncoder" ;
+  rtc:sourcePack "ash-runtime-integration-contract-pack" ;
+  rtc:moduleName "AmqpDialect" ;
+  rdfs:label "AMQP 1.0 Service Bus dialect contract" .

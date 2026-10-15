@@ -1,0 +1,27 @@
+# Consumer-local RevOps surface ontology for smalt.
+#
+# Vocabulary is composed from the ash-ocel-revops-surface-factory-pack
+# (r75 candidate structures: AshResource, OcelTimeline, ProcessConformance,
+# ValueEvidence) composed with the executable manufacturer vocabulary of
+# ash-revops-structural-factory-pack (ar:AshResource). The surface factory
+# pack is SELECT/CONSTRUCT-only authority; executable manufacture of the
+# Ash resources is grounded in the structural pack's generation rules,
+# projected here against smalt's own OCEL vocabulary
+# (Smalt.Ocel.EventRegistry closed types).
+@prefix r75: <https://ggen.dev/explore/r75#> .
+@prefix ar: <https://ggen.dev/ontology/ash-revops-structural#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# -- The factory (SELECT/CONSTRUCT-only, per the surface factory pack) ------
+r75:factory r75:generates r75:AshResource .
+
+# -- Read-only RevOps surface resources over the smalt OCEL feed -----------
+<https://ggen.dev/smalt/revops/OcelTrace> ar:resourceSpec "OcelTrace|trace|trace_id:string , event_count:integer , event_types:string_array , start_time:utc , end_time:utc" ; a ar:AshResource, r75:OcelTimeline ;
+    rdfs:seeAlso <urn:ggen:pack:ash-ocel-revops-surface-factory-pack> .
+
+<https://ggen.dev/smalt/revops/OcelDeviation> ar:resourceSpec "OcelDeviation|deviation|id:string , reference_trace_id:string , candidate_trace_id:string , deviating_move:string , fitness:float , status:string , timestamp:utc , trace:string_array" ; a ar:AshResource, r75:ValueEvidence ;
+    rdfs:seeAlso <urn:ggen:pack:ash-ocel-revops-surface-factory-pack> .
+
+<https://ggen.dev/smalt/revops/FitnessVerdict> ar:resourceSpec "FitnessVerdict|verdict|trace_id:string , conforms:boolean , fitness:float , deviation_count:integer" ; a ar:AshResource, r75:ProcessConformance ;
+    rdfs:seeAlso <urn:ggen:pack:ash-ocel-revops-surface-factory-pack> .

@@ -1,0 +1,33 @@
+<% spec_parts = String.split(spec, "|")
+name = Enum.at(spec_parts, 0)
+kind = Enum.at(spec_parts, 1)
+attrs = spec_parts |> Enum.at(2, "") |> String.split(" , ") %>
+# GENERATED FILE — regenerate with:
+#   mix ggen_igniter.sync \
+#     --ontology lib/smalt/ocel/revops/gen/revops_surface.ttl \
+#     --query resources=lib/smalt/ocel/revops/gen/revops_resources.rq \
+#     --template lib/smalt/ocel/revops/gen/ash_resource.ex.eex \
+#     --for-each resources \
+#     --out 'lib/smalt/ocel/revops/<%= name %>.ex' \
+#     --engine sparql
+# Ontology: lib/smalt/ocel/revops/gen/revops_surface.ttl — composes the
+# ash-ocel-revops-surface-factory-pack candidate vocabulary (r75:AshResource,
+# OcelTimeline, ProcessConformance, ValueEvidence) with the executable
+# manufacturer's ar:AshResource (ash-revops-structural-factory-pack).
+# Factory-generated skeleton; the read-action bodies (Ash.DataLayer.Simple +
+# prepare over the real OCEL sink) are the disclosed hand-adapted residue —
+# see docs/PACK_INTEGRATION/ash-ocel-revops.md.
+defmodule Smalt.Ocel.RevOps.<%= name %> do
+  @moduledoc """
+  Read-only RevOps surface resource (`<%= kind %>`) over the smalt OCEL feed.
+  Projected from the ash-ocel-revops-surface-factory-pack candidate structure.
+  """
+  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple
+
+  attributes do
+    attribute :id, :string, allow_nil?: false, public?: true
+<%= for pair <- attrs do %><% [aname, atype] = String.split(pair, ":") %>
+    attribute <%= inspect(aname) %>, :<%= atype %>, public?: true
+<% end %>
+  end
+end

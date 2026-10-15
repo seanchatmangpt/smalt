@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  elixir:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-1.18-27-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-1.18-27-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Unit + wire tests
+        run: mix test
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # T3: real SDK clients against a live substrate. The substrate is
+      # booted first; the smoke runner connects over loopback.
+      - name: SDK smoke tier
+        run: |
+          mix run --no-halt &
+          SMALT_PID=$!
+          for _ in $(seq 1 30); do
+            nc -z 127.0.0.1 9443 && break
+            sleep 1
+          done
+          nc -z 127.0.0.1 9443 || { echo "substrate never bound 9443" >&2; exit 1; }
+          node test/sdk-smoke/run.mjs
+          kill $SMALT_PID
+
+      # T4: terraform fixture. `terraform plan` is only meaningful with the
+      # substrate up, so this step boots the substrate (after doctor) before
+      # planning; both plan and boot are gated — a failure fails the job.
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fixture tier
+        run: |
+          python3 scripts/doctor.py
+          mix run --no-halt &
+          SMALT_PID=$!
+          for _ in $(seq 1 30); do
+            nc -z 127.0.0.1 9443 && break
+            sleep 1
+          done
+          nc -z 127.0.0.1 9443 || { echo "substrate never bound 9443" >&2; exit 1; }
+          cd test/terraform_fixture
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform plan -input=false
+          kill $SMALT_PID
