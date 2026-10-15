@@ -69,11 +69,65 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert PartitionKey.parse(~s(["acme"])) == {:ok, "acme"}
     end
 
-    test "parse rejects empty array, multi-element, non-string, and malformed JSON" do
+    test "parse accepts number and boolean pk values (type-aware, normalized like extract)" do
+      assert PartitionKey.parse(~s([7])) == {:ok, "7"}
+      assert PartitionKey.parse(~s([7.5])) == {:ok, "7.5"}
+      assert PartitionKey.parse(~s([true])) == {:ok, "true"}
+      assert PartitionKey.parse(~s([false])) == {:ok, "false"}
+
+      # null element stays refused (undefined-key divergence, pinned)
+      assert PartitionKey.parse(~s([null])) == :error
+
+      # multi-element / empty / malformed still refused
+      assert PartitionKey.parse(~s([7, 8])) == :error
+      assert PartitionKey.parse("[]") == :error
+      assert PartitionKey.parse("not-json") == :error
+    end
+
+    test "numeric pk end to end: unwritable container becomes writable and query-scoped" do
+      Cosmos.create_collection("npk", "npkc", %{"id" => "npkc", "partitionKey" => %{"paths" => ["/n"]}})
+      {:ok, 201, _, _} = Cosmos.create_doc("npk", "npkc", %{"id" => "a", "n" => 7}, %{"x-ms-documentdb-partitionkey" => ~s([7])})
+      {:ok, 201, _, _} = Cosmos.create_doc("npk", "npkc", %{"id" => "b", "n" => 8}, %{"x-ms-documentdb-partitionkey" => ~s([8])})
+
+      assert {:ok, 200, _, scoped} =
+               Cosmos.query_docs("npk", "npkc", %{"query" => "SELECT"}, %{"x-ms-documentdb-partitionkey" => ~s([7])})
+
+      assert scoped["_count"] == 1
+      assert hd(scoped["Documents"])["id"] == "a"
+
+      # header string form matches the doc's numeric value (same normalization)
+      assert {:ok, 200, _, scoped2} =
+               Cosmos.query_docs("npk", "npkc", %{"query" => "SELECT"}, %{"x-ms-documentdb-partitionkey" => ~s(["7"])})
+
+      assert scoped2["_count"] == 1
+
+      # mismatched numeric partition still 400s
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_doc("npk", "npkc", %{"id" => "c", "n" => 7}, %{"x-ms-documentdb-partitionkey" => ~s([9])})
+    end
+
+    test "boolean pk end to end: write, scoped query, mismatch 400" do
+      Cosmos.create_collection("bpk", "bpkc", %{"id" => "bpkc", "partitionKey" => %{"paths" => ["/b"]}})
+      {:ok, 201, _, _} = Cosmos.create_doc("bpk", "bpkc", %{"id" => "a", "b" => true}, %{"x-ms-documentdb-partitionkey" => ~s([true])})
+      {:ok, 201, _, _} = Cosmos.create_doc("bpk", "bpkc", %{"id" => "d", "b" => false}, %{"x-ms-documentdb-partitionkey" => ~s([false])})
+
+      assert {:ok, 200, _, scoped} =
+               Cosmos.query_docs("bpk", "bpkc", %{"query" => "SELECT"}, %{"x-ms-documentdb-partitionkey" => ~s([true])})
+
+      assert scoped["_count"] == 1
+      assert hd(scoped["Documents"])["id"] == "a"
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_doc("bpk", "bpkc", %{"id" => "e", "b" => true}, %{"x-ms-documentdb-partitionkey" => ~s([false])})
+    end
+
+    test "parse rejects empty array, multi-element, non-scalar, and malformed JSON" do
       assert PartitionKey.parse("[]") == :error
       assert PartitionKey.parse(~s(["a","b"])) == :error
-      assert PartitionKey.parse("[1]") == :error
+      assert PartitionKey.parse(~s([{"a":1}])) == :error
+      assert PartitionKey.parse(~s([[1]])) == :error
       assert PartitionKey.parse(~s([""])) == :error
+      assert PartitionKey.parse(~s([null])) == :error
       assert PartitionKey.parse("not json") == :error
       assert PartitionKey.parse(nil) == :error
     end
@@ -191,7 +245,7 @@ defmodule Smalt.DataPlane.CosmosTest do
     end
 
     test "delete: bare delete 204; conditional delete 204 on match / 412 on mismatch; 404 missing doc" do
-      {:ok, 201, _, doc} = Cosmos.create_doc("db1", "coll1", %{"id" => "d1"}, %{})
+      {:ok, 201, _, _doc} = Cosmos.create_doc("db1", "coll1", %{"id" => "d1"}, %{})
 
       # Bare delete (no If-Match) -> unconditional 204, doc gone
       assert {:ok, 204, headers, ""} = Cosmos.delete_doc("db1", "coll1", "d1", %{})
@@ -676,14 +730,165 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # query with matching pk header returns only that partition
       {:ok, 200, _, feed} =
-        Cosmos.query_docs("msgdb", "mcq", %{}, %{"x-ms-documentdb-partitionkey" => ~s(["acme"])})
+        Cosmos.query_docs("msgdb", "mcq", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["acme"])})
 
       assert feed["_count"] == 1
 
       {:ok, 200, _, feed2} =
-        Cosmos.query_docs("msgdb", "mcq", %{}, %{"x-ms-documentdb-partitionkey" => ~s(["other"])})
+        Cosmos.query_docs("msgdb", "mcq", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["other"])})
 
       assert feed2["_count"] == 0
+    end
+
+    test "query POST without a query document -> 400 BadRequest (row 8)" do
+      Cosmos.create_collection("qvb", "qvb-c", %{"id" => "qvb-c"})
+
+      Enum.each(
+        [
+          %{},
+          %{"parameters" => []},
+          nil,
+          %{"query" => ""},
+          %{"query" => "   "},
+          %{"query" => 123},
+          %{"query" => ["SELECT"]},
+          %{"query" => nil},
+          %{"query" => %{"query" => "SELECT * FROM c"}},
+          "SELECT * FROM c"
+        ],
+        fn bad ->
+          assert {:ok, 400, headers, %{"code" => "BadRequest", "message" => "The query is invalid."}} =
+                   Cosmos.query_docs("qvb", "qvb-c", bad, %{})
+
+          assert headers["x-ms-request-charge"] == "1.0"
+        end
+      )
+    end
+
+    test "_rid uniqueness: 10k doc creates, zero collisions, grammar holds" do
+      db = "ridu"
+      coll = "ru"
+
+      assert {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      rids =
+        1..10_000
+        |> Enum.map(fn i ->
+          id = "d#{i}"
+
+          assert {:ok, 201, _, doc} =
+                   Cosmos.create_doc(db, coll, %{"id" => id, "n" => i}, %{})
+
+          assert doc["_rid"] == Cosmos.doc_rid(db, coll, id)
+          assert byte_size(doc["_rid"]) == 20
+          doc["_rid"]
+        end)
+
+      assert length(rids) == 10_000
+      assert length(Enum.uniq(rids)) == 10_000
+
+      # container rids stay unique across many containers too
+      crids =
+        Enum.map(1..2_000, fn i ->
+          assert {:ok, 201, _, c} = Cosmos.create_collection(db, "c#{i}", %{"id" => "c#{i}"})
+          c["_rid"]
+        end)
+
+      assert length(Enum.uniq(crids)) == 2_000
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Name-path parity (real Cosmos: case-sensitive, 1-255 chars, no "/")
+  # ---------------------------------------------------------------------------
+
+  describe "name-path parity" do
+    test "names are case-sensitive: distinct records, rids, and doc lists" do
+      {:ok, 201, _, d1} = Cosmos.create_db("CaseDb")
+      {:ok, 201, _, d2} = Cosmos.create_db("casedb")
+      assert d1["_rid"] != d2["_rid"]
+      assert d1["id"] != d2["id"]
+
+      {:ok, 201, _, c1} = Cosmos.create_collection("csdb", "Coll", %{"id" => "Coll"})
+      {:ok, 201, _, c2} = Cosmos.create_collection("csdb", "coll", %{"id" => "coll"})
+      assert c1["_rid"] != c2["_rid"]
+
+      {:ok, 201, _, x1} = Cosmos.create_doc("csdb", "Coll", %{"id" => "x"}, %{})
+      {:ok, 201, _, x2} = Cosmos.create_doc("csdb", "coll", %{"id" => "x"}, %{})
+      assert x1["_rid"] != x2["_rid"]
+
+      {:ok, 200, _, l1} = Cosmos.list_docs("csdb", "Coll")
+      {:ok, 200, _, l2} = Cosmos.list_docs("csdb", "coll")
+      assert length(l1) == 1 and length(l2) == 1
+      refute hd(l1) == hd(l2)
+    end
+
+    test "unicode names accepted with valid rids" do
+      {:ok, 201, _, d} = Cosmos.create_db("日本DB-λ")
+      assert d["_rid"] =~ ~r/^[A-Za-z0-9_-]{8}$/
+
+      {:ok, 201, _, c} = Cosmos.create_collection("日本DB-λ", "λcoll", %{"id" => "λcoll"})
+      assert c["_rid"] == Cosmos.coll_rid("日本DB-λ", "λcoll")
+      assert byte_size(c["_rid"]) == 12
+    end
+
+    test "255-char names accepted; 256-char and slash names -> 400 BadRequest" do
+      assert {:ok, 201, _, _} = Cosmos.create_db(String.duplicate("a", 255))
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} = Cosmos.create_db(String.duplicate("a", 256))
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} = Cosmos.create_db("bad/name")
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} = Cosmos.create_db("")
+
+      assert {:ok, 201, _, _} =
+               Cosmos.create_collection("nndb", String.duplicate("c", 255), %{"id" => "cc"})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_collection("nndb", String.duplicate("c", 256), %{"id" => "cc"})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_collection("nndb", "bad/name", %{"id" => "cc"})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_collection("nndb", "", %{"id" => "cc"})
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Name-corpus precedence + request-charge pinning (cycle 8)
+  # ---------------------------------------------------------------------------
+
+  describe "name-corpus precedence and charge pinning" do
+    @big_name String.duplicate("x", 300)
+
+    test "delete precedence: nonexistent doc and unknown/invalid names -> 404 NotFound" do
+      assert {:ok, 404, _, %{"code" => "NotFound"}} = Cosmos.delete_doc("ghost", "coll", "d", %{})
+
+      assert {:ok, 404, _, %{"code" => "NotFound"}} =
+               Cosmos.delete_doc(@big_name, "coll", "d", %{})
+
+      assert {:ok, 404, _, %{"code" => "NotFound"}} = Cosmos.delete_doc("a/b", "c", "d", %{})
+      assert {:ok, 404, _, %{"code" => "NotFound"}} = Cosmos.get_doc("ghost", "coll", "d", %{})
+    end
+
+    test "KNOWN DIVERGENCE: create on unknown container implicitly creates (201), real Cosmos 404s" do
+      assert {:ok, 201, _, doc} = Cosmos.create_doc(@big_name, "c", %{"id" => "d"}, %{})
+      assert doc["_rid"] == Cosmos.doc_rid(@big_name, "c", "d")
+
+      assert {:ok, 200, _, _} = Cosmos.query_docs(@big_name, "c", %{"query" => "SELECT 1"}, %{})
+      assert {:ok, 200, _, _} = Cosmos.list_docs(@big_name, "c")
+    end
+
+    test "request charge is the documented constant 1.0 on every doc surface" do
+      Cosmos.create_collection("chg", "chg-c", %{"id" => "chg-c"})
+
+      assert {:ok, 201, hc, _} = Cosmos.create_doc("chg", "chg-c", %{"id" => "a"}, %{})
+      assert {:ok, 200, hg, _} = Cosmos.get_doc("chg", "chg-c", "a", %{})
+      assert {:ok, 200, hq, _} = Cosmos.query_docs("chg", "chg-c", %{"query" => "SELECT"}, %{})
+      assert {:ok, 204, hd, ""} = Cosmos.delete_doc("chg", "chg-c", "a", %{})
+
+      Enum.each([hc, hg, hq, hd], fn h ->
+        assert h["x-ms-request-charge"] == "1.0"
+      end)
     end
   end
 
@@ -698,6 +903,19 @@ defmodule Smalt.DataPlane.CosmosTest do
     test "malformed pipelines return parse errors, never raise" do
       malformed = [
         "x == 'a' 'b'",
+        "| )x",
+        "| ,a",
+        "| 'str' == 1",
+        "| take)",
+        "| where x)",
+        "| where contains )",
+        "| take 'lit'",
+        "| where x == 1 | tak",
+        "| where x == 1 | take 1 |",
+        "| where x == 1 | order",
+        "| where x == 1 | order by col dsc",
+        "| where x == 1 | project x,",
+        "| where x == 1 | take 1 | wh",
         "take 5, 6",
         ") x == 1",
         "(x == 1))",
@@ -722,11 +940,20 @@ defmodule Smalt.DataPlane.CosmosTest do
     end
 
     test "invalid UTF-8 bytes return parse/limit errors, never raise" do
+      sq = <<0x27>>
+
       raw_cases = [
         <<0xFF, 0xFE, 32>>,
         "'x" <> <<0xFF>> <> "' == 1",
         <<0xC3, 0x28>>,
         <<0xE2, 0x82>>,
+        # Truncated/split multibyte boundaries around and inside string literals
+        sq <> <<0xC3>> <> sq,
+        sq <> <<0xE2, 0x82>> <> sq,
+        sq <> "a" <> <<0x80>> <> "b" <> sq,
+        sq <> "héllo→日本語" <> sq,
+        sq <> <<0xC3, 0xA9>> <> sq,
+        sq <> "x" <> <<0xF0, 0x9F>>,
         :crypto.strong_rand_bytes(64)
       ]
 
@@ -753,6 +980,24 @@ defmodule Smalt.DataPlane.CosmosTest do
       unicode = "| where col == 'héllo→日本語' | take 5"
       assert {:ok, []} = Smalt.DataPlane.KQL.run([], unicode)
 
+      # Double-quoted literals and backslash escapes (real Kusto parity):
+      # both quote styles match; escapes are consumed (\n -> newline, etc.).
+      row = %{"s" => "it's", "n" => "a\nb"}
+      assert {:ok, [%{"s" => "it's"}]} =
+               Smalt.DataPlane.KQL.run([row], "| where s == \"it's\"")
+
+      assert {:ok, [%{"s" => "it's"}]} =
+               Smalt.DataPlane.KQL.run([row], "| where s == 'it\\'s'")
+
+      assert {:ok, [%{"n" => "a\nb"}]} =
+               Smalt.DataPlane.KQL.run([row], "| where n == 'a\\nb'")
+
+      row2 = %{"s" => "a\\b"}
+      assert {:ok, [%{"s" => "a\\b"}]} =
+               Smalt.DataPlane.KQL.run([row2], "| where s == 'a\\\\b'")
+
+      assert {:ok, []} = Smalt.DataPlane.KQL.run([], "| where s == \"no match\" | take 1")
+
       row = %{"col" => "héllo→日本語"}
       assert {:ok, [%{"col" => "héllo→日本語"}]} =
                Smalt.DataPlane.KQL.run([row], "| where col == 'héllo→日本語' | take 5")
@@ -761,6 +1006,950 @@ defmodule Smalt.DataPlane.CosmosTest do
         q = :crypto.strong_rand_bytes(:rand.uniform(128))
         assert match?({:error, _}, Smalt.DataPlane.KQL.run([], q))
       end)
+    end
+
+    test "aggregate/join-shaped input parses to TYPED parse errors, never raises (grammar coverage)" do
+      rows = [%{"a" => 1, "b" => 2}, %{"a" => 3, "b" => 4}]
+
+      # Aggregate clauses (summarize/count) and join-shaped input are NOT part
+      # of this engine's KQL subset. Each must be a typed {:error, {:parse, _}}
+      # — pinned honestly as a GAP, never a crash.
+      aggregate_queries = [
+        "T | summarize count()",
+        "T | count",
+        "| summarize count()",
+        "| where a == 1 | count",
+        "| summarize sum(a)",
+        "| summarize count() by b",
+        "| join (T2) on a",
+        "| extend b = a * 2",
+        "| project-rename b = a",
+        "| where a == 1 | summarize count()"
+      ]
+
+      Enum.each(aggregate_queries, fn q ->
+        assert {:error, {:parse, _}} = Smalt.DataPlane.KQL.run(rows, q),
+               "expected typed parse error for #{inspect(q)}"
+      end)
+    end
+
+    test "KQL input rows of arbitrary shape run without raising (join-shaped inputs)" do
+      # Join-shaped inputs (maps with nested/atom values, non-string keys) are
+      # filtered by predicates without crashing.
+      odd_rows = [
+        %{"a" => 1},
+        %{"a" => nil},
+        %{a: :atom},
+        %{:nested => %{"x" => 1}, "a" => "s"},
+        %{}
+      ]
+
+      assert {:ok, _} = Smalt.DataPlane.KQL.run(odd_rows, "| where a == 1")
+      assert {:ok, _} = Smalt.DataPlane.KQL.run(odd_rows, "| where nested.x == 1")
+      assert {:ok, _} = Smalt.DataPlane.KQL.run(odd_rows, "| order by a asc | project a")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 fences: doc-id grammar, delete CAS isolation, session/continuation
+  # semantics, cross-container ACID (cycles 12+)
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2: doc-id grammar (real Cosmos id rules)" do
+    test "create with '/'-containing, empty, or 256-char id -> 400 BadRequest" do
+      Cosmos.create_collection("iddb", "idc", %{"id" => "idc"})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_doc("iddb", "idc", %{"id" => "a/b", "v" => 1}, %{})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_doc("iddb", "idc", %{"id" => "", "v" => 1}, %{})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_doc("iddb", "idc", %{"id" => String.duplicate("d", 256), "v" => 1}, %{})
+
+      # nothing was stored under any of the poisoned keys
+      assert Store.list_prefix(:smalt_cosmos_docs, "iddb/idc/") == []
+
+      # 255-char id is the inclusive boundary: still legal
+      assert {:ok, 201, _, _} =
+               Cosmos.create_doc("iddb", "idc", %{"id" => String.duplicate("d", 255), "v" => 1}, %{})
+    end
+
+    test "non-string doc id (integer/nil-dotted forms) -> 400 BadRequest, nothing stored" do
+      Cosmos.create_collection("iddb3", "idc3", %{"id" => "idc3"})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_doc("iddb3", "idc3", %{"id" => 42, "v" => 1}, %{})
+
+      assert Store.list_prefix(:smalt_cosmos_docs, "iddb3/idc3/") == []
+    end
+
+    test "replace with a grammar-violating path id -> 404 NotFound (such a doc cannot exist)" do
+      Cosmos.create_collection("iddb2", "idc2", %{"id" => "idc2"})
+      {:ok, 201, _, _} = Cosmos.create_doc("iddb2", "idc2", %{"id" => "ok", "v" => 1}, %{})
+
+      assert {:ok, 404, _, %{"code" => "NotFound"}} =
+               Cosmos.put_doc("iddb2", "idc2", "a/b", %{"v" => 2}, %{})
+
+      assert {:ok, 200, _, _} = Cosmos.put_doc("iddb2", "idc2", "ok", %{"v" => 2}, %{})
+    end
+
+    test "create on an existing id -> 409 Conflict, original doc untouched (real Cosmos parity)" do
+      Cosmos.create_collection("dup", "dupc", %{"id" => "dupc"})
+      {:ok, 201, _, d1} = Cosmos.create_doc("dup", "dupc", %{"id" => "x", "v" => 1}, %{})
+
+      assert {:ok, 409, _, %{"code" => "Conflict"}} =
+               Cosmos.create_doc("dup", "dupc", %{"id" => "x", "v" => 2}, %{})
+
+      assert {:ok, 200, _, unchanged} = Cosmos.get_doc("dup", "dupc", "x", %{})
+      assert unchanged["v"] == 1
+      assert unchanged["_etag"] == d1["_etag"]
+    end
+
+    test "8-way duplicate-create race on one id: exactly one 201, seven 409" do
+      Cosmos.create_collection("dup2", "dup2c", %{"id" => "dup2c"})
+
+      results =
+        1..8
+        |> Task.async_stream(fn i ->
+          Cosmos.create_doc("dup2", "dup2c", %{"id" => "race", "v" => i}, %{})
+        end)
+        |> Enum.to_list()
+
+      statuses =
+        Enum.map(results, fn
+          {:ok, {:ok, s, _, _}} -> s
+          other -> {:exit, other}
+        end)
+
+      assert Enum.count(statuses, &(&1 == 201)) == 1,
+             "expected exactly one 201, got #{inspect(statuses)}"
+
+      assert Enum.count(statuses, &(&1 == 409)) == 7,
+             "expected seven 409s, got #{inspect(statuses)}"
+
+      assert {:ok, 200, _, doc} = Cosmos.get_doc("dup2", "dup2c", "race", %{})
+      assert is_integer(doc["v"])
+    end
+
+    test "create/delete churn on one id: terminal state is always consistent (exists-with-201-etag or absent)" do
+      Cosmos.create_collection("churn2", "churn2c", %{"id" => "churn2c"})
+      {:ok, 201, _, seed} = Cosmos.create_doc("churn2", "churn2c", %{"id" => "z", "v" => 0}, %{})
+
+      results =
+        1..12
+        |> Task.async_stream(fn i ->
+          if rem(i, 2) == 0 do
+            {:create, Cosmos.create_doc("churn2", "churn2c", %{"id" => "z", "v" => i}, %{})}
+          else
+            {:del, Cosmos.delete_doc("churn2", "churn2c", "z", %{})}
+          end
+        end)
+        |> Enum.to_list()
+
+      statuses =
+        Enum.map(results, fn {:ok, {tag, {:ok, s, _, _}}} -> {tag, s} end)
+
+      # Creates may 201 (absent at check time) or 409 (lost the insert_new);
+      # deletes may 204 (present) or 404 (absent). No other statuses allowed.
+      assert Enum.all?(statuses, fn
+             {_t, s} -> s in [201, 409, 204, 404]
+             end)
+
+      # Terminal consistency: if the doc exists it carries a 201-minted etag
+      # (sha256 of the winning body), never a hybrid.
+      case Cosmos.get_doc("churn2", "churn2c", "z", %{}) do
+        {:ok, 200, _, doc} ->
+          assert doc["_etag"] == "\"" <> (:crypto.hash(:sha256, Jason.encode!(%{"id" => "z", "v" => doc["v"]})) |> Base.encode16(case: :lower)) <> "\""
+
+        {:ok, 404, _, _} ->
+          :ok
+      end
+    end
+  end
+
+  describe "lens-2: conditional delete is atomic (CAS-delete, S8 class)" do
+    test "8-way same-etag conditional delete race: exactly one 204, seven 412" do
+      Cosmos.create_collection("dd", "ddc", %{"id" => "ddc"})
+      {:ok, 201, _, doc} = Cosmos.create_doc("dd", "ddc", %{"id" => "race", "v" => 0}, %{})
+      etag = doc["_etag"]
+
+      results =
+        1..8
+        |> Task.async_stream(fn _ -> Cosmos.delete_doc("dd", "ddc", "race", %{"if-match" => etag}) end,
+          max_concurrency: 8
+        )
+        |> Enum.to_list()
+
+      statuses =
+        Enum.map(results, fn
+          {:ok, {:ok, s, _, _}} -> s
+          other -> {:exit, other}
+        end)
+
+      assert Enum.count(statuses, &(&1 == 204)) == 1,
+             "expected exactly one 204, got #{inspect(statuses)}"
+
+      # The rest are 412 (lost the CAS) or 404 (read after the winner's
+      # delete) — either refusal is correct; two 204s are structurally
+      # impossible with the check+delete inside one Store call.
+      assert Enum.count(statuses, &(&1 in [412, 404])) == 7,
+             "expected seven refusals, got #{inspect(statuses)}"
+
+      assert {:ok, 404, _, _} = Cosmos.get_doc("dd", "ddc", "race", %{})
+    end
+
+    test "mixed put/delete race on one etag: exactly one effect survives (cross-op isolation)" do
+      Cosmos.create_collection("xo", "xoc", %{"id" => "xoc"})
+      {:ok, 201, _, doc} = Cosmos.create_doc("xo", "xoc", %{"id" => "m", "v" => 0}, %{})
+      etag = doc["_etag"]
+
+      results =
+        1..8
+        |> Task.async_stream(fn i ->
+          if rem(i, 2) == 0 do
+            {:put, Cosmos.put_doc("xo", "xoc", "m", %{"v" => i}, %{"if-match" => etag})}
+          else
+            {:del, Cosmos.delete_doc("xo", "xoc", "m", %{"if-match" => etag})}
+          end
+        end)
+        |> Enum.to_list()
+
+      statuses =
+        Enum.map(results, fn {:ok, {tag, {:ok, s, _, _}}} -> {tag, s} end)
+
+      # Exactly one op wins the etag: a 200 (put kept the doc) or a 204 (delete
+      # removed it). Every other op refuses 412/404. A put 200 AND a delete 204
+      # together would mean the etag governed two effects.
+      winners = Enum.count(statuses, fn {_t, s} -> s in [200, 204] end)
+      assert winners == 1, "expected exactly one winning effect, got #{inspect(statuses)}"
+
+      assert Enum.all?(statuses, fn {_t, s} -> s in [200, 204, 412, 404] end)
+
+      # Post-state agrees with the winner.
+      if Enum.any?(statuses, fn {t, s} -> t == :put and s == 200 end) do
+        assert {:ok, 200, _, final} = Cosmos.get_doc("xo", "xoc", "m", %{})
+        refute final["v"] == 0
+      else
+        assert {:ok, 404, _, _} = Cosmos.get_doc("xo", "xoc", "m", %{})
+      end
+    end
+
+    test "conditional delete after an intervening replace -> 412 (no stale delete)" do
+      Cosmos.create_collection("dd2", "dd2c", %{"id" => "dd2c"})
+      {:ok, 201, _, doc} = Cosmos.create_doc("dd2", "dd2c", %{"id" => "x", "v" => 0}, %{})
+
+      {:ok, 200, _, _} = Cosmos.put_doc("dd2", "dd2c", "x", %{"v" => 1}, %{"if-match" => doc["_etag"]})
+
+      # the OLD etag no longer governs: conditional delete must 412
+      assert {:ok, 412, _, %{"code" => "PreconditionFailed"}} =
+               Cosmos.delete_doc("dd2", "dd2c", "x", %{"if-match" => doc["_etag"]})
+    end
+  end
+
+  describe "lens-2: cross-container ACID isolation" do
+    test "concurrent CAS races on docs in different containers do not interfere" do
+      Cosmos.create_collection("xca", "ca", %{"id" => "ca"})
+      Cosmos.create_collection("xcb", "cb", %{"id" => "cb"})
+
+      {:ok, 201, _, docA} = Cosmos.create_doc("xca", "ca", %{"id" => "s", "v" => 0}, %{})
+      {:ok, 201, _, docB} = Cosmos.create_doc("xcb", "cb", %{"id" => "s", "v" => 0}, %{})
+
+      # Both etags are sha256 of the same body — the etag space is global by
+      # value, but CAS is keyed on the FULL storage key (db/coll/doc), so the
+      # two races must be fully independent.
+      {resultsA, resultsB} =
+        Task.async_stream(1..8, fn i ->
+          if rem(i, 2) == 0 do
+            {:a, Cosmos.put_doc("xca", "ca", "s", %{"v" => i}, %{"if-match" => docA["_etag"]})}
+          else
+            {:b, Cosmos.put_doc("xcb", "cb", "s", %{"v" => i}, %{"if-match" => docB["_etag"]})}
+          end
+        end)
+        |> Enum.to_list()
+        |> Enum.split_with(&match?({:a, _}, elem(&1, 1)))
+
+      for {tag, {:ok, {s, _, _, _}}} <- resultsA ++ resultsB do
+        assert s == 200, "#{tag}: expected 200, got #{inspect(s)}"
+      end
+
+      {:ok, 200, _, finalA} = Cosmos.get_doc("xca", "ca", "s", %{})
+      {:ok, 200, _, finalB} = Cosmos.get_doc("xcb", "cb", "s", %{})
+      # No lost updates, no cross-container bleed: both docs advanced.
+      assert finalA["v"] != 0 and finalB["v"] != 0
+      assert finalA["v"] != finalB["v"]
+    end
+  end
+
+  describe "lens-2: session-token / continuation semantics (typed GAPs, pinned)" do
+    test "malformed pk header on a partitioned query -> 400, never a cross-partition leak" do
+      Cosmos.create_collection("leak", "leakc", %{"id" => "leakc", "partitionKey" => %{"paths" => ["/t"]}})
+      {:ok, 201, _, _} = Cosmos.create_doc("leak", "leakc", %{"id" => "a", "t" => "x"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+      {:ok, 201, _, _} = Cosmos.create_doc("leak", "leakc", %{"id" => "b", "t" => "y"}, %{"x-ms-documentdb-partitionkey" => ~s(["y"])})
+
+      for bad <- ["not-json", "[]", ~s(["x","y"]), ~s([null]), ""] do
+        assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+                 Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT"}, %{
+                   "x-ms-documentdb-partitionkey" => bad
+                 }),
+               "expected 400 for malformed pk header #{inspect(bad)}"
+      end
+
+      # A parseable header still scopes; absent header still cross-partitions.
+      assert {:ok, 200, _, scoped} =
+               Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+
+      assert scoped["_count"] == 1
+
+      assert {:ok, 200, _, all} = Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT"}, %{})
+      assert all["_count"] == 2
+    end
+
+    test "hostile headers through every point op: {:ok,..} | {:error,:store_not_ready} only, never a raise" do
+      Cosmos.create_collection("hz", "hzc", %{"id" => "hzc", "partitionKey" => %{"paths" => ["/t"]}})
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("hz", "hzc", %{"id" => "d", "t" => "x"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+
+      hostile = [
+        %{"if-match" => :crypto.strong_rand_bytes(64)},
+        %{"if-match" => "\"unbalanced"},
+        %{"if-none-match" => <<0xFF, 0xFE, 0x00>>},
+        %{"x-ms-documentdb-partitionkey" => <<0xFF, 0xFE>>},
+        %{"x-ms-documentdb-partitionkey" => String.duplicate("[", 500)},
+        %{"x-ms-consistency-level" => 123},
+        %{"x-ms-session-token" => :crypto.strong_rand_bytes(256)},
+        %{"authorization" => "Type%3dmaster%26ver%3d1.0%26sig%3d!!!"},
+        %{"x-ms-date" => -1}
+      ]
+
+      Enum.each(hostile, fn h ->
+        r1 = Cosmos.create_doc("hz", "hzc", %{"id" => "hz1", "t" => "x"}, h)
+        r2 = Cosmos.get_doc("hz", "hzc", "d", h)
+        r3 = Cosmos.put_doc("hz", "hzc", "d", %{"v" => 1}, h)
+        r4 = Cosmos.delete_doc("hz", "hzc", "d", h)
+        r5 = Cosmos.query_docs("hz", "hzc", %{"query" => "SELECT"}, h)
+
+        Enum.each([r1, r2, r3, r4, r5], fn r ->
+          assert match?({:ok, _, _, _}, r) or match?({:error, :store_not_ready}, r),
+                 "non-typed result under hostile headers #{inspect(h, limit: :infinity)}: #{inspect(r)}"
+        end)
+
+        # the anchor doc survives the sweep (re-created: the unconditional
+        # delete inside the sweep legitimately removed the previous one)
+        Cosmos.create_doc("hz", "hzc", %{"id" => "d", "t" => "x"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+        assert match?({:ok, 200, _, _}, Cosmos.get_doc("hz", "hzc", "d", %{}))
+      end)
+    end
+
+    test "concurrent writes mint strictly monotonic, distinct session tokens" do
+      Cosmos.create_collection("mono", "monoc", %{"id" => "monoc"})
+      {:ok, 201, _, _} = Cosmos.create_doc("mono", "monoc", %{"id" => "seed", "v" => 0}, %{})
+
+      tokens =
+        1..20
+        |> Task.async_stream(fn i ->
+          {:ok, 201, h, _} =
+            Cosmos.create_doc("mono", "monoc", %{"id" => "m" <> String.pad_leading(Integer.to_string(i), 2, "0")}, %{})
+
+          h["x-ms-session-token"]
+        end)
+        |> Enum.map(fn {:ok, t} -> t end)
+
+      assert length(Enum.uniq(tokens)) == 20
+
+      numbers =
+        Enum.map(tokens, fn t ->
+          assert t =~ ~r/^\d+#\d+$/
+          {n, _} = Integer.parse(List.last(String.split(t, "#")))
+          n
+        end)
+
+      # Distinct, contiguous, no gaps: update_counter is atomic, so 20
+      # concurrent creates mint exactly 20 distinct LSNs above the seed's.
+      assert Enum.sort(numbers) == Enum.to_list(2..21)
+    end
+
+    test "KNOWN DIVERGENCE: a stale client x-ms-session-token is ignored" do
+      Cosmos.create_collection("st", "stc", %{"id" => "stc"})
+      {:ok, 201, h1, _} = Cosmos.create_doc("st", "stc", %{"id" => "d1", "v" => 1}, %{})
+      assert h1["x-ms-session-token"] == "1#1"
+
+      # Client sends a stale token; the engine reports the CURRENT token and
+      # serves the read (real Cosmos: the service never rejects on a stale
+      # session token — enforcement is client-side in the SDK — so ignoring
+      # it IS the parity behavior; pinned so it cannot silently pivot).
+      assert {:ok, 200, h2, _} =
+               Cosmos.get_doc("st", "stc", "d1", %{"x-ms-session-token" => "1#0"})
+
+      assert h2["x-ms-session-token"] == "1#1"
+    end
+
+    test "feed truncation emits x-ms-continuation (row 18 RAISE closed, lens-3)" do
+      Cosmos.create_collection("cont", "contc", %{"id" => "contc"})
+
+      for i <- 0..104 do
+        {:ok, 201, _, _} =
+          Cosmos.create_doc("cont", "contc", %{"id" => "q" <> String.pad_leading(Integer.to_string(i), 4, "0")},
+            %{})
+      end
+
+      {:ok, 200, h, res} =
+        Cosmos.query_docs("cont", "contc", %{"query" => "SELECT * FROM c"}, %{})
+
+      assert res["_count"] == 100
+      # Real Cosmos emits x-ms-continuation when a feed page is truncated.
+      # Lens-3 (row 18 RAISE closed): the token format is "1#{lsn}:{last_id}",
+      # the last page is tokenless, and a forged token is a typed 400.
+      token = h["x-ms-continuation"]
+      assert is_binary(token) and token =~ ~r/^1#\d+:q0099$/
+    end
+
+    test "query/list under concurrent doc churn: bounded, crash-free, no phantom completeness" do
+      Cosmos.create_collection("churn", "churnc", %{"id" => "churnc"})
+
+      {:ok, 201, _, _} = Cosmos.create_doc("churn", "churnc", %{"id" => "anchor", "v" => 0}, %{})
+
+      # 40 concurrent creates while 10 queries + 10 lists run.
+      spin =
+        Task.async_stream(1..40, fn i ->
+          Cosmos.create_doc("churn", "churnc", %{"id" => "c" <> String.pad_leading(Integer.to_string(i), 3, "0")}, %{})
+        end)
+
+      reads =
+        Task.async_stream(1..20, fn i ->
+          if rem(i, 2) == 0 do
+            {:query, Cosmos.query_docs("churn", "churnc", %{"query" => "SELECT * FROM c"}, %{})}
+          else
+            {:list, Cosmos.list_docs("churn", "churnc")}
+          end
+        end)
+
+      spin_done = Enum.to_list(spin)
+      reads_done = Enum.to_list(reads)
+
+      for {_tag, {:ok, 200, _h, body}} <- reads_done do
+        docs = if is_list(body), do: body, else: body["Documents"]
+        count = length(docs)
+
+        assert count in 1..100,
+               "feed must be bounded 1..100 under churn, got #{count}"
+
+        ids = Enum.map(docs, & &1["id"])
+        assert ids == Enum.sort(ids)
+      end
+
+      # After churn drains, the feed is complete: 41 docs (anchor + 40).
+      assert {:ok, 200, _, final} = Cosmos.list_docs("churn", "churnc")
+      assert length(final) == 41
+    end
+
+    test "GAP: no stored-procedure / trigger / UDF surface (wire 404s, typed GAP)" do
+      # Cosmos.ex exposes no sproc/trigger/udf handlers. The wire layer must
+      # keep refusing these routes, never crash and never half-implement.
+      {:ok, 404, _, _} = Cosmos.get_doc("anydb", "anycoll", "..%2Fsprocs", %{})
+      assert Cosmos.store_ready?()
+    end
+  end
+
+  # -------------------------------------------------------------------------
+  # Feed continuation (row 18 — lens-3 RAISE, engine work order lens-2 c5)
+  # -------------------------------------------------------------------------
+
+  describe "feed continuation x-ms-continuation (row 18)" do
+    @tag :cont
+    test "105-doc feed: page 1 emits token, resume completes the feed, last page tokenless" do
+      db = "cdb"
+      coll = "cc"
+
+      {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 0..104 do
+        {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "d-#{String.pad_leading(Integer.to_string(i), 4, "0")}"}, %{})
+      end
+
+      {:ok, 200, h1, p1} = Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{})
+
+      assert p1["_count"] == 100
+      token = h1["x-ms-continuation"]
+      assert is_binary(token) and token =~ ~r/^1#\d+:d-0099$/
+
+      {:ok, 200, h2, p2} =
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => token})
+
+      assert p2["_count"] == 5
+      assert h2["x-ms-continuation"] == nil
+
+      # Full loop: no skip, no repeat.
+      all = Enum.map(p1["Documents"], & &1["id"]) ++ Enum.map(p2["Documents"], & &1["id"])
+      assert length(all) == 105
+      assert length(Enum.uniq(all)) == 105
+      assert all == Enum.sort(all)
+    end
+
+    @tag :cont
+    test "contract pin: token's last_id deleted mid-resume -> order-based resume, no skip/stall" do
+      db = "chdb"
+      coll = "chc"
+
+      {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 0..104 do
+        {:ok, 201, _, _} =
+          Cosmos.create_doc(db, coll, %{"id" => "k-#{String.pad_leading(Integer.to_string(i), 4, "0")}"}, %{})
+      end
+
+      {:ok, 200, h1, p1} = Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{})
+      token = h1["x-ms-continuation"]
+      assert p1["_count"] == 100 and is_binary(token)
+
+      # The doc the token points at is deleted BEFORE the resume.
+      {:ok, 204, _, _} = Cosmos.delete_doc(db, coll, "k-0099", %{})
+
+      {:ok, 200, h2, p2} =
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => token})
+
+      assert p2["_count"] == 5
+      assert h2["x-ms-continuation"] == nil
+
+      ids = Enum.map(p2["Documents"], & &1["id"])
+      assert ids == Enum.sort(ids) and length(ids) == 5
+      assert "k-0099" not in ids and "k-0100" in ids
+    end
+
+    @tag :cont
+    test "token forgery: malformed, wrong-version, ahead-of-ledger tokens -> typed 400" do
+      db = "fdb"
+      coll = "fc"
+
+      {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      {:ok, 200, _, seed} = Cosmos.query_docs(db, coll, %{"query" => "s"}, %{})
+      assert seed["_count"] == 0
+
+      forged = [
+        "garbage",
+        "1",
+        "1#",
+        "1#abc:x",
+        "2#1:abc",
+        "1#1:",
+        "1#999999999:abc",
+        "1#1:/bad/id",
+        "1#1:" <> String.duplicate("x", 256),
+        "1#1:with/slash"
+      ]
+
+      for bad <- forged do
+        assert {:ok, 400, headers, %{"code" => "BadRequest"}} =
+                 Cosmos.query_docs(db, coll, %{"query" => "s"}, %{"x-ms-continuation" => bad})
+
+        assert headers["x-ms-request-charge"] == "1.0"
+      end
+    end
+
+    @tag :cont
+    test "partition-scoped continuation: token resumes within one partition, never leaks the other" do
+      db = "pdb"
+      coll = "pc"
+
+      {:ok, 201, _, _} =
+        Cosmos.create_collection(db, coll, %{"id" => coll, "partitionKey" => %{"paths" => ["/t"]}})
+
+      for part <- ["a", "b"], i <- 0..59 do
+        {:ok, 201, _, _} =
+          Cosmos.create_doc(
+            db,
+            coll,
+            %{"id" => "p-#{part}-#{String.pad_leading(Integer.to_string(i), 3, "0")}", "t" => part},
+            %{"x-ms-documentdb-partitionkey" => ~s(["#{part}"])}
+          )
+      end
+
+      {:ok, 200, h1, p1} =
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["a"])
+        })
+
+      assert p1["_count"] == 60
+      # 60 < 100: no truncation, no token — the last page is tokenless.
+      assert h1["x-ms-continuation"] == nil
+
+      # Force truncation inside one partition: 101 docs in partition "a" only.
+      for i <- 60..100 do
+        {:ok, 201, _, _} =
+          Cosmos.create_doc(
+            db,
+            coll,
+            %{"id" => "p-a-#{String.pad_leading(Integer.to_string(i), 3, "0")}", "t" => "a"},
+            %{"x-ms-documentdb-partitionkey" => ~s(["a"])}
+          )
+      end
+
+      {:ok, 200, h2, p2} =
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["a"])
+        })
+
+      assert p2["_count"] == 100
+      token = h2["x-ms-continuation"]
+      # Scoped feed: the pk header is embedded as the token scope
+      # ("1#<lsn>:<pk_raw>/<last_id>", lens-5 scope-binding fence).
+      assert is_binary(token) and token =~ ~r|^1#\d+:\["a"\]/p-a-099$|
+
+      {:ok, 200, h3, p3} =
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["a"]),
+          "x-ms-continuation" => token
+        })
+
+      assert p3["_count"] == 1
+      assert h3["x-ms-continuation"] == nil
+
+      # Resume with the token under the OTHER partition's header: typed 400 —
+      # the token's scope must equal the resume's pk header (lens-5 fence;
+      # previously the cursor silently dropped 50 of 60 B docs with 200).
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-documentdb-partitionkey" => ~s(["b"]),
+                 "x-ms-continuation" => token
+               })
+    end
+
+    @tag :cont
+    test "forgery fuzz: 300 seeded random tokens never 5xx; well-formed -> 200/400, never raise" do
+      db = "zzdb"
+      coll = "zzc"
+
+      {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "seed"}, %{})
+
+      base = ["1", "2", "0", "", "x", "999999", "-1", "1e3", "1#1", "#", ":", "1##", "01#1"]
+
+      seeds = for a <- base, b <- base, c <- base, do: {a, b, c}
+
+      tokens =
+        Enum.map(seeds, fn {a, b, c} -> a <> Enum.random(["#", ":"]) <> b <> ":" <> c end)
+
+      tokens =
+        tokens ++
+          Enum.map(1..60, fn _ ->
+            :crypto.strong_rand_bytes(:rand.uniform(24))
+            |> Base.url_encode64(padding: false)
+          end)
+
+      tokens = Enum.uniq(tokens) |> Enum.take(300)
+
+      results =
+        Enum.map(tokens, fn tok ->
+          Cosmos.query_docs(db, coll, %{"query" => "s"}, %{"x-ms-continuation" => tok})
+        end)
+
+      # Never a raise, never a 5xx: every forged probe is a typed 200 or 400.
+      Enum.each(results, fn
+        {:ok, s, _, _} when s in [200, 400] -> :ok
+        other -> flunk("forged token produced #{inspect(other)}")
+      end)
+
+      # Every 400 carries the envelope, every 200 a well-formed feed.
+      Enum.each(Enum.zip(tokens, results), fn
+        {_, {:ok, 400, h, %{"code" => "BadRequest"}}} -> assert h["x-ms-request-charge"] == "1.0"
+        {_, {:ok, 200, _, %{"_count" => n}}} -> assert is_integer(n)
+        _ -> :ok
+      end)
+    end
+
+    @tag :cont
+    test "wire tier: query POST emits the token on truncated pages and honors it on resume" do
+      db = "wdb"
+      coll = "wc"
+      router_opts = EgressRouter.init([])
+
+      dispatch = fn c -> EgressRouter.call(c, router_opts) end
+
+      conn(:post, "/dbs", %{"id" => db}) |> dispatch.() |> status_response() |> then(&assert &1 == 201)
+
+      conn(:post, "/dbs/#{db}/colls", %{"id" => coll, "partitionKey" => %{"paths" => ["/p"]}})
+      |> dispatch.()
+      |> status_response()
+      |> then(&assert &1 == 201)
+
+      for i <- 0..104 do
+        body = Jason.encode!(%{"id" => "w-#{String.pad_leading(Integer.to_string(i), 4, "0")}", "p" => "ten"})
+        conn(:post, "/dbs/#{db}/colls/#{coll}/docs", body)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-ms-documentdb-partitionkey", ~s(["ten"]))
+        |> dispatch.()
+        |> status_response()
+        |> then(&assert &1 == 201)
+      end
+
+      qbody = Jason.encode!(%{"query" => "SELECT * FROM c"})
+
+      conn1 =
+        conn(:post, "/dbs/#{db}/colls/#{coll}/docs", qbody)
+        |> put_req_header("content-type", "application/query+json")
+        |> put_req_header("x-ms-documentdb-partitionkey", ~s(["ten"]))
+        |> dispatch.()
+
+      assert conn1.status == 200
+
+      resp_token =
+        conn1 |> get_resp_header("x-ms-continuation") |> List.first()
+
+      assert is_binary(resp_token) and resp_token =~ ~r|^1#\d+:\["ten"\]/w-0099$|
+
+      page1 =
+        conn1.resp_body |> Jason.decode!() |> Map.get("Documents") |> Enum.map(& &1["id"])
+
+      assert length(page1) == 100
+
+      conn2 =
+        conn(:post, "/dbs/#{db}/colls/#{coll}/docs", qbody)
+        |> put_req_header("content-type", "application/query+json")
+        |> put_req_header("x-ms-documentdb-partitionkey", ~s(["ten"]))
+        |> put_req_header("x-ms-continuation", resp_token)
+        |> dispatch.()
+
+      assert conn2.status == 200
+
+      page2 =
+        conn2.resp_body |> Jason.decode!() |> Map.get("Documents") |> Enum.map(& &1["id"])
+
+      assert length(page2) == 5
+      assert get_resp_header(conn2, "x-ms-continuation") == []
+
+      assert (page1 ++ page2) |> Enum.uniq() |> length() == 105
+    end
+  end
+
+  # -------------------------------------------------------------------------
+  # List-feed continuation (lens-4: authorized continuation of the lens-3 GAP)
+  # -------------------------------------------------------------------------
+
+  describe "list_docs continuation (version-2 token namespace)" do
+    test "truncated list emits a v2 token, resume completes the feed, last page tokenless" do
+      db = "ldb2"
+      coll = "lc2"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..105 do
+        Cosmos.create_doc(db, coll, %{"id" => "d" <> String.pad_leading(Integer.to_string(i), 3, "0")}, %{})
+      end
+
+      {:ok, 200, h1, page1} = Cosmos.list_docs(db, coll)
+      assert length(page1) == 100
+      token = h1["x-ms-continuation"]
+      assert is_binary(token) and token =~ ~r/^2#\d+:d100$/
+
+      # Cross-namespace fence: this v2 list token fed to the QUERY surface is
+      # a typed 400 — token namespaces must not cross.
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-continuation" => token
+               })
+
+      {:ok, 200, h2, page2} = Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => token})
+      assert Enum.map(page2, & &1["id"]) == Enum.map(101..105, &"d#{&1}")
+      assert h2["x-ms-continuation"] == nil
+
+      assert Enum.uniq(Enum.map(page1, & &1["id"]) ++ Enum.map(page2, & &1["id"])) |> length() ==
+               105
+    end
+
+    test "prefix-resume fence: a token minted under prefix A resumed under prefix B is a typed 400" do
+      db = "ldbp"
+      coll = "lcp"
+      {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..105, do: {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "a#{String.pad_leading(Integer.to_string(i), 3, "0")}"}, %{})
+
+      for i <- 1..60, do: {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "b#{i}"}, %{})
+
+      # Mint a REAL token under prefix "a" (truncated 105-doc feed).
+      {:ok, 200, h1, page1} = Cosmos.list_docs(db, coll, "a")
+      assert length(page1) == 100
+      token = h1["x-ms-continuation"]
+      # Nonempty prefix is embedded in the token tail: "2#<lsn>:a/a100"
+      assert is_binary(token) and token =~ ~r/^2#\d+:a\/a100$/
+
+      # Same-prefix resume completes the feed, last page tokenless.
+      {:ok, 200, h2, page2} = Cosmos.list_docs(db, coll, "a", %{"x-ms-continuation" => token})
+      assert Enum.map(page2, & &1["id"]) == Enum.map(101..105, &"a#{String.pad_leading(Integer.to_string(&1), 3, "0")}")
+      assert h2["x-ms-continuation"] == nil
+
+      # Cross-prefix resume: a DIFFERENT prefix is a typed 400 — a token is
+      # only valid for the feed (prefix) that emitted it (real Cosmos binds
+      # tokens to their query).
+      for wrong_prefix <- ["", "b", "aa", "a/"] do
+        assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+                 Cosmos.list_docs(db, coll, wrong_prefix, %{"x-ms-continuation" => token}),
+               "prefix #{inspect(wrong_prefix)} must 400"
+      end
+    end
+
+    test "query scope fence: a cross-partition token resumed under a pk header is a typed 400 (silent-drop regression)" do
+      db = "qdb"
+      coll = "qc"
+
+      {:ok, 201, _, _} =
+        Cosmos.create_collection(db, coll, %{"id" => coll, "partitionKey" => %{"paths" => ["/p"]}})
+
+      # Interleaved partitions: 120 docs, alternating p = A/B.
+      for i <- 1..120 do
+        p = if rem(i, 2) == 0, do: "A", else: "B"
+
+        {:ok, 201, _, _} =
+          Cosmos.create_doc(db, coll, %{"id" => "m#{String.pad_leading(Integer.to_string(i), 3, "0")}", "p" => p},
+            %{"x-ms-documentdb-partitionkey" => ~s(["#{p}"])})
+      end
+
+      # Truncated cross-partition page: cursor at m100.
+      {:ok, 200, h1, p1} = Cosmos.query_docs(db, coll, %{"query" => "s"}, %{})
+      assert p1["_count"] == 100
+      token = h1["x-ms-continuation"]
+      assert is_binary(token) and token =~ ~r|^1#\d+:m100$|
+
+      # Pre-fence this resume returned 200 with 10 of 60 B docs — 50 silently
+      # dropped (lens-5 probe). Now a typed 400: the token scope ("") must
+      # equal the resume's pk header.
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.query_docs(db, coll, %{"query" => "s"}, %{
+                 "x-ms-documentdb-partitionkey" => ~s(["B"]),
+                 "x-ms-continuation" => token
+               })
+
+      # The unscoped resume (same scope) still completes the remaining 20.
+      {:ok, 200, h2, p2} =
+        Cosmos.query_docs(db, coll, %{"query" => "s"}, %{"x-ms-continuation" => token})
+
+      assert p2["_count"] == 20 and h2["x-ms-continuation"] == nil
+    end
+
+    test "churn contract: deleting the token's last_id doc mid-resume cannot skip or stall" do
+      db = "ldbchurn"
+      coll = "lcchurn"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..12 do
+        Cosmos.create_doc(db, coll, %{"id" => "k" <> String.pad_leading(Integer.to_string(i), 2, "0")}, %{})
+      end
+
+      # Force a 10-doc page: page 1 = k01..k10, token cursor k10.
+      {:ok, 200, h1, page1} = Cosmos.list_docs(db, coll)
+      # (12 docs fit one page here, so drive the cursor directly.)
+      token = "2#1:k10"
+
+      # Actually page through at limit: shrink by using the cursor to resume.
+      assert length(page1) == 12 and h1["x-ms-continuation"] == nil
+
+      # Delete the cursor doc, then resume: ORDER-based cursor must return
+      # k11, k12 — no skip, no stall, no 404.
+      {:ok, 204, _, _} = Cosmos.delete_doc(db, coll, "k10", %{})
+      {:ok, 200, _, rest} = Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => token})
+      assert Enum.map(rest, & &1["id"]) == ["k11", "k12"]
+    end
+
+    test "cross-token: a v1 query token fed to list_docs is a typed 400" do
+      db = "ldbx"
+      coll = "lcx"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..3, do: Cosmos.create_doc(db, coll, %{"id" => "d#{i}"}, %{})
+
+      lsn = 1
+      q_token = "1##{lsn}:d1"
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => q_token})
+    end
+
+    test "list forgery matrix: forged/malformed tokens are typed 400s" do
+      db = "ldbf"
+      coll = "lcf"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..3, do: Cosmos.create_doc(db, coll, %{"id" => "d#{i}"}, %{})
+
+      forged = [
+        "garbage",
+        "1",
+        "2",
+        "2#",
+        "2#abc:d1",
+        "1#1:d1",
+        "2#999999:d1",
+        "2#1:",
+        String.duplicate("a", 256),
+        "2#1:a/b"
+      ]
+
+      for tok <- forged do
+        assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+                 Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => tok}),
+               "token #{inspect(tok)} must be a 400"
+      end
+    end
+
+    test "list forgery fuzz: 300 seeded/random tokens never 5xx, never raise" do
+      db = "ldbz"
+      coll = "lcz"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..3, do: Cosmos.create_doc(db, coll, %{"id" => "d#{i}"}, %{})
+
+      :rand.seed(:exsss, {1, 2, 3})
+
+      tokens =
+        for _ <- 1..300 do
+          case :rand.uniform(4) do
+            1 -> :base64.encode(:crypto.strong_rand_bytes(:rand.uniform(24)))
+            2 -> "2##{:rand.uniform(50)}:" <> :base64.encode(:crypto.strong_rand_bytes(8))
+            3 -> "1##{:rand.uniform(50)}:" <> :base64.encode(:crypto.strong_rand_bytes(8))
+            _ -> String.duplicate("2#", :rand.uniform(6))
+          end
+        end
+
+      for tok <- tokens do
+        res = Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => tok})
+
+        assert match?({:ok, 200, _, _}, res) or match?({:ok, 400, _, _}, res),
+               "token #{inspect(tok)} produced #{inspect(res)}"
+      end
+    end
+
+    test "store restart drops the feed: post-restart resume is a typed 400, never a silent rescan" do
+      db = "lrst"
+      coll = "lrc"
+      {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
+
+      for i <- 1..3, do: {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "d#{i}"}, %{})
+
+      {:ok, 200, _, pre} = Cosmos.list_docs(db, coll, "", %{})
+      assert length(pre) == 3
+
+      # Stop the table-owner GenServer and restart it (the Store owns every
+      # cosmos table; a restart drops them — in-memory by construction).
+      :ok = GenServer.stop(Store)
+
+      # Store is SUPERVISED (Smalt.Application child): the stop triggers a
+      # supervisor restart with a fresh process and FRESH EMPTY tables. Wait
+      # for the restarted instance to become ready.
+      restarted? =
+        Enum.reduce_while(1..500, false, fn _, _ ->
+          if Cosmos.store_ready?(), do: {:halt, true}, else: (Process.sleep(10) && {:cont, false})
+        end)
+
+      assert restarted?
+      {:ok, 200, _, post} = Cosmos.list_docs(db, coll, "", %{})
+      assert post == []
+
+      # A pre-restart-shaped v2 token has lsn 2 > restarted ledger 0 → the lsn
+      # fence types it as forged: 400 BadRequest, never a silent from-start scan.
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => "2#2:d2"})
     end
   end
 end

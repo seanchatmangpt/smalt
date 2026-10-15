@@ -28,6 +28,10 @@ import threading
 import time
 import traceback
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "stress"))
+import _substrate  # noqa: E402
+import traceback
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "127.0.0.1"
 # Ports are overridable via env so the bench can run against its own
@@ -35,7 +39,7 @@ HOST = "127.0.0.1"
 # by another lane (the substrate reads :smalt, :arm_port/:data_plane_port).
 ARM_PORT = int(os.environ.get("SMALT_BENCH_ARM_PORT", "9443"))
 DATA_PORT = int(os.environ.get("SMALT_BENCH_DATA_PORT", "8443"))
-AMQP_PORT = 5672
+AMQP_PORT = int(os.environ.get("SMALT_BENCH_AMQP_PORT", "5672"))
 SUB_ID = "bench-sub"
 API_VERSION = "2021-01-01"
 
@@ -65,11 +69,12 @@ def pct(sorted_vals, p):
 def spawn_substrate():
     env = dict(os.environ)
     env["MIX_ENV"] = "dev"
-    if ARM_PORT != 9443 or DATA_PORT != 8443:
+    if ARM_PORT != 9443 or DATA_PORT != 8443 or AMQP_PORT != 5672:
         # --no-start so the env is set before the app boots its listeners
         cmd = ["mix", "run", "--no-start", "--no-halt", "-e",
                f"Application.put_env(:smalt, :arm_port, {ARM_PORT}); "
                f"Application.put_env(:smalt, :egress_port, {DATA_PORT}); "
+               f"Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); "
                "{{:ok, _}} = Application.ensure_all_started(:smalt)"]
     else:
         cmd = ["mix", "run", "--no-halt"]
@@ -85,45 +90,14 @@ def spawn_substrate():
 
 
 def wait_for_port(port, proc, timeout_s=90.0):
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc is not None and proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                pass
-            return time.monotonic() - t0
-        except OSError:
-            time.sleep(0.01)
-    fail_closed(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.01)
 
 
 def kill_substrate(proc):
     if proc is None:
         return
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-    for port in (ARM_PORT, DATA_PORT, AMQP_PORT):
-        try:
-            out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                                 capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            out = ""
-        for pid in out.split():
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, AMQP_PORT))
     try:
         os.remove("/tmp/smalt-bench.pid")
     except OSError:
@@ -131,14 +105,7 @@ def kill_substrate(proc):
 
 
 def wait_port_free(port, timeout_s=30.0):
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < timeout_s:
-        try:
-            socket.create_connection((HOST, port), timeout=0.2).close()
-        except OSError:
-            return True
-        time.sleep(0.05)
-    return False
+    return _substrate.wait_port_free(port, timeout_s=timeout_s)
 
 
 def stats_dict(vals):

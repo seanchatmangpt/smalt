@@ -169,15 +169,16 @@ defmodule Smalt.Store.DetsMirror do
     else
       dets_file
       |> :dets.match_object(:_)
-      |> Enum.reduce(0, fn {key, _val} = row, n ->
-        # Idempotent: ETS is source of truth while hot; never clobber a live row.
-        case :ets.lookup(table, key) do
-          [] ->
-            :ets.insert(table, row)
-            n + 1
-
-          _existing ->
-            n
+      |> Enum.reduce(0, fn {key, val}, n ->
+        # Idempotent: ETS is source of truth while hot; never clobber a live
+        # row. The exists-check AND the insert must run as ONE Store
+        # handle_call — a bare :ets.lookup-then-:ets.insert here raced with a
+        # concurrent Smalt.Store.insert_new/3 and could clobber the fresh
+        # value with a stale mirror value (lens-3 cycle-4 court kills that
+        # interleaving; the old non-atomic form failed the court).
+        case Smalt.Store.insert_new(table, key, val) do
+          :ok -> n + 1
+          {:error, :exists} -> n
         end
       end)
     end

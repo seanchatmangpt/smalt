@@ -27,7 +27,10 @@ defmodule Smalt.ArmGateway.Router do
   plug(Plug.Parsers,
     parsers: [:json, :urlencoded],
     pass: ["*/*"],
-    json_decoder: Jason
+    json_decoder: Jason,
+    # Caches the raw body in conn.private so the STS token endpoint can
+    # refuse duplicate form parameters (OAuth 2.1 draft / AAD parity).
+    body_reader: {Smalt.Auth.BodyCache, :read_body, []}
   )
 
   plug(:arm_request_id)
@@ -180,7 +183,31 @@ defmodule Smalt.ArmGateway.Router do
   defp validate_token_request(conn) do
     params = conn.body_params
 
+    # Duplicate form parameters are refused (OAuth 2.1 draft security
+    # considerations / AAD parity): Plug's last-wins decoding would let a
+    # later client-controlled key overwrite an earlier fixed one. Detected
+    # on the RAW body via the BodyCache reader, not the decoded map.
+    dup? =
+      case conn.private[:smalt_raw_body] do
+        body when is_binary(body) ->
+          # Exact-key duplicate detection on &-separated pairs: substring
+          # neighbors (e.g. xgrant_type=) must NOT false-positive.
+          body
+          |> String.split("&")
+          |> Enum.count(fn
+            "grant_type=" <> _ -> true
+            "grant_type" -> true
+            _ -> false
+          end) > 1
+
+        _ ->
+          false
+      end
+
     cond do
+      dup? ->
+        {:error, "invalid_request"}
+
       not is_map(params) or not is_binary(params["grant_type"]) or params["grant_type"] == "" ->
         {:error, "invalid_request"}
 
@@ -201,11 +228,18 @@ defmodule Smalt.ArmGateway.Router do
     signer = sts_signer()
     now = System.system_time(:second)
 
+    # Cross-seat issuer acceptance (F4 v3 finding 1): record the authority the
+    # token is minted under so sibling seats (Cosmos :8443, blob, kv) accept
+    # it. Server-side only — membership is added at mint time, never from
+    # client-asserted claims, so the check stays tamper-resistant.
+    authority = request_authority(conn)
+    Smalt.Auth.Bearer.register_trusted_authority(authority)
+
     # OIDC Discovery: the token iss must EXACTLY equal the discovery issuer for
     # the same request authority — both derive from request_authority/1.
     claims = %{
       "aud" => "https://management.azure.com",
-      "iss" => "#{request_authority(conn)}/#{tenant_id}/v2.0",
+      "iss" => "#{authority}/#{tenant_id}/v2.0",
       "iat" => now,
       "nbf" => now,
       "exp" => now + 3600,
@@ -236,10 +270,27 @@ defmodule Smalt.ArmGateway.Router do
   # STS signing secret: configured via Application.get_env(:smalt, :sts_signing_secret);
   # fail-fast in prod when unset, otherwise generate once per VM lifetime and
   # cache in :persistent_term (mirrors Smalt.Security.ReceiptSigner).
+  #
+  # Precedence matches Smalt.Auth.Bearer.signer/0: an env-configured secret
+  # (>= 32 bytes) wins over the cached dev secret. Otherwise configuring or
+  # rotating :sts_signing_secret AFTER gateway boot only takes effect on the
+  # verify side while the mint side keeps the generated dev key — every fresh
+  # token would 401 SignatureVerificationFailed (witnessed: combined-suite
+  # order dependence, cycle 3).
   defp sts_signer do
-    case :persistent_term.get({__MODULE__, :sts_signing_secret}, :missing) do
-      :missing -> generate_and_cache_secret()
-      secret -> Joken.Signer.create("HS256", secret)
+    case Application.get_env(:smalt, :sts_signing_secret) do
+      secret when is_binary(secret) and byte_size(secret) >= 32 ->
+        Joken.Signer.create("HS256", secret)
+
+      other when is_binary(other) ->
+        raise ArgumentError,
+              "smalt :sts_signing_secret must be >= 32 bytes when set (got #{byte_size(other)})"
+
+      _ ->
+        case :persistent_term.get({__MODULE__, :sts_signing_secret}, :missing) do
+          :missing -> generate_and_cache_secret()
+          secret -> Joken.Signer.create("HS256", secret)
+        end
     end
   end
 
@@ -282,33 +333,9 @@ defmodule Smalt.ArmGateway.Router do
   # Request-derived authority: scheme://host[:port] as the CLIENT reached us
   # (lane 90 TS court: advertising login.smalt.local — an NXDOMAIN — made
   # msal-node/azidentity follow the envelope and never reach the substrate
-  # STS: endpoints_resolution_error). Host stays exactly what the client used;
-  # X-Forwarded-Proto/X-Forwarded-Host honored for proxy deployments.
-  defp request_authority(conn) do
-    scheme =
-      case get_req_header(conn, "x-forwarded-proto") do
-        [p | _] -> if String.downcase(p) == "https", do: :https, else: :http
-        [] -> conn.scheme
-      end
-
-    {host, port} =
-      case get_req_header(conn, "x-forwarded-host") do
-        [h | _] ->
-          case String.split(h, ":", parts: 2) do
-            [host] -> {host, default_port(scheme)}
-            [host, p] -> {host, String.to_integer(p)}
-          end
-
-        [] ->
-          {conn.host, conn.port}
-      end
-
-    port_part = if port == default_port(scheme), do: "", else: ":#{port}"
-    "#{scheme}://#{host}#{port_part}"
-  end
-
-  defp default_port(:https), do: 443
-  defp default_port(_), do: 80
+  # STS: endpoints_resolution_error). Single derivation shared with the auth
+  # plug: forwarded headers honored ONLY from trusted proxies (fail-closed).
+  defp request_authority(conn), do: Smalt.Auth.Bearer.request_authority(conn)
 
   defp openid_envelope(conn, tenant_id) do
     base = "#{request_authority(conn)}/#{tenant_id}"
@@ -395,17 +422,31 @@ defmodule Smalt.ArmGateway.Router do
     "#{request_authority(conn)}#{conn.request_path}?#{query}"
   end
 
-  defp send_arm_error(conn, status, code, message) do
-    body =
-      Jason.encode!(%{
-        "error" => %{
+  # C1 row 1b: error.target names the offending path when a specific path
+  # caused the failure (404 classes); absent on api-version 400s (query-param
+  # failures have no path component — corpus pins target ABSENT there).
+  defp send_arm_error(conn, status, code, message, target \\ nil) do
+    error =
+      if target do
+        %{
+          "code" => code,
+          "message" => message,
+          "target" => target,
+          # Real AAD/ARM shape: innererror present-but-empty when there is
+          # nothing further to nest.
+          "innererror" => %{}
+        }
+      else
+        %{
           "code" => code,
           "message" => message,
           # Real AAD/ARM shape: innererror present-but-empty when there is
           # nothing further to nest.
           "innererror" => %{}
         }
-      })
+      end
+
+    body = Jason.encode!(%{"error" => error})
 
     conn
     |> put_resp_content_type("application/json")
@@ -430,12 +471,31 @@ defmodule Smalt.ArmGateway.Router do
     |> send_resp(400, body)
   end
 
+  # RG api-version gate (row 6b, coordinator-authorized landing 2026-10-15):
+  # Microsoft.Resources/resourceGroups is an admitted Registry type
+  # (latest 2021-04-01) — every RG verb validates api-version like any other
+  # admitted type (missing -> 400 MissingApiVersionParameter; stale ->
+  # 400 InvalidApiVersionParameter naming the latest).
+  @rg_type "Microsoft.Resources/resourceGroups"
+
   defp handle_rg_list(conn, sub_id) do
-    rgs = Store.list_prefix(:smalt_resource_groups, "/subscriptions/#{sub_id}/resourcegroups/")
-    send_list(conn, rgs)
+    with :ok <- check_api_version(conn, @rg_type) do
+      rgs = Store.list_prefix(:smalt_resource_groups, "/subscriptions/#{sub_id}/resourcegroups/")
+      send_list(conn, rgs)
+    else
+      {:respond, conn} -> conn
+    end
   end
 
   defp handle_rg_put(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, @rg_type) do
+      do_rg_put(conn, sub_id, rg_name)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp do_rg_put(conn, sub_id, rg_name) do
     rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
     payload = conn.body_params
 
@@ -456,6 +516,14 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp handle_rg_get(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, @rg_type) do
+      do_rg_get(conn, sub_id, rg_name)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp do_rg_get(conn, sub_id, rg_name) do
     rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
 
     case Store.get(:smalt_resource_groups, String.downcase(rg_id)) do
@@ -467,7 +535,8 @@ defmodule Smalt.ArmGateway.Router do
           conn,
           404,
           "ResourceGroupNotFound",
-          "Resource group '#{rg_name}' could not be found."
+          "Resource group '#{rg_name}' could not be found.",
+          rg_id
         )
     end
   end
@@ -477,6 +546,14 @@ defmodule Smalt.ArmGateway.Router do
   # (cascade — previously children were orphaned and stayed GETable), and an
   # operation record backs the polling URL so the delete poll terminates.
   defp handle_rg_delete(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, @rg_type) do
+      do_rg_delete(conn, sub_id, rg_name)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp do_rg_delete(conn, sub_id, rg_name) do
     rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
     base = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
 
@@ -547,11 +624,14 @@ defmodule Smalt.ArmGateway.Router do
           send_json(conn, 200, Jason.encode!(record))
 
         :error ->
+          res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
+
           send_arm_error(
             conn,
             404,
             "ResourceNotFound",
-            "The Resource '#{resource_name}' was not found."
+            "The Resource '#{resource_name}' was not found.",
+            res_id
           )
       end
     else
@@ -597,7 +677,14 @@ defmodule Smalt.ArmGateway.Router do
 
         :error ->
           name = rel_path |> String.split("/") |> List.last()
-          send_arm_error(conn, 404, "ResourceNotFound", "The Resource '#{name}' was not found.")
+
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The Resource '#{name}' was not found.",
+            "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{rel_path}"
+          )
       end
     else
       {:respond, conn} -> conn
@@ -720,7 +807,8 @@ defmodule Smalt.ArmGateway.Router do
           conn,
           404,
           "RouteNotFound",
-          "The route '#{conn.request_path}' could not be found."
+          "The route '#{conn.request_path}' could not be found.",
+          conn.request_path
         )
     end
   end
@@ -744,7 +832,8 @@ defmodule Smalt.ArmGateway.Router do
             conn,
             404,
             "ActionNotFound",
-            "No azapi action at path '#{conn.request_path}'."
+            "No azapi action at path '#{conn.request_path}'.",
+            conn.request_path
           )
         end
 
@@ -753,7 +842,8 @@ defmodule Smalt.ArmGateway.Router do
           conn,
           404,
           "ActionNotFound",
-          "No azapi action at path '#{conn.request_path}'."
+          "No azapi action at path '#{conn.request_path}'.",
+          conn.request_path
         )
     end
   end
@@ -1025,12 +1115,24 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   # -- Subscriptions -----------------------------------------------------------
+  # api-version PRESENCE required on both subscription routes (real ARM requires
+  # api-version on GET /subscriptions and GET /subscriptions/:sub; lens-2
+  # typed receipt, coordinator-authorized Raise). Presence-only: the
+  # subscriptions list/read is not an admitted Registry individual, so no
+  # latest-version validation (mirrors the azapi action + inventory gates).
+  # LRO polling (`/operations/:op_id`) stays versionless by convention — pinned
+  # EXEMPT, do not gate it.
   get "/subscriptions" do
-    send_json(conn, 200, Jason.encode!(%{"value" => Store.list(:smalt_subscriptions)}))
+    with :ok <- check_api_version(conn, nil) do
+      send_json(conn, 200, Jason.encode!(%{"value" => Store.list(:smalt_subscriptions)}))
+    else
+      {:respond, conn} -> conn
+    end
   end
 
   get "/subscriptions/:sub_id" do
-    case Store.get(:smalt_subscriptions, sub_id) do
+    with :ok <- check_api_version(conn, nil) do
+      case Store.get(:smalt_subscriptions, sub_id) do
       {:ok, sub} ->
         send_json(conn, 200, Jason.encode!(sub))
 
@@ -1039,8 +1141,12 @@ defmodule Smalt.ArmGateway.Router do
           conn,
           404,
           "SubscriptionNotFound",
-          "The subscription '#{sub_id}' was not found."
+          "The subscription '#{sub_id}' was not found.",
+          "/subscriptions/#{sub_id}"
         )
+      end
+    else
+      {:respond, conn} -> conn
     end
   end
 
@@ -1052,7 +1158,13 @@ defmodule Smalt.ArmGateway.Router do
         send_json(conn, status, Jason.encode!(op))
 
       :error ->
-        send_arm_error(conn, 404, "OperationNotFound", "Operation '#{op_id}' was not found.")
+        send_arm_error(
+          conn,
+          404,
+          "OperationNotFound",
+          "Operation '#{op_id}' was not found.",
+          conn.request_path
+        )
     end
   end
 
@@ -1091,8 +1203,12 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   # -- Subscription-level provider inventory (LIST via prefix scan) -------------
+  # api-version PRESENCE required (Microsoft.Resources/providers is not an
+  # admitted Registry individual — no latest-version validation, mirroring the
+  # azapi action gate); lens-2 coverage audit raised this route from ungated.
   get "/subscriptions/:sub_id/providers" do
-    resources = Store.list_prefix(:smalt_resources, "/subscriptions/#{sub_id}/")
+    with :ok <- check_api_version(conn, nil) do
+      resources = Store.list_prefix(:smalt_resources, "/subscriptions/#{sub_id}/")
 
     body =
       Jason.encode!(%{
@@ -1122,7 +1238,10 @@ defmodule Smalt.ArmGateway.Router do
           end)
       })
 
-    send_json(conn, 200, body)
+      send_json(conn, 200, body)
+    else
+      {:respond, conn} -> conn
+    end
   end
 
   # -- Child-resource routes (declared BEFORE generic provider routes) ----------
@@ -1589,18 +1708,35 @@ defmodule Smalt.ArmGateway.Router do
 
   # LIST: per-RG provider-type listing, e.g. GET .../providers/Microsoft.Network/virtualNetworks
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type" do
-    prefix =
-      String.downcase(
-        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/#{provider_ns}/#{resource_type}/"
-      )
+    with :ok <- check_api_version(conn, "#{provider_ns}/#{resource_type}") do
+      prefix =
+        String.downcase(
+          "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/#{provider_ns}/#{resource_type}/"
+        )
 
-    send_list(conn, Store.list_prefix(:smalt_resources, prefix))
+      # Real-ARM parity: a type-scoped LIST returns ONLY the requested type —
+      # deep-type descendants (e.g. containers under storageAccounts) must not
+      # leak into the parent type's page (probe: lens-3 cycle-1 receipt).
+      wanted = String.downcase("#{provider_ns}/#{resource_type}")
+
+      items =
+        Store.list_prefix(:smalt_resources, prefix)
+        |> Enum.filter(&(String.downcase(&1["type"] || "") == wanted))
+
+      send_list(conn, items)
+    else
+      {:respond, conn} -> conn
+    end
   end
 
   delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name" do
-    res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
-    Store.delete(:smalt_resources, String.downcase(res_id))
-    send_json(conn, 200, "")
+    with :ok <- check_api_version(conn, "#{provider_ns}/#{resource_type}") do
+      res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
+      Store.delete(:smalt_resources, String.downcase(res_id))
+      send_json(conn, 200, "")
+    else
+      {:respond, conn} -> conn
+    end
   end
 
   # -- Nested-provider diagnosticSettings (azurerm wire form) --------------------
@@ -1625,7 +1761,8 @@ defmodule Smalt.ArmGateway.Router do
       conn,
       404,
       "RouteNotFound",
-      "The route '#{conn.request_path}' could not be found."
+      "The route '#{conn.request_path}' could not be found.",
+      conn.request_path
     )
   end
 end

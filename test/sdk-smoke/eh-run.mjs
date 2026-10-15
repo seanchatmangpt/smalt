@@ -14,11 +14,15 @@ import { fileURLToPath } from "node:url";
 const REPO = "/Users/sac/smalt";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = path.join(HERE, ".logs");
-const AMQP_PORT = Number(process.env.SMALT_EH_AMQP_PORT || 15672);
-const EH_PORT = Number(process.env.SMALT_EH_PORT || 15673);
-const ARM_PORT = Number(process.env.SMALT_EH_ARM_PORT || 19443);
-const EGRESS_PORT = Number(process.env.SMALT_EH_EGRESS_PORT || 18443);
-const ARM_TLS_PORT = Number(process.env.SMALT_EH_ARM_TLS_PORT || 19444);
+// Defaults live in the documented private port range 39000-39999
+// (docs/DEV_LOOP.md "Private port allocation") so eh-run never contends the
+// front door (5672/9443/8443) or the previously-published block
+// (15672/15673/19443/18443/19444) that a sibling lane adopted.
+const AMQP_PORT = Number(process.env.SMALT_EH_AMQP_PORT || 39172);
+const EH_PORT = Number(process.env.SMALT_EH_PORT || 39173);
+const ARM_PORT = Number(process.env.SMALT_EH_ARM_PORT || 39444);
+const EGRESS_PORT = Number(process.env.SMALT_EH_EGRESS_PORT || 39445);
+const ARM_TLS_PORT = Number(process.env.SMALT_EH_ARM_TLS_PORT || 39446);
 const POLL_DEADLINE_MS = 60_000;
 
 const log = (...a) => console.log("[eh-run]", ...a);
@@ -43,8 +47,10 @@ async function main() {
   for (const port of [AMQP_PORT, EH_PORT, ARM_PORT, EGRESS_PORT, ARM_TLS_PORT]) {
     if (!(await checkFree(port))) {
       console.error(
-        `[eh-run] port ${port} is occupied. Remediation: ` +
-        `lsof -ti tcp:${port} | xargs kill -9`,
+        `[eh-run] port ${port} is occupied. Do NOT kill the holder (it may be ` +
+        `another lane's live substrate). Wait for it to exit, or rerun with a ` +
+        `private-port override from the range 39000-39999 ` +
+        `(docs/DEV_LOOP.md "Private port allocation").`,
       );
       process.exitCode = 3;
       return;

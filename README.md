@@ -121,6 +121,14 @@ All HTTP planes honor `config :smalt, :auth_mode`:
   fixed-window 429 throttle with `Retry-After`.
 - `:anonymous` — explicit opt-out (the test suite sets it).
 
+Two auth details worth knowing in enforce mode: `x-forwarded-*` headers are
+honored only from configured trusted proxies
+(`config :smalt, :trusted_proxies` — exact IPv4 tuples or CIDR strings) and
+ignored on direct connections (fail-closed); and the STS's cross-seat
+trusted-authority set is VM-local (`:persistent_term`), so a substrate
+restart wipes it — pre-restart tokens minted at a sibling seat are refused
+after restart (restart implies re-authentication).
+
 Exempt paths: `/oauth2/*`, `/.well-known/*`, `/metadata/endpoints`,
 `/common/discovery/*`, `/tenant(s)`, `/attest/*`.
 
@@ -143,6 +151,12 @@ YCSB-lite, azurite comparison, telemetry overhead, chaos kill, gate cost),
 receipts in `docs/STRESS/`. Just recipes: `just soak` (25-min), `just spike`,
 `just tls-churn`; the rest run as `python3 scripts/stress/<harness>.py`
 or `mix run scripts/stress/<driver>.exs`.
+
+The authoritative measured-bounds table (queue capacity, message/frame
+size, lock clamp, CBS claims cap, KQL caps, ledger dedup) lives in
+`docs/STRESS/BOUNDS.md`, gated fail-closed by
+`python3 scripts/stress/bounds.py` (receipt:
+`tmp/invariant-gates/bounds-receipt.json`).
 
 ## smaltctl CLI
 
@@ -175,7 +189,8 @@ their own substrate; run them one at a time with the ports free.
 
 ## Layout
 
-- `lib/smalt/` — gateway, egress router, AMQP broker, Event Hubs, store (CAS).
+- `lib/smalt/` — gateway, egress router, AMQP broker, Event Hubs, store
+  (keyed ETS + DETS mirror; atomic `compare_and_swap` transitions).
 - `lib/smalt/mcp/` — read-only MCP tool surface on `:9545` (`Smalt.Mcp.Router`):
   generated tool descriptor with `readOnlyHint`, real Store reads, actuation
   refused by name.

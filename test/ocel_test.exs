@@ -246,8 +246,8 @@ defmodule Smalt.OcelTest do
 
   test "a deliberately broken trace has fitness < 1.0 and does not conform" do
     net = Conformance.happy_path_net()
-    # Skips enqueue/lock: settle fires underfed, final marking deficient.
-    broken = ~w(arm.resource.transition amqp.delivery.settled blob.put)
+    # Skips the settle: custody fires underfed, final marking deficient.
+    broken = ~w(arm.resource.transition blob.custody.transition)
     result = Conformance.check_trace(net, broken)
     refute result.conforms
     assert result.fitness < 1.0
@@ -268,7 +268,7 @@ defmodule Smalt.OcelTest do
 
   test "conforms:false appends a durable, replayable deviation record" do
     net = Conformance.happy_path_net()
-    broken = ~w(arm.resource.transition amqp.delivery.settled blob.put)
+    broken = ~w(arm.resource.transition blob.custody.transition)
     result = Conformance.check_trace(net, broken)
     refute result.conforms
 
@@ -284,7 +284,7 @@ defmodule Smalt.OcelTest do
 
     assert {:ok, [record]} = DeviationAdmission.read_all(path)
     assert record["id"] == record_id
-    assert record["deviatingMove"] == "amqp.delivery.settled/missing_tokens"
+    assert record["deviatingMove"] == "blob.custody.transition/missing_tokens"
     assert record["referenceTraceId"] == "happy"
     assert record["candidateTraceId"] == "broken"
     assert record["fitness"] < 1.0
@@ -309,5 +309,85 @@ defmodule Smalt.OcelTest do
     # The shared object is stated once after dedup.
     assert length(doc["ocel:objects"]) == 2
     assert :ok = Ocel.validate_envelope(doc["ocel:events"], doc["ocel:objects"])
+  end
+
+  # -- Object-reference closure (dangling-relationship refusal) ---------------
+
+  test "assembly refuses a relationship referencing an unknown object id" do
+    line = Jason.encode!(%{
+      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+      "ocel:objectTypes" => [],
+      "ocel:events" => [
+        %{
+          "id" => "e-dangle",
+          "type" => "cosmos.doc.crud",
+          "time" => "2026-10-15T00:00:00Z",
+          "attributes" => %{},
+          "relationships" => [%{"objectId" => "ghost-obj", "qualifier" => "resource"}]
+        }
+      ],
+      "ocel:objects" => []
+    })
+
+    path = Path.join(@tmp_dir, "dangle.ndjson")
+    File.write!(path, line <> "\n")
+
+    assert {:error, [%{path: path_v, reason: reason}]} = OcelNdjson.read_document(path)
+    assert path_v =~ "relationships"
+    assert reason =~ "ghost-obj"
+  end
+
+  test "a dangling reference from an EARLIER line is refused even when a later line exists" do
+    # The closure check is document-global: an adjacent line cannot
+    # launder a reference to an object that appears NOWHERE in the file.
+    line1 = Jason.encode!(%{
+      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+      "ocel:objectTypes" => [],
+      "ocel:events" => [
+        %{"id" => "e-1", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:00:00Z", "attributes" => %{}, "relationships" => [%{"objectId" => "ghost-cross-line", "qualifier" => "resource"}]}
+      ],
+      "ocel:objects" => []
+    })
+
+    line2 = Jason.encode!(%{
+      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+      "ocel:objectTypes" => [%{"name" => "resource"}],
+      "ocel:events" => [
+        %{"id" => "e-2", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:01:00Z", "attributes" => %{}, "relationships" => []}
+      ],
+      "ocel:objects" => [obj("real-obj", "resource")]
+    })
+
+    path = Path.join(@tmp_dir, "dangle-cross-line.ndjson")
+    File.write!(path, line1 <> "\n" <> line2 <> "\n")
+
+    assert {:error, [%{reason: reason}]} = OcelNdjson.read_document(path)
+    assert reason =~ "ghost-cross-line"
+  end
+
+  test "cross-line object references close (object in an earlier line admits the later reference)" do
+    line1 = Jason.encode!(%{
+      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+      "ocel:objectTypes" => [%{"name" => "resource"}],
+      "ocel:events" => [
+        %{"id" => "e-1", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:00:00Z", "attributes" => %{}, "relationships" => []}
+      ],
+      "ocel:objects" => [obj("res-9", "resource")]
+    })
+
+    line2 = Jason.encode!(%{
+      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+      "ocel:objectTypes" => [],
+      "ocel:events" => [
+        %{"id" => "e-2", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:01:00Z", "attributes" => %{}, "relationships" => [%{"objectId" => "res-9", "qualifier" => "resource"}]}
+      ],
+      "ocel:objects" => []
+    })
+
+    path = Path.join(@tmp_dir, "crossline.ndjson")
+    File.write!(path, line1 <> "\n" <> line2 <> "\n")
+
+    assert {:ok, doc} = OcelNdjson.read_document(path)
+    assert length(doc["ocel:events"]) == 2
   end
 end

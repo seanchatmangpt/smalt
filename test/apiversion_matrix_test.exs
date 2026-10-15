@@ -334,6 +334,68 @@ defmodule ApiVersionMatrixTest do
     call(conn)
   end
 
+  # ===========================================================================
+  # Lens-2 matrix sweep (generated): every admitted type x {matched GET-list,
+  # matched DELETE, unmatched POST} x api-version — pins the precedence law
+  #   matched route:    api-version 400 BEFORE any 404 (store/parent/route)
+  #   unmatched route:  404 RouteNotFound BEFORE the api-version gate
+  # (the catch-all RouteNotFound handler does not consult api-version —
+  # pinned as the contract, mirroring real ARM's unmatched-route 404).
+  # ===========================================================================
+
+  describe "matrix sweep" do
+    # GET-list row: single-segment types only — a deep type's short path
+    # (e.g. providers/Microsoft.KeyVault/vaults/keys) is AMBIGUOUS on the
+    # route table (matches the generic GET-resource route as vault "keys",
+    # validating against Microsoft.KeyVault/vaults), and the deep types'
+    # dedicated list routes are already fenced by the child-route matrix.
+    for type <- Enum.sort(Registry.admitted_resource_types()), byte_size(type) - byte_size(String.replace(type, "/", "")) == 1 do
+      test "sweep #{type}: matched GET-list with latest passes validation" do
+        type = unquote(type)
+        [ns | rest] = String.split(type, "/", parts: 2)
+        path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/#{ns}/#{rest}"
+
+        conn =
+          conn(:get, path <> "?api-version=#{Registry.latest_version(type)}")
+          |> Router.call(@opts)
+
+        refute api_version_error?(conn),
+               "expected latest #{Registry.latest_version(type)} to pass on GET-list, got " <>
+                 inspect(%{status: conn.status, code: error_code(conn)})
+      end
+
+      test "sweep #{type}: matched DELETE with latest passes validation" do
+        type = unquote(type)
+        [ns | rest] = String.split(type, "/", parts: 2)
+        path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/#{ns}/#{rest}/sweep-res"
+
+        conn =
+          conn(:delete, path <> "?api-version=#{Registry.latest_version(type)}")
+          |> Router.call(@opts)
+
+        refute api_version_error?(conn)
+      end
+
+      test "sweep #{type}: unmatched POST -> 404 ActionNotFound even with stale api-version" do
+        type = unquote(type)
+        [ns | rest] = String.split(type, "/", parts: 2)
+        path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/#{ns}/#{rest}/sweep-res"
+
+        conn =
+          conn(:post, path <> "?api-version=1999-01-01")
+          |> Router.call(@opts)
+
+        assert conn.status == 404
+
+        # The azapi action route is the catch-all POST at .../providers/*glob
+        # depth, so an unknown action 404s as ActionNotFound (route MATCHES;
+        # the api-version gate inside it is presence-only and 1999-01-01 is
+        # present — precedence still observed: 404, never an api-version 400).
+        assert error_code(conn) == "ActionNotFound"
+      end
+    end
+  end
+
   defp error_code(conn) do
     case Jason.decode(conn.resp_body) do
       {:ok, %{"error" => %{"code" => code}}} -> code

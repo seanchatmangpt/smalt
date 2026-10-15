@@ -180,6 +180,209 @@ defmodule Smalt.SemanticProjectionTest do
     end
   end
 
+  describe "R2RML render determinism under concurrent Store mutation" do
+    test "render stays byte-identical while Store is concurrently mutated" do
+      seed_arm_resource()
+
+      {:ok, bundle} =
+        AshR2RML.Compiler.compile([Smalt.Semantic.Resource, Smalt.Semantic.LedgerEntry])
+
+      baseline =
+        case AshR2RML.R2RML.render(bundle) do
+          {:ok, ttl} -> ttl
+          {:error, other} -> flunk("render failed: #{inspect(other)}")
+        end
+
+      # 32 renderers race 8 mutators against the real Store ETS: the compile-
+      # time mapping bundle must not observe Store churn (byte-identical TTL),
+      # and every concurrent materialize must still see the seeded row.
+      parent = self()
+
+      renderers =
+        for i <- 1..32 do
+          Task.async(fn ->
+            ttl = AshR2RML.R2RML.render(bundle)
+            send(parent, {:render, i, ttl})
+          end)
+        end
+
+      mutators =
+        for i <- 1..8 do
+          Task.async(fn ->
+            id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-fuzz/providers/Microsoft.KeyVault/vaults/fuzz-#{i}-#{System.unique_integer([:positive])}"
+
+            record = %{
+              "id" => id,
+              "name" => "kv-fuzz-#{i}",
+              "type" => "Microsoft.KeyVault/vaults",
+              "location" => "eastus",
+              "properties" => %{"provisioningState" => "Creating"}
+            }
+
+            Smalt.Store.put(:smalt_resources, String.downcase(id), record)
+            send(parent, {:mutated, i})
+          end)
+        end
+
+      Task.await_many(renderers ++ mutators, 30_000)
+
+      ttls =
+        for _ <- 1..32 do
+          assert_receive {:render, _, ttl_result}, 10_000
+          {:ok, ttl} = ttl_result
+          ttl
+        end
+
+      assert Enum.uniq(ttls) == [baseline],
+             "render output drifted under concurrent Store mutation"
+
+      # Materialize over the live Store mid-churn: seeded row still present,
+      # read path never fabricates or drops it.
+      [mapping] =
+        (AshR2RML.Compiler.compile([Smalt.Semantic.Resource]) |> elem(1)).resources
+
+      for _ <- 1..4 do
+        assert {:ok, %RDF.Graph{} = graph} =
+                 AshR2RML.OBDA.InMemory.materialize(Smalt.Semantic.Resource, mapping,
+                   domain: Smalt.Semantic.Domain
+                 )
+
+        assert RDF.Graph.triple_count(graph) > 0
+      end
+
+      # Mutators completed their real writes.
+      for _ <- 1..8, do: assert_receive({:mutated, _}, 5_000)
+    end
+  end
+
+  describe "R2RML determinism with registry regeneration interleaved" do
+    @tag :regen_interleave
+    @tag timeout: 600_000
+    test "renders stay byte-identical while `mix smalt.gen` runs concurrently" do
+      seed_arm_resource()
+
+      {:ok, bundle} = AshR2RML.Compiler.compile([Smalt.Semantic.Resource])
+      baseline = AshR2RML.R2RML.render(bundle) |> elem(1)
+
+      registry_before = File.read!("lib/smalt/registry.ex")
+
+      # Real regen subprocess (separate build root: no lock contention with
+      # the test's build root). The gen may succeed or fail --warnings-as-
+      # errors; EITHER WAY the in-memory bundle's renders must not move.
+      gen_task =
+        Task.async(fn ->
+          {out, exit_code} =
+            System.cmd("mix", ["smalt.gen"],
+              env: %{"MIX_BUILD_ROOT" => "_build-f16", "MIX_ENV" => "dev"},
+              cd: File.cwd!(),
+              stderr_to_stdout: true
+            )
+
+          {exit_code, String.slice(out, -400, 400)}
+        end)
+
+      parent = self()
+
+      renderers =
+        for i <- 1..16 do
+          Task.async(fn ->
+            {:ok, ttl} = AshR2RML.R2RML.render(bundle)
+            send(parent, {:render, i, ttl})
+          end)
+        end
+
+      Task.await_many(renderers, 60_000)
+      {gen_exit, gen_tail} = Task.await(gen_task, 300_000)
+
+      ttls =
+        for _ <- 1..16 do
+          assert_receive {:render, _, ttl}, 1_000
+          ttl
+        end
+
+      assert Enum.uniq(ttls) == [baseline],
+             "render output drifted while mix smalt.gen ran (exit #{gen_exit})"
+
+      # Determinism of the regen itself: the committed projection is either
+      # byte-identical to what was on disk (idempotent regen) or the gen
+      # refused/failed — record which.
+      registry_after = File.read!("lib/smalt/registry.ex")
+
+      if registry_after != registry_before do
+        flunk(
+          "mix smalt.gen mutated lib/smalt/registry.ex (exit #{gen_exit}); tail: #{gen_tail}"
+        )
+      end
+    end
+  end
+
+  describe "cross-surface read-path validation" do
+    test "semantic Store-backed rows only project Registry-admitted types" do
+      record = seed_arm_resource()
+
+      rows = Ash.read!(Smalt.Semantic.Resource)
+
+      projected = Enum.find(rows, &(&1.id == record["id"]))
+      assert projected, "seeded row missing from semantic projection"
+
+      admitted = MapSet.new(Smalt.Registry.admitted_resource_types())
+
+      for row <- rows do
+        assert MapSet.member?(admitted, row.type),
+               "semantic projection emitted non-admitted type #{inspect(row.type)}"
+      end
+    end
+
+    # Lens-2 cycle 4: Store is untyped; a non-map value under
+    # :smalt_resources crashed the whole read (FunctionClauseError in
+    # project_resource/1) — boundary crash class. Refuses typed now.
+    test "non-map Store row refuses the semantic read typed, never crashes" do
+      uid = "sem-nonmap-#{System.unique_integer([:positive])}"
+      Smalt.Store.put(:smalt_resources, uid, 42)
+      record = seed_arm_resource()
+
+      assert {:error, err} = Ash.read(Smalt.Semantic.Resource)
+      assert Exception.message(err) <> inspect(err.errors) =~ "non-map Store row"
+
+      Smalt.Store.delete(:smalt_resources, uid)
+      assert Ash.read!(Smalt.Semantic.Resource)
+    end
+
+    # Lens-3 cycle 2: struct/2 does not enforce allow_nil? on the manual
+    # read path — nil and blank primary keys projected as real records
+    # (probe receipt: RESOURCE ids=["", nil]). Vacuous identity is refused
+    # typed on the same axis as the non-map fence.
+    test "vacuous primary keys (nil and blank) refuse the semantic read typed" do
+      uid_nil = "sem-nil-pk-#{System.unique_integer([:positive])}"
+      uid_blank = "sem-blank-pk-#{System.unique_integer([:positive])}"
+
+      Smalt.Store.put(:smalt_resources, uid_nil, %{"id" => nil, "name" => "x", "type" => "t"})
+      Smalt.Store.put(:smalt_resources, uid_blank, %{"id" => "", "name" => "y", "type" => "t"})
+
+      assert {:error, err} = Ash.read(Smalt.Semantic.Resource)
+      assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
+
+      Smalt.Store.delete(:smalt_resources, uid_nil)
+      Smalt.Store.delete(:smalt_resources, uid_blank)
+
+      assert Ash.read!(Smalt.Semantic.Resource)
+    end
+
+    # Lens-3 cycle 2 (branch parity): the LedgerEntry read path carries the
+    # same vacuous-identity fence over "transactionId".
+    test "vacuous ledger transactionId refuses the LedgerEntry read typed" do
+      uid = "sem-nil-tx-#{System.unique_integer([:positive])}"
+      Smalt.Store.put(:smalt_ledger_transactions, uid, %{"transactionId" => nil})
+
+      assert {:error, err} = Ash.read(Smalt.Semantic.LedgerEntry)
+      assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
+
+      Smalt.Store.delete(:smalt_ledger_transactions, uid)
+
+      assert Ash.read!(Smalt.Semantic.LedgerEntry)
+    end
+  end
+
   defp append_ledger(ledger, contents) do
     {:ok, receipt} = Smalt.Security.LedgerWriter.append(ledger, contents)
     receipt
@@ -199,5 +402,52 @@ defmodule Smalt.SemanticProjectionTest do
 
     Smalt.Store.put(:smalt_resources, String.downcase(id), record)
     record
+  end
+end
+
+# Lens-4 cycle 1: whitespace-only / invisible-format-only primary keys carry
+# zero visible identity bits — same vacuous-identity class, now via the one
+# shared fence Smalt.Projection.Identity.
+defmodule Smalt.Semantic.StoreRead.Lens4IdentityTest do
+  use ExUnit.Case, async: false
+
+  setup_all do
+    # Lens-4: this appended module needs the Store GenServer up for the
+    # Store-backed read path (same boot prerequisite as the parent suite).
+    if Process.whereis(Smalt.Store) == nil do
+      start_supervised!(Smalt.Store)
+    end
+
+    :ok
+  end
+
+  test "whitespace-only primary key refuses the semantic read typed" do
+    uid = "sem-ws-pk-#{System.unique_integer([:positive])}"
+    Smalt.Store.put(:smalt_resources, uid, %{"id" => "  \t", "name" => "x", "type" => "t"})
+
+    assert {:error, err} = Ash.read(Smalt.Semantic.Resource)
+    assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
+
+    Smalt.Store.delete(:smalt_resources, uid)
+  end
+
+  test "invisible-format-only (zero-width) primary key refuses the semantic read typed" do
+    uid = "sem-zw-pk-#{System.unique_integer([:positive])}"
+    Smalt.Store.put(:smalt_resources, uid, %{"id" => "​", "name" => "x", "type" => "t"})
+
+    assert {:error, err} = Ash.read(Smalt.Semantic.Resource)
+    assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
+
+    Smalt.Store.delete(:smalt_resources, uid)
+  end
+
+  test "ledger transactionId whitespace-only refuses the LedgerEntry read typed" do
+    uid = "sem-ws-tx-#{System.unique_integer([:positive])}"
+    Smalt.Store.put(:smalt_ledger_transactions, uid, %{"transactionId" => "   "})
+
+    assert {:error, err} = Ash.read(Smalt.Semantic.LedgerEntry)
+    assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
+
+    Smalt.Store.delete(:smalt_ledger_transactions, uid)
   end
 end

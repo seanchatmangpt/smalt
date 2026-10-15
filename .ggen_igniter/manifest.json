@@ -1,5 +1,14 @@
 {
   "entries": {
+    "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex=>lib/smalt/registry.ex": {
+      "out_template": "lib/smalt/registry.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:07032e548e57d63a6e293bc5ab07ba570de654fed0e8aef9378c2772752431ef"
+      },
+      "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
+      "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex",
+      "updated_at": "2026-10-15T16:22:18.066159Z"
+    },
     "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": {
       "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex",
       "outputs": {

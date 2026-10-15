@@ -10,7 +10,7 @@
 # failure.
 set -u
 
-REPO="${SMALT_REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
+REPO="${SMALT_REPO:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$HERE/.logs"
 DEADLINE=$((SECONDS + 120))
@@ -32,15 +32,25 @@ fi
 echo "[s9-lro-chain] mode=$MODE arm=$ARM_PORT log=$LOG"
 
 if [ "$MODE" = default ]; then
-  ( cd "$REPO" && MIX_ENV=test mix run --no-halt >"$LOG" 2>&1 ) &
+  # config/test.exs probes free ports under MIX_ENV=test (TEST_ISOLATION.md
+  # section 2); pin the harness-expected ports via the SMALT_TEST_* overrides,
+  # which win over the probe.
+  ( cd "$REPO" && MIX_ENV=test SMALT_TEST_ARM_PORT=9443 SMALT_TEST_ARM_TLS_PORT=9444 \
+      SMALT_TEST_EGRESS_PORT=8443 SMALT_TEST_AMQP_PORT=5672 SMALT_TEST_EVENT_HUBS_PORT=5673 \
+      mix run --no-halt >"$LOG" 2>&1 ) &
 else
-  ( cd "$REPO" && MIX_ENV=test mix run --no-start -e 'Application.put_env(:smalt, :arm_port, 19443); Application.put_env(:smalt, :arm_tls_port, 19444); Application.put_env(:smalt, :egress_port, 18443); Application.put_env(:smalt, :amqp_port, 15672); Application.put_env(:smalt, :event_hubs_port, 15673)' --no-halt >"$LOG" 2>&1 ) &
+  ( cd "$REPO" && MIX_ENV=test SMALT_TEST_ARM_PORT=19443 SMALT_TEST_ARM_TLS_PORT=19444 SMALT_TEST_EGRESS_PORT=18443 SMALT_TEST_AMQP_PORT=15672 SMALT_TEST_EVENT_HUBS_PORT=15673 mix run --no-halt >"$LOG" 2>&1 ) &
 fi
 SUB_PID=$!
 
 cleanup() {
   kill -9 "$SUB_PID" 2>/dev/null
   pkill -9 -P "$SUB_PID" 2>/dev/null
+  # The trap kills the subshell, not the surviving mix/beam; also drop the
+  # listener we booted (safe: default/isolated mode only reaches cleanup when
+  # THIS harness booted the substrate on $ARM_PORT).
+  [ -n "${ARM_PORT:-}" ] && kill -9 $(lsof -tiTCP:"$ARM_PORT" -sTCP:LISTEN) 2>/dev/null
+  return 0
 }
 trap cleanup EXIT INT TERM
 

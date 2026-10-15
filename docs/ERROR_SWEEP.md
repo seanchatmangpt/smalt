@@ -51,8 +51,8 @@ No additional swallow found in those files beyond the frame_codec safe_atom note
 ## Gate receipts
 
 - `mix compile` — 0 errors.
-- `mix test test/telemetry_test.exs test/security/security_hardening_test.exs test/data_plane/cosmos_test.exs` — 69 tests, 0 failures.
-- `mix test test/tls_test.exs test/metadata_endpoints_test.exs` — 16 tests, 0 failures.
+- `mix test test/telemetry_test.exs test/security/security_hardening_test.exs test/data_plane/cosmos_test.exs` — 69 tests, 0 failures (at the sweep run; **136/0** as of 2026-10-15, docs-corpus cycle 9 re-run — suites grew).
+- `mix test test/tls_test.exs test/metadata_endpoints_test.exs` — 16 tests, 0 failures (at the sweep run; re-verified **16/0 settled 2026-10-15** docs-corpus-lens4 — the 16/2 seen at the sweep was a rotating port-contention flake that settles green run-to-run (16/2 -> 16/0 witnessed same hour); `tls_test` green).
 - `mix test test/amqp/broker_facade_test.exs` — 4 tests, 0 failures (contains the sweeper fail-closed witness).
 - Behavior witnesses: telemetry emit path (11 tests), TLS fail-closed raise path
   (metadata_endpoints https twin boots real Bandit https listener),
@@ -112,3 +112,68 @@ Every site re-classified below. No lib/smalt edits were required.
   30 tests, 0 failures.
 - Sweep-set census: files >22:00 = 46; files with try/rescue/catch = 13 Elixir
   + 3 python; IN-FLIGHT-SKIP = 1 (ash_extension/generated_verify.ex, 23:06).
+
+---
+
+## v3 addendum — DX lane dedupe (2026-10-15)
+
+Cycle-3 of the DX/scripts ERRC lane deduplicated the substrate lifecycle
+triplet (wait_for_port / kill_substrate / wait_port_free / port_open) from 8
+harnesses into scripts/stress/_substrate.py. Classification is unchanged from
+v2 (the bodies were moved verbatim, parameterized); the v2 line references for
+chaos_kill.py and soak.py are shifted by the refactor:
+
+| file | class | verdict |
+|---|---|---|
+| scripts/stress/_substrate.py (all except sites) | BOUNDARY-TRANSLATOR / crash-appropriate | lsof sweep `except Exception: out = ""` (measurement, empty = nothing to kill); killpg fallback `proc.kill()`; proc.wait timeout pass — never masks a probe failure; wait_for_port takes the harness's fail_closed, and a `fail=None` call raises RuntimeError instead of ever continuing silently |
+| scripts/stress/{spike,arm_scale,blob_scale,cosmos_bulk,chaos_kill,ycsb_lite,gate_cost}.py, scripts/bench.py wrappers | (unchanged) | thin wrappers; fail_closed still the only failure path |
+| scripts/bench.py:209 | (fixed) | dead conditional `(t2-t1) * 1000.400 if False else ...` removed (cycle 6) — value was always the else branch |
+| scripts/gen_dev_cert.sh | fail-closed raised | umask 077 at mint (cycle 1) — key material never hits disk >0600; reuse path self-heals legacy open keys |
+
+## v3.1 addendum — shared-checkout port contention taxonomy (2026-10-15, cycles 14-15)
+
+`just bench` failed twice with `RemoteDisconnected` mid-ARM-PUT. Typed root
+cause (lsof/ps, no kill war entered): a sibling census lane runs
+`lsof -ti tcp:{5672,9443,8443,9545} | xargs kill -9` before each census run —
+it kills fixed-port holders mid-bench. Compensating sequence (cycle 14):
+`SMALT_BENCH_*_PORT` private-port bench + doctor scoping; full 5-CTQ sequence
+green on 19443/18443/15672, receipt tmp/bench-receipt.json 2026-10-15T08:41.
+
+Second-order finding: conventional private blocks ALSO collide — a sibling
+lane adopted the same documented 19443 block within the hour, so the mutation
+court's post-restore boot hit `:eaddrinuse` (typed refusal, no stale-VM probe).
+Rerun on a fresh block (39443) completed NON-VACUOUS. Taxonomy:
+1. fixed front door (9443/8443/5672) — killed by the census lane's pre-run
+   sweep;
+2. documented conventional private blocks (19443...) — adopted by siblings who
+   read the same doc;
+3. verified-fresh blocks — check `lsof -iTCP:PORT -sTCP:LISTEN` immediately
+   before the run; contention still surfaces as typed eaddrinuse, fail-closed,
+   never a stale-VM probe.
+mutation_court.py and bench_concurrent.py now honor SMALT_BENCH_* (cycle 15);
+mutation_court's last-resort SIGKILL sweep and spawn are port-scoped instead of
+sweeping the fixed front door.
+
+## v3.2 correction — lens-2 re-verification (2026-10-15, dx-scripts-lens2 cycles 1-3)
+
+Each v3.1 entry re-verified against the live checkout:
+1. **HEALED (v3.1 entry was stale by the time of this check).** No script in
+   the repo executes a pre-run kill sweep: census-run.mjs / run.mjs /
+   eh-run.mjs fail closed (exit 3) with a typed do-not-kill remediation hint;
+   grep witness: `kill -9` count 0 across all three runners. The residual
+   census hazard (hardcoded front-door ports, no override) was closed in
+   lens-2 cycle 1 (SMALT_TEST_* honored, defaults unchanged).
+2. **RESOLVED (re-checked 2026-10-15, docs-corpus-lens4: `lsof -ti tcp:{15672,19443} -sTCP:LISTEN` returns no holders).** Witnessed 2026-10-15 09:49: three orphaned beams from the
+   adopted 19443 block (PIDs 24774 / 35595 / 2500) holding
+   15672/15673/19443/18443/19444. Mitigated by the documented private-port
+   allocation table (docs/DEV_LOOP.md, range 39000-39999) — eh-run defaults
+   moved out of that block in cycle 1.
+3. **SUPERSEDED by full-listener auto-scope.** Verified-fresh-single-port is
+   insufficient: the Application binds six fixed listeners, and scoping only
+   arm_port dies eaddrinuse on the TLS twin after ARM answers the readiness
+   probe (witnessed, lens-2 cycle 2). The supported contention path is now
+   bench/court auto-scope over the whole listener set + durable readiness
+   gate (2 s settle re-probe), receipt records the chosen block.
+
+Canonical range and allocation table: docs/DEV_LOOP.md "Private port
+allocation" (39000-39999; front door fail-closed, holders never killed).

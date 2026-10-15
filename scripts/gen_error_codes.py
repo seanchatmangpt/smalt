@@ -25,7 +25,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOC = ROOT / "docs" / "ERROR_CODES.md"
 ARM = ROOT / "lib" / "smalt" / "arm_gateway" / "router.ex"
-EGRESS = ROOT / "lib" / "smalt" / "e"  # placeholder, fixed below
 EGRESS = ROOT / "lib" / "smalt" / "egress_router.ex"
 COMPLIANCE = ROOT / "test" / "compliance"
 
@@ -220,6 +219,14 @@ def extract_arm():
 
 def extract_egress():
     rows = []
+    # Egress-refactor hardening (runtime-contracts lens 4): the pending-status
+    # pairing above is heuristic. A refactor that moves a "code" literal out of
+    # the 400-char window of its send site, or renames send_json, must emit a
+    # LOUD failure here — never a silent `| egress | ? |` row in the generated
+    # doc (that row would claim a status the parser could not witness).
+    # Compliance-surface "?" rows are by design (the corpus pins the code, not
+    # the status); egress-surface "?" rows are NOT.
+    unresolved: list[str] = []
     src = EGRESS.read_text()
     lines = src.split("\n")
     pending_status = None
@@ -227,7 +234,7 @@ def extract_egress():
     last_send_pos = -10**9
     pos = 0
     for i, line in enumerate(lines):
-        m = re.search(r'send_(?:json|resp)\((?:conn,\s*)?(\d+),', line)
+        m = re.search(r'(?:send_(?:json|resp)|blob_error)\((?:conn,\s*)?(\d+),', line)
         if m:
             pending_status = int(m.group(1))
             pending_line = i + 1
@@ -244,7 +251,7 @@ def extract_egress():
             if not in_helper_def and pending_status is not None and (pos + cm.start() - last_send_pos) < 400:
                 rows.append((pending_status, cm.group(1), cite))
             elif not in_helper_def:
-                rows.append((None, cm.group(1), cite))
+                unresolved.append(f"{cite}: code \"{cm.group(1)}\" has no paired send status")
         for nm in re.finditer(r'not_found_error\("([A-Za-z][A-Za-z0-9]*)"\)', line):
             cite = f"{EGRESS.relative_to(ROOT)}:{i + 1}"
             rows.append((404, nm.group(1), cite))
@@ -265,6 +272,16 @@ def extract_egress():
         m = re.search(rf'"{code}"', src)
         rows.append((status, code, f"{EGRESS.relative_to(ROOT)}:{line_of(src, m.start())}"))
     # dedupe by (status, code)
+    if unresolved:
+        sys.stderr.write(
+            "gen_error_codes: UNRESOLVED_STATUS in egress_router.ex — "
+            "a \"code\" literal has no paired send status within the pairing "
+            "window. Fix the extraction patterns or the source; do NOT ship a "
+            "?-status egress row.\n"
+        )
+        for u in unresolved:
+            sys.stderr.write(f"  {u}\n")
+        sys.exit(1)
     seen = {}
     for status, code, cite in rows:
         seen.setdefault((status, code), cite)

@@ -122,17 +122,25 @@ defmodule Smalt.Messaging.EventHubs do
 
     # Store's CAS conflicts on a missing row; EH semantics treat an absent
     # checkpoint as the zero checkpoint, so seed it (idempotent) first.
-    case :ets.lookup(@checkpoints, key) do
-      [] -> :ets.insert(@checkpoints, {key, %{"seq" => 0, "offset" => 0, "etag" => 0}})
+    case :ets.lookup(@checkpoints, row_key(key)) do
+      [] -> :ets.insert(@checkpoints, {row_key(key), %{"seq" => 0, "offset" => 0, "etag" => 0}})
       _ -> :ok
     end
 
-    if store_cas_available?() do
-      Smalt.Store.compare_and_swap(@checkpoints, key, expect, new)
-    else
-      EHServer.transaction({:cas, key, expect, new})
-    end
+    # Claim-blind CAS (lens-2 cycle 2): `reconcile/2` — the documented
+    # authoritative view — strips the `"claim"` lease field, so a client
+    # building `expect` from it could never win while a lease rides the same
+    # row. The CAS therefore compares against the claim-stripped checkpoint and
+    # preserves the live claim on write. Routing through the serialized server
+    # unifies serialization with `reserve_processing/4` (claim writes), closing
+    # the reserve-vs-CAS race where the two wrote different serialization
+    # points.
+    EHServer.transaction({:cas_claim_blind, key, expect, new})
   end
+
+  # Checkpoints are keyed {group, partition}; a claim row lives inside the same
+  # map. Kept as a function so the row layout stays in one place.
+  defp row_key(key), do: key
 
   @doc """
   Acquire a processing lease on `{group, partition}` for `owner` lasting `ttl_ms`.
@@ -244,10 +252,6 @@ defmodule Smalt.Messaging.EventHubs do
     Code.ensure_loaded?(Smalt.Store) and function_exported?(Smalt.Store, :update_counter, 3)
   end
 
-  defp store_cas_available? do
-    Code.ensure_loaded?(Smalt.Store) and function_exported?(Smalt.Store, :compare_and_swap, 4)
-  end
-
   defp now_ms, do: System.system_time(:millisecond)
 
   defmodule Server do
@@ -292,15 +296,20 @@ defmodule Smalt.Messaging.EventHubs do
       {:reply, seq, state}
     end
 
-    def handle_call({:cas, key, expect, new}, _from, state) do
+    def handle_call({:cas_claim_blind, key, expect, new}, _from, state) do
       current =
         case :ets.lookup(@checkpoints, key) do
           [{^key, cp}] when is_map(cp) -> cp
           _ -> %{"seq" => 0, "offset" => 0, "etag" => 0}
         end
 
-      if current == expect do
-        :ets.insert(@checkpoints, {key, new})
+      if Map.delete(current, "claim") == expect do
+        cp = case current["claim"] do
+          nil -> new
+          claim -> Map.put(new, "claim", claim)
+        end
+
+        :ets.insert(@checkpoints, {key, cp})
         {:reply, :ok, state}
       else
         {:reply, {:error, :conflict}, state}

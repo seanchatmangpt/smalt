@@ -528,6 +528,17 @@ defmodule Smalt.Amqp.QueueStore do
       {:ok, m} ->
         {:ok, dlq_seq} = do_enqueue(dlq, m.body,
           session_id: m.session_id,
+          # SDK parity: deadLetterReason/deadLetterErrorDescription are read
+          # from the DLQ message's APPLICATION PROPERTIES
+          # (serviceBusMessage.js:302), not message annotations. They were
+          # previously merged into annotations, so the census dead-letter
+          # probe read undefined.
+          app_props:
+            (m[:app_props] || %{})
+            |> Map.merge(%{
+              "DeadLetterReason" => reason,
+              "DeadLetterErrorDescription" => description
+            }),
           annotations:
             m.annotations
             |> Map.merge(%{

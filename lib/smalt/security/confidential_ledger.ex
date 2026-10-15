@@ -20,12 +20,29 @@ defmodule Smalt.Security.ConfidentialLedger do
   exist in this ledger.
   """
   @spec append_transaction(String.t() | atom, map(), keyword()) ::
-          {:ok, map()} | {:error, 409, String.t()}
+          {:ok, map()} | {:error, 404, String.t()} | {:error, 409, String.t()}
   def append_transaction(ledger, contents, _opts \\ []) when is_map(contents) do
-    # The full append is one critical section inside the serialized
-    # LedgerWriter: prev-root read, seq increment, dup check, insert and meta
-    # update can never interleave, so the chain cannot fork under a race.
-    LedgerWriter.append(to_string(ledger), contents)
+    ledger = to_string(ledger)
+
+    # Existence fence (lane ledger-skr lens-2, coordinator-authorized fence
+    # only): Azure Confidential Ledger returns 404 for an append to a
+    # never-created ledger; smalt's append path lazily materializes it. The
+    # default keeps the emulated behavior (implicit create — a documented
+    # divergence, pinned by test); when `:ledger_enforce_existence` is set,
+    # appends to a ledger with no prior state and no explicit creation marker
+    # (`{:created, ledger}` in `:smalt_ledger_meta`) are refused with the
+    # 404-class envelope, proving the fix shape for the coordinated pivot.
+    if Application.get_env(:smalt, :ledger_enforce_existence, false) do
+      # The fence is evaluated inside the serialized writer (lens-3, TOCTOU
+      # repair): concurrent cold-start appends resolve first-writer-creates
+      # instead of racing the caller-side check.
+      LedgerWriter.append(ledger, contents, enforce_existence: true)
+    else
+      # The full append is one critical section inside the serialized
+      # LedgerWriter: prev-root read, seq increment, dup check, insert and meta
+      # update can never interleave, so the chain cannot fork under a race.
+      LedgerWriter.append(ledger, contents)
+    end
   end
 
   @doc """

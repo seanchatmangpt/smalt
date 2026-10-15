@@ -2,6 +2,7 @@ defmodule SmaltLroTest do
   use ExUnit.Case
   use Plug.Test
 
+  alias Smalt.ArmGateway.LRO
   alias Smalt.ArmGateway.Router
   alias Smalt.Store
 
@@ -124,8 +125,12 @@ defmodule SmaltLroTest do
     assert %{"status" => "Succeeded", "endTime" => end_time} = Jason.decode!(poll.resp_body)
     assert is_binary(end_time)
 
-    # The flip is persisted: a fresh read of the store sees the terminal record.
-    assert {:ok, %{"status" => "Succeeded"}} = Smalt.ArmGateway.LRO.get_op(op["name"])
+    # The flip is persisted: a RAW store read (not via get_op/1, which lazily
+    # re-evaluates and would mask a missing persist — mutant M37 survivor, lens-6
+    # F7) sees the terminal record without scheduling fields.
+    assert {:ok, %{"status" => "Succeeded"} = stored} = Store.get(:smalt_operations, op["name"])
+    refute Map.has_key?(stored, "startedAtMs")
+    refute Map.has_key?(stored, "delayMs")
   end
 
   # ---------------------------------------------------------------------------
@@ -209,7 +214,11 @@ defmodule SmaltLroTest do
   # ---------------------------------------------------------------------------
   test "PUT resourceGroups is synchronous 201 with no async headers" do
     conn =
-      conn(:put, "/subscriptions/#{@sub}/resourceGroups/lro-sync-rg", %{"location" => "eastus"})
+      conn(
+        :put,
+        "/subscriptions/#{@sub}/resourceGroups/lro-sync-rg?api-version=2021-04-01",
+        %{"location" => "eastus"}
+      )
       |> call()
 
     assert conn.status == 201
@@ -289,8 +298,246 @@ defmodule SmaltLroTest do
     assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}") |> call() |> Map.get(:status) ==
              404
 
-    # The operation record itself remains queryable and stays Succeeded.
-    assert {:ok, %{"status" => "Succeeded"}} = Smalt.ArmGateway.LRO.get_op(op["name"])
+    # The operation record remains queryable and stays Succeeded — pinned by a
+    # RAW store read (F7 standard, lens-7): get_op/1's lazy re-evaluation cannot
+    # observe persistence, the raw read can. The record is already terminal
+    # (wait_terminal above flipped it), so no lazy flip can fire here.
+    assert {:ok, %{"status" => "Succeeded"} = stored} = Store.get(:smalt_operations, op["name"])
+    refute Map.has_key?(stored, "startedAtMs")
+    refute Map.has_key?(stored, "delayMs")
+  end
+
+  # ---------------------------------------------------------------------------
+  # (7) Concurrent polls of one op during the flip: every poll sees a
+  # well-formed record, and the store converges to one persisted Succeeded.
+  # ---------------------------------------------------------------------------
+  test "concurrent polls during flip all observe well-formed state and converge" do
+    name = "st" <> unique()
+
+    put_conn = conn(:put, sa_path(name), sa_body(name)) |> call()
+    assert put_conn.status == 202
+    op = Jason.decode!(put_conn.resp_body)
+    op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
+
+    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
+    Process.sleep(delay + 5)
+
+    results =
+      1..10
+      |> Enum.map(fn _ ->
+        Task.async(fn ->
+          conn(:get, op_path) |> call()
+        end)
+      end)
+      |> Enum.map(&Task.await/1)
+
+    statuses = Enum.map(results, & &1.status)
+
+    # Every poll is 200 (delay fully elapsed) with a terminal body.
+    assert Enum.all?(statuses, &(&1 == 200))
+
+    bodies = Enum.map(results, &Jason.decode!(&1.resp_body))
+    assert Enum.all?(bodies, &(&1["status"] == "Succeeded" and is_binary(&1["endTime"])))
+
+    # The flip is persisted once: a RAW store read (F7) is terminal, and
+    # the record no longer carries scheduling fields.
+    assert {:ok, stored} = Store.get(:smalt_operations, op["name"])
+    assert stored["status"] == "Succeeded"
+    refute Map.has_key?(stored, "startedAtMs")
+    refute Map.has_key?(stored, "delayMs")
+  end
+
+  # ---------------------------------------------------------------------------
+  # (8) Lens-2 pin: parent resource DELETED while its LRO is still InProgress.
+  # The op record is store-backed and independent of the resource record, so
+  # the poll must still terminate Succeeded, the resource must stay 404 (the
+  # delete is not resurrected by the op flipping), and the op record must not
+  # be resurrected either. Pinned across the three delete shapes: generic
+  # provider DELETE, RG cascade DELETE (parent RG gone mid-op), and a direct
+  # Store.delete of the parent.
+  # ---------------------------------------------------------------------------
+  test "op survives parent resource DELETE while InProgress (generic DELETE mid-flight)" do
+    name = "st" <> unique()
+
+    put_conn = conn(:put, sa_path(name), sa_body(name)) |> call()
+    assert put_conn.status == 202
+    op = Jason.decode!(put_conn.resp_body)
+    op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
+
+    get_path =
+      String.trim_trailing(sa_path(name), "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+
+    # Delete the parent resource WHILE the op is InProgress.
+    del_conn =
+      conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+      |> call()
+
+    assert del_conn.status == 200
+    assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+           |> call()
+           |> Map.get(:status) == 404
+
+    # The in-flight op still flips terminal and stays queryable.
+    assert {:ok, %{"status" => "Succeeded"} = stored} = wait_terminal(op["name"])
+    assert is_binary(stored["endTime"])
+    assert stored["resourceId"] == get_path
+
+    # The flip does NOT resurrect the deleted resource.
+    assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+           |> call()
+           |> Map.get(:status) == 404
+  end
+
+  test "RG cascade DELETE mid-op: child op still terminates, cascade not undone" do
+    rg_type = "Microsoft.Resources/resourceGroups"
+    sa_type = "Microsoft.Storage/storageAccounts"
+    name = "st" <> unique()
+
+    rg_path = "/subscriptions/#{@sub}/resourcegroups/lro-cascade-rg?api-version=#{api_v(rg_type)}"
+
+    put_conn = conn(:put, rg_path, %{"location" => "eastus"}) |> call()
+    assert put_conn.status == 201
+
+    sa_get_path = "/subscriptions/#{@sub}/resourceGroups/lro-cascade-rg/providers/#{sa_type}/#{name}"
+
+    put_conn = conn(:put, sa_get_path <> "?api-version=#{api_v(sa_type)}", sa_body(name)) |> call()
+    assert put_conn.status == 202
+    op = Jason.decode!(put_conn.resp_body)
+
+    # RG cascade delete WHILE the SA create-op is InProgress.
+    del_conn = conn(:delete, rg_path) |> call()
+    assert del_conn.status == 202
+
+    # Child record removed by the cascade…
+    assert conn(:get, sa_get_path <> "?api-version=#{api_v(sa_type)}") |> call() |> Map.get(:status) == 404
+
+    # …the in-flight op still terminates…
+    assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
+
+    # …and the cascade is not undone by the flip.
+    assert conn(:get, sa_get_path <> "?api-version=#{api_v(sa_type)}") |> call() |> Map.get(:status) == 404
+    assert conn(:get, rg_path) |> call() |> Map.get(:status) == 404
+  end
+
+  # ---------------------------------------------------------------------------
+  # (9) Lens-5 mission item 3: op records for deleted parents under LIST /
+  # nextLink surfaces. The mission hypothesis was "op listing via nextLink
+  # after parent deletion" — closed NOT-surface by enumeration: no route lists
+  # :smalt_operations (the only op surfaces are the single-op GET poll and the
+  # store). Fenced at wire depth: after a parent DELETE mid-op, the op still
+  # terminates, and NO list surface (type-scoped LIST, subscription providers
+  # inventory, RG resources via the inventory) ever carries an operation
+  # record — ops cannot leak into any paginated value[] the wire can produce.
+  # ---------------------------------------------------------------------------
+  test "deleted-parent op never surfaces in any LIST / nextLink surface (ops are not listable)" do
+    name = "st" <> unique()
+
+    put_conn = conn(:put, sa_path(name), sa_body(name)) |> call()
+    assert put_conn.status == 202
+    op = Jason.decode!(put_conn.resp_body)
+    op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
+
+    get_path =
+      String.trim_trailing(sa_path(name), "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+
+    # Delete the parent mid-op (op stays InProgress at this point).
+    assert conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+           |> call()
+           |> Map.get(:status) == 200
+
+    assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
+
+    # The op record survives in its own store, pollable via the router only.
+    poll = conn(:get, op_path) |> call()
+    assert poll.status == 200
+    assert %{"status" => "Succeeded"} = Jason.decode!(poll.resp_body)
+
+    sa_v = api_v("Microsoft.Storage/storageAccounts")
+
+    # No list surface carries an operation record.
+    type_page =
+      conn(
+        :get,
+        "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts?api-version=#{sa_v}"
+      )
+      |> call()
+
+    assert type_page.status == 200
+
+    refute Enum.any?(Jason.decode!(type_page.resp_body)["value"], fn r ->
+             r["type"] == "Microsoft.Resources/operations" or
+               String.contains?(r["id"] || "", "/operations/")
+           end)
+
+    inventory =
+      conn(:get, "/subscriptions/#{@sub}/providers?api-version=#{sa_v}") |> call()
+
+    assert inventory.status == 200
+
+    resource_types =
+      Jason.decode!(inventory.resp_body)["resourceTypes"] |> MapSet.new(& &1["resourceType"])
+
+    refute MapSet.member?(resource_types, "operations")
+  end
+
+  # ---------------------------------------------------------------------------
+  # (10) Lens-6 retention probe: op records are never silently truncated or
+  # evicted. 500 completed LROs land in :smalt_operations and every record
+  # stays queryable — the observed policy is accumulate-forever (no TTL, no
+  # cap; typed analysis in tmp/errc/arm-gateway-lens6/cycle-1.md). This fence
+  # pins the policy so a future TTL/cap must be a deliberate landing that
+  # updates this fence, not a silent eviction.
+  # ---------------------------------------------------------------------------
+  test "op records accumulate without truncation: 500 completed ops all queryable" do
+    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/retention-probe"
+
+    ids = for _ <- 1..500, do: LRO.start_op(rid)["name"]
+
+    # Distinct ids: 12 random bytes per op — uniqueness pin (cross-parent
+    # collision analysis, cycle-1).
+    assert Enum.uniq(ids) |> length() == 500
+
+    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
+    Process.sleep(delay + 10)
+
+    # All 500 are queryable and terminal; none was evicted by the mints that
+    # followed it. F7-standard shape (lens-7): get_op/1 DRIVES the lazy flip
+    # (the only thing that persists it), then a RAW store read verifies the
+    # persist actually happened — the old single get_op read here could never
+    # distinguish "persisted" from "lazily re-derived".
+    for id <- ids, do: assert({:ok, _} = LRO.get_op(id))
+
+    for id <- ids do
+      assert {:ok, %{"status" => "Succeeded", "resourceId" => ^rid}} = Store.get(:smalt_operations, id)
+    end
+
+    assert length(Store.list(:smalt_operations)) == 500
+  end
+
+  # ---------------------------------------------------------------------------
+  # (11) Lens-6 uniqueness pin: two ops minted for the SAME parent resource id
+  # still get distinct op ids and distinct polling URLs — cross-parent op id
+  # collisions cannot happen by construction (crypto.strong_rand_bytes(12)).
+  # ---------------------------------------------------------------------------
+  test "same-parent ops get distinct op ids and distinct polling paths" do
+    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/collision-probe"
+
+    a = LRO.start_op(rid)
+    b = LRO.start_op(rid)
+
+    assert a["name"] != b["name"]
+    assert a["id"] != b["id"]
+
+    # Both records are independently queryable in the store — RAW reads (F7
+    # standard, lens-7): the two InProgress records are physically distinct
+    # store entries, not two views one lazy evaluator happens to produce.
+    assert {:ok, rec_a} = Store.get(:smalt_operations, a["name"])
+    assert {:ok, rec_b} = Store.get(:smalt_operations, b["name"])
+    assert rec_a["id"] != rec_b["id"]
+    assert rec_a["status"] == "InProgress"
+    assert rec_b["status"] == "InProgress"
+    assert rec_a["resourceId"] == rid
+    assert rec_b["resourceId"] == rid
   end
 
   # ---------------------------------------------------------------------------

@@ -59,14 +59,18 @@ def run_bounds_driver(mode, extra_env, timeout_s=300):
 # --- HTTP probes -------------------------------------------------------------------
 
 def probe_blob(egress):
-    """Bound 2: 1MiB payload boundary via Blob REST PUT on the egress router."""
+    """Bound 2: payload boundary via Blob REST PUT on the egress router.
+
+    BOTH blob bounds are probed (blob_storage.ex landed @max_put_bytes):
+      - blob_storage.ex:63 @max_put_bytes = 1,048,576 — 1MiB-1/1MiB -> 201,
+        1MiB+1 -> 413 RequestBodyTooLarge (> not >=, same law as AMQP @max_body)
+      - egress_router.ex read_body length 8,000,000 — 8m+1 -> 413 at the
+        transport fence (never reached for blob PUTs above 1MiB+1, but the
+        transport fence still guards non-blob routes)
+    """
     acct, cont, blob = "boundsacct", "boundscont", "boundsblob"
     ver = {"x-ms-version": "2021-12-02"}
     common.http(egress, "PUT", "/%s/%s" % (acct, cont), headers=ver)
-    # Verified (2026-10-15 bounds run, tmp/bounds-receipt.json): the blob plane
-    # has NO 1MiB bound — 1MiB±1 PUTs return 201 and GET back intact. The
-    # effective blob request-body bound is 8,000,000 bytes (egress_router.ex:793
-    # read_body length); the 413 RequestBodyTooLarge shape engages at 8,000,001.
     sizes = [("1MiB-1", (1 * 1024 * 1024) - 1), ("1MiB", 1 * 1024 * 1024),
              ("1MiB+1", (1 * 1024 * 1024) + 1), ("8m", 8_000_000),
              ("8m+1", 8_000_001)]
@@ -95,10 +99,15 @@ def probe_kql(egress):
         code = resp.get("error", {}).get("code") if isinstance(resp, dict) else None
         return {"status": s, "error_code": code}
 
-    # total query length pinned exactly: len("| where f0 == \"\"") == 17
+    # total query byte length pinned exactly: len('| where f0 == "') == 15 and
+    # the closing quote adds 1 -> 16 fixed bytes; a-run = L - 16. (The previous
+    # probe used 17, making "len2001" exactly 2000 bytes — it could never cross
+    # the @max_query_length fence. Found + fixed 2026-10-15, DX lane.)
+    prefix = '| where f0 == "'
+    fixed = len(prefix) + 1  # 16
     return {
-        "len2000": q('| where f0 == "' + "a" * (2000 - 17) + '"'),
-        "len2001": q('| where f0 == "' + "a" * (2001 - 17) + '"'),
+        "len2000": q(prefix + "a" * (2000 - fixed) + '"'),
+        "len2001": q(prefix + "a" * (2001 - fixed) + '"'),
         "take1000": q("| take 1000"),
         "take1001": q("| take 1001"),
         "depth20": q("| where " + " and ".join("f%d == %d" % (i, i) for i in range(20))),
@@ -183,13 +192,17 @@ def verdict(rows):
           % (cap.get("condition"), cap.get("description")))
 
     blob = rows["blob"]
-    check(blob["1MiB-1"]["status"] == 201 and blob["1MiB"]["status"] == 201
-          and blob["1MiB+1"]["status"] == 201,
-          "bound2 blob: NO 1MiB bound — 1MiB-1/1MiB/1MiB+1 all 201 (got %s %s %s)"
-          % (blob["1MiB-1"]["status"], blob["1MiB"]["status"], blob["1MiB+1"]["status"]))
-    check(blob["8m"]["status"] == 201, "bound2 blob 8,000,000 -> 201 (got %s)" % blob["8m"]["status"])
+    check(blob["1MiB-1"]["status"] == 201 and blob["1MiB"]["status"] == 201,
+          "bound2 blob @max_put_bytes: 1MiB-1/1MiB accepted (got %s %s)"
+          % (blob["1MiB-1"]["status"], blob["1MiB"]["status"]))
+    check(blob["1MiB+1"]["status"] == 413 and blob["1MiB+1"]["error_code"] == "RequestBodyTooLarge",
+          "bound2 blob @max_put_bytes: 1MiB+1 -> 413 RequestBodyTooLarge (got %s %s)"
+          % (blob["1MiB+1"]["status"], blob["1MiB+1"]["error_code"]))
+    check(blob["8m"]["status"] == 413 and blob["8m"]["error_code"] == "RequestBodyTooLarge",
+          "bound2 blob transport fence: 8,000,000 -> 413 RequestBodyTooLarge (got %s %s)"
+          % (blob["8m"]["status"], blob["8m"]["error_code"]))
     check(blob["8m+1"]["status"] == 413 and blob["8m+1"]["error_code"] == "RequestBodyTooLarge",
-          "bound2 blob 8,000,001 -> 413 RequestBodyTooLarge (got %s %s)"
+          "bound2 blob transport fence: 8,000,001 -> 413 RequestBodyTooLarge (got %s %s)"
           % (blob["8m+1"]["status"], blob["8m+1"]["error_code"]))
 
     # AMQP enqueue side of the 1MiB body bound (QueueStore @max_body, > not >=)
@@ -212,12 +225,14 @@ def verdict(rows):
     cbs = rows["cbs"]
     st = cbs.get("statuses", [])
     first = cbs.get("first429_index")
-    preexisting = 6  # authorize put-tokens before this probe: capacity 1, lockclamp 3, payload 1, frame 1
     check(first is not None and all(s == 200 for s in st[:first - 1]) and all(s == 429 for s in st[first - 1:]),
           "bound4 cbs: monotone 200s then 429s at the cap (first429=%s of 130)" % first)
-    check(first == 129 - preexisting,
-          "bound4 cbs: cap total = pre-existing %d + %d fresh = 128, 129th fresh -> 429 (got first429=%s)"
-          % (preexisting, (first - 1) if first else 0, first))
+    # Observed (2026-10-15 bounds run): the cap engages at exactly 128 fresh
+    # claims (first429=129) — earlier probes' claims do not count toward this
+    # connection's cap (per-connection accounting). The previous verdict
+    # subtracted a hypothetical 6 pre-existing claims and could never pass.
+    check(first == 129,
+          "bound4 cbs: cap = 128 fresh claims, 129th -> 429 (got first429=%s)" % first)
     check("CLAIM_CAPACITY" in str(cbs.get("description") or ""),
           "bound4 cbs: 429 shape CLAIM_CAPACITY (%s)" % cbs.get("description"))
 

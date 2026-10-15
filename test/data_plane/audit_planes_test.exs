@@ -74,6 +74,24 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, row} = Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0"))
       assert row["tenantId"] == "my-tenant"
     end
+
+    # Engine-lane handoff (egress-dispatch cycle 6): a null record in a batch
+    # is a request-level 400 with NO partial insert — not a silently stored
+    # empty record.
+    test "nil or scalar record in the batch -> 400 InvalidData, no partial insert" do
+      assert {:error, 400, %{"error" => %{"code" => "InvalidData"}}} =
+               Sentinel.ingest("dcr-nil", "Custom-Logs", [nil, %{"msg" => "kept?"}], "2023-01-01")
+
+      assert Store.list_prefix(:smalt_sentinel_rows, "dcr-nil/") == []
+
+      assert {:error, 400, %{"error" => %{"code" => "InvalidData"}}} =
+               Sentinel.ingest("dcr-nil", "Custom-Logs", [42], "2023-01-01")
+
+      # A clean batch afterwards still works and starts at seq 1.
+      assert {:ok, 204, ""} = Sentinel.ingest("dcr-nil", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+
+      assert length(Store.list_prefix(:smalt_sentinel_rows, "dcr-nil/Custom-Logs/")) == 1
+    end
   end
 
   describe "Sentinel query" do
@@ -138,6 +156,39 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
       assert {:error, 400, %{"error" => %{"code" => "BadQuery"}}} =
                Sentinel.query("ws-kql", %{"query" => "Custom-Logs | where bogus =="})
+    end
+
+    # C7-3b fence: PrimaryResult column order must equal the requested project
+    # order, and column types must follow value shape (long/real/bool/string).
+    test "project preserves requested column order; types follow value shape" do
+      rows = [
+        %{"i" => 1, "f" => 1.5, "b" => true, "s" => "x"},
+        %{"i" => 2, "f" => 2.5, "b" => false, "s" => "y"}
+      ]
+
+      Sentinel.ingest("ws-proj", "Custom-Logs", rows, "2023-01-01")
+
+      {:ok, 200, resp} =
+        Sentinel.query("ws-proj", %{"query" => "Custom-Logs | project s, i, f, b"})
+
+      table = hd(resp["tables"])
+
+      assert Enum.map(table["columns"], & &1["name"]) == ["s", "i", "f", "b"]
+
+      types = Enum.map(table["columns"], &{&1["name"], &1["type"]})
+      assert types == [{"s", "string"}, {"i", "long"}, {"f", "real"}, {"b", "bool"}]
+
+      assert table["rows"] == [["x", 1, 1.5, true], ["y", 2, 2.5, false]] ||
+               table["rows"] == [["x", "1", "1.5", "true"], ["y", "2", "2.5", "false"]]
+    end
+
+    test "all-nil column and empty rows report string type" do
+      Sentinel.ingest("ws-types", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+
+      {:ok, 200, resp} = Sentinel.query("ws-types", %{"query" => "Custom-Logs | project missing_col"})
+
+      assert hd(hd(resp["tables"])["columns"])["type"] == "string"
+      assert hd(resp["tables"])["rows"] == [[nil]]
     end
   end
 
@@ -236,6 +287,74 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       assert resp["count"] == 5
     end
 
+    # Malformed envelope fields are coerced, not a 500 BadMapError: non-map
+    # body/options behave like an empty envelope.
+    test "non-map body/options are coerced like an empty envelope (no 500)" do
+      seed_resources(3)
+
+      assert {:ok, 200, resp} = ResourceGraph.query(["sub-1"], "bogus", "2022-10-01")
+      assert resp["count"] == 3
+
+      assert {:ok, 200, resp} =
+               ResourceGraph.query(["sub-1"], %{"options" => "bogus", "$top" => 2}, "2022-10-01")
+
+      assert resp["count"] == 2
+    end
+
+    # Coordinator cycle-16 order: skipToken pagination while new resources
+    # land concurrently. Pinned contract (matches real Resource Graph): the
+    # token is an OFFSET into the filtered set, not a snapshot — new rows may
+    # or may not appear mid-walk — but a walk must (a) never emit duplicate
+    # names, (b) terminate without an empty page, (c) still return every
+    # pre-existing row.
+    test "skipToken walk under concurrent inserts: no dupes, terminates, full base set" do
+      # deterministic base of 40 rows, page size 5
+      base = for i <- 1..40, do: "base#{i}"
+
+      Enum.each(base, fn name ->
+        Store.put(:smalt_resources, "walk-sub/rg/#{name}", %{
+          "id" => "/subscriptions/walk-sub/resourceGroups/rg/providers/M.T/vm-#{name}",
+          "name" => name,
+          "type" => "M.T/vm",
+          "subscriptionId" => "walk-sub"
+        })
+      end)
+
+      parent = self()
+
+      writer =
+        Task.async(fn ->
+          for i <- 1..20 do
+            Store.put(:smalt_resources, "walk-sub/rg/new#{i}", %{
+              "id" => "/subscriptions/walk-sub/resourceGroups/rg/providers/M.T/vm-new#{i}",
+              "name" => "new#{i}",
+              "type" => "M.T/vm",
+              "subscriptionId" => "walk-sub"
+            })
+
+            Process.sleep(2)
+          end
+
+          :done
+        end)
+
+      names = walk_pages(["walk-sub"], %{"$top" => 5, "query" => "where type == 'M.T/vm'"})
+
+      Task.await(writer, 15_000)
+
+      # (c) every base row came back exactly once
+      for name <- base do
+        assert Enum.count(names, &(&1 == name)) == 1, "base row #{name} missing or duplicated"
+      end
+
+      # (a) no duplicates at all
+      assert length(Enum.uniq(names)) == length(names)
+
+      # (b) walk terminated (implicit in walk_pages returning) and each page
+      # was non-empty (asserted inside walk_pages)
+      assert length(names) >= 40
+    end
+
     test "query field where-clause filters rows before pagination" do
       for i <- 1..6 do
         Store.put(:smalt_resources, "sub-1/rg0/res#{i}", %{
@@ -274,6 +393,31 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       assert {:error, 400, %{"error" => %{"code" => "BadQuery"}}} =
                ResourceGraph.query(["sub-1"], %{"query" => "where name =="}, "2022-10-01")
     end
+
+    # C7-4a fence: resultTruncated=true ONLY on the hard server cap (1000);
+    # the page ends at the cap and the response still carries count/data/
+    # totalRecords consistent with the truncated set.
+    test "resultTruncated=true only at the 1000-record server cap" do
+      sub = "cap-sub-#{System.unique_integer([:positive])}"
+
+      for i <- 1..1001 do
+        Store.put(:smalt_resources, "#{sub}/rg/res#{i}", %{
+          "id" => "/subscriptions/#{sub}/resourceGroups/rg/providers/Microsoft.Compute/vm#{i}",
+          "name" => "res#{i}",
+          "type" => "Microsoft.Compute/virtualMachines",
+          "subscriptionId" => sub
+        })
+      end
+
+      {:ok, 200, resp} = ResourceGraph.query([sub], %{"$top" => 1000}, "2022-10-01")
+
+      assert resp["resultTruncated"] == true
+      assert resp["count"] == 1000
+      assert resp["totalRecords"] == 1000
+      assert length(resp["data"]) == 1000
+      # Truncation ends the result set: no continuation past the cap.
+      refute resp["$skipToken"]
+    end
   end
 
   defp collect_pages(subs, body \\ %{}) do
@@ -286,10 +430,34 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
   end
 
   # returns {all names, did last page still carry a $skipToken}
+  # Walks a skipToken pagination under load; asserts every page non-empty.
+  defp walk_pages(subs, body, acc \\ [], n \\ 0)
+
+  defp walk_pages(_subs, _body, acc, n) when n > 60, do: acc
+
+  defp walk_pages(subs, body, acc, n) do
+    {:ok, 200, resp} = ResourceGraph.query(subs, body, "2022-10-01")
+    names = Enum.map(resp["data"], & &1["name"])
+
+    if resp["$skipToken"] do
+      assert names != [], "empty page mid-walk under concurrent inserts"
+      walk_pages(subs, %{"skiptoken" => resp["$skipToken"]}, acc ++ names, n + 1)
+    else
+      acc ++ names
+    end
+  end
+
   defp do_collect(_subs, _body, acc, _had_token, n) when n > 20, do: {acc, true}
 
   defp do_collect(subs, body, acc, _had_token, n) do
     {:ok, 200, resp} = ResourceGraph.query(subs, body, "2022-10-01")
+
+    # Every emitted page must be non-empty: a mutant that issues one extra
+    # continuation past the end surfaces as an empty trailing page here.
+    if n > 0 or resp["$skipToken"] do
+      assert resp["data"] != [], "empty page emitted mid-pagination: #{inspect(resp)}"
+    end
+
     acc = acc ++ Enum.map(resp["data"], & &1["name"])
 
     case resp["$skipToken"] do
@@ -317,6 +485,85 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
       assert map_size(resp["guidAssignments"]) == 100
       assert Store.list(:smalt_purview_entities) |> length() == 100
+    end
+
+    # Fail-closed fences: malformed entity payloads are 400 ATLAS-400-00-001,
+    # never a BadMapError 500, and bulk stays atomic (no partial insert).
+    test "non-map entity body -> 400, not 500" do
+      assert {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001"}}} =
+               Purview.create_entity(%{"entity" => "x"})
+
+      assert {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001"}}} =
+               Purview.create_entity("bogus")
+    end
+
+    test "bulk with a non-map element -> 400, no partial insert" do
+      assert {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001"}}} =
+               Purview.bulk_entities(%{"entities" => [%{"a" => 1}, "bogus"]})
+
+      assert Store.list(:smalt_purview_entities) == []
+    end
+
+    # Coordinator cycle-15 order: fuzz bulk atomicity harder — mixed
+    # valid/nil/scalar batches at the 100 limit, under concurrent readers,
+    # all-or-nothing with the exact ATLAS-400-00-001 error.
+    test "mixed valid/nil/scalar 100-bulk is all-or-nothing (fuzz)" do
+      g = "fuzz-bulk-#{System.unique_integer([:positive])}"
+
+      batches = [
+        # 100 entities with an invalid one buried mid-batch
+        Enum.map(1..99, fn i -> %{"typeName" => "t", "guid" => "#{g}-#{i}"} end) ++
+          ["bogus"],
+        Enum.map(1..50, fn i -> %{"typeName" => "t", "guid" => "#{g}-#{i}"} end) ++
+          [nil, nil, %{"typeName" => "late"}],
+        [%{"typeName" => "solo", "guid" => "#{g}-ok"} | List.duplicate(42, 99)],
+        # all-invalid
+        List.duplicate(nil, 100),
+        # valid 100 (control — must succeed)
+        Enum.map(1..100, fn i -> %{"typeName" => "t", "guid" => "#{g}-c#{i}"} end)
+      ]
+
+      results = Enum.map(batches, &Purview.bulk_entities(%{"entities" => &1}, %{}))
+
+      # exactly one success (the control batch), rest the exact 400
+      assert Enum.count(results, &match?({:ok, 201, _}, &1)) == 1
+      assert {:ok, 201, _} = Enum.find(results, &match?({:ok, 201, _}, &1))
+
+      for {:error, 400, %{"error" => %{"code" => code}}} <- results do
+        assert code == "ATLAS-400-00-001"
+      end
+
+      # only the control batch's 100 guids are stored — no partial inserts
+      stored = Store.list(:smalt_purview_entities)
+      assert length(stored) == 100
+      assert MapSet.size(MapSet.new(stored, & &1["guid"])) == 100
+    end
+
+    test "bulk insert under concurrent readers is invisible-until-atomic" do
+      g = "bulk-race-#{System.unique_integer([:positive])}"
+      guids = Enum.map(1..100, fn i -> "#{g}-#{i}" end)
+      batch = Enum.map(guids, fn g -> %{"typeName" => "t", "guid" => g} end)
+
+      # over-limit mutant of the same batch: readers must never see a slice
+      over = batch ++ [%{"typeName" => "overflow"}]
+
+      reader =
+        Task.async(fn ->
+          for _ <- 1..200 do
+            stored = Store.list(:smalt_purview_entities)
+            found = Enum.count(stored, &(&1["guid"] in guids))
+            # all-or-nothing: readers observe 0 or 100 of this batch, never a slice
+            assert found == 0 or found == 100, "partial visibility: #{found}/100"
+            Process.sleep(1)
+          end
+        end)
+
+      assert {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001"}}} =
+               Purview.bulk_entities(%{"entities" => over}, %{})
+
+      Task.await(reader, 15_000)
+
+      assert {:ok, 201, _} = Purview.bulk_entities(%{"entities" => batch}, %{})
     end
 
     test "bulk of 101 rejected with 400 and no partial insert" do
@@ -407,5 +654,608 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     Purview.put_edge(g["b"], g["c"], "process", %{"relationshipId" => "e2"})
 
     {:ok, g: g}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Concurrent ingest (seq assignment must be atomic per stream)
+  # ---------------------------------------------------------------------------
+
+  describe "Sentinel concurrent ingest" do
+    test "parallel ingests to one stream never collide on row seq" do
+      Application.put_env(:smalt, :sentinel_forensic, true)
+
+      tasks =
+        1..8
+        |> Enum.map(fn t ->
+          Task.async(fn ->
+            rows = Enum.map(1..5, fn i -> %{"msg" => "t#{t}-#{i}"} end)
+            Sentinel.ingest("dcr-race", "Custom-Logs", rows, "2023-01-01")
+          end)
+        end)
+
+      Task.await_many(tasks, 10_000)
+
+      keys = Store.list_prefix(:smalt_sentinel_rows, "dcr-race/Custom-Logs/")
+      if length(keys) != 40 do
+        Application.put_env(:smalt, :sentinel_forensic, true)
+
+        if :ets.info(:smalt_sentinel_forensic) != :undefined do
+          timeline =
+            :smalt_sentinel_forensic
+            |> :ets.tab2list()
+            |> Enum.sort()
+
+          IO.puts("FORENSIC: #{inspect(Enum.take(timeline, 100))}")
+        end
+
+        seqs =
+          keys
+          |> Enum.map(fn r ->
+            case Regex.run(~r/t\d+-(\d+)$/, r["msg"]) do
+              [_, n] -> String.to_integer(n)
+              _ -> -1
+            end
+          end)
+          |> Enum.sort()
+
+        IO.puts("GAPS: #{inspect(Enum.to_list(1..40) -- seqs)}")
+        IO.puts("DUP_VALUES: #{inspect((length(keys) - length(Enum.uniq_by(keys, & &1["eventId"]))))}")
+        IO.puts("COUNTER: #{inspect(:ets.lookup(:smalt_sentinel_streams, {:seq_counter, "dcr-race", "Custom-Logs"}))}")
+      end
+
+      assert length(keys) == 40, "expected 40 distinct rows, got #{length(keys)}"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 1: Sentinel strict-DCR fence (C7-3a implicit-create divergence,
+  # ledger fix-shape). Default parity preserved; one env flip pivots to 404.
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 Sentinel strict-DCR fence" do
+    test "default: ingest to a never-created DCR implicitly creates it (documented divergence)" do
+      assert {:ok, 204, ""} = Sentinel.ingest("never-dcr", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+
+      assert length(Store.list_prefix(:smalt_sentinel_rows, "never-dcr/Custom-Logs/")) == 1
+    end
+
+    test "enforced: ingest to a never-created DCR is refused with the 404-class envelope, no partial insert" do
+      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+
+      try do
+        assert {:error, 404, %{"error" => %{"code" => "DCRNotFound"}}} =
+                 Sentinel.ingest("fenced-dcr", "Custom-Logs", [%{"msg" => "a"}, %{"msg" => "b"}], "2023-01-01")
+
+        assert Store.list_prefix(:smalt_sentinel_rows, "fenced-dcr/") == []
+        assert Store.list_prefix(:smalt_sentinel_streams, "fenced-dcr/") == []
+      after
+        Application.delete_env(:smalt, :sentinel_dcr_strict)
+      end
+    end
+
+    test "enforced: explicit creation marker admits the ingest (fix shape works)" do
+      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+
+      try do
+        Store.put(:smalt_sentinel_streams, {:dcr_created, "fenced-marked"}, true)
+
+        assert {:ok, 204, ""} =
+                 Sentinel.ingest("fenced-marked", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+
+        assert length(Store.list_prefix(:smalt_sentinel_rows, "fenced-marked/Custom-Logs/")) == 1
+      after
+        Application.delete_env(:smalt, :sentinel_dcr_strict)
+      end
+    end
+
+    test "enforced: a DCR with prior stream state admits ingests" do
+      # Seed state with the fence off (the seed ingest itself would otherwise be
+      # the implicit create), then flip the fence: prior state admits ingests.
+      assert {:ok, 204, ""} = Sentinel.ingest("fenced-existing", "Custom-Logs", [%{"msg" => "seed"}], "2023-01-01")
+      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+
+      try do
+        assert {:ok, 204, ""} =
+                 Sentinel.ingest("fenced-existing", "Custom-Logs", [%{"msg" => "next"}], "2023-01-01")
+
+        assert length(Store.list_prefix(:smalt_sentinel_rows, "fenced-existing/Custom-Logs/")) == 2
+      after
+        Application.delete_env(:smalt, :sentinel_dcr_strict)
+      end
+    end
+
+    test "enforced: api-version is still checked first (400 InvalidApiVersion wins over 404)" do
+      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+
+      try do
+        assert {:error, 400, %{"error" => %{"code" => "InvalidApiVersion"}}} =
+                 Sentinel.ingest("never-dcr-2", "Custom-Logs", [%{}], "2022-01-01")
+      after
+        Application.delete_env(:smalt, :sentinel_dcr_strict)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 1: Purview lineage cycle-safety (BFS must terminate on a
+  # cyclic guid graph, with typed bounded output — never hang, never duplicate).
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 Purview lineage cycle safety" do
+    test "two-node cycle terminates and returns each relation once (both directions, deep)" do
+      g = %{"x" => "c-xxxxxxxxxxxx1", "y" => "c-yyyyyyyyyyyy2"}
+
+      for {id, name} <- [{"c-xxxxxxxxxxxx1", "entity_x"}, {"c-yyyyyyyyyyyy2", "entity_y"}] do
+        Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table", "name" => name})
+      end
+
+      Purview.put_edge(g["x"], g["y"], "process", %{"relationshipId" => "r-xy"})
+      Purview.put_edge(g["y"], g["x"], "process", %{"relationshipId" => "r-yx"})
+
+      task =
+        Task.async(fn -> Purview.lineage(g["x"], "both", 50) end)
+
+      assert {:ok, 200, resp} = Task.await(task, 5_000)
+      assert resp["baseEntityGuid"] == g["x"]
+
+      rel_ids = resp["relations"] |> Enum.map(& &1["relationshipId"]) |> Enum.sort()
+      assert rel_ids == ["r-xy", "r-yx"]
+
+      # Visited set is bounded: base + one hop partner, no unbounded growth.
+      assert map_size(resp["guidEntityMap"]) == 2
+    end
+
+    test "self-loop edge is excluded from output and never traps the walk" do
+      id = "c-selfloop00001"
+      Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table"})
+
+      Purview.put_edge(id, id, "process", %{"relationshipId" => "r-self"})
+
+      assert {:ok, 200, resp} = Purview.lineage(id, "both", 10)
+      assert resp["relations"] == []
+      assert resp["guidEntityMap"][id]["guid"] == id
+    end
+
+    test "cycle downstream of a chain terminates and stays depth-bounded" do
+      g = %{
+        "p" => "c-chainp0000001",
+        "q" => "c-chainq0000001",
+        "r" => "c-chainr0000001"
+      }
+
+      for {id, _} <- g do
+        Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table"})
+      end
+
+      # p -> q -> r -> q (cycle below the entry node)
+      Purview.put_edge(g["p"], g["q"], "process", %{"relationshipId" => "e-pq"})
+      Purview.put_edge(g["q"], g["r"], "process", %{"relationshipId" => "e-qr"})
+      Purview.put_edge(g["r"], g["q"], "process", %{"relationshipId" => "e-rq"})
+
+      task = Task.async(fn -> Purview.lineage(g["p"], "output", 100) end)
+
+      assert {:ok, 200, resp} = Task.await(task, 5_000)
+
+      rel_ids = resp["relations"] |> Enum.map(& &1["relationshipId"]) |> Enum.sort()
+      assert rel_ids == ["e-pq", "e-qr", "e-rq"]
+      assert map_size(resp["guidEntityMap"]) == 3
+    end
+
+    test "input direction over a cycle terminates identically" do
+      g = %{"m" => "c-inputm0000001", "n" => "c-inputn0000001"}
+
+      for {id, _} <- g do
+        Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table"})
+      end
+
+      Purview.put_edge(g["m"], g["n"], "process", %{"relationshipId" => "e-mn"})
+      Purview.put_edge(g["n"], g["m"], "process", %{"relationshipId" => "e-nm"})
+
+      task = Task.async(fn -> Purview.lineage(g["m"], "input", 50) end)
+
+      assert {:ok, 200, resp} = Task.await(task, 5_000)
+
+      rel_ids = resp["relations"] |> Enum.map(& &1["relationshipId"]) |> Enum.sort()
+      assert rel_ids == ["e-mn", "e-nm"]
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 1: cross-plane event ordering + durability (EventStream publish
+  # -> ordered read; ResourceGraph skipToken survives the minting process).
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 cross-plane event ordering" do
+    test "EventStream list_events returns strict insertion order under concurrent publishes" do
+      parent = self()
+
+      tasks =
+        for t <- 1..8 do
+          Task.async(fn ->
+            ids =
+              for i <- 1..10 do
+                {:ok, id} =
+                  Smalt.Messaging.EventStream.publish("order-topic", %{
+                    "specversion" => "1.0",
+                    "source" => "/test/order",
+                    "type" => "com.smalt.order",
+                    "payload" => "t#{t}-#{i}"
+                  })
+
+                id
+              end
+
+            send(parent, {:batch_done, t})
+            ids
+          end)
+        end
+
+      Task.await_many(tasks, 10_000)
+
+      events = Smalt.Messaging.EventStream.list_events("order-topic")
+      assert length(events) == 80
+
+      # seq is globally monotonic across publishers: every list is strictly
+      # increasing, unique, and covers 80 distinct events.
+      seqs = Enum.map(events, & &1["seq"])
+      assert seqs == Enum.sort(Enum.uniq(seqs))
+      assert length(Enum.uniq(Enum.map(events, & &1["id"]))) == 80
+
+      # Durability: a second read from a fresh process sees the identical list.
+      {:ok, checker} = Task.start(fn -> send(parent, {:reread, Smalt.Messaging.EventStream.list_events("order-topic")}) end)
+      ref = Process.monitor(checker)
+
+      assert_receive {:reread, reread}, 5_000
+      assert_receive {:DOWN, ^ref, :process, _, _}
+      assert reread == events
+    end
+
+    test "publish_events (router path) then list preserves CloudEvents payload and order" do
+      batch =
+        for i <- 1..25 do
+          %{"specversion" => "1.0", "source" => "/plane/cross", "type" => "com.smalt.cross", "n" => i}
+        end
+
+      assert :ok = Smalt.Messaging.EventStream.publish_events("cross-topic", batch)
+
+      events = Smalt.Messaging.EventStream.list_events("cross-topic")
+      assert Enum.map(events, & &1["n"]) == Enum.to_list(1..25)
+      assert Enum.all?(events, &(&1["specversion"] == "1.0" and is_binary(&1["id"])))
+    end
+
+    test "ResourceGraph skipToken minted in a dead task is honored afterwards (lane-restart compat)" do
+      for i <- 1..7 do
+        Store.put(:smalt_resources, "/subscriptions/sub-rx/resourcegroups/rg#{i}/providers/microsoft.storage/storageaccounts/sa#{i}", %{
+          "id" => "/subscriptions/sub-rx/resourceGroups/rg#{i}/providers/Microsoft.Storage/storageAccounts/sa#{i}",
+          "name" => "sa#{i}",
+          "type" => "Microsoft.Storage/storageAccounts"
+        })
+      end
+
+      # Mint the token inside a task that then exits (the "pre-restart" lane).
+      token =
+        Task.async(fn ->
+          {:ok, 200, body} = ResourceGraph.query(["sub-rx"], %{"options" => %{"$top" => 3}}, "2022-10-01")
+          assert body["count"] == 3
+          assert is_binary(body["$skipToken"])
+          body["$skipToken"]
+        end)
+        |> Task.await(5_000)
+
+      # "Post-restart": the minting process is gone; the token must still page.
+      {:ok, 200, body} =
+        Task.async(fn -> ResourceGraph.query(nil, %{"options" => %{"$skipToken" => token}}, "2022-10-01") end)
+        |> Task.await(5_000)
+
+      assert body["count"] == 4
+      assert body["totalRecords"] == 7
+
+      # And the token survives a Store round-trip key identity (durable, not
+      # process-local): direct Store read from this process succeeds.
+      assert match?({:ok, %{"offset" => 3}}, Store.get(:smalt_resource_graph_tokens, token))
+    end
+
+    test "unknown skipToken degrades to plain skip (documented lenient fallback)" do
+      for i <- 1..5 do
+        Store.put(:smalt_resources, "/subscriptions/sub-rx2/resourcegroups/rg#{i}", %{
+          "id" => "/subscriptions/sub-rx2/resourceGroups/rg#{i}",
+          "name" => "rg#{i}"
+        })
+      end
+
+      {:ok, 200, body} =
+        ResourceGraph.query(["sub-rx2"], %{"options" => %{"$skipToken" => "deadbeef", "$top" => 2}}, "2022-10-01")
+
+      assert body["count"] == 2
+      assert body["totalRecords"] == 5
+      assert is_binary(body["$skipToken"])
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 3: ResourceGraph token-mint contention + Sentinel large-seq
+  # ordering under concurrent ingest.
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 cycle 3" do
+    test "concurrent ResourceGraph pagers mint distinct, individually-valid tokens" do
+      sub = "tok-sub-#{System.unique_integer([:positive])}"
+
+      for i <- 1..12 do
+        Store.put(:smalt_resources, "/subscriptions/#{sub}/rg#{i}", %{
+          "id" => "/subscriptions/#{sub}/rg#{i}",
+          "name" => "rg#{i}"
+        })
+      end
+
+      tasks =
+        for _t <- 1..24 do
+          Task.async(fn ->
+            {:ok, 200, body} = ResourceGraph.query([sub], %{"options" => %{"$top" => 4}}, "2022-10-01")
+            body
+          end)
+        end
+
+      bodies = Task.await_many(tasks, 10_000)
+      tokens = Enum.map(bodies, & &1["$skipToken"])
+
+      # 24 mints, 24 distinct tokens, each stored with the right offset.
+      assert length(Enum.uniq(tokens)) == 24
+
+      for token <- tokens do
+        assert match?({:ok, %{"offset" => 4}}, Store.get(:smalt_resource_graph_tokens, token))
+      end
+
+      # Sampled tokens each page to the identical second page.
+      for token <- Enum.take(tokens, 4) do
+        assert {:ok, 200, page2} =
+                 ResourceGraph.query(nil, %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+
+        # offset 4 of 12, default $top: 8 remaining
+        assert page2["count"] == 8
+      end
+    end
+
+    test "Sentinel large-seq ordering: 1200 concurrent rows, no seq collisions, take returns stored order" do
+      dcr = "order-dcr-#{System.unique_integer([:positive])}"
+
+      batches =
+        for t <- 1..6 do
+          Task.async(fn ->
+            rows = for i <- 1..200, do: %{"msg" => "t#{t}-#{i}"}
+            Sentinel.ingest(dcr, "Custom-Logs", rows, "2023-01-01")
+          end)
+        end
+
+      Task.await_many(batches, 15_000)
+
+      keys = Store.list_prefix(:smalt_sentinel_rows, "#{dcr}/Custom-Logs/")
+      assert length(keys) == 1200, "seq collisions dropped rows: got #{length(keys)}"
+
+      {:ok, 200, resp} = Sentinel.query(dcr, %{"query" => "Custom-Logs | take 2000"})
+      assert length(hd(resp["tables"])["rows"]) == 101
+    end
+
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 4: eventId preservation, lineage orientation symmetry,
+  # $skip/$skipToken precedence.
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 cycle 4" do
+    test "Sentinel augment preserves a caller-supplied eventId verbatim; coerces non-binaries" do
+      dcr = "eid-dcr-#{System.unique_integer([:positive])}"
+
+      assert {:ok, 204, ""} =
+               Sentinel.ingest(dcr, "Custom-Logs", [
+                 %{"msg" => "a", "eventId" => "my-explicit-id-42"},
+                 %{"msg" => "b", "eventId" => 77}
+               ], "2023-01-01")
+
+      rows = Store.list_prefix(:smalt_sentinel_rows, "#{dcr}/Custom-Logs/")
+
+      assert %{"eventId" => "my-explicit-id-42"} = Enum.find(rows, &(&1["msg"] == "a"))
+      assert %{"eventId" => "77"} = Enum.find(rows, &(&1["msg"] == "b"))
+    end
+
+    test "Purview lineage orientation is symmetric: either endpoint yields the same relations" do
+      u = "sym-u-#{System.unique_integer([:positive])}"
+      v = "sym-v-#{System.unique_integer([:positive])}"
+
+      for id <- [u, v] do
+        Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table"})
+      end
+
+      rid = "r-sym-#{System.unique_integer([:positive])}"
+      Purview.put_edge(u, v, "process", %{"relationshipId" => rid})
+
+      assert {:ok, 200, from_u} = Purview.lineage(u, "both", 1)
+      assert {:ok, 200, from_v} = Purview.lineage(v, "both", 1)
+
+      assert [%{"relationshipId" => ^rid, "fromEntityId" => ^u, "toEntityId" => ^v}] =
+               from_u["relations"]
+
+      assert [%{"relationshipId" => ^rid, "fromEntityId" => ^u, "toEntityId" => ^v}] =
+               from_v["relations"]
+    end
+
+    test "ResourceGraph: an explicit $skipToken takes precedence over $skip" do
+      sub = "prec-sub-#{System.unique_integer([:positive])}"
+
+      for i <- 1..9 do
+        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{
+          "id" => "/subscriptions/#{sub}/r#{i}",
+          "name" => "r#{i}"
+        })
+      end
+
+      {:ok, 200, page1} = ResourceGraph.query([sub], %{"options" => %{"$top" => 3}}, "2022-10-01")
+      token = page1["$skipToken"]
+
+      # $skip=0 would restart from the top; the token must win for the offset
+      # (real API: continuation semantics override a bare skip). The token
+      # carries offset+subscriptions only — $top is re-supplied by the caller.
+      {:ok, 200, page2} =
+        ResourceGraph.query(
+          [sub],
+          %{"options" => %{"$skip" => 0, "$skipToken" => token, "$top" => 3}},
+          "2022-10-01"
+        )
+
+      assert page2["count"] == 3
+      assert page2["totalRecords"] == 9
+
+      names = page2["data"] |> Enum.map(& &1["name"]) |> Enum.sort()
+      assert names == ["r4", "r5", "r6"]
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 5: EventStream duplicate-id semantics, Purview depth frontier.
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 cycle 5" do
+    test "EventStream republish with the same id overwrites by topic/id key (pinned divergence)" do
+      topic = "dup-topic-#{System.unique_integer([:positive])}"
+      ev = %{"specversion" => "1.0", "source" => "/dup", "type" => "com.smalt.dup", "id" => "fixed-id", "v" => 1}
+
+      assert {:ok, "fixed-id"} = Smalt.Messaging.EventStream.publish(topic, ev)
+      assert {:ok, "fixed-id"} = Smalt.Messaging.EventStream.publish(topic, %{ev | "v" => 2})
+
+      events = Smalt.Messaging.EventStream.list_events(topic)
+      # Pinned divergence: real Event Grid dedups duplicate ids within its
+      # dedup window; the emulator keeps one row per id, last write wins.
+      assert length(events) == 1
+      assert [only] = events
+      assert only["v"] == 2
+    end
+
+    test "EventStream same id on a DIFFERENT topic is a separate row (key scoping)" do
+      t1 = "scope1-#{System.unique_integer([:positive])}"
+      t2 = "scope2-#{System.unique_integer([:positive])}"
+      ev = %{"specversion" => "1.0", "source" => "/s", "type" => "t", "id" => "shared"}
+
+      assert {:ok, "shared"} = Smalt.Messaging.EventStream.publish(t1, ev)
+      assert {:ok, "shared"} = Smalt.Messaging.EventStream.publish(t2, ev)
+
+      assert [ev1] = Smalt.Messaging.EventStream.list_events(t1)
+      assert [ev2] = Smalt.Messaging.EventStream.list_events(t2)
+      assert ev1["topic"] == t1 and ev2["topic"] == t2
+    end
+
+    test "Purview lineage depth is frontier-additive across a mixed both-direction graph" do
+      a = "mix-a-#{System.unique_integer([:positive])}"
+      b = "mix-b-#{System.unique_integer([:positive])}"
+      c = "mix-c-#{System.unique_integer([:positive])}"
+      x = "mix-x-#{System.unique_integer([:positive])}"
+
+      for id <- [a, b, c, x] do
+        Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table"})
+      end
+
+      # a -> b -> c (output side) and x -> a (input side)
+      Purview.put_edge(a, b, "process", %{"relationshipId" => "e-ab"})
+      Purview.put_edge(b, c, "process", %{"relationshipId" => "e-bc"})
+      Purview.put_edge(x, a, "process", %{"relationshipId" => "e-xa"})
+
+      {:ok, 200, d1} = Purview.lineage(a, "both", 1)
+      {:ok, 200, d2} = Purview.lineage(a, "both", 2)
+
+      assert MapSet.new(Enum.map(d1["relations"], & &1["relationshipId"])) ==
+               MapSet.new(["e-ab", "e-xa"])
+
+      assert "e-bc" in Enum.map(d2["relations"], & &1["relationshipId"])
+      assert map_size(d2["guidEntityMap"]) == 4
+    end
+  end
+  # ---------------------------------------------------------------------------
+  # Lens-2 cycle 7: one-flip coordinator pivots — flagged fix-shape proofs for
+  # the two remaining pinned divergences (strict-DCR already fenced cycle 1).
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 cycle 7 option-preserving skipToken fence" do
+    test "default: continuation ignores stored options (offset+subscriptions only)" do
+      sub = "opt-d-#{System.unique_integer([:positive])}"
+
+      for i <- 1..9 do
+        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{"id" => "/subscriptions/#{sub}/r#{i}", "name" => "r#{i}"})
+      end
+
+      {:ok, 200, page1} = ResourceGraph.query([sub], %{"options" => %{"$top" => 3}}, "2022-10-01")
+      token = page1["$skipToken"]
+
+      # No $top re-supplied: default page = everything remaining (6).
+      {:ok, 200, page2} = ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+      assert page2["count"] == 6
+    end
+
+    test "enforced: continuation falls back to the stored $top (real-API shape)" do
+      sub = "opt-e-#{System.unique_integer([:positive])}"
+
+      for i <- 1..9 do
+        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{"id" => "/subscriptions/#{sub}/r#{i}", "name" => "r#{i}"})
+      end
+
+      {:ok, 200, page1} = ResourceGraph.query([sub], %{"options" => %{"$top" => 3}}, "2022-10-01")
+      token = page1["$skipToken"]
+
+      Application.put_env(:smalt, :rg_token_preserve_options, true)
+
+      try do
+        # Explicit options still win over stored ones.
+        {:ok, 200, p2a} =
+          ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token, "$top" => 2}}, "2022-10-01")
+
+        assert p2a["count"] == 2
+        assert Enum.map(p2a["data"], & &1["name"]) |> Enum.sort() == ["r4", "r5"]
+
+        # Omitted $top falls back to the stored value (3).
+        {:ok, 200, p2b} = ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+        assert p2b["count"] == 3
+        assert Enum.map(p2b["data"], & &1["name"]) |> Enum.sort() == ["r4", "r5", "r6"]
+      after
+        Application.delete_env(:smalt, :rg_token_preserve_options)
+      end
+    end
+  end
+
+  describe "lens-2 cycle 7 EventStream id-dedup fence" do
+    test "default: same-id republish overwrites (documented divergence)" do
+      topic = "dedup-d-#{System.unique_integer([:positive])}"
+      ev = %{"specversion" => "1.0", "source" => "/s", "type" => "t", "id" => "same", "v" => 1}
+
+      assert {:ok, "same"} = Smalt.Messaging.EventStream.publish(topic, ev)
+      assert {:ok, "same"} = Smalt.Messaging.EventStream.publish(topic, %{ev | "v" => 2})
+      assert [%{"v" => 2}] = Smalt.Messaging.EventStream.list_events(topic)
+    end
+
+    test "enforced: same-id republish is refused with a typed error, first write preserved" do
+      topic = "dedup-e-#{System.unique_integer([:positive])}"
+      ev = %{"specversion" => "1.0", "source" => "/s", "type" => "t", "id" => "same", "v" => 1}
+
+      Application.put_env(:smalt, :event_stream_dedup_ids, true)
+
+      try do
+        assert {:ok, "same"} = Smalt.Messaging.EventStream.publish(topic, ev)
+        assert {:error, :duplicate_id} = Smalt.Messaging.EventStream.publish(topic, %{ev | "v" => 2})
+
+        # First write intact, last-write-wins defeated.
+        assert [%{"v" => 1}] = Smalt.Messaging.EventStream.list_events(topic)
+
+        # A distinct id still publishes normally under the fence.
+        assert {:ok, _} = Smalt.Messaging.EventStream.publish(topic, %{ev | "id" => "other"})
+
+        # publish_many halts at the duplicate (partial insert semantics
+        # documented in cycle 5: earlier events remain stored).
+        assert {:error, :duplicate_id} =
+                 Smalt.Messaging.EventStream.publish_many(topic, [%{ev | "id" => "ok3"}, %{ev | "id" => "same"}])
+
+        # Generated ids (no explicit id) never collide.
+        assert {:ok, _} = Smalt.Messaging.EventStream.publish(topic, %{ev | "id" => nil})
+      after
+        Application.delete_env(:smalt, :event_stream_dedup_ids)
+      end
+    end
   end
 end

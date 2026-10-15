@@ -251,7 +251,93 @@ defmodule Smalt.ArmErrorCorpusTest do
            ]
   end
 
+  # -- Wire-court shape-consistency (xaas prior-art import, lens-5 cycle 2) -----
+  # The router has THREE distinct envelope emit paths — send_arm_error/5,
+  # send_graphlaw_refusal/2 and the inline throttled/1 (429) — and the wire
+  # must not distinguish them by shape (xaas wire-parity §4.6 pattern): every
+  # refusal is a map-shaped `error` with string code + message and the ARM
+  # present-but-empty innererror, target present IFF the refusal is a GraphLaw
+  # one. One court, three sources, one shape.
+  describe "envelope shape-consistency across emit paths" do
+    test "send_arm_error, send_graphlaw_refusal and inline 429 emit one consistent envelope shape" do
+      arm_error =
+        conn(:get, "/definitely/not/a/route")
+        |> Router.call(@opts)
+
+      graphlaw =
+        conn(
+          :put,
+          "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Fake/things/thing-1?api-version=2021-04-01",
+          %{"location" => "smalt-local"}
+        )
+        |> Router.call(@opts)
+
+      # Deterministic 429: seed the current window at its limit via the prior
+      # window's key, then spend it (same scoping as the gateway throttle test:
+      # fresh-window wait + seed + cleanup, so no stray 429 leaks to adjacent
+      # suites in the same run).
+      throttled =
+        try do
+          Application.put_env(:smalt, :arm_rate_limit, 3)
+          wait_for_fresh_window()
+
+          now = div(System.system_time(:millisecond), 1000)
+
+          :ets.insert(
+            Router.rate_table_for_test(),
+            {{:smalt_arm_rate, now - 1}, 99}
+          )
+
+          1..4
+          |> Enum.reduce(nil, fn _, _ ->
+            conn(:get, "/subscriptions/sub-1?api-version=2021-04-01") |> Router.call(@opts)
+          end)
+        after
+          Application.put_env(:smalt, :arm_rate_limit, nil)
+          :ets.delete_all_objects(:smalt_arm_rate)
+        end
+
+      assert arm_error.status == 404
+      assert graphlaw.status == 400
+      assert throttled.status == 429
+
+      envelope = fn c ->
+        Jason.decode!(c.resp_body)["error"]
+      end
+
+      for {conn, kind} <- [{arm_error, :arm}, {graphlaw, :graphlaw}, {throttled, :throttle}] do
+        err = envelope.(conn)
+
+        assert is_map(err), "envelope from #{kind} is not a map"
+
+        assert is_binary(err["code"]) and is_binary(err["message"]),
+               "envelope from #{kind} lacks string code/message"
+
+        assert match?(%{}, err["innererror"]),
+               "envelope from #{kind} lacks the present-but-empty innererror"
+
+        # HTTP-layer consistency: every refusal is JSON.
+        assert Plug.Conn.get_resp_header(conn, "content-type") |> hd() |> String.starts_with?("application/json")
+      end
+
+      # target: a string whenever present (GraphLaw pins the enforcement
+      # target; the catch-all RouteNotFound pins the request path), and the
+      # throttle envelope carries none.
+      assert is_binary(envelope.(graphlaw)["target"])
+      assert is_binary(envelope.(arm_error)["target"])
+      refute Map.has_key?(envelope.(throttled), "target")
+    end
+  end
+
   # -- Helpers -------------------------------------------------------------------
+
+  defp wait_for_fresh_window do
+    now = div(System.system_time(:millisecond), 1000)
+
+    if System.system_time(:millisecond) - now * 1000 > 800 do
+      Process.sleep(300)
+    end
+  end
 
   defp poll_until_succeeded(path, attempts \\ 50)
 

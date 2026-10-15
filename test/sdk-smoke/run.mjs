@@ -49,8 +49,10 @@ async function main() {
   for (const port of [ARM_PORT, EGRESS_PORT, AMQP_PORT, ENFORCE_ARM_PORT, ENFORCE_EGRESS_PORT, ENFORCE_TLS_PORT]) {
     if (!(await checkFree(port))) {
       console.error(
-        `[sdk-smoke] port ${port} is occupied. Remediation: ` +
-        `lsof -ti tcp:${port} | xargs kill -9`,
+        `[sdk-smoke] port ${port} is occupied. Do NOT kill the holder (it may be ` +
+        `another lane's live substrate). Wait for it to exit, or rerun with a ` +
+        `private-port override from the range 39000-39999 ` +
+        `(docs/DEV_LOOP.md "Private port allocation").`,
       );
       process.exitCode = 3;
       return;

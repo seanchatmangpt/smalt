@@ -269,4 +269,103 @@ defmodule Smalt.Amqp.ManagementRpcTest do
       assert absent.correlation_id == nil
     end
   end
+
+  # ===========================================================================
+  # com.microsoft:update-disposition (real LockManager + QueueStore)
+  # ===========================================================================
+
+  describe "com.microsoft:update-disposition (real collaborators)" do
+    setup do
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      for table <- [:smalt_sb_queues, :smalt_sb_messages, :smalt_sb_locks] do
+        if :ets.info(table) != :undefined, do: :ets.delete_all_objects(table)
+      end
+
+      :ok
+    end
+
+    test "completed settles via raw 16-byte wire uuid token" do
+      queue = "ud-#{System.unique_integer([:positive])}"
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m1")
+      assert {:ok, %{seq: seq}, lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      raw = Smalt.Amqp.LockManager.token_to_raw(lock.lock_token)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:update-disposition",
+            body: %{"lock-tokens" => [{:uuid, raw}], "disposition-status" => "completed"},
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 200
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {queue, seq})
+    end
+
+    test "abandoned requeues with delivery_count increment (SDK redelivery parity)" do
+      queue = "ud-#{System.unique_integer([:positive])}"
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m1")
+      assert {:ok, %{seq: seq, delivery_count: dc0}, lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      raw = Smalt.Amqp.LockManager.token_to_raw(lock.lock_token)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:update-disposition",
+            body: %{"lock-tokens" => [{:uuid, raw}], "disposition-status" => "abandoned"},
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 200
+      assert {:ok, %{seq: ^seq, delivery_count: dc}, _} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      assert dc > dc0
+    end
+
+    test "suspended (dead-letter) with census-exact body keys settles to DLQ" do
+      queue = "ud-#{System.unique_integer([:positive])}"
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m1")
+      assert {:ok, %{seq: seq}, lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      raw = Smalt.Amqp.LockManager.token_to_raw(lock.lock_token)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:update-disposition",
+            body: %{
+              "lock-tokens" => {:array, [{:uuid, raw}]},
+              "disposition-status" => "suspended",
+              "deadletter-reason" => "COURT_REJECTED",
+              "deadletter-description" => "local-test"
+            },
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 200
+    end
+
+    test "410 MESSAGE_LOCK_LOST on unknown token" do
+      raw = :crypto.strong_rand_bytes(16)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:update-disposition",
+            body: %{"lock-tokens" => [{:uuid, raw}], "disposition-status" => "completed"},
+            queue: "ud-none"
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 410
+    end
+  end
 end

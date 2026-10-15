@@ -99,6 +99,32 @@ defmodule Smalt.Messaging.EventHubsTest do
       assert {:error, :conflict} = EventHubs.compare_and_swap(g, p, expect, %{"seq" => 9})
       assert {:ok, %{"checkpoint" => %{"seq" => 1}}} = EventHubs.reconcile(g, p)
     end
+
+    # The Store.compare_and_swap/4 path is the one normally taken; the
+    # serialized-server fallback is dead in ordinary runs (Store always
+    # loads). Fence the fallback semantics directly through EHServer.
+    test "serialized-server CAS fallback: exactly-one-winner semantics" do
+      alias Smalt.Messaging.EventHubs.Server, as: EHServer
+      g = "srv-cas-#{System.unique_integer([:positive])}"
+      p = part("srv-cas")
+      key = {g, p}
+
+      {:ok, _seq, _} = EventHubs.send_event(p, "seed")
+      expect = %{"seq" => 0, "offset" => 0, "etag" => 0}
+      new = %{"seq" => 1, "offset" => 1, "etag" => 1}
+
+      # Seed the zero checkpoint, as compare_and_swap/4 does before CAS.
+      EventHubs.ensure_tables()
+      :ets.insert(:smalt_eh_checkpoints, {key, expect})
+
+      results =
+        [1, 2, 3, 4]
+        |> Enum.map(fn _ -> Task.async(fn -> EHServer.transaction({:cas_claim_blind, key, expect, new}) end) end)
+        |> Task.await_many(10_000)
+
+      assert Enum.sort(results) == [:ok, {:error, :conflict}, {:error, :conflict}, {:error, :conflict}]
+      assert {:ok, %{"checkpoint" => %{"seq" => 1}}} = EventHubs.reconcile(g, p)
+    end
   end
 
   describe "reserve_processing lease" do
@@ -137,9 +163,82 @@ defmodule Smalt.Messaging.EventHubsTest do
                })
 
       {:ok, view} = EventHubs.reconcile(g, p)
-      assert view["seq"] == 3
       assert view["checkpoint"]["seq"] == 2
       refute Map.has_key?(view["checkpoint"], "claim")
+    end
+
+    # Lens-2 cycle 2: durability across sender-process churn — sender tasks
+    # exit after sending; a fresh reader process must still see every event,
+    # in strictly monotonic seq order, with broker truth intact.
+    test "events survive sender-process churn: fresh reader sees all events in seq order" do
+      p = part("churn")
+
+      tasks =
+        for t <- 1..8 do
+          Task.async(fn ->
+            for _i <- 1..10 do
+              {:ok, _seq, _ev} = EventHubs.send_event(p, {:t, t})
+            end
+
+            :ok
+          end)
+        end
+
+      for task <- tasks, do: assert :ok = Task.await(task, 10_000)
+
+      parent = self()
+
+      {:ok, reader} =
+        Task.start(fn ->
+          send(parent, {:seen, EventHubs.receive_events(p, 0, 100)})
+        end)
+
+      assert_receive {:seen, events}, 5_000
+      ref = Process.monitor(reader)
+      assert_receive {:DOWN, ^ref, :process, _, _}
+      assert length(events) == 80
+
+      seqs = Enum.map(events, & &1["seq"])
+      assert seqs == Enum.sort(Enum.uniq(seqs))
+
+      # Broker truth survives the churn.
+      {:ok, view} = EventHubs.reconcile("any-group", p)
+      assert view["seq"] == 80
+    end
+
+    test "live lease survives sweep; checkpoint CAS never moves broker-truth seq" do
+      p = part("lease")
+      g = "grp-#{System.unique_integer([:positive])}"
+
+      for _ <- 1..3, do: {:ok, _, _} = EventHubs.send_event(p, "b")
+
+      assert :ok = EventHubs.reserve_processing(g, p, self(), 60_000)
+
+      # A live claim is untouched by sweep, and excludes other owners while
+      # it holds (reconcile strips the claim field by contract; exclusivity is
+      # the observable).
+      EventHubs.sweep()
+      assert {:error, :conflict} = EventHubs.reserve_processing(g, p, :other_owner, 60_000)
+
+      # CAS the zero checkpoint to seq 3; broker truth was already 3 and must
+      # not move.
+      assert :ok =
+               EventHubs.compare_and_swap(
+                 g,
+                 p,
+                 %{"seq" => 0, "offset" => 0, "etag" => 0},
+                 %{"seq" => 3, "offset" => 3, "etag" => 3}
+               )
+
+      {:ok, view2} = EventHubs.reconcile(g, p)
+      assert view2["seq"] == 3
+      assert view2["checkpoint"]["seq"] == 3
+
+      # Advancing the broker seq does not move the checkpoint.
+      {:ok, 4, _} = EventHubs.send_event(p, "b2")
+      {:ok, view3} = EventHubs.reconcile(g, p)
+      assert view3["seq"] == 4
+      assert view3["checkpoint"]["seq"] == 3
     end
   end
 end

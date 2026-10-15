@@ -12,7 +12,7 @@ concurrent modules can never collide. Canonical helper:
 defp unique, do: inspect(make_ref()) |> String.replace(~r/[^0-9a-zA-Z]/, "")
 ```
 
-Reference implementation: `test/lro_test.exs:300` (`unique/0`).
+Reference implementation: `test/lro_test.exs:547` (`unique/0`).
 
 ## 2. Ephemeral / shifted ports
 
@@ -40,9 +40,9 @@ ownered exception — not a blanket skip. Re-enable a tier with
 | Tag | Meaning | Owner lane | Re-enable condition |
 |---|---|---|---|
 | `:amqp_wire` | Drives the real AMQP wire tier (real broker/listener on the AMQP port). Off by default so the plain `mix test` stays broker-independent. Carried by `test/compliance/c5_servicebus.exs` and the `test/amqp/` suites (`connection`, `management_rpc`, `pyamqp_parity`, `broker_facade`, `flow_credit` tests). | amqp wire tier | Broker available; run `mix test --include amqp_wire` |
-| `:arm_seam` | **VACUOUS as of 2026-10-15**: no test carries this tag; the exclusion entry excludes nothing. | arm gateway lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until then |
-| `:dp_seam` | **RESOLVED + VACUOUS as of 2026-10-15**: the re-enable condition landed (`Store.list_prefix/2` at `lib/smalt/store.ex:113`, used by `lib/smalt/data_plane/cosmos.ex:419,446`), no test carries the tag, and the cosmos fallback this row described is gone (If-Match replace is now one atomic `Store.compare_and_swap/4`). The exclusion entry excludes nothing. | data plane lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until then |
-| `:closed_shape_gap` | **VACUOUS as of 2026-10-15**: no test carries this tag; the exclusion entry excludes nothing. | orchestration lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until then |
+| `:arm_seam` | **VACUOUS as of 2026-10-15**: no test carries this tag; the exclusion entry excludes nothing. `GAP(vacuous-tag-arm-seam)` | arm gateway lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until the gap closes |
+| `:dp_seam` | **RESOLVED + VACUOUS as of 2026-10-15**: the re-enable condition landed (`Store.list_prefix/2` at `lib/smalt/store.ex:128`, used by `lib/smalt/data_plane/cosmos.ex:504,589`), no test carries the tag, and the cosmos fallback this row described is gone (If-Match replace is now one atomic `Store.compare_and_swap/4`). The exclusion entry excludes nothing. `GAP(vacuous-tag-dp-seam)` | data plane lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until the gap closes |
+| ~~`:closed_shape_gap`~~ | **RETIRED 2026-10-15**: the vacuous exclusion entry was deleted from `test/test_helper.exs` (store+graphlaw lane, cycle-6 receipt). No test carries this tag; re-introduce it only with a real named-gap test. | — | — |
 
 ## 4. Audit findings (re-audited 2026-10-15; 2026-10-14 snapshot superseded)
 

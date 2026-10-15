@@ -25,6 +25,8 @@ import threading
 import time
 import traceback
 
+import _substrate
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
 ARM_PORT = 9443
@@ -180,47 +182,17 @@ def wait_for_port(port, proc, timeout_s=90.0):
 
 
 def sweep_ports():
-    for port in (ARM_PORT, DATA_PORT, AMQP_PORT, 5673):
-        try:
-            out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                                 capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            out = ""
-        for pid in out.split():
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
+    _substrate.kill_substrate(None, ports=(ARM_PORT, DATA_PORT, AMQP_PORT, 5673))
 
 
 def kill_substrate(proc):
     if proc is None:
         return
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-    sweep_ports()
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, AMQP_PORT, 5673))
 
 
 def wait_port_free(port, timeout_s=15.0):
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < timeout_s:
-        try:
-            socket.create_connection((HOST, port), timeout=0.2).close()
-            # connect succeeded -> port is BUSY
-            time.sleep(0.05)
-        except OSError:
-            # connect failed -> port is FREE
-            return True
-    return False
+    return _substrate.wait_port_free(port, timeout_s=timeout_s)
 
 
 # ---------------------------------------------------------------------------

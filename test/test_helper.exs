@@ -17,8 +17,7 @@ ExUnit.configure(
   exclude: [
     :amqp_wire,
     :arm_seam,
-    :dp_seam,
-    :closed_shape_gap
+    :dp_seam
   ]
 )
 

@@ -402,7 +402,9 @@ defmodule KvTlsTest do
   end
 
   test "ARM routes still served by the same TLS twin (dispatch does not shadow ARM)", ctx do
-    {status, body} = https_with_retry(ctx, "GET", "/subscriptions", 5)
+    # arm-gateway lens cycle-7 landed the api-version gate on ARM verbs; the
+    # stale row predated it. Real Azure form: /subscriptions?api-version=...
+    {status, body} = https_with_retry(ctx, "GET", "/subscriptions?api-version=2021-04-01", 5)
     assert status == 200, "subscriptions returned #{status}: #{inspect(body)}"
     assert Jason.decode!(body)["value"]
   end

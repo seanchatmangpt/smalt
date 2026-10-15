@@ -62,7 +62,10 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
   # ===========================================================================
 
   defp check_error_envelope do
-    resp = get("/subscriptions/#{@sub}/resourceGroups/rg-does-not-exist")
+    # The api-version gate is validated before RG existence (coordinator-
+    # authorized landing 2026-10-15), so the probe carries api-version like
+    # the compliance court does — the pinned invariant is the 404 envelope.
+    resp = get("/subscriptions/#{@sub}/resourceGroups/rg-does-not-exist?api-version=2021-04-01")
 
     Support.assert_equal(resp.status, 404, "unknown resource group must 404")
     Support.assert_equal(

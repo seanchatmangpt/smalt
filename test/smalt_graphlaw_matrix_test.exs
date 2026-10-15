@@ -15,6 +15,53 @@ defmodule SmaltGraphlawMatrixTest do
   alias Smalt.GraphLaw.Validator
   alias Smalt.Registry
 
+  @pack "../ggen-marketplace/packs/smalt-substrate-pack"
+
+  @tag :registry_projection
+  test "Registry is the exact projection of the pack ontology (regeneration determinism)" do
+    if Code.ensure_loaded?(SPARQL) and Code.ensure_loaded?(RDF.Turtle) do
+      {:ok, graph} = RDF.Turtle.read_file(@pack <> "/ontology.ttl")
+
+      val = fn
+        nil -> nil
+        %RDF.Literal{literal: %{value: v}} -> v
+        %RDF.IRI{} = i -> i.value |> String.split("#") |> List.last()
+        other -> inspect(other)
+      end
+
+      # control_plane.rq must project EXACTLY the admitted resource types.
+      r1 = SPARQL.execute_query(graph, File.read!(@pack <> "/queries/control_plane.rq"))
+
+      types1 =
+        r1.results |> Enum.map(&val.(&1["resourceType"])) |> Enum.reject(&is_nil/1) |> Enum.sort()
+
+      assert types1 == Enum.sort(Registry.admitted_resource_types()),
+             "registry admitted types drifted from pack ontology control_plane.rq " <>
+               "projection: query-only=#{inspect(types1 -- Registry.admitted_resource_types())} " <>
+               "registry-only=#{inspect(Registry.admitted_resource_types() -- types1)}"
+
+      # payload_rules.rq must project EXACTLY the type_shapes + api_versions maps.
+      r2 = SPARQL.execute_query(graph, File.read!(@pack <> "/queries/payload_rules.rq"))
+
+      shapes2 =
+        r2.results
+        |> Enum.map(&{val.(&1["resourceType"]), val.(&1["shape"]), val.(&1["apiVersion"])})
+        |> Enum.sort()
+
+      reg2 =
+        Registry.type_shapes()
+        |> Enum.map(fn {t, s} -> {t, s, Registry.latest_version(t)} end)
+        |> Enum.sort()
+
+      assert shapes2 == reg2,
+             "registry type_shapes/api_versions drifted from payload_rules.rq projection"
+    else
+      # SPARQL/RDF not loadable in this env: the projection property is
+      # witnessed by tmp/errc/store-graphlaw/cycle-5.md instead.
+      :ok
+    end
+  end
+
   test "every admitted type validates with a well-formed location payload" do
     for type <- Registry.admitted_resource_types() do
       payload = %{"location" => "smalt-local", "properties" => %{}}

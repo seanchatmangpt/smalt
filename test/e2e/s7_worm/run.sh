@@ -31,7 +31,7 @@ LOG="$LOG_DIR/substrate.log"
 
 REUSE="${REUSE:-0}"
 if [ "$REUSE" -ne 1 ]; then
-  MIX_ENV=test mix run --no-halt >"$LOG" 2>&1 &
+  MIX_ENV=test SMALT_TEST_ARM_PORT=9443 SMALT_TEST_ARM_TLS_PORT=9444 SMALT_TEST_EGRESS_PORT=8443 SMALT_TEST_AMQP_PORT=5672 SMALT_TEST_EVENT_HUBS_PORT=5673 mix run --no-halt >"$LOG" 2>&1 &
   SUBSTRATE_PID=$!
   trap 'kill -9 $SUBSTRATE_PID 2>/dev/null' EXIT INT TERM
 

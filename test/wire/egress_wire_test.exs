@@ -113,7 +113,7 @@ defmodule Smalt.Wire.EgressWireTest do
   test "Key Vault: release without valid CVM attestation returns 403 over the wire", %{egress: port} do
     http_request(port, "POST", "/keys/wirekey/create",
       headers: [{"content-type", "application/json"}],
-      body: Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"any" => "policy"}})
+      body: Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"anyOf" => [%{"claim" => "x-ms-attestation-type", "equals" => "sevsnpvm"}]}})
     )
 
     resp =
@@ -148,7 +148,7 @@ defmodule Smalt.Wire.EgressWireTest do
 
     http_request(port, "POST", "/keys/wirekey2/create",
       headers: [{"content-type", "application/json"}],
-      body: Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"any" => "policy"}})
+      body: Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"anyOf" => [%{"claim" => "x-ms-attestation-type", "equals" => "sevsnpvm"}]}})
     )
 
     resp =

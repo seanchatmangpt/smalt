@@ -246,6 +246,50 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
     test "nested described round-trip" do
       roundtrip({:described, 0x13, {:described, 0x28, [1]}})
     end
+
+    # Lens-5 re-encode-stability finding: a string-form descriptor (str8 ctor
+    # in the descriptor slot) decoded to a plain binary — an undocumented term
+    # shape encode/1 cannot re-emit (re-encode minted a symbol, silently
+    # rewriting remote data). Spec §1.6: the descriptor is ulong or symbol.
+    @tag :amqp_wire
+    test "string-form described descriptor is refused, never mints a binary descriptor (lens-5)" do
+      # str8 descriptor + null value
+      assert {:error, {:bad_descriptor, "vbin-not-legal"}} =
+               PrimitiveCodec.decode(<<0x00, 0xA1, 14, "vbin-not-legal"::binary, 0x40>>)
+
+      # vbin8 descriptor likewise
+      assert {:error, {:bad_descriptor, <<1, 2, 3>>}} =
+               PrimitiveCodec.decode(<<0x00, 0xA0, 3, 1, 2, 3, 0x40>>)
+
+      # float descriptor likewise
+      assert {:error, {:bad_descriptor, _}} =
+               PrimitiveCodec.decode(<<0x00, 0x72, 0, 0, 0, 0, 0x40>>)
+
+      # integer/symbol descriptors still decode; list containers still fine
+      assert {:ok, {:described, 3, nil}, <<>>} = PrimitiveCodec.decode(<<0x00, 0x52, 3, 0x40>>)
+      assert {:ok, {:described, {:symbol, "s"}, nil}, <<>>} =
+               PrimitiveCodec.decode(<<0x00, 0xA3, 1, ?s, 0x40>>)
+    end
+  end
+
+  describe "falsy composite fields (lane-107 fence)" do
+    # Regression fence for the reported "encoder drops falsy fields" claim:
+    # a detach with handle 0 / closed false must carry explicit typed zero /
+    # boolean-false constructors in wire order — never dropped.
+    test "detach [handle=0, closed=false] byte-exact per spec §1.6" do
+      bin = IO.iodata_to_binary(PrimitiveCodec.encode({:described, 0x16, [0, false]}))
+
+      # described 0x00 | ulong 0x53 0x16 | list8 0xC0, size 4, count 2
+      # | uint0 0x43 | boolean 0x56 0x00
+      assert bin == <<0x00, 0x53, 0x16, 0xC0, 0x04, 0x02, 0x43, 0x56, 0x00>>
+      assert {:ok, {:described, 0x16, [0, false]}, <<>>} = PrimitiveCodec.decode(bin)
+    end
+
+    test "transfer [handle=0, delivery_id=0, settled=false] round-trips" do
+      body = [0, 0, false]
+      bin = IO.iodata_to_binary(PrimitiveCodec.encode({:described, 0x14, body}))
+      assert {:ok, {:described, 0x14, ^body}, <<>>} = PrimitiveCodec.decode(bin)
+    end
   end
 
   describe "decode_all" do
@@ -304,6 +348,18 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
       assert {:error, :truncated} = PrimitiveCodec.decode(<<0xC0, 10, 2, 0x52>>)
     end
 
+    test "declared element count exceeding the body errors, never a short list (cycle-5 fence)" do
+      # list8: size=4 (count byte + one 2-byte element), count declares 2,
+      # body holds only 1 element -> truncated, not a 1-element list.
+      assert {:error, :truncated} = PrimitiveCodec.decode(<<0xC0, 0x04, 0x02, 0x52, 0x07>>)
+      # same for list32
+      assert {:error, :truncated} =
+               PrimitiveCodec.decode(<<0xD0, 0, 0, 0, 4, 2, 0x52, 0x07>>)
+
+      # control: matching count decodes fully
+      assert {:ok, [7, 9], <<>>} = PrimitiveCodec.decode(<<0xC0, 0x05, 0x02, 0x52, 0x07, 0x52, 0x09>>)
+    end
+
     test "garbage constructor errors" do
       assert {:error, :invalid_constructor} = PrimitiveCodec.decode(<<0xFF>>)
       assert {:error, :truncated} = PrimitiveCodec.decode(<<>>)
@@ -323,6 +379,150 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
     test "descriptor-less described with wide ulong descriptor" do
       bin = IO.iodata_to_binary(PrimitiveCodec.encode({:described, 70_000, nil}))
       assert bin == <<0x00, 0x80, 0, 0, 0, 0, 0, 0x01, 0x11, 0x70, 0x40>>
+    end
+  end
+
+  describe "constructor table totality pin (lens-5)" do
+    # The decode dispatch table (decode_typed/2) is PINNED as a total function
+    # over the full 256-byte constructor space. Every byte is classified:
+    # recognized (decodes {:ok,_,_} for some body) or unrecognized (returns
+    # {:error, :invalid_constructor} for EVERY body).
+    @recognized_ctor_bytes [
+      # described
+      0x00,
+      # null 0x40, boolean T/F 0x41/0x42, uint0 0x43, ulong0 0x44, list0 0x45
+      0x40,
+      0x41,
+      0x42,
+      0x43,
+      0x44,
+      0x45,
+      # ubyte 0x50, byte 0x51, smalluint 0x52, smallulong 0x53, smallint 0x54,
+      # smalllong 0x55, boolean 0x56
+      0x50,
+      0x51,
+      0x52,
+      0x53,
+      0x54,
+      0x55,
+      0x56,
+      # ushort 0x60, short 0x61
+      0x60,
+      0x61,
+      # uint 0x70, int 0x71, float 0x72
+      0x70,
+      0x71,
+      0x72,
+      # ulong 0x80, long 0x81, double 0x82, timestamp 0x83
+      0x80,
+      0x81,
+      0x82,
+      0x83,
+      # uuid 0x98
+      0x98,
+      # vbin8/32, str8/32 (0xA2/0xB2 str-variants decode leniently)
+      0xA0,
+      0xA1,
+      0xA2,
+      0xA3,
+      0xB0,
+      0xB1,
+      0xB2,
+      0xB3,
+      # list8/list32, map8/map32
+      0xC0,
+      0xC1,
+      0xD0,
+      0xD1,
+      # array8/array32
+      0xE0,
+      0xF0
+    ]
+
+    @unrecognized_ctor_bytes Enum.to_list(0..255) -- @recognized_ctor_bytes
+
+    # A rich body corpus: fixed widths (1/2/4/8/16 bytes), variable-length
+    # prefixes, compound headers — enough for each recognized byte to have at
+    # least one body it decodes cleanly.
+    @bodies [
+      <<>>,
+      <<0x00>>,
+      <<0x00, 0x00>>,
+      <<0x00, 0x00, 0x00, 0x00>>,
+      <<0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>>,
+      <<0x00:: unsigned-size(128)>>,
+      <<0x00, 0x00, 0x00, 0x01>>,
+      <<0x00, 0x00, 0x00, 0x02, 0x41>>,
+      <<0x00, 0x00, 0x00, 0x04, 0x41, 0x41, 0x41, 0x41>>,
+      <<0x01, 0x01, 0x41>>,
+      <<0x02, 0x01, 0x41>>,
+      <<0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x41>>,
+      <<0x03, 0x02, 0x41, 0x41>>,
+      <<0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x02, 0x41, 0x41>>,
+      <<0x02, 0x01, 0x41>>,
+      <<0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x41>>,
+      <<0x53, 0x10, 0x40>>
+    ]
+
+    test "all 256 constructor bytes classified; unrecognized bytes never decode, never raise" do
+      assert length(@recognized_ctor_bytes) == 38
+
+      for ctor <- 0..255, body <- @bodies do
+        bin = <<ctor, body::binary>>
+
+        result =
+          try do
+            PrimitiveCodec.decode(bin)
+          rescue
+            e ->
+              flunk(
+                "ctor 0x#{Integer.to_string(ctor, 16)} raised on " <>
+                  Base.encode16(bin, case: :lower) <> ": " <> Exception.format(:error, e)
+              )
+          end
+
+        assert match?({:ok, _, _}, result) or match?({:error, _}, result),
+               "ctor 0x#{Integer.to_string(ctor, 16)} returned non-tagged #{inspect(result)}"
+
+        if ctor in @unrecognized_ctor_bytes do
+          assert result == {:error, :invalid_constructor},
+                 "unrecognized ctor 0x#{Integer.to_string(ctor, 16)} decoded #{inspect(result)} on " <>
+                   Base.encode16(bin, case: :lower)
+        end
+      end
+
+      # decode_all shares the same table: totality at both entry points.
+      for ctor <- 0..255 do
+        assert match?({:ok, _}, PrimitiveCodec.decode_all(<<ctor, 0x40>>)) or
+                 match?({:error, _}, PrimitiveCodec.decode_all(<<ctor, 0x40>>))
+      end
+    end
+
+    test "recognized set is behaviorally live: every recognized byte decodes some corpus body" do
+      for ctor <- @recognized_ctor_bytes do
+        decoded? =
+          Enum.any?(@bodies, fn body ->
+            match?({:ok, _, _}, PrimitiveCodec.decode(<<ctor, body::binary>>))
+          end)
+
+        assert decoded?,
+               "pinned-recognized ctor 0x#{Integer.to_string(ctor, 16)} decodes NO corpus body — " <>
+                 "table pin is stale"
+        end
+    end
+
+    test "unrecognized set equals the spec-unused constructor space (exhaustive)" do
+      # Spec §1.6 constructor space: every byte not in the recognized set is
+      # unused/reserved (including 0x73 char and 0x9x reserved — see receipt).
+      spec_unused =
+        Enum.to_list(0x01..0x3F) ++ Enum.to_list(0x46..0x4F) ++ Enum.to_list(0x57..0x5F) ++
+          Enum.to_list(0x62..0x6F) ++ [0x73] ++ Enum.to_list(0x74..0x7F) ++
+          Enum.to_list(0xB4..0xBF) ++
+          Enum.to_list(0x84..0x97) ++ Enum.to_list(0x99..0x9F) ++ Enum.to_list(0xA4..0xAF) ++
+          Enum.to_list(0xC2..0xCF) ++ Enum.to_list(0xD2..0xDF) ++ Enum.to_list(0xE1..0xEF) ++
+          Enum.to_list(0xF1..0xFF)
+
+      assert Enum.sort(@unrecognized_ctor_bytes) == Enum.sort(spec_unused)
     end
   end
 end

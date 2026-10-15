@@ -3,7 +3,7 @@
 Azure Blob Service REST conformance of smalt's blob surface, validated against
 the real Blob Service REST contract by live probes (curl over real sockets
 against a booted `Smalt.EgressRouter`) plus the wire fence tests in
-`test/compliance/c4_blob.exs` (14 tests, 0 failures, 2026-10-15).
+`test/compliance/c4_blob.exs` (29 tests, 0 failures, 2026-10-15 lens-6 re-measured; lens-5 added the F5 error-header court, blob lane added 3 same-window courts, lens-6 strengthened the container-PUT and 304 header pins).
 
 Subject: `~/smalt` @ working tree 2026-10-15. Probe receipts inline.
 
@@ -31,7 +31,7 @@ Subject: `~/smalt` @ working tree 2026-10-15. Probe receipts inline.
 | Blob GET (200/206/416) | CONFORMANT |
 | Blob GET conditional (304) | GAP |
 | Blob DELETE | PARTIAL (202 shape; no x-ms-delete-type-permanent) |
-| comp=immutabilityPolicy PUT | BUILD-BROKEN on wire (500) |
+| comp=immutabilityPolicy PUT | CONFORMANT (typed 400 on malformed; 200 + until on valid; fenced c4) |
 | comp=immutabilityPolicy GET | GAP (JSON, real = XML) |
 | comp=legalhold PUT/GET | PARTIAL |
 | Error envelope / code strings | PARTIAL |
@@ -76,13 +76,22 @@ Real: `PUT ?restype=container` → 201 with `ETag` and `Last-Modified` response
 headers and empty body. smalt (`egress_router.ex:683-689`) returns 201 with a
 JSON body (the account/container record) and NO ETag/Last-Modified headers.
 Live probe headers: `content-type: application/json`, no etag.
+RE-WITNESSED lens-5 cycle 2 (fresh live probe: 201, no etag, no
+last-modified, body `{"account":...,"immutable":true,...}`) — typed work
+order delivered: `tmp/errc/compliance-corpus-lens5/work-order-container-put-headers.md`.
 
 ### Container GET properties — CONFORMANT
 
 Real shape matched: 200 + `ETag`, `Last-Modified`, `x-ms-meta-*`,
-`x-ms-has-immutability-policy`, `x-ms-has-legal-hold`, `x-ms-request-id`,
-`x-ms-version` (`lib/smalt/data_plane/blob_service.ex:164-186`). Live probe
-confirmed all seven header families present. HEAD container mirrors it
+`x-ms-has-immutability-policy` (exact `false` bytes), `x-ms-has-legal-hold`
+(exact `false` bytes), `x-ms-request-id` (32-hex lowercase — FINDING F1,
+lens-2, re-confirmed open lens-3 cycle 1: data-plane lane has not landed the
+v4 unification on this surface;
+cycle 1: real Azure answers with an RFC 4122 v4 GUID; `BlobStorage.request_id/0`
+at blob_storage.ex:731 emits 32-hex while the ARM gateway and LA surface emit
+v4 GUIDs — data-plane lane owns the fix; fenced at current bytes so any drift
+is caught), `x-ms-version` (`lib/smalt/data_plane/blob_service.ex:164-186`).
+Live probe confirmed all seven header families present. HEAD container mirrors it
 (egress_router.ex:899-922). Deviation: real `Last-Modified` is RFC 1123
 (`Thu, 15 Oct 2026 04:50:47 GMT`); smalt emits ISO8601
 (`2026-10-15T04:50:47.213Z`) — noted, not fenced.
@@ -155,25 +164,29 @@ caller). Live probe: GET with matching If-None-Match → **200** (real: 304).
 202 + `x-ms-request-id` + `x-ms-version` on success
 (`blob_storage.ex:111-112`); 404 `BlobNotFound` exact code string; 409
 `ContainerLocked` on WORM block. Real Delete Blob also emits
-`x-ms-delete-type-permanent` — smalt does not.
+`x-ms-delete-type-permanent` — smalt does not. **FINDING F5 (lens-3 cycle 4)
+— CLOSED (lens-5 cycle 1): `blob_error/3` LANDED at egress_router.ex:1605
+(x-ms-request-id via `generate_request_id/0` v4 GUID + x-ms-version
+"2021-12-02" over shared `send_json`), all blob error render sites routed
+through it; the error-header court is fenced in c4_blob.exs and the
+dropped-header mutant was KILLED (lens-5 cycle 1, 2 failures). Note: the
+error-path request-id is a v4 GUID while success-path ids are 32-hex
+(F1 domain — divergence fenced at current bytes, not papered over).**
 
-### comp=immutabilityPolicy PUT — BUILD-BROKEN (wire)
+### comp=immutabilityPolicy PUT — CONFORMANT (re-graded 2026-10-15; was BUILD-BROKEN 500)
 
-The wire path 500s. Two stacked defects, probe-witnessed twice:
+The wire path was rewritten (`immutability_policy_from_wire/1`, BodyCache raw
+reader, typed 400 `InvalidXmlOrJson` on malformed bodies instead of the old
+FunctionClauseError 500). Re-probed this cycle (c4 court, fresh run):
+valid JSON policy → 200 + `x-ms-has-immutability-policy: true` +
+`immutability-policy-until` header; empty body → 200 with NO until header;
+malformed body → 400 `InvalidXmlOrJson`. All three legs fenced in
+test/compliance/c4_blob.exs (immutabilityPolicy PUT tests), 18/0 green.
+The historical defect record below is superseded (kept for replay).
 
-1. `Plug.Parsers` consumes the JSON policy body before
-   `read_body` in the route (egress_router.ex:655), so `policy_from_wire/1`
-   (egress_router.ex:1409-1425) parses `""` → empty policy — the caller's
-   requested period/lock is never applied.
-2. With an empty policy, `until` is nil and `set_immutability_policy/5`
-   returns `"immutability-policy-until" => nil` (blob_storage.ex:155); the
-   router's `put_resp_header(conn, "immutability-policy-until", nil)`
-   (egress_router.ex:660-663) raises FunctionClauseError → 500.
-
-Probe: `PUT ?comp=immutabilityPolicy` (JSON body) → **500** (connection closed,
-empty response) for both set and lock attempts. The engine-level
-`BlobStorage.set_immutability_policy/5` (blob_storage.ex:127-165) is fine; the
-wire parse + nil-header serialization is broken.
+_Historic (fixed):_ `Plug.Parsers` consumed the JSON body before `read_body`,
+so `policy_from_wire/1` parsed `""` → empty policy; with `until` nil the
+`put_resp_header(..., nil)` raised FunctionClauseError → 500.
 
 ### comp=immutabilityPolicy GET — GAP
 
@@ -232,5 +245,5 @@ GET byte-exact round-trip + ETag, 206/416 range semantics, 404 BlobNotFound,
 DELETE 202 shape, If-Match 412 + matched 201, WORM 409 ContainerLocked,
 legal hold header contract, pagination NextMarker.
 
-Result: `mix test test/compliance/c4_blob.exs` → **14 tests, 0 failures**
-(2026-10-15).
+Result: `mix test test/compliance/c4_blob.exs` → **29 tests, 0 failures** (lens-6 re-measured)
+(2026-10-15, lens-4 re-measured).

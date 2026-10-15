@@ -18,7 +18,7 @@ config :smalt, :auth_mode, :anonymous
 # boots on free ports. Runtime `Application.put_env` still wins over config
 # (chaos + wire tiers rely on that), and per-port env overrides are honoured:
 #   SMALT_TEST_ARM_PORT / SMALT_TEST_ARM_TLS_PORT / SMALT_TEST_EGRESS_PORT /
-#   SMALT_TEST_AMQP_PORT / SMALT_TEST_EVENT_HUBS_PORT
+#   SMALT_TEST_AMQP_PORT / SMALT_TEST_EVENT_HUBS_PORT / SMALT_TEST_MCP_PORT
 # ---------------------------------------------------------------------------
 free_port = fn ->
   case :gen_tcp.listen(0, [:binary, active: false]) do
@@ -50,3 +50,6 @@ config :smalt,
   # MCP tool surface (lane I15): fixed 9545 default collided across
   # concurrent test runs — same ephemeral-probe contract as the others.
   mcp_port: test_port.("MCP", 9545)
+
+# lens-7 rehearsal: flip
+config :smalt, ledger_enforce_existence: true

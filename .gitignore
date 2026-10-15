@@ -78,3 +78,6 @@ test/terraform_fixture/.terraform*/
 node_modules/
 test/sdk-full/node_modules/
 
+
+# Mutation-probe leftovers (sed/python probe scratch)
+*.mut

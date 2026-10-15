@@ -19,7 +19,7 @@ defmodule Smalt.RuntimeContracts do
   `docs/PACK_INTEGRATION/runtime-contracts.md`).
   """
 
-  alias Smalt.RuntimeContracts.{AmqpDialect, ArmEnvelope, CosmosHeader, Support}
+  alias Smalt.RuntimeContracts.{AmqpDialect, ArmEnvelope, CosmosHeader, PurviewAtlas, ResourceGraphQuery, SentinelIngest, Support}
 
   @typedoc "Full verdict map from `verify/0`."
   @type verdict :: %{
@@ -31,7 +31,7 @@ defmodule Smalt.RuntimeContracts do
           failure_count: non_neg_integer()
         }
 
-  @wired [ArmEnvelope, CosmosHeader, AmqpDialect]
+  @wired [ArmEnvelope, CosmosHeader, AmqpDialect, SentinelIngest, ResourceGraphQuery, PurviewAtlas]
 
   @doc "Wired contract modules (revops structural factory output)."
   @spec contracts() :: [module()]
@@ -41,14 +41,81 @@ defmodule Smalt.RuntimeContracts do
   @spec verify() :: verdict()
   def verify, do: verify(contracts())
 
-  @doc "Runs the given contract modules (injection point for mutation courts)."
-  @spec verify([module()]) :: verdict()
+  @doc """
+  Runs the given contract entries (injection point for mutation courts).
+  Accepts any term: a non-module entry, a module without check/0, a crashing
+  check/0, a malformed verdict, or a duplicate gate id each yield a typed
+  registry failure (`:contract_not_loaded`, `:contract_crashed`,
+  `:contract_malformed_verdict`, `:contract_name_collision`) — never a crash
+  of the fan-out and never a silent shadow (fail closed).
+  """
+  @spec verify([term()]) :: verdict()
   def verify(contracts) when is_list(contracts) do
+    # Verdict-shape guard FIRST: a contract returning a malformed verdict
+    # (non-numeric checks, non-list failures, non-map failure entries,
+    # non-boolean pass) is coerced to a typed registry failure before any
+    # downstream aggregation or collision marking touches it. Running the
+    # collision append on the RAW verdict crashed verify/1 with an
+    # ArgumentError when a duplicate-id contract returned failures as a
+    # non-list (witnessed lens-3 cycle 2: `"oops" ++ [...]`).
     results =
-      Map.new(contracts, fn mod ->
-        result = run_contract(mod)
-        {result.name, result}
+      contracts
+      |> Enum.map(&(&1 |> run_contract() |> coerce_verdict()))
+      |> Enum.reduce(%{}, fn result, acc ->
+        # Name-collision guard: a later contract reusing an earlier gate id
+        # must FAIL the registry, never silently shadow it (lens-2 cycle 1).
+        # FIRST occurrence is kept in the map; each duplicate appends its
+        # collision marker to the survivor's failures, so neither the first
+        # contract's own typed failures nor the collision evidence is lost.
+        Map.update(acc, result.name, result, fn first ->
+          %{
+            first
+            | pass: false,
+              failures:
+                first.failures ++
+                  [
+                    %{
+                      check: :contract_name_collision,
+                      detail:
+                        "gate id #{inspect(result.name)} already used by an earlier contract in this verify run"
+                    }
+                  ]
+          }
+        end)
       end)
+
+    # Plane-typed guard: plane/0 returning a non-atom silently flowed into the
+    # planes map as a string-keyed group — violating the documented
+    # %{atom() => [atom()]} type — while the verdict still PASSED (witnessed
+    # lens 4: plane/0 -> "not-an-atom" gave pass=true, planes keyed by binary).
+    # The typed guard fails the registry instead: each malformed plane appends
+    # a contract_malformed_plane failure and the contract is grouped under the
+    # :contract_malformed_plane marker plane, never silently.
+    {results, plane_pairs} =
+      Enum.flat_map_reduce(results, [], fn {name, result}, acc ->
+        case plane_of(contracts, name) do
+          {:ok, plane} ->
+            {[{name, result}], [{name, plane} | acc]}
+
+          {:error, bad_plane} ->
+            {[{name,
+               %{
+                 result
+                 | pass: false,
+                   failures:
+                     result.failures ++
+                       [
+                         %{
+                           check: :contract_malformed_plane,
+                           detail:
+                             "plane/0 returned a non-atom (#{inspect(bad_plane)}); planes is typed %{atom() => [atom()]}"
+                         }
+                       ]
+             }}], [{name, :contract_malformed_plane} | acc]}
+        end
+      end)
+
+    results = Map.new(results)
 
     check_count = results |> Map.values() |> Enum.map(& &1.checks) |> Enum.sum()
 
@@ -58,30 +125,65 @@ defmodule Smalt.RuntimeContracts do
     %{
       pass: failure_count == 0 and map_size(results) > 0,
       contracts: results,
-      planes:
-        results
-        |> Map.new(fn {name, _result} ->
-          {name, plane_of(contracts, name)}
-        end)
-        |> group_planes(),
+      planes: group_planes(plane_pairs),
       contract_count: map_size(results),
       check_count: check_count,
       failure_count: failure_count
     }
   end
 
-  defp run_contract(mod) do
-    name = name_of(mod)
+  defp coerce_verdict(%{checks: checks, failures: failures} = result)
+       when is_number(checks) and checks >= 0 and is_list(failures) do
+    # lens-3 boundary: the verdict's own pass flag must be a real boolean and
+    # every failure entry a map with a check id — a string "pass" or a bare
+    # atom failure flows past a bare is_list guard and poisons the contracts
+    # map (non-map entries crash downstream .check readers; the contract-level
+    # pass stays true while the registry fails — inconsistent verdict).
+    if is_boolean(result.pass) and Enum.all?(failures, &valid_failure?/1) do
+      result
+    else
+      malformed_verdict(result)
+    end
+  end
+
+  defp coerce_verdict(result), do: malformed_verdict(result)
+
+  defp valid_failure?(%{check: check, detail: detail}) when is_atom(check) and is_binary(detail),
+    do: true
+
+  defp valid_failure?(_), do: false
+
+  defp malformed_verdict(result) do
+    %{
+      name: result.name,
+      pass: false,
+      checks: 0,
+      failures: [
+        %{
+          check: :contract_malformed_verdict,
+          detail:
+            "check/0 returned a malformed verdict (checks must be a non-negative number, failures a list of %{check: atom, detail: binary} maps, pass a boolean): #{inspect(result)}"
+        }
+      ]
+    }
+  end
+
+  defp run_contract(entry) do
+    name = name_of(entry)
+    mod = entry
 
     result =
-      if Code.ensure_loaded(mod) == {:module, mod} and function_exported?(mod, :check, 0) do
+      if is_atom(mod) and Code.ensure_loaded(mod) == {:module, mod} and
+           function_exported?(mod, :check, 0) do
         mod.check()
       else
         %{
           name: name,
           pass: false,
           checks: 0,
-          failures: [%{check: :contract_not_loaded, detail: "#{inspect(mod)} does not export check/0"}]
+          failures: [
+            %{check: :contract_not_loaded, detail: "#{inspect(mod)} does not export check/0"}
+          ]
         }
       end
 
@@ -89,32 +191,54 @@ defmodule Smalt.RuntimeContracts do
   catch
     kind, reason ->
       %{
-        name: name_of(mod),
+        name: name_of(entry),
         pass: false,
         checks: 0,
         failures: [%{check: :contract_crashed, detail: "#{kind}: #{inspect(reason)}"}]
       }
   end
 
-  defp name_of(mod) do
-    if Code.ensure_loaded(mod) == {:module, mod} and function_exported?(mod, :name, 0) do
-      mod.name()
+  defp name_of(entry) when is_atom(entry) do
+    if Code.ensure_loaded(entry) == {:module, entry} and function_exported?(entry, :name, 0) do
+      case entry.name() do
+        name when is_atom(name) -> name
+        other -> contract_name_guess(entry, other)
+      end
     else
-      contract_name_guess(mod)
+      contract_name_guess(entry)
     end
   rescue
-    _ -> contract_name_guess(mod)
+    _ -> contract_name_guess(entry)
   end
 
-  defp contract_name_guess(mod), do: mod |> Module.split() |> List.last() |> Macro.underscore() |> String.to_atom()
+  defp name_of(entry), do: contract_name_guess(entry, entry)
+
+  defp contract_name_guess(entry),
+    do: contract_name_guess(entry, entry)
+
+  defp contract_name_guess(entry, _bad_name) when is_atom(entry) do
+    entry
+    |> Module.split()
+    |> List.last()
+    |> Macro.underscore()
+    |> String.to_atom()
+  rescue
+    _ -> String.to_atom(inspect(entry))
+  end
+
+  defp contract_name_guess(entry, _bad_name), do: String.to_atom(inspect(entry))
 
   defp plane_of(contracts, name) do
     case Enum.find(contracts, &(&1.name() == name)) do
-      nil -> :unknown
-      mod -> mod.plane()
+      nil -> {:ok, :unknown}
+      mod ->
+        case mod.plane() do
+          plane when is_atom(plane) -> {:ok, plane}
+          other -> {:error, other}
+        end
     end
   rescue
-    _ -> :unknown
+    _ -> {:ok, :unknown}
   end
 
   defp group_planes(pairs) do

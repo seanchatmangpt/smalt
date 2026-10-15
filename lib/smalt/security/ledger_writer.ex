@@ -28,9 +28,10 @@ defmodule Smalt.Security.LedgerWriter do
   exist in this ledger.
   """
   @spec append(String.t(), map()) :: {:ok, map()} | {:error, 409, String.t()}
-  def append(ledger, contents) when is_binary(ledger) and is_map(contents) do
+  def append(ledger, contents, opts \\ [])
+      when is_binary(ledger) and is_map(contents) do
     ensure_started()
-    GenServer.call(__MODULE__, {:append, ledger, contents}, @call_timeout)
+    GenServer.call(__MODULE__, {:append, ledger, contents, opts}, @call_timeout)
   end
 
   ## GenServer
@@ -51,14 +52,64 @@ defmodule Smalt.Security.LedgerWriter do
   end
 
   @impl true
-  def handle_call({:append, ledger, contents}, _from, state) do
-    {:reply, do_append(ledger, contents), state}
+  def handle_call({:append, ledger, contents, opts}, _from, state) do
+    {:reply, do_append(ledger, contents, opts), state}
   end
 
   ## Internals
 
-  defp do_append(ledger, contents) do
-    data_hash = contents |> canonical() |> Jason.encode!() |> hash()
+  # The existence fence runs INSIDE the serialized critical section (lens-3):
+  # a caller-side check raced with the first successful append, so two
+  # concurrent cold-start appends could both be spuriously refused 404 (and
+  # the flag-flip blast radius was nondeterministic run to run). Behind the
+  # writer, first-writer-creates: exactly one of N concurrent cold-start
+  # appends succeeds, the rest see an existing ledger.
+  defp do_append(ledger, contents, opts) do
+    if opts[:enforce_existence] == true and not ledger_exists?(ledger) do
+      {:error, 404, "LedgerNotFound"}
+    else
+      do_append_locked(ledger, contents)
+    end
+  end
+
+  # A ledger "exists" when it has prior transaction state (latest receipt or a
+  # minted sequence counter) or an explicit creation marker.
+  defp ledger_exists?(ledger) do
+    match?({:ok, _}, Store.get(:smalt_ledger_meta, {:latest, ledger})) or
+      match?({:ok, n} when is_integer(n) and n > 0, Store.get(:smalt_ledger_meta, {:seq, ledger})) or
+      match?({:ok, _}, Store.get(:smalt_ledger_meta, {:created, ledger}))
+  end
+
+  defp do_append_locked(ledger, contents) do
+    # Commit-point law (lens-4): the encode is the FIRST state-touching step
+    # and the only step that can fail on caller-supplied data. A failure here
+    # must be a typed refusal — never an exception escaping the serialized
+    # writer (which would kill the writer for all writers) and never a burned
+    # counter (a later valid append of the same contents must be admitted).
+    case encode_contents(contents) do
+      {:ok, data_hash} -> do_append_valid(ledger, contents, data_hash)
+      :error -> {:error, 400, "InvalidBody"}
+    end
+  end
+
+  # Total: the canonicalization itself can raise on hostile key shapes (e.g.
+  # `to_string/1` on a tuple key — lens-5), not just the JSON encode, so the
+  # whole encode step is guarded. Any failure is the same typed 400 refusal:
+  # the writer never dies on caller-supplied data.
+  defp encode_contents(contents) do
+    {:ok, json} = safe_encode(contents)
+    {:ok, hash(json)}
+  rescue
+    _ -> :error
+  end
+
+  defp safe_encode(contents) do
+    contents
+    |> canonical()
+    |> Jason.encode()
+  end
+
+  defp do_append_valid(ledger, contents, data_hash) do
 
     # Atomic duplicate detection: first append leaves the counter at 1; any
     # later append of identical contents increments past it and is refused.

@@ -26,7 +26,7 @@ Entry point: `just` (no args) runs `court` — the full admission gate.
 | `census` | `bash scripts/sb_census_replay.sh` (Service Bus 8-probe census, real SDK) | 0 all pass / 1 census fail / 2 substrate never up / 3 harness failure | ~1-2m |
 | `mutation-court` | `python3 scripts/mutation_court.py` (validator-gate non-vacuity proof) | 0 non-vacuous / 1 vacuous / 2 BLOCKED (compile broken) | ~3-5m |
 | `tf-plan-smoke` | `bash scripts/tf_smoke.sh` (T4, terraform fixture plan) | 0 pass / 1 preflight or substrate failure / 2 terraform step failure / 77 SKIPPED-NETWORK (registry unreachable; court fails — rerun online) | <1m |
-| `bench` | `python3 scripts/bench.py` (boots substrate; writes `tmp/bench-receipt.json`) | 0 complete / nonzero fail | 2-5m |
+| `bench` | `python3 scripts/bench.py` (boots substrate; writes `tmp/bench-receipt.json`; fixed ports 9443/8443/5672 — if they are held, set `SMALT_BENCH_{ARM,DATA,AMQP}_PORT` to a port from the documented private range 39000-39999 (docs/DEV_LOOP.md "Private port allocation") or let bench auto-pick an ephemeral block; same functions, same receipt schema, chosen ports recorded in the receipt. Exit contract: 0 only when all 5 CTQ verdicts PASS; any FAIL → typed `GATE: FAIL (…)` + exit 1) | 0 complete + 5/5 CTQs / nonzero fail | 2-5m |
 | `bench-check` | `python3 scripts/bench_check.py` (CTQ gate over `tmp/bench-receipt.json`) | 0 all CTQs pass / 1 missing/stale/failing receipt | ~1s |
 | `soak` | `python3 scripts/stress/soak.py` (25 min mixed traffic at 50 rps) | 0 pass / nonzero on any 5xx, RSS growth >20% after min 5, or error | ~25m |
 | `spike` | `python3 scripts/stress/spike.py` (500-concurrent spike, recovery, TLS herd) | 0 pass / nonzero fail | 5-10m |

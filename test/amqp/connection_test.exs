@@ -207,7 +207,9 @@ defmodule Smalt.Amqp.ConnectionTest do
     assert tr.performative.performative == :transfer
     assert tr.performative.handle == 1
     assert is_integer(tr.performative.delivery_id)
-    assert is_binary(tr.performative.delivery_tag) and byte_size(tr.performative.delivery_tag) == 36
+    # raw 16-byte uuid lock token (rhea uuid_to_string on the client side)
+    tag = tr.performative.delivery_tag
+    assert {:uuid, <<_::128>>} = tag
     assert tr.performative.settled in [false, nil]
 
     delivery_id = tr.performative.delivery_id
@@ -293,6 +295,13 @@ defmodule Smalt.Amqp.ConnectionTest do
         client,
         enc_frame(:amqp, 0, {:attach, %{name: "l1", handle: 0, role: false, target: %{address: other_queue}}})
       )
+
+    # rhea (core-amqp) requires the broker attach echo BEFORE any detach
+    # (bare detach raises "Invalid handle N" client-side), so the refusal is
+    # attach echo first, then the typed error detach.
+    echo = recv_frame(client)
+    assert echo.performative.performative == :attach
+    assert echo.performative.handle == 0
 
     det = recv_frame(client)
     assert det.performative.performative == :detach
@@ -417,6 +426,105 @@ defmodule Smalt.Amqp.ConnectionTest do
   # ===========================================================================
   # Helpers
   # ===========================================================================
+
+  # ===========================================================================
+  # Session exclusivity (census exclusive-session probe parity)
+  # ===========================================================================
+
+  test "session receiver: lock grant, second accept refused, renew still extends", ctx do
+    client = ctx.client
+    queue = ctx.queue
+    sid = "s-" <> Integer.to_string(System.unique_integer([:positive]))
+    :ok = handshake(client)
+
+    # real store collaborator: enqueue one session message
+    assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m", session_id: sid)
+
+    # first session receiver (handle 1)
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:attach, %{
+          name: "r1",
+          handle: 1,
+          role: true,
+          source: %{address: queue, filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}}
+        }})
+      )
+
+    at1 = recv_until(client, :attach)
+    assert at1.performative.role == false
+    props = at1.performative.properties
+    ticks = props["com.microsoft:locked-until-utc"]
+    assert is_integer(ticks) and ticks > 630_000_000_000_000_000
+
+    # second accept on the same session id (handle 2): attach echo, then a
+    # typed session-cannot-be-locked detach. No detach may reach handle 1.
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:attach, %{
+          name: "r2",
+          handle: 2,
+          role: true,
+          source: %{address: ctx.queue, filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}}
+        }})
+      )
+
+    frames = recv_many(client, 2)
+    assert [%{performative: %{performative: :attach}}, %{performative: %{performative: :detach}} = det] = frames
+    assert det.performative.handle == 2
+    assert error_condition(det.performative.error) == "com.microsoft:session-cannot-be-locked"
+
+    # handle 1 stays open: renewing the session lock over $management still
+    # extends the expiry (census exclusiveSessionCase renew step).
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:attach, %{name: "mg1", handle: 3, role: true, source: %{address: queue <> "/$management"}}})
+      )
+
+    assert %{performative: %{performative: :attach}} = recv_frame(client)
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:attach, %{name: "mg2", handle: 4, role: false, target: %{address: queue <> "/$management"}}})
+      )
+
+    assert %{performative: %{performative: :attach}} = recv_frame(client)
+
+    body = %{"session-id" => sid}
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:transfer, %{handle: 3, delivery_id: 21, delivery_tag: <<>>, message_format: 0, settled: true, more: false},
+           {:sections, [
+             {:properties, %{correlation_id: "c1"}},
+             {:application_properties, %{"operation" => "com.microsoft:renew-session-lock", "associated-link-name" => "r1"}},
+             {:body_amqp_value, body}
+           ]}})
+      )
+
+    reply = recv_until(client, :transfer)
+    assert %{performative: %{performative: :transfer}} = reply
+
+    {:ok, sections} = FrameCodec.decode_message(reply.payload)
+    assert {:body_amqp_value, %{"expiration" => {:timestamp, exp_ms}}} =
+             Enum.find(sections, &match?({:body_amqp_value, _}, &1))
+
+    assert exp_ms > System.system_time(:millisecond)
+  end
+
+  defp recv_many(client, n, acc \\ [])
+
+  defp recv_many(_client, 0, acc), do: Enum.reverse(acc)
+
+  defp recv_many(client, n, acc) do
+    f = recv_frame(client)
+    recv_many(client, n - 1, [f | acc])
+  end
 
   defp enc_frame(layer, channel, performative), do: FrameCodec.encode_frame(layer, channel, performative)
 

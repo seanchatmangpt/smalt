@@ -236,7 +236,7 @@ defmodule Smalt.MetadataEndpointsTest do
             "token_endpoint" ->
               tok = request(scheme, port, "POST", uri.path,
                 headers: [{"content-type", "application/x-www-form-urlencoded"}],
-                body: "grant_type=client_credentials&client_id=metadata-fence"
+                body: "grant_type=client_credentials&client_id=metadata-fence&client_secret=metadata-secret"
               )
 
               assert tok.status == 200,
@@ -309,7 +309,7 @@ defmodule Smalt.MetadataEndpointsTest do
       resp =
         request(scheme, port, "POST", "/#{@tenant}/oauth2/v2.0/token",
           headers: [{"content-type", "application/x-www-form-urlencoded"}],
-          body: "grant_type=client_credentials&client_id=metadata-fence"
+          body: "grant_type=client_credentials&client_id=metadata-fence&client_secret=metadata-secret"
         )
 
       assert resp.status == 200, "#{scheme}: expected 200, got #{resp.status}"

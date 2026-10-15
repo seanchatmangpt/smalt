@@ -25,6 +25,8 @@ import os
 import random
 import signal
 import socket
+
+import _substrate
 import statistics
 import subprocess
 import sys
@@ -35,9 +37,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-ARM_PORT = 19443
-DATA_PORT = 18443
-ARM_TLS_PORT = 19444
+# Private block per docs/DEV_LOOP.md "Private port allocation" (2026-10-15
+# migration off the disowned sibling-adopted 15672/19443 block). Env-overridable.
+ARM_PORT = int(os.environ.get("SMALT_ARMSCALE_ARM_PORT", "39453"))
+DATA_PORT = int(os.environ.get("SMALT_ARMSCALE_EGRESS_PORT", "39455"))
+ARM_TLS_PORT = int(os.environ.get("SMALT_ARMSCALE_TLS_PORT", "39454"))
+AMQP_PORT = int(os.environ.get("SMALT_ARMSCALE_AMQP_PORT", "39456"))
+EVENT_HUBS_PORT = int(os.environ.get("SMALT_ARMSCALE_EVENT_HUBS_PORT", "39457"))
+MCP_PORT = int(os.environ.get("SMALT_ARMSCALE_MCP_PORT", "39458"))
 SUB_ID = "00000000-0000-0000-0000-000000000000"
 RG_API_VERSION = "2021-04-01"          # Microsoft.Resources/resourceGroups latest
 RES_TYPE = "Microsoft.EventGrid/topics"  # DefaultShape (needs only `location`), non-LRO
@@ -96,11 +103,12 @@ def spawn_substrate():
     # (same mechanism the SDK-smoke harness uses for shifted ports).
     return subprocess.Popen(
         ["mix", "run", "--no-start", "--no-halt", "--eval",
-         "Application.put_env(:smalt, :arm_port, 19443); "
-         "Application.put_env(:smalt, :arm_tls_port, 19444); "
-         "Application.put_env(:smalt, :egress_port, 18443); "
-         "Application.put_env(:smalt, :amqp_port, 15672); "
-         "Application.put_env(:smalt, :event_hubs_port, 15673); "
+         f"Application.put_env(:smalt, :arm_port, {ARM_PORT}); "
+         f"Application.put_env(:smalt, :arm_tls_port, {ARM_TLS_PORT}); "
+         f"Application.put_env(:smalt, :egress_port, {DATA_PORT}); "
+         f"Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); "
+         f"Application.put_env(:smalt, :event_hubs_port, {EVENT_HUBS_PORT}); "
+         f"Application.put_env(:smalt, :mcp_port, {MCP_PORT}); "
          "Application.ensure_all_started(:smalt)"],
         cwd=REPO,
         env=env,
@@ -112,51 +120,21 @@ def spawn_substrate():
 
 
 def wait_for_port(port, proc, timeout_s=120.0):
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                pass
-            return time.monotonic() - t0
-        except OSError:
-            time.sleep(0.02)
-    fail_closed(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.02)
 
 
 def kill_substrate(proc):
     if proc is None:
         return
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-    for port in (ARM_PORT, DATA_PORT, ARM_TLS_PORT, 15672, 15673):
-        try:
-            out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                                 capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            out = ""
-        for pid in out.split():
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, ARM_TLS_PORT,
+                                           AMQP_PORT, EVENT_HUBS_PORT, MCP_PORT))
 
 
 def beam_rss_kb():
     """Total RSS (KB) of every process holding/listening on the substrate ports."""
     pids = set()
-    for port in (ARM_PORT, DATA_PORT, ARM_TLS_PORT, 15672, 15673):
+    for port in (ARM_PORT, DATA_PORT, ARM_TLS_PORT, AMQP_PORT, EVENT_HUBS_PORT, MCP_PORT):
         try:
             out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
                                  capture_output=True, text=True, timeout=10).stdout
@@ -210,7 +188,11 @@ def _conn():
     return c
 
 
-def arm_request(method, path, body=None, headers=None, port=ARM_PORT):
+def arm_request(method, path, body=None, headers=None, port=None):
+    # port=None resolves to the module constant at CALL time: `port=ARM_PORT`
+    # binds at import (the mint_token trap class, lens-2 cycle 4).
+    if port is None:
+        port = ARM_PORT
     """One request on a per-thread persistent connection. Returns (status, bytes)."""
     c = _conn() if port == ARM_PORT else http.client.HTTPConnection(
         HOST, port, timeout=30)

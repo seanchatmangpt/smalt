@@ -36,7 +36,11 @@ defmodule Smalt.MixProject do
           "--query control_plane=../ggen-marketplace/packs/smalt-substrate-pack/queries/control_plane.rq " <>
           "--query payload_rules=../ggen-marketplace/packs/smalt-substrate-pack/queries/payload_rules.rq " <>
           "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex " <>
-          "--out lib/smalt/registry.ex --engine sparql"
+          "--out lib/smalt/registry.ex --engine sparql",
+        # Replay identity: the generated artifact must be canonical-formatted
+        # so `mix smalt.gen` replay is byte-identical (fenced by
+        # test/smalt_registry_replay_identity_test.exs).
+        "format lib/smalt/registry.ex"
       ]
     ]
   end

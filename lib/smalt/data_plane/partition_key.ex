@@ -13,10 +13,20 @@ defmodule Smalt.DataPlane.PartitionKey do
   @doc """
   Parses the `x-ms-documentdb-partitionkey` header value.
 
-  Accepts only a JSON array with exactly one non-empty string element:
+  Accepts a JSON array with exactly one element: a non-empty string, a
+  number, or a boolean (real Cosmos pk values are type-aware; numbers and
+  booleans are normalized with `to_string/1`, the same normalization
+  `extract/2` applies to non-binary doc values). A JSON `null` element is
+  NOT accepted (undefined-key semantics — pinned divergence):
 
       iex> parse(~s(["acme"]))
       {:ok, "acme"}
+
+      iex> parse(~s([7]))
+      {:ok, "7"}
+
+      iex> parse(~s([true]))
+      {:ok, "true"}
 
       iex> parse("[]")
       :error
@@ -25,6 +35,7 @@ defmodule Smalt.DataPlane.PartitionKey do
   def parse(value) do
     case Jason.decode(value) do
       {:ok, [single]} when is_binary(single) and single != "" -> {:ok, single}
+      {:ok, [single]} when is_number(single) or is_boolean(single) -> {:ok, to_string(single)}
       _ -> :error
     end
   rescue

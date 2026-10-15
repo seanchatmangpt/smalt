@@ -152,14 +152,21 @@ class DoctorFailClosedTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("injected-fault", r.stdout)
 
-    def test_passing_doctor_exits_0(self):
-        r = subprocess.run([sys.executable, str(doctor.__file__) if hasattr(doctor, "__file__")
-                            else "scripts/doctor.py"],
-                           capture_output=True, text=True, timeout=180,
-                           cwd=str(Path(__file__).resolve().parent.parent))
-        # The doctor exits 0 iff no check FAILed; assert the fail-closed contract
-        # symmetric: a green court must not exit nonzero.
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+    def test_all_pass_registry_exits_0(self):
+        # Symmetry half of the fail-closed contract: a court whose checks all
+        # pass must exit 0. Asserted through the real main() on a synthetic
+        # registry (ambient ports on a shared checkout are not repo health).
+        argv = sys.argv
+        registry = doctor.CHECK_REGISTRY
+        try:
+            sys.argv = ["doctor.py"]
+            doctor.CHECK_REGISTRY = [("always-pass", lambda: "ok", None)]
+            with self.assertRaises(SystemExit) as ctx:
+                doctor.main()
+            self.assertEqual(ctx.exception.code, 0)
+        finally:
+            sys.argv = argv
+            doctor.CHECK_REGISTRY = registry
 
 
 class V1ProjectionTest(unittest.TestCase):

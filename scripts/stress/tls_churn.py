@@ -15,7 +15,7 @@ Scenarios:
   5. plain-http new-connection rate comparison on the http ARM twin
 
 Usage (env, defaults shown):
-  SMALT_TLS_HOST=127.0.0.1 SMALT_TLS_PORT=19444 SMALT_HTTP_PORT=19443
+  SMALT_TLS_HOST=127.0.0.1 SMALT_TLS_PORT=39454 SMALT_HTTP_PORT=39453
   SMALT_TLS_CA=$REPO/.smalt/tls/ca-cert.pem
 """
 
@@ -28,9 +28,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 HOST = os.environ.get("SMALT_TLS_HOST", "127.0.0.1")
-TLS_PORT = int(os.environ.get("SMALT_TLS_PORT", "19444"))
-HTTP_PORT = int(os.environ.get("SMALT_HTTP_PORT", "19443"))
-REPO = os.environ.get("SMALT_REPO", "/Users/sac/smalt")
+TLS_PORT = int(os.environ.get("SMALT_TLS_PORT", "39454"))
+HTTP_PORT = int(os.environ.get("SMALT_HTTP_PORT", "39453"))
+REPO = os.environ.get(
+    "SMALT_REPO",
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+)
 CA = os.environ.get("SMALT_TLS_CA", os.path.join(REPO, ".smalt/tls/ca-cert.pem"))
 
 GET = (

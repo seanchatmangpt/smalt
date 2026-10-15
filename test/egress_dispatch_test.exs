@@ -61,6 +61,22 @@ defmodule EgressDispatchTest do
 
   test "ledger append/get/list/latest hits Smalt.Security.ConfidentialLedger" do
     if loaded?(Smalt.Security.ConfidentialLedger) do
+      # ledger_enforce_existence fence: pinned explicitly (the security
+      # suite's restore deletes the env, order-masking config/test.exs).
+      prior = Application.get_env(:smalt, :ledger_enforce_existence)
+      Application.put_env(:smalt, :ledger_enforce_existence, true)
+
+      # A cold append answers the typed 404-class envelope (dispatch fence
+      # for the ledger-writer lane's {:error, 400/404, code} tuples); an
+      # explicit creation marker then admits the append.
+      cold = call(:post, "/app/transactions", body: %{"data" => "a"})
+      assert cold.status == 404
+      assert Jason.decode!(cold.resp_body)["error"]["code"] == "LedgerNotFound"
+
+      Store.put(:smalt_ledger_meta, {:created, "default_ledger"}, true)
+      if prior == nil, do: Application.delete_env(:smalt, :ledger_enforce_existence),
+        else: Application.put_env(:smalt, :ledger_enforce_existence, prior)
+
       conn = call(:post, "/app/transactions", body: %{"data" => "a"})
 
       assert conn.status == 201
@@ -255,7 +271,289 @@ defmodule EgressDispatchTest do
       call(:post, "/keys/bogus-key/release", headers: [{"authorization", "Bearer not.a.jwt"}])
 
     assert conn.status == 403
+    assert Jason.decode!(conn.resp_body)["claim"] == nil
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "UnauthorizedAttestation"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 3 cycle 1 — fence ledger lens-3's validate_release_policy/1 landing:
+  # malformed release_policy bodies through POST /keys/:name/create must reach
+  # the wire as typed 400 InvalidParameter, never a 500. Also fences the
+  # blob_error/3 F5 helper (x-ms-request-id + x-ms-version on error responses).
+  # ---------------------------------------------------------------------------
+
+  test "KV create: release_policy as JSON scalar is a typed 400, never a 500" do
+    for scalar <- ["release", 7, true, []] do
+      conn =
+        call(:post, "/keys/pol-scalar/create",
+          body: %{"kty" => "RSA-HSM", "release_policy" => scalar}
+        )
+
+      assert conn.status == 400,
+             "release_policy #{inspect(scalar)} answered #{conn.status}: #{conn.resp_body}"
+
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidParameter"
+    end
+  end
+
+  test "KV create: policy map with no claim and no ops list is a typed 400" do
+    conn =
+      call(:post, "/keys/pol-empty/create",
+        body: %{"kty" => "RSA-HSM", "release_policy" => %{"version" => "1.0"}}
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidParameter"
+  end
+
+  test "KV create: allowed_operations list admits; nested claim admits" do
+    for policy <- [
+          %{"allowed_operations" => ["release", "export"]},
+          %{"allowedOperations" => ["release"]},
+          %{"anyOf" => [%{"claim" => "azure-compliant-cvm", "equals" => "true"}]}
+        ] do
+      conn =
+        call(:post, "/keys/pol-ok/create",
+          body: %{"kty" => "RSA-HSM", "release_policy" => policy}
+        )
+
+      assert conn.status == 200,
+             "policy #{inspect(policy)} answered #{conn.status}: #{conn.resp_body}"
+
+      assert Jason.decode!(conn.resp_body)["release_policy"] == policy
+      assert Jason.decode!(conn.resp_body)["attributes"]["exportable"] == true
+    end
+  end
+
+  test "KV create: nested non-claim policy structure is a typed 400" do
+    conn =
+      call(:post, "/keys/pol-nested/create",
+        body: %{
+          "kty" => "RSA-HSM",
+          "release_policy" => %{"anyOf" => [%{"version" => "1.0", "contentType" => "SKR"}]}
+        }
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidParameter"
+  end
+
+  test "KV create: nil release_policy stays admitted with exportable false" do
+    conn = call(:post, "/keys/pol-nil/create", body: %{"kty" => "oct-HSM"})
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+    assert body["release_policy"] == nil
+    assert body["attributes"]["exportable"] == false
+  end
+
+  test "KV create: non-list allowed_operations is a typed 400" do
+    conn =
+      call(:post, "/keys/pol-badops/create",
+        body: %{"kty" => "RSA-HSM", "release_policy" => %{"allowed_operations" => "release"}}
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidParameter"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 3 cycle 4 — registry sweep: unfenced dispatch seams (route table vs
+  # probe coverage across my three suites). Each gets a wire probe.
+  # ---------------------------------------------------------------------------
+
+  test "KV versions route dispatches to list_versions with typed 404" do
+    conn = call(:get, "/keys/no-such-key/versions")
+
+    assert conn.status == 404
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "KeyNotFound"
+    assert get_resp_header(conn, "x-ms-version") == ["2021-12-02"]
+  end
+
+  test "KV versions: created key lists under /keys/:name/versions" do
+    call(:post, "/keys/ver-key/create", body: %{"kty" => "oct-HSM"})
+    conn = call(:get, "/keys/ver-key/versions")
+
+    assert conn.status == 200
+    assert [%{"kid" => kid}] = Jason.decode!(conn.resp_body)["value"]
+    assert kid =~ "/keys/ver-key"
+
+    created = call(:get, "/keys/ver-key")
+    assert Jason.decode!(created.resp_body)["kid"] =~ "ver-key"
+  end
+
+  test "pkranges feed: first fetch 200 + etag, matching If-None-Match 304" do
+    conn = call(:get, "/dbs/db3/colls/c3/pkranges")
+
+    assert conn.status == 200
+    assert get_resp_header(conn, "etag") == ["\"smalt-pkranges-v1\""]
+    assert Jason.decode!(conn.resp_body)["_count"] == 1
+
+    conn304 = call(:get, "/dbs/db3/colls/c3/pkranges", headers: [{"if-none-match", "\"smalt-pkranges-v1\""}])
+    assert conn304.status == 304
+  end
+
+  test "atlas relationship: typed 400 when end1/end2 guids missing" do
+    conn = call(:post, "/atlas/v2/relationship", body: %{"relationship" => %{"typeName" => "x"}})
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "ATLAS-400-00-001"
+  end
+
+  test "atlas relationship: happy path mints a lineage edge (201, guid)" do
+    conn =
+      call(:post, "/atlas/v2/relationship",
+        body: %{
+          "relationship" => %{
+            "end1" => %{"guid" => "g-from"},
+            "end2" => %{"guid" => "g-to"},
+            "typeName" => "smalt_lineage"
+          }
+        }
+      )
+
+    assert conn.status == 201
+    %{"guid" => guid} = Jason.decode!(conn.resp_body)
+    assert is_binary(guid)
+
+    lineage = call(:get, "/atlas/v2/lineage/both/g-from")
+    assert lineage.status == 200
+  end
+
+  test "atlas entity/bulk dispatches (empty batch admits 201)" do
+    conn = call(:post, "/atlas/v2/entity/bulk", body: %{"entities" => []})
+
+    assert conn.status == 201
+    assert is_map(Jason.decode!(conn.resp_body))
+  end
+
+  test "blob delete: 404 BlobNotFound with F5 headers on unknown blob" do
+    conn =
+      call(:delete, "/dl/cont/blob-gone",
+        headers: [{"x-ms-version", "2021-12-02"}]
+      )
+
+    assert conn.status == 404
+    # Engine checks the container before the blob: with neither present the
+    # refusal names the container (measured, cycle 4).
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerNotFound"
+    assert get_resp_header(conn, "x-ms-version") == ["2021-12-02"]
+    [req_id] = get_resp_header(conn, "x-ms-request-id")
+    assert req_id =~ ~r/^[0-9a-f]{8}-/
+  end
+
+  test "HEAD container tolerates a partial container record (nil header value)" do
+    # Partial container record (no "last_modified" key): the engine's
+    # properties tuple carries "last-modified" => nil, which crashes
+    # Plug.Conn.put_resp_header without the dispatch nil-skip fence.
+    Store.put(:smalt_blob_containers, "ph/cont", %{"name" => "cont", "account" => "ph"})
+
+    conn = call(:head, "/ph/cont?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+    assert conn.status == 200
+  end
+
+  test "slash-named blob PUT with a parsed content-type stores the raw bytes" do
+    # The parse-exemption for raw blob PUTs must cover the multi-segment
+    # splat form too: with a json content-type, an exact-3-segment exemption
+    # lets Plug.Parsers consume the stream and the blob stores "" instead of
+    # the declared bytes (mutant M3 kill witness).
+    ver = [{"x-ms-version", "2021-12-02"}, {"content-type", "application/json"}]
+    call(:put, "/pc/cont?restype=container", headers: ver)
+
+    put = call(:put, "/pc/cont/w/1", body: "{\"stored\":\"verbatim\"}", headers: ver)
+    assert put.status == 201
+
+    get = call(:get, "/pc/cont/w/1", headers: ver)
+    assert get.resp_body == "{\"stored\":\"verbatim\"}"
+  end
+
+  test "blob HEAD container (restype=container): header-only properties" do
+    # Seed through the real engine (raw Store shape is an engine-internal
+    # contract; a raw seed went 404 under suite order while passing solo).
+    created =
+      call(:put, "/hc/cont?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+
+    assert created.status == 201
+
+    conn =
+      call(:head, "/hc/cont?restype=container",
+        headers: [{"x-ms-version", "2021-12-02"}]
+      )
+
+    assert conn.status == 200
+    assert conn.resp_body == ""
+
+    missing = call(:head, "/hc/nope?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+    assert missing.status == 404
+    # HEAD is header-only by HTTP semantics: no body to decode; the typed
+    # refusal is visible in the F5 headers instead.
+    assert get_resp_header(missing, "x-ms-version") == ["2021-12-02"]
+    [req_id] = get_resp_header(missing, "x-ms-request-id")
+    assert req_id =~ ~r/^[0-9a-f]{8}-/
+  end
+
+  test "slash-named blob (Azure virtual directory): PUT/GET/DELETE through the wire" do
+    ver = [{"x-ms-version", "2021-12-02"}]
+
+    # x-ms-immutable-policy: false — without it the router defaults the
+    # container to immutable and the delete below answers 409 ContainerLocked.
+    call(:put, "/vd/cont?restype=container",
+      headers: ver ++ [{"x-ms-immutable-policy", "false"}]
+    )
+
+    body = "vdir-payload"
+    put = call(:put, "/vd/cont/w/1", body: body, headers: ver)
+    assert put.status == 201, "PUT /vd/cont/w/1 answered #{put.status}: #{put.resp_body}"
+
+    get = call(:get, "/vd/cont/w/1", headers: ver)
+    assert get.status == 200
+    assert get.resp_body == body
+
+    head = call(:head, "/vd/cont/w/1", headers: ver)
+    assert head.status == 200
+    assert get_resp_header(head, "etag") != []
+
+    del = call(:delete, "/vd/cont/w/1", headers: ver)
+    assert del.status == 202
+
+    gone = call(:get, "/vd/cont/w/1", headers: ver)
+    assert gone.status == 404
+    assert Jason.decode!(gone.resp_body)["error"]["code"] == "BlobNotFound"
+  end
+
+  test "splat precedence: deep unknown path is blob-guard, literal prefixes unchanged" do
+    ver = [{"x-ms-version", "2021-12-02"}]
+
+    # Deep unknown path without x-ms-version: blob guard envelope (same class
+    # as flat blob paths), not the router 404.
+    guarded = call(:get, "/deep/unknown/path/here")
+    assert guarded.status == 400
+    assert Jason.decode!(guarded.resp_body)["error"]["code"] == "MissingXMsVersion"
+
+    # With x-ms-version the engine owns the refusal: container-level 404.
+    deep = call(:get, "/deep/unknown/path/here", headers: ver)
+    assert deep.status == 404
+    # get_blob_range reports the missing leaf as BlobNotFound (engine shape).
+    assert Jason.decode!(deep.resp_body)["error"]["code"] == "BlobNotFound"
+
+    # Literal prefixes still win over the splat at every depth.
+    for path <- ["/dbs", "/atlas/v2/entity/guid/g1", "/keys/k1", "/app/transactions"] do
+      c = call(:get, path, headers: ver)
+      refute c.status == 404 and Jason.decode!(c.resp_body)["error"]["code"] == "RouteNotFound",
+             "#{path} fell through to the catch-all 404"
+    end
+  end
+
+  test "KV create refusals carry x-ms-request-id and x-ms-version (blob_error F5 fence)" do
+    conn =
+      call(:post, "/keys/pol-hdr/create",
+        body: %{"kty" => "RSA-HSM", "release_policy" => "release"}
+      )
+
+    assert conn.status == 400
+    [req_id] = get_resp_header(conn, "x-ms-request-id")
+    assert req_id =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    assert get_resp_header(conn, "x-ms-version") == ["2021-12-02"]
   end
 
   # ---------------------------------------------------------------------------
@@ -292,7 +590,10 @@ defmodule EgressDispatchTest do
   end
 
   test "unknown route -> 404 with error map shape" do
-    conn = call(:get, "/definitely/not/a/route")
+    # Single-segment unknown path: multi-segment tails belong to the blob
+    # catch-all since the splat landing (this file, splat fence) — their
+    # no-header answer is the blob guard's 400, not the router 404.
+    conn = call(:get, "/definitely")
     assert conn.status == 404
 
     body = Jason.decode!(conn.resp_body)
@@ -336,6 +637,31 @@ defmodule EgressDispatchTest do
              "body #{inspect(raw)} answered #{conn.status}, expected 400"
 
       assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidBody"
+    end
+  end
+
+  test "body gate mutation: top-level JSON array body refused 400, nothing appended" do
+    for raw <- ["[1,2]", "[]", "[{\"k\":1}]"] do
+      before = ledger_append_probe()
+
+      conn =
+        call(:post, "/app/transactions", body: raw, headers: [{"content-type", "application/json"}])
+
+      assert conn.status == 400,
+             "body #{inspect(raw)} answered #{conn.status}, expected 400"
+
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidBody"
+
+      # the wrapper map must never reach the ledger engine as contents
+      assert ledger_append_probe() == before,
+             "array body #{inspect(raw)} mutated the ledger"
+    end
+  end
+
+  defp ledger_append_probe do
+    case Smalt.Security.ConfidentialLedger.get_latest("default_ledger") do
+      {:ok, %{"transactionId" => tx}} -> tx
+      :error -> :empty
     end
   end
 
@@ -386,6 +712,692 @@ defmodule EgressDispatchTest do
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "MissingXMsVersion"
   end
 
+  test "body gate mutation: events ingest with unparsed body refused 400, never 500" do
+    # Empty body + application/json leaves body_params as %Plug.Conn.Unfetched{}
+    # (pass: "*/*"). decode_events/1 used to MatchError on the read_body 2-tuple
+    # error shape; it must answer the 400 envelope instead.
+    conn =
+      call(:post, "/topics/t1/events", body: "", headers: [{"content-type", "application/json"}])
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidCloudEvent"
+  end
+
+  test "immutability policy with unparsed non-JSON body refused 400 InvalidXmlOrJson" do
+    conn =
+      call(:put, "/acct3/cont3?comp=immutabilityPolicy",
+        body: "not-json",
+        headers: [{"x-ms-version", "2021-12-02"}, {"content-type", "text/plain"}]
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidXmlOrJson"
+  end
+
+  test "raw blob PUT exemption: urlencoded content-type still stores raw bytes" do
+    # The parsers exemption (raw_blob_put?/1) keeps the stream unparsed for
+    # PUT /:account/:container/:blob without comp=; an urlencoded content-type
+    # must NOT swallow the body as form params — stored bytes must match exactly.
+    body = "a=1&b=two+words"
+
+    call(:put, "/acct4/cont4", headers: [{"x-ms-version", "2021-12-02"}])
+
+    conn =
+      call(:put, "/acct4/cont4/blob4",
+        body: body,
+        headers: [{"x-ms-version", "2021-12-02"}, {"content-type", "application/x-www-form-urlencoded"}]
+      )
+
+    assert conn.status == 201
+
+    conn = call(:get, "/acct4/cont4/blob4", headers: [{"x-ms-version", "2021-12-02"}])
+    assert conn.status == 200
+    assert conn.resp_body == body
+  end
+
+  test "route precedence fuzz: x-ms-version must not pull literal prefixes onto blob catch-alls" do
+    # With the blob guard satisfied (x-ms-version present), every literal
+    # service route must still answer as itself — never the blob catch-all,
+    # never a 500, never an empty 200.
+    checks = [
+      {:get, "/dbs", fn c ->
+         assert c.status == 200
+         assert is_map(Jason.decode!(c.resp_body))
+         # Blob list-containers would answer XML; Cosmos answers JSON.
+         refute String.contains?(c.resp_body, "<")
+       end},
+      {:get, "/keys", fn c ->
+         assert c.status == 200
+         assert is_map(Jason.decode!(c.resp_body))
+       end},
+      {:get, "/topics/lit-t1/events", fn c ->
+         assert c.status == 200
+         assert is_list(Jason.decode!(c.resp_body))
+       end},
+      {:get, "/app/transactions", fn c ->
+         assert c.status == 200
+         assert is_list(Jason.decode!(c.resp_body))
+       end},
+      {:get, "/atlas", fn c ->
+         # Unclaimed single segment: even with x-ms-version, no comp=list ->
+         # the guarded 404 envelope, never XML and never a 500.
+         assert c.status == 404
+         assert Jason.decode!(c.resp_body)["error"]["code"] == "RouteNotFound"
+       end},
+      {:get, "/atlas/v2/lineage/both/lit-guid", fn c ->
+         assert c.status in [200, 404]
+         assert is_map(Jason.decode!(c.resp_body))
+       end}
+    ]
+
+    for {method, path, assert_fn} <- checks do
+      conn = call(method, path, headers: [{"x-ms-version", "2021-12-02"}])
+      assert_fn.(conn)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # 8MB boundary fence (two-layer cap, measured 2026-10-15 over the real
+  # Bandit adapter): the router's read cap engages at the exact boundary byte
+  # — 8,000,001 -> 413 {"error":{"code":"RequestBodyTooLarge", "8,000,000-byte
+  # request body limit"}}. Beneath it the blob engine enforces a stricter
+  # 1,048,576-byte per-PUT limit, so a body inside the router cap can still be
+  # refused 413 by the engine (wire test pins that refusal shape). The
+  # Plug.Test adapter cannot represent "body length == :length" as :ok (it
+  # caps the chunk at :length and answers :more), so the exact-cap admission
+  # class is asserted over the real adapter only.
+  # ---------------------------------------------------------------------------
+
+  test "blob PUT 8MB boundary: 8_000_001 -> 413 RequestBodyTooLarge" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      hts = [{"x-ms-version", "2021-12-02"}]
+
+      conn = call(:put, "/bnd/c01", headers: hts)
+      assert conn.status == 201
+
+      conn =
+        call(:put, "/bnd/c01/edge1", body: String.duplicate("a", 8_000_001), headers: hts)
+
+      assert conn.status == 413
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "RequestBodyTooLarge"
+    end
+  end
+
+  test "blob PUT 8MB boundary over real Bandit: boundary byte 413, exact-cap refused by engine per-PUT limit" do
+    port = get_free_port()
+    stop_existing_tree()
+
+    children = [
+      Smalt.Store,
+      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
+    ]
+
+    {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one)
+
+    on_exit(fn ->
+      stop_tree(sup)
+      SmaltTest.Lifecycle.restore_app()
+    end)
+
+    hts = [{"x-ms-version", "2021-12-02"}]
+    base = "/wbnd/wc1"
+
+    resp = wire_request(port, "PUT", "#{base}", headers: hts)
+    assert resp.status == 201
+
+    # Exact cap: inside the router's read cap but above the engine's
+    # 1,048,576-byte per-PUT limit -> engine 413 RequestBodyTooLarge.
+    resp = wire_request(port, "PUT", "#{base}/edge", headers: hts, body: String.duplicate("a", 8_000_000))
+    assert resp.status == 413
+    assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
+    assert String.contains?(resp.body, "1,048,576")
+
+    # Boundary byte: router read cap -> router 413 envelope.
+    resp = wire_request(port, "PUT", "#{base}/edge1", headers: hts, body: String.duplicate("a", 8_000_001))
+    assert resp.status == 413
+    assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
+    assert String.contains?(resp.body, "8,000,000")
+  end
+
+  # ---------------------------------------------------------------------------
+  # Content-type x method x x-ms-version fuzz: wrong content-type on any
+  # multi-service route must answer the exact gate envelope (400 InvalidBody /
+  # 415 UnsupportedMediaType), never a 5xx crash.
+  # ---------------------------------------------------------------------------
+
+  test "content-type fuzz: wrong types on multi-service routes never 5xx" do
+    targets = [
+      {:post, "/app/transactions"},
+      {:post, "/keys/fz-ct/create"},
+      {:post, "/dbs/fzdb2/colls/fzc2/docs"},
+      {:post, "/dataCollectionRules/fz2/streams/Custom-Logs?api-version=2023-01-01"},
+      {:post, "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"}
+    ]
+
+    wrong = ["text/plain", "application/xml"]
+
+    body = Jason.encode!(%{"id" => "fz", "v" => 1})
+
+    for {method, path} <- targets, ct <- wrong, xms <- [[], [{"x-ms-version", "2021-12-02"}]] do
+      conn =
+        Plug.Test.conn(method, path, body)
+        |> Plug.Conn.put_req_header("content-type", ct)
+        |> then(fn c -> Enum.reduce(xms, c, fn {k, v}, c -> Plug.Conn.put_req_header(c, k, v) end) end)
+        |> EgressRouter.call(@opts)
+
+      assert conn.status < 500,
+             "#{method} #{path} ct=#{ct} -> #{conn.status}: #{conn.resp_body}"
+
+      assert Jason.decode!(conn.resp_body)["error"]["code"] in ["InvalidBody", "UnsupportedMediaType"]
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Auth seam cross-validation (bearer.ex exempt list vs egress routes):
+  # /attest/* is prefix-exempt (MAA is its own auth) — it must reach the router
+  # without a token; every other service route must 401 before dispatch.
+  # ---------------------------------------------------------------------------
+
+  test "auth seam: /attest exempt, service routes 401 in enforce mode" do
+    Application.put_env(:smalt, :auth_mode, :enforce)
+
+    conn = call(:post, "/attest/sevsnpvm", body: %{"measurement" => "x"})
+    assert conn.status != 401
+
+    conn = call(:post, "/app/transactions", body: %{"data" => "a"})
+    assert conn.status == 401
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "AuthenticationFailed"
+
+    conn = call(:get, "/dbs", headers: [{"x-ms-version", "2021-12-02"}])
+    assert conn.status == 401
+  after
+    Application.put_env(:smalt, :auth_mode, :anonymous)
+  end
+
+  # ---------------------------------------------------------------------------
+  # read_body error path: a real (hand-written) Plug adapter whose
+  # read_req_body/2 faults — the 400 InvalidRequestBody envelope must fire,
+  # never a 500 crash. This is the M4 mutation-kill for the {:error, reason}
+  # clause of the blob PUT body read.
+  # ---------------------------------------------------------------------------
+
+  defmodule FaultingBodyAdapter do
+    @behaviour Plug.Conn.Adapter
+
+    @impl true
+    # Plug.Conn.Adapter contract: read_req_body errors are 2-tuples
+    # (Plug.Conn.read_body maps them to {:error, reason}).
+    def read_req_body(state, _opts), do: {:error, :simulated_transport_fault}
+
+    @impl true
+    def send_resp(state, _status, _headers, body), do: {:ok, body, Map.put(state, :body, body)}
+
+    @impl true
+    def send_chunked(state, _status, _headers), do: {:ok, self(), state}
+
+    @impl true
+    def chunk(_state, _data), do: {:error, "not supported"}
+
+    @impl true
+    def send_informational(state, _status, _headers), do: {:ok, nil, state}
+
+    @impl true
+    def inform(_state, _status, _headers), do: :ok
+
+    @impl true
+    def get_http_protocol(_state), do: :"HTTP/1.1"
+
+    @impl true
+    def push(_state, _path, _headers), do: :ok
+  end
+
+  test "blob PUT read_body transport fault -> 400 InvalidRequestBody (M4 kill)" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      test_conn = Plug.Test.conn(:put, "/bnd/c01/m4", "payload")
+
+      conn = %{
+        test_conn
+        | adapter: {FaultingBodyAdapter, %{}},
+          req_headers: [{"x-ms-version", "2021-12-02"} | test_conn.req_headers]
+      }
+
+      conn = EgressRouter.call(conn, @opts)
+
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidRequestBody"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Batch-list admission boundary (measured classes, cycle-6 probes):
+  #  - ledger: EVERY top-level list was appending garbage at 201 (including
+  #    [] and scalar lists) -> the dispatch seam now refuses non-object
+  #    appends 400 InvalidBody.
+  #  - sentinel: batch with a nil element still ingests 204 (engine lane's
+  #    surface — flagged, not fenced here).
+  #  - events: scalar/null-element lists are refused all-or-nothing 400;
+  #    empty list publishes 200 (vacuous batch) — noted boundary.
+  # ---------------------------------------------------------------------------
+
+  test "batch-list boundary: ledger refuses non-object append classes 400" do
+    if loaded?(Smalt.Security.ConfidentialLedger) do
+      for body <- [[], [1, "a", nil, true], [nil, %{"msg" => "x"}], [%{"data" => "ok"}]] do
+        conn =
+          call(:post, "/app/transactions", body: body)
+
+        assert conn.status == 400,
+               "ledger list class #{inspect(body)} answered #{conn.status}"
+
+        assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidBody"
+      end
+    end
+  end
+
+  test "batch-list boundary: events refuses scalar/null lists 400, empty batch 200" do
+    for body <- [[1, "a", nil, true], [nil, %{"specversion" => "1.0"}]] do
+      conn = call(:post, "/topics/bd2/events", body: body)
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidCloudEvent"
+    end
+
+    conn = call(:post, "/topics/bd2/events", body: [])
+    assert conn.status == 200
+  end
+
+  test "batch-list boundary: sentinel scalar-element list refused, nil-element list flagged" do
+    conn =
+      call(:post, "/dataCollectionRules/bd3/streams/Custom-Logs?api-version=2023-01-01",
+        body: [1, "a", nil, true]
+      )
+
+    assert conn.status == 400
+
+    # Handoff class CLOSED by the sentinel engine lane (was 204 with a nil
+    # record ingested; engine now refuses): pin the new contract.
+    conn =
+      call(:post, "/dataCollectionRules/bd4/streams/Custom-Logs?api-version=2023-01-01",
+        body: [nil, %{"msg" => "x"}]
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidData"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Second adapter-fault class (cycle-6): read_req_body/2 timing out — a real
+  # Plug.Conn.Adapter whose read returns the contract error {:error, :timeout};
+  # the dispatch seam must answer the 400 InvalidRequestBody envelope, never
+  # a 500 crash.
+  # ---------------------------------------------------------------------------
+
+  defmodule TimingOutBodyAdapter do
+    @behaviour Plug.Conn.Adapter
+
+    @impl true
+    def read_req_body(_state, _opts), do: {:error, :timeout}
+
+    @impl true
+    def send_resp(state, _status, _headers, body), do: {:ok, body, state}
+
+    @impl true
+    def send_chunked(state, _status, _headers), do: {:ok, self(), state}
+
+    @impl true
+    def chunk(_state, _data), do: {:error, "not supported"}
+
+    @impl true
+    def send_informational(state, _status, _headers), do: {:ok, nil, state}
+
+    @impl true
+    def inform(_state, _status, _headers), do: :ok
+
+    @impl true
+    def get_http_protocol(_state), do: :"HTTP/1.1"
+
+    @impl true
+    def push(_state, _path, _headers), do: :ok
+  end
+
+  test "blob PUT read_body timeout fault -> 400 InvalidRequestBody (timeout class)" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      test_conn = Plug.Test.conn(:put, "/bnd/c01/timeout", "payload")
+
+      conn = %{
+        test_conn
+        | adapter: {TimingOutBodyAdapter, %{}},
+          req_headers: [{"x-ms-version", "2021-12-02"} | test_conn.req_headers]
+      }
+
+      conn = EgressRouter.call(conn, @opts)
+
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidRequestBody"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # C3 row-8 cross-surface contract (cosmos lane cycle-6 + egress cycle-7):
+  # bad query-POST bodies are refused by the ENGINE with the real Cosmos
+  # envelope {"code":"BadRequest","message":"The query is invalid."} — NOT the
+  # generic dispatch {"error":{"code":"InvalidBody"}} map. Typed decision: the
+  # engine-level fence is the full contract (wire-toward-Azure); the dispatch
+  # layer deliberately passes through. This test fences the ENVELOPE SHAPE so
+  # a future genericization to the ARM error map is caught.
+  # ---------------------------------------------------------------------------
+
+  test "C3 row-8: bad query bodies answer the Cosmos BadRequest envelope, not InvalidBody" do
+    for {body, ct} <- [
+          {"", "application/query+json"},
+          {"{}", "application/query+json"},
+          {%{"x" => 1}, "application/query+json"},
+          {%{"query" => ""}, "application/query+json"}
+        ] do
+      conn =
+        call(:post, "/dbs/row8/colls/row8c/docs",
+          body: body,
+          headers: [{"content-type", "application/query+json"}]
+        )
+
+      assert conn.status == 400
+      body = Jason.decode!(conn.resp_body)
+      assert body["code"] == "BadRequest"
+      assert body["message"] == "The query is invalid."
+      # The dispatch generic envelope would be wrong here.
+      refute Map.has_key?(body, "error")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Truncated-body fault class (cycle 8): a real adapter that yields a small
+  # {:more, partial, _} — Plug.Conn.read_body is single-shot, so a small
+  # partial is a mid-flight truncation and must answer 400 InvalidRequestBody,
+  # not the oversize 413. A cap-filling partial stays 413 (boundary test).
+  # ---------------------------------------------------------------------------
+
+  defmodule PartialThenErrorAdapter do
+    @behaviour Plug.Conn.Adapter
+
+    @impl true
+    def read_req_body(%{n: n} = state, _opts) do
+      if n == 0 do
+        {:more, "partial-data", %{state | n: 1}}
+      else
+        {:error, :closed}
+      end
+    end
+
+    @impl true
+    def send_resp(state, _status, _headers, body), do: {:ok, body, state}
+
+    @impl true
+    def send_chunked(state, _status, _headers), do: {:ok, self(), state}
+
+    @impl true
+    def chunk(_state, _data), do: {:error, "not supported"}
+
+    @impl true
+    def send_informational(state, _status, _headers), do: {:ok, nil, state}
+
+    @impl true
+    def inform(_state, _status, _headers), do: :ok
+
+    @impl true
+    def get_http_protocol(_state), do: :"HTTP/1.1"
+
+    @impl true
+    def push(_state, _path, _headers), do: :ok
+  end
+
+  test "blob PUT truncated partial read -> 400 InvalidRequestBody, not 413" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      c0 = Plug.Test.conn(:put, "/bnd/c01/trunc", "payload")
+
+      conn = %{
+        c0
+        | adapter: {PartialThenErrorAdapter, %{n: 0}},
+          req_headers: [{"x-ms-version", "2021-12-02"} | c0.req_headers]
+      }
+
+      conn = EgressRouter.call(conn, @opts)
+
+      assert conn.status == 400
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"]["code"] == "InvalidRequestBody"
+      assert String.contains?(body["error"]["message"], "truncated")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Accept-header pinning (cycle 8, measured once): every egress service
+  # answers with its FIXED wire content-type regardless of Accept — JSON
+  # routes always application/json, blob content octet-stream, comp=list
+  # always XML. Real Azure likewise mostly ignores Accept. Fence: Accept
+  # must never change the response content-type or status.
+  # ---------------------------------------------------------------------------
+
+  test "Accept header never changes response content-type or status" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      Smalt.DataPlane.BlobStorage.create_container("acpt", "cont", %{"immutable" => true})
+      Smalt.DataPlane.BlobStorage.put_blob("acpt", "cont", "b", "hi", %{})
+
+      for {path, hts, expected_ct} <- [
+            {"/app/transactions", [], "application/json"},
+            {"/dbs/acpt/colls/acptc/docs", [], "application/json"},
+            {"/acpt/cont/b", [{"x-ms-version", "2021-12-02"}], "application/octet-stream"},
+            {"/acpt/cont?restype=container&comp=list",
+             [{"x-ms-version", "2021-12-02"}], "application/xml"}
+          ] do
+        for accept <- ["text/xml", "application/json", "*/*"] do
+          conn =
+            call(:get, path, headers: [{"accept", accept} | hts])
+
+          assert conn.status == 200,
+                 "GET #{path} accept=#{accept} -> #{conn.status}"
+
+          ct = get_resp_header(conn, "content-type") |> List.first()
+          assert ct =~ expected_ct,
+                 "GET #{path} accept=#{accept} answered content-type #{ct}, expected #{expected_ct}"
+        end
+      end
+    end
+  end
+
+  test "Accept pinned on ledger tx + KV action routes (round-2 matrix)" do
+    if loaded?(Smalt.Security.ConfidentialLedger) and loaded?(Smalt.DataPlane.KeyVaultActions) do
+      # ledger_enforce_existence (ledger lane pivot): create the ledger first.
+      Store.put(:smalt_ledger_meta, {:created, "default_ledger"}, true)
+
+      call(:post, "/app/transactions", body: %{"data" => "a"})
+      call(:post, "/keys/ap2/create", body: %{"kty" => "oct-HSM"})
+
+      for {method, path, body, expected_status} <- [
+            {:get, "/app/transactions", "", 200},
+            {:get, "/app/transactions/latest", "", 200},
+            {:post, "/app/transactions", Jason.encode!(%{"data" => "b"}), 201},
+            {:post, "/keys/ap2/encrypt", Jason.encode!(%{"value" => "aGk=", "alg" => "A256GCM"}), :any},
+            {:get, "/keys", "", 200},
+            {:get, "/topics/ap3/events", "", 200}
+          ] do
+        for accept <- ["text/xml", "application/json", "*/*"] do
+          # Ledger dedups appends (409 on identical contents) — make each
+          # iteration's body unique so status stays a pure 201.
+          body =
+            if path == "/app/transactions" and method == :post,
+              do: Jason.encode!(%{"data" => "accept-#{accept}"}),
+              else: body
+
+          conn =
+            Plug.Test.conn(method, path, body)
+            |> Plug.Conn.put_req_header("accept", accept)
+            |> then(fn c ->
+              if body != "",
+                do: Plug.Conn.put_req_header(c, "content-type", "application/json"),
+                else: c
+            end)
+            |> EgressRouter.call(@opts)
+
+          assert conn.status in ([expected_status] ++ if expected_status == :any, do: [200, 201, 400], else: []),
+                 "#{method} #{path} accept=#{accept} -> #{conn.status}"
+
+          ct = get_resp_header(conn, "content-type") |> List.first()
+          assert ct =~ "application/json",
+                 "#{method} #{path} accept=#{accept} answered content-type #{ct}"
+        end
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Method-mismatch contract (cycle 10, 168-triple sweep): a method not in a
+  # route's pair falls through to the catch-all and answers the ARM-conventional
+  # generic envelope — 404 {"error":{"code":"RouteNotFound","message": "No
+  # route matches METHOD path"}} — never a 5xx, never a naked 405. The only
+  # exception class: a blob-catch-all-shaped path (2-segment PUT) keeps its
+  # guard 400 MissingXMsVersion. Zero 5xx across 24 service paths × 7 methods.
+  # ---------------------------------------------------------------------------
+
+  test "method mismatch: wrong verb answers 404 RouteNotFound, never 5xx/405" do
+    for {method, path} <- [
+          {:patch, "/app/transactions"},
+          {:delete, "/dbs"},
+          {:options, "/keys/k1"},
+          {:patch, "/atlas/v2/entity"},
+          {:patch, "/v1/workspaces/ws/query"},
+          # 2-segment unmatched: PUT /:account/:container blob route grabs any
+          # 2-segment PUT, so use a path with no verb-match at this depth.
+          {:patch, "/v1/workspaces"}
+        ] do
+      conn =
+        Plug.Test.conn(method, path, "")
+        |> EgressRouter.call(@opts)
+
+      assert conn.status == 404
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"]["code"] == "RouteNotFound"
+      assert String.contains?(body["error"]["message"], to_string(method) |> String.upcase())
+    end
+  end
+
+  test "method mismatch: blob-shaped paths keep the guard envelope" do
+    # Wrong verbs whose path SHAPE matches a blob catch-all route
+    # (3-segment PUT/HEAD) land on the guarded blob routes — the x-ms-version
+    # guard envelope fires before any 404 could.
+    for {method, path} <- [
+          {:put, "/topics/t1/events"},
+          {:head, "/topics/t1/events"}
+        ] do
+      conn =
+        Plug.Test.conn(method, path, "")
+        |> EgressRouter.call(@opts)
+
+      assert conn.status == 400
+
+      # HEAD answers header-only by HTTP semantics — assert status only.
+      if method != :head do
+        assert Jason.decode!(conn.resp_body)["error"]["code"] == "MissingXMsVersion"
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Empty batch publish: 200-empty is the REAL Event Grid acknowledgment shape
+  # (C7-1b: "batches are acknowledged with an empty 200, matching real Event
+  # Grid"). All-or-nothing over zero events is vacuously satisfied — this is
+  # conformant, not vacuous (typed decision, egress cycle 10; supersedes the
+  # cycle-6 "vacuous" note). The non-wire {"events": []} wrapper form is
+  # refused 400, as no real Event Grid API accepts it.
+  # ---------------------------------------------------------------------------
+
+  test "empty batch publish is conformant 200-empty; {\"events\": []} wrapper refused" do
+    conn = call(:post, "/topics/emptybatch/events", body: [])
+    assert conn.status == 200
+    assert conn.resp_body == ""
+
+    conn =
+      call(:post, "/topics/emptybatch/events",
+        body: %{"events" => []},
+        headers: [{"content-type", "application/cloudevents-batch+json"}]
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidCloudEvent"
+  end
+
+  # ---------------------------------------------------------------------------
+  # List Blobs `prefix` qparam reaches the engine (lens-2 cycle 1, blob lane
+  # cycle-16 wire half). Fence: a prefix-scoped reader must never receive the
+  # whole container listing — over-disclosure regression detector.
+  # ---------------------------------------------------------------------------
+
+  test "List Blobs prefix qparam filters the wire listing on both call sites" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      Smalt.DataPlane.BlobStorage.create_container("pf", "cont", %{"immutable" => true})
+
+      for name <- ["a", "pfx-1", "pfx-2", "z"] do
+        Smalt.DataPlane.BlobStorage.put_blob("pf", "cont", name, "d", %{})
+      end
+
+      ver = [{"x-ms-version", "2021-12-02"}]
+
+      for path <- [
+            "/pf/cont?restype=container&comp=list&prefix=pfx-",
+            "/pf/cont?prefix=pfx-"
+          ] do
+        conn = call(:get, path, headers: ver)
+        assert conn.status == 200, "GET #{path} -> #{conn.status}"
+
+        assert conn.resp_body =~ "pfx-1"
+        assert conn.resp_body =~ "pfx-2"
+        refute conn.resp_body =~ "<Name>a</Name>"
+        refute conn.resp_body =~ "<Name>z</Name>"
+        assert conn.resp_body =~ "<Prefix>pfx-</Prefix>"
+      end
+
+      # Unfiltered listing still returns everything (no over-restriction).
+      conn = call(:get, "/pf/cont?restype=container&comp=list", headers: ver)
+      assert conn.status == 200
+      for name <- ["a", "pfx-1", "pfx-2", "z"], do: assert conn.resp_body =~ "<Name>#{name}</Name>"
+      refute conn.resp_body =~ "<Prefix>pfx-</Prefix>"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Typed engine-error mapping (lens-2 cycles 1-2 + joint proof cycle 4):
+  # create_container and both list call sites map engine
+  # {:error, status, code, msg} tuples at their exact Azure status. Fences
+  # exercise the real engine (blob cycle-25 fences) over the wire.
+  # ---------------------------------------------------------------------------
+
+  test "typed engine errors reach the wire at exact status (create + list)" do
+    if loaded?(Smalt.DataPlane.BlobStorage) do
+      ver = [{"x-ms-version", "2021-12-02"}]
+
+      # create_container grammar fence -> 400 InvalidResourceName (exact
+      # status, not the blanket 500 catch-all)
+      conn = call(:put, "/jx/xy?restype=container", headers: ver)
+      assert conn.status == 400
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"]["code"] == "InvalidResourceName"
+
+      # duplicate create -> 409 ContainerAlreadyExists at exact status
+      Smalt.DataPlane.BlobStorage.create_container("jx", "dup", %{})
+
+      conn = call(:put, "/jx/dup?restype=container", headers: ver)
+      assert conn.status == 409
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerAlreadyExists"
+
+      # list maxresults fence -> 400 InvalidQueryParameter on both call sites
+      for path <- [
+            "/jx/dup?restype=container&comp=list&maxresults=abc",
+            "/jx/dup?maxresults=abc"
+          ] do
+        conn = call(:get, path, headers: ver)
+        assert conn.status == 400, "GET #{path} -> #{conn.status}"
+        assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidQueryParameter"
+      end
+    end
+  end
+
   test "RouteNotReady 503 when a sibling module is not compiled" do
     beam_dir = Path.join(Mix.Project.compile_path(), "Elixir.Smalt.DataPlane.Purview.beam")
     assert File.exists?(beam_dir)
@@ -411,6 +1423,604 @@ defmodule EgressDispatchTest do
       File.rename!(hidden, beam_dir)
       :code.purge(Smalt.DataPlane.Purview)
       Code.ensure_loaded(Smalt.DataPlane.Purview)
+    end
+  end
+
+  # -- wire-tier helpers (local; Bandit + raw :gen_tcp, no HTTP client dep) ----
+
+  defp stop_tree(sup) do
+    try do
+      Supervisor.stop(sup, :normal, 5000)
+    catch
+      _, _ -> Process.exit(sup, :kill)
+    end
+  end
+
+  defp stop_existing_tree do
+    case Process.whereis(Smalt.Supervisor) do
+      nil ->
+        for name <- [Smalt.Store, Smalt.AmqpBroker] do
+          if pid = Process.whereis(name), do: GenServer.stop(pid)
+        end
+
+      _sup ->
+        SmaltTest.Lifecycle.stop_shared_tree()
+    end
+  end
+
+  defp get_free_port do
+    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+    port
+  end
+
+  defp wire_request(port, method, path, opts \\ []) do
+    headers = Keyword.get(opts, :headers, [])
+    body = Keyword.get(opts, :body, "")
+
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5000)
+
+    header_lines =
+      Enum.map_join(
+        headers ++ [{"host", "127.0.0.1:#{port}"}, {"connection", "close"}],
+        "\r\n",
+        fn {k, v} -> "#{k}: #{v}" end
+      )
+
+    request =
+      "#{method} #{path} HTTP/1.1\r\n" <>
+        header_lines <> "\r\ncontent-length: #{byte_size(body)}\r\n\r\n" <> body
+
+    :ok = :gen_tcp.send(sock, request)
+    raw = recv_all(sock) |> IO.iodata_to_binary()
+    :gen_tcp.close(sock)
+    parse_response(raw)
+  end
+
+  defp recv_all(sock) do
+    case :gen_tcp.recv(sock, 0, 15000) do
+      {:ok, data} -> [data | recv_all(sock)]
+      {:error, :closed} -> []
+    end
+  end
+
+  defp parse_response(raw) do
+    [head, rest] = :binary.split(raw, "\r\n\r\n")
+    [status_line | header_lines] = String.split(head, "\r\n")
+    [_, status, _reason] = String.split(status_line, " ", parts: 3)
+    body = rest
+
+    body =
+      if get_header(header_lines, "transfer-encoding") == "chunked" do
+        decode_chunked(body)
+      else
+        body
+      end
+
+    %{status: String.to_integer(status), body: body, headers: header_lines}
+  end
+
+  defp get_header(lines, name) do
+    case Enum.find(lines, fn l -> String.starts_with?(String.downcase(l), name) end) do
+      nil -> nil
+      l -> l |> String.split(": ", parts: 2) |> Enum.at(1)
+    end
+  end
+
+  defp decode_chunked(bin, acc \\ [])
+
+  defp decode_chunked("\r\n" <> rest, acc), do: decode_chunked(rest, acc)
+
+  defp decode_chunked(bin, acc) do
+    case Integer.parse(bin, 16) do
+      {0, _} ->
+        IO.iodata_to_binary(Enum.reverse(acc))
+
+      {size, rest} ->
+        <<chunk::binary-size(size), "\r\n", rest2::binary>> = rest
+        decode_chunked(rest2, [chunk | acc])
+
+      :error ->
+        IO.iodata_to_binary(Enum.reverse(acc))
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-4 cycle 1: splat traversal fuzz + auth-exempt x blob-splat composition
+  # ---------------------------------------------------------------------------
+
+  describe "splat traversal fuzz (lens-4)" do
+    @ver [{"x-ms-version", "2021-12-02"}]
+
+    test "encoded and raw dot-segment traversals refuse fail-closed BEFORE the version guard" do
+      for path <- [
+            "/fz/cont/..%2f..%2fsecret",
+            "/fz/cont/%2e%2e/x",
+            "/fz/cont/%2E%2E",
+            "/fz/cont/a%2F..%2Fb",
+            "/fz/cont/x/y/../../z",
+            "/fz/cont/.",
+            "/fz/cont/..",
+            "/fz/cont//..",
+            "/fz/cont/..%2Fkeys%2Fk1"
+          ] do
+        # No x-ms-version: the traversal refusal must PRECEDE the version
+        # guard (fail-closed first), so the answer is 404 BlobNotFound, not
+        # the 400 MissingXMsVersion envelope.
+        no_ver = call(:get, path)
+        assert no_ver.status == 404,
+               "#{path} without x-ms-version answered #{no_ver.status}"
+
+        assert Jason.decode!(no_ver.resp_body)["error"]["code"] == "BlobNotFound",
+               "#{path} without x-ms-version answered #{no_ver.resp_body}"
+
+        with_ver = call(:get, path, headers: @ver)
+        assert with_ver.status == 404
+        assert Jason.decode!(with_ver.resp_body)["error"]["code"] == "BlobNotFound"
+      end
+    end
+
+    test "traversal refusals carry the F5 error headers (x-ms-request-id, x-ms-version)" do
+      conn = call(:get, "/fz/cont/..%2f..%2fsecret")
+      assert conn.status == 404
+      assert get_resp_header(conn, "x-ms-version") == ["2021-12-02"]
+
+      [req_id] = get_resp_header(conn, "x-ms-request-id")
+      assert req_id =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    end
+
+    test "legal dotfile blob names still round-trip through the splat" do
+      call(:put, "/dot/cont?restype=container",
+        headers: @ver ++ [{"x-ms-immutable-policy", "false"}]
+      )
+
+      put = call(:put, "/dot/cont/.well-known/config.json", body: "cfg", headers: @ver)
+      assert put.status == 201, "dotfile PUT answered #{put.status}: #{put.resp_body}"
+
+      get = call(:get, "/dot/cont/.well-known/config.json", headers: @ver)
+      assert get.status == 200
+      assert get.resp_body == "cfg"
+
+      hidden = call(:get, "/dot/cont/.hidden", headers: @ver)
+      assert hidden.status == 404
+      assert Jason.decode!(hidden.resp_body)["error"]["code"] == "BlobNotFound"
+    end
+
+    test "auth-exempt namespace never reaches the blob splat (fail-closed, no bearer)" do
+      # Pin :enforce for this probe; restore honestly (the security suite's
+      # delete_env order-masking precedent — lens-3 disclosure).
+      prev = Application.get_env(:smalt, :auth_mode)
+      Application.put_env(:smalt, :auth_mode, :enforce)
+
+      try do
+        for path <- [
+              "/.well-known/acct/cont/blob",
+              "/oauth2/acct/cont/blob",
+              "/attest/exacct/excont/exblob",
+              # anchored-regex class: refused at the auth plug (401), the
+              # router never sees it — also fail-closed.
+              "/tid/oauth2/v2.0/token/extra"
+            ] do
+          conn = call(:get, path, headers: @ver)
+          assert conn.status in [401, 404],
+                 "exempt-prefix blob path #{path} answered #{conn.status} (bypass reachable)"
+
+          if conn.status == 404 do
+            assert Jason.decode!(conn.resp_body)["error"]["code"] == "BlobNotFound"
+          end
+        end
+
+        # Exact-exempt class: /metadata/endpoints is 2 segments — blob
+        # container-route reachable (account="metadata", container="endpoints").
+        meta = call(:get, "/metadata/endpoints", headers: @ver)
+        assert meta.status == 404
+        assert Jason.decode!(meta.resp_body)["error"]["code"] == "BlobNotFound"
+
+        # Control: a NON-exempt blob path still requires the bearer in
+        # :enforce mode — proves the pin is live and auth is upstream.
+        control = call(:get, "/ctrl/cont/blob", headers: @ver)
+        assert control.status == 401
+      after
+        if prev == nil do
+          Application.delete_env(:smalt, :auth_mode)
+        else
+          Application.put_env(:smalt, :auth_mode, prev)
+        end
+      end
+    end
+  end
+
+  describe "lens-4 cycle-2 fresh shapes + mutation-court probes" do
+    @ver [{"x-ms-version", "2021-12-02"}]
+
+    test "5-segment slash-blob PUT with a parsed content-type stores raw bytes verbatim" do
+      ver_ct = @ver ++ [{"content-type", "application/json"}]
+      call(:put, "/pc5/cont?restype=container", headers: ver_ct)
+
+      put = call(:put, "/pc5/cont/w/1/x/y", body: "{\"deep\":true}", headers: ver_ct)
+      assert put.status == 201, "answered #{put.status}: #{put.resp_body}"
+
+      get = call(:get, "/pc5/cont/w/1/x/y", headers: ver_ct)
+      assert get.status == 200
+      assert get.resp_body == "{\"deep\":true}"
+    end
+
+    test "HEAD 2-segment without restype answers RouteNotFound, not the splat BlobNotFound" do
+      call(:put, "/hn/cont?restype=container", headers: @ver)
+
+      conn = call(:head, "/hn/cont", headers: @ver)
+      assert conn.status == 404
+      # Route order pin: the container route owns 2-segment HEADs. Without the
+      # ordering (splat first) the empty splat tail would answer BlobNotFound.
+      [req_id] = get_resp_header(conn, "x-ms-request-id")
+      assert req_id != nil
+    end
+
+    test "slash-blob ERROR responses carry the F5 headers (error path through the splat)" do
+      call(:put, "/f5/cont?restype=container", headers: @ver)
+
+      gone = call(:get, "/f5/cont/w/1", headers: @ver)
+      assert gone.status == 404
+      assert Jason.decode!(gone.resp_body)["error"]["code"] == "BlobNotFound"
+      assert get_resp_header(gone, "x-ms-version") == ["2021-12-02"]
+
+      [req_id] = get_resp_header(gone, "x-ms-request-id")
+      assert req_id =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+      # DELETE error path through the splat: same F5 fence.
+      del = call(:delete, "/f5/cont/w/1", headers: @ver)
+      assert del.status == 404
+      assert get_resp_header(del, "x-ms-version") == ["2021-12-02"]
+      assert get_resp_header(del, "x-ms-request-id") != []
+    end
+  end
+
+  describe "raw_blob_put? whitelist redesign (lens-4 coordinator item 1)" do
+    @ver [{"x-ms-version", "2021-12-02"}]
+
+    test "cosmos doc replace PUT (3+-segment, dbs namespace) is parsed, never exempt" do
+      call(:post, "/dbs", body: %{"id" => "wl"})
+      # No explicit partitionKey: a pk-less container does not require the
+      # x-ms-documentdb-partitionkey header on doc writes (engine semantics,
+      # measured — an explicit /id pk demands the matching header).
+      call(:post, "/dbs/wl/colls", body: %{"id" => "c1"})
+      # Engine contract (measured): replace requires the _etag carried in the
+      # create response body (Cosmos wire shape), not a response header.
+      created = call(:post, "/dbs/wl/colls/c1/docs", body: %{"id" => "doc-x", "v" => 1})
+      assert created.status == 201, "create answered #{created.status}"
+      etag = Jason.decode!(created.resp_body)["_etag"]
+
+      # Raw JSON string body + json content-type: a map body would be
+      # pre-set by Plug.Test (body_params populated without parsing) and the
+      # probe would be BLIND to the parse exemption (measured — the empty-
+      # whitelist mutant survived map-body probes). Only a real parse from
+      # the wire body kills the mutant.
+      put =
+        call(:put, "/dbs/wl/colls/c1/docs/doc-x",
+          body: Jason.encode!(%{"v" => 7}),
+          headers: [{"content-type", "application/json"}, {"if-match", etag}]
+        )
+
+      assert put.status == 200, "doc replace answered #{put.status}: #{put.resp_body}"
+      assert Jason.decode!(put.resp_body)["v"] == 7
+    end
+
+    test "blob shapes (3/4/5 segments, non-listed namespace) stay parse-exempt" do
+      ver_ct = @ver ++ [{"content-type", "application/json"}]
+      call(:put, "/wlacc/cont?restype=container", headers: ver_ct)
+
+      for blob_path <- ["/wlacc/cont/b", "/wlacc/cont/a/b", "/wlacc/cont/a/b/c"] do
+        put = call(:put, blob_path, body: "{\"raw\":1}", headers: ver_ct)
+        assert put.status == 201, "#{blob_path} answered #{put.status}"
+
+        get = call(:get, blob_path, headers: ver_ct)
+        assert get.resp_body == "{\"raw\":1}", "#{blob_path} did not store verbatim"
+      end
+    end
+
+    # Lens-5 cycle 2 — the whitelist extension law, probe side. The @modules
+    # comment claims: adding a literal 3+-segment PUT route REQUIRES a
+    # @non_blob_put_namespaces entry; a MISSED entry fails VISIBLE (parsed
+    # body on a blob-shaped PUT => zero-byte store). This fence pins the
+    # healthy direction for a namespace that owns NO 3+-segment PUT route
+    # (/keys today): its blob-shaped PUTs must stay parse-exempt and store
+    # verbatim, and whitelisting can never relax AUTH (the whitelist is a
+    # parse seam, orthogonal to the exempt namespace — a mutant that adds
+    # "keys" to the whitelist must not create an anonymous bypass).
+    test "whitelist extension law: non-listed service namespace stores verbatim, auth unaffected" do
+      ver_ct = @ver ++ [{"content-type", "application/json"}]
+      prev = Application.get_env(:smalt, :auth_mode)
+      Application.put_env(:smalt, :auth_mode, :enforce)
+
+      try do
+        # (a) AUTH unaffected: an anonymous blob-shaped PUT under a service
+        # prefix is still 401 in :enforce — the whitelist is a parse seam,
+        # not an auth grant.
+        anon = call(:put, "/keys/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
+        assert anon.status == 401, "anonymous PUT answered #{anon.status} (bypass?)"
+
+        # (b) Parse seam healthy: with auth passing (:anonymous pin), the raw
+        # wire body (a JSON string + json content-type — the ONLY probe form
+        # that witnesses the parse seam, lens-4 cycle-3 method note) stores
+        # verbatim. /keys/<name>/<action> is blob-shaped (3 segments, first
+        # segment "keys", no comp) — today parse-exempt because "keys" does
+        # NOT own a 3+-segment PUT route and is therefore NOT whitelisted.
+        Application.put_env(:smalt, :auth_mode, :anonymous)
+
+        put = call(:put, "/keys/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
+        assert put.status == 201, "answered #{put.status}: #{put.resp_body}"
+
+        get = call(:get, "/keys/vltkey/create", headers: ver_ct)
+        assert get.resp_body == "{\"raw\":1}", "did not store verbatim"
+      after
+        if prev == nil do
+          Application.delete_env(:smalt, :auth_mode)
+        else
+          Application.put_env(:smalt, :auth_mode, prev)
+        end
+      end
+    end
+  end
+
+  test "wire-tier (Bandit): encoded traversal and exempt-prefix blob paths fail closed at the socket" do
+    port = get_free_port()
+    stop_existing_tree()
+
+    children = [
+      Smalt.Store,
+      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
+    ]
+
+    {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one)
+
+    on_exit(fn ->
+      stop_tree(sup)
+      SmaltTest.Lifecycle.restore_app()
+    end)
+
+    hts = [{"x-ms-version", "2021-12-02"}]
+
+    for {path, want} <- [
+          {"/fzw/cont/..%2f..%2fsecret", "BlobNotFound"},
+          {"/fzw/cont/%2e%2e", "BlobNotFound"},
+          {"/.well-known/acct/cont/blob", "BlobNotFound"},
+          {"/oauth2/acct/cont/blob", "BlobNotFound"}
+        ] do
+      resp = wire_request(port, "GET", path, headers: hts)
+      assert resp.status == 404, "#{path} answered #{resp.status} at the wire"
+      assert resp.body =~ "#{want}", "#{path} body: #{resp.body}"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-5 cycle 1: full exempt-prefix x verb x depth x encoding fuzz matrix
+  # through the canonical predicate (Smalt.Auth.Bearer.auth_exempt_path?/1).
+  # Invariant under fuzz: any request path that the auth plug treats as
+  # auth-exempt (no bearer required) must NEVER admit blob CRUD at the splat;
+  # every non-exempt shape must require the bearer (401 anonymous). The
+  # oracle is the canonical predicate — the router must not carry its own
+  # prefix copy (anti O(N^2) drift law, lens-4 cycle 1).
+  # ---------------------------------------------------------------------------
+
+  describe "exempt-prefix fuzz matrix through the canonical predicate (lens-5)" do
+    @ver [{"x-ms-version", "2021-12-02"}]
+
+    # The full exempt-namespace surface from lib/smalt/auth/bearer.ex:
+    # 4 prefix classes + 3 exact matches + the tenant-scoped anchored regex.
+    @exempt_prefixes ["/oauth2/", "/.well-known/", "/common/discovery/", "/attest/"]
+    @exempt_exact ["/metadata/endpoints", "/tenant", "/tenants"]
+
+    test "canonical predicate agrees with the declared exempt classes (oracle pin)" do
+      alias Smalt.Auth.Bearer
+
+      for p <- @exempt_prefixes ++ @exempt_exact do
+        assert Bearer.auth_exempt_path?(p), "#{p} must be auth-exempt (oracle pin)"
+      end
+
+      for p <- [
+            "/tid/oauth2/v2.0/token",
+            "/1234-5678/oauth2/v2.0/token",
+            "/a-b_c/oauth2/v2.0/token"
+          ] do
+        assert Bearer.auth_exempt_path?(p), "#{p} (tenant token form) must be exempt"
+      end
+
+      # Non-exempt controls: near-miss shapes that must NOT be exempt.
+      for p <- [
+            "/oauth2x/a/b",
+            "/xoauth2/a/b",
+            "/.well-knownx/a/b",
+            "/metadatA/endpoints",
+            "/metadata/endpointsx",
+            "/metadata/endpoints/",
+            "/tenant/x",
+            "/tenants/x",
+            "/tenantx"
+          ] do
+        refute Bearer.auth_exempt_path?(p), "#{p} must NOT be auth-exempt"
+      end
+    end
+
+    test "every exempt shape x verb x splat depth refuses blob CRUD anonymously" do
+      # Pin :enforce; honest restore.
+      prev = Application.get_env(:smalt, :auth_mode)
+      Application.put_env(:smalt, :auth_mode, :enforce)
+
+      try do
+        exempt_shapes =
+          for p <- @exempt_prefixes,
+              depth <- 1..4 do
+            {p <> String.duplicate("seg/", depth) <> "blob", true}
+          end ++
+            for p <- @exempt_exact,
+                suffix <- ["", "/", "/x", "/x/y/z"] do
+              # exact-exempt matches ONLY the exact path (no prefix
+              # relaxation): any suffix other than "" is NOT exempt.
+              {p <> suffix, suffix == ""}
+            end ++
+            [
+              # tenant-scoped token path (anchored regex class) and its
+              # near-miss deeper/encoded forms — none may admit blob CRUD.
+              {"/tid/oauth2/v2.0/token", true},
+              {"/9e6b0e6f-1234-5678-90ab-cdef01234567/oauth2/v2.0/token", true},
+              {"/tid/oauth2/v2.0/token/extra", false},
+              {"/t1/t2/oauth2/v2.0/token", false},
+              {"/tid/oauth2/v2.0/tokens", false},
+              {"/tid/oauth2/v2.1/token", false},
+              {"/TID/oauth2/v2.0/token", true},
+              {"/tid//oauth2/v2.0/token", false},
+              {"/tid/oauth2//v2.0/token", false}
+            ]
+
+        for {path, must_be_exempt} <- exempt_shapes,
+            verb <- [:get, :put, :post, :delete, :head] do
+          conn =
+            call(verb, path,
+              headers: @ver ++ [{"content-type", "application/octet-stream"}],
+              body: "x"
+            )
+
+          if must_be_exempt do
+            # Auth-exempt: the plug passes; the router's blob guard must
+            # refuse blob-reachable depths fail-closed (404), never 2xx/3xx.
+            assert conn.status in [404, 405],
+                   "exempt shape #{verb} #{path} answered #{conn.status} — bypass reachable"
+
+            if conn.status == 404 do
+              # HEAD answers empty — decode only a JSON body.
+              code =
+                if conn.resp_body == "" do
+                  nil
+                else
+                  Jason.decode!(conn.resp_body)["error"]["code"]
+                end
+
+              assert code in [nil, "BlobNotFound", "RouteNotFound"], "#{path}: #{conn.resp_body}"
+            end
+          else
+            # Non-exempt: the anonymous request must 401 at the plug.
+            assert conn.status == 401,
+                   "non-exempt shape #{verb} #{path} answered #{conn.status} (expected 401)"
+
+            assert get_resp_header(conn, "www-authenticate") != []
+          end
+        end
+      after
+        if prev == nil do
+          Application.delete_env(:smalt, :auth_mode)
+        else
+          Application.put_env(:smalt, :auth_mode, prev)
+        end
+      end
+    end
+
+    test "encoded-prefix and double-slash forms never land inside the exempt namespace" do
+      prev = Application.get_env(:smalt, :auth_mode)
+      Application.put_env(:smalt, :auth_mode, :enforce)
+
+      try do
+        alias Smalt.Auth.Bearer
+
+        for path <- [
+              # percent-encoded dot: NOT the exempt prefix at the plug (401
+              # anonymous), and the store namespace it would address
+              # ("%2Ewell-known") is a DIFFERENT account than ".well-known".
+              "/%2Ewell-known/acct/cont/blob",
+              "/%2f.well-known/acct/cont/blob",
+              "/oauth%2F2/acct/cont/blob",
+              # double-slash forms: leading "" segment, prefix never matches.
+              "//.well-known/acct/cont/blob",
+              "//oauth2/acct/cont/blob",
+              "/.well-known//acct/cont/blob",
+              "/oauth2//acct/cont/blob",
+              # encoded traversal riding an exempt prefix: refusal precedes
+              # the version guard regardless of auth mode.
+              "/.well-known/..%2f..%2fsecret",
+              "/oauth2/%2e%2e/x"
+            ] do
+          conn = call(:get, path, headers: @ver)
+
+          # Either the auth plug refuses (401, non-exempt shape) or the
+          # router's blob guard refuses (404). Never 2xx, never the 400
+          # version envelope (the guard must precede it).
+          assert conn.status in [401, 404],
+                 "#{path} answered #{conn.status} (body: #{conn.resp_body})"
+
+          if conn.status == 404 do
+            code = Jason.decode!(conn.resp_body)["error"]["code"]
+            assert code in ["BlobNotFound", "RouteNotFound"], "#{path}: #{conn.resp_body}"
+          end
+
+          # One-predicate law: the router's decision must equal the
+          # canonical predicate evaluated on the same request_path string.
+          exempt = Bearer.auth_exempt_path?(conn.request_path)
+
+          if exempt and conn.status == 404 do
+            assert Jason.decode!(conn.resp_body)["error"]["code"] == "BlobNotFound"
+          end
+        end
+
+        # Encoded-prefix control: the encoded shape is a different STORE
+        # namespace — with a bearer-less anonymous request it must not even
+        # create state. Negative-control round trip: the exempt namespace
+        # itself still serves nothing through the splat.
+        refute Bearer.auth_exempt_path?("/%2Ewell-known/acct/cont/blob")
+      after
+        if prev == nil do
+          Application.delete_env(:smalt, :auth_mode)
+        else
+          Application.put_env(:smalt, :auth_mode, prev)
+        end
+      end
+    end
+
+    test "PUT exempt-namespace depth-3+ refuses BEFORE body read (no blob state created)" do
+      # :anonymous mode isolates the ROUTER-side guard: the exempt refusal is
+      # auth-independent (blob_route/2 checks the canonical predicate
+      # unconditionally, whatever the auth plug decided), so the cleanest
+      # measurement pins :anonymous and lets the exempt control store.
+      prev = Application.get_env(:smalt, :auth_mode)
+      Application.put_env(:smalt, :auth_mode, :anonymous)
+
+      try do
+        call(:put, "/wk/cont?restype=container", headers: @ver)
+
+        for path <- [
+              "/.well-known/wk/cont/secret",
+              "/oauth2/wk/cont/secret",
+              "/common/discovery/wk/cont/secret",
+              "/attest/wk/cont/secret"
+            ] do
+          conn =
+            call(:put, path,
+              headers: @ver ++ [{"content-type", "application/octet-stream"}],
+              body: "payload"
+            )
+
+          assert conn.status == 404, "#{path} answered #{conn.status}"
+          assert Jason.decode!(conn.resp_body)["error"]["code"] == "BlobNotFound"
+        end
+
+        # The exact-exempt class (/metadata/endpoints) matches ONLY the exact
+        # 2-segment path — a longer path is NOT exempt; in :anonymous the plug
+        # passes it and the router answers honestly (404 BlobNotFound through
+        # the container route with restype absent).
+        meta_put = call(:put, "/metadata/endpoints/wk/cont/secret", headers: @ver)
+        assert meta_put.status == 404
+
+        # The control in the NON-exempt namespace stores fine — proves the
+        # refusal is namespace-scoped, not global.
+        ctrl = call(:put, "/wk/cont/visible", headers: @ver)
+        assert ctrl.status == 201, "control answered #{ctrl.status}: #{ctrl.resp_body}"
+      after
+        if prev == nil do
+          Application.delete_env(:smalt, :auth_mode)
+        else
+          Application.put_env(:smalt, :auth_mode, prev)
+        end
+      end
     end
   end
 end

@@ -19,7 +19,7 @@ over the full repo, excluding `deps/`, `_build/`, `.git/`, `tmp/`, `.elixir_ls/`
 | `test/data_plane/sdk_probe.mjs:3,8` | `/Users/sac/cai/athena/...` | comment + `createRequire` anchor path | REPORTED-TO-LANE (data-plane lane) |
 | `test/mutation_court/README.md:19` | `/Users/sac/smalt` | docs prose under `test/` — outside owned scope | REPORTED-TO-LANE (mutation-court lane) |
 | `scripts/mutation_court.py:34,301` | `/Users/sac/smalt` | Python harness hardcoded repo path | REPORTED-TO-LANE (mutation-court lane) |
-| `lib/smalt/generated/registry.ex:4` | `Project Athena` | @moduledoc comment in `.ex` | REPORTED-TO-LANE (lib owner — generated registry) |
+| `lib/smalt/generated/registry.ex:4` | `Project Athena` | @moduledoc comment in `.ex` | CONFIRMED FIXED (file no longer exists — registry projects to `lib/smalt/registry.ex`, zero `athena` hits in `lib/`; re-verified 2026-10-15 docs-corpus cycle 9) |
 | `lib/smalt/egress_router.ex:3` | `Athena Data Plane Egress Router` | @moduledoc comment in `.ex` | REPORTED-TO-LANE (lib owner) |
 | `lib/smalt/arm_gateway/router.ex:4` | `15 Athena services` | @moduledoc comment in `.ex` | REPORTED-TO-LANE (lib owner) |
 
@@ -58,6 +58,25 @@ over the full repo, excluding `deps/`, `_build/`, `.git/`, `tmp/`, `.elixir_ls/`
 All 17 residual hit lines are in **non-owned files**: 3 `.ex` comments (lib),
 9 JS harness lines (test/), 1 Python harness (2 lines), 1 lockfile, 2 docs
 files outside owned scope (`docker/README.md`, `test/mutation_court/README.md`).
+
+## Re-verification addendum (2026-10-15, docs-corpus-lens4 cycle 3)
+
+The residual table above is as-of 2026-10-14; the tree grew since. Same
+sweep re-run with the same exclusions (`deps/`, `_build/`, `.git/`, `tmp/`,
+`.elixir_ls/`):
+
+| term | fresh hits | dominant clusters |
+|---|---|---|
+| `/Users/sac` | 317 | `.ggen_igniter/receipts/2026-10-15.jsonl` (216, machine receipt — ggen lane), `docs/NAMING_SWEEP.md` self-quotes (41, this audit), `.ggen_igniter/manifest.json` (17, machine), `cli/ggen.toml`/`ggen.lock` (12, machine locks), `.env.example` (5, **REPORTED**), `docker/BUILD_RECEIPT.md` (5) |
+| `athena` | 41 | this audit's self-quotes + `test/sdk-smoke/*` fallback paths + `.env.example:12` (`/Users/sac/cai/athena/...` legacy path — REPORTED) |
+| `cai` | 21 | path fragments `/Users/sac/cai/...` only |
+| `courtroom`/`morluto` | 8 / 0 | all 8 are this audit's own "Verified-clean" quotes — zero real hits |
+
+REPORTED to the env/dx lane: `.env.example` (a root published template) ships
+absolute personal defaults including the legacy `cai/athena` path
+(`.env.example:12,15,19,20,24`). FIRST_RUN.md points readers at this file.
+`docs/PUBLISH_CHECK.md`'s line-192 finding (`smalt_mcp_surface.ttl:8`) is
+HEALED — the ttl greps 0 for `/Users/sac` and `athena`.
 
 ## Publication hygiene verdict
 

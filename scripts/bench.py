@@ -24,13 +24,24 @@ import sys
 import time
 import traceback
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "stress"))
+import _substrate  # noqa: E402
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "127.0.0.1"
-ARM_PORT = 9443
-DATA_PORT = 8443
-AMQP_PORT = 5672
+# Fixed-port front door is `just bench` (9443/8443/5672). When the fixed ports
+# are held by another lane's substrate, run against a private block from the
+# documented range instead (docs/DEV_LOOP.md "Private port allocation"):
+#   SMALT_BENCH_ARM_PORT=39443 SMALT_BENCH_DATA_PORT=39453 \
+#   SMALT_BENCH_AMQP_PORT=39456 python3 scripts/bench.py
+# Same functions, same receipt schema; only the bind ports move.
+ARM_PORT = int(os.environ.get("SMALT_BENCH_ARM_PORT", "9443"))
+DATA_PORT = int(os.environ.get("SMALT_BENCH_DATA_PORT", "8443"))
+AMQP_PORT = int(os.environ.get("SMALT_BENCH_AMQP_PORT", "5672"))
 SUB_ID = "bench-sub"
-API_VERSION = "2021-01-01"
+# 2021-04-01: floor for Microsoft.Resources/resourceGroups (ARM rejects 2021-01-01
+# with InvalidApiVersionParameter — found by the 2026-10-15 bench re-run).
+API_VERSION = "2021-04-01"
 
 DOCTOR_TARGET_S = 3.0
 BOOT_TARGET_S = 5.0
@@ -55,15 +66,54 @@ def pct(sorted_vals, p):
 
 
 def spawn_substrate():
-    """Spawn `mix run --no-halt` in its own process group; caller must killpg."""
+    """Spawn `mix run --no-halt` in its own process group; caller must killpg.
+
+    Injects the resolved bench ports at config time (put_env, plus the
+    SMALT_TEST_*_PORT env vars test config reads) so a private-port run never
+    touches the fixed front-door ports. With defaults the injection is the
+    same values dev config already binds — a no-op equivalence.
+    """
     env = dict(os.environ)
     env["MIX_ENV"] = "dev"
+    env["SMALT_TEST_ARM_PORT"] = str(ARM_PORT)
+    env["SMALT_TEST_EGRESS_PORT"] = str(DATA_PORT)
+    env["SMALT_TEST_AMQP_PORT"] = str(AMQP_PORT)
+    env["SMALT_TEST_EVENT_HUBS_PORT"] = str(AMQP_PORT + 1)
+    # Scope EVERY fixed listener, not just the three bench CTQ ports: the
+    # Application also binds arm_tls_port (default 9444) and mcp_port
+    # (default 9545). Witnessed 2026-10-15 (lens-2 cycle 2/4): a partially
+    # scoped dev-env boot answers the ARM readiness probe, then the whole app
+    # dies eaddrinuse on 9444/9545 when a sibling substrate holds the front
+    # door. Derived offsets are collision-checked below against the already
+    # chosen ephemeral picks.
+    scoped = {"arm_tls_port": ARM_PORT + 1, "mcp_port": ARM_PORT + 2}
+    taken = {ARM_PORT, DATA_PORT, AMQP_PORT, AMQP_PORT + 1}
+    while scoped["arm_tls_port"] in taken:
+        scoped["arm_tls_port"] += 1
+    while scoped["mcp_port"] in taken or scoped["mcp_port"] == scoped["arm_tls_port"]:
+        scoped["mcp_port"] += 1
+    eval_code = (
+        f"Application.put_env(:smalt, :arm_port, {ARM_PORT}); "
+        f"Application.put_env(:smalt, :egress_port, {DATA_PORT}); "
+        f"Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); "
+        f"Application.put_env(:smalt, :event_hubs_port, {AMQP_PORT + 1}); "
+        f"Application.put_env(:smalt, :arm_tls_port, {scoped['arm_tls_port']}); "
+        f"Application.put_env(:smalt, :mcp_port, {scoped['mcp_port']}); "
+        "{:ok, _} = Application.ensure_all_started(:smalt); "
+        "Process.sleep(:infinity)"
+    )
+    # Substrate output goes to a real log file, not DEVNULL: a rc=1 boot with
+    # DEVNULL output is unattributable (witnessed: silent bench death mid-run,
+    # lens-2 cycle 4). The log path is deterministic so failures are readable.
+    log_path = os.path.join(REPO, "tmp", "bench-substrate.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    log_f = open(log_path, "w")
     return subprocess.Popen(
-        ["mix", "run", "--no-halt"],
+        ["mix", "run", "--no-start", "-e", eval_code, "--no-halt"],
         cwd=REPO,
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
         start_new_session=True,
         stdin=subprocess.DEVNULL,
     )
@@ -71,18 +121,8 @@ def spawn_substrate():
 
 def wait_for_port(port, proc, timeout_s=90.0):
     """Poll TCP connect until the port accepts; return elapsed seconds since spawn."""
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc is not None and proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                pass
-            return time.monotonic() - t0
-        except OSError:
-            time.sleep(0.01)
-    fail_closed(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.01)
 
 
 def kill_substrate(proc):
@@ -120,10 +160,16 @@ def kill_substrate(proc):
 
 def doctor_time():
     """Time `scripts/doctor.py` against the live substrate (ports held by caller)."""
+    env = dict(os.environ)
+    if ARM_PORT != 9443 or DATA_PORT != 8443 or AMQP_PORT != 5672:
+        env["SMALT_BENCH_ARM_PORT"] = str(ARM_PORT)
+        env["SMALT_BENCH_DATA_PORT"] = str(DATA_PORT)
+        env["SMALT_BENCH_AMQP_PORT"] = str(AMQP_PORT)
     t0 = time.monotonic()
     r = subprocess.run(
         [sys.executable, os.path.join(REPO, "scripts", "doctor.py")],
         cwd=REPO,
+        env=env,
         capture_output=True,
         text=True,
         timeout=60,
@@ -135,14 +181,7 @@ def doctor_time():
 
 
 def wait_port_free(port, timeout_s=15.0):
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < timeout_s:
-        try:
-            socket.create_connection((HOST, port), timeout=0.2).close()
-        except OSError:
-            return True
-        time.sleep(0.05)
-    return False
+    return _substrate.wait_port_free(port, timeout_s=timeout_s)
 
 
 def bench_boot(n=5):
@@ -152,7 +191,10 @@ def bench_boot(n=5):
             fail_closed(f"port {ARM_PORT} not free before boot run {i + 1}")
         proc = spawn_substrate()
         try:
-            t = wait_for_port(ARM_PORT, proc)
+            # 240s: absorbs sibling compile contention on the shared build
+            # dir (witnessed: "Waiting for lock on the build directory" ate
+            # the old 90s budget; lens-2 cycle 4).
+            t = wait_for_port(ARM_PORT, proc, timeout_s=240.0)
             boot_times.append(t)
             print(f"  boot run {i + 1}/{n}: {t:.3f}s")
         finally:
@@ -163,33 +205,107 @@ def bench_boot(n=5):
     return boot_times
 
 
-def _arm_put_once(i):
+def mint_token(port=None):
+    """Mint a bearer from the ARM STS (exempt route) for enforce-mode parity.
+
+    `port=None` resolves to the CURRENT ARM_PORT at call time — the old
+    `port=ARM_PORT` default bound the import-time value (9443), so on the
+    auto-scope path the mint went to whatever front-door holder was on 9443
+    (witnessed: 401 NoSigningSecretConfigured at ARM PUT #0, deterministic
+    on the auto-scope path, lens-2 cycle 4)."""
+    """Mint a bearer from the ARM STS (exempt route) for enforce-mode parity.
+
+    Carried finding (docs lane, 2026-10-15): bench.py sent no token and would
+    401 on every PUT in dev enforce mode. Minting is harmless in anonymous
+    mode (the token is simply unused).
+    """
+    conn_body = "grant_type=client_credentials&client_id=bench&client_secret=bench"
+    if port is None:
+        port = ARM_PORT
+    # Bounded retry: the STS can 500 (empty body) in the first moments after
+    # port bind while the auth subsystem warms (observed 2026-10-15 bench run).
+    last = "no attempt"
+    for attempt in range(5):
+        conn = http.client.HTTPConnection(HOST, port, timeout=10)
+        conn.request("POST", "/oauth2/v2.0/token", body=conn_body, headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Length": str(len(conn_body)),
+        })
+        resp = conn.getresponse()
+        payload = resp.read()
+        conn.close()
+        if resp.status == 200:
+            return json.loads(payload)["access_token"]
+        last = f"STS token mint attempt {attempt + 1}/5 returned {resp.status}: {payload[:200]!r}"
+        time.sleep(1.0 * (attempt + 1))
+    fail_closed(last)
+
+
+def _arm_put_once(i, token):
     body = json.dumps({"location": "bench"})
     conn = http.client.HTTPConnection(HOST, ARM_PORT, timeout=10)
     path = f"/subscriptions/{SUB_ID}/resourceGroups/rg-bench-{i}?api-version={API_VERSION}"
     try:
         t0 = time.perf_counter()
         conn.request("PUT", path, body=body, headers={
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Content-Length": str(len(body)),
         })
         resp = conn.getresponse()
-        resp.read()
+        resp_body = resp.read()
         dt = (time.perf_counter() - t0) * 1000.0
         if resp.status not in (200, 201):
-            fail_closed(f"ARM PUT #{i} returned {resp.status} (expected 200/201)")
+            fail_closed(f"ARM PUT #{i} returned {resp.status} (expected 200/201): "
+                        f"{resp_body[:300]!r}")
         return dt
     finally:
         conn.close()
 
 
+def spawn_and_wait(target, tries=3):
+    """Spawn the substrate and wait for `target` ("arm"|"data"|"amqp") to
+    bind. On a pre-bind substrate exit — the ephemeral TOCTOU: a sibling lane
+    takes the freshly-picked port in the window between pick_free_port() and
+    the substrate's bind (witnessed: [FAULT] substrate exited rc=1 before
+    binding :50861, lens-2 cycle 4) — kill, re-pick a fresh port, retry.
+    Raises SystemExit after the last try (fail-closed, typed)."""
+    global ARM_PORT, DATA_PORT, AMQP_PORT
+    for attempt in range(tries):
+        proc = spawn_substrate()
+        port = {"arm": ARM_PORT, "data": DATA_PORT, "amqp": AMQP_PORT}[target]
+        try:
+            wait_for_port(port, proc)
+            return proc
+        except SystemExit:
+            kill_substrate(proc)
+            if attempt == tries - 1:
+                raise
+            fresh = pick_free_port()
+            if target == "arm":
+                ARM_PORT = fresh
+            elif target == "data":
+                DATA_PORT = fresh
+            else:
+                AMQP_PORT = fresh
+            print(f"[BENCH] target port stolen pre-bind; re-picked {target} "
+                  f"-> {fresh} (attempt {attempt + 2}/{tries})")
+
+
 def bench_arm_puts(n=200):
     if not wait_port_free(ARM_PORT, timeout_s=20.0):
         fail_closed(f"port {ARM_PORT} not free before ARM bench")
-    proc = spawn_substrate()
+    proc = spawn_and_wait("arm")
     try:
         wait_for_port(ARM_PORT, proc)
-        return [_arm_put_once(i) for i in range(n)]
+        # Durability gate (court parity, lens-2 cycle 4): a partially-scoped
+        # boot can answer one probe then die; re-probe after a settle window
+        # before minting, and require the process to still be alive.
+        time.sleep(2)
+        if proc.poll() is not None:
+            fail_closed(f"substrate exited rc={proc.returncode} after bind")
+        token = mint_token()
+        return [_arm_put_once(i, token) for i in range(n)]
     finally:
         kill_substrate(proc)
 
@@ -197,13 +313,16 @@ def bench_arm_puts(n=200):
 def bench_cosmos(n=200):
     if not wait_port_free(DATA_PORT, timeout_s=20.0):
         fail_closed(f"port {DATA_PORT} not free before Cosmos bench")
-    proc = spawn_substrate()
+    proc = spawn_and_wait("data")
     try:
         wait_for_port(DATA_PORT, proc)
+        token = mint_token(ARM_PORT)
         times_ms = []
         for i in range(n):
             body = json.dumps({"id": f"bench-{i}", "pk": "bench", "payload": "x" * 128})
-            headers = {"Content-Type": "application/json", "Content-Length": str(len(body))}
+            headers = {"Authorization": f"Bearer {token}",
+                       "Content-Type": "application/json",
+                       "Content-Length": str(len(body))}
             t0 = time.perf_counter()
             conn = http.client.HTTPConnection(HOST, DATA_PORT, timeout=10)
             conn.request("POST", "/dbs/bench/colls/c/docs", body=body, headers=headers)
@@ -211,7 +330,8 @@ def bench_cosmos(n=200):
             r1.read()
             t1 = time.perf_counter()
             conn.request("GET", f"/dbs/bench/colls/c/docs/bench-{i}",
-                         headers={"Content-Length": "0"})
+                         headers={"Authorization": f"Bearer {token}",
+                                  "Content-Length": "0"})
             r2 = conn.getresponse()
             r2.read()
             t2 = time.perf_counter()
@@ -220,7 +340,7 @@ def bench_cosmos(n=200):
                 fail_closed(f"Cosmos POST #{i} returned {r1.status} (expected 201)")
             if r2.status != 200:
                 fail_closed(f"Cosmos GET #{i} returned {r2.status} (expected 200)")
-            times_ms.extend([(t1 - t0) * 1000.0, (t2 - t1) * 1000.400 if False else (t2 - t1) * 1000.0])
+            times_ms.extend([(t1 - t0) * 1000.0, (t2 - t1) * 1000.0])
         return times_ms
     finally:
         kill_substrate(proc)
@@ -229,7 +349,7 @@ def bench_cosmos(n=200):
 def bench_amqp(rounds=50):
     if not wait_port_free(AMQP_PORT, timeout_s=20.0):
         fail_closed(f"port {AMQP_PORT} not free before AMQP bench")
-    proc = spawn_substrate()
+    proc = spawn_and_wait("amqp")
     try:
         wait_for_port(AMQP_PORT, proc)
         lats = []
@@ -269,15 +389,39 @@ def verdict(d, target, key="p95", cmp="lt"):
     return d
 
 
+def pick_free_port():
+    """Bind :0 to get an OS-assigned free port; returns the int."""
+    s = socket.socket()
+    s.bind((HOST, 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
 def main():
+    global ARM_PORT, DATA_PORT, AMQP_PORT
     if shutil.which("mix") is None:
         fail_closed("mix not in PATH")
 
+    override = any(os.environ.get(v) for v in
+                   ("SMALT_BENCH_ARM_PORT", "SMALT_BENCH_DATA_PORT",
+                    "SMALT_BENCH_AMQP_PORT"))
     for port in (ARM_PORT, DATA_PORT, AMQP_PORT):
         if not wait_port_free(port, timeout_s=30.0):
-            holder = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
-                                    capture_output=True, text=True).stdout.strip()
-            fail_closed(f"port {port} still in use after 30s: {holder}")
+            if override:
+                holder = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                                        capture_output=True, text=True).stdout.strip()
+                fail_closed(f"port {port} still in use after 30s: {holder}")
+            # No override: front door held by another lane -> auto-scope to an
+            # ephemeral private block instead of fail-closing (cycle 16). The
+            # chosen ports are recorded in the receipt; same functions, same
+            # schema.
+            ARM_PORT = pick_free_port()
+            DATA_PORT = pick_free_port()
+            AMQP_PORT = pick_free_port()
+            print(f"[BENCH] fixed ports held; auto-scoped to private block "
+                  f"{ARM_PORT}/{DATA_PORT}/{AMQP_PORT}")
+            break
 
     os.makedirs(os.path.dirname(RECEIPT_PATH), exist_ok=True)
 
@@ -337,6 +481,7 @@ def main():
         "schema": SCHEMA,
         "date": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "host": "darwin/arm64 local",
+        "ports": {"arm": ARM_PORT, "data": DATA_PORT, "amqp": AMQP_PORT},
         "doctor": doctor_stats,
         "boot": boot_stats,
         "arm_put": arm,
@@ -346,6 +491,19 @@ def main():
     with open(RECEIPT_PATH, "w") as f:
         f.write(json.dumps(receipt, indent=2))
     print(f"[BENCH] receipt written: {RECEIPT_PATH}")
+
+    # Exit contract: the receipt records verdicts, the EXIT CODE must carry
+    # them too — `just bench` and CI read the exit code, not the receipt.
+    # Witnessed defect (lens-2 cycle 4): a boot-p95 FAIL row printed and the
+    # process still exited 0.
+    failed = [name for name, d in (("doctor", doctor_stats), ("boot", boot_stats),
+                                   ("arm_put", arm), ("cosmos", cosmos),
+                                   ("amqp_first_frame", amqp))
+              if d.get("verdict") != "PASS"]
+    if failed:
+        print("[BENCH] GATE: FAIL (%s)" % ", ".join(failed))
+        sys.exit(1)
+    print("[BENCH] GATE: PASS (5/5 CTQs)")
 
 
 if __name__ == "__main__":

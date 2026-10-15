@@ -166,7 +166,7 @@ defmodule SmaltArmGatewayTest do
   # Resource Group lifecycle + case normalization + LIST
   # ---------------------------------------------------------------------------
   test "Resource Group Lifecycle (PUT, GET, DELETE) via lowercase segment" do
-    path = "/subscriptions/#{@sub}/resourcegroups/test-rg"
+    path = "/subscriptions/#{@sub}/resourcegroups/test-rg?api-version=2021-04-01"
 
     put_conn = conn(:put, path, %{"location" => "eastus", "tags" => %{"env" => "dev"}}) |> call()
     assert put_conn.status == 201
@@ -193,7 +193,7 @@ defmodule SmaltArmGatewayTest do
   end
 
   test "Resource Group routes accept camelCase resourceGroups segment" do
-    path = "/subscriptions/#{@sub}/resourceGroups/Test-RG-Camel"
+    path = "/subscriptions/#{@sub}/resourceGroups/Test-RG-Camel?api-version=2021-04-01"
 
     assert conn(:put, path, %{"location" => "eastus"}) |> call() |> Map.get(:status) == 201
 
@@ -204,12 +204,12 @@ defmodule SmaltArmGatewayTest do
 
   test "LIST resource groups returns prefix-scanned collection (both casings)" do
     for name <- ["rg-a", "rg-b"] do
-      conn(:put, "/subscriptions/#{@sub}/resourcegroups/#{name}", %{"location" => "eastus"})
+      conn(:put, "/subscriptions/#{@sub}/resourcegroups/#{name}?api-version=2021-04-01", %{"location" => "eastus"})
       |> call()
     end
 
     for seg <- ["resourcegroups", "resourceGroups"] do
-      conn = conn(:get, "/subscriptions/#{@sub}/#{seg}") |> call()
+      conn = conn(:get, "/subscriptions/#{@sub}/#{seg}?api-version=2021-04-01") |> call()
       assert conn.status == 200
       assert %{"value" => rgs} = Jason.decode!(conn.resp_body)
       assert length(rgs) == 2
@@ -565,6 +565,47 @@ defmodule SmaltArmGatewayTest do
   end
 
   # ---------------------------------------------------------------------------
+  # nextLink carry-through under the gated generic LIST (lens-3: re-fuzz of
+  # lens-2 M4 post-Raise — the nextLink must carry api-version so the follow
+  # request passes the now-ubiquitous api-version gates).
+  # ---------------------------------------------------------------------------
+  test "generic LIST nextLink carries api-version; follow passes the gate" do
+    rg_path = "/subscriptions/#{@sub}/resourcegroups/nextlink-rg"
+    conn(:put, "#{rg_path}?api-version=2021-04-01", %{"location" => "eastus"}) |> call()
+
+    vnet_v = api_v("Microsoft.Network/virtualNetworks")
+
+    for i <- 1..201 do
+      conn(
+        :put,
+        "/subscriptions/#{@sub}/resourceGroups/nextlink-rg/providers/Microsoft.Network/virtualNetworks/vnet-#{String.pad_leading(Integer.to_string(i), 3, "0")}?api-version=#{vnet_v}",
+        %{"location" => "eastus", "properties" => %{"addressPrefixes" => ["10.1.0.0/16"]}}
+      )
+      |> call()
+    end
+
+    page1 =
+      conn(
+        :get,
+        "/subscriptions/#{@sub}/resourceGroups/nextlink-rg/providers/Microsoft.Network/virtualNetworks?api-version=#{vnet_v}"
+      )
+      |> call()
+
+    assert page1.status == 200
+    nl = Jason.decode!(page1.resp_body)["nextLink"]
+    assert is_binary(nl)
+
+    # nextLink carries api-version (M4 fence, post-Raise re-pin)
+    %{query: q} = URI.parse(nl)
+    assert URI.decode_query(q)["api-version"] == vnet_v
+
+    follow = URI.parse(nl)
+    follow_conn = conn(:get, "#{follow.path}?#{follow.query}") |> call()
+    assert follow_conn.status == 200
+    assert is_list(Jason.decode!(follow_conn.resp_body)["value"])
+  end
+
+  # ---------------------------------------------------------------------------
   # Subscription-level lists
   # ---------------------------------------------------------------------------
   test "GET /subscriptions/:sub/providers returns deduped resourceTypes inventory" do
@@ -578,7 +619,8 @@ defmodule SmaltArmGatewayTest do
     )
     |> call()
 
-    conn = conn(:get, "/subscriptions/#{@sub}/providers") |> call()
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/providers?api-version=2021-04-01") |> call()
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
     types = body["resourceTypes"]
@@ -612,6 +654,13 @@ defmodule SmaltArmGatewayTest do
     Application.put_env(:smalt, :arm_rate_limit, 3)
 
     try do
+      # Deterministic window scoping: all five counted requests must land in
+      # the SAME 1-second fixed window, else a boundary crossing mid-test
+      # resets the counter and the 429 assertion flakes (observed lens-3).
+      # Wait until the current second is freshly started so the whole test
+      # body runs inside one window with high margin.
+      wait_for_fresh_window()
+
       now = div(System.system_time(:millisecond), 1000)
       prev = {:smalt_arm_rate, now - 1}
 
@@ -619,7 +668,7 @@ defmodule SmaltArmGatewayTest do
       :ets.insert(Smalt.ArmGateway.Router.rate_table_for_test(), {prev, 99})
 
       conn =
-        conn(:get, "/subscriptions/#{@sub}") |> call()
+        conn(:get, "/subscriptions/#{@sub}?api-version=2021-04-01") |> call()
 
       assert conn.status == 200
 
@@ -629,13 +678,27 @@ defmodule SmaltArmGatewayTest do
 
       # And the window counter still counts toward the limit (no regression to
       # the fixed-window 429 semantics fenced in c1_arm row 12).
-      for _ <- 1..3, do: conn(:get, "/subscriptions/#{@sub}") |> call() |> Map.get(:status)
-      throttled = conn(:get, "/subscriptions/#{@sub}") |> call()
+      for _ <- 1..3, do: conn(:get, "/subscriptions/#{@sub}?api-version=2021-04-01") |> call() |> Map.get(:status)
+      throttled = conn(:get, "/subscriptions/#{@sub}?api-version=2021-04-01") |> call()
       assert throttled.status == 429
       assert get_resp_header(throttled, "retry-after") == ["1"]
     after
       Application.put_env(:smalt, :arm_rate_limit, nil)
       :ets.delete_all_objects(:smalt_arm_rate)
     end
+  end
+
+  # Sleep until just after a wall-clock second boundary, so a test that
+  # counts requests against the 1-second fixed window has near-seconds of
+  # margin before the window rolls over mid-test.
+  defp wait_for_fresh_window do
+    ms = System.system_time(:millisecond)
+    rem = rem(ms, 1000)
+
+    if rem > 800 do
+      Process.sleep(1000 - rem + 20)
+    end
+
+    :ok
   end
 end

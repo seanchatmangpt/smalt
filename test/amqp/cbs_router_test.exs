@@ -19,8 +19,10 @@ defmodule Smalt.Amqp.CbsRouterTest do
   end
 
   defp sas(sr, se) do
+    # String-to-sign is the URL-ENCODED sr, exactly as it appears in the token
+    # (SAS spec / real-SDK form; see SasVerifier.check_signature/3).
     sig =
-      :crypto.mac(:hmac, :sha256, @key, "#{sr}\n#{se}")
+      :crypto.mac(:hmac, :sha256, @key, "#{URI.encode_www_form(sr)}\n#{se}")
       |> Base.encode64()
       |> URI.encode_www_form()
 
@@ -97,18 +99,35 @@ defmodule Smalt.Amqp.CbsRouterTest do
     assert {:error, {400, "INVALID_CBS_BODY"}} = CbsRouter.delete_token(router, bad_delete)
   end
 
-  test "claim cap of 128 returns 429 CLAIM_CAPACITY", %{router: router} do
+  test "per-connection claim cap of 128 returns 429 CLAIM_CAPACITY", %{router: router} do
+    # Cap is PER-CONNECTION (per owner_ref), not total (F2): one owner alone
+    # can exhaust its own ceiling.
     1..128
     |> Enum.each(fn i ->
-      assert {:ok, {200, _}} =
-               CbsRouter.put_token(router, put_req("sb://cap/q#{i}"), {:owner, i})
+      assert {:ok, {200, _}} = CbsRouter.put_token(router, put_req("sb://cap/q#{i}"), :owner_a)
     end)
 
     assert {:error, {429, "CLAIM_CAPACITY"}} =
-             CbsRouter.put_token(router, put_req("sb://cap/q129"), {:owner, 129})
+             CbsRouter.put_token(router, put_req("sb://cap/q129"), :owner_a)
 
     # Existing claims are untouched.
-    assert CbsRouter.authorized?(router, {:owner, 1}, "sb://cap/q1")
+    assert CbsRouter.authorized?(router, :owner_a, "sb://cap/q1")
+  end
+
+  test "one connection at its cap does not block another connection's put-token (F2)",
+       %{router: router} do
+    1..128
+    |> Enum.each(fn i ->
+      assert {:ok, {200, _}} = CbsRouter.put_token(router, put_req("sb://sat/q#{i}"), :saturated)
+    end)
+
+    # Saturated owner is refused...
+    assert {:error, {429, "CLAIM_CAPACITY"}} =
+             CbsRouter.put_token(router, put_req("sb://sat/q129"), :saturated)
+
+    # ...but a fresh connection still gets claims through.
+    assert {:ok, {200, _}} = CbsRouter.put_token(router, put_req("sb://fresh/q1"), :fresh)
+    assert CbsRouter.authorized?(router, :fresh, "sb://fresh/q1")
   end
 
   test "refreshing an existing claim does not hit the cap", %{router: router} do

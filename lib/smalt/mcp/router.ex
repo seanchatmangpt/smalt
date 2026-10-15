@@ -23,6 +23,33 @@ defmodule Smalt.Mcp.Router do
 
   Tests exercise this module over `Plug.Test` with real substrate modules
   (no mocks) — see test/mcp_test.exs.
+
+  ## Test seam: `:doctor_supervisor`
+
+  `doctor_summary/0` reads application env `:smalt, :doctor_supervisor` to pick
+  which supervisor `Supervisor.which_children/1` observes. Contract:
+
+    * default (env unset or nil): the real `Smalt.Supervisor` — production
+      behavior; every deployed path leaves this env unset.
+    * test only: a hostile supervisor may be substituted to fuzz
+      `sanitize_child_id/1` through the public wire path (real collaborator,
+      no mock). The ONLY observable change is the child-id list; nothing else
+      in the doctor summary or any other tool reads this env.
+
+  Anti-vacuity: the hostile-supervisor fence (test/mcp_test.exs) seeds a
+  sentinel child id unique to that fence and asserts it appears verbatim in
+  the response, proving the substitution was actually observed (a seam that
+  silently stopped being read would make the fence test the real supervisor
+  and still pass).
+
+  ## Typed UNSUPPORTED register: no TLS variant
+
+  The MCP surface is HTTP-only. `config :smalt, :tls, :auto` covers the
+  egress (`:8443`) and ARM control-plane (`:9443`/`:9444`) listeners; there
+  is NO `Smalt.TLS.bandit_opts/2` variant for the MCP mount, so wire fences
+  that assume TLS (e.g. the lens-4 pipelined-burst-under-TLS probe) are
+  typed `UNSUPPORTED(tls-variant-absent)` for this surface — recorded here
+  rather than silently absent.
   """
   use Plug.Router
   use Plug.ErrorHandler
@@ -91,11 +118,35 @@ defmodule Smalt.Mcp.Router do
               })
           end
 
+        # tools/call without params.name: typed invalid-params, never
+        # METHOD_NOT_FOUND (method IS known; the request shape is wrong).
+        %{"method" => "tools/call"} = req ->
+          respond_error(
+            conn,
+            req,
+            @json_rpc_invalid_params,
+            "INVALID_PARAMS",
+            "tools/call requires params.name (string)"
+          )
+
         # JSON-RPC batch: not supported, typed error per spec.
         %{"method" => _other} = req ->
           respond_error(conn, req, @json_rpc_method_not_found, "METHOD_NOT_FOUND", req["method"])
       end
     else
+      # Plug.read_body/1 caps at 8 MiB by default; a larger body comes back as
+      # {:more, ...}. Refuse it as a typed 413 instead of crashing with a
+      # CaseClauseError (500).
+      {:more, _partial, conn} ->
+        send_json_rpc_error(
+          conn,
+          413,
+          nil,
+          @json_rpc_invalid_params,
+          "PAYLOAD_TOO_LARGE",
+          "request body exceeds the JSON-RPC size limit"
+        )
+
       {:error, :invalid_json} ->
         send_json_rpc_error(
           conn,
@@ -254,7 +305,8 @@ defmodule Smalt.Mcp.Router do
   defp invoke("substrate.capabilities", _args), do: {:ok, substrate_capabilities()}
 
   defp invoke("arm.get", args) do
-    with %{"resource_group" => rg, "resource_type" => type, "resource_name" => name} <-
+    with %{"resource_group" => rg, "resource_type" => type, "resource_name" => name}
+           when is_binary(rg) and is_binary(type) and is_binary(name) <-
            args,
          sub when is_binary(sub) <- Map.get(args, "subscription_id", default_subscription()),
          res_id =
@@ -273,14 +325,15 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("cosmos.query", args) do
     case args do
-      %{"db" => db, "coll" => coll} ->
+      %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
         headers =
           case args["partition_key"] do
             nil -> %{}
-            pk -> %{Smalt.DataPlane.PartitionKey.header_name() => partition_key_header(pk)}
+            pk when is_binary(pk) -> %{Smalt.DataPlane.PartitionKey.header_name() => partition_key_header(pk)}
+            _other -> %{}
           end
 
-        case Smalt.DataPlane.Cosmos.query_docs(db, coll, %{}, headers) do
+        case Smalt.DataPlane.Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, headers) do
           {:ok, 200, _headers, body} ->
             {:ok, body}
 
@@ -301,12 +354,24 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("blob.list", args) do
     case args do
-      %{"account" => account, "container" => container} ->
+      %{"account" => account, "container" => container}
+      when is_binary(account) and is_binary(container) ->
         prefix = "#{account}/#{container}/"
 
+        # Keys-only-class scan (blob_storage.list_blobs_xml pattern): walk
+        # KEYS via Store.prefix_keys/2 and fetch+project one record at a
+        # time, so the full content of every blob is never held in a single
+        # intermediate list. Behavioral no-op: same keys, same order,
+        # churn-safe skip preserved (deleted mid-walk entries drop out).
         blobs =
-          Smalt.Store.list_prefix(:smalt_blobs, prefix)
-          |> Enum.map(&Smalt.DataPlane.BlobStorage.blob_metadata/1)
+          :smalt_blobs
+          |> Smalt.Store.prefix_keys(prefix)
+          |> Enum.flat_map(fn key ->
+            case Smalt.Store.get(:smalt_blobs, key) do
+              {:ok, blob} -> [Smalt.DataPlane.BlobStorage.blob_metadata(blob)]
+              _ -> []
+            end
+          end)
 
         {:ok,
          %{"container" => "#{account}/#{container}", "blobs" => blobs, "count" => length(blobs)}}
@@ -318,12 +383,15 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("sb.peek", args) do
     case args do
-      %{"queue" => queue} ->
-        case Smalt.Amqp.QueueStore.peek(queue,
-               message_count: args["message_count"] || 10
-             ) do
-          {:ok, messages} ->
-            {:ok, %{"queue" => queue, "messages" => messages, "count" => length(messages)}}
+      %{"queue" => queue} when is_binary(queue) ->
+        with {:ok, mc} <- message_count_arg(args["message_count"]),
+             {:ok, messages} <-
+               Smalt.Amqp.QueueStore.peek(queue, message_count: mc) do
+          {:ok, %{"queue" => queue, "messages" => messages, "count" => length(messages)}}
+        else
+          :error ->
+            {:refusal, @invalid_params_code,
+             "refused: sb.peek message_count must be an integer between 1 and 100"}
 
           other ->
             {:refusal, "SB_ERROR", "sb.peek unexpected: #{inspect(other)}"}
@@ -336,7 +404,7 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("kv.get", args) do
     case args do
-      %{"name" => name} ->
+      %{"name" => name} when is_binary(name) ->
         case Smalt.Store.get(:smalt_vault_keys, name) do
           {:ok, record} ->
             {:ok, public_vault_record(record)}
@@ -358,6 +426,17 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}
+
+  # message_count is schema-bounded (integer 1..100): out-of-schema values are
+  # refused at dispatch, never forwarded to the substrate's silent clamp.
+  # (Kept AFTER the invoke/2 clause group so invoke/2 stays contiguous — an
+  # interleaved defp here made invoke/2 non-contiguous and warned under
+  # `mix compile --warnings-as-errors`, which is the ggen_igniter.sync
+  # terminal verify gate.)
+  defp message_count_arg(nil), do: {:ok, 10}
+
+  defp message_count_arg(n) when is_integer(n) and n >= 1 and n <= 100, do: {:ok, n}
+  defp message_count_arg(_), do: :error
 
   # ---------------------------------------------------------------------------
   # Tool bodies
@@ -407,15 +486,24 @@ defmodule Smalt.Mcp.Router do
   end
 
   defp doctor_summary do
+    # Test seam (lens-4): the supervisor observed defaults to the real one; a
+    # hostile-id real supervisor can be substituted to fuzz sanitize_child_id/1
+    # through the public wire path. No other behavior changes.
+    sup = Application.get_env(:smalt, :doctor_supervisor, Smalt.Supervisor)
+
     children =
-      case Process.whereis(Smalt.Supervisor) do
+      case sup do
         nil ->
           []
 
         sup ->
           Supervisor.which_children(sup)
           |> Enum.map(fn {id, pid, _type, _mods} ->
-            %{"id" => inspect(id), "pid" => inspect(pid), "alive" => Process.alive?(pid)}
+            %{
+              "id" => sanitize_child_id(id),
+              "pid" => inspect(pid),
+              "alive" => Process.alive?(pid)
+            }
           end)
       end
 
@@ -437,8 +525,13 @@ defmodule Smalt.Mcp.Router do
 
   defp default_subscription, do: "00000000-0000-0000-0000-000000000000"
 
-  defp provider_of(type) do
-    type |> String.split("/") |> List.first()
+  # Supervisor child ids render as their atom form where possible; compound
+  # ids (e.g. {Bandit, #Reference<...>}) keep the module name but collapse
+  # session-local reference tokens so no ephemeral internals cross the wire.
+  defp sanitize_child_id(id) when is_atom(id), do: inspect(id)
+
+  defp sanitize_child_id(id) do
+    String.replace(inspect(id), ~r/#Reference<[^>]+>/, "#Reference")
   end
 
   defp partition_key_header(pk), do: pk

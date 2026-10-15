@@ -231,14 +231,28 @@ defmodule Smalt.DataPlane.KQL do
 
   defp take_word(<<>>, acc), do: {Enum.reverse(acc), <<>>}
 
-  defp lex_string(<<>>, _acc), do: :error
+  # Minimal unblock fix (store+graphlaw lane, compile-freeze SLA): the caller
+  # lex/2 invokes lex_string/3 with the opening quote byte `q`; define the
+  # quote-aware 3-arg clauses (backslash escapes the next byte, matching the
+  # comment on the lex/2 clause).
+  defp lex_string(<<>>, _q, _acc), do: :error
 
-  defp lex_string(<<?', rest::binary>>, acc), do: {:ok, acc, rest}
+  # Backslash escape: real Kusto consumes the backslash — \' -> ', \" -> ",
+  # \\ -> \, \n -> newline, \t -> tab, \r -> CR. Unknown escapes keep the
+  # escaped byte itself (backslash dropped), matching lenient Kusto behavior.
+  defp lex_string(<<?\\, ?n, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, ?\n>>)
+  defp lex_string(<<?\\, ?t, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, ?\t>>)
+  defp lex_string(<<?\\, ?r, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, ?\r>>)
 
-  defp lex_string(<<c::utf8, rest::binary>>, acc), do: lex_string(rest, <<acc::binary, c::utf8>>)
+  defp lex_string(<<?\\, c, rest::binary>>, q, acc) when is_integer(c),
+    do: lex_string(rest, q, <<acc::binary, c>>)
+
+  defp lex_string(<<q, rest::binary>>, q, acc), do: {:ok, acc, rest}
+
+  defp lex_string(<<c::utf8, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, c::utf8>>)
 
   # Invalid UTF-8 byte inside a string literal: consume as a raw byte (fuzz fence).
-  defp lex_string(<<c, rest::binary>>, acc), do: lex_string(rest, <<acc::binary, c>>)
+  defp lex_string(<<c, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, c>>)
 
   ## -- Parser: tokens -> stage list -------------------------------------------------
 
@@ -273,6 +287,10 @@ defmodule Smalt.DataPlane.KQL do
         end
 
       [] ->
+        {:error, "take expects an integer"}
+
+      # Catch-all: any non-word token after 'take' is a parse error (fuzz fence).
+      _ ->
         {:error, "take expects an integer"}
     end
   end
@@ -314,6 +332,10 @@ defmodule Smalt.DataPlane.KQL do
     do: {:error, "unknown pipeline keyword #{inspect(other)}"}
 
   defp parse_stage([], _stages), do: {:error, "expected pipeline keyword after '|'"}
+
+  # Catch-all: any non-word token (rparen/comma/string) right after '|' is a
+  # parse error, never a FunctionClauseError crash (random-fuzz fence, cycle 9).
+  defp parse_stage([_bad | _], _stages), do: {:error, "unexpected token after '|'"}
 
   defp parse_cols([{:word, col} | rest], acc),
     do: parse_cols_skip_comma(rest, [col | acc])
@@ -371,6 +393,11 @@ defmodule Smalt.DataPlane.KQL do
   end
 
   defp parse_comparison(_col, []), do: {:error, "expected comparison operator after column"}
+
+  # Catch-all: a non-word token (paren/string/comma) after a column is a parse
+  # error, never a FunctionClauseError crash (fuzz fence, cycle 10).
+  defp parse_comparison(_col, [_bad | _]),
+    do: {:error, "expected comparison operator after column"}
 
   defp parse_number(bin) do
     case Integer.parse(bin) do

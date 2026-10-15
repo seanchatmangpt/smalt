@@ -42,6 +42,7 @@ defmodule Smalt.Security.ReceiptSigner do
   def verify(token) when is_binary(token) do
     with {:ok, header, claims, signing_input, sig_bytes} <- split(token),
          :ok <- check_alg(header),
+         :ok <- check_typ(header),
          :ok <- check_signature(signing_input, sig_bytes) do
       {:ok, claims}
     end
@@ -52,11 +53,14 @@ defmodule Smalt.Security.ReceiptSigner do
   @doc """
   Verifies a token and its `exp` claim (epoch seconds). Expired or missing-`exp`
   tokens are rejected with `{:error, :token_expired}` / `{:error, :invalid_claims}`.
+  A present-but-future `nbf` claim is rejected with `{:error, :token_not_yet_valid}`
+  (`nbf == now` is accepted; the claim is optional).
   """
   @spec verify_token(String.t()) :: {:ok, map()} | {:error, term}
   def verify_token(token) do
     with {:ok, claims} <- verify(token),
-         :ok <- check_exp(claims) do
+         :ok <- check_exp(claims),
+         :ok <- check_nbf(claims) do
       {:ok, claims}
     end
   end
@@ -85,6 +89,17 @@ defmodule Smalt.Security.ReceiptSigner do
   defp check_alg(%{"alg" => other}) when is_binary(other), do: {:error, {:bad_alg, other}}
   defp check_alg(_), do: {:error, :bad_alg}
 
+  # RFC 8725 §3.11 explicit typing (lens-3): when `typ` is present it must be
+  # exactly "JWT". ReceiptSigner always emits typ "JWT"; a foreign envelope that
+  # declares its own type (e.g. TrustProfile's "ctp-envelope-v1") is refused
+  # STRUCTURALLY — before the key is touched — so cross-surface non-interop no
+  # longer depends on the two surfaces holding different keypairs. Absent `typ`
+  # stays admitted (RFC 7519: typ is optional; legacy tokens).
+  defp check_typ(%{"typ" => "JWT"}), do: :ok
+  defp check_typ(%{"typ" => other}) when is_binary(other), do: {:error, {:bad_typ, other}}
+  defp check_typ(%{"typ" => other}), do: {:error, {:bad_typ, other}}
+  defp check_typ(_), do: :ok
+
   defp check_signature(signing_input, sig_bytes) do
     {_private, public} = keypair()
 
@@ -106,6 +121,21 @@ defmodule Smalt.Security.ReceiptSigner do
   end
 
   defp check_exp(_), do: {:error, :invalid_claims}
+
+  # nbf (not-before) is optional; when present it must not be in the future.
+  # Same integer/other split as exp: a non-integer nbf is uninterpretable and
+  # refused rather than ignored.
+  defp check_nbf(claims) when is_map(claims) do
+    now = System.system_time(:second)
+
+    case claims do
+      %{"nbf" => nbf} when is_integer(nbf) and nbf <= now -> :ok
+      %{"nbf" => _} -> {:error, :token_not_yet_valid}
+      _ -> :ok
+    end
+  end
+
+  defp check_nbf(_), do: {:error, :invalid_claims}
 
   defp keypair do
     case :persistent_term.get(@key_ref, :missing) do

@@ -17,7 +17,7 @@ defmodule Smalt.OcelRevopsTest do
     on_exit(fn -> File.rm_rf!(@tmp_dir) end)
 
     happy = Conformance.happy_path_trace()
-    broken = ~w(arm.resource.transition blob.put blob.custody.transition)
+    broken = ~w(arm.resource.transition blob.custody.transition)
 
     # Real NDJSON sink lines: res-1 replays the full happy path; res-2 is
     # the broken trace from the conformance court (skipped mid-path).
@@ -61,9 +61,9 @@ defmodule Smalt.OcelRevopsTest do
 
     by_id = Map.new(traces, &{&1.trace_id, &1})
 
-    assert by_id["res-1"].event_count == 6
-    assert by_id["res-2"].event_count == 3
-    assert "arm.resource.transition" in by_id["res-2"].event_types
+    assert by_id["res-1"].event_count == 3
+    assert by_id["res-2"].event_count == 2
+    assert "blob.custody.transition" in by_id["res-2"].event_types
     assert %DateTime{} = by_id["res-1"].start_time
     assert DateTime.compare(by_id["res-1"].start_time, by_id["res-1"].end_time) == :lt
   end
@@ -83,9 +83,23 @@ defmodule Smalt.OcelRevopsTest do
     assert by_id["res-1"].fitness == 1.0
     assert by_id["res-1"].deviation_count == 0
 
+    # Net-selection law, pinned: FitnessVerdict replays against the ONE
+    # canonical emittable net (happy_path_net) by construction — no
+    # multi-net ambiguity exists. The same emitted trace scores 1.0
+    # under the canonical net vs 0.4666666666666667 (live-computed)
+    # under the historical full_courier_net; the verdict MUST be the
+    # canonical one.
+    assert by_id["res-1"].fitness == Conformance.check_trace(Conformance.happy_path_net(), Conformance.happy_path_trace()).fitness
+    assert by_id["res-1"].fitness != Conformance.check_trace(Conformance.full_courier_net(), Conformance.happy_path_trace()).fitness
+
     assert by_id["res-2"].conforms == false
-    assert by_id["res-2"].fitness < 1.0
-    assert by_id["res-2"].deviation_count > 0
+
+    # Exact replay of [arm, blob.custody.transition] over the emittable
+    # happy_path_net: blob.custody underfed (m1 c1); its produced p_end
+    # token lands; end {p_armed:1, p_end:1}: deficit 0, excess 1.
+    # c=2 m=1 p=3 r=1 -> ((1 - 1/2) + (1 - 1/3)) / 2 = 0.5833333333333334
+    assert by_id["res-2"].fitness == (1 - 1 / 2 + (1 - 1 / 3)) / 2
+    assert by_id["res-2"].deviation_count == 2
   end
 
   test "a conformance-false deviation appears as an evidence record through Ash", %{
@@ -120,7 +134,7 @@ defmodule Smalt.OcelRevopsTest do
     assert record.status == "observed"
     assert record.reference_trace_id == "res-1"
     assert record.candidate_trace_id == "res-2"
-    assert record.deviating_move == "blob.put/missing_tokens"
+    assert record.deviating_move == "blob.custody.transition/missing_tokens"
     assert record.fitness == result.fitness
     assert record.trace == broken
 

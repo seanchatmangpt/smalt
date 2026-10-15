@@ -52,7 +52,7 @@ defmodule Smalt.Wire.ArmWireTest do
     resp =
       http_request(port, "POST", "/oauth2/v2.0/token",
         headers: [{"content-type", "application/x-www-form-urlencoded"}],
-        body: "grant_type=client_credentials&client_id=wire-test"
+        body: "grant_type=client_credentials&client_id=wire-test&client_secret=wire-secret"
       )
 
     assert resp.status == 200
@@ -99,7 +99,7 @@ defmodule Smalt.Wire.ArmWireTest do
 
     assert update.status == 200
 
-    get = http_request(port, "GET", "/subscriptions/#{@sub_id}/resourceGroups/wire-rg")
+    get = http_request(port, "GET", "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2021-04-01")
     assert get.status == 200
     assert Jason.decode!(get.body)["name"] == "wire-rg"
   end

@@ -102,10 +102,105 @@ defmodule Smalt.StoreDetsTest do
     end
   end
 
+  test "restore x insert_new churn: insert_new :ok implies the FRESH value wins (no stale clobber)",
+       %{
+         dir: dir
+       } do
+    table = :dm_t_resources
+    n = 300
+    clobbers = race_rounds(table, n, dir)
+
+    assert clobbers == [], """
+    stale clobber witnessed for #{length(clobbers)} key(s): #{inspect(Enum.take(clobbers, 5))}
+    restore must never run a bare :ets.lookup+:ets.insert that can interleave
+    with a concurrent insert_new — it must route through Smalt.Store.insert_new/3.
+    """
+  end
+
+  # The lookup-vs-insert clobber window in a non-atomic restore is a few
+  # nanoseconds wide; a single restore pass hits it only ~40% of the time
+  # (measured on this court). So the court REPEATS the race: each round seeds a
+  # fresh key namespace into the mirror, wipes the hot table, hammers
+  # insert_new across the whole restore window, and checks the no-clobber
+  # invariant, stopping at the first clobber. A non-atomic restore survives one
+  # round with p~0.9 (measured ~67% suite kill over 12 rounds); the 36-round
+  # budget puts mutant survival below ~2%.
+  @max_rounds 250
+
+  defp race_rounds(table, n, dir) do
+    1..@max_rounds
+    |> Enum.reduce_while([], fn round, acc ->
+      case race_round(table, n, dir, round) do
+        [] -> {:cont, acc}
+        clobbers -> {:halt, clobbers}
+      end
+    end)
+  end
+
+  defp race_round(table, n, dir, round) do
+    keys = Enum.map(1..n, &key(round, &1))
+    stale = Enum.map(keys, &{&1, %{"gen" => "stale", "round" => round}})
+
+    # Seed the mirror with STALE rows, then wipe the hot table (simulated crash)
+    :ets.insert(table, stale)
+
+    File.mkdir_p!(Path.join(dir, "round-#{round}"))
+
+    {:ok, pid} =
+      Smalt.Store.DetsMirror.start_link(
+        dir: Path.join(dir, "round-#{round}"),
+        tables: @tables,
+        interval: 3_600_000
+      )
+
+    Smalt.Store.DetsMirror.sync(pid)
+    :ets.delete_all_objects(table)
+
+    # One racer per key, hammering FRESH insert_new attempts from spawn until
+    # restore completes (a fixed attempt count let the non-atomic mutant
+    # survive because racers finished before restore reached their key).
+    done = :atomics.new(1, signed: false)
+
+    racers =
+      for i <- 1..n do
+        Task.async(fn ->
+          fresh = %{"gen" => "fresh", "round" => round, "i" => i}
+          k = key(round, i)
+
+          oks =
+            Stream.repeatedly(fn -> Smalt.Store.insert_new(table, k, fresh) end)
+            |> Enum.take_while(fn _ -> :atomics.get(done, 1) == 0 end)
+            |> Enum.count(&match?(:ok, &1))
+
+          {k, oks}
+        end)
+      end
+
+    {:ok, counts} =
+      try do
+        Smalt.Store.DetsMirror.restore(pid)
+      after
+        :atomics.put(done, 1, 1)
+      end
+
+    results = Task.await_many(racers, 60_000)
+    GenServer.stop(pid)
+
+    # Invariant: any key some racer WON (>=1 :ok) must hold the FRESH payload.
+    for {k, oks} <- results,
+        oks > 0,
+        {^k, val} <- :ets.lookup(table, k),
+        val["gen"] != "fresh" do
+      k
+    end
+  end
+
   defp lookup_val(table, key) do
     case :ets.lookup(table, key) do
       [{^key, val}] -> {:ok, val}
       [] -> :error
     end
   end
+
+  defp key(round, i), do: "/churn/r#{round}/#{String.pad_leading(Integer.to_string(i), 4, "0")}"
 end

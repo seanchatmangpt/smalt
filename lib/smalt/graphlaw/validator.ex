@@ -80,11 +80,17 @@ defmodule Smalt.GraphLaw.Validator.ShapeFile do
   defp read_string(["\\", escaped | rest], char_acc), do: read_string(rest, [escaped | char_acc])
   defp read_string(["\"" | rest], char_acc), do: {Enum.reverse(char_acc) |> Enum.join(), rest}
   defp read_string([ch | rest], char_acc), do: read_string(rest, [ch | char_acc])
-  defp read_string([], char_acc), do: {Enum.reverse(char_acc) |> Enum.join(), []}
+
+  defp read_string([], _char_acc) do
+    raise CompileError, file: "smalt-shapes.ttl", description: "unterminated string literal"
+  end
 
   defp read_iri([">" | rest], char_acc), do: {Enum.reverse(char_acc) |> Enum.join(), rest}
   defp read_iri([ch | rest], char_acc), do: read_iri(rest, [ch | char_acc])
-  defp read_iri([], char_acc), do: {Enum.reverse(char_acc) |> Enum.join(), []}
+
+  defp read_iri([], _char_acc) do
+    raise CompileError, file: "smalt-shapes.ttl", description: "unterminated IRI"
+  end
 
   # -- statement grouping -----------------------------------------------------------
 
@@ -337,12 +343,21 @@ defmodule Smalt.GraphLaw.Validator do
   never validated against an implicit empty (permissive) shape.
   """
   def shape_for_type(type) do
-    name = shape_name(type) || ""
+    resolve_shape(@shapes, shape_name(type) || "")
+  end
 
-    Map.get(@shapes, name) ||
-      Map.get(@shapes, name <> "Shape") ||
-      Map.get(@shapes, String.trim_trailing(name, "Shape")) ||
-      shape_by_target_class(name)
+  @doc """
+  Pure shape resolution over an explicit shapes map: exact name, then
+  `name <> "Shape"`, then trimmed suffix, then targetClass match. Returns
+  `nil` when nothing resolves — `validate_local/2` REFUSES on `nil`
+  (fail-closed: an admitted type with no compiled shape must never be
+  validated against an implicit empty, permissive shape).
+  """
+  def resolve_shape(shapes, name) when is_map(shapes) and is_binary(name) do
+    Map.get(shapes, name) ||
+      Map.get(shapes, name <> "Shape") ||
+      Map.get(shapes, String.trim_trailing(name, "Shape")) ||
+      shape_by_target_class(shapes, name)
   end
 
   @doc """
@@ -533,12 +548,25 @@ defmodule Smalt.GraphLaw.Validator do
   end
 
   defp closed_violation(path) do
+    # Fail closed on malformed payload keys: a non-binary key (atom, integer,
+    # tuple — hostile or buggy client) is itself an unknown property and must
+    # yield a `closed` violation, never an ArgumentError from binary concat.
+    # The echoed path is capped: a megabyte-scale hostile key must not bloat
+    # the refusal envelope or flood logs.
+    path_str =
+      path
+      |> to_path_string()
+      |> String.slice(0, 200)
+
     %{
-      path: path,
+      path: path_str,
       constraint: "closed",
-      message: "unknown property path " <> path <> " (shape is sh:closed)"
+      message: "unknown property path " <> path_str <> " (shape is sh:closed)"
     }
   end
+
+  defp to_path_string(path) when is_binary(path), do: path
+  defp to_path_string(path), do: inspect(path)
 
   defp present?(payload, path) do
     case dotted_get(payload, path) do
@@ -587,8 +615,8 @@ defmodule Smalt.GraphLaw.Validator do
     end
   end
 
-  defp shape_by_target_class(local) do
-    Enum.find(Map.values(@shapes), fn shape ->
+  defp shape_by_target_class(shapes, local) do
+    Enum.find(Map.values(shapes), fn shape ->
       shape.target_class && last_segment(shape.target_class) == last_segment(local)
     end)
   end

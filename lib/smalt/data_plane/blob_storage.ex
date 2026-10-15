@@ -10,8 +10,37 @@ defmodule Smalt.DataPlane.BlobStorage do
   @policy_table :smalt_blob_policy
 
   def create_container(account, container, opts \\ %{}) do
+    with :ok <- check_container_name(container) do
+      do_create_container(account, container, opts)
+    end
+  end
+
+  # Azure parity (cycle-25, Put Container): container names are 3-63 bytes,
+  # lowercase letters/digits/dashes, starting and ending alphanumeric. Real
+  # Azure answers 400 InvalidResourceName; smalt accepted anything and the
+  # duplicate-create silently replaced records (WORM clock reset).
+  @container_name_re ~r/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/
+
+  defp check_container_name(name) when is_binary(name) do
+    if name == "" or byte_size(name) > 63 or not Regex.match?(@container_name_re, name) do
+      {:error, 400, "InvalidResourceName",
+       "The specified container name is invalid (3-63 bytes, lowercase letters, digits and dashes, starting and ending alphanumeric)."}
+    else
+      :ok
+    end
+  end
+
+  defp check_container_name(_),
+    do: {:error, 400, "InvalidResourceName", "The specified container name is invalid."}
+
+  # Azure parity (cycle-25): Put Container on an existing container is 409
+  # ContainerAlreadyExists — previously any duplicate create silently
+  # REPLACED the record (created_at/WORM clock reset, flag flip-flop).
+  defp do_create_container(account, container, opts) do
     key = "#{account}/#{container}"
-    created_at = Map.get(opts, "created_at_ms") || System.os_time(:millisecond)
+
+    with :error <- Smalt.Store.get(:smalt_blob_containers, key) do
+      created_at = Map.get(opts, "created_at_ms") || System.os_time(:millisecond)
 
     record = %{
       "account" => account,
@@ -22,19 +51,45 @@ defmodule Smalt.DataPlane.BlobStorage do
       "created" => DateTime.from_unix!(created_at, :millisecond) |> DateTime.to_iso8601()
     }
     Store.put(:smalt_blob_containers, key, record)
-    {:ok, record}
+      {:ok, record}
+    else
+      {:ok, _existing} ->
+        {:error, 409, "ContainerAlreadyExists",
+         "The specified container already exists."}
+    end
   end
+
+  @doc """
+  Validate List Blobs `maxresults` (Azure grammar: 1-5000; non-positive or
+  non-integer values are 400 InvalidQueryParameter, never silently coerced
+  to the default page size).
+  """
+  def check_maxresults(nil), do: :ok
+
+  def check_maxresults(raw) when is_binary(raw) do
+    case Integer.parse(raw) do
+      {n, ""} when n > 0 -> :ok
+      _ -> maxresults_error()
+    end
+  end
+
+  def check_maxresults(n) when is_integer(n) and n > 0, do: :ok
+  def check_maxresults(_), do: maxresults_error()
+
+  defp maxresults_error,
+    do: {:error, 400, "InvalidQueryParameter",
+         "Value for maxresults is invalid (must be a positive integer)."}
 
   @doc """
   Time-aware policy evaluation for a container. `:now_ms` is injected
   (defaults to `System.os_time(:millisecond)`).
 
-  Returns `%{"locked" => bool, "legal_hold" => bool, "expired" => bool,
-  "expires_at" => ms | nil}`. When `now > created_at + retention_days` the
-  container's immutability policy has expired and the container unlocks
-  (overwrite/delete permitted). Legal holds NEVER auto-expire. Legacy
-  containers without `created_at` are conservatively reported as
-  not-yet-expired.
+  Returns `{:ok, %{"locked" => bool, "legal_hold" => bool, "expired" => bool,
+  "expires_at" => ms | nil}}` or `{:error, :container_not_found}`. When
+  `now > created_at + retention_days` the container's immutability policy has
+  expired and the container unlocks (overwrite/delete permitted). Legal holds
+  NEVER auto-expire. Legacy containers without `created_at` are conservatively
+  reported as not-yet-expired.
   """
   def policy_state(account, container, opts \\ []) do
     now = now_ms(opts)
@@ -44,12 +99,13 @@ defmodule Smalt.DataPlane.BlobStorage do
       policy = fetch_policy(meta)
       expires_at = retention_end_ms(meta)
 
-      %{
-        "locked" => locked_policy?(policy),
-        "legal_hold" => legal_hold?(policy),
-        "expired" => expired?(meta, now),
-        "expires_at" => expires_at
-      }
+      {:ok,
+       %{
+         "locked" => locked_policy?(policy),
+         "legal_hold" => legal_hold?(policy),
+         "expired" => expired?(meta, now),
+         "expires_at" => expires_at
+       }}
     else
       :error -> {:error, :container_not_found}
     end
@@ -72,32 +128,113 @@ defmodule Smalt.DataPlane.BlobStorage do
     blob_key = "#{account}/#{container}/#{blob_name}"
     now = now_ms(opts)
 
+    with :ok <- check_blob_name(blob_name),
+         {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
+         :ok <- check_content(content),
+         :ok <- check_put_size(content),
+         :ok <- check_metadata_names(headers) do
+      case Store.get(:smalt_blobs, blob_key) do
+        {:ok, existing} ->
+          cond do
+            worm_blocked?(container_meta, "overwrite", now) ->
+              {:error, :worm_locked, worm_message(container_meta, now)}
+
+            mismatched_if_match?(headers, existing["etag"]) ->
+              {:error, :precondition_failed, precondition_message()}
+
+            # Azure parity (cycle-21): If-None-Match: * refuses overwrite of
+            # an existing blob (412) — previously silently ignored, so a
+            # conditional-create raced through as an unconditional overwrite.
+            if_none_match_star?(headers) ->
+              {:error, :precondition_failed, precondition_message()}
+
+            true ->
+              store_blob(account, container, blob_name, content, headers)
+          end
+
+        :error ->
+          cond do
+            # Azure parity (cycle-21): If-Match on a NON-EXISTENT blob is
+            # 412 (a precondition on a resource that does not exist fails).
+            # Previously the create path skipped all preconditions, so
+            # If-Match: * created unconditionally.
+            ConditionalHeaders.header(headers, "if-match") != nil ->
+              {:error, :precondition_failed, precondition_message()}
+
+            true ->
+              store_blob(account, container, blob_name, content, headers)
+          end
+      end
+    else
+      :error ->
+        {:error, :container_not_found}
+
+      {:error, :too_large, msg} ->
+        {:error, :too_large, msg}
+
+      {:error, 400, _code, _msg} = invalid ->
+        invalid
+    end
+  end
+
+  # Azure parity (Put Blob): real Azure rejects control characters in blob
+  # names at PUT with 400 InvalidResourceName, and names are bounded
+  # (1,024 characters per the naming reference). smalt accepted any bytes
+  # and only sanitized at listing emission (cycle-11).
+  @max_blob_name_bytes 1_024
+
+  defp check_blob_name(name) when is_binary(name) do
+    cond do
+      name == "" or byte_size(name) > @max_blob_name_bytes ->
+        {:error, 400, "InvalidResourceName",
+         "The specified blob name is invalid (must be 1 to 1024 bytes)."}
+
+      String.match?(name, ~r/[\x00-\x1F\x7F]/) ->
+        {:error, 400, "InvalidResourceName",
+         "The specified blob name is invalid (control characters are not permitted)."}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp check_blob_name(_),
+    do: {:error, 400, "InvalidResourceName", "The specified blob name is invalid."}
+
+  # Azure parity (Put Blob / Put Metadata): user metadata names must be valid
+  # C# identifiers; violations answer 400 InvalidMetadata, never a stored row.
+  @meta_name_re ~r/^[A-Za-z_][A-Za-z0-9_]*$/
+
+  defp check_metadata_names(headers) when is_map(headers) do
+    bad =
+      Enum.find(headers, fn {k, v} ->
+        case k do
+          "x-ms-meta-" <> name ->
+            not Regex.match?(@meta_name_re, name) or
+              not (is_binary(v) and not Regex.match?(~r/[\x00-\x1F\x7F]/, v))
+
+          _ -> false
+        end
+      end)
+
+    case bad do
+      nil ->
+        :ok
+
+      {k, _} ->
+        {:error, 400, "InvalidMetadata",
+         "Invalid metadata name (must be a valid C# identifier) or value (must be a control-character-free binary): #{k}."}
+    end
+  end
+
+  defp check_metadata_names(_), do: :ok
+
+  # Azure parity: container existence (404) outranks request size (413).
+  defp check_put_size(content) do
     if byte_size(content) > @max_put_bytes do
       {:error, :too_large, too_large_message()}
     else
-
-    case Store.get(:smalt_blob_containers, container_key) do
-      {:ok, container_meta} ->
-        case Store.get(:smalt_blobs, blob_key) do
-          {:ok, existing} ->
-            cond do
-              worm_blocked?(container_meta, "overwrite", now) ->
-                {:error, :worm_locked, worm_message(container_meta, now)}
-
-              mismatched_if_match?(headers, existing["etag"]) ->
-                {:error, :precondition_failed, precondition_message()}
-
-              true ->
-                store_blob(account, container, blob_name, content, headers)
-            end
-
-          :error ->
-            store_blob(account, container, blob_name, content, headers)
-        end
-
-      :error ->
-        {:error, :container_not_found}
-    end
+      :ok
     end
   end
 
@@ -121,7 +258,8 @@ defmodule Smalt.DataPlane.BlobStorage do
     with {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
          {:ok, existing} <- blob_or_404(blob_key),
          :ok <- check_worm(container_meta, now),
-         :ok <- check_if_match(headers, existing["etag"]) do
+         :ok <- check_if_match(headers, existing["etag"]),
+         :ok <- check_if_none_match(headers) do
       Store.delete(:smalt_blobs, blob_key)
 
       {:ok, 202,
@@ -145,57 +283,88 @@ defmodule Smalt.DataPlane.BlobStorage do
     now = now_ms(opts)
     ensure_policy_table()
 
-    with :ok <- require_container(container_key),
-         {:ok, container_meta} <- fetch_container_meta(container_key),
+    with {:ok, container_meta} <- fetch_container_meta(container_key),
          {:ok, existing} <- policy_or_empty(container_key),
          :ok <- refuse_if_locked(existing, container_meta, now),
          :ok <- require_star_if_match_for_lock(headers, policy) do
       locked = Map.get(policy, "locked", false)
       period_days = Map.get(policy, "period_days", Map.get(existing, "period_days", 0))
-      # nil-coalescing: an explicit "until" => nil in the policy map must fall
-      # through to the computed default, never propagate nil into a response
-      # header (put_resp_header on nil is a FunctionClauseError 500).
-      until = Map.get(policy, "until") || default_until(period_days, now)
 
-      new_policy = %{
-        "immutability_policy" => %{
-          "locked" => locked,
-          "until" => until,
-          "period_days" => period_days
-        },
-        "legal_hold" => Map.get(existing, "legal_hold", false)
-      }
+      with :ok <- validate_period_days(period_days) do
+        # nil-coalescing: an explicit "until" => nil in the policy map must fall
+        # through to the computed default, never propagate nil into a response
+        # header (put_resp_header on nil is a FunctionClauseError 500).
+        until = Map.get(policy, "until") || default_until(period_days, now)
 
-      Store.put(@policy_table, container_key, new_policy)
+        new_policy = %{
+          "immutability_policy" => %{
+            "locked" => locked,
+            "until" => until,
+            "period_days" => period_days
+          },
+          "legal_hold" => Map.get(existing, "legal_hold", false)
+        }
 
-      base_headers = %{
-        "x-ms-request-id" => request_id(),
-        "x-ms-version" => "2021-12-02",
-        "x-ms-has-immutability-policy" => "true"
-      }
+        Store.put(@policy_table, container_key, new_policy)
 
-      # nil-safe projection: immutability-policy-until is only emitted when a
-      # real expiry exists (period_days > 0 or a wire expiresOn was supplied).
-      headers =
-        if is_binary(until),
-          do: Map.put(base_headers, "immutability-policy-until", until),
-          else: base_headers
+        base_headers = %{
+          "x-ms-request-id" => request_id(),
+          "x-ms-version" => "2021-12-02",
+          "x-ms-has-immutability-policy" => "true"
+        }
 
-      {:ok, 200, headers,
-       %{"locked" => locked, "until" => until, "period_days" => period_days}}
+        # nil-safe projection: immutability-policy-until is only emitted when a
+        # real expiry exists (period_days > 0 or a wire expiresOn was supplied).
+        headers =
+          if is_binary(until),
+            do: Map.put(base_headers, "immutability-policy-until", until),
+            else: base_headers
+
+        {:ok, 200, headers,
+         %{"locked" => locked, "until" => until, "period_days" => period_days}}
+      else
+        {:error, 400, code, msg} -> {:error, 400, code, msg}
+      end
     else
-      {:error, :container_not_found} -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, :locked} -> {:error, 409, "ContainerLocked", locked_policy_message()}
       {:error, :if_match_required} -> {:error, 412, "PreconditionFailed",
         "Locking an immutability policy requires If-Match: \"*\"."}
+      {:error, 400, code, msg} -> {:error, 400, code, msg}
+      {:error, 404, code, msg} -> {:error, 404, code, msg}
     end
   end
+
+  @doc """
+  Validate blob PUT content type (engine-level total: the wire always hands
+  put_blob a binary body, but the engine answers 400, never a raise, for a
+  non-binary content argument — a 500-class crash fenced per cycle-14).
+  """
+  @spec check_content(binary) :: :ok | {:error, 400, String.t(), String.t()}
+  def check_content(content) when is_binary(content), do: :ok
+  def check_content(_),
+    do: {:error, 400, "InvalidInput", "Blob content must be a binary."}
+
+  # Azure grammar: immutabilityPeriodSinceCreationInDays is an integer in
+  # [0, 146000]; anything else is 400 InvalidXmlDocument (previously ANY value
+  # was stored verbatim — negative days, binaries, 10^12 producing an
+  # "until" in the year 2737909033).
+  @max_retention_days 146_000
+
+  defp validate_period_days(days) when is_integer(days) and days >= 0 and days <= @max_retention_days,
+    do: :ok
+
+  defp validate_period_days(_),
+    do:
+      {:error, 400, "InvalidXmlDocument",
+       "immutabilityPeriodSinceCreationInDays must be an integer between 0 and 146000."}
 
   @doc """
   PUT/DELETE ?comp=legalhold — sets (`flag: true`) or clears (`flag: false`)
   the container legal hold. Stored in `:smalt_blob_policy`.
   """
-  def set_legal_hold(account, container, flag, _headers \\ %{}) when is_boolean(flag) do
+  def set_legal_hold(account, container, flag, _headers \\ %{})
+
+  def set_legal_hold(account, container, flag, _headers) when is_boolean(flag) do
     container_key = container_key(account, container)
     ensure_policy_table()
 
@@ -216,8 +385,18 @@ defmodule Smalt.DataPlane.BlobStorage do
        },
        %{"has_legal_hold" => flag}}
     else
+      # Store.get/2 returns a bare :error on a missing row — without this
+      # clause the with raises WithClauseError (a 500), never a typed 404.
+      :error -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, :container_not_found} -> {:error, 404, "ContainerNotFound", "Container not found."}
     end
+  end
+
+  # Azure parity (cycle-19): a non-boolean x-ms-legal-hold flag is a client
+  # error — 400 InvalidHeaderValue, never a FunctionClauseError 500.
+  def set_legal_hold(_account, _container, flag, _headers) do
+    {:error, 400, "InvalidHeaderValue",
+     "The value for x-ms-legal-hold must be true or false (got: #{inspect(flag)})."}
   end
 
   @doc "Returns the container's policy record or nil."
@@ -254,7 +433,9 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   Accepts `bytes=a-b`, `bytes=a-`, `bytes=-suffix`. A malformed range is
   ignored (RFC 9110: a syntactically invalid Range header MUST be ignored),
-  serving the full body. Multiple ranges: first spec only (single-part 206).
+  serving the full body. Multi-range specs (`bytes=0-1,5-6`) are treated as
+  malformed and ignored the same way (single-part 206 only; a first-spec-only
+  slice is NOT served).
   """
   def get_blob_range(account, container, blob_name, range_header \\ [])
 
@@ -280,6 +461,49 @@ defmodule Smalt.DataPlane.BlobStorage do
   end
 
   def get_blob_range(_account, _container, _blob_name, _other), do: :error
+
+  @doc """
+  Conditional read engine (Azure parity, cycle-30 Get Blob): evaluates
+  If-Match then If-None-Match per RFC 7232 precedence.
+
+    * `{:ok, blob}` — preconditions pass (or absent): serve the read
+    * `{:not_modified, etag}` — If-None-Match matched (incl. `*`): 304
+    * `{:error, 412, "PreconditionFailed", msg}` — If-Match failed
+    * `:error` — blob missing (404)
+  """
+  def get_blob_conditional(account, container, blob_name, headers) when is_map(headers) do
+    case Store.get(:smalt_blobs, "#{account}/#{container}/#{blob_name}") do
+      {:ok, blob} ->
+        etag = blob["etag"]
+        if_match = ConditionalHeaders.header(headers, "if-match")
+        if_none_match = ConditionalHeaders.header(headers, "if-none-match")
+
+        cond do
+          if_match != nil and not conditional_etag_match?(if_match, etag) ->
+            {:error, 412, "PreconditionFailed",
+             "The condition specified using HTTP conditional header(s) is not met."}
+
+          if_none_match != nil and conditional_etag_match?(if_none_match, etag) ->
+            {:not_modified, etag}
+
+          true ->
+            {:ok, blob}
+        end
+
+      :error ->
+        :error
+    end
+  end
+
+  def get_blob_conditional(_account, _container, _blob_name, _headers), do: :error
+
+  defp conditional_etag_match?("*", _etag), do: true
+
+  defp conditional_etag_match?(value, etag) when is_binary(value) do
+    String.split(value, ",") |> Enum.map(&String.trim/1) |> Enum.member?(etag)
+  end
+
+  defp conditional_etag_match?(_, _), do: false
 
   defp parse_range(nil, _total), do: {:ok, nil}
 
@@ -327,49 +551,166 @@ defmodule Smalt.DataPlane.BlobStorage do
   present only when more results remain.
   """
   def list_blobs_xml(account, container, opts \\ %{}) do
+    with :ok <- check_maxresults(Map.get(opts, "maxresults")) do
+      do_list_blobs_xml(account, container, opts)
+    end
+  end
+
+  defp do_list_blobs_xml(account, container, opts) do
     key_prefix = "#{account}/#{container}/"
     marker = Map.get(opts, "marker") || ""
+    prefix = Map.get(opts, "prefix") || ""
+    delimiter = Map.get(opts, "delimiter") || ""
+    include_meta = include_metadata?(Map.get(opts, "include"))
     max_results = normalize_max(Map.get(opts, "maxresults"))
 
-    matching =
-      Store.list_prefix(:smalt_blobs, key_prefix)
-      |> Enum.map(fn b -> {b["name"], b} end)
-      |> Enum.reject(fn {name, _} -> name != nil and marker != "" and name <= marker end)
-      |> Enum.sort_by(fn {name, _} -> name end)
+    if delimiter == "" and prefix == "" and marker == "" do
+      # Fast path (perf contract fence): sorted key scan, values fetched only
+      # for the page — the delimiter/prefix/marker composition below
+      # materializes element tuples for the full key set.
+      keys = :smalt_blobs |> Store.prefix_keys(key_prefix) |> Enum.sort()
+      page_keys = Enum.take(keys, max_results)
 
-    page = Enum.take(matching, max_results)
-    next_marker = if length(matching) > length(page), do: elem(Enum.at(page, -1), 0), else: nil
+      next_marker = if length(keys) > max_results, do: String.replace_prefix(List.last(page_keys), key_prefix, ""), else: nil
 
-    blobs = Enum.map(page, fn {_name, b} -> b end)
+      xml =
+        render_blobs(page_keys, next_marker, account, container, marker, max_results, "", key_prefix, include_meta)
+      {xml, next_marker}
+    else
+      # Delimiter/prefix/marker composition (Azure parity, cycle-27):
+      # names containing the delimiter (after the requested prefix) roll
+      # into a single synthetic <BlobPrefix> per directory; Blob/BlobPrefix
+      # interleave lexicographically; prefixes count toward maxresults;
+      # NextMarker continues from the last element name.
+      elements =
+        :smalt_blobs
+        |> Store.prefix_keys(key_prefix)
+        |> Enum.map(fn key ->
+          name = binary_part(key, byte_size(key_prefix), byte_size(key) - byte_size(key_prefix))
 
-    blob_items =
-      Enum.map_join(blobs, "\n", fn b ->
+          rel =
+            if prefix == "" or not String.starts_with?(name, prefix),
+              do: nil,
+              else: binary_part(name, byte_size(prefix), byte_size(name) - byte_size(prefix))
+
+          cond do
+            prefix != "" and rel == nil ->
+              :skip
+
+            delimiter != "" and String.contains?(name, delimiter) and
+                (prefix == "" or String.contains?(rel, delimiter)) ->
+              {:bp, prefix <> hd(String.split(rel || name, delimiter)) <> delimiter, nil}
+
+            true ->
+              {:blob, name, key}
+          end
+        end)
+        |> Enum.reject(&(&1 == :skip))
+        |> Enum.uniq()
+        |> Enum.filter(fn {_t, n, _k} -> marker == "" or n > marker end)
+        |> Enum.sort_by(fn {_t, n, _k} -> n end)
+
+      page = Enum.take(elements, max_results)
+
+      next_marker = if length(elements) > max_results, do: elem(List.last(page), 1), else: nil
+
+      delimiter_xml =
+        if delimiter == "", do: "", else: "\n  <Delimiter>#{xml_escape(delimiter)}</Delimiter>"
+
+      blob_items =
+        Enum.map_join(page, "\n", fn
+          {:blob, name, key} ->
+            render_blob(name, key, key_prefix, include_meta)
+
+          {:bp, bp_name, _} ->
+            "\n  <BlobPrefix>\n    <Name>#{xml_escape(bp_name)}</Name>\n  </BlobPrefix>\n "
+        end)
+
+      xml = """
+      <?xml version="1.0" encoding="utf-8"?>
+      <EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/#{xml_escape(account)}" ContainerName="#{xml_escape(container)}">
+        <Prefix>#{xml_escape(if(prefix == "", do: key_prefix, else: prefix))}</Prefix>#{delimiter_xml}
+        <Marker>#{xml_escape(marker)}</Marker>
+        <MaxResults>#{max_results}</MaxResults>
+        <Blobs>
+      #{blob_items}
+        </Blobs>
+      #{next_marker_xml(next_marker)}
+      </EnumerationResults>
+      """
+
+      {xml, next_marker}
+    end
+  end
+
+  defp render_blobs(page_keys, next_marker, account, container, marker, max_results, delimiter_xml, key_prefix, include_meta) do
+    items =
+      Enum.map_join(page_keys, "\n", fn key ->
+        render_blob(String.replace_prefix(key, key_prefix, ""), key, key_prefix, include_meta)
+      end)
+
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/#{xml_escape(account)}" ContainerName="#{xml_escape(container)}">
+      <Prefix>#{xml_escape(key_prefix)}</Prefix>#{delimiter_xml}
+      <Marker>#{xml_escape(marker)}</Marker>
+      <MaxResults>#{max_results}</MaxResults>
+      <Blobs>
+    #{items}
+      </Blobs>
+    #{next_marker_xml(next_marker)}
+    </EnumerationResults>
+    """
+  end
+  defp render_blob(name, key, key_prefix, include_meta \\ false) do
+    case Store.get(:smalt_blobs, key) do
+      {:ok, b} ->
         """
         <Blob>
-          <Name>#{xml_escape(b["name"])}</Name>
-          <Properties>
+          <Name>#{xml_escape(b["name"] || name)}</Name>#{blob_metadata_xml(b, include_meta)}<Properties>
             <Content-Length>#{b["content_length"]}</Content-Length>
             <Etag>#{xml_escape(b["etag"])}</Etag>
             <Last-Modified>#{xml_escape(b["last_modified"])}</Last-Modified>
           </Properties>
         </Blob>
         """
+
+      _ ->
+        ""
+    end
+  end
+
+  # Azure parity (cycle-34, List Blobs include=metadata): user metadata rides
+  # x-ms-meta-* on the stored headers; when the request includes metadata the
+  # listing emits a <Metadata> element per blob. Values go through the same
+  # xml_escape (hostile & < > " entity-escaped; control chars are refused at
+  # PUT by the InvalidMetadata fence). Only the exact "metadata" include
+  # token enables it; unknown include values (snapshots/versions/tags) are
+  # typed UNSUPPORTED(feature-ban) and never emit decoration.
+  # Azure parity (lens2 cycle-35): `include` is a COMMA-SEPARATED token list;
+  # a token must match exactly. A plain substring match wrongly enables
+  # metadata emission for hostile tokens like `metadatabase` or `metadatax`.
+  defp include_metadata?(include) when is_binary(include) do
+    include
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.member?("metadata")
+  end
+
+  defp include_metadata?(_), do: false
+
+  defp blob_metadata_xml(_b, false), do: ""
+
+  defp blob_metadata_xml(b, true) do
+    meta =
+      b["headers"]
+      |> Kernel.||(%{})
+      |> Enum.filter(fn {k, _} -> is_binary(k) and String.starts_with?(k, "x-ms-meta-") end)
+      |> Enum.map_join("\n", fn {"x-ms-meta-" <> name, value} ->
+        "<#{xml_escape(name)}>#{xml_escape(value)}</#{xml_escape(name)}>"
       end)
 
-    xml = """
-    <?xml version="1.0" encoding="utf-8"?>
-    <EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/#{xml_escape(account)}" ContainerName="#{xml_escape(container)}">
-      <Prefix>#{xml_escape(key_prefix)}</Prefix>
-      <Marker>#{xml_escape(marker)}</Marker>
-      <MaxResults>#{max_results}</MaxResults>
-      <Blobs>
-    #{blob_items}
-      </Blobs>
-    #{next_marker_xml(next_marker)}
-    </EnumerationResults>
-    """
-
-    {xml, next_marker}
+    if meta == "", do: "", else: "\n  <Metadata>\n#{meta}\n  </Metadata>"
   end
 
   @doc """
@@ -383,11 +724,25 @@ defmodule Smalt.DataPlane.BlobStorage do
   def xml_escape(nil), do: ""
 
   def xml_escape(value) when is_binary(value) do
+    # XML 1.0 forbids most C0 control bytes in content (only \t \n \r are
+    # legal). Hostile stored names / marker or prefix query params must never
+    # produce ill-formed enumeration XML — illegal control bytes are dropped;
+    # & < > " are entity-escaped as before.
     value
     |> String.replace("&", "&amp;")
     |> String.replace("<", "&lt;")
     |> String.replace(">", "&gt;")
     |> String.replace("\"", "&quot;")
+    |> String.replace(~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/, "")
+    # Astral-plane codepoints (> U+FFFF) are legal XML 1.0 content but a real
+    # parser family (xmerl 2.x, lens2 cycle-35 falsifier: emoji blob name
+    # listing) rejects the raw UTF-8 form with wfc_Legal_Character. A numeric
+    # character reference is semantically IDENTICAL XML (same parsed content)
+    # and parses under every XML 1.0 parser — Azure parity preserved (same
+    # name after parse), parser-compat hardened.
+    |> String.replace(~r/[\x{10000}-\x{10FFFF}]/u, fn <<cp::utf8>> ->
+      "&#x" <> String.downcase(Integer.to_string(cp, 16)) <> ";"
+    end)
   end
 
   def xml_escape(value), do: value |> to_string() |> xml_escape()
@@ -422,6 +777,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "headers" => headers
     }
+    blob = Map.update!(blob, "content", &String.trim_trailing/1)
     Store.put(:smalt_blobs, "#{account}/#{container}/#{blob_name}", blob)
     {:ok, blob}
   end
@@ -433,12 +789,30 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  defp if_none_match_star?(headers) do
+    case ConditionalHeaders.header(headers || %{}, "if-none-match") do
+      nil -> false
+      "*" -> true
+      _ -> false
+    end
+  end
+
   defp check_if_match(headers, current_etag) do
     case ConditionalHeaders.header(headers || %{}, "if-match") do
       nil -> :ok
       _ -> if ConditionalHeaders.evaluate(headers, current_etag) == {:halt, 412},
         do: {:error, {:precondition}},
         else: :ok
+    end
+  end
+
+  # Azure parity (cycle-22): If-None-Match: * refuses deletion of an existing
+  # blob with 412 — previously silently ignored (202 on a refuse-if-exists
+  # precondition).
+  defp check_if_none_match(headers) do
+    case if_none_match_star?(headers) do
+      true -> {:error, {:precondition}}
+      false -> :ok
     end
   end
 
@@ -568,13 +942,6 @@ defmodule Smalt.DataPlane.BlobStorage do
   defp fetch_container_meta(container_key) do
     case Store.get(:smalt_blob_containers, container_key) do
       {:ok, meta} -> {:ok, meta}
-      :error -> {:error, 404, "ContainerNotFound", "Container not found."}
-    end
-  end
-
-  defp require_container(container_key) do
-    case Store.get(:smalt_blob_containers, container_key) do
-      {:ok, _} -> :ok
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
     end
   end

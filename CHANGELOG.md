@@ -193,8 +193,10 @@ control-plane and audit-plane surfaces no emulator provides.
   requires a valid HS256 Bearer on every non-exempt route of `:9443`/`:8443`
   (signature vs the STS secret, `exp`/`aud`/`iss` checked; 401 + ARM error
   envelope + `WWW-Authenticate` otherwise; `iss` is matched against the
-  request-authority-derived issuer, so tokens minted on one authority do not
-  replay on another); `:anonymous` opts out. Cosmos
+  request-authority-derived issuer — cross-seat acceptance exists only for
+  authorities the STS registered in its VM-local trusted set
+  (`Smalt.Auth.Bearer.register_trusted_authority/1`), so a substrate restart
+  wipes it: restart implies re-authentication); `:anonymous` opts out. Cosmos
   plane adds master-key Authorization validation (real string-to-sign
   HMAC-SHA256, `:cosmos_master_key`) and an optional RU fixed-window
   throttle; ARM plane adds a fixed-window 429 throttle with `Retry-After`.
@@ -235,10 +237,10 @@ control-plane and audit-plane surfaces no emulator provides.
 
 - Compliance courts c1-c7 (`test/compliance/`, receipts in
   `docs/compliance/`): live-wire per-service fences over real HTTP/AMQP
-  transport (no doubles). Latest runs (2026-10-15, this tree): c1 ARM 21
-  tests / 0 failures, c2 Key Vault 14/0, c3 Cosmos 21/0, c4 Blob 18/0, c5
-  Service Bus 16/0 (`--include amqp_wire`), c6 OAuth/OIDC 16/0, c7 Event
-  planes 16/0 — 122 tests, 0 failures.
+  transport (no doubles). Latest runs (re-run 2026-10-15, docs-corpus-lens3
+  cycle 1, this tree): c1 ARM 25/0, c2 Key Vault 16/0, c3 Cosmos 23/0, c4 Blob
+  28/0, c5 Service Bus 16/0 (`--include amqp_wire`), c6 OAuth/OIDC 18/0,
+  c7 Event planes 16/0 — **142 tests, 0 failures**.
 - Pack integrations (receipts in `docs/PACK_INTEGRATION/`): 15 packs
   consumed and receipted (ash-extension, ash-ocel-revops, ash-pplan,
   ashdspy, canonical-projection, clap-noun-verb, ea-projection,
@@ -258,3 +260,97 @@ control-plane and audit-plane surfaces no emulator provides.
   release newer than 1.12.5 lands.
 
 [26.10.14]: https://github.com/placeholder/smalt/releases/tag/26.10.14
+
+## [Unreleased]
+
+Post-26.10.14 substrate laws, each probe/suite-pinned on this tree
+(docs-corpus cycle 10, 2026-10-15):
+
+- Auth: `x-forwarded-*` honored only from configured trusted proxies
+  (`config :smalt, :trusted_proxies`, exact tuples or IPv4 CIDR), ignored
+  fail-closed on direct connections; cross-seat mint authority is a VM-local
+  trusted set — substrate restart wipes it (restart => re-authentication).
+  Pinned by `test/auth_enforce_test.exs` (71 tests, 0 failures).
+- GraphLaw: the shape gate fails closed — an admitted resource type with no
+  compiled SHACL shape refuses validation (`{:refused, :no_shape}`) instead
+  of validating against an implicit empty shape. Pinned by
+  `test/smalt_graphlaw_validator_test.exs` "fail-closed shape resolution"
+  (46 tests, 0 failures).
+- Key Vault SKR: release-policy validation refuses any policy that is neither
+  an Azure `anyOf`/`allOf`/`claim`/`equals` structure nor a flat
+  `allowed_operations` list — `POST /keys/:name/create` answers 400
+  `InvalidParameter` and the key is not stored (wire-probe verified).
+- STS: `client_credentials` token requests require `client_id` AND
+  `client_secret`; missing secret answers 400 `invalid_client` (RFC 6749
+  §5.2). Pinned by `test/compliance/c6_oauth.exs`.
+- Sentinel ingest: a null or scalar record anywhere in the batch is a
+  request-level 400 `InvalidData` with no partial insert; the ingest 204
+  carries `x-ms-request-id` in the dashed RFC 4122 GUID form real Azure
+  emits (unified with the ARM plane). Pinned by
+  `test/data_plane/audit_planes_test.exs`.
+- Ledger receipts: `Smalt.Security.ReceiptSigner.verify_token/1` enforces an
+  optional `nbf` claim (present-but-future -> typed `:token_not_yet_valid`;
+  `nbf == now` accepted). Pinned by
+  `test/security/security_hardening_test.exs:164`.
+- Ledger appends: opt-in `config :smalt, :ledger_enforce_existence: true`
+  flips appends to a never-created ledger to the 404-class envelope (real
+  Azure form); the fence runs inside the serialized writer (first-writer-
+  creates under concurrency). Pinned by
+  `test/security/security_hardening_test.exs`.
+- Container PUT: 201 create answers a quoted `ETag`, RFC 1123 `Last-Modified`,
+  `x-ms-request-id` + `x-ms-version`, and an empty body (real-Azure shape);
+  `x-ms-meta-*` headers on Put Container set metadata at create, validated
+  BEFORE the create (a refused create leaves no container behind). Pinned by
+  `test/compliance/c4_blob.exs` and `test/data_plane/blob_service_test.exs`.
+- Blob listings: `include=metadata` (comma-separated token list, exact-token
+  match — a hostile token like `metadatabase` does not enable it) emits a
+  `<Metadata>` element per blob from the stored `x-ms-meta-*` headers;
+  unknown include tokens (`snapshots`/`versions`/`tags`) are typed
+  UNSUPPORTED and never emit decoration. Pinned by
+  `test/compliance/c4_blob.exs`.
+- Ledger crash-class totality: hostile contents (tuple keys, tuple values,
+  reference values) refuse typed `400 InvalidBody` inside the serialized
+  writer — the writer survives (no death/restart cycle), the refusal fires
+  before any counter mint, and the dup counter is not burned; attest
+  crash-class: tuple key/value in `measurement_params` refuses typed
+  `400 attestationFailedVerdict`. Pinned by
+  `test/security/lens5_crash_class_test.exs` (5 tests, 0 failures).
+- Store: `compare_and_swap_delete/3` — the conditional-delete twin of
+  `compare_and_swap/4`; unknown table raises fail-closed; N racers on one
+  key yield exactly one `:ok`, rest conflict (Cosmos If-Match DELETE wired
+  through it: one 204, rest 412). Pinned by `test/store_churn_test.exs`.
+- Runtime contracts: generated `*.ex` outputs pinned by
+  `MANIFEST.sha256` (byte-identity + replay recipe on drift; transient ggen
+  workspace output refused). Pinned by `test/runtime_contracts_test.exs`.
+- Cosmos: query-feed `x-ms-continuation` — a 100-doc-truncated page emits
+  `"1#{lsn}:{last_id}"`; resuming queries the header; forged/foreign-ledger
+  tokens are typed 400 `BadRequest`. Pinned by
+  `test/data_plane/cosmos_test.exs` (93 tests, 0 failures on the settled
+  tree — the two lens-2 "typed GAP" pins that asserted the OLD
+  no-continuation behavior have been repaired by the cosmos lane;
+  docs-corpus-lens3 cycle 3 probe).
+- Blob containers: Azure name grammar enforced (3-63 bytes, `[a-z0-9-]`,
+  alphanumeric ends -> 400 `InvalidResourceName`), duplicate Put Container
+  -> 409 `ContainerAlreadyExists` (was: silent replace + WORM clock reset),
+  non-positive/non-integer `maxresults` -> 400 `InvalidQueryParameter`.
+  Pinned by `test/compliance/c4_blob.exs` (28 tests, 0 failures) and
+  `test/data_plane/blob_hardening_test.exs`.
+- Ledger receipts: `ReceiptSigner.verify_token/1` enforces the JWS `typ`
+  header — only exact-byte `"JWT"` admitted; `jwt`/`Jwt`/`application/jwt`/
+  parameters/whitespace/non-binary refuse typed `{:bad_typ, ...}`
+  (deliberately stricter than RFC 7515 §4.1.9; mutation-proven fence).
+  Pinned by `test/security/security_hardening_test.exs` (56 tests,
+  0 failures).
+- Blob reads: conditional GET honors RFC 7232 precedence — If-Match
+  mismatch -> 412 `PreconditionFailed`, If-None-Match match -> 304
+  empty-body with the ETag echoed (the wire shape the python SDK's
+  routing-map drain terminates on). Pinned by `test/compliance/c4_blob.exs`
+  and `test/data_plane/blob_hardening_test.exs`.
+- Blob listings: `delimiter` rolls names containing it into `<BlobPrefix>`
+  elements (`<Delimiter>` echoed), composing with `prefix` and with
+  `maxresults`/`marker` pagination. Pinned by `test/compliance/c4_blob.exs`
+  and `test/data_plane/blob_hardening_test.exs`.
+- ARM: api-version presence gates on `/subscriptions` and
+  `/subscriptions/:sub_id` (missing -> 400 `MissingApiVersionParameter`
+  before any 404 path; LRO polling exemption pinned). Pinned by
+  `test/smalt_arm_gateway_test.exs` and `test/route_negative_test.exs`.

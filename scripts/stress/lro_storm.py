@@ -28,7 +28,10 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-REPO = "/Users/sac/smalt"
+REPO = os.environ.get(
+    "SMALT_REPO",
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+)
 NODE = "smalt_storm@127.0.0.1"
 COOKIE = "lro_storm_cookie"
 HOST, PORT = "127.0.0.1", 9443
@@ -199,6 +202,7 @@ def start_server():
         f'Application.put_env(:smalt, :amqp_port, {free_port()}); '
         f'Application.put_env(:smalt, :event_hubs_port, {free_port()}); '
         f'Application.put_env(:smalt, :egress_port, {free_port()}); '
+        f'Application.put_env(:smalt, :mcp_port, {free_port()}); '
         '{:ok, _} = Application.ensure_all_started(:smalt); '
         'Process.sleep(:infinity)'
     )

@@ -120,9 +120,15 @@ defmodule Smalt.DataPlane.SKR do
     end
   end
 
+  # Total (lens-6): get_in/2 raises FunctionClauseError on a non-map
+  # intermediate ("x-ms-isolation-tee" => "string"), so nested claim reads go
+  # through a case-guarded traversal.
   defp compliance_status(claims) do
     claims["x-ms-compliance-status"] ||
-      get_in(claims, ["x-ms-isolation-tee", "x-ms-compliance-status"])
+      case claims["x-ms-isolation-tee"] do
+        %{} = tee -> tee["x-ms-compliance-status"]
+        _ -> nil
+      end
   end
 
   defp legacy_compliance_status(conn) do
@@ -135,7 +141,11 @@ defmodule Smalt.DataPlane.SKR do
 
   # jti rides the MAA runtime claims; absent -> allowed (documented dev mode).
   defp check_single_use(claims) do
-    jti = get_in(claims, ["x-ms-runtime", "jti"])
+    jti =
+      case claims["x-ms-runtime"] do
+        %{} = rt -> rt["jti"]
+        _ -> nil
+      end
 
     if is_binary(jti) and jti != "" do
       consume_jti(jti)
@@ -250,13 +260,22 @@ defmodule Smalt.DataPlane.SKR do
              {:ok, e} <- jwk_b64_field(jwk, "e") do
           public = {:RSAPublicKey, :binary.decode_unsigned(n), :binary.decode_unsigned(e)}
 
-          wrapped =
-            :public_key.encrypt_public(material, public, [
-              {:rsa_padding, :rsa_pkcs1_oaep_padding},
-              {:rsa_oaep_md, :sha256}
-            ])
+          # Total-function law (lens-6): the JWK arrives from token claims —
+          # caller-shaped data. A structurally valid RSA JWK can still carry an
+          # unusable key (1-byte modulus, e=1, size/mismatch) and
+          # :public_key.encrypt_public raises on it; the raise must never
+          # escape the release path. Same typed 400 as a malformed JWK.
+          try do
+            wrapped =
+              :public_key.encrypt_public(material, public, [
+                {:rsa_padding, :rsa_pkcs1_oaep_padding},
+                {:rsa_oaep_md, :sha256}
+              ])
 
-          {:ok, b64url_encode(wrapped), %{"transport" => "RSA-OAEP-256", "mode" => "attested-recipient"}}
+            {:ok, b64url_encode(wrapped), %{"transport" => "RSA-OAEP-256", "mode" => "attested-recipient"}}
+          rescue
+            _ -> {:error, 400, invalid_recipient_jwk()}
+          end
         end
 
       _ ->

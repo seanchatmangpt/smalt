@@ -146,6 +146,14 @@ defmodule Smalt.Messaging.EventStreamTest do
              EventStream.publish_events("rt", [valid_event("bad", %{"specversion" => "9.9"})])
   end
 
+  # Fail-closed fence: non-list/non-map payloads take the catch-all clause
+  # instead of raising FunctionClauseError at the router seam.
+  test "publish_events/2 fail-closed on non-list/non-map payload" do
+    assert {:error, :invalid_cloudevent} = EventStream.publish_events("rt", "bogus")
+    assert {:error, :invalid_cloudevent} = EventStream.publish_events("rt", 42)
+    assert {:error, :invalid_cloudevent} = EventStream.publish_events("rt", nil)
+  end
+
   test "stored events carry the topic field" do
     {:ok, _} = EventStream.publish("stamped", valid_event("s-1"))
     assert [%{"topic" => "stamped"}] = EventStream.list_events("stamped")

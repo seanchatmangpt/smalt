@@ -120,6 +120,20 @@ defmodule Smalt.Compliance.C6OauthTest do
     assert get_resp_header(conn, "cache-control") == ["no-store"]
   end
 
+  test "RFC6749-5.2 / OAuth 2.1: duplicate grant_type -> 400 invalid_request (AAD parity)" do
+    # Order matters: Plug form decoding is last-wins, so a client-controlled
+    # duplicate must never overwrite the first grant_type (fail-closed).
+    for body <- [
+          "grant_type=client_credentials&grant_type=password&client_id=x&client_secret=y",
+          "grant_type=password&grant_type=client_credentials&client_id=x&client_secret=y"
+        ] do
+      conn = req(:post, "/oauth2/v2.0/token", body: body)
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["error"] == "invalid_request"
+      assert get_resp_header(conn, "cache-control") == ["no-store"]
+    end
+  end
+
   test "RFC6749-5.2: tenant-scoped token path issues tokens (with valid form)" do
     conn =
       req(:post, "/#{@tid}/oauth2/v2.0/token",
@@ -128,6 +142,23 @@ defmodule Smalt.Compliance.C6OauthTest do
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["token_type"] == "Bearer"
+  end
+
+  test "C6 doc row 6 pin: /common/oauth2/v2.0/token issues a token with tid=common (DEV-MODE pin)" do
+    conn =
+      req(:post, "/common/oauth2/v2.0/token",
+        body: "grant_type=client_credentials&client_id=x&client_secret=y"
+      )
+
+    assert conn.status == 200
+
+    claims =
+      Jason.decode!(conn.resp_body)["access_token"] |> jwt_parts() |> Enum.at(1) |> decode_part()
+
+    # DEV-MODE divergence from AAD (real AAD derives tid from params, never
+    # serves /common tokens): pinned exactly as documented in C6 row 6.
+    assert claims["tid"] == "common"
+    assert claims["iss"] =~ "/common/v2.0"
   end
 
   # ===========================================================================

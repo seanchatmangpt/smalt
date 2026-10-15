@@ -243,6 +243,11 @@ defmodule Smalt.Compliance.C7EventsTest do
 
     assert {:error, 400, err} = Smalt.DataPlane.Sentinel.ingest("c7-dcr", "Custom-Logs", [%{"a" => "1"}], "2022-01-01")
     assert err["error"]["code"] == "InvalidApiVersion"
+
+    # Lens-3 cross-court round 2: byte-exact message pin for the LA surface
+    # (ARM's api-version 400s carry their own prose; the envelopes are
+    # deliberately NOT unified across planes).
+    assert err["error"]["message"] == "api-version must be 2023-01-01"
   end
 
   test "[la] DCR ingest over the wire answers 204 with x-ms-request-id", %{egress: port} do
@@ -253,7 +258,16 @@ defmodule Smalt.Compliance.C7EventsTest do
       )
 
     assert resp.status == 204
-    assert Enum.any?(resp.headers, fn {name, id} -> name == "x-ms-request-id" and is_binary(id) and id != "" end)
+
+    # Pin CURRENT wire bytes (re-fenced 2026-10-15 after the data-plane lane
+    # replaced the 32-hex form with a v4 dashed GUID — F3 unification, drift
+    # watch cycle 11 caught the change by FAILING this fence first):
+    # exactly one x-ms-request-id, GUID form matching the ARM surface c1 pins.
+    assert [{_, req_id}] = Enum.filter(resp.headers, fn {name, _} -> name == "x-ms-request-id" end)
+    assert is_binary(req_id) and byte_size(req_id) == 36
+
+    assert Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, req_id),
+           "x-ms-request-id must be a v4 GUID, got: #{inspect(req_id)}"
   end
 
   test "[la] query PrimaryResult envelope: projected column order + value-shaped types (CONFORMANT)" do
@@ -359,8 +373,16 @@ defmodule Smalt.Compliance.C7EventsTest do
   test "[atlas] bulk <= 100; over-limit -> 400 with no partial insert" do
     batch = for i <- 1..100, do: %{"typeName" => "c7_bulk", "guid" => "g#{i}"}
     assert {:ok, 201, resp} = Smalt.DataPlane.Purview.bulk_entities(%{"entities" => batch})
-    assert Map.has_key?(resp, "guidAssignments")
-    assert Map.has_key?(resp, "mutatedEntities")
+
+    # Mutant-kill: the assignments must cover EXACTLY the batch's 100 guids,
+    # identity-mapped, and mutatedEntities.CREATE must carry the same 100
+    # entity bodies — a stub returning empty maps passes has_key?/is_map.
+    assert map_size(resp["guidAssignments"]) == 100
+    assert Map.new(batch, fn e -> {e["guid"], e["guid"]} end) == resp["guidAssignments"]
+
+    assert %{"CREATE" => created} = resp["mutatedEntities"]
+    assert length(created) == 100
+    assert MapSet.new(created, & &1["guid"]) == MapSet.new(batch, & &1["guid"])
 
     over = for i <- 1..101, do: %{"typeName" => "c7_over", "guid" => "o#{i}"}
     assert {:error, 400, err} = Smalt.DataPlane.Purview.bulk_entities(%{"entities" => over})

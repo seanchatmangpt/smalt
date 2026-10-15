@@ -266,83 +266,86 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     end
   end
 
+  # decode_value/1 splits the constructor byte off (O(1) subbinary) and
+  # dispatches to decode_typed/2, which takes the constructor separately.
+  # decode_bare_elements rides decode_typed/2 directly: the old form rebuilt
+  # `<<ctor, rest>>` per element — a full binary copy per element — making
+  # bare-array decode O(n²) in bytes (a 1 MiB frame of ubyte elements took
+  # ~14s of CPU; quadratic DoS via one transfer frame). With the constructor
+  # known, each element is a single O(1) match and the whole array is linear.
+  defp decode_value(<<ctor, rest::binary>>), do: decode_typed(ctor, rest)
+  defp decode_value(<<>>), do: {:error, :truncated}
+  defp decode_value(_), do: {:error, :invalid_constructor}
+
   # --- fixed single-byte constructors ---
-  defp decode_value(<<0x40, rest::binary>>), do: {:ok, nil, rest}
+  defp decode_typed(0x40, rest), do: {:ok, nil, rest}
 
   # boolean fast-paths (wire-lane fix, real-SDK census finding)
-  defp decode_value(<<0x41, rest::binary>>), do: {:ok, true, rest}
-  defp decode_value(<<0x42, rest::binary>>), do: {:ok, false, rest}
-  defp decode_value(<<0x45, rest::binary>>), do: {:ok, [], rest}
-  defp decode_value(<<0x43, rest::binary>>), do: {:ok, 0, rest}
-  defp decode_value(<<0x44, rest::binary>>), do: {:ok, 0, rest}
+  defp decode_typed(0x41, rest), do: {:ok, true, rest}
+  defp decode_typed(0x42, rest), do: {:ok, false, rest}
+  defp decode_typed(0x45, rest), do: {:ok, [], rest}
+  defp decode_typed(0x43, rest), do: {:ok, 0, rest}
+  defp decode_typed(0x44, rest), do: {:ok, 0, rest}
 
-  defp decode_value(<<0x56, b, rest::binary>>),
-    do: {:ok, b == 0x01, rest}
+  defp decode_typed(0x56, <<b, rest::binary>>), do: {:ok, b == 0x01, rest}
 
   # --- fixed-width numerics ---
-  defp decode_value(<<0x50, n, rest::binary>>), do: {:ok, n, rest}
-  defp decode_value(<<0x51, n::signed-size(8), rest::binary>>), do: {:ok, n, rest}
-  defp decode_value(<<0x52, n, rest::binary>>), do: {:ok, n, rest}
-  defp decode_value(<<0x53, n, rest::binary>>), do: {:ok, n, rest}
-  defp decode_value(<<0x54, n::signed-size(8), rest::binary>>), do: {:ok, n, rest}
-  defp decode_value(<<0x55, n::signed-size(8), rest::binary>>), do: {:ok, n, rest}
-  defp decode_value(<<0x60, n::unsigned-integer-size(16), rest::binary>>), do: {:ok, n, rest}
-
-  defp decode_value(<<0x61, n::signed-integer-size(16), rest::binary>>),
-    do: {:ok, n, rest}
-
-  defp decode_value(<<0x70, n::unsigned-integer-size(32), rest::binary>>), do: {:ok, n, rest}
-
-  defp decode_value(<<0x71, n::signed-integer-size(32), rest::binary>>),
-    do: {:ok, n, rest}
-
-  defp decode_value(<<0x72, f::float-size(32), rest::binary>>), do: {:ok, f, rest}
-
-  defp decode_value(<<0x80, n::unsigned-integer-size(64), rest::binary>>),
-    do: {:ok, n, rest}
-
-  defp decode_value(<<0x81, n::signed-integer-size(64), rest::binary>>),
-    do: {:ok, n, rest}
-
-  defp decode_value(<<0x82, f::float-size(64), rest::binary>>), do: {:ok, f, rest}
-
-  defp decode_value(<<0x83, ms::signed-integer-size(64), rest::binary>>),
-    do: {:ok, {:timestamp, ms}, rest}
-
-  defp decode_value(<<0x98, uuid::binary-size(16), rest::binary>>),
-    do: {:ok, {:uuid, uuid}, rest}
+  defp decode_typed(0x50, <<n, rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x51, <<n::signed-size(8), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x52, <<n, rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x53, <<n, rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x54, <<n::signed-size(8), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x55, <<n::signed-size(8), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x60, <<n::unsigned-integer-size(16), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x61, <<n::signed-integer-size(16), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x70, <<n::unsigned-integer-size(32), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x71, <<n::signed-integer-size(32), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x72, <<f::float-size(32), rest::binary>>), do: {:ok, f, rest}
+  defp decode_typed(0x80, <<n::unsigned-integer-size(64), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x81, <<n::signed-integer-size(64), rest::binary>>), do: {:ok, n, rest}
+  defp decode_typed(0x82, <<f::float-size(64), rest::binary>>), do: {:ok, f, rest}
+  defp decode_typed(0x83, <<ms::signed-integer-size(64), rest::binary>>), do: {:ok, {:timestamp, ms}, rest}
+  defp decode_typed(0x98, <<uuid::binary-size(16), rest::binary>>), do: {:ok, {:uuid, uuid}, rest}
 
   # --- variable-length: bin/str/sym in 8- and 32-bit forms ---
-  defp decode_value(<<ctor, len, rest::binary>>) when ctor in 0xA0..0xA3 do
-    take_var(rest, len, ctor)
-  end
+  defp decode_typed(ctor, <<len, rest::binary>>) when ctor in 0xA0..0xA3,
+    do: take_var(rest, len, ctor)
 
-  defp decode_value(<<ctor, len::unsigned-integer-size(32), rest::binary>>)
-       when ctor in 0xB0..0xB3 do
-    take_var(rest, len, ctor)
-  end
+  defp decode_typed(ctor, <<len::unsigned-integer-size(32), rest::binary>>)
+       when ctor in 0xB0..0xB3,
+       do: take_var(rest, len, ctor)
 
   # --- compound containers ---
-  defp decode_value(<<ctor, size, rest::binary>>) when ctor in 0xC0..0xC1 or ctor in 0xE0..0xE0 do
-    take_compound(rest, size, ctor)
-  end
+  defp decode_typed(ctor, <<size, rest::binary>>) when ctor in 0xC0..0xC1 or ctor == 0xE0,
+    do: take_compound(rest, size, ctor)
 
-  defp decode_value(<<ctor, size::unsigned-integer-size(32), rest::binary>>)
-       when ctor in 0xD0..0xD1 or ctor in 0xF0..0xF0 do
-    take_compound(rest, size, ctor)
-  end
+  defp decode_typed(ctor, <<size::unsigned-integer-size(32), rest::binary>>)
+       when ctor in 0xD0..0xD1 or ctor == 0xF0,
+       do: take_compound(rest, size, ctor)
 
-  # --- described type ---
-  defp decode_value(<<0x00, rest::binary>>) do
-    with {:ok, descriptor, rest} <- decode_value(rest) do
-      with {:ok, value, rest} <- decode_value(rest) do
-        {:ok, {:described, descriptor, value}, rest}
-      end
+  # --- described type (descriptor validated: spec §1.6 ulong or symbol —
+  # see check_descriptor below for the lens-5 finding) ---
+  defp decode_typed(0x00, rest) do
+    with {:ok, descriptor, rest} <- decode_value(rest),
+         :ok <- check_descriptor(descriptor),
+         {:ok, value, rest} <- decode_value(rest) do
+      {:ok, {:described, descriptor, value}, rest}
     end
   end
 
-  defp decode_value(<<>>), do: {:error, :truncated}
-  defp decode_value(_), do: {:error, :invalid_constructor}
+  # Bad constructor or a body truncated below the fixed width — same tagged
+  # error the pre-refactor catch-all clause returned (fuzz corpus depends on it).
+  defp decode_typed(_ctor, _rest), do: {:error, :invalid_constructor}
+
+  # Descriptor validation for the described type (spec §1.6: ulong or symbol).
+  # A lenient string-form descriptor (str8/str32/vbin ctor in the descriptor
+  # slot) decoded to a plain binary — an undocumented term shape the encode
+  # side cannot re-emit (re-encode minted a symbol, silently rewriting remote
+  # data; lens-5 re-encode-stability finding). Refuse with a tagged error.
+  # Grouped AFTER the decode_typed clauses to keep that clause group contiguous.
+  defp check_descriptor(d) when is_integer(d), do: :ok
+  defp check_descriptor({:symbol, b}) when is_binary(b), do: :ok
+  defp check_descriptor(d), do: throw({:bad_descriptor, d})
 
   defp take_var(rest, len, ctor) do
     case rest do
@@ -388,18 +391,26 @@ defmodule Smalt.Amqp.PrimitiveCodec do
   defp compound_value(ctor, body) when ctor in [0xC1, 0xD1] do
     {count, rest} = take_count(body, ctor)
 
-    # Map count is ambiguous on the wire: pair-count (spec-literal) or
-    # element-count (2 x pairs — what rhea/Azure write; see encode/1). Decode
-    # both: try element-count first, fall back to pair-count, require an even
-    # item list either way (wire-lane reconciliation).
-    with {:error, _} <- decode_count(rest, count * 2, []),
-         {:ok, kv, tail} <- decode_count(rest, count, []) do
-      _ = tail
+    # Map count is ambiguous on the wire: pair-count (spec-literal: count =
+    # number of pairs, body holds count*2 items) or element-count (2 x pairs —
+    # what rhea/Azure write; see encode/1: count = body item count). Decode the
+    # body ONCE and disambiguate by item-count arithmetic — the previous
+    # probe-then-retry form decoded every inbound rhea-form map twice (a 1 MiB
+    # application-properties map paid double CPU; lens-2 cycle-2 finding).
+    case decode_all_items(rest, []) do
+      {:ok, items, <<>>} ->
+        m = length(items)
 
-      if rem(length(kv), 2) == 0, do: {:ok, to_map(kv), <<>>}, else: {:error, :invalid_length}
-    else
-      {:ok, kv, _} ->
-        if rem(length(kv), 2) == 0, do: {:ok, to_map(kv), <<>>}, else: {:error, :invalid_length}
+        cond do
+          # pair-count form: count pairs on the wire
+          m == count * 2 -> {:ok, to_map(items), <<>>}
+          # element-count form: count IS the kv item count, must be even
+          m == count and rem(count, 2) == 0 -> {:ok, to_map(items), <<>>}
+          true -> {:error, :invalid_length}
+        end
+
+      {:ok, _, _} ->
+        {:error, :invalid_length}
 
       {:error, reason} ->
         {:error, reason}
@@ -428,6 +439,17 @@ defmodule Smalt.Amqp.PrimitiveCodec do
 
   defp compound_value(_, _), do: {:error, :truncated}
 
+  # Decode items until the body is exhausted (map disambiguation: the item
+  # count itself is the discriminator, so no count-guided retry).
+  defp decode_all_items(<<>>, acc), do: {:ok, Enum.reverse(acc), <<>>}
+
+  defp decode_all_items(body, acc) do
+    case decode_value(body) do
+      {:ok, value, rest} -> decode_all_items(rest, [value | acc])
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # count field width follows the constructor family: 8-bit forms carry one
   # byte, 32-bit forms carry four
   defp take_count(<<count, rest::binary>>, ctor) when ctor in [0xC0, 0xC1, 0xE0],
@@ -442,7 +464,7 @@ defmodule Smalt.Amqp.PrimitiveCodec do
   defp take_count(_body, _ctor), do: throw(:bad_constructor)
 
   defp decode_bare_elements(rest, ctor, count, acc) when count > 0 do
-    case decode_value(<<ctor, rest::binary>>) do
+    case decode_typed(ctor, rest) do
       {:ok, value, rest} -> decode_bare_elements(rest, ctor, count - 1, [value | acc])
       {:error, reason} -> {:error, reason}
     end
@@ -458,14 +480,17 @@ defmodule Smalt.Amqp.PrimitiveCodec do
   end
 
   defp decode_count(body, 0, acc), do: {:ok, Enum.reverse(acc), body}
-  defp decode_count(<<>>, _count, acc), do: {:ok, Enum.reverse(acc), <<>>}
+
+  # Declared count exceeds the elements the (size-exact) body can hold: this
+  # is a truncated/malformed compound. Returning the partial list as success
+  # masked truncation as a short list (fuzz-class defect).
+  defp decode_count(<<>>, count, _acc) when count > 0, do: {:error, :truncated}
 
   defp to_map(kv) do
     kv
     |> Enum.chunk_every(2)
     |> Map.new(fn
       [k, v] -> {k, v}
-      [k] -> {k, nil}
     end)
   end
 end

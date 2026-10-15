@@ -77,7 +77,7 @@ defmodule Smalt.OcelConformanceTest do
 
   test "deviation from a broken trace is below threshold and typed as drift" do
     broken = ~w(arm.resource.transition blob.put blob.custody.transition)
-    result = Conformance.check_trace(Conformance.happy_path_net(), broken)
+    result = Conformance.check_trace(Conformance.full_courier_net(), broken)
     assert result.fitness < 1.0
     assert Conformance.drift_decision(result.fitness, 0.0) == :DRIFT
     assert Conformance.drift_decision(result.fitness, 0.0) == :DRIFT and result.conforms == false
@@ -88,7 +88,7 @@ defmodule Smalt.OcelConformanceTest do
   # consumed; final deficit -> m AND c; final excess -> r AND p.
 
   test "exact fitness 0.55 for underfed-mid trace (arm, settle, blob.put)" do
-    net = Conformance.happy_path_net()
+    net = Conformance.full_courier_net()
 
     # arm: fed, c1 p1. settle: input p_locked absent -> missing1 c1 p1.
     # blob.put: FED by settle's produced p_settled token, c1 p1.
@@ -101,13 +101,14 @@ defmodule Smalt.OcelConformanceTest do
     assert result.fitness == 0.55
     assert result.deviations == [
              ["amqp.delivery.settled", "missing_tokens"],
-             ["final_marking", "deficit"]
+             ["final_marking", "deficit"],
+             ["final_marking", "excess"]
            ]
     refute result.conforms
   end
 
   test "exact fitness 1/6 for single-transition trace (amqp.enqueue alone)" do
-    net = Conformance.happy_path_net()
+    net = Conformance.full_courier_net()
 
     # enqueue underfed (missing1 c1 p1); p_start never consumed, so
     # end {p_start:1, p_enqueued:1}: deficit 1 (p_end), excess 2.
@@ -123,7 +124,7 @@ defmodule Smalt.OcelConformanceTest do
   end
 
   test "exact fitness for excess-only trace (happy prefix stopping at locked)" do
-    net = Conformance.happy_path_net()
+    net = Conformance.full_courier_net()
 
     # Fully-fed arm->enqueue->lock; end {p_locked:1}: deficit 1, excess 1
     # c=3+1=4 p=3+1=4 m=1 r=1 -> ((1 - 1/4) + (1 - 1/4)) / 2 = 0.75
@@ -135,11 +136,11 @@ defmodule Smalt.OcelConformanceTest do
   end
 
   test "aggregate log fitness is the exact token-sum across traces" do
-    net = Conformance.happy_path_net()
+    net = Conformance.full_courier_net()
 
     {fitness, stats} =
       Conformance.log_fitness(net, [
-        Conformance.happy_path_trace(),
+        Conformance.full_courier_trace(),
         ~w(arm.resource.transition amqp.delivery.settled blob.put),
         ~w(arm.resource.transition amqp.enqueue amqp.lock)
       ])
@@ -149,5 +150,65 @@ defmodule Smalt.OcelConformanceTest do
     # totals: c = 6+4+4, m = 0+2+1, p = 6+5+4, r = 0+2+1
     assert stats == %{consumed: 14, produced: 15, missing: 3, remaining: 3}
     assert fitness == (1 - 3 / 14 + (1 - 3 / 15)) / 2
+  end
+
+  # -- Emittable happy_path_net (net reversal: registry vocabulary only) ------
+
+  test "happy_path_net contains only registry-emittable types and full_courier_net is kept" do
+    emittable = Smalt.Ocel.EventRegistry.event_types()
+    assert Map.keys(Conformance.happy_path_net().transitions) -- emittable == []
+    assert Conformance.happy_path_trace() -- emittable == []
+
+    courier = Map.keys(Conformance.full_courier_net().transitions) -- emittable
+    assert courier == ~w(amqp.enqueue amqp.lock blob.put)
+    assert length(Conformance.full_courier_trace()) == 6
+  end
+
+  test "emittable net: settle alone is 1/6 (no underfed-free path exists)" do
+    result = Conformance.check_trace(Conformance.happy_path_net(), ["amqp.delivery.settled"])
+
+    # settle underfed (m1 c1 p1); p_start never consumed: end {p_start,
+    # p_settled}: deficit 1, excess 2. c=2 m=2 p=3 r=2 -> (0 + 1/3)/2
+    assert result.fitness == (1 - 2 / 3) / 2
+    assert result.deviations == [
+             ["amqp.delivery.settled", "missing_tokens"],
+             ["final_marking", "deficit"],
+             ["final_marking", "excess"]
+           ]
+  end
+
+  test "emittable net: fed prefix (arm, settle) is exactly 2/3" do
+    result = Conformance.check_trace(Conformance.happy_path_net(), ~w(arm.resource.transition amqp.delivery.settled))
+
+    # Fully fed c=2 p=2; end {p_settled:1}: deficit 1 (p_end), excess 1.
+    # c=3 m=1 p=3 r=1 -> ((1 - 1/3) + (1 - 1/3)) / 2 = 0.666...67
+    assert result.fitness == ((1 - 1 / 3) + (1 - 1 / 3)) / 2
+    assert result.deviations == [["final_marking", "deficit"], ["final_marking", "excess"]]
+  end
+
+  test "emittable net: broken trace (arm, custody) is exactly ((1-1/2)+(1-1/3))/2" do
+    result = Conformance.check_trace(Conformance.happy_path_net(), ~w(arm.resource.transition blob.custody.transition))
+
+    # custody underfed (m1 c1); its produced p_end token lands; end
+    # {p_armed:1, p_end:1}: deficit 0, excess 1. c=2 m=1 p=3 r=1.
+    assert result.fitness == (1 - 1 / 2 + (1 - 1 / 3)) / 2
+    assert result.deviations == [
+             ["blob.custody.transition", "missing_tokens"],
+             ["final_marking", "excess"]
+           ]
+  end
+
+  test "emittable net: aggregate token-sum across three traces" do
+    {fitness, stats} =
+      Conformance.log_fitness(Conformance.happy_path_net(), [
+        Conformance.happy_path_trace(),
+        ~w(arm.resource.transition blob.custody.transition),
+        ~w(arm.resource.transition amqp.delivery.settled)
+      ])
+
+    # happy: c3 p3 m0 r0; broken: c2 m1 p3 r1 (deficit0 excess1);
+    # prefix: c3 m1 p3 r1 (deficit1 excess1).
+    assert stats == %{consumed: 8, produced: 9, missing: 2, remaining: 2}
+    assert fitness == (1 - 2 / 8 + (1 - 2 / 9)) / 2
   end
 end

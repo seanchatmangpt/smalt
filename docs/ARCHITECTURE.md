@@ -9,7 +9,7 @@ without a cloud connection. Clean-room notice: see `NOTICE.md`.
 ```
 +-----------------+       +---------+       +------------------+
 | Terraform / SDK | <---> |  smalt  | <---> | loopback stores  |
-| CLIs, clients   | HTTPS | substrate |     | (CAS, queues)    |
+| CLIs, clients   | HTTPS | substrate |     | (keyed stores, queues) |
 +-----------------+  AMQP +---------+       +------------------+
 ```
 
@@ -25,7 +25,7 @@ local loopback stores only; it never dials out to a real cloud.
 | `AmqpBroker` | AMQP Service Bus surface on 5672 |
 | Event Hubs surface | AMQP on 5673 |
 | `EgressRouter` | the only sanctioned outbound path; blocks non-loopback egress by default |
-| `Store` | CAS key/value store; the persistence substrate for all components |
+| `Store` | keyed ETS key/value store with a durable DETS mirror (`lib/smalt/store/dets_mirror.ex`); the persistence substrate for all components; conditional transitions (`insert_new`, `compare_and_swap`) are single-ETS-window atomic |
 
 ## Pinned contracts
 
@@ -33,7 +33,7 @@ local loopback stores only; it never dials out to a real cloud.
 |---|---|
 | Port map | authoritative copy lives in `README.md` (control 9443, TLS twin 9444, data 8443, AMQP 5672/5673, MCP 9545); do not restate it here |
 | Refusal envelope | every refusal is a typed envelope (code + message + details), never a bare status |
-| `Store` | content-addressed (CAS): put is keyed by content digest; identical content is a no-op |
+| `Store` | keyed ETS key/value store; put is keyed by the caller's key (not content digest); identical content is NOT a no-op — it overwrites; conditional transitions (`insert_new/3`, `compare_and_swap/4`, `compare_and_swap_delete/3`) are the atomic forms |
 
 Ports and envelope shapes are contracts: tests in `test/wire` and the
 SDK smoke tier pin them, and a change that moves a port or alters the

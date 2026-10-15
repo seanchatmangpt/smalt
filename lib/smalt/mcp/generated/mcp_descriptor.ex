@@ -5,10 +5,11 @@
 # generated output; edit the TTL and re-run the sync command in the TTL header.
 defmodule Smalt.Mcp.Descriptor do
   @moduledoc """
-  Per-capability metadata for Smalt's read-only MCP tool surface, generated
+  Per-capability metadata for Smalt's read-only surface, generated
   from one ema:CapabilitySurface (elixir-mcp-a2a-pack descriptor shape,
   adapted to Smalt's capability list). A caller can check
-  `requires_authority?/1` or `read_only?/1` BEFORE invoking a tool, rather
+  `requires_authority?/1` (fail-closed on unregistered ids) or
+  `read_only_surface?/0` BEFORE invoking a tool, rather
   than discovering refusal at runtime.
   """
 

@@ -65,9 +65,9 @@ receipt is written to `tmp/bench-receipt.json`.
 ## Regression gate
 
 `scripts/bench_check.py` turns the one-shot benchmark into a gate: it
-reads `tmp/bench-receipt.json` and asserts the PRD CTQ thresholds
-(doctor <= 3 s, boot p95 <= 5 s, ARM PUT p95 < 50 ms, Cosmos round-trip
-p95 < 20 ms, AMQP first-frame p95 < 100 ms). Exit 0 when all CTQs pass;
+reads `tmp/bench-receipt.json` and asserts the PRD CTQ thresholds (the
+same table as README §Benchmarks; the enforced numbers live in
+`scripts/bench_check.py`). Exit 0 when all CTQs pass;
 exit 1 on any FAIL or on a missing, schema-mismatched, or stale
 (default > 24 h) receipt, printing the failing CTQ table. The gate
 never runs the benchmark itself — produce a fresh receipt first:

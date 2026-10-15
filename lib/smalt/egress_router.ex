@@ -48,8 +48,6 @@ defmodule Smalt.EgressRouter do
   plug(:match)
   plug(:dispatch)
 
-  @compliance_status "azure-compliant-cvm"
-
   # ---------------------------------------------------------------------------
   # Microsoft Azure Attestation (MAA) (/attest/:type)
   # ---------------------------------------------------------------------------
@@ -65,7 +63,7 @@ defmodule Smalt.EgressRouter do
             |> send_resp(200, Jason.encode!(%{"token" => token, "claims" => claims}))
 
           {:error, status, code} ->
-            send_json(conn, status, %{"error" => %{"code" => code}})
+            blob_error(conn, status, %{"error" => %{"code" => code}})
         end
       end)
     end
@@ -88,7 +86,7 @@ defmodule Smalt.EgressRouter do
     else
       case ConfidentialLedger.get_latest("default_ledger") do
         {:ok, receipt} -> send_json(conn, 200, receipt)
-        :error -> send_json(conn, 404, not_found_error("TransactionNotFound"))
+        :error -> blob_error(conn, 404, not_found_error("TransactionNotFound"))
       end
     end
   end
@@ -99,7 +97,7 @@ defmodule Smalt.EgressRouter do
     else
       case ConfidentialLedger.get_transaction("default_ledger", tx_id) do
         {:ok, receipt} -> send_json(conn, 200, receipt)
-        :error -> send_json(conn, 404, not_found_error("TransactionNotFound"))
+        :error -> blob_error(conn, 404, not_found_error("TransactionNotFound"))
       end
     end
   end
@@ -109,9 +107,36 @@ defmodule Smalt.EgressRouter do
       route_not_ready(conn)
     else
       with_valid_body(conn, fn conn ->
-        case ConfidentialLedger.append_transaction("default_ledger", conn.body_params) do
-          {:ok, receipt} -> send_json(conn, 201, receipt)
-          {:error, 409, code} -> send_json(conn, 409, %{"error" => %{"code" => code}})
+        # Shape fence: a Confidential Ledger append is a JSON object
+        # ({"contents": ...}). Top-level lists — including the empty list and
+        # scalar/null-element lists — appended garbage ledger entries at 201
+        # (measured: [] / [1,"a",null,true] / [nil,...] all admitted); refuse
+        # the non-object classes at the dispatch seam with InvalidBody.
+        case conn.body_params do
+          # The %{"_json" => _} wrapper is Plug's encoding of a top-level
+          # non-object JSON body — never a valid append shape even when the
+          # wrapper itself is a map (e.g. [] arrives as %{"_json" => []}).
+          %{"_json" => _wrapped} ->
+            blob_error(conn, 400, invalid_body_error())
+
+          params when is_map(params) ->
+            case ConfidentialLedger.append_transaction("default_ledger", params) do
+              {:ok, receipt} -> send_json(conn, 201, receipt)
+              {:error, 409, code} -> blob_error(conn, 409, %{"error" => %{"code" => code}})
+
+              # ledger-writer lane landed a typed {:error, 400, "InvalidBody"}
+              # from the serialized writer's encode guard (lens-4/5
+              # commit-point law): without this clause the tuple MatchErrored
+              # into a 500 through safe_dispatch... actually a CaseClauseError
+              # — measured (this lane, cycle 4). Typed status reaches the wire.
+              {:error, status, code} when is_integer(status) ->
+                blob_error(conn, status, not_found_error(code) |> put_message("Ledger append refused."))
+
+              other -> blob_error(conn, 500, %{"error" => inspect(other)})
+            end
+
+          _non_object ->
+            blob_error(conn, 400, invalid_body_error())
         end
       end)
     end
@@ -125,7 +150,7 @@ defmodule Smalt.EgressRouter do
       with_valid_body(conn, fn conn ->
         case id_param(conn) do
           {:ok, db} -> cosmos_respond(conn, Cosmos.create_db(db))
-          :error -> send_json(conn, 400, invalid_body_error())
+          :error -> blob_error(conn, 400, invalid_body_error())
         end
       end)
     end)
@@ -145,12 +170,12 @@ defmodule Smalt.EgressRouter do
       case Cosmos.list_dbs() do
         {:ok, status, headers, %{"Databases" => dbs}} ->
           case Enum.find(dbs, &(&1["id"] == db)) do
-            nil -> send_json(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
+            nil -> blob_error(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
             record -> cosmos_respond(conn, {:ok, status, headers, record})
           end
 
         _ ->
-          send_json(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
+          blob_error(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
       end
     end)
   end
@@ -171,7 +196,7 @@ defmodule Smalt.EgressRouter do
             end
 
           :error ->
-            send_json(conn, 400, invalid_body_error())
+            blob_error(conn, 400, invalid_body_error())
         end
       end)
     end)
@@ -193,7 +218,7 @@ defmodule Smalt.EgressRouter do
         {:ok, status, headers, %{"DocumentCollections" => colls}} ->
           case Enum.find(colls, &(&1["id"] == coll)) do
             nil ->
-              send_json(conn, 404, %{
+              blob_error(conn, 404, %{
                 "code" => "NotFound",
                 "message" => "Entity with id #{coll} not found"
               })
@@ -203,7 +228,7 @@ defmodule Smalt.EgressRouter do
           end
 
         _ ->
-          send_json(conn, 404, %{
+          blob_error(conn, 404, %{
             "code" => "NotFound",
             "message" => "Entity with id #{coll} not found"
           })
@@ -262,7 +287,7 @@ defmodule Smalt.EgressRouter do
   get "/dbs/:db/colls/:coll/docs" do
     with_route(conn, Cosmos, fn conn ->
       {status, headers, docs} =
-        case Cosmos.list_docs(db, coll) do
+        case Cosmos.list_docs(db, coll, "", header_map(conn)) do
           {:ok, status, headers, docs} -> {status, headers, docs}
           _other -> {200, %{}, []}
         end
@@ -319,12 +344,12 @@ defmodule Smalt.EgressRouter do
         send_json(conn, 200, Map.delete(key_record, "key_material"))
       else
         {:kty_error, kty} ->
-          send_json(conn, 400, %{
+          blob_error(conn, 400, %{
             "error" => %{"code" => "UnsupportedKeyType", "message" => "kty #{kty} is not supported"}
           })
 
         {:policy_error, message} ->
-          send_json(conn, 400, %{"error" => %{"code" => "InvalidParameter", "message" => message}})
+          blob_error(conn, 400, %{"error" => %{"code" => "InvalidParameter", "message" => message}})
       end
     end)
   end
@@ -389,14 +414,14 @@ defmodule Smalt.EgressRouter do
   get "/keys/:name" do
     case Store.get(:smalt_vault_keys, name) do
       {:ok, key_record} -> send_json(conn, 200, Map.delete(key_record, "key_material"))
-      :error -> send_json(conn, 404, not_found_error("KeyNotFound"))
+      :error -> blob_error(conn, 404, not_found_error("KeyNotFound"))
     end
   end
 
   post "/keys/:name/release" do
     case Smalt.DataPlane.SKR.release(name, conn) do
-      {:ok, status, body} -> send_json(conn, status, body)
-      {:error, status, body} -> send_json(conn, status, body)
+      {:ok, status, body} -> blob_error(conn, status, body)
+      {:error, status, body} -> blob_error(conn, status, body)
     end
   end
 
@@ -406,8 +431,11 @@ defmodule Smalt.EgressRouter do
   get "/keys" do
     with_route(conn, KeyVaultActions, fn conn ->
       case KeyVaultActions.list_keys() do
-        {:ok, status, body} -> send_json(conn, status, body)
-        {:error, status, body} -> send_json(conn, status, body)
+        {:ok, status, body} -> blob_error(conn, status, body)
+        # mechanical warning fix (store+graphlaw lane): list_keys/0's dialyzed
+        # type is {:ok, _, _} only, so an {:error, _, _} pattern is provably
+        # unreachable to the compiler; catch-all preserves the runtime path.
+        other -> send_json(conn, elem(other, 1), elem(other, 2))
       end
     end)
   end
@@ -415,8 +443,8 @@ defmodule Smalt.EgressRouter do
   get "/keys/:name/versions" do
     with_route(conn, KeyVaultActions, fn conn ->
       case KeyVaultActions.list_versions(name) do
-        {:ok, status, body} -> send_json(conn, status, body)
-        {:error, status, body} -> send_json(conn, status, body)
+        {:ok, status, body} -> blob_error(conn, status, body)
+        {:error, status, body} -> blob_error(conn, status, body)
       end
     end)
   end
@@ -448,7 +476,7 @@ defmodule Smalt.EgressRouter do
             kv_respond(conn, KeyVaultActions.unwrap_key(name, conn.body_params))
 
           _other ->
-            send_json(conn, 404, %{
+            blob_error(conn, 404, %{
               "error" => %{
                 "code" => "RouteNotFound",
                 "message" => "No route matches #{conn.method} #{conn.request_path}"
@@ -508,12 +536,12 @@ defmodule Smalt.EgressRouter do
                 |> put_resp_header("x-ms-request-id", generate_request_id())
                 |> send_resp(204, "")
 
-              {:ok, status, body} -> send_json(conn, status, body)
-              {:error, status, body} -> send_json(conn, status, body)
+              {:ok, status, body} -> blob_error(conn, status, body)
+              {:error, status, body} -> blob_error(conn, status, body)
             end
 
           {:error, :invalid_body} ->
-            send_json(conn, 400, invalid_body_error())
+            blob_error(conn, 400, invalid_body_error())
         end
       end)
     end)
@@ -523,8 +551,8 @@ defmodule Smalt.EgressRouter do
     with_route(conn, Sentinel, fn conn ->
       with_valid_body(conn, fn conn ->
         case Sentinel.query(workspace_id, conn.body_params) do
-          {:ok, status, body} -> send_json(conn, status, body)
-          {:error, status, body} -> send_json(conn, status, body)
+          {:ok, status, body} -> blob_error(conn, status, body)
+          {:error, status, body} -> blob_error(conn, status, body)
         end
       end)
     end)
@@ -544,8 +572,8 @@ defmodule Smalt.EgressRouter do
                body,
                Map.get(conn.query_params, "api-version", "")
              ) do
-          {:ok, status, resp} -> send_json(conn, status, resp)
-          {:error, status, resp} -> send_json(conn, status, resp)
+          {:ok, status, resp} -> blob_error(conn, status, resp)
+          {:error, status, resp} -> blob_error(conn, status, resp)
         end
       end)
     end)
@@ -579,7 +607,7 @@ defmodule Smalt.EgressRouter do
 
           send_json(conn, 201, %{"guid" => edge["relationshipId"], "id" => edge["id"]})
         else
-          send_json(conn, 400, %{
+          blob_error(conn, 400, %{
             "error" => %{
               "code" => "ATLAS-400-00-001",
               "message" => "relationship requires end1/end2 guids"
@@ -594,8 +622,8 @@ defmodule Smalt.EgressRouter do
     with_route(conn, Purview, fn conn ->
       with_valid_body(conn, fn conn ->
         case Purview.create_entity(conn.body_params, header_map(conn)) do
-          {:ok, status, entity} -> send_json(conn, status, entity)
-          {:error, status, body} -> send_json(conn, status, body)
+          {:ok, status, entity} -> blob_error(conn, status, entity)
+          {:error, status, body} -> blob_error(conn, status, body)
         end
       end)
     end)
@@ -605,8 +633,8 @@ defmodule Smalt.EgressRouter do
     with_route(conn, Purview, fn conn ->
       with_valid_body(conn, fn conn ->
         case Purview.bulk_entities(conn.body_params, header_map(conn)) do
-          {:ok, status, body} -> send_json(conn, status, body)
-          {:error, status, body} -> send_json(conn, status, body)
+          {:ok, status, body} -> blob_error(conn, status, body)
+          {:error, status, body} -> blob_error(conn, status, body)
         end
       end)
     end)
@@ -615,8 +643,8 @@ defmodule Smalt.EgressRouter do
   get "/atlas/v2/entity/guid/:guid" do
     with_route(conn, Purview, fn conn ->
       case Purview.get_entity(guid, header_map(conn)) do
-        {:ok, status, entity} -> get_json(conn, status, entity)
-        {:error, status, body} -> get_json(conn, status, body)
+        {:ok, status, entity} -> blob_error(conn, status, entity)
+        {:error, status, body} -> blob_error(conn, status, body)
       end
     end)
   end
@@ -626,8 +654,8 @@ defmodule Smalt.EgressRouter do
       depth = Map.get(conn.query_params, "depth", "1")
 
       case Purview.lineage(guid, direction, depth) do
-        {:ok, status, body} -> send_json(conn, status, body)
-        {:error, status, body} -> send_json(conn, status, body)
+        {:ok, status, body} -> blob_error(conn, status, body)
+        {:error, status, body} -> blob_error(conn, status, body)
       end
     end)
   end
@@ -689,7 +717,7 @@ defmodule Smalt.EgressRouter do
         end
       end)
     else
-      send_json(conn, 404, %{
+      blob_error(conn, 404, %{
         "error" => %{
           "code" => "RouteNotFound",
           "message" => "No route matches #{conn.method} #{conn.request_path}"
@@ -715,7 +743,7 @@ defmodule Smalt.EgressRouter do
                 |> send_resp(status, Jason.encode!(record))
 
               {:error, status, code, msg} ->
-                send_json(conn, status, not_found_error(code) |> put_message(msg))
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
             end
           end
 
@@ -733,11 +761,11 @@ defmodule Smalt.EgressRouter do
                     |> send_resp(status, Jason.encode!(record))
 
                   {:error, status, code, msg} ->
-                    send_json(conn, status, not_found_error(code) |> put_message(msg))
+                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
                 end
 
               {:error, conn} ->
-                send_json(conn, 400, %{
+                blob_error(conn, 400, %{
                   "error" => %{
                     "code" => "InvalidXmlOrJson",
                     "message" => "The immutability policy body is not valid XML or JSON."
@@ -755,16 +783,55 @@ defmodule Smalt.EgressRouter do
                 send_headers(conn, status, headers)
 
               {:error, status, code, msg} ->
-                send_json(conn, status, not_found_error(code) |> put_message(msg))
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
             end
           end
 
         true ->
           opts = %{"immutable" => get_req_header(conn, "x-ms-immutable-policy") != ["false"]}
 
-          case BlobStorage.create_container(account, container, opts) do
-            {:ok, record} -> send_json(conn, 201, record)
-            {:error, status, body} -> send_json(conn, status, body)
+          # Azure parity: x-ms-meta-* on Put Container SETS metadata at
+          # create. Validated BEFORE the create — a refused create must not
+          # leave the container behind.
+          with :ok <- BlobService.check_metadata(meta_headers(conn)) do
+            case BlobStorage.create_container(account, container, opts) do
+              {:ok, record} ->
+                _ = BlobService.set_container_metadata(account, container, meta_headers(conn))
+
+                # Real Azure (lens-5 work order, cycle-33): 201 create carries
+                # a quoted ETag, RFC 1123 Last-Modified, x-ms-request-id +
+                # x-ms-version, and an EMPTY body. GET properties is
+                # untouched (courts pin its exact bytes).
+                {:ok, created_dt, _} = DateTime.from_iso8601(record["created"])
+
+                conn
+                |> put_resp_header("etag", container_put_etag(record))
+                |> put_resp_header(
+                  "last-modified",
+                  Calendar.strftime(created_dt, "%a, %d %b %Y %H:%M:%S GMT")
+                )
+                |> put_resp_header("x-ms-request-id", generate_request_id())
+                |> put_resp_header("x-ms-version", "2021-12-02")
+                |> send_resp(201, "")
+
+              # Cross-lane repair (blob lane cycle-15 §3): typed engine error
+              # tuples `{:error, status, code, msg}` from create_container
+              # reach the wire at their exact Azure status instead of a
+              # blanket 500 — this un-deads blob's container-name-grammar and
+              # duplicate-create-409 fences. Non-tuple shapes keep the
+              # runtime safety net below.
+              {:error, status, code, msg} when is_integer(status) ->
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
+
+              # mechanical warning fix (store+graphlaw lane): the compiler types
+              # create_container/3 as {:ok, map()} only (no error clauses in the
+              # data plane), so the shape is not statically indexable; the dead
+              # branch stays as a runtime safety net without elem/2 indexing.
+              other -> blob_error(conn, 500, %{"error" => inspect(other)})
+            end
+          else
+            {:error, status, code, msg} ->
+              blob_error(conn, status, not_found_error(code) |> put_message(msg))
           end
       end
     end)
@@ -785,7 +852,7 @@ defmodule Smalt.EgressRouter do
                 |> send_resp(200, Jason.encode!(policy))
 
               _ ->
-                send_json(conn, 404, not_found_error("ImmutabilityPolicyNotFound"))
+                blob_error(conn, 404, not_found_error("ImmutabilityPolicyNotFound"))
             end
           end
 
@@ -801,7 +868,7 @@ defmodule Smalt.EgressRouter do
                 |> send_resp(200, "")
 
               _ ->
-                send_json(conn, 404, not_found_error("LegalHoldNotFound"))
+                blob_error(conn, 404, not_found_error("LegalHoldNotFound"))
             end
           end
 
@@ -817,7 +884,7 @@ defmodule Smalt.EgressRouter do
                 |> send_resp(200, "")
 
               {:error, status, code, msg} ->
-                send_json(conn, status, not_found_error(code) |> put_message(msg))
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
             end
           end
 
@@ -825,15 +892,24 @@ defmodule Smalt.EgressRouter do
           if not_ready?(conn, [BlobStorage]) do
             route_not_ready(conn)
           else
-            {xml, _next_marker} =
-              BlobStorage.list_blobs_xml(account, container, %{
-                "marker" => conn.query_params["marker"],
-                "maxresults" => conn.query_params["maxresults"]
-              })
+            # Typed engine errors (e.g. blob lane's pending maxresults 400)
+            # must reach the wire at their exact status — a bare
+            # {xml, _} destructure here would MatchError into a blanket 500.
+            case BlobStorage.list_blobs_xml(account, container, %{
+                   "prefix" => conn.query_params["prefix"],
+                   "delimiter" => conn.query_params["delimiter"],
+                   "include" => conn.query_params["include"],
+                   "marker" => conn.query_params["marker"],
+                   "maxresults" => conn.query_params["maxresults"]
+                 }) do
+              {xml, _next_marker} ->
+                conn
+                |> put_resp_content_type("application/xml")
+                |> send_resp(200, xml)
 
-            conn
-            |> put_resp_content_type("application/xml")
-            |> send_resp(200, xml)
+              {:error, status, code, msg} when is_integer(status) ->
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
+            end
           end
 
         conn.query_params["restype"] == "container" ->
@@ -845,25 +921,34 @@ defmodule Smalt.EgressRouter do
                 send_headers(conn, status, headers)
 
               {:error, status, code, msg} ->
-                send_json(conn, status, not_found_error(code) |> put_message(msg))
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
             end
           end
 
         true ->
-          {xml, _next_marker} =
-            BlobStorage.list_blobs_xml(account, container, %{
-              "marker" => conn.query_params["marker"],
-              "maxresults" => conn.query_params["maxresults"]
-            })
+          case BlobStorage.list_blobs_xml(account, container, %{
+                 "prefix" => conn.query_params["prefix"],
+                 "delimiter" => conn.query_params["delimiter"],
+                 "include" => conn.query_params["include"],
+                 "marker" => conn.query_params["marker"],
+                 "maxresults" => conn.query_params["maxresults"]
+               }) do
+            {xml, _next_marker} ->
+              conn
+              |> put_resp_content_type("application/xml")
+              |> send_resp(200, xml)
 
-          conn
-          |> put_resp_content_type("application/xml")
-          |> send_resp(200, xml)
+            {:error, status, code, msg} when is_integer(status) ->
+              blob_error(conn, status, not_found_error(code) |> put_message(msg))
+          end
       end
     end)
   end
 
-  put "/:account/:container/:blob_name" do
+  put "/:account/:container/*blob_name" do
+    # Azure virtual directories: the tail may carry `/` (blob lane cycles
+    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
+    blob_name = Enum.join(blob_name, "/")
     blob_route(conn, fn conn ->
       case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
         {:ok, raw_body, conn} ->
@@ -878,46 +963,88 @@ defmodule Smalt.EgressRouter do
               |> send_resp(201, Jason.encode!(BlobStorage.blob_metadata(blob)))
 
             {:error, :worm_locked, msg} ->
-              send_json(conn, 409, %{"error" => %{"code" => "ContainerLocked", "message" => msg}})
+              blob_error(conn, 409, %{"error" => %{"code" => "ContainerLocked", "message" => msg}})
 
             {:error, :precondition_failed, msg} ->
-              send_json(conn, 412, %{
+              blob_error(conn, 412, %{
                 "error" => %{"code" => "PreconditionFailed", "message" => msg}
               })
 
             {:error, :too_large, msg} ->
-              send_json(conn, 413, %{
+              blob_error(conn, 413, %{
                 "error" => %{"code" => "RequestBodyTooLarge", "message" => msg}
               })
 
             {:error, :container_not_found} ->
-              send_json(conn, 404, not_found_error("ContainerNotFound"))
+              blob_error(conn, 404, not_found_error("ContainerNotFound"))
+
+            {:error, status, code, msg} when is_integer(status) ->
+              # engine-emitted typed HTTP errors (e.g. 400 InvalidMetadata)
+              blob_error(conn, status, not_found_error(code) |> put_message(msg))
           end
 
-        {:more, _partial, _conn} ->
-          send_json(conn, 413, %{
+        # A partial read is oversize only when it fills the cap; a small
+        # partial means the body was truncated mid-flight (transport stopped
+        # early) — Plug.Conn.read_body is single-shot, so {:more, small, _}
+        # is a truncation, not a size refusal. Measured with a real
+        # partial-then-error adapter (egress cycle-8).
+        {:more, partial, _conn} when byte_size(partial) >= 8_000_000 ->
+          blob_error(conn, 413, %{
             "error" => %{
               "code" => "RequestBodyTooLarge",
               "message" => "Blob exceeds the 8,000,000-byte request body limit."
             }
           })
 
-        {:error, term, _conn} ->
-          send_json(conn, 400, %{
-            "error" => %{"code" => "InvalidRequestBody", "message" => inspect(term)}
+        {:more, partial, _conn} ->
+          blob_error(conn, 400, %{
+            "error" => %{
+              "code" => "InvalidRequestBody",
+              "message" =>
+                "The request body was truncated mid-flight " <>
+                  "(read #{byte_size(partial)} of the declared bytes)."
+            }
+          })
+
+        # Plug >= 1.14 read_body returns {:error, reason} without the conn; the
+        # historical {:error, term, _conn} clause here was typed-unreachable.
+        {:error, reason} ->
+          blob_error(conn, 400, %{
+            "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
           })
       end
     end)
   end
 
-  get "/:account/:container/:blob_name" do
+  get "/:account/:container/*blob_name" do
+    # Azure virtual directories: the tail may carry `/` (blob lane cycles
+    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
+    blob_name = Enum.join(blob_name, "/")
     blob_route(conn, fn conn ->
       # Azure storage semantics: the range rides `x-ms-range` (python/JS SDKs)
       # or the standard `Range` header; honor both.
       range_header = get_req_header(conn, "range") ++ get_req_header(conn, "x-ms-range")
 
-      case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
-        {:ok, blob, nil} ->
+      # Conditional read (Azure parity, cycle-30): If-Match / If-None-Match
+      # evaluated before the range branch; RFC 7232 precedence (If-Match
+      # first, 412; then If-None-Match, 304).
+      case BlobStorage.get_blob_conditional(account, container, blob_name, header_map(conn)) do
+        {:error, 412, code, msg} ->
+          blob_error(conn, 412, not_found_error(code) |> put_message(msg))
+
+        {:not_modified, etag} ->
+          conn
+          |> put_resp_header("etag", etag)
+          |> put_resp_header("x-ms-request-id", generate_request_id())
+          |> put_resp_header("x-ms-version", "2021-12-02")
+          |> send_resp(304, "")
+
+        :error ->
+          blob_error(conn, 404, not_found_error("BlobNotFound"))
+
+        {:ok, _blob} ->
+          case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
+            {:ok, blob, nil} ->
           conn
           |> put_resp_header("etag", blob["etag"])
           |> put_resp_header(
@@ -951,29 +1078,9 @@ defmodule Smalt.EgressRouter do
             }
           }))
 
-        :error ->
-          send_json(conn, 404, not_found_error("BlobNotFound"))
-      end
-    end)
-  end
-
-  # HEAD blob: same engine as GET, empty body, content-length set. This is what
-  # @azure/storage-blob downloadToBuffer probes before it issues the GET.
-  head "/:account/:container/:blob_name" do
-    blob_route(conn, fn conn ->
-      case BlobStorage.get_blob(account, container, blob_name) do
-        {:ok, blob} ->
-          conn
-          |> put_resp_header("etag", blob["etag"])
-          |> put_resp_header(
-            "content-length",
-            blob["content"] |> byte_size() |> Integer.to_string()
-          )
-          |> put_resp_content_type("application/octet-stream")
-          |> send_resp(200, "")
-
-        :error ->
-          send_json(conn, 404, not_found_error("BlobNotFound"))
+            :error ->
+              blob_error(conn, 404, not_found_error("BlobNotFound"))
+          end
       end
     end)
   end
@@ -991,11 +1098,11 @@ defmodule Smalt.EgressRouter do
               send_headers(conn, status, headers)
 
             {:error, status, code, msg} ->
-              send_json(conn, status, not_found_error(code) |> put_message(msg))
+              blob_error(conn, status, not_found_error(code) |> put_message(msg))
           end
         end
       else
-        send_json(
+        blob_error(
           conn,
           404,
           not_found_error("RouteNotFound")
@@ -1005,7 +1112,34 @@ defmodule Smalt.EgressRouter do
     end)
   end
 
-  delete "/:account/:container/:blob_name" do
+  # HEAD blob: same engine as GET, empty body, content-length set. This is what
+  # @azure/storage-blob downloadToBuffer probes before it issues the GET.
+  head "/:account/:container/*blob_name" do
+    # Azure virtual directories: the tail may carry `/` (blob lane cycles
+    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
+    blob_name = Enum.join(blob_name, "/")
+    blob_route(conn, fn conn ->
+      case BlobStorage.get_blob(account, container, blob_name) do
+        {:ok, blob} ->
+          conn
+          |> put_resp_header("etag", blob["etag"])
+          |> put_resp_header(
+            "content-length",
+            blob["content"] |> byte_size() |> Integer.to_string()
+          )
+          |> put_resp_content_type("application/octet-stream")
+          |> send_resp(200, "")
+
+        :error ->
+          blob_error(conn, 404, not_found_error("BlobNotFound"))
+      end
+    end)
+  end
+
+  delete "/:account/:container/*blob_name" do
+    # Azure virtual directories: the tail may carry `/` (blob lane cycles
+    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
+    blob_name = Enum.join(blob_name, "/")
     blob_route(conn, fn conn ->
       case BlobStorage.delete_blob(account, container, blob_name, header_map(conn)) do
         {:ok, status, headers, _record} ->
@@ -1014,7 +1148,7 @@ defmodule Smalt.EgressRouter do
           |> send_resp(status, "")
 
         {:error, status, code, msg} ->
-          send_json(conn, status, not_found_error(code) |> put_message(msg))
+          blob_error(conn, status, not_found_error(code) |> put_message(msg))
       end
     end)
   end
@@ -1023,7 +1157,7 @@ defmodule Smalt.EgressRouter do
   # Catch-all 404
   # ---------------------------------------------------------------------------
   match _ do
-    send_json(conn, 404, %{
+    blob_error(conn, 404, %{
       "error" => %{
         "code" => "RouteNotFound",
         "message" => "No route matches #{conn.method} #{conn.request_path}"
@@ -1063,7 +1197,18 @@ defmodule Smalt.EgressRouter do
     end
   end
 
-  defp raw_blob_put?(%Plug.Conn{method: "PUT", path_info: [_, _, _]} = conn) do
+  # Blob-route PUT shapes are exactly `/:account/:container/*blob_name`
+  # (3+ segments, no `comp` query). The exemption is a WHITELIST of the
+  # literal route prefixes that own a 3+-segment PUT route — each entry is
+  # load-bearing and mutation-proven (drop it and the corresponding wire
+  # probe dies). Adding a literal 3+-segment PUT route REQUIRES extending
+  # this list; a missed entry fails visible (parsed body on a blob PUT =>
+  # zero-byte store, fenced below) instead of silent parse-swallow of a
+  # service route (the lens-3 Cosmos regression this replaces).
+  @non_blob_put_namespaces ~w(dbs)
+
+  defp raw_blob_put?(%Plug.Conn{method: "PUT", path_info: [first, _, _ | _]} = conn)
+       when first not in @non_blob_put_namespaces do
     params = fetchd_query_params(conn)
     Map.get(params, "comp") in [nil, ""]
   end
@@ -1115,6 +1260,44 @@ defmodule Smalt.EgressRouter do
   # Blob catch-all guard: require x-ms-version header, or the host must be
   # configured in :smalt, :blob_catch_all_hosts.
   defp blob_route(conn, fun) do
+    # Auth-lens-5 disclosed unblock (test-freeze SLA): the slash-blob glob
+    # `/:account/:container/*blob_name` widened the catch-all to 3+ segments,
+    # so exempt-prefix traversals (…/oauth2/../../acct/cont/blob) now match
+    # the blob routes and reach the 400 x-ms-version guard instead of the
+    # 404/401 the auth traversal court pins. A decoded "."/".." SEGMENT is a
+    # path-traversal shape, never a legal storage name; refuse 404
+    # fail-closed before the version guard.
+    # Decoded segments are split on "/" so %-encoded traversals
+    # (%2f%2e%2e -> "/..") are caught component-wise; a slash-containing
+    # blob name without "." / ".." components stays legal (slash-blob).
+    if Enum.any?(conn.path_info, fn seg ->
+         String.split(URI.decode(seg), "/") |> Enum.any?(&(&1 in [".", ".."]))
+       end) do
+      blob_error(conn, 404, not_found_error("BlobNotFound"))
+    else
+      # Auth-lens interplay (egress lens-4 cycle 1, measured): the auth-exempt
+      # namespace (/.well-known/, /oauth2/, /attest/, /metadata/endpoints,
+      # /{tid}/oauth2/v2.0/token) composes with the blob splat — account=
+      # ".well-known"/"oauth2"/"attest"/"metadata" — and x-ms-version is
+      # client-supplied, not authentication, so an UNAUTHENTICATED blob
+      # CRUD surface was reachable inside the exempt namespace (measured at
+      # this seam). Blob-reachable exempt paths are refused fail-closed here;
+      # real discovery endpoints are served before the router ever sees a
+      # blob route. Canonical predicate from Smalt.Auth.Bearer — never a
+      # copied prefix list.
+      auth_exempt_blob =
+        Code.ensure_loaded?(Smalt.Auth.Bearer) and
+          Smalt.Auth.Bearer.auth_exempt_path?(conn.request_path)
+
+      if auth_exempt_blob do
+        blob_error(conn, 404, not_found_error("BlobNotFound"))
+      else
+        blob_route_guarded(conn, fun)
+      end
+    end
+  end
+
+  defp blob_route_guarded(conn, fun) do
     allowed_hosts = Application.get_env(:smalt, :blob_catch_all_hosts, [])
 
     if get_req_header(conn, "x-ms-version") != [] or conn.host in allowed_hosts do
@@ -1208,12 +1391,6 @@ defmodule Smalt.EgressRouter do
   defp valid_json_body?(%Plug.Conn.Unfetched{}), do: false
 
   # Plug.Parsers wraps a decoded non-map JSON body (null / scalar / top-level
-  # array on older Plug) as %{"_json" => term}. Admitting that wrapper through
-  # the gate let `POST /app/transactions` with body `null` or `5` append a
-  # garbage ledger entry (measured 201). The only legitimate wrapped form on
-  # this surface is the batch list (Sentinel/events unwrap it downstream), so
-  # refuse the wrapper unless the wrapped value is a list.
-  # Plug.Parsers wraps a decoded non-map JSON body (null / scalar / top-level
   # array on older Plug) as %{"_json" => term}. Admitting that wrapper let
   # `POST /app/transactions` with body `null` or `5` append a garbage ledger
   # entry (measured 201). The only legitimate wrapped form on this surface is
@@ -1221,6 +1398,12 @@ defmodule Smalt.EgressRouter do
   # wrapper unless the wrapped value is a list.
   defp valid_json_body?(%{"_json" => wrapped}) when not is_list(wrapped), do: false
 
+  # Plug.Parsers wraps a decoded non-map JSON body (null / scalar / top-level
+  # array on older Plug) as %{"_json" => term}. Admitting that wrapper through
+  # the gate let `POST /app/transactions` with body `null` or `5` append a
+  # garbage ledger entry (measured 201). The only legitimate wrapped form on
+  # this surface is the batch list (Sentinel/events unwrap it downstream), so
+  # refuse the wrapper unless the wrapped value is a list.
   # An empty JSON object body ({} / truly empty body with application/json) is
   # not an admission either — measured: `POST /app/transactions` with an empty
   # body appended an empty ledger entry (201). Real Azure surfaces refuse an
@@ -1332,8 +1515,10 @@ defmodule Smalt.EgressRouter do
   defp decode_events(conn) do
     case conn.body_params do
       %Plug.Conn.Unfetched{} ->
-        {:ok, raw, _conn} = Plug.Conn.read_body(conn)
-        decode_events_payload(raw)
+        case read_raw_body(conn) do
+          {:ok, raw} -> decode_events_payload(raw)
+          :error -> {:error, :invalid_cloudevent}
+        end
 
       params when is_list(params) ->
         {:ok, params}
@@ -1496,9 +1681,22 @@ defmodule Smalt.EgressRouter do
   end
 
   # Real Log Analytics DCR ingest answers 204 No Content plus x-ms-request-id.
+  # Unified to the dashed-36 RFC 4122 v4 GUID form real Azure emits on BOTH
+  # the LA and ARM surfaces (cross-court finding, compliance-corpus cycle 8);
+  # previously a 32-hex dialect pin.
   defp generate_request_id do
-    :crypto.strong_rand_bytes(16)
-    |> Base.encode16(case: :lower)
+    <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
+    c4 = :erlang.band(c, 0x0FFF) + 0x4000
+    d = :erlang.bor(:erlang.band(d, 0x3FFF), 0x8000)
+
+    :io_lib.format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [
+      a,
+      b,
+      c4,
+      d,
+      e
+    ])
+    |> IO.iodata_to_binary()
   end
 
   defp send_json(conn, status, body) do
@@ -1507,8 +1705,23 @@ defmodule Smalt.EgressRouter do
     |> send_resp(status, Jason.encode!(body))
   end
 
-  defp get_json(conn, status, body) do
-    send_json(conn, status, body)
+  # F5 (compliance-corpus lens-4 work order): real Azure emits
+  # x-ms-request-id + x-ms-version on ERROR responses too. Blob-plane-scoped
+  # renderer — shared send_json is untouched (ARM/LA/Cosmos/KV envelope pins
+  # must not see blob headers). v4 GUID from generate_request_id/0.
+  # Quoted opaque container ETag for the Put Container 201 render — same
+  # seed shape as BlobService.container_etag/1 (private there); stable per
+  # (account, container, created_at).
+  defp container_put_etag(record) do
+    seed = "#{record["account"]}/#{record["container"]}/#{record["created_at"]}"
+    "\"" <> Base.encode16(:crypto.hash(:md5, seed), case: :upper) <> "\""
+  end
+
+  defp blob_error(conn, status, body) do
+    conn
+    |> put_resp_header("x-ms-request-id", generate_request_id())
+    |> put_resp_header("x-ms-version", "2021-12-02")
+    |> send_json(status, body)
   end
 
   defp not_found_error(code) do
@@ -1533,7 +1746,7 @@ defmodule Smalt.EgressRouter do
       %Plug.Conn.Unfetched{} ->
         case Plug.Conn.read_body(conn) do
           {:ok, raw, conn} -> decode_policy_body(raw, conn)
-          {:error, _term, conn} -> {:error, conn}
+          {:error, _reason} -> {:error, conn}
         end
 
       params when is_map(params) ->
@@ -1588,8 +1801,13 @@ defmodule Smalt.EgressRouter do
   end
 
   defp put_resp_headers(conn, headers) do
-    Enum.reduce(headers, conn, fn {name, value}, conn ->
-      Plug.Conn.put_resp_header(conn, name, value)
+    Enum.reduce(headers, conn, fn
+      # Engine header maps may carry nil values (measured: BlobService
+      # get_container_properties emits "last-modified" => nil on a fresh
+      # container — HEAD container crashed with FunctionClauseError inside
+      # put_resp_header). nil means "header absent" at this seam; skip it.
+      {_name, nil}, conn -> conn
+      {name, value}, conn -> Plug.Conn.put_resp_header(conn, name, value)
     end)
   end
 

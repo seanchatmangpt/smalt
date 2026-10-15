@@ -102,16 +102,16 @@ defmodule Smalt.DataPlane.BlobServiceTest do
     end
 
     test "marker is exclusive (marker = last name of previous page)" do
-      container("a")
-      container("b")
-      container("c")
+      container("pg1")
+      container("pg2")
+      container("pg3")
 
       {:ok, page1} = BlobService.list_containers(@account, %{"maxresults" => "2"})
-      assert Enum.map(page1["containers"], & &1["container"]) == ["a", "b"]
-      assert page1["next_marker"] == "b"
+      assert Enum.map(page1["containers"], & &1["container"]) == ["pg1", "pg2"]
+      assert page1["next_marker"] == "pg2"
 
-      {:ok, page2} = BlobService.list_containers(@account, %{"marker" => "b"})
-      assert Enum.map(page2["containers"], & &1["container"]) == ["c"]
+      {:ok, page2} = BlobService.list_containers(@account, %{"marker" => "pg2"})
+      assert Enum.map(page2["containers"], & &1["container"]) == ["pg3"]
     end
 
     test "returns empty page for unknown account" do

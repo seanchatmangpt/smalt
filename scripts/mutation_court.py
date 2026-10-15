@@ -23,6 +23,7 @@ import http.client
 import json
 import os
 import shutil
+import socket
 import signal
 import subprocess
 import sys
@@ -34,8 +35,34 @@ import urllib.parse
 
 REPO = os.environ.get("SMALT_REPO", os.getcwd())
 VALIDATOR = os.path.join(REPO, "lib/smalt/graphlaw/validator.ex")
-PORT = 9443
+# SMALT_BENCH_ARM_PORT scoping (DX lane cycle 15): the last-resort port sweep
+# in stop() SIGKILLs whatever still holds this port — on the fixed 9443 that
+# can be a sibling lane's substrate. Override puts the whole court (bind + sweep)
+# on a private port; default stays the fixed front door.
+PORT = int(os.environ.get("SMALT_BENCH_ARM_PORT", "9443"))
 HOST = "127.0.0.1"
+# Ports chosen by auto-scope for every fixed listener (arm_port key holds the
+# value mirrored into PORT). Empty on the front-door path.
+SCOPED_PORTS = {}
+
+
+def allocate_block():
+    """Ephemeral, collision-checked block for all six fixed listeners."""
+    keys = ("arm_port", "arm_tls_port", "egress_port", "mcp_port",
+            "amqp_port", "event_hubs_port")
+    socks, ports = [], {}
+    for k in keys:
+        s = socket.socket()
+        s.bind((HOST, 0))
+        socks.append(s)
+        ports[k] = s.getsockname()[1]
+    # Release BEFORE spawn: the substrate must bind these itself, so holding
+    # them through Popen guarantees eaddrinuse (witnessed cycle 2, second
+    # form). Closing re-opens a TOCTOU window; boot's durability gate + the
+    # retry loop (fresh block each attempt) absorb it.
+    for s in socks:
+        s.close()
+    return ports
 API_VERSION = "2021-04-01"
 SUB = "00000000-0000-0000-0000-000000000000"
 RG = "mutationcourt-rg"
@@ -70,20 +97,45 @@ def port_open():
 
 
 def boot():
-    """Boot substrate via mix run --no-halt; wait until 9443 answers.
-    Fail-closed if 9443 is ALREADY occupied: the court must probe the
-    substrate it booted (gate-absent phase REQUIRES the mutated code to be
-    the code serving 9443); a stale foreign VM would silently re-run the
-    gate-present verdicts and make the court read vacuous-by-proxy."""
+    """Boot substrate via mix run --no-halt; wait until PORT answers.
+    Fail-closed if PORT is ALREADY occupied and no override/auto-scope is
+    possible: the court must probe the substrate it booted (gate-absent phase
+    REQUIRES the mutated code to be the code serving PORT); a stale foreign VM
+    would silently re-run the gate-present verdicts and make the court read
+    vacuous-by-proxy."""
+    global PORT, SCOPED_PORTS
     if port_open():
-        raise RuntimeError(
-            "port %s already occupied before boot — refusing to probe a "
-            "foreign/stale substrate. Remediation: lsof -ti tcp:%s | xargs kill"
-            % (PORT, PORT))
+        if os.environ.get("SMALT_BENCH_ARM_PORT"):
+            raise RuntimeError(
+                "port %s already occupied before boot — refusing to probe a "
+                "foreign/stale substrate. Remediation: wait for the holder to "
+                "exit, or choose a private port from the documented range "
+                "39000-39999 (docs/DEV_LOOP.md 'Private port allocation')")
+        # No override: front door held by another lane -> auto-scope to an
+        # ephemeral block (cycle 17). A PARTIALLY-scoped boot is worse than
+        # none: witnessed 2026-10-15, scoping only arm_port let the ARM
+        # listener answer the readiness probe, then the whole app died
+        # eaddrinuse on the TLS twin (9444, held by the front-door beam) and
+        # the court crashed on the next probe. Auto-scope therefore moves
+        # EVERY fixed listener the Application binds.
+        SCOPED_PORTS = allocate_block()
+        PORT = SCOPED_PORTS["arm_port"]
+        print("[court] front door held; auto-scoped to private block %s"
+              % SCOPED_PORTS, flush=True)
     log = tempfile.NamedTemporaryFile(
         prefix="mutation_court_boot_", suffix=".log", delete=False)
+    if PORT != 9443:
+        env_stmts = "; ".join(
+            f"Application.put_env(:smalt, :{name}, {p})"
+            for name, p in SCOPED_PORTS.items())
+        cmd = ["mix", "run", "--no-start", "--no-halt", "-e",
+               f"{env_stmts}; "
+               "{:ok, _} = Application.ensure_all_started(:smalt); "
+               "Process.sleep(:infinity)"]
+    else:
+        cmd = ["mix", "run", "--no-halt"]
     proc = subprocess.Popen(
-        ["mix", "run", "--no-halt"],
+        cmd,
         cwd=REPO,
         stdout=log,
         stderr=subprocess.STDOUT,
@@ -93,13 +145,19 @@ def boot():
     deadline = time.time() + BOOT_TIMEOUT
     while time.time() < deadline:
         if port_open():
-            return proc, log.name
+            # Durability gate: a partially-scoped boot can answer one probe
+            # then die eaddrinuse on a listener we did not scope (witnessed
+            # cycle 2). Require the ARM port to still answer after a settle
+            # window, with the process still alive, before trusting boot.
+            time.sleep(2)
+            if proc.poll() is None and port_open():
+                return proc, log.name
         if proc.poll() is not None:
             raise RuntimeError(
                 "substrate exited rc=%s; log=%s" % (proc.returncode, log.name))
         time.sleep(1)
-    raise RuntimeError("substrate never bound 9443 within %ss; log=%s"
-                       % (BOOT_TIMEOUT, log.name))
+    raise RuntimeError("substrate never bound %s within %ss; log=%s"
+                       % (PORT, BOOT_TIMEOUT, log.name))
 
 
 def stop(proc):
@@ -378,6 +436,8 @@ def receipt(before, after, restored, mutation_applied=False, blocked_msg=None):
     print("=" * 78)
     print("MUTATION COURT RECEIPT  (subject: " + REPO + " @ "
           "lib/smalt/graphlaw/validator.ex)")
+    print("served port: %s%s" % (PORT, "  (auto-scoped: front door was held)"
+                                 if PORT != 9443 else ""))
     print("=" * 78)
     print("%-22s %-7s %-6s %-24s %s" % ("MUTATION", "PHASE", "HTTP", "EXPECTED", "VERDICT"))
     for (m, phase, status, expected, ok) in before + after:

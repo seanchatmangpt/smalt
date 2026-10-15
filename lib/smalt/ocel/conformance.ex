@@ -52,11 +52,43 @@ defmodule Smalt.Ocel.Conformance do
   end
 
   @doc """
-  The reference happy-path model: ARM resource create -> Succeeded; AMQP
-  enqueue -> lock -> settle; blob put -> GET.
+  The reference happy-path model, expressed ONLY in the emittable
+  vocabulary (`Smalt.Ocel.EventRegistry.event_types/0`): ARM resource
+  create -> AMQP delivery settled -> blob custody transition. Every
+  emitted log CAN fully replay this net (vocabulary skew resolved by
+  net reversal — the six-transition courier net is kept as
+  `full_courier_net/0`).
   """
   @spec happy_path_net() :: t()
   def happy_path_net do
+    net(
+      %{
+        "arm.resource.transition" => %{input: %{"p_start" => 1}, output: %{"p_armed" => 1}},
+        "amqp.delivery.settled" => %{input: %{"p_armed" => 1}, output: %{"p_settled" => 1}},
+        "blob.custody.transition" => %{input: %{"p_settled" => 1}, output: %{"p_end" => 1}}
+      },
+      %{"p_start" => 1},
+      %{"p_end" => 1}
+    )
+  end
+
+  @doc "The happy-path trace over `happy_path_net/0` (fully emittable)."
+  @spec happy_path_trace() :: [String.t()]
+  def happy_path_trace do
+    ~w(arm.resource.transition amqp.delivery.settled blob.custody.transition)
+  end
+
+  @doc """
+  The historical six-transition courier net (ARM -> enqueue -> lock ->
+  settle -> blob put -> custody). NOT fully emittable: `amqp.enqueue`,
+  `amqp.lock` and `blob.put` are outside the closed emission registry,
+  so real emitted traces can never fully replay this net. Kept as a
+  second net for conformance-law pinning only; it introduces no new
+  vocabulary (types are plain strings, registry-ungated at the net
+  level).
+  """
+  @spec full_courier_net() :: t()
+  def full_courier_net do
     net(
       %{
         "arm.resource.transition" => %{input: %{"p_start" => 1}, output: %{"p_armed" => 1}},
@@ -71,9 +103,9 @@ defmodule Smalt.Ocel.Conformance do
     )
   end
 
-  @doc "The happy-path trace over `happy_path_net/0`."
-  @spec happy_path_trace() :: [String.t()]
-  def happy_path_trace do
+  @doc "The full courier trace over `full_courier_net/0`."
+  @spec full_courier_trace() :: [String.t()]
+  def full_courier_trace do
     ~w(arm.resource.transition amqp.enqueue amqp.lock amqp.delivery.settled blob.put blob.custody.transition)
   end
 

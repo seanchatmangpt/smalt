@@ -1,12 +1,18 @@
-# Substrate Registry — projected from smalt-substrate-pack ontology (SMALT v26.10.14).
-# Source of truth: ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl
-# DO NOT hand-edit. Regenerate with: mix smalt.gen
+# Substrate Registry
+# Auto-projected from smalt-substrate-pack ontology via ggen_igniter.sync.
+# DO NOT EDIT — regenerate with `mix smalt.gen`.
+# Ports: 9443 (ARM REST), 8443 (Cosmos/KeyVault), 5672 (AMQP SB), 5673 (Event Hubs)
 defmodule Smalt.Registry do
   @moduledoc """
-  Projected registry of admitted resource types, per-type SHACL shape
-  bindings, and supported api-versions. Projected first-class (no
-  generated/ directory) from the smalt-substrate-pack ontology.
+  Machine-generated registry of admitted resource types, per-type shapes,
+  and supported api-versions. Source of truth:
+  ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl
   """
+
+  # Canonical ordering: rows are sorted by resourceType at render time so the
+  # artifact is independent of SPARQL engine row order (the `sparql` hex
+  # engine does not honor ORDER BY — see GgenIgniter.Query's moduledoc).
+  # Replay identity is fenced by test/smalt_registry_replay_identity_test.exs.
 
   @admitted_resource_types [
     "Microsoft.App/containerApps",
@@ -87,7 +93,8 @@ defmodule Smalt.Registry do
     "Microsoft.Storage/storageAccounts" => "StorageAccountShape",
     "Microsoft.Storage/storageAccounts/blobServices" => "DefaultShape",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "DefaultShape",
-    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" => "DefaultShape"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
+      "DefaultShape"
   }
 
   @api_versions %{
@@ -128,7 +135,8 @@ defmodule Smalt.Registry do
     "Microsoft.Storage/storageAccounts" => "2021-04-01",
     "Microsoft.Storage/storageAccounts/blobServices" => "2021-04-01",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "2023-05-01",
-    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" => "2023-05-01"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
+      "2023-05-01"
   }
 
   def admitted_resource_types, do: @admitted_resource_types

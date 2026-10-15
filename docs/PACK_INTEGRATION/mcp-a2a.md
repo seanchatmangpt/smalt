@@ -13,7 +13,7 @@ adapted from `ggen-marketplace/packs/elixir-mcp-a2a-pack`.
 | `lib/smalt/mcp/gen/mcp_descriptor.ex.eex` | EEx adaptation of the pack's `mcp_descriptor.ex.tmpl` | renders module `Smalt.Mcp.Descriptor` |
 | `lib/smalt/mcp/generated/mcp_descriptor.ex` | GENERATED via `mix ggen_igniter.sync` (sparql engine, 8 rows) | do not hand-edit; edit the TTL and re-run the sync |
 | `lib/smalt/mcp/router.ex` | hand-written | `Smalt.Mcp.Router` Plug router, JSON-RPC 2.0 |
-| `test/mcp_test.exs` | hand-written | 20 tests, all green |
+| `test/mcp_test.exs` | hand-written | 25 in-process tests; `test/mcp_wire_test.exs` adds the raw-socket wire tier (11 tests, 36 total) |
 | `docs/PACK_INTEGRATION/mcp-a2a.md` | this receipt | |
 
 Hand-written dispatch is read-only by law: the fail-closed gate is
@@ -53,8 +53,8 @@ Add `mcp_port: <port>` to config when wiring. Tests exercise the router over
 ## Gate (real output)
 
 ```
-$ mix test test/mcp_test.exs
-20 tests, 0 failures
+$ mix test test/mcp_test.exs test/mcp_wire_test.exs
+36 tests, 0 failures
 ```
 
 ## Falsifiers

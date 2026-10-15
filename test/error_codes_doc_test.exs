@@ -65,6 +65,28 @@ defmodule Smalt.ErrorCodesDocTest do
     end
   end
 
+  test "compliance rows cover every code the compliance corpus pins literally" do
+    expected =
+      Path.wildcard("test/compliance/*.exs")
+      |> Enum.flat_map(fn f ->
+        src = File.read!(f)
+
+        Regex.scan(~r/\[\s*"code"\s*\]\s*==\s*"([A-Za-z][A-Za-z0-9-]*)"/, src)
+        |> Enum.map(fn [_, code] ->
+          {"compliance/#{Path.basename(f, ".exs") |> String.replace("_", "-")}", code}
+        end)
+      end)
+      |> MapSet.new()
+
+    doc_compliance =
+      doc_rows()
+      |> Enum.filter(&String.starts_with?(&1.surface, "compliance/"))
+      |> MapSet.new(&{&1.surface, &1.code})
+
+    assert doc_compliance == expected,
+           "compliance coverage drift: doc=#{inspect(MapSet.to_list(doc_compliance))} sources=#{inspect(MapSet.to_list(expected))}"
+  end
+
   test "egress rows cover the codes the egress router emits literally" do
     src = File.read!(@egress_source)
 
@@ -84,6 +106,29 @@ defmodule Smalt.ErrorCodesDocTest do
     assert doc_codes == expected
   end
 
+  test "a doc row with an escaped pipe parses with an intact meaning/remediation boundary" do
+    # The generator escapes literal pipes as `\|`; the fence's own row parser
+    # must mirror Smalt.DSPy.Remediation.split_row/1 (lens-4: a naive split
+    # silently corrupts the meaning/remediation boundary and stays green).
+    doc = """
+    <!-- gen -->
+    # ERROR_CODES
+
+    | Surface | HTTP | Code | Source | Meaning | Remediation (agent hint) |
+    |---|---|---|---|---|---|
+    | egress | 400 | PipeCode | s.ex:1 | mean \\| ing | rem \\| ed |
+    """
+
+    rows =
+      doc
+      |> String.split("\n")
+      |> Enum.filter(&String.starts_with?(&1, "| "))
+      |> Enum.reject(&String.contains?(&1, "Surface | HTTP | Code |"))
+      |> parse_row_lines()
+
+    assert [%{code: "PipeCode", meaning: "mean | ing", remediation: "rem | ed"}] = rows
+  end
+
   # -- helpers -----------------------------------------------------------------
 
   defp doc_rows do
@@ -91,10 +136,22 @@ defmodule Smalt.ErrorCodesDocTest do
     |> String.split("\n")
     |> Enum.filter(&String.starts_with?(&1, "| "))
     |> Enum.reject(&String.contains?(&1, "Surface | HTTP | Code |"))
-    |> Enum.map(fn line ->
-      cells = line |> String.trim("|") |> String.split("|") |> Enum.map(&String.trim/1)
+    |> parse_row_lines()
+  end
 
-      # cells are split on the escaped/unescaped pipe; unescape defensively
+  defp parse_row_lines(lines) do
+    Enum.map(lines, fn line ->
+      # Escape-aware split mirroring Smalt.DSPy.Remediation.split_row/1: the
+      # generator emits literal pipes in cells as `\|`; a naive split turned
+      # one escaped pipe into three corrupted cells and STAYED GREEN (the
+      # silent-corruption class, lens-4).
+      cells =
+        line
+        |> String.trim_trailing("|")
+        |> String.split(~r{(?<!\\)\|})
+        |> Enum.map(fn cell -> cell |> String.replace("\\|", "|") |> String.trim() end)
+        |> tl()
+
       [surface, status, code, source, meaning | rest] = cells
       remediation = Enum.join(rest, "|")
 

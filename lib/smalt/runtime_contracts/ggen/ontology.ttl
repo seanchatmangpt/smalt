@@ -27,3 +27,30 @@
   rtc:sourcePack "ash-runtime-integration-contract-pack" ;
   rtc:moduleName "AmqpDialect" ;
   rdfs:label "AMQP 1.0 Service Bus dialect contract" .
+
+<https://smalt.local/runtime-contracts/sentinel-ingest> a rtc:Contract ;
+  rtc:id "sentinel_ingest" ;
+  rtc:module "Smalt.RuntimeContracts.SentinelIngest" ;
+  rtc:plane "data_plane" ;
+  rtc:consumer "Smalt.EgressRouter (Sentinel surface)" ;
+  rtc:sourcePack "ash-runtime-integration-contract-pack" ;
+  rtc:moduleName "SentinelIngest" ;
+  rdfs:label "Sentinel / Log Analytics ingest + KQL contract" .
+
+<https://smalt.local/runtime-contracts/resource-graph-query> a rtc:Contract ;
+  rtc:id "resource_graph_query" ;
+  rtc:module "Smalt.RuntimeContracts.ResourceGraphQuery" ;
+  rtc:plane "control_plane" ;
+  rtc:consumer "Smalt.EgressRouter (Microsoft.ResourceGraph surface)" ;
+  rtc:sourcePack "ash-runtime-integration-contract-pack" ;
+  rtc:moduleName "ResourceGraphQuery" ;
+  rdfs:label "Azure Resource Graph query contract" .
+
+<https://smalt.local/runtime-contracts/purview-atlas> a rtc:Contract ;
+  rtc:id "purview_atlas" ;
+  rtc:module "Smalt.RuntimeContracts.PurviewAtlas" ;
+  rtc:plane "data_plane" ;
+  rtc:consumer "Smalt.EgressRouter (Atlas v2 surface)" ;
+  rtc:sourcePack "ash-runtime-integration-contract-pack" ;
+  rtc:moduleName "PurviewAtlas" ;
+  rdfs:label "Purview Atlas v2 entity + lineage contract" .

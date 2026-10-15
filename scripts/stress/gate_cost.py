@@ -32,12 +32,16 @@ import subprocess
 import sys
 import time
 
+import _substrate
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-ARM_PORT = int(os.environ.get("SMALT_GATECOST_ARM_PORT", "39443"))
-EGRESS_PORT = int(os.environ.get("SMALT_GATECOST_EGRESS_PORT", "38443"))
-AMQP_PORT = int(os.environ.get("SMALT_GATECOST_AMQP_PORT", "3672"))
-EVENTHUBS_PORT = int(os.environ.get("SMALT_GATECOST_EVENTHUBS_PORT", "3673"))
+ARM_PORT = int(os.environ.get("SMALT_GATECOST_ARM_PORT", "39460"))
+ARM_TLS_PORT = int(os.environ.get("SMALT_GATECOST_TLS_PORT", "39462"))
+EGRESS_PORT = int(os.environ.get("SMALT_GATECOST_EGRESS_PORT", "39461"))
+MCP_PORT = int(os.environ.get("SMALT_GATECOST_MCP_PORT", "39463"))
+AMQP_PORT = int(os.environ.get("SMALT_GATECOST_AMQP_PORT", "39464"))
+EVENTHUBS_PORT = int(os.environ.get("SMALT_GATECOST_EVENTHUBS_PORT", "39465"))
 SUB_ID = "gatecost-sub"
 RG = "rg-gatecost"
 API_VERSION = "2021-04-01"
@@ -110,11 +114,13 @@ def spawn_substrate():
     cmd = [
         "mix", "run", "--no-start", "--no-halt", "--eval",
         "Application.put_env(:smalt, :arm_port, %d); "
+        "Application.put_env(:smalt, :arm_tls_port, %d); "
+        "Application.put_env(:smalt, :mcp_port, %d); "
         "Application.put_env(:smalt, :egress_port, %d); "
         "Application.put_env(:smalt, :amqp_port, %d); "
         "Application.put_env(:smalt, :event_hubs_port, %d); "
         "Application.ensure_all_started(:smalt)" % (
-            ARM_PORT, EGRESS_PORT, AMQP_PORT, EVENTHUBS_PORT,
+            ARM_PORT, ARM_TLS_PORT, MCP_PORT, EGRESS_PORT, AMQP_PORT, EVENTHUBS_PORT,
         ),
     ]
     proc = subprocess.Popen(
@@ -130,17 +136,8 @@ def spawn_substrate():
 
 
 def wait_for_port(port, proc, timeout_s=120.0):
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                return time.monotonic() - t0
-        except OSError:
-            time.sleep(0.25)
-    fail_closed(f"substrate did not bind :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.25)
 
 
 def mint_token():

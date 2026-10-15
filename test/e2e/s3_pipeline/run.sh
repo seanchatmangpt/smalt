@@ -40,7 +40,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Boot substrate exactly like the T3 harness does (foreground VM, MIX_ENV=test).
-(cd "$REPO" && MIX_ENV=test mix run --no-halt >"$LOG" 2>&1) &
+(cd "$REPO" && MIX_ENV=test SMALT_TEST_ARM_PORT=9443 SMALT_TEST_ARM_TLS_PORT=9444 SMALT_TEST_EGRESS_PORT=8443 SMALT_TEST_AMQP_PORT=5672 SMALT_TEST_EVENT_HUBS_PORT=5673 mix run --no-halt >"$LOG" 2>&1) &
 CHILD_PID=$!
 
 echo "[s3_pipeline] substrate booting (pid $CHILD_PID, log $LOG)"

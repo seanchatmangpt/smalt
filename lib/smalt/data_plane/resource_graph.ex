@@ -42,8 +42,41 @@ defmodule Smalt.DataPlane.ResourceGraph do
   end
 
   defp do_query(subscriptions, body) do
-    body = body || %{}
-    options = Map.get(body, "options") || %{}
+    # Coerce malformed envelope fields instead of raising BadMapError (500):
+    # non-map body/options behave like an empty envelope, consistent with the
+    # existing lenient skip-token fallbacks.
+    body = if is_map(body), do: body, else: %{}
+
+    options =
+      case Map.get(body, "options") do
+        options when is_map(options) -> options
+        _ -> %{}
+      end
+
+    # Option-preserving continuation (flag `:rg_token_preserve_options`,
+    # default off): resolve the token FIRST so stored options can fill
+    # omissions BEFORE $top/$skip are parsed. Requested options win.
+    token_options =
+      case skip_token(body, options) do
+        token when is_binary(token) ->
+          case Store.get(:smalt_resource_graph_tokens, token) do
+            {:ok, stored} when is_map(stored) ->
+              if Application.get_env(:smalt, :rg_token_preserve_options, false) do
+                Map.get(stored, "options", %{})
+              else
+                %{}
+              end
+
+            _ ->
+              %{}
+          end
+
+        _ ->
+          %{}
+      end
+
+    options = Map.merge(token_options, options)
+
     top = options |> Map.get("$top") |> parse_int() |> Kernel.||(Map.get(body, "$top")) |> parse_int() |> Kernel.||(@default_top) |> max(1)
     skip = options |> Map.get("$skip") |> parse_int() |> Kernel.||(Map.get(body, "$skip")) |> parse_int() |> Kernel.||(0)
 
@@ -84,7 +117,7 @@ defmodule Smalt.DataPlane.ResourceGraph do
 
     response =
       if remaining > 0 do
-        token = new_token(offset + length(page), facets_subscriptions)
+        token = new_token(offset + length(page), facets_subscriptions, %{"$top" => top})
         Map.put(response, "$skipToken", token)
       else
         response
@@ -173,7 +206,7 @@ defmodule Smalt.DataPlane.ResourceGraph do
 
   defp parse_int(_), do: nil
 
-  defp new_token(offset, subscriptions) do
+  defp new_token(offset, subscriptions, options \\ %{}) do
     token =
       :crypto.strong_rand_bytes(12)
       |> Base.encode16(case: :lower)
@@ -181,7 +214,13 @@ defmodule Smalt.DataPlane.ResourceGraph do
     Store.put(:smalt_resource_graph_tokens, token, %{
       "offset" => offset,
       "subscriptions" => subscriptions,
-      "created" => DateTime.utc_now() |> DateTime.to_iso8601()
+      # Option-preserving continuation (lane event-planes lens-2 cycle 7,
+      # coordinator-authorized pivot only): real Resource Graph preserves query
+      # options in the skip token. The default keeps the emulated behavior
+      # (offset+subscriptions only, $top re-supplied); when
+      # `:rg_token_preserve_options` is set, the minting options are stored and
+      # a continuation that omits an option falls back to the stored one.
+      "options" => options
     })
 
     token

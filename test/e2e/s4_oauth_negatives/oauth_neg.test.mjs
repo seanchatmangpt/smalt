@@ -170,7 +170,7 @@ if (PHASE === "a") {
     assert.ok(payload.exp > Date.now() / 1000, "token not expired");
     assert.equal(payload.aud, "https://management.azure.com", "aud is ARM audience");
 
-    const res = await fetch(`${ARM_HTTP}/subscriptions`, {
+    const res = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, {
       headers: { authorization: `Bearer ${token}` },
       signal: T(20_000),
     });
@@ -191,7 +191,7 @@ if (PHASE === "a") {
       oid: "00000000-0000-0000-0000-000000000001", sub: "00000000-0000-0000-0000-000000000001",
       tid: "00000000-0000-0000-0000-000000000000", roles: ["Contributor"],
     });
-    const res = await fetch(`${ARM_HTTP}/subscriptions`, {
+    const res = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, {
       headers: { authorization: `Bearer ${expired}` },
       signal: T(20_000),
     });
@@ -206,7 +206,7 @@ if (PHASE === "a") {
     const sig = Buffer.from(parts[2], "base64url");
     sig[0] = sig[0] ^ 0x01;
     const tampered = `${parts[0]}.${parts[1]}.${sig.toString("base64url")}`;
-    const res = await fetch(`${ARM_HTTP}/subscriptions`, {
+    const res = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, {
       headers: { authorization: `Bearer ${tampered}` },
       signal: T(20_000),
     });
@@ -224,7 +224,7 @@ if (PHASE === "a") {
       oid: "00000000-0000-0000-0000-000000000001", sub: "00000000-0000-0000-0000-000000000001",
       tid: "00000000-0000-0000-0000-000000000000", roles: ["Contributor"],
     });
-    const res = await fetch(`${ARM_HTTP}/subscriptions`, {
+    const res = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, {
       headers: { authorization: `Bearer ${wrongAud}` },
       signal: T(20_000),
     });
@@ -235,7 +235,7 @@ if (PHASE === "a") {
 
   test("negative: missing Authorization on every service family — per-service pin", { timeout: 60_000 }, async () => {
     // ARM GET /subscriptions
-    const arm = await fetch(`${ARM_HTTP}/subscriptions`, { signal: T(20_000) });
+    const arm = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, { signal: T(20_000) });
     record("negative.no-auth.arm-subscriptions", `GET /subscriptions anonymous → ${arm.status}`,
       verdictFor(arm.status));
     assertAuthChallenge(arm, "negative.no-auth.arm-subscriptions");
@@ -299,7 +299,7 @@ if (PHASE === "a") {
 if (PHASE === "b") {
   test("substrate B healthy control: B-minted token → GET /subscriptions → 200", { timeout: 60_000 }, async () => {
     const { token } = await acquireToken();
-    const res = await fetch(`${ARM_HTTP}/subscriptions`, {
+    const res = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, {
       headers: { authorization: `Bearer ${token}` },
       signal: T(20_000),
     });
@@ -312,7 +312,7 @@ if (PHASE === "b") {
   test("negative: substrate A's token presented to substrate B (different signing secret)", { timeout: 30_000 }, async () => {
     const tokenA = fs.readFileSync(TOKEN_A_FILE, "utf8").trim();
     assert.ok(tokenA.split(".").length === 3, "token A present from phase a");
-    const res = await fetch(`${ARM_HTTP}/subscriptions`, {
+    const res = await fetch(`${ARM_HTTP}/subscriptions?api-version=2021-04-01`, {
       headers: { authorization: `Bearer ${tokenA}` },
       signal: T(20_000),
     });

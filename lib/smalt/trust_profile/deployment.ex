@@ -13,9 +13,12 @@ defmodule Smalt.TrustProfile.Deployment do
     enabled (not `:auto`, which self-signs a dev cert), and a binary
     `:sb_shared_key` configured.
 
-  `validate/2` is a pure function of (profile, config map) — doctor-adjacent:
-  it reads nothing from the application environment itself. Callers that want
-  the checked-against-live-config flavor pass `current_config/0` as config.
+  `validate/2` is a pure function of (profile, config map) — with one bounded
+  exception: a `nil` `:tls` key falls back to checking explicit certfile
+  presence on disk (`certfiles_present?/0`, which does read the application
+  environment). `current_config/0` never emits a `nil` `:tls`, so the
+  `current_config/0`-fed path is fully pure. Callers that want the
+  checked-against-live-config flavor pass `current_config/0` as config.
   The AAIF pack's law holds: every non-admission is a typed refusal, never a
   coercion.
   """
@@ -65,7 +68,12 @@ defmodule Smalt.TrustProfile.Deployment do
   def validate(profile, config)
 
   def validate(profile, config) when is_map(config) and profile in [:loopback_dev, :sovereign_enterprise] do
-    do_validate(profile, config)
+    if Enum.all?(Map.keys(config), &is_atom/1) do
+      do_validate(profile, config)
+    else
+      {:refused,
+       [{:bad_config, "config keys must be atoms (got non-atom keys: #{inspect(Map.keys(config) |> Enum.reject(&is_atom/1))}); string-keyed configs are coerced-to-empty under atom Access and are refused, never coerced"}]}
+    end
   end
 
   def validate(profile, _config) when profile not in [:loopback_dev, :sovereign_enterprise] do

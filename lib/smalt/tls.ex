@@ -58,7 +58,18 @@ defmodule Smalt.TLS do
     key = Application.get_env(:smalt, :tls_keyfile)
 
     if is_binary(cert) and is_binary(key) and File.regular?(cert) and File.regular?(key) do
-      {:ok, cert, key}
+      case validate_certfile_pair(cert, key) do
+        :ok ->
+          {:ok, cert, key}
+
+        # Explicit certfiles are operator-provided: never overwrite them.
+        # Fail closed with a typed reason so bandit_opts/2 raises a
+        # domain-named ArgumentError at boot instead of an opaque
+        # :pubkey_pem FunctionClauseError from inside :ssl (witnessed,
+        # lens-6 cycle-2 probe).
+        {:error, reason} ->
+          {:error, {:corrupt_certfile, cert, reason}}
+      end
     else
       case Application.get_env(:smalt, :tls, :auto) do
         :auto -> generate_if_stale()
@@ -140,13 +151,46 @@ defmodule Smalt.TLS do
     end
   end
 
+  # Explicit-certfile usability: the cert must parse as a Certificate (same
+  # safe wrapper as the :auto path) and the key must decode as PEM with at
+  # least one entry. Existence alone is not usability — a corrupt explicit
+  # certfile otherwise surfaces only as an opaque crash inside :ssl at
+  # listener start.
+  defp validate_certfile_pair(cert, key) do
+    with {:ok, _} <- parse_cert(cert),
+         {:ok, [_ | _] = _entries} <- safe_key_pem(key) do
+      :ok
+    else
+      {:error, :unparseable_cert} -> {:error, :unparseable_cert}
+      _ -> {:error, :unparseable_key}
+    end
+  end
+
+  defp safe_key_pem(key_path) do
+    with {:ok, pem} <- File.read(key_path) do
+      safe_pem_decode(pem)
+    end
+  end
+
   defp parse_cert(path) do
     with {:ok, pem} <- File.read(path),
+         {:ok, entries} when is_list(entries) and entries != [] <- safe_pem_decode(pem),
          [{:"Certificate", der, :not_encrypted} | _] <-
-           Enum.filter(:public_key.pem_decode(pem), &match?({:"Certificate", _, :not_encrypted}, &1)),
+           Enum.filter(entries, &match?({:"Certificate", _, :not_encrypted}, &1)),
          decoded when decoded != :error <- safe_decode(der) do
       {:ok, path}
+    else
+      _ -> {:error, :unparseable_cert}
     end
+  end
+
+  # :public_key.pem_decode/1 raises on structurally broken PEM (truncated
+  # blocks, bad base64) and returns [] for PEM-free input; both are the
+  # "cached dev cert is corrupt" case, which must regenerate, not crash.
+  defp safe_pem_decode(pem) do
+    {:ok, :public_key.pem_decode(pem)}
+  rescue
+    _ -> :error
   end
 
   defp safe_decode(der) do

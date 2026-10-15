@@ -12,6 +12,10 @@ defmodule Smalt.DSPy.RemediationTest do
 
   @doc_path Path.expand("docs/ERROR_CODES.md", File.cwd!())
 
+  defp row(code, source, hint) do
+    %Remediation{surface: "s", http: "1", code: code, source: source, meaning: "m", hint: hint}
+  end
+
   # A minimal synthetic table with known shape (used for determinism asserts
   # independent of the live doc's row set).
   @sample """
@@ -57,6 +61,21 @@ defmodule Smalt.DSPy.RemediationTest do
         Remediation.parse(bad)
       end
     end
+
+    test "escaped pipes in cells (generator esc/1 output) parse as content, not cell breaks" do
+      # A generator annotation containing a literal pipe is emitted as `\|`;
+      # the parser must not split on it (lens-4 witnessed 7-cell false raise).
+      doc = """
+      | Surface | HTTP | Code | Source | Meaning | Remediation (agent hint) |
+      |---|---|---|---|---|---|
+      | egress | 400 | X | s.ex:1 | a \\| b | hint \\| more |
+      """
+
+      assert [%Remediation{} = row] = Remediation.parse(doc)
+      assert {row.surface, row.http, row.code} == {"egress", "400", "X"}
+      assert row.meaning == "a | b"
+      assert row.hint == "hint | more"
+    end
   end
 
   describe "propose/1" do
@@ -83,6 +102,22 @@ defmodule Smalt.DSPy.RemediationTest do
       assert verdict.score == 1.0
       assert String.length(verdict.verdict_digest) == 64
       assert verdict.verdict_digest == Remediation.court_verdict(proposals).verdict_digest
+    end
+
+    test "duplicate code rows are preserved, never silently deduplicated or shadowed" do
+      # registry-analogue anti-last-wins pin (lens-3): unlike a name-keyed
+      # registry, duplicate error-code rows both survive to the human review
+      r1 = row("DUP", "a:1", "h")
+      r2 = row("DUP", "a:2", "h2")
+
+      proposals = Remediation.propose([r1, r2])
+
+      assert proposals.adopted == [r1, r2]
+      assert proposals.needs_review == []
+    end
+
+    test "empty proposals fail the court closed (no rows => no pass)" do
+      refute Remediation.court_verdict(%{adopted: [], needs_review: [], evidence_digest: "x"}).passed
     end
   end
 

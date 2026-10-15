@@ -68,6 +68,12 @@ defmodule Smalt.Amqp.FrameCodec do
 
   @performative_names Map.keys(@performative_descriptors)
 
+  # Spec §2.3/§5: SASL frames (type 0x01) carry only SASL performatives; AMQP
+  # frames (type 0x00) carry only the session/link performatives. The layers
+  # are negotiated independently (start SASL, toggle to AMQP), so a mismatch
+  # is a protocol violation, not a tolerant case.
+  @sasl_performatives [:sasl_mechanisms, :sasl_init, :sasl_challenge, :sasl_response, :sasl_outcome]
+
   # Field orders per AMQP 1.0 performative definitions (nil = null filler).
   @field_orders %{
     open: [
@@ -178,7 +184,12 @@ defmodule Smalt.Amqp.FrameCodec do
     :reply_to_group_id
   ]
 
-  @header_order [:delivery_count, :ttl, :durable, :priority, :first_acquirer]
+  # AMQP 1.0 §3.2.1 header field order: durable, priority, ttl,
+  # first-acquirer, delivery-count. The previous order led with
+  # delivery_count, so clients read it as `durable` and every received
+  # message's deliveryCount was undefined (census abandon-complete probe:
+  # ABANDON_REDELIVERY_COUNT).
+  @header_order [:durable, :priority, :ttl, :first_acquirer, :delivery_count]
 
   @doc """
   Encodes a full frame as iodata.
@@ -192,6 +203,17 @@ defmodule Smalt.Amqp.FrameCodec do
       `encode_message/1`
 
   Fields absent from `fields_map` (or `nil`) are encoded as AMQP null.
+
+  ## Outbound encode contract (raises)
+
+  `encode_frame/3` and `encode_message/1` raise `ArgumentError` on values the
+  AMQP type system cannot represent (structs, functions, refs, atoms other
+  than booleans; heterogeneous `{:array, _}` elements) — the raise happens in
+  the CALLER's process before any byte reaches the socket. Inbound decode is
+  total (tagged errors, never raises); outbound encode is a programming-error
+  contract: a tagged-error encode path is a cross-lane contract change
+  (callers in connection.ex/listener.ex) and needs the connection lane's
+  consent.
   """
   @spec encode_frame(frame_type(), non_neg_integer(), term()) :: iodata()
   def encode_frame(type, channel, {perf, fields})
@@ -248,6 +270,20 @@ defmodule Smalt.Amqp.FrameCodec do
     |> Map.update(:properties, nil, fn
       nil -> nil
       %{} = m -> {:map_rhea, m}
+      other -> other
+    end)
+  end
+
+  defp prepare_fields(:transfer, fields) do
+    # The delivery-tag IS the lock token: Service Bus SDKs derive
+    # lockToken via rhea uuid_to_string(tag), which needs a 16-byte Buffer.
+    # A plain Elixir binary encodes as utf8-string (0xA1); rhea then hands the
+    # SDK a JS string (invalid bytes -> U+FFFD) and the token the client
+    # echoes back on update-disposition is corrupted -> 410 MESSAGE_LOCK_LOST
+    # (census exclusive-session/dead-letter/abandon probes, wire-traced).
+    # Encode as AMQP uuid (0x98) — rhea decodes it to a Buffer.
+    Map.update(fields, :delivery_tag, nil, fn
+      <<t::binary-size(16)>> -> {:uuid, t}
       other -> other
     end)
   end
@@ -379,9 +415,21 @@ defmodule Smalt.Amqp.FrameCodec do
         size < @header_size ->
           {:error, :bad_frame_size}
 
+        # Spec §2.3: frame type byte is 0x00 (AMQP) or 0x01 (SASL). Anything
+        # else decoded as :sasl below (type_code != 0 -> :sasl) — mislabeling
+        # garbage as a SASL frame instead of refusing it.
+        type_code > 0x01 ->
+          {:error, :bad_frame_type}
+
         # Checked as soon as the fixed header is buffered: a bad doff fails the
         # frame early instead of after the body arrives.
         doff < 2 ->
+          {:error, :bad_doff}
+
+        # Extended header larger than the declared frame: the body slice
+        # `<<_::binary-size(doff*4), _>>` of a `size`-byte frame would raise
+        # MatchError on remote input (decode-never-crash violation).
+        doff * 4 > size ->
           {:error, :bad_doff}
 
         byte_size(buffer) < size ->
@@ -409,8 +457,30 @@ defmodule Smalt.Amqp.FrameCodec do
             {:error, {:unknown_performative, desc}}
 
           name ->
-            {:ok, decoded} = decode_performative(name, fields)
-            {:ok, %{type: type, channel: channel, performative: decoded, payload: remaining_payload(remaining, rest)}}
+            # Layer family enforcement (lens-2 cycle-5): a frame's type byte
+            # and its performative must belong to the same layer. Today the
+            # type byte only labels the decoded map, so a SASL frame carrying
+            # an AMQP `open` (or an AMQP frame carrying `sasl_init`) decoded
+            # cleanly and flowed into the connection state machine mislabeled.
+            cond do
+              type_code == @type_code_sasl and name not in @sasl_performatives ->
+                {:error, :performative_layer_mismatch}
+
+              type_code == @type_code_amqp and name in @sasl_performatives ->
+                {:error, :performative_layer_mismatch}
+
+              true ->
+                case decode_performative(name, fields) do
+                  {:ok, decoded} ->
+                    {:ok, %{type: type, channel: channel, performative: decoded, payload: remaining_payload(remaining, rest)}}
+
+                  # Malformed performative field shape (rescued FunctionClauseError
+                  # in decode_performative): surface as a tagged error instead of
+                  # crashing the caller with a MatchError (fuzz mutation finding).
+                  {:error, _} = err ->
+                    err
+                end
+            end
         end
 
       {:ok, _other, _} ->
@@ -420,9 +490,12 @@ defmodule Smalt.Amqp.FrameCodec do
         {:error, :bad_frame_body}
 
       # minimal unblock (connection lane): PrimitiveCodec.decode/1 returns
-      # {:error, reason} tuples, not bare :error — treat as bad frame body.
-      {:error, _reason} ->
-        {:error, :bad_frame_body}
+      # {:error, reason} tuples, not bare :error. Reason-preserving: the
+      # codec's diagnosis (truncated / invalid_constructor / ...) travels with
+      # the error instead of being collapsed into the bare :bad_frame_body
+      # atom, so the connection close frame and logs carry the real cause.
+      {:error, reason} ->
+        {:error, {:bad_frame_body, reason}}
     end
   end
 
@@ -431,9 +504,11 @@ defmodule Smalt.Amqp.FrameCodec do
   # in the caller's buffer.
   defp remaining_payload(codec_rest, _frame_rest), do: codec_rest
 
-  defp descriptor_to_name(desc) do
-    Enum.find_value(@performative_descriptors, fn {name, d} -> if d == desc, do: name end)
-  end
+  # Reverse-index of @performative_descriptors: decoded-frame descriptor ->
+  # name is the hot path (once per inbound frame), linear scans replaced.
+  @descriptor_names Map.new(@performative_descriptors, fn {name, d} -> {d, name} end)
+
+  defp descriptor_to_name(desc), do: Map.get(@descriptor_names, desc)
 
   defp decode_performative(name, fields) when is_list(fields) do
     order = Map.fetch!(@field_orders, name)
@@ -458,6 +533,15 @@ defmodule Smalt.Amqp.FrameCodec do
   end
 
   defp decode_fields(:disposition, raw) do
+    Map.update(raw, :state, nil, &decode_delivery_state/1)
+  end
+
+  # Mirror the encode side: normalize_field/1 wraps friendly :accepted /
+  # :released / {:rejected,_} / {:modified,_} atoms/tuples in ANY performative
+  # (including transfer state), but decode only unwrapped them for disposition
+  # — a transfer state round-tripped as the raw described tuple (lens-2
+  # differential fuzz finding; no consumer reads transfer state raw).
+  defp decode_fields(:transfer, raw) do
     Map.update(raw, :state, nil, &decode_delivery_state/1)
   end
 
@@ -684,77 +768,112 @@ defmodule Smalt.Amqp.FrameCodec do
   """
   @spec decode_message(binary()) :: {:ok, [tuple()]} | {:error, term()}
   def decode_message(payload) when is_binary(payload) do
-    sections = do_decode_sections(payload, [])
-    {:ok, Enum.reverse(sections)}
+    case do_decode_sections(payload, []) do
+      {:ok, sections} -> {:ok, Enum.reverse(sections)}
+      {:error, _} = err -> err
+    end
   end
 
-  defp do_decode_sections(<<>>, acc), do: acc
+  defp do_decode_sections(<<>>, acc), do: {:ok, acc}
 
   defp do_decode_sections(payload, acc) do
     case codec().decode(payload) do
       {:ok, {:described, desc, body}, rest} ->
-        acc = [decode_section(desc, body) | acc]
-        do_decode_sections(rest, acc)
+        case decode_section(desc, body) do
+          {:ok, section} ->
+            do_decode_sections(rest, [section | acc])
+
+          # Known descriptor with a malformed body (e.g. a header section
+          # whose body is not a field list): surface the reason instead of
+          # crashing — Enum.at/2 on a non-list raised out of decode_message
+          # and killed the connection process (lens-2 cross-layer probe).
+          {:error, reason} ->
+            {:error, {:bad_section, reason}}
+        end
 
       {:ok, _other, _} ->
         # Undecorated trailing bytes (should not happen): stop.
-        acc
+        {:ok, acc}
 
       :error ->
-        acc
+        {:ok, acc}
 
-      # PrimitiveCodec returns {:error, reason} tuples (see decode_body);
-      # undecodable trailing section bytes stop the scan instead of raising
-      # a CaseClauseError out of decode_message (flow_credit wire finding).
-      {:error, _reason} ->
-        acc
+      # Undecodable section bytes: surface the codec reason instead of
+      # silently returning a partial section list that reads as a short
+      # message (parity with the cycle-4 frame-body reason preservation;
+      # callers already match {:error, _} — connection.ex:846).
+      {:error, reason} ->
+        {:error, {:bad_section, reason}}
     end
   end
 
+  # Section dispatch returns {:ok, section} | {:error, reason} — it must never
+  # raise on remote input (lens-2 cross-layer invariant: anything that decodes
+  # cleanly at the primitive level decodes to a tagged result here).
   defp decode_section(desc, body) when is_integer(desc) do
     case desc do
       d when d == @message_section_descriptors.header ->
-        {:header,
-         @header_order
-         |> Enum.with_index()
-         |> Map.new(fn {k, i} -> {k, Enum.at(body, i)} end)
-         |> Map.reject(fn {_k, v} -> is_nil(v) end)}
+        if is_list(body) do
+          {:ok,
+           {:header,
+            @header_order
+            |> Enum.with_index()
+            |> Map.new(fn {k, i} -> {k, Enum.at(body, i)} end)
+            |> Map.reject(fn {_k, v} -> is_nil(v) end)}}
+        else
+          {:error, :malformed_header}
+        end
 
       d when d == @message_section_descriptors.properties ->
-        props =
-          @properties_order
-          |> Enum.with_index()
-          |> Map.new(fn {k, i} -> {k, Enum.at(body, i)} end)
-          |> Map.reject(fn {_k, v} -> is_nil(v) end)
+        if is_list(body) do
+          props =
+            @properties_order
+            |> Enum.with_index()
+            |> Map.new(fn {k, i} -> {k, Enum.at(body, i)} end)
+            |> Map.reject(fn {_k, v} -> is_nil(v) end)
 
-        {:properties, props}
+          {:ok, {:properties, props}}
+        else
+          {:error, :malformed_properties}
+        end
 
       d when d == @message_section_descriptors.body_data ->
-        {:body_data, body}
+        # Section body types are enforced: body_data is a vbin (binary) on the
+        # wire — a crafted described(0x75, 42) decoded "successfully" and later
+        # crashed encode_section (is_binary guard) on the management replay
+        # path, inside the connection process (lens-2 cycle-3 seam).
+        if is_binary(body), do: {:ok, {:body_data, body}}, else: {:error, :malformed_body_data}
 
       d when d == @message_section_descriptors.body_sequence ->
-        {:body_sequence, body || []}
+        if is_list(body) or is_nil(body),
+          do: {:ok, {:body_sequence, body || []}},
+          else: {:error, :malformed_body_sequence}
 
       # the described body carries the value directly (rhea interop form)
       d when d == @message_section_descriptors.body_amqp_value ->
-        {:body_amqp_value, body}
+        {:ok, {:body_amqp_value, body}}
 
       d when d == @message_section_descriptors.delivery_annotations ->
-        {:delivery_annotations, normalize_keys(map_or(body, %{}))}
+        {:ok, {:delivery_annotations, normalize_keys(map_or(body, %{}))}}
 
       d when d == @message_section_descriptors.message_annotations ->
-        {:message_annotations, normalize_keys(map_or(body, %{}))}
+        {:ok, {:message_annotations, normalize_keys(map_or(body, %{}))}}
 
       d when d == @message_section_descriptors.application_properties ->
-        {:application_properties, normalize_keys(map_or(body, %{}))}
+        {:ok, {:application_properties, normalize_keys(map_or(body, %{}))}}
 
       d when d == @message_section_descriptors.footer ->
-        {:footer, normalize_keys(map_or(body, %{}))}
+        {:ok, {:footer, normalize_keys(map_or(body, %{}))}}
 
       _ ->
-        {:unknown, desc, body}
+        {:ok, {:unknown, desc, body}}
     end
   end
+
+  # Symbolic descriptors are legal AMQP described types but not defined
+  # message sections: pass through as unknown instead of raising a
+  # FunctionClauseError out of decode_message (lens-2 cross-layer probe).
+  defp decode_section(desc, body), do: {:ok, {:unknown, desc, body}}
 
   # annotation/property sections decode to a map body (rhea form); accept the
   # legacy 1-element-list form too (wire-lane fix, real-SDK census finding)

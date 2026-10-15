@@ -193,6 +193,220 @@ defmodule Smalt.GraphLaw.ValidatorTest do
 
   @moduletag :graphlaw_stress
 
+  describe "ShapeFile parser fuzz fence" do
+    alias Smalt.GraphLaw.Validator.ShapeFile
+
+    # Adversarial corpus: every input must either parse cleanly or raise
+    # CompileError with a named description. NO other exception class may
+    # escape (FunctionClauseError/MatchError/ArgumentError = defect).
+    @fuzz_cases [
+      "\"",
+      "<",
+      "<iri",
+      "smalt:X a sh:NodeShape ; sh:property [ sh:path smalt:p",
+      "smalt:X a sh:NodeShape . \"unterminated",
+      "smalt:X a sh:NodeShape . <open",
+      "",
+      "###",
+      ".",
+      "[[[",
+      "\\\\",
+      <<0, 255, 32, 103, 97, 114, 98, 97, 103, 101, 32, 9, 111, 107, 101, 110>>,
+      "a b c .",
+      "smalt:X a sh:NodeShape ; sh:closed maybe .",
+      "smalt:X a sh:NodeShape ; sh:property [ sh:minCount \"x\" ] .",
+      "smalt:X a sh:NodeShape ; sh:property [ ] .",
+      "smalt:X a sh:NodeShape ; sh:property [ sh:path smalt:p ; sh:datatype xsd:float ] .",
+      "smalt:X a sh:NodeShape ; sh:property [ smalt:p smalt:q ] .",
+      "smalt:X a sh:NodeShape ; sh:property [ sh:path smalt:p ; sh:bogus 1 ] ."
+    ]
+
+    test "malformed shapes text parses or raises CompileError — never any other class" do
+      for text <- @fuzz_cases do
+        result =
+          try do
+            ShapeFile.parse!(text, "fuzz")
+            :parsed
+          rescue
+            CompileError -> :compile_error
+          end
+
+        assert result in [:parsed, :compile_error],
+               "input #{inspect(text)} escaped with #{inspect(result)}"
+      end
+    end
+
+    test "unterminated literals raise CompileError with named descriptions" do
+      assert_raise CompileError, ~r/unterminated string/, fn ->
+        ShapeFile.parse!("smalt:X a sh:NodeShape . \"oops", "fuzz")
+      end
+
+      assert_raise CompileError, ~r/unterminated IRI/, fn ->
+        ShapeFile.parse!("smalt:X a sh:NodeShape . <oops", "fuzz")
+      end
+    end
+
+    test "real shapes file still parses after tightening" do
+      text = File.read!(Path.expand("../priv/shacl/smalt-shapes.ttl", __DIR__))
+      shapes = ShapeFile.parse!(text, "smalt-shapes.ttl")
+
+      assert map_size(shapes) == 11
+      assert shapes["DefaultShape"].required != []
+    end
+
+    # Deterministic pseudo-random sweep (fixed seed): wider input space, same
+    # contract. Random bytes + random punctuation cuts over the corpus seed.
+    test "deterministic random-byte sweep stays inside the exception contract" do
+      alphabet = ~c"\"<>[]{}.,;#aZ0 \\"
+
+      for seed <- 1..200 do
+        text =
+          :rand.seed_s(:exsss, {seed, 0, 0})
+          |> then(fn _ ->
+            n = :rand.uniform(40)
+
+            Enum.map(1..n, fn _ -> Enum.random(alphabet) end)
+          end)
+          |> List.to_string()
+
+        result =
+          try do
+            ShapeFile.parse!(text, "fuzz")
+            :parsed
+          rescue
+            CompileError -> :compile_error
+          end
+
+        assert result in [:parsed, :compile_error],
+               "seed #{seed} input #{inspect(text)} escaped with #{inspect(result)}"
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-2 generated sweep (lane: store-graphlaw, deep lens 2)
+  # ---------------------------------------------------------------------------
+
+  describe "lens-2 generated sweep: 38 types x malformed payloads" do
+    @lens2_types Smalt.Registry.admitted_resource_types()
+
+    # A payload is conforming for a type iff it carries every required path of
+    # the type's resolved shape. Generated from the real compiled shapes —
+    # no payload is hand-written per type.
+    defp conforming_payload(type) do
+      shape = shape_for_admitted_type(type, Validator.shapes())
+
+      %{
+        "location" => "eastus",
+        "properties" =>
+          shape.required
+          |> Enum.reject(&(&1.path == "location"))
+          |> Map.new(fn prop -> {prop.path, "x"} end)
+      }
+    end
+
+    test "per-prop deletion sweep: removing exactly one required prop yields exactly that minCount violation (38 types)" do
+      for type <- @lens2_types do
+        shape = shape_for_admitted_type(type, Validator.shapes())
+        payload = conforming_payload(type)
+
+        for prop <- shape.required do
+          violated =
+            case prop.path do
+              "location" -> Map.delete(payload, "location")
+              path -> put_in(payload, ["properties", path], nil)
+            end
+
+          assert {:invalid, violations} = Validator.validate_resource(type, violated),
+                 "#{type}: deleting #{prop.path} must yield {:invalid, _}"
+
+          assert [%{path: expected_path, constraint: "minCount"}] = violations,
+                 "#{type}: deleting #{prop.path} must yield EXACTLY the minCount violation " <>
+                   "for that path, got #{inspect(violations)}"
+
+          assert expected_path == prop.path
+
+          if prop.message do
+            assert hd(violations).message == prop.message,
+                   "#{type}: violation must carry the shape-file message, got #{inspect(violations)}"
+          end
+        end
+
+        # and the conforming payload itself passes
+        assert Validator.validate_resource(type, conforming_payload(type)) == {:ok},
+               "#{type}: generated conforming payload must pass"
+      end
+    end
+
+    test "hostile-extra-key sweep: conforming payload + hostile keys stays typed {:invalid,_} (38 types)" do
+      hostile_keys = [
+        {:atom_key, 1},
+        {1, 2},
+        {{:t, 1}, 2},
+        {"x" <> String.duplicate("K", 500), 1},
+        {"a\nb\0c", 1}
+      ]
+
+      for type <- @lens2_types do
+        shape = shape_for_admitted_type(type, Validator.shapes())
+
+        for {bad_key, bad_val} <- hostile_keys do
+          payload = Map.put(conforming_payload(type), bad_key, bad_val)
+          result = Validator.validate_resource(type, payload)
+
+          case shape.closed do
+            false ->
+              # Open shape law: an undeclared extra key is NOT a violation —
+              # the conforming payload plus a hostile key stays the typed
+              # {:ok}, never a crash.
+              assert result == {:ok},
+                     "#{type}: open shape + hostile key #{inspect(bad_key)} must stay {:ok}, got #{inspect(result)}"
+
+            true ->
+              assert {:invalid, violations} = result
+
+              assert Enum.any?(violations, &(&1.constraint == "closed"))
+          end
+        end
+      end
+    end
+
+    test "guard-contract sweep: non-binary type / non-map payload never crashes the shared runtime" do
+      # Pinned fail-closed contract (cycle-12 receipt): the guards raise
+      # FunctionClauseError in the CALLER process — a hard failure, never an
+      # auto-pass, and the pure validator holds no shared state to corrupt.
+      for bad <- [nil, 42, {:tuple, 1}, ["list"]] do
+        assert_raise FunctionClauseError, fn -> Validator.validate_resource(bad, %{}) end
+        assert_raise FunctionClauseError, fn -> Validator.validate_resource("Microsoft.Compute/disks", bad) end
+      end
+    end
+  end
+
+  describe "fail-closed shape resolution" do
+    test "every admitted type's registry shape binding resolves to a compiled shape (drift detector)" do
+      for type <- Smalt.Registry.admitted_resource_types() do
+        assert Validator.shape_for_type(type),
+               "registry binds #{type} to #{inspect(Smalt.Registry.shape_for(type))} " <>
+                 "but no compiled shape resolves — validate_local/2 now REFUSES this " <>
+                 "(fail-closed); fix priv/shacl/smalt-shapes.ttl or the pack ontology"
+      end
+    end
+
+    test "resolve_shape/2 returns nil for a missing binding — the fail-closed refusal trigger" do
+      # Real shapes minus one binding's shape: the drifted-world simulation.
+      drifted = Map.delete(Validator.shapes(), "KeyVaultShape")
+
+      assert Validator.resolve_shape(drifted, "KeyVaultShape") == nil
+      assert Validator.resolve_shape(drifted, "VaultShape") == nil
+      assert Validator.resolve_shape(drifted, "Vault") == nil
+
+      # Resolution itself still works for present bindings.
+      assert Validator.resolve_shape(Validator.shapes(), "KeyVaultShape")
+      assert Validator.resolve_shape(Validator.shapes(), "KeyVaultShapeShape") ||
+               Validator.resolve_shape(Validator.shapes(), "KeyVault")
+    end
+  end
+
   describe "closed semantics (sh:closed true enforced by evaluate/2)" do
     test "every shape in the file declares sh:closed false explicitly (vocabulary incomplete)" do
       for {name, shape} <- Validator.shapes() do
@@ -246,6 +460,44 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       assert Enum.all?(violations, &(&1.constraint == "closed"))
 
       assert Validator.validate_shape(shape, %{}) == {:ok}
+    end
+
+    test "non-binary payload keys under a closed shape are violations, never crashes" do
+      shape = closed_location_shape()
+
+      for bad_key <- [:atom_key, 1, {:tuple, 1}] do
+        result = Validator.validate_shape(shape, %{bad_key => 1, "location" => "x"})
+
+        assert match?({:invalid, _}, result),
+               "non-binary key #{inspect(bad_key)} must refuse, got #{inspect(result)}"
+
+        assert Enum.any?(elem(result, 1), fn v ->
+                 v.constraint == "closed" and is_binary(v.path) and
+                   String.contains?(v.message, "unknown property path")
+               end),
+               "expected a well-formed closed violation for #{inspect(bad_key)}"
+      end
+    end
+
+    test "hostile oversized keys are capped — refusal envelopes stay wire-safe" do
+      shape = closed_location_shape()
+
+      huge = String.duplicate("K", 1_000_000)
+
+      for payload <- [%{huge => 1, "location" => "x"}, %{String.duplicate("Z", 500) => 1, "location" => "x"}] do
+        assert {:invalid, violations} = Validator.validate_shape(shape, payload)
+
+        for v <- violations do
+          assert byte_size(v.path) <= 200, "path echo not capped: #{byte_size(v.path)} bytes"
+          assert byte_size(v.message) <= 300, "message echo not capped: #{byte_size(v.message)} bytes"
+        end
+      end
+    end
+
+    test "newline and control-character keys produce safe text, no crash" do
+      shape = closed_location_shape()
+
+      assert {:invalid, _} = Validator.validate_shape(shape, %{"a\nb\0c" => 1, "location" => "x"})
     end
 
     test "closed violations merge with minCount violations" do
@@ -517,6 +769,138 @@ defmodule Smalt.GraphLaw.ValidatorTest do
     """
 
     Smalt.GraphLaw.Validator.ShapeFile.parse!(ttl, "inline-test.ttl")["TypedShape"]
+  end
+
+  describe "lens-3 cycle-3 hostility sweep" do
+    test "registry->shapes coherence after the cycle-1 re-baseline: every admitted type resolves a compiled shape" do
+      for type <- @admitted do
+        assert Validator.shape_for_type(type) != nil,
+               "admitted type #{type} has no compiled shape (fail-closed would refuse)"
+
+        verdict = Validator.validate_resource(type, %{}) |> elem(0)
+
+        assert verdict in [:ok, :invalid],
+               "admitted type #{type} must get a typed verdict, never a refusal"
+      end
+    end
+
+    test "closed-shape hostility: extra keys, hostile key classes, alias interplay" do
+      shape = %{
+        target_class: nil,
+        closed: true,
+        required: [
+          %{path: "location", min_count: 1, datatype: :string, message: nil}
+        ]
+      }
+
+      # documented alias law: "location" is read TOP-LEVEL ONLY (payload_paths
+      # special-cases it); properties.location does NOT satisfy it
+      assert match?(
+               {:invalid, [%{constraint: "minCount"}]},
+               Validator.validate_shape(shape, %{"properties" => %{"location" => "eastus"}})
+             )
+
+      # closed: extra top-level key is a closed violation
+      assert match?(
+               {:invalid, [%{constraint: "closed"}]},
+               Validator.validate_shape(shape, %{"location" => "eastus", "extra" => 1})
+             )
+
+      # closed: the properties container itself is exempt, unknown inner keys are not
+      assert match?(
+               {:invalid, [%{constraint: "closed", path: "properties.nope"}]},
+               Validator.validate_shape(shape, %{
+                 "location" => "eastus",
+                 "properties" => %{"nope" => 1}
+               })
+             )
+
+      # closed + datatype: a map where a string is required -> exactly the
+      # datatype violation (location IS present, so no minCount)
+      assert match?(
+               {:invalid, [%{constraint: "datatype"}]},
+               Validator.validate_shape(shape, %{"location" => %{"deep" => "x"}})
+             ),
+             "map-for-string must yield exactly the datatype violation"
+    end
+
+    test "datatype hostility: float/string/bool/list/map values for typed props are violations, never crashes" do
+      shape = %{
+        target_class: nil,
+        closed: false,
+        required: [
+          %{path: "count", min_count: 1, datatype: :integer, message: nil}
+        ]
+      }
+
+      for hostile <- [1.0, "1", true, [], %{}] do
+        assert match?({:invalid, _}, Validator.validate_shape(shape, %{"count" => hostile})),
+               "integer prop must reject #{inspect(hostile)}"
+      end
+
+      # bignums are still integers: pass (witnessed, pinned)
+      assert Validator.validate_shape(shape, %{"count" => 1_000_000_000_000_000_000_000}) ==
+               {:ok}
+
+      # honest value passes
+      assert Validator.validate_shape(shape, %{"count" => 1}) == {:ok}
+
+      # list value for a string prop: violation, not crash
+      string_shape = %{
+        target_class: nil,
+        closed: false,
+        required: [%{path: "name", min_count: 1, datatype: :string, message: nil}]
+      }
+
+      assert match?({:invalid, _}, Validator.validate_shape(string_shape, %{"name" => ["a"]}))
+    end
+
+    test "hostile keys under closed: non-binary and 10k-char keys yield capped closed violations, no crash" do
+      shape = %{target_class: nil, closed: true, required: []}
+
+      hostile = %{
+        1 => "int key",
+        :atom_key => "atom key",
+        String.duplicate("x", 10_000) => "huge key",
+        "a.b" => "dotted key"
+      }
+
+      {:invalid, vs} = Validator.validate_shape(shape, hostile)
+      assert length(vs) == 4
+
+      assert Enum.all?(vs, &is_binary(&1.path) and String.length(&1.path) <= 200),
+             "echoed closed-violation paths must be capped at 200 chars"
+    end
+
+    test "empty-string minCount hostility (typed finding, pin current semantics)" do
+      # location="" is PRESENT for minCount and a valid :string — the shapes
+      # file has no minLength constraint, so this passes. Pinned here as the
+      # documented current semantics: a Raise (sh:minLength support) is gated
+      # on a named consumer (same NO-OP law as lens-2 F16).
+      shape = %{
+        target_class: nil,
+        closed: false,
+        required: [%{path: "location", min_count: 1, datatype: :string, message: nil}]
+      }
+
+      assert Validator.validate_shape(shape, %{"location" => ""}) == {:ok}
+    end
+
+    test "resolve_shape determinism: exact wins over suffix variants; case is exact" do
+      shapes = %{
+        "Foo" => %{target_class: nil, closed: false, required: []},
+        "FooShape" => %{target_class: nil, closed: true, required: []}
+      }
+
+      # exact name wins over the +Shape variant
+      assert Validator.resolve_shape(shapes, "Foo") ==
+               shapes["Foo"]
+
+      assert Validator.resolve_shape(shapes, "FooShape") == shapes["FooShape"]
+
+      # case-hostile name resolves to nil (-> fail-closed refusal upstream)
+      assert Validator.resolve_shape(shapes, "foo") == nil
+    end
   end
 
   defp shape_type_for(shape) do

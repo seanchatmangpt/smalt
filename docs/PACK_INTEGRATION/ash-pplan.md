@@ -13,8 +13,9 @@ Canonical checkout: `~/smalt`. Owned files only:
   runtime: `ash` is an optional dep of smalt, so the resource is manual
   read/write (map records via `Store.put/get/delete/list`) with a
   protocol-court-validated state machine on top.
-- `test/pplan_test.exs` — gate suite: 14 tests across 4 describes (lifecycle,
-  court validation, chaos, store conformance).
+- `test/pplan_test.exs` — gate suite: 29 tests across 7 describes (lifecycle,
+  court validation, fuzz claim race, fuzz terminal race, chaos, store
+  conformance, model fuzz).
 - This doc: pack receipt covering all 4 packs of the ash-pplan family.
 
 ## Machine (protocol-court pack)
@@ -60,7 +61,7 @@ Use: **ontology-adapted, hand-projected**. The court in
 durable task-store surface this lane specifies: `admitted -> running ->
 succeeded | failed`, terminal absorbing. `claim/2` enforces the pack's
 `ClaimExclusive` invariant via CAS (exactly one winner among concurrent
-claimants; asserted with 32 concurrent claimant processes in the suite). The
+claimants; asserted with 200 concurrent claimant processes in the suite). The
 pack's TLA+/Stateright model-checking surfaces were not run (no tlc/stateright
 in the smalt toolchain) — disclosed as not executed; the Elixir transition
 table surface is the one projected, as an adaptation of
@@ -106,8 +107,8 @@ Store GenServer):
   puttable again"
 - `claim_exclusive` -> "law: claim is exclusive, owner-scoped release via
   recover" (holder alive -> second claim `:taken`; kill holder -> recover ->
-  re-claimable) and "concurrent claims have exactly one winner" (32 racers,
-  1 winner / 31 :taken)
+  re-claimable) and "concurrent claims have exactly one winner" (200 racers,
+  1 winner / 199 :taken)
 - plus the pack's anti-vacuity posture: "law: CAS conflict detected, no
   clobber" and an anti-vacuity mutant row (a sabotaged court admitting
   `succeeded -> succeeded` is distinguishable from the real court, so if the

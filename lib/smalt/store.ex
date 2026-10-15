@@ -73,6 +73,21 @@ defmodule Smalt.Store do
     {:ok, %{}}
   end
 
+  @doc """
+  Atomic insert-only: the exists-check AND the insert run as ONE
+  `handle_call` inside the Store GenServer. Returns `:ok` or
+  `{:error, :exists}` — the create-on-existing-id silent overwrite (measured
+  201-with-overwrite; real Cosmos 409 Conflict) is structurally impossible.
+  Unknown table raises in the caller, same fail-closed contract as CAS.
+  """
+  def insert_new(table, key, value) do
+    if :ets.info(table) == :undefined do
+      raise ArgumentError, "Smalt.Store.insert_new/3: unknown table #{inspect(table)}"
+    end
+
+    GenServer.call(__MODULE__, {:insert_new, table, key, value})
+  end
+
   def put(table, key, value) do
     :ets.insert(table, {key, value})
     :ok
@@ -163,7 +178,31 @@ defmodule Smalt.Store do
   so exactly one concurrent caller wins. Returns :ok | {:error, :conflict}.
   """
   def compare_and_swap(table, key, expect, new) do
+    # Fail closed in the CALLER: an unknown table must raise here, not inside
+    # handle_call — an :ets.lookup on a missing table would crash the shared
+    # Store GenServer (named ETS tables die with it; a restart loses data).
+    if :ets.info(table) == :undefined do
+      raise ArgumentError, "Smalt.Store.compare_and_swap/4: unknown table #{inspect(table)}"
+    end
+
     GenServer.call(__MODULE__, {:cas, table, key, expect, new})
+  end
+
+  @doc """
+  Atomic compare-and-DELETE: the etag check AND the delete run as ONE
+  `handle_call` inside the Store GenServer, so N concurrent conditional
+  deletes with the same etag yield exactly one `:ok` and N-1
+  `{:error, :conflict}` — the read-check-delete TOCTOU that let two racing
+  conditional deletes both return 204 is structurally impossible, matching
+  the guarantee `compare_and_swap/4` gives the replace path.
+  """
+  def compare_and_swap_delete(table, key, expect) do
+    # Same fail-closed contract as compare_and_swap/4.
+    if :ets.info(table) == :undefined do
+      raise ArgumentError, "Smalt.Store.compare_and_swap_delete/3: unknown table #{inspect(table)}"
+    end
+
+    GenServer.call(__MODULE__, {:cas_delete, table, key, expect})
   end
 
   @doc """
@@ -187,6 +226,34 @@ defmodule Smalt.Store do
       case :ets.lookup(table, key) do
         [{^key, ^expect}] ->
           :ets.insert(table, {key, new})
+          :ok
+
+        _ ->
+          {:error, :conflict}
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:insert_new, table, key, value}, _from, state) do
+    reply =
+      case :ets.lookup(table, key) do
+        [] ->
+          :ets.insert(table, {key, value})
+          :ok
+
+        _ ->
+          {:error, :exists}
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call({:cas_delete, table, check_key, expect}, _from, state) do    reply =
+      :ets.lookup(table, check_key)
+      |> case do
+        [{^check_key, ^expect}] ->
+          :ets.delete(table, check_key)
           :ok
 
         _ ->

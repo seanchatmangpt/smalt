@@ -29,11 +29,80 @@ defmodule Smalt.DataPlane.Sentinel do
   """
   def ingest(dcr, stream, rows, @api_version) when is_binary(dcr) and is_binary(stream) do
     rows = List.wrap(rows)
-    now = DateTime.utc_now() |> DateTime.to_iso8601()
 
-    existing =
-      Store.list_prefix(:smalt_sentinel_rows, row_prefix(dcr, stream))
-      |> length()
+    # Real Logs Ingestion admits an array of JSON objects only: a null or
+    # scalar record is a request-level 400 with no partial insert (a nil row
+    # previously slipped through as an empty record via `row || %{}`).
+    cond do
+      # Existence fence (lane event-planes lens-2 cycle 1, coordinator-authorized
+      # pivot only): real Azure Logs Ingestion returns 404 for an ingest to a
+      # never-created DCR; smalt's ingest path lazily materializes the stream.
+      # The default keeps the emulated behavior (implicit create — a documented
+      # divergence, pinned by test, C7-3a); when `:sentinel_dcr_strict` is set,
+      # an ingest to a DCR with no prior stream state and no explicit creation
+      # marker (`{:dcr_created, dcr}` in `:smalt_sentinel_streams`) is refused
+      # with the 404-class envelope, proving the fix shape for the coordinated
+      # C7-3a pivot (one `Application.put_env` flip).
+      Application.get_env(:smalt, :sentinel_dcr_strict, false) and not dcr_exists?(dcr) ->
+        {:error, 404,
+         %{
+           "error" => %{
+             "code" => "DCRNotFound",
+             "message" => "data collection rule #{dcr} not found"
+           }
+         }}
+
+      Enum.all?(rows, &is_map/1) ->
+        do_ingest(dcr, stream, rows)
+
+      true ->
+      {:error, 400,
+       %{
+         "error" => %{
+           "code" => "InvalidData",
+           "message" => "every record must be a JSON object"
+         }
+       }}
+    end
+  end
+
+  def ingest(_dcr, _stream, _rows, _other) do
+    {:error, 400,
+     %{"error" => %{"code" => "InvalidApiVersion", "message" => "api-version must be #{@api_version}"}}}
+  end
+
+  # A DCR "exists" when it has prior stream state (any stream row under
+  # "#{dcr}/") or an explicit creation marker.
+  defp dcr_exists?(dcr) do
+    match?({:ok, _}, Store.get(:smalt_sentinel_streams, {:dcr_created, dcr})) or
+      Store.list_prefix(:smalt_sentinel_streams, "#{dcr}/") != []
+  end
+
+  # Debug-gated op timeline (lens-2 F-1 hunt): when
+  # `Application.get_env(:smalt, :sentinel_forensic, false)` is set, every seq
+  # bump and row put appends {System.monotonic_time(), op} to a public ETS
+  # table :smalt_sentinel_forensic (created lazily here, owned by the first
+  # caller — hunt-only, never enabled in normal runs).
+  defp forensic_log(op) do
+    if Application.get_env(:smalt, :sentinel_forensic, false) do
+      table = :smalt_sentinel_forensic
+
+      if :ets.info(table) == :undefined do
+        try do
+          :ets.new(table, [:named_table, :public, :ordered_set, write_concurrency: true])
+        rescue
+          ArgumentError -> :ok
+        end
+      end
+
+      :ets.insert(table, {System.monotonic_time(), op, self()})
+    end
+
+    :ok
+  end
+
+  defp do_ingest(dcr, stream, rows) do
+    now = DateTime.utc_now() |> DateTime.to_iso8601()
 
     Store.put(:smalt_sentinel_streams, "#{dcr}/#{stream}", %{
       "stream" => stream,
@@ -43,10 +112,11 @@ defmodule Smalt.DataPlane.Sentinel do
 
     stored =
       rows
-      |> Enum.with_index(existing + 1)
-      |> Enum.map(fn {row, seq} ->
-        row = augment(row || %{})
+      |> Enum.map(fn row ->
+        seq = next_row_seq(dcr, stream)
+        row = augment(row)
         Store.put(:smalt_sentinel_rows, row_key(dcr, stream, seq), row)
+        forensic_log({:put, dcr, stream, seq})
         {seq, row}
       end)
 
@@ -55,9 +125,32 @@ defmodule Smalt.DataPlane.Sentinel do
     {:ok, 204, ""}
   end
 
-  def ingest(_dcr, _stream, _rows, _other) do
-    {:error, 400,
-     %{"error" => %{"code" => "InvalidApiVersion", "message" => "api-version must be #{@api_version}"}}}
+  # Atomic per-stream row sequence, held as an integer counter row
+  # `{:seq_counter, dcr, stream}` in the Store-owned `:smalt_sentinel_streams`
+  # table (owner = the Store GenServer, so it survives test-process death and
+  # is reset by `Store.clear/0` like the rows themselves).
+  #
+  # The zero value acts as the "unseeded" marker: `Store.update_counter(.., 0)`
+  # atomically initializes it, then exactly one concurrent caller wins the
+  # `compare_and_swap` that seeds the counter with the number of rows already
+  # stored (preserving "continue numbering across ingests"). Every bump is an
+  # atomic `update_counter(+1)`, so concurrent ingests to one stream can no
+  # longer read the same `existing` length and overwrite each other's rows.
+  defp next_row_seq(dcr, stream) do
+    key = {:seq_counter, dcr, stream}
+    Store.update_counter(:smalt_sentinel_streams, key, 0)
+
+    if Store.current_counter(:smalt_sentinel_streams, key) == 0 do
+      existing =
+        Store.list_prefix(:smalt_sentinel_rows, row_prefix(dcr, stream))
+        |> length()
+
+      Store.compare_and_swap(:smalt_sentinel_streams, key, 0, existing)
+    end
+
+    seq = Store.update_counter(:smalt_sentinel_streams, key, 1)
+    forensic_log({:bump, dcr, stream, seq})
+    seq
   end
 
   defp augment(row) do

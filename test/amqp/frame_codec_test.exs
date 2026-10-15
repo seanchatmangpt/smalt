@@ -7,6 +7,7 @@ defmodule Smalt.Amqp.FrameCodecTest do
   use ExUnit.Case, async: false
 
   alias Smalt.Amqp.FrameCodec
+  alias Smalt.Amqp.PrimitiveCodec
 
   # ---------------------------------------------------------------------------
   # Real stand-in implementation of the pinned PrimitiveCodec contract.
@@ -650,10 +651,33 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "bad header errors" do
       assert {:error, :bad_doff} = FrameCodec.decode_frame(<<32::32, 1::8, 0::8, 0::16, 0::8*24>>)
       assert {:error, :bad_frame_size} = FrameCodec.decode_frame(<<4::32, 2::8, 0::8, 0::16>>)
+      assert {:error, :bad_frame_type} = FrameCodec.decode_frame(<<32::32, 2::8, 2::8, 0::16>>)
+    end
+
+    test "extended header larger than the declared frame errors, never raises (cycle-7 fence)" do
+      # doff=3 (12-byte header) with declared size 8..11: the body slice would
+      # raise MatchError on remote input; must be a tagged error instead.
+      for size <- 8..11 do
+        buffer = <<size::32, 3::8, 0::8, 0::16, 0, 0xAA, 0xBB, 0xCC, 0xDD, 0xFF, 0xEE>>
+        assert {:error, :bad_doff} = FrameCodec.decode_frame(buffer)
+      end
+    end
+
+    test "frame-body codec error keeps its reason (reason-preserving errors)" do
+      # Swap in the real codec: its decode returns {:error, :invalid_constructor}
+      # for unknown constructors — FrameCodec must surface that reason, not
+      # collapse it into the bare :bad_frame_body atom.
+      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+
+      body = <<0xFF>>
+      frame = <<(byte_size(body) + 8)::32, 2::8, 0x00::8, 0::16, body::binary>>
+      assert {:error, {:bad_frame_body, :invalid_constructor}} = FrameCodec.decode_frame(frame)
+    after
+      Application.delete_env(:smalt, :primitive_codec)
     end
 
     test "extended header (doff > 2): body starts at doff*4, padding skipped" do
-      body = PrimitiveCodec.encode({:described, 0x14, [0]}) |> IO.iodata_to_binary()
+      body = TestPrimitiveCodec.encode({:described, 0x14, [0]}) |> IO.iodata_to_binary()
       # transfer performative, doff=3: 4 pad bytes between fixed header and body
       frame = <<byte_size(body) + 12::32, 3::8, 0::8, 7::16, 0xAA, 0xBB, 0xCC, 0xDD, body::binary>>
 
@@ -661,9 +685,42 @@ defmodule Smalt.Amqp.FrameCodecTest do
                     payload: <<>>}} = FrameCodec.decode_frame(frame)
     end
 
+    test "falsy fields never dropped (lane-107 fence): detach handle 0 / closed false" do
+      frame =
+        IO.iodata_to_binary(
+          FrameCodec.encode_frame(:amqp, 0, {:detach, %{handle: 0, closed: false}})
+        )
+
+      # 8-byte fixed header, then described(0x16, [0, false]) exactly —
+      # both falsy fields survive as explicit typed constructors, no trim.
+      assert frame ==
+               <<16::32, 2::8, 0x00::8, 0::16>> <>
+                 IO.iodata_to_binary(TestPrimitiveCodec.encode({:described, 0x16, [0, false]}))
+
+      {_encoded, decoded} = roundtrip(:amqp, 0, {:detach, %{handle: 0, closed: false}})
+      assert decoded.performative.handle == 0
+      assert decoded.performative.closed == false
+    end
+
+    test "falsy flow/transfer fields round-trip (lane-107 fence)" do
+      {_encoded, decoded} =
+        roundtrip(:amqp, 0, {:flow, %{handle: 0, link_credit: 10, drain: false}})
+
+      assert decoded.performative.handle == 0
+      assert decoded.performative.drain == false
+
+      {_encoded, decoded} =
+        roundtrip(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 0, settled: false}, "x"})
+
+      assert decoded.performative.handle == 0
+      assert decoded.performative.delivery_id == 0
+      assert decoded.performative.settled == false
+      assert decoded.payload == "x"
+    end
+
     test "extended header under-filled: {:more, size} until all doff*4 + body bytes buffered" do
-      body = PrimitiveCodec.encode({:described, 0x14, [0]}) |> IO.iodata_to_binary()
-      frame = <<byte_size(body) + 12::32, doff = 3::8, 0::8, 7::16, 0, 0, 0, 0, body::binary>>
+      body = TestPrimitiveCodec.encode({:described, 0x14, [0]}) |> IO.iodata_to_binary()
+      frame = <<byte_size(body) + 12::32, 3::8, 0::8, 7::16, 0, 0, 0, 0, body::binary>>
       total = byte_size(frame)
 
       for n <- 8..(total - 1) do
@@ -743,6 +800,150 @@ defmodule Smalt.Amqp.FrameCodecTest do
       raw = <<0x53, 0x70, 0xFF>>
       encoded = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0}, raw}))
       assert {:ok, %{payload: ^raw}} = FrameCodec.decode_frame(encoded)
+    end
+
+    test "undecodable section bytes surface the codec reason (cycle-10 fence)" do
+      # real codec: its decode returns {:error, :invalid_constructor} — the
+      # test codec returns bare :error, which stays a silent stop by contract
+      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+
+      sections = [{:body_data, "hello"}]
+      payload = FrameCodec.encode_message(sections) |> IO.iodata_to_binary()
+      # corrupt the leading described-type marker of the first section
+      <<_b, rest::binary>> = payload
+      corrupted = <<0xFF, rest::binary>>
+
+      assert {:ok, _} = FrameCodec.decode_message(payload)
+      assert {:error, {:bad_section, :invalid_constructor}} = FrameCodec.decode_message(corrupted)
+    after
+      Application.delete_env(:smalt, :primitive_codec)
+    end
+
+    test "source with session-filter is Azure-identical on the wire (cycle-12 fence)" do
+      # real codec: the runtime wire is the real PrimitiveCodec's bytes
+      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+
+      sel = "amqp.annotation.x-opt-sequence-number > 100"
+
+      fields = %{
+        name: "link-receiver",
+        handle: 1,
+        role: 1,
+        source: %{address: "myqueue", filter: %{"com.microsoft:session-filter" => {:session_filter, sel}}}
+      }
+
+      bin = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
+
+      # Azure parity: source composite described(0x28, 8 fields, filter at 7)
+      expected_source =
+        IO.iodata_to_binary(
+          PrimitiveCodec.encode({:described, 0x28, ["myqueue", nil, nil, nil, nil, nil, nil, {:described, {:symbol, "com.microsoft:session-filter"}, sel}]})
+        )
+
+      assert :binary.match(bin, expected_source) != :no
+
+      # and the filter survives a decode round-trip
+      assert {:ok, %{performative: %{source: src}}} = FrameCodec.decode_frame(bin)
+
+      assert src[:filter] == %{"com.microsoft:session-filter" => {:session_filter, sel}}
+    after
+      Application.delete_env(:smalt, :primitive_codec)
+    end
+
+    test "falsy section fields are preserved (cycle-13: falsy sweep, layer 3)" do
+      sections = [
+        {:header, %{delivery_count: 0, ttl: 0, durable: false, priority: 0, first_acquirer: false}},
+        {:properties, %{group_sequence: 0}}
+      ]
+
+      payload = FrameCodec.encode_message(sections) |> IO.iodata_to_binary()
+      assert {:ok, decoded} = FrameCodec.decode_message(payload)
+
+      assert {:header, h} = Enum.find(decoded, &match?({:header, _}, &1))
+      assert h == %{delivery_count: 0, ttl: 0, durable: false, priority: 0, first_acquirer: false}
+
+      assert {:properties, props} = Enum.find(decoded, &match?({:properties, _}, &1))
+      assert props == %{group_sequence: 0}
+    end
+
+    # Lens-2 cycle-1 cross-layer invariant: anything that decodes cleanly at
+    # the primitive level must surface as a tagged result at the section
+    # layer, never a raise out of decode_message/1 (a raise here kills the
+    # connection process with a silent TCP close).
+    test "symbol-descriptor section decodes to :unknown, never raises (lens-2)" do
+      payload =
+        PrimitiveCodec.encode({:described, {:symbol, "vendor:section"}, []})
+        |> IO.iodata_to_binary()
+
+      assert {:ok, [{:unknown, {:symbol, "vendor:section"}, []}]} =
+               FrameCodec.decode_message(payload)
+    end
+
+    test "known section descriptor with non-list body is a tagged error, never raises (lens-2)" do
+      header_int = PrimitiveCodec.encode({:described, 0x70, 42}) |> IO.iodata_to_binary()
+      assert {:error, {:bad_section, :malformed_header}} = FrameCodec.decode_message(header_int)
+
+      props_sym = PrimitiveCodec.encode({:described, 0x73, {:symbol, "x"}}) |> IO.iodata_to_binary()
+
+      assert {:error, {:bad_section, :malformed_properties}} =
+               FrameCodec.decode_message(props_sym)
+    end
+
+    test "non-binary body_data / non-list body_sequence sections are tagged errors, never stored (lens-2 c3)" do
+      bad_data = PrimitiveCodec.encode({:described, 0x75, 42}) |> IO.iodata_to_binary()
+      assert {:error, {:bad_section, :malformed_body_data}} = FrameCodec.decode_message(bad_data)
+
+      bad_seq = PrimitiveCodec.encode({:described, 0x76, 42}) |> IO.iodata_to_binary()
+      assert {:error, {:bad_section, :malformed_body_sequence}} = FrameCodec.decode_message(bad_seq)
+    end
+
+    # Lens-2 cycle-5: frame type byte and performative must belong to the same
+    # layer (spec §2.3/§5). Previously the type byte only labeled the decoded
+    # map — a SASL frame carrying `open` decoded cleanly into the connection
+    # state machine.
+    test "performative must match the frame's layer (lens-2 c5)" do
+      sasl_open =
+        FrameCodec.encode_frame(:sasl, 0, {:open, %{container_id: "x", max_frame_size: 512}})
+        |> IO.iodata_to_binary()
+
+      assert {:error, :performative_layer_mismatch} = FrameCodec.decode_frame(sasl_open)
+
+      amqp_sasl_init =
+        FrameCodec.encode_frame(:amqp, 0, {:sasl_init, %{mechanism: "ANONYMOUS"}})
+        |> IO.iodata_to_binary()
+
+      assert {:error, :performative_layer_mismatch} = FrameCodec.decode_frame(amqp_sasl_init)
+
+      # control: correct-layer frames still decode
+      sasl_mechs =
+        FrameCodec.encode_frame(:sasl, 0, {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}})
+        |> IO.iodata_to_binary()
+
+      assert {:ok, %{type: :sasl, performative: %{performative: :sasl_mechanisms}}} =
+               FrameCodec.decode_frame(sasl_mechs)
+    end
+
+    # Lens-2 cycle-6: outbound encode is a programming-error contract — a
+    # value the AMQP type system cannot represent raises ArgumentError in the
+    # caller's process BEFORE any byte reaches the socket (moduledoc
+    # "Outbound encode contract"). Inbound decode stays total.
+    test "outbound encode raises ArgumentError on unencodable values, pre-socket (lens-2 c6)" do
+      # real codec: the test double raises FunctionClauseError by contract
+      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+
+      assert_raise ArgumentError, fn ->
+        FrameCodec.encode_frame(:amqp, 0, {:open, %{container_id: :an_unencodable_atom}})
+      end
+
+      assert_raise ArgumentError, fn ->
+        FrameCodec.encode_message([{:body_amqp_value, make_ref()}])
+      end
+
+      # decode remains total: no raise for arbitrary bytes
+      assert {:error, _} =
+               FrameCodec.decode_frame(<<0, 0, 0, 8, 2, 0, 0, 0>> <> :rand.bytes(8))
+    after
+      Application.delete_env(:smalt, :primitive_codec)
     end
   end
 end

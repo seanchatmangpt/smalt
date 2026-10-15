@@ -27,6 +27,13 @@ defmodule Smalt.DataPlane.Cosmos do
   @pk_meta_table :smalt_cosmos_pk_meta
   @lsn_table :smalt_cosmos_lsn
   @session_token_version 1
+  # List-feed continuation tokens live in a SEPARATE namespace (version 2) so a
+  # query token and a list token are never interchangeable: feeding either
+  # across surfaces is a typed 400 (real Cosmos: continuation tokens are bound
+  # to the feed that emitted them; a foreign/logically-invalid token is 400).
+  @list_token_version 2
+
+  @continuation_header "x-ms-continuation"
 
   @query_limit 100
 
@@ -61,21 +68,43 @@ defmodule Smalt.DataPlane.Cosmos do
   """
   def create_db(db) do
     if store_ready?() do
-      key = {0, db}
+      # Real Cosmos name rules (row 11 surface): names are case-sensitive and
+      # capped at 255 chars; "/" is reserved for the path grammar.
+      case valid_name?(db) do
+        true ->
+          do_create_db(db)
 
-      record = %{
-        "id" => db,
-        "_rid" => db_rid(db),
-        "_self" => "/dbs/#{db}",
-        "_ts" => System.system_time(:second)
-      }
-
-      :ets.insert(@pk_meta_table, {key, record})
-      {:ok, 201, success_headers(db, nil, 0, %{"etag" => quoted_sha256(record)}), record}
+        false ->
+          {:ok, 400, %{"x-ms-request-charge" => @request_charge},
+           %{
+             "code" => "BadRequest",
+             "message" => "Invalid database name: must be 1-255 chars and must not contain '/'."
+           }}
+      end
     else
       {:error, :store_not_ready}
     end
   end
+
+  defp do_create_db(db) do
+    key = {0, db}
+
+    record = %{
+      "id" => db,
+      "_rid" => db_rid(db),
+      "_self" => "/dbs/#{db}",
+      "_ts" => System.system_time(:second)
+    }
+
+    :ets.insert(@pk_meta_table, {key, record})
+    {:ok, 201, success_headers(db, nil, 0, %{"etag" => quoted_sha256(record)}), record}
+  end
+
+  # Real Cosmos: resource names are 1-255 chars; "/" is reserved for the path
+  # grammar (and is this engine's key delimiter).
+  defp valid_name?(name), do: is_binary(name) and byte_size(name) in 1..255 and not contains_slash?(name)
+
+  defp contains_slash?(name), do: String.contains?(name, "/")
 
   @doc "GET /dbs — list database records."
   def list_dbs do
@@ -100,29 +129,43 @@ defmodule Smalt.DataPlane.Cosmos do
   """
   def create_collection(db, coll, body) when is_map(body) do
     if store_ready?() do
-      paths =
-        body
-        |> Map.get("partitionKey")
-        |> paths_from_body()
+      case valid_name?(db) and valid_name?(coll) do
+        true ->
+          do_create_collection(db, coll, body)
 
-      key = {1, db, coll}
-
-      record = %{
-        "id" => coll,
-        "_rid" => coll_rid(db, coll),
-        "_self" => "/dbs/#{db}/colls/#{coll}",
-        # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
-        # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
-        "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
-        "_ts" => System.system_time(:second)
-      }
-
-      :ets.insert(@pk_meta_table, {key, record})
-      define_container(db, coll, paths)
-      {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+        false ->
+          {:ok, 400, %{"x-ms-request-charge" => @request_charge},
+           %{
+             "code" => "BadRequest",
+             "message" => "Invalid database or container name: must be 1-255 chars and must not contain '/'."
+           }}
+      end
     else
       {:error, :store_not_ready}
     end
+  end
+
+  defp do_create_collection(db, coll, body) do
+    paths =
+      body
+      |> Map.get("partitionKey")
+      |> paths_from_body()
+
+    key = {1, db, coll}
+
+    record = %{
+      "id" => coll,
+      "_rid" => coll_rid(db, coll),
+      "_self" => "/dbs/#{db}/colls/#{coll}",
+      # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
+      # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
+      "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
+      "_ts" => System.system_time(:second)
+    }
+
+    :ets.insert(@pk_meta_table, {key, record})
+    define_container(db, coll, paths)
+    {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
   end
 
   @doc "GET /dbs/:db/colls — list container records for a database."
@@ -212,12 +255,30 @@ defmodule Smalt.DataPlane.Cosmos do
   defp do_create_doc(db, coll, body, headers) do
     doc_id = Map.get(body, "id") || "doc_#{System.unique_integer([:positive])}"
 
-    if byte_size(Jason.encode!(body)) > @max_doc_bytes do
-      error_response(db, coll, 413, "RequestEntityTooLarge", request_entity_too_large_message())
-    else
-      do_create_doc_sized(db, coll, doc_id, body, headers)
+    cond do
+      # Real Cosmos doc-id grammar (same class as the db/container name rule):
+      # 1-255 chars, no "/". Previously an id of "a/b", "" or a 256-char id
+      # was admitted (201) at this surface while the wire layer refused it.
+      not valid_doc_id?(doc_id) ->
+        error_response(db, coll, 400, "BadRequest", invalid_doc_id_message())
+
+      byte_size(Jason.encode!(body)) > @max_doc_bytes ->
+        error_response(db, coll, 413, "RequestEntityTooLarge", request_entity_too_large_message())
+
+      true ->
+        do_create_doc_sized(db, coll, doc_id, body, headers)
     end
   end
+
+  # Create with an id that already exists in the container → 409 Conflict
+  # (real Cosmos semantics; previously a silent 201-overwrite — measured:
+  # create {"id":"x","v":2} over {"v":1} returned 201 and clobbered the doc).
+  # Real Cosmos doc ids: 1-255 chars, no "/" (ids compose the storage key and
+  # the _self link, so the same grammar as db/container names applies).
+  defp valid_doc_id?(id), do: valid_name?(id)
+
+  defp invalid_doc_id_message,
+    do: "Invalid document id: must be a 1-255 char string and must not contain '/'."
 
   defp do_create_doc_sized(db, coll, doc_id, body, headers) do
     pk_meta = container_meta(db, coll)
@@ -235,10 +296,20 @@ defmodule Smalt.DataPlane.Cosmos do
           |> Map.put("_etag", etag)
           |> Map.put("_ts", now)
 
-        Store.put(@docs_table, doc_key(db, coll, doc_id), stored)
-        lsn = next_lsn(db, coll)
+        case Store.insert_new(@docs_table, doc_key(db, coll, doc_id), stored) do
+          :ok ->
+            lsn = next_lsn(db, coll)
+            {:ok, 201, success_headers(db, coll, lsn, %{"etag" => etag}), stored}
 
-        {:ok, 201, success_headers(db, coll, lsn, %{"etag" => etag}), stored}
+          {:error, :exists} ->
+            error_response(
+              db,
+              coll,
+              409,
+              "Conflict",
+              "Entity with the specified id already exists in the system."
+            )
+        end
 
       {:error, status, code} ->
         error_response(db, coll, status, code, error_message(code, pk_meta))
@@ -310,7 +381,8 @@ defmodule Smalt.DataPlane.Cosmos do
 
     case Store.get(@docs_table, key) do
       {:ok, existing} ->
-        with :ok <- partition_check(headers, body, pk_meta) do
+        with :ok <- doc_id_check(doc_id),
+             :ok <- partition_check(headers, body, pk_meta) do
           if_match = header(headers, "if-match")
           new_etag = quoted_sha256(body)
           now = System.system_time(:second)
@@ -389,9 +461,18 @@ defmodule Smalt.DataPlane.Cosmos do
         else
           case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
             :proceed ->
-              Store.delete(@docs_table, doc_key(db, coll, doc_id))
-              lsn = next_lsn(db, coll)
-              {:ok, 204, success_headers(db, coll, lsn, %{}), ""}
+              # Atomic check+delete: same S8 guarantee as the If-Match replace
+              # path — N concurrent conditional deletes on one doc yield
+              # exactly one 204, the rest 412 (never two 204s from a
+              # read-check-delete window).
+              case Store.compare_and_swap_delete(@docs_table, doc_key(db, coll, doc_id), doc) do
+                :ok ->
+                  lsn = next_lsn(db, coll)
+                  {:ok, 204, success_headers(db, coll, lsn, %{}), ""}
+
+                {:error, :conflict} ->
+                  error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+              end
 
             _halted ->
               error_response(db, coll, 412, "PreconditionFailed", precondition_message())
@@ -412,15 +493,40 @@ defmodule Smalt.DataPlane.Cosmos do
   @doc """
   Lists documents in a collection by id prefix. Returns `{:ok, 200, headers, docs}`.
   """
-  def list_docs(db, coll, prefix \\ "") do
+  def list_docs(db, coll, prefix \\ "", headers \\ %{}) do
     if store_ready?() do
-      docs =
-        @docs_table
-        |> Store.list_prefix("#{db}/#{coll}/#{prefix}")
-        |> Enum.sort_by(& &1["id"])
-
       lsn = current_lsn(db, coll)
-      {:ok, 200, success_headers(db, coll, lsn, %{}), docs}
+      cont_hdr = header(headers, @continuation_header)
+
+      with :ok <- parse_list_continuation(cont_hdr, prefix, lsn) do
+        docs =
+          @docs_table
+          |> Store.list_prefix("#{db}/#{coll}/#{prefix}")
+          |> Enum.sort_by(& &1["id"])
+
+        # Same ORDER-based (deletion-safe) cursor as the query feed: the token
+        # encodes the last id of the previous page, so deleting that doc
+        # mid-resume cannot skip or stall the feed (row-18 contract).
+        docs =
+          case list_cursor(cont_hdr) do
+            {:ok, _tok_prefix, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
+            :none -> docs
+          end
+
+        page = Enum.take(docs, @query_limit)
+
+        extra =
+          if length(docs) > @query_limit do
+            %{@continuation_header => list_continuation_token(prefix, lsn, page)}
+          else
+            %{}
+          end
+
+        {:ok, 200, success_headers(db, coll, lsn, extra), page}
+      else
+        {:error, 400, "BadRequest"} ->
+          error_response(db, coll, 400, "BadRequest", "The continuation token is invalid.")
+      end
     else
       {:error, :store_not_ready}
     end
@@ -435,42 +541,260 @@ defmodule Smalt.DataPlane.Cosmos do
   SDK wire shape `{"_rid", "Documents", "_count"}`. A query POST NEVER creates
   a document — the router routes it here before any create path is reachable.
   """
-  def query_docs(db, coll, _body, headers) do
+  def query_docs(db, coll, body, headers) do
     gate(:post, "docs", container_link(db, coll), headers, fn ->
       if store_ready?() do
-        pk_meta = container_meta(db, coll)
-        paths = (pk_meta && Map.get(pk_meta, "paths", [])) || []
+        # Real Cosmos: a query POST must carry a query document — a body
+        # without a nonblank "query" string is 400 BadRequest (row 8).
+        q = query_text(body)
 
-        docs =
-          @docs_table
-          |> Store.list_prefix("#{db}/#{coll}/")
-          |> Enum.sort_by(& &1["id"])
-
-        docs =
-          if paths == [] do
-            # No partition key defined: every partition (header ignored).
-            docs
-          else
-            case PartitionKey.parse(header(headers, PartitionKey.header_name())) do
-              {:ok, pk} -> Enum.filter(docs, fn d -> PartitionKey.extract(d, paths) == pk end)
-              :error -> docs
-            end
-          end
-          |> Enum.take(@query_limit)
-
-        lsn = current_lsn(db, coll)
-
-        {:ok, 200, success_headers(db, coll, lsn, %{}),
-         %{
-           "_rid" => coll_rid(db, coll),
-           "Documents" => docs,
-           "_count" => length(docs)
-         }}
+        if is_binary(q) do
+          do_query_docs(db, coll, body, headers)
+        else
+          error_response(db, coll, 400, "BadRequest", "The query is invalid.")
+        end
       else
         {:error, :store_not_ready}
       end
     end)
   end
+
+  # Nonblank "query" string -> the trimmed text; anything else -> nil (400).
+  defp query_text(body) when is_map(body) do
+    case Map.get(body, "query") do
+      q when is_binary(q) ->
+        case String.trim(q) do
+          "" -> nil
+          trimmed -> trimmed
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp query_text(_body), do: nil
+
+  defp do_query_docs(db, coll, _body, headers) do
+    pk_meta = container_meta(db, coll)
+    paths = (pk_meta && Map.get(pk_meta, "paths", [])) || []
+    pk_hdr = header(headers, PartitionKey.header_name())
+    ledger = current_lsn(db, coll)
+
+    # Minimal unblock (amqp-codec lens-4 lane, compile-freeze SLA): the
+    # in-flight edit passed `docs` to query_pk_check/3 before it was bound;
+    # hoist the fetch above the `with` (same value, all clauses ignore it).
+    docs =
+      @docs_table
+      |> Store.list_prefix("#{db}/#{coll}/")
+      |> Enum.sort_by(& &1["id"])
+
+    with :ok <- parse_continuation(header(headers, @continuation_header), pk_hdr, ledger),
+         :ok <- query_pk_check(pk_hdr, paths, docs) do
+      docs =
+        if paths == [] do
+          # No partition key defined: every partition (header ignored).
+          docs
+        else
+          # Header present and parseable: partition-scoped. (A PRESENT but
+          # malformed header is a 400 below — never a silent cross-partition
+          # scan; previously "not-json"/"[]"/multi-element headers leaked ALL
+          # partitions' docs with 200.)
+          case pk_hdr do
+            nil ->
+              # No pk header: deliberate cross-partition scan.
+              docs
+
+            raw ->
+              case PartitionKey.parse(raw) do
+                {:ok, pk} -> Enum.filter(docs, fn d -> PartitionKey.extract(d, paths) == pk end)
+                :error -> docs
+              end
+          end
+        end
+
+      # Continuation cursor: an ORDER-based resume (id > last_id), NOT an
+      # existence-based one — the token encodes the last id of the previous
+      # page, so deleting that doc mid-resume cannot skip or stall the feed
+      # (row 18 contract pin).
+      docs =
+        case list_cursor(header(headers, @continuation_header)) do
+          {:ok, _scope, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
+          :none -> docs
+        end
+
+      page = Enum.take(docs, @query_limit)
+
+      # Real Cosmos row-18 semantics: a token rides the response ONLY when the
+      # feed is truncated — the last page carries none, so the SDK loop
+      # terminates.
+      extra =
+        if length(docs) > @query_limit do
+          %{@continuation_header => continuation_token(pk_hdr, ledger, page)}
+        else
+          %{}
+        end
+
+      lsn = current_lsn(db, coll)
+
+      {:ok, 200, success_headers(db, coll, lsn, extra),
+       %{
+         "_rid" => coll_rid(db, coll),
+         "Documents" => page,
+         "_count" => length(page)
+       }}
+    else
+      {:error, status, code} ->
+        error_response(db, coll, status, code, error_message(code, pk_meta))
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Feed continuation tokens (row 18: x-ms-continuation)
+  # ---------------------------------------------------------------------------
+
+  # Format (engine work order lens-2 c5; scope binding lens-5): the query-feed
+  # token is "1#{lsn}:{tail}" where tail = last_id for an UNSCOPED feed and
+  # "<pk_raw>/<last_id>" when the feed was scoped by a partition-key header.
+  # The token's scope must EQUAL the resume request's pk header, else typed
+  # 400 — real Cosmos binds a token to its query/feed; a cross-partition page
+  # resumed under a different partition SILENTLY DROPS docs otherwise
+  # (measured lens-5: token 1#120:m100 under pk ["B"] returned 10 of 60 B
+  # docs with 200).
+  defp continuation_token(_scope, lsn, []), do: "#{@session_token_version}##{lsn}:"
+
+  defp continuation_token(scope, lsn, page) do
+    tail = List.last(page)["id"]
+    tail = if scope in [nil, ""], do: tail, else: "#{scope}/#{tail}"
+    "#{@session_token_version}##{lsn}:#{tail}"
+  end
+
+  # nil header = no resume. The token's embedded scope must equal the
+  # request's pk header (both "" when absent).
+  defp parse_continuation(nil, _scope, _ledger), do: :ok
+
+  defp parse_continuation(raw, scope, ledger) do
+    case list_cursor(raw) do
+      {:ok, tok_scope, last_id} ->
+        if continuation_lsn_ok_version?(raw, @session_token_version, ledger) and
+             tok_scope == scope(scope) and
+             valid_doc_id?(last_id) do
+          :ok
+        else
+          {:error, 400, "BadRequest"}
+        end
+
+      :none ->
+        {:error, 400, "BadRequest"}
+    end
+  end
+
+  defp scope(nil), do: ""
+  defp scope(s), do: s
+
+  defp integer_lsn?(s), do: s != "" and String.match?(s, ~r/^\d+$/)
+
+  # ---------------------------------------------------------------------------
+  # List-feed continuation tokens (version-2 namespace, never cross-accepted
+  # with query tokens)
+  # ---------------------------------------------------------------------------
+
+  # Format (lens-5): "2#{lsn}:{tail}" where tail encodes the list PREFIX the
+  # feed was emitted under: tail = last_id when the prefix is empty, otherwise
+  # "<prefix>/<last_id>" (doc ids never contain "/", so the split is exact).
+  # A token minted under one prefix resumed under a DIFFERENT prefix is a
+  # typed 400 — real Cosmos binds a continuation token to the query that
+  # emitted it and 400s on cross-filter reuse (learn.microsoft.com Cosmos DB
+  # query/pagination; SO 52108370).
+  defp list_continuation_token(_prefix, lsn, []), do: "#{@list_token_version}##{lsn}:"
+
+  defp list_continuation_token(prefix, lsn, page) do
+    tail = List.last(page)["id"]
+    tail = if prefix == "", do: tail, else: "#{prefix}/#{tail}"
+    "#{@list_token_version}##{lsn}:#{tail}"
+  end
+
+  # Same fences as the query token gate: version-2 namespace only, numeric
+  # ledger position not ahead of this container's ledger, doc-id-grammar
+  # cursor, and the token's prefix must EQUAL the request's prefix (real
+  # Cosmos: a token is only valid for the feed that emitted it). nil header =
+  # no resume; anything else malformed is a typed 400.
+  defp parse_list_continuation(nil, _prefix, _ledger), do: :ok
+
+  defp parse_list_continuation(raw, prefix, ledger) do
+    case list_cursor(raw) do
+      {:ok, tok_prefix, last_id} ->
+        if continuation_lsn_ok_version?(raw, @list_token_version, ledger) and
+             tok_prefix == prefix and valid_doc_id?(last_id) do
+          :ok
+        else
+          {:error, 400, "BadRequest"}
+        end
+
+      :none ->
+        {:error, 400, "BadRequest"}
+    end
+  end
+
+  # {:ok, prefix, last_id} | :none — nil/blank header or a tail with a
+  # cursor-less tail is :none.
+  defp list_cursor(nil), do: :none
+
+  defp list_cursor(raw) do
+    with [_vsn_lsn, tail] <- String.split(raw, ":", parts: 2),
+         {tok_prefix, last_id} <- split_list_tail(tail) do
+      {:ok, tok_prefix, last_id}
+    else
+      _ -> :none
+    end
+  end
+
+  # Split the tail at the LAST "/": last_id never contains "/", the prefix
+  # may. {"", "d1"} for the empty-prefix form; :error when the tail is empty.
+  defp split_list_tail(""), do: :error
+
+  defp split_list_tail(tail) do
+    case String.split(tail, "/") do
+      parts ->
+        last_id = List.last(parts)
+        tok_prefix = parts |> :lists.sublist(1, length(parts) - 1) |> Enum.join("/")
+
+        {tok_prefix, last_id}
+    end
+  end
+
+  # Shared token grammar check, parameterized on the namespace version so the
+  # query (v1) and list (v2) gates can never admit each other's tokens.
+  defp continuation_lsn_ok_version?(raw, version, ledger) do
+    case String.split(raw, ":", parts: 2) do
+      [vsn_lsn, _last_id] ->
+        case String.split(vsn_lsn, "#", parts: 2) do
+          [vsn, lsn] ->
+            vsn == Integer.to_string(version) and integer_lsn?(lsn) and
+              String.to_integer(lsn) <= ledger
+
+          _ ->
+            false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  # A PRESENT but malformed pk header on a pk-defined container is a 400 —
+  # never a silent cross-partition scan (measured leak: "not-json" returned
+  # both partitions' docs with 200).
+  defp query_pk_check(nil, _paths, _docs), do: :ok
+  defp query_pk_check(_hdr, [], _docs), do: :ok
+
+  defp query_pk_check(hdr, _paths, _docs) do
+    case PartitionKey.parse(hdr) do
+      {:ok, _pk} -> :ok
+      :error -> {:error, 400, "BadRequest"}
+    end
+  end
+
 
   # ---------------------------------------------------------------------------
   # Request gate: master-key Authorization validation + RU throttle + echo
@@ -634,6 +958,17 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
+  # Replace path: the doc id arrives from the route, so it was never checked
+  # against the doc-id grammar. An id violating it cannot exist (create
+  # refuses it), so a put is 404 NotFound — refused before the pk check.
+  defp doc_id_check(doc_id) do
+    if valid_doc_id?(doc_id) do
+      :ok
+    else
+      {:error, 404, "NotFound"}
+    end
+  end
+
   # Real-SDK-driven response headers. The @azure/cosmos SDK tolerates these
   # missing but READS them when present:
   # - x-ms-alt-content-path (HttpHeaders.OwnerFullName): resolves the owning
@@ -696,6 +1031,9 @@ defmodule Smalt.DataPlane.Cosmos do
   def coll_rid(db, coll), do: db_rid(db) <> rid_segment(coll, 4)
 
   def doc_rid(db, coll, id), do: coll_rid(db, coll) <> rid_segment(id, 8)
+
+  defp error_message("NotFound", _pk_meta),
+    do: "Entity with the specified id does not exist in the system."
 
   defp error_message("BadRequest", _pk_meta),
     do: "Partition key provided in the header doesn't match the partition key of the document."

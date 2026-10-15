@@ -68,5 +68,30 @@ class InvariantGatesTest(unittest.TestCase):
                         msg=f"fixture {fixture['fixture']} not detected: {receipt}")
 
 
+class DocContractTest(unittest.TestCase):
+    """Doc-as-contract courts (DX lane cycles 2/8): docs must match reality.
+
+    Concurrent lanes repeatedly reverted the FIRST_RUN court tier list
+    (T0..T4 is wrong — there is no T0); this court makes the revert a red
+    test instead of silent doc rot.
+    """
+
+    def _read(self, *parts):
+        with open(os.path.join(REPO, *parts)) as f:
+            return f.read()
+
+    def test_first_run_court_tiers_are_t1_to_t4(self):
+        text = self._read("docs", "FIRST_RUN.md")
+        self.assertNotIn("T0..T4", text)
+        self.assertIn("T1..T4", text)
+
+    def test_just_reference_tf_smoke_exit_contract(self):
+        row = self._read("docs", "JUST_REFERENCE.md")
+        # tf_smoke.sh documents exits 0/1/2/77; the reference must carry all
+        # four (77 = SKIPPED-NETWORK, court intentionally fails offline).
+        self.assertIn("77 SKIPPED-NETWORK", row)
+        self.assertIn("tf_smoke.sh", row)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

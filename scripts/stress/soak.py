@@ -29,11 +29,12 @@ from collections import Counter
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 PORTS = {
-    "SMALT_TEST_ARM_PORT": 29443,
-    "SMALT_TEST_ARM_TLS_PORT": 29444,
-    "SMALT_TEST_EGRESS_PORT": 28443,
-    "SMALT_TEST_AMQP_PORT": 25672,
-    "SMALT_TEST_EVENT_HUBS_PORT": 25673,
+    "SMALT_TEST_ARM_PORT": 39430,
+    "SMALT_TEST_ARM_TLS_PORT": 39431,
+    "SMALT_TEST_EGRESS_PORT": 39432,
+    "SMALT_TEST_AMQP_PORT": 39433,
+    "SMALT_TEST_EVENT_HUBS_PORT": 39434,
+    "SMALT_TEST_MCP_PORT": 39435,
 }
 ARM_HOST, ARM_PORT = "127.0.0.1", PORTS["SMALT_TEST_ARM_PORT"]
 EG_HOST, EG_PORT = "127.0.0.1", PORTS["SMALT_TEST_EGRESS_PORT"]
@@ -218,6 +219,7 @@ def boot_substrate():
         f"Application.put_env(:smalt, :egress_port, {PORTS['SMALT_TEST_EGRESS_PORT']}); "
         f"Application.put_env(:smalt, :amqp_port, {PORTS['SMALT_TEST_AMQP_PORT']}); "
         f"Application.put_env(:smalt, :event_hubs_port, {PORTS['SMALT_TEST_EVENT_HUBS_PORT']}); "
+        f"Application.put_env(:smalt, :mcp_port, {PORTS['SMALT_TEST_MCP_PORT']}); "
         "Application.put_env(:smalt, :auth_mode, :anonymous); "
         "{:ok, _} = Application.ensure_all_started(:smalt); "
         "Process.sleep(:infinity)"

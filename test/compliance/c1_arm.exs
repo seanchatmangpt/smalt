@@ -14,6 +14,12 @@ defmodule Smalt.Compliance.C1ArmTest do
 
   use ExUnit.Case, async: false
 
+  # xaas wire-parity §4.7 adoption (lens-6): whole-court selection tag. Enables
+  # `mix test --include compliance` to run the full c1..c7 court set in one
+  # include. No default behavior change: :compliance is NOT in the
+  # test_helper.exs exclusion list, so untagged/default runs are unchanged.
+  @moduletag :compliance
+
   alias Smalt.Store
 
   @sub "00000000-0000-0000-0000-000000000000"
@@ -90,7 +96,7 @@ defmodule Smalt.Compliance.C1ArmTest do
   test "error envelope carries error.code and error.message with json; charset=utf-8", %{
     port: port
   } do
-    {status, headers, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1")
+    {status, headers, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01")
 
     assert status == 404
     assert headers["content-type"] == "application/json; charset=utf-8"
@@ -170,7 +176,7 @@ defmodule Smalt.Compliance.C1ArmTest do
 
   test "resource group PUT create 201 / update 200, GET 200, DELETE 200, GET 404", %{port: port} do
     rg = "rg-c1-" <> unique()
-    path = "/subscriptions/#{@sub}/resourceGroups/#{rg}"
+    path = "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2021-04-01"
 
     {201, _h, _} = put!(port, path, body: Jason.encode!(%{"location" => "westus"}))
     {200, _h, _} = put!(port, path, body: Jason.encode!(%{"location" => "westus"}))
@@ -178,7 +184,12 @@ defmodule Smalt.Compliance.C1ArmTest do
     {200, _h, body} = get!(port, path)
     assert json(body)["properties"]["provisioningState"] == "Succeeded"
 
-    {200, _h, _} = delete!(port, path)
+    # RG delete is an ARM LRO: 202 + Location polling URL + Retry-After (row 4).
+    {202, del_headers, ""} = delete!(port, path)
+    assert is_binary(del_headers["location"])
+    assert del_headers["location"] =~ "/subscriptions/#{@sub}/operations/"
+    assert del_headers["retry-after"] == "1"
+
     {404, _h, del_body} = get!(port, path)
     assert json(del_body)["error"]["code"] == "ResourceGroupNotFound"
   end
@@ -223,6 +234,11 @@ defmodule Smalt.Compliance.C1ArmTest do
       )
 
     assert json(body)["error"]["code"] == "MissingApiVersionParameter"
+
+    # Lens-3 cross-court round 2: pin the message bytes too — the RG-gate
+    # court below exercises the same seam from a second route; both courts
+    # must see the identical string.
+    assert json(body)["error"]["message"] == "The api-version query parameter is required."
   end
 
   test "invalid api-version on admitted type (PUT) -> 400 InvalidApiVersionParameter", %{
@@ -230,6 +246,20 @@ defmodule Smalt.Compliance.C1ArmTest do
   } do
     {400, _h, body} = put!(port, resource_path("stc1x", "1999-01-01"))
     assert json(body)["error"]["code"] == "InvalidApiVersionParameter"
+  end
+
+  # C1 pin: the admitted latest version is exact per type — a stale call must
+  # be told the literal latest string, not merely rejected.
+  test "stale api-version error names the exact latest version for the type", %{
+    port: port
+  } do
+    path =
+      "/subscriptions/#{@sub}/resourceGroups/rg1/providers/Microsoft.ContainerService/managedClusters/mc1?api-version=1999-01-01"
+
+    {400, _h, body} = put!(port, path)
+    err = json(body)["error"]
+    assert err["code"] == "InvalidApiVersionParameter"
+    assert err["message"] =~ "2023-02-01"
   end
 
   # ===========================================================================
@@ -240,14 +270,26 @@ defmodule Smalt.Compliance.C1ArmTest do
     rg = "rg-c1-" <> unique()
 
     {201, _h, _} =
-      put!(port, "/subscriptions/#{@sub}/resourceGroups/#{rg}",
+      put!(port, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2021-04-01",
         body: Jason.encode!(%{"location" => "eastus"})
       )
 
-    {200, _h, _} = get!(port, "/subscriptions/#{@sub}/resourcegroups/#{rg}")
+    {200, _h, _} = get!(port, "/subscriptions/#{@sub}/resourcegroups/#{rg}?api-version=2021-04-01")
 
-    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups")
-    assert is_list(json(list_body)["value"])
+    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2021-04-01")
+
+    list = json(list_body)
+    assert is_list(list["value"])
+
+    # Mutant-kill: items are full RG envelopes, not bare names — pin the exact
+    # shape of the created group's list entry (ARM RP contract).
+    entry = Enum.find(list["value"], &(&1["name"] == rg))
+
+    assert entry, "created rg #{rg} missing from LIST"
+    assert entry["id"] == "/subscriptions/#{@sub}/resourceGroups/#{rg}"
+    assert entry["type"] == "Microsoft.Resources/resourceGroups"
+    assert entry["location"] == "eastus"
+    assert entry["properties"]["provisioningState"] == "Succeeded"
   end
 
   test "lowercase provider namespace resolves to the same record", %{port: port} do
@@ -288,15 +330,26 @@ defmodule Smalt.Compliance.C1ArmTest do
   # ===========================================================================
 
   test "every response echoes x-ms-request-id (echoes client-supplied value)", %{port: port} do
-    {s1, headers, _b} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1")
+    {s1, headers, _b} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01")
 
     assert s1 == 404
+
+    # Server-generated request-id must be the same RFC 4122 v4 dashed GUID the
+    # LA surface (c7) pins — cross-court lens-2 cycle-1 unification
+    # (previously length-only here). The BLOB plane still emits 32-hex
+    # (finding F1, data-plane lane owns the fix); c4 pins the honest bytes.
     assert is_binary(headers["x-ms-request-id"]) and byte_size(headers["x-ms-request-id"]) == 36
+
+    assert Regex.match?(
+             ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+             headers["x-ms-request-id"]
+           ),
+           "server-minted x-ms-request-id must be a v4 GUID, got: #{inspect(headers["x-ms-request-id"])}"
 
     # client-supplied request id is echoed verbatim
     {s2, headers2, _b2} =
       parse(
-        req(port, :get, "/subscriptions/#{@sub}/resourceGroups/rg1",
+        req(port, :get, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01",
           headers: [{"x-ms-request-id", "my-client-request-id-123"}]
         )
       )
@@ -329,6 +382,11 @@ defmodule Smalt.Compliance.C1ArmTest do
       :ets.delete_all_objects(:smalt_arm_rate)
     end
 
+    # Align to the next wall-clock second so all 10 requests land in ONE
+    # fixed window — this makes the window's admit count exactly assertable.
+    ms = System.system_time(:millisecond)
+    Process.sleep(1000 - rem(ms, 1000) + 5)
+
     statuses_limited =
       for _ <- 1..10 do
         {status, headers, body} = put!(port, path, body: sa_body(name))
@@ -344,17 +402,42 @@ defmodule Smalt.Compliance.C1ArmTest do
         status
       end
 
-    assert 429 in statuses_limited
-    assert 200 in statuses_limited
+    # Exact window arithmetic: exactly :arm_rate_limit admits, then 429s —
+    # pins the `count > limit` (never `>=`) and the per-second reset.
+    assert statuses_limited == [200, 200, 200, 200, 200, 429, 429, 429, 429, 429]
+
+    # Window expiry: after the 1s window rolls over the counter is reset —
+    # the next request is admitted again (fixed window, not a permanent ban).
+    Process.sleep(1100)
+    {status_after, _h, _b} = put!(port, path, body: sa_body(name))
+    assert status_after == 200
   end
 
   test "error envelopes carry innererror (present-but-empty)", %{port: port} do
-    {_s, _h, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1")
+    {_s, _h, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01")
     assert json(body)["error"]["innererror"] == %{}
 
     {s, _h, body2} = put!(port, resource_path("stc1x", "1999-01-01"))
     assert s == 400
     assert json(body2)["error"]["innererror"] == %{}
+  end
+
+  test "404 envelopes carry error.target naming the offending path; api-version 400s do not (row 1b)",
+       %{port: port} do
+    # RouteNotFound: target is the unmatched path.
+    {_s, _h, body} = get!(port, "/definitely/not/a/route")
+    assert json(body)["error"]["target"] == "/definitely/not/a/route"
+
+    # ResourceGroupNotFound: target is the RG resource id (no query string).
+    rg_id = "/subscriptions/#{@sub}/resourceGroups/tgt-rg"
+    {_s, _h, body2} = get!(port, rg_id <> "?api-version=2021-04-01")
+    err2 = json(body2)["error"]
+    assert err2["code"] == "ResourceGroupNotFound"
+    assert err2["target"] == rg_id
+
+    # api-version 400s: target ABSENT (query-param failure, no path component).
+    {400, _h, body3} = put!(port, resource_path("stc1t", "1999-01-01"), body: sa_body("stc1t"))
+    refute Map.has_key?(json(body3)["error"], "target")
   end
 
   test "success envelopes carry synthetic systemData", %{port: port} do
@@ -366,7 +449,10 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     assert sd["createdBy"] == "smalt-dev-substrate"
     assert sd["createdByType"] == "Application"
-    assert is_binary(sd["createdAt"]) and sd["createdAt"] != ""
+    # Pin CURRENT wire bytes: createdAt is the synthetic @system_data constant
+    # (router.ex:52-56) — a timestamp-format change must flip this fence
+    # deliberately.
+    assert sd["createdAt"] == "2026-01-01T00:00:00.0000000+00:00"
 
     # same systemData on the stored record (GET)
     {200, _h, body2} = get!(port, path)
@@ -405,6 +491,93 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     all_names = Enum.map(page1["value"] ++ page2["value"], & &1["name"])
     assert Enum.sort(all_names) == Enum.sort(names)
+
+    # $skip arithmetic: a mid-window skip pages from the skip offset.
+    {200, _h, body3} = get!(port, list_path <> "&$skip=50")
+    page_mid = json(body3)
+    assert length(page_mid["value"]) == 55
+    refute Map.has_key?(page_mid, "nextLink")
+
+    # Garbage $skip is treated as 0 (no 500, full first page + nextLink).
+    {200, _h, body4} = get!(port, list_path <> "&$skip=abc")
+    page_bad = json(body4)
+    assert length(page_bad["value"]) == 100
+    assert is_binary(page_bad["nextLink"])
+
+    # maxitempages=0 (or negative) clamps to 1 page, never 0 or unbounded.
+    {200, _h, body5} = get!(port, list_path <> "&maxitempages=0")
+    page_clamp = json(body5)
+    assert length(page_clamp["value"]) == 100
+    assert is_binary(page_clamp["nextLink"])
+    %{query: query5} = URI.parse(page_clamp["nextLink"])
+    assert %{"maxitempages" => "1"} = URI.decode_query(query5)
+  end
+
+  test "nextLink composition fuzz: clamps hold for hostile maxitempages/$skip and stale replay",
+       %{port: port} do
+    names =
+      for _ <- 1..105 do
+        name = "disk-fz-" <> unique()
+        {201, _h, _} = put!(port, disks_path(name), body: Jason.encode!(%{"location" => "eastus"}))
+        name
+      end
+
+    list_path =
+      "/subscriptions/#{@sub}/resourceGroups/rg1/providers/Microsoft.Compute/disks?api-version=#{api_v("Microsoft.Compute/disks")}"
+
+    n_of = fn body -> length(json(body)["value"]) end
+    nl_of = fn body -> json(body)["nextLink"] end
+
+    # Huge maxitempages is NOT unbounded: pages = max(huge, 1) — with 105
+    # items, maxitempages=9999 returns everything in one response, no nextLink.
+    {200, _h, b_huge} = get!(port, list_path <> "&maxitempages=9999")
+    assert n_of.(b_huge) == 105
+    refute nl_of.(b_huge)
+
+    # Negative maxitempages clamps to 1 page.
+    {200, _h, b_neg} = get!(port, list_path <> "&maxitempages=-5")
+    assert n_of.(b_neg) == 100
+    assert is_binary(nl_of.(b_neg))
+
+    # Float maxitempages ("1.5") fails Integer.parse-with-empty-rest -> default 1.
+    {200, _h, b_float} = get!(port, list_path <> "&maxitempages=1.5")
+    assert n_of.(b_float) == 100
+    assert is_binary(nl_of.(b_float))
+    %{query: q_float} = URI.parse(nl_of.(b_float))
+    assert %{"maxitempages" => "1"} = URI.decode_query(q_float)
+
+    # $skip exactly at the last item and one past it: 1 item / 0 items, both
+    # terminal (no nextLink) — a stale nextLink cannot fabricate more pages.
+    {200, _h, b_skip104} = get!(port, list_path <> "&$skip=104")
+    assert n_of.(b_skip104) == 1
+    refute nl_of.(b_skip104)
+
+    {200, _h, b_skip105} = get!(port, list_path <> "&$skip=105")
+    assert n_of.(b_skip105) == 0
+    refute nl_of.(b_skip105)
+
+    # Negative $skip falls back to 0 (no 500, full first page).
+    {200, _h, b_negskip} = get!(port, list_path <> "&$skip=-1")
+    assert n_of.(b_negskip) == 100
+
+    # Stale/hostile nextLink REPLAY with maxitempages=0: the echo-clamp holds —
+    # the response is still a clamped 100-item page and the continuation echoes
+    # maxitempages=1, so replay can never unclamp the pagination arithmetic.
+    {200, _h, b_replay} = get!(port, list_path <> "&%24skip=0&maxitempages=0")
+    assert n_of.(b_replay) == 100
+    assert is_binary(nl_of.(b_replay))
+    %{query: q_replay} = URI.parse(nl_of.(b_replay))
+    assert %{"maxitempages" => "1"} = URI.decode_query(q_replay)
+
+    # Conservation: the union of the default page + the remainder is exactly
+    # the created set (no item lost or duplicated by any clamp above).
+    {200, _h, b_p1} = get!(port, list_path)
+    page1_names = Enum.map(json(b_p1)["value"], & &1["name"])
+
+    {200, _h, b_p2} = get!(port, nl_of.(b_p1) |> URI.parse() |> then(&"#{&1.path}?#{&1.query}"))
+    page2_names = Enum.map(json(b_p2)["value"], & &1["name"])
+
+    assert Enum.sort(page1_names ++ page2_names) == Enum.sort(names)
   end
 
   test "async headers use the request authority, not management.smalt.local (row 10 fixed)", %{
@@ -487,6 +660,57 @@ defmodule Smalt.Compliance.C1ArmTest do
 
   defp delete!(port, path, opts \\ []) do
     parse(req(port, :delete, path, opts))
+  end
+
+  # ===========================================================================
+  # (14) RG api-version gate (row 6b, coordinator-authorized landing)
+  # ===========================================================================
+
+  test "resource-group verbs enforce api-version on all four verbs (row 6b closed)", %{
+    port: port
+  } do
+    base = "/subscriptions/#{@sub}/resourceGroups/rg6b"
+
+    # Missing api-version -> 400 MissingApiVersionParameter on every verb.
+    for {method, path} <- [
+          {:put, base},
+          {:get, base},
+          {:delete, base},
+          {:get, "/subscriptions/#{@sub}/resourcegroups"}
+        ] do
+      {status, _h, body} =
+        case method do
+          :put -> put!(port, path, body: Jason.encode!(%{"location" => "eastus"}))
+          m -> req(port, m, path, []) |> parse()
+        end
+
+      assert status == 400, "#{method} #{path} -> #{status}"
+      assert json(body)["error"]["code"] == "MissingApiVersionParameter"
+
+      # Lens-3 cross-court round 2: byte-identical message with the
+      # missing-api-version court above (same seam, second route).
+      assert json(body)["error"]["message"] == "The api-version query parameter is required."
+    end
+
+    # Stale api-version -> 400 InvalidApiVersionParameter naming the latest.
+    {400, _h, body2} = put!(port, base <> "?api-version=1999-01-01", body: Jason.encode!(%{"location" => "eastus"}))
+    err2 = json(body2)["error"]
+    assert err2["code"] == "InvalidApiVersionParameter"
+
+    # Lens-3: pin the full template bytes (the stale court earlier pins the
+    # same template for managedClusters; here it's resourceGroups's own latest).
+    assert err2["message"] ==
+             "The api-version '1999-01-01' is invalid. The latest supported api-version for 'Microsoft.Resources/resourceGroups' is '2021-04-01'."
+
+    assert err2["message"] =~ "2021-04-01"
+
+    # Valid latest api-version -> the wire behaves exactly as before the gate.
+    {201, _h, _} =
+      put!(port, base <> "?api-version=2021-04-01", body: Jason.encode!(%{"location" => "eastus"}))
+
+    {200, _h, _} = get!(port, base <> "?api-version=2021-04-01")
+    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2021-04-01")
+    assert is_list(json(list_body)["value"])
   end
 
   defp unique, do: :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)

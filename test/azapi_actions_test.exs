@@ -345,6 +345,20 @@ defmodule Smalt.AzapiActionsTest do
   # Registry seam: the versions this fence depends on are the projected ones
   # ===========================================================================
 
+  test "404 ActionNotFound precedence: unknown action fires BEFORE the api-version gate (no api-version still 404, not 400)" do
+    # lib/smalt/arm_gateway/router.ex handle_action: @actions membership is
+    # checked before check_api_version — an unknown action returns
+    # ActionNotFound regardless of api-version presence. Pinned precedence.
+    conn =
+      conn(
+        :post,
+        "#{container_base()}/c-1/notanaction"
+      )
+      |> Router.call(@opts)
+
+    assert {404, "ActionNotFound"} = {conn.status, body(conn)["error"]["code"]}
+  end
+
   test "fence api-versions match Smalt.Registry.latest_version (drift falsifier)" do
     # lib/smalt/registry.ex:83-117 (@api_versions)
     assert Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers") == "2023-05-01"

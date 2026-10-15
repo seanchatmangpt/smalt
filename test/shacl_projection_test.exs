@@ -221,4 +221,41 @@ defmodule Smalt.GraphLaw.SHACLProjectionTest do
       assert decoded == SHACLProjection.json_schema()
     end
   end
+
+  describe "shacl-projection-pack law cross-validation (pack read-only)" do
+    # Pack gates/010_shape_validity.rq law subset applicable to smalt's
+    # presence-only shapes (no sp: consumer vocabulary in smalt's TTL).
+    @admitted_xsd ~w(string boolean integer long decimal float double)
+
+    test "every property shape carries a path whose local name is a valid projected identifier" do
+      for {shape_name, shape} <- Smalt.GraphLaw.Validator.shapes(),
+          prop <- shape.required do
+        assert prop.path != nil and prop.path != "",
+               "pack law: property shape without sh:path in #{shape_name}"
+
+        assert prop.path =~ ~r/^[a-zA-Z_][a-zA-Z0-9_.]*$/,
+               "pack law: path local name #{inspect(prop.path)} in #{shape_name} " <>
+                 "is not a valid projected identifier"
+      end
+    end
+
+    test "no duplicate field names within one shape (pack law)" do
+      for {shape_name, shape} <- Smalt.GraphLaw.Validator.shapes() do
+        paths = Enum.map(shape.required, & &1.path)
+
+        assert paths -- Enum.uniq(paths) == [],
+               "pack law: duplicate field names in #{shape_name}: #{inspect(paths)}"
+      end
+    end
+
+    test "every declared sh:datatype is in the pack's admitted XSD set" do
+      for {shape_name, shape} <- Smalt.GraphLaw.Validator.shapes(),
+          prop <- shape.required,
+          dt <- List.wrap(prop.datatype) do
+        assert Atom.to_string(dt) in @admitted_xsd,
+               "pack law: datatype #{inspect(dt)} in #{shape_name} not in the " <>
+                 "admitted XSD set #{inspect(@admitted_xsd)}"
+      end
+    end
+  end
 end

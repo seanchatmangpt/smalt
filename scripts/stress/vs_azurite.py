@@ -43,6 +43,8 @@ import urllib.request
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PID_FILE = "/tmp/smalt.pid"
 
+SMALT_ARM_PORT = int(os.environ.get("SMALT_VSAZ_ARM_PORT", "39500"))
+SMALT_TLS_PORT = int(os.environ.get("SMALT_VSAZ_TLS_PORT", "39501"))
 SMALT_URL = "http://127.0.0.1:8443"
 SMALT_ACCOUNT = "smaltacct"
 SMALT_KEY = "smaltacct-key"
@@ -247,8 +249,8 @@ def smalt_up(keep: bool) -> dict:
         # test tier, possibly enforce-mode). Never disturb it: boot a private
         # instance on the fallback port and bench against that.
         receipt["mode"] = ("port 8443 held by another process; booted private "
-                           "instance on fallback port 38443 for boot+bench")
-        return _smalt_boot(38443, receipt)
+                           "instance on fallback port 39502 for boot+bench")
+        return _smalt_boot(39502, receipt)
     if not os.path.isfile(os.path.join(REPO, "mix.exs")):
         receipt["error"] = "mix.exs not found"
         receipt["ready"] = False
@@ -257,6 +259,13 @@ def smalt_up(keep: bool) -> dict:
 
 
 def _smalt_boot(port: int, receipt: dict) -> dict:
+    # Full six-listener scope (arm/tls/egress/amqp/event-hubs/mcp) on the
+    # harness's documented private block (DEV_LOOP table). An unscoped
+    # listener falls back to its default (9444/9545/5672) and the boot dies
+    # eaddrinuse when a sibling holds it — witnessed class, lens-2 cycle 2/4.
+    amqp = int(os.environ.get("SMALT_VSAZ_AMQP_PORT", "39503"))
+    eh = amqp + 1
+    mcp = int(os.environ.get("SMALT_VSAZ_MCP_PORT", "39505"))
     env = dict(os.environ)
     env.setdefault("SMALT_SB_SHARED_KEY",
                    subprocess.run(["bash", "-c",
@@ -271,10 +280,11 @@ def _smalt_boot(port: int, receipt: dict) -> dict:
         # SDK cannot inject the smalt STS Bearer on plain HTTP, so the repo's
         # own SDK tiers run :anonymous. The bench matches that contract.
         'Application.put_env(:smalt, :auth_mode, :anonymous); '
-        f'Application.put_env(:smalt, :arm_port, 19443); '
-        f'Application.put_env(:smalt, :arm_tls_port, 19444); '
-        'Application.put_env(:smalt, :amqp_port, 35672); '
-        'Application.put_env(:smalt, :event_hubs_port, 35673); '
+        f'Application.put_env(:smalt, :arm_port, {SMALT_ARM_PORT}); '
+        f'Application.put_env(:smalt, :arm_tls_port, {SMALT_TLS_PORT}); '
+        f'Application.put_env(:smalt, :amqp_port, {amqp}); '
+        f'Application.put_env(:smalt, :event_hubs_port, {eh}); '
+        f'Application.put_env(:smalt, :mcp_port, {mcp}); '
         f'{{:ok, _}} = Application.ensure_all_started(:smalt); '
         f'IO.puts("smalt bench ready on {port}"); '
         'Process.sleep(:infinity)'

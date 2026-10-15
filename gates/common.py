@@ -15,9 +15,16 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Canonical substrate lifecycle helpers (DX lane cycle 11): gates previously
+# carried a third copy of the wait/kill/port-free triplet; thin delegation
+# preserves the exact gates semantics (poll 0.05, RuntimeErrors, sweep-all).
+sys.path.insert(0, os.path.join(REPO, "scripts", "stress"))
+import _substrate  # noqa: E402
 HOST = "127.0.0.1"
 API_VERSION = "2021-01-01"
 RECEIPT_DIR = os.path.join(REPO, "tmp", "invariant-gates")
@@ -46,14 +53,7 @@ def pick_ports():
 
 
 def wait_port_free(port, timeout_s=20.0):
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        try:
-            socket.create_connection((HOST, port), timeout=0.2).close()
-            time.sleep(0.05)
-        except OSError:
-            return True
-    return False
+    return _substrate.wait_port_free(port, timeout_s=timeout_s)
 
 
 def spawn_substrate(ports, shared_key=None):
@@ -94,48 +94,17 @@ def spawn_substrate(ports, shared_key=None):
 
 
 def wait_for_port(port, proc, timeout_s=120.0):
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            raise RuntimeError(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                return time.monotonic() - t0
-        except OSError:
-            time.sleep(0.05)
-    raise RuntimeError(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    poll=0.05)
 
 
 def kill_substrate(proc, ports):
-    """SIGKILL the process group, then sweep any surviving port holder."""
-    if proc is not None:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            try:
-                proc.kill()
-            except Exception:
-                pass
-        try:
-            proc.wait(timeout=5)
-        except Exception:
-            pass
-    for port in ports.values():
-        kill_port_holder(port)
+    """SIGKILL the process group, then sweep every gate port holder."""
+    _substrate.kill_substrate(proc, ports=tuple(ports.values()))
 
 
 def kill_port_holder(port):
-    try:
-        out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                             capture_output=True, text=True, timeout=10).stdout
-    except Exception:
-        out = ""
-    for pid in out.split():
-        try:
-            os.kill(int(pid), signal.SIGKILL)
-        except (ValueError, ProcessLookupError, PermissionError):
-            pass
+    _substrate.kill_substrate(None, ports=(port,))
 
 
 def http(port, method, path, body=None, headers=None, timeout=15):

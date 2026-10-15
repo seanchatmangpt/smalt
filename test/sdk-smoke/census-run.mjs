@@ -12,8 +12,13 @@ import { fileURLToPath } from "node:url";
 const REPO = process.env.SMALT_REPO || process.cwd();
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = path.join(HERE, ".logs");
-const AMQP_PORT = 5672;
-const ARM_PORT = 9443;
+// Port check must match the ports the substrate will actually bind. The
+// sb_census_replay.sh front door exports SMALT_TEST_*; when unset, defaults
+// are the front-door ports (unchanged behavior). For a private-port census
+// run, export SMALT_TEST_AMQP_PORT/SMALT_TEST_ARM_PORT from the documented
+// private range 39000-39999 (docs/DEV_LOOP.md "Private port allocation").
+const AMQP_PORT = Number(process.env.SMALT_TEST_AMQP_PORT || 5672);
+const ARM_PORT = Number(process.env.SMALT_TEST_ARM_PORT || 9443);
 const POLL_DEADLINE_MS = 60_000;
 
 const log = (...a) => console.log("[census-run]", ...a);
@@ -38,8 +43,11 @@ async function main() {
   for (const port of [AMQP_PORT, ARM_PORT]) {
     if (!(await checkFree(port))) {
       console.error(
-        `[census-run] port ${port} is occupied. Remediation: ` +
-        `lsof -ti tcp:${port} | xargs kill -9`,
+        `[census-run] port ${port} is occupied. Do NOT kill the holder (it may ` +
+        `be another lane's live substrate). Either wait for it to exit, or run ` +
+        `a private-port census: export SMALT_TEST_AMQP_PORT / ` +
+        `SMALT_TEST_ARM_PORT from the private range 39000-39999 ` +
+        `(docs/DEV_LOOP.md "Private port allocation") and rerun.`,
       );
       process.exitCode = 3;
       return;

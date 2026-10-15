@@ -33,7 +33,41 @@ defmodule Smalt.AshExtension.SubstrateResource.ManualRead do
       {:ok, table} ->
         rows = Store.list(table)
 
-        {:ok, Enum.map(rows, fn row -> build(query.resource, row) end)}
+        case Enum.find(rows, &(!is_map(&1))) do
+          nil ->
+            # Lens-3 cycle 5: same vacuous-identity class as
+            # Smalt.Semantic.StoreRead (lens-3 cycle 2) — struct/2 does not
+            # enforce allow_nil?, so a row with a nil or blank primary key
+            # projected an identity-less Ash struct. Fence on the resource's
+            # compiled primary-key attributes; refuse typed.
+            pk_names = primary_key_names(query.resource)
+
+            case Enum.find(rows, fn row ->
+                   Enum.any?(pk_names, fn k ->
+                     not identity?(Map.get(row, k) || Map.get(row, Atom.to_string(k)))
+                   end)
+                 end) do
+              nil ->
+                {:ok, Enum.map(rows, fn row -> build(query.resource, row) end)}
+
+              bad_row ->
+                {:error,
+                 "substrate_resource: vacuous identity under #{inspect(table)} " <>
+                   "(primary key #{inspect(pk_names)} = #{inspect(bad_row)}) — refusing read " <>
+                   "instead of projecting an identity-less row"}
+            end
+
+          bad ->
+            # Lens-2 cycle 4: Store is an untyped key-value table; a
+            # non-map value under a substrate key crashed the WHOLE Ash
+            # read with FunctionClauseError (the boundary crash class
+            # lens-1 closed at the ledger boundaries). Same discipline:
+            # a malformed row refuses the read typed — never a crash,
+            # never a silent skip.
+            {:error,
+             "substrate_resource: non-map Store row under #{inspect(table)} " <>
+               "(#{inspect(bad)}) — refusing read instead of projecting garbage"}
+        end
 
       {:error, reason} ->
         {:error,
@@ -41,6 +75,18 @@ defmodule Smalt.AshExtension.SubstrateResource.ManualRead do
            "(#{inspect(reason)}) -- extension not applied or verifier never ran"}
     end
   end
+
+  defp primary_key_names(resource) do
+    resource
+    |> Ash.Resource.Info.attributes()
+    |> Enum.filter(& &1.primary_key?)
+    |> Enum.map(& &1.name)
+  end
+
+  # Lens-4 cycle 1: identity?/1 generalizes to Smalt.Projection.Identity
+  # (whitespace-only / invisible-format-only ids carry zero visible
+  # identity bits).
+  defp identity?(id), do: Smalt.Projection.Identity.valid?(id)
 
   defp build(resource, row) when is_map(row) do
     attrs =
@@ -56,7 +102,9 @@ defmodule Smalt.AshExtension.SubstrateResource.ManualRead do
     metadata =
       case Info.matter_scope_result(resource) do
         {:ok, scopes} -> %{matter_scope: scopes}
-        :error -> %{}
+        # generated_info.ex's matter_scope_result/1 returns
+        # {:ok, matter_scope} | {:error, :not_found} — never bare :error.
+        {:error, _} -> %{}
       end
 
     resource

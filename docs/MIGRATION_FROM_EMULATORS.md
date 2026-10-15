@@ -80,7 +80,9 @@ Port overrides are application env only — `config/config.exs` keys
 - **Blob defaults are stricter than Azurite.** Containers are created
   `immutable: true` with 1095-day retention by default
   (`lib/smalt/data_plane/blob_storage.ex`); overwrites under legal hold or a
-  locked policy return 409 `ContainerLocked`. Azurite enforces immutability
+  locked policy return 409 `ContainerLocked`. `immutabilityPeriodSinceCreationInDays`
+  is clamped to an integer 0..146000 days (Azure's max), else 400
+  `InvalidXmlDocument`. Azurite enforces immutability
   only when policies are configured.
 - **Cosmos surface is point operations only** (create/get/list/put/delete
   docs). No SQL query engine — the Cosmos emulator supports

@@ -65,6 +65,16 @@ defmodule Smalt.Compliance.C3CosmosTest do
     assert hm["x-ms-alt-content-path"] == "dbs/#{@db}/colls/#{@coll}"
     assert hm["x-ms-session-token"] =~ ~r/^\d+#\d+$/
     assert String.to_integer(hm["x-ms-lsn"]) >= 0
+
+    # Lens-3 cross-court round 2: the response content-type fact is pinned
+    # byte-identical on the ARM surface (c1: `application/json; charset=utf-8`);
+    # the Cosmos plane emits through the same send_json seam — pin it here too.
+    assert hm["content-type"] == "application/json; charset=utf-8"
+
+    # Lens-2 cycle 2 doc-parity: C3_COSMOS.md row 1 claims the request-charge
+    # CONSTANT is "fenced as such" — now it actually is. Real Cosmos computes
+    # per-request RU; the constant is the registered KNOWN divergence.
+    assert hm["x-ms-request-charge"] == "1.0"
   end
 
   test "404 NotFound carries request-charge / session-token / lsn too" do
@@ -83,6 +93,9 @@ defmodule Smalt.Compliance.C3CosmosTest do
     body = Jason.decode!(resp.body)
     assert body["code"] == "NotFound"
     assert body["message"] == "Entity with the specified id does not exist in the system."
+
+    # Lens-3: error envelopes carry the same content-type as successes.
+    assert hm["content-type"] == "application/json; charset=utf-8"
   end
 
   # ---------------------------------------------------------------------------
@@ -282,6 +295,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
     create_db()
     create_coll()
     create_doc("d1")
+    create_doc("d2", "globex")
 
     resp =
       req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
@@ -293,7 +307,27 @@ defmodule Smalt.Compliance.C3CosmosTest do
       )
 
     assert resp.status == 200
-    assert Jason.decode!(resp.body)["_count"] >= 1
+    feed = Jason.decode!(resp.body)
+
+    # Mutant-kill: not a bare count. Cross-partition SELECT * must return BOTH
+    # partitions' documents, identified by id — a query engine that ignores the
+    # query text and returns an arbitrary subset (or a single partition) fails.
+    assert feed["_count"] == 2
+    assert MapSet.new(feed["Documents"], & &1["id"]) == MapSet.new(["d1", "d2"])
+
+    # Partition-scoped query (no enablecrosspartition, pk header set) must
+    # return ONLY the acme-partition document — kills the "scan everything"
+    # mutant on the scoped path.
+    scoped =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [{"content-type", "application/query+json"}, @pk_hdr],
+        body: ~s({"query":"SELECT * FROM c"})
+      )
+
+    assert scoped.status == 200
+    scoped_feed = Jason.decode!(scoped.body)
+    assert scoped_feed["_count"] == 1
+    assert Enum.map(scoped_feed["Documents"], & &1["id"]) == ["d1"]
   end
 
   test "a query POST never creates a document" do
@@ -318,6 +352,152 @@ defmodule Smalt.Compliance.C3CosmosTest do
       )
 
     assert resp2.status == 400
+  end
+
+  # Lens-4: cosmos-lens3's authorized RAISE landed (row 18 x-ms-continuation,
+  # cosmos.ex:557/590/602). Court: the token is an ORDER-based resume cursor
+  # (id > last_id), it rides the response ONLY on truncation, a forged token
+  # (ledger position ahead of this container's ledger) is a 400, and a
+  # malformed token is a 400. A query engine that ignores the header on
+  # resume, emits a token on the last page, or admits forged tokens fails.
+  test "continuation token: honored on resume, absent on last page, forged/malformed -> 400" do
+    create_db()
+    create_coll()
+
+    for id <- ["d0", "d1", "d2", "d3"], do: create_doc(id)
+
+    q_headers = [
+      {"content-type", "application/query+json"},
+      {"x-ms-documentdb-query-enablecrosspartition", "true"}
+    ]
+
+    q_body = ~s({"query":"SELECT * FROM c"})
+
+    # Page 1 (untruncated): 200, all four docs, NO continuation header —
+    # a token on the last page would hang an SDK paging loop.
+    page1 =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers,
+        body: q_body
+      )
+
+    assert page1.status == 200
+    feed1 = Jason.decode!(page1.body)
+    assert feed1["_count"] == 4
+    assert MapSet.new(feed1["Documents"], & &1["id"]) == MapSet.new(["d0", "d1", "d2", "d3"])
+    hm1 = header_map(page1)
+    refute Map.has_key?(hm1, "x-ms-continuation")
+
+    # Resume with a well-formed token cursoring past d1: the ORDER-based
+    # cursor must return ONLY d2, d3 (a resume that ignores the token
+    # returns all four and fails).
+    lsn = String.to_integer(hm1["x-ms-lsn"])
+
+    resume =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers ++ [{"x-ms-continuation", "1##{lsn}:d1"}],
+        body: q_body
+      )
+
+    assert resume.status == 200
+    feed2 = Jason.decode!(resume.body)
+    assert Enum.map(feed2["Documents"], & &1["id"]) == ["d2", "d3"]
+    assert feed2["_count"] == 2
+
+    # Forged token: ledger position (999999) ahead of this container's
+    # ledger — 400 BadRequest, never a silent resume.
+    forged =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers ++ [{"x-ms-continuation", "1#999999:d1"}],
+        body: q_body
+      )
+
+    assert forged.status == 400
+
+    # Malformed token (no colon cursor): 400.
+    malformed =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers ++ [{"x-ms-continuation", "garbage"}],
+        body: q_body
+      )
+
+    assert malformed.status == 400
+  end
+
+  # Lens-4 (cosmos): the LIST feed paginates too. The token is a version-2
+  # namespace cursor — a v1 query token fed to the list surface is a typed
+  # 400 (real Cosmos: tokens are bound to their feed; a foreign/logically
+  # invalid token is rejected — see docs + sources in
+  # tmp/errc/cosmos-lens4/cycle-1.md).
+  test "list feed continuation: truncation token, resume, cross-namespace 400" do
+    create_db()
+    create_coll()
+
+    for i <- 1..4, do: create_doc("d#{i}")
+
+    page1 = req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs")
+    assert page1.status == 200
+    # Untruncated feed: no token (loop-termination contract).
+    refute Map.has_key?(header_map(page1), "x-ms-continuation")
+
+    # A forged v1 (query-namespace) token on the list surface: 400.
+    forged =
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [{"x-ms-continuation", "1#1:d1"}]
+      )
+
+    assert forged.status == 400
+
+    # A well-formed v2 token bound to a DIFFERENT feed (foreign db/coll
+    # prefix) is a 400 — tokens are feed-bound, not just namespace-bound.
+    # LSN is valid for this container's ledger, so only the prefix check
+    # can refuse it.
+    lsn = String.to_integer(header_map(page1)["x-ms-lsn"])
+
+    foreign =
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [{"x-ms-continuation", "2##{lsn}:otherdb/othercoll/d1"}]
+      )
+
+    assert foreign.status == 400
+  end
+
+  # Lens-7 cycle-1: emit-then-resume ROUND-TRIP. The existing courts
+  # hand-build tokens from the observed x-ms-lsn; none feeds the server's
+  # own emitted token back. This pins the emission/parse pair end to end:
+  # emission format (v2 namespace, cursor = last id of the page), the
+  # ORDER-based resume (no skip, no repeat), and loop termination
+  # (last page carries no token).
+  test "list feed emitted token round-trips: emit -> resume -> terminate" do
+    create_db()
+    create_coll()
+
+    # 101 docs so the feed truncates at @query_limit (100).
+    for i <- 1..101, do: create_doc(String.pad_leading(Integer.to_string(i), 4, "0"))
+
+    page1 = req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs")
+    assert page1.status == 200
+    hm1 = header_map(page1)
+    tok = hm1["x-ms-continuation"]
+    assert is_binary(tok)
+    # v2 namespace + numeric ledger position + cursor tail.
+    assert tok =~ ~r/^2#\d+:\d{4}$/
+    feed1 = Jason.decode!(page1.body)
+    assert length(feed1) == 100
+    assert hd(feed1)["id"] == "0001"
+    assert List.last(feed1)["id"] == "0100"
+
+    # Resume with the server's OWN token: exactly the remainder, no
+    # repeats, and the last page carries no token (SDK loop terminates).
+    resume =
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [{"x-ms-continuation", tok}]
+      )
+
+    assert resume.status == 200
+    feed2 = Jason.decode!(resume.body)
+    assert Enum.map(feed2, & &1["id"]) == ["0101"]
+    refute Map.has_key?(header_map(resume), "x-ms-continuation")
   end
 
   # ---------------------------------------------------------------------------
@@ -346,12 +526,69 @@ defmodule Smalt.Compliance.C3CosmosTest do
 
     body = Jason.decode!(resp.body)
     assert body["kind"] == "DatabaseAccount"
-    assert is_list(body["writableLocations"])
+    # Mutant-kill: pin the full location contract, not just "is a list" — the
+    # SDK reads `name` + `databaseAccountEndpoint` and must be pointed back at
+    # THIS egress plane (conn.scheme://host:port/).
+    base = "http://127.0.0.1:#{port()}/"
+    location = %{"name" => "East US", "databaseAccountEndpoint" => base}
+
+    assert body["writableLocations"] == [location]
+    assert body["readableLocations"] == [location]
+    assert body["enableMultipleWriteLocations"] == false
+    assert body["id"] == "smalt"
+    assert body["userConsistencyPolicy"]["defaultConsistencyLevel"] == "Session"
   end
 
   # ---------------------------------------------------------------------------
   # Former GAP rows, now fixed and fenced CONFORMANT
   # ---------------------------------------------------------------------------
+
+  # Lens-7 cycle-3: QUERY-feed emit-then-resume ROUND-TRIP (pairs with the
+  # cycle-1 list-feed court). The query courts hand-build tokens from the
+  # observed x-ms-lsn; the server's own emitted v1 token was never fed
+  # back. Pins: emission format (~r/^1#\d+:\d{4}$/), ORDER-based resume
+  # with no repeats/skips, and loop termination (last page, no token).
+  test "query feed emitted token round-trips: emit -> resume -> terminate" do
+    create_db()
+    create_coll()
+
+    for i <- 1..101, do: create_doc(String.pad_leading(Integer.to_string(i), 4, "0"))
+
+    q_headers = [
+      {"content-type", "application/query+json"},
+      {"x-ms-documentdb-query-enablecrosspartition", "true"}
+    ]
+
+    q_body = ~s({"query":"SELECT * FROM c"})
+
+    page1 =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers,
+        body: q_body
+      )
+
+    assert page1.status == 200
+    hm1 = header_map(page1)
+    tok = hm1["x-ms-continuation"]
+    assert is_binary(tok)
+    assert tok =~ ~r/^1#\d+:\d{4}$/
+    feed1 = Jason.decode!(page1.body)
+    assert feed1["_count"] == 100
+    assert hd(feed1["Documents"])["id"] == "0001"
+    assert List.last(feed1["Documents"])["id"] == "0100"
+
+    resume =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers ++ [{"x-ms-continuation", tok}],
+        body: q_body
+      )
+
+    assert resume.status == 200
+    feed2 = Jason.decode!(resume.body)
+    assert Enum.map(feed2["Documents"], & &1["id"]) == ["0101"]
+    assert feed2["_count"] == 1
+    refute Map.has_key?(header_map(resume), "x-ms-continuation")
+  end
 
   test "throttle: default :infinity keeps the surface unthrottled (regression row)" do
     create_db()
@@ -477,6 +714,41 @@ defmodule Smalt.Compliance.C3CosmosTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Lens-2 cycle 3: doc-id grammar at the wire tier (real HTTP)
+  # ---------------------------------------------------------------------------
+
+  test "doc-id grammar at the wire tier: invalid body id -> 400 BadRequest envelope" do
+    create_db()
+    create_coll()
+
+    for bad <- ["a/b", "", String.duplicate("d", 256)] do
+      resp =
+        req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+          headers: [@pk_hdr, @json],
+          body: Jason.encode!(%{"id" => bad, "tenantId" => "acme"})
+        )
+
+      assert resp.status == 400, "expected 400 for id #{inspect(bad)}, got #{resp.status}"
+      body = Jason.decode!(resp.body)
+
+      assert body["code"] == "BadRequest"
+    end
+
+    # nothing stored under poisoned keys
+    {:ok, 200, _, docs} = Cosmos.list_docs(@db, @coll)
+    assert docs == []
+
+    # valid id still creates at the wire tier
+    resp =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [@pk_hdr, @json],
+        body: ~s({"id":"good","tenantId":"acme"})
+      )
+
+    assert resp.status == 201
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers (mirrors test/compliance/c4_blob.exs)
   # ---------------------------------------------------------------------------
 
@@ -492,10 +764,16 @@ defmodule Smalt.Compliance.C3CosmosTest do
   end
 
   defp create_doc(id, tenant \\ "acme") do
-    req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
-      headers: [@pk_hdr, @json],
-      body: ~s({"id":"#{id}","tenantId":"#{tenant}"})
-    )
+    pk_hdr = {"x-ms-documentdb-partitionkey", ~s(["#{tenant}"])}
+
+    resp =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [pk_hdr, @json],
+        body: ~s({"id":"#{id}","tenantId":"#{tenant}"})
+      )
+
+    assert resp.status == 201, "create_doc(#{id}) returned #{resp.status}: #{inspect(resp.body)}"
+    resp
   end
 
   defp get_doc(id) do

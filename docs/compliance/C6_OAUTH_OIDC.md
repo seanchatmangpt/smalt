@@ -14,7 +14,7 @@ Validates the smalt ARM-gateway STS (`Smalt.ArmGateway.Router` token issuance,
 Every row below was decided by a live run of the real router plug pipeline
 (Plug.Test through `Smalt.ArmGateway.Router.call/2` — real Joken HS256
 signing, real `Plug.Parsers` form decoding), per
-`test/compliance/c6_oauth.exs` (15 tests, 0 failures as of 2026-10-14).
+`test/compliance/c6_oauth.exs` (18 tests, 0 failures as of 2026-10-15).
 
 ## Row status legend
 
@@ -31,6 +31,7 @@ signing, real `Plug.Parsers` form decoding), per
 | 2 | invalid `grant_type=password` | **400 `{"error":"unsupported_grant_type"}`** + `Cache-Control: no-store` | RFC 6749 §5.2: 400 `unsupported_grant_type` | PASS (router.ex `validate_token_request/1`) |
 | 3 | missing `client_id` | **400 `{"error":"invalid_client"}`** | AAD/RFC §5.2: 400 `invalid_client` | PASS (same locus) |
 | 4 | garbage form body `not=a form` | **400 `{"error":"invalid_request"}`** | AAD/RFC §5.2: 400 `invalid_request` | PASS (same locus) |
+| 4a | duplicate `grant_type` in form (either order, last-wins decode) | **400 `{"error":"invalid_request"}`** (fail-closed; detected on raw body) | OAuth 2.1 draft security considerations / AAD parity: duplicates refused, never last-wins | CONFORMANT — landed by auth lane 2026-10-15, fenced both in auth_enforce_test (mint fuzz) and c6 compliance corpus |
 | 5 | tenant path `POST /{tid}/oauth2/v2.0/token` | 200, same envelope; tid echoed into `iss`/`tid` claims | AAD v2.0 tenant-scoped token endpoint | PASS (router.ex:624) |
 | 6 | `/common/oauth2/v2.0/token` | 200 (falls to the `:tenant_id` route, tid="common") | AAD: /common issues tokens only with param-derived tid | DEV-MODE (router.ex:624) |
 
@@ -94,8 +95,8 @@ signing, real `Plug.Parsers` form decoding), per
 
 ## Receipt
 
-- Falsifier run: `mix test test/compliance/c6_oauth.exs` → **17 tests, 0 failures**
-  (2026-10-14; all `:c6_gap` pins flipped to CONFORMANT assertions).
+- Falsifier run: `mix test test/compliance/c6_oauth.exs` → **18 tests, 0 failures**
+  (2026-10-15 re-measured; prior `:c6_gap` pins flipped to CONFORMANT assertions).
 - Full gate: c1+c2+c3+c4+c5+c6+c7 + smalt_arm_gateway + smalt_services +
   auth_enforce → **141 tests, 0 failures** (16 excluded pre-existing tags).
 - Regression rows updated for the new §5.2 contract: the two

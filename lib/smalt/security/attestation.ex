@@ -37,28 +37,30 @@ defmodule Smalt.Security.Attestation do
         {:error, 400, "attestationFailedVerdict"}
 
       true ->
-        now = System.system_time(:second)
+        # Crash-class law (lens-5): a hostile measurement_params shape (e.g. a
+        # tuple value) must be a typed refusal, never an encode raise escaping
+        # the attest path. Same 400 envelope as every other failed verdict.
+        with {:ok, payload_hash} <- payload_hash(measurement_params) do
+          now = System.system_time(:second)
 
-        claims = %{
-          "iss" => "https://smalt-attestation.local/",
-          "iat" => now,
-          "exp" => now + @ttl_seconds,
-          "x-ms-attestation-type" => type || @attestation_type,
-          "x-ms-compliance-status" => @compliance_status,
-          "x-ms-isolation-tee" => @tee_type,
-          "x-ms-runtime" => %{
-            "jti" => System.unique_integer([:positive]) |> to_string(),
-            "client_payload_hash" =>
-              measurement_params
-              |> canonical()
-              |> Jason.encode!()
-              |> then(&:crypto.hash(:sha256, &1))
-              |> Base.encode16(case: :lower)
+          claims = %{
+            "iss" => "https://smalt-attestation.local/",
+            "iat" => now,
+            "exp" => now + @ttl_seconds,
+            "x-ms-attestation-type" => type || @attestation_type,
+            "x-ms-compliance-status" => @compliance_status,
+            "x-ms-isolation-tee" => @tee_type,
+            "x-ms-runtime" => %{
+              "jti" => System.unique_integer([:positive]) |> to_string(),
+              "client_payload_hash" => payload_hash
+            }
           }
-        }
 
-        token = ReceiptSigner.sign(claims)
-        {:ok, token, claims}
+          token = ReceiptSigner.sign(claims)
+          {:ok, token, claims}
+        else
+          {:error, :invalid_payload} -> {:error, 400, "attestationFailedVerdict"}
+        end
     end
   end
 
@@ -114,4 +116,17 @@ defmodule Smalt.Security.Attestation do
   end
 
   defp canonical(other), do: other
+
+  # Total: canonicalization + encode of hostile shapes (tuple keys/values)
+  # raises; the attest path must refuse typed, never raise (lens-5).
+  defp payload_hash(measurement_params) do
+    {:ok,
+     measurement_params
+     |> canonical()
+     |> Jason.encode!()
+     |> then(&:crypto.hash(:sha256, &1))
+     |> Base.encode16(case: :lower)}
+  rescue
+    _ -> {:error, :invalid_payload}
+  end
 end

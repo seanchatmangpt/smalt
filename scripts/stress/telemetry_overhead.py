@@ -9,7 +9,7 @@ Runs scripts/stress/telemetry_driver.exs three times via `mix run`:
 Computes overhead % (b vs a) and counter-contention cost (c vs a), asserts
 overhead < 5%, prints a receipt. Real runs only; exits nonzero on failure.
 
-Usage: python3 scripts/stress/telemetry_overhead.py [--puts 5000] [--repo /Users/sac/smalt]
+Usage: python3 scripts/stress/telemetry_overhead.py [--puts 5000] [--repo REPO]
 """
 
 import argparse
@@ -23,7 +23,13 @@ RESULT_RE = re.compile(r"^RESULT_JSON: (.*)$", re.M)
 
 
 def run_mode(repo: str, mode: str, puts: int, env_extra: dict) -> dict:
-    env = {"PATH": "/Users/sac/.erlmcp/otp-28.3.1/bin:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin", "HOME": __import__("os").environ.get("HOME", ""), "MIX_ENV": "dev", **env_extra}
+    # PATH: prefer the pinned erlmcp OTP if present, else the ambient PATH
+    # (checkout-relative, no hardcoded user paths).
+    erlmcp_bin = "/Users/sac/.erlmcp/otp-28.3.1/bin"
+    path = (f"{erlmcp_bin}:{os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin')}"
+            if os.path.isdir(erlmcp_bin)
+            else os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"))
+    env = {"PATH": path, "HOME": __import__("os").environ.get("HOME", ""), "MIX_ENV": "dev", **env_extra}
     env.update({k: v for k, v in __import__("os").environ.items() if k in ("MIX_BUILD_ROOT",)})
 
     cmd = ["mix", "run", "--no-start", "scripts/stress/telemetry_driver.exs"]
@@ -50,7 +56,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--puts", type=int, default=5000)
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--repo", default="/Users/sac/smalt")
+    ap.add_argument(
+    "--repo",
+    default=os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))),
+)
     ap.add_argument("--json-out", default="")
     args = ap.parse_args()
 

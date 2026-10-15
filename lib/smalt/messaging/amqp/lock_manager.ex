@@ -44,10 +44,45 @@ defmodule Smalt.Amqp.LockManager do
     <<u0::48, 4::4, u1::12, 2::2, u2::62>> |> format_uuid()
   end
 
-  defp format_uuid(<<a::32, b::16, c::16, d::16, e::48>>) do
+  @doc """
+  Canonical lock-token form: dashed lowercase UUID string. Wire tokens arrive
+  as raw 16-byte AMQP uuid values (rhea `string_to_uuid` round-trip); the
+  store keys them in the dashed string form `new_token/0` mints.
+  """
+  @spec format_uuid(<<_::128>>) :: String.t()
+  def format_uuid(<<a::32, b::16, c::16, d::16, e::48>>) do
     :io_lib.format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [a, b, c, d, e])
     |> IO.iodata_to_binary()
     |> String.downcase()
+  end
+
+  @doc """
+  Inverse of `format_uuid/1`: dashed UUID string -> raw 16 bytes. The AMQP
+  delivery-tag carries the raw form (rhea `uuid_to_string` on the client);
+  the store keys the dashed form.
+  """
+  @spec token_to_raw(String.t()) :: <<_::128>>
+  def token_to_raw(dashed) when is_binary(dashed) do
+    <<a::32, b::16, c::16, d::16, e::48>> =
+      dashed |> String.replace("-", "") |> Base.decode16!(case: :mixed)
+
+    <<a::32, b::16, c::16, d::16, e::48>>
+  end
+
+  @doc """
+  Wire delivery-tag layout for lock tokens. The Service Bus SDKs construct
+  the client-side lockToken with `shouldReorderLockToken: true`
+  (@azure/service-bus 7.10.0 serviceBusMessage.js:296, all receiver call sites
+  pass true): the raw uuid bytes are reordered .NET-GUID style
+  ([b3,b2,b1,b0,b5,b4,b7,b6,rest]) before uuid_to_string. Delivering the
+  straight uuid layout made every client echo a permuted token on
+  update-disposition -> 410 MESSAGE_LOCK_LOST (census session probes).
+  """
+  @spec token_to_wire(String.t()) :: <<_::128>>
+  def token_to_wire(dashed) when is_binary(dashed) do
+    <<b0, b1, b2, b3, b4, b5, b6, b7, rest::binary-size(8)>> = token_to_raw(dashed)
+
+    <<b3, b2, b1, b0, b5, b4, b7, b6, rest::binary>>
   end
 
   # -- Message locks -----------------------------------------------------------

@@ -27,7 +27,9 @@ defmodule Smalt.Amqp.SasVerifierTest do
       end
 
     skn = Keyword.get(opts, :skn, "RootManageSharedAccessKey")
-    sig = Keyword.get(opts, :sig, sign(URI.decode(sr), se))
+    # String-to-sign is the URL-ENCODED sr, exactly as it appears in the token
+    # (SAS spec / real-SDK form; see SasVerifier.check_signature/3).
+    sig = Keyword.get(opts, :sig, sign(sr, se))
     fields = Keyword.get(opts, :fields, "sr=#{sr}&sig=#{sig}&se=#{se}&skn=#{skn}")
     "SharedAccessSignature " <> fields
   end

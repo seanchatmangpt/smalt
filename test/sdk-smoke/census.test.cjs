@@ -158,9 +158,13 @@ async function renewalPeekCase() {
   assert.equal(peeked.length, 1, "PEEK_NONEMPTY_REQUIRED");
   assert.deepEqual(Buffer.from(peeked[0].body), Buffer.from([7, 0, 8]), "PEEK_BODY_EXACT");
   const message = await receiveOne(receiver);
-  const before = message.lockedUntilUtc.getTime();
+  const before = receiver.sessionLockedUntilUtc.getTime();
   await wait(30);
-  const renewed = await receiver.renewMessageLock(message);
+  // ServiceBusSessionReceiverImpl.renewMessageLock() throws unconditionally
+  // (@azure/service-bus 7.10.0 sessionReceiver.js:431) — the session-dialect
+  // API is renewSessionLock(). Against the pre-fix broker this probe died in
+  // the SDK before reaching the wire, which masked the peek reply crash.
+  const renewed = await receiver.renewSessionLock();
   assert.ok(renewed.getTime() > before, "MESSAGE_RENEW_MUST_EXTEND");
   await receiver.completeMessage(message);
   assert.equal(

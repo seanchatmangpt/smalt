@@ -34,19 +34,19 @@ defmodule EgressWiringTest do
     :ok = create_key("rsa-key")
 
     plain = :crypto.strong_rand_bytes(48)
-    b64 = Base.encode64(plain)
+    b64url = Base.url_encode64(plain, padding: false)
 
-    conn = call(:post, "/keys/rsa-key/encrypt", body: %{"alg" => "RSA-OAEP-256", "value" => b64})
+    conn = call(:post, "/keys/rsa-key/encrypt", body: %{"alg" => "RSA-OAEP-256", "value" => b64url})
 
     assert conn.status == 200
     ct = Jason.decode!(conn.resp_body)
-    assert is_binary(ct["value"]) and ct["value"] != b64
+    assert is_binary(ct["value"]) and ct["value"] != b64url
     assert ct["kid"] =~ "/keys/rsa-key"
 
     conn = call(:post, "/keys/rsa-key/decrypt", body: %{"alg" => "RSA-OAEP-256", "value" => ct["value"]})
 
     assert conn.status == 200
-    assert Jason.decode!(conn.resp_body)["value"] == b64
+    assert Jason.decode!(conn.resp_body)["value"] == b64url
   end
 
   test "A256GCM (oct key) encrypt -> decrypt round trip carries iv and tag" do
@@ -56,9 +56,9 @@ defmodule EgressWiringTest do
     })
 
     plain = :crypto.strong_rand_bytes(32)
-    b64 = Base.encode64(plain)
+    b64url = Base.url_encode64(plain, padding: false)
 
-    conn = call(:post, "/keys/oct-key/encrypt", body: %{"alg" => "A256GCM", "value" => b64})
+    conn = call(:post, "/keys/oct-key/encrypt", body: %{"alg" => "A256GCM", "value" => b64url})
 
     assert conn.status == 200
     ct = Jason.decode!(conn.resp_body)
@@ -75,16 +75,16 @@ defmodule EgressWiringTest do
 
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
-    assert body["value"] == b64
+    assert body["value"] == b64url
     assert body["kid"] =~ "oct-key"
   end
 
   test "sign -> verify round trip (RS256), bad signature is 200 valid=false" do
     :ok = create_key("sig-key")
 
-    b64 = Base.encode64("payload to sign")
+    b64url = Base.url_encode64("payload to sign", padding: false)
 
-    conn = call(:post, "/keys/sig-key/sign", body: %{"alg" => "RS256", "value" => b64})
+    conn = call(:post, "/keys/sig-key/sign", body: %{"alg" => "RS256", "value" => b64url})
 
     assert conn.status == 200
     sig = Jason.decode!(conn.resp_body)
@@ -92,7 +92,7 @@ defmodule EgressWiringTest do
 
     conn =
       call(:post, "/keys/sig-key/verify",
-        body: %{"alg" => "RS256", "value" => b64, "signature" => sig["value"]}
+        body: %{"alg" => "RS256", "value" => b64url, "signature" => sig["value"]}
       )
 
     assert conn.status == 200
@@ -100,7 +100,7 @@ defmodule EgressWiringTest do
 
     conn =
       call(:post, "/keys/sig-key/verify",
-        body: %{"alg" => "RS256", "value" => b64, "signature" => Base.encode64("forged")}
+        body: %{"alg" => "RS256", "value" => b64url, "signature" => Base.encode64("forged")}
       )
 
     assert conn.status == 200
@@ -112,7 +112,7 @@ defmodule EgressWiringTest do
 
     cek = :crypto.strong_rand_bytes(32)
 
-    conn = call(:post, "/keys/wrap-key/wrapKey", body: %{"alg" => "RSA-OAEP-256", "value" => Base.encode64(cek)})
+    conn = call(:post, "/keys/wrap-key/wrapKey", body: %{"alg" => "RSA-OAEP-256", "value" => Base.url_encode64(cek, padding: false)})
 
     assert conn.status == 200
     wrapped = Jason.decode!(conn.resp_body)
@@ -121,7 +121,7 @@ defmodule EgressWiringTest do
       call(:post, "/keys/wrap-key/unwrapKey", body: %{"alg" => "RSA-OAEP-256", "value" => wrapped["value"]})
 
     assert conn.status == 200
-    assert Base.decode64!(Jason.decode!(conn.resp_body)["value"]) == cek
+    assert Base.url_decode64!(Jason.decode!(conn.resp_body)["value"], padding: false) == cek
   end
 
   test "action suffix is case-insensitive and unknown action is 404 RouteNotFound" do
@@ -130,7 +130,7 @@ defmodule EgressWiringTest do
     conn = call(:post, "/keys/case-key/ENCRYPT", body: %{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")})
     assert conn.status == 200
 
-    conn = call(:post, "/keys/case-key/notAnAction")
+    conn = call(:post, "/keys/case-key/notAnAction", body: %{"v" => 1})
     assert conn.status == 404
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotFound"
   end
@@ -195,10 +195,10 @@ defmodule EgressWiringTest do
   end
 
   test "metadata round trip: PUT ?comp=metadata then GET ?comp=metadata" do
-    create_container("metaacct", "c1")
+    create_container("metaacct", "c01")
 
     conn =
-      call(:put, "/metaacct/c1?comp=metadata",
+      call(:put, "/metaacct/c01?comp=metadata",
         headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-owner", "smalt"}, {"x-ms-meta-tier", "hot"}]
       )
 
@@ -206,7 +206,7 @@ defmodule EgressWiringTest do
     assert conn |> get_resp_header("etag") != []
 
     conn =
-      call(:get, "/metaacct/c1?comp=metadata", headers: [{"x-ms-version", "2021-12-02"}])
+      call(:get, "/metaacct/c01?comp=metadata", headers: [{"x-ms-version", "2021-12-02"}])
 
     assert conn.status == 200
     assert "smalt" in get_resp_header(conn, "x-ms-meta-owner")
@@ -219,11 +219,11 @@ defmodule EgressWiringTest do
   end
 
   test "container properties: GET ?restype=container returns etag and meta headers" do
-    create_container("propacct", "c1")
+    create_container("propacct", "c01")
 
-    call(:put, "/propacct/c1?comp=metadata", headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-env", "prod"}])
+    call(:put, "/propacct/c01?comp=metadata", headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-env", "prod"}])
 
-    conn = call(:get, "/propacct/c1?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+    conn = call(:get, "/propacct/c01?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
     assert conn.status == 200
     assert conn |> get_resp_header("etag") != []
     assert "prod" in get_resp_header(conn, "x-ms-meta-env")
@@ -235,9 +235,9 @@ defmodule EgressWiringTest do
   end
 
   test "blob list and create routes stay green alongside the new branches" do
-    create_container("greenacct", "c1")
+    create_container("greenacct", "c01")
 
-    conn = call(:get, "/greenacct/c1", headers: [{"x-ms-version", "2021-12-02"}])
+    conn = call(:get, "/greenacct/c01", headers: [{"x-ms-version", "2021-12-02"}])
     assert conn.status == 200
     assert conn.resp_body =~ "Blobs"
 
@@ -276,7 +276,7 @@ defmodule EgressWiringTest do
   end
 
   defp create_key(name) do
-    conn(:post, "/keys/#{name}/create", Jason.encode!(%{}))
+    conn(:post, "/keys/#{name}/create", Jason.encode!(%{"kty" => "RSA-HSM"}))
     |> put_req_header("content-type", "application/json")
     |> EgressRouter.call(@opts)
     |> then(fn c ->

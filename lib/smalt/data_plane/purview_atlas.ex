@@ -21,7 +21,14 @@ defmodule Smalt.DataPlane.Purview do
   @doc "Creates a single entity. `{:ok, 201, entity}` (guid assigned when absent)."
   def create_entity(body, opts \\ %{})
 
-  def create_entity(%{"entity" => entity}, opts), do: do_create(entity, opts)
+  # A non-map `entity` (or bare non-map body) is a 400, not a BadMapError 500.
+  # Note the envelope body itself is a map, so the bare-map clause must not
+  # catch `{"entity" => "x"}` — hence the explicit non-map-entity refusal here.
+  def create_entity(%{"entity" => entity}, _opts) when not is_map(entity) do
+    {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
+  end
+
+  def create_entity(%{"entity" => entity}, opts) when is_map(entity), do: do_create(entity, opts)
 
   def create_entity(entity, opts) when is_map(entity), do: do_create(entity, opts)
 
@@ -44,10 +51,11 @@ defmodule Smalt.DataPlane.Purview do
   def bulk_entities(body, opts \\ %{})
 
   def bulk_entities(%{"entities" => entities}, _opts) when is_list(entities) do
-    if length(entities) <= @max_bulk do
+    # Atomic: over-limit OR any non-map element -> 400 with no partial insert.
+    if length(entities) <= @max_bulk and Enum.all?(entities, &is_map/1) do
       entities =
         Enum.map(entities, fn e ->
-          e = Map.put_new(e || %{}, "guid", new_guid())
+          e = Map.put_new(e, "guid", new_guid())
           Store.put(:smalt_purview_entities, e["guid"], e)
           e
         end)
@@ -178,14 +186,23 @@ defmodule Smalt.DataPlane.Purview do
       end)
       |> MapSet.new()
 
+    # Relations include EVERY edge incident to a frontier node whose other
+    # endpoint is reachable (visited or newly discovered) — not only the edge
+    # that first discovered a node. The previous next_nodes-only version
+    # silently dropped back-edges in cyclic lineage graphs (a 2-cycle returned
+    # one of its two real relations). Cycle safety is unaffected: the walk
+    # still expands only through `next_nodes` (never re-expands visited nodes),
+    # so it terminates; only the relation REPORTING is edge-complete.
+    reachable = MapSet.union(visited, next_nodes)
+
     relations =
       for guid <- frontier,
           edge <- edges,
-          node <- next_nodes,
-          edge_touches?(edge, guid, node, dir),
+          other <- [other_endpoint(edge, guid, dir)],
+          other != nil and other != guid and MapSet.member?(reachable, other),
           reduce: relations do
         acc ->
-          {from, to} = ordered(edge, guid, node, dir)
+          {from, to} = ordered(edge, guid, other, dir)
 
           MapSet.put(acc, %{
             "fromEntityId" => from,
@@ -200,14 +217,27 @@ defmodule Smalt.DataPlane.Purview do
     walk(unvisited, visited, dir, depth - 1, edges, relations)
   end
 
-  defp edge_touches?(edge, guid, node, "both") do
-    (edge["fromEntityId"] == guid and edge["toEntityId"] == node) or
-      (edge["toEntityId"] == guid and edge["fromEntityId"] == node)
+  # The node on the other side of `edge` from `guid`, honoring `direction`.
+  # nil when the edge does not touch `guid` in the direction, or when it is a
+  # self-loop (`from == to == guid`, excluded in every direction).
+  defp other_endpoint(edge, guid, "input") do
+    if edge["toEntityId"] == guid and edge["fromEntityId"] != guid, do: edge["fromEntityId"]
   end
 
-  defp edge_touches?(edge, guid, node, "output"), do: edge["fromEntityId"] == guid and edge["toEntityId"] == node
+  defp other_endpoint(edge, guid, "output") do
+    if edge["fromEntityId"] == guid and edge["toEntityId"] != guid, do: edge["toEntityId"]
+  end
 
-  defp edge_touches?(edge, guid, node, "input"), do: edge["toEntityId"] == guid and edge["fromEntityId"] == node
+  defp other_endpoint(edge, guid, "both") do
+    from = edge["fromEntityId"]
+    to = edge["toEntityId"]
+
+    cond do
+      from == guid and to != guid -> to
+      to == guid and from != guid -> from
+      true -> nil
+    end
+  end
 
   defp ordered(edge, _guid, _node, "output"), do: {edge["fromEntityId"], edge["toEntityId"]}
   defp ordered(_edge, guid, node, "input"), do: {node, guid}

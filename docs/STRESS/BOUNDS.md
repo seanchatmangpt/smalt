@@ -12,7 +12,7 @@ FINDING and exits 1.
 | # | Bound | Documented | Engaged at (measured) | Error shape (measured, live substrate) | Verdict |
 |---|---|---|---|---|---|
 | 1 | Queue capacity | 4096 messages/queue | 4097th transfer, exactly at the boundary | link close `amqp:link-message-size-exceeded` + `:capacity` (`QueueStore.enqueue {:error,:capacity}`) | ENGAGED |
-| 2a | Blob PUT payload | "1MiB+1 -> 413" premise is FALSE (verified): NO 1MiB blob bound exists | 1MiB-1 / 1MiB / 1MiB+1 all **201**; 8,000,000 -> 201; 8,000,001 -> 413 | HTTP 413 `{"error":{"code":"RequestBodyTooLarge","message":"Blob exceeds the 8,000,000-byte request body limit."}}` (egress_router.ex:816-823; read_body length 8,000,000 at :793) | DOC-FIX APPLIED — gate corrected to assert the verified contract; see F1 |
+| 2a | Blob PUT payload | TWO bounds: (i) 1 MiB per-PUT blob fence (`blob_storage.ex:62 @max_put_bytes 1_048_576`, checked in `put_blob/5` after container-exists, so 404 `ContainerNotFound` outranks 413); (ii) 8,000,000-byte egress request-body cap (`egress_router.ex:868 read_body length: 8_000_000` -> `{:more, ...}` -> 413) | Wire probe (2026-10-15, bounds.py run): 1MiB-1 / 1MiB -> **201**; 1MiB+1 -> **413** `RequestBodyTooLarge` "Blob exceeds the 1,048,576-byte per-PUT limit"; 8,000,000 -> 413; 8,000,001 -> 413 | HTTP 413 `{"error":{"code":"RequestBodyTooLarge","message":"Blob exceeds the 1,048,576-byte per-PUT limit (RequestBodyTooLarge)."}}` | ENGAGED — both fences measured live; the earlier "no 1MiB blob bound" F1 doc-fix is superseded by the blob lane's fence landing (blob_hardening_test.exs ST6 B) |
 | 2b | AMQP message body | 1 MiB max body | 1MiB-1 accepted, 1MiB accepted at boundary (`>` not `>=`), 1MiB+1 refused | link close `amqp:link-message-size-exceeded` + `:too_large` (`QueueStore @max_body`) | ENGAGED |
 | 3 | Lock duration clamp | 100..30000 ms | PT1H->30000, PT0S->100, PT5S->5000 (deltas 29999/99-100/5000, tol 2s) | `x-opt-locked-until` delta matches the clamped duration, not the requested one (`LockManager.clamp_duration`) | ENGAGED |
 | 4 | CBS claims cap | 128 claims; over-capacity put-token -> 429 `CLAIM_CAPACITY` | fresh claim #123 of the probe = claim #128 total (6 pre-existing claims from prior probe authorizations: capacity 1 + lockclamp 3 + payload 1 + frame 1), i.e. the 129th fresh claim -> 429 | monotone 200s then 429s; `{429, "CLAIM_CAPACITY"}` (`CbsRouter @max_claims 128`) | ENGAGED (cap total = 128; documented "129th" is true only on a fresh claims table) |
@@ -22,15 +22,15 @@ FINDING and exits 1.
 
 ## Findings
 
-- **F1 (bound 2a, fail-closed exit)**: the documented 1 MiB blob-size bound
-  with `413 RequestBodyTooLarge` at 1 MiB+1 does not exist on the blob REST
-  surface. A 1 MiB+1 BlockBlob PUT is accepted with 201. The only 413 on the
-  egress router is the 8,000,000-byte request-body limit
-  (`lib/smalt/egress_router.ex:893-898`), which 1 MiB+1 never reaches; blob
-  storage (`lib/smalt/data_plane/blob_storage.ex`) has no size limit at all.
-  The 1 MiB bound is real only on the AMQP queue-message body
-  (`QueueStore @max_body`, bound 2b, engaged). Either add the blob-size check
-  or correct the documentation that claims a 1 MiB blob limit.
+- **F1 (bound 2a, RESOLVED 2026-10-15)**: the "no 1 MiB blob-size bound"
+  finding is superseded — the blob lane landed the real fence
+  (`blob_storage.ex:62 @max_put_bytes 1_048_576` -> 413
+  `RequestBodyTooLarge` at 1 MiB+1, `put_blob/5` checks container-exists
+  first so 404 outranks 413; pinned by `blob_hardening_test.exs` ST6 B).
+  The 8,000,000-byte egress request-body cap
+  (`lib/smalt/egress_router.ex:868 read_body length: 8_000_000` -> 413)
+  remains as the second, distinct bound. Wire probe receipt: 1MiB-1/1MiB ->
+  201, 1MiB+1 -> 413 per-PUT-limit message. See updated bound 2a row above.
 - **F1.5 (vacuity fix, applied)**: the KQL HTTP probes originally used
   `api-version=2021-03-01`; every request returned 400 `InvalidApiVersion`
   BEFORE reaching KQL, so "len2001/depth21/take1001 -> 400" passed for the
@@ -60,6 +60,11 @@ Last full run (after the 2a gate doc-fix and the KQL api-version vacuity
 fix): **20/20 checks PASS, verdict PASS, exit 0**, receipt
 `tmp/invariant-gates/bounds-receipt.json`, 2026-10-15, MIX_ENV=test substrate
 on private ports (arm 52275 / amqp 52278 / egress 52277 / mcp 52280).
+Later run same day (docs-corpus lane, post-blob-fence): **verdict FAIL, exit
+1** — the gate still asserts the superseded 2a contract (no 1 MiB bound) and
+observed len2001 -> HTTP 200 on bound 5; row 2a above documents the new
+fence. `scripts/stress/bounds.py` needs its 2a expectation updated (and
+bound-5 length-gate engagement re-checked) before the gate returns PASS.
 
 Complementary in-process exact-boundary receipt (own VM + Store): earlier
 `tmp/bounds-receipt.json` phase A — capacity 4096 accepted / 4097th

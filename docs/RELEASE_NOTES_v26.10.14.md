@@ -47,7 +47,12 @@ in-memory (ETS).
   ingest + KQL queries (`Smalt.DataPlane.KQL` engine: `where`/`order by`/
   `project`/`take` with a deterministic, injection-free AST); Resource Graph
   with an optional KQL pipeline and `$skipToken`; Purview Atlas v2. Routes
-  fail closed with `503 RouteNotReady` when a sibling module is uncompiled.
+  fail closed with `503 RouteNotReady` when a sibling module is uncompiled,
+  and the GraphLaw shape gate itself fails closed: an admitted resource type
+  with no compiled SHACL shape refuses validation (`{:refused, :no_shape}`)
+  instead of falling through to an implicit empty, permissive shape
+  (`lib/smalt/graphlaw/validator.ex`; pinned by
+  `test/smalt_graphlaw_validator_test.exs` "fail-closed shape resolution", 46/0).
 - **AMQP 1.0 messaging (`:5672`, Event Hubs lane `:5673`)** — full frame
   codec and connection lifecycle, SASL ANONYMOUS, Service Bus queues + DLQ,
   message/session locks, `$management` RPC with exact status tables, `$cbs`
@@ -87,10 +92,10 @@ in-memory (ETS).
 
 The authoritative ladder table lives in `README.md` (Verification
 ladder): tier, command, and what each tier proves are not restated
-here. Unique to this release, the latest court runs (2026-10-15):
-compliance courts c1..c7 — c1 21/0, c2 14/0, c3 21/0, c4 18/0, c5 16/0,
-c6 16/0, c7 16/0 (122 tests, 0 failures; receipts in
-`docs/compliance/`); CLI court `cd cli && cargo test` 1/0; mutation
+here. Unique to this release, the latest court runs (re-run 2026-10-15,
+docs-corpus-lens3 cycle 1): compliance courts c1..c7 — c1 25/0, c2 16/0,
+c3 23/0, c4 28/0, c5 16/0 (`--include amqp_wire`), c6 18/0, c7 16/0
+(**142 tests, 0 failures**; receipts in `docs/compliance/`); CLI court `cd cli && cargo test` 1/0; mutation
 court non-vacuous. Stress harnesses and receipts: `docs/STRESS/`. Full
 gate: `just gate` (doctor + T1 + T2 + T3 + T4 + bench-check); CI
 (`.github/workflows/ci.yml`, actionlint-clean) runs compile

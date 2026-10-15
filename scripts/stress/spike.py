@@ -31,12 +31,18 @@ import sys
 import threading
 import time
 
+import _substrate
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-ARM_PORT = int(os.environ.get("SMALT_BENCH_ARM_PORT", "9443"))
-DATA_PORT = int(os.environ.get("SMALT_BENCH_DATA_PORT", "8443"))
-TLS_PORT = int(os.environ.get("SMALT_BENCH_TLS_PORT", "9444"))
-AMQP_PORT = 5672
+# Own private block (DEV_LOOP table) — the old defaults were the front door
+# and reused SMALT_BENCH_* env names, so a spike run contended `just bench`.
+ARM_PORT = int(os.environ.get("SMALT_SPIKE_ARM_PORT", "39510"))
+DATA_PORT = int(os.environ.get("SMALT_SPIKE_EGRESS_PORT", "39511"))
+TLS_PORT = int(os.environ.get("SMALT_SPIKE_TLS_PORT", "39512"))
+AMQP_PORT = int(os.environ.get("SMALT_SPIKE_AMQP_PORT", "39513"))
+EVENT_HUBS_PORT = AMQP_PORT + 1
+MCP_PORT = int(os.environ.get("SMALT_SPIKE_MCP_PORT", "39515"))
 SUB_ID = "spike-sub"
 API_VERSION = "2021-01-01"
 
@@ -108,6 +114,9 @@ def spawn_substrate():
         f'{DATA_PORT}); '
         'Application.put_env(:smalt, :arm_tls_port, '
         f'{TLS_PORT}); '
+        f'Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); '
+        f'Application.put_env(:smalt, :event_hubs_port, {EVENT_HUBS_PORT}); '
+        f'Application.put_env(:smalt, :mcp_port, {MCP_PORT}); '
         'Application.ensure_all_started(:smalt)'
     )
     return subprocess.Popen(
@@ -122,50 +131,18 @@ def spawn_substrate():
 
 
 def port_open(port, timeout=0.25):
-    try:
-        with socket.create_connection((HOST, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+    return _substrate.port_open(port, timeout=timeout)
 
 
 def wait_for_port(port, proc, timeout_s=120.0):
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < timeout_s:
-        if proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        if port_open(port):
-            return time.monotonic() - t0
-        time.sleep(0.05)
-    fail_closed(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.05)
 
 
 def kill_substrate(proc):
-    """SIGKILL the process group, then sweep any surviving port holder."""
     if proc is None:
         return
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-    for port in (ARM_PORT, DATA_PORT, AMQP_PORT, TLS_PORT):
-        try:
-            out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                                 capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            out = ""
-        for pid in out.split():
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, AMQP_PORT, TLS_PORT, EVENT_HUBS_PORT, MCP_PORT))
 
 
 def fetch_bearer_token(port, timeout_s=10):
@@ -347,7 +324,7 @@ def print_receipt_table(receipt):
 def main():
     if subprocess.run(["which", "mix"], capture_output=True).returncode != 0:
         fail_closed("mix not in PATH")
-    for port in (ARM_PORT, DATA_PORT, TLS_PORT, AMQP_PORT):
+    for port in (ARM_PORT, DATA_PORT, TLS_PORT, AMQP_PORT, EVENT_HUBS_PORT, MCP_PORT):
         if port_open(port):
             holder = subprocess.run(
                 ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],

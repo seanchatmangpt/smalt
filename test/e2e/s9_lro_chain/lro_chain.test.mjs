@@ -97,7 +97,9 @@ test("s9 (1) LRO PUT storageAccount -> 202 + async headers, poll to Succeeded", 
   assert.ok(asyncUrl, "Azure-AsyncOperation header present");
   assert.ok(locationUrl, "Location header present");
   assert.equal(retryAfter, "1", `Retry-After ${retryAfter}`);
-  assert.match(asyncUrl, /^https:\/\/management\.smalt\.local\/subscriptions\/[^/]+\/operations\//);
+  // C1 row 10 (fenced): polling-URL host = request authority (same derivation
+  // as the OIDC envelopes) — no management.smalt.local anywhere on the wire.
+  assert.match(asyncUrl, /^https?:\/\/[^/]+\/subscriptions\/[^/]+\/operations\//);
 
   const op = put.json;
   assert.equal(op.status, "InProgress", `op status ${op.status}`);

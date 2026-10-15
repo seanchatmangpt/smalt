@@ -17,15 +17,19 @@ defmodule Smalt.DataPlane.ConditionalHeaders do
     if_match = header(headers, "if-match")
     if_none_match = header(headers, "if-none-match")
 
-    cond do
-      if_match != nil ->
-        if etag_matches?(if_match, current_etag), do: :proceed, else: {:halt, 412}
-
-      if_none_match != nil ->
-        if etag_matches?(if_none_match, current_etag), do: {:halt, 304}, else: :proceed
-
-      true ->
+    # RFC 7232 §6 precedence: If-Match is evaluated FIRST and independently
+    # (fail -> 412); only when it passes (or is absent) is If-None-Match
+    # evaluated (match -> 304). Previously If-Match's presence SKIPPED the
+    # If-None-Match evaluation entirely (cycle-31 fix; cycle-30 gate made
+    # this branch live on the blob read path).
+    if if_match != nil and not etag_matches?(if_match, current_etag) do
+      {:halt, 412}
+    else
+      if if_none_match != nil and etag_matches?(if_none_match, current_etag) do
+        {:halt, 304}
+      else
         :proceed
+      end
     end
   end
 

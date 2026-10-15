@@ -3,8 +3,8 @@
 Compliance court for smalt's Key Vault / Managed HSM data-plane surface against
 the real Key Vault REST 7.x contract and the Secure Key Release (SKR) spec.
 Every row carries a code citation and live-probe evidence; CONFORMANT rows are
-fenced by `test/compliance/c2_keyvault.exs` (14 tests, 0 failures,
-2026-10-14). Sibling suites `test/kv_tls_test.exs` +
+fenced by `test/compliance/c2_keyvault.exs` (16 tests, 0 failures,
+2026-10-15; lens-3 added C2.4b response-content-type cross-court fence). Sibling suites `test/kv_tls_test.exs` +
 `test/data_plane/key_vault_actions_test.exs`: 38 tests, 0 failures.
 
 Sources: [encrypt](https://learn.microsoft.com/en-us/rest/api/keyvault/keys/encrypt/encrypt),

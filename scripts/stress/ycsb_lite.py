@@ -31,13 +31,18 @@ import sys
 import threading
 import time
 
+import _substrate
+
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-# Dedicated stress-heap ports (default 9443/8443/5672 are held by another
-# lane's live substrate session; the harness never touches it).
-ARM_PORT = int(os.environ.get("YCSB_ARM_PORT", "39443"))
-DATA_PORT = int(os.environ.get("YCSB_DATA_PORT", "38443"))
-AMQP_PORT_ALT = int(os.environ.get("YCSB_AMQP_PORT", "38445"))
+# Dedicated stress-heap ports, DEV_LOOP private-port table block (39472-39475;
+# the old 39443 default collided with the mutation court's table allocation).
+# The harness never touches the front door.
+ARM_PORT = int(os.environ.get("YCSB_ARM_PORT", "39472"))
+DATA_PORT = int(os.environ.get("YCSB_DATA_PORT", "39473"))
+AMQP_PORT_ALT = int(os.environ.get("YCSB_AMQP_PORT", "39474"))
+TLS_PORT = int(os.environ.get("YCSB_TLS_PORT", "39476"))
+MCP_PORT = int(os.environ.get("YCSB_MCP_PORT", "39477"))
 SUB_ID = "bench-sub"
 API_VERSION = "2021-01-01"
 X_MS_VERSION = "2021-04-10"
@@ -147,7 +152,9 @@ def spawn_substrate():
         "Application.put_env(:smalt, :event_hubs_port, "
         f"{AMQP_PORT_ALT + 1}); "
         "Application.put_env(:smalt, :arm_tls_port, "
-        f"{ARM_PORT + 1}); "
+        f"{TLS_PORT}); "
+        "Application.put_env(:smalt, :mcp_port, "
+        f"{MCP_PORT}); "
         "{:ok, _} = Application.ensure_all_started(:smalt); "
         "Process.sleep(:infinity)"
     )
@@ -161,58 +168,18 @@ def spawn_substrate():
 
 
 def wait_for_port(port, proc=None, timeout_s=90.0):
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc is not None and proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                pass
-        except OSError:
-            time.sleep(0.01)
-        else:
-            return time.monotonic() - t0
-    fail_closed(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.01)
 
 
 def kill_substrate(proc):
     if proc is None:
         return
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-    # sweep any surviving BEAM child on either plane
-    for port in (ARM_PORT, DATA_PORT):
-        try:
-            out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                                 capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            out = ""
-        for pid in out.split():
-            try:
-                os.kill(int(pid), signal.SIGKILL)
-            except (ValueError, ProcessLookupError, PermissionError):
-                pass
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, AMQP_PORT_ALT, TLS_PORT, MCP_PORT))
 
 
 def wait_port_free(port, timeout_s=30.0):
-    t0 = time.monotonic()
-    while time.monotonic() - t0 < timeout_s:
-        try:
-            socket.create_connection((HOST, port), timeout=0.2).close()
-        except OSError:
-            return True
-        time.sleep(0.05)
-    return False
+    return _substrate.wait_port_free(port, timeout_s=timeout_s)
 
 
 class Zipf:

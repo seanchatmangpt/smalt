@@ -20,7 +20,11 @@ set -euo pipefail
 umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CERT_DIR="${SMALT_CERT_DIR:-$ROOT/.smalt/tls}"
+# CERT_DIR resolution order: SMALT_CERT_DIR > SMALT_ROOT/.smalt/tls > script checkout.
+# SMALT_ROOT support: scripts/doctor.py --fix runs the minter against SMALT_ROOT
+# repos; without this the mint landed in the script's own checkout while the
+# doctor check inspected SMALT_ROOT — the remediation could never satisfy the check.
+CERT_DIR="${SMALT_CERT_DIR:-${SMALT_ROOT:-$ROOT}/.smalt/tls}"
 CA_CERT="$CERT_DIR/ca-cert.pem"
 CA_KEY="$CERT_DIR/ca-key.pem"
 CERT="$CERT_DIR/dev-cert.pem"

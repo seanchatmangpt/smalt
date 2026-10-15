@@ -219,11 +219,20 @@ defmodule Smalt.DSPy.Remediation do
      }}
   end
 
+  # The generator (scripts/gen_error_codes.py esc/1) escapes literal pipes in
+  # cells as `\|`. Splitting on every `|` turned one escaped pipe into two
+  # extra cells -> a false "malformed ERROR_CODES row (7 cells, expected 6)"
+  # raise on a row the generator itself emitted (witnessed lens 4). Split on
+  # unescaped pipes only, then unescape within each cell.
+  @row_split_regex ~r{(?<!\\)\|}
+
   defp split_row(line) do
     line
     |> String.trim_trailing("|")
-    |> String.split("|")
-    |> Enum.map(&String.trim/1)
+    |> String.split(@row_split_regex)
+    |> Enum.map(fn cell ->
+      cell |> String.replace("\\|", "|") |> String.trim()
+    end)
     |> tl()
   end
 end

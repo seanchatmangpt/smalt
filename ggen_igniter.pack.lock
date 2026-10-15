@@ -3,8 +3,8 @@
     "smalt-substrate-pack": {
       "locked_by": "26.10.7",
       "name": "smalt-substrate-pack",
-      "sha256": "70a135be75786a82fc722a5bd6c4304e56ad93708a282b3411daac32ac1e0d98",
-      "source": "/Users/sac/ggen-marketplace/packs/smalt-substrate-pack",
+      "sha256": "83a3bb18af8844aaf2b25639c448eb4e2aba2415319fa1998a95071a4a39177f",
+      "source": "../ggen-marketplace/packs/smalt-substrate-pack",
       "version": "26.10.14"
     }
   },

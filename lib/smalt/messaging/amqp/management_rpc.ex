@@ -1,4 +1,5 @@
 defmodule Smalt.Amqp.ManagementRpc do
+  require Logger
   @moduledoc """
   `$management` request/response handling (Service Bus emulator dialect).
 
@@ -82,8 +83,9 @@ defmodule Smalt.Amqp.ManagementRpc do
 
     case normalize_op(op) do
       :renew_lock -> renew_lock(body, correlation_id, context, now)
-      :renew_session_lock -> renew_session_lock(body, correlation_id, context, now)
-      :peek_message -> peek_message(body, correlation_id, context, now)
+      :renew_session_lock -> renew_session_lock(body, request[:queue], correlation_id, context, now)
+      :peek_message -> peek_message(body, request[:queue], correlation_id, context, now)
+      :update_disposition -> update_disposition(body, request[:queue], correlation_id, context, now)
       :unknown -> respond(501, "UNSUPPORTED_OPERATION", nil, correlation_id)
     end
   end
@@ -135,9 +137,9 @@ defmodule Smalt.Amqp.ManagementRpc do
   # com.microsoft:renew-session-lock
   # ===========================================================================
 
-  defp renew_session_lock(body, correlation_id, context, now) do
+  defp renew_session_lock(body, queue_from_request, correlation_id, context, now) do
     session_id = body_field(body, "session-id")
-    queue = body_field(body, "queue") || Map.get(body, :queue)
+    queue = body_field(body, "queue") || Map.get(body, :queue) || queue_from_request
 
     cond do
       blank?(session_id) ->
@@ -162,7 +164,7 @@ defmodule Smalt.Amqp.ManagementRpc do
   # com.microsoft:peek-message
   # ===========================================================================
 
-  defp peek_message(body, correlation_id, context, now) do
+  defp peek_message(body, queue_from_request, correlation_id, context, now) do
     from_seq = coerce_long(fetch_or(body, "from-sequence-number", 0))
     count = coerce_long(fetch_or(body, "message-count", 1))
 
@@ -175,20 +177,118 @@ defmodule Smalt.Amqp.ManagementRpc do
 
       true ->
         case invoke(context, :queue_store, @default_queue_store, :peek, [
-               Map.get(body, :queue),
+               queue_from_request || Map.get(body, :queue),
                [from_sequence_number: from_seq, message_count: count, now: now]
              ]) do
           {:ok, []} ->
             respond(204, "NO_CONTENT", nil, correlation_id)
 
           {:ok, messages} when is_list(messages) ->
-            payload = %{"messages" => Enum.map(messages, &%{"message" => message_body(&1)})}
+            payload = %{
+              "messages" =>
+                Enum.map(messages, fn m ->
+                  %{"message" => message_body(m)}
+                  |> maybe_put_seq(m)
+                end)
+            }
 
             respond(200, "OK", payload, correlation_id)
 
           {:error, _reason} ->
             respond(404, "NOT_FOUND", nil, correlation_id)
         end
+    end
+  end
+
+  # ===========================================================================
+  # com.microsoft:update-disposition
+  # ===========================================================================
+
+  # Service Bus emulator dialect `com.microsoft:update-disposition`
+  # ($management): settles locked deliveries outside the link disposition
+  # path. `disposition-status` values per dialect: completed / abandoned /
+  # defered / suspended (note the dialect's historic "defered" spelling).
+  defp update_disposition(body, queue_from_request, correlation_id, context, now) do
+    lock_tokens =
+      body
+      |> body_field("lock-tokens")
+      |> case do
+        # AMQP array-of-uuid (rhea wrap_array) decodes to {:array, elements};
+        # a bare list is the internal test form. List.wrap alone wraps the
+        # whole tuple as one bogus token -> 410 (census dead-letter probe).
+        {:array, toks} when is_list(toks) -> toks
+        other -> List.wrap(other)
+      end
+
+    status = body_field(body, "disposition-status")
+
+    cond do
+      lock_tokens == [] or lock_tokens == [nil] ->
+        respond(400, "LOCK_TOKEN_REQUIRED", nil, correlation_id)
+
+      blank?(status) ->
+        respond(400, "DISPOSITION_STATUS_REQUIRED", nil, correlation_id)
+
+      true ->
+        case settle_each(lock_tokens, status, body, queue_from_request, context, now) do
+          {:ok, :settled} ->
+            respond(200, "OK", nil, correlation_id)
+
+          {:error, :lock_lost} ->
+            respond(410, "MESSAGE_LOCK_LOST", nil, correlation_id)
+        end
+    end
+  end
+
+  defp settle_each([], _status, _body, _queue, _context, _now), do: {:ok, :settled}
+
+  defp settle_each([token | rest], status, body, queue_from_request, context, now) do
+    raw = normalize_token(token)
+
+    with {:ok, lock} <- fetch_lock(raw, context),
+         queue = lock[:queue] || queue_from_request,
+         {:ok, :settled} <- apply_disposition(status, lock, body, queue, context) do
+      settle_each(rest, status, body, queue_from_request, context, now)
+    else
+      {:error, _reason} -> {:error, :lock_lost}
+      :error -> {:error, :lock_lost}
+    end
+  end
+
+  defp fetch_lock(raw, context) do
+    case invoke(context, :lock_manager, @default_lock_manager, :get, [raw]) do
+      {:ok, %{queue: queue, seq: seq}} when is_binary(queue) and is_integer(seq) ->
+        {:ok, %{lock_token: raw, queue: queue, seq: seq}}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp apply_disposition("completed", lock, _body, queue, context),
+    do: store_call(context, queue, :complete, [queue, lock.seq])
+
+  defp apply_disposition("abandoned", lock, _body, queue, context),
+    do: store_call(context, queue, :release, [queue, lock.seq, [now_ms: System.system_time(:millisecond)]])
+
+  defp apply_disposition("suspended", lock, body, queue, context) do
+    reason = body_field(body, "dead-letter-reason") || body_field(body, "deadletter-reason") || "DeadLetter"
+    description = body_field(body, "dead-letter-description") || body_field(body, "deadletter-description")
+
+    store_call(context, queue, :deadletter, [queue, lock.seq, reason, description])
+  end
+
+  defp apply_disposition("defered", lock, _body, queue, context),
+    do: store_call(context, queue, :defer, [queue, lock.seq])
+
+  defp apply_disposition(_other, _lock, _body, _queue, _context), do: :error
+
+  defp store_call(context, _queue, name, args) do
+    case invoke(context, :queue_store, @default_queue_store, name, args) do
+      {:ok, _} -> {:ok, :settled}
+      {:ok, :ok} -> {:ok, :settled}
+      :ok -> {:ok, :settled}
+      _other -> {:error, :lock_lost}
     end
   end
 
@@ -204,6 +304,8 @@ defmodule Smalt.Amqp.ManagementRpc do
       {:symbol, "com.microsoft:renew-lock"} -> :renew_lock
       {:symbol, "com.microsoft:renew-session-lock"} -> :renew_session_lock
       {:symbol, "com.microsoft:peek-message"} -> :peek_message
+      "com.microsoft:update-disposition" -> :update_disposition
+      {:symbol, "com.microsoft:update-disposition"} -> :update_disposition
       _ -> :unknown
     end
   end
@@ -219,7 +321,10 @@ defmodule Smalt.Amqp.ManagementRpc do
 
   defp fetch_or(_body, _key, default), do: default
 
-  defp normalize_token({:uuid, raw}) when is_binary(raw), do: raw
+  # Wire tokens are raw 16-byte AMQP uuid values; the lock store keys them as
+  # dashed lowercase strings (LockManager.new_token/0). rhea string_to_uuid
+  # round-trips the delivered token, so normalize before lookup.
+  defp normalize_token({:uuid, <<_::128>> = raw}), do: Smalt.Amqp.LockManager.format_uuid(raw)
   defp normalize_token(token) when is_binary(token), do: token
   defp normalize_token(token) when is_integer(token), do: token
   defp normalize_token(_other), do: nil
@@ -257,6 +362,14 @@ defmodule Smalt.Amqp.ManagementRpc do
       correlation_id: correlation_id
     }
   end
+
+  # Peeked messages carry their per-queue sequence number; the SDK's
+  # ManagementClient tracks _lastPeekedSequenceNumber from the embedded raw
+  # message's x-opt-sequence-number annotation.
+  defp maybe_put_seq(map, %{seq: seq}) when is_integer(seq),
+    do: Map.put(map, "sequence-number", seq)
+
+  defp maybe_put_seq(map, _), do: map
 
   defp message_body(%{body: body}), do: body
   defp message_body(%{"body" => body}), do: body

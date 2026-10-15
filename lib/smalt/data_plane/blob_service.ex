@@ -114,11 +114,16 @@ defmodule Smalt.DataPlane.BlobService do
   def xml_escape(nil), do: ""
 
   def xml_escape(value) when is_binary(value) do
+    # XML 1.0 forbids most C0 control bytes in content (only \t \n \r are
+    # legal). Hostile stored names / marker or prefix query params must never
+    # produce ill-formed enumeration XML — illegal control bytes are dropped;
+    # & < > " are entity-escaped as before.
     value
     |> String.replace("&", "&amp;")
     |> String.replace("<", "&lt;")
     |> String.replace(">", "&gt;")
     |> String.replace("\"", "&quot;")
+    |> String.replace(~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/, "")
   end
 
   def xml_escape(value), do: value |> to_string() |> xml_escape()
@@ -127,14 +132,32 @@ defmodule Smalt.DataPlane.BlobService do
   # Container metadata
   # ---------------------------------------------------------------------------
 
+  @doc false
+  # Public pre-check so callers (container create) can validate metadata
+  # BEFORE any state transition — Azure validates at create, a refused create
+  # must not leave the container behind.
+  def check_metadata(metadata) do
+    with :ok <- validate_metadata_names(metadata),
+         :ok <- validate_metadata_values(metadata) do
+      :ok
+    end
+  end
+
   @doc """
-  PUT ?restype=container&comp=metadata — replace the container's metadata
-  dict. Returns `{:ok, 200, headers}` or `{:error, 404, "ContainerNotFound", msg}`.
+  PUT ?restype=container&comp=metadata — replace (never merge) the container's
+  metadata dict (Azure Put Metadata replaces the full set). Returns
+  `{:ok, 200, headers}` or `{:error, 404/400, code, msg}`.
   """
   def set_container_metadata(account, container, metadata, _headers \\ %{}) do
     container_key = "#{account}/#{container}"
+    # Engine totality (cycle-18): nil metadata = empty replace set (Azure:
+    # Put Metadata with no x-ms-meta-* headers replaces the full set with {}),
+    # never a FunctionClauseError 500.
+    metadata = metadata || %{}
 
-    with {:ok, _} <- Store.get(:smalt_blob_containers, container_key) do
+    with {:ok, _} <- Store.get(:smalt_blob_containers, container_key),
+         :ok <- validate_metadata_names(metadata),
+         :ok <- validate_metadata_values(metadata) do
       BlobStorage.ensure_policy_table()
       existing = policy_row(container_key)
       policy =
@@ -151,6 +174,7 @@ defmodule Smalt.DataPlane.BlobService do
        }}
     else
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
+      {:error, 400, _code, _msg} = invalid -> invalid
     end
   end
 
@@ -233,6 +257,40 @@ defmodule Smalt.DataPlane.BlobService do
       {k, v} -> {to_string(k), v}
     end)
   end
+
+  # Azure parity (Put Metadata): metadata names must be valid C# identifiers;
+  # violations answer 400 InvalidMetadata and store nothing.
+  @meta_name_re ~r/^[A-Za-z_][A-Za-z0-9_]*$/
+
+  defp validate_metadata_names(meta) when is_map(meta) do
+    bad = Enum.find(meta, fn {k, _} -> not Regex.match?(@meta_name_re, k) end)
+
+    case bad do
+      nil -> :ok
+      {k, _} -> {:error, 400, "InvalidMetadata", "Invalid metadata name (must be a valid C# identifier): #{k}."}
+    end
+  end
+
+  defp validate_metadata_names(_), do: :ok
+
+  # Azure parity (Put Metadata): metadata VALUES ride HTTP headers (they are
+  # re-emitted as x-ms-meta-* on GET properties) — they must be valid header
+  # values. Control bytes (NUL/CR/LF/DEL, other C0) are rejected; printable
+  # ASCII and UTF-8 pass (both directions accept them). Previously hostile
+  # values stored fine and then raised Plug.Conn.InvalidHeaderError (a 500)
+  # on GET properties.
+  @meta_value_re ~r/^[^\x00-\x1F\x7F]*$/
+
+  defp validate_metadata_values(meta) when is_map(meta) do
+    bad = Enum.find(meta, fn {_k, v} -> not (is_binary(v) and Regex.match?(@meta_value_re, v)) end)
+
+    case bad do
+      nil -> :ok
+      {k, _} -> {:error, 400, "InvalidMetadata", "Invalid metadata value for #{k}: values must be valid HTTP header values (no control characters)."}
+    end
+  end
+
+  defp validate_metadata_values(_), do: :ok
 
   defp meta_headers(meta) do
     Map.new(meta, fn {k, v} -> {"x-ms-meta-#{k}", to_string(v)} end)

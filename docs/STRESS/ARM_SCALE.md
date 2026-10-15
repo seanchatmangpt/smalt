@@ -7,8 +7,9 @@ fail-closed, boots its own substrate, writes
 
     python3 scripts/stress/arm_scale.py
 
-The substrate is spawned on dedicated ports (ARM 19443, TLS 19444,
-egress 18443, AMQP 15672/15673) via `Application.put_env` injection so
+The substrate is spawned on dedicated ports (ARM 39453, TLS 39454,
+egress 39455, AMQP/event-hubs 39456/39457; `SMALT_ARMSCALE_*_PORT` overrides,
+per the DEV_LOOP private-port table) via `Application.put_env` injection so
 the run never collides with another live substrate or lane on the
 default ports, and tears it down (process-group SIGKILL + port sweep
 restricted to its own ports) in a `finally`.

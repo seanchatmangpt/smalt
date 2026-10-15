@@ -27,15 +27,22 @@ REQUIRED_BINARIES = [
     ("terraform", "Terraform CLI"),
 ]
 
+# Port set mirrors scripts/bench.py: fixed defaults are the `just bench`
+# front door; SMALT_BENCH_* overrides let a private-port bench run put the
+# doctor's port-in-use court on the same private ports it will bind.
+_BENCH_ARM = int(os.environ.get("SMALT_BENCH_ARM_PORT", "9443"))
+_BENCH_DATA = int(os.environ.get("SMALT_BENCH_DATA_PORT", "8443"))
+_BENCH_AMQP = int(os.environ.get("SMALT_BENCH_AMQP_PORT", "5672"))
+
 REQUIRED_PORTS = [
-    (9443, "Control Plane REST (ARM)"),
-    (8443, "Data Plane REST (Egress)"),
-    (5672, "AMQP 1.0 Broker"),
+    (_BENCH_ARM, "Control Plane REST (ARM)"),
+    (_BENCH_DATA, "Data Plane REST (Egress)"),
+    (_BENCH_AMQP, "AMQP 1.0 Broker"),
 ]
 
-SUBSTRATE_URL = "http://127.0.0.1:9443/?api-version=2021-01-01"
+SUBSTRATE_URL = f"http://127.0.0.1:{_BENCH_ARM}/?api-version=2021-01-01"
 
-AMQP_PORT = 5672
+AMQP_PORT = _BENCH_AMQP
 AMQP_HEADER = b"AMQP\x00\x01\x00\x00"
 AMQP_HANDSHAKE_TIMEOUT = 2.0
 
@@ -149,7 +156,8 @@ def fix_mint_certs():
     if not CERT_SCRIPT.exists():
         raise DiagnosticFailure("dev-certs-missing", f"cert minter not found at {CERT_SCRIPT}",
                                 f"# inspect {CERT_SCRIPT}", fix=None)
-    out = subprocess.run(["bash", str(CERT_SCRIPT)], capture_output=True, text=True, timeout=60)
+    out = subprocess.run(["bash", str(CERT_SCRIPT)], capture_output=True, text=True, timeout=60,
+                         env=dict(os.environ, SMALT_ROOT=str(REPO_ROOT)))
     if out.returncode != 0:
         raise DiagnosticFailure(
             "dev-certs-missing",
@@ -198,7 +206,9 @@ def check_port(port, name):
         raise DiagnosticFailure(
             "port-in-use",
             f"Port {port} ({name}) is not free{holder}: {e}",
-            f"lsof -ti tcp:{port} | xargs kill",
+            f"wait for the holder to exit, or use a private port from the "
+            f"documented range 39000-39999 (docs/DEV_LOOP.md); never kill an "
+            f"unknown holder",
             # UNSAFE: killing an unknown process is never a --fix default;
             # applied only via --fix-unsafe --yes through CHECK_REGISTRY.
             fix=None,
@@ -207,13 +217,22 @@ def check_port(port, name):
         s.close()
 
 
-def probe_amqp_handshake(host="127.0.0.1", port=AMQP_PORT, timeout=AMQP_HANDSHAKE_TIMEOUT):
+def probe_amqp_handshake(host="127.0.0.1", port=None, timeout=None):
+    # port/timeout resolved at CALL time from module constants: a default like
+    # `port=AMQP_PORT` binds at import time — the same trap class as bench.py's
+    # witnessed mint_token defect (lens-2 cycle 4: deterministic 401 on the
+    # whole auto-scope path). doctor.py never re-picks AMQP_PORT today, so this
+    # was latent not live; the class is closed repo-wide regardless.
     """Informational only: the doctor runs pre-boot, so an absent broker is not a fault.
 
     When the port is LISTENING: send the AMQP protocol header, await any valid
     8-byte-header frame within `timeout`. Returns HANDSHAKE_OK, HANDSHAKE_DEGRADED
     (listening but never/short reply), or PASS-FREE (port not listening).
     """
+    if port is None:
+        port = AMQP_PORT
+    if timeout is None:
+        timeout = AMQP_HANDSHAKE_TIMEOUT
     try:
         with socket.create_connection((host, port), timeout=timeout) as s:
             s.settimeout(timeout)
@@ -407,9 +426,9 @@ def check_recent_receipts():
 CHECK_REGISTRY = [
     # (name, fn, unsafe_fix or None) — unsafe_fix applied only with --fix-unsafe --yes
     ("binaries", check_binaries, None),
-    ("port-9443", lambda: check_port(9443, REQUIRED_PORTS[0][1]), lambda: fix_kill_port_holders(9443)),
-    ("port-8443", lambda: check_port(8443, REQUIRED_PORTS[1][1]), lambda: fix_kill_port_holders(8443)),
-    ("port-5672", lambda: check_port(5672, REQUIRED_PORTS[2][1]), lambda: fix_kill_port_holders(5672)),
+    ("port-arm", lambda: check_port(_BENCH_ARM, REQUIRED_PORTS[0][1]), lambda: fix_kill_port_holders(_BENCH_ARM)),
+    ("port-data", lambda: check_port(_BENCH_DATA, REQUIRED_PORTS[1][1]), lambda: fix_kill_port_holders(_BENCH_DATA)),
+    ("port-amqp", lambda: check_port(_BENCH_AMQP, REQUIRED_PORTS[2][1]), lambda: fix_kill_port_holders(_BENCH_AMQP)),
     ("gitignore-coverage", check_gitignore, None),
     ("dev-key-perms", check_dev_key_perms, None),
     ("dev-certs", check_dev_certs, None),
@@ -428,7 +447,10 @@ def substrate_summary():
     ports = {}
     for port, name in REQUIRED_PORTS:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # No SO_REUSEADDR here (unlike check_port): on BSD/macOS reuseaddr lets
+        # bind succeed while a live LISTENer holds the port, misreading held
+        # ports as "free". TIME_WAIT is fine to treat as held for this
+        # informational dict; only a live-listener verdict must be exact.
         try:
             s.bind(("127.0.0.1", port))
             listening = False

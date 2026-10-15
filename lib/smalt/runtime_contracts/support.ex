@@ -96,7 +96,7 @@ defmodule Smalt.RuntimeContracts.Support do
     fun.()
     :ok
   rescue
-    e -> {:fail, Exception.message(e)}
+    e -> {:fail, Exception.format(:error, e, __STACKTRACE__)}
   catch
     :exit, e -> {:fail, "exit: #{inspect(e)}"}
     kind, e -> {:fail, "#{kind}: #{inspect(e)}"}

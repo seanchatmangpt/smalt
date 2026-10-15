@@ -35,6 +35,7 @@ defmodule Smalt.Projection.Admission do
   """
 
   alias Smalt.Ocel.DeviationAdmission
+  alias Smalt.Projection.Identity
   alias Smalt.Store
 
   @table :smalt_admission_matrix
@@ -152,16 +153,27 @@ defmodule Smalt.Projection.Admission do
   (`Smalt.Ocel.DeviationAdmission.read_all/1`) into the matrix. Idempotent
   per record: rows are keyed by the deviation record `id`, so re-reading the
   same ledger does not duplicate rows.
+
+  A malformed (non-JSON) ledger line is a boundary crash class already fixed
+  in `Smalt.Projection.SemanticEpoch.timeline/1`; this adapter refuses it as
+  a typed ArgumentError naming the path — never the raw Jason.DecodeError
+  escape.
   """
   @spec from_store(String.t()) :: [record()]
   def from_store(path \\ DeviationAdmission.default_path()) do
     ensure_table()
 
-    case DeviationAdmission.read_all(path) do
+    DeviationAdmission.read_all(path)
+    |> case do
       {:ok, records} ->
-        Enum.map(records, fn rec ->
-          row = %__MODULE__{
-            id: "ledger_deviation:" <> rec["id"],
+        # Lens-2 cycle 5: a hand-tampered ledger record without a binary
+        # id crashed from_store ("arg" <> nil -> ArgumentError). Same
+        # identity-vacuity class as SemanticEpoch cycle 2 — refuse typed.
+        case refuse_degenerate_ids(records, path) do
+          :ok ->
+            Enum.map(records, fn rec ->
+            row = %__MODULE__{
+              id: "ledger_deviation:" <> rec["id"],
             family: :ledger_deviation,
             subject: "#{rec["referenceTraceId"]}/#{rec["candidateTraceId"]}",
             verdict: :deviation,
@@ -174,8 +186,66 @@ defmodule Smalt.Projection.Admission do
           row
         end)
 
+          bad ->
+            raise ArgumentError,
+                  "malformed deviation ledger at #{inspect(path)}: " <>
+                    "malformed_ledger_identity #{inspect(bad)}"
+        end
+
       {:error, reason} ->
-        raise ArgumentError, "cannot read deviation ledger at #{inspect(path)}: #{inspect(reason)}"
+        raise ArgumentError,
+              "cannot read deviation ledger at #{inspect(path)}: #{inspect(reason)}"
+    end
+  rescue
+    e in Jason.DecodeError ->
+      raise ArgumentError,
+            "malformed deviation ledger at #{inspect(path)}: #{Exception.message(e)}"
+  end
+
+  # Lens-2 cycle 5: identity fence for tampered ledger records (see
+  # from_store/1). Lens-3 cycle 1: the empty string IS a binary — it passed
+  # the fence and two blank-id records then BOTH mapped to row key
+  # "ledger_deviation:"; the second silently overwrote the first in the
+  # matrix (measured: stored_rows=[{"ledger_deviation:", "move_b"}], row
+  # "move_a" lost). A blank binary carries zero identity bits; refuse it on
+  # the same malformed_ledger_identity axis.
+  #
+  # Lens-3 cycle 3: duplicate NON-blank ids hit the same key collision —
+  # measured: from_store returned 2 rows but the matrix stored only the
+  # last ("move_b"); the first admission was silently lost. A ledger with
+  # two records of one id is a degenerate identity space; refuse typed.
+  @spec refuse_degenerate_ids([map()], String.t()) :: :ok | {:error, term()}
+  defp refuse_degenerate_ids(records, path) do
+    ids = Enum.map(records, & &1["id"])
+
+    # NOTE: the vacuous id may itself be nil, so Enum.find/2 (which returns
+    # the element) cannot distinguish "found nil" from "not found" — the
+    # lens-3 cycle-3 fence-bug regression. Walk indexed tuples instead.
+    # Lens-4 cycle 1: identity?/1 generalizes to Smalt.Projection.Identity
+    # (whitespace-only / invisible-format-only ids carry zero visible
+    # identity bits; they projected as PK "ledger_deviation:  " etc.).
+    case Enum.find(Enum.with_index(ids), fn {id, _} -> not Identity.valid?(id) end) do
+      nil ->
+        case find_dup(ids) do
+          nil -> :ok
+          dup -> {:error, {:duplicate_ledger_identity, path, dup}}
+        end
+
+      {bad, _i} ->
+        {:error, {:malformed_ledger_identity, path, bad}}
+    end
+  end
+
+  defp find_dup(ids) do
+    ids
+    |> Enum.reduce_while({:ok, MapSet.new()}, fn id, {:ok, seen} ->
+      if MapSet.member?(seen, id),
+        do: {:halt, {:dup, id}},
+        else: {:cont, {:ok, MapSet.put(seen, id)}}
+    end)
+    |> case do
+      {:dup, id} -> id
+      {:ok, _} -> nil
     end
   end
 
@@ -210,13 +280,31 @@ defmodule Smalt.Projection.Admission do
   # -- internals --------------------------------------------------------------
 
   # The projection owns its table (not in Smalt.Store @tables — the store
-  # module is producer-owned); create it lazily, idempotently.
+  # module is producer-owned); create it lazily, idempotently. Two defect
+  # classes closed here (lens-2 cycle 3):
+  #
+  #   * creation race: handle_event/4 fires concurrently in producer
+  #     processes — two callers can both see :undefined and both :ets.new;
+  #     the loser raised ArgumentError. A lost :ets.new now folds to :ok
+  #     (the winner's table stands).
+  #   * owner-exit loss: the table was owned by whichever transient process
+  #     created it — when that process exited, the WHOLE admission matrix
+  #     was silently deleted. The Store GenServer (permanent wherever the
+  #     projection is used) is the heir, so the table survives its creator.
   defp ensure_table do
     if :ets.info(@table) == :undefined do
-      :ets.new(@table, [:ordered_set, :public, :named_table, write_concurrency: true])
+      opts =
+        case Process.whereis(Store) do
+          nil -> [:ordered_set, :public, :named_table, write_concurrency: true]
+          owner -> [:ordered_set, :public, :named_table, write_concurrency: true, heir: owner]
+        end
+
+      :ets.new(@table, opts)
     end
 
     :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   # Family adapters: real verdict tuples in, typed (verdict, standing, code) out.

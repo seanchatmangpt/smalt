@@ -24,6 +24,7 @@ defmodule Smalt.Projection.SemanticEpoch do
   """
 
   alias Smalt.Ocel.DeviationAdmission
+  alias Smalt.Projection.Identity
 
   @default_receipts_dir Path.join([".ggen_igniter", "receipts"])
   @default_pack_lock "ggen_igniter.pack.lock"
@@ -73,57 +74,117 @@ defmodule Smalt.Projection.SemanticEpoch do
     deviations_path = Keyword.get(opts, :deviations_path, @default_deviations_path)
 
     lock = read_pack_lock(pack_lock_path)
-    {:ok, deviations} = DeviationAdmission.read_all(deviations_path)
 
-    epochs =
-      receipts_dir
-      |> list_receipt_files()
-      |> Enum.flat_map(&read_receipts/1)
-      |> Enum.map(&to_epoch_row(&1, lock))
-      |> Enum.map(&ensure_datetime/1)
-      |> Enum.sort(fn a, b ->
-        case DateTime.compare(a.started_at, b.started_at) do
-          :eq -> a.id <= b.id
-          :lt -> true
-          :gt -> false
-        end
-      end)
+    with {:ok, deviations} <- read_deviations(deviations_path),
+         {:ok, receipts} <- read_receipts(receipts_dir),
+         {:ok, receipts} <- refuse_duplicate_ids(receipts) do
+      epochs =
+        receipts
+        |> Enum.map(&to_epoch_row(&1, lock))
+        |> Enum.map(&ensure_datetime/1)
+        |> Enum.sort(fn a, b ->
+          case DateTime.compare(a.started_at, b.started_at) do
+            :eq -> a.id <= b.id
+            :lt -> true
+            :gt -> false
+          end
+        end)
 
-    {:ok,
-     %{
-       epochs: epochs,
-       pack_lock: lock,
-       deviations: deviations,
-       deviation_count: length(deviations)
-     }}
+      {:ok,
+       %{
+         epochs: epochs,
+         pack_lock: lock,
+         deviations: deviations,
+         deviation_count: length(deviations)
+       }}
+    end
   end
 
   ## Internals
 
-  defp list_receipt_files(dir) do
-    case File.ls(dir) do
-      {:ok, entries} ->
-        entries
-        |> Enum.filter(&String.ends_with?(&1, ".jsonl"))
-        |> Enum.sort()
-        |> Enum.map(&Path.join(dir, &1))
+  # Typed refusal (cycle-3): DeviationAdmission.read_all/1 decodes with
+  # Jason.decode!/1 and raises on a malformed deviations ledger. The epoch
+  # projection adapts that boundary raise into a typed refusal instead of a
+  # crash.
+  defp read_deviations(path) do
+    DeviationAdmission.read_all(path)
+  rescue
+    e in Jason.DecodeError -> {:error, {:malformed_deviation, path, e}}
+  end
 
-      {:error, _} ->
-        []
+  # Typed refusal (cycle-3 fuzz): a malformed JSONL line (including a
+  # truncated last line) refuses the timeline with file+line location —
+  # never a crash, never a silently-skipped receipt.
+  @spec read_receipts(String.t()) :: {:ok, [map()]} | {:error, {:malformed_receipt, term()}}
+  defp read_receipts(dir) do
+    with {:ok, entries} <- File.ls(dir) do
+      entries
+      |> Enum.filter(&String.ends_with?(&1, ".jsonl"))
+      |> Enum.sort()
+      |> Enum.map(&Path.join(dir, &1))
+      |> Enum.reduce_while({:ok, []}, fn path, {:ok, acc} ->
+        case File.read(path) do
+          {:ok, body} ->
+            decode_all(String.split(body, "\n", trim: true), path, 1, acc)
+
+          {:error, reason} ->
+            {:halt, {:error, {:receipt_unreadable, path, reason}}}
+        end
+      end)
     end
   end
 
-  defp read_receipts(path) do
-    path
-    |> File.read()
-    |> case do
-      {:ok, body} ->
-        body
-        |> String.split("\n", trim: true)
-        |> Enum.map(&Jason.decode!/1)
+  defp decode_all([], _path, _line_no, acc), do: {:cont, {:ok, acc}}
 
-      {:error, _} ->
-        []
+  defp decode_all([line | rest], path, line_no, acc) do
+    case Jason.decode(line) do
+      {:ok, receipt} ->
+        decode_all(rest, path, line_no + 1, [receipt | acc])
+
+      {:error, %Jason.DecodeError{} = err} ->
+        {:halt, {:error, {:malformed_receipt, path, line_no, err}}}
+    end
+  end
+
+  # Typed refusal (lens-2 cycle 2): a receipt without a binary id has no
+  # identity — R_missing_identity — and two such receipts would previously
+  # BOTH project (dup check filtered to binaries first), silently admitting
+  # the same manufacture act twice. Refuse instead: every projected epoch
+  # carries an identity.
+  #
+  # Lens-3 cycle 1: the empty string IS a binary — it passed the binary
+  # fence and projected with id "". A blank binary carries zero identity
+  # bits; refuse it on the same R_missing_identity axis.
+  #
+  # Lens-4 cycle 1: identity?/1 generalizes to Smalt.Projection.Identity —
+  # whitespace-only ("  \t") and invisible-format-only ("\\u200B") ids also
+  # carry zero VISIBLE identity bits and previously projected as-is.
+  defp refuse_duplicate_ids(receipts) do
+    ids = Enum.map(receipts, & &1["id"])
+
+    ids = Enum.with_index(ids)
+
+    case Enum.find(ids, fn {id, _} -> not Identity.valid?(id) end) do
+      nil ->
+        dup = find_dup(Enum.map(ids, fn {id, _} -> id end))
+
+        if dup, do: {:error, {:duplicate_receipt_id, dup}}, else: {:ok, receipts}
+
+      {bad, _i} ->
+        {:error, {:receipt_missing_id, bad}}
+    end
+  end
+
+  defp find_dup(ids) do
+    ids
+    |> Enum.reduce_while({:ok, MapSet.new()}, fn id, {:ok, seen} ->
+      if MapSet.member?(seen, id),
+        do: {:halt, {:dup, id}},
+        else: {:cont, {:ok, MapSet.put(seen, id)}}
+    end)
+    |> case do
+      {:dup, id} -> id
+      {:ok, _} -> nil
     end
   end
 
@@ -159,10 +220,15 @@ defmodule Smalt.Projection.SemanticEpoch do
       is_binary(standing) and standing != "alive" ->
         {:standing_drift, lock_digest}
 
+      # Fence (cycle-2 mutation court): a pack_name the lock does not admit
+      # is a forged/foreign stamp — drift, never a silent pass.
       is_nil(pack_name) ->
         {:no_pack, nil}
 
-      is_binary(lock_digest) and lock_digest != pack_digest ->
+      is_nil(lock_digest) ->
+        {:no_pack, nil}
+
+      lock_digest != pack_digest ->
         {:digest_drift, lock_digest}
 
       true ->
@@ -174,9 +240,14 @@ defmodule Smalt.Projection.SemanticEpoch do
   defp nil_from_blank(""), do: nil
   defp nil_from_blank(other), do: other
 
+  # Lens-3 cycle 6: boundary crash class — a non-binary timestamp (tampered
+  # receipt with an integer epoch, list, etc.) raised FunctionClauseError
+  # out of DateTime.from_iso8601/1 and crashed the WHOLE timeline. The
+  # malformed-value policy here is the existing lenient one (unparseable →
+  # nil → epoch-0 sort bucket), extended to non-binaries.
   defp parse_ts(nil), do: nil
-
-  defp parse_ts(ts) do
+  defp parse_ts(_non_binary), do: nil
+  defp parse_ts(ts) when is_binary(ts) do
     case DateTime.from_iso8601(ts) do
       {:ok, dt, _} -> dt
       _ -> nil

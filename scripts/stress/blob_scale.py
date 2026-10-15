@@ -23,6 +23,8 @@ import subprocess
 import sys
 import threading
 import time
+
+import _substrate
 import xml.etree.ElementTree as ET
 
 ARM_PORT = 9443
@@ -130,42 +132,12 @@ def spawn_substrate():
 def kill_substrate(proc):
     if proc is None:
         return
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    try:
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-    try:
-        out = subprocess.run(["lsof", "-ti", f"tcp:{DATA_PORT}"],
-                             capture_output=True, text=True, timeout=10).stdout
-    except Exception:
-        out = ""
-    for pid in out.split():
-        try:
-            os.kill(int(pid), signal.SIGKILL)
-        except (ValueError, ProcessLookupError, PermissionError):
-            pass
+    _substrate.kill_substrate(proc, ports=(DATA_PORT,))
 
 
 def wait_for_port(port, proc, timeout_s=120.0):
-    t0 = time.monotonic()
-    deadline = t0 + timeout_s
-    while time.monotonic() < deadline:
-        if proc is not None and proc.poll() is not None:
-            fail_closed(f"substrate exited rc={proc.poll()} before binding :{port}")
-        try:
-            with socket.create_connection((HOST, port), timeout=0.25):
-                pass
-            return time.monotonic() - t0
-        except OSError:
-            time.sleep(0.05)
-    fail_closed(f"substrate never bound :{port} within {timeout_s}s")
+    return _substrate.wait_for_port(port, proc=proc, timeout_s=timeout_s,
+                                    fail=fail_closed, poll=0.05)
 
 
 def create_container(name):

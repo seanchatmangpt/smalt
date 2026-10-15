@@ -111,6 +111,14 @@ defmodule Compliance.C2KeyvaultTest do
   # verification itself is fenced by test/kv_tls_test.exs) --------------
 
   defp https(ctx, method, path, body \\ nil, headers \\ []) do
+    {s, _h, b} = https_full(ctx, method, path, body, headers)
+    {s, b}
+  end
+
+  # Lens-3 cross-court round 2: header-exposing variant — the response
+  # content-type fact is pinned byte-identical on ARM (c1) and Cosmos (c3);
+  # the Key Vault plane shares the same send_json seam and gets the same pin.
+  defp https_full(ctx, method, path, body \\ nil, headers \\ []) do
     req =
       [
         "#{method} #{path} HTTP/1.1",
@@ -131,7 +139,8 @@ defmodule Compliance.C2KeyvaultTest do
     :ssl.close(sock)
 
     [header_block | rest] = String.split(data, "\r\n\r\n", parts: 2)
-    ["HTTP/1.1", status, _] = String.split(header_block, " ", parts: 3)
+    [status_line | header_lines] = String.split(header_block, "\r\n")
+    ["HTTP/1.1", status | _] = String.split(status_line, " ", parts: 3)
 
     body_out =
       case rest do
@@ -142,7 +151,17 @@ defmodule Compliance.C2KeyvaultTest do
           ""
       end
 
-    {String.to_integer(status), body_out}
+    headers =
+      header_lines
+      |> Enum.map(fn line ->
+        case String.split(line, ": ", parts: 2) do
+          [k, v] -> {String.downcase(k), v}
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    {String.to_integer(status), headers, body_out}
   end
 
   defp recv_all(sock, acc) do
@@ -199,6 +218,15 @@ defmodule Compliance.C2KeyvaultTest do
     # exportable flag semantics
     assert created["attributes"]["exportable"] == false
     refute Map.has_key?(created, "key_material")
+  end
+
+  # C2.1 pin: kty default. Real Key Vault defaults to RSA-HSM (HSM-protected)
+  # when kty is omitted; the wire must not silently fall back to software RSA.
+  test "C2.1-pin create with no kty defaults to RSA-HSM", ctx do
+    name = "c2-kty-default-#{System.unique_integer([:positive])}"
+    created = create_key(ctx, name, %{"attributes" => %{"enabled" => true}})
+
+    assert created["key"]["kty"] == "RSA-HSM"
   end
 
   test "C2.1b exportable flag follows the release policy", ctx do
@@ -293,6 +321,18 @@ defmodule Compliance.C2KeyvaultTest do
 
     {s, b} = https(ctx, "GET", "/keys/no-such-c2-#{System.unique_integer()}/versions")
     assert s == 404 and json(b)["error"]["code"] == "KeyNotFound"
+  end
+
+  test "C2.4b response content-type is the same JSON bytes the ARM and Cosmos planes emit (lens-3 cross-court round 2)",
+       ctx do
+    name = "c2-ct-#{System.unique_integer([:positive])}"
+
+    {200, headers, _body} = https_full(ctx, "POST", "/keys/#{name}/create", Jason.encode!(%{"kty" => "RSA-HSM"}))
+    hm = Map.new(headers)
+    assert hm["content-type"] == "application/json; charset=utf-8"
+
+    {404, err_headers, _body} = https_full(ctx, "GET", "/keys/no-such-c2-ct-#{System.unique_integer([:positive])}")
+    assert Map.new(err_headers)["content-type"] == "application/json; charset=utf-8"
   end
 
   # -- C2.5 sign / verify -------------------------------------------------------

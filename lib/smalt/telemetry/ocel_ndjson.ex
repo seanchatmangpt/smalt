@@ -21,6 +21,9 @@ defmodule Smalt.Telemetry.OcelNdjson do
     * `"ocel:eventTypes"` / `"ocel:objectTypes"`: union of declared names
       plus every type actually used — assembly can never manufacture a
       used-but-undeclared type.
+    * Object-reference closure: every relationship `objectId` must
+      reference an object present in the SAME assembled document — a
+      dangling reference is a typed refusal, never a silent admit.
   """
 
   require Logger
@@ -87,7 +90,25 @@ defmodule Smalt.Telemetry.OcelNdjson do
     )
     |> case do
       {:error, violations} -> {:error, violations}
-      {:ok, acc} -> {:ok, finalize(acc)}
+      {:ok, acc} -> closure_check(acc)
+    end
+  end
+
+  # Closure law (object-reference side, mirroring the used-but-undeclared
+  # type law): every relationship `objectId` in the assembled document
+  # must reference an object id present in the SAME assembled document.
+  # Fail closed with one typed violation per dangling reference.
+  defp closure_check(acc) do
+    dangling =
+      for event <- acc.events,
+          %{"objectId" => oid} <- event["relationships"] || [],
+          oid not in acc.object_ids do
+        %{path: "$.ocel:events[id:#{Map.get(event, "id")}].relationships", reason: "references unknown object id: #{inspect(oid)}"}
+      end
+
+    case dangling do
+      [] -> {:ok, finalize(acc)}
+      violations -> {:error, violations}
     end
   end
 

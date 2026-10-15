@@ -12,7 +12,6 @@ defmodule Smalt.Messaging.EventStream do
   alias Smalt.Store
 
   @table :smalt_event_messages
-  @counter_table :smalt_event_stream_seq
 
   # ---------------------------------------------------------------------------
   # Publish
@@ -33,15 +32,27 @@ defmodule Smalt.Messaging.EventStream do
          true <- present?(event["source"]),
          true <- present?(event["type"]) do
       id = event_id(event)
-      seq = next_seq()
 
-      event
-      |> Map.put("id", id)
-      |> Map.put("topic", to_string(topic))
-      |> Map.put("seq", seq)
-      |> then(&Store.put(@table, "#{topic}/#{id}", &1))
+      # Id-dedup fence (lane event-planes lens-2 cycle 7, coordinator-
+      # authorized pivot only): real Event Grid dedups duplicate event ids
+      # within its dedup window. The default keeps the emulated behavior
+      # (last-write-wins by `topic/id` key — pinned divergence); when
+      # `:event_stream_dedup_ids` is set, a republish of an id already stored
+      # for the topic is refused with a typed error, proving the fix shape.
+      if Application.get_env(:smalt, :event_stream_dedup_ids, false) and
+           Store.get(@table, "#{topic}/#{id}") != :error do
+        {:error, :duplicate_id}
+      else
+        seq = next_seq()
 
-      {:ok, id}
+        event
+        |> Map.put("id", id)
+        |> Map.put("topic", to_string(topic))
+        |> Map.put("seq", seq)
+        |> then(&Store.put(@table, "#{topic}/#{id}", &1))
+
+        {:ok, id}
+      end
     else
       false -> {:error, :invalid_cloudevent}
     end
@@ -91,6 +102,11 @@ defmodule Smalt.Messaging.EventStream do
     end
   end
 
+  # Fail closed on non-list/non-map payloads (e.g. a binary body that slipped
+  # past the router's JSON gate): same contract as the `publish/2` catch-all,
+  # instead of a FunctionClauseError 500.
+  def publish_events(_topic, _other), do: {:error, :invalid_cloudevent}
+
   # ---------------------------------------------------------------------------
   # List
   # ---------------------------------------------------------------------------
@@ -132,15 +148,14 @@ defmodule Smalt.Messaging.EventStream do
   end
 
   defp next_seq do
-    ensure_counter_table()
-    :ets.update_counter(@counter_table, :seq, {2, 1}, {:seq, 0})
-  end
-
-  defp ensure_counter_table do
-    if :ets.info(@counter_table) == :undefined do
-      :ets.new(@counter_table, [:named_table, :public, :set, write_concurrency: true])
-    end
-
-    :ok
+    # Store-owned atomic counter (lane event-planes lens-2 cycle 1): the lazy
+    # caller-owned named counter table crashed concurrent first-publishers with
+    # `:ets.new ... table name already exists` and reset seq when its owner
+    # process died. `:smalt_event_messages` is in `Store.@tables`, so the
+    # `{:seq_counter}` row is Store-owned and `Store.update_counter/3` is
+    # atomic. The tuple key sorts below every binary key, so `Store.list_prefix`
+    # scans never see it (same pattern as Sentinel's per-stream `{:seq_counter,
+    # dcr, stream}` row).
+    Store.update_counter(@table, {:seq_counter}, 1)
   end
 end
