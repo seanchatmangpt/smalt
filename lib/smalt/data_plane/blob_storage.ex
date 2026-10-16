@@ -244,7 +244,295 @@ defmodule Smalt.DataPlane.BlobStorage do
   end
 
   defp too_large_message,
-    do: "Blob exceeds the 1,048,576-byte per-PUT limit (RequestBodyTooLarge)."
+    do: "A single request exceeds the 1,048,576-byte limit (RequestBodyTooLarge)."
+
+  # ---------------------------------------------------------------------------
+  # Block staging and commit (Put Block / Put Block List / Get Block List).
+  # X-1 (v26.10.14): comp=blocklist previously fell into the generic Put Blob
+  # arm, storing the request XML as the blob body — a 7.5 MiB staged payload
+  # committed as a 390-byte XML doc. Staged blocks now persist keyed
+  # account/container/blob/block-id; commit concatenates them in blocklist
+  # order into the blob body.
+  # ---------------------------------------------------------------------------
+
+  @block_table :smalt_blob_blocks
+
+  @doc false
+  def ensure_block_table do
+    if :ets.info(@block_table) == :undefined do
+      :ets.new(@block_table, [:set, :public, :named_table,
+        read_concurrency: true, write_concurrency: true])
+    end
+    :ok
+  end
+
+  @doc """
+  Put Block (PUT ?comp=block&blockid=...): stages `content` under
+  account/container/blob/block-id. Returns `{:ok, 201, headers}` or
+  `{:error, status, code, msg}`. Per-block content rides the same 1 MiB
+  per-request fence as Put Blob.
+  """
+  def stage_block(account, container, blob_name, block_id, content, _headers \\ %{}, opts \\ []) do
+    ensure_block_table()
+
+    with :ok <- check_blob_name(blob_name),
+         {:ok, _container_meta} <- Store.get(:smalt_blob_containers, container_key(account, container)),
+         :ok <- check_content(content),
+         :ok <- check_put_size(content),
+         :ok <- check_block_id(block_id) do
+      Store.put(@block_table, block_key(account, container, blob_name, block_id), %{
+        "block_id" => block_id,
+        "content" => content,
+        "size" => byte_size(content),
+        "staged_at" => now_ms(opts)
+      })
+
+      {:ok, 201,
+       %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}}
+    else
+      :error -> {:error, 404, "ContainerNotFound", "Container not found."}
+      {:error, 400, _code, _msg} = invalid -> invalid
+      {:error, :too_large, msg} -> {:error, 413, "RequestBodyTooLarge", msg}
+    end
+  end
+
+  # Azure grammar: a block id is 1-64 bytes; when un-encoded it must be a
+  # valid base64 string. Fence the length (the common failure — an empty or
+  # oversize id — with 400 InvalidQueryParameter, Azure's wire shape).
+  defp check_block_id(block_id) when is_binary(block_id) do
+    if block_id == "" or byte_size(block_id) > 64 do
+      {:error, 400, "InvalidQueryParameter",
+       "The blockid must be between 1 and 64 bytes."}
+    else
+      :ok
+    end
+  end
+
+  defp check_block_id(_),
+    do: {:error, 400, "InvalidQueryParameter", "The blockid must be a string."}
+
+  defp block_key(account, container, blob_name, block_id) do
+    # NUL separator: blob names may contain "/" (slash-blobs are legal), so a
+    # "/" join could collide with blob names ending in /<blockid>.
+    :erlang.iolist_to_binary([
+      "#{account}/#{container}/#{blob_name}", 0, block_id
+    ])
+  end
+
+  # Block-list entry: {"latest" | "committed" | "uncommitted", block_id}.
+  @doc """
+  Put Block List (PUT ?comp=blocklist): parses the request XML, concatenates
+  the referenced staged blocks in blocklist order, and commits the result as
+  the blob body. Honors WORM and If-Match/If-None-Match preconditions (same
+  semantics as Put Blob overwrite). Staged blocks are retained so a later
+  list can re-reference them as committed.
+  """
+  def commit_block_list(account, container, blob_name, refs, headers \\ %{}, opts \\ []) do
+    ensure_block_table()
+    container_k = container_key(account, container)
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    now = now_ms(opts)
+
+    with :ok <- check_blob_name(blob_name),
+         {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_k),
+         {:ok, blocks} <- resolve_refs(refs, account, container, blob_name) do
+      cond do
+        worm_blocked?(container_meta, "overwrite", now) ->
+          {:error, :worm_locked, worm_message(container_meta, now)}
+
+        mismatched_if_match?(headers, committed_etag(blob_key)) ->
+          {:error, :precondition_failed, precondition_message()}
+
+        if_none_match_star?(headers) and existing_blob?(blob_key) ->
+          {:error, :precondition_failed, precondition_message()}
+
+        true ->
+          content = blocks |> Enum.map(& &1["content"]) |> IO.iodata_to_binary()
+
+          # Azure Put Block List honors x-ms-blob-content-* on the commit
+          # request; fold them into the stored header map as canonical keys.
+          headers =
+            Enum.reduce(["content-type", "content-encoding", "content-language"], headers, fn wire, acc ->
+              case header_value(headers, "x-ms-blob-" <> wire) do
+                nil -> acc
+                value -> Map.put(acc, wire, value)
+              end
+            end)
+
+          {:ok, blob} = store_blob(account, container, blob_name, content, headers)
+
+          blob =
+            Map.put(blob, "blocks", Enum.map(blocks, fn b ->
+              %{"block_id" => b["block_id"], "size" => b["size"]}
+            end))
+
+          Store.put(:smalt_blobs, blob_key, blob)
+
+          {:ok, 201,
+           %{
+             "etag" => blob["etag"],
+             "x-ms-request-id" => request_id(),
+             "x-ms-version" => "2021-12-02"
+           }}
+      end
+    else
+      :error -> {:error, 404, "ContainerNotFound", "Container not found."}
+      {:error, 400, _code, _msg} = invalid -> invalid
+      {:error, :worm_locked, msg} -> {:error, :worm_locked, msg}
+      {:error, :precondition_failed, msg} -> {:error, :precondition_failed, msg}
+    end
+  end
+
+  # Resolve block-list references to staged block records in order. Azure
+  # answers 400 InvalidBlockList when a referenced block was never staged.
+  defp resolve_refs(refs, account, container, blob_name) when is_list(refs) do
+    refs
+    |> Enum.reduce_while({:ok, []}, fn {_kind, block_id}, {:ok, acc} ->
+      block = fetch_block(account, container, blob_name, block_id)
+
+      case block do
+        nil ->
+          {:halt,
+           {:error, 400, "InvalidBlockList",
+            "The specified block list is invalid (block not found: #{block_id})."}}
+
+        b ->
+          {:cont, {:ok, [b | acc]}}
+      end
+    end)
+    |> case do
+      {:ok, blocks} -> {:ok, Enum.reverse(blocks)}
+      error -> error
+    end
+  end
+
+  defp resolve_refs(_, _, _, _),
+    do: {:error, 400, "InvalidXmlDocument", "The block list body is not valid XML."}
+
+  defp fetch_block(account, container, blob_name, block_id) do
+    ensure_block_table()
+
+    case Store.get(@block_table, block_key(account, container, blob_name, block_id)) do
+      {:ok, block} -> block
+      :error -> nil
+    end
+  end
+
+  defp existing_blob?(blob_key) do
+    match?({:ok, _}, Store.get(:smalt_blobs, blob_key))
+  end
+
+  # Case-insensitive single-header lookup over the wire header map.
+  defp header_value(headers, name) when is_map(headers) do
+    Enum.find_value(headers, fn {k, v} ->
+      if String.downcase(k) == name, do: v
+    end)
+  end
+
+  defp header_value(_, _), do: nil
+
+  defp committed_etag(blob_key) do
+    case Store.get(:smalt_blobs, blob_key) do
+      {:ok, blob} -> blob["etag"]
+      :error -> nil
+    end
+  end
+
+  @doc """
+  Get Block List (GET ?comp=blocklist&blocklisttype=all): returns
+  `{:ok, committed, uncommitted}` where committed is the stored committed
+  list and uncommitted is every staged block not in the committed list, or
+  `:error` when the blob does not exist.
+  """
+  def get_block_list(account, container, blob_name) do
+    ensure_block_table()
+    blob_key = "#{account}/#{container}/#{blob_name}"
+
+    committed =
+      case Store.get(:smalt_blobs, blob_key) do
+        {:ok, blob} -> blob["blocks"] || []
+        :error -> []
+      end
+
+    committed_ids = MapSet.new(committed, & &1["block_id"])
+    key_prefix = :erlang.iolist_to_binary(["#{account}/#{container}/#{blob_name}", 0])
+
+    uncommitted =
+      @block_table
+      |> Store.prefix_keys(key_prefix)
+      |> Enum.map(fn key ->
+        {:ok, b} = Store.get(@block_table, key)
+        b
+      end)
+      |> Enum.reject(&MapSet.member?(committed_ids, &1["block_id"]))
+      |> Enum.sort_by(& &1["staged_at"])
+
+    if committed == [] and uncommitted == [] do
+      :error
+    else
+      {:ok, committed, uncommitted}
+    end
+  end
+
+  @doc "Render committed/uncommitted block lists as the Azure BlockList XML document."
+  def block_list_xml(committed, uncommitted) do
+    committed_xml = render_block_section("CommittedBlocks", committed)
+    uncommitted_xml = render_block_section("UncommittedBlocks", uncommitted)
+
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <BlockList>
+    #{committed_xml}#{uncommitted_xml}</BlockList>
+    """
+  end
+
+  defp render_block_section(_tag, []), do: ""
+
+  defp render_block_section(tag, blocks) do
+    items =
+      Enum.map_join(blocks, "\n", fn b ->
+        "  <Block>\n    <Name>#{xml_escape(b["block_id"])}</Name>\n    <Size>#{b["size"]}</Size>\n  </Block>"
+      end)
+
+    "\n<" <> tag <> ">\n" <> items <> "\n</" <> tag <> ">\n"
+  end
+
+  @doc """
+  Parse a Put Block List request body into ordered
+  `{kind, block_id}` refs where kind is :latest | :committed | :uncommitted.
+  Answers `{:error, 400, "InvalidXmlDocument", msg}` for a body with no
+  block-list element (Azure wire shape for malformed XML).
+  """
+  def parse_block_list_xml(body) when is_binary(body) do
+    refs =
+      Regex.scan(
+        ~r/<(Latest|Committed|Uncommitted)>([^<]*)<\/(?:Latest|Committed|Uncommitted)>/,
+        body
+      )
+      |> Enum.map(fn [_all, tag, id] ->
+        {tag |> String.downcase() |> String.to_existing_atom(), xml_unescape(id)}
+      end)
+
+    if refs == [] do
+      {:error, 400, "InvalidXmlDocument", "The block list body contains no block references."}
+    else
+      {:ok, refs}
+    end
+  end
+
+  def parse_block_list_xml(_),
+    do: {:error, 400, "InvalidXmlDocument", "The block list body must be XML."}
+
+  # The python/JS SDKs send base64 block ids (entity-safe), but a hand-rolled
+  # client may entity-escape & < > in the XML; unescape the common entities so
+  # the id matches the staged key.
+  defp xml_unescape(id) do
+    id
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&amp;", "&")
+  end
 
   @doc """
   DELETE blob. Returns:
@@ -415,6 +703,47 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   def get_blob(account, container, blob_name) do
     Store.get(:smalt_blobs, "#{account}/#{container}/#{blob_name}")
+  end
+
+  @doc """
+  PUT ?comp=metadata on a blob — Azure Put Blob Metadata REPLACES (never
+  merges) the x-ms-meta-* subset of the blob's stored header map; other
+  headers (content-type, content-encoding, ...) are preserved. Returns
+  `{:ok, 200, headers}` (etag + x-ms-version) or `{:error, 404, ...}`.
+  """
+  def set_blob_metadata(account, container, blob_name, metadata, _headers \\ %{}) do
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    # Engine totality (mirrors set_container_metadata): nil metadata = empty
+    # replace set, never a FunctionClauseError 500.
+    metadata = metadata || %{}
+
+    with {:ok, blob} <- Store.get(:smalt_blobs, blob_key),
+         :ok <- check_metadata_names(meta_wire_headers(metadata)) do
+      stripped =
+        Map.reject(blob["headers"] || %{}, fn {k, _v} ->
+          String.starts_with?(k, "x-ms-meta-")
+        end)
+
+      blob =
+        blob
+        |> Map.put("headers", Map.merge(stripped, meta_wire_headers(metadata)))
+        |> Map.put("last_modified", DateTime.utc_now() |> DateTime.to_iso8601())
+
+      Store.put(:smalt_blobs, blob_key, blob)
+
+      {:ok, 200,
+       %{
+         "etag" => blob["etag"],
+         "x-ms-version" => "2021-12-02"
+       }}
+    else
+      :error -> {:error, 404, "BlobNotFound", "Blob not found."}
+      {:error, 400, _code, _msg} = invalid -> invalid
+    end
+  end
+
+  defp meta_wire_headers(metadata) when is_map(metadata) do
+    Map.new(metadata, fn {k, v} -> {"x-ms-meta-#{k}", v} end)
   end
 
   @doc """

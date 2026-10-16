@@ -3,8 +3,8 @@
 # /tmp/smalt-substrate.lock, runs the real-Python-SDK probes, then kills the
 # substrate and releases the lock. Exit 0 iff all probes pass.
 set -u
-cd /Users/sac/smalt
-REPO=/Users/sac/smalt
+cd "$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="$PWD"
 PY=$REPO/test/sdk-python/.venv-eh/bin/python
 LOG=$REPO/test/sdk-python/py5-substrate.log
 

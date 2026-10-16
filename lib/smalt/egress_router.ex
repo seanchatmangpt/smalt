@@ -45,6 +45,30 @@ defmodule Smalt.EgressRouter do
     origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
     CORSPlug.call(conn, CORSPlug.init(origin: origins))
   end
+  # KD-COVERS: KD-15
+  # KD-15 (v26.10.15): mode-blind Key Vault challenge guard. The real
+  # @azure/keyvault-keys SDK is challenge-based: it sends a tokenless request
+  # first and only attaches a token after a 401 + enriched WWW-Authenticate.
+  # Anonymous mode previously passed tokenless /keys requests straight through
+  # (no challenge => the SDK never attaches a token => handshake stalls).
+  # Runs BEFORE Smalt.Auth.Bearer so it fires in BOTH auth modes; enforce mode
+  # additionally refuses invalid tokens downstream (unchanged).
+  plug(:kv_challenge_guard)
+
+  defp kv_challenge_guard(conn, _opts) do
+    auth = get_req_header(conn, "authorization")
+    kv_path? = String.starts_with?(conn.request_path, "/keys")
+    tokenless? = auth == [] or auth == [""]
+
+    # CORS preflight (OPTIONS) stays auth-exempt — it must answer before any
+    # 401 (the method-mismatch court pins OPTIONS /keys/k1 -> 404).
+    if kv_path? and conn.method != "OPTIONS" and tokenless? do
+      Smalt.Auth.Bearer.send_challenge(conn, "MissingBearerToken")
+    else
+      conn
+    end
+  end
+
   plug(Smalt.Auth.Bearer)
   plug(:fetch_query_params)
   # Python SDK trailing-slash tolerance: GET /dbs/:db/colls/:coll/ must route
@@ -306,8 +330,18 @@ defmodule Smalt.EgressRouter do
   get "/dbs/:db/colls/:coll/docs" do
     with_route(conn, Cosmos, fn conn ->
       case Cosmos.list_docs(db, coll, "", header_map(conn)) do
-        {:ok, status, headers, docs} ->
-          cosmos_respond(conn, {:ok, status, headers, docs})
+        {:ok, status, headers, docs} when is_list(docs) ->
+          # KD-07 wire normalization: the SDK ReadFeed expects the Cosmos
+          # envelope, never a bare array. A malformed (non-list) engine shape
+          # still falls to the fail-closed clause below — 503, never an
+          # empty success envelope.
+          envelope = %{
+            "_rid" => Cosmos.coll_rid(db, coll),
+            "Documents" => docs,
+            "_count" => length(docs)
+          }
+
+          cosmos_respond(conn, {:ok, status, headers, envelope})
 
         # Lens7 fail-closed law: a not-ready store or any unexpected engine
         # shape must never be answered with a success-shaped empty feed.
@@ -1007,7 +1041,30 @@ defmodule Smalt.EgressRouter do
     # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
     blob_name = Enum.join(blob_name, "/")
     blob_route(conn, fn conn ->
-      case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
+      # X-1 (v26.10.14): Put Block / Put Block List get dedicated arms BEFORE
+      # the generic Put Blob fallback — previously comp=blocklist fell into
+      # put_blob and stored the request XML as the blob body (P0 data
+      # corruption found by bench B-5).
+      if conn.query_params["comp"] in ["block", "blocklist"] do
+        blob_block_arm(conn, account, container, blob_name)
+      else
+      # KD-01 wire normalization (Azure Put Blob Metadata): comp=metadata is
+      # answered BEFORE the body read — 200 EMPTY with etag, never the old
+      # 201 + JSON debug body (which also silently emptied the content).
+      if conn.query_params["comp"] == "metadata" do
+        if not_ready?(conn, [BlobStorage]) do
+          route_not_ready(conn)
+        else
+          case BlobStorage.set_blob_metadata(account, container, blob_name, meta_headers(conn)) do
+            {:ok, status, headers} ->
+              send_headers(conn, status, headers)
+
+            {:error, status, code, msg} ->
+              blob_error(conn, status, not_found_error(code) |> put_message(msg))
+          end
+        end
+      else
+        case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
         {:ok, raw_body, conn} ->
           case BlobStorage.put_blob(account, container, blob_name, raw_body, header_map(conn)) do
             {:ok, blob} ->
@@ -1070,6 +1127,8 @@ defmodule Smalt.EgressRouter do
             "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
           })
       end
+      end
+      end
     end)
   end
 
@@ -1078,6 +1137,25 @@ defmodule Smalt.EgressRouter do
     # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
     blob_name = Enum.join(blob_name, "/")
     blob_route(conn, fn conn ->
+      # X-1 (v26.10.14): Get Block List — Azure answers application/xml; the
+      # old fallback served the blob body as octet-stream (SDK DecodeError).
+      if conn.query_params["comp"] == "blocklist" do
+        if not_ready?(conn, [BlobStorage]) do
+          route_not_ready(conn)
+        else
+          case BlobStorage.get_block_list(account, container, blob_name) do
+            {:ok, committed, uncommitted} ->
+              conn
+              |> put_resp_header("x-ms-request-id", generate_request_id())
+              |> put_resp_header("x-ms-version", "2021-12-02")
+              |> put_resp_content_type("application/xml")
+              |> send_resp(200, BlobStorage.block_list_xml(committed, uncommitted))
+
+            :error ->
+              blob_error(conn, 404, not_found_error("BlobNotFound"))
+          end
+        end
+      else
       # Azure storage semantics: the range rides `x-ms-range` (python/JS SDKs)
       # or the standard `Range` header; honor both.
       range_header = get_req_header(conn, "range") ++ get_req_header(conn, "x-ms-range")
@@ -1103,6 +1181,7 @@ defmodule Smalt.EgressRouter do
           case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
             {:ok, blob, nil} ->
           conn
+          |> put_resp_headers(stored_meta_wire(blob))
           |> put_resp_header("etag", blob["etag"])
           |> put_resp_header(
             "content-length",
@@ -1115,6 +1194,7 @@ defmodule Smalt.EgressRouter do
           body = binary_part(blob["content"], first, last - first + 1)
 
           conn
+          |> put_resp_headers(stored_meta_wire(blob))
           |> put_resp_header("etag", blob["etag"])
           |> put_resp_header("content-range", "bytes #{first}-#{last}/#{byte_size(blob["content"])}")
           |> put_resp_header(
@@ -1138,6 +1218,7 @@ defmodule Smalt.EgressRouter do
             :error ->
               blob_error(conn, 404, not_found_error("BlobNotFound"))
           end
+      end
       end
     end)
   end
@@ -1179,6 +1260,7 @@ defmodule Smalt.EgressRouter do
       case BlobStorage.get_blob(account, container, blob_name) do
         {:ok, blob} ->
           conn
+          |> put_resp_headers(stored_meta_wire(blob))
           |> put_resp_header("etag", blob["etag"])
           |> put_resp_header(
             "content-length",
@@ -1225,6 +1307,77 @@ defmodule Smalt.EgressRouter do
   # ---------------------------------------------------------------------------
   # Internals
   # ---------------------------------------------------------------------------
+
+  # X-1 (v26.10.14): Put Block / Put Block List wire arms. Put Block stages
+  # raw block content (keyed account/container/blob/block-id); Put Block List
+  # parses the request XML and commits the concatenation as the blob body.
+  defp blob_block_arm(conn, account, container, blob_name) do
+    if not_ready?(conn, [BlobStorage]) do
+      route_not_ready(conn)
+    else
+      case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
+        {:ok, body, _conn} ->
+          if conn.query_params["comp"] == "block" do
+            case BlobStorage.stage_block(
+                   account,
+                   container,
+                   blob_name,
+                   conn.query_params["blockid"] || "",
+                   body,
+                   header_map(conn)
+                 ) do
+              {:ok, status, headers} ->
+                send_headers(conn, status, headers)
+
+              {:error, status, code, msg} ->
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
+            end
+          else
+            with {:ok, refs} <- BlobStorage.parse_block_list_xml(body),
+                 {:ok, status, headers} <-
+                   commit_response(account, container, blob_name, refs, header_map(conn)) do
+              send_headers(conn, status, headers)
+            else
+              {:error, 400, code, msg} ->
+                blob_error(conn, 400, not_found_error(code) |> put_message(msg))
+
+              {:error, :worm_locked, msg} ->
+                blob_error(conn, 409, %{
+                  "error" => %{"code" => "ContainerLocked", "message" => msg}
+                })
+
+              {:error, :precondition_failed, msg} ->
+                blob_error(conn, 412, %{
+                  "error" => %{"code" => "PreconditionFailed", "message" => msg}
+                })
+            end
+          end
+
+        {:more, partial, _conn} ->
+          blob_error(conn, 413, %{
+            "error" => %{
+              "code" => "RequestBodyTooLarge",
+              "message" => "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes)."
+            }
+          })
+
+        {:error, reason} ->
+          blob_error(conn, 400, %{
+            "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
+          })
+      end
+    end
+  end
+
+  # Map engine commit outcomes onto wire status/header tuples.
+  defp commit_response(account, container, blob_name, refs, headers) do
+    case BlobStorage.commit_block_list(account, container, blob_name, refs, headers) do
+      {:ok, status, headers} -> {:ok, status, headers}
+      {:error, :worm_locked, msg} -> {:error, :worm_locked, msg}
+      {:error, :precondition_failed, msg} -> {:error, :precondition_failed, msg}
+      {:error, status, code, msg} when is_integer(status) -> {:error, status, code, msg}
+    end
+  end
 
   # Trailing-slash tolerance for the Cosmos surface only (blob catch-all
   # depends on exact path shape; other services unchanged).
@@ -1895,6 +2048,16 @@ defmodule Smalt.EgressRouter do
 
   defp meta_headers(meta) when is_map(meta) do
     Map.new(meta, fn {name, value} -> {"x-ms-meta-#{name}", to_string(value)} end)
+  end
+
+  # KD-01 echo: stored x-ms-meta-* ride GET/HEAD blob responses (Azure Get
+  # Blob metadata). Scoped to the x-ms-meta-* subset — the stored header map
+  # carries the full PUT request headers (auth, x-ms-version) and only user
+  # metadata is wire-safe to emit.
+  defp stored_meta_wire(blob) do
+    blob
+    |> Map.get("headers", %{}) || %{}
+    |> Enum.filter(fn {k, _v} -> String.starts_with?(k, "x-ms-meta-") end)
   end
 
   defp put_resp_headers(conn, headers) do

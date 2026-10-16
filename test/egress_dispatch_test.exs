@@ -27,6 +27,19 @@ defmodule EgressDispatchTest do
         opts[:headers] || []
       end
 
+    # KD-15 (v26.10.15): /keys is challenge-guarded mode-blind — a tokenless
+    # request now 401s with the enriched WWW-Authenticate BEFORE dispatch.
+    # This harness speaks for an already-challenged client: attach a
+    # placeholder token on /keys calls unless the test supplies its own
+    # Authorization header (the KD-15 courts below pass headers explicitly).
+    headers =
+      if String.starts_with?(path, "/keys") and
+           not Enum.any?(headers, fn {k, _} -> k == "authorization" end) do
+        [{"authorization", "Bearer egress-harness-challenged-client"} | headers]
+      else
+        headers
+      end
+
     body = if is_list(body), do: Jason.encode!(body), else: body
 
     conn = conn(method, path, body)
@@ -115,7 +128,7 @@ defmodule EgressDispatchTest do
 
       conn = call(:get, "/dbs/db1/colls/c1/docs")
       assert conn.status == 200
-      assert [%{"id" => "d1"}] = Jason.decode!(conn.resp_body)
+      assert %{"Documents" => [%{"id" => "d1"}], "_count" => 1} = Jason.decode!(conn.resp_body)
 
       etag = doc["_etag"]
 
@@ -969,6 +982,7 @@ defmodule EgressDispatchTest do
     for {method, path} <- targets, ct <- wrong, xms <- [[], [{"x-ms-version", "2021-12-02"}]] do
       conn =
         Plug.Test.conn(method, path, body)
+        |> Plug.Conn.put_req_header("authorization", "Bearer egress-harness-challenged-client")
         |> Plug.Conn.put_req_header("content-type", ct)
         |> then(fn c -> Enum.reduce(xms, c, fn {k, v}, c -> Plug.Conn.put_req_header(c, k, v) end) end)
         |> EgressRouter.call(@opts)
@@ -985,6 +999,54 @@ defmodule EgressDispatchTest do
   # /attest/* is prefix-exempt (MAA is its own auth) — it must reach the router
   # without a token; every other service route must 401 before dispatch.
   # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # KD-15 (v26.10.15) — Key Vault 401-with-params courts (both auth modes):
+  # a tokenless /keys request answers 401 + enriched WWW-Authenticate
+  # (Bearer authorization="…", resource="…", error="invalid_token",
+  # error_description="…") in BOTH modes — anonymous mode no longer passes
+  # tokenless /keys through, enforce mode keeps refusing downstream.
+  # Grammar: `authorization` (NOT authorization_uri) and `resource` are the
+  # @azure keyvault-common parseWWWAuthenticate whitelist entries; resource
+  # must echo the request origin (keyVaultAuthenticationPolicy hostname check).
+  # ---------------------------------------------------------------------------
+
+  test "KD-15: tokenless GET /keys challenges with 401 + params in anonymous mode" do
+    Application.put_env(:smalt, :auth_mode, :anonymous)
+
+    conn = call(:get, "/keys", headers: [{"authorization", ""}])
+
+    assert conn.status == 401
+    [wa] = get_resp_header(conn, "www-authenticate")
+    assert wa =~ ~s(error="invalid_token")
+    assert wa =~ ~s(error_description="MissingBearerToken")
+    assert wa =~ ~r/^Bearer authorization="[^"]+\/organizations"/
+    assert wa =~ ~r{resource="https?://[^"]+"}
+
+    # whitelist-grammar: the SDK parser keys must all be present, and
+    # authorization_uri must NOT appear
+    refute wa =~ "authorization_uri"
+  end
+
+  test "KD-15: tokenless GET /keys challenges with 401 + params in enforce mode" do
+    Application.put_env(:smalt, :auth_mode, :enforce)
+
+    conn = call(:get, "/keys", headers: [{"authorization", ""}])
+
+    assert conn.status == 401
+    [wa] = get_resp_header(conn, "www-authenticate")
+    assert wa =~ ~s(error="invalid_token")
+    assert wa =~ ~s(error_description="MissingBearerToken")
+    assert wa =~ ~r/^Bearer authorization="/
+    assert wa =~ ~r{resource="https?://[^"]+"}
+  after
+    Application.put_env(:smalt, :auth_mode, :anonymous)
+  end
+
+  test "KD-15: non-/keys tokenless routes keep their prior behavior" do
+    conn = call(:get, "/dbs", headers: [{"x-ms-version", "2021-12-02"}])
+    assert conn.status != 401
+  end
 
   test "auth seam: /attest exempt, service routes 401 in enforce mode" do
     Application.put_env(:smalt, :auth_mode, :enforce)
@@ -1316,6 +1378,7 @@ defmodule EgressDispatchTest do
 
           conn =
             Plug.Test.conn(method, path, body)
+            |> Plug.Conn.put_req_header("authorization", "Bearer egress-harness-challenged-client")
             |> Plug.Conn.put_req_header("accept", accept)
             |> then(fn c ->
               if body != "",
@@ -1573,7 +1636,7 @@ defmodule EgressDispatchTest do
 
       conn = call(:get, "/dbs/k6/colls/k6c/docs")
       assert conn.status == 200
-      assert length(Jason.decode!(conn.resp_body)) == 100
+      assert length(Jason.decode!(conn.resp_body)["Documents"]) == 100
       # v2 (list) namespace token; tail format is rid-scoped (cosmos lane
       # landing, 2026-10-15) — pinned only on the namespace prefix here, the
       # resume probe below proves the round-trip behaviorally.
@@ -1583,7 +1646,7 @@ defmodule EgressDispatchTest do
       conn = call(:get, "/dbs/k6/colls/k6c/docs", headers: [{"x-ms-continuation", token}])
       assert conn.status == 200
       # Lexicographic feed: the one doc past the first page is the lex-last id.
-      assert [%{"id" => "d99"}] = Jason.decode!(conn.resp_body)
+      assert [%{"id" => "d99"}] = Jason.decode!(conn.resp_body)["Documents"]
       assert get_resp_header(conn, "x-ms-continuation") == []
     end
   end

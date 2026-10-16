@@ -69,8 +69,12 @@ defmodule Smalt.Amqp.CbsRouterTest do
   end
 
   test "unsupported token type returns 400 UNSUPPORTED_CBS_REQUEST", %{router: router} do
+    # "jwt" is now an admitted pyamqp dialect type (S-1 lane, s1-amqp-shims
+    # receipt); the refusal is pinned on a genuinely unknown type.
     assert {:error, {400, "UNSUPPORTED_CBS_REQUEST"}} =
-             CbsRouter.put_token(router, put_req("sb://q/x", type: "jwt"))
+             CbsRouter.put_token(router, put_req("sb://q/x", type: "bearer"))
+
+    assert {:ok, {200, _}} = CbsRouter.put_token(router, put_req("sb://q/x", type: "jwt"))
   end
 
   test "invalid sas returns 401 INVALID_LOCAL_SAS", %{router: router} do

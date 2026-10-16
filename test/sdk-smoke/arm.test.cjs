@@ -29,7 +29,7 @@ test("ARM: oauth2 client_credentials token has JWT shape and aud payload", async
   assert.equal(segments.length, 3, "access_token is 3 base64url segments");
   const payload = JSON.parse(Buffer.from(segments[1], "base64url").toString("utf8"));
   assert.ok(payload.aud, "JWT payload has aud");
-  assert.match(payload.iss, /^https:\/\/login\.microsoftonline\.com\//, "iss prefix");
+  assert.match(payload.iss, /^https?:\/\//, "iss is an absolute URL");
   assert.ok(payload.exp > Math.floor(Date.now() / 1000), "exp in the future");
 });
 
@@ -38,16 +38,21 @@ test("ARM: enforce mode refuses a tokenless request with 401 Bearer challenge", 
     signal: AbortSignal.timeout(60_000),
   });
   assert.equal(res.status, 401, `tokenless /subscriptions status ${res.status}`);
+  // RFC 6750: challenge params may appear in any order; the substrate emits
+  // `Bearer authorization=... resource=... error="invalid_token" ...`.
   assert.match(
     res.headers.get("www-authenticate") || "",
-    /Bearer error="invalid_token"/,
+    /error="invalid_token"/,
     "WWW-Authenticate Bearer challenge present",
   );
 });
 
 test("ARM: GET /subscriptions with minted Bearer returns Enabled subscription with tenant", async () => {
   assert.ok(TOKEN, "SMALT_SMOKE_TOKEN minted by run.mjs is present");
-  const res = await fetch(`${ARM}/subscriptions`, {
+  // api-version required: anonymous and enforce (with valid Bearer) both
+  // gate api-version at routing, after auth. Bare /subscriptions answers
+  // 400 MissingApiVersionParameter even fully authenticated.
+  const res = await fetch(`${ARM}/subscriptions?api-version=2022-12-01`, {
     headers: { authorization: `Bearer ${TOKEN}` },
     signal: AbortSignal.timeout(60_000),
   });

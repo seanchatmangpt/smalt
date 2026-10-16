@@ -272,79 +272,94 @@ async function main() {
     }
   });
 
-  // Probe 5: RAW-WIRE witness — rhea receives the transfer payload as raw
-  // bytes (rhea session.js:389 passes the payload through undecoded when the
-  // transfer's message-format != 0, which is what the smalt EH lane sends),
-  // then we decode the section bytes here and assert the x-opt-sequence-number
-  // annotation and in-order delivery. This is the wire-tier receipt: the bytes
-  // on the socket are correct AMQP even though the SDK tier cannot decode them.
-  probe("wire-delivery-raw-payload-decode", async () => {
-    const rhea = req("rhea");
-    const rheaMessage = req("rhea/lib/message.js");
-    const MARK = `ts5-raw-${Date.now()}`;
+  // Probe 5: BODY-DECODE witness — post-KD-18 the substrate transfers with
+  // message_format 0 and re-emits the recursively-unwrapped body section
+  // (eh_body_section/1 unwraps the SDK batch envelope inside the message
+  // stream), so the SDK tier decodes event bodies directly. Contract: each
+  // event sent through the real SDK producer (batch API, one event per send,
+  // matching the passing smoke subscribe-earliest shape) arrives with its body
+  // deepEqual the original JSON payload, in order, with x-opt-sequence-number
+  // surfaced as integer event.sequenceNumber, strictly increasing.
+  // (Premise-drift note: this probe previously asserted the removed format!=0
+  // raw-Buffer passthrough; "undecodable: 0" in its own output proved the
+  // flip. KD-18 rewrite, not a substrate gap.)
+  probe("wire-delivery-batch-unwrap-decode", async () => {
     const partitionId = "0";
-    // send via the real SDK producer first
     const producer = new EventHubProducerClient(CONN, probeOpts());
-    const sent = [];
+    const consumer = new EventHubConsumerClient(
+      EventHubConsumerClient.defaultConsumerGroupName,
+      CONN,
+      probeOpts(),
+    );
+    const subHandles = [];
     try {
-      for (let i = 0; i < 4; i++) {
-        const body = `${MARK}-${i}`;
+      const N = 4;
+      const MARK = `ts5-unwrap-${Date.now()}`;
+      const sent = [];
+      for (let i = 0; i < N; i++) {
+        const payload = { probe: "batch-unwrap", mark: MARK, i, nested: { k: `v${i}`, n: i * 7 } };
         const batch = await producer.createBatch({ partitionId, abortSignal: T(15_000) });
-        if (!batch.tryAdd({ body })) throw new Error("tryAdd failed");
+        if (!batch.tryAdd({ body: JSON.stringify(payload) })) throw new Error("tryAdd failed");
         await producer.sendBatch(batch, { abortSignal: T(15_000) });
-        sent.push(body);
+        sent.push(payload);
       }
+
+      const received = [];
+      const sub = await consumer.subscribe(
+        partitionId,
+        {
+          processEvents: async (events) => {
+            for (const ev of events) {
+              let body = ev.body;
+              if (typeof body === "string") {
+                try { body = JSON.parse(body); } catch { /* keep raw string */ }
+              }
+              // only this run's marked payloads — the partition carries
+              // earlier probes' events from the earliest position
+              if (body && typeof body === "object" && body.probe === "batch-unwrap" && body.mark === MARK) {
+                received.push({ body, seq: ev.sequenceNumber });
+              }
+            }
+          },
+          processError: async (err) => {
+            console.error(`[batch-unwrap] processError: ${err?.name}: ${String(err?.message).slice(0, 200)}`);
+          },
+        },
+        { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 2 },
+      );
+      subHandles.push(sub);
+
+      const deadline = Date.now() + 20_000;
+      while (received.length < N && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+
+      if (received.length < N) {
+        throw new Error(`UNWRAP_TIMEOUT: sent ${N}, received ${received.length}: ${JSON.stringify(received).slice(0, 400)}`);
+      }
+      const got = received.slice(0, N);
+      // THE contract: bodies deepEqual the original JSON payloads (recursive
+      // batch-envelope unwrap is the delivered shape).
+      const { deepStrictEqual } = await import("node:assert");
+      for (let i = 0; i < N; i++) {
+        deepStrictEqual(got[i].body, sent[i], `BODY_MISMATCH at ${i}: got=${JSON.stringify(got[i].body)}`);
+      }
+      // ordered-sequence assertions (kept intact from the raw-wire witness)
+      const seqs = got.map((r) => r.seq);
+      if (!seqs.every((s) => Number.isInteger(s))) {
+        throw new Error(`SEQUENCE_ANNOTATION_MISSING: seqs=${JSON.stringify(seqs)}`);
+      }
+      if (JSON.stringify(seqs) !== JSON.stringify([...seqs].sort((a, b) => a - b))) {
+        throw new Error(`SEQUENCE_NOT_MONOTONIC: ${JSON.stringify(seqs)}`);
+      }
+      return `batch of ${N} JSON payloads; bodies deepStrictEqual originals in order; ` +
+        `sequenceNumbers=${JSON.stringify(seqs)} strictly increasing; ` +
+        `recursive batch-envelope unwrap confirmed at SDK tier`;
     } finally {
+      for (const s of subHandles) await boundedClose(s, 2500);
+      await boundedClose(consumer);
       await boundedClose(producer);
     }
-
-    const conn = rhea.connect({ port: EH_PORT, host: "127.0.0.1", reconnect: false });
-    const deliveries = [];
-    conn.on("message", (ctx) => {
-      // format != 0 => ctx.message is the RAW section bytes (Buffer)
-      const raw = Buffer.isBuffer(ctx.message) ? ctx.message : null;
-      if (!raw) {
-        deliveries.push({ raw: null, ann: ctx.message?.message_annotations, bodyStr: String(ctx.message?.body) });
-        return;
-      }
-      try {
-        const m = rheaMessage.decode(raw);
-        const bodyText =
-          typeof m.body === "string" ? m.body :
-          Buffer.isBuffer(m.body) ? m.body.toString("latin1") :
-          JSON.stringify(m.body);
-        deliveries.push({ raw, ann: m.message_annotations, bodyStr: bodyText + "|" + raw.toString("latin1") });
-      } catch (err) {
-        deliveries.push({ raw, ann: null, bodyStr: null, err: String(err?.message).slice(0, 120) });
-      }
-    });
-    conn.open_receiver({ source: { address: `ts5-hub/ConsumerGroups/$Default/Partitions/${partitionId}` }, credit_window: 200 });
-    const deadline = Date.now() + 15_000;
-    const mine = () =>
-      deliveries.filter((d) => d.bodyStr && d.bodyStr.includes(MARK));
-    while (mine().length < sent.length && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    try { conn.close(); } catch {}
-    await new Promise((r) => setTimeout(r, 300));
-
-    const got = mine();
-    if (got.length < sent.length) {
-      throw new Error(
-        `RAW_TIMEOUT: sent ${sent.length} marked events, decoded ${got.length} ` +
-        `(total deliveries seen: ${deliveries.length}, undecodable: ${deliveries.filter((d) => d.err).length})`,
-      );
-    }
-    const seqs = got.map((d) => d.ann?.["x-opt-sequence-number"]);
-    if (!seqs.every((s) => Number.isInteger(s))) {
-      throw new Error(`RAW_SEQ_MISSING: ${JSON.stringify(seqs)}`);
-    }
-    if (JSON.stringify(seqs) !== JSON.stringify([...seqs].sort((a, b) => a - b))) {
-      throw new Error(`RAW_SEQ_NOT_MONOTONIC: ${JSON.stringify(seqs)}`);
-    }
-    return `decoded ${got.length}/${sent.length} marked events from raw transfer payloads; ` +
-      `x-opt-sequence-number=${JSON.stringify(seqs)} strictly increasing; bodies byte-exact; ` +
-      `rhea format!=0 raw-passthrough behavior confirmed (${deliveries.length} transfers seen)`;
   });
 
   // Probe 4: negative probes — record 404-class / typed error behavior.

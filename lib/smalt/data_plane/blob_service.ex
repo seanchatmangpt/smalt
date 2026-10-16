@@ -221,7 +221,7 @@ defmodule Smalt.DataPlane.BlobService do
           "etag" => container_etag(record),
           "x-ms-request-id" => request_id(),
           "x-ms-version" => "2021-12-02",
-          "last-modified" => record["created"],
+          "last-modified" => rfc1123(record["created"]),
           "x-ms-has-immutability-policy" => policy_flag(record, "immutability_policy"),
           "x-ms-has-legal-hold" => policy_flag(record, "legal_hold")
         }
@@ -238,6 +238,18 @@ defmodule Smalt.DataPlane.BlobService do
   # ---------------------------------------------------------------------------
 
   defp hidden_policy_row?(record), do: is_map(record) and record["container"] == nil
+
+  # KD-03 wire normalization: Azure dates are RFC-1123 ("Tue, 15 Oct 2026
+  # 12:00:00 GMT"), not ISO-8601. A nil/unparseable `created` keeps the raw
+  # string (put_resp_headers/2 skips nil) — never a crash on a fresh record.
+  defp rfc1123(raw) do
+    case DateTime.from_iso8601(raw || "") do
+      {:ok, dt, _offset} -> Calendar.strftime(dt, "%a, %d %b %Y %H:%M:%S GMT")
+      {:error, _reason, _data} -> raw
+      {:error, _reason} -> raw
+    end
+  end
+
 
   defp normalize_max(nil), do: @max_page
   defp normalize_max(value) when is_integer(value) and value > 0, do: min(value, @max_page)

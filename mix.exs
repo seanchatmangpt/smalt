@@ -89,7 +89,22 @@ defmodule Smalt.MixProject do
       # compile them. Disclosed in docs/SEMANTIC_PROJECTION.md.
       {:ash_r2rml, path: "../ash_r2rml", only: [:dev, :test], optional: true},
       {:ash_ex4pm, path: "../ash_ex4pm", only: [:dev, :test], optional: true},
-      {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true}
+      {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true},
+      # ERRC Raise lane 6: property-based testing with shrinking (test-only
+      # usage; declared env-prod because `ash` requires stream_data
+      # non-optionally — Mix surface-convergence constraint, never packaged:
+      # files: whitelist above excludes deps/).
+      {:stream_data, "~> 1.2"},
+      # Static security analysis (ERRC lane 8 Raise). Non-blocking first pass;
+      # recipe `just sobelow` records, does not gate.
+      {:sobelow, "~> 0.13", only: :dev, runtime: false},
+      # Benchmarking (ERRC lane 2 Raise): benchee drives scripts/bench/benchee_runner.exs
+      # (b7b/b8b/b9b rows) as the statistical counterpart to the hand-rolled
+      # b7/b8/b9 timing loops (kept as falsifier records).
+      {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
+      # B-11 recon soak (docs/jira/v26.10.14/receipts/errc7-recon.md): BEAM-level
+      # leak evidence (processes/binaries/atoms/ETS) that RSS alone cannot give.
+      {:recon, "~> 2.5", only: :test}
     ]
   end
 end

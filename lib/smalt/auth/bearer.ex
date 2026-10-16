@@ -496,7 +496,54 @@ defmodule Smalt.Auth.Bearer do
     body = Jason.encode!(%{"error" => %{"code" => code, "message" => reason}})
 
     conn
-    |> put_resp_header("www-authenticate", ~s(Bearer error="invalid_token", error_description="#{reason}"))
+    |> put_resp_header("www-authenticate", challenge_value(conn, reason))
+    |> put_resp_content_type("application/json")
+    |> send_resp(401, body)
+    |> halt()
+  end
+
+  # KD-COVERS: KD-15
+  # -- KD-15: Key Vault challenge enrichment (RFC 6750 §3 + ADAL/azure-core
+  # ChallengeAuthPolicy grammar) -----------------------------------------------
+
+  @doc """
+  The enriched `WWW-Authenticate: Bearer` challenge value for `conn`.
+
+  Grammar constraint (KD-15, E-3a): the @azure SDK whitelist
+  (keyvault-common parseWWWAuthenticate.js) accepts `authorization` (it
+  derives tenantId from the URL PATH — so the value MUST carry a tenant
+  segment) and `resource` (keyVaultAuthenticationPolicy.js verifies the
+  resource HOSTNAME equals the vault endpoint hostname — so resource MUST
+  echo the request origin). `authorization_uri` is NOT in the whitelist and
+  would be silently dropped.
+
+  Values:
+  - `authorization` — the STS authority URL with a tenant path segment
+    (`:smalt, :sts_authority_url` override, else `<scheme>://<host>:<arm_port>/organizations`).
+  - `resource` — the request origin `scheme://host:port` as the client reached us.
+  """
+  def challenge_value(conn, reason) do
+    reason = String.replace(reason, "\"", "")
+
+    authorization =
+      Application.get_env(:smalt, :sts_authority_url) ||
+        "#{conn.scheme}://#{conn.host}:#{Application.get_env(:smalt, :arm_port, 9443)}/organizations"
+
+    resource = "#{conn.scheme}://#{conn.host}:#{conn.port}"
+
+    ~s(Bearer authorization="#{authorization}", resource="#{resource}", error="invalid_token", error_description="#{reason}")
+  end
+
+  @doc """
+  Sends the KD-15 401 challenge (enriched `WWW-Authenticate` + ARM error
+  envelope) and halts. Mode-blind: called by the egress router's /keys guard
+  in BOTH auth modes when the Authorization header is missing or empty.
+  """
+  def send_challenge(conn, reason) do
+    body = Jason.encode!(%{"error" => %{"code" => "AuthenticationFailed", "message" => reason}})
+
+    conn
+    |> put_resp_header("www-authenticate", challenge_value(conn, reason))
     |> put_resp_content_type("application/json")
     |> send_resp(401, body)
     |> halt()

@@ -202,8 +202,16 @@ defmodule Smalt.Amqp.CbsRouter do
     if Map.get(request, :operation) == expected, do: :ok, else: {:error, {400, "UNSUPPORTED_CBS_REQUEST"}}
   end
 
+  # pyamqp dialect (S-1, disclosed in s1-amqp-shims receipt): the Python
+  # azure-servicebus CBS client sends `type: "jwt"` where rhea sends
+  # "servicebus.windows.net:sastoken". Same put-token semantics; the token
+  # body is verified identically by SasVerifier.
+  @pyamqp_cbs_types ["jwt"]
+
   defp check_type(request) do
-    if Map.get(request, :type) == @cbs_type, do: :ok, else: {:error, {400, "UNSUPPORTED_CBS_REQUEST"}}
+    if Map.get(request, :type) == @cbs_type or Map.get(request, :type) in @pyamqp_cbs_types,
+      do: :ok,
+      else: {:error, {400, "UNSUPPORTED_CBS_REQUEST"}}
   end
 
   defp fetch_name(request) do

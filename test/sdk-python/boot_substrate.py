@@ -1,3 +1,4 @@
+import pathlib
 import subprocess
 import os
 env = dict(os.environ)
@@ -13,4 +14,4 @@ subprocess.run([
     'Application.put_env(:smalt, :amqp_port, 25672);'
     'Application.put_env(:smalt, :event_hubs_port, 25673);'
     '{:ok, _} = Application.ensure_all_started(:smalt)'
-], cwd="/Users/sac/smalt", env=env)
+], cwd=str(pathlib.Path(__file__).resolve().parents[2]), env=env)

@@ -144,11 +144,46 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       group = "grp-#{System.unique_integer()}"
       partition = "ns/hub/p-#{System.unique_integer()}"
 
-      :ok = EventHubs.reserve_processing(group, partition, :owner_a, 10)
+      :ok = EventHubs.reserve_processing(group, partition, :owner_a, 60_000)
       assert {:error, :conflict} = EventHubs.reserve_processing(group, partition, :owner_b, 10)
 
-      Process.sleep(30)
+      # Deterministic expiry: author the claim's `until` in the PAST directly
+      # (the state IS the contract, not a wall-clock wait). The old shape
+      # (10 ms TTL + `Process.sleep(30)`) raced the background Sweeper's own
+      # `EventHubs.sweep()` tick: under load the background tick could GC the
+      # claim first, so the test's explicit `sweep/0` returned 0.
+      # The tables are :public :named (server-owned); writing the authored
+      # expired state here is test-fixture state construction, not the
+      # caller-side read-modify-write reclaim the lens-5/6/7 courts ban in
+      # production sweep paths (that ban is on the sweep implementation and
+      # its callers, not on test setup).
+      key = {group, partition}
+      now_ms = System.system_time(:millisecond)
+
+      assert [{^key, cp}] = :ets.lookup(:smalt_eh_checkpoints, key)
+      assert %{"owner" => :owner_a} = cp["claim"]
+
+      expired = put_in(cp, ["claim", "until"], now_ms - 60_000)
+      true = :ets.insert(:smalt_eh_checkpoints, {key, expired})
+
+      # Neutralize the background racer for the assertion window: the setup's
+      # 20 ms tick would otherwise be able to fire EventHubs.sweep() between
+      # the authored write and our explicit sweep, stealing the count. The
+      # sweeper is supervised, so a bare stop just restarts it — park it on a
+      # 1-hour tick instead (restart re-reads the env at init).
+      Application.put_env(:smalt, :amqp_sweeper_tick_ms, 3_600_000)
+
+      on_exit(fn -> Application.delete_env(:smalt, :amqp_sweeper_tick_ms) end)
+
+      sweeper = Process.whereis(Sweeper)
+
+      if sweeper do
+        :ok = GenServer.stop(sweeper)
+        wait_until(fn -> if Process.whereis(Sweeper) != sweeper, do: :restarted end)
+      end
+
       assert EventHubs.sweep() >= 1
+      assert %{"claim" => nil} = elem(hd(:ets.lookup(:smalt_eh_checkpoints, key)), 1)
       assert :ok = EventHubs.reserve_processing(group, partition, :owner_b, 5_000)
     end
   end

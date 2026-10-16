@@ -29,6 +29,9 @@ defmodule Smalt.Application do
         # GAP(lro-lazy-terminality) by driving terminal flips without a poll,
         # plus opt-in :lro_retention_ms eviction (default :infinity).
         Smalt.ArmGateway.LRO.Sweeper
+        # HIL virtual device (lane S-5): opt-in only via SMALT_SIMULATE_HARDWARE=1
+        # — default startup is untouched (child spec is [] when unset).
+        | virtual_hw_child()
       ]
 
     Smalt.Telemetry.attach()
@@ -40,6 +43,22 @@ defmodule Smalt.Application do
 
     opts = [strategy: :one_for_one, name: Smalt.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Virtual HIL device child spec — [] unless SMALT_SIMULATE_HARDWARE=1.
+  # Optional :device_path attachment additionally via SMALT_HW_PTY.
+  defp virtual_hw_child do
+    if System.get_env("SMALT_SIMULATE_HARDWARE") == "1" do
+      path = System.get_env("SMALT_HW_PTY")
+
+      if is_binary(path) do
+        [{Smalt.Hw.VirtualSerial, [device_path: path]}]
+      else
+        [{Smalt.Hw.VirtualSerial, []}]
+      end
+    else
+      []
+    end
   end
 
   defp arm_port, do: Application.get_env(:smalt, :arm_port, 9443)

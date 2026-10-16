@@ -47,6 +47,15 @@ defmodule Smalt.Amqp.ManagementRpc do
       one bad sequence fails the whole batch) / 404 NOT_FOUND
     * unknown operation    — 501 UNSUPPORTED_OPERATION
 
+  Event Hubs READ ops (KD-19) — keyed on `(operation, type)`:
+
+    * READ type "com.microsoft:eventhub"   — 200 {"name", "created_at",
+      "partition_ids": ["0","1"], "georeplication_factor": 1}
+    * READ type "com.microsoft:partition"  — 200 {"name", "partition",
+      "begin_sequence_number", "last_enqueued_sequence_number",
+      "last_enqueued_time_utc", "last_enqueued_offset", "is_partition_empty"} /
+      404 PARTITION_NOT_FOUND for a partition outside the hub's partition set
+
   Timestamps are `{:timestamp, ms}` per `Smalt.Amqp.PrimitiveCodec`.
   """
 
@@ -55,6 +64,14 @@ defmodule Smalt.Amqp.ManagementRpc do
 
   @peek_min 1
   @peek_max 100
+
+  # Service Bus operation names (the pre-KD19 surface).
+  @sb_ops ["com.microsoft:renew-lock", "com.microsoft:renew-session-lock",
+           "com.microsoft:peek-message", "com.microsoft:update-disposition",
+           "com.microsoft:receive-by-sequence-number"]
+
+  # KD-19: hub topology shim — the probe's hub is created with two partitions.
+  @eh_partition_ids ["0", "1"]
 
   @type request :: %{
           optional(:operation) => term,
@@ -87,12 +104,14 @@ defmodule Smalt.Amqp.ManagementRpc do
     correlation_id = Map.get(request, :correlation_id)
     body = Map.get(request, :body, %{})
 
-    case normalize_op(op) do
+    case normalize_op(op, Map.get(request, :type)) do
       :renew_lock -> renew_lock(body, correlation_id, context, now)
       :renew_session_lock -> renew_session_lock(body, request[:queue], correlation_id, context, now)
       :peek_message -> peek_message(body, request[:queue], correlation_id, context, now)
       :update_disposition -> update_disposition(body, request[:queue], correlation_id, context, now)
       :receive_by_sequence_number -> receive_by_sequence_number(body, request[:queue], correlation_id, context, now)
+      :read_eventhub -> read_eventhub(request, correlation_id, now)
+      :read_partition -> read_partition(request, correlation_id, now)
       :unknown -> respond(501, "UNSUPPORTED_OPERATION", nil, correlation_id)
     end
   end
@@ -357,24 +376,113 @@ defmodule Smalt.Amqp.ManagementRpc do
   end
 
   # ===========================================================================
+  # Event Hubs READ ops (KD-19)
+  # ===========================================================================
+
+  # Hub runtime info. The SDK (managementClient.js getEventHubProperties)
+  # reads info.created_at via new Date(...) — an AMQP timestamp section
+  # ({:timestamp, ms}) round-trips as a Date.
+  defp read_eventhub(request, correlation_id, now) do
+    respond(200, "OK", %{
+      "name" => eh_entity(request),
+      "created_at" => {:timestamp, now},
+      "partition_ids" => @eh_partition_ids,
+      "georeplication_factor" => 1
+    }, correlation_id)
+  end
+
+  # Partition runtime info. READ is non-mutating: the last enqueued sequence is
+  # read from the EventHubs store table directly (EventHubs.next_sequence/1
+  # BUMPS the counter, which would burn sequence numbers and mint rows for
+  # unknown partitions on every poll).
+  defp read_partition(request, correlation_id, now) do
+    partition = to_string(request[:partition] || "")
+
+    if partition in @eh_partition_ids do
+      Smalt.Messaging.EventHubs.ensure_tables()
+      row = eh_partition_row(partition)
+      last = eh_last_seq(row)
+
+      respond(200, "OK", %{
+        "name" => eh_entity(request),
+        "partition" => partition,
+        "begin_sequence_number" => 1,
+        "last_enqueued_sequence_number" => last,
+        "last_enqueued_time_utc" => {:timestamp, if(last == 0, do: 0, else: now)},
+        "last_enqueued_offset" => to_string(last),
+        "is_partition_empty" => last == 0
+      }, correlation_id)
+    else
+      respond(404, "PARTITION_NOT_FOUND", nil, correlation_id)
+    end
+  end
+
+  # Entity name rides the "name" application property (managementClient.js
+  # puts it there; the request body is the JSON literal "[]").
+  defp eh_entity(request) do
+    case request[:name] do
+      nil -> request[:queue] || ""
+      name -> to_string(name)
+    end
+  end
+
+  defp eh_partition_row(partition) do
+    case :ets.lookup(:smalt_eh_partitions, partition) do
+      [{^partition, row}] when is_map(row) -> row
+      _ -> %{}
+    end
+  end
+
+  defp eh_last_seq(row) when is_map(row) do
+    case row["seq"] do
+      seq when is_integer(seq) -> seq
+      _ -> 0
+    end
+  end
+
+  defp eh_last_seq(_), do: 0
+
+  # ===========================================================================
   # Internals
   # ===========================================================================
 
-  defp normalize_op(op) do
+  # (operation, type) keyed: the EH READ ops share the "READ" operation name
+  # and are discriminated by the entity-type application property.
+  defp normalize_op(op, type)
+
+  defp normalize_op(op, _type) when is_binary(op) and op in @sb_ops do
     case op do
       "com.microsoft:renew-lock" -> :renew_lock
       "com.microsoft:renew-session-lock" -> :renew_session_lock
       "com.microsoft:peek-message" -> :peek_message
-      {:symbol, "com.microsoft:renew-lock"} -> :renew_lock
-      {:symbol, "com.microsoft:renew-session-lock"} -> :renew_session_lock
-      {:symbol, "com.microsoft:peek-message"} -> :peek_message
       "com.microsoft:update-disposition" -> :update_disposition
-      {:symbol, "com.microsoft:update-disposition"} -> :update_disposition
       "com.microsoft:receive-by-sequence-number" -> :receive_by_sequence_number
-      {:symbol, "com.microsoft:receive-by-sequence-number"} -> :receive_by_sequence_number
       _ -> :unknown
     end
   end
+
+  defp normalize_op({:symbol, op}, type) when is_binary(op) do
+    case op do
+      "com.microsoft:renew-lock" -> :renew_lock
+      "com.microsoft:renew-session-lock" -> :renew_session_lock
+      "com.microsoft:peek-message" -> :peek_message
+      "com.microsoft:update-disposition" -> :update_disposition
+      "com.microsoft:receive-by-sequence-number" -> :receive_by_sequence_number
+      _ -> normalize_read(op, type)
+    end
+  end
+
+  defp normalize_op(op, type) when is_binary(op) do
+    normalize_read(op, type)
+  end
+
+  defp normalize_op(_op, _type), do: :unknown
+
+  defp normalize_read("READ", "com.microsoft:eventhub"), do: :read_eventhub
+  defp normalize_read("READ", "com.microsoft:partition"), do: :read_partition
+  defp normalize_read("READ", {:symbol, "com.microsoft:eventhub"}), do: :read_eventhub
+  defp normalize_read("READ", {:symbol, "com.microsoft:partition"}), do: :read_partition
+  defp normalize_read(_op, _type), do: :unknown
 
   defp body_field(body, key) when is_map(body), do: Map.get(body, key)
 

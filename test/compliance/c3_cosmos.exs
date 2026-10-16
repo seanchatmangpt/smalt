@@ -511,9 +511,9 @@ defmodule Smalt.Compliance.C3CosmosTest do
     # v2 namespace + numeric ledger position + cursor tail.
     assert tok =~ ~r/^2#\d+:[A-Za-z0-9_-]+:\d{4}$/
     feed1 = Jason.decode!(page1.body)
-    assert length(feed1) == 100
-    assert hd(feed1)["id"] == "0001"
-    assert List.last(feed1)["id"] == "0100"
+    assert feed1["_count"] == 100
+    assert hd(feed1["Documents"])["id"] == "0001"
+    assert List.last(feed1["Documents"])["id"] == "0100"
 
     # Resume with the server's OWN token: exactly the remainder, no
     # repeats, and the last page carries no token (SDK loop terminates).
@@ -524,7 +524,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
 
     assert resume.status == 200
     feed2 = Jason.decode!(resume.body)
-    assert Enum.map(feed2, & &1["id"]) == ["0101"]
+    assert Enum.map(feed2["Documents"], & &1["id"]) == ["0101"]
     refute Map.has_key?(header_map(resume), "x-ms-continuation")
   end
 
@@ -726,7 +726,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
 
     assert resume_a.status == 200
     feed = Jason.decode!(resume_a.body)
-    assert Enum.map(feed, & &1["id"]) == ["0101"]
+    assert Enum.map(feed["Documents"], & &1["id"]) == ["0101"]
   end
 
   test "throttle: default :infinity keeps the surface unthrottled (regression row)" do

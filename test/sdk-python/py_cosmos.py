@@ -97,6 +97,17 @@ def main():
     except exceptions.CosmosResourceNotFoundError:
         check("delete_item d1 -> read 404", True)
 
+    # 3b. KD-07 falsifier: ReadFeed (GET docs) must return the SDK envelope.
+    try:
+        cont.create_item({"id": "r1", "pk": "acme"})
+        cont.create_item({"id": "r2", "pk": "acme"})
+        rows = list(cont.read_all_items(partition_key="acme"))
+        check("read_all_items (ReadFeed envelope)",
+              [r["id"] for r in rows] == ["r1", "r2"],
+              "ids=" + str([r["id"] for r in rows]))
+    except Exception as e:
+        check("read_all_items (ReadFeed envelope)", False, repr(e))
+
     # 4. SQL whitelist gate.
     rows = list(cont.query_items("SELECT * FROM c"))
     check("whitelist: SELECT * FROM c admitted", True, str(len(rows)) + " rows")

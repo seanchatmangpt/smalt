@@ -10,9 +10,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 
-const REPO = "/Users/sac/smalt";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "../..");
 const LOG_DIR = path.join(HERE, ".logs");
 // Defaults live in the documented private port range 39000-39999
 // (docs/DEV_LOOP.md "Private port allocation") so eh-run never contends the
@@ -141,7 +142,7 @@ async function main() {
       SMALT_EH_PORT: String(EH_PORT),
       SMALT_SDK_ROOT:
         process.env.SMALT_SDK_ROOT ||
-        "/Users/sac/cai/athena/playground/node_modules",
+        path.join(os.homedir(), "cai/athena/playground/node_modules"),
     },
     stdio: "inherit",
   });

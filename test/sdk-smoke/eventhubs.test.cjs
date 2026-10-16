@@ -19,6 +19,7 @@ const sdkRequire = createRequire(path.join(SDK_ROOT, "package.json"));
 const {
   EventHubProducerClient,
   EventHubConsumerClient,
+  earliestEventPosition,
 } = sdkRequire("@azure/event-hubs");
 
 const PROBE_TIMEOUT_MS = 15_000;
@@ -104,7 +105,9 @@ async function getPropertiesCase(client) {
   );
 }
 
-// Probe 2: producer — createBatch + tryAdd + canAdd + send.
+// Probe 2: producer — createBatch + tryAdd + send. The 6.0.4 EventDataBatch
+// surface is tryAdd/count/sizeInBytes/maxSizeInBytes (there is no `canAdd`;
+// that was drift from a non-existent older API).
 async function batchSendCase(client, hub) {
   const producer = new EventHubProducerClient(CONNECTION_STRING, hub, CLIENT_OPTIONS);
   try {
@@ -118,10 +121,22 @@ async function batchSendCase(client, hub) {
       sent.push(body);
     }
     assert.equal(batch.count, 3, "BATCH_COUNT_MUST_BE_3");
-    assert.equal(batch.canAdd(), true, "CANADD_AFTER_SMALL_BATCH");
+    assert.ok(batch.sizeInBytes > 0, "BATCH_SIZE_MUST_BE_POSITIVE");
     await producer.sendBatch(batch, {
       abortSignal: AbortSignal.timeout(12_000),
     });
+
+    // Capacity semantics (replaces the drifted `canAdd` assert, stronger not
+    // weaker): a size-limited batch must REJECT an event over its limit.
+    const tinyBatch = await producer.createBatch({
+      maxSizeInBytes: 64,
+      abortSignal: AbortSignal.timeout(12_000),
+    });
+    assert.ok(
+      tinyBatch.tryAdd({ body: "x".repeat(4096) }) === false,
+      "TRYADD_MUST_REJECT_OVERSIZE_EVENT",
+    );
+    assert.equal(tinyBatch.count, 0, "REJECTED_EVENT_MUST_NOT_BE_COUNTED");
     console.log(`[eventhubs.test.cjs] sendBatch ok: ${sent.length} events`);
   } finally {
     await boundedClose(producer);
@@ -184,7 +199,7 @@ async function subscribeEarliestCase(consumerFactory, hub) {
             console.error(`[subscribe:${pid}] processError:`, errText(err));
           },
         },
-        { startPosition: { earliest: true }, maxWaitTimeInSeconds: 2 },
+        { startPosition: earliestEventPosition, maxWaitTimeInSeconds: 2 },
       );
       subscriptionHandles.push(subscription);
     }

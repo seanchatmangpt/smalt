@@ -11,7 +11,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     SmaltTest.Lifecycle.ensure_store_up()
     Store.clear()
     BlobStorage.ensure_policy_table()
+    BlobStorage.ensure_block_table()
     :ets.delete_all_objects(:smalt_blob_policy)
+    :ets.delete_all_objects(:smalt_blob_blocks)
     :ok
   end
 
@@ -399,7 +401,152 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
   defp router_call(conn) do
     SmaltTest.Lifecycle.ensure_store_up()
+    BlobStorage.ensure_block_table()
     EgressRouter.call(conn, EgressRouter.init([]))
+  end
+
+  # ---------------------------------------------------------------------------
+  # X-1 (v26.10.14) block-commit fence: Put Block List must concatenate staged
+  # blocks into the blob body — the pre-fix engine stored the request XML as
+  # the blob (7.5 MiB staged payload committed as a 390-byte XML doc).
+  # ---------------------------------------------------------------------------
+
+  describe "X-1 block stage/commit/list" do
+    test "stage -> commit -> download is byte-equal to the concatenated blocks" do
+      container()
+
+      b1 = :crypto.strong_rand_bytes(300_000)
+      b2 = :crypto.strong_rand_bytes(300_000)
+      body = b1 <> b2
+
+      id1 = Base.encode64("blk-1")
+      id2 = Base.encode64("blk-2")
+
+      for {bid, content} <- [{id1, b1}, {id2, b2}] do
+        conn =
+          :put
+          |> conn("/acc1/cont1/blocks.bin?comp=block&blockid=#{bid}", content)
+          |> put_req_header("content-type", "application/octet-stream")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 201, "Put Block failed: #{conn.status}"
+      end
+
+      commit =
+        :put
+        |> conn(
+          "/acc1/cont1/blocks.bin?comp=blocklist",
+          ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>#{id1}</Latest><Latest>#{id2}</Latest></BlockList>)
+        )
+        |> put_req_header("content-type", "application/xml")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert commit.status == 201, "Put Block List failed: #{commit.status} #{commit.resp_body}"
+      assert get_resp_header(commit, "etag") != []
+
+      get =
+        :get
+        |> conn("/acc1/cont1/blocks.bin")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert get.status == 200
+      # Byte-equality witness: committed body is the concatenation in
+      # blocklist order, never the commit request XML.
+      assert get.resp_body == body
+      assert byte_size(get.resp_body) == 600_000
+    end
+
+    test "get block list answers application/xml with committed + uncommitted shape" do
+      container()
+
+      id1 = Base.encode64("c-1")
+      id2 = Base.encode64("u-1")
+
+      for {bid, content} <- [{id1, "committed-bytes"}, {id2, "uncommitted-bytes"}] do
+        conn =
+          :put
+          |> conn("/acc1/cont1/bl.bin?comp=block&blockid=#{bid}", content)
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 201
+      end
+
+      commit =
+        :put
+        |> conn(
+          "/acc1/cont1/bl.bin?comp=blocklist",
+          ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>#{id1}</Latest></BlockList>)
+        )
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert commit.status == 201
+
+      list =
+        :get
+        |> conn("/acc1/cont1/bl.bin?comp=blocklist&blocklisttype=all")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert list.status == 200
+      assert get_resp_header(list, "content-type") == ["application/xml; charset=utf-8"]
+      assert list.resp_body =~ ~s(<?xml version="1.0" encoding="utf-8"?>)
+      assert list.resp_body =~ "<CommittedBlocks>"
+      assert list.resp_body =~ "<UncommittedBlocks>"
+      assert list.resp_body =~ "<Name>#{id1}</Name>"
+      assert list.resp_body =~ "<Size>15</Size>"
+      assert list.resp_body =~ "<Name>#{id2}</Name>"
+    end
+
+    test "commit referencing a never-staged block is 400 InvalidBlockList" do
+      container()
+
+      commit =
+        :put
+        |> conn(
+          "/acc1/cont1/ghost.bin?comp=blocklist",
+          ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>ghost</Latest></BlockList>)
+        )
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert commit.status == 400
+      assert commit.resp_body =~ "InvalidBlockList"
+    end
+
+    test "x-ms-blob-content-type on the commit is stored with the blob" do
+      container()
+
+      id1 = Base.encode64("ct-1")
+
+      conn =
+        :put
+        |> conn("/acc1/cont1/ct.bin?comp=block&blockid=#{id1}", "ct-bytes")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert conn.status == 201
+
+      commit =
+        :put
+        |> conn(
+          "/acc1/cont1/ct.bin?comp=blocklist",
+          ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>#{id1}</Latest></BlockList>)
+        )
+        |> put_req_header("x-ms-blob-content-type", "application/json")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert commit.status == 201
+
+      assert {:ok, blob} = BlobStorage.get_blob("acc1", "cont1", "ct.bin")
+      assert blob["content"] == "ct-bytes"
+      assert blob["headers"]["content-type"] == "application/json"
+    end
   end
 
   test "XML list format preserved" do

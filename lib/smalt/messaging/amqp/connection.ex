@@ -263,9 +263,29 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp handle_amqp(:open, perf, _ch, state) do
+    # KD-21 shim (KD-COVERS: KD-21): the clamped idle-time-out is computed
+    # BEFORE the open reply and echoed non-nil in that reply — pyamqp
+    # `_incoming_open` indexes frame[4] unguarded and crashes on the
+    # spec-legal trailing-null trim. The `|| @recv_timeout` fallback below
+    # guarantees a real (non-nil) pad.
+    idle =
+      case state[:session] do
+        %{idle_time_out: t} when is_integer(t) -> t
+        _ -> nil
+      end ||
+        case perf[:idle_time_out] do
+          ms when is_integer(ms) and ms > 0 -> min(max(ms, 60_000), @recv_timeout)
+          _ -> @recv_timeout
+        end
+
     send_frame(state, 0, {
       :open,
-      %{container_id: @container_id, max_frame_size: @max_frame_size, channel_max: 65_535}
+      %{
+        container_id: @container_id,
+        max_frame_size: @max_frame_size,
+        channel_max: 65_535,
+        idle_time_out: idle
+      }
     })
 
     state =
@@ -451,11 +471,19 @@ defmodule Smalt.Amqp.Connection do
       # SDK derives the granted session id from the attach response's source
       # filter (com.microsoft:session-filter). Without the source echo it
       # reads undefined and fails acceptSession with "session may be locked".
+      # KD-COVERS: KD-49
       base_attach = %{
         name: perf.name,
         handle: perf.handle,
         role: our_role == :receiver,
-        initial_delivery_count: 0
+        initial_delivery_count: 0,
+        # KD-49 shim: echo the client's own source/target back. pyamqp
+        # `_incoming_attach` requires both descriptors ("Invalid link" ->
+        # detach otherwise); rhea tolerates the omission. frame_codec trims
+        # nil, so a nil side is trimmed as before. The session case below
+        # Map.merge's over these keys and still wins.
+        source: perf.source,
+        target: perf.target
       }
 
       {attach_fields, state} =
@@ -586,6 +614,7 @@ defmodule Smalt.Amqp.Connection do
 
   defp handle_transfer(perf, channel, state) do
     link = link_by_handle(state, channel, perf.handle)
+
 
     case link do
       %{kind: :queue, role: :receiver} = link ->
@@ -905,6 +934,12 @@ defmodule Smalt.Amqp.Connection do
 
     request = %{
       operation: props["operation"],
+      # KD-COVERS: KD-19 — Event Hubs READ management ops carry type/name/partition as
+      # application properties (managementClient.js sends body = JSON "[]" —
+      # the entity name is NOT in the body).
+      type: props["type"],
+      name: props["name"],
+      partition: props["partition"],
       body: message.body,
       queue: associated_queue,
       correlation_id: correlation_id
@@ -1076,9 +1111,8 @@ defmodule Smalt.Amqp.Connection do
 
     # V261014-04 F1: `receive_events/3` returns a BARE list (its @spec and the
     # public contract consumed by c7_events.exs + reconcile callers), so a
-    # `{:ok, events}` match could never succeed and no EH event was ever
-    # delivered over the wire. Match the bare-list shape; an empty list (or any
-    # other shape) falls through closed.
+    # `{:ok, events}` match on {:ok, events} could never succeed. Match the
+    # bare-list shape; an empty list (or any other shape) falls through closed.
     case EventHubs.receive_events(partition, after_seq, link.credit) do
       [_ | _] = events ->
         Enum.reduce(events, state, fn ev, st ->
@@ -1088,14 +1122,19 @@ defmodule Smalt.Amqp.Connection do
           {st, _id} =
             send_message(st, link, %{
               handle: link.handle,
-              delivery_tag: <<seq::unsigned-64>>
+              delivery_tag: <<seq::unsigned-64>>,
+              # KD-COVERS: KD-18,KD-20 — format 0 = standard decoded-message
+              # path (SB pattern below). Keep consistent on EVERY EH arm; the
+              # credit bump below closes KD-20.
+              message_format: 0
             }, [
               {:message_annotations, %{"x-opt-sequence-number" => seq}},
-              {:body_data, body}
+              eh_body_section(body)
             ])
 
           st
           |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
+          |> then(&bump_credit(&1, link.channel, link.handle, -1))
         end)
 
       _ ->
@@ -1104,6 +1143,43 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp eh_partition(address) when is_binary(address), do: address |> String.split("/") |> List.last()
+
+  # KD-18: stored EH bodies are raw client transfer payloads. The producer
+  # path stores the SDK's BATCH ENVELOPE message (header / message-annotations
+  # / properties / body_data), and the batch body itself is ANOTHER encoded
+  # message stream, so unwrap body sections recursively until the payload is
+  # no longer a section stream. Body sections are located by header bytes:
+  # described(0x00 0x53 0x75 body-data, vbin8/vbin32) — FrameCodec
+  # .decode_message/1 is all-or-nothing, so a raw byte scan is used. Falls
+  # back closed to the whole payload when no body section is present.
+  # KD-COVERS: KD-18
+  defp eh_body_section(payload) when is_binary(payload) do
+    case eh_body_section_scan(payload) do
+      {:ok, section} -> eh_body_section(section)
+      :error -> {:body_data, payload}
+    end
+  end
+
+  defp eh_body_section_scan(payload) do
+    case :binary.match(payload, <<0x00, 0x53, 0x75>>) do
+      {pos, _} ->
+        rest = binary_part(payload, pos, byte_size(payload) - pos)
+
+        case rest do
+          <<0x00, 0x53, 0x75, 0xA0, len, body::binary-size(len), _::binary>> ->
+            {:ok, body}
+
+          <<0x00, 0x53, 0x75, 0xB0, len::32, body::binary-size(len), _::binary>> ->
+            {:ok, body}
+
+          _ ->
+            {:ok, binary_part(payload, pos, byte_size(payload) - pos)}
+        end
+
+      :nomatch ->
+        :error
+    end
+  end
 
   defp deliver_to_link(state, link) do
     case QueueStore.dequeue_matching(link.address, session_id: link.session_id) do
@@ -1246,7 +1322,15 @@ defmodule Smalt.Amqp.Connection do
       # hangs forever ("Operation to settle the message has timed out").
       # If the client already settled on the wire (settled=true), no echo.
       if matched_any and not perf[:settled] do
-        send_frame(state, channel, {:disposition, %{role: false, first: first, last: last, settled: true}})
+        # pyamqp dialect (S-1, disclosed in s1-amqp-shims receipt): pyamqp
+        # reads the echo's terminal outcome state, so echo the client's own
+        # state back — a bare settled-only echo reads as outcome None and
+        # every complete/abandon fails ("Expected 'accepted' but the
+        # reported outcome was: None").
+        send_frame(state, channel, {
+          :disposition,
+          %{role: false, first: first, last: last, settled: true, state: perf[:state]}
+        })
       end
 
       state
@@ -1537,9 +1621,20 @@ defmodule Smalt.Amqp.Connection do
         endpoint = Smalt.Amqp.SasVerifier.endpoint()
 
         # put-token claims are keyed by the full "sb://host:port/entity"
-        # audience; the attach address is the bare entity name
+        # audience; the attach address is the bare entity name. pyamqp
+        # dialect (S-1, disclosed in s1-amqp-shims receipt): the Python SDK
+        # attaches queue links with an `amqps://` scheme while its own CBS
+        # token is minted for `sb://` — try the sb-normalized form too
+        # instead of refusing the entity on a scheme spelling.
+        normalized =
+          case String.split(audience, "://", parts: 2) do
+            ["amqps", rest] -> "sb://" <> rest
+            _ -> audience
+          end
+
         CbsRouter.authorized?(CbsRouter, self(), audience) or
-          CbsRouter.authorized?(CbsRouter, self(), endpoint <> "/" <> audience)
+          CbsRouter.authorized?(CbsRouter, self(), endpoint <> "/" <> audience) or
+          CbsRouter.authorized?(CbsRouter, self(), normalized)
 
       true ->
         true
