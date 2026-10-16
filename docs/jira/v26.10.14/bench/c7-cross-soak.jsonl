@@ -146,3 +146,12 @@
 {"lane":"c7","ts":"2026-10-16T04:04:36.868Z","event":"done","wall_s":20.1}
 {"lane":"c7","ts":"2026-10-16T04:06:17.567Z","event":"meta","duration_s":15,"sample_interval_s":10,"ports":{"arm":39070,"egress":39071,"amqp":39072,"ehub":39073,"atls":39074,"mcp":39075},"payload_bytes":{"blob":8192,"sb_eh":1024}}
 {"lane":"c7","ts":"2026-10-16T04:06:27.633Z","event":"sample","n":1,"elapsed_s":10,"rss_kb":253728,"rss_pid":14614,"heap_mb":25.7,"ops_per_surface":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0},"win_errors":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0},"total_ops":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0},"cum_errors":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0}}
+{"lane":"c7","ts":"2026-10-16T04:06:37.684Z","event":"sample","n":2,"elapsed_s":20,"rss_kb":222080,"rss_pid":14457,"heap_mb":25.8,"ops_per_surface":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0},"win_errors":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0},"total_ops":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0},"cum_errors":{"blob":0,"cosmos":0,"sb":0,"eh":0,"kv":0,"arm":0}}
+{"lane":"c7","ts":"2026-10-16T04:06:37.684Z","event":"worker-crash","surface":"kv","detail":"TypeError: fetch failed"}
+{"lane":"c7","ts":"2026-10-16T04:06:37.684Z","event":"summary","surface":"blob","n":0,"ops_per_sec":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"errors":0,"recycles":0,"last_error":""}
+{"lane":"c7","ts":"2026-10-16T04:06:37.684Z","event":"summary","surface":"cosmos","n":0,"ops_per_sec":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"errors":0,"recycles":0,"last_error":""}
+{"lane":"c7","ts":"2026-10-16T04:06:37.685Z","event":"summary","surface":"sb","n":0,"ops_per_sec":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"errors":0,"recycles":0,"last_error":""}
+{"lane":"c7","ts":"2026-10-16T04:06:37.685Z","event":"summary","surface":"eh","n":0,"ops_per_sec":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"errors":0,"recycles":0,"last_error":""}
+{"lane":"c7","ts":"2026-10-16T04:06:37.685Z","event":"summary","surface":"kv","n":0,"ops_per_sec":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"errors":0,"recycles":0,"last_error":""}
+{"lane":"c7","ts":"2026-10-16T04:06:37.685Z","event":"summary","surface":"arm","n":0,"ops_per_sec":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"errors":0,"recycles":0,"last_error":""}
+{"lane":"c7","ts":"2026-10-16T04:06:37.685Z","event":"done","wall_s":20.1}

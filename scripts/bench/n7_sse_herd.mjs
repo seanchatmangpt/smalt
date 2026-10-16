@@ -224,14 +224,8 @@ async function main() {
   emit({ phase: "steady", delta_rate_per_s: Number(((seqB - seqA) / 2).toFixed(1)) });
 
   // Phase: storm — abrupt server-side abort of every controller.
+  stormArmed = true; // arm before firing so clients reconnect, not count errors
   const storm = await fetch(origin + streamPath, {
-    method: "POST",
-    headers: { "x-smalt-storm": "abort" },
-  })
-    .then((r) => r.json())
-    .catch((e) => ({ error: String(e) }));
-  stormArmed = true;
-  emit({ phase: "storm", aborted: storm.aborted ?? -1 });
   log("storm fired:", JSON.stringify(storm));
 
   // Phase: reconnect — clients react to close via onDown -> backoff loop.

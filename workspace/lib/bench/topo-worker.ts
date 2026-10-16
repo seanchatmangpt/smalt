@@ -12,7 +12,7 @@
 /// generated 50k-node DAG. Edges are constrained from < to, so the graph is
 /// acyclic by construction and Kahn's algorithm terminates.
 
-const self = globalThis as unknown as {
+const workerSelf = globalThis as unknown as {
   postMessage(m: unknown): void;
   onmessage: ((ev: MessageEvent) => void) | null;
 };
@@ -56,7 +56,7 @@ function kahnTopoSort(
   return { orderLen: emitted, scans };
 }
 
-self.onmessage = (ev: MessageEvent) => {
+workerSelf.onmessage = (ev: MessageEvent) => {
   const msg = ev.data;
   if (msg.type !== "run") return;
   const buffer: ArrayBuffer = msg.buffer as ArrayBuffer;
@@ -72,7 +72,7 @@ self.onmessage = (ev: MessageEvent) => {
   const memTimer = setInterval(() => {
     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } })
       .memory;
-    self.postMessage({
+    workerSelf.postMessage({
       type: "mem",
       usedJSHeapSize: mem ? Math.round(mem.usedJSHeapSize) : -1,
       ts: Date.now(),
@@ -83,7 +83,7 @@ self.onmessage = (ev: MessageEvent) => {
     const r = kahnTopoSort(edges, n);
     iterations++;
     scans += r.scans;
-    self.postMessage({
+    workerSelf.postMessage({
       type: "progress",
       iterations,
       edgesScanned: scans,
@@ -92,7 +92,7 @@ self.onmessage = (ev: MessageEvent) => {
   }
 
   clearInterval(memTimer);
-  self.postMessage({
+  workerSelf.postMessage({
     type: "done",
     iterations,
     edgesScanned: scans,
