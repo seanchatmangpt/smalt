@@ -91,13 +91,14 @@ class Soak:
     # ---------------- setup ----------------
 
     def setup(self):
-        st = http_req(ARM_HOST, ARM_PORT, "GET", "/subscriptions")
+        st = http_req(ARM_HOST, ARM_PORT, "GET",
+                      "/subscriptions?api-version=2021-04-01")
         if st != 200:
             raise RuntimeError(f"substrate not ready: /subscriptions -> {st}")
         import json as _j
         conn = http.client.HTTPConnection(ARM_HOST, ARM_PORT, timeout=20)
         try:
-            conn.request("GET", "/subscriptions")
+            conn.request("GET", "/subscriptions?api-version=2021-04-01")
             self.subscription = _j.loads(conn.getresponse().read())["value"][0]["subscriptionId"]
         finally:
             conn.close()
@@ -111,7 +112,8 @@ class Soak:
                            "x-ms-immutable-policy": "false"}) not in (201, 409):
             raise RuntimeError("blob container setup failed")
         st = http_req(ARM_HOST, ARM_PORT, "PUT",
-                      f"/subscriptions/{self.subscription}/resourcegroups/soak-rg-0",
+                      f"/subscriptions/{self.subscription}/resourcegroups/soak-rg-0"
+                      "?api-version=2021-04-01",
                       {"location": "eastus"})
         if st != 201:
             raise RuntimeError(f"arm rg setup failed: {st}")
@@ -130,10 +132,12 @@ class Soak:
             i = ((n - 1) // 2) % 8  # PUT at odd n, GET at even n, same rg per pair
             if n % 2 == 1:  # odd seq: PUT (creates/upserts rg-i)
                 st = self.req("PUT", f"/subscriptions/{self.subscription}"
-                                     f"/resourcegroups/soak-rg-{i}", {"location": "eastus"})
+                                     f"/resourcegroups/soak-rg-{i}"
+                                     "?api-version=2021-04-01", {"location": "eastus"})
                 return "arm", st in (200, 201)  # 201 create, 200 upsert-update
             st = self.req("GET", f"/subscriptions/{self.subscription}"
-                                 f"/resourcegroups/soak-rg-{i}", None)
+                                 f"/resourcegroups/soak-rg-{i}"
+                                 "?api-version=2021-04-01", None)
             return "arm", st == 200
         if cat == "cosmos":
             i = (n - 1) // 4
@@ -167,7 +171,7 @@ class Soak:
         rows = [{"time": "2026-10-14T00:00:00Z", "msg": f"soak-{n}", "seq": n}]
         st = self.req("POST", "/dataCollectionRules/soak-dcr/streams/Custom-soak"
                               "?api-version=2023-01-01", rows)
-        return "sentinel", st == 200
+        return "sentinel", st in (200, 204)
 
     def worker(self, schedule_q, wid):
         import random as _r

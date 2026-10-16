@@ -7,6 +7,19 @@
 # surfaces (deps/, _build/, .git/, tmp/, .elixir_ls/, docs/NAMING_SWEEP.md,
 # .ggen_igniter/, cli/.ggen-v2/, Justfile — the recipe doc comments quote the
 # scan terms by design, same meta class as docs/PUBLISH_CHECK.md).
+#
+# Also excluded (2026-10-15, lane X-4): docs/jira/*/receipts/ and
+# docs/jira/*/sdk-results/ — 163 hits across 80 files. These are evidence
+# records quoting their own environment (command output, captured paths,
+# work-order text), the same tolerated class as .ggen_igniter/ machine
+# receipts. Scrubbing would rewrite historical evidence, and the volume
+# (163) makes per-line allowlisting impractical; directory-level exclusion
+# chosen over normalization. workspace/ was NOT excluded: its 4 hits were
+# normalized in place to repo-relative phrasing instead.
+# Also excluded as self-quote surfaces (scripts defining/running the scan
+# pattern itself, same meta class as docs/NAMING_SWEEP.md / Justfile):
+# scripts/naming_sweep.sh (2 hits: PATTERN line + header), scripts/publish_dry.sh
+# (2 hits: LEAK_PAT + header comment).
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
@@ -30,7 +43,7 @@ ALLOWLIST=(
   "scripts/dev_env.sh:33"
   "scripts/stress/vs_azurite.py:330"
   "scripts/stress/vs_azurite.py:369"
-  "test/sdk-smoke/eh-run.mjs:143"
+  "test/sdk-smoke/eh-run.mjs:145"
   # Machine-generated lock/config (ggen lane; regenerated, not hand-edited)
   "cli/ggen.lock:4"
   "cli/ggen.lock:8"
@@ -83,13 +96,13 @@ ALLOWLIST=(
   # captured redteam receipts (redteam lane; captured output, not source)
   "test/redteam/r1_input_fuzz/receipt.txt:2"
   "test/redteam/r2_state/findings.md:4"
-  # eh-run.mjs new-file regression line 14 (sdk-smoke owner; :143 above)
-  "test/sdk-smoke/eh-run.mjs:14"
+  # eh-run.mjs :14 entry retired 2026-10-15 (fin-14): REPO is now derived
+  # repo-relative via HERE, absolute literal removed.
 )
 
 # 1. Sweep tracked files only, excluding machine/self-quote surfaces.
 hits="$(git ls-files -z \
-  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/)' \
+  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
   | xargs -0 grep -niE "$PATTERN" 2>/dev/null || true)"
 
 allowed=0

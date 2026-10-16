@@ -1,0 +1,1 @@
+{application,smalt_proxy,[{modules,['Elixir.SmaltProxy.Application','Elixir.SmaltProxy.Namespace','Elixir.SmaltProxy.Router']},{optional_applications,[]},{applications,[kernel,stdlib,elixir,logger,sasl]},{description,"smalt_proxy"},{registered,[]},{vsn,"0.1.0"},{mod,{'Elixir.SmaltProxy.Application',[]}}]}.

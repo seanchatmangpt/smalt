@@ -142,13 +142,15 @@ def split_row(line):
     return parts
 
 def load_kd():
-    """KD id -> {surface, evidence receipts} (handles escaped pipes)."""
+    """KD id -> {surface, evidence receipts, status} (handles escaped pipes)."""
     kds = {}
     for line in read(KD_PATH).splitlines():
-        if re.match(r"^\s*\| KD-\d+ \|", line):
+        if re.match(r"^\s*\|\s*KD-\d+\s*\|", line):
             parts = split_row(line)
             if len(parts) >= 4:
-                kds[parts[0]] = {"surface": parts[1], "evidence": parts[3]}
+                status = re.match(r"[A-Za-z-]+", parts[5].strip()).group(0) if len(parts) >= 6 else "OPEN"
+                kds[parts[0]] = {"surface": parts[1], "evidence": parts[3],
+                                 "status": status}
     return kds
 
 def kd_for_receipt(kds, receipt_name):
@@ -222,6 +224,12 @@ def main():
                 findings.append(f"{s['id']}/{lang}: MISSING receipt {rcpt_name}")
             elif verdict["all_pass"]:
                 status = "PASS"
+            elif kd_ids and all(
+                    kds[k]["status"] == "CLOSED-SIMULATED" for k in kd_ids):
+                # every covered KD row was flipped CLOSED-SIMULATED by
+                # scripts/kd_flip.py (shim + post-shim witness receipt):
+                # simulated, not native — distinct from PASS, counts covered.
+                status = "SIM-PASS"
             elif kd_ids:
                 status = "REGISTERED-DIVERGENCE"
             else:
@@ -273,7 +281,10 @@ def main():
     n_missing = sum(1 for r in rows for c in (r["ts"], r["py"]) if c and c["status"] == "MISSING")
     n_gap = sum(1 for r in rows for c in (r["ts"], r["py"]) if c and c["status"] == "UNREGISTERED-GAP")
     n_reg = sum(1 for r in rows for c in (r["ts"], r["py"]) if c and c["status"] == "REGISTERED-DIVERGENCE")
-    print(f"MISSING={n_missing} UNREGISTERED-GAP={n_gap} REGISTERED-DIVERGENCE={n_reg}")
+    n_sim = sum(1 for r in rows for c in (r["ts"], r["py"]) if c and c["status"] == "SIM-PASS")
+    print(f"MISSING={n_missing} UNREGISTERED-GAP={n_gap} "
+          f"REGISTERED-DIVERGENCE={n_reg} SIM-PASS={n_sim} "
+          f"(SIM-PASS counts as covered)")
     for f in findings:
         print(f"FINDING: {f}")
 

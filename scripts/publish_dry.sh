@@ -11,8 +11,9 @@
 #      (docs/PUBLISH_CHECK.md section 2 / scripts/naming_sweep.sh pattern class)
 #   4. docs/ERROR_CODES.md regen identity (gen_error_codes.py --check)
 #
-# Exit 0 only if all automatable gates pass. Signing-key ROTATION is
-# deliberately pending — coordinator decision, not a gate failure.
+# Exit 0 only if all automatable gates pass. Signing-key ROTATION was
+# EXECUTED 2026-10-15 (docs/jira/v26.10.14/receipts/rotate-signing-key.md);
+# publication remains gated on final court-x2.
 #
 # Usage: scripts/publish_dry.sh [output.tar]   (default /tmp/hex-publish-dry/smalt.tar)
 
@@ -102,6 +103,6 @@ else
   # Re-derive per-gate status is embedded above; summary marks the run FAIL.
   echo "FAIL (see per-gate lines above)"
 fi
-echo "publish gated on: signing.key rotation (coordinator decision)"
+echo "publish released pending final court-x2 (rotation EXECUTED 2026-10-15)"
 
 exit "$FAIL"

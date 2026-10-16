@@ -7,7 +7,7 @@
 # an orphaned lane lease UNLESS a live process still references it (lsof +D, or
 # the cwd of a running beam/elixir process).
 
-ROOT := parent_directory(justfile_directory())
+ROOT := justfile_directory()
 CANONICAL := "_build"
 
 # Shared shell prelude: defines live_refs() and candidates().

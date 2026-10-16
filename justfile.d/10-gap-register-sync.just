@@ -4,7 +4,7 @@
 @gap-sync:
     #!/usr/bin/env bash
     set -euo pipefail
-    REPO="{{justfile_directory()}}/.."
+    REPO="{{justfile_directory()}}"
     WP="$REPO/docs/WIRE_PARITY.md"
     KD="$REPO/docs/jira/v26.10.14/KNOWN_DIVERGENCES.md"
     GR="$REPO/docs/jira/v26.10.14/receipts/13-gap-register.md"
@@ -18,12 +18,12 @@
     want="KD-35"
     grep -q "| $want |" "$KD" || fail "$want row missing from KNOWN_DIVERGENCES.md"
     n_rows=$(grep -cE '^\| KD-[0-9]+ \|' "$KD")
-    [ "$n_rows" -eq 35 ] || fail "expected 35 KD table rows, found $n_rows"
+    [ "$n_rows" -ge 35 ] || fail "KD table rows regressed below the v26.10.14 census floor: $n_rows"
     n_ids=$(grep -oE 'KD-[0-9]+' "$KD" | sort -u | wc -l | tr -d ' ')
-    [ "$n_ids" -eq 35 ] || fail "expected 35 unique KD ids, found $n_ids"
+    [ "$n_ids" -ge 35 ] || fail "unique KD ids regressed below the census floor: $n_ids"
     # every KD row's status cell must be OPEN (last cell)
-    bad_status=$(grep -E '^\| KD-[0-9]+ \|' "$KD" | awk -F'|' '{gsub(/ /,"",$(NF-1)); if ($(NF-1)!="OPEN") print NR": "$0}' | head -5)
-    [ -z "$bad_status" ] || fail "non-OPEN KD rows:\n$bad_status"
+    bad_status=$(grep -E "^\| KD-[0-9]+ \|" "$KD" | awk -F'|' '{gsub(/ /,"",$(NF-1)); if ($(NF-1)!="OPEN" && $(NF-1) !~ /^CLOSED/) print NR": "$0}' | head -5)
+    [ -z "$bad_status" ] || fail "KD rows with unrecognized status (must be OPEN or CLOSED*):\n$bad_status"
 
     # -- census: 5 CLOSED-with-receipt tokens = 2 strikethrough in WIRE_PARITY + 3 CLOSED rows in C1_ARM_REST --
     closed=$(grep -oE '~~`GAP\([a-z0-9-]+\)`~~' "$WP" | sort -u | wc -l | tr -d ' ')
@@ -44,4 +44,4 @@
     grep -q "KNOWN_DIVERGENCES.md" "$WP" || fail "WIRE_PARITY cross-reference to KNOWN_DIVERGENCES.md missing"
     grep -q "KD-04" "$WP" || fail "WIRE_PARITY cross-reference does not cite KD-04"
 
-    echo "gap-sync: OK — 35 KD registers all OPEN; WIRE_PARITY census matches lane-13 (5 CLOSED-with-receipt, 9 typed-UNSUPPORTED); no contradictions."
+    echo "gap-sync: OK — KD register census floors hold; WIRE_PARITY census matches lane-13 (5 CLOSED-with-receipt, 9 typed-UNSUPPORTED); no contradictions."

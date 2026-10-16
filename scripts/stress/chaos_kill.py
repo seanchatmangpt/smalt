@@ -41,7 +41,10 @@ DATA_PORT = int(os.environ.get("SMALT_CHAOS_EGRESS_PORT", "39522"))
 AMQP_PORT = int(os.environ.get("SMALT_CHAOS_AMQP_PORT", "39523"))
 EVENT_HUBS_PORT = int(os.environ.get("SMALT_CHAOS_EH_PORT", "39524"))
 MCP_PORT = int(os.environ.get("SMALT_CHAOS_MCP_PORT", "39525"))
-API_VERSION = "2021-01-01"
+# RG verbs gate api-version (router.ex @rg_type row 6b): latest admitted for
+# Microsoft.Resources/resourceGroups is 2021-04-01; stale versions 400.
+API_VERSION = "2021-04-01"
+SUB_ID = os.environ.get("SMALT_CHAOS_SUB_ID", "chaos-sub")
 
 TRAFFIC_RPS = 20.0
 PHASE_FLOOD = 30.0
@@ -163,7 +166,10 @@ _TOKEN = {"value": None}
 def acquire_token():
     conn = http.client.HTTPConnection(HOST, ARM_PORT, timeout=5.0)
     try:
-        body = "grant_type=client_credentials"
+        # RFC 6749 §5.2 validation (router.ex validate_token_request/1) now
+        # requires non-blank client_id/client_secret; values are unchecked.
+        body = ("grant_type=client_credentials"
+                "&client_id=chaos-harness&client_secret=chaos-harness")
         conn.request("POST", "/oauth2/v2.0/token", body=body, headers={
             "Content-Type": "application/x-www-form-urlencoded",
             "Content-Length": str(len(body)),

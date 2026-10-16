@@ -224,3 +224,10 @@ import 'justfile.d/12-docs-dod.just'
 import 'justfile.d/13-receipt-index.just'
 # 14-sdk-matrix — SDK coverage matrix (DoD-14)
 import 'justfile.d/14-sdk-matrix.just'
+import 'justfile.d/15-bench.just'
+# 18-shim-court — reusable shim-court harness (lane S-6)
+import 'justfile.d/18-shim-court.just'
+# 19-wave-telemetry — wave-level wall-clock telemetry (lane S-8)
+import 'justfile.d/19-wave-telemetry.just'
+# 20-sobelow — static security analysis (ERRC lane 8 Raise; non-blocking)
+import 'justfile.d/20-sobelow.just'

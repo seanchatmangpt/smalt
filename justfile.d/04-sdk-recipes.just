@@ -68,35 +68,32 @@ sdk-ts:
     mkdir -p .logs
     BOOT_EVAL="Application.put_env(:smalt, :sb_shared_key, \"$KEY\"); Application.put_env(:smalt, :sb_endpoint, \"sb://127.0.0.1:5672\"); Application.put_env(:smalt, :amqp_port, 5672); Application.put_env(:smalt, :event_hubs_port, 5673); Application.put_env(:smalt, :arm_port, 9443); Application.put_env(:smalt, :egress_port, 8443); Application.put_env(:smalt, :arm_tls_port, 9444); {:ok, _} = Application.ensure_all_started(:smalt); Smalt.Store.put(:smalt_attestation_baseline, \"$MEASUREMENT\", %{\"measurement\" => \"$MEASUREMENT\"})"
     cd "$ROOT"
-    MIX_ENV=test SMALT_TLS_CERTFILE="$CERT_DIR/dev-cert.pem" SMALT_TLS_KEYFILE="$CERT_DIR/dev-key.pem" mix run --no-start --no-halt -e "$BOOT_EVAL" >"$LOG" 2>&1 &
-    SUB=$!
-    up=0
-    for i in $(seq 1 90); do
-        if nc -z 127.0.0.1 5672 2>/dev/null && nc -z 127.0.0.1 8443 2>/dev/null \
-           && nc -z 127.0.0.1 9443 2>/dev/null && nc -z 127.0.0.1 9444 2>/dev/null; then up=1; break; fi
-        kill -0 $SUB 2>/dev/null || break
-        sleep 1
+    boot_ok=0
+    for attempt in 1 2 3 4; do
+        MIX_ENV=test SMALT_TLS_CERTFILE="$CERT_DIR/dev-cert.pem" SMALT_TLS_KEYFILE="$CERT_DIR/dev-key.pem" mix run --no-start --no-halt -e "$BOOT_EVAL" >"$LOG" 2>&1 &
+        SUB=$!
+        boot_ok=1
+        for i in $(seq 1 60); do
+            if nc -z 127.0.0.1 5672 2>/dev/null && nc -z 127.0.0.1 8443 2>/dev/null \
+               && nc -z 127.0.0.1 9443 2>/dev/null && nc -z 127.0.0.1 9444 2>/dev/null; then break; fi
+            kill -0 $SUB 2>/dev/null || { boot_ok=0; break; }
+            sleep 1
+        done
+        # Ownership gate: anonymous ARM must answer 200. A foreign enforce-mode
+        # substrate on the canonical ports answers 401 — refuse attach probes.
+        arm_code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:9443/subscriptions?api-version=2021-04-01")
+        if [ "$arm_code" = "200" ]; then boot_ok=2; break; fi
+        kill -TERM $SUB 2>/dev/null; sleep 3; kill -KILL $SUB 2>/dev/null; sleep 5
+        echo "[sdk-ts] boot attempt $attempt failed (arm anon=$arm_code), retrying"
     done
-    if [ "$up" -ne 1 ]; then
-        echo "[sdk-ts] substrate did not come up — log: $LOG"; tail -20 "$LOG"
-        kill -KILL $SUB 2>/dev/null
-        echo "sdk-ts SUMMARY: ${#SUM[@]} harnesses, $fails FAIL (substrate boot failed — attach probes not run)"
-        printf '%s\n' "${SUM[@]}"
-        exit 2
-    fi
-    echo "[sdk-ts] attach substrate up (5672/5673/9443/8443/9444)"
-    # Ownership gate: the arm plane under ANONYMOUS auth must answer 200.
-    # A foreign enforce-mode substrate (another lane squatting the canonical
-    # ports) answers 401 — refuse to run attach probes against it (the whole
-    # attach phase then reports SKIP-loud, exit 3, not a false 401 sweep).
-    arm_code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:9443/subscriptions?api-version=2021-04-01")
-    if [ "$arm_code" != "200" ]; then
-        echo "[sdk-ts] canonical ports held by a FOREIGN substrate (arm anon=$arm_code, expected 200). Attach phase SKIP-loud."
-        kill -TERM $SUB 2>/dev/null; sleep 1; kill -KILL $SUB 2>/dev/null
-        echo "sdk-ts SUMMARY: ${#SUM[@]} harnesses run, $fails FAIL, 4 attach probes SKIP (foreign substrate on canonical ports)"
+    if [ "$boot_ok" -ne 2 ]; then
+        echo "[sdk-ts] could not obtain an owned substrate on canonical ports — log: $LOG"; tail -5 "$LOG"
+        echo "sdk-ts SUMMARY: ${#SUM[@]} harnesses run, $fails FAIL, 4 attach probes SKIP (canonical ports unavailable)"
         printf '%s\n' "${SUM[@]}"
         [ "$fails" -gt 0 ] && exit 1 || exit 3
     fi
+    SUB=$(lsof -ti tcp:9443 -sTCP:LISTEN | head -1)
+    echo "[sdk-ts] owned attach substrate up (5672/5673/9443/8443/9444)"
     export SMALT_TS_SB_SHARED_KEY="$KEY"
     # arm-resources documents NODE_TLS_REJECT_UNAUTHORIZED=0 (self-signed leaf
     # on the TLS twin; docs/jira/v26.10.14/sdk-results/ts-arm-resources.md).
