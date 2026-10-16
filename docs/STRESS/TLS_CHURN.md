@@ -49,6 +49,25 @@ script classifies failures by errno (`classify()` in tls_churn.py) so this
 cannot be misread as server fault. Server-side: every connection the client
 successfully opened got a 200.
 
+## Re-run (2026-10-15, v26.10.14 DoD lane B-11) — REPRODUCED_WITHIN_NOISE
+
+Server pid 88174, private ports http 29443 / TLS 29444, alive after all
+scenarios, RSS 241 MB. Gate: TLSv1.2 / ECDHE-RSA-AES256-GCM-SHA384 → 200.
+
+| # | Scenario | 2026-10-15 result |
+|---|---|---|
+| 2 | TLS1.2-pinned cipher, 10s | **496.4 handshakes/s**, p50 1.95 ms, n=4965, 0 failures; every cipher = `ECDHE-RSA-AES256-GCM-SHA384` |
+| 1 | Sustained 30s churn | **462.9 handshakes/s**, p50 2.07 ms, p99 3.34 ms, n=13889, 0 failures |
+| 3 | 20 bursts x 50 concurrent | **1000/1000 OK**, burst wall p50 18.1 ms, max 28.4 ms |
+| 4 | 100 bad-ClientHello | Server survived; good verified handshake + 200 (2.1 ms) |
+| 5 | Plain-http 29443, 10s | **1808.5 req/s**, p50 0.15 ms, p99 0.31 ms, n=18085 |
+
+vs 2026-10-14: handshake rates within 1.4% (496.4 vs 503.6; 462.9 vs 466.9);
+plain-http +4%. Scenario 5 failures remain client-side `EADDRNOTAVAIL`
+(21,027) — harness ephemeral-port ceiling, not server faults. The sandbox
+SIGKILL artifact below did not reproduce. Full comparison:
+`docs/jira/v26.10.14/receipts/bench-11-chaos-tls.md`.
+
 ## Environmental note: sandbox SIGKILL
 
 Earlier attempts (run 1..3) had the beam server externally SIGKILLed (exit

@@ -43,6 +43,25 @@ p3_between          300   300     0     1.1     1.5     2.0    17.5
 p4_kill_recovery    599   371   228     1.1     1.7     8.2    23.2
 ```
 
+## Re-run (2026-10-15, v26.10.14 DoD lane B-11) — BETTER_OR_EQUAL
+
+Full rc=0 run after three harness contract fixes (harness had drifted behind
+the tightened router: token endpoint now requires client_id/client_secret per
+RFC 6749 §5.2; RG verbs now gate api-version, latest admitted 2021-04-01;
+SUB_ID was an undefined name). Details in
+`docs/jira/v26.10.14/receipts/bench-11-chaos-tls.md`.
+
+| run | baseline p95 | flood p95 | gate p95 | in-flight failures at kill | reboot (ports bound) | TTFS from kill | post-recovery p95 |
+|---|---|---|---|---|---|---|---|
+| 2026-10-15 | 1.2ms | 1.0ms | 1.2ms | 49 | 4.775s | 2.981s | 1.2ms (505/505) |
+
+TTFS and reboot both improved; this run booted first-attempt clean (prior
+reboot numbers included a failed first boot attempt). In-flight failures at
+kill dropped 90-142 → 49 (shorter dead window). LRO sweeper as a kill target:
+NOT SUPPORTED — it is an in-beam GenServer child of Smalt.Supervisor
+(`lib/smalt/arm_gateway/lro_sweeper.ex`), not an OS process; the process-group
+SIGKILL covers it implicitly.
+
 ## Findings
 
 - **Listen-queue fill: zero impact.** 300 half-open connects for 10s on the

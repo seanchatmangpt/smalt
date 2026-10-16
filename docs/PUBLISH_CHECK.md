@@ -388,3 +388,26 @@ includes `cli/` (absent from `files:`).
 
 - `/tmp/hex-lane11/smalt.tar` (checksum
   `b3f377cd86287191cf38e0181935a78bd54e1964af8af27c67b62bf67cc363d9`)
+
+## Verdict: rotation EXECUTED 2026-10-15; publication unblocked pending final court-x2
+
+Signing-key rotation executed (receipt:
+`docs/jira/v26.10.14/receipts/rotate-signing-key.md`):
+
+- New 64-hex ed25519 seed written to BOTH copies: `cli/.ggen/keys/signing.key`
+  and `test/fixtures/runtime_contracts/ggen/.ggen/keys/signing.key`
+  (chmod 600 both; matching `verifying.key` derived and installed in both).
+- Keypair round-trip witnessed (sign+verify PASS via python cryptography).
+- Old seed eradicated: `grep -rI "<old-seed-first-16-hex>" --exclude-dir=.git .`
+  → zero hits.
+- Receipt chain: ROTATION-PENDING-SIGNATURE — chain bytes in `cli/.ggen-v2/`
+  and `test/fixtures/runtime_contracts/ggen/` left intact with
+  `ROTATION-NOTE.md` headers (re-signing requires re-running the original
+  `ggen sync`; the cross-anchor fence test pins BLAKE3 hashes of generated
+  files, not key signatures — `mix test test/runtime_contracts_test.exs`
+  → 28 tests, 0 failures post-rotation).
+- `just publish-dry`: **all 4 gates PASS, exit 0** (hex.build 310784 bytes;
+  inner-tar key grep 0; leak grep 0; ERROR_CODES regen identity — regenerated
+  once to clear line-number drift, 24 lines re-synced).
+- `scripts/publish_dry.sh` summary line updated:
+  `publish released pending final court-x2 (rotation EXECUTED 2026-10-15)`.

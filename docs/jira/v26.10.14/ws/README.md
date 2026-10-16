@@ -1,6 +1,6 @@
 # Workspace Lanes (WS-01..WS-12) — v26.10.14
 
-Index of the 12-lane workspace fan-out over `/Users/sac/smalt/workspace`
+Index of the 12-lane workspace fan-out over `workspace/`
 (the Next.js sovereign console). Release work orders and the 20-lane smalt
 fan-out live one level up; this index covers the workspace lanes only.
 Receipts: `../receipts/ws-*.md`.

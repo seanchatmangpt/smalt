@@ -1,0 +1,5 @@
+{"lane": "c6", "surface": "sentinel", "op": "dcr_ingest_500B_rows", "n": 5000, "ops_per_sec": 33774.43, "p50_ms": 2.051, "p95_ms": 2.336, "p99_ms": 46.328, "errors": 0, "unit": "rows_per_sec", "batch_rows": 100, "row_bytes": 500, "total_rows_target": 5000}
+{"lane": "c6", "surface": "sentinel", "op": "kql_where_order_project_take_idle", "n": 30, "ops_per_sec": 95.61, "p50_ms": 9.787, "p95_ms": 14.077, "p99_ms": 22.467, "errors": 0}
+{"lane": "c6", "surface": "sentinel", "op": "kql_where_order_project_take_under_ingest", "n": 148, "ops_per_sec": 14.8, "p50_ms": 94.028, "p95_ms": 430.191, "p99_ms": 496.699, "errors": 0, "ingest_rows_during_window": 142200, "window_s": 10.0, "query_threads": 2}
+{"lane": "c6", "surface": "resourcegraph", "op": "rg_project_top100", "n": 5998, "ops_per_sec": 599.8, "p50_ms": 1.619, "p95_ms": 1.907, "p99_ms": 2.168, "errors": 0, "seeded_accounts": 100}
+{"lane": "c6", "surface": "sentinel", "op": "kql_take100000_cap_under_load", "n": 11, "ops_per_sec": 1.38, "p50_ms": 784.183, "p95_ms": 1865.677, "p99_ms": 1865.677, "errors": 0, "cap_ok": 11, "cap_violations": 0, "approx_table_rows": 273300}

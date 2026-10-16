@@ -38,10 +38,30 @@ count, or PASS/FAIL token) found in the file.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
+| bench-01-cor | [bench-01-core.md](receipts/bench-01-core.md) | UNKNOWN | bench-01-core (lane B-1, shared bench infra) |
+| bench-02-blo | [bench-02-blob-ts.md](receipts/bench-02-blob-ts.md) | SUSPECT | Bench receipt — B-2: blob SDK (TypeScript) vs live substrate |
+| bench-03-cos | [bench-03-cosmos-ts.md](receipts/bench-03-cosmos-ts.md) | ALIVE (SUSPECT) | bench-03-cosmos-ts.md — Lane B-3: Cosmos SDK (TypeScript) benchmark |
+| bench-05-pyt | [bench-05-python-mirror.md](receipts/bench-05-python-mirror.md) | SUSPECT | Bench B-5 — Python SDK parity numbers (blob + cosmos) |
+| bench-06-lro | [bench-06-lro-sdk.md](receipts/bench-06-lro-sdk.md) | UNKNOWN | bench-06-lro-sdk (B-6) |
+| bench-07-sto | [bench-07-store-beam.md](receipts/bench-07-store-beam.md) | SUSPECT | bench-07-store-beam (lane B-7) |
+| bench-08-amq | [bench-08-amqp-beam.md](receipts/bench-08-amqp-beam.md) | SUSPECT | bench-08-amqp-beam (lane B-8) |
+| bench-09-eh- | [bench-09-eh-beam.md](receipts/bench-09-eh-beam.md) | UNKNOWN | B-9: Event Hubs BEAM-level pipeline benchmark (v26.10.14) |
+| bench-10-soa | [bench-10-soak-spike.md](receipts/bench-10-soak-spike.md) | PASS | B-10: Soak + spike re-run (v26.10.14) |
+| bench-11-cha | [bench-11-chaos-tls.md](receipts/bench-11-chaos-tls.md) | UNKNOWN | B-11 chaos kill + TLS churn re-run |
+| bench-12-con | [bench-12-consolidation.md](receipts/bench-12-consolidation.md) | SUSPECT | bench-12-consolidation |
+| errc1-ws | [errc1-ws.md](receipts/errc1-ws.md) | UNKNOWN | ERRC Lane 1 (Eliminate) — Daemon WebSocket: Bandit vs hand-rolled |
+| errc2-benche | [errc2-benchee.md](receipts/errc2-benchee.md) | SUSPECT | ERRC lane 2 (Raise) — benchee adoption for BEAM micro-benchmarks |
+| errc3-autoca | [errc3-autocannon.md](receipts/errc3-autocannon.md) | PASS | ERRC lane 3 (Eliminate) — spike.py flood phase vs autocannon |
+| errc4-hdr | [errc4-hdr.md](receipts/errc4-hdr.md) | SUSPECT | errc4-hdr.md — ERRC Raise lane 4: HDR-histogram re-emit of TS bench lanes B-2/B-3 |
+| errc5-pyjwt | [errc5-pyjwt.md](receipts/errc5-pyjwt.md) | ALIVE | errc5-pyjwt — ERRC lane 5 (Reduce) |
+| errc6-proper | [errc6-property.md](receipts/errc6-property.md) | UNKNOWN | ERRC Raise Lane 6 — Property-Based Testing with Shrinking |
+| errc7-recon | [errc7-recon.md](receipts/errc7-recon.md) | ALIVE | ERRC-7 (Raise): recon BEAM-level soak — no BEAM-level leak |
+| errc8-sobelo | [errc8-sobelow.md](receipts/errc8-sobelow.md) | UNKNOWN | ERRC Lane 8 (Raise) — sobelow static security analysis |
 | fin-01-regis | [fin-01-register-missing.md](receipts/fin-01-register-missing.md) | PASS | fin-01 — Register MISSING SDK_MATRIX cells in KNOWN_DIVERGENCES |
 | fin-02-place | [fin-02-placeholder.md](receipts/fin-02-placeholder.md) | DONE | fin-02 — doctor_dod gap-token census: placeholder + CLOSED-stamp exclusion |
 | fin-03-eh-ci | [fin-03-eh-citation.md](receipts/fin-03-eh-citation.md) | ALIVE | fin-03: Event Hubs wire-lane row citation reword (WIRE_PARITY.md) |
 | fin-04-gitig | [fin-04-gitignore.md](receipts/fin-04-gitignore.md) | SUSPECT | fin-04: .gitignore underscore-variant build dirs (DoD-6 follow-up) |
+| fin-05-auth- | [fin-05-auth-mode-pin.md](receipts/fin-05-auth-mode-pin.md) | UNKNOWN | fin-05: substrate auth-mode pin on shared ports 9443/8443 (flake face 2/2) |
 | fin-06-parse | [fin-06-parse-sweep.md](receipts/fin-06-parse-sweep.md) | UNKNOWN | fin-06 — justfile parse sweep (DoD-only finish lane) |
 | fin-07-ts-co | [fin-07-ts-cosmos-cell.md](receipts/fin-07-ts-cosmos-cell.md) | UNKNOWN | fin-07 — TS cosmos probe cell registration (RAISE) |
 | fin-08-sb-ex | [fin-08-sb-extra.md](receipts/fin-08-sb-extra.md) | UNKNOWN | fin-08 — sb-extra.probe.cjs CRC coverage |
@@ -50,13 +70,35 @@ count, or PASS/FAIL token) found in the file.
 | fin-11-censu | [fin-11-census-ports.md](receipts/fin-11-census-ports.md) | ALIVE | fin-11: census front door pins substrate ports (TS-4 harness finding) |
 | fin-12-ws-re | [fin-12-ws-refresh.md](receipts/fin-12-ws-refresh.md) | FAIL | fin-12 workspace court + build refresh |
 | fin-13-compo | [fin-13-composite.md](receipts/fin-13-composite.md) | PASS | FIN-13 — Composite courts section in SDK_MATRIX.md |
+| fin-14-verif | [fin-14-verify-all.md](receipts/fin-14-verify-all.md) | UNKNOWN | fin-14 verify-all witness receipt |
 | fin-15-recei | [fin-15-receipts-refresh.md](receipts/fin-15-receipts-refresh.md) | ALIVE | fin-15 — Receipts index refresh (DoD-only finish lane) |
 | fin-16-docto | [fin-16-doctor-final.md](receipts/fin-16-doctor-final.md) | UNKNOWN | FIN-16 — Final Doctor Receipt (supplemental + pinned) |
 | fin-17-docs- | [fin-17-docs-final.md](receipts/fin-17-docs-final.md) | PASS | fin-17 — final docs truth-sync (DoD-only finish lane) |
 | fin-18-cosmo | [fin-18-cosmos-disposition.md](receipts/fin-18-cosmos-disposition.md) | UNKNOWN | fin-18: cosmos_test.exs "store restart" final disposition |
 | fin-19-row15 | [fin-19-row150.md](receipts/fin-19-row150.md) | ALIVE | FIN-19 — WIRE_PARITY row 150 restated (Event Hubs SDK smoke) |
-| fin-05 | (no receipt file) | pending (lane in flight) | fin-05 — no receipt at index print time (fin-15 refresh, 2026-10-15) |
-| fin-14 | (no receipt file) | pending (lane in flight) | fin-14 — no receipt at index print time (fin-15 refresh, 2026-10-15) |
+| fin-20-clean | [fin-20-cleanup.md](receipts/fin-20-cleanup.md) | UNKNOWN | fin-20-cleanup — lane doctor-dod session-residue cleanup |
+| fin-21-final | [fin-21-final-wrap.md](receipts/fin-21-final-wrap.md) | UNKNOWN | fin-21 — Final wrap (coordinator-direct) |
+| fin-22-final | [fin-22-final-index.md](receipts/fin-22-final-index.md) | UNKNOWN | fin-22 — Final index + FINAL.md (finish lane) |
+| fin-23-post- | [fin-23-post-commit.md](receipts/fin-23-post-commit.md) | PASS | fin-23 — post-commit re-verification (fin lane) |
+| fin24-p5-doc | [fin24-p5-doc.md](receipts/fin24-p5-doc.md) | ALIVE (SUSPECT) | fin24-p5 — superfans WO doc recovery |
+| fin25-bench- | [fin25-bench-final.md](receipts/fin25-bench-final.md) | UNKNOWN | fin25-bench-final |
+| fin26-parity | [fin26-parity-restamp.md](receipts/fin26-parity-restamp.md) | CLOSED | fin26 — parity re-stamp after S-wave KD closures (v26.10.15) |
+| fin27-batch- | [fin27-batch-send.md](receipts/fin27-batch-send.md) | UNKNOWN | fin27: eh-run `batch-send` probe drift fix — receipt |
+| fin31-post-c | [fin31-post-commit.md](receipts/fin31-post-commit.md) | CLOSED | fin31 — Post-Commit Gate Re-Verification |
+| fin33-planni | [fin33-planning-summary.md](receipts/fin33-planning-summary.md) | PARTIAL_ALIVE (SUSPECT) | fin-33 — v26.10.15 window planning summary |
+| fin34-ledger | [fin34-ledger-close.md](receipts/fin34-ledger-close.md) | UNKNOWN | fin34 — session knowledge-ledger close |
+| q1-shadow-ve | [q1-shadow-verify.md](receipts/q1-shadow-verify.md) | UNKNOWN | Q-1 Shadow Verify Receipt (F-6 pre-flight) |
+| q2-probe-rew | [q2-probe-rewrite.md](receipts/q2-probe-rewrite.md) | PASS | Q-2: `wire-delivery-*` probe rewrite — receipt |
+| q3-kdflip-dr | [q3-kdflip-dryrun.md](receipts/q3-kdflip-dryrun.md) | UNKNOWN | Q-3: kd_flip.py pre-flight dry run (F-3) |
+| q4-stage-scr | [q4-stage-script.md](receipts/q4-stage-script.md) | ALIVE | Q-4 Receipt: stage_atomic_commits.sh |
+| q6-proxy-sca | [q6-proxy-scaffold.md](receipts/q6-proxy-scaffold.md) | ALIVE | Q-6: WO-23 substrate proxy scaffold |
+| s2-eh-shims | [s2-eh-shims.md](receipts/s2-eh-shims.md) | UNKNOWN | S-2: KD-18/19/20 EH shims — receipt |
+| s3-kv-challe | [s3-kv-challenge.md](receipts/s3-kv-challenge.md) | CLOSED | S-3 Receipt — KD-15 KV Challenge Auth (v26.10.15, execution lane S-3) |
+| s4-wire-norm | [s4-wire-normalization.md](receipts/s4-wire-normalization.md) | UNKNOWN | S-4 Wire Normalization Receipt (KD-01 / KD-03 / KD-07) |
+| s5-hil-virtu | [s5-hil-virtual.md](receipts/s5-hil-virtual.md) | ALIVE | S-5 — Elixir HIL Virtual Device |
+| s6-shim-cour | [s6-shim-court-harness.md](receipts/s6-shim-court-harness.md) | FAIL | S-6 Receipt: shim-court harness (generalization of mutation_court.py) |
+| s7-kd-flip | [s7-kd-flip.md](receipts/s7-kd-flip.md) | FAIL | S-7 Receipt: KD flip mechanism (contract-keyed shims, machine-driven closure) |
+| s8-wave-tele | [s8-wave-telemetry.md](receipts/s8-wave-telemetry.md) | UNKNOWN | s8-wave-telemetry |
 | WS-01 | [ws-01-scaffold.md](receipts/ws-01-scaffold.md) | UNKNOWN | 1 Scaffold Receipt — Smalt Sovereign Next.js Workspace |
 | WS-02 | [ws-02-navigator.md](receipts/ws-02-navigator.md) | UNKNOWN | 02 Receipt — Sovereign Hierarchy Navigator |
 | WS-03 | [ws-03-inspector.md](receipts/ws-03-inspector.md) | LANDED | 03 — Multi-Mode Resource Inspector |
@@ -69,6 +111,12 @@ count, or PASS/FAIL token) found in the file.
 | WS-10 | [ws-10-attestation.md](receipts/ws-10-attestation.md) | UNKNOWN | 10 — Attestation Receipt Validator |
 | WS-11 | [ws-11-compliance.md](receipts/ws-11-compliance.md) | UNKNOWN | 11 Receipt — NIST AU-10 Compliance Surface |
 | WS-12 | [ws-12-e2e.md](receipts/ws-12-e2e.md) | FAIL | 12 Receipt — Workspace E2E Court + Architecture Landing |
+| x1-blocklist | [x1-blocklist-fix.md](receipts/x1-blocklist-fix.md) | UNKNOWN | X-1 — Put Block List data-corruption fix (P0, from bench B-5) |
+| x3-receipts- | [x3-receipts-relocation.md](receipts/x3-receipts-relocation.md) | UNSUPPORTED | x3-receipts-relocation (lane X-3) |
+| x4-naming-sc | [x4-naming-scope.md](receipts/x4-naming-scope.md) | UNKNOWN | X-4 naming-sweep scope fix (2026-10-15) |
+| x5-eh-sweep- | [x5-eh-sweep-flake.md](receipts/x5-eh-sweep-flake.md) | UNKNOWN | X-5 Receipt: Event Hubs sweep() flake — deterministic expiry fix |
+| x7-bench-rep | [x7-bench-report.md](receipts/x7-bench-report.md) | SUSPECT | X-7 Receipt: `just bench-report` wiring + BENCH_RESULTS.md regeneration |
+| x8-messaging | [x8-messaging-remeasure.md](receipts/x8-messaging-remeasure.md) | FAIL | X-8: messaging bench re-measure on KD-18/19/20 fixed substrate — receipt |
 
 ## Workspace (ws-01..12)
 
@@ -133,8 +181,8 @@ No receipt file on disk: cli-02.
 |---|---|---|---|
 | dod-01 | [receipts/dod-01-substrate-lock.md](receipts/dod-01-substrate-lock.md) | UNKNOWN | DoD-1: substrate lock leak fix |
 | dod-02 | [receipts/dod-02-workspace.md](receipts/dod-02-workspace.md) | UNKNOWN | DoD-2 Workspace Receipt — v26.10.14 |
-| dod-03 | (no receipt file — justfile module `justfile.d/03-cli-wiring.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
-| dod-04 | (no receipt file — justfile module `justfile.d/04-sdk-recipes.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-03 | [receipts/dod-03-cli-wiring.md](receipts/dod-03-cli-wiring.md) | SKIP-LOUD | DoD-3 Receipt — CLI wiring (lane 03-cli-wiring) |
+| dod-04 | [receipts/dod-04-sdk-recipes.md](receipts/dod-04-sdk-recipes.md) | FAIL | DoD-4 — SDK validation recipes: runnable, executed, witnessed |
 | dod-05 | [receipts/dod-05-doctor-ext.md](receipts/dod-05-doctor-ext.md) | UNKNOWN | DoD-5 — fail-closed doctor extension (`doctor-dod`) |
 | dod-06 | [receipts/dod-06-lane-cleanup.md](receipts/dod-06-lane-cleanup.md) | UNKNOWN | DoD-6 lane cleanup (v26.10.14) |
 | dod-07 | [receipts/dod-07-court-x2.md](receipts/dod-07-court-x2.md) | PARTIAL_ALIVE | DoD-07 — two-green-court receipt runner (court-x2) |
@@ -145,10 +193,25 @@ No receipt file on disk: cli-02.
 | dod-12 | [receipts/dod-12-docs.md](receipts/dod-12-docs.md) | UNKNOWN | DoD-12 Receipt — Documentation Definition-of-Done |
 | dod-13 | [receipts/dod-13-receipt-index.md](receipts/dod-13-receipt-index.md) | FAIL | DoD-13 manufacturing-receipt index |
 | dod-14 | [receipts/dod-14-sdk-matrix.md](receipts/dod-14-sdk-matrix.md) | PASS | DoD-14 — SDK Coverage Matrix (receipt) |
+| dod-15 | (no receipt file — justfile module `justfile.d/15-bench.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-18 | (no receipt file — justfile module `justfile.d/18-shim-court.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-19 | (no receipt file — justfile module `justfile.d/19-wave-telemetry.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-20 | (no receipt file — justfile module `justfile.d/20-sobelow.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 
 Receipts asserting results with no real output found in-file:
 
 - **SUSPECT**: `06-blob-x-ms-date-unvalidated.md` (standing UNSUPPORTED)
+- **SUSPECT**: `bench-02-blob-ts.md` (standing UNKNOWN)
+- **SUSPECT**: `bench-03-cosmos-ts.md` (standing ALIVE)
+- **SUSPECT**: `bench-05-python-mirror.md` (standing UNKNOWN)
+- **SUSPECT**: `bench-07-store-beam.md` (standing UNKNOWN)
+- **SUSPECT**: `bench-08-amqp-beam.md` (standing UNKNOWN)
+- **SUSPECT**: `bench-12-consolidation.md` (standing UNKNOWN)
+- **SUSPECT**: `errc2-benchee.md` (standing UNKNOWN)
+- **SUSPECT**: `errc4-hdr.md` (standing UNKNOWN)
 - **SUSPECT**: `fin-04-gitignore.md` (standing UNKNOWN)
+- **SUSPECT**: `fin24-p5-doc.md` (standing ALIVE)
+- **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
+- **SUSPECT**: `x7-bench-report.md` (standing UNKNOWN)

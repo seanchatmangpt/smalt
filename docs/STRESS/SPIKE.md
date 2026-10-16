@@ -74,3 +74,33 @@ Post-spike recovery is effectively immediate (< 1ms vs 100ms budget).
   include queueing behind 499 other clients on a shared listener), so the
   first-cycle p50 of ~97ms is consistent with, and bounded by, the request
   p95 budget.
+
+## Re-run 2026-10-15 (B-10)
+
+Verdict: **PASS** — all budgets hold, mild improvement over the 2026-10-14
+baseline: worst-cycle p95 235.9ms (was 261.7ms, budget < 2000ms), 0 five-xx /
+0 transport errors / 0 refusals over 25,100 requests, recovery 0.5-0.6ms
+after every cycle (budget < 100ms), TLS herd 100/100 p50 58.7ms p99 65.1ms
+(was 57.7 / 63.7ms). Receipt:
+`docs/jira/v26.10.14/receipts/bench-10-soak-spike.md`; machine-readable:
+`tmp/spike-receipt.json`.
+
+## ERRC Eliminate note (2026-10-15, lane 3)
+
+The flood phase's hand-rolled 500-thread client was replaced in measurement by
+`scripts/bench/flood_autocannon.mjs` (autocannon, installed in
+`test/sdk-full/node_modules`): same burst pattern (10 cycles x 500 connections
+x 5 ARM PUTs + 100-connection TLS herd, recovery probe per cycle) run against
+the same live-substrate shape. Result: 25,100 requests, 0 transport errors,
+0 five-xx, worst-cycle p95 73ms (vs spike.py's 235.9ms — autocannon's
+connection reuse eliminates the accept-storm queueing spike.py measures as
+latency), recovery < 22ms after every cycle. Critically, autocannon's
+connection management produced **zero EADDRNOTAVAIL-class client errors** —
+the exact harness-defect class that produced 21,027 spurious failures in the
+B-11 TLS-churn sc5 flood (hand-rolled socket-per-request clients exhausting
+ephemeral ports). `spike.py` is an ELIMINATE-candidate: its flood phase is
+replaced by `flood_autocannon.mjs`; the script is retained this window, do
+not delete it before the replacement has soaked through one full release
+wave. Comparison receipt:
+`docs/jira/v26.10.14/receipts/errc3-autocannon.md`; machine-readable:
+`tmp/flood-autocannon-receipt.json` (schema `smalt-flood-autocannon/v1`).

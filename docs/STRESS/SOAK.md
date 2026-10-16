@@ -115,3 +115,21 @@ shacl_projection.ex, support.ex, admission.ex, semconv/registry.ex,
 trust_profile/deployment.ex). Once lane churn settled (min 16+) every probe
 succeeded. The substrate itself never saw these failures — it was compiled
 before the churn began.
+
+## Re-run 2026-10-15 (B-10, 900s at 50 rps)
+
+Verdict: **PASS-with-attribution** vs the 2026-10-14 baseline. Two full
+clean-boot runs (45,000 reqs each, 50.00 rps achieved, ports 39430-39435).
+Memory verdict unchanged: RSS post-min-5 growth 0.989x / 1.011x,
+non-monotonic (GC sawtooth, no leak); 0 five-xx and 0 connection errors over
+90,000 requests; ETS final ~2.3k rows = sentinel bounded-append, same
+attribution. The error-rate gate tripped at 0.02-0.03% (12 / 9 per run) on
+`status:cosmos` only; a 16-thread isolation probe reproduced the class as the
+harness's own doc-id collision race (per-worker counters land two workers on
+the same `soak-N` id -> 409 create / 404 get-put-delete), client-side, not
+substrate misbehavior — the baseline's 0 was scheduling luck over the same
+latent race. Two script catches vs the current tree: ARM routes now require
+`?api-version=` (bare `/subscriptions` -> 400) and sentinel DCR ingest now
+returns 204 (was 200); both fixed in soak.py. Latency drift not measurable —
+the script does not expose per-request latency. Receipt:
+`docs/jira/v26.10.14/receipts/bench-10-soak-spike.md`.
