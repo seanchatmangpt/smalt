@@ -41,7 +41,7 @@ Sampling every 60s: substrate beam RSS via `ps`, ETS table sizes via a
   `mix run --no-start -e` + `Application.put_env(:smalt, :amqp_sweeper_tick_ms, 600_000_000)`
   (deferred-start pattern) to move the first sweep tick past the soak window.
   Real fix belongs to the amqp lane (catch/log in `Sweeper.run_pass/0`).
-- Another lane's substrate was holding 19443/18443 — soak uses 29443/29444/
+- Another lane's substrate was holding 19443/18443 — soak now uses 39430-39435 (DEV_LOOP table; previously 29443/29444/
   28443/25672/25673 via the SMALT_TEST_* overrides.
 - Shared-tree churn: boot broke twice on other lanes' transient broken edits
   (`egress_router.ex` syntax error, `ledger_entry.ex` Ash DSL error); soak

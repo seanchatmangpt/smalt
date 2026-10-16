@@ -39,12 +39,6 @@ defmodule Smalt.RuntimeContracts.CosmosHeader do
   def plane, do: :data_plane
 
   @impl true
-  def consumer, do: "Smalt.EgressRouter (/dbs surface)"
-
-  @impl true
-  def source_pack, do: "ash-runtime-integration-contract-pack"
-
-  @impl true
   def check do
     seed()
 

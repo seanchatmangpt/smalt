@@ -105,13 +105,48 @@ eh-smoke:
 
 # Service Bus census replay (scripts/sb_census_replay.sh, 8 probes, real SDK).
 # Exit 0 all pass / 1 census failure / 2 substrate never up / 3 harness.
-census:
-    @bash scripts/sb_census_replay.sh
+# In court, SKIP semantics apply: SMALT_SDK_ROOT absent, or exit 3
+# (harness/env failure), degrade to a loud SKIP + exit 0. Exits 0/1/2 stay
+# hard verdicts.
+@census:
+    #!/usr/bin/env bash
+    set -uo pipefail   # NOT -e: we inspect $?
+    if [[ -z "${SMALT_SDK_ROOT:-}" ]]; then
+        echo "[COURT] census SKIP: SMALT_SDK_ROOT not set"
+        exit 0
+    fi
+    bash scripts/sb_census_replay.sh
+    rc=$?
+    if [[ $rc -eq 3 ]]; then
+        echo "[COURT] census SKIP: census env missing (exit 3)"
+        exit 0
+    fi
+    exit $rc
 
 # Mutation court: prove the 422/400 validator gate is non-vacuous
 # (scripts/mutation_court.py). Exit 0 non-vacuous / 1 vacuous / 2 BLOCKED.
+# Court note: exit 2 (shared compile broken after 3 retries) is a HARD FAIL
+# inside `just court` — do not soften.
 mutation-court:
     @python3 scripts/mutation_court.py
+
+# Five fail-closed invariant gates (cosmos ETag CAS, blob WORM, ledger chain,
+# queue capacity, lock clamp), each booting its own substrate on private
+# ports. Non-vacuity: a gate exits 0 only if the positive capture passes AND
+# every negative fixture is refused (gates/common.py:9-13).
+# Receipts: tmp/invariant-gates/<gate>-receipt.json (5, written fresh).
+@invariant-gates:
+    python3 test/invariant_gates_test.py
+
+# Regenerate docs/ERROR_CODES.md from the generator's ANNOTATIONS table
+gen-error-codes:
+    python3 scripts/gen_error_codes.py
+
+# Naming/leak sweep (scripts/naming_sweep.sh): greps tracked files for
+# 'athena|/Users/sac|courtroom|\bcai\b|morluto' against a line-precise
+# allowlist. Exit 0 clean (0 violations) / 1 leak found (violations printed).
+@naming-sweep:
+    bash scripts/naming_sweep.sh
 
 # ============================================================================
 # Benchmarks & Stress
@@ -147,9 +182,15 @@ tls-churn:
 # Aggregate Gates
 # ============================================================================
 
-# Full admission court: doctor + all test tiers + tf smoke + bench gate.
-# Exit 0 only when every court passes.
-court: doctor test-offline test-wire test-sdk-smoke tf-plan-smoke bench-check
+# Full admission court: doctor + all test tiers + tf smoke + bench gate +
+# mutation court + census + invariant gates + naming sweep.
+# Exit 0 only when every member passes. Census SKIP rule: with SMALT_SDK_ROOT
+# absent (or census exit 3 = env missing), census degrades to a loud SKIP and
+# the court continues; all other members are hard gates. Bench note: run
+# `just bench` before `just court` on a perf-relevant change — a stale-receipt
+# bench-check failure is remediated by `just bench`, never by touching the gate.
+court: doctor test-offline test-wire test-sdk-smoke tf-plan-smoke bench-check \
+        mutation-court census invariant-gates naming-sweep
     @echo "[COURT] Full gate passed."
 
 # Compatibility alias for `court` (legacy name). Same courts, same exits.
@@ -165,3 +206,21 @@ gate: court
 # Exit 0 green / 1 stage failed / 2 missing prereqs.
 bootstrap:
     @bash scripts/bootstrap.sh
+
+
+# DoD lane modules (definition-of-done; each owned by one lane)
+import 'justfile.d/01-substrate-lock.just'
+import 'justfile.d/02-workspace.just'
+import 'justfile.d/03-cli-wiring.just'
+import 'justfile.d/04-sdk-recipes.just'
+import 'justfile.d/05-doctor-ext.just'
+import 'justfile.d/06-lane-cleanup.just'
+import 'justfile.d/07-court-x2.just'
+import 'justfile.d/08-publish-dry.just'
+import 'justfile.d/09-verify-all.just'
+import 'justfile.d/10-gap-register-sync.just'
+import 'justfile.d/11-relay-env.just'
+import 'justfile.d/12-docs-dod.just'
+import 'justfile.d/13-receipt-index.just'
+# 14-sdk-matrix — SDK coverage matrix (DoD-14)
+import 'justfile.d/14-sdk-matrix.just'

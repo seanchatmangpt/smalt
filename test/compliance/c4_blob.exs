@@ -21,6 +21,10 @@ defmodule Smalt.Compliance.C4BlobTest do
   @cont "fencecont"
   @version "2021-12-02"
   @v [{"x-ms-version", @version}]
+  # Lens-9: hoisted above first use — reads before assignment compile to nil
+  # (three new std-header pins hit exactly that and the failures were the
+  # authoring bug, not a wire regression).
+  @v4_guid ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
   setup do
     ensure_store()
@@ -78,15 +82,11 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert hdrs["x-ms-has-immutability-policy"] == "false"
     assert hdrs["x-ms-has-legal-hold"] == "false"
 
-    # FINDING (lens-2 cycle 1, cross-court divergence): the blob data plane
-    # (BlobStorage.request_id/0, blob_storage.ex:731) emits 32-hex lowercase,
-    # NOT the RFC 4122 v4 GUID the ARM gateway (c1) and LA surface (c7) pin.
-    # Real Azure Storage answers with a GUID — this is an Azurite-parity gap
-    # owned by the data-plane lane. Fenced here at CURRENT wire bytes so the
-    # divergence is visible, not papered over by an is_binary fence.
-    assert is_binary(hdrs["x-ms-request-id"]) and byte_size(hdrs["x-ms-request-id"]) == 32
-
-    assert Regex.match?(~r/^[0-9a-f]{32}$/, hdrs["x-ms-request-id"])
+    # F1 LANDED (compliance lens-7 routing, this lane): request_id/0 now emits
+    # the dashed-36 RFC 4122 v4 GUID real Azure emits — unified with the ARM
+    # gateway (c1) and LA surface (c7). Previously a 32-hex dialect pin
+    # (lens-2 cycle-1 finding, honestly graded, now closed).
+    assert hdrs["x-ms-request-id"] =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
   end
 
   test "container metadata round-trips via x-ms-meta-* headers (PUT + GET)" do
@@ -99,11 +99,18 @@ defmodule Smalt.Compliance.C4BlobTest do
       ])
 
     assert put.status == 200
-    assert is_binary(header_map(put)["etag"])
+    put_hdrs = header_map(put)
+    # Lens-9: comp=metadata rides blob_std_headers/1 at the wire (egress
+    # router site 922) — pin the full std-header law on this surface too.
+    assert put_hdrs["x-ms-request-id"] =~ @v4_guid
+    assert put_hdrs["x-ms-version"] == @version
+    assert is_binary(put_hdrs["etag"])
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?restype=container&comp=metadata", @v)
     assert get.status == 200
     hdrs = header_map(get)
+    assert hdrs["x-ms-request-id"] =~ @v4_guid
+    assert hdrs["x-ms-version"] == @version
     assert hdrs["x-ms-meta-owner"] == "c4"
     assert hdrs["x-ms-meta-purpose"] == "fence"
   end
@@ -217,15 +224,11 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert del.status == 202
     hdrs = header_map(del)
 
-    # FINDING (lens-2 cycle 1, cross-court divergence): the blob data plane
-    # (BlobStorage.request_id/0, blob_storage.ex:731) emits 32-hex lowercase,
-    # NOT the RFC 4122 v4 GUID the ARM gateway (c1) and LA surface (c7) pin.
-    # Real Azure Storage answers with a GUID — this is an Azurite-parity gap
-    # owned by the data-plane lane. Fenced here at CURRENT wire bytes so the
-    # divergence is visible, not papered over by an is_binary fence.
-    assert is_binary(hdrs["x-ms-request-id"]) and byte_size(hdrs["x-ms-request-id"]) == 32
-
-    assert Regex.match?(~r/^[0-9a-f]{32}$/, hdrs["x-ms-request-id"])
+    # F1 LANDED (compliance lens-7 routing, this lane): request_id/0 now emits
+    # the dashed-36 RFC 4122 v4 GUID real Azure emits — unified with the ARM
+    # gateway (c1) and LA surface (c7). Previously a 32-hex dialect pin
+    # (lens-2 cycle-1 finding, honestly graded, now closed).
+    assert hdrs["x-ms-request-id"] =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
     assert hdrs["x-ms-version"] == @version
   end
@@ -282,11 +285,15 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     assert put.status == 200
     assert header_map(put)["x-ms-has-legal-hold"] == "true"
+    assert header_map(put)["x-ms-request-id"] =~ @v4_guid
+    assert header_map(put)["x-ms-version"] == @version
     assert Jason.decode!(put.body)["has_legal_hold"] == true
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?comp=legalhold", @v)
     assert get.status == 200
     assert header_map(get)["x-ms-legal-hold"] == "true"
+    assert header_map(get)["x-ms-request-id"] =~ @v4_guid
+    assert header_map(get)["x-ms-version"] == @version
   end
 
   test "immutabilityPolicy PUT with JSON body returns 200 + immutability-policy-until (C4 fix)" do
@@ -301,10 +308,14 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert put.status == 200
     hdrs = header_map(put)
     assert hdrs["x-ms-has-immutability-policy"] == "true"
+    assert hdrs["x-ms-request-id"] =~ @v4_guid
+    assert hdrs["x-ms-version"] == @version
     assert is_binary(hdrs["immutability-policy-until"])
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?comp=immutabilityPolicy", @v)
     assert get.status == 200
+    assert header_map(get)["x-ms-request-id"] =~ @v4_guid
+    assert header_map(get)["x-ms-version"] == @version
     policy = Jason.decode!(get.body)
     assert policy["period_days"] == 30
   end
@@ -401,7 +412,194 @@ defmodule Smalt.Compliance.C4BlobTest do
     refute page2.body =~ "<Name>p1</Name>"
   end
 
-  # ---------------------------------------------------------------------------
+  test "list blobs emitted marker round-trips: emit -> resume -> terminate" do
+    assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
+
+    names = for i <- 1..7, do: "b#{i}"
+    Enum.each(names, fn name ->
+      req!(port(), :put, "/#{acct()}/#{cont()}/#{name}",
+        headers: @v ++ [{"content-type", "application/octet-stream"}],
+        body: name
+      )
+    end)
+
+    # SDK-style loop: consume the server's OWN emitted NextMarker until absent.
+    # Pins the emission/parse PAIR end to end: exact partition of the name
+    # space (no repeats, no skips) and loop termination on the final page.
+    {pages, seen, _marker_end, hops} =
+      Enum.reduce_while(1..10, {[], [], nil, 0}, fn _hop, {pages, seen, marker, n} ->
+        q = if marker, do: "comp=list&restype=container&maxresults=3&marker=#{marker}", else: "comp=list&restype=container&maxresults=3"
+
+        resp = req!(port(), :get, "/#{acct()}/#{cont()}?#{q}", @v)
+        assert resp.status == 200
+
+        got =
+          resp.body
+          |> String.split("<Name>")
+          |> tl()
+          |> Enum.map(&(&1 |> String.split("</Name>") |> hd()))
+
+        next =
+          case Regex.run(~r/<NextMarker>([^<]*)<\/NextMarker>/, resp.body) do
+            [_, m] -> m
+            nil -> nil
+          end
+
+        # an intermediate page MUST emit a marker; the final page MUST NOT
+        if marker == nil or got != [] do
+          assert is_binary(next) == (length(seen) + length(got) < length(names)),
+                 "expected marker presence=#{length(seen) + length(got) < length(names)} " <>
+                   "but got #{inspect(next)} on page with #{inspect(got)}"
+        end
+
+        if next == nil do
+          {:halt, {pages ++ [got], seen ++ got, next, n + 1}}
+        else
+          {:cont, {pages ++ [got], seen ++ got, next, n + 1}}
+        end
+      end)
+
+    assert hops <= 10
+    assert seen == names, "round-trip partition mismatch: #{inspect(pages)}"
+    assert length(pages) == 3
+  end
+
+  test "list containers emitted marker round-trips: emit -> resume -> terminate" do
+    assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
+
+    Enum.each(for(i <- 1..7, do: "tc#{i}"), fn name ->
+      assert req!(port(), :put, "/#{acct()}/#{name}?restype=container", @v).status == 201
+    end)
+
+    # Account-level List Containers: same emit->resume->terminate contract
+    # as the blob listing, different emission site (blob_service.ex).
+    # The emitted marker MUST be the page's last container name (Azure
+    # resumes AFTER it); resume yields EXACTLY the remainder, no repeats,
+    # and the final page emits NO marker.
+    {pages, seen, hops} =
+      Enum.reduce_while(1..10, {[], [], 0}, fn _hop, {pages, seen, n} ->
+        marker = Enum.take(seen, -1)
+
+        q =
+          case marker do
+            ["tc" <> _ = m] -> "comp=list&maxresults=3&marker=#{m}"
+            _ -> "comp=list&maxresults=3"
+          end
+
+        resp = req!(port(), :get, "/#{acct()}?#{q}", @v)
+        assert resp.status == 200
+
+        got =
+          resp.body
+          |> String.split("<Name>")
+          |> tl()
+          |> Enum.map(&(&1 |> String.split("</Name>") |> hd()))
+
+        next =
+          case Regex.run(~r/<NextMarker>([^<]*)<\/NextMarker>/, resp.body) do
+            [_, m] -> m
+            nil -> nil
+          end
+
+        # full page => marker present; short page => absent
+        assert is_binary(next) == (length(got) == 3),
+               "marker presence mismatch: next=#{inspect(next)} got=#{inspect(got)}"
+
+        case next do
+          nil ->
+            {:halt, {pages ++ [got], seen ++ got, n + 1}}
+
+          _ ->
+            # emitted marker MUST be the page's last name
+            assert next == List.last(got),
+                   "emitted marker not last-of-page: #{inspect(next)} vs #{inspect(got)}"
+
+            {:cont, {pages ++ [got], seen ++ got, n + 1}}
+        end
+      end)
+
+    assert hops <= 10
+    assert seen == Enum.sort(["fencecont", "tc1", "tc2", "tc3", "tc4", "tc5", "tc6", "tc7"]),
+           "partition mismatch: #{inspect(pages)}"
+    assert length(pages) == 3
+  end
+
+  test "delimiter listing emitted marker round-trips: emit -> resume -> terminate" do
+    assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
+
+    # Lexicographic space: r00, r01, then rollups s/ (s/a, s/b) and t/ (t/c).
+    Enum.each(["r00", "r01", "s/a", "s/b", "t/c"], fn name ->
+      req!(port(), :put, "/#{acct()}/#{cont()}/#{name}",
+        headers: @v ++ [{"content-type", "application/octet-stream"}],
+        body: name
+      )
+    end)
+
+    # SDK-style loop over the DELIMITER path (composition branch, distinct
+    # from cycle-1's fast path): the emitted NextMarker continues from the
+    # last ELEMENT (blob name or BlobPrefix); the union of pages must
+    # partition the element space with no repeats and no skips, and the
+    # last page emits no marker.
+    {pages, elements, hops} =
+      Enum.reduce_while(1..10, {[], [], 0}, fn _hop, {pages, elements, n} ->
+        marker = Enum.take(elements, -1)
+
+        q =
+          case marker do
+            [m] -> "comp=list&restype=container&delimiter=/&maxresults=2&marker=#{m}"
+            _ -> "comp=list&restype=container&delimiter=/&maxresults=2"
+          end
+
+        resp = req!(port(), :get, "/#{acct()}/#{cont()}?#{q}", @v)
+        assert resp.status == 200
+
+        # BlobPrefix blocks CONTAIN <Name> children — strip them first so
+        # the Name scan only sees top-level blob names.
+        stripped =
+          Regex.replace(~r/<BlobPrefix>.*?<\/BlobPrefix>/s, resp.body, "")
+
+        names =
+          stripped
+          |> String.split("<Name>")
+          |> tl()
+          |> Enum.map(&(&1 |> String.split("</Name>") |> hd()))
+
+        prefixes =
+          Regex.scan(~r/<BlobPrefix>\s*<Name>([^<]+)<\/Name>\s*<\/BlobPrefix>/s, resp.body)
+          |> Enum.map(&Enum.at(&1, 1))
+
+        next =
+          case Regex.run(~r/<NextMarker>([^<]*)<\/NextMarker>/, resp.body) do
+            [_, m] -> m
+            nil -> nil
+          end
+
+        page_elements = names ++ prefixes
+        assert length(page_elements) > 0, "empty page with next=#{inspect(next)}"
+
+        # emission: the marker, when present, IS the page's last element
+        if is_binary(next) do
+          assert next == List.last(page_elements),
+                 "emitted marker not last-of-page: #{inspect(next)} vs #{inspect(page_elements)}"
+        end
+
+        case next do
+          nil ->
+            {:halt, {pages ++ [page_elements], elements ++ page_elements, n + 1}}
+
+          _ ->
+            {:cont, {pages ++ [page_elements], elements ++ page_elements, n + 1}}
+        end
+      end)
+
+    assert hops <= 10
+    # Exact element-space partition: visible blobs r00, r01 plus the two
+    # rollups s/ and t/ (t/c hidden under t/). No repeats, no skips.
+    assert elements == Enum.sort(["r00", "r01", "s/", "t/"]),
+           "delimiter round-trip partition mismatch: #{inspect(pages)}"
+  end
+
+    # ---------------------------------------------------------------------------
   # Cycle-21/22 parity: conditional-write fences at the wire
   # ---------------------------------------------------------------------------
 
@@ -420,6 +618,8 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     assert resp.status == 412
     assert Jason.decode!(resp.body)["error"]["code"] == "PreconditionFailed"
+    # lens-5: conditional-write 412 legs carry the full std-header fence.
+    assert_std_blob_headers(resp)
 
     # blob survived with original bytes
     get = req!(port(), :get, "/#{acct()}/#{cont()}/inm", @v)
@@ -441,6 +641,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     )
 
     assert del.status == 412
+    assert_std_blob_headers(del)
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}/inm-del", @v)
     assert get.status == 200
@@ -481,8 +682,12 @@ defmodule Smalt.Compliance.C4BlobTest do
     unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
     assert req!(port(), :put, "/#{acct()}/delimtest?restype=container", unlocked).status == 201
 
-    # router routes :blob_name as a single path segment (slash-names are a
-    # router-lane gap) — the wire fence uses a "-" delimiter equivalently
+    # Comment re-graded (docs lens-7 routing, lens-9): the old text claimed
+    # slash-names were a "router-lane gap" — STALE since the egress splat
+    # landed: virtual directories (slash-names) are wire-live, pinned by the
+    # delimiter BlobPrefix court below (blob lens-2) and WIRE_PARITY rows in
+    # C4_BLOB.md. This court still uses a "-" delimiter as an equivalent
+    # composition surface (no engine dependence on the separator).
     for name <- ["w-1", "w-2", "top"] do
       assert req!(port(), :put, "/#{acct()}/delimtest/#{name}",
                headers: @v ++ [{"content-type", "application/octet-stream"}],
@@ -540,7 +745,9 @@ defmodule Smalt.Compliance.C4BlobTest do
     # If-Match mismatch -> 412 with the F5 error headers
     wrong = req!(port(), :get, "/#{acct()}/condread/cb", @v ++ [{"if-match", "\"dead\""}])
     assert wrong.status == 412
-    assert is_binary(header_map(wrong)["x-ms-request-id"])
+    # lens-5: the 412 leg is pinned to the full v4-GUID + version fence, not
+    # just "some request-id string is present" (component-level mutation bait).
+    assert_std_blob_headers(wrong)
 
     # If-Match match -> 200 + exact bytes
     ok = req!(port(), :get, "/#{acct()}/condread/cb", @v ++ [{"if-match", etag}])
@@ -552,9 +759,9 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert inm.status == 304
     assert inm.body == ""
     assert header_map(inm)["etag"] == etag
-    # F5 error-header contract also applies to the 304 path
-    assert is_binary(header_map(inm)["x-ms-request-id"])
-    assert header_map(inm)["x-ms-version"] == "2021-12-02"
+    # F5 error-header contract also applies to the 304 path — lens-5: pinned
+    # to the full fence (v4-GUID request-id + exact version), not is_binary.
+    assert_std_blob_headers(inm)
 
     # unconditioned read unaffected
     plain = req!(port(), :get, "/#{acct()}/condread/cb", @v)
@@ -569,6 +776,84 @@ defmodule Smalt.Compliance.C4BlobTest do
       )
 
     assert both.status == 412
+    # lens-5: the precedence winner carries the full std-header fence too.
+    assert_std_blob_headers(both)
+  end
+
+  # Lens-3 cycle-2: conditional x range precedence at the wire (RFC 7232 —
+  # conditional evaluation precedes the range branch). A 412 must win over a
+  # satisfiable Range (no 206/bytes leak); a 304 must win over a Range; and
+  # the x-ms-range header dialect must behave identically to `Range`.
+  test "conditional x range precedence at the wire (lens-3)" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/condrange?restype=container", unlocked).status == 201
+
+    put =
+      req!(port(), :put, "/#{acct()}/condrange/pr.bin",
+        headers: @v ++ [{"content-type", "application/octet-stream"}],
+        body: "payload"
+      )
+
+    assert put.status == 201
+    etag = header_map(put)["etag"]
+
+    # plain satisfiable Range -> 206 with exact bytes + content-range
+    r = req!(port(), :get, "/#{acct()}/condrange/pr.bin", @v ++ [{"range", "bytes=0-2"}])
+    assert r.status == 206
+    assert r.body == "pay"
+    assert header_map(r)["content-range"] == "bytes 0-2/7"
+
+    # x-ms-range dialect: identical behavior
+    xr = req!(port(), :get, "/#{acct()}/condrange/pr.bin", @v ++ [{"x-ms-range", "bytes=0-2"}])
+    assert xr.status == 206
+    assert xr.body == "pay"
+
+    # mismatching If-Match + Range -> 412 (NOT 206 — no bytes leak past a
+    # failed precondition even when a range is requested)
+    m = req!(port(), :get, "/#{acct()}/condrange/pr.bin", @v ++ [{"if-match", "\"dead\""}, {"range", "bytes=0-2"}])
+    assert m.status == 412
+    assert m.body =~ "PreconditionFailed"
+    assert_std_blob_headers(m)
+
+    # matching If-None-Match + Range -> 304 (NOT 206)
+    n = req!(port(), :get, "/#{acct()}/condrange/pr.bin", @v ++ [{"if-none-match", etag}, {"range", "bytes=0-2"}])
+    assert n.status == 304
+    assert n.body == ""
+    # lens-5: 304 carries the full fence even when it wins over a Range.
+    assert_std_blob_headers(n)
+
+    # matching If-Match + Range -> 206 (precondition passes, range applies)
+    p =
+      req!(port(), :get, "/#{acct()}/condrange/pr.bin",
+        @v ++ [{"if-match", etag}, {"range", "bytes=0-2"}]
+      )
+
+    assert p.status == 206
+    assert p.body == "pay"
+    assert_std_blob_headers(p)
+
+    # lens-4 cycle-3: If-None-Match: * + Range -> 304 (the star matches any
+    # current entity; a range cannot leak bytes past a matched INM).
+    star =
+      req!(port(), :get, "/#{acct()}/condrange/pr.bin",
+        @v ++ [{"if-none-match", "*"}, {"range", "bytes=0-2"}]
+      )
+
+    assert star.status == 304
+    assert star.body == ""
+    assert_std_blob_headers(star)
+
+    # lens-4 cycle-3: Range on a MISSING blob -> 404 BlobNotFound (existence
+    # precedes the range branch — never 416, never a content-range header).
+    missing =
+      req!(port(), :get, "/#{acct()}/condrange/no-such-blob",
+        @v ++ [{"range", "bytes=0-2"}]
+      )
+
+    assert missing.status == 404
+    assert Jason.decode!(missing.body)["error"]["code"] == "BlobNotFound"
+    refute header_map(missing)["content-range"]
+    assert_std_blob_headers(missing)
   end
 
   test "slash-named blobs (virtual directories) round-trip at the wire" do
@@ -666,6 +951,360 @@ defmodule Smalt.Compliance.C4BlobTest do
     unknown = req!(port(), :get, "/#{acct()}/incmeta?comp=list&include=snapshots,versions", @v)
     assert unknown.status == 200
     refute unknown.body =~ "<Metadata>"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-4 cycle-1: header-presence fences at the WIRE tier on every blob
+  # return-header surface (mutant-Z generalization). Every surface whose
+  # service headers were previously emitted only engine-side (or not at all)
+  # is fenced here: list containers, list blobs, PUT blob 201, GET blob 200,
+  # ranged 206, 416, HEAD blob, GET metadata / legalhold / immutabilityPolicy.
+  # Real Azure emits x-ms-request-id (dashed-36 v4 GUID) + x-ms-version on all
+  # of them. Mutant Z (lens-3) showed engine-only coverage is a gap class.
+  # ---------------------------------------------------------------------------
+
+  @v4_guid ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+  defp assert_std_blob_headers(resp) do
+    hdrs = header_map(resp)
+    assert hdrs["x-ms-request-id"] =~ @v4_guid, "x-ms-request-id missing/not v4"
+    assert hdrs["x-ms-version"] == @version
+    hdrs
+  end
+
+  test "lens-4: list containers carries x-ms-request-id (v4) + x-ms-version at the wire" do
+    assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
+
+    resp = req!(port(), :get, "/#{acct()}?comp=list", @v)
+    assert resp.status == 200
+    assert resp.body =~ "<Containers>"
+    assert_std_blob_headers(resp)
+  end
+
+  test "lens-4: list blobs carries x-ms-request-id (v4) + x-ms-version at the wire" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdrlist?restype=container", unlocked).status == 201
+
+    req!(port(), :put, "/#{acct()}/hdrlist/x",
+      headers: @v ++ [{"content-type", "application/octet-stream"}],
+      body: "x"
+    )
+
+    comp_list = req!(port(), :get, "/#{acct()}/hdrlist?comp=list&restype=container", @v)
+    assert comp_list.status == 200
+    assert_std_blob_headers(comp_list)
+
+    plain = req!(port(), :get, "/#{acct()}/hdrlist", @v)
+    assert plain.status == 200
+    assert_std_blob_headers(plain)
+  end
+
+  test "lens-4: PUT blob 201 / GET 200 / 206 / 416 / HEAD carry the service headers" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdrblob?restype=container", unlocked).status == 201
+
+    put =
+      req!(port(), :put, "/#{acct()}/hdrblob/h.bin",
+        headers: @v ++ [{"content-type", "application/octet-stream"}],
+        body: "0123456789"
+      )
+
+    assert put.status == 201
+    assert_std_blob_headers(put)
+
+    get = req!(port(), :get, "/#{acct()}/hdrblob/h.bin", @v)
+    assert get.status == 200
+    assert_std_blob_headers(get)
+
+    ranged = req!(port(), :get, "/#{acct()}/hdrblob/h.bin", @v ++ [{"range", "bytes=0-2"}])
+    assert ranged.status == 206
+    assert_std_blob_headers(ranged)
+
+    bad = req!(port(), :get, "/#{acct()}/hdrblob/h.bin", @v ++ [{"range", "bytes=99-"}])
+    assert bad.status == 416
+    assert_std_blob_headers(bad)
+
+    head = req!(port(), :head, "/#{acct()}/hdrblob/h.bin", @v)
+    assert head.status == 200
+    assert_std_blob_headers(head)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-6 (blob custody): escalated frontier items.
+  #
+  # 1. x-ms-range precedence: Get Blob REST spec — "If both Range and
+  #    x-ms-range are specified, the service uses the value of x-ms-range."
+  #    smalt previously let the plain `Range` header win (range ++ x-ms-range
+  #    fed to List.first). Now fenced: conflicting headers → x-ms-range wins.
+  # 2. Ranged HEAD: HEAD is Get Blob without a response body; Azure honors
+  #    Range/x-ms-range on it (206 + Content-Range + range-length
+  #    Content-Length; unsatisfiable → header-only 416 with bytes */total).
+  #    smalt previously ignored ranges on HEAD entirely.
+  # 3. 416 envelope: DOCUMENTED DIVERGENCE — Azure renders blob error bodies
+  #    as XML (application/xml); smalt renders every blob-class error as JSON.
+  #    Fenced as JSON (envelope + content-type) so it cannot drift silently.
+  # ---------------------------------------------------------------------------
+  test "lens-6: x-ms-range wins over Range when both are present (Azure parity)" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/rangeprec?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/rangeprec/p.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    resp =
+      req!(port(), :get, "/#{acct()}/rangeprec/p.bin", @v ++ [
+        {"range", "bytes=99-"},
+        {"x-ms-range", "bytes=0-2"}
+      ])
+
+    assert resp.status == 206
+    hdrs = assert_std_blob_headers(resp)
+    assert hdrs["content-range"] == "bytes 0-2/10"
+    assert resp.body == "012"
+  end
+
+  test "lens-6: ranged HEAD returns 206 + Content-Range + range-length Content-Length" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/rangedhead?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/rangedhead/r.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    head =
+      req!(port(), :head, "/#{acct()}/rangedhead/r.bin", @v ++ [{"x-ms-range", "bytes=0-2"}])
+
+    assert head.status == 206
+    hdrs = assert_std_blob_headers(head)
+    assert hdrs["content-range"] == "bytes 0-2/10"
+    assert hdrs["content-length"] == "3"
+    assert head.body == ""
+  end
+
+  test "lens-6: HEAD with unsatisfiable range returns header-only 416 with bytes */total" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/head416?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/head416/u.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    head = req!(port(), :head, "/#{acct()}/head416/u.bin", @v ++ [{"x-ms-range", "bytes=99-"}])
+    assert head.status == 416
+    hdrs = assert_std_blob_headers(head)
+    assert hdrs["content-range"] == "bytes */10"
+    assert head.body == ""
+  end
+
+  test "lens-6: 416 envelope divergence fence (JSON envelope + content-type + std headers)" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/env416?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/env416/e.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    resp = req!(port(), :get, "/#{acct()}/env416/e.bin", @v ++ [{"range", "bytes=99-"}])
+    assert resp.status == 416
+    hdrs = assert_std_blob_headers(resp)
+    assert hdrs["content-range"] == "bytes */10"
+    assert hdrs["content-type"] == "application/json; charset=utf-8"
+
+    body = Jason.decode!(resp.body)
+    assert body["error"]["code"] == "InvalidRange"
+    assert body["error"]["message"] =~ "10 bytes"
+  end
+
+  # Lens-6 cycle 2: conditional HEAD. HEAD is Get Blob, so If-Match/
+  # If-None-Match evaluate exactly as on GET — 412 precedence, then 304.
+  # Previously HEAD ignored conditional headers entirely.
+  test "lens-6: conditional HEAD — If-Match miss is 412 with std headers" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/condhead?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/condhead/c.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    head =
+      req!(port(), :head, "/#{acct()}/condhead/c.bin", @v ++ [{"if-match", "\"0xDEADBEEF\""}])
+
+    assert head.status == 412
+    hdrs = assert_std_blob_headers(head)
+    assert hdrs["content-type"] == "application/json; charset=utf-8"
+  end
+
+  test "lens-6: conditional HEAD — If-None-Match hit is 304 with etag echo + std headers" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/condhead2?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/condhead2/c.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    get = req!(port(), :get, "/#{acct()}/condhead2/c.bin", @v)
+    etag = header_map(get)["etag"]
+
+    head =
+      req!(port(), :head, "/#{acct()}/condhead2/c.bin", @v ++ [{"if-none-match", etag}])
+
+    assert head.status == 304
+    hdrs = assert_std_blob_headers(head)
+    assert hdrs["etag"] == etag
+    assert head.body == ""
+  end
+
+  test "lens-6: conditional HEAD — If-Match hit + range evaluates 412 before 206 (RFC 9110)" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/condhead3?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/condhead3/c.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "0123456789"
+           ).status == 201
+
+    get = req!(port(), :get, "/#{acct()}/condhead3/c.bin", @v)
+    etag = header_map(get)["etag"]
+
+    head =
+      req!(port(), :head, "/#{acct()}/condhead3/c.bin", @v ++ [
+        {"if-match", etag},
+        {"x-ms-range", "bytes=0-2"}
+      ])
+
+    assert head.status == 206
+    hdrs = assert_std_blob_headers(head)
+    assert hdrs["content-range"] == "bytes 0-2/10"
+  end
+
+  test "lens-4: GET metadata / legalhold / immutabilityPolicy carry request-id (v4)" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdrcomp?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/hdrcomp?comp=metadata", @v ++ [
+             {"x-ms-meta-owner", "c4"}
+           ]).status == 200
+
+    md = req!(port(), :get, "/#{acct()}/hdrcomp?comp=metadata", @v)
+    assert md.status == 200
+    assert header_map(md)["x-ms-meta-owner"] == "c4"
+    assert_std_blob_headers(md)
+
+    hold = req!(port(), :put, "/#{acct()}/hdrcomp?comp=legalhold", @v ++ [{"x-ms-legal-hold", "true"}])
+    assert hold.status == 200
+
+    get_hold = req!(port(), :get, "/#{acct()}/hdrcomp?comp=legalhold", @v)
+    assert get_hold.status == 200
+    assert header_map(get_hold)["x-ms-legal-hold"] == "true"
+    assert_std_blob_headers(get_hold)
+
+    assert req!(port(), :put, "/#{acct()}/hdrcomp?comp=immutabilityPolicy",
+             headers: @v ++ [{"content-type", "application/json"}],
+             body: Jason.encode!(%{"immutabilityPeriodSinceCreationInDays" => 7})
+           ).status == 200
+
+    get_pol = req!(port(), :get, "/#{acct()}/hdrcomp?comp=immutabilityPolicy", @v)
+    assert get_pol.status == 200
+    assert_std_blob_headers(get_pol)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens-5: the last two blob surfaces whose std headers arrive from the
+  # ENGINES (not blob_std_headers/1) — DELETE blob 202 and HEAD container —
+  # get the same wire-tier v4-GUID + version fence. Both engine request_id/0
+  # generators are the unified dashed-36 v4 dialect (F1 cross-court), so the
+  # fence is identical; mutating either engine's generator must kill here.
+  # ---------------------------------------------------------------------------
+
+  test "lens-5: DELETE blob 202 carries x-ms-request-id (v4) + x-ms-version at the wire" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdrdel?restype=container", unlocked).status == 201
+
+    assert req!(port(), :put, "/#{acct()}/hdrdel/d.bin",
+             headers: @v ++ [{"content-type", "application/octet-stream"}],
+             body: "d"
+           ).status == 201
+
+    del = req!(port(), :delete, "/#{acct()}/hdrdel/d.bin", @v)
+    assert del.status == 202
+    assert_std_blob_headers(del)
+
+    # the 404 leg (already-deleted blob) is fenced too
+    gone = req!(port(), :delete, "/#{acct()}/hdrdel/d.bin", @v)
+    assert gone.status == 404
+    assert_std_blob_headers(gone)
+  end
+
+  test "lens-5: HEAD container (restype=container) carries x-ms-request-id (v4) + x-ms-version" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdrhead?restype=container", unlocked).status == 201
+
+    head = req!(port(), :head, "/#{acct()}/hdrhead?restype=container", @v)
+    assert head.status == 200
+    assert_std_blob_headers(head)
+
+    miss = req!(port(), :head, "/#{acct()}/no-such-container-hd?restype=container", @v)
+    assert miss.status == 404
+    assert_std_blob_headers(miss)
+  end
+
+  test "lens-5: GET container properties carries x-ms-request-id (v4) + x-ms-version" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdrgetprop?restype=container", unlocked).status == 201
+
+    prop = req!(port(), :get, "/#{acct()}/hdrgetprop?restype=container", @v)
+    assert prop.status == 200
+    assert_std_blob_headers(prop)
+
+    miss = req!(port(), :get, "/#{acct()}/no-such-container-gp?restype=container", @v)
+    assert miss.status == 404
+    assert_std_blob_headers(miss)
+  end
+
+  # Lens-5 cycle-4: the store-not-ready 503 on blob routes is a blob response
+  # class — it must carry the std headers like every other class (F5 parity).
+  # Forces the not-ready state the real way (beam hidden + module purged), a
+  # real degraded store, never a mock.
+  test "lens-5: blob route 503 RouteNotReady carries x-ms-request-id (v4) + x-ms-version" do
+    beam_dir = Mix.Project.compile_path()
+    beam = Path.join(beam_dir, "Elixir.Smalt.DataPlane.BlobStorage.beam")
+    assert File.exists?(beam)
+    hidden = beam <> ".hidden_lens5"
+    File.rename!(beam, hidden)
+
+    :code.purge(Smalt.DataPlane.BlobStorage)
+    :code.delete(Smalt.DataPlane.BlobStorage)
+
+    resp = req!(port(), :get, "/#{acct()}/#{cont()}", @v)
+    assert resp.status == 503
+    assert Jason.decode!(resp.body)["error"]["code"] == "RouteNotReady"
+    assert_std_blob_headers(resp)
+  after
+    beam_dir = Mix.Project.compile_path()
+    beam = Path.join(beam_dir, "Elixir.Smalt.DataPlane.BlobStorage.beam")
+    hidden = beam <> ".hidden_lens5"
+
+    if File.exists?(hidden) do
+      File.rename!(hidden, beam)
+    end
+
+    Code.ensure_loaded(Smalt.DataPlane.BlobStorage)
+  end
+
+  test "lens-5: per-request uniqueness holds across the std-header surfaces" do    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+    assert req!(port(), :put, "/#{acct()}/hdruniq?restype=container", unlocked).status == 201
+
+    a = req!(port(), :get, "/#{acct()}/hdruniq", @v)
+    b = req!(port(), :get, "/#{acct()}/hdruniq", @v)
+    assert header_map(a)["x-ms-request-id"] != header_map(b)["x-ms-request-id"]
+    assert header_map(a)["x-ms-request-id"] =~ @v4_guid
   end
 
   # ---------------------------------------------------------------------------

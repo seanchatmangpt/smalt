@@ -32,6 +32,10 @@ defmodule Smalt.McpTest do
   end
 
   setup do
+    # Heal the store first (lane 01 seam): cross-module teardown can drop the
+    # tables mid-setup; ensure_store_up/0 closes the half-initialized window.
+    assert :ok = SmaltTest.Lifecycle.ensure_store_up()
+
     # Real substrate state: seed store rows the read tools read back.
     Smalt.Store.put(
       :smalt_resources,
@@ -1011,7 +1015,13 @@ defmodule Smalt.McpTest do
           {"arm.get", Map.merge(valid_args("arm.get"), %{"resource_group" => "nope"}),
            "RESOURCE_NOT_FOUND"},
           {"cosmos.query", %{"db" => 5, "coll" => 5}, "INVALID_PARAMS"},
-          {"sb.peek", %{"queue" => 5}, "INVALID_PARAMS"}
+          {"sb.peek", %{"queue" => 5}, "INVALID_PARAMS"},
+          {"cosmos.query", %{"db" => "db", "coll" => "coll", "partition_key" => 5},
+           "INVALID_PARAMS"},
+          {"cosmos.query", %{"db" => "db", "coll" => "coll", "partition_key" => ["a", "b"]},
+           "INVALID_PARAMS"},
+          {"cosmos.query", %{"db" => "db", "coll" => "coll", "partition_key" => %{"k" => "v"}},
+           "INVALID_PARAMS"}
         ] do
       conn = rpc("tools/call", %{"name" => tool, "arguments" => args})
       result = result(conn)
@@ -1212,4 +1222,108 @@ defmodule Smalt.McpTest do
     assert Smalt.Mcp.Descriptor.read_only_surface?() == true
   end
 
+  # Generated-artifact fidelity, DATA tier (cycle 2): every ema:Capability in
+  # the TTL source must appear in the generated descriptor with its exact
+  # fields. This is the fence the skeleton fence deliberately does not cover:
+  # a hand-edit to the generated capabilities body (renamed tool, loosened
+  # authority flag, drifted description) that never went through the TTL is
+  # caught here without needing the ggen pipeline (currently blocked, see
+  # tmp/errc/mcp-lens6/cycle-1.md).
+  test "lens6 generated descriptor agrees with the TTL capability source (data fidelity)" do
+    ns = "http://seanchatmangpt.github.io/packs/elixir-mcp-a2a#"
+
+    graph = RDF.Turtle.read_string!(File.read!("lib/smalt/mcp/gen/smalt_mcp_surface.ttl"))
+
+    type = RDF.iri(ns <> "Capability")
+    rdf_type = RDF.type()
+
+    ttl_caps =
+      for {s, p, o} <- graph, p == rdf_type and o == type do
+        desc =
+          graph
+          |> RDF.Graph.descriptions()
+          |> Enum.find(&(&1.subject == s))
+
+        val = fn suffix ->
+          case RDF.Description.first(desc, RDF.iri(ns <> suffix)) do
+            nil -> nil
+            o -> RDF.Literal.value(o)
+          end
+        end
+
+        %{
+          "capability_id" => val.("capabilityId"),
+          "capability_name" => val.("capabilityName"),
+          "capability_description" => val.("capabilityDescription"),
+          "observation_scope" => val.("observationScope"),
+          "mutation_scope" => val.("mutationScope"),
+          "requires_authority" => val.("requiresAuthority") in [true, "true"],
+          "is_reversible" => val.("isReversible") in [true, "true"],
+          "consequence" => val.("consequence")
+        }
+      end
+
+    assert length(ttl_caps) == 8, "expected 8 TTL capabilities, got #{length(ttl_caps)}"
+
+    generated = Smalt.Mcp.Descriptor.capabilities()
+
+    assert MapSet.new(Map.keys(generated)) ==
+             MapSet.new(Enum.map(ttl_caps, & &1["capability_id"])),
+           "generated descriptor ids drifted from the TTL source"
+
+    for cap <- ttl_caps do
+      id = cap["capability_id"]
+      meta = Map.fetch!(generated, id)
+
+      assert meta.name == cap["capability_name"], "name drift for #{id}"
+      assert meta.description == cap["capability_description"], "description drift for #{id}"
+      assert to_string(meta.observation_scope) == cap["observation_scope"]
+      assert to_string(meta.mutation_scope) == cap["mutation_scope"], "mutation_scope drift for #{id}"
+      assert meta.requires_authority == cap["requires_authority"], "authority flag drift for #{id}"
+      assert meta.reversible == cap["is_reversible"], "reversible flag drift for #{id}"
+      assert to_string(meta.consequence) == cap["consequence"], "consequence drift for #{id}"
+    end
+  end
+
+  # Generated-artifact fidelity, DETERMINISM tier (lens 7): the generated
+  # descriptor's SOURCE ORDER must be canonical (capability_id-sorted). The
+  # ggen `--engine sparql` path drops the query's `ORDER BY ?capability_order`,
+  # so engine solution order used to leak into the file: the committed artifact
+  # differed byte-wise between generating sessions (observed for real:
+  # `e240a2a2…` -> `e0903d77…`, order-only). The template now sorts, and this
+  # fence pins the law: any regeneration, in any session, must produce the
+  # same key sequence — otherwise the next session's regen is a spurious diff.
+  test "lens7 generated descriptor source order is canonical (capability_id-sorted)" do
+    ns = "http://seanchatmangpt.github.io/packs/elixir-mcp-a2a#"
+
+    graph = RDF.Turtle.read_string!(File.read!("lib/smalt/mcp/gen/smalt_mcp_surface.ttl"))
+
+    ttl_ids =
+      for {s, p, o} <- graph,
+          p == RDF.type() and o == RDF.iri(ns <> "Capability") do
+        desc = graph |> RDF.Graph.descriptions() |> Enum.find(&(&1.subject == s))
+
+        case RDF.Description.first(desc, RDF.iri(ns <> "capabilityId")) do
+          nil -> flunk("TTL capability without capabilityId")
+          lit -> RDF.Literal.value(lit)
+        end
+      end
+
+    canonical = Enum.sort(ttl_ids)
+
+    generated_keys =
+      File.read!(Path.expand("../lib/smalt/mcp/generated/mcp_descriptor.ex", __DIR__))
+      |> String.split("\n")
+      |> Enum.flat_map(fn line ->
+        case Regex.run(~r/^\s{4}"([^"]+)" => %\{/, line) do
+          [_ , id] -> [id]
+          _ -> []
+        end
+      end)
+
+    assert generated_keys == canonical,
+           "generated descriptor source order is not canonical: " <>
+             "#{inspect(generated_keys)} != #{inspect(canonical)} — the next " <>
+             "session's regeneration would produce a spurious order-only diff"
+  end
 end

@@ -1,4 +1,4 @@
-// Service Bus SDK census (lane 15) — 8 probes, fail-closed, zero skips.
+// Service Bus SDK census (lane 08) — 11 probes, fail-closed, zero skips.
 // Ported from the reference servicebus-local court script (upstream
 // reference). Real SDK (@azure/service-bus) over real loopback AMQP against
 // the smalt substrate booted by census-run.mjs. If the broker cannot satisfy
@@ -15,20 +15,28 @@ const test = require("node:test").test;
 const SDK_ROOT =
   process.env.SMALT_SDK_ROOT || (function(){ console.error("[sdk-smoke] set SMALT_SDK_ROOT to a node_modules dir containing @azure packages"); process.exit(3); })();
 const sdkRequire = createRequire(path.join(SDK_ROOT, "package.json"));
-const { ServiceBusClient } = sdkRequire("@azure/service-bus");
+const { ServiceBusClient, ServiceBusAdministrationClient } = sdkRequire("@azure/service-bus");
 
-// The broker clamps every lock to 100–30000 ms with a 30000 ms default and
-// never takes a caller-supplied lock duration on delivery
-// (Smalt.Amqp.QueueStore.dequeue_matching is called with [] in
-// Smalt.Amqp.Connection.deliver_to_link), so the effective lock duration is
-// 30000 ms. Probe 6 waits lockDurationMs+150, which cannot fit a 10s probe
-// budget; that probe alone gets lockDurationMs+5000. Fail-closed either way.
-const LOCK_DURATION_MS = 30_000;
-const PROBE_TIMEOUT_MS = 10_000;
+// V261014-08 task 08-1: the broker now applies the queue's configured ARM
+// lockDuration on the delivery claim path (deliver_to_link resolves
+// QueueStore.queue_settings(address).lock_duration_ms), so the historical
+// "effective duration is always 30000 ms" budget hack is retired. Probes
+// needing a non-default schedule create their queue with an explicit
+// lockDuration via the administration client and wait on THAT schedule.
 // The 401 path walks core-amqp's full retry ladder (8s operation timeout at
 // maxRetries:0) plus CBS round-trips; a 10s budget aborts mid-retry and reads
 // as a false timeout instead of a real verdict. Auth alone gets 30s.
+const LOCK_DURATION_MS = 30_000;
+const PROBE_TIMEOUT_MS = 10_000;
 const AUTH_PROBE_TIMEOUT_MS = 30_000;
+
+// Creates a queue with an explicit ARM lockDuration (ISO8601) via the
+// Service Bus administration surface; used by the lock-schedule probes.
+const STALE_LOCK_DURATION = "PT15S";
+const SHORT_LOCK_DURATION = "PT2S";
+async function createQueueWithLockDuration(admin, queueName, lockDuration) {
+  await admin.createQueue(queueName, { lockDuration });
+}
 
 const KEY = process.env.SMALT_SB_SHARED_KEY;
 if (!KEY || KEY.length < 32) {
@@ -191,11 +199,14 @@ async function abandonCompleteCase() {
 
 async function staleHandleCase() {
   const queue = `census-stale-${prefix}`;
+  // Explicit 15 s lockDuration — asserts expiry lands on the CREATED
+  // schedule, not the 30 s broker default (task 08-1 acceptance).
+  await createQueueWithLockDuration(admin, queue, STALE_LOCK_DURATION);
   const sessionId = prefix + "-exp";
   await sendOne(client, queue, "expire", { sessionId });
   const stale = own(await acceptSessionNoRenew(client, queue, sessionId));
   const message = await receiveOne(stale);
-  await wait(LOCK_DURATION_MS + 150);
+  await wait(15_000 + 150);
   await assert.rejects(
     stale.completeMessage(message),
     (error) => /LockLost|lock.*lost|expired/i.test(errText(error)),
@@ -208,6 +219,84 @@ async function staleHandleCase() {
   await current.completeMessage(redelivered);
   await current.close();
   await stale.close();
+}
+
+// V261014-08 task 08-1: expiry must land on the configured (PT2S) schedule,
+// not the 30 s default — a 2.15 s wait cannot reach a 30 s expiry.
+async function lockDurationCase() {
+  const queue = `census-lockdur-${prefix}`;
+  await createQueueWithLockDuration(admin, queue, SHORT_LOCK_DURATION);
+  const sessionId = prefix + "-ld";
+  await sendOne(client, queue, "lockdur", { sessionId });
+  const receiver = own(await acceptSessionNoRenew(client, queue, sessionId));
+  const message = await receiveOne(receiver);
+  await wait(2_000 + 150);
+  await assert.rejects(
+    receiver.completeMessage(message),
+    (error) => /LockLost|lock.*lost|expired/i.test(errText(error)),
+    "complete after the configured 2s lockDuration must be rejected LockLost",
+  );
+  const redelivered = await receiveOne(receiver);
+  assert.equal(redelivered.messageId, message.messageId);
+  await receiver.completeMessage(redelivered);
+  await receiver.close();
+}
+
+// V261014-08 task 08-2: send -> defer -> receive-by-sequence-number ->
+// complete; exactly one delivery, body equality, gone after complete.
+async function deferredReceiveCase() {
+  const queue = `census-defer-${prefix}`;
+  const sessionId = prefix + "-def";
+  await sendOne(client, queue, Buffer.from([4, 5, 6]), { sessionId });
+  const receiver = own(await acceptSessionNoRenew(client, queue, sessionId));
+  const first = await receiveOne(receiver);
+  assert.equal(first.deliveryCount, 1);
+  await receiver.deferMessage(first);
+
+  const deferred = await receiver.receiveDeferredMessages([first.sequenceNumber]);
+  assert.equal(deferred.length, 1, "DEFERRED_RECEIVE_NONEMPTY");
+  assert.deepEqual(Buffer.from(deferred[0].body), Buffer.from([4, 5, 6]), "DEFERRED_BODY_EXACT");
+  assert.equal(deferred[0].deliveryCount, first.deliveryCount + 1, "DEFERRED_DELIVERY_COUNT");
+  await receiver.completeMessage(deferred[0]);
+
+  assert.equal(
+    (await receiver.receiveDeferredMessages([first.sequenceNumber]).catch(() => [])).length,
+    0,
+    "DEFERRED_GONE_AFTER_COMPLETE",
+  );
+  await receiver.close();
+}
+
+// V261014-08 task 08-3: reason + description + custom application
+// properties observable on the DLQ receive.
+async function dlqPropertiesCase() {
+  const queue = `census-dlqp-${prefix}`;
+  const sessionId = prefix + "-dlqp";
+  await sendOne(client, queue, Buffer.from([1, 2, 3]), {
+    sessionId,
+    applicationProperties: { CourtId: "c-42", RetryCount: 3 },
+  });
+  const receiver = own(await acceptSessionNoRenew(client, queue, sessionId));
+  const message = await receiveOne(receiver);
+  await receiver.deadLetterMessage(message, {
+    deadLetterReason: "COURT_REJECTED",
+    deadLetterErrorDescription: "dlq-properties",
+  });
+  await receiver.close();
+
+  const dead = own(
+    client.createReceiver(queue, {
+      subQueueType: "deadLetter",
+      maxAutoLockRenewalDurationInMs: 0,
+    }),
+  );
+  const found = await receiveOne(dead);
+  assert.equal(found.deadLetterReason, "COURT_REJECTED");
+  assert.equal(found.applicationProperties && found.applicationProperties.CourtId, "c-42", "DLQ_CUSTOM_PROP");
+  assert.equal(found.applicationProperties && found.applicationProperties.RetryCount, 3, "DLQ_CUSTOM_PROP_INT");
+  assert.deepEqual(Buffer.from(found.body), Buffer.from([1, 2, 3]));
+  await dead.completeMessage(found);
+  await dead.close();
 }
 
 async function deadLetterCase() {
@@ -263,11 +352,14 @@ const tests = [
   probe("exclusive-session", exclusiveSessionCase),
   probe("renewal-peek", renewalPeekCase),
   probe("abandon-complete", abandonCompleteCase),
-  // lockDurationMs+150 exceeds the 10s default budget; this probe alone gets
-  // the full lock window plus margin.
-  probe("stale-handle", staleHandleCase, LOCK_DURATION_MS + 5000),
+  // 15 s configured lockDuration + margin exceeds the 10 s default budget.
+  probe("stale-handle", staleHandleCase, 15_000 + 5000),
   probe("dead-letter", deadLetterCase),
+  probe("dlq-properties", dlqPropertiesCase),
   probe("ordered-session", orderedSessionCase),
+  // 2 s configured schedule must surface LockLost within the default budget.
+  probe("lock-duration", lockDurationCase),
+  probe("deferred-receive", deferredReceiveCase),
 ];
 
 function probe(name, fn, timeoutMs = PROBE_TIMEOUT_MS) {
@@ -295,14 +387,16 @@ async function runProbe(p) {
 
 const prefix = randomUUID();
 let client;
+let admin;
 const handles = [];
 const own = (h) => {
   handles.push(h);
   return h;
 };
 
-test("service bus census: 8 probes, fail-closed, zero skips", async () => {
+test("service bus census: 11 probes, fail-closed, zero skips", async () => {
   client = new ServiceBusClient(CONNECTION_STRING, CLIENT_OPTIONS);
+  admin = new ServiceBusAdministrationClient(CONNECTION_STRING);
   try {
     for (const p of tests) {
       await runProbe(p);

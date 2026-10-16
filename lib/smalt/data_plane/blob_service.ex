@@ -32,6 +32,16 @@ defmodule Smalt.DataPlane.BlobService do
   where each record is the full `:smalt_blob_containers` row.
   """
   def list_containers(account, opts \\ %{}) do
+    # Azure grammar parity (v26.10.14 lane 06 defect 2): container listing
+    # previously SILENTLY COERCED junk maxresults to the default page size
+    # while blob listing answered typed 400 InvalidQueryParameter — split
+    # grammar. Both routes now share BlobStorage.check_maxresults/1.
+    with :ok <- BlobStorage.check_maxresults(Map.get(opts, "maxresults")) do
+      do_list_containers(account, opts)
+    end
+  end
+
+  defp do_list_containers(account, opts) do
     prefix_filter = Map.get(opts, "prefix") || ""
     marker = Map.get(opts, "marker") || ""
     max_results = normalize_max(Map.get(opts, "maxresults"))
@@ -63,10 +73,18 @@ defmodule Smalt.DataPlane.BlobService do
 
   @doc """
   List containers as Azure EnumerationResults XML (same style as
-  `BlobStorage.list_blobs_xml/2`). Returns `{xml, next_marker}`.
+  `BlobStorage.list_blobs_xml/2`). Returns `{xml, next_marker}` on success
+  or `{:error, 400, "InvalidQueryParameter", msg}` for invalid `maxresults`
+  (Azure grammar parity, lane 06 defect 2).
   """
   def list_containers_xml(account, opts \\ %{}) do
-    {:ok, result} = list_containers(account, opts)
+    case list_containers(account, opts) do
+      {:ok, result} -> {render_containers_xml(account, opts, result), result["next_marker"]}
+      {:error, _status, _code, _msg} = invalid -> invalid
+    end
+  end
+
+  defp render_containers_xml(account, opts, result) do
     next_marker = result["next_marker"]
     prefix_filter = Map.get(opts, "prefix") || ""
     marker = Map.get(opts, "marker") || ""
@@ -102,31 +120,19 @@ defmodule Smalt.DataPlane.BlobService do
     </EnumerationResults>
     """
 
-    {xml, next_marker}
+    xml
   end
 
   @doc """
-  XML-escape listing output (see `BlobStorage.xml_escape/1`): container
-  names, prefixes and markers containing `<`, `>`, `&`, `"` must not break
-  EnumerationResults. Non-binary falls back to the empty string.
+  XML-escape listing output — delegates to `BlobStorage.xml_escape/1` (the
+  canonical implementation, including the supplementary-plane transform that
+  rewrites astral codepoints U+10000..U+10FFFF to numeric character
+  references): container names, prefixes and markers containing `<`, `>`,
+  `&`, `"` must not break EnumerationResults. Non-binary falls back to the
+  empty string.
   """
   @spec xml_escape(term) :: String.t()
-  def xml_escape(nil), do: ""
-
-  def xml_escape(value) when is_binary(value) do
-    # XML 1.0 forbids most C0 control bytes in content (only \t \n \r are
-    # legal). Hostile stored names / marker or prefix query params must never
-    # produce ill-formed enumeration XML — illegal control bytes are dropped;
-    # & < > " are entity-escaped as before.
-    value
-    |> String.replace("&", "&amp;")
-    |> String.replace("<", "&lt;")
-    |> String.replace(">", "&gt;")
-    |> String.replace("\"", "&quot;")
-    |> String.replace(~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/, "")
-  end
-
-  def xml_escape(value), do: value |> to_string() |> xml_escape()
+  def xml_escape(value), do: BlobStorage.xml_escape(value)
 
   # ---------------------------------------------------------------------------
   # Container metadata
@@ -335,5 +341,22 @@ defmodule Smalt.DataPlane.BlobService do
   defp next_marker_xml(nil), do: "<NextMarker />"
   defp next_marker_xml(marker), do: "<NextMarker>#{xml_escape(marker)}</NextMarker>"
 
-  defp request_id, do: Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
+  # Real Azure Storage answers x-ms-request-id with a dashed-36 RFC 4122 v4
+  # GUID — same unified form as the ARM gateway and LA surface
+  # (egress_router.ex generate_request_id/0; cross-court finding F1,
+  # compliance lens-7 8th confirmation). Previously a 32-hex dialect pin.
+  defp request_id do
+    <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
+    c4 = :erlang.band(c, 0x0FFF) + 0x4000
+    d = :erlang.bor(:erlang.band(d, 0x3FFF), 0x8000)
+
+    :io_lib.format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [
+      a,
+      b,
+      c4,
+      d,
+      e
+    ])
+    |> IO.iodata_to_binary()
+  end
 end

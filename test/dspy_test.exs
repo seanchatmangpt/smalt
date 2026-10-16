@@ -76,6 +76,87 @@ defmodule Smalt.DSPy.RemediationTest do
       assert row.meaning == "a | b"
       assert row.hint == "hint | more"
     end
+
+    test "hostile cells: doubled escape, literal backslash+pipe, and trailing escaped pipe (lens 5)" do
+      # Doc bytes the NEW generator esc/1 can emit (backslash escaped first):
+      #   source `a\|b`    -> doc `a\\|b`   (one cell, backslash + pipe kept)
+      #   source `x\\y`    -> doc `x\\\\y`  (literal backslashes kept)
+      #   source `end|`    -> doc `end\|` at row end (content, not terminator)
+      doc = """
+      | Surface | HTTP | Code | Source | Meaning | Remediation (agent hint) |
+      |---|---|---|---|---|---|
+      | egress | 400 | Esc | s.ex:1 | a \\\\ | b |
+      | egress | 400 | Bs | s.ex:2 | x \\\\ y | r2 |
+      | egress | 400 | Trail | s.ex:3 | m3 | ends \\|
+      """
+
+      assert [%Remediation{} = esc, %Remediation{} = bs, %Remediation{} = trail] =
+               Remediation.parse(doc)
+
+      # `\\` (doubled escape) = literal backslash; the following pipe is a
+      # REAL separator: meaning "a \" with hint "b" recovers exactly.
+      assert esc.meaning == "a \\"
+      assert esc.hint == "b"
+
+      # `\\` mid-cell = literal backslash, no split.
+      assert bs.meaning == "x \\ y"
+
+      # A trailing `\|` on the row's LAST cell is CONTENT: no terminator
+      # artifact, no corruption, and the row needs no extra terminator pipe.
+      assert trail.meaning == "m3"
+      assert trail.hint == "ends |"
+    end
+
+    test "round-trip: every esc/1-emittable hostile cell parses back to its source" do
+      # Property pin of the esc/1 <-> split_row/1 inverse pair (lens 5): for
+      # each hostile source cell, project with the generator's own esc
+      # semantics and require parse/1 to restore the original cell.
+      for source <- ["a|b", "a\\|b", "x\\y", "ends|", "\\", "|", "\\|", "p|q|r"] do
+        esc =
+          source
+          |> String.replace("\\", "\\\\")
+          |> String.replace("|", "\\|")
+
+        doc = """
+        | Surface | HTTP | Code | Source | Meaning | Remediation (agent hint) |
+        |---|---|---|---|---|---|
+        | egress | 400 | RT | s.ex:1 | #{esc} | hint |
+        """
+
+        assert [%Remediation{} = row] = Remediation.parse(doc)
+        assert row.meaning == String.trim(source), "round-trip failed for #{inspect(source)}"
+      end
+    end
+
+    test "round-trip through the REAL generator esc/1: source -> doc bytes -> parse restores the source (lens 6)" do
+      # The lens-5/6 property pinned above mirrors esc/1 in Elixir; THIS pin
+      # calls the real generator (scripts/gen_error_codes.py esc/1) through a
+      # python subprocess so the doc bytes are produced by the shipping esc,
+      # not by a mirror (Chicago: real collaborators). Any drift between the
+      # mirror and the real esc breaks this test.
+      py =
+        "import sys; sys.path.insert(0, 'scripts'); import gen_error_codes as g\n" <>
+          "print(g.esc(sys.argv[1]))\n"
+
+      sources = ["a|b", "a\\|b", "x\\y", "ends|", "\\", "|", "\\|", "p|q|r", "a \\\\ b | c"]
+
+      escaped =
+        Enum.map(sources, fn s ->
+          {out, 0} = System.cmd("python3", ["-c", py, s])
+          String.trim_trailing(out, "\n")
+        end)
+
+      for {source, esc} <- Enum.zip(sources, escaped) do
+        doc = """
+        | Surface | HTTP | Code | Source | Meaning | Remediation (agent hint) |
+        |---|---|---|---|---|---|
+        | egress | 400 | RT6 | s.ex:1 | #{esc} | hint |
+        """
+
+        assert [%Remediation{} = row] = Remediation.parse(doc)
+        assert row.meaning == String.trim(source), "real-esc round-trip failed for #{inspect(source)}"
+      end
+    end
   end
 
   describe "propose/1" do

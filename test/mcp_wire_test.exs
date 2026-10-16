@@ -9,6 +9,10 @@ defmodule Smalt.McpWireTest do
   @recv_timeout 10_000
 
   setup do
+    # Heal the store first (lane 01 seam): cross-module teardown can drop the
+    # tables mid-setup; ensure_store_up/0 closes the half-initialized window.
+    assert :ok = SmaltTest.Lifecycle.ensure_store_up()
+
     # Real substrate state: seed store rows the read tools read back over the
     # wire (same seeds as the in-process suite).
     Smalt.Store.put(
@@ -1206,6 +1210,44 @@ defmodule Smalt.McpWireTest do
     resp = wire_rpc("tools/call", %{"name" => "substrate.status", "arguments" => %{}}, "after")
     assert {200, _h, resp_body} = resp
     assert decoded(resp)["result"]["structuredContent"]["status"] == "ok"
+  end
+
+  # Wire-tier canonical-order fence (lens 8): tools/list and the
+  # substrate.capabilities mcp_tools list must be capability_id-sorted ON THE
+  # WIRE, independent of the generated descriptor's map-literal order. The
+  # in-process lens-7 fence pins the generated file's SOURCE order; this fence
+  # pins the wire CONTRACT so a regression at either tier (template sort
+  # dropped, descriptor regenerated unsorted, router sort removed) surfaces as
+  # an order diff on the socket, not a silent contract drift. Killed m28 and
+  # m29 for real (see tmp/errc/mcp-lens8/cycle-1.md).
+  test "lens8 wire tools/list and mcp_tools are capability_id-sorted" do
+    ns = "http://seanchatmangpt.github.io/packs/elixir-mcp-a2a#"
+
+    graph = RDF.Turtle.read_string!(File.read!("lib/smalt/mcp/gen/smalt_mcp_surface.ttl"))
+
+    canonical =
+      for {s, p, o} <- graph,
+          p == RDF.type() and o == RDF.iri(ns <> "Capability") do
+        desc = graph |> RDF.Graph.descriptions() |> Enum.find(&(&1.subject == s))
+
+        case RDF.Description.first(desc, RDF.iri(ns <> "capabilityId")) do
+          nil -> flunk("TTL capability without capabilityId")
+          lit -> RDF.Literal.value(lit)
+        end
+      end
+      |> Enum.sort()
+
+    {200, _h, _} = resp = wire_rpc("tools/list")
+    wire_names = decoded(resp)["result"]["tools"] |> Enum.map(& &1["name"])
+
+    assert wire_names == canonical,
+           "wire tools/list order is not canonical: #{inspect(wire_names)} != #{inspect(canonical)}"
+
+    {200, _h, _} = resp2 = wire_rpc("tools/call", %{"name" => "substrate.capabilities"})
+    mcp_tools = decoded(resp2)["result"]["structuredContent"]["mcp_tools"]
+
+    assert mcp_tools == canonical,
+           "wire mcp_tools order is not canonical: #{inspect(mcp_tools)} != #{inspect(canonical)}"
   end
 
 end

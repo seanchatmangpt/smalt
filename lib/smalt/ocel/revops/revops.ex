@@ -3,7 +3,7 @@ defmodule Smalt.Ocel.RevOps do
   Read-only Ash domain exposing a RevOps surface over smalt's OCEL feed:
   traces, conformance fitness verdicts, and admitted deviations —
   composed per the ash-ocel-revops-surface-factory-pack (r75 candidate
-  structures OcelTimeline / ProcessConendance / ValueEvidence) with the
+  structures OcelTimeline / ProcessConformance / ValueEvidence) with the
   executable manufacturer vocabulary of ash-revops-structural-factory-pack
   (ar:AshResource): OcelTimeline, ProcessConformance, ValueEvidence.
   Projection inputs live in `gen/`; see
@@ -24,9 +24,18 @@ defmodule Smalt.Ocel.RevOps do
 
   @doc """
   Groups an assembled OCEL document's events into `{trace_id, events}`
-  pairs, keyed by the first relationship objectId of each event (events
-  without relationships fall under the positional key `trace-<index>`).
-  Stable, deterministic, first-appearance order.
+  pairs.
+
+  Key semantics:
+
+  - The key is the `objectId` of the event's **first** `relationships`
+    entry. Events whose first objectId is identical merge into one trace.
+  - Events with no `relationships` entry (or an empty/missing `objectId`)
+    fall under the positional key `trace-<index>` — their 0-based position
+    in the source `ocel:events` list — so each such event forms its own
+    singleton trace.
+  - Group order is deterministic, first-appearance order of the keys in
+    the source event list.
   """
   @spec trace_groups(map()) :: [{String.t(), [map()]}]
   def trace_groups(%{"ocel:events" => events}) when is_list(events) do

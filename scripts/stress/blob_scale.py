@@ -2,7 +2,7 @@
 """Smalt blob-storage scale harness (stdlib-only, fail-closed).
 
 Spawns the substrate (`mix run --no-halt`), then drives the immutable Blob
-data plane (port 8443, x-ms-version required) through five scale scenarios:
+data plane (private egress port, x-ms-version required) through five scale scenarios:
 
   1. 8 MiB single-blob PUT/GET  — pin the actual >1 MiB body behavior
   2. 500 KB x 100 PUT/GET       — throughput (MB/s, p50/p95)
@@ -27,10 +27,17 @@ import time
 import _substrate
 import xml.etree.ElementTree as ET
 
-ARM_PORT = 9443
+# Private six-listener block (DEV_LOOP allocation table; lens-4 cycle 2):
+# booting on the dev defaults 9443/8443/5672 collided with the shared dev
+# substrate and every other front-door harness.
+ARM_PORT = int(os.environ.get("SMALT_BLOBSCALE_ARM_PORT", "39530"))
+ARM_TLS_PORT = int(os.environ.get("SMALT_BLOBSCALE_TLS_PORT", "39531"))
+DATA_PORT = int(os.environ.get("SMALT_BLOBSCALE_EGRESS_PORT", "39532"))
+AMQP_PORT = int(os.environ.get("SMALT_BLOBSCALE_AMQP_PORT", "39533"))
+EVENT_HUBS_PORT = int(os.environ.get("SMALT_BLOBSCALE_EH_PORT", "39534"))
+MCP_PORT = int(os.environ.get("SMALT_BLOBSCALE_MCP_PORT", "39535"))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-DATA_PORT = 8443
 XMS_VERSION = "2021-12-02"
 RECEIPT_PATH = os.path.join(REPO, "tmp", "blob-scale-receipt.json")
 SCHEMA = "smalt-blob-scale/v1"
@@ -81,7 +88,7 @@ _TOKEN = {"value": None}
 
 
 def fetch_token():
-    """Mint a Bearer from the ARM STS (port 9443, exempt route)."""
+    """Mint a Bearer from the ARM STS (exempt route)."""
     conn = http.client.HTTPConnection(HOST, ARM_PORT, timeout=30)
     body = "grant_type=client_credentials"
     conn.request("POST", "/oauth2/v2.0/token", body=body,
@@ -118,8 +125,21 @@ def req(method, path, body=None, extra_headers=None):
 def spawn_substrate():
     env = dict(os.environ)
     env["MIX_ENV"] = "dev"
+    # Six-listener scoping (lens-4 cycle 2): put_env BEFORE ensure_all_started
+    # so every fixed listener lands on the harness's own private block — the
+    # same pattern cosmos_bulk/spike use. Without this the boot grabs the dev
+    # defaults 9443/8443/5672/9444/9545 and dies eaddrinuse under any sibling.
+    eval_code = (
+        f'Application.put_env(:smalt, :arm_port, {ARM_PORT}); '
+        f'Application.put_env(:smalt, :egress_port, {DATA_PORT}); '
+        f'Application.put_env(:smalt, :arm_tls_port, {ARM_TLS_PORT}); '
+        f'Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); '
+        f'Application.put_env(:smalt, :event_hubs_port, {EVENT_HUBS_PORT}); '
+        f'Application.put_env(:smalt, :mcp_port, {MCP_PORT}); '
+        'Application.ensure_all_started(:smalt)'
+    )
     return subprocess.Popen(
-        ["mix", "run", "--no-halt"],
+        ["mix", "run", "--no-start", "--no-halt", "--eval", eval_code],
         cwd=REPO,
         env=env,
         stdout=subprocess.DEVNULL,
@@ -132,7 +152,9 @@ def spawn_substrate():
 def kill_substrate(proc):
     if proc is None:
         return
-    _substrate.kill_substrate(proc, ports=(DATA_PORT,))
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, ARM_TLS_PORT, DATA_PORT,
+                                           AMQP_PORT, EVENT_HUBS_PORT,
+                                           MCP_PORT))
 
 
 def wait_for_port(port, proc, timeout_s=120.0):

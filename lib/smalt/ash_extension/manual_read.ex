@@ -96,7 +96,7 @@ defmodule Smalt.AshExtension.SubstrateResource.ManualRead do
         name = attr.name
 
         {name,
-         Map.get(row, name) || Map.get(row, Atom.to_string(name))}
+         field_value(attr, Map.get(row, name) || Map.get(row, Atom.to_string(name)))}
       end)
 
     metadata =
@@ -111,4 +111,18 @@ defmodule Smalt.AshExtension.SubstrateResource.ManualRead do
     |> struct(attrs)
     |> Ash.Resource.set_metadata(metadata)
   end
+
+  # Lens-7 cycle 5: field-VALUE policy, same as Smalt.Semantic.StoreRead
+  # (cycle 3): row structure + identity refuse typed; a non-conformant
+  # VALUE under a declared :string attribute follows the lenient-nil
+  # precedent — it projects nil, never a raw type-lie (witnessed there:
+  # a list passed through RAW into a String.t() attribute). Non-string
+  # attribute types project their raw value unchanged (their type contract
+  # is the resource's own, not this read path's).
+  defp field_value(%{type: Ash.Type.String}, v), do: bin_or_nil(v)
+  defp field_value(%{type: :string}, v), do: bin_or_nil(v)
+  defp field_value(_attr, v), do: v
+
+  defp bin_or_nil(v) when is_binary(v), do: v
+  defp bin_or_nil(_), do: nil
 end

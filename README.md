@@ -132,6 +132,11 @@ after restart (restart implies re-authentication).
 Exempt paths: `/oauth2/*`, `/.well-known/*`, `/metadata/endpoints`,
 `/common/discovery/*`, `/tenant(s)`, `/attest/*`.
 
+CORS on the 8443 data plane is configurable via
+`config :smalt, :egress_cors_origins` (list of exact origins). The default is
+`["*"]` — the documented dev posture for the emulator; in production configure
+an explicit allowlist (a non-listed origin receives no allow-origin header).
+
 ## Compliance courts
 
 Seven per-service courts fence the wire contract against real HTTP/AMQP
@@ -209,6 +214,31 @@ their own substrate; run them one at a time with the ports free.
   (`mix smalt.gen`); there is no separate `generated/` surface.
 - `test/` — offline, wire, SDK-smoke, census, terraform-fixture, and chaos tiers.
 - `scripts/doctor.py` — pre-flight environment check used by the gate.
+
+## Workspaces & Tooling
+
+- `workspace/` — Smalt Sovereign Console: air-gapped Next.js evaluation console
+  for the local emulator; only `127.0.0.1` endpoints are reachable, mutations are
+  refused by a verb gate. `just ws-install` / `ws-build` / `ws-lint` / `ws-court`
+  (e2e court) / `ws-converge`. Receipts: `docs/jira/v26.10.14/receipts/ws-*.md`.
+- `smalt-cli/` — headless Python CLI companion; zero-actuation gate (AU-10) and
+  a four-gate verification runner (`run_gates.py`; see `smalt-cli/GATES.md`).
+  A `cli-gates` just recipe is pending (lane 03-cli-wiring).
+- `test/sdk-full` / `test/sdk-smoke` / `test/sdk-python` — real official Azure
+  SDK probes against the local substrate (full probes, T3 smoke tier, Python
+  lanes). `just test-sdk-smoke`; `just census` for the Service Bus census
+  (needs `SMALT_SDK_ROOT`).
+- `test/enclave-testbed/` — composite enclave-grade stress testbed (SKR, WORM,
+  Ledger, Purview, Sentinel, RG, Cosmos, LRO, SB, EH plus a chaos overlay):
+  `bash test/enclave-testbed/run.sh` (exclusive substrate lock, exit 0 = all
+  phases PASS). Current standing: 9 phases, 9 PASS.
+- DoD tooling (all landed as Justfile recipes): `just court-x2` (double-run
+  flake court), `just publish-dry` (hex publish dry-run), `just verify-all`
+  (offline verify ladder), `just sdk-matrix` (SDK registration matrix),
+  `just substrate-up` / `substrate-down` / `substrate-status` (lock-protected
+  substrate lifecycle), plus `doctor-dod`, `gap-sync`, `receipt-index`,
+  `docs-dod-check`, and `lane-clean` for lane-build-root cleanup. Receipts:
+  `docs/jira/v26.10.14/receipts/dod-*.md`.
 
 ## Legal
 

@@ -333,9 +333,32 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   @doc """
+  Receive deferred messages by sequence number (Service Bus
+  `com.microsoft:receive-by-sequence-number`). Only messages currently in
+  `:deferred` state qualify; every requested sequence number must qualify or
+  the batch fails atomically with `{:error, {:not_deferred, missing}}` (no
+  partial lock — the caller surfaces 410 MESSAGE_NOT_DEFERRED for the whole
+  batch). Qualifying messages re-enter the normal lock path: a fresh
+  LockManager lock is acquired at the queue's configured lock duration, so
+  complete/abandon/renew behave identically to a live delivery. Delivery
+  count is incremented (deferred receive is a delivery).
+
+  Returns `{:ok, [msg]}` in the order of the request.
+  """
+  @spec receive_deferred(String.t(), [integer()], keyword()) ::
+          {:ok, [map()]} | {:error, {:not_deferred, [integer()]}}
+  def receive_deferred(queue, sequence_numbers, opts \\ []) when is_list(sequence_numbers) do
+    now = opts[:now_ms] || System.system_time(:millisecond)
+    GenServer.call(server(), {:receive_deferred, queue, sequence_numbers, now})
+  end
+
+  @doc """
   Deadletter: move to `{queue}/$deadletterqueue` with a fresh per-DLQ sequence,
   preserving body/annotations/session and stamping `DeadLetterReason` /
-  `DeadLetterErrorDescription` properties. Returns `{:ok, dlq_seq}` or `:error`.
+  `DeadLetterErrorDescription` properties. Opts: `:properties` — custom
+  dead-letter properties map (update-disposition `dead-letter-properties`)
+  merged into the DLQ message's application properties. Returns
+  `{:ok, dlq_seq}` or `:error`.
   """
   @spec deadletter(String.t(), integer(), String.t(), String.t() | nil, keyword()) ::
           {:ok, integer()} | :error
@@ -415,6 +438,10 @@ defmodule Smalt.Amqp.QueueStore do
     {:reply, do_release(queue, seq, opts), state}
   end
 
+  def handle_call({:receive_deferred, queue, sequence_numbers, now}, _from, state) do
+    {:reply, do_receive_deferred(queue, sequence_numbers, now), state}
+  end
+
   def handle_call({:deadletter, queue, seq, reason, description, opts}, _from, state) do
     {:reply, do_deadletter(queue, seq, reason, description, opts), state}
   end
@@ -428,6 +455,14 @@ defmodule Smalt.Amqp.QueueStore do
     # get-check-put through here: exactly one racer can observe the
     # absent-or-expired window and win.
     {:reply, Smalt.Amqp.LockManager.do_session_claim(queue, session_id, now, opts), state}
+  end
+
+  def handle_call({:session_release, queue, session_id}, _from, state) do
+    # LockManager.session_release/2 serializes its get+delete pair through the
+    # same server as session_claim (V261014-04 F3): a concurrent acquire can
+    # never interleave between the get and the deletes, closing the ST4
+    # release-vs-claim lost-lock window.
+    {:reply, Smalt.Amqp.LockManager.do_session_release(queue, session_id), state}
   end
 
   def handle_call({:lock_sweep, now}, _from, state) do
@@ -493,6 +528,40 @@ defmodule Smalt.Amqp.QueueStore do
     end
   end
 
+  # Receive-by-sequence-number: two-pass so a bad sequence anywhere in the
+  # batch fails the whole batch atomically (no partial lock), then each
+  # qualifying message re-locks at the queue's configured duration.
+  defp do_receive_deferred(queue, sequence_numbers, now) do
+    duration = queue_settings(queue).lock_duration_ms
+
+    loaded =
+      Enum.map(sequence_numbers, fn seq -> {seq, Smalt.Store.get(:smalt_sb_messages, {queue, seq})} end)
+
+    missing =
+      for {seq, {:ok, m}} <- loaded,
+          m.state != :deferred,
+          do: seq
+
+    missing = missing ++ for {seq, :error} <- loaded, do: seq
+
+    if missing == [] do
+      {:ok,
+       Enum.map(loaded, fn {_seq, {:ok, m}} ->
+         {:ok, lock} = Smalt.Amqp.LockManager.acquire(queue, m.seq, now_ms: now, duration_ms: duration)
+
+         msg =
+           m
+           |> Map.update!(:delivery_count, &(&1 + 1))
+           |> Map.merge(%{state: :locked, lock_token: lock.lock_token, locked_until: lock.locked_until})
+
+         Smalt.Store.put(:smalt_sb_messages, {queue, m.seq}, msg)
+         msg
+       end)}
+    else
+      {:error, {:not_deferred, Enum.sort(missing)}}
+    end
+  end
+
   defp do_release(queue, seq, opts) do
     with {:ok, m} <- Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
       max_delivery = queue_settings(queue).max_delivery_count
@@ -538,7 +607,8 @@ defmodule Smalt.Amqp.QueueStore do
             |> Map.merge(%{
               "DeadLetterReason" => reason,
               "DeadLetterErrorDescription" => description
-            }),
+            })
+            |> Map.merge(opts[:properties] || %{}),
           annotations:
             m.annotations
             |> Map.merge(%{

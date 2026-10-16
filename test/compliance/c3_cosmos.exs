@@ -395,7 +395,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
 
     resume =
       req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
-        headers: q_headers ++ [{"x-ms-continuation", "1##{lsn}:d1"}],
+        headers: q_headers ++ [{"x-ms-continuation", "1##{lsn}:" <> Base.url_encode64("#{@db}/#{@coll}", padding: false) <> ":d1"}],
         body: q_body
       )
 
@@ -460,6 +460,34 @@ defmodule Smalt.Compliance.C3CosmosTest do
       )
 
     assert foreign.status == 400
+
+    # Lens-8 cycle-8 (M5 kill leg): forged LEDGER position on an
+    # otherwise-perfect SAME-container list token — correct container
+    # binding, valid cursor grammar, but the embedded lsn is AHEAD of
+    # this container's ledger. Typed 400, never a silent resume
+    # (ledger crash-class totality: the resume must not run ahead of
+    # the durable log).
+    forged_lsn =
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [
+          {"x-ms-continuation",
+           "2#999999:" <> Base.url_encode64("#{@db}/#{@coll}", padding: false) <> ":d4"}
+        ]
+      )
+
+    assert forged_lsn.status == 400
+
+    # Control: the same shape at the CURRENT ledger position resumes 200
+    # — the refusal is the ledger conjunct, not the token shape.
+    control =
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [
+          {"x-ms-continuation",
+           "2##{lsn}:" <> Base.url_encode64("#{@db}/#{@coll}", padding: false) <> ":d4"}
+        ]
+      )
+
+    assert control.status == 200
   end
 
   # Lens-7 cycle-1: emit-then-resume ROUND-TRIP. The existing courts
@@ -481,7 +509,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
     tok = hm1["x-ms-continuation"]
     assert is_binary(tok)
     # v2 namespace + numeric ledger position + cursor tail.
-    assert tok =~ ~r/^2#\d+:\d{4}$/
+    assert tok =~ ~r/^2#\d+:[A-Za-z0-9_-]+:\d{4}$/
     feed1 = Jason.decode!(page1.body)
     assert length(feed1) == 100
     assert hd(feed1)["id"] == "0001"
@@ -546,7 +574,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
   # Lens-7 cycle-3: QUERY-feed emit-then-resume ROUND-TRIP (pairs with the
   # cycle-1 list-feed court). The query courts hand-build tokens from the
   # observed x-ms-lsn; the server's own emitted v1 token was never fed
-  # back. Pins: emission format (~r/^1#\d+:\d{4}$/), ORDER-based resume
+  # back. Pins: emission format (~r/^1#\d+:[A-Za-z0-9_-]+:\d{4}$/), ORDER-based resume
   # with no repeats/skips, and loop termination (last page, no token).
   test "query feed emitted token round-trips: emit -> resume -> terminate" do
     create_db()
@@ -571,7 +599,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
     hm1 = header_map(page1)
     tok = hm1["x-ms-continuation"]
     assert is_binary(tok)
-    assert tok =~ ~r/^1#\d+:\d{4}$/
+    assert tok =~ ~r/^1#\d+:[A-Za-z0-9_-]+:\d{4}$/
     feed1 = Jason.decode!(page1.body)
     assert feed1["_count"] == 100
     assert hd(feed1["Documents"])["id"] == "0001"
@@ -588,6 +616,117 @@ defmodule Smalt.Compliance.C3CosmosTest do
     assert Enum.map(feed2["Documents"], & &1["id"]) == ["0101"]
     assert feed2["_count"] == 1
     refute Map.has_key?(header_map(resume), "x-ms-continuation")
+  end
+
+  # Lens-7 cycle-6 (routed from cosmos lens-5): reverse-direction and
+  # scope/prefix-binding pins at the real HTTP surface.
+  # 1) A v2 (list-namespace) token fed to the QUERY POST is a 400 — the
+  #    namespace gate refuses both directions at the wire (the v1-on-list
+  #    direction was already fenced; this is the mirror).
+  # 2) A query token whose embedded pk SCOPE differs from the request's
+  #    partition-key header is a 400 — tokens are scope-bound; accepting
+  #    a cross-scope resume silently drops docs (measured silent data
+  #    drop, cosmos lens-5).
+  # 3) The v2 LIST cross-prefix 400 is already fenced at this wire
+  #    (foreign db/coll leg in the list-feed court, lens-6); re-affirmed
+  #    here by the round-trip + foreign legs together.
+  test "query token namespace + pk-scope bindings refuse at the wire" do
+    create_db()
+    create_coll()
+
+    for i <- 1..101, do: create_doc(String.pad_leading(Integer.to_string(i), 4, "0"))
+
+    q_headers = [
+      {"content-type", "application/query+json"},
+      {"x-ms-documentdb-query-enablecrosspartition", "true"},
+      @pk_hdr
+    ]
+
+    q_body = ~s({"query":"SELECT * FROM c"})
+
+    page1 =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: q_headers,
+        body: q_body
+      )
+
+    assert page1.status == 200
+    hm1 = header_map(page1)
+    tok = hm1["x-ms-continuation"]
+    assert is_binary(tok)
+    # Scoped emission: the token embeds the raw pk header as its scope.
+    assert tok =~ ~r/^1#\d+:[A-Za-z0-9_-]+:\["acme"\]\/\d{4}$/
+    lsn = String.to_integer(hm1["x-ms-lsn"])
+
+    # Mirror-direction namespace gate: v2 token on the query surface —
+    # scope-shaped so ONLY the version conjunct can refuse it (a scope-
+    # less v2 token would be refused by the scope check instead).
+    v2_on_query =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers:
+          q_headers ++ [{"x-ms-continuation", ~s(2##{lsn}:["acme"]/0100)}],
+        body: q_body
+      )
+
+    assert v2_on_query.status == 400
+
+    # Cross-scope: same shape, but the embedded scope names a different
+    # partition — ONLY the scope conjunct can refuse it.
+    cross_scope =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers:
+          q_headers ++ [{"x-ms-continuation", "1##{lsn}:[\"other\"]/0100"}],
+        body: q_body
+      )
+
+    assert cross_scope.status == 400
+  end
+
+  # Lens-8 cycle-5 (routed from cosmos lens-6): CROSS-CONTAINER token
+  # reuse is a typed 400. Tokens embed base64url("db/coll") (lens-6
+  # container binding); a token minted on container A must refuse on
+  # container B even when B's OWN ledger position is valid — i.e. ONLY
+  # the container-binding conjunct can refuse it (vacuity closed: B has
+  # >= as many docs, so the lsn check passes).
+  test "list token cross-container reuse is a typed 400 (container binding)" do
+    create_db()
+    create_coll()
+    create_coll("collB")
+
+    for i <- 1..101 do
+      create_doc(String.pad_leading(Integer.to_string(i), 4, "0"))
+    end
+
+    for i <- 1..101 do
+      create_doc_in("collB", String.pad_leading(Integer.to_string(i), 4, "0"))
+    end
+
+    page_a = req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs")
+    assert page_a.status == 200
+    tok = header_map(page_a)["x-ms-continuation"]
+    assert is_binary(tok)
+    assert tok =~ ~r/^2#\d+:[A-Za-z0-9_-]+:\d{4}$/
+
+    # Same request shape on container B, with A's token. B's ledger is at
+    # least as far (101 docs), prefix matches (""), cursor grammar valid —
+    # ONLY the container binding can refuse.
+    resume_b =
+      req!(port(), :get, "/dbs/#{@db}/colls/collB/docs",
+        headers: [{"x-ms-continuation", tok}]
+      )
+
+    assert resume_b.status == 400
+
+    # Control: the same token on its OWN container still resumes (200) —
+    # the refusal is the binding, not the token bytes going stale.
+    resume_a =
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
+        headers: [{"x-ms-continuation", tok}]
+      )
+
+    assert resume_a.status == 200
+    feed = Jason.decode!(resume_a.body)
+    assert Enum.map(feed, & &1["id"]) == ["0101"]
   end
 
   test "throttle: default :infinity keeps the surface unthrottled (regression row)" do
@@ -761,6 +900,24 @@ defmodule Smalt.Compliance.C3CosmosTest do
              headers: [@json],
              body: ~s({"id":"#{@coll}","partitionKey":{"paths":["/tenantId"]}})
            ).status == 201
+  end
+
+  defp create_coll(name) do
+    assert req!(port(), :post, "/dbs/#{@db}/colls",
+             headers: [@json],
+             body: ~s({"id":"#{name}","partitionKey":{"paths":["/tenantId"]}})
+           ).status == 201
+  end
+
+  defp create_doc_in(coll, id) do
+    resp =
+      req!(port(), :post, "/dbs/#{@db}/colls/#{coll}/docs",
+        headers: [{"x-ms-documentdb-partitionkey", ~s(["acme"])}, @json],
+        body: ~s({"id":"#{id}","tenantId":"acme"})
+      )
+
+    assert resp.status == 201, "create_doc_in(#{coll},#{id}) returned #{resp.status}: #{inspect(resp.body)}"
+    resp
   end
 
   defp create_doc(id, tenant \\ "acme") do

@@ -61,9 +61,14 @@ defmodule Smalt.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/seanchatmangpt/smalt"},
-      # B6 publish blocker fix: private key material (runtime_contracts
-      # ggen dev keys) and scratch artifacts must never ship. Explicit
-      # allowlist-style exclusions; everything else defaults as before.
+      # B6: key material must never ship. The gate is the physical tree, not
+      # these patterns: hex applies exclude_patterns per-`files:`-entry,
+      # `**` does not traverse dot-directories, and the dev keys have no
+      # .pem extension — so these three patterns never match anything
+      # (verified: they were dead in v26.10.13/14 builds). The keys were
+      # removed from lib/ (receipt chain relocated to test/fixtures/); the
+      # acceptance gate is the inner contents.tar.gz grep == 0 in
+      # docs/PUBLISH_CHECK.md, not glob semantics.
       files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md NOTICE.md),
       exclude_patterns: ["**/.ggen/**", "**/keys/**", "**/*key*.pem"]
     ]

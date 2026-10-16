@@ -182,4 +182,123 @@ defmodule Smalt.DataPlane.KQLTest do
     assert {:error, {:parse, _}} = KQL.run(@rows, nil)
     assert {:error, {:parse, _}} = KQL.run(:not_a_list, "| take 1")
   end
+
+  # ---------------------------------------------------------------------------
+  # Lens-8: conjunct-isolation follow-ups — the two survivors of the gate-clause
+  # matrix, each closed by pinning the distinguishing input.
+  # ---------------------------------------------------------------------------
+
+  test "lens-8: length fence is byte_size — multibyte and invalid-UTF-8 queries are typed limit/parse errors, never crashes" do
+    # 1001 two-byte chars = 2002 bytes > 2000-byte cap, but String.length sees
+    # 1001 chars — byte_size is the load-bound fence; String.length would let
+    # this through to the lexer (and on invalid UTF-8 would RAISE
+    # UnicodeConversionError instead of returning a typed error).
+    multibyte = String.duplicate("é", 1001)
+    assert {:error, {:limit, _}} = KQL.run(@rows, "| where a == '" <> multibyte)
+
+    invalid_utf8 = :binary.copy(<<0xFF>>, 2500)
+    assert {:error, {:limit, _}} = KQL.run(@rows, invalid_utf8)
+  end
+
+  test "lens-8: contains/startswith on a missing column excludes the row (nil arm is load-bearing)" do
+    rows = [%{"a" => "1"}]
+
+    assert KQL.run(rows, "| where z contains 'm'") == {:ok, []}
+    assert KQL.run(rows, "| where z startswith 'm'") == {:ok, []}
+  end
+
+  test "lens-8: backslash escape inside a string literal (\\' terminates cleanly, backslash dropped)" do
+    rows = [%{"name" => "O'Brien"}]
+
+    assert {:ok, [%{"name" => "O'Brien"}]} =
+             KQL.run(rows, "| where name == 'O\\'Brien'")
+
+    # unknown escape keeps the escaped byte, backslash dropped (lenient Kusto):
+    # \q -> q, so the literal is "OqBrien" — matched against its own row.
+    assert {:ok, [%{"name" => "OqBrien"}]} =
+             KQL.run([%{"name" => "OqBrien"}], "| where name == 'O\\qBrien'")
+  end
+
+  test "lens-8: hostile-shape fuzz round — every result typed, zero crash channels" do
+    rows = [%{"a" => "x", "b" => "y"}]
+
+    hand_hostile = [
+      "| where ((((a == 'x'))))",
+      "| where (a == 'x'",
+      "| where a == 'x')",
+      "| where ()",
+      "| where (())",
+      "| where a == == 'x'",
+      "| where a >= 1.2.3",
+      "| where a == 'x' and",
+      "| where and a == 'x'",
+      "| where a == ",
+      "| where a 'lit'",
+      "| where 'lit' == 'lit'",
+      "| where a == 'x' == 'y'",
+      "| take",
+      "| take +5",
+      "| take 1e3",
+      "| take 0x10",
+      "| take 999999999999999999999999",
+      "| take 5 5",
+      "| take 5, 5",
+      "| order by",
+      "| order",
+      "| order by a b c",
+      "| order by a asc desc",
+      "| order by , a",
+      "| project ,",
+      "| project a,",
+      "| project a,,b",
+      "| project ,,",
+      "| project a, | take 1",
+      "| where a == '",
+      "| where a == \"",
+      "| where a == '\\''",
+      "| where a == \"it's\"",
+      "| where a == 'it\"s'",
+      "| where a == '\0'",
+      String.duplicate("| where (", 30) <> "a == 'x'" <> String.duplicate(")", 30),
+      String.duplicate("| where (a == 'x') or ", 40) <> "a == 'x'",
+      "\x00| where a == 'x'",
+      "\x01\x02\x03",
+      "|\x00where a == 'x'",
+      "| where \x00\xFF a == 'x'",
+      "|" <> String.duplicate("a|", 1200),
+      String.duplicate("| take 1|", 260),
+      "||",
+      "|||",
+      "|,|,|",
+      ")|(",
+      "(|)",
+      "|()()()"
+    ]
+
+    for q <- hand_hostile do
+      result = KQL.run(rows, q)
+      assert match?({:ok, _}, result) or match?({:error, {_, _}}, result),
+             "untyped result for #{inspect(q)}: #{inspect(result)}"
+    end
+
+    # Seeded-random round: deterministic (same seed → same corpus).
+    alphabet =
+      Enum.concat([
+        Enum.map(?a..?z, &<<&1>>),
+        Enum.map(?0..?9, &<<&1>>),
+        ["|", "where", "take", "order", "by", "project", "and", "or", "==", "!=",
+         ">", "<", ">=", "<=", "contains", "startswith", "(", ")", ",", "'", "\"",
+         "\\", " ", "asc", "desc", "\t", "\n", "\r", <<0xFF>>, <<0x00>>, "*", "-",
+         "+", ".", "1e5", "0x", "'\\''", "''", "\"\""]
+      ])
+
+    :rand.seed(:exsss, {8, 15, 2026})
+
+    for _i <- 1..500 do
+      q = Enum.map_join(1..:rand.uniform(60), fn _ -> Enum.random(alphabet) end)
+      result = KQL.run(rows, q)
+      assert match?({:ok, _}, result) or match?({:error, {_, _}}, result),
+             "untyped result for #{inspect(q)}: #{inspect(result)}"
+    end
+  end
 end

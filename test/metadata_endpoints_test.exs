@@ -74,6 +74,7 @@ defmodule Smalt.MetadataEndpointsTest do
       end
 
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     {:ok, listeners: listeners}

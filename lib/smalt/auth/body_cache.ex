@@ -2,9 +2,10 @@ defmodule Smalt.Auth.BodyCache do
   @moduledoc """
   `Plug.Parsers` `:body_reader` that caches the raw request body in
   `conn.private[:smalt_raw_body]` so the STS token endpoint can detect
-  DUPLICATE form parameters (Plug's form decoding is last-wins, which would
-  let an attacker overwrite a fixed key; OAuth 2.1 draft + real AAD refuse
-  duplicates with `invalid_request`).
+  DUPLICATE `grant_type` parameters — the one key it fences (Plug's form
+  decoding is last-wins, which would let an attacker overwrite it; OAuth 2.1
+  draft + real AAD refuse duplicates with `invalid_request`). Other
+  duplicated parameters fall through to Plug's last-wins decoding.
 
   Fail-closed: any read error passes through unchanged; the duplicate check
   degrades to the old last-wins behaviour when no raw body is cached.

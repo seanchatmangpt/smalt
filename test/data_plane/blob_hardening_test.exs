@@ -8,7 +8,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
   alias Smalt.Store
 
   setup do
-    if Process.whereis(Smalt.Store) == nil, do: SmaltTest.Lifecycle.restore_app()
+    SmaltTest.Lifecycle.ensure_store_up()
     Store.clear()
     BlobStorage.ensure_policy_table()
     :ets.delete_all_objects(:smalt_blob_policy)
@@ -398,7 +398,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
   end
 
   defp router_call(conn) do
-    if Process.whereis(Smalt.Store) == nil, do: SmaltTest.Lifecycle.restore_app()
+    SmaltTest.Lifecycle.ensure_store_up()
     EgressRouter.call(conn, EgressRouter.init([]))
   end
 
@@ -728,6 +728,64 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       # boundary: exactly 1024 bytes is legal; nothing hostile stored
       assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", String.duplicate("n", 1_024), "d")
       assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "ok-name", "d")
+    end
+
+    # F1 landed (compliance lens-7 routing): BlobStorage.request_id/0 emits
+    # the dashed-36 RFC 4122 v4 GUID real Azure emits — unified with the ARM
+    # gateway, LA surface, and BlobService (all previously 32-hex pins).
+    # Fenced at the module return-header level because the c4 wire fences on
+    # container paths are served by BlobService.request_id/0 (mutant Z proved
+    # reverting ONLY storage's emitter survives the wire courts).
+    @v4_guid ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+    test "storage-level request ids are v4 GUIDs, unique per call (F1)" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "f1.bin", "d")
+
+      assert {:ok, 202, headers, nil} = BlobStorage.delete_blob("acc1", "cont1", "f1.bin")
+      assert headers["x-ms-request-id"] =~ @v4_guid
+
+      assert {:ok, 200, policy_headers, _} =
+               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => false},
+                 %{"if-match" => "*"}
+               )
+
+      assert policy_headers["x-ms-request-id"] =~ @v4_guid
+      assert policy_headers["x-ms-request-id"] != headers["x-ms-request-id"]
+    end
+
+    # Lens-5 routing (zero-visible class): whitespace-only and
+    # invisible-format-only names were stored and projected verbatim into
+    # blob.list — unreadable custody keys that collide visually. Now refused
+    # at PUT with the same InvalidResourceName vocabulary; the fence mirrors
+    # Smalt.Projection.Identity.valid?/1 so the read-side semantic fence and
+    # the producer gate agree on the same zero-identity-bits class.
+    test "blob name grammar: zero-visible names -> 400 InvalidResourceName (lens-5)" do
+      container()
+
+      for bad <-
+            ["", "   ", " ", " \u200B ", "﻿", "­",
+             String.duplicate("\u200B", 50)] do
+        assert {:error, 400, "InvalidResourceName", msg} =
+                 BlobStorage.put_blob("acc1", "cont1", bad, "d")
+
+        assert msg =~ "blob name is invalid"
+      end
+
+      # visible names containing invisible characters stay legal (charset
+      # policy is NOT the fence — the zero-identity-bits class is)
+      assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "ok\u200Bname", "d")
+
+      # bidi override PFX visible chars: display-hostile but has visible
+      # identity bits — legal per the shared Identity.valid? fence
+      assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "\u202Eok", "d")
+
+      # nothing hostile stored: listing projects only the legal names
+      {xml, nil} = BlobStorage.list_blobs_xml("acc1", "cont1")
+      names =
+        ~r/<Name>([^<]*)<\/Name>/ |> Regex.scan(xml, capture: :all_but_first) |> List.flatten()
+
+      assert Enum.sort(names) == Enum.sort(["\u202Eok", "ok\u200Bname"])
     end
   end
 
@@ -1710,7 +1768,7 @@ defp get_in_meta(block, key) do
     setup :tc_setup
 
     def tc_setup(context) do
-      if Process.whereis(Smalt.Store) == nil, do: SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
       Store.clear()
       BlobStorage.ensure_policy_table()
       :ets.delete_all_objects(:smalt_blob_policy)
@@ -1823,6 +1881,191 @@ defp get_in_meta(block, key) do
 
         {v ++ v2, b ++ b2}
       end)
+    end
+  end
+
+  # ===========================================================================
+  # Lens 2, cycle-37: delimiter x include=metadata compose
+  # ===========================================================================
+  describe "lens2 delimiter x metadata compose" do
+    setup do
+      container("dm-acc", "dm-cont")
+
+      # metadata-bearing blob OUTSIDE any delimiter dir, inside one, and a
+      # metadata-bearing blob hidden behind a BlobPrefix
+      BlobStorage.put_blob("dm-acc", "dm-cont", "root.bin", "v", %{
+        "x-ms-meta-zone" => "edge&<>"
+      })
+
+      BlobStorage.put_blob("dm-acc", "dm-cont", "d/a.bin", "v", %{
+        "x-ms-meta-zone" => "inner"
+      })
+
+      BlobStorage.put_blob("dm-acc", "dm-cont", "d/b.bin", "v")
+
+      :ok
+    end
+
+    test "delimiter listing with include=metadata: blobs keep metadata, BlobPrefixes have none" do
+      {xml, _} =
+        BlobStorage.list_blobs_xml("dm-acc", "dm-cont", %{
+          "delimiter" => "/",
+          "include" => "metadata"
+        })
+
+      # root blob: visible with its escaped metadata
+      assert xml =~ "<Name>root.bin</Name>"
+      assert xml =~ "<zone>edge&amp;&lt;&gt;</zone>"
+
+      # hidden dir: BlobPrefix, no metadata decoration
+      assert xml =~ "<BlobPrefix>\n    <Name>d/</Name>\n  </BlobPrefix>"
+      assert xml =~ "<Name>d/</Name>"
+
+      # the hidden blob's metadata must NOT leak under the prefix
+      assert not (xml =~ "<zone>inner</zone>")
+
+      # metadata-bearing blob hidden behind the prefix is fully rolled up
+      assert not String.contains?(xml, "a.bin")
+
+      # well-formed
+      parsed =
+        try do
+          {:parsed, :xmerl_scan.string(String.to_charlist(xml))}
+        catch
+          :exit, _ -> :fatal
+        end
+
+      assert {:parsed, {{:xmlElement, :EnumerationResults, _, _, _, _, _, _, _, _, _, _}, _}} =
+               parsed
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # v26.10.14 lane 06 — container-list hardening (XML escape parity,
+  # maxresults grammar, XML error envelope, prefix echo)
+  # ---------------------------------------------------------------------------
+
+  describe "lane 06 container-list hardening" do
+    test "xml_escape/1 delegates to BlobStorage (astral parity)" do
+      astral = "\u{1F5A8}"
+
+      escaped = BlobService.xml_escape(astral)
+      assert escaped == BlobStorage.xml_escape(astral)
+      # numeric character reference, never raw 4-byte UTF-8
+      assert escaped == "&#x1f5a8;"
+      refute escaped =~ astral
+    end
+
+    test "container list emits numeric character references for astral names and parses under xmerl" do
+      astral_name = "c-\u{1F5A8}"
+
+      # Container names are refused at create (3-63 lowercase grammar), so the
+      # astral row is seeded directly into the real Store to exercise the
+      # enumeration renderer (same table/shape the create path writes).
+      Store.put(:smalt_blob_containers, "acc1/#{astral_name}", %{
+        "account" => "acc1",
+        "container" => astral_name,
+        "immutable" => true,
+        "retention_days" => 1095,
+        "created_at" => System.os_time(:millisecond),
+        "created" => DateTime.utc_now() |> DateTime.to_iso8601()
+      })
+
+      conn =
+        :get
+        |> conn("/acc1?comp=list")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
+      # numeric character reference, not the raw 4-byte UTF-8 sequence
+      assert conn.resp_body =~ "&#x1f5a8;"
+      refute conn.resp_body =~ "\u{1F5A8}"
+
+      parsed =
+        try do
+          {:parsed, :xmerl_scan.string(String.to_charlist(conn.resp_body))}
+        catch
+          :exit, _ -> :fatal
+        end
+
+      assert {:parsed, {{:xmlElement, :EnumerationResults, _, _, _, _, _, _, _, _, _, _}, _}} =
+               parsed
+    end
+
+    test "container comp=list junk/zero/negative maxresults -> 400 XML InvalidQueryParameter envelope" do
+      container()
+
+      for junk <- ["abc", "0", "-1", "5x"] do
+        conn =
+          :get
+          |> conn("/acc1?comp=list&maxresults=#{junk}")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 400
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
+        assert conn.resp_body =~ ~r/<Error>.*<Code>InvalidQueryParameter<\/Code>.*<\/Error>/s
+      end
+
+      # 5000 and absent still 200
+      for qs <- ["", "&maxresults=5000"] do
+        conn =
+          :get
+          |> conn("/acc1?comp=list#{qs}")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 200
+      end
+    end
+
+    test "blob comp=list junk maxresults -> 400 XML envelope + x-ms-error-code header" do
+      container()
+
+      conn =
+        :get
+        |> conn("/acc1/cont1?comp=list&maxresults=abc")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert conn.status == 400
+      assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
+      assert conn.resp_body =~ ~r/<Error>.*<Code>InvalidQueryParameter<\/Code>.*<\/Error>/s
+    end
+
+    test "fast-path Prefix echo matches the composed path (plain vs prefix=\"\"+marker)" do
+      container()
+
+      BlobStorage.put_blob("acc1", "cont1", "pe-a", "1")
+      BlobStorage.put_blob("acc1", "cont1", "pe-b", "2")
+
+      {plain, nil} = BlobStorage.list_blobs_xml("acc1", "cont1", %{})
+      {composed, _} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "", "marker" => "a"})
+
+      assert plain =~ ~r/<Prefix>[^<]*<\/Prefix>/
+
+      plain_prefix = plain |> String.split("<Prefix>") |> Enum.at(1) |> String.split("</Prefix>") |> hd()
+      composed_prefix = composed |> String.split("<Prefix>") |> Enum.at(1) |> String.split("</Prefix>") |> hd()
+
+      assert plain_prefix == composed_prefix
+    end
+
+    test "non-list blob errors keep JSON envelope but gain x-ms-error-code header" do
+      container()
+
+      conn =
+        :get
+        |> conn("/acc1/cont1/nonexistent-blob")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+
+      assert conn.status == 404
+      assert get_resp_header(conn, "x-ms-error-code") == ["BlobNotFound"]
+      assert get_resp_header(conn, "content-type") |> hd() =~ "application/json"
     end
   end
 end

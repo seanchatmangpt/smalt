@@ -9,19 +9,19 @@ over the full repo, excluding `deps/`, `_build/`, `.git/`, `tmp/`, `.elixir_ls/`
 |---|---|---|---|
 | `ggen_igniter.pack.lock:7` | `/Users/sac/ggen-marketplace/...` | build-tool lockfile source path | REPORTED-TO-LANE (pack/ggen lane — machine-generated lockfile; not hand-editable prose) |
 | `docker/README.md:42` | `Athena` | docs prose, **outside owned scope** (`docker/` is not root `*.md` or `docs/`) | REPORTED-TO-LANE (docker docs owner) |
-| `test/sdk-smoke/run.mjs:10` | `/Users/sac/smalt` | JS harness hardcoded path | REPORTED-TO-LANE (sdk-smoke lane) |
-| `test/sdk-smoke/census-run.mjs:12` | `/Users/sac/smalt` | JS harness hardcoded path | REPORTED-TO-LANE (sdk-smoke lane) |
-| `test/sdk-smoke/amqp.test.cjs:15` | `/Users/sac/cai/athena/...` | JS fallback path + legacy project name | REPORTED-TO-LANE (sdk-smoke lane) |
-| `test/sdk-smoke/blob.test.cjs:9` | `/Users/sac/cai/athena/...` | JS fallback path + legacy project name | REPORTED-TO-LANE (lane 16 / sdk-smoke) |
-| `test/sdk-smoke/cosmos.test.cjs:10` | `/Users/sac/cai/athena/...` | JS fallback path + legacy project name | REPORTED-TO-LANE (lane 16 / sdk-smoke) |
-| `test/sdk-smoke/census.test.cjs:2` | `/Users/sac/cai/athema` (sic) + `athena` | ported-from comment + fallback path | REPORTED-TO-LANE (lane 16 / sdk-smoke) |
-| `test/sdk-smoke/census.test.cjs:16` | `/Users/sac/cai/athena/...` | JS fallback path | REPORTED-TO-LANE (lane 16 / sdk-smoke) |
+| `test/sdk-smoke/run.mjs:10` | `/Users/sac/smalt` | JS harness hardcoded path | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8: `REPO` now resolves from `process.cwd()`/`SMALT_REPO`, no hardcoded path) |
+| `test/sdk-smoke/census-run.mjs:12` | `/Users/sac/smalt` | JS harness hardcoded path | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8: `REPO` now `SMALT_REPO`/cwd) |
+| `test/sdk-smoke/amqp.test.cjs:15` | `/Users/sac/cai/athena/...` | JS fallback path + legacy project name | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8: `SMALT_SDK_ROOT` gate, no athena fallback) |
+| `test/sdk-smoke/blob.test.cjs:9` | `/Users/sac/cai/athena/...` | JS fallback path + legacy project name | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8: zero athena hits in the file) |
+| `test/sdk-smoke/cosmos.test.cjs:10` | `/Users/sac/cai/athena/...` | JS fallback path + legacy project name | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8: zero athena hits) |
+| `test/sdk-smoke/census.test.cjs:2` | `/Users/sac/cai/athema` (sic) + `athena` | ported-from comment + fallback path | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8: :2 is a neutral "reference servicebus-local court script" comment; :16 is the `SMALT_SDK_ROOT` gate, no athena) |
+| `test/sdk-smoke/census.test.cjs:16` | `/Users/sac/cai/athena/...` | JS fallback path | CONFIRMED FIXED (re-verified 2026-10-15 docs-corpus-lens-8, with :2 above) |
 | `test/data_plane/sdk_probe.mjs:3,8` | `/Users/sac/cai/athena/...` | comment + `createRequire` anchor path | REPORTED-TO-LANE (data-plane lane) |
 | `test/mutation_court/README.md:19` | `/Users/sac/smalt` | docs prose under `test/` — outside owned scope | REPORTED-TO-LANE (mutation-court lane) |
 | `scripts/mutation_court.py:34,301` | `/Users/sac/smalt` | Python harness hardcoded repo path | REPORTED-TO-LANE (mutation-court lane) |
 | `lib/smalt/generated/registry.ex:4` | `Project Athena` | @moduledoc comment in `.ex` | CONFIRMED FIXED (file no longer exists — registry projects to `lib/smalt/registry.ex`, zero `athena` hits in `lib/`; re-verified 2026-10-15 docs-corpus cycle 9) |
-| `lib/smalt/egress_router.ex:3` | `Athena Data Plane Egress Router` | @moduledoc comment in `.ex` | REPORTED-TO-LANE (lib owner) |
-| `lib/smalt/arm_gateway/router.ex:4` | `15 Athena services` | @moduledoc comment in `.ex` | REPORTED-TO-LANE (lib owner) |
+| `lib/smalt/egress_router.ex:3` | `Athena Data Plane Egress Router` | @moduledoc comment in `.ex` | CONFIRMED FIXED (re-verified 2026-10-15 lens-6: the @moduledoc now reads "Subsystems 3 & 4 + Data Plane Egress Router (Port 8443)" — no `Athena` in lib @moduledocs; remaining `athena` hits in scripts/test are SMALT_SDK_ROOT default paths and prose, out of the sweep's class) |
+| `lib/smalt/arm_gateway/router.ex:4` | `15 Athena services` | @moduledoc comment in `.ex` | CONFIRMED FIXED (re-verified 2026-10-15 lens-6: @moduledoc now reads "smalt-arm-gateway (Control Plane REST Mux) ... all 15 emulated services" — no `Athena`) |
 
 ## FIXED (this sweep)
 
@@ -78,14 +78,36 @@ absolute personal defaults including the legacy `cai/athena` path
 `docs/PUBLISH_CHECK.md`'s line-192 finding (`smalt_mcp_surface.ttl:8`) is
 HEALED — the ttl greps 0 for `/Users/sac` and `athena`.
 
+## Resolved this sweep
+
+Status of the five v26.10.14 candidate wins, verified against the working tree
+2026-10-15 (docs-drift lane 14):
+
+| cite | claimed win | verified state |
+|---|---|---|
+| `test/sdk-smoke/eh-run.mjs:14,143` | hardcoded REPO/fallback paths | **NOT LANDED** — both lines still carry hardcoded `/Users/sac/...`; allowlisted under `scripts/naming_sweep.sh` (sdk-smoke owner) |
+| `scripts/dev_env.sh:33` | `DEFAULT_SDK_ROOT` interpolation | **NOT LANDED** — literal default remains; `SMALT_SDK_ROOT` env override exists; allowlisted (scripts owner) |
+| `scripts/stress/vs_azurite.py:330,369` | cleaned | **NOT LANDED** — `SMALT_SDK_ROOT` env-first with literal fallback default; allowlisted (stress owner) |
+| `.env.example:12` | `SMALT_SDK_ROOT` placeholder form | **NOT LANDED** — literal legacy `cai/athena` path remains; allowlisted (env owner) |
+| `docker/README.md:42` | "Athena data-plane egress router" phrasing, no path | **VERIFIED** — the line carries the `Athena` prose phrase only, no absolute path; allowlisted (docker docs owner) |
+
+None of the four unlanded items are fixable in the docs lane's scope; each is
+gated behind **lane 12's naming-sweep allowlist** (`scripts/naming_sweep.sh`,
+line-precise entries) pending its owning lane.
+
 ## Publication hygiene verdict
 
-**NOT READY — 17 residual contamination lines, none fixable in this lane's
-scope.** Zero hits remain in owned docs. Blockers, all REPORTED-TO-LANE:
+**READY-MODULO-LANE-12-ALLOWLIST.** Zero hits remain in owned docs (this
+ledger excluded as meta self-reference). Residual contamination lines are
+**not lane-fixable here** — gated behind lane 12's naming-sweep allowlist
+(`scripts/naming_sweep.sh`): publication is admissible exactly when that gate
+runs clean (`just naming-sweep` exit 0), and the residual hand-written lines
+above are the allowlist's remaining coverage debt. Historical v2 blockers,
+all REPORTED-TO-LANE at the time (superseded by the v3 verdict below):
 
 1. Hardcoded `/Users/sac` paths in `test/sdk-smoke/*.mjs|cjs` and
    `scripts/mutation_court.py` — replace with `process.env`/relative
-   resolution (some already fall back to `SMALT_SDK_ROOT`).
+   resolution (most already fall back to `SMALT_SDK_ROOT`).
 2. Legacy project name `Athena` in 3 `@moduledoc`s in `lib/` and
    `docker/README.md:42`.
 3. `ggen_igniter.pack.lock` machine-local source path.
@@ -128,7 +150,7 @@ Total: 45 lines fixed across 22 owned files.
   `lib/` outside generated ttl (below).
 - `test/sdk-smoke/run.mjs`, `census-run.mjs`, `amqp|blob|cosmos|census.test.cjs`
   — fallback paths fixed. **One new file regressed the dir**:
-  `test/sdk-smoke/eh-run.mjs:14,137` (see below).
+  `test/sdk-smoke/eh-run.mjs:14,143` (see below).
 - `test/data_plane/sdk_probe.mjs`, `test/mutation_court/README.md`,
   `scripts/mutation_court.py` — clean.
 
@@ -156,9 +178,9 @@ Total: 45 lines fixed across 22 owned files.
 | file:line | term | owning surface |
 |---|---|---|
 | `.env.example:12,15,19,20,24` | `/Users/sac/...` + `cai/athena` | env-template owner |
-| `test/sdk-smoke/eh-run.mjs:14,137` | `/Users/sac/smalt`, `/Users/sac/cai/athena/...` fallback | sdk-smoke lane (regression on a new file) |
+| `test/sdk-smoke/eh-run.mjs:14,143` | `/Users/sac/smalt`, `/Users/sac/cai/athena/...` fallback | sdk-smoke lane (regression on a new file) |
 | `scripts/dev_env.sh:33`, `scripts/sb_census_replay.sh:21` | `/Users/sac/cai/athena/...` | scripts owner |
-| `scripts/stress/lro_storm.py:31`, `telemetry_overhead.py:12,26,53`, `tls_churn.py:33`, `vs_azurite.py:320,359` | hardcoded repo/legacy SDK paths (tls_churn/lro_storm already read `SMALT_REPO`/`SMALT_SDK_ROOT` env first) | stress-scripts owner |
+| `scripts/stress/lro_storm.py:34`, `telemetry_overhead.py:28` (erlmcp bin; repo/SDK pins retired), `tls_churn.py:34`, `vs_azurite.py:330,369` | hardcoded repo/legacy SDK paths (tls_churn/lro_storm already read `SMALT_REPO`/`SMALT_SDK_ROOT` env first) | stress-scripts owner |
 | `test/e2e/s7_worm/run.sh:21`, `worm.test.cjs:11` | `/Users/sac/smalt/test/sdk-full/node_modules` fallback (both already honor `SMALT_SDK_ROOT`) | e2e s7 owner |
 | `test/e2e/s9_lro_chain/lro_chain.test.mjs:2` | `athena's terraform verbs` comment | e2e s9 owner |
 | `test/azapi_actions_test.exs:3` | `athena's terraform` comment | test owner |
@@ -181,15 +203,16 @@ Total: 45 lines fixed across 22 owned files.
 | term | residual lines | vs v2 |
 |---|---|---|
 | `/Users/sac` | ~230 total, of which 105+16+~12+~4 = ~137 in machine artifacts (`.ggen_igniter/`, `cli/.ggen-v2/`, `cli/ggen.lock`, `cli/ggen.toml`, `ggen_igniter.pack.lock`) and 20 in e2e run logs | hand-written prose: **45 lines fixed this sweep; remaining hand-written ~55 lines**, all REPORTED-TO-LANE |
-| `athena` | 6 lines excl. NAMING_SWEEP/PUBLISH_CHECK meta (docker README 1, azapi test 1, s9 comment 1, sdk-smoke/eh-run 1, scripts 3) | down from 12/13 |
-| `cai` (word-boundary) | 6 lines outside NAMING_SWEEP (`scripts/dev_env.sh:33`, `sb_census_replay.sh:21`, `vs_azurite.py:320,359`, `sdk-smoke/eh-run.mjs:137`, `.env.example:12`) | down from 8 |
+| `athena` | 9 lines excl. NAMING_SWEEP/PUBLISH_CHECK meta (docker README 1, docker/BUILD_RECEIPT 1, azapi test 1, s9 comment 1, sdk-smoke/eh-run 1, scripts 4 — re-counted 2026-10-15 docs-corpus-lens-8 over named roots README/CHANGELOG/NOTICE/docs/cli/lib/scripts/test/docker/.env.example) | down from 12/13 |
+| `cai` (word-boundary) | 7 lines outside NAMING_SWEEP (`scripts/dev_env.sh:33`, `sb_census_replay.sh:21`, `vs_azurite.py:330,369`, `sdk-smoke/eh-run.mjs:143`, `docker/BUILD_RECEIPT.md`, `.env.example:12` — re-pinned lens-8) | down from 8 |
 | `courtroom` | 0 real (3 self-reference lines in this ledger) | 0 |
 | `morluto` | 0 real (3 self-reference lines in this ledger) | 0 |
 
-## Publication hygiene verdict (v3)
+## Publication hygiene verdict (v3, superseded 2026-10-15 — see READY-MODULO-LANE-12-ALLOWLIST)
 
-**NOT READY — zero residual hits in owned scope; ~55 residual hand-written
-lines, all REPORTED-TO-LANE.** Every owned `docs/**/*.md` and root `*.md` is
+**HISTORICAL v3 verdict: NOT READY — zero residual hits in owned scope; ~55
+residual hand-written lines, all REPORTED-TO-LANE at the time.** Every owned
+`docs/**/*.md` and root `*.md` is
 now path-clean (verified: `grep -rn '/Users/sac'` over `docs/` + root `*.md`
 returns only this ledger and PUBLISH_CHECK's scan-term self-references).
 Blockers unchanged in class from v2: hardcoded local paths in test/script

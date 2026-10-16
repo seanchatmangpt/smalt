@@ -17,9 +17,12 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import time
 
 REPO = os.environ.get("SMALT_REPO", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.join(REPO, "scripts", "stress"))
+import _substrate  # noqa: E402
 DRIVER = os.path.join(REPO, "scripts", "stress", "amqp_tput_driver.exs")
 RECEIPT = os.path.join(REPO, "tmp", "amqp-tput-receipt.json")
 BUDGET_P95_MS = 100.0  # census budget: AMQP first-frame latency p95 < 100 ms
@@ -69,7 +72,7 @@ def boot_substrate(ports, shared_key, log_path):
             start_new_session=True,
         )
     if not wait_port(ports["amqp"], 90):
-        proc.kill()
+        _substrate.kill_substrate(proc)  # group kill (lens-5 cycle 2), not wrapper-only
         raise SystemExit("substrate never opened the AMQP port; see %s" % log_path)
     return proc
 
@@ -124,11 +127,7 @@ def main():
         quad = run_driver(ports["amqp"], key, "quad", 4, dlog)
         print(json.dumps(quad, indent=2))
     finally:
-        substrate.kill()
-        try:
-            substrate.wait(10)
-        except subprocess.TimeoutExpired:
-            substrate.kill()
+        _substrate.kill_substrate(substrate)  # group kill + reap (lens-5 cycle 2)
 
     receipt = {
         "schema": "smalt-amqp-tput/v1",

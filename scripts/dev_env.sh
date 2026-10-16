@@ -30,14 +30,16 @@ export SMALT_SB_SHARED_KEY="$(printf '%s' "$(hostname)smalt-dev-sb" | openssl dg
 # ---------------------------------------------------------------------------
 # 2. SMALT_SDK_ROOT — vendored SDK node_modules convention.
 # ---------------------------------------------------------------------------
-DEFAULT_SDK_ROOT="/Users/sac/cai/athena/playground/node_modules"
+# In-repo default (DoD-11): the vendored SDK harness lives under test/sdk-smoke.
+# A user-provided SMALT_SDK_ROOT always wins.
+DEFAULT_SDK_ROOT="$SMALT_REPO_ROOT/test/sdk-smoke/node_modules"
 if [ -n "${SMALT_SDK_ROOT:-}" ]; then
   [ -d "$SMALT_SDK_ROOT" ] || die "SMALT_SDK_ROOT=$SMALT_SDK_ROOT is set but not a directory."
 elif [ -d "$DEFAULT_SDK_ROOT" ]; then
   export SMALT_SDK_ROOT="$DEFAULT_SDK_ROOT"
 else
-  die "SMALT_SDK_ROOT not set and vendored SDK not found at $DEFAULT_SDK_ROOT.
-  Install the Azure SDK there (npm i @azure/cosmos @azure/event-hubs) or export SMALT_SDK_ROOT=<node_modules dir>."
+  die "SMALT_SDK_ROOT not set and in-repo SDK harness not found at $DEFAULT_SDK_ROOT.
+  Install the Azure SDK there (cd test/sdk-smoke && npm i @azure/cosmos @azure/event-hubs) or export SMALT_SDK_ROOT=<node_modules dir>."
 fi
 
 # ---------------------------------------------------------------------------

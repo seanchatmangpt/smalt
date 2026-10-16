@@ -2,7 +2,9 @@ defmodule Smalt.DataPlane.ResourceGraph do
   @moduledoc """
   Azure Resource Graph (`POST /providers/Microsoft.ResourceGraph/resources`) query
   engine over the Store resource inventory `:smalt_resources`, with opaque
-  `$skipToken` pagination backed by `:smalt_resource_graph_tokens`.
+  `$skipToken` pagination backed by `:smalt_resource_graph_tokens` (tokens are
+  TTL'd at 15 minutes and capped at 1000 entries; expired/evicted tokens take
+  the unknown-token error path).
 
   Wire surface (route handler in `EgressRouter` mounts on 8443):
   `POST /providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01` -> `query/3`
@@ -28,17 +30,45 @@ defmodule Smalt.DataPlane.ResourceGraph do
   `{:error, 400, body}` when the api-version is wrong.
   """
   def query(subscriptions, body, @api_version) do
-    try do
-      do_query(subscriptions, body)
-    catch
-      {:bad_query, msg} ->
-        {:error, 400, %{"error" => %{"code" => "BadQuery", "message" => msg}}}
+    with :ok <- validate_subscriptions(subscriptions) do
+      try do
+        do_query(subscriptions, body)
+      catch
+        {:bad_query, msg} ->
+          {:error, 400, %{"error" => %{"code" => "BadQuery", "message" => msg}}}
+      end
     end
   end
 
   def query(_subscriptions, _body, _other) do
     {:error, 400,
      %{"error" => %{"code" => "InvalidApiVersion", "message" => "api-version must be #{@api_version}"}}}
+  end
+
+  # Lane 19 (v26.10.14) item 3: `matching_resources/1` had only nil/is_list
+  # clauses, so a string/map `subscriptions` raised FunctionClauseError, which
+  # safe_dispatch rescued as the mis-blamed 400 InvalidBody. A shape error is a
+  # typed 400 InvalidParameter — never 500, never a silent all-resources result.
+  defp validate_subscriptions(nil), do: :ok
+
+  defp validate_subscriptions(subscriptions) when is_list(subscriptions) do
+    if Enum.all?(subscriptions, &is_binary/1) do
+      :ok
+    else
+      invalid_subscriptions()
+    end
+  end
+
+  defp validate_subscriptions(_), do: invalid_subscriptions()
+
+  defp invalid_subscriptions do
+    {:error, 400,
+     %{
+       "error" => %{
+         "code" => "InvalidParameter",
+         "message" => "subscriptions must be a list of subscription id strings or null"
+       }
+     }}
   end
 
   defp do_query(subscriptions, body) do
@@ -206,14 +236,20 @@ defmodule Smalt.DataPlane.ResourceGraph do
 
   defp parse_int(_), do: nil
 
-  defp new_token(offset, subscriptions, options \\ %{}) do
+  @token_ttl_ms :timer.minutes(15)
+  @token_cap 1000
+
+  defp new_token(offset, subscriptions, options) do
     token =
       :crypto.strong_rand_bytes(12)
       |> Base.encode16(case: :lower)
 
+    sweep_and_evict_tokens()
+
     Store.put(:smalt_resource_graph_tokens, token, %{
       "offset" => offset,
       "subscriptions" => subscriptions,
+      "created_at" => System.system_time(:millisecond),
       # Option-preserving continuation (lane event-planes lens-2 cycle 7,
       # coordinator-authorized pivot only): real Resource Graph preserves query
       # options in the skip token. The default keeps the emulated behavior
@@ -224,5 +260,37 @@ defmodule Smalt.DataPlane.ResourceGraph do
     })
 
     token
+  end
+
+  # Lane 19 (v26.10.14) item 4: :smalt_resource_graph_tokens was unbounded —
+  # no TTL, no cap. On every mint, expired entries (older than @token_ttl_ms)
+  # are deleted, then oldest-created entries are evicted while the table
+  # exceeds @token_cap. An expired/evicted token takes the existing
+  # unknown-token path (Store.get miss -> fallback).
+  defp sweep_and_evict_tokens do
+    now = System.system_time(:millisecond)
+
+    entries =
+      Store.keys(:smalt_resource_graph_tokens)
+      |> Enum.flat_map(fn token ->
+        case Store.get(:smalt_resource_graph_tokens, token) do
+          {:ok, value} when is_map(value) -> [{token, value, Map.get(value, "created_at")}]
+          _ -> []
+        end
+      end)
+
+    expired = Enum.filter(entries, fn {_, _, ts} -> is_nil(ts) or now - ts > @token_ttl_ms end)
+    Enum.each(expired, fn {token, _, _} -> Store.delete(:smalt_resource_graph_tokens, token) end)
+
+    survivors = Enum.reject(entries, &(&1 in expired))
+
+    if length(survivors) >= @token_cap do
+      survivors
+      |> Enum.sort_by(fn {_, _, ts} -> ts || 0 end)
+      |> Enum.take(length(survivors) - @token_cap + 1)
+      |> Enum.each(fn {token, _, _} -> Store.delete(:smalt_resource_graph_tokens, token) end)
+    end
+
+    :ok
   end
 end

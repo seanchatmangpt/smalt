@@ -32,6 +32,20 @@ export SMALT_SDK_ROOT
 # any direct census.test.cjs invocation and satisfies fail-closed consumers.
 export SMALT_SB_SHARED_KEY="$(openssl rand -base64 32)"
 
+# 1b. Pin the substrate listener ports. config/test.exs binds random
+# ephemeral ports whenever SMALT_TEST_*_PORT is unset, so an unpinned front
+# door races: census-run.mjs polls fixed 5672/9443 and structurally fails
+# exit 2 when the substrate lands elsewhere. Export the documented private
+# range (39000-39999, docs/DEV_LOOP.md "Private port allocation") so boot is
+# deterministic. SMALT_TEST_ARM_TLS_PORT / SMALT_TEST_MCP_PORT stay unpinned.
+export SMALT_TEST_ARM_PORT="${SMALT_TEST_ARM_PORT:-39790}"
+export SMALT_TEST_EGRESS_PORT="${SMALT_TEST_EGRESS_PORT:-39791}"
+export SMALT_TEST_AMQP_PORT="${SMALT_TEST_AMQP_PORT:-39792}"
+export SMALT_TEST_EVENT_HUBS_PORT="${SMALT_TEST_EVENT_HUBS_PORT:-39793}"
+
+# Court SKIP semantics: the justfile `census` recipe treats exit 3 (harness/
+# env failure, incl. missing SMALT_SDK_ROOT) as SKIP; exits 0/1/2 stay hard.
+
 # 2. Run the census (boots substrate, waits for 5672+9443, runs probes).
 set +e
 node test/sdk-smoke/census-run.mjs

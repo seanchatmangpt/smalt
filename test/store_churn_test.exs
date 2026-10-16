@@ -62,7 +62,10 @@ defmodule Smalt.StoreChurnTest do
     assert_raise ArgumentError, fn -> Smalt.Store.put(:no_such_smalt_table, "k", %{}) end
     assert_raise ArgumentError, fn -> Smalt.Store.delete(:no_such_smalt_table, "k") end
     assert_raise ArgumentError, fn -> Smalt.Store.list(:no_such_smalt_table) end
-    assert_raise ArgumentError, fn -> Smalt.Store.compare_and_swap(:no_such_smalt_table, "k", 1, 2) end
+
+    assert_raise ArgumentError, fn ->
+      Smalt.Store.compare_and_swap(:no_such_smalt_table, "k", 1, 2)
+    end
   end
 
   test "CAS conflict returns typed {:error, :conflict}; win returns :ok" do
@@ -247,11 +250,12 @@ defmodule Smalt.StoreChurnTest do
   # Repeats the (reader × deleter) race so the walk provably overlaps the
   # deletion window — deterministic kill for the strict-match mutation court.
   defp run_churn(reader) do
-    results = Enum.map(1..5, fn _ ->
-      # Re-seed per race: the deleter empties the prefix each iteration.
-      seed_churn_table(200)
-      run_churn_once(reader)
-    end)
+    results =
+      Enum.map(1..5, fn _ ->
+        # Re-seed per race: the deleter empties the prefix each iteration.
+        seed_churn_table(200)
+        run_churn_once(reader)
+      end)
 
     List.last(results)
   end
@@ -278,5 +282,32 @@ defmodule Smalt.StoreChurnTest do
 
       :ets.insert(@table, {id, %{"id" => id, "location" => "churntest"}})
     end
+  end
+
+  test "writer isolation: no direct ETS writer of :smalt_operations outside Smalt.Store", %{} do
+    # Root-caused from the ARM lens-9 orphan record: an InProgress op record
+    # without startedAtMs/delayMs can only come from a DIRECT :public ETS write
+    # (Store.put/3 is atomic), so pin the isolation law structurally: no lib/
+    # module may touch :smalt_operations with bare :ets BIFs — LRO records must
+    # enter through Smalt.Store (atomic put/CAS) so the reader-side shape gate
+    # ARM lens-9 landed can trust the writer path.
+    banned = [":ets.insert", ":ets.delete", ":ets.update_counter", ":ets.insert_new"]
+
+    violations =
+      for path <- Path.wildcard("lib/**/*.ex"),
+          path != "lib/smalt/store.ex",
+          {src, line} <- Enum.with_index(String.split(File.read!(path), "\n"), 1),
+          src =~ ":smalt_operations" and src =~ "ets.",
+          not (String.contains?(src, "#") and
+                 (String.contains?(src, ":ets.insert") or String.contains?(src, ":ets.delete"))),
+          op <- banned,
+          String.contains?(src, op) do
+        {path, line}
+      end
+
+    assert violations == [], """
+    direct ETS writer of :smalt_operations outside Smalt.Store: #{inspect(violations)}
+    LRO records must enter through Smalt.Store (atomic put/CAS path).
+    """
   end
 end

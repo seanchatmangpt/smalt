@@ -20,10 +20,24 @@ defmodule Smalt.Security.ConfidentialLedger do
   exist in this ledger.
   """
   @spec append_transaction(String.t() | atom, map(), keyword()) ::
-          {:ok, map()} | {:error, 404, String.t()} | {:error, 409, String.t()}
+          {:ok, map()}
+          | {:error, 400 | 404 | 409, String.t()}
   def append_transaction(ledger, contents, _opts \\ []) when is_map(contents) do
-    ledger = to_string(ledger)
+    case ledger_name(ledger) do
+      {:ok, ledger} ->
+        append_named(ledger, contents)
 
+      :error ->
+        # Crash-class law (lens-9): the ledger NAME is caller-shaped data at
+        # this public API, exactly like contents (lens-5). A hostile shape
+        # (tuple/map/list) must be a typed refusal, never a to_string raise;
+        # and 42/nil must not be SILENTLY COERCED into ledgers "42"/"" (the
+        # nil case created an anonymous shared ledger).
+        {:error, 400, "InvalidLedgerName"}
+    end
+  end
+
+  defp append_named(ledger, contents) do
     # Existence fence (lane ledger-skr lens-2, coordinator-authorized fence
     # only): Azure Confidential Ledger returns 404 for an append to a
     # never-created ledger; smalt's append path lazily materializes it. The
@@ -55,18 +69,39 @@ defmodule Smalt.Security.ConfidentialLedger do
   end
 
   def get_transaction(ledger, tx_id) do
-    Store.get(:smalt_ledger_transactions, "#{to_string(ledger)}/#{tx_id}")
+    # Crash-class law (lens-10): tx_id is caller-shaped data at this public
+    # API, exactly like the ledger name (lens-9). A hostile shape (tuple/map/
+    # list) must be a typed refusal (:error), never a String.Chars raise from
+    # the key interpolation — and 42/nil must not be silently coerced into
+    # lookups "42"/"nil".
+    with {:ok, ledger} <- ledger_name(ledger),
+         {:ok, tx_id} <- tx_id(tx_id) do
+      Store.get(:smalt_ledger_transactions, "#{ledger}/#{tx_id}")
+    else
+      :error -> :error
+    end
   end
+
+  # Lens-10 totalization: only the documented tx-id forms are admitted — a
+  # non-empty binary (covers "N.1" and "latest") or the "latest" atom. Every
+  # other shape is a typed :error at the boundary.
+  defp tx_id(tx_id) when is_binary(tx_id) and tx_id != "", do: {:ok, tx_id}
+  defp tx_id(@latest_key_suffix), do: {:ok, @latest_key_suffix}
+  defp tx_id(_), do: :error
 
   @doc """
   Lists all receipts for `ledger` in transaction-id order (monotonic seq order).
   """
   @spec list_transactions(String.t() | atom) :: [map()]
   def list_transactions(ledger) do
-    ledger = to_string(ledger)
+    case ledger_name(ledger) do
+      {:ok, ledger} ->
+        Store.list_prefix(:smalt_ledger_transactions, "#{ledger}/")
+        |> sort_tx_keys()
 
-    Store.list_prefix(:smalt_ledger_transactions, "#{ledger}/")
-    |> sort_tx_keys()
+      :error ->
+        []
+    end
   end
 
   @doc """
@@ -74,8 +109,22 @@ defmodule Smalt.Security.ConfidentialLedger do
   """
   @spec get_latest(String.t() | atom) :: {:ok, map()} | :error
   def get_latest(ledger) do
-    Store.get(:smalt_ledger_meta, {:latest, to_string(ledger)})
+    case ledger_name(ledger) do
+      {:ok, ledger} -> Store.get(:smalt_ledger_meta, {:latest, ledger})
+      :error -> :error
+    end
   end
+
+  # Lens-9: the ledger name is caller-shaped data at this public API. Binaries
+  # and atoms (the documented @spec forms) are admitted; every other shape is a
+  # typed refusal at the boundary — never a to_string/1 raise (tuple/map/list),
+  # never silent coercion (42 -> "42", nil -> "" anonymous ledger).
+  defp ledger_name(name) when is_binary(name) and name != "", do: {:ok, name}
+
+  defp ledger_name(name) when is_atom(name) and not is_nil(name) and name != :"",
+    do: {:ok, Atom.to_string(name)}
+
+  defp ledger_name(_), do: :error
 
   ## Internals
 

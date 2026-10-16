@@ -56,6 +56,7 @@ defmodule Smalt.EventGridConformanceTest do
       # shifted ports so downstream modules always see a live Store, whatever
       # the module run order.
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     {:ok, egress: port}

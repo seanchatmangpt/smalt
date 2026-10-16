@@ -1,0 +1,73 @@
+.panel {
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  padding: 16px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.law {
+  color: var(--muted, #888);
+  margin: 0 0 12px;
+}
+
+.subtitle {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 12px 0 4px;
+}
+
+.suggestions,
+.refusals ul,
+.reads ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.suggestion,
+.refusedSuggestion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-soft, #222);
+}
+
+.refusedSuggestion {
+  color: var(--refused, #c66);
+}
+
+.reason {
+  font-weight: 600;
+}
+
+.run {
+  background: transparent;
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+.refusal {
+  color: var(--refused, #c66);
+  padding: 4px 8px;
+  border-left: 2px solid var(--refused, #c66);
+  margin: 4px 0;
+  word-break: break-all;
+}
+
+.read {
+  color: var(--muted, #888);
+  padding: 2px 8px;
+}

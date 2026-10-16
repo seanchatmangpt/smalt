@@ -60,9 +60,25 @@ defmodule Smalt.Amqp.FlowCreditTest do
         name: Smalt.FlowCreditTestSup
       )
 
-    on_exit(fn ->
-      stop_tree(sup)
+    # Teardown per test stops only the private tree. The full-app restore is
+    # module-scoped (below): per-test restore_app() booted the whole
+    # application (Bandit routers etc.) between every pair of tests, and that
+    # churn raced the next test's sup — the 12:14 failure window (fc4.log)
+    # shows 4 tests dying with {:error, :closed} right after mid-suite
+    # "Running Smalt.ArmGateway.Router" binds from the restored app tree.
+    on_exit(fn -> stop_tree(sup) end)
+
+    # Module-scoped restore: runs once, after the LAST test of this module
+    # (ExUnit named on_exit is replaced by re-registration, so per-test setup
+    # re-registering the same name keeps exactly one final restore).
+    on_exit(:flow_credit_restore_app, fn ->
+      case Process.whereis(Smalt.FlowCreditTestSup) do
+        nil -> :ok
+        pid -> stop_tree(pid)
+      end
+
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     {:ok, amqp: port, queue: "flow-credit-#{System.unique_integer([:positive])}"}
@@ -280,6 +296,64 @@ defmodule Smalt.Amqp.FlowCreditTest do
   end
 
   # ===========================================================================
+  # 5b. peer max_frame_size honored on outbound transfers (AMQP §2.3.1): a
+  # body larger than the client's advertised cap is split across transfer
+  # frames (more=true until last) and reassembles byte-exact client-side.
+  # ===========================================================================
+
+  test "outbound transfer larger than peer max_frame_size is split (more=true) and reassembles byte-exact", %{
+    amqp: port,
+    queue: queue
+  } do
+    c = connect(port) |> handshake()
+    c = authorize(c, Smalt.Amqp.SasVerifier.endpoint() <> "/" <> queue)
+
+    c = send_frame(c, {:attach, %{name: "tx", handle: 0, role: false, target: %{address: queue}}})
+    c = await_sender_link(c)
+
+    bin_body = :crypto.strong_rand_bytes(100_000)
+
+    c =
+      send_frame(c, {
+        :transfer,
+        %{handle: 0, delivery_id: 1, delivery_tag: <<1>>, message_format: 0, settled: true, more: false},
+        {:sections, [{:body_data, bin_body}]}
+      })
+
+    {%{performative: :disposition, state: :accepted}, c} = await_disposition(c)
+
+    c = send_frame(c, {:attach, %{name: "rx", handle: 1, role: true, source: %{address: queue}}})
+    {%{performative: %{performative: :attach}}, c} = next_frame(c)
+
+    # client advertises max_frame_size 65_536 at open (handshake/421); the
+    # ~100KB body therefore cannot fit one frame
+    c = send_frame(c, {:flow, %{handle: 1, link_credit: 1}})
+
+    # collect transfer frames until the terminal one (more is nil/false)
+    {frames, c} = collect_until_final_transfer(c, 50)
+    assert length(frames) > 1, "expected the 100KB body to be split across frames"
+
+    assert Enum.all?(Enum.drop(frames, -1), fn f -> f.performative.more == true end)
+    final = List.last(frames)
+    assert final.performative.more in [false, nil]
+
+    # reassemble: first frame's non-body sections, concatenate all body_data
+    {:ok, first_sections} = FrameCodec.decode_message(frames |> hd() |> Map.fetch!(:payload))
+    assert {_, first_chunk} = Enum.find(first_sections, &match?({:body_data, _}, &1))
+
+    rest_chunks =
+      Enum.map(Enum.drop(frames, 1), fn f ->
+        {:ok, secs} = FrameCodec.decode_message(f.payload)
+        {_, chunk} = Enum.find(secs, &match?({:body_data, _}, &1))
+        chunk
+      end)
+
+    assert IO.iodata_to_binary([first_chunk | rest_chunks]) == bin_body
+
+    :gen_tcp.close(c.sock)
+  end
+
+  # ===========================================================================
   # 6. payload-class round-trip: binary body_data / amqp-value string / map
   # ===========================================================================
 
@@ -326,8 +400,6 @@ defmodule Smalt.Amqp.FlowCreditTest do
     # exact original payload objects recovered from the delivered frames
     # (bodies/1 unwraps the delivered body_data re-wrap to the original value)
     delivered = bodies(transfers)
-
-    IO.inspect(delivered, label: "DEBUG-DELIVERED", limit: :infinity)
 
     assert Enum.find(delivered, &is_binary(&1) and byte_size(&1) == 0x400) == bin_body
     assert str_body in delivered
@@ -503,6 +575,30 @@ defmodule Smalt.Amqp.FlowCreditTest do
   end
 
   defp do_collect(c, n, acc) when length(acc) >= n, do: {Enum.reverse(acc), c}
+
+  # Collects transfer frames until one with more=false/nil (terminal frame of
+  # a split delivery), bounded by `max` frames.
+  defp collect_until_final_transfer(c, max, acc \\ [])
+
+  defp collect_until_final_transfer(c, max, acc) when length(acc) >= max, do: flunk("no terminal transfer frame")
+
+  defp collect_until_final_transfer(c, max, acc) do
+    case pop_frame(c.buf) do
+      {:ok, %{performative: %{performative: :transfer}} = frame, rest} ->
+        if frame.performative.more == true do
+          collect_until_final_transfer(%{c | buf: rest}, max, [frame | acc])
+        else
+          {Enum.reverse([frame | acc]), %{c | buf: rest}}
+        end
+
+      {:ok, _other, rest} ->
+        collect_until_final_transfer(%{c | buf: rest}, max, acc)
+
+      :incomplete ->
+        assert {:ok, data} = :gen_tcp.recv(c.sock, 0, @recv_timeout)
+        collect_until_final_transfer(%{c | buf: <<c.buf::binary, data::binary>>}, max, acc)
+    end
+  end
 
   defp do_collect(c, n, acc) do
     case pop_frame(c.buf) do

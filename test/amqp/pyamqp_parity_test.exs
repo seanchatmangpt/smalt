@@ -66,9 +66,7 @@ defmodule Smalt.Amqp.PyamqpParityTest do
   setup do
     Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
 
-    if GenServer.whereis(Smalt.Store) == nil do
-      start_supervised!(Smalt.Store)
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     {:ok, listener} =
       :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])

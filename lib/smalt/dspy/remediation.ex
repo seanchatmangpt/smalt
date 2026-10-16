@@ -219,20 +219,50 @@ defmodule Smalt.DSPy.Remediation do
      }}
   end
 
-  # The generator (scripts/gen_error_codes.py esc/1) escapes literal pipes in
-  # cells as `\|`. Splitting on every `|` turned one escaped pipe into two
-  # extra cells -> a false "malformed ERROR_CODES row (7 cells, expected 6)"
-  # raise on a row the generator itself emitted (witnessed lens 4). Split on
-  # unescaped pipes only, then unescape within each cell.
-  @row_split_regex ~r{(?<!\\)\|}
-
+  # The generator (scripts/gen_error_codes.py esc/1) escapes a literal pipe
+  # as `\|` and (lens 5) a literal backslash as `\\`. A single-pass scanner
+  # splits on UNESCAPED pipes while unescaping: `\x` consumes both chars and
+  # yields x, so `\\|` is a literal backslash followed by a real separator,
+  # `a\|b` is one cell, and a trailing `\|` is content — never split.
+  # History: a naive split on every `|` raised a false "malformed row
+  # (7 cells)" on generator output (lens 4); the lookbehind-regex replacement
+  # still mis-read `\\|` (a doc backslash run) and `String.trim_trailing("|")`
+  # ate escaped pipes at line end (lens 5 hostile cells).
   defp split_row(line) do
     line
-    |> String.trim_trailing("|")
-    |> String.split(@row_split_regex)
-    |> Enum.map(fn cell ->
-      cell |> String.replace("\\|", "|") |> String.trim()
-    end)
-    |> tl()
+    |> String.graphemes()
+    |> split_cells([], [])
+    |> Enum.map(&String.trim/1)
+  end
+
+  defp split_cells(["\\" | [next | rest]], cur, cells),
+    do: split_cells(rest, [next | cur], cells)
+
+  # A lone trailing backslash needs no special clause: the generic char clause
+  # below already keeps it as content (lens-6: the dedicated clause was an
+  # equivalent-mutant — deleting it changes nothing, so it is dead code).
+
+  defp split_cells(["|" | rest], cur, cells),
+    do: split_cells(rest, [], [cur | cells])
+
+  defp split_cells([c | rest], cur, cells),
+    do: split_cells(rest, [c | cur], cells)
+
+  defp split_cells([], cur, cells) do
+    all = (Enum.reverse(cells) ++ [cur]) |> Enum.map(&Enum.reverse/1) |> Enum.map(&Enum.join/1)
+
+    # The leading `|` yields an empty first cell and the row-terminating
+    # unescaped ` |` yields an empty last cell — both artifacts, not content.
+    # A trailing ESCAPED pipe (`\|`) is content and produces no empty cell.
+    case all do
+      ["" | rest] ->
+        case Enum.reverse(rest) do
+          ["" | inner] -> Enum.reverse(inner)
+          _ -> rest
+        end
+
+      other ->
+        other
+    end
   end
 end

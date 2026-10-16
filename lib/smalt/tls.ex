@@ -11,9 +11,13 @@ defmodule Smalt.TLS do
       config :smalt, :tls_keyfile, "..."
 
   `ensure_dev_cert/0` generates an RSA 2048 self-signed certificate with
-  CN=127.0.0.1 and SAN IP:127.0.0.1 + DNS:localhost into `tmp/` (gitignored),
-  cached by cert mtime (an existing parseable cert is reused; delete
-  `tmp/dev-cert.pem` to force regeneration). The key file is chmod 600.
+  CN=127.0.0.1 and SAN IP:127.0.0.1 + DNS:localhost into a seat-local path
+  under `tmp/dev-certs/` (gitignored), keyed by Bandit port (or OS pid) — see
+  `dev_cert_paths/1`. Cached by cert mtime (an existing parseable cert is
+  reused; delete the seat's `dev-cert-<key>.pem` to force regeneration).
+  Writes are atomic (tmp + rename), and regeneration is serialized per seat,
+  so a concurrent boot never reads a truncated or pair-skewed PEM. The key
+  file is chmod 600.
 
   **Production users must supply their own certificates** via
   `:tls_certfile`/`:tls_keyfile` — the auto-generated cert is for local
@@ -40,8 +44,26 @@ defmodule Smalt.TLS do
   @san_oid {2, 5, 29, 17}
   @basic_constraints_oid {2, 5, 29, 19}
 
-  @cert_path "tmp/dev-cert.pem"
-  @key_path "tmp/dev-key.pem"
+  # TLS-261014-01: the dev cert is per-seat state, never a shared file. The
+  # old fixed `tmp/dev-cert.pem` made every concurrent VM/lane on the checkout
+  # read and rewrite one file — three witnessed cross-lane Bandit-start crashes
+  # (truncated PEM read mid-rewrite). Paths are now keyed by Bandit port (or,
+  # when no port is known, by OS pid) and written atomically (tmp + rename).
+  @cert_dir "tmp/dev-certs"
+
+  @doc """
+  Per-seat dev cert/key paths for `port` (or the current OS pid when no port
+  is known). Two concurrent VMs never share a cert file.
+  """
+  @spec dev_cert_paths(term()) :: {String.t(), String.t()}
+  def dev_cert_paths(lane_key \\ default_lane_key()) do
+    dir = Path.expand(@cert_dir)
+    {Path.join(dir, "dev-cert-#{lane_key}.pem"), Path.join(dir, "dev-key-#{lane_key}.pem")}
+  end
+
+  defp default_lane_key do
+    System.get_env("SMALT_TLS_LANE") || "pid-#{:os.getpid()}"
+  end
 
   @doc """
   Returns `{:ok, cert_path, key_path}` when TLS should be enabled, or
@@ -49,11 +71,13 @@ defmodule Smalt.TLS do
 
   Resolution order:
     1. `:smalt, :tls_certfile` / `:tls_keyfile` set and both files exist -> use them.
-    2. `:smalt, :tls == :auto` (the default) -> generate self-signed dev cert into tmp/.
+    2. `:smalt, :tls == :auto` (the default) -> generate self-signed dev cert
+       into a port-keyed path under tmp/dev-certs/.
     3. otherwise -> `{:error, :tls_disabled}`.
   """
   @spec ensure_dev_cert() :: {:ok, String.t(), String.t()} | {:error, term()}
-  def ensure_dev_cert do
+  @spec ensure_dev_cert(term()) :: {:ok, String.t(), String.t()} | {:error, term()}
+  def ensure_dev_cert(lane_key \\ nil) do
     cert = Application.get_env(:smalt, :tls_certfile)
     key = Application.get_env(:smalt, :tls_keyfile)
 
@@ -72,7 +96,7 @@ defmodule Smalt.TLS do
       end
     else
       case Application.get_env(:smalt, :tls, :auto) do
-        :auto -> generate_if_stale()
+        :auto -> generate_if_stale(lane_key || default_lane_key())
         _ -> {:error, :tls_disabled}
       end
     end
@@ -82,8 +106,8 @@ defmodule Smalt.TLS do
   `:https` when TLS is enabled and a cert is available, else `:http`.
   """
   @spec scheme() :: :https | :http
-  def scheme do
-    case ensure_dev_cert() do
+  def scheme(lane_key \\ nil) do
+    case ensure_dev_cert(lane_key) do
       {:ok, _cert, _key} -> :https
       _ -> :http
     end
@@ -102,7 +126,7 @@ defmodule Smalt.TLS do
   def bandit_opts(plug_module, port) do
     base = [plug: plug_module, port: port]
 
-    case ensure_dev_cert() do
+    case ensure_dev_cert(port) do
       {:ok, cert, key} ->
         [scheme: :https, certfile: to_charlist(Path.expand(cert)),
          keyfile: to_charlist(Path.expand(key))] ++ base
@@ -121,34 +145,95 @@ defmodule Smalt.TLS do
 
   # -- dev cert generation ----------------------------------------------------
 
-  defp generate_if_stale do
-    cert = Path.expand(@cert_path)
-    key = Path.expand(@key_path)
+  # TLS-261014-02: the boot-time read runs under the same :global lock the
+  # writer publishes under. A concurrent regenerate can no longer be observed
+  # half-applied (new cert + stale key) by a booting listener, and a corrupt
+  # cached *key* — previously never checked on the :auto path, so it surfaced
+  # as an opaque :ssl crash at Bandit start instead of regenerating — is now
+  # detected and recovered. :global.trans is reentrant for the same process,
+  # so the nested regenerate/3 call is safe.
+  defp generate_if_stale(lane_key) do
+    {cert, key} = dev_cert_paths(lane_key)
 
-    if File.regular?(cert) and File.regular?(key) do
-      case parse_cert(cert) do
-        {:ok, _} -> {:ok, cert, key}
-        {:error, reason} -> regenerate(cert, key, reason)
+    :global.trans({__MODULE__, cert}, fn ->
+      if File.regular?(cert) and File.regular?(key) do
+        case parse_pair(cert, key) do
+          :ok ->
+            {:ok, cert, key}
+
+          {:error, reason} ->
+            regenerate(cert, key, reason)
+        end
+      else
+        regenerate(cert, key, :missing)
       end
+    end)
+  end
+
+  defp parse_pair(cert, key) do
+    with {:ok, _} <- parse_cert(cert),
+         {:ok, [_ | _]} <- safe_key_pem(key),
+         :ok <- verify_pair(cert, key) do
+      :ok
     else
-      regenerate(cert, key, :missing)
+      {:error, :unparseable_cert} -> {:error, :unparseable_cert}
+      {:error, :cert_key_mismatch} -> {:error, :cert_key_mismatch}
+      _ -> {:error, :unparseable_key}
     end
   end
 
-  defp regenerate(cert, key, _prior) do
-    case write_dev_cert(cert, key) do
-      :ok ->
-        {:ok, cert, key}
+  # TLS-261014-02: the pair must actually match — a whole-but-skewed pair
+  # (cert_n + key_n-1) parses cleanly and would otherwise be served until the
+  # client fails the handshake. The cert must verify against the paired key.
+  defp verify_pair(cert, key) do
+    with {:ok, pem} <- File.read(cert),
+         [{:"Certificate", der, :not_encrypted} | _] <- :public_key.pem_decode(pem),
+         {:ok, kpem} <- File.read(key),
+         [{:RSAPrivateKey, kder, :not_encrypted} | _] <- :public_key.pem_decode(kpem) do
+      priv = :public_key.der_decode(:RSAPrivateKey, kder)
+      pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
 
-      {:error, reason} ->
-        # Keep serving from an existing parseable cert on transient generation
-        # failure; only a missing/broken cert propagates the error.
-        if match?({:ok, _}, parse_cert(cert)) do
-          {:ok, cert, key}
-        else
-          {:error, reason}
-        end
+      if safe_pkix_verify(der, pubkey) do
+        :ok
+      else
+        {:error, :cert_key_mismatch}
+      end
+    else
+      _ -> {:error, :unparseable_key}
     end
+  end
+
+  # pkix_verify decodes extensions and can raise on structurally broken certs
+  # (witnessed: asn1 exit on a mutated SAN extension) — a cert that cannot be
+  # verified is, for boot purposes, a mismatch/broken cert: regenerate or
+  # refuse, never crash.
+  defp safe_pkix_verify(der, pubkey) do
+    # asn1 NIF decode failures surface as exits, not raises — catch both.
+    :public_key.pkix_verify(der, pubkey)
+  catch
+    _, _ -> false
+  end
+
+  defp regenerate(cert, key, _prior) do
+    # TLS-261014-01: serialize regenerates on the same lane key so two
+    # concurrent callers can never interleave a cert from one generated pair
+    # with the key from another. Rename is the CAS: last rename wins, and
+    # every observer sees a whole, consistent file — no truncate window.
+    :global.trans({__MODULE__, cert}, fn ->
+      case write_dev_cert(cert, key) do
+        :ok ->
+          {:ok, cert, key}
+
+        {:error, reason} ->
+          # Keep serving from an existing parseable cert on transient
+          # generation failure; only a missing/broken cert propagates.
+          if match?({:ok, _}, parse_cert(cert)) do
+            {:ok, cert, key}
+          else
+            {:error, reason}
+          end
+      end
+    end)
   end
 
   # Explicit-certfile usability: the cert must parse as a Certificate (same
@@ -158,10 +243,12 @@ defmodule Smalt.TLS do
   # listener start.
   defp validate_certfile_pair(cert, key) do
     with {:ok, _} <- parse_cert(cert),
-         {:ok, [_ | _] = _entries} <- safe_key_pem(key) do
+         {:ok, [_ | _] = _entries} <- safe_key_pem(key),
+         :ok <- verify_pair(cert, key) do
       :ok
     else
       {:error, :unparseable_cert} -> {:error, :unparseable_cert}
+      {:error, :cert_key_mismatch} -> {:error, :cert_key_mismatch}
       _ -> {:error, :unparseable_key}
     end
   end
@@ -202,11 +289,27 @@ defmodule Smalt.TLS do
   @doc false
   def write_dev_cert(cert_path, key_path) do
     with :ok <- File.mkdir_p(Path.dirname(Path.expand(cert_path))),
-         {:ok, cert_pem, key_pem} <- generate_dev_cert_pem(),
-         :ok <- File.write(cert_path, cert_pem),
-         :ok <- File.write(key_path, key_pem),
-         :ok <- File.chmod(key_path, 0o600) do
-      :ok
+         {:ok, cert_pem, key_pem} <- generate_dev_cert_pem() do
+      # Atomic publish: both PEMs fully written to temp files in the target
+      # directory, then renamed into place. A concurrent reader on a
+      # rename-ing filesystem always sees a whole file, never a truncation.
+      tmp_cert = cert_path <> ".tmp-#{:erlang.unique_integer([:positive])}"
+      tmp_key = key_path <> ".tmp-#{:erlang.unique_integer([:positive])}"
+
+      try do
+        with :ok <- File.write(tmp_cert, cert_pem),
+             :ok <- File.write(tmp_key, key_pem),
+             :ok <- File.chmod(tmp_key, 0o600),
+             :ok <- File.rename(tmp_cert, cert_path),
+             :ok <- File.rename(tmp_key, key_path) do
+          :ok
+        else
+          {:error, reason} -> {:error, reason}
+        end
+      after
+        File.rm(tmp_cert)
+        File.rm(tmp_key)
+      end
     end
   end
 

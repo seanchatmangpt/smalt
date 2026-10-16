@@ -6,9 +6,7 @@ defmodule Smalt.SemanticProjectionTest do
   setup_all do
     # Boot prerequisites: Store must be running for the read path. The full
     # app is NOT started; just the Store GenServer.
-    if Process.whereis(Smalt.Store) == nil do
-      start_supervised!(Smalt.Store)
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end
@@ -414,9 +412,7 @@ defmodule Smalt.Semantic.StoreRead.Lens4IdentityTest do
   setup_all do
     # Lens-4: this appended module needs the Store GenServer up for the
     # Store-backed read path (same boot prerequisite as the parent suite).
-    if Process.whereis(Smalt.Store) == nil do
-      start_supervised!(Smalt.Store)
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end
@@ -449,5 +445,198 @@ defmodule Smalt.Semantic.StoreRead.Lens4IdentityTest do
     assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
 
     Smalt.Store.delete(:smalt_ledger_transactions, uid)
+  end
+end
+
+# Lens-6 cycle 1: the lens-5 non-map JSON-structural crash class GENERALIZES:
+# two more members on the StoreRead surface, both previously crashing the
+# WHOLE Ash read. Fixed fail-closed/lenient per member; tests kill mutants.
+defmodule Smalt.Semantic.StoreRead.Lens6StructuralTest do
+  use ExUnit.Case, async: false
+
+  setup_all do
+    SmaltTest.Lifecycle.ensure_store_up()
+
+    :ok
+  end
+
+  test "a Store row with a non-map properties projects provisioning_state nil, never crashes" do
+    uid = "sem-flat-props-#{System.unique_integer([:positive])}"
+    Smalt.Store.put(:smalt_resources, uid, %{
+      "id" => uid,
+      "name" => "x",
+      "type" => "t",
+      "properties" => "flat-string"
+    })
+
+    # The lenient policy must not swallow a well-formed neighbor.
+    good = uid <> "-good"
+
+    Smalt.Store.put(:smalt_resources, good, %{
+      "id" => good,
+      "name" => "g",
+      "type" => "t",
+      "properties" => %{"provisioningState" => "Succeeded"}
+    })
+
+    resources = Ash.read!(Smalt.Semantic.Resource)
+
+    projected = Enum.find(resources, &(&1.id == uid))
+    assert projected, "seeded flat-properties row not projected"
+    assert projected.provisioning_state == nil
+
+    assert Enum.find(resources, &(&1.id == good)).provisioning_state == "Succeeded"
+
+    Smalt.Store.delete(:smalt_resources, uid)
+    Smalt.Store.delete(:smalt_resources, good)
+  end
+
+  test "a valid-JSON non-map deviation-ledger line refuses the Evidence read typed" do
+    dev = Smalt.Ocel.DeviationAdmission.default_path()
+    backup = if File.exists?(dev), do: File.read(dev), else: nil
+    File.mkdir_p!(Path.dirname(dev))
+
+    File.write!(
+      dev,
+      Jason.encode!(%{
+        "id" => "l6-good",
+        "referenceTraceId" => "r",
+        "candidateTraceId" => "c",
+        "deviatingMove" => "m",
+        "timestamp" => "t"
+      }) <> "\n[1,2]\n"
+    )
+
+    on_exit(fn ->
+      case backup do
+        nil -> File.rm(dev)
+        {:ok, body} -> File.write!(dev, body)
+      end
+    end)
+
+    assert {:error, err} = Ash.read(Smalt.Semantic.Evidence)
+    msg = Exception.message(err) <> inspect(err.errors)
+    assert msg =~ "non-map"
+    assert msg =~ ":ocel_deviations"
+
+    # Restore BEFORE returning so a subsequent restore can't race other
+    # suites on the shared default path.
+    case backup do
+      nil -> File.rm(dev)
+      {:ok, body} -> File.write!(dev, body)
+    end
+  end
+end
+
+# Lens-7 cycle 3: field-VALUE policy (witnessed probe tmp/f16L7/probe3:
+# non-conformant field values passed through RAW — provisioningState 42,
+# data_hash list — into attributes declared String.t()). Pinned policy:
+# row structure + identity refuse typed; field values follow the parse_ts
+# lenient precedent (non-binary -> nil, never a raw type-lie).
+defmodule Smalt.Semantic.StoreRead.Lens7FieldPolicyTest do
+  use ExUnit.Case, async: false
+
+  setup_all do
+    SmaltTest.Lifecycle.ensure_store_up()
+
+    :ok
+  end
+
+  test "non-binary field values project nil, well-formed neighbors untouched" do
+    uid = "l7-field-#{System.unique_integer([:positive])}"
+
+    Smalt.Store.put(:smalt_resources, uid, %{
+      "id" => uid,
+      "name" => 42,
+      "type" => ["Microsoft.KeyVault/vaults"],
+      "location" => %{"region" => "westus"},
+      "properties" => %{"provisioningState" => 42}
+    })
+
+    good = uid <> "-good"
+
+    Smalt.Store.put(:smalt_resources, good, %{
+      "id" => good,
+      "name" => "g",
+      "type" => "Microsoft.Key/vaults",
+      "location" => "westus",
+      "properties" => %{"provisioningState" => "Succeeded"}
+    })
+
+    resources = Ash.read!(Smalt.Semantic.Resource)
+
+    bad = Enum.find(resources, &(&1.name == 42 or is_list(&1.type) or is_map(&1.location)))
+
+    refute bad, "raw non-binary field value leaked into the projection"
+
+    bad_row = Enum.find(resources, &(&1.id == uid))
+    assert bad_row, "seeded drift row not projected at all"
+    assert bad_row.name == nil and bad_row.type == nil and bad_row.location == nil
+
+    assert Enum.find(resources, &(&1.id == good)).provisioning_state == "Succeeded"
+    assert Enum.find(resources, &(&1.id == good)).name == "g"
+
+    Smalt.Store.delete(:smalt_resources, uid)
+    Smalt.Store.delete(:smalt_resources, good)
+  end
+
+  test "non-binary ledger fields project nil; truthy non-binary Evidence status defaults" do
+    uid = "l7-ledger-#{System.unique_integer([:positive])}"
+
+    Smalt.Store.put(:smalt_ledger_transactions, uid, %{
+      "transactionId" => uid,
+      "subLedgerId" => 7,
+      "merkle_root" => ["m"],
+      "timestamp" => 42
+    })
+
+    ledger_rows = Ash.read!(Smalt.Semantic.LedgerEntry)
+
+    row = Enum.find(ledger_rows, &(&1.tx_id == uid))
+    assert row, "seeded ledger drift row not projected"
+    assert row.sub_ledger_id == nil
+    assert row.merkle_root == nil
+    assert row.prev_hash == nil
+    assert row.data_hash == nil
+    assert row.timestamp == nil
+
+    Smalt.Store.delete(:smalt_ledger_transactions, uid)
+  end
+
+  test "a truthy non-binary Evidence status defaults to observed, never projects raw" do
+    dev = Smalt.Ocel.DeviationAdmission.default_path()
+    backup = if File.exists?(dev), do: File.read(dev), else: nil
+    File.mkdir_p!(Path.dirname(dev))
+
+    File.write!(
+      dev,
+      Jason.encode!(%{
+        "id" => "l7-status",
+        "referenceTraceId" => "r",
+        "candidateTraceId" => "c",
+        "deviatingMove" => "m",
+        "timestamp" => 42,
+        "status" => 42
+      }) <> "\n"
+    )
+
+    on_exit(fn ->
+      case backup do
+        nil -> File.rm(dev)
+        {:ok, body} -> File.write!(dev, body)
+      end
+    end)
+
+    assert %Smalt.Semantic.Evidence{} = ev =
+             Enum.find(Ash.read!(Smalt.Semantic.Evidence), &(&1.id == "l7-status"))
+
+    assert ev.status == "observed"
+    assert ev.timestamp == nil
+
+    # Restore BEFORE returning (shared default path).
+    case backup do
+      nil -> File.rm(dev)
+      {:ok, body} -> File.write!(dev, body)
+    end
   end
 end

@@ -63,7 +63,7 @@ async function main() {
   const logStream = fs.createWriteStream(logPath, { flags: "w" });
   const child = spawn("mix", [
     "run", "--no-halt",
-    "-e", `Application.put_env(:smalt, :sb_shared_key, "${sharedKey}")`,
+    "-e", `Application.put_env(:smalt, :auth_mode, :anonymous); Application.put_env(:smalt, :sb_shared_key, "${sharedKey}"); Application.put_env(:smalt, :sb_endpoint, "sb://127.0.0.1:${AMQP_PORT}")`,
   ], {
     cwd: REPO,
     env: { ...process.env, MIX_ENV: "test" },
@@ -126,6 +126,13 @@ async function main() {
     env: {
       ...process.env,
       SMALT_SB_SHARED_KEY: sharedKey,
+      // Derive the census connection string from the substrate's actual AMQP
+      // port: without this the probes default to 5672 and fail ECONNREFUSED
+      // on any private-port census run (c3 witnessed: substrate up on 39172,
+      // all 8 probes refused on 5672 in <10ms each).
+      SMALT_SB_CONNECTION_STRING:
+        process.env.SMALT_SB_CONNECTION_STRING ||
+        `Endpoint=sb://127.0.0.1:${AMQP_PORT};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=${sharedKey};UseDevelopmentEmulator=true`,
     },
     stdio: "inherit",
   });

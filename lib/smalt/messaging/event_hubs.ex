@@ -15,14 +15,13 @@ defmodule Smalt.Messaging.EventHubs do
   | `:smalt_eh_partitions` | `"ns/hub/partition"` | `%{"seq" => n, "events" => [{seq, body}], "offset" => n}` |
   | `:smalt_eh_checkpoints` | `{group, partition}` | `%{"seq" => n, "offset" => n, "etag" => n, "claim" => %{...} \\| nil}` |
 
-  Monotonicity and exactly-once CAS: when `Smalt.Store.update_counter/3` exists it is
-  used as the atomic sequence source (a dedicated integer cell row
-  `{:seq_counter, partition}` in `:smalt_eh_partitions`, mirrored into the map row);
-  otherwise sequence assignment and checkpoint CAS are serialised through an internal
-  named GenServer (`Smalt.Messaging.EventHubs.Server`, started lazily on first use),
-  which is race-free by construction. When `Smalt.Store.compare_and_swap/4` exists,
-  CAS delegates to it; the server fallback does lookup+insert atomically inside a
-  single `handle_call`.
+  Monotonicity and exactly-once CAS: sequence assignment and checkpoint CAS are
+  serialized through an internal named GenServer (`Smalt.Messaging.EventHubs.Server`,
+  started lazily on first use), which is race-free by construction. When
+  `Smalt.Store.update_counter/3` exists it is used as the atomic sequence source
+  (a dedicated integer cell row `{:seq_counter, partition}` in
+  `:smalt_eh_partitions`, mirrored into the map row) — always from inside the
+  server's `handle_call`, so all mutations stay on one serialization point.
 
   Public contract (as required by the checkpoint-management surface):
   `next_sequence/1`, `send_event/3`, `receive_events/3`, `compare_and_swap/4`,
@@ -34,21 +33,21 @@ defmodule Smalt.Messaging.EventHubs do
   @partitions :smalt_eh_partitions
   @checkpoints :smalt_eh_checkpoints
 
-  @table_opts [:set, :public, :named_table, read_concurrency: true, write_concurrency: true]
-
   alias Smalt.Messaging.EventHubs.Server, as: EHServer
 
   # -- Tables -------------------------------------------------------------------
 
   @doc "Idempotently ensure the two EH tables exist. Returns `:ok`."
   def ensure_tables do
-    Enum.each([@partitions, @checkpoints], fn table ->
-      if :ets.info(table) == :undefined do
-        :ets.new(table, @table_opts)
-      end
-    end)
-
-    :ok
+    # Tables are created INSIDE the EH server (lens-5 F-4): caller-side
+    # creation made the named tables owned by whichever mortal process called
+    # first — when that process exited the table died under the running
+    # server, and the server's next `:ets` op crashed (lens-6 M-B re-witness:
+    # the rescue-guarded caller-side pre-init shape is killed by the F-4
+    # court — winner Task's mortality leaves `:ets.info == :undefined` after
+    # the hammer). Server-owned tables also serialize the create itself (no
+    # lookup-then-create race at all).
+    EHServer.transaction(:ensure_tables)
   end
 
   # -- Sequencing / events --------------------------------------------------------
@@ -110,9 +109,9 @@ defmodule Smalt.Messaging.EventHubs do
   @doc """
   Compare-and-swap the checkpoint for `{group, partition}`: succeeds only when the
   current checkpoint equals `expect`. Returns `:ok` or `{:error, :conflict}`.
-  Delegates to `Smalt.Store.compare_and_swap/4` when available, else the internal
-  serialised server — exactly one of N concurrent callers with the same `expect`
-  wins.
+  Routing through the internal serialised server (`Smalt.Messaging.EventHubs.Server`)
+  unifies serialization with `reserve_processing/4` — exactly one of N concurrent
+  callers with the same `expect` wins, race-free by construction.
   """
   @spec compare_and_swap(String.t(), String.t(), map(), map()) :: :ok | {:error, :conflict}
   def compare_and_swap(group, partition, expect, new)
@@ -120,12 +119,13 @@ defmodule Smalt.Messaging.EventHubs do
     ensure_tables()
     key = {group, partition}
 
-    # Store's CAS conflicts on a missing row; EH semantics treat an absent
-    # checkpoint as the zero checkpoint, so seed it (idempotent) first.
-    case :ets.lookup(@checkpoints, row_key(key)) do
-      [] -> :ets.insert(@checkpoints, {row_key(key), %{"seq" => 0, "offset" => 0, "etag" => 0}})
-      _ -> :ok
-    end
+    # NO caller-side seed of the checkpoint row (lens-4 F-2, the F-1 window
+    # class): a lookup-then-insert seed here raced `reserve_processing` — a
+    # claim written by the serialized server between the lookup and the insert
+    # was clobbered by the stale seed insert, silently dropping a live lease
+    # (two consumers hold one partition). The serialized `cas_claim_blind`
+    # handler already treats an absent row as the zero checkpoint, so the seed
+    # carried zero semantics; all checkpoint writes are now serialized.
 
     # Claim-blind CAS (lens-2 cycle 2): `reconcile/2` — the documented
     # authoritative view — strips the `"claim"` lease field, so a client
@@ -139,21 +139,24 @@ defmodule Smalt.Messaging.EventHubs do
   end
 
   # Checkpoints are keyed {group, partition}; a claim row lives inside the same
-  # map. Kept as a function so the row layout stays in one place.
-  defp row_key(key), do: key
+  # map.
 
   @doc """
   Acquire a processing lease on `{group, partition}` for `owner` lasting `ttl_ms`.
   `:ok` if the lease is free/expired/already owned by `owner`; `{:error, :conflict}`
   if another live owner holds it. Expired leases are reclaimed by `sweep/0` or
   lazily on the next reservation.
+
+  The caller passes a RELATIVE `ttl_ms`; the expiry (`until`) is computed inside
+  the serialized server from its own clock (V261014-04 F5) — one clock source
+  for the claim-free check and the stored expiry.
   """
   @spec reserve_processing(String.t(), String.t(), term(), pos_integer()) ::
           :ok | {:error, :conflict}
   def reserve_processing(group, partition, owner, ttl_ms)
       when is_binary(group) and is_binary(partition) and is_integer(ttl_ms) and ttl_ms > 0 do
     ensure_tables()
-    EHServer.transaction({:reserve, {group, partition}, owner, now_ms() + ttl_ms})
+    EHServer.transaction({:reserve, {group, partition}, owner, ttl_ms})
   end
 
   @doc """
@@ -191,23 +194,23 @@ defmodule Smalt.Messaging.EventHubs do
   @spec sweep() :: non_neg_integer()
   def sweep do
     ensure_tables()
-    now = now_ms()
 
-    :ets.tab2list(@checkpoints)
-    |> Enum.reduce(0, fn {key, cp}, acc ->
-      case expired_claim?(cp, now) do
-        true ->
-          :ets.update_element(@checkpoints, key, {2, Map.put(cp, "claim", nil)})
-          acc + 1
-
-        false ->
-          acc
-      end
-    end)
+    # NO caller-side read-modify-write here (lens-5 F-3, the F-2/F-1 window
+    # class): the previous shape read each checkpoint via `:ets.tab2list` and
+    # then wrote the WHOLE value back. The sweep runs as ONE serialized
+    # `handle_call` on the same server as `reserve`/`cas_claim_blind`, so the
+    # window no longer exists. Lens-6: the F-3 shape court now bans ANY
+    # checkpoint write (`insert` or `update_element`) from the sweeping
+    # caller, and requires an expired claim so the sweep actually writes —
+    # the lens-5 court was evaded by an insert-shaped caller-side mutant
+    # (M-A survived it 19/0; kill witnessed after hardening, receipt
+    # cycle-2). Lens-7: the ban is the FULL `:ets` write surface
+    # (insert/insert_new/update_element/update_counter x2/delete/
+    # delete_all_objects) — a delete-shaped caller-side reclaim mutant
+    # (M-C) evaded the two-op trace pattern 19/0; kill witnessed after the
+    # full-surface hardening (receipt cycle-2).
+    EHServer.transaction({:sweep, now_ms()})
   end
-
-  defp expired_claim?(%{"claim" => %{"until" => until}}, now), do: until <= now
-  defp expired_claim?(_, _), do: false
 
   # -- Sequence bump (shared by server + Store path) --------------------------------
 
@@ -281,8 +284,34 @@ defmodule Smalt.Messaging.EventHubs do
 
     @impl true
     def init(:ok) do
-      Smalt.Messaging.EventHubs.ensure_tables()
+      do_ensure_tables()
       {:ok, %{}}
+    end
+
+    # Runs inside the (immortal-named) server process, so the named tables are
+    # server-owned and never die with a mortal caller. Serialized by the
+    # server mailbox: no lookup-then-create race.
+    defp do_ensure_tables do
+      Enum.each([@partitions, @checkpoints], fn table ->
+        if :ets.info(table) == :undefined do
+          # NB: literal opts — module attributes do not leak into a nested
+          # defmodule (the parent's @table_opts reads nil here).
+          :ets.new(table, [
+            :set,
+            :public,
+            :named_table,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
+        end
+      end)
+
+      :ok
+    end
+
+    @impl true
+    def handle_call(:ensure_tables, _from, state) do
+      {:reply, do_ensure_tables(), state}
     end
 
     @impl true
@@ -316,8 +345,32 @@ defmodule Smalt.Messaging.EventHubs do
       end
     end
 
-    def handle_call({:reserve, key, owner, until}, _from, state) do
+    def handle_call({:sweep, now}, _from, state) do
+      count =
+        :ets.tab2list(@checkpoints)
+        |> Enum.reduce(0, fn {key, cp}, acc ->
+          case cp do
+            %{"claim" => %{"until" => until}} when until <= now ->
+              # Serialized with reserve/cas: the whole-value write can no
+              # longer clobber a claim a concurrent reserve wrote between
+              # the read and the write (lens-5 F-3).
+              :ets.update_element(@checkpoints, key, {2, Map.put(cp, "claim", nil)})
+              acc + 1
+
+            _ ->
+              acc
+          end
+        end)
+
+      {:reply, count, state}
+    end
+
+    def handle_call({:reserve, key, owner, ttl_ms}, _from, state) do
+      # F5 normalization: `ttl_ms` arrives RELATIVE; the expiry is computed
+      # here, inside the serialized server — one clock source for both the
+      # claim-free check and the stored expiry (V261014-04 F5).
       now = System.system_time(:millisecond)
+      until = now + ttl_ms
 
       current =
         case :ets.lookup(@checkpoints, key) do

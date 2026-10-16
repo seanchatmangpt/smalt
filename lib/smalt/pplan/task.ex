@@ -430,9 +430,11 @@ defmodule Smalt.PPlan.Task do
   # as alive and the lease is NOT resurrected that sweep — the record stays
   # :running. This is a documented limitation, not silent corruption: the
   # operator escape is a manual put/1 overwrite (the record is fenced, so the
-  # escape cannot smuggle an unlawful status). BEAM pid reuse in practice is
-  # rare (monotonic pid counters per node); no in-process falsifiable test can
-  # force reuse, so the contract is pinned here rather than test-driven.
+  # escape cannot smuggle an unlawful status). BEAM pid allocation is
+  # node-global, so the reuse window is NOT bounded by any in-process spawn
+  # count (lens7 cycle-1 WITNESSED: the 2000-replacement court caught a
+  # recycle where recover() lawfully missed the lease — the row now pins
+  # "recovered OR claimant alive at sweep time").
   defp dead?(pid) when is_pid(pid), do: not Process.alive?(pid)
   defp dead?(_), do: true
 end

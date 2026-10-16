@@ -40,8 +40,8 @@ ownered exception — not a blanket skip. Re-enable a tier with
 | Tag | Meaning | Owner lane | Re-enable condition |
 |---|---|---|---|
 | `:amqp_wire` | Drives the real AMQP wire tier (real broker/listener on the AMQP port). Off by default so the plain `mix test` stays broker-independent. Carried by `test/compliance/c5_servicebus.exs` and the `test/amqp/` suites (`connection`, `management_rpc`, `pyamqp_parity`, `broker_facade`, `flow_credit` tests). | amqp wire tier | Broker available; run `mix test --include amqp_wire` |
-| `:arm_seam` | **VACUOUS as of 2026-10-15**: no test carries this tag; the exclusion entry excludes nothing. `GAP(vacuous-tag-arm-seam)` | arm gateway lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until the gap closes |
-| `:dp_seam` | **RESOLVED + VACUOUS as of 2026-10-15**: the re-enable condition landed (`Store.list_prefix/2` at `lib/smalt/store.ex:128`, used by `lib/smalt/data_plane/cosmos.ex:504,589`), no test carries the tag, and the cosmos fallback this row described is gone (If-Match replace is now one atomic `Store.compare_and_swap/4`). The exclusion entry excludes nothing. `GAP(vacuous-tag-dp-seam)` | data plane lane | Delete the entry from `test/test_helper.exs` (test lane owner); this row stays only until the gap closes |
+| ~~`:arm_seam`~~ | **RETIRED 2026-10-15 (V261014-13)**: vacuous exclusion entry deleted from `test/test_helper.exs`; no test carries this tag; re-introduce only with a real named-gap test. `GAP(vacuous-tag-arm-seam)` CLOSED — token deleted | — | — |
+| ~~`:dp_seam`~~ | **RETIRED 2026-10-15 (V261014-13)**: the re-enable condition landed (`Store.list_prefix/2` at `lib/smalt/store.ex:128`, used by `lib/smalt/data_plane/cosmos.ex:504,589`), no test carries the tag, and the cosmos fallback this row described is gone (If-Match replace is now one atomic `Store.compare_and_swap/4`); vacuous exclusion entry deleted from `test/test_helper.exs`; re-introduce only with a real named-gap test. `GAP(vacuous-tag-dp-seam)` CLOSED — token deleted | — | — |
 | ~~`:closed_shape_gap`~~ | **RETIRED 2026-10-15**: the vacuous exclusion entry was deleted from `test/test_helper.exs` (store+graphlaw lane, cycle-6 receipt). No test carries this tag; re-introduce it only with a real named-gap test. | — | — |
 
 ## 4. Audit findings (re-audited 2026-10-15; 2026-10-14 snapshot superseded)
@@ -57,7 +57,11 @@ ownered exception — not a blanket skip. Re-enable a tier with
   `async: true`) is RESOLVED: the file now has zero Store references (its
   in-file comment documents the grep verification) and `async: true` is safe.
   No async+Store race remains.
-- `Store.clear()` in setup — 23 files (grep-verified), all `async: false`, so
+- `Store.clear()` in setup — 24 files (grep-verified 2026-10-15 lens-6; was
+  23 — `test/data_plane/conditional_headers_test.exs` joined;
+  `test/pplan_test.exs` was retired from this count — its setup installs a
+  generalized spawn-leak tracer instead, see the leak-tracer section), all
+  `async: false`, so
   they do not race each other, and with the graphlaw matrix fix above no
   `async: true` module touches the shared Store. Current inventory:
   `test/smalt_services_test.exs`, `test/arm_error_corpus_test.exs`,
@@ -72,7 +76,8 @@ ownered exception — not a blanket skip. Re-enable a tier with
   `test/compliance/c4_blob.exs`,
   `test/data_plane/audit_planes_test.exs`, `test/data_plane/blob_hardening_test.exs`,
   `test/data_plane/key_vault_actions_test.exs`, `test/data_plane/blob_service_test.exs`,
-  `test/data_plane/cosmos_test.exs`.
+  `test/data_plane/cosmos_test.exs`,
+  `test/data_plane/conditional_headers_test.exs`.
 - Fixed substrate ports — the wire tier (`test/wire/*_test.exs`) pins the
   default ports by design (that is the tier's contract). Outside the wire
   tier, listeners are ephemeral-port or Application-env driven (re-verified
@@ -87,3 +92,28 @@ ownered exception — not a blanket skip. Re-enable a tier with
 - `test/sdk-smoke/*` hardcodes substrate ports but is a separate Node-driven
   smoke tier that owns its substrate lifecycle (see `test/sdk-smoke/eh-run.mjs`
   env-var overrides) — out of scope for `mix test` isolation.
+- **Kill-restart contract** (added 2026-10-15, work order V261014-02 / lens7
+  canonical): any test that takes a supervised child down
+  (`Supervisor.terminate_child`, `restart_child`, or a supervised-child
+  `Process.exit(pid, :kill)`) MUST restore it **synchronously in the test
+  process** — `try/after` wrapping the kill window + a checked restart
+  (`{:error, {:already_started, _}}` / `{:error, :already_present}` count as
+  success, anything else `flunk`s) + a liveness wait + a state verification
+  sweep (all named ETS tables `:ets.info/1 != :undefined`, via
+  `Smalt.Store.table_names/0`) — before the test reports. An `on_exit`-only
+  restore is a defect: `on_exit` runs in a separate ExUnit process after the
+  test reports, so a test process that dies mid-window (flunk/timeout) leaks
+  the dead child process-wide and every subsequent test fails with a
+  shuffle-order-dependent first victim. Reference implementation:
+  `test/pplan_test.exs` `restore_store!/0` delegating to
+  `SmaltTest.Lifecycle.ensure_store_up/0` (test_helper.exs).
+- **Killer inventory** (re-audited 2026-10-15;
+  `grep -rn "terminate_child|restart_child|Process.exit(.*:kill)" test/`):
+  supervised-child kills are confined to `test/pplan_test.exs` — lens7
+  `terminate_child` :2732 / `restart_child` :2725 (on_exit net) / :2768
+  (in-window, now inside `try/after`), and lens6 `Process.exit(pid, :kill)`
+  :2545 (safe: `:permanent` child restarts via the supervisor). All other
+  `Process.exit(..., :kill)` hits kill test-owned processes (claimants,
+  racers, private supervisors/servers the test itself started) — not shared
+  supervised children; `test_helper.exs` kill-fallbacks in
+  `Lifecycle.stop_shared_tree/0` are the sanctioned shared-tree stop path.

@@ -7,7 +7,7 @@ not implemented. Every row names the smalt file:line and the fence test in
 `Smalt.EgressRouter` on an ephemeral Bandit port; real ETS through
 `Smalt.Messaging.EventHubs`, `Smalt.DataPlane.Sentinel`,
 `Smalt.DataPlane.ResourceGraph`, `Smalt.DataPlane.Purview`) 2026-10-14:
-`mix test test/compliance/c7_events.exs` -> **16 tests, 0 failures**.
+`mix test test/compliance/c7_events.exs` -> **17 tests, 0 failures**.
 
 ## Surface map
 
@@ -43,19 +43,50 @@ not implemented. Every row names the smalt file:line and the fence test in
 
 ## GAP list (not implemented)
 
-- Event Grid **native Event Grid event schema** (EG1/`GRIDEVENT`, system-topic
-  events): not implemented — smalt admits only CloudEvents 1.0.
-- Event Hubs `getEventHubProperties` / partition-count surface (REST or AMQP
-  management): not implemented (row C7-2c).
-- Event Hubs REST/AMQP `$default` consumer-group enumeration: not implemented.
-- Atlas entity/audit search (`POST /atlas/v2/search/collection`), relationship
-  read/GET surface beyond the edge-minting POST: not implemented.
-- KQL datetime/dynamic column types: not implemented (values report `"string"`).
+Convention note (V261014-13): the `GAP(name)` tokens below are **typed
+UNSUPPORTED** — deliberately not implemented this release, not open defects.
+Each carries a close condition; closing one requires landing the surface and
+deleting the token from this file and `docs/WIRE_PARITY.md`.
+
+- `GAP(eventgrid-eg1-schema-absent)` — UNSUPPORTED: Event Grid **native event
+  schema** (EG1/`GRIDEVENT`, system-topic events) not implemented; smalt
+  admits CloudEvents 1.0 only. Close condition: EG1 schema admission path on
+  `POST /topics/:topic/events` with a wire fence distinguishing EG1 from
+  CloudEvents payloads.
+- `GAP(eventhubs-partition-metadata-absent)` — UNSUPPORTED:
+  `getEventHubProperties` / partition-count surface (REST or AMQP
+  management) not implemented (row C7-2c). Close condition: properties/
+  partition-ids surface returning `name`, `createdTime`, `partitionIds` for
+  the provisioned partitions.
+- `GAP(eventhubs-consumer-group-enumeration-absent)` — UNSUPPORTED: REST/AMQP
+  `$default` consumer-group enumeration not implemented; `$default` exists
+  only as a checkpoint-key convention. Close condition: consumer-group
+  enumeration surface over the stored checkpoint/lease keys.
+- `GAP(atlas-search-relationship-get-absent)` — UNSUPPORTED: Atlas entity/
+  audit search (`POST /atlas/v2/search/collection`) and relationship read/GET
+  beyond the edge-minting POST: not implemented. Close condition: search/collection
+  POST plus relationship GET over stored `:smalt_purview_edges` guids.
+- `GAP(kql-datetime-dynamic-types-absent)` — UNSUPPORTED: KQL datetime/dynamic
+  column-type inference not implemented (values report `"string"`). Close
+  condition: `column_type/2` infers `"datetime"` for datetime strings and
+  `"dynamic"` for object/array values (row C7-3b).
+
+Service Bus (AMQP plane, V261014-08 typed UNSUPPORTED): session reply-to
+(`reply_to` / `reply_to_session_id`) — stored nowhere, emitted nowhere;
+SDKs observe the field **dropped, not rejected**. Subscription rules
+(add-rule / remove-rule / SQL filter / correlation filter / default rule
+`$Default`) — no subscription concept, no filter evaluator; add-rule stays
+`:unknown-op` (fail-closed 501). Tokenized in WIRE_PARITY + C5 R11.
+
+Cross-links: row C7-2c ↔ `GAP(eventhubs-partition-metadata-absent)`;
+§Named divergences item 2 ↔ `GAP(eventhubs-partition-metadata-absent)` +
+`GAP(eventhubs-consumer-group-enumeration-absent)`; item 3 ↔
+`GAP(kql-datetime-dynamic-types-absent)`.
 
 ## Replay
 
 ```sh
-mix test test/compliance/c7_events.exs   # 16 tests, 0 failures (2026-10-14)
+mix test test/compliance/c7_events.exs   # 17 tests, 0 failures (2026-10-15 lens-8 re-measured)
 mix test test/compliance/c7_events.exs test/eventgrid_conformance_test.exs \
   test/data_plane/audit_planes_test.exs test/ocel_revops_test.exs  # 64 tests, 0 failures
 ```

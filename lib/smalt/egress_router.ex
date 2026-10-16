@@ -34,7 +34,17 @@ defmodule Smalt.EgressRouter do
   alias Smalt.Security.ConfidentialLedger
 
   plug(Plug.Logger)
-  plug(CORSPlug, origin: "*")
+  # Lane 19 (v26.10.14) item 6: CORS origins are configurable at runtime via
+  # `:smalt, :egress_cors_origins` (list of allowed origins). The default is
+  # ["*"] — the documented dev posture for the emulator's 8443 surface; in
+  # production, configure an explicit allowlist. Evaluated per-request so a
+  # config flip does not need a recompile.
+  plug(:egress_cors)
+
+  defp egress_cors(conn, _opts) do
+    origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
+    CORSPlug.call(conn, CORSPlug.init(origin: origins))
+  end
   plug(Smalt.Auth.Bearer)
   plug(:fetch_query_params)
   # Python SDK trailing-slash tolerance: GET /dbs/:db/colls/:coll/ must route
@@ -73,7 +83,7 @@ defmodule Smalt.EgressRouter do
   # Azure Confidential Ledger (/app/transactions)
   # ---------------------------------------------------------------------------
   get "/app/transactions" do
-    if not_ready?(conn, [ConfidentialLedger]) do
+    if not_ready?(conn, [ConfidentialLedger]) or not tables_ready?([:smalt_ledger_transactions]) do
       route_not_ready(conn)
     else
       send_json(conn, 200, ConfidentialLedger.list_transactions("default_ledger"))
@@ -81,7 +91,8 @@ defmodule Smalt.EgressRouter do
   end
 
   get "/app/transactions/latest" do
-    if not_ready?(conn, [ConfidentialLedger]) do
+    if not_ready?(conn, [ConfidentialLedger]) or
+         not tables_ready?([:smalt_ledger_transactions, :smalt_ledger_meta]) do
       route_not_ready(conn)
     else
       case ConfidentialLedger.get_latest("default_ledger") do
@@ -174,6 +185,10 @@ defmodule Smalt.EgressRouter do
             record -> cosmos_respond(conn, {:ok, status, headers, record})
           end
 
+        # Lens7 fail-closed: not-ready must never be masked as NotFound.
+        {:error, :store_not_ready} ->
+          route_not_ready(conn)
+
         _ ->
           blob_error(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
       end
@@ -226,6 +241,10 @@ defmodule Smalt.EgressRouter do
             record ->
               cosmos_respond(conn, {:ok, status, headers, with_pk_kind(record)})
           end
+
+        # Lens7 fail-closed: not-ready must never be masked as NotFound.
+        {:error, :store_not_ready} ->
+          route_not_ready(conn)
 
         _ ->
           blob_error(conn, 404, %{
@@ -286,13 +305,15 @@ defmodule Smalt.EgressRouter do
 
   get "/dbs/:db/colls/:coll/docs" do
     with_route(conn, Cosmos, fn conn ->
-      {status, headers, docs} =
-        case Cosmos.list_docs(db, coll, "", header_map(conn)) do
-          {:ok, status, headers, docs} -> {status, headers, docs}
-          _other -> {200, %{}, []}
-        end
+      case Cosmos.list_docs(db, coll, "", header_map(conn)) do
+        {:ok, status, headers, docs} ->
+          cosmos_respond(conn, {:ok, status, headers, docs})
 
-      cosmos_respond(conn, {:ok, status, headers, docs})
+        # Lens7 fail-closed law: a not-ready store or any unexpected engine
+        # shape must never be answered with a success-shaped empty feed.
+        _other ->
+          route_not_ready(conn)
+      end
     end)
   end
 
@@ -338,10 +359,16 @@ defmodule Smalt.EgressRouter do
           "key_material" => key_material
         }
 
-        Store.put(:smalt_vault_keys, name, key_record)
+        # Lens7 fail-closed: a missing vault table is server not-ready, never
+        # a client-fault-shaped 400 from a rescued ArgumentError.
+        if :ets.info(:smalt_vault_keys) == :undefined do
+          route_not_ready(conn)
+        else
+          Store.put(:smalt_vault_keys, name, key_record)
 
-        # the private DER never leaves the vault; project the public record
-        send_json(conn, 200, Map.delete(key_record, "key_material"))
+          # the private DER never leaves the vault; project the public record
+          send_json(conn, 200, Map.delete(key_record, "key_material"))
+        end
       else
         {:kty_error, kty} ->
           blob_error(conn, 400, %{
@@ -412,16 +439,23 @@ defmodule Smalt.EgressRouter do
     do: is_list(policy["allowed_operations"] || policy["allowedOperations"])
 
   get "/keys/:name" do
-    case Store.get(:smalt_vault_keys, name) do
-      {:ok, key_record} -> send_json(conn, 200, Map.delete(key_record, "key_material"))
-      :error -> blob_error(conn, 404, not_found_error("KeyNotFound"))
+    if :ets.info(:smalt_vault_keys) == :undefined do
+      route_not_ready(conn)
+    else
+      case Store.get(:smalt_vault_keys, name) do
+        {:ok, key_record} -> send_json(conn, 200, Map.delete(key_record, "key_material"))
+        :error -> blob_error(conn, 404, not_found_error("KeyNotFound"))
+      end
     end
   end
 
   post "/keys/:name/release" do
     case Smalt.DataPlane.SKR.release(name, conn) do
-      {:ok, status, body} -> blob_error(conn, status, body)
-      {:error, status, body} -> blob_error(conn, status, body)
+      # Lane 19 (v26.10.14) item 1: KV/SKR envelope pins must not see blob-plane
+      # headers (F5 law). blob_error/3 stamps x-ms-request-id/x-ms-version on
+      # the release 200 — rendered through send_json like every other KV route.
+      {:ok, status, body} -> send_json(conn, status, body)
+      {:error, status, body} -> send_json(conn, status, body)
     end
   end
 
@@ -431,11 +465,22 @@ defmodule Smalt.EgressRouter do
   get "/keys" do
     with_route(conn, KeyVaultActions, fn conn ->
       case KeyVaultActions.list_keys() do
-        {:ok, status, body} -> blob_error(conn, status, body)
-        # mechanical warning fix (store+graphlaw lane): list_keys/0's dialyzed
-        # type is {:ok, _, _} only, so an {:error, _, _} pattern is provably
-        # unreachable to the compiler; catch-all preserves the runtime path.
-        other -> send_json(conn, elem(other, 1), elem(other, 2))
+        # Lane 19 (v26.10.14) item 5: the previous `elem/2` catch-all raised
+        # ArgumentError on a non-3-tuple return (unhandled 500 outside
+        # safe_dispatch). The fallback arm is total: a 3-tuple (compiler's
+        # dialyzed type is {:ok, _, _} only, so the error-tuple dispatch lives
+        # in the fallback) renders through send_json; any other shape answers
+        # a typed 500 envelope — no unhandled raise.
+        {:ok, status, body} ->
+          send_json(conn, status, body)
+
+        other
+        when is_tuple(other) and tuple_size(other) == 3 ->
+          send_json(conn, elem(other, 1), elem(other, 2))
+
+        other ->
+          Logger.error("list_keys/0 returned unexpected shape: #{inspect(other)}")
+          send_json(conn, 500, %{"error" => %{"code" => "InternalError"}})
       end
     end)
   end
@@ -513,7 +558,7 @@ defmodule Smalt.EgressRouter do
   end
 
   get "/topics/:topic/events" do
-    if not_ready?(conn, [EventStream]) do
+    if not_ready?(conn, [EventStream]) or not tables_ready?([:smalt_event_messages]) do
       route_not_ready(conn)
     else
       send_json(conn, 200, EventStream.list_events(topic))
@@ -704,16 +749,23 @@ defmodule Smalt.EgressRouter do
         if not_ready?(conn, [BlobService]) do
           route_not_ready(conn)
         else
-          {xml, _next_marker} =
-            BlobService.list_containers_xml(account, %{
-              "prefix" => conn.query_params["prefix"],
-              "marker" => conn.query_params["marker"],
-              "maxresults" => conn.query_params["maxresults"]
-            })
+          # Typed engine errors (container-list maxresults 400,
+          # v26.10.14 lane 06 defects 2+3) reach the wire as the Azure XML
+          # <Error> envelope on this comp=list route — never a MatchError 500
+          # or a JSON body where the real service emits XML.
+          case BlobService.list_containers_xml(account, %{
+                 "prefix" => conn.query_params["prefix"],
+                 "marker" => conn.query_params["marker"],
+                 "maxresults" => conn.query_params["maxresults"]
+               }) do
+            {xml, _next_marker} ->
+              conn
+              |> put_resp_content_type("application/xml")
+              |> send_resp(200, xml)
 
-          conn
-          |> put_resp_content_type("application/xml")
-          |> send_resp(200, xml)
+            {:error, status, code, msg} when is_integer(status) ->
+              blob_error_xml(conn, status, code, msg)
+          end
         end
       end)
     else
@@ -907,8 +959,10 @@ defmodule Smalt.EgressRouter do
                 |> put_resp_content_type("application/xml")
                 |> send_resp(200, xml)
 
+              # comp=list errors emit the Azure XML <Error> envelope on the
+              # blob list route (real-service shape; lane 06 defect 3).
               {:error, status, code, msg} when is_integer(status) ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                blob_error_xml(conn, status, code, msg)
             end
           end
 
@@ -938,8 +992,11 @@ defmodule Smalt.EgressRouter do
               |> put_resp_content_type("application/xml")
               |> send_resp(200, xml)
 
+            # comp=list-class errors emit the Azure XML envelope here too
+            # (lane 06 defect 3; the plain-GET container fallback is the same
+            # list operation as the comp=list arm).
             {:error, status, code, msg} when is_integer(status) ->
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
+              blob_error_xml(conn, status, code, msg)
           end
       end
     end)
@@ -1249,6 +1306,12 @@ defmodule Smalt.EgressRouter do
     end
   end
 
+  # Lens7 law: a missing coordinator-owned ETS table is server not-ready, not
+  # a raw 500 from :ets raising ArgumentError inside a list walk.
+  defp tables_ready?(tables) do
+    Enum.all?(tables, fn t -> :ets.info(t) != :undefined end)
+  end
+
   defp not_ready?(_conn, modules) do
     not Enum.all?(modules, &Code.ensure_loaded?/1)
   end
@@ -1301,7 +1364,8 @@ defmodule Smalt.EgressRouter do
     allowed_hosts = Application.get_env(:smalt, :blob_catch_all_hosts, [])
 
     if get_req_header(conn, "x-ms-version") != [] or conn.host in allowed_hosts do
-      if not_ready?(conn, [BlobStorage]) do
+      if not_ready?(conn, [BlobStorage]) or
+           not tables_ready?([:smalt_blobs, :smalt_blob_containers, :smalt_blob_policy]) do
         route_not_ready(conn)
       else
         # D1 belt-and-braces: an encode failure in ANY blob response path
@@ -1717,11 +1781,44 @@ defmodule Smalt.EgressRouter do
     "\"" <> Base.encode16(:crypto.hash(:md5, seed), case: :upper) <> "\""
   end
 
+  # Lane 06 (v26.10.14) defect 3, part 2: blob error responses now carry the
+  # error code in the x-ms-error-code header, extracted from the JSON body's
+  # code slot (either envelope shape). Additive — the JSON body is unchanged.
   defp blob_error(conn, status, body) do
     conn
     |> put_resp_header("x-ms-request-id", generate_request_id())
     |> put_resp_header("x-ms-version", "2021-12-02")
+    |> put_error_code_header(body)
     |> send_json(status, body)
+  end
+
+  defp put_error_code_header(conn, body) do
+    case blob_error_code(body) do
+      nil -> conn
+      code -> put_resp_header(conn, "x-ms-error-code", code)
+    end
+  end
+
+  defp blob_error_code(%{"error" => %{"code" => code}}) when is_binary(code), do: code
+  defp blob_error_code(%{"code" => code}) when is_binary(code), do: code
+  defp blob_error_code(_), do: nil
+
+  # Lane 06 (v26.10.14) defect 3, part 1: on the blob comp=list routes the
+  # real Azure Blob service answers typed errors with an XML
+  # <?xml?><Error><Code/><Message/></Error> envelope (Content-Type
+  # application/xml), not JSON. Scoped to the comp=list arms only — every
+  # other blob_error/3 consumer (ledger, cosmos, KV, attestation, sentinel)
+  # keeps byte-identical JSON output.
+  defp blob_error_xml(conn, status, code, message) do
+    xml =
+      ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>#{BlobService.xml_escape(code)}</Code><Message>#{BlobService.xml_escape(message)}</Message></Error>)
+
+    conn
+    |> put_resp_header("x-ms-request-id", generate_request_id())
+    |> put_resp_header("x-ms-version", "2021-12-02")
+    |> put_resp_header("x-ms-error-code", code)
+    |> put_resp_content_type("application/xml")
+    |> send_resp(status, xml)
   end
 
   defp not_found_error(code) do

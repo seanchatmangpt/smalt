@@ -113,9 +113,7 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       # Real collaborator: the sweep touches :smalt_sb_sessions, owned by
       # Smalt.Store. The old tolerate-absence rescue used to eat the missing
       # table as a no-op; fail-closed requires the real Store running.
-      if is_nil(GenServer.whereis(Smalt.Store)) do
-        {:ok, _} = Smalt.Store.start_link()
-      end
+      SmaltTest.Lifecycle.ensure_store_up()
 
       :ok
     end

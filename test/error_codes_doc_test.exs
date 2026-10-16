@@ -46,7 +46,21 @@ defmodule Smalt.ErrorCodesDocTest do
 
   test "arm-gateway rows equal the error set re-derived from the router source" do
     doc_codes = doc_rows() |> rows_for_surface("arm-gateway") |> MapSet.new(&{String.to_integer(&1.status), &1.code})
-    assert doc_codes == MapSet.new(@pinned_arm_set)
+
+    # The LRO poll route emits its typed error member (status Failed at 200)
+    # from lro.ex, not router.ex — re-derive it the same way the generator
+    # does (the "code" literal inside the evaluate/2 fallback) so a new LRO
+    # error code without a doc regen fails this fence (lens-10 cycle-1).
+    lro_src = File.read!("lib/smalt/arm_gateway/lro.ex")
+    lro_codes =
+      # def/p-def tolerant anchor (sibling refactor promoted evaluate/2 to
+      # def; witnessed 2026-10-15, v26.10.14 lane 14) — matches the generator
+      case Regex.run(~r/defp? evaluate\((?s:.)*"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"/, lro_src) do
+        [_, code] -> MapSet.new([{200, code}])
+        _ -> MapSet.new()
+      end
+
+    assert doc_codes == MapSet.union(MapSet.new(@pinned_arm_set), lro_codes)
   end
 
   test "every doc row parses and carries source/meaning/remediation columns" do
@@ -141,16 +155,15 @@ defmodule Smalt.ErrorCodesDocTest do
 
   defp parse_row_lines(lines) do
     Enum.map(lines, fn line ->
-      # Escape-aware split mirroring Smalt.DSPy.Remediation.split_row/1: the
-      # generator emits literal pipes in cells as `\|`; a naive split turned
-      # one escaped pipe into three corrupted cells and STAYED GREEN (the
-      # silent-corruption class, lens-4).
+      # Escape-aware scan mirroring Smalt.DSPy.Remediation.split_row/1 (lens-5
+      # hostile cells): `\|` is a literal pipe, `\\` a literal backslash, and
+      # a lone trailing `\|` is content — a naive "|" split silently corrupts
+      # the meaning/remediation boundary and stays green.
       cells =
         line
-        |> String.trim_trailing("|")
-        |> String.split(~r{(?<!\\)\|})
-        |> Enum.map(fn cell -> cell |> String.replace("\\|", "|") |> String.trim() end)
-        |> tl()
+        |> String.graphemes()
+        |> scan_cells([], [])
+        |> Enum.map(&String.trim/1)
 
       [surface, status, code, source, meaning | rest] = cells
       remediation = Enum.join(rest, "|")
@@ -164,6 +177,34 @@ defmodule Smalt.ErrorCodesDocTest do
         remediation: remediation
       }
     end)
+  end
+
+  defp scan_cells(["\\" | [next | rest]], cur, cells),
+    do: scan_cells(rest, [next | cur], cells)
+
+  # A lone trailing backslash needs no special clause: the generic char clause
+  # below already keeps it as content (lens-6: dedicated clause deleted as an
+  # equivalent-mutant dead code).
+
+  defp scan_cells(["|" | rest], cur, cells),
+    do: scan_cells(rest, [], [cur | cells])
+
+  defp scan_cells([c | rest], cur, cells),
+    do: scan_cells(rest, [c | cur], cells)
+
+  defp scan_cells([], cur, cells) do
+    all = (Enum.reverse(cells) ++ [cur]) |> Enum.map(&Enum.reverse/1) |> Enum.map(&Enum.join/1)
+
+    case all do
+      ["" | rest] ->
+        case Enum.reverse(rest) do
+          ["" | inner] -> Enum.reverse(inner)
+          _ -> rest
+        end
+
+      other ->
+        other
+    end
   end
 
   defp rows_for_surface(rows, surface) do

@@ -68,7 +68,8 @@ async function main() {
   const child = spawn("mix", [
     "run", "--no-start", "--no-halt",
     "-e",
-    `Application.put_env(:smalt, :sb_shared_key, "${sharedKey}"); ` +
+    `Application.put_env(:smalt, :auth_mode, :anonymous); ` +
+      `Application.put_env(:smalt, :sb_shared_key, "${sharedKey}"); ` +
       `Application.put_env(:smalt, :amqp_port, ${AMQP_PORT}); ` +
       `Application.put_env(:smalt, :event_hubs_port, ${EH_PORT}); ` +
       `Application.put_env(:smalt, :arm_port, ${ARM_PORT}); ` +

@@ -299,9 +299,7 @@ defmodule StrataCompatTest do
     end
 
     defp start_supervised! do
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised({Smalt.Store, []})
-      end
+      SmaltTest.Lifecycle.ensure_store_up()
     end
   end
 

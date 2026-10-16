@@ -202,7 +202,7 @@ defmodule Smalt.Auth.Bearer do
       [] ->
         {:refuse, "AuthenticationFailed", "MissingBearerToken"}
 
-      [_, _ | _] = dupes ->
+      [_, _ | _] ->
         # Lens-5 typed decision (M-L5-3): RFC 7230 §3.2.2 / RFC 9110 §5.3 —
         # Authorization is NOT a list-combinable field; a request carrying two
         # Authorization headers is an invalid message. Previous first-wins

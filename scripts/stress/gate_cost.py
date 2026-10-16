@@ -26,6 +26,7 @@ Exit 0 only when all budgets hold.
 """
 import json
 import os
+import signal
 import socket
 import statistics
 import subprocess
@@ -231,11 +232,23 @@ def main():
         valid_lats, valid_st = wire_class(N_WIRE, VALID_BODY, {200, 201}, token)
         invalid_lats, invalid_st = wire_class(N_WIRE, INVALID_BODY, {400}, token)
     finally:
+        # SIGTERM the group, bounded wait, SIGKILL escalation; never
+        # wrapper-only terminate (lens-5 cycle 2 orphaned-beam class).
         try:
-            os.killpg(proc.pid, 15)
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
-            proc.terminate()
-        proc.wait(timeout=30)
+            pass
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
 
     v_sorted = sorted(valid_lats)
     i_sorted = sorted(invalid_lats)

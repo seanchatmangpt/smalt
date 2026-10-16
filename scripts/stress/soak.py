@@ -22,6 +22,9 @@ import queue
 import random
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+import _substrate  # noqa: E402
 import threading
 import time
 from collections import Counter
@@ -228,7 +231,8 @@ def boot_substrate():
            "--no-start", "-e", eval_code, "--no-halt"]
     return subprocess.Popen(cmd, cwd=REPO, env=env,
                             stdout=open("/tmp/soak-substrate.log", "ab"),
-                            stderr=subprocess.STDOUT)
+                            stderr=subprocess.STDOUT,
+                            start_new_session=True)  # own group: killpg teardown (lens-5 cycle 2)
 
 
 def ets_snapshot():
@@ -303,7 +307,8 @@ def wait_ready(deadline=120):
     t_end = time.time() + deadline
     while time.time() < t_end:
         try:
-            if http_req("127.0.0.1", ARM_PORT, "GET", "/subscriptions") == 200:
+            if http_req("127.0.0.1", ARM_PORT, "GET",
+                        "/subscriptions?api-version=2021-04-01") == 200:
                 return True
         except Exception:
             pass
@@ -312,6 +317,7 @@ def wait_ready(deadline=120):
 
 
 def main():
+    _substrate.install_sigterm_handler()  # SIGTERM -> SystemExit -> finally teardown (lens-5 cycle 5)
     ap = argparse.ArgumentParser()
     ap.add_argument("--duration", type=int, default=1500, help="soak seconds")
     ap.add_argument("--rps", type=int, default=50)
@@ -332,11 +338,7 @@ def main():
         print(f"[soak] substrate not ready (attempt {attempt}); "
               f"retrying boot", flush=True)
         if proc:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            _substrate.kill_substrate(proc)  # group kill (lens-5 cycle 2)
             proc = None
         if attempt >= 3:
             print("[soak] FAIL: substrate never became ready after 3 attempts",
@@ -445,11 +447,7 @@ def main():
     print("[soak] raw samples -> /tmp/soak-results.json")
 
     if proc:
-        proc.terminate()
-        try:
-            proc.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        _substrate.kill_substrate(proc)  # group kill (lens-5 cycle 2)
     return 0 if verdict == "PASS" else 1
 
 

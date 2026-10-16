@@ -40,6 +40,13 @@ HOST = "127.0.0.1"
 ARM_PORT = int(os.environ.get("SMALT_BENCH_ARM_PORT", "9443"))
 DATA_PORT = int(os.environ.get("SMALT_BENCH_DATA_PORT", "8443"))
 AMQP_PORT = int(os.environ.get("SMALT_BENCH_AMQP_PORT", "5672"))
+# Six-listener scoping (lens-4 cycle 2): a private-port boot that scopes
+# only arm/egress/amqp still dies eaddrinuse when a sibling holds the
+# arm_tls (9444) / mcp (9545) / event_hubs defaults. Witnessed class:
+# lens-2 cycle 2/4, closed in bench.py; bench_concurrent was missed.
+TLS_PORT = int(os.environ.get("SMALT_BENCH_TLS_PORT", "39540"))
+EVENT_HUBS_PORT = int(os.environ.get("SMALT_BENCH_EH_PORT", "39541"))
+MCP_PORT = int(os.environ.get("SMALT_BENCH_MCP_PORT", "39542"))
 SUB_ID = "bench-sub"
 API_VERSION = "2021-01-01"
 
@@ -75,6 +82,10 @@ def spawn_substrate():
                f"Application.put_env(:smalt, :arm_port, {ARM_PORT}); "
                f"Application.put_env(:smalt, :egress_port, {DATA_PORT}); "
                f"Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); "
+               f"Application.put_env(:smalt, :arm_tls_port, {TLS_PORT}); "
+               f"Application.put_env(:smalt, :event_hubs_port, "
+               f"{EVENT_HUBS_PORT}); "
+               f"Application.put_env(:smalt, :mcp_port, {MCP_PORT}); "
                "{{:ok, _}} = Application.ensure_all_started(:smalt)"]
     else:
         cmd = ["mix", "run", "--no-halt"]
@@ -97,7 +108,9 @@ def wait_for_port(port, proc, timeout_s=90.0):
 def kill_substrate(proc):
     if proc is None:
         return
-    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, AMQP_PORT))
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, TLS_PORT, DATA_PORT,
+                                           AMQP_PORT, EVENT_HUBS_PORT,
+                                           MCP_PORT))
     try:
         os.remove("/tmp/smalt-bench.pid")
     except OSError:

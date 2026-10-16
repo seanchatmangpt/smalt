@@ -479,7 +479,11 @@ defmodule Smalt.Compliance.C1ArmTest do
     # absolute nextLink pointing at this listener, carrying $skip
     assert String.starts_with?(page1["nextLink"], "http://127.0.0.1:#{port}")
     %{query: query} = URI.parse(page1["nextLink"])
-    assert %{"$skip" => "100", "maxitempages" => "1"} = URI.decode_query(query)
+    decoded = URI.decode_query(query)
+    assert %{"$skip" => "100", "maxitempages" => "1"} = decoded
+    # lens-8: the emitted nextLink must PRESERVE the request's api-version
+    # (absolute-link replayability: a follower needs a well-formed ARM call)
+    assert decoded["api-version"] == api_v("Microsoft.Compute/disks")
 
     # follow the nextLink through the same listener (path + query only)
     next = URI.parse(page1["nextLink"])
@@ -711,6 +715,41 @@ defmodule Smalt.Compliance.C1ArmTest do
     {200, _h, _} = get!(port, base <> "?api-version=2021-04-01")
     {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2021-04-01")
     assert is_list(json(list_body)["value"])
+  end
+
+  # ---------------------------------------------------------------------------
+  # Row 5b — Failed operation status: the wire renders a terminal Failed
+  # operation as 200 with `status="Failed"`, an `endTime`, and the ARM error
+  # member (`error.code`/`error.message`). Producer: the lens-9 livelock fix —
+  # an InProgress record missing scheduling fields flips to Failed at first
+  # evaluation (test/lro_test.exs fence (13) pins the mint path at the LRO
+  # seam; this fence pins the wire tier). Closes the wire half of
+  # GAP(lro-no-failed-path)'s close condition.
+  # ---------------------------------------------------------------------------
+  test "row 5b: polling a Failed operation returns 200 with status Failed and error member", %{port: port} do
+    id = "handseeded0000000000000000"
+
+    # Seed an InProgress record with no scheduling fields; the poll flips it to
+    # the persisted Failed terminal (lens-9 livelock fix producer).
+    Store.put(:smalt_operations, id, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{id}",
+      "name" => id,
+      "status" => "InProgress",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "endTime" => nil,
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/rg1/missing"
+    })
+
+    {status, _headers, body} = get!(port, "/subscriptions/#{@sub}/operations/#{id}")
+
+    assert status == 200
+    op = json(body)
+
+    assert op["status"] == "Failed"
+    assert is_binary(op["endTime"])
+
+    assert %{"code" => "OperationRecordIncomplete", "message" => msg} = op["error"]
+    assert is_binary(msg) and msg != ""
   end
 
   defp unique, do: :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)

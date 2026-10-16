@@ -12,13 +12,13 @@ api-version semantics, list envelopes, status-code semantics).
 
 Method: live wire probes — `Smalt.ArmGateway.Router` booted under Bandit on an
 ephemeral port per test, real HTTP via inets `:httpc` (no doubles). Fence
-tests: `test/compliance/c1_arm.exs` (25 tests, 0 failures, 2026-10-15).
+tests: `test/compliance/c1_arm.exs` (26 tests, 0 failures, 2026-10-15 lens-9 re-measured).
 
 ## Receipt
 
 - Subject: smalt v26.10.14 `Smalt.ArmGateway.Router` + `Smalt.ArmGateway.LRO`
 - Probe transport: Bandit ephemeral listener + `:httpc` (inets), real sockets
-- Commands: `mix test test/compliance/c1_arm.exs` → `25 tests, 0 failures`
+- Commands: `mix test test/compliance/c1_arm.exs` → `26 tests, 0 failures` (lens-9 re-measured)
 - Replay: `cd ~/smalt && mix test test/compliance/c1_arm.exs`
 - Standing: PARTIAL_ALIVE (22 CONFORMANT (21 fenced; 4 + 1b fixed 2026-10-15),
   1 PARTIAL (5b), 0 GAP)
@@ -80,18 +80,51 @@ owning surface and a close condition. Adopted by the arm-gateway lane
 
 | Token | Row | Standing | Debt | Close condition |
 |---|---|---|---|---|
-| `GAP(lro-no-failed-path)` | 5b | PARTIAL | operations never fail in smalt (`lro.ex` flips InProgress→Succeeded only); the operation-status `error` member has no producer, so row 5b cannot fence | a Failed LRO path (typed failure cause on the record + `error` member on the status body + a c1 fence probing it) |
-| `GAP(lro-retention-unbounded)` | — | OPEN (policy, not protocol) | op records accumulate forever (fences `lro_test (10)+(11)` pin this deliberately); measured 780 B/op, monotone for VM life (tmp/errc/arm-gateway-lens7/cycle-2.md) | a deliberate `:lro_retention` landing that updates fences (10)+(11) in the same change |
-| `GAP(lro-lazy-terminality)` | 5 | OPEN (design note) | a record only reaches terminal in the store when some `get_op` touches it; an op never polled after the delay elapses stays InProgress at rest (surfaced by the lens-7 F7 conversions) | a timer/persist-on-elapsed landing, or an explicit pinned-divergence row here |
+| `GAP(lro-no-failed-path)` | 5b | CLOSED 2026-10-15 (lens-9 cycle-1) | operations never fail in smalt (`lro.ex` flips InProgress→Succeeded only); the operation-status `error` member has no producer, so row 5b cannot fence | a Failed LRO path: typed failure cause on the record, `error` member on the status body — closure is proved by a new row-5b fence in `test/compliance/c1_arm.exs` (wire poll of a Failed op returns 200 with `status="Failed"` + `error.code/error.message` and an `endTime`) plus a `test/lro_test.exs` fence asserting the mint path (`start_op` variant or seeded record) produces the `error` member; both tests green on the landed code = closed. CLOSED: `evaluate/1`'s catch-all now flips an incomplete InProgress record to a persisted Failed terminal with `error.code="OperationRecordIncomplete"`; both close fences landed green (c1 row-5b, `lro_test (13)`), M48/M49 killed |
+| `GAP(lro-lazy-terminality)` | 5 | CLOSED 2026-10-15 (V261014-05) | a record only reached terminal in the store when some `get_op` touched it; an op never polled after the delay elapses stayed InProgress at rest (surfaced by the lens-7 F7 conversions). Livelock face RESOLVED lens-9 (incomplete records flip to a persisted Failed terminal, `OperationRecordIncomplete`); lens-10 added the missing/non-binary-status fail-closed faces | closed by `Smalt.ArmGateway.LRO.Sweeper` (`lib/smalt/arm_gateway/lro_sweeper.ex`): periodic flip pass over `:smalt_operations` driving the SAME public `evaluate/2`/`fail_closed/2` the lazy poll path uses; child of `Smalt.Supervisor`; fences `lro_test (10)` rewritten (500 mints, zero polls, raw reads all Succeeded at rest), (10b) at-rest zero-poll fence, (12)+(13) unchanged and green |
+| `GAP(lro-retention-unbounded)` | — | CLOSED 2026-10-15 (V261014-05) | op records accumulated forever (fences `lro_test (10)+(11)` pinned this deliberately); measured 780 B/op, monotone for VM life (tmp/errc/arm-gateway-lens7/cycle-2.md) | closed by opt-in `:lro_retention_ms` (default `:infinity` — no silent policy change, fence (11) green unchanged): eviction pass after the flip pass, terminal-only (InProgress NEVER evicted), oldest-terminal-first; fences (10) eviction face (past-window terminal GONE at raw get, in-window remain, InProgress survives) + (10c) no-op fence + (10d) sweep-vs-poll convergence fence, all green |
 
-## Fenced surface
+**Sweeper work order shape** (IMPLEMENTED v26.10.14, V261014-05 — was
+engine-Raise candidate, FEATURE BAN, lens-8 cycle 2):
+
+- **Trigger**: periodic `Process.send_after` loop in a dedicated
+  `Smalt.ArmGateway.LRO.Sweeper` GenServer, interval
+  `Application.get_env(:smalt, :lro_sweep_interval_ms, 30_000)`; started under
+  the gateway supervision tree, never under a request process (the lens-2
+  regression class).
+- **Scan**: `Store.list(:smalt_operations)` → for each InProgress record with
+  `startedAtMs + delayMs <= now`, persist the identical terminal record the
+  lazy path computes (same `evaluate/1` shape: delete scheduling fields, set
+  status Succeeded, set `endTime`) — one shared pure function so the sweeper
+  and the lazy path cannot diverge. Records missing scheduling fields
+  (livelock face): **RESOLVED lens-9** — the shared pure function now types
+  them terminal-Failed (`OperationRecordIncomplete`, error member set); the
+  sweeper must reuse the same function so lazy and swept records converge to
+  the identical persisted terminal. Records with a MISSING or non-binary
+  "status" member: **RESOLVED lens-10** — `get_op/1` fails them closed
+  (bypassing the scheduling clause) to the same persisted Failed terminal;
+  fence `lro_test (20)` pins both the valid-scheduling and no-scheduling
+  variants; the sweeper must reuse the same fail-closed function.
+- **Eviction interaction** (with `GAP(lro-retention-unbounded)` — CLOSED
+  2026-10-15, lane-05 receipt): eviction eligibility = terminal AND older than
+  the retention window, evaluated AFTER the sweep flips, oldest-terminal-first
+  per the lens-7 parked design; the sweep itself never deletes.
+- **Fences**: (a) `lro_test (10)` retention run converts to no-poll + sweep +
+  raw read; (b) `lro_test (13)` per above; (c) new fence: sweep on an empty
+  store and a store of all-terminal records is a no-op (0 writes witnessed via
+  a record-count/`endTime`-stability pin); (d) concurrency fence: sweep
+  racing a wire poll on the same record converges to ONE persisted terminal
+  record (idempotent put, byte-identical body).
+- **Falsifier**: a record past `startedAtMs + delayMs + sweep_interval` that
+  was never polled still reads InProgress at raw `Store.get` after the sweep
+  pass → work order not closed.
 
 ## Fenced surface
 
 `test/compliance/c1_arm.exs` pins rows 1a, 1b, 1c, 2a, 2b, 3a, 3b, 3c, 4, 5,
-6a, 6b (both verbs), 7a, 7b, 8, 9, 11, 12, 13. 25 tests,
+6a, 6b (both verbs), 7a, 7b, 8, 9, 11, 12, 13. 26 tests,
 `mix test test/compliance/c1_arm.exs` →
-`25 tests, 0 failures` (run 2026-10-15, lens-4 re-measured).
+`26 tests, 0 failures` (run 2026-10-15, lens-9 re-measured).
 
 ## See Also
 

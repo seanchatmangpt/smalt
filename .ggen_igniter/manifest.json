@@ -3,11 +3,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex=>lib/smalt/registry.ex": {
       "out_template": "lib/smalt/registry.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:07032e548e57d63a6e293bc5ab07ba570de654fed0e8aef9378c2772752431ef"
+        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:e656421c2abcae4477774811f84f7a1dba9e7551850ba957fb072cfc41a73c2c"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex",
-      "updated_at": "2026-10-15T16:22:18.066159Z"
+      "updated_at": "2026-10-15T20:58:05.208640Z"
     },
     "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": {
       "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex",
@@ -44,6 +44,15 @@
       "pack_dir": null,
       "template": "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/verify.ex.tmpl",
       "updated_at": "2026-10-15T05:54:20.943025Z"
+    },
+    "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>lib/smalt/mcp/generated/mcp_descriptor.ex": {
+      "out_template": "lib/smalt/mcp/generated/mcp_descriptor.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:900c396b7537dfa0bba43c1bdeeb78ed0b315ca0f5f26ef49f9c94512f0fac47"
+      },
+      "pack_dir": null,
+      "template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
+      "updated_at": "2026-10-15T19:15:13.224703Z"
     }
   },
   "schema_version": "1",

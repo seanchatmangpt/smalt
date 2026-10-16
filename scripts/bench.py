@@ -402,6 +402,11 @@ def main():
     global ARM_PORT, DATA_PORT, AMQP_PORT
     if shutil.which("mix") is None:
         fail_closed("mix not in PATH")
+    # SIGTERM -> SystemExit (lens-5 cycle 5): every bench_* function tears its
+    # substrate down in a finally; a bare SIGTERM mid-boot would bypass all of
+    # them and orphan the BEAM (the class gates/common guards against,
+    # mutation-verified lens-5 cycle 1).
+    _substrate.install_sigterm_handler()
 
     override = any(os.environ.get(v) for v in
                    ("SMALT_BENCH_ARM_PORT", "SMALT_BENCH_DATA_PORT",

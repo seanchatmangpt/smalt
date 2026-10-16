@@ -34,6 +34,9 @@ defmodule SmaltTest.AshExtension.Probe do
   attributes do
     attribute(:id, :string, allow_nil?: false, primary_key?: true, public?: true)
     attribute(:name, :string, public?: true)
+    # Lens-7 cycle 5: non-string attribute types must pass through the read
+    # path UNTOUCHED (the type-aware field policy only coerces :string).
+    attribute(:weight, :integer, public?: true)
   end
 
   actions do
@@ -409,9 +412,7 @@ defmodule SmaltTest.AshExtension.Lens4IdentityTest do
   setup_all do
     # Lens-4: this appended module needs the Store GenServer up for the
     # Store-backed read path (same boot prerequisite as the parent suite).
-    if Process.whereis(Smalt.Store) == nil do
-      start_supervised!(Smalt.Store)
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end
@@ -436,5 +437,53 @@ defmodule SmaltTest.AshExtension.Lens4IdentityTest do
     assert Exception.message(err) <> inspect(err.errors) =~ "vacuous identity"
 
     Store.delete(:smalt_resources, uid)
+  end
+end
+
+# Lens-7 cycle 5: type-aware field policy on the extension read path —
+# a non-binary under a declared :string attribute projects nil (the pinned
+# lenient-nil precedent), never a raw type-lie; non-string attribute types
+# are untouched.
+defmodule Smalt.AshExtension.Lens7FieldPolicyTest do
+  use ExUnit.Case, async: false
+
+  alias Smalt.Store
+
+  setup do
+    {:ok, _} = Application.ensure_all_started(:ash)
+
+    if Process.whereis(Store) == nil do
+      start_supervised!(Store)
+    end
+
+    :ok
+  end
+
+  test "a non-binary under a :string attribute projects nil, never raw" do
+    uid = "aex-l7-#{System.unique_integer([:positive])}"
+
+    Store.put(:smalt_resources, uid, %{
+      "id" => uid,
+      "name" => ["not", "a", "string"],
+      "weight" => 42,
+      "extra_untyped_key" => 42
+    })
+
+    projected = Enum.find(Ash.read!(SmaltTest.AshExtension.Probe), &(&1.id == uid))
+
+    assert projected, "seeded field-drift row not projected"
+    assert projected.name == nil
+    # Non-string attribute type: raw passthrough is the contract.
+    assert projected.weight == 42
+
+    # A well-formed neighbor still projects faithfully.
+    good = uid <> "-good"
+
+    Store.put(:smalt_resources, good, %{"id" => good, "name" => "g"})
+
+    assert Enum.find(Ash.read!(SmaltTest.AshExtension.Probe), &(&1.id == good)).name == "g"
+
+    Store.delete(:smalt_resources, uid)
+    Store.delete(:smalt_resources, good)
   end
 end

@@ -31,6 +31,9 @@ control-plane and audit-plane surfaces no emulator provides.
 - Long-running operations: 202 + `Azure-AsyncOperation` polling for
   `Microsoft.Storage/storageAccounts` and
   `Microsoft.Compute/virtualMachines` (`Smalt.ArmGateway.LRO`).
+- ARM LRO background sweeper (`Smalt.ArmGateway.LRO.Sweeper`): at-rest
+  terminality without a poll, plus opt-in retention
+  (`config :smalt, :lro_retention_ms`, default `:infinity`).
 - `api-version` gate: required on typed routes, latest-version-only
   enforcement against `Smalt.Registry.latest_version/1`; missing ->
   400 `MissingApiVersionParameter`, mismatch -> 400
@@ -237,10 +240,11 @@ control-plane and audit-plane surfaces no emulator provides.
 
 - Compliance courts c1-c7 (`test/compliance/`, receipts in
   `docs/compliance/`): live-wire per-service fences over real HTTP/AMQP
-  transport (no doubles). Latest runs (re-run 2026-10-15, docs-corpus-lens3
-  cycle 1, this tree): c1 ARM 25/0, c2 Key Vault 16/0, c3 Cosmos 23/0, c4 Blob
-  28/0, c5 Service Bus 16/0 (`--include amqp_wire`), c6 OAuth/OIDC 18/0,
-  c7 Event planes 16/0 — **142 tests, 0 failures**.
+  transport (no doubles). Latest runs (re-run 2026-10-15, docs-corpus-lens8
+  cycle 2): c1 ARM 26/0, c2 Key Vault
+  16/0, c3 Cosmos 28/0, c4 Blob
+  46/0 (+4 blob-lane fences), c5 Service Bus 16/0 (`--include amqp_wire`), c6 OAuth/OIDC 18/0,
+  c7 Event planes 17/0 — **167 tests, 0 failures**.
 - Pack integrations (receipts in `docs/PACK_INTEGRATION/`): 15 packs
   consumed and receipted (ash-extension, ash-ocel-revops, ash-pplan,
   ashdspy, canonical-projection, clap-noun-verb, ea-projection,
@@ -265,6 +269,40 @@ control-plane and audit-plane surfaces no emulator provides.
 
 Post-26.10.14 substrate laws, each probe/suite-pinned on this tree
 (docs-corpus cycle 10, 2026-10-15):
+
+Tooling & workspaces (v26.10.14 fan-out, one line per landed lane family):
+
+- Workspace: air-gapped Next.js sovereign console in `workspace/` (12 WS
+  lanes; verb-gated zero-actuation, Web Serial, Bellman solver, e2e court
+  via `just ws-court`). Receipt:
+  `docs/jira/v26.10.14/receipts/ws-12-e2e.md` (+ `ws-01`..`ws-11`).
+- smalt-cli: headless Python CLI companion with the AU-10 zero-actuation
+  gate and a four-gate verification runner (`run_gates.py`,
+  `smalt-cli/GATES.md`). Receipt:
+  `docs/jira/v26.10.14/receipts/cli-08-gates.md`.
+- Enclave testbed: composite enclave-grade stress testbed
+  (`bash test/enclave-testbed/run.sh`; SKR/WORM/Ledger/Purview/Sentinel/RG/
+  Cosmos/LRO/SB/EH + chaos overlay) — 9 phases, 9 PASS (2026-10-15,
+  run.sh exit 0). Finding ENCLAVE-1 (put_blob CREATE under WORM) was
+  dispositioned RESOLVED-INVALID: real Azure immutable storage permits
+  writing NEW blobs into a locked/legal-hold container; only
+  overwrite/delete of existing blobs are refused (409 `ContainerLocked`).
+  Receipt: `docs/jira/v26.10.14/sdk-results/enclave-testbed.md`.
+- SDK courts: real-Azure-SDK probe tiers (`test/sdk-smoke` T3 tier via
+  `just test-sdk-smoke`, Service Bus census via `just census`, EH lane,
+  `test/sdk-full` / `test/sdk-python` probe suites). Receipts:
+  `docs/jira/v26.10.14/receipts/08-servicebus-census.md`,
+  `docs/jira/v26.10.14/receipts/12-gate-closure.md`.
+- Finish wave (DoD recipes now landed on the Justfile): `court-x2`
+  (double-run flake court), `publish-dry` (hex publish dry-run),
+  `verify-all` (offline verify ladder), `sdk-matrix` (SDK registration
+  matrix, pass-or-registered), `substrate-up` / `substrate-down` /
+  `substrate-status` (lock-protected substrate lifecycle), plus
+  `gap-sync`, `receipt-index`, `doctor-dod`, `lane-clean`. Receipts:
+  `docs/jira/v26.10.14/receipts/dod-07-court-x2.md`,
+  `dod-08-publish-dry.md`, `dod-09-verify-all.md`, `dod-14-sdk-matrix.md`,
+  `dod-01-substrate-lock.md`, `dod-12-docs.md` (final sync:
+  `fin-17-docs-final.md`).
 
 - Auth: `x-forwarded-*` honored only from configured trusted proxies
   (`config :smalt, :trusted_proxies`, exact tuples or IPv4 CIDR), ignored
@@ -354,3 +392,41 @@ Post-26.10.14 substrate laws, each probe/suite-pinned on this tree
   `/subscriptions/:sub_id` (missing -> 400 `MissingApiVersionParameter`
   before any 404 path; LRO polling exemption pinned). Pinned by
   `test/smalt_arm_gateway_test.exs` and `test/route_negative_test.exs`.
+- Docs: `docs/WIRE_PARITY.md` adopts the machine-greppable `GAP(name)`
+  convention — header documents the token; the Blob Storage row's three
+  open Azure-parity gaps are tokenized
+  (`GAP(blob-x-ms-date-unvalidated)`, `GAP(blob-comp-lease-absent)`,
+  `GAP(blob-error-envelope-json)`) and its status cell corrected to
+  PARTIAL per the file's own status vocabulary (implemented with a named
+  gap = PARTIAL, not ALIVE).
+- Key Vault SKR: the tee-admit path now enforces replay protection for
+  nested MAA-form tokens — all nested-capable claim reads (compliance
+  status, runtime jti, recipient JWK) route through one canonical accessor
+  (`claim_value/2`, top-level precedence + case-guarded
+  `x-ms-isolation-tee` fallback); a tee-form token's jti is single-use
+  (replay -> 403 `TokenReplay`), and a tee-form recipient JWK is visible
+  to the attested-recipient wrap. Pinned by
+  `test/security/lens6_fuzz_test.exs` wave 3 (7×7 tee×claim hostile
+  shapes; mutation-proven: reverting the jti read to top-level-only is
+  killed by the tee-form replay fence).
+- ARM LRO: an InProgress operation record that cannot be evaluated
+  (missing/malformed `startedAtMs`/`delayMs`) flips to a persisted Failed
+  terminal with `error.code="OperationRecordIncomplete"` instead of
+  polling forever; the operations poll renders **200 for every terminal
+  status** (only `InProgress` renders 202 — default-terminal, no
+  vocabulary wedge). `GAP(lro-no-failed-path)` CLOSED 2026-10-15
+  (arm-gateway-lens-9); fence `test/lro_test.exs` (13) pins the flip,
+  stickiness, and the 200-with-error-member wire shape.
+- Blob names: a slash-carrying blob name (`dir/name`) is bound by the Plug
+  splat (`*blob_name`) and rejoined with `/` — Azure virtual directories
+  cycle the tail's slashes through the full PUT/GET/DELETE chain. Pinned
+  by `test/wire/egress_wire_test.exs`.
+- Event Hubs: all checkpoint writes are serialized through the single
+  `EHServer` — the checkpoint CAS no longer seeds caller-side (lens-4 F-2
+  window), and `sweep/0` runs as one serialized `handle_call` instead of a
+  caller-side read-modify-write over checkpoints (lens-5 F-3; the F-3 shape
+  court bans the full 11-op caller-side `:ets` write surface, hardened
+  after a delete-shaped mutant evaded the two-op trace 19/0). Event Grid
+  id-dedup is opt-in via `:event_stream_dedup_ids` (duplicate id refused
+  typed `{:error, :duplicate_id}`); the default stays last-write-wins
+  (pinned divergence). Pinned by `test/amqp/event_hubs_test.exs`.

@@ -16,14 +16,14 @@ envelope, status-code semantics, trailing-slash and account envelope).
 Method: live wire probes — `Smalt.EgressRouter` under Bandit, real sockets
 (curl against a live anonymous-mode egress instance + per-test Bandit
 listeners in the fence suite). Fence tests:
-`test/compliance/c3_cosmos.exs` (26 tests, 0 failures, 2026-10-15 lens-7 re-measured; lens-3 added byte-exact response-content-type pins, lens-4 added the row-18 continuation court, lens-7 added emit-then-resume round-trip courts for BOTH the list feed and the query feed)
+`test/compliance/c3_cosmos.exs` (28 tests, 0 failures, 2026-10-15 lens-8 re-measured; lens-3 added byte-exact response-content-type pins, lens-4 added the row-18 continuation court, lens-7 added emit-then-resume round-trip courts for BOTH the list feed and the query feed plus the mirror-direction (v2-on-query) and pk-scope-binding wire courts, lens-8 added the cross-container token-binding wire court routed from cosmos lens-6)
 
 ## Receipt
 
 - Subject: smalt v26.10.14 Cosmos surface (engine + router seam)
 - Probe transport: real sockets — curl vs a live anonymous-mode egress
   listener (`:28443`) and inets `:httpc` against per-test Bandit listeners
-- Commands: `mix test test/compliance/c3_cosmos.exs` → `26 tests, 0 failures` (lens-7 re-measured)
+- Commands: `mix test test/compliance/c3_cosmos.exs` → `28 tests, 0 failures` (lens-8 re-measured)
 - Replay: `cd ~/smalt && mix test test/compliance/c3_cosmos.exs`
 - Standing: PARTIAL_ALIVE (18 rows: 18 CONFORMANT fenced, 0 GAP — row 18
   re-graded CONFORMANT 2026-10-15 lens-4 after cosmos-lens3's authorized RAISE
@@ -60,6 +60,20 @@ listeners in the fence suite). Fence tests:
 
 ## Known-deviation notes
 
+- `GAP(cosmos-sql-translator-absent)`: no full SQL translator. A whitelist
+  honesty gate (`cosmos.ex` `sql_whitelisted?/1`, landed v26.10.14 work order
+  V261014-07 option (a)) admits only the trivial `SELECT * FROM <alias>` form;
+  every other nonblank query answers a typed 400 `SyntaxError` — the emulator
+  never returns an honest-looking 200 for a query it did not evaluate. Fenced
+  by the whitelist court in `test/data_plane/cosmos_test.exs`
+  (v261014-07 describe "SQL whitelist honesty gate": `SELECT * FROM c` → 200
+  feed; `WHERE`/`ORDER BY`/`JOIN`/`TOP`/projection/garbage → 400
+  `SyntaxError`). The gap label stays: the whitelist narrows the lie, it does
+  not close the gap. The list feed (`GET /dbs/:db/colls/:coll/docs`) is
+  wrapped in the same auth/RU `gate/5` as every sibling doc route
+  (401-without-auth wire fence in the same file). nil and "" list-feed
+  prefixes share one continuation-token namespace (`scope/1` normalization,
+  round-trip court in the same file).
 - Implicit-create on doc paths: `create_doc`/`list_docs`/`query_docs` against a
   db/container that was never created succeed (201/200) — real Cosmos answers
   404 NotFound. Pinned as a KNOWN DIVERGENCE by

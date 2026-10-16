@@ -15,9 +15,7 @@
 # remains the contract for suites that stop/restart the shared tree.
 ExUnit.configure(
   exclude: [
-    :amqp_wire,
-    :arm_seam,
-    :dp_seam
+    :amqp_wire
   ]
 )
 
@@ -74,6 +72,7 @@ defmodule SmaltTest.Lifecycle do
         end
 
         wait_gone(Smalt.Store)
+        wait_gone(Smalt.Supervisor)
     end
   end
 
@@ -99,6 +98,97 @@ defmodule SmaltTest.Lifecycle do
     case Application.ensure_all_started(:smalt) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Child-aware guarantee that the shared Store GenServer is up under the shared
+  supervision tree, with all Store ETS tables materialized.
+
+  Unlike `restore_app/0` (a no-op when :smalt is *started* but Store was
+  Supervisor.terminate_child'd), this:
+
+    1. ensure_all_started(:smalt) — covers the fully-stopped case;
+    2. if Process.whereis(Smalt.Store) is still nil, restarts the child
+       (ignore {:error, :already_present} / {:error, {:already_started, _}} —
+       both are success for our purposes);
+    3. waits (bounded, ~3s) until :ets.info/1 != :undefined for ALL Store
+       tables, so callers never see the half-initialized window.
+
+  Idempotent and non-raising: returns :ok, or {:error, :store_not_running}
+  on a hopeless tree (never raises — safe from on_exit).
+  """
+  def ensure_store_up, do: do_ensure_store_up(3)
+
+  defp do_ensure_store_up(0), do: {:error, :store_not_running}
+
+  defp do_ensure_store_up(retries) do
+    case Process.whereis(Smalt.Store) do
+      nil ->
+        # Fully-stopped (or Store-only-down) case: re-apply the run's shifted
+        # envs + ensure_all_started, then force the child back under the
+        # supervisor if ensure_all_started was a no-op (app "started" but the
+        # Store child was terminate_child'd).
+        _ = restore_app()
+
+        case Process.whereis(Smalt.Store) do
+          nil ->
+            _ = restart_store_child()
+
+            case wait_store_tables() do
+              :ok ->
+                :ok
+
+              _error ->
+                Process.sleep(100)
+                do_ensure_store_up(retries - 1)
+            end
+
+          _pid ->
+            wait_store_tables()
+        end
+
+      _pid ->
+        # Tree healthy: never touch envs here — re-applying the shifted port
+        # set over a live, differently-bound tree desyncs env from listeners
+        # (measured: crash_isolation connected to a port no listener held).
+        wait_store_tables()
+    end
+  end
+
+  # Restart is best-effort: {:error, :already_present} / {:error,
+  # {:already_started, _}} are both success for our purposes; the table wait
+  # below is the real gate.
+  defp restart_store_child do
+    case Supervisor.restart_child(Smalt.Supervisor, Smalt.Store) do
+      {:error, _} = e -> e
+      {:ok, _pid} -> :ok
+      other -> {:error, other}
+    end
+  end
+
+  defp wait_store_tables, do: wait_store_tables(300)
+
+  defp wait_store_tables(0) do
+    if Process.whereis(Smalt.Store) == nil do
+      {:error, :store_not_running}
+    else
+      {:error, :store_tables_not_materialized}
+    end
+  end
+
+  defp wait_store_tables(n) do
+    store_up? = Process.whereis(Smalt.Store) != nil
+
+    tables_up? =
+      store_up? and
+        Enum.all?(Smalt.Store.table_names(), fn t -> :ets.info(t) != :undefined end)
+
+    if tables_up? do
+      :ok
+    else
+      Process.sleep(10)
+      wait_store_tables(n - 1)
     end
   end
 end

@@ -5,7 +5,14 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
   alias Smalt.Store
 
   setup do
-    case Store.start_link() do
+    # Store must be unlinked from the test process (lens-4): start_link owned
+    # the immortal Store by the first mortal test process — any abnormal test
+    # exit killed Store, and every later test in the run cascaded
+    # "table does not exist" (witnessed 2/5/6-failure runs with moving names
+    # under ExUnit random order). Plain start + named registration keeps the
+    # tables alive for the whole VM regardless of test exits; the app-started
+    # case (:already_started) is unchanged.
+    case GenServer.start(Store, [], name: Store) do
       {:ok, _} -> :ok
       {:error, {:already_started, _}} -> :ok
     end
@@ -319,8 +326,6 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
           "subscriptionId" => "walk-sub"
         })
       end)
-
-      parent = self()
 
       writer =
         Task.async(fn ->
@@ -662,8 +667,33 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
   describe "Sentinel concurrent ingest" do
     test "parallel ingests to one stream never collide on row seq" do
+      saved_forensic = Application.get_env(:smalt, :sentinel_forensic, false)
       Application.put_env(:smalt, :sentinel_forensic, true)
 
+      # Restore discipline (corpus-b lens-3): if this test crashes before
+      # restoring, the forensic hook stays ON for the whole VM and every
+      # later Store.update_counter/CAS across all suites probes the
+      # owner-churn :smalt_sentinel_forensic table (witnessed as a 121-test
+      # cascade in corpus wave A). The info-then-insert TOCTOU in the lib
+      # hook itself is F-22 with the store lane.
+      try do
+        run_sentinel_race_assertions()
+      after
+        Application.put_env(:smalt, :sentinel_forensic, saved_forensic)
+      end
+    end
+
+    defp run_sentinel_race_assertions do
+
+      # Owner-durable forensic table: created by THIS (test) process, which
+      # stays alive for the whole test, so the timeline cannot vanish with a
+      # short-lived first-caller (the same owner-churn defect class repaired
+      # in EventStream in cycle 1).
+      if :ets.info(:smalt_sentinel_forensic) == :undefined do
+        :ets.new(:smalt_sentinel_forensic, [:named_table, :public, :ordered_set, write_concurrency: true])
+      end
+
+      :ets.delete_all_objects(:smalt_sentinel_forensic)
       tasks =
         1..8
         |> Enum.map(fn t ->
@@ -1258,4 +1288,290 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       end
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Lens-3 F-1: serialized seq counter. The pre-repair shape (caller-side
+  # init/check/CAS-seed + direct :ets.update_counter bump) let a concurrent
+  # bump slip between the seed CAS's lookup and insert and clobber assigned
+  # seqs (lens-3 huntE timeline). Store.next_seq/3 runs the whole
+  # check-seed-bump as one Store handle_call; these courts pin its contract.
+  # ---------------------------------------------------------------------------
+  describe "lens-3 Store.next_seq serialized counter" do
+    test "seeds from seed_fun exactly once when the counter row is missing" do
+      table = :l3_seq_court
+      {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
+      :ets.new(table, [:set, :public, :named_table])
+      :ets.give_away(table, owner, nil)
+      on_exit(fn ->
+        if :ets.info(table) != :undefined, do: :ets.delete(table)
+      end)
+
+      # No counter row: next_seq must seed from seed_fun, not 0.
+      assert 4 = Store.next_seq(table, {:k}, fn -> 3 end)
+      # After seeding, bump continues and the stale seed_fun value is refused.
+      assert 5 = Store.next_seq(table, {:k}, fn -> 999 end)
+
+      # seed_fun must NOT be called when the row exists.
+      assert 6 =
+               Store.next_seq(table, {:k}, fn ->
+                 flunk("seed_fun called although the counter row exists")
+               end)
+    end
+
+    test "concurrent next_seq calls never collide and end exactly at n" do
+      table = :l3_seq_court2
+      {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
+      :ets.new(table, [:set, :public, :named_table])
+      :ets.give_away(table, owner, nil)
+      on_exit(fn ->
+        if :ets.info(table) != :undefined, do: :ets.delete(table)
+      end)
+
+      results =
+        1..16
+        |> Enum.map(fn _ ->
+          Task.async(fn -> for _ <- 1..25, do: Store.next_seq(table, {:k}, fn -> 0 end) end)
+        end)
+        |> Task.await_many(30_000)
+        |> List.flatten()
+        |> Enum.sort()
+
+      assert results == Enum.to_list(1..400)
+      assert Store.current_counter(table, {:k}) == 400
+    end
+
+    test "unknown table fails closed (raises, never silently creates)" do
+      assert_raise ArgumentError, ~r/unknown table/, fn ->
+        Store.next_seq(:no_such_l3_table, {:k}, fn -> 0 end)
+      end
+    end
+
+    # Lens-4: Store-level mutation courts for the shared-seam next_seq/3.
+    test "seed_fun runs exactly once across concurrent first-touches (re-entry discipline)" do
+      table = :l4_seq_seed_once
+      {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
+      :ets.new(table, [:set, :public, :named_table])
+      :ets.give_away(table, owner, nil)
+      on_exit(fn ->
+        if :ets.info(table) != :undefined, do: :ets.delete(table)
+      end)
+
+      {:ok, counter} = Agent.start(fn -> 0 end)
+
+      results =
+        1..16
+        |> Enum.map(fn _ ->
+          Task.async(fn ->
+            for _ <- 1..25 do
+              Store.next_seq(table, {:k}, fn ->
+                Agent.update(counter, &(&1 + 1))
+                0
+              end)
+            end
+          end)
+        end)
+        |> Task.await_many(30_000)
+        |> List.flatten()
+        |> Enum.sort()
+
+      assert results == Enum.to_list(1..400)
+      # Seed happened once, ever: after the first serialized seed, seed_fun is
+      # dead code for the life of the row.
+      assert Agent.get(counter, & &1) == 1
+      assert Store.current_counter(table, {:l4_other}) == 0
+    end
+
+    test "concurrent mixed next_seq + compare_and_swap on adjacent keys never cross-clobber" do
+      seq_table = :l4_mixed_seq
+      cas_table = :l4_mixed_cas
+      {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
+
+      :ets.new(seq_table, [:set, :public, :named_table])
+      :ets.new(cas_table, [:set, :public, :named_table])
+      :ets.give_away(seq_table, owner, nil)
+      :ets.give_away(cas_table, owner, nil)
+
+      on_exit(fn ->
+        if :ets.info(seq_table) != :undefined, do: :ets.delete(seq_table)
+        if :ets.info(cas_table) != :undefined, do: :ets.delete(cas_table)
+      end)
+
+      cas_key = {:adjacent_cas}
+      # CAS conflicts on a missing row; seed the cell deterministically before
+      # any task starts (single-threaded setup, no window).
+      :ets.insert(cas_table, {cas_key, 0})
+
+      # CAS contender hammering an adjacent key for the whole window.
+      cas_task =
+        Task.async(fn ->
+          Enum.max(
+            for i <- 1..400 do
+              case Store.compare_and_swap(cas_table, cas_key, i - 1, i) do
+                :ok -> i
+                {:error, :conflict} -> 0
+              end
+            end
+          )
+        end)
+
+      seq_results =
+        1..8
+        |> Enum.map(fn _ ->
+          Task.async(fn ->
+            for _ <- 1..25, do: Store.next_seq(seq_table, {:k}, fn -> 0 end)
+          end)
+        end)
+        |> Task.await_many(30_000)
+        |> List.flatten()
+        |> Enum.sort()
+
+      cas_task_max = Task.await(cas_task, 30_000)
+
+      # seq stream is exactly 1..200 with zero clobbered assignments even
+      # while the CAS contender hammers its own adjacent key.
+      assert seq_results == Enum.to_list(1..200)
+      assert cas_task_max == 400
+      assert Store.current_counter(seq_table, {:k}) == 200
+    end
+
+    test "forensic off-state costs zero: no :smalt_sentinel_forensic table is ever created" do
+      saved = Application.get_env(:smalt, :sentinel_forensic, false)
+      Application.put_env(:smalt, :sentinel_forensic, false)
+
+      try do
+        if :ets.info(:smalt_sentinel_forensic) != :undefined do
+          :ets.delete(:smalt_sentinel_forensic)
+        end
+
+        # Full counter + row traffic with the flag off.
+        assert {:ok, 204, ""} =
+                 Sentinel.ingest("l4-off-dcr", "Custom-Logs", [%{"msg" => "off"}], "2023-01-01")
+
+        :ets.new(:l4_off_cas, [:set, :public, :named_table])
+        Store.update_counter(:l4_off_cas, {:k}, 1)
+        Store.compare_and_swap(:l4_off_cas, {:k}, 1, 2)
+      after
+        Application.put_env(:smalt, :sentinel_forensic, saved)
+        if :ets.info(:l4_off_cas) != :undefined, do: :ets.delete(:l4_off_cas)
+      end
+
+      assert :ets.info(:smalt_sentinel_forensic) == :undefined
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lane 19 (v26.10.14) egress-security sweep fences.
+  # ---------------------------------------------------------------------------
+
+  describe "lane-19 egress-security fence" do
+    test "item 2: strict mode admits a DCR the lib itself created" do
+      assert {:ok, 204, ""} =
+               Sentinel.ingest("lane19-dcr", "Custom-Logs", [%{"msg" => "seed"}], "2023-01-01")
+
+      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+
+      try do
+        assert {:ok, 204, ""} =
+                 Sentinel.ingest("lane19-dcr", "Custom-Logs", [%{"msg" => "next"}], "2023-01-01")
+      after
+        Application.delete_env(:smalt, :sentinel_dcr_strict)
+      end
+
+      {:ok, 200, body} =
+        Sentinel.query("lane19-dcr", %{"query" => "take 100"})
+
+      [table] = body["tables"]
+      assert length(table["rows"]) == 2
+    end
+
+    test "item 2: strict mode still refuses a truly never-created DCR" do
+      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+
+      try do
+        assert {:error, 404, %{"error" => %{"code" => "DCRNotFound"}}} =
+                 Sentinel.ingest("lane19-never", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+      after
+        Application.delete_env(:smalt, :sentinel_dcr_strict)
+      end
+    end
+
+    test "item 7: legacy take is capped at 101 and honors smaller takes" do
+      rows = Enum.map(1..105, fn i -> %{"msg" => "r#{i}"} end)
+      assert {:ok, 204, ""} = Sentinel.ingest("lane19-take", "Custom-Logs", rows, "2023-01-01")
+
+      {:ok, 200, body} = Sentinel.query("lane19-take", %{"query" => "take 100000"})
+      [table] = body["tables"]
+      assert length(table["rows"]) == 101
+
+      {:ok, 200, body} = Sentinel.query("lane19-take", %{"query" => "take 50"})
+      [table] = body["tables"]
+      assert length(table["rows"]) == 50
+    end
+
+    test "item 4: expired skip tokens are swept on mint" do
+      # Seed an already-expired token directly, then mint a fresh one via a
+      # paginated query: the mint-time sweep must delete the expired entry.
+      expired_token = String.duplicate("aa", 12)
+
+      Store.put(:smalt_resource_graph_tokens, expired_token, %{
+        "offset" => 0,
+        "subscriptions" => nil,
+        "created_at" => System.system_time(:millisecond) - :timer.minutes(16)
+      })
+
+      Store.put(:smalt_resources, "r1", %{
+        "id" => "/subscriptions/sub-a/resourceGroups/rg1/providers/Mock.Type/m1",
+        "name" => "m1",
+        "type" => "Mock.Type"
+      })
+
+      Store.put(:smalt_resources, "r2", %{
+        "id" => "/subscriptions/sub-a/resourceGroups/rg1/providers/Mock.Type/m2",
+        "name" => "m2",
+        "type" => "Mock.Type"
+      })
+
+      {:ok, 200, body} =
+        ResourceGraph.query(nil, %{"$top" => 1}, "2022-10-01")
+
+      assert body["$skipToken"]
+
+      assert :error = Store.get(:smalt_resource_graph_tokens, expired_token)
+      {:ok, _} = Store.get(:smalt_resource_graph_tokens, body["$skipToken"])
+    end
+
+    test "item 4: token cap evicts oldest-first" do
+      now = System.system_time(:millisecond)
+
+      # Fill to the cap with age-ordered tokens; the next mint must evict the
+      # oldest to stay at the cap.
+      Enum.each(1..1000, fn i ->
+        Store.put(:smalt_resource_graph_tokens, "tok-#{String.pad_leading(Integer.to_string(i), 5, "0")}", %{
+          "offset" => i,
+          "subscriptions" => nil,
+          "created_at" => now - (1000 - i)
+        })
+      end)
+
+      Store.put(:smalt_resources, "r1", %{
+        "id" => "/subscriptions/sub-a/resourceGroups/rg1/providers/Mock.Type/m1",
+        "name" => "m1",
+        "type" => "Mock.Type"
+      })
+
+      Store.put(:smalt_resources, "r2", %{
+        "id" => "/subscriptions/sub-a/resourceGroups/rg1/providers/Mock.Type/m2",
+        "name" => "m2",
+        "type" => "Mock.Type"
+      })
+
+      {:ok, 200, body} = ResourceGraph.query(nil, %{"$top" => 1}, "2022-10-01")
+      assert body["$skipToken"]
+
+      # Oldest token evicted, table held at the cap.
+      assert :error = Store.get(:smalt_resource_graph_tokens, "tok-00001")
+      assert length(Store.keys(:smalt_resource_graph_tokens)) == 1000
+    end
+  end
+
 end

@@ -29,7 +29,17 @@ defmodule Smalt.Security.Attestation do
       when is_map(measurement_params) do
     measurement = Map.get(measurement_params, "measurement") || Map.get(measurement_params, :measurement)
 
+    # Crash-class law (lens-10): the attestation TYPE rides into the signed
+    # claims and is JSON-encoded on the success path — a hostile shape (tuple/
+    # integer) must be a typed 400 refusal, never a Jason.Encoder raise
+    # escaping a public API whose contract is {:ok,t,c} | {:error,400,_}.
+    # nil/false keep the documented default (`type || @attestation_type`).
+    type = attestation_type(type)
+
     cond do
+      type == :error ->
+        {:error, 400, "attestationFailedVerdict"}
+
       not is_binary(measurement) or not hex64?(measurement) ->
         {:error, 400, "attestationFailedVerdict"}
 
@@ -47,7 +57,7 @@ defmodule Smalt.Security.Attestation do
             "iss" => "https://smalt-attestation.local/",
             "iat" => now,
             "exp" => now + @ttl_seconds,
-            "x-ms-attestation-type" => type || @attestation_type,
+            "x-ms-attestation-type" => type,
             "x-ms-compliance-status" => @compliance_status,
             "x-ms-isolation-tee" => @tee_type,
             "x-ms-runtime" => %{
@@ -63,6 +73,13 @@ defmodule Smalt.Security.Attestation do
         end
     end
   end
+
+  # Lens-10 totalization: binary type admitted as-is; nil/false fall back to
+  # the documented default; every other shape is a typed :error refusal.
+  defp attestation_type(type) when is_binary(type), do: type
+  defp attestation_type(nil), do: @attestation_type
+  defp attestation_type(false), do: @attestation_type
+  defp attestation_type(_), do: :error
 
   @doc """
   Verifies an attestation token: RS256 signature only (alg-confusion safe) plus

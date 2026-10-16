@@ -24,7 +24,7 @@ local loopback stores only; it never dials out to a real cloud.
 | data plane (8443) | resource data-plane surface |
 | `AmqpBroker` | AMQP Service Bus surface on 5672 |
 | Event Hubs surface | AMQP on 5673 |
-| `EgressRouter` | the only sanctioned outbound path; blocks non-loopback egress by default |
+| `EgressRouter` | data-plane router on 8443 — the single inbound surface where SDK/CLI cloud calls terminate; the substrate makes no outbound connections at all (nothing dials out, so there is nothing to block) |
 | `Store` | keyed ETS key/value store with a durable DETS mirror (`lib/smalt/store/dets_mirror.ex`); the persistence substrate for all components; conditional transitions (`insert_new`, `compare_and_swap`) are single-ETS-window atomic |
 
 ## Pinned contracts
@@ -32,7 +32,7 @@ local loopback stores only; it never dials out to a real cloud.
 | Contract | Value |
 |---|---|
 | Port map | authoritative copy lives in `README.md` (control 9443, TLS twin 9444, data 8443, AMQP 5672/5673, MCP 9545); do not restate it here |
-| Refusal envelope | every refusal is a typed envelope (code + message + details), never a bare status |
+| Refusal envelope | every refusal is a JSON envelope `{"error": {code, ...}}` — never a bare status; members beyond `code` vary by plane (ARM always carries `message` + `innererror`, optional `target`; some data-plane routes answer `code` only) |
 | `Store` | keyed ETS key/value store; put is keyed by the caller's key (not content digest); identical content is NOT a no-op — it overwrites; conditional transitions (`insert_new/3`, `compare_and_swap/4`, `compare_and_swap_delete/3`) are the atomic forms |
 
 Ports and envelope shapes are contracts: tests in `test/wire` and the

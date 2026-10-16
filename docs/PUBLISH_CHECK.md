@@ -16,13 +16,13 @@ Environment: hex 2.5.1, Elixir 1.19.5, OTP 28.3.1.
    `mix hex.publish` will hit the same gate. Fix (mix.exs, coordinator-owned):
    consume published hex versions of ash_graphlaw / ggen_igniter, or drop them
    from the published package's deps list entirely (see gap list below).
-2. `docs/CHEAT_SCAN.md` declares "Release blockers: BLOCKER — still present"
-   (hardcoded STS secret at `router.ex:39`). That scan is stale: the literal
+2. ~~`docs/CHEAT_SCAN.md` declares "Release blockers: BLOCKER — still present"~~
+   **CLEARED (docs-corpus-lens6 cycle 5)**: CHEAT_SCAN.md was re-run by its
+   owner — "Release blockers — RESOLVED (second pass)"; the literal
    `smalt-sovereign-azure-secret-key-32b!` has zero hits in the tree
    (`grep -rn` over `*.ex`/`*.exs`, exit 1 = no match). Current code
    (`lib/smalt/arm_gateway/router.ex:72`) uses a `persistent_term` secret,
-   generated on first use. Re-run the scan, update CHEAT_SCAN.md, then the
-   documented gate clears.
+   generated on first use.
 3. `docs/WIRE_PARITY.md` carries named PARTIAL gaps (EH wire tier on 5673 not
    routed to EH semantics; missing SDK smoke coverage for several surfaces).
    Documented honestly under "Coverage boundaries (honest)"; no numeric
@@ -66,11 +66,27 @@ Checks:
 - No `deps/`, `_build/`, `test/`, `test/sdk-smoke/`, `.logs` in the list.
   (`test/sdk-smoke/` exists in the repo with 7 files but is not packaged.)
 - Leak grep over the exact packaged set (lib/, priv/, .formatter.exs,
-  mix.exs, README.md, CHANGELOG.md, LICENSE) for `athena` and `/Users/sac`:
+  mix.exs, README.md, CHANGELOG.md, LICENSE) for `athena` and absolute
+  checkout paths (the naming-sweep pattern, `scripts/naming_sweep.sh`):
   **zero hits** (grep exit 1, no matches).
 - No absolute paths in the packaged set.
 - `erl_crash.dump` exists at repo root (CHEAT_SCAN hygiene note) but is not
-  packaged.
+  packaged. **[HISTORICAL — resolved v26.10.14]** The dump was removed
+  2026-10-15 (lane 14); `.gitignore:20-21` already ignores it.
+
+## 3a. ERROR_CODES.md regeneration check (added v26.10.14, lane 14)
+
+Run after the leak scan, before publishing:
+
+```
+just gen-error-codes
+git diff --exit-code docs/ERROR_CODES.md
+```
+
+`just gen-error-codes` regenerates docs/ERROR_CODES.md from the generator's
+ANNOTATIONS table + router sources. `git diff --exit-code` must be clean: the
+doc is a deterministic projection, so a diff means the committed file is stale
+vs the sources — regenerate and commit before publishing.
 
 ## 3. Gate documents
 
@@ -151,11 +167,14 @@ packages can be dependencies): ash_graphlaw, ggen_igniter`. Exit 0 now.
 
 ## 3. Leak scans over the exact packaged tree
 
-- `grep -rn '/Users/sac'` over unpacked contents: **1 HIT** —
-  `lib/smalt/mcp/gen/smalt_mcp_surface.ttl:8`, a ggen usage comment:
-  `--query caps=~/ggen-marketplace/packs/elixir-mcp-a2a-pack/queries/mcp_capabilities.rq`.
-  Cosmetically internal (username path in a comment); fix by rewriting the
-  comment path or adding an explicit `files:` list.
+<!-- ALLOWLISTED EVIDENCE BLOCK (lane 12 naming-sweep allowlist): the lines
+     below quote real past leak-hunt transcripts verbatim; rewriting them
+     would falsify the recorded evidence. -->
+- `grep -rn '/Users/sac'` over unpacked contents: was **1 HIT** —
+  `lib/smalt/mcp/gen/smalt_mcp_surface.ttl:8`, a ggen usage comment.
+  **CLEARED (docs-corpus-lens6 cycle 5)**: the comment now uses the
+  `caps=<ggen-marketplace checkout>/...` placeholder form; tree-wide
+  `grep -n "Users/sac"` over the ttl = no match.
 - `athena`: 0 hits. Absolute paths elsewhere: 0 hits.
 - Old hardcoded secret literal (`smalt-sovereign-azure-secret-key-32b!`):
   0 hits in the package. Packaged `lib/smalt/arm_gateway/router.ex:124-137`
@@ -174,25 +193,36 @@ receipt chain, signature hex strings) ship alongside it. Fix: rotate the
 key (it is burned once published anywhere) and exclude via explicit
 `files:` list in mix.exs (coordinator-owned) or `@hex.docs`-style excludes.
 
-### NEW BLOCKER B — hardcoded-secret gate still formally open
+### ~~NEW BLOCKER B — hardcoded-secret gate still formally open~~
 
-`docs/CHEAT_SCAN.md` line 103 still reads "BLOCKER — still present"
-(hardcoded STS secret at `router.ex:39`), while line 16 of the same file
-records the secret literal is GONE and the packaged router uses
-`persistent_term`. The gate document is stale; v1 flagged this; still not
-re-run. `mix hex.publish` presses will keep tripping over it until
-CHEAT_SCAN.md is re-run and its blockers table updated.
+**CLEARED (docs-corpus-lens6 cycle 5 re-verify)**: `docs/CHEAT_SCAN.md`
+was re-run by its owner; its "Release blockers" section now reads
+"RESOLVED (second pass)" and the secret literal has zero tree hits. The
+gate document is no longer stale; nothing to re-run.
 
-## 4. Remaining blockers (exact list)
+## 4. Remaining blockers (exact list, re-verified 2026-10-15 lens-6; lens-8 corroboration 2026-10-15)
 
 1. **signing.key in package** (NEW BLOCKER A): rotate + exclude
    `.ggen/keys/` and `.ggen-v2/` from the package via explicit `files:`.
-2. **CHEAT_SCAN.md stale BLOCKER** (carried from v1): re-run the scan,
-   clear the line-103 blocker; the underlying secret is already gone.
-3. `/Users/sac/...` comment in `smalt_mcp_surface.ttl:8` (leak, minor but
-   real).
+   **RESOLVED-for-packaging 2026-10-15 (v4, below) — tar-grep = 0; key
+   ROTATION still pending (coordinator-owned).**
+   Re-verified STANDING (keys on disk; `mix.exs files:` ships `lib`
+   wholesale). Lens-8 corroboration 2026-10-15: fresh `mix hex.build` rc=0,
+   package checksum `71461bd62c62…eec84bba`; the 5 leak paths survive in the
+   inner `contents.tar.gz` (`tar -xzf -O contents.tar.gz | tar -tz | grep -cE
+   "signing.key|verifying.key|\.ggen|keys/"` = **5**, expected 0). The
+   outer tar's top level only shows the hex wrapper (VERSION/CHECKSUM/
+   metadata.config/contents.tar.gz) — grep the INNER listing, not the outer.
+2. ~~CHEAT_SCAN.md stale BLOCKER~~ **CLEARED** (see Verdict item 2;
+   scan re-run, RESOLVED second pass).
+3. ~~Absolute-checkout-path comment in `smalt_mcp_surface.ttl:8`~~ **CLEARED**
+   (original finding quoted the scan term; redacted as prose, evidence lives
+   in the v3 allowlisted evidence block below)
+   (`grep -n "Users/sac"` over the ttl -> no match; placeholder form
+   landed; also recorded in the v3 section below).
 4. WIRE_PARITY.md named PARTIAL gaps (carried from v1; honest, no numeric
-   gate yet).
+   gate yet) — now tokenized `GAP(...)` per the wire-parity convention
+   (3 blob, ledger, cosmos).
 
 Verdict stands PUBLISH-READY NO until 1-3 clear; 4 is documentation-honesty,
 not a gate.
@@ -216,8 +246,9 @@ v2 blocker 1 (signing.key) — **NOT FIXED.** v2 blockers 2-4 — FIXED/OK
 
 ## 1. v2 blocker re-checks
 
-1. **key-leak — STILL OPEN.** `mix hex.build` exits 0, but the packaged
-   contents still contain all 5 leak-pattern paths:
+1. **key-leak — RESOLVED-for-packaging (v4, below; tar-grep 5 → 0; rotation
+   still pending, coordinator-owned).** Historical: `mix hex.build` exits 0, but the packaged
+   contents still contained all 5 leak-pattern paths:
    - `lib/smalt/runtime_contracts/ggen/.ggen/keys/signing.key` (64-hex
      private ed25519 seed, read from the unpacked tree: first bytes
      `655a399656e7d1f4...`)
@@ -241,7 +272,9 @@ v2 blocker 1 (signing.key) — **NOT FIXED.** v2 blockers 2-4 — FIXED/OK
    delete the burned `.ggen/keys/` tree from the checkout entirely.
    **The key must be rotated regardless: it shipped in the v2 tarball
    bytes.** Until the paths stop appearing in `tar -tzf`, the gate fails.
-2. **mcp ttl comment path — FIXED.** `lib/smalt/mcp/gen/smalt_mcp_surface.ttl:8`
+2. **mcp ttl comment path — FIXED.** (ALLOWLISTED EVIDENCE BLOCK — quotes the
+   real v3 leak-hunt transcript verbatim; not scrubbed.)
+   `lib/smalt/mcp/gen/smalt_mcp_surface.ttl:8`
    carried `--query caps=/Users/sac/ggen-marketplace/...` in a ggen usage
    comment. Rewritten to
    `--query caps=<ggen-marketplace checkout>/packs/elixir-mcp-a2a-pack/queries/mcp_capabilities.rq`.
@@ -278,12 +311,14 @@ v2 blocker 1 (signing.key) — **NOT FIXED.** v2 blockers 2-4 — FIXED/OK
 
 ## 3. Remaining blockers (exact list)
 
-1. **signing.key + ggen receipt chain still ship** (v2 blocker 1, NOT
-   fixed): 5 paths under
-   `lib/smalt/runtime_contracts/ggen/.ggen{,-v2}/` in every build.
-   `exclude_patterns` as written never fires (dot-dir glob + `.pem`
-   mismatch); see section 1.1 for fix options. Key rotation required
-   regardless — the seed already shipped in the v2 tarball.
+1. **signing.key + ggen receipt chain still ship** (v2 blocker 1) —
+   **RESOLVED-for-packaging 2026-10-15 (v4, below)**: the `.ggen{,-v2}`
+   trees were deleted from `lib/` and the receipt chain relocated to
+   `test/fixtures/runtime_contracts/ggen/` (outside `files:`). Tar-grep
+   gate now **0** (was 5). `exclude_patterns` remains dead-by-design
+   (belt-and-suspenders only; the gate is the physical tree + tar-grep).
+   Key ROTATION still pending — coordinator-owned, the seed already
+   shipped in the v2 tarball bytes and is burned.
 2. WIRE_PARITY doc-honesty gaps (SDK smoke coverage for Sentinel, Purview,
    Ledger, Attestation, Key Vault, Resource Graph) remain documented, not
    gated.
@@ -304,3 +339,52 @@ tar -tzf /tmp/hex-vN-x/contents.tar.gz | \
   `be5759fa00a6b60b3013d39aa92c59d8a86614f6b907c275a3a78922fa1a09a8`,
   215,040 bytes), unpacked at `/tmp/hex-v3b-tree/`
 
+
+---
+
+# PUBLISH_CHECK v4 (lane 11, 2026-10-15)
+
+Decision (c) hybrid executed (work order V261014-11). File work only — key
+rotation deliberately NOT performed (coordinator-owned, post-window).
+
+## Changes
+
+- Deleted `lib/smalt/runtime_contracts/ggen/.ggen/` (signing.key,
+  verifying.key, .gitignore) and `lib/smalt/runtime_contracts/ggen/.ggen-v2/`
+  via `rm -rf` (coordinator commits the deletion; `git rm` is a git state
+  change and was out of lane scope).
+- Moved `receipt.json` + `receipt-log.jsonl` to
+  `test/fixtures/runtime_contracts/ggen/`; updated the path in
+  `test/runtime_contracts_test.exs` (cross-anchor fence).
+- `mix.exs` package comment corrected: exclude_patterns documented as
+  dead-by-design (per-entry matching, no dot-dir traversal, no `.pem`
+  extension); the gate is the physical tree + the tar-grep below, NOT glob
+  semantics. `files:` list unchanged.
+
+## Gate (real output, this pass)
+
+```
+$ mix test test/runtime_contracts_test.exs
+28 tests, 0 failures        (cross-anchor fence green)
+
+$ mix hex.build -o /tmp/hex-lane11/smalt.tar
+Package checksum: b3f377cd86287191cf38e0181935a78bd54e1964af8af27c67b62bf67cc363d9
+
+$ tar -xzOf /tmp/hex-lane11/smalt.tar contents.tar.gz | tar -tz | \
+    grep -cE "signing.key|verifying.key|\.ggen|keys/"
+0                            (was 5; grep exit 1 = zero matches)
+```
+
+## Verdict: PUBLISH-READY YES (packaging); rotation pending
+
+Blocker 1 (signing.key/receipt chain in package) is RESOLVED-for-packaging.
+One deliberate follow-up remains, not a packaging gate: the burned ed25519
+seed must be ROTATED (new seed to `cli/.ggen/keys/` + fixture location,
+re-signed receipt chain with byte-identical BLAKE3 pins) — coordinator-owned.
+`cli/.ggen/keys/` is an unpackaged dev-only key copy: hex packaging never
+includes `cli/` (absent from `files:`).
+
+## Artifacts
+
+- `/tmp/hex-lane11/smalt.tar` (checksum
+  `b3f377cd86287191cf38e0181935a78bd54e1964af8af27c67b62bf67cc363d9`)

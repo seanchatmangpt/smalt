@@ -72,6 +72,7 @@ defmodule Smalt.Amqp.Connection do
        mode: mode,
        buffer: <<>>,
        halted: false,
+       peer_max_frame_size: nil,
        phase: :sasl_header,
        session: nil,
        links: %{},
@@ -84,7 +85,19 @@ defmodule Smalt.Amqp.Connection do
 
   @impl true
   def handle_info(:recv, state) do
-    case next_input(state) do
+    event =
+      try do
+        next_input(state)
+      rescue
+        # Pump-level containment (lens-4 cycle-3 hardening): a decode/handler
+        # raise here used to kill the connection with no diagnosis on the wire
+        # or in the log. Emit the typed close and halt.
+        e ->
+          Logger.error("[amqp-conn] pump raise: #{Exception.message(e)}")
+          {:error, {:raised, Exception.message(e)}, %{state | halted: true}}
+      end
+
+    case event do
       {:ok, event, state} ->
         case do_handle_event(event, state) do
           %{halted: true} = state -> {:stop, :normal, state}
@@ -237,13 +250,13 @@ defmodule Smalt.Amqp.Connection do
 
   defp handle_amqp(:attach, perf, channel, state), do: handle_attach(perf, channel, state)
 
-  defp handle_amqp(:flow, perf, _ch, state) do
+  defp handle_amqp(:flow, perf, ch, state) do
     credit = perf.link_credit || 0
 
     state =
       case perf.handle do
-        nil -> add_credit(state, credit)
-        handle -> bump_credit(state, handle, credit)
+        nil -> add_credit(state, credit, ch)
+        handle -> bump_credit(state, ch, handle, credit)
       end
 
     deliver_available(state)
@@ -255,7 +268,9 @@ defmodule Smalt.Amqp.Connection do
       %{container_id: @container_id, max_frame_size: @max_frame_size, channel_max: 65_535}
     })
 
-    state = Map.put(state, :container_id, plain(perf.container_id))
+    state =
+      Map.put(state, :container_id, plain(perf.container_id))
+      |> Map.put(:peer_max_frame_size, clamp_peer_frame_size(perf[:max_frame_size]))
 
     # Idle-time-out enforcement (R3 red-team finding): a silent or trickle
     # peer previously held the connection for the full 300s recv timeout.
@@ -593,7 +608,7 @@ defmodule Smalt.Amqp.Connection do
         handle_cbs(perf, state)
 
       %{kind: :management} ->
-        handle_management(perf, state)
+        handle_management(perf, channel, state)
 
       %{kind: :eventhubs} = link ->
         payload = frame_payload(perf)
@@ -687,7 +702,7 @@ defmodule Smalt.Amqp.Connection do
     end
   end
 
-  defp ingest_single_message(state, link, payload, sections, perf) do
+  defp ingest_single_message(state, link, payload, sections, _perf) do
     sections = sections || decode_message_sections(payload)
 
     session_id =
@@ -824,7 +839,7 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp reply_cbs(state, perf, body, correlation_id) do
-    link = find_reply_link(state, perf, :cbs)
+    link = find_reply_link(state, perf, :cbs, perf[:__channel__] || 0)
 
     case link do
       nil ->
@@ -858,7 +873,7 @@ defmodule Smalt.Amqp.Connection do
     end
   end
 
-  defp handle_management(perf, state) do
+  defp handle_management(perf, channel, state) do
     message = decode_message_sections(perf.__payload__)
     props = message.application_properties || %{}
     props = normalize_keys(props)
@@ -907,11 +922,11 @@ defmodule Smalt.Amqp.Connection do
       end
       |> then(&Map.merge(%{"statusCode" => status, "statusDescription" => result.status_description}, stringify_map(&1)))
 
-    reply_management(state, perf, body, request.correlation_id)
+    reply_management(state, perf, body, request.correlation_id, channel)
   end
 
-  defp reply_management(state, perf, body, correlation_id) do
-    link = find_reply_link(state, perf, :management)
+  defp reply_management(state, perf, body, correlation_id, channel) do
+    link = find_reply_link(state, perf, :management, channel)
 
     case link do
       nil ->
@@ -943,13 +958,23 @@ defmodule Smalt.Amqp.Connection do
     end
   end
 
-  defp find_reply_link(state, perf, kind) do
+  defp find_reply_link(state, perf, kind, req_channel) do
     payload_props = decode_message_sections(perf.__payload__).application_properties || %{}
     reply_to = normalize_keys(payload_props)["reply-to"]
 
     links = Map.values(state.links)
 
+    # 1. exact reply-to link name (protocol answer)
+    # 2. the management SENDER paired on the SAME channel as the request's
+    #    receiver — the SDK opens a receiver/sender pair per $management
+    #    entity. The old fallback ("first mgmt sender in the map") answered on
+    #    an EARLIER probe's detached link and rhea discarded every reply after
+    #    the first probe ended (census full-run: renewal-peek and everything
+    #    after timed out with the broker logging 200 replies).
     Enum.find(links, fn link -> reply_to != nil and link.name == reply_to end) ||
+      Enum.find(links, fn link ->
+        link.kind == kind and link.role == :sender and link.channel == req_channel
+      end) ||
       Enum.find(links, fn link -> link.kind == kind and link.role == :sender end)
   end
 
@@ -990,6 +1015,8 @@ defmodule Smalt.Amqp.Connection do
     Map.put(msg, "message", {:vbin, FrameCodec.encode_message(sections) |> IO.iodata_to_binary()})
   end
 
+  defp normalize_mgmt_message(other), do: other
+
   defp maybe_properties_section(%{"message-id" => mid}) when is_binary(mid),
     do: [{:properties, %{message_id: mid}}]
 
@@ -1008,8 +1035,6 @@ defmodule Smalt.Amqp.Connection do
     do: {:body_data, data}
 
   defp body_section_to_section(other), do: other
-
-  defp normalize_mgmt_message(other), do: other
 
   defp decode_message_sections(payload) when is_binary(payload) do
     case FrameCodec.decode_message(payload) do
@@ -1049,20 +1074,28 @@ defmodule Smalt.Amqp.Connection do
     partition = eh_partition(link.address)
     after_seq = get_in(state, [:eh_cursors, partition]) || 0
 
+    # V261014-04 F1: `receive_events/3` returns a BARE list (its @spec and the
+    # public contract consumed by c7_events.exs + reconcile callers), so a
+    # `{:ok, events}` match could never succeed and no EH event was ever
+    # delivered over the wire. Match the bare-list shape; an empty list (or any
+    # other shape) falls through closed.
     case EventHubs.receive_events(partition, after_seq, link.credit) do
-      {:ok, events} when is_list(events) and events != [] ->
+      [_ | _] = events ->
         Enum.reduce(events, state, fn ev, st ->
+          seq = ev["seq"]
+          body = ev["body"]
+
           {st, _id} =
             send_message(st, link, %{
               handle: link.handle,
-              delivery_tag: <<ev.seq::unsigned-64>>
+              delivery_tag: <<seq::unsigned-64>>
             }, [
-              {:message_annotations, %{"x-opt-sequence-number" => ev.seq}},
-              {:body_data, ev.body}
+              {:message_annotations, %{"x-opt-sequence-number" => seq}},
+              {:body_data, body}
             ])
 
           st
-          |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, ev.seq) end)
+          |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
         end)
 
       _ ->
@@ -1073,34 +1106,36 @@ defmodule Smalt.Amqp.Connection do
   defp eh_partition(address) when is_binary(address), do: address |> String.split("/") |> List.last()
 
   defp deliver_to_link(state, link) do
-    result = QueueStore.dequeue_matching(link.address, session_id: link.session_id)
-
-    case result do
-      :empty ->
-        Logger.warning("[dbg] dequeue empty #{link.address} sid=#{inspect(link.session_id)}")
-
+    case QueueStore.dequeue_matching(link.address, session_id: link.session_id) do
       {:ok, msg, lock} ->
-        Logger.warning("[dbg] dequeue ok #{link.address} seq=#{msg.seq} dc=#{msg.delivery_count}")
         sections = delivery_sections(msg)
 
-        case File.write("/tmp/deliver_payload.bin", IO.iodata_to_binary(FrameCodec.encode_message(sections))) do
-          :ok -> :ok
-          _ -> :ok
-        end
-
         {state, delivery_id} =
-          send_message(state, link, %{
-            handle: link.handle,
-            # AMQP delivery-tag = lock token, .NET GUID byte layout (see
-            # LockManager.token_to_wire/1 doc: the SDK reorders the bytes
-            # back before uuid_to_string). Straight uuid layout made every
-            # client echo a permuted token on update-disposition → 410
-            # MESSAGE_LOCK_LOST (census session probes).
-            delivery_tag: Smalt.Amqp.LockManager.token_to_wire(lock.lock_token),
-            message_format: 0,
-            settled: false,
-            more: false
-          }, sections)
+          try do
+            send_message(state, link, %{
+              handle: link.handle,
+              # AMQP delivery-tag = lock token, .NET GUID byte layout (see
+              # LockManager.token_to_wire/1 doc: the SDK reorders the bytes
+              # back before uuid_to_string). Straight uuid layout made every
+              # client echo a permuted token on update-disposition → 410
+              # MESSAGE_LOCK_LOST (census session probes).
+              delivery_tag: Smalt.Amqp.LockManager.token_to_wire(lock.lock_token),
+              message_format: 0,
+              settled: false,
+              more: false
+            }, sections)
+          rescue
+            # Store-and-forward lock leak (lens-4 cycle-3): dequeue_matching
+            # acquires the message lock BEFORE the encode+send; an encode
+            # raise here used to leave the message locked forever with no
+            # release/deadletter decision. Release it back and close typed.
+            e in ArgumentError ->
+              QueueStore.release(msg.queue, msg.seq)
+              Logger.error("[amqp-conn] delivery encode failed, lock released: " <> Exception.message(e))
+              error_close(state, "amqp:internal-error", "DELIVERY_ENCODE_FAILED")
+
+              {state, 0}
+          end
 
         state = %{
           state
@@ -1108,7 +1143,7 @@ defmodule Smalt.Amqp.Connection do
               Map.put(state.outbound_deliveries, delivery_id, %{queue: msg.queue, seq: msg.seq, lock_token: lock.lock_token})
         }
 
-        state = bump_credit(state, link.handle, -1)
+        state = bump_credit(state, link.channel, link.handle, -1)
 
         if state.links[{link.channel, link.handle}][:credit] > 0 do
           deliver_to_link(state, Map.get(state.links, {link.channel, link.handle}))
@@ -1263,10 +1298,32 @@ defmodule Smalt.Amqp.Connection do
 
   # --- send helpers -------------------------------------------------------------------
 
+  # Outbound frame-size gate (AMQP §2.3.1): never write a frame larger than
+  # the peer's advertised max_frame_size (clamped to our local decode cap, so
+  # a peer could never talk us into an oversized write either). Previously the
+  # outbound path had no cap at all (lens-4 cycle-3 analysis).
+  defp clamp_peer_frame_size(nil), do: nil
+
+  defp clamp_peer_frame_size(n) when is_integer(n) and n > 0,
+    do: min(n, FrameCodec.max_frame_size())
+
   defp send_frame(state, channel, {name, fields}) do
     channel = channel || state.session[:channel] || 0
     layer = if name in [:sasl_mechanisms, :sasl_init, :sasl_outcome, :sasl_challenge], do: :sasl, else: :amqp
-    data = FrameCodec.encode_frame(layer, channel, {name, fields})
+
+    data =
+      try do
+        FrameCodec.encode_frame(layer, channel, {name, fields})
+      rescue
+        # Outbound encode is a raise-contract (lens-4 cycle-3): an
+        # unrepresentable outbound value used to crash the connection
+        # GenServer with no diagnosis and no AMQP close on the wire. Route
+        # to the typed refusal instead: close frame + halted state.
+        e in ArgumentError ->
+          Logger.error("[amqp-conn] outbound encode failed: " <> Exception.message(e))
+          FrameCodec.encode_frame(:amqp, channel, {:close, %{error: %{condition: "amqp:internal-error", description: "ENCODE_FAILED"}}})
+      end
+
     :gen_tcp.send(state.sock, data)
   end
 
@@ -1279,16 +1336,105 @@ defmodule Smalt.Amqp.Connection do
   defp send_message(state, link, fields, sections) do
     sess = get_session(state, link.channel)
     delivery_id = sess.next_out
+    transfer_fields = Map.put(fields, :delivery_id, delivery_id)
+    cap = state[:peer_max_frame_size]
 
-    data =
-      FrameCodec.encode_frame(:amqp, link.channel, {
-        :transfer,
-        Map.put(fields, :delivery_id, delivery_id),
-        {:sections, sections}
-      })
+    frames =
+      case body_chunks(sections, cap) do
+        nil ->
+          [
+            FrameCodec.encode_frame(:amqp, link.channel, {
+              :transfer,
+              transfer_fields,
+              {:sections, sections}
+            })
+          ]
 
-    :gen_tcp.send(state.sock, data)
+        chunks ->
+          # AMQP §2.3.1: a transfer whose frame would exceed the peer's
+          # body_data payloads can be chunked losslessly (a message body is the
+          # concatenation of body_data sections); leading non-body sections ride
+          # the first frame only.
+          {pre, [{:body_data, _}]} = split_body_sections(sections)
+          more = Map.get(transfer_fields, :more, false)
+
+          [first | middle_last] = chunks
+          {middle, last} = Enum.split(middle_last, -1)
+
+          first_frame =
+            FrameCodec.encode_frame(:amqp, link.channel, {
+              :transfer,
+              Map.put(transfer_fields, :more, true),
+              {:sections, pre ++ [first]}
+            })
+
+          middle_frames =
+            for chunk <- middle do
+              FrameCodec.encode_frame(:amqp, link.channel, {
+                :transfer,
+                %{handle: transfer_fields.handle, delivery_id: delivery_id, more: true},
+                {:sections, [chunk]}
+              })
+
+              # AMQP §2.3.1: continuation frames carry only the body chunk;
+              # more=true until the last frame, which carries the original
+              # transfer's own more flag.
+            end
+
+          [last_frame] =
+            for chunk <- last do
+              FrameCodec.encode_frame(:amqp, link.channel, {
+                :transfer,
+                %{handle: transfer_fields.handle, delivery_id: delivery_id, more: more},
+                {:sections, [chunk]}
+              })
+            end
+
+          [first_frame | middle_frames] ++ [last_frame]
+      end
+
+    Enum.each(frames, &:gen_tcp.send(state.sock, &1))
     {put_session(state, link.channel, %{sess | next_out: delivery_id + 1}), delivery_id}
+  end
+
+  # Chunks the message body when the whole transfer frame would exceed the
+  # peer's advertised max_frame_size. Returns nil when no split is needed or
+  # possible (no negotiated cap, non-binary body — body_amqp_value sections
+  # cannot be chunked losslessly so they are sent whole, and the peer cap is
+  # ≥512 per spec while our local cap is 1 MiB).
+  defp body_chunks(_sections, nil), do: nil
+
+  defp body_chunks(sections, cap) do
+    {_pre, body} = split_body_sections(sections)
+
+    case body do
+      [{:body_data, bin}] when is_binary(bin) ->
+        total = 8 + IO.iodata_length(FrameCodec.encode_message(sections)) + 256
+        chunk_size = max(cap - 1024, 64)
+
+        if total <= cap do
+          nil
+        else
+          chunk_binary(bin, chunk_size, [])
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp chunk_binary(bin, size, acc) when byte_size(bin) > size do
+    <<chunk::binary-size(size), rest::binary>> = bin
+    chunk_binary(rest, size, [{:body_data, chunk} | acc])
+  end
+
+  defp chunk_binary(bin, _size, acc), do: Enum.reverse([{:body_data, bin} | acc])
+
+  defp split_body_sections(sections) do
+    Enum.split_while(sections, fn
+      {k, _} when k in [:body_data, :body_amqp_value] -> false
+      _ -> true
+    end)
   end
 
   defp close_with_error(state, condition, description) do
@@ -1314,23 +1460,30 @@ defmodule Smalt.Amqp.Connection do
 
   defp put_session(state, channel, sess), do: %{state | sessions: Map.put(state.sessions || %{}, channel, sess)}
 
-  defp add_credit(state, credit) do
-    update_links(state, fn link ->
-      if link.kind == :queue and link.role == :sender,
-        do: %{link | credit: link.credit + credit},
-        else: link
+  # Credit is scoped per {channel, handle}: handle values collide across
+  # sessions (every rhea session starts at handle 0), so a handle-only bump
+  # granted a NEW session's flow credit to the PREVIOUS session's same-handle
+  # link — that link then "stole" the delivery on the next flow (the transfer
+  # went to the old, already-drained receiver and the message vanished;
+  # census stale-handle probe).
+  defp add_credit(state, credit, ch) do
+    update_links(state, fn
+      {c, _h}, link ->
+        if (ch == nil or c == ch) and link.kind == :queue and link.role == :sender,
+          do: %{link | credit: link.credit + credit},
+          else: link
     end)
   end
 
-  defp bump_credit(state, handle, delta) do
+  defp bump_credit(state, ch, handle, delta) do
     update_links(state, fn
-      %{handle: ^handle} = link -> %{link | credit: max(link.credit + delta, 0)}
-      link -> link
+      {c, h}, link when h == handle and (ch == nil or c == ch) -> %{link | credit: max(link.credit + delta, 0)}
+      _key, link -> link
     end)
   end
 
   defp update_links(state, fun) do
-    %{state | links: Map.new(state.links, fn {h, l} -> {h, fun.(l)} end)}
+    %{state | links: Map.new(state.links, fn {key, l} -> {key, fun.(key, l)} end)}
   end
 
   defp put_link(state, link), do: %{state | links: Map.put(state.links, {link.channel, link.handle}, link)}

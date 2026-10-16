@@ -32,12 +32,6 @@ defmodule Smalt.RuntimeContracts.PurviewAtlas do
   def plane, do: :data_plane
 
   @impl true
-  def consumer, do: "Smalt.EgressRouter (Atlas v2 surface)"
-
-  @impl true
-  def source_pack, do: "ash-runtime-integration-contract-pack"
-
-  @impl true
   def check do
     Support.contract(:purview_atlas, [
       {:entity_create_read_201, fn -> check_entity_create_read() end},

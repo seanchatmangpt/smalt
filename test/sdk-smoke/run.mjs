@@ -59,16 +59,27 @@ async function main() {
     }
   }
 
-  // 2. Spawn substrate: mix run --no-halt in the repo, MIX_ENV=test.
+  // 2. Spawn substrate: mix run --no-start --no-halt -e in the repo,
+  // MIX_ENV=test. --no-start + eval pins auth_mode :anonymous via
+  // Application.put_env BEFORE Smalt.Application boots its Bandit listeners,
+  // so the smoke's tokenless probes never inherit an enforce-mode substrate
+  // left on 9443/8443 by a concurrent lane (witnessed: AuthenticationFailed
+  // MissingBearerToken on a tokenless probe).
   const logPath = path.join(LOG_DIR, "substrate.log");
   const logStream = fs.createWriteStream(logPath, { flags: "w" });
-  const child = spawn("mix", ["run", "--no-halt"], {
+  const anonEval =
+    `Application.put_env(:smalt, :auth_mode, :anonymous); ` +
+    `{:ok, _} = Application.ensure_all_started(:smalt)`;
+  const child = spawn(
+    "mix",
+    ["run", "--no-start", "--no-halt", "-e", anonEval],
+    {
     cwd: REPO,
     detached: true, // own process group so the beam cannot outlive us
-    // config/test.exs (test isolation lane) randomizes the listener ports at
-    // config time unless SMALT_TEST_*_PORT is set — pin the ports this
-    // harness and the SDK tier address.
-    env: {
+      // config/test.exs (test isolation lane) randomizes the listener ports at
+      // config time unless SMALT_TEST_*_PORT is set — pin the ports this
+      // harness and the SDK tier address.
+      env: {
       ...process.env,
       MIX_ENV: "test",
       SMALT_TEST_ARM_PORT: String(ARM_PORT),
@@ -222,14 +233,19 @@ async function main() {
   // on these ports otherwise turns the SDK tier red for the wrong reason
   // (witnessed: 401 MalformedBearerHeader on the anonymous plane).
   const modeProbe = async (base) => {
-    const res = await fetch(`${base}/subscriptions`, {
+    // api-version is required: anonymous mode validates the query param
+    // AFTER auth, so a tokenless bare /subscriptions answers 400
+    // MissingApiVersionParameter — indistinguishable from a wrong-mode VM
+    // by status alone. With api-version present, anonymous answers 200 and
+    // enforce still answers 401 (auth gates before routing).
+    const res = await fetch(`${base}/subscriptions?api-version=2022-12-01`, {
       signal: AbortSignal.timeout(10_000),
     });
     return res.status;
   };
   const anonStatus = await modeProbe(`http://127.0.0.1:${ARM_PORT}`);
   const enforceStatus = await modeProbe(`http://127.0.0.1:${ENFORCE_ARM_PORT}`);
-  log(`mode self-check: anonymous-plane /subscriptions -> ${anonStatus} ` +
+  log(`mode self-check: anonymous-plane /subscriptions?api-version=2022-12-01 -> ${anonStatus} ` +
       `(expect 200); enforce-plane -> ${enforceStatus} (expect 401)`);
   if (anonStatus !== 200 || enforceStatus !== 401) {
     console.error(

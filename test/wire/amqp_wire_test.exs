@@ -45,6 +45,7 @@ defmodule Smalt.Wire.AmqpWireTest do
       on_exit(fn ->
         stop_tree(sup)
         SmaltTest.Lifecycle.restore_app()
+        SmaltTest.Lifecycle.ensure_store_up()
       end)
     end
 

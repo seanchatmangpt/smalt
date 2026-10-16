@@ -380,6 +380,14 @@ defmodule Smalt.ArmGateway.Router do
   # `maxitempages` (default 1) caps pages per response; when items remain the
   # response carries an absolute nextLink continuing at $skip.
   defp send_list(conn, items) do
+    # Deny-by-default list fence (lens-11, measured): a record that is not a
+    # map, or a map carrying any value Jason cannot encode, previously raised
+    # Jason.EncodeError / Protocol.UndefinedError inside send_json — 500-ing
+    # the WHOLE list forever (the poisoning record persists). Like the LRO
+    # get_op/2 ownership fence (lens-9 cycle-5), a record that does not prove
+    # it is a well-formed ARM resource is never surfaced.
+    items = Enum.filter(items, &renderable_record?/1)
+
     skip = int_query_param(conn, "$skip", 0)
     pages = max(int_query_param(conn, "maxitempages", 1), 1)
     slice = Enum.slice(items, skip, pages * @page_size)
@@ -395,6 +403,16 @@ defmodule Smalt.ArmGateway.Router do
 
     send_json(conn, 200, Jason.encode!(body))
   end
+
+  # A record renders as an ARM resource iff it is a map every member of which
+  # Jason can encode. Anything else (a raw integer/atom/tuple under a store
+  # key, or a map with a tuple/pid/function value) is not provably a resource
+  # and is denied by default: filtered from lists, 404 on single GET.
+  defp renderable_record?(%{} = record) do
+    match?({:ok, _}, Jason.encode(record))
+  end
+
+  defp renderable_record?(_), do: false
 
   defp int_query_param(conn, name, default) do
     case conn.query_params[name] do
@@ -528,7 +546,19 @@ defmodule Smalt.ArmGateway.Router do
 
     case Store.get(:smalt_resource_groups, String.downcase(rg_id)) do
       {:ok, rg} ->
-        send_json(conn, 200, Jason.encode!(rg))
+        if renderable_record?(rg) do
+          send_json(conn, 200, Jason.encode!(rg))
+        else
+          # Deny-by-default (lens-11): a malformed record is not provably the
+          # requested resource group — 404, never a 500.
+          send_arm_error(
+            conn,
+            404,
+            "ResourceGroupNotFound",
+            "Resource group '#{rg_name}' could not be found.",
+            rg_id
+          )
+        end
 
       :error ->
         send_arm_error(
@@ -559,8 +589,14 @@ defmodule Smalt.ArmGateway.Router do
 
     Store.delete(:smalt_resource_groups, String.downcase(rg_id))
 
-    for child <- Store.list_prefix(:smalt_resources, base) do
-      Store.delete(:smalt_resources, String.downcase(child["id"]))
+    # Cascade by STORE KEY, never by the record's own "id" member (lens-11,
+    # measured): list_prefix/2 returns records, and a malformed (non-map)
+    # child — only reachable via a direct external write — raised
+    # FunctionClauseError inside Access.get/3, 500-ing the whole delete and
+    # leaking every remaining child. Store keys ARE the lowercased full ids,
+    # so deleting by key is exact and needs no read of the record at all.
+    for key <- Store.prefix_keys(:smalt_resources, base) do
+      Store.delete(:smalt_resources, key)
     end
 
     op = LRO.start_op(rg_id)
@@ -621,7 +657,18 @@ defmodule Smalt.ArmGateway.Router do
 
       case Store.get(:smalt_resources, String.downcase(res_id)) do
         {:ok, record} ->
-          send_json(conn, 200, Jason.encode!(record))
+          if renderable_record?(record) do
+            send_json(conn, 200, Jason.encode!(record))
+          else
+            # Deny-by-default (lens-11): malformed record → 404, never 500.
+            send_arm_error(
+              conn,
+              404,
+              "ResourceNotFound",
+              "The Resource '#{resource_name}' was not found.",
+              res_id
+            )
+          end
 
         :error ->
           res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
@@ -673,7 +720,20 @@ defmodule Smalt.ArmGateway.Router do
 
       case Store.get(:smalt_resources, key) do
         {:ok, record} ->
-          send_json(conn, 200, Jason.encode!(record))
+          if renderable_record?(record) do
+            send_json(conn, 200, Jason.encode!(record))
+          else
+            # Deny-by-default (lens-11): malformed record → 404, never 500.
+            name = rel_path |> String.split("/") |> List.last()
+
+            send_arm_error(
+              conn,
+              404,
+              "ResourceNotFound",
+              "The Resource '#{name}' was not found.",
+              "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{rel_path}"
+            )
+          end
 
         :error ->
           name = rel_path |> String.split("/") |> List.last()
@@ -866,12 +926,45 @@ defmodule Smalt.ArmGateway.Router do
 
         {:respond, send_json(conn, 412, body)}
 
-      _if_match ->
+      ["*" | _] ->
+        # RFC 7232: `*` means "resource exists" — always match.
         :ok
+
+      [if_match | _] ->
+        if if_match == lock_policy_etag(conn.request_path) do
+          :ok
+        else
+          body =
+            Jason.encode!(%{
+              "error" => %{
+                "code" => "PreconditionFailed",
+                "message" =>
+                  "The If-Match header '#{if_match}' does not match the current etag of the " <>
+                    "immutability policy at '#{conn.request_path}'."
+              }
+            })
+
+          {:respond, send_json(conn, 412, body)}
+        end
     end
   end
 
+  # Non-lock azapi actions carry no If-Match precondition.
   defp check_lock_precondition(_conn, _action), do: :ok
+
+  # Deterministic etag for the immutability policy a `/lock` azapi action
+  # targets: the `/lock` suffix stripped from the request path and lowercased
+  # (matching the Store key form), hashed as a quoted uppercase-hex MD5 — the
+  # same envelope form the blob-service container etag uses. `*` is honored as
+  # always-match per RFC 7232.
+  def lock_policy_etag(lock_request_path) do
+    policy_id =
+      lock_request_path
+      |> String.replace_trailing("/lock", "")
+      |> String.downcase()
+
+    "\"" <> Base.encode16(:crypto.hash(:md5, policy_id), case: :upper) <> "\""
+  end
 
   defp action_envelope(conn, "lock", name) do
     body =
@@ -1154,7 +1247,12 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id/operations/:op_id" do
     case LRO.get_op(op_id, sub_id) do
       {:ok, op} ->
-        status = if op["status"] == "Succeeded", do: 200, else: 202
+        # Only "InProgress" renders 202 — every other status is treated as
+        # terminal (default-terminal, no wedge). Lens-9 cycle-1 fixed the
+        # Failed face (a Failed terminal rendered as 202); cycle-4 widened to
+        # the default so any other terminal vocabulary (Cancelled, …) can
+        # never poll 202 forever.
+        status = if op["status"] == "InProgress", do: 202, else: 200
         send_json(conn, status, Jason.encode!(op))
 
       :error ->

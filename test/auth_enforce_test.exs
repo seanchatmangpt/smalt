@@ -18,9 +18,7 @@ defmodule Smalt.AuthEnforceTest do
   # The shared tree may be down or on busy default ports (concurrent lanes on
   # this shared checkout): (re)start it on this run's shifted ephemeral ports.
   setup_all do
-    if Process.whereis(Smalt.Store) == nil do
-      SmaltTest.Lifecycle.restore_app()
-    end
+          SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end
@@ -2824,6 +2822,426 @@ defmodule Smalt.AuthEnforceTest do
         ])
 
       assert c_past.status == 200, "far-past nbf answered #{c_past.status}"
+    end
+  end
+
+  describe "lens8: STS mint/verify round-trip property (claim shapes at the mint boundary)" do
+    # Mission item 2. The mint's ONLY client-controlled claim inputs are:
+    #   - `tid` — the URL path segment of /:tid/oauth2/v2.0/token (Plug
+    #     Router URI-decodes each segment, so %-encoded characters — %2F
+    #     slash, %2E dot, %00 NUL, multibyte UTF-8 — arrive in the claim),
+    #   - the mint-time request authority (forwarded headers under a
+    #     trusted proxy).
+    # `oid`/`sub`/`roles` are server constants; form values CANNOT displace
+    # them. The property under test: whatever the mint emits, the verify
+    # fence must accept (mint ⊆ verify — the mint must never mint what
+    # verify refuses); and the server constants must be immune to form
+    # injection. Everything at the wire through the real router.
+
+    @mint_form "grant_type=client_credentials&client_id=ci&client_secret=cs"
+
+    defp mint_at(path) do
+      c =
+        %Plug.Conn{
+          conn(:post, path, @mint_form)
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+        |> Smalt.ArmGateway.Router.call([])
+
+      {c, Jason.decode!(c.resp_body)}
+    end
+
+    defp verify_token_on_arm(token) do
+      c =
+        %Plug.Conn{
+          conn(:get, "/subscriptions?api-version=2022-09-01")
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("authorization", "Bearer #{token}")
+        |> Smalt.ArmGateway.Router.call([])
+
+      c.status
+    end
+
+    test "lens8 mint: adversarial tid shapes mint ⊆ verify — every minted token verifies" do
+      tid_shapes = [
+        {"plain guid", "11111111-2222-3333-4444-555555555555", 200},
+        # %-encoded slash decodes INSIDE one segment -> tid = "a/b" in the
+        # claim and in the iss PATH; the verify fence's issuer leg is a
+        # prefix match on "#{authority}/", so the slash rides. Pinned as
+        # deliberate: the tid is mint-time echo, not an authorization input.
+        {"percent-encoded slash", "a%2Fb", 200},
+        {"dot-dot", "..", 200},
+        {"percent-encoded dot-dot", "%2e%2e", 200},
+        {"dot", ".", 200},
+        {"nul byte", "%00", 200},
+        {"multibyte utf-8", "%E2%98%83", 200},
+        {"percent not a trigram", "a%zzb", 200},
+        {"trailing percent", "abc%", 200},
+        {"very long tid (4k)", String.duplicate("t", 4096), 200},
+        {"at+jwt-shaped", "at+jwt", 200},
+        {"url-shaped tid", "https:%2F%2Fevil.example%2Ftenant", 200}
+      ]
+
+      for {label, encoded, expect} <- tid_shapes do
+        {c, body} = mint_at("/#{encoded}/oauth2/v2.0/token")
+
+        assert c.status == expect,
+               "#{label}: mint answered #{c.status}: #{c.resp_body}"
+
+        assert body["access_token"], "#{label}: no access_token in mint response"
+
+        # PEEK at the minted claims first so a failure names the shape, then
+        # the round-trip: mint ⊆ verify.
+        claims =
+          body["access_token"]
+          |> String.split(".")
+          |> Enum.at(1)
+          |> Base.url_decode64!(padding: false)
+          |> Jason.decode!()
+
+        assert claims["tid"] == URI.decode(encoded),
+               "#{label}: minted tid != decoded path segment"
+
+        assert claims["iss"] =~ URI.decode(encoded),
+               "#{label}: minted iss does not carry the tid"
+
+        status = verify_token_on_arm(body["access_token"])
+
+        assert status == 200,
+               "#{label}: THE MINT MINTED WHAT VERIFY REFUSES (verify said #{status})"
+      end
+    end
+
+    test "lens8 mint: server claim constants are immune to form injection" do
+      injection =
+        "grant_type=client_credentials" <>
+          "&client_id=ci&client_secret=cs" <>
+          "&oid=00000000-0000-0000-0000-999999999999" <>
+          "&roles=%5B%22Admin%22%5D&roles=Admin" <>
+          "&aud=https%3A%2F%2Fevil.example&tid= Injected"
+
+      c =
+        %Plug.Conn{
+          conn(:post, "/oauth2/v2.0/token", injection)
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+        |> Smalt.ArmGateway.Router.call([])
+
+      assert c.status == 200, "injection-shaped form must still mint: #{c.resp_body}"
+
+      claims =
+        Jason.decode!(c.resp_body)["access_token"]
+        |> String.split(".")
+        |> Enum.at(1)
+        |> Base.url_decode64!(padding: false)
+        |> Jason.decode!()
+
+      # Exactly the server constants — no form key reaches the claim set.
+      assert claims["oid"] == "00000000-0000-0000-0000-000000000001"
+      assert claims["sub"] == "00000000-0000-0000-0000-000000000001"
+      assert claims["roles"] == ["Contributor", "Owner"]
+      assert claims["aud"] == "https://management.azure.com"
+      assert claims["tid"] == "00000000-0000-0000-0000-000000000000"
+    end
+
+    test "lens8 mint: duplicate form keys still refused at the mint (round-trip boundary intact)" do
+      c =
+        %Plug.Conn{
+          conn(
+            :post,
+            "/tid/oauth2/v2.0/token",
+            "grant_type=client_credentials&grant_type=password&client_id=ci&client_secret=cs"
+          )
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+        |> Smalt.ArmGateway.Router.call([])
+
+      assert c.status == 400
+      assert Jason.decode!(c.resp_body)["error"] == "invalid_request"
+    end
+
+    test "lens8 bodycache: two pipelined STS token requests on one connection — cache carries the SECOND body, no cross-request bleed" do
+      # Mission item 3. Plug builds a fresh %Plug.Conn per HTTP request
+      # (private is per-request state), so pipelined requests must not see
+      # each other's cached raw body. The wire-level analog through the real
+      # router: two back-to-back token posts with DIFFERENT bodies — each
+      # response must bind to its own body, and each conn's cache must equal
+      # its own body byte-exactly.
+      post = fn raw ->
+        %Plug.Conn{
+          conn(:post, "/oauth2/v2.0/token", raw)
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+        |> Smalt.ArmGateway.Router.call([])
+      end
+
+      c1 = post.("grant_type=client_credentials&client_id=one&client_secret=x")
+      c2 = post.("grant_type=password&grant_type=password&client_id=two&client_secret=y")
+
+      assert c1.status == 200, "first request must mint: #{c1.resp_body}"
+      assert c2.status == 400, "second request's duplicate must be refused on ITS body"
+      assert Jason.decode!(c2.resp_body)["error"] == "invalid_request"
+
+      # Per-request cache isolation: conn2's cache is conn2's body ONLY —
+      # the first body never bleeds into the second conn's private state.
+      assert c1.private[:smalt_raw_body] ==
+               "grant_type=client_credentials&client_id=one&client_secret=x"
+
+      assert c2.private[:smalt_raw_body] ==
+               "grant_type=password&grant_type=password&client_id=two&client_secret=y"
+    end
+
+    test "lens8 bodycache: re-invoked body reader after a completed read never double-accumulates" do
+      # The cache is already <> fragment; if Plug re-enters read_body after a
+      # {:ok, body} (body fully consumed), the fragment is "" and the cache
+      # must stay byte-identical — not body <> body.
+      c =
+        %Plug.Conn{
+          conn(:post, "/oauth2/v2.0/token", "grant_type=client_credentials&client_id=x&client_secret=y")
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+        |> Smalt.ArmGateway.Router.call([])
+
+      assert c.status == 200
+
+      # Replay the reader directly on the POST-parse conn: a completed read
+      # returns {:ok, "", _} and the accumulated cache must be unchanged.
+      assert {:ok, "", c2} = Smalt.Auth.BodyCache.read_body(c, length: 8_000_000)
+      assert c2.private[:smalt_raw_body] == "grant_type=client_credentials&client_id=x&client_secret=y"
+    end
+
+    # -- cycle 3: fresh-seed fuzz rotation ------------------------------------
+
+    # Family A: Authorization header VALUE corpus (scheme/token grammar).
+    # Every row must answer 401 with a typed envelope, never 5xx.
+    test "lens8 fuzz: Authorization header value grammar never 5xx and never false-accepts" do
+      good = mint()
+
+      rows = [
+        {"empty header", ""},
+        {"scheme only", "Bearer"},
+        {"scheme + space, empty token", "Bearer "},
+        {"tab separator (not RFC split)", "Bearer\t#{good}"},
+        {"no space", "Bearer#{good}"},
+        {"repeated scheme", "Bearer Bearer #{good}"},
+        {"basic scheme with token", "Basic #{good}"},
+        {"bearer word case token junk", "Bearer ."},
+        {"bearer empty segments", "Bearer .."},
+        {"token with spaces inside", "Bearer ab cd"},
+        {"crlf in value", "Bearer abc\r\nX-Injected: 1"}
+      ]
+
+      conn_for = fn v ->
+        conn(:get, "/subscriptions?api-version=2021-04-01")
+        |> put_req_header("authorization", v)
+        |> Smalt.ArmGateway.Router.call([])
+      end
+
+      for {label, v} <- rows do
+        c = conn_for.(v)
+
+        assert c.status == 401,
+               "#{label}: expected 401, got #{c.status} body=#{inspect(c.resp_body)}"
+
+        assert Jason.decode!(c.resp_body)["error"]["code"],
+               "#{label}: untyped refusal body"
+      end
+
+      # Benign pin: "Bearer  token" (DOUBLE space) ADMITS — String.split/3
+      # parts:2 + trim tolerates 1*SP between scheme and credentials, which
+      # is the RFC 7235 §2.1 grammar (scheme 1*SP token68). The token still
+      # verifies; no ambiguity is introduced by the padding.
+      c_pad =
+        conn(:get, "/subscriptions?api-version=2022-09-01")
+        |> put_req_header("authorization", "Bearer  #{good}")
+        |> Smalt.ArmGateway.Router.call([])
+
+      assert c_pad.status == 200, "1*SP-padded bearer answered #{c_pad.status}"
+    end
+
+    # Family B: token STRUCTURE corpus — JWS segment grammar abuse over a
+    # valid-signature payload. Never 5xx, never false-accept.
+    test "lens8 fuzz: malformed JWS structures never 5xx and never false-accept" do
+      b64 = fn bin -> Base.url_encode64(bin, padding: false) end
+      now = System.system_time(:second)
+      claims = %{"aud" => @aud, "iss" => @iss, "exp" => now + 3600}
+      valid = hand_signed_token(%{"alg" => "HS256"}, claims)
+
+      # Legitimately-signed payload with structural damage to the envelope,
+      # plus junk envelopes.
+      rows = [
+        {"four segments", valid <> ".extra"},
+        {"trailing dot", valid <> "."},
+        {"sig with equals", "ahs.apay=" <> valid},
+        {"empty segs", ".."},
+        {"single dot", "."},
+        {"bare dot-dot-dot", "..."},
+        {"no dots", "deadbeef"},
+        {"empty string", ""},
+        {"1mb payload",
+         Enum.join([b64.(~s({"alg":"HS256"})), b64.(String.duplicate("A", 1_000_000)), "sig"], ".")},
+        {"non-base64 payload",
+         Enum.join([b64.(~s({"alg":"HS256"})), "!!!!", "sig"], ".")}
+      ]
+
+      for {label, tok} <- rows do
+        c =
+          conn(:get, "/subscriptions?api-version=2021-04-01")
+          |> put_req_header("authorization", "Bearer #{tok}")
+          |> Smalt.ArmGateway.Router.call([])
+
+        assert c.status == 401, "#{label}: expected 401, got #{c.status}"
+      end
+    end
+
+    # Family C: numeric-type claim corpus + benign registry-leg pins.
+    test "lens8 fuzz: float and string exp/nbf refuse; duplicate-aud and bare-authority iss pinned" do
+      now = System.system_time(:second)
+
+      adversarial = [
+        %{"exp" => now + 3600.0},
+        %{"exp" => Integer.to_string(now + 3600)},
+        %{"nbf" => now - 1.0},
+        %{"nbf" => "  #{now - 1}"},
+        %{"exp" => now + 3600, "nbf" => []},
+        # Duplicate aud ENTRIES cannot be represented in an accepting token:
+        # the fence requires aud to be a member STRING of the audience list,
+        # so any list aud — even [aud, aud] — refuses (fuzz correction of my
+        # own benign modeling; lens-7 pinned the mixed-foreign-entry variant).
+        %{"aud" => [@aud, @aud]}
+      ]
+
+      for override <- adversarial do
+        token = mint(override)
+
+        c =
+          arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+            {"authorization", "Bearer #{token}"}
+          ])
+
+        assert c.status == 401, "claims #{Jason.encode!(override)} answered #{c.status}"
+      end
+
+      # Benign pins (measured, deliberate):
+      # 1. duplicate aud entries over a valid signature admit — `aud in
+      #    audiences` is a membership test; duplicates carry no semantics.
+      # 2. a BARE-authority iss (no /tid/v2.0 path) admits via the
+      #    minted-authority registry leg once this substrate minted for it:
+      #    register_trusted_authority keyed on the authority alone, so the
+      #    registry deliberately answers for any tid under a minted
+      #    authority. Not the mint-mints-what-verify-refuses direction
+      #    (verify ⊋ mint here — the loose side is registry-gated, not
+      #    client-assertable without the secret).
+      Smalt.Auth.Bearer.reset_trusted_authorities!()
+      _ = mint_at_token()
+
+      # The test conn's scheme is :http, so the mint registers
+      # "http://arm.smalt.local:19081" — the bare form of THAT authority.
+      bare_iss = mint(%{"iss" => "http://arm.smalt.local:19081"})
+
+      c_bare =
+        arm_req(:get, "/subscriptions?api-version=2022-09-01", [
+          {"authorization", "Bearer #{bare_iss}"}
+        ])
+
+      assert c_bare.status == 200, "bare-authority iss answered #{c_bare.status}"
+    end
+
+    defp mint_at_token do
+      token =
+        Task.async(fn ->
+          body = "grant_type=client_credentials&client_id=ci&client_secret=cs"
+
+          c =
+            %Plug.Conn{
+              conn(:post, "/oauth2/v2.0/token", body)
+              | host: "arm.smalt.local",
+                port: 19_081
+            }
+            |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+            |> Smalt.ArmGateway.Router.call([])
+
+          assert c.status == 200, "registry-leg mint failed: #{c.resp_body}"
+          Jason.decode!(c.resp_body)["access_token"]
+        end)
+        |> Task.await()
+
+      token
+    end
+
+    # Family D: form-encoding edge corpus at the mint. Every row must be
+    # typed (200 mint or 4xx invalid_request/unsupported_grant_type/
+    # invalid_client), never 5xx, and never mint an unauthenticated grant.
+    test "lens8 fuzz: form-encoding edges at the mint are typed, never 5xx" do
+      rows = [
+        {"uppercase grant", "grant_type=CLIENT_CREDENTIALS&client_id=ci&client_secret=cs", 400},
+        {"trailing space grant", "grant_type=client_credentials%20&client_id=ci&client_secret=cs", 400},
+        {"leading amp", "&grant_type=client_credentials&client_id=ci&client_secret=cs", 200},
+        {"semicolon separator", "grant_type=client_credentials;client_id=ci&client_secret=cs", 400},
+        {"plus-encoded grant", "grant_type=client+credentials&client_id=ci&client_secret=cs", 400},
+        {"key only", "grant_type", 400},
+        {"empty body", "", 400},
+        {"no content-type", "grant_type=client_credentials&client_id=ci&client_secret=cs", 400}
+      ]
+
+      post = fn {label, raw, expect} ->
+        headers =
+          case label do
+            "no content-type" -> []
+            _ -> [{"content-type", "application/x-www-form-urlencoded; charset=UTF-8"}]
+          end
+
+        %Plug.Conn{conn(:post, "/oauth2/v2.0/token", raw) | host: "arm.smalt.local", port: 19_081}
+        |> then(fn c -> Enum.reduce(headers, c, &put_req_header(&2, elem(&1, 0), elem(&1, 1))) end)
+        |> Smalt.ArmGateway.Router.call([])
+        |> then(fn c -> {label, raw, expect, c} end)
+      end
+
+      results = Enum.map(rows, post)
+
+      for {label, raw, expect, c} <- results do
+        assert c.status in [200, 400, 401],
+               "#{label}: answered #{c.status} — 5xx class"
+
+        assert c.status == expect, "#{label}: expected #{expect}, got #{c.status} #{c.resp_body}"
+
+        if c.status == 400 do
+          assert Jason.decode!(c.resp_body)["error"] in [
+                   "invalid_request",
+                   "unsupported_grant_type",
+                   "invalid_client"
+                 ],
+                 "#{label}: untyped 400 body #{c.resp_body}"
+        end
+      end
+
+      # Malformed JSON content-type row, measured separately: the ARM
+      # router's Plug.Parsers raises Plug.Parsers.ParseError on a
+      # JSON-declared body whose bytes are not JSON — in the direct-call
+      # harness that exception propagates; on the real wire the Bandit
+      # adapter converts it to a plain 400. Typed class, pinned at the
+      # harness boundary.
+      assert_raise Plug.Parsers.ParseError, fn ->
+        %Plug.Conn{
+          conn(:post, "/oauth2/v2.0/token", "grant_type=client_credentials&client_id=ci&client_secret=cs")
+          | host: "arm.smalt.local",
+            port: 19_081
+        }
+        |> put_req_header("content-type", "application/json")
+        |> Smalt.ArmGateway.Router.call([])
+      end
     end
   end
 end

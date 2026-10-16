@@ -14,7 +14,8 @@ defmodule Smalt.Mcp.Descriptor do
   """
 
   @capabilities %{
-<%= for row <- caps do %>    "<%= row["capability_id"] %>" => %{
+<% canonical = Enum.sort_by(caps, & &1["capability_id"]) %>
+<%= for row <- canonical do %>    "<%= row["capability_id"] %>" => %{
       name: "<%= row["capability_name"] %>",
       description: "<%= row["capability_description"] %>",
       observation_scope: :<%= row["observation_scope"] %>,
@@ -23,7 +24,7 @@ defmodule Smalt.Mcp.Descriptor do
       reversible: <%= row["is_reversible"] %>,
       consequence: :<%= row["consequence"] %>,
       receipt_semantics: :logged
-    }<%= if row != List.last(caps), do: "," %>
+    }<%= if row != List.last(canonical), do: "," %>
 <% end %>  }
 
   @doc "Full descriptor map, e.g. for an MCP `tools/list` response."

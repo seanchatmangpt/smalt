@@ -185,13 +185,18 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp check_blob_name(name) when is_binary(name) do
     cond do
-      name == "" or byte_size(name) > @max_blob_name_bytes ->
-        {:error, 400, "InvalidResourceName",
-         "The specified blob name is invalid (must be 1 to 1024 bytes)."}
-
       String.match?(name, ~r/[\x00-\x1F\x7F]/) ->
         {:error, 400, "InvalidResourceName",
          "The specified blob name is invalid (control characters are not permitted)."}
+
+      # Zero-visible class (lens-5 routing): whitespace-only and
+      # invisible-format-only (Unicode Cf / BOM) names are unreadable custody
+      # keys that collide visually in blob.list — same fence vocabulary as
+      # Smalt.Projection.Identity.valid?/1 (shared read-side fence).
+      name == "" or byte_size(name) > @max_blob_name_bytes or
+        not Smalt.Projection.Identity.valid?(name) ->
+        {:error, 400, "InvalidResourceName",
+         "The specified blob name is invalid (must be 1 to 1024 visible bytes)."}
 
       true ->
         :ok
@@ -574,7 +579,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       next_marker = if length(keys) > max_results, do: String.replace_prefix(List.last(page_keys), key_prefix, ""), else: nil
 
       xml =
-        render_blobs(page_keys, next_marker, account, container, marker, max_results, "", key_prefix, include_meta)
+        render_blobs(page_keys, next_marker, account, container, marker, max_results, "", prefix, key_prefix, include_meta)
       {xml, next_marker}
     else
       # Delimiter/prefix/marker composition (Azure parity, cycle-27):
@@ -643,7 +648,11 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
-  defp render_blobs(page_keys, next_marker, account, container, marker, max_results, delimiter_xml, key_prefix, include_meta) do
+  # Prefix echo mirrors the composed path's expression exactly (defect 4,
+  # v26.10.14 lane 06): the fast path previously interpolated the full stored
+  # key prefix directly instead of routing through the same
+  # `if(prefix == "", do: key_prefix, else: prefix)` echo.
+  defp render_blobs(page_keys, next_marker, account, container, marker, max_results, delimiter_xml, prefix, key_prefix, include_meta) do
     items =
       Enum.map_join(page_keys, "\n", fn key ->
         render_blob(String.replace_prefix(key, key_prefix, ""), key, key_prefix, include_meta)
@@ -652,7 +661,7 @@ defmodule Smalt.DataPlane.BlobStorage do
     """
     <?xml version="1.0" encoding="utf-8"?>
     <EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/#{xml_escape(account)}" ContainerName="#{xml_escape(container)}">
-      <Prefix>#{xml_escape(key_prefix)}</Prefix>#{delimiter_xml}
+      <Prefix>#{xml_escape(if(prefix == "", do: key_prefix, else: prefix))}</Prefix>#{delimiter_xml}
       <Marker>#{xml_escape(marker)}</Marker>
       <MaxResults>#{max_results}</MaxResults>
       <Blobs>
@@ -662,7 +671,7 @@ defmodule Smalt.DataPlane.BlobStorage do
     </EnumerationResults>
     """
   end
-  defp render_blob(name, key, key_prefix, include_meta \\ false) do
+  defp render_blob(name, key, _key_prefix, include_meta) do
     case Store.get(:smalt_blobs, key) do
       {:ok, b} ->
         """
@@ -777,7 +786,6 @@ defmodule Smalt.DataPlane.BlobStorage do
       "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "headers" => headers
     }
-    blob = Map.update!(blob, "content", &String.trim_trailing/1)
     Store.put(:smalt_blobs, "#{account}/#{container}/#{blob_name}", blob)
     {:ok, blob}
   end
@@ -988,6 +996,23 @@ defmodule Smalt.DataPlane.BlobStorage do
     :ok
   end
 
-  defp request_id, do: Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
+  # Real Azure Storage answers x-ms-request-id with a dashed-36 RFC 4122 v4
+  # GUID — same unified form as the ARM gateway and LA surface
+  # (egress_router.ex generate_request_id/0; cross-court finding F1,
+  # compliance lens-7 8th confirmation). Previously a 32-hex dialect pin.
+  defp request_id do
+    <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
+    c4 = :erlang.band(c, 0x0FFF) + 0x4000
+    d = :erlang.bor(:erlang.band(d, 0x3FFF), 0x8000)
+
+    :io_lib.format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [
+      a,
+      b,
+      c4,
+      d,
+      e
+    ])
+    |> IO.iodata_to_binary()
+  end
 
 end

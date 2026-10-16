@@ -20,7 +20,11 @@ full-suite row refreshed 2026-10-15 (suite has grown since the 10-14 measurement
 | full `mix test` (2026-10-15 refresh 4, cycle-11) | 57.9s | **1 doctest, 1529 tests, 8 failures** (22 excluded); suite grew 1510→1529; all lens clusters from refresh 3 dissolved (pplan claim-race fuzz, mcp/security JCS lens-3, kv_tls, session-token now green standalone: pplan+security+mcp+wire 170/0, arm+auth+dispatch+eventgrid 177/0). Remaining 8 classified: 2 port-contention-class (chaos port fence, mcp doctor-summary), 1 error_codes fence regen timing (regen'd, `--check` rc=0), 5 standalone-green concurrency flakes (arm nextLink, 2 session-token GAP pins, auth crit/b64 fence, egress dispatch typed errors — each green in its own file run) |
 | full `mix test` (2026-10-15 refresh 5, docs-corpus-lens2 cycle 1) | — | NOT re-run full-suite this cycle (lane suite windows instead; shared checkout mid-landing). Settled-tree reconciliation of the refresh-4 flakes, by suite: arm_wire+arm_gateway+egress_wire+security_hardening **96/0** (arm nextLink, egress dispatch typed errors, security fences all green); auth_enforce **94/0** on settled re-run — first re-run 51/94 under a concurrent-lane compile window, clean immediately after (port/env contention class, not a docs defect); the 2 session-token GAP pins are now REAL failures — cosmos continuation landed after refresh 4 and the pins still assert the old no-continuation behavior (cosmos lane owner, stale-test class). New landed facts documented this cycle: cosmos `x-ms-continuation`, blob container grammar/409/`maxresults` fences, ledger receipt `typ` fence (all code-read + suite-run before writing) |
 | full `mix test` (2026-10-15 refresh 6, docs-corpus-lens3 cycle 2) | — | NOT re-run full-suite (lane suite windows on a shared checkout mid-landing). Courts c1..c7 re-run: one compile-abort window (~10:31, `connection.ex`, foreign lane, cleared in-SLA), one router mid-edit window (10:35, c1 answered 404s on 18 rows; router.ex sha `9528aeee…` settled 10:40) — after the window: c1 25/0, c2 16/0, c3 23/0, c4 28/0, c5 16/0 (`--include amqp_wire`), c6 18/0, c7 16/0 = **142/0**, counts refreshed in RELEASE_NOTES + CHANGELOG; plus 111/0 (c4+c1+security_hardening, 10:28). New landed facts documented this cycle: blob conditional reads (RFC 7232, 304 shape), blob delimiter BlobPrefix listing, ARM subscription presence gates, and `docs/XAAS_PRIOR_ART.md` (xaas transfer plan) |
+| full `mix test` (2026-10-15 refresh 7, docs-corpus-lens4 cycle 5) | — | NOT re-run full-suite (courts + targeted suites on a shared checkout mid-landing). Courts c1..c7 re-run settled: c1 25/0, c2 16/0, c3 **26**/0 (+3 cosmos), c4 **29**/0 (+1 slash-named blob round-trip), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 16/0 = **146/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 142/0). Targeted: c4+lens5 33/0; store_churn+audit_planes 83/0; tls+metadata_endpoints 16/0 settled (16/2 -> 16/0 same hour); cosmos+semantic_projection 110/2 mid-window (cosmos.ex mtime 4s old — foreign; both failures green in c3's own 26/0 run minutes later). Docs landed this cycle-pair: include=metadata + Container PUT 201 header shape (stale "container PUT lacks ETag/Last-Modified" gap claim DELETED), ledger crash-class totality, GAP(name) tokens in TEST_ISOLATION, DEV_LOOP status-flip discipline, ARCHITECTURE/README false-CAS repair, NAMING_SWEEP re-verification addendum, 7 line-pin drift repairs |
 | full `mix test` (2026-10-15 refresh 6, test-corpus-b-lens2 cycle 1) | — | corpus-B waves only (shared checkout mid-landing): 975/4 → 985/3 (reversed order) → 1001/9 → 1017/4; every wave-3/4 failure green solo (cross-file shared-Store/ETS contention class); corpus-owned test repairs: mcp plain-id stale assert, auth lens6 seeded-mutation collisions (2), fuzz map-decode retimed to paired-round min-of-5, descriptor-slot sweep bodies+classification, blob xmerl `{:ok,_}` miswire (SLA unblock, disclosed). F-21 padded-signature accept RESOLVED by auth-lane ruling; F-22 sentinel ETS table-creation race OPEN (sentinel.ex:91); F-23 blob listed-vs-stored courts cannot xmerl-parse non-ASCII names OPEN; F-19 semantic-projection order-dependence re-witnessed (2nd). Mutation probes 3/3 non-vacuous (cosmos continuation forged-check, auth crit fence, blob If-Match). Receipt: tmp/errc/test-corpus-b-lens2/cycle-1.md |
+| full `mix test` (2026-10-15 refresh 8, docs-corpus-lens6 cycle 5) | — | NOT re-run full-suite (courts + targeted suites on a shared checkout mid-landing). Courts c1..c7 re-run settled: c1 26/0, c2 16/0, c3 28/0 (+2), c4 36/0 (+7), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 16/0 = **156/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 147/0). Targeted: blob_hardening+egress_wire 91/0; codec gate 34/0 (lens-7 decode-mirror failure window REPORTED + resolved by codec lane); semantic_projection 18/0 + arm_gateway canary 26/0 (SEMANTIC_PROJECTION receipt refreshed). Docs landed this lens: WIRE_PARITY codec encode-guard + blob splat + ledger/cosmos GAP flips, PUBLISH_CHECK blockers 2+3 CLEARED, TEST_ISOLATION 25-file inventory, NAMING_SWEEP 2 CONFIRMED-FIXED flips, ERROR_SWEEP chaos_kill re-pins, SEMANTIC_PROJECTION counts |
+| full `mix test` (2026-10-15 refresh 9, docs-corpus-lens7 cycle 3) | — | NOT re-run full-suite (courts + targeted suites on a shared checkout mid-landing). Courts c1..c7 re-run settled: c1 26/0, c2 16/0, c3 28/0, c4 **42**/0 (+6), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 **17**/0 (+1) = **163/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 156/0). Targeted: lens6_fuzz + lro_test 27/0 (tee-admit + LRO Failed-terminal adoption evidence); semantic_projection 21/0 (+3) + arm_gateway canary 26/0 (SEMANTIC_PROJECTION receipt refreshed); hex build court: `mix hex.build` rc=0, checksum `284efbdf…`, still carries the 5 key paths (PUBLISH_CHECK blocker 1 STANDS, corroborated). Docs landed this lens: WIRE_PARITY SKR tee-admit/claim_value + ARM Failed-terminal rows, blob splat into CHANGELOG, c4/egress pin re-derivation, ERROR_SWEEP chaos_kill/soak/gates re-pins, XAAS_PRIOR_ART G1 witness, SEMANTIC_PROJECTION counts |
+| full `mix test` (2026-10-15 refresh 10, docs-corpus-lens8 cycle 2) | — | NOT re-run full-suite (courts on a shared checkout mid-landing). Courts c1..c7 re-run settled (MIX_BUILD_ROOT=_build-docs8): c1 26/0, c2 16/0, c3 28/0, c4 **46**/0 (+4 blob-lane fences), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 17/0 = **167/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 163/0). error_codes fence: stale on arrival (foreign c4_blob.exs drift 1219->1223), regenerated, `--check` rc=0. Hex build court re-derived: `mix hex.build` rc=0, checksum `71461bd6…`, 5 leak paths still in the inner contents.tar.gz (PUBLISH_CHECK blocker 1 STANDS; outer-tar grep reads 0 — grep the INNER contents listing, not the outer). Docs landed this lens: 7 WIRE_PARITY pin re-derivations, 17 ERROR_SWEEP pin re-derivations, NAMING_SWEEP 7-row CONFIRMED-FIXED flips + eh-run:143/stress re-pins + count refresh, DEV_LOOP lane build-root lease note (37 orphaned `_build-*` dirs), PUBLISH_CHECK lens-8 corroboration |
 | `fast_test` first run on a new target file | 51-62s | one-time cold compile of the isolated build root |
 | `fast_test` warm single file | 1-2s | 37 tests, 0 failures |
 | `fast_test file:line` (warm) | 1-2s | 1 test, 0 failures (36 excluded) |
@@ -35,6 +39,44 @@ unacceptable, set `FAST_TEST_BUILD_ROOT=_build-ft-shared` to share one warm isol
 root across targets, or `_build` to share the main root (accepting the race).
 
 Env knobs: `FAST_TEST_BUILD_ROOT`, `DEV_WATCH_BUILD_ROOT`.
+
+## Substrate boot budget (typed, 2026-10-15)
+
+`bench.py` CTQ 2 (spawn -> TCP accept) measures a quantity with TWO regimes,
+and the budget names one of them:
+
+- **Quiet-tree regime** — no sibling holds the mix build lock. Measured
+  distributions (n=5 each, `scripts/bench.py` receipts):
+  12:25 receipt `[0.774, 1.831, 1.844, 2.14, 2.553]` (p95 2.553s), and
+  lens-5 14:1x probe `[1.539, 1.549, 1.66, 1.688, 1.858]` — p95 1.858s
+  (receipt
+  `tmp/errc/dx-scripts-lens5/cycle-3.md`). Quiet-tree p95 is stable at
+  **<= 2.6s across both windows** — the 5.0s budget holds with ~2x headroom.
+- **Contention regime** — a sibling lane holds the build lock; the boot
+  eats lock wait, not substrate work. Witnessed same-day: `[3.379, 4.545,
+  5.693, 9.573, 10.822]`, p95 10.822s (receipt
+  `tmp/errc/dx-scripts-lens5/bench-receipt-run1-contented.json`). Ceiling
+  witnessed ~11s under multi-lane churn; record, don't budget.
+
+**Contract**: the 5.0s boot budget is a quiet-tree budget. A boot FAIL is
+admitted only if a quiet re-run (no sibling build activity) also exceeds
+5.0s; a FAIL that clears on a quiet re-run is the contention regime, typed
+as such in the receipt/log, not a subject regression. Never raise the budget
+to absorb lock wait — that trades a real quiet-tree signal for silence.
+
+## Lane build-root leases (integration-cleanup items, 2026-10-15 docs-corpus-lens-8)
+
+Per the same-checkout fan-out cleanup law, `MIX_BUILD_ROOT=_build-lane*`
+directories are leases, not assets: the coordinator deletes every lane build
+root at integration, BEFORE the final commit. As of lens-8 the tree carries
+**37 orphaned lane build roots** matching `_build-lane*` (32 dirs),
+`_build-lens9`, `_build-docs8`, `_build-docsl3` (2) — plus
+`_build-f16*` x9 and misc (`_build-compliance`, `_build-doclane`, `_build-l4..l8`,
+`_build-verdict`, `_build-stab3`) — 53 `_build-*` dirs total in the tree root. These are coordinator-owned integration
+cleanup (a docs lane does not delete build roots); each surviving root should
+be either deleted or re-leased by its owner at the next integration. A fan-out
+whose integration commit leaves new `_build-*` dirs behind is an incomplete
+integration.
 
 ## Status-flip discipline (receipt-file-gated)
 
@@ -60,11 +102,19 @@ blocks get adopted by siblings and re-collide — witnessed 2026-10-15, the
 | eh-run SDK smoke | 39172, 39173, 39444-39446 | `test/sdk-smoke/eh-run.mjs` | `SMALT_EH_*_PORT` |
 | census private block | 39071, 39072 | `test/sdk-smoke/census-run.mjs` | `SMALT_TEST_AMQP_PORT` / `SMALT_TEST_ARM_PORT` |
 | bench / court auto-scope | ephemeral (OS-assigned) | `scripts/bench.py`, `scripts/mutation_court.py` | n/a — recorded in run receipt |
-| ARM-scale stress | 39453-39457 (arm/tls/egress/amqp/event-hubs) | `scripts/stress/arm_scale.py` | `SMALT_ARMSCALE_*_PORT` |
+| ARM-scale stress | 39453-39458 (six-listener block) | `scripts/stress/arm_scale.py` | `SMALT_ARMSCALE_*_PORT` |
 | TLS-churn client | attaches to 39453 (http) / 39454 (tls) | `scripts/stress/tls_churn.py` | `SMALT_TLS_PORT` / `SMALT_HTTP_PORT` |
-| vs-azurite bench | 39463-39464 (arm/tls twins); egress fallback 39455 | `scripts/stress/vs_azurite.py` | `SMALT_VSAZ_*_PORT` |
-| gate-cost probe | 39468-39471 | `scripts/stress/gate_cost.py` | `SMALT_GATECOST_*_PORT` |
-| ycsb-lite | 39472-39475 | `scripts/stress/ycsb_lite.py` | `YCSB_*_PORT` |
+| soak | 39430-39435 (six-listener block) | `scripts/stress/soak.py` | edit PORTS dict (documented) |
+| gate-cost probe | 39460-39465 (six-listener block) | `scripts/stress/gate_cost.py` | `SMALT_GATECOST_*_PORT` |
+| ycsb-lite | 39472-39477 (six-listener block) | `scripts/stress/ycsb_lite.py` | `YCSB_*_PORT` |
+| vs-azurite bench | 39500-39505 (six-listener block; main egress default 8443, private fallback 39502) | `scripts/stress/vs_azurite.py` | `SMALT_VSAZ_*_PORT` |
+| connection spike | 39510-39515 (six-listener block) | `scripts/stress/spike.py` | `SMALT_SPIKE_*_PORT` |
+| chaos kill | 39520-39525 (six-listener block) | `scripts/stress/chaos_kill.py` | `SMALT_CHAOS_*_PORT` |
+| blob scale | 39530-39535 (six-listener block) | `scripts/stress/blob_scale.py` | `SMALT_BLOBSCALE_*_PORT` |
+| bench-concurrent private overrides | 39540-39542 (tls/eh/mcp of the scoped branch; arm/egress/amqp via `SMALT_BENCH_{ARM,DATA,AMQP}_PORT`) | `scripts/bench_concurrent.py` | `SMALT_BENCH_*_PORT` |
+| lro storm | ephemeral (six-port `free_port()` re-pick per boot) | `scripts/stress/lro_storm.py` | n/a |
+| cosmos bulk | ephemeral (six-port re-pick per boot) | `scripts/stress/cosmos_bulk.py` | n/a |
+| bounds probe | ephemeral (`gates/common.pick_ports`) | `scripts/stress/bounds.py` | n/a |
 
 Rules: front door is fail-closed — a harness that finds its port held exits
 with a typed remediation (wait, or take the documented private override);
@@ -86,6 +136,24 @@ table-listed private ports and record the chosen ports in their receipt.
    think you're done, not just before push).
 4. **Pre-PR**: `just court` (doctor + test-offline + test-wire + test-sdk-smoke +
    tf-plan-smoke + bench-check, per `Justfile:149`).
+
+## Workspace / SDK / release tooling recipes
+
+One-command entry points for the non-Elixir surfaces (recipes live in
+`justfile.d/`; not part of `just court` — run them when working on their
+surface):
+
+| Command | Surface | Notes |
+|---|---|---|
+| `just ws-install` / `ws-build` / `ws-lint` | `workspace/` Next.js console | scaffold + build + lint (`npm`) |
+| `just ws-court` / `ws-converge` | `workspace/scripts/e2e-court.mjs` | e2e court; `ws-converge` surfaces failing checks on FAIL |
+| `just test-sdk-smoke` | `test/sdk-smoke/run.mjs` | T3 SDK smoke tier (already in `just court`) |
+| `just census` | `scripts/sb_census_replay.sh` | SB census; SKIP-loud without `SMALT_SDK_ROOT` |
+| `bash test/enclave-testbed/run.sh` | enclave stress testbed | exclusive substrate lock; exit 0 = all phases PASS; just recipe pending |
+| `cd smalt-cli && .venv/bin/python run_gates.py` | smalt-cli 4-gate runner | just recipe (`cli-gates`) pending, lane 03-cli-wiring |
+| `just publish-dry` | hex publish dry-run gate | inner-tar leak grep + ERROR_CODES regen identity |
+| `just court-x2` | release receipt gate | full court twice; two consecutive greens required |
+| `just docs-dod-check` | docs truth-sync | receipt/doc paths named in README/DEV_LOOP/CHANGELOG exist on disk |
 
 ## Elixir 1.19 focus patterns
 

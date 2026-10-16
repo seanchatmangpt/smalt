@@ -16,9 +16,7 @@ defmodule Smalt.Compliance.C6OauthTest do
   @tid "00000000-0000-0000-0000-000000000000"
 
   setup_all do
-    if Process.whereis(Smalt.Store) == nil do
-      SmaltTest.Lifecycle.restore_app()
-    end
+          SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end
@@ -235,6 +233,12 @@ defmodule Smalt.Compliance.C6OauthTest do
 
     # pinned DEV-MODE: HS256 instead of AAD's RS256
     assert doc["id_token_signing_alg_values_supported"] == ["HS256"]
+
+    # Lens-7: the REQUIRED members must be correctly WIRED, not merely
+    # present — an SDK reads token_endpoint and POSTs its credentials
+    # there; a mangled path strands the flow. Pin the token-endpoint
+    # route shape on both discovery surfaces (tenant + common).
+    assert doc["token_endpoint"] =~ ~r|/oauth2/v2\.0/token$|
   end
 
   test "OIDC-Discovery: well-known path forms (tenant + bare)" do

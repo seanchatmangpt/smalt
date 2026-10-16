@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smalt-cli"
+version = "0.1.0"
+description = "Headless CLI companion to the smalt emulator: wire-parity Azure tooling against local loopback, zero-actuation enforced."
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.12",
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+aio = ["aiohttp>=3.9"]
+
+[project.scripts]
+smalt-cli = "smalt_cli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["smalt_cli*"]
+
+[tool.pytest.ini_options]
+testpaths = ["smalt_cli"]

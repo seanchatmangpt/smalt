@@ -6,6 +6,13 @@
 #     --for-each resources \
 #     --out 'lib/smalt/ocel/revops/<name>.ex' \
 #     --engine sparql
+# REGENERATION-CLOBBERS: re-running the command above overwrites this file
+# in place with a non-compiling skeleton. The shipped gen/ template + TTL
+# still carry non-Ash types (:string_array, :utc) and render no primary key /
+# allow_nil?/read action; this file's atom names, real Ash types
+# ({:array, :string}, :utc_datetime_usec), primary key, and read action are
+# hand-adapted and NOT recoverable from gen/. Do not regenerate until the
+# template/TTL are repaired (deferred generator work).
 # Ontology: lib/smalt/ocel/revops/gen/revops_surface.ttl — composes the
 # ash-ocel-revops-surface-factory-pack candidate vocabulary (r75:AshResource,
 # OcelTimeline, ProcessConformance, ValueEvidence) with the executable
@@ -20,8 +27,19 @@ defmodule Smalt.Ocel.RevOps.OcelTrace do
   smalt OCEL feed. One record per trace: events grouped by first
   relationship objectId. Derived at read time from the real NDJSON sink —
   no data layer of its own, no writes.
+
+  Key semantics (see `Smalt.Ocel.RevOps.trace_groups/1`): the trace key is
+  the first `relationships` entry's `objectId`; events with no
+  relationships (or an empty/missing objectId) each form their own
+  singleton trace under the positional key `trace-<index>`.
+
+  Time-window caveat: `start_time`/`end_time` are the min/max of the
+  group's raw `"time"` strings after an **ISO-string sort**. This is
+  correct only for same-format, same-precision ISO-8601 timestamps;
+  mixed formats/timezone offsets sort lexically, not chronologically.
+  Known caveat, not scheduled for fix.
   """
-  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple
+  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple, primary_read_warning?: false
 
   attributes do
     attribute :id, :string, allow_nil?: false, primary_key?: true, public?: true

@@ -95,7 +95,13 @@ defmodule Smalt.DataPlane.Sentinel do
         end
       end
 
-      :ets.insert(table, {System.monotonic_time(), op, self()})
+      try do
+        :ets.insert(table, {System.unique_integer([:monotonic, :positive]), op, self()})
+      rescue
+        # Owner churn: the first-caller-owned table can die between the info
+        # check and this insert; the next op recreates it. Hunt-only tool.
+        ArgumentError -> :ok
+      end
     end
 
     :ok
@@ -109,6 +115,12 @@ defmodule Smalt.DataPlane.Sentinel do
       "dcr" => dcr,
       "last_ingest" => now
     })
+
+    # Lane 19 (v26.10.14) item 2: materialize the DCR-creation marker the
+    # `:sentinel_dcr_strict` fence pivots on (`dcr_exists?/1` checks
+    # `{:dcr_created, dcr}` — previously only tests hand-seeded it, so strict
+    # mode 404'd every DCR the lib itself created). Idempotent.
+    Store.put(:smalt_sentinel_streams, {:dcr_created, dcr}, true)
 
     stored =
       rows
@@ -126,29 +138,25 @@ defmodule Smalt.DataPlane.Sentinel do
   end
 
   # Atomic per-stream row sequence, held as an integer counter row
-  # `{:seq_counter, dcr, stream}` in the Store-owned `:smalt_sentinel_streams`
-  # table (owner = the Store GenServer, so it survives test-process death and
-  # is reset by `Store.clear/0` like the rows themselves).
+  # `{:seq_counter, dcr, stream}` in the `:smalt_sentinel_streams` table.
   #
-  # The zero value acts as the "unseeded" marker: `Store.update_counter(.., 0)`
-  # atomically initializes it, then exactly one concurrent caller wins the
-  # `compare_and_swap` that seeds the counter with the number of rows already
-  # stored (preserving "continue numbering across ingests"). Every bump is an
-  # atomic `update_counter(+1)`, so concurrent ingests to one stream can no
-  # longer read the same `existing` length and overwrite each other's rows.
+  # The entire check-seed-bump runs as ONE serialized `Store.next_seq/3`
+  # handle_call (lens-3 F-1 root cause, see Store.next_seq/3 docs): the
+  # previous caller-side init/check/CAS-seed/direct-bump shape let a
+  # concurrent bump slip between the seed CAS's lookup and insert, clobbering
+  # assigned seqs (duplicate row keys, last-write-wins collapse, final counter
+  # short). seed_fun runs inside the Store GenServer only when the row is
+  # missing and preserves "continue numbering across ingests" by counting
+  # existing rows.
   defp next_row_seq(dcr, stream) do
     key = {:seq_counter, dcr, stream}
-    Store.update_counter(:smalt_sentinel_streams, key, 0)
 
-    if Store.current_counter(:smalt_sentinel_streams, key) == 0 do
-      existing =
+    seq =
+      Store.next_seq(:smalt_sentinel_streams, key, fn ->
         Store.list_prefix(:smalt_sentinel_rows, row_prefix(dcr, stream))
         |> length()
+      end)
 
-      Store.compare_and_swap(:smalt_sentinel_streams, key, 0, existing)
-    end
-
-    seq = Store.update_counter(:smalt_sentinel_streams, key, 1)
     forensic_log({:bump, dcr, stream, seq})
     seq
   end

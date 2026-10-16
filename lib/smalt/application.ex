@@ -23,7 +23,12 @@ defmodule Smalt.Application do
         {Bandit, plug: {Smalt.Mcp.Router, []}, scheme: :http,
          port: Application.get_env(:smalt, :mcp_port, 9545)},
         {Smalt.AmqpBroker, []},
-        Smalt.Telemetry.RollingCounters
+        Smalt.Telemetry.RollingCounters,
+        # ARM LRO at-rest sweeper (lane 05, V261014-05 — disclosed additive
+        # child, application.ex shared this wave): closes
+        # GAP(lro-lazy-terminality) by driving terminal flips without a poll,
+        # plus opt-in :lro_retention_ms eviction (default :infinity).
+        Smalt.ArmGateway.LRO.Sweeper
       ]
 
     Smalt.Telemetry.attach()

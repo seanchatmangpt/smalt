@@ -361,3 +361,105 @@ costs ~0.05 ms p95 over anonymous — no ×3 regression confirmation needed.
 (2026-10-15T00:24:33-0700), schema `smalt-bench/v1`. The default-location
 `tmp/bench-receipt.json` remains the stale 18:15 anonymous receipt until
 bench.py gains the STS mint.
+
+### Wire-tier refusal sweep + engine-kill court — V261014-18 (2026-10-15, lane 18)
+
+New courts landed with the v26.10.14 wave (work order
+`docs/jira/v26.10.14/18-mutation-courts.md`):
+
+- **Wire-tier malformed-payload refusal sweep** —
+  `test/wire_tier_refusal_sweep_test.exs` iterates
+  `Smalt.Registry.admitted_resource_types()` DYNAMICALLY (tripwire `>= 30`;
+  38 at run time), resolves each type's ARM route from the type's segment
+  shape (generic 3-segment route; child routes for nested Registry types;
+  parented-child chains created with conforming payloads via the real
+  router), PUTs the lens-2-inverted malformed payload over real HTTP
+  (Bandit + raw `:gen_tcp`), and asserts per type: `400 InvalidResourceShape`
+  (target `AshGraphLaw.Enforcement`), never 422, never 2xx. Contrast row:
+  `Microsoft.Compute/disks` conforming PUT -> **201** + GET round-trip **200**
+  (vacuity guard — the sweep distinguishes refusal from admission).
+  Verdict: **NON-VACUOUS**; `mix test test/wire_tier_refusal_sweep_test.exs`
+  3/3, 0 failures (2026-10-15 15:28 PT).
+
+| Sweep outcome (38 types) | n | Per-type wire answer to malformed PUT |
+|---|---|---|
+| Law holds: 400 InvalidResourceShape, never 422/2xx | 36 | 400 `InvalidResourceShape` |
+| FOUND DEFECT V261014-18-D1 (shapeless shape, asserted in-test) | 1 | **201 admitted** — `Microsoft.Network/networkSecurityGroups` (NsgShape: no required paths, `sh:closed false` → validator admits ANY payload; malformed probe admitted). Set derived dynamically from compiled shapes, never a hardcoded name. |
+| FOUND DEFECT V261014-18-D2 (admitted type, no ARM route) | 1 | **404 RouteNotFound** — `Microsoft.Network/privateDnsZones/virtualNetworkLinks`: no PUT route matches the 4-segment azurerm form; falls through the nested glob to the catch-all. Fail-closed, but the type is unreachable and its shape gate never runs on the wire. Set membership response-derived per run. |
+
+- **Engine-kill court** — new describe in `test/egress_dispatch_test.exs`
+  ("engine-kill court: real engine unload -> 503 RouteNotReady over real
+  :gen_tcp"). BEFORE: real `:gen_tcp` GET /dbs -> **200** on the loaded
+  cosmos engine. KILL: beam hidden + `:code.purge` + `:code.delete` (for a
+  functional engine, module unload IS the live-engine kill; purge+delete
+  alone is NOT sufficient — `Code.ensure_loaded?/1` reloads from the on-disk
+  beam). Same request -> **503 RouteNotReady**, `refute status in [200, 201]`
+  alongside `assert == 503`. RESTORE: beam renamed back +
+  `Code.ensure_loaded/1` -> request **200** (AFTER — kill was real, court
+  non-vacuous). Isolation: kill runs against an isolated child tree (private
+  Store + Bandit on an ephemeral port booted in-test; module + beam restored
+  in-test AND in `on_exit`) so shuffled siblings inherit neither a stopped
+  tree nor a purged engine.
+
+| Engine-kill court row | Phase | HTTP | Expected | Verdict |
+|---|---|---|---|---|
+| GET /dbs, loaded cosmos engine | BEFORE | 200 | 2xx | PASS |
+| GET /dbs, engine killed (beam hidden + purge + delete) | KILL | 503 `RouteNotReady` | 503 `RouteNotReady`, refute 201/200 | PASS |
+| GET /dbs, beam restored + module reloaded | RESTORE | 200 | 2xx | PASS |
+
+**Verdict: NON-VACUOUS.**
+
+**Disclosure — first court run FAILED (own refute fired)**: the first run
+asserted `refute Code.ensure_loaded?(cosmos)` after `:code.purge` +
+`:code.delete` alone and FAILED ("engine module still loaded") —
+`Code.ensure_loaded?/1` reloads from the on-disk beam, so purge+delete alone
+is not a kill. No lib/ code was touched; the court was corrected to hide the
+beam file (same mechanics as the existing Purview seam test
+`test/egress_dispatch_test.exs` "RouteNotReady 503 when a sibling module is
+not compiled"), after which all rows PASS. This failure is itself evidence
+for the work order's Gap-2 claim that the existing seam-faked tests are
+materially weaker than a real kill.
+
+**Found defects (filed, NOT patched — out of scope per work order)**:
+
+- **V261014-18-D1** — `Microsoft.Network/networkSecurityGroups` (NsgShape,
+  `priv/shacl/smalt-shapes.ttl`): no required paths, `sh:closed false` → the
+  GraphLaw validator admits ANY payload; a malformed NSG PUT is ADMITTED 201
+  on the wire. Suggested fix (follow-up): required paths or `sh:closed true`
+  per the shapes-file flip law. The sweep test asserts this set explicitly
+  (dynamically derived) so the defect cannot regress silently: tightening
+  the shape flips the row to the 400-law and the in-test defect clause must
+  then be deleted.
+- **V261014-18-D2** — `Microsoft.Network/privateDnsZones/virtualNetworkLinks`
+  is an admitted Registry type with NO ARM PUT route; the azurerm-form path
+  falls through to the catch-all and answers `404 RouteNotFound` before the
+  shape gate ever runs. Suggested fix (follow-up): a child route
+  (`.../privateDnsZones/:parent/virtualNetworkLinks/:name` ->
+  `handle_child_put/5`, the same shape as the vault-keys route).
+
+**Benign-noise note**: Spark DSL warnings in test output are EXPECTED
+refusals from `ash_extension` `generated_verify.ex`, exercised deliberately
+by `test/ash_extension_test.exs` (`compile_refused` under
+`Code.with_diagnostics`). Not filed, not silenced.
+
+### One-shot mutation probes — dated stamps (V261014-18 §3.3, decision: DEFER full-court upgrade)
+
+Per the work order §3.3 decision: the six one-shot mutation-probe claims are
+stamped as dated ONE-SHOT receipts, NOT upgraded to the full-court protocol
+(BEFORE/AFTER/restore, sha256 byte-exact, exit 2 = BLOCKED) this release;
+upgrade is bounded follow-up (V261014-18a if pursued). **None of these is a
+court.** The only full-court protocol in the tree is `scripts/mutation_court.py`.
+
+| Probe claim | Doc pin | One-shot date | Stamp |
+|---|---|---|---|
+| cosmos continuation forged-check | `docs/DEV_LOOP.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
+| auth criticality fence | `docs/DEV_LOOP.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
+| blob If-Match precheck | `docs/DEV_LOOP.md:24` ("3/3 non-vacuous") | 2026-10-15 | one-shot — not full-court protocol |
+| typ-header fence | `docs/WIRE_PARITY.md:121` | 2026-10-15 | one-shot — not full-court protocol |
+| tee-admit jti | `docs/WIRE_PARITY.md:113` | 2026-10-15 | one-shot — not full-court protocol |
+| LRO lens-9 | `docs/WIRE_PARITY.md:94` | 2026-10-15 | one-shot — not full-court protocol |
+
+Scope of the runs behind these stamps: plain `mix test` (2026-10-15 refresh
+6, test-corpus-b-lens2 cycle 1) and refresh-9 (lens6_fuzz + lro_test 27/0)
+on the shared checkout mid-landing — one-shot kills, not the full-court
+protocol.

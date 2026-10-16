@@ -34,8 +34,8 @@ defmodule Smalt.TrustProfile do
     UTF-16 code units (RFC 8785 §3.2.3). Escaping per §3.2.2.2: `"` `\\` and
     C0 controls only, `\\b \\t \\n \\f \\r` shorthands, lowercase `\\u00xx`
     otherwise, everything else literal.
-  * Numbers (§3.2.2.3): integers with `|n| <= 2^53` emitted as integers.
-    Integers beyond 2^53 are REFUSED (not I-JSON doubles). Floats: integral
+  * Numbers (§3.2.2.3): integers with `|n| <= 2^53 - 1` emitted as integers.
+    Integers with `|n| >= 2^53` are REFUSED (not I-JSON doubles). Floats: integral
     floats with `|f| < 1e21` render in integer notation (`-0.0` → `0`);
     otherwise ECMAScript-style shortest round-trip via `Float.to_string/1`
     (which yields e.g. `1.0e-7`-style scientific form); non-finite floats are
@@ -51,7 +51,7 @@ defmodule Smalt.TrustProfile do
 
   @type crypto_profile :: :classical | :hybrid | :pqc
   @type refused ::
-          {:refused, :PQC_NOT_PROVISIONED | :HYBRID_NOT_PROVISIONED, String.t()}
+          {:refused, :PQC_NOT_PROVISIONED | :HYBRID_NOT_PROVISIONED | :UNKNOWN_PROFILE, String.t()}
 
   @doc "Envelope version emitted by this module."
   @spec envelope_version() :: String.t()
@@ -192,7 +192,21 @@ defmodule Smalt.TrustProfile do
     end
   end
 
-  def sign(%__MODULE__{profile: prof}), do: profile(prof) |> refusal_from()
+  def sign(%__MODULE__{profile: prof}) do
+    # Hand-built structs can carry any term in :profile (validate_envelope
+    # checks the classical wire fields only). A non-atom or unknown atom must
+    # refuse typed, not FunctionClauseError (witnessed: sign/1 on
+    # profile: "str", trust-profile lens-8 cycle-3,
+    # tmp/tp_construction_fuzz.exs).
+    case prof do
+      p when p in [:hybrid, :pqc] ->
+        profile(p) |> refusal_from()
+
+      other ->
+        {:refused, :UNKNOWN_PROFILE,
+         "profile must be :classical | :hybrid | :pqc, got #{inspect(other)}"}
+    end
+  end
 
   defp do_sign(envelope) do
     header = %{"alg" => "RS256", "typ" => @envelope_version, "kid" => envelope.key_id}
@@ -214,11 +228,22 @@ defmodule Smalt.TrustProfile do
     }
 
     with :ok <- epoch_sanity(envelope),
-         {:ok, payload_jcs} <- jcs(payload) do
-      header_json = jcs!(header)
+         {:ok, payload_jcs} <- jcs(payload),
+         {:ok, header_json} <- jcs(header) do
       signing_input = Base.url_encode64(header_json, padding: false) <> "." <> Base.url_encode64(payload_jcs, padding: false)
       sig = :public_key.sign(signing_input, :sha256, private_key())
       {:ok, signing_input <> "." <> Base.url_encode64(sig, padding: false)}
+    else
+      # A hand-built struct can carry a wire string (audience/key_id) with
+      # invalid UTF-8, or an epoch outside the 2^53 canonical-integer window:
+      # jcs refuses, and that refusal must surface inside sign/1's @spec
+      # vocabulary, not leak as a bare {:bad_json_value, _} /
+      # {:non_canonical_number, _} (witnessed: sign(%{env | audience:
+      # "ok" <> <<0xFF>>}) -> {:error, {:bad_json_value, _}},
+      # trust-profile lens-9 cycle-3, tmp/tp_utf8_probe.exs).
+      {:error, {:bad_json_value, _}} -> {:error, {:malformed_envelope, :bad_fields}}
+      {:error, {:non_canonical_number, _}} -> {:error, {:malformed_envelope, :bad_fields}}
+      {:error, {:malformed_envelope, :bad_epochs}} -> {:error, {:malformed_envelope, :bad_epochs}}
     end
   end
 
@@ -259,7 +284,7 @@ defmodule Smalt.TrustProfile do
 
   @doc """
   RFC 8785 (JCS) canonical JSON of a decoded-JSON-shaped value. Refuses,
-  typed: integers with `|n| > 2^53` and non-finite floats.
+  typed: integers with `|n| >= 2^53` and non-finite floats.
   """
   @spec jcs(term) :: {:ok, String.t()} | {:error, {:non_canonical_number, term} | {:bad_json_value, term}}
   def jcs(value)
@@ -270,7 +295,21 @@ defmodule Smalt.TrustProfile do
   def jcs(v) when is_integer(v), do: canonical_integer(v)
   def jcs(v) when is_float(v), do: canonical_float(v)
 
-  def jcs(v) when is_binary(v), do: {:ok, escape_string(v)}
+  def jcs(v) when is_binary(v) do
+    # JCS input is I-JSON: strings are Unicode. A raw binary with invalid
+    # UTF-8 is outside the domain — refuse typed. Silent byte-dropping (the
+    # `for <<c::utf8 <- s>>` comprehension skips invalid sequences) produced
+    # lossy, non-round-trippable "canonical" output AND a canonicalization
+    # collision: two distinct envelopes (e.g. hostile :audience binaries
+    # differing only in invalid bytes) signed to identical documents
+    # (witnessed: jcs(<<0xFF>>) -> "\"\"", jcs("ok" <> <<0xFF>>) -> "\"ok\"",
+    # trust-profile lens-9 cycle-3, tmp/tp_utf8_probe.exs).
+    if String.valid?(v) do
+      {:ok, escape_string(v)}
+    else
+      {:error, {:bad_json_value, v}}
+    end
+  end
 
   def jcs(v) when is_list(v) do
     with {:ok, parts} <- Enum.reduce_while(v, {:ok, []}, fn child, {:ok, acc} ->
@@ -292,17 +331,10 @@ defmodule Smalt.TrustProfile do
 
   def jcs(other), do: {:error, {:bad_json_value, other}}
 
-  defp jcs!(value) do
-    case jcs(value) do
-      {:ok, s} -> s
-      {:error, reason} -> raise ArgumentError, "jcs: #{inspect(reason)}"
-    end
-  end
-
   defp sorted_pairs(map) do
     entries =
       for {k, val} <- map do
-        if is_binary(k) do
+        if is_binary(k) and String.valid?(k) do
           {k, val}
         else
           throw({:bad_json_value, k})
@@ -326,7 +358,9 @@ defmodule Smalt.TrustProfile do
     {:bad_json_value, k} -> {:error, {:bad_json_value, k}}
   end
 
-  defp canonical_integer(n) when abs(n) <= 9_007_199_254_740_952, do: {:ok, Integer.to_string(n)}
+  @max_safe_integer 9_007_199_254_740_991 # 2^53 - 1, I-JSON / RFC 8785 §3.2.2.3
+
+  defp canonical_integer(n) when abs(n) <= @max_safe_integer, do: {:ok, Integer.to_string(n)}
   defp canonical_integer(n), do: {:error, {:non_canonical_number, n}}
 
   defp canonical_float(f) do
@@ -602,7 +636,7 @@ defmodule Smalt.TrustProfile do
 
   defp check_alg(%{"alg" => "RS256"}), do: :ok
   defp check_alg(%{"alg" => other}) when is_binary(other), do: {:error, {:bad_alg, other}}
-  defp check_alg(_), do: {:error, :off_spec_mutant}
+  defp check_alg(_), do: {:error, :bad_alg}
 
   # E-E: the header's alg/kid must match what the signed payload declares.
   # E-E cross-check plus profile/version pinning (pack gate 060 parity): a

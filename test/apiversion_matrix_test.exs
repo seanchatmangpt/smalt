@@ -37,8 +37,8 @@ defmodule ApiVersionMatrixTest do
   @sub "00000000-0000-0000-0000-000000000000"
   @rg "matrix-rg"
 
-  # router.ex:794 — generic provider PUT route
-  @generic_put_line "lib/smalt/arm_gateway/router.ex:954"
+  # router.ex:1799 — generic provider PUT route
+  @generic_put_line "lib/smalt/arm_gateway/router.ex:1799"
 
   setup do
     ensure_store()
@@ -91,8 +91,6 @@ defmodule ApiVersionMatrixTest do
   end
 
   defp create(parent_type, path, payload) do
-    result = put_resource(parent_type, path, Registry.latest_version(parent_type) || "2021-04-01", payload)
-    result
     # Parents that are themselves unadmitted in Registry validate no
     # api-version (router check_version/3 returns :ok when find_admitted/1 is
     # nil); a placeholder version then works for parent creation.
@@ -128,51 +126,51 @@ defmodule ApiVersionMatrixTest do
   # handle_child_put call sites; each row cites the route's file:line).
   @child_routes [
     {"Microsoft.Network/subnets", "providers/Microsoft.Network/virtualNetworks/matrix-vnet/subnets/matrix-subnet",
-     "lib/smalt/arm_gateway/router.ex:754"},
+     "lib/smalt/arm_gateway/router.ex:1348"},
     {"Microsoft.KeyVault/vaults/keys", "providers/Microsoft.KeyVault/vaults/matrix-vault/keys/matrix-key",
-     "lib/smalt/arm_gateway/router.ex:771"},
+     "lib/smalt/arm_gateway/router.ex:1389"},
     {"Microsoft.Storage/storageAccounts/blobServices",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default",
-     "lib/smalt/arm_gateway/router.ex:788"},
+     "lib/smalt/arm_gateway/router.ex:1430"},
     {"Microsoft.Storage/storageAccounts/blobServices/containers",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default/containers/matrix-container",
-     "lib/smalt/arm_gateway/router.ex:801"},
+     "lib/smalt/arm_gateway/router.ex:1461"},
     {"Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default/containers/matrix-container/immutabilityPolicies/matrix-policy",
-     "lib/smalt/arm_gateway/router.ex:818"}
+     "lib/smalt/arm_gateway/router.ex:1502"}
   ]
 
   # SB/EH messaging children: LANDED in router.ex (handle_parented_child PUT
-  # routes, router.ex:858/875/892/909/926) but NOT admitted in Registry — the
+  # routes, router.ex:1543/1559/1608/1657/1706) but NOT admitted in Registry — the
   # api-version fence below pins the expected 400 InvalidApiVersionParameter
   # for them too; rows go red until Registry admits the type.
   @parented_routes [
     {"Microsoft.ServiceBus/namespaces/queues",
      {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/queues/matrix-queue",
-     "lib/smalt/arm_gateway/router.ex:858"},
+     "lib/smalt/arm_gateway/router.ex:1543"},
     {"Microsoft.ServiceBus/namespaces/topics",
      {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic",
-     "lib/smalt/arm_gateway/router.ex:875"},
+     "lib/smalt/arm_gateway/router.ex:1592"},
     {"Microsoft.ServiceBus/namespaces/topics/subscriptions",
      {"Microsoft.ServiceBus/namespaces/topics", "matrix-topic"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic/subscriptions/matrix-sub",
-     "lib/smalt/arm_gateway/router.ex:892"},
+     "lib/smalt/arm_gateway/router.ex:1641"},
     {"Microsoft.EventHub/namespaces/eventhubs",
      {"Microsoft.EventHub/namespaces", "matrix-ehns"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub",
-     "lib/smalt/arm_gateway/router.ex:909"},
+     "lib/smalt/arm_gateway/router.ex:1690"},
     {"Microsoft.EventHub/namespaces/eventhubs/consumergroups",
      {"Microsoft.EventHub/namespaces/eventhubs", "matrix-hub"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub/consumergroups/matrix-cg",
-     "lib/smalt/arm_gateway/router.ex:926"}
+     "lib/smalt/arm_gateway/router.ex:1739"}
   ]
 
   @child_types MapSet.new(Enum.map(@child_routes, fn {t, _, _} -> t end))
 
   # Types with a landed PUT route but no dedicated child route ride the generic
-  # provider PUT route (router.ex:794): single-segment resource types only —
+  # provider PUT route (router.ex:1799): single-segment resource types only —
   # that route matches exactly :provider_ns/:resource_type/:resource_name.
   @generic_rows (
     Registry.admitted_resource_types()
@@ -295,7 +293,7 @@ defmodule ApiVersionMatrixTest do
       |> Enum.map(&Enum.at(&1, 1))
       |> MapSet.new()
       # Excluded: "Microsoft.Authorization/locks" is a response-envelope type
-      # literal in the azapi lock action body (router.ex:371), not a route's
+      # literal in the azapi lock action body (router.ex:974), not a route's
       # resource-type string. It is not an admitted registry type and rides the
       # POST action route, not a PUT route.
       |> MapSet.delete("Microsoft.Authorization/locks")
@@ -306,6 +304,43 @@ defmodule ApiVersionMatrixTest do
     assert MapSet.size(unadmitted) == 0,
            "router route type literals not present in Registry.admitted_resource_types/0: " <>
              inspect(MapSet.to_list(unadmitted))
+  end
+
+  # ===========================================================================
+  # Cite-drift fence: every `router.ex:LINE` citation in this file resolves to
+  # a line whose content matches the expected construct — future router
+  # insertions turn this fence red instead of silently rotting the citations.
+  # ===========================================================================
+
+  @cite_drift [
+    {"lib/smalt/arm_gateway/router.ex:1348", "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1389", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1430", "blobServices/default\""},
+    {"lib/smalt/arm_gateway/router.ex:1461", "blobServices/default/containers/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1502", "immutabilityPolicies/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1543", "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1592", "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1641", "topics/:topic/subscriptions/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1690", "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1739", "eventhubs/:hub/consumergroups/:name"},
+    {"lib/smalt/arm_gateway/router.ex:1799", "providers/:provider_ns/:resource_type/:resource_name"},
+    {"lib/smalt/arm_gateway/router.ex:974", "Microsoft.Authorization/locks"}
+  ]
+
+  test "cite-drift fence: every router.ex:LINE citation resolves to the expected construct" do
+    lines =
+      "lib/smalt/arm_gateway/router.ex"
+      |> File.read!()
+      |> String.split("\n")
+
+    for {cite, expected} <- @cite_drift do
+      "lib/smalt/arm_gateway/router.ex:" <> line_no = cite
+      content = Enum.at(lines, String.to_integer(line_no) - 1)
+
+      assert content != nil and String.contains?(content, expected),
+             "stale citation #{cite}: expected line content matching #{inspect(expected)} " <>
+               "but got #{inspect(content)}"
+    end
   end
 
   # ===========================================================================

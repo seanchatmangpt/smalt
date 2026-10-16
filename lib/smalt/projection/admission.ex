@@ -216,23 +216,33 @@ defmodule Smalt.Projection.Admission do
   # two records of one id is a degenerate identity space; refuse typed.
   @spec refuse_degenerate_ids([map()], String.t()) :: :ok | {:error, term()}
   defp refuse_degenerate_ids(records, path) do
-    ids = Enum.map(records, & &1["id"])
-
-    # NOTE: the vacuous id may itself be nil, so Enum.find/2 (which returns
-    # the element) cannot distinguish "found nil" from "not found" — the
-    # lens-3 cycle-3 fence-bug regression. Walk indexed tuples instead.
-    # Lens-4 cycle 1: identity?/1 generalizes to Smalt.Projection.Identity
-    # (whitespace-only / invisible-format-only ids carry zero visible
-    # identity bits; they projected as PK "ledger_deviation:  " etc.).
-    case Enum.find(Enum.with_index(ids), fn {id, _} -> not Identity.valid?(id) end) do
+    # Lens-5 cycle 4: a non-map ledger "record" (a valid-JSON array/string
+    # line through the producer boundary) previously crashed from_store out
+    # of Access on `& &1["id"]` — refuse typed on the existing
+    # malformed-ledger axis instead, never a crash.
+    case Enum.find(records, fn rec -> not is_map(rec) end) do
       nil ->
-        case find_dup(ids) do
-          nil -> :ok
-          dup -> {:error, {:duplicate_ledger_identity, path, dup}}
+        ids = Enum.map(records, & &1["id"])
+
+        # NOTE: the vacuous id may itself be nil, so Enum.find/2 (which returns
+        # the element) cannot distinguish "found nil" from "not found" — the
+        # lens-3 cycle-3 fence-bug regression. Walk indexed tuples instead.
+        # Lens-4 cycle 1: identity?/1 generalizes to Smalt.Projection.Identity
+        # (whitespace-only / invisible-format-only ids carry zero visible
+        # identity bits; they projected as PK "ledger_deviation:  " etc.).
+        case Enum.find(Enum.with_index(ids), fn {id, _} -> not Identity.valid?(id) end) do
+          nil ->
+            case find_dup(ids) do
+              nil -> :ok
+              dup -> {:error, {:duplicate_ledger_identity, path, dup}}
+            end
+
+          {bad, _i} ->
+            {:error, {:malformed_ledger_identity, path, bad}}
         end
 
-      {bad, _i} ->
-        {:error, {:malformed_ledger_identity, path, bad}}
+      bad ->
+        {:error, {:malformed_ledger_record, path, bad}}
     end
   end
 

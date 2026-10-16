@@ -1,6 +1,6 @@
 # Auth Regression Sweep Receipt
 
-Date: 2026-10-15 · Checkout: /Users/sac/smalt · Subject: post-IssuerMismatch-fix
+Date: 2026-10-15 · Checkout: `~/smalt` (canonical checkout) · Subject: post-IssuerMismatch-fix
 (bearer.ex request-authority-derived `iss`, coordinator fix) verification sweep.
 All runs real, MIX_ENV default (test), on the canonical checkout. No code edits.
 

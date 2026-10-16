@@ -14,11 +14,13 @@ defmodule Smalt.RuntimeContracts.Contract do
   @doc "Plane the contract binds: `:control_plane`, `:data_plane`, `:messaging_plane`."
   @callback plane() :: atom()
 
-  @doc "Consumer subject the contract binds (module or surface)."
-  @callback consumer() :: String.t()
-
-  @doc "Source pack the contract's invariants were fenced from."
-  @callback source_pack() :: String.t()
+  # Disposition (lens 6, ERRC-Reduce): `consumer/0` and `source_pack/0` were
+  # typed callbacks that verify/1 never read and NO code read anywhere
+  # (grep-evidenced lens 6: zero callers outside their own defs). The
+  # consumer/source-pack metadata lives canonically in the ggen ontology
+  # (`rtc:consumer`, `rtc:sourcePack` in ggen/ontology.ttl) and projects into
+  # the generated catalog entries (@entry map), so the hand-module copies were
+  # pure duplication — deleted, not pinned.
 
   @doc "Runs all assertions, returning a `Smalt.RuntimeContracts.Support.result`."
   @callback check() :: Smalt.RuntimeContracts.Support.result()

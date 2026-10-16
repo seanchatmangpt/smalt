@@ -40,6 +40,11 @@ defmodule Smalt.Amqp.FrameCodec do
   """
 
   @max_frame_size 1 * 1024 * 1024 + 512
+
+  # Public read of the local decode cap; the connection's outbound frame-size
+  # gate clamps the peer's advertised max to this so neither side can be
+  # talked into an oversized frame (AMQP §2.3.1, lens-4 cycle-3).
+  def max_frame_size, do: @max_frame_size
   @header_size 8
 
   @type frame_type :: :amqp | :sasl

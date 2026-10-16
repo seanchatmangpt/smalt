@@ -50,6 +50,3 @@ config :smalt,
   # MCP tool surface (lane I15): fixed 9545 default collided across
   # concurrent test runs — same ephemeral-probe contract as the others.
   mcp_port: test_port.("MCP", 9545)
-
-# lens-7 rehearsal: flip
-config :smalt, ledger_enforce_existence: true

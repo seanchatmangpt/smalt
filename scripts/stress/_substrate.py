@@ -31,6 +31,18 @@ def port_open(port, timeout=0.25):
         return False
 
 
+def install_sigterm_handler():
+    """SIGTERM -> SystemExit(128+signum) so a caller's finally-block teardown
+    runs instead of orphaning the substrate (lens-5 cycle 5; the same guard
+    gates/common.run_gate has carried since lens-4 cycle 6, mutation-verified
+    load-bearing there — sigterm_court 2/2 ORPHAN when removed). Restores the
+    previous handler is the caller's job (harnesses install once at main).
+    """
+    def _on_sigterm(signum, frame):
+        raise SystemExit(128 + signum)
+    return signal.signal(signal.SIGTERM, _on_sigterm)
+
+
 def wait_for_port(port, proc=None, timeout_s=120.0, fail=None, poll=0.01,
                   conn_timeout=0.25):
     """Poll TCP connect until `port` accepts; return elapsed seconds.

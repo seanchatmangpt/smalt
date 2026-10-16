@@ -24,6 +24,9 @@ in-memory (ETS).
   `/dataCollectionRules`, `/v1/`, `/providers/`) to the data plane
   (`TlsTwinDispatch`), so Key Vault and sibling egress surfaces answer over
   TLS too.
+- **ARM LRO background sweeper** — `Smalt.ArmGateway.LRO.Sweeper`: operations
+  reach terminal state at rest (no poll required); opt-in retention via
+  `config :smalt, :lro_retention_ms` (default `:infinity`).
 - **Authentication + throttles** — `Smalt.Auth.Bearer` on both HTTP planes:
   `auth_mode :enforce` (default) verifies HS256 Bearer tokens (same STS
   secret, exp/aud checked, iss matched against the request-authority-derived
@@ -74,6 +77,10 @@ in-memory (ETS).
 - **OCEL event stack** — `Smalt.Ocel.EventRegistry` / `Conformance`
   (fitness + deviations) / `DeviationAdmission` plus a rev-ops surface over
   the substrate's own event stream.
+- **OCEL RevOps Ash surface** — `Smalt.Ocel.RevOps` domain: `OcelTrace` /
+  `FitnessVerdict` / `OcelDeviation` read-only Ash resources over the real
+  NDJSON sink and deviation ledger (receipt:
+  `docs/PACK_INTEGRATION/ash-ocel-revops.md`).
 - **Semantic projection** — canonical registry projection, projection
   admission matrix, semantic epoch, R2RML/ex4pm-style mappings
   (`lib/smalt/projection/`, `lib/smalt/semantic/`,
@@ -93,9 +100,10 @@ in-memory (ETS).
 The authoritative ladder table lives in `README.md` (Verification
 ladder): tier, command, and what each tier proves are not restated
 here. Unique to this release, the latest court runs (re-run 2026-10-15,
-docs-corpus-lens3 cycle 1): compliance courts c1..c7 — c1 25/0, c2 16/0,
-c3 23/0, c4 28/0, c5 16/0 (`--include amqp_wire`), c6 18/0, c7 16/0
-(**142 tests, 0 failures**; receipts in `docs/compliance/`); CLI court `cd cli && cargo test` 1/0; mutation
+docs-corpus-lens8 cycle 2): compliance courts c1..c7 — c1 26/0, c2 16/0,
+c3 28/0, c4 46/0 (+4 blob-lane fences), c5 16/0
+(`--include amqp_wire`), c6 18/0, c7 17/0
+(**167 tests, 0 failures**; receipts in `docs/compliance/`); CLI court `cd cli && cargo test` 1/0; mutation
 court non-vacuous. Stress harnesses and receipts: `docs/STRESS/`. Full
 gate: `just gate` (doctor + T1 + T2 + T3 + T4 + bench-check); CI
 (`.github/workflows/ci.yml`, actionlint-clean) runs compile
@@ -133,6 +141,38 @@ envelopes carry project-ordered typed columns; Resource Graph emits
 `resultTruncated` and `options.$skipToken`; Purview lineage walks stored
 guids; Event Grid publish answers 200-empty; ARM responses carry
 `x-ms-request-id`, `innererror`, `systemData`, and `nextLink` pagination.
+In the latest wave: an ARM LRO InProgress record that cannot be evaluated
+(missing/malformed scheduling fields) flips to a persisted Failed terminal
+with `error.code="OperationRecordIncomplete"` instead of polling forever
+(`GAP(lro-no-failed-path)` CLOSED); blob virtual directories
+(slash-carrying blob names) cycle through the full PUT/GET/DELETE chain;
+Event Hubs checkpoint writes are fully serialized through the broker
+process and Event Grid id-dedup is opt-in via `:event_stream_dedup_ids`.
+
+### Wire-parity honesty statement
+
+v26.10.14 ships **parity for the documented surface; named gaps for the
+rest.** At release, every `GAP(name)` token in the machine-greppable register
+(`docs/WIRE_PARITY.md` + `docs/compliance/C1..C7` + `docs/TEST_ISOLATION.md`)
+is one of: **CLOSED-with-receipt** (four bounded closures —
+`GAP(lro-lazy-terminality)` and `GAP(lro-retention-unbounded)` via the
+`Smalt.ArmGateway.LRO.Sweeper`, receipts `05-lro-lazy-terminality.md` /
+`05-lro-retention-unbounded.md`; `GAP(blob-x-ms-error-code-header-absent)` and
+`GAP(blob-error-envelope-json)` via the blob lane-06 error-envelope/header
+work, receipts `06-blob-x-ms-error-code-header-absent.md` /
+`06-blob-x-ms-date-unvalidated.md` — plus two vacuous tag deletions,
+`GAP(vacuous-tag-arm-seam)` and `GAP(vacuous-tag-dp-seam)`), or
+**typed-UNSUPPORTED with an inline close condition** (the surviving open
+tokens: `GAP(cosmos-sql-translator-absent)`,
+`GAP(ledger-lazy-create-default)` (config-flippable via
+`ledger_enforce_existence`), `GAP(blob-x-ms-date-unvalidated)`,
+`GAP(blob-comp-lease-absent)`, `GAP(eventgrid-eg1-schema-absent)`,
+`GAP(eventhubs-partition-metadata-absent)`,
+`GAP(eventhubs-consumer-group-enumeration-absent)`,
+`GAP(atlas-search-relationship-get-absent)`,
+`GAP(kql-datetime-dynamic-types-absent)`, plus the Service Bus
+reply-to/subscription-rules UNSUPPORTED typed in V261014-08). No token was
+deleted without a receipt; no open gap is claimed as closed.
 
 ## Upgrade notes
 

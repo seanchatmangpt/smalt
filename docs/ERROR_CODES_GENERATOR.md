@@ -24,6 +24,15 @@ three source families:
 The doc is a projection; edit the sources (or the ANNOTATIONS table), never the
 generated file.
 
+Escape scheme (lens 5): the generator's `esc/1` escapes a literal backslash
+FIRST (`\\`), then pipes (`\|`), then flattens newlines. Both consumers —
+`Smalt.DSPy.Remediation.split_row/1` and the fence's `parse_row_lines/1` —
+scan for unescaped separators in a single pass (`\x` consumes both chars),
+so `esc` and the parsers are exact inverses: any annotation content,
+including backslashes, pipes, and a trailing escaped pipe, round-trips.
+Any change to `esc` or the scanners must keep the round-trip property and
+carry a mutation proof (see Mutation standard).
+
 ## Lease: who regens when
 
 - Any lane whose landing touches a wire-visible error path (`router.ex`,

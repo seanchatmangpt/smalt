@@ -32,21 +32,21 @@ defmodule Smalt.AzapiActionsTest do
 
   describe "azapi lock action (immutability policy)" do
     @tag azapi: "lock"
-    test "POST .../immutabilityPolicies/default/lock with If-Match -> 200 lock envelope" do
-      # lib/smalt/arm_gateway/router.ex:783-789 (POST .../providers/*glob)
-      #   -> :344-364 handle_action ("lock" in @actions at :36)
-      #   -> :366-376 action_envelope("lock")
+    test "POST .../immutabilityPolicies/default/lock with matching If-Match -> 200 lock envelope" do
+      # lib/smalt/arm_gateway/router.ex:1791 (POST .../providers/*glob)
+      #   -> :876 handle_action ("lock" in @actions at :45)
+      #   -> :936 action_envelope("lock")
       put_policy(immutability_policy_path())
 
       conn =
         conn(:post, lock_path())
-        |> put_req_header("if-match", "\"0x8DA1A2B3C4D5E6F\"")
+        |> put_req_header("if-match", Router.lock_policy_etag(lock_request_path()))
         |> Router.call(@opts)
 
       assert conn.status == 200
 
       body = body(conn)
-      # envelope id is conn.request_path (no query string) — router.ex:369
+      # envelope id is conn.request_path (no query string) — router.ex:970
       assert body["id"] == lock_request_path()
       assert body["name"] == "default"
       assert body["type"] == "Microsoft.Authorization/locks"
@@ -67,11 +67,27 @@ defmodule Smalt.AzapiActionsTest do
     end
 
     @tag azapi: "lock-if-match"
-    test "POST lock with wrong (non-matching) If-Match -> 200 (pinned actual)" do
-      # Same call site as above; header is present but arbitrary — still 200.
+    test "POST lock with wrong (non-matching) If-Match -> 412 PreconditionFailed (value-verified)" do
+      # Enforcement flip (2026-10-14, lane-20, WO V261014-20 decision (a)): the
+      # lock action now VALUE-verifies If-Match against the policy etag
+      # (Router.lock_policy_etag/1); `*` is honored as always-match (RFC 7232).
+      # Same call site as above; header present but mismatched -> inline 412.
       conn =
         conn(:post, lock_path())
         |> put_req_header("if-match", "\"0xDEADBEEF00000001\"")
+        |> Router.call(@opts)
+
+      assert conn.status == 412
+      assert body(conn)["error"]["code"] == "PreconditionFailed"
+    end
+
+    @tag azapi: "lock-if-match"
+    test "POST lock with If-Match * -> 200 (always-match per RFC 7232)" do
+      put_policy(immutability_policy_path())
+
+      conn =
+        conn(:post, lock_path())
+        |> put_req_header("if-match", "*")
         |> Router.call(@opts)
 
       assert conn.status == 200
@@ -86,8 +102,8 @@ defmodule Smalt.AzapiActionsTest do
   describe "azapi setLegalHold action" do
     @tag azapi: "setlegalhold"
     test "POST setLegalHold with tags body -> 200 legal-hold envelope" do
-      # lib/smalt/arm_gateway/router.ex:787 (resourceGroups POST *glob route)
-      #   -> :344-364 handle_action -> :378-394 action_envelope("setlegalhold")
+      # lib/smalt/arm_gateway/router.ex:1791 (resourceGroups POST *glob route)
+      #   -> :876 handle_action -> :948 action_envelope("setlegalhold")
       conn =
         conn(:post, legal_hold_path(), %{"tags" => ["retention-7yr", "sox"]})
         |> Router.call(@opts)
@@ -95,12 +111,12 @@ defmodule Smalt.AzapiActionsTest do
       assert conn.status == 200
 
       body = body(conn)
-      # envelope id is conn.request_path (no query string) — router.ex:383
+      # envelope id is conn.request_path (no query string) — router.ex:984
       assert body["id"] == legal_hold_request_path()
       assert body["name"] == "c-1"
       assert body["type"] == "Microsoft.Storage/storageAccounts/blobServices/containers"
       assert body["properties"]["legalHoldState"] == "locked"
-      # :379-:388 — the If-Match header is echoed into properties.ifMatch
+      # :952-:957 — the If-Match header is echoed into properties.ifMatch
       # (absent header -> empty list in the envelope)
       assert body["properties"]["ifMatch"] == []
     end
@@ -127,8 +143,8 @@ defmodule Smalt.AzapiActionsTest do
   describe "blob container child PUT" do
     @tag azapi: "container-put"
     test "PUT container child @latest containers api-version -> 201 record envelope" do
-      # lib/smalt/arm_gateway/router.ex:725-727 (containers child PUT route)
-      #   -> :280-304 handle_child_put; version gate :411-431 via
+      # lib/smalt/arm_gateway/router.ex:1460 (containers child PUT route)
+      #   -> :689 handle_child_put; version gate :986 via
       #      Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
       conn = put_container()
 
@@ -151,7 +167,7 @@ defmodule Smalt.AzapiActionsTest do
 
     @tag azapi: "container-put"
     test "PUT container with stale api-version -> 400 InvalidApiVersionParameter naming the latest" do
-      # lib/smalt/arm_gateway/router.ex:422-429 (check_version mismatch)
+      # lib/smalt/arm_gateway/router.ex:1018-1038 (check_version mismatch)
       path = put_container_path() <> "?api-version=2019-01-01"
 
       conn = conn(:put, path, %{"location" => "smalt-local", "properties" => %{}}) |> Router.call(@opts)
@@ -170,10 +186,10 @@ defmodule Smalt.AzapiActionsTest do
   describe "Key Vault SKR key with release policy" do
     @tag azapi: "skr-key"
     test "PUT key with properties.release_policy -> 201, then GET round-trips the policy" do
-      # lib/smalt/arm_gateway/router.ex:695-697 (vault keys child PUT)
-      #   -> :280-304 handle_child_put ("Microsoft.KeyVault/vaults/keys",
+      # lib/smalt/arm_gateway/router.ex:1388 (vault keys child PUT)
+      #   -> :689 handle_child_put ("Microsoft.KeyVault/vaults/keys",
       #      DefaultShape, closed=false -> release_policy passes through)
-      # GET round-trip: :699-701 handle_child_get
+      # GET round-trip: :717 handle_child_get
       conn =
         conn(:put, key_path(), %{
           "location" => "smalt-local",
@@ -210,7 +226,7 @@ defmodule Smalt.AzapiActionsTest do
 
     @tag azapi: "skr-key"
     test "key PUT gated on Microsoft.KeyVault/vaults/keys latest api-version" do
-      # :411-431 check_version -> Registry.latest_version("Microsoft.KeyVault/vaults/keys")
+      # :986 check_version -> Registry.latest_version("Microsoft.KeyVault/vaults/keys")
       path = key_path() <> "?api-version=2021-04-01"
 
       conn =
@@ -228,9 +244,9 @@ defmodule Smalt.AzapiActionsTest do
   describe "DevTestLab schedules" do
     @tag azapi: "devtest-schedule"
     test "PUT schedule via generic route @2018-09-15 -> 201" do
-      # lib/smalt/arm_gateway/router.ex:794-796 (generic provider PUT)
-      #   -> :224-262 handle_resource_put; admitted via Registry :21,
-      #      api-version 2018-09-15 (Registry :93)
+      # lib/smalt/arm_gateway/router.ex:1798 (generic provider PUT)
+      #   -> :611 handle_resource_put; admitted via Registry :27,
+      #      api-version 2018-09-15 (Registry :110)
       conn =
         conn(:put, schedule_path(), %{
           "location" => "smalt-local",
@@ -260,9 +276,9 @@ defmodule Smalt.AzapiActionsTest do
   describe "role assignments at RG scope" do
     @tag azapi: "role-assignment"
     test "PUT roleAssignment at RG scope -> 201, then DELETE -> 200" do
-      # lib/smalt/arm_gateway/router.ex:794-796 (generic PUT),
-      # :812-816 (generic DELETE); admitted via Registry :14,
-      # api-version 2022-04-01 (Registry :85)
+      # lib/smalt/arm_gateway/router.ex:1798 (generic PUT),
+      # :1829 (generic DELETE); admitted via Registry :20,
+      # api-version 2022-04-01 (Registry :103)
       conn =
         conn(:put, role_assignment_path(), %{
           "location" => "smalt-local",
@@ -294,9 +310,9 @@ defmodule Smalt.AzapiActionsTest do
   describe "diagnostic settings" do
     @tag azapi: "diagnostic-settings"
     test "PUT diagnosticSettings (RG-scoped) -> 201" do
-      # lib/smalt/arm_gateway/router.ex:794-796 (generic provider PUT
-      # :provider_ns/:resource_type/:resource_name); admitted via Registry :25,
-      # api-version 2021-05-01-preview (Registry :97)
+      # lib/smalt/arm_gateway/router.ex:1798 (generic provider PUT
+      # :provider_ns/:resource_type/:resource_name); admitted via Registry :33,
+      # api-version 2021-05-01-preview (Registry :116)
       path = diagnostic_settings_path()
 
       conn =
@@ -360,7 +376,7 @@ defmodule Smalt.AzapiActionsTest do
   end
 
   test "fence api-versions match Smalt.Registry.latest_version (drift falsifier)" do
-    # lib/smalt/registry.ex:83-117 (@api_versions)
+    # lib/smalt/registry.ex:100-139 (@api_versions)
     assert Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers") == "2023-05-01"
     assert Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies") ==
              "2023-05-01"
@@ -434,9 +450,7 @@ defmodule Smalt.AzapiActionsTest do
   # defensively so this file also runs under `mix test --no-start` when the
   # shared tree's application start is blocked by a concurrent lane.
   defp ensure_store do
-    if GenServer.whereis(Smalt.Store) == nil do
-      {:ok, _} = Smalt.Store.start_link([])
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end

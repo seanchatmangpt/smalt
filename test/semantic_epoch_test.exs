@@ -91,9 +91,27 @@ defmodule Smalt.SemanticEpochTest do
         assert row.pack_name == "smalt-substrate-pack"
         assert is_binary(row.pack_digest)
         assert row.lock_digest == lock_digest()
-        assert row.drift_status == :digest_drift
-        assert row.drift
+
+        # The projection derives drift from the digest comparison itself.
+        # Since the pack re-sync the real ledger carries BOTH classes of
+        # alive stamped rows (in-sync -> :ok, drifted -> :digest_drift), so
+        # the pinned contract is derivation correctness, not a fixed class:
+        # drift_status is :digest_drift iff pack_digest != lock_digest, and
+        # the boolean `drift` mirrors drift_status exactly.
+        expected = if row.pack_digest == lock_digest(), do: :ok, else: :digest_drift
+        assert row.drift_status == expected
+        assert row.drift == (expected == :digest_drift)
       end
+
+      # Both classes must be derivable over the real ledger as it stands:
+      # the drifted rows prove detection fires, the in-sync rows prove the
+      # detector is not pinned to always-drift (a vacuous :digest_drift).
+      # This pair depends on the ledger continuing to carry receipts from
+      # BOTH lock eras; a deliberate ledger cleanup (e.g. pre-re-lock
+      # receipt retirement) drops the :digest_drift half and must update
+      # this pin (or narrow it to the surviving classes) in the same change.
+      assert Enum.any?(stamped, &(&1.drift_status == :digest_drift))
+      assert Enum.any?(stamped, &(&1.drift_status == :ok))
 
       # Alive-but-unstamped rows must NOT silently read as drift-free: the
       # projection marks them :no_pack (a real drift signal, not a pass).
@@ -248,7 +266,15 @@ defmodule Smalt.SemanticEpochTest do
              |> Enum.all?(fn [t1, t2] -> DateTime.compare(t1, t2) != :gt end)
 
       ## Missing receipts dir -> typed refusal, not an empty timeline.
-      assert {:error, :enoent} =
+      ## Lens-6 cycle 4: located — the refusal now NAMES the dir.
+      assert {:error, {:receipt_unreadable, dir, :enoent}} =
+               Smalt.Projection.SemanticEpoch.timeline(
+                 receipts_dir: Path.join(tmp, "nope"),
+                 pack_lock: @pack_lock,
+                 deviations_path: Path.join(tmp, "deviations.jsonl")
+               )
+
+      assert dir == Path.join(tmp, "nope")
                Smalt.Projection.SemanticEpoch.timeline(
                  receipts_dir: Path.join(tmp, "nope"),
                  pack_lock: @pack_lock,
@@ -464,6 +490,40 @@ defmodule Smalt.SemanticEpochTest do
     File.rm_rf!(tmp)
   end
 
+  # Lens-8 cycle 1 (mutation court, coordinator-routed warnings-gate
+  # blocker): parse_ts/1's lenient non-binary clause once sat ABOVE the
+  # guarded binary clause, making the binary clause UNREACHABLE — every
+  # timestamp folded to nil and the documented started_at sort contract was
+  # silently dead. The lens-3 test above survives that mutant (its hd(epochs)
+  # row is the int-ts receipt whose started_at is the 1970 default — a
+  # DateTime whether or not parse works — and its 2-row id tiebreak gives
+  # the same order). This test is the kill: time order CROSSES id order, so
+  # only a working parse_ts yields it.
+  test "binary timestamps actually parse and drive the started_at sort (mutation-court kill)" do
+    tmp = Path.join(System.tmp_dir!(), "smalt-l8-ts-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(tmp)
+
+    File.write!(
+      Path.join(tmp, "r.jsonl"),
+      ~s({"id": "aaa-late", "started_at": "2026-06-01T00:00:00Z", "standing": "alive"}\n) <>
+        ~s({"id": "zzz-early", "started_at": "2020-01-01T00:00:00Z", "standing": "alive"}\n)
+    )
+
+    assert {:ok, %{epochs: epochs}} =
+             Smalt.Projection.SemanticEpoch.timeline(
+               receipts_dir: tmp,
+               pack_lock: "/nonexistent",
+               deviations_path: Path.join(tmp, "dev.jsonl")
+             )
+
+    # Parsed: zzz-early (2020) sorts before aaa-late (2026). Unparsed mutant
+    # (both fold to nil -> epoch-0 bucket): id tiebreak gives [aaa, zzz].
+    assert Enum.map(epochs, & &1.id) == ["zzz-early", "aaa-late"]
+    assert hd(epochs).started_at == ~U[2020-01-01T00:00:00Z]
+
+    File.rm_rf!(tmp)
+  end
+
   # The lock is legitimately re-rolled by pack transitions on the shared
   # checkout (lens-3 cycle 2: 70a135be... -> 83a3bb18... mid-session broke
   # three hardcoded-digest assertions). The expected digest is derived from
@@ -558,5 +618,103 @@ defmodule Smalt.Projection.IdentityTest do
       assert length(epochs) == 2
       File.rm_rf!(tmp)
     end
+  end
+
+  describe "non-map JSONL lines (lens-5 cycle 4)" do
+    test "a valid-JSON non-map receipt line refuses typed, never crashes" do
+      tmp =
+        Path.join(System.tmp_dir!(), "smalt-l5-nonmap-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(Path.join(tmp, "receipts"))
+      File.write!(
+        Path.join([tmp, "receipts", "r.jsonl"]),
+        Jason.encode!(%{"id" => "good"}) <> "\n[1,2]\n"
+      )
+
+      assert {:error, {:malformed_receipt, path, 2, {:non_map_line, [1, 2]}}} =
+               Smalt.Projection.SemanticEpoch.timeline(
+                 receipts_dir: Path.join(tmp, "receipts"),
+                 pack_lock: "/nonexistent",
+                 deviations_path: Path.join(tmp, "dev.jsonl")
+               )
+
+      assert String.ends_with?(path, "r.jsonl")
+      File.rm_rf!(tmp)
+    end
+  end
+end
+
+# Lens-6 cycle 1: a structurally valid lock with a malformed PACK ENTRY
+# (non-map value, list packs, missing/non-binary sha256) previously crashed
+# the WHOLE timeline out of the Map.new payload pattern. Lenient fold to
+# %{} (the existing missing-lock policy), drift VISIBLE as :no_pack.
+defmodule Smalt.Projection.SemanticEpoch.Lens6LockTest do
+  use ExUnit.Case, async: false
+
+  @lock_namelist Path.join(System.tmp_dir!(), "smalt-l6-lock-#{System.unique_integer([:positive])}")
+
+  test "malformed pack entries fold the lock to %{} and show :no_pack drift, never crash" do
+    dir = @lock_namelist
+    File.mkdir_p!(dir)
+    receipts = Path.join(dir, "r.jsonl")
+
+    File.write!(
+      receipts,
+      Jason.encode!(%{
+        "id" => "l6-lock",
+        "pack_name" => "p",
+        "pack_digest" => "deadbeef",
+        "standing" => "alive",
+        "started_at" => "2026-01-01T00:00:00Z"
+      }) <> "\n"
+    )
+
+    lock = Path.join(dir, "lock.json")
+
+    Enum.each(
+      [
+        ~s({"packs": {"p": "just-a-string"}}),
+        ~s({"packs": [1, 2]}),
+        ~s({"packs": {"p": {"sha256": 5}}}),
+        # Lens-7 cycle 2: one malformed + one WELL-FORMED entry. Skipping the
+        # bad entry (mutant) would leave "good" locked and this assertion
+        # fails — the whole-lock fold is what this case pins.
+        ~s({"packs": {"good": {"sha256": "cafe"}, "p": "junk"}})
+      ],
+      fn body ->
+        File.write!(lock, body)
+
+        assert {:ok, %{pack_lock: lock_map, epochs: [epoch]}} =
+                 Smalt.Projection.SemanticEpoch.timeline(
+                   receipts_dir: dir,
+                   pack_lock: lock,
+                   deviations_path: Path.join(dir, "dev.jsonl")
+                 )
+
+        assert lock_map == %{}
+        assert epoch.drift_status == :no_pack
+        assert epoch.drift == true
+      end
+    )
+
+    File.rm_rf!(dir)
+  end
+
+  test "a well-formed lock still pins digests (fence does not over-refuse)" do
+    dir = @lock_namelist <> "-good"
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "r.jsonl"), Jason.encode!(%{"id" => "g", "standing" => "alive"}) <> "\n")
+    lock = Path.join(dir, "lock.json")
+    File.write!(lock, ~s({"packs": {"p": {"sha256": "cafe"}}}))
+
+    assert {:ok, %{pack_lock: %{"p" => "cafe"}, epochs: [epoch]}} =
+             Smalt.Projection.SemanticEpoch.timeline(
+               receipts_dir: dir,
+               pack_lock: lock,
+               deviations_path: Path.join(dir, "dev.jsonl")
+             )
+
+    assert epoch.drift_status == :no_pack
+    File.rm_rf!(dir)
   end
 end

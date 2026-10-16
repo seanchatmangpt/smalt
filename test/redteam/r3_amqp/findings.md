@@ -9,6 +9,11 @@
 - **Run receipt**: 46 attacks, 43 kill-tests (fresh TCP -> 8-byte protocol header
   <=5s after EVERY attack) — 0 kill-test failures, 0 broker process crashes.
   erl_crash.dump (mtime 19:10) predates this session and was never rewritten.
+  **Correction (2026-10-15, V261014-08 task 08-6):** the run receipt predates
+  corpus edits — `amqp_adversary.test.cjs` on disk registers **42**
+  `attack(...)` calls, not 46. The 46/43 figures reflect the as-run corpus,
+  not the on-disk registration count; re-run `test/redteam/r3_amqp/run.sh`
+  for a current receipt. Cross-link: `docs/jira/v26.10.14/08-servicebus-census.md`.
 - **Machine receipt**: /tmp/r3_amqp_results.json. Re-run: test/redteam/r3_amqp/run.sh
 
 ## CRITICAL (per-connection) — R1: spec-legal attach crashes the connection process

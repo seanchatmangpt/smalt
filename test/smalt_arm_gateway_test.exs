@@ -461,10 +461,14 @@ defmodule SmaltArmGatewayTest do
 
     # azapi lock action at any depth
     # The lock action requires an If-Match precondition (lib contract,
-    # router.ex check_lock_precondition/2): missing header -> 412.
+    # router.ex check_lock_precondition/2): missing header -> 412, and the
+    # header is value-verified (V261014-20) against the deterministic policy
+    # etag — not an arbitrary string.
+    lock_path = "#{containers_base}/cont-01/lock"
+
     lock_conn =
-      conn(:post, "#{containers_base}/cont-01/lock?api-version=2024-01-01", %{})
-      |> put_req_header("if-match", "\"0x8DA1A2B3C4D5E6F\"")
+      conn(:post, lock_path <> "?api-version=2024-01-01", %{})
+      |> put_req_header("if-match", Smalt.ArmGateway.Router.lock_policy_etag(lock_path))
       |> call()
 
     assert lock_conn.status == 200

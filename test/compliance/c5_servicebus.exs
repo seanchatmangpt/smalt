@@ -327,6 +327,7 @@ defmodule Smalt.Compliance.C5ServicebusTest do
         end
 
         SmaltTest.Lifecycle.restore_app()
+        SmaltTest.Lifecycle.ensure_store_up()
       end)
 
       {:ok, port: port, queue: "c5-queue-#{System.unique_integer([:positive])}"}

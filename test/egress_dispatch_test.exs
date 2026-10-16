@@ -2,6 +2,7 @@ defmodule EgressDispatchTest do
   use ExUnit.Case
   use Plug.Test
 
+  alias Smalt.DataPlane.Cosmos
   alias Smalt.EgressRouter
   alias Smalt.Store
 
@@ -10,9 +11,7 @@ defmodule EgressDispatchTest do
   setup do
     # Other suites stop the main app tree to run private trees; never assume
     # module run order — restore the shared app if the Store is gone.
-    if Process.whereis(Smalt.Store) == nil do
-      SmaltTest.Lifecycle.restore_app()
-    end
+          SmaltTest.Lifecycle.ensure_store_up()
 
     Store.clear()
     :ok
@@ -273,6 +272,94 @@ defmodule EgressDispatchTest do
     assert conn.status == 403
     assert Jason.decode!(conn.resp_body)["claim"] == nil
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "UnauthorizedAttestation"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lane 19 (v26.10.14) egress-security sweep fences
+  # ---------------------------------------------------------------------------
+
+  test "lane 19 item 1: SKR release 200 carries no blob-plane headers" do
+    call(:post, "/keys/lane19-key/create",
+      body: %{"kty" => "RSA-HSM", "release_policy" => %{"claim" => "azure-compliant-cvm"}}
+    )
+
+    conn =
+      call(:post, "/keys/lane19-key/release",
+        headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}]
+      )
+
+    assert conn.status == 200
+    assert Jason.decode!(conn.resp_body)["status"] == "Released"
+    # F5 law: the KV envelope must not see blob-plane headers. Asserted absent,
+    # not merely unpinned.
+    assert get_resp_header(conn, "x-ms-request-id") == []
+    assert get_resp_header(conn, "x-ms-version") == []
+  end
+
+  test "lane 19 item 1b: SKR release error envelope also stays blob-header-free" do
+    conn = call(:post, "/keys/lane19-missing-key/release")
+
+    assert conn.status == 404
+    assert get_resp_header(conn, "x-ms-request-id") == []
+    assert get_resp_header(conn, "x-ms-version") == []
+  end
+
+  test "lane 19 item 3: ResourceGraph string subscriptions -> typed 400 InvalidParameter" do
+    conn =
+      call(:post, "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01",
+        body: %{"subscriptions" => "sub-1"}
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidParameter"
+  end
+
+  test "lane 19 item 3: ResourceGraph map subscriptions -> typed 400 InvalidParameter" do
+    conn =
+      call(:post, "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01",
+        body: %{"subscriptions" => %{"a" => 1}}
+      )
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidParameter"
+  end
+
+  test "lane 19 item 3: list subscriptions still query normally (no regression)" do
+    conn =
+      call(:post, "/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01",
+        body: %{"subscriptions" => ["sub-a"]}
+      )
+
+    assert conn.status == 200
+    assert is_map(Jason.decode!(conn.resp_body))
+  end
+
+  test "lane 19 item 5: GET /keys 200 shape preserved through the total arms" do
+    conn = call(:get, "/keys")
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+    assert is_map(body)
+  end
+
+  test "lane 19 item 6: CORS default answers allow-origin *" do
+    conn = call(:get, "/keys", headers: [{"origin", "https://x.example"}])
+
+    assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
+  after
+    Application.delete_env(:smalt, :egress_cors_origins)
+  end
+
+  test "lane 19 item 6: configured CORS allowlist admits listed, refuses unlisted" do
+    Application.put_env(:smalt, :egress_cors_origins, ["https://allowed.example"])
+
+    listed = call(:get, "/keys", headers: [{"origin", "https://allowed.example"}])
+    unlisted = call(:get, "/keys", headers: [{"origin", "https://evil.example"}])
+
+    assert get_resp_header(listed, "access-control-allow-origin") == ["https://allowed.example"]
+    assert get_resp_header(unlisted, "access-control-allow-origin") == []
+  after
+    Application.delete_env(:smalt, :egress_cors_origins)
   end
 
   # ---------------------------------------------------------------------------
@@ -837,6 +924,7 @@ defmodule EgressDispatchTest do
     on_exit(fn ->
       stop_tree(sup)
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     hts = [{"x-ms-version", "2021-12-02"}]
@@ -1386,14 +1474,19 @@ defmodule EgressDispatchTest do
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerAlreadyExists"
 
-      # list maxresults fence -> 400 InvalidQueryParameter on both call sites
+      # list maxresults fence -> 400 InvalidQueryParameter on both call sites.
+      # comp=list error arms answer the Azure XML envelope (lane-06 landing,
+      # 2026-10-15): <Error><Code>…</Code></Error> + x-ms-error-code header;
+      # the non-list create arms keep the JSON envelope.
       for path <- [
             "/jx/dup?restype=container&comp=list&maxresults=abc",
             "/jx/dup?maxresults=abc"
           ] do
         conn = call(:get, path, headers: ver)
         assert conn.status == 400, "GET #{path} -> #{conn.status}"
-        assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidQueryParameter"
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert conn.resp_body =~ "<Error>"
+        assert conn.resp_body =~ "InvalidQueryParameter"
       end
     end
   end
@@ -1423,6 +1516,300 @@ defmodule EgressDispatchTest do
       File.rename!(hidden, beam_dir)
       :code.purge(Smalt.DataPlane.Purview)
       Code.ensure_loaded(Smalt.DataPlane.Purview)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 6 cycle 1 — cosmos typed error-tuple classes through the dispatch
+  # (per-engine error mapping strata: the cosmos continuation 400s and the
+  # store_not_ready fail-closed contract, both witnessed from the wire).
+  # ---------------------------------------------------------------------------
+
+  @cosmos_tables [:smalt_cosmos_docs, :smalt_cosmos_pk_meta, :smalt_cosmos_lsn]
+
+  test "cosmos continuation 400s route through dispatch as flat BadRequest envelopes" do
+    if loaded?(Smalt.DataPlane.Cosmos) do
+      # Seed via the engine (real collaborator); probes below are wire probes.
+      {:ok, 201, _, _} = Cosmos.create_doc("k6", "k6c", %{"id" => "d1", "v" => 1}, %{})
+
+      # Malformed token on the LIST surface: not "v#lsn:tail" grammar -> 400.
+      conn = call(:get, "/dbs/k6/colls/k6c/docs", headers: [{"x-ms-continuation", "garbage"}])
+
+      assert conn.status == 400,
+             "malformed list continuation -> #{conn.status}"
+
+      body = Jason.decode!(conn.resp_body)
+      assert body["code"] == "BadRequest"
+      assert body["message"] =~ "continuation"
+
+      # Query-namespace token (v1) on the LIST gate (v2-only): typed 400,
+      # never a cross-surface silent resume.
+      conn =
+        call(:get, "/dbs/k6/colls/k6c/docs",
+          headers: [{"x-ms-continuation", "1#5:d1"}]
+        )
+
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["code"] == "BadRequest"
+
+      # List-namespace token (v2) on the QUERY gate (v1-only): typed 400.
+      conn =
+        call(:post, "/dbs/k6/colls/k6c/docs",
+          body: Jason.encode!(%{"query" => "SELECT * FROM c"}),
+          headers: [
+            {"content-type", "application/query+json"},
+            {"x-ms-continuation", "2#5:d1"}
+          ]
+        )
+
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["code"] == "BadRequest"
+
+      # Valid round-trip: >limit feed emits a v2 token; resuming with it is
+      # 200 and the final page carries NO continuation header (row-18 pin).
+      for i <- 2..101 do
+        {:ok, 201, _, _} = Cosmos.create_doc("k6", "k6c", %{"id" => "d#{i}"}, %{})
+      end
+
+      conn = call(:get, "/dbs/k6/colls/k6c/docs")
+      assert conn.status == 200
+      assert length(Jason.decode!(conn.resp_body)) == 100
+      # v2 (list) namespace token; tail format is rid-scoped (cosmos lane
+      # landing, 2026-10-15) — pinned only on the namespace prefix here, the
+      # resume probe below proves the round-trip behaviorally.
+      [token] = get_resp_header(conn, "x-ms-continuation")
+      assert token =~ ~r/^2#\d+:/
+
+      conn = call(:get, "/dbs/k6/colls/k6c/docs", headers: [{"x-ms-continuation", token}])
+      assert conn.status == 200
+      # Lexicographic feed: the one doc past the first page is the lex-last id.
+      assert [%{"id" => "d99"}] = Jason.decode!(conn.resp_body)
+      assert get_resp_header(conn, "x-ms-continuation") == []
+    end
+  end
+
+  test "cosmos store_not_ready fails closed at dispatch: 503 RouteNotReady, never a 200-empty feed" do
+    if loaded?(Smalt.DataPlane.Cosmos) do
+      # Remove the coordinator-owned cosmos tables (Store.init semantics:
+      # a missing table IS the not-ready state; the engine never creates them).
+      Enum.each(@cosmos_tables, fn t ->
+        if :ets.info(t) != :undefined, do: :ets.delete(t)
+      end)
+
+      try do
+        # Uniform fail-closed across the cosmos surface...
+        for path <- [
+              "/dbs",
+              "/dbs/k6/colls/k6c/docs/d1",
+              "/dbs/k6/colls/k6c/docs"
+            ] do
+          conn = call(:get, path)
+
+          assert conn.status == 503, "GET #{path} -> #{conn.status}"
+          assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotReady"
+        end
+      after
+        # Recreate under a DURABLE owner: an ETS public named table dies with
+        # its owner process, so restoring inside this test process (or an
+        # on_exit task, which also dies) drops the tables again on exit — that
+        # collateral 503'd sibling tests at some shuffle seeds. A detached
+        # keeper process holds the tables for the rest of the run with the
+        # exact Store.init table options.
+        ExUnit.Callbacks.on_exit(fn ->
+          Enum.each(@cosmos_tables, fn t ->
+            if :ets.info(t) == :undefined do
+              spawn(fn ->
+                :ets.new(t, [
+                  :ordered_set,
+                  :public,
+                  :named_table,
+                  read_concurrency: true,
+                  write_concurrency: true
+                ])
+
+                Process.sleep(:infinity)
+              end)
+            end
+          end)
+        end)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 7 cycle 1 — the lens-6 fail-open class GENERALIZED: routes outside the
+  # lens-6 strata that answer not-ready/error with a defaulted non-503 (404
+  # NotFound / 400 InvalidBody / raw 500) instead of 503 RouteNotReady. The
+  # router moduledoc law: the surface fails CLOSED with RouteNotReady — never a
+  # success-shaped or client-fault-shaped lie about server state.
+  # ---------------------------------------------------------------------------
+
+  @vault_table :smalt_vault_keys
+
+  test "lens7: cosmos db/container READ routes fail closed 503 on store_not_ready, never 404 NotFound" do
+    if loaded?(Smalt.DataPlane.Cosmos) do
+      Enum.each(@cosmos_tables, fn t ->
+        if :ets.info(t) != :undefined, do: :ets.delete(t)
+      end)
+
+      try do
+        for path <- ["/dbs/l7db", "/dbs/l7db/colls/l7c"] do
+          conn = call(:get, path)
+
+          assert conn.status == 503,
+                 "GET #{path} -> #{conn.status} (fail-open: not-ready masked as NotFound)"
+
+          assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotReady"
+        end
+      after
+        recreate_cosmos_tables()
+      end
+    end
+  end
+
+  test "lens7: key vault routes fail closed 503 on missing vault table, never 400/500" do
+    if loaded?(Smalt.Security.Attestation) do
+      if :ets.info(@vault_table) != :undefined, do: :ets.delete(@vault_table)
+
+      try do
+        # POST /keys/:name/create: Store.put raises ArgumentError inside
+        # safe_dispatch, which rescued it as 400 InvalidBody — blaming the
+        # client for a server-side not-ready state.
+        conn =
+          call(:post, "/keys/l7key/create",
+            body: %{"kty" => "oct"},
+            headers: [{"x-ms-version", "2021-12-02"}]
+          )
+
+        assert conn.status == 503,
+               "POST /keys/l7key/create -> #{conn.status} (fail-open: server fault answered 400 InvalidBody)"
+
+        assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotReady"
+
+        # GET /keys/:name: Store.get raises unrescued -> raw 500.
+        conn = call(:get, "/keys/l7key")
+        assert conn.status == 503, "GET /keys/l7key -> #{conn.status}"
+        assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotReady"
+      after
+        recreate_vault_table()
+      end
+    end
+  end
+
+  defp recreate_cosmos_tables do
+    keep_tables(@cosmos_tables)
+  end
+
+  defp recreate_vault_table do
+    keep_tables([@vault_table])
+  end
+
+  @ledger_tables [:smalt_ledger_transactions, :smalt_ledger_meta]
+  @events_tables [:smalt_event_messages]
+  @blob_tables [:smalt_blobs, :smalt_blob_containers, :smalt_blob_policy]
+
+  test "lens7: ledger/event/blob list surfaces fail closed 503 on missing tables, never raw 500" do
+    if loaded?(Smalt.Security.ConfidentialLedger) and loaded?(Smalt.Messaging.EventStream) do
+      Enum.each(@ledger_tables ++ @events_tables ++ @blob_tables, fn t ->
+        if :ets.info(t) != :undefined, do: :ets.delete(t)
+      end)
+
+      try do
+        probes = [
+          {:get, "/app/transactions", []},
+          {:get, "/app/transactions/latest", []},
+          {:get, "/topics/t7/events", []},
+          # blob catch-all (x-ms-version satisfies the guard)
+          {:get, "/l7acct", [{"x-ms-version", "2021-12-02"}], "comp=list"},
+          {:get, "/l7acct/l7cont", [{"x-ms-version", "2021-12-02"}], "comp=list&restype=container"}
+        ]
+
+        Enum.each(probes, fn
+          {method, path, headers} ->
+            conn = call(method, path, headers: headers)
+            assert conn.status == 503, "#{method} #{path} -> #{conn.status}"
+            assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotReady"
+
+          {method, path, headers, query} ->
+            conn = call(method, "#{path}?#{query}", headers: headers)
+            assert conn.status == 503, "#{method} #{path}?#{query} -> #{conn.status}"
+            assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotReady"
+        end)
+      after
+        keep_tables(@ledger_tables ++ @events_tables ++ @blob_tables)
+      end
+    end
+  end
+
+  # Detached-keeper table recreation (lens-6 cycle-1 finding): ETS public
+  # named tables die with their owner, so the keeper must be a detached
+  # process that never exits.
+  defp keep_tables(tables) do
+    Enum.each(tables, fn t ->
+      if :ets.info(t) == :undefined do
+        spawn(fn ->
+          :ets.new(t, [
+            :ordered_set,
+            :public,
+            :named_table,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
+
+          Process.sleep(:infinity)
+        end)
+      end
+    end)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 6 cycle 2 — ledger typed-tuple mapping through the dispatch (the 409
+  # dedup class was only ever AVOIDED by prior tests, never pinned).
+  # ---------------------------------------------------------------------------
+
+  test "ledger dedup 409 routes through dispatch as the typed conflict envelope" do
+    if loaded?(Smalt.Security.ConfidentialLedger) do
+      Store.put(:smalt_ledger_meta, {:created, "default_ledger"}, true)
+
+      body = Jason.encode!(%{"data" => "dup-409-wire"})
+
+      conn =
+        Plug.Test.conn(:post, "/app/transactions", body)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> EgressRouter.call(@opts)
+
+      assert conn.status == 201
+
+      conn =
+        Plug.Test.conn(:post, "/app/transactions", body)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> EgressRouter.call(@opts)
+
+      assert conn.status == 409
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "LedgerItemAlreadyExists"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 6 cycle 2 — KV typed-tuple mapping through the dispatch: an engine
+  # typed {:error, 400, body} rides blob_error to the wire with the status and
+  # envelope intact (engine-level fences live in data_plane suites; this pins
+  # the ROUTER hop).
+  # ---------------------------------------------------------------------------
+
+  test "KV typed 400 rides the router: sign on oct key answers the engine envelope at 400" do
+    if loaded?(Smalt.DataPlane.KeyVaultActions) do
+      conn = call(:post, "/keys/oct-wire/create", body: %{"kty" => "oct-HSM"})
+      assert conn.status == 200
+
+      conn =
+        call(:post, "/keys/oct-wire/sign",
+          body: Jason.encode!(%{"alg" => "RS256", "value" => Base.encode64("x")}),
+          headers: [{"content-type", "application/json"}]
+        )
+
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidAlgorithm"
     end
   end
 
@@ -1749,6 +2136,10 @@ defmodule EgressDispatchTest do
         # NOT own a 3+-segment PUT route and is therefore NOT whitelisted.
         Application.put_env(:smalt, :auth_mode, :anonymous)
 
+        call(:put, "/keys/vltkey?restype=container",
+          headers: ver_ct ++ [{"x-ms-immutable-policy", "false"}]
+        )
+
         put = call(:put, "/keys/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
         assert put.status == 201, "answered #{put.status}: #{put.resp_body}"
 
@@ -1778,6 +2169,7 @@ defmodule EgressDispatchTest do
     on_exit(fn ->
       stop_tree(sup)
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     hts = [{"x-ms-version", "2021-12-02"}]
@@ -2021,6 +2413,127 @@ defmodule EgressDispatchTest do
           Application.put_env(:smalt, :auth_mode, prev)
         end
       end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # V261014-18 — engine-kill court (work order §3.2): the RouteNotReady 503
+  # fail-closed law is proven against the REAL live engine, not the
+  # module-not-compiled seam. A real HTTP request over :gen_tcp rides the
+  # loaded cosmos engine module to a 2xx BEFORE; the module is then purged
+  # and deleted from the code server (:code.purge + :code.delete — for a
+  # functional engine, module unload IS the live-engine kill), the same
+  # request now genuinely fails Code.ensure_loaded?/1 in not_ready?/2 and
+  # must answer 503 RouteNotReady — never 201/200; the module is then
+  # restored and a third request must answer 2xx again (AFTER proves the
+  # kill was real and the court non-vacuous).
+  #
+  # Isolation (discipline of the detached-keeper note at :1523): the kill
+  # runs against an ISOLATED child tree (private Store + Bandit on an
+  # ephemeral port booted inside this test), never the shared tree, so
+  # shuffled siblings inherit neither the stopped tree nor the purged module
+  # — the module is restored in-test AND again in on_exit.
+  # ---------------------------------------------------------------------------
+  describe "engine-kill court: real engine unload -> 503 RouteNotReady over real :gen_tcp" do
+    @tag :engine_kill_court
+    test "BEFORE 2xx / KILL -> 503 RouteNotReady (refute 201/200) / RESTORE -> 2xx" do
+      port = boot_isolated_tree()
+      cosmos = Smalt.DataPlane.Cosmos
+      beam = Path.join(Mix.Project.compile_path(), "#{Atom.to_string(cosmos)}.beam")
+      assert File.exists?(beam), "cosmos beam missing at #{beam}"
+      hidden = beam <> ".hidden_engine_kill"
+
+      on_exit(fn ->
+        # Global code-state hygiene: whatever happened in the body, the cosmos
+        # module must be loaded and the beam in place before the next shuffled
+        # sibling runs.
+        if File.exists?(hidden) do
+          File.rename!(hidden, beam)
+        end
+
+        :code.purge(cosmos)
+        Code.ensure_loaded(cosmos)
+        stop_tree_quiet()
+        SmaltTest.Lifecycle.restore_app()
+      end)
+
+      # BEFORE — real HTTP, real loaded engine.
+      assert Code.ensure_loaded?(cosmos)
+      before = wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+      assert before.status == 200,
+             "BEFORE baseline answered #{before.status} (#{before.body}) — court precondition"
+
+      # KILL — for a functional engine, module unload IS the live-engine kill:
+      # purge+delete the loaded module AND hide the beam file. Purge+delete
+      # alone is NOT a kill — Code.ensure_loaded?/1 reloads from the on-disk
+      # beam (measured: the court's own refute caught it on first run) — so
+      # the loader must be starved on disk too, same mechanics as the Purview
+      # seam test above.
+      File.rename!(beam, hidden)
+      :code.purge(cosmos)
+      :code.delete(cosmos)
+      refute Code.ensure_loaded?(cosmos), "engine module still loaded after purge+delete+beam-hide"
+
+      killed = wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+
+      assert killed.status == 503,
+             "KILLED engine answered #{killed.status} (#{killed.body}) — expected 503 RouteNotReady"
+
+      assert Jason.decode!(killed.body)["error"]["code"] == "RouteNotReady"
+
+      # The law, stated in the failure message: a not-ready route never
+      # answers with a success shape.
+      refute killed.status in [200, 201],
+             "killed engine answered #{killed.status} — RouteNotReady 503 law violated " <>
+               "(fail-open: success-shaped answer about server state)"
+
+      # RESTORE — proves the kill was real and the court non-vacuous.
+      File.rename!(hidden, beam)
+      assert Code.ensure_loaded(cosmos) == {:module, cosmos}
+      assert Code.ensure_loaded?(cosmos)
+
+      after_resp =
+        wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+
+      assert after_resp.status == 200,
+             "RESTORE answered #{after_resp.status} (#{after_resp.body}) — the kill was real " <>
+               "and the court is non-vacuous"
+    end
+  end
+
+  defp boot_isolated_tree do
+    stop_existing_tree()
+
+    port = get_free_port()
+
+    Application.put_env(:smalt, :arm_port, get_free_port())
+    Application.put_env(:smalt, :egress_port, port)
+    Application.put_env(:smalt, :amqp_port, get_free_port())
+
+    {:ok, sup} =
+      Supervisor.start_link(
+        [Smalt.Store, {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}],
+        strategy: :one_for_one,
+        name: __MODULE__.EngineKillSup
+      )
+
+    Process.put({__MODULE__, :engine_kill_sup}, sup)
+    port
+  end
+
+  defp stop_tree_quiet do
+    case Process.get({__MODULE__, :engine_kill_sup}) do
+      nil ->
+        :ok
+
+      sup ->
+        try do
+          Supervisor.stop(sup, :normal, 5000)
+        catch
+          _, _ -> Process.exit(sup, :kill)
+        end
+
+        :ok
     end
   end
 end

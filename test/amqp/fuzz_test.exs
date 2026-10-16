@@ -2008,4 +2008,427 @@ defmodule Smalt.Amqp.FuzzTest do
 
     assert count(:desc_slot) == 256
   end
+
+  # ---------------------------------------------------------------------------
+  # Lens 6 cycle 1: ENCODE-path flip differential
+  # ---------------------------------------------------------------------------
+  # The lens-5 bit-flip differential covered DECODE (mutated bytes, tagged
+  # tuples). This is the dual: mutate the PRE-ENCODE structure; every encode
+  # must either (a) raise the documented ArgumentError or (b) succeed with
+  # bytes whose decode_all reproduces the term exactly — never emit bytes
+  # that fail to decode or decode to a different term.
+  test "encode-path differential: mutated structures raise ArgumentError or round-trip exactly (lens-6)" do
+    iterations_per_seed = 150
+
+    for seed <- @seeds do
+      :rand.seed(:exsss, seed * 31_337 + 7)
+
+      for _i <- 1..iterations_per_seed do
+        term = gen_term(:rand.uniform(1_000_000))
+        mutated = mutate_term(term)
+        bump(:enc_diff, 1)
+
+        result =
+          try do
+            PrimitiveCodec.encode(mutated) |> IO.iodata_to_binary()
+          rescue
+            e in ArgumentError -> {:raised, e}
+            e -> flunk(dump(seed, "non-ArgumentError raise: #{Exception.format(:error, e)}", mutated))
+          end
+
+        case result do
+          {:raised, _e} ->
+            :ok
+
+          bin ->
+            case PrimitiveCodec.decode_all(bin) do
+              {:ok, [decoded]} ->
+                assert decoded == mutated,
+                       dump(seed, "encode emitted non-round-tripping bytes\nmutated=#{inspect(mutated, limit: 30)}\ndecoded=#{inspect(decoded, limit: 30)}", bin)
+
+              other ->
+                flunk(dump(seed, "encode emitted undecodable bytes: #{inspect(other)}", mutated))
+            end
+        end
+      end
+    end
+
+    assert count(:enc_diff) == @seeds |> Enum.count() |> Kernel.*(iterations_per_seed)
+  end
+
+  # Structure-level mutations (the byte-level `mutate/1` above is the decode
+  # dual). Each operator produces a term that is either still in the encodable
+  # domain (must round-trip) or out of it (must raise ArgumentError).
+  defp mutate_term(term) do
+    case :rand.uniform(8) do
+      n when n in 1..2 ->
+        # replace a random deep leaf with a hostile value
+        replace_leaf(term, hostile_leaf())
+
+      3 ->
+        # integer out of the 64-bit domain
+        replace_leaf(term, Enum.random([2 ** 64, -(2 ** 63) - 1, 2 ** 128]))
+
+      4 ->
+        # described with out-of-domain descriptor
+        {:described, Enum.random([-1, 2 ** 64, "plain-bin", {:symbol, 1}, {:uuid, <<0::128>>, :extra}]), term}
+
+      5 ->
+        # array with a hostile element (mixed ctor or non-encodable)
+        {:array, [leaf_of(term), hostile_leaf()]}
+
+      6 ->
+        # vbin/symbol/uuid/timestamp with a malformed payload
+        Enum.random([
+          {:vbin, :not_a_binary},
+          {:symbol, 99},
+          {:uuid, <<1::8>>},
+          {:timestamp, "not-an-int"},
+          {:uuid, <<0::128>>, :extra}
+        ])
+
+      n when n in 7..8 ->
+        # map with a hostile key or value
+        %{hostile_leaf() => leaf_of(term)}
+    end
+  end
+
+  defp replace_leaf(term, leaf) do
+    if :rand.uniform(3) == 1 do
+      leaf
+    else
+      case term do
+        [h | t] ->
+          if :rand.uniform(2) == 1, do: [replace_leaf(h, leaf) | t], else: [h | replace_leaf(t, leaf)]
+
+        {tag, v} when tag in [:symbol, :vbin, :uuid, :timestamp] and is_binary(v) ->
+          {tag, v}
+
+        {:array, list} when is_list(list) ->
+          {:array, Enum.map(list, fn x -> replace_leaf(x, leaf) end)}
+
+        {:described, d, v} ->
+          {:described, d, replace_leaf(v, leaf)}
+
+        map when is_map(map) and map != %{} ->
+          {k, v} = Enum.random(Map.to_list(map))
+          Map.put(map, k, replace_leaf(v, leaf))
+
+        other ->
+          if is_integer(other) and not is_boolean(other), do: leaf, else: other
+        end
+    end
+  end
+
+  defp leaf_of(t) do
+    case t do
+      [x | _] -> leaf_of(x)
+      {:described, _, v} -> leaf_of(v)
+      {:array, l} when is_list(l) and l != [] -> leaf_of(hd(l))
+      map when is_map(map) and map != %{} -> leaf_of(elem(Enum.at(map, 0), 1))
+      other -> other
+    end
+  end
+
+  defp hostile_leaf do
+    Enum.random([
+      :ok,
+      :error,
+      {:weird, 1},
+      self(),
+      fn -> :ok end,
+      {:symbol, :an_atom_not_binary},
+      {:described, :bad_desc_atom, 1}
+    ])
+  end
+
+  # ---------------------------------------------------------------------------
+  # Lens 6 cycle 2: two-level described nesting sweep (descriptor-slot x2)
+  # ---------------------------------------------------------------------------
+  # Extends the lens-5 single-slot 256-ctor sweep to described-in-described:
+  # outer ctor x inner ctor over a combinatorial sample (all 256 outer bytes
+  # x 6 representative inner ctors + all 256 inner bytes x 6 outer = 3072
+  # pairs), classifying ulong/symbol acceptance at BOTH levels.
+  test "two-level described nesting: descriptor ctor acceptance composes (lens-6)" do
+    reps = [0x43, 0x53, 0x80, 0xA3, 0xB3, 0xA1]
+    ulong_or_sym = [0x43, 0x44, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x60, 0x61, 0x70, 0x71, 0x80, 0x81, 0xA3, 0xB3]
+
+    for {outer, inner} <- pairs(reps) do
+      wire = <<0x00, outer, desc_payload(outer)::binary, 0x00, inner, desc_payload(inner)::binary, 0x40>>
+
+      prim = PrimitiveCodec.decode(wire)
+      bump(:nested_desc, 1)
+
+      outer_ok = outer in ulong_or_sym
+      inner_ok = inner in ulong_or_sym
+
+      cond do
+        outer_ok and inner_ok ->
+          assert {:ok, {:described, _, {:described, _, nil}}, <<>>} = prim,
+                 "nested 0x#{Integer.to_string(outer, 16)}/0x#{Integer.to_string(inner, 16)}: #{inspect(prim)}"
+
+        true ->
+          assert match?({:error, _}, prim),
+                 "nested 0x#{Integer.to_string(outer, 16)}/0x#{Integer.to_string(inner, 16)} decoded: #{inspect(prim)}"
+      end
+
+      # encode side: accepted descriptor forms at both levels round-trip
+      if outer in [0x53, 0x80, 0xA3, 0xB3] and inner in [0x53, 0x80, 0xA3, 0xB3] do
+        d_outer = desc_term(outer)
+        d_inner = desc_term(inner)
+
+        enc =
+          PrimitiveCodec.encode({:described, d_outer, {:described, d_inner, nil}})
+          |> IO.iodata_to_binary()
+
+        assert {:ok, [rt]} = PrimitiveCodec.decode_all(enc)
+
+        assert rt == {:described, d_outer, {:described, d_inner, nil}}
+      end
+    end
+
+    assert count(:nested_desc) == 1536
+  end
+
+  # outer x inner: every byte as outer against representative inners, and
+  # every byte as inner against representative outers (no self-pairs beyond
+  # the reps themselves)
+  defp pairs(reps) do
+    for outer <- 0..255, inner <- reps, do: {outer, inner}
+  end
+
+  # trailing payload bytes so each ctor decodes to a descriptor, matching the
+  # lens-5 sweep's body shapes (plus a nil described value after it)
+  defp desc_payload(ctor) do
+    case ctor do
+      c when c in [0x50, 0x51, 0x52, 0x53, 0x54, 0x55] -> <<0x01>>
+      c when c in [0x60, 0x61] -> <<0x00, 0x01>>
+      c when c in [0x70, 0x71, 0x72, 0x73] -> <<0, 0, 0, 1>>
+      c when c in [0x80, 0x81, 0x82, 0x83] -> <<0, 0, 0, 0, 0, 0, 0, 1>>
+      0x98 -> <<0::unsigned-size(128)>>
+      c when c in 0xA0..0xA3 -> <<1, ?d>>
+      c when c in 0xB0..0xB3 -> <<0, 0, 0, 1, ?d>>
+      _ -> <<>>
+    end
+  end
+
+  defp desc_term(0x53 = c), do: c
+  defp desc_term(0x80 = c), do: c
+  defp desc_term(0xA3), do: {:symbol, "d"}
+  defp desc_term(0xB3), do: {:symbol, "d"}
+
+  # ---------------------------------------------------------------------------
+  # Lens 7 cycle 1: decode-path mirror of the encode-path classes
+  # ---------------------------------------------------------------------------
+  # The four encode-path fixes (silent 64-bit truncation, FunctionClauseError
+  # leak, plain-binary-descriptor rewrite, improper-list leak) have decode-path
+  # twins to rule out:
+  #
+  #   1. truncation twin  — decode reads exact-width binaries via pattern
+  #      matching, so silent truncation is structurally impossible; this fence
+  #      proves it at every constructor boundary (each side) and pins the
+  #      exactness that a width-mutation would break.
+  #   2. raise-leak twin  — decode is a tagged-error court; the corpus test
+  #      above hammers it. Here boundary wires one byte short of every fixed
+  #      width also converge to {:error, :truncated}.
+  #   3. rewrite twin     — decode outputs must re-encode byte-stably (the
+  #      lens-5 plain-binary descriptor was exactly a re-encode rewrite).
+  #   4. improper-list twin — decode builds lists by prepend+reverse only;
+  #      fence asserts the proper-list invariant over the boundary corpus.
+  test "decode-path mirror: exact-width decode at every ctor boundary, re-encode stability, proper-list invariant (lens-7)" do
+    # {label, ctor, wire body, expected decoded term}
+    boundary_wires = [
+      # unsigned fixed widths, max and cross-boundary values
+      {:ubyte_max, 0x50, <<255>>, 255},
+      {:ubyte_min, 0x50, <<0>>, 0},
+      {:ushort_max, 0x60, <<0xFFFF::16>>, 65_535},
+      {:uint32_max, 0x70, <<0xFFFF_FFFF::32>>, 4_294_967_295},
+      {:ulong64_max, 0x80, <<0xFFFF_FFFF_FFFF_FFFF::64>>, 18_446_744_073_709_551_615},
+      {:ulong64_two_pow_63, 0x80, <<0x8000_0000_0000_0000::64>>, 0x8000_0000_0000_0000},
+      {:ulong64_above_uint32, 0x80, <<(0xFFFF_FFFF + 1)::64>>, 0xFFFF_FFFF + 1},
+      # signed fixed widths, both extremes
+      {:tinyint_min, 0x51, <<0x80>>, -128},
+      {:tinyint_max, 0x51, <<0x7F>>, 127},
+      {:short_min, 0x61, <<0x8000::signed-16>>, -32_768},
+      {:short_max, 0x61, <<0x7FFF::16>>, 32_767},
+      {:int_min, 0x71, <<0x8000_0000::signed-32>>, -2_147_483_648},
+      {:int_max, 0x71, <<0x7FFF_FFFF::32>>, 2_147_483_647},
+      {:long_min, 0x81, <<0x8000_0000_0000_0000::signed-64>>, -0x8000_0000_0000_0000},
+      {:long_max, 0x81, <<0x7FFF_FFFF_FFFF_FFFF::64>>, 0x7FFF_FFFF_FFFF_FFFF},
+      {:ts_min, 0x83, <<0x8000_0000_0000_0000::signed-64>>, {:timestamp, -0x8000_0000_0000_0000}},
+      {:ts_max, 0x83, <<0x7FFF_FFFF_FFFF_FFFF::64>>, {:timestamp, 0x7FFF_FFFF_FFFF_FFFF}}
+    ]
+
+    for {label, ctor, body, expected} <- boundary_wires do
+      wire = <<ctor, body::binary>>
+      assert {:ok, ^expected, <<>>} = PrimitiveCodec.decode(wire),
+             "#{label}: exact-width decode broke: #{inspect(PrimitiveCodec.decode(wire))}"
+
+      # re-encode stability: decode output re-encodes and decodes identically
+      # (the rewrite-twin detector: a decode that mints a term the encoder
+      # cannot re-emit is the lens-5 descriptor finding's twin)
+      rt =
+        expected
+        |> PrimitiveCodec.encode()
+        |> IO.iodata_to_binary()
+        |> PrimitiveCodec.decode_all()
+
+      assert {:ok, [^expected]} = rt, "#{label}: re-encode stability broke: #{inspect(rt)}"
+      bump(:mirror_boundary, 1)
+    end
+
+    # timestamp extremes re-encode stably too
+    for ms <- [-0x8000_0000_0000_0000, 0x7FFF_FFFF_FFFF_FFFF] do
+      wire = PrimitiveCodec.encode({:timestamp, ms}) |> IO.iodata_to_binary()
+      assert {:ok, {:timestamp, ^ms}, <<>>} = PrimitiveCodec.decode(wire)
+      bump(:mirror_boundary, 1)
+    end
+
+    # one-byte-short of every fixed width converges to :truncated (raise-leak
+    # twin: never a raise, always a tagged error)
+    for {ctor, width} <- [{0x60, 2}, {0x61, 2}, {0x70, 4}, {0x71, 4}, {0x72, 4}, {0x80, 8}, {0x81, 8}, {0x82, 8}, {0x83, 8}, {0x98, 16}] do
+      wire = <<ctor, :binary.copy(<<0>>, width - 1)::binary>>
+      assert {:error, :invalid_constructor} = PrimitiveCodec.decode(wire),
+             "ctor 0x#{Integer.to_string(ctor, 16)} short-by-one did not tag an error: #{inspect(PrimitiveCodec.decode(wire))}"
+      bump(:mirror_short, 1)
+    end
+
+    # proper-list invariant over the boundary corpus: every decoded list is
+    # proper, at every nesting depth (improper-list twin)
+    proper =
+      Enum.all?(boundary_wires, fn {_label, ctor, body, _} ->
+        {:ok, term, _} = PrimitiveCodec.decode(<<ctor, body::binary>>)
+        proper_term?(term)
+      end)
+
+    assert proper
+
+    # boolean strictness: 0x56 with an out-of-domain byte (0x02..0xFF) is
+    # malformed wire — tagged error, never a silently fabricated value (the
+    # pre-fix decoder rewrote 0xFF to `false`; lens-7 decode-twin finding).
+    # Note this diverges from rhea's JS `!read_byte` leniency on purpose:
+    # fabricating `false` from 0xFF is indistinguishable from well-formed
+    # `false` downstream — the exact failure class this lens hunts.
+    assert {:ok, true, <<>>} = PrimitiveCodec.decode(<<0x56, 0x01>>)
+    assert {:ok, false, <<>>} = PrimitiveCodec.decode(<<0x56, 0x00>>)
+
+    for bad <- [0x02, 0x7F, 0xFF] do
+      assert {:error, :invalid_constructor} = PrimitiveCodec.decode(<<0x56, bad>>)
+      bump(:mirror_bool, 1)
+    end
+  end
+
+  defp proper_term?([]), do: true
+
+  defp proper_term?([h | t]) do
+    # each element must itself be proper-terminal; an improper tail is [h | t]
+    # where t is neither [] nor a cons — is_list accepts improper lists, so
+    # walk structurally
+    proper_term?(h) and proper_term?(t)
+  end
+
+  defp proper_term?(map) when is_map(map), do: Enum.all?(map, fn {k, v} -> proper_term?(k) and proper_term?(v) end)
+
+  defp proper_term?({:array, l}) when is_list(l), do: proper_term?(l)
+
+  defp proper_term?({:described, d, v}), do: proper_term?(d) and proper_term?(v)
+
+  defp proper_term?({:symbol, b}) when is_binary(b), do: true
+  defp proper_term?({:uuid, b}) when is_binary(b), do: true
+  defp proper_term?({:timestamp, n}) when is_integer(n), do: true
+  defp proper_term?(t) when is_tuple(t), do: false
+  defp proper_term?(n) when is_integer(n), do: true
+  defp proper_term?(f) when is_float(f), do: true
+  defp proper_term?(b) when is_binary(b), do: true
+  defp proper_term?(nil), do: true
+  defp proper_term?(true), do: true
+  defp proper_term?(false), do: true
+  defp proper_term?(_), do: false
+
+  # ---------------------------------------------------------------------------
+  # Lens 7 cycle 2: two-level described + guarded-shape differential (+10k)
+  # ---------------------------------------------------------------------------
+  # Extends the lens-6 15k encode-path differential: every iteration composes
+  # TWO levels of described wrapping around a generated term and draws from
+  # the guarded shape classes (boundary ints each side of every range guard,
+  # over-range ints that must raise, improper lists, non-uniform arrays).
+  # Contract: in-domain => byte-stable round-trip on decode_all; out-of-domain
+  # => the documented ArgumentError.
+  test "two-level described x guarded-shape differential: in-domain round-trips, out-of-domain raises (lens-7)" do
+    iterations_per_seed = 100
+
+    descs = fn ->
+      case :rand.uniform(3) do
+        1 -> :rand.uniform(255)
+        2 -> 256 + :rand.uniform(0xFFFF_FFFF_FFFF_FFFF - 256)
+        3 -> {:symbol, symbol_body()}
+      end
+    end
+
+    boundary_pair = [
+      {0xFFFF_FFFF, true},
+      {0xFFFF_FFFF + 1, true},
+      {0xFFFF_FFFF_FFFF_FFFF, true},
+      {2 ** 64, false},
+      {2_147_483_647, true},
+      {2_147_483_648, true},
+      {-2_147_483_649, true},
+      {-0x8000_0000_0000_0000, true},
+      {-(2 ** 63) - 1, false},
+      {127, true},
+      {128, true},
+      {-128, true},
+      {-129, true}
+    ]
+
+    for seed <- @seeds do
+      :rand.seed(:exsss, seed * 7919 + 13)
+
+      for _i <- 1..iterations_per_seed do
+        term = gen_term(:rand.uniform(1_000_000))
+        d1 = descs.()
+        d2 = descs.()
+        wrapped = {:described, d1, {:described, d2, term}}
+        bump(:l7_diff, 1)
+
+        bin =
+          wrapped
+          |> PrimitiveCodec.encode()
+          |> IO.iodata_to_binary()
+
+        assert {:ok, [^wrapped]} = PrimitiveCodec.decode_all(bin),
+               dump(seed, "two-level described broke round-trip", bin)
+
+        # guarded shapes: boundary ints each side of every range guard
+        {n, expect_ok} = Enum.random(boundary_pair)
+
+        result =
+          try do
+            {:ok, PrimitiveCodec.encode(n) |> IO.iodata_to_binary()}
+          rescue
+            ArgumentError -> :raised
+          end
+
+        if expect_ok do
+          assert {:ok, enc} = result, "boundary value #{n} unexpectedly raised: #{inspect(result)}"
+          assert {:ok, [^n]} = PrimitiveCodec.decode_all(enc), "boundary value #{n} broke round-trip"
+        else
+          assert :raised = result, "over-range value #{n} did not raise ArgumentError"
+        end
+
+        # improper list / non-uniform array must raise the documented error
+        if :rand.uniform(2) == 1 do
+          assert_raise ArgumentError, fn -> PrimitiveCodec.encode([1, [2 | :improper_tail]]) end
+        else
+          assert_raise ArgumentError, fn -> PrimitiveCodec.encode({:array, [1, "mixed"]}) end
+        end
+
+        bump(:l7_diff, 1)
+      end
+    end
+
+    assert count(:l7_diff) == @seeds |> Enum.count() |> Kernel.*(iterations_per_seed * 2)
+  end
+
+  defp proper_term?(_), do: false
 end

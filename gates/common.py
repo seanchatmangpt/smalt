@@ -16,6 +16,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,41 +57,107 @@ def wait_port_free(port, timeout_s=20.0):
     return _substrate.wait_port_free(port, timeout_s=timeout_s)
 
 
-def spawn_substrate(ports, shared_key=None):
-    """Boot `mix run --no-halt` under MIX_ENV=test on private ports."""
-    if not wait_port_free(ports["arm"]):
-        raise RuntimeError(f"arm port {ports['arm']} not free before boot")
-    env = dict(os.environ)
-    env["MIX_ENV"] = "test"
-    for key, var in ENV_NAMES.items():
-        env[var] = str(ports[key])
-    cmd = [
-        "mix", "run", "--no-start", "-e",
-        # put_env BEFORE app start: :mcp_port has no SMALT_TEST_* env override
-        # (config/test.exs covers arm/arm_tls/egress/amqp/event_hubs only), and
-        # another lane's substrate may hold the default 9545.
-        f'Application.put_env(:smalt, :mcp_port, {ports["mcp"]}); '
-        f'Application.put_env(:smalt, :sb_shared_key, "{shared_key or ""}"); '
-        '{:ok, _} = Application.ensure_all_started(:smalt); '
-        'Process.sleep(:infinity)',
-    ]
-    log_path = os.environ.get("SMALT_GATE_LOG")
-    logf = open(log_path, "w") if log_path else None
-    proc = subprocess.Popen(
-        cmd,
-        cwd=REPO,
-        env=env,
-        stdout=logf or subprocess.DEVNULL,
-        stderr=subprocess.STDOUT if logf else subprocess.DEVNULL,
-        start_new_session=True,
-        stdin=subprocess.DEVNULL,
-    )
-    if logf:
-        logf.close()
-    wait_for_port(ports["arm"], proc)
-    wait_for_port(ports["egress"], proc)
-    wait_for_port(ports["amqp"], proc)
-    return proc
+def spawn_substrate(ports, shared_key=None, tries=3):
+    """Boot `mix run --no-halt` under MIX_ENV=test on private ports.
+
+    TOCTOU re-pick retry (lens-3 cycle 2): on a pre-bind substrate exit
+    (rc=1) — a sibling lane's ephemeral pick steals one of the freshly probed
+    free ports in the pick->bind window (witnessed: `substrate exited rc=1
+    before binding :60074`, lock-clamp gate, 2026-10-15, ~50% gate-run flake
+    under sibling fan-out load) — kill, re-pick EVERY port fresh, retry.
+    `ports` is mutated in place so callers observe the re-picked values.
+    """
+    last_err = None
+    for attempt in range(1, tries + 1):
+        if not wait_port_free(ports["arm"]):
+            raise RuntimeError(f"arm port {ports['arm']} not free before boot")
+        env = dict(os.environ)
+        env["MIX_ENV"] = "test"
+        for key, var in ENV_NAMES.items():
+            env[var] = str(ports[key])
+        cmd = [
+            "mix", "run", "--no-start", "-e",
+            # put_env BEFORE app start: :mcp_port has no SMALT_TEST_* env override
+            # (config/test.exs covers arm/arm_tls/egress/amqp/event_hubs only), and
+            # another lane's substrate may hold the default 9545.
+            f'Application.put_env(:smalt, :mcp_port, {ports["mcp"]}); '
+            f'Application.put_env(:smalt, :sb_shared_key, "{shared_key or ""}"); '
+            '{:ok, _} = Application.ensure_all_started(:smalt); '
+            'Process.sleep(:infinity)',
+        ]
+        log_path = os.environ.get("SMALT_GATE_LOG")
+        tmp_log = None
+        if not log_path:
+            tmp_log = tempfile.NamedTemporaryFile(
+                prefix="smalt-gate-substrate-", suffix=".log", delete=False)
+            log_path = tmp_log.name
+            logf = tmp_log
+        else:
+            logf = open(log_path, "w")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=REPO,
+            env=env,
+            stdout=logf,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+        )
+        if logf:
+            logf.close()
+        try:
+            try:
+                wait_for_port(ports["arm"], proc)
+                wait_for_port(ports["egress"], proc)
+                wait_for_port(ports["amqp"], proc)
+            except RuntimeError:
+                raise
+            except BaseException:
+                # Teardown on ANY escape (lens-4 cycle 6; mutation court
+                # lens-5 cycle 1: guard removal -> 2/2 ORPHAN, handler
+                # removal -> 2/2 ORPHAN, unmutated -> 2/2 CLEAN).
+                _substrate.kill_substrate(proc, ports=())
+                raise
+            if tmp_log:
+                os.unlink(tmp_log.name)
+            return proc
+        except RuntimeError as e:
+            last_err = e
+            # Typed failure classification (lens-4 cycle 1): a pre-bind rc=1
+            # is not always a port steal. Read the substrate log: a compile
+            # error means the SHARED tree is broken (compile-freeze class) —
+            # retrying cannot help, so fail closed immediately with the
+            # compile context instead of burning `tries` mix boots.
+            log_text = ""
+            try:
+                with open(log_path) as lf:
+                    log_text = lf.read()
+            except OSError:
+                pass
+            if "== Compilation error" in log_text or "(CompileError)" in log_text:
+                tail = log_text.strip().splitlines()[-12:]
+                raise RuntimeError(
+                    "substrate COMPILE-FAILED pre-bind (shared tree broken, "
+                    "compile-freeze class; no port retry): ...\n"
+                    + "\n".join(tail)) from e
+            if tmp_log:
+                try:
+                    os.unlink(tmp_log.name)
+                except OSError:
+                    pass
+            # Retry teardown: kill ONLY our child's process group — never the
+            # lsof sweep. The port we lost was stolen by (or now belongs to)
+            # another process; sweeping it would kill a sibling's live holder.
+            _substrate.kill_substrate(proc, ports=())
+            if attempt == tries:
+                raise
+            fresh = pick_ports()
+            ports.clear()
+            ports.update(fresh)
+            print(f"[gate] substrate port stolen pre-bind; re-picked all six "
+                  f"-> {ports['arm']}/{ports['egress']}/{ports['amqp']} "
+                  f"(attempt {attempt + 1}/{tries})")
+    raise last_err or RuntimeError("spawn_substrate: exhausted retries")
 
 
 def wait_for_port(port, proc, timeout_s=120.0):
@@ -101,10 +168,6 @@ def wait_for_port(port, proc, timeout_s=120.0):
 def kill_substrate(proc, ports):
     """SIGKILL the process group, then sweep every gate port holder."""
     _substrate.kill_substrate(proc, ports=tuple(ports.values()))
-
-
-def kill_port_holder(port):
-    _substrate.kill_substrate(None, ports=(port,))
 
 
 def http(port, method, path, body=None, headers=None, timeout=15):
@@ -152,6 +215,15 @@ def run_gate(name, capture, verdict, mutate_fixtures):
     positive, details, fixtures = "ERROR", [], []
     import base64
     shared_key = base64.b64encode(os.urandom(48)).decode()
+
+    # SIGTERM -> SystemExit (lens-4 cycle 6): a gate killed by an external
+    # timeout must run its finally-block teardown, not orphan the substrate
+    # (witnessed: a 40-minute PPID-1 beam left by a SIGTERM'd gate, reaped
+    # from pgid 70159, 2026-10-15). SIGINT already raises KeyboardInterrupt.
+    def _on_sigterm(signum, frame):
+        raise SystemExit(128 + signum)
+
+    _old_sigterm = signal.signal(signal.SIGTERM, _on_sigterm)
     try:
         proc = spawn_substrate(ports, shared_key)
         obs = capture(ports, shared_key)
@@ -177,6 +249,7 @@ def run_gate(name, capture, verdict, mutate_fixtures):
         print(f"ERROR {name}: {details[0]}")
     finally:
         kill_substrate(proc, ports)
+        signal.signal(signal.SIGTERM, _old_sigterm)
 
     receipt = {
         "schema": "smalt-invariant-gate/v1",

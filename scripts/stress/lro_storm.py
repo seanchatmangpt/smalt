@@ -19,7 +19,9 @@ Usage: python3 scripts/stress/lro_storm.py [--keep-server]
 import argparse
 import http.client
 import json
+import os
 import random
+import signal
 import socket
 import statistics
 import subprocess
@@ -212,12 +214,38 @@ def start_server():
         "--cookie", COOKIE,
         "-S", "mix", "run", "--no-start", "-e", boot,
     ]
+    # Own process group (lens-4 cycle 5): teardown killpg's the whole group
+    # so the mix wrapper's beam children can never outlive the harness as
+    # orphaned beams — the class behind lens-2/3's reaped 19443 orphans.
     return subprocess.Popen(
         argv,
         cwd=REPO,
         stdout=open(SERVER_LOG, "w"),
         stderr=subprocess.STDOUT,
+        start_new_session=True,
     )
+
+
+def stop_server(srv):
+    """SIGTERM the server's process group, wait, then SIGKILL the group —
+    killpg-only teardown (never a port sweep), lens-4."""
+    try:
+        os.killpg(os.getpgid(srv.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        srv.wait(timeout=30)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(os.getpgid(srv.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        srv.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def main():
@@ -241,12 +269,7 @@ def main():
             break
         except RuntimeError as e:
             print(f"boot attempt {attempt + 1} failed: {e}; retrying")
-            srv.terminate()
-
-            try:
-                srv.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                srv.kill()
+            stop_server(srv)
             ready_s = None
             time.sleep(20)
 
@@ -262,11 +285,7 @@ def main():
         if args.keep_server:
             print(f"--keep-server: leaving server up (pid {srv.pid})")
         else:
-            srv.terminate()
-            try:
-                srv.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                srv.kill()
+            stop_server(srv)
 
     print(json.dumps({"checks": results["checks"]}, indent=2))
     print(json.dumps(results["metrics"], indent=2))

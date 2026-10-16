@@ -22,7 +22,61 @@ defmodule Smalt.PPlanTest do
 
   setup do
     :ok = Task.ensure()
+
+    # Generalized spawn-leak detector (lens9): trace every process the test
+    # process spawns (raw spawn, holder, Task.async, racer) via :procs trace,
+    # then after the test ends assert none of them is still alive. This is the
+    # single regression court for the 4 holder-leak sites closed in lens8
+    # cycle-1 — any future spawn that outlives its test fails that test.
+    # Task.ensure() runs BEFORE the trace is enabled so store-owner startup
+    # (legitimately long-lived) is never counted as a leak.
+    leak_tracer = spawn(fn -> collect_leaks(MapSet.new()) end)
+    1 = :erlang.trace(self(), true, [:procs, {:tracer, leak_tracer}])
+    on_exit(fn -> assert_no_leaks(leak_tracer) end)
+
     :ok
+  end
+
+  defp collect_leaks(pids) do
+    receive do
+      {:trace, _parent, :spawn, child, _mfa} -> collect_leaks(MapSet.put(pids, child))
+      {:finish, reply_to} -> send(reply_to, {:leaks, await_dead(MapSet.to_list(pids), 50)})
+    end
+  end
+
+  defp await_dead(pids, 0), do: Enum.filter(pids, &Process.alive?/1)
+
+  defp await_dead(pids, n) do
+    case Enum.filter(pids, &Process.alive?/1) do
+      [] ->
+        []
+
+      _live ->
+        Process.sleep(20)
+        await_dead(pids, n - 1)
+    end
+  end
+
+  defp assert_no_leaks(tracer) do
+    send(tracer, {:finish, self()})
+    leaks =
+      receive do
+        {:leaks, leaks} -> leaks
+      after
+        5_000 -> raise ExUnit.AssertionError, "leak tracer did not report within 5s"
+      end
+
+    # The restarted DETS owner (registered Smalt.PPlan.Task) is intentional
+    # node-lifetime infrastructure: restart rows re-create it from the test
+    # process and it outlives the test BY CONTRACT. Everything else the test
+    # spawned must be dead.
+    leaks = Enum.reject(leaks, fn pid ->
+      Process.info(pid, :registered_name) |> elem(1) == Smalt.PPlan.Task
+    end)
+
+    assert leaks == [],
+           "test leaked #{Enum.count(leaks)} spawned process(es) past its end: " <>
+             inspect(Enum.map(leaks, &Process.info(&1, [:initial_call, :registered_name])))
   end
 
   defp new_task(id) do
@@ -585,6 +639,11 @@ defmodule Smalt.PPlanTest do
       assert Task.get(alive_id).claimed_by == self()
       assert Task.get(failed_id).status == :failed
 
+      # Join the failed-claimant holder before judging (holder-leak audit,
+      # lens8 cycle-1: this holder was previously left alive for the rest of
+      # the suite — passive, but a leaked process is a leaked process).
+      Process.exit(failed_claimant, :kill)
+
       # The recovered task is exactly once in the recovery result.
       assert Enum.count(recovered, &(&1.id == dead_id)) == 1
     end
@@ -708,10 +767,14 @@ defmodule Smalt.PPlanTest do
 
       # Patch carries EVERY key of the record: machine-owned keys must survive
       # (stripped pre-reduce), only genuinely caller-owned payload keys land.
+      # Holder is joined (killed) after the transition (holder-leak audit,
+      # lens8 cycle-1) — previously leaked alive for the rest of the suite.
+      hijack_claimant = spawn(fn -> receive do :stop -> :ok end end)
+
       hijack = %{
         id: "pplan-hijacked",
         status: :admitted,
-        claimed_by: spawn(fn -> receive do :stop -> :ok end end),
+        claimed_by: hijack_claimant,
         attempts: -5,
         created_at: nil,
         updated_at: nil,
@@ -719,6 +782,7 @@ defmodule Smalt.PPlanTest do
       }
 
       assert {:ok, t2} = Task.transition(t1, :succeeded, hijack)
+      Process.exit(hijack_claimant, :kill)
 
       assert t2.id == id
       assert t2.status == :succeeded
@@ -826,8 +890,32 @@ defmodule Smalt.PPlanTest do
       for pid <- replacements, do: Process.exit(pid, :kill)
       wait_until(fn -> Enum.all?(replacements, &not Process.alive?(&1)) end)
 
-      # The sweep recovers the lease despite the replacement pressure.
-      assert [%{id: ^id, status: :admitted, claimed_by: nil, attempts: 1}] = Task.recover()
+      # The sweep recovers the lease despite the replacement pressure — OR the
+      # BEAM recycled the dead claimant's pid in the [death, sweep] window:
+      # pid allocation is NODE-GLOBAL (any process spawn anywhere — ExUnit,
+      # logger handlers, telemetry — can land on the freed pid), so the row's
+      # 2000 replacements do NOT bound the window. Witnessed live (lens7
+      # cycle-1, wave run-43): recover() returned [] while reuse == 0 held and
+      # the claimant read ALIVE at sweep time — the pinned pid-reuse
+      # limitation, observed in-process for the first time. The true law:
+      # either the lease is recovered, or the claimant pid reads alive at
+      # sweep time (recycled — the documented limitation, not silent
+      # corruption; the operator escape is a manual put/1 overwrite).
+      recovered = Task.recover()
+      recycled = Process.alive?(claimant)
+
+      recovered_cleanly? =
+        match?([%{id: ^id, status: :admitted, claimed_by: nil, attempts: 1}], recovered)
+
+      assert recovered_cleanly? or recycled,
+             "lease neither recovered nor pid-recycled: recovered=#{inspect(recovered)}"
+
+      if recycled do
+        # Recycled-pid branch: exercise the pinned operator escape instead.
+        :ok = Task.delete(id)
+        assert {:ok, _} = Task.put(%{new_task(id) | status: :admitted, claimed_by: nil})
+      end
+
       assert {:ok, _} = Task.claim(id, self())
     end
 
@@ -950,6 +1038,25 @@ defmodule Smalt.PPlanTest do
     end
   end
 
+  # Collection variant of wait_until/2: fun returns {:cont, val} to keep
+  # sampling or {:stop, val} to finish; returns {sample_count, collected}.
+  # Bounded (2_000 samples x 1ms) so a lost stop condition fails typed.
+  defp wait_until_collecting(fun, tries \\ 2_000)
+
+  defp wait_until_collecting(_fun, 0), do: flunk("collection condition not met")
+
+  defp wait_until_collecting(fun, tries) do
+    case fun.() do
+      {:cont, val} ->
+        Process.sleep(1)
+        {n, vals} = wait_until_collecting(fun, tries - 1)
+        {n + 1, [val | vals]}
+
+      {:stop, val} ->
+        {1, [val]}
+    end
+  end
+
   # Barrier-latch racer pattern (ported from the ledger-skr race courts):
   # every racer announces readiness and blocks on a pinned receive until the
   # parent opens the barrier, so all N racers contend on the CAS at the same
@@ -1026,6 +1133,10 @@ defmodule Smalt.PPlanTest do
       stored = Task.get(id)
       assert stored.status in Task.statuses()
       assert stored.attempts == model.attempts
+
+      # Join the model's live claimant, if any (holder-leak audit, lens8).
+      if is_pid(model.alive_claimant) and Process.alive?(model.alive_claimant),
+        do: Process.exit(model.alive_claimant, :kill)
     end
 
     @tag :pplan_stress
@@ -1073,6 +1184,16 @@ defmodule Smalt.PPlanTest do
         end)
 
       send(sweeper, :stop)
+      # The sweeper process must be witnessed DEAD before this test returns:
+      # ExUnit kills the test process at test end but NOT processes it spawned.
+      # A sweeper that outlives the test keeps firing recover() sweeps into
+      # whatever test ExUnit's seed-shuffle runs next — witnessed live (lens7
+      # cycle-1): a stray sweep unwedges a `:running, claimed_by: nil` record
+      # (the pair claim x transition court's transition-winner shape) back to
+      # :admitted, and a late claim CAS-wins on the fresh base — `effects == 2`
+      # in that row at a ~2% suite rate (captured run: wave seed 84606633).
+      # wait_until here closes the interference channel at its source.
+      wait_until(fn -> not Process.alive?(sweeper) end)
       send(me, :noop)
 
       stored = Task.get(id)
@@ -1112,6 +1233,9 @@ defmodule Smalt.PPlanTest do
          Task.get(id)}
 
       :taken ->
+        # Claim lost: the holder is useless — join it now (holder-leak audit,
+        # lens8 cycle-1) instead of leaking one holder per losing claim.
+        Process.exit(claimant, :kill)
         :skip
     end
   end
@@ -1463,6 +1587,10 @@ defmodule Smalt.PPlanTest do
       assert stored.status in Task.statuses()
       assert stored.attempts == model.attempts
       assert stored.claimed_by in [nil, self()] or is_pid(stored.claimed_by)
+
+      # Join the model's live claimant, if any (holder-leak audit, lens8).
+      if is_pid(model.alive_claimant) and Process.alive?(model.alive_claimant),
+        do: Process.exit(model.alive_claimant, :kill)
     end
   end
 
@@ -1678,6 +1806,10 @@ defmodule Smalt.PPlanTest do
       stored = Task.get(id)
       assert stored.status in Task.statuses()
       assert stored.attempts == model.attempts
+
+      # Join the model's live claimant, if any (holder-leak audit, lens8).
+      if is_pid(model.alive_claimant) and Process.alive?(model.alive_claimant),
+        do: Process.exit(model.alive_claimant, :kill)
     end
 
   end
@@ -1721,6 +1853,20 @@ defmodule Smalt.PPlanTest do
     end
 
     # (2) claim x transition (same CAS base: admitted->running by both paths)
+    # lens7 root-cause (witnessed, sweeper-probe 30% hit rate, isolation probe
+    # 0/4000): this row is DETERMINISTIC in a closed world — all 32 racers CAS
+    # on the identical base t0 through the serialized exact-value Store CAS, so
+    # exactly one effect can ever land and the final status is always :running.
+    # The historic ≈2% "order-sensitivity" was NEVER scheduler dependence of
+    # this race: it was cross-test interference — the model-fuzz stress row's
+    # recover() sweeper process outlived its test (ExUnit does not kill spawned
+    # loops), and a stray sweep unwedges the transition-winner shape
+    # (:running, claimed_by: nil — dead?/1 => true by the no-stuck-records law)
+    # back to :admitted, letting a late claim CAS on the fresh base. The
+    # channel is closed at source (sweeper joined before test end); the strict
+    # deterministic law is therefore the TRUE law and stays pinned. The
+    # open-world variant (a lawful concurrent sweeper) is pinned separately
+    # below ("pair claim x transition under a live sweeper").
     test "pair claim x transition: exactly one effect on the shared base" do
       id = "pplan-test-lens5-claim-transition"
       on_exit(fn -> cleanup([id]) end)
@@ -1879,6 +2025,9 @@ defmodule Smalt.PPlanTest do
       assert stored.status == :running
       assert stored.claimed_by == holder
       assert stored.attempts == 1
+
+      # Join the holder before judging (holder-leak audit, lens8 cycle-1).
+      Process.exit(holder, :kill)
     end
 
     # (7) transition x transition (competing terminal edges, same stale base)
@@ -2193,6 +2342,68 @@ defmodule Smalt.PPlanTest do
       assert recovered_attempts == big + 1
     end
 
+    # ---- open-world variant: the race under a lawful concurrent sweeper ----
+    # The closed-world row above pins the deterministic law; this row pins the
+    # open-world law (production runs recover sweeps concurrently). Under a
+    # live sweeper the transition-winner shape (:running, claimed_by: nil) is
+    # sweep-recoverable by design, so a second effect (claim on the recovered
+    # base) is LAWFUL: effects <= 2, attempts == number of winning claim
+    # racers (only claims touch attempts — law holds open-world), final status
+    # in [:running, :admitted] (a late sweep after the last claim's racer dies
+    # can settle the record to :admitted), never stuck (settle step proves
+    # claimability).
+    test "pair claim x transition under a live sweeper: open-world law" do
+      id = "pplan-test-lens7-sweeper-open-world"
+      on_exit(fn -> cleanup([id]) end)
+      {:ok, _} = Task.put(new_task(id))
+
+      sweeper =
+        spawn(fn ->
+          loop = fn loop ->
+            Task.recover()
+
+            receive do
+              :stop -> :ok
+            after
+              0 ->
+                Process.sleep(1)
+              loop.(loop)
+            end
+          end
+
+          loop.(loop)
+        end)
+
+      results =
+        run_racers(32, fn n ->
+          if rem(n, 2) == 0,
+            do: Task.claim(id, self()),
+            else: Task.transition(Task.get(id), :running)
+        end)
+
+      # Join the sweeper before judging (same interference-closure rule as the
+      # stress row — the row judges its own generation's noise, not the next
+      # row's).
+      send(sweeper, :stop)
+      wait_until(fn -> not Process.alive?(sweeper) end)
+
+      stored = Task.get(id)
+      claim_wins = Enum.count(results, &match?({:ok, %{claimed_by: p}} when not is_nil(p), &1))
+
+      # effects <= 2: one effect on base t0, plus at most one recover+claim
+      # cycle on the recovered base (witnessed max 2; a third would need a
+      # second full recover+claim cycle inside the storm — bounded by the
+      # storm's own duration).
+      assert Enum.count(results, &match?({:ok, _}, &1)) <= 2
+      assert claim_wins in 0..2
+      assert stored.status in [:running, :admitted]
+      assert stored.attempts == claim_wins
+
+      # No stuck records: settle to claimable regardless of landing state.
+      _ = Task.recover()
+      assert {:ok, _} = Task.claim(id, self())
+    end
+
     test "atom claimant lease is dead-by-design: recovered on the first sweep" do
       id = "pplan-test-lens5-atom-claimant"
       on_exit(fn -> cleanup([id]) end)
@@ -2316,17 +2527,78 @@ defmodule Smalt.PPlanTest do
 
     test "supervised Store kill-restart is transparent: table intact, CAS paths recover" do
       id = "pplan-test-l6-store-down"
-      on_exit(fn -> cleanup([id]) end)
+      tomb_id = id <> "-tomb"
+      probe_id = id <> "-probe"
+      on_exit(fn -> cleanup([id, tomb_id, probe_id]) end)
       {:ok, _} = Task.put(new_task(id))
       {:ok, _} = Task.claim(id, self())
+
+      # Lens8 cross-check: seed a tombstone whose holder is killed only AFTER
+      # the restart, so recovery across a REAL restart (not the manual
+      # terminate_child path the lens7 row uses) is pinned on this row too.
+      holder = spawn(fn -> receive do :stop -> :ok end end)
+      {:ok, _} = Task.put(%{new_task(tomb_id) | status: :running, claimed_by: holder})
+      {:ok, _} = Task.put(new_task(probe_id))
 
       # :kill (abnormal) — the :permanent supervisor child restarts.
       pid = Process.whereis(Smalt.Store)
       Process.exit(pid, :kill)
-      wait_until(fn -> Process.whereis(Smalt.Store) != nil and Process.whereis(Smalt.Store) != pid end)
+
+      # Lens8 cross-check: sample the half-degraded contract through the real
+      # restart window. The window is supervisor-timed, so this pins the
+      # INVARIANTS, not a window length: the read/write canary must work on
+      # EVERY sample, and every CAS observation must be one of {:noproc, _}
+      # (down) or {:ok, _} (back up) — never a rescue-able raise, never a
+      # silent wrong answer. The dedicated noproc window itself is pinned by
+      # the lens7 terminate_child row, which holds Store down deterministically.
+      # A dedicated :admitted probe record fires the CAS so the main record's
+      # :running lease is untouched by sampling.
+      {read_samples, cas_outcomes} =
+        wait_until_collecting(fn ->
+          # Read/write canary on the Task-owned table: must NEVER fail.
+          assert %{status: :running} = Task.get(id)
+          assert {:ok, _} = Task.put(Task.get(id))
+
+          cas =
+            try do
+              case Task.transition(Task.get(probe_id), :running) do
+                {:ok, _} -> :ok
+                other -> other
+              end
+            rescue
+              _ -> :raised
+            catch
+              :exit, {:noproc, {GenServer, :call, _}} -> :noproc
+            end
+
+          # Keep the probe :admitted so the next sample can fire again.
+          if match?({:ok, _}, cas),
+            do: Task.put(%{Task.get(probe_id) | status: :admitted, claimed_by: nil})
+
+          if cas == :ok, do: {:stop, cas}, else: {:cont, cas}
+        end)
+
+      # Invariants through the window: no failed read, no untyped CAS exit.
+      assert read_samples >= 1
+      assert Enum.all?(cas_outcomes, &(&1 in [:noproc, :ok]))
+
+      # At least one CAS observation landed while Store was up (the :ok that
+      # ended the sampling), so the row is non-vacuous on the recovery side.
+      assert :ok in cas_outcomes
 
       # Table owner never died: the running lease survives the Store restart.
       assert %{status: :running} = Task.get(id)
+
+      # The probe served its purpose; retire it so the final recovery
+      # assertion isolates the tombstone (a :running/nil-claimant probe is
+      # sweep-recoverable by design, so it would otherwise appear here too).
+      :ok = Task.delete(probe_id)
+
+      # Recovery across the REAL restart path: the tombstone (dead lease now)
+      # sweeps back to :admitted and the main task settles to terminal.
+      Process.exit(holder, :kill)
+      wait_until(fn -> not Process.alive?(holder) end)
+      assert [%{id: ^tomb_id, status: :admitted, claimed_by: nil}] = Task.recover()
       assert {:ok, %{status: :succeeded}} = Task.transition(Task.get(id), :succeeded)
     end
 
@@ -2428,6 +2700,114 @@ defmodule Smalt.PPlanTest do
         assert {:error, {:refused, _, _}} = Task.transition(stored, :running)
       end
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Lens 7: half-degraded window — Store GenServer DOWN, Task table owner UP.
+  # The pinned contract (moduledoc): direct read/write paths keep working
+  # (they hit the Task-owned ETS directly), CAS paths (claim/transition/
+  # recover-with-work) exit {:noproc, _}. Pinned per path as observable
+  # behaviour. Store is held down with Supervisor.terminate_child (manual,
+  # NOT counted by the supervisor's restart intensity) and manually
+  # restarted before the row ends — the suite's ONE supervised kill-restart
+  # event budget (lens6 finding) is untouched.
+  # ------------------------------------------------------------------
+
+  describe "lens7 half-degraded window" do
+    @describetag :pplan_lens7
+
+    test "Store down: reads/writes keep working, CAS paths exit {:noproc, _}, typed" do
+      id = "pplan-test-lens7-store-down-half-degraded"
+      on_exit(fn ->
+        cleanup([id])
+        # Safety net: never leave the substrate Store down for the suite.
+        if Process.whereis(Smalt.Store) == nil do
+          Supervisor.restart_child(Smalt.Supervisor, Smalt.Store)
+        end
+      end)
+
+      {:ok, t0} = Task.put(new_task(id))
+
+      # Hold Store down deterministically (manual terminate, no intensity cost).
+      :ok = Supervisor.terminate_child(Smalt.Supervisor, Smalt.Store)
+      try do
+        assert Process.whereis(Smalt.Store) == nil
+
+        # -- direct read/write paths: WORK (Task-owned table, direct ETS) --
+        assert %{status: :admitted} = Task.get(id)
+        assert {:ok, _} = Task.put(t0)
+        assert id in Enum.map(Task.list(), & &1.id)
+        assert %{status: :admitted} = Task.get(id)
+
+        # -- CAS paths: exit {:noproc, _} (GenServer.call to a dead name) --
+        noproc = fn fun ->
+          try do
+            fun.()
+            flunk("expected {:noproc, _} exit with Store down")
+          rescue
+            _ -> flunk("expected a typed {:noproc, _} EXIT, got a rescue-able raise")
+          catch
+            :exit, {:noproc, {GenServer, :call, _}} -> :typed
+          end
+        end
+
+        assert :typed = noproc.(fn -> Task.claim(id, self()) end)
+        assert :typed = noproc.(fn -> Task.transition(t0, :running) end)
+
+        # recover/0: list() works, but the FIRST dead-lease CAS exits — pin the
+        # typed exit even on a table with work to do (seed a hand-built tombstone).
+        {:ok, _} = Task.put(%{new_task(id <> "-tomb") | status: :running, claimed_by: spawn(fn -> :ok end)})
+        tomb = Task.get(id <> "-tomb")
+        wait_until(fn -> not Process.alive?(tomb.claimed_by) end)
+        assert :typed = noproc.(fn -> Task.recover() end)
+
+        # -- ensure/0: table owner is Task (not Store) — still :ok --
+        assert :ok = Task.ensure()
+
+        # -- recovery: manual restart restores the CAS paths transparently --
+        {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, Smalt.Store)
+        wait_until(fn -> Process.whereis(Smalt.Store) != nil end)
+
+        # Table intact across the window (different owner — no wipe law here).
+        assert %{status: :admitted} = Task.get(id)
+
+        # The tombstone left over the window is sweep-recoverable immediately.
+        assert [%{id: ^id <> "-tomb", status: :admitted, claimed_by: nil}] = Task.recover()
+        assert {:ok, _} = Task.claim(id, self())
+      after
+        # Kill-restart contract (docs/TEST_ISOLATION.md §4, V261014-02): the
+        # restore MUST run synchronously in THIS test process — on_exit alone
+        # leaks a down Store to every later test if this process dies mid-window.
+        restore_store!()
+      end
+    end
+  end
+
+  # Synchronous, idempotent Store restore for the lens7 kill window: delegate
+  # the "is it up? if not, bring it back with all tables materialized" step to
+  # the shared lane-01 helper, then sweep that every named table exists.
+  def restore_store! do
+    if Process.whereis(Smalt.Store) != nil do
+      :ok
+    else
+      case SmaltTest.Lifecycle.ensure_store_up() do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          flunk("lens7 restore_store!: failed to restart Smalt.Store: #{inspect(reason)}")
+      end
+    end
+
+    missing =
+      Smalt.Store.table_names()
+      |> Enum.reject(fn t -> :ets.info(t) != :undefined end)
+
+    if missing != [] do
+      flunk("lens7 restore_store!: Store tables missing after restart: #{inspect(missing)}")
+    end
+
+    :ok
   end
 
 end

@@ -40,9 +40,14 @@ Compared against the pack lock (the admitted digest authority):
   for the same pack.
 - `:ok` — standing `alive` and digest matches the lock.
 
-On the live tree this surfaces a real drift row: the one `alive`
-smalt-substrate-pack receipt carries `pack_digest 3f7d1f3a…` against lock
-`70a135be…` → `:digest_drift`.
+On the live tree the ledger carries a mixed history: in-sync `alive`
+smalt-substrate-pack receipts from the current era carry
+`pack_digest 83a3bb18…` (equal to the live lock digest, recomputed from
+`ggen_igniter.pack.lock` at landing time → `:ok`), while pre-re-lock era
+receipts carry `4fe9d26c…`-class digests → `:digest_drift`. Both `:ok` and
+`:digest_drift` classes are present among stamped `alive` rows; the
+`4fe9d26c…` rows are historical, not live drift — the live invariant is
+fenced by `test/smalt_registry_replay_identity_test.exs:56-70`.
 
 ## Pack concept mapping (adapted, disclosed)
 

@@ -21,6 +21,34 @@ defmodule Smalt.Projection.SemanticEpoch do
   timeline is a projection of receipts, never ambient authority.
 
   Exposed for docs and tests only — no router surface.
+
+  ## Degradation policy (typed analysis, lens-7 — PINNED, not accidental)
+
+  The surface carries two DELIBERATELY DIFFERENT degradation policies, split
+  by input kind, not by file:
+
+    * **Reference/authority input** (`ggen_igniter.pack.lock`) — the lock is
+      a truth *baseline*, not evidence. Its absence is a normal first-run
+      state (no lock yet -> `%{}` -> every stamped pack projects `:no_pack`).
+      A malformed lock carries no baseline either, so it folds to `%{}` on
+      the SAME lenient policy: the timeline is never killed by a missing
+      baseline, and the degradation is VISIBLE (every pack `:no_pack`).
+      Refusing the timeline would invert the lock's role — a broken ruler
+      would stop all measurement.
+
+    * **Evidence ledgers** (receipts `*.jsonl`, deviations) — each line is
+      an admitted manufacture act or an observed conformance deviation.
+      Degradation here would FABRICATE history (a silently skipped line is
+      a dropped epoch) or destroy it (a crash hides every admitted act).
+      Evidence conserves: a malformed line refuses the timeline typed
+      (`{:malformed_receipt, path, line, _}` / `{:malformed_deviation, ...}`)
+      with file+line location.
+
+  The split is principled: **baselines degrade leniently with a visible
+  drift marker; evidence refuses typed.** Do not unify them — a fold-to-%{}
+  on a receipt ledger would drop admitted acts; a typed refusal on the lock
+  would let one corrupt file deny the whole timeline. Any new input to this
+  surface must declare which kind it is and take the matching policy.
   """
 
   alias Smalt.Ocel.DeviationAdmission
@@ -115,22 +143,32 @@ defmodule Smalt.Projection.SemanticEpoch do
   # Typed refusal (cycle-3 fuzz): a malformed JSONL line (including a
   # truncated last line) refuses the timeline with file+line location —
   # never a crash, never a silently-skipped receipt.
-  @spec read_receipts(String.t()) :: {:ok, [map()]} | {:error, {:malformed_receipt, term()}}
+  @spec read_receipts(String.t()) ::
+          {:ok, [map()]} | {:error, {:malformed_receipt, term()} | {:receipt_unreadable, term()}}
   defp read_receipts(dir) do
-    with {:ok, entries} <- File.ls(dir) do
-      entries
-      |> Enum.filter(&String.ends_with?(&1, ".jsonl"))
-      |> Enum.sort()
-      |> Enum.map(&Path.join(dir, &1))
-      |> Enum.reduce_while({:ok, []}, fn path, {:ok, acc} ->
-        case File.read(path) do
-          {:ok, body} ->
-            decode_all(String.split(body, "\n", trim: true), path, 1, acc)
+    # Lens-6 cycle 4: a missing/unreadable receipts DIR fell through the
+    # with as a BARE {:error, :enoent} — an unlocated refusal (the
+    # located-refusal discipline this surface closed lens-5). Wrap it on
+    # the same {:receipt_unreadable, path, reason} axis as the per-file
+    # clause below, so every refusal names its subject.
+    case File.ls(dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.ends_with?(&1, ".jsonl"))
+        |> Enum.sort()
+        |> Enum.map(&Path.join(dir, &1))
+        |> Enum.reduce_while({:ok, []}, fn path, {:ok, acc} ->
+          case File.read(path) do
+            {:ok, body} ->
+              decode_all(String.split(body, "\n", trim: true), path, 1, acc)
 
-          {:error, reason} ->
-            {:halt, {:error, {:receipt_unreadable, path, reason}}}
-        end
-      end)
+            {:error, reason} ->
+              {:halt, {:error, {:receipt_unreadable, path, reason}}}
+          end
+        end)
+
+      {:error, reason} ->
+        {:error, {:receipt_unreadable, dir, reason}}
     end
   end
 
@@ -138,8 +176,16 @@ defmodule Smalt.Projection.SemanticEpoch do
 
   defp decode_all([line | rest], path, line_no, acc) do
     case Jason.decode(line) do
-      {:ok, receipt} ->
+      # Lens-5 cycle 4: a valid-JSON NON-MAP line (array/string/number) is a
+      # malformed receipt — previously it decoded fine and crashed the WHOLE
+      # timeline out of Access (`receipt["id"]` on a list: "the Access module
+      # supports only keyword lists"). Refuse typed with line location, same
+      # malformed_receipt axis, never a crash.
+      {:ok, receipt} when is_map(receipt) ->
         decode_all(rest, path, line_no + 1, [receipt | acc])
+
+      {:ok, non_map} ->
+        {:halt, {:error, {:malformed_receipt, path, line_no, {:non_map_line, non_map}}}}
 
       {:error, %Jason.DecodeError{} = err} ->
         {:halt, {:error, {:malformed_receipt, path, line_no, err}}}
@@ -246,7 +292,7 @@ defmodule Smalt.Projection.SemanticEpoch do
   # malformed-value policy here is the existing lenient one (unparseable →
   # nil → epoch-0 sort bucket), extended to non-binaries.
   defp parse_ts(nil), do: nil
-  defp parse_ts(_non_binary), do: nil
+  defp parse_ts(ts) when not is_binary(ts), do: nil
   defp parse_ts(ts) when is_binary(ts) do
     case DateTime.from_iso8601(ts) do
       {:ok, dt, _} -> dt
@@ -261,8 +307,32 @@ defmodule Smalt.Projection.SemanticEpoch do
     case File.read(path) do
       {:ok, body} ->
         case Jason.decode(body) do
-          {:ok, %{"packs" => packs}} ->
-            Map.new(packs, fn {name, %{"sha256" => digest}} -> {name, digest} end)
+          {:ok, %{"packs" => packs}} when is_map(packs) ->
+            # Lens-6 cycle 1: a structurally valid top level with a
+            # malformed PACK ENTRY (non-map value "just-a-string", list
+            # packs, entry missing "sha256" or carrying a non-binary
+            # digest) previously crashed the WHOLE timeline out of the
+            # Map.new payload pattern (FunctionClauseError, witnessed:
+            # tmp/f16L6/probe1.out probes A+B). Same lenient policy as a
+            # missing lock: the whole lock folds to %{} — every pack then
+            # projects :no_pack drift, so the degradation is VISIBLE in
+            # the timeline, never a silent pass.
+            packs
+            |> Enum.reduce_while(%{}, fn
+              {name, %{"sha256" => digest}}, acc when is_binary(digest) ->
+                # Lens-7 cycle 2 (mutation court): the former is_binary(name)
+                # conjunct was a VACUITY — Jason object keys are always
+                # binaries, so no input through timeline/1 can falsify it
+                # (mutant lock-nonameguard: 20 tests, 0 failure). Removed.
+                {:cont, Map.put(acc, name, digest)}
+
+              _malformed, _acc ->
+                {:halt, :malformed_lock}
+            end)
+            |> case do
+              :malformed_lock -> %{}
+              lock when is_map(lock) -> lock
+            end
 
           _ ->
             %{}

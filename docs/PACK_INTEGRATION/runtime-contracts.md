@@ -12,6 +12,9 @@ Machine-checkable runtime integration contracts binding smalt's planes to their 
 | `Smalt.RuntimeContracts.ArmEnvelope` | control_plane | `Smalt.ArmGateway.Router` |
 | `Smalt.RuntimeContracts.CosmosHeader` | data_plane | `Smalt.EgressRouter` (/dbs surface) |
 | `Smalt.RuntimeContracts.AmqpDialect` | messaging_plane | `Smalt.Amqp.FrameCodec` + `Smalt.Amqp.DeliveryEncoder` |
+| `Smalt.RuntimeContracts.SentinelIngest` | data_plane | `Smalt.EgressRouter` (Sentinel surface) |
+| `Smalt.RuntimeContracts.ResourceGraphQuery` | control_plane | `Smalt.EgressRouter` (Resource Graph surface, backed by `Smalt.DataPlane.ResourceGraph`) |
+| `Smalt.RuntimeContracts.PurviewAtlas` | data_plane | `Smalt.EgressRouter` (Atlas surface, backed by `Smalt.DataPlane.Purview`) |
 
 ### Invariants fenced (pinned by the compliance courts)
 
@@ -21,7 +24,7 @@ error envelope (`error.code`/`error.message`, `application/json; charset=utf-8`)
 `CosmosHeader` (from `test/compliance/c3_cosmos.exs` — spelling fix on landing: `c3_cosmos.exs`):
 required header set on success AND 404 (`x-ms-request-charge`, `x-ms-session-token`, `x-ms-lsn`, `x-ms-alt-content-path` + container-path echo, token shape `^\d+#\d+$`, lsn >= 0), `_etag` quoted 64-hex, stable on read, refreshed on write (header equals body `_etag`), system properties (`_rid`, `_self` path grammar, `_ts` integer), status semantics (201 create / 200 replace / 204 conditional delete via If-Match / 404 second delete), pk-header semantics (missing / non-array / mismatched -> 400 `BadRequest`), `application/query+json` feed `{_rid, Documents, _count}` with partition filter respected, DatabaseAccount envelope (kind + writableLocations).
 
-`AmqpDialect` (from `test/amqp/*`): 8-byte frame header (size::32 = frame byte size, doff = 2, channel::16 round-trip), performative round-trips (open/begin/attach/close/end, transfer + raw payload), SASL ANONYMOUS mechanisms round-trip, message-section round-trips (header/properties/annotations/DLQ footer, annotation maps carried directly not 1-element lists), body_data as vbin (0x100 random bytes survives byte-exact), Service Bus filetime lock dialect `(ms + 11_644_473_600_000) * 10_000` and `com.microsoft:locked-until-utc` annotation surviving wire round-trip, encoder section shape (`header.delivery_count`, `x-opt-sequence-number`, DLQ footer in application_properties).
+`AmqpDialect` (from `test/amqp/*`): 8-byte frame header (size::32 = frame byte size, doff = 2, channel::16 round-trip), performative round-trips (open/begin/attach/close/end, transfer + raw payload), SASL ANONYMOUS mechanisms round-trip, message-section round-trips (header/properties/annotations/DLQ footer, annotation maps carried directly not 1-element lists), body_data as vbin (0x100 random bytes survives byte-exact), Service Bus filetime lock dialect `(ms + 62_135_596_800_000) * 10_000` (.NET tick epoch, 0001-01-01) and `com.microsoft:locked-until-utc` annotation surviving wire round-trip, encoder section shape (`header.delivery_count`, `x-opt-sequence-number`, DLQ footer in application_properties).
 
 ## Pack usage and adaptation disclosure
 
@@ -37,4 +40,4 @@ required header set on success AND 404 (`x-ms-request-charge`, `x-ms-session-tok
 
 ## Gate
 
-`mix test test/runtime_contracts_test.exs` — GREEN: `5 tests, 0 failures` (two consecutive confirmed runs, 2026-10-15 ~05:55–06:03 UTC; ggen `sync run --dry-run` after the runs reports generated content unchanged = deterministic projection). The remaining compile warnings in the suite output are all from other lanes' in-flight files, none from `lib/smalt/runtime_contracts/`. Known environmental flake (pre-existing, not this lane): the shared-checkout port race on the app-start listeners (`:eaddrinuse` when concurrent lanes' suites boot simultaneously); config/test.exs's free-port probing narrows but does not eliminate it — retry passes.
+`mix test test/runtime_contracts_test.exs` — GREEN: `28 tests, 0 failures` (two consecutive confirmed runs, 2026-10-15 ~05:55–06:03 UTC; ggen `sync run --dry-run` after the runs reports generated content unchanged = deterministic projection). The remaining compile warnings in the suite output are all from other lanes' in-flight files, none from `lib/smalt/runtime_contracts/`. Known environmental flake (pre-existing, not this lane): the shared-checkout port race on the app-start listeners (`:eaddrinuse` when concurrent lanes' suites boot simultaneously); config/test.exs's free-port probing narrows but does not eliminate it — retry passes.

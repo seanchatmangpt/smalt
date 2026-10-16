@@ -29,6 +29,14 @@ defmodule Smalt.Telemetry do
   Smalt-native events (`admit/2`, `refuse/3`, `sb_delivery/3`) carry counts, verdicts
   and codes ONLY in metadata — never payload values or identifiers. `metadata_keys/0`
   is the whitelist enforced by tests.
+
+  ## Failure law (deliberately non-uniform)
+
+  * `OcelEmitter` never raises — telemetry emission is best-effort.
+  * `RollingCounters.bump/1` fails closed: a missing ETS table is a boot-order
+    violation and raises `ArgumentError` (no rescue, no silent drop).
+  * `handle_event/4` is unguarded by design — `:telemetry` isolates handler
+    failures from emitters.
   """
 
   defstruct [:route, :status, :duration_ms]
@@ -204,9 +212,17 @@ defmodule Smalt.Telemetry.RollingCounters do
   end
 
   @doc """
-  Dump counters as `%{key => count}` for the current rolling window.
-  Keys are `{event_name, metadata}` tuples; per-minute granularity is
-  exposed via the `per_minute/0` view.
+  Dump counters as `%{key => count}` for the current rolling window (current +
+  previous minute; counts for the same key are SUMMED across the two windows).
+
+  Key shapes:
+    * smalt-native events — `{event_name, metadata}` 2-tuples, e.g.
+      `{[:smalt, :admit], %{event: :ok}}`
+    * bandit request stops — `{:bandit_request_stop, route, status}` 3-tuples,
+      where `route`/`status` may be `nil` (error-path spans without `conn`)
+    * 4xx/5xx bucket — `{:bandit_request_stop, :error}` 2-tuple
+
+  Per-minute granularity is exposed via the `per_minute/0` view.
   """
   @spec dump() :: %{(event :: term()) => non_neg_integer()}
   def dump do
@@ -230,15 +246,18 @@ defmodule Smalt.Telemetry.RollingCounters do
   end
 
   @impl true
-  def handle_call({:bump, _key, _minute}, _from, state) do
-    # Kept for API compatibility; bump/1 writes inline (ST15 contention fix).
-    {:reply, :ok, state}
-  end
-
-  @impl true
   def handle_call(:dump, _from, %{table: table} = state) do
     now = now_minute()
-    counters = for {{m, k, _}, n} <- :ets.tab2list(table), recent?(m, now), into: %{}, do: {k, n}
+
+    # SUM across the two admitted minute windows: the same logical key lives in
+    # one row per minute ({minute, key, :self}), and overwriting (a plain
+    # comprehension) made the result order-dependent — an undercount whenever a
+    # key straddled a minute boundary.
+    counters =
+      for {{m, k, _}, n} <- :ets.tab2list(table), recent?(m, now), reduce: %{} do
+        acc -> Map.update(acc, k, n, &(&1 + n))
+      end
+
     {:reply, counters, state}
   end
 

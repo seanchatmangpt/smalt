@@ -34,12 +34,6 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
   def plane, do: :control_plane
 
   @impl true
-  def consumer, do: "Smalt.EgressRouter (Microsoft.ResourceGraph surface)"
-
-  @impl true
-  def source_pack, do: "ash-runtime-integration-contract-pack"
-
-  @impl true
   def check do
     Support.contract(:resource_graph_query, [
       {:success_envelope_shape, fn -> check_envelope() end},

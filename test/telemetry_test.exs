@@ -158,6 +158,20 @@ defmodule Smalt.TelemetryTest do
       end
     end
 
+    test "dump/0 sums the same key across minute windows" do
+      # Seed directly into the ETS table: same logical key in the previous and
+      # current minute window. dump/0 must SUM (3 + 4 = 7), not overwrite.
+      table = :smalt_rolling_counters
+      now = System.system_time(:millisecond) |> div(60_000)
+      key = {:bandit_request_stop, "/telemetry-sum-test/window", 200}
+      baseline = Telemetry.dump()
+
+      :ets.insert(table, {{now - 1, key, :self}, 3})
+      :ets.insert(table, {{now, key, :self}, 4})
+
+      assert Telemetry.dump()[key] - (baseline[key] || 0) == 7
+    end
+
     test "per_minute/0 keys counters by {minute, key}" do
       Telemetry.admit(:ok)
       per_minute = RollingCounters.per_minute()

@@ -27,6 +27,27 @@ defmodule Smalt.TrustProfileTest do
                TrustProfile.new(subject: "x", profile: :pqc)
     end
 
+    test "sign/1 on hand-built struct with hostile profile field refuses typed, never raises (lens-8 cycle-3 pin)" do
+      for prof <- ["str", :infinity, nil, [], 0, %{}, :weird_profile] do
+        env = %TrustProfile{
+          version: TrustProfile.envelope_version(),
+          algorithm: "RS256",
+          key_id: "k",
+          profile: prof,
+          policy_epoch: 0,
+          revocation_epoch: 0,
+          generation: 0,
+          nonce: :crypto.strong_rand_bytes(16),
+          not_before: 1,
+          expires_at: 2,
+          subject_digest: "d"
+        }
+
+        assert {:refused, :UNKNOWN_PROFILE, msg} = TrustProfile.sign(env)
+        assert is_binary(msg) and msg != ""
+      end
+    end
+
     test "signing under pqc profile refuses typed" do
       envelope = %TrustProfile{
         version: TrustProfile.envelope_version(),
@@ -108,6 +129,31 @@ defmodule Smalt.TrustProfileTest do
     test "jcs: map with non-binary key refused typed" do
       assert {:error, {:bad_json_value, _}} = TrustProfile.jcs(%{1 => "a"})
       assert {:error, {:bad_json_value, _}} = TrustProfile.jcs(%{%{} => 1})
+    end
+
+    test "jcs: invalid UTF-8 binaries refused typed (lossy byte-drop + canonicalization-collision pin, lens-9)" do
+      for v <- [<<0xFF>>, <<0xC3>>, "ok" <> <<0xFF>>, <<0xED, 0xA0, 0x80>>, <<0xC0, 0x80>>] do
+        assert {:error, {:bad_json_value, ^v}} = TrustProfile.jcs(v)
+        # keys are fenced identically to values
+        assert {:error, {:bad_json_value, _}} = TrustProfile.jcs(%{<<0xFF>> => 1})
+      end
+    end
+
+    test "sign/1: hostile audience (invalid UTF-8) refuses in-spec as bad_fields, not a jcs leak (lens-9)" do
+      {:ok, env} = TrustProfile.new(subject: "utf8-audience")
+      assert {:error, {:malformed_envelope, :bad_fields}} = TrustProfile.sign(%{env | audience: "ok" <> <<0xFF>>})
+    end
+
+    test "sign/1: hostile key_id (invalid UTF-8) refuses in-spec as bad_fields, not a crash" do
+      {:ok, env} = TrustProfile.new(subject: "utf8-key-id")
+      assert {:error, {:malformed_envelope, :bad_fields}} =
+               TrustProfile.sign(%{env | key_id: "k" <> <<0xFF>>})
+    end
+
+    test "sign/1: unknown profile refuses typed as {:refused, :UNKNOWN_PROFILE, msg}" do
+      {:ok, env} = TrustProfile.new(subject: "bogus-profile")
+      assert {:refused, :UNKNOWN_PROFILE, msg} = TrustProfile.sign(%{env | profile: :bogus})
+      assert is_binary(msg) and msg != ""
     end
 
     test "alg-confusion: none and HS256 headers are refused" do
@@ -523,13 +569,14 @@ defmodule Smalt.TrustProfileTest do
       assert j == "{\"" <> "\u{1F600}" <> "\":1,\"" <> "\u{FFFD}" <> "\":2}"
     end
 
-    test "numbers: integers within 2^53 emitted, beyond refused typed" do
-      assert {:ok, "9007199254740952"} = TrustProfile.jcs(9_007_199_254_740_952)
-      assert {:error, {:non_canonical_number, 9_007_199_254_740_953}} =
-               TrustProfile.jcs(9_007_199_254_740_953)
+    test "numbers: integers within 2^53 - 1 emitted, 2^53 and beyond refused typed" do
+      assert {:ok, "9007199254740991"} = TrustProfile.jcs(9_007_199_254_740_991)
+      assert {:ok, "-9007199254740991"} = TrustProfile.jcs(-9_007_199_254_740_991)
+      assert {:error, {:non_canonical_number, 9_007_199_254_740_992}} =
+               TrustProfile.jcs(9_007_199_254_740_992)
 
-      assert {:error, {:non_canonical_number, -9_007_199_254_740_953}} =
-               TrustProfile.jcs(-9_007_199_254_740_953)
+      assert {:error, {:non_canonical_number, -9_007_199_254_740_992}} =
+               TrustProfile.jcs(-9_007_199_254_740_992)
     end
 
     test "floats: -0.0 becomes 0, integral floats drop .0" do
@@ -613,16 +660,16 @@ defmodule Smalt.TrustProfileTest do
       # {:bad_json_value, container} at every depth (reason destroyed). The
       # typed reason now propagates: numbers keep :non_canonical_number,
       # non-JSON members keep their own :bad_json_value.
-      assert {:error, {:non_canonical_number, 9_007_199_254_740_953}} =
-               TrustProfile.jcs(%{"a" => 9_007_199_254_740_953})
+      assert {:error, {:non_canonical_number, 9_007_199_254_740_992}} =
+               TrustProfile.jcs(%{"a" => 9_007_199_254_740_992})
 
-      assert {:error, {:non_canonical_number, 9_007_199_254_740_953}} =
-               TrustProfile.jcs([9_007_199_254_740_953])
+      assert {:error, {:non_canonical_number, 9_007_199_254_740_992}} =
+               TrustProfile.jcs([9_007_199_254_740_992])
 
       assert {:error, {:non_canonical_number, n}} =
-               TrustProfile.jcs(%{"k" => [[9_007_199_254_740_953]]})
+               TrustProfile.jcs(%{"k" => [[9_007_199_254_740_992]]})
 
-      assert n == 9_007_199_254_740_953
+      assert n == 9_007_199_254_740_992
 
       assert {:error, {:bad_json_value, :atom}} = TrustProfile.jcs(%{"a" => :atom})
       assert {:error, {:bad_json_value, 1}} = TrustProfile.jcs(%{1 => :ok})
@@ -899,10 +946,14 @@ defmodule Smalt.TrustProfileTest do
     end
 
     test "corrupt cached dev cert regenerates typed under :auto — never crashes (lens-5 cycle-1 pin)" do
-      cert = Path.expand("tmp/dev-cert.pem")
-      key = Path.expand("tmp/dev-key.pem")
-      orig_cert = File.read(cert)
-      orig_key = File.read(key)
+      # TLS-261014-01: the dev cert is per-seat state under tmp/dev-certs/,
+      # keyed by lane key. Exercise the seat-keyed contract with an explicit
+      # deterministic key instead of the legacy shared tmp/dev-cert.pem path.
+      lane = "corpus-b-lens3-corrupt"
+      {cert, key} = Smalt.TLS.dev_cert_paths(lane)
+      File.mkdir_p!(Path.dirname(cert))
+      File.rm(cert)
+      File.rm(key)
 
       saved = for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
 
@@ -915,7 +966,7 @@ defmodule Smalt.TrustProfileTest do
           File.write!(cert, content)
           File.write!(key, content)
 
-          assert {:ok, ^cert, ^key} = Smalt.TLS.ensure_dev_cert()
+          assert {:ok, ^cert, ^key} = Smalt.TLS.ensure_dev_cert(lane)
 
           # regenerated file is a real, parseable certificate
           assert {:ok, pem} = File.read(cert)
@@ -923,15 +974,8 @@ defmodule Smalt.TrustProfileTest do
           assert match?({:OTPCertificate, _, _, _}, :public_key.pkix_decode_cert(der, :otp))
         end
       after
-        case orig_cert do
-          {:ok, c} -> File.write!(cert, c)
-          :error -> File.rm(cert)
-        end
-
-        case orig_key do
-          {:ok, k} -> File.write!(key, k)
-          :error -> File.rm(key)
-        end
+        File.rm(cert)
+        File.rm(key)
 
         for {k, v} <- saved do
           if v == nil, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
@@ -940,10 +984,14 @@ defmodule Smalt.TrustProfileTest do
     end
 
     test "valid cached dev cert is NOT regenerated on boot (:auto) — parse_cert must accept real certs (lens-6 cycle-2 pin)" do
-      cert = Path.expand("tmp/dev-cert.pem")
-      key = Path.expand("tmp/dev-key.pem")
-      orig_cert = File.read(cert)
-      orig_key = File.read(key)
+      # TLS-261014-01: seat-keyed contract — write a valid pair at the
+      # deterministic seat-keyed paths and pin byte identity across a
+      # ensure_dev_cert/1 call (no regeneration).
+      lane = "corpus-b-lens3-valid"
+      {cert, key} = Smalt.TLS.dev_cert_paths(lane)
+      File.mkdir_p!(Path.dirname(cert))
+      File.rm(cert)
+      File.rm(key)
 
       saved = for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
 
@@ -956,19 +1004,12 @@ defmodule Smalt.TrustProfileTest do
         # across a boot proves no regeneration happened (mtime alone can race).
         :ok = Smalt.TLS.write_dev_cert(cert, key)
         bytes_before = File.read!(cert)
-        assert {:ok, ^cert, ^key} = Smalt.TLS.ensure_dev_cert()
+        assert {:ok, ^cert, ^key} = Smalt.TLS.ensure_dev_cert(lane)
         assert File.read!(cert) == bytes_before,
                "valid cached dev cert was regenerated — parse_cert rejects valid certs"
       after
-        case orig_cert do
-          {:ok, c} -> File.write!(cert, c)
-          :error -> File.rm(cert)
-        end
-
-        case orig_key do
-          {:ok, k} -> File.write!(key, k)
-          :error -> File.rm(key)
-        end
+        File.rm(cert)
+        File.rm(key)
 
         for {k, v} <- saved do
           if v == nil, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
@@ -986,7 +1027,12 @@ defmodule Smalt.TrustProfileTest do
 
         for {mutate, expect} <- [
               {fn -> File.write!(cert, "-----BEGIN CERTIFICATE-----\nTRUNCATEDGARBAGE\n") end, :unparseable_cert},
-              {fn -> File.write!(key, "not a pem at all\n") end, :unparseable_key}
+              {fn -> File.write!(key, "not a pem at all\n") end, :unparseable_key},
+              # lens-8 cycle-2: empty key file — safe_pem_decode returns
+              # {:ok, []} (not :error); this cell crashed WithClauseError
+              # before the typed catch-all landed in validate_certfile_pair.
+              {fn -> File.write!(key, "") end, :unparseable_key},
+              {fn -> File.write!(cert, "") end, :unparseable_cert}
             ] do
           # fresh valid pair per cell, then corrupt exactly one file
           :ok = Smalt.TLS.write_dev_cert(cert, key)

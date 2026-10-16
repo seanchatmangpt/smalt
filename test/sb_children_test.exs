@@ -313,9 +313,17 @@ defmodule Smalt.SbChildrenTest do
     test "POST lock with If-Match -> 200 lock envelope" do
       put_policy()
 
+      # The precondition is value-verified (V261014-20): the header must carry
+      # the deterministic policy etag over the REQUEST PATH (no query string —
+      # that is what conn.request_path carries on the wire).
       conn =
         conn(:post, lock_path())
-        |> put_req_header("if-match", "\"0x8DA1A2B3C4D5E6F\"")
+        |> put_req_header(
+          "if-match",
+          Smalt.ArmGateway.Router.lock_policy_etag(
+            String.replace_trailing(lock_path(), "?api-version=2023-05-01", "")
+          )
+        )
         |> Router.call(@opts)
 
       assert conn.status == 200
@@ -328,9 +336,7 @@ defmodule Smalt.SbChildrenTest do
   # Guarantee the shared Store is alive: other suites stop the main app tree
   # to run private trees; on_exit restores it, but never assume run order.
   defp ensure_store do
-    if Process.whereis(Smalt.Store) == nil do
-      SmaltTest.Lifecycle.restore_app()
-    end
+          SmaltTest.Lifecycle.ensure_store_up()
   end
 
   defp sb_path(ns, leaf, name), do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/#{leaf}/#{name}"

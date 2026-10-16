@@ -31,8 +31,15 @@ defmodule Smalt.CanonicalProjectionTest do
 
     {:ok, _} = Application.ensure_all_started(:smalt)
 
+    # This suite boots the app on its own pinned free-port set (above), so a
+    # bare restore_app/0 here would be an ensure_all_started NO-OP that leaves
+    # the env claiming shifted ports while the listeners still hold this
+    # suite's pins (measured: downstream connect hit econnrefused). Stop the
+    # tree first so the restore is a true reboot on the run's shifted envs.
     on_exit(fn ->
       Application.stop(:smalt)
+      SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     :ok

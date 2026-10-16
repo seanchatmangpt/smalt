@@ -38,6 +38,7 @@ defmodule Smalt.Semantic.StoreRead do
 
       Smalt.Semantic.Evidence ->
         with {:ok, records} <- ocel_deviation_rows(),
+             :ok <- refuse_non_map_rows(records, :ocel_deviations),
              :ok <- refuse_vacuous_identity(records, "id", :ocel_deviations) do
           {:ok, Enum.map(records, &project_evidence/1)}
         end
@@ -107,33 +108,56 @@ defmodule Smalt.Semantic.StoreRead do
   defp project_resource(record) do
     build(Smalt.Semantic.Resource, %{
       id: record["id"],
-      name: record["name"],
-      type: record["type"],
-      location: record["location"],
-      provisioning_state: get_in(record, ["properties", "provisioningState"])
+      name: bin_or_nil(record["name"]),
+      type: bin_or_nil(record["type"]),
+      location: bin_or_nil(record["location"]),
+      provisioning_state: bin_or_nil(provisioning_state(record))
     })
+  end
+
+  # Lens-7 cycle 3: field-VALUE policy, aligned to the pinned degradation
+  # policy (cycle-1): row STRUCTURE and identity are refused typed (above);
+  # a non-conformant FIELD VALUE follows the parse_ts lenient precedent —
+  # it projects nil, never a raw type-lie (witnessed probe: a list in
+  # data_hash and an integer provisioningState passed through RAW into
+  # attributes declared String.t()). A binary passes untouched.
+  defp bin_or_nil(v) when is_binary(v), do: v
+  defp bin_or_nil(_), do: nil
+
+  # Lens-6 cycle 1: a Store row with a non-map "properties" ("flat-string")
+  # previously crashed the WHOLE Resource read out of get_in/2 (witnessed:
+  # tmp/f16L6/probe1.out probe D — Access on a non-container). A non-map
+  # properties projects provisioning_state as nil — the same lenient
+  # malformed-value policy as the absent-key case; never a crash.
+  defp provisioning_state(record) do
+    case record["properties"] do
+      props when is_map(props) -> props["provisioningState"]
+      _ -> nil
+    end
   end
 
   defp project_ledger(receipt) do
     build(Smalt.Semantic.LedgerEntry, %{
       tx_id: receipt["transactionId"],
-      sub_ledger_id: receipt["subLedgerId"],
-      merkle_root: receipt["merkle_root"],
-      prev_hash: receipt["prev_hash"],
-      data_hash: receipt["data_hash"],
-      timestamp: receipt["timestamp"]
+      sub_ledger_id: bin_or_nil(receipt["subLedgerId"]),
+      merkle_root: bin_or_nil(receipt["merkle_root"]),
+      prev_hash: bin_or_nil(receipt["prev_hash"]),
+      data_hash: bin_or_nil(receipt["data_hash"]),
+      timestamp: bin_or_nil(receipt["timestamp"])
     })
   end
 
   defp project_evidence(record) do
     build(Smalt.Semantic.Evidence, %{
       id: record["id"],
-      reference_trace_id: record["referenceTraceId"],
-      candidate_trace_id: record["candidateTraceId"],
-      deviating_move: record["deviatingMove"],
-      fitness: record["fitness"],
-      timestamp: record["timestamp"],
-      status: record["status"] || "observed"
+      reference_trace_id: bin_or_nil(record["referenceTraceId"]),
+      candidate_trace_id: bin_or_nil(record["candidateTraceId"]),
+      deviating_move: bin_or_nil(record["deviatingMove"]),
+      fitness: bin_or_nil(record["fitness"]),
+      timestamp: bin_or_nil(record["timestamp"]),
+      # Lens-7 cycle 3: a truthy NON-binary status (42) previously passed
+      # the || "observed" default and projected raw into a String.t() attr.
+      status: bin_or_nil(record["status"]) || "observed"
     })
   end
 

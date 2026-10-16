@@ -1,0 +1,65 @@
+.tree {
+  position: relative;
+  overflow: auto;
+  height: 100%;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  outline: none;
+  background: var(--nav-bg, #0b0e14);
+  color: var(--nav-fg, #c9d1d9);
+  border: 1px solid var(--nav-border, #1f2733);
+  border-radius: 4px;
+}
+
+.spacer {
+  position: relative;
+  width: 100%;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-right: 8px;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.rowFocused {
+  outline: 1px solid var(--nav-focus, #4a9eff);
+  outline-offset: -1px;
+}
+
+.rowSelected {
+  background: var(--nav-selected-bg, #16324f);
+  color: var(--nav-selected-fg, #e6f1ff);
+}
+
+.rowHover:hover {
+  background: var(--nav-hover-bg, #131a24);
+}
+
+.twisty {
+  width: 14px;
+  flex: 0 0 14px;
+  text-align: center;
+  color: var(--nav-dim, #5b6675);
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--nav-dim, #5b6675);
+  font-size: 11px;
+}

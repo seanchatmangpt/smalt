@@ -123,9 +123,9 @@ Pack path EVALUATED, not used — disclosed per house law:
 - `mix compile` exit 0 (no errors; all warnings pre-existing, none from
   `lib/smalt/semantic`).
 - `mix test test/semantic_projection_test.exs`: 7 tests, 0 failures (at the
-  gate run; **10 tests, 0 failures** as of 2026-10-15, docs-corpus cycle 9
-  re-run — suite grew with the epoch work).
+  gate run; **21 tests, 0 failures** as of 2026-10-15, docs-corpus-lens7
+  cycle 5 re-run — suite grew with the epoch + projection work).
 - Canary `mix test test/smalt_arm_gateway_test.exs`: 24 tests, 0 failures (at
-  the gate run; **25/0** as of 2026-10-15 re-run).
+  the gate run; **26/0** as of 2026-10-15 lens-6 re-run, unchanged lens-7).
 - Existing suites untouched: the only shared-file edit is the mix.exs deps
   section (additions only).

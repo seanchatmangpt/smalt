@@ -22,7 +22,7 @@ defmodule Smalt.Ocel.RevOps.<%= name %> do
   Read-only RevOps surface resource (`<%= kind %>`) over the smalt OCEL feed.
   Projected from the ash-ocel-revops-surface-factory-pack candidate structure.
   """
-  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple
+  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple, primary_read_warning?: false
 
   attributes do
     attribute :id, :string, allow_nil?: false, public?: true

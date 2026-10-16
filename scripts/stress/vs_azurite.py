@@ -291,11 +291,13 @@ def _smalt_boot(port: int, receipt: dict) -> dict:
     )
     t0 = time.monotonic()
     proc = subprocess.Popen(["mix", "run", "--no-start", "--eval", eval_expr],
-                            cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT)
+                            cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT,
+                            start_new_session=True)  # own group: killpg teardown (lens-5 cycle 2)
     boot = wait_ready("smalt", 120.0, url=f"http://127.0.0.1:{port}")
     elapsed = time.monotonic() - t0
     if boot is None:
-        proc.terminate(); proc.wait(timeout=15)
+        import _substrate  # group kill on the boot-timeout path too (lens-5 cycle 2)
+        _substrate.kill_substrate(proc, ports=(port,))
         log.close()
         receipt["error"] = f"smalt did not become ready in {elapsed:.1f}s (log: {log_path})"
         receipt["ready"] = False
@@ -312,14 +314,12 @@ def smalt_down(receipt: dict) -> None:
     proc = receipt.get("_proc")
     if proc is None:
         return
-    try:
-        proc.terminate()
-        proc.wait(timeout=15)
-    except Exception:
-        try:
-            proc.kill()
-        except Exception:
-            pass
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    import _substrate
+    # Group kill + port sweep on the harness's OWN documented private ports
+    # (lens-5 cycle 2): the old wrapper-only terminate/kill orphaned the BEAM
+    # child to PPID 1 when mix died first or the beam ignored SIGTERM.
+    _substrate.kill_substrate(proc, ports=(int(receipt.get("url", "").rsplit(":", 1)[-1]) if receipt.get("url") else 0,))
     receipt.get("_log") and receipt["_log"].close()
 
 

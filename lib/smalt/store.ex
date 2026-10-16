@@ -42,6 +42,12 @@ defmodule Smalt.Store do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @doc """
+  Single source of truth for the Store ETS table names (mirrors `@tables`).
+  Read by SmaltTest.Lifecycle.ensure_store_up/0 to wait for full materialization.
+  """
+  def table_names, do: @tables
+
   @impl true
   def init(_opts) do
     Enum.each(@tables, fn table ->
@@ -210,7 +216,22 @@ defmodule Smalt.Store do
   Returns the new value.
   """
   def update_counter(table, key, incr \\ 1) do
-    :ets.update_counter(table, key, incr, {key, 0})
+    res = :ets.update_counter(table, key, incr, {key, 0})
+
+    if Application.get_env(:smalt, :sentinel_forensic, false) do
+      case :ets.info(:smalt_sentinel_forensic) do
+        :undefined ->
+          :ok
+
+        _ ->
+          :ets.insert(
+            :smalt_sentinel_forensic,
+            {System.unique_integer([:monotonic, :positive]), {:uc, table, key, incr, res}, self()}
+          )
+      end
+    end
+
+    res
   end
 
   def current_counter(table, key) do
@@ -220,10 +241,51 @@ defmodule Smalt.Store do
     end
   end
 
+  @doc """
+  Serialized atomic fetch-and-increment with one-time seeding.
+
+  The whole read-check-seed-bump runs as ONE `handle_call` inside the Store
+  GenServer: if the counter row exists, the reply is `current + 1`; if it is
+  missing, the reply is `seed_fun.() + 1` and the row is inserted at
+  `seed_fun.() + 1`.
+
+  Why: the previous caller-side shape (init via `update_counter(.., 0)`, check
+  `current_counter == 0`, count existing rows, `compare_and_swap(key, 0,
+  existing)`, then a direct `:ets.update_counter` bump) raced with itself —
+  the CAS's lookup-then-insert pair is two separate ETS ops executed on other
+  schedulers than the tasks' direct bumps, so a bump that slipped between
+  lookup and insert was clobbered back to `existing` (measured: duplicate seq
+  assignment, duplicate row keys collapse by last-write-wins, final counter
+  one or more short; lens-3 huntE round 1 timeline). Structural repair: all
+  counter traffic is serialized through the Store GenServer, so the
+  lookup-insert window no longer exists.
+  """
+  def next_seq(table, key, seed_fun) when is_function(seed_fun, 0) do
+    if :ets.info(table) == :undefined do
+      raise ArgumentError, "Smalt.Store.next_seq/3: unknown table #{inspect(table)}"
+    end
+
+    GenServer.call(__MODULE__, {:next_seq, table, key, seed_fun})
+  end
+
+  @impl true
+  def handle_call({:next_seq, table, key, seed_fun}, _from, state) do
+    {:reply, bump_seq(table, key, seed_fun), state}
+  end
+
   @impl true
   def handle_call({:cas, table, key, expect, new}, _from, state) do
+    look = :ets.lookup(table, key)
+
+    if Application.get_env(:smalt, :sentinel_forensic, false) do
+      case :ets.info(:smalt_sentinel_forensic) do
+        :undefined -> :ok
+        _ -> :ets.insert(:smalt_sentinel_forensic, {System.unique_integer([:monotonic, :positive]), {:cas, table, key, expect, new, look}, self()})
+      end
+    end
+
     reply =
-      case :ets.lookup(table, key) do
+      case look do
         [{^key, ^expect}] ->
           :ets.insert(table, {key, new})
           :ok
@@ -249,7 +311,8 @@ defmodule Smalt.Store do
     {:reply, reply, state}
   end
 
-  def handle_call({:cas_delete, table, check_key, expect}, _from, state) do    reply =
+  def handle_call({:cas_delete, table, check_key, expect}, _from, state) do
+    reply =
       :ets.lookup(table, check_key)
       |> case do
         [{^check_key, ^expect}] ->
@@ -261,5 +324,19 @@ defmodule Smalt.Store do
       end
 
     {:reply, reply, state}
+  end
+
+  defp bump_seq(table, key, seed_fun) do
+    case :ets.lookup(table, key) do
+      [{^key, n}] when is_integer(n) ->
+        seq = n + 1
+        :ets.insert(table, {key, seq})
+        seq
+
+      _ ->
+        seq = seed_fun.() + 1
+        :ets.insert(table, {key, seq})
+        seq
+    end
   end
 end

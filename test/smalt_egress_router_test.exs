@@ -17,9 +17,7 @@ defmodule SmaltEgressRouterTest do
   # `mix test --no-start` when the shared tree's application start is blocked
   # by a concurrent lane (EventHubs listener double-start).
   defp ensure_store do
-    if GenServer.whereis(Smalt.Store) == nil do
-      {:ok, _} = Smalt.Store.start_link([])
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end

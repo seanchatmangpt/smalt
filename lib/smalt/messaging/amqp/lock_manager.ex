@@ -110,10 +110,21 @@ defmodule Smalt.Amqp.LockManager do
   @doc """
   Renew by lock token. `{:error, :not_found}` (404) for unknown tokens,
   `{:error, :lock_lost}` (410) for expired tokens.
+
+  For session locks the renewal is delegated to `session_renew/4` (V261014-04
+  F2), so the mirrored `{queue, session_id}` record in `:smalt_sb_sessions` is
+  written from the same renewal — both records carry the new `locked_until`.
+  Pure message locks renew only their token record.
   """
   @spec renew(binary(), integer(), keyword()) :: {:ok, lock()} | {:error, :not_found | :lock_lost}
   def renew(token, now_ms, opts \\ []) when is_binary(token) do
-    renew_lock(Smalt.Store.get(:smalt_sb_locks, token), now_ms, opts)
+    case Smalt.Store.get(:smalt_sb_locks, token) do
+      {:ok, %{kind: :session, queue: queue, session_id: session_id}} ->
+        session_renew(queue, session_id, now_ms, opts)
+
+      other ->
+        renew_lock(other, now_ms, opts)
+    end
   end
 
   @doc """
@@ -248,17 +259,33 @@ defmodule Smalt.Amqp.LockManager do
     key = {queue, session_id}
 
     with {:ok, lock} <- renew_lock(Smalt.Store.get(:smalt_sb_sessions, key), now_ms, opts) do
-      if Map.has_key?(lock, :session_key) do
-        Smalt.Store.put(:smalt_sb_sessions, key, lock)
-      end
-
+      # V261014-04 F2: always mirror the renewal into :smalt_sb_sessions. The
+      # previous `Map.has_key?(lock, :session_key)` guard never fired — the
+      # sessions row written by do_session_acquire/4 carries no :session_key
+      # (only the :smalt_sb_locks token row does) — so the mirrored record
+      # kept its stale locked_until and stale-expiry reclaims could double-
+      # acquire a live session.
+      Smalt.Store.put(:smalt_sb_sessions, key, lock)
       {:ok, lock}
     end
   end
 
-  @doc "Release the session lock for `{queue, session_id}`."
+  @doc """
+  Release the session lock for `{queue, session_id}`.
+
+  Serialized through `Smalt.Amqp.QueueStore`'s claim server (same serialization
+  point as `session_acquire/3`), so a concurrent acquire can never interleave
+  between the get and the deletes (the ST4 TOCTOU lost-lock window: acquire
+  wins on the not-yet-deleted record, then release deletes the fresh lock).
+  """
   @spec session_release(String.t(), String.t()) :: :ok
   def session_release(queue, session_id) do
+    GenServer.call(Smalt.Amqp.QueueStore.server(), {:session_release, queue, session_id})
+  end
+
+  @doc false
+  # Runs inside the QueueStore claim server. Public only for that call-site.
+  def do_session_release(queue, session_id) do
     case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
       {:ok, lock} -> Smalt.Store.delete(:smalt_sb_locks, lock.lock_token)
       :error -> :ok

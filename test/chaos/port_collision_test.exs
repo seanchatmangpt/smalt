@@ -42,6 +42,7 @@ defmodule Smalt.Chaos.PortCollisionTest do
       # holding them and leave the shared Store dead for every downstream
       # module in the run.
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     {:ok, ports: ports}
@@ -51,7 +52,7 @@ defmodule Smalt.Chaos.PortCollisionTest do
     ports: ports
   } do
     # First substrate is serving on the ephemeral ARM port.
-    assert {200, _body} = http_get(ports.arm, "/subscriptions")
+    assert {200, _body} = http_get(ports.arm, "/subscriptions?api-version=2021-04-01")
 
     # --- Fail-closed path 1: a second FULL application tree ---------------
     # Named children (Smalt.Store, Smalt.AmqpBroker, Smalt.Supervisor) already
@@ -59,7 +60,7 @@ defmodule Smalt.Chaos.PortCollisionTest do
     assert {:error, {:already_started, _}} = Smalt.Application.start(:normal, [])
 
     # First substrate still serving after the refused second boot.
-    assert {200, _} = http_get(ports.arm, "/subscriptions")
+    assert {200, _} = http_get(ports.arm, "/subscriptions?api-version=2021-04-01")
 
     # --- Fail-closed path 2: a second Bandit child over the SAME port -----
     # Fresh supervisor with unique name; identical Bandit child spec shape the
@@ -101,7 +102,7 @@ defmodule Smalt.Chaos.PortCollisionTest do
     refute Process.whereis(second_sup)
 
     # CRITICAL: the first substrate is untouched and still serving.
-    assert {200, body} = http_get(ports.arm, "/subscriptions")
+    assert {200, body} = http_get(ports.arm, "/subscriptions?api-version=2021-04-01")
     assert body =~ @default_sub
   end
 

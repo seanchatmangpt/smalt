@@ -36,12 +36,6 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
   def plane, do: :messaging_plane
 
   @impl true
-  def consumer, do: "Smalt.Amqp.FrameCodec + Smalt.Amqp.DeliveryEncoder"
-
-  @impl true
-  def source_pack, do: "ash-runtime-integration-contract-pack"
-
-  @impl true
   def check do
     Support.contract(:amqp_dialect, [
       {:frame_header_roundtrip, fn -> check_frame_header() end},

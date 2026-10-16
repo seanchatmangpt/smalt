@@ -33,6 +33,7 @@ defmodule Smalt.Compliance.C7EventsTest do
     on_exit(fn ->
       stop_tree(sup)
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     {:ok, egress: port}
@@ -295,6 +296,66 @@ defmodule Smalt.Compliance.C7EventsTest do
   # ---------------------------------------------------------------------------
   # (4) Azure Resource Graph
   # ---------------------------------------------------------------------------
+
+  # Lens-8 cycle-9: token-scope binding + forged-token fallback pinned at
+  # CURRENT bytes (fences-only: the lenient fallback is a documented
+  # deviation from real ARG, which 400s on an invalid skipToken — real
+  # behavior change is engine-lane-owned).
+  test "[rg] skipToken scope binding + forged-token fallback (current bytes)" do
+    for i <- 1..5 do
+      Smalt.Store.put(:smalt_resources, "/subscriptions/rg8subA/providers/Microsoft.Storage/storageAccounts/a#{i}", %{
+        "id" => "/subscriptions/rg8subA/providers/Microsoft.Storage/storageAccounts/a#{i}",
+        "name" => "a#{i}",
+        "type" => "microsoft.storage/storageaccounts",
+        "location" => "eastus",
+        "subscriptionId" => "rg8subA"
+      })
+    end
+
+    for i <- 1..2 do
+      Smalt.Store.put(:smalt_resources, "/subscriptions/rg8subB/providers/Microsoft.Storage/storageAccounts/b#{i}", %{
+        "id" => "/subscriptions/rg8subB/providers/Microsoft.Storage/storageAccounts/b#{i}",
+        "name" => "b#{i}",
+        "type" => "microsoft.storage/storageaccounts",
+        "location" => "eastus",
+        "subscriptionId" => "rg8subB"
+      })
+    end
+
+    # Page 1 over subA only, $top=2 -> token T carries scope [rg8subA].
+    {:ok, 200, page1} =
+      Smalt.DataPlane.ResourceGraph.query(["rg8subA"], %{"$top" => 2, "query" => "Resources"}, "2022-10-01")
+
+    assert page1["count"] == 2
+    tok = page1["$skipToken"]
+    assert is_binary(tok)
+
+    # Resume presented under a DIFFERENT subscription scope: the TOKEN's
+    # stored scope wins (current bytes) — page 2 continues over subA's
+    # name space, not subB's. Real ARG 400s a scope-mismatched token;
+    # smalt's emulated behavior is pinned here as the deviation.
+    {:ok, 200, page2} =
+      Smalt.DataPlane.ResourceGraph.query(
+        ["rg8subB"],
+        %{"options" => %{"$skipToken" => tok, "$top" => 2}},
+        "2022-10-01"
+      )
+
+    names2 = Enum.map(page2["data"], & &1["name"])
+    assert names2 == ["a3", "a4"]
+
+    # Forged token: unknown token falls back to a FRESH query honoring
+    # $skip (current bytes; real ARG: 400 invalid token — deviation pinned).
+    {:ok, 200, forged} =
+      Smalt.DataPlane.ResourceGraph.query(
+        ["rg8subA"],
+        %{"options" => %{"$skipToken" => "deadbeefdeadbeefdeadbeef", "$top" => 2, "$skip" => 3}},
+        "2022-10-01"
+      )
+
+    assert forged["count"] == 2
+    assert Enum.map(forged["data"], & &1["name"]) == ["a4", "a5"]
+  end
 
   test "[rg] response contract: count/totalRecords/resultTruncated/$skipToken pagination" do
     resources =

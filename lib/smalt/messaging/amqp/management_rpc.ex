@@ -32,6 +32,9 @@ defmodule Smalt.Amqp.ManagementRpc do
     * `QueueStore.peek(queue, from_sequence_number: f, message_count: c, now: n)` ->
       `{:ok, [%{body: binary, ...}]}`
 
+    * `QueueStore.receive_deferred(queue, [seq], now_ms: n)` ->
+      `{:ok, [%{body: binary, ...}]}` | `{:error, {:not_deferred, [seq]}}`
+
   Status tables (exact):
 
     * renew-lock           — 200 {"expirations": [ts]} / 410 MESSAGE_LOCK_LOST /
@@ -39,6 +42,9 @@ defmodule Smalt.Amqp.ManagementRpc do
     * renew-session-lock   — 200 {"expiration": ts} / 410 SESSION_LOCK_LOST /
       400 SESSION_ID_REQUIRED
     * peek-message         — 200 {"messages": [...]} / 204 empty / 400 PEEK_BOUNDS
+    * receive-by-sequence-number — 200 {"messages": [...]} (peek envelope) /
+      400 SEQUENCE_NUMBERS_REQUIRED / 410 MESSAGE_NOT_DEFERRED (batch-atomic:
+      one bad sequence fails the whole batch) / 404 NOT_FOUND
     * unknown operation    — 501 UNSUPPORTED_OPERATION
 
   Timestamps are `{:timestamp, ms}` per `Smalt.Amqp.PrimitiveCodec`.
@@ -86,6 +92,7 @@ defmodule Smalt.Amqp.ManagementRpc do
       :renew_session_lock -> renew_session_lock(body, request[:queue], correlation_id, context, now)
       :peek_message -> peek_message(body, request[:queue], correlation_id, context, now)
       :update_disposition -> update_disposition(body, request[:queue], correlation_id, context, now)
+      :receive_by_sequence_number -> receive_by_sequence_number(body, request[:queue], correlation_id, context, now)
       :unknown -> respond(501, "UNSUPPORTED_OPERATION", nil, correlation_id)
     end
   end
@@ -275,7 +282,13 @@ defmodule Smalt.Amqp.ManagementRpc do
     reason = body_field(body, "dead-letter-reason") || body_field(body, "deadletter-reason") || "DeadLetter"
     description = body_field(body, "dead-letter-description") || body_field(body, "deadletter-description")
 
-    store_call(context, queue, :deadletter, [queue, lock.seq, reason, description])
+    # V261014-08 task 08-3: custom dead-letter-properties (string ->
+    # primitive map) ride through to the DLQ message's application
+    # properties; absent keeps the previous behavior exactly.
+    props = body_field(body, "dead-letter-properties") || %{}
+    props = if is_map(props), do: props, else: %{}
+
+    store_call(context, queue, :deadletter, [queue, lock.seq, reason, description, [properties: props]])
   end
 
   defp apply_disposition("defered", lock, _body, queue, context),
@@ -286,9 +299,60 @@ defmodule Smalt.Amqp.ManagementRpc do
   defp store_call(context, _queue, name, args) do
     case invoke(context, :queue_store, @default_queue_store, name, args) do
       {:ok, _} -> {:ok, :settled}
-      {:ok, :ok} -> {:ok, :settled}
       :ok -> {:ok, :settled}
       _other -> {:error, :lock_lost}
+    end
+  end
+
+  # ===========================================================================
+  # com.microsoft:receive-by-sequence-number
+  # ===========================================================================
+
+  # V261014-08 task 08-2. Required body field `sequence-numbers` (long array);
+  # optional `receiver-settle-mode` / `associated-link-name` accepted and
+  # ignored. Batch semantics: one non-deferred (or missing) sequence number
+  # fails the WHOLE batch with 410 MESSAGE_NOT_DEFERRED (atomic, no partial
+  # lock) — the chosen emulator semantics, documented here and in
+  # QueueStore.receive_deferred/3. Qualifying messages re-lock and re-enter
+  # the normal settle path; the reply carries the peek-message envelope.
+  defp receive_by_sequence_number(body, queue_from_request, correlation_id, context, now) do
+    queue = body_field(body, "queue") || queue_from_request
+
+    seqs =
+      body_field(body, "sequence-numbers")
+      |> case do
+        {:array, xs} when is_list(xs) -> xs
+        xs when is_list(xs) -> xs
+        other -> List.wrap(other)
+      end
+      |> Enum.map(&coerce_long/1)
+
+    cond do
+      blank?(queue) ->
+        respond(400, "QUEUE_REQUIRED", nil, correlation_id)
+
+      seqs == [] or :error in seqs ->
+        respond(400, "SEQUENCE_NUMBERS_REQUIRED", nil, correlation_id)
+
+      true ->
+        case invoke(context, :queue_store, @default_queue_store, :receive_deferred, [queue, seqs, [now_ms: now]]) do
+          {:ok, messages} when is_list(messages) ->
+            payload = %{
+              "messages" =>
+                Enum.map(messages, fn m ->
+                  %{"message" => message_body(m)}
+                  |> maybe_put_seq(m)
+                end)
+            }
+
+            respond(200, "OK", payload, correlation_id)
+
+          {:error, {:not_deferred, _missing}} ->
+            respond(410, "MESSAGE_NOT_DEFERRED", nil, correlation_id)
+
+          {:error, _reason} ->
+            respond(404, "NOT_FOUND", nil, correlation_id)
+        end
     end
   end
 
@@ -306,6 +370,8 @@ defmodule Smalt.Amqp.ManagementRpc do
       {:symbol, "com.microsoft:peek-message"} -> :peek_message
       "com.microsoft:update-disposition" -> :update_disposition
       {:symbol, "com.microsoft:update-disposition"} -> :update_disposition
+      "com.microsoft:receive-by-sequence-number" -> :receive_by_sequence_number
+      {:symbol, "com.microsoft:receive-by-sequence-number"} -> :receive_by_sequence_number
       _ -> :unknown
     end
   end

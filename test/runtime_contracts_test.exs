@@ -84,8 +84,6 @@ defmodule Smalt.RuntimeContractsTest do
 
         assert function_exported?(mod, :name, 0)
         assert function_exported?(mod, :plane, 0)
-        assert function_exported?(mod, :consumer, 0)
-        assert function_exported?(mod, :source_pack, 0)
         assert function_exported?(mod, :check, 0)
 
         result = mod.check()
@@ -169,10 +167,6 @@ defmodule Smalt.RuntimeContractsTest do
         def name, do: :arm_envelope_broken
 
         def plane, do: :control_plane
-
-        def consumer, do: "Smalt.ArmGateway.Router"
-
-        def source_pack, do: "ash-runtime-integration-contract-pack"
 
         def check do
           Support.contract(:arm_envelope_broken, [
@@ -414,7 +408,7 @@ defmodule Smalt.RuntimeContractsTest do
   # ===========================================================================
   describe "cross-anchor fence (receipt vs MANIFEST, algorithm-pinned)" do
     test "ggen receipt BLAKE3 pins and MANIFEST sha256 pins describe identical bytes" do
-      receipt_path = "lib/smalt/runtime_contracts/ggen/.ggen-v2/receipt.json"
+      receipt_path = "test/fixtures/runtime_contracts/ggen/receipt.json"
       manifest_path = "lib/smalt/runtime_contracts/generated/MANIFEST.sha256"
 
       assert File.exists?(receipt_path), "ggen receipt missing at #{receipt_path}"
@@ -497,7 +491,7 @@ defmodule Smalt.RuntimeContractsTest do
       assert result.pass == true
     end
 
-    test "a contract whose name/0 returns a non-atom is renamed by the guesser" do
+    test "a contract whose name/0 returns a non-atom fails the registry typed (lens-5 sibling of plane/0)" do
       defmodule NonAtomNameGate do
         def plane, do: :control_plane
         def check, do: %{name: :whatever, pass: true, checks: 1, failures: []}
@@ -508,7 +502,98 @@ defmodule Smalt.RuntimeContractsTest do
       verdict = RuntimeContracts.verify([NonAtomNameGate])
 
       result = verdict.contracts[:non_atom_name_gate]
+
+      # The guessed key survives (fan-out keying is internal), but the
+      # documented-type violation is never silent: typed failure appended,
+      # pass flipped false.
+      refute result.pass
+
+      assert [
+               %{check: :contract_malformed_name, detail: detail}
+             ] = result.failures
+
+      assert detail =~ "non-atom"
+      assert detail =~ ~s|{"not", "an atom"}|
+      refute verdict.pass
+    end
+
+    test "a float checks count is a typed malformed verdict, not a fractional check_count" do
+      defmodule FloatChecksGate do
+        def name, do: :float_checks_gate
+        def plane, do: :control_plane
+
+        def check,
+          do: %{name: :float_checks_gate, pass: true, checks: 1.5, failures: []}
+      end
+
+      verdict = RuntimeContracts.verify([FloatChecksGate])
+      result = verdict.contracts[:float_checks_gate]
+      refute result.pass
+
+      assert [%{check: :contract_malformed_verdict, detail: detail}] = result.failures
+      assert detail =~ "non-negative integer"
+      # The registry total is never fractional: the verdict() type
+      # (check_count :: non_neg_integer()) holds.
+      assert verdict.check_count == 0
+      assert is_integer(verdict.check_count)
+      refute verdict.pass
+    end
+
+    test "a negative checks count is a typed malformed verdict (non-negative integer guard)" do
+      defmodule NegativeChecksGate do
+        def name, do: :negative_checks_gate
+        def plane, do: :control_plane
+
+        def check,
+          do: %{name: :negative_checks_gate, pass: true, checks: -3, failures: []}
+      end
+
+      verdict = RuntimeContracts.verify([NegativeChecksGate])
+      result = verdict.contracts[:negative_checks_gate]
+      refute result.pass
+      refute verdict.pass
+      assert [%{check: :contract_malformed_verdict, detail: detail}] = result.failures
+      assert detail =~ "non-negative integer"
+      assert verdict.check_count == 0
+    end
+
+    test "name/0 absent resolves via the guess and still passes (no over-blocking)" do
+      defmodule NoNameGate do
+        def plane, do: :control_plane
+        def check, do: %{name: :x, pass: true, checks: 1, failures: []}
+      end
+
+      verdict = RuntimeContracts.verify([NoNameGate])
+
+      result = verdict.contracts[:no_name_gate]
       assert result.pass == true
+      assert result.failures == []
+    end
+
+    test "a malformed-NAME contract with a malformed PLANE gets BOTH typed markers (lens-6 mask probe)" do
+      # lens-5 residual: plane_of/2 resolved the contract by RAW name/0, so a
+      # contract whose name/0 returned a non-atom never matched in the find and
+      # its plane/0 violation was silently resolved :unknown — the
+      # contract_malformed_plane marker was masked by the malformed name.
+      defmodule BadNameAndPlaneGate do
+        def plane, do: "also-not-an-atom"
+        def check, do: %{name: :whatever, pass: true, checks: 1, failures: []}
+
+        def name, do: {"bad", "name"}
+      end
+
+      verdict = RuntimeContracts.verify([BadNameAndPlaneGate])
+
+      result = verdict.contracts[:bad_name_and_plane_gate]
+
+      checks = Enum.map(result.failures, & &1.check)
+      assert :contract_malformed_name in checks
+      assert :contract_malformed_plane in checks
+
+      # Grouped under the marker plane, never silently :unknown.
+      assert verdict.planes[:contract_malformed_plane] == [:bad_name_and_plane_gate]
+      refute result.pass
+      refute verdict.pass
     end
   end
 
@@ -517,8 +602,6 @@ defmodule Smalt.RuntimeContractsTest do
       defmodule PartialFailContract do
         def name, do: :partial_fail_contract
         def plane, do: :control_plane
-        def consumer, do: "test"
-        def source_pack, do: "test"
 
         def check do
           Smalt.RuntimeContracts.Support.contract(:partial_fail_contract, [

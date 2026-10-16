@@ -6,6 +6,13 @@
 #     --for-each resources \
 #     --out 'lib/smalt/ocel/revops/<name>.ex' \
 #     --engine sparql
+# REGENERATION-CLOBBERS: re-running the command above overwrites this file
+# in place with a non-compiling skeleton. The shipped gen/ template + TTL
+# still carry non-Ash types (:string_array, :utc) and render no primary key /
+# allow_nil?/read action; this file's atom names, real Ash types
+# ({:array, :string}, :utc_datetime_usec), primary key, and read action are
+# hand-adapted and NOT recoverable from gen/. Do not regenerate until the
+# template/TTL are repaired (deferred generator work).
 # Ontology: lib/smalt/ocel/revops/gen/revops_surface.ttl — composes the
 # ash-ocel-revops-surface-factory-pack candidate vocabulary (r75:AshResource,
 # OcelTimeline, ProcessConformance, ValueEvidence) with the executable
@@ -24,7 +31,7 @@ defmodule Smalt.Ocel.RevOps.FitnessVerdict do
   happy-path net's vocabulary are not replayable and get no verdict row
   (replay coverage = the net's transition vocabulary, by construction).
   """
-  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple
+  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple, primary_read_warning?: false
 
   attributes do
     attribute :id, :string, allow_nil?: false, primary_key?: true, public?: true

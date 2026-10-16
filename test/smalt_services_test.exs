@@ -15,7 +15,7 @@ defmodule SmaltServicesTest do
   @off_baseline_measurement String.duplicate("cd", 32)
 
   setup do
-    if Process.whereis(Smalt.Store) == nil, do: SmaltTest.Lifecycle.restore_app()
+    SmaltTest.Lifecycle.ensure_store_up()
     Store.clear()
     Application.put_env(:smalt, :maa_measurement_baseline, [@measurement])
 

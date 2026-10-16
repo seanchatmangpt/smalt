@@ -1471,4 +1471,117 @@ defmodule Smalt.Security.SecurityHardeningTest do
       ReceiptSigner.verify_token(signing_input <> "." <> sig)
     end
   end
+
+  # ==========================================================================
+  # lens-9: ledger-NAME crash class + coercion fence (the lens-5 law applied
+  # to the parameter lens-5 never totalized: the ledger name itself).
+  # ==========================================================================
+  describe "lens-9 ledger-name crash class" do
+    test "hostile ledger names are typed refusals, never raises, never coerced" do
+      hostile = [{:t, 1}, %{a: 1}, [:l], 42, nil, 3.14, {1, 2, 3}]
+
+      for name <- hostile do
+        # No raise may escape; no silent to_string coercion into "42"/"".
+        assert {:error, 400, "InvalidLedgerName"} =
+                 ConfidentialLedger.append_transaction(name, %{"x" => 1})
+
+        assert :error = ConfidentialLedger.get_transaction(name, "latest")
+        assert :error = ConfidentialLedger.get_latest(name)
+        assert [] = ConfidentialLedger.list_transactions(name)
+      end
+
+      # The refusal burned nothing: a valid append right after is seq 1.1.
+      assert {:ok, %{"transactionId" => "1.1"}} =
+               ConfidentialLedger.append_transaction("l9-name-fence", %{"x" => 1})
+    end
+
+    test "atom names remain admitted (documented @spec form), binary + atom name identity" do
+      assert {:ok, r1} = ConfidentialLedger.append_transaction(:l9_atom_ledger, %{"x" => 1})
+      assert {:ok, r1} == ConfidentialLedger.get_latest("l9_atom_ledger")
+
+      # Same ledger by atom and binary: shared chain, seq 2.1.
+      assert {:ok, %{"transactionId" => "2.1"}} =
+               ConfidentialLedger.append_transaction("l9_atom_ledger", %{"y" => 2})
+
+      assert {:ok, %{"subLedgerId" => "l9_atom_ledger"}} =
+               ConfidentialLedger.get_latest(:l9_atom_ledger)
+    end
+  end
+
+  # Lens-10: the lens-9 law totalized the ledger NAME; the same crash class
+  # (caller-shaped data raising or being silently coerced at a public API
+  # boundary) extends to the other public heads on this surface. Each court
+  # pins: hostile shape -> typed refusal, zero coercion, zero residue.
+  describe "lens-10 boundary-totalization sweep" do
+    test "hostile tx_id shapes at get_transaction/2 are typed :error, never raises, never coerced" do
+      hostile = [{:t, 1}, %{a: 1}, [:l], 42, nil, 3.14, ""]
+
+      for tx <- hostile do
+        assert :error = ConfidentialLedger.get_transaction("l10-tx-fence", tx)
+      end
+
+      # The refusal burned nothing: a valid append right after is seq 1.1.
+      assert {:ok, %{"transactionId" => "1.1"}} =
+               ConfidentialLedger.append_transaction("l10-tx-fence", %{"x" => 1})
+
+      assert :error = ConfidentialLedger.get_transaction("l10-tx-miss-decoy", "latest")
+
+      # Coercion decoy: a receipt stored under the coerced key "…/42" must NOT
+      # be reachable through a hostile tx_id 42 (reads go through the same
+      # typed boundary as writes — no silent to_string coercion).
+      Store.put(:smalt_ledger_transactions, "l10-tx-miss-decoy/42", %{"decoy" => true})
+      assert :error = ConfidentialLedger.get_transaction("l10-tx-miss-decoy", 42)
+
+      assert {:ok, _} = ConfidentialLedger.get_transaction("l10-tx-fence", "1.1")
+      assert {:ok, _} = ConfidentialLedger.get_transaction("l10-tx-fence", "latest")
+    end
+
+    test "hostile attestation type params are typed 400 refusals, never raises, never coerced" do
+      measurement = String.duplicate("ab", 32)
+      Application.put_env(:smalt, :maa_measurement_baseline, [measurement])
+
+      try do
+        for type <- [{:t, 1}, [:l], 42, 3.14] do
+          assert {:error, 400, "attestationFailedVerdict"} =
+                   Attestation.attest_enclave(%{"measurement" => measurement}, type)
+        end
+
+        # nil/false keep the documented default; binary type passes through
+        # into the signed claims.
+        assert {:ok, _, %{"x-ms-attestation-type" => "sevsnpvm"}} =
+                 Attestation.attest_enclave(%{"measurement" => measurement}, nil)
+
+        assert {:ok, _, %{"x-ms-attestation-type" => "custom-tee"}} =
+                 Attestation.attest_enclave(%{"measurement" => measurement}, "custom-tee")
+      after
+        Application.delete_env(:smalt, :maa_measurement_baseline)
+      end
+    end
+
+    test "hostile SKR key names are typed 400 refusals, never raises" do
+      conn = Plug.Test.conn(:post, "/keys/x/release")
+
+      for name <- [{:t, 1}, :atom_key, 42, nil, %{a: 1}, [:l]] do
+        assert {:error, 400, %{"error" => %{"code" => "InvalidParameter"}}} =
+                 SKR.release(name, conn)
+      end
+
+      # Zero residue: the refusal never touched the vault keys table.
+      assert :error = Store.get(:smalt_vault_keys, :atom_key)
+    end
+
+    test "empty ledger names (binary \"\" and atom :\"\") are refused — no anonymous ledger" do
+      for name <- ["", :""] do
+        assert {:error, 400, "InvalidLedgerName"} =
+                 ConfidentialLedger.append_transaction(name, %{"x" => 1})
+
+        assert :error = ConfidentialLedger.get_transaction(name, "latest")
+        assert :error = ConfidentialLedger.get_latest(name)
+        assert [] = ConfidentialLedger.list_transactions(name)
+      end
+
+      # Zero residue: no anonymous ledger materialized.
+      assert [] = ConfidentialLedger.list_transactions("")
+    end
+  end
 end

@@ -481,15 +481,20 @@ defmodule SmaltLroTest do
   end
 
   # ---------------------------------------------------------------------------
-  # (10) Lens-6 retention probe: op records are never silently truncated or
-  # evicted. 500 completed LROs land in :smalt_operations and every record
-  # stays queryable — the observed policy is accumulate-forever (no TTL, no
-  # cap; typed analysis in tmp/errc/arm-gateway-lens6/cycle-1.md). This fence
-  # pins the policy so a future TTL/cap must be a deliberate landing that
-  # updates this fence, not a silent eviction.
+  # (10) Lens-6 retention probe, REWRITTEN v26.10.14 (V261014-05): terminality
+  # at rest with ZERO polls (sweeper-driven), plus the default accumulate-
+  # forever retention face and the opt-in eviction face. 500 LROs are minted,
+  # NEVER polled, and driven terminal by one explicit sweeper pass; a RAW
+  # store read (F7 standard) asserts every record is Succeeded at rest and
+  # none was evicted under the default :lro_retention_ms = :infinity. With a
+  # short retention window set, the eviction face: a past-window terminal is
+  # GONE at raw get, in-window terminals remain, and an InProgress record is
+  # NEVER evicted at any age.
   # ---------------------------------------------------------------------------
-  test "op records accumulate without truncation: 500 completed ops all queryable" do
+  test "op records reach terminal at rest with zero polls; default retention keeps all 500" do
     rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/retention-probe"
+
+    Application.put_env(:smalt, :lro_retention_ms, :infinity)
 
     ids = for _ <- 1..500, do: LRO.start_op(rid)["name"]
 
@@ -500,18 +505,152 @@ defmodule SmaltLroTest do
     delay = Application.get_env(:smalt, :lro_delay_ms, 0)
     Process.sleep(delay + 10)
 
-    # All 500 are queryable and terminal; none was evicted by the mints that
-    # followed it. F7-standard shape (lens-7): get_op/1 DRIVES the lazy flip
-    # (the only thing that persists it), then a RAW store read verifies the
-    # persist actually happened — the old single get_op read here could never
-    # distinguish "persisted" from "lazily re-derived".
-    for id <- ids, do: assert({:ok, _} = LRO.get_op(id))
+    # ZERO POLLS: one sweeper pass drives all 500 to their persisted terminal
+    # through the SAME shared evaluate/2 the lazy path uses.
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
 
     for id <- ids do
       assert {:ok, %{"status" => "Succeeded", "resourceId" => ^rid}} = Store.get(:smalt_operations, id)
     end
 
+    # Default retention is :infinity: nothing was evicted by the sweep.
     assert length(Store.list(:smalt_operations)) == 500
+
+    # -- Eviction face (opt-in short window) -----------------------------------
+    # An old terminal (endTime pushed into the past by backdating its store
+    # record), a fresh terminal, and one InProgress op. A short window must
+    # evict ONLY the old terminal; InProgress survives at any age.
+    Application.put_env(:smalt, :lro_retention_ms, 1_000)
+
+    old_id = "retentionold000000000"
+    now_dt = DateTime.utc_now() |> DateTime.add(-3_600, :second)
+
+    Store.put(:smalt_operations, old_id, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{old_id}",
+      "name" => old_id,
+      "status" => "Succeeded",
+      "startTime" => DateTime.to_iso8601(now_dt),
+      "endTime" => DateTime.to_iso8601(now_dt),
+      "resourceId" => rid
+    })
+
+    fresh_id = hd(ids)
+    in_progress = LRO.start_op(rid)
+    ip_id = in_progress["name"]
+
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+
+    # Past-window terminal GONE at raw get.
+    assert :error = Store.get(:smalt_operations, old_id)
+    # In-window terminal remains.
+    assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, fresh_id)
+    # InProgress NEVER evicted (this one is genuinely in-window AND the sweep
+    # must not touch it even after its delay elapses mid-sweep).
+    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, ip_id)
+
+    Application.put_env(:smalt, :lro_retention_ms, :infinity)
+  end
+
+  # ---------------------------------------------------------------------------
+  # (10b) At-rest zero-poll fence (V261014-05 falsifier): ONE op minted, never
+  # polled by anything, reads terminal at a RAW Store.get after delay +
+  # sweep + margin. Before the sweeper, a never-polled record stayed
+  # InProgress at rest forever (GAP(lro-lazy-terminality) at-rest face).
+  # ---------------------------------------------------------------------------
+  test "at-rest terminality with zero polls: never-polled op reads terminal at raw get" do
+    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/atrest-probe"
+    op = LRO.start_op(rid)
+    id = op["name"]
+
+    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
+    Process.sleep(delay + 10)
+
+    # Pre-sweep raw read: still InProgress (no lazy path has ever touched it).
+    assert {:ok, %{"status" => "InProgress"}} = Store.get(:smalt_operations, id)
+
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+
+    # Raw get AFTER the sweep: terminal, persisted, scheduling fields gone.
+    assert {:ok, %{"status" => "Succeeded"} = stored} = Store.get(:smalt_operations, id)
+    refute Map.has_key?(stored, "startedAtMs")
+    refute Map.has_key?(stored, "delayMs")
+    assert is_binary(stored["endTime"])
+  end
+
+  # ---------------------------------------------------------------------------
+  # (10c) No-op fence (V261014-05): a sweep over an EMPTY store and over a
+  # store of ALL-terminal records writes NOTHING (count + endTime stability).
+  # ---------------------------------------------------------------------------
+  test "sweep over empty store and all-terminal store is a no-op (0 writes)" do
+    # Empty store.
+    assert Store.list(:smalt_operations) == []
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    assert Store.list(:smalt_operations) == []
+
+    # All-terminal store: nothing is rewritten.
+    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/noop-probe"
+    ids = for _ <- 1..5, do: LRO.start_op(rid)["name"]
+    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+
+    before =
+      Map.new(ids, fn id ->
+        {:ok, rec} = Store.get(:smalt_operations, id)
+        {id, rec["endTime"]}
+      end)
+
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+
+    after_ =
+      Map.new(ids, fn id ->
+        {:ok, rec} = Store.get(:smalt_operations, id)
+        {id, rec["endTime"]}
+      end)
+
+    assert length(Store.list(:smalt_operations)) == 5
+    assert before == after_
+  end
+
+  # ---------------------------------------------------------------------------
+  # (10d) Concurrency fence (V261014-05): a sweeper pass racing a wire poll on
+  # the same elapsed op converges to ONE persisted terminal with a
+  # byte-identical body — no lock needed, the shared functions write the same
+  # record.
+  # ---------------------------------------------------------------------------
+  test "sweep racing a wire poll converges to one persisted terminal, byte-identical body" do
+    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/race-sweep-probe"
+    op = LRO.start_op(rid)
+    id = op["name"]
+    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
+
+    parent = self()
+
+    sweeper =
+      Task.async(fn ->
+        :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+        send(parent, :swept)
+      end)
+
+    poll =
+      Task.async(fn ->
+        conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
+      end)
+
+    Task.await(sweeper)
+    poll_res = Task.await(poll)
+    assert poll_res.status in [200, 202]
+
+    # ONE persisted terminal at raw read; scheduling fields gone; a second
+    # sweep pass does not change the persisted body byte-for-byte.
+    assert {:ok, %{"status" => "Succeeded"} = stored} = Store.get(:smalt_operations, id)
+    refute Map.has_key?(stored, "startedAtMs")
+    refute Map.has_key?(stored, "delayMs")
+
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    assert {:ok, stored_after} = Store.get(:smalt_operations, id)
+    assert stored_after == stored
   end
 
   # ---------------------------------------------------------------------------
@@ -541,8 +680,372 @@ defmodule SmaltLroTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Helpers
+  # (12) Lens-8 wire-contract probe: is the lazy flip STICKY at the wire? A
+  # poll that crosses the delay returns Succeeded AND persists the flip; every
+  # later poll must see Succeeded (a revert to InProgress would be a
+  # wire-visible monotonicity defect, not just GAP(lro-lazy-terminality)).
+  # Measured: terminal is sticky — get_op/1 only re-evaluates records whose
+  # status is InProgress, and the flip is persisted before it is observed, so
+  # the wire can never see Succeeded -> InProgress.
   # ---------------------------------------------------------------------------
+  test "terminal status is sticky across repeated polls (no Succeeded -> InProgress revert)" do
+    name = "st" <> unique()
+
+    put_conn = conn(:put, sa_path(name), sa_body(name)) |> call()
+    assert put_conn.status == 202
+    op = Jason.decode!(put_conn.resp_body)
+    op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
+
+    # First poll while genuinely InProgress: the wire shows 202 + InProgress.
+    early = conn(:get, op_path) |> call()
+    assert early.status == 202
+    assert %{"status" => "InProgress"} = Jason.decode!(early.resp_body)
+
+    assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
+
+    # Repeated polls after terminal: every one is 200 Succeeded, and each is
+    # backed by a persisted terminal record (raw read between polls).
+    for _ <- 1..3 do
+      poll = conn(:get, op_path) |> call()
+      assert poll.status == 200
+      assert %{"status" => "Succeeded"} = Jason.decode!(poll.resp_body)
+      assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, op["name"])
+      Process.sleep(5)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # (13) Lens-9 resolution of the lens-8 livelock face: an InProgress record
+  # with NO scheduling fields (only reachable via direct writes to the public
+  # ETS table — Store.put/3 is a single atomic :ets.insert and start_op/1
+  # always writes both fields, so no in-codebase writer produces this shape)
+  # is flipped to a PERSISTED terminal Failed record with a typed error member
+  # at first evaluation. The wire renders the terminal as 200 (not 202).
+  # ---------------------------------------------------------------------------
+  test "hand-seeded InProgress record without scheduling fields flips to persisted Failed with error member" do
+    stuck_id = "handseeded0000000000000000"
+
+    Store.put(:smalt_operations, stuck_id, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{stuck_id}",
+      "name" => stuck_id,
+      "status" => "InProgress",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "endTime" => nil,
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+    })
+
+    # First evaluation flips it: terminal Failed with a typed error member.
+    assert {:ok, %{"status" => "Failed", "endTime" => end_time, "error" => error}} =
+             LRO.get_op(stuck_id)
+
+    assert is_binary(end_time)
+    assert error["code"] == "OperationRecordIncomplete"
+    assert is_binary(error["message"]) and error["message"] != ""
+
+    # The flip is persisted — RAW store read (F7 standard): the store holds the
+    # terminal record, not just a lazily re-derived view.
+    assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
+             Store.get(:smalt_operations, stuck_id)
+
+    # The wire renders the terminal as 200 (not 202) with the error member.
+    # The terminal is sticky: a second poll (raw-read-backed) still sees Failed.
+    poll2 = conn(:get, "/subscriptions/#{@sub}/operations/#{stuck_id}") |> call()
+    assert poll2.status == 200
+    assert %{"status" => "Failed"} = Jason.decode!(poll2.resp_body)
+    assert {:ok, %{"status" => "Failed"}} = Store.get(:smalt_operations, stuck_id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # (14) Lens-9 cycle-2 face: an incomplete record that ALSO lacks "name" —
+  # the flip must persist the terminal under the STORE KEY the poll used, not
+  # record["name"] (which was nil → terminal landed under key :nil, the polled
+  # key stayed InProgress forever = re-livelock + store pollution, measured
+  # before the fix). Fences: polled key goes terminal at raw read, no :nil key
+  # pollution, and "name" is repaired in the persisted terminal.
+  # ---------------------------------------------------------------------------
+  test "incomplete record missing name flips under the polled store key (no re-livelock, no :nil pollution)" do
+    no_name_id = "noname000000000000000"
+
+    Store.put(:smalt_operations, no_name_id, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{no_name_id}",
+      "status" => "InProgress",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+    })
+
+    assert {:ok, %{"status" => "Failed", "name" => ^no_name_id}} = LRO.get_op(no_name_id)
+
+    # The polled key is terminal (raw read) — no re-livelock.
+    assert {:ok, %{"status" => "Failed"}} = Store.get(:smalt_operations, no_name_id)
+
+    # No :nil-key pollution; the table holds exactly this one record.
+    assert :error = Store.get(:smalt_operations, nil)
+    assert length(Store.list(:smalt_operations)) == 1
+  end
+
+  # ---------------------------------------------------------------------------
+  # (15) Lens-9 cycle-3: an unauthorized (foreign-subscription) poll of an
+  # incomplete record is refused (404) by the get_op/2 owner check — but the
+  # refused poll still DRIVES the evaluation, so the record converges to the
+  # persisted Failed terminal anyway. Terminality is idempotent, so the
+  # hostile poll cannot wedge the record and cannot resurrect InProgress.
+  # ---------------------------------------------------------------------------
+  test "foreign-subscription poll of an incomplete op is 404 but the record still converges terminal" do
+    other_sub = "33333333-3333-3333-3333-333333333333"
+
+    Store.put(:smalt_subscriptions, other_sub, %{
+      "id" => "/subscriptions/#{other_sub}",
+      "subscriptionId" => other_sub,
+      "displayName" => "Other Sub",
+      "state" => "Enabled"
+    })
+
+    stuck_id = "crosssub000000000000000"
+
+    Store.put(:smalt_operations, stuck_id, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{stuck_id}",
+      "name" => stuck_id,
+      "status" => "InProgress",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "endTime" => nil,
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+    })
+
+    foreign = conn(:get, "/subscriptions/#{other_sub}/operations/#{stuck_id}") |> call()
+    assert foreign.status == 404
+    assert %{"error" => %{"code" => "OperationNotFound"}} = Jason.decode!(foreign.resp_body)
+
+    # The refused poll still evaluated the record: it is now the persisted
+    # Failed terminal under the owner's key, and stays there.
+    assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
+             Store.get(:smalt_operations, stuck_id)
+
+    owner = conn(:get, "/subscriptions/#{@sub}/operations/#{stuck_id}") |> call()
+    assert owner.status == 200
+    assert %{"status" => "Failed"} = Jason.decode!(owner.resp_body)
+  end
+
+  # ---------------------------------------------------------------------------
+  # (16) Lens-9 cycle-4 wire-tier default: only "InProgress" renders 202. Any
+  # other status is terminal (Cancelled, Failed, Succeeded, unknown
+  # vocabulary) and must render 200 — a seeded "Cancelled" record polled as
+  # 202 forever was the pre-fix wedge face (default-terminal, no wedge).
+  # ---------------------------------------------------------------------------
+  test "seeded Cancelled terminal renders 200, not 202-forever (default-terminal wire)" do
+    cancelled_id = "cancelled00000000000"
+
+    Store.put(:smalt_operations, cancelled_id, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{cancelled_id}",
+      "name" => cancelled_id,
+      "status" => "Cancelled",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "endTime" => nil,
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+    })
+
+    poll = conn(:get, "/subscriptions/#{@sub}/operations/#{cancelled_id}") |> call()
+    assert poll.status == 200
+    assert %{"status" => "Cancelled"} = Jason.decode!(poll.resp_body)
+
+    # The record is byte-stable: the wire tier does not mutate foreign
+    # terminal vocabulary, it renders it.
+    assert {:ok, %{"status" => "Cancelled"}} = Store.get(:smalt_operations, cancelled_id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # (17) Lens-9 cycle-5 owner-check bypass face: an incomplete record missing
+  # its "id" matched the old `other -> other` fall-through, so a FOREIGN
+  # subscription poll received the record (200) instead of 404 — the sub
+  # check only ran when the id parsed. Fixed to deny-by-default: a record
+  # that does not prove ownership is never returned across a subscription-
+  # scoped poll.
+  # ---------------------------------------------------------------------------
+  test "record missing id is never leaked to a foreign-subscription poll (deny-by-default)" do
+    no_id = "noid0000000000000000"
+
+    Store.put(:smalt_operations, no_id, %{
+      "name" => no_id,
+      "status" => "InProgress",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+    })
+
+    foreign = conn(:get, "/subscriptions/99999999-9999-9999-9999-999999999999/operations/#{no_id}") |> call()
+    assert foreign.status == 404
+    assert %{"error" => %{"code" => "OperationNotFound"}} = Jason.decode!(foreign.resp_body)
+
+    # The record proves no ownership (no parsable sub-scoped id), so it is
+    # wire-invisible for EVERY caller — the owner included. It still reached
+    # its persisted Failed terminal in the store via the refused polls.
+    owner = conn(:get, "/subscriptions/#{@sub}/operations/#{no_id}") |> call()
+    assert owner.status == 404
+    assert {:ok, %{"status" => "Failed"}} = Store.get(:smalt_operations, no_id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # (18) Lens-9 cycle-6 crash face: a record with MALFORMED scheduling fields
+  # (non-integer startedAtMs) matched the naive scheduling clause and raised
+  # ArithmeticError on every poll — a wire 500-forever face. Fixed with
+  # integer guards: malformed types route to the typed Failed terminal, so a
+  # poll never 500s.
+  # ---------------------------------------------------------------------------
+  test "record with malformed scheduling fields flips to Failed instead of crashing the poll" do
+    bad_type = "badtype00000000000000"
+
+    Store.put(:smalt_operations, bad_type, %{
+      "id" => "/subscriptions/#{@sub}/operations/#{bad_type}",
+      "name" => bad_type,
+      "status" => "InProgress",
+      "startTime" => "2026-01-01T00:00:00Z",
+      "endTime" => nil,
+      "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing",
+      "startedAtMs" => "not-a-number",
+      "delayMs" => 20
+    })
+
+    assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
+             LRO.get_op(bad_type)
+
+    # Wire tier: 200 Failed, never a 500.
+    poll = conn(:get, "/subscriptions/#{@sub}/operations/#{bad_type}") |> call()
+    assert poll.status == 200
+    assert %{"status" => "Failed"} = Jason.decode!(poll.resp_body)
+
+    assert {:ok, %{"status" => "Failed"}} = Store.get(:smalt_operations, bad_type)
+  end
+
+  # ---------------------------------------------------------------------------
+  # (19) Lens-9 cycle-7 config contract: a non-integer :lro_delay_ms used to
+  # mint records whose delayMs fails the integer guards, so EVERY minted op
+  # routed to the incomplete-record Failed terminal at first poll — silent
+  # fleet-wide failure. start_op/1 now fails closed (ArgumentError at mint).
+  # ---------------------------------------------------------------------------
+  test "non-integer :lro_delay_ms fails closed at mint (ArgumentError), never mints a doomed op" do
+    Application.put_env(:smalt, :lro_delay_ms, "20")
+
+    assert_raise ArgumentError, ~r/:lro_delay_ms must be an integer/, fn ->
+      LRO.start_op("/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/cfg-probe")
+    end
+
+    # No doomed record was minted.
+    assert Store.list(:smalt_operations) == []
+
+    Application.put_env(:smalt, :lro_delay_ms, 20)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Helpers
+
+  # ---------------------------------------------------------------------------
+  # (20) Lens-10 cycle-2: a record whose "status" member is MISSING or not a
+  # binary can only come from outside the mint path (start_op/1 and
+  # evaluate/2 always write a binary status). Before the fix it sat at rest
+  # forever — never evaluated, polling 200 with NO status member — the mirror
+  # of the lens-8 livelock for the missing-status shape (measured). It must
+  # fail closed: persisted terminal Failed with the typed error member, wire
+  # 200 with status Failed, sticky across polls, valid-scheduling-field and
+  # no-scheduling-field variants both covered.
+  # ---------------------------------------------------------------------------
+  test "status-less record fails closed to persisted Failed terminal (missing-status face)" do
+    for seed <- [
+          # no status at all, valid integer scheduling fields (would previously
+          # ride the scheduling clause during its delay window)
+          %{"startedAtMs" => System.system_time(:millisecond) + 60_000, "delayMs" => 30_000},
+          # no status, no scheduling fields
+          %{},
+          # non-binary status (no in-codebase writer produces this)
+          %{"status" => 123}
+        ] do
+      id = "nostatus" <> unique()
+
+      Store.put(:smalt_operations, id, Map.merge(seed, %{
+        "id" => "/subscriptions/#{@sub}/operations/#{id}",
+        "name" => id,
+        "startTime" => "2026-01-01T00:00:00Z",
+        "endTime" => nil,
+        "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+      }))
+
+      assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
+               LRO.get_op(id)
+
+      # Persisted terminal at raw read (F7 standard), sticky on re-poll.
+      assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
+               Store.get(:smalt_operations, id)
+
+      poll = conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
+      assert poll.status == 200
+      assert %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}} =
+               Jason.decode!(poll.resp_body)
+    end
+  end
+
+
+  # ---------------------------------------------------------------------------
+  # (21) Lens-10 cycle-3: a NON-MAP record under an operations key (only
+  # reachable via a direct external write) previously crashed the poll with
+  # BadMapError — a wire 500-forever crash face (measured), same class as the
+  # lens-9 cycle-6 ArithmeticError face. It must fail closed: the store
+  # converges to the typed Failed terminal, and the terminal's absent "id"
+  # makes the subscription-scoped poll 404 (deny-by-default, fence (17)),
+  # never a 500.
+  # ---------------------------------------------------------------------------
+  test "non-map record fails closed, store converges terminal, poll 404s (never 500)" do
+    for garbage <- [["garbage"], 5, "a-string", nil] do
+      id = "nonmap" <> unique()
+
+      Store.put(:smalt_operations, id, garbage)
+
+      assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
+               LRO.get_op(id)
+
+      # Store converged to the terminal (raw read), keyed under the poll key.
+      assert {:ok, %{"status" => "Failed"}} = Store.get(:smalt_operations, id)
+
+      # Wire: 404 deny-by-default (terminal has no well-formed id), never 500.
+      poll = conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
+      assert poll.status == 404
+      assert %{"error" => %{"code" => "OperationNotFound"}} = Jason.decode!(poll.resp_body)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+
+
+  # ---------------------------------------------------------------------------
+  # (22) Lens-10 cycle-4: concurrent lazy-poll race. 24 concurrent wire polls
+  # of one elapsed InProgress op must all render 200 with the SAME terminal
+  # body, and the store must converge to ONE persisted terminal (last-put
+  # wins is fine — every writer writes a terminal of the same vocabulary).
+  # Measured benign pre-fence; this pin keeps the race from regressing into
+  # a mixed-vocabulary terminal (Succeeded/Failed flip-flop).
+  # ---------------------------------------------------------------------------
+  test "24 concurrent polls of one elapsed op: all 200, one terminal body, store converges" do
+    op = LRO.start_op("/subscriptions/#{@sub}/resourceGroups/race-rg/providers/Microsoft.Storage/storageAccounts/raceacct")
+    id = op["name"]
+    Process.sleep(60)
+
+    parent = self()
+    Enum.each(1..24, fn _ ->
+      spawn(fn ->
+        c = conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
+        send(parent, {:r, c.status, c.resp_body})
+      end)
+    end)
+
+    bodies =
+      for _ <- 1..24 do
+        receive do
+          {:r, s, b} -> {s, b}
+        after
+          10_000 -> flunk("concurrent poll wire face")
+        end
+      end
+
+    assert Enum.frequencies(Enum.map(bodies, &elem(&1, 0))) == %{200 => 24}
+    assert Enum.uniq(Enum.map(bodies, &elem(&1, 1))) |> length() == 1
+    assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, id)
+  end
 
   defp unique, do: inspect(make_ref()) |> String.replace(~r/[^0-9a-zA-Z]/, "")
 

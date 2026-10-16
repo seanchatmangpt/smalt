@@ -35,7 +35,7 @@ defmodule Smalt.DataPlane.BlobServiceTest do
   @account "acc1"
 
   setup do
-    if Process.whereis(Smalt.Store) == nil, do: SmaltTest.Lifecycle.restore_app()
+    SmaltTest.Lifecycle.ensure_store_up()
     Store.clear()
     BlobStorage.ensure_policy_table()
     :ets.delete_all_objects(:smalt_blob_policy)

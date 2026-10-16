@@ -252,6 +252,31 @@ defmodule Smalt.AdmissionProjectionTest do
     File.rm_rf!(dir)
   end
 
+  # Lens-5 cycle 4: a valid-JSON NON-MAP ledger line (array/string) through
+  # the producer boundary previously crashed from_store out of Access on
+  # `& &1["id"]`. Refused typed on the malformed-ledger axis, never a crash.
+  test "from_store fuzz: non-map JSONL line refuses typed, never crashes" do
+    dir = Path.join(System.tmp_dir!(), "smalt-adm-nonmap-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "deviations.jsonl")
+
+    rec = %{
+      "id" => "d1",
+      "referenceTraceId" => "r",
+      "candidateTraceId" => "c",
+      "deviatingMove" => "m",
+      "timestamp" => "t"
+    }
+
+    File.write!(path, Jason.encode!(rec) <> "\n[1,2]\n")
+
+    assert_raise ArgumentError, ~r/malformed_ledger_record/, fn ->
+      Admission.from_store(path)
+    end
+
+    File.rm_rf!(dir)
+  end
+
   # Lens-4 cycle 1: this test was order-dependent — Telemetry.dump() is a
   # CUMULATIVE global counter while Admission.counts() is reset per test, so
   # `counts == dump_sum` held only when no earlier test in the shuffled run
@@ -259,7 +284,15 @@ defmodule Smalt.AdmissionProjectionTest do
   # modules changed the shuffle). Compare deltas instead.
   defp telemetry_total(dump, event) do
     dump
-    |> Enum.filter(fn {{name, _meta}, _n} -> name == [:smalt, event] end)
+    |> Enum.filter(fn
+      # Enum over the dump map yields {key, count}; smalt-native keys are
+      # {[:smalt, event], metadata} 2-tuples.
+      {{[:smalt, ^event], _meta}, _n} -> true
+      # Bandit keys are 3-tuples {:bandit_request_stop, route, status} (route/
+      # status may be nil) or the 2-tuple {:bandit_request_stop, :error} — not
+      # {name, meta} pairs. Catch-all, never a FunctionClauseError.
+      _ -> false
+    end)
     |> Enum.map(fn {_k, n} -> n end)
     |> Enum.sum()
   end

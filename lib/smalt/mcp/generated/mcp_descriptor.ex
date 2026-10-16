@@ -24,9 +24,9 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
-    "sb.peek" => %{
-      name: "Service Bus peek",
-      description: "Peek messages from a Service Bus queue without locking or completing them.",
+    "blob.list" => %{
+      name: "Blob listing",
+      description: "Content-free metadata listing of blobs in one storage container.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -45,10 +45,31 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "doctor.summary" => %{
+      name: "Doctor summary",
+      description:
+        "Substrate health summary: supervisor children, store and cosmos readiness, listener ports.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "kv.get" => %{
       name: "Key Vault key get",
       description:
         "Public record of one vault key (never key material) from the vault key table.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "sb.peek" => %{
+      name: "Service Bus peek",
+      description: "Peek messages from a Service Bus queue without locking or completing them.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -71,27 +92,6 @@ defmodule Smalt.Mcp.Descriptor do
       name: "Substrate status",
       description:
         "Liveness summary of the substrate: store, supervisor, listeners, ports, version.",
-      observation_scope: :read_only,
-      mutation_scope: :none,
-      requires_authority: false,
-      reversible: true,
-      consequence: :observe,
-      receipt_semantics: :logged
-    },
-    "doctor.summary" => %{
-      name: "Doctor summary",
-      description:
-        "Substrate health summary: supervisor children, store and cosmos readiness, listener ports.",
-      observation_scope: :read_only,
-      mutation_scope: :none,
-      requires_authority: false,
-      reversible: true,
-      consequence: :observe,
-      receipt_semantics: :logged
-    },
-    "blob.list" => %{
-      name: "Blob listing",
-      description: "Content-free metadata listing of blobs in one storage container.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,

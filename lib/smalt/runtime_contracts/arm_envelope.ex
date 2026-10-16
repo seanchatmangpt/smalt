@@ -37,12 +37,6 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
   def plane, do: :control_plane
 
   @impl true
-  def consumer, do: "Smalt.ArmGateway.Router"
-
-  @impl true
-  def source_pack, do: "ash-runtime-integration-contract-pack"
-
-  @impl true
   def check do
     Support.contract(:arm_envelope, [
       {:error_envelope_json_charset, fn -> check_error_envelope() end},

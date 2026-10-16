@@ -276,9 +276,7 @@ defmodule Smalt.Amqp.ManagementRpcTest do
 
   describe "com.microsoft:update-disposition (real collaborators)" do
     setup do
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
+      SmaltTest.Lifecycle.ensure_store_up()
 
       for table <- [:smalt_sb_queues, :smalt_sb_messages, :smalt_sb_locks] do
         if :ets.info(table) != :undefined, do: :ets.delete_all_objects(table)
@@ -366,6 +364,183 @@ defmodule Smalt.Amqp.ManagementRpcTest do
         )
 
       assert resp.status_code == 410
+    end
+  end
+
+  # ===========================================================================
+  # com.microsoft:receive-by-sequence-number (V261014-08 task 08-2)
+  # ===========================================================================
+
+  describe "com.microsoft:receive-by-sequence-number (real collaborators)" do
+    setup do
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      for table <- [:smalt_sb_queues, :smalt_sb_messages, :smalt_sb_locks] do
+        if :ets.info(table) != :undefined, do: :ets.delete_all_objects(table)
+      end
+
+      :ok
+    end
+
+    defp deferred_message(queue) do
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "defer-body")
+      assert {:ok, %{seq: seq}, _lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      assert :ok = Smalt.Amqp.QueueStore.defer(queue, seq)
+      seq
+    end
+
+    test "200 re-locks a deferred message and it completes like a live delivery" do
+      queue = "rbsn-#{System.unique_integer([:positive])}"
+      seq = deferred_message(queue)
+
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:receive-by-sequence-number", body: %{"queue" => queue, "sequence-numbers" => [seq]}},
+          %{now: @now}
+        )
+
+      assert %{status_code: 200, body: %{"messages" => [envelope]}} = resp
+      assert envelope["sequence-number"] == seq
+      assert envelope["message"] == "defer-body"
+
+      # re-locked: a second receive-by-seq for the same seq is no longer deferred
+      resp2 =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:receive-by-sequence-number", body: %{"queue" => queue, "sequence-numbers" => [seq]}},
+          %{now: @now}
+        )
+
+      assert resp2.status_code == 410
+      assert resp2.status_description == "MESSAGE_NOT_DEFERRED"
+
+      # and it settles like a live delivery
+      assert :ok = Smalt.Amqp.QueueStore.complete(queue, seq)
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {queue, seq})
+    end
+
+    test "410 MESSAGE_NOT_DEFERRED batch-atomic when one sequence is not deferred" do
+      queue = "rbsn-#{System.unique_integer([:positive])}"
+      seq1 = deferred_message(queue)
+      seq2 = deferred_message(queue)
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "live")
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:receive-by-sequence-number",
+            body: %{"queue" => queue, "sequence-numbers" => [seq1, seq2, seq2 + 1]}
+          },
+          %{now: @now}
+        )
+
+      assert %{status_code: 410, status_description: "MESSAGE_NOT_DEFERRED"} = resp
+
+      # atomic: neither deferred message was locked by the failed batch
+      assert {:ok, %{state: :deferred}} = Smalt.Store.get(:smalt_sb_messages, {queue, seq1})
+      assert {:ok, %{state: :deferred}} = Smalt.Store.get(:smalt_sb_messages, {queue, seq2})
+    end
+
+    test "400 SEQUENCE_NUMBERS_REQUIRED on blank or malformed sequence list" do
+      queue = "rbsn-#{System.unique_integer([:positive])}"
+
+      for body <- [%{"queue" => queue, "sequence-numbers" => []}, %{"queue" => queue, "sequence-numbers" => ["x"]}] do
+        resp = ManagementRpc.handle(%{operation: "com.microsoft:receive-by-sequence-number", body: body}, %{now: @now})
+        assert %{status_code: 400, status_description: "SEQUENCE_NUMBERS_REQUIRED"} = resp
+      end
+    end
+
+    test "accepts symbol operation form and AMQP array-of-long body" do
+      queue = "rbsn-#{System.unique_integer([:positive])}"
+      seq = deferred_message(queue)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: {:symbol, "com.microsoft:receive-by-sequence-number"},
+            body: %{"queue" => queue, "sequence-numbers" => {:array, [seq]}}
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 200
+    end
+  end
+
+  # ===========================================================================
+  # update-disposition "suspended" with dead-letter-properties (V261014-08 08-3)
+  # ===========================================================================
+
+  describe "suspended disposition with dead-letter-properties (real collaborators)" do
+    setup do
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      for table <- [:smalt_sb_queues, :smalt_sb_messages, :smalt_sb_locks] do
+        if :ets.info(table) != :undefined, do: :ets.delete_all_objects(table)
+      end
+
+      :ok
+    end
+
+    test "custom dead-letter-properties surface on DLQ application properties" do
+      queue = "dlqp-#{System.unique_integer([:positive])}"
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "dlq-body")
+      assert {:ok, %{seq: seq}, lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      raw = Smalt.Amqp.LockManager.token_to_raw(lock.lock_token)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:update-disposition",
+            body: %{
+              "lock-tokens" => [{:uuid, raw}],
+              "disposition-status" => "suspended",
+              "deadletter-reason" => "COURT_REJECTED",
+              "deadletter-description" => "local-test",
+              "dead-letter-properties" => %{"CourtId" => "c-42", "RetryCount" => 3}
+            },
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 200
+
+      assert {:ok, dlq_msg} = Smalt.Store.get(:smalt_sb_messages, {Smalt.Amqp.QueueStore.deadletter_queue(queue), 1})
+      assert dlq_msg.app_props["DeadLetterReason"] == "COURT_REJECTED"
+      assert dlq_msg.app_props["DeadLetterErrorDescription"] == "local-test"
+      assert dlq_msg.app_props["CourtId"] == "c-42"
+      assert dlq_msg.app_props["RetryCount"] == 3
+    end
+
+    test "absent dead-letter-properties keeps previous behavior" do
+      queue = "dlqp-#{System.unique_integer([:positive])}"
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "dlq-body")
+      assert {:ok, %{seq: seq}, lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      raw = Smalt.Amqp.LockManager.token_to_raw(lock.lock_token)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:update-disposition",
+            body: %{
+              "lock-tokens" => [{:uuid, raw}],
+              "disposition-status" => "suspended",
+              "deadletter-reason" => "R"
+            },
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert resp.status_code == 200
+
+      assert {:ok, dlq_msg} = Smalt.Store.get(:smalt_sb_messages, {Smalt.Amqp.QueueStore.deadletter_queue(queue), 1})
+      assert dlq_msg.app_props["DeadLetterReason"] == "R"
+      assert dlq_msg.app_props["CourtId"] == nil
     end
   end
 end

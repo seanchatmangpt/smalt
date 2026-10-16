@@ -1,6 +1,7 @@
 # The directory Mix will write compiled artifacts to (including multi-lane builds)
 /_build/
 /_build-*/
+/_build_*
 
 # Compiled BEAM bytecode
 *.beam
@@ -81,3 +82,4 @@ test/sdk-full/node_modules/
 
 # Mutation-probe leftovers (sed/python probe scratch)
 *.mut
+.venv*/

@@ -179,8 +179,14 @@ defmodule Smalt.Mcp.Router do
   # Tool registry: generated descriptor -> MCP tool descriptors
   # ---------------------------------------------------------------------------
 
+  # Canonical wire order (capability_id-sorted) is enforced HERE, not inherited
+  # from the generated descriptor's map-literal order — so tools/list stays
+  # deterministic even if the upstream template canonicalization (lens-7) or
+  # the descriptor file itself ever regresses. Order-independence by
+  # construction at the wire tier, per the lens-7 ORDER-BY root cause.
   defp tools do
     Smalt.Mcp.Descriptor.capabilities()
+    |> Enum.sort_by(fn {id, _meta} -> id end)
     |> Enum.map(fn {id, meta} ->
       %{
         "name" => id,
@@ -326,25 +332,20 @@ defmodule Smalt.Mcp.Router do
   defp invoke("cosmos.query", args) do
     case args do
       %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
-        headers =
-          case args["partition_key"] do
-            nil -> %{}
-            pk when is_binary(pk) -> %{Smalt.DataPlane.PartitionKey.header_name() => partition_key_header(pk)}
-            _other -> %{}
+        with {:ok, headers} <- partition_key_headers(args["partition_key"]) do
+          case Smalt.DataPlane.Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, headers) do
+            {:ok, 200, _headers, body} ->
+              {:ok, body}
+
+            {:ok, status, _headers, body} ->
+              {:refusal, "COSMOS_ERROR", "cosmos.query returned #{status}: #{inspect(body)}"}
+
+            {:error, :store_not_ready} ->
+              {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
+
+            other ->
+              {:refusal, @internal_code, "cosmos.query unexpected: #{inspect(other)}"}
           end
-
-        case Smalt.DataPlane.Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, headers) do
-          {:ok, 200, _headers, body} ->
-            {:ok, body}
-
-          {:ok, status, _headers, body} ->
-            {:refusal, "COSMOS_ERROR", "cosmos.query returned #{status}: #{inspect(body)}"}
-
-          {:error, :store_not_ready} ->
-            {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
-
-          other ->
-            {:refusal, @internal_code, "cosmos.query unexpected: #{inspect(other)}"}
         end
 
       _ ->
@@ -427,6 +428,19 @@ defmodule Smalt.Mcp.Router do
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}
 
+  # partition_key is optional (nil = no header) but MUST be binary when present:
+  # the previous `_other -> %{}` silent-coercion treated integer/list/map keys
+  # as absent, yielding a full-table scan instead of typed INVALID_PARAMS.
+  # (Kept AFTER the invoke/2 clause group so invoke/2 stays contiguous — see
+  # the message_count_arg/1 note below.)
+  defp partition_key_headers(nil), do: {:ok, %{}}
+
+  defp partition_key_headers(pk) when is_binary(pk),
+    do: {:ok, %{Smalt.DataPlane.PartitionKey.header_name() => partition_key_header(pk)}}
+
+  defp partition_key_headers(_other),
+    do: {:refusal, @invalid_params_code, "refused: partition_key must be a string"}
+
   # message_count is schema-bounded (integer 1..100): out-of-schema values are
   # refused at dispatch, never forwarded to the substrate's silent clamp.
   # (Kept AFTER the invoke/2 clause group so invoke/2 stays contiguous — an
@@ -481,7 +495,10 @@ defmodule Smalt.Mcp.Router do
         |> Enum.map(fn type -> {type, Smalt.Registry.shape_for(type)} end)
         |> Enum.reject(fn {_t, s} -> is_nil(s) end)
         |> Map.new(),
-      "mcp_tools" => Enum.map(Smalt.Mcp.Descriptor.capabilities(), fn {id, _} -> id end)
+      "mcp_tools" =>
+        Smalt.Mcp.Descriptor.capabilities()
+        |> Enum.map(fn {id, _} -> id end)
+        |> Enum.sort()
     }
   end
 

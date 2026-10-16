@@ -174,5 +174,80 @@ defmodule Smalt.Amqp.LockManagerTest do
       # expired message-lock token GC'd
       assert :error = LockManager.get(orphan.lock_token)
     end
+
+    # V261014-04 F2: renew-by-token on a session lock must renew the mirrored
+    # {queue, session_id} record too — the stale :smalt_sb_sessions locked_until
+    # caused spurious stale-expiry reclaims / double acquires.
+    test "renew by token updates BOTH :smalt_sb_locks and :smalt_sb_sessions (F2)" do
+      {:ok, lock} = LockManager.session_acquire("q", "s1", now_ms: 1_000, duration_ms: 1_000)
+
+      assert {:ok, renewed} = LockManager.renew(lock.lock_token, 1_500)
+      assert renewed.locked_until == 2_500
+
+      assert {:ok, token_row} = LockManager.get(lock.lock_token)
+      assert token_row.locked_until == 2_500
+
+      assert {:ok, session_row} = Smalt.Store.get(:smalt_sb_sessions, {"q", "s1"})
+      assert session_row.locked_until == 2_500
+    end
+
+    test "renew by token on a pure message lock creates no session rows (F2)" do
+      {:ok, lock} = LockManager.acquire("q", 1, now_ms: 1_000, duration_ms: 1_000)
+
+      assert {:ok, renewed} = LockManager.renew(lock.lock_token, 1_500)
+      assert renewed.locked_until == 2_500
+
+      # no session row materialized for the message lock's queue
+      assert :error = Smalt.Store.get(:smalt_sb_sessions, {"q", nil})
+      assert :ets.info(:smalt_sb_sessions, :size) == 0
+    end
+
+    # V261014-04 F3: release-vs-claim race court. Deterministic: both racers
+    # inject now_ms; no sleeps. Post-state must be one of the two lawful
+    # linearizations — {lock held by B intact} or {lock released, B loses} —
+    # never a stale/held-by-A record or B's fresh lock silently deleted.
+    test "racing session_release vs session_acquire yields only lawful post-states (F3)" do
+      queue = "race-q-#{System.unique_integer([:positive])}"
+
+      for phase <- 1..50 do
+        Enum.each(@tables, &:ets.delete_all_objects/1)
+
+        {:ok, a_lock} = LockManager.session_acquire(queue, "s1", now_ms: 1_000, duration_ms: 5_000)
+
+        releaser =
+          Task.async(fn -> LockManager.session_release(queue, "s1") end)
+
+        claimer =
+          Task.async(fn -> LockManager.session_acquire(queue, "s1", now_ms: 1_100, duration_ms: 5_000) end)
+
+        assert :ok = Task.await(releaser)
+        claim_result = Task.await(claimer)
+
+        post_session = Smalt.Store.get(:smalt_sb_sessions, {queue, "s1"})
+        post_token = LockManager.get(a_lock.lock_token)
+
+        lawful? =
+          case claim_result do
+            # B won the claim: B's lock must be intact in the sessions table
+            # (its own fresh token), and A's token must be gone.
+            {:ok, b_lock} ->
+              case post_session do
+                {:ok, ^b_lock} -> post_token == :error and b_lock.lock_token != a_lock.lock_token
+                _ -> false
+              end
+
+            # release won the serialization: B lost, nothing left behind
+            {:error, :already_locked} ->
+              post_session == :error and post_token == :error
+
+            _ ->
+              false
+          end
+
+        assert lawful?,
+               "phase #{phase}: unlawful post-state " <>
+                 inspect(claim: claim_result, session: post_session, a_token: post_token)
+      end
+    end
   end
 end

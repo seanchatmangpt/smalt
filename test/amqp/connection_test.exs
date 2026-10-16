@@ -28,9 +28,7 @@ defmodule Smalt.Amqp.ConnectionTest do
   setup do
     Application.put_env(:smalt, :sb_shared_key, @test_key)
 
-    if GenServer.whereis(Smalt.Store) == nil do
-      start_supervised!(Smalt.Store)
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     for table <- [:smalt_sb_queues, :smalt_sb_messages, :smalt_sb_locks, :smalt_sb_tokens] do
       if :ets.info(table) != :undefined, do: :ets.delete_all_objects(table)
@@ -515,6 +513,100 @@ defmodule Smalt.Amqp.ConnectionTest do
              Enum.find(sections, &match?({:body_amqp_value, _}, &1))
 
     assert exp_ms > System.system_time(:millisecond)
+  end
+
+  # ===========================================================================
+  # Outbound encode-raise containment (lens-4 cycle-3 falsifier)
+  # ===========================================================================
+
+  test "unencodable outbound app-props: typed close, no crash, lock released", ctx do
+    client = ctx.client
+    queue = ctx.queue
+    :ok = handshake(client)
+
+    # store-collaborator injection: app-props value no codec clause covers
+    assert {:ok, _} =
+             Smalt.Amqp.QueueStore.enqueue(queue, "m", app_props: %{"bad" => {1, 2}})
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}})
+      )
+
+    assert %{performative: %{performative: :attach}} = recv_frame(client)
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{link_credit: 5}}))
+
+    # the connection must NOT crash: the close frame arrives on the same
+    # socket, and the locked message is back to :available (reclaimable)
+    assert %{performative: %{performative: :close}} = recv_until(client, :close)
+
+    assert {:ok, %{state: state}} =
+             Smalt.Store.get(:smalt_sb_messages, {queue, 1}) |> then(fn
+               {:ok, m} -> {:ok, m}
+               :error -> {:error, :gone}
+             end)
+
+    # Exact state, not an allow-list: the lock-leak mutation (dropping the
+    # QueueStore.release before error_close) leaves :locked and must be
+    # killed by this assertion. Release is synchronous before the close
+    # frame is written, so :available is deterministic on close receipt.
+    assert state == :available
+    Process.sleep(50)
+
+    # connection process alive: a fresh begin on the same socket still answers
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 100, outgoing_window: 100}}))
+  end
+
+  # ===========================================================================
+  # Peer max_frame_size clamp (lens-4 cycle-3 mutation falsifier)
+  # ===========================================================================
+
+  test "peer advertising >1MB max_frame_size still gets frames split at the decode cap", ctx do
+    client = ctx.client
+    queue = ctx.queue
+    :ok = handshake(client)
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:open, %{container_id: "big-peer", max_frame_size: 16_000_000, channel_max: 65_535}})
+      )
+
+    assert %{performative: %{performative: :open}} = recv_frame(client)
+
+    :ok =
+      send_bytes(client, enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000}}))
+
+    assert %{performative: %{performative: :begin}} = recv_frame(client)
+
+    # a 1.5MB body exceeds OUR decode cap (1_048_576) but not the peer's
+    # advertised 16MB: with the clamp active the broker MUST split (more=true
+    # on the first transfer, first frame <= cap); with the clamp mutated to
+    # identity the single 1.5MB frame goes out unsplit and this fails.
+    :ok = Smalt.Amqp.QueueStore.enqueue(queue, :crypto.strong_rand_bytes(1_500_000))
+
+    :ok =
+      send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}}))
+
+    assert %{performative: %{performative: :attach}} = recv_frame(client)
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{handle: 1, link_credit: 1}}))
+
+    # raw frame size off the wire (recv_until skips flow frames silently, so
+    # read the header explicitly for the size bound)
+    {:ok, hdr} =
+      case :gen_tcp.recv(client, 8, 2000) do
+        {:ok, h} -> {:ok, h}
+        {:error, :closed} -> flunk("connection closed before transfer")
+      end
+
+    <<size::unsigned-integer-size(32), _doff, _type, _ch::16>> = hdr
+    body = elem(recv_exact(client, size - 8), 1)
+    assert %{performative: %{performative: :transfer, more: true}} = FrameCodec.decode_frame(hdr <> body)
+
+    # clamp bound: frame never exceeds our local decode cap even though the
+    # peer advertised 16MB
+    assert size <= 1_048_576
   end
 
   defp recv_many(client, n, acc \\ [])

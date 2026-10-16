@@ -58,12 +58,13 @@ mix test test/ocel_conformance_test.exs → 6 tests, 0 failures
 ```
 
 Test subject: a real seeded `events.ndjson` (res-1 = full happy path, res-2 = broken
-`arm.resource.transition → blob.put → blob.custody.transition` trace) and a real
-`deviations.jsonl` written by the real `DeviationAdmission.admit/2` on the real
-`Conformance.check_trace/2` verdict (fitness 0.833..., first deviation
-`blob.put/missing_tokens`, status `observed`). The conformance-false deviation reads back
-through the Ash surface as an evidence record with the real record id, real trace, and real
-fitness.
+2-event trace `[arm.resource.transition, blob.custody.transition]` — blob.put absent) and a
+real `deviations.jsonl` written by the real `DeviationAdmission.admit/2` over the real
+`Conformance.check_trace/2` verdict on that fixture. res-2's fitness is exactly
+`0.5833333333333334` with 2 deviations; the first (asserted) deviation is
+`blob.custody.transition/missing_tokens`, status `observed`. The conformance-false deviation
+reads back through the Ash surface as an evidence record with the real record id, real trace,
+and real fitness.
 
 ## Falsifier
 
@@ -71,6 +72,9 @@ Inject a nonconforming trace into the seeded NDJSON (e.g. skip a step): its Fitn
 must flip to `conforms: false` with `deviation_count > 0`, and (after a real
 `DeviationAdmission.admit/2`) a new evidence record must appear on the Ash surface. If a
 conformance-false trace still reads `conforms: true` through Ash, this receipt is refuted.
+
+Re-verified v26.10.14 (V261014-16): gate re-run green; test-subject paragraph corrected to
+the actual fixture (2-event trace, fitness 0.5833333333333334).
 
 ## Standing
 

@@ -251,9 +251,7 @@ defmodule EgressWiringTest do
   # ---------------------------------------------------------------------------
 
   defp ensure_store do
-    if GenServer.whereis(Smalt.Store) == nil do
-      {:ok, _} = Smalt.Store.start_link([])
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end

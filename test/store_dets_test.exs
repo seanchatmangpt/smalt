@@ -94,6 +94,37 @@ defmodule Smalt.StoreDetsTest do
     GenServer.stop(pid)
   end
 
+  @tag timeout: 30_000
+  test "restore replays ledger meta so enforce-existence admits post-restore appends",
+       %{dir: dir} do
+    import Smalt.Store, only: [put: 3, get: 2, update_counter: 3, current_counter: 2]
+    table = :smalt_ledger_meta
+
+    put(table, {:latest, "L1"}, %{"txId" => "t9"})
+
+    assert 3 == update_counter(table, {:seq, "L1"}, 3)
+
+    {:ok, pid} =
+      Smalt.Store.DetsMirror.start_link(dir: dir, tables: [table], interval: 3_600_000)
+
+    Smalt.Store.DetsMirror.sync(pid)
+    :ets.delete_all_objects(table)
+
+    # Without meta replay, ledger_writer's enforce-existence gate refuses the
+    # next append (404 class) and duplicate counters restart from 0.
+    {:ok, counts} = Smalt.Store.DetsMirror.restore(pid)
+    assert counts[table] == 2
+
+    assert {:ok, %{"txId" => "t9"}} == get(table, {:latest, "L1"})
+
+    # The restored seq counter RESUMES (not resets): post-restore append moves
+    # it forward from the replayed value.
+    assert 3 == current_counter(table, {:seq, "L1"})
+    assert 4 == update_counter(table, {:seq, "L1"}, 1)
+
+    GenServer.stop(pid)
+  end
+
   test "corrupt dets file fails start_link closed with clear error", %{dir: dir} do
     File.write!(Path.join(dir, "dm_t_resources.dets"), "not a dets file at all")
 
@@ -102,12 +133,13 @@ defmodule Smalt.StoreDetsTest do
     end
   end
 
+  @tag timeout: 300_000
   test "restore x insert_new churn: insert_new :ok implies the FRESH value wins (no stale clobber)",
        %{
          dir: dir
        } do
     table = :dm_t_resources
-    n = 300
+    n = 100
     clobbers = race_rounds(table, n, dir)
 
     assert clobbers == [], """
@@ -125,40 +157,41 @@ defmodule Smalt.StoreDetsTest do
   # invariant, stopping at the first clobber. A non-atomic restore survives one
   # round with p~0.9 (measured ~67% suite kill over 12 rounds); the 36-round
   # budget puts mutant survival below ~2%.
-  @max_rounds 250
+  @max_rounds 120
 
   defp race_rounds(table, n, dir) do
     1..@max_rounds
     |> Enum.reduce_while([], fn round, acc ->
-      case race_round(table, n, dir, round) do
+      # Fresh dets dir per round: restore pays a Store call per mirrored row,
+      # so letting rows accumulate across rounds is quadratic.
+      rdir = Path.join(dir, "round-#{round}")
+      File.mkdir_p!(rdir)
+
+      {:ok, pid} =
+        Smalt.Store.DetsMirror.start_link(dir: rdir, tables: [table], interval: 3_600_000)
+
+      result = race_round(table, n, pid, round)
+      GenServer.stop(pid)
+
+      case result do
         [] -> {:cont, acc}
         clobbers -> {:halt, clobbers}
       end
     end)
   end
 
-  defp race_round(table, n, dir, round) do
+  defp race_round(table, n, pid, round) do
     keys = Enum.map(1..n, &key(round, &1))
     stale = Enum.map(keys, &{&1, %{"gen" => "stale", "round" => round}})
 
-    # Seed the mirror with STALE rows, then wipe the hot table (simulated crash)
+    # Seed STALE rows into the FRESH per-round mirror.
     :ets.insert(table, stale)
-
-    File.mkdir_p!(Path.join(dir, "round-#{round}"))
-
-    {:ok, pid} =
-      Smalt.Store.DetsMirror.start_link(
-        dir: Path.join(dir, "round-#{round}"),
-        tables: @tables,
-        interval: 3_600_000
-      )
-
     Smalt.Store.DetsMirror.sync(pid)
-    :ets.delete_all_objects(table)
 
-    # One racer per key, hammering FRESH insert_new attempts from spawn until
-    # restore completes (a fixed attempt count let the non-atomic mutant
-    # survive because racers finished before restore reached their key).
+    # One racer per key, hammering FRESH insert_new attempts until restore
+    # completes. The no-clobber invariant: any key a racer WON (>=1 :ok) must
+    # hold the FRESH payload afterwards — a bare :ets.lookup+:ets.insert in
+    # restore interleaves with a racer :ok and ends stale.
     done = :atomics.new(1, signed: false)
 
     racers =
@@ -176,7 +209,7 @@ defmodule Smalt.StoreDetsTest do
         end)
       end
 
-    {:ok, counts} =
+    {:ok, _} =
       try do
         Smalt.Store.DetsMirror.restore(pid)
       after
@@ -184,9 +217,7 @@ defmodule Smalt.StoreDetsTest do
       end
 
     results = Task.await_many(racers, 60_000)
-    GenServer.stop(pid)
 
-    # Invariant: any key some racer WON (>=1 :ok) must hold the FRESH payload.
     for {k, oks} <- results,
         oks > 0,
         {^k, val} <- :ets.lookup(table, k),

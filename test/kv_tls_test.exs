@@ -55,7 +55,12 @@ defmodule KvTlsTest do
 
     {port, opts} = boot_twin(10)
     {:ok, sup} = Supervisor.start_link([{Bandit, opts}], strategy: :one_for_one)
-    :persistent_term.put({__MODULE__, :twin}, %{port: port, opts: opts})
+    # TLS-261014-01 follow-up (lens-8 unblock, disclosed cross-lane fix): the
+    # twin serves the PORT-keyed dev cert (bandit_opts -> ensure_dev_cert(port));
+    # the client pin must be that exact cert, and must track the twin across
+    # heal restarts (restart_twin re-probes a fresh port).
+    {port_cert, _} = Smalt.TLS.dev_cert_paths(port)
+    :persistent_term.put({__MODULE__, :twin}, %{port: port, opts: opts, cert: Path.expand(port_cert)})
     :persistent_term.put({__MODULE__, :twin_sup}, sup)
     wait_twin(port, 50)
 
@@ -67,7 +72,7 @@ defmodule KvTlsTest do
       end
     end)
 
-    [port: port, cert: Path.expand(cert)]
+    [port: port, cert: Path.expand(port_cert)]
   end
 
   # Probe a fresh ephemeral port per attempt; retry on bind collision with a
@@ -116,7 +121,15 @@ defmodule KvTlsTest do
   # -- real-TLS HTTP client ------------------------------------------------------
 
   defp https(ctx, method, path, body \\ nil, headers \\ []) do
-    {:ok, pem} = File.read(ctx.cert)
+    # Pin tracks the live twin (restart_twin re-probes ports); ctx.cert is the
+    # pre-heal fallback.
+    cert_path =
+      case :persistent_term.get({__MODULE__, :twin}, nil) do
+        %{cert: p} when is_binary(p) -> p
+        _ -> ctx.cert
+      end
+
+    {:ok, pem} = File.read(cert_path)
     [{:"Certificate", pinned_der, :not_encrypted}] = :public_key.pem_decode(pem)
     pinned_cert = :public_key.pkix_decode_cert(pinned_der, :otp)
     match_fun = :public_key.pkix_verify_hostname_match_fun(:https)
@@ -215,7 +228,8 @@ defmodule KvTlsTest do
 
     {port, opts} = boot_twin(10)
     {:ok, sup} = Supervisor.start_link([{Bandit, opts}], strategy: :one_for_one)
-    :persistent_term.put({__MODULE__, :twin}, %{port: port, opts: opts})
+    {port_cert, _} = Smalt.TLS.dev_cert_paths(port)
+    :persistent_term.put({__MODULE__, :twin}, %{port: port, opts: opts, cert: Path.expand(port_cert)})
     :persistent_term.put({__MODULE__, :twin_sup}, sup)
     wait_twin(port, 50)
   end

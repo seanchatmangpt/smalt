@@ -367,9 +367,7 @@ defmodule Smalt.ArmErrorCorpusTest do
   # started defensively so this file also runs under `mix test --no-start`
   # when the shared tree's application start is blocked by a concurrent lane.
   defp ensure_store do
-    if GenServer.whereis(Smalt.Store) == nil do
-      {:ok, _} = Smalt.Store.start_link([])
-    end
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end

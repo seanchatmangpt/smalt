@@ -35,6 +35,11 @@ defmodule Smalt.Store.DetsMirror do
     :smalt_cosmos_docs,
     :smalt_blobs,
     :smalt_ledger_transactions,
+    # Ledger appends are gated on enforce-existence meta rows ({:latest, L} /
+    # {:seq, L} / {:created, L} in :smalt_ledger_meta); a restore that replays
+    # transactions without meta 404s on the next append and resets duplicate
+    # counters. Mirroring meta makes restore self-consistent for the ledger.
+    :smalt_ledger_meta,
     :smalt_event_messages
   ]
 

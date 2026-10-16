@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Chaos kill-under-load harness (stdlib-only), fail-closed.
 
-Runs steady 20 rps good traffic (ARM 9443 + Cosmos data-plane 8443) against a
+Runs steady 20 rps good traffic (ARM + Cosmos data-plane, private block) against a
 live substrate and injects three functional chaos phases at t=30/60/90s:
 
-  t=30s  listen-queue fill: hold 300 unaccepted connects on :8443 for 10s
+  t=30s  listen-queue fill: hold 300 unaccepted connects on the data plane for 10s
   t=60s  gate pressure: 500 GraphLaw-refusing ARM PUTs (400 InvalidResourceShape)
   t=90s  total failure: SIGKILL the whole substrate beam mid-flight, reboot,
          measure time-to-first-successful-request
@@ -29,10 +29,18 @@ import _substrate
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-ARM_PORT = 9443
-DATA_PORT = 8443
-AMQP_PORT = 5672
-SUB_ID = "chaos-sub"
+# Private six-listener block (DEV_LOOP allocation table; lens-4 cycle 2).
+# The old dev-default boot (9443/8443/5672) collided with the shared dev
+# substrate, and boot_with_retry's `sweep_ports()` would then lsof-sweep +
+# SIGKILL whoever held those dev ports — a live teardown-law violation
+# (typed: kill-anyone-on-my-defaults). On the private block the sweep only
+# ever touches the harness's own assigned ports.
+ARM_PORT = int(os.environ.get("SMALT_CHAOS_ARM_PORT", "39520"))
+ARM_TLS_PORT = int(os.environ.get("SMALT_CHAOS_TLS_PORT", "39521"))
+DATA_PORT = int(os.environ.get("SMALT_CHAOS_EGRESS_PORT", "39522"))
+AMQP_PORT = int(os.environ.get("SMALT_CHAOS_AMQP_PORT", "39523"))
+EVENT_HUBS_PORT = int(os.environ.get("SMALT_CHAOS_EH_PORT", "39524"))
+MCP_PORT = int(os.environ.get("SMALT_CHAOS_MCP_PORT", "39525"))
 API_VERSION = "2021-01-01"
 
 TRAFFIC_RPS = 20.0
@@ -110,8 +118,19 @@ def boot_with_retry(attempts=3):
 def _popen_substrate():
     env = dict(os.environ)
     env["MIX_ENV"] = "dev"
+    # Six-listener scoping (lens-4 cycle 2): put_env BEFORE boot so every
+    # fixed listener lands on the harness's own private block (39520-39525).
+    eval_code = (
+        f'Application.put_env(:smalt, :arm_port, {ARM_PORT}); '
+        f'Application.put_env(:smalt, :egress_port, {DATA_PORT}); '
+        f'Application.put_env(:smalt, :arm_tls_port, {ARM_TLS_PORT}); '
+        f'Application.put_env(:smalt, :amqp_port, {AMQP_PORT}); '
+        f'Application.put_env(:smalt, :event_hubs_port, {EVENT_HUBS_PORT}); '
+        f'Application.put_env(:smalt, :mcp_port, {MCP_PORT}); '
+        'Application.ensure_all_started(:smalt)'
+    )
     return subprocess.Popen(
-        ["mix", "run", "--no-halt"],
+        ["mix", "run", "--no-start", "--no-halt", "--eval", eval_code],
         cwd=REPO,
         env=env,
         stdout=subprocess.DEVNULL,
@@ -182,13 +201,17 @@ def wait_for_port(port, proc, timeout_s=90.0):
 
 
 def sweep_ports():
-    _substrate.kill_substrate(None, ports=(ARM_PORT, DATA_PORT, AMQP_PORT, 5673))
+    _substrate.kill_substrate(None, ports=(ARM_PORT, ARM_TLS_PORT, DATA_PORT,
+                                           AMQP_PORT, EVENT_HUBS_PORT,
+                                           MCP_PORT))
 
 
 def kill_substrate(proc):
     if proc is None:
         return
-    _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, AMQP_PORT, 5673))
+    _substrate.kill_substrate(proc, ports=(ARM_PORT, ARM_TLS_PORT, DATA_PORT,
+                                           AMQP_PORT, EVENT_HUBS_PORT,
+                                           MCP_PORT))
 
 
 def wait_port_free(port, timeout_s=15.0):
@@ -338,7 +361,7 @@ def _wait_until(t_start, target):
 # ---------------------------------------------------------------------------
 
 def phase_flood(results):
-    """Open 300 unaccepted connects to :8443, hold them 10s, release."""
+    """Open 300 unaccepted connects to the data plane, hold them 10s, release."""
     socks = []
     opened = 0
     t0 = time.monotonic()
@@ -561,7 +584,8 @@ def write_receipt(records, table, raw_results, events):
 # ---------------------------------------------------------------------------
 
 def main():
-    for port in (ARM_PORT, DATA_PORT, AMQP_PORT, 5673):
+    for port in (ARM_PORT, ARM_TLS_PORT, DATA_PORT, AMQP_PORT,
+                 EVENT_HUBS_PORT, MCP_PORT):
         if not wait_port_free(port, timeout_s=2.0):
             print(f"[CHAOS] port {port} held by a stray substrate; sweeping")
             sweep_ports()

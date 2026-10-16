@@ -52,11 +52,29 @@ defmodule Smalt.DataPlane.SKR do
   `{:ok, 200, body}` / `{:error, status, body}` tuples for the route handler.
   """
   @spec release(String.t(), Plug.Conn.t()) :: {:ok, 200, map()} | {:error, pos_integer(), map()}
-  def release(name, conn) do
+  def release(name, conn) when is_binary(name) do
     with {:ok, key_record, policy} <- fetch_exportable(name),
          {:ok, claims} <- authorized?(conn) do
       release_material(name, key_record, policy, claims)
     end
+  end
+
+  # Crash-class law (lens-10): the key name is caller-shaped data at this
+  # public API (the route handler always passes a binary path param, but the
+  # API is also called directly). A hostile shape (atom/tuple/integer) must be
+  # a typed refusal — it would otherwise raise inside the HKDF salt or the
+  # version-counter key concatenation AFTER admission (fetch_exportable
+  # succeeds for any Store key term), escaping a public API whose contract is
+  # {:ok,200,_} | {:error,status,map}.
+  def release(_name, _conn), do: {:error, 400, invalid_key_name()}
+
+  defp invalid_key_name do
+    %{
+      "error" => %{
+        "code" => "InvalidParameter",
+        "message" => "key name must be a binary"
+      }
+    }
   end
 
   # ---------------------------------------------------------------------------
@@ -122,17 +140,28 @@ defmodule Smalt.DataPlane.SKR do
 
   # Total (lens-6): get_in/2 raises FunctionClauseError on a non-map
   # intermediate ("x-ms-isolation-tee" => "string"), so nested claim reads go
-  # through a case-guarded traversal.
+  # through a case-guarded traversal. Lens-9: compliance_status is now just
+  # the canonical accessor at the compliance key — ONE traversal on the
+  # surface, zero drift between the two former copies.
   defp compliance_status(claims) do
-    claims["x-ms-compliance-status"] ||
-      case claims["x-ms-isolation-tee"] do
-        %{} = tee -> tee["x-ms-compliance-status"]
-        _ -> nil
-      end
+    claim_value(claims, "x-ms-compliance-status")
   end
 
   defp legacy_compliance_status(conn) do
     conn |> Plug.Conn.get_req_header("x-ms-compliance-status") |> List.first()
+  end
+
+  # Nested MAA form (lens-8): read a claim with top-level precedence, falling
+  # back to the x-ms-isolation-tee object (the real MAA nested form carries
+  # runtime/jwk claims inside the tee). Canonical claim accessor (lens-9) —
+  # ALL nested-capable claim reads on this surface route through it.
+  # Case-guarded, never get_in.
+  defp claim_value(claims, key) do
+    claims[key] ||
+      case claims["x-ms-isolation-tee"] do
+        %{} = tee -> tee[key]
+        _ -> nil
+      end
   end
 
   # ---------------------------------------------------------------------------
@@ -140,9 +169,13 @@ defmodule Smalt.DataPlane.SKR do
   # ---------------------------------------------------------------------------
 
   # jti rides the MAA runtime claims; absent -> allowed (documented dev mode).
+  # Nested MAA form (lens-8): when the claims live inside x-ms-isolation-tee,
+  # runtime is read from the tee with top-level precedence — otherwise a
+  # tee-admitted token's jti never reaches single-use enforcement (replay
+  # bypass, witnessed by the lens-8 wave-3 court).
   defp check_single_use(claims) do
     jti =
-      case claims["x-ms-runtime"] do
+      case claim_value(claims, "x-ms-runtime") do
         %{} = rt -> rt["jti"]
         _ -> nil
       end
@@ -251,7 +284,7 @@ defmodule Smalt.DataPlane.SKR do
   # the attested recipient (RSA-OAEP-256). Without one: plain base64url
   # (documented dev mode).
   defp wrap_to_recipient(claims, material) do
-    case claims[@recipient_claim] do
+    case claim_value(claims, @recipient_claim) do
       nil ->
         {:ok, b64url_encode(material), %{"transport" => "plain", "mode" => "dev"}}
 

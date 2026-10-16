@@ -54,7 +54,7 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     end
   end
 
-  def encode(n) when is_integer(n) and n >= 0 do
+  def encode(n) when is_integer(n) and n >= 0 and n <= 0xFFFF_FFFF_FFFF_FFFF do
     if n == 0 do
       [0x44]
     else
@@ -75,13 +75,21 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     end
   end
 
-  def encode(n) when is_integer(n) do
+  def encode(n) when is_integer(n) and n in -9_223_372_036_854_775_808..9_223_372_036_854_775_807 do
     if n in -128..127 do
       [0x55, <<n::signed-size(8)>>]
     else
       [0x81, <<n::signed-integer-size(64)>>]
     end
   end
+
+  # Integers outside the 64-bit AMQP domain: the documented ArgumentError.
+  # Previously the ulong/int64 clauses matched ANY non-negative/any integer
+  # and the binary constructor silently truncated to the low 64 bits (2**128
+  # encoded as 0x80 + eight zero bytes and decoded to 0 — lens-6 encode-path
+  # differential finding).
+  def encode(n) when is_integer(n),
+    do: raise(ArgumentError, "integer out of AMQP 64-bit range: #{n}")
 
   # --- floating point ---
   def encode(f) when is_float(f), do: [0x82, <<f::float-size(64)>>]
@@ -126,6 +134,12 @@ defmodule Smalt.Amqp.PrimitiveCodec do
   def encode([]), do: [0x45]
 
   def encode(list) when is_list(list) do
+    # is_list/1 is true for improper lists; encoding one previously leaked a
+    # FunctionClauseError out of Enum.map instead of the documented
+    # ArgumentError (lens-6 encode-path differential finding).
+    unless proper_list?(list),
+      do: raise(ArgumentError, "cannot encode improper list as AMQP list: #{inspect(list, limit: 10)}")
+
     body = Enum.map(list, &encode/1)
     count = length(list)
     # wire size covers everything after the size field, including the count field
@@ -216,9 +230,20 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     raise ArgumentError, "cannot encode as AMQP type: #{inspect(other)}"
   end
 
-  defp encode_descriptor(d) when is_integer(d) and d >= 0, do: encode_ulong_descriptor(d)
+  defp encode_descriptor(d) when is_integer(d) and d >= 0 and d <= 0xFFFF_FFFF_FFFF_FFFF,
+    do: encode_ulong_descriptor(d)
   defp encode_descriptor({:symbol, bin}) when is_binary(bin), do: encode({:symbol, bin})
-  defp encode_descriptor(bin) when is_binary(bin), do: encode({:symbol, bin})
+
+  # Plain-binary descriptors used to be accepted (bin -> encoded as symbol,
+  # silently rewriting the term shape — the mirror of the lens-5 decode-side
+  # finding: encode accepted a term shape it could not round-trip). Spec §1.6
+  # allows ulong or symbol only; refused by the catch-all below.
+  #
+  # Out-of-domain descriptor (negative, >64-bit, atom, malformed tuple): the
+  # documented ArgumentError, never a FunctionClauseError leak (lens-6
+  # encode-path differential finding).
+  defp encode_descriptor(other),
+    do: raise(ArgumentError, "invalid AMQP descriptor: #{inspect(other)}")
 
   defp encode_ulong_descriptor(d) do
     if d == 0 do
@@ -234,6 +259,10 @@ defmodule Smalt.Amqp.PrimitiveCodec do
 
   defp constructor_byte([ctor | _]) when is_integer(ctor), do: ctor
   defp constructor_byte(_), do: nil
+
+  defp proper_list?([]), do: true
+  defp proper_list?([_ | t]), do: proper_list?(t)
+  defp proper_list?(_), do: false
 
   # ===========================================================================
   # Decoding
@@ -287,7 +316,13 @@ defmodule Smalt.Amqp.PrimitiveCodec do
   defp decode_typed(0x43, rest), do: {:ok, 0, rest}
   defp decode_typed(0x44, rest), do: {:ok, 0, rest}
 
-  defp decode_typed(0x56, <<b, rest::binary>>), do: {:ok, b == 0x01, rest}
+  # Boolean wire form is 0x00/0x01 only (spec §1.6.8). The previous clause
+  # decoded ANY byte as `b == 0x01`, silently rewriting out-of-domain wire
+  # (0xFF) as `false` — the decode-path twin of the encode-side silent
+  # truncation class (lens-7 finding). Out-of-domain byte now falls through
+  # to the tagged-error catch-all.
+  defp decode_typed(0x56, <<0x00, rest::binary>>), do: {:ok, false, rest}
+  defp decode_typed(0x56, <<0x01, rest::binary>>), do: {:ok, true, rest}
 
   # --- fixed-width numerics ---
   defp decode_typed(0x50, <<n, rest::binary>>), do: {:ok, n, rest}

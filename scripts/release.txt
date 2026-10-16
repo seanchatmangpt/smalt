@@ -1,29 +1,17 @@
-# smalt release notes (lane-owned documentation, 26.10.14)
+# smalt release notes — HISTORICAL LANE RECEIPT (v26.10.14, docs-drift lane)
 
-## mix.exs `releases` block — FOR COORDINATOR TO ADD (this lane does not edit mix.exs)
+**Status: superseded.** The `mix.exs` `releases` block this note proposed has
+LANDED (mix.exs:20-27): `include_executables_for: [:unix]` +
+`strip_beams: [compress: true]`. The `include_executables: [:smalt]` snippet
+below is the historical proposal — the shipped form is
+`include_executables_for: [:unix]` and it supersedes it. The "CI workflow
+(lane 19 owns)" reference below is VOID — no such lane/assignment exists.
 
-mix.exs currently has NO `releases` block; `MIX_ENV=prod mix release` falls back
-to defaults (release name `smalt`, all apps). Add inside `def project do [...]`:
-
-```elixir
-releases: [
-  smalt: [
-    version: @version,
-    applications: [smalt: :permanent],
-    include_executables: [:smalt],
-    strip_beams: [compress: true]
-  ]
-]
-```
-
-Nothing else is required: `def application` already sets
-`start_permanent: Mix.env() == :prod` and `mod: {Smalt.Application, []}`.
-
-## Port overridability
+## Port overridability (still-current reference)
 
 `Smalt.Application` reads `Application.get_env(:smalt, :arm_port, 9443)` and
 `:egress_port` (default 8443). In a release, override via a `rel/env.sh.e`
-snippet (coordinator owns `mix.exs`; `rel/env.sh.e` is lane-editable if needed):
+snippet:
 
 ```elixir
 # rel/env.sh.e
@@ -36,7 +24,7 @@ config :smalt,
 Until that file lands, `scripts/release.sh` verifies boot against the default
 ports (doctor already gates that 9443/8443/5672 are free).
 
-## Scope executed this session
+## Scope executed in the original session (historical record)
 
 - `scripts/doctor.py` gate: PASS (exit 0; binaries, 3 ports free, liveness NOT-RUNNING accepted).
 - `scripts/release.sh` written (bash -euo pipefail): doctor gate -> prod release
@@ -45,4 +33,3 @@ ports (doctor already gates that 9443/8443/5672 are free).
 - Full `MIX_ENV=prod mix release` build: ATTEMPTED, outcome recorded in the
   session receipt below (concurrent-lane compile state may BLOCK it; the script
   fails with the exact compile error and exit 1 in that case).
-- Not done here: CI workflow (lane 19 owns), mix.exs edit (coordinator owns).

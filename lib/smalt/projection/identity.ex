@@ -19,6 +19,27 @@ defmodule Smalt.Projection.Identity do
 
   A binary with at least one visible codepoint is valid — the fence is the
   zero-identity-bits class, not a charset policy.
+
+  ## Adoption contract (lens-7, witnessed lens-6 cycle 3)
+
+  `valid?/1` is THE canonical zero-identity-bits validator. Consumers MUST:
+
+    1. **Adopt, don't reimplement.** Replace any inline blank/nil id check
+       with this one function (N implementations of one identity calculus
+       drift quadratically; one function, N consumers, is the collapse).
+    2. **Membership, not charset.** Refuse only the class with zero visible
+       codepoints (`""`, whitespace-only, invisible-format-only, non-binary).
+       `"abc\\u200B"` is VALID — byte identity, not rendering. Do not add
+       charset rules here.
+    3. **Layer conjuncts; never fork the fence.** Surfaces with extra
+       identity requirements compose `valid?/1` as ONE conjunct of their own
+       chain (e.g. `Smalt.DataPlane.BlobStorage.check_blob_name/1` layers
+       control-char and 1024-byte-bound conjuncts around it) — they do not
+       write a second validator.
+
+  Consumers witnessed: SemanticEpoch.refuse_duplicate_ids,
+  Admission.refuse_degenerate_ids, StoreRead.identity?,
+  ManualRead.identity?, BlobStorage.check_blob_name.
   """
 
   # Invisible format characters (Unicode Cf) plus soft hyphen — characters

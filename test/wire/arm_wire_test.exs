@@ -42,6 +42,7 @@ defmodule Smalt.Wire.ArmWireTest do
     on_exit(fn ->
       stop_tree(sup)
       SmaltTest.Lifecycle.restore_app()
+      SmaltTest.Lifecycle.ensure_store_up()
     end)
 
     {:ok, arm: ports.arm}

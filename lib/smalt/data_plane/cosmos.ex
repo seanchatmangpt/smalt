@@ -494,11 +494,15 @@ defmodule Smalt.DataPlane.Cosmos do
   Lists documents in a collection by id prefix. Returns `{:ok, 200, headers, docs}`.
   """
   def list_docs(db, coll, prefix \\ "", headers \\ %{}) do
-    if store_ready?() do
-      lsn = current_lsn(db, coll)
+    gate(:get, "docs", container_link(db, coll), headers, fn ->
+      if store_ready?() do
+        # nil prefix is the same feed as "" (token namespace must not mint
+        # "nil/<id>" tails a nil-prefix resume could never consume).
+        prefix = scope(prefix)
+        lsn = current_lsn(db, coll)
       cont_hdr = header(headers, @continuation_header)
 
-      with :ok <- parse_list_continuation(cont_hdr, prefix, lsn) do
+      with :ok <- parse_list_continuation(cont_hdr, prefix, lsn, db, coll) do
         docs =
           @docs_table
           |> Store.list_prefix("#{db}/#{coll}/#{prefix}")
@@ -509,7 +513,7 @@ defmodule Smalt.DataPlane.Cosmos do
         # mid-resume cannot skip or stall the feed (row-18 contract).
         docs =
           case list_cursor(cont_hdr) do
-            {:ok, _tok_prefix, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
+            {:ok, _b64c, _tok_prefix, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
             :none -> docs
           end
 
@@ -517,7 +521,7 @@ defmodule Smalt.DataPlane.Cosmos do
 
         extra =
           if length(docs) > @query_limit do
-            %{@continuation_header => list_continuation_token(prefix, lsn, page)}
+            %{@continuation_header => list_continuation_token(db, coll, prefix, lsn, page)}
           else
             %{}
           end
@@ -527,9 +531,10 @@ defmodule Smalt.DataPlane.Cosmos do
         {:error, 400, "BadRequest"} ->
           error_response(db, coll, 400, "BadRequest", "The continuation token is invalid.")
       end
-    else
-      {:error, :store_not_ready}
-    end
+      else
+        {:error, :store_not_ready}
+      end
+    end)
   end
 
   @doc """
@@ -549,7 +554,7 @@ defmodule Smalt.DataPlane.Cosmos do
         q = query_text(body)
 
         if is_binary(q) do
-          do_query_docs(db, coll, body, headers)
+          do_query_docs(db, coll, q, headers)
         else
           error_response(db, coll, 400, "BadRequest", "The query is invalid.")
         end
@@ -575,7 +580,29 @@ defmodule Smalt.DataPlane.Cosmos do
 
   defp query_text(_body), do: nil
 
-  defp do_query_docs(db, coll, _body, headers) do
+  # GAP(cosmos-sql-translator-absent) whitelist gate (work order V261014-07
+  # item 5, option (a)): only the trivial `SELECT * FROM <alias>` form is
+  # admitted to the partition scan; any other nonblank query answers a typed
+  # 400 SyntaxError like real Cosmos — the emulator no longer answers queries
+  # it did not evaluate. The gap label stays: the whitelist narrows the lie,
+  # it does not close the gap.
+  @sql_whitelist ~r/^select\s+\*\s+from\s+[A-Za-z_][A-Za-z0-9_]*$/i
+
+  defp sql_whitelisted?(q), do: Regex.match?(@sql_whitelist, String.trim(q))
+
+  # Minimal unblock (test-isolation lane 01, compile-freeze SLA): the in-flight
+  # V261014-07 edit renamed the scan to scan_query_docs/3 and updated the call
+  # site to pass `q`, but left do_query_docs/4 undefined. This wiring completes
+  # that rename; the owning lane may fold it into its own implementation.
+  defp do_query_docs(db, coll, q, headers) do
+    if sql_whitelisted?(q) do
+      scan_query_docs(db, coll, headers)
+    else
+      error_response(db, coll, 400, "SyntaxError", "The query syntax is invalid.")
+    end
+  end
+
+  defp scan_query_docs(db, coll, headers) do
     pk_meta = container_meta(db, coll)
     paths = (pk_meta && Map.get(pk_meta, "paths", [])) || []
     pk_hdr = header(headers, PartitionKey.header_name())
@@ -589,7 +616,7 @@ defmodule Smalt.DataPlane.Cosmos do
       |> Store.list_prefix("#{db}/#{coll}/")
       |> Enum.sort_by(& &1["id"])
 
-    with :ok <- parse_continuation(header(headers, @continuation_header), pk_hdr, ledger),
+    with :ok <- parse_continuation(header(headers, @continuation_header), pk_hdr, ledger, db, coll),
          :ok <- query_pk_check(pk_hdr, paths, docs) do
       docs =
         if paths == [] do
@@ -619,7 +646,7 @@ defmodule Smalt.DataPlane.Cosmos do
       # (row 18 contract pin).
       docs =
         case list_cursor(header(headers, @continuation_header)) do
-          {:ok, _scope, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
+          {:ok, _b64c, _scope, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
           :none -> docs
         end
 
@@ -630,7 +657,7 @@ defmodule Smalt.DataPlane.Cosmos do
       # terminates.
       extra =
         if length(docs) > @query_limit do
-          %{@continuation_header => continuation_token(pk_hdr, ledger, page)}
+          %{@continuation_header => continuation_token(db, coll, pk_hdr, ledger, page)}
         else
           %{}
         end
@@ -653,30 +680,35 @@ defmodule Smalt.DataPlane.Cosmos do
   # Feed continuation tokens (row 18: x-ms-continuation)
   # ---------------------------------------------------------------------------
 
-  # Format (engine work order lens-2 c5; scope binding lens-5): the query-feed
-  # token is "1#{lsn}:{tail}" where tail = last_id for an UNSCOPED feed and
-  # "<pk_raw>/<last_id>" when the feed was scoped by a partition-key header.
-  # The token's scope must EQUAL the resume request's pk header, else typed
-  # 400 — real Cosmos binds a token to its query/feed; a cross-partition page
-  # resumed under a different partition SILENTLY DROPS docs otherwise
-  # (measured lens-5: token 1#120:m100 under pk ["B"] returned 10 of 60 B
-  # docs with 200).
-  defp continuation_token(_scope, lsn, []), do: "#{@session_token_version}##{lsn}:"
+  # Format (engine work order lens-2 c5; scope binding lens-5; container
+  # binding lens-6): the query-feed token is "1#{lsn}:{b64c}:{tail}" where
+  # b64c = base64url("db/coll") binds the token to the FEED'S CONTAINER and
+  # tail = last_id for an UNSCOPED feed and "<pk_raw>/<last_id>" when the feed
+  # was scoped by a partition-key header. The token's scope AND container must
+  # EQUAL the resume request's, else typed 400 — real Cosmos binds a token to
+  # its query/feed; a cross-partition page resumed under a different partition
+  # SILENTLY DROPS docs (measured lens-5), and a token minted on one container
+  # resumed on another ALSO silently narrows the second container's feed
+  # (measured lens-6: token "2#105:n100" from A resumed on B returned 5 of
+  # 105 B docs with 200). b64url has no ":" or "/", so the split is exact.
+  defp continuation_token(db, coll, _scope, lsn, []),
+    do: "#{@session_token_version}##{lsn}:#{token_container(db, coll)}:"
 
-  defp continuation_token(scope, lsn, page) do
+  defp continuation_token(db, coll, scope, lsn, page) do
     tail = List.last(page)["id"]
     tail = if scope in [nil, ""], do: tail, else: "#{scope}/#{tail}"
-    "#{@session_token_version}##{lsn}:#{tail}"
+    "#{@session_token_version}##{lsn}:#{token_container(db, coll)}:#{tail}"
   end
 
-  # nil header = no resume. The token's embedded scope must equal the
-  # request's pk header (both "" when absent).
-  defp parse_continuation(nil, _scope, _ledger), do: :ok
+  # nil header = no resume. The token's embedded container AND scope must
+  # equal the request's (scope both "" when absent).
+  defp parse_continuation(nil, _scope, _ledger, _db, _coll), do: :ok
 
-  defp parse_continuation(raw, scope, ledger) do
+  defp parse_continuation(raw, scope, ledger, db, coll) do
     case list_cursor(raw) do
-      {:ok, tok_scope, last_id} ->
+      {:ok, b64c, tok_scope, last_id} ->
         if continuation_lsn_ok_version?(raw, @session_token_version, ledger) and
+             b64c == token_container(db, coll) and
              tok_scope == scope(scope) and
              valid_doc_id?(last_id) do
           :ok
@@ -699,32 +731,35 @@ defmodule Smalt.DataPlane.Cosmos do
   # with query tokens)
   # ---------------------------------------------------------------------------
 
-  # Format (lens-5): "2#{lsn}:{tail}" where tail encodes the list PREFIX the
-  # feed was emitted under: tail = last_id when the prefix is empty, otherwise
-  # "<prefix>/<last_id>" (doc ids never contain "/", so the split is exact).
-  # A token minted under one prefix resumed under a DIFFERENT prefix is a
-  # typed 400 — real Cosmos binds a continuation token to the query that
-  # emitted it and 400s on cross-filter reuse (learn.microsoft.com Cosmos DB
-  # query/pagination; SO 52108370).
-  defp list_continuation_token(_prefix, lsn, []), do: "#{@list_token_version}##{lsn}:"
+  # Format (lens-5 prefix binding; lens-6 container binding): "2#{lsn}:{b64c}:{tail}"
+  # where b64c = base64url("db/coll") binds the token to its container and
+  # tail = last_id when the prefix is empty, otherwise "<prefix>/<last_id>"
+  # (doc ids never contain "/", so the split is exact). A token minted under
+  # one prefix (or one CONTAINER) resumed under a DIFFERENT one is a typed
+  # 400 — real Cosmos binds a continuation token to the query that emitted it
+  # and 400s on cross-filter/cross-container reuse (learn.microsoft.com Cosmos
+  # DB query/pagination; SO 52108370).
+  defp list_continuation_token(db, coll, _prefix, lsn, []),
+    do: "#{@list_token_version}##{lsn}:#{token_container(db, coll)}:"
 
-  defp list_continuation_token(prefix, lsn, page) do
+  defp list_continuation_token(db, coll, prefix, lsn, page) do
     tail = List.last(page)["id"]
     tail = if prefix == "", do: tail, else: "#{prefix}/#{tail}"
-    "#{@list_token_version}##{lsn}:#{tail}"
+    "#{@list_token_version}##{lsn}:#{token_container(db, coll)}:#{tail}"
   end
 
   # Same fences as the query token gate: version-2 namespace only, numeric
   # ledger position not ahead of this container's ledger, doc-id-grammar
-  # cursor, and the token's prefix must EQUAL the request's prefix (real
+  # cursor, and the token's container/prefix must EQUAL the request's (real
   # Cosmos: a token is only valid for the feed that emitted it). nil header =
   # no resume; anything else malformed is a typed 400.
-  defp parse_list_continuation(nil, _prefix, _ledger), do: :ok
+  defp parse_list_continuation(nil, _prefix, _ledger, _db, _coll), do: :ok
 
-  defp parse_list_continuation(raw, prefix, ledger) do
+  defp parse_list_continuation(raw, prefix, ledger, db, coll) do
     case list_cursor(raw) do
-      {:ok, tok_prefix, last_id} ->
+      {:ok, b64c, tok_prefix, last_id} ->
         if continuation_lsn_ok_version?(raw, @list_token_version, ledger) and
+             b64c == token_container(db, coll) and
              tok_prefix == prefix and valid_doc_id?(last_id) do
           :ok
         else
@@ -736,14 +771,15 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  # {:ok, prefix, last_id} | :none — nil/blank header or a tail with a
-  # cursor-less tail is :none.
+  # {:ok, b64c, scope, last_id} | :none — nil header is :none; the tail must
+  # carry "<b64url(db/coll)>:<scope_or_prefix>/<last_id>".
   defp list_cursor(nil), do: :none
 
   defp list_cursor(raw) do
     with [_vsn_lsn, tail] <- String.split(raw, ":", parts: 2),
-         {tok_prefix, last_id} <- split_list_tail(tail) do
-      {:ok, tok_prefix, last_id}
+         [b64c, rest] <- String.split(tail, ":", parts: 2),
+         {tok_scope, last_id} <- split_list_tail(rest) do
+      {:ok, b64c, tok_scope, last_id}
     else
       _ -> :none
     end
@@ -762,6 +798,10 @@ defmodule Smalt.DataPlane.Cosmos do
         {tok_prefix, last_id}
     end
   end
+
+  # Container segment of a continuation token: base64url("db/coll") — the
+  # url-safe alphabet has no ":" or "/", so the token split stays exact.
+  defp token_container(db, coll), do: Base.url_encode64("#{db}/#{coll}", padding: false)
 
   # Shared token grammar check, parameterized on the namespace version so the
   # query (v1) and list (v2) gates can never admit each other's tokens.
