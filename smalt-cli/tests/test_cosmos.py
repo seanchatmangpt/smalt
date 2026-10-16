@@ -7,6 +7,8 @@ import pytest
 from azure.core import MatchConditions
 from azure.cosmos import exceptions
 
+pytestmark = [pytest.mark.anonymous, pytest.mark.usefixtures("anonymous_substrate")]
+
 from conftest import cosmos_client
 
 DB_ID = "cli4cosmos-" + secrets.token_hex(4)

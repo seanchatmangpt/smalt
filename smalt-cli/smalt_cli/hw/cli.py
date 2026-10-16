@@ -125,8 +125,18 @@ if typer is not None and hw_app is not None:
         raise typer.Exit(cmd_enroll(port))
 
     @hw_app.command("sign")
-    def _sign_cmd(port: str, digest: Optional[str] = None) -> None:
-        raise typer.Exit(cmd_sign(port, digest))
+    def _sign_cmd(
+        port: Optional[str] = typer.Argument(None),
+        device: Optional[str] = typer.Option(None, "--device"),
+        digest: Optional[str] = None,
+    ) -> None:
+        # gates.py:288 invokes `hw sign --device <PORT>`; accept both the
+        # positional port and the --device alias (S-5 alignment fix).
+        actual = device or port
+        if not actual:
+            print("hw sign: port required (positional or --device)", file=sys.stderr)
+            raise typer.Exit(2)
+        raise typer.Exit(cmd_sign(actual, digest))
 
     @hw_app.command("flash")
     def _flash_cmd(port: str, avm_path: str) -> None:

@@ -266,17 +266,26 @@ HW_SIGN_COMMAND = [sys.executable, "-m", "smalt_cli.cli", "hw", "sign"]
 
 
 def default_serial_ports() -> List[str]:
-    """Best-effort serial device enumeration (pyserial if present, else glob)."""
+    """Best-effort serial device enumeration (pyserial if present, else glob).
+
+    SMALT_HW_PTY (path to a pty slave backed by the Elixir virtual device,
+    see smalt_cli/hw/sim_host.py) is prepended when set so the virtual HIL
+    device is admitted by the same gate as real hardware.
+    """
+    ports: List[str] = []
+    sim = os.environ.get("SMALT_HW_PTY")
+    if sim and os.path.exists(sim):
+        ports.append(sim)
     try:
         from serial.tools import list_ports
-        return sorted(p.device for p in list_ports.comports())
+        ports.extend(sorted(p.device for p in list_ports.comports()))
+        return ports
     except ImportError:
         pass
     pats = ["/dev/tty.usb*", "/dev/ttyUSB*", "/dev/ttyACM*", "/dev/cu.usb*"]
-    found: List[str] = []
     for pat in pats:
-        found.extend(sorted(glob.glob(pat)))
-    return found
+        ports.extend(sorted(glob.glob(pat)))
+    return ports
 
 
 def run_gate2(

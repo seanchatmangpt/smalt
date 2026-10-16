@@ -10,7 +10,12 @@ import time
 import pytest
 import requests
 
-from conftest import ARM, AUD, http, mint_jwt, sts_token
+import conftest
+from conftest import AUD, http, mint_jwt, sts_token
+
+# Identity needs auth_mode=:enforce (401 challenges) — exclusive of the
+# anonymous substrate that blob/cosmos use (X-6 session split).
+pytestmark = [pytest.mark.enforce, pytest.mark.usefixtures("enforce_substrate")]
 
 
 def _b64u_decode(s):
@@ -28,13 +33,13 @@ def test_client_credentials_mint_and_claims():
 
 def test_valid_bearer_200_subscriptions():
     token, _ = sts_token()
-    r = requests.get(f"{ARM}/subscriptions?api-version=2021-04-01",
+    r = requests.get(f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
                      headers={"Authorization": f"Bearer {token}"}, timeout=10)
     assert r.status_code == 200, r.text[:200]
 
 
 def test_tokenless_401_challenge():
-    r = requests.get(f"{ARM}/subscriptions?api-version=2021-04-01", timeout=10)
+    r = requests.get(f"{conftest.ARM}/subscriptions?api-version=2021-04-01", timeout=10)
     assert r.status_code == 401
     assert r.headers.get("WWW-Authenticate", "").startswith("Bearer"), dict(r.headers)
 
@@ -45,7 +50,7 @@ def test_tampered_signature_401():
     flipped = bytearray(s.encode())
     flipped[0] ^= 1
     r = requests.get(
-        f"{ARM}/subscriptions?api-version=2021-04-01",
+        f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
         headers={"Authorization": "Bearer " + ".".join([h, p, base64.urlsafe_b64encode(bytes(flipped)).rstrip(b"=").decode()])},
         timeout=10,
     )
@@ -58,12 +63,12 @@ def test_self_minted_wrong_secret_401():
     now = int(time.time())
     forged = mint_jwt({
         "aud": AUD,
-        "iss": f"{ARM}/00000000-0000-0000-0000-000000000000/v2.0",
+        "iss": f"{conftest.ARM}/00000000-0000-0000-0000-000000000000/v2.0",
         "iat": now,
         "nbf": now,
         "exp": now + 3600,
     }, secret=b"wrong-secret-wrong-secret-wrong-secret")
-    st, body = http("GET", f"{ARM}/subscriptions?api-version=2021-04-01",
+    st, body = http("GET", f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
                     headers={"Authorization": f"Bearer {forged}"})
     assert st == 401, (st, body)
     assert body["error"]["message"] == "SignatureVerificationFailed", body
@@ -72,12 +77,12 @@ def test_self_minted_wrong_secret_401():
 def test_expired_self_minted_401():
     now = int(time.time())
     expired = mint_jwt({"aud": AUD,
-                        "iss": f"{ARM}/00000000-0000-0000-0000-000000000000/v2.0",
+                        "iss": f"{conftest.ARM}/00000000-0000-0000-0000-000000000000/v2.0",
                         "issuedAt": now - 7200,
                         "iat": now - 7200,
                         "nbf": now - 7200,
                         "exp": now - 3600})
-    st, body = http("GET", f"{ARM}/subscriptions?api-version=2021-04-01",
+    st, body = http("GET", f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
                     headers={"Authorization": f"Bearer {expired}"})
     assert st == 401, (st, body)
     assert body["error"]["message"] == "TokenExpired", body

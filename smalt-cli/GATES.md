@@ -44,9 +44,12 @@ runtime failure of an landed flow is FAIL.
 .venv/bin/python run_gates.py --gate 2
 ```
 
-Standing 2026-10-15: **SKIP** — `hw sign` is not landed in
-`smalt_cli/cli.py` (typer: "No such option: --device"); the only serial
-devices visible are macOS Bluetooth pseudo-ports, not HIL targets.
+Standing 2026-10-15 (S-5 landing): **PASS on the virtual HIL device** —
+`hw sign --device <PORT>` is landed (typer `--device` alias, S-5), and the
+Elixir virtual device (Smalt.Hw.VirtualSerial over a raw-mode pty, spawned by
+`python -m smalt_cli.hw.sim_host`) answers the sign flow. Witness:
+`python -m smalt_cli.hw.sim_host --gate2` -> PASS "signed receipt produced".
+Without a device (SMALT_HW_PTY unset, no USB), GATE2 remains SKIP-loud.
 
 ## GATE3 — zero-actuation
 
@@ -94,8 +97,9 @@ Standing 2026-10-15: **PASS** (chain intact; all executed ops covered).
 
 - GATE1 currently verifies nothing about wire conformance (suites absent);
   it will PASS with loud SKIP notes until CLI-4/CLI-5 land.
-- GATE2 has never executed a signed receipt; the command contract
-  (`--device <PORT>`) is proposed here, not implemented — the hw lane owns it.
+- GATE2 executed its first signed receipt against the Elixir virtual HIL
+  device (S-5, 2026-10-15); the `--device <PORT>` contract is implemented
+  (typer alias in smalt_cli/hw/cli.py).
 - GATE3's upstream is a stub of the smalt substrate, not the emulator
   itself; the refusal path it exercises (`MutationInterceptor`) is the real
   gateway code path.

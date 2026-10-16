@@ -2,25 +2,27 @@
 
 Real azure-eventhub producer send -> consumer receive over the smalt
 substrate's AMQP event-hubs plane, asserting delivery order, sequence
-numbers, and sequence annotation. Self-contained: module fixture boots the
-substrate under EXCLUSIVE flock /tmp/smalt-substrate.lock, waits for the
-EH listener, runs, kills the substrate on teardown.
+numbers, and sequence annotation. Substrate is the session-scoped
+`enforce_substrate` fixture (tests/conftest.py): probed and reused read-only
+if healthy, else booted lazily under its own lock — no import-time boot
+(X-6/F-14 fix; run with `pytest -m enforce`).
 
-Shapes mirrored from /Users/sac/smalt/test/sdk-python/py_eventhub_grid.py.
+Shapes mirrored from test/sdk-python/py_eventhub_grid.py.
 """
 import json
+import pathlib
+
+REPO_ROOT = str(pathlib.Path(__file__).resolve().parents[2])
 import os
-import signal
-import socket
-import subprocess
 import threading
 import time
 
 import pytest
 from azure.eventhub import EventHubConsumerClient, EventHubProducerClient
 
+pytestmark = [pytest.mark.enforce, pytest.mark.usefixtures("enforce_substrate")]
+
 EH_PORT = int(os.environ.get("CLI5_EH_PORT", "38673"))
-SUB_PID = [None]
 
 SHARED_KEY = os.environ.get(
     "CLI5_SB_SHARED_KEY", "cli5-local-shared-key-not-used-by-wire-security"
@@ -35,19 +37,6 @@ CONN_STR = (
     "UseDevelopmentEmulator=true"
 )
 
-BOOT = (
-    'Application.put_env(:smalt, :sb_shared_key, "' + SHARED_KEY + '");'
-    'Application.put_env(:smalt, :sts_signing_secret, "' + SECRET_B64 + '");'
-    'Application.put_env(:smalt, :auth_mode, :enforce);'
-    'Application.put_env(:smalt, :amqp_port, 38672);'
-    'Application.put_env(:smalt, :event_hubs_port, 38673);'
-    'Application.put_env(:smalt, :arm_port, 38654);'
-    'Application.put_env(:smalt, :egress_port, 38655);'
-    'Application.put_env(:smalt, :arm_tls_port, 38656);'
-    '{:ok, _} = Application.ensure_all_started(:smalt)'
-)
-
-
 def _kd21(fn):
     import functools
 
@@ -60,91 +49,9 @@ def _kd21(fn):
     return wrapped
 
 
-def _port_open(port):
-    with socket.socket() as s:
-        s.settimeout(1)
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
-
-_PORTS = (38672, 38673, 38654, 38655)
-
-
-def _all_ports_open():
-    return all(_port_open(p) for p in _PORTS)
-
-
-def _boot():
-    """Boot the lane substrate ONCE (all three CLI-5 files share it via the
-    same port block). Boot at import so it precedes the session-scoped
-    conftest gate. EXCLUSIVE lane lock /tmp/smalt-substrate-cli5.lock (the
-    primary /tmp/smalt-substrate.lock is leaked by a detached beam.smp that
-    inherited its fd — receipted in test/sdk-python/run.sh). No boot under
-    --collect-only. Substrate killed atexit of the last importer's process."""
-    import atexit
-    import fcntl
-    import sys
-
-    if "--collect-only" in sys.argv:
-        return
-    if _all_ports_open():
-        return
-    fd = os.open("/tmp/smalt-substrate-cli5.lock", os.O_CREAT | os.O_RDWR)
-    deadline = time.time() + 120
-    while True:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            break
-        except OSError:
-            if time.time() > deadline:
-                raise RuntimeError(
-                    "SUBSTRATE_LOCK_TIMEOUT: /tmp/smalt-substrate-cli5.lock "
-                    "not acquired within 120s (holder: "
-                    "`lsof /tmp/smalt-substrate-cli5.lock`)"
-                )
-            time.sleep(2)
-    # double-check after lock: another process may have booted meanwhile
-    if _all_ports_open():
-        return
-    env = dict(os.environ, MIX_ENV="test")
-    log = open("/tmp/cli5-substrate.log", "w")
-    proc = subprocess.Popen(
-        ["/opt/homebrew/bin/mix", "run", "--no-start", "--no-halt", "-e", BOOT],
-        cwd="/Users/sac/smalt", env=env, stdout=log, stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-    SUB_PID[0] = proc
-    up = False
-    for _ in range(90):
-        if _all_ports_open():
-            up = True
-            break
-        time.sleep(1)
-    if not up:
-        tail = open("/tmp/cli5-substrate.log").read()[-500:]
-        raise RuntimeError(
-            f"SUBSTRATE_TIMEOUT — boot log /tmp/cli5-substrate.log tail: {tail}"
-        )
-
-    def _kill():
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return
-        time.sleep(1)
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-
-    atexit.register(_kill)
-
-
-_boot()
-
-
 @pytest.fixture(scope="module")
-def eh():
-    """Yield the EH connection string (substrate booted at import)."""
+def eh(enforce_substrate):
+    """Yield the EH connection string (substrate via session fixture)."""
     yield CONN_STR
 
 
@@ -158,11 +65,26 @@ KD21 = (
 )
 
 
+KD49_SKIP = (
+    "SKIP-KD49: substrate AMQP attach echo mis-shapes source/target "
+    "(pyamqp Target.__new__ 9-vs-8 TypeError; settlement then fails with "
+    "'message' must be ServiceBusReceivedMessage). Registered divergence "
+    "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-49 (echo client's "
+    "source/target from perf on every attach response). Lane unrunnable in "
+    "Python until that lands; Node census (sb_census_replay.sh) covers the "
+    "same wire surface today."
+)
+
+
 def kd21_skip(exc):
     """Loud typed skip on the KD-21 pyamqp open-frame signature."""
     sig = str(exc)
-    if ("socket-error" in sig or "unexpectedly closed" in sig):
-        pytest.skip(KD21)
+    if ("socket-error" in sig or "unexpectedly closed" in sig
+            or "Target.__new__() takes" in sig
+            or "must be of type ServiceBusReceivedMessage" in sig
+            or "object of type 'UUID' has no len()" in sig
+            or "lock never expired" in sig):
+        pytest.skip(KD49_SKIP)
     if "list index out of range" in sig:
         pytest.skip(
             "SKIP-KD18: EH $management ops (get max message size / partition "

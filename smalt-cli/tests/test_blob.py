@@ -12,6 +12,8 @@ from azure.core import MatchConditions
 from azure.core.exceptions import HttpResponseError
 from azure.storage.blob import BlobServiceClient
 
+pytestmark = [pytest.mark.anonymous, pytest.mark.usefixtures("anonymous_substrate")]
+
 from conftest import EGRESS, blob_conn_string
 
 

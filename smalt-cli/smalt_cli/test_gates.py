@@ -114,12 +114,13 @@ def test_gate2_skip_loud_with_exact_command_when_no_device():
 
 
 def test_gate2_uninvokable_flow_is_loud_skip_not_pass():
-    # Device present but the hw lane has not landed the sign command: the
-    # real subprocess fails and the gate must SKIP loudly, never pass.
+    # --device is now accepted (hw lane S-5 landed the alias): a fake device
+    # path is invoked for real, the open fails, and the gate FAILs loudly —
+    # never a silent pass. (Pre-landing this court expected SKIP "not landed"
+    # because typer refused --device; the landing flips the expectation.)
     res = run_gate2(ROOT, device_prober=lambda: ["/dev/tty.usb-fake"])
-    assert res.status == "SKIP"
-    assert "SKIP-LOUD" in res.reason
-    assert "not landed" in res.reason
+    assert res.status == "FAIL"
+    assert "exited 1" in res.reason
     assert res.details["exact_command"] == "python -m smalt_cli.cli hw sign --device <PORT>"
 
 

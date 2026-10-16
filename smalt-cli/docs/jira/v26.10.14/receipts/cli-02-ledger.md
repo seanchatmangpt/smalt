@@ -1,6 +1,6 @@
 # Receipt: CLI-02 — NIST AU-10 Audit Ledger
 
-- Subject: smalt-cli ledger lane, `/Users/sac/smalt/smalt-cli/`
+- Subject: smalt-cli ledger lane, `smalt-cli/`
 - Files owned and written:
   - `smalt_cli/ledger.py`
   - `smalt_cli/test_ledger.py`
@@ -16,7 +16,7 @@ No venv present in the checkout; ran with system python3
 (`/opt/homebrew/opt/python@3.14/bin/python3.14`, pytest 9.0.3):
 
 ```text
-$ cd /Users/sac/smalt/smalt-cli && python3 -m pytest smalt_cli/test_ledger.py -v
+$ cd smalt-cli && python3 -m pytest smalt_cli/test_ledger.py -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0
 collected 9 items

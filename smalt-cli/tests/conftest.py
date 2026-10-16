@@ -12,15 +12,31 @@ Env: SMALT_ARM / SMALT_EGRESS override the defaults
 (http://127.0.0.1:39643 / http://127.0.0.1:39644 — this lane's private
 substrate, docs/DEV_LOOP.md private range 39000-39999).
 
-NO SUBSTRATE, NO PASS: if neither the env-configured nor the default
-substrate answers /metadata/endpoints, every test SKIPs with a loud banner
-naming the boot command — a missing substrate is never faked into a pass.
+SESSION PROTOCOL (X-6, F-14/DoD-3 fix): substrate provisioning is
+fixture-scoped and lazy — NO import-time boot. Two mutually exclusive auth
+profiles split the suite into two pytest sessions:
+
+  pytest -m anonymous   blob/cosmos — anonymous substrate 39643/39644,
+                        lock /tmp/smalt-substrate-cli4.lock
+  pytest -m enforce     identity/resourcegraph/servicebus/eventhub/keyvault
+                        — enforce substrate 38654-38656/38672-38673,
+                        lock /tmp/smalt-substrate-cli5.lock
+
+Each session fixture (a) probes its port block first and REUSES a healthy
+substrate read-only with lane-unique names, else (b) boots a private-port
+substrate under its OWN lock (blocking flock w/ timeout), pinned to the auth
+mode that session's tests need. Locks are released after boot; teardown kills
+only a substrate this session booted. A plain `pytest` (no -m) boots both
+profiles lazily and sequentially — no shared lock, no cross-lane queue.
 """
 import base64
 import hashlib
 import hmac
 import json
 import os
+import pathlib
+
+REPO_ROOT = str(pathlib.Path(__file__).resolve().parents[2])
 import secrets
 import ssl
 import time
@@ -38,7 +54,7 @@ TLS_CTX = ssl._create_unverified_context()
 
 BOOT_HINT = (
     "SMALT SUBSTRATE UNREACHABLE at ARM=%s EGRESS=%s — SKIP-PENDING. "
-    "Boot one with: cd /Users/sac/smalt && flock -x /tmp/smalt-substrate.lock "
+    "Boot one with: cd <smalt-checkout> && flock -x /tmp/smalt-substrate.lock "
     "MIX_ENV=test mix run --no-start --no-halt -e "
     "'Application.put_env(:smalt, :arm_port, <arm_port>); "
     "Application.put_env(:smalt, :egress_port, <egress_port>); "
@@ -117,22 +133,172 @@ def cosmos_client():
     return cc.CosmosClient(EGRESS, credential=secrets.token_hex(32))
 
 
-def _substrate_reachable():
+def _substrate_reachable(url=ARM):
     try:
-        st, _ = http("GET", f"{ARM}/metadata/endpoints", timeout=5)
+        st, _ = http("GET", f"{url}/metadata/endpoints", timeout=5)
         return st == 200
     except Exception:
         return False
 
 
-@pytest.fixture(scope="session", autouse=True)
-def substrate():
-    if not _substrate_reachable():
-        print("\n" + "#" * 72)
-        print(BOOT_HINT)
-        print("#" * 72, flush=True)
-        pytest.skip(BOOT_HINT)
-    return {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
+def _port_open(port):
+    import socket
+
+    with socket.socket() as s:
+        s.settimeout(1)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
+                      timeout=180):
+    """Probe-then-boot. Returns (proc_or_None, reused_bool).
+
+    Reuses a healthy substrate on `ports` read-only; else takes `lock_path`
+    (blocking flock, bounded), re-probes (double-check under lock), boots a
+    private-port substrate pinned to the caller's auth mode. Lock fd is
+    released after boot — it guards construction, not the session.
+    """
+    import fcntl
+    import subprocess
+
+    if all(_port_open(p) for p in ports) and (ready is None or ready()):
+        return None, True
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    deadline = time.time() + timeout
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if time.time() > deadline:
+                os.close(fd)
+                raise RuntimeError(
+                    f"SUBSTRATE_LOCK_TIMEOUT: {lock_path} not acquired within "
+                    f"{timeout}s (holder: `lsof {lock_path}`)"
+                )
+            time.sleep(2)
+    try:
+        if all(_port_open(p) for p in ports) and (ready is None or ready()):
+            return None, True
+        env = dict(os.environ, MIX_ENV="test")
+        log = open(log_path, "w")
+        proc = subprocess.Popen(
+            ["/opt/homebrew/bin/mix", "run", "--no-start", "--no-halt",
+             "-e", boot_eval],
+            cwd=REPO_ROOT, env=env, stdout=log,
+            stderr=subprocess.STDOUT, start_new_session=True,
+        )
+        up = False
+        for _ in range(120):
+            if all(_port_open(p) for p in ports) and (ready is None or ready()):
+                up = True
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(1)
+        if not up:
+            tail = open(log_path).read()[-500:]
+            raise RuntimeError(
+                f"SUBSTRATE_TIMEOUT — boot log {log_path} tail: {tail}"
+            )
+        return proc, False
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _kill_substrate(proc):
+    import signal
+
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    time.sleep(1)
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+_ANON_PORTS = (39643, 39644)
+_ANON_BOOT = (
+    'Application.put_env(:smalt, :arm_port, 39643);'
+    'Application.put_env(:smalt, :egress_port, 39644);'
+    'Application.put_env(:smalt, :arm_tls_port, 39646);'
+    '{:ok, _} = Application.ensure_all_started(:smalt)'
+)
+
+_ENFORCE_PORTS = (38672, 38673, 38654, 38655)
+_ENFORCE_BOOT_SEED = """
+for {q, props} <- [
+  {"cli5-batch-q", %{}},
+  {"cli5-dlq-q", %{}},
+  {"cli5-defer-q", %{}},
+  {"cli5-lock-q", %{"lockDuration" => "PT2S"}}
+] do
+  {:ok, _} = Smalt.Amqp.QueueStore.ensure_queue(q);
+  key = "providers/Microsoft.ServiceBus/namespaces/cli5ns/queues/" <> String.downcase(q);
+  Smalt.Store.put(:smalt_resources, key, %{"properties" => props})
+end
+"""
+_ENFORCE_SB_KEY = os.environ.get(
+    "CLI5_SB_SHARED_KEY", "cli5-local-shared-key-not-used-by-wire-security"
+)
+
+_ENFORCE_BOOT = (
+    'Application.put_env(:smalt, :sb_shared_key, "' + _ENFORCE_SB_KEY + '");'
+    'Application.put_env(:smalt, :sts_signing_secret, '
+    '"py-lane6-known-secret-0123456789abcdef");'
+    'Application.put_env(:smalt, :auth_mode, :enforce);'
+    'Application.put_env(:smalt, :amqp_port, 38672);'
+    'Application.put_env(:smalt, :event_hubs_port, 38673);'
+    'Application.put_env(:smalt, :arm_port, 38654);'
+    'Application.put_env(:smalt, :egress_port, 38655);'
+    'Application.put_env(:smalt, :arm_tls_port, 38656);'
+    '{:ok, _} = Application.ensure_all_started(:smalt);'
+    + " ".join(_ENFORCE_BOOT_SEED.split())
+)
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "anonymous: needs anonymous auth substrate")
+    config.addinivalue_line("markers", "enforce: needs :enforce auth substrate")
+
+
+@pytest.fixture(scope="session")
+def anonymous_substrate():
+    """Anonymous-mode substrate (blob/cosmos). Reuse-else-boot under
+    /tmp/smalt-substrate-cli4.lock; kills only what it booted."""
+    proc, _reused = _ensure_substrate(
+        "/tmp/smalt-substrate-cli4.lock", _ANON_PORTS, _ANON_BOOT,
+        "/tmp/cli4-substrate.log",
+    )
+    global ARM, EGRESS
+    _old = (ARM, EGRESS)
+    ARM, EGRESS = "http://127.0.0.1:39643", "http://127.0.0.1:39644"
+    yield {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
+    ARM, EGRESS = _old
+    _kill_substrate(proc)
+
+
+@pytest.fixture(scope="session")
+def enforce_substrate():
+    """:enforce substrate (identity/servicebus/eventhub/keyvault). Reuse-else-
+    boot under /tmp/smalt-substrate-cli5.lock — fixture-scoped and lazy, the
+    F-14 import-time boot is gone."""
+    proc, _reused = _ensure_substrate(
+        "/tmp/smalt-substrate-cli5.lock", _ENFORCE_PORTS, _ENFORCE_BOOT,
+        "/tmp/cli5-substrate.log",
+    )
+    global ARM, EGRESS
+    _old = (ARM, EGRESS)
+    ARM, EGRESS = "http://127.0.0.1:38654", "http://127.0.0.1:38655"
+    yield {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
+    ARM, EGRESS = _old
+    _kill_substrate(proc)
 
 
 def seed_resource(name, rg="cli4-rg", location="eastus"):

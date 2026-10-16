@@ -7,7 +7,10 @@ from azure.core.exceptions import HttpResponseError
 from azure.mgmt.resourcegraph import ResourceGraphClient
 from azure.mgmt.resourcegraph.models import QueryRequest, QueryRequestOptions
 
-from conftest import EGRESS, bearer, http, sts_token
+pytestmark = [pytest.mark.enforce, pytest.mark.usefixtures("enforce_substrate")]
+
+import conftest
+from conftest import bearer, http, sts_token
 
 RG_API = "2022-10-01"
 
@@ -19,7 +22,7 @@ class StsCredential:
 
 
 def rg_client():
-    return ResourceGraphClient(credential=StsCredential(), base_url=EGRESS,
+    return ResourceGraphClient(credential=StsCredential(), base_url=conftest.EGRESS,
                                api_version=RG_API)
 
 
@@ -59,7 +62,7 @@ def test_string_subscriptions_typed_400(seeded_resources):
     """SDK types refuse a bare string client-side; the server's typed 400 is
     exercised at the wire level (py7 p04b pattern)."""
     st, body = http("POST",
-                    f"{EGRESS}/providers/Microsoft.ResourceGraph/resources"
+                    f"{conftest.EGRESS}/providers/Microsoft.ResourceGraph/resources"
                     f"?api-version={RG_API}",
                     {"subscriptions": "sub-cli4", "query": "project name"},
                     bearer())

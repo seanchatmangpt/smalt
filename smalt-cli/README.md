@@ -60,7 +60,7 @@ Unknown verbs refused. Refusals are typed JSON on stderr
   (`smalt_cli/test_<module>.py`). Chicago style: real collaborators, no mocks.
 - **Language level**: Python 3.10+; stdlib-first. No new hard dependencies —
   propose optional extras via `pyproject.toml [project.optional-dependencies]`.
-- **Everything in-repo**: no `/tmp` artifacts, no athena, zero network egress
+- **Everything in-repo**: no `/tmp` artifacts, no external analytics services, zero network egress
   beyond `127.0.0.1` (enforced by `config.enforce_loopback`).
 - **Zero-actuation**: all outbound requests route through `policy.guard()`.
 
@@ -68,5 +68,13 @@ Unknown verbs refused. Refusals are typed JSON on stderr
 
 ```sh
 python -m smalt_cli.cli --help
-pytest
+# SDK wire lanes (tests/) run as two auth-exclusive pytest sessions (X-6):
+.venv/bin/python -m pytest tests/ -m anonymous -q   # blob/cosmos — substrate 39643/39644
+.venv/bin/python -m pytest tests/ -m enforce -q     # identity/resourcegraph/servicebus/eventhub/keyvault — substrate 38654-38656/38672-38673
 ```
+
+Wire lanes share NO substrate lock: each session fixture (`tests/conftest.py`)
+probes its port block and reuses a healthy substrate read-only, else boots a
+private-port one under its own lock (`/tmp/smalt-substrate-cli4.lock` /
+`/tmp/smalt-substrate-cli5.lock`) pinned to the session's auth mode. No
+import-time boot — provisioning is lazy and fixture-scoped.

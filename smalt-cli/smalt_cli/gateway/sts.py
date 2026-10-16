@@ -1,35 +1,20 @@
 """Local OAuth2/OIDC-shaped token issuer.
 
-Issues HS256-signed JWTs entirely in-process via the standard library. No
-network calls: the gateway's tokens exist so the Azure SDK's credential path
-has something wire-shaped to present, not to authenticate anything real.
+Issues HS256-signed JWTs via ``pyjwt`` (the standard library of record for
+JWT sign/verify). No network calls: the gateway's tokens exist so the Azure
+SDK's credential path has something wire-shaped to present, not to
+authenticate anything real.
 """
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
-import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+import jwt
+
 __all__ = ["LocalSTS", "local_token"]
-
-
-def _b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _b64url_decode(seg: str) -> bytes:
-    return base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4))
-
-
-def _json_b64(obj: Mapping[str, Any]) -> str:
-    return _b64url(
-        json.dumps(obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    )
 
 
 @dataclass
@@ -70,27 +55,30 @@ class LocalSTS:
         claims.update(self.extra_claims)
         if extra:
             claims.update(extra)
-        header = {"alg": "HS256", "typ": "JWT"}
-        payload_b64 = _json_b64(claims)
-        signing_input = f"{_json_b64(header)}.{payload_b64}"
-        sig = hmac.new(self.secret, signing_input.encode("ascii"), hashlib.sha256).digest()
-        return f"{signing_input}.{_b64url(sig)}"
+        return jwt.encode(claims, key=self.secret, algorithm="HS256", headers={"typ": "JWT"})
 
     def decode(self, token: str, *, verify: bool = True) -> tuple[dict[str, Any], dict[str, Any]]:
         """Return ``(header, claims)``; raises ``ValueError`` on bad signature
         or (when ``verify=True``) on ``exp``/``nbf`` violation."""
         try:
-            h64, p64, s64 = token.split(".")
-        except ValueError:
+            header = jwt.get_unverified_header(token)
+            claims = jwt.decode(
+                token,
+                key=self.secret,
+                algorithms=["HS256"],
+                options={
+                    "verify_aud": False,
+                    "verify_iss": False,
+                    "verify_exp": False,
+                    "verify_nbf": False,
+                },
+            )
+        except jwt.InvalidSignatureError:  # subclass of DecodeError: match first
+            raise ValueError("signature verification failed") from None
+        except jwt.DecodeError:
             raise ValueError("malformed token: expected 3 dot-separated segments") from None
-        signing_input = f"{h64}.{p64}"
-        expected = _b64url(
-            hmac.new(self.secret, signing_input.encode("ascii"), hashlib.sha256).digest()
-        )
-        if not hmac.compare_digest(expected, s64):
-            raise ValueError("signature verification failed")
-        header = json.loads(_b64url_decode(h64))
-        claims = json.loads(_b64url_decode(p64))
+        except jwt.InvalidTokenError as exc:  # structural failures (bad b64, bad json)
+            raise ValueError(f"malformed token: {exc}") from None
         if verify:
             now = int(time.time())
             if "exp" in claims and now >= claims["exp"]:
