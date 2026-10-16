@@ -95,3 +95,4 @@ PY-4-servicebus rows appended after their receipts landed); 47 OPEN, 5 closed
 with receipts (KD-01, KD-03, KD-07 CLOSED-WITH-RECEIPT s4-wire-normalization.md;
 KD-15 CLOSED s3-kv-challenge.md; KD-52 CLOSED x1-blocklist-fix.md). This doc
 registers; closures live in the cited receipts (fin32 re-count, 2026-10-16).
+| KD-53 | EH multi-event batch delivery | `createBatch` with N>1 events delivers only the first inner message — the batch envelope is stored as one event and `eh_body_section/1` byte-scan unwraps only the first inner body section, silently dropping events 2..N (witnessed: 1 delivery in 20 s for a 4-event batch; Q-2 receipt) | `test/sdk-full/eventhubs.probe.mjs` (premise-drift probe rewrite run, multi-event createBatch leg) | split at ingest or emit per inner message at delivery; falsifier: 4-event batch → 4 deliveries with matching payloads | OPEN |

@@ -272,6 +272,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   `{:error, status, code, msg}`. Per-block content rides the same 1 MiB
   per-request fence as Put Blob.
   """
+  # KD-COVERS: KD-52 (blocklist stage/commit/get — X-1)
   def stage_block(account, container, blob_name, block_id, content, _headers \\ %{}, opts \\ []) do
     ensure_block_table()
 
