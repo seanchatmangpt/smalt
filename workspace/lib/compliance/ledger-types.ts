@@ -2,7 +2,7 @@
  * Structural ledger types for lane WS-11 (NIST AU-10 compliance surface).
  *
  * IMPORT SEAM (WS-4 -> WS-11): the canonical ledger lives in
- *   /Users/sac/smalt/workspace/lib/copilot/session-ledger.ts  (lane WS-4).
+ *   workspace/lib/copilot/session-ledger.ts  (lane WS-4).
  * WS-11 must not import WS-4's runtime — only its shape. We therefore
  * re-declare the contract structurally here. On integration, a single
  * `import type { LedgerEntry, LedgerSnapshot } from '../copilot/session-ledger'`

@@ -4,7 +4,7 @@
 
 The smalt Sovereign Console is an air-gapped, zero-actuation evaluation console for
 Fortune-5 sovereign-cloud evaluation of the smalt substrate. It runs as a Next.js
-workspace at `/Users/sac/smalt/workspace` inside the smalt repo. Its only permitted
+workspace at `workspace/` inside the smalt repo. Its only permitted
 network host is the local smalt emulator: ARM control plane on `http://127.0.0.1:9443`,
 egress planes on `http://127.0.0.1:8443` (blob/Cosmos docs), AMQP lanes on
 `127.0.0.1:5672` (Service Bus) and `127.0.0.1:5673` (Event Hubs). No WAN egress; the

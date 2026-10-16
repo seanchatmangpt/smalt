@@ -1,7 +1,7 @@
 # Smalt Sovereign Next.js Workspace
 
 Air-gapped Fortune-5 evaluation console for the **local smalt emulator**. Zero
-cloud, zero athena, zero external network at runtime. Owned by lane WS-1;
+cloud, zero analytics-warehouse usage, zero external network at runtime. Owned by lane WS-1;
 other WS lanes add features in disjoint paths below.
 
 ## Layout conventions (WS lanes: read before writing)

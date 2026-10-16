@@ -67,4 +67,4 @@ npx tsc --noEmit (scoped to lib/attestation/*.ts, strict): exit 0
 node lib/attestation/selftest.mjs: 19 checks passed
 ```
 
-See `/Users/sac/smalt/docs/jira/v26.10.14/receipts/ws-10-attestation.md`.
+See `docs/jira/v26.10.14/receipts/ws-10-attestation.md`.
