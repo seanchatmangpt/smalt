@@ -76,8 +76,8 @@ defmodule Smalt.Ocel do
 
     with :ok <- require_types(events),
          :ok <- require_types(objects) do
-      event_types = events |> Enum.map(& &1["type"]) |> Enum.uniq() |> Enum.sort()
-      object_types = objects |> Enum.map(& &1["type"]) |> Enum.uniq() |> Enum.sort()
+      event_types = events |> MapSet.new(& &1["type"]) |> Enum.sort()
+      object_types = objects |> MapSet.new(& &1["type"]) |> Enum.sort()
 
       envelope = %{
         "ocel:eventTypes" => Enum.map(event_types, &%{"name" => &1}),
