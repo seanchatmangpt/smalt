@@ -3264,4 +3264,69 @@ defmodule Smalt.AuthEnforceTest do
       end
     end
   end
+
+  # -- KD-94: @azure/cosmos AAD token-provider Authorization shape --------------
+  # The real SDK sends `Authorization: type=aad&ver=1.0&sig=<jwt>` (no Bearer
+  # scheme). The sig JWT must verify through the SAME HS256/claims path as a
+  # Bearer token; a garbage sig refuses fail-closed.
+  describe "KD-94 cosmos AAD header shape" do
+    @aad_prefix "type=aad&ver=1.0&sig="
+
+    test "real SDK-shaped AAD header is admitted (sig verified as the token)" do
+      token = mint()
+      conn = arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", @aad_prefix <> token}])
+      assert conn.status == 200, "expected 200, got #{conn.status}: #{inspect(conn.resp_body)}"
+    end
+
+    test "AAD shape on the cosmos egress plane is admitted" do
+      token = mint()
+
+      conn =
+        egress_req(:get, "/dbs", [
+          {"authorization", @aad_prefix <> token},
+          {"x-ms-version", "2020-07-07"}
+        ])
+
+      assert conn.status in 200..299, "expected 2xx, got #{conn.status}: #{inspect(conn.resp_body)}"
+    end
+
+    test "garbage sig -> 401 SignatureVerificationFailed (fail-closed)" do
+      conn = arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", @aad_prefix <> "garbage.sig.here"}])
+      assert_challenge(conn, "garbage AAD sig")
+      assert conn.resp_body =~ "SignatureVerificationFailed"
+    end
+
+    test "cross-secret signed sig -> 401 (same HS256 fence as Bearer)" do
+      foreign = Joken.Signer.create("HS256", "not-the-smalt-secret-not-the-smalt-secret")
+      token = mint(%{}, foreign)
+      conn = arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", @aad_prefix <> token}])
+      assert_challenge(conn, "cross-secret AAD sig")
+    end
+
+    test "expired sig -> 401 TokenExpired" do
+      now = System.system_time(:second)
+      token = mint(%{"iat" => now - 7200, "nbf" => now - 7200, "exp" => now - 3600})
+      conn = arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", @aad_prefix <> token}])
+      assert_challenge(conn, "expired AAD sig")
+      assert conn.resp_body =~ "TokenExpired"
+    end
+
+    test "AAD shape with wrong ver or missing type is refused (not silently Bearer-parsed)" do
+      token = mint()
+
+      for bad <- [
+            "type=rss&ver=1.0&sig=#{token}",
+            "type=aad&ver=2.0&sig=#{token}",
+            "type=aad&sig=#{token}"
+          ] do
+        conn = arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", bad}])
+        assert conn.status == 401, "expected 401 for #{bad}, got #{conn.status}"
+      end
+    end
+
+    test "AAD shape with empty sig is refused" do
+      conn = arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", "type=aad&ver=1.0&sig="}])
+      assert conn.status == 401, "expected 401, got #{conn.status}"
+    end
+  end
 end

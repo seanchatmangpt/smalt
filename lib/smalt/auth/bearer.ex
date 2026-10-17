@@ -222,7 +222,22 @@ defmodule Smalt.Auth.Bearer do
         {:refuse, "InvalidAuthenticationToken", "MalformedBearerHeader"}
 
       [value] ->
-        case String.split(value, " ", parts: 2) do
+        case parse_cosmos_aad(value) do
+          # KD-COVERS: KD-94
+          # KD-94: @azure/cosmos AAD token-provider wire shape — the SDK's
+          # TokenCredential policy sends
+          #   Authorization: type=aad&ver=1.0&sig=<jwt>
+          # (no "Bearer " scheme prefix). Real Azure accepts this form; the
+          # previous extractor required `Bearer <jwt>` and refused it 401.
+          # The sig= value is verified through the SAME HS256/claims path as
+          # any Bearer token — no relaxation: a garbage or foreign-signed sig
+          # refuses SignatureVerificationFailed exactly as before, and the
+          # `Bearer <jwt>` form is unaffected.
+          {:ok, jwt} ->
+            {:ok, jwt}
+
+          :not_aad ->
+            case String.split(value, " ", parts: 2) do
           [scheme, token] ->
             # RFC 7235 §2.1: the auth-scheme is case-insensitive; real AAD
             # accepts "bearer"/"BEARER". Trim handles multi-space padding.
@@ -236,9 +251,36 @@ defmodule Smalt.Auth.Bearer do
 
           _ ->
             {:refuse, "InvalidAuthenticationToken", "MalformedBearerHeader"}
+          end
         end
     end
   end
+
+  # KD-COVERS: KD-94
+  # `type=aad&ver=1.0&sig=<jwt>` — the @azure/cosmos AAD token-provider
+  # Authorization value. Returns {:ok, jwt} only on the exact prefix AND a
+  # non-empty sig; anything else is :not_aad (fall through to the Bearer
+  # parser, which refuses fail-closed). ver is pinned to "1.0" — any other
+  # ver is :not_aad.
+  defp parse_cosmos_aad(value) when is_binary(value) do
+    case String.split(value, "sig=", parts: 2) do
+      [prefix, sig] ->
+        type_ok = String.starts_with?(prefix, "type=aad&")
+        ver_ok = String.contains?(prefix, "&ver=1.0&") or prefix == "type=aad&ver=1.0&"
+        sig_ok = byte_size(sig) > 0
+
+        if type_ok and ver_ok and sig_ok and not String.contains?(sig, " ") do
+          {:ok, sig}
+        else
+          :not_aad
+        end
+
+      _ ->
+        :not_aad
+    end
+  end
+
+  defp parse_cosmos_aad(_), do: :not_aad
 
   # -- signing secret ------------------------------------------------------------
 

@@ -14,6 +14,11 @@ defmodule Smalt.Semantic.Evidence do
   # this lane's owned files. See docs/SEMANTIC_PROJECTION.md.
   Application.put_env(:ash, :default_string_length_count, :codepoints, persistent: true)
 
+  # AshR2RML.Resource is dev/test-only; the `r2rml` section is guarded by
+  # Smalt.Semantic.R2RMLGuard so MIX_ENV=prod compiles without ash_r2rml.
+  # The extensions option stays a compile-time LITERAL (Spark section-import
+  # requirement — see Smalt.Semantic.R2RMLGuard moduledoc). Lane G2.
+  import Smalt.Semantic.R2RMLGuard, only: [if_r2rml: 1]
   use Ash.Resource,
     domain: Smalt.Semantic.Domain,
     data_layer: Ash.DataLayer.Simple,
@@ -39,18 +44,20 @@ defmodule Smalt.Semantic.Evidence do
     end
   end
 
-  r2rml do
-    table_name("ocel_deviations")
-    class("https://ggen.io/ontology/smalt#OcelDeviationEvidence")
+  if_r2rml do
+    r2rml do
+      table_name("ocel_deviations")
+      class("https://ggen.io/ontology/smalt#OcelDeviationEvidence")
 
-    subject do
-      template("https://ggen.io/data/smalt/evidence/{id}")
+      subject do
+        template("https://ggen.io/data/smalt/evidence/{id}")
+      end
+
+      property(:reference_trace_id, "https://ggen.io/ontology/smalt#referenceTraceId")
+      property(:candidate_trace_id, "https://ggen.io/ontology/smalt#candidateTraceId")
+      property(:deviating_move, "https://ggen.io/ontology/smalt#deviatingMove")
+      property(:fitness, "https://ggen.io/ontology/smalt#fitness")
+      property(:status, "https://ggen.io/ontology/smalt#evidenceStanding")
     end
-
-    property(:reference_trace_id, "https://ggen.io/ontology/smalt#referenceTraceId")
-    property(:candidate_trace_id, "https://ggen.io/ontology/smalt#candidateTraceId")
-    property(:deviating_move, "https://ggen.io/ontology/smalt#deviatingMove")
-    property(:fitness, "https://ggen.io/ontology/smalt#fitness")
-    property(:status, "https://ggen.io/ontology/smalt#evidenceStanding")
   end
 end

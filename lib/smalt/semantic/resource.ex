@@ -17,6 +17,11 @@ defmodule Smalt.Semantic.Resource do
   # used, so the runtime default check is never exercised.
   Application.put_env(:ash, :default_string_length_count, :codepoints, persistent: true)
 
+  # The AshR2RML.Resource extension is dev/test-only; the `r2rml` section
+  # below is guarded by Smalt.Semantic.R2RMLGuard so MIX_ENV=prod compiles
+  # without ash_r2rml. The extensions option stays a compile-time LITERAL:
+  # Spark derives section imports from it (lane G2 / PUBLISH_RECORD B2).
+  import Smalt.Semantic.R2RMLGuard, only: [if_r2rml: 1]
   use Ash.Resource,
     domain: Smalt.Semantic.Domain,
     data_layer: Ash.DataLayer.Simple,
@@ -37,21 +42,23 @@ defmodule Smalt.Semantic.Resource do
     end
   end
 
-  r2rml do
-    # Virtual logical table: names the Store table the read path projects.
-    # The substrate has no SQL surface; the R2RML logical table is the
-    # semantic name of the `:smalt_resources` ETS scan (disclosed in
-    # docs/SEMANTIC_PROJECTION.md).
-    table_name("smalt_resources")
-    class("https://ggen.io/ontology/smalt#ArmResource")
+  if_r2rml do
+    r2rml do
+      # Virtual logical table: names the Store table the read path projects.
+      # The substrate has no SQL surface; the R2RML logical table is the
+      # semantic name of the `:smalt_resources` ETS scan (disclosed in
+      # docs/SEMANTIC_PROJECTION.md).
+      table_name("smalt_resources")
+      class("https://ggen.io/ontology/smalt#ArmResource")
 
-    subject do
-      template("https://ggen.io/data/smalt/resource/{id}")
+      subject do
+        template("https://ggen.io/data/smalt/resource/{id}")
+      end
+
+      property(:name, "https://ggen.io/ontology/smalt#name")
+      property(:type, "https://ggen.io/ontology/smalt#resourceType")
+      property(:location, "https://ggen.io/ontology/smalt#location")
+      property(:provisioning_state, "https://ggen.io/ontology/smalt#provisioningState")
     end
-
-    property(:name, "https://ggen.io/ontology/smalt#name")
-    property(:type, "https://ggen.io/ontology/smalt#resourceType")
-    property(:location, "https://ggen.io/ontology/smalt#location")
-    property(:provisioning_state, "https://ggen.io/ontology/smalt#provisioningState")
   end
 end
