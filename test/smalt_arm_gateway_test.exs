@@ -915,7 +915,7 @@ defmodule SmaltArmGatewayTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Wave-2: Defaults.apply wired after check_shape; location/tags always RAW.
+  # Wave-2: Defaults.apply wired before check_shape; location/tags always RAW.
   # ---------------------------------------------------------------------------
   test "storage PUT with minimal body carries defaults; location never the template string" do
     type = "Microsoft.Storage/storageAccounts"
