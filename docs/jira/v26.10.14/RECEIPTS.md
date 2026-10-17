@@ -168,7 +168,9 @@ count, or PASS/FAIL token) found in the file.
 | cap-ingestio | [cap-ingestion-functor.md](../v26.10.16/receipts/cap-ingestion-functor.md) | PASS | Capability: affidavit ingestion functor (ARM PUT / RG-delete seal sideband) |
 | cap-monitor- | [cap-monitor-metrics.md](../v26.10.16/receipts/cap-monitor-metrics.md) | PARTIAL_ALIVE | cap-monitor-metrics — Azure Monitor metrics capability (Smalt.Metrics + ARM wire surface) |
 | cap-sb-eh-ap | [cap-sb-eh-apiversion-2024.md](../v26.10.16/receipts/cap-sb-eh-apiversion-2024.md) | PASS | SB queues + EH eventhubs lattice top 2021-04-01 → 2024-01-01 |
+| lane10-expla | [lane10-explanation-rewrite.md](../v26.10.16/receipts/lane10-explanation-rewrite.md) | ALIVE | 10 — explanation rewrite (why-docs, receipt-anchored) |
 | lane606-affi | [lane606-affidavit-seal-event.md](../v26.10.16/receipts/lane606-affidavit-seal-event.md) | ALIVE | 606 — affidavit.seal OCEL event |
+| lane9-refere | [lane9-reference-rewrite.md](../v26.10.16/receipts/lane9-reference-rewrite.md) | PARTIAL_ALIVE | 9-reference-rewrite |
 | r03-kd-censu | [r03-kd-census-single-sourced.md](../v26.10.16/receipts/r03-kd-census-single-sourced.md) | ALIVE | R3 (KD census prose single-sourced) |
 | r06-do-deadl | [r06-do-deadletter-self-call.md](../v26.10.16/receipts/r06-do-deadletter-self-call.md) | PASS | R6 (QueueStore do_deadletter self-call fix) |
 | r08-receipt- | [r08-receipt-index-drift-gate.md](../v26.10.16/receipts/r08-receipt-index-drift-gate.md) | PASS | R8 (receipt-index-check real gate + injected-drift flip) |
@@ -268,6 +270,7 @@ count, or PASS/FAIL token) found in the file.
 | r216-court-x | [r216-court-x2-run8-red.md](../v26.10.16/receipts/r216-court-x2-run8-red.md) | FAIL | Court-x2 wrap runs 8–9 — RED |
 | r217-fin-swe | [r217-fin-sweep.md](../v26.10.16/receipts/r217-fin-sweep.md) | PASS | r217 — fin-sweep generated-artifact regen + idempotence (lane X6) |
 | r22-redirect | [r22-redirect-airgap-e2e-court.md](../v26.10.16/receipts/r22-redirect-airgap-e2e-court.md) | PASS | R22 (redirect:"error" air-gap + e2e court) |
+| r224-frameco | [r224-framecodec-diagnosis.md](../v26.10.16/receipts/r224-framecodec-diagnosis.md) | UNKNOWN | r224 — frame_codec property burst: diagnosis receipt |
 | r24-vault-re | [r24-vault-recover-versioned.md](../v26.10.16/receipts/r24-vault-recover-versioned.md) | PASS | R24 (vault soft-delete / recover restores versioned material) |
 | r26-sentinel | [r26-sentinel-kql.md](../v26.10.16/receipts/r26-sentinel-kql.md) | PASS | R26: sentinel KQL repair |
 | r27-session- | [r27-session-ledger-attempt-entry.md](../v26.10.16/receipts/r27-session-ledger-attempt-entry.md) | PASS | R27 (session-ledger attempt entry, airgap seam) |

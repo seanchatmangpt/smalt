@@ -1,8 +1,8 @@
 # PUBLISH_RECORD — v26.10.16 hex publish record
 
-- **Standing**: **PUBLISH-READY: NO — TYPED-BLOCKED** (final, T5 2026-10-16: B1 + B2
-  remain, both cross-repo/packaging-class; B4 FIXED; gates green; remediation =
-  NEXT_WINDOW §13)
+- **Standing**: **PUBLISH-READY: NO — TYPED-BLOCKED** (updated 2026-10-17: **B1 only** —
+  ex4pm hex auth, operator action; package built + checksum on record. B2 FIXED by lane
+  G2's landed guard; B4 FIXED; B5/B6 advisory; gates green; remediation = NEXT_WINDOW §13)
 - **Scope**: docs-only lane X8, repo `/Users/sac/smalt`
 - **Date**: 2026-10-16
 - **Exemplar**: `docs/jira/v26.10.14/` pattern; active window `docs/jira/v26.10.16/`
@@ -58,16 +58,47 @@ the NEXT window, owned by the ex4pm repo, not smalt.
 - **Cross-ref**: `receipts/cap-ex4pm-emitters.md` (emitters capability that anchors the
   runtime-need ruling); `lib/smalt/semantic/domain.ex` (AshEx4pm evidence pattern doc).
 
-### B2 — semantic/ compiles against a dev/test-only dep (typed: PROD_COMPILE_UNRESOLVED)
+### B2 — semantic/ compiles against a dev/test-only dep — FIXED (2026-10-17, lane G2 guard)
 
-Evidence: `lib/smalt/semantic/resource.ex:23`, `evidence.ex:20`,
-`ledger_entry.ex:19` — each uses `extensions: [AshR2RML.Resource]`, a **compile-time**
-extension atom. But the dep providing that module (`ash_r2rml`, `mix.exs:111`) is
-`only: [:dev, :test], optional: true` — so a consumer installing the published package
-with `env: :prod` never gets `AshR2RML.Resource` on the load path and the three semantic
-modules fail to compile.
+**Status: FIXED.** Lane G2 landed a compile-time guard, `lib/smalt/semantic/r2rml_guard.ex`
+(`Smalt.Semantic.R2RMLGuard.if_r2rml/1`, AST-branch-dropping macro): the `r2rml do`
+blocks in `resource.ex`/`evidence.ex`/`ledger_entry.ex` are now macro-backed and are
+dropped WITHOUT expansion when `AshR2RML.Resource` is not a loaded compile-time dep, so
+`lib/smalt/semantic/` compiles under `MIX_ENV=prod` without the dev/test-only `ash_r2rml`
+path dep. The `extensions: [AshR2RML.Resource]` option stays a compile-time LITERAL by
+design — Spark derives section-macro imports from the literal and silently skips a missing
+module's import; any indirection makes Spark silently drop the extension even in dev
+(mechanism documented in the guard's moduledoc, verified in-window).
 
-Fix options (either closes it):
+Original evidence (pre-fix): `lib/smalt/semantic/resource.ex:23`, `evidence.ex:20`,
+`ledger_entry.ex:19` — each used `extensions: [AshR2RML.Resource]`, a **compile-time**
+extension atom, while the providing dep (`ash_r2rml`, `mix.exs:111`) is
+`only: [:dev, :test], optional: true`.
+
+**Close-condition re-run on the updated tree (2026-10-17, this lane — real output):**
+
+```bash
+$ MIX_ENV=prod mix compile --force
+==> smalt
+Compiling 128 files (.ex)
+Generated smalt app
+EXIT=0
+```
+
+```bash
+$ mix test test/semantic_epoch_test.exs        # dev env, ash_r2rml present
+21 tests, 0 failures
+$ mix test test/semantic_projection_test.exs
+21 tests, 0 failures
+```
+
+Close condition MET: clean `MIX_ENV=prod` compile (exit 0, no unresolved-atom errors)
+plus both semantic suites green in dev (21/0 each, 42/0 combined — the r2rml blocks
+still expand normally when ash_r2rml IS present). Compile-freeze transient during the
+guard's mid-window landing (runs 17 of the court ledger) was resolved in-window;
+runs 18-21 reached full test summaries on the guarded tree.
+
+### B2 — superseded fix-option list (historical)
 
 - guard-compile the three modules (skip when `Code.ensure_loaded?(AshR2RML.Resource)
   == {:error, :nofile}`), or

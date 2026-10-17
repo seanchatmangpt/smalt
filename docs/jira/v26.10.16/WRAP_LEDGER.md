@@ -1403,3 +1403,127 @@ the post-court run is adjudication-only:
 - OCEL census re-grepped (method above), run logs 16-20 read from
   disk, run-21 in-flight state from `pgrep` + log mtime (22:03:18
   local, run-2 header last line).
+
+## Court post-mortem extension — runs 22-29 (terminal lane, 2026-10-17)
+
+All logs read from disk this lane (`tmp/court-x2-wrap-run{22..29}.log`).
+Run 22's holder was resolved between invocations (PID 57966 — a docker
+container holding 9443/8443/5672; `substrate-down` cleared it, no kill of
+an unknown holder). Runs 23/24's shifting lifecycle/ocel pair got a deep
+repair landed between them (assert-time `fetch_env` re-derivation in the
+enclave lifecycle/ocel fence pair — coordinator-reported; this lane found
+no `fetch_env` referent in the two fence files on disk, so the fix's
+referent is UNLOCATED, carried typed). The metadata-indexer load finding:
+a metadata indexer (Spotlight-class) was saturating the host during the
+wrap re-courts — mitigated by the `.metadata_never_index` marker now on
+disk at the repo root (`/Users/sac/smalt/.metadata_never_index`, 0 bytes,
+mtime 2026-10-17 01:14, coincident with the run-28 window; no doc or
+script referenced it before this row — this row is its referent).
+`just docs-dod-check` → **exit 0** (re-run at this edit).
+**Ledger: 28 completed invocations, 0 two-green** (run 29 in-flight —
+log holds only the run-1 header; verdict recorded when F1 reports).
+OCEL sink census re-grepped: 51 `court.run` events — **11 green / 40
+not-green**. Fin-sweep step 1 (`just court-x2`) stays OPEN; the
+release-receipt mint stays gated on it. r224
+(`receipts/r224-framecodec-diagnosis.md`, FLAKE_SOLO) is on disk and
+covers run 26.
+
+Per run:
+
+22. **run-22** (`court-x2-wrap-run22.log`): both runs exit 1 at the
+    **doctor stage, zero tests** — `[FAULT] port-in-use` x3 per run,
+    ports 9443/8443/5672 held by **PID 57966**, later identified as a
+    **docker container** (not an orphan beam — a foreign keeper the
+    doctor correctly refused to kill). Resolved by `substrate-down`
+    between invocations (the standing substrate was the holder's
+    parent context). Class: **environment/infra (foreign port hold,
+    docker)** — same doctor fail-closed family as runs 11/16. COURT_X2_RC=1.
+23. **run-23** (`court-x2-wrap-run23.log`): run 1 exit 2 —
+    `2435 tests, 1 failure`
+    (`Smalt.Enclave.LifecycleTest` enclave_lifecycle_test.exs:94,
+    "OCEL stage emission is fail-safe…"); run 2 exit 2 —
+    `2435 tests, 1 failure`
+    (`Smalt.Telemetry.EnclaveOcelTest` enclave_ocel_test.exs:46).
+    SHIFTING-FAILURE detector fired. Class: **ordering** — the
+    recurring Enclave.Lifecycle / EnclaveOcel pair (first-seen run-6,
+    dominant face runs 9/15/19). The deep repair landed between runs
+    23 and 24 (assert-time `fetch_env` re-derivation — see header
+    note; referent UNLOCATED on disk, carried typed). COURT_X2_RC=1.
+24. **run-24** (`court-x2-wrap-run24.log`): run 1 exit 2 —
+    `2435 tests, 4 failures`, all four `Smalt.Affidavit.SealTest`
+    (:54/:82/:94/:126, the known churn class); run 2 exit 2 —
+    `2435 tests, 5 failures` — the same SealTest x4 **plus**
+    `Smalt.SemanticProjectionTest` (semantic_projection_test.exs:30).
+    SHIFTING-FAILURE fired on the run-2-only rider. Class:
+    **load-churn** (SealTest quartet stable across both runs — the
+    first time the churn face is IDENTICAL-and-persistent; the
+    projection rider is new). COURT_X2_RC=1.
+25. **run-25** (`court-x2-wrap-run25.log`): run 1 exit 2 —
+    `2435 tests, 1 failure`
+    (`Smalt.Amqp.BrokerFacadeTest` "Sweeper GCs expired Event Hubs
+    processing claims", test/amqp/broker_facade_test.exs:187 — new
+    face); run 2 exit **124** — the sdk-smoke watchdog `timeout`
+    fired (the `test-sdk-smoke` 1800 s hard cap), timed out under
+    metadata-indexer host load (see header note; marker placed after
+    this run's window). Run 1's sweeper face: FLAKE_SOLO — run 2's
+    mix tier never reached it (killed at sdk-smoke), so solo re-run
+    evidence is PENDING; classified churn per the shifting signature,
+    not solo-proven. Class: **load-churn + harness-timeout
+    (environment)**. COURT_X2_RC=1.
+26. **run-26** (`court-x2-wrap-run26.log`): run 1 exit 2 —
+    `2435 tests, 224 failures`, a mass-failure burst spanning
+    unrelated subsystems (all 7 `FrameCodecPropertyTest` properties +
+    auth_enforce/pplan/spc_drift/ash_extension/mcp_wire/sb_rules/
+    arm_wire); run 2 exit 1 — failing tests `(none)` (mix tier
+    green; exit 1 was missing `deps/` swept between runs, per
+    r224's environment note). Identical tree flips 224 → 0 with no
+    intervening edit. **Diagnosed and receipted: r224
+    (`receipts/r224-framecodec-diagnosis.md`, FLAKE_SOLO)** — solo
+    green x2 under fresh seeds (339610/381644), codec sources
+    byte-identical to HEAD, no shrunk counterexample to preserve;
+    the burst is attributed to court-environment load. Class:
+    **load-churn (mass burst), FLAKE_SOLO-diagnosed**. COURT_X2_RC=1.
+27. **run-27** (`court-x2-wrap-run27.log`): run 1 exit 2 —
+    `2435 tests, 1 failure` (`Smalt.AffidavitWasmTest` test 3
+    "mutated payload and garbage delta fail closed typed",
+    smalt_affidavit_wasm_test.exs:80) at **459.2 s wall** (vs the
+    ~200-203 s baseline of runs 22-26 — 2.2x, first on-disk
+    quantitative degraded-host evidence, consistent with the
+    metadata-indexer finding); run 2 exit 1 — mix tier GREEN
+    (`0 failures`) but sdk-smoke red (`pass 3 / fail 3`,
+    amqp/blob/cosmos "test failed" — substrate-contention class,
+    cf. run 8). Class: **load-churn + sdk-smoke contention**.
+    COURT_X2_RC=1.
+28. **run-28** (`court-x2-wrap-run28.log`): run 1 exit 2 —
+    `2435 tests, 1 failure` at 212.9 s (failing-test name NOT in
+    the log — the per-run extraction prints only after run 2
+    finishes); run 2 never completed — **hung post-test stage,
+    killed** (log ends at the run-2 header; degraded host, same
+    window as the `.metadata_never_index` placement at 01:14).
+    Class: **environment (hung stage, operator kill)**. No
+    flake/extraction output exists for this invocation. COURT_X2_RC=1.
+29. **run-29** (`court-x2-wrap-run29.log`): **IN-FLIGHT at this
+    edit** — log holds only the run-1 header (191 bytes, mtime
+    01:46). No verdict asserted, no green claimed. Verdict recorded
+    when F1 reports.
+
+### Honest terminal standing (runs 22-29)
+
+Twenty-eight completed invocations, zero two-green; run 29 pending.
+The deterministic class remains empty (no deterministic red since
+run-20's ERROR_CODES fix). Residual classes carried to the next
+window, updated: (a) Enclave.Lifecycle/EnclaveOcel ordering pair —
+the deep repair landed between runs 23/24 but its referent is
+UNLOCATED on disk, so non-recurrence is UNPROVEN (watch-list,
+needs a receipt or two clean re-courts); (b) churn bursts —
+SealTest quartet (runs 24, persistent), AffidavitWasm test 3
+(run 27), BrokerFacade sweeper GC (run 25, solo evidence PENDING),
+plus the r224 mass-burst class (run 26); (c) environment/infra —
+foreign docker port hold (run 22, resolved), sdk-smoke 1800 s
+timeout + hung-post-test-stage kills under host load (runs 25/27/28),
+mitigated going forward by the `.metadata_never_index` marker (its
+effect is UNMEASURED until a post-marker court run completes on a
+quiet host). Next window's first action is unchanged: re-court with
+9443 free, port-sweep law followed, and the host quiet
+(post-marker), embedding real output in a minted receipt; both exit
+codes must be 0.
