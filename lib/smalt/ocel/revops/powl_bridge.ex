@@ -112,7 +112,7 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
     model_out = Keyword.get(opts, :model_out) || @default_model_path
 
     result =
-      if opts[:via] == :script do
+      if opts[:via] == :script or not ex4pm_loaded?() do
         discover_script(path, opts, object_type, model_out)
       else
         with {:ok, log} <- ingest_log(path, opts),
@@ -145,12 +145,12 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   def conform(path, opts \\ []) do
     object_type = Keyword.get(opts, :object_type, @default_object_type)
 
-    if opts[:via] == :script do
+    if opts[:via] == :script or not ex4pm_loaded?() do
       conform_script(path, opts, object_type)
     else
       with {:ok, log} <- ingest_log(path, opts),
            {:ok, model} <- fetch_model(opts) do
-        case Ex4pm.conform(log, model, object_type: object_type) do
+        case ex4pm_conform(log, model, object_type: object_type) do
           {:ok, run} ->
             {:ok,
              %{
@@ -211,8 +211,36 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
 
   # -- in-process ingest ------------------------------------------------------
 
+  defp ex4pm_loaded? do
+    Code.ensure_loaded?(Ex4pm)
+  end
+
+  defp ex4pm_conform(log, model, opts) do
+    if ex4pm_loaded?() do
+      apply(Ex4pm, :conform, [log, model, opts])
+    else
+      {:error, :ex4pm_not_available}
+    end
+  end
+
+  defp ex4pm_discover(log, opts) do
+    if ex4pm_loaded?() do
+      apply(Ex4pm, :discover, [log, opts])
+    else
+      {:error, :ex4pm_not_available}
+    end
+  end
+
+  defp ex4pm_ingest(map_log) do
+    if ex4pm_loaded?() do
+      apply(Ex4pm, :ingest, [map_log])
+    else
+      {:error, :ex4pm_not_available}
+    end
+  end
+
   defp discover_run(log, object_type) do
-    case Ex4pm.discover(log, object_type: object_type) do
+    case ex4pm_discover(log, object_type: object_type) do
       {:ok, run} -> {:ok, run}
       {:error, refusal} -> {:error, {:ex4pm_refused, refusal}}
     end
@@ -231,7 +259,7 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   defp ingest_log(path, _opts) do
     case OcelNdjson.read_document(path) do
       {:ok, doc} ->
-        case Ex4pm.ingest(map_log(doc)) do
+        case ex4pm_ingest(map_log(doc)) do
           {:ok, log} -> {:ok, log}
           {:error, reason} -> {:error, {:ex4pm_ingest_refused, reason}}
         end
