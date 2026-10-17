@@ -1,4 +1,6 @@
 defmodule Smalt.Ocel.Revops.PowlBridge do
+  @compile {:no_warn_undefined, Ex4pm}
+
   @moduledoc """
   smalt -> ex4pm bridge: smalt reads and assembles its OCEL 2.0 NDJSON
   through `Smalt.Telemetry.OcelNdjson.assemble_document/1`, hands the
