@@ -9,6 +9,10 @@
 # .ggen_igniter/, cli/.ggen-v2/, Justfile — the recipe doc comments quote the
 # scan terms by design, same meta class as docs/archive/PUBLISH_CHECK.md).
 #
+# Extended (2026-10-16, lane 11 docs-dod): docs/jira/v26.10.16/ (window
+# wrap/planning docs — WRAP_LEDGER, PUBLISH_RECORD, release-flip-spec,
+# next-window-errc, doctor-receipt*.json machine receipts — same
+# evidence/planning-record class as the v26.10.15 exclusion below).
 # Also excluded (2026-10-15, lane X-4): docs/jira/*/receipts/ and
 # docs/jira/*/sdk-results/ — 163 hits across 80 files. These are evidence
 # Extended (2026-10-16, coordinator): docs/jira/*/bench/ (machine JSONL quoting
@@ -86,6 +90,11 @@ ALLOWLIST=(
   "docs/jira/v26.10.14/14-docs-drift.md:53"
   "docs/jira/v26.10.14/14-docs-drift.md:81"
   "docs/jira/v26.10.14/_LANES.md:25"
+  # KD register rows quoting their own evidence environment (lane 11
+  # docs-dod, 2026-10-16): KD-90-era B-leg note + KD-94 row (athena B-leg
+  # receipt text). Same evidence-record class as the 12-gate-closure pins.
+  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:157"
+  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:248"
   # stress-script legacy paths (stress-scripts owner)
   "scripts/stress/telemetry_overhead.py:28"
   # e2e s7/s9 + azapi test comments/fallbacks (e2e owners)
@@ -102,7 +111,7 @@ ALLOWLIST=(
 
 # 1. Sweep tracked files only, excluding machine/self-quote surfaces.
 hits="$(git ls-files -z \
-  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/v26\.10\.15/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
+  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/v26\.10\.15/|docs/jira/v26\.10\.16/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
   | xargs -0 grep -niE "$PATTERN" 2>/dev/null || true)"
 
 allowed=0

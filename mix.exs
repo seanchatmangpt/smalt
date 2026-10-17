@@ -119,6 +119,18 @@ defmodule Smalt.MixProject do
       # (dev/test only); the in-tree path dep (26.10.8) wins in every env
       # where ash_ex4pm compiles, so both resolve to one ex4pm.
       {:ex4pm, path: "../ex4pm", override: true},
+      # B1 dual-pin activation block (PUBLISH_RECORD.md, lane G1 2026-10-16).
+      # ex4pm 26.10.8 hex dry-build verified: `mix hex.build -o
+      # /tmp/ex4pm-26.10.8.tar` exits 0, checksum
+      # 038d538135c9bfe5a9ac266ed5a87780dbe56ce91eb1a7cb188e1833726b9564,
+      # 468 files, zero plts/_build/deps leakage. NOT yet on hex — do not
+      # flip until the operator runs `mix hex.publish` (hex account) for
+      # ex4pm 26.10.8. Activation: replace the path line above with:
+      #   {:ex4pm, "~> 26.10.8", override: true},
+      # optionally keeping local dev override as:
+      #   {:ex4pm, path: "../ex4pm", override: true, optional: true},
+      # then run `mix deps.update ex4pm && mix hex.build` (smalt) and flip
+      # PUBLISH_RECORD.md B1 to CLOSED.
       {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true},
       # ERRC Raise lane 6: property-based testing with shrinking (test-only
       # usage; declared env-prod because `ash` requires stream_data
