@@ -93,6 +93,21 @@ smalt:KeyVaultShape a sh:NodeShape ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
         sh:message "vaults require skuName (standard|premium)." ;
+    ] , [
+        sh:path smalt:skuFamily ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:tenantId ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:enableSoftDelete ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:softDeleteRetentionInDays ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:enableRbacAuthorization ;
+        sh:minCount 0 ;
     ] .
 
 smalt:ManagedHsmShape a sh:NodeShape ;
@@ -123,6 +138,21 @@ smalt:StorageAccountShape a sh:NodeShape ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
         sh:message "storageAccounts require sku.name." ;
+    ] , [
+        sh:path smalt:kind ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:supportsHttpsTrafficOnly ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:allowBlobPublicAccess ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:minimumTlsVersion ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:networkAcls ;
+        sh:minCount 0 ;
     ] .
 
 smalt:ServiceBusNamespaceShape a sh:NodeShape ;
@@ -148,5 +178,151 @@ smalt:CosmosAccountShape a sh:NodeShape ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
         sh:message "databaseAccounts require location." ;
+    ] , [
+        sh:path smalt:kind ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:databaseAccountOfferType ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:consistencyPolicy ;
+        sh:minCount 0 ;
+    ] , [
+        sh:path smalt:enableMultipleWriteLocations ;
+        sh:minCount 0 ;
     ] .
 
+smalt:KeyVaultSecretShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:KeyVaultSecret ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "vaults/secrets require location." ;
+    ] , [
+        sh:path smalt:value ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "vaults/secrets require value." ;
+    ] .
+
+smalt:SqlDatabaseShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:SqlDatabase ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "sqlDatabases require location." ;
+    ] .
+
+smalt:SqlContainerShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:targetClass smalt:SqlContainer ;
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "sqlContainers require location." ;
+    ] .
+
+
+#################################################################
+# smalt:defaultValue annotations — single source of truth for the
+# ARM PUT-body defaults table (Smalt.ArmGateway.Defaults @table).
+# Each smalt:default row binds a dotted JSON path (smalt:jsonPath)
+# to a declared shape path (smalt:shapePath). Bijection gate:
+# verify/defaults-bijection.unbound.rq returns a row (FAIL) for any
+# default whose shapePath is not declared in the shape's sh:property
+# vocabulary — a default the shape refuses. DefaultKind: string |
+# integer | boolean.
+#################################################################
+smalt:StorageAccountShape
+    smalt:default
+    [ smalt:jsonPath "location" ;
+      smalt:value "[resourceGroup().location]" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:location ] ,
+    [ smalt:jsonPath "sku.name" ;
+      smalt:value "Standard_LRS" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:skuName ] ,
+    [ smalt:jsonPath "kind" ;
+      smalt:value "StorageV2" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:kind ] ,
+    [ smalt:jsonPath "properties.supportsHttpsTrafficOnly" ;
+      smalt:value "true" ;
+      smalt:type "boolean" ;
+      smalt:shapePath smalt:supportsHttpsTrafficOnly ] ,
+    [ smalt:jsonPath "properties.allowBlobPublicAccess" ;
+      smalt:value "true" ;
+      smalt:type "boolean" ;
+      smalt:shapePath smalt:allowBlobPublicAccess ] ,
+    [ smalt:jsonPath "properties.minimumTlsVersion" ;
+      smalt:value "TLS1_2" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:minimumTlsVersion ] ,
+    [ smalt:jsonPath "properties.networkAcls.bypass" ;
+      smalt:value "AzureServices" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:networkAcls ] ,
+    [ smalt:jsonPath "properties.networkAcls.defaultAction" ;
+      smalt:value "Allow" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:networkAcls ] .
+
+smalt:KeyVaultShape
+    smalt:default
+    [ smalt:jsonPath "location" ;
+      smalt:value "[resourceGroup().location]" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:location ] ,
+    [ smalt:jsonPath "properties.sku.family" ;
+      smalt:value "A" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:skuFamily ] ,
+    [ smalt:jsonPath "properties.sku.name" ;
+      smalt:value "standard" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:skuName ] ,
+    [ smalt:jsonPath "properties.tenantId" ;
+      smalt:value "[subscription().tenantId]" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:tenantId ] ,
+    [ smalt:jsonPath "properties.enableSoftDelete" ;
+      smalt:value "true" ;
+      smalt:type "boolean" ;
+      smalt:shapePath smalt:enableSoftDelete ] ,
+    [ smalt:jsonPath "properties.softDeleteRetentionInDays" ;
+      smalt:value "90" ;
+      smalt:type "integer" ;
+      smalt:shapePath smalt:softDeleteRetentionInDays ] ,
+    [ smalt:jsonPath "properties.enableRbacAuthorization" ;
+      smalt:value "true" ;
+      smalt:type "boolean" ;
+      smalt:shapePath smalt:enableRbacAuthorization ] .
+
+smalt:CosmosAccountShape
+    smalt:default
+    [ smalt:jsonPath "location" ;
+      smalt:value "[resourceGroup().location]" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:location ] ,
+    [ smalt:jsonPath "kind" ;
+      smalt:value "GlobalDocumentDB" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:kind ] ,
+    [ smalt:jsonPath "properties.databaseAccountOfferType" ;
+      smalt:value "Standard" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:databaseAccountOfferType ] ,
+    [ smalt:jsonPath "properties.consistencyPolicy.defaultConsistencyLevel" ;
+      smalt:value "Session" ;
+      smalt:type "string" ;
+      smalt:shapePath smalt:consistencyPolicy ] ,
+    [ smalt:jsonPath "properties.enableMultipleWriteLocations" ;
+      smalt:value "false" ;
+      smalt:type "boolean" ;
+      smalt:shapePath smalt:enableMultipleWriteLocations ] .

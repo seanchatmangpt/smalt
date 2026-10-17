@@ -48,8 +48,12 @@ def capture(ports, shared_key):
             headers={"If-Match": etag1})
         with lock:
             results.append({"worker": i, "status": st,
-                            "code": (body or {}).get("error", {}).get("code")
-                            if isinstance(body, dict) else None})
+                            # Cosmos 412 body renders `code` at TOP level
+            # (lib/smalt/data_plane/cosmos.ex error_response);
+            # error.code is the blob-arm shape, kept as fallback.
+            "code": ((body or {}).get("code")
+                     or (body or {}).get("error", {}).get("code"))
+                    if isinstance(body, dict) else None})
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
     for t in threads:
@@ -91,8 +95,8 @@ def verdict(obs):
     check(obs.get("race") == [200] + [412] * 5,
           f"exactly one 200 and five 412s (got {obs.get('race')})")
     codes = [c for c in obs.get("race_codes", []) if c]
-    check(all(c == "PreconditionFailed" for c in codes),
-          "losers carry PreconditionFailed")
+    check(len(codes) == 5 and all(c == "PreconditionFailed" for c in codes),
+          "losers carry PreconditionFailed with codes present (5 losers, none stripped)")
     check(obs.get("final_etag") not in (None, obs.get("etag_create")),
           "etag refreshed on write")
     check(obs.get("stale_write_status") == 412,
@@ -121,6 +125,20 @@ def mutate_fixtures(obs):
         o["stale_write_status"] = 200
         return o
 
+    def etag_unstable_reread(o):
+        # SHIM-COURT-style negative fixture: mutating only etag_reread must
+        # trip the stable-across-read check.
+        o = dict(o)
+        o["etag_reread"] = "\"" + ("e" * 64) + "\""
+        return o
+
+    def all_empty_race_codes(o):
+        # SHIM-COURT-style negative fixture: losers with stripped/empty codes
+        # must NOT pass vacuously — codes must be present and PreconditionFailed.
+        o = dict(o)
+        o["race_codes"] = [""] * 6
+        return o
+
     def bad_etag_format(o):
         o = dict(o)
         o["etag_create"] = "unquoted-not-hex"
@@ -130,6 +148,8 @@ def mutate_fixtures(obs):
             [("two-winners", two_winners), ("no-winner", no_winner),
              ("etag-not-refreshed", etag_not_refreshed),
              ("stale-write-accepted", stale_write_accepted),
+             ("etag-unstable-reread", etag_unstable_reread),
+             ("all-empty-race-codes", all_empty_race_codes),
              ("bad-etag-format", bad_etag_format)]]
 
 

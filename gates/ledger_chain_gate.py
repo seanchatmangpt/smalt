@@ -119,6 +119,13 @@ def mutate_fixtures(obs):
         o["listed"][0]["prev_hash"] = "1" * 64
         return o
 
+    def broken_seq(o):
+        # SHIM-COURT-style negative fixture: transactionId seq must be
+        # monotonic "<seq>.1"; breaking the seq must be detected.
+        o = copy.deepcopy(o)
+        o["listed"][1]["transactionId"] = "1.1"
+        return o
+
     def dup_accepted(o):
         o = copy.deepcopy(o)
         o["dup_status"] = 201
@@ -128,6 +135,7 @@ def mutate_fixtures(obs):
             [("broken-link", broken_link), ("wrong-root", wrong_root),
              ("tampered-contents", tampered_contents),
              ("nonzero-genesis", nonzero_genesis),
+             ("broken-seq", broken_seq),
              ("duplicate-accepted", dup_accepted)]]
 
 
