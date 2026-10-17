@@ -13,7 +13,7 @@
     {
       "metric": "nfr3_delta_rss_kb",
       "value": -31712.0,
-      "n": 96,
+      "n": 104,
       "center": -31712.0,
       "sigma": 3171.2,
       "z": 0.0,
@@ -22,7 +22,7 @@
     {
       "metric": "nfr4_residue_tables",
       "value": 0,
-      "n": 95,
+      "n": 103,
       "center": 0.0,
       "sigma": 1.0,
       "z": 0.0,
