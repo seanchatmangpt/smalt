@@ -198,7 +198,15 @@ commit_family() {
     return 0
   fi
 
-  git add -- "${files[@]}"
+  # Skip paths that no longer exist on disk (deleted/renamed files are already
+  # staged in the index from the git mv; git add on a vanished pathspec is fatal)
+  local existing=()
+  local p
+  for p in "${files[@]}"; do
+    [[ -e "$p" || -L "$p" ]] && existing+=("$p")
+  done
+  (( ${#existing[@]} > 0 )) || return 0
+  git add -- "${existing[@]}"
   echo "--- staged stat ---"
   git diff --cached --stat
   local staged
