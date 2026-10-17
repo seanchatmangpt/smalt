@@ -1,10 +1,11 @@
 # Multi-stage build for the smalt substrate release.
 #
-# The two sibling path dependencies are injected as extra build contexts:
+# The three sibling path dependencies are injected as extra build contexts:
 #
 #   docker build -f docker/Dockerfile -t smalt:local . \
 #     --build-context ash_graphlaw=../ash_graphlaw \
-#     --build-context ggen_igniter=../ggen_igniter
+#     --build-context ggen_igniter=../ggen_igniter \
+#     --build-context ex4pm=../ex4pm
 #
 # See docker/README.md.
 
@@ -24,11 +25,14 @@ COPY mix.exs mix.lock ./
 # Sibling path deps must exist at ../ash_graphlaw and ../ggen_igniter
 # relative to /app (i.e. /ash_graphlaw, /ggen_igniter). Copy the injected
 # build contexts and symlink them into those paths.
+# ash_r2rml / ash_ex4pm are optional-only deps (dev/test) — not copied here.
 COPY --from=ash_graphlaw / /ctx/ash_graphlaw
 COPY --from=ggen_igniter / /ctx/ggen_igniter
+COPY --from=ex4pm / /ctx/ex4pm
 RUN mkdir /sibs \
  && ln -sfn /ctx/ash_graphlaw /ash_graphlaw \
- && ln -sfn /ctx/ggen_igniter /ggen_igniter
+ && ln -sfn /ctx/ggen_igniter /ggen_igniter \
+ && ln -sfn /ctx/ex4pm /ex4pm
 
 RUN mix local.hex --force \
  && mix local.rebar --force

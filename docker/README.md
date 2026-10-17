@@ -12,14 +12,16 @@ Multi-stage container packaging for the smalt BEAM-native substrate
 
 ## Build
 
-From the repo root. The two sibling path dependencies declared in
-`mix.exs` (`../ash_graphlaw`, `../ggen_igniter`) are injected as extra
-build contexts so the build stays self-contained:
+From the repo root. The three sibling path dependencies declared in
+`mix.exs` (`../ash_graphlaw`, `../ggen_igniter`, `../ex4pm`) are injected
+as extra build contexts so the build stays self-contained (`ash_r2rml` /
+`ash_ex4pm` are optional-only deps and are not included):
 
 ```sh
 docker build -f docker/Dockerfile -t smalt:local . \
   --build-context ash_graphlaw=../ash_graphlaw \
-  --build-context ggen_igniter=../ggen_igniter
+  --build-context ggen_igniter=../ggen_igniter \
+  --build-context ex4pm=../ex4pm
 ```
 
 Or let compose do it:
@@ -39,7 +41,7 @@ docker compose -f docker/compose.smalt.yml up -d
 | Container | Host (loopback only) | Surface |
 |---|---|---|
 | 9443 | 127.0.0.1:9443 | ARM control plane / REST / STS / discovery |
-| 8443 | 127.0.0.1:8443 | Athena data-plane egress router |
+| 8443 | 127.0.0.1:8443 | data-plane egress router |
 | 5672 | 127.0.0.1:5672 | AMQP 1.0 broker (Service Bus mode) |
 | 5673 | 127.0.0.1:5673 | Event Hubs-compatible listener |
 

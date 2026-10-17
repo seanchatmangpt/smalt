@@ -1,0 +1,49 @@
+# config/bands.yaml — SPC rolling control bands (lane 430, v26.10.16)
+#
+# Binds the operator's SPC trigger tiers to the Chatman invariants:
+#   1σ drift  -> silent event {:spc_drift, metric, sigma, value} into
+#                :smalt_event_messages (recorded in the gate receipt)
+#   2σ drift  -> dispatch-ready row (typed remediation: bench-runner profile)
+#   3σ drift  -> fail-closed (NFR-4 residue class: nonzero exit + orphaned-key
+#                dump)
+#
+# History sources are read-only: the gate seeds its rolling window from these
+# receipts, then appends each observation to tmp/spc-history.jsonl (scratch,
+# not indexed — receipts/ docs carry the standing verdicts).
+#
+# sigma_mode: sample stdev over the last `window` observations; a metric with
+# fewer than `min_points` observations runs in SEED mode (first run
+# establishes bands from the current baseline, verdict SEEDED, exit 0 —
+# fail-closed on missing history means seed, never a faked z-score).
+
+version: 1
+window: 30          # rolling mean/sigma over the last N observations
+min_points: 8       # below this: SEED mode (bands established, no verdict)
+
+metrics:
+  # NFR3: RSS delta across the substrate lifecycle (KB). History: JSON code
+  # blocks in the nfr3-rss gate receipt (delta_kb field).
+  nfr3_delta_rss_kb:
+    center: rolling_mean
+    history:
+      - docs/jira/v26.10.16/sdk-results/nfr3-rss.md   # delta_kb JSON blocks
+    budget_kb: 262144
+
+  # NFR4: orphaned residue tables after full lifecycle destroy. Center is 0
+  # by definition — ANY nonzero count is a 3σ breach (fail-closed), a
+  # stronger law than stdev allows.
+  nfr4_residue_tables:
+    center: 0
+    center_rule: zero             # zero-center: value>0 => z=inf => 3σ tier
+    history:
+      - tmp/enclave-native.jsonl   # e2-native rows (residue_tables field; absent = 0)
+
+  # Native lifecycle per-stage wall time (ms). History: e2-native jsonl
+  # rows, machine.parse_ms / apply_ms / plan_ms / synthesize_ms /
+  # destroy_ms / residue_ms. One band per stage.
+  native_stage_ms:
+    per_stage: true
+    stages: [parse, apply, plan, synthesize, destroy, residue]
+    center: rolling_mean
+    history:
+      - tmp/enclave-native.jsonl
