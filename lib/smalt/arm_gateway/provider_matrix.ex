@@ -52,7 +52,7 @@ defmodule Smalt.ArmGateway.ProviderMatrix do
   @spec registry_namespaces() :: [namespace(), ...]
   def registry_namespaces do
     Registry.admitted_resource_types()
-    |> Enum.map(&namespace_of/1)
+    |> Stream.map(&namespace_of/1)
     |> Enum.uniq()
     |> Enum.sort()
   end
