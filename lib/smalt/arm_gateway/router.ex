@@ -997,7 +997,8 @@ defmodule Smalt.ArmGateway.Router do
       "properties" =>
         full_type
         |> Defaults.enrich(name, id, merged, authority)
-        |> Map.get("properties", %{})
+        |> Map.get("properties")
+        |> Kernel.||(%{})
         |> Map.put("provisioningState", "Succeeded"),
       # SHIM-COURT tags: coerce via normalize_tags/1 (null-when-empty);
       # the RG update full-replace law lives in rg_tags/2 only.
