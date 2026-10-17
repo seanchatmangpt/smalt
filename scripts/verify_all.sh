@@ -103,6 +103,16 @@ else
   skip_stage "naming-sweep" "recipe 'naming-sweep' not in Justfile"
 fi
 
+# receipt-index-check — drift gate: committed RECEIPTS.md/INDEX.md must match
+# regeneration. (receipt-durability-gate stays informational, NOT wired: the
+# tree currently has uncommitted receipt files and ~22 SUSPECT receipts; wire
+# it only after those are committed/cleaned.)
+if recipe_visible "receipt-index-check"; then
+  run_stage "receipt-index-check" -- just --justfile "$JUSTFILE" receipt-index-check
+else
+  skip_stage "receipt-index-check" "recipe 'receipt-index-check' not in Justfile"
+fi
+
 if recipe_visible "invariant-gates"; then
   run_stage "invariant-gates" -- just --justfile "$JUSTFILE" invariant-gates
 else

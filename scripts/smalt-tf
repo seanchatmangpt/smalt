@@ -4,8 +4,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-export ARM_ENDPOINT="http://localhost:9443"
-export ARM_RESOURCE_MANAGER_ENDPOINT="http://localhost:9443"
+# Port overrides (2026-10-16, tf_smoke lane-concurrency): SMALT_TF_PORT /
+# SMALT_TLS_PORT shift the loopback targets; defaults 9443/9444 unchanged.
+# AZURE_AUTHORITY_HOST follows tf_plan_check.sh's port-shifted pattern
+# (https on the TLS twin) when shifted; default http:9443 kept when unset.
+export ARM_ENDPOINT="http://localhost:${SMALT_TF_PORT:-9443}"
+export ARM_RESOURCE_MANAGER_ENDPOINT="http://localhost:${SMALT_TF_PORT:-9443}"
 export ARM_RESOURCE_MANAGER_AUDIENCE="https://management.azure.com"
 # NOTE: NOT ARM_SKIP_PROVIDER_REGISTRATION — azurerm 4.x hard-rejects that flag
 # combined with the fixture's resource_provider_registrations = "none" (lane 23).
@@ -22,15 +26,23 @@ export ARM_RESOURCE_MANAGER_AUDIENCE="https://management.azure.com"
 #   only covers non-darwin Unix; darwin always verifies through Apple
 #   Security.framework). The dev CA is therefore trusted in the macOS user
 #   keychain (no sudo: user-domain trust settings are honored by SecTrust).
-export ARM_METADATA_HOSTNAME="localhost:9444"
+# SHIM-COURT lane fix (2026-10-16): 127.0.0.1 not localhost — azurerm resolves
+# localhost to [::1] and dials IPv6 vs the 127.0.0.1-bound TLS twin (witnessed).
+# https scheme; cert SAN carries IP:127.0.0.1 (gen_dev_cert.sh).
+export ARM_METADATA_HOSTNAME="127.0.0.1:${SMALT_TLS_PORT:-9444}"
 export SSL_CERT_FILE="$ROOT/.smalt/tls/ca-cert.pem"
 
 # azidentity accepts an http authority ONLY for localhost hosts, so the token
 # endpoint stays plaintext on 9443 where the STS routes live.
-export AZURE_AUTHORITY_HOST="http://localhost:9443/"
+export AZURE_AUTHORITY_HOST="http://localhost:${SMALT_TF_PORT:-9443}/"
+if [ "${SMALT_TF_PORT:-9443}" != "9443" ] || [ "${SMALT_TLS_PORT:-9444}" != "9444" ]; then
+  # Port-shifted lane: mirror tf_plan_check.sh exactly — https authority on
+  # the TLS twin (witnessed working on lane ports 39330/39331).
+  export AZURE_AUTHORITY_HOST="https://127.0.0.1:${SMALT_TLS_PORT:-9444}/"
+fi
 
-export AZAPI_ARM_ENDPOINT="http://localhost:9443"
-export AZAPI_ARM_RESOURCE_MANAGER_ENDPOINT="http://localhost:9443"
+export AZAPI_ARM_ENDPOINT="http://localhost:${SMALT_TF_PORT:-9443}"
+export AZAPI_ARM_RESOURCE_MANAGER_ENDPOINT="http://localhost:${SMALT_TF_PORT:-9443}"
 export ARM_USE_MSI="false"
 export ARM_CLIENT_ID="00000000-0000-0000-0000-000000000000"
 export ARM_CLIENT_SECRET="smalt-sovereign-mock-secret"
@@ -48,16 +60,65 @@ if [ ! -f "$SSL_CERT_FILE" ]; then
   exit 1
 fi
 
-# darwin: trust the dev CA in the user keychain (no-op if already imported).
-# Note `security verify-cert` is NOT a usable gate here — it returns 1 for a
-# user-domain-trusted CA too — so gate on certificate presence by name.
-# Linux consumers honor SSL_CERT_FILE above; this branch is darwin-only.
+# darwin zero-touch trust (2026-10-16 operator ruling): the PRIMARY path is
+# the fingerprint-pinned, loopback-only trust shim (scripts/trust_shim/) via
+# DYLD_INSERT_LIBRARIES — no keychain mutation, no SecurityAgent dialog. The
+# keychain add-trusted-cert attempt is FALLBACK ONLY when the shim is
+# unavailable on darwin (kept as opt-in persistent trust, never a gate).
+# Non-darwin consumers honor SSL_CERT_FILE above; loud skip here.
+# SHIM-COURT: this block is the trust-path mutation surface (probe-gated).
 if [ "$(uname)" = "Darwin" ]; then
-  if ! security find-certificate -c smalt-dev-ca "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
-    echo "[SMALT-TF] trusting dev CA in login keychain (user domain, no sudo)" >&2
-    security add-trusted-cert -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" "$SSL_CERT_FILE" >&2 || true
+  SHIM_DIR="$ROOT/scripts/trust_shim"
+  SHIM_DYLIB="$SHIM_DIR/smalt_trust_shim.dylib"
+  if [ ! -f "$SHIM_DYLIB" ]; then
+    bash "$SHIM_DIR/build.sh" >&2 || true
   fi
+  if [ -f "$SHIM_DYLIB" ] && [ -f "$ROOT/.smalt/tls/dev-cert.pem" ]; then
+    # H1 fix (2026-10-16): the shim pins the EXACT LEAF cert, not the CA —
+    # present the leaf fingerprint (dev-cert.pem), not ca-cert.pem.
+    SMALT_LEAF_SHA256="$(openssl x509 -in "$ROOT/.smalt/tls/dev-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
+    if [ -n "$SMALT_LEAF_SHA256" ]; then
+      export SMALT_LEAF_SHA256
+      SMALT_CA_SHA256="$SMALT_LEAF_SHA256" # back-compat env (shim reads either)
+      export SMALT_CA_SHA256
+      SMALT_CA_FILE="$ROOT/.smalt/tls/ca-cert.pem" # v2: anchor-append surface
+      export SMALT_CA_FILE
+      export DYLD_INSERT_LIBRARIES="$SHIM_DYLIB"
+      echo "[SMALT-TF] trust shim active (pinned leaf fp ${SMALT_LEAF_SHA256:0:16}...; keychain trust NOT required)"
+    fi
+  fi
+  if [ -z "${DYLD_INSERT_LIBRARIES:-}" ]; then
+    # Zero-dialog path (2026-10-16 operator ruling): NO keychain mutation in
+    # the automated path, ever. tf_trust_setup.sh trust remains the EXPLICIT
+    # opt-in persistent-trust command, referenced here only as remediation
+    # text.
+    echo "[SMALT-TF] FAULT: trust shim unavailable (build failed / cc missing) — remediation:" >&2
+    echo "[SMALT-TF]   bash $SHIM_DIR/build.sh   (primary, zero-touch)" >&2
+    echo "[SMALT-TF]   or explicit opt-in: $ROOT/scripts/tf_trust_setup.sh trust" >&2
+    exit 1
+  fi
+else
+  echo "[SMALT-TF] [SKIP] darwin trust shim not applicable on $(uname) — SSL_CERT_FILE carries the CA"
 fi
 
 echo "[SMALT-TF] Routing Terraform execution to sovereign substrate..."
+
+# Zero-dialog plugin delivery (2026-10-16): terraform strips DYLD_* from the
+# plugin env (witness receipt in scripts/tf_provider_wrap.sh), so the trust
+# shim is delivered to providers by a post-install wrapper around the
+# installed ad-hoc binaries. Idempotent; also refreshes the leaf pin and the
+# wrapped-dir h1 in .terraform.lock.hcl. init must NOT be wrapped (it
+# validates the mirror zip against the lock), so wrap only for non-init
+# verbs; `smalt-tf init` wraps on the NEXT invocation.
+if [ "$(uname)" = "Darwin" ] && [ "${1:-}" != "init" ] && [ "${TF_NOWRAP:-0}" != "1" ]; then
+  FIXTURE_LOCK="$ROOT/test/terraform_fixture/.terraform.lock.hcl"
+  # The wrap adds wrapped-dir h1 entries to the committed lock; they are
+  # run-local (the wrapper embeds the leaf fp), so snapshot the committed
+  # lock BEFORE the wrap and restore it after terraform exits.
+  LOCK_SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/tf-lock-snapshot.XXXXXX")"
+  cp "$FIXTURE_LOCK" "$LOCK_SNAPSHOT"
+  bash "$ROOT/scripts/tf_provider_wrap.sh" >&2 || true
+  trap '[ -n "$LOCK_SNAPSHOT" ] && cp "$LOCK_SNAPSHOT" "$FIXTURE_LOCK" && rm -f "$LOCK_SNAPSHOT"' EXIT
+fi
+
 terraform "$@"

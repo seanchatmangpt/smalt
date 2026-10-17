@@ -60,11 +60,14 @@ run_once() {
 if [[ "$WATCH" == 1 ]]; then
   # Watch: poll mtimes of lib/ sources + the test file every 1s; re-run on
   # change with a cleared screen + timestamp.
-  SNAP=$(find lib -name '*.ex' -newer /dev/null -print; stat -f '%m %N' "$FILE" 2>/dev/null)
+  # SHIM-COURT: R17/A11 #6 — SNAP and NEW use the SAME format
+  # (mtime + path for every watched file) so the first poll cannot
+  # spuriously report a change.
+  SNAP=$(find lib -name '*.ex' -print0 | xargs -0 stat -f '%m %N'; stat -f '%m %N' "$FILE" 2>/dev/null)
   run_once || true
   while true; do
     sleep 1
-    NEW=$(find lib -name '*.ex' -print0 | xargs -0 stat -f '%m %N'; stat -f '%m %N' "$FILE")
+    NEW=$(find lib -name '*.ex' -print0 | xargs -0 stat -f '%m %N'; stat -f '%m %N' "$FILE" 2>/dev/null)
     if [[ "$NEW" != "$SNAP" ]]; then
       SNAP="$NEW"
       clear

@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,6 +43,24 @@ REQUIRED_PORTS = [
 
 SUBSTRATE_URL = f"http://127.0.0.1:{_BENCH_ARM}/?api-version=2021-01-01"
 
+# Same state the flock manager (scripts/substrate.sh) owns: a live PID here is
+# the legitimate holder of the substrate ports — doctor must not fail on it.
+SUBSTRATE_PID_FILE = Path("/tmp/smalt-substrate-state/substrate.pid")
+SUBSTRATE_PORTS = (9443, 9444, 5672, 5673)  # mirrors substrate.sh PORTS
+
+
+def substrate_pid():
+    """Live substrate PID from the same state file substrate.sh owns, else None."""
+    try:
+        pid = int(SUBSTRATE_PID_FILE.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return None
+    return pid
+
 AMQP_PORT = _BENCH_AMQP
 AMQP_HEADER = b"AMQP\x00\x01\x00\x00"
 AMQP_HANDSHAKE_TIMEOUT = 2.0
@@ -68,7 +87,6 @@ DEV_KEY_GLOBS = [
 
 CERT_SCRIPT = Path(__file__).resolve().parent / "gen_dev_cert.sh"
 
-RECEIPT_GLOB = "tmp/*receipt*.json"
 RECEIPT_STALE_SECONDS = 24 * 3600
 MIX_DEPS_TIMEOUT = 90
 
@@ -83,6 +101,9 @@ class DiagnosticFailure(Exception):
         # advisory=True: printed as [ADVISORY] with remediation but does NOT flip
         # ok/exit (e.g. keychain trust: repo flow trusts via SSL_CERT_FILE instead).
         self.advisory = advisory
+        # Typed diagnostic exit contract (v26.10.16 lane 430): closed severity
+        # vocabulary shared with Smalt.Enclave.Remediations.
+        self.severity = "ADVISORY" if advisory else "BLOCKING_GATE"
 
 
 # ---------------------------------------------------------------- helpers
@@ -202,12 +223,18 @@ def check_port(port, name):
         s.bind(("127.0.0.1", port))
     except OSError as e:
         pids = port_holder_pids(port)
+        # A healthy substrate legitimately holds its own ports (same detection
+        # substrate.sh uses: live PID in /tmp/smalt-substrate-state/). Only the
+        # substrate PID itself counts — a foreign or co-held port still fails.
+        sub_pid = substrate_pid()
+        if sub_pid is not None and pids and set(pids) == {str(sub_pid)}:
+            return f"ok (held by healthy substrate pid {sub_pid})"
         holder = f" held by PID(s) {', '.join(pids)}" if pids else ""
         raise DiagnosticFailure(
             "port-in-use",
             f"Port {port} ({name}) is not free{holder}: {e}",
             f"wait for the holder to exit, or use a private port from the "
-            f"documented range 39000-39999 (docs/DEV_LOOP.md); never kill an "
+            f"documented range 39000-39999 (docs/how-to/dev-loop.md); never kill an "
             f"unknown holder",
             # UNSAFE: killing an unknown process is never a --fix default;
             # applied only via --fix-unsafe --yes through CHECK_REGISTRY.
@@ -259,10 +286,16 @@ def probe_amqp_handshake(host="127.0.0.1", port=None, timeout=None):
 
 
 def probe_substrate():
-    """Informational only: the gate runs doctor before substrate boot."""
+    """Informational only: the gate runs doctor before substrate boot.
+
+    Any HTTP response — including 401/403 under :enforce auth — proves the ARM
+    control plane is LISTENING; only transport failure means NOT-RUNNING.
+    """
     try:
         with urllib.request.urlopen(SUBSTRATE_URL, timeout=3) as resp:
             return f"LISTENING (HTTP {resp.status})"
+    except urllib.error.HTTPError as e:
+        return f"LISTENING (HTTP {e.code})"
     except Exception as e:
         return f"NOT-RUNNING ({type(e).__name__})"
 
@@ -423,6 +456,50 @@ def check_recent_receipts():
     return f"INFO all {len(ages)} receipt(s) fresh (<24h)"
 
 
+def check_spc_bands():
+    """Check 5: SPC rolling control bands (config/bands.yaml).
+
+    WARN (advisory) at 1-2 sigma drift, FAIL at 3 sigma / NFR-4 residue.
+    Delegates to scripts/spc_gate.py (same bands file, same receipt).
+    """
+    spc = REPO_ROOT / "scripts" / "spc_gate.py"
+    if not spc.exists():
+        raise DiagnosticFailure("spc-bands", f"spc_gate.py missing: {spc}",
+                                "# restore scripts/spc_gate.py")
+    out = subprocess.run([sys.executable, str(spc)], capture_output=True,
+                         text=True, timeout=60, cwd=REPO_ROOT)
+    if out.returncode == 1:
+        raise DiagnosticFailure(
+            "spc-bands",
+            "SPC 3-sigma fail-closed: " + out.stdout.strip().splitlines()[-1][:300],
+            "python3 scripts/spc_gate.py  # see "
+            "docs/jira/v26.10.16/sdk-results/spc-bands.md")
+    # exit 0: parse verdict from the receipt for the PASS/WARN detail
+    receipt = REPO_ROOT / "docs" / "jira" / "v26.10.16" / "sdk-results" / "spc-bands.md"
+    detail = "ok"
+    try:
+        import re
+        m = re.search(r"```json\s*(\{.*?\})\s*```", receipt.read_text(), re.S)
+        if not m:
+            raise ValueError(f"no json block in {receipt}")
+        d = json.loads(m.group(1))
+        detail = f"verdict={d['verdict']} tier={d['tier']} seeded={d['seeded']}"
+        if d["tier"] >= 1:
+            # 1-2 sigma: advisory WARN, not a failure
+            raise DiagnosticFailure(
+                "spc-bands",
+                f"WARN SPC drift {detail}: "
+                + "; ".join(f"{e['spc_drift'][0]} z~{e['spc_drift'][1]}sigma"
+                            for e in d["events"]),
+                "python3 scripts/spc_gate.py  # see spc-bands.md",
+                advisory=True)
+    except DiagnosticFailure:
+        raise
+    except Exception:
+        pass
+    return f"PASS {detail}"
+
+
 CHECK_REGISTRY = [
     # (name, fn, unsafe_fix or None) — unsafe_fix applied only with --fix-unsafe --yes
     ("binaries", check_binaries, None),
@@ -436,6 +513,7 @@ CHECK_REGISTRY = [
     ("tmp-dirs", check_tmp_dirs, None),
     ("mix-deps-freshness", check_mix_deps_freshness, None),
     ("recent-receipts", check_recent_receipts, None),
+    ("spc-bands", check_spc_bands, None),
 ]
 
 
@@ -445,7 +523,10 @@ def substrate_summary():
     sub = probe_substrate()
     booted = sub.startswith("LISTENING")
     ports = {}
-    for port, name in REQUIRED_PORTS:
+    # Aligned with the substrate's own port set (substrate.sh PORTS =
+    # 9443 9444 5672 5673) plus the bench-front-door ports; one port set,
+    # no doctor-vs-substrate-status mismatch.
+    for port in sorted(set(SUBSTRATE_PORTS) | {p for p, _ in REQUIRED_PORTS}):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # No SO_REUSEADDR here (unlike check_port): on BSD/macOS reuseaddr lets
         # bind succeed while a live LISTENer holds the port, misreading held
@@ -522,10 +603,12 @@ def run_checks(fix=False, fix_unsafe=False, assume_yes=False):
                     except DiagnosticFailure as fe:
                         f = fe
             if f.advisory:
-                checks.append({"name": name, "status": "ADVISORY", "detail": f.message})
+                checks.append({"name": name, "status": "ADVISORY", "detail": f.message,
+                               "code": f.check_id, "severity": f.severity})
                 advisories.append(f)
             else:
-                checks.append({"name": name, "status": "FAIL", "detail": f.message})
+                checks.append({"name": name, "status": "FAIL", "detail": f.message,
+                               "code": f.check_id, "severity": f.severity})
                 failures.append(f)
         finally:
             if checks and checks[-1].get("duration_ms") is None:
@@ -561,6 +644,10 @@ def main():
         "fixes_applied": fixes_applied,
         "advisories": [{"check_id": f.check_id, "message": f.message,
                         "remediation": f.remediation_cmd} for f in advisories],
+        # Typed diagnostic exit contract: code -> remediation command, one
+        # mapping shared with the Elixir remediation table (single source).
+        "remediation_map": {f.check_id: f.remediation_cmd
+                            for f in failures + advisories},
         "substrate": summary,
     }
 

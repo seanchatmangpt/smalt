@@ -3,7 +3,7 @@
 #
 # Watches lib/smalt/graphlaw/** and re-runs the graphlaw suites on change.
 # Demonstrates the pattern for scoping a watcher to a subsystem; see
-# docs/DEV_LOOP.md for how to generalize (copy the WATCH_PATHS/SUITES pair,
+# docs/how-to/dev-loop.md for how to generalize (copy the WATCH_PATHS/SUITES pair,
 # or extend fast_test.sh --watch, which watches lib/ + one test file).
 #
 # Usage: scripts/dev_watch.sh [--once]

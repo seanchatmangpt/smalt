@@ -18,7 +18,7 @@ cd "$REPO"
 if [[ -z "${SMALT_SDK_ROOT:-}" ]]; then
   echo "[sb_census_replay] SMALT_SDK_ROOT not set." >&2
   echo "  Set it to a node_modules dir containing @azure packages, e.g.:" >&2
-  echo "  export SMALT_SDK_ROOT=/Users/sac/cai/athena/playground/node_modules" >&2
+  echo "  export SMALT_SDK_ROOT=/path/to/node_modules  # must contain @azure/" >&2
   exit 3
 fi
 if [[ ! -d "$SMALT_SDK_ROOT/@azure" ]]; then
@@ -36,7 +36,7 @@ export SMALT_SB_SHARED_KEY="$(openssl rand -base64 32)"
 # ephemeral ports whenever SMALT_TEST_*_PORT is unset, so an unpinned front
 # door races: census-run.mjs polls fixed 5672/9443 and structurally fails
 # exit 2 when the substrate lands elsewhere. Export the documented private
-# range (39000-39999, docs/DEV_LOOP.md "Private port allocation") so boot is
+# range (39000-39999, docs/how-to/dev-loop.md "Private port allocation") so boot is
 # deterministic. SMALT_TEST_ARM_TLS_PORT / SMALT_TEST_MCP_PORT stay unpinned.
 export SMALT_TEST_ARM_PORT="${SMALT_TEST_ARM_PORT:-39790}"
 export SMALT_TEST_EGRESS_PORT="${SMALT_TEST_EGRESS_PORT:-39791}"

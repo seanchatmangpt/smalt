@@ -21,9 +21,12 @@ die() { echo "[dev_env] ERROR: $*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 # 1. SMALT_SB_SHARED_KEY — deterministic per-host dev key.
 # sha256(hostname + "smalt-dev-sb") base64-encoded (44 chars, >= 32 bytes).
-# Stable across runs so census/SDK probes and the substrate (which pins it via
-# SMALT_SB_SHARED_KEY, see lib/smalt/messaging/amqp/connection.ex) agree
-# without a shared-secret ceremony.
+# Stable across runs so census/SDK probes and the substrate agree without a
+# shared-secret ceremony. Substrate contract (scripts/substrate.sh): it reads
+# SMALT_SB_SHARED_KEY from the environment, defaulting to the historical
+# pinned key "ws8sharedkey" when unset — source this file (or export the key
+# yourself) before `substrate.sh up` if your probes use the per-host key;
+# see lib/smalt/messaging/amqp/connection.ex.
 # ---------------------------------------------------------------------------
 export SMALT_SB_SHARED_KEY="$(printf '%s' "$(hostname)smalt-dev-sb" | openssl dgst -sha256 -binary | base64)"
 
@@ -38,8 +41,11 @@ if [ -n "${SMALT_SDK_ROOT:-}" ]; then
 elif [ -d "$DEFAULT_SDK_ROOT" ]; then
   export SMALT_SDK_ROOT="$DEFAULT_SDK_ROOT"
 else
-  die "SMALT_SDK_ROOT not set and in-repo SDK harness not found at $DEFAULT_SDK_ROOT.
-  Install the Azure SDK there (cd test/sdk-smoke && npm i @azure/cosmos @azure/event-hubs) or export SMALT_SDK_ROOT=<node_modules dir>."
+  # SHIM-COURT advisory: a fresh clone without the vendored SDK harness is not
+  # fatal — export the default path anyway so the block stays eval-able.
+  echo "[dev_env] WARNING: SMALT_SDK_ROOT not set and in-repo SDK harness not found at $DEFAULT_SDK_ROOT." >&2
+  echo "[dev_env] Install it with: (cd test/sdk-smoke && npm i @azure/cosmos @azure/event-hubs) or export SMALT_SDK_ROOT=<node_modules dir>" >&2
+  export SMALT_SDK_ROOT="$DEFAULT_SDK_ROOT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -69,8 +75,11 @@ if [ "${1:-}" = "--check" ]; then
   ls "$SMALT_SDK_ROOT/@azure" >/dev/null 2>&1 || die "no @azure packages under $SMALT_SDK_ROOT"
   echo "  SMALT_REPO          = $SMALT_REPO"
   if [ -n "${SMALT_TLS_CERTFILE:-}" ]; then
-    openssl x509 -in "$SMALT_TLS_CERTFILE" -noout -subject -enddate >/dev/null 2>&1 \
-      || die "SMALT_TLS_CERTFILE=$SMALT_TLS_CERTFILE is not a parseable certificate"
+    # Same freshness policy as scripts/gen_dev_cert.sh: expired or expiring
+    # within 30 days (2592000s) counts as invalid, so --check agrees with the
+    # minter instead of accepting a cert gen_dev_cert.sh would remint.
+    openssl x509 -in "$SMALT_TLS_CERTFILE" -noout -subject -enddate -checkend 2592000 >/dev/null 2>&1 \
+      || die "SMALT_TLS_CERTFILE=$SMALT_TLS_CERTFILE is not parseable, or expires within 30 days (re-mint with scripts/gen_dev_cert.sh)"
     echo "  SMALT_TLS_CERTFILE  = $SMALT_TLS_CERTFILE"
     echo "  SMALT_TLS_KEYFILE   = $SMALT_TLS_KEYFILE"
     echo "  SSL_CERT_FILE       = $SSL_CERT_FILE"
@@ -94,4 +103,3 @@ export SSL_CERT_FILE="$SSL_CERT_FILE"
 #   node test/sdk-smoke/census-run.mjs
 #   node test/data_plane/sdk_probe.mjs
 EOF
-echo 'eval "$(scripts/dev_env.sh)"' >&2

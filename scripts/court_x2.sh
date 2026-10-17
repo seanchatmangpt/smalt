@@ -12,12 +12,29 @@ trap 'rm -rf "$LOGDIR"' EXIT
 
 extract_failures() {
     # Failing test names from a full court log (mix-style failure output).
-    grep -E '^\s+[0-9]+\) ' "$1" | sed -E 's/^[[:space:]]*[0-9]+\) //' | sort -u
+    awk '
+        /^[[:space:]]*[0-9]+[)] / {
+            name=$0; sub(/^[[:space:]]*[0-9]+\) /, "", name)
+            if ((getline nxt) > 0 && nxt ~ /^[[:space:]]+[A-Za-z0-9_\/.]+\.exs:[0-9]+/) {
+                loc=nxt; sub(/^[[:space:]]+/, "", loc)
+                print name " (" loc ")"
+            } else {
+                print name
+            }
+            next
+        }
+    ' "$1" | sort -u
 }
 
-summary_of() {
-    # Tail summary lines: tests/failures counts + per-court-member exit echoes.
-    grep -E '(Tests? [0-9]+|failures?|Failures?|EXUNIT|FAILURES|\[COURT\]|exit( code)?[: ]+[0-9]+|FAILED|PASSED|SKIPPED)' "$1" | tail -40
+# Green predicate: "0 failures" with no nonzero-failure count AND no
+# compile-abort marker — a mix run that died with a CompileError and zero
+# test-failure blocks must judge NOT-GREEN, not pass vacuously.
+judge_log() {
+    local log="$1"
+    grep -Eq '0 failures' "$log" \
+        && ! grep -Eq '[1-9][0-9]* failures?' "$log" \
+        && ! grep -q '== Compilation error' "$log" \
+        && ! grep -q ' compilation failed' "$log"
 }
 
 overall=0
@@ -36,23 +53,26 @@ for run in 1 2; do
     if [ "$rc" -ne 0 ]; then
         overall=1
     fi
-    eval "rc_run$run=$rc"
 done
 
-s1="$(summary_of "$LOGDIR/run1.log")"
-s2="$(summary_of "$LOGDIR/run2.log")"
 f1="$(extract_failures "$LOGDIR/run1.log")"
 f2="$(extract_failures "$LOGDIR/run2.log")"
 
 # Summary-line check: each run's tail must show zero failures.
 for run in 1 2; do
     log="$LOGDIR/run$run.log"
-    if grep -Eq '0 failures' "$log" && ! grep -Eq '[1-9][0-9]* failures?' "$log"; then
+    if judge_log "$log"; then
         echo "[COURT-X2] Run $run summary line: 0 failures — GREEN"
+        verdict=green
     else
         echo "[COURT-X2] Run $run summary line: FAILURES PRESENT (or unparsable) — NOT GREEN"
+        verdict=not-green
         overall=1
     fi
+    # OCEL emission (fail-safe): one court.run event per run; telemetry
+    # never breaks the gate.
+    MIX_BUILD_ROOT="${MIX_BUILD_ROOT:-_build}" mix smalt.court_emit \
+        --receipt "$log" --run "$run" --verdict "$verdict" >/dev/null 2>&1 || true
 done
 
 if [ -n "$f1" ] || [ -n "$f2" ]; then

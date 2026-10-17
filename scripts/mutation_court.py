@@ -80,9 +80,6 @@ ORIGINAL = """    case engine_verdict(type, payload) do
 MUTATED = """    {:ok} # MUTATION-COURT: gate bypass, temporary, restored+verified
 """
 
-results = []  # (mutation, phase, http_status, expected, pass)
-
-
 # --- substrate lifecycle ------------------------------------------------------
 
 def port_open():
@@ -110,7 +107,7 @@ def boot():
                 "port %s already occupied before boot — refusing to probe a "
                 "foreign/stale substrate. Remediation: wait for the holder to "
                 "exit, or choose a private port from the documented range "
-                "39000-39999 (docs/DEV_LOOP.md 'Private port allocation')")
+                "39000-39999 (docs/how-to/dev-loop.md 'Private port allocation')")
         # No override: front door held by another lane -> auto-scope to an
         # ephemeral block (cycle 17). A PARTIALLY-scoped boot is worse than
         # none: witnessed 2026-10-15, scoping only arm_port let the ARM
