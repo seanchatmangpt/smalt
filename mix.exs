@@ -205,5 +205,23 @@ defmodule Smalt.MixProject do
       # Fail-closed host: {:error, :engine_unavailable} when artifact absent.
       {:wasmex, "~> 0.15.1"}
     ]
+    |> Enum.flat_map(&path_dep/1)
+  end
+
+  defp path_dep(dep) do
+    opts =
+      case dep do
+        {_app, opts} when is_list(opts) -> opts
+        {_app, _req, opts} when is_list(opts) -> opts
+        _ -> []
+      end
+
+    path = opts[:path]
+
+    if is_binary(path) and not File.dir?(path) do
+      []
+    else
+      [dep]
+    end
   end
 end
