@@ -252,14 +252,39 @@ defmodule Smalt.MetricsWireTest do
   # ---------------------------------------------------------------------------
   # Unit-level: interval parser
   # ---------------------------------------------------------------------------
-  test "parse_interval handles the common ISO durations" do
+  test "parse_interval handles valid ISO durations and nil default" do
     assert {:ok, 60_000} = Smalt.Metrics.parse_interval("PT1M")
     assert {:ok, 300_000} = Smalt.Metrics.parse_interval("PT5M")
     assert {:ok, 3_600_000} = Smalt.Metrics.parse_interval("PT1H")
     assert {:ok, 86_400_000} = Smalt.Metrics.parse_interval("P1D")
     assert {:ok, 61_500} = Smalt.Metrics.parse_interval("PT1M1.5S")
-    assert :error = Smalt.Metrics.parse_interval("bogus")
     assert {:ok, 60_000} = Smalt.Metrics.parse_interval(nil)
+  end
+
+  test "parse_interval returns :error on invalid string, zero duration, and non-binary inputs" do
+    # Malformed or invalid duration strings
+    assert :error = Smalt.Metrics.parse_interval("bogus")
+    assert :error = Smalt.Metrics.parse_interval("invalid")
+    assert :error = Smalt.Metrics.parse_interval("PT")
+    assert :error = Smalt.Metrics.parse_interval("P")
+    assert :error = Smalt.Metrics.parse_interval("123")
+    assert :error = Smalt.Metrics.parse_interval("PT5X")
+    assert :error = Smalt.Metrics.parse_interval("PT-1M")
+    assert :error = Smalt.Metrics.parse_interval("")
+
+    # Zero / non-positive durations
+    assert :error = Smalt.Metrics.parse_interval("PT0S")
+    assert :error = Smalt.Metrics.parse_interval("P0D")
+    assert :error = Smalt.Metrics.parse_interval("PT0M0S")
+
+    # Non-binary, non-nil invalid inputs
+    assert :error = Smalt.Metrics.parse_interval(123)
+    assert :error = Smalt.Metrics.parse_interval(1.5)
+    assert :error = Smalt.Metrics.parse_interval(:invalid)
+    assert :error = Smalt.Metrics.parse_interval(["PT1M"])
+    assert :error = Smalt.Metrics.parse_interval(%{interval: "PT1M"})
+    assert :error = Smalt.Metrics.parse_interval(true)
+    assert :error = Smalt.Metrics.parse_interval(false)
   end
 
   # -- helpers ------------------------------------------------------------------

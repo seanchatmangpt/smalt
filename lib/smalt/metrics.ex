@@ -191,6 +191,8 @@ defmodule Smalt.Metrics do
     end
   end
 
+  def parse_interval(_), do: :error
+
   defp parse_num(""), do: 0
   defp parse_num(nil), do: 0
 
