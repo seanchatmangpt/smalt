@@ -19,7 +19,12 @@ ExUnit.configure(
   ]
 )
 
-ExUnit.start()
+# Degraded-host law (runs 21-30): timing-sensitive suites flip under CPU
+# contention (Metadata indexer / concurrent builds). SMALT_MAX_CASES caps
+# ExUnit concurrency without touching any assertion — same tests, same
+# law, less parallel timing pressure. Unset = default (schedulers online).
+max_cases = String.to_integer(System.get_env("SMALT_MAX_CASES") || "0")
+if max_cases > 0, do: ExUnit.start(max_cases: max_cases), else: ExUnit.start()
 
 # Shared lifecycle helper for suites that stop the main app tree to boot a
 # private tree on ephemeral ports (wire tier, metadata, eventgrid). Contract:

@@ -11,8 +11,12 @@ and this project adheres to
 ## [26.10.16] - 2026-10-16
 
 Repair-and-hardening wave over the v26.10.14 release surface; no new
-planes. Status: court-x2 run-8 verdict: FAIL
-receipt (see `docs/jira/v26.10.16/FINAL.md`).
+planes. Status: BUILD_BROKEN-class — court-x2 terminal RED after 29
+invocations, zero deterministic defects; typed residual
+Metadata-indexer-load FLAKE_SOLO (court-environment, r224
+classification). Terminal witness:
+`docs/jira/v26.10.16/receipts/r229-court-x2-red.md`; standing flips
+only on a green two-run receipt (see `docs/jira/v26.10.16/FINAL.md`).
 
 ### Fixed
 
@@ -87,6 +91,11 @@ receipt (see `docs/jira/v26.10.16/FINAL.md`).
   `2024-01-01` across queues/topics/subscriptions/consumer-groups.
 - ex4pm OCEL doctor/court emitters: event-log emission from smalt doctor
   and court runs for downstream process mining.
+- SPC drift emitter (`lib/smalt/spc/drift.ex`): turns `scripts/spc_gate.py`
+  verdicts into CloudEvents 1.0 rows on topic `spc.drift` in
+  `:smalt_event_messages` — registry-gated, fail-closed (a 3σ FAIL never
+  launders into telemetry; only 1σ/2σ verdicts emit), matter-isolated
+  event data. Receipt: `docs/jira/v26.10.16/sdk-results/spc-gate-receipt.md`.
 - Sovereign Console clients: blob, servicebus, eventhubs, keyvault,
   cosmos, identity, appconfig, ledger (`workspace/`, egress via
   `lib/smalt.ts` only).

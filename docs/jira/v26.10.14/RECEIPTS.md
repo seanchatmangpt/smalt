@@ -168,6 +168,7 @@ count, or PASS/FAIL token) found in the file.
 | cap-ingestio | [cap-ingestion-functor.md](../v26.10.16/receipts/cap-ingestion-functor.md) | PASS | Capability: affidavit ingestion functor (ARM PUT / RG-delete seal sideband) |
 | cap-monitor- | [cap-monitor-metrics.md](../v26.10.16/receipts/cap-monitor-metrics.md) | PARTIAL_ALIVE | cap-monitor-metrics — Azure Monitor metrics capability (Smalt.Metrics + ARM wire surface) |
 | cap-sb-eh-ap | [cap-sb-eh-apiversion-2024.md](../v26.10.16/receipts/cap-sb-eh-apiversion-2024.md) | PASS | SB queues + EH eventhubs lattice top 2021-04-01 → 2024-01-01 |
+| kd89-ml-dsa- | [kd89-ml-dsa-closure.md](../v26.10.16/receipts/kd89-ml-dsa-closure.md) | PASS | KD-89 ML-DSA-65 closure — upstream rebuild, re-vendor, forge court |
 | lane10-expla | [lane10-explanation-rewrite.md](../v26.10.16/receipts/lane10-explanation-rewrite.md) | ALIVE | 10 — explanation rewrite (why-docs, receipt-anchored) |
 | lane606-affi | [lane606-affidavit-seal-event.md](../v26.10.16/receipts/lane606-affidavit-seal-event.md) | ALIVE | 606 — affidavit.seal OCEL event |
 | lane9-refere | [lane9-reference-rewrite.md](../v26.10.16/receipts/lane9-reference-rewrite.md) | PARTIAL_ALIVE | 9-reference-rewrite |
@@ -271,6 +272,7 @@ count, or PASS/FAIL token) found in the file.
 | r217-fin-swe | [r217-fin-sweep.md](../v26.10.16/receipts/r217-fin-sweep.md) | PASS | r217 — fin-sweep generated-artifact regen + idempotence (lane X6) |
 | r22-redirect | [r22-redirect-airgap-e2e-court.md](../v26.10.16/receipts/r22-redirect-airgap-e2e-court.md) | PASS | R22 (redirect:"error" air-gap + e2e court) |
 | r224-frameco | [r224-framecodec-diagnosis.md](../v26.10.16/receipts/r224-framecodec-diagnosis.md) | UNKNOWN | r224 — frame_codec property burst: diagnosis receipt |
+| r226-court-x | [r226-court-x2-run30-red.md](../v26.10.16/receipts/r226-court-x2-run30-red.md) | FAIL | Court-x2 wrap runs 29–30 — RED (shifting-failure, terminal) |
 | r24-vault-re | [r24-vault-recover-versioned.md](../v26.10.16/receipts/r24-vault-recover-versioned.md) | PASS | R24 (vault soft-delete / recover restores versioned material) |
 | r26-sentinel | [r26-sentinel-kql.md](../v26.10.16/receipts/r26-sentinel-kql.md) | PASS | R26: sentinel KQL repair |
 | r27-session- | [r27-session-ledger-attempt-entry.md](../v26.10.16/receipts/r27-session-ledger-attempt-entry.md) | PASS | R27 (session-ledger attempt entry, airgap seam) |

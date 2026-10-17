@@ -7,8 +7,25 @@ advanced by a full repair-and-hardening wave. The surface inventory is
 unchanged from v26.10.14; this window's work is correctness and parity:
 128 receipt files landed in `docs/jira/v26.10.16/receipts/`, the SDK
 parity register reached full mechanical coverage, and eight divergence rows
-closed. Standing for this document: **BUILD_BROKEN** — court-x2 run-8 verdict "FAIL"
-2026-10-16; see `docs/jira/v26.10.16/FINAL.md` court-x2 line.
+closed. Standing for this document: **BUILD_BROKEN** — court-x2 verdict
+`COURT_X2_RC=1` (run-30, 2026-10-17; run-29's driver was killed mid
+run 2 and never produced a verdict): both fresh `just court` runs exited 2
+at `test-offline` with `1 doctest, 7 properties, 2435 tests, 1 failure`
+each, on DIFFERENT tests — the shifting-failure/flake class
+(`EventGridTopicsArmTest:302` vs `Amqp.QueueStoreTest:721`; run-12's
+witnessed family was `Lens6StructuralTest:463`/`Lens7FieldPolicyTest:545`).
+Typed residual: the `.metadata_never_index` Metadata-indexer mitigation
+(placed at the repo root 2026-10-17 01:14 after the Spotlight-class
+indexer was found saturating the host during wrap re-courts) remains
+**UNMEASURED** — no post-marker court run has completed green on a quiet
+host. 28 completed invocations, 0 two-green. See
+`docs/jira/v26.10.16/FINAL.md` court-x2 line and the runs 22-29
+post-mortem in `docs/jira/v26.10.16/WRAP_LEDGER.md`. Publish standing
+(covers hex + tarball): **TYPED-BLOCKED** per
+`docs/jira/v26.10.16/PUBLISH_RECORD.md` — "PUBLISH-READY: NO —
+TYPED-BLOCKED" (final); the remaining refusal-class blocker is **B1**,
+the non-optional `ex4pm` path dependency refusing `hex.build`
+(typed `HEX_BUILD_REFUSED`; B4 closed at T5).
 
 ## What changed
 
@@ -19,7 +36,9 @@ closed. Standing for this document: **BUILD_BROKEN** — court-x2 run-8 verdict 
   (fixes landed, witness-pending); KD-93 was minted OPEN by the lane X5
   registrar (cosmos query-feed scope/freshness, evidence
   `receipts/bench-c11-tf-loop.md`); KD-88/89/90 were minted after this
-  window's original audit. **Eight rows closed this window**, all flipped via
+  window's original audit; KD-94 was minted by the J16/659 repair lane
+  (cosmos AAD Authorization shape; fix landed + fenced, wire witness
+  pending). **Eight rows closed this window**, all flipped via
   `scripts/kd_flip.py --apply` gated on a witness receipt postdating the
   shim mtime:
   - **KD-45** (SB management ATOM+XML: `createQueue` PUT now returns a
