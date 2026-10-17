@@ -1,0 +1,13 @@
+{"scenario":"n1","metric":"ttfb_ms","value":3.55,"threshold":"info","status":"INFO","unit":"ms"}
+{"scenario":"n1","metric":"hydration_ms","value":61.5,"threshold":"info","status":"INFO","unit":"ms"}
+{"scenario":"n1","metric":"draw_frames","value":1849,"threshold":1800,"status":"PASS","unit":""}
+{"scenario":"n1","metric":"frame_drop_rate","value":0,"threshold":0.05,"status":"PASS","unit":"ratio"}
+{"scenario":"n1","metric":"raf_drop_rate","value":0,"threshold":0.05,"status":"PASS","unit":"ratio"}
+{"scenario":"n1","metric":"detached_nodes_leak","value":0,"threshold":500,"status":"PASS","unit":"nodes"}
+{"scenario":"n1","metric":"dom_churn_removed","value":3030,"threshold":"info","status":"INFO","unit":"nodes"}
+{"scenario":"n1","metric":"dom_churn_added","value":3030,"threshold":"info","status":"INFO","unit":"nodes"}
+{"scenario":"n1","metric":"js_event_listener_delta","value":0,"threshold":50,"status":"PASS","unit":"count"}
+{"scenario":"n1","metric":"heap_delta_mb","value":0.88,"threshold":50,"status":"PASS","unit":"MB"}
+{"scenario":"n1","metric":"long_task_count","value":0,"threshold":"info","status":"INFO","unit":"count"}
+{"scenario":"n1","metric":"long_task_total_ms","value":0,"threshold":"info","status":"INFO","unit":"ms"}
+{"scenario":"n1","metric":"patches_applied","value":1492,"threshold":1350,"status":"PASS","unit":"count"}

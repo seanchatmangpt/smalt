@@ -1,0 +1,2 @@
+{"event":"bench_start","lane":"A-6","target":"http://127.0.0.1:39060","bursts":3,"burst_secs":60,"machine":{"cpu":"Apple M3 Max","cores":16,"ephemeral_range":"49152-65535 (default macOS ip_portfleet/ephemeral, ~16k ports)","timewait_msl_secs":15},"ts":"2026-10-16T05:09:16.039Z"}
+{"event":"preflight_fail","err":"ECONNREFUSED"}

@@ -177,18 +177,27 @@ async function main() {
       attachErrors += 1;
       return;
     }
-    reattached += 0; // counted on successful reconnect instead
     const attempt = (c._attempt = (c._attempt ?? 0) + 1);
     if (attempt > 8) {
+      if (!c.permanent) permanentDrops += 1;
       c.permanent = true;
-      permanentDrops += 1;
       return;
     }
-    setTimeout(() => {
+    c._pendingTimer = setTimeout(() => {
+      c._pendingTimer = null;
       if (c.permanent) return;
       c.connect(c.lastSeq, onDown);
     }, backoffMs(attempt - 1));
   };
+
+  // Sweep: recover any client whose down-transition was missed (socket
+  // destroyed without close/error delivery, etc.). Idempotent via
+  // _pendingTimer.
+  function sweep() {
+    for (const c of herdClients) {
+      if (c.down && !c.permanent && !c._pendingTimer) onDown(c);
+    }
+  }
 
   // Phase: ramp — attach the herd.
   for (let i = 0; i < TARGET; i += 1) {
@@ -226,15 +235,23 @@ async function main() {
   // Phase: storm — abrupt server-side abort of every controller.
   stormArmed = true; // arm before firing so clients reconnect, not count errors
   const storm = await fetch(origin + streamPath, {
+    method: "POST",
+    headers: { "x-smalt-storm": "abort" },
+  })
+    .then((r) => r.json())
+    .catch((e) => ({ error: String(e) }));
+  emit({ phase: "storm", aborted: storm.aborted ?? -1 });
   log("storm fired:", JSON.stringify(storm));
 
   // Phase: reconnect — clients react to close via onDown -> backoff loop.
+  const herdClients = herd;
   const deadline = Date.now() + RECONNECT_BUDGET_MS;
   await sleep(1500);
   log(`post-storm active=${(await getStats()).active}`);
 
   while (Date.now() < deadline) {
     await sleep(1000);
+    sweep();
     const s = await getStats();
     if (s.active >= herd.length) break;
   }
@@ -285,4 +302,14 @@ async function main() {
 main().catch((e) => {
   emit({ phase: "fatal", error: String((e && e.stack) || e) });
   process.exitCode = 1;
+});
+process.on("uncaughtException", (e) => {
+  try {
+    emit({ phase: "fatal", uncaught: String((e && e.stack) || e) });
+  } catch { /* jsonl path unwritable */ }
+});
+process.on("unhandledRejection", (e) => {
+  try {
+    emit({ phase: "fatal", rejection: String((e && e.stack) || e) });
+  } catch { /* jsonl path unwritable */ }
 });

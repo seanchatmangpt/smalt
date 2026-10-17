@@ -1,10 +1,12 @@
 // n2_action_storm.mjs — lane N-2: server-action storm against the Next.js 16
 // workspace production server (next start).
 //
-// Drive: 2,000 concurrent virtual users POSTing form-encoded server-action
-// payloads (progressive-enhancement path: POST to the page URL with the
-// $ACTION_ID_<id> hidden field so Next routes the POST to the action without
-// the flight protocol). Workload mix per global atomic counter:
+// Drive: 2,000 concurrent virtual users POSTing multipart/form-data
+// server-action payloads (progressive-enhancement path: POST to the page URL
+// with the $ACTION_ID_<id> hidden field so Next routes the POST to the action
+// without the flight protocol; Next 16 does NOT support urlencoded action
+// bodies — the action handler bails on application/x-www-form-urlencoded).
+// Workload mix per global atomic counter:
 //   - idx % 20 === 0            -> invalid payload (bad sku) — must be rejected
 //   - idx % 50 === 7            -> double submission (two identical POSTs raced)
 //   - otherwise                 -> valid unique submission
@@ -45,6 +47,7 @@ const agent = new http.Agent({ keepAlive: true, maxSockets: VUS + 200, maxFreeSo
 const latencies = [];
 const ridSeen = new Set();
 let accepted = 0, rejected = 0, validBounced = 0, transportErr = 0, unexpectedStatus = 0;
+const transportCodes = {};
 let sessionLeaks = 0, doubleSubmissionPairs = 0;
 
 const nowMs = () => Number(process.hrtime.bigint() / 1000n) / 1000;
@@ -62,19 +65,32 @@ function skuOk() {
   return `${s}-${String(1000 + Math.floor(Math.random() * 9000))}`;
 }
 
-function enc(kv) {
-  return Object.entries(kv).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+const BOUNDARY = "n2storm" + hex(16);
+
+function multipartBody(fields) {
+  const parts = [];
+  const push = (name, value) => {
+    parts.push(
+      Buffer.from(
+        `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+      ),
+    );
+  };
+  for (const [k, v] of Object.entries(fields)) push(k, v);
+  push(ACTION_FIELD, "");
+  parts.push(Buffer.from(`--${BOUNDARY}--\r\n`));
+  return Buffer.concat(parts);
 }
 
 function post(fields) {
   return new Promise((resolve) => {
-    const body = enc({ ...fields, [ACTION_FIELD]: "" });
+    const body = multipartBody(fields);
     const req = http.request(
       {
         hostname, port, path: "/bench/action", method: "POST", agent,
         headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          "content-length": Buffer.byteLength(body),
+          "content-type": `multipart/form-data; boundary=${BOUNDARY}`,
+          "content-length": body.length,
         },
       },
       (res) => {
@@ -95,7 +111,7 @@ function post(fields) {
         }));
       },
     );
-    req.on("error", () => resolve({ status: 0 }));
+    req.on("error", (e) => resolve({ status: 0, code: e.code }));
     req.end(body);
   });
 }
@@ -147,7 +163,7 @@ async function vuLoop(vu) {
       const [a, b] = await Promise.all([post(fields), post(fields)]);
       const dt = nowMs() - started;
       for (const r of [a, b]) {
-        if (r.status === 0) { transportErr++; continue; }
+        if (r.status === 0) { transportErr++; transportCodes[r.code] = (transportCodes[r.code] || 0) + 1; continue; }
         if (r.status !== 200 && r.status !== 303) { unexpectedStatus++; continue; }
         if (r.verdict === "rejected") { validBounced++; continue; }
         accountAccepted(r, dt);
@@ -160,7 +176,7 @@ async function vuLoop(vu) {
     const r = await post(fields);
     const dt = nowMs() - started;
 
-    if (r.status === 0) { transportErr++; continue; }
+    if (r.status === 0) { transportErr++; transportCodes[r.code] = (transportCodes[r.code] || 0) + 1; continue; }
     if (r.status !== 200 && r.status !== 303) { unexpectedStatus++; continue; }
 
     if (invalid) {
@@ -219,6 +235,7 @@ const summary = {
   valid_bounced: validBounced,
   rejection_rate: Number(rejectionRate.toFixed(6)),
   transport_errors: transportErr,
+  transport_error_codes: transportCodes,
   unexpected_status: unexpectedStatus,
   double_submission_pairs: doubleSubmissionPairs,
   session_leaks: sessionLeaks,

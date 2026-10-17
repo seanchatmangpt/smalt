@@ -34,7 +34,7 @@ RECEIPTS_DIR="${RECEIPTS_DIR:-$BENCH_REPO/docs/jira/v26.10.14/receipts}"
 # Machine spec — the exact block every lane embeds in its machine field.
 # ---------------------------------------------------------------------------
 bench_machine_spec() {
-  local cpu cores ram ghz elixir otp darwin
+  local cpu cores ram elixir otp darwin
   cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "unknown")
   cores=$(sysctl -n hw.ncpu 2>/dev/null || echo "0")
   ram_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
@@ -70,7 +70,7 @@ bench_lane_ports() {
 # ---------------------------------------------------------------------------
 bench_boot() {
   local lane="$1"
-  local ports log
+  local log
   local arm data amqp ehub atls mcp
   read -r arm data amqp ehub atls mcp <<<"$(bench_lane_ports "$lane")"
 

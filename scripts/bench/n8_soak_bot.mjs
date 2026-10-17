@@ -19,8 +19,17 @@
  * Usage: node scripts/bench/n8_soak_bot.mjs [--base http://localhost:3100]
  */
 
-import { chromium } from 'playwright';
+let chromium;
+try {
+  ({ chromium } = await import('playwright'));
+} catch {
+  // Script lives outside workspace/node_modules — resolve Playwright from the
+  // workspace app that owns it (Next.js production dep set).
+  ({ chromium } = await import(path.resolve(HERE, '../../workspace/node_modules/playwright/index.mjs')));
+}
 import { mkdirSync, writeFileSync, appendFileSync, existsSync, rmSync } from 'node:fs';
+import path from "node:path";
+const HERE = path.dirname(import.meta.url).replace("file://", "");
 import { join, dirname } from 'node:path';
 
 const BASE = process.argv.includes('--base')

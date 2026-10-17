@@ -1,10 +1,11 @@
 # Bench Lane Registry — v26.10.14
 
 Shared infra owned by lane B-1 (`scripts/bench/lib.sh`, `justfile.d/15-bench.just`,
-`scripts/bench/report.py`, this file). Every lane B-2..B-12:
+`scripts/bench/report.py`, this file). Every active lane B-2..B-9 (plus
+sub-lanes b2b/b3b):
 
 ```bash
-source /Users/sac/smalt/scripts/bench/lib.sh
+source "$REPO_ROOT/scripts/bench/lib.sh"  # REPO_ROOT = checkout root
 pid=$(bench_boot b3)          # private port block, MIX_ENV=test, anonymous auth
 # ... run ops, collect latencies (ms) ...
 read p50 p95 p99 <<<"$(latencies | bench_percentile)"
@@ -24,15 +25,44 @@ Result files: one `.jsonl` per lane in `docs/jira/v26.10.14/bench/`. Row schema:
 | b1 | b1.jsonl | core harness (this dir, lib.sh, report.py, 15-bench.just, BENCH_RESULTS.md) |
 | b2 | b2-blob-ts.jsonl | blob SDK (TypeScript) |
 | b3 | b3-cosmos-ts.jsonl | Cosmos SDK (TypeScript) |
-| b4 | b4-arm-ts.jsonl | ARM / resource management SDK (TypeScript) |
-| b5 | b5-blob-py.jsonl | blob SDK (Python) |
-| b6 | b6-lro-sdk.jsonl | LRO / SDK latency (observed on disk 2026-10-15) |
-| b7 | b7-store-beam.jsonl | in-BEAM native store ops (observed on disk 2026-10-15) |
-| b8 | b8-servicebus-py.jsonl | Service Bus SDK (Python) |
-| b9 | b9-eventhubs.jsonl | Event Hubs SDK |
-| b10 | b10-cli.jsonl | smalt CLI surface |
-| b11 | b11-beam-native.jsonl | in-BEAM native (no HTTP) op latency |
-| b12 | b12-http-raw.jsonl | raw HTTP client (no SDK) front-door latency |
+| b4 | b4-messaging-ts.jsonl | Service Bus + Event Hubs SDK (TypeScript) |
+| b5 | b5-python-mirror.jsonl | blob SDK (Python) (`b5_python_mirror.py`) |
+| b6 | b6-lro-sdk.jsonl | LRO / SDK latency (`b6_lro_sdk.py`) |
+| b7 | b7-store-beam.jsonl | in-BEAM native store ops (`b7_store_beam.exs`) |
+| b8 | b8-amqp-beam.jsonl | Service Bus, BEAM-native AMQP (`b8_amqp_beam.exs`) |
+| b9 | b9-eh-beam.jsonl | Event Hubs, BEAM-native AMQP (`b9_eh_beam.exs`) |
+| e1 | e1-enclave-loop.jsonl | terraform enclave loop: provision -> data plane -> console -> residue (`scripts/tf_enclave_loop.sh`, 2026-10-16) |
 
 Disjointness: lanes write ONLY their own result file and must not edit
 `scripts/bench/`, `justfile.d/15-bench.just`, `Justfile`, or this file.
+
+## Non-b lane port allocations (audited 2026-10-15, lane R3)
+
+`bench_lane_ports` enforces the b-law only for `b1..b12` (39010..39125). Other
+lane families must stay disjoint from that band:
+
+- **c-law**: `cN -> 39200 + 10N .. +5` (c1 39210..39215, c2 39220..39225,
+  c4 39240..39245, c6 39260..39265, c7 39270..39275, c8 39280..39285).
+  c7's KV leg uses the port-keyed dev cert `tmp/dev-certs/dev-cert-<atls>.pem`
+  (`lib/smalt/tls.ex`), so the cert path follows the arm_tls port.
+- **Legacy self-booted blocks (pre-lib.sh, disjoint, do not move)**:
+  b6 39840..39843, c3 39680..39684, c5 39850..39853,
+  lifecycle_harness 39640..39650, a9 39490.
+- **e-law (enclave loops, 2026-10-16)**: `eN -> 39370 + 10N .. +5`
+  (e1 39370..39375). `e` is a new family, not `a/b/c/n`: the enclave loop is
+  a full provision -> data-plane -> console -> residue lifecycle over a
+  terraform-managed ephemeral environment, not an adversarial probe (a), SDK
+  surface probe (b), cross/chaos soak (c), or Next.js lifecycle (n). The
+  wrapper `scripts/tf_enclave_loop.sh` owns block 39370..39375; the lane
+  writes only its own result file `e1-enclave-loop.jsonl`.
+- **flood_autocannon** is a load harness, never emits bench jsonl; defaults
+  39460/39464 (free band), env-overridable.
+- **n5** boots its own `next start` on 39555 (b-band 39010..39125 reserved).
+- **Retired b10/b11**: result files `b10-soak-spike.jsonl` / `b11-chaos.jsonl`
+  exist on disk from lanes with no script in `scripts/bench/` — historical
+  artifacts only, no active lane. No b12 lane ever existed.
+- Dual-instrument sub-lanes b2b/b3b share their parent lane's block
+  (b2 39020..39025, b3 39030..39035) by design and write their own result
+  files (b2b-blob-hdr.jsonl, b3b-cosmos-hdr.jsonl).
+- c10 affidavit seal bench (scripts/bench/c10_affidavit_seal.exs) — admit_and_seal latency, in-BEAM Wasmex engine; ports 39250..39255; result affidavit-seal.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/affidavit-seal.jsonl — canonical name, no c10- prefix).
+- c11 terraform lifecycle lane (scripts/bench/c11_tf_loop.sh) — tf init/plan/apply -> read-your-write (blob/secret/cosmos) -> destroy against a lane-private substrate; ports 39310..39315; result c11-tf-loop.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/c11-tf-loop.jsonl).

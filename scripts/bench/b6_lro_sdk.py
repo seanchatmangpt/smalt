@@ -165,12 +165,6 @@ def raw(method, path, body=None, timeout=30):
         raise
 
 
-def nsg_path(rg, name):
-    return (f"/subscriptions/{SUB}/resourceGroups/{rg}"
-            f"/providers/Microsoft.Network/networkSecurityGroups/{name}"
-            f"?api-version={API}")
-
-
 def nsg_body():
     return {"location": "eastus", "properties": {"securityRules": []}}
 

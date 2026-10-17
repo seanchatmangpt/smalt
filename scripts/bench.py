@@ -31,7 +31,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "127.0.0.1"
 # Fixed-port front door is `just bench` (9443/8443/5672). When the fixed ports
 # are held by another lane's substrate, run against a private block from the
-# documented range instead (docs/DEV_LOOP.md "Private port allocation"):
+# documented range instead (docs/how-to/dev-loop.md "Private port allocation"):
 #   SMALT_BENCH_ARM_PORT=39443 SMALT_BENCH_DATA_PORT=39453 \
 #   SMALT_BENCH_AMQP_PORT=39456 python3 scripts/bench.py
 # Same functions, same receipt schema; only the bind ports move.

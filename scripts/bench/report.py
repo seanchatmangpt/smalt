@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""bench-report: aggregate docs/jira/v26.10.14/bench/*.jsonl -> BENCH_RESULTS.md.
+"""bench-report: aggregate docs/jira/v<window>/bench/*.jsonl -> BENCH_RESULTS.md.
 
 Part of the B-1 shared bench infra (scripts/bench/). Stdlib-only.
+
+Multi-window (2026-10-16): every docs/jira/v*/bench dir gets its own
+BENCH_RESULTS.md next to it. Set BENCH_RESULTS_DIR (and optionally
+BENCH_REPORT_OUT) to reproduce a single window byte-identically.
 
 Usage: python3 scripts/bench/report.py
 """
@@ -11,8 +15,7 @@ import os
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-RESULTS_DIR = os.path.join(REPO, "docs/jira/v26.10.14/bench")
-OUT = os.path.join(REPO, "docs/jira/v26.10.14/BENCH_RESULTS.md")
+JIRA = os.path.join(REPO, "docs/jira")
 
 
 def is_op_row(r):
@@ -69,10 +72,23 @@ def classify_event(r):
     return "?"
 
 
-def main():
-    files = sorted(glob.glob(os.path.join(RESULTS_DIR, "*.jsonl")))
-    if not files:
-        print(f"no .jsonl results in {RESULTS_DIR}", file=sys.stderr)
+def render_window(results_dir, out, version):
+    """Aggregate one window's bench/*.jsonl into `out`. Returns exit code."""
+    all_files = sorted(glob.glob(os.path.join(results_dir, "*.jsonl")))
+    # SHIM-COURT-adjacent law: wave-telemetry.jsonl is fleet run telemetry,
+    # not bench lane output — its rows have no op/ops_per_sec shape and would
+    # degrade to "?" sections. Split it out and tag it explicitly instead.
+    files = [p for p in all_files if not os.path.basename(p).startswith("wave-telemetry")]
+    wave_files = [p for p in all_files if os.path.basename(p).startswith("wave-telemetry")]
+    # Window-root wave telemetry (some windows keep it outside bench/).
+    root_wave = sorted(
+        p
+        for p in glob.glob(os.path.join(os.path.dirname(results_dir), "wave-telemetry*.jsonl"))
+        if os.path.isfile(p)
+    )
+    wave_files += root_wave
+    if not files and not wave_files:
+        print(f"no .jsonl results in {results_dir}", file=sys.stderr)
         return 1
 
     # Group rows by (lane, surface). Two record classes:
@@ -82,7 +98,6 @@ def main():
     sections = {}
     skipped = 0
     for path in files:
-        lane_file = os.path.basename(path)
         with open(path) as f:
             for line in f:
                 line = line.strip()
@@ -111,9 +126,9 @@ def main():
     )
 
     lines = [
-        "# Bench Results — v26.10.14",
+        f"# Bench Results — {version}",
         "",
-        "Aggregated from `docs/jira/v26.10.14/bench/*.jsonl` by `just bench-report`",
+        f"Aggregated from `docs/jira/{version}/bench/*.jsonl` by `just bench-report`",
         "(scripts/bench/report.py). One row per recorded op. Generated, not hand-edited.",
         "",
         "## Methodology",
@@ -122,7 +137,7 @@ def main():
         "errors, machine}` per `scripts/bench/REGISTRY.md`. SDK lanes measure the Azure",
         "SDK against the smalt substrate; b7/b8/b9 measure the in-BEAM native surface.",
         "SDK-vs-BEAM multiplier narrative lives in the per-lane receipts",
-        "(`docs/jira/v26.10.14/receipts/bench-*.md`), not restated here. Non-op record",
+        f"(`docs/jira/{version}/receipts/bench-*.md`), not restated here. Non-op record",
         "classes (chaos/TLS run records, phase blobs, meta lines) are listed per lane,",
         "not rendered as op rows.",
         "",
@@ -143,8 +158,24 @@ def main():
                     errors=r.get("errors", 0),
                 )
             )
-    if event_files:
+    if not sections:
+        lines += [
+            "No op rows (records with `op` + numeric `ops_per_sec`, per REGISTRY.md)",
+            "were present in this window's bench data yet. Sections below summarize",
+            "the record classes that DO exist — nothing is fabricated into op tables.",
+            "",
+        ]
+    if event_files or wave_files:
         lines += ["## Non-op records", ""]
+        for p in wave_files:
+            n = sum(1 for _ in iter_jsonl(p))
+            loc = os.path.relpath(p, os.path.dirname(results_dir))
+            lines.append(
+                "- `{}`: wave-telemetry (fleet run telemetry, EXCLUDED from bench "
+                "aggregation) — {} record(s), see file for full run data.".format(
+                    loc, n
+                )
+            )
         for p in event_files:
             recs = [r for r in iter_jsonl(p) if not is_op_row(r)]
             if not recs:
@@ -158,10 +189,38 @@ def main():
         lines.append("")
 
     lines += ["---", "End of generated bench report."]
-    with open(OUT, "w") as f:
+    with open(out, "w") as f:
         f.write("\n".join(lines) + "\n")
-    print(f"[BENCH-REPORT] {len(files)} file(s), {sum(len(v) for v in sections.values())} rows -> {OUT}")
+    print(f"[BENCH-REPORT] {version}: {len(files)} file(s), {sum(len(v) for v in sections.values())} rows -> {out}")
+    # Fail-closed: malformed rows mean the aggregation is incomplete — the
+    # report is still written, but the caller must see the defect.
+    if skipped:
+        print(f"[BENCH-REPORT] FAIL({version}): {skipped} malformed row(s) skipped; report incomplete", file=sys.stderr)
+        return 1
     return 0
+
+
+def main():
+    # Legacy single-window mode: byte-identical to the pre-multi-window report
+    # for the window it pins.
+    if os.environ.get("BENCH_RESULTS_DIR"):
+        results_dir = os.environ["BENCH_RESULTS_DIR"]
+        version = os.path.basename(os.path.dirname(results_dir))
+        out = os.environ.get(
+            "BENCH_REPORT_OUT", os.path.join(os.path.dirname(results_dir), "BENCH_RESULTS.md")
+        )
+        return render_window(results_dir, out, version)
+
+    bench_dirs = sorted(glob.glob(os.path.join(JIRA, "v*", "bench")))
+    if not bench_dirs:
+        print(f"no docs/jira/v*/bench dirs under {JIRA}", file=sys.stderr)
+        return 1
+    rc = 0
+    for bench_dir in bench_dirs:
+        version = os.path.basename(os.path.dirname(bench_dir))
+        out = os.path.join(os.path.dirname(bench_dir), "BENCH_RESULTS.md")
+        rc = render_window(bench_dir, out, version) or rc
+    return rc
 
 
 if __name__ == "__main__":

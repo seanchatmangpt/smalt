@@ -1,8 +1,8 @@
 // c1_cosmos_blob_pipeline.mjs — cross-product bench lane C-1: Cosmos<->Blob ETL
 // pipeline (ingest -> transform -> archive) against the live smalt substrate.
 //
-// Boot: scripts/bench/lib.sh bench_boot c1 (port block 39010..39015; cosmos and
-// blob both ride the egress/data plane, base+1 = 39011 — same shape as lanes
+// Self-booted private substrate, c-law block (39200+10N family: 39210..39215; cosmos and
+// blob both ride the egress/data plane, base+1 = 39211 — same shape as lanes
 // b2/b3). Auth shapes mirror b3_cosmos_ts.mjs (CosmosClient master key) and
 // b2_blob_ts.mjs / b2b_blob_hdr.mjs (StorageSharedKeyCredential, account
 // "smaltacct" / "smaltacct-key", plain-HTTP egress; container create + legal
@@ -37,7 +37,7 @@ const require = createRequire(path.join(ROOT, "test/sdk-full/package.json"));
 const { BlobServiceClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
 const { CosmosClient } = await import(path.join(ROOT, "test/sdk-full/node_modules/@azure/cosmos/dist/esm/index.js"));
 
-const EP = process.env.C1_ENDPOINT ?? "http://127.0.0.1:39011";
+const EP = process.env.C1_ENDPOINT ?? "http://127.0.0.1:39211";
 const OUT = process.env.C1_OUT ?? path.join(ROOT, "docs/jira/v26.10.14/bench/c1-cosmos-blob.jsonl");
 const MACHINE = process.env.C1_MACHINE ?? "unknown";
 const TAG = Date.now();

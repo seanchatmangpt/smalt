@@ -11,8 +11,8 @@
 //   - TLS herd: 100 parallel TLS handshakes + 1 GET each against the ARM TLS twin.
 //
 // Env:
-//   FLOOD_ARM=http://127.0.0.1:39120   ARM front door
-//   FLOOD_TLS=https://127.0.0.1:39124  ARM TLS twin
+//   FLOOD_ARM=http://127.0.0.1:39460   ARM front door
+//   FLOOD_TLS=https://127.0.0.1:39464  ARM TLS twin
 //   FLOOD_CYCLES=10  FLOOD_CONNS=500  FLOOD_REQS=5
 //   FLOOD_TOKEN=anon                  bearer token (anonymous-auth substrate ignores)
 //
@@ -26,8 +26,8 @@ import fs from "node:fs";
 const require = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
 const autocannon = require("autocannon");
 
-const ARM = process.env.FLOOD_ARM || "http://127.0.0.1:39120";
-const TLS = process.env.FLOOD_TLS || "https://127.0.0.1:39124";
+const ARM = process.env.FLOOD_ARM || "http://127.0.0.1:39460";
+const TLS = process.env.FLOOD_TLS || "https://127.0.0.1:39464";
 const CYCLES = parseInt(process.env.FLOOD_CYCLES || "10", 10);
 const CONNS = parseInt(process.env.FLOOD_CONNS || "500", 10);
 const REQS = parseInt(process.env.FLOOD_REQS || "5", 10);
@@ -206,7 +206,7 @@ const receipt = {
   totals: { requests: totReq, five_xx: tot5xx, transport_errors: totErr, recovery_fails: totRecovFail },
   verdict: pass ? "PASS" : "FAIL",
 };
-fs.mkdirSync("/Users/sac/smalt/tmp", { recursive: true });
-fs.writeFileSync("/Users/sac/smalt/tmp/flood-autocannon-receipt.json", JSON.stringify(receipt, null, 2));
+fs.mkdirSync(path.resolve(HERE, "../../tmp"), { recursive: true });
+fs.writeFileSync(path.resolve(HERE, "../../tmp/flood-autocannon-receipt.json"), JSON.stringify(receipt, null, 2));
 print(`RECEIPT tmp/flood-autocannon-receipt.json verdict=${receipt.verdict}`);
 process.exit(pass ? 0 : 1);

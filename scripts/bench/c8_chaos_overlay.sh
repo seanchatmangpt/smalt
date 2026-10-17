@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # c8_chaos_overlay.sh — lane C-8: cross-product chaos overlay orchestrator.
 #
-# Boots the substrate on the c8 private port block (39080..39085, lib.sh port
-# law), starts the 3-surface Node driver (c8_chaos_cross.mjs), then:
+# Boots the substrate on the c8 c-law block (39200+10N family: 39280..39285,
+# disjoint from the b-law band), starts the 3-surface Node driver (c8_chaos_cross.mjs), then:
 #   t=60s   SIGKILL the substrate BEAM; re-boot; epochs recorded to the jsonl
 #   t=120s  write emphasis file ("cosmos") — traffic re-weighted
 #   t=180s  kill #2 lands under cosmos-emphasized traffic; re-boot
@@ -20,7 +20,7 @@
 # No commits, no lib edits.
 # Output: docs/jira/v26.10.14/bench/c8-chaos-cross.jsonl + stdout.
 set -euo pipefail
-REPO=/Users/sac/smalt
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$REPO/docs/jira/v26.10.14/bench/c8-chaos-cross.jsonl"
 EMP="$REPO/tmp/c8-emphasis.txt"
 mkdir -p "$(dirname "$OUT")" "$(dirname "$EMP")"
@@ -45,20 +45,20 @@ boot_substrate() {
   local log="$REPO/tmp/bench-substrate-c8.log"
   local eval_code
   eval_code="Application.put_env(:smalt, :sb_shared_key, \"$SB_SHARED_KEY\"); \
-Application.put_env(:smalt, :sb_endpoint, \"sb://127.0.0.1:39082\"); \
-Application.put_env(:smalt, :arm_port, 39080); \
-Application.put_env(:smalt, :egress_port, 39081); \
-Application.put_env(:smalt, :amqp_port, 39082); \
-Application.put_env(:smalt, :event_hubs_port, 39083); \
-Application.put_env(:smalt, :arm_tls_port, 39084); \
-Application.put_env(:smalt, :mcp_port, 39085); \
+Application.put_env(:smalt, :sb_endpoint, \"sb://127.0.0.1:39282\"); \
+Application.put_env(:smalt, :arm_port, 39280); \
+Application.put_env(:smalt, :egress_port, 39281); \
+Application.put_env(:smalt, :amqp_port, 39282); \
+Application.put_env(:smalt, :event_hubs_port, 39283); \
+Application.put_env(:smalt, :arm_tls_port, 39284); \
+Application.put_env(:smalt, :mcp_port, 39285); \
 {:ok, _} = Application.ensure_all_started(:smalt); \
 Process.sleep(:infinity)"
   MIX_ENV=test mix run --no-start -e "$eval_code" --no-halt >"$log" 2>&1 &
   local pid=$!
   local i
   for i in $(seq 1 120); do
-    if lsof -nP -iTCP:39080 -sTCP:LISTEN >/dev/null 2>&1; then
+    if lsof -nP -iTCP:39280 -sTCP:LISTEN >/dev/null 2>&1; then
       echo "$pid"
       return 0
     fi
@@ -74,7 +74,7 @@ wait_ports_free() {
   local p held i
   for i in $(seq 1 60); do
     held=0
-    for p in 39080 39081 39082 39083 39084 39085; do
+    for p in 39280 39281 39282 39283 39284 39285; do
       if lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then held=1; fi
     done
     if [ "$held" = 0 ]; then return 0; fi
@@ -84,39 +84,24 @@ wait_ports_free() {
   return 1
 }
 
-echo "== c8: boot substrate (lane c8, ports 39080..39085) =="
+echo "== c8: boot substrate (lane c8, ports 39280..39285) =="
 PID=$(boot_substrate)
 echo "c8: substrate pid $PID"
 
-# Port-watch sampler: every 1s, if any of 39080..39085 is LISTENed by a pid
-# other than the current substrate, record it (catches a port squatter that
-# would explain out-of-chaos ECONNREFUSED windows).
-( while kill -0 "$NODE_PID" 2>/dev/null; do
-    for p in 39080 39081 39082 39083 39084 39085; do
-      wp=$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -t 2>/dev/null | head -1)
-      if [ -n "$wp" ] && [ "$wp" != "$PID" ] && [ "$wp" != "$LASTPID" ]; then
-        echo "{\"kind\":\"portsquat\",\"port\":$p,\"pid\":\"$wp\",\"ts\":$(TS)}" >> "$OUT"
-        LASTPID=$wp
-      fi
-    done
-    sleep 1
-  done ) &
-SAMPLER=$!
-
 T0=$(TS)
-C8_EGRESS_PORT=39081 C8_EHUB_PORT=39083 C8_OUT="$OUT" \
+C8_EGRESS_PORT=39281 C8_EHUB_PORT=39283 C8_OUT="$OUT" \
   C8_EMPHASIS_FILE="$EMP" C8_DURATION_MS=270000 C8_T0_EPOCH="$T0" \
   C8_SB_KEY="$SB_SHARED_KEY" \
   node "$REPO/scripts/bench/c8_chaos_cross.mjs" &
 NODE_PID=$!
 
-# Port-watch sampler: every 1s, if any of 39080..39085 is LISTENed by a pid
+# Port-watch sampler: every 1s, if any of 39280..39285 is LISTENed by a pid
 # other than the current substrate (and not the previous substrate pid, which
 # lingers in TIME_WAIT listings for a moment), record a marker — catches a port
 # squatter that would explain out-of-chaos ECONNREFUSED windows.
 LASTPID=""
 ( while kill -0 "$NODE_PID" 2>/dev/null; do
-    for p in 39080 39081 39082 39083 39084 39085; do
+    for p in 39280 39281 39282 39283 39284 39285; do
       wp=$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -t 2>/dev/null | head -1)
       if [ -n "$wp" ] && [ "$wp" != "$PID" ] && [ "$wp" != "$LASTPID" ]; then
         echo "{\"kind\":\"portsquat\",\"port\":$p,\"pid\":\"$wp\",\"ts\":$(TS)}" >> "$OUT"

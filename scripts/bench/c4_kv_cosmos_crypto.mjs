@@ -14,7 +14,7 @@
 //      local-DEK optimization).
 //
 // Self-booted private substrate (scripts/bench/lib.sh bench_boot c4):
-//   lane c4 -> ports 39040..39045; ARM 39040, cosmos data 39041, vault TLS 39044.
+//   lane c4 -> ports 39240..39245; ARM 39240, cosmos data 39241, vault TLS 39244.
 // Run:
 //   cd scripts/bench && source lib.sh && pid=$(bench_boot c4) && \
 //   node c4_kv_cosmos_crypto.mjs; rc=$?; bench_down $pid; exit $rc
@@ -26,9 +26,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SDK_DIR = path.join(ROOT, "test/sdk-full");
-const ARM = process.env.C4_ARM ?? "http://127.0.0.1:39040";
-const COSMOS = process.env.C4_COSMOS ?? "http://127.0.0.1:39041";
-const VAULT = process.env.C4_VAULT ?? "https://127.0.0.1:39044";
+const ARM = process.env.C4_ARM ?? "http://127.0.0.1:39240";
+const COSMOS = process.env.C4_COSMOS ?? "http://127.0.0.1:39241";
+const VAULT = process.env.C4_VAULT ?? "https://127.0.0.1:39244";
 const OUT = process.env.C4_OUT ?? path.join(ROOT, "docs/jira/v26.10.14/bench/c4-kv-cosmos.jsonl");
 
 const { KeyClient, CryptographyClient } = await import(

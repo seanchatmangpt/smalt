@@ -1,0 +1,15 @@
+{"lane":"n7","ts":"2026-10-16T04:09:15.994Z","phase":"ramp","target":5000,"ulimit_n":1048576,"active":3733,"attach_errors":0,"fd_ceiling_witnessed":3733,"storm_run_size":2986}
+{"lane":"n7","ts":"2026-10-16T04:09:18.117Z","phase":"steady","delta_rate_per_s":19.5}
+{"lane":"n7","ts":"2026-10-16T04:09:18.169Z","phase":"storm","aborted":2122}
+{"lane":"n7","ts":"2026-10-16T04:14:45.863Z","phase":"ramp","target":5000,"ulimit_n":1048576,"active":5000,"attach_errors":0,"fd_ceiling_witnessed":5000,"storm_run_size":5000}
+{"lane":"n7","ts":"2026-10-16T04:14:47.967Z","phase":"steady","delta_rate_per_s":19}
+{"lane":"n7","ts":"2026-10-16T04:14:48.153Z","phase":"storm","aborted":5000}
+{"lane":"n7","ts":"2026-10-16T04:15:31.324Z","phase":"verdict","target":5000,"herd_size":5000,"reattached_final_active":4980,"permanent_drops":0,"attach_errors":0,"client_gaps_total":0,"diverged_clients":0,"divergence_rate":0,"divergence_threshold":0.001,"buffer_overflows":0,"listener_handles_min":5,"listener_handles_max":5,"server_seq":1008,"server_ring_span":1008,"elapsed_ms":54604}
+{"lane":"n7","ts":"2026-10-16T04:21:30.889Z","phase":"ramp","target":5000,"ulimit_n":1048576,"active":-1,"attach_errors":0,"fd_ceiling_witnessed":0,"storm_run_size":1}
+{"lane":"n7","ts":"2026-10-16T04:21:32.892Z","phase":"steady","delta_rate_per_s":0}
+{"lane":"n7","ts":"2026-10-16T04:21:32.893Z","phase":"storm","aborted":-1}
+{"lane":"n7","ts":"2026-10-16T04:22:38.534Z","phase":"verdict","target":5000,"herd_size":1,"reattached_final_active":-1,"permanent_drops":0,"attach_errors":0,"client_gaps_total":0,"diverged_clients":0,"divergence_rate":0,"divergence_threshold":0.001,"buffer_overflows":0,"listener_handles_min":0,"listener_handles_max":0,"server_seq":0,"server_ring_span":0,"elapsed_ms":76703}
+{"lane":"n7","ts":"2026-10-16T04:23:35.320Z","phase":"ramp","target":5000,"ulimit_n":1048576,"active":4808,"attach_errors":0,"fd_ceiling_witnessed":4808,"storm_run_size":3846}
+{"lane":"n7","ts":"2026-10-16T04:23:37.650Z","phase":"steady","delta_rate_per_s":20}
+{"lane":"n7","ts":"2026-10-16T04:23:37.759Z","phase":"storm","aborted":3846}
+{"lane":"n7","ts":"2026-10-16T04:24:01.693Z","phase":"verdict","target":5000,"herd_size":3846,"reattached_final_active":3846,"permanent_drops":0,"attach_errors":1005,"client_gaps_total":0,"diverged_clients":0,"divergence_rate":0,"divergence_threshold":0.001,"buffer_overflows":0,"listener_handles_min":0,"listener_handles_max":5,"server_seq":723,"server_ring_span":723,"elapsed_ms":38443}

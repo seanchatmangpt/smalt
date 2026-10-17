@@ -27,6 +27,7 @@ import signal
 import socket
 
 import _substrate
+from beam_rss import beam_rss_kb
 import statistics
 import subprocess
 import sys
@@ -37,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HOST = "127.0.0.1"
-# Private block per docs/DEV_LOOP.md "Private port allocation" (2026-10-15
+# Private block per docs/how-to/dev-loop.md "Private port allocation" (2026-10-15
 # migration off the disowned sibling-adopted 15672/19443 block). Env-overridable.
 ARM_PORT = int(os.environ.get("SMALT_ARMSCALE_ARM_PORT", "39453"))
 DATA_PORT = int(os.environ.get("SMALT_ARMSCALE_EGRESS_PORT", "39455"))
@@ -129,27 +130,6 @@ def kill_substrate(proc):
         return
     _substrate.kill_substrate(proc, ports=(ARM_PORT, DATA_PORT, ARM_TLS_PORT,
                                            AMQP_PORT, EVENT_HUBS_PORT, MCP_PORT))
-
-
-def beam_rss_kb():
-    """Total RSS (KB) of every process holding/listening on the substrate ports."""
-    pids = set()
-    for port in (ARM_PORT, DATA_PORT, ARM_TLS_PORT, AMQP_PORT, EVENT_HUBS_PORT, MCP_PORT):
-        try:
-            out = subprocess.run(["lsof", "-ti", f"tcp:{port}"],
-                                 capture_output=True, text=True, timeout=10).stdout
-        except Exception:
-            out = ""
-        pids.update(int(p) for p in out.split() if p.isdigit())
-    total = 0
-    for pid in pids:
-        try:
-            out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)],
-                                 capture_output=True, text=True, timeout=10).stdout
-            total += int(out.strip() or 0)
-        except Exception:
-            pass
-    return total
 
 
 # ---------------------------------------------------------------------------

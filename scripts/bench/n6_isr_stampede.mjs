@@ -118,8 +118,8 @@ async function phaseCachedTtfb(slug) {
     pipelining: 1,
     duration: 5,
   });
-  const p50 = pct(result.latency.sorted || [], 50);
-  const p99 = pct(result.latency.sorted || [], 99);
+  const p50 = result.latency.p50;
+  const p99 = result.latency.p99;
   const row = {
     phase: "P0-cached-ttfb",
     tool: "autocannon",
@@ -137,9 +137,14 @@ async function phaseCachedTtfb(slug) {
 }
 
 // P1 — stampede herd on one expired slug.
-async function phaseStampede(slug, regenBefore) {
+async function phaseStampede(slug) {
   // expire the entry
   await new Promise((r) => setTimeout(r, REVALIDATE_MS + 1_000));
+
+  // Baseline taken HERE, after the sleep and immediately before the herd, so
+  // the delta counts only regenerations inside this single expired interval
+  // (any earlier warm/expiry rebuild is excluded by construction).
+  const before = (await getStats()).perSlug[slug] || 0;
 
   let inFlight = 0;
   let peakInFlight = 0;
@@ -203,8 +208,7 @@ async function phaseStampede(slug, regenBefore) {
     body: JSON.stringify({ staleServed: servedStaleOrPre }),
   });
   const statsAfter = await getStats();
-  const regenDelta =
-    (statsAfter.perSlug[slug] || 0) - (regenBefore.perSlug[slug] || 0);
+  const regenDelta = (statsAfter.perSlug[slug] || 0) - before;
 
   const row = {
     phase: "P1-stampede",
@@ -235,6 +239,18 @@ function generatedAtOf(body) {
 // P2 — 50 parallel on-demand revalidations while background reads continue.
 async function phaseOnDemand(slugs) {
   const revalidateStart = Date.now();
+  // Pre-warm every dependent slug until it serves post-warm content, so each
+  // entry's generatedAt starts "now"; after this, content older than one
+  // window (2x revalidate) served to a reader is a genuine staleness
+  // violation, not build-time residue racing the warm rebuild.
+  const warmStart = Date.now();
+  for (const slug of slugs) {
+    for (let i = 0; i < 20; i++) {
+      const r = await fetchOnce(`/bench/news/${slug}`);
+      const g = generatedAtOf(r.body);
+      if (r.status === 200 && g != null && g >= warmStart) break;
+    }
+  }
   let reads = 0;
   let read5xx = 0;
   let staleBeyondWindow = 0;
@@ -354,7 +370,7 @@ await resetStats();
 const stats0 = await getStats();
 
 const p0 = await phaseCachedTtfb(PRIMARY_SLUG);
-const p1 = await phaseStampede(PRIMARY_SLUG, stats0);
+const p1 = await phaseStampede(PRIMARY_SLUG);
 const p2 = await phaseOnDemand(DEPENDENT_SLUGS);
 const p3 = await phaseDisk();
 

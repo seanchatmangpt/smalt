@@ -16,7 +16,7 @@
 //
 // Self-boots the substrate on the c2 private port block. Port law note: the
 // lib.sh law only assigns b1..b12 (39010..39125); the c-family runs above it —
-// c2 -> 39160..39165 (b-law max is 39125, ephemeral range starts 49152).
+// c2 -> 39220..39225 (c-law band 39200+, ephemeral range starts 49152).
 // Honest-error policy: record errors verbatim; never fabricate a rate.
 //
 // Run: node scripts/bench/c2_sb_cosmos.mjs
@@ -34,12 +34,12 @@ const OUT =
   path.join(REPO, "docs/jira/v26.10.14/bench/c2-sb-cosmos.jsonl");
 
 // c2 port block (see header note).
-const ARM = Number(process.env.C2_ARM_PORT || 39160);
-const EGRESS = Number(process.env.C2_EGRESS_PORT || 39161); // cosmos plane
-const AMQP = Number(process.env.C2_AMQP_PORT || 39162);
-const EHUB = Number(process.env.C2_EHUB_PORT || 39163);
-const ATLS = Number(process.env.C2_ATLS_PORT || 39164);
-const MCP = Number(process.env.C2_MCP_PORT || 39165);
+const ARM = Number(process.env.C2_ARM_PORT || 39220);
+const EGRESS = Number(process.env.C2_EGRESS_PORT || 39221); // cosmos plane
+const AMQP = Number(process.env.C2_AMQP_PORT || 39222);
+const EHUB = Number(process.env.C2_EHUB_PORT || 39223);
+const ATLS = Number(process.env.C2_ATLS_PORT || 39224);
+const MCP = Number(process.env.C2_MCP_PORT || 39225);
 
 const MSGS = 500;              // preload size, phases 1/2/4
 const SESSIONS = 10;

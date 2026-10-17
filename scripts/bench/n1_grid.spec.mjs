@@ -12,12 +12,15 @@
  * Usage: node scripts/bench/n1_grid.spec.mjs [--base-url http://127.0.0.1:3311]
  */
 
-import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// playwright resolves from the workspace checkout (script lives outside it).
+const workspaceRequire = createRequire(path.resolve(__dirname, '..', '..', 'workspace', 'package.json'));
+const { chromium } = workspaceRequire('playwright');
 const REPO = path.resolve(__dirname, '..', '..');
 const JSONL = path.join(REPO, 'docs', 'jira', 'v26.10.14', 'bench', 'n1-grid.jsonl');
 const TRACE = '/tmp/n1-grid-trace.json';
@@ -67,18 +70,27 @@ try {
 
   await cdp.send('Performance.enable');
   await cdp.send('HeapProfiler.enable');
+  await cdp.send('Network.enable');
 
-  // --- SSR init: TTFB of the document response -----------------------------
-  let ttfbMs = null;
-  page.on('response', (res) => {
-    if (res.url() === URL && res.request().resourceType() === 'document') {
-      const t = res.request().timing();
-      if (t && t.response > 0) ttfbMs = t.response;
+  // TTFB from CDP Network monotonic timestamps (document request only).
+  const netTimes = new Map(); // requestId -> requestWillBeSent ts
+  let docTtfbSec = null;
+  cdp.on('Network.requestWillBeSent', (p) => {
+    if (p.request.url === URL) netTimes.set(p.requestId, p.timestamp);
+  });
+  cdp.on('Network.responseReceived', (p) => {
+    const t0 = netTimes.get(p.requestId);
+    if (t0 !== undefined && p.response.url === URL && p.type === 'Document') {
+      docTtfbSec = p.timestamp - t0;
     }
   });
 
+  // --- SSR init: TTFB of the document response (CDP Network) ----------------
+  let ttfbMs = null; // set from CDP Network after goto
+
   console.log(`navigating ${URL}`);
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  ttfbMs = docTtfbSec === null ? null : Math.round(docTtfbSec * 1e6) / 1e3;
 
   // --- hydration ------------------------------------------------------------
   await page.waitForFunction(() => {
@@ -173,7 +185,7 @@ try {
   const rafRate = Math.max(0, 1 - churn.rafTicks / expected);
   const nodesDelta = (after.Nodes ?? 0) - (before.Nodes ?? 0);
   const listenersDelta = (after.JSEventListeners ?? 0) - (before.JSEventListeners ?? 0);
-  const heapDeltaBytes = Math.round(((after.JSHeapUsedSize ?? 0) - (before.JSHeapUsedSize ?? 0)) * 1024 * 1024);
+  const heapDeltaBytes = Math.round((after.JSHeapUsedSize ?? 0) - (before.JSHeapUsedSize ?? 0));
 
   console.log('\nresults:');
   record('ttfb_ms', ttfbMs === null ? -1 : Math.round(ttfbMs * 100) / 100, 'info', 'INFO', 'ms');

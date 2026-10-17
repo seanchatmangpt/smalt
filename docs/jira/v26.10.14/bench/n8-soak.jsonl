@@ -1,0 +1,15 @@
+{"event":"metrics","cycle":1,"heapUsed":3055076,"heapTotal":4718592,"documents":1,"nodes":70,"jsEventListeners":303,"rcNodes":0,"ts":"2026-10-16T04:09:49.269Z"}
+{"event":"heapsnapshot","cycle":1,"file":"/Users/sac/smalt/workspace/bench_results/nextjs_lifecycle/cycle-001.heapsnapshot","bytes":7234279,"ts":"2026-10-16T04:09:49.405Z"}
+{"event":"metrics","cycle":50,"heapUsed":2478272,"heapTotal":4456448,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:10:01.507Z"}
+{"event":"metrics","cycle":100,"heapUsed":2830088,"heapTotal":6291456,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:10:19.030Z"}
+{"event":"metrics","cycle":150,"heapUsed":2797296,"heapTotal":6815744,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:10:31.668Z"}
+{"event":"metrics","cycle":200,"heapUsed":2697732,"heapTotal":4194304,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:10:44.412Z"}
+{"event":"metrics","cycle":250,"heapUsed":2646448,"heapTotal":4194304,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:10:57.160Z"}
+{"event":"heapsnapshot","cycle":250,"file":"/Users/sac/smalt/workspace/bench_results/nextjs_lifecycle/cycle-250.heapsnapshot","bytes":7037465,"ts":"2026-10-16T04:10:57.296Z"}
+{"event":"metrics","cycle":300,"heapUsed":2863676,"heapTotal":6815744,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:11:10.087Z"}
+{"event":"metrics","cycle":350,"heapUsed":2696536,"heapTotal":5767168,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:11:22.646Z"}
+{"event":"metrics","cycle":400,"heapUsed":2681764,"heapTotal":6291456,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:11:35.160Z"}
+{"event":"metrics","cycle":450,"heapUsed":2789592,"heapTotal":7077888,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:11:47.894Z"}
+{"event":"metrics","cycle":500,"heapUsed":2878692,"heapTotal":7077888,"documents":1,"nodes":54,"jsEventListeners":296,"rcNodes":0,"ts":"2026-10-16T04:12:01.115Z"}
+{"event":"heapsnapshot","cycle":500,"file":"/Users/sac/smalt/workspace/bench_results/nextjs_lifecycle/cycle-500.heapsnapshot","bytes":7177787,"ts":"2026-10-16T04:12:01.254Z"}
+{"event":"summary","cycles_completed":500,"samples":11,"heap_first":3055076,"heap_last":2878692,"retained_growth_pct":-5.77,"slope_bytes_per_cycle":-20,"r2":0.0005,"sawtooth":false,"envelope":"stable","max_drawdown_bytes":576804,"listener_first":3055076,"verdict":"PASS","duration_s":132.4,"errors":0,"ts":"2026-10-16T04:12:01.254Z"}

@@ -1,3 +1,4 @@
+import pathlib
 #!/usr/bin/env python3
 """Bench lane C-6: Sentinel (Log Analytics) ingest + KQL + Resource Graph.
 
@@ -30,13 +31,19 @@ import time
 import urllib.error
 import urllib.request
 
-from azure.core.credentials import AccessToken
-from azure.mgmt.resourcegraph import ResourceGraphClient
-from azure.mgmt.resourcegraph.models import QueryRequest, QueryRequestOptions
-from azure.monitor.query import LogsQueryClient, LogsQueryStatus
+try:  # loud-skip contract (exit 3) when azure SDK deps are absent
+    from azure.core.credentials import AccessToken
+    from azure.mgmt.resourcegraph import ResourceGraphClient
+    from azure.mgmt.resourcegraph.models import QueryRequest, QueryRequestOptions
+    from azure.monitor.query import LogsQueryClient, LogsQueryStatus
+except ImportError as exc:
+    print(f"SKIP: azure SDK deps not importable ({exc}); lane C-6 requires "
+          "azure-monitor-query + azure-mgmt-resourcegraph in the venv",
+          file=sys.stderr)
+    sys.exit(3)
 
-ARM = os.environ.get("C6_ARM", "http://127.0.0.1:39060")
-EGRESS = os.environ.get("C6_EGRESS", "http://127.0.0.1:39061")
+ARM = os.environ.get("C6_ARM", "http://127.0.0.1:39260")
+EGRESS = os.environ.get("C6_EGRESS", "http://127.0.0.1:39261")
 SUB = os.environ.get("C6_SUB", "sub-c6")
 RG_API = "2022-10-01"
 DCR = os.environ.get("C6_DCR", "ws-c6-" + str(int(time.time())))
@@ -49,7 +56,7 @@ RG_ACCOUNTS = 100
 
 RESULT_FILE = os.environ.get(
     "C6_RESULT_FILE",
-    "/Users/sac/smalt/docs/jira/v26.10.14/bench/c6-sentinel-rg.jsonl")
+    str(pathlib.Path(__file__).resolve().parents[2] / "docs/jira/v26.10.14/bench/c6-sentinel-rg.jsonl"))
 
 results = []
 
@@ -136,25 +143,6 @@ def emit(surface, op, n, ops, p50, p95, p99, errors, **extra):
     rec.update(extra)
     with open(RESULT_FILE, "a") as f:
         f.write(json.dumps(rec) + "\n")
-
-
-def machine_spec():
-    import subprocess
-    cpu = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
-                         capture_output=True, text=True).stdout.strip()
-    cores = subprocess.run(["sysctl", "-n", "hw.ncpu"],
-                           capture_output=True, text=True).stdout.strip()
-    ram = int(subprocess.run(["sysctl", "-n", "hw.memsize"],
-                             capture_output=True, text=True).stdout) // (1024 ** 3)
-    elixir = subprocess.run(["elixir", "-e", "IO.puts System.version()"],
-                            capture_output=True, text=True).stdout.strip()
-    otp = subprocess.run(["elixir", "-e",
-                          "IO.puts :erlang.system_info(:otp_release)"],
-                         capture_output=True, text=True).stdout.strip()
-    darwin = subprocess.run(["sw_vers", "-productVersion"],
-                            capture_output=True, text=True).stdout.strip()
-    return {"cpu": cpu, "cores": int(cores), "ram_gb": ram,
-            "elixir": elixir, "otp": otp, "darwin": darwin}
 
 
 # ---------------------------------------------------------------------------

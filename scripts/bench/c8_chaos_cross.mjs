@@ -1,7 +1,7 @@
 // c8_chaos_cross.mjs — lane C-8: cross-product chaos overlay load driver.
 //
 // Three sustained workers against ONE live substrate (booted by the
-// orchestrator c8_chaos_overlay.sh on the c8 port block 39080..39085):
+// orchestrator c8_chaos_overlay.sh on the c8 port block 39280..39285):
 //   blob   — put-block-blob 8 KiB, unique name per put (substrate enforces WORM
 //            immutability), self-healing container re-creation after restart.
 //   cosmos — point-reads of 200 seeded docs; on failure re-provisions (db +
@@ -32,8 +32,8 @@ const { CosmosClient } = await import(
 const { EventHubProducerClient } = await import(
   path.join(REPO, "test/sdk-full/node_modules/@azure/event-hubs/dist/esm/index.js"));
 
-const EGRESS = Number(process.env.C8_EGRESS_PORT || 39081);
-const EHUB = Number(process.env.C8_EHUB_PORT || 39083);
+const EGRESS = Number(process.env.C8_EGRESS_PORT || 39281);
+const EHUB = Number(process.env.C8_EHUB_PORT || 39283);
 const OUT = process.env.C8_OUT ||
   path.join(REPO, "docs/jira/v26.10.14/bench/c8-chaos-cross.jsonl");
 const EMPHASIS_FILE = process.env.C8_EMPHASIS_FILE ||

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // N-3 RSC streaming race bench — rapid client navigation during server streaming.
 // Usage: node scripts/bench/n3_rsc_race.spec.mjs [--base http://127.0.0.1:3100] [--rounds 50]
-import { chromium } from "playwright";
+import { chromium } from "../../workspace/node_modules/playwright/index.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -34,7 +34,9 @@ await cdp.send("Network.emulateNetworkConditions", {
 });
 
 const pageErrors = [];
-page.on("pageerror", (e) => pageErrors.push(String(e?.message ?? e)));
+page.on("pageerror", (e) =>
+  pageErrors.push(String(e?.message ?? e).slice(0, 200)),
+);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const jitter = () => Math.random() * 100;
@@ -84,14 +86,14 @@ await page.addInitScript(() => {
       for (const n of m.addedNodes)
         if (n.nodeType === 1 && n.matches?.("[data-fallback]"))
           window.__n3.fallbacksAfterHydration++;
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  }).observe(document, { childList: true, subtree: true });
 });
 
 // --- run ---------------------------------------------------------------------
 const rows = [];
 const t0 = Date.now();
 await page.goto(`${BASE}/bench/audit/1`, { waitUntil: "commit" });
-await page.waitForSelector('[data-chunk="c"]', { timeout: 15000 });
+await page.waitForSelector('[data-chunk="c"]', { timeout: 30000 });
 const heapStart = await heap();
 let hydrationFlashCount = 0;
 
@@ -105,7 +107,20 @@ for (let round = 1; round <= ROUNDS; round++) {
 
   // Click DURING the prior stream: navigate immediately, then click the next
   // sibling before chunk "c" (600ms) would land.
-  await page.click(`nav[data-siblings] a[href="/bench/audit/${target}"]`);
+  let navMissing = false;
+  try {
+    await page.click(`nav[data-siblings] a[href="/bench/audit/${target}"]`, {
+      timeout: 10000,
+      force: false,
+    });
+  } catch {
+    navMissing = true;
+  }
+  if (navMissing) {
+    // Document replaced mid-stream without emitting the sibling nav; fall back
+    // to a direct goto so the race continues, and record the stall honestly.
+    await page.goto(`${BASE}/bench/audit/${target}`, { waitUntil: "commit" });
+  }
   await sleep(120); // next click fires before the 600ms chunk resolves
 
   const heapNow = await heap();
@@ -122,6 +137,7 @@ for (let round = 1; round <= ROUNDS; round++) {
     round,
     target: `/bench/audit/${target}`,
     pageErrors: pageErrors.length - errBefore,
+    navMissing,
     pendingAfter,
     abortedByNav,
     heapBytes: heapNow,
@@ -171,11 +187,13 @@ const summary = {
   rounds: ROUNDS,
   base: BASE,
   pageErrorsTotal: pageErrors.length,
+  pageErrorSamples: [...new Set(pageErrors)].slice(0, 5),
   heapStartBytes: heapStart,
   heapEndBytes: heapEnd,
   heapGrowthBytes: heapGrowth,
   heapGrowthMB: +(heapGrowth / 1048576).toFixed(2),
   pendingAtEnd,
+  navMissingTotal: rows.filter((r) => r.navMissing).length,
   abortedByNavTotal: [...auditReqs.values()].filter((r) => r.phase === "aborted").length,
   getResponseBodyFailures,
   hydrationFlashCount,

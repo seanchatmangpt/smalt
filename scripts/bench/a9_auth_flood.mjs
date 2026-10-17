@@ -1,3 +1,4 @@
+const HERE = path.dirname(import.meta.url).replace("file://", "");
 // a9_auth_flood.mjs — adversarial cross-product bench lane A-9.
 //
 // Cross-tenant auth challenge flood against an ENFORCE-mode substrate:
@@ -32,6 +33,7 @@
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
 const require = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
 const autocannon = require("autocannon");
@@ -44,7 +46,7 @@ const CONNS = parseInt(process.env.A9_CONNS || "100", 10);
 const TENANTS = parseInt(process.env.A9_TENANTS || "10", 10);
 const RSS_PID = process.env.A9_RSS_PID || "";
 const JSONL = process.env.A9_JSONL ||
-  "/Users/sac/smalt/docs/jira/v26.10.14/bench/a9-auth-flood.jsonl";
+  path.resolve(HERE, "../../docs/jira/v26.10.14/bench/a9-auth-flood.jsonl");
 const RSS_LOG = JSONL.replace(/\.jsonl$/, "-rss.jsonl");
 const API = "2021-04-01";
 

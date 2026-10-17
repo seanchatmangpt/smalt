@@ -1,13 +1,13 @@
 // c7_cross_soak.mjs — lane C-7: FULL cross-surface soak (the interference
 // matrix). Six surfaces hammered SIMULTANEOUSLY for 600 s against one live
-// substrate on the c7 private port block (lib.sh port law: c7 -> 39070..39075):
+// substrate on the c7 private port block (lib.sh port law: c7 -> 39270..39275):
 //
-//   blob   — 8 KiB put via @azure/storage-blob          (egress 39071)
-//   cosmos — point-read + create via @azure/cosmos      (egress 39071)
-//   sb     — send, sessionless, @azure/service-bus      (amqp 39072)
-//   eh     — send via @azure/event-hubs                 (ehub 39073)
-//   kv     — encrypt RSA-OAEP-256 @azure/keyvault-keys  (arm_tls 39074)
-//   arm    — raw REST GET /subscriptions                (arm 39070)
+//   blob   — 8 KiB put via @azure/storage-blob          (egress 39271)
+//   cosmos — point-read + create via @azure/cosmos      (egress 39271)
+//   sb     — send, sessionless, @azure/service-bus      (amqp 39272)
+//   eh     — send via @azure/event-hubs                 (ehub 39273)
+//   kv     — encrypt RSA-OAEP-256 @azure/keyvault-keys  (arm_tls 39274)
+//   arm    — raw REST GET /subscriptions                (arm 39270)
 //
 // Every 10 s: per-surface ops/s (10 s window), substrate beam RSS, cumulative
 // per-surface error counts. Each surface gets its own container/db/queue/hub/
@@ -22,6 +22,7 @@
 // Output: docs/jira/v26.10.14/bench/c7-cross-soak.jsonl
 import { spawn, execSync } from "node:child_process";
 import net from "node:net";
+import https from "node:https";
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -29,25 +30,29 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-// KV plane TLS: the vault port serves a private CA (.smalt/tls/ca-cert.pem).
-// Re-exec with NODE_EXTRA_CA_CERTS wired so the KV worker's fetch + SDK trust it.
+// KV plane TLS: the vault port serves a cert signed by the private dev CA
+// (.smalt/tls/ca-cert.pem). The Azure SDK uses node:https, which honors
+// NODE_EXTRA_CA_CERTS — re-exec with it wired (undici fetch would ignore it,
+// so the KV raw call uses node:https with rejectUnauthorized:false instead).
 if (!process.env.NODE_EXTRA_CA_CERTS) {
   const { spawn: re } = await import("node:child_process");
   const c = re(process.execPath, process.argv.slice(1), {
     stdio: "inherit",
-    env: { ...process.env, NODE_EXTRA_CA_CERTS: path.join(REPO, ".smalt/tls/ca-cert.pem") },
+    env: { ...process.env, NODE_EXTRA_CA_CERTS: path.join(REPO, "tmp/dev-certs/dev-cert-39274.pem") },
   });
   c.on("exit", (code) => process.exit(code ?? 0));
   await new Promise(() => {}); // park parent; child carries on with the CA
 }
+
+
 const SDK_DIR = path.join(REPO, "test/sdk-full");
 const OUT =
   process.env.C7_OUT ||
   path.join(REPO, "docs/jira/v26.10.14/bench/c7-cross-soak.jsonl");
 
-// lib.sh port law: c7 -> 39000 + 7*10 = 39070 block.
-const ARM_P = 39070, EGRESS_P = 39071, AMQP_P = 39072, EHUB_P = 39073,
-  ATLS_P = 39074, MCP_P = 39075;
+// c-law block: 39200 + 7*10 = 39270 (disjoint from the b-law band).
+const ARM_P = 39270, EGRESS_P = 39271, AMQP_P = 39272, EHUB_P = 39273,
+  ATLS_P = 39274, MCP_P = 39275;
 
 const DURATION_MS = Number(process.env.C7_DURATION_MS || 600_000);
 const SAMPLE_MS = 10_000;
@@ -90,6 +95,10 @@ async function bootSubstrate() {
       process.exit(3);
     }
   }
+  try {
+    fs.rmSync(path.join(REPO, "tmp/dev-certs/dev-cert-39274.pem"), { force: true });
+    fs.rmSync(path.join(REPO, "tmp/dev-certs/dev-key-39274.pem"), { force: true });
+  } catch {}
   const logPath = path.join(REPO, "tmp/bench-substrate-c7.log");
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const logStream = fs.createWriteStream(logPath, { flags: "w" });
@@ -180,15 +189,11 @@ function beamRssKb() {
 async function erlangMemorySample() {
   const script = [
     ":net_kernel.stop()",
-    `{:ok,_} = :net_kernel.start([:'c7probe', %{name_domain: :shortnames}])`,
+    `:net_kernel.start([:'c7probe', %{name_domain: :shortnames}])`,
     `:erlang.set_cookie(:'${ERL_NAME}', :'${COOKIE}')`,
-    `case Node.connect(:'${ERL_NAME}@127.0.0.1') do`,
-    `  true ->`,
-    `    m = :rpc.call(:'${ERL_NAME}@127.0.0.1', :erlang, :memory, [])`,
-    `    k = fn key -> div(Keyword.get(m, key, 0), 1024) end`,
-    `    IO.puts("ErlangMemory total=#{k.(:total)}kb processes=#{k.(:processes)}kb ets=#{k.(:ets)}kb atom=#{k.(:atom)}kb binary=#{k.(:binary)}kb")`,
-    `  other -> IO.puts("ErlangMemoryConnectFailed #{inspect(other)}")`,
-    `end`,
+    `true = Node.connect(:'${ERL_NAME}@127.0.0.1')`,
+    `m = :rpc.call(:'${ERL_NAME}@127.0.0.1', :erlang, :memory, [])`,
+    `IO.puts("ErlangMemory total=" <> Integer.to_string(div(Keyword.get(m, :total, 0), 1024)) <> "kb processes=" <> Integer.to_string(div(Keyword.get(m, :processes, 0), 1024)) <> "kb ets=" <> Integer.to_string(div(Keyword.get(m, :ets, 0), 1024)) <> "kb binary=" <> Integer.to_string(div(Keyword.get(m, :binary, 0), 1024)) <> "kb")`,
     "System.halt(0)",
   ].join("; ");
   return new Promise((resolve) => {
@@ -297,7 +302,7 @@ async function cosmosWorker() {
 
 async function sbWorker() {
   const CS = `Endpoint=sb://127.0.0.1:${AMQP_P};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=${sharedKey};UseDevelopmentEmulator=true`;
-  const client = new ServiceBusClient(CS, { retryOptions: { maxRetries: 0, timeoutInMs: 30000 } });
+  let client = new ServiceBusClient(CS, { retryOptions: { maxRetries: 0, timeoutInMs: 30000 } });
   const queue = `c7-q-${TAG}`;
   let sender = client.createSender(queue);
   let sinceRecycle = 0;
@@ -306,14 +311,34 @@ async function sbWorker() {
     try {
       await withTimeout(
         sender.sendMessages({ body: MSG_PAYLOAD, contentType: "application/octet-stream" },
-          { timeoutInMs: 30000 }));
+          { timeoutInMs: 5000 }), 8_000);
       S.sb.n++; S.sb.winOps++;
       S.sb.winLat.push(Number(process.hrtime.bigint() - t0) / 1e6);
       sinceRecycle++;
-      // KD-20 residual: substrate grants fixed link_credit=1000 at attach and
-      // never replenishes; recycle the sender before the window starves.
-      if (sinceRecycle >= 200) {
+      if (sinceRecycle >= 800) {
+        // Cycle: close sender, BOUNDED drain of the queue (send-then-drain,
+        // b4's roundtrip shape), reopen sender. KD-20 residual means the
+        // substrate never replenishes fixed link credit, so cycling is load-
+        // bearing, not decoration.
         await sender.close().catch(() => {});
+        const rxClient = new ServiceBusClient(CS, { retryOptions: { maxRetries: 0, timeoutInMs: 10000 } });
+        const rx = rxClient.createReceiver(queue, { receiveMode: "receiveAndDelete" });
+        const drainDeadline = Date.now() + 3000;
+        for (;;) {
+          try {
+            const msgs = await rx.receiveMessages(100, { maxWaitTimeInMs: 500 });
+            // receiveAndDelete: peekLock settlement (completeMessage) fails on
+            // this substrate for batched receives ("no message ID"), which
+            // wedges the queue; fire-and-forget drain keeps the queue honest.
+            S.sb.received = (S.sb.received || 0) + msgs.length;
+            if (!msgs.length || Date.now() > drainDeadline) break;
+          } catch (e) {
+            if (!S.sb.rxFirstErr) S.sb.rxFirstErr = String((e && e.message) || e).slice(0, 200);
+            break;
+          }
+        }
+        await rx.close().catch(() => {});
+        await rxClient.close().catch(() => {});
         sender = client.createSender(queue);
         sinceRecycle = 0;
         S.sb.recycles = (S.sb.recycles || 0) + 1;
@@ -331,19 +356,25 @@ async function sbWorker() {
 
 async function ehWorker() {
   const CS = `Endpoint=sb://127.0.0.1:${EHUB_P};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=${sharedKey};EntityPath=c7-hub;UseDevelopmentEmulator=true`;
-  const producer = new EventHubProducerClient(CS, "c7-hub",
+  let producer = new EventHubProducerClient(CS, "c7-hub",
     { retryOptions: { maxRetries: 0, timeoutInMs: 30000 } });
+  let sinceRecycle = 0;
   for (;;) {
     const t0 = process.hrtime.bigint();
     try {
-      const batch = producer.createBatch();
-      batch.tryAdd({ body: MSG_PAYLOAD });
+      const batch = await producer.createBatch();
+      if (!batch.tryAdd({ body: MSG_PAYLOAD })) throw new Error("batch.tryAdd rejected 1KiB event");
       await withTimeout(producer.sendBatch(batch), 30_000);
       S.eh.n++; S.eh.winOps++;
       S.eh.winLat.push(Number(process.hrtime.bigint() - t0) / 1e6);
     } catch (e) {
       noteErr(S.eh, e);
       if (!S.eh.firstErr) S.eh.firstErr = String(e && (e.stack || e.message) || e).slice(0, 300);
+      await producer.close().catch(() => {});
+      producer = new EventHubProducerClient(CS, "c7-hub",
+        { retryOptions: { maxRetries: 0, timeoutInMs: 30000 } });
+      sinceRecycle = 0;
+      S.eh.recycles = (S.eh.recycles || 0) + 1;
       await new Promise((r) => setTimeout(r, 200)); // backoff: never hot-spin
     }
   }
@@ -362,17 +393,29 @@ async function kvWorker() {
   const VAULT = `https://127.0.0.1:${ATLS_P}`;
   const bearer = await mintBearer();
   const keyName = `c7-crypto-${TAG}`;
-  const r = await fetch(`${VAULT}/keys/${keyName}/create?api-version=7.4`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
-    body: JSON.stringify({ kty: "RSA" }),
+  const r = await new Promise((resolve, reject) => {
+    const bodyStr = JSON.stringify({ kty: "RSA" });
+    const req = https.request(`${VAULT}/keys/${keyName}/create?api-version=7.4`, {
+      method: "POST",
+      rejectUnauthorized: false, // private dev CA; SDK calls use allowInsecureConnection
+      headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json",
+        "content-length": Buffer.byteLength(bodyStr) },
+      timeout: 15000,
+    }, resolve);
+    req.on("timeout", () => req.destroy(new Error("kv create timeout")));
+    req.on("error", reject);
+    req.end(bodyStr);
   });
-  if (!r.ok) throw new Error(`key create ${r.status} ${(await r.text()).slice(0, 150)}`);
+  const rText = await new Promise((res2, rej2) => {
+    let b = ""; r.on("data", (c) => { b += c; }); r.on("end", () => res2(b)); r.on("error", rej2);
+  });
+  if (r.statusCode !== 200) throw new Error(`key create ${r.statusCode} ${rText.slice(0, 150)}`);
   const cred = {
     getToken: async () => ({ token: bearer, expiresOnTimestamp: Date.now() + 3600_000 }),
   };
   const cryptoClient = new CryptographyClient(`${VAULT}/keys/${keyName}`, cred, {
     allowInsecureConnection: true,
+    disableChallengeResourceVerification: true, // vault-uri is 127.0.0.1
     retryOptions: { maxRetries: 0 },
   });
   // The substrate never issues a 401 + WWW-Authenticate challenge, so the SDK
@@ -494,6 +537,10 @@ async function main() {
       p50_ms: Number(p50.toFixed(3)), p95_ms: Number(p95.toFixed(3)), p99_ms: Number(p99.toFixed(3)),
       errors: surf.errs, recycles: surf.recycles || 0,
       last_error: surf.errs ? surf.lastErr : "",
+      first_error: surf.firstErr || "",
+      received: surf.received || 0,
+      rx_first_error: surf.rxFirstErr || "",
+      queues: surf.queues || 0,
     });
   }
   emit({ event: "done", wall_s: Number(wallS.toFixed(1)) });

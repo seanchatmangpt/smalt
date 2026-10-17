@@ -33,8 +33,8 @@ defmodule SmaltBench.A1 do
 
   @result_file System.get_env("A1_RESULT_FILE") ||
                  "docs/jira/v26.10.14/bench/a1-change-feed.jsonl"
-  @total 2000
-  @wave 200
+  @total String.to_integer(System.get_env("A1_TOTAL") || "2000")
+  @wave min(String.to_integer(System.get_env("A1_WAVE") || "200"), 2000)
   @waves div(@total, @wave)
   @poll_ms 5
   @buffer_cap 2_000
@@ -48,7 +48,7 @@ defmodule SmaltBench.A1 do
   defp pct(lats, p) do
     case Enum.sort(lats) do
       [] -> 0.0
-      v -> Enum.fetch!(v, round(p / 100.0 * (length(v) - 1))) |> Float.round(3)
+      v -> Enum.fetch!(v, round(p / 100.0 * (length(v) - 1))) * 1.0 |> Float.round(3)
     end
   end
 
@@ -134,7 +134,7 @@ defmodule SmaltBench.A1 do
       body = %{"id" => id, "pk" => "p#{rem(idx, 8)}", "v" => idx, "pad" => :binary.copy("x", 256)}
       t0 = now_ms()
 
-      {st, _, _, _} =
+      {:ok, st, _, _} =
         if t_upsert(id) do
           Cosmos.put_doc(db, coll, id, body, %{})
         else
@@ -200,6 +200,7 @@ defmodule SmaltBench.A1 do
     drained? = :ets.lookup(:a1_ctl, :done) == [{:done, done_gen}] and changed == []
 
     if drained? do
+      send(:persistent_term.get({:a1, :parent}), {:a1_tailer_done, self()})
       :ok
     else
       Process.sleep(@poll_ms)
@@ -219,16 +220,21 @@ defmodule SmaltBench.A1 do
 
   # -- archiver (EH -> Blob tiering) ----------------------------------------------------
 
+  defp lats_clean(lats), do: Enum.reject(Enum.reverse(lats), &is_nil/1)
+
   defp archiver(partition, account, container, ctr, done_gen) do
-    archiver_loop(partition, account, container, ctr, _after_seq = 0, _lats = [], done_gen)
+    # start at the current head of the partition — a later phase must never
+    # replay an earlier phase's events
+    {:ok, seq0} = EH.next_sequence(partition)
+    archiver_loop(partition, account, container, ctr, seq0, _lats = [], done_gen)
   end
 
   defp archiver_loop(partition, account, container, ctr, after_seq, lats, done_gen) do
     case EH.receive_events(partition, after_seq, 100) do
       [] ->
         if :ets.lookup(:a1_ctl, :done) == [{:done, done_gen}] do
-          # exit reason carries the samples (spawn return values are not delivered)
-          exit({:a1_lats, Enum.reject(Enum.reverse(lats), &is_nil/1)})
+          # result rides an explicit message (spawn returns and late monitors race)
+          send(:persistent_term.get({:a1, :parent}), {:a1_arch_done, self(), lats_clean(lats)})
         else
           Process.sleep(2)
           archiver_loop(partition, account, container, ctr, after_seq, lats, done_gen)
@@ -237,20 +243,43 @@ defmodule SmaltBench.A1 do
       evs ->
         next = evs |> List.last() |> Map.fetch!("seq")
 
-        lats =
-          Enum.reduce(evs, lats, fn ev, acc ->
-            acc ++ [archive_one(ev, account, container, ctr)]
+        # stall injection: one 200 ms commit round-trip per BATCH (the archiver
+        # is a block-blob writer; the delay models a slow commit, not per-doc)
+        delay = :persistent_term.get({:a1, :delay}, 0)
+        if delay > 0, do: Process.sleep(delay)
+
+        {lats, crash} =
+          Enum.reduce(evs, {lats, nil}, fn ev, {acc, crash} ->
+            case crash do
+              nil ->
+                try do
+                  {acc ++ [archive_one(ev, account, container, ctr)], nil}
+                rescue
+                  e ->
+                    IO.puts("[a1:err] archive_one failed: " <> Exception.format(:error, e, __STACKTRACE__))
+                    {acc, {:crash, ev["seq"]}}
+                end
+
+              _ ->
+                {acc, crash}
+            end
           end)
 
         :counters.add(ctr, @c_con, length(evs))
+
+        case crash do
+          {:crash, seq} ->
+            send(:persistent_term.get({:a1, :parent}), {:a1_arch_done, self(), lats_clean(lats)})
+            IO.puts("[a1:err] archiver stopped at seq #{seq}")
+
+          nil ->
+            archiver_loop(partition, account, container, ctr, next, lats, done_gen)
+        end
         archiver_loop(partition, account, container, ctr, next, lats, done_gen)
     end
   end
 
   defp archive_one(ev, account, container, ctr) do
-    delay = :persistent_term.get({:a1, :delay}, 0)
-    if delay > 0, do: Process.sleep(delay)
-
     doc = Jason.decode!(ev["body"])
     id = doc["id"]
     blob = "a1/#{id}.json"
@@ -274,11 +303,24 @@ defmodule SmaltBench.A1 do
 
   # Sampler runs for the WHOLE bench (both phases), writing rows into the
   # :a1_samples ETS table as it goes; exits when the driver marks :stop.
+  # Backlog is PHASE-RELATIVE: baselined against the counters snapshot taken
+  # at phase start (absolute enq-con goes negative across phase boundaries).
   defp sampler(ctr) do
-    if :persistent_term.get({:a1, :phase}, :baseline) == :stop do
+    if :persistent_term.get({:a1, :phase}, :baseline) in [:stop, :between] do
       :ok
     else
-      :ets.insert(:a1_samples, {:erlang.monotonic_time(:millisecond), :persistent_term.get({:a1, :phase}, :baseline), :erlang.memory(:processes), :counters.get(ctr, @c_enq) - :counters.get(ctr, @c_con)})
+      {enq0, con0} = :persistent_term.get({:a1, :phase_base}, {0, 0})
+
+      backlog =
+        (:counters.get(ctr, @c_enq) - enq0) - (:counters.get(ctr, @c_con) - con0)
+
+      :ets.insert(:a1_samples, {
+        :erlang.monotonic_time(:millisecond),
+        :persistent_term.get({:a1, :phase}, :baseline),
+        :erlang.memory(:processes),
+        backlog
+      })
+
       Process.sleep(@sample_ms)
       sampler(ctr)
     end
@@ -321,7 +363,9 @@ defmodule SmaltBench.A1 do
       other -> throw({:create_collection, other})
     end
 
-    case BlobStorage.create_container(account, container) do
+    # WORM off: the tiering target must accept re-commits of updated docs
+    # (immutable=true default refuses every commit_block_list overwrite).
+    case BlobStorage.create_container(account, container, %{"immutable" => false}) do
       {:ok, _} -> :ok
       {:error, 409, _, _} -> :ok
       other -> throw({:create_container, other})
@@ -383,6 +427,7 @@ defmodule SmaltBench.A1 do
     )
 
     ctr = counters()
+    :persistent_term.put({:a1, :parent}, self())
     sampler_pid = spawn(fn -> sampler(ctr) end)
 
     Enum.each([:baseline, :stall], fn phase ->
@@ -401,17 +446,44 @@ defmodule SmaltBench.A1 do
 
     # read counters at phase start for per-phase deltas
     c0 = read_all(ctr)
+    :persistent_term.put({:a1, :phase_base}, {c0.enq, c0.con})
     done_gen = System.unique_integer([:positive])
     :ets.insert(:a1_ctl, {:done, 0})
 
     tailer_pid = spawn(fn -> tailer(partition, db, coll, ctr, done_gen) end)
-    archiver_pid = spawn(fn -> archiver(partition, account, container, ctr, done_gen) end)
+    archiver_pid =
+      spawn(fn ->
+        try do
+          archiver(partition, account, container, ctr, done_gen)
+        catch
+          # the archiver's normal completion also travels as an exit — pass
+          # data-carrying reasons through untouched, report only real crashes
+          :exit, {:a1_lats, _} = r -> exit(r)
+          :exit, {:a1_crash, _, _} = r -> exit(r)
+
+          kind, reason ->
+            IO.puts(
+              "[a1:err] archiver CRASH #{kind}: " <>
+                inspect(reason) <> "\n" <> Exception.format_stacktrace(__STACKTRACE__)
+            )
+
+            exit({:a1_crash, -1, []})
+        end
+      end)
     Process.sleep(50)
 
     t0 = now_ms()
 
     Enum.each(1..@waves, fn wave ->
       upsert_wave(db, coll, ctr, phase_tag, wave)
+
+      if System.get_env("A1_DEBUG") do
+        IO.puts(
+          "[a1:dbg] wave #{wave} done; ctr=" <>
+            inspect(read_all(ctr))
+        )
+      end
+
       if wave < @waves, do: Process.sleep(25)
     end)
 
@@ -419,7 +491,15 @@ defmodule SmaltBench.A1 do
     :ets.insert(:a1_ctl, {:done, done_gen})
 
     tailer_wait(tailer_pid)
+
+    if System.get_env("A1_DEBUG"),
+      do: IO.puts("[a1:dbg] tailer exited; ctr=" <> inspect(read_all(ctr)))
+
     archiver_lats = archiver_wait(archiver_pid)
+
+    if System.get_env("A1_DEBUG"),
+      do: IO.puts("[a1:dbg] archiver exited; lats_n=" <> inspect(length(archiver_lats)))
+
     t_end = now_ms()
 
     # let the sampler catch the drain tail of this phase before between-marker
@@ -475,25 +555,29 @@ defmodule SmaltBench.A1 do
 
     # retire phase state
     :ets.delete_all_objects(:a1_upserts)
+    :persistent_term.put({:a1, :phase}, :between)
   end
 
   defp rnd(x), do: Float.round(x * 1.0, 1)
 
   defp tailer_wait(pid) do
-    ref = Process.monitor(pid)
-
     receive do
-      {:DOWN, ^ref, :process, ^pid, _} -> :ok
+      {:a1_tailer_done, ^pid} -> :ok
+    after
+      120_000 -> IO.puts("[a1:err] tailer_wait timeout")
     end
   end
 
   defp archiver_wait(pid) do
-    ref = Process.monitor(pid)
-
     receive do
-      {:DOWN, ^ref, :process, ^pid, {:a1_lats, lats}} -> lats
+      {:a1_arch_done, ^pid, lats} ->
+        lats
+
+      {:a1_arch_done, _other, _} ->
+        # stale phase message — keep waiting for ours
+        archiver_wait(pid)
     after
-      300_000 -> []
+      300_000 -> IO.puts("[a1:err] archiver_wait timeout")
     end
   end
 
