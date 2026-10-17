@@ -120,7 +120,7 @@ receipt docs/jira/v26.10.14/receipts/w5-comp-whitelist.md.
 - Wire Signature: `PUT/GET /{account}/{container}/{blob}?comp=<unhandled>` must be refused (404/501 typed envelope) for comp values the emulator does not implement; instead the generic Put/Get Blob arms absorb them
 - Required Headers: x-ms-version; x-ms-blob-condition-appendpos/-maxsize (append); x-ms-blob-type (page/append create); x-ms-copy-source (copy)
 - Smalt Current State: comp not in ["block","blocklist","metadata"] on PUT → read_body + put_blob (egress_router.ex:1067-1098) stores the body as blob content; comp != "blocklist" on GET → conditional read serves blob content (egress_router.ex:1142-1224)
-- Root Cause File:Line: /Users/sac/smalt/lib/smalt/egress_router.ex:1048 (PUT comp whitelist ["block","blocklist"] only) and :1142 (GET names only "blocklist")
+- Root Cause File:Line: lib/smalt/egress_router.ex:1048 (PUT comp whitelist ["block","blocklist"] only) and :1142 (GET names only "blocklist")
 - Recommended Action: default-deny `comp` whitelist at the top of both splat routes — known comps dispatch, unknown comps → typed XML `Error` envelope (InvalidQueryParameterValue per KD-04 token); then add a real appendblock arm (append semantics + appendpos/maxsize conditions → 412)
 - Minimal Falsifier: `PUT /{a}/{c}/probe.txt?comp=snapshot` with x-ms-version → assert blob content UNCHANGED (today: 201 + content destroyed); `PUT ...?comp=appendblock` twice → assert content is the concat of both blocks; appendpos mismatch → 412
 
@@ -139,7 +139,7 @@ receipt docs/jira/v26.10.14/receipts/w5-comp-whitelist.md.
 - Wire Signature: XML KeyList response; SAS URIs (`sig=` in query) must be admitted WITHOUT an x-ms-version header
 - Required Headers: none beyond the SAS query string
 - Smalt Current State: POST /:account → 404 catch-all (egress_router.ex:1298); blob_route_guarded (egress_router.ex:1516-1543) requires the x-ms-version header → SAS-only URIs get 400 MissingXMsVersion; no sig verification exists in lib/ (zero matches)
-- Root Cause File:Line: /Users/sac/smalt/lib/smalt/egress_router.ex:1519 (header-only gate)
+- Root Cause File:Line: lib/smalt/egress_router.ex:1519 (header-only gate)
 - Recommended Action: admit sig= query URIs (a typed UNSUPPORTED verification token is acceptable per audit convention); add comp=acl arm or typed UNSUPPORTED
 - Minimal Falsifier: hand-rolled SAS URI `...?sv=...&sig=...` without x-ms-version → today 400 MissingXMsVersion; assert the admission decision becomes a TYPED decision (verified-or-coded-4xx), never MissingXMsVersion
 
@@ -149,7 +149,7 @@ receipt docs/jira/v26.10.14/receipts/w5-comp-whitelist.md.
 - Wire Signature: `GET /dbs/:db/colls/:coll/docs` with `A-IM: Incremental feed` + partition-key header or cross-partition; real Cosmos answers 304 when no new docs
 - Required Headers: A-IM, If-None-Match / If-Modified-Since, x-ms-continuation
 - Smalt Current State: list_docs (cosmos.ex:496) never reads A-IM — a normal 200 full feed is returned; the SDK changefeed iterator receives the whole container as "changes"
-- Root Cause File:Line: /Users/sac/smalt/lib/smalt/data_plane/cosmos.ex:496 (no A-IM read; gate at :497-538 consults x-ms-continuation only)
+- Root Cause File:Line: lib/smalt/data_plane/cosmos.ex:496 (no A-IM read; gate at :497-538 consults x-ms-continuation only)
 - Recommended Action: detect A-IM → serve an incremental feed (LSN/_ts-gated, 304 when none) or mint typed UNSUPPORTED
 - Minimal Falsifier: readChangeFeed fromNow → iterator must halt with zero changes after seeding; today returns the full container as changed
 
@@ -159,7 +159,7 @@ receipt docs/jira/v26.10.14/receipts/w5-comp-whitelist.md.
 - Wire Signature: `PATCH /dbs/:db/colls/:coll/docs/:id`, content-type application/json_patch+json, body = RFC 6902 ops array
 - Required Headers: x-ms-documentdb-partitionkey, optional If-Match
 - Smalt Current State: no PATCH route on the /dbs surface (routes end at delete_doc, egress_router.ex:362) → catch-all 404 (1298)
-- Root Cause File:Line: /Users/sac/smalt/lib/smalt/egress_router.ex (PATCH route absent between :354-366)
+- Root Cause File:Line: lib/smalt/egress_router.ex (PATCH route absent between :354-366)
 - Recommended Action: add PATCH route + RFC 6902 engine (add/remove/replace/test) honoring If-Match/_etag, or typed UNSUPPORTED
 - Minimal Falsifier: `item.patch([{op:"replace",path:"/v",value:2}])` → 200 with new _etag and GET shows v=2; today 404
 
@@ -168,7 +168,7 @@ receipt docs/jira/v26.10.14/receipts/w5-comp-whitelist.md.
 - Wire Signature: `POST/GET/PUT/DELETE /dbs/:db/colls/:coll/{sprocs,triggers,udfs}/:name`
 - Required Headers: x-ms-version, cosmos standard headers
 - Smalt Current State: no routes → catch-all 404 JSON RouteNotFound (egress_router.ex:1298)
-- Root Cause File:Line: /Users/sac/smalt/lib/smalt/egress_router.ex (routes absent)
+- Root Cause File:Line: lib/smalt/egress_router.ex (routes absent)
 - Recommended Action: typed UNSUPPORTED refusal (Cosmos error envelope with code) — JS sproc eval out of scope; prefer typed refusal over 404
 - Minimal Falsifier: `scripts.create(sproc)` → typed Cosmos-coded refusal instead of JSON 404 RouteNotFound
 
@@ -176,7 +176,7 @@ receipt docs/jira/v26.10.14/receipts/w5-comp-whitelist.md.
 - SDK Call: item create with `x-ms-documentdb-pre-trigger-include` / `post-trigger-include` (python http_constants.py inventory)
 - Wire Signature: header present on POST docs → real Cosmos executes the trigger before/after the write
 - Smalt Current State: headers ignored (cosmos.ex:245 gate consults pk/auth/throttle only) → 201 silent no-op
-- Root Cause File:Line: /Users/sac/smalt/lib/smalt/data_plane/cosmos.ex:245-253
+- Root Cause File:Line: lib/smalt/data_plane/cosmos.ex:245-253
 - Recommended Action: present-but-unimplemented trigger headers → typed 400/501 (never a silent success)
 - Minimal Falsifier: create with pre-trigger-include set → assert typed refusal (today 201)
 
