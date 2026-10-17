@@ -235,6 +235,14 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
 
           assert Enum.count(ins_outs, &(&1 == :ok)) == 1
           assert Enum.count(ins_outs, &match?({:error, :exists}, &1)) == n - 1
+
+          # R185i test-isolation fix: the insert_new probe's winner row is a
+          # non-map value ("first") in the SHARED :smalt_resources table. It
+          # previously leaked past the after-block (which only deletes the CAS
+          # full_keys) and tripped the semantic projection's whole-table
+          # non-map fence (Ash.read! at test/semantic_projection_test.exs:482)
+          # on every subsequent full-suite run. Delete it here, same scope.
+          Store.delete(@cas_table, fresh)
         end)
       after
         Enum.each(full_keys, &Store.delete(@cas_table, &1))

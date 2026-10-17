@@ -23,11 +23,13 @@ defmodule Smalt.Security.LedgerWriter do
   @call_timeout 30_000
 
   @doc """
-  Appends `contents` to `ledger` atomically. Returns `{:ok, receipt}` or
-  `{:error, 409, "LedgerItemAlreadyExists"}` when identical contents already
-  exist in this ledger.
+  Appends `contents` to `ledger` atomically. Returns `{:ok, receipt}` or a
+  typed error envelope `{:error, status, %{"error" => %{"code" => code,
+  "message" => message}}}` (SHIM-COURT R143-era convention: the envelope is
+  wire-ready so the egress router renders it directly).
   """
-  @spec append(String.t(), map()) :: {:ok, map()} | {:error, 409, String.t()}
+  @spec append(String.t(), map()) ::
+          {:ok, map()} | {:error, pos_integer(), map()}
   def append(ledger, contents, opts \\ [])
       when is_binary(ledger) and is_map(contents) do
     ensure_started()
@@ -66,7 +68,7 @@ defmodule Smalt.Security.LedgerWriter do
   # appends succeeds, the rest see an existing ledger.
   defp do_append(ledger, contents, opts) do
     if opts[:enforce_existence] == true and not ledger_exists?(ledger) do
-      {:error, 404, "LedgerNotFound"}
+      ledger_error(404, "LedgerNotFound", "Ledger #{ledger} not found.")
     else
       do_append_locked(ledger, contents)
     end
@@ -87,9 +89,25 @@ defmodule Smalt.Security.LedgerWriter do
     # writer (which would kill the writer for all writers) and never a burned
     # counter (a later valid append of the same contents must be admitted).
     case encode_contents(contents) do
-      {:ok, data_hash} -> do_append_valid(ledger, contents, data_hash)
-      :error -> {:error, 400, "InvalidBody"}
+      {:ok, data_hash} ->
+        try do
+          do_append_valid(ledger, contents, data_hash)
+        catch
+          {:ledger_sign_refused, _ledger} ->
+            ledger_error(400, "InvalidLedgerItem", "Ledger item could not be signed.")
+
+        end
+
+      :error ->
+        ledger_error(400, "InvalidBody", "Request body could not be encoded as canonical JSON.")
     end
+  end
+
+  # R143-era convention: the writer returns the full Azure-style error
+  # envelope so the egress router renders it directly via blob_error/3 —
+  # no per-arm not_found_error/put_message fabrication.
+  defp ledger_error(status, code, message) do
+    {:error, status, %{"error" => %{"code" => code, "message" => message}}}
   end
 
   # Total: the canonicalization itself can raise on hostile key shapes (e.g.
@@ -114,7 +132,7 @@ defmodule Smalt.Security.LedgerWriter do
     # Atomic duplicate detection: first append leaves the counter at 1; any
     # later append of identical contents increments past it and is refused.
     if Store.update_counter(:smalt_ledger_meta, {:dup, ledger, data_hash}, 1) > 1 do
-      {:error, 409, "LedgerItemAlreadyExists"}
+      ledger_error(409, "LedgerItemAlreadyExists", "Ledger item already exists.")
     else
       prev_hash = latest_root(ledger)
       seq = Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, 1)
@@ -131,7 +149,26 @@ defmodule Smalt.Security.LedgerWriter do
         "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
       }
 
-      signature = receipt |> Map.delete("signature") |> ReceiptSigner.sign()
+      # Sign is the last step that can fail on caller-supplied data (the
+      # receipt embeds the raw `contents` and the raw `ledger` name, either of
+      # which may be non-UTF8 even when the canonical encode in
+      # encode_contents/1 succeeded — lens-4 commit-point law). A sign failure
+      # must be a typed refusal that compensates the minted counters, never an
+      # exception escaping the serialized writer (writer death + burned dup
+      # counter = permanent 409 for the contents). SHIM-COURT-eligible seam.
+      signature =
+        try do
+          receipt |> Map.delete("signature") |> ReceiptSigner.sign()
+        rescue
+          _ ->
+            # Compensate: the append never committed, so the dup and seq
+            # counters return to their pre-call values and a later VALID
+            # append is admitted with tx id 1.1 (no burned 409, no seq gap).
+            Store.update_counter(:smalt_ledger_meta, {:dup, ledger, data_hash}, -1)
+            Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, -1)
+            throw({:ledger_sign_refused, ledger})
+        end
+
       receipt = Map.put(receipt, "signature", signature)
 
       Store.put(:smalt_ledger_transactions, "#{ledger}/#{tx_id}", receipt)

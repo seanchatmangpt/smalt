@@ -1,3 +1,8 @@
+# OCEL Event Registry
+# Auto-projected from smalt-substrate-pack ontology via ggen_igniter.sync.
+# DO NOT EDIT — regenerate with `mix smalt.gen`.
+# Source of truth: packs/smalt-substrate-pack/ontology.ttl (smalt:OcelEventType
+# / smalt:OcelObjectType rows).
 defmodule Smalt.Ocel.EventRegistry do
   @moduledoc """
   Closed vocabulary of smalt OCEL event types.
@@ -10,18 +15,38 @@ defmodule Smalt.Ocel.EventRegistry do
   `"type"` values. The gate (`event_type?/1`) is log-and-drop: an unknown
   type is never admitted into the log and never raises — the caller logs
   the drop and moves on (same discipline as
-  `Xaas.Ultracode.Ocel.Validator`'s closed type laws, applied at emission
+  `Xaas.Ultracode.Ocel.Validator`'s closed-type laws, applied at emission
   time instead of adjudication time).
   """
 
-  @event_types ~w(
-    arm.resource.transition
-    cosmos.doc.crud
-    blob.custody.transition
-    amqp.delivery.settled
-    skr.release
-    ledger.append
-  )
+  @event_types [
+    "affidavit.seal",
+    "amqp.delivery.settled",
+    "arm.resource.transition",
+    "blob.custody.transition",
+    "cosmos.doc.crud",
+    "court.run",
+    "doctor.receipt",
+    "enclave.lifecycle.stage",
+    "ledger.append",
+    "skr.release",
+    "spc.drift"
+  ]
+
+  @object_types [
+    "blob",
+    "document",
+    "enclave",
+    "fixture",
+    "ledger",
+    "message",
+    "partition",
+    "queue",
+    "resource",
+    "session",
+    "skr",
+    "spc-metric"
+  ]
 
   @doc "The closed vocabulary of admissible event types (sorted)."
   @spec event_types() :: [String.t()]
@@ -39,5 +64,5 @@ defmodule Smalt.Ocel.EventRegistry do
   only (ids only — the matter-isolation law: never payloads).
   """
   @spec object_types() :: [String.t()]
-  def object_types, do: ~w(resource partition document blob queue session message skr ledger)
+  def object_types, do: @object_types
 end

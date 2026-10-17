@@ -56,22 +56,39 @@ defmodule SmaltEgressRouterTest do
     assert Jason.decode!(stale_conn.resp_body)["code"] == "PreconditionFailed"
   end
 
+  # kv_challenge_guard requires a well-formed Bearer header in both auth
+  # modes (SDK challenge emulation); attach one unless the conn already
+  # carries its own authorization header (R54 pattern). SHIM-COURT-compatible:
+  # presence-only check. Legacy SKR requests (x-ms-compliance-status raw
+  # header) are exempt — the challenge guard exempts them too, and the SKR
+  # release admission honors the legacy header only on a tokenless request.
+  defp call(conn) do
+    cond do
+      List.keyfind(conn.req_headers, "authorization", 0) -> conn
+      List.keyfind(conn.req_headers, "x-ms-compliance-status", 0) -> conn
+      true -> put_req_header(conn, "authorization", "Bearer test-token")
+    end
+  end
+
   test "Key Vault Managed HSM & Attestation-Gated Secure Key Release (SKR)" do
     key_name = "exportable-sec-key"
     create_path = "/keys/#{key_name}/create"
-    release_path = "/keys/#{key_name}/release"
+    release_path = "/keys/#{key_name}/release?api-version=7.4"
 
     # Create exportable key with release policy
-    create_conn = conn(:post, create_path, %{
+    create_conn =
+      conn(:post, create_path, %{
       "kty" => "RSA-HSM",
       "key_size" => 2048,
       "release_policy" => %{"claim" => "azure-compliant-cvm"}
     })
-    create_conn = EgressRouter.call(create_conn, @opts)
+    create_conn = EgressRouter.call(call(create_conn), @opts)
     assert create_conn.status == 200
 
     # Unauthorized release attempt without attestation -> HTTP 403 Forbidden
-    unauth_conn = conn(:post, release_path, %{})
+    # (post-auth: the well-formed Bearer passes the challenge guard; the
+    # missing attestation is what is refused).
+    unauth_conn = call(conn(:post, release_path, %{}))
     unauth_conn = EgressRouter.call(unauth_conn, @opts)
     assert unauth_conn.status == 403
     assert Jason.decode!(unauth_conn.resp_body)["error"]["code"] == "UnauthorizedAttestation"
@@ -80,6 +97,7 @@ defmodule SmaltEgressRouterTest do
     auth_conn =
       conn(:post, release_path, %{})
       |> put_req_header("x-ms-compliance-status", "azure-compliant-cvm")
+      |> call()
     auth_conn = EgressRouter.call(auth_conn, @opts)
     assert auth_conn.status == 200
     res = Jason.decode!(auth_conn.resp_body)

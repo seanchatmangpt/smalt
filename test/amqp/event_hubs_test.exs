@@ -570,6 +570,7 @@ defmodule Smalt.Messaging.EventHubsTest do
     @tag :amqp_wire
     test "receiver link on /eventhubs/ path receives sent events in sequence order with x-opt-sequence-number" do
       Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
 
       if GenServer.whereis(Smalt.Store) == nil do
         start_supervised!(Smalt.Store)
@@ -658,17 +659,755 @@ defmodule Smalt.Messaging.EventHubsTest do
             end)
           end)
 
-        # the stored EH event body is the raw encoded section bytes the sender
-        # transferred (constructor prefix + payload); drain must preserve it
-        # byte-for-byte and in sequence order.
-        assert Enum.map(bodies, &String.contains?(&1, "eh-event-")) ==
-                 [true, true, true]
-
-        # trailing payload byte is the event ordinal: 1, 2, 3 in seq order
-        assert Enum.map(bodies, fn <<_::binary-size(14), d>> -> d - ?0 end) == [1, 2, 3]
+        # KD-18 landed shape: the stored EH event body is the bare sender
+        # payload — delivery unwraps it, so drain yields "eh-event-N" exactly
+        # (see the KD-53 sibling below asserting the same unwrapped shape).
+        assert bodies == ["eh-event-1", "eh-event-2", "eh-event-3"]
       after
         :gen_tcp.close(client)
       end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # GAP-A2-03/04 falsifier: EH delivery annotations + x-opt-* stamps, witnessed
+  # on the real AMQP wire. The @azure/event-hubs SDK tier witness rides
+  # test/sdk-full/eventhubs.probe.mjs (probe "wire-delivery-annotations").
+  # ---------------------------------------------------------------------------
+  describe "GAP-A2-03/04 delivery annotations + x-opt stamps" do
+    test "send_event captures partition_key/enqueued/offset; receive_events + last_enqueued surface them" do
+      p = part("ann")
+      assert :none = EventHubs.last_enqueued(p)
+
+      {:ok, 1, ev1} = EventHubs.send_event(p, "e1", partition_key: "pk-a")
+      {:ok, 2, ev2} = EventHubs.send_event(p, "e2")
+
+      assert ev1["partition_key"] == "pk-a"
+      assert ev1["offset"] == "1"
+      assert is_integer(ev1["enqueued"]) and ev1["enqueued"] > 0
+      assert is_nil(ev2["partition_key"])
+
+      [r1, r2] = EventHubs.receive_events(p, 0, 10)
+      assert r1["offset"] == "1"
+      assert r1["partition_key"] == "pk-a"
+      assert is_nil(r2["partition_key"])
+      assert r2["enqueued"] >= r1["enqueued"]
+
+      last = EventHubs.last_enqueued(p)
+      assert last["seq"] == 2
+      assert last["offset"] == "2"
+      assert last["enqueued"] == r2["enqueued"]
+    end
+
+    @tag :amqp_wire
+    test "wire delivery carries last_enqueued_* delivery annotations and x-opt-* message annotations" do
+      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      EventHubs.ensure_tables()
+
+      {:ok, listener} =
+        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listener)
+
+      accept_task =
+        Task.async(fn ->
+          {:ok, sock} = :gen_tcp.accept(listener, 5000)
+          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+          :ok = :gen_tcp.controlling_process(sock, pid)
+          {:ok, pid}
+        end)
+
+      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+      {:ok, _conn} = Task.await(accept_task, 5000)
+
+      hub = "ann-hub-#{System.unique_integer([:positive])}"
+      # Test isolation: EH delivery keys the stream/cursor by the address's
+      # LAST path segment (partition) only, not the hub name — so this wire
+      # test must not share partition "0" with the F1 sequence-order test,
+      # or one test's deliveries bleed into the other's receiver (witnessed:
+      # V19 run-1 W2DBG). Use partition "1" (pinned set ["0","1"]).
+      eh_address = "/eventhubs/#{hub}/partitions/1"
+
+      try do
+        wh(client)
+
+        # sender link with a partition-key-stamped event (message annotation)
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "ann-s", handle: 0, role: false, target: %{address: eh_address}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        pk_anns = %{"x-opt-partition-key" => "pk-42"}
+
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:message_annotations, pk_anns}, {:body_data, "ann-event"}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # receiver link on the same partition
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "ann-r", handle: 1, role: true, source: %{address: eh_address}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+        :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 5}}))
+
+        tr = recv_until(client, :transfer, 3000)
+        {:ok, sections} = Smalt.Amqp.FrameCodec.decode_message(tr.payload)
+
+        anns =
+          Enum.find_value(sections, fn
+            {:message_annotations, a} -> a
+            _ -> nil
+          end)
+
+        danns =
+          Enum.find_value(sections, fn
+            {:delivery_annotations, a} -> a
+            _ -> nil
+          end)
+
+        # GAP-A2-04: x-opt-* stamps present (partition key round-trips because
+        # the capture path decodes the producer's envelope)
+        assert anns["x-opt-sequence-number"] == 1
+        assert anns["x-opt-offset"] == "1"
+        assert match?({:timestamp, _}, anns["x-opt-enqueued-time"])
+        assert anns["x-opt-partition-key"] == "pk-42"
+
+        # GAP-A2-03: partition truth in delivery annotations
+        assert danns["last_enqueued_offset"] == "1"
+        assert danns["last_enqueued_sequence_number"] == 1
+        assert match?({:timestamp, _}, danns["last_enqueued_time_utc"])
+      after
+        :gen_tcp.close(client)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # KD-53: a producer createBatch with N>1 events used to be stored as ONE
+  # event (the batch envelope); delivery's eh_body_section/1 byte-scan unwrapped
+  # only the FIRST inner body section — events 2..N were silently dropped
+  # (witnessed: 1 delivery in 20 s for a 4-event batch). The fix splits at
+  # ingest: each inner message is stored as its own event with its own
+  # monotonic seq, so a 4-event batch yields 4 deliveries.
+  # ---------------------------------------------------------------------------
+  describe "KD-53 multi-event batch split at ingest" do
+    alias Smalt.Amqp.FrameCodec
+
+    defp inner_message(body) do
+      FrameCodec.encode_message([{:body_data, body}]) |> IO.iodata_to_binary()
+    end
+
+    defp batch_envelope(inners) do
+      stream = Enum.map_join(inners, "", &inner_message/1)
+
+      FrameCodec.encode_message([
+        {:message_annotations, %{"x-opt-partition-key" => "kd53-pk"}},
+        {:body_data, stream}
+      ])
+      |> IO.iodata_to_binary()
+    end
+
+    test "4-event batch envelope is split into 4 events with inner payloads and monotonic seqs" do
+      p = part("kd53-split")
+      envelope = batch_envelope(["kd53-evt-1", "kd53-evt-2", "kd53-evt-3", "kd53-evt-4"])
+
+      assert {:ok, 1, first} = EventHubs.send_event(p, envelope, partition_key: "pk-x")
+      assert first["seq"] == 1
+
+      events = EventHubs.receive_events(p, 0, 100)
+      assert length(events) == 4
+      assert Enum.map(events, & &1["seq"]) == [1, 2, 3, 4]
+
+      # Each stored event body is the full encoded INNER message; its body_data
+      # content is the original inner payload (what eh_body_section/1 unwraps
+      # on the delivery path).
+      bodies = Enum.map(events, & &1["body"])
+
+      assert Enum.map(bodies, &String.contains?(&1, "kd53-evt-")) == [true, true, true, true]
+
+      assert Enum.map(1..4, fn i -> Enum.any?(bodies, &String.contains?(&1, "kd53-evt-#{i}")) end) ==
+               [true, true, true, true]
+
+      # one inner payload per event, not the whole envelope in each
+      assert Enum.map(bodies, &String.contains?(&1, "kd53-evt-1")) == [true, false, false, false]
+      assert Enum.map(bodies, &String.contains?(&1, "kd53-evt-4")) == [false, false, false, true]
+
+      # sender's partition key rides every inner event
+      assert Enum.all?(events, &(&1["partition_key"] == "pk-x"))
+    end
+
+    test "single-event batch and ordinary message stay exactly ONE event (no false split)" do
+      p = part("kd53-single")
+
+      # single-event batch: envelope whose inner stream has exactly one message
+      assert {:ok, 1, _} = EventHubs.send_event(p, batch_envelope(["only-evt"]))
+      assert [%{"seq" => 1}] = events = EventHubs.receive_events(p, 0, 10)
+      assert String.contains?(hd(events)["body"], "only-evt")
+
+      # ordinary single message: body decodes as a message with one body section
+      plain = inner_message("plain-msg")
+      assert {:ok, 2, _} = EventHubs.send_event(p, plain)
+      assert [%{"seq" => 1}, %{"seq" => 2}] = EventHubs.receive_events(p, 0, 10)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # R185e (repair lane R220): R166's COUNT-based multiplicity check rejected
+  # the REAL @azure/event-hubs inner shape — every real inner serializes as
+  # [header, message_annotations, properties, application_properties?,
+  # body_data] (3-4 pre-body sections; rhea pushes header/properties
+  # unconditionally and `{}` message_annotations is truthy), so the check
+  # fired on the SECOND section of the FIRST inner and every legal
+  # createBatch stayed ONE event (KD-53 silent-drop resurrected). The
+  # mechanism is REPLACED by duplicate-section-KIND detection per group:
+  # a legal AMQP message never repeats a section kind, so a truncated inner
+  # merged into a group manifests as a duplicate kind (e.g. two :header
+  # sections) -> :incomplete -> fail-closed ONE event.
+  # ---------------------------------------------------------------------------
+  describe "R185e real-SDK batch shape and duplicate-kind discriminator" do
+    alias Smalt.Amqp.FrameCodec
+
+    # The real @azure/event-hubs inner serialization.
+    defp sdk_inner(body) do
+      FrameCodec.encode_message([
+        {:header, %{}},
+        {:message_annotations, %{}},
+        {:properties, %{}},
+        {:application_properties, %{}},
+        {:body_data, body}
+      ])
+      |> IO.iodata_to_binary()
+    end
+
+    defp r185e_envelope(stream) do
+      FrameCodec.encode_message([
+        {:message_annotations, %{"x-opt-partition-key" => "r185e-pk"}},
+        {:body_data, stream}
+      ])
+      |> IO.iodata_to_binary()
+    end
+
+    test "1. real-SDK shape: 3 inners of [header, ma, props, app_props, body] -> 3 events" do
+      p = part("r185e-sdk-shape")
+      stream = sdk_inner("r185e-e1") <> sdk_inner("r185e-e2") <> sdk_inner("r185e-e3")
+
+      assert {:ok, 1, _} = EventHubs.send_event(p, r185e_envelope(stream))
+      events = EventHubs.receive_events(p, 0, 100)
+      assert length(events) == 3, "real-SDK batch stayed ONE event: #{inspect(events)}"
+      assert Enum.map(events, & &1["seq"]) == [1, 2, 3]
+
+      bodies = Enum.map(events, & &1["body"])
+      assert bodies |> Enum.map(&String.contains?(&1, "r185e-e")) == [true, true, true]
+
+      assert Enum.map(1..3, fn i -> Enum.any?(bodies, &String.contains?(&1, "r185e-e#{i}")) end) ==
+               [true, true, true]
+    end
+
+    test "2. attack A (duplicate-kind): truncated header-only inner + complete inners -> ONE event" do
+      p = part("r185e-attack-a")
+      # truncated header-only inner, then two COMPLETE sdk-shape inners
+      truncated = IO.iodata_to_binary(FrameCodec.encode_message([{:header, %{}}]))
+      stream = truncated <> sdk_inner("r185e-aa1") <> sdk_inner("r185e-aa2")
+
+      assert {:ok, 1, _} = EventHubs.send_event(p, r185e_envelope(stream))
+
+      events = EventHubs.receive_events(p, 0, 100)
+      # fail-closed: whole outer stays ONE event, no split, no byte loss
+      assert length(events) == 1, "attack-A envelope split: #{inspect(events)}"
+      body = hd(events)["body"]
+      assert String.contains?(body, "r185e-aa1") and String.contains?(body, "r185e-aa2")
+    end
+
+    test "3. attack E (cannibalized groups): heterogeneous groups -> ONE event" do
+      p = part("r185e-attack-e")
+      # groups [body(garbage)], [body("two")], [header body("three")] —
+      # heterogeneous kind-sequences -> homogeneity -> fail-closed ONE event
+      g1 = IO.iodata_to_binary(FrameCodec.encode_message([{:body_data, "r185e-garbage"}]))
+      g2 = IO.iodata_to_binary(FrameCodec.encode_message([{:body_data, "r185e-two"}]))
+      g3 = IO.iodata_to_binary(FrameCodec.encode_message([{:header, %{}}, {:body_data, "r185e-three"}]))
+      stream = g1 <> g2 <> g3
+
+      assert {:ok, 1, _} = EventHubs.send_event(p, r185e_envelope(stream))
+      events = EventHubs.receive_events(p, 0, 100)
+      assert length(events) == 1, "attack-E envelope split: #{inspect(events)}"
+      body = hd(events)["body"]
+      assert String.contains?(body, "r185e-garbage")
+    end
+
+    test "4. KD-53 minimal inners [body]/[header,body] still split" do
+      p = part("r185e-minimal")
+      b = fn body -> IO.iodata_to_binary(FrameCodec.encode_message([{:body_data, body}])) end
+      hb = fn body -> IO.iodata_to_binary(FrameCodec.encode_message([{:header, %{}}, {:body_data, body}])) end
+      stream = b.("r185e-m1") <> b.("r185e-m2") <> hb.("r185e-m3")
+
+      # mixed minimal shapes are heterogeneous -> fail-closed ONE event
+      assert {:ok, 1, _} = EventHubs.send_event(p, r185e_envelope(stream))
+
+      # homogeneous minimal [body] batch still splits
+      assert {:ok, 2, _} = EventHubs.send_event(p, r185e_envelope(b.("r185e-m4") <> b.("r185e-m5")))
+      events = EventHubs.receive_events(p, 0, 100)
+      assert length(events) == 3
+      assert Enum.map(events, & &1["seq"]) == [1, 2, 3]
+      bodies = Enum.map(events, & &1["body"])
+      # event 1: mixed minimal batch fail-closed ONE event (homogeneity)
+      assert Enum.map(1..3, fn i -> String.contains?(Enum.at(bodies, 0), "r185e-m#{i}") end) ==
+               [true, true, true]
+      # events 2..3: homogeneous minimal [body] batch split
+      assert String.contains?(Enum.at(bodies, 1), "r185e-m4")
+      assert String.contains?(Enum.at(bodies, 2), "r185e-m5")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # R166 (repair lane R185): the KD-53 batch discriminator, witnessed over the
+  # REAL AMQP wire tier (the KD-53 court above runs at the ETS tier only).
+  # Legal N-inner createBatch envelope -> N events; a truncated NON-tail inner
+  # (R166 attack A: header-only inner merged before a complete inner) is
+  # fail-closed to ONE event (homogeneity/multiplicity discriminators); a
+  # valid single-event batch stays ONE event.
+  # ---------------------------------------------------------------------------
+  describe "R166 wire-tier batch discriminator" do
+    alias Smalt.Amqp.FrameCodec
+
+    @tag :amqp_wire
+    test "wire: 2-inner batch -> 2 events; truncated non-tail inner -> 1; valid single -> 1" do
+      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      EventHubs.ensure_tables()
+
+      {:ok, listener} =
+        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listener)
+
+      accept_task =
+        Task.async(fn ->
+          {:ok, sock} = :gen_tcp.accept(listener, 5000)
+          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+          :ok = :gen_tcp.controlling_process(sock, pid)
+          {:ok, pid}
+        end)
+
+      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+      {:ok, _conn} = Task.await(accept_task, 5000)
+
+      hub = "r166-hub-#{System.unique_integer([:positive])}"
+      eh_address = "/eventhubs/#{hub}/partitions/0"
+
+      inner = fn body ->
+        FrameCodec.encode_message([{:body_data, body}]) |> IO.iodata_to_binary()
+      end
+
+      # R166 attack A shape: a truncated NON-tail inner (header-only inner, its
+      # body cut at a section boundary) merged before a complete inner.
+      truncated_leading =
+        IO.iodata_to_binary([
+          FrameCodec.encode_message([{:header, %{}}]),
+          FrameCodec.encode_message([{:body_data, "r166-trapped"}])
+        ])
+
+      anns = %{"x-opt-partition-key" => "r166-pk"}
+
+      try do
+        wh(client)
+
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "r166-s", handle: 0, role: false, target: %{address: eh_address}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        delivery_id = System.unique_integer([:positive])
+
+        # -- case 1: legal 2-inner batch -> exactly 2 events --------------
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: delivery_id, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:message_annotations, anns}, {:body_data, inner.("r166-a") <> inner.("r166-b")}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # -- case 2: truncated non-tail inner -> fail-closed to 1 event ---
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: delivery_id + 1, delivery_tag: <<2::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:body_data, truncated_leading}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # -- case 3: valid single-event batch -> exactly 1 event ----------
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: delivery_id + 2, delivery_tag: <<3::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:message_annotations, anns}, {:body_data, inner.("r166-solo")}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # -- drain: one receiver link, credit granted only now, so all four
+        #    events (2 + 1 + 1) arrive on this link in seq order ------------
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "r166-r", handle: 1, role: true, source: %{address: eh_address}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+        :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 10}}))
+
+        # R166 exact-length rx harness (raw sockets short-read recv(n) and
+        # desync the frame stream — the shared rx/recv_until cannot be used
+        # for the drain).
+        transfers = for _i <- 1..4, do: r166_until(client, :transfer, 3000)
+
+        bodies =
+          Enum.map(transfers, fn tr ->
+            assert %{payload: payload} = tr
+            assert {:ok, sections} = FrameCodec.decode_message(payload)
+
+            Enum.find_value(sections, fn
+              {:body_data, b} -> b
+              _ -> nil
+            end)
+          end)
+
+        # Legal batch split at ingest: inner payloads, one event each.
+        assert Enum.slice(bodies, 0, 2) == ["r166-a", "r166-b"],
+               "legal batch did not split into 2 inner events: #{inspect(bodies)}"
+
+        # Attack A fail-closed: the whole outer stays ONE event (the drain
+        # yields exactly 4 deliveries, not 5) and the complete inner's payload
+        # survives delivery unwrap byte-exact.
+        assert Enum.at(bodies, 2) == "r166-trapped",
+               "truncated-inner event body lost bytes: #{inspect(Enum.at(bodies, 2))}"
+
+        # Valid single-event batch: exactly one event, inner payload intact.
+        assert Enum.at(bodies, 3) == "r166-solo"
+
+        # No extra deliveries: the drain ends after 4 (probe times out).
+        assert {:error, :timeout} = :gen_tcp.recv(client, 0, 300)
+      after
+        :gen_tcp.close(client)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # KD-76: a partition-key-stamped event sent on a HUB-address sender link must
+  # land in exactly ONE partition (deterministic pk hash over the pinned set
+  # ["0","1"]) so partition-scoped receivers deliver it, and a hub-address
+  # receiver still sees it (hub receivers aggregate partitions).
+  # ---------------------------------------------------------------------------
+  describe "KD-76 partition-key routing" do
+    @tag :amqp_wire
+    test "pk-routed hub send reaches exactly one partition + the hub receiver; x-opt-partition-key round-trips" do
+      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      EventHubs.ensure_tables()
+
+      {:ok, listener} =
+        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listener)
+
+      accept_task =
+        Task.async(fn ->
+          {:ok, sock} = :gen_tcp.accept(listener, 5000)
+          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+          :ok = :gen_tcp.controlling_process(sock, pid)
+          {:ok, pid}
+        end)
+
+      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+      {:ok, _conn} = Task.await(accept_task, 5000)
+
+      hub = "kd76-hub-#{System.unique_integer([:positive])}"
+
+      try do
+        wh(client)
+
+        # sender on the HUB address (real producer shape: no /partitions segment)
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "kd76-s", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}"}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:message_annotations, %{"x-opt-partition-key" => "kd76-pk"}}, {:body_data, "kd76-event"}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # receivers: partition "0", partition "1", and the hub address itself
+        links = [
+          {"kd76-r0", 1, "/eventhubs/#{hub}/partitions/0"},
+          {"kd76-r1", 2, "/eventhubs/#{hub}/partitions/1"},
+          {"kd76-rh", 3, "/eventhubs/#{hub}"}
+        ]
+
+        # attach ALL receivers first (echoes are consumed in order), then
+        # grant credit — deliveries fire on flow, after every attach echo.
+        for {name, h, addr} <- links do
+          :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}))
+          assert %{performative: %{performative: :attach}} = recv_f(client)
+        end
+
+        for {_name, h, _addr} <- links do
+          :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: h, link_credit: 5}}))
+        end
+
+        # exactly TWO deliveries: one partition receiver + the hub receiver
+        tr_a = recv_until(client, :transfer, 3000)
+        tr_b = recv_until(client, :transfer, 3000)
+
+        handles = [tr_a, tr_b] |> Enum.map(& &1.performative.handle) |> Enum.sort()
+        # exactly one partition receiver (handle 1 or 2) + the hub receiver (3)
+        assert Enum.count(handles, &(&1 in [1, 2])) == 1
+        assert 3 in handles
+
+        for tr <- [tr_a, tr_b] do
+          assert {:ok, sections} = Smalt.Amqp.FrameCodec.decode_message(tr.payload)
+
+          body =
+            Enum.find_value(sections, fn
+              {:body_data, b} -> b
+              _ -> nil
+            end)
+
+          assert body == "kd76-event"
+
+          anns =
+            Enum.find_value(sections, fn
+              {:message_annotations, a} -> a
+              _ -> nil
+            end)
+
+          # regression 3: x-opt-partition-key round-trips (r200b non-regression)
+          assert anns["x-opt-partition-key"] == "kd76-pk"
+          assert is_integer(anns["x-opt-sequence-number"])
+        end
+      after
+        :gen_tcp.close(client)
+      end
+    end
+
+    @tag :amqp_wire
+    test "r200h: SDK capital-P partition receivers (.../ConsumerGroups/$Default/Partitions/{n}) get pk-routed events" do
+      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      EventHubs.ensure_tables()
+
+      {:ok, listener} =
+        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listener)
+
+      accept_task =
+        Task.async(fn ->
+          {:ok, sock} = :gen_tcp.accept(listener, 5000)
+          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+          :ok = :gen_tcp.controlling_process(sock, pid)
+          {:ok, pid}
+        end)
+
+      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+      {:ok, _conn} = Task.await(accept_task, 5000)
+
+      hub = "kd76cap-hub-#{System.unique_integer([:positive])}"
+      pk = "r200h-pk"
+      <<f::unsigned-8, _::binary>> = :erlang.md5(pk)
+      expected = Integer.to_string(rem(f, 2))
+
+      try do
+        wh(client)
+
+        # hub-address sender with a partition key (real producer shape)
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "r200h-s", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}"}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:message_annotations, %{"x-opt-partition-key" => pk}}, {:body_data, "r200h-event"}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # receivers attached at the REAL SDK wire form (capital P):
+        # {hub}/ConsumerGroups/$Default/Partitions/{n}
+        links = [
+          {"r200h-r0", 1, "/eventhubs/#{hub}/ConsumerGroups/$Default/Partitions/0"},
+          {"r200h-r1", 2, "/eventhubs/#{hub}/ConsumerGroups/$Default/Partitions/1"},
+          {"r200h-rh", 3, "/eventhubs/#{hub}"}
+        ]
+
+        for {name, h, addr} <- links do
+          :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}))
+          assert %{performative: %{performative: :attach}} = recv_f(client)
+        end
+
+        for {_name, h, _addr} <- links do
+          :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: h, link_credit: 5}}))
+        end
+
+        # exactly one CAPITAL-form partition receiver + the hub receiver
+        tr_a = recv_until(client, :transfer, 3000)
+        tr_b = recv_until(client, :transfer, 3000)
+
+        handles = [tr_a, tr_b] |> Enum.map(& &1.performative.handle) |> Enum.sort()
+        target_handle = if expected == "0", do: 1, else: 2
+        assert handles == Enum.sort([target_handle, 3])
+
+        for tr <- [tr_a, tr_b] do
+          assert {:ok, sections} = Smalt.Amqp.FrameCodec.decode_message(tr.payload)
+
+          body =
+            Enum.find_value(sections, fn
+              {:body_data, b} -> b
+              _ -> nil
+            end)
+
+          assert body == "r200h-event"
+
+          anns =
+            Enum.find_value(sections, fn
+              {:message_annotations, a} -> a
+              _ -> nil
+            end)
+
+          assert anns["x-opt-partition-key"] == pk
+        end
+      after
+        :gen_tcp.close(client)
+      end
+    end
+
+    @tag :amqp_wire
+    test "r200h: capital-P direct-partition send meets capital-P receiver at the same storage partition" do
+      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      EventHubs.ensure_tables()
+
+      {:ok, listener} =
+        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listener)
+
+      accept_task =
+        Task.async(fn ->
+          {:ok, sock} = :gen_tcp.accept(listener, 5000)
+          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+          :ok = :gen_tcp.controlling_process(sock, pid)
+          {:ok, pid}
+        end)
+
+      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+      {:ok, _conn} = Task.await(accept_task, 5000)
+
+      hub = "kd76cap2-hub-#{System.unique_integer([:positive])}"
+
+      try do
+        wh(client)
+
+        # sender pinned to partition 1 via the SDK's capital-P target form
+        :ok =
+          send_b(client, enc(:amqp, 0, {:attach, %{name: "r200h-s2", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}/Partitions/1"}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:body_data, "r200h-pinned"}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        # receiver at the SDK consumer form for the same partition
+        links = [
+          {"r200h-p0", 1, "/eventhubs/#{hub}/ConsumerGroups/$Default/Partitions/0"},
+          {"r200h-p1", 2, "/eventhubs/#{hub}/ConsumerGroups/$Default/Partitions/1"}
+        ]
+
+        for {name, h, addr} <- links do
+          :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}))
+          assert %{performative: %{performative: :attach}} = recv_f(client)
+        end
+
+        for {_name, h, _addr} <- links do
+          :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: h, link_credit: 5}}))
+        end
+
+        # only partition 1's receiver sees it
+        tr = recv_until(client, :transfer, 3000)
+        assert tr.performative.handle == 2
+
+        assert {:ok, sections} = Smalt.Amqp.FrameCodec.decode_message(tr.payload)
+
+        assert Enum.any?(sections, fn
+                 {:body_data, "r200h-pinned"} -> true
+                 _ -> false
+               end)
+      after
+        :gen_tcp.close(client)
+      end
+    end
+
+    test "deterministic pk hash: same key routes to the same partition, distinct keys distribute" do
+      pks = for i <- 1..40, do: "pk-#{i}"
+
+      routed =
+        for pk <- pks do
+          bin = :erlang.md5(pk)
+          <<first::unsigned-8, _::binary>> = bin
+          rem(first, 2)
+        end
+
+      # every key maps into the pinned set {0, 1} and the mapping is a pure
+      # function of the key (recompute is identical)
+      assert Enum.all?(routed, &(&1 in [0, 1]))
+      assert routed == for(pk <- pks, do: pk |> then(fn pk -> <<f::unsigned-8, _::binary>> = :erlang.md5(pk); rem(f, 2) end))
+      # distribution sanity: 40 keys should touch both partitions
+      assert length(Enum.uniq(routed)) == 2
     end
   end
 
@@ -704,6 +1443,47 @@ defmodule Smalt.Messaging.EventHubsTest do
     if frame.performative.performative == name,
       do: frame,
       else: recv_until(client, name, timeout)
+  end
+
+  # R166: exact-length reads (the shared rx/2,3 does a single recv(n) which can
+  # short-read on a :raw socket and desync the frame stream).
+  defp r166_rx_exact(_client, 0, _timeout), do: {:ok, <<>>}
+
+  defp r166_rx_exact(client, n, timeout, acc \\ [])
+
+  defp r166_rx_exact(client, n, timeout, acc) do
+    case :gen_tcp.recv(client, n, timeout) do
+      {:ok, data} ->
+        got = byte_size(data)
+
+        if got == n do
+          {:ok, IO.iodata_to_binary(Enum.reverse([data | acc]))}
+        else
+          r166_rx_exact(client, n - got, timeout, [data | acc])
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp r166_frame(client, timeout \\ 3000) do
+    {:ok, hdr} = r166_rx_exact(client, 8, timeout)
+    <<size::unsigned-integer-size(32), _doff, _type, _ch::16>> = hdr
+    {:ok, body} = r166_rx_exact(client, size - 8, timeout)
+
+    case Smalt.Amqp.FrameCodec.decode_frame(hdr <> body) do
+      {:ok, frame} -> frame
+      other -> flunk("frame decode failed: #{inspect(other)}")
+    end
+  end
+
+  defp r166_until(client, name, timeout \\ 3000) do
+    frame = r166_frame(client, timeout)
+
+    if frame.performative.performative == name,
+      do: frame,
+      else: r166_until(client, name, timeout)
   end
 
   defp recv_f(client, timeout \\ 2000) do

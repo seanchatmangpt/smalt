@@ -385,6 +385,49 @@ defmodule Smalt.Amqp.FrameCodecTest do
       assert src[:filter] == %{"com.microsoft:session-filter" => {:session_filter, "session-1"}}
     end
 
+    test "R16 tripwire: target composite carries exactly 7 fields (pyamqp Target arity), source keeps 8" do
+      for {key, desc, expected_count} <- [{:source, 0x28, 8}, {:target, 0x29, 7}] do
+        fields = %{name: "l", handle: 0, role: 1} |> Map.put(key, %{address: "q"})
+        payload = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
+
+        # Byte-level: locate the composite's descriptor (0x00 0x53 <desc>),
+        # then the list8 constructor that follows it and read its element
+        # count. The decoder rebuilds these as maps (dropping nils), so the
+        # arity contract is only observable on the wire.
+        # The injected TestPrimitiveCodec may emit the descriptor byte with
+        # the uint8 constructor (0x52) where the real codec uses smalluint
+        # (0x53) — accept either.
+        match_pos =
+          Enum.find_value([<<0x00, 0x53, desc::8>>, <<0x00, 0x52, desc::8>>], fn bytes ->
+            case :binary.match(payload, bytes) do
+              m when is_tuple(m) -> m
+              _ -> nil
+            end
+          end)
+
+        assert match_pos != nil, "descriptor #{inspect(desc)} not found"
+
+        {desc_start, 3} = match_pos
+        skip = desc_start + 3
+        <<_::binary-size(skip), 0xC0, size, rest::binary>> = payload
+        <<elements::binary-size(size), _::binary>> = rest
+
+        # Walk the elements with the codec's own decode loop — robust to the
+        # list8 element-count byte being present (real codec) or absent
+        # (TestPrimitiveCodec stub).
+        {count, _} =
+          Enum.reduce_while(1..40, {elements, 0}, fn _, {bin, n} ->
+            case TestPrimitiveCodec.decode(bin) do
+              {:ok, _term, <<>>} -> {:halt, {n + 1, nil}}
+              {:ok, _term, tail} -> {:cont, {tail, n + 1}}
+              _ -> {:halt, {n, nil}}
+            end
+          end)
+
+        assert count == expected_count
+      end
+    end
+
     test "source descriptor is 0x28 and target descriptor is 0x29, by role not filter presence" do
       for {key, desc} <- [source: 0x28, target: 0x29] do
         fields = %{name: "l", handle: 0, role: 1} |> Map.put(key, %{address: "q"})
@@ -545,6 +588,21 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
       {_bin, dec} = roundtrip(:sasl, 0, {:sasl_outcome, %{code: 0, additional_data: nil}})
       assert dec.performative.code == 0
+    end
+
+    test "sasl-outcome descriptor is 0x44 on the wire (golden bytes)" do
+      # Wire-lane pinion: the rhea-misdispatch hazard (frame_codec.ex 0x42 ->
+      # 0x44). A roundtrip test alone is vacuous here — decoding a 0x42-coded
+      # outcome as a challenge still roundtrips plausibly, so pin the exact
+      # descriptor bytes: descriptor constructor 0x00, smallulong 0x52, 0x44.
+      bin =
+        IO.iodata_to_binary(
+          FrameCodec.encode_frame(:sasl, 0, {:sasl_outcome, %{code: 0, additional_data: nil}})
+        )
+
+      # frame header: 4-byte size, 1-byte doff, type 0x01, 2-byte channel
+      assert <<_size::32, _doff::8, 0x01::8, _ch::16, body::binary>> = bin
+      assert :binary.match(body, <<0x00, 0x52, 0x44>>) == {0, 3}
     end
   end
 

@@ -175,6 +175,24 @@ defmodule Smalt.Amqp.LockManagerTest do
       assert :error = LockManager.get(orphan.lock_token)
     end
 
+    test "R178j: sweep reclaims expired session token orphaned by re-acquire; live token survives" do
+      {:ok, old} = LockManager.session_acquire("q", "s", now_ms: 1_000, duration_ms: 500)
+      # expiry -> re-acquire overwrites the sessions row with a NEW token; the
+      # old token row in :smalt_sb_locks would previously be swept never
+      {:ok, fresh} = LockManager.session_acquire("q", "s", now_ms: 2_000, duration_ms: 30_000)
+      assert old.lock_token != fresh.lock_token
+      assert {:ok, _} = LockManager.get(fresh.lock_token)
+
+      assert LockManager.sweep(3_000) >= 1
+
+      # the orphaned old token is gone
+      assert :error = LockManager.get(old.lock_token)
+      # the live lock (sessions row + matching token) survives
+      assert {:ok, _} = LockManager.get(fresh.lock_token)
+      assert {:ok, %{lock_token: tok}} = Smalt.Store.get(:smalt_sb_sessions, {"q", "s"})
+      assert tok == fresh.lock_token
+    end
+
     # V261014-04 F2: renew-by-token on a session lock must renew the mirrored
     # {queue, session_id} record too — the stale :smalt_sb_sessions locked_until
     # caused spurious stale-expiry reclaims / double acquires.
@@ -247,6 +265,41 @@ defmodule Smalt.Amqp.LockManagerTest do
         assert lawful?,
                "phase #{phase}: unlawful post-state " <>
                  inspect(claim: claim_result, session: post_session, a_token: post_token)
+      end
+    end
+  end
+
+  # R68: isolated property check for the .NET-GUID byte-reorder involution.
+  # Only exercised end-to-end via real SDK probes before this — these two
+  # pure functions are the wire-compat pinion; assert both directions and the
+  # exact byte shape, not just "some 16 bytes".
+  describe ".NET-GUID lock-token involution" do
+    test "format_uuid∘token_to_raw is a byte-reorder involution with GUID shape" do
+      for _ <- 1..25 do
+        <<b0, b1, b2, b3, b4, b5, b6, b7, _rest::binary-size(8)>> = :crypto.strong_rand_bytes(16)
+
+        hex = fn b -> :io_lib.format("~2.16.0b", [b]) |> IO.iodata_to_binary() end
+
+        t =
+          Enum.map_join([b0, b1, b2, b3], &hex.(&1)) <>
+            "-" <>
+            Enum.map_join([b4, b5], &hex.(&1)) <>
+            "-" <>
+            Enum.map_join([b6, b7], &hex.(&1)) <>
+            "-0000-000000000000"
+
+        # Involution at string level: the .NET-GUID permutation P is its own
+        # inverse, so P(P(t)) == t. (format_uuid ∘ token_to_raw is P once;
+        # applying it a second time restores the original dashed form.)
+        raw = LockManager.token_to_raw(t)
+        t2 = LockManager.format_uuid(raw)
+        assert LockManager.format_uuid(LockManager.token_to_raw(t2)) == t
+
+        # byte-level reorder shape: first 3 pairs swapped
+        assert raw == <<b3, b2, b1, b0, b5, b4, b7, b6, 0::size(64)>>
+        assert t2 == Enum.map_join([b3, b2, b1, b0], &hex.(&1)) <> "-" <>
+                       Enum.map_join([b5, b4], &hex.(&1)) <> "-" <>
+                       Enum.map_join([b7, b6], &hex.(&1)) <> "-0000-000000000000"
       end
     end
   end

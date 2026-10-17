@@ -16,12 +16,10 @@
 [] a ema:CapabilitySurface ;
     ema:appModule "Smalt" ;
     ema:otpApp "smalt" ;
-    ema:mcpMountPath "/mcp" ;
+    ema:mcpMountPath "/" ;
     ema:mcpProtocolVersion "2024-11-05" ;
-    ema:agentModule "Smalt.Mcp.Agent" ;
     ema:agentName "smalt-substrate" ;
-    ema:agentDescription "Read-only MCP tool surface over the smalt local substrate for coding agents." ;
-    ema:agentMountPath "/a2a" .
+    ema:agentDescription "Read-only MCP tool surface over the smalt local substrate for coding agents." .
 
 # -- capabilities (8 read-only tools) ---------------------------------------
 [] a ema:Capability ; ema:capabilityOf [] ;

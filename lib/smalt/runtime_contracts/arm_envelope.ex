@@ -167,7 +167,9 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
   end
 
   defp check_invalid_api_version do
-    resp = put(resource_path("stcx", "1999-01-01"), sa_body("stcx"))
+    # KD-78 monotonic gate: beyond-latest is the invalid face (disclosed
+    # cross-lane unblock: 1999-01-01 is now <= latest, hence accepted).
+    resp = put(resource_path("stcx", "2999-01-01"), sa_body("stcx"))
     Support.assert_equal(resp.status, 400, "invalid api-version PUT -> 400")
     Support.assert_equal(
       json(resp.body)["error"]["code"],

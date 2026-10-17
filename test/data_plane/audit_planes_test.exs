@@ -17,6 +17,18 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:error, {:already_started, _}} -> :ok
     end
 
+    # R185i test-isolation fix (mirror of the R178h queue_store sweep): rows
+    # seeded here include id-less maps (e.g. %{"name" => "r1"} in the Resource
+    # Graph tests), which poison later semantic-read tests with "vacuous
+    # identity" refusals when ExUnit shuffles one between this suite's tests.
+    # Clearing only at setup lets those rows outlive the test until the NEXT
+    # audit_planes setup; quarantine on exit too.
+    on_exit(fn ->
+      if :ets.info(:smalt_resources) != :undefined do
+        :ets.delete_all_objects(:smalt_resources)
+      end
+    end)
+
     Store.clear()
     :ok
   end
@@ -196,6 +208,43 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
       assert hd(hd(resp["tables"])["columns"])["type"] == "string"
       assert hd(resp["tables"])["rows"] == [[nil]]
+    end
+
+    # R177 (KD-52 territory): project NOT last. The envelope column scan was a
+    # greedy regex to end-of-string, so a stage after `project` leaked into the
+    # column names ("take 5" became a column). The scan now stops at the next
+    # pipe; downstream stages still execute.
+    test "project NOT last: later stages do not leak into column names" do
+      rows = [%{"n" => 1, "msg" => "a"}, %{"n" => 2, "msg" => "b"}]
+
+      Sentinel.ingest("ws-r177", "Custom-Logs", rows, "2023-01-01")
+
+      {:ok, 200, resp} =
+        Sentinel.query("ws-r177", %{"query" => "Custom-Logs | project n, msg | take 5"})
+
+      table = hd(resp["tables"])
+      assert Enum.map(table["columns"], & &1["name"]) == ["n", "msg"]
+      assert length(table["rows"]) == 2
+    end
+
+    test "multi-stage: where | project | order by keeps projected columns only" do
+      rows = [
+        %{"eventId" => "e1", "msg" => "a", "junk" => true},
+        %{"eventId" => "e2", "msg" => "b", "junk" => false},
+        %{"eventId" => "e3", "msg" => "c", "junk" => nil}
+      ]
+
+      Sentinel.ingest("ws-r177b", "Custom-Logs", rows, "2023-01-01")
+
+      {:ok, 200, resp} =
+        Sentinel.query("ws-r177b", %{
+          "query" =>
+            "Custom-Logs | where eventId != 'e1' | project msg, eventId | order by eventId desc"
+        })
+
+      table = hd(resp["tables"])
+      assert Enum.map(table["columns"], & &1["name"]) == ["msg", "eventId"]
+      assert table["rows"] == [["c", "e3"], ["b", "e2"]]
     end
   end
 

@@ -267,6 +267,16 @@ defmodule EgressWiringTest do
         do: put_req_header(conn, "content-type", "application/json"),
         else: conn
 
+    # kv_challenge_guard requires a well-formed Bearer header in both auth
+    # modes (SDK challenge emulation); attach one unless the test supplied its
+    # own authorization header. SHIM-COURT-compatible: presence-only check.
+    conn =
+      if List.keyfind(opts[:headers] || [], "authorization", 0) do
+        conn
+      else
+        put_req_header(conn, "authorization", "Bearer test-token")
+      end
+
     conn =
       Enum.reduce(opts[:headers] || [], conn, fn {k, v}, c -> put_req_header(c, k, v) end)
 
@@ -274,9 +284,7 @@ defmodule EgressWiringTest do
   end
 
   defp create_key(name) do
-    conn(:post, "/keys/#{name}/create", Jason.encode!(%{"kty" => "RSA-HSM"}))
-    |> put_req_header("content-type", "application/json")
-    |> EgressRouter.call(@opts)
+    call(:post, "/keys/#{name}/create", body: %{"kty" => "RSA-HSM"})
     |> then(fn c ->
       assert c.status == 200
       :ok
@@ -284,9 +292,7 @@ defmodule EgressWiringTest do
   end
 
   defp create_container(account, container) do
-    conn(:put, "/#{account}/#{container}")
-    |> put_req_header("x-ms-version", "2021-12-02")
-    |> EgressRouter.call(@opts)
+    call(:put, "/#{account}/#{container}", headers: [{"x-ms-version", "2021-12-02"}])
     |> then(fn c ->
       assert c.status in [200, 201]
       :ok

@@ -21,6 +21,12 @@ for _ in $(seq 1 30); do
   if MIX_ENV=test mix compile >/dev/null 2>&1; then break; fi
   sleep 5
 done
+if ! MIX_ENV=test mix compile >/dev/null 2>&1; then
+  # SHIM-COURT: compile never went green within the wait window; never shim
+  # a broken tree (typed failure, cf. eh_mgmt_court.sh compile guard).
+  shim_court_fail COMPILE \
+    "mix compile still failing after 30x5s — refusing to baseline/shim a broken tree"
+fi
 
 base="$(shim_court_sha "$ROUTER")"
 shim_court_log COURT "blocklist court subject: $ROUTER"

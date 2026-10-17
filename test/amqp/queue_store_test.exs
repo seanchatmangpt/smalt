@@ -6,22 +6,34 @@ defmodule Smalt.Amqp.QueueStoreTest do
   @tables [:smalt_sb_queues, :smalt_sb_messages, :smalt_sb_locks, :smalt_sb_sessions]
 
   setup do
-    # Bootstrap sb tables if the coordinator's Store revision hasn't landed yet.
-    Enum.each(@tables, fn table ->
-      if :ets.info(table) == :undefined do
-        :ets.new(table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
-      end
-    end)
+    # R185j: readiness wait, not hand-rolled bootstrap. The old in-setup
+    # `:ets.new(.., :set)` fallback created WRONG-TYPED (:set vs Store's
+    # :ordered_set) tables OWNED BY THE MORTAL TEST PROCESS — when a
+    # concurrently running module stopped/restarted the shared tree
+    # (Lifecycle.stop_shared_tree / restart_store_child), the Store-owned
+    # tables died with Store and the test-owned stand-ins died with the test
+    # process, so a later setup/test observed
+    # `:ets.info(:smalt_sb_locks) == :undefined` (witnessed 2x as flake).
+    # ensure_store_up/0 is the canonical bounded, loud readiness gate
+    # (mirrors audit_planes / mcp_test) — it starts the tree if needed and
+    # waits until ALL Store tables are materialized.
+    assert :ok = SmaltTest.Lifecycle.ensure_store_up()
 
     Enum.each(@tables, &:ets.delete_all_objects/1)
 
-    # queue_settings/1 reads the ARM resource table; bootstrap it too so the
+    # queue_settings/1 reads the ARM resource table; cleared here so the
     # suite runs green standalone (no app boot) and under full `mix test`.
-    if :ets.info(:smalt_resources) == :undefined do
-      :ets.new(:smalt_resources, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
-    end
-
     :ets.delete_all_objects(:smalt_resources)
+
+    on_exit(fn ->
+      # Rows seeded here (some without "id") leak into the shared
+      # :smalt_resources table and poison later semantic-read tests
+      # with "vacuous identity" refusals.
+      if :ets.info(:smalt_resources) != :undefined do
+        :ets.delete_all_objects(:smalt_resources)
+      end
+    end)
+
     :ok
   end
 
@@ -58,11 +70,24 @@ defmodule Smalt.Amqp.QueueStoreTest do
       assert Enum.sort(seqs) == Enum.to_list(1..50)
     end
 
-    test "rejects bodies over 1 MiB with :too_large" do
-      big = :binary.copy(<<"x">>, 1 * 1024 * 1024 + 1)
+    test "rejects bodies over @max_body with :too_large" do
+      # derive the cap from the module attribute in source so the test
+      # never pins a stale constant (attr is not persisted, so no
+      # __info__ route; eval the literal expression instead)
+      {max, _bindings} =
+        QueueStore.module_info(:compile)
+        |> Keyword.fetch!(:source)
+        |> List.to_string()
+        |> File.read!()
+        |> then(fn src ->
+          [expr] = Regex.run(~r/^\s*@max_body\s+(.+)$/m, src, capture: :all_but_first)
+          Code.eval_string(expr)
+        end)
+
+      big = :binary.copy(<<"x">>, max + 1)
       assert {:error, :too_large} = QueueStore.enqueue("q", big)
-      # exactly 1 MiB is fine
-      assert {:ok, _} = QueueStore.enqueue("q", :binary.copy(<<"x">>, 1 * 1024 * 1024))
+      # exactly @max_body is fine
+      assert {:ok, _} = QueueStore.enqueue("q", :binary.copy(<<"x">>, max))
     end
 
     test "rejects the 4097th message with :capacity" do
@@ -76,6 +101,23 @@ defmodule Smalt.Amqp.QueueStoreTest do
       assert msg.session_id == "sess-1"
       assert msg.annotations == %{"k" => "v"}
       assert msg.state == :available
+    end
+
+    # R142 (W5-9): a non-integer/negative :scheduled_enqueue_time would store
+    # the row as :scheduled while claim_candidates' is_integer guard let it
+    # deliver immediately and left it un-cancellable after claim. Fallback
+    # contract: malformed timestamp is treated as absent -> :available.
+    test "malformed scheduled_enqueue_time falls back to immediate availability (R142)" do
+      now = System.system_time(:millisecond)
+
+      for bad <- [now + 60_000.0, "soon", DateTime.utc_now(), -1] do
+        {:ok, seq} = QueueStore.enqueue("q", "m", scheduled_enqueue_time: bad)
+        assert {:ok, msg} = Smalt.Store.get(:smalt_sb_messages, {"q", seq})
+        assert msg.state == :available
+
+        # delivered now, not held hostage by the broken timestamp
+        assert {:ok, _m, _lock} = QueueStore.dequeue_matching("q", now_ms: now)
+      end
     end
   end
 
@@ -285,6 +327,21 @@ defmodule Smalt.Amqp.QueueStoreTest do
       assert :error = LockManager.get(lock.lock_token)
       assert s == m.seq
     end
+
+    # R142 (W5-9): a still-:scheduled row must not be deadletterable via the
+    # management path — that silently dropped the schedule and materialized
+    # an immediately-available DLQ copy.
+    test "deadlettering a still-scheduled message is refused (R142)" do
+      {:ok, seq} =
+        QueueStore.enqueue("q", "sched", scheduled_enqueue_time: System.system_time(:millisecond) + 60_000)
+
+      assert {:error, :scheduled} = QueueStore.deadletter("q", seq, "reason")
+
+      # row untouched, still :scheduled, DLQ got nothing
+      assert {:ok, m} = Smalt.Store.get(:smalt_sb_messages, {"q", seq})
+      assert m.state == :scheduled
+      assert :ets.match_object(:smalt_sb_messages, {{"q/$deadletterqueue", :_}, :_}) == []
+    end
   end
 
   describe "parse_iso8601_duration/1" do
@@ -484,7 +541,159 @@ defmodule Smalt.Amqp.QueueStoreTest do
 
       assert QueueStore.sweep() >= 1
       assert {:ok, %{state: :available, lock_token: nil}} = Smalt.Store.get(:smalt_sb_messages, {"sweep-q", m.seq})
-      assert :error = LockManager.get(lock.lock_token)
+
+      # R197 tombstone grace: the Sweeper re-puts an expired :message token
+      # row (original locked_until preserved) for up to
+      # amqp_sweeper_lock_grace_ms (default 30s) after a sweep so renew/settle
+      # answer 410 :lock_lost instead of 404. This test calls QueueStore.sweep
+      # directly, so whether the tombstone is present races the 250ms Sweeper
+      # tick — the contract-correct assertion accepts the tombstoned expired
+      # row with the ORIGINAL expiry, or :error once past grace.
+      case LockManager.get(lock.lock_token) do
+        :error ->
+          :ok
+
+        {:ok, %{kind: :message, locked_until: until}} ->
+          assert until == lock.locked_until
+      end
+    end
+
+    # Lane-242 audit repro: a renewed message lock was swept at its ORIGINAL
+    # expiry because LockManager.renew wrote only the :smalt_sb_locks token row;
+    # do_sweep consults the message row's stale locked_until and released the
+    # live token (client saw 410 on next disposition). Fix: renew is serialized
+    # through the claim server and mirrors locked_until into the message row.
+    test "sweep/0 does NOT reclaim a renewed message lock (renew mirrors into message row)" do
+      {:ok, _} = QueueStore.ensure_queue("sweep-renew-q")
+      {:ok, _} = QueueStore.enqueue("sweep-renew-q", "keep")
+
+      # lock_duration 100ms (the clamp floor); original expiry at +100ms
+      assert {:ok, m, lock} =
+               QueueStore.dequeue_matching("sweep-renew-q", lock_duration_ms: 100)
+
+      # renew at +50ms -> new expiry at +150ms
+      Process.sleep(50)
+      assert {:ok, _} = LockManager.renew(lock.lock_token, System.system_time(:millisecond))
+
+      # sleep past the ORIGINAL expiry (+100ms) but before the renewed one
+      Process.sleep(60)
+
+      assert QueueStore.sweep() >= 0
+
+      assert {:ok, %{state: :locked, lock_token: token, locked_until: until, delivery_count: dc}} =
+               Smalt.Store.get(:smalt_sb_messages, {"sweep-renew-q", m.seq})
+
+      assert token == lock.lock_token
+      # token row still alive
+      assert {:ok, _} = LockManager.get(lock.lock_token)
+      # the message row's expiry was extended by the mirror
+      assert until >= lock.locked_until
+      # never swept: delivery_count is the claim's own increment (claim_next
+      # bumps by 1 on dequeue); a sweep reclaim would have flipped state to
+      # :available / deadlettered the row. Message stays locked, count intact.
+      assert dc == m.delivery_count
+    end
+
+    test "sweep/0 deadletters an expired lock when delivery_count >= max_delivery_count (R64/F1)" do
+      seed_arm_queue("sweepdlq", %{"maxDeliveryCount" => 2})
+      {:ok, _} = QueueStore.ensure_queue("sweepdlq")
+      {:ok, seq} = QueueStore.enqueue("sweepdlq", "poison")
+
+      # delivery 1, lock expires: under max -> re-avail (existing behavior)
+      {:ok, m1, _} = QueueStore.dequeue_matching("sweepdlq", now_ms: 1_000, lock_duration_ms: 500)
+      now = System.system_time(:millisecond)
+      Smalt.Store.put(:smalt_sb_messages, {"sweepdlq", m1.seq}, %{m1 | locked_until: now - 1})
+      assert QueueStore.sweep() >= 1
+      assert {:ok, %{state: :available, delivery_count: 1}} =
+               Smalt.Store.get(:smalt_sb_messages, {"sweepdlq", seq})
+
+      # delivery 2, lock expires: at max -> deadletter, not re-avail
+      {:ok, m2, _} = QueueStore.dequeue_matching("sweepdlq", now_ms: 2_000, lock_duration_ms: 500)
+      assert m2.delivery_count == 2
+      now2 = System.system_time(:millisecond)
+      Smalt.Store.put(:smalt_sb_messages, {"sweepdlq", m2.seq}, %{m2 | locked_until: now2 - 1})
+      assert QueueStore.sweep() >= 1
+
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {"sweepdlq", seq})
+      assert {:ok, dlq} = Smalt.Store.get(:smalt_sb_messages, {"sweepdlq/$deadletterqueue", 1})
+      assert dlq.annotations["DeadLetterReason"] == "MaxDeliveryCountExceeded"
+      assert dlq.body == "poison"
+    end
+  end
+
+  describe "release/3 DLQ capacity propagation (R64/F3)" do
+    test "release at max_delivery_count with a full DLQ returns {:error, :capacity}" do
+      seed_arm_queue("dlqfull", %{"maxDeliveryCount" => 1})
+      {:ok, _} = QueueStore.ensure_queue("dlqfull")
+      {:ok, seq} = QueueStore.enqueue("dlqfull", "stranded")
+
+      # Fill the DLQ past capacity via raw table writes (count-only check).
+      dlq = "dlqfull/$deadletterqueue"
+      Enum.each(1..4096, fn i ->
+        :ets.insert(:smalt_sb_messages, {{dlq, i}, %{state: :available}})
+      end)
+
+      # delivery 1 puts delivery_count at max -> release must deadletter
+      {:ok, m, _} = QueueStore.dequeue_matching("dlqfull", now_ms: 1_000)
+      assert m.delivery_count == 1
+      assert {:error, :capacity} = QueueStore.release("dlqfull", seq)
+      # R128: NOT silently dropped — parked :deferred (unclaimable, lock
+      # token released, dlq_full_park marker) instead of stranded :locked
+      assert {:ok, %{state: :deferred, dlq_full_park: true, lock_token: nil}} =
+               Smalt.Store.get(:smalt_sb_messages, {"dlqfull", seq})
+    end
+  end
+
+  describe "receive_deferred vs DLQ-full parked messages (R150)" do
+    test "parked poison is refused by receive-by-sequence; sweep deadletters it when DLQ frees" do
+      seed_arm_queue("r150park", %{"maxDeliveryCount" => 1})
+      {:ok, _} = QueueStore.ensure_queue("r150park")
+      {:ok, seq} = QueueStore.enqueue("r150park", "poison")
+
+      # Fill the DLQ past capacity via raw table writes (count-only check).
+      dlq = "r150park/$deadletterqueue"
+      Enum.each(1..4096, fn i -> :ets.insert(:smalt_sb_messages, {{dlq, i}, %{state: :available}}) end)
+
+      # delivery 1 at max -> release deadletters, DLQ full -> parked
+      {:ok, m, _} = QueueStore.dequeue_matching("r150park", now_ms: 1_000)
+      assert m.delivery_count == 1
+      assert {:error, :capacity} = QueueStore.release("r150park", seq)
+      assert {:ok, %{state: :deferred, dlq_full_park: true}} =
+               Smalt.Store.get(:smalt_sb_messages, {"r150park", seq})
+
+      # R150: receive-by-sequence must NOT deliver the parked poison
+      assert {:error, {:not_deferred, [^seq]}} = QueueStore.receive_deferred("r150park", [seq])
+
+      # Free one DLQ slot -> sweep retries the deadletter
+      :ets.delete(:smalt_sb_messages, {dlq, 1})
+      assert QueueStore.sweep() >= 1
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {"r150park", seq})
+      # DLQ seq is counter-based (fresh DLQ counter -> 1; filler row 1 deleted)
+      assert {:ok, dlq_msg} = Smalt.Store.get(:smalt_sb_messages, {dlq, 1})
+      assert dlq_msg.annotations["DeadLetterReason"] == "MaxDeliveryCountExceeded"
+    end
+
+    # R150 x R160b: duplicate seqs in one batch collapse to a single refusal
+    test "duplicate parked seq in one batch collapses to a single refusal" do
+      seed_arm_queue("r150duppark", %{"maxDeliveryCount" => 1})
+      {:ok, _} = QueueStore.ensure_queue("r150duppark")
+      {:ok, seq} = QueueStore.enqueue("r150duppark", "poison")
+
+      dlq = "r150duppark/$deadletterqueue"
+      Enum.each(1..4096, fn i -> :ets.insert(:smalt_sb_messages, {{dlq, i}, %{state: :available}}) end)
+
+      {:ok, m, _} = QueueStore.dequeue_matching("r150duppark", now_ms: 1_000)
+      assert m.delivery_count == 1
+      assert {:error, :capacity} = QueueStore.release("r150duppark", seq)
+      assert {:ok, %{state: :deferred, dlq_full_park: true}} =
+               Smalt.Store.get(:smalt_sb_messages, {"r150duppark", seq})
+
+      # [seq, seq] must collapse to exactly one refusal entry, untouched row
+      assert {:error, {:not_deferred, [^seq]}} =
+               QueueStore.receive_deferred("r150duppark", [seq, seq])
+
+      assert {:ok, %{state: :deferred, dlq_full_park: true}} =
+               Smalt.Store.get(:smalt_sb_messages, {"r150duppark", seq})
     end
   end
 
@@ -506,5 +715,107 @@ defmodule Smalt.Amqp.QueueStoreTest do
       )
 
     :ets.insert(:smalt_resources, {key, %{"properties" => props}})
+  end
+
+  describe "receive_deferred duplicate sequence numbers (R160b)" do
+    test "[seq, seq] yields exactly one lock and one envelope" do
+      seed_arm_queue("r160dup", %{})
+      {:ok, _} = QueueStore.ensure_queue("r160dup")
+      {:ok, seq} = QueueStore.enqueue("r160dup", "dup")
+
+      {:ok, _, _} = QueueStore.dequeue_matching("r160dup", now_ms: 1_000)
+      :ok = QueueStore.defer("r160dup", seq)
+
+      assert {:ok, [msg]} = QueueStore.receive_deferred("r160dup", [seq, seq], now_ms: 2_000)
+      assert msg.seq == seq
+      # one lock, one delivery_count increment — not two
+      assert msg.delivery_count == 2
+      assert {:ok, %{state: :locked}} = Smalt.Store.get(:smalt_sb_messages, {"r160dup", seq})
+      assert [{_tok, _}] = :ets.tab2list(:smalt_sb_locks) |> Enum.filter(fn {_, v} -> v.seq == seq end)
+    end
+  end
+
+  # Token-scoped settlement CAS (audit Finding 2, lane R244): a settle
+  # carrying a stale/zombie disposition token must refuse typed :lock_lost
+  # and leave both the message and the new owner's lock untouched.
+  describe "token-scoped settlement (R244)" do
+    test "complete with zombie token refuses :lock_lost, message + new owner's token intact" do
+      {:ok, seq} = QueueStore.enqueue("zomb", "m")
+      {:ok, _m1, lock1} = QueueStore.dequeue_matching("zomb", now_ms: 1_000, lock_duration_ms: 500)
+
+      # Lock 1 expires; a new owner claims the message with a fresh token.
+      {:ok, m2, lock2} = QueueStore.dequeue_matching("zomb", now_ms: 1_600, lock_duration_ms: 500)
+      assert lock2.lock_token != lock1.lock_token
+      assert m2.seq == seq
+
+      # The zombie (lock1's) token arrives late and tries to complete.
+      assert {:error, :lock_lost} = QueueStore.complete("zomb", seq, lock_token: lock1.lock_token)
+
+      # Message untouched, still locked under the NEW owner's token.
+      assert {:ok, m} = Smalt.Store.get(:smalt_sb_messages, {"zomb", seq})
+      assert m.state == :locked
+      assert m.lock_token == lock2.lock_token
+      assert {:ok, %{lock_token: surviving_token}} =
+               Smalt.Store.get(:smalt_sb_locks, lock2.lock_token)
+
+      assert surviving_token == lock2.lock_token
+    end
+
+    test "complete with the current token settles normally" do
+      {:ok, seq} = QueueStore.enqueue("cur", "m")
+      {:ok, _m, lock} = QueueStore.dequeue_matching("cur", now_ms: 1_000, lock_duration_ms: 500)
+
+      assert :ok = QueueStore.complete("cur", seq, lock_token: lock.lock_token)
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {"cur", seq})
+      assert :error = Smalt.Store.get(:smalt_sb_locks, lock.lock_token)
+    end
+
+    test "complete without a token keeps the historical unscoped behavior" do
+      {:ok, seq} = QueueStore.enqueue("unsc", "m")
+      {:ok, _m, _lock} = QueueStore.dequeue_matching("unsc", now_ms: 1_000, lock_duration_ms: 500)
+      assert :ok = QueueStore.complete("unsc", seq)
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {"unsc", seq})
+    end
+
+    test "release with zombie token refuses :lock_lost, message untouched" do
+      {:ok, seq} = QueueStore.enqueue("zrel", "m")
+      {:ok, _m1, lock1} = QueueStore.dequeue_matching("zrel", now_ms: 1_000, lock_duration_ms: 500)
+      {:ok, _m2, lock2} = QueueStore.dequeue_matching("zrel", now_ms: 1_600, lock_duration_ms: 500)
+
+      assert {:error, :lock_lost} = QueueStore.release("zrel", seq, lock_token: lock1.lock_token)
+
+      assert {:ok, m} = Smalt.Store.get(:smalt_sb_messages, {"zrel", seq})
+      assert m.state == :locked and m.lock_token == lock2.lock_token
+    end
+
+    test "release with the current token returns to available" do
+      {:ok, seq} = QueueStore.enqueue("crel", "m")
+      {:ok, _m, lock} = QueueStore.dequeue_matching("crel", now_ms: 1_000, lock_duration_ms: 500)
+
+      assert :ok = QueueStore.release("crel", seq, lock_token: lock.lock_token)
+      assert {:ok, %{state: :available, lock_token: nil}} = Smalt.Store.get(:smalt_sb_messages, {"crel", seq})
+      assert :error = Smalt.Store.get(:smalt_sb_locks, lock.lock_token)
+    end
+
+    test "deadletter with zombie token refuses :lock_lost, message untouched" do
+      {:ok, seq} = QueueStore.enqueue("zdlq", "m")
+      {:ok, _m1, lock1} = QueueStore.dequeue_matching("zdlq", now_ms: 1_000, lock_duration_ms: 500)
+      {:ok, _m2, lock2} = QueueStore.dequeue_matching("zdlq", now_ms: 1_600, lock_duration_ms: 500)
+
+      assert {:error, :lock_lost} =
+               QueueStore.deadletter("zdlq", seq, "zombie", nil, lock_token: lock1.lock_token)
+
+      assert {:ok, %{state: :locked, lock_token: tok}} = Smalt.Store.get(:smalt_sb_messages, {"zdlq", seq})
+      assert tok == lock2.lock_token
+    end
+
+    test "deadletter with the current token moves to the DLQ" do
+      {:ok, seq} = QueueStore.enqueue("cdlq", "m")
+      {:ok, _m, lock} = QueueStore.dequeue_matching("cdlq", now_ms: 1_000, lock_duration_ms: 500)
+
+      assert {:ok, _dlq_seq} = QueueStore.deadletter("cdlq", seq, "r", nil, lock_token: lock.lock_token)
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {"cdlq", seq})
+      assert :error = Smalt.Store.get(:smalt_sb_locks, lock.lock_token)
+    end
   end
 end

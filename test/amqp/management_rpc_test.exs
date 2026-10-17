@@ -544,3 +544,273 @@ defmodule Smalt.Amqp.ManagementRpcTest do
     end
   end
 end
+
+
+defmodule Smalt.Amqp.ManagementRpc.W3SessionOpsTest do
+  use ExUnit.Case, async: true
+
+  alias Smalt.Amqp.ManagementRpc
+
+  @now 1_700_000_000_000
+
+  # GAP-A2-05/06/07 — session state, session enumeration, batch delete
+  # (real collaborators: Smalt.Amqp.QueueStore + Smalt.Store ETS, Chicago style)
+  # ===========================================================================
+
+  defmodule EmptyStore do
+    def tables_ready?, do: false
+  end
+
+  describe "com.microsoft:set/get-session-state (GAP-A2-05)" do
+    test "set then get round-trips opaque state bytes (real session record)" do
+      queue = "w3-state-#{System.unique_integer([:positive])}"
+      assert {:ok, _} = Smalt.Amqp.LockManager.session_acquire(queue, "s1")
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:set-session-state",
+            body: %{"session-id" => "s1", "session-state" => <<1, 2, 3>>},
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert %{status_code: 200, status_description: "OK", body: nil} = resp
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:get-session-state",
+            body: %{"session-id" => "s1"},
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert %{status_code: 200} = resp
+      assert resp.body["session-state"] == <<1, 2, 3>>
+
+      # state update overwrites
+      assert %{status_code: 200} =
+               ManagementRpc.handle(
+                 %{
+                   operation: "com.microsoft:set-session-state",
+                   body: %{"session-id" => "s1", "session-state" => ""},
+                   queue: queue
+                 },
+                 %{now: @now}
+               )
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:get-session-state",
+            body: %{"session-id" => "s1"},
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert resp.body["session-state"] == ""
+    end
+
+    test "400 SESSION_ID_REQUIRED / 400 SESSION_STATE_REQUIRED / 404 SESSION_NOT_FOUND" do
+      queue = "w3-state-#{System.unique_integer([:positive])}"
+
+      for body <- [%{"session-state" => "x"}, %{"session-id" => nil, "session-state" => "x"}] do
+        resp =
+          ManagementRpc.handle(
+            %{operation: "com.microsoft:set-session-state", body: body, queue: queue},
+            %{now: @now}
+          )
+
+        assert %{status_code: 400, status_description: "SESSION_ID_REQUIRED"} = resp
+      end
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:set-session-state",
+            body: %{"session-id" => "s1"},
+            queue: queue
+          },
+          %{now: @now}
+        )
+
+      assert %{status_code: 400, status_description: "SESSION_STATE_REQUIRED"} = resp
+
+      # set AND get on a session with no record -> 404 SESSION_NOT_FOUND
+      for op <- ~w(com.microsoft:set-session-state com.microsoft:get-session-state) do
+        body = if String.contains?(op, "set"), do: %{"session-id" => "ghost", "session-state" => "x"}, else: %{"session-id" => "ghost"}
+
+        resp =
+          ManagementRpc.handle(%{operation: op, body: body, queue: queue}, %{now: @now})
+
+        assert %{status_code: 404, status_description: "SESSION_NOT_FOUND"} = resp
+      end
+    end
+
+    test "fail-closed: 404 NOT_FOUND when the session table is not materialized" do
+      queue = "w3-state-#{System.unique_integer([:positive])}"
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:get-session-state",
+            body: %{"session-id" => "s1"},
+            queue: queue
+          },
+          %{now: @now, queue_store: EmptyStore}
+        )
+
+      assert %{status_code: 404, status_description: "NOT_FOUND"} = resp
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:set-session-state",
+            body: %{"session-id" => "s1", "session-state" => "x"},
+            queue: queue
+          },
+          %{now: @now, queue_store: EmptyStore}
+        )
+
+      assert %{status_code: 404, status_description: "NOT_FOUND"} = resp
+    end
+  end
+
+  describe "com.microsoft:get-message-sessions (GAP-A2-06)" do
+    test "enumerates session ids; skip/top page the result" do
+      queue = "w3-enum-#{System.unique_integer([:positive])}"
+
+      for sid <- ["sa", "sb", "sc"] do
+        assert {:ok, _} = Smalt.Amqp.LockManager.session_acquire(queue, sid)
+      end
+
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:get-message-sessions", body: %{}, queue: queue},
+          %{now: @now}
+        )
+
+      assert %{status_code: 200} = resp
+      assert resp.body["sessions-ids"] == ["sa", "sb", "sc"]
+      assert resp.body["skip"] == 3
+
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:get-message-sessions", body: %{"skip" => 1, "top" => 1}, queue: queue},
+          %{now: @now}
+        )
+
+      assert %{status_code: 200} = resp
+      assert resp.body["sessions-ids"] == ["sb"]
+      assert resp.body["skip"] == 2
+    end
+
+    test "400 QUEUE_REQUIRED on unknown entity, 400 SESSION_SKIP_BOUNDS on bad skip" do
+      for body <- [%{"skip" => -1}, %{"top" => 0}] do
+        resp =
+          ManagementRpc.handle(
+            %{operation: "com.microsoft:get-message-sessions", body: body, queue: "w3-q"},
+            %{now: @now}
+          )
+
+        assert %{status_code: 400, status_description: "SESSION_SKIP_BOUNDS"} = resp
+      end
+
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:get-message-sessions", body: %{}},
+          %{now: @now}
+        )
+
+      assert %{status_code: 400, status_description: "QUEUE_REQUIRED"} = resp
+    end
+  end
+
+  describe "com.microsoft:batch-delete-messages (GAP-A2-07)" do
+    test "deletes exactly the present sequence numbers from the DLQ" do
+      queue = "w3-bdel-#{System.unique_integer([:positive])}"
+      dlq = Smalt.Amqp.QueueStore.deadletter_queue(queue)
+
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m1")
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m2")
+      assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m3")
+
+      assert {:ok, %{seq: seq1}, lock1} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+      assert {:ok, dlq_seq1} = Smalt.Amqp.QueueStore.deadletter(queue, seq1, "R")
+      Smalt.Amqp.LockManager.release(lock1.lock_token)
+
+      assert {:ok, %{seq: _seq2}, _lock2} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+
+      resp =
+        ManagementRpc.handle(
+          %{
+            operation: "com.microsoft:batch-delete-messages",
+            body: %{"sequence-numbers" => [dlq_seq1, 999_999]},
+            queue: dlq
+          },
+          %{now: @now}
+        )
+
+      assert %{status_code: 200, body: nil} = resp
+
+      # exactly the listed DLQ message is gone; the absent seq was skipped;
+      # the non-DLQ message (seq 2) is untouched
+      assert :error = Smalt.Store.get(:smalt_sb_messages, {dlq, dlq_seq1})
+      assert {:ok, _} = Smalt.Store.get(:smalt_sb_messages, {queue, 3})
+      assert {:ok, m2} = Smalt.Store.get(:smalt_sb_messages, {queue, 2})
+      # m2 was only dequeued (locked by the probe above), not batch-deleted
+      assert m2.state in [:available, :locked]
+    end
+  end
+
+  # R187 (D135 sync): queue-entity normalization — "q/" is a shadow namespace
+  # of "q" and must resolve to the seeded queue, "/" must fail closed (404
+  # entity-not-found, not a crash or an empty 204), and URI-form
+  # "amqps://host/q/" must strip to the bare entity "q".
+  describe "queue entity normalization (peek)" do
+    defmodule EntityStore do
+      def peek(queue, _opts) do
+        case queue do
+          "q" -> {:ok, [%{body: "seeded"}]}
+          _other -> {:error, :unknown_entity}
+        end
+      end
+    end
+
+    defp entity_ctx, do: %{queue_store: EntityStore, now: @now}
+
+    test "peek with trailing-slash queue 'q/' resolves to the queue seeded under 'q'" do
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:peek-message", body: %{queue: "q/"}},
+          entity_ctx()
+        )
+
+      assert %{status_code: 200, body: %{"messages" => [%{"message" => "seeded"}]}} = resp
+    end
+
+    test "peek with root queue '/' fails closed as entity-not-found" do
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:peek-message", body: %{queue: "/"}},
+          entity_ctx()
+        )
+
+      assert %{status_code: 404, status_description: "NOT_FOUND", body: nil} = resp
+    end
+
+    test "peek with URI-form 'amqps://host/q/' resolves to bare entity 'q'" do
+      resp =
+        ManagementRpc.handle(
+          %{operation: "com.microsoft:peek-message", body: %{queue: "amqps://host/q/"}},
+          entity_ctx()
+        )
+
+      assert %{status_code: 200, body: %{"messages" => [%{"message" => "seeded"}]}} = resp
+    end
+  end
+end

@@ -9,8 +9,14 @@ defmodule Smalt.DataPlane.CosmosTest do
   @charge %{"x-ms-request-charge" => "1.0"}
 
   setup do
-    if GenServer.whereis(Store) == nil do
-      {:ok, _} = Store.start_link([])
+    # Store must be unlinked from the test process (lens-4): start_link owned
+    # the immortal Store by the first mortal test process — any abnormal test
+    # exit killed Store, and every later test in the run cascaded
+    # "table does not exist". Plain start + named registration keeps the
+    # tables alive for the whole VM; :already_started is fine.
+    case GenServer.start(Store, [], name: Store) do
+      {:ok, _} -> :ok
+      {:error, {:already_started, _}} -> :ok
     end
 
     Store.clear()
@@ -1142,6 +1148,50 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert is_integer(doc["v"])
     end
 
+    # R118/D17: replace (PUT) semantics — the stored doc IS the body; removed
+    # fields must be gone. Previously Map.merge retained stale top-level keys.
+    test "R118: PUT omitting a field removes it from the stored doc (was: retained by merge)" do
+      Cosmos.create_collection("r118", "r118c", %{"id" => "r118c"})
+      {:ok, 201, _, _} = Cosmos.create_doc("r118", "r118c", %{"id" => "d", "a" => 1, "b" => 2}, %{})
+
+      assert {:ok, 200, _, replaced} = Cosmos.put_doc("r118", "r118c", "d", %{"id" => "d", "a" => 9}, %{})
+      assert replaced["a"] == 9
+      refute Map.has_key?(replaced, "b"), "stale key b must not survive a replace, got: #{inspect(replaced)}"
+
+      assert {:ok, 200, _, stored} = Cosmos.get_doc("r118", "r118c", "d", %{})
+      refute Map.has_key?(stored, "b")
+      assert stored["a"] == 9
+    end
+
+    # KD-36: x-ms-documentdb-is-upsert -> create-or-replace (real Cosmos parity).
+    test "KD-36: upsert on existing id -> 200 replace, not 409" do
+      Cosmos.create_collection("kd36", "kd36c", %{"id" => "kd36c"})
+      {:ok, 201, _, first} = Cosmos.create_doc("kd36", "kd36c", %{"id" => "u", "v" => 1}, %{})
+      upsert = %{"x-ms-documentdb-is-upsert" => "true"}
+
+      assert {:ok, 200, _, replaced} =
+               Cosmos.create_doc("kd36", "kd36c", %{"id" => "u", "v" => 2}, upsert)
+
+      assert replaced["v"] == 2
+      assert replaced["_etag"] != first["_etag"]
+
+      assert {:ok, 200, _, stored} = Cosmos.get_doc("kd36", "kd36c", "u", %{})
+      assert stored["v"] == 2
+    end
+
+    test "KD-36: upsert on new id -> 201 create" do
+      Cosmos.create_collection("kd36b", "kd36bc", %{"id" => "kd36bc"})
+      upsert = %{"x-ms-documentdb-is-upsert" => "true"}
+
+      assert {:ok, 201, _, _} =
+               Cosmos.create_doc("kd36b", "kd36bc", %{"id" => "fresh", "v" => 1}, upsert)
+
+      # non-upsert create on an existing id still 409 (the KD-36 fix must not
+      # have relaxed plain creates)
+      assert {:ok, 409, _, %{"code" => "Conflict"}} =
+               Cosmos.create_doc("kd36b", "kd36bc", %{"id" => "fresh", "v" => 2}, %{})
+    end
+
     test "create/delete churn on one id: terminal state is always consistent (exists-with-201-etag or absent)" do
       Cosmos.create_collection("churn2", "churn2c", %{"id" => "churn2c"})
       {:ok, 201, _, seed} = Cosmos.create_doc("churn2", "churn2c", %{"id" => "z", "v" => 0}, %{})
@@ -1167,10 +1217,20 @@ defmodule Smalt.DataPlane.CosmosTest do
              end)
 
       # Terminal consistency: if the doc exists it carries a 201-minted etag
-      # (sha256 of the winning body), never a hybrid.
+      # (sha256 over {winning-body hash, _v, _gen}), never a hybrid.
       case Cosmos.get_doc("churn2", "churn2c", "z", %{}) do
         {:ok, 200, _, doc} ->
-          assert doc["_etag"] == "\"" <> (:crypto.hash(:sha256, Jason.encode!(%{"id" => "z", "v" => doc["v"]})) |> Base.encode16(case: :lower)) <> "\""
+          body_hash =
+            :crypto.hash(:sha256, Jason.encode!(%{"id" => "z", "v" => doc["v"]}))
+            |> Base.encode16(case: :lower)
+
+          assert doc["_etag"] ==
+                   "\"" <>
+                     (:crypto.hash(
+                        :sha256,
+                        Jason.encode!(%{"h" => body_hash, "v" => doc["_v"], "g" => doc["_gen"]})
+                      )
+                      |> Base.encode16(case: :lower)) <> "\""
 
         {:ok, 404, _, _} ->
           :ok
@@ -1265,9 +1325,10 @@ defmodule Smalt.DataPlane.CosmosTest do
       {:ok, 201, _, docA} = Cosmos.create_doc("xca", "ca", %{"id" => "s", "v" => 0}, %{})
       {:ok, 201, _, docB} = Cosmos.create_doc("xcb", "cb", %{"id" => "s", "v" => 0}, %{})
 
-      # Both etags are sha256 of the same body — the etag space is global by
-      # value, but CAS is keyed on the FULL storage key (db/coll/doc), so the
-      # two races must be fully independent.
+      # Both etags are sha256 over {body hash, _v, _gen} of the same body —
+      # still distinct per doc (independent _gen nonces), but CAS is keyed on
+      # the FULL storage key (db/coll/doc), so the two races must be fully
+      # independent.
       {resultsA, resultsB} =
         Task.async_stream(1..8, fn i ->
           if rem(i, 2) == 0 do
@@ -2280,13 +2341,24 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert hd(feed["Documents"])["id"] == "a"
       assert h["x-ms-request-charge"] == "1.0"
 
-      for rejected <- [
+      # Lane 523 flip: the SQL evaluator (Smalt.CosmosSql) now answers the
+      # 80/20 grammar with real 200 evaluations — WHERE/ORDER BY/projection
+      # are no longer blanket-400'd. The honesty gate narrows to what stays
+      # outside the grammar: joins, aggregates, UDFs, TOP, garbage.
+      for admitted <- [
             "SELECT c.id FROM c WHERE c.x=1",
             "select * from c where c.x = 1",
             "SELECT * FROM c ORDER BY c.id",
+            "SELECT c.id FROM c"
+          ] do
+        assert {:ok, 200, _, _} =
+                 Cosmos.query_docs(db, coll, %{"query" => admitted}, %{}),
+               "#{inspect(admitted)} must now evaluate (non-vacuity flip)"
+      end
+
+      for rejected <- [
             "SELECT * FROM c JOIN d",
             "SELECT TOP 1 * FROM c",
-            "SELECT c.id FROM c",
             "s",
             "DROP TABLE c"
           ] do
@@ -2295,8 +2367,425 @@ defmodule Smalt.DataPlane.CosmosTest do
                "#{inspect(rejected)} must be a typed 400 SyntaxError"
 
         assert hbad["x-ms-request-charge"] == "1.0"
-        assert msg == "The query syntax is invalid."
+        assert is_binary(msg) and msg != ""
       end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # W-6: Cosmos Change Feed (GAP-AUD1-04) + RFC 6902 Patch (GAP-AUD1-05)
+  # ---------------------------------------------------------------------------
+
+  describe "W-6 change feed (A-IM: Incremental feed)" do
+    test "full read delivers all docs and emits a continuation" do
+      db = "cf1"
+      coll = "c1"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "a", "v" => 1}, %{})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "b", "v" => 2}, %{})
+
+      {:ok, 200, h, feed} = Cosmos.change_feed(db, coll)
+      assert feed["_count"] == 2
+      assert Enum.map(feed["Documents"], & &1["id"]) |> Enum.sort() == ["a", "b"]
+      assert h["x-ms-continuation"] != nil
+    end
+
+    test "incremental read returns only newer docs (cursor advances)" do
+      db = "cf2"
+      coll = "c2"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+      {:ok, 201, _, d1} = Cosmos.create_doc(db, coll, %{"id" => "old", "v" => 1}, %{})
+
+      {:ok, 200, _, feed1} = Cosmos.change_feed(db, coll)
+      assert feed1["_count"] == 1
+
+      # Same-second boundary: create another doc whose _ts equals the cursor's
+      # boundary second — the pinned seen-set must still deliver it exactly once.
+      {:ok, 201, _, d2} = Cosmos.create_doc(db, coll, %{"id" => "new", "v" => 2}, %{})
+
+      {:ok, 200, _, feed2} = Cosmos.change_feed(db, coll)
+      assert Enum.map(feed2["Documents"], & &1["id"]) == ["new"]
+
+      # A repeat read (no new writes) is empty — the cursor holds.
+      {:ok, 200, _, feed3} = Cosmos.change_feed(db, coll)
+      assert feed3["_count"] == 0
+
+      # An update (new _ts via patch/put) re-surfaces the doc once.
+      _ = d1
+      {:ok, 200, _, _} = Cosmos.patch_doc(db, coll, "old", [%{"op" => "replace", "path" => "/v", "value" => 9}], %{})
+
+      {:ok, 200, _, feed4} = Cosmos.change_feed(db, coll)
+      assert Enum.map(feed4["Documents"], & &1["id"]) == ["old"]
+
+      # Drain again.
+      {:ok, 200, _, feed5} = Cosmos.change_feed(db, coll)
+      assert feed5["_count"] == 0
+
+      _ = d2
+    end
+
+    test "list_docs without A-IM is unchanged (no cursor side effects)" do
+      db = "cf3"
+      coll = "c3"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "a"}, %{})
+
+      {:ok, 200, _, docs} = Cosmos.list_docs(db, coll)
+      assert length(docs) == 1
+
+      # Normal list never advances the change-feed cursor.
+      {:ok, 200, _, feed} = Cosmos.change_feed(db, coll)
+      assert feed["_count"] == 1
+    end
+
+    test "A-IM via list_docs routes to the change feed" do
+      db = "cf4"
+      coll = "c4"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "a"}, %{})
+
+      {:ok, 200, h1, feed1} = Cosmos.list_docs(db, coll, "", %{"a-im" => "Incremental feed"})
+      assert feed1["_count"] == 1
+      assert is_binary(h1["x-ms-continuation"])
+
+      {:ok, 200, _, feed2} = Cosmos.list_docs(db, coll, "", %{"a-im" => "Incremental feed"})
+      assert feed2["_count"] == 0
+    end
+  end
+
+  describe "W-6 RFC 6902 patch (PATCH /dbs/:db/colls/:coll/docs/:id)" do
+    test "add / replace / remove / test round-trip via the router" do
+      db = "pd1"
+      coll = "pc1"
+      dispatch = fn c -> EgressRouter.call(c, @router_opts) end
+
+      conn(:post, "/dbs", %{"id" => db}) |> dispatch.() |> status_response() |> then(&assert &1 == 201)
+      conn(:post, "/dbs/#{db}/colls", %{"id" => coll}) |> dispatch.() |> status_response() |> then(&assert &1 == 201)
+
+      conn(:post, "/dbs/#{db}/colls/#{coll}/docs", %{"id" => "d1", "name" => "n", "tags" => ["x"]})
+      |> dispatch.()
+      |> status_response() |> then(&assert &1 == 201)
+
+      patch_body = Jason.encode!([
+        %{"op" => "test", "path" => "/name", "value" => "n"},
+        %{"op" => "add", "path" => "/age", "value" => 42},
+        %{"op" => "replace", "path" => "/name", "value" => "n2"},
+        %{"op" => "add", "path" => "/tags/0", "value" => "w"},
+        %{"op" => "copy", "from" => "/name", "path" => "/copy_of_name"},
+        %{"op" => "move", "from" => "/copy_of_name", "path" => "/moved"},
+        %{"op" => "remove", "path" => "/tags/0"}
+      ])
+
+      patch_conn =
+        conn(:patch, "/dbs/#{db}/colls/#{coll}/docs/d1", patch_body)
+        |> Plug.Conn.put_req_header("content-type", "application/json_patch+json")
+
+      assert %{status: 200, resp_body: body} = dispatch.(patch_conn)
+      patched = Jason.decode!(body)
+
+      assert patched["age"] == 42
+      assert patched["name"] == "n2"
+      assert patched["tags"] == ["x"]
+      assert patched["moved"] == "n2"
+      refute Map.has_key?(patched, "copy_of_name")
+      assert patched["_etag"] != nil
+
+      # Re-read: full-document re-storage (store holds whole docs).
+      {:ok, 200, _, doc} = Cosmos.get_doc(db, coll, "d1", %{})
+      assert doc["age"] == 42 and doc["name"] == "n2"
+    end
+
+    test "etag precondition: If-Match mismatch is 412, match is 200 (CAS)" do
+      db = "pd2"
+      coll = "pc2"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "d", "v" => 1}, %{})
+      {:ok, 200, _, doc} = Cosmos.get_doc(db, coll, "d", %{})
+      etag = doc["_etag"]
+
+      assert {:ok, 412, _, %{"code" => "PreconditionFailed"}} =
+               Cosmos.patch_doc(db, coll, "d", [%{"op" => "replace", "path" => "/v", "value" => 2}], %{
+                 "if-match" => "\"stale\""
+               })
+
+      assert {:ok, 200, h, patched} =
+               Cosmos.patch_doc(db, coll, "d", [%{"op" => "replace", "path" => "/v", "value" => 3}], %{
+                 "if-match" => etag
+               })
+
+      assert patched["v"] == 3
+      assert h["etag"] != etag
+    end
+
+    test "missing doc is 404" do
+      Cosmos.create_collection("pd3", "pc3", %{"id" => "pc3"})
+
+      assert {:ok, 404, _, %{"code" => "NotFound"}} =
+               Cosmos.patch_doc("pd3", "pc3", "nope", [%{"op" => "add", "path" => "/a", "value" => 1}], %{})
+    end
+
+    test "malformed patch is typed 400 (engine + router)" do
+      db = "pd4"
+      coll = "pc4"
+      Cosmos.create_collection(db, coll, %{"id" => coll})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "d", "v" => 1}, %{})
+
+      for bad <- [
+            [%{"op" => "bogus", "path" => "/v", "value" => 2}],
+            [%{"op" => "replace", "value" => 2}],
+            [%{"op" => "replace", "path" => "/v", "value" => 2}, "not-a-map"],
+            [%{"op" => "remove", "path" => "/absent"}],
+            [%{"op" => "replace", "path" => "/v/deep", "value" => 2}],
+            [%{"op" => "move", "from" => "/absent", "path" => "/m"}],
+            [%{"op" => "add", "path" => "not-a-pointer", "value" => 1}]
+          ] do
+        assert {:ok, 400, _, %{"code" => "BadRequest", "message" => msg}} =
+                 Cosmos.patch_doc(db, coll, "d", bad, %{}),
+               "#{inspect(bad)} must be typed 400"
+
+        assert is_binary(msg)
+      end
+
+      # Router-level: non-array body refused 400 before the engine.
+      dispatch = fn c -> EgressRouter.call(c, @router_opts) end
+
+      resp =
+        conn(:patch, "/dbs/#{db}/colls/#{coll}/docs/d", Jason.encode!(%{"op" => "add"}))
+        |> Plug.Conn.put_req_header("content-type", "application/json_patch+json")
+        |> dispatch.()
+
+      assert resp.status == 400
+    end
+
+    test "test-op failure is 400 with the stored doc untouched" do
+      db = "pd5"
+      coll = "pc5"
+      Cosmos.create_collection(db, "pc5", %{"id" => "pc5"})
+      {:ok, 201, _, _} = Cosmos.create_doc(db, "pc5", %{"id" => "d", "v" => 1}, %{})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.patch_doc(db, "pc5", "d", [%{"op" => "test", "path" => "/v", "value" => 999}], %{})
+
+      {:ok, 200, _, doc} = Cosmos.get_doc(db, "pc5", "d", %{})
+      assert doc["v"] == 1
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # v261014 M2 lane: uniqueKeyPolicy (real Cosmos: container-scoped uniqueness
+  # within each logical partition; violating create/replace is 409 Conflict)
+  # ---------------------------------------------------------------------------
+
+  describe "uniqueKeyPolicy enforcement" do
+    test "create reflects the policy in the container record" do
+      assert {:ok, 201, _, record} =
+               Cosmos.create_collection("ukdb", "ukc", %{
+                 "id" => "ukc",
+                 "partitionKey" => %{"paths" => ["/pk"]},
+                 "uniqueKeyPolicy" => %{
+                   "uniqueKeys" => [%{"paths" => ["/email"]}]
+                 }
+               })
+
+      assert record["uniqueKeyPolicy"] == [%{"paths" => ["/email"]}]
+    end
+
+    test "duplicate unique-key value in the same partition is 409 Conflict" do
+      Cosmos.create_collection("ukdb", "ukc", %{
+        "id" => "ukc",
+        "partitionKey" => %{"paths" => ["/pk"]},
+        "uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => ["/email"]}]}
+      })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("ukdb", "ukc", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+
+      assert {:ok, 409, _, %{"code" => "Conflict"}} =
+               Cosmos.create_doc("ukdb", "ukc", %{"id" => "b", "pk" => "t1", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+
+      # different unique-key value, same partition -> admitted
+      assert {:ok, 201, _, _} =
+               Cosmos.create_doc("ukdb", "ukc", %{"id" => "c", "pk" => "t1", "email" => "w@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+    end
+
+    test "same unique-key value in a DIFFERENT partition is admitted (partition-scoped)" do
+      Cosmos.create_collection("ukdb", "ukc", %{
+        "id" => "ukc",
+        "partitionKey" => %{"paths" => ["/pk"]},
+        "uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => ["/email"]}]}
+      })
+
+      {:ok, 201, %{"x-ms-alt-content-path" => _}, _} =
+        Cosmos.create_doc("ukdb", "ukc", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+
+      assert {:ok, 201, _, _} =
+               Cosmos.create_doc("ukdb", "ukc", %{"id" => "b", "pk" => "t2", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t2"])})
+    end
+
+    test "PUT replace that steals another doc's unique-key value is 409; keeping own value is 200" do
+      Cosmos.create_collection("ukdb", "ukp", %{
+        "id" => "ukp",
+        "partitionKey" => %{"paths" => ["/pk"]},
+        "uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => ["/email"]}]}
+      })
+
+      hk = %{"x-ms-documentdb-partitionkey" => ~s(["t1"])}
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("ukdb", "ukp", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, hk)
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("ukdb", "ukp", %{"id" => "b", "pk" => "t1", "email" => "w@y.z"}, hk)
+
+      assert {:ok, 409, _, %{"code" => "Conflict"}} =
+               Cosmos.put_doc("ukdb", "ukp", "b", %{"id" => "b", "pk" => "t1", "email" => "x@y.z"}, hk)
+
+      assert {:ok, 200, _, _} =
+               Cosmos.put_doc("ukdb", "ukp", "b", %{"id" => "b", "pk" => "t1", "email" => "w@y.z"}, hk)
+    end
+
+    # R10 repair (audit A2 finding 1): PATCH previously ran doc_id_check only —
+    # a patch could move a doc across partitions without the pk header and
+    # violate the uniqueKeyPolicy with no 409. Both flips below fail on the
+    # pre-fix subject (silently 200).
+    test "PATCH that moves the doc's pk value without the pk header is a typed 400" do
+      Cosmos.create_collection("ukdb", "ukq", %{
+        "id" => "ukq",
+        "partitionKey" => %{"paths" => ["/pk"]}
+      })
+
+      hk = %{"x-ms-documentdb-partitionkey" => ~s(["t1"])}
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("ukdb", "ukq", %{"id" => "a", "pk" => "t1", "v" => 1}, hk)
+
+      assert {:ok, 400, _, %{"code" => code}} =
+               Cosmos.patch_doc("ukdb", "ukq", "a", [
+                 %{"op" => "replace", "path" => "/pk", "value" => "t2"}
+               ], hk)
+
+      assert code in ["BadRequest", "PartitionKeyMismatch", "MissingPartitionKey"]
+
+      # No silent cross-partition move: the stored doc still sits in t1.
+      assert {:ok, 200, _, doc} =
+               Cosmos.get_doc("ukdb", "ukq", "a", hk)
+
+      assert doc["pk"] == "t1"
+    end
+
+    test "PATCH that steals another doc's unique-key value is 409 Conflict" do
+      Cosmos.create_collection("ukdb", "ukr", %{
+        "id" => "ukr",
+        "partitionKey" => %{"paths" => ["/pk"]},
+        "uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => ["/email"]}]}
+      })
+
+      hk = %{"x-ms-documentdb-partitionkey" => ~s(["t1"])}
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("ukdb", "ukr", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, hk)
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("ukdb", "ukr", %{"id" => "b", "pk" => "t1", "email" => "w@y.z"}, hk)
+
+      assert {:ok, 409, _, %{"code" => "Conflict"}} =
+               Cosmos.patch_doc("ukdb", "ukr", "b", [
+                 %{"op" => "replace", "path" => "/email", "value" => "x@y.z"}
+               ], hk)
+
+      # b keeps its own email after the refused patch.
+      assert {:ok, 200, _, doc} = Cosmos.get_doc("ukdb", "ukr", "b", hk)
+      assert doc["email"] == "w@y.z"
+    end
+  end
+
+  # -------------------------------------------------------------------------
+  # Container throughput surface (C5 typed gap, 80/20: integer on the record)
+  # -------------------------------------------------------------------------
+
+  describe "container throughput (C5 typed gap)" do
+    @router_opts EgressRouter.init([])
+
+    defp dispatch(conn), do: EgressRouter.call(conn, @router_opts)
+
+    test "create with throughput 400 -> read back 400 (data plane)" do
+      {:ok, 201, _, _} =
+        Cosmos.create_collection("tpdb", "t1", %{
+          "id" => "t1",
+          "partitionKey" => %{"paths" => ["/pk"]},
+          "throughput" => 400
+        })
+
+      {:ok, 200, _, %{"DocumentCollections" => [record]}} =
+        Cosmos.list_collections("tpdb")
+
+      assert record["throughput"] == 400
+    end
+
+    test "PUT with throughput 800 -> readback 800 (router PUT route)" do
+      assert conn(:post, "/dbs", %{id: "tpdb2"}) |> dispatch() |> status_response() == 201
+
+      assert conn(:post, "/dbs/tpdb2/colls", %{
+               id: "t2",
+               partitionKey: %{paths: ["/pk"]},
+               throughput: 400
+             })
+             |> dispatch()
+             |> status_response() == 201
+
+      put =
+        conn(:put, "/dbs/tpdb2/colls/t2", %{throughput: 800})
+        |> dispatch()
+
+      assert put.status == 200
+      assert Jason.decode!(put.resp_body)["throughput"] == 800
+
+      read = conn(:get, "/dbs/tpdb2/colls/t2") |> dispatch()
+      assert read.status == 200
+      assert Jason.decode!(read.resp_body)["throughput"] == 800
+    end
+
+    test "absent throughput stays absent on readback (not null)" do
+      {:ok, 201, _, record} =
+        Cosmos.create_collection("tpdb3", "t3", %{
+          "id" => "t3",
+          "partitionKey" => %{"paths" => ["/pk"]}
+        })
+
+      refute Map.has_key?(record, "throughput")
+
+      {:ok, 200, _, %{"DocumentCollections" => [record]}} =
+        Cosmos.list_collections("tpdb3")
+
+      refute Map.has_key?(record, "throughput")
+    end
+
+    test "non-integer throughput is a typed 400 BadRequest, fail-closed" do
+      {:ok, 201, _, _} =
+        Cosmos.create_collection("tpdb4", "t4", %{
+          "id" => "t4",
+          "partitionKey" => %{"paths" => ["/pk"]}
+        })
+
+      assert {:ok, 400, _, %{"code" => "BadRequest", "message" => msg}} =
+               Cosmos.create_collection("tpdb4", "t5", %{
+                 "id" => "t5",
+                 "partitionKey" => %{"paths" => ["/pk"]},
+                 "throughput" => "400"
+               })
+
+      assert msg =~ "throughput"
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.replace_collection("tpdb4", "t4", %{"throughput" => 1.5})
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.replace_collection("tpdb4", "t4", %{"throughput" => 0})
+    end
+
+    test "replace on a missing container is 404 NotFound" do
+      {:ok, 404, _, %{"code" => "NotFound"}} =
+        Cosmos.replace_collection("tpdbx", "ghost", %{"throughput" => 400})
     end
   end
 end

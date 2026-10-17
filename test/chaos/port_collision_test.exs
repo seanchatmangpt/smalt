@@ -75,11 +75,28 @@ defmodule Smalt.Chaos.PortCollisionTest do
         Process.flag(:trap_exit, false)
 
         case Supervisor.start_link(
-               [{Bandit, plug: Smalt.ArmGateway.Router, scheme: :http, port: ports.arm}],
+               [
+                 {Bandit,
+                  plug: Smalt.ArmGateway.Router,
+                  scheme: :http,
+                  # SHIM-COURT-style fail-closed pin: bind the SPECIFIC loopback
+                  # address. Without `ip:` a wildcard (default) bind co-exists
+                  # with the specific-address first listener on macOS
+                  # (SO_REUSEADDR), silently returning {:ok, pid} instead of
+                  # eaddrinuse.
+                  ip: {127, 0, 0, 1},
+                  port: ports.arm}
+               ],
                strategy: :one_for_one,
                name: second_sup
              ) do
-          {:ok, pid} -> send(self(), {:started, pid})
+          {:ok, pid} ->
+            # Fail-closed: a successful second bind is itself the defect.
+            # Stop the leaked supervisor, then surface an EXPLICIT failure —
+            # never launder a live co-bind into a passing assertion.
+            Supervisor.stop(pid)
+            exit({:second_bind_succeeded, second_sup})
+
           {:error, _} = e -> exit(e)
         end
       end)
@@ -178,6 +195,15 @@ defmodule Smalt.Chaos.PortCollisionTest do
       {:error, other} -> flunk("unexpected recv error: #{inspect(other)}")
     end
   end
+
+  # SHIM-COURT: a clean exit (:normal) or a killed process is NOT an
+  # address-in-use failure — laundering it into {:error, _} would make the
+  # fail-closed assertion pass on a vacuous outcome. Flunk loudly instead.
+  defp unwrap_exit(:normal),
+    do: flunk("second Bandit boot exited :normal — bind did not fail (no eaddrinuse)")
+
+  defp unwrap_exit(:killed),
+    do: flunk("second Bandit boot process was killed — bind did not fail (no eaddrinuse)")
 
   defp unwrap_exit({:shutdown, reason}), do: {:error, reason}
   defp unwrap_exit(reason), do: {:error, reason}

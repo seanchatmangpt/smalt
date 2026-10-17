@@ -15,13 +15,13 @@ defmodule Smalt.Security.ConfidentialLedger do
   @latest_key_suffix "latest"
 
   @doc """
-  Appends `contents` to `ledger`. Returns `{:ok, receipt}` or
-  `{:error, 409, "LedgerItemAlreadyExists"}` when identical contents already
-  exist in this ledger.
+  Appends `contents` to `ledger`. Returns `{:ok, receipt}` or a typed error
+  envelope `{:error, status, %{"error" => %{"code" => code, "message" => msg}}}`
+  (R143-era convention; wire-ready for the egress router).
   """
   @spec append_transaction(String.t() | atom, map(), keyword()) ::
           {:ok, map()}
-          | {:error, 400 | 404 | 409, String.t()}
+          | {:error, pos_integer(), map()}
   def append_transaction(ledger, contents, _opts \\ []) when is_map(contents) do
     case ledger_name(ledger) do
       {:ok, ledger} ->
@@ -33,7 +33,7 @@ defmodule Smalt.Security.ConfidentialLedger do
         # (tuple/map/list) must be a typed refusal, never a to_string raise;
         # and 42/nil must not be SILENTLY COERCED into ledgers "42"/"" (the
         # nil case created an anonymous shared ledger).
-        {:error, 400, "InvalidLedgerName"}
+        {:error, 400, ledger_name_error()}
     end
   end
 
@@ -115,18 +115,49 @@ defmodule Smalt.Security.ConfidentialLedger do
     end
   end
 
+  # R66 lane compile-freeze unblock (disclosed in R66 receipt): `=~` is not
+  # guard-safe in Elixir 1.19, so the slash fence moved from a defguardp into
+  # the clause body (String.contains?/2) — same refusal, same hook point.
   # Lens-9: the ledger name is caller-shaped data at this public API. Binaries
   # and atoms (the documented @spec forms) are admitted; every other shape is a
   # typed refusal at the boundary — never a to_string/1 raise (tuple/map/list),
   # never silent coercion (42 -> "42", nil -> "" anonymous ledger).
-  defp ledger_name(name) when is_binary(name) and name != "", do: {:ok, name}
+  # (lane R75, audit A23/D1): a ledger name containing "/" — no KD row
+  # is refused. Storage keys are "#{ledger}/#{tx_id}", so a name like "a/b"
+  # stores under keys inside list_prefix("a/") — list_transactions("a") would
+  # leak ledger "a/b"'s receipts and get_transaction("a", "b/1.1") would cross
+  # ledgers via the tx-id. The fence is here, at the name boundary, so it
+  # covers append/get/list/latest uniformly; storage keying is unchanged.
+  # (lane R131, adversarial W5-11): a non-UTF8 name like "a\xFF" (no slash)
+  # passed the slash-only fence, reached ReceiptSigner.sign, and Jason.encode!
+  # raised inside the serialized LedgerWriter GenServer — writer death with the
+  # {:dup, ledger, hash} counter already incremented, so every retry 409s
+  # LedgerItemAlreadyExists for never-stored content (commit-point law violated).
+  # String.valid?/1 is guard-safe alongside the slash check, same typed refusal
+  # (:error envelope), same hook point, covering append/get/list/latest uniformly.
+  defp ledger_name(name) when is_binary(name) and name != "" do
+    if String.contains?(name, "/") or not String.valid?(name) do
+      :error
+    else
+      {:ok, name}
+    end
+  end
 
   defp ledger_name(name) when is_atom(name) and not is_nil(name) and name != :"",
-    do: {:ok, Atom.to_string(name)}
+    do: ledger_name(Atom.to_string(name))
 
+  # SHIM-COURT hook point: flip the defguardp body to `false` to prove the
+  # fence is non-vacuous (a "a/b" ledger must become storable again,
+  # re-leaking). defguardp declared above ledger_name/1 (see note there).
   defp ledger_name(_), do: :error
 
   ## Internals
+
+  # Same envelope builder family as LedgerWriter (R143-era convention):
+  # wire-ready map envelope, rendered directly by the egress router.
+  defp ledger_name_error do
+    %{"error" => %{"code" => "InvalidLedgerName", "message" => "Ledger name is invalid."}}
+  end
 
   defp sort_tx_keys(receipts) do
     Enum.sort_by(receipts, fn %{"transactionId" => tx_id} ->

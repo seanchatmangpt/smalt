@@ -11,10 +11,20 @@ ROUTER="lib/smalt/egress_router.ex"
 BLOB_SERVICE="lib/smalt/data_plane/blob_service.ex"
 WITNESS="mix run --no-start scripts/shim_court/wire_norm_witness.exs"
 SHIMPY="scripts/shim_court/wire_norm_shim.py"
+LEG_LOG="$(mktemp "${TMPDIR:-/tmp}/wire_norm_leg.XXXXXX")"
+trap 'rm -f "$LEG_LOG"' EXIT
 
 run_leg() {
+  # SHIM-COURT: witness output is preserved to a leg log and surfaced on
+  # failure — a silent witness loss is indistinguishable from an env break.
   local mode="$1"
-  $WITNESS "$mode" >/dev/null 2>&1
+  $WITNESS "$mode" >"$LEG_LOG" 2>&1
+}
+
+leg_fail() {
+  # leg_fail <PHASE> <detail> — typed FAIL with the witness transcript.
+  cat "$LEG_LOG" >&2
+  shim_court_fail "$1" "$2"
 }
 
 run_court() {
@@ -30,7 +40,7 @@ run_court() {
 
   if ! run_leg "${kd}_after"; then
     rm -f "$bak"
-    shim_court_fail AFTER "$kd: after-witness failed on the LANDED file"
+    leg_fail AFTER "$kd: after-witness failed on the LANDED file"
   fi
   shim_court_log SHIM "$kd AFTER passed (Azure shape holds)"
 
@@ -40,13 +50,22 @@ run_court() {
     shim_court_fail SHIM "$kd: shim failed; file restored"
   fi
 
+  # SHIM-COURT marker invariant (lib.sh:130-135 behavior): a shim that lands
+  # without the marker must abort the court, not silently proceed to witness.
+  if ! grep -q 'SHIM-COURT' "$file"; then
+    cp "$bak" "$file"
+    rm -f "$bak"
+    shim_court_fail SHIM "$kd: shimmed $file carries no 'SHIM-COURT' marker"
+  fi
+  shim_court_log SHIM "$kd shim applied (SHIM-COURT marker present)"
+
   # Defeat same-second mtime: force Mix to see the shimmed source as newer.
   sleep 1
 
   if ! run_leg "${kd}_before"; then
     cp "$bak" "$file"
     rm -f "$bak"
-    shim_court_fail BEFORE "$kd: before-witness failed on the SHIMMED file"
+    leg_fail BEFORE "$kd: before-witness failed on the SHIMMED file"
   fi
   shim_court_log SHIM "$kd BEFORE passed (old shape returns)"
 

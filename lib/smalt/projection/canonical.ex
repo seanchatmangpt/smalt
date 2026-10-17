@@ -46,8 +46,11 @@ defmodule Smalt.Projection.Canonical do
       "endpoints" => %{
         "controlPlane" => Smalt.Registry.control_plane_port(),
         "dataPlane" => Smalt.Registry.data_plane_port(),
-        "amqp" => Smalt.Registry.amqp_port(),
-        "eventHubs" => Smalt.Registry.event_hubs_port()
+        # R83 disclosure: canonical defaults, not get_env — the capability
+        # document is the env-independent substrate contract (drift fence
+        # renders in test env where ports are dynamic).
+        "amqp" => Smalt.Registry.amqp_port_default(),
+        "eventHubs" => Smalt.Registry.event_hubs_port_default()
       }
     }
   end

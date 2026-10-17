@@ -273,7 +273,10 @@ defmodule Smalt.Compliance.C6OauthTest do
 
     assert [challenge] = get_resp_header(conn, "www-authenticate")
 
-    assert challenge =~ ~s(Bearer error="invalid_token")
+    # bearer.ex emits authorization/resource params before error= — pin the
+    # scheme + the two RFC 6750 params wherever they appear in the challenge.
+    assert challenge =~ ~s(Bearer )
+    assert challenge =~ ~s(error="invalid_token")
     assert challenge =~ "error_description="
   after
     Application.put_env(:smalt, :auth_mode, :anonymous)

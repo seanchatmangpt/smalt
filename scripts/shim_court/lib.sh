@@ -22,7 +22,7 @@
 # Contract for court scripts (see README.md):
 #   - `set -euo pipefail`, then `source "$(dirname "$0")/lib.sh"`.
 #   - Define `apply_shim` (edits $SHIM_FILE in place) BEFORE calling with_shim.
-#   - Pass witness commands as args 2 and 3 (run via bash -c).
+#   - Pass witness commands as args 2 and 3 (run via bash -uc; see below).
 #   - A leg needing a missing environment must SKIP LOUDLY with a reason via
 #     `shim_court_skip "reason"` — never fake a pass.
 
@@ -56,7 +56,7 @@ shim_court_sha() { shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'; }
 shim_court_self_check() {
     # Real temp-copy exercise (no mocks): prove the sha256 restore rule
     # DETECTS a corrupted restore. Run once per court invocation.
-    local tmp dir target backup good corrupt
+    local tmp dir backup good corrupt
     dir="$(mktemp -d)" || return 1
     tmp="$dir/subject.txt"
     printf 'subject-body\n' > "$tmp"
@@ -91,8 +91,14 @@ shim_court_trap() {
     fi
 }
 
+# Witnesses run under `bash -uc` (SHIM-COURT hardening, 2026-10-16, R190
+# class): a witness referencing an unset variable — e.g. a court forgot to
+# export a var its `declare -f` witness body reads — fails LOUD with
+# "unbound variable" instead of silently expanding to empty and passing
+# vacuously. `${VAR:-default}` stays safe under -u by design.
+
 with_shim() {
-    # with_shim <file> <before-cmd> <after-cmd>
+    # with_shim <file> <before-cmd> <after-cmd>  (witnesses run via bash -uc)
     local file="$1" before_cmd="$2" after_cmd="$3"
 
     # --- Phase 1: BASELINE ----------------------------------------------------
@@ -109,7 +115,7 @@ with_shim() {
 
     # --- Phase 2: BEFORE (old signature must hold) ----------------------------
     SHIM_PHASE="BEFORE"
-    if ! bash -c "$before_cmd"; then
+    if ! bash -uc "$before_cmd"; then
         shim_court_fail BEFORE \
             "before-witness failed against UNMODIFIED $file — old signature absent; refusing to shim"
     fi
@@ -138,7 +144,7 @@ with_shim() {
     # --- Phase 4: AFTER (new outcome must hold) --------------------------------
     SHIM_PHASE="AFTER"
     trap shim_court_trap EXIT INT TERM
-    if ! bash -c "$after_cmd"; then
+    if ! bash -uc "$after_cmd"; then
         cp "$SHIM_BACKUP" "$file"
         if [ "$(shim_court_sha "$file")" != "$SHIM_BASELINE_SHA" ]; then
             shim_court_fail RESTORE \

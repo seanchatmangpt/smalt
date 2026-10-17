@@ -56,17 +56,27 @@ defmodule Smalt.Amqp.LockManager do
     |> String.downcase()
   end
 
+  # SHIM-COURT R51: token_to_raw/1 returns the WIRE layout. Inverse of
+  # `format_uuid/1`: dashed UUID string -> raw 16 bytes in the on-wire
+  # .NET-GUID-reordered layout the delivery-tag actually carries
+  # (`token_to_wire/1`, connection.ex delivery_tag). The store keys the
+  # dashed form. Returning the straight uuid layout here made tests
+  # synthesizing wire bytes mint a permuted store key on settle ->
+  # 410 MESSAGE_LOCK_LOST on every live lock (repair lane R51).
   @doc """
-  Inverse of `format_uuid/1`: dashed UUID string -> raw 16 bytes. The AMQP
-  delivery-tag carries the raw form (rhea `uuid_to_string` on the client);
+  Inverse of `format_uuid/1`: dashed UUID string -> raw 16 bytes in the WIRE
+  (.NET-GUID-reordered, `shouldReorderLockToken: true`) layout the
+  delivery-tag carries (rhea `string_to_uuid` round-trip on the client);
   the store keys the dashed form.
   """
   @spec token_to_raw(String.t()) :: <<_::128>>
   def token_to_raw(dashed) when is_binary(dashed) do
-    <<a::32, b::16, c::16, d::16, e::48>> =
+    <<b0, b1, b2, b3, b4, b5, b6, b7, rest::binary-size(8)>> =
       dashed |> String.replace("-", "") |> Base.decode16!(case: :mixed)
 
-    <<a::32, b::16, c::16, d::16, e::48>>
+    # .NET-GUID reorder, byte-identical to the former token_to_wire/1 body:
+    # [b3,b2,b1,b0, b5,b4, b7,b6, rest].
+    <<b3, b2, b1, b0, b5, b4, b7, b6, rest::binary>>
   end
 
   @doc """
@@ -80,9 +90,7 @@ defmodule Smalt.Amqp.LockManager do
   """
   @spec token_to_wire(String.t()) :: <<_::128>>
   def token_to_wire(dashed) when is_binary(dashed) do
-    <<b0, b1, b2, b3, b4, b5, b6, b7, rest::binary-size(8)>> = token_to_raw(dashed)
-
-    <<b3, b2, b1, b0, b5, b4, b7, b6, rest::binary>>
+    token_to_raw(dashed)
   end
 
   # -- Message locks -----------------------------------------------------------
@@ -114,7 +122,10 @@ defmodule Smalt.Amqp.LockManager do
   For session locks the renewal is delegated to `session_renew/4` (V261014-04
   F2), so the mirrored `{queue, session_id}` record in `:smalt_sb_sessions` is
   written from the same renewal — both records carry the new `locked_until`.
-  Pure message locks renew only their token record.
+  Message locks mirror the renewal into the `{queue, seq}` message row the same
+  way (lane-242 fix): the renew is serialized through QueueStore's claim/settle
+  server so `do_sweep` (which consults the message row's `locked_until`) can
+  never sweep a successfully renewed lock at its original expiry.
   """
   @spec renew(binary(), integer(), keyword()) :: {:ok, lock()} | {:error, :not_found | :lock_lost}
   def renew(token, now_ms, opts \\ []) when is_binary(token) do
@@ -122,10 +133,46 @@ defmodule Smalt.Amqp.LockManager do
       {:ok, %{kind: :session, queue: queue, session_id: session_id}} ->
         session_renew(queue, session_id, now_ms, opts)
 
+      {:ok, %{kind: :message}} ->
+        # Serialized with claims/settlements/sweeps (same server as
+        # session_renew) so the token-row put and the message-row mirror are
+        # atomic against do_sweep.
+        GenServer.call(Smalt.Amqp.QueueStore.server(), {:message_renew, token, now_ms, opts})
+
       other ->
         renew_lock(other, now_ms, opts)
     end
   end
+
+  @doc false
+  # Runs inside the QueueStore claim server. Public only for that call-site.
+  def do_message_renew(token, now_ms, opts) do
+    with {:ok, lock} <- renew_lock(Smalt.Store.get(:smalt_sb_locks, token), now_ms, opts) do
+      mirror_message_renew(lock)
+      {:ok, lock}
+    end
+  end
+
+  defp mirror_message_renew(%{kind: :message, queue: queue, seq: seq, lock_token: token, locked_until: until}) do
+    # Table-absent (unit harnesses that only provision the lock tables): the
+    # token-row renewal already happened; there is no message row to mirror.
+    if :ets.info(:smalt_sb_messages) == :undefined do
+      :ok
+    else
+      case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
+      # Token-scoped mirror (ABA-safe): if the message row was re-claimed by a
+      # different token, leave it alone — the old token's renewal must not
+      # extend the new claim.
+        {:ok, %{lock_token: ^token} = m} ->
+          Smalt.Store.put(:smalt_sb_messages, {queue, seq}, %{m | locked_until: until})
+
+        _ ->
+          :ok
+      end
+    end
+  end
+
+  defp mirror_message_renew(_), do: :ok
 
   @doc """
   `Smalt.Amqp.ManagementRpc` pinned contract: renew by token and return the
@@ -203,6 +250,10 @@ defmodule Smalt.Amqp.LockManager do
       seq: nil,
       session_id: session_id,
       kind: :session,
+      # GAP-A2-05: opaque session state bytes (set/get-session-state). nil until
+      # the first set; dies with the session lock record (disclosed emulator
+      # divergence — see ManagementRpc.set_session_state).
+      session_state: nil,
       locked_until: now + duration,
       duration_ms: duration
     }
@@ -240,13 +291,27 @@ defmodule Smalt.Amqp.LockManager do
 
     expired_tokens =
       :ets.match_object(:smalt_sb_locks, {:_, :_})
-      |> Enum.filter(fn {_k, lock} -> lock.kind == :message and expired?(lock, now) end)
+      |> Enum.filter(fn {_k, lock} -> expired?(lock, now) and orphan_token?(lock, now) end)
 
     Enum.each(expired_tokens, fn {token, _lock} ->
       Smalt.Store.delete(:smalt_sb_locks, token)
     end)
 
     length(expired_sessions) + length(expired_tokens)
+  end
+
+  # SHIM-COURT-guarded lane R178j: an expired :session token row is an orphan
+  # when its `{queue, session_id}` sessions row is gone or was overwritten by a
+  # re-acquire (different lock_token). A token whose sessions row still matches
+  # is the live lock and must survive the sweep. (no KD-COVERS id — in-repo fix)
+  defp orphan_token?(%{kind: :message}, _now), do: true
+
+  defp orphan_token?(%{kind: :session, queue: q, session_id: sid, lock_token: token}, _now) do
+    case Smalt.Store.get(:smalt_sb_sessions, {q, sid}) do
+      :error -> true
+      {:ok, %{lock_token: ^token}} -> false
+      {:ok, _} -> true
+    end
   end
 
   @doc """
@@ -256,6 +321,19 @@ defmodule Smalt.Amqp.LockManager do
   @spec session_renew(String.t(), String.t(), integer(), keyword()) ::
           {:ok, lock()} | {:error, :not_found | :lock_lost}
   def session_renew(queue, session_id, now_ms, opts \\ []) do
+    # A32 fix 2: the get+put pair on :smalt_sb_sessions ran outside the claim
+    # server (same lost-update class as F3). Serialize it: renew now executes
+    # inside the QueueStore claim server, so a concurrent acquire can never
+    # interleave between the get and the put.
+    GenServer.call(
+      Smalt.Amqp.QueueStore.server(),
+      {:session_renew, queue, session_id, now_ms, opts}
+    )
+  end
+
+  @doc false
+  # Runs inside the QueueStore claim server. Public only for that call-site.
+  def do_session_renew(queue, session_id, now_ms, opts) do
     key = {queue, session_id}
 
     with {:ok, lock} <- renew_lock(Smalt.Store.get(:smalt_sb_sessions, key), now_ms, opts) do
@@ -280,18 +358,31 @@ defmodule Smalt.Amqp.LockManager do
   """
   @spec session_release(String.t(), String.t()) :: :ok
   def session_release(queue, session_id) do
-    GenServer.call(Smalt.Amqp.QueueStore.server(), {:session_release, queue, session_id})
+    # A32 fix 1 (LockManager F3 ABA): capture the expected token caller-side
+    # and ship it with the release; the serialized server does a token-scoped
+    # compare-and-delete, so a releaser can never delete B's fresh lock.
+    expected_token =
+      case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
+        {:ok, lock} -> lock.lock_token
+        :error -> nil
+      end
+
+    GenServer.call(Smalt.Amqp.QueueStore.server(), {:session_release, queue, session_id, expected_token})
   end
 
   @doc false
   # Runs inside the QueueStore claim server. Public only for that call-site.
-  def do_session_release(queue, session_id) do
+  def do_session_release(queue, session_id, expected_token) do
     case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
-      {:ok, lock} -> Smalt.Store.delete(:smalt_sb_locks, lock.lock_token)
-      :error -> :ok
-    end
+      {:ok, %{lock_token: token}} when expected_token != nil and token == expected_token ->
+        Smalt.Store.delete(:smalt_sb_locks, token)
+        Smalt.Store.delete(:smalt_sb_sessions, {queue, session_id})
+        :ok
 
-    Smalt.Store.delete(:smalt_sb_sessions, {queue, session_id})
+      # Token mismatch (B re-acquired) or row gone: :ok leaving B intact.
+      _ ->
+        :ok
+    end
   end
 
   # -- Shared renewal ----------------------------------------------------------

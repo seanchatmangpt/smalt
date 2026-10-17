@@ -138,7 +138,8 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
   end
 
   defp query(workspace, kql) do
-    Support.dispatch(Smalt.EgressRouter, "post", "/v1/workspaces/#{workspace}/query",
+    Support.dispatch(Smalt.EgressRouter, "post",
+      "/v1/workspaces/#{workspace}/query?api-version=2023-01-01",
       body: Jason.encode!(%{"query" => kql}))
   end
 
@@ -149,7 +150,12 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
 
   defp query_rows(workspace, kql) do
     resp = query(workspace, kql)
-    hd(json(resp.body)["tables"])["rows"]
+    # SHIM-COURT-adjacent fail-closed: never parse a non-200 envelope as a table.
+    Support.assert_equal(resp.status, 200, "query status (#{kql})")
+    case json(resp.body)["tables"] do
+      [%{"rows" => rows} | _] when is_list(rows) -> rows
+      other -> raise "query envelope missing tables/rows (status #{resp.status}): #{inspect(other)}"
+    end
   end
 
   defp row_map(cols, values), do: Enum.zip(cols, values) |> Map.new()

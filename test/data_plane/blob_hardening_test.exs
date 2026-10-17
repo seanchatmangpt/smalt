@@ -6,14 +6,17 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
   alias Smalt.DataPlane.BlobService
   alias Smalt.EgressRouter
   alias Smalt.Store
+  alias Smalt.Auth.Sas
 
   setup do
     SmaltTest.Lifecycle.ensure_store_up()
     Store.clear()
     BlobStorage.ensure_policy_table()
     BlobStorage.ensure_block_table()
+    BlobStorage.ensure_snapshot_table()
     :ets.delete_all_objects(:smalt_blob_policy)
     :ets.delete_all_objects(:smalt_blob_blocks)
+    :ets.delete_all_objects(:smalt_blob_snapshots)
     :ok
   end
 
@@ -110,6 +113,79 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       assert {:ok, 202, _, _} =
                BlobStorage.delete_blob("acc1", "cont1", "b1", %{"if-match" => blob["etag"]})
+    end
+  end
+
+  # KD-52: snapshot create and Set Blob Tier previously bypassed the WORM
+  # arm resolution entirely — snapshots succeeded under active legal hold
+  # and tier sets mutated held/locked blobs. Fenced per the moduledoc
+  # arm convention: snapshot = create arm (hold-only, seeded from an
+  # existing blob), tier set = overwrite arm.
+  describe "KD-52 WORM arms: snapshot_blob + set_blob_tier" do
+    test "snapshot under active legal hold -> 409 ContainerLocked naming legal hold" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
+      assert {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", true)
+
+      assert {:error, 409, "ContainerLocked", msg} =
+               BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+
+      assert msg =~ "legal hold"
+
+      # no snapshot row was written
+      assert {:error, 404, "BlobNotFound", _} =
+               BlobStorage.get_blob_snapshot("acc1", "cont1", "b1", "any")
+
+      # releasing the hold unblocks the snapshot
+      assert {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", false)
+      assert {:ok, 201, %{"x-ms-snapshot" => ts}, nil} = BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+      assert {:ok, _} = BlobStorage.get_blob_snapshot("acc1", "cont1", "b1", ts)
+    end
+
+    test "set_blob_tier under legal hold -> 409 ContainerLocked; tier unchanged" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
+      assert {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", true)
+
+      assert {:error, 409, "ContainerLocked", msg} =
+               BlobStorage.set_blob_tier("acc1", "cont1", "b1", "Archive")
+
+      assert msg =~ "legal hold"
+      assert {:ok, blob} = BlobStorage.get_blob("acc1", "cont1", "b1")
+      assert blob["access_tier"] in [nil, "Hot"]
+
+      # release -> tier set proceeds
+      assert {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", false)
+      assert {:ok, 200, _, _} = BlobStorage.set_blob_tier("acc1", "cont1", "b1", "Archive")
+      assert {:ok, blob} = BlobStorage.get_blob("acc1", "cont1", "b1")
+      assert blob["access_tier"] == "Archive"
+    end
+
+    test "set_blob_tier under locked policy (unexpired retention) -> 409 ContainerLocked" do
+      {"acc1", "cont1", _} = immutable_container("acc1", "cont1", %{})
+      BlobStorage.put_blob("acc1", "cont1", "b1", "v1", %{}, now_ms: 0)
+
+      assert {:ok, 200, _, _} =
+               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
+                 %{"if-match" => "*"}, now_ms: 0)
+
+      assert {:error, 409, "ContainerLocked", _} =
+               BlobStorage.set_blob_tier("acc1", "cont1", "b1", "Cool", now_ms: 86_400_000)
+
+      # post-expiry the overwrite arm unlocks (30-day retention from created_at 0)
+      assert {:ok, 200, _, _} =
+               BlobStorage.set_blob_tier("acc1", "cont1", "b1", "Cool", now_ms: 31 * 86_400_000)
+    end
+
+    test "both green without any hold: snapshot 201, tier set 200" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
+
+      assert {:ok, 201, %{"x-ms-snapshot" => ts}, nil} = BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+      assert {:ok, snap} = BlobStorage.get_blob_snapshot("acc1", "cont1", "b1", ts)
+      assert snap["content"] == "v1"
+
+      assert {:ok, 200, _, _} = BlobStorage.set_blob_tier("acc1", "cont1", "b1", "Hot")
     end
   end
 
@@ -1426,9 +1502,18 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # Soft perf contract (cycle-9): keys-only pagination measured 36 ms for a
     # 10-page chain over 8000 blobs x 2 KiB; the reverted full-value
     # materialization measured ~3.3x that. Behavior fences CANNOT catch a
-    # revert (pure no-op), so wall-time is the contract. Budget = 80 ms
-    # (~2.2x observed, ~1.5x under the measured revert) — a revert trips it.
-    @perf_budget_ms 80
+    # revert (pure no-op), so wall-time is the contract.
+    #
+    # Variance-proofing (2026-10-16, concurrent 20-lane CI load): fixing a
+    # latent marker-threading bug (the old `for` comprehension never advanced
+    # the page) made the true 10-page chain measurable: 5 runs -> 62/62/62/62
+    # (per-rep [63,62,62]-class, min 62 every run; the earlier 38-50 ms reads
+    # measured 10x the FIRST page only). Single-run flake this session had
+    # exceeded the old 80 ms budget. Fix = min-of-3 reps (scheduler noise
+    # averages out; a ~3.3x revert cannot hide behind noise) + budget 110 ms
+    # (~1.7x the measured full-chain 62 ms, well under the ~205 ms revert
+    # estimate = 3.3 x 62). A revert trips it.
+    @perf_budget_ms 110
 
     test "pagination perf contract: 10-page chain over 8000x2KiB under budget" do
       container("perf", "acct")
@@ -1438,22 +1523,40 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
         BlobStorage.put_blob("perf", "acct", "blob-" <> String.pad_leading(Integer.to_string(i), 5, "0"), content)
       end
 
-      {ms, _} =
-        :timer.tc(fn ->
-          marker = ""
+      # thread the continuation marker via recursion: a `for` body cannot
+      # rebind an outer variable, so a naive comprehension never advances
+      # the page and silently measures the same first page 10 times.
+      chain = fn marker0 ->
+        {ms, marker_final} =
+          :timer.tc(fn ->
+            Stream.iterate(marker0, fn m ->
+              {_xml, next} = BlobStorage.list_blobs_xml("perf", "acct", %{"marker" => m})
+              next || ""
+            end)
+            |> Enum.take(11)
+            |> List.last()
+          end)
 
-          for _ <- 1..10 do
-            {_xml, next} = BlobStorage.list_blobs_xml("perf", "acct", %{"marker" => marker})
-            marker = next || ""
-          end
-        end)
+        {div(ms, 1000), marker_final}
+      end
 
-      ms = div(ms, 1000)
+      # warmup rep: primes the list path; its timing is deliberately
+      # unmeasured (the min-of-3 below is the contract)
+      {_ms_first, marker_after} = chain.("")
+      assert marker_after != ""
 
+      runs =
+        for _rep <- 1..3 do
+          {ms, _} = chain.("")
+          ms
+        end
+
+      ms = Enum.min(runs)
       if ms > @perf_budget_ms do
         flunk("""
-        pagination perf contract violated: #{ms} ms > #{@perf_budget_ms} ms budget.
-        Likely regression to full-value materialization (measured ~3.3x slower).
+        pagination perf contract violated: #{ms} ms > #{@perf_budget_ms} ms budget
+        (per-rep runs: #{inspect(runs)}). Likely regression to full-value
+        materialization (measured ~3.3x slower).
         """)
       end
     end
@@ -2213,6 +2316,476 @@ defp get_in_meta(block, key) do
       assert conn.status == 404
       assert get_resp_header(conn, "x-ms-error-code") == ["BlobNotFound"]
       assert get_resp_header(conn, "content-type") |> hd() =~ "application/json"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # GAP-AUD1-01 (v26.10.14, lane W-5): blob comp whitelist. Unlisted `comp`
+  # values previously fell into the generic Put/Get Blob arms and silently
+  # overwrote / served the blob body. Falsifier: every unimplemented comp
+  # answers a typed 400 InvalidQueryParameter and the blob body is UNCHANGED.
+  # ---------------------------------------------------------------------------
+  # KD-60 wire lane 524: comp=snapshot is now a REGISTERED arm (PUT 201 +
+  # x-ms-snapshot, GET sharesnapshot read-back), so it left the unimplemented
+  # refusal list; its fence is the snapshot wire tests in
+  # test/wire/egress_wire_test.exs.
+  @unimplemented_comps ~w(appendblock page pagelist tags query tier expiry seal lease copy)
+
+  describe "GAP-AUD1-01 comp whitelist" do
+    test "unimplemented PUT comps -> typed 400, blob body unchanged" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "original-body")
+
+      for comp <- @unimplemented_comps do
+        conn =
+          :put
+          |> conn("/acc1/cont1/victim.bin?comp=#{comp}", "corruption-payload")
+          |> put_req_header("content-type", "application/xml")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 400, "comp=#{comp}: expected 400, got #{conn.status}"
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert conn.resp_body =~ "The comp value '#{comp}' is not supported"
+      end
+
+      assert {:ok, unchanged} = BlobStorage.get_blob("acc1", "cont1", "victim.bin")
+      assert unchanged["content"] == "original-body"
+    end
+
+    test "unimplemented GET comps -> typed 400, body never served as content" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "secret-body")
+
+      for comp <- ~w(pagelist tags) do
+        conn =
+          :get
+          |> conn("/acc1/cont1/victim.bin?comp=#{comp}")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 400, "GET comp=#{comp}: expected 400, got #{conn.status}"
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        refute conn.resp_body =~ "secret-body"
+      end
+    end
+
+    # D14 (R122, KD-60): HEAD and DELETE splat arms previously had NO comp
+    # whitelist — HEAD ?comp=appendblock served 200 header metadata as if the
+    # append happened; DELETE ?comp=lease deleted the blob anyway. Both now
+    # answer the same typed 400 InvalidQueryParameter as the PUT/GET arms.
+    test "D14: unimplemented HEAD comps -> typed 400, no metadata served" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "head-body")
+
+      for comp <- @unimplemented_comps do
+        conn =
+          :head
+          |> conn("/acc1/cont1/victim.bin?comp=#{comp}")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 400, "HEAD comp=#{comp}: expected 400, got #{conn.status}"
+        # HEAD answers header-only: the typed proof is the x-ms-error-code header
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      end
+    end
+
+    test "D14: unimplemented DELETE comps -> typed 400, blob NOT deleted" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "survivor-body")
+
+      for comp <- @unimplemented_comps do
+        conn =
+          :delete
+          |> conn("/acc1/cont1/victim.bin?comp=#{comp}")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 400, "DELETE comp=#{comp}: expected 400, got #{conn.status}"
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      end
+
+      # the delete-splat lie is closed: the blob survives every comp'd DELETE
+      assert {:ok, survivor} = BlobStorage.get_blob("acc1", "cont1", "victim.bin")
+      assert survivor["content"] == "survivor-body"
+    end
+
+    # A14 (D14/KD-60): Plug decodes duplicate query keys into a LIST —
+    # ?comp=metadata&comp=lease yields %{"comp" => ["metadata", "lease"]},
+    # which the is_binary/1 guard clause admitted past every whitelist into
+    # the catch-all (201-lie / body-leak class on blob AND container arms).
+    # Default-deny: any list-form comp answers the typed 400 everywhere.
+    test "A14: duplicate comp (list-form decode) -> typed 400 on blob and container arms" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "dup-comp-body")
+
+      for {method, path} <- [
+            {:put, "/acc1/cont1/victim.bin"},
+            {:get, "/acc1/cont1/victim.bin"},
+            {:head, "/acc1/cont1/victim.bin"},
+            {:delete, "/acc1/cont1/victim.bin"},
+            {:put, "/acc1/cont1"},
+            {:get, "/acc1/cont1"}
+          ] do
+        conn =
+          method
+          |> conn("#{path}?comp=metadata&comp=lease")
+          |> put_req_header("x-ms-version", "2021-12-02")
+          |> router_call()
+
+        assert conn.status == 400,
+               "#{method} #{path} dup-comp: expected 400, got #{conn.status}"
+
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      end
+
+      # blob body untouched by the dup-comp probes
+      assert {:ok, survivor} = BlobStorage.get_blob("acc1", "cont1", "victim.bin")
+      assert survivor["content"] == "dup-comp-body"
+    end
+
+    test "implemented comps still route to their handlers" do
+      container()
+
+      # block / blocklist round trip
+      bid = Base.encode64("blk-a")
+      conn =
+        :put
+        |> conn("/acc1/cont1/wl.bin?comp=block&blockid=#{bid}", "block-bytes")
+        |> put_req_header("content-type", "application/octet-stream")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+      assert conn.status == 201
+
+      commit_xml = ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>#{bid}</Latest></BlockList>)
+      conn =
+        :put
+        |> conn("/acc1/cont1/wl.bin?comp=blocklist", commit_xml)
+        |> put_req_header("content-type", "application/xml")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+      assert conn.status == 201
+
+      conn =
+        :get
+        |> conn("/acc1/cont1/wl.bin?comp=blocklist")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
+
+      # metadata
+      conn =
+        :put
+        |> conn("/acc1/cont1/wl.bin?comp=metadata", "")
+        |> put_req_header("x-ms-meta-k", "v")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+      assert conn.status == 200
+
+      # plain PUT/GET with NO comp still reaches the generic arms
+      conn =
+        :put
+        |> conn("/acc1/cont1/plain.bin", "plain-body")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+      assert conn.status == 201
+
+      conn =
+        :get
+        |> conn("/acc1/cont1/plain.bin")
+        |> put_req_header("x-ms-version", "2021-12-02")
+        |> router_call()
+      assert conn.status == 200
+      assert conn.resp_body == "plain-body"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # W-7 (v26.10.15) GAP-AUD1-02: Blob Batch — POST ?comp=batch parses the
+  # multipart/mixed body, dispatches each sub-request (delete / set tier)
+  # through the real BlobStorage engine, and emits a multipart/mixed response
+  # with per-sub-request status. Bounded at 256.
+  # ---------------------------------------------------------------------------
+  describe "W-7 blob batch (GAP-AUD1-02)" do
+    defp batch_post(path, body, boundary) do
+      :post
+      |> conn(path, body)
+      |> put_req_header("x-ms-version", "2021-12-02")
+      |> put_req_header("content-type", "multipart/mixed; boundary=" <> boundary)
+      |> router_call()
+    end
+
+    defp batch_part(boundary, id, request_text) do
+      "--" <> boundary <> "\r\n" <>
+        "Content-Type: application/http\r\n" <>
+        "Content-Transfer-Encoding: binary\r\n" <>
+        "Content-ID: " <> id <> "\r\n" <>
+        "\r\n" <>
+        request_text
+    end
+
+    test "batch of 3 deletes witnessed" do
+      container()
+      for i <- 1..3, do: BlobStorage.put_blob("acc1", "cont1", "b#{i}", "v#{i}")
+
+      boundary = "batch_w7_1"
+
+      parts =
+        for i <- 1..3 do
+          batch_part(boundary, Integer.to_string(i - 1), "DELETE /acc1/cont1/b#{i} HTTP/1.1\r\nx-ms-version: 2021-12-02\r\n\r\n")
+        end
+
+      body = Enum.join(parts) <> "--" <> boundary <> "--\r\n"
+
+      conn = batch_post("/acc1/cont1?comp=batch", body, boundary)
+
+      assert conn.status == 202
+      assert get_resp_header(conn, "content-type") |> hd() =~ "multipart/mixed"
+
+      resp = conn.resp_body
+
+      statuses = Regex.scan(~r{HTTP/1\.1 (\d+)}, resp)
+      assert length(statuses) == 3
+      assert Enum.all?(statuses, fn [_, s] -> s == "202" end)
+
+      # real state: all three blobs gone
+      for i <- 1..3 do
+        assert :error = BlobStorage.get_blob("acc1", "cont1", "b#{i}")
+      end
+
+      # per-part Content-ID echo
+      ids =
+        Regex.scan(~r/Content-ID: (\d+)/, resp)
+        |> Enum.map(fn [_all, id] -> id end)
+
+      assert ids == ["0", "1", "2"]
+    end
+
+    test "batch set-tier sub-request updates the blob record" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "tier-blob", "data")
+
+      boundary = "batch_w7_2"
+
+      body =
+        batch_part(boundary, "0", "PUT /acc1/cont1/tier-blob?comp=tier HTTP/1.1\r\nx-ms-access-tier: Cool\r\n\r\n") <>
+          "--" <> boundary <> "--\r\n"
+
+      conn = batch_post("/acc1/cont1?comp=batch", body, boundary)
+
+      assert conn.status == 202
+      assert conn.resp_body =~ "HTTP/1.1 200"
+
+      assert {:ok, blob} = BlobStorage.get_blob("acc1", "cont1", "tier-blob")
+      assert blob["access_tier"] == "Cool"
+    end
+
+    test "batch bounded at 256 sub-requests — 257 -> 400 SubRequestCountExceedsLimit" do
+      container()
+
+      boundary = "batch_w7_3"
+
+      parts =
+        for i <- 1..257 do
+          batch_part(boundary, Integer.to_string(i - 1), "DELETE /acc1/cont1/ghost#{i} HTTP/1.1\r\n\r\n")
+        end
+
+      body = Enum.join(parts) <> "--" <> boundary <> "--\r\n"
+
+      conn = batch_post("/acc1/cont1?comp=batch", body, boundary)
+
+      assert conn.status == 400
+      assert conn.resp_body =~ "SubRequestCountExceedsLimit"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # W-7 (v26.10.15) GAP-AUD1-03: SAS query-token verification on the blob
+  # guard — SAS-only URI (no x-ms-version) admitted when the HMAC over the
+  # canonicalized resource verifies; signed permissions enforced; fail-closed
+  # on bad signature with the KD-15 challenge class.
+  # ---------------------------------------------------------------------------
+  describe "W-7 SAS token verification (GAP-AUD1-03)" do
+    setup do
+      Application.put_env(:smalt, :blob_account_key, "w7-sas-test-account-key")
+      on_exit(fn -> Application.delete_env(:smalt, :blob_account_key) end)
+      :ok
+    end
+
+    defp sas_expiry do
+      DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_iso8601()
+    end
+
+    defp sas_sig(sp, blob, expiry, key \\ "w7-sas-test-account-key") do
+      Sas.mint(
+        %{"account" => "acc1", "container" => "cont1", "blob" => blob, "sp" => sp, "se" => expiry},
+        key
+      )
+    end
+
+    test "SAS-signed GET admitted without x-ms-version, blob content served" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "sas-blob", "sas-secret-body")
+
+      expiry = sas_expiry()
+      sig = sas_sig("r", "sas-blob", expiry)
+
+      qs =
+        URI.encode_query(%{
+          "se" => expiry,
+          "sp" => "r",
+          "sv" => "2021-12-02",
+          "spr" => "https",
+          "sr" => "c",
+          "sig" => sig
+        })
+
+      conn =
+        :get
+        |> conn("/acc1/cont1/sas-blob?" <> qs)
+        |> router_call()
+
+      assert conn.status == 200
+      assert conn.resp_body == "sas-secret-body"
+    end
+
+    test "SAS-signed PUT with read-only sp refused 403 AuthorizationPermissionMismatch" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "ro-blob", "v1")
+
+      expiry = sas_expiry()
+      sig = sas_sig("r", "ro-blob", expiry)
+
+      qs =
+        URI.encode_query(%{
+          "se" => expiry,
+          "sp" => "r",
+          "sv" => "2021-12-02",
+          "spr" => "https",
+          "sr" => "c",
+          "sig" => sig
+        })
+
+      conn =
+        :put
+        |> conn("/acc1/cont1/ro-blob?" <> qs, "evil-overwrite")
+        |> router_call()
+
+      assert conn.status == 403
+      assert conn.resp_body =~ "AuthorizationPermissionMismatch"
+
+      # real state: blob untouched
+      assert {:ok, blob} = BlobStorage.get_blob("acc1", "cont1", "ro-blob")
+      assert blob["content"] == "v1"
+    end
+
+    test "bad signature -> 401 with KD-15 enriched challenge" do
+      container()
+      BlobStorage.put_blob("acc1", "cont1", "bad-sig-blob", "v1")
+
+      qs =
+        URI.encode_query(%{
+          "se" => sas_expiry(),
+          "sp" => "r",
+          "sv" => "2021-12-02",
+          "spr" => "https",
+          "sig" => Base.encode64("forged-signature-bytes")
+        })
+
+      conn =
+        :get
+        |> conn("/acc1/cont1/bad-sig-blob?" <> qs)
+        |> router_call()
+
+      assert conn.status == 401
+
+      challenge = get_resp_header(conn, "www-authenticate") |> hd()
+      assert challenge =~ "invalid_token"
+      assert challenge =~ "authorization="
+      assert challenge =~ "resource="
+    end
+
+    test "expired token -> 403 AuthorizationFailure" do
+      container()
+
+      expiry = "2020-01-01T00:00:00Z"
+      sig = sas_sig("r", "exp-blob", expiry)
+
+      qs =
+        URI.encode_query(%{
+          "se" => expiry,
+          "sp" => "r",
+          "sv" => "2021-12-02",
+          "spr" => "https",
+          "sr" => "c",
+          "sig" => sig
+        })
+
+      conn =
+        :get
+        |> conn("/acc1/cont1/exp-blob?" <> qs)
+        |> router_call()
+
+      assert conn.status == 403
+      assert conn.resp_body =~ "AuthorizationFailure"
+    end
+  end
+
+  describe "blob snapshots" do
+    test "snapshot_blob freezes content and metadata; later base mutations are invisible" do
+      container()
+      {:ok, _} =
+        BlobStorage.put_blob("acc1", "cont1", "snap1", "v1", %{"x-ms-meta-owner" => "team-a"})
+
+      assert {:ok, 201, resp_headers, nil} = BlobStorage.snapshot_blob("acc1", "cont1", "snap1")
+      assert is_binary(resp_headers["x-ms-snapshot"]) and resp_headers["x-ms-snapshot"] != ""
+
+      # Mutate base content AND metadata after the snapshot.
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "snap1", "v2")
+      {:ok, _, _} = BlobStorage.set_blob_metadata("acc1", "cont1", "snap1", %{"owner" => "team-b"})
+
+      {:ok, frozen} = BlobStorage.get_blob_snapshot("acc1", "cont1", "snap1", resp_headers["x-ms-snapshot"])
+      assert frozen["content"] == "v1"
+      assert frozen["etag"] == "\"#{:crypto.hash(:md5, "v1") |> Base.encode16(case: :lower)}\""
+      assert {"x-ms-meta-owner", "team-a"} in Enum.to_list(frozen["headers"] || %{})
+
+      # Base blob reflects the mutations.
+      {:ok, base} = BlobStorage.get_blob("acc1", "cont1", "snap1")
+      assert base["content"] == "v2"
+    end
+
+    test "list_snapshots returns all snapshots newest first; empty for un-snapshotted blob" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "s2", "v1")
+
+      assert {:ok, []} = BlobStorage.list_snapshots("acc1", "cont1", "s2")
+
+      {:ok, _, h1, _} = BlobStorage.snapshot_blob("acc1", "cont1", "s2")
+      {:ok, _, h2, _} = BlobStorage.snapshot_blob("acc1", "cont1", "s2")
+
+      assert {:ok, snaps} = BlobStorage.list_snapshots("acc1", "cont1", "s2")
+      assert length(snaps) == 2
+      assert Enum.map(snaps, & &1["snapshot"]) ==
+               Enum.sort([h1["x-ms-snapshot"], h2["x-ms-snapshot"]], :desc)
+      assert Enum.all?(snaps, &(&1["content"] == "v1"))
+    end
+
+    test "snapshot of missing blob -> 404 BlobNotFound; missing container -> ContainerNotFound" do
+      container()
+      assert {:error, 404, "BlobNotFound", _} = BlobStorage.snapshot_blob("acc1", "cont1", "ghost")
+
+      assert {:error, 404, "ContainerNotFound", _} =
+               BlobStorage.snapshot_blob("acc1", "nocontainer", "b")
+    end
+
+    test "get_blob_snapshot of unknown timestamp -> 404 BlobNotFound" do
+      container()
+      {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "s3", "v1")
+
+      assert {:error, 404, "BlobNotFound", _} =
+               BlobStorage.get_blob_snapshot("acc1", "cont1", "s3", "1999-01-01T00:00:00Z")
     end
   end
 end

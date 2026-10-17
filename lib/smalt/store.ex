@@ -17,17 +17,29 @@ defmodule Smalt.Store do
     :smalt_cosmos_lsn,
     :smalt_cosmos_pk_meta,
     :smalt_vault_keys,
+    :smalt_vault_secrets,
+    :smalt_appconfig,
     :smalt_blobs,
     :smalt_blob_containers,
+    # Blob snapshots (KD-60 wire lane 524): Store-owned so the table survives
+    # the creating request process — BlobStorage.ensure_snapshot_table's lazy
+    # :ets.new made the table die with the first Bandit request process, so a
+    # snapshot stored over the wire was unreadable by the next request
+    # (witnessed: PUT comp=snapshot 201 then GET sharesnapshot 404).
+    :smalt_blob_snapshots,
     :smalt_blob_policy,
     :smalt_ledger_transactions,
     :smalt_ledger_meta,
     :smalt_event_messages,
+    :smalt_eg_topics,
     :smalt_sb_queues,
     :smalt_sb_messages,
     :smalt_sb_locks,
     :smalt_sb_sessions,
     :smalt_sb_tokens,
+    # Service Bus subscription rules (SHIM-COURT sb-rules lane): one row per
+    # rule, keyed by lowercased full ARM id under the owning subscription.
+    :smalt_sb_rules,
     :smalt_eh_partitions,
     :smalt_eh_checkpoints,
     :smalt_sentinel_streams,
@@ -35,7 +47,10 @@ defmodule Smalt.Store do
     :smalt_purview_entities,
     :smalt_purview_edges,
     :smalt_resource_graph_tokens,
-    :smalt_attestation_baseline
+    :smalt_attestation_baseline,
+    # Azure Monitor metric points (microsoft.insights/metrics) — append-only
+    # point rows keyed "<res id>|<metric>|<ts_ms>|<seq>" (Smalt.Metrics).
+    :smalt_metrics
   ]
 
   def start_link(opts \\ []) do
@@ -62,20 +77,7 @@ defmodule Smalt.Store do
       end
     end)
 
-    # Seed default subscription
-    default_sub = "00000000-0000-0000-0000-000000000000"
-
-    :ets.insert(
-      :smalt_subscriptions,
-      {default_sub,
-       %{
-         "id" => "/subscriptions/#{default_sub}",
-         "subscriptionId" => default_sub,
-         "displayName" => "Sovereign Smalt Subscription",
-         "state" => "Enabled"
-       }}
-    )
-
+    seed_default_subscription()
     {:ok, %{}}
   end
 
@@ -127,6 +129,24 @@ defmodule Smalt.Store do
   end
 
   @doc """
+  Churn-safe full-table scan that does NOT restrict to binary keys (`list/1`
+  filters to the binary-key prefix contract and silently drops tuple-keyed
+  rows, e.g. the App Config `{key, label}` rows). Returns all values in term
+  key order; entries deleted mid-walk are skipped.
+  """
+  def list_all(table) do
+    table
+    |> :ets.tab2list()
+    |> Enum.sort_by(fn {k, _v} -> k end)
+    |> Enum.flat_map(fn {k, v} ->
+      case :ets.lookup(table, k) do
+        [{^k, ^v}] -> [v]
+        _ -> []
+      end
+    end)
+  end
+
+  @doc """
   Bounded `:ordered_set` scan: returns all values whose keys sort between
   `prefix` (inclusive) and `prefix <> <<0xFF>>` (exclusive of the bound itself).
   Entries deleted mid-walk are skipped (churn-safe).
@@ -143,7 +163,13 @@ defmodule Smalt.Store do
   end
 
   @doc """
-  Returns the sorted keys of `table` (full walk for keys/1, bounded for prefix_keys/2).
+  Returns the binary keys of `table` matching the binary-key prefix contract:
+  `keys/1` returns all binary-keyed rows sorted, `prefix_keys/2` bounds the walk
+  to keys in `[prefix, prefix <> <<0xFF>>)`. Tuple keys (`{name, version}` vault
+  rows, `{:latest, _}`, `{queue, sid}`, `{db, coll}`) and non-binary keys are
+  OUT OF SCOPE: `prefix_keys/2` raises ArgumentError on a non-binary PREFIX
+  argument (SHIM-COURT contract); non-binary KEYS in the table are silently
+  skipped (they cannot match a binary range in term order).
   """
   @spec keys(atom) :: [term]
   def keys(table) do
@@ -151,6 +177,13 @@ defmodule Smalt.Store do
   end
 
   @doc false
+  # SHIM-COURT: fail-loud guard — mixed-type `key >= prefix` comparisons do not
+  # raise, they silently drop (tuples sort below binaries in term order). Every
+  # caller of prefix_keys/2 is on the binary-key contract; make violations typed.
+  def prefix_keys(_table, prefix) when not is_binary(prefix) do
+    raise(ArgumentError, "prefix scan requires binary keys, got: #{inspect(prefix)}")
+  end
+
   def prefix_keys(table, prefix) when is_binary(prefix) do
     # Walk from the table start and filter. Erlang term order puts ALL tuples
     # below every binary, so a prev(prefix) seek skips tuple-keyed rows;
@@ -160,7 +193,13 @@ defmodule Smalt.Store do
     table
     |> ordered_walk(:ets.first(table), [])
     |> Enum.reverse()
-    |> Enum.filter(fn key -> key >= prefix and key < upper end)
+    |> Enum.filter(fn key ->
+      # Non-binary KEYS (atom/tuple rows legitimately stored by internal writers,
+      # e.g. {:seq_counter}, {"r14-dup", "v1"}) cannot match a binary range in
+      # term order — restore the original silent-skip. The raise above stays
+      # only for a non-binary PREFIX argument (the caller-side contract).
+      is_binary(key) and key >= prefix and key < upper
+    end)
   end
 
   defp ordered_walk(_table, :"$end_of_table", acc), do: acc
@@ -175,6 +214,31 @@ defmodule Smalt.Store do
         :ets.delete_all_objects(table)
       end
     end)
+
+    # SHIM-COURT-eligible invariant: boot state always carries the default
+    # subscription (no KD row — internal consistency, not a divergence;
+    # lane R123 note).
+    seed_default_subscription()
+
+    :ok
+  end
+
+  # Idempotent reseed of the init/1 default subscription. Same :ets.insert
+  # (overwrite-of-that-key-only) semantics as the original boot seeding, so
+  # clear/0 restores boot state without touching test-seeded subscriptions.
+  defp seed_default_subscription do
+    default_sub = "00000000-0000-0000-0000-000000000000"
+
+    :ets.insert(
+      :smalt_subscriptions,
+      {default_sub,
+       %{
+         "id" => "/subscriptions/#{default_sub}",
+         "subscriptionId" => default_sub,
+         "displayName" => "Sovereign Smalt Subscription",
+         "state" => "Enabled"
+       }}
+    )
 
     :ok
   end

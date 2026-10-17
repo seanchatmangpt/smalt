@@ -177,6 +177,14 @@ defmodule Smalt.Auth.Bearer do
   # Exact-match list: "/metadata/endpoints" matches ONLY the endpoint
   # itself; a longer path is NOT the endpoint (no prefix relaxation).
   defp exempt?(path) do
+    # KD-COVERS: KD-82 (canonical row in docs/jira/v26.10.14/KNOWN_DIVERGENCES.md)
+    # KD-82: leading "//{tid}/..." tolerated — azurerm joins the metadata
+    # loginEndpoint (trailing slash) with the tenant (leading slash); real
+    # Azure tolerates the double slash. Leading empty segment ONLY (one
+    # normalization pass); interior double slashes still fail the [^/]+
+    # segment guard, and any suffix fails the `$` anchor.
+    path = String.replace_leading(path, "//", "/")
+
     path in @exempt_exact or
       Enum.any?(@exempt_prefixes, fn prefix -> String.starts_with?(path, prefix) end) or
       # Tenant-scoped STS mint endpoint (C6 row 5: /{tid}/oauth2/v2.0/token).
@@ -396,7 +404,7 @@ defmodule Smalt.Auth.Bearer do
   # -- request-authority derivation (single source: plug + ARM gateway) ---------
 
   defp direct_authority(conn) do
-    "#{conn.scheme}://#{conn.host}#{port_part(conn.port)}"
+    "#{conn.scheme}://#{conn.host}#{port_part(conn.scheme, conn.port)}"
   end
 
   defp forwarded_authority(conn) do
@@ -430,8 +438,15 @@ defmodule Smalt.Auth.Bearer do
     "#{scheme}://#{host}#{port_part}"
   end
 
-  defp port_part(port) when port in [80, 443], do: ""
-  defp port_part(port), do: ":#{port}"
+  # Scheme-aware: strip only the scheme's default port (parity with
+  # forwarded_authority). Blind [80, 443] stripping collided http:443 /
+  # https:80 onto the default authority (iss-leg collision across seats).
+  # SHIM-COURT (lane R32 minimal unblock, compile-freeze SLA): a function
+  # call is not legal in a defp guard — moved the default-port comparison to
+  # the body. Semantics unchanged from the authoring lane's intent.
+  defp port_part(scheme, port) do
+    if port == default_port(scheme), do: "", else: ":#{port}"
+  end
 
   defp default_port(:http), do: 80
   defp default_port(:https), do: 443

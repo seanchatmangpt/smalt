@@ -454,7 +454,10 @@ defmodule Smalt.GraphLaw.Validator do
     Enum.flat_map(shape.required, fn prop ->
       present? = Enum.any?(payload_paths(prop.path), &present?(payload, &1))
 
-      if present? do
+      # sh:minCount 0 declares an OPTIONAL property: it contributes to the
+      # shape's admitted vocabulary (the defaults bijection gate) but never
+      # forces presence. Declared paths with min_count >= 1 remain required.
+      if prop.min_count == 0 or present? do
         []
       else
         [
@@ -577,6 +580,13 @@ defmodule Smalt.GraphLaw.Validator do
   end
 
   defp payload_paths("location"), do: ["location"]
+
+  # azurerm-wire alias: real ARM PUT bodies carry sku as an object
+  # ({"sku": {"name": "Standard_LRS", "tier": "Standard"}}), so sku.name
+  # satisfies skuName. No skuTier property exists in the shape vocabulary,
+  # so sku.tier needs no alias. Order: canonical paths first.
+  defp payload_paths("skuName"),
+    do: ["properties.skuName", "skuName", "properties.sku.name", "sku.name"]
 
   defp payload_paths(path) do
     local = last_segment(path)

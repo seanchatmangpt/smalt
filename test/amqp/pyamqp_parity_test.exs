@@ -3,7 +3,10 @@ defmodule Smalt.Amqp.PyamqpParityTest do
   pyamqp wire-parity court (py-court lane 91).
 
   Replicates, byte for byte, the opening sequence azure-servicebus
-  (pyamqp 2.0.0a1, vendored under test/py-court/.venv) puts on the wire for
+  (pyamqp 2.0.0a1 — the `azure.servicebus._pyamqp` module inside
+  azure-servicebus 7.15.0 installed in test/sdk-python/.venv-sb; captured
+  golden bytes. test/py-court/.venv is PyPI-installed, not vendored) puts on
+  the wire for
   an emulator-style connection (`UseDevelopmentEmulator=true`, plain
   non-TLS AMQP): protocol header `AMQP\\x00\\x01\\x00\\00` followed by a
   PIPELINED open + begin + two `$cbs` attaches on channel 1
@@ -19,7 +22,7 @@ defmodule Smalt.Amqp.PyamqpParityTest do
       mid-handshake and the attach hung/failed.
 
   Asserts the broker proceeds through the open-performative exchange and
-  that its attach replies carry a wire list arity <= 14, read directly from
+  that its attach replies carry a wire list arity == 14, read directly from
   the raw reply bytes (not the decoded map).
   """
 
@@ -30,7 +33,9 @@ defmodule Smalt.Amqp.PyamqpParityTest do
 
   # ---------------------------------------------------------------------------
   # Golden bytes: captured by encoding pyamqp's own performatives
-  # (azure-servicebus 7.15.0 / pyamqp 2.0.0a1 from test/py-court/.venv) with
+  # (azure-servicebus 7.15.0 / its bundled pyamqp 2.0.0a1
+  # `azure.servicebus._pyamqp`, installed in test/sdk-python/.venv-sb;
+  # py-court's venv is PyPI-installed, not vendored) with
   # its `_encode.encode_frame` and concatenating:
   #   header + open(ch0) + begin(ch1) + attach(cbs receiver, h2, ch1)
   #          + attach(cbs sender, h1, ch1)
@@ -65,6 +70,7 @@ defmodule Smalt.Amqp.PyamqpParityTest do
   # ---------------------------------------------------------------------------
   setup do
     Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
 
     SmaltTest.Lifecycle.ensure_store_up()
 
@@ -107,12 +113,45 @@ defmodule Smalt.Amqp.PyamqpParityTest do
              &(&1.type == :amqp and &1.performative.performative == :begin and &1.channel == 1)
            )
 
-    # 4. attach replies for both $cbs handles; wire list arity must be <= 14
+    # 4. attach replies for both $cbs handles. Spec-derivation of the reply
+    # arity sequence (AMQP 1.0 §2.7 performatives; list counts read straight
+    # from the raw list8 count byte, wire-order-aligned to `frames`):
+    #   - open  (§2.7.1, 10 fields): broker reply count 5 — container-id,
+    #     max-frame-size, channel-max, idle-time-out, properties; the
+    #     remaining 5 trailing nulls omitted (legal, §1.4.3 list rule).
+    #   - begin (§2.7.2,  8 fields): broker reply count 5 — remote-channel,
+    #     next-outgoing-id, incoming-window, outgoing-window, handle-max.
+    #   - attach(§2.7.3, 14 fields) x2: broker reply count 10 — name,
+    #     handle, role, snd-settle-mode, rcv-settle-mode, source, target,
+    #     unsettled, incomplete-unsettled, initial-delivery-count; the 4
+    #     trailing nulls (max-message-size, offered-/desired-capabilities,
+    #     properties) omitted (§1.4.3). 10 <= 14 is spec-legal AND matches
+    #     the HEAD-pinned py-court bytes; only > 14 (pyamqp's AttachFrame
+    #     positional constructor, 15 args with self) is the TypeError
+    #     divergence. Lane R57 correction note: a `== 14` tightening failed
+    #     on HEAD-identical wire bytes — [7,10,10,5,5] there is the
+    #     wire-MIRRORED reading of [5,5,10,10,7] (open/begin/attach/attach/
+    #     flow), an arities-not-reversed harness artifact, not new counts.
     attach_frames = Enum.filter(frames, &(&1.type == :amqp and &1.performative.performative == :attach))
     assert length(attach_frames) == 2
-    assert arities != []
-    assert Enum.all?(arities, fn n -> n <= 14 end), "attach wire arity exceeded 14: #{inspect(arities)}"
 
+    attach_arities =
+      frames
+      |> Enum.zip(arities)
+      |> Enum.filter(fn {f, _n} -> f.type == :amqp and f.performative.performative == :attach end)
+      |> Enum.map(fn {_f, n} -> n end)
+
+    assert attach_arities == [10, 10],
+           "attach wire arity not the HEAD-pinned trailing-trimmed 10: #{inspect(attach_arities)}"
+
+    # open(5) <= 10 fields and begin(5) <= 8 fields; nothing on the reply
+    # stream may exceed its performative's field count (§2.7 field tables).
+    assert Enum.all?(frames |> Enum.zip(arities), fn {f, n} ->
+             n <= performative_field_count(f.performative.performative)
+           end),
+           "a reply frame exceeds its performative's §2.7 field count"
+
+    assert arities != []
     # roles: client handle 2 is a receiver attach -> broker replies role=false (we are sender)
     by_handle = Map.new(attach_frames, fn f -> {f.performative.handle, f.performative.role} end)
     assert by_handle[2] == false
@@ -141,9 +180,55 @@ defmodule Smalt.Amqp.PyamqpParityTest do
            )
   end
 
+  test "no skip-acceptance branches in the wire tier (pyamqp TypeError fence)" do
+    # Anti-vacuity fence (lane M6): the smalt-cli tests carry a copy-pasted
+    # skip-acceptance pattern (`Target.__new__` TypeError / `Invalid link`
+    # signatures matched in accept-position). That pattern must never creep
+    # into the wire tier — a test that SKIPS on the failure signature fakes a
+    # pass exactly where this court pins real bytes. Fail closed: read this
+    # file and connection_test.exs at runtime, strip comment lines, and
+    # assert the signature strings appear nowhere outside comments.
+    fence_dir = __DIR__
+
+    sources =
+      for fname <- ["pyamqp_parity_test.exs", "connection_test.exs"] do
+        path = Path.join(fence_dir, fname)
+        assert File.exists?(path), "fence source missing: #{path}"
+
+        path
+        |> File.read!()
+        |> String.split("\n")
+        |> Enum.reject(&(String.trim_leading(&1) |> String.starts_with?("## no-skip-fence")))
+        |> Enum.reject(&(String.trim_leading(&1) |> String.starts_with?("#")))
+        |> Enum.join("\n")
+      end
+
+    for source <- sources,
+        # assembled via concatenation so this fence's own signature list is
+        # not itself an occurrence in code position (self-trip guard)
+        sig <- ["Target" <> ".__new__", "Invalid" <> " link"] do
+      refute source =~ sig,
+             "skip-acceptance signature #{inspect(sig)} found in wire-tier test " <>
+               "source outside comments — the smalt-cli skip pattern has crept in"
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
+
+  # AMQP 1.0 §2.7 performative field counts (the list-count ceiling; fewer
+  # elements is legal trailing-null omission per §1.4.3).
+  defp performative_field_count(:open), do: 10
+  defp performative_field_count(:begin), do: 8
+  defp performative_field_count(:attach), do: 14
+  defp performative_field_count(:flow), do: 10
+  defp performative_field_count(:transfer), do: 10
+  defp performative_field_count(:disposition), do: 6
+  defp performative_field_count(:detach), do: 3
+  defp performative_field_count(:end), do: 1
+  defp performative_field_count(:close), do: 1
+  defp performative_field_count(_), do: 255
 
   defp recv_all(sock, timeout) do
     case :gen_tcp.recv(sock, 0, timeout) do
@@ -176,7 +261,11 @@ defmodule Smalt.Amqp.PyamqpParityTest do
   defp decode_stream(@header <> rest, acc, arities), do: decode_stream(rest, acc, arities)
   defp decode_stream(@sasl_header <> rest, acc, arities), do: decode_stream(rest, acc, arities)
 
-  defp decode_stream(<<>>, acc, arities), do: {Enum.reverse(acc), arities}
+  # Both accumulators are built head-first, so BOTH must be reversed on
+  # return — reversing only `frames` left `arities` wire-mirrored relative
+  # to the frame list (the [7,10,10,5,5] vs open/begin/attach/attach/flow
+  # misalignment R58 was dispatched on).
+  defp decode_stream(<<>>, acc, arities), do: {Enum.reverse(acc), Enum.reverse(arities)}
 
   defp decode_stream(stream, acc, arities) do
     <<size::unsigned-integer-size(32), doff::8, type_code::8, channel::16, rest::binary>> = stream
@@ -186,18 +275,23 @@ defmodule Smalt.Amqp.PyamqpParityTest do
     arity =
       case body do
         # described(ulong descriptor, list8/list32). list8 = ctor,size,count;
-        # list32 = ctor,size:32,count. The COUNT is what pyamqp reconstructs
+        # list32 = ctor,size:32,count:32. The COUNT is what pyamqp reconstructs
         # AttachFrame(*frame) from, so that is the parity-critical number.
         <<0x00, _desc_ctor, _desc, 0xC0, _size::8, count::8, _::binary>> -> count
-        <<0x00, _desc_ctor, _desc, 0xD0, _size::32, count::8, _::binary>> -> count
+
+        <<0x00, _desc_ctor, _desc, 0xD0, _size::32, count::32, _::binary>> -> count
+
         _ -> nil
       end
 
     frame_bin = <<size::32, doff::8, type_code::8, channel::16, body::binary>>
 
     case FrameCodec.decode_frame(frame_bin) do
-      {:ok, frame} -> decode_stream(tail, [frame | acc], if(arity, do: [arity | arities], else: arities))
-      {:error, reason} -> flunk("undecodable frame in reply stream: #{inspect(reason)}")
+      {:ok, frame} ->
+        decode_stream(tail, [frame | acc], if(arity, do: [arity | arities], else: arities))
+
+      {:error, reason} ->
+        flunk("undecodable frame in reply stream: #{inspect(reason)}")
     end
   end
 end

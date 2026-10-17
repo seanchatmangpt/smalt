@@ -27,6 +27,7 @@ defmodule Smalt.Amqp.ConnectionTest do
 
   setup do
     Application.put_env(:smalt, :sb_shared_key, @test_key)
+    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
 
     SmaltTest.Lifecycle.ensure_store_up()
 
@@ -205,9 +206,10 @@ defmodule Smalt.Amqp.ConnectionTest do
     assert tr.performative.performative == :transfer
     assert tr.performative.handle == 1
     assert is_integer(tr.performative.delivery_id)
-    # raw 16-byte uuid lock token (rhea uuid_to_string on the client side)
+    # KD-77 vbin delivery-tag encoding: raw 16-byte lock token (0xA0 vbin,
+    # not AMQP uuid 0x98 wrapper — pyamqp "object of type 'UUID' has no len()")
     tag = tr.performative.delivery_tag
-    assert {:uuid, <<_::128>>} = tag
+    assert is_binary(tag) and byte_size(tag) == 16, tag
     assert tr.performative.settled in [false, nil]
 
     delivery_id = tr.performative.delivery_id
@@ -220,6 +222,48 @@ defmodule Smalt.Amqp.ConnectionTest do
 
     Process.sleep(50)
     assert count_state(queue, :any) == 0
+  end
+
+  # R196: the disposition rides the delivery's lock token as a server-side
+  # compare-and-settle. A stale token (lock lost, message re-claimed by a new
+  # owner) must NOT settle — the message stays untouched under the new
+  # owner's token and the client gets a 410-class rejected disposition
+  # carrying com.microsoft:message-lock-lost instead of a lying accepted echo.
+  test "stale-token disposition is refused (message untouched, lock-lost rejected echo)", ctx do
+    client = ctx.client
+    queue = ctx.queue
+    :ok = handshake(client)
+
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}))
+    assert %{performative: %{performative: :attach}} = recv_frame(client)
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{link_credit: 1}}))
+
+    # seed the queue out-of-band so the message is available for the receiver
+    {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m1")
+    tr = recv_frame(client)
+    assert %{performative: %{performative: :transfer}} = tr
+    delivery_id = tr.performative.delivery_id
+
+    # simulate a new owner re-claim: overwrite the row's current token
+    [{_k, msg}] =
+      :smalt_sb_messages
+      |> :ets.match_object({{queue, :_}, :_})
+
+    assert msg.lock_token
+    Smalt.Store.put(:smalt_sb_messages, {queue, msg.seq}, %{msg | lock_token: "stale-new-owner-token"})
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:disposition, %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}})
+      )
+
+    assert %{performative: %{performative: :disposition, state: {:rejected, err}}} = recv_frame(client)
+    # decoded error is the raw AMQP error LIST [condition, description, info]
+    assert [{:symbol, "com.microsoft:message-lock-lost"}, _desc, _info] = err
+
+    # message untouched: still present, still under the NEW owner's token
+    assert {:ok, %{lock_token: "stale-new-owner-token"}} = Smalt.Store.get(:smalt_sb_messages, {queue, msg.seq})
   end
 
   # ===========================================================================
@@ -584,7 +628,9 @@ defmodule Smalt.Amqp.ConnectionTest do
     # advertised 16MB: with the clamp active the broker MUST split (more=true
     # on the first transfer, first frame <= cap); with the clamp mutated to
     # identity the single 1.5MB frame goes out unsplit and this fails.
-    :ok = Smalt.Amqp.QueueStore.enqueue(queue, :crypto.strong_rand_bytes(1_500_000))
+    # Contract pin: enqueue/2 returns {:ok, seq} on success (@max_body is
+    # 4MB, so 1.5MB enqueues cleanly); {:error, :too_large} only past cap.
+    assert {:ok, _seq} = Smalt.Amqp.QueueStore.enqueue(queue, :crypto.strong_rand_bytes(1_500_000))
 
     :ok =
       send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}}))
@@ -602,7 +648,7 @@ defmodule Smalt.Amqp.ConnectionTest do
 
     <<size::unsigned-integer-size(32), _doff, _type, _ch::16>> = hdr
     body = elem(recv_exact(client, size - 8), 1)
-    assert %{performative: %{performative: :transfer, more: true}} = FrameCodec.decode_frame(hdr <> body)
+    assert {:ok, %{performative: %{performative: :transfer, more: true}}} = FrameCodec.decode_frame(hdr <> body)
 
     # clamp bound: frame never exceeds our local decode cap even though the
     # peer advertised 16MB
@@ -616,6 +662,97 @@ defmodule Smalt.Amqp.ConnectionTest do
   defp recv_many(client, n, acc) do
     f = recv_frame(client)
     recv_many(client, n - 1, [f | acc])
+  end
+
+  # ===========================================================================
+  # Session end retires the session's outbound deliveries (R55)
+  # ===========================================================================
+
+  test "session :end retires outbound deliveries; stale delivery-id cannot settle the old message", ctx do
+    client = ctx.client
+    queue = ctx.queue
+    :ok = handshake(client)
+
+    # enqueue m1 via sender link on channel 0
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}))
+    assert %{performative: %{performative: :attach}} = recv_frame(client)
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 7, delivery_tag: <<1, 2, 3, 4>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m1"}]}})
+      )
+
+    assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client)
+
+    # receiver link on channel 0: server delivers m1 (locked) with server id d
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}))
+    recv_until(client, :attach)
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{link_credit: 10}}))
+
+    tr = recv_frame(client)
+    assert tr.performative.performative == :transfer
+    d = tr.performative.delivery_id
+    assert is_integer(d)
+
+    # end the session; the entry must be retired
+    :ok = send_bytes(client, enc_frame(:amqp, 0, {:end, %{}}))
+    assert %{performative: %{performative: :end}} = recv_until(client, :end)
+
+    # a stale disposition for the retired id must NOT settle m1 (the flip:
+    # pre-fix this completed m1 through the stale entry)
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 0, {:disposition, %{role: true, first: d, last: d, settled: true, state: :accepted}})
+      )
+
+    Process.sleep(50)
+    assert count_state(queue, :any) == 1
+    assert count_state(queue, :locked) == 1
+
+    # re-begin on channel 1: next_out restarts at 0, so the new delivery
+    # reuses delivery-id d; settling must hit ONLY the new entry (m2)
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 1, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+      )
+
+    recv_frame(client)
+
+    # enqueue m2 via sender on channel 1
+    :ok = send_bytes(client, enc_frame(:amqp, 1, {:attach, %{name: "s2", handle: 1, role: false, target: %{address: queue}}}))
+    recv_until(client, :attach)
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 1, {:transfer, %{handle: 1, delivery_id: 7, delivery_tag: <<2>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m2"}]}})
+      )
+
+    assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client)
+
+    # receiver on channel 1: m2 delivered with server id 0 (reuses d)
+    :ok = send_bytes(client, enc_frame(:amqp, 1, {:attach, %{name: "r2", handle: 0, role: true, source: %{address: queue}}}))
+    recv_until(client, :attach)
+    :ok = send_bytes(client, enc_frame(:amqp, 1, {:flow, %{handle: 0, link_credit: 10}}))
+
+    tr2 = recv_frame(client)
+    assert tr2.performative.performative == :transfer
+    assert tr2.performative.delivery_id == d
+    assert tr2.channel == 1
+
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(:amqp, 1, {:disposition, %{role: true, first: d, last: d, settled: true, state: :accepted}})
+      )
+
+    Process.sleep(50)
+    # m2 settled; m1 untouched (still locked)
+    assert count_state(queue, :any) == 1
+    assert count_state(queue, :locked) == 1
   end
 
   defp enc_frame(layer, channel, performative), do: FrameCodec.encode_frame(layer, channel, performative)

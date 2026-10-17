@@ -66,19 +66,198 @@ defmodule Smalt.Messaging.EventHubs do
 
   @doc """
   Append an event to `partition` with a freshly assigned monotonic sequence.
-  Returns `{:ok, seq, event_map}` where `event_map` carries `"seq"`, `"body"` and any
-  `"properties"`. Receiver links replay these in sequence order.
+  Returns `{:ok, seq, event_map}` where `event_map` carries `"seq"`, `"body"`, any
+  `"properties"`, plus the GAP-A2-04 delivery metadata: `"offset"` (string),
+  `"enqueued"` (storage write time, epoch ms) and `"partition_key"` (when the
+  sender set one). Receiver links replay these in sequence order.
   """
   @spec send_event(String.t(), term(), keyword()) :: {:ok, pos_integer(), map()}
   def send_event(partition, body, opts \\ []) when is_binary(partition) do
     ensure_tables()
 
     props = Keyword.get(opts, :properties, %{})
+    pk = Keyword.get(opts, :partition_key)
+    enqueued_ms = Keyword.get(opts, :enqueued_ms) || now_ms()
 
-    seq = EHServer.transaction({:send_event, partition, body, props})
+    case batch_inner_messages(body) do
+      [_ | _] = inners ->
+        # KD-COVERS: KD-53 — split at ingest. A producer `createBatch` envelope
+        # is ONE transfer whose body carries N concatenated encoded inner
+        # messages; storing the envelope whole and unwrapping at delivery
+        # surfaced only the first inner body, silently dropping events 2..N.
+        # Each inner message is stored as its own event (own monotonic seq), so
+        # the receiver link drains N deliveries with the inner payloads.
+        events =
+          Enum.map(inners, fn inner ->
+            seq = EHServer.transaction({:send_event, partition, inner, props, pk, enqueued_ms})
 
-    {:ok, seq, %{"seq" => seq, "body" => body, "properties" => props, "enqueued" => now_ms()}}
+            %{
+              "seq" => seq,
+              "body" => inner,
+              "properties" => props,
+              "enqueued" => enqueued_ms,
+              "offset" => Integer.to_string(seq),
+              "partition_key" => pk
+            }
+          end)
+
+        {:ok, hd(events)["seq"], hd(events)}
+
+      _ ->
+        seq = EHServer.transaction({:send_event, partition, body, props, pk, enqueued_ms})
+
+        {:ok, seq,
+         %{
+           "seq" => seq,
+           "body" => body,
+           "properties" => props,
+           "enqueued" => enqueued_ms,
+           "offset" => Integer.to_string(seq),
+           "partition_key" => pk
+         }}
+    end
   end
+
+  # KD-53: detect a batch envelope — a binary payload whose decoded message
+  # body is itself a stream of >=2 concatenated encoded inner messages. The
+  # concatenated inner stream decodes as a flat section list; inner messages
+  # are re-grouped at each body section (every AMQP message has exactly one
+  # body section) and re-encoded. Returns nil for any non-batch payload
+  # (ordinary messages and single-event batches stay exactly one event).
+  defp batch_inner_messages(payload) when is_binary(payload) do
+    with {:ok, sections} when is_list(sections) <- Smalt.Amqp.FrameCodec.decode_message(payload),
+         data_sections when data_sections != [] and is_list(data_sections) <-
+           sections
+           |> Enum.filter(fn
+             {:body_data, b} when is_binary(b) -> true
+             _ -> false
+           end)
+           |> Enum.map(fn {:body_data, b} -> b end),
+         # SHIM-COURT / audit-A22-F1: a single legal AMQP message may carry
+         # multiple data sections (AMQP §3.2.5). Split into events ONLY when
+         # EVERY outer data section decodes as a complete AMQP message (the
+         # KD-53 createBatch shape); if any section fails inner-message decode,
+         # the payload is NOT a batch — the whole outer message stays ONE event.
+         true <- Enum.all?(data_sections, &complete_inner_message?/1),
+         data when is_binary(data) and data != <<>> <- IO.iodata_to_binary(data_sections),
+         {:ok, inner_sections} when is_list(inner_sections) <-
+           Smalt.Amqp.FrameCodec.decode_message(data),
+         # SHIM-COURT / R141 (W5-10 exploit): a tail group with NO body section
+         # but REAL message sections (header/annotations/properties/app-props)
+         # is an inner message whose body section was cut at a section boundary
+         # (decoder stops cleanly per-section, complete_inner_message? is
+         # satisfied by the earlier complete inners). Falling through to the
+         # bodyless-tail drop loses the truncated inner's bytes with send_event
+         # returning ok — the F1/R74 fallback applies instead: the whole outer
+         # stays ONE event. A tail that never decodes into sections (undecodable
+         # junk bytes) is swallowed by decode_message and leaves NO tail group:
+         # the AUD6-R1 drop stands (junk dropped, no phantom event).
+         {:ok, groups} when length(groups) >= 2 <- group_inner_messages(inner_sections, [], []) do
+      Enum.map(groups, &IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_message(&1)))
+    else
+      _ -> nil
+    end
+  end
+
+  defp batch_inner_messages(_payload), do: nil
+
+  # A data section counts as a complete AMQP message only when it decodes to a
+  # non-empty section list carrying at least one body section. Raw (non-message)
+  # payloads decode to an empty list (FrameCodec swallows undecodable trailing
+  # bytes as {:ok, []}), so the non-empty + body-section requirement is what
+  # rejects them — this is the F1 discriminator.
+  defp complete_inner_message?(section_binary) do
+    case Smalt.Amqp.FrameCodec.decode_message(section_binary) do
+      {:ok, secs} when is_list(secs) and secs != [] -> Enum.any?(secs, &body_section?/1)
+      _ -> false
+    end
+  end
+
+  # Group the flat decoded inner stream into messages: every AMQP message has
+  # exactly one body section, so a group ends at (and includes) each body
+  # section.
+  #
+  # Returns {:ok, groups} when the stream ends cleanly at a body-section
+  # boundary, :incomplete when it ends mid-message. R141 discriminator:
+  #   - a NON-EMPTY trailing group with no body section but real message
+  #     sections (header/annotations/properties/app-props) is a truncated inner
+  #     (body cut at a section boundary) → :incomplete → the F1/R74 fallback
+  #     keeps the whole outer as ONE event, never a silent byte loss;
+  #   - undecodable junk bytes are swallowed by decode_message and leave NO
+  #     tail group — the AUD6-R1 drop stands (nothing phantom is flushed).
+  #   - a trailing footer belongs to the preceding (complete) message, so a
+  #     footer-only tail is not an incomplete inner.
+  #
+  # R166 (per-group multiplicity + batch-shape homogeneity; multiplicity
+  # REPLACED by duplicate-kind detection per R185e — see below): the R141 tail
+  # check alone leaves a truncated NON-tail inner (header-only, no body)
+  # absorbable into the NEXT group's sections — the absorbed pre-body sections
+  # ride along with the next inner's real ones, yielding composite phantom
+  # events or byte-cannibalized splits with send_event :ok. Two discriminators,
+  # one fallback:
+  #   1. Duplicate-kind (R185e, REPLACES R166's raw multiplicity): a legal
+  #      AMQP message carries at most ONE of each pre-body section kind
+  #      (header, delivery_annotations, message_annotations, properties,
+  #      application_properties) — real @azure/event-hubs inners legitimately
+  #      serialize [header, message_annotations, properties,
+  #      application_properties?, body_data] (3-4 pre-body sections), which
+  #      R166's COUNT-based check wrongly rejected (KD-53 silent-drop
+  #      resurrection, fixed here). A TRUNCATED inner merged into a group
+  #      manifests as a DUPLICATE kind (e.g. two :header sections) →
+  #      :incomplete. Catches merges where the next inner carries the same
+  #      section kind as the absorbed truncated one.
+  #   2. Homogeneity: a real producer createBatch serializes every inner with
+  #      the SAME section-kind shape, so any completed group whose section-kind
+  #      tuple differs from the FIRST completed group is a merged/cannibalized
+  #      group → :incomplete. Catches the residual body-only-neighbor merge
+  #      ([body][header-only][body] → [body][header body]) that multiplicity
+  #      cannot see ([header body] looks like a legal inner). Fail-closed: a
+  #      heterogeneous batch simply stays ONE event (no split, no data loss).
+  defp group_inner_messages([], [], groups), do: {:ok, Enum.reverse(groups)}
+
+  defp group_inner_messages([], [_ | _] = current, groups) do
+    if Enum.any?(current, &pre_body_section?/1),
+      do: :incomplete,
+      else: {:ok, Enum.reverse(groups)}
+  end
+
+  defp group_inner_messages([section | rest], current, groups) do
+    # SHIM-COURT / R185e (replaces R166): a pre-body section whose KIND is
+    # already present in the current bodyless group means a truncated inner
+    # merged into this group (a legal message never repeats a section kind).
+    if pre_body_section?(section) and
+         Enum.any?(current, fn {k, _} -> {k, nil} == put_elem(section, 1, nil) end),
+       do: :incomplete,
+       else: do_group_inner_messages(section, rest, current, groups)
+  end
+
+  defp do_group_inner_messages(section, rest, current, groups) do
+    current = [section | current]
+
+    if body_section?(section) do
+      group = Enum.reverse(current)
+
+      # SHIM-COURT / R166 homogeneity: every completed group must match the
+      # first completed group's section-kind shape.
+      if groups != [] and group_kind_shape(group) != group_kind_shape(hd(groups)),
+        do: :incomplete,
+        else: group_inner_messages(rest, [], [group | groups])
+    else
+      group_inner_messages(rest, current, groups)
+    end
+  end
+
+  defp group_kind_shape(group), do: Enum.map(group, fn {k, _} -> k end)
+
+  # Message sections that precede the body: seeing one in a bodyless tail means
+  # an inner message started but never reached its body section.
+  defp pre_body_section?({k, _}) when k in [:header, :delivery_annotations, :message_annotations, :properties, :application_properties],
+    do: true
+
+  defp pre_body_section?(_), do: false
+
+  defp body_section?({k, _}) when k in [:body_data, :body_sequence, :body_amqp_value], do: true
+  defp body_section?(_), do: false
 
   @doc """
   Events for `partition` with `seq > after_seq`, ascending by sequence, at most
@@ -95,14 +274,59 @@ defmodule Smalt.Messaging.EventHubs do
         |> Enum.filter(fn {seq, _} -> seq > after_seq end)
         |> Enum.sort_by(fn {seq, _} -> seq end)
         |> Enum.take(limit)
-        |> Enum.map(fn {seq, {body, props}} ->
-          %{"seq" => seq, "body" => body, "properties" => props}
+        |> Enum.map(fn {seq, {body, props, meta}} ->
+          %{
+            "seq" => seq,
+            "body" => body,
+            "properties" => props,
+            "offset" => event_offset(seq),
+            "enqueued" => meta_enqueued_ms(meta),
+            "partition_key" => meta_pk(meta)
+          }
         end)
 
       _ ->
         []
     end
   end
+
+  # GAP-A2-03: the partition's most-recently-enqueued event, as surfaced in
+  # EH delivery annotations (`last_enqueued_offset` / `last_enqueued_sequence_number`
+  # / `last_enqueued_time_utc`). Absent state reads `:none` — no row, or a row
+  # whose events list is empty (events are PREPENDED in `append_event/4`, so
+  # the head is the newest).
+  @doc """
+  The partition's most-recently-enqueued event: `%{"seq" => n, "offset" => "...",
+  "enqueued" => ms}` or `:none` when the partition has no events.
+  """
+  @spec last_enqueued(String.t()) :: %{String.t() => term()} | :none
+  def last_enqueued(partition) when is_binary(partition) do
+    ensure_tables()
+
+    case :ets.lookup(@partitions, partition) do
+      [{^partition, %{"events" => [{_seq, {_body, _props, meta}} | _]}}] ->
+        %{
+          "seq" => meta_seq(meta),
+          "offset" => meta_offset(meta),
+          "enqueued" => meta_enqueued_ms(meta)
+        }
+
+      _ ->
+        :none
+    end
+  end
+
+  # -- meta accessors (stored per-event meta map, GAP-A2-03/04) ----------------
+
+  defp event_offset(seq) when is_integer(seq), do: Integer.to_string(seq)
+
+  defp meta_seq(meta) when is_map(meta), do: Map.get(meta, "seq")
+
+  defp meta_offset(meta) when is_map(meta), do: Map.get(meta, "offset")
+
+  defp meta_enqueued_ms(meta) when is_map(meta), do: Map.get(meta, "enqueued_ms")
+
+  defp meta_pk(meta) when is_map(meta), do: Map.get(meta, "partition_key")
 
   # -- Checkpoint management ------------------------------------------------------
 
@@ -185,7 +409,9 @@ defmodule Smalt.Messaging.EventHubs do
        "group" => group,
        "partition" => partition,
        "seq" => partition_seq,
-       "offset" => partition_seq,
+       # audit-A22-F3: offsets are wire strings everywhere else in this module
+       # (send_event, the KD-53 split path) — reconcile must match.
+       "offset" => Integer.to_string(partition_seq),
        "checkpoint" => checkpoint
      }}
   end
@@ -319,9 +545,9 @@ defmodule Smalt.Messaging.EventHubs do
       {:reply, Smalt.Messaging.EventHubs.bump_sequence(partition), state}
     end
 
-    def handle_call({:send_event, partition, body, props}, _from, state) do
+    def handle_call({:send_event, partition, body, props, pk, enqueued_ms}, _from, state) do
       seq = Smalt.Messaging.EventHubs.bump_sequence(partition)
-      append_event(partition, seq, body, props)
+      append_event(partition, seq, body, props, pk, enqueued_ms)
       {:reply, seq, state}
     end
 
@@ -400,7 +626,19 @@ defmodule Smalt.Messaging.EventHubs do
       end
     end
 
-    defp append_event(partition, seq, body, props) do
+    # GAP-A2-03/04 per-event meta: offset (string, EH wire form), storage-write
+    # time (epoch ms) and the sender's partition key. Stored per event so the
+    # delivery path can stamp x-opt-offset / x-opt-enqueued-time /
+    # x-opt-partition-key and the delivery annotations can read the partition's
+    # last_enqueued_* truth from the head of the events list.
+    defp append_event(partition, seq, body, props, pk, enqueued_ms) do
+      meta = %{
+        "seq" => seq,
+        "offset" => Integer.to_string(seq),
+        "enqueued_ms" => enqueued_ms,
+        "partition_key" => pk
+      }
+
       row =
         case :ets.lookup(@partitions, partition) do
           [{^partition, row}] when is_map(row) -> row
@@ -408,7 +646,7 @@ defmodule Smalt.Messaging.EventHubs do
         end
 
       events = Map.get(row, "events", [])
-      row = row |> Map.put("events", [{seq, {body, props}} | events])
+      row = row |> Map.put("events", [{seq, {body, props, meta}} | events])
       :ets.insert(@partitions, {partition, row})
       :ok
     end

@@ -134,6 +134,7 @@ defmodule Smalt.Store.DetsMirror do
     {:reply, :ok, state}
   end
 
+  @impl true
   def handle_call(:restore, _from, state) do
     counts =
       Map.new(state.dets, fn {table, dets} ->
@@ -159,7 +160,24 @@ defmodule Smalt.Store.DetsMirror do
           Logger.warning("DetsMirror: ETS table #{inspect(table)} missing, skipping sync")
 
         _ ->
-          :dets.insert(dets_file, :ets.tab2list(table))
+          rows = :ets.tab2list(table)
+
+          # Bounded-growth fence (SHIM-COURT census: test/store_dets_growth_test.exs):
+          # the mirror is a PROJECTION of the live ETS table, not a historical
+          # union — keys deleted from ETS are deleted from the mirror on the
+          # next sync, so mirror size tracks live size and restore never
+          # resurrects deleted rows. A bare :dets.insert upsert-union leaked
+          # 100/200 stale rows in the census falsifier.
+          live_keys = MapSet.new(rows, fn {key, _val} -> key end)
+
+          stale =
+            dets_file
+            |> :dets.match_object(:_)
+            |> Enum.map(fn {key, _val} -> key end)
+            |> Enum.reject(&MapSet.member?(live_keys, &1))
+
+          Enum.each(stale, &:dets.delete(dets_file, &1))
+          :dets.insert(dets_file, rows)
           :dets.sync(dets_file)
       end
     end)

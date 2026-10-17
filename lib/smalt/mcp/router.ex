@@ -10,9 +10,13 @@ defmodule Smalt.Mcp.Router do
   READ-ONLY BY LAW: this surface exposes NO actuation tools. The substrate
   refuses unreceipted DO; any tool call for a non-registered (actuation or
   unknown) tool id is refused with a typed error, never dispatched. The
-  fail-closed gate is `Smalt.Mcp.Descriptor.requires_authority?/1`: any id
-  absent from the generated descriptor is treated as authority-requiring
-  and refused.
+  fail-closed gate is dispatch-local (SHIM-COURT: doc-truth fix per audit
+  A26 — the generated `Descriptor.requires_authority?/1` exists but is NOT
+  the dispatch gate): `dispatch_tool/2` refuses any unregistered id whose
+  name carries an actuation verb fragment (`@actuation_fragments`,
+  case-insensitive substring match) with `ACTUATION_REFUSED`, any other
+  unregistered id with `TOOL_NOT_FOUND`, and dispatches registered ids only
+  after `Smalt.Mcp.Descriptor.describe/1` confirms registration.
 
   Mount as a Plug (wire for the coordinator):
 
@@ -76,6 +80,11 @@ defmodule Smalt.Mcp.Router do
                           decrypt sign verify wrap unwrap actuate execute run
                           write commit)
 
+  # Test-seam accessor (SHIM-COURT): lets the wire-tier verb fence assert its
+  # verb list length against the real gate list, so adding a fragment in
+  # lib/ without updating the fence is caught. Read-only, no behavior.
+  def actuation_fragments, do: @actuation_fragments
+
   get "/" do
     conn
     |> put_resp_content_type("application/json")
@@ -86,6 +95,15 @@ defmodule Smalt.Mcp.Router do
     with {:ok, body, conn} <- read_body(conn),
          {:ok, req} <- decode_rpc(body) do
       case req do
+        # JSON-RPC 2.0: a request without an id (or with "id": null) is a
+        # notification — the server MUST NOT send a response. Suppress the
+        # envelope entirely: 204, empty body.
+        %{"method" => _, "id" => nil} ->
+          send_resp(conn, 204, "")
+
+        %{"method" => _} = req when not is_map_key(req, "id") ->
+          send_resp(conn, 204, "")
+
         %{"method" => "initialize"} = req ->
           respond(conn, req, %{
             "protocolVersion" => "2024-11-05",
@@ -277,7 +295,7 @@ defmodule Smalt.Mcp.Router do
     cond do
       actuation_attempt?(name) ->
         {:refusal, @actuation_refused_code,
-         "refused: #{name} is an actuation tool; the smalt substrate exposes read-only MCP tools only and refuses unreceipted DO by law"}
+         "refused: #{inspect(name)} is an actuation tool; the smalt substrate exposes read-only MCP tools only and refuses unreceipted DO by law"}
 
       match?({:ok, _}, Smalt.Mcp.Descriptor.describe(name)) ->
         invoke(name, args)
@@ -529,7 +547,7 @@ defmodule Smalt.Mcp.Router do
       "supervisor_children" => children,
       "store_alive" => Process.whereis(Smalt.Store) != nil,
       "cosmos_store_ready" => Smalt.DataPlane.Cosmos.store_ready?(),
-      "blob_policy_table_ready" => :ets.info(:smalt_blob_policies) != :undefined,
+      "blob_policy_table_ready" => :ets.info(:smalt_blob_policy) != :undefined,
       "vault_keys_table_ready" => :ets.info(:smalt_vault_keys) != :undefined,
       "sb_queues_table_ready" => :ets.info(:smalt_sb_queues) != :undefined,
       "node_uptime_seconds" => elem(:erlang.statistics(:wall_clock), 1) |> div(1000)

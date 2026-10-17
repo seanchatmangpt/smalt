@@ -378,11 +378,11 @@ defmodule Compliance.C2KeyvaultTest do
     assert s == 200
 
     {s, b} = https(ctx, "POST", "/keys/#{name}/sign", Jason.encode!(%{"alg" => "RS256", "value" => Base.encode64("x")}))
-    assert s == 400
+    assert s == 403
     assert json(b)["error"]["code"] == "OperationNotAllowed"
 
     {s, b} = https(ctx, "POST", "/keys/#{name}/decrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")}))
-    assert s == 400
+    assert s == 403
     assert json(b)["error"]["code"] == "OperationNotAllowed"
   end
 

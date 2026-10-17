@@ -7,7 +7,8 @@ defmodule Smalt.Application do
     children =
       [
         Smalt.Store,
-        {Bandit, plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port()},
+        {Bandit,
+         plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port(), ip: bind_ip()},
         # TLS twin of the ARM gateway (https), for https-only clients such as
         # azurerm's ARM_METADATA_HOST fetch, which hardcodes the https scheme.
         # Also serves the Key Vault data-plane surface (/keys/*) over TLS so
@@ -16,12 +17,16 @@ defmodule Smalt.Application do
         # against the local substrate. Disclosed: listener wiring touches
         # application.ex (owned by another lane); additive single child, cert
         # via Smalt.TLS.ensure_dev_cert/0.
-        {Bandit, arm_tls_opts()},
-        {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: egress_port()},
+        {Bandit, arm_tls_opts() ++ [ip: bind_ip()]},
+        {Bandit,
+         plug: Smalt.EgressRouter, scheme: :http, port: egress_port(), ip: bind_ip()},
         # MCP read-only tool surface (lane I15): JSON-RPC 2.0, actuation
-        # refused by Descriptor.requires_authority?/1 — no DO from MCP.
+        # refused by the router's @actuation_fragments gate (SHIM-COURT:
+        # unregistered+verb id -> ACTUATION_REFUSED; other unknown id ->
+        # TOOL_NOT_FOUND; registered ids via Descriptor.describe/1) — no DO
+        # from MCP.
         {Bandit, plug: {Smalt.Mcp.Router, []}, scheme: :http,
-         port: Application.get_env(:smalt, :mcp_port, 9545)},
+         port: Application.get_env(:smalt, :mcp_port, 9545), ip: bind_ip()},
         {Smalt.AmqpBroker, []},
         Smalt.Telemetry.RollingCounters,
         # ARM LRO at-rest sweeper (lane 05, V261014-05 — disclosed additive
@@ -62,6 +67,55 @@ defmodule Smalt.Application do
   end
 
   defp arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
+
+  # Default bind: loopback only. This is a local air-gapped
+  # emulator — binding 0.0.0.0 by default exposed every surface to the LAN.
+  # Override for LAN SDK testing via SMALT_BIND_IP (e.g. SMALT_BIND_IP=0.0.0.0)
+  # or `config :smalt, bind_ip: {192,168,1,10}`.
+  # KD-COVERS: KD-54
+  defp bind_ip do
+    case System.get_env("SMALT_BIND_IP") || Application.get_env(:smalt, :bind_ip) do
+      nil ->
+        {127, 0, 0, 1}
+
+      "loopback" ->
+        {127, 0, 0, 1}
+
+      str when is_binary(str) ->
+        case :inet.parse_address(String.to_charlist(str)) do
+          {:ok, ip} ->
+            ip
+
+          {:error, _} ->
+            raise ArgumentError,
+                  "SMALT_BIND_IP=#{str} is not a valid IPv4/IPv6 address"
+        end
+
+      ip when is_tuple(ip) ->
+        # KD-COVERS: KD-54 — config-tuple branch validated with the same
+        # strictness as the :inet.parse_address string path (fail-closed at boot).
+        valid? =
+          case ip do
+            {a, b, c, d} when a in 0..255 and b in 0..255 and c in 0..255 and d in 0..255 ->
+              true
+
+            {a, b, c, d, e, f, g, h}
+            when a in 0..0xFFFF and b in 0..0xFFFF and c in 0..0xFFFF and d in 0..0xFFFF and
+                   e in 0..0xFFFF and f in 0..0xFFFF and g in 0..0xFFFF and h in 0..0xFFFF ->
+              true
+
+            _ ->
+              false
+          end
+
+        if valid? do
+          ip
+        else
+          raise ArgumentError,
+                "config :smalt, bind_ip: #{inspect(ip)} is not a valid IPv4/IPv6 address"
+        end
+    end
+  end
   defp arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
 
   # TLS twin dispatch: ARM paths to ArmGateway.Router, Key Vault / data-plane
@@ -103,34 +157,12 @@ defmodule Smalt.Application do
   # TLS twin of the ARM gateway. Cert material comes from SMALT_TLS_CERTFILE /
   # SMALT_TLS_KEYFILE (minted by scripts/gen_dev_cert.sh) when set, else the
   # Smalt.TLS dev-cert path. Falls back to :http when no cert is available.
+  # R90/D52: cert resolution (env pair first, config pair, dev-cert) and the
+  # unconditional TLS 1.2 + cipher pin now live in Smalt.TLS.bandit_opts/2;
+  # this is the single call site (repair lane R123: no KD row — internal
+  # reduction, not a divergence).
   defp arm_tls_opts do
-    cert = System.get_env("SMALT_TLS_CERTFILE")
-    key = System.get_env("SMALT_TLS_KEYFILE")
-
-    if is_binary(cert) and is_binary(key) and File.regular?(cert) and File.regular?(key) do
-      [
-        plug: TlsTwinDispatch,
-        port: arm_tls_port(),
-        scheme: :https,
-        # TLS 1.2 only: recent Go clients (azurerm/azidentity) offer
-        # X25519MLKEM768 key shares that the OTP 28 ssl app rejects, killing
-        # the handshake before the cert is even evaluated. Go falls back to
-        # TLS 1.2 + ECDHE-RSA happily.
-        thousand_island_options: [
-          transport_options: [
-            versions: [:"tlsv1.2"],
-            ciphers: [
-              ~c"ECDHE-RSA-AES256-GCM-SHA384",
-              ~c"ECDHE-RSA-AES128-GCM-SHA256"
-            ],
-            certfile: to_charlist(cert),
-            keyfile: to_charlist(key)
-          ]
-        ]
-      ]
-    else
-      Smalt.TLS.bandit_opts(TlsTwinDispatch, arm_tls_port())
-    end
+    Smalt.TLS.bandit_opts(TlsTwinDispatch, arm_tls_port())
   end
   defp egress_port, do: Application.get_env(:smalt, :egress_port, 8443)
 end

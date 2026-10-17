@@ -24,7 +24,12 @@ defmodule Smalt.Amqp.QueueStore do
   use GenServer
 
   @capacity 4096
-  @max_body 1 * 1024 * 1024
+  # Layering: the AMQP connection layer clamps outbound bodies to the peer's
+  # max_frame_size and chunked-transfers the remainder (more=true), so a body
+  # up to the decode cap can arrive here intact. The store cap must sit ABOVE
+  # the frame-layer clamp, not at it: a 1.5MB body is legal post-chunking and
+  # was being refused before the clamp path ever ran.
+  @max_body 4 * 1024 * 1024
   @max_peek 100
 
   # -- Queue lifecycle ---------------------------------------------------------
@@ -206,10 +211,10 @@ defmodule Smalt.Amqp.QueueStore do
       body_size(body) > @max_body ->
         {:error, :too_large}
 
-      capacity_full?(queue) ->
-        {:error, :capacity}
-
       true ->
+        # Capacity gate lives inside the serialized server (see do_enqueue):
+        # a client-side check-then-insert raced 32 concurrent enqueues past
+        # the 4096 cap (A5 F3 TOCTOU).
         do_enqueue(queue, body, opts)
     end
   end
@@ -229,6 +234,13 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   defp do_enqueue(queue, body, opts) do
+    # Capacity check + counter bump + insert must be one serialized step.
+    # Running it inside the claim/settle server closes the TOCTOU window.
+    GenServer.call(server(), {:enqueue, queue, body, opts})
+  end
+
+  # Runs inside the server: atomic with respect to every other enqueue.
+  defp do_enqueue_locked(queue, body, opts) do
     seq = Smalt.Store.update_counter(:smalt_sb_queues, {queue, :seq}, 1)
 
     msg = %{
@@ -241,7 +253,25 @@ defmodule Smalt.Amqp.QueueStore do
       annotations: opts[:annotations] || %{},
       delivery_count: 0,
       enqueued: opts[:now_ms] || System.system_time(:millisecond),
-      state: :available,
+      # SHIM-COURT lane M5: scheduled messages (Service Bus
+      # scheduledEnqueueTimeUtc). A message enqueued with a future
+      # :scheduled_enqueue_time (epoch ms) starts in :scheduled state and is
+      # invisible to receivers until the time arrives; cancel_scheduled/2
+      # removes it by sequence number.
+      # R142 (W5-9): a non-integer or negative :scheduled_enqueue_time (float/
+      # string/DateTime from an unmarshal bug) would store the row as
+      # :scheduled while claim_candidates' is_integer guard let it deliver
+      # immediately AND leave it un-cancellable after claim. Validate here:
+      # only a non-negative integer schedules; anything else falls back to
+      # :available immediate delivery (enqueue's {:ok, seq} contract has no
+      # bad-timestamp error shape, and graceful degradation beats dropping
+      # the body).
+      state:
+        if(is_integer(opts[:scheduled_enqueue_time]) and opts[:scheduled_enqueue_time] >= 0,
+          do: :scheduled,
+          else: :available
+        ),
+      scheduled_enqueue_time: opts[:scheduled_enqueue_time],
       lock_token: nil,
       locked_until: nil
     }
@@ -303,9 +333,21 @@ defmodule Smalt.Amqp.QueueStore do
 
   # -- Settlement transitions --------------------------------------------------
 
-  @doc "Complete: delete the message and its lock (serialized)."
-  @spec complete(String.t(), integer()) :: :ok
-  def complete(queue, seq), do: GenServer.call(server(), {:complete, queue, seq})
+  @doc """
+  Complete: delete the message and its lock (serialized).
+
+  Token-scoped settlement (audit Finding 2, lane R244): when
+  `opts[:lock_token]` is supplied, the settle is a compare-and-settle against
+  the message row's CURRENT stored token — a mismatch (a stale/zombie token
+  whose lock was lost and re-claimed by a new owner) refuses typed
+  `{:error, :lock_lost}` and leaves both the message and the new owner's lock
+  untouched. Callers that omit the token get the historical unscoped settle
+  (connection.ex seam — disclosed, another lane owns that file).
+  """
+  @spec complete(String.t(), integer(), keyword()) :: :ok | {:error, :lock_lost}
+  def complete(queue, seq, opts \\ []) do
+    GenServer.call(server(), {:complete, queue, seq, opts})
+  end
 
   @doc "Defer: keep the message, resurfaceable only by receive-by-sequence (serialized)."
   @spec defer(String.t(), integer(), keyword()) :: :ok | :error
@@ -327,7 +369,8 @@ defmodule Smalt.Amqp.QueueStore do
   queue's ARM setting, default 10), the abandon deadletters it instead of
   releasing it back to `:available` — reason `MaxDeliveryCountExceeded`.
   """
-  @spec release(String.t(), integer(), keyword()) :: :ok | :error
+  @spec release(String.t(), integer(), keyword()) ::
+          :ok | :error | {:error, :lock_lost | :capacity}
   def release(queue, seq, opts \\ []) do
     GenServer.call(server(), {:release, queue, seq, opts})
   end
@@ -336,14 +379,15 @@ defmodule Smalt.Amqp.QueueStore do
   Receive deferred messages by sequence number (Service Bus
   `com.microsoft:receive-by-sequence-number`). Only messages currently in
   `:deferred` state qualify; every requested sequence number must qualify or
-  the batch fails atomically with `{:error, {:not_deferred, missing}}` (no
+  the batch fails atomically with `{:error, {:not_deferred, refused}}` (no
   partial lock — the caller surfaces 410 MESSAGE_NOT_DEFERRED for the whole
   batch). Qualifying messages re-enter the normal lock path: a fresh
   LockManager lock is acquired at the queue's configured lock duration, so
   complete/abandon/renew behave identically to a live delivery. Delivery
   count is incremented (deferred receive is a delivery).
 
-  Returns `{:ok, [msg]}` in the order of the request.
+  Returns `{:ok, [msg]}` in the order of the request. Duplicate sequence
+  numbers are deduplicated (R160b) — one message, one lock, one delivery.
   """
   @spec receive_deferred(String.t(), [integer()], keyword()) ::
           {:ok, [map()]} | {:error, {:not_deferred, [integer()]}}
@@ -361,7 +405,7 @@ defmodule Smalt.Amqp.QueueStore do
   `{:ok, dlq_seq}` or `:error`.
   """
   @spec deadletter(String.t(), integer(), String.t(), String.t() | nil, keyword()) ::
-          {:ok, integer()} | :error
+          {:ok, integer()} | :error | {:error, :lock_lost | :capacity | :scheduled}
   def deadletter(queue, seq, reason, description \\ nil, opts \\ []) do
     GenServer.call(server(), {:deadletter, queue, seq, reason, description, opts})
   end
@@ -369,6 +413,104 @@ defmodule Smalt.Amqp.QueueStore do
   @doc "Deadletter entity name for a queue."
   @spec deadletter_queue(String.t()) :: String.t()
   def deadletter_queue(queue), do: queue <> "/$deadletterqueue"
+
+  # -- Session state / session enumeration / batch delete (GAP-A2-05/06/07) -----
+
+  @doc """
+  Fail-closed gate: both tables the session-state / enumeration / batch-delete
+  surface reads and writes are materialized. `Smalt.Amqp.ManagementRpc` refuses
+  typed 404 when this is false.
+  """
+  def tables_ready? do
+    :ets.info(:smalt_sb_messages) != :undefined and
+      :ets.info(:smalt_sb_sessions) != :undefined
+  end
+
+  @doc """
+  Read the opaque session state for `{queue, session_id}` (field on the session
+  lock record). `{:ok, state}` (state may be nil) or `{:error, :not_found}`
+  when no session record exists.
+  """
+  @spec session_state_get(String.t(), String.t()) :: {:ok, binary() | nil} | {:error, :not_found}
+  def session_state_get(queue, session_id) do
+    case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
+      {:ok, %{session_state: state}} -> {:ok, state}
+      {:ok, _other} -> {:ok, nil}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Persist opaque `state` bytes on the `{queue, session_id}` session record.
+  Requires an existing session record (the SDK only sets state on an
+  accepted session receiver, which holds the lock). `:ok` or
+  `{:error, :not_found}`. Serialized through the claim/settle server.
+  """
+  @spec session_state_put(String.t(), String.t(), binary()) :: :ok | {:error, :not_found}
+  def session_state_put(queue, session_id, state) do
+    GenServer.call(server(), {:session_state_put, queue, session_id, state})
+  end
+
+  @doc """
+  Enumerate session ids for `queue` (ordered_set key order = lexicographic by
+  session id). Opts: `:skip` (default 0), `:top` (default 100). Returns
+  `{:ok, ids}`.
+  """
+  @spec list_sessions(String.t(), keyword()) :: {:ok, [String.t()]}
+  def list_sessions(queue, opts \\ []) do
+    skip = max(opts[:skip] || 0, 0)
+    top = (opts[:top] || 100) |> max(1)
+
+    ids =
+      (
+        locked =
+          :smalt_sb_sessions
+          |> :ets.match_object({{queue, :_}, :_})
+          |> Enum.map(fn {{_q, sid}, _lock} -> sid end)
+
+        # Real Azure enumerates sessions that have messages, not only ones
+        # with a live lock: a session receiver closed long ago leaves its
+        # messages (and session state) behind, and get-message-sessions must
+        # still list the session (repair lane R96).
+        with_messages =
+          :smalt_sb_messages
+          |> :ets.match_object({{queue, :_}, :_})
+          |> Enum.map(fn {{_q, _seq}, m} -> Map.get(m, :session_id) end)
+          |> Enum.reject(&is_nil/1)
+
+        (locked ++ with_messages)
+        |> Enum.uniq()
+        |> Enum.sort()
+      )
+      |> Enum.drop(skip)
+      |> Enum.take(top)
+
+    {:ok, ids}
+  end
+
+  @doc """
+  Batch delete: remove every PRESENT `{queue, seq}` message row; absent
+  sequence numbers are skipped (they do not fail the batch). Returns
+  `{:ok, deleted_count}`. Serialized through the claim/settle server.
+  """
+  @spec delete_by_sequence(String.t(), [integer()]) :: {:ok, non_neg_integer()} | {:error, :not_found}
+  def delete_by_sequence(queue, seqs) when is_list(seqs) do
+    GenServer.call(server(), {:delete_by_sequence, queue, seqs})
+  end
+
+  # Repair lane R70 (audit A19 F2): implement cancel_scheduled/2 — the enqueue
+  # comment promised it. Deletes a still-scheduled row by sequence number.
+  # No KD row (lane R70, internal repair, not a divergence).
+  @doc """
+  Cancel a scheduled message by sequence number (Service Bus
+  `ScheduledEnqueueTimeUtc` cancel). Only rows still in `:scheduled` state
+  cancel; anything else (or absent) returns `{:error, :not_scheduled}` /
+  `{:error, :not_found}`.
+  """
+  @spec cancel_scheduled(String.t(), integer()) :: :ok | {:error, :not_found | :not_scheduled}
+  def cancel_scheduled(queue, seq) do
+    GenServer.call(server(), {:cancel_scheduled, queue, seq})
+  end
 
   # -- Internals ---------------------------------------------------------------
 
@@ -417,6 +559,14 @@ defmodule Smalt.Amqp.QueueStore do
   def init(:ok), do: {:ok, %{}}
 
   @impl true
+  def handle_call({:enqueue, queue, body, opts}, _from, state) do
+    if capacity_full?(queue) do
+      {:reply, {:error, :capacity}, state}
+    else
+      {:reply, do_enqueue_locked(queue, body, opts), state}
+    end
+  end
+
   def handle_call({:claim, queue, filter_session, now, lock_duration}, _from, state) do
     reply =
       queue
@@ -426,8 +576,8 @@ defmodule Smalt.Amqp.QueueStore do
     {:reply, reply, state}
   end
 
-  def handle_call({:complete, queue, seq}, _from, state) do
-    {:reply, do_complete(queue, seq), state}
+  def handle_call({:complete, queue, seq, opts}, _from, state) do
+    {:reply, do_complete(queue, seq, opts), state}
   end
 
   def handle_call({:defer, queue, seq}, _from, state) do
@@ -457,12 +607,38 @@ defmodule Smalt.Amqp.QueueStore do
     {:reply, Smalt.Amqp.LockManager.do_session_claim(queue, session_id, now, opts), state}
   end
 
-  def handle_call({:session_release, queue, session_id}, _from, state) do
-    # LockManager.session_release/2 serializes its get+delete pair through the
-    # same server as session_claim (V261014-04 F3): a concurrent acquire can
-    # never interleave between the get and the deletes, closing the ST4
-    # release-vs-claim lost-lock window.
-    {:reply, Smalt.Amqp.LockManager.do_session_release(queue, session_id), state}
+  def handle_call({:session_release, queue, session_id, expected_token}, _from, state) do
+    # LockManager.session_release/2 serializes its token-scoped
+    # compare-and-delete through the same server as session_claim (V261014-04
+    # F3, A32 fix 1): a concurrent acquire can never interleave, and the
+    # releaser can only delete the row whose lock_token it actually observed —
+    # B's fresh lock survives a late releaser (ABA guard).
+    {:reply, Smalt.Amqp.LockManager.do_session_release(queue, session_id, expected_token), state}
+  end
+
+  def handle_call({:message_renew, token, now_ms, opts}, _from, state) do
+    # Message-lock renew serialized with claims/settlements/sweeps: the token
+    # put and the message-row mirror land atomically against do_sweep, so a
+    # renewed lock is never reclaimed at its original (stale) expiry.
+    {:reply, Smalt.Amqp.LockManager.do_message_renew(token, now_ms, opts), state}
+  end
+
+  def handle_call({:session_renew, queue, session_id, now_ms, opts}, _from, state) do
+    # LockManager.session_renew/4 serializes its get+put pair through the
+    # claim server (A32 fix 2): no interleaving acquire between read and write.
+    {:reply, Smalt.Amqp.LockManager.do_session_renew(queue, session_id, now_ms, opts), state}
+  end
+
+  def handle_call({:session_state_put, queue, session_id, state}, _from, state_store) do
+    {:reply, do_session_state_put(queue, session_id, state), state_store}
+  end
+
+  def handle_call({:delete_by_sequence, queue, seqs}, _from, state_store) do
+    {:reply, do_delete_by_sequence(queue, seqs), state_store}
+  end
+
+  def handle_call({:cancel_scheduled, queue, seq}, _from, state_store) do
+    {:reply, do_cancel_scheduled(queue, seq), state_store}
   end
 
   def handle_call({:lock_sweep, now}, _from, state) do
@@ -478,6 +654,13 @@ defmodule Smalt.Amqp.QueueStore do
     |> messages()
     |> Enum.sort_by(& &1.seq)
     |> Enum.reject(fn m -> m.state == :deferred or m.state == :dead end)
+    # No KD row (repair lane R70, audit A19 F2 — internal repair, not a
+    # divergence). SHIM-COURT: scheduled
+    # messages stay invisible until their scheduled_enqueue_time arrives.
+    |> Enum.reject(fn m ->
+      m.state == :scheduled and is_integer(m.scheduled_enqueue_time) and
+        m.scheduled_enqueue_time > now
+    end)
     |> Enum.reject(fn m -> locked_now?(m, now) end)
     |> Enum.reject(fn m ->
       filter_session != nil and m.session_id != filter_session
@@ -507,11 +690,27 @@ defmodule Smalt.Amqp.QueueStore do
 
   # -- settlement internals (run inside the server) -----------------------------
 
-  defp do_complete(queue, seq) do
+  # Token-scoped settlement CAS (audit Finding 2, lane R244). SHIM-COURT:
+  # when a disposition token is supplied it must equal the message row's
+  # CURRENT stored token — a stale/zombie token (lock lost, message
+  # re-claimed by a new owner) refuses typed :lock_lost and touches nothing,
+  # so it can never complete out from under the new owner or delete the new
+  # owner's token row. Runs inside the serialized claim/settle server, so
+  # the compare and the settle are atomic against claims/sweeps.
+  defp settle_token_ok?(%{lock_token: stored}, expected) when is_binary(expected),
+    do: stored == expected
+
+  defp settle_token_ok?(_m, _nil_or_absent), do: true
+
+  defp do_complete(queue, seq, opts) do
     case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
       {:ok, m} ->
-        if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
-        Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
+        if settle_token_ok?(m, opts[:lock_token]) do
+          if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
+          Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
+        else
+          {:error, :lock_lost}
+        end
 
       :error ->
         :ok
@@ -534,17 +733,30 @@ defmodule Smalt.Amqp.QueueStore do
   defp do_receive_deferred(queue, sequence_numbers, now) do
     duration = queue_settings(queue).lock_duration_ms
 
+    # R160b / SHIM-COURT: a duplicate sequence number in the batch must not
+    # acquire two independent locks for one message (double delivery in one
+    # 200, first token stranded, delivery_count double-incremented). Dedup
+    # here — the store seam — keeps the batch-atomic contract ("no partial
+    # lock") intact and covers the sole caller (management_rpc
+    # receive-by-sequence-number) plus any future direct QueueStore consumer.
+    sequence_numbers = Enum.uniq(sequence_numbers)
+
     loaded =
       Enum.map(sequence_numbers, fn seq -> {seq, Smalt.Store.get(:smalt_sb_messages, {queue, seq})} end)
 
-    missing =
+    refused =
       for {seq, {:ok, m}} <- loaded,
-          m.state != :deferred,
+          # R150: DLQ-full parked rows (:deferred + dlq_full_park) are not
+          # receivable by sequence — they return to rotation only via do_sweep's
+          # deadletter-retry when DLQ capacity frees. SHIM-COURT R150.
+          m.state != :deferred or m[:dlq_full_park] == true,
           do: seq
 
-    missing = missing ++ for {seq, :error} <- loaded, do: seq
+    refused = refused ++ for {seq, :error} <- loaded, do: seq
 
-    if missing == [] do
+    if refused == [] do
+      # The unguarded {:ok, lock} match is safe: the two-pass precheck above
+      # guarantees every sequence is present and lockable before we get here.
       {:ok,
        Enum.map(loaded, fn {_seq, {:ok, m}} ->
          {:ok, lock} = Smalt.Amqp.LockManager.acquire(queue, m.seq, now_ms: now, duration_ms: duration)
@@ -558,21 +770,49 @@ defmodule Smalt.Amqp.QueueStore do
          msg
        end)}
     else
-      {:error, {:not_deferred, Enum.sort(missing)}}
+      {:error, {:not_deferred, Enum.sort(refused)}}
     end
   end
 
   defp do_release(queue, seq, opts) do
-    with {:ok, m} <- Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
+    with {:ok, m} <- Smalt.Store.get(:smalt_sb_messages, {queue, seq}),
+         :ok <- if(settle_token_ok?(m, opts[:lock_token]), do: :ok, else: {:error, :lock_lost}) do
       max_delivery = queue_settings(queue).max_delivery_count
 
       if m.delivery_count >= max_delivery do
-        do_deadletter(queue, seq, "MaxDeliveryCountExceeded",
-          "delivery_count #{m.delivery_count} >= max_delivery_count #{max_delivery}",
-          now_ms: opts[:now_ms]
-        )
+        # SHIM-COURT R64 (F3): propagate DLQ-capacity failure — a deadletter
+        # that cannot land in the DLQ must not be reported as :ok, or the
+        # message is stranded with a lying receipt.
+        case do_deadletter(queue, seq, "MaxDeliveryCountExceeded",
+               "delivery_count #{m.delivery_count} >= max_delivery_count #{max_delivery}",
+               # Thread the disposition token: the internal deadletter settles
+               # under the same CAS the release was admitted by (R244).
+               now_ms: opts[:now_ms],
+               lock_token: opts[:lock_token]
+             ) do
+          {:error, :capacity} ->
+            # R128 (W5-2): DLQ full — park the maxed message as :deferred
+            # (non-claimable by dequeue_matching) instead of leaving it
+            # :locked with an expired lock. Stops the poison redelivery
+            # livelock; do_sweep retries the deadletter when capacity frees.
+            if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
 
-        :ok
+            Smalt.Store.put(
+              :smalt_sb_messages,
+              {queue, seq},
+              m
+              |> Map.merge(%{
+                state: :deferred,
+                lock_token: nil,
+                locked_until: nil
+              })
+              |> Map.put(:dlq_full_park, true)
+            )
+
+            {:error, :capacity}
+
+          _ -> :ok
+        end
       else
         if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
 
@@ -587,6 +827,8 @@ defmodule Smalt.Amqp.QueueStore do
       end
     else
       :error -> :error
+      # Token CAS refusal (R244) falls through the with unchanged.
+      {:error, :lock_lost} -> {:error, :lock_lost}
     end
   end
 
@@ -594,37 +836,106 @@ defmodule Smalt.Amqp.QueueStore do
     dlq = queue <> "/$deadletterqueue"
 
     case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
-      {:ok, m} ->
-        {:ok, dlq_seq} = do_enqueue(dlq, m.body,
-          session_id: m.session_id,
-          # SDK parity: deadLetterReason/deadLetterErrorDescription are read
-          # from the DLQ message's APPLICATION PROPERTIES
-          # (serviceBusMessage.js:302), not message annotations. They were
-          # previously merged into annotations, so the census dead-letter
-          # probe read undefined.
-          app_props:
-            (m[:app_props] || %{})
-            |> Map.merge(%{
-              "DeadLetterReason" => reason,
-              "DeadLetterErrorDescription" => description
-            })
-            |> Map.merge(opts[:properties] || %{}),
-          annotations:
-            m.annotations
-            |> Map.merge(%{
-              "DeadLetterReason" => reason,
-              "DeadLetterErrorDescription" => description
-            }),
-          now_ms: opts[:now_ms]
-        )
+      # R142 (W5-9): a still-:scheduled row must not be deadlettered — the
+      # management path would silently drop the schedule and materialize an
+      # immediately-available DLQ copy. Mirrors do_cancel_scheduled's state
+      # guard (max-delivery deadlettering only ever targets locked rows).
+      {:ok, %{state: :scheduled}} ->
+        {:error, :scheduled}
 
-        Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
-        if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
-        {:ok, dlq_seq}
+      {:ok, m} ->
+        # Token-scoped CAS (audit Finding 2, lane R244): a stale disposition
+        # token must never move a message a new owner holds.
+        cond do
+          not settle_token_ok?(m, opts[:lock_token]) ->
+            {:error, :lock_lost}
+
+          # SHIM-COURT R6: do_deadletter runs INSIDE the serialized QueueStore
+          # server, so do_enqueue/3's GenServer.call(server(), ...) would call
+          # the server from itself and crash. Use do_enqueue_locked/3 directly,
+          # applying the same capacity_full?/1 check the enqueue path applies.
+          capacity_full?(dlq) ->
+            {:error, :capacity}
+
+          true ->
+            {:ok, dlq_seq} = do_enqueue_locked(dlq, m.body,
+              session_id: m.session_id,
+              # SDK parity: deadLetterReason/deadLetterErrorDescription are read
+              # from the DLQ message's APPLICATION PROPERTIES
+              # (serviceBusMessage.js:302), not message annotations. They were
+              # previously merged into annotations, so the census dead-letter
+              # probe read undefined.
+              app_props:
+                (m[:app_props] || %{})
+                |> Map.merge(%{
+                  "DeadLetterReason" => reason,
+                  "DeadLetterErrorDescription" => description
+                })
+                |> Map.merge(opts[:properties] || %{}),
+              annotations:
+                m.annotations
+                |> Map.merge(%{
+                  "DeadLetterReason" => reason,
+                  "DeadLetterErrorDescription" => description
+                }),
+              now_ms: opts[:now_ms]
+            )
+
+            Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
+            if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
+            {:ok, dlq_seq}
+        end
 
       :error ->
         :error
     end
+  end
+
+  # GAP-A2-05: state lives on the session lock record; requires the record.
+  defp do_session_state_put(queue, session_id, state) do
+    case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
+      {:ok, lock} ->
+        Smalt.Store.put(:smalt_sb_sessions, {queue, session_id}, Map.put(lock, :session_state, state))
+        :ok
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  # Repair lane R70 (audit A19 F2). SHIM-COURT: cancel only a row still in
+  # :scheduled state; a delivered/locked/available row is never cancellable.
+  defp do_cancel_scheduled(queue, seq) do
+    case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
+      {:ok, %{state: :scheduled} = m} ->
+        if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
+        Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
+        :ok
+
+      {:ok, _} ->
+        {:error, :not_scheduled}
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  # GAP-A2-07: delete-present semantics (absent seqs are skipped, not fatal).
+  defp do_delete_by_sequence(queue, seqs) do
+    deleted =
+      Enum.count(seqs, fn seq ->
+        case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
+          {:ok, m} ->
+            if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
+            Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
+            true
+
+          :error ->
+            false
+        end
+      end)
+
+    {:ok, deleted}
   end
 
   # Expired message-lock reclamation: back to :available, token deleted.
@@ -634,23 +945,42 @@ defmodule Smalt.Amqp.QueueStore do
     reclaimed =
       :ets.match_object(:smalt_sb_messages, {{:_, :_}, :_})
       |> Enum.flat_map(fn {_k, m} ->
-        if m.state == :locked and is_integer(m.locked_until) and m.locked_until <= now do
+        # R128 (W5-2): DLQ-full parked messages (:deferred + dlq_full_park)
+        # are swept too — deadletter retried when capacity frees.
+        parked = m[:dlq_full_park] == true and m.state == :deferred
+
+        if parked or (m.state == :locked and is_integer(m.locked_until) and m.locked_until <= now) do
           [m]
         else
           []
         end
       end)
       |> Enum.reduce(0, fn m, n ->
-        Smalt.Amqp.LockManager.release(m.lock_token)
+        # SHIM-COURT R64 (F1): expired-lock sweep enforces MaxDeliveryCount
+        # like do_release — deadletter at max, else re-avail. Previously the
+        # sweep restored unconditionally, so delivery_count grew unbounded.
+        max_delivery = queue_settings(m.queue).max_delivery_count
 
-        Smalt.Store.put(:smalt_sb_messages, {m.queue, m.seq}, %{
-          m
-          | state: :available,
-            lock_token: nil,
-            locked_until: nil
-        })
+        if m[:dlq_full_park] == true or m.delivery_count >= max_delivery do
+          case do_deadletter(m.queue, m.seq, "MaxDeliveryCountExceeded",
+                 "delivery_count #{m.delivery_count} >= max_delivery_count #{max_delivery} on lock expiry",
+                 now_ms: now
+               ) do
+            {:ok, _} -> n + 1
+            _ -> n
+          end
+        else
+          Smalt.Amqp.LockManager.release(m.lock_token)
 
-        n + 1
+          Smalt.Store.put(:smalt_sb_messages, {m.queue, m.seq}, %{
+            m
+            | state: :available,
+              lock_token: nil,
+              locked_until: nil
+          })
+
+          n + 1
+        end
       end)
 
     # session locks are LockManager's records; delegate the lock/session table GC

@@ -12,10 +12,14 @@ defmodule Smalt.DataPlane.Cosmos do
   closed with `{:error, :store_not_ready}`, which the egress router maps to
   `503 RouteNotReady`.
 
-  Optimistic concurrency (S8 fix): the If-Match check and the write run as ONE
-  `Smalt.Store.compare_and_swap/4` — lookup+insert serialized inside the Store
-  GenServer — so a same-doc race yields exactly one 200 and N-1 412s, never a
-  lost update.
+  Optimistic concurrency (S8 fix): on the If-Match conditional paths the check
+  and the write run as ONE `Smalt.Store.compare_and_swap/4` — lookup+insert
+  serialized inside the Store GenServer — so a same-doc race between If-Match
+  writers yields exactly one 200 and N-1 412s, never a lost update. This
+  guarantee is scoped to If-Match-vs-If-Match pairs; a participant that omits
+  If-Match takes the documented last-writer-wins (LWW) branch (`put_doc` /
+  `patch_doc` without the header) and can supersede a concurrent conditional
+  write by design.
   """
 
   alias Smalt.DataPlane.ConditionalHeaders
@@ -153,20 +157,92 @@ defmodule Smalt.DataPlane.Cosmos do
 
     key = {1, db, coll}
 
-    record = %{
-      "id" => coll,
-      "_rid" => coll_rid(db, coll),
-      "_self" => "/dbs/#{db}/colls/#{coll}",
-      # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
-      # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
-      "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
-      "_ts" => System.system_time(:second)
-    }
+    case throughput_from_body(body) do
+      {:error, status, message} ->
+        {:ok, status, %{"x-ms-request-charge" => @request_charge}, message}
 
-    :ets.insert(@pk_meta_table, {key, record})
-    define_container(db, coll, paths)
-    {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+      {:ok, throughput} ->
+        record =
+          %{
+            "id" => coll,
+            "_rid" => coll_rid(db, coll),
+            "_self" => "/dbs/#{db}/colls/#{coll}",
+            # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
+            # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
+            "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
+            "uniqueKeyPolicy" => unique_keys_from_body(body),
+            "_ts" => System.system_time(:second)
+          }
+          |> maybe_put_throughput(throughput)
+
+        :ets.insert(@pk_meta_table, {key, record})
+        define_container(db, coll, paths)
+
+        {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+    end
   end
+
+  # 80/20 throughput surface (C5 typed gap): real Cosmos models throughput as
+  # an offer; here the integer is stored on the container record and served on
+  # every read. Absent key -> key absent from the record (never null).
+  @doc """
+  PUT /dbs/:db/colls/:coll — replace container (throughput replace path).
+  Absent `throughput` on the PUT body leaves the stored value unchanged;
+  present non-integer (or non-positive) is a typed 400 BadRequest, never a 500.
+  """
+  def replace_collection(db, coll, body) when is_map(body) do
+    if store_ready?() do
+      case container_record(db, coll) do
+        nil ->
+          {:ok, 404, %{"x-ms-request-charge" => @request_charge},
+           %{"code" => "NotFound", "message" => "Entity with id #{coll} not found"}}
+
+        record ->
+          case throughput_from_body(body) do
+            {:error, status, message} ->
+              {:ok, status, %{"x-ms-request-charge" => @request_charge}, message}
+
+            {:ok, nil} ->
+              {:ok, 200, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+
+            {:ok, t} ->
+              record =
+                record
+                |> Map.put("throughput", t)
+                |> Map.put("_ts", System.system_time(:second))
+
+              :ets.insert(@pk_meta_table, {{1, db, coll}, record})
+              {:ok, 200, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+          end
+      end
+    else
+      {:error, :store_not_ready}
+    end
+  end
+
+  defp maybe_put_throughput(record, nil), do: record
+  defp maybe_put_throughput(record, t), do: Map.put(record, "throughput", t)
+
+  # SHIM-COURT lane 529: throughput extraction — present-but-non-integer (or
+  # non-positive) is a typed 400; absent is {:ok, nil} (key stays absent, not null).
+  defp throughput_from_body(body) do
+    case Map.get(body, "throughput") do
+      nil ->
+        {:ok, nil}
+
+      t when is_integer(t) and t > 0 ->
+        {:ok, t}
+
+      other ->
+        {:error, 400,
+         %{
+           "code" => "BadRequest",
+           "message" =>
+             "Invalid throughput: expected a positive integer, got: #{inspect(other)}"
+         }}
+    end
+  end
+
 
   @doc "GET /dbs/:db/colls — list container records for a database."
   def list_collections(db) do
@@ -190,6 +266,104 @@ defmodule Smalt.DataPlane.Cosmos do
     do: Enum.filter(paths, &is_binary/1)
 
   defp paths_from_body(_other), do: []
+
+  # ---------------------------------------------------------------------------
+  # Unique-key policy (real Cosmos: container-scoped uniqueness within each
+  # logical partition; a violating create/replace is a 409 Conflict).
+  # ---------------------------------------------------------------------------
+
+  # Extracts a normalized uniqueKeyPolicy from a create-container body:
+  # %{"uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => [p, ...]}, ...]}}
+  # -> [%{"paths" => [p, ...]}, ...]. Non-conforming entries are dropped.
+  defp unique_keys_from_body(body) do
+    case body do
+      %{"uniqueKeyPolicy" => %{"uniqueKeys" => keys}} when is_list(keys) ->
+        for %{"paths" => ps} <- keys, ps = Enum.filter(ps, &is_binary/1), ps != [] do
+          %{"paths" => ps}
+        end
+
+      _ ->
+        []
+    end
+  end
+
+  # The {1, db, coll} container record carries the uniqueKeyPolicy at create.
+  defp container_record(db, coll) do
+    if store_ready?() do
+      case Store.get(@pk_meta_table, {1, db, coll}) do
+        {:ok, record} -> record
+        :error -> nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp unique_key_defs(db, coll) do
+    case container_record(db, coll) do
+      %{"uniqueKeyPolicy" => keys} when is_list(keys) -> keys
+      _ -> []
+    end
+  end
+
+  # :ok | {:error, 409, "Conflict"} — checked against every other stored doc
+  # in the same logical partition (same pk values) sharing the same unique-key
+  # tuple. `exclude_id` skips the doc being replaced (PUT path).
+  defp unique_key_gate(db, coll, body, exclude_id) do
+    defs = unique_key_defs(db, coll)
+    pk_paths = container_paths(db, coll)
+
+    if defs == [] do
+      :ok
+    else
+      pk_val = PartitionKey.extract(body, pk_paths)
+
+      mine = Enum.map(defs, fn %{"paths" => ps} -> values_at(body, ps) end)
+
+      conflict? =
+        @docs_table
+        |> Store.list_prefix(container_prefix(db, coll))
+        |> Enum.any?(fn doc ->
+          Map.get(doc, "id") != exclude_id and same_partition?(doc, pk_paths, pk_val) and
+            Enum.with_index(mine)
+            |> Enum.any?(fn {vals, i} ->
+              %{"paths" => ps} = Enum.at(defs, i)
+              values_at(doc, ps) == vals
+            end)
+        end)
+
+      if conflict? do
+        {:error, 409, "Conflict"}
+      else
+        :ok
+      end
+    end
+  end
+
+  defp same_partition?(doc, pk_paths, pk_val) do
+    PartitionKey.extract(doc, pk_paths) == pk_val
+  end
+
+  # Resolves JSON-pointer path(s) to a comparable value tuple; missing paths
+  # yield nil so a doc missing the unique-key field never collides with one
+  # that has it (real Cosmos: absent fields are not equal to present fields).
+  defp values_at(doc, paths) do
+    Enum.map(paths, fn path ->
+      case pointer_get(doc, path) do
+        {:ok, v} -> v
+        :error -> nil
+      end
+    end)
+  end
+
+  defp container_paths(db, coll) do
+    case container_meta(db, coll) do
+      %{"paths" => paths} -> paths
+      _ -> []
+    end
+  end
+
+  defp container_prefix(db, coll), do: "#{db}/#{coll}/"
 
   defp meta_records(pred) do
     # Tuple keys sort above every binary in term order, so they are invisible
@@ -236,6 +410,53 @@ defmodule Smalt.DataPlane.Cosmos do
   end
 
   # ---------------------------------------------------------------------------
+  # Delete-path sweep helpers (composite-identity lane, D127 cascade semantics)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Cascade sweep for a deleted sqlDatabase: removes the `{0, db}` record, every
+  `{1, db, _}` collection record, and the `"db/coll"` pk-paths records under it.
+  Tolerates a missing table (pre-Store boot) — control-plane deletes never
+  500 on data-plane absence (same fence as `VaultData.drop_vault_secrets/1`).
+  """
+  @spec drop_db(binary()) :: :ok
+  def drop_db(db) when is_binary(db) do
+    if :ets.info(@pk_meta_table) != :undefined do
+      Store.delete(@pk_meta_table, {0, db})
+
+      # Collection (`{1, db, coll}`) and pk-paths (`"db/coll"`) keys are swept
+      # by pattern: any child row belonging to this db goes with it.
+      for {key, _} <- :ets.tab2list(@pk_meta_table),
+          cosmos_child_of?(key, db) do
+        Store.delete(@pk_meta_table, key)
+      end
+    end
+
+    :ok
+  end
+
+  @doc """
+  Cascade sweep for a deleted sqlContainer: removes the `{1, db, coll}`
+  collection record and the `"db/coll"` pk-paths record. Leaves the parent
+  `{0, db}` record alone (the database still exists).
+  """
+  @spec drop_container(binary(), binary()) :: :ok
+  def drop_container(db, coll) when is_binary(db) and is_binary(coll) do
+    if :ets.info(@pk_meta_table) != :undefined do
+      Store.delete(@pk_meta_table, {1, db, coll})
+      Store.delete(@pk_meta_table, container_key(db, coll))
+    end
+
+    :ok
+  end
+
+  # True when `key` is a pk_meta row belonging to `db`: a collection record
+  # `{1, db, _}` or a pk-paths record `"db/coll"`.
+  defp cosmos_child_of?({1, db, _coll}, db), do: true
+  defp cosmos_child_of?(key, db) when is_binary(key), do: String.starts_with?(key, "#{db}/")
+  defp cosmos_child_of?(_, _), do: false
+
+  # ---------------------------------------------------------------------------
   # Route-handling functions (wired by the egress lane)
   # ---------------------------------------------------------------------------
 
@@ -277,6 +498,12 @@ defmodule Smalt.DataPlane.Cosmos do
   # the _self link, so the same grammar as db/container names applies).
   defp valid_doc_id?(id), do: valid_name?(id)
 
+  # KD-36: x-ms-documentdb-is-upsert truthy values (real Cosmos .NET/Go SDKs
+  # send "true"; tolerate "1").
+  defp upsert?(headers) do
+    header(headers, "x-ms-documentdb-is-upsert") in ["true", "True", "1"]
+  end
+
   defp invalid_doc_id_message,
     do: "Invalid document id: must be a 1-255 char string and must not contain '/'."
 
@@ -285,30 +512,61 @@ defmodule Smalt.DataPlane.Cosmos do
 
     case PartitionKey.enforce(header(headers, PartitionKey.header_name()), body, pk_meta) do
       :ok ->
-        etag = quoted_sha256(body)
-        now = System.system_time(:second)
-
-        stored =
-          body
-          |> Map.put("id", doc_id)
-          |> Map.put("_rid", doc_rid(db, coll, doc_id))
-          |> Map.put("_self", "/dbs/#{db}/colls/#{coll}/docs/#{doc_id}")
-          |> Map.put("_etag", etag)
-          |> Map.put("_ts", now)
-
-        case Store.insert_new(@docs_table, doc_key(db, coll, doc_id), stored) do
+        case unique_key_gate(db, coll, body, nil) do
           :ok ->
-            lsn = next_lsn(db, coll)
-            {:ok, 201, success_headers(db, coll, lsn, %{"etag" => etag}), stored}
+            # SHIM-COURT-adjacent etag hardening (R59/A18): etag binds the body
+            # hash with a per-doc version (_v) and per-creation nonce (_gen),
+            # so identical bodies never collide and delete+recreate invalidates
+            # the old etag.
+            gen = doc_gen_nonce()
+            etag = doc_etag(body_hash_hex(body), 1, gen)
+            now = System.system_time(:second)
 
-          {:error, :exists} ->
+            stored =
+              body
+              |> Map.put("id", doc_id)
+              |> Map.put("_rid", doc_rid(db, coll, doc_id))
+              |> Map.put("_self", "/dbs/#{db}/colls/#{coll}/docs/#{doc_id}")
+              |> Map.put("_v", 1)
+              |> Map.put("_gen", gen)
+              |> Map.put("_etag", etag)
+              |> Map.put("_ts", now)
+
+            case Store.insert_new(@docs_table, doc_key(db, coll, doc_id), stored) do
+              :ok ->
+                lsn = next_lsn(db, coll)
+                {:ok, 201, success_headers(db, coll, lsn, %{"etag" => etag}), stored}
+
+              {:error, :exists} ->
+                # KD-36: x-ms-documentdb-is-upsert -> create-or-replace. On an
+                # existing id, real Cosmos replaces (200) instead of 409;
+                # delegate to the replace path (full replace semantics, fresh
+                # _v/_gen/_etag). Without the header the 409 Conflict stands.
+                if upsert?(headers) do
+                  do_put_doc(db, coll, doc_id, body, headers)
+                else
+                  error_response(
+                    db,
+                    coll,
+                    409,
+                    "Conflict",
+                    "Entity with the specified id already exists in the system."
+                  )
+                end
+            end
+
+          {:error, 409, "Conflict"} ->
             error_response(
               db,
               coll,
               409,
               "Conflict",
-              "Entity with the specified id already exists in the system."
+              "Uniqueness constraint violated: an item with the same unique key " <>
+                "values already exists in the logical partition."
             )
+
+          {:error, status, code} ->
+            error_response(db, coll, status, code, error_message(code, pk_meta))
         end
 
       {:error, status, code} ->
@@ -382,18 +640,28 @@ defmodule Smalt.DataPlane.Cosmos do
     case Store.get(@docs_table, key) do
       {:ok, existing} ->
         with :ok <- doc_id_check(doc_id),
-             :ok <- partition_check(headers, body, pk_meta) do
+             :ok <- partition_check(headers, body, pk_meta),
+             :ok <- unique_key_gate(db, coll, body, doc_id) do
           if_match = header(headers, "if-match")
-          new_etag = quoted_sha256(body)
+          # R59/A18: version+nonce-bound etag (see do_create_doc_sized).
+          new_v = Map.get(existing, "_v", 1) + 1
+          new_gen = Map.get(existing, "_gen", doc_gen_nonce())
+          new_etag = doc_etag(body_hash_hex(body), new_v, new_gen)
           now = System.system_time(:second)
 
+          # R118/D17: replace, not merge — the stored doc IS the request body.
+          # Map.merge(existing, body) retained fields the client removed from
+          # body (stale top-level keys leaked across replaces). Only system
+          # fields are carried forward (its _rid/_self identity + fresh
+          # _v/_gen/_etag/_ts below).
           updated =
-            existing
-            |> Map.merge(body)
+            body
             |> Map.put("id", doc_id)
             |> Map.put("_rid", existing["_rid"])
             |> Map.put("_self", existing["_self"])
             |> Map.delete("_etag")
+            |> Map.put("_v", new_v)
+            |> Map.put("_gen", new_gen)
             |> Map.put("_etag", new_etag)
             |> Map.put("_ts", now)
 
@@ -431,6 +699,365 @@ defmodule Smalt.DataPlane.Cosmos do
           "NotFound",
           "Entity with the specified id does not exist in the system."
         )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Patch (GAP-AUD1-05): PATCH /dbs/:db/colls/:coll/docs/:id, RFC 6902
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  PATCH /dbs/:db/colls/:coll/docs/:doc_id — RFC 6902 patch on the doc body.
+
+  `ops` is the decoded RFC 6902 op list (add/remove/replace/test/move/copy).
+  With If-Match the etag check and the write run as ONE
+  `Store.compare_and_swap/4` (same S8 guarantee as the replace path): 412 on
+  mismatch or a same-doc race. Malformed op list → typed 400. Missing doc →
+  404. The patched doc is re-stored whole with a fresh _etag/_ts and the
+  container LSN bumped.
+  """
+  def patch_doc(db, coll, doc_id, ops, headers) when is_list(ops) do
+    gate(:patch, "docs", doc_link(db, coll, doc_id), headers, fn ->
+      if store_ready?() do
+        do_patch_doc(db, coll, doc_id, ops, headers)
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  defp do_patch_doc(db, coll, doc_id, ops, headers) do
+    key = doc_key(db, coll, doc_id)
+
+    case Store.get(@docs_table, key) do
+      {:ok, existing} ->
+        with :ok <- doc_id_check(doc_id),
+             pk_meta = container_meta(db, coll),
+             {:ok, patched_body} <- apply_patch_ops(existing, ops),
+             :ok <- partition_check(headers, patched_body, pk_meta),
+             :ok <- unique_key_gate(db, coll, patched_body, doc_id) do
+          # R10 fix: PATCH now runs the same admission gates as PUT —
+          # partition_check + unique_key_gate applied to the PATCHED body
+          # (mirroring do_put_doc/5). A patch that moves the doc across
+          # partitions without the pk header is a typed 400; a patch that
+          # violates the uniqueKeyPolicy is a 409. Refused before any write.
+          # KD-COVERS: KD-52
+          if_match = header(headers, "if-match")
+          # R59/A18: version+nonce-bound etag (see do_create_doc_sized).
+          # R134: the etag is a pure function of the FINAL stored body — build
+          # the patched body with system fields applied first, then hash it
+          # (sans the volatile _etag itself and the wall-clock _ts). Hashing
+          # the pre-system-field body let the etag depend on stale _v/_gen/
+          # _etag values from the OLD record.
+          new_v = Map.get(existing, "_v", 1) + 1
+          new_gen = Map.get(existing, "_gen", doc_gen_nonce())
+          now = System.system_time(:second)
+
+          patched =
+            patched_body
+            |> Map.put("id", doc_id)
+            |> Map.put("_rid", existing["_rid"])
+            |> Map.put("_self", existing["_self"])
+            |> Map.put("_v", new_v)
+            |> Map.put("_gen", new_gen)
+
+          new_etag =
+            doc_etag(
+              patched |> Map.delete("_etag") |> Map.delete("_ts") |> body_hash_hex(),
+              new_v,
+              new_gen
+            )
+
+          updated = Map.put(patched, "_etag", new_etag) |> Map.put("_ts", now)
+
+          cond do
+            if_match == nil ->
+              Store.put(@docs_table, key, updated)
+              lsn = next_lsn(db, coll)
+              {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), updated}
+
+            ConditionalHeaders.evaluate(headers, existing["_etag"]) == :proceed ->
+              case Store.compare_and_swap(@docs_table, key, existing, updated) do
+                :ok ->
+                  lsn = next_lsn(db, coll)
+                  {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), updated}
+
+                {:error, :conflict} ->
+                  error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+              end
+
+            true ->
+              error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+          end
+        else
+          {:error, :malformed} ->
+            error_response(db, coll, 400, "BadRequest", "The patch document is invalid.")
+
+          {:error, :test_failed} ->
+            error_response(db, coll, 400, "BadRequest", "A test operation of the patch failed.")
+
+          {:error, status, code} ->
+            error_response(db, coll, status, code, error_message(code, container_meta(db, coll)))
+        end
+
+      :error ->
+        error_response(
+          db,
+          coll,
+          404,
+          "NotFound",
+          "Entity with the specified id does not exist in the system."
+        )
+    end
+  end
+
+  # RFC 6902 application over the stored document. Any structural defect
+  # (non-map op, missing/unknown op field, bad pointer, remove of a nonexistent
+  # member, failed test) aborts with {:error, :malformed} / {:error,
+  # :test_failed}; the stored doc is never mutated.
+  defp apply_patch_ops(doc, ops) do
+    Enum.reduce_while(ops, {:ok, doc}, fn op, {:ok, acc} ->
+      case apply_patch_op(acc, op) do
+        {:ok, next} -> {:cont, {:ok, next}}
+        err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp apply_patch_op(target, %{"op" => op, "path" => path} = spec)
+       when op in ["add", "remove", "replace", "test"] and is_binary(path) do
+    value = Map.get(spec, "value")
+
+    case op do
+      "add" -> pointer_add(target, path, value)
+      "remove" -> pointer_remove(target, path)
+      "replace" -> pointer_replace(target, path, value)
+      "test" -> pointer_test(target, path, value)
+    end
+  end
+
+  defp apply_patch_op(target, %{"op" => "move", "from" => from, "path" => path})
+       when is_binary(from) and is_binary(path) do
+    with {:ok, v} <- pointer_get(target, from),
+         {:ok, without} <- pointer_remove(target, from) do
+      pointer_add(without, path, v)
+    end
+  end
+
+  defp apply_patch_op(target, %{"op" => "copy", "from" => from, "path" => path})
+       when is_binary(from) and is_binary(path) do
+    with {:ok, v} <- pointer_get(target, from) do
+      pointer_add(target, path, v)
+    end
+  end
+
+  defp apply_patch_op(_target, _op), do: {:error, :malformed}
+
+  # --- JSON pointer (RFC 6901) ---
+
+  # "" -> whole document. "~1" -> "/", "~0" -> "~".
+  defp pointer_tokens(""), do: []
+
+  defp pointer_tokens(pointer) do
+    if String.starts_with?(pointer, "/") do
+      pointer
+      |> String.split("/")
+      |> tl()
+      |> Enum.map(&unescape_token/1)
+    else
+      # RFC 6901: a pointer is "" or starts with "/".
+      :error
+    end
+  end
+
+  defp unescape_token(token), do: token |> String.replace("~1", "/") |> String.replace("~0", "~")
+
+  defp pointer_get(target, pointer) do
+    case pointer_tokens(pointer) do
+      tokens when is_list(tokens) -> do_pointer_get(target, tokens)
+      :error -> {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_get(target, []), do: {:ok, target}
+
+  defp do_pointer_get(target, [token | rest]) when is_map(target) do
+    case Map.fetch(target, token) do
+      {:ok, v} -> do_pointer_get(v, rest)
+      :error -> {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_get(target, [token | rest]) when is_list(target) do
+    case Integer.parse(token) do
+      {idx, ""} when idx >= 0 ->
+        case Enum.fetch(target, idx) do
+          {:ok, v} -> do_pointer_get(v, rest)
+          :error -> {:error, :malformed}
+        end
+
+      # "-" is append-only; reading through "-" is malformed.
+      _ ->
+        {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_get(_target, [_token | _rest]), do: {:error, :malformed}
+
+  # add "" -> replace the whole document.
+  defp pointer_add(target, "", value) when is_map(target), do: {:ok, value}
+
+  defp pointer_add(target, pointer, value) do
+    case pointer_tokens(pointer) do
+      tokens when is_list(tokens) -> do_pointer_add(target, tokens, value)
+      :error -> {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_add(_target, [], _value), do: {:error, :malformed}
+
+  defp do_pointer_add(target, [token], value) when is_map(target),
+    do: {:ok, Map.put(target, token, value)}
+
+  defp do_pointer_add(target, [token], value) when is_list(target) do
+    cond do
+      token == "-" ->
+        {:ok, target ++ [value]}
+
+      idx_before?(token, length(target) + 1) ->
+        {:ok, List.insert_at(target, String.to_integer(token), value)}
+
+      true ->
+        {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_add(target, [token | rest], value) do
+    case descend_for_write(target, token) do
+      {:ok, child, wrap} ->
+        case do_pointer_add(child, rest, value) do
+          {:ok, child2} -> {:ok, wrap.(child2)}
+          err -> err
+        end
+
+      err ->
+        err
+    end
+  end
+
+  defp pointer_replace(target, pointer, value) do
+    case pointer_tokens(pointer) do
+      tokens when is_list(tokens) -> do_pointer_replace(target, tokens, value)
+      :error -> {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_replace(_target, [], _value), do: {:error, :malformed}
+
+  # replace requires the member to EXIST (RFC 6902 §4.3).
+  defp do_pointer_replace(target, [token], value) when is_map(target) do
+    if Map.has_key?(target, token) do
+      {:ok, Map.put(target, token, value)}
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_replace(target, [token], value) when is_list(target) do
+    if idx_before?(token, length(target)) do
+      {:ok, List.replace_at(target, String.to_integer(token), value)}
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_replace(target, [token | rest], value) do
+    case descend_for_write(target, token) do
+      {:ok, child, wrap} ->
+        case do_pointer_replace(child, rest, value) do
+          {:ok, child2} -> {:ok, wrap.(child2)}
+          err -> err
+        end
+
+      err ->
+        err
+    end
+  end
+
+  # remove requires the member to exist; root remove is refused (the store
+  # holds whole docs — a root remove would destroy the id/_rid/_self envelope).
+  defp pointer_remove(target, pointer) do
+    case pointer_tokens(pointer) do
+      tokens when is_list(tokens) and tokens != [] -> do_pointer_remove(target, tokens)
+      _ -> {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_remove(target, [token]) when is_map(target) do
+    if Map.has_key?(target, token) do
+      {:ok, Map.delete(target, token)}
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_remove(_target, ["-"]), do: {:error, :malformed}
+
+  defp do_pointer_remove(target, [token]) when is_list(target) do
+    if idx_before?(token, length(target)) do
+      {:ok, List.delete_at(target, String.to_integer(token))}
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp do_pointer_remove(target, [token | rest]) do
+    case descend_for_write(target, token) do
+      {:ok, child, wrap} ->
+        case do_pointer_remove(child, rest) do
+          {:ok, child2} -> {:ok, wrap.(child2)}
+          err -> err
+        end
+
+      err ->
+        err
+    end
+  end
+
+  defp pointer_test(target, pointer, value) do
+    case pointer_get(target, pointer) do
+      {:ok, ^value} -> {:ok, target}
+      {:ok, _} -> {:error, :test_failed}
+      err -> err
+    end
+  end
+
+  # Walk one level for a write op: return the child container and a wrapper
+  # that rebuilds the parent. The parent must already exist; only the FINAL
+  # member of a pointer is created by add.
+  defp descend_for_write(target, token) when is_map(target) do
+    case Map.fetch(target, token) do
+      {:ok, child} -> {:ok, child, fn child2 -> Map.put(target, token, child2) end}
+      :error -> {:error, :malformed}
+    end
+  end
+
+  defp descend_for_write(target, token) when is_list(target) do
+    if idx_before?(token, length(target)) do
+      child = Enum.fetch!(target, String.to_integer(token))
+      {:ok, child, fn child2 -> List.replace_at(target, String.to_integer(token), child2) end}
+    else
+      {:error, :malformed}
+    end
+  end
+
+  defp descend_for_write(_target, _token), do: {:error, :malformed}
+
+  # index valid for a container of the given length (exclusive bound).
+  defp idx_before?(token, bound) do
+    case Integer.parse(token) do
+      {idx, ""} -> idx >= 0 and idx < bound
+      _ -> false
     end
   end
 
@@ -490,17 +1117,142 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Change Feed (GAP-AUD1-04): A-IM: Incremental feed on the docs GET
+  # ---------------------------------------------------------------------------
+
+  # Cursor record stored per container in the pk_meta table under {2, db, coll}
+  # (tuple keys sort above every binary key, so the change-feed cursor is
+  # invisible to Store.list_prefix/2 binary scans, exactly like the {0, db}
+  # and {1, db, coll} meta records).
+
+  @doc """
+  GET /dbs/:db/colls/:coll/docs with `A-IM: Incremental feed` — Cosmos Change
+  Feed. Returns only docs whose `_ts` is newer than the container's last-seen
+  cursor (per-partition cursor persisted in the pk_meta table), then advances
+  the cursor. Without the header, list_docs behavior is unchanged.
+  """
+  def change_feed(db, coll, headers \\ %{}) do
+    gate(:get, "docs", container_link(db, coll), headers, fn ->
+      if store_ready?() do
+        do_change_feed(db, coll)
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  defp do_change_feed(db, coll) do
+    cursor_key = {2, db, coll}
+    cursor = cf_cursor(cursor_key)
+
+    docs =
+      @docs_table
+      |> Store.list_prefix("#{db}/#{coll}/")
+      |> Enum.filter(fn d -> cf_is_new?(d, cursor) end)
+      |> Enum.sort_by(&{&1["_ts"] || 0, &1["id"]})
+
+    new_cursor = cf_advance(cursor, docs)
+    :ets.insert(@pk_meta_table, {cursor_key, new_cursor})
+
+    lsn = current_lsn(db, coll)
+
+    {:ok, 200, success_headers(db, coll, lsn, %{@continuation_header => cf_token(new_cursor)}),
+     %{
+       "_rid" => coll_rid(db, coll),
+       "Documents" => docs,
+       "_count" => length(docs)
+     }}
+  end
+
+  defp cf_cursor(cursor_key) do
+    case :ets.lookup(@pk_meta_table, cursor_key) do
+      [{^cursor_key, %{"ts" => ts, "seen" => seen}}]
+      when is_integer(ts) and is_map(seen) ->
+        # Cursor "seen" is a map of id => _etag pinned at the boundary second:
+        # a same-second UPDATE changes the doc's _etag, so it re-surfaces once
+        # instead of being swallowed by the seen-set.
+        %{"ts" => ts, "seen" => seen}
+
+      _ ->
+        %{"ts" => 0, "seen" => %{}}
+    end
+  end
+
+  # A doc is new when its _ts is strictly newer than the cursor ts, or when it
+  # shares the boundary second and its CURRENT _etag was never returned on that
+  # boundary before (so a same-second UPDATE re-surfaces exactly once).
+  defp cf_is_new?(doc, cursor) do
+    ts = doc["_ts"] || 0
+
+    ts > cursor["ts"] or
+      (ts == cursor["ts"] and cursor["seen"][doc["id"]] != doc["_etag"])
+  end
+
+  # The advanced cursor pins id => _etag for every doc at the boundary second,
+  # MERGED with the previous cursor's pins at the same boundary — so each doc
+  # version is delivered exactly once even though _ts resolution is 1s.
+  defp cf_advance(cursor, []), do: cursor
+
+  defp cf_advance(cursor, docs) do
+    max_ts = docs |> Enum.map(&(&1["_ts"] || 0)) |> Enum.max()
+
+    seen =
+      docs
+      |> Enum.filter(&(&1["_ts"] == max_ts))
+      |> Map.new(&{&1["id"], &1["_etag"]})
+
+    seen =
+      if cursor["ts"] == max_ts do
+        Map.merge(cursor["seen"], seen)
+      else
+        seen
+      end
+
+    %{"ts" => max_ts, "seen" => seen}
+  end
+
+  # Continuation token for the change feed: opaque base64url of "cf<ts>:<n>"
+  # (n = number of boundary ids pinned). Delivered on every feed response so
+  # the client can carry it; incrementality itself is session (cursor) state.
+  defp cf_token(%{"ts" => ts, "seen" => seen}) do
+    Base.url_encode64("cf#{ts}:#{map_size(seen)}", padding: false)
+  end
+
   @doc """
   Lists documents in a collection by id prefix. Returns `{:ok, 200, headers, docs}`.
+
+  With `A-IM: Incremental feed`, behaves as the Cosmos Change Feed
+  (GAP-AUD1-04): only docs newer than the session's per-container cursor are
+  returned and the cursor advances; without the header behavior is unchanged.
   """
   def list_docs(db, coll, prefix \\ "", headers \\ %{}) do
     gate(:get, "docs", container_link(db, coll), headers, fn ->
       if store_ready?() do
-        # nil prefix is the same feed as "" (token namespace must not mint
-        # "nil/<id>" tails a nil-prefix resume could never consume).
-        prefix = scope(prefix)
-        lsn = current_lsn(db, coll)
-      cont_hdr = header(headers, @continuation_header)
+        if cf_requested?(headers) do
+          do_change_feed(db, coll)
+        else
+          do_list_docs(db, coll, scope(prefix), headers)
+        end
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  defp cf_requested?(headers) do
+    case header(headers, "a-im") do
+      v when is_binary(v) -> String.contains?(String.downcase(v), "incremental feed")
+      _ -> false
+    end
+  end
+
+  defp do_list_docs(db, coll, prefix, headers) do
+    # nil prefix is the same feed as "" (token namespace must not mint
+    # "nil/<id>" tails a nil-prefix resume could never consume).
+    prefix = scope(prefix)
+    lsn = current_lsn(db, coll)
+    cont_hdr = header(headers, @continuation_header)
 
       with :ok <- parse_list_continuation(cont_hdr, prefix, lsn, db, coll) do
         docs =
@@ -526,15 +1278,11 @@ defmodule Smalt.DataPlane.Cosmos do
             %{}
           end
 
-        {:ok, 200, success_headers(db, coll, lsn, extra), page}
-      else
-        {:error, 400, "BadRequest"} ->
-          error_response(db, coll, 400, "BadRequest", "The continuation token is invalid.")
-      end
-      else
-        {:error, :store_not_ready}
-      end
-    end)
+      {:ok, 200, success_headers(db, coll, lsn, extra), page}
+    else
+      {:error, 400, "BadRequest"} ->
+        error_response(db, coll, 400, "BadRequest", "The continuation token is invalid.")
+    end
   end
 
   @doc """
@@ -554,7 +1302,7 @@ defmodule Smalt.DataPlane.Cosmos do
         q = query_text(body)
 
         if is_binary(q) do
-          do_query_docs(db, coll, q, headers)
+          do_query_docs(db, coll, q, body, headers)
         else
           error_response(db, coll, 400, "BadRequest", "The query is invalid.")
         end
@@ -594,30 +1342,63 @@ defmodule Smalt.DataPlane.Cosmos do
   # V261014-07 edit renamed the scan to scan_query_docs/3 and updated the call
   # site to pass `q`, but left do_query_docs/4 undefined. This wiring completes
   # that rename; the owning lane may fold it into its own implementation.
-  defp do_query_docs(db, coll, q, headers) do
+  # GAP(cosmos-sql-translator-absent) closure (lane 523): the whitelist stays
+  # as the `SELECT * FROM c` fast path; every other query is parsed by
+  # Smalt.CosmosSql (80/20 AST: SELECT/FROM/WHERE/ORDER BY/LIMIT, comparisons,
+  # AND/OR/NOT, IN, CONTAINS/STARTSWITH/ARRAY_CONTAINS, @params, nested member
+  # access) and evaluated over the scanned set. Anything outside the grammar
+  # (joins, UDFs, aggregates, TOP, OFFSET) is a typed 400 SyntaxError,
+  # fail-closed — never a silent wrong answer.
+  defp do_query_docs(db, coll, q, body, headers) do
     if sql_whitelisted?(q) do
       scan_query_docs(db, coll, headers)
     else
-      error_response(db, coll, 400, "SyntaxError", "The query syntax is invalid.")
+      case Smalt.CosmosSql.parse(q, query_params(body)) do
+        {:error, {:syntax, msg}} ->
+          error_response(db, coll, 400, "SyntaxError", msg)
+
+        {:ok, ast} ->
+          scan_query_docs(db, coll, headers, ast)
+      end
     end
   end
 
-  defp scan_query_docs(db, coll, headers) do
+  # Query-body "parameters": [{"name": "@x", "value": v}, ...] -> %{"@x" => v}
+  # (with or without the @ prefix; Cosmos binds by name). Malformed entries are
+  # ignored — an unbound @ref surfaces as a typed 400 at parse time.
+  defp query_params(body) when is_map(body) do
+    case Map.get(body, "parameters") do
+      list when is_list(list) ->
+        Enum.reduce(list, %{}, fn
+          %{"name" => name, "value" => value}, acc when is_binary(name) ->
+            Map.put(acc, String.trim_leading(name, "@"), value)
+
+          _entry, acc ->
+            acc
+        end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp query_params(_body), do: %{}
+
+  defp scan_query_docs(db, coll, headers, sql \\ nil) do
     pk_meta = container_meta(db, coll)
     paths = (pk_meta && Map.get(pk_meta, "paths", [])) || []
     pk_hdr = header(headers, PartitionKey.header_name())
     ledger = current_lsn(db, coll)
 
-    # Minimal unblock (amqp-codec lens-4 lane, compile-freeze SLA): the
-    # in-flight edit passed `docs` to query_pk_check/3 before it was bound;
-    # hoist the fetch above the `with` (same value, all clauses ignore it).
+    # Hoisted above the `with`: the scan body below needs `docs`, and the
+    # fetch must not depend on continuation/pk-header validation outcomes.
     docs =
       @docs_table
       |> Store.list_prefix("#{db}/#{coll}/")
       |> Enum.sort_by(& &1["id"])
 
     with :ok <- parse_continuation(header(headers, @continuation_header), pk_hdr, ledger, db, coll),
-         :ok <- query_pk_check(pk_hdr, paths, docs) do
+         :ok <- query_pk_check(pk_hdr, paths) do
       docs =
         if paths == [] do
           # No partition key defined: every partition (header ignored).
@@ -650,6 +1431,12 @@ defmodule Smalt.DataPlane.Cosmos do
           :none -> docs
         end
 
+      # GAP(cosmos-sql-translator-absent) closure (lane 523): evaluate the
+      # parsed Smalt.CosmosSql AST over the scoped set (filter + ORDER BY +
+      # LIMIT + projection). The whitelist fast path passes sql = nil and
+      # keeps the raw scan.
+      docs = if sql, do: Smalt.CosmosSql.eval_docs(sql, docs), else: docs
+
       page = Enum.take(docs, @query_limit)
 
       # Real Cosmos row-18 semantics: a token rides the response ONLY when the
@@ -671,6 +1458,15 @@ defmodule Smalt.DataPlane.Cosmos do
          "_count" => length(page)
        }}
     else
+      # SHIM-COURT parity with the list feed (:1116): the only 400 BadRequest
+      # shapes reachable in this `with` come from parse_continuation/4 (expired/
+      # foreign/undecodable token) or query_pk_check/3 (malformed pk header
+      # token scope) — never a partition-key mismatch, so the generic
+      # error_message("BadRequest", _) "Partition key provided in the header…"
+      # text here was misleading. Reuse the list path's dedicated typed message.
+      {:error, 400, "BadRequest"} ->
+        error_response(db, coll, 400, "BadRequest", "The continuation token is invalid.")
+
       {:error, status, code} ->
         error_response(db, coll, status, code, error_message(code, pk_meta))
     end
@@ -825,10 +1621,10 @@ defmodule Smalt.DataPlane.Cosmos do
   # A PRESENT but malformed pk header on a pk-defined container is a 400 —
   # never a silent cross-partition scan (measured leak: "not-json" returned
   # both partitions' docs with 200).
-  defp query_pk_check(nil, _paths, _docs), do: :ok
-  defp query_pk_check(_hdr, [], _docs), do: :ok
+  defp query_pk_check(nil, _paths), do: :ok
+  defp query_pk_check(_hdr, []), do: :ok
 
-  defp query_pk_check(hdr, _paths, _docs) do
+  defp query_pk_check(hdr, _paths) do
     case PartitionKey.parse(hdr) do
       {:ok, _pk} -> :ok
       :error -> {:error, 400, "BadRequest"}
@@ -1099,4 +1895,13 @@ defmodule Smalt.DataPlane.Cosmos do
   defp quoted_sha256(value) do
     "\"" <> (:crypto.hash(:sha256, Jason.encode!(value)) |> Base.encode16(case: :lower)) <> "\""
   end
+
+  # R59/A18 doc-etag composition: sha256 over {body-hash, version, nonce}.
+  defp body_hash_hex(body) do
+    :crypto.hash(:sha256, Jason.encode!(body)) |> Base.encode16(case: :lower)
+  end
+
+  defp doc_gen_nonce, do: Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+
+  defp doc_etag(body_hash, v, gen), do: quoted_sha256(%{"h" => body_hash, "v" => v, "g" => gen})
 end

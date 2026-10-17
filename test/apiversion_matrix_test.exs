@@ -10,7 +10,7 @@ defmodule ApiVersionMatrixTest do
        passes (any status except a 400 ARM envelope whose code is
        InvalidApiVersionParameter / MissingApiVersionParameter; 201/202/
        400-shape/404-parent are all acceptable outcomes downstream).
-    2. PUT with api-version "1999-01-01"        -> 400 InvalidApiVersionParameter.
+    2. PUT with api-version "2099-12-31"        -> 400 InvalidApiVersionParameter.
     3. PUT without api-version                  -> 400 MissingApiVersionParameter.
 
   Plus two inventory rows:
@@ -37,8 +37,8 @@ defmodule ApiVersionMatrixTest do
   @sub "00000000-0000-0000-0000-000000000000"
   @rg "matrix-rg"
 
-  # router.ex:1799 — generic provider PUT route
-  @generic_put_line "lib/smalt/arm_gateway/router.ex:1799"
+  # router.ex:2451 — generic provider PUT route
+  @generic_put_line "lib/smalt/arm_gateway/router.ex:2408"
 
   setup do
     ensure_store()
@@ -80,6 +80,14 @@ defmodule ApiVersionMatrixTest do
       :smalt_resources,
       String.downcase("/subscriptions/#{@sub}/resourceGroups/#{@rg}/namespaces/matrix-ehns/eventhubs/matrix-hub"),
       %{"id" => "seeded", "type" => "Microsoft.EventHub/namespaces/eventhubs", "properties" => %{}}
+    )
+
+    # privateDnsZones parent for the virtualNetworkLinks child row (admitted,
+    # but seeded directly to keep the fence decoupled from parent shape drift).
+    Store.put(
+      :smalt_resources,
+      String.downcase("/subscriptions/#{@sub}/resourceGroups/#{@rg}/privateDnsZones/matrix-zone"),
+      %{"id" => "seeded", "type" => "Microsoft.Network/privateDnsZones", "properties" => %{}}
     )
 
     create("Microsoft.EventHub/namespaces", "providers/Microsoft.EventHub/namespaces/matrix-ehns",
@@ -126,51 +134,55 @@ defmodule ApiVersionMatrixTest do
   # handle_child_put call sites; each row cites the route's file:line).
   @child_routes [
     {"Microsoft.Network/subnets", "providers/Microsoft.Network/virtualNetworks/matrix-vnet/subnets/matrix-subnet",
-     "lib/smalt/arm_gateway/router.ex:1348"},
+     "lib/smalt/arm_gateway/router.ex:1496"},
     {"Microsoft.KeyVault/vaults/keys", "providers/Microsoft.KeyVault/vaults/matrix-vault/keys/matrix-key",
-     "lib/smalt/arm_gateway/router.ex:1389"},
+     "lib/smalt/arm_gateway/router.ex:1537"},
     {"Microsoft.Storage/storageAccounts/blobServices",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default",
-     "lib/smalt/arm_gateway/router.ex:1430"},
+     "lib/smalt/arm_gateway/router.ex:1578"},
     {"Microsoft.Storage/storageAccounts/blobServices/containers",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default/containers/matrix-container",
-     "lib/smalt/arm_gateway/router.ex:1461"},
+     "lib/smalt/arm_gateway/router.ex:1609"},
     {"Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default/containers/matrix-container/immutabilityPolicies/matrix-policy",
-     "lib/smalt/arm_gateway/router.ex:1502"}
+     "lib/smalt/arm_gateway/router.ex:1650"}
   ]
 
   # SB/EH messaging children: LANDED in router.ex (handle_parented_child PUT
-  # routes, router.ex:1543/1559/1608/1657/1706) but NOT admitted in Registry — the
+  # routes, router.ex:1691/1740/1789/1838/1887) but NOT admitted in Registry — the
   # api-version fence below pins the expected 400 InvalidApiVersionParameter
   # for them too; rows go red until Registry admits the type.
   @parented_routes [
     {"Microsoft.ServiceBus/namespaces/queues",
      {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/queues/matrix-queue",
-     "lib/smalt/arm_gateway/router.ex:1543"},
+     "lib/smalt/arm_gateway/router.ex:1691"},
     {"Microsoft.ServiceBus/namespaces/topics",
      {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic",
-     "lib/smalt/arm_gateway/router.ex:1592"},
+     "lib/smalt/arm_gateway/router.ex:1740"},
     {"Microsoft.ServiceBus/namespaces/topics/subscriptions",
      {"Microsoft.ServiceBus/namespaces/topics", "matrix-topic"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic/subscriptions/matrix-sub",
-     "lib/smalt/arm_gateway/router.ex:1641"},
+     "lib/smalt/arm_gateway/router.ex:1789"},
     {"Microsoft.EventHub/namespaces/eventhubs",
      {"Microsoft.EventHub/namespaces", "matrix-ehns"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub",
-     "lib/smalt/arm_gateway/router.ex:1690"},
+     "lib/smalt/arm_gateway/router.ex:1838"},
     {"Microsoft.EventHub/namespaces/eventhubs/consumergroups",
      {"Microsoft.EventHub/namespaces/eventhubs", "matrix-hub"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub/consumergroups/matrix-cg",
-     "lib/smalt/arm_gateway/router.ex:1739"}
+     "lib/smalt/arm_gateway/router.ex:1887"},
+    {"Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+     {"Microsoft.Network/privateDnsZones", "matrix-zone"},
+     "providers/Microsoft.Network/privateDnsZones/matrix-zone/virtualNetworkLinks/matrix-link",
+     "lib/smalt/arm_gateway/router.ex:2805"}
   ]
 
   @child_types MapSet.new(Enum.map(@child_routes, fn {t, _, _} -> t end))
 
   # Types with a landed PUT route but no dedicated child route ride the generic
-  # provider PUT route (router.ex:1799): single-segment resource types only —
+  # provider PUT route (router.ex:2451): single-segment resource types only —
   # that route matches exactly :provider_ns/:resource_type/:resource_name.
   @generic_rows (
     Registry.admitted_resource_types()
@@ -248,11 +260,31 @@ defmodule ApiVersionMatrixTest do
         assert conn.status in [200, 201, 202, 400, 404]
       end
 
-      test "PUT with api-version 1999-01-01 -> 400 InvalidApiVersionParameter" do
-        conn = put_resource(unquote(type), unquote(child_path), "1999-01-01")
+      test "PUT with api-version 2099-12-31 -> 400 InvalidApiVersionParameter" do
+        conn = put_resource(unquote(type), unquote(child_path), "2099-12-31")
 
         assert conn.status == 400
         assert error_code(conn) == "InvalidApiVersionParameter"
+      end
+
+      test "PUT with old-but-valid api-version (latest minus 1y) admits monotonically (KD-78)" do
+        latest = Registry.latest_version(unquote(type))
+
+        old =
+          if latest do
+            {:ok, d, _} = DateTime.from_iso8601("#{version_base(latest)}T00:00:00Z")
+            d |> DateTime.add(-365 * 24 * 3600, :second) |> DateTime.to_date() |> Date.to_iso8601()
+          else
+            "2019-01-01"
+          end
+
+        conn = put_resource(unquote(type), unquote(child_path), old)
+
+        refute api_version_error?(conn),
+               "expected monotonic admission of #{old} (<= latest #{latest}) but got " <>
+                 inspect(%{status: conn.status, code: error_code(conn), body: conn.resp_body})
+
+        assert conn.status in [200, 201, 202, 400, 404]
       end
 
       test "PUT without api-version -> 400 MissingApiVersionParameter" do
@@ -271,7 +303,7 @@ defmodule ApiVersionMatrixTest do
   describe "route gaps (child routes not yet landed)" do
     test "deep child-path types currently return 404 RouteNotFound on PUT" do
       for type <- @gap_types do
-        conn = put_resource(type, generic_deep_path(type), "1999-01-01")
+        conn = put_resource(type, generic_deep_path(type), "2099-12-31")
 
         assert {conn.status, error_code(conn)} == {404, "RouteNotFound"},
                "expected 404 RouteNotFound for un-routed child-path type #{type} but got " <>
@@ -293,10 +325,46 @@ defmodule ApiVersionMatrixTest do
       |> Enum.map(&Enum.at(&1, 1))
       |> MapSet.new()
       # Excluded: "Microsoft.Authorization/locks" is a response-envelope type
-      # literal in the azapi lock action body (router.ex:974), not a route's
+      # literal in the azapi lock action body (router.ex:1026), not a route's
       # resource-type string. It is not an admitted registry type and rides the
       # POST action route, not a PUT route.
       |> MapSet.delete("Microsoft.Authorization/locks")
+      # Excluded: "Microsoft.DocumentDB/databaseAccounts/sql" is a String
+      # prefix guard (router.ex:899, routing cosmos child PUTs to
+      # handle_cosmos_child_put/5), not a route's resource-type string.
+      # The real route types sqlDatabases / sqlContainers are admitted.
+      |> MapSet.delete("Microsoft.DocumentDB/databaseAccounts/sql")
+      # Excluded (80/20 Policy + RBAC lane, v26.10.16): the Microsoft.Authorization
+      # policy surface (roleDefinitions / policyDefinitions / policyAssignments)
+      # and Microsoft.PolicyInsights/policyStates are served by dedicated routes
+      # backed by Smalt.Policy (:smalt_policy / :smalt_rbac ETS), NOT by the
+      # generic admitted-type resource path. Their api-version gate is
+      # check_api_version/2 — presence required (400 MissingApiVersionParameter),
+      # value never validated (check_version/3 returns :ok for non-Registry
+      # types). Registering them in the ggen-marketplace smalt-substrate-pack
+      # ontology is the close condition that removes these exclusions.
+      |> MapSet.delete("Microsoft.Authorization/roleDefinitions")
+      |> MapSet.delete("Microsoft.Authorization/policyDefinitions")
+      |> MapSet.delete("Microsoft.Authorization/policyAssignments")
+      |> MapSet.delete("Microsoft.PolicyInsights/policyStates")
+      # Excluded (80/20 SB subscription rules lane, v26.10.16): rules ride
+      # dedicated routes backed by :smalt_sb_rules (Smalt.SbRules); api-version
+      # gate is check_api_version/2 (presence required, value never validated
+      # for this non-Registry type). Registering the rules type in the
+      # ggen-marketplace smalt-substrate-pack ontology is the close condition.
+      |> MapSet.delete("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules")
+      # Excluded (soft-delete purge lane, v26.10.16): the Microsoft.KeyVault/
+      # deletedVaults literal gates the dedicated deleted-vault purge route
+      # (POST .../providers/Microsoft.KeyVault/locations/:loc/deletedVaults/
+      # :name/purge, router.ex) — azurerm destroy calls this after DELETE;
+      # RouteNotFound there failed tf destroy (c11-tf-loop lane receipt,
+      # tmp/c11-tf-loop-34762.log, 2026-10-16). It is served by a dedicated
+      # route, NOT the generic admitted-type resource path, and its api-version
+      # gate is check_api_version/2 (presence required, value never validated
+      # for this non-Registry type). Registering the deletedVaults type in the
+      # ggen-marketplace smalt-substrate-pack ontology is the close condition
+      # that removes this exclusion.
+      |> MapSet.delete("Microsoft.KeyVault/deletedVaults")
 
     admitted = MapSet.new(Registry.admitted_resource_types())
 
@@ -313,18 +381,18 @@ defmodule ApiVersionMatrixTest do
   # ===========================================================================
 
   @cite_drift [
-    {"lib/smalt/arm_gateway/router.ex:1348", "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1389", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1430", "blobServices/default\""},
-    {"lib/smalt/arm_gateway/router.ex:1461", "blobServices/default/containers/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1502", "immutabilityPolicies/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1543", "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1592", "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1641", "topics/:topic/subscriptions/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1690", "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1739", "eventhubs/:hub/consumergroups/:name"},
-    {"lib/smalt/arm_gateway/router.ex:1799", "providers/:provider_ns/:resource_type/:resource_name"},
-    {"lib/smalt/arm_gateway/router.ex:974", "Microsoft.Authorization/locks"}
+    {"lib/smalt/arm_gateway/router.ex:2714", "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
+    {"lib/smalt/arm_gateway/router.ex:2755", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3027", "blobServices/default\""},
+    {"lib/smalt/arm_gateway/router.ex:3077", "blobServices/default/containers/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3118", "immutabilityPolicies/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3159", "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3208", "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3257", "topics/:topic/subscriptions/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3329", "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3378", "eventhubs/:hub/consumergroups/:name"},
+    {"lib/smalt/arm_gateway/router.ex:4131", "providers/:provider_ns/:resource_type/:resource_name"},
+    {"lib/smalt/arm_gateway/router.ex:1822", "Microsoft.Authorization/locks"}
   ]
 
   test "cite-drift fence: every router.ex:LINE citation resolves to the expected construct" do
@@ -417,14 +485,14 @@ defmodule ApiVersionMatrixTest do
         path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/#{ns}/#{rest}/sweep-res"
 
         conn =
-          conn(:post, path <> "?api-version=1999-01-01")
+          conn(:post, path <> "?api-version=2099-12-31")
           |> Router.call(@opts)
 
         assert conn.status == 404
 
         # The azapi action route is the catch-all POST at .../providers/*glob
         # depth, so an unknown action 404s as ActionNotFound (route MATCHES;
-        # the api-version gate inside it is presence-only and 1999-01-01 is
+        # the api-version gate inside it is presence-only and 2099-12-31 is
         # present — precedence still observed: 404, never an api-version 400).
         assert error_code(conn) == "ActionNotFound"
       end
@@ -442,4 +510,6 @@ defmodule ApiVersionMatrixTest do
     conn.status == 400 and
       error_code(conn) in ["InvalidApiVersionParameter", "MissingApiVersionParameter"]
   end
+
+  defp version_base(version), do: hd(String.split(to_string(version), "-preview"))
 end

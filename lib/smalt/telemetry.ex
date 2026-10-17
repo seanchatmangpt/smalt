@@ -33,8 +33,10 @@ defmodule Smalt.Telemetry do
   ## Failure law (deliberately non-uniform)
 
   * `OcelEmitter` never raises — telemetry emission is best-effort.
-  * `RollingCounters.bump/1` fails closed: a missing ETS table is a boot-order
-    violation and raises `ArgumentError` (no rescue, no silent drop).
+  * `RollingCounters.bump/1` fails closed at boot: a missing ETS table before
+    `init/1` raises `ArgumentError` (boot-order violation, no silent drop).
+    Post-boot table loss only logs-and-drops — a request process must never
+    die for a telemetry counter.
   * `handle_event/4` is unguarded by design — `:telemetry` isolates handler
     failures from emitters.
   """
@@ -202,13 +204,34 @@ defmodule Smalt.Telemetry.RollingCounters do
   def bump(key) do
     # ST15 contention fix: direct ETS update (public table,
     # write_concurrency) — the GenServer.call funnel cost 4.2x under
-    # parallel emitters. FAIL-CLOSED: a missing table is a boot-order
-    # violation (RollingCounters not started) and raises ArgumentError —
-    # no rescue, no silent drop. Counters are telemetry, but swallowing
-    # boot-order defects here would hide real wiring breaks.
+    # parallel emitters. FAIL-CLOSED, but boot-ordered (lc1 repair): a
+    # missing table BEFORE RollingCounters.init/1 has run is a boot-order
+    # violation and raises ArgumentError — no silent drop at boot. After
+    # boot, a vanished table must not kill beam request processes
+    # (witnessed badarg, receipts/lc1-8hop-tax-chain.md:50), so bump/1
+    # logs and drops instead. The boot/post-boot line is the
+    # :persistent_term marker init/1 sets.
     full_key = {now_minute(), key, :self}
-    :ets.update_counter(:smalt_rolling_counters, full_key, {2, 1}, {full_key, 0})
-    :ok
+
+    try do
+      :ets.update_counter(:smalt_rolling_counters, full_key, {2, 1}, {full_key, 0})
+      :ok
+    rescue
+      ArgumentError ->
+        if boot_completed?() do
+          require Logger
+
+          Logger.warning(
+            "RollingCounters table :smalt_rolling_counters missing post-boot; " <>
+              "dropping counter bump (key=#{inspect(key)})"
+          )
+
+          :ok
+        else
+          raise ArgumentError,
+                "smalt_rolling_counters missing before RollingCounters init (boot-order violation)"
+        end
+    end
   end
 
   @doc """
@@ -241,12 +264,13 @@ defmodule Smalt.Telemetry.RollingCounters do
     # emitter process; without it the atom is a throwaway suggestion and every
     # named access raises ArgumentError (boot-order false positive).
     table = :ets.new(:smalt_rolling_counters, [:set, :public, :named_table, write_concurrency: true])
+    :persistent_term.put({__MODULE__, :booted}, true)
     schedule_prune()
     {:ok, %{table: table}}
   end
 
   @impl true
-  def handle_call(:dump, _from, %{table: table} = state) do
+  def handle_call(:dump, _from, state) do
     now = now_minute()
 
     # SUM across the two admitted minute windows: the same logical key lives in
@@ -254,24 +278,59 @@ defmodule Smalt.Telemetry.RollingCounters do
     # comprehension) made the result order-dependent — an undercount whenever a
     # key straddled a minute boundary.
     counters =
-      for {{m, k, _}, n} <- :ets.tab2list(table), recent?(m, now), reduce: %{} do
+      for {{m, k, _}, n} <- table_rows(), recent?(m, now), reduce: %{} do
         acc -> Map.update(acc, k, n, &(&1 + n))
       end
 
     {:reply, counters, state}
   end
 
-  def handle_call(:per_minute, _from, %{table: table} = state) do
-    counters = for {{m, k, _}, n} <- :ets.tab2list(table), into: %{}, do: {{m, k}, n}
+  def handle_call(:per_minute, _from, state) do
+    counters = for {{m, k, _}, n} <- table_rows(), into: %{}, do: {{m, k}, n}
     {:reply, counters, state}
   end
 
+  # A32 fix 3: the dump/per_minute read path held the init-time tid in the
+  # GenServer state and hit it unguarded — after post-boot table loss (the
+  # bump/1 badarg witness class) a dump raised instead of degrading. Resolve
+  # by name and apply bump/1's log-and-drop semantics: empty post-boot, boot-
+  # order raise pre-boot.
+  defp table_rows do
+    try do
+      :ets.tab2list(:smalt_rolling_counters)
+    rescue
+      ArgumentError ->
+        if boot_completed?() do
+          require Logger
+
+          Logger.warning(
+            "RollingCounters table :smalt_rolling_counters missing post-boot; " <>
+              "returning empty counter read"
+          )
+
+          []
+        else
+          raise ArgumentError,
+                "smalt_rolling_counters missing before RollingCounters init (boot-order violation)"
+        end
+    end
+  end
+
   @impl true
-  def handle_info(:prune, %{table: table} = state) do
+  # R157: prune was the last unguarded raise path — it held the init-time tid
+  # and hit :ets.tab2list/1 directly, crashing the GenServer if the table was
+  # deleted post-boot. Resolve by name via table_rows/0 (same log-and-drop as
+  # bump/1/dump/0); deletes use the named table so a mid-prune delete of the
+  # table degrades to a skipped sweep, not a crash.
+  def handle_info(:prune, state) do
     now = now_minute()
 
-    for {{m, _, _} = full_key, _n} <- :ets.tab2list(table), m < now - 1 do
-      :ets.delete(table, full_key)
+    for {{m, _, _} = full_key, _n} <- table_rows(), m < now - 1 do
+      try do
+        :ets.delete(:smalt_rolling_counters, full_key)
+      rescue
+        ArgumentError -> :ok
+      end
     end
 
     schedule_prune()
@@ -280,6 +339,8 @@ defmodule Smalt.Telemetry.RollingCounters do
 
   defp schedule_prune, do: Process.send_after(self(), :prune, @prune_interval)
   defp now_minute, do: System.system_time(:millisecond) |> div(60_000)
+
+  defp boot_completed?, do: :persistent_term.get({__MODULE__, :booted}, false)
 
   defp recent?(minute, now), do: minute in [now - 1, now]
 end

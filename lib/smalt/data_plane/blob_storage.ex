@@ -3,11 +3,51 @@ defmodule Smalt.DataPlane.BlobStorage do
   Pure Elixir Azure Immutable Blob Storage REST engine (`Microsoft.Storage/storageAccounts`).
   Supports container creation, block blob PUT/GET/DELETE, ETag generation, If-Match
   preconditions, legal hold and immutability policy (WORM), and XML blob listing.
+
+  ## WORM arm convention
+
+  Every WORM check resolves to one of three arms by verb: `create` is
+  hold-only (immutability protects existing data, not namespace growth —
+  R5); `overwrite` refuses when a legal hold, a locked immutability policy,
+  or an unexpired retention is present; `delete` requires clearing the
+  delete clause. Metadata mutation rides the `overwrite` arm.
+  Create-or-overwrite verbs (e.g. Put Block List) resolve the arm from
+  blob existence — never hardcode the arm at the call site.
   """
   alias Smalt.DataPlane.ConditionalHeaders
   alias Smalt.Store
 
   @policy_table :smalt_blob_policy
+
+  # D127 (ARM teardown cascade): deleting a storageAccount (directly or via
+  # RG delete) must not orphan data-plane rows. Blob tables key rows as
+  # "account/container" and "account/container/blob", so an account-prefix
+  # sweep ("acct/") across every blob table removes the account's whole
+  # data-plane footprint. Lazily-created tables (:smalt_blob_blocks,
+  # :smalt_blob_snapshots) may not be booted — guard with :ets.info. The
+  # per-container DELETE route stays a product-faithful gap (D127 scopes the
+  # cascade to account teardown, not container teardown).
+  @doc false
+  @spec drop_account_data(String.t()) :: :ok
+  def drop_account_data(account) when is_binary(account) do
+    base = String.downcase("#{account}/")
+
+    tables = [
+      :smalt_blob_containers,
+      :smalt_blobs,
+      :smalt_blob_policy,
+      :smalt_blob_blocks,
+      :smalt_blob_snapshots
+    ]
+
+    for table <- tables,
+        :ets.info(table) != :undefined,
+        key <- Store.prefix_keys(table, base) do
+      Store.delete(table, key)
+    end
+
+    :ok
+  end
 
   def create_container(account, container, opts \\ %{}) do
     with :ok <- check_container_name(container) do
@@ -154,6 +194,15 @@ defmodule Smalt.DataPlane.BlobStorage do
 
         :error ->
           cond do
+            # Azure parity (R5: audit A1 defect, create-under-hold): a legal
+            # hold blocks NEW-blob creation with 409 ContainerLocked, same
+            # as overwrite. Previously the create arm skipped the WORM check
+            # entirely. Time-based immutability alone does not block create
+            # (real Azure permits new-blob writes into retention containers),
+            # so the create arm consults the hold-scoped predicate clause.
+            worm_blocked?(container_meta, "create", now) ->
+              {:error, :worm_locked, worm_message(container_meta, now)}
+
             # Azure parity (cycle-21): If-Match on a NON-EXISTENT blob is
             # 412 (a precondition on a resource that does not exist fails).
             # Previously the create path skipped all preconditions, so
@@ -338,7 +387,15 @@ defmodule Smalt.DataPlane.BlobStorage do
          {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_k),
          {:ok, blocks} <- resolve_refs(refs, account, container, blob_name) do
       cond do
-        worm_blocked?(container_meta, "overwrite", now) ->
+        # SHIM-COURT / KD-COVERS: KD-52 — existence-scoped WORM arm (parity
+        # with put_blob): a legal hold blocks BOTH overwrite and create, but
+        # time-retention only blocks overwrite of an existing blob (a new
+        # blob commit under an unlocked/retention container is 201, R5).
+        worm_blocked?(
+          container_meta,
+          if(existing_blob?(blob_key), do: "overwrite", else: "create"),
+          now
+        ) ->
           {:error, :worm_locked, worm_message(container_meta, now)}
 
         mismatched_if_match?(headers, committed_etag(blob_key)) ->
@@ -511,7 +568,18 @@ defmodule Smalt.DataPlane.BlobStorage do
         body
       )
       |> Enum.map(fn [_all, tag, id] ->
-        {tag |> String.downcase() |> String.to_existing_atom(), xml_unescape(id)}
+        # SHIM-COURT R5: String.to_existing_atom/1 raises ArgumentError for
+        # :latest/:committed/:uncommitted on a fresh node where those atoms
+        # do not yet exist. Explicit binary match — total over the regex's
+        # three possible tags, no atom-creation, no raise.
+        kind =
+          case tag do
+            "Latest" -> :latest
+            "Committed" -> :committed
+            "Uncommitted" -> :uncommitted
+          end
+
+        {kind, xml_unescape(id)}
       end)
 
     if refs == [] do
@@ -567,6 +635,146 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  @valid_access_tiers ~w(Hot Cool Cold Archive)
+
+  @doc """
+  Set Blob Tier (`PUT ?comp=tier` + `x-ms-access-tier`) — stores the access
+  tier on the blob record (GAP-AUD1-02). Valid tiers: Hot/Cool/Cold/Archive;
+  anything else → 400 `InvalidHeaderValue`.
+
+  Returns:
+
+    * `{:ok, 200, headers, nil}`
+    * `{:error, 400, "InvalidHeaderValue", msg}`
+    * `{:error, 404, "ContainerNotFound" | "BlobNotFound", msg}`
+  """
+  def set_blob_tier(account, container, blob_name, tier, opts \\ []) do
+    container_key = "#{account}/#{container}"
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    now = now_ms(opts)
+
+    with {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
+         # SHIM-COURT / KD-COVERS: KD-52 — Set Blob Tier mutates the stored
+         # blob, so it rides the "overwrite"-arm WORM check (legal hold,
+         # locked policy, or unexpired retention -> 409 ContainerLocked).
+         :ok <- check_worm_arm(container_meta, "overwrite", now),
+         {:ok, existing} <- blob_or_404(blob_key) do
+      if tier in @valid_access_tiers do
+        updated =
+          existing
+          |> Map.put("access_tier", tier)
+          |> Map.put("last_modified", DateTime.utc_now() |> DateTime.to_iso8601())
+
+        Store.put(:smalt_blobs, blob_key, updated)
+        {:ok, 200, %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}, nil}
+      else
+        {:error, 400, "InvalidHeaderValue",
+         "Invalid x-ms-access-tier: #{inspect(tier)}. Valid: Hot, Cool, Cold, Archive."}
+      end
+    else
+      :error -> {:error, 404, "ContainerNotFound", "Container not found."}
+      {:error, :not_found} -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+      {:error, {:worm, reason}} -> {:error, 409, "ContainerLocked", worm_message_reason(reason)}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Blob snapshots (Put Blob ?comp=snapshot). A snapshot is an immutable,
+  # point-in-time copy of the base blob's record (content, etag, headers,
+  # metadata, tier) stored under a dedicated ETS table keyed {blob_key, ts}
+  # so it never pollutes List Blobs enumeration. Later mutations of the base
+  # blob must not be visible through the snapshot.
+  # ---------------------------------------------------------------------------
+
+  @snapshot_table :smalt_blob_snapshots
+
+  @doc false
+  def ensure_snapshot_table do
+    if :ets.info(@snapshot_table) == :undefined do
+      :ets.new(@snapshot_table, [:set, :named_table, :public, read_concurrency: true])
+    end
+
+    :ok
+  end
+
+  @doc """
+  Snapshot Blob (`PUT ?comp=snapshot`) — freezes the base blob's current
+  record and returns the `x-ms-snapshot` timestamp in the response headers.
+
+  Returns:
+
+    * `{:ok, 201, %{"x-ms-snapshot" => ts, ...}, nil}`
+    * `{:error, 404, "ContainerNotFound" | "BlobNotFound", msg}`
+    * `{:error, 409, "ContainerLocked", msg}` when a legal hold blocks the
+      snapshot create (WORM create arm)
+  """
+  def snapshot_blob(account, container, blob_name, _headers \\ %{}, opts \\ []) do
+    container_key = "#{account}/#{container}"
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    ensure_snapshot_table()
+    now = now_ms(opts)
+
+    with {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
+         # SHIM-COURT / KD-COVERS: KD-52 — a snapshot is a new blob seeded
+         # from an existing one, so it resolves the existence-scoped arm per
+         # the moduledoc convention: the source blob exists, making this a
+         # "create" (hold-only) arm — legal hold blocks, time retention does
+         # not (R5: immutability protects existing data, not namespace
+         # growth).
+         :ok <- check_worm_arm(container_meta, "create", now),
+         {:ok, source} <- blob_or_404(blob_key) do
+      ts = DateTime.utc_now() |> DateTime.to_iso8601()
+      snapshot = Map.put(source, "snapshot", ts)
+      :ets.insert(@snapshot_table, {{blob_key, ts}, snapshot})
+
+      {:ok, 201,
+       %{
+         "x-ms-snapshot" => ts,
+         "x-ms-request-id" => request_id(),
+         "x-ms-version" => "2021-12-02",
+         "etag" => source["etag"]
+       }, nil}
+    else
+      :error -> {:error, 404, "ContainerNotFound", "Container not found."}
+      {:error, :not_found} -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+      {:error, {:worm, reason}} -> {:error, 409, "ContainerLocked", worm_message_reason(reason)}
+    end
+  end
+
+  @doc """
+  Get a specific snapshot of a blob by its `x-ms-snapshot` timestamp.
+  Returns the frozen record (content, etag, headers) as of snapshot time.
+
+    * `{:ok, blob}`
+    * `{:error, 404, "BlobNotFound", msg}` — no such snapshot
+  """
+  def get_blob_snapshot(account, container, blob_name, ts) do
+    ensure_snapshot_table()
+
+    case :ets.lookup(@snapshot_table, {"#{account}/#{container}/#{blob_name}", ts}) do
+      [{{_k, _ts}, blob}] -> {:ok, blob}
+      [] -> {:error, 404, "BlobNotFound", "The specified blob snapshot does not exist."}
+    end
+  end
+
+  @doc """
+  List snapshots of a blob, newest first. Returns `{:ok, [blob, ...]}` where
+  each element is the frozen record plus its `"snapshot"` timestamp
+  (empty list when the blob has no snapshots).
+  """
+  def list_snapshots(account, container, blob_name) do
+    ensure_snapshot_table()
+    blob_key = "#{account}/#{container}/#{blob_name}"
+
+    snapshots =
+      @snapshot_table
+      |> :ets.match_object({{blob_key, :_}, :_})
+      |> Enum.map(fn {_k, blob} -> blob end)
+      |> Enum.sort_by(fn blob -> blob["snapshot"] end, :desc)
+
+    {:ok, snapshots}
+  end
+
   @doc """
   PUT ?comp=immutabilityPolicy — sets or locks the container immutability policy.
   Locking requires `If-Match: "*"`. After lock, changing the policy → 409
@@ -578,53 +786,97 @@ defmodule Smalt.DataPlane.BlobStorage do
     ensure_policy_table()
 
     with {:ok, container_meta} <- fetch_container_meta(container_key),
-         {:ok, existing} <- policy_or_empty(container_key),
-         :ok <- refuse_if_locked(existing, container_meta, now),
-         :ok <- require_star_if_match_for_lock(headers, policy) do
-      locked = Map.get(policy, "locked", false)
-      period_days = Map.get(policy, "period_days", Map.get(existing, "period_days", 0))
+         # R153: like set_legal_hold/set_container_metadata, the immutability
+         # policy was an unlocked read-modify-write on the shared
+         # :smalt_blob_policy row (public ETS, write_concurrency) — a legal-hold
+         # commit landing between this read and its Store.put silently clobbered
+         # the hold (and vice versa). The whole read-check-write now serializes
+         # through the Store GenServer CAS: the lock/precondition checks run
+         # INSIDE the update_fn against the freshly-read row, so a concurrent
+         # writer forces a conflict-retry (re-read, re-check) or a typed
+         # refusal — never a stale write-back over a committed field.
+         :ok <-
+           cas_policy_row(container_key, fn existing ->
+             with :ok <- refuse_if_locked(existing, container_meta, now),
+                  :ok <- require_star_if_match_for_lock(headers, policy),
+                  {:ok, new_policy} <- build_immutability_policy(existing, policy, now) do
+               {:ok, new_policy}
+             else
+               {:error, :locked} ->
+                 {:error, 409, "ContainerLocked", locked_policy_message()}
 
-      with :ok <- validate_period_days(period_days) do
+               {:error, :if_match_required} ->
+                 {:error, 412, "PreconditionFailed",
+                  "Locking an immutability policy requires If-Match: \"*\"."}
+
+               refused ->
+                 refused
+             end
+           end) do
+      # Response is projected from the COMMITTED row (the CAS closure wrote the
+      # computed until/period_days into it) — never recomputed from the raw
+      # request, which would drift from what is actually stored.
+      committed = get_policy(account, container) || %{}
+      imm = Map.get(committed, "immutability_policy", %{})
+      locked = Map.get(imm, "locked", false)
+      period_days = Map.get(imm, "period_days", 0)
+      until = Map.get(imm, "until")
+
+      base_headers = %{
+        "x-ms-request-id" => request_id(),
+        "x-ms-version" => "2021-12-02",
+        "x-ms-has-immutability-policy" => "true"
+      }
+
+      # nil-safe projection: immutability-policy-until is only emitted when a
+      # real expiry exists (period_days > 0 or a wire expiresOn was supplied).
+      headers =
+        if is_binary(until),
+          do: Map.put(base_headers, "immutability-policy-until", until),
+          else: base_headers
+
+      {:ok, 200, headers,
+       %{"locked" => locked, "until" => until, "period_days" => period_days}}
+    else
+      {:error, 400, code, msg} -> {:error, 400, code, msg}
+      {:error, 404, code, msg} -> {:error, 404, code, msg}
+      {:error, 409, code, msg} -> {:error, 409, code, msg}
+      {:error, 412, code, msg} -> {:error, 412, code, msg}
+      {:error, 500, code, msg} -> {:error, 500, code, msg}
+    end
+  end
+
+  # R153: pure policy builder for the immutability write, run inside the CAS
+  # closure against the freshly-read row. Preserves the pre-R153 semantics:
+  # period_days falls back to the committed value, an explicit "until" => nil
+  # falls through to the computed default, and the concurrent legal_hold field
+  # is carried over from the row as read under serialization.
+  defp build_immutability_policy(existing, policy, now) do
+    locked = Map.get(policy, "locked", false)
+    period_days = Map.get(policy, "period_days", Map.get(existing, "period_days", 0))
+
+    case validate_period_days(period_days) do
+      :ok ->
         # nil-coalescing: an explicit "until" => nil in the policy map must fall
         # through to the computed default, never propagate nil into a response
         # header (put_resp_header on nil is a FunctionClauseError 500).
         until = Map.get(policy, "until") || default_until(period_days, now)
 
-        new_policy = %{
-          "immutability_policy" => %{
-            "locked" => locked,
-            "until" => until,
-            "period_days" => period_days
-          },
-          "legal_hold" => Map.get(existing, "legal_hold", false)
-        }
+        # R177d: seed from the row as read under CAS so sibling keys on the
+        # shared :smalt_blob_policy row (e.g. "metadata" written by
+        # set_container_metadata) survive the immutability PUT — merge, never
+        # replace. SHIM-COURT: the pre-R177d fresh-map build clobbered them.
+        {:ok,
+         existing
+         |> Map.put("immutability_policy", %{
+           "locked" => locked,
+           "until" => until,
+           "period_days" => period_days
+         })
+         |> Map.put("legal_hold", Map.get(existing, "legal_hold", false))}
 
-        Store.put(@policy_table, container_key, new_policy)
-
-        base_headers = %{
-          "x-ms-request-id" => request_id(),
-          "x-ms-version" => "2021-12-02",
-          "x-ms-has-immutability-policy" => "true"
-        }
-
-        # nil-safe projection: immutability-policy-until is only emitted when a
-        # real expiry exists (period_days > 0 or a wire expiresOn was supplied).
-        headers =
-          if is_binary(until),
-            do: Map.put(base_headers, "immutability-policy-until", until),
-            else: base_headers
-
-        {:ok, 200, headers,
-         %{"locked" => locked, "until" => until, "period_days" => period_days}}
-      else
-        {:error, 400, code, msg} -> {:error, 400, code, msg}
-      end
-    else
-      {:error, :locked} -> {:error, 409, "ContainerLocked", locked_policy_message()}
-      {:error, :if_match_required} -> {:error, 412, "PreconditionFailed",
-        "Locking an immutability policy requires If-Match: \"*\"."}
-      {:error, 400, code, msg} -> {:error, 400, code, msg}
-      {:error, 404, code, msg} -> {:error, 404, code, msg}
+      {:error, 400, code, msg} ->
+        {:error, 400, code, msg}
     end
   end
 
@@ -663,13 +915,17 @@ defmodule Smalt.DataPlane.BlobStorage do
     ensure_policy_table()
 
     with {:ok, _} <- Store.get(:smalt_blob_containers, container_key),
-         {:ok, existing} <- policy_or_empty(container_key) do
-      policy =
-        existing
-        |> Map.put("legal_hold", flag)
-        |> put_in_worm_defaults()
-
-      Store.put(@policy_table, container_key, policy)
+         # R133: policy-row writers were an unlocked read-modify-write on the
+         # shared :smalt_blob_policy row (public ETS, write_concurrency) — a
+         # metadata PUT landing between a hold-set's read and write silently
+         # cleared the committed hold. Both writers now serialize through the
+         # Store GenServer CAS: a stale write-back refuses and retries, and a
+         # metadata set retrying re-reads the row that now carries the hold
+         # and refuses with 409 (Azure ContainerLocked parity).
+         :ok <-
+           cas_policy_row(container_key, fn policy ->
+             {:ok, policy |> Map.put("legal_hold", flag) |> put_in_worm_defaults()}
+           end) do
 
       {:ok, 200,
        %{
@@ -717,30 +973,64 @@ defmodule Smalt.DataPlane.BlobStorage do
     # Engine totality (mirrors set_container_metadata): nil metadata = empty
     # replace set, never a FunctionClauseError 500.
     metadata = metadata || %{}
+    now = now_ms([])
 
     with {:ok, blob} <- Store.get(:smalt_blobs, blob_key),
-         :ok <- check_metadata_names(meta_wire_headers(metadata)) do
+         # SHIM-COURT / KD-COVERS: KD-52 — a blob metadata PUT mutates the
+         # blob, so it carries the same "overwrite"-class WORM check as
+         # put_blob: legal hold or live locked/immutable policy -> 409
+         # ContainerLocked (real Azure refuses metadata writes under hold).
+         {:ok, container_meta} <- Store.get(:smalt_blob_containers, "#{account}/#{container}"),
+         :ok <- check_metadata_names(meta_wire_headers(metadata)),
+         :ok <- if(worm_blocked?(container_meta, "overwrite", now),
+                   do: {:worm, container_meta},
+                   else: :ok
+                 ) do
       stripped =
         Map.reject(blob["headers"] || %{}, fn {k, _v} ->
           String.starts_with?(k, "x-ms-meta-")
         end)
 
+      # SHIM-COURT: Azure Put Blob Metadata updates ETag + Last-Modified. A
+      # metadata mutation must yield a NEW etag (distinct from the body hash)
+      # so pre-mutation If-Match fails with 412 (lost-update detection).
+      # KD-COVERS: KD-52
+      now = DateTime.utc_now() |> DateTime.to_iso8601()
+      new_etag = metadata_etag(blob["etag"], metadata, now)
+
       blob =
         blob
         |> Map.put("headers", Map.merge(stripped, meta_wire_headers(metadata)))
-        |> Map.put("last_modified", DateTime.utc_now() |> DateTime.to_iso8601())
+        |> Map.put("etag", new_etag)
+        |> Map.put("last_modified", now)
 
       Store.put(:smalt_blobs, blob_key, blob)
 
       {:ok, 200,
        %{
-         "etag" => blob["etag"],
+         "etag" => new_etag,
          "x-ms-version" => "2021-12-02"
        }}
     else
+      # SHIM-COURT: WORM-blocked metadata mutation -> 409 ContainerLocked
+      # (same tuple shape as put_blob / commit_block_list).
+      {:worm, container_meta} -> {:error, :worm_locked, worm_message(container_meta, now)}
       :error -> {:error, 404, "BlobNotFound", "Blob not found."}
       {:error, 400, _code, _msg} = invalid -> invalid
     end
+  end
+
+  # SHIM-COURT: metadata-set etag = MD5 of (stored etag, metadata, timestamp,
+  # monotonic counter) — always distinct from the body-hash etag, even if the
+  # same metadata is set twice.
+  defp metadata_etag(prev_etag, metadata, now) do
+    counter = System.unique_integer([:monotonic])
+
+    digest =
+      :crypto.hash(:md5, prev_etag <> inspect(metadata) <> now <> Integer.to_string(counter))
+      |> Base.encode16(case: :lower)
+
+    "\"#{digest}\""
   end
 
   defp meta_wire_headers(metadata) when is_map(metadata) do
@@ -1162,10 +1452,27 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  # SHIM-COURT: verb-parameterized check_worm — resolves the caller's WORM
+  # arm ("create" / "overwrite" / "delete") per the moduledoc convention.
+  defp check_worm_arm(container_meta, arm, now) do
+    if worm_blocked?(container_meta, arm, now) do
+      {:error, {:worm, blocker(fetch_policy(container_meta))}}
+    else
+      :ok
+    end
+  end
+
   # WORM block when a legal hold is set (never expires), or the immutability
   # policy is locked / container is immutable while retention is still live.
   # Once `now > created_at + retention_days` the container unlocks — except
   # for an active legal hold, which only an explicit release lifts.
+  # Create arm ("create"): only a legal hold blocks NEW-blob creation
+  # (R5); time-retention/immutable containers still accept new blobs,
+  # matching the pre-existing retention-expiry test expectations.
+  defp worm_blocked?(container_meta, "create", _now) do
+    legal_hold?(fetch_policy(container_meta))
+  end
+
   defp worm_blocked?(container_meta, _op, now) do
     policy = fetch_policy(container_meta)
 
@@ -1266,10 +1573,59 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
-  defp policy_or_empty(container_key) do
+  @doc """
+  R133: serialized policy-row update. `update_fn` receives the current policy
+  map (or `%{}` when absent) and returns `{:ok, new_policy}` or an
+  `{:error, status, code, msg}` tuple to abort without writing. The
+  read-check-write runs as ONE Store GenServer `compare_and_swap`/`insert_new`
+  on the whole row, so a concurrent writer between the read and the write
+  yields `{:error, :conflict}` and the update re-reads + retries — a stale
+  write-back can never clobber a concurrently committed field (e.g. a
+  metadata PUT clearing a just-committed legal hold). After a bounded number
+  of conflicts the update fails closed with 500. Convergence: each conflict
+  consumes one competitor commit, so conflicts are bounded by the concurrent
+  commits during the spin (<= racer count N, N << 200) — a racer that wins
+  its CAS retires and stops generating conflicts. 500-on-exhaustion is
+  fail-closed: the caller gets a loud error, the hold can never be silently
+  lost.
+  """
+  def cas_policy_row(container_key, update_fn) do
+    ensure_policy_table()
+    cas_policy_row_loop(container_key, update_fn, 200)
+  end
+
+  defp cas_policy_row_loop(_container_key, _update_fn, 0) do
+    {:error, 500, "OperationFailed", "policy row contention: update did not converge"}
+  end
+
+  defp cas_policy_row_loop(container_key, update_fn, attempts) do
     case Store.get(@policy_table, container_key) do
-      {:ok, policy} -> {:ok, policy}
-      :error -> {:ok, %{}}
+      {:ok, current} ->
+        case update_fn.(current) do
+          {:ok, new_policy} ->
+            case Store.compare_and_swap(@policy_table, container_key, current, new_policy) do
+              :ok -> :ok
+              {:error, :conflict} -> cas_policy_row_loop(container_key, update_fn, attempts - 1)
+            end
+
+          # typed abort (e.g. 409 ContainerLocked under a concurrently
+          # committed hold) — no write, no retry
+          {:error, _, _, _} = refused ->
+            refused
+        end
+
+      :error ->
+        case update_fn.(%{}) do
+          {:ok, new_policy} ->
+            case Store.insert_new(@policy_table, container_key, new_policy) do
+              :ok -> :ok
+              # row appeared between get and insert_new — re-read and retry
+              {:error, :exists} -> cas_policy_row_loop(container_key, update_fn, attempts - 1)
+            end
+
+          {:error, _, _, _} = refused ->
+            refused
+        end
     end
   end
 

@@ -66,18 +66,45 @@ defmodule Smalt.DataPlane.KQL do
 
   defp apply_stage({:where, pred}, rows), do: {:ok, Enum.filter(rows, &eval(pred, &1))}
 
-  defp apply_stage({:order, col, dir}, rows),
-    do: {:ok, Enum.sort_by(rows, &sort_key(&1, col), dir)}
+  defp apply_stage({:order, col, dir}, rows) do
+    {:ok, Enum.sort_by(rows, &sort_key(&1, col, numeric_column?(rows, col)), dir)}
+  end
 
   defp apply_stage({:project, cols}, rows), do: {:ok, Enum.map(rows, &Map.take(&1, cols))}
 
-  # Missing columns sort as the empty string; Erlang's sort is stable, so equal
-  # keys keep input order — deterministic output.
-  defp sort_key(row, col) do
+  # Numeric order rule: a column sorts numerically ONLY when every present
+  # (non-nil) value in the rowset parses as a number — otherwise the sort is
+  # lexicographic. Rationale: `column_type/2` in the Sentinel plane advertises
+  # "long"/"real" for numeric columns, and real Kusto sorts "10" > "9"
+  # numerically; per-column typing is not tracked in this engine, so the
+  # all-values-parse rule is the cheap local equivalent.
+  defp numeric_column?(rows, col) do
+    Enum.all?(rows, fn row ->
+      case Map.get(row, col) do
+        nil -> true
+        v -> match?({:ok, _}, number(v))
+      end
+    end)
+  end
+
+  # Missing columns sort first (tag {0, ""}); Erlang's sort is stable, so equal
+  # keys keep input order — deterministic output. Keys are uniform {tag, value}
+  # tuples so number/string branches never mix incomparable terms.
+  defp sort_key(row, col, numeric) do
     case Map.get(row, col) do
-      nil -> ""
-      v when is_binary(v) -> v
-      v -> to_string(v)
+      nil ->
+        {0, ""}
+
+      v ->
+        if numeric do
+          case number(v) do
+            {:ok, n} -> {1, n}
+            # unreachable when numeric_column?/2 held, kept total for safety
+            :error -> {1, to_str(v)}
+          end
+        else
+          {1, to_str(v)}
+        end
     end
   end
 
@@ -87,7 +114,14 @@ defmodule Smalt.DataPlane.KQL do
   defp eval({:or, l, r}, row), do: eval(l, row) or eval(r, row)
 
   defp eval({:eq, col, lit}, row), do: Map.get(row, col) == lit
-  defp eval({:neq, col, lit}, row), do: Map.get(row, col) != lit
+  # A row missing the column must fail `!=` just as it fails `==` (null is not
+  # comparable in Kusto — a null comparison is unknown, never true).
+  defp eval({:neq, col, lit}, row) do
+    case Map.get(row, col) do
+      nil -> false
+      v -> v != lit
+    end
+  end
 
   defp eval({op, col, lit}, row) when op in [:contains, :startswith] do
     case Map.get(row, col) do
@@ -95,8 +129,18 @@ defmodule Smalt.DataPlane.KQL do
         false
 
       v ->
-        v = to_str(v)
-        lit = to_str(lit)
+        # Real Kusto: contains/startswith are case-INsensitive; only the
+        # explicit _cs variants are case-sensitive. Compare downcased.
+        #
+        # Known divergence (KD-class, parked): downcase-folding is not full
+        # Kusto case-folding — e.g. 'İ' (U+0130) downcases to "i̇" (i + combining
+        # dot) while Kusto folds it to "i", and 'ß'/'ss' asymmetries differ.
+        # The asymmetry is inherent to per-codepoint String.downcase/2; forcing
+        # full Unicode case-folding parity here is not cheap, so the divergence
+        # stands documented rather than fixed. ASCII and common Latin-1 folding
+        # match Kusto.
+        v = String.downcase(to_str(v))
+        lit = String.downcase(to_str(lit))
 
         if op == :contains do
           String.contains?(v, lit)
@@ -135,8 +179,14 @@ defmodule Smalt.DataPlane.KQL do
 
   defp number(_), do: :error
 
+  # SHIM-COURT-visible coercion contract: predicates must never raise out of
+  # run/2 ({:ok,_}|{:error,_} contract, hostile-ingest reachable via Sentinel
+  # nested maps). inspect/1 is total over all terms — Protocol.UndefinedError
+  # on maps/tuples/lists is impossible. Note: list->charlist silent coercion
+  # (to_string([?a,?b]) == "ab") is intentionally gone — lists now inspect as
+  # "[...]" instead of coercing to strings/charlists.
   defp to_str(v) when is_binary(v), do: v
-  defp to_str(v), do: to_string(v)
+  defp to_str(v), do: inspect(v)
 
   ## -- Limits -------------------------------------------------------------------
 
@@ -378,7 +428,7 @@ defmodule Smalt.DataPlane.KQL do
             {:ok, {op_atom, col, lit}, rest}
 
           [{:word, num} | rest] ->
-            case parse_number(num) do
+            case number(num) do
               {:ok, n} -> {:ok, {op_atom, col, n}, rest}
               :error -> {:error, "expected number after #{op}, got #{inspect(num)}"}
             end
@@ -398,19 +448,6 @@ defmodule Smalt.DataPlane.KQL do
   # error, never a FunctionClauseError crash (fuzz fence, cycle 10).
   defp parse_comparison(_col, [_bad | _]),
     do: {:error, "expected comparison operator after column"}
-
-  defp parse_number(bin) do
-    case Integer.parse(bin) do
-      {n, ""} ->
-        {:ok, n}
-
-      _ ->
-        case Float.parse(bin) do
-          {f, ""} -> {:ok, f}
-          _ -> :error
-        end
-    end
-  end
 
   defp parse_loop(lhs, [{:word, op} | rest], min_bp) when op in ["and", "or"] do
     op_atom = Map.fetch!(@bool_ops, op)

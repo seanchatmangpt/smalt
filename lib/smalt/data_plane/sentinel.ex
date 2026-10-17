@@ -13,6 +13,11 @@ defmodule Smalt.DataPlane.Sentinel do
 
   @api_version "2023-01-01"
   @max_take 101
+  # Matches KQL's own query cap (kql.ex @max_query_length): enforced HERE at the
+  # Sentinel entry point, BEFORE any literal-strip regex scan, so the legacy
+  # (non-pipeline) path and an oversized query can never reach the scanner
+  # (lane R175 E1/E3 — quadratic backtracking ReDoS + legacy-cap bypass).
+  @max_query_length 2_000
 
   # ---------------------------------------------------------------------------
   # Ingest
@@ -211,9 +216,37 @@ defmodule Smalt.DataPlane.Sentinel do
   """
   def query(workspace_id, body) do
     kql = body |> Map.get("query", "") |> to_string()
+
+    # Cap BEFORE any scan (strip_string_literals included): an oversized query
+    # is refused with a typed 400 matching KQL.run's limit envelope, covering
+    # both pipeline and legacy take paths (lane R175 E1/E3).
+    if byte_size(kql) > @max_query_length do
+      {:error, 400,
+       %{
+         "error" => %{
+           "code" => "BadQuery",
+           "message" => "query length exceeds #{@max_query_length}"
+         }
+       }}
+    else
+      do_query(workspace_id, kql)
+    end
+  end
+
+  defp do_query(workspace_id, kql) do
     stored_rows = Store.list_prefix(:smalt_sentinel_rows, "#{to_string(workspace_id)}/")
 
     case kql_pipeline(kql) do
+      :parse_error ->
+        {:error, 400,
+         %{
+           "error" => %{
+             "code" => "BadQuery",
+             "message" =>
+               "query uses a pipeline operator (where/order by/project) without a leading pipe"
+           }
+         }}
+
       nil ->
         take = parse_take(kql)
         rows = Enum.take(stored_rows, take)
@@ -247,9 +280,19 @@ defmodule Smalt.DataPlane.Sentinel do
   end
 
   # Real Log Analytics preserves the projected column order. Extract the
-  # project column list (in order) from the pipeline text.
+  # project column list (in order) from the pipeline text. Quoted string
+  # literals are stripped first (lane R26 finding 1): `where msg == "project a"
+  # | project lvl, n` previously matched the "project" inside the literal and
+  # corrupted the column list. (KQL.run's own where/order scanning is
+  # tokenizer-based and already string-aware; only this raw-regex scan was
+  # literal-blind.)
   defp project_columns(pipeline) do
-    case Regex.run(~r/\bproject\s+(.+)$/i, pipeline) do
+    # KD-COVERS: KD-22
+    # SHIM-COURT lane R177: `([^|]+)` stops the scan at the next pipe
+    # operator so `... | project a | where b` no longer swallows downstream
+    # stages into the column list (quoting already stripped, so quoted
+    # pipes are safe).
+    case Regex.run(~r/\bproject\s+([^|]+)/i, strip_string_literals(pipeline)) do
       [_, cols] ->
         cols
         |> String.split(",")
@@ -259,6 +302,26 @@ defmodule Smalt.DataPlane.Sentinel do
       _ ->
         nil
     end
+  end
+
+  # Blank single- and double-quoted KQL string literals so operator scans never
+  # see operator keywords, pipes, or `take` inside literals. Backslash escapes
+  # honored for both quote styles (matches the kql.ex tokenizer). Lane R126:
+  # single-quoted literals previously reached the project regex / pipe split /
+  # take scan raw, corrupting columns, pipeline split, and row caps.
+  #
+  # Lane R175 E1/E2: patterns rewritten linear — each `(?:...)*` alternation is
+  # disjoint on the first byte (plain chars vs. backslash-escape, which consumes
+  # ANY byte via `\\[\s\S]`, including newline), so no quadratic backtracking on
+  # unterminated/pathological literals (ReDoS fix), and `\` + newline is now
+  # INSIDE the literal (the tokenizer escapes the next BYTE), so a literal
+  # containing `\` + newline continues to its real closing quote instead of
+  # splitting — the engine and the strip scanner now agree.
+  # SHIM-COURT target: blanking either quote style must stay load-bearing.
+  defp strip_string_literals(text) do
+    text
+    |> then(&Regex.replace(~r/"(?:[^"\\\n\r]|\\[\s\S])*"/, &1, "\"\""))
+    |> then(&Regex.replace(~r/'(?:[^'\\\n\r]|\\[\s\S])*'/, &1, "''"))
   end
 
   # Column types honor the value shape, like real KQL: integer -> "long",
@@ -283,19 +346,45 @@ defmodule Smalt.DataPlane.Sentinel do
   # Routes to the KQL engine only when a filtering/sorting/projection operator is
   # present; plain `take N` strings keep legacy behavior. The leading table name
   # ("Custom-Logs") is stripped — the engine runs over the stored rows directly.
+  #
+  # Lane R26 finding 2: a predicate-only query without a leading pipe
+  # (`where lvl == "a"`) previously fell through to the legacy take path,
+  # silently discarding the filter and returning ALL rows with 200. Bare
+  # operator keywords (string literals stripped first) without a leading pipe
+  # are a parse error -> typed 400 BadQuery envelope.
   defp kql_pipeline(kql) do
-    if Regex.match?(~r/\|\s*(where|order\s+by|project)\b/i, kql) do
-      kql
-      |> String.split("|", parts: 2)
-      |> case do
-        [_table, pipeline] -> "| " <> String.trim(pipeline)
-        [pipeline] -> "| " <> String.trim(pipeline)
-      end
+    # Scans (pipe/operator detection, split point) run on the literal-stripped
+    # text so pipes/keywords inside literals are invisible (lane R126 exploit 2);
+    # the pipeline text handed to KQL.run is sliced from the ORIGINAL kql at the
+    # same offset so execution still sees real literals.
+    stripped = strip_string_literals(kql)
+
+    cond do
+      Regex.match?(~r/\|\s*(where|order\s+by|project)\b/i, stripped) ->
+        case :binary.match(stripped, "|") do
+          {index, _length} ->
+            # Slice from the ORIGINAL kql (execution must see real literals);
+            # the slice already begins with the pipe itself.
+            String.slice(kql, index..-1//1) |> String.trim()
+
+          # Unreachable: the stripped text matched a pipe above.
+          :nomatch ->
+            String.trim(kql)
+        end
+
+      # Bare operator, no leading pipe (quoting-aware scan).
+      Regex.match?(~r/(?:^|\s)(where|order\s+by|project)\b/i, stripped) ->
+        :parse_error
+
+      true ->
+        nil
     end
   end
 
   defp parse_take(kql) do
-    case Regex.run(~r/\btake\s+(\d+)\b/i, kql) do
+    # Literal-blind scan would cap rows on a `take` inside a string literal
+    # (lane R126 exploit 3); scan the stripped text instead.
+    case Regex.run(~r/\btake\s+(\d+)\b/i, strip_string_literals(kql)) do
       [_, n] -> min(String.to_integer(n), @max_take)
       _ -> @max_take
     end

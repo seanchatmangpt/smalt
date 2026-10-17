@@ -12,7 +12,7 @@ defmodule Smalt.Amqp.Connection do
      | address              | handler                              |
      |----------------------|--------------------------------------|
      | `"$cbs"`             | `Smalt.Amqp.CbsRouter` (GenServer)   |
-     | contains "management" | `Smalt.Amqp.ManagementRpc.handle/2` |
+     | "$management" or "<entity>/$management" | `Smalt.Amqp.ManagementRpc.handle/2` |
      | anything else        | queue link via `Smalt.Amqp.QueueStore` |
 
   Sender links (client role sender) ingest transfers via `QueueStore.enqueue/3`,
@@ -42,6 +42,9 @@ defmodule Smalt.Amqp.Connection do
   @protocol_header "AMQP\x00\x01\x00\x00"
   @sasl_protocol_header "AMQP\x03\x01\x00\x00"
   @recv_timeout 300_000
+  # SHIM-COURT-eligible clamp: one inbound :flow must not be able to grant
+  # unbounded link credit (AMQP §2.7.4 link_credit is a peer-declared cap).
+  @max_link_credit 10_000
   @pre_open_timeout 5_000
   @container_id "smalt-local"
   @sasl_anonymous "ANONYMOUS"
@@ -124,9 +127,45 @@ defmodule Smalt.Amqp.Connection do
     end
   end
 
+  # Cross-connection epoch eviction: the NEW attach's connection asked THIS
+  # connection to detach the incumbent epoch-holding link (GAP-A2-02).
+  def handle_info({:eh_epoch_evict, channel, handle, error}, state) do
+    case link_by_handle(state, channel, handle) do
+      nil ->
+        {:noreply, state}
+
+      link ->
+        send_frame(state, link.channel, {:detach, %{handle: handle, closed: true, error: error}})
+        eh_epoch_release(link)
+        {:noreply, %{state | links: Map.delete(state.links, {channel, handle})}}
+    end
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
+  # SHIM-COURT: best-effort release of session locks held by this
+  # connection's receiver links so a crashed connection cannot pin
+  # sessions (acceptSession would otherwise wait out the lock TTL).
+  def terminate(_reason, %{sock: sock, links: links}) when is_map(links) do
+    links
+    |> Map.values()
+    |> Enum.each(fn link ->
+      if is_map(link) and link[:kind] == :queue and link[:role] == :receiver and
+           is_binary(link[:session_id]) and link[:session_id] != "" do
+        try do
+          Smalt.Amqp.LockManager.session_release(link[:address], link[:session_id])
+        rescue
+          _ -> :ok
+        catch
+          :exit, _ -> :ok
+        end
+      end
+    end)
+
+    :gen_tcp.close(sock)
+  end
+
   def terminate(_reason, %{sock: sock}), do: :gen_tcp.close(sock)
 
   # ===========================================================================
@@ -158,7 +197,17 @@ defmodule Smalt.Amqp.Connection do
           |> next_input()
 
         true ->
-          {:error, :bad_protocol_header, state}
+          # KD-COVERS: KD-45 — the ServiceBusAdministrationClient speaks HTTP
+          # ATOM+XML to the SAME port as AMQP (base URL derived from the sb://
+          # endpoint). Sniff the request line and serve it here instead of
+          # dying with :bad_protocol_header (the SDK surfaced that as
+          # HPE_INVALID_CONSTANT and every admin-provisioned probe aborted).
+          if Smalt.Amqp.AtomBridge.http?(hdr) do
+            Smalt.Amqp.AtomBridge.serve(state.sock, buf)
+            {:closed, state}
+          else
+            {:error, :bad_protocol_header, state}
+          end
       end
     else
       need_more(state, 8 - byte_size(buf))
@@ -251,12 +300,20 @@ defmodule Smalt.Amqp.Connection do
   defp handle_amqp(:attach, perf, channel, state), do: handle_attach(perf, channel, state)
 
   defp handle_amqp(:flow, perf, ch, state) do
-    credit = perf.link_credit || 0
+    # AMQP 1.0 §2.7.4: an inbound :flow carries an ABSOLUTE link-credit
+    # snapshot, not a delta. rhea (link.js on_flow) computes
+    # `credit = flow.delivery_count + flow.link_credit - this.delivery_count`;
+    # this link state does not track a sent delivery counter, so the
+    # delivery_count terms cancel to 0 and the granted credit is the flow's
+    # link_credit value directly (see bump_credit/4 below — that helper stays
+    # for our OWN outbound decrements, which remain relative by spec).
+    # Clamped so a single flow can't request 2^62.
+    credit = perf.link_credit && min(perf.link_credit, @max_link_credit) || 0
 
     state =
       case perf.handle do
         nil -> add_credit(state, credit, ch)
-        handle -> bump_credit(state, ch, handle, credit)
+        handle -> set_credit(state, ch, handle, credit)
       end
 
     deliver_available(state)
@@ -343,6 +400,10 @@ defmodule Smalt.Amqp.Connection do
           Smalt.Amqp.LockManager.session_release(link.address, link.session_id)
         end
 
+        # GAP-A2-02: release this link's exclusive-receiver registration so a
+        # subsequent epoch attach admits (only if it still names THIS link).
+        eh_epoch_release(link)
+
         send_frame(state, link.channel, {:detach, %{handle: perf.handle, closed: true}})
         %{state | links: Map.delete(state.links, {ch, perf.handle})}
     end
@@ -361,9 +422,22 @@ defmodule Smalt.Amqp.Connection do
     # closing the send session).
     remaining = Map.reject(state.links, fn {_h, l} -> l.channel == ch end)
 
+    # GAP-A2-02: release epoch registrations held by this session's links.
+    state.links
+    |> Map.filter(fn {_h, l} -> l.channel == ch end)
+    |> Enum.each(fn {_h, l} -> eh_epoch_release(l) end)
+
+    # SHIM-COURT: retire this session's in-flight outbound deliveries so a
+    # re-begin (next_out restarts at 0) cannot collide delivery-ids and let
+    # handle_disposition settle a stale message.
+    outbound = Map.reject(state.outbound_deliveries, fn {_id, d} -> d[:channel] == ch end)
+
     case state.session do
-      %{channel: ^ch} -> %{state | session: nil, links: remaining, sessions: Map.delete(state.sessions || %{}, ch)}
-      _ -> %{state | links: remaining, sessions: Map.delete(state.sessions || %{}, ch)}
+      %{channel: ^ch} ->
+        %{state | session: nil, links: remaining, sessions: Map.delete(state.sessions || %{}, ch), outbound_deliveries: outbound}
+
+      _ ->
+        %{state | links: remaining, sessions: Map.delete(state.sessions || %{}, ch), outbound_deliveries: outbound}
     end
   end
 
@@ -433,6 +507,17 @@ defmodule Smalt.Amqp.Connection do
         address_of(perf.source)
       end
 
+    # Repair lane R96: pyamqp-dialect clients attach queue links with the FULL
+    # "amqps://host:port/entity" source/target, but every store key (message
+    # rows {queue, seq}, session locks {queue, sid}, ARM queue settings suffix
+    # "/queues/<name>", management get-message-sessions queue field) is keyed
+    # by the BARE entity name. Without stripping, queue_settings missed the
+    # ARM row (requiresSession never fired for real SDK attaches) and
+    # get-message-sessions keyed on the bare name found nothing stored under
+    # NOTE: URI-form addresses are normalized to the bare entity name AFTER
+    # the authorized? gate below — the CBS token audience is keyed by the full
+    # scheme://host:port/entity form, so the raw address is what authorized?
+    # must see.
     kind = route(address, state.mode)
 
     if kind == :queue and not authorized?(address) do
@@ -454,6 +539,19 @@ defmodule Smalt.Amqp.Connection do
     else
       {kind, address} = normalize_dql_casing(kind, address)
 
+      # Repair lane R96: pyamqp-dialect clients attach queue links with the
+      # FULL "amqps://host:port/entity" source/target, but every store key
+      # (message rows {queue, seq}, session locks {queue, sid}, ARM queue
+      # settings suffix "/queues/<name>", management get-message-sessions
+      # queue field) is keyed by the BARE entity name. Without stripping,
+      # queue_settings missed the ARM row (requiresSession never fired for
+      # real SDK attaches) and get-message-sessions keyed on the bare name
+      # found nothing stored under the URI form (session receiver starved +
+      # enumeration returned []). Normalization stays AFTER the authorized?
+      # gate: the CBS token audience is keyed by the full scheme://host:port
+      # form, so the raw address is what authorized? must see.
+      address = bare_entity(address)
+
       link = %{
         name: plain(perf.name),
         handle: perf.handle,
@@ -461,6 +559,15 @@ defmodule Smalt.Amqp.Connection do
         role: our_role,
         session_id: extract_session_filter(perf.source),
         eh_cursor: 0,
+        # GAP-A2-01/02 (KD-68/KD-69): per-link EH receiver cursor state —
+        # eh_start is the eventPosition the receiver attached with, eh_cursor
+        # tracks what THIS link has delivered, eh_min_enqueued carries an
+        # enqueuedTime filter floor (epoch ms), eh_epoch the exclusive-receiver
+        # epoch (com.microsoft:epoch).
+        eh_start: nil,
+        eh_link_cursor: nil,
+        eh_min_enqueued: nil,
+        eh_epoch: nil,
         address: address,
         kind: kind,
         credit: 0,
@@ -486,10 +593,22 @@ defmodule Smalt.Amqp.Connection do
         target: perf.target
       }
 
-      {attach_fields, state} =
+      # The enriched link must escape through the case result: rebinding `link`
+      # inside a case branch does NOT leak to the enclosing scope (Elixir
+      # scoping — the enriched value was silently dropped here, so every EH
+      # selector/epoch receiver registered with eh_start/eh_epoch = nil,
+      # GAP-A2-01/02 falsifier failures R69).
+      {attach_fields, state, eh_link} =
         case {kind, our_role, link.session_id} do
           {:queue, :sender, sid} when is_binary(sid) and sid != "" ->
-            case Smalt.Amqp.LockManager.session_acquire(address, sid) do
+            # R178e (census stale-handle): the session lock must ride the
+            # QUEUE's configured lockDuration (ARM/ATOM record), not the
+            # LockManager default — expiry lands on the created schedule or
+            # a PT15S session stays locked 30s and the post-expiry re-acquire
+            # is refused SessionCannotBeLocked.
+            case Smalt.Amqp.LockManager.session_acquire(address, sid,
+                   duration_ms: QueueStore.queue_settings(address).lock_duration_ms
+                 ) do
               {:ok, slock} ->
                 fields =
                   Map.merge(base_attach, %{
@@ -506,7 +625,7 @@ defmodule Smalt.Amqp.Connection do
                     }
                   })
 
-                {fields, state}
+                {fields, state, link}
 
               {:error, :already_locked} ->
                 # rhea (core-amqp) requires the broker attach echo BEFORE any
@@ -528,11 +647,99 @@ defmodule Smalt.Amqp.Connection do
                   }
                 })
 
-                {nil, state}
+                {nil, state, link}
+            end
+
+          # R129 exploit 2 (W5-17): an UNFILTERED receiver (no
+          # com.microsoft:session-filter) on a requiresSession queue used to
+          # fall through to the catch-all clause and register with
+          # session_id: nil — claim_candidates' nil filter then matched ALL
+          # messages, draining other sessions' locked messages. Real Azure
+          # refuses this attach: echo the attach, then detach typed
+          # (session-cannot-be-locked class). Same echo-then-detach ordering
+          # as the already_locked refusal above (rhea needs the broker echo
+          # before any detach). A queue that does NOT require sessions
+          # (including unknown queues -> default settings) passes through to
+          # the default clause unchanged.
+          {:queue, :sender, sid}
+          when is_nil(sid) or sid == "" ->
+            if QueueStore.queue_settings(address).requires_session do
+              send_frame(state, channel, {:attach, base_attach})
+
+              send_frame(state, channel, {
+                :detach,
+                %{
+                  handle: perf.handle,
+                  closed: true,
+                  error: %{
+                    condition: "com.microsoft:session-cannot-be-locked",
+                    description: "SESSION_CANNOT_BE_LOCKED"
+                  }
+                }
+              })
+
+              {nil, state, link}
+            else
+              {base_attach, state, link}
+            end
+
+          # GAP-A2-01/02 (KD-68/KD-69): EH receiver attach — read the
+          # `apache.org:selector-filter:string` source filter as the
+          # eventPosition start cursor and enforce com.microsoft:epoch
+          # exclusive-receiver semantics on the partition + consumer group.
+          {:eventhubs, :sender, _} ->
+            partition = eh_partition(address)
+
+            link = Map.put(link, :eh_epoch, eh_attach_epoch(perf))
+
+            # KD-68 (r200c falsifier FIRED): a present-but-unparseable
+            # selector must detach typed, never silently pass through
+            # unfiltered (that is the exact vacuity the falsifier caught).
+            case eh_apply_selector_filter(link, perf, partition) do
+              {:ok, link} ->
+                # rhea (core-amqp) requires the broker attach echo BEFORE any
+                # detach on this session (same rule as the session-cannot-be-
+                # locked refusal above). Echo first, THEN evict/refuse by epoch.
+                send_frame(state, channel, {:attach, base_attach})
+
+                case eh_epoch_admit(link, address, state) do
+                  {:ok, state} ->
+                    # The echo was already sent above; the outer registration
+                    # case must not echo again.
+                    {:echoed, state, link}
+
+                  {:refused, state} ->
+                    send_frame(state, channel, {
+                      :detach,
+                      %{
+                        handle: perf.handle,
+                        closed: true,
+                        error: eh_epoch_error("EPOCH_REFUSED", link.eh_epoch)
+                      }
+                    })
+
+                    {nil, state, link}
+                end
+
+              {:error, selector} ->
+                # SHIM-COURT KD-68: unsupported selector form -> attach echo
+                # then typed detach (rhea needs the echo before any detach).
+                send_frame(state, channel, {:attach, base_attach})
+
+                send_frame(state, channel, {
+                  :detach,
+                  %{
+                    handle: perf.handle,
+                    closed: true,
+                    error: eh_selector_error(selector)
+                  }
+                })
+
+                {nil, state, link}
             end
 
           _ ->
-            {base_attach, state}
+            {base_attach, state, link}
         end
 
       case attach_fields do
@@ -546,6 +753,13 @@ defmodule Smalt.Amqp.Connection do
           # 09:16:22.501→.502 detach ch=2 h=0).
           state
 
+        :echoed ->
+          # EH epoch path (GAP-A2-02): the attach echo was already sent before
+          # eviction/refusal — register the link without re-echoing. EH
+          # receivers get credit from the client's own flow, none is granted
+          # here.
+    %{state | links: Map.put(state.links, {channel, perf.handle}, eh_link)}
+
         _ ->
           send_frame(state, channel, {:attach, attach_fields})
 
@@ -555,7 +769,7 @@ defmodule Smalt.Amqp.Connection do
           # (rhea/lib/link.js Sender.prototype.on_flow); omitting it makes the
           # credit NaN and 'sendable' never fires (every send times out).
           # It must agree with the attach reply's initial_delivery_count (0).
-          link =
+          eh_link =
             if client_role == :sender do
               send_flow(state, channel, %{
                 handle: perf.handle,
@@ -563,12 +777,12 @@ defmodule Smalt.Amqp.Connection do
                 link_credit: 1000
               })
 
-              %{link | credit: 1000}
+              %{eh_link | credit: 1000}
             else
-              link
+              eh_link
             end
 
-          %{state | links: Map.put(state.links, {channel, perf.handle}, link)}
+    %{state | links: Map.put(state.links, {channel, perf.handle}, eh_link)}
       end
     end
   end
@@ -578,7 +792,12 @@ defmodule Smalt.Amqp.Connection do
 
   defp route(address, mode) when is_binary(address) do
     cond do
-      String.contains?(address, "management") -> :management
+      # Precise management rule (replaces substring match): real SDKs attach
+      # the management node as bare "$management" (CBS-style) or as the
+      # per-entity node "<entity>/$management" (azure-servicebus
+      # managementClient.js). A queue merely NAMED e.g. "my-management-queue"
+      # must route as a queue, never :management.
+      address == "$management" or String.ends_with?(address, "/$management") -> :management
       mode == :eh -> :eventhubs
       String.contains?(address, "/eventhubs/") -> :eventhubs
       true -> :queue
@@ -605,6 +824,240 @@ defmodule Smalt.Amqp.Connection do
 
   defp extract_session_filter(%{filter: %{session_filter: selector}}), do: selector
   defp extract_session_filter(_), do: nil
+
+  # --- GAP-A2-01/02 (KD-68/KD-69): EH selector filter + epoch exclusivity ----
+
+  @eh_selector_key "apache.org:selector-filter:string"
+  @eh_epoch_key "com.microsoft:epoch"
+
+  # decode_source_target normalizes the described selector filter to the
+  # literal string key; the rhea map-form path yields the `:selector_filter`
+  # atom key.
+  # KD-COVERS: KD-68
+  defp eh_apply_selector_filter(link, perf, partition) do
+    clause =
+      case perf.source do
+        %{filter: %{@eh_selector_key => {:selector_filter, selector}}} -> selector
+        %{filter: %{selector_filter: selector}} -> selector
+        _ -> nil
+      end
+
+    case eh_parse_event_position(clause, partition) do
+      # KD-68: no selector present is fine; a present-but-unparseable
+      # selector is a typed-detach error, never silent pass-through.
+      nil when is_nil(clause) -> {:ok, link}
+      nil -> {:error, clause}
+      {:seq, n} -> {:ok, %{link | eh_start: n}}
+      {:enqueued, ms} -> {:ok, %{link | eh_min_enqueued: ms}}
+    end
+  end
+
+  # The SDK eventPosition shapes (partitionReceiver.js:357-360, core-amqp):
+  #   fromOffset(o)             -> "amqp.annotation.x-opt-offset > 'o'"
+  #   fromSequenceNumber(n)     -> "amqp.annotation.x-opt-sequence-number > 'n'"
+  #   fromEnqueuedTime(ms)      -> "amqp.annotation.x-opt-enqueued-time > 'ms'"
+  #   latest() / "@latest"      -> "amqp.annotation.x-opt-offset > '@latest'"
+  # Those are EXCLUSIVE (strictly greater). The 6.x SDK startingPosition
+  # {sequenceNumber: n, isInclusive: true} emits the INCLUSIVE `>=` form
+  # (r200c witness: "amqp.annotation.x-opt-sequence-number >= '2'"), which
+  # the old exclusive-only regex dropped, so the link delivered from
+  # cursor 0 unconditionally. Inclusive positions normalize to the
+  # exclusive floor (n-1 / ms-1) so delivery keeps `seq > after_seq`.
+  defp eh_parse_event_position(nil, _partition), do: nil
+  defp eh_parse_event_position(clause, _partition) when not is_binary(clause), do: nil
+
+  defp eh_parse_event_position(clause, partition) when is_binary(clause) do
+    with [_, ann, op, raw] <-
+           Regex.run(~r/\Aamqp\.annotation\.(x-opt-[a-z-]+)\s*(>=?)\s*'([^']*)'\z/, clause) do
+      floor = if op == ">=", do: 1, else: 0
+
+      case {ann, raw} do
+        {"x-opt-offset", "@latest"} when floor == 0 ->
+          case EventHubs.last_enqueued(partition) do
+            %{"seq" => n} -> {:seq, n}
+            _ -> {:seq, 0}
+          end
+
+        {"x-opt-offset", v} -> eh_pos(eh_int(v), floor, :seq)
+        {"x-opt-sequence-number", v} -> eh_pos(eh_int(v), floor, :seq)
+        {"x-opt-enqueued-time", v} -> eh_pos(eh_int(v), floor, :enqueued)
+        _ -> nil
+      end
+    end
+  end
+
+  defp eh_pos(nil, _floor, _kind), do: nil
+  defp eh_pos(n, floor, kind), do: eh_event_position(n - floor, kind)
+
+  defp eh_int(v) when is_binary(v) do
+    case Integer.parse(v) do
+      {n, ""} -> n
+      _ -> nil
+    end
+  end
+
+  defp eh_int(_), do: nil
+
+  # nil inputs are filtered by eh_pos/3 above; clauses here receive ints.
+  defp eh_event_position(n, :seq), do: {:seq, n}
+  defp eh_event_position(ms, :enqueued), do: {:enqueued, ms}
+
+  # --- GAP-A2-02 (KD-69): exclusive receiver (com.microsoft:epoch) -----------
+
+  # Cross-connection epoch registry: {hub, consumer_group, partition} ->
+  # {epoch, conn_pid, channel, handle}. A new attach with an equal-or-higher
+  # epoch evicts the registered link (typed detach, com.microsoft:epoch-lock-
+  # lost); a lower epoch is refused (echo attach + typed detach, EPOCH_REFUSED).
+  defp eh_epoch_table do
+    case :ets.info(:smalt_eh_epochs) do
+      :undefined ->
+        try do
+          :ets.new(:smalt_eh_epochs, [:named_table, :public, :set, read_concurrency: true])
+        rescue
+          ArgumentError -> :smalt_eh_epochs
+        end
+
+      _ ->
+        :smalt_eh_epochs
+    end
+  end
+
+  defp eh_address_parts(address) do
+    case address |> String.split("/") |> Enum.reject(&(&1 == "")) do
+      ["eventhubs", hub, cg, "Partitions", p] -> {hub, cg, p}
+      ["eventhubs", hub, "partitions", p] -> {hub, "$Default", p}
+      _ -> nil
+    end
+  end
+
+  # Attach properties decode with raw {:symbol, k} keys on the wire path.
+  defp eh_attach_epoch(perf) do
+    case perf.properties do
+      %{} = props ->
+        Enum.find_value(props, fn
+          {{:symbol, @eh_epoch_key}, v} when is_integer(v) -> v
+          {@eh_epoch_key, v} when is_integer(v) -> v
+          _ -> nil
+        end)
+
+      _ ->
+        nil
+    end
+  end
+
+  # Admit (or refuse) an EH receiver attach by epoch. `:refused` means the new
+  # link must NOT be registered; eviction of the incumbent happens BEFORE the
+  # new link is registered, so the detach always precedes the new delivery.
+  defp eh_epoch_admit(link, _address, state) do
+    case {link.eh_epoch, eh_address_parts(link.address)} do
+      {nil, _} ->
+        {:ok, state}
+
+      {epoch, {hub, cg, p}} ->
+        eh_epoch_table()
+        key = {hub, cg, p}
+
+        incumbent =
+          case :ets.lookup(:smalt_eh_epochs, key) do
+            [{^key, old_epoch, old_pid, old_ch, old_handle}] ->
+              if is_pid(old_pid) and Process.alive?(old_pid) and old_epoch > epoch,
+                do: {:incumbent, old_epoch, old_pid, old_ch, old_handle},
+                else: nil
+
+            _ ->
+              nil
+          end
+
+        case incumbent do
+          # GAP-A2-02 refusal: a strictly LOWER epoch never evicts — the
+          # incumbent stays registered and the new link is refused.
+          {:incumbent, _old_epoch, _old_pid, _old_ch, _old_handle} ->
+            {:refused, state}
+
+          nil ->
+            # Equal-or-higher epoch (or a dead incumbent's stale entry) evicts
+            # any registered link on this {consumer-group, partition} first,
+            # THEN registers the new link.
+            case :ets.lookup(:smalt_eh_epochs, key) do
+              [{^key, old_epoch, old_pid, old_ch, old_handle}] when is_pid(old_pid) ->
+                evict_error = eh_epoch_error("EPOCH_EVICTION", old_epoch)
+
+                if old_pid == self() do
+                  case link_by_handle(state, old_ch, old_handle) do
+                    nil ->
+                      :ok
+
+                    _old_link ->
+                      send_frame(state, old_ch, {
+                        :detach,
+                        %{handle: old_handle, closed: true, error: evict_error}
+                      })
+                  end
+
+                  {:ok, %{state | links: Map.delete(state.links, {old_ch, old_handle})}}
+                else
+                  send(old_pid, {:eh_epoch_evict, old_ch, old_handle, evict_error})
+                  {:ok, state}
+                end
+
+              _ ->
+                {:ok, state}
+            end
+            |> then(fn
+              {:ok, state} ->
+                :ets.insert(:smalt_eh_epochs, {key, epoch, self(), link.channel, link.handle})
+                {:ok, state}
+
+              other ->
+                other
+            end)
+        end
+
+      _ ->
+        {:ok, state}
+    end
+  end
+
+  # Registry cleanup when an epoch-holding link goes away (client detach,
+  # session end, connection close): delete the entry only if it still names
+  # THIS link, never a successor's.
+  defp eh_epoch_release(link) do
+    if link.kind == :eventhubs and is_integer(link.eh_epoch) do
+      case eh_address_parts(link.address) do
+        {hub, cg, p} ->
+          key = {hub, cg, p}
+
+          case :ets.lookup(:smalt_eh_epochs, key) do
+            [{^key, _ep, pid, ch, handle}] when pid == self() and ch == link.channel and handle == link.handle ->
+              :ets.delete(:smalt_eh_epochs, key)
+
+            _ ->
+              :ok
+          end
+
+        _ ->
+          :ok
+      end
+    end
+  end
+
+  defp eh_epoch_error(desc, epoch) do
+    %{
+      condition: "com.microsoft:epoch-lock-lost",
+      description: "#{desc}: active epoch #{inspect(epoch)}"
+    }
+  end
+
+  # KD-68: an unsupported selector-filter form detaches typed instead of
+  # silently delivering unfiltered (r200c falsifier lesson). rhea maps
+  # amqp:not-implemented to a typed SessionError; the description carries
+  # the offending clause for the SDK caller.
+  defp eh_selector_error(selector) do
+    %{
+      condition: "amqp:not-implemented",
+      description: "SELECTOR_UNSUPPORTED: #{selector}"
+    }
+  end
 
   defp unauthorized_error do
     %{condition: "amqp:unauthorized-access", description: "UNAUTHORIZED_ENTITY"}
@@ -643,9 +1096,18 @@ defmodule Smalt.Amqp.Connection do
         payload = frame_payload(perf)
         partition = eh_partition(link.address)
         EventHubs.ensure_tables()
+        # GAP-A2-04: capture the sender's partition key (x-opt-partition-key
+        # message annotation on the producer's batch envelope) so it can be
+        # re-stamped on delivery; falls back closed to nil (no key).
+        pk = eh_sender_partition_key(payload)
+        # KD-COVERS: KD-76 — a pk-stamped event on a HUB-address sender link is
+        # routed to one partition (deterministic hash of the key over the pinned
+        # set ["0","1"]) instead of being parked under the bare hub key, so
+        # partition-scoped receivers actually deliver it.
+        storage_partition = eh_storage_partition(partition, pk, link.address)
         # send_event returns {:ok, seq, event_map} — bind the full tuple; the
         # match still fails closed if the :ok tag ever regresses.
-        {:ok, _seq, _event} = EventHubs.send_event(partition, payload, [])
+        {:ok, _seq, _event} = EventHubs.send_event(storage_partition, payload, partition_key: pk)
 
         delivery_id = perf[:delivery_id] || 0
 
@@ -757,7 +1219,11 @@ defmodule Smalt.Amqp.Connection do
         _ -> %{}
       end
 
-    case QueueStore.enqueue(link.address, body_section, session_id: session_id, message_id: message_id, app_props: app_props) do
+    case QueueStore.enqueue(link.address, body_section,
+           session_id: session_id,
+           message_id: message_id,
+           app_props: app_props
+         ) do
       {:ok, _seq} ->
         {:ok, state}
 
@@ -949,18 +1415,35 @@ defmodule Smalt.Amqp.Connection do
 
     status = result.status_code
 
+    # KD-77 residual (2026-10-16): a nil op body previously merged the
+    # statusCode/statusDescription map into the amqp-value BODY; the Python
+    # SDK's mgmt default handler returns message.value, so every 200 carried
+    # a spurious body map and mgmt_handlers.default could not read "no
+    # content". Real Azure puts the status in application-properties (already
+    # emitted below) and leaves the 200 body EMPTY. # KD-COVERS: KD-77
     body =
-      result.body
-      |> case do
-        nil -> %{}
-        body -> normalize_mgmt_bodies(body)
-      end
-      |> then(&Map.merge(%{"statusCode" => status, "statusDescription" => result.status_description}, stringify_map(&1)))
+      case result.body do
+        nil ->
+          nil
 
-    reply_management(state, perf, body, request.correlation_id, channel)
+        body ->
+          body
+          |> normalize_mgmt_bodies()
+          |> then(&Map.merge(%{"statusCode" => status, "statusDescription" => result.status_description}, stringify_map(&1)))
+      end
+
+    status_code_for_props = if is_map(body), do: body["statusCode"], else: status
+    status_desc_for_props = if is_map(body), do: body["statusDescription"], else: result.status_description
+
+    reply_management(state, perf, body, request.correlation_id, channel,
+      status_code: status_code_for_props,
+      status_description: status_desc_for_props
+    )
   end
 
-  defp reply_management(state, perf, body, correlation_id, channel) do
+  defp reply_management(state, perf, body, correlation_id, channel, opts) do
+    status_code = opts[:status_code] || body["statusCode"]
+    status_desc = opts[:status_description] || body["statusDescription"]
     link = find_reply_link(state, perf, :management, channel)
 
     case link do
@@ -981,10 +1464,10 @@ defmodule Smalt.Amqp.Connection do
             {:application_properties, %{
               # core-amqp 4.5.1 reads the dotted "status-code"/"status-description"
               # symbol keys; older paths read "statusCode". Emit both.
-              "status-code" => body["statusCode"],
-              "status-description" => body["statusDescription"],
-              "statusCode" => body["statusCode"],
-              "statusDescription" => body["statusDescription"]
+              "status-code" => status_code,
+              "status-description" => status_desc,
+              "statusCode" => status_code,
+              "statusDescription" => status_desc
             }},
             {:body_amqp_value, body}
           ])
@@ -1036,7 +1519,7 @@ defmodule Smalt.Amqp.Connection do
     annotations =
       case msg do
         %{"sequence-number" => seq} when is_integer(seq) ->
-          %{"x-opt-sequence-number" => seq}
+          %{"x-opt-sequence-number" => embedded_seq(msg)}
 
         _ ->
           %{}
@@ -1044,13 +1527,31 @@ defmodule Smalt.Amqp.Connection do
 
     sections =
       (if annotations == %{}, do: [], else: [{:message_annotations, annotations}]) ++
+        maybe_delivery_count_section(msg) ++
         maybe_properties_section(msg) ++
         [body_section_to_section(body_section)]
 
     Map.put(msg, "message", {:vbin, FrameCodec.encode_message(sections) |> IO.iodata_to_binary()})
   end
 
+  # Kept grouped with the clause above (warnings-as-errors fence: an
+  # ungrouped same-name/arity clause pair warns on every recompile).
   defp normalize_mgmt_message(other), do: other
+
+  # R178e (census deferred-receive): the 7.10.0 SDK reads deliveryCount from
+  # the decoded message HEADER section (managementClient.js builds
+  # ServiceBusMessageImpl with rheaMessage.delivery_count). Emit it when the
+  # management handler supplied one.
+  # KD-COVERS: KD-46
+  defp maybe_delivery_count_section(%{"delivery-count" => dc}) when is_integer(dc) and dc >= 0,
+    do: [{:header, %{delivery_count: dc}}]
+
+  defp maybe_delivery_count_section(_), do: []
+
+  # The receive-by-sequence reply carries its own explicit sequence number;
+  # prefer it over a peek-order index.
+  defp embedded_seq(%{"sequence-number" => seq}) when is_integer(seq), do: seq
+  defp embedded_seq(_), do: nil
 
   defp maybe_properties_section(%{"message-id" => mid}) when is_binary(mid),
     do: [{:properties, %{message_id: mid}}]
@@ -1106,43 +1607,310 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp deliver_eventhubs(state, link) do
-    partition = eh_partition(link.address)
-    after_seq = get_in(state, [:eh_cursors, partition]) || 0
+    # KD-COVERS: KD-76 — a HUB-address receiver link has no /partitions
+    # tail; real service semantics there are "see every partition's
+    # events", so the aggregate path merges the hub's partitions.
+    # r200h repair: classification is case-insensitive and STRUCTURALLY
+    # exact (a `{partitions}/{n}` tail), not a lowercase substring probe —
+    # the real @azure/event-hubs SDK attaches partition consumers at
+    # `{hub}/ConsumerGroups/$Default/Partitions/{n}` (capital P), which the
+    # substring probe misrouted onto the aggregate path (zero events to
+    # partition-scoped receivers).
+    case eh_partition_scope(link.address) do
+      {hub, p} -> deliver_eventhubs_partition(state, link, "#{hub}/partitions/#{p}")
+      nil -> deliver_eventhubs_aggregate(state, link, eh_partition(link.address))
+    end
+  end
+
+  # HUB-address receiver: aggregate the pinned partition set ["0","1"] plus
+  # the legacy bare-hub key (pre-KD-76 unkeyed hub sends still park there, so
+  # they stay visible). Cursors are LINK-LOCAL per source partition
+  # (`eh_agg_cursors`) — the shared per-partition `eh_cursors` belong to the
+  # partition-scoped links, and a hub link draining after a partition link
+  # must not inherit their position (independent consumers, real-service
+  # semantics).
+  defp deliver_eventhubs_aggregate(state, link, hub) do
+    sources = for p <- ["0", "1"], do: "#{hub}/partitions/#{p}"
+    sources = sources ++ [hub]
+    agg_cursors = Map.get(link, :eh_agg_cursors) || %{}
+
+    {tagged, _st} =
+      Enum.flat_map_reduce(sources, state, fn src, st ->
+        after_seq =
+          (Map.get(agg_cursors, src, 0) |> max(link.eh_start || 0))
+
+        events =
+          src
+          |> EventHubs.receive_events(after_seq, link.credit)
+          |> Enum.map(&Map.put(&1, "__src", src))
+
+        {events, st}
+      end)
+
+    tagged
+    |> Enum.sort_by(&{&1["enqueued"] || 0, &1["seq"]})
+    |> Enum.take(link.credit)
+    |> Enum.reduce(state, fn ev, st ->
+      src = ev["__src"]
+      seq = ev["seq"]
+      body = ev["body"]
+
+      sections = [
+        {:message_annotations, eh_event_annotations(ev)}
+        | eh_delivery_annotations(src) ++ [eh_body_section(body)]
+      ]
+
+      {st, _id} =
+        send_message(st, link, %{
+          handle: link.handle,
+          delivery_tag: <<seq::unsigned-64>>,
+          message_format: 0
+        }, sections)
+
+      st
+      |> then(&bump_credit(&1, link.channel, link.handle, -1))
+      |> then(fn st2 ->
+        link2 = st2.links[{link.channel, link.handle}]
+        agg = Map.put(Map.get(link2, :eh_agg_cursors) || %{}, src, seq)
+
+        # lane283 compile-freeze unblock (disclosed): Map.put, not update
+        # syntax — link maps are not guaranteed to pre-carry these keys.
+        put_link(
+          st2,
+          link2
+          |> Map.put(:eh_link_cursor, seq)
+          |> Map.put(:eh_agg_cursors, agg)
+        )
+      end)
+    end)
+  end
+
+  # r200h (KD-76 repair): structural, case-insensitive partition-tail
+  # classifier. Returns {hub, partition} when the address ends in a
+  # partitions segment + partition id (any of the wire shapes below);
+  # nil means entity-level (hub) address -> aggregate delivery path.
+  defp eh_partition_scope(address) when is_binary(address) do
+    segs = address |> String.split("/") |> Enum.reject(&(&1 == ""))
+
+    case segs do
+      # legacy emulator form: /eventhubs/{hub}/partitions/{n}
+      ["eventhubs", hub, ptail, p] -> eh_scope(hub, ptail, p)
+      # {hub}/Partitions/{n}
+      [hub, ptail, p] -> eh_scope(hub, ptail, p)
+      # {hub}/ConsumerGroups/{cg}/Partitions/{n} (real @azure/event-hubs SDK form)
+      [hub, "ConsumerGroups", _cg, ptail, p] -> eh_scope(hub, ptail, p)
+      # /eventhubs/{hub}/ConsumerGroups/{cg}/Partitions/{n}
+      ["eventhubs", hub, "ConsumerGroups", _cg, ptail, p] -> eh_scope(hub, ptail, p)
+      _ -> nil
+    end
+  end
+
+  defp eh_scope(hub, ptail, p) do
+    if String.downcase(ptail) == "partitions" and p != "",
+      do: {hub, p},
+      else: nil
+  end
+
+  # KD-COVERS: KD-76 — storage partition for an inbound EH transfer. A
+  # pk-stamped event sent on a hub-address (no /partitions) sender link is
+  # routed to ONE partition of the pinned set ["0","1"] by a deterministic
+  # hash of the key (real service: consistent hashing over the entity's
+  # partitions); the x-opt-partition-key annotation still rides the stored
+  # event. Partition-scoped or unkeyed sends keep the previous key.
+  defp eh_storage_partition(partition, pk, address) do
+    case eh_partition_scope(address) do
+      {hub, p} ->
+        # r200h: partition-scoped sender (any casing of the partitions
+        # segment) stores under the canonical lowercase key, so a
+        # {hub}/Partitions/{n} or .../ConsumerGroups/.../Partitions/{n}
+        # sender and receiver meet at the same storage partition.
+        "#{hub}/partitions/#{p}"
+
+      nil when pk != nil ->
+        # `partition` for a hub address is the bare hub name (eh_partition
+        # strips the /eventhubs/ prefix). KD-COVERS: KD-76 — pk routing.
+        "#{partition}/partitions/#{eh_pk_partition(pk)}"
+
+      nil ->
+        partition
+    end
+  end
+
+  defp eh_pk_partition(pk) do
+    bin = if is_binary(pk), do: pk, else: :erlang.term_to_binary(pk)
+    <<first::unsigned-8, _::binary>> = :erlang.md5(bin)
+    Integer.to_string(rem(first, 2))
+  end
+
+  defp deliver_eventhubs_partition(state, link, partition) do
+    global = get_in(state, [:eh_cursors, partition]) || 0
+
+    # GAP-A2-01 (KD-68): the link's eventPosition start cursor (selector
+    # filter) floors the global cursor, and a link-local cursor keeps a
+    # filtered link from being pushed backward by other links on the same
+    # partition.
+    after_seq =
+      global
+      |> max(link.eh_start || 0)
+      |> max(link.eh_link_cursor || 0)
 
     # V261014-04 F1: `receive_events/3` returns a BARE list (its @spec and the
     # public contract consumed by c7_events.exs + reconcile callers), so a
     # `{:ok, events}` match on {:ok, events} could never succeed. Match the
     # bare-list shape; an empty list (or any other shape) falls through closed.
+
     case EventHubs.receive_events(partition, after_seq, link.credit) do
       [_ | _] = events ->
+        # GAP-A2-01: enqueuedTime eventPosition filters on the event's
+        # enqueued timestamp (epoch ms), exclusive like the real service.
+        events =
+          case link.eh_min_enqueued do
+            nil -> events
+            floor -> Enum.filter(events, fn ev -> (ev["enqueued"] || 0) > floor end)
+          end
+
         Enum.reduce(events, state, fn ev, st ->
           seq = ev["seq"]
           body = ev["body"]
+
+          sections =
+            [
+              # GAP-A2-04: x-opt-offset / x-opt-enqueued-time /
+              # x-opt-partition-key surface on every delivery; the SDK's
+              # fromRheaMessage maps them to event.offset / enqueuedTimeUtc /
+              # partitionKey. x-opt-sequence-number is pre-existing.
+              {:message_annotations, eh_event_annotations(ev)}
+              | eh_delivery_annotations(partition) ++ [eh_body_section(body)]
+            ]
 
           {st, _id} =
             send_message(st, link, %{
               handle: link.handle,
               delivery_tag: <<seq::unsigned-64>>,
               # KD-COVERS: KD-18,KD-20 — format 0 = standard decoded-message
-              # path (SB pattern below). Keep consistent on EVERY EH arm; the
+              # path (SB path below). Keep consistent on EVERY EH arm; the
               # credit bump below closes KD-20.
               message_format: 0
-            }, [
-              {:message_annotations, %{"x-opt-sequence-number" => seq}},
-              eh_body_section(body)
-            ])
+            }, sections)
 
+          # SHIM-COURT R13/V261014-04-F1 fix: re-read the link refreshed by
+          # bump_credit (deliver_to_link pattern) — the outer `link`'s credit
+          # was never decremented, so put_link used to restore stale credit
+          # and the :1389 guard kept draining past the grant (over-delivery).
           st
           |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
           |> then(&bump_credit(&1, link.channel, link.handle, -1))
+          |> then(fn st2 ->
+            put_link(st2, %{st2.links[{link.channel, link.handle}] | eh_link_cursor: seq})
+          end)
         end)
+
 
       _ ->
         state
     end
   end
 
-  defp eh_partition(address) when is_binary(address), do: address |> String.split("/") |> List.last()
+  # KD-COVERS: KD-68 — partition identity is scoped by the EH entity (hub),
+  # not the bare partition label: real Event Hubs sequence spaces are
+  # per-hub, and last-segment-only keying routed every hub's events into one
+  # shared row (R69: selector-filter exact-sequence courts could not hold).
+  defp eh_partition(address) when is_binary(address) do
+    case String.split(address, "/eventhubs/") do
+      [_, rest] -> String.replace_leading(rest, "/", "")
+      _ -> address |> String.split("/") |> List.last()
+    end
+  end
+
+  # GAP-A2-04: per-event x-opt-* stamps. SDK contract (core-amqp
+  # constants.js:5-10 + event-hubs eventData.js fromRheaMessage switch):
+  # x-opt-offset -> event.offset (string, required on ReceivedEventData),
+  # x-opt-enqueued-time -> event.enqueuedTimeUtc (AMQP timestamp ms),
+  # x-opt-partition-key -> event.partitionKey (only when the sender set one).
+  # KD-COVERS: KD-71
+  defp eh_event_annotations(ev) when is_map(ev) do
+    %{
+      "x-opt-sequence-number" => ev["seq"],
+      "x-opt-offset" => ev["offset"],
+      "x-opt-enqueued-time" => {:timestamp, ev["enqueued"]}
+    }
+    |> maybe_put_eh("x-opt-partition-key", ev["partition_key"])
+  end
+
+  defp maybe_put_eh(map, _k, nil), do: map
+  defp maybe_put_eh(map, k, v), do: Map.put(map, k, v)
+
+  # GAP-A2-03: EH delivery annotations carry the partition's last_enqueued_*
+  # truth (eventData.js: `msg.delivery_annotations.last_enqueued_offset` /
+  # `.last_enqueued_sequence_number` / `.last_enqueued_time_utc`). Offset is a
+  # STRING on the wire, sequence a ulong, time an AMQP timestamp. `:none`
+  # (empty partition) -> no delivery-annotations section; rhea tolerates a
+  # missing section.
+  # KD-COVERS: KD-70
+  defp eh_delivery_annotations(partition) do
+    case EventHubs.last_enqueued(partition) do
+      :none ->
+        []
+
+      %{"offset" => offset, "seq" => seq, "enqueued" => enqueued} ->
+        [
+          {:delivery_annotations,
+           %{
+             "last_enqueued_offset" => offset,
+             "last_enqueued_sequence_number" => seq,
+             "last_enqueued_time_utc" => {:timestamp, enqueued}
+           }}
+        ]
+    end
+  end
+
+  # GAP-A2-04 capture side: the producer stamps x-opt-partition-key as a
+  # message annotation. On a single-event transfer it sits on the message
+  # itself; on a KD-53 producer createBatch the envelope carries NO
+  # annotations — @azure/event-hubs stamps x-opt-partition-key on EACH INNER
+  # event message (eventDataBatch.js _encodeMessage -> toRheaMessage), and the
+  # KD-53 split-at-ingest stores those inners, so the capture must scan the
+  # envelope, then fall back into the batch body's inner messages. Anything
+  # undecodable reads as nil (no key) — the transfer still enqueues.
+  defp eh_sender_partition_key(payload) when is_binary(payload) do
+    with {:ok, sections} when is_list(sections) <- FrameCodec.decode_message(payload),
+         nil <- eh_find_partition_key(sections) do
+      r = eh_inner_partition_key(sections)
+      r
+    else
+      pk when pk != nil -> pk
+      _ -> nil
+    end
+  end
+
+  defp eh_find_partition_key(sections) do
+    Enum.find_value(sections, fn
+      {:message_annotations, anns} when is_map(anns) -> anns["x-opt-partition-key"]
+      _ -> nil
+    end)
+  end
+
+  # Scan the batch body's concatenated inner messages for the first
+  # x-opt-partition-key message annotation. Falls back closed to nil.
+  defp eh_inner_partition_key(sections) do
+    data =
+      sections
+      |> Enum.filter(fn
+        {:body_data, b} when is_binary(b) -> true
+        _ -> false
+      end)
+      |> Enum.map(fn {:body_data, b} -> b end)
+      |> IO.iodata_to_binary()
+
+    with {:ok, inner_sections} when is_list(inner_sections) <- FrameCodec.decode_message(data) do
+      Enum.find_value(inner_sections, fn
+        {:message_annotations, anns} when is_map(anns) -> anns["x-opt-partition-key"]
+        _ -> nil
+      end)
+    else
+      _ -> nil
+    end
+  end
 
   # KD-18: stored EH bodies are raw client transfer payloads. The producer
   # path stores the SDK's BATCH ENVELOPE message (header / message-annotations
@@ -1186,7 +1954,7 @@ defmodule Smalt.Amqp.Connection do
       {:ok, msg, lock} ->
         sections = delivery_sections(msg)
 
-        {state, delivery_id} =
+        delivery_result =
           try do
             send_message(state, link, %{
               handle: link.handle,
@@ -1206,25 +1974,43 @@ defmodule Smalt.Amqp.Connection do
             # raise here used to leave the message locked forever with no
             # release/deadletter decision. Release it back and close typed.
             e in ArgumentError ->
+              # SHIM-COURT: encode failure must end delivery on this link.
+              # Release the store lock, close typed, and DO NOT fall through
+              # to the success tail — the old fall-through registered a bogus
+              # delivery id 0, decremented credit and re-entered deliver_to_link
+              # while credit remained, re-dequeuing and re-locking the message
+              # just released (lock flapping after the close frame was already
+              # on the wire; delivery_count inflated one per credit).
               QueueStore.release(msg.queue, msg.seq)
               Logger.error("[amqp-conn] delivery encode failed, lock released: " <> Exception.message(e))
               error_close(state, "amqp:internal-error", "DELIVERY_ENCODE_FAILED")
 
-              {state, 0}
+              {:halt_delivery, state}
           end
 
-        state = %{
-          state
-          | outbound_deliveries:
-              Map.put(state.outbound_deliveries, delivery_id, %{queue: msg.queue, seq: msg.seq, lock_token: lock.lock_token})
-        }
+        # SHIM-COURT: encode-failure arm halts — no delivery registration, no
+        # credit bump, no re-dequeue on this link.
+        case delivery_result do
+          {:halt_delivery, halted_state} ->
+            halted_state
 
-        state = bump_credit(state, link.channel, link.handle, -1)
+          {state, delivery_id} ->
+            state = %{
+              state
+              | outbound_deliveries:
+              # SHIM-COURT: entries carry their AMQP session channel so a
+              # session :end can retire them; otherwise a re-begin restarts
+              # next_out at 0 and a disposition can settle a stale delivery.
+              Map.put(state.outbound_deliveries, delivery_id, %{queue: msg.queue, seq: msg.seq, lock_token: lock.lock_token, channel: link.channel})
+            }
 
-        if state.links[{link.channel, link.handle}][:credit] > 0 do
-          deliver_to_link(state, Map.get(state.links, {link.channel, link.handle}))
-        else
-          state
+            state = bump_credit(state, link.channel, link.handle, -1)
+
+            if state.links[{link.channel, link.handle}][:credit] > 0 do
+              deliver_to_link(state, Map.get(state.links, {link.channel, link.handle}))
+            else
+              state
+            end
         end
 
       :empty ->
@@ -1304,32 +2090,93 @@ defmodule Smalt.Amqp.Connection do
       # settlement windows are bounded by the session window.
       last = min(last, first + @disposition_range_cap)
 
-      {state, matched_any} =
-        Enum.reduce(first..last, {state, false}, fn delivery_id, {st, matched} ->
+      {state, matched_any, lock_lost_ids} =
+        Enum.reduce(first..last, {state, false, []}, fn delivery_id, {st, matched, lost} ->
           case Map.get(st.outbound_deliveries, delivery_id) do
             nil ->
-              {st, matched}
+              {st, matched, lost}
 
             dlv ->
-              settle(action, dlv)
-              {Map.put(st, :outbound_deliveries, Map.delete(st.outbound_deliveries, delivery_id)), true}
+              # R196: the delivery's lock token rides the settle as a
+              # compare-and-settle against the store's CURRENT token — a
+              # stale/zombie disposition refuses typed :lock_lost and the
+              # message is left untouched for its new owner.
+              case settle(action, dlv, perf[:state]) do
+                :ok ->
+                  {Map.put(st, :outbound_deliveries, Map.delete(st.outbound_deliveries, delivery_id)), true, lost}
+
+                :lock_lost ->
+                  {st, matched, [delivery_id | lost]}
+              end
           end
         end)
+
+      # R196: a refused disposition must not be echoed as accepted (the client
+      # would believe a settle happened that didn't). Answer the refused ids
+      # with a 410-class rejected disposition carrying
+      # com.microsoft:message-lock-lost — the wire twin of management paths'
+      # 410 MESSAGE_LOCK_LOST.
+      Enum.each(lock_lost_ids, fn delivery_id ->
+        send_frame(state, channel, {
+          :disposition,
+          %{
+            role: false,
+            first: delivery_id,
+            last: delivery_id,
+            settled: true,
+            state:
+              {:rejected,
+               %{
+                 condition: "com.microsoft:message-lock-lost",
+                 description: "The lock token is no longer valid; the message was not settled"
+               }}
+          }
+        })
+      end)
 
       # Receiver-initiated settlement (SDK peekLock receivers settle with
       # settled=false and rcv-settle-mode=first): the sender endpoint MUST
       # echo the terminal disposition or the client's complete/abandon
       # hangs forever ("Operation to settle the message has timed out").
       # If the client already settled on the wire (settled=true), no echo.
-      if matched_any and not perf[:settled] do
+      if matched_any and lock_lost_ids == [] and not perf[:settled] do
         # pyamqp dialect (S-1, disclosed in s1-amqp-shims receipt): pyamqp
         # reads the echo's terminal outcome state, so echo the client's own
         # state back — a bare settled-only echo reads as outcome None and
         # every complete/abandon fails ("Expected 'accepted' but the
         # reported outcome was: None").
+        # decoded :modified carries the positional fields LIST; the encoder
+        # wants the map form. Rebuild the wire-described state instead of
+        # round-tripping the internal shape.
+        # KD-77 residual (2026-10-16): decoded :rejected ALSO carries the
+        # positional LIST; re-encoding it verbatim put the whole list in the
+        # error-condition slot, pyamqp decoded condition as a DescribedList
+        # and crashed (AttributeError 'DescribedList' has no 'decode') ->
+        # RuntimeError -> mgmt-link fallback -> spurious 410 against a
+        # message the receiver-link dead-letter had ALREADY settled.
+        # A successful dead-letter echoes rejected with NO error (real
+        # Service Bus: check_disposition_outcome treats error-bearing
+        # rejected as failure). # KD-COVERS: KD-77
+        echo_state =
+          case perf[:state] do
+            {:modified, fields} when is_list(fields) ->
+              {:modified,
+               %{
+                 delivery_failed: Enum.at(fields, 0),
+                 undeliverable_here: Enum.at(fields, 1),
+                 annotations: Enum.at(fields, 2)
+               }}
+
+            {:rejected, fields} when is_list(fields) ->
+              {:rejected, %{condition: nil, description: nil, info: nil}}
+
+            other ->
+              other
+          end
+
         send_frame(state, channel, {
           :disposition,
-          %{role: false, first: first, last: last, settled: true, state: perf[:state]}
+          %{role: false, first: first, last: last, settled: true, state: echo_state}
         })
       end
 
@@ -1355,29 +2202,85 @@ defmodule Smalt.Amqp.Connection do
 
   defp modified_action(_), do: :release
 
-  defp settle(:complete, dlv) do
-    # lock-expiry gate: completing on an expired/lost lock would steal the
-    # message from its current owner; release it back instead (redelivery)
-    case Smalt.Amqp.LockManager.get(dlv.lock_token) do
-      {:ok, lock} ->
-        if Smalt.Amqp.LockManager.expired?(lock, System.system_time(:millisecond)) do
-          QueueStore.release(dlv.queue, dlv.seq)
-        else
-          QueueStore.complete(dlv.queue, dlv.seq)
-        end
+  # AMQP map keys may decode as raw binaries or {:symbol, bin} tuples; look
+  # up both spellings without minting atoms from wire input.
+  defp key_bin(info, name, alt) do
+    info[name] || info[alt] || info[{:symbol, name}] || info[{:symbol, alt}]
+  end
 
-      _ ->
-        # lock lost (expired + swept or released): requeue instead of completing
-        QueueStore.release(dlv.queue, dlv.seq)
+  # R196: every settle rides the disposition's captured delivery token
+  # (outbound_deliveries) as a server-side compare-and-settle
+  # (QueueStore settle_token_ok?/2). A stale token (lock expired+re-claimed,
+  # swept, or released) refuses typed :lock_lost — the caller answers the
+  # client 410-class and the message is untouched. The prior client-side
+  # LockManager.expired? gate is subsumed: the CAS checks the row's CURRENT
+  # stored token, and an expired lock whose token was already swept deletes
+  # the row → token mismatch → :lock_lost.
+  # KD-77 residual fix (2026-10-16): receiver-link dead-letter carries its
+  # reason/description in the rejected outcome's error info map
+  # (com.microsoft:dead-letter-reason / -error-description); dropping them
+  # made every DLQ message surface dead_letter_reason "rejected"
+  # (test_dead_letter_with_properties, unblocked by the r210 fixes).
+  defp settle(:deadletter, dlv, {:rejected, fields}) when is_list(fields) do
+    {reason, desc} =
+      case Enum.at(fields, 0) do
+        # error = described(0x1d) [condition, description, info-map]
+        {:described, _desc, err_fields} when is_list(err_fields) ->
+          case Enum.at(err_fields, 2) do
+            info when is_map(info) ->
+              # info-map keys arrive as raw binaries or {:symbol, bin} —
+              # never mint atoms from wire input (safe_atom law). Python
+              # pyamqp dialect: "DeadLetterReason"/"DeadLetterErrorDescription"
+              # (constants.py:94-95); also honor com.microsoft-prefixed forms.
+              kr = key_bin(info, "DeadLetterReason", "com.microsoft:dead-letter-reason")
+
+              kd =
+                key_bin(info, "DeadLetterErrorDescription",
+                  "com.microsoft:dead-letter-error-description"
+                )
+
+              {kr || "rejected", kd}
+
+            _ ->
+              {"rejected", nil}
+          end
+
+        _ ->
+          {"rejected", nil}
+      end
+
+    case QueueStore.deadletter(dlv.queue, dlv.seq, reason, desc, lock_token: dlv.lock_token) do
+      {:ok, _dlq_seq} -> :ok
+      {:error, :lock_lost} -> :lock_lost
+      {:error, _other} -> :ok
     end
   end
 
-  defp settle(:release, dlv), do: QueueStore.release(dlv.queue, dlv.seq)
+  defp settle(:complete, dlv, _state) do
+    case QueueStore.complete(dlv.queue, dlv.seq, lock_token: dlv.lock_token) do
+      :ok -> :ok
+      {:error, :lock_lost} -> :lock_lost
+    end
+  end
 
-  defp settle(:defer, dlv), do: QueueStore.defer(dlv.queue, dlv.seq, [])
+  defp settle(:release, dlv, _state) do
+    case QueueStore.release(dlv.queue, dlv.seq, lock_token: dlv.lock_token) do
+      :ok -> :ok
+      {:error, :lock_lost} -> :lock_lost
+      # R64/R128 conditions are store-level, not token conditions: the settle
+      # happened as far as token ownership is concerned.
+      {:error, _capacity} -> :ok
+    end
+  end
 
-  defp settle(:deadletter, dlv) do
-    QueueStore.deadletter(dlv.queue, dlv.seq, "rejected", nil, [])
+  defp settle(:defer, dlv, _state), do: QueueStore.defer(dlv.queue, dlv.seq, [])
+
+  defp settle(:deadletter, dlv, _state) do
+    case QueueStore.deadletter(dlv.queue, dlv.seq, "rejected", nil, lock_token: dlv.lock_token) do
+      {:ok, _dlq_seq} -> :ok
+      {:error, :lock_lost} -> :lock_lost
+      {:error, _other} -> :ok
+    end
   end
 
   # --- send helpers -------------------------------------------------------------------
@@ -1392,6 +2295,11 @@ defmodule Smalt.Amqp.Connection do
     do: min(n, FrameCodec.max_frame_size())
 
   defp send_frame(state, channel, {name, fields}) do
+    # Repair lane R96 (A24 follow-up): was an unguarded IO.puts(:stderr, ...)
+    # debug print on every EH transfer — Logger-gated now, silent at default
+    # verbosity.
+    if name == :transfer,
+      do: Logger.debug("DBG tf-send ch=#{channel} h=#{fields.handle}")
     channel = channel || state.session[:channel] || 0
     layer = if name in [:sasl_mechanisms, :sasl_init, :sasl_outcome, :sasl_challenge], do: :sasl, else: :amqp
 
@@ -1566,6 +2474,15 @@ defmodule Smalt.Amqp.Connection do
     end)
   end
 
+  # Absolute credit assignment for inbound :flow on a specific handle
+  # (SHIM-COURT flip target: BEFORE = additive bump, AFTER = absolute set).
+  defp set_credit(state, ch, handle, credit) do
+    update_links(state, fn
+      {c, h}, link when h == handle and (ch == nil or c == ch) -> %{link | credit: credit}
+      _key, link -> link
+    end)
+  end
+
   defp update_links(state, fun) do
     %{state | links: Map.new(state.links, fn {key, l} -> {key, fun.(key, l)} end)}
   end
@@ -1588,6 +2505,49 @@ defmodule Smalt.Amqp.Connection do
     do: address_of(Enum.at(fields, 0))
 
   defp address_of(_), do: nil
+
+  # Repair lane R96: strip the "scheme://host[:port]/" prefix off an attach
+  # address, leaving the bare entity name. Only fires on amqp/amqps/sb scheme
+  # forms; bare names, "$cbs"/"$management" and EH path forms pass through.
+  defp bare_entity(address) when is_binary(address) do
+    case String.split(address, "://", parts: 2) do
+      [scheme, rest] when scheme in ["amqp", "amqps", "sb"] ->
+        case String.split(rest, "/", parts: 2) do
+          [_host, entity] when is_binary(entity) and entity != "" ->
+            # R129 exploit 1 (W5-17): "amqps://h:5671/q/" previously fell
+            # through the entity != "" guard and kept the FULL URI as the
+            # store key — a distinct queue namespace that bypassed the
+            # requiresSession gate (enqueue to "q/" succeeded without a
+            # session while "q" required one). Strip trailing slashes so
+            # "q/" normalizes to "q". Empty-after-strip ("amqps://h/")
+            # keeps the original guard: the address passes through
+            # unchanged, still failing closed against the session gate.
+            # Percent-decoding is deliberately NOT done (parked): decode
+            # would alias distinct encodings onto one entity; add it only
+            # with a real-SDK census receipt pinning the encoding.
+            case String.trim_trailing(entity, "/") do
+              "" -> address
+              bare -> bare
+            end
+
+          _ ->
+            address
+        end
+
+      _ ->
+        # R129 exploit 1: BARE entity names take the same gate — "q/" is a
+        # shadow namespace of "q" and used to slip past both the requiresSession
+        # gate and the R96 scheme-form stripping (no "://" -> pass through).
+        # Trim trailing slashes so "q/" normalizes to "q"; empty-after-strip
+        # ("/") keeps the address unchanged, still failing closed.
+        case String.trim_trailing(address, "/") do
+          "" -> address
+          bare -> bare
+        end
+    end
+  end
+
+  defp bare_entity(other), do: other
 
   defp plain({:symbol, s}) when is_binary(s), do: s
   defp plain(s) when is_binary(s), do: s

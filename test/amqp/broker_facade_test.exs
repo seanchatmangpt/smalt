@@ -137,7 +137,51 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       end
 
       # A real pass executes every real sibling sweep with no rescue below it.
+      # SHIM-COURT R91: invocation, not mere export — call_count proof. The
+      # supervised background tick is parked (:sys.suspend) so the ONLY source
+      # of sibling invocations during the window is our direct run_pass/0 call.
+      siblings = [
+        {Smalt.Amqp.LockManager, :sweep, 1},
+        {Smalt.Amqp.QueueStore, :sweep, 0},
+        {Smalt.Amqp.CbsRouter, :gc, 1},
+        {Smalt.Messaging.EventHubs, :sweep, 0}
+      ]
+
+      sweeper_pid = GenServer.whereis(Sweeper)
+      assert sweeper_pid != nil
+      :sys.suspend(sweeper_pid)
+
+      for {m, f, a} <- siblings do
+        :erlang.trace_pattern({m, f, a}, true, [:call_count])
+      end
+
       assert Sweeper.run_pass() == :ok
+
+      counts =
+        Map.new(siblings, fn {m, f, a} = mfa ->
+          count =
+            case :erlang.trace_info(mfa, :call_count) do
+              {:call_count, n} -> n
+              _ -> :undefined
+            end
+
+          :erlang.trace_pattern({m, f, a}, false, [:call_count])
+          {mfa, count}
+        end)
+
+      :sys.resume(sweeper_pid)
+
+      for {mfa, count} <- counts do
+        {m, f, _a} = mfa
+
+        # CbsRouter is the documented optional sibling: when it is not running
+        # the guard skips gc/1, so invocation is mandatory only while alive.
+        if m == Smalt.Amqp.CbsRouter and GenServer.whereis(Smalt.Amqp.CbsRouter) == nil do
+          assert count == 0, "#{inspect(m)}.#{f} invoked with no live server (#{inspect(count)})"
+        else
+          assert count == 1, "run_pass/0 did not invoke #{inspect(m)}.#{f} (count=#{inspect(count)})"
+        end
+      end
     end
 
     test "GCs expired Event Hubs processing claims" do
@@ -185,6 +229,67 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       assert EventHubs.sweep() >= 1
       assert %{"claim" => nil} = elem(hd(:ets.lookup(:smalt_eh_checkpoints, key)), 1)
       assert :ok = EventHubs.reserve_processing(group, partition, :owner_b, 5_000)
+    end
+
+    test "refuses boot on non-positive tick_ms (R132 fail-closed, typed ArgumentError)" do
+      for bad <- [0, -1] do
+        # init reads opts[:tick_ms] first, so the bad value rides the opts; the
+        # env-only path stays covered by the supervised restarts in this suite.
+        # The supervised instance owns the registered name, so park it first and
+        # race the supervisor's own restart for the named start attempt.
+        Application.put_env(:smalt, :amqp_sweeper_tick_ms, 3_600_000)
+        sweeper = Process.whereis(Sweeper)
+
+        if sweeper do
+          :ok = GenServer.stop(sweeper)
+          wait_until(fn -> if Process.whereis(Sweeper) != sweeper, do: :restarted end)
+        end
+
+        raised =
+          wait_until(fn ->
+            # init raises BEFORE the server is started, so the observation is the
+            # boot refusal itself: with the caller trapping exits, a start_link
+            # init crash surfaces as the raised ArgumentError (caught below) or
+            # as an exit carrying the {%ArgumentError{}, stack} — same typed
+            # refusal either way; :already_started means the supervisor's
+            # restart won the race for the registered name, so park and retry.
+            Process.flag(:trap_exit, true)
+
+            result =
+              try do
+                Sweeper.start_link(tick_ms: bad)
+              rescue
+                e in ArgumentError -> {:error, e}
+              catch
+                :exit, {%ArgumentError{message: msg} = e, _stack} -> {:error, e}
+                :exit, {:already_started, _pid} = r -> {:error, r}
+              end
+
+            case result do
+              {:error, {%ArgumentError{message: msg}, _stack}} ->
+                assert msg =~ "Smalt.Amqp.Sweeper tick_ms must be a positive integer"
+                assert msg =~ inspect(bad)
+                assert msg =~ "amqp_sweeper_tick_ms"
+                true
+
+              {:error, %ArgumentError{message: msg}} ->
+                assert msg =~ "Smalt.Amqp.Sweeper tick_ms must be a positive integer"
+                assert msg =~ inspect(bad)
+                assert msg =~ "amqp_sweeper_tick_ms"
+                true
+
+              {:error, {:already_started, pid}} ->
+                :ok = GenServer.stop(pid)
+                nil
+
+              other ->
+                flunk("expected init to raise on tick_ms=#{bad}, got: #{inspect(other)}")
+            end
+          end)
+
+        assert raised == true,
+               "start_link(tick_ms: #{bad}) never reached init (already_started race window exhausted)"
+      end
     end
   end
 

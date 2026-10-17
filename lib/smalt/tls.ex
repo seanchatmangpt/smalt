@@ -78,6 +78,30 @@ defmodule Smalt.TLS do
   @spec ensure_dev_cert() :: {:ok, String.t(), String.t()} | {:error, term()}
   @spec ensure_dev_cert(term()) :: {:ok, String.t(), String.t()} | {:error, term()}
   def ensure_dev_cert(lane_key \\ nil) do
+    # R90/D52: env-cert source (SMALT_TLS_CERTFILE/KEYFILE) is checked first,
+    # so the ARM twin and any bandit_opts consumer share one resolution path
+    # — with validate_certfile_pair applied, which the old application.ex
+    # env branch skipped.
+    with {cert, key} when is_binary(cert) and is_binary(key) <- env_cert_pair(),
+         :ok <- validate_certfile_pair(cert, key) do
+      {:ok, cert, key}
+    else
+      _ -> resolve_config_cert(lane_key)
+    end
+  end
+
+  defp env_cert_pair do
+    cert = System.get_env("SMALT_TLS_CERTFILE")
+    key = System.get_env("SMALT_TLS_KEYFILE")
+
+    if is_binary(cert) and is_binary(key) and File.regular?(cert) and File.regular?(key) do
+      {cert, key}
+    else
+      :no_env_cert
+    end
+  end
+
+  defp resolve_config_cert(lane_key) do
     cert = Application.get_env(:smalt, :tls_certfile)
     key = Application.get_env(:smalt, :tls_keyfile)
 
@@ -128,8 +152,26 @@ defmodule Smalt.TLS do
 
     case ensure_dev_cert(port) do
       {:ok, cert, key} ->
+        # R90/D52: TLS 1.2-only + 2-cipher pin applied unconditionally on
+        # every https path (SHIM-COURT subject: the pin must hold for dev
+        # certs too, not just the env-cert branch). Recent Go clients
+        # (azurerm/azidentity) offer X25519MLKEM768 key shares that the OTP
+        # 28 ssl app rejects, killing the handshake before the cert is even
+        # evaluated. Go falls back to TLS 1.2 + ECDHE-RSA happily.
+        tls_pin = [
+          thousand_island_options: [
+            transport_options: [
+              versions: [:"tlsv1.2"],
+              ciphers: [
+                ~c"ECDHE-RSA-AES256-GCM-SHA384",
+                ~c"ECDHE-RSA-AES128-GCM-SHA256"
+              ]
+            ]
+          ]
+        ]
+
         [scheme: :https, certfile: to_charlist(Path.expand(cert)),
-         keyfile: to_charlist(Path.expand(key))] ++ base
+         keyfile: to_charlist(Path.expand(key))] ++ tls_pin ++ base
 
       # Explicit plaintext opt-out is a typed configuration, not a failure.
       {:error, :tls_disabled} ->
@@ -182,18 +224,22 @@ defmodule Smalt.TLS do
     end
   end
 
-  # TLS-261014-02: the pair must actually match — a whole-but-skewed pair
-  # (cert_n + key_n-1) parses cleanly and would otherwise be served until the
-  # client fails the handshake. The cert must verify against the paired key.
+  # TLS-261014-02 (R156 repair): the pair must actually match — a whole-but-
+  # skewed pair (cert_n + key_n-1) parses cleanly and would otherwise be served
+  # until the client fails the handshake. Pairing is an SPKI identity check:
+  # the cert's SubjectPublicKeyInfo must equal the public half of the paired
+  # private key. The previous pkix_verify(leaf, leaf_pubkey) only held for
+  # self-signed certs and rejected every CA-chained leaf (e.g. the
+  # gen_dev_cert.sh pair), silently deadening SMALT_TLS_CERTFILE.
   defp verify_pair(cert, key) do
     with {:ok, pem} <- File.read(cert),
          [{:"Certificate", der, :not_encrypted} | _] <- :public_key.pem_decode(pem),
          {:ok, kpem} <- File.read(key),
-         [{:RSAPrivateKey, kder, :not_encrypted} | _] <- :public_key.pem_decode(kpem) do
-      priv = :public_key.der_decode(:RSAPrivateKey, kder)
-      pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
+         [key_entry | _] <- :public_key.pem_decode(kpem),
+         {:ok, priv} <- rsa_key_der(key_entry) do
+      key_pub = rsa_pub_from_priv(priv)
 
-      if safe_pkix_verify(der, pubkey) do
+      if safe_spki_match(der, key_pub) do
         :ok
       else
         {:error, :cert_key_mismatch}
@@ -203,16 +249,33 @@ defmodule Smalt.TLS do
     end
   end
 
-  # pkix_verify decodes extensions and can raise on structurally broken certs
-  # (witnessed: asn1 exit on a mutated SAN extension) — a cert that cannot be
-  # verified is, for boot purposes, a mismatch/broken cert: regenerate or
-  # refuse, never crash.
-  defp safe_pkix_verify(der, pubkey) do
-    # asn1 NIF decode failures surface as exits, not raises — catch both.
-    :public_key.pkix_verify(der, pubkey)
+  # asn1 decoding can exit (NIF decode failure on a structurally broken cert)
+  # — a cert whose SPKI cannot be extracted is, for boot purposes, a
+  # mismatch/broken cert: regenerate or refuse, never crash.
+  defp safe_spki_match(der, key_pub) do
+    otp = :public_key.pkix_decode_cert(der, :otp)
+    tbs = elem(otp, 1)
+    spki = elem(tbs, 7)
+    # subjectPublicKey in the OTP view is the decoded 'RSAPublicKey' record
+    match?(^key_pub, elem(spki, 2))
   catch
     _, _ -> false
   end
+
+  # Accept both traditional RSA ("RSA PRIVATE KEY") and PKCS#8 ("PRIVATE
+  # KEY") PEM encodings — OpenSSL >= 3 mints PKCS#8 from -newkey -nodes.S#8 from -newkey -nodes.
+  # Returns the decoded 'RSAPrivateKey' record either way.
+  defp rsa_key_der({:RSAPrivateKey, der, :not_encrypted}) do
+    {:ok, :public_key.der_decode(:RSAPrivateKey, der)}
+  end
+
+  defp rsa_key_der({:PrivateKeyInfo, der, :not_encrypted}) do
+    # OTP decodes the inner OCTET STRING per privateKeyAlgorithm — the
+    # result is already the 'RSAPrivateKey' record.
+    {:ok, :public_key.der_decode(:PrivateKeyInfo, der)}
+  end
+
+  defp rsa_key_der(_), do: :error
 
   defp regenerate(cert, key, _prior) do
     # TLS-261014-01: serialize regenerates on the same lane key so two

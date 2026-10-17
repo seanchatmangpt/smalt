@@ -5,7 +5,13 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
   alias Smalt.Store
 
   setup do
-    if GenServer.whereis(Store) == nil, do: {:ok, _} = Store.start_link([])
+    # Store must be unlinked from the test process (lens-4): plain start +
+    # named registration keeps the tables alive regardless of test exits;
+    # :already_started is fine.
+    case GenServer.start(Store, [], name: Store) do
+      {:ok, _} -> :ok
+      {:error, {:already_started, _}} -> :ok
+    end
     Store.clear()
     :ok
   end
@@ -25,7 +31,7 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
   defp b64(bin), do: Base.url_encode64(bin, padding: false)
   defp b64_decode!(s), do: Base.url_decode64!(s, padding: false)
 
-  defp assert_op_not_allowed({:error, 400, %{"error" => %{"code" => "OperationNotAllowed"}}}), do: :ok
+  defp assert_op_not_allowed({:error, 403, %{"error" => %{"code" => "OperationNotAllowed"}}}), do: :ok
 
   # ---------------------------------------------------------------------------
   # RSA-OAEP-256 encrypt / decrypt
@@ -626,6 +632,179 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
         "iat" => now,
         "exp" => now + 7200
       }
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # R14 repairs (lane A4 defects 1-3)
+  # ---------------------------------------------------------------------------
+
+  describe "R14 versioned-key semantics" do
+    test "unknown version -> 404 KeyNotFound, never a bare-name fallback" do
+      put_key("r14-phantom")
+      plain = :crypto.strong_rand_bytes(16)
+
+      assert {:error, 404, %{"error" => %{"code" => "KeyNotFound"}}} =
+               KeyVaultActions.encrypt("r14-phantom", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v999")
+
+      assert {:error, 404, %{"error" => %{"code" => "KeyNotFound"}}} =
+               KeyVaultActions.decrypt("r14-phantom", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v999")
+    end
+
+    test "versioned crypto op does not surface a duplicate key in list_keys" do
+      put_key("r14-dup")
+
+      # A versioned op on a fabricated version 404s and must not materialize
+      # any row (phantom-version defect). A REAL version row must stay hidden
+      # from list_keys even after its material is generated.
+      assert {:error, 404, _} =
+               KeyVaultActions.encrypt("r14-dup", %{"alg" => "RSA-OAEP-256", "value" => b64("x")}, "v999")
+
+      {:ok, 200, %{"value" => keys}} = KeyVaultActions.list_keys()
+      assert length(keys) == 1
+      assert hd(keys)["kid"] == "https://smalt.local:8443/keys/r14-dup"
+
+      # Simulate a real create-route version row (no key_material yet), then
+      # run a versioned op so ensure_rsa materializes it.
+      version_record = %{
+        "kid" => "https://smalt.local:8443/keys/r14-dup/v1",
+        "key" => %{"kid" => "https://smalt.local:8443/keys/r14-dup/v1", "kty" => "RSA-HSM"},
+        "attributes" => %{"enabled" => true}
+      }
+
+      Store.put(:smalt_vault_keys, {"r14-dup", "v1"}, version_record)
+
+      assert {:ok, 200, _} =
+               KeyVaultActions.encrypt("r14-dup", %{"alg" => "RSA-OAEP-256", "value" => b64("x")}, "v1")
+
+      {:ok, 200, %{"value" => keys}} = KeyVaultActions.list_keys()
+      assert length(keys) == 1
+    end
+
+    test "oct versions derive distinct material; bare name keeps legacy derivation" do
+      put_key("r14-oct", "oct-HSM")
+
+      assert KeyVaultActions.derive_oct_key("r14-oct") == KeyVaultActions.derive_oct_key("r14-oct", nil)
+      assert KeyVaultActions.derive_oct_key("r14-oct") == :crypto.hash(:sha256, "smalt-vault-derived:r14-oct")
+      refute KeyVaultActions.derive_oct_key("r14-oct") == KeyVaultActions.derive_oct_key("r14-oct", "v1")
+      refute KeyVaultActions.derive_oct_key("r14-oct", "v1") == KeyVaultActions.derive_oct_key("r14-oct", "v2")
+
+      # Round-trip through a versioned oct op uses the version-bound material.
+      # A versioned op requires an existing {name, version} row (create route
+      # contract), so provision it first.
+      Store.put(:smalt_vault_keys, {"r14-oct", "v1"}, %{
+        "kid" => "https://smalt.local:8443/keys/r14-oct/v1",
+        "key" => %{"kid" => "https://smalt.local:8443/keys/r14-oct/v1", "kty" => "oct-HSM"},
+        "attributes" => %{"enabled" => true}
+      })
+
+      plain = :crypto.strong_rand_bytes(16)
+
+      {:ok, 200, %{"value" => ct, "iv" => iv, "tag" => tag}} =
+        KeyVaultActions.encrypt("r14-oct", %{"alg" => "A256GCM", "value" => b64(plain)}, "v1")
+
+      assert {:error, 400, _} =
+               KeyVaultActions.decrypt("r14-oct", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag})
+
+      # Decrypting under the SAME version succeeds.
+      assert {:ok, 200, %{"value" => pt}} =
+               KeyVaultActions.decrypt("r14-oct", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag}, "v1")
+
+      assert b64_decode!(pt) == plain
+    end
+
+    test "colon-in-name cannot collide with a version separator (R138/W5-6)" do
+      # Victim: oct key "w5a" with a versioned encrypt under "V".
+      put_key("w5a", "oct")
+      plain = :crypto.strong_rand_bytes(16)
+
+      Store.put(:smalt_vault_keys, {"w5a", "V"}, %{
+        "kid" => "https://smalt.local:8443/keys/w5a/V",
+        "key" => %{"kid" => "https://smalt.local:8443/keys/w5a/V", "kty" => "oct"},
+        "attributes" => %{"enabled" => true}
+      })
+
+      {:ok, 200, %{"value" => ct, "iv" => iv, "tag" => tag}} =
+        KeyVaultActions.encrypt("w5a", %{"alg" => "A256GCM", "value" => b64(plain)}, "V")
+
+      # Attacker key literally named "w5a:V" — its bare derivation must now
+      # differ from derive_oct_key("w5a", "V") (length-prefix kills the
+      # separator collision).
+      refute KeyVaultActions.derive_oct_key("w5a:V") == KeyVaultActions.derive_oct_key("w5a", "V")
+
+      # Cross-decrypt under the attacker key name fails: "w5a:V" is an
+      # unrelated key that does not exist, so the gate is 404 KeyNotFound —
+      # the separator collision is structurally impossible post-fix, so the
+      # wrong-material decrypt path is unreachable.
+      assert {:error, 404, %{"error" => %{"code" => "KeyNotFound"}}} =
+               KeyVaultActions.decrypt("w5a:V", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag})
+
+      # Legit versioned decrypt still round-trips.
+      assert {:ok, 200, %{"value" => pt}} =
+               KeyVaultActions.decrypt("w5a", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag}, "V")
+
+      assert b64_decode!(pt) == plain
+    end
+
+    test "empty allowed_operations is deny-all; camelCase honored in gate" do
+      put_key("r138-deny", "oct", %{"allowed_operations" => []})
+
+      assert {:error, 403, %{"error" => %{"code" => "OperationNotAllowed"}}} =
+               KeyVaultActions.encrypt("r138-deny", %{"alg" => "A256GCM", "value" => b64("x")})
+
+      assert {:error, 403, %{"error" => %{"code" => "OperationNotAllowed"}}} =
+               KeyVaultActions.decrypt("r138-deny", %{"alg" => "A256GCM", "value" => b64("x")})
+
+      put_key("r138-camel", "oct", %{"allowedOperations" => ["encrypt"]})
+
+      assert {:error, 403, _} =
+               KeyVaultActions.decrypt("r138-camel", %{"alg" => "A256GCM", "value" => b64("x")})
+    end
+
+    test "recover restores live version rows: versioned fetch returns the material (R24/A3-D1)" do
+      name = "r24-recover"
+      put_key(name)
+
+      # Create-route contract: bare-name row carries the versions list; the
+      # {name, version} row holds the material once materialized.
+      {:ok, record} = Store.get(:smalt_vault_keys, name)
+      Store.put(:smalt_vault_keys, name, Map.put(record, "versions", ["v1"]))
+
+      Store.put(:smalt_vault_keys, {name, "v1"}, %{
+        "kid" => "https://smalt.local:8443/keys/#{name}/v1",
+        "key" => %{"kid" => "https://smalt.local:8443/keys/#{name}/v1", "kty" => "RSA-HSM"},
+        "attributes" => %{"enabled" => true}
+      })
+
+      # Materialize the version row's RSA DER so delete captures real material.
+      plain = :crypto.strong_rand_bytes(16)
+
+      assert {:ok, 200, %{"value" => ct}} =
+               KeyVaultActions.encrypt(name, %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v1")
+
+      # Soft delete, then recover.
+      assert {:ok, 200, _} = KeyVaultActions.delete_key(name)
+      assert {:error, 404, _} = KeyVaultActions.encrypt(name, %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v1")
+      assert {:ok, 200, _} = KeyVaultActions.recover_deleted_key(name)
+
+      # The versioned fetch path must find the restored {name, "v1"} row and
+      # its cached material — pre-fix (R4/D1) this 404s because recover never
+      # re-put the live version rows.
+      assert {:ok, 200, %{"value" => pt}} =
+               KeyVaultActions.decrypt(name, %{"alg" => "RSA-OAEP-256", "value" => ct}, "v1")
+
+      assert b64_decode!(pt) == plain
+
+      # list_versions after recover is non-empty.
+      assert {:ok, 200, %{"value" => versions}} = KeyVaultActions.list_versions(name)
+      refute versions == []
+    end
+
+    test "release-policy denial is 403 Forbidden (real Azure status)" do
+      put_key("r14-policy", "RSA-HSM", %{"allowed_operations" => ["encrypt"]})
+
+      assert {:error, 403, %{"error" => %{"code" => "OperationNotAllowed"}}} =
+               KeyVaultActions.sign("r14-policy", %{"alg" => "RS256", "value" => b64("x")})
     end
   end
 end

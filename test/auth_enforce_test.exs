@@ -401,6 +401,7 @@ defmodule Smalt.AuthEnforceTest do
     assert conn.status == 200, "spoofed forwarded header must not break a direct-authority token"
   end
 
+  @tag :cross_seat
   test "cross-port: token minted at the ARM authority is accepted on the egress seat" do
     # Real STS mint on an ARM seat with its own host/port...
     arm_conn =
@@ -427,6 +428,7 @@ defmodule Smalt.AuthEnforceTest do
            "expected 200 from Cosmos list-dbs, got #{egress_conn.status}: #{egress_conn.resp_body}"
   end
 
+  @tag :cross_seat
   test "cross-port: tampered or foreign tokens still refused on the egress seat" do
     arm_conn =
       %Plug.Conn{conn(:post, "/oauth2/v2.0/token", token_params()) | host: "arm.smalt.local", port: 19_081}
@@ -1042,6 +1044,7 @@ defmodule Smalt.AuthEnforceTest do
     token
   end
 
+  @tag :cross_seat
   test "roundtrip property: token minted at seat A verifies at seats B and C via the registry" do
     token = mint_sts("00000000-0000-0000-0000-000000000000", "arm.smalt.local", 19_081)
 
@@ -1084,6 +1087,7 @@ defmodule Smalt.AuthEnforceTest do
     assert c.status == 401
   end
 
+  @tag :cross_seat
   test "roundtrip property: never-minted authority is refused at every seat" do
     tid = "00000000-0000-0000-0000-000000000000"
     now = System.system_time(:second)
@@ -1241,6 +1245,7 @@ defmodule Smalt.AuthEnforceTest do
     |> Map.replace!(:scheme, :http)
   end
 
+  @tag :cross_seat
   test "lens2: 50 concurrent register_trusted_authority calls all land (no lost update)" do
     authorities =
       for i <- 1..50, do: "http://#{@race_tag}-#{i}.test.invalid:19081/#{@race_tag}/v2.0"
@@ -1394,6 +1399,7 @@ defmodule Smalt.AuthEnforceTest do
 
   @fence_tag "lens3-fence"
 
+  @tag :cross_seat
   test "lens3 fence: 1200 distinct mint authorities leave at most 1024 persistent_term keys" do
     authorities =
       for i <- 1..1200, do: "http://#{@fence_tag}-#{i}.test.invalid:19081/t/v2.0"
@@ -1442,6 +1448,7 @@ defmodule Smalt.AuthEnforceTest do
 
   @race2_tag "lens3-race2"
 
+  @tag :cross_seat
   test "lens3 race: 50 concurrent registers x 10 resets — post-storm registers always land" do
     authorities = for i <- 1..50, do: "http://#{@race2_tag}-#{i}.test.invalid:19081/t/v2.0"
     register = &Smalt.Auth.Bearer.register_trusted_authority/1
@@ -1833,6 +1840,7 @@ defmodule Smalt.AuthEnforceTest do
     end
   end
 
+  @tag :cross_seat
   test "lens4 cap side: at the cap the mint still succeeds; cross-SEAT acceptance withheld" do
     tag = "lens4-cap"
     authorities = for i <- 1..1100, do: "http://#{tag}-#{i}.test.invalid:19081/t/v2.0"
@@ -2003,7 +2011,16 @@ defmodule Smalt.AuthEnforceTest do
     end
 
     # Well-formed forwarded rows accept with the token bound to that authority.
-    for {host_hdr, proto} <- [{"pfx.test.invalid", "https"}, {"pfx.test.invalid:9443", "https"}] do
+    # The 443/80 rows pin the scheme-default-port collision BOTH directions
+    # (parity with the lib's default_port(scheme) semantics, NOT a blind
+    # [80, 443] strip): http-on-443 and https-on-80 keep their explicit port,
+    # so each forms a DISTINCT authority only its own bound token accepts.
+    for {host_hdr, proto} <- [
+          {"pfx.test.invalid", "https"},
+          {"pfx.test.invalid:9443", "https"},
+          {"pfx.test.invalid:443", "http"},
+          {"pfx.test.invalid:80", "https"}
+        ] do
       fwd_auth = forwarded_authority_of(host_hdr, proto)
 
       fwd_token = mint(%{"iss" => "#{fwd_auth}/t/v2.0"})
@@ -2093,7 +2110,10 @@ defmodule Smalt.AuthEnforceTest do
       [h, p] -> {h, String.to_integer(p)}
     end
 
-    port_part = if port in [80, 443], do: "", else: ":#{port}"
+    # default_port semantics (parity with Smalt.Auth.Bearer): the port is
+    # omitted only when it equals the SCHEME's default — http/80 and
+    # https/443 — never a blind "in [80, 443]" strip.
+    port_part = if port == (if scheme == :https, do: 443, else: 80), do: "", else: ":#{port}"
     "#{scheme}://#{host}#{port_part}"
   end
 

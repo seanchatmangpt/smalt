@@ -12,7 +12,8 @@ defmodule Smalt.Registry do
   # Canonical ordering: rows are sorted by resourceType at render time so the
   # artifact is independent of SPARQL engine row order (the `sparql` hex
   # engine does not honor ORDER BY — see GgenIgniter.Query's moduledoc).
-  # Replay identity is fenced by test/smalt_registry_replay_identity_test.exs.
+  # Replay identity is fenced by the Smalt.Registry.ReplayIdentity module
+  # (SHIM-COURT-clean template; replay must be byte-identical).
 
   @admitted_resource_types [
     "Microsoft.App/containerApps",
@@ -26,6 +27,8 @@ defmodule Smalt.Registry do
     "Microsoft.ContainerService/managedClusters",
     "Microsoft.DevTestLab/schedules",
     "Microsoft.DocumentDB/databaseAccounts",
+    "Microsoft.DocumentDB/databaseAccounts/sqlContainers",
+    "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
     "Microsoft.EventGrid/topics",
     "Microsoft.EventHub/namespaces",
     "Microsoft.EventHub/namespaces/eventhubs",
@@ -34,6 +37,7 @@ defmodule Smalt.Registry do
     "Microsoft.KeyVault/managedHSMs",
     "Microsoft.KeyVault/vaults",
     "Microsoft.KeyVault/vaults/keys",
+    "Microsoft.KeyVault/vaults/secrets",
     "Microsoft.Network/networkInterfaces",
     "Microsoft.Network/networkSecurityGroups",
     "Microsoft.Network/privateDnsZones",
@@ -67,6 +71,8 @@ defmodule Smalt.Registry do
     "Microsoft.ContainerService/managedClusters" => "DefaultShape",
     "Microsoft.DevTestLab/schedules" => "DefaultShape",
     "Microsoft.DocumentDB/databaseAccounts" => "CosmosAccountShape",
+    "Microsoft.DocumentDB/databaseAccounts/sqlContainers" => "SqlContainerShape",
+    "Microsoft.DocumentDB/databaseAccounts/sqlDatabases" => "SqlDatabaseShape",
     "Microsoft.EventGrid/topics" => "DefaultShape",
     "Microsoft.EventHub/namespaces" => "DefaultShape",
     "Microsoft.EventHub/namespaces/eventhubs" => "DefaultShape",
@@ -75,6 +81,7 @@ defmodule Smalt.Registry do
     "Microsoft.KeyVault/managedHSMs" => "ManagedHsmShape",
     "Microsoft.KeyVault/vaults" => "KeyVaultShape",
     "Microsoft.KeyVault/vaults/keys" => "DefaultShape",
+    "Microsoft.KeyVault/vaults/secrets" => "KeyVaultSecretShape",
     "Microsoft.Network/networkInterfaces" => "DefaultShape",
     "Microsoft.Network/networkSecurityGroups" => "NsgShape",
     "Microsoft.Network/privateDnsZones" => "DefaultShape",
@@ -108,15 +115,18 @@ defmodule Smalt.Registry do
     "Microsoft.ConfidentialLedger/managedCCFs" => "2023-06-27-preview",
     "Microsoft.ContainerService/managedClusters" => "2023-02-01",
     "Microsoft.DevTestLab/schedules" => "2018-09-15",
-    "Microsoft.DocumentDB/databaseAccounts" => "2021-04-01",
+    "Microsoft.DocumentDB/databaseAccounts" => "2024-08-15",
+    "Microsoft.DocumentDB/databaseAccounts/sqlContainers" => "2023-05-01",
+    "Microsoft.DocumentDB/databaseAccounts/sqlDatabases" => "2023-05-01",
     "Microsoft.EventGrid/topics" => "2021-04-01",
-    "Microsoft.EventHub/namespaces" => "2021-04-01",
-    "Microsoft.EventHub/namespaces/eventhubs" => "2021-04-01",
+    "Microsoft.EventHub/namespaces" => "2024-01-01",
+    "Microsoft.EventHub/namespaces/eventhubs" => "2024-01-01",
     "Microsoft.EventHub/namespaces/eventhubs/consumergroups" => "2021-04-01",
     "Microsoft.Insights/diagnosticSettings" => "2021-05-01-preview",
     "Microsoft.KeyVault/managedHSMs" => "2021-04-01",
-    "Microsoft.KeyVault/vaults" => "2021-04-01",
+    "Microsoft.KeyVault/vaults" => "2023-02-01",
     "Microsoft.KeyVault/vaults/keys" => "2023-07-01",
+    "Microsoft.KeyVault/vaults/secrets" => "2023-07-01",
     "Microsoft.Network/networkInterfaces" => "2021-04-01",
     "Microsoft.Network/networkSecurityGroups" => "2021-04-01",
     "Microsoft.Network/privateDnsZones" => "2018-09-01",
@@ -126,27 +136,59 @@ defmodule Smalt.Registry do
     "Microsoft.Network/virtualNetworks" => "2021-04-01",
     "Microsoft.OperationalInsights/workspaces" => "2020-08-01",
     "Microsoft.Purview/accounts" => "2021-05-01",
-    "Microsoft.Resources/resourceGroups" => "2021-04-01",
+    "Microsoft.Resources/resourceGroups" => "2023-07-01",
     "Microsoft.SecurityInsights/onboardingStates" => "2021-04-01",
-    "Microsoft.ServiceBus/namespaces" => "2021-04-01",
-    "Microsoft.ServiceBus/namespaces/queues" => "2021-04-01",
+    "Microsoft.ServiceBus/namespaces" => "2024-01-01",
+    "Microsoft.ServiceBus/namespaces/queues" => "2024-01-01",
     "Microsoft.ServiceBus/namespaces/topics" => "2021-04-01",
     "Microsoft.ServiceBus/namespaces/topics/subscriptions" => "2021-04-01",
-    "Microsoft.Storage/storageAccounts" => "2021-04-01",
-    "Microsoft.Storage/storageAccounts/blobServices" => "2021-04-01",
+    "Microsoft.Storage/storageAccounts" => "2023-05-01",
+    "Microsoft.Storage/storageAccounts/blobServices" => "2023-05-01",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "2023-05-01",
     "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
       "2023-05-01"
   }
 
+  # KD-78 admission lattice: the per-type ordered api-version lattice lives in
+  # the ontology (smalt:apiVersion = lattice top, smalt:admittedVersion =
+  # ordered witness rows). Informational only — the admission RULE is the
+  # monotonic comparison in admitted_version?/2 below, against the top.
   def admitted_resource_types, do: @admitted_resource_types
   def type_shapes, do: @type_shapes
   def api_versions, do: @api_versions
   def shape_for(type), do: Map.get(@type_shapes, type)
   def latest_version(type), do: Map.get(@api_versions, type)
   def admitted?(type), do: type in @admitted_resource_types
+
+  # Monotonic api-version admission (KD-78): base(V) as date <= latest as date.
+  # Lattice = half-open interval (-inf, latest]. Malformed versions are never
+  # admitted. This is the projection of the ontology's smalt:admitsVersion
+  # derived predicate — check_version/3 must call THIS, never hand-compare.
+  def admitted_version?(type, version) when is_binary(type) and is_binary(version) do
+    case latest_version(type) do
+      nil ->
+        false
+
+      latest when is_binary(latest) ->
+        with {:ok, v} <- version |> version_base() |> Date.from_iso8601(),
+             {:ok, l} <- Date.from_iso8601(latest) do
+          Date.compare(v, l) in [:lt, :eq]
+        else
+          _ -> false
+        end
+    end
+  end
+
+  def admitted_version?(_type, _version), do: false
+
+  defp version_base(version), do: hd(String.split(version, "-preview"))
+
   def control_plane_port, do: 9443
   def data_plane_port, do: 8443
-  def amqp_port, do: 5672
-  def event_hubs_port, do: 5673
+  def amqp_port, do: Application.get_env(:smalt, :amqp_port, 5672)
+  def event_hubs_port, do: Application.get_env(:smalt, :event_hubs_port, 5673)
+  # Canonical defaults for env-independent documents (docs/capabilities.json):
+  # the capability surface is the substrate contract, not the runtime override.
+  def amqp_port_default, do: 5672
+  def event_hubs_port_default, do: 5673
 end

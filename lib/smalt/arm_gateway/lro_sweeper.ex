@@ -95,32 +95,46 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
   """
   def eviction_pass do
     case Application.get_env(:smalt, :lro_retention_ms, :infinity) do
-      ms when is_integer(ms) and ms >= 0 ->
-        cutoff = System.system_time(:millisecond) - ms
-
-        :smalt_operations
-        |> Store.keys()
-        |> Enum.flat_map(fn key ->
-          case Store.get(:smalt_operations, key) do
-            {:ok, %{"status" => status, "endTime" => end_iso} = _record}
-            when status != "InProgress" and is_binary(end_iso) ->
-              case DateTime.from_iso8601(end_iso) do
-                {:ok, dt, _off} -> [{key, DateTime.to_unix(dt, :millisecond)}]
-                _ -> []
-              end
-
-            _ ->
-              []
-          end
-        end)
-        |> Enum.sort_by(fn {_key, end_ms} -> end_ms end)
-        |> Enum.each(fn {key, end_ms} ->
-          if end_ms < cutoff, do: Store.delete(:smalt_operations, key)
-        end)
-
-      _ ->
-        :ok
+      ms when is_integer(ms) and ms >= 0 -> eviction_pass(ms)
+      _ -> :ok
     end
+  end
+
+  @doc """
+  Explicit-retention eviction pass: identical eligibility rules to
+  `eviction_pass/0` but the window is passed directly rather than read from
+  `:lro_retention_ms` — no global application-env mutation. `eviction_pass(0)`
+  evicts every terminal record (endTime <= now), so the enclave lifecycle can
+  reclaim its own operation rows. InProgress records are NEVER evicted at any
+  retention, including 0.
+  """
+  def eviction_pass(retention_ms) when is_integer(retention_ms) and retention_ms >= 0 do
+    cutoff = System.system_time(:millisecond) - retention_ms
+
+    :smalt_operations
+    |> Store.keys()
+    |> Enum.flat_map(fn key ->
+      case Store.get(:smalt_operations, key) do
+        {:ok, %{"status" => status, "endTime" => end_iso} = _record}
+        when status != "InProgress" and is_binary(end_iso) ->
+          case DateTime.from_iso8601(end_iso) do
+            {:ok, dt, _off} -> [{key, DateTime.to_unix(dt, :millisecond)}]
+            _ -> []
+          end
+
+        _ ->
+          []
+      end
+    end)
+    |> Enum.sort_by(fn {_key, end_ms} -> end_ms end)
+    |> Enum.each(fn {key, end_ms} ->
+      # retention 0 means "reclaim everything already terminal": the
+      # second-truncated endTime can legitimately equal the cutoff to the
+      # millisecond, so the boundary is inclusive there (never a residual
+      # terminal row from the same clock second).
+      if (retention_ms == 0 and end_ms <= cutoff) or end_ms < cutoff,
+        do: Store.delete(:smalt_operations, key)
+    end)
 
     :ok
   end

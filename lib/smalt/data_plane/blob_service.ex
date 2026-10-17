@@ -161,26 +161,96 @@ defmodule Smalt.DataPlane.BlobService do
     # never a FunctionClauseError 500.
     metadata = metadata || %{}
 
-    with {:ok, _} <- Store.get(:smalt_blob_containers, container_key),
+    with {:ok, record} <- Store.get(:smalt_blob_containers, container_key),
          :ok <- validate_metadata_names(metadata),
-         :ok <- validate_metadata_values(metadata) do
+         :ok <- validate_metadata_values(metadata),
+         # R133: the write goes through the Store CAS (BlobStorage.cas_policy_row)
+         # so it cannot clobber a hold committed concurrently. The WORM check
+         # runs against the row inside the CAS update fn, so a hold landed
+         # between our read and our write-back is SEEN on the retry and the
+         # metadata PUT refuses with 409 — never a silent clear.
+         :ok <- check_metadata_worm(record, BlobStorage.get_policy(record["account"], record["container"])),
+         :ok <-
+           BlobStorage.cas_policy_row(container_key, fn policy ->
+             case check_metadata_worm(record, policy) do
+               :ok -> {:ok, Map.put(policy, "metadata", stringify_keys(metadata))}
+               refused -> refused
+             end
+           end) do
       BlobStorage.ensure_policy_table()
-      existing = policy_row(container_key)
-      policy =
-        existing
-        |> Map.put("metadata", stringify_keys(metadata))
-
-      Store.put(@policy_table, container_key, policy)
 
       {:ok, 200,
        %{
          "x-ms-request-id" => request_id(),
          "x-ms-version" => "2021-12-02",
-         "etag" => etag(container_key)
+         "etag" => container_etag(record)
        }}
     else
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, 400, _code, _msg} = invalid -> invalid
+      {:error, 409, _code, _msg} = locked -> locked
+    end
+  end
+
+  # WORM guard for Put Metadata (R62 repair 2): container metadata PUT must
+  # refuse under legal hold or locked immutability policy while retention is
+  # live — the same conditions that block blob put/delete (409
+  # ContainerLocked, mirrored from BlobStorage.worm_blocked?/3 "overwrite"
+  # arm). The legacy-immutable-without-policy arm is intentionally NOT
+  # mirrored: HTTP-created containers default immutable=true with no policy,
+  # and Put Metadata at create-time (and on time-retention containers, real
+  # Azure parity) must succeed. BlobStorage helpers are private and
+  # blob_storage.ex is not in this lane's lease.
+  defp check_metadata_worm(record, policy) do
+    now = System.os_time(:millisecond)
+
+    blocked =
+      cond do
+        metadata_legal_hold?(policy) -> true
+        metadata_retention_expired?(record, now) -> false
+        metadata_locked_policy?(policy) -> true
+        true -> false
+      end
+
+    if blocked do
+      {:error, 409, "ContainerLocked", metadata_worm_message(policy)}
+    else
+      :ok
+    end
+  end
+
+  defp metadata_legal_hold?(policy), do: !!policy && !!Map.get(policy, "legal_hold")
+
+  # R83 lane unblock note: the clauses previously here (metadata_policy_present?/1)
+  # had zero call sites and tripped --warnings-as-errors; removed per SLA, disclosed
+  # in the R83 receipt (owner lane may restore with a call site).
+
+  defp metadata_locked_policy?(nil), do: false
+
+  defp metadata_locked_policy?(policy) do
+    case Map.get(policy, "immutability_policy") do
+      %{"locked" => true} -> true
+      _ -> false
+    end
+  end
+
+  defp metadata_retention_expired?(record, now) do
+    case Map.get(record, "created_at") do
+      nil -> false
+      created_at -> now > created_at + Map.get(record, "retention_days", 1095) * 86_400_000
+    end
+  end
+
+  defp metadata_worm_message(policy) do
+    cond do
+      metadata_legal_hold?(policy) ->
+        "Blob modification refused: container has an active legal hold (ContainerLocked)."
+
+      metadata_locked_policy?(policy) ->
+        "Blob modification refused: container immutability policy is locked (ContainerLocked)."
+
+      true ->
+        "Blob modification refused: container policy enforces immutable WORM retention."
     end
   end
 
@@ -239,6 +309,7 @@ defmodule Smalt.DataPlane.BlobService do
 
   defp hidden_policy_row?(record), do: is_map(record) and record["container"] == nil
 
+  # KD-COVERS: KD-03
   # KD-03 wire normalization: Azure dates are RFC-1123 ("Tue, 15 Oct 2026
   # 12:00:00 GMT"), not ISO-8601. A nil/unparseable `created` keeps the raw
   # string (put_resp_headers/2 skips nil) — never a crash on a fresh record.
@@ -340,13 +411,11 @@ defmodule Smalt.DataPlane.BlobService do
     end
   end
 
-  defp container_etag(record) do
+  @doc "Quoted container ETag — stable per (account, container, created_at)."
+  def container_etag(record) do
     seed = "#{record["account"]}/#{record["container"]}/#{record["created_at"]}"
     "\"" <> Base.encode16(:crypto.hash(:md5, seed), case: :upper) <> "\""
   end
-
-  defp etag(container_key),
-    do: "\"" <> Base.encode16(:crypto.hash(:md5, container_key), case: :upper) <> "\""
 
   defp container_key_prefix(account, container), do: "#{account}/#{container}"
 

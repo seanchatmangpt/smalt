@@ -286,9 +286,15 @@ defmodule Smalt.Amqp.FrameCodec do
     # SDK a JS string (invalid bytes -> U+FFFD) and the token the client
     # echoes back on update-disposition is corrupted -> 410 MESSAGE_LOCK_LOST
     # (census exclusive-session/dead-letter/abandon probes, wire-traced).
-    # Encode as AMQP uuid (0x98) — rhea decodes it to a Buffer.
+    # rhea decodes it to a Buffer. KD-77: the Python SDK (azure-servicebus
+    # pyamqp transport) decodes the 0x98 uuid constructor to uuid.UUID, so
+    # ServiceBusReceivedMessage._delivery_tag is a UUID and settle's
+    # uuid.UUID(bytes_le=tag) raises "object of type 'UUID' has no len()".
+    # AMQP spec types transfer.delivery-tag as *binary*, not uuid — encode
+    # as vbin (0xA0): pyamqp gets bytes (bytes_le parse works), rhea still
+    # gets a 16-byte Buffer. # KD-COVERS: KD-77
     Map.update(fields, :delivery_tag, nil, fn
-      <<t::binary-size(16)>> -> {:uuid, t}
+      <<t::binary-size(16)>> -> {:vbin, t}
       other -> other
     end)
   end
@@ -317,6 +323,9 @@ defmodule Smalt.Amqp.FrameCodec do
 
         %{} = filters ->
           Map.new(filters, fn
+            {k, {:selector_filter, selector}} ->
+              {k, {:described, {:symbol, "apache.org:selector-filter:string"}, selector}}
+
             {k, {:session_filter, selector}} ->
               {k, {:described, {:symbol, "com.microsoft:session-filter"}, selector}}
 
@@ -327,21 +336,40 @@ defmodule Smalt.Amqp.FrameCodec do
 
     descriptor = if role == :source, do: 0x0000_0028, else: 0x0000_0029
 
-    {:described, descriptor,
-     [
-       # AMQP source/target composites: address0, durable1, expiry-policy2,
-       # timeout3, dynamic4, dynamic-node-properties5, distribution-mode6,
-       # filter7. The earlier 7-element form put the filter in the
-       # distribution-mode slot, so rhea/SDK read filter=undefined.
-       Map.get(map, :address),
-       Map.get(map, :durable),
-       Map.get(map, :expiry),
-       Map.get(map, :timeout),
-       Map.get(map, :dynamic),
-       Map.get(map, :dynamic_node_properties),
-       Map.get(map, :distribution_mode),
-       filter
-     ]}
+    # R16: azure _pyamqp Target namedtuple has 7 fields
+    # (address, durable, expiry, timeout, dynamic, dynamic_node_properties,
+    # capabilities) — no distribution_mode/filter slots. Source keeps the
+    # extended shape (distribution-mode6, filter7). Emitting 8 elements for
+    # a :target made every SDK link attach fail with
+    # `Target.__new__() takes 1 to 8 positional arguments but 9 were given`.
+    if role == :target do
+      {:described, descriptor,
+       [
+         Map.get(map, :address),
+         Map.get(map, :durable),
+         Map.get(map, :expiry),
+         Map.get(map, :timeout),
+         Map.get(map, :dynamic),
+         Map.get(map, :dynamic_node_properties),
+         Map.get(map, :capabilities)
+       ]}
+    else
+      {:described, descriptor,
+       [
+         # AMQP source composite: address0, durable1, expiry-policy2,
+         # timeout3, dynamic4, dynamic-node-properties5, distribution-mode6,
+         # filter7. The earlier 7-element form put the filter in the
+         # distribution-mode slot, so rhea/SDK read filter=undefined.
+         Map.get(map, :address),
+         Map.get(map, :durable),
+         Map.get(map, :expiry),
+         Map.get(map, :timeout),
+         Map.get(map, :dynamic),
+         Map.get(map, :dynamic_node_properties),
+         Map.get(map, :distribution_mode),
+         filter
+       ]}
+    end
   end
 
   defp normalize_field({:map_rhea, _} = v), do: v
@@ -358,6 +386,8 @@ defmodule Smalt.Amqp.FrameCodec do
   defp normalize_field({:modified, opts}), do: {:described, state_desc(:modified), encode_modified_list(opts)}
   defp normalize_field(:accepted), do: {:described, state_desc(:accepted), []}
   defp normalize_field(:released), do: {:described, state_desc(:released), []}
+  defp normalize_field({:selector_filter, selector}),
+    do: {:described, {:symbol, "apache.org:selector-filter:string"}, selector}
   defp normalize_field({:session_filter, selector}),
     do: {:described, {:symbol, "com.microsoft:session-filter"}, selector}
   defp normalize_field(v), do: v
@@ -398,7 +428,7 @@ defmodule Smalt.Amqp.FrameCodec do
   Decodes a frame from an accumulated TCP buffer.
 
   Returns `{:more, needed}` when fewer than `needed` bytes are buffered (frame
-  splitting across TCP chunks), `{:error, :frame_too_large}` when the declared
+  splitting across TCP chunks), `{:error, :frame_too_size}` when the declared
   size exceeds the 1 MiB + overhead limit, or `{:error, reason}` for malformed
   frames.
   """
@@ -533,8 +563,8 @@ defmodule Smalt.Amqp.FrameCodec do
 
   defp decode_fields(:attach, raw) do
     raw
-    |> Map.update(:source, nil, &decode_source_target/1)
-    |> Map.update(:target, nil, &decode_source_target/1)
+    |> Map.update(:source, nil, &decode_source_target(:source, &1))
+    |> Map.update(:target, nil, &decode_source_target(:target, &1))
   end
 
   defp decode_fields(:disposition, raw) do
@@ -552,27 +582,34 @@ defmodule Smalt.Amqp.FrameCodec do
 
   defp decode_fields(_name, raw), do: raw
 
-  defp decode_source_target(nil), do: nil
+  defp decode_source_target(_role, nil), do: nil
 
   # Bare-symbol (and bare-string) source/target: the value IS the address.
   # Canonical rhea/Azure SDK encoding for simple queue attaches (R3 red-team
   # finding): a spec-legal attach with target = {:symbol, "orders"} crashed
   # decode_source_target/1 and the connection died with a silent TCP close.
-  defp decode_source_target({:symbol, address}) when is_binary(address), do: %{address: address}
-  defp decode_source_target(address) when is_binary(address), do: %{address: address}
+  defp decode_source_target(_role, {:symbol, address}) when is_binary(address), do: %{address: address}
+  defp decode_source_target(_role, address) when is_binary(address), do: %{address: address}
 
   # Positional source/target field list (FrameCodec's own encode_source_target
-  # emits the bare 7-element composite field list — see the comment there).
-  # Minimal disclosed unblock (census/sendable lane): the encode side moved to
-  # this form without a matching decode clause, so every attach carrying a
-  # source/target crashed the connection GenServer in decode_source_target/1.
-  # Rewrap and reuse the described-form logic below (filter at index 6).
-  defp decode_source_target(fields) when is_list(fields),
-    do: decode_source_target({:described, nil, fields})
+  # emits the bare composite field list — see the comment there). Minimal
+  # disclosed unblock (census/sendable lane): the encode side moved to
+  # positional lists without a matching decode clause, so every attach
+  # carrying a source/target crashed the connection GenServer in
+  # decode_source_target/1. Rewrap and reuse the described-form logic below.
+  # Field layout is ROLE-AWARE (R85, audit A25 finding 1): source is the
+  # 8-slot AMQP source composite (dynamic_node_properties@5,
+  # distribution_mode@6, filter@7); target is the 7-slot _pyamqp shape
+  # (dynamic_node_properties@5, capabilities@6, no distribution_mode).
+  # Decoding with a fixed index map surfaced dynamic_node_properties as
+  # distribution_mode and dropped both real distribution_mode and
+  # capabilities on round-trip.
+  defp decode_source_target(role, fields) when is_list(fields),
+    do: decode_source_target(role, {:described, nil, fields})
 
   # SDKs send source/target as described types with the address at index 0
   # (wire-lane fix, real-SDK census finding)
-  defp decode_source_target({:described, _d, fields}) when is_list(fields) do
+  defp decode_source_target(role, {:described, _d, fields}) when is_list(fields) do
     # The filter (index 6 in the AMQP source composite) must survive the
     # described-form decode: the Service Bus SDK sends source as a described
     # type carrying com.microsoft:session-filter, and the broker needs the
@@ -581,16 +618,35 @@ defmodule Smalt.Amqp.FrameCodec do
     filter =
       fields
       |> Enum.find_value(fn
+        # GAP-A2-01 (KD-68): the Event Hubs SDK sends the eventPosition as an
+        # `apache.org:selector-filter:string` described filter in the source
+        # composite (partitionReceiver.js:357-360). Decode it alongside the
+        # session filter so the link can honor it as the receive start cursor.
+        {:described, {:symbol, "apache.org:selector-filter:string"}, selector} ->
+          {"apache.org:selector-filter:string", {:selector_filter, selector}}
+
         {:described, {:symbol, "com.microsoft:session-filter"}, selector} ->
           {"com.microsoft:session-filter", {:session_filter, selector}}
 
         %{} = filters ->
           Enum.find_value(filters, fn
+            {{:symbol, "apache.org:selector-filter:string"}, {:described, _, selector}} ->
+              {"apache.org:selector-filter:string", {:selector_filter, selector}}
+
+            {{:symbol, "apache.org:selector-filter:string"}, selector} ->
+              {"apache.org:selector-filter:string", {:selector_filter, selector}}
+
             {{:symbol, "com.microsoft:session-filter"}, {:described, _, selector}} ->
               {"com.microsoft:session-filter", {:session_filter, selector}}
 
             {{:symbol, "com.microsoft:session-filter"}, selector} ->
               {"com.microsoft:session-filter", {:session_filter, selector}}
+
+            {"apache.org:selector-filter:string", {:described, _, selector}} when is_binary(selector) ->
+              {"apache.org:selector-filter:string", {:selector_filter, selector}}
+
+            {"apache.org:selector-filter:string", selector} when is_binary(selector) ->
+              {"apache.org:selector-filter:string", {:selector_filter, selector}}
 
             {"com.microsoft:session-filter", {:described, _, selector}} when is_binary(selector) ->
               {"com.microsoft:session-filter", {:session_filter, selector}}
@@ -614,16 +670,18 @@ defmodule Smalt.Amqp.FrameCodec do
         address -> address
       end
 
-    base = %{
-      address: address,
-      durable: Enum.at(fields, 1),
-      expiry: Enum.at(fields, 2),
-      timeout: Enum.at(fields, 3),
-      dynamic: Enum.at(fields, 4),
-      distribution_mode: Enum.at(fields, 5)
-    }
-
-    base = Map.reject(base, fn {_k, v} -> is_nil(v) end)
+    base =
+      %{
+        address: address,
+        durable: Enum.at(fields, 1),
+        expiry: Enum.at(fields, 2),
+        timeout: Enum.at(fields, 3),
+        dynamic: Enum.at(fields, 4),
+        dynamic_node_properties: Enum.at(fields, 5),
+        distribution_mode: if(role == :source, do: Enum.at(fields, 6)),
+        capabilities: if(role == :target, do: Enum.at(fields, 6))
+      }
+      |> Map.reject(fn {_k, v} -> is_nil(v) end)
 
     case filter do
       nil -> base
@@ -631,7 +689,7 @@ defmodule Smalt.Amqp.FrameCodec do
     end
   end
 
-  defp decode_source_target(%{} = map) do
+  defp decode_source_target(_role, %{} = map) do
     map
     |> Map.new(fn
       {{:symbol, k}, v} -> {safe_atom(k), v}
@@ -644,6 +702,9 @@ defmodule Smalt.Amqp.FrameCodec do
 
       %{} = filters ->
         Map.new(filters, fn
+          {k, {:described, {:symbol, "apache.org:selector-filter:string"}, selector}} ->
+            {key_name(k), {:selector_filter, selector}}
+
           {k, {:described, {:symbol, "com.microsoft:session-filter"}, selector}} ->
             {key_name(k), {:session_filter, selector}}
 

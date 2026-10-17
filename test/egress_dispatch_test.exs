@@ -34,7 +34,13 @@ defmodule EgressDispatchTest do
     # Authorization header (the KD-15 courts below pass headers explicitly).
     headers =
       if String.starts_with?(path, "/keys") and
-           not Enum.any?(headers, fn {k, _} -> k == "authorization" end) do
+           not Enum.any?(headers, fn {k, _} -> k == "authorization" end) and
+           # X-10 integration unblock (cross-lane merge artifact with the SKR
+           # legacy-header lane): a call carrying the legacy SKR attestation
+           # header speaks for the legacy path — do NOT overwrite it with the
+           # placeholder bearer, or the legacy-header court 403s in the SKR
+           # release handler.
+           not Enum.any?(headers, fn {k, _} -> k == "x-ms-compliance-status" end) do
         [{"authorization", "Bearer egress-harness-challenged-client"} | headers]
       else
         headers
@@ -159,7 +165,7 @@ defmodule EgressDispatchTest do
       assert get_resp_header(conn, "x-ms-request-id") != []
 
       conn =
-        call(:post, "/v1/workspaces/ws-1/query", body: %{"query" => "MyTable | take 10"})
+        call(:post, "/v1/workspaces/ws-1/query?api-version=2023-01-01", body: %{"query" => "MyTable | take 10"})
 
       assert conn.status == 200
       assert Jason.decode!(conn.resp_body)["tables"]
@@ -233,7 +239,7 @@ defmodule EgressDispatchTest do
       )
 
       conn =
-        call(:post, "/keys/skr-key/release", headers: [{"authorization", "Bearer " <> token}])
+        call(:post, "/keys/skr-key/release?api-version=7.4", headers: [{"authorization", "Bearer " <> token}])
 
       assert conn.status == 200
       assert Jason.decode!(conn.resp_body)["status"] == "Released"
@@ -248,7 +254,7 @@ defmodule EgressDispatchTest do
     )
 
     conn =
-      call(:post, "/keys/legacy-key/release",
+      call(:post, "/keys/legacy-key/release?api-version=7.4",
         headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}]
       )
 
@@ -266,7 +272,7 @@ defmodule EgressDispatchTest do
     )
 
     conn =
-      call(:post, "/keys/legacy-key2/release",
+      call(:post, "/keys/legacy-key2/release?api-version=7.4",
         headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}]
       )
 
@@ -280,7 +286,7 @@ defmodule EgressDispatchTest do
     )
 
     conn =
-      call(:post, "/keys/bogus-key/release", headers: [{"authorization", "Bearer not.a.jwt"}])
+      call(:post, "/keys/bogus-key/release?api-version=7.4", headers: [{"authorization", "Bearer not.a.jwt"}])
 
     assert conn.status == 403
     assert Jason.decode!(conn.resp_body)["claim"] == nil
@@ -297,7 +303,7 @@ defmodule EgressDispatchTest do
     )
 
     conn =
-      call(:post, "/keys/lane19-key/release",
+      call(:post, "/keys/lane19-key/release?api-version=7.4",
         headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}]
       )
 
@@ -310,11 +316,45 @@ defmodule EgressDispatchTest do
   end
 
   test "lane 19 item 1b: SKR release error envelope also stays blob-header-free" do
-    conn = call(:post, "/keys/lane19-missing-key/release")
+    conn = call(:post, "/keys/lane19-missing-key/release?api-version=7.4")
 
     assert conn.status == 404
     assert get_resp_header(conn, "x-ms-request-id") == []
     assert get_resp_header(conn, "x-ms-version") == []
+  end
+
+  # R143 (GAP S8): real AKV requires ?api-version=7.x on SKR release; a
+  # missing/wrong version is a typed 400 InvalidApiVersion, not a 403/404.
+  test "R143 S8: SKR release without api-version -> typed 400 InvalidApiVersion" do
+    call(:post, "/keys/r143-s8/create",
+      body: %{"kty" => "RSA-HSM", "release_policy" => %{"claim" => "azure-compliant-cvm"}}
+    )
+
+    conn = call(:post, "/keys/r143-s8/release", headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}])
+
+    assert conn.status == 400
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidApiVersion"
+  end
+
+  # R143 (GAP D8, repaired R173): the real azure-monitor-query client sends
+  # /v1/workspaces/:id/query with NO api-version param (v1-in-path is the
+  # version discriminator) — absence must be accepted. An explicitly-wrong
+  # value is still rejected (typed 400 InvalidApiVersion).
+  test "R143 D8: KQL query without api-version accepted; wrong value -> typed 400" do
+    # R182 repair (DoD lane D141): the Sentinel module always compiles in this
+    # suite, so the gate contract is asserted unconditionally — absence of
+    # api-version is ACCEPTED (hard 200), never the soft `in [200, 400]` dodge.
+    conn = call(:post, "/v1/workspaces/ws-r143/query", body: %{"query" => "MyTable | take 1"})
+
+    assert conn.status == 200
+
+    bad =
+      call(:post, "/v1/workspaces/ws-r143/query?api-version=1999-01-01",
+        body: %{"query" => "MyTable | take 1"}
+      )
+
+    assert bad.status == 400
+    assert Jason.decode!(bad.resp_body)["error"]["code"] == "InvalidApiVersion"
   end
 
   test "lane 19 item 3: ResourceGraph string subscriptions -> typed 400 InvalidParameter" do
@@ -853,6 +893,30 @@ defmodule EgressDispatchTest do
     conn = call(:get, "/acct4/cont4/blob4", headers: [{"x-ms-version", "2021-12-02"}])
     assert conn.status == 200
     assert conn.resp_body == body
+  end
+
+  test "encoded comp query decodes before routing: ?comp=%6De%74adata hits metadata handler" do
+    # Decoded-to-decoded invariant (lane R154): the comp parameter is matched
+    # AFTER percent-decoding, so an encoded `comp=%6De%74adata` must reach the
+    # same metadata handler as the literal `comp=metadata` — never the plain
+    # blob PUT arm, never an unknown-comp refusal.
+    call(:put, "/acct4/cont4",
+      headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-immutable-policy", "false"}]
+    )
+
+    call(:put, "/acct4/cont4/blobenc", body: "payload", headers: [{"x-ms-version", "2021-12-02"}])
+
+    conn =
+      call(:put, "/acct4/cont4/blobenc?comp=%6De%74adata",
+        headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-r154", "enc"}]
+      )
+
+    assert conn.status == 200, "encoded metadata PUT: #{conn.status} #{conn.resp_body}"
+
+    conn = call(:get, "/acct4/cont4/blobenc", headers: [{"x-ms-version", "2021-12-02"}])
+    assert conn.status == 200
+    assert conn.resp_body == "payload"
+    assert {"x-ms-meta-r154", "enc"} in conn.resp_headers
   end
 
   test "route precedence fuzz: x-ms-version must not pull literal prefixes onto blob catch-alls" do
@@ -1530,10 +1594,19 @@ defmodule EgressDispatchTest do
       body = Jason.decode!(conn.resp_body)
       assert body["error"]["code"] == "InvalidResourceName"
 
-      # duplicate create -> 409 ContainerAlreadyExists at exact status
+      # Idempotent Put Container (lens-5 cycle-33 landing): re-PUT with an
+      # IDENTICAL x-ms-meta-* set answers 200; a DIFFERENT set refuses
+      # 409 ContainerAlreadyExists at exact status.
       Smalt.DataPlane.BlobStorage.create_container("jx", "dup", %{})
 
       conn = call(:put, "/jx/dup?restype=container", headers: ver)
+      assert conn.status == 200
+
+      conn =
+        call(:put, "/jx/dup?restype=container",
+          headers: ver ++ [{"x-ms-meta-color", "blue"}]
+        )
+
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerAlreadyExists"
 
@@ -2179,6 +2252,12 @@ defmodule EgressDispatchTest do
     # verbatim, and whitelisting can never relax AUTH (the whitelist is a
     # parse seam, orthogonal to the exempt namespace — a mutant that adds
     # "keys" to the whitelist must not create an anonymous bypass).
+    # R111 reconcile (V17): /keys left the parse-exempt probe set — R99's
+    # reserved-namespace fence supersedes the whitelist law's /keys premise
+    # (D70 classifies a 201 blob-store under /keys/<name>/<action> as the
+    # wrong-plane defect). The parse-exemption law re-homes on /vltkv, a
+    # namespace that owns no 3+-segment PUT route and is in NO reserved set;
+    # /keys itself now answers the typed KV 404 (assertion (c)).
     test "whitelist extension law: non-listed service namespace stores verbatim, auth unaffected" do
       ver_ct = @ver ++ [{"content-type", "application/json"}]
       prev = Application.get_env(:smalt, :auth_mode)
@@ -2188,26 +2267,36 @@ defmodule EgressDispatchTest do
         # (a) AUTH unaffected: an anonymous blob-shaped PUT under a service
         # prefix is still 401 in :enforce — the whitelist is a parse seam,
         # not an auth grant.
-        anon = call(:put, "/keys/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
+        anon = call(:put, "/vltkv/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
         assert anon.status == 401, "anonymous PUT answered #{anon.status} (bypass?)"
 
         # (b) Parse seam healthy: with auth passing (:anonymous pin), the raw
         # wire body (a JSON string + json content-type — the ONLY probe form
         # that witnesses the parse seam, lens-4 cycle-3 method note) stores
-        # verbatim. /keys/<name>/<action> is blob-shaped (3 segments, first
-        # segment "keys", no comp) — today parse-exempt because "keys" does
-        # NOT own a 3+-segment PUT route and is therefore NOT whitelisted.
+        # verbatim. /vltkv/<name>/<action> is blob-shaped (3 segments, no
+        # comp) and parse-exempt because "vltkv" does NOT own a 3+-segment
+        # PUT route and is therefore NOT whitelisted.
         Application.put_env(:smalt, :auth_mode, :anonymous)
 
-        call(:put, "/keys/vltkey?restype=container",
+        call(:put, "/vltkv/vltkey?restype=container",
           headers: ver_ct ++ [{"x-ms-immutable-policy", "false"}]
         )
 
-        put = call(:put, "/keys/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
+        put = call(:put, "/vltkv/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
         assert put.status == 201, "answered #{put.status}: #{put.resp_body}"
 
-        get = call(:get, "/keys/vltkey/create", headers: ver_ct)
+        get = call(:get, "/vltkv/vltkey/create", headers: ver_ct)
         assert get.resp_body == "{\"raw\":1}", "did not store verbatim"
+
+        # (c) R99 fence: the same blob-shaped PUT under the RESERVED /keys
+        # namespace is refused fail-closed with the typed KV envelope —
+        # nothing is stored (D70 wrong-plane class stays closed).
+        kv = call(:put, "/keys/vltkey/create", body: "{\"raw\":1}", headers: ver_ct)
+        assert kv.status == 404, "reserved /keys answered #{kv.status}: #{kv.resp_body}"
+
+        body = Jason.decode!(kv.resp_body)
+        assert body["error"]["code"] == "NotFound"
+        assert String.contains?(body["error"]["message"], "reserved namespace 'keys'")
       after
         if prev == nil do
           Application.delete_env(:smalt, :auth_mode)
@@ -2597,6 +2686,130 @@ defmodule EgressDispatchTest do
         end
 
         :ok
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # R155 (DoD D87) wire/dispatch-tier fences W1-W3
+  # ---------------------------------------------------------------------------
+
+  # W1: container lease/ACL comps are unimplemented (GAP
+  # (blob-comp-lease-absent)); the PUT and GET container arms must answer a
+  # typed 400 InvalidQueryParameter naming the GAP with the x-ms-error-code
+  # header — never a silent 201/200 fallthrough.
+  describe "R155 W1 container comp fences" do
+    @ver [{"x-ms-version", "2025-01-01"}]
+
+    test "PUT /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameter" do
+      for comp <- ["lease", "acl"] do
+        conn = call(:put, "/r155acct/r155cont?comp=#{comp}", headers: @ver, body: "{}")
+
+        assert conn.status == 400, "comp=#{comp} answered #{conn.status}: #{conn.resp_body}"
+
+        assert %{"error" => %{"code" => "InvalidQueryParameter", "message" => msg}} =
+                 Jason.decode!(conn.resp_body)
+
+        assert msg =~ "GAP(blob-comp-lease-absent)"
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      end
+    end
+
+    test "GET /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameter" do
+      for comp <- ["lease", "acl"] do
+        conn = call(:get, "/r155acct/r155cont?comp=#{comp}", headers: @ver)
+
+        assert conn.status == 400, "comp=#{comp} answered #{conn.status}: #{conn.resp_body}"
+
+        assert %{"error" => %{"code" => "InvalidQueryParameter", "message" => msg}} =
+                 Jason.decode!(conn.resp_body)
+
+        assert msg =~ "GAP(blob-comp-lease-absent)"
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      end
+    end
+  end
+
+  # W2: Cosmos PATCH admission gates at the dispatch tier — a valid RFC 6902
+  # replace is 200; a pk-move patch is a typed 400; a unique-key steal is 409.
+  describe "R155 W2 Cosmos PATCH gates" do
+    test "PATCH valid replace is 200, pk-move is 400, unique-key steal is 409" do
+      call(:post, "/dbs", body: %{"id" => "r155db"})
+
+      call(:post, "/dbs/r155db/colls",
+        body: %{
+          "id" => "r155coll",
+          "partitionKey" => %{"paths" => ["/tenantId"]},
+          "uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => ["/code"]}]}
+        }
+      )
+
+      pk = [{"x-ms-documentdb-partitionkey", ~s(["r155"])}, {"content-type", "application/json"}]
+
+      for {id, code} <- [{"doc-a", "A"}, {"doc-b", "B"}] do
+        create = call(:post, "/dbs/r155db/colls/r155coll/docs", headers: pk, body: %{"id" => id, "tenantId" => "r155", "code" => code})
+        assert create.status == 201, "#{id} create answered #{create.status}: #{create.resp_body}"
+      end
+
+      # Valid replace: 200 with a fresh _etag.
+      patch = call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-a",
+        headers: pk,
+        body: [%{"op" => "replace", "path" => "/code", "value" => "A2"}]
+      )
+
+      assert patch.status == 200, "valid patch answered #{patch.status}: #{patch.resp_body}"
+      body = Jason.decode!(patch.resp_body)
+      assert body["code"] == "A2"
+      assert is_binary(body["_etag"]) and body["_etag"] != ""
+
+      # Partition-key move (patched body pk no longer matches the header): 400.
+      pk_move = call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-a",
+        headers: pk,
+        body: [%{"op" => "replace", "path" => "/tenantId", "value" => "elsewhere"}]
+      )
+
+      assert pk_move.status == 400, "pk-move answered #{pk_move.status}: #{pk_move.resp_body}"
+      assert Jason.decode!(pk_move.resp_body)["code"] == "BadRequest"
+
+      # Unique-key steal (doc-b's /code -> "A2", already held by doc-a after
+      # the valid patch above): 409.
+      steal = call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-b",
+        headers: pk,
+        body: [%{"op" => "replace", "path" => "/code", "value" => "A2"}]
+      )
+
+      assert steal.status == 409, "unique-key steal answered #{steal.status}: #{steal.resp_body}"
+      assert Jason.decode!(steal.resp_body)["code"] == "Conflict"
+    end
+  end
+
+  # W3: A-IM: Incremental feed at the dispatch tier — only-new docs on the
+  # second read plus the x-ms-continuation header on every feed response.
+  describe "R155 W3 change feed" do
+    test "feed returns only-new docs with continuation header" do
+      call(:post, "/dbs", body: %{"id" => "r155cfdb"})
+      call(:post, "/dbs/r155cfdb/colls", body: %{"id" => "r155cfcoll"})
+
+      for i <- 1..2 do
+        create = call(:post, "/dbs/r155cfdb/colls/r155cfcoll/docs", body: %{"id" => "seed-#{i}", "n" => i})
+        assert create.status == 201, "seed-#{i} answered #{create.status}"
+      end
+
+      feed = call(:get, "/dbs/r155cfdb/colls/r155cfcoll/docs", headers: [{"a-im", "Incremental feed"}])
+
+      assert feed.status == 200, "feed answered #{feed.status}: #{feed.resp_body}"
+      assert Jason.decode!(feed.resp_body)["_count"] == 2
+      assert get_resp_header(feed, "x-ms-continuation") != []
+
+      third = call(:post, "/dbs/r155cfdb/colls/r155cfcoll/docs", body: %{"id" => "seed-3", "n" => 3})
+      assert third.status == 201
+
+      feed2 = call(:get, "/dbs/r155cfdb/colls/r155cfcoll/docs", headers: [{"a-im", "Incremental feed"}])
+
+      assert feed2.status == 200
+      body2 = Jason.decode!(feed2.resp_body)
+      assert body2["_count"] == 1, "second feed answered #{feed2.resp_body}"
+      assert [%{"id" => "seed-3"}] = body2["Documents"]
+      assert get_resp_header(feed2, "x-ms-continuation") != []
     end
   end
 end

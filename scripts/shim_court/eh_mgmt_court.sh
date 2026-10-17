@@ -1,134 +1,210 @@
 #!/usr/bin/env bash
-# eh_mgmt_court.sh — KD-18/19/20 mutation court (lane S-2, v26.10.15).
+# eh_mgmt_court.sh — KD-18/19/20 shim court (lane S-2, v26.10.15; ported to
+# scripts/shim_court/lib.sh per ERRC lane E6).
 #
-# Verdict semantics:
-#   BEFORE (KD-18/19/20 disabled textually) => the real @azure/event-hubs
-#     probe test/sdk-full/eventhubs.probe.mjs witnesses the registered gaps:
-#     mgmt READ -> 501 UNSUPPORTED_OPERATION (KD-19), SDK-tier delivery
-#     bodies null (KD-18: no message_format, rhea format!=0 raw-passthrough),
-#     and the substrate logs "Received transfer when credit was 0" (KD-20).
-#   AFTER (KD-18/19/20 present) => getEventHubProperties +
-#     getPartitionProperties succeed over the real AMQP wire, unknown
-#     partition -> typed 404 PARTITION_NOT_FOUND, and the wire receiver
-#     delivers (ordered-sequence probe passes with integer sequence numbers).
-#   RESTORE is sha256-verified byte-identical to the pre-court snapshot.
+# Subject: lib/smalt/messaging/amqp/connection.ex (the EH arm of
+# deliver_eventhubs + the management request map). The KD-18/19/20 fix is
+# LANDED, so the lib.sh orientation is inverted (same shape as
+# eh_batch_court.sh):
 #
-# KD-18/19/20 are disabled TEXTUALLY (not via git checkout) so the court
-# never clobbers sibling-lane hunks living in the same files.
-set -uo pipefail
-cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+#   BASELINE  sha256(connection.ex)
+#   BEFORE    real @azure/event-hubs probe (test/sdk-full/eventhubs.probe.mjs)
+#             PASSES on the landed file: getEventHubProperties /
+#             getPartitionProperties over the real AMQP wire, typed 404
+#             PARTITION_NOT_FOUND on unknown partition, wire delivery with
+#             integer sequence numbers.
+#   SHIM      TEXTUALLY strip the KD-19 request fields + KD-18 message_format
+#             + KD-20 credit bump (marked SHIM-COURT) — never via git, so
+#             sibling-lane hunks in the same file are untouched.
+#   AFTER     probe FAILS with the registered gaps (mgmt READ -> 501,
+#             SDK-tier delivery bodies null, "Received transfer when credit
+#             was 0"). The flip (green landed / red shimmed) is the
+#             non-vacuity proof.
+#   RESTORE   sha256 byte-exact, fail-closed.
+set -euo pipefail
+cd "$(dirname "$0")/../.." || exit 2
+source "scripts/shim_court/lib.sh"
 
-CONN=lib/smalt/messaging/amqp/connection.ex
-MGMT=lib/smalt/messaging/amqp/management_rpc.ex
-SNAP=/tmp/kd18-court-snap
-PROBE=test/sdk-full/eventhubs.probe.mjs
-mkdir -p "$SNAP"
+# EXPORTED: with_shim runs the witnesses via bash -c (a child process) —
+# unexported shell vars arrive EMPTY there (witnessed 2026-10-16: node ""
+# degraded to a REPL no-op exiting 0, so both probe legs "passed" on zero
+# output and the flip was vacuous).
+export SUBJECT="lib/smalt/messaging/amqp/connection.ex"
+export PROBE="test/sdk-full/eventhubs.probe.mjs"
+# Lane-local build root for ALL mix legs (compile retry + probe substrate):
+# the shimmed subject must never compile into the shared _build, and the
+# witness vars must be EXPORTED — with_shim runs them via bash -c, where
+# unexported shell vars arrive empty (witnessed 2026-10-16: empty
+# MIX_BUILD_ROOT makes mix resolve its build path to /test).
+export MIX_BUILD_ROOT="${MIX_BUILD_ROOT:-_build-lane13}"
 
-log() { echo "[court] $*"; }
-die() { echo "[FAIL:$1] $2"; exit 1; }
+[ -f "$PROBE" ] || shim_court_skip "witness probe not found: $PROBE"
+command -v node >/dev/null || shim_court_skip "node not installed"
 
-compile() {
-  # Sibling lanes share this tree; wait out transient foreign compile breaks
-  # instead of failing the court on them.
-  local i out
-  for i in $(seq 1 40); do
-    out=$(mix compile 2>&1)
-    echo "$out" | grep -q "Compilation error" || return 0
-    log "waiting out sibling compile break (poll $i)"
-    sleep 15
-  done
-  die "COMPILE" "tree did not compile within 10 minutes"
-}
+shim_court_self_check || { echo "[FAIL:SELF-CHECK]" >&2; exit 1; }
 
-probe() {
-  local phase="$1" out rc
-  out=$(node "$PROBE" 2>&1); rc=$?
-  echo "[witness:$phase] $(echo "$out" | grep -E '^(PASS|FAIL)' | tr '\n' ' ')"
-  [ $rc -eq 0 ] && return 0
-  return 1
-}
-
-# -- court ----------------------------------------------------------------------
-
-log "snapshot + sha256"
-cp "$CONN" "$SNAP/connection.kd18.ex"
-cp "$MGMT" "$SNAP/management_rpc.kd18.ex"
-sha256sum "$CONN" "$MGMT" | tee "$SNAP/sha256.kd18.txt"
-
-compile
-log "phase BEFORE: strip KD-19 request fields + KD-18/20 delivery hunks"
-python3 - "$CONN" <<'PYEOF'
-import sys
+apply_shim() {
+    python3 - "$SHIM_FILE" <<'PYEOF'
+import sys, os, time
 p = sys.argv[1]
 s = open(p).read()
 # KD-19 strip: type/name/partition out of the management request map.
-old = """      type: props["type"],
+# Anchored on the KD-COVERS comment so the SB-path request map is not touched.
+old = """      # KD-COVERS: KD-19 — Event Hubs READ management ops carry type/name/partition as
+      # application properties (managementClient.js sends body = JSON "[]" —
+      # the entity name is NOT in the body).
+      type: props["type"],
       name: props["name"],
       partition: props["partition"],
 """
 if old not in s:
-    sys.exit("KD-19 request fields not found (already stripped or drifted)")
-s = s.replace(old, "")
+    sys.exit("KD-19 request fields not found (drifted)")
+s = s.replace(old, "      # SHIM-COURT: KD-19 request fields stripped for the court\n")
 # KD-18/20 strip: message_format + body extraction + credit bump out of
-# deliver_eventhubs.
-old2 = """              # KD-COVERS: KD-18,KD-20 — format 0 = standard decoded-message
-              # path (SB pattern below). Keep consistent on EVERY EH arm; the
+# deliver_eventhubs (KD-18 message_format, KD-20 credit bump, eh_body_section).
+# (2026-10-16 R29: landed delivery builds the section list into a `sections`
+# binding before send_message — anchor re-tied to that shape.)
+old2 = """          sections =
+            [
+              # GAP-A2-04: x-opt-offset / x-opt-enqueued-time /
+              # x-opt-partition-key surface on every delivery; the SDK's
+              # fromRheaMessage maps them to event.offset / enqueuedTimeUtc /
+              # partitionKey. x-opt-sequence-number is pre-existing.
+              {:message_annotations, eh_event_annotations(ev)}
+              | eh_delivery_annotations(partition) ++ [eh_body_section(body)]
+            ]
+
+          {st, _id} =
+            send_message(st, link, %{
+              handle: link.handle,
+              delivery_tag: <<seq::unsigned-64>>,
+              # KD-COVERS: KD-18,KD-20 — format 0 = standard decoded-message
+              # path (SB path below). Keep consistent on EVERY EH arm; the
               # credit bump below closes KD-20.
               message_format: 0
-            }, [
-              {:message_annotations, %{"x-opt-sequence-number" => seq}},
-              eh_body_section(body)
-            ])
+            }, sections)
 
+          # SHIM-COURT R13/V261014-04-F1 fix: re-read the link refreshed by
+          # bump_credit (deliver_to_link pattern) — the outer `link`'s credit
+          # was never decremented, so put_link used to restore stale credit
+          # and the :1389 guard kept draining past the grant (over-delivery).
           st
           |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
           |> then(&bump_credit(&1, link.channel, link.handle, -1))
 """
-new2 = """            }, [
-              {:message_annotations, %{"x-opt-sequence-number" => seq}},
-              {:body_data, body}
-            ])
+new2 = """          # SHIM-COURT: KD-18 message_format stripped; KD-20 credit bump
+          # stripped; eh_body_section -> raw body_data (defect shape).
+          sections =
+            [
+              # GAP-A2-04: x-opt-offset / x-opt-enqueued-time /
+              # x-opt-partition-key surface on every delivery; the SDK's
+              # fromRheaMessage maps them to event.offset / enqueuedTimeUtc /
+              # partitionKey. x-opt-sequence-number is pre-existing.
+              {:message_annotations, eh_event_annotations(ev)}
+              | eh_delivery_annotations(partition) ++ [{:body_data, body}]
+            ]
+
+          {st, _id} =
+            send_message(st, link, %{
+              handle: link.handle,
+              delivery_tag: <<seq::unsigned-64>>
+            }, sections)
 
           st
           |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
+          # SHIM-COURT: KD-20 credit bump stripped; the eh_link_cursor refresh
+          # (sibling-lane hunk below this point) is NOT part of the shim and
+          # is left verbatim.
 """
 if old2 not in s:
-    sys.exit("KD-18/20 delivery hunks not found (already stripped or drifted)")
+    sys.exit("KD-18/20 delivery hunks not found (drifted)")
 s = s.replace(old2, new2)
 open(p, "w").write(s)
-print("[court] KD-19 fields + KD-18/20 delivery hunks stripped")
+# SHIM-COURT: force mix to see the edit — an in-place rewrite inside the same
+# mtime second is invisible to the compiler's change detection (witnessed
+# 2026-10-16: without this, the AFTER probe ran the stale pristine beam and
+# the shim read as inert). Same fix as etag_cas_court.sh.
+os.utime(p, (time.time() + 2, time.time() + 2))
+print("[SHIM] KD-19 fields + KD-18/20 delivery hunks stripped (SHIM-COURT)")
 PYEOF
-[ $? -eq 0 ] || die "BEFORE" "strip script failed"
-compile
+}
 
-log "phase BEFORE witness"
-if probe BEFORE; then
-  die "BEFORE" "probe PASSED with KD-18/19/20 stripped — court is vacuity-fail"
-fi
+# Sibling lanes share this tree; wait out transient foreign compile breaks
+# instead of failing the court on them.
 
-log "restore"
-cp "$SNAP/connection.kd18.ex" "$CONN"
-cp "$SNAP/management_rpc.kd18.ex" "$MGMT"
-sha256sum -c "$SNAP/sha256.kd18.txt" || die "RESTORE" "sha mismatch after restore"
+run_probe() {
+    # Compile retry (wait out transient sibling breaks; timeout is typed FAIL),
+    # then the real-wire probe. Echoes the probe output; returns its rc.
+    local i=0 out
+    until out="$(mix compile 2>&1)"; do
+        echo "$out" | grep -q "Compilation error" || {
+            echo "[FAIL:AFTER] tree does not compile:" >&2; tail -20 <<<"$out" >&2; return 1; }
+        i=$((i+1)); [ $i -lt 40 ] || {
+            echo "[FAIL:AFTER] tree did not compile within 10 min — flip would be fake" >&2; return 1; }
+        echo "[court] waiting out sibling compile break (poll $i)"; sleep 15
+    done
+    node "$PROBE" 2>&1
+}
 
-log "phase AFTER witness"
-compile
-after_out=$(node "$PROBE" 2>&1); after_rc=$?
-echo "[witness:AFTER] $(echo "$after_out" | grep -E '^(PASS|FAIL)' | tr '\n' ' ')"
-# wire-delivery-raw-payload-decode is KNOWN DRIFT post-KD-18: its premise is
-# the format!=0 raw-passthrough (rhea ctx.message = Buffer); with format 0 the
-# SDK tier decodes the message and the probe's own output proves the flip
-# ("total deliveries seen: N, undecodable: 0"). Its FAIL is expected and is
-# not a substrate gap; the probe file itself needs a rewrite (next window).
-if [ $after_rc -ne 0 ]; then
-  fail_count=$(echo "$after_out" | grep -c "^FAIL")
-  if echo "$after_out" | grep -q "FAIL.*wire-delivery-raw-payload-decode" && [ "$fail_count" -eq 1 ]; then
-    log "AFTER: only known-drift probe failed (raw-payload-decode premise obsolete) — accepted with note"
-    log "VERDICT: NON-VACUOUS — BEFORE shows the registered gaps (501 + null bodies), AFTER flips all substantive probes, restore sha-verified"
-    exit 0
-  else
-    die "AFTER" "unexpected AFTER failures"
-  fi
-fi
-log "VERDICT: NON-VACUOUS — BEFORE shows the registered gaps (501 + null bodies), AFTER flips all substantive probes, restore sha-verified"
-exit 0
+before_witness() {
+    local out rc
+    out="$(run_probe)"; rc=$?
+    if [ $rc -ne 0 ]; then
+        # Known drift on the LANDED tree (pre-KD-18 probe premise): a lone
+        # wire-delivery-raw-payload-decode FAIL is expected and accepted; any
+        # other failure is real. NOTE (2026-10-16 audit): this anchor accepts
+        # ONLY that one named FAIL when the probe's overall rc is non-zero; if
+        # the landed lib/ renames that delivery path the whitelist will fail
+        # the BEFORE leg (loud) — retie the anchor then; do not widen it.
+        if echo "$out" | grep -q 'FAIL.*wire-delivery-raw-payload-decode' \
+           && [ "$(echo "$out" | grep -c '^FAIL')" -eq 1 ]; then
+            return 0
+        fi
+        echo "[FAIL:BEFORE] probe failed on the LANDED tree:" >&2
+        tail -20 <<<"$out" >&2
+        return 1
+    fi
+    # The landed tree must serve the mgmt surface for real (no GAP-CLASS
+    # degradation on the KD-19 legs) — otherwise the AFTER flip below would
+    # have nothing to flip FROM.
+    if echo "$out" | grep -Eq 'get-(event|partition)-[a-z-]*: GAP-CLASS'; then
+        echo "[FAIL:BEFORE] landed tree already shows GAP-CLASS on mgmt legs:" >&2
+        grep 'GAP-CLASS' <<<"$out" >&2
+        return 1
+    fi
+    echo "[BEFORE] probe green on landed tree; mgmt legs served natively"
+}
+
+# AFTER: under the shim the KD-19 request fields are stripped, so the EH
+# management READ ops can no longer route (type=nil -> 400/unsupported) —
+# the probe's own GAP-CLASS gating labels the degradation on the mgmt legs.
+# F2 fix (2026-10-16): the old leg was `! ( $BEFORE_CMD )` — it embedded
+# COMPILE_RETRY, so a compile TIMEOUT also exited 1 and `!` read that as the
+# flip. Now the flip is typed: the probe output MUST carry the KD-19
+# GAP-CLASS signature; a compile failure or an inert shim is [FAIL:AFTER].
+after_witness() {
+    local out rc
+    out="$(run_probe)"; rc=$?
+    if echo "$out" | grep -Eq 'get-event-hub-properties: GAP-CLASS: MessagingError\(NotImplementedError\)'; then
+        echo "[AFTER] KD-19 GAP-CLASS signature present under the shim (probe rc=$rc) — real flip"
+        return 0
+    fi
+    if [ $rc -eq 0 ]; then
+        echo "[FAIL:AFTER] probe fully green under the shim — flip absent (shim inert)" >&2
+    else
+        echo "[FAIL:AFTER] probe failed WITHOUT the KD-19 GAP-CLASS signature:" >&2
+        tail -20 <<<"$out" >&2
+    fi
+    return 1
+}
+
+# Serialize per-subject: sibling lanes run this same court script from the
+# one canonical checkout; two interleaved shim/restore cycles on one subject
+# were witnessed 2026-10-16 as a flapping baseline sha + an "inert" shim
+# (the sibling's restore wiped our shim mid-AFTER). Holding the lock fd for
+# the whole with_shim makes concurrent court invocations queue.
+exec 9>>"/tmp/smalt-shim-court-$(basename "$SUBJECT").lock"
+flock 9
+with_shim "$SUBJECT" \
+                    "$(declare -f run_probe before_witness); before_witness" \
+                    "$(declare -f run_probe after_witness); after_witness"

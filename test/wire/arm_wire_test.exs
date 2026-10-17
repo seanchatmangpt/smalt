@@ -68,6 +68,40 @@ defmodule Smalt.Wire.ArmWireTest do
   end
 
   @tag :wire
+  test "mint -> Bearer GET /subscriptions 200; stripped token -> 401 + WWW-Authenticate (enforce)", %{
+    arm: port
+  } do
+    # Wire tier must be a verify+challenge superset of the STS mint, not
+    # mint-only: flip the real supervision tree into :enforce for this test.
+    prev = Application.get_env(:smalt, :auth_mode)
+    Application.put_env(:smalt, :auth_mode, :enforce)
+    on_exit(fn -> Application.put_env(:smalt, :auth_mode, prev) end)
+
+    mint =
+      http_request(port, "POST", "/oauth2/v2.0/token",
+        headers: [{"content-type", "application/x-www-form-urlencoded"}],
+        body: "grant_type=client_credentials&client_id=wire-test&client_secret=wire-secret"
+      )
+
+    assert mint.status == 200
+    %{"access_token" => token} = Jason.decode!(mint.body)
+    assert is_binary(token) and byte_size(token) > 0
+
+    authed =
+      http_request(port, "GET", "/subscriptions?api-version=2021-04-01",
+        headers: [{"authorization", "Bearer #{token}"}]
+      )
+
+    assert authed.status == 200
+    assert is_list(Jason.decode!(authed.body)["value"])
+
+    stripped = http_request(port, "GET", "/subscriptions?api-version=2021-04-01")
+
+    assert stripped.status == 401
+    assert stripped.headers =~ ~r/WWW-Authenticate:\s*Bearer/i
+  end
+
+  @tag :wire
   test "GET /subscriptions lists subscriptions over the wire", %{arm: port} do
     resp = http_request(port, "GET", "/subscriptions?api-version=2021-04-01")
 
@@ -78,7 +112,7 @@ defmodule Smalt.Wire.ArmWireTest do
 
   @tag :wire
   test "PUT resource group round-trips over the wire (201 then 200)", %{arm: port} do
-    path = "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2021-04-01"
+    path = "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2023-07-01"
 
     create =
       http_request(port, "PUT", path,
@@ -100,7 +134,7 @@ defmodule Smalt.Wire.ArmWireTest do
 
     assert update.status == 200
 
-    get = http_request(port, "GET", "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2021-04-01")
+    get = http_request(port, "GET", "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2023-07-01")
     assert get.status == 200
     assert Jason.decode!(get.body)["name"] == "wire-rg"
   end
@@ -111,7 +145,7 @@ defmodule Smalt.Wire.ArmWireTest do
       http_request(
         port,
         "GET",
-        "/subscriptions/#{@sub_id}/resourceGroups/never-created?api-version=2021-04-01"
+        "/subscriptions/#{@sub_id}/resourceGroups/never-created?api-version=2023-07-01"
       )
 
     assert resp.status == 404
@@ -154,19 +188,6 @@ defmodule Smalt.Wire.ArmWireTest do
 
       sup ->
         SmaltTest.Lifecycle.stop_shared_tree()
-    end
-  end
-
-  defp wait_until_gone(name, n \\ 100)
-
-  defp wait_until_gone(_name, 0), do: :ok
-
-  defp wait_until_gone(name, n) do
-    if Process.whereis(name) == nil do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until_gone(name, n - 1)
     end
   end
 

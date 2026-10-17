@@ -96,7 +96,7 @@ defmodule Smalt.Compliance.C1ArmTest do
   test "error envelope carries error.code and error.message with json; charset=utf-8", %{
     port: port
   } do
-    {status, headers, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01")
+    {status, headers, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
 
     assert status == 404
     assert headers["content-type"] == "application/json; charset=utf-8"
@@ -176,7 +176,7 @@ defmodule Smalt.Compliance.C1ArmTest do
 
   test "resource group PUT create 201 / update 200, GET 200, DELETE 200, GET 404", %{port: port} do
     rg = "rg-c1-" <> unique()
-    path = "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2021-04-01"
+    path = "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2023-07-01"
 
     {201, _h, _} = put!(port, path, body: Jason.encode!(%{"location" => "westus"}))
     {200, _h, _} = put!(port, path, body: Jason.encode!(%{"location" => "westus"}))
@@ -270,13 +270,13 @@ defmodule Smalt.Compliance.C1ArmTest do
     rg = "rg-c1-" <> unique()
 
     {201, _h, _} =
-      put!(port, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2021-04-01",
+      put!(port, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2023-07-01",
         body: Jason.encode!(%{"location" => "eastus"})
       )
 
-    {200, _h, _} = get!(port, "/subscriptions/#{@sub}/resourcegroups/#{rg}?api-version=2021-04-01")
+    {200, _h, _} = get!(port, "/subscriptions/#{@sub}/resourcegroups/#{rg}?api-version=2023-07-01")
 
-    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2021-04-01")
+    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2023-07-01")
 
     list = json(list_body)
     assert is_list(list["value"])
@@ -330,7 +330,7 @@ defmodule Smalt.Compliance.C1ArmTest do
   # ===========================================================================
 
   test "every response echoes x-ms-request-id (echoes client-supplied value)", %{port: port} do
-    {s1, headers, _b} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01")
+    {s1, headers, _b} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
 
     assert s1 == 404
 
@@ -349,7 +349,7 @@ defmodule Smalt.Compliance.C1ArmTest do
     # client-supplied request id is echoed verbatim
     {s2, headers2, _b2} =
       parse(
-        req(port, :get, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01",
+        req(port, :get, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01",
           headers: [{"x-ms-request-id", "my-client-request-id-123"}]
         )
       )
@@ -414,7 +414,7 @@ defmodule Smalt.Compliance.C1ArmTest do
   end
 
   test "error envelopes carry innererror (present-but-empty)", %{port: port} do
-    {_s, _h, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2021-04-01")
+    {_s, _h, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
     assert json(body)["error"]["innererror"] == %{}
 
     {s, _h, body2} = put!(port, resource_path("stc1x", "1999-01-01"))
@@ -713,7 +713,7 @@ defmodule Smalt.Compliance.C1ArmTest do
       put!(port, base <> "?api-version=2021-04-01", body: Jason.encode!(%{"location" => "eastus"}))
 
     {200, _h, _} = get!(port, base <> "?api-version=2021-04-01")
-    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2021-04-01")
+    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2023-07-01")
     assert is_list(json(list_body)["value"])
   end
 
