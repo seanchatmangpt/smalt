@@ -196,13 +196,16 @@ installed-tarball smoke (extract tarball, compile, start app, engine resolves si
 
 ## Final verdict (T5 finalize, 2026-10-16)
 
-**v26.10.16 hex.publish = TYPED-BLOCKED.**
+**v26.10.16 hex.publish = TYPED-BLOCKED (B1 only).**
 
-- Refusal-class blockers remaining: **B1** (ex4pm non-optional path dep refuses
-  `mix hex.build` metadata; close owned by the ex4pm repo's hex publish) and **B2**
-  (semantic/ compiles against the dev/test-only `AshR2RML.Resource` extension atom —
-  prod-compile of the packaged file list fails). Neither is closeable from this tree
-  alone; both are NEXT_WINDOW close conditions.
+- Refusal-class blocker remaining: **B1 only** (ex4pm non-optional path dep refuses
+  `mix hex.build` metadata; close owned by the ex4pm repo's hex publish — operator hex
+  auth + `mix hex.publish`, then smalt dual-pin flip). B2 is FIXED (lane G2's
+  `r2rml_guard.ex`, re-verified 2026-10-17 with `MIX_ENV=prod mix compile --force` exit 0
+  and semantic suites 21/0 each in dev); B4 FIXED at T5; B3 re-triaged on-record; B5/B6
+  advisory. B1 is the sole publish gate, not closeable from this tree alone.
+- B2 history: initially carried as a NEXT_WINDOW close condition alongside B1; closed
+  in-window by lane G2 (see B2 section above for the re-run evidence).
 - stream_data (B3): dep line `mix.exs:127` still carries no `only:`; the on-record
   rationale (`mix.exs:124` comment — `ash` requires stream_data) stands as the
   re-triage; carried into the next-window queue rather than refused as previously
@@ -229,9 +232,11 @@ installed-tarball smoke (extract tarball, compile, start app, engine resolves si
 
 ## NEXT_WINDOW close conditions (all six blockers)
 
-1. ex4pm → hex publish, then smalt dual-pin (B1) — owned by ex4pm repo
-2. B2: prod-compile the packaged file list clean (`MIX_ENV=prod mix compile` over the
-   tarball's files)
+1. ex4pm → hex publish, then smalt dual-pin (B1) — owned by ex4pm repo (**sole
+   remaining refusal-class blocker**)
+2. ~~B2: prod-compile the packaged file list clean~~ — **DONE (2026-10-17)**:
+   `lib/smalt/semantic/r2rml_guard.ex` landed by lane G2; `MIX_ENV=prod mix compile
+   --force` exit 0 (128 files); semantic suites 21/0 + 21/0 in dev
 3. B3: stream_data `only: :test`, `mix hex.build` requirements block reflects it
 4. B4: NOTICE.md affidavit attribution landed by X1 (or re-triaged if X1 re-scoped)
 5. B5: description reword + hex.build re-run
@@ -245,5 +250,9 @@ This is a docs-only lane; the receipt is the record itself at
 `/Users/sac/smalt/docs/jira/v26.10.16/PUBLISH_RECORD.md` with the evidence commands above
 mix.exs line citations verified against the tree at receipt time
 (`mix.exs:111,112,121,127`; `lib/smalt/semantic/{resource,evidence,ledger_entry}.ex`
-extension lines verified by direct read). No lib/ edits. Standing: **PUBLISH-READY: NO —
-TYPED-BLOCKED** (B1 + B2 remain; B4 closed at T5; gates green).
+extension lines verified by direct read). **2026-10-17 update (this lane, terminal
+publish-record)**: no lib/ edits by this lane — the B2 fix (`lib/smalt/semantic/
+r2rml_guard.ex`) is lane G2's landing, re-verified here with embedded real output above.
+Standing: **PUBLISH-READY: NO — TYPED-BLOCKED on B1 only** (ex4pm hex auth, operator
+action; package built + checksum on record). B2 closed with re-run evidence; B4 closed
+at T5; B5/B6 advisory; gates green.
