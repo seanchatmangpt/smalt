@@ -142,7 +142,7 @@ async function main() {
       SMALT_EH_PORT: String(EH_PORT),
       SMALT_SDK_ROOT:
         process.env.SMALT_SDK_ROOT ||
-        path.join(os.homedir(), "cai/athena/playground/node_modules"),
+        path.join(os.homedir(), "sdk-root/node_modules"),
     },
     stdio: "inherit",
   });

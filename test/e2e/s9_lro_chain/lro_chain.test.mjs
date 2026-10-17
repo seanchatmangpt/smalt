@@ -1,5 +1,5 @@
 // s9 LRO + azapi action chain — raw wire over the real ARM plane on 9443.
-// Mirrors athena's terraform verbs: LRO PUT storageAccount (202 + async
+// Mirrors an external consumer's terraform verbs: LRO PUT storageAccount (202 + async
 // headers + poll to Succeeded), the full azapi action ladder on the created
 // account (blobServices -> container -> immutabilityPolicy -> lock ->
 // setLegalHold), nested diagnosticSettings, roleAssignment create/delete,

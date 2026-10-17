@@ -327,7 +327,7 @@ def run_bench(target: str, url: str, account: str, key: str) -> dict:
     js_path = "/tmp/vs_azurite_client.js"
     with open(js_path, "w") as f:
         f.write(NODE_CLIENT_JS)
-    sdk_root = os.environ.get("SMALT_SDK_ROOT", "/Users/sac/cai/athena/playground/node_modules")
+    sdk_root = os.environ.get("SMALT_SDK_ROOT", "/usr/local/share/smalt-sdk/node_modules")
     env = dict(os.environ)
     env.update({
         "SMALT_SDK_ROOT": sdk_root,
@@ -366,7 +366,7 @@ def main() -> int:
     ap.add_argument("--keep-smalt", action="store_true")
     args = ap.parse_args()
 
-    sdk_root = os.environ.get("SMALT_SDK_ROOT", "/Users/sac/cai/athena/playground/node_modules")
+    sdk_root = os.environ.get("SMALT_SDK_ROOT", "/usr/local/share/smalt-sdk/node_modules")
     if not os.path.isdir(os.path.join(sdk_root, "@azure", "storage-blob")):
         print(f"[vs_azurite] ERROR: no @azure/storage-blob under {sdk_root} "
               f"(set SMALT_SDK_ROOT)", file=sys.stderr)

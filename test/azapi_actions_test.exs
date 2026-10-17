@@ -1,6 +1,6 @@
 defmodule Smalt.AzapiActionsTest do
   @moduledoc """
-  Conformance fence for the azapi surface athena's terraform uses — a mirror
+  Conformance fence for the azapi surface an external consumer's terraform uses — a mirror
   of the `Smalt.ArmErrorCorpusTest` pattern: every row drives a minimal
   Plug.Test request against the REAL `Smalt.ArmGateway.Router`, pins the
   actual {status, envelope shape}, and cites the router file:line of the
