@@ -3,6 +3,17 @@
 Date: 2026-10-16 · Repo: /Users/sac/smalt · Subject: attestation / signature surface
 Standing: **AUDIT_COMPLETE — GAP_TYPED, NOT_CLOSED**
 
+> **Update 2026-10-17 (post-audit, KD-89 closed — the audit's subject was the
+> pre-rebuild artifact `44ed468c`; verdict stands as the dated record for that
+> subject).** The affidavit-wasm ENGINE-VERIFY half of this gap is closed:
+> upstream `a8c3c2b` ships `pqc_verify`/`pqc_assemble` with real ML-DSA-65
+> adjudication; smalt's mounted artifact is re-pinned to `b3cf38ba…` and the
+> engine-adjudicated forge court (KAT accepted via `pqc_verify`, tamper refused
+> `ml_dsa65_rejected`, suites 25/0 + 76/0) is witnessed in
+> [`receipts/kd89-ml-dsa-closure.md`](../receipts/kd89-ml-dsa-closure.md); KD-89
+> CLOSED-WITH-RECEIPT. The LEDGER attestation half (SHA-256 Merkle + RS256 JWS
+> receipts, row 1 of the table) is unchanged and remains the open gap.
+
 ## Verdict (front-loaded)
 
 **The directive's premise is FALSE.** No FIPS 204 ML-DSA-65 / Dilithium-3

@@ -168,10 +168,16 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   posture).
 - **Mechanism:** the trust-profile envelope signs over the RS256
   substrate with the engine's CTRT seal; the CTRT witness region
-  [240..352] is RESERVED for the ML-DSA witness but is ZEROED upstream
-  today (no ML-DSA bytes are embedded — the engine verify op is
-  classical-only), with the `:PQC_NOT_PROVISIONED` typed refusal
-  retained as fail-closed fallback.
+  [240..352] is RESERVED for the ML-DSA witness (on the pre-rebuild
+  artifact `44ed468c` it was ZEROED upstream — no ML-DSA bytes were
+  embedded), with the `:PQC_NOT_PROVISIONED` typed refusal
+  retained as fail-closed fallback. **Update 2026-10-17 (KD-89
+  closed):** upstream engine `a8c3c2b` ships dedicated
+  `pqc_verify`/`pqc_assemble` ops with real ML-DSA-65 adjudication;
+  smalt's mounted artifact is re-pinned to sha256 `b3cf38ba…` and the
+  engine-adjudicated ML-DSA-65 forge court (KAT accepted via
+  `pqc_verify`, tamper refused `ml_dsa65_rejected`) is witnessed in
+  `docs/jira/v26.10.16/receipts/kd89-ml-dsa-closure.md`.
 - **Code anchor:** `lib/smalt/trust_profile/trust_profile.ex:224,264`
   (envelope + witness block); refusal at
   `lib/smalt/trust_profile/trust_profile.ex:62,78`.
@@ -182,14 +188,21 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   forge-rejection court are the named close condition; the register row
   remains OPEN pending the D-lane ladder witness; flip is
   registrar-owned (`scripts/kd_flip.py --apply`).
-- **Status:** WITNESSED-GAP. ML-DSA-65 math is live in the affidavit
-  **CLI crate** (`crypto_trust_pqc.rs`), but the wasm engine smalt
-  mounts supports only classical verify ops (`verify_signature`:
-  ES256/ES256K/Ed25519; `ML_DSA65` returns `unsupported_algorithm`),
-  and the seal-path witness region [240..352] is zeroed. The FRE 902
-  certificate verb is canned text, not a computed certificate.
-  KD-89 close requires upstream engine work first. OPEN,
-  receipt-gated.
+- **Status (updated 2026-10-17):** RESOLVED for the engine-verify surface.
+  Historical: on the pre-rebuild artifact `44ed468c`, the wasm engine smalt
+  mounted supported only classical verify ops (`verify_signature`:
+  ES256/ES256K/Ed25519; `ML_DSA65` returned `unsupported_algorithm`), and
+  the seal-path witness region [240..352] was zeroed — the typed
+  `unsupported_algorithm` refusal for `verify_signature alg=ML_DSA65`
+  persists upstream-by-design; PQC is routed through the dedicated
+  `pqc_verify`/`pqc_assemble` ops (upstream `src/pqc.rs`). Engine state
+  now: upstream `a8c3c2b` ships both ops with real ML-DSA-65
+  adjudication; smalt's mounted artifact re-pinned `b3cf38ba…`;
+  engine-adjudicated ML-DSA-65 forge court witnessed (KAT accepted,
+  tamper refused `ml_dsa65_rejected`), KD-89 CLOSED-WITH-RECEIPT
+  (`docs/jira/v26.10.16/receipts/kd89-ml-dsa-closure.md`). Residual
+  (unchanged): the FRE 902 certificate verb is canned text, not a
+  computed certificate.
 
 ## Mechanism 9 — Chain-gap detection and expunction refusal
 

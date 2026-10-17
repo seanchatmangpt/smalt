@@ -6,9 +6,9 @@ ETS table inventory. Source of truth: `lib/smalt/store.ex` `@tables`
 keys are lowercased full ARM id strings (or id-shaped paths) so
 `list_prefix/2` scans are deterministic and TF-stable.
 
-Count: **32 core tables** (store.ex `@tables`, lines 11-50 — includes the appconfig, eg-topics, sb-rules, blob-snapshots, and metrics tables added by the v26.10.16 capability waves) plus **2
-lazily-created `:set` tables** owned by `blob_storage.ex` that sit outside
-`@tables`. (Earlier prose says 27; the on-disk list is 28.)
+Count: **33 core tables** (store.ex `@tables`, lines 11-54 — includes the appconfig, eg-topics, sb-rules, blob-snapshots, and metrics tables added by the v26.10.16 capability waves) plus **2
+lazily-created `:set` table** owned by `blob_storage.ex` that sits outside
+`@tables`. 
 
 ## Core tables (`Smalt.Store` `:ordered_set`)
 
@@ -26,6 +26,10 @@ lazily-created `:set` tables** owned by `blob_storage.ex` that sit outside
 | `:smalt_blobs` | `"account/container/blob"` | `data_plane/blob_storage.ex`, `mcp/router.ex` | FR-6 `drop_account_data/1` sweeps by `"account/"` prefix; RG cascade may drop via container sweep |
 | `:smalt_blob_containers` | `"account/container"` | `data_plane/blob_storage.ex`, `data_plane/blob_service.ex`, `egress_router.ex` | FR-6 sweep + D127: RG delete cascades container sweep; per-container DELETE remains a product gap (does not close D127) |
 | `:smalt_blob_policy` | per-container policy key | `data_plane/blob_storage.ex` (`@policy_table`) | FR-6 sweep target; also lazily re-created `:set` in blob_storage (guard: `:ets.info`) |
+| `:smalt_blob_snapshots` | snapshot key | `data_plane/blob_storage.ex` (`ensure_snapshot_table`) | FR-6 sweep target; Store-owned since KD-60 (moved out of lazy) |
+| `:smalt_appconfig` | `{key, label}` | `egress_router.ex` (kv routes) | App Config KV store; challenge-guarded like `/secrets` |
+| `:smalt_eg_topics` | ARM id (downcased) | `arm_gateway/router.ex` (EG topics) | Event Grid topics + stored EG1 events |
+| `:smalt_metrics` | metric points | `lib/smalt/metrics.ex` | Monitor metrics points; swept per-destroy |
 | `:smalt_ledger_transactions` | `"{ledger}/{tx_id}"` | `security/ledger_writer.ex`, `security/confidential_ledger.ex` | data table; swept per-destroy |
 | `:smalt_ledger_meta` | `{:latest/\:seq/\:created, ledger}` tuple keys | `security/ledger_writer.ex` | metadata — survives destroy |
 | `:smalt_event_messages` | `"topic/id"` | `messaging/event_stream.ex` | data table; swept per-destroy; tuple-prefixed bookkeeping keys sort below binary keys in prefix scans |
@@ -48,7 +52,6 @@ lazily-created `:set` tables** owned by `blob_storage.ex` that sit outside
 | table | key convention | owning surface | cascade behavior |
 |---|---|---|---|
 | `:smalt_blob_blocks` | block key under blob | `data_plane/blob_storage.ex:312` | FR-6 sweep target; may be un-booted — `drop_account_data` guards with `:ets.info` |
-| `:smalt_blob_snapshots` | snapshot key | `data_plane/blob_storage.ex:694` | FR-6 sweep target; same guard |
 
 ## Cascade laws (the census)
 

@@ -81,13 +81,19 @@ fabricates a result.
 | `Smalt.TrustProfile.profile(:pqc)` with engine down | `{:refused, :PQC_NOT_PROVISIONED, msg}` |
 | `Smalt.TrustProfile.profile(:hybrid)` | `{:refused, :HYBRID_NOT_PROVISIONED, msg}` |
 
-The PQC fallback is honest: no real ML-DSA-65 implementation exists in
-smalt; with the engine down the typed refusal IS the delivered behavior.
-With the engine up, `profile(:pqc)` returns a witness-backed provisioned
-profile (engine-sealed CTRT witness block). Note: the `algorithms`
-label names the target algorithm only — the witness is the classical
-CTRT seal (witness region [240..352] ZEROED upstream, no ML-DSA bytes;
-engine verify is classical-only), NOT a PQC-sealed verdict.
+The PQC fallback is honest: with the engine down the typed refusal IS the
+delivered behavior. With the engine up, `profile(:pqc)` returns a
+witness-backed provisioned profile (engine-sealed CTRT witness block).
+Note: the `algorithms` label names the target algorithm only — the witness
+is the classical CTRT seal. **Update 2026-10-17 (KD-89 closed):** upstream
+engine `a8c3c2b` ships dedicated `pqc_verify`/`pqc_assemble` ops with real
+ML-DSA-65 adjudication; smalt's mounted artifact is re-pinned to sha256
+`b3cf38ba…` (the pre-rebuild pin `44ed468c` was classical-only — historical
+statements above were true of that artifact). The engine-adjudicated ML-DSA-65
+forge court (KAT accepted via `pqc_verify`, tampered signature refused
+`ml_dsa65_rejected`) is witnessed in
+`docs/jira/v26.10.16/receipts/kd89-ml-dsa-closure.md`; KD-89
+CLOSED-WITH-RECEIPT.
 
 ## Doctor check
 

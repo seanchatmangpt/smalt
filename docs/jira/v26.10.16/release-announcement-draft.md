@@ -17,14 +17,21 @@ Court trajectory).
 
 ## Capabilities (honest standing per capability)
 
-- **Affidavit WASM engine — PARTIAL_ALIVE.** Upstream-sealed artifact `44ed468c`
-  mounted; CTRT seal path live and classical verify adjudication live
+- **Affidavit WASM engine — ALIVE (engine-verify surface; updated 2026-10-17,
+  KD-89 closed).** Mounted artifact re-pinned to upstream rebuild `a8c3c2b`:
+  sha256 `b3cf38ba…` (the earlier pin `44ed468c` was the pre-rebuild
+  classical-only artifact — dated historical record). CTRT seal path live,
+  classical verify adjudication live
   ([r215](receipts/r215-affidavit-seal-court.md): 113 tests / 0 failures, forge
-  rejections typed). PQC is **GAP_TYPED, NOT_CLOSED** — KD-89 OPEN, witness
-  PENDING: the mounted engine has no `ML_DSA65` verify op (upstream
-  `affidavit-wasm/src/signature.rs:29-55` → `unsupported_algorithm`); the CTRT
-  112-byte witness region `[240..352]` is zeroed upstream. `:pqc` trust profile
-  returns typed `:PQC_NOT_PROVISIONED`. No faked pass.
+  rejections typed), and the engine now ships dedicated `pqc_verify`/
+  `pqc_assemble` ops with real ML-DSA-65 adjudication: engine-adjudicated forge
+  court witnessed (KAT accepted via `pqc_verify`, tamper refused
+  `ml_dsa65_rejected`, suites 25/0 + 76/0) in
+  [kd89-ml-dsa-closure.md](receipts/kd89-ml-dsa-closure.md); KD-89
+  CLOSED-WITH-RECEIPT. Honest residual: the ledger-level attestation surface
+  (SHA-256 Merkle + RS256 JWS receipts) remains classical-only, and
+  `verify_signature alg=ML_DSA65 → unsupported_algorithm` is upstream-by-design
+  (PQC routes through the dedicated ops). No faked pass.
 - **Substrate — PASS (offline tier).** Native HCL enclave pipeline
   (`parse → plan/apply → destroy`, per-hop sub-100 ms witnessed on the quiet
   run, full-lifecycle apply hop 110 ms under load — both on record), 41 admitted

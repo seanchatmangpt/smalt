@@ -57,7 +57,7 @@ defmodule Smalt.Affidavit.WasmEngine do
   # priv/wasm/affidavit_wasm.wasm. The boot-time AUTHORITY is the sidecar
   # (priv/wasm/affidavit.sha256); this attribute is only the cross-check
   # fallback when the sidecar is unreadable (never trusts unpinned bytes).
-  @artifact_sha256 "44ed468c66b06bc61b6ab24c64ab171df21d267124479a2790b333a7adf46c31"
+  @artifact_sha256 "b3cf38bab02bdf2451122d01609fba4804eb452be49e8d217d597d4af8d1a967"
   @default_path "priv/wasm/affidavit_wasm.wasm"
   @default_pin_path "priv/wasm/affidavit.sha256"
   @wasi_import_module "wasi_snapshot_preview1"

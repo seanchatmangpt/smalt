@@ -17,7 +17,7 @@ drop. No receipt was fabricated for a missing artifact.
 |---|---|---|
 | nfr3-rss-500 | [sdk-results/nfr3-rss.md](sdk-results/nfr3-rss.md) | PASS (delta −31712 KB against 262144 KB budget) |
 | spc-gate-receipt | [sdk-results/spc-bands.md](sdk-results/spc-bands.md) | PASS (tier 0, window 30) |
-| pqc-attestation-audit | [sdk-results/pqc-attestation-audit.md](sdk-results/pqc-attestation-audit.md) | AUDIT_COMPLETE — GAP_TYPED, NOT_CLOSED (classical-only attestation; no ML-DSA-65 anywhere — honest gap, see FINAL.md) |
+| pqc-attestation-audit | [sdk-results/pqc-attestation-audit.md](sdk-results/pqc-attestation-audit.md) | AUDIT_COMPLETE — GAP_TYPED, NOT_CLOSED (classical-only attestation; no ML-DSA-65 anywhere — honest gap, see FINAL.md). **UPDATED 2026-10-17 (KD-89)**: engine-verify gap CLOSED-WITH-RECEIPT — upstream `a8c3c2b` ships `pqc_verify`/`pqc_assemble` (ML-DSA-65), artifact re-pinned `b3cf38ba…`, forge court witnessed [kd89-ml-dsa-closure.md](receipts/kd89-ml-dsa-closure.md); ledger-level attestation (SHA-256 Merkle + RS256 JWS receipts) gap unchanged |
 | nfr4-identity-proof | [sdk-results/native-lifecycle.md](sdk-results/native-lifecycle.md) | ALIVE (NFR-4 identity = tables alive + empty post-destroy, 17 tables verified empty) |
 | doctor 3-env | [doctor-receipt.json](doctor-receipt.json) | 12/12 checks PASS — **single-env** receipt; the 3-env matrix is PENDING (below) |
 
@@ -718,6 +718,26 @@ path. Once upstream lands it, the court must exercise the **VERIFY path**
 content, honest content accepted). A court that only asserts CTRT byte
 layout does not satisfy the close condition while the witness region is
 zeroed and the engine verify op is classical-only.
+
+**KD-89 CLOSED 2026-10-17 (post-rebuild update — sections above describe
+the pre-rebuild artifact `44ed468c` and remain as the dated historical
+record).** Upstream rebuild HEAD `a8c3c2b` (includes `a4b65c8` "PQC ABI
+surface") ships dedicated `pqc_verify`/`pqc_assemble` ops with real
+ML-DSA-65 adjudication (`src/pqc.rs`); smalt's mounted artifact re-pinned
+to sha256 `b3cf38ba…` (716492 bytes, `@artifact_sha256` re-pinned in
+`lib/smalt/affidavit/wasm_engine.ex`, sidecar `priv/wasm/affidavit.sha256`
+byte-exact). The amended close condition's VERIFY-path court ran and
+passed: KAT positive accepted via `pqc_verify` (`profile: pqc(ml-dsa-65)`),
+tampered signature refused (`ml_dsa65_rejected`), suites 25/0 + 76/0 —
+witness `receipts/kd89-ml-dsa-closure.md` (mtime 2026-10-17 02:02,
+postdates shim `lib/smalt/trust_profile/trust_profile.ex` mtime 15:05
+2026-10-16). Row flipped CLOSED-WITH-RECEIPT via `scripts/kd_flip.py
+--apply`. `verify_signature alg=ML_DSA65 → unsupported_algorithm` is
+upstream-by-design (PQC routes through the dedicated ops, pinned by
+affidavit-wasm `src/signature.rs` court
+`unsupported_and_mismatched_algs_are_typed`), not a divergence. The
+ledger-level attestation gap (SHA-256 Merkle + RS256 JWS receipts,
+classical-only) is unchanged and stays OPEN at that level.
 ## c11 substrate typed findings (bench-c11-tf-loop, 2026-10-16 — ledgered by lane 4 errc)
 
 Typed substrate gaps surfaced by the c11 tf-loop lane, each a real run

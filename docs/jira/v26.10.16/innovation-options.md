@@ -32,7 +32,7 @@ Method: innovation-explorer skill, option-generation + skeptical scoring,
 | 5 | release-receipt/v1 mint (DMEDI Define/Measure first) | ambition-gap | .35 | 4 | 2 | 0.70 |
 | 6 | ex4pm OCEL emitter conformance sweep (14 pending matrix items) | capability | .60 | 2 | 2 | 0.60 |
 | 7 | XES emit leg (conventions derived from ex4pm xes.ex parser) | cross-repo | .55 | 3 | 3 | 0.55 |
-| 8 | ML-DSA-65 verify-only behind `:PQC_NOT_PROVISIONED` (blocked: upstream wasm engine `verify_signature` is classical-only; needs affidavit-side `ML_DSA65` support first) | ambition-gap | .40 | 5 | 5 | 0.40 |
+| 8 | ML-DSA-65 verify-only behind `:PQC_NOT_PROVISIONED` (SUPERSEDED 2026-10-17: upstream `a8c3c2b` ships `pqc_verify`/`pqc_assemble` with ML-DSA-65; artifact re-pinned `b3cf38ba…`; forge court witnessed, KD-89 CLOSED-WITH-RECEIPT — receipts/kd89-ml-dsa-closure.md; this option is now LANDED, not blocked) | ambition-gap | .40 | 5 | 5 | 0.40 |
 | 9 | Wire-replay/tf-wire-ladder receipts | external-gap | .45 | 3 | 4 | 0.34 |
 | 10 | BLAKE3 chain migration for pack-lock/evidence integrity (real after correction; SMALT pack lock is SHA-256 today) | ambition-gap | .50 | 2 | 3 | 0.33 |
 

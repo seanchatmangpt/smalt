@@ -61,9 +61,15 @@ Smalt.TrustProfile.profile(:pqc)
 - `{:ok, %{profile: :pqc, algorithms: ["ML-DSA-65"], provisioned: true,
   witness: witness}}` — the engine is running and returned an engine-sealed
   CTRT witness block. The `algorithms` label names the target algorithm
-  only: the witness itself is the classical CTRT seal (witness region
-  [240..352] ZEROED upstream, no ML-DSA bytes; engine verify is
-  classical-only), so this is NOT a PQC-sealed verdict.
+  only: the witness itself is the classical CTRT seal (historical note: on
+  the pre-rebuild artifact `44ed468c` the witness region [240..352] was
+  ZEROED upstream and engine verify was classical-only — so a verdict
+  witnessed before 2026-10-17 is NOT a PQC-sealed verdict). **Update
+  2026-10-17 (KD-89 closed):** upstream engine `a8c3c2b` ships
+  `pqc_verify`/`pqc_assemble` with real ML-DSA-65 adjudication; the mounted
+  artifact is re-pinned to `b3cf38ba…` and the engine-adjudicated forge court
+  (KAT accepted, tamper refused `ml_dsa65_rejected`) is witnessed in
+  `docs/jira/v26.10.16/receipts/kd89-ml-dsa-closure.md`.
 - `{:refused, :PQC_NOT_PROVISIONED, msg}` — engine not running; the typed
   refusal is the honest fallback (KD-89). Nothing is faked.
 
