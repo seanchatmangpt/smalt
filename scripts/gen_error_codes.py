@@ -6,9 +6,14 @@ Sources parsed:
                                           plus the pinned GraphLaw refusal and the
                                           inline 412 PreconditionFailed envelope.
   2. lib/smalt/egress_router.ex        - literal error envelopes (egress surface, :8443)
-  3. lib/smalt/policy.ex               - inline PolicyViolation denial envelope
+  3. lib/smalt/arm_gateway/lro.ex      - LRO terminal-state envelopes
+  4. lib/smalt/policy.ex               - inline PolicyViolation denial envelope
                                           (arm-gateway surface, fixed 400)
-  4. test/compliance/*.exs             - error codes asserted by the compliance corpus
+  5. lib/smalt/auth/bearer.ex          - 401 refusal codes ({:refuse, "Code", _})
+  6. lib/smalt/data_plane/*.ex + security/confidential_ledger.ex
+                                       - wire-visible {:error, status, body} code
+                                         literals (extract_data_plane, 2026-10-17)
+  7. test/compliance/*.exs             - error codes asserted by the compliance corpus
 
 Usage:
   python3 scripts/gen_error_codes.py            # (re)write docs/ERROR_CODES.md
@@ -385,7 +390,7 @@ def extract_egress():
         ("RouteNotReady", 503),
         ("InvalidBody", 400),
         ("InvalidCloudEvent", 400),
-        ("InvalidQueryParameter", 400),
+        ("InvalidQueryParameterValue", 400),
         ("InvalidApiVersion", 400),  # check_akv/check_sentinel_api_version gates (R143)
         ("InvalidEventGridEvent", 400),  # invalid_eg1_event_error/0 (EG1 schema gate)
     ]:
@@ -445,11 +450,21 @@ def extract_bearer():
     """Bearer-auth refusal codes (egress-auth surface, 401 envelope via refuse/3
     and send_challenge/2). All refusals ride HTTP 401 with the code in the
     error envelope; extraction is mechanical over the {:refuse, "Code", _}
-    tuples plus the send_challenge literal."""
+    tuples plus the send_challenge literal. Returns (rows, subcodes) where
+    subcodes are the finer-grained {:refuse, parent, sub} third members."""
     rows = []
+    subcodes = []
     src = BEARER.read_text()
     cite_file = BEARER.relative_to(ROOT)
-    for m in re.finditer(r'\{:refuse,\s*"([A-Za-z][A-Za-z0-9]*)"', src):
+    # {:refuse, "Parent", "Sub"} — parent code goes in the main table, the sub
+    # code lands in the "Bearer sub-codes" section (2026-10-17).
+    for m in re.finditer(
+        r'\{:refuse,\s*"([A-Za-z][A-Za-z0-9]*)"\s*,\s*"([A-Za-z][A-Za-z0-9]*)"', src
+    ):
+        rows.append((401, m.group(1), f"{cite_file}:{line_of(src, m.start())}"))
+        subcodes.append((m.group(2), m.group(1), f"{cite_file}:{line_of(src, m.start())}"))
+    # 2-tuple refusals {:refuse, "Code"} if any (no sub-code)
+    for m in re.finditer(r'\{:refuse,\s*"([A-Za-z][A-Za-z0-9]*)"\}', src):
         rows.append((401, m.group(1), f"{cite_file}:{line_of(src, m.start())}"))
     # send_challenge/2 emits AuthenticationFailed (KD-15 401 challenge)
     m = re.search(r'"error"\s*=>\s*%\{"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"', src)
@@ -458,7 +473,105 @@ def extract_bearer():
     seen = {}
     for status, code, cite in rows:
         seen.setdefault((status, code), cite)
-    return [("egress-auth", s, c, cite) for (s, c), cite in sorted(seen.items())]
+    main = [("egress-auth", s, c, cite) for (s, c), cite in sorted(seen.items())]
+    sub_seen = {}
+    for sub, parent, cite in subcodes:
+        sub_seen.setdefault((sub, parent), cite)
+    return main, [(c, p, cite) for (c, p), cite in sorted(sub_seen.items())]
+
+
+def render_bearer_subcodes(subcodes):
+    """Section renderer for the bearer sub-codes (loud-fail on an empty
+    extraction — a section with zero rows means the parser lost the
+    {:refuse, parent, sub} sites, not that no sub-codes exist)."""
+    if not subcodes:
+        sys.stderr.write(
+            "gen_error_codes: bearer.ex carries no {:refuse, parent, sub} "
+            "sites — the Bearer sub-codes section would be empty. Update the "
+            "extraction pattern; do NOT ship an empty section.\n"
+        )
+        sys.exit(1)
+    lines = [
+        "",
+        "## Bearer sub-codes",
+        "",
+        "Finer-grained refusal reasons carried as the third member of the",
+        "`{:refuse, parent, sub}` tuples in `lib/smalt/auth/bearer.ex`. Each is",
+        "emitted on the egress-auth surface with HTTP 401 inside the parent",
+        "code's error envelope (the sub-code rides the envelope's `message`",
+        "member).",
+        "",
+        "| Parent code | Sub-code | Source | Meaning | Remediation (agent hint) |",
+        "|---|---|---|---|---|",
+    ]
+    for sub, parent, cite in subcodes:
+        meaning, remediation, _marked = annotate(sub)
+        if sub not in ANNOTATIONS:
+            meaning = "Bearer refusal sub-code under %s; see the cited source for the exact branch." % parent
+            remediation = "Read the 401 envelope message; re-mint the token per the cited branch."
+        lines.append(
+            "| {p} | {c} | {src} | {m} | {r} |".format(
+                p=esc(parent), c=esc(sub), src=esc(cite),
+                m=esc(meaning), r=esc(remediation),
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
+def extract_data_plane():
+    """Wire-visible data-plane error codes ({:error, status, body} tuples whose
+    body carries a literal "code" => "..."). Sources are the six audit/data
+    planes (sentinel, resource_graph, purview_atlas, key_vault_actions, cosmos,
+    confidential_ledger). Comment lines and @doc strings are stripped BEFORE
+    scanning so docstring code mentions never mint phantom rows. Only LITERAL
+    3-digit statuses pair; non-literal status expressions are skipped (a status
+    the parser cannot witness must not read as a ?-row)."""
+    sources = [
+        ROOT / "lib/smalt/data_plane/sentinel.ex",
+        ROOT / "lib/smalt/data_plane/resource_graph.ex",
+        ROOT / "lib/smalt/data_plane/purview_atlas.ex",
+        ROOT / "lib/smalt/data_plane/key_vault_actions.ex",
+        ROOT / "lib/smalt/data_plane/cosmos.ex",
+        ROOT / "lib/smalt/security/confidential_ledger.ex",
+    ]
+    rows = []
+    for f in sources:
+        src = f.read_text()
+        src = re.sub(r'@(?:doc|moduledoc)\s+""".*?"""', "", src, flags=re.S)
+        src = "\n".join(l for l in src.split("\n") if not l.strip().startswith("#"))
+        slug = f.stem.replace("_", "-")
+        cite_file = f.relative_to(ROOT)
+        # An error tuple may span lines: pair each {:error, <status>, opener
+        # with the first "code" literal within the next 300 chars.
+        for m in re.finditer(r'\{:error,\s*(\d{3})\b', src):
+            status = int(m.group(1))
+            window = src[m.start():m.start() + 300]
+            cm = re.search(r'"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"', window)
+            if cm:
+                rows.append(("data-plane/" + slug, status, cm.group(1),
+                             f"{cite_file}:{line_of(src, m.start())}"))
+    seen = {}
+    for surface, status, code, cite in rows:
+        seen.setdefault((surface, code), (status, cite))
+    return [(surface, s, c, cite) for (surface, c), (s, cite) in sorted(seen.items())]
+
+
+def extract_cli_gateway():
+    """CLI-gateway surface: the typed 403 MutationRefused envelope emitted by
+    smalt_cli/gateway/interceptor.py (ADR-PY-003 zero-actuation). Mechanical:
+    the literal "code": "..." inside refusal_envelope, fixed status 403."""
+    src_path = ROOT / "smalt-cli" / "smalt_cli" / "gateway" / "interceptor.py"
+    src = src_path.read_text()
+    m = re.search(r'"code":\s*"([A-Za-z][A-Za-z0-9]*)"', src)
+    if not m:
+        sys.stderr.write(
+            "gen_error_codes: interceptor.py refusal_envelope no longer "
+            "carries a literal \"code\" member — update the cli-gateway "
+            "extraction pattern.\n"
+        )
+        sys.exit(1)
+    cite = f"{src_path.relative_to(ROOT)}:{line_of(src, m.start())}"
+    return [("cli-gateway", 403, m.group(1), cite)]
 
 
 def extract_compliance():
@@ -476,9 +589,9 @@ def extract_compliance():
     return [(surface, status, code, cite) for (surface, code), (status, cite) in sorted(seen.items())]
 
 
-
 def build_rows():
-    rows = extract_arm() + extract_lro() + extract_policy() + extract_egress() + extract_bearer() + extract_compliance()
+    bearer_rows, _subcodes = extract_bearer()
+    rows = extract_arm() + extract_lro() + extract_policy() + extract_egress() + bearer_rows + extract_data_plane() + extract_cli_gateway() + extract_compliance()
     out = []
     for surface, status, code, cite in rows:
         meaning, remediation, marked = annotate(code)
@@ -495,7 +608,8 @@ def build_rows():
 
 
 def render():
-    body = HEADER + "\n".join(build_rows()) + "\n"
+    _main, subcodes = extract_bearer()
+    body = HEADER + "\n".join(build_rows()) + "\n" + render_bearer_subcodes(subcodes)
     return body
 
 

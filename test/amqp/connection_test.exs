@@ -95,7 +95,10 @@ defmodule Smalt.Amqp.ConnectionTest do
 
     mech = recv_frame(client)
     assert mech.performative.performative == :sasl_mechanisms
-    assert {:symbol, "ANONYMOUS"} in mech.performative.server_mechanisms
+    # Pinion: SASL ANONYMOUS ONLY — the advertised set is exactly one element,
+    # not merely contains it (a second mechanism would pass the old
+    # membership assert).
+    assert mech.performative.server_mechanisms == [{:symbol, "ANONYMOUS"}]
 
     :ok = send_bytes(client, enc_frame(:sasl, 0, {:sasl_init, %{mechanism: "ANONYMOUS"}}))
 
@@ -122,6 +125,30 @@ defmodule Smalt.Amqp.ConnectionTest do
     begun = recv_frame(client)
     assert begun.performative.performative == :begin
     assert begun.performative.remote_channel == 0
+  end
+
+  # Pinion: SASL ANONYMOUS ONLY — a non-ANONYMOUS mechanism is refused with
+  # sasl-outcome code 1 and the connection tears down (amqp:unauthorized-access).
+  # Previously only the redteam cjs touched this edge; now ExUnit pins it.
+  test "non-ANONYMOUS SASL mechanism is refused with outcome code 1 and teardown", %{client: client} do
+    :ok = :gen_tcp.send(client, @sasl_header)
+    assert {:ok, @sasl_header} = recv_exact(client, 8)
+
+    mech = recv_frame(client)
+    assert mech.performative.performative == :sasl_mechanisms
+    assert mech.performative.server_mechanisms == [{:symbol, "ANONYMOUS"}]
+
+    :ok = send_bytes(client, enc_frame(:sasl, 0, {:sasl_init, %{mechanism: "PLAIN"}}))
+
+    outcome = recv_frame(client)
+    assert outcome.performative.performative == :sasl_outcome
+    assert outcome.performative.code == 1
+
+    # error_close/2 sends the AMQP close frame carrying
+    # amqp:unauthorized-access, THEN the socket closes.
+    assert {:ok, close_bytes} = :gen_tcp.recv(client, 0, 2000)
+    assert close_bytes =~ "amqp:unauthorized-access"
+    assert {:error, :closed} = :gen_tcp.recv(client, 0, 2000)
   end
 
   # ===========================================================================
@@ -210,6 +237,22 @@ defmodule Smalt.Amqp.ConnectionTest do
     # not AMQP uuid 0x98 wrapper — pyamqp "object of type 'UUID' has no len()")
     tag = tr.performative.delivery_tag
     assert is_binary(tag) and byte_size(tag) == 16, tag
+
+    # .NET-GUID reorder pinion at the wire level: the outbound delivery_tag
+    # bytes MUST equal token_to_wire/1 of the stored lock token (the straight
+    # UUID layout that once caused 410 MESSAGE_LOCK_LOST on every live lock
+    # would pass a bare byte_size check). Setup cleared the lock table, so
+    # exactly one lock exists and the match is unambiguous.
+    stored_tokens =
+      :ets.tab2list(:smalt_sb_locks)
+      |> Enum.flat_map(fn
+        {_k, lock} -> [lock.lock_token]
+        {lock_token, _owner, _exp} -> [lock_token]
+        other -> throw({:unexpected_lock_row, other})
+      end)
+
+    assert tag in Enum.map(stored_tokens, &Smalt.Amqp.LockManager.token_to_wire/1)
+
     assert tr.performative.settled in [false, nil]
 
     delivery_id = tr.performative.delivery_id

@@ -380,19 +380,21 @@ defmodule ApiVersionMatrixTest do
   # insertions turn this fence red instead of silently rotting the citations.
   # ===========================================================================
 
+  # Line cites re-anchored 2026-10-17 after router.ex insertions shifted the
+  # route table (each still pins its family's PUT/defining route line).
   @cite_drift [
-    {"lib/smalt/arm_gateway/router.ex:2714", "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
-    {"lib/smalt/arm_gateway/router.ex:2755", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3027", "blobServices/default\""},
-    {"lib/smalt/arm_gateway/router.ex:3077", "blobServices/default/containers/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3118", "immutabilityPolicies/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3159", "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3208", "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3257", "topics/:topic/subscriptions/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3329", "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3378", "eventhubs/:hub/consumergroups/:name"},
-    {"lib/smalt/arm_gateway/router.ex:4131", "providers/:provider_ns/:resource_type/:resource_name"},
-    {"lib/smalt/arm_gateway/router.ex:1822", "Microsoft.Authorization/locks"}
+    {"lib/smalt/arm_gateway/router.ex:2725", "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
+    {"lib/smalt/arm_gateway/router.ex:2766", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3039", "blobServices/default\""},
+    {"lib/smalt/arm_gateway/router.ex:3089", "blobServices/default/containers/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3130", "immutabilityPolicies/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3171", "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3220", "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3269", "topics/:topic/subscriptions/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3341", "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3390", "eventhubs/:hub/consumergroups/:name"},
+    {"lib/smalt/arm_gateway/router.ex:4149", "providers/:provider_ns/:resource_type/:resource_name"},
+    {"lib/smalt/arm_gateway/router.ex:1831", "Microsoft.Authorization/locks"}
   ]
 
   test "cite-drift fence: every router.ex:LINE citation resolves to the expected construct" do

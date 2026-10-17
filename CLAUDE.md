@@ -98,6 +98,8 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
 | `docs/jira/v*/SDK_MATRIX.md` | `just sdk-matrix-md` (fails on MISSING/UNREGISTERED-GAP) |
 | `lib/smalt/mcp/generated/mcp_descriptor.ex` | ggen_igniter.sync from `lib/smalt/mcp/gen/smalt_mcp_surface.ttl` |
 | `lib/smalt/registry.ex` | `mix smalt.gen` (byte-identical replay test-fenced) |
+| `lib/smalt/config.ex`, `lib/smalt/store_tables.ex`, `lib/smalt/cascade_edges.ex`, `lib/smalt/telemetry/semconv/registry.ex` | `mix smalt.gen` (byte-identical replay test-fenced; semconv from `model/smalt.yaml`) |
+| `docs/capabilities.json`, `docs/THIRD_PARTY.md` | `mix run -e 'Smalt.Projection.Canonical.write()'` (Canonical.write riders) |
 
 ## Conventions
 

@@ -18,7 +18,11 @@ Typed residual: the `.metadata_never_index` Metadata-indexer mitigation
 (placed at the repo root 2026-10-17 01:14 after the Spotlight-class
 indexer was found saturating the host during wrap re-courts) remains
 **UNMEASURED** — no post-marker court run has completed green on a quiet
-host. 28 completed invocations, 0 two-green. See
+host. **32 completed invocations, 0 two-green** (terminal run-32
+supersedes run-30 here: run 32.1 completed TYPED — `2457 tests, 7
+failures`, drift-fence class on the W2-late surface that landed as
+`b6a8b7e` — run 32.2 aborted at `just doctor` port-in-use; see
+`docs/jira/v26.10.16/WRAP_LEDGER.md` runs 30-32). See
 `docs/jira/v26.10.16/FINAL.md` court-x2 line and the runs 22-29
 post-mortem in `docs/jira/v26.10.16/WRAP_LEDGER.md`. Publish standing
 (covers hex + tarball): **TYPED-BLOCKED** per
@@ -30,7 +34,13 @@ the non-optional `ex4pm` path dependency refusing `hex.build`
 ## What changed
 
 - **SDK parity register at full coverage** — `KNOWN_DIVERGENCES.md` spans
-  **94 rows (KD-01..KD-94 — 28 CLOSED / 66 OPEN)** in the canonical table
+  **94 rows (KD-01..KD-94 — 38 CLOSED / 56 OPEN as of the 2026-10-17
+  lane-I14 recount**; per-row escaped-pipe-aware split: 14 CLOSED-WITH-RECEIPT +
+  17 CLOSED-SIMULATED + 5 CLOSED-with-receipt + 2 plain CLOSED (KD-52, KD-63);
+  the register was being flipped concurrently by the kd-registrar lane during
+  the recount — re-derive at use time per
+  `docs/jira/v26.10.17/COUNTERS.md`; supersedes the 28/66 figure minted
+  before the KD-89/KD-94/KD-63/KD-80/81/82/87/91 flips)** in the canonical table
   (`docs/jira/v26.10.14/KNOWN_DIVERGENCES.md`; the v26.10.16 window keeps a
   pointer file). KD-91/92 were minted OPEN from the c11 typed findings
   (fixes landed, witness-pending); KD-93 was minted OPEN by the lane X5

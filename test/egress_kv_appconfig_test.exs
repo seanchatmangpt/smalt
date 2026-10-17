@@ -153,11 +153,18 @@ defmodule EgressKvAppconfigTest do
   end
 
   describe "DELETE /kv/:key" do
-    test "delete is 204; repeat is idempotent 404" do
+    test "delete requires If-Match: missing header is 409; * is 204; repeat is idempotent 404" do
       {:ok, _} = put_kv("d1", "v")
-      assert call(:delete, "/kv/d1").status == 204
+
+      # Real App Configuration: delete without If-Match is a 409, not a delete.
+      conn = call(:delete, "/kv/d1")
+      assert conn.status == 409
+      assert %{"code" => "MissingIfMatch", "message" => msg} = Jason.decode!(conn.resp_body)
+      assert msg =~ "If-Match header must be specified"
+
+      assert call(:delete, "/kv/d1", headers: [{"if-match", "*"}]).status == 204
       assert call(:get, "/kv/d1").status == 404
-      assert call(:delete, "/kv/d1").status == 404
+      assert call(:delete, "/kv/d1", headers: [{"if-match", "*"}]).status == 404
     end
 
     test "stale If-Match is 412; matching If-Match deletes" do

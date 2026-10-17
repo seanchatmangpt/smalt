@@ -14,9 +14,10 @@ defmodule Smalt.Compliance.C1ArmTest do
 
   use ExUnit.Case, async: false
 
-  # xaas wire-parity §4.7 adoption (lens-6): whole-court selection tag. Enables
-  # `mix test --include compliance` to run the full c1..c7 court set in one
-  # include. No default behavior change: :compliance is NOT in the
+  # xaas wire-parity §4.7 adoption (lens-6): whole-court selection tag. Only
+  # c1 carries this tag (the "full c1..c7 court set" comment was false — the
+  # corpus loads via test/compliance_test.exs / just test-compliance since
+  # 2026-10-17). No default behavior change: :compliance is NOT in the
   # test_helper.exs exclusion list, so untagged/default runs are unchanged.
   @moduletag :compliance
 
@@ -241,20 +242,27 @@ defmodule Smalt.Compliance.C1ArmTest do
     assert json(body)["error"]["message"] == "The api-version query parameter is required."
   end
 
+  # KD-78 (closed 2026-10-16, docs/jira/v26.10.14/KNOWN_DIVERGENCES.md +
+  # docs/jira/v26.10.16/sdk-results/version-lattice-receipt.md): api-version
+  # admission is MONOTONIC — version <= latest is admitted, so a stale call
+  # (1999-01-01) now succeeds. The refusal seam is pinned with a FUTURE version
+  # (> latest is the refused class under both the old exact-match and the new
+  # monotonic law).
   test "invalid api-version on admitted type (PUT) -> 400 InvalidApiVersionParameter", %{
     port: port
   } do
-    {400, _h, body} = put!(port, resource_path("stc1x", "1999-01-01"))
+    {400, _h, body} = put!(port, resource_path("stc1x", "2099-01-01"))
     assert json(body)["error"]["code"] == "InvalidApiVersionParameter"
   end
 
-  # C1 pin: the admitted latest version is exact per type — a stale call must
-  # be told the literal latest string, not merely rejected.
-  test "stale api-version error names the exact latest version for the type", %{
+  # C1 pin (KD-78 re-pin): the admitted latest version is exact per type — a
+  # newer-than-latest call must be told the literal latest string, not merely
+  # rejected.
+  test "newer-than-latest api-version error names the exact latest version for the type", %{
     port: port
   } do
     path =
-      "/subscriptions/#{@sub}/resourceGroups/rg1/providers/Microsoft.ContainerService/managedClusters/mc1?api-version=1999-01-01"
+      "/subscriptions/#{@sub}/resourceGroups/rg1/providers/Microsoft.ContainerService/managedClusters/mc1?api-version=2099-01-01"
 
     {400, _h, body} = put!(port, path)
     err = json(body)["error"]
@@ -417,7 +425,9 @@ defmodule Smalt.Compliance.C1ArmTest do
     {_s, _h, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
     assert json(body)["error"]["innererror"] == %{}
 
-    {s, _h, body2} = put!(port, resource_path("stc1x", "1999-01-01"))
+    # KD-78: future version (> latest) is the refused class; stale would be
+    # admitted monotonic.
+    {s, _h, body2} = put!(port, resource_path("stc1x", "2099-01-01"))
     assert s == 400
     assert json(body2)["error"]["innererror"] == %{}
   end
@@ -436,7 +446,8 @@ defmodule Smalt.Compliance.C1ArmTest do
     assert err2["target"] == rg_id
 
     # api-version 400s: target ABSENT (query-param failure, no path component).
-    {400, _h, body3} = put!(port, resource_path("stc1t", "1999-01-01"), body: sa_body("stc1t"))
+    # KD-78: future version (> latest) is the refused class; stale is admitted.
+    {400, _h, body3} = put!(port, resource_path("stc1t", "2099-01-01"), body: sa_body("stc1t"))
     refute Map.has_key?(json(body3)["error"], "target")
   end
 
@@ -595,10 +606,12 @@ defmodule Smalt.Compliance.C1ArmTest do
     refute String.contains?(headers["azure-asyncoperation"], "management.smalt.local")
   end
 
-  test "GET validates api-version like PUT (row 6b fixed): bogus GET api-version -> 400", %{
+  # KD-78: GET validates like PUT — future version (> latest) refused; a stale
+  # version would be admitted monotonic and 404 on the missing resource.
+  test "GET validates api-version like PUT (row 6b fixed): future GET api-version -> 400", %{
     port: port
   } do
-    {400, _h, body} = get!(port, resource_path("stc1x", "1999-01-01"))
+    {400, _h, body} = get!(port, resource_path("stc1x", "2099-01-01"))
     assert json(body)["error"]["code"] == "InvalidApiVersionParameter"
   end
 
@@ -696,17 +709,18 @@ defmodule Smalt.Compliance.C1ArmTest do
       assert json(body)["error"]["message"] == "The api-version query parameter is required."
     end
 
-    # Stale api-version -> 400 InvalidApiVersionParameter naming the latest.
-    {400, _h, body2} = put!(port, base <> "?api-version=1999-01-01", body: Jason.encode!(%{"location" => "eastus"}))
+    # KD-78: future api-version (> latest) -> 400 InvalidApiVersionParameter
+    # naming the latest (a stale version would be admitted monotonic).
+    {400, _h, body2} = put!(port, base <> "?api-version=2099-01-01", body: Jason.encode!(%{"location" => "eastus"}))
     err2 = json(body2)["error"]
     assert err2["code"] == "InvalidApiVersionParameter"
 
-    # Lens-3: pin the full template bytes (the stale court earlier pins the
+    # Lens-3: pin the full template bytes (the future court earlier pins the
     # same template for managedClusters; here it's resourceGroups's own latest).
     assert err2["message"] ==
-             "The api-version '1999-01-01' is invalid. The latest supported api-version for 'Microsoft.Resources/resourceGroups' is '2021-04-01'."
+             "The api-version '2099-01-01' is invalid. The latest supported api-version for 'Microsoft.Resources/resourceGroups' is '2023-07-01'."
 
-    assert err2["message"] =~ "2021-04-01"
+    assert err2["message"] =~ "2023-07-01"
 
     # Valid latest api-version -> the wire behaves exactly as before the gate.
     {201, _h, _} =

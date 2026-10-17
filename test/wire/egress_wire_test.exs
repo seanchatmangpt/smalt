@@ -194,10 +194,10 @@ defmodule Smalt.Wire.EgressWireTest do
 
   # R155/W1: container lease/ACL comps are UNIMPLEMENTED (KD/GAP
   # (blob-comp-lease-absent)) — through the REAL wire the PUT and GET
-  # container arms answer a typed 400 InvalidQueryParameter naming the GAP,
+  # container arms answer a typed 400 InvalidQueryParameterValue naming the GAP,
   # with the Azure x-ms-error-code header, never a silent 201/200 fallthrough.
   @tag :wire
-  test "Blob: container PUT comp=lease/acl answers 400 InvalidQueryParameter over the wire", %{
+  test "Blob: container PUT comp=lease/acl answers 400 InvalidQueryParameterValue over the wire", %{
     egress: port
   } do
     for comp <- ["lease", "acl"] do
@@ -209,15 +209,15 @@ defmodule Smalt.Wire.EgressWireTest do
 
       assert resp.status == 400, "comp=#{comp} answered #{resp.status}: #{resp.body}"
       body = Jason.decode!(resp.body)
-      assert body["error"]["code"] == "InvalidQueryParameter"
+      assert body["error"]["code"] == "InvalidQueryParameterValue"
       assert String.contains?(body["error"]["message"], "GAP(blob-comp-lease-absent)")
       assert String.contains?(resp.headers, "x-ms-error-code")
-      assert String.contains?(resp.headers, "InvalidQueryParameter")
+      assert String.contains?(resp.headers, "InvalidQueryParameterValue")
     end
   end
 
   @tag :wire
-  test "Blob: container GET comp=lease/acl answers 400 InvalidQueryParameter over the wire", %{
+  test "Blob: container GET comp=lease/acl answers 400 InvalidQueryParameterValue over the wire", %{
     egress: port
   } do
     for comp <- ["lease", "acl"] do
@@ -228,10 +228,10 @@ defmodule Smalt.Wire.EgressWireTest do
 
       assert resp.status == 400, "comp=#{comp} answered #{resp.status}: #{resp.body}"
       body = Jason.decode!(resp.body)
-      assert body["error"]["code"] == "InvalidQueryParameter"
+      assert body["error"]["code"] == "InvalidQueryParameterValue"
       assert String.contains?(body["error"]["message"], "GAP(blob-comp-lease-absent)")
       assert String.contains?(resp.headers, "x-ms-error-code")
-      assert String.contains?(resp.headers, "InvalidQueryParameter")
+      assert String.contains?(resp.headers, "InvalidQueryParameterValue")
     end
   end
 
@@ -608,7 +608,7 @@ defmodule Smalt.Wire.EgressWireTest do
     # HEAD responses carry no body (HTTP law); the typed code surfaces in the
     # x-ms-error-code header instead.
     assert String.contains?(resp.headers, "x-ms-error-code") and
-             String.contains?(resp.headers, "InvalidQueryParameter")
+             String.contains?(resp.headers, "InvalidQueryParameterValue")
   end
 
   @tag :wire

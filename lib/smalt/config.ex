@@ -62,6 +62,15 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :arm_cors_origins,
+        type: "list",
+        default: ["*"],
+        secret: false,
+        surface: "control_plane",
+        env_var: nil,
+        override: "none"
+      },
+      %{
         name: :arm_port,
         type: "integer",
         default: 9443,
@@ -449,6 +458,8 @@ defmodule Smalt.Config do
 
   @doc "AMQP sweeper tick period in milliseconds."
   def amqp_sweeper_tick_ms, do: Application.get_env(:smalt, :amqp_sweeper_tick_ms, 250)
+  @doc "CORS allow-list for the ARM control-plane (9443/9444) responses."
+  def arm_cors_origins, do: Application.get_env(:smalt, :arm_cors_origins, ["*"])
   @doc "ARM-style control plane REST port."
   def arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
   @doc "ARM gateway rate limit (:infinity disables the limiter)."

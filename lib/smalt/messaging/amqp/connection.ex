@@ -520,11 +520,11 @@ defmodule Smalt.Amqp.Connection do
     # must see.
     kind = route(address, state.mode)
 
-    if kind == :queue and not authorized?(address) do
-      # rhea (core-amqp) requires the broker attach echo BEFORE any detach
-      # (Session.on_attach populates remote.handles only on attach; a bare
-      # detach raises "Invalid handle N" client-side). Echo attach, then
-      # detach typed.
+    # Fixed-partition pinion: a partition-scoped EH attach outside the pinned
+    # set ["0","1"] is refused (echo-attach + typed detach — the rhea/core-amqp
+    # contract needs the attach echo first). Send side pins storage to the pair
+    # (eh_pk_partition), so an out-of-pin receiver could never be delivered to.
+    if kind == :eventhubs and eh_partition_scope(address) == :refused do
       send_frame(state, channel, {
         :attach,
         %{name: perf.name, handle: perf.handle, role: our_role == :receiver, initial_delivery_count: 0}
@@ -532,12 +532,33 @@ defmodule Smalt.Amqp.Connection do
 
       send_frame(state, channel, {
         :detach,
-        %{handle: perf.handle, closed: true, error: unauthorized_error()}
+        %{
+          handle: perf.handle,
+          closed: true,
+          error: %{condition: "amqp:not-allowed", description: "partition outside the fixed set [\"0\",\"1\"]"}
+        }
       })
 
       state
     else
-      {kind, address} = normalize_dql_casing(kind, address)
+      # rhea (core-amqp) requires the broker attach echo BEFORE any detach
+      # (Session.on_attach populates remote.handles only on attach; a bare
+      # detach raises "Invalid handle N" client-side). Echo attach, then
+      # detach typed.
+      if kind == :queue and not authorized?(address) do
+        send_frame(state, channel, {
+          :attach,
+          %{name: perf.name, handle: perf.handle, role: our_role == :receiver, initial_delivery_count: 0}
+        })
+
+        send_frame(state, channel, {
+          :detach,
+          %{handle: perf.handle, closed: true, error: unauthorized_error()}
+        })
+
+        state
+      else
+        {kind, address} = normalize_dql_casing(kind, address)
 
       # Repair lane R96: pyamqp-dialect clients attach queue links with the
       # FULL "amqps://host:port/entity" source/target, but every store key
@@ -784,6 +805,7 @@ defmodule Smalt.Amqp.Connection do
 
     %{state | links: Map.put(state.links, {channel, perf.handle}, eh_link)}
       end
+    end
     end
   end
 
@@ -1706,9 +1728,16 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp eh_scope(hub, ptail, p) do
-    if String.downcase(ptail) == "partitions" and p != "",
-      do: {hub, p},
-      else: nil
+    # EH fixed-partition pinion: only the pinned partitions ["0","1"] exist.
+    # A partition-scoped attach outside the pin is refused — the send side
+    # already pins storage to the pair (eh_pk_partition rem 2), so accepting
+    # "2" would silently attach a receiver that can never be delivered to.
+    # Hub-scoped and non-partition tails stay nil (aggregate path).
+    cond do
+      String.downcase(ptail) == "partitions" and p != "" and p in ["0", "1"] -> {hub, p}
+      String.downcase(ptail) == "partitions" and p != "" -> :refused
+      true -> nil
+    end
   end
 
   # KD-COVERS: KD-76 — storage partition for an inbound EH transfer. A

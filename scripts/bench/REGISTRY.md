@@ -45,6 +45,12 @@ lane families must stay disjoint from that band:
   c4 39240..39245, c6 39260..39265, c7 39270..39275, c8 39280..39285).
   c7's KV leg uses the port-keyed dev cert `tmp/dev-certs/dev-cert-<atls>.pem`
   (`lib/smalt/tls.ex`), so the cert path follows the arm_tls port.
+  c9 (enclave loop, `scripts/bench/enclave_loop.exs`): 39290..39294
+  (arm/egress/amqp/ehub/arm_tls; 39295 spare). Defaults in the harness are the
+  c9 block — any row embedding the global substrate ports (9443/8443/5672/5673)
+  is VOID. Identity note: `v26.10.14/bench/c9-cost-model.jsonl` is a RETIRED
+  identity (a different, retired c9); the live c9 is the v26.10.16 enclave
+  loop (`c9-enclave-loop.jsonl`).
 - **Legacy self-booted blocks (pre-lib.sh, disjoint, do not move)**:
   b6 39840..39843, c3 39680..39684, c5 39850..39853,
   lifecycle_harness 39640..39650, a9 39490.
@@ -65,4 +71,15 @@ lane families must stay disjoint from that band:
   (b2 39020..39025, b3 39030..39035) by design and write their own result
   files (b2b-blob-hdr.jsonl, b3b-cosmos-hdr.jsonl).
 - c10 affidavit seal bench (scripts/bench/c10_affidavit_seal.exs) — admit_and_seal latency, in-BEAM Wasmex engine; ports 39250..39255; result affidavit-seal.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/affidavit-seal.jsonl — canonical name, no c10- prefix).
+- b42 dataplane saturation lane (`docs/jira/v26.10.16/bench/b42-dataplane-saturation.jsonl`)
+  — ports UNAUDITED: no port block registered for it in this file; register or
+  retire before its next run.
+- lc1 lifecycle-8hop (result files `lifecycle-8hop.jsonl` in v26.10.14 and
+  v26.10.16 bench dirs) — cross-ref legacy block 39640..39650 (same block as
+  `lifecycle_harness`, pre-lib.sh, do not move).
+- a-family / n-family (a1-a9, n1-n8 in `docs/jira/v26.10.14/bench/`):
+  register-or-retire — no port blocks for these lanes are registered in this
+  file beyond a9 39490 (a-family) and n5 39555 (n-family). Any re-activated
+  a/n lane must register its block here or be retired; result files without an
+  active registered lane are historical artifacts (same rule as b10/b11).
 - c11 terraform lifecycle lane (scripts/bench/c11_tf_loop.sh) — tf init/plan/apply -> read-your-write (blob/secret/cosmos) -> destroy against a lane-private substrate; ports 39310..39315; result c11-tf-loop.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/c11-tf-loop.jsonl).

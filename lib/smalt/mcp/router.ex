@@ -1,4 +1,8 @@
 defmodule Smalt.Mcp.Router do
+  # Runtime single source for the wire protocol version. The authored source
+  # stays the TTL (ema:mcpProtocolVersion); test/mcp_test.exs cross-checks the
+  # two so a spec bump cannot drift one side silently.
+  @protocol_version "2024-11-05"
   @moduledoc """
   Read-only MCP (JSON-RPC 2.0) tool surface over the smalt substrate for
   coding agents. Hand-written dispatch; the tool metadata comes from the
@@ -106,7 +110,7 @@ defmodule Smalt.Mcp.Router do
 
         %{"method" => "initialize"} = req ->
           respond(conn, req, %{
-            "protocolVersion" => "2024-11-05",
+            "protocolVersion" => @protocol_version,
             "capabilities" => %{"tools" => %{}},
             "serverInfo" => %{
               "name" => "smalt-mcp",

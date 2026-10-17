@@ -193,6 +193,13 @@ cmd_up() {
   set -m
   # SMALT_SB_SHARED_KEY honored so dev_env.sh's per-host key and the substrate
   # agree; default preserves the historical pinned key. SHIM-COURT: R17/A11 #5.
+  if [ -z "${SMALT_SB_SHARED_KEY:-}" ]; then
+    echo "[substrate] WARNING: SMALT_SB_SHARED_KEY unset — using the pinned dev default key. Set SMALT_SB_SHARED_KEY (scripts/dev_env.sh) for anything beyond loopback dev." >&2
+    if [ "${SMALT_FAIL_ON_DEFAULT_SB_KEY:-0}" = "1" ]; then
+      echo "[substrate] REFUSED: SMALT_FAIL_ON_DEFAULT_SB_KEY=1 and no SMALT_SB_SHARED_KEY set." >&2
+      return 1 2>/dev/null || exit 1
+    fi
+  fi
   SB_KEY="${SMALT_SB_SHARED_KEY:-ws8sharedkey}"
   mix run --no-start --no-halt -e 'Application.put_env(:smalt, :auth_mode, :enforce); Application.put_env(:smalt, :sb_shared_key, "'"${SB_KEY}"'"); Application.put_env(:smalt, :sb_endpoint, "sb://127.0.0.1:5672"); Application.put_env(:smalt, :amqp_port, 5672); Application.put_env(:smalt, :event_hubs_port, 5673); Application.put_env(:smalt, :arm_port, 9443); Application.put_env(:smalt, :egress_port, 8443); Application.put_env(:smalt, :arm_tls_port, 9444); {:ok, _} = Application.ensure_all_started(:smalt)' \
     9>&- </dev/null >>"$LOG" 2>&1 &

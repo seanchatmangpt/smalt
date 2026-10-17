@@ -14,6 +14,10 @@ defmodule Smalt.Mcp.Descriptor do
   """
 
   @capabilities %{
+  <%# capability_order (ema:capabilityOrder) is load-bearing for the pack
+      query (mcp_capabilities.rq binds it as a required WHERE/ORDER clause)
+      but deliberately unused for output ordering: rows sort by capability_id
+      here, and the wire tier re-sorts (router.ex tools/1). %>
 <% canonical = Enum.sort_by(caps, & &1["capability_id"]) %>
 <%= for row <- canonical do %>    "<%= row["capability_id"] %>" => %{
       name: "<%= row["capability_name"] %>",
@@ -23,7 +27,7 @@ defmodule Smalt.Mcp.Descriptor do
       requires_authority: <%= row["requires_authority"] %>,
       reversible: <%= row["is_reversible"] %>,
       consequence: :<%= row["consequence"] %>,
-      receipt_semantics: :logged
+      receipt_semantics: :<%= row["receipt_semantics"] %>
     }<%= if row != List.last(canonical), do: "," %>
 <% end %>  }
 

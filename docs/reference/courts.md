@@ -13,10 +13,13 @@ directory surfaces (`gates/`, `scripts/shim_court/`).
 | `queue_capacity_gate.py` | queue capacity + max_body clamp |
 | `lock_clamp_gate.py` | lock clamp |
 | `appconfig_etag_cas_gate.py` | App Configuration etag CAS |
-| `amqp_invariant_driver.exs` | AMQP invariants driver (Elixir .exs) |
+
+`amqp_invariant_driver.exs` is not a gate: it is the capture driver consumed
+by `gates/common.py` (~:274-293) to record AMQP wire fixtures for the gate
+corpus. It has no independent exit contract.
 
 Non-vacuity law: every gate's verdict must REFUSE a mutated observation; a
-gate that cannot exit 1 is the failure. `just invariant-gates` runs the five
+gate that cannot exit 1 is the failure. `just invariant-gates` runs the six
 fail-closed gates.
 
 ## Shim courts (`scripts/shim_court/`, `just shim-court <name>` / `just shim-courts`)
@@ -29,9 +32,10 @@ fail-closed). Exit 0/1/3; a skip is loud (`[SKIP] <reason>`). Courts
 amqp_framing, atom_bridge, blob_worm, blob_worm_arms, blocklist,
 comp_whitelist, conftest_proc_guard, corpus_fence, dets_growth,
 disposition_token, eh_batch, eh_mgmt, enclave_loop, etag_cas, ets_cleanup,
-kv_challenge, ledger_chain, lock_clamp, orphan_token, queue_capacity, plus
-witness modules (`amqp_witness.py`, `blob_worm_witness.py`,
-`lock_clamp_witness.py`, `*.exs`).
+kv_challenge, ledger_chain, lock_clamp, orphan_token, queue_capacity,
+renew_mirror, settle_cas, strata_cleanup, tombstone_grace, wire_norm — 25
+court scripts — plus witness modules (`amqp_witness.py`, `blob_worm_witness.py`,
+`lock_clamp_witness.py`, `*.exs`, `wire_norm_shim.py`).
 
 KD-COVERS/SIM-PASS auto-flip: a shim landing in `lib/` carries
 `# KD-COVERS: KD-nn`; `scripts/kd_flip.py --apply` flips the register row to

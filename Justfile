@@ -243,3 +243,4 @@ import 'justfile.d/20-sobelow.just'
 # 21-enclave — e1 enclave-loop bench lane (tf provision -> data plane -> console -> residue)
 import 'justfile.d/21-enclave.just'
 import 'justfile.d/22-native.just'
+import 'justfile.d/23-compliance.just'

@@ -1351,3 +1351,28 @@ defmodule Smalt.McpTest do
              "session's regeneration would produce a spurious order-only diff"
   end
 end
+
+# Protocol-version SSOT bridge: the runtime source is the router's
+# @protocol_version; the authored source is the TTL's ema:mcpProtocolVersion.
+# Tests keep their deliberate literals (drift pins); this test enforces the
+# bridge so a spec bump cannot move one side silently.
+defmodule Smalt.Mcp.ProtocolVersionBridgeTest do
+  use ExUnit.Case, async: false
+  import Plug.Conn
+  import Plug.Test
+
+  test "router protocolVersion matches the TTL-authored ema:mcpProtocolVersion" do
+    ttl = File.read!(Path.expand("../lib/smalt/mcp/gen/smalt_mcp_surface.ttl", __DIR__))
+
+    assert [_, ttl_version] =
+             Regex.run(~r/ema:mcpProtocolVersion\s+"([^"]+)"/, ttl)
+
+    conn =
+      conn(:post, "/", Jason.encode!(%{"jsonrpc" => "2.0", "id" => 1, "method" => "initialize", "params" => %{"protocolVersion" => "2024-11-05"}}))
+      |> Smalt.Mcp.Router.call([])
+
+    assert conn.status == 200
+    decoded = Jason.decode!(conn.resp_body)
+    assert decoded["result"]["protocolVersion"] == ttl_version
+  end
+end

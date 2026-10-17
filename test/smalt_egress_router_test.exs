@@ -137,33 +137,26 @@ defmodule SmaltEgressRouterTest do
   end
 
   # Lane-11 conditional-header module must be compiled for this contract;
-  # if it is not compiled in this run, the test is skipped honestly rather
-  # than blanket-disabled (Code.ensure_loaded? checked at compile time).
-  if Code.ensure_loaded?(Smalt.DataPlane.ConditionalHeaders) do
-    test "blob PUT with stale If-Match -> 412 precondition failure" do
-      alias Smalt.DataPlane.BlobStorage
+  # ConditionalHeaders is compiled unconditionally on HEAD (wired into
+  # blob_storage.ex); the historical Code.ensure_loaded? scaffold with a
+  # body-:ok skip is dead — the test runs unconditionally.
+  test "blob PUT with stale If-Match -> 412 precondition failure" do
+    alias Smalt.DataPlane.BlobStorage
 
-      {:ok, _} = BlobStorage.create_container("acct", "cond", %{"immutable" => false})
+    {:ok, _} = BlobStorage.create_container("acct", "cond", %{"immutable" => false})
 
-      {:ok, blob} = BlobStorage.put_blob("acct", "cond", "b1", "v1", %{})
-      etag = blob["etag"]
-      assert is_binary(etag)
+    {:ok, blob} = BlobStorage.put_blob("acct", "cond", "b1", "v1", %{})
+    etag = blob["etag"]
+    assert is_binary(etag)
 
-      # Stale If-Match on overwrite is refused
-      assert {:error, :precondition_failed, msg} =
-               BlobStorage.put_blob("acct", "cond", "b1", "v2", %{"if-match" => "\"stale\""})
+    # Stale If-Match on overwrite is refused
+    assert {:error, :precondition_failed, msg} =
+             BlobStorage.put_blob("acct", "cond", "b1", "v2", %{"if-match" => "\"stale\""})
 
-      assert is_binary(msg)
+    assert is_binary(msg)
 
-      # Matching If-Match proceeds
-      assert {:ok, _} = BlobStorage.put_blob("acct", "cond", "b1", "v2", %{"if-match" => etag})
-    end
-  else
-    @tag :skip
-    test "blob PUT with stale If-Match -> 412 precondition failure" do
-      # Skipped: Smalt.DataPlane.ConditionalHeaders not compiled in this run.
-      :ok
-    end
+    # Matching If-Match proceeds
+    assert {:ok, _} = BlobStorage.put_blob("acct", "cond", "b1", "v2", %{"if-match" => etag})
   end
 
   test "Sentinel ingest then empty query -> rows []" do

@@ -8,7 +8,7 @@ defmodule Smalt.ConfigReplayIdentityTest do
   -> build_bindings -> Render.render, then `mix format`), byte-compares
   against the on-disk artifact, and checks the pack lock digest. The same
   subprocess runs the pack gates: coverage >= 1 row, bijection zero rows,
-  census == 46.
+  census == 47.
   """
 
   use ExUnit.Case, async: false
@@ -51,12 +51,12 @@ defmodule Smalt.ConfigReplayIdentityTest do
   end
 
   @tag :replay_identity
-  test "census is closed at 46 keys; coverage and bijection gates hold" do
+  test "census is closed at 47 keys; coverage and bijection gates hold" do
     %{out: out, path: out_path} = run_mix(gate_script())
 
     assert out =~ "GATES_OK"
 
-    assert %{"census" => 46, "coverage" => cov, "bijection" => 0} =
+    assert %{"census" => 47, "coverage" => cov, "bijection" => 0} =
              out_path |> File.read!() |> Jason.decode!()
 
     assert cov >= 1

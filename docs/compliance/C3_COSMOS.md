@@ -60,16 +60,21 @@ listeners in the fence suite). Fence tests:
 
 ## Known-deviation notes
 
-- `GAP(cosmos-sql-translator-absent)`: no full SQL translator. A whitelist
-  honesty gate (`cosmos.ex` `sql_whitelisted?/1`, landed v26.10.14 work order
-  V261014-07 option (a)) admits only the trivial `SELECT * FROM <alias>` form;
-  every other nonblank query answers a typed 400 `SyntaxError` — the emulator
-  never returns an honest-looking 200 for a query it did not evaluate. Fenced
-  by the whitelist court in `test/data_plane/cosmos_test.exs`
-  (v261014-07 describe "SQL whitelist honesty gate": `SELECT * FROM c` → 200
-  feed; `WHERE`/`ORDER BY`/`JOIN`/`TOP`/projection/garbage → 400
-  `SyntaxError`). The gap label stays: the whitelist narrows the lie, it does
-  not close the gap. The list feed (`GET /dbs/:db/colls/:coll/docs`) is
+- ~~Whitelist honesty gate~~: CLOSED 2026-10-17 — superseded by the 80/20 AST
+  translator `Smalt.CosmosSql` (`lib/smalt/cosmos_sql.ex`, wired
+  `cosmos.ex:1356,1438`). The former whitelist (`cosmos.ex` `sql_whitelisted?/1`,
+  landed v26.10.14 work order V261014-07 option (a)) admitted only the trivial
+  `SELECT * FROM <alias>` form; every other nonblank query answered a typed
+  400 `SyntaxError` — the emulator never returned an honest-looking 200 for a
+  query it did not evaluate. The AST translator evaluates the same nonblank
+  queries; unsupported grammar classes (`WHERE`/`ORDER BY`/`JOIN`/`TOP`/
+  projection beyond the implemented subset/garbage) still refuse typed
+  400 `SyntaxError`. Fenced by the translator court in
+  `test/data_plane/cosmos_sql_test.exs` (typed-400 grammar classes,
+  `cosmos_sql_test.exs:88`) and `test/data_plane/cosmos_test.exs`
+  (v261014-07 whitelist court). Closure receipt:
+  `docs/jira/v26.10.16/receipts/r-lane523-cosmos-sql-flip.md`. The list feed
+  (`GET /dbs/:db/colls/:coll/docs`) is
   wrapped in the same auth/RU `gate/5` as every sibling doc route
   (401-without-auth wire fence in the same file). nil and "" list-feed
   prefixes share one continuation-token namespace (`scope/1` normalization,

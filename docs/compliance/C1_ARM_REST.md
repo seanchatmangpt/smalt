@@ -80,9 +80,9 @@ owning surface and a close condition. Adopted by the arm-gateway lane
 
 | Token | Row | Standing | Debt | Close condition |
 |---|---|---|---|---|
-| `GAP(lro-no-failed-path)` | 5b | CLOSED 2026-10-15 (lens-9 cycle-1) | operations never fail in smalt (`lro.ex` flips InProgress→Succeeded only); the operation-status `error` member has no producer, so row 5b cannot fence | a Failed LRO path: typed failure cause on the record, `error` member on the status body — closure is proved by a new row-5b fence in `test/compliance/c1_arm.exs` (wire poll of a Failed op returns 200 with `status="Failed"` + `error.code/error.message` and an `endTime`) plus a `test/lro_test.exs` fence asserting the mint path (`start_op` variant or seeded record) produces the `error` member; both tests green on the landed code = closed. CLOSED: `evaluate/1`'s catch-all now flips an incomplete InProgress record to a persisted Failed terminal with `error.code="OperationRecordIncomplete"`; both close fences landed green (c1 row-5b, `lro_test (13)`), M48/M49 killed |
-| `GAP(lro-lazy-terminality)` | 5 | CLOSED 2026-10-15 (V261014-05) | a record only reached terminal in the store when some `get_op` touched it; an op never polled after the delay elapses stayed InProgress at rest (surfaced by the lens-7 F7 conversions). Livelock face RESOLVED lens-9 (incomplete records flip to a persisted Failed terminal, `OperationRecordIncomplete`); lens-10 added the missing/non-binary-status fail-closed faces | closed by `Smalt.ArmGateway.LRO.Sweeper` (`lib/smalt/arm_gateway/lro_sweeper.ex`): periodic flip pass over `:smalt_operations` driving the SAME public `evaluate/2`/`fail_closed/2` the lazy poll path uses; child of `Smalt.Supervisor`; fences `lro_test (10)` rewritten (500 mints, zero polls, raw reads all Succeeded at rest), (10b) at-rest zero-poll fence, (12)+(13) unchanged and green |
-| `GAP(lro-retention-unbounded)` | — | CLOSED 2026-10-15 (V261014-05) | op records accumulated forever (fences `lro_test (10)+(11)` pinned this deliberately); measured 780 B/op, monotone for VM life (tmp/errc/arm-gateway-lens7/cycle-2.md) | closed by opt-in `:lro_retention_ms` (default `:infinity` — no silent policy change, fence (11) green unchanged): eviction pass after the flip pass, terminal-only (InProgress NEVER evicted), oldest-terminal-first; fences (10) eviction face (past-window terminal GONE at raw get, in-window remain, InProgress survives) + (10c) no-op fence + (10d) sweep-vs-poll convergence fence, all green |
+| lro-no-failed-path | 5b | CLOSED 2026-10-15 (lens-9 cycle-1), token retired | — | closure: `evaluate/1`'s catch-all flips an incomplete InProgress record to a persisted Failed terminal with `error.code="OperationRecordIncomplete"` (`lro.ex:128,:174`); fences c1 row-5b + `lro_test (13)` green, M48/M49 killed |
+| lro-lazy-terminality | 5 | CLOSED 2026-10-15 (V261014-05), token retired | — | closure: `Smalt.ArmGateway.LRO.Sweeper` (`lib/smalt/arm_gateway/lro_sweeper.ex`) periodic flip pass driving the same public `evaluate/2`/`fail_closed/2` as the lazy path; fences `lro_test (10)/(10b)/(12)/(13)` green |
+| lro-retention-unbounded | — | CLOSED 2026-10-15 (V261014-05), token retired | — | closure: opt-in `:lro_retention_ms` (default `:infinity`), terminal-only oldest-first eviction; fences `lro_test (10)/(10c)/(10d)` green |
 
 **Sweeper work order shape** (IMPLEMENTED v26.10.14, V261014-05 — was
 engine-Raise candidate, FEATURE BAN, lens-8 cycle 2):
@@ -105,7 +105,7 @@ engine-Raise candidate, FEATURE BAN, lens-8 cycle 2):
   (bypassing the scheduling clause) to the same persisted Failed terminal;
   fence `lro_test (20)` pins both the valid-scheduling and no-scheduling
   variants; the sweeper must reuse the same fail-closed function.
-- **Eviction interaction** (with `GAP(lro-retention-unbounded)` — CLOSED
+- **Eviction interaction** (with the retention closure — CLOSED
   2026-10-15, lane-05 receipt): eviction eligibility = terminal AND older than
   the retention window, evaluated AFTER the sweep flips, oldest-terminal-first
   per the lens-7 parked design; the sweep itself never deletes.

@@ -69,6 +69,11 @@ recorded as C25 in `~/.claude/dfcm/composition-catalog.md`).
 | `docs/jira/v*/RECEIPTS.md`, `receipts/INDEX.md` | `just receipt-index` | R8 drift gate (`docs/jira/v26.10.16/receipts/r08-receipt-index-drift-gate.md`) |
 | `docs/jira/v*/BENCH_RESULTS.md` | `just bench-report` | fail-closed report (`r36-bench-report-fail-closed.md`) |
 | `lib/smalt/mcp/generated/mcp_descriptor.ex` | ggen_igniter.sync | replay from `lib/smalt/mcp/gen/smalt_mcp_surface.ttl` |
+| `lib/smalt/config.ex` (W1a rider) | `mix smalt.gen` | `test/config_replay_identity_test.exs` (`config_keys.receipt.md`) |
+| `lib/smalt/store_tables.ex` (W1b rider) | `mix smalt.gen` | `test/store_tables_replay_identity_test.exs` (`store.receipt.md`) |
+| `lib/smalt/cascade_edges.ex` (W2a rider) | `mix smalt.gen` | `test/cascade_replay_identity_test.exs` (`cascade.receipt.md`) |
+| `lib/smalt/telemetry/semconv/registry.ex` (W2b rider) | ggen_igniter.sync (smalt-semconv-pack) | `test/semconv_replay_identity_test.exs` + `test/semconv_test.exs` (`semconv.receipt.md`) |
+| `lib/smalt/projection/canonical.ex` (Canonical rider) | `mix smalt.gen` | `test/canonical_projection_test.exs` (`canonical.receipt.md`) |
 
 Each row: the artifact is never hand-edited; disagreement between
 artifact and graph is resolved by regen, and the regen itself is

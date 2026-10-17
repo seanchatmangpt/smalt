@@ -40,16 +40,30 @@ def test_whitelist_admits_root_alias(container):
 
 
 @pytest.mark.parametrize("sql", [
-    "SELECT c.id FROM c",
-    "SELECT * FROM c WHERE c.n = 2",
     "SELECT VALUE c.n FROM c",
     " CosmosDB",
     "SELECT * FROM c OFFSET 1 LIMIT 1",
 ])
-def test_whitelist_refuses_non_star_queries_400(container, sql):
+def test_whitelist_refuses_grammar_external_queries_400(container, sql):
+    # Only `SELECT * FROM <alias>` rides the fast path; other queries are
+    # parsed by Smalt.CosmosSql (cosmos.ex do_query_docs). Joins/UDFs/
+    # aggregates/TOP/OFFSET are outside its grammar -> typed 400 SyntaxError.
     with pytest.raises(exceptions.CosmosHttpResponseError) as ei:
         list(container.query_items(sql))
     assert ei.value.status_code == 400, (sql, ei.value.status_code)
+
+
+def test_cosmos_sql_evaluates_non_star_queries_200(container):
+    # GAP(cosmos-sql-translator-absent) closure: valid non-star queries are
+    # parsed by Smalt.CosmosSql and answered — 200 with real evaluated
+    # results, WHERE actually filters (premise rot fix, i11 receipt).
+    container.create_item({"id": "sql-1", "pk": "sq", "n": 1})
+    container.create_item({"id": "sql-2", "pk": "sq", "n": 2})
+    rows = list(container.query_items("SELECT * FROM c WHERE c.n = 2",
+                                      partition_key="sq"))
+    assert [r["id"] for r in rows] == ["sql-2"], rows
+    proj = list(container.query_items("SELECT c.id FROM c", partition_key="sq"))
+    assert sorted(r["id"] for r in proj) == ["sql-1", "sql-2"], proj
 
 
 def test_item_crud_and_stale_etag_412(container):

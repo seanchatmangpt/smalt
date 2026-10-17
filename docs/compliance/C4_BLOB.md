@@ -262,7 +262,7 @@ with `Content-Type: application/xml` and the `x-ms-error-code` response header
 (JSON envelope included) now carry `x-ms-error-code` extracted from the body's
 code slot (either envelope shape; no-code bodies emit no header). Also closed:
 container-list `maxresults` split grammar — junk/zero/negative maxresults on
-the container route answer typed 400 `InvalidQueryParameter`
+the container route answer typed 400 `InvalidQueryParameterValue`
 (`BlobStorage.check_maxresults/1`), matching the blob route and real Azure.
 Remaining: `comp=list` against a nonexistent container returns **200 empty
 list** where real returns 404 `ContainerNotFound`.
@@ -316,7 +316,7 @@ policy lock state (blob_storage.ex:410-428).
   (`xml_escape/1 delegates`, astral container list + xmerl parse).
 - **§2 maxresults grammar — CLOSED.** Container route routed through
   `BlobStorage.check_maxresults/1`; junk/zero/negative → 400
-  `InvalidQueryParameter` (XML envelope on comp=list). Fence: container
+  `InvalidQueryParameterValue` (XML envelope on comp=list). Fence: container
   `?comp=list&maxresults=abc|0|-1|5x` → 400; `=5000`/absent → 200.
 - **§3 XML error envelope + x-ms-error-code — CLOSED (§0 gate CLOSED).**
   Wire-court gate resolved empirically: cross-plane regression
@@ -325,8 +325,8 @@ policy lock state (blob_storage.ex:410-428).
   `test/data_plane/audit_planes_test.exs`,
   `test/security/security_hardening_test.exs`) → **288 tests, 0 failures**
   with zero non-blob JSON-shape changes. Fence: blob comp=list junk
-  maxresults → 400 `application/xml` `<Error><Code>InvalidQueryParameter</Code></Error>`
-  + `x-ms-error-code: InvalidQueryParameter`.
+  maxresults → 400 `application/xml` `<Error><Code>InvalidQueryParameterValue</Code></Error>`
+  + `x-ms-error-code: InvalidQueryParameterValue`.
 - **§4 fast-path prefix echo — CLOSED.** `render_blobs/9` → `render_blobs/10`
   now routes through the composed path's
   `if(prefix == "", do: key_prefix, else: prefix)` echo. Fence: plain

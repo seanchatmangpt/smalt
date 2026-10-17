@@ -9,7 +9,8 @@ builds with no mix.exs project block), at the exact versions pinned in
 `mix.lock`. The packages are not modified by smalt and are not themselves
 part of the smalt distribution; they are fetched at build time via
 `mix deps.get` from hex.pm. Legal prose lives in the hand-written
-`docs/NOTICE.md` (NOTICE.md is deliberately NOT a projection).
+`NOTICE.md` at the repo root (NOTICE.md is deliberately NOT a
+projection).
 
 ## Dependencies (from mix.lock)
 
@@ -118,4 +119,4 @@ No copyleft (GPL/AGPL/MPL/EPL) dependencies are present in `mix.lock`.
 Apache-2.0 §4(d) NOTICE-file contents must be preserved in downstream
 distributions that ship a dependency's source or binaries; smalt does not
 ship dependency sources in its release artifact. Legal prose: see the
-hand-written `docs/NOTICE.md`.
+hand-written `NOTICE.md` at the repo root.

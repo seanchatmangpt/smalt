@@ -213,8 +213,8 @@
     "eventHubs": 5673
   },
   "identity": {
-    "contentSha256": "46db7420047f0957ffb51dd7c705ac83ec5b6c3d5b8ca9805bb222ef7ff9d034",
-    "packLockSha256": "2dcdefb17fbeb44c96f7c6393a7941542ffe1c8a453ab29ab41087cd45c02a71",
+    "contentSha256": "6e5c798d141fed71c6a26f16a821a522540214758923bbb10783ef539a98ed71",
+    "packLockSha256": "7beea18f77e31d4506e30dbcbe4eb68ab0eec5a6819cb0d91a4a75ea508ade06",
     "semanticEpoch": "26.10.16"
   },
   "name": "smalt",

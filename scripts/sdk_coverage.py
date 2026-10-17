@@ -101,6 +101,10 @@ SURFACES += [
          ts=["ledger"], py=["ledger"],
          receipts=["docs/jira/v26.10.16/sdk-results/ts-ledger.md",
                    "docs/jira/v26.10.16/sdk-results/py-ledger.md"]),
+    dict(id="appconfig", ground={"egress_router.ex": ['get "/kv"']},
+         ts=["appconfig"], py=["appconfig"],
+         receipts=["docs/jira/v26.10.16/sdk-results/ts-appconfig.md",
+                   "docs/jira/v26.10.16/sdk-results/py-appconfig.md"]),
 ]
 
 # surfaces whose census/AMQP cell is represented by the Service Bus census
@@ -176,6 +180,11 @@ def compile_cap_cells(kds, findings):
                 status = "UNREGISTERED-GAP"
                 findings.append(f"{s['id']}/cap: receipt {rcpt} records FAIL "
                                 "with no KD row citing it")
+        elif standing == "PARTIAL_ALIVE":
+            # receipt on disk, zero FAIL tokens, standing PARTIAL_ALIVE:
+            # wire fence exists but is partial — covered, counted separately
+            # from PASS, never a finding.
+            status = "PASS-PARTIAL"
         else:
             status = "PASS"
         cells.append({"id": s["id"], "grounded": grounded, "receipt": rcpt,
@@ -265,6 +274,10 @@ KD_CELLS = [
     ("servicebus", "ts", ["KD-45"]),
     ("eventhubs", "ts", ["KD-53", "KD-76"]),
     ("eventhubs", "py", ["KD-70", "KD-71"]),
+    ("servicebus", "py", ["KD-77"]),
+    ("arm", "ts", ["KD-91"]),
+    ("blob", "ts", ["KD-92"]),
+    ("cosmos", "ts", ["KD-93"]),
 ]
 
 def kd_for_receipt(kds, receipt_name):
@@ -498,10 +511,11 @@ def compile_window(win):
     # ---- capability cells (v26.10.16 wave surfaces) ----
     cap_cells = compile_cap_cells(kds, findings)
     n_cap_pass = sum(1 for c in cap_cells if c["status"] == "PASS")
+    n_cap_partial = sum(1 for c in cap_cells if c["status"] == "PASS-PARTIAL")
     n_cap_reg = sum(1 for c in cap_cells if c["status"] == "REGISTERED-DIVERGENCE")
     n_cap_gap = sum(1 for c in cap_cells if c["status"] == "UNREGISTERED-GAP")
     n_cap_missing = sum(1 for c in cap_cells if c["status"] == "MISSING")
-    print(f"capability cells: PASS={n_cap_pass} "
+    print(f"capability cells: PASS={n_cap_pass} PASS-PARTIAL={n_cap_partial} "
           f"REGISTERED-DIVERGENCE={n_cap_reg} UNREGISTERED-GAP={n_cap_gap} "
           f"MISSING={n_cap_missing}")
     for c in cap_cells:

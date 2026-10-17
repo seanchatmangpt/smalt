@@ -2,7 +2,7 @@
 # Usage: mix run --no-start scripts/shim_court/comp_whitelist_witness.exs after|before
 #
 #   after  — LANDED behavior must hold: every unimplemented blob comp answers a
-#            typed 400 InvalidQueryParameter (x-ms-error-code header) and the
+#            typed 400 InvalidQueryParameterValue (x-ms-error-code header) and the
 #            blob body is UNCHANGED. Exit 0 iff all pass.
 #   before — SHIMMED behavior must show the original corruption: PUT with an
 #            unimplemented comp OVERWRITES the blob body (the AUD-1 headline
@@ -64,8 +64,8 @@ case mode do
 
         cond do
           conn.status != 400 -> "#{comp}: status #{conn.status} != 400"
-          Plug.Conn.get_resp_header(conn, "x-ms-error-code") != ["InvalidQueryParameter"] ->
-            "#{comp}: missing x-ms-error-code InvalidQueryParameter"
+          Plug.Conn.get_resp_header(conn, "x-ms-error-code") != ["InvalidQueryParameterValue"] ->
+            "#{comp}: missing x-ms-error-code InvalidQueryParameterValue"
 
           not body_ok? -> "#{comp}: message mismatch"
           true -> nil

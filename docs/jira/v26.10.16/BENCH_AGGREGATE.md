@@ -80,7 +80,7 @@ schemas (also valid JSON, counted separately). Malformed = non-JSON lines.
 |---|---|---|---
 | a1-change-feed.jsonl | 4 (rich) | M3 Max | baseline/stall × 2 runs |
 | b7-store-beam.jsonl | 5 std rows | M3 Max | store-beam re-measure |
-| wave-telemetry.jsonl | 11 (rich) | — | lane verdict telemetry (not perf ops) |
+| wave-telemetry-run2.jsonl | 11 (rich) | — | lane verdict telemetry (not perf ops) |
 
 ## Malformed-line note (loud)
 
@@ -190,3 +190,21 @@ numbers are close.
 
 This is an aggregation receipt, not a bench run: no substrate was booted, no
 ports taken, no result rows were emitted to any lane jsonl by this lane.
+
+## Measurement plan — re-run queue (lane I17, 2026-10-17, plan only — no re-runs in this window)
+
+Two regressions from the current window need a clean re-run before any verdict
+is drawn from them:
+
+1. **b7 `concurrent_put_get_32p` −24.1%** (vs the v26.10.14 baseline).
+   Re-run plan: quiet host (no concurrent lanes, `substrate-status` empty),
+   best-of-3 full `b7_store_beam.exs` runs, per-run `just bench-machine` in the
+   receipt; accept the re-run only if the delta reproduces within ±5% —
+   otherwise close as noise with all three runs receipted.
+2. **a1 `a1-change-feed` p95 +274%**. Re-run plan: same quiet-host/best-of-3
+   protocol; additionally the a1 receipt MUST re-capture `stages_per_s` —
+   if the stage throughput figure cannot be reproduced, receipt its loss
+   explicitly (do not carry the stale number forward).
+
+Both re-runs write only their own lane's result file and follow the
+REGISTRY.md port law; neither ran in this window (plan only).

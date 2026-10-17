@@ -1,6 +1,6 @@
 # PROJECTION-ARCH-PLAN — smalt × ggen projection architecture (v26.10.17 opening move)
 
-**Status:** Plan (design decisions + wave execution). Wave status table: §1a (W1 LANDED, W2 lanes LANDED uncommitted, W3-W9 QUEUED). Engine law updated 2026-10-17: **one engine, no choice — graphlaw** (operator directive; 7/7 pack queries row-for-row vs the oxigraph reference, sparql + qlever deleted, ORDER BY post-sort workaround retired — ggen_igniter `b514bf5`).
+**Status:** Plan (design decisions + wave execution). Wave status table: §1a (W1 LANDED, W2 lanes LANDED (6dc0013, b6a8b7e; W2b task landed 483eee3), W3-W9 QUEUED). Engine law updated 2026-10-17: **one engine, no choice — graphlaw** (operator directive; 7/7 pack queries row-for-row vs the oxigraph reference, sparql + qlever deleted, ORDER BY post-sort workaround retired — ggen_igniter `b514bf5`).
 
 **Sources:** 5 Explore surveys (E1 routes, E2 store, E3 scaffolds, E4 metadata, E5 blueprint) + the sjira bridge design.
 
@@ -60,7 +60,7 @@ CascadeEdge rows project capture-then-sweep (~85% regular; irregular tails stay 
 KD fence from the 94-row register (kd78/kd79 templates proven); corpus families (8/9 one shape) → 1 template + family rows; isolation blocks (env-snapshot + sink-dir + engine-reuse) as pack-managed includes. Receipts: kd_fences.receipt, corpus.receipt.
 
 **W6 — Route shells, family-by-family** (D3 behavioral-equivalence law)
-Order: EG topics (8 macros, smallest) → storage/KV singleton+default getters (~280→40) → azapi actions (~350→60) → roleAssignments/policy family (~400→50) → parented-child shells (~1,700→~150 rows). Each family: project alongside → behavioral equivalence → delete hand-written per family, court ladder green, receipts on file. D3b priority ordering from the first family. Receipts per family + cumulative arm_lines_deleted counter (~2,400-2,800 arm + ~300 egress by wave end).
+Order: EG topics (8 macros, smallest) → storage/KV singleton+default getters (~280→40) → azapi actions (~350→60) → roleAssignments/policy family (~400→50) → parented-child shells (~1,700→~150 rows). Each family: project alongside → behavioral equivalence → delete hand-written per family, court ladder green, receipts on file. D3b priority ordering from the first family. Receipts per family + cumulative arm_lines_deleted counter — canonical home `docs/jira/v26.10.17/COUNTERS.md` (seed 0; derivation command there; the ~2,400-2,800 arm + ~300 egress figures remain a planning PROJECTION, not a measurement).
 
 **W7 — semconv pack**
 YAML → pack rows; registry.ex.eex template shape; kills the hand-sync fence. Receipts: semconv.receipt; replay fence.
@@ -75,10 +75,11 @@ Codes as ontology individuals projecting both the docs table and the emitting co
 
 | Wave | Status | Evidence (as-of-date, on disk) |
 |---|---|---|
-| W1 ConfigKey + StoreTable | **LANDED** (commit `8361816`) | `lib/smalt/config.ex` 46 keys + 3 exemplar migrations; `lib/smalt/store_tables.ex` 52 rows (33 owned + 19 shadow typed) consumed by `store.ex`/`state.ex`/`dets_mirror.ex` — hand lists dead, swept-but-unowned class closed; replay fences 10/0 (config + store identity tests); pack lock converged |
-| W2 CascadeEdge | **LANDED (uncommitted)** | `lib/smalt/cascade_edges.ex` 281 LOC, 23 CascadeEdge rows, GENERATED/DO-NOT-EDIT header; replay + coverage fence `test/cascade_replay_identity_test.exs` (241 LOC, verify/cascade-coverage.unbound.rq run in-test); drop functions stay hand-written (residue doctrine) |
-| W2 semconv | **LANDED (uncommitted)** | `lib/smalt/telemetry/semconv/registry.ex` 252 LOC projected from `model/smalt.yaml`; closed-names + closed-attrs laws; drift fence `test/semconv_test.exs` (255 LOC: model fence + grep fence) |
-| W2 Canonical riders | **LANDED (uncommitted)** | `lib/smalt/projection/canonical.ex` +277 LOC; THIRD_PARTY (96 lines changed) + capabilities.json (+525) identity blocks as Canonical.write riders; fence `test/canonical_projection_test.exs` (288 LOC) |
+| W1 ConfigKey | **LANDED** (commit `8361816`) | `lib/smalt/config.ex` 46 keys + 3 exemplar migrations; replay fence `test/config_replay_identity_test.exs` (4/0); pack lock converged |
+| W1 StoreTable | **LANDED** (commit `8361816`) | `lib/smalt/store_tables.ex` 52 rows (33 owned + 19 shadow typed) consumed by `store.ex`/`state.ex`/`dets_mirror.ex` — hand lists dead, swept-but-unowned class closed; replay fence `test/store_tables_replay_identity_test.exs` (4/0) |
+| W2 CascadeEdge | **LANDED** (6dc0013, b6a8b7e; W2b task landed 483eee3) | `lib/smalt/cascade_edges.ex` 281 LOC, 23 CascadeEdge rows, GENERATED/DO-NOT-EDIT header; replay + coverage fence `test/cascade_replay_identity_test.exs` (241 LOC, verify/cascade-coverage.unbound.rq run in-test); drop functions stay hand-written (residue doctrine) |
+| W2 semconv | **LANDED** (6dc0013, b6a8b7e; W2b task landed 483eee3) | `lib/smalt/telemetry/semconv/registry.ex` 252 LOC projected from `model/smalt.yaml`; closed-names + closed-attrs laws; drift fence `test/semconv_test.exs` (255 LOC: model fence + grep fence) |
+| W2 Canonical riders | **LANDED** (6dc0013, b6a8b7e; W2b task landed 483eee3) | `lib/smalt/projection/canonical.ex` +277 LOC; THIRD_PARTY (96 lines changed) + capabilities.json (+525) identity blocks as Canonical.write riders; fence `test/canonical_projection_test.exs` (288 LOC) |
 | W3 CascadeEdge full + HashChainLedger | QUEUED | plan §1 W3 (cascade edge-family completion + ledger_writer/confidential_ledger ~70%) |
 | W4 Shim-courts scaffold | QUEUED | plan §1 W4 (1 template + 25 rows; first `Actuate.write_new_file!` production exercise) |
 | W5 KD-fence + corpus scaffold | QUEUED | plan §1 W5 |

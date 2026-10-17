@@ -18,6 +18,7 @@ count, or PASS/FAIL token) found in the file.
 | b42-dataplan | [b42-dataplane-saturation.md](receipts/b42-dataplane-saturation.md) | ALIVE | lane b42 — data-plane saturation pipeline (10,000-request storm) |
 | bench-a1-cha | [bench-a1-change-feed-rerun.md](receipts/bench-a1-change-feed-rerun.md) | PASS | a1 change-feed lane re-run (v26.10.16 refresh in place) |
 | bench-c11-tf | [bench-c11-tf-loop.md](receipts/bench-c11-tf-loop.md) | ALIVE | Bench receipt — c11 terraform→loopback→read-your-write→destroy lane |
+| canonical.re | [canonical.receipt.md](receipts/canonical.receipt.md) | PASS | canonical (Canonical.write riders projection fence) |
 | cap-affidavi | [cap-affidavit-wasm.md](receipts/cap-affidavit-wasm.md) | ALIVE | Capability: affidavit WASM engine (wasmex-mounted, fail-closed) |
 | cap-appconfi | [cap-appconfig-kv.md](receipts/cap-appconfig-kv.md) | PARTIAL_ALIVE | cap-appconfig-kv — App Config `/kv` surface capability census (DoD lane, 2026-10-16) |
 | cap-blob-sna | [cap-blob-snapshot-metadata.md](receipts/cap-blob-snapshot-metadata.md) | PASS | cap-blob-snapshot-metadata (KD-60 witness material) |
@@ -29,11 +30,26 @@ count, or PASS/FAIL token) found in the file.
 | cap-ingestio | [cap-ingestion-functor.md](receipts/cap-ingestion-functor.md) | PASS | Capability: affidavit ingestion functor (ARM PUT / RG-delete seal sideband) |
 | cap-monitor- | [cap-monitor-metrics.md](receipts/cap-monitor-metrics.md) | PARTIAL_ALIVE | cap-monitor-metrics — Azure Monitor metrics capability (Smalt.Metrics + ARM wire surface) |
 | cap-sb-eh-ap | [cap-sb-eh-apiversion-2024.md](receipts/cap-sb-eh-apiversion-2024.md) | PASS | SB queues + EH eventhubs lattice top 2021-04-01 → 2024-01-01 |
+| cascade.rece | [cascade.receipt.md](receipts/cascade.receipt.md) | PASS | cascade (W2a CascadeEdge projection replay fence) |
+| config_keys. | [config_keys.receipt.md](receipts/config_keys.receipt.md) | PASS | config_keys (W1a ConfigKey projection replay fence) |
 | final-fin-sw | [final-fin-sweep.md](receipts/final-fin-sweep.md) | PASS | Final fin sweep — 4-generator + idempotence (terminal) |
+| kd04-token-r | [kd04-token-rename-witness.md](receipts/kd04-token-rename-witness.md) | PASS | Witness receipt — KD-04 InvalidQueryParameter → InvalidQueryParameterValue token rename |
+| kd13-kd75-so | [kd13-kd75-softdelete-routes-witness.md](receipts/kd13-kd75-softdelete-routes-witness.md) | UNKNOWN | Witness receipt — KD-13 / KD-75 KV soft-delete routes landed |
+| kd79-vaultur | [kd79-vaulturi-loopback-witness.md](receipts/kd79-vaulturi-loopback-witness.md) | PASS | KD-79 witness receipt — Key Vault vaultUri loopback-by-design |
+| kd80-resourc | [kd80-resourcemanager-join-witness.md](receipts/kd80-resourcemanager-join-witness.md) | PASS | KD-80 witness receipt — metadata resourceManager trailing-slash join semantics |
+| kd81-lro-ide | [kd81-lro-identity-witness.md](receipts/kd81-lro-identity-witness.md) | PASS | KD-81 witness receipt — LRO terminal poll body carries resource identity |
+| kd82-storage | [kd82-storage-singleton-witness.md](receipts/kd82-storage-singleton-witness.md) | PASS | KD-82 witness receipt — `*Services/default` singleton GET synthesis |
+| kd87-sts-dou | [kd87-sts-double-slash-witness.md](receipts/kd87-sts-double-slash-witness.md) | PASS | KD-87 witness receipt — STS token path double-slash tolerance |
 | kd89-ml-dsa- | [kd89-ml-dsa-closure.md](receipts/kd89-ml-dsa-closure.md) | PASS | KD-89 ML-DSA-65 closure — upstream rebuild, re-vendor, forge court |
+| kd91-head-ch | [kd91-head-checknameexists-witness.md](receipts/kd91-head-checknameexists-witness.md) | PASS | KD-91 witness receipt — ARM CheckNameExists HEAD existence check |
 | lane10-expla | [lane10-explanation-rewrite.md](receipts/lane10-explanation-rewrite.md) | ALIVE | 10 — explanation rewrite (why-docs, receipt-anchored) |
 | lane606-affi | [lane606-affidavit-seal-event.md](receipts/lane606-affidavit-seal-event.md) | ALIVE | 606 — affidavit.seal OCEL event |
 | lane9-refere | [lane9-reference-rewrite.md](receipts/lane9-reference-rewrite.md) | PARTIAL_ALIVE | 9-reference-rewrite |
+| r-corpus-fen | [r-corpus-fence-court-witness.md](receipts/r-corpus-fence-court-witness.md) | PASS | r-corpus-fence-court-witness |
+| r-dets-growt | [r-dets-growth-court-witness.md](receipts/r-dets-growth-court-witness.md) | PASS | r-dets-growth-court-witness |
+| r-enclave-lo | [r-enclave-loop-court-witness.md](receipts/r-enclave-loop-court-witness.md) | PASS | r-enclave-loop-court-witness |
+| r-kd63-chang | [r-kd63-change-feed-close.md](receipts/r-kd63-change-feed-close.md) | PASS | r-kd63: cosmos change feed close (KD-63) |
+| r-lane523-co | [r-lane523-cosmos-sql-flip.md](receipts/r-lane523-cosmos-sql-flip.md) | PASS | r-lane523: cosmos SQL whitelist → 80/20 AST translator flip |
 | r03-kd-censu | [r03-kd-census-single-sourced.md](receipts/r03-kd-census-single-sourced.md) | ALIVE | R3 (KD census prose single-sourced) |
 | r06-do-deadl | [r06-do-deadletter-self-call.md](receipts/r06-do-deadletter-self-call.md) | PASS | R6 (QueueStore do_deadletter self-call fix) |
 | r08-receipt- | [r08-receipt-index-drift-gate.md](receipts/r08-receipt-index-drift-gate.md) | PASS | R8 (receipt-index-check real gate + injected-drift flip) |
@@ -175,6 +191,8 @@ count, or PASS/FAIL token) found in the file.
 | r93-kql-fide | [r93-kql-fidelity.md](receipts/r93-kql-fidelity.md) | PASS | R93: KQL fidelity |
 | r94-corpus-r | [r94-corpus-row.md](receipts/r94-corpus-row.md) | PASS | R94: error corpus row |
 | r98-comp-gat | [r98-comp-gate.md](receipts/r98-comp-gate.md) | PASS | R98: comp-whitelist gate |
+| semconv.rece | [semconv.receipt.md](receipts/semconv.receipt.md) | PASS | semconv (W2b semconv registry projection + YAML fence) |
+| store.receip | [store.receipt.md](receipts/store.receipt.md) | PASS | store_tables (W1b StoreTable projection replay fence) |
 | t5-cleanroom | [t5-cleanroom-validation.md](receipts/t5-cleanroom-validation.md) | FAIL | T5 Clean-Room Validation Receipt (lane 392) |
 
 ## Workspace (ws-01..12)
@@ -193,12 +211,13 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
-| appconfig-co | [appconfig-console-gap.md](sdk-results/appconfig-console-gap.md) | UNKNOWN | GAP RECEIPT — Azure App Configuration data plane absent from smalt substrate |
+| appconfig-co | [appconfig-console-gap.md](sdk-results/appconfig-console-gap.md) | PASS | GAP RECEIPT — Azure App Configuration data plane absent from smalt substrate |
 | native-lifec | [native-lifecycle.md](sdk-results/native-lifecycle.md) | ALIVE | Native enclave lifecycle — equivalence validation receipt (lane 409, 2026-10-16) |
 | nfr3-rss-500 | [nfr3-rss-500.md](sdk-results/nfr3-rss-500.md) | ALIVE | NFR-3 hermeticity at scale — 500-cycle RSS slope (lane 501, 2026-10-16) |
 | nfr3-rss | [nfr3-rss.md](sdk-results/nfr3-rss.md) | PASS | NFR3 RSS gate receipt |
 | nfr4-identit | [nfr4-identity-proof.md](sdk-results/nfr4-identity-proof.md) | CLOSED | NFR-4: composite ETS baseline-identity proof — FAIL-CLOSED (orphans found) |
 | pqc-attestat | [pqc-attestation-audit.md](sdk-results/pqc-attestation-audit.md) | COMPLETE | PQC Attestation Audit — smalt (Agent 9, Ring 3) |
+| py-appconfig | [py-appconfig.md](sdk-results/py-appconfig.md) | PASS | PY App Configuration Probe — /kv wire surface (KD-53) |
 | py-arm-resou | [py-arm-resources.md](sdk-results/py-arm-resources.md) | PASS | PY-1 — real azure-mgmt-resources (Python) against the smalt ARM plane |
 | py-atlas | [py-atlas.md](sdk-results/py-atlas.md) | PASS | PY-ATLAS — Purview Atlas v2 REST probes (python requests) |
 | py-auth-keyv | [py-auth-keyvault.md](sdk-results/py-auth-keyvault.md) | UNKNOWN | PY-6 — real azure-identity + azure-keyvault (Python) against the smalt ARM/KV planes |
@@ -209,11 +228,12 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | py-servicebu | [py-servicebus.md](sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane |
 | py-storage-b | [py-storage-blob.md](sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) |
 | shim-v2-veri | [shim-v2-verification.md](sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) |
-| spc-bands | [spc-bands.md](sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) |
+| spc-bands | [spc-bands.md](sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) |
 | spc-gate-rec | [spc-gate-receipt.md](sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) |
 | t5-cleanroom | [t5-cleanroom.md](sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) |
 | tf-plan | [tf-plan.md](sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane |
 | tf-wire-ladd | [tf-wire-ladder.md](sdk-results/tf-wire-ladder.md) | PARTIAL_ALIVE | TF Wire Ladder — Lane 509 (Ring 4 validation), 2026-10-16 |
+| ts-appconfig | [ts-appconfig.md](sdk-results/ts-appconfig.md) | PASS | TS App Configuration Probe — /kv wire surface (KD-53) |
 | ts-arm-resou | [ts-arm-resources.md](sdk-results/ts-arm-resources.md) | UNKNOWN | TS-1 — real @azure/arm-resources (TypeScript) against the smalt ARM plane |
 | ts-atlas | [ts-atlas.md](sdk-results/ts-atlas.md) | ALIVE | TS Atlas probe — Purview Catalog (Atlas v2) surface (KD-40 lane) |
 | ts-auth | [ts-auth.md](sdk-results/ts-auth.md) | PASS | TS-6 — real @azure/identity auth surface (TypeScript) against the smalt ARM/STS plane |
@@ -252,6 +272,7 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-20 | (no receipt file — justfile module `justfile.d/20-sobelow.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-21 | (no receipt file — justfile module `justfile.d/21-enclave.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-22 | (no receipt file — justfile module `justfile.d/22-native.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-23 | (no receipt file — justfile module `justfile.d/23-compliance.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

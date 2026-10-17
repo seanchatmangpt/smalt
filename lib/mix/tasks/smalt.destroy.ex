@@ -43,24 +43,26 @@ defmodule Mix.Tasks.Smalt.Destroy do
       |> EnclaveCommon.require_flag!(:fixture, "smalt.destroy")
       |> EnclaveCommon.resolve_fixture()
     EnclaveCommon.ensure_store!()
-    # Dev-loop CLI: anonymous router face (same as the ExUnit suite).
-    Application.put_env(:smalt, :auth_mode, :anonymous)
 
-    with {:ok, doc} <- Hcl.parse(fixture),
-         terms = to_terms(doc),
-         {:ok, outcomes} <- Engine.apply(terms, []),
-         %{deleted: deleted, residue: residue} <- State.destroy(outcome_map(outcomes)) do
-      case nonempty_residue(residue) do
-        [] ->
-          Mix.shell().info("[destroy] OK fixture=#{fixture} deleted=#{length(deleted)} residue=0")
+    # Dev-loop CLI: anonymous router face (same as the ExUnit suite) —
+    # SCOPED via MixAuthScope so the process-global flip restores on exit.
+    Smalt.MixAuthScope.with_anonymous_auth(fn ->
+      with {:ok, doc} <- Hcl.parse(fixture),
+           terms = to_terms(doc),
+           {:ok, outcomes} <- Engine.apply(terms, []),
+           %{deleted: deleted, residue: residue} <- State.destroy(outcome_map(outcomes)) do
+        case nonempty_residue(residue) do
+          [] ->
+            Mix.shell().info("[destroy] OK fixture=#{fixture} deleted=#{length(deleted)} residue=0")
 
-        survivors ->
-          EnclaveCommon.fail!(":residue_nonzero fixture=#{fixture} survivors=#{inspect(survivors, limit: 20)}")
+          survivors ->
+            EnclaveCommon.fail!(":residue_nonzero fixture=#{fixture} survivors=#{inspect(survivors, limit: 20)}")
+        end
+      else
+        {:error, reason} ->
+          EnclaveCommon.fail!(":destroy_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}")
       end
-    else
-      {:error, reason} ->
-        EnclaveCommon.fail!(":destroy_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}")
-    end
+    end)
   end
 
   defp nonempty_residue(residue),

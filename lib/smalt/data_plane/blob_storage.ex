@@ -101,7 +101,7 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   @doc """
   Validate List Blobs `maxresults` (Azure grammar: 1-5000; non-positive or
-  non-integer values are 400 InvalidQueryParameter, never silently coerced
+  non-integer values are 400 InvalidQueryParameterValue, never silently coerced
   to the default page size).
   """
   def check_maxresults(nil), do: :ok
@@ -117,7 +117,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   def check_maxresults(_), do: maxresults_error()
 
   defp maxresults_error,
-    do: {:error, 400, "InvalidQueryParameter",
+    do: {:error, 400, "InvalidQueryParameterValue",
          "Value for maxresults is invalid (must be a positive integer)."}
 
   @doc """
@@ -348,10 +348,10 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   # Azure grammar: a block id is 1-64 bytes; when un-encoded it must be a
   # valid base64 string. Fence the length (the common failure — an empty or
-  # oversize id — with 400 InvalidQueryParameter, Azure's wire shape).
+  # oversize id — with 400 InvalidQueryParameterValue, Azure's wire shape).
   defp check_block_id(block_id) when is_binary(block_id) do
     if block_id == "" or byte_size(block_id) > 64 do
-      {:error, 400, "InvalidQueryParameter",
+      {:error, 400, "InvalidQueryParameterValue",
        "The blockid must be between 1 and 64 bytes."}
     else
       :ok
@@ -359,7 +359,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   end
 
   defp check_block_id(_),
-    do: {:error, 400, "InvalidQueryParameter", "The blockid must be a string."}
+    do: {:error, 400, "InvalidQueryParameterValue", "The blockid must be a string."}
 
   defp block_key(account, container, blob_name, block_id) do
     # NUL separator: blob names may contain "/" (slash-blobs are legal), so a

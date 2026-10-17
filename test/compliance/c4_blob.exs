@@ -56,9 +56,12 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert Jason.decode!(resp.body)["error"]["code"] == "MissingXMsVersion"
 
     # Lens-3 cycle 4: message-byte pin (same fact family the c1/c7 api-version
-    # courts pin — every 400 gate names its prose exactly).
+    # courts pin — every 400 gate names its prose exactly). Copy updated to the
+    # LANDED gate prose (GAP-AUD1-03 SAS admission widened the gate: the 400
+    # names SAS tokens and the allowlist, not just the header) — v26.10.16
+    # sdk-results receipts pin this exact wire copy on appconfig/kv surfaces.
     assert Jason.decode!(resp.body)["error"]["message"] ==
-             "x-ms-version header is required for blob storage routes."
+             "Missing required x-ms-version header, SAS token, or allowlisted host."
   end
 
   # ---------------------------------------------------------------------------
@@ -86,7 +89,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     # the dashed-36 RFC 4122 v4 GUID real Azure emits — unified with the ARM
     # gateway (c1) and LA surface (c7). Previously a 32-hex dialect pin
     # (lens-2 cycle-1 finding, honestly graded, now closed).
-    assert hdrs["x-ms-request-id"] =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid
   end
 
   test "container metadata round-trips via x-ms-meta-* headers (PUT + GET)" do
@@ -102,14 +105,14 @@ defmodule Smalt.Compliance.C4BlobTest do
     put_hdrs = header_map(put)
     # Lens-9: comp=metadata rides blob_std_headers/1 at the wire (egress
     # router site 922) — pin the full std-header law on this surface too.
-    assert put_hdrs["x-ms-request-id"] =~ @v4_guid
+    assert is_binary(put_hdrs["x-ms-request-id"]) and put_hdrs["x-ms-request-id"] =~ @v4_guid
     assert put_hdrs["x-ms-version"] == @version
     assert is_binary(put_hdrs["etag"])
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?restype=container&comp=metadata", @v)
     assert get.status == 200
     hdrs = header_map(get)
-    assert hdrs["x-ms-request-id"] =~ @v4_guid
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid
     assert hdrs["x-ms-version"] == @version
     assert hdrs["x-ms-meta-owner"] == "c4"
     assert hdrs["x-ms-meta-purpose"] == "fence"
@@ -228,7 +231,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     # the dashed-36 RFC 4122 v4 GUID real Azure emits — unified with the ARM
     # gateway (c1) and LA surface (c7). Previously a 32-hex dialect pin
     # (lens-2 cycle-1 finding, honestly graded, now closed).
-    assert hdrs["x-ms-request-id"] =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid
 
     assert hdrs["x-ms-version"] == @version
   end
@@ -285,14 +288,14 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     assert put.status == 200
     assert header_map(put)["x-ms-has-legal-hold"] == "true"
-    assert header_map(put)["x-ms-request-id"] =~ @v4_guid
+    assert is_binary(header_map(put)["x-ms-request-id"]) and header_map(put)["x-ms-request-id"] =~ @v4_guid
     assert header_map(put)["x-ms-version"] == @version
     assert Jason.decode!(put.body)["has_legal_hold"] == true
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?comp=legalhold", @v)
     assert get.status == 200
     assert header_map(get)["x-ms-legal-hold"] == "true"
-    assert header_map(get)["x-ms-request-id"] =~ @v4_guid
+    assert is_binary(header_map(get)["x-ms-request-id"]) and header_map(get)["x-ms-request-id"] =~ @v4_guid
     assert header_map(get)["x-ms-version"] == @version
   end
 
@@ -308,13 +311,13 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert put.status == 200
     hdrs = header_map(put)
     assert hdrs["x-ms-has-immutability-policy"] == "true"
-    assert hdrs["x-ms-request-id"] =~ @v4_guid
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid
     assert hdrs["x-ms-version"] == @version
     assert is_binary(hdrs["immutability-policy-until"])
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?comp=immutabilityPolicy", @v)
     assert get.status == 200
-    assert header_map(get)["x-ms-request-id"] =~ @v4_guid
+    assert is_binary(header_map(get)["x-ms-request-id"]) and header_map(get)["x-ms-request-id"] =~ @v4_guid
     assert header_map(get)["x-ms-version"] == @version
     policy = Jason.decode!(get.body)
     assert policy["period_days"] == 30
@@ -658,24 +661,46 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert Jason.decode!(resp.body)["error"]["code"] == "InvalidResourceName"
   end
 
-  test "duplicate PUT container -> 409 ContainerAlreadyExists" do
+  test "duplicate PUT container -> idempotent 200 on identical metadata, 409 ContainerAlreadyExists on drift" do
     unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
     assert req!(port(), :put, "/#{acct()}/duplec1?restype=container", unlocked).status == 201
 
+    # Landed semantics (lens-5 cycle-33 "Idempotent Put Container", pinned by
+    # test/egress_dispatch_test.exs:1597 + test/corpus/blob_container_reput.exs):
+    # real Azure answers 200 + std headers when the x-ms-meta-* set is
+    # IDENTICAL, 409 ContainerAlreadyExists only when it differs. The
+    # compliance copy predates that landing and pinned blanket 409.
     dup = req!(port(), :put, "/#{acct()}/duplec1?restype=container", unlocked)
 
-    assert dup.status == 409
-    assert Jason.decode!(dup.body)["error"]["code"] == "ContainerAlreadyExists"
+    assert dup.status == 200
+    assert_std_blob_headers(dup)
+
+    drifted =
+      req!(port(), :put, "/#{acct()}/duplec1?restype=container",
+        headers: unlocked ++ [{"x-ms-meta-owner", "other"}]
+      )
+
+    assert drifted.status == 409
+    assert Jason.decode!(drifted.body)["error"]["code"] == "ContainerAlreadyExists"
   end
 
-  test "list blobs with junk maxresults -> 400 InvalidQueryParameter" do
+  test "list blobs with junk maxresults -> 400 InvalidQueryParameterValue (Azure XML envelope)" do
     unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
     assert req!(port(), :put, "/#{acct()}/mxresults?restype=container", unlocked).status == 201
 
     resp = req!(port(), :get, "/#{acct()}/mxresults?comp=list&maxresults=abc", @v)
 
     assert resp.status == 400
-    assert Jason.decode!(resp.body)["error"]["code"] == "InvalidQueryParameter"
+
+    # comp=list-class errors deliberately render the Azure XML <Error> envelope
+    # (application/xml), NOT JSON — lane 06 defect 3 landed that wire shape and
+    # the blob_error_xml arm owns it. The compliance copy predated the landing
+    # and JSON-decoded; fence the XML envelope instead.
+    assert resp.body =~ ~r/<Error>/
+    assert resp.body =~
+             ~r/<Code>InvalidQueryParameterValue<\/Code>/
+
+    assert String.contains?(header_map(resp)["content-type"], "application/xml")
   end
 
   test "list blobs with delimiter rolls directories into BlobPrefix at the wire" do
@@ -717,7 +742,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert is_binary(hdrs["x-ms-request-id"])
 
     # v4 GUID shape: 8-4-4-4-12 hex with version nibble 4
-    assert hdrs["x-ms-request-id"] =~ ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid
     assert hdrs["x-ms-version"] == "2021-12-02"
 
     # per-request ids (not a shared constant)
@@ -967,7 +992,13 @@ defmodule Smalt.Compliance.C4BlobTest do
 
   defp assert_std_blob_headers(resp) do
     hdrs = header_map(resp)
-    assert hdrs["x-ms-request-id"] =~ @v4_guid, "x-ms-request-id missing/not v4"
+
+    # Defensive (lens-4/5 wave, :1002 class): a MISSING header used to
+    # FunctionClauseError inside Kernel.=~/2, burying the real failure. Assert
+    # presence first so the wire gap reads as a typed assertion, never a
+    # clause crash.
+    assert is_binary(hdrs["x-ms-request-id"]), "x-ms-request-id header missing"
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid, "x-ms-request-id missing/not v4"
     assert hdrs["x-ms-version"] == @version
     hdrs
   end

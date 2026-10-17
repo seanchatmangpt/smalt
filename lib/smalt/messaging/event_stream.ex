@@ -147,7 +147,16 @@ defmodule Smalt.Messaging.EventStream do
     end)
   end
 
-  defp next_seq do
+  @doc """
+  Next monotonic seq from the shared Store-owned `{:seq_counter}` row.
+
+  Public since the `/topics/:topic/events` readback merge (premise sweep #5):
+  EG1-native events (`Smalt.ArmGateway.Router.eg1_publish/2`) stamp their seq
+  from THIS counter too, so CloudEvents and EG1 seqs are one comparable domain
+  and the merged readback sort is a total order over a single feed.
+  """
+  @spec next_seq() :: integer
+  def next_seq do
     # Store-owned atomic counter (lane event-planes lens-2 cycle 1): the lazy
     # caller-owned named counter table crashed concurrent first-publishers with
     # `:ets.new ... table name already exists` and reset seq when its owner

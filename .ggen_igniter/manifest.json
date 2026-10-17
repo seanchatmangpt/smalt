@@ -3,11 +3,11 @@
     "../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex=>lib/smalt/telemetry/semconv/registry.ex": {
       "out_template": "lib/smalt/telemetry/semconv/registry.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/telemetry/semconv/registry.ex": "sha256:0f40a374075e84bb5a91cf72de2b2e38570c86db28b73944e86cb6bc8582587a"
+        "/Users/sac/smalt/lib/smalt/telemetry/semconv/registry.ex": "sha256:de97b736e30e7ab51d879740ec0f8b05f6e29ce0c1355ea10206db0af22ba962"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-semconv-pack",
       "template": "../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex",
-      "updated_at": "2026-10-17T18:00:24.623528Z"
+      "updated_at": "2026-10-17T20:21:12.594856Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex=>lib/smalt/cascade_edges.ex": {
       "out_template": "lib/smalt/cascade_edges.ex",
@@ -21,11 +21,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex=>lib/smalt/config.ex": {
       "out_template": "lib/smalt/config.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:514ddf1ba77057f3d130b31a0946d4cbd1a22cbaf264a1ed4a42fb6fef46c798"
+        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:5f53b0190732e42e857d786331e79d3ebb6ddf55d62180ca1abcaa9858254e82"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex",
-      "updated_at": "2026-10-17T18:11:39.904572Z"
+      "updated_at": "2026-10-17T20:10:22.397322Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex=>tmp/defaults_projected.ex": {
       "out_template": "tmp/defaults_projected.ex",
@@ -109,7 +109,7 @@
       "updated_at": "2026-10-16T17:36:44.230493Z"
     },
     "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>lib/smalt/mcp/generated/mcp_descriptor.ex": {
-      "out_template": "lib/smalt/mcp/generated/mcp_descriptor.ex",
+      "out_template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
       "outputs": {
         "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:900c396b7537dfa0bba43c1bdeeb78ed0b315ca0f5f26ef49f9c94512f0fac47"
       },

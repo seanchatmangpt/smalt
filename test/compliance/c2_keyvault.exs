@@ -48,6 +48,12 @@ defmodule Compliance.C2KeyvaultTest do
   end
 
   setup do
+    # Bearer enforcement is the default now (lib/smalt/auth/bearer.ex: :enforce
+    # unless auth_mode is :anonymous); opt out like c1/c4 — enforce-mode auth is
+    # fenced by test/auth_enforce_test.exs.
+    prev_auth = Application.get_env(:smalt, :auth_mode)
+    Application.put_env(:smalt, :auth_mode, :anonymous)
+
     {:ok, cert, _key} =
       case Smalt.TLS.ensure_dev_cert() do
         {:ok, c, k} -> {:ok, c, k}
@@ -64,6 +70,8 @@ defmodule Compliance.C2KeyvaultTest do
       catch
         _, _ -> Process.exit(sup, :kill)
       end
+
+      Application.put_env(:smalt, :auth_mode, prev_auth || :anonymous)
     end)
 
     [port: port, cert: Path.expand(cert)]
@@ -104,7 +112,7 @@ defmodule Compliance.C2KeyvaultTest do
           false
       end
 
-    if alive?, do: :ok, else: (Process.sleep(100) && wait_twin(port, n - 1))
+    if alive?, do: :ok, else: Process.sleep(100) && wait_twin(port, n - 1)
   end
 
   # -- real-TLS HTTP client (verify_none is fine here: the pin/hostname
@@ -119,6 +127,16 @@ defmodule Compliance.C2KeyvaultTest do
   # content-type fact is pinned byte-identical on ARM (c1) and Cosmos (c3);
   # the Key Vault plane shares the same send_json seam and gets the same pin.
   defp https_full(ctx, method, path, body \\ nil, headers \\ []) do
+    # KD-15 (lib/smalt/egress_router.ex): /keys (and /secrets, /kv) requests
+    # without an Authorization header get the mode-blind 401
+    # MissingBearerToken challenge even in anonymous mode — real challenge-
+    # based SDKs need it. These probes predate the guard; default a bearer
+    # header so they exercise the handlers, not the challenge.
+    headers =
+      if Enum.any?(headers, fn {k, _} -> String.downcase(k) == "authorization" end),
+        do: headers,
+        else: [{"authorization", "Bearer compliance-probe"} | headers]
+
     req =
       [
         "#{method} #{path} HTTP/1.1",
@@ -133,7 +151,9 @@ defmodule Compliance.C2KeyvaultTest do
         end ++
         ["", body || ""]
 
-    {:ok, sock} = :ssl.connect(~c"localhost", ctx.port, [verify: :verify_none, active: false], 5000)
+    {:ok, sock} =
+      :ssl.connect(~c"localhost", ctx.port, [verify: :verify_none, active: false], 5000)
+
     :ok = :ssl.send(sock, IO.iodata_to_binary(Enum.join(req, "\r\n")))
     data = recv_all(sock, [])
     :ssl.close(sock)
@@ -175,13 +195,16 @@ defmodule Compliance.C2KeyvaultTest do
     case String.split(raw, "\r\n", parts: 2) do
       [size_line, rest] ->
         case Integer.parse(size_line, 16) do
-          {0, _} -> IO.iodata_to_binary(Enum.reverse(acc))
+          {0, _} ->
+            IO.iodata_to_binary(Enum.reverse(acc))
+
           {n, _} ->
             <<chunk::binary-size(n), "\r\n", rem::binary>> = rest
             dechunk(rem, [chunk | acc])
         end
 
-      _ -> IO.iodata_to_binary(Enum.reverse(acc))
+      _ ->
+        IO.iodata_to_binary(Enum.reverse(acc))
     end
   end
 
@@ -199,7 +222,10 @@ defmodule Compliance.C2KeyvaultTest do
   defp attest do
     measurement = Base.encode16(:crypto.strong_rand_bytes(32), case: :lower)
     Smalt.Store.put(:smalt_attestation_baseline, measurement, measurement)
-    {:ok, token, claims} = Smalt.Security.Attestation.attest_enclave(%{"measurement" => measurement})
+
+    {:ok, token, claims} =
+      Smalt.Security.Attestation.attest_enclave(%{"measurement" => measurement})
+
     {token, claims}
   end
 
@@ -250,7 +276,12 @@ defmodule Compliance.C2KeyvaultTest do
     plain = :crypto.strong_rand_bytes(32)
 
     {s, b} =
-      https(ctx, "POST", "/keys/#{name}/encrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => b64u(plain)}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/encrypt",
+        Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => b64u(plain)})
+      )
 
     assert s == 200, "encrypt returned #{s}: #{inspect(b)}"
     enc = json(b)
@@ -260,14 +291,24 @@ defmodule Compliance.C2KeyvaultTest do
     refute ct =~ "=" and ct =~ "+" and ct =~ "/"
 
     {s, b} =
-      https(ctx, "POST", "/keys/#{name}/decrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => ct}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/decrypt",
+        Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => ct})
+      )
 
     assert s == 200, "decrypt round trip returned #{s}: #{inspect(b)}"
     assert json(b)["value"] |> b64u_decode!() == plain
 
     # compat: a standard-base64 input is also accepted on the wire
     {s, _} =
-      https(ctx, "POST", "/keys/#{name}/encrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64(plain)}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/encrypt",
+        Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64(plain)})
+      )
 
     assert s == 200
   end
@@ -281,16 +322,24 @@ defmodule Compliance.C2KeyvaultTest do
     iv = :crypto.strong_rand_bytes(12)
 
     {s, b} =
-      https(ctx, "POST", "/keys/#{name}/encrypt",
-        Jason.encode!(%{"alg" => "A256GCM", "value" => b64u(plain), "iv" => b64u(iv)}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/encrypt",
+        Jason.encode!(%{"alg" => "A256GCM", "value" => b64u(plain), "iv" => b64u(iv)})
+      )
 
     assert s == 200, "encrypt returned #{s}: #{inspect(b)}"
     enc = json(b)
     assert %{"value" => ct, "tag" => tag, "iv" => iv_out} = enc
 
     {s, b} =
-      https(ctx, "POST", "/keys/#{name}/decrypt",
-        Jason.encode!(%{"alg" => "A256GCM", "value" => ct, "iv" => iv_out, "tag" => tag}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/decrypt",
+        Jason.encode!(%{"alg" => "A256GCM", "value" => ct, "iv" => iv_out, "tag" => tag})
+      )
 
     assert s == 200, "decrypt returned #{s}: #{inspect(b)}"
     assert json(b)["value"] |> b64u_decode!() == plain
@@ -303,17 +352,38 @@ defmodule Compliance.C2KeyvaultTest do
     create_key(ctx, name, %{"kty" => "RSA-HSM"})
 
     {s, b} =
-      https(ctx, "POST", "/keys/#{name}/encrypt", Jason.encode!(%{"alg" => "A256GCM", "value" => Base.encode64("x")}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/encrypt",
+        Jason.encode!(%{"alg" => "A256GCM", "value" => Base.encode64("x")})
+      )
 
     assert s == 400 and json(b)["error"]["code"] == "InvalidAlgorithm"
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/sign", Jason.encode!(%{"alg" => "RS512", "value" => Base.encode64("x")}))
+    {s, b} =
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/sign",
+        Jason.encode!(%{"alg" => "RS512", "value" => Base.encode64("x")})
+      )
+
     assert s == 400 and json(b)["error"]["code"] == "InvalidAlgorithm"
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/sign", Jason.encode!(%{"value" => Base.encode64("x")}))
+    {s, b} =
+      https(ctx, "POST", "/keys/#{name}/sign", Jason.encode!(%{"value" => Base.encode64("x")}))
+
     assert s == 400 and json(b)["error"]["code"] == "InvalidAlgorithm"
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/decrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => "not-base64!!"}))
+    {s, b} =
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/decrypt",
+        Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => "not-base64!!"})
+      )
+
     assert s == 400 and json(b)["error"]["code"] == "InvalidValue"
 
     {s, b} = https(ctx, "GET", "/keys/no-such-c2-#{System.unique_integer()}")
@@ -327,11 +397,15 @@ defmodule Compliance.C2KeyvaultTest do
        ctx do
     name = "c2-ct-#{System.unique_integer([:positive])}"
 
-    {200, headers, _body} = https_full(ctx, "POST", "/keys/#{name}/create", Jason.encode!(%{"kty" => "RSA-HSM"}))
+    {200, headers, _body} =
+      https_full(ctx, "POST", "/keys/#{name}/create", Jason.encode!(%{"kty" => "RSA-HSM"}))
+
     hm = Map.new(headers)
     assert hm["content-type"] == "application/json; charset=utf-8"
 
-    {404, err_headers, _body} = https_full(ctx, "GET", "/keys/no-such-c2-ct-#{System.unique_integer([:positive])}")
+    {404, err_headers, _body} =
+      https_full(ctx, "GET", "/keys/no-such-c2-ct-#{System.unique_integer([:positive])}")
+
     assert Map.new(err_headers)["content-type"] == "application/json; charset=utf-8"
   end
 
@@ -344,22 +418,54 @@ defmodule Compliance.C2KeyvaultTest do
     for alg <- ["RS256", "PS256"] do
       digest = :crypto.hash(:sha256, "payload")
 
-      {s, b} = https(ctx, "POST", "/keys/#{name}/sign", Jason.encode!(%{"alg" => alg, "digest" => b64u(digest)}))
+      {s, b} =
+        https(
+          ctx,
+          "POST",
+          "/keys/#{name}/sign",
+          Jason.encode!(%{"alg" => alg, "digest" => b64u(digest)})
+        )
+
       assert s == 200, "sign #{alg} returned #{s}: #{inspect(b)}"
       assert %{"value" => sig, "kid" => kid} = json(b)
       assert is_binary(sig) and kid =~ "/keys/#{name}"
 
       # real contract: digest + signature-in-value, response {"value": bool}
-      {s, b} = https(ctx, "POST", "/keys/#{name}/verify", Jason.encode!(%{"alg" => alg, "digest" => b64u(digest), "value" => sig}))
+      {s, b} =
+        https(
+          ctx,
+          "POST",
+          "/keys/#{name}/verify",
+          Jason.encode!(%{"alg" => alg, "digest" => b64u(digest), "value" => sig})
+        )
+
       assert s == 200, "verify #{alg} returned #{s}: #{inspect(b)}"
       assert json(b)["value"] == true
       assert json(b)["valid"] == true, "compat alias 'valid' must mirror 'value'"
 
-      {s, b} = https(ctx, "POST", "/keys/#{name}/verify", Jason.encode!(%{"alg" => alg, "digest" => b64u(digest), "value" => b64u(:crypto.strong_rand_bytes(32))}))
+      {s, b} =
+        https(
+          ctx,
+          "POST",
+          "/keys/#{name}/verify",
+          Jason.encode!(%{
+            "alg" => alg,
+            "digest" => b64u(digest),
+            "value" => b64u(:crypto.strong_rand_bytes(32))
+          })
+        )
+
       assert s == 200 and json(b)["value"] == false
 
       # compat path: pre-image in value, signature in signature
-      {s, b} = https(ctx, "POST", "/keys/#{name}/verify", Jason.encode!(%{"alg" => alg, "value" => b64u("payload"), "signature" => sig}))
+      {s, b} =
+        https(
+          ctx,
+          "POST",
+          "/keys/#{name}/verify",
+          Jason.encode!(%{"alg" => alg, "value" => b64u("payload"), "signature" => sig})
+        )
+
       assert s == 200 and json(b)["value"] == true
     end
   end
@@ -374,21 +480,43 @@ defmodule Compliance.C2KeyvaultTest do
       "release_policy" => %{"allowed_operations" => ["encrypt"]}
     })
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/encrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")}))
+    {s, b} =
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/encrypt",
+        Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")})
+      )
+
     assert s == 200
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/sign", Jason.encode!(%{"alg" => "RS256", "value" => Base.encode64("x")}))
+    {s, b} =
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/sign",
+        Jason.encode!(%{"alg" => "RS256", "value" => Base.encode64("x")})
+      )
+
     assert s == 403
     assert json(b)["error"]["code"] == "OperationNotAllowed"
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/decrypt", Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")}))
+    {s, b} =
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/decrypt",
+        Jason.encode!(%{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")})
+      )
+
     assert s == 403
     assert json(b)["error"]["code"] == "OperationNotAllowed"
   end
 
   # -- C2.7 list / versions --------------------------------------------------------
 
-  test "C2.7 GET /keys and /versions return {value: [...]} with kid+attributes, no private material", ctx do
+  test "C2.7 GET /keys and /versions return {value: [...]} with kid+attributes, no private material",
+       ctx do
     name = "c2-list-#{System.unique_integer([:positive])}"
     create_key(ctx, name, %{"kty" => "RSA-HSM", "tags" => %{"env" => "c2"}})
 
@@ -413,27 +541,47 @@ defmodule Compliance.C2KeyvaultTest do
     name = "c2-skr-#{System.unique_integer([:positive])}"
     create_key(ctx, name, %{"kty" => "RSA-HSM"})
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/release", "{}")
+    {s, b} = https(ctx, "POST", "/keys/#{name}/release?api-version=7.4", "{}")
     assert s == 400 and json(b)["error"]["code"] == "KeyNotExportable"
 
     pol_name = name <> "-pol"
-    create_key(ctx, pol_name, %{"kty" => "RSA-HSM", "release_policy" => %{"allowed_operations" => ["encrypt"]}})
 
-    {s, b} = https(ctx, "POST", "/keys/#{pol_name}/release", "{}")
+    create_key(ctx, pol_name, %{
+      "kty" => "RSA-HSM",
+      "release_policy" => %{"allowed_operations" => ["encrypt"]}
+    })
+
+    {s, b} = https(ctx, "POST", "/keys/#{pol_name}/release?api-version=7.4", "{}")
     assert s == 403 and json(b)["error"]["code"] == "UnauthorizedAttestation"
 
     {token, claims} = attest()
     assert claims["x-ms-compliance-status"] == "azure-compliant-cvm"
 
-    {s, b} = https(ctx, "POST", "/keys/#{pol_name}/release", "{}", [{"authorization", "Bearer " <> token}])
+    {s, b} =
+      https(ctx, "POST", "/keys/#{pol_name}/release?api-version=7.4", "{}", [
+        {"authorization", "Bearer " <> token}
+      ])
+
     assert s == 200, "release returned #{s}: #{inspect(b)}"
     released = json(b)
-    assert %{"value" => material, "kid" => kid, "keyMaterialVersion" => 1, "policyHash" => hash, "status" => "Released"} = released
+
+    assert %{
+             "value" => material,
+             "kid" => kid,
+             "keyMaterialVersion" => 1,
+             "policyHash" => hash,
+             "status" => "Released"
+           } = released
+
     assert is_binary(material) and byte_size(material) > 0
     assert kid =~ "/keys/#{pol_name}"
     assert b64u_decode!(hash) |> byte_size() == 32
 
-    {s, b} = https(ctx, "POST", "/keys/#{pol_name}/release", "{}", [{"authorization", "Bearer " <> token}])
+    {s, b} =
+      https(ctx, "POST", "/keys/#{pol_name}/release?api-version=7.4", "{}", [
+        {"authorization", "Bearer " <> token}
+      ])
+
     assert s == 403
     assert json(b)["error"]["code"] == "TokenReplay"
   end
@@ -441,15 +589,30 @@ defmodule Compliance.C2KeyvaultTest do
   test "C2.8b policy hash separates keys and policies; version increments", ctx do
     n1 = "c2-skr-a-#{System.unique_integer([:positive])}"
     n2 = "c2-skr-b-#{System.unique_integer([:positive])}"
-    create_key(ctx, n1, %{"kty" => "oct", "release_policy" => %{"allowed_operations" => ["release"]}})
 
-    create_key(ctx, n2, %{"kty" => "oct", "release_policy" => %{"allowed_operations" => ["release"]}})
+    create_key(ctx, n1, %{
+      "kty" => "oct",
+      "release_policy" => %{"allowed_operations" => ["release"]}
+    })
+
+    create_key(ctx, n2, %{
+      "kty" => "oct",
+      "release_policy" => %{"allowed_operations" => ["release"]}
+    })
 
     {t1, _} = attest()
     {t2, _} = attest()
 
-    {s1, b1} = https(ctx, "POST", "/keys/#{n1}/release", "{}", [{"authorization", "Bearer " <> t1}])
-    {s2, b2} = https(ctx, "POST", "/keys/#{n2}/release", "{}", [{"authorization", "Bearer " <> t2}])
+    {s1, b1} =
+      https(ctx, "POST", "/keys/#{n1}/release?api-version=7.4", "{}", [
+        {"authorization", "Bearer " <> t1}
+      ])
+
+    {s2, b2} =
+      https(ctx, "POST", "/keys/#{n2}/release?api-version=7.4", "{}", [
+        {"authorization", "Bearer " <> t2}
+      ])
+
     assert s1 == 200 and s2 == 200
     r1 = json(b1)
     r2 = json(b2)
@@ -470,10 +633,13 @@ defmodule Compliance.C2KeyvaultTest do
 
     oct_name = "c2-jwk-oct-#{System.unique_integer([:positive])}"
     oct_created = create_key(ctx, oct_name, %{"kty" => "oct"})
-    assert is_binary(oct_created["key"]["k"]) and byte_size(b64u_decode!(oct_created["key"]["k"])) == 32
+
+    assert is_binary(oct_created["key"]["k"]) and
+             byte_size(b64u_decode!(oct_created["key"]["k"])) == 32
   end
 
-  test "C2.6b Azure anyOf/allOf/claim/equals policy accepted verbatim; bogus policy refused", ctx do
+  test "C2.6b Azure anyOf/allOf/claim/equals policy accepted verbatim; bogus policy refused",
+       ctx do
     name = "c2-azure-pol-#{System.unique_integer([:positive])}"
 
     azure_policy = %{
@@ -491,15 +657,23 @@ defmodule Compliance.C2KeyvaultTest do
     # SKR release works against an Azure-grammar policy
     {token, _claims} = attest()
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/release", "{}", [{"authorization", "Bearer " <> token}])
+    {s, b} =
+      https(ctx, "POST", "/keys/#{name}/release?api-version=7.4", "{}", [
+        {"authorization", "Bearer " <> token}
+      ])
+
     assert s == 200, "release with Azure policy returned #{s}: #{inspect(b)}"
     assert json(b)["policyHash"]
 
     bad_name = name <> "-bad"
 
     {s, b} =
-      https(ctx, "POST", "/keys/#{bad_name}/create",
-        Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"nonsense" => true}}))
+      https(
+        ctx,
+        "POST",
+        "/keys/#{bad_name}/create",
+        Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"nonsense" => true}})
+      )
 
     assert s == 400 and json(b)["error"]["code"] == "InvalidParameter"
   end
@@ -515,7 +689,11 @@ defmodule Compliance.C2KeyvaultTest do
 
   test "C2.9b SKR admission accepts the real nested x-ms-isolation-tee MAA form", ctx do
     name = "c2-nested-#{System.unique_integer([:positive])}"
-    create_key(ctx, name, %{"kty" => "RSA-HSM", "release_policy" => %{"allowed_operations" => ["release"]}})
+
+    create_key(ctx, name, %{
+      "kty" => "RSA-HSM",
+      "release_policy" => %{"allowed_operations" => ["release"]}
+    })
 
     now = System.system_time(:second)
 
@@ -532,7 +710,11 @@ defmodule Compliance.C2KeyvaultTest do
 
     token = Smalt.Security.ReceiptSigner.sign(nested_claims)
 
-    {s, b} = https(ctx, "POST", "/keys/#{name}/release", "{}", [{"authorization", "Bearer " <> token}])
+    {s, b} =
+      https(ctx, "POST", "/keys/#{name}/release?api-version=7.4", "{}", [
+        {"authorization", "Bearer " <> token}
+      ])
+
     assert s == 200, "release with nested MAA claims returned #{s}: #{inspect(b)}"
     assert json(b)["status"] == "Released"
   end

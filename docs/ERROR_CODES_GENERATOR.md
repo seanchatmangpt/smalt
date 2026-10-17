@@ -8,7 +8,7 @@ the coordinator re-admits.
 ## The seam
 
 One generator, `scripts/gen_error_codes.py`, projects `docs/ERROR_CODES.md` from
-three source families:
+seven source families:
 
 1. `lib/smalt/arm_gateway/router.ex` (`send_arm_error` sites + pinned
    InvalidResourceShape + inline 412 envelope)
@@ -20,6 +20,16 @@ three source families:
    row.
 3. `test/compliance/*.exs` (`["code"] == "..."` assertions; "?" status by
    design — the corpus pins the code, not the status)
+4. `lib/smalt/arm_gateway/lro.ex` (`extract_lro`: LRO terminal-state envelopes)
+5. `lib/smalt/policy.ex` (`extract_policy`: PolicyViolation denial envelope)
+6. `lib/smalt/auth/bearer.ex` (`extract_bearer`: 401 refusal codes via
+   `{:refuse, "Code", _}` tuples + the send_challenge literal)
+7. data-plane audit/audit-adjacent planes (`extract_data_plane`, added
+   2026-10-17): `lib/smalt/data_plane/{sentinel,resource_graph,purview_atlas,
+   key_vault_actions,cosmos}.ex` + `lib/smalt/security/confidential_ledger.ex`
+   — `{:error, <status>, body}` tuples with a literal `"code" => "..."` in the
+   body; comment lines and `@doc` strings are stripped before scanning so
+   docstring mentions never mint rows; only literal 3-digit statuses pair.
 
 The doc is a projection; edit the sources (or the ANNOTATIONS table), never the
 generated file.

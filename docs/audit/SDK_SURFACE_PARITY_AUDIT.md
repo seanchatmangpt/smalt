@@ -55,7 +55,7 @@ not covered by the W-8 pass.
 | GAP-01 | Blob | comp mis-dispatch CLASS: unhandled `comp=` values absorbed by generic Put/Get Blob arms → silent overwrite/content-as-200 (appendblock, snapshot, page, pagelist, tags, query, tier, expiry, lease, seal, copy; incl. x-ms-blob-condition-appendpos/-maxsize + x-ms-blob-type). Fix: default-deny comp whitelist + real appendblock arm (412 on appendpos). Falsifier in aud1 §4 | GAP-AUD1-01 (+09) | KD-60 (registered; KD-52 is its closed instance) |
 | GAP-02 | Blob | Blob Batch missing — `POST /{a}/{c}?comp=blob` multipart/mixed (BlobBatchClient) → 404 | GAP-AUD1-02 | KD-61 (registered) |
 | GAP-03 | Blob | Get User Delegation Key + SAS query auth absent (header-only x-ms-version gate); comp=acl mis-route | GAP-AUD1-03 | KD-62 (registered) |
-| GAP-04 | Cosmos | Change Feed (A-IM: Incremental feed) absent — full 200 feed returned to ChangeFeedIterator | GAP-AUD1-04 | KD-63 (registered) |
+| GAP-04 | Cosmos | ~~Change Feed (A-IM: Incremental feed) absent~~ CLOSED 2026-10-17 — A-IM read (`cf_requested?/1`, cosmos.ex:1244), incremental feed served (`change_feed/3`, cosmos.ex:1135); receipt `docs/jira/v26.10.16/receipts/r-kd63-change-feed-close.md` | GAP-AUD1-04 | KD-63 (closed) |
 | GAP-05 | Cosmos | PATCH /dbs/.../docs/:id (RFC 6902) unrouted → 404 | GAP-AUD1-05 | KD-64 (registered) |
 | GAP-06 | Cosmos | sprocs / triggers / udfs unrouted → JSON 404 (prefer typed refusal) | GAP-AUD1-06 | KD-65 (registered) |
 | GAP-07 | Cosmos | pre/post-trigger headers silently no-op (201 with no execution) | GAP-AUD1-06b | KD-65 (registered; trigger headers no-op filed within KD-65) |
@@ -124,7 +124,9 @@ Witnessed runs (2026-10-15):
 2. Post-W-8-registration run (TSV tokens updated to KD-60/62/63/65;
    ledger now spans KD-01..KD-75): mapped=62 (incl 2 MISROUTE-MAPPED:
    blob generic-PUT comp-absorb class KD-60; cosmos change-feed-to-plain-GET
-   KD-63), registered-gaps=15 (KD-31/32/55/56/57/58/59/60/62/63/65 x2/
+   KD-63 RESOLVED 2026-10-17 (route maps; receipt
+   `docs/jira/v26.10.16/receipts/r-kd63-change-feed-close.md`)),
+   registered-gaps=14 (KD-31/32/55/56/57/58/59/60/62/65 x2/
    59 x2, tags-at-scope UNSUPPORTED-REGISTERED), unregistered=0 ->
    **CENSUS PASS, exit 0**. Anti-vacuity negative control: reverting the
    TSV token updates returns the run to FAIL.

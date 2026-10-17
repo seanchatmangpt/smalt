@@ -51,15 +51,17 @@ defmodule Mix.Tasks.Smalt.NativeLadder do
         # Local in-process ladder: the substrate's default :enforce auth
         # mode gates the router, but this task is a dev loop tool that
         # never crosses a socket — run it against the anonymous face, the
-        # same face the ExUnit suite uses (config/test.exs).
-        Application.put_env(:smalt, :auth_mode, :anonymous)
-        lifecycle_opts =
-          case Keyword.fetch(opts, :output) do
-            {:ok, path} -> [state_path: path]
-            :error -> []
-          end
+        # same face the ExUnit suite uses (config/test.exs). SCOPED via
+        # MixAuthScope so the flip restores when the task body exits.
+        Smalt.MixAuthScope.with_anonymous_auth(fn ->
+          lifecycle_opts =
+            case Keyword.fetch(opts, :output) do
+              {:ok, path} -> [state_path: path]
+              :error -> []
+            end
 
-        Smalt.Enclave.Lifecycle.run(fixture, lifecycle_opts)
+          Smalt.Enclave.Lifecycle.run(fixture, lifecycle_opts)
+        end)
       end)
 
     case Task.await(runner, timeout_ms) do

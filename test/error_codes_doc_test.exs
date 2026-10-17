@@ -162,7 +162,7 @@ defmodule Smalt.ErrorCodesDocTest do
       # The generator re-adds the helper-defined envelopes with fixed statuses
       # (see gen_error_codes.py "helper-defined envelopes" table, R143).
       |> MapSet.union(
-        MapSet.new(["RouteNotReady", "InvalidBody", "InvalidCloudEvent", "InvalidQueryParameter", "InvalidApiVersion", "InvalidEventGridEvent"])
+        MapSet.new(["RouteNotReady", "InvalidBody", "InvalidCloudEvent", "InvalidQueryParameterValue", "InvalidApiVersion", "InvalidEventGridEvent"])
       )
       |> MapSet.union(not_found_codes)
 
@@ -199,6 +199,10 @@ defmodule Smalt.ErrorCodesDocTest do
   defp doc_rows do
     File.read!(@doc_path)
     |> String.split("\n")
+    # Scope to the main surface table: everything before the "Bearer
+    # sub-codes" section (whose rows carry a different 5-column shape and are
+    # fenced separately by the generator's own --check byte-identity).
+    |> Enum.take_while(&(&1 != "## Bearer sub-codes"))
     |> Enum.filter(&String.starts_with?(&1, "| "))
     |> Enum.reject(&String.contains?(&1, "Surface | HTTP | Code |"))
     |> parse_row_lines()

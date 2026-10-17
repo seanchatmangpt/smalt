@@ -46,7 +46,7 @@ PATCH	/dbs/{db}/colls/{coll}/docs/{doc}	KD-64
 POST	/dbs/{db}/colls/{coll}/sprocs	KD-65
 POST	/dbs/{db}/colls/{coll}/triggers	KD-65
 POST	/dbs/{db}/colls/{coll}/udfs	KD-65
-GET	/dbs/{db}/colls/{coll}/docs	MISROUTE	KD-63
+GET	/dbs/{db}/colls/{coll}/docs	-
 GET	/subscriptions/{sub}/resourcegroups	-
 PUT	/subscriptions/{sub}/resourcegroups/{rg}	-
 DELETE	/subscriptions/{sub}/resourcegroups/{rg}	-

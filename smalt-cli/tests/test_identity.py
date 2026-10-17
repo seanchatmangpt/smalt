@@ -86,3 +86,46 @@ def test_expired_self_minted_401():
                     headers={"Authorization": f"Bearer {expired}"})
     assert st == 401, (st, body)
     assert body["error"]["message"] == "TokenExpired", body
+
+
+# Bearer sub-code pins (ERROR_CODES.md "Bearer sub-codes" section, 2026-10-17):
+# each self-minted token exercises one {:refuse, parent, sub} branch in
+# lib/smalt/auth/bearer.ex and the sub-code rides the 401 envelope's message.
+
+def test_not_yet_valid_self_minted_401():
+    now = int(time.time())
+    early = mint_jwt({"aud": AUD,
+                      "iss": f"{conftest.ARM}/00000000-0000-0000-0000-000000000000/v2.0",
+                      "iat": now,
+                      "nbf": now + 3600,
+                      "exp": now + 7200})
+    st, body = http("GET", f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
+                    headers={"Authorization": f"Bearer {early}"})
+    assert st == 401, (st, body)
+    assert body["error"]["message"] == "TokenNotYetValid", body
+
+
+def test_wrong_audience_401():
+    now = int(time.time())
+    foreign = mint_jwt({"aud": "https://other-surface.example.com",
+                        "iss": f"{conftest.ARM}/00000000-0000-0000-0000-000000000000/v2.0",
+                        "iat": now,
+                        "nbf": now,
+                        "exp": now + 3600})
+    st, body = http("GET", f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
+                    headers={"Authorization": f"Bearer {foreign}"})
+    assert st == 401, (st, body)
+    assert body["error"]["message"] == "AudienceMismatch", body
+
+
+def test_wrong_issuer_401():
+    now = int(time.time())
+    foreign = mint_jwt({"aud": AUD,
+                        "iss": "https://evil.example.com/00000000-0000-0000-0000-000000000000/v2.0",
+                        "iat": now,
+                        "nbf": now,
+                        "exp": now + 3600})
+    st, body = http("GET", f"{conftest.ARM}/subscriptions?api-version=2021-04-01",
+                    headers={"Authorization": f"Bearer {foreign}"})
+    assert st == 401, (st, body)
+    assert body["error"]["message"] == "IssuerMismatch", body

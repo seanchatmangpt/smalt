@@ -59,275 +59,331 @@ not rendered as op rows.
 | residue audit (GET=0 + plan empty) | 1 | 2 | 522.00 | 522.00 | 522.00 | 0 |
 ## c9 — arm
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+
 ## c9 — blob
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+
 ## c9 — cosmos
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+
 ## c9 — eh
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+
 ## c9 — enclave-loop
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| meta | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+
 ## c9 — provision
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+
 ## c9 — secrets
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+
 ## e1 — arm
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| arm_assert | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+| arm_assert | SKIP-LOUD | 0 | 0 | provisioned=false — tf apply did not succeed |
+
 ## e1 — blob
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| blob | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| blob | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+
 ## e1 — cosmos
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| cosmos | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| cosmos | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+
 ## e1 — eh
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| eh_wire_send | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+| eh_wire_send | SKIP-LOUD | 0 | 0 | no EventHub namespace/hub provisioned by fixture (ARM list empty) |
+
 ## e1 — enclave-loop
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| meta | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+| meta | PASS | 0 | 0 |  |
+| tf_init | PASS | 0 | 0 |  |
+| tf_plan | PASS | 0 | 0 |  |
+
 ## e1 — provision
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_init | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_plan | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
-| tf_apply | 0 | 0 | 0.00 | 0.00 | 0.00 | 1 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1: by multiple users at the same time. Please resolve the issue above and try \| again. For most commands, you can disable locking with the "-lock=false" \| flag, bu |
+| tf_apply | FAIL | 0 | 1 | exit 1:   on main.tf line 14, in resource "azurerm_storage_account" "smalt_fixture": \|   14: resource "azurerm_storage_account" "smalt_fixture" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_apply | SKIP-LOUD | 0 | 0 | substrate down — tf_apply on localhost:39370 refused (exit 1) |
+| tf_apply | SKIP-LOUD | 0 | 0 | substrate down — tf_apply on localhost:39370 refused (exit 1) |
+| tf_apply | SKIP-LOUD | 0 | 0 | substrate down — tf_apply on localhost:39370 refused (exit 1) |
+| tf_apply | SKIP-LOUD | 0 | 0 | substrate down — tf_apply on localhost:39370 refused (exit 1) |
+| tf_apply | SKIP-LOUD | 0 | 0 | substrate down — tf_apply on localhost:39370 refused (exit 1) |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_init | SKIP-LOUD | 0 | 0 | registry.terraform.io unreachable (exit 1) |
+| tf_init | SKIP-LOUD | 0 | 0 | registry.terraform.io unreachable (exit 1) |
+| tf_init | SKIP-LOUD | 0 | 0 | registry.terraform.io unreachable (exit 1) |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_plan | FAIL | 0 | 1 | exit 1:   on versions.tf line 16, in provider "azurerm": \|   16: provider "azurerm" { \|  \|  |
+| tf_apply | FAIL | 0 | 1 | exit 1:   on main.tf line 14, in resource "azurerm_storage_account" "smalt_fixture": \|   14: resource "azurerm_storage_account" "smalt_fixture" { \|  \|  |
+| tf_apply | FAIL | 0 | 1 | exit 1:   on main.tf line 14, in resource "azurerm_storage_account" "smalt_fixture": \|   14: resource "azurerm_storage_account" "smalt_fixture" { \|  \|  |
+
 ## e1 — secrets
 
-| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
-|---|---|---|---|---|---|---|
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
-| secrets | 0 | 0 | 0.00 | 0.00 | 0.00 | 0 |
+
+### Verdict rows (correctness probes, not throughput ops)
+
+| op | verdict | n | errors | reason/note |
+|---|---|---|---|---|
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+| secrets | SKIP-LOUD | 0 | 0 | provisioned=false — ARM assert did not pass |
+
 ## lc1 — cloud-chain-blob-journal
 
 | op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
@@ -375,8 +431,8 @@ not rendered as op rows.
 | hop1 | 200 | 2240 | 0.45 | 0.60 | 0.94 | 0 |
 ## Non-op records
 
+- `bench/wave-telemetry-run2.jsonl`: wave-telemetry (fleet run telemetry, EXCLUDED from bench aggregation) — 22 record(s), see file for full run data.
 - `bench/wave-telemetry.jsonl`: wave-telemetry (fleet run telemetry, EXCLUDED from bench aggregation) — 11 record(s), see file for full run data.
-- `wave-telemetry.jsonl`: wave-telemetry (fleet run telemetry, EXCLUDED from bench aggregation) — 22 record(s), see file for full run data.
 - `a1-change-feed.jsonl`: 2 non-op record(s) (baseline, stall) — see file for full run data.
 - `lifecycle-8hop.jsonl`: 2 non-op record(s) (cost-ledger-1M, kd-absent) — see file for full run data.
 

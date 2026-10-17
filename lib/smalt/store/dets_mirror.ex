@@ -81,7 +81,12 @@ defmodule Smalt.Store.DetsMirror do
   """
   @spec sync(GenServer.server()) :: :ok
   def sync(server \\ __MODULE__) do
-    GenServer.call(server, :sync)
+    # v26.10.17 contention fix (witnessed 2/2 under 16-core load,
+    # receipts/i20b-contention-mechanism.md): :sync does tab2list +
+    # :dets.match_object + fsync per table — quiet ~12ms but a 350x fat
+    # tail under full-core saturation (measured 4008ms), inside the
+    # default 5s GenServer.call cliff. Timer slack, not a lost update.
+    GenServer.call(server, :sync, 30_000)
   end
 
   @impl true

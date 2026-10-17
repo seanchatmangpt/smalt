@@ -21,10 +21,23 @@ defmodule SmaltLroTest do
     })
 
     # Small nonzero delay so the polling tests observe a real InProgress window
-    # without making the suite slow.
+    # without making the suite slow. Restore on exit: the leaked :lro_retention_ms
+    # = :infinity (set further down) previously poisoned sweeper timing for every
+    # later module in the batch (v26.10.17 interference sweep, court run-1 class).
+    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
+    prev_retention = Application.get_env(:smalt, :lro_retention_ms)
+
+    on_exit(fn ->
+      restore_env(:lro_delay_ms, prev_delay)
+      restore_env(:lro_retention_ms, prev_retention)
+    end)
+
     Application.put_env(:smalt, :lro_delay_ms, 20)
     :ok
   end
+
+  defp restore_env(_key, nil), do: :ok
+  defp restore_env(key, val), do: Application.put_env(:smalt, key, val)
 
   defp call(conn), do: Router.call(conn, @opts)
 
@@ -1099,5 +1112,73 @@ defmodule SmaltLroTest do
       :error ->
         flunk("operation #{op_id} vanished from the store")
     end
+  end
+end
+
+# Eviction boundary pins (2026-10-17, wave I18): explicit-retention
+# eviction_pass/1's documented zero-retention contract — terminal records at
+# endTime <= cutoff evict INCLUSIVELY at retention 0; InProgress never evicts;
+# positive retention keeps recent records.
+defmodule Smalt.ArmGateway.LRO.SweeperBoundaryTest do
+  use ExUnit.Case, async: false
+
+  alias Smalt.ArmGateway.LRO.Sweeper, as: LroSweeper
+  alias Smalt.Store
+
+  setup do
+    SmaltTest.Lifecycle.ensure_store_up()
+
+    if :ets.info(:smalt_operations) != :undefined do
+      :ets.delete_all_objects(:smalt_operations)
+    end
+
+    :ok
+  end
+
+  defp put_op(key, status, end_iso) do
+    Store.put(:smalt_operations, key, %{
+      "status" => status,
+      "endTime" => end_iso,
+      "id" => key
+    })
+  end
+
+  defp iso(sec_ago) do
+    DateTime.utc_now()
+    |> DateTime.add(-sec_ago, :second)
+    |> DateTime.truncate(:second)
+    |> DateTime.to_iso8601()
+  end
+
+  test "retention 0 evicts terminal records inclusively; InProgress never evicts" do
+    put_op("op-done", "Succeeded", iso(10))
+    put_op("op-inprogress", "InProgress", iso(10))
+
+    assert :ok = LroSweeper.eviction_pass(0)
+
+    assert :error = Store.get(:smalt_operations, "op-done")
+    assert {:ok, _} = Store.get(:smalt_operations, "op-inprogress")
+  end
+
+  test "positive retention keeps records younger than the window" do
+    put_op("op-recent", "Succeeded", iso(1))
+    put_op("op-old", "Succeeded", iso(3600))
+
+    assert :ok = LroSweeper.eviction_pass(600_000)
+
+    assert {:ok, _} = Store.get(:smalt_operations, "op-recent")
+    assert :error = Store.get(:smalt_operations, "op-old")
+  end
+
+  test "records without terminal endTime are never evicted" do
+    put_op("op-noend", "Succeeded", "not-a-date")
+    put_op("op-nostatus", "Succeeded", nil)
+
+    assert :ok = LroSweeper.eviction_pass(0)
+
+    assert {:ok, _} = Store.get(:smalt_operations, "op-noend")
+
+    # nil endTime record falls out of the eligibility flat_map entirely
+    assert {:ok, _} = Store.get(:smalt_operations, "op-nostatus")
   end
 end

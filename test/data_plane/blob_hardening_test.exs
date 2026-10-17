@@ -1392,9 +1392,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       assert xml =~ "<NextMarker />"
 
       # Azure parity (cycle-25): junk/zero/negative maxresults -> 400
-      # InvalidQueryParameter (previously silently coerced to the default 50)
+      # InvalidQueryParameterValue (previously silently coerced to the default 50)
       for junk <- ["abc", "0", "-5"] do
-        assert {:error, 400, "InvalidQueryParameter", msg} =
+        assert {:error, 400, "InvalidQueryParameterValue", msg} =
                  BlobStorage.list_blobs_xml("acc1", "cont1", %{"maxresults" => junk})
 
         assert msg =~ "maxresults is invalid"
@@ -2244,7 +2244,7 @@ defp get_in_meta(block, key) do
                parsed
     end
 
-    test "container comp=list junk/zero/negative maxresults -> 400 XML InvalidQueryParameter envelope" do
+    test "container comp=list junk/zero/negative maxresults -> 400 XML InvalidQueryParameterValue envelope" do
       container()
 
       for junk <- ["abc", "0", "-1", "5x"] do
@@ -2255,9 +2255,9 @@ defp get_in_meta(block, key) do
           |> router_call()
 
         assert conn.status == 400
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
         assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
-        assert conn.resp_body =~ ~r/<Error>.*<Code>InvalidQueryParameter<\/Code>.*<\/Error>/s
+        assert conn.resp_body =~ ~r/<Error>.*<Code>InvalidQueryParameterValue<\/Code>.*<\/Error>/s
       end
 
       # 5000 and absent still 200
@@ -2282,9 +2282,9 @@ defp get_in_meta(block, key) do
         |> router_call()
 
       assert conn.status == 400
-      assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+      assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
       assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
-      assert conn.resp_body =~ ~r/<Error>.*<Code>InvalidQueryParameter<\/Code>.*<\/Error>/s
+      assert conn.resp_body =~ ~r/<Error>.*<Code>InvalidQueryParameterValue<\/Code>.*<\/Error>/s
     end
 
     test "fast-path Prefix echo matches the composed path (plain vs prefix=\"\"+marker)" do
@@ -2323,7 +2323,7 @@ defp get_in_meta(block, key) do
   # GAP-AUD1-01 (v26.10.14, lane W-5): blob comp whitelist. Unlisted `comp`
   # values previously fell into the generic Put/Get Blob arms and silently
   # overwrote / served the blob body. Falsifier: every unimplemented comp
-  # answers a typed 400 InvalidQueryParameter and the blob body is UNCHANGED.
+  # answers a typed 400 InvalidQueryParameterValue and the blob body is UNCHANGED.
   # ---------------------------------------------------------------------------
   # KD-60 wire lane 524: comp=snapshot is now a REGISTERED arm (PUT 201 +
   # x-ms-snapshot, GET sharesnapshot read-back), so it left the unimplemented
@@ -2345,7 +2345,7 @@ defp get_in_meta(block, key) do
           |> router_call()
 
         assert conn.status == 400, "comp=#{comp}: expected 400, got #{conn.status}"
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
         assert conn.resp_body =~ "The comp value '#{comp}' is not supported"
       end
 
@@ -2365,7 +2365,7 @@ defp get_in_meta(block, key) do
           |> router_call()
 
         assert conn.status == 400, "GET comp=#{comp}: expected 400, got #{conn.status}"
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
         refute conn.resp_body =~ "secret-body"
       end
     end
@@ -2373,7 +2373,7 @@ defp get_in_meta(block, key) do
     # D14 (R122, KD-60): HEAD and DELETE splat arms previously had NO comp
     # whitelist — HEAD ?comp=appendblock served 200 header metadata as if the
     # append happened; DELETE ?comp=lease deleted the blob anyway. Both now
-    # answer the same typed 400 InvalidQueryParameter as the PUT/GET arms.
+    # answer the same typed 400 InvalidQueryParameterValue as the PUT/GET arms.
     test "D14: unimplemented HEAD comps -> typed 400, no metadata served" do
       container()
       {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "head-body")
@@ -2387,7 +2387,7 @@ defp get_in_meta(block, key) do
 
         assert conn.status == 400, "HEAD comp=#{comp}: expected 400, got #{conn.status}"
         # HEAD answers header-only: the typed proof is the x-ms-error-code header
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
       end
     end
 
@@ -2403,7 +2403,7 @@ defp get_in_meta(block, key) do
           |> router_call()
 
         assert conn.status == 400, "DELETE comp=#{comp}: expected 400, got #{conn.status}"
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
       end
 
       # the delete-splat lie is closed: the blob survives every comp'd DELETE
@@ -2437,7 +2437,7 @@ defp get_in_meta(block, key) do
         assert conn.status == 400,
                "#{method} #{path} dup-comp: expected 400, got #{conn.status}"
 
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
       end
 
       # blob body untouched by the dup-comp probes

@@ -48,11 +48,6 @@ ALLOWLIST=(
   ".env.example:20"
   ".env.example:24"
   # SMALT_SDK_ROOT fallback paths (REPORTED-TO-LANE, scripts/sdk-smoke owners)
-  "scripts/sb_census_replay.sh:21"
-  "scripts/dev_env.sh:33"
-  "scripts/stress/vs_azurite.py:330"
-  "scripts/stress/vs_azurite.py:369"
-  "test/sdk-smoke/eh-run.mjs:145"
   # Machine-generated lock/config (ggen lane; regenerated, not hand-edited)
   "cli/ggen.lock:4"
   "cli/ggen.lock:8"
@@ -67,7 +62,6 @@ ALLOWLIST=(
   "cli/ggen.toml:18"
   "cli/ggen.toml:19"
   # docker docs + build receipt (docker docs owner, v2/v3 open item)
-  "docker/README.md:42"
   "docker/BUILD_RECEIPT.md:5"
   "docker/BUILD_RECEIPT.md:16"
   "docker/BUILD_RECEIPT.md:17"
@@ -94,20 +88,21 @@ ALLOWLIST=(
   # docs-dod, 2026-10-16): KD-90-era B-leg note + KD-94 row (athena B-leg
   # receipt text). Same evidence-record class as the 12-gate-closure pins.
   "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:157"
-  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:248"
+  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:252"
+    # v26.10.17 window affidavit quotes its run environment (absolute paths)
+  # in its evidence-record tables (2026-10-17 relocation into docs/jira/).
+  "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:3"
+  "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:24"
+  "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:25"
+  "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:26"
   # stress-script legacy paths (stress-scripts owner)
   "scripts/stress/telemetry_overhead.py:28"
   # e2e s7/s9 + azapi test comments/fallbacks (e2e owners)
   "test/e2e/s7_worm/run.sh:21"
   "test/e2e/s7_worm/worm.test.cjs:11"
-  "test/e2e/s9_lro_chain/lro_chain.test.mjs:2"
-  "test/azapi_actions_test.exs:3"
   # captured redteam receipts (redteam lane; captured output, not source)
   "test/redteam/r1_input_fuzz/receipt.txt:2"
   "test/redteam/r2_state/findings.md:4"
-    # ggen-projection-law.md:38 cites the real pack name athena-matter-pack
-  # (lane 10 explanation rewrite; pack on disk, referenced by legal_gen sync)
-  "docs/explanation/ggen-projection-law.md:38"
   # docs/verification/ocel/** are chain-hashed evidence receipts (same
   # exempted class as publish_dry gate 3's OCEL policy) — captured output,
   # not source

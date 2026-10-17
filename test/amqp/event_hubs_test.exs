@@ -1409,6 +1409,87 @@ defmodule Smalt.Messaging.EventHubsTest do
       # distribution sanity: 40 keys should touch both partitions
       assert length(Enum.uniq(routed)) == 2
     end
+
+    # Fixed-partition pinion: a partition-scoped receiver attach outside the
+    # pinned set ["0","1"] gets the attach echo (rhea contract) followed by a
+    # typed detach amqp:not-allowed — never a silently-attached black hole.
+    @tag :amqp_wire
+    test "out-of-pin partition attach is refused: attach echo then typed detach" do
+      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+      if GenServer.whereis(Smalt.Store) == nil do
+        start_supervised!(Smalt.Store)
+      end
+
+      EventHubs.ensure_tables()
+
+      {:ok, listener} =
+        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+
+      {:ok, port} = :inet.port(listener)
+
+      accept_task =
+        Task.async(fn ->
+          {:ok, sock} = :gen_tcp.accept(listener, 5000)
+          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+          :ok = :gen_tcp.controlling_process(sock, pid)
+          {:ok, pid}
+        end)
+
+      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+      {:ok, _conn} = Task.await(accept_task, 5000)
+
+      hub = "outpin-hub-#{System.unique_integer([:positive])}"
+
+      try do
+        wh(client)
+
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:attach, %{name: "outpin-r", handle: 0, role: true, source: %{address: "/eventhubs/#{hub}/Partitions/2"}}})
+          )
+
+        # rhea contract: attach echo FIRST, then the typed detach.
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        detach = recv_f(client)
+        assert detach.performative.performative == :detach
+        # decoded detach error shape: [condition, description, info]
+        assert [cond_, desc_, nil] = detach.performative.error
+        assert cond_ == {:symbol, "amqp:not-allowed"}
+        assert desc_ =~ "outside the fixed set"
+
+        # positive control: partition 0 attaches and delivers
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:attach, %{name: "inpin-s", handle: 1, role: false, target: %{address: "/eventhubs/#{hub}/Partitions/0"}}})
+          )
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+
+        :ok =
+          send_b(
+            client,
+            enc(:amqp, 0, {:transfer, %{handle: 1, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
+                 {:sections, [{:body_data, "inpin-event"}]}})
+          )
+
+        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: "inpin-r", handle: 2, role: true, source: %{address: "/eventhubs/#{hub}/Partitions/0"}}}))
+
+        assert %{performative: %{performative: :attach}} = recv_f(client)
+        :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 2, link_credit: 5}}))
+
+        tr = recv_until(client, :transfer, 3000)
+        assert tr.performative.handle == 2
+      after
+        :gen_tcp.close(client)
+      end
+    end
   end
 
   # -- wire harness (mirrors test/amqp/connection_test.exs) ---------------------

@@ -720,6 +720,41 @@ defmodule Smalt.EgressRouter do
     kv_crypto_dispatch(conn, name, version, action)
   end
 
+  # KV soft-delete plane (wave I16/L1, 2026-10-17): key_vault_actions.ex has
+  # implemented the full deleted-key lifecycle since the 26.10.14 lane, but
+  # zero routes exposed it — every deleted-key wire shape answered the
+  # catch-all 404 (KD-13/KD-75 class). Handlers are tuple-shaped for
+  # kv_respond/2; routes go through with_route like their /keys siblings.
+  delete "/keys/:name" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.delete_key(name))
+    end)
+  end
+
+  get "/deletedkeys" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.list_deleted_keys())
+    end)
+  end
+
+  get "/deletedkeys/:name" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.get_deleted_key(name))
+    end)
+  end
+
+  post "/deletedkeys/:name/recover" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.recover_deleted_key(name))
+    end)
+  end
+
+  post "/deletedkeys/:name/purge" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.purge_deleted_key(name))
+    end)
+  end
+
   defp kv_crypto_dispatch(conn, name, version, action) do
     with_route(conn, KeyVaultActions, fn conn ->
       with_valid_body(conn, fn conn ->
@@ -991,16 +1026,28 @@ defmodule Smalt.EgressRouter do
           blob_error(conn, 404, not_found_error("KvNotFound"))
 
         {:ok, record} ->
-          if kv_precondition({:ok, record}, if_match_value(conn)) == :stale do
-            send_json(conn, 412, %{
-              "error" => %{
-                "code" => "PreconditionFailed",
-                "message" => "If-Match precondition failed for kv #{key} (label #{label})"
-              }
+          if_match = if_match_value(conn)
+
+          if is_nil(if_match) do
+            # Real App Configuration: delete REQUIRES an If-Match (a missing
+            # header is a 409, unlike PUT where absence imposes no
+            # precondition and upsert is legal).
+            blob_error(conn, 409, %{
+              "code" => "MissingIfMatch",
+              "message" => "If-Match header must be specified for the delete operation"
             })
           else
-            Store.delete(:smalt_appconfig, {key, label})
-            send_resp(conn, 204, "")
+            if kv_precondition({:ok, record}, if_match) == :stale do
+              send_json(conn, 412, %{
+                "error" => %{
+                  "code" => "PreconditionFailed",
+                  "message" => "If-Match precondition failed for kv #{key} (label #{label})"
+                }
+              })
+            else
+              Store.delete(:smalt_appconfig, {key, label})
+              send_resp(conn, 204, "")
+            end
           end
       end
     end
@@ -1909,8 +1956,9 @@ defmodule Smalt.EgressRouter do
       # through the snapshot. Without the param the normal GET path runs.
       if conn.query_params["sharesnapshot"] in [nil, ""] do
       # Azure storage semantics: the range rides `x-ms-range` (python/JS SDKs)
-      # or the standard `Range` header; honor both.
-      range_header = get_req_header(conn, "range") ++ get_req_header(conn, "x-ms-range")
+      # or the standard `Range` header; honor both. x-ms-range WINS when both
+      # are present (Azure parity + C4 fence): the engine takes List.first.
+      range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
 
       # Conditional read (Azure parity, cycle-30): If-Match / If-None-Match
       # evaluated before the range branch; RFC 7232 precedence (If-Match
@@ -2048,20 +2096,68 @@ defmodule Smalt.EgressRouter do
       if unhandled_comp?(conn, []) do
         unhandled_blob_comp_error(conn, conn.query_params["comp"])
       else
-      case BlobStorage.get_blob(account, container, blob_name) do
-        {:ok, blob} ->
+      # KD-COVERS: KD-97 — conditional/ranged HEAD parity (v26.10.17): the HEAD
+      # arm previously dispatched to unconditional get_blob and answered 200 to
+      # every conditional probe. Mirror the GET arm's engine (If-Match 412,
+      # If-None-Match 304, Range 206/416) with empty bodies; content-length
+      # still reflects the effective (range) size, as Azure parity requires.
+      range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
+
+      case BlobStorage.get_blob_conditional(account, container, blob_name, header_map(conn)) do
+        {:error, 412, code, msg} ->
+          blob_error(conn, 412, not_found_error(code) |> put_message(msg))
+
+        {:not_modified, etag} ->
           conn
-          |> put_resp_headers(stored_meta_wire(blob))
-          |> put_resp_header("etag", blob["etag"])
-          |> put_resp_header(
-            "content-length",
-            blob["content"] |> byte_size() |> Integer.to_string()
-          )
-          |> put_resp_content_type("application/octet-stream")
-          |> send_resp(200, "")
+          |> put_resp_header("etag", etag)
+          |> put_resp_header("x-ms-request-id", generate_request_id())
+          |> put_resp_header("x-ms-version", "2021-12-02")
+          |> send_resp(304, "")
 
         :error ->
           blob_error(conn, 404, not_found_error("BlobNotFound"))
+
+        {:ok, _blob} ->
+          case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
+            {:ok, blob, nil} ->
+              conn
+              |> put_resp_headers(stored_meta_wire(blob))
+              |> put_resp_header("etag", blob["etag"])
+              |> put_resp_header("x-ms-request-id", generate_request_id())
+              |> put_resp_header(
+                "content-length",
+                blob["content"] |> byte_size() |> Integer.to_string()
+              )
+              |> put_resp_content_type("application/octet-stream")
+              |> send_resp(200, "")
+
+            {:ok, blob, {first, last}} ->
+              conn
+              |> put_resp_headers(stored_meta_wire(blob))
+              |> put_resp_header("etag", blob["etag"])
+              |> put_resp_header("content-range", "bytes #{first}-#{last}/#{byte_size(blob["content"])}")
+              |> put_resp_header("x-ms-request-id", generate_request_id())
+              |> put_resp_header(
+                "content-length",
+                (last - first + 1) |> Integer.to_string()
+              )
+              |> put_resp_content_type("application/octet-stream")
+              |> send_resp(206, "")
+
+            {:error, :range_not_satisfiable, total} ->
+              conn
+              |> put_resp_header("content-range", "bytes */#{total}")
+              |> put_resp_content_type("application/json")
+              |> send_resp(416, Jason.encode!(%{
+                "error" => %{
+                  "code" => "InvalidRange",
+                  "message" => "The range specified is invalid for a blob of #{total} bytes."
+                }
+              }))
+
+            :error ->
+              blob_error(conn, 404, not_found_error("BlobNotFound"))
+          end
       end
       end
     end)
@@ -2407,6 +2503,18 @@ defmodule Smalt.EgressRouter do
        end) do
       blob_error(conn, 404, not_found_error("BlobNotFound"))
     else
+      # KD-97 rider (v26.10.17, C4 fence): stamp x-ms-request-id + x-ms-version
+      # at blob-route entry so EVERY blob arm (success, XML, comp arms) carries
+      # them — real Azure stamps request-id on all storage responses; the
+      # success/XML arms previously shipped without either. Error arms
+      # (blob_error/3) restamp their own; put_resp_header replaces, so the
+      # values stay single-valued.
+      conn =
+        conn
+        |> put_resp_header("x-ms-request-id", generate_request_id())
+        |> put_resp_header("x-ms-version", "2021-12-02")
+
+
       # Auth-lens interplay (egress lens-4 cycle 1, measured): the auth-exempt
       # namespace (/.well-known/, /oauth2/, /attest/, /metadata/endpoints,
       # /{tid}/oauth2/v2.0/token) composes with the blob splat — account=
@@ -3415,7 +3523,7 @@ defmodule Smalt.EgressRouter do
   defp unhandled_blob_comp_error(conn, v) do
     blob_error(conn, 400, %{
       "error" => %{
-        "code" => "InvalidQueryParameter",
+        "code" => "InvalidQueryParameterValue",
         "message" => "The comp value '#{comp_str(v)}' is not supported."
       }
     })
@@ -3424,12 +3532,12 @@ defmodule Smalt.EgressRouter do
   # R98 container comp whitelist (mirror of the blob-arm whitelist above).
   # restype=container carries no comp and comp=nil is admitted; any other
   # comp value with no implemented container handler answers the same typed
-  # InvalidQueryParameter envelope as the blob arms, naming the registered
+  # InvalidQueryParameterValue envelope as the blob arms, naming the registered
   # GAP so the wire no longer lies via fallthrough (PUT 201 / GET 200).
   defp unhandled_container_comp_error(conn, v) do
     blob_error(conn, 400, %{
       "error" => %{
-        "code" => "InvalidQueryParameter",
+        "code" => "InvalidQueryParameterValue",
         "message" =>
           "The comp value '#{comp_str(v)}' is not supported (GAP(blob-comp-lease-absent)): " <>
             "container leases and ACLs are not implemented."

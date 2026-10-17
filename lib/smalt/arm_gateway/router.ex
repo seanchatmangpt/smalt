@@ -28,9 +28,18 @@ defmodule Smalt.ArmGateway.Router do
   alias Smalt.Policy
 
   plug(Plug.Logger)
-  plug(CORSPlug, origin: "*")
+  plug(:arm_cors)
   plug(:normalize_leading_empty_segment)
   plug(Smalt.Auth.Bearer)
+
+  # Per-request CORS knob for the 9443/9444 control plane (mirrors the egress
+  # surface's :egress_cors_origins): default ["*"] keeps the historical
+  # posture; an explicit allowlist echoes only allowed origins. Evaluated
+  # per-request so a config flip does not need a recompile.
+  defp arm_cors(conn, _opts) do
+    origins = Smalt.Config.arm_cors_origins()
+    CORSPlug.call(conn, CORSPlug.init(origin: origins))
+  end
 
   plug(Plug.Parsers,
     parsers: [:json, :urlencoded],
@@ -74,7 +83,7 @@ defmodule Smalt.ArmGateway.Router do
 
   # Echo the client's x-ms-request-id when present, else mint a UUID. ARM SDK
   # retry/mid-tier-replay semantics key off this header.
-  # KD-COVERS: KD-82 (canonical row appended to docs/jira/v26.10.14/KNOWN_DIVERGENCES.md; open until a real-SDK witness receipt).
+  # KD-COVERS: KD-87 (canonical row in docs/jira/v26.10.14/KNOWN_DIVERGENCES.md; retokenized 2026-10-17 from the duplicate KD-82 mint; open until a real-SDK witness receipt).
   # azurerm 4.54.0 derives the STS authority from the metadata loginEndpoint
   # (trailing slash) and joins the tenant with a leading slash, producing
   # "//tenant/oauth2/v2.0/token" — a leading empty path segment Plug.Router
@@ -2043,6 +2052,7 @@ defmodule Smalt.ArmGateway.Router do
   # properties/location; the STORED operation record is untouched (the
   # subscription-scope ownership check still runs on the operation id), so
   # this is a render-time transform only.
+  # KD-COVERS: KD-81
   defp lro_wire_body(%{"status" => "InProgress"} = op), do: op
 
   defp lro_wire_body(%{"resourceId" => res_id} = op) when is_binary(res_id) do
@@ -2348,6 +2358,7 @@ defmodule Smalt.ArmGateway.Router do
         # emitted WITHOUT the trailing slash; real Azure's roots carry it,
         # so this is a join-semantics deviation, deliberate.
         "resourceManagerEndpoint" => String.trim_trailing(authority, "/"),
+        # KD-COVERS: KD-80 (metadata resourceManager trailing-slash join semantics)
         "resourceManager" => String.trim_trailing(authority, "/"),
         "managementEndpoint" => String.trim_trailing(authority, "/"),
         "activeDirectoryEndpoint" => "#{authority}/",
@@ -2792,6 +2803,7 @@ defmodule Smalt.ArmGateway.Router do
     )
   end
 
+  # KD-COVERS: KD-82
   # KD-T5-F4: synthesized singleton storage service child (real-ARM
   # FileService/QueueService/TableService default shapes). Auto-provisioned
   # by real Azure with every account; present once the parent account
@@ -3836,7 +3848,13 @@ defmodule Smalt.ArmGateway.Router do
     if Enum.all?(events, &eg1_valid?/1) do
       ids =
         for event <- events do
-          seq = Store.update_counter(:smalt_eg_topics, {:eg_seq_counter}, 1)
+          # Shared seq domain with EventStream (premise sweep #5): the readback
+          # GET /topics/:topic/events merges this feed with CloudEvents events
+          # by seq — two counters meant two non-comparable domains and the
+          # merged insertion order broke. Stamp from EventStream's single
+          # counter so one topic's feed is one feed. (The :smalt_eg_topics
+          # `{:eg_seq_counter}` row is retired; the tuple key was never listed.)
+          seq = Smalt.Messaging.EventStream.next_seq()
           id = event["id"]
 
           event
@@ -4400,6 +4418,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   # -- HEAD existence checks (azurerm CheckNameExists) ----------------------------
+  # KD-COVERS: KD-91
   # azurerm 4.54 sends `HEAD /subscriptions/{sub}/providers/Microsoft.DocumentDB/
   # databaseAccountNames/{name}` with NO api-version before create (witnessed:
   # /tmp/tf-plan-probe.EBIxd7/cosmos/apply.log — CheckNameExists StatusCode=400,

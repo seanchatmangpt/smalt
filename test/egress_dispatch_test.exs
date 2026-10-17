@@ -1610,7 +1610,7 @@ defmodule EgressDispatchTest do
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerAlreadyExists"
 
-      # list maxresults fence -> 400 InvalidQueryParameter on both call sites.
+      # list maxresults fence -> 400 InvalidQueryParameterValue on both call sites.
       # comp=list error arms answer the Azure XML envelope (lane-06 landing,
       # 2026-10-15): <Error><Code>…</Code></Error> + x-ms-error-code header;
       # the non-list create arms keep the JSON envelope.
@@ -1620,9 +1620,9 @@ defmodule EgressDispatchTest do
           ] do
         conn = call(:get, path, headers: ver)
         assert conn.status == 400, "GET #{path} -> #{conn.status}"
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
         assert conn.resp_body =~ "<Error>"
-        assert conn.resp_body =~ "InvalidQueryParameter"
+        assert conn.resp_body =~ "InvalidQueryParameterValue"
       end
     end
   end
@@ -2695,36 +2695,36 @@ defmodule EgressDispatchTest do
 
   # W1: container lease/ACL comps are unimplemented (GAP
   # (blob-comp-lease-absent)); the PUT and GET container arms must answer a
-  # typed 400 InvalidQueryParameter naming the GAP with the x-ms-error-code
+  # typed 400 InvalidQueryParameterValue naming the GAP with the x-ms-error-code
   # header — never a silent 201/200 fallthrough.
   describe "R155 W1 container comp fences" do
     @ver [{"x-ms-version", "2025-01-01"}]
 
-    test "PUT /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameter" do
+    test "PUT /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameterValue" do
       for comp <- ["lease", "acl"] do
         conn = call(:put, "/r155acct/r155cont?comp=#{comp}", headers: @ver, body: "{}")
 
         assert conn.status == 400, "comp=#{comp} answered #{conn.status}: #{conn.resp_body}"
 
-        assert %{"error" => %{"code" => "InvalidQueryParameter", "message" => msg}} =
+        assert %{"error" => %{"code" => "InvalidQueryParameterValue", "message" => msg}} =
                  Jason.decode!(conn.resp_body)
 
         assert msg =~ "GAP(blob-comp-lease-absent)"
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
       end
     end
 
-    test "GET /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameter" do
+    test "GET /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameterValue" do
       for comp <- ["lease", "acl"] do
         conn = call(:get, "/r155acct/r155cont?comp=#{comp}", headers: @ver)
 
         assert conn.status == 400, "comp=#{comp} answered #{conn.status}: #{conn.resp_body}"
 
-        assert %{"error" => %{"code" => "InvalidQueryParameter", "message" => msg}} =
+        assert %{"error" => %{"code" => "InvalidQueryParameterValue", "message" => msg}} =
                  Jason.decode!(conn.resp_body)
 
         assert msg =~ "GAP(blob-comp-lease-absent)"
-        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameter"]
+        assert get_resp_header(conn, "x-ms-error-code") == ["InvalidQueryParameterValue"]
       end
     end
   end
@@ -2812,4 +2812,53 @@ defmodule EgressDispatchTest do
       assert get_resp_header(feed2, "x-ms-continuation") != []
     end
   end
+  describe "KV soft-delete routes" do
+    @ver [{"x-ms-version", "2021-12-02"}]
+    @ver_ct @ver ++ [{"content-type", "application/json"}]
+
+    test "delete -> get deleted -> recover -> purge cycle" do
+      conn = call(:post, "/keys/delkey1/create", body: %{"kty" => "RSA", "key_ops" => ["sign", "verify"]}, headers: @ver_ct)
+      assert conn.status in [200, 201], conn.resp_body
+
+      conn = call(:delete, "/keys/delkey1", headers: @ver)
+      assert conn.status in [200, 204], conn.resp_body
+
+      conn = call(:get, "/deletedkeys/delkey1", headers: @ver)
+      assert conn.status == 200, conn.resp_body
+      assert %{"deletedDate" => _} = Jason.decode!(conn.resp_body)
+
+      conn = call(:get, "/deletedkeys", headers: @ver)
+      assert conn.status == 200, conn.resp_body
+      body = Jason.decode!(conn.resp_body)
+
+      # deleted records carry the kid (https://host/keys/<name>/<ver>), not a
+      # bare "name" field — match on the kid path segment
+      names =
+        case body do
+          %{"value" => list} -> list
+          list when is_list(list) -> list
+        end
+
+      kids = Enum.map(names, &(&1["kid"] || ""))
+
+      assert Enum.any?(kids, &(&1 =~ "delkey1"))
+
+      conn = call(:post, "/deletedkeys/delkey1/recover", headers: @ver)
+      assert conn.status in [200, 201], conn.resp_body
+
+      assert call(:get, "/keys/delkey1", headers: @ver).status == 200, conn.resp_body
+
+      assert call(:delete, "/keys/delkey1", headers: @ver).status in [200, 204]
+
+      conn = call(:post, "/deletedkeys/delkey1/purge", headers: @ver)
+      assert conn.status in [200, 204], conn.resp_body
+      assert call(:get, "/deletedkeys/delkey1", headers: @ver).status == 404
+    end
+
+    test "delete unknown key is typed 404; get deleted unknown is 404" do
+      assert call(:delete, "/keys/no-such-key", headers: @ver).status == 404
+      assert call(:get, "/deletedkeys/no-such-key", headers: @ver).status == 404
+    end
+  end
+
 end

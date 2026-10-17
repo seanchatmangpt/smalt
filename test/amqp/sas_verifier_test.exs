@@ -258,3 +258,61 @@ defmodule Smalt.Amqp.SasVerifierTest do
              SasVerifier.verify(token(enc("https://evil.example.com:5671/q")), endpoint_config())
   end
 end
+
+# Pinned-fallback adversarial pin (2026-10-17): the substrate falls back to
+# the world-known literal "ws8sharedkey" when SMALT_SB_SHARED_KEY is unset.
+# The verifier must refuse a token signed with the WRONG pinned key, and
+# accept one signed with the matching pinned key — the fallback is dev-only
+# convenience, never a second "accept anything" path.
+# Pinned-fallback adversarial pin (2026-10-17): SasVerifier enforces a
+# @min_key_bytes 32 floor on :sb_shared_key. The substrate's pinned dev
+# fallback ("ws8sharedkey", 12 bytes) sits BELOW that floor, so the verifier
+# uses its generated-key path — a wrong-key token is refused regardless of
+# the fallback. Pins: sub-floor keys refuse; wrong >=32B key refuses;
+# matching >=32B key accepts.
+defmodule Smalt.Amqp.SasPinnedFallbackTest do
+  use ExUnit.Case, async: false
+
+  alias Smalt.Amqp.SasVerifier
+
+  @now 1_700_000_000
+  @payload "sb://smalt.example.com/queues/orders"
+  @pinned "ws8sharedkey"
+  @floor_key "ws8sharedkey0123456789abcdef0123456789"
+
+  defp token_for(payload, key, expiry) do
+    sr = URI.encode_www_form(payload)
+
+    sig =
+      :crypto.mac(:hmac, :sha256, key, sr <> "\n" <> Integer.to_string(expiry))
+      |> Base.encode64()
+      |> URI.encode_www_form()
+
+    "SharedAccessSignature sr=" <> sr <> "&sig=" <> sig <>
+      "&se=" <> Integer.to_string(expiry) <> "&skn=RootManageSharedAccessKey"
+  end
+
+  defp verify_with(key) do
+    Application.put_env(:smalt, :sb_shared_key, key)
+    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+    SasVerifier.verify(
+      token_for(@payload, @floor_key, @now + 600),
+      %SasVerifier.Audience{scheme: "https", host: "smalt.example.com", port: 5671},
+      @now
+    )
+  end
+
+  test "sub-floor pinned fallback key rides the generated-key path (wrong-key token refused)" do
+    assert {:error, {401, "INVALID_LOCAL_SAS"}} = verify_with(@pinned)
+  end
+
+  test "wrong >=32B key is refused" do
+    assert {:error, {401, "INVALID_LOCAL_SAS"}} =
+             verify_with("a-different-key-0123456789abcdef0123456789")
+  end
+
+  test "matching >=32B key is accepted" do
+    assert {:ok, _claims} = verify_with(@floor_key)
+  end
+end

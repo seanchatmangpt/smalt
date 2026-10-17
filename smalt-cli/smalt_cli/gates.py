@@ -66,9 +66,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_LEDGER = os.path.join(ROOT, "audit_manifest.jsonl")
 REFUSAL_EXIT_CODE = 2
 
-# Per-lane venv layout (ADR-PY-002), relative to the smalt-cli root.
+# Per-lane venv layout (ADR-PY-002), relative to the smalt-cli root. The
+# documented fallback venv is .venv-cli (real interpreter, .venv does not
+# exist in this checkout).
 VENV_DIR = os.path.join(ROOT, ".venvs")
-FALLBACK_VENV = os.path.join(ROOT, ".venv")
+FALLBACK_VENV = os.path.join(ROOT, ".venv-cli")
 PY = "bin/python" if sys.platform != "win32" else "Scripts\\python.exe"
 
 
@@ -140,17 +142,21 @@ def discover_suites(root: str = ROOT) -> List[str]:
 
 
 def resolve_venv(lane: str, root: str = ROOT) -> tuple[str, str]:
-    """Per ADR-PY-002: prefer .venvs/<lane>, fall back to .venv with a note."""
+    """Per ADR-PY-002: prefer .venvs/<lane>/bin/python when a real per-lane
+    venv exists; otherwise fall back to the documented .venv-cli interpreter
+    with a loud note. Test-file-named symlinks under .venvs/ are NOT a venv
+    layout and are never consulted."""
     lane_py = os.path.join(root, ".venvs", lane, PY)
     if os.path.exists(lane_py):
         return lane_py, ""
     fallback_py = os.path.join(FALLBACK_VENV, PY)
     if os.path.exists(fallback_py):
         return fallback_py, (
-            "ADR-PY-002 per-lane venv .venvs/%s missing; ran against .venv" % lane
+            "ADR-PY-002 per-lane venv .venvs/%s missing; ran against .venv-cli"
+            " (documented fallback)" % lane
         )
     return sys.executable, (
-        "ADR-PY-002 per-lane venv .venvs/%s missing and .venv missing; "
+        "ADR-PY-002 per-lane venv .venvs/%s missing and .venv-cli missing; "
         "ran against the ambient interpreter" % lane
     )
 
@@ -249,7 +255,7 @@ def run_gate1(root: str = ROOT, targets: List[str] | None = None) -> GateResult:
         # -> "sdk-wire" (only two path components, so the len(parts) > 2
         # branch never fires); smalt_cli/test_wire_foo.py -> wire_foo.
         # Inert today: no per-lane venv exists, resolve_venv falls back to
-        # .venv for every lane.
+        # .venv-cli for every lane.
         if target.startswith("tests"):
             parts = target.split("/")
             lane = parts[1] if len(parts) > 2 else "sdk-wire"

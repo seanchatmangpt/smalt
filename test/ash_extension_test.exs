@@ -487,3 +487,4 @@ defmodule Smalt.AshExtension.Lens7FieldPolicyTest do
     Store.delete(:smalt_resources, good)
   end
 end
+

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -101,11 +102,32 @@ def test_gate1_real_repo_discovery_runs_or_skips_loud():
         assert "keyvault" in detail
 
 
-def test_resolve_venv_falls_back_to_venv_with_note():
+def test_resolve_venv_falls_back_to_venv_cli_with_note():
+    """Truthfulness fence: the fallback interpreter must be a REAL, runnable
+    python (.venv-cli), and the note must name it — never a stale claim that
+    suites ran against .venv."""
     interp, note = resolve_venv("no-such-lane", ROOT)
     assert os.path.exists(interp)
+    assert ".venv-cli" in interp
+    out = subprocess.run(
+        [interp, "-c", "import sys; print(sys.executable)"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == interp, (out.stdout, interp)
     assert "ADR-PY-002" in note
     assert ".venvs/no-such-lane" in note
+    assert ".venv-cli" in note
+    # no bare ".venv" claim (word-boundary: ".venvs"/".venv-cli" are fine)
+    assert not re.search(r"\.venv(?![a-z-])", note), note
+
+
+def test_resolve_venv_never_claims_test_file_symlinks_are_venvs():
+    """A test-file-named entry under .venvs/ is not a venv; resolve_venv must
+    never return it as an interpreter."""
+    interp, _note = resolve_venv("blob", ROOT)
+    assert "test_blob" not in os.path.basename(interp)
+    assert ".venvs/" not in interp
 
 
 # --------------------------------------------------------------------------

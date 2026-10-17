@@ -34,7 +34,7 @@ defmodule Smalt.DataPlane.BlobService do
   def list_containers(account, opts \\ %{}) do
     # Azure grammar parity (v26.10.14 lane 06 defect 2): container listing
     # previously SILENTLY COERCED junk maxresults to the default page size
-    # while blob listing answered typed 400 InvalidQueryParameter — split
+    # while blob listing answered typed 400 InvalidQueryParameterValue — split
     # grammar. Both routes now share BlobStorage.check_maxresults/1.
     with :ok <- BlobStorage.check_maxresults(Map.get(opts, "maxresults")) do
       do_list_containers(account, opts)
@@ -74,7 +74,7 @@ defmodule Smalt.DataPlane.BlobService do
   @doc """
   List containers as Azure EnumerationResults XML (same style as
   `BlobStorage.list_blobs_xml/2`). Returns `{xml, next_marker}` on success
-  or `{:error, 400, "InvalidQueryParameter", msg}` for invalid `maxresults`
+  or `{:error, 400, "InvalidQueryParameterValue", msg}` for invalid `maxresults`
   (Azure grammar parity, lane 06 defect 2).
   """
   def list_containers_xml(account, opts \\ %{}) do

@@ -1,3 +1,8 @@
+# Telemetry semconv registry - GENERATED from model/smalt.yaml via
+# ggen_igniter.sync (smalt-semconv-pack). DO NOT EDIT - regenerate with
+# mix smalt.gen. Fences: test/semconv_test.exs,
+# test/semconv_replay_identity_test.exs.
+
 defmodule Smalt.Telemetry.SemConv.Registry do
   @moduledoc """
   Closed semantic-convention registry for smalt telemetry, projected from

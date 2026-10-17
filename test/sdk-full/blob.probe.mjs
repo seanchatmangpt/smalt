@@ -182,9 +182,9 @@ async function main() {
     const res = await sharedKeyFetch(`${mut.url}?comp=list&maxresults=abc`, "GET");
     const body = await res.text();
     assertEqual(res.status, 400, `expected 400, got ${res.status}: ${body.slice(0, 200)}`);
-    // DIVERGENCE: substrate error code token is InvalidQueryParameter
-    // (Azure spec: InvalidQueryParameterValue); 400 + XML envelope shape hold.
-    assertOk(/InvalidQueryParameter|InvalidQueryParameterValue|InvalidInput/.test(body), `XML error envelope missing: ${body.slice(0, 300)}`);
+    // DIVERGENCE: substrate error code token is InvalidQueryParameterValue
+    // (Azure spec: InvalidQueryParameterValueValue); 400 + XML envelope shape hold.
+    assertOk(/InvalidQueryParameterValue|InvalidQueryParameterValueValue|InvalidInput/.test(body), `XML error envelope missing: ${body.slice(0, 300)}`);
   });
 
   // 10. delete blob 202; then container delete

@@ -43,18 +43,21 @@ defmodule Mix.Tasks.Smalt.Apply do
       |> EnclaveCommon.resolve_fixture()
     output = EnclaveCommon.require_flag!(opts, :output, "smalt.apply")
     EnclaveCommon.ensure_store!()
-    # Dev-loop CLI: anonymous router face (same as the ExUnit suite).
-    Application.put_env(:smalt, :auth_mode, :anonymous)
 
-    with {:ok, doc} <- Hcl.parse(fixture),
-         terms = to_terms(doc),
-         {:ok, outcomes} <- Engine.apply(terms, []) do
-      State.write(outcome_map(outcomes), output)
-      Mix.shell().info("[apply] OK fixture=#{fixture} output=#{output} resources=#{length(outcomes)}")
-    else
-      {:error, reason} ->
-        EnclaveCommon.fail!(":apply_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}")
-    end
+    # Dev-loop CLI: anonymous router face (same as the ExUnit suite) —
+    # SCOPED via MixAuthScope so the process-global flip restores on exit
+    # (success, failure, or raise).
+    Smalt.MixAuthScope.with_anonymous_auth(fn ->
+      with {:ok, doc} <- Hcl.parse(fixture),
+           terms = to_terms(doc),
+           {:ok, outcomes} <- Engine.apply(terms, []) do
+        State.write(outcome_map(outcomes), output)
+        Mix.shell().info("[apply] OK fixture=#{fixture} output=#{output} resources=#{length(outcomes)}")
+      else
+        {:error, reason} ->
+          EnclaveCommon.fail!(":apply_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}")
+      end
+    end)
   end
 
   # Same shapes as the lifecycle: TF per-type local names -> type-qualified

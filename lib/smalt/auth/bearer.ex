@@ -177,8 +177,8 @@ defmodule Smalt.Auth.Bearer do
   # Exact-match list: "/metadata/endpoints" matches ONLY the endpoint
   # itself; a longer path is NOT the endpoint (no prefix relaxation).
   defp exempt?(path) do
-    # KD-COVERS: KD-82 (canonical row in docs/jira/v26.10.14/KNOWN_DIVERGENCES.md)
-    # KD-82: leading "//{tid}/..." tolerated — azurerm joins the metadata
+    # KD-COVERS: KD-87 (canonical row in docs/jira/v26.10.14/KNOWN_DIVERGENCES.md)
+    # KD-87: leading "//{tid}/..." tolerated — azurerm joins the metadata
     # loginEndpoint (trailing slash) with the tenant (leading slash); real
     # Azure tolerates the double slash. Leading empty segment ONLY (one
     # normalization pass); interior double slashes still fail the [^/]+

@@ -29,6 +29,18 @@ defmodule ZeroDriftSerializationTest do
       "state" => "Enabled"
     })
 
+    # Restore-on-exit: leaked :lro_delay_ms previously changed LRO-poll timing
+    # for later modules in the batch (v26.10.17 interference sweep).
+    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
+
+    on_exit(fn ->
+      if prev_delay == nil do
+        Application.delete_env(:smalt, :lro_delay_ms)
+      else
+        Application.put_env(:smalt, :lro_delay_ms, prev_delay)
+      end
+    end)
+
     Application.put_env(:smalt, :lro_delay_ms, 0)
     :ok
   end

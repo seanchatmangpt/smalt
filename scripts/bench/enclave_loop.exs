@@ -6,11 +6,14 @@
 #
 #   MIX_ENV=test mix run --no-start scripts/bench/enclave_loop.exs
 #
-# Port env contract (defaults = the global substrate):
-#   SMALT_TEST_ARM_PORT        (9443) — ARM front door, terraform + asserts
-#   SMALT_TEST_EGRESS_PORT     (8443) — data plane (blob / secrets / cosmos)
-#   SMALT_TEST_EVENT_HUBS_PORT (5673) — EH AMQP wire
-#   SMALT_TEST_AMQP_PORT       (5672) — SB AMQP wire (unused here, reported)
+# Port env contract (defaults = the lane c9 block per the c-law, REGISTRY.md:
+# 39290..39294, spare 39295; e1 wrapper exports its own SMALT_TEST_* so e1 is
+# unaffected). Defaults embedding the global substrate (9443/8443/...) are VOID:
+#   SMALT_TEST_ARM_PORT        (39290) — ARM front door, terraform + asserts
+#   SMALT_TEST_EGRESS_PORT     (39291) — data plane (blob / secrets / cosmos)
+#   SMALT_TEST_AMQP_PORT       (39292) — SB AMQP wire (unused here, reported)
+#   SMALT_TEST_EVENT_HUBS_PORT (39293) — EH AMQP wire
+#   SMALT_TEST_TLS_PORT        (39294) — ARM TLS twin (authority/metadata host)
 #
 # Phases, each with a typed verdict row on stdout (PASS / FAIL / SKIP-LOUD —
 # a skip is always loud, never a silent pass):
@@ -40,15 +43,19 @@ defmodule SmaltBench.EnclaveLoop do
   @result_file System.get_env("ENCLAVE_RESULT_FILE") ||
                  "docs/jira/v26.10.16/bench/c9-enclave-loop.jsonl"
   @fixture "test/terraform_fixture"
-  @arm_port System.get_env("SMALT_TEST_ARM_PORT") || "9443"
+  # c-law defaults (REGISTRY.md): lane c9 -> 39290..39295 (mcp port 39295 is
+  # the spare; this harness uses arm/egress/amqp/ehub/arm_tls only). Rows that
+  # embed the global substrate ports (9443/8443/5672/5673) are VOID — a
+  # default-less boot must land in the lane block, never the shared substrate.
+  @arm_port System.get_env("SMALT_TEST_ARM_PORT") || "39290"
   # Lane chain: SMALT_TEST_TLS_PORT (harness convention) -> SMALT_ARM_TLS_PORT
-  # (exported by scripts/tf_enclave_loop.sh, lane TLS twin) -> canonical 9444.
+  # (exported by scripts/tf_enclave_loop.sh, lane TLS twin) -> c-law 39294.
   # Never silently aim the lane's terraform at the canonical twin.
   @tls_port System.get_env("SMALT_TEST_TLS_PORT") ||
-              System.get_env("SMALT_ARM_TLS_PORT") || "9444"
-  @egress_port System.get_env("SMALT_TEST_EGRESS_PORT") || "8443"
-  @eh_port System.get_env("SMALT_TEST_EVENT_HUBS_PORT") || "5673"
-  @amqp_port System.get_env("SMALT_TEST_AMQP_PORT") || "5672"
+              System.get_env("SMALT_ARM_TLS_PORT") || "39294"
+  @egress_port System.get_env("SMALT_TEST_EGRESS_PORT") || "39291"
+  @eh_port System.get_env("SMALT_TEST_EVENT_HUBS_PORT") || "39293"
+  @amqp_port System.get_env("SMALT_TEST_AMQP_PORT") || "39292"
 
   @sub "00000000-0000-0000-0000-000000000000"
   @rg "rg-smalt-fixture"

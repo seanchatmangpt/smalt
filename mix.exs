@@ -39,7 +39,8 @@ defmodule Smalt.MixProject do
       # the later stanzas silently skipped and left stale artifacts.
       # Mix.Task.rerun/2 in the task forces every stanza.
       "test.cross_seat": ["test --only cross_seat test/auth_enforce_test.exs"],
-      "test.amqp_wire": ["test --include amqp_wire"]
+      "test.amqp_wire": ["test --include amqp_wire"],
+      "test.compliance": ["test --include amqp_wire test/compliance_test.exs"]
     ]
   end
 
@@ -54,7 +55,7 @@ defmodule Smalt.MixProject do
   # default (that only applies to the bare `test` task), so pin the env
   # explicitly via preferred_envs.
   def cli do
-    [preferred_envs: ["test.cross_seat": :test, "test.amqp_wire": :test]]
+    [preferred_envs: ["test.cross_seat": :test, "test.amqp_wire": :test, "test.compliance": :test]]
   end
 
   defp description do

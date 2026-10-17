@@ -1,5 +1,14 @@
 # GAP RECEIPT — Azure App Configuration data plane absent from smalt substrate
 
+> **STALE-RECEIPT ANNOTATION (2026-10-17):** the MISSING verdict below is
+> superseded. The /kv family landed in `lib/smalt/egress_router.ex:884-897`
+> (list/PUT/GET/DELETE with etag CAS + If-Match-required delete; KD-COVERS:
+> KD-53). Witness receipt: `receipts/cap-appconfig-kv.md`; probe receipts
+> `sdk-results/ts-appconfig.md` + `sdk-results/py-appconfig.md` (16/16 PASS
+> each, exit 0). Body preserved verbatim below — do not amend further.
+
+
+
 - **Standing**: CONFIRMED (gap confirmed by live probe, 2026-10-16, lane 527 Agent 7)
 - **Subject**: smalt egress data plane (port 8443), App Configuration surface
 - **Verdict**: **MISSING** — no `/appconfig`, `/kv`, or `/configuration/kv` route family

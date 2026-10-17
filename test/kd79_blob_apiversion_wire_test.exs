@@ -1,4 +1,8 @@
 defmodule Kd79BlobApiVersionWireTest do
+  # KD-COVERS: KD-79 (vaultUri loopback-by-design fence anchor; canonical row in
+  # docs/jira/v26.10.14/KNOWN_DIVERGENCES.md — this file's KD-83 legs ride the
+  # same KD-T5 storage-arm census, and KD-79's falsifier surface is exercised
+  # by the KD-T5-F1 legs in test/arm/fr5_tf_divergence_closures_test.exs).
   @moduledoc """
   KD-83 wire fence (registered as KD-83; file name retains kd79 lane history): azurerm 4.54.0 issues `Microsoft.Storage/storageAccounts/blobServices`
   ARM calls with api-version 2023-05-01 (witnessed:

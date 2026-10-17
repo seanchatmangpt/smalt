@@ -97,7 +97,9 @@ Cosmos:
 - KD-09 container list no continuation
 - KD-36 TS upsert 409
 - KD-44 TS bulk 400
-- KD-63 change feed absent
+- KD-63 change feed absent — RESOLVED 2026-10-17: A-IM read (`cf_requested?/1`,
+  cosmos.ex:1244), incremental feed served (`change_feed/3`, cosmos.ex:1135);
+  receipt `docs/jira/v26.10.16/receipts/r-kd63-change-feed-close.md`
 - KD-64 Patch (RFC 6902) unrouted
 - KD-65 sprocs/triggers/UDFs unrouted
 - KD-93 query feed stale projection

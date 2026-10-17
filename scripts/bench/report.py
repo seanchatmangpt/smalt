@@ -88,8 +88,10 @@ def render_window(results_dir, out, version):
     )
     wave_files += root_wave
     if not files and not wave_files:
-        print(f"no .jsonl results in {results_dir}", file=sys.stderr)
-        return 1
+        # Empty bench dir is a legitimate wrap-window state (e.g. a fresh
+        # window with only README.md) — skip loudly, not fail-closed.
+        print(f"[BENCH-REPORT] {version}: no jsonl — skipped", file=sys.stderr)
+        return 0
 
     # Group rows by (lane, surface). Two record classes:
     #   op rows: have "op" key + numeric ops_per_sec -> rendered as table rows
@@ -143,21 +145,58 @@ def render_window(results_dir, out, version):
         "",
     ]
     for (lane, surface), rows in sorted(sections.items()):
-        lines += [f"## {lane} — {surface}", "",
-                  "| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |",
-                  "|---|---|---|---|---|---|---|"]
-        for r in rows:
-            lines.append(
-                "| {op} | {n} | {ops_per_sec:.0f} | {p50_ms:.2f} | {p95_ms:.2f} | {p99_ms:.2f} | {errors} |".format(
-                    op=r.get("op", "?"),
-                    n=r.get("n", 0),
-                    ops_per_sec=float(r.get("ops_per_sec", 0)),
-                    p50_ms=float(r.get("p50_ms", 0)),
-                    p95_ms=float(r.get("p95_ms", 0)),
-                    p99_ms=float(r.get("p99_ms", 0)),
-                    errors=r.get("errors", 0),
+        # Verdict-carrying rows (verdict-carrying n==0 correctness probes from
+        # the enclave-loop harnesses: PASS / FAIL / SKIP-LOUD) are NOT op rows —
+        # rendering them in the throughput table would silently present a
+        # zero-throughput correctness verdict as a measured op. They get their
+        # own verdict table so FAIL/SKIP rows are visibly separated.
+        vrows = [r for r in rows if "verdict" in r]
+        orows = [r for r in rows if "verdict" not in r]
+
+        lines += [f"## {lane} — {surface}", ""]
+        if orows:
+            lines += [
+                "| op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |",
+                "|---|---|---|---|---|---|---|",
+            ]
+            for r in orows:
+                lines.append(
+                    "| {op} | {n} | {ops_per_sec:.0f} | {p50_ms:.2f} | {p95_ms:.2f} | {p99_ms:.2f} | {errors} |".format(
+                        op=r.get("op", "?"),
+                        n=r.get("n", 0),
+                        ops_per_sec=float(r.get("ops_per_sec", 0)),
+                        p50_ms=float(r.get("p50_ms", 0)),
+                        p95_ms=float(r.get("p95_ms", 0)),
+                        p99_ms=float(r.get("p99_ms", 0)),
+                        errors=r.get("errors", 0),
+                    )
                 )
-            )
+        if vrows:
+            lines += [
+                "",
+                "### Verdict rows (correctness probes, not throughput ops)",
+                "",
+                "| op | verdict | n | errors | reason/note |",
+                "|---|---|---|---|---|",
+            ]
+            for r in vrows:
+                reason = (
+                    r.get("reason")
+                    or r.get("note")
+                    or ""
+                )
+                reason = str(reason).replace("|", "\\|")
+                lines.append(
+                    "| {op} | {verdict} | {n} | {errors} | {reason} |".format(
+                        op=r.get("op", "?"),
+                        verdict=r.get("verdict", "?"),
+                        n=r.get("n", 0),
+                        errors=r.get("errors", 0),
+                        reason=reason,
+                    )
+                )
+        if vrows:
+            lines.append("")
     if not sections:
         lines += [
             "No op rows (records with `op` + numeric `ops_per_sec`, per REGISTRY.md)",

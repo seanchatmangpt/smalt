@@ -25,12 +25,14 @@ defmodule Mix.Tasks.Smalt.Doctor do
     Application.put_env(:smalt, :mcp_port, 0)
     Application.put_env(:smalt, :amqp_port, 0)
     Application.put_env(:smalt, :event_hubs_port, 0)
-    Application.put_env(:smalt, :auth_mode, :anonymous)
 
-    Mix.Task.run("app.start")
+    # Dev-loop CLI: anonymous router face (same as the ExUnit suite) —
+    # SCOPED via MixAuthScope so the process-global flip restores on exit.
+    Smalt.MixAuthScope.with_anonymous_auth(fn ->
+      Mix.Task.run("app.start")
 
-    receipt = Smalt.Enclave.Doctor.run([])
-    json = Jason.encode!(receipt, pretty: true)
+      receipt = Smalt.Enclave.Doctor.run([])
+      json = Jason.encode!(receipt, pretty: true)
 
     IO.puts(json)
 
@@ -55,6 +57,7 @@ defmodule Mix.Tasks.Smalt.Doctor do
       {:error, reason} -> IO.puts("[doctor] ocel: emission failed, dropped (fail-safe): #{inspect(reason)}")
     end
 
-    :ok
+      :ok
+    end)
   end
 end

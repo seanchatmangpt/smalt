@@ -48,7 +48,6 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
     {:ok, log: log, dir: dir}
   end
 
-  @tag :skip_ci
   test "a real lifecycle run emits one stage event per stage with enclave/fixture/resource objects", %{
     log: log
   } do

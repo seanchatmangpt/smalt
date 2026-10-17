@@ -163,11 +163,15 @@ for a future window's probe-authoring rows.
   under 20-lane load. Gotcha: `mix test file:LINE` silently runs the
   PREVIOUS test when LINE lands on a comment/blank — reports green
   either way.
-- **ERROR_CODES drift**: r178b (PARTIAL_ALIVE) — DRIFT fence fired on
-  concurrent egress_router.ex line moves; `docs/ERROR_CODES.md` regen is
-  a generated artifact, deferred to the fin-sweep regen pass
-  (`just gen-error-codes`), in flight. Never hand-patched.
-- **ERROR_CODES extractor blind-spot (2026-10-16, lane 10 wrap-docs)** —
+- **ERROR_CODES drift — DONE (2026-10-17, lane I13)**: r178b PARTIAL_ALIVE
+  closed; regen landed via the generator (never hand-patched), see
+  `docs/jira/v26.10.17/receipts/i13-error-codes-blindspot-closed.md`.
+- **ERROR_CODES extractor blind-spot — DONE (2026-10-17, lane I13)**: extractor
+  now sources PolicyViolation (`lib/smalt/policy.ex`) and InvalidEventGridEvent
+  (`lib/smalt/egress_router.ex` EG1 gate); `gen_error_codes.py --check` exit 0,
+  doc test 7/7 green. See
+  `docs/jira/v26.10.17/receipts/i13-error-codes-blindspot-closed.md`.
+  Historical: (2026-10-16, lane 10 wrap-docs) —
   `docs/ERROR_CODES.md` (generated) omits two emitted wire codes the
   extractor does not source: **PolicyViolation** (emitted by
   `lib/smalt/policy.ex:490` via the deny path at
@@ -1640,6 +1644,16 @@ W2-late residue: `canonical.ex`, `registry.ex`, `docs/capabilities.json`,
 new `test/semconv_replay_identity_test.exs` are uncommitted in the
 working tree at this edit (W2-late semconv/Canonical continuation) — the
 run-32 drift-fence reds below sit exactly on this surface.
+
+**AMEND (2026-10-17, lane I14 — append-only; run rows above untouched):**
+the W2-late surface named above **LANDED** as commit `b6a8b7e` (feat
+projection W2 canonical riders) with the companion `483eee3` (W2b —
+smalt.gen task-ification, replaces the mix.exs alias chain) and
+`d615661` (W2b ggen_igniter manifest + receipt ledger, 6-artifact sync);
+the uncommitted-residue note above describes a pre-landing snapshot and
+is retained for the audit trail only. Consequence for the court ledger:
+the run-32.1 drift-fence failures (2457 tests / 7 failures) sit on that
+now-landed surface, not on uncommitted residue.
 
 ### KD-94 (noted)
 

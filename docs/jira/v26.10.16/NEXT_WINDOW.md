@@ -3,7 +3,7 @@
 Source: verified carries from the v26.10.16 wrap (`WRAP_LEDGER.md`,
 `FINAL.md`, `PUBLISH_RECORD.md`, `PROJECTION-ARCH-PLAN.md`) plus the
 v26.10.17 projection opening already landed on main. Reconciled against
-the on-disk tree at main, 2026-10-17 (HEAD `6dc0013`); counts and
+the on-disk tree at main, 2026-10-17 (HEAD `650a8ff`); counts and
 statuses re-read from disk at this edit — stale-by-default law applies
 at execution time.
 
@@ -47,7 +47,9 @@ remaining order per D1:
    roleAssignments/policy → parented-child shells; per-family court
    ladder green + receipts before each hand-written deletion; D3b
    ontology-declared priority ordering. Close: per-family receipts +
-   cumulative arm_lines_deleted counter.
+   cumulative arm_lines_deleted counter — canonical counter home is
+   `docs/jira/v26.10.17/COUNTERS.md` (seed 0; derivation command there,
+   numbers re-derived at execution time, never restated from prose).
 5. **sjira ProjectionSpec backend (W8, depends on W4; W6
    recommended)** — `:projection` backend per plan D4; sj:CodeKind
    byte-fence upgrade; falsifier→verify-gate projection. Close:
@@ -66,10 +68,15 @@ remaining order per D1:
 
 ## 3. Release-gate carries (still open, close conditions attached)
 
-1. **Court two-green on a settled host.** Ledger at close: 30
-   invocations, 0 two-green; terminal witness
+1. **Court two-green on a settled host.** Ledger at close: **32
+   completed invocations, 0 two-green** (supersedes the 30-invocation
+   line; runs 30-32 witnessed — run-30 red receipt
    `docs/jira/v26.10.16/receipts/r226-court-x2-run30-red.md`
-   (`COURT_X2_RC=1`, shifting-failure FLAKE_SOLO residual). Residual
+   (`COURT_X2_RC=1`, shifting-failure FLAKE_SOLO residual); terminal
+   run-32 per `tmp/court-x2-wrap-run32.log`: run 32.1 completed TYPED —
+   `2457 tests, 7 failures`, drift-fence class on the W2-late surface
+   that landed as `b6a8b7e` — run 32.2 aborted at `just doctor`
+   port-in-use). Residual
    classes (WRAP_LEDGER runs 13-21 post-mortem): (a) Enclave.Lifecycle
    ordering pair (recurred runs 6/9/15/19 — dominant face), (b)
    solo-green churn bursts (SealTest, SemanticProjection, StoreChurn,

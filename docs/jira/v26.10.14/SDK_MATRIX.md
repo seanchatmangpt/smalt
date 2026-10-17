@@ -16,6 +16,7 @@ Divergence register: KNOWN_DIVERGENCES.md (94 KD rows).
 | resource-graph | ok | resourcegraph.probe.mjs<br>pass=9 fail=0 div=5 blk=0<br>**CLOSED-RECEIPT (KD-38)** | docs/jira/v26.10.16/sdk-results/ts-resourcegraph.md | CLOSED-RECEIPT<br>pass=9 fail=0 div=5 blk=0<br>**CLOSED-RECEIPT (KD-38)** | py_resourcegraph_monitor.py<br>pass=14 fail=3 div=3 blk=0<br>**REGISTERED-DIVERGENCE (KD-22,KD-23)** | py-resourcegraph-monitor.md | REGISTERED-DIVERGENCE<br>pass=14 fail=3 div=3 blk=0<br>**REGISTERED-DIVERGENCE (KD-22,KD-23)** |
 | purview-atlas | ok | atlas.probe.mjs<br>pass=22 fail=1 div=5 blk=0<br>**CLOSED-RECEIPT (KD-40)** | docs/jira/v26.10.16/sdk-results/ts-atlas.md | CLOSED-RECEIPT<br>pass=22 fail=1 div=5 blk=0<br>**CLOSED-RECEIPT (KD-40)** | py_atlas.py<br>pass=19 fail=0 div=0 blk=0<br>**PASS (KD-41)** | docs/jira/v26.10.16/sdk-results/py-atlas.md | PASS<br>pass=19 fail=0 div=0 blk=0<br>**PASS (KD-41)** |
 | ledger | ok | ledger.probe.mjs<br>pass=9 fail=0 div=1 blk=0<br>**PASS (KD-42)** | docs/jira/v26.10.16/sdk-results/ts-ledger.md | PASS<br>pass=9 fail=0 div=1 blk=0<br>**PASS (KD-42)** | py_ledger.py<br>pass=11 fail=0 div=1 blk=0<br>**CLOSED-RECEIPT (KD-43)** | docs/jira/v26.10.16/sdk-results/py-ledger.md | CLOSED-RECEIPT<br>pass=11 fail=0 div=1 blk=0<br>**CLOSED-RECEIPT (KD-43)** |
+| appconfig | ok | appconfig.probe.mjs<br>pass=19 fail=0 div=1 blk=0<br>**PASS** | docs/jira/v26.10.16/sdk-results/ts-appconfig.md | PASS<br>pass=19 fail=0 div=1 blk=0<br>**PASS** | py_appconfig.py<br>pass=19 fail=0 div=1 blk=0<br>**PASS** | docs/jira/v26.10.16/sdk-results/py-appconfig.md | PASS<br>pass=19 fail=0 div=1 blk=0<br>**PASS** |
 
 ## KD-annotation cells
 
@@ -26,6 +27,10 @@ Cells resolved from KD-register evidence/status receipts (any `docs/jira/*/recei
 | servicebus | ts | KD-45 | docs/jira/v26.10.16/receipts/r178e-census-replay-repair.md | **SIM-PASS** |
 | eventhubs | ts | KD-53, KD-76 | docs/jira/v26.10.14/receipts/2026-10-15-kd53-eh-batch-witness.md; docs/jira/v26.10.16/receipts/r200b-kd71-xopt-props.md; docs/jira/v26.10.16/receipts/r200h-kd76-pk-witness-repair.md | **SIM-PASS** |
 | eventhubs | py | KD-70, KD-71 | docs/audit/sections/aud2-eh-sb-kv.md; docs/jira/v26.10.16/receipts/r200a-kd70-delivery-annotations.md; docs/audit/sections/aud2-eh-sb-kv.md; docs/jira/v26.10.16/receipts/r200b-kd71-xopt-props.md | **SIM-PASS** |
+| servicebus | py | KD-77 | docs/jira/v26.10.16/receipts/lane9-reference-rewrite.md | **SIM-PASS** |
+| arm | ts | KD-91 | docs/jira/v26.10.16/receipts/bench-c11-tf-loop.md; docs/jira/v26.10.16/receipts/kd91-head-checknameexists-witness.md | **SIM-PASS** |
+| blob | ts | KD-92 | docs/jira/v26.10.16/receipts/bench-c11-tf-loop.md | **REGISTERED-DIVERGENCE** |
+| cosmos | ts | KD-93 | docs/jira/v26.10.16/receipts/bench-c11-tf-loop.md | **REGISTERED-DIVERGENCE** |
 
 ## Capability cells (receipt-witnessed wire fences)
 
@@ -33,10 +38,10 @@ Surfaces whose wire fence is witnessed by a capability receipt (standing line, z
 
 | surface | grounded | receipt | standing | status |
 |---|---|---|---|---|
-| appconfig-kv | ok | docs/jira/v26.10.16/receipts/cap-appconfig-kv.md | PARTIAL_ALIVE | **PASS** |
-| monitor-metrics | ok | docs/jira/v26.10.16/receipts/cap-monitor-metrics.md | PARTIAL_ALIVE | **PASS** |
+| appconfig-kv | ok | docs/jira/v26.10.16/receipts/cap-appconfig-kv.md | PARTIAL_ALIVE | **PASS-PARTIAL** |
+| monitor-metrics | ok | docs/jira/v26.10.16/receipts/cap-monitor-metrics.md | PARTIAL_ALIVE | **PASS-PARTIAL** |
 | eh-consumergroups | ok | docs/jira/v26.10.16/receipts/cap-eh-consumergroups.md | PASS | **PASS** |
-| eventgrid-topics-arm | ok | docs/jira/v26.10.16/receipts/cap-eventgrid-topics.md | PARTIAL_ALIVE | **PASS** |
+| eventgrid-topics-arm | ok | docs/jira/v26.10.16/receipts/cap-eventgrid-topics.md | PARTIAL_ALIVE | **PASS-PARTIAL** |
 | blob-snapshot-metadata | ok | docs/jira/v26.10.16/receipts/cap-blob-snapshot-metadata.md | PASS | **PASS** |
 | cosmos-throughput | ok | docs/jira/v26.10.16/receipts/r118-cosmos-put-replace.md | PASS | **PASS** |
 | sb-eh-2024-children | ok | docs/jira/v26.10.16/receipts/cap-sb-eh-apiversion-2024.md | PASS | **PASS** |
