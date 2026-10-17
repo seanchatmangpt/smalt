@@ -18,6 +18,15 @@
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex",
       "updated_at": "2026-10-17T17:51:27.577592Z"
     },
+    "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex=>lib/smalt/config.ex": {
+      "out_template": "lib/smalt/config.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:514ddf1ba77057f3d130b31a0946d4cbd1a22cbaf264a1ed4a42fb6fef46c798"
+      },
+      "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
+      "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex",
+      "updated_at": "2026-10-17T18:11:39.904572Z"
+    },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex=>tmp/defaults_projected.ex": {
       "out_template": "tmp/defaults_projected.ex",
       "outputs": {
