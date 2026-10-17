@@ -36,14 +36,26 @@ docker compose -f docker/compose.smalt.yml up --build -d
 docker compose -f docker/compose.smalt.yml up -d
 ```
 
+Zero-config: no env vars, no host paths, no manual cert or key steps.
+TLS is `:auto` (the app self-mints a per-boot self-signed dev cert into
+the container's tmpfs `/tmp`); the SAS key is pinned via the compose
+`environment` block (see below).
+
+**Dev-only defaults**: `SMALT_SB_SHARED_KEY` and `SMALT_BIND_IP=0.0.0.0`
+are baked into `docker/compose.smalt.yml` as documented dev values.
+Production deployments must supply real secrets via their own env/secret
+store and keep loopback-only exposure — do not ship this compose file as-is.
+
 ## Port map
 
 | Container | Host (loopback only) | Surface |
 |---|---|---|
 | 9443 | 127.0.0.1:9443 | ARM control plane / REST / STS / discovery |
+| 9444 | 127.0.0.1:9444 | ARM TLS twin (SDK legs) |
 | 8443 | 127.0.0.1:8443 | data-plane egress router |
 | 5672 | 127.0.0.1:5672 | AMQP 1.0 broker (Service Bus mode) |
 | 5673 | 127.0.0.1:5673 | Event Hubs-compatible listener |
+| 9545 | 127.0.0.1:9545 | MCP tool surface |
 
 All mappings are bound to `127.0.0.1`; nothing is reachable from the
 network.

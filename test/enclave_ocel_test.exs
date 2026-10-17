@@ -25,7 +25,13 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
 
     Store.clear()
 
-    dir = Path.join("tmp", "ocel-test-#{System.system_time(:millisecond)}")
+    # Collision-proof scratch name: ms alone collided across the sibling
+    # enclave suites under load (shared sink dir -> cross-polluted NDJSON).
+    dir =
+      Path.join(
+        "tmp",
+        "ocel-test-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
+      )
     File.mkdir_p!(dir)
     prev = Application.get_env(:smalt, :ocel_dir)
     Application.put_env(:smalt, :ocel_dir, dir)
@@ -43,14 +49,21 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
   end
 
   @tag :skip_ci
-  test "a real lifecycle run emits one stage event per stage with enclave/fixture/resource objects" do
+  test "a real lifecycle run emits one stage event per stage with enclave/fixture/resource objects", %{
+    log: log
+  } do
     state_path =
-      Path.join("tmp", "enclave-native-ocel-#{System.system_time(:millisecond)}.tfstate")
+      Path.join(
+        "tmp",
+        "enclave-native-ocel-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}.tfstate"
+      )
 
     assert {:ok, report} = Lifecycle.run(@fixture, state_path: state_path)
     assert map_size(report.timings_ms) == 6
 
-    log = Path.join(Application.fetch_env!(:smalt, :ocel_dir), "events.ndjson")
+    # Assert on the setup-captured sink, never a re-read of the node-global
+    # `:ocel_dir` env — the env is shared state and a concurrent suite's
+    # setup/teardown may have re-pointed it by assert time.
     assert {:ok, doc} = OcelNdjson.read_document(log)
 
     stages =
@@ -78,8 +91,9 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
     end
   end
 
-  test "bridge: discover + conform same data at fitness 1.0; mutated trace is penalized" do
-    log = Path.join(Application.fetch_env!(:smalt, :ocel_dir), "events.ndjson")
+  test "bridge: discover + conform same data at fitness 1.0; mutated trace is penalized", %{
+    log: log
+  } do
 
     # Seed a small real log from two stage emissions (no full ladder needed
     # for the bridge law: assemble -> ingest -> DFG -> conform round trip).
@@ -92,8 +106,7 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
                })
     end
 
-    # The scratch dir sink is where EnclaveOcel appended; discover + conform.
-    log = Path.join(Application.fetch_env!(:smalt, :ocel_dir), "events.ndjson")
+    # The setup-captured sink is where EnclaveOcel appended; discover + conform.
     assert {:ok, disc} = PowlBridge.discover(log, object_type: "enclave")
     assert disc.standing == :alive
     assert %{type: :dfg} = disc.model

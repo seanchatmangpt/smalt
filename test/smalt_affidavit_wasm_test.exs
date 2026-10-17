@@ -49,6 +49,12 @@ defmodule Smalt.AffidavitWasmTest do
       {:ok, pid} ->
         %{engine: pid}
 
+      {:error, {:already_started, pid}} ->
+        # Race: another suite started the named singleton between our stop
+        # and start. That is reuse, not failure — assert it is healthy.
+        assert {:ok, _} = WasmEngine.call_json(Jason.encode!(%{op: "capabilities"}))
+        %{engine: pid}
+
       {:error, reason} ->
         flunk("BLOCKED: engine cannot load live artifact — verbatim: #{inspect(reason)}")
     end

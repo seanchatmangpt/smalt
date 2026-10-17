@@ -9,17 +9,29 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      # Paths are relative to this compose file (docker/), so the sibling
+      # path deps live one level above the repo root.
       additional_contexts:
-        ash_graphlaw: ../ash_graphlaw
-        ggen_igniter: ../ggen_igniter
-        ex4pm: ../ex4pm
+        ash_graphlaw: ../../ash_graphlaw
+        ggen_igniter: ../../ggen_igniter
+        ex4pm: ../../ex4pm
     image: smalt:local
     container_name: smalt
+    environment:
+      # Dev-only pinned SAS key (>=32 bytes; used verbatim as the HMAC key by
+      # SasVerifier). Zero-config default so SDK probes work without minting
+      # a key; PRODUCTION MUST OVERRIDE via SMALT_SB_SHARED_KEY secret/env.
+      SMALT_SB_SHARED_KEY: "smalt-docker-dev-key-0123456789abcdef0123456789abcdef"
+      # Docker port-forwarding reaches the container over eth0, so all
+      # listeners must bind 0.0.0.0 in-container (host side stays 127.0.0.1).
+      SMALT_BIND_IP: "0.0.0.0"
     ports:
       - "127.0.0.1:9443:9443"
+      - "127.0.0.1:9444:9444"
       - "127.0.0.1:8443:8443"
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:5673:5673"
+      - "127.0.0.1:9545:9545"
     tmpfs:
       - /tmp
     cap_drop:
@@ -33,7 +45,8 @@ services:
           memory: 2g
     restart: "no"
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9443"]
+      # /dev/tcp is a bashism — /bin/sh is dash on the slim image.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9443"]
       interval: 30s
       timeout: 5s
       start_period: 20s

@@ -49,8 +49,30 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     if fun.() do
       :ok
     else
-      Process.sleep(10)
-      wait_until(fun, tries - 1)
+      if tries > 0 do
+        Process.sleep(10)
+        wait_until(fun, tries - 1)
+      else
+        flunk("wait_until: condition not met after #{tries} tries")
+      end
+    end
+  end
+
+  # Typed-start with singleton-race tolerance: the engine is a NAMED
+  # SINGLETON, so when another suite (async pair race) already started it,
+  # a direct start_link returns {:error, {:already_started, pid}} instead of
+  # this fence's expected typed outcome. Stop the duplicate, settle, retry
+  # once so the fence observes ITS intended artifact state.
+  defp typed_start(opts) do
+    case WasmEngine.start_link(opts) do
+      {:error, {:already_started, pid}} ->
+        GenServer.stop(pid, :normal)
+        wait_until(fn -> is_nil(Process.whereis(WasmEngine)) end)
+        Process.sleep(25)
+        WasmEngine.start_link(opts)
+
+      other ->
+        other
     end
   end
 
@@ -64,7 +86,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
 
   defp with_engine(opts, fun) do
     stop_engine()
-    result = WasmEngine.start_link(opts)
+    result = typed_start(opts)
 
     try do
       fun.(result)
@@ -99,7 +121,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     trunc_path = tmp_wasm("affidavit_truncated", binary_part(full, 0, div(byte_size(full), 4)))
 
     # Default pin gates the truncated bytes: typed digest refusal, never a raise.
-    assert {:error, :artifact_digest_mismatch} = WasmEngine.start_link(path: trunc_path)
+    assert {:error, :artifact_digest_mismatch} = typed_start(path: trunc_path)
 
     # With no engine running, call/2 is typed and repeatable (no crash-loop:
     # there is no process to crash, and the test process never dies).
@@ -120,14 +142,14 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
   test "fence 1b: garbage bytes artifact is typed, never a raise" do
     garbage_path = tmp_wasm("affidavit_garbage", <<0, 1, 2, 3, 4, 5>>)
 
-    assert {:error, :artifact_digest_mismatch} = WasmEngine.start_link(path: garbage_path)
+    assert {:error, :artifact_digest_mismatch} = typed_start(path: garbage_path)
     assert is_nil(Process.whereis(WasmEngine))
   end
 
   test "fence 1c: missing artifact path is typed" do
     missing = Path.join(System.tmp_dir!(), "affidavit_absent_#{System.unique_integer()}.wasm")
 
-    assert {:error, :engine_unavailable} = WasmEngine.start_link(path: missing)
+    assert {:error, :engine_unavailable} = typed_start(path: missing)
     assert is_nil(Process.whereis(WasmEngine))
   end
 
@@ -202,13 +224,13 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     # (a) fail-closed face: one flipped byte + the REAL sidecar pin -> refusal
     wrong_path = tmp_wasm("affidavit_wronghash", "X" <> binary_part(full, 1, byte_size(full) - 1))
 
-    assert {:error, :artifact_digest_mismatch} = WasmEngine.start_link(path: wrong_path)
+    assert {:error, :artifact_digest_mismatch} = typed_start(path: wrong_path)
     assert is_nil(Process.whereis(WasmEngine))
 
     # (b) non-vacuity control: pristine bytes + the REAL sidecar pin admits.
     #     A gate that refused everything would also pass (a) — this proves it
     #     actually distinguishes pinned bytes from tampered bytes.
-    assert {:ok, pid} = WasmEngine.start_link(path: @artifact)
+    assert {:ok, pid} = typed_start(path: @artifact)
     assert Process.alive?(pid)
     assert {:ok, _resp} = WasmEngine.call(pid, @valid_request)
     stop_engine()
@@ -353,7 +375,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
 
       # healthy restart: the second (post-crash) generation still answers
       # typed-correct with a real guest response.
-      assert {:ok, pid2} = WasmEngine.start_link([])
+      assert {:ok, pid2} = typed_start([])
       assert pid2 != pid
 
       assert {:ok, resp} = WasmEngine.call(pid2, @valid_request)
@@ -442,7 +464,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
 
     logs =
       capture_log(fn ->
-        assert {:error, :engine_unavailable} = WasmEngine.start_link(path: missing)
+        assert {:error, :engine_unavailable} = typed_start(path: missing)
       end)
 
     # (b) typed caller contract unchanged...
@@ -528,7 +550,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     stop_engine()
     flush_exits()
 
-    assert {:ok, pid} = WasmEngine.start_link([])
+    assert {:ok, pid} = typed_start([])
     GenServer.stop(pid, :normal)
     WasmEngine.reset_last_init_refusal()
   end

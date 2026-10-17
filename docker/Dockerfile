@@ -71,10 +71,10 @@ COPY --from=build --chown=65532:65532 /app/_release /opt/smalt
 USER 65532:65532
 WORKDIR /tmp
 
-EXPOSE 9443 8443 5672 5673
+EXPOSE 9443 9444 8443 5672 5673 9545
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/9443'
+  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9443"]
 
 ENTRYPOINT ["/opt/smalt/bin/smalt"]
 CMD ["start"]

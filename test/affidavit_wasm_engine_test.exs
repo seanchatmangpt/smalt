@@ -19,8 +19,32 @@ defmodule Smalt.Affidavit.WasmEngineTest do
 
   alias Smalt.Affidavit.WasmEngine
 
+  # Engine is a NAMED SINGLETON: when another suite already started it, a
+  # supervisor child-spec start is rejected {:error, {:already_started, pid}}
+  # — that is a SUCCESS (reuse), never a failure.
   defp start_engine! do
-    if Process.whereis(WasmEngine), do: :ok, else: start_supervised!(WasmEngine)
+    if reusable_engine?(), do: :ok, else: supervised_start!()
+  end
+
+  defp reusable_engine? do
+    case Process.whereis(WasmEngine) do
+      nil ->
+        false
+
+      _pid ->
+        try do
+          match?({:ok, _}, WasmEngine.call_json(Jason.encode!(%{op: "capabilities"})))
+        catch
+          :exit, _ -> false
+        end
+    end
+  end
+
+  defp supervised_start! do
+    start_supervised!(WasmEngine)
+  rescue
+    e in RuntimeError ->
+      if reusable_engine?(), do: :ok, else: reraise(e, __STACKTRACE__)
   end
 
   defp wire(req_binary) do

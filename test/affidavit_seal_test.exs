@@ -30,8 +30,39 @@ defmodule Smalt.Affidavit.SealTest do
   # -- engine helpers (real engine, real artifact) ---------------------------
 
   setup do
-    start_supervised!(WasmEngine)
+    start_engine!()
     :ok
+  end
+
+  # Engine is a NAMED SINGLETON: when another suite (even an async one)
+  # already started it, a supervisor child-spec start is rejected with
+  # {:error, {:already_started, pid}} (surfaced by start_supervised! as a
+  # RuntimeError). That is a SUCCESS — reuse the running engine.
+  defp start_engine! do
+    if reusable_engine?(), do: :ok, else: supervised_start!()
+  end
+
+  defp reusable_engine? do
+    case Process.whereis(WasmEngine) do
+      nil ->
+        false
+
+      _pid ->
+        try do
+          match?({:ok, _}, WasmEngine.call_json(Jason.encode!(%{op: "capabilities"})))
+        catch
+          :exit, _ -> false
+        end
+    end
+  end
+
+  defp supervised_start! do
+    start_supervised!(WasmEngine)
+  rescue
+    e in RuntimeError ->
+      # Race window: the singleton came up between the whereis check and the
+      # supervisor start. Treat the duplicate as reuse, never a failure.
+      if reusable_engine?(), do: :ok, else: reraise(e, __STACKTRACE__)
   end
 
   defp wire(req_binary) do

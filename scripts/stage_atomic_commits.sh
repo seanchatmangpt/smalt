@@ -66,7 +66,7 @@ classify() { # echo family for a path
     docs/jira/v26.10.15/*|docs/jira/v26.10.16/*) echo planning ;;
     gates/*) echo gates ;;
     docs/audit/*|docs/CENSUS.md) echo audit ;;
-    CLAUDE.md|.gitignore|CHANGELOG.md|NOTICE.md|ggen_igniter.pack.lock|justfile.d/*) echo repo ;;
+    CLAUDE.md|.gitignore|CHANGELOG.md|NOTICE.md|ggen_igniter.pack.lock|justfile.d/*|popcorn_demo/*) echo repo ;;
     scripts/court_x2.sh|scripts/doctor.py|scripts/port_sweep.sh|scripts/receipt_index.py|\
     scripts/substrate.sh|scripts/dev_env.sh|scripts/gen_dev_cert.sh|scripts/gen_error_codes.py|\
     scripts/mutation_court.py|scripts/fast_test.sh|scripts/audit_surface_census.sh|\

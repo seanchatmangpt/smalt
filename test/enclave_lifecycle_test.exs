@@ -28,7 +28,13 @@ defmodule Smalt.Enclave.LifecycleTest do
     # per-suite scratch dir so concurrent-family suites' lifecycle events
     # never cross-pollute another suite's per-stage assertions. Restored in
     # on_exit (mirrors enclave_ocel/affidavit/court ocel suites).
-    dir = Path.join("tmp", "ocel-lifecycle-test-#{System.system_time(:millisecond)}")
+    # Collision-proof scratch name: ms alone collided across the sibling
+    # enclave suites under load (shared sink dir -> cross-polluted NDJSON).
+    dir =
+      Path.join(
+        "tmp",
+        "ocel-lifecycle-test-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
+      )
     File.mkdir_p!(dir)
     prev = Application.get_env(:smalt, :ocel_dir)
     Application.put_env(:smalt, :ocel_dir, dir)
@@ -46,7 +52,10 @@ defmodule Smalt.Enclave.LifecycleTest do
 
   test "composite baseline fixture lifecycle: green end to end, in-process" do
     state_path =
-      Path.join("tmp", "enclave-native-test-#{System.system_time(:millisecond)}.tfstate")
+      Path.join(
+        "tmp",
+        "enclave-native-test-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}.tfstate"
+      )
 
     assert {:ok, report} = Lifecycle.run(@fixture, state_path: state_path)
 
@@ -108,7 +117,10 @@ defmodule Smalt.Enclave.LifecycleTest do
     end
 
     state_path =
-      Path.join("tmp", "enclave-native-test-#{System.system_time(:millisecond)}.tfstate")
+      Path.join(
+        "tmp",
+        "enclave-native-test-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}.tfstate"
+      )
 
     assert {:ok, report} = Lifecycle.run(@fixture, state_path: state_path)
     assert map_size(report.timings_ms) == 6
