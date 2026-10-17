@@ -36,8 +36,11 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:  # pragma: no cover
+    import typer  # type-only; runtime import stays inside gate_app()
 
 from .gateway.interceptor import (
     FORBIDDEN_ENVELOPE_TYPE,
@@ -110,10 +113,14 @@ def _res(gate: int, name: str, status: str, reason: str,
 # GATE1 — sdk-wire-conformance
 # --------------------------------------------------------------------------
 
-# Candidate pytest targets for the CLI-4/CLI-5 SDK wire-conformance lanes.
+# SHIM-COURT-relevant discovery: the real suite layout is FLAT under
+# tests/ (tests/test_*.py); the historical globs pointed at tests/sdk_wire/
+# and smalt_cli/test_*wire_* paths that never existed, which made GATE1 a
+# standing SKIP with a false close condition ("lanes not landed yet").
 # Discovery is by filename convention; a missing suite is a loud SKIP, not a
 # silent pass.
 SUITE_GLOBS = [
+    "tests/test_*.py",
     "tests/sdk_wire/test_*.py",
     "tests/sdk_wire_*/test_*.py",
     "smalt_cli/test_sdk_wire_*.py",
@@ -148,12 +155,14 @@ def resolve_venv(lane: str, root: str = ROOT) -> tuple[str, str]:
     )
 
 
-_SUMMARY_RE = re.compile(
-    r"(?:(\d+) passed)?"
-    r"(?:.*?(\d+) skipped)?"
-    r"(?:.*?(\d+) failed)?"
-    r"(?:.*?(\d+) error)?"
-)
+# SHIM-COURT note: counts are matched independently — the previous single
+# anchored regex silently zeroed `failed` on summary lines like
+# "2 failed, 2 skipped in 28.07s" (no "passed" token to anchor on), faking
+# a PASS for a red suite.
+_PASSED_RE = re.compile(r"(\d+) passed")
+_SKIPPED_RE = re.compile(r"(\d+) skipped")
+_FAILED_RE = re.compile(r"(\d+) failed")
+_ERROR_RE = re.compile(r"(\d+) error")
 
 
 def parse_pytest_summary(output: str) -> Dict[str, int]:
@@ -162,14 +171,18 @@ def parse_pytest_summary(output: str) -> Dict[str, int]:
     for line in output.splitlines():
         if ("passed" in line or "skipped" in line or "failed" in line
                 or "no tests ran" in line or "error" in line):
-            m = _SUMMARY_RE.search(line)
+            m = _PASSED_RE.search(line)
             if m:
-                counts = {
-                    "passed": int(m.group(1) or 0),
-                    "skipped": int(m.group(2) or 0),
-                    "failed": int(m.group(3) or 0),
-                    "error": int(m.group(4) or 0),
-                }
+                counts["passed"] = int(m.group(1))
+            m = _SKIPPED_RE.search(line)
+            if m:
+                counts["skipped"] = int(m.group(1))
+            m = _FAILED_RE.search(line)
+            if m:
+                counts["failed"] = int(m.group(1))
+            m = _ERROR_RE.search(line)
+            if m:
+                counts["error"] = int(m.group(1))
     return counts
 
 
@@ -223,18 +236,26 @@ def run_gate1(root: str = ROOT, targets: List[str] | None = None) -> GateResult:
     if not targets:
         return _res(
             1, "sdk-wire-conformance", "SKIP",
-            "SKIP-LOUD: no CLI-4/CLI-5 SDK wire suites found under %s "
-            "(patterns: %s) — lanes not landed yet" % (root, ", ".join(SUITE_GLOBS)),
+            "SKIP-LOUD: no SDK wire suites found under %s matching the "
+            "discovery globs (patterns: %s) — glob-vs-layout mismatch: the "
+            "globs expect a layout the tree does not have; verify where the "
+            "suites actually live before trusting this SKIP" % (
+                root, ", ".join(SUITE_GLOBS)),
             {"suites": []},
         )
     for target in targets:
-        # Lane name for the per-lane venv: tests/sdk_wire/x.py -> sdk_wire;
-        # smalt_cli/test_wire_foo.py -> wire_foo.
+        # Lane name for the per-lane venv. Nested layout tests/<lane>/x.py
+        # -> <lane> (parts[1]); the real flat layout tests/test_blob.py
+        # -> "sdk-wire" (only two path components, so the len(parts) > 2
+        # branch never fires); smalt_cli/test_wire_foo.py -> wire_foo.
+        # Inert today: no per-lane venv exists, resolve_venv falls back to
+        # .venv for every lane.
         if target.startswith("tests"):
-            lane = target.split("/")[1] if "/" in target else "sdk-wire"
+            parts = target.split("/")
+            lane = parts[1] if len(parts) > 2 else "sdk-wire"
         else:
             lane = os.path.splitext(os.path.basename(target))[0]
-            lane = lane.removeprefix("test_")
+        lane = lane.removeprefix("test_")
         interpreter, note = resolve_venv(lane, root)
         report = _run_pytest_suite(target, interpreter, root)
         report.venv_note = note

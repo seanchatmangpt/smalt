@@ -21,6 +21,7 @@ import pathlib
 
 REPO_ROOT = str(pathlib.Path(__file__).resolve().parents[2])
 import os
+import re
 import socket
 import ssl
 import subprocess
@@ -154,8 +155,12 @@ def kv(enforce_substrate):
 
 
 def _client(kv):
+    # api_version pinned to 7.4 (R163 pattern, py_auth_keyvault.py:185-188:
+    # emulator enforces the real AKV 7.x surface; the SDK default 2025-07-01
+    # api-version answers 400 InvalidApiVersion on release_key).
     return KeyClient(vault_url=KV_TLS, credential=kv["cred"],
-                     connection_verify=False, verify_challenge_resource=False)
+                     connection_verify=False, verify_challenge_resource=False,
+                     api_version="7.4")
 
 
 def _bearer(kv):
@@ -207,9 +212,7 @@ def test_release_key_attestation_shape(kv):
 
 
 def test_crypto_encrypt_decrypt_roundtrip(kv):
-    """SDK CryptographyClient builds versioned /keys/{name}/{ver}/encrypt URLs
-    the substrate does not route (measured divergence); round-trip is proven
-    over the unversioned wire shape with the real bearer credential."""
+    """SDK CryptographyClient round-trip over the versioned wire shape."""
     client = _client(kv)
     name = "cli5-kv-key"
     token = kv["cred"].get_token().token
@@ -229,3 +232,81 @@ def test_crypto_encrypt_decrypt_roundtrip(kv):
     assert r2.status_code == 200, r2.text[:300]
     pad = "=" * (-len(r2.json()["value"]) % 4)
     assert base64.urlsafe_b64decode(r2.json()["value"] + pad) == pt
+
+
+def test_versioned_get_and_list_versions(kv):
+    """GAP-A2-08 falsifier: real SDK versioned getKey + version list."""
+    client = _client(kv)
+    name = "cli5-kv-ver-key"
+    created = client.create_key(name, "RSA-HSM")
+    version = created.id.rsplit("/", 1)[1]
+    assert version, created.id
+
+    # GET /keys/{name}/{version} via the real SDK
+    got = client.get_key(name, version=version)
+    assert got.id == created.id, (got.id, created.id)
+
+    # GET /keys/{name}/versions lists the version
+    props = list(client.list_properties_of_key_versions(name))
+    assert any(p.version == version for p in props), [p.id for p in props]
+
+    # a second create accumulates a second version
+    again = client.create_key(name, "RSA-HSM")
+    assert again.id != created.id
+    versions = [p.version for p in client.list_properties_of_key_versions(name)]
+    assert set(versions) >= {version, again.id.rsplit("/", 1)[1]}, versions
+
+    # unknown version -> 404
+    tok = kv["cred"].get_token().token
+    r = requests.get(
+        f"{KV_TLS}/keys/{name}/00000000deadbeef?api-version=7.5",
+        headers={"Authorization": f"Bearer {tok}"},
+        verify=False, timeout=15,
+    )
+    assert r.status_code == 404, (r.status_code, r.text[:200])
+
+
+def test_cryptography_client_versioned_url_roundtrip(kv):
+    """GAP-A2-10 falsifier: CryptographyClient(key_id) issues the 4-segment
+    /keys/{name}/{version}/encrypt|decrypt URLs and the substrate routes them."""
+    keys = _client(kv)
+    name = "cli5-kv-crypto-key"
+    created = keys.create_key(name, "RSA-HSM")
+    token = kv["cred"].get_token().token
+
+    from azure.keyvault.keys.crypto import (
+        CryptographyClient,
+        EncryptionAlgorithm,
+        SignatureAlgorithm,
+    )
+
+    # Disclosed divergence (KD-33 class): the substrate kid embeds its own
+    # 8443 authority, unreachable from this lane; rehost the kid onto the
+    # reachable TLS vault URL. Version suffix and path shape are untouched —
+    # the client still issues the versioned 4-segment URLs under test.
+    key_id = re.sub(r"^https://[^/]+", KV_TLS, created.id)
+    crypto = CryptographyClient(
+        key_id,
+        credential=kv["cred"],
+        connection_verify=False,
+        verify_challenge_resource=False,
+    )
+    pt = os.urandom(32)
+    enc = crypto.encrypt(EncryptionAlgorithm.rsa_oaep_256, pt)
+    assert enc.algorithm.name == "rsa_oaep_256", enc.algorithm
+    dec = crypto.decrypt(EncryptionAlgorithm.rsa_oaep_256, enc.ciphertext)
+    assert dec.plaintext == pt
+
+    # signed round-trip over the versioned URL too
+    digest = hashlib.sha256(b"cli5-versioned-sign").digest()
+    sig = crypto.sign(SignatureAlgorithm.rs256, digest)
+    verify = crypto.verify(SignatureAlgorithm.rs256, digest, sig.signature)
+    assert verify.is_valid is True
+
+    # raw wire witness: the SDK really hit the 4-segment path
+    r = requests.post(
+        f"{KV_TLS}/keys/{name}/{created.id.rsplit('/', 1)[1]}/encrypt?api-version=7.5",        headers={"Authorization": f"Bearer {token}"},
+        json={"alg": "RSA-OAEP-256", "value": b64u(os.urandom(16))},
+        verify=False, timeout=15,
+    )
+    assert r.status_code == 200, (r.status_code, r.text[:200])

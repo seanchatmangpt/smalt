@@ -36,6 +36,11 @@ const airGapRules = {
       message:
         "Air-gap invariant: fetch() must not take a string literal URL. Use SMALT_ARM / SMALT_EGRESS from lib/smalt.ts (localhost only).",
     },
+    {
+      selector: "CallExpression[callee.name='fetch'] > TemplateLiteral",
+      message:
+        "Air-gap invariant: fetch() must not take a template-literal URL. Use smaltFetch/assertLocalUrl from lib/smalt.ts (localhost only).",
+    },
   ],
 };
 

@@ -11,19 +11,23 @@ ROOT := justfile_directory()
 CANONICAL := "_build"
 
 # Shared shell prelude: defines live_refs() and candidates().
-# live_refs: _build* basenames referenced by lsof +D or by a beam/elixir cwd.
+# live_refs: _build* basenames referenced by lsof +D, a beam/elixir cwd, or the
+# MIX_BUILD_ROOT/_build env of a running beam/mix/elixir process (ps eww).
 # candidates: repo-root _build* dirs excluding the canonical _build.
 prelude := '''
 cd "''' + ROOT + '''" || exit 1
 live_refs() {
   {
     lsof +D . 2>/dev/null | awk '{print $NF}' | grep '_build' || true
-    for pid in $(pgrep -f 'beam.smp|elixir' 2>/dev/null); do
+    for pid in $(pgrep -f 'beam.smp|elixir|mix' 2>/dev/null); do
       lsof -p "$pid" 2>/dev/null | awk '$4 == "cwd" {print $NF}'
+      # SHIM-COURT-free live guard: env-referenced build roots (SHIM-COURT pattern: effect must be observable)
+      ps eww "$pid" 2>/dev/null | grep -o 'MIX_BUILD_ROOT=_build[-A-Za-z0-9_]*' | cut -d= -f2
     done
   } | while IFS= read -r p; do
     case "$p" in
       ''' + ROOT + '''/_build*) d="${p#''' + ROOT + '''/}"; echo "${d%%/*}" ;;
+      _build[-A-Za-z0-9_]*) echo "$p" ;;  # SHIM-COURT: bare basename from ps eww env harvest
     esac
   done | sort -u
 }
@@ -39,7 +43,7 @@ candidates() {
 lane-clean-dry:
     #!/bin/sh
     {{prelude}}
-    live="$(live_refs)"
+    live="$(live_refs | tr '\n' ' ')"  # SHIM-COURT: space-join so the case guard can actually match
     total=0
     echo "== lane-clean-dry (root: {{ROOT}}) =="
     for d in $(candidates); do
@@ -56,7 +60,7 @@ lane-clean-dry:
 lane-clean:
     #!/bin/sh
     {{prelude}}
-    live="$(live_refs)"
+    live="$(live_refs | tr '\n' ' ')"  # SHIM-COURT: space-join so the case guard can actually match
     freed=0
     n=0
     for d in $(candidates); do

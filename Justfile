@@ -3,8 +3,13 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 PID_FILE := "/tmp/smalt.pid"
 PORTS := "9443 9444 5672 5673"
 
-# default recipe: run the full admission court (alias of `court`)
-default: court
+# default recipe (operator spec, v26.10.16): doctor first, then the native
+# lifecycle test. Previously an alias of `court` — disclosed default change.
+# Just dependency syntax across imports: recipes in justfile.d/*.just are
+# merged into one namespace, so `default: doctor test-native` resolves the
+# imported `test-native` (justfile.d/22-native.just) the same as any root
+# recipe. Recipe-listing order is unchanged (`just --list` sorts by section).
+default: doctor test-native
 
 # ============================================================================
 # Diagnostic
@@ -88,7 +93,11 @@ test-wire:
 # 2 substrate never up / 3 harness failure.
 test-sdk-smoke:
     @echo "[COURT] T3: SDK smoke tier..."
-    @node test/sdk-smoke/run.mjs
+    @# Watchdog: the harness self-boots a substrate; if that beam dies mid-run the
+    @# node process polls forever and hangs the court (witnessed runs 8/10, 26+ min
+    @# stalls). 30 min hard cap — healthy pass ~5 min; 900s proved too tight under
+    @# concurrent machine load (run 13 run-2 timed out with 0 test failures).
+    @timeout -k 30 1800 node test/sdk-smoke/run.mjs
 
 # T4: terraform fixture plan smoke (scripts/tf_smoke.sh).
 # Exit 0 pass / 1 preflight or substrate failure / 2 terraform step failure /
@@ -130,11 +139,11 @@ eh-smoke:
 mutation-court:
     @python3 scripts/mutation_court.py
 
-# Five fail-closed invariant gates (cosmos ETag CAS, blob WORM, ledger chain,
-# queue capacity, lock clamp), each booting its own substrate on private
-# ports. Non-vacuity: a gate exits 0 only if the positive capture passes AND
-# every negative fixture is refused (gates/common.py:9-13).
-# Receipts: tmp/invariant-gates/<gate>-receipt.json (5, written fresh).
+# Six fail-closed invariant gates (cosmos ETag CAS, blob WORM, ledger chain,
+# queue capacity, lock clamp, appconfig ETag CAS), each booting its own
+# substrate on private ports. Non-vacuity: a gate exits 0 only if the positive
+# capture passes AND every negative fixture is refused (gates/common.py:9-13).
+# Receipts: tmp/invariant-gates/<gate>-receipt.json (6, written fresh).
 @invariant-gates:
     python3 test/invariant_gates_test.py
 
@@ -231,3 +240,6 @@ import 'justfile.d/18-shim-court.just'
 import 'justfile.d/19-wave-telemetry.just'
 # 20-sobelow — static security analysis (ERRC lane 8 Raise; non-blocking)
 import 'justfile.d/20-sobelow.just'
+# 21-enclave — e1 enclave-loop bench lane (tf provision -> data plane -> console -> residue)
+import 'justfile.d/21-enclave.just'
+import 'justfile.d/22-native.just'

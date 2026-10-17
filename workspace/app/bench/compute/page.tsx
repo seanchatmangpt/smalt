@@ -15,7 +15,7 @@ const NODES = 50_000;
 const BUFFER_BYTES = 50 * 1024 * 1024; // 50 MB edge list, transferred zero-copy
 
 type WorkerMsg =
-  | { type: "mem"; usedJSHeapSize: number; ts: number }
+  | { type: "mem"; usedJSHeapSize: number; allocatedBytes?: number; ts: number }
   | { type: "progress"; iterations: number; edgesScanned: number; elapsedMs: number }
   | { type: "done"; iterations: number; edgesScanned: number; elapsedMs: number };
 
@@ -45,6 +45,7 @@ function generateDagEdges(): Uint32Array {
 export default function BenchComputePage() {
   const [tab, setTab] = useState<"chart" | "table" | "log">("chart");
   const [fps, setFps] = useState(0);
+  const [dropped, setDropped] = useState(0); // SHIM-COURT: state snapshot, not a render-time ref read
   const [workerState, setWorkerState] = useState<
     "idle" | "running" | "done" | "terminated"
   >("idle");
@@ -58,6 +59,7 @@ export default function BenchComputePage() {
   const framesRef = useRef({ total: 0, dropped: 0, last: 0, windowBase: 0 });
   const latencyRef = useRef<LatencySample[]>([]);
   const pendingInputRef = useRef<number | null>(null);
+  const workerMemPeakRef = useRef(-1);
 
   const pushLog = useCallback((line: string) => {
     setLog((prev) => [`${Date.now()} ${line}`, ...prev].slice(0, 50));
@@ -85,6 +87,7 @@ export default function BenchComputePage() {
       const f = framesRef.current;
       setFps(f.total - f.windowBase);
       f.windowBase = f.total;
+      setDropped(f.dropped); // SHIM-COURT: snapshot ref into state for render
       setLatencies(latencyRef.current.slice(-200));
     }, 1000);
     return () => clearInterval(iv);
@@ -124,7 +127,13 @@ export default function BenchComputePage() {
     );
     worker.onmessage = (ev: MessageEvent<WorkerMsg>) => {
       const m = ev.data;
-      if (m.type === "mem") setWorkerMem(m.usedJSHeapSize);
+      if (m.type === "mem") {
+        const v = m.allocatedBytes ?? m.usedJSHeapSize;
+        setWorkerMem(v);
+        if (v > workerMemPeakRef.current) {
+          workerMemPeakRef.current = v;
+        }
+      }
       else if (m.type === "progress") setIterations(m.iterations);
       else if (m.type === "done") {
         setIterations(m.iterations);
@@ -156,9 +165,13 @@ export default function BenchComputePage() {
   // Driver bridge, refreshed every render so closures see latest state.
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__n5 = {
+      arm: () => {
+        pendingInputRef.current = performance.now();
+      },
       state: () => workerState,
       fps: () => fps,
       workerMem: () => workerMem,
+      workerMemPeak: () => workerMemPeakRef.current,
       iterations: () => iterations,
       latencies: () => latencyRef.current,
       droppedFrames: () => framesRef.current.dropped,
@@ -207,7 +220,7 @@ export default function BenchComputePage() {
           worker: {workerState} | topo iterations: {iterations}
         </div>
         <div>
-          fps: {fps} | dropped: {framesRef.current.dropped}
+          fps: {fps} | dropped: {dropped}
         </div>
         <div>worker heap: {workerMem} B</div>
       </section>

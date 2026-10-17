@@ -20,108 +20,30 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 MSGS=/tmp/stage-msgs
-mkdir -p "$MSGS"
 
 # ---------------------------------------------------------------------------
-# Family pathspecs (git pathspec globs; evaluated in order, first match wins)
+# Family membership lives in classify() below (first match wins). The
+# pathspec arrays that used to duplicate it here were unread and deleted.
 # ---------------------------------------------------------------------------
-# 1 bench (incl. Q-4 extension: stress harness + wave telemetry feed the bench corpus)
-BENCH=(
-  "docs/jira/v26.10.14/bench/"
-  "scripts/bench/"
-  "docs/jira/v26.10.14/BENCH_RESULTS.md"
-  "scripts/stress/"
-  "scripts/wave_telemetry.sh"
-  "justfile.d/15-bench.just"
-  "justfile.d/19-wave-telemetry.just"
-)
-# 2 shims
-SHIMS=(
-  "lib/smalt/messaging/amqp/connection.ex"
-  "lib/smalt/messaging/amqp/management_rpc.ex"
-  "lib/smalt/auth/bearer.ex"
-  "lib/smalt/egress_router.ex"
-  "lib/smalt/data_plane/blob_storage.ex"
-  "lib/smalt/data_plane/cosmos.ex"
-  "lib/smalt/hw/"
-  "lib/smalt/substrate_identity.ex"
-  "scripts/shim_court/"
-  "test/amqp/broker_facade_test.exs"
-  "test/data_plane/cosmos_test.exs"
-  "test/egress_dispatch_test.exs"
-  "test/auth_enforce_test.exs"
-  "test/apiversion_matrix_test.exs"
-  "test/azapi_actions_test.exs"
-  "test/property/"
-  "test/smalt_hw_virtual_serial_test.exs"
-  "test/smalt/hw_test.exs"
-  "test/sdk-smoke/eventhubs.test.cjs"
-  "test/sdk-smoke/sb-extra.probe.cjs"
-  "lib/smalt/application.ex"
-  "lib/smalt/data_plane/blob_service.ex"
-  "lib/smalt/messaging/amqp/cbs_router.ex"
-  "justfile.d/18-shim-court.just"
-  "proxy/"
-)
-# 3 errc
-ERRC=(
-  "mix.exs"
-  "mix.lock"
-  "smalt-cli/"
-  "test/sdk-full/package.json"
-  "test/sdk-full/package-lock.json"
-  "Justfile"
-  "justfile.d/04-sdk-recipes.just"
-  "justfile.d/06-lane-cleanup.just"
-  "justfile.d/10-gap-register-sync.just"
-  "justfile.d/20-sobelow.just"
-  "scripts/naming_sweep.sh"
-  "scripts/sdk_coverage.py"
-  "scripts/kd_flip.py"
-  "scripts/stage_atomic_commits.sh"
-  "workspace/"
-)
-# 4 planning
-PLANNING=(
-  "docs/jira/v26.10.15/"
-)
-# 5 receipts (incl. remaining test/ stragglers)
-RECEIPTS=(
-  "docs/jira/v26.10.14/receipts/"
-  "docs/jira/v26.10.14/sdk-results/"
-  "docs/jira/v26.10.14/RECEIPTS.md"
-  "docs/jira/v26.10.14/FINAL.md"
-  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md"
-  "docs/jira/v26.10.14/SDK_MATRIX.md"
-  "docs/jira/v26.10.14/ws/"
-  ".ggen_igniter/"
-  "docs/WIRE_PARITY.md"
-  "docs/KNOWN_DIVERGENCES.md"
-  "docs/SDK_MATRIX.md"
-  "docs/STRESS/"
-  "docs/DEV_LOOP.md"
-  "docs/README.md"
-  "docs/CHANGELOG.md"
-  "docs/ERROR_CODES.md"
-  "docs/PACK_INTEGRATION.md"
-  "test/test_helper.exs"
-  "test/canonical_projection_test.exs"
-  "test/"
-)
 
-FAMILIES=(bench shims errc planning receipts)
+FAMILIES=(bench shims errc enclave-native-tf planning receipts gates audit repo tools)
 
 classify() { # echo family for a path
   local p="$1"
   case "$p" in
     docs/jira/v26.10.14/bench/*|scripts/bench/*|docs/jira/v26.10.14/BENCH_RESULTS.md|\
-    scripts/stress/*|scripts/wave_telemetry.sh|justfile.d/15-bench.just|justfile.d/19-wave-telemetry.just) echo bench ;;
+    scripts/stress/*|scripts/wave_telemetry.sh|justfile.d/15-bench.just|justfile.d/19-wave-telemetry.just|\
+    scripts/bench.py) echo bench ;;
     lib/smalt/messaging/amqp/connection.ex|lib/smalt/messaging/amqp/management_rpc.ex|\
-    lib/smalt/auth/bearer.ex|lib/smalt/egress_router.ex|lib/smalt/data_plane/blob_storage.ex|\
+    lib/smalt/auth/bearer.ex|lib/smalt/auth/sas.ex|lib/smalt/egress_router.ex|\
+    lib/smalt/data_plane/blob_storage.ex|\
     lib/smalt/data_plane/cosmos.ex|lib/smalt/hw/*|lib/smalt/substrate_identity.ex|\
     lib/smalt/application.ex|lib/smalt/data_plane/blob_service.ex|lib/smalt/messaging/amqp/cbs_router.ex|\
-    scripts/shim_court/*|test/amqp/broker_facade_test.exs|test/data_plane/cosmos_test.exs|\
-    test/egress_dispatch_test.exs|test/auth_enforce_test.exs|test/apiversion_matrix_test.exs|\
+    lib/smalt/*) echo shims ;; # lib/ repair shims + security surface (default for lib/)
+    scripts/shim_court/*|test/amqp/*|test/data_plane/*|test/wire/*|test/compliance/*|\
+    test/chaos/*|test/egress_dispatch_test.exs|test/smalt_egress_router_test.exs|\
+    test/egress_wiring_test.exs|test/wire/egress_wire_test.exs|test/auth_enforce_test.exs|\
+    test/apiversion_matrix_test.exs|\
     test/azapi_actions_test.exs|test/property/*|test/smalt_hw_virtual_serial_test.exs|\
     test/smalt/*|test/smalt/hw_test.exs|\
     test/sdk-smoke/eventhubs.test.cjs|test/sdk-smoke/sb-extra.probe.cjs|\
@@ -131,14 +53,34 @@ classify() { # echo family for a path
     justfile.d/10-gap-register-sync.just|justfile.d/20-sobelow.just|\
     scripts/naming_sweep.sh|scripts/sdk_coverage.py|scripts/kd_flip.py|\
     scripts/stage_atomic_commits.sh|workspace/*) echo errc ;;
-    docs/jira/v26.10.15/*) echo planning ;;
+    scripts/tf_*.sh|scripts/tf_h1_dirhash.py|scripts/trust_shim/*|\
+    scripts/enclave_native.sh|scripts/nfr3_rss_gate.py|scripts/spc_gate.py|\
+    config/bands.yaml|scripts/pf_redirect.sh|scripts/hosts_alias.sh|\
+    scripts/bootstrap_env.sh|scripts/test_freeze_gate.sh|test/trust_shim_probe/*|\
+    lib/smalt/spc/*|lib/mix/*) echo enclave-native-tf ;;
+    docker/*) echo enclave-native-tf ;;
+    priv/wasm/*|scripts/affidavit_wasm_build.sh|lib/smalt/affidavit/*|\
+    lib/smalt/fin_ops/*|lib/smalt/telemetry/affidavit_ocel.ex) echo enclave-native-tf ;;
+    scripts/mint_release_receipt.py) echo tools ;;
+    docs/jira/v26.10.16/receipts/*) echo receipts ;; # receipts/ subdir wins over planning
+    docs/jira/v26.10.15/*|docs/jira/v26.10.16/*) echo planning ;;
+    gates/*) echo gates ;;
+    docs/audit/*|docs/CENSUS.md) echo audit ;;
+    CLAUDE.md|.gitignore|CHANGELOG.md|NOTICE.md|ggen_igniter.pack.lock|justfile.d/*) echo repo ;;
+    scripts/court_x2.sh|scripts/doctor.py|scripts/port_sweep.sh|scripts/receipt_index.py|\
+    scripts/substrate.sh|scripts/dev_env.sh|scripts/gen_dev_cert.sh|scripts/gen_error_codes.py|\
+    scripts/mutation_court.py|scripts/fast_test.sh|scripts/audit_surface_census.sh|\
+    scripts/verify_all.sh|scripts/sb_census_replay.sh|scripts/dev_watch.sh|\
+    scripts/smalt-tf) echo tools ;;
+    priv/shacl/*) echo gates ;;
     docs/jira/v26.10.14/receipts/*|docs/jira/v26.10.14/sdk-results/*|\
     docs/jira/v26.10.14/RECEIPTS.md|docs/jira/v26.10.14/FINAL.md|\
     docs/jira/v26.10.14/KNOWN_DIVERGENCES.md|docs/jira/v26.10.14/SDK_MATRIX.md|\
     docs/jira/v26.10.14/ws/*|.ggen_igniter/*|\
     docs/WIRE_PARITY.md|docs/KNOWN_DIVERGENCES.md|docs/SDK_MATRIX.md|docs/STRESS/*|\
-    docs/DEV_LOOP.md|docs/README.md|docs/CHANGELOG.md|docs/ERROR_CODES.md|\
-    docs/PACK_INTEGRATION.md|test/*) echo receipts ;;
+    README.md|\
+    docs/how-to/dev-loop.md|docs/README.md|docs/CHANGELOG.md|docs/ERROR_CODES.md|\
+    docs/PACK_INTEGRATION.md|docs/*|test/*) echo receipts ;;
     *) echo UNMATCHED ;;
   esac
 }
@@ -146,7 +88,8 @@ classify() { # echo family for a path
 # ---------------------------------------------------------------------------
 # Build the partition
 # ---------------------------------------------------------------------------
-declare -a FILES_BENCH=() FILES_SHIMS=() FILES_ERRC=() FILES_PLANNING=() FILES_RECEIPTS=()
+declare -a FILES_BENCH=() FILES_SHIMS=() FILES_ERRC=() FILES_ENCLAVE_NATIVE_TF=() FILES_PLANNING=() FILES_RECEIPTS=() \
+  FILES_GATES=() FILES_AUDIT=() FILES_REPO=() FILES_TOOLS=()
 UNMATCHED=()
 
 while IFS= read -r raw; do
@@ -158,8 +101,13 @@ while IFS= read -r raw; do
     bench)    FILES_BENCH+=("$p") ;;
     shims)    FILES_SHIMS+=("$p") ;;
     errc)     FILES_ERRC+=("$p") ;;
+    enclave-native-tf) FILES_ENCLAVE_NATIVE_TF+=("$p") ;;
     planning) FILES_PLANNING+=("$p") ;;
     receipts) FILES_RECEIPTS+=("$p") ;;
+    gates)    FILES_GATES+=("$p") ;;
+    audit)    FILES_AUDIT+=("$p") ;;
+    repo)     FILES_REPO+=("$p") ;;
+    tools)    FILES_TOOLS+=("$p") ;;
     *)        UNMATCHED+=("$p") ;;
   esac
 done < <(git status --porcelain)
@@ -195,6 +143,14 @@ chore(errc): pyjwt/hypothesis deps + refactors
 mix.exs, mix.lock, smalt-cli/, test/sdk-full/package(.lock).json,
 Justfile + justfile.d recipe updates, scripts tooling, workspace property files.
 EOF
+  cat > "$MSGS/enclave-native-tf" <<'EOF'
+feat(enclave-native-tf): enclave-native terraform lane (tf scripts, trust shim, SPC/NFR3 gates, bands config)
+
+scripts/tf_*, scripts/trust_shim/, scripts/enclave_native.sh,
+scripts/nfr3_rss_gate.py, scripts/spc_gate.py, config/bands.yaml,
+scripts/pf_redirect.sh, scripts/hosts_alias.sh, scripts/bootstrap_env.sh,
+scripts/test_freeze_gate.sh, test/trust_shim_probe/, lib/smalt/spc/, lib/mix/.
+EOF
   cat > "$MSGS/planning" <<'EOF'
 docs(planning): v26.10.15 work orders (wholesale)
 
@@ -208,8 +164,24 @@ docs/ (WIRE_PARITY, KNOWN_DIVERGENCES, SDK_MATRIX, STRESS, DEV_LOOP,
 README, CHANGELOG, ERROR_CODES, PACK_INTEGRATION), test/test_helper.exs,
 test/canonical_projection_test.exs, remaining test/ stragglers.
 EOF
+  cat > "$MSGS/gates" <<'EOF'
+chore(gates): invariant gate updates (fail-closed negative fixtures)
+EOF
+  cat > "$MSGS/audit" <<'EOF'
+docs(audit): audit-surface findings + census
+EOF
+  cat > "$MSGS/repo" <<'EOF'
+chore(repo): repo config (CLAUDE.md, .gitignore, ggen pack lock, justfile.d modules)
+EOF
+  cat > "$MSGS/tools" <<'EOF'
+chore(tools): substrate/doctor/court/receipt tooling
+EOF
 }
-write_msgs
+# SHIM-COURT: msgfile writes are side effects — skip entirely under --dry-run
+# so a dry run mutates nothing on disk (not even /tmp/stage-msgs).
+if (( ! DRY_RUN )); then
+  write_msgs
+fi
 
 # ---------------------------------------------------------------------------
 # Plan / execute
@@ -238,7 +210,7 @@ commit_family() {
 
 echo "Partition (classified from git status --porcelain):"
 for fam in "${FAMILIES[@]}"; do
-  var="FILES_${fam^^}"
+  var="FILES_$(echo "$fam" | tr - _ | tr '[:lower:]' '[:upper:]')"
   echo "  $fam: ${#var} -> $(eval "echo \${#$var[@]}") file(s)"
 done
 echo
@@ -246,8 +218,13 @@ echo
 commit_family bench "${FILES_BENCH[@]}"
 commit_family shims "${FILES_SHIMS[@]}"
 commit_family errc "${FILES_ERRC[@]}"
+commit_family enclave-native-tf "${FILES_ENCLAVE_NATIVE_TF[@]}"
 commit_family planning "${FILES_PLANNING[@]}"
 commit_family receipts "${FILES_RECEIPTS[@]}"
+commit_family gates "${FILES_GATES[@]}"
+commit_family audit "${FILES_AUDIT[@]}"
+commit_family repo "${FILES_REPO[@]}"
+commit_family tools "${FILES_TOOLS[@]}"
 
 if (( DRY_RUN )); then
   echo

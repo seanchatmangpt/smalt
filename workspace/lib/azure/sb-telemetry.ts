@@ -15,6 +15,7 @@
  * and fails loudly on divergence.
  */
 
+import { smaltFetch } from "../smalt.js"; // SHIM-COURT: air-gap egress via smaltFetch
 import type {
   ServiceBusClient,
   ServiceBusSender,
@@ -54,13 +55,14 @@ export async function ensureQueue(
   const nsBase =
     `${armBase}/subscriptions/${sub}/resourceGroups/ws9-rg/providers/` +
     `Microsoft.ServiceBus/namespaces/ws9-ns`;
-  await fetch(`${nsBase}?api-version=2021-04-01`, {
+  await smaltFetch(armBase, `${nsBase}?api-version=2021-04-01`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ location: "smalt", skuName: "Standard" }),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  const res = await fetch(
+  const res = await smaltFetch(
+    armBase,
     `${nsBase}/queues/${queueName}?api-version=2021-04-01`,
     {
       method: "PUT",

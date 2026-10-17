@@ -96,7 +96,7 @@ export function getReadOnlyArmClient(config?: ArmClientConfig): ArmReadFacade {
     },
     resources: {
       list: client.resources.list.bind(client.resources),
-      getById: client.resources.getById.bind(client.resources.getById),
+      getById: client.resources.getById.bind(client.resources),
     },
   };
 }

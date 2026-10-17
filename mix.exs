@@ -1,7 +1,7 @@
 defmodule Smalt.MixProject do
   use Mix.Project
 
-  @version "26.10.14"
+  @version "26.10.16"
 
   def project do
     [
@@ -40,16 +40,37 @@ defmodule Smalt.MixProject do
         # Replay identity: the generated artifact must be canonical-formatted
         # so `mix smalt.gen` replay is byte-identical (fenced by
         # test/smalt_registry_replay_identity_test.exs).
-        "format lib/smalt/registry.ex"
-      ]
+        "format lib/smalt/registry.ex",
+        # OCEL event-type vocabulary (lane 431): projected from the same
+        # ontology's smalt:OcelEventType rows. spc.drift gates the SPC
+        # emitter (Smalt.Spc.Drift); unknown types stay log-and-drop.
+        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
+          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
+          "--query event_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/event_types.rq " <>
+          "--query object_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/ocel_object_types.rq " <>
+          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/event_registry.ex.eex " <>
+          "--out lib/smalt/ocel/event_registry.ex --engine sparql",
+        "format lib/smalt/ocel/event_registry.ex"
+      ],
+      # R164: named tiers. cross_seat runs the auth cross-seat suite in
+      # isolation (default-excluded tag); amqp_wire includes the wire tier.
+      "test.cross_seat": ["test --only cross_seat test/auth_enforce_test.exs"],
+      "test.amqp_wire": ["test --include amqp_wire"]
     ]
   end
 
   def application do
     [
-      extra_applications: [:logger, :crypto, :inets, :ssl, :public_key, :xmerl],
+      extra_applications: [:logger, :crypto, :inets, :ssl, :public_key, :xmerl, :wasmex],
       mod: {Smalt.Application, []}
     ]
+  end
+
+  # R164: dotted `test.*` aliases do not get Mix's automatic :test env
+  # default (that only applies to the bare `test` task), so pin the env
+  # explicitly via preferred_envs.
+  def cli do
+    [preferred_envs: ["test.cross_seat": :test, "test.amqp_wire": :test]]
   end
 
   defp description do
@@ -68,7 +89,7 @@ defmodule Smalt.MixProject do
       # (verified: they were dead in v26.10.13/14 builds). The keys were
       # removed from lib/ (receipt chain relocated to test/fixtures/); the
       # acceptance gate is the inner contents.tar.gz grep == 0 in
-      # docs/PUBLISH_CHECK.md, not glob semantics.
+      # docs/archive/PUBLISH_CHECK.md, not glob semantics.
       files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md NOTICE.md),
       exclude_patterns: ["**/.ggen/**", "**/keys/**", "**/*key*.pem"]
     ]
@@ -89,6 +110,15 @@ defmodule Smalt.MixProject do
       # compile them. Disclosed in docs/SEMANTIC_PROJECTION.md.
       {:ash_r2rml, path: "../ash_r2rml", only: [:dev, :test], optional: true},
       {:ash_ex4pm, path: "../ash_ex4pm", only: [:dev, :test], optional: true},
+      # Process-intelligence + attestation engine (operator ruling,
+      # v26.10.16): permanent in-tree RUNTIME dep — it is the OCEL event
+      # sink / POWL discovery+conformance backend, not a manufacturing-time
+      # tool. Elixir compat: ex4pm "~> 1.17" satisfies smalt's
+      # "~> 1.18 or ~> 1.19 or ~> 1.20".
+      # `override: true` — ash_ex4pm pins the HEX package `== 26.10.1`
+      # (dev/test only); the in-tree path dep (26.10.8) wins in every env
+      # where ash_ex4pm compiles, so both resolve to one ex4pm.
+      {:ex4pm, path: "../ex4pm", override: true},
       {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true},
       # ERRC Raise lane 6: property-based testing with shrinking (test-only
       # usage; declared env-prod because `ash` requires stream_data
@@ -104,7 +134,11 @@ defmodule Smalt.MixProject do
       {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
       # B-11 recon soak (docs/jira/v26.10.14/receipts/errc7-recon.md): BEAM-level
       # leak evidence (processes/binaries/atoms/ETS) that RSS alone cannot give.
-      {:recon, "~> 2.5", only: :test}
+      {:recon, "~> 2.5", only: :test},
+      # WASM engine (lane 601, v26.10.16): pin mirrors ash_a2a mix.exs:522
+      # ("~> 0.15.1") so graphlaw and affidavit share one wasmex identity.
+      # Fail-closed host: {:error, :engine_unavailable} when artifact absent.
+      {:wasmex, "~> 0.15.1"}
     ]
   end
 end

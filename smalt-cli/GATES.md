@@ -18,20 +18,39 @@ run is present by `params_digest`.
 
 ## GATE1 — sdk-wire-conformance
 
-Aggregates the CLI-4/CLI-5 SDK wire pytest suites, discovered by convention
-(`tests/sdk_wire/**`, `smalt_cli/test_sdk_wire_*.py`,
-`smalt_cli/test_wire_*.py`). Each suite runs via subprocess pytest
-(ADR-PY-002 venv layout `smalt-cli/.venvs/<lane>`; falls back to
-`smalt-cli/.venv` or the ambient interpreter with a loud note in the result).
+Aggregates the SDK wire pytest suites, discovered by convention
+(`tests/test_*.py` — the real, flat layout — plus the historical
+`tests/sdk_wire/**`, `smalt_cli/test_sdk_wire_*.py`,
+`smalt_cli/test_wire_*.py` patterns kept for forward compatibility). Each
+suite runs via subprocess pytest.
+
+**Interpreter matrix — honest description (repair R44).** ADR-PY-002
+prescribes per-lane venvs at `smalt-cli/.venvs/<lane>`. That layout does not
+exist: `.venvs/` contains only symlinks named after test files
+(`test_blob.py -> ../.venv-cli` etc.), none of which resolves to a venv with
+a `bin/python`. This is a known defect, reported here rather than papered
+over — the `.venvs/` symlinks need to be removed and real per-lane venvs
+created (owner: coordinator, not lane R44). Until then every suite resolves
+through `resolve_venv`'s fallback to `smalt-cli/.venv`, and the result
+carries the loud `venv_note` "ADR-PY-002 per-lane venv .venvs/<lane>
+missing; ran against .venv". The interpreter matrix is therefore currently
+**nominal**: one real interpreter (`.venv`), per-lane isolation not exercised.
+
 Zero failures required; a SKIP carries a loud reason in `reason`.
 
 ```sh
 .venv/bin/python run_gates.py --gate 1
 ```
 
-Standing 2026-10-15: **SKIP** — no CLI-4/CLI-5 suites landed yet (discovery
-finds zero files). The gate is not exercising wire conformance until those
-lanes land.
+Standing 2026-10-16 (post-R120): suites are discovered from the flat
+`tests/test_*.py` layout and actually run. `test_w3_session_ops` is now
+pass-or-skip-loud (R120 rewrite); the only remaining known red is
+`test_keyvault`, whose batch-delete cases SKIP on the KD-49 delivery-tag
+signature while the rest of the suite FAILs and is reported as FAIL —
+GATE1's aggregate verdict is FAIL until `test_keyvault` goes green. The
+per-suite breakdown is printed to stdout at run time; the ledger stores only
+the hashed `params_digest` for each `gate1.run` record, never the breakdown
+itself.
 
 ## GATE2 — hil-attestation
 
@@ -95,8 +114,13 @@ Standing 2026-10-15: **PASS** (chain intact; all executed ops covered).
 
 ## Honest limits
 
-- GATE1 currently verifies nothing about wire conformance (suites absent);
-  it will PASS with loud SKIP notes until CLI-4/CLI-5 land.
+- GATE1 discovery previously pointed at `tests/sdk_wire/**` paths that never
+  existed, producing a standing SKIP with a false close condition ("lanes not
+  landed yet"). Fixed in R44: discovery matches the real flat `tests/` layout.
+- The ADR-PY-002 per-lane venv layout (`.venvs/<lane>`) does not exist;
+  `.venvs/` holds broken symlinks (`test_*.py -> ../.venv-cli`) and every
+  suite actually runs against `.venv`. Defect reported, not deleted, in
+  lane R44; the interpreter matrix is nominal until real per-lane venvs land.
 - GATE2 executed its first signed receipt against the Elixir virtual HIL
   device (S-5, 2026-10-15); the `--device <PORT>` contract is implemented
   (typer alias in smalt_cli/hw/cli.py).

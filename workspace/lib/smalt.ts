@@ -25,5 +25,8 @@ export async function smaltFetch(
   init?: RequestInit
 ): Promise<Response> {
   const url = assertLocalUrl(new URL(path, base).toString());
-  return fetch(url, init);
+  // SHIM-COURT: default redirect:"error" — a 30x with an off-host Location
+  // must not carry the request (or its body) past the air-gap guard, which
+  // only validates the initial URL.
+  return fetch(url, { redirect: "error", ...init });
 }

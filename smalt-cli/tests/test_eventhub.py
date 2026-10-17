@@ -66,13 +66,12 @@ KD21 = (
 
 
 KD49_SKIP = (
-    "SKIP-KD49: substrate AMQP attach echo mis-shapes source/target "
-    "(pyamqp Target.__new__ 9-vs-8 TypeError; settlement then fails with "
-    "'message' must be ServiceBusReceivedMessage). Registered divergence "
-    "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-49 (echo client's "
-    "source/target from perf on every attach response). Lane unrunnable in "
-    "Python until that lands; Node census (sb_census_replay.sh) covers the "
-    "same wire surface today."
+    "SKIP-KD49(CLOSED-SIMULATED, residual KD-77): KD-49 attach echo "
+    "(source/target mis-shape; pyamqp Target.__new__ 9-vs-8 TypeError) is "
+    "fixed — attach-echo shim landed in lib/, KD-49 CLOSED-SIMULATED. "
+    "Residual divergence docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-77: "
+    "delivery-tag UUID encoding on settle raises \"object of type 'UUID' "
+    "has no len()\". See KNOWN_DIVERGENCES.md KD-49/KD-77."
 )
 
 
@@ -87,9 +86,9 @@ def kd21_skip(exc):
         pytest.skip(KD49_SKIP)
     if "list index out of range" in sig:
         pytest.skip(
-            "SKIP-KD18: EH $management ops (get max message size / partition "
+            "SKIP-KD19: EH $management ops (get max message size / partition "
             "properties) answer 501 UNSUPPORTED_OPERATION -> SDK IndexError; "
-            "registered OPEN divergence KNOWN_DIVERGENCES.md KD-18 (route "
+            "registered OPEN divergence KNOWN_DIVERGENCES.md KD-19 (route "
             "EH-mode $management to an EH dispatcher). SDK create_batch path "
             "queries max message size via the mgmt link even with "
             "max_size_in_bytes pinned."

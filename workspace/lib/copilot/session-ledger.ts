@@ -14,6 +14,7 @@
 
 import { isMutation } from './verb-gate';
 import { makeRefusal, type TypedRefusal } from './typed-refusal';
+import { assertLocalUrl } from '../smalt'; // SHIM-COURT: air-gap host check before egress
 
 export interface LedgerEntry {
   seq: number;
@@ -25,6 +26,12 @@ export interface LedgerEntry {
   url: string;
   prevHash: string;
   hash: string;
+  /**
+   * Attempt outcome, patched after settle. Deliberately excluded from
+   * computeHash: the entry is appended BEFORE the attempt (SHIM-COURT:
+   * every egress attempt is ledgered in request order, even on throw).
+   */
+  outcome?: 'ok' | 'refused-airgap' | 'fetch-error';
 }
 
 export interface LedgerSnapshot {
@@ -131,7 +138,27 @@ export async function guardedFetch(
     return { ok: false, refusal };
   }
 
-  const response = await fetch(input, init);
-  appendLedger({ ts: Date.now(), kind: 'read', verb: method, url });
-  return { ok: true, response };
+  // SHIM-COURT: ledger the attempt BEFORE any check or egress so every
+  // request is audited in request order, even when assertLocalUrl throws
+  // or fetch rejects. Outcome is patched after settle (not hash-covered).
+  const attempt = appendLedger({ ts: Date.now(), kind: 'read', verb: method, url });
+
+  try {
+    // SHIM-COURT: air-gap host check — refuse any non-local host before egress.
+    assertLocalUrl(url);
+  } catch (err) {
+    attempt.outcome = 'refused-airgap';
+    throw err;
+  }
+
+  try {
+    // SHIM-COURT: default redirect:"error" — assertLocalUrl only validates the
+    // initial URL; an off-host 30x Location must not carry the read off-host.
+    const response = await fetch(input, { redirect: 'error', ...init });
+    attempt.outcome = 'ok';
+    return { ok: true, response };
+  } catch (err) {
+    attempt.outcome = 'fetch-error';
+    throw err;
+  }
 }

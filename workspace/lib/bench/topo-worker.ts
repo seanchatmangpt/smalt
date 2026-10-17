@@ -22,6 +22,8 @@ const COMPUTE_MS = 15_000;
 const MEM_POLL_MS = 500;
 
 /** One full Kahn topological sort over the transferred edge buffer. */
+let lastAllocBytes = 0;
+
 function kahnTopoSort(
   edges: Uint32Array,
   n: number,
@@ -36,10 +38,13 @@ function kahnTopoSort(
   for (let v = 0; v < n; v++) adjStart[v + 1] += adjStart[v];
   const cursor = adjStart.slice();
   for (let e = 0; e < numEdges; e++) adj[cursor[edges[2 * e]]++] = edges[2 * e + 1];
+  const queue = new Uint32Array(n);
+  lastAllocBytes =
+    edges.buffer.byteLength + indeg.byteLength + adjStart.byteLength +
+    adj.byteLength + queue.byteLength + cursor.byteLength;
 
   // Kahn: FIFO of zero in-degree nodes.
   for (let e = 0; e < numEdges; e++) indeg[edges[2 * e + 1]]++;
-  const queue = new Uint32Array(n);
   let qh = 0;
   let qt = 0;
   let scans = 0;
@@ -68,21 +73,25 @@ workerSelf.onmessage = (ev: MessageEvent) => {
   const start = performance.now();
   let iterations = 0;
   let scans = 0;
-
-  const memTimer = setInterval(() => {
-    const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } })
-      .memory;
-    workerSelf.postMessage({
-      type: "mem",
-      usedJSHeapSize: mem ? Math.round(mem.usedJSHeapSize) : -1,
-      ts: Date.now(),
-    });
-  }, MEM_POLL_MS);
+  let lastMemPost = 0;
 
   while (performance.now() - start < COMPUTE_MS) {
     const r = kahnTopoSort(edges, n);
     iterations++;
     scans += r.scans;
+    // Memory poll inline in the compute loop: a busy worker never turns its
+    // event loop, so setInterval callbacks would never fire.
+    if (performance.now() - lastMemPost >= MEM_POLL_MS) {
+      lastMemPost = performance.now();
+      const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } })
+        .memory;
+      workerSelf.postMessage({
+        type: "mem",
+        usedJSHeapSize: mem ? Math.round(mem.usedJSHeapSize) : -1,
+        allocatedBytes: lastAllocBytes,
+        ts: Date.now(),
+      });
+    }
     workerSelf.postMessage({
       type: "progress",
       iterations,
@@ -90,8 +99,6 @@ workerSelf.onmessage = (ev: MessageEvent) => {
       elapsedMs: Math.round(performance.now() - start),
     });
   }
-
-  clearInterval(memTimer);
   workerSelf.postMessage({
     type: "done",
     iterations,

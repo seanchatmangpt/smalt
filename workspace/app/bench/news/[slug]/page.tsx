@@ -15,7 +15,9 @@ import {
   REVALIDATE_SECONDS,
 } from "@/lib/bench/isr-counter";
 
-export const revalidate = REVALIDATE_SECONDS;
+// N-3 unblock fix: segment config exports must be literals — Next rejects a
+// non-literal `revalidate`. Value kept in lockstep with REVALIDATE_SECONDS (10).
+export const revalidate = 10;
 
 export function generateStaticParams() {
   return ALL_SLUGS.map((slug) => ({ slug }));

@@ -15,6 +15,7 @@
  * credential for `new ClientSecretCredential(...)` when pointing at real Azure.
  */
 import type { TokenCredential, AccessToken, GetTokenOptions } from "@azure/core-auth";
+import { assertLocalUrl } from "../smalt.js"; // SHIM-COURT: air-gap host check on armBase
 
 export interface SmaltCredentialOptions {
   /** ARM plane base URL, e.g. https://localhost:9443. */
@@ -37,13 +38,16 @@ export class SmaltTokenCredential implements TokenCredential {
   private readonly clientSecret: string;
   private readonly refreshSlackMs: number;
   private readonly fetchImpl: typeof fetch;
-  private cached: AccessToken | null = null;
-  private inflight: Promise<AccessToken> | null = null;
+  private cached: Map<string, AccessToken> = new Map();
+  private inflight: Map<string, Promise<AccessToken>> = new Map();
   private mintCounter = 0;
 
   constructor(options: SmaltCredentialOptions) {
     if (!options?.armBase) throw new Error("SmaltTokenCredential: armBase is required");
     this.armBase = options.armBase.replace(/\/+$/, "");
+    // SHIM-COURT: refuse non-local armBase at construction — the only egress
+    // this credential can ever make is the STS POST against armBase.
+    assertLocalUrl(this.armBase);
     this.tenant = options.tenant ?? "smalt-tenant";
     this.clientId = options.clientId ?? "workspace-console";
     this.clientSecret = options.clientSecret ?? "workspace-secret";
@@ -58,21 +62,26 @@ export class SmaltTokenCredential implements TokenCredential {
     const scope = Array.isArray(scopes) ? scopes[0] : scopes;
     if (!scope) throw new Error("SmaltTokenCredential.getToken: scopes is required");
     const now = Date.now();
-    if (this.cached && this.cached.expiresOnTimestamp - this.refreshSlackMs > now) {
-      return this.cached;
+    // R23 fix: cache and inflight are keyed by scope — a concurrent
+    // different-scope call must not inherit another scope's token.
+    const cached = this.cached.get(scope);
+    if (cached && cached.expiresOnTimestamp - this.refreshSlackMs > now) {
+      return cached;
     }
-    if (this.inflight) return this.inflight;
-    this.inflight = this.mint(scope)
+    const inflight = this.inflight.get(scope);
+    if (inflight) return inflight;
+    const mintPromise = this.mint(scope)
       .then((t) => {
-        this.cached = t;
-        this.inflight = null;
+        this.cached.set(scope, t);
+        this.inflight.delete(scope);
         return t;
       })
       .catch((e) => {
-        this.inflight = null;
+        this.inflight.delete(scope);
         throw e;
       });
-    return this.inflight;
+    this.inflight.set(scope, mintPromise);
+    return mintPromise;
   }
 
   /**
@@ -81,7 +90,7 @@ export class SmaltTokenCredential implements TokenCredential {
    */
   async mintFresh(scope: string): Promise<AccessToken> {
     const token = await this.mint(scope);
-    this.cached = token;
+    this.cached.set(scope, token);
     return token;
   }
 
@@ -102,6 +111,9 @@ export class SmaltTokenCredential implements TokenCredential {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: body.toString(),
+      // SHIM-COURT: redirect:"error" — the client_secret body must never
+      // follow an off-host 30x Location past the air-gap guard.
+      redirect: "error",
     });
     if (!res.ok) {
       const text = await res.text();

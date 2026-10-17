@@ -26,7 +26,14 @@ export const ARM_MUTATION_PATTERNS: readonly RegExp[] = Object.freeze([
   /Microsoft\.KeyVault\/vaults\/secrets\/(?!.*\/read(?:$|[?\/]))/i,
 ]);
 
-/** Read patterns that always pass, even under a mutation verb shape. */
+/**
+ * Read patterns that always pass, even under a mutation verb shape.
+ * Tested against the FULL URL string (not u.pathname): the `[?\/]`
+ * alternatives in these patterns are only reachable when the query
+ * string is still present (pathname has it stripped), so matching
+ * against pathname made them dead. SHIM-COURT: read-marker semantics
+ * are matched against the raw URL.
+ */
 const READ_PATTERNS: readonly RegExp[] = Object.freeze([
   /\/read(?:$|[?\/])/i,
   /GET\b/i,
@@ -49,9 +56,13 @@ export function isMutation(method: string, url: string): boolean {
   if (verb === 'GET' || verb === 'HEAD' || verb === 'OPTIONS') return false;
   const path = urlPath(url);
 
-  // Explicit read markers pass regardless of shape.
-  if (READ_PATTERNS.some((re) => re.test(path)) && verb === 'GET') return false;
-  if (/\/read(?:$|[?\/])/i.test(path) && !MUTATION_VERBS.includes(verb as (typeof MUTATION_VERBS)[number])) {
+  // Explicit read markers pass for non-mutation verbs, tested against the
+  // full URL so query-anchored read markers stay reachable (SHIM-COURT:
+  // dead read-allowlist branch removed; see READ_PATTERNS doc).
+  if (
+    READ_PATTERNS.some((re) => re.test(url)) &&
+    !MUTATION_VERBS.includes(verb as (typeof MUTATION_VERBS)[number])
+  ) {
     return false;
   }
 

@@ -15,7 +15,7 @@ from azure.servicebus import ServiceBusClient, ServiceBusMessage, ServiceBusSubQ
 
 pytestmark = [pytest.mark.enforce, pytest.mark.usefixtures("enforce_substrate")]
 
-# Lane-private port block (docs/DEV_LOOP.md 38000-range), distinct from
+# Lane-private port block (docs/how-to/dev-loop.md 39000-range), distinct from
 # py5's 39272 block and py4's 39140 block.
 AMQP_PORT = int(os.environ.get("CLI5_AMQP_PORT", "38672"))
 
@@ -42,13 +42,12 @@ KD21 = (
 
 
 KD49_SKIP = (
-    "SKIP-KD49: substrate AMQP attach echo mis-shapes source/target "
-    "(pyamqp Target.__new__ 9-vs-8 TypeError; settlement then fails with "
-    "'message' must be ServiceBusReceivedMessage). Registered divergence "
-    "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-49 (echo client's "
-    "source/target from perf on every attach response). Lane unrunnable in "
-    "Python until that lands; Node census (sb_census_replay.sh) covers the "
-    "same wire surface today."
+    "SKIP-KD49(CLOSED-SIMULATED, residual KD-77): KD-49 attach echo "
+    "(source/target mis-shape; pyamqp Target.__new__ 9-vs-8 TypeError) is "
+    "fixed — attach-echo shim landed in lib/, KD-49 CLOSED-SIMULATED. "
+    "Residual divergence docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-77: "
+    "delivery-tag UUID encoding on settle raises \"object of type 'UUID' "
+    "has no len()\". See KNOWN_DIVERGENCES.md KD-49/KD-77."
 )
 
 
@@ -100,7 +99,12 @@ def test_send_receive_batch_complete(sb):
         msgs = recv.receive_messages(max_message_count=5, max_wait_time=10)
         assert len(msgs) == 5, f"expected 5, got {len(msgs)}"
         assert sorted(str(m) for m in msgs) == [f"m{i}" for i in range(5)]
-        recv.complete_message(msgs)
+        # s1 lane (s1-amqp-shims receipt): this venv's azure-servicebus
+        # complete_message takes a single ServiceBusReceivedMessage — settle
+        # per-message (the KD-49-era skip banner misattributed this TypeError
+        # to the broker attach echo).
+        for m in msgs:
+            recv.complete_message(m)
         again = recv.receive_messages(max_message_count=5, max_wait_time=2)
         assert again == [], f"queue not drained: {again}"
 
@@ -131,7 +135,9 @@ def test_dead_letter_with_properties(sb):
         assert (
             d.dead_letter_error_description == "intentional dead-letter probe"
         ), d.dead_letter_error_description
-        dlq.complete_message(dead)
+        # s1 lane: single-message settle (see note above)
+        for dm in dead:
+            dlq.complete_message(dm)
 
 
 @_kd21

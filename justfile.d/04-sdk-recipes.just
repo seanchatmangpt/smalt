@@ -13,7 +13,7 @@
 #
 # Substrate boot under the shared lock: justfile.d/01 owns the substrate
 # recipes but is still a stub at authoring time, so these recipes boot their
-# own substrate per docs/DEV_LOOP.md under /tmp/smalt-substrate.lock. When 01
+# own substrate per docs/how-to/dev-loop.md under /tmp/smalt-substrate.lock. When 01
 # lands substrate-up/down, sdk-ts can be retargeted to it without changing the
 # probe contract.
 

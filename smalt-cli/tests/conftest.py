@@ -10,7 +10,7 @@ Endpoint/auth shapes mirror the repo's real-SDK probes:
 
 Env: SMALT_ARM / SMALT_EGRESS override the defaults
 (http://127.0.0.1:39643 / http://127.0.0.1:39644 — this lane's private
-substrate, docs/DEV_LOOP.md private range 39000-39999).
+substrate, docs/how-to/dev-loop.md private range 39000-39999).
 
 SESSION PROTOCOL (X-6, F-14/DoD-3 fix): substrate provisioning is
 fixture-scoped and lazy — NO import-time boot. Two mutually exclusive auth
@@ -26,7 +26,15 @@ Each session fixture (a) probes its port block first and REUSES a healthy
 substrate read-only with lane-unique names, else (b) boots a private-port
 substrate under its OWN lock (blocking flock w/ timeout), pinned to the auth
 mode that session's tests need. Locks are released after boot; teardown kills
-only a substrate this session booted. A plain `pytest` (no -m) boots both
+only a substrate this session booted.
+
+IDENTITY GUARD (R177b fix, 2026-10-16): "healthy" is no longer port-open-only.
+At boot the fixture writes a marker file (/tmp/cli[45]-substrate.boot.json:
+{pid, booted}); reuse requires marker-present AND marker age <= MAX_REUSE_AGE
+AND marker pid == the actual ARM-port listener (lsof). Ports held by a
+process with no valid marker (stale lane leftover, pre-rebuild beam) are
+swept (SIGTERM to mix/beam listeners on these lane-private ports) and a
+fresh substrate is booted — never adopted on faith.
 profiles lazily and sequentially — no shared lock, no cross-lane queue.
 """
 import base64
@@ -60,7 +68,7 @@ BOOT_HINT = (
     "Application.put_env(:smalt, :egress_port, <egress_port>); "
     "Application.put_env(:smalt, :arm_tls_port, <arm_tls>); "
     "{:ok, _} = Application.ensure_all_started(:smalt)' "
-    "(see docs/DEV_LOOP.md and test/sdk-python/run.sh)" % (ARM, EGRESS)
+    "(see docs/how-to/dev-loop.md and test/sdk-python/run.sh)" % (ARM, EGRESS)
 )
 
 
@@ -149,22 +157,136 @@ def _port_open(port):
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
-                      timeout=180):
-    """Probe-then-boot. Returns (proc_or_None, reused_bool).
+# R177b: max age of a reusable substrate. A marker older than this (or a
+# missing/unverifiable marker) forces a fresh boot — the stale-pre-rebuild-beam
+# phantom-repro channel is closed by construction, not by memory.
+MAX_REUSE_AGE = 60 * 60  # 1h
 
-    Reuses a healthy substrate on `ports` read-only; else takes `lock_path`
-    (blocking flock, bounded), re-probes (double-check under lock), boots a
-    private-port substrate pinned to the caller's auth mode. Lock fd is
-    released after boot — it guards construction, not the session.
+
+def _listener_pids(port):
+    """PIDs of processes LISTENing on 127.0.0.1:<port> (empty if unknown)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["lsof", "-t", "-iTCP:%d" % port, "-sTCP:LISTEN"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except Exception:
+        return set()
+    return {int(p) for p in out.split() if p.isdigit()}
+
+
+def _is_beamish(pid):
+    """True if pid's command looks like the mix/beam substrate."""
+    import subprocess
+
+    try:
+        cmd = subprocess.run(
+            ["ps", "-o", "command=", "-p", str(pid)],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except Exception:
+        return False
+    return "beam" in cmd or "mix" in cmd
+
+
+def _sweep_stale_listeners(ports):
+    """Kill mix/beam listeners squatting the lane's private ports (R177b:
+    dead-lane leftover substrate). Bounded; falls through to boot either way."""
+    import signal
+    import subprocess
+
+    victims = set()
+    for p in ports:
+        victims |= _listener_pids(p)
+    for pid in victims:
+        if _is_beamish(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+    for _ in range(10):
+        if not any(_port_open(p) for p in ports):
+            return True
+        time.sleep(1)
+    return False
+
+
+def _substrate_identity_ok(marker_path, ports):
+    """Reuse only when the marker names the *current* ARM-port listener and is
+    fresh. Unverifiable identity -> False -> sweep+boot (fail-closed)."""
+    try:
+        with open(marker_path) as f:
+            marker = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if time.time() - float(marker.get("booted", 0)) > MAX_REUSE_AGE:
+        return False
+    pid = marker.get("pid")
+    return isinstance(pid, int) and pid in _listener_pids(ports[0])
+
+
+def _lock_holder_pids(lock_path):
+    """PIDs holding flock on lock_path (R186: loud skip needs the holder)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["lsof", "-t", str(lock_path)], capture_output=True,
+            text=True, timeout=5,
+        ).stdout
+    except Exception:
+        return []
+    return [p for p in out.split() if p.isdigit()]
+
+
+def _skip_substrate_unavailable(exc, lock_path, log_path):
+    """R186 (D139 shape): a contended/failed substrate is a LOUD SKIP with the
+    holder PID + boot-log tail, costing seconds — not a 180s lock wait."""
+    holder = _lock_holder_pids(lock_path)
+    tail = ""
+    try:
+        tail = open(log_path).read()[-300:]
+    except OSError:
+        pass
+    reason = (
+        f"substrate unavailable: {exc}; lock {lock_path} holder pids="
+        f"{holder or 'none-detected'}"
+    )
+    if tail.strip():
+        reason += f"; boot log {log_path} tail: {tail}"
+    pytest.skip(reason)
+
+
+def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
+                      lock_timeout=15, timeout=180, marker_path=None):
+    """Probe-then-boot with identity guard. Returns (proc_or_None, reused_bool).
+
+    Reuses the substrate on `ports` read-only ONLY when the boot marker
+    verifies identity+freshness against the live port listener; otherwise
+    (no marker / stale marker / foreign squatter) sweeps stale listeners and
+    boots fresh, writing a new marker. Takes `lock_path` (non-blocking flock,
+    bounded by `lock_timeout` — SHORT, so a contended lane skips loudly in
+    seconds via _skip_substrate_unavailable; boot itself keeps the full
+    `timeout` window) around the re-probe/boot. Lock fd is released after
+    boot — it guards construction, not the session. Raises RuntimeError
+    (SUBSTRATE_LOCK_TIMEOUT / SUBSTRATE_TIMEOUT) on failure.
     """
     import fcntl
     import subprocess
 
-    if all(_port_open(p) for p in ports) and (ready is None or ready()):
+    marker_path = marker_path or log_path + ".boot.json"
+
+    def healthy():
+        return (all(_port_open(p) for p in ports)
+                and (ready is None or ready())
+                and _substrate_identity_ok(marker_path, ports))
+
+    if healthy():
         return None, True
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
-    deadline = time.time() + timeout
+    deadline = time.time() + lock_timeout  # R186: short lock window, loud skip on contention
     while True:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -174,12 +296,15 @@ def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
                 os.close(fd)
                 raise RuntimeError(
                     f"SUBSTRATE_LOCK_TIMEOUT: {lock_path} not acquired within "
-                    f"{timeout}s (holder: `lsof {lock_path}`)"
+                    f"{lock_timeout}s (holder: `lsof {lock_path}`)"
                 )
-            time.sleep(2)
+            time.sleep(1)
     try:
-        if all(_port_open(p) for p in ports) and (ready is None or ready()):
+        if healthy():
             return None, True
+        # Ports open but identity unverifiable -> sweep before boot (R177b).
+        if any(_port_open(p) for p in ports):
+            _sweep_stale_listeners(ports)
         env = dict(os.environ, MIX_ENV="test")
         log = open(log_path, "w")
         proc = subprocess.Popen(
@@ -201,6 +326,11 @@ def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
             raise RuntimeError(
                 f"SUBSTRATE_TIMEOUT — boot log {log_path} tail: {tail}"
             )
+        # Identity marker: reuse of this substrate is only lawful while the
+        # pid it records is still the live ARM-port listener and it is fresh.
+        with open(marker_path, "w") as mf:
+            json.dump({"pid": proc.pid, "booted": time.time(),
+                       "log": log_path}, mf)
         return proc, False
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
@@ -272,16 +402,23 @@ def pytest_configure(config):
 def anonymous_substrate():
     """Anonymous-mode substrate (blob/cosmos). Reuse-else-boot under
     /tmp/smalt-substrate-cli4.lock; kills only what it booted."""
-    proc, _reused = _ensure_substrate(
-        "/tmp/smalt-substrate-cli4.lock", _ANON_PORTS, _ANON_BOOT,
-        "/tmp/cli4-substrate.log",
-    )
+    proc = None  # SHIM-COURT: bound before try so post-yield use is total
+    try:
+        proc, _reused = _ensure_substrate(
+            "/tmp/smalt-substrate-cli4.lock", _ANON_PORTS, _ANON_BOOT,
+            "/tmp/cli4-substrate.log",
+            marker_path="/tmp/cli4-substrate.boot.json",
+        )
+    except RuntimeError as e:  # R186: loud skip, holder pid + log tail
+        _skip_substrate_unavailable(e, "/tmp/smalt-substrate-cli4.lock",
+                                    "/tmp/cli4-substrate.log")
     global ARM, EGRESS
     _old = (ARM, EGRESS)
     ARM, EGRESS = "http://127.0.0.1:39643", "http://127.0.0.1:39644"
     yield {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
     ARM, EGRESS = _old
-    _kill_substrate(proc)
+    if proc is not None:  # SHIM-COURT: total path — skip branch never yields
+        _kill_substrate(proc)
 
 
 @pytest.fixture(scope="session")
@@ -289,16 +426,23 @@ def enforce_substrate():
     """:enforce substrate (identity/servicebus/eventhub/keyvault). Reuse-else-
     boot under /tmp/smalt-substrate-cli5.lock — fixture-scoped and lazy, the
     F-14 import-time boot is gone."""
-    proc, _reused = _ensure_substrate(
-        "/tmp/smalt-substrate-cli5.lock", _ENFORCE_PORTS, _ENFORCE_BOOT,
-        "/tmp/cli5-substrate.log",
-    )
+    proc = None  # SHIM-COURT: bound before try so post-yield use is total
+    try:
+        proc, _reused = _ensure_substrate(
+            "/tmp/smalt-substrate-cli5.lock", _ENFORCE_PORTS, _ENFORCE_BOOT,
+            "/tmp/cli5-substrate.log",
+            marker_path="/tmp/cli5-substrate.boot.json",
+        )
+    except RuntimeError as e:  # R186: loud skip, holder pid + log tail
+        _skip_substrate_unavailable(e, "/tmp/smalt-substrate-cli5.lock",
+                                    "/tmp/cli5-substrate.log")
     global ARM, EGRESS
     _old = (ARM, EGRESS)
     ARM, EGRESS = "http://127.0.0.1:38654", "http://127.0.0.1:38655"
     yield {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
     ARM, EGRESS = _old
-    _kill_substrate(proc)
+    if proc is not None:  # SHIM-COURT: total path — skip branch never yields
+        _kill_substrate(proc)
 
 
 def seed_resource(name, rg="cli4-rg", location="eastus"):
@@ -316,7 +460,7 @@ def seed_resource(name, rg="cli4-rg", location="eastus"):
 @pytest.fixture(scope="session")
 def seeded_resources():
     """Five storage accounts under one RG for resourcegraph pagination."""
-    http("PUT", f"{ARM}/subscriptions/{SUB}/resourceGroups/cli4-rg?api-version=2021-04-01",
+    http("PUT", f"{ARM}/subscriptions/{SUB}/resourceGroups/cli4-rg?api-version=2023-07-01",
          {"location": "eastus"}, bearer())
     names = [f"cli4sa{i}" for i in range(1, 6)]
     for n in names:

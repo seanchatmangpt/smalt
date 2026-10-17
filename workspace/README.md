@@ -59,6 +59,41 @@ Rules, mechanically enforced by `eslint.config.mjs`:
   lanes — they must be pointed at the emulator endpoints, never *.azure.com.
 - `@/*` path alias maps to `workspace/` root.
 
+## Client matrix (15-client wave — pre-flight stub)
+
+Status per row: `landed` (SDK client wired in workspace code),
+`vendored` (package present in the offline store,
+`workspace/node_modules/@azure/`), `missing` (NOT vendored — offline gap;
+must not hit the network to install).
+
+| # | Client | Package | Status | Notes |
+|---|--------|---------|--------|-------|
+| 1 | storage | @azure/storage-blob@12.34.0 | vendored | already in package.json |
+| 2 | servicebus | @azure/service-bus@7.10.0 | vendored | already in package.json |
+| 3 | eventhubs | @azure/event-hubs@6.0.4 | vendored | already in package.json |
+| 4 | keyvault | @azure/keyvault-keys@4.10.2 | vendored | already in package.json |
+| 5 | cosmos | @azure/cosmos@4.10.1 | vendored | already in package.json |
+| 6 | identity | @azure/identity@4.14.0 | vendored | already in package.json |
+| 7 | appconfig | @azure/app-configuration | missing | offline gap — not in vendored store |
+| 8 | ledger | (emulator-native) | landed | smalt ledger surface, no SDK package |
+| 9 | resourcegraph | (emulator-native) | landed | smalt surface, no SDK package |
+| 10 | lro | @azure/core-lro@3.4.1 | vendored | transitively available (core-lro) |
+| 11 | monitor | @azure/monitor-query | missing | offline gap — not in vendored store |
+| 12 | policy | (emulator-native) | landed | smalt surface, no SDK package |
+| 13 | ex4pm-viewer | (workspace-local) | landed | workspace component, no SDK package |
+| 14 | finops | (emulator-native) | landed | smalt surface, no SDK package |
+| 15 | airgap | (workspace-local) | landed | smaltFetch/assertLocalUrl surface |
+
+Additional vendored packages available for the wave (not in the 10-dep ask):
+`@azure/arm-resources@8.0.0`, `@azure/eventgrid@5.12.0`,
+`@azure/keyvault-common@2.1.0`, `@azure/core-*` (amqp/auth/client/lro/paging/
+rest-pipeline/tracing/util/xml), `@azure/msal-*`, `@azure/logger`,
+`@azure/abort-controller`, `@azure/storage-common`.
+
+Offline gaps (required by the wave, NOT vendored — do not install over the
+network): `@azure/keyvault-secrets`, `@azure/app-configuration`,
+`@azure/monitor-query`.
+
 ## Commands
 
 ```

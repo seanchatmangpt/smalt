@@ -19,6 +19,12 @@ export async function GET(req: Request) {
   const p99Ms = percentileNs(ELD, 99) / 1e6;
   const maxMs = ELD.max / 1e6;
 
+  // Post-read reset gives the poller per-interval windows instead of a
+  // process-lifetime average that would dilute storm-period spikes.
+  if (shouldReset) {
+    ELD.reset();
+  }
+
   return Response.json({
     ok: true,
     event_loop_delay_ms: {
@@ -32,12 +38,6 @@ export async function GET(req: Request) {
     rss_mb: process.memoryUsage().rss / (1024 * 1024),
     uptime_s: process.uptime(),
   });
-
-  // Post-read reset gives the poller per-interval windows instead of a
-  // process-lifetime average that would dilute storm-period spikes.
-  if (shouldReset) {
-    ELD.reset();
-  }
 }
 
 export const dynamic = "force-dynamic";

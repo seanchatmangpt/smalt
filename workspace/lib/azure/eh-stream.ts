@@ -98,7 +98,9 @@ export async function receiveMissionEvents(
     },
     // SDK v6 shape: EventPosition objects carry offset/sequenceNumber/
     // enqueuedOn — `{ earliest: true }` is rejected at runtime (witnessed).
-    { startPosition: { offset: earliestEventPosition }, maxWaitTimeInSeconds: 5 },
+    // R23 fix: earliestEventPosition is already an EventPosition ({offset:"-1"});
+    // nesting it under offset produced an invalid nested shape.
+    { startPosition: earliestEventPosition, maxWaitTimeInSeconds: 5 },
   );
   const deadline = Date.now() + deadlineMs;
   while (expected.size > 0 && Date.now() < deadline) {

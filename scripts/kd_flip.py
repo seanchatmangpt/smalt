@@ -39,8 +39,17 @@ ROOT = Path(__file__).resolve().parent.parent
 JIRA = ROOT / "docs/jira/v26.10.14"
 KD_PATH = JIRA / "KNOWN_DIVERGENCES.md"
 DEFAULT_SCAN_ROOTS = [ROOT / "lib", ROOT / "workspace/lib"]
-RECEIPTS_DIR = JIRA / "receipts"
 RESULTS_DIR = JIRA / "sdk-results"
+
+
+def receipt_dirs():
+    """All milestone receipt windows + this register's sdk-results dir.
+
+    The register may be closed (e.g. v26.10.14) while witness receipts land
+    under the active window (docs/jira newest dir, e.g. v26.10.16); the
+    mtime gate is what makes cross-window witnesses lawful, not the path.
+    """
+    return sorted((ROOT / "docs/jira").glob("v*/receipts")) + [RESULTS_DIR]
 
 COVERS_RE = re.compile(r"(?:#|//).*?KD-COVERS:[ \t]*([A-Za-z0-9_,\- \t]+)")
 KD_ROW_RE = re.compile(r"^\s*\|\s*(KD-\d+)\s*\|(.*)$")
@@ -71,7 +80,9 @@ def load_register():
         parts = split_row(line)
         if len(parts) < 6:
             continue
-        status = re.match(r"[A-Za-z-]+", parts[5].strip()).group(0)  # trailing prose may follow
+        # trailing prose may follow; empty cell -> empty status (not a KD row crash)
+        sm = re.match(r"[A-Za-z-]+", parts[5].strip())
+        status = sm.group(0) if sm else ""
         rows[m.group(1)] = {
             "line_no": i,
             "parts": parts,
@@ -135,7 +146,7 @@ def witness(kid, evidence_field, shim_mtime):
     showing a pass for this id. Otherwise FLIP-PENDING-WITNESS.
     """
     candidates = evidence_paths(evidence_field)
-    for base in (RECEIPTS_DIR, RESULTS_DIR):
+    for base in receipt_dirs():
         if not base.exists():
             continue
         for p in base.iterdir():
@@ -161,7 +172,7 @@ def witness(kid, evidence_field, shim_mtime):
     return "FLIP-PENDING-WITNESS", "no witness artifact found (probe cannot run / no env)"
 
 
-def flip_line(line, kid, witness_path):
+def flip_line(line, witness_path):
     """OPEN -> CLOSED-SIMULATED in one table row, preserving the rest."""
     parts = split_row(line)
     parts[5] = (
@@ -234,7 +245,7 @@ def main():
             for kid in sorted(eligible_ids):
                 ln = register[kid]["line_no"] - 1
                 _, why = next(e for e in eligible if e[0] == kid)
-                lines[ln] = flip_line(lines[ln], kid, why)
+                lines[ln] = flip_line(lines[ln], why)
                 flipped += 1
             KD_PATH.write_text("\n".join(lines) + "\n")
             print(f"\n--apply: flipped {flipped} row(s) OPEN -> CLOSED-SIMULATED: "

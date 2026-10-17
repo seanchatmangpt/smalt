@@ -4,12 +4,17 @@
 #   exit 0 = every hit covered by the line-precise allowlist below
 #   exit 1 = at least one hit NOT covered by the allowlist
 # Sweeps git-tracked files only, excluding machine-receipt and self-quote
-# surfaces (deps/, _build/, .git/, tmp/, .elixir_ls/, docs/NAMING_SWEEP.md,
+# surfaces (deps/, _build/, .git/, tmp/, .elixir_ls/, docs/archive/ (archived
+# evidence docs), docs/NAMING_SWEEP.md's successor classes,
 # .ggen_igniter/, cli/.ggen-v2/, Justfile — the recipe doc comments quote the
-# scan terms by design, same meta class as docs/PUBLISH_CHECK.md).
+# scan terms by design, same meta class as docs/archive/PUBLISH_CHECK.md).
 #
 # Also excluded (2026-10-15, lane X-4): docs/jira/*/receipts/ and
 # docs/jira/*/sdk-results/ — 163 hits across 80 files. These are evidence
+# Extended (2026-10-16, coordinator): docs/jira/*/bench/ (machine JSONL quoting
+# absolute stack/series paths — 22-hit class from the C/A bench waves) and
+# docs/jira/v26.10.15/ (planning docs citing the checkout root). Same
+# evidence/planning-record class: they document the environment they ran in.
 # records quoting their own environment (command output, captured paths,
 # work-order text), the same tolerated class as .ggen_igniter/ machine
 # receipts. Scrubbing would rewrite historical evidence, and the volume
@@ -17,7 +22,7 @@
 # chosen over normalization. workspace/ was NOT excluded: its 4 hits were
 # normalized in place to repo-relative phrasing instead.
 # Also excluded as self-quote surfaces (scripts defining/running the scan
-# pattern itself, same meta class as docs/NAMING_SWEEP.md / Justfile):
+# pattern itself, same meta class as docs/archive/NAMING_SWEEP.md / Justfile):
 # scripts/naming_sweep.sh (2 hits: PATTERN line + header), scripts/publish_dry.sh
 # (2 hits: LEAK_PAT + header comment).
 
@@ -27,7 +32,7 @@ cd "$REPO"
 PATTERN='athena|/Users/sac|courtroom|\bcai\b|morluto'
 
 # Line-precise allowlist (path:line). Hit sets were read off the real tree
-# 2026-10-15; see docs/NAMING_SWEEP.md v3 REPORTED-TO-LANE table for classes.
+# 2026-10-15; see docs/archive/NAMING_SWEEP.md v3 REPORTED-TO-LANE table.
 # Classes: .env.example legacy defaults (lane 14 owns cleanup);
 # SMALT_SDK_ROOT fallbacks; machine lockfiles/manifests; docs quoting the
 # scan terms; redteam/e2e captured receipts; jira work orders quoting terms.
@@ -65,14 +70,9 @@ ALLOWLIST=(
   "docker/BUILD_RECEIPT.md:28"
   "docker/BUILD_RECEIPT.md:55"
   # docs quoting the scan terms themselves (meta self-reference).
-  # Re-pinned 2026-10-15 after lane 14's scrub/gate pass; see
-  # docs/jira/v26.10.14/receipts/14-docs-drift.md for the delta list.
-  "docs/PUBLISH_CHECK.md:69"
-  "docs/PUBLISH_CHECK.md:173"
-  "docs/PUBLISH_CHECK.md:178"
-  "docs/PUBLISH_CHECK.md:278"
-  "docs/PUBLISH_CHECK.md:281"
-  "docs/PUBLISH_CHECK.md:282"
+  # The docs/PUBLISH_CHECK.md:* entries were retired 2026-10-16 when the file
+  # moved to docs/archive/ (excluded above as an evidence-record surface);
+  # see docs/jira/v26.10.14/receipts/14-docs-drift.md for the original pins.
   # jira work orders quoting the scan terms
   "docs/jira/v26.10.14/02-store-lifecycle.md:87"
   "docs/jira/v26.10.14/02-store-lifecycle.md:88"
@@ -102,7 +102,7 @@ ALLOWLIST=(
 
 # 1. Sweep tracked files only, excluding machine/self-quote surfaces.
 hits="$(git ls-files -z \
-  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
+  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/v26\.10\.15/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
   | xargs -0 grep -niE "$PATTERN" 2>/dev/null || true)"
 
 allowed=0

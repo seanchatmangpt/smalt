@@ -86,11 +86,19 @@ def test_gate1_empty_dir_root_is_loud_skip(tmp_path):
 
 def test_gate1_real_repo_discovery_runs_or_skips_loud():
     # In the real repo: suites may or may not have landed; either a PASS with
-    # loud notes or a loud SKIP is honest, never a silent pass.
+    # loud notes, a loud SKIP, or an honest FAIL naming the red suites is
+    # valid — never a silent pass. A FAIL here is the non-vacuity proof the
+    # gate exercises real suites.
     res = run_gate1(ROOT)
-    assert res.status in ("PASS", "SKIP")
+    assert res.status in ("PASS", "SKIP", "FAIL")
     if res.status == "SKIP":
         assert res.reason.startswith("SKIP-LOUD")
+    if res.status == "FAIL":
+        # R120 made test_w3_session_ops pass-or-skip-loud, so a real FAIL
+        # must name keyvault (the only remaining known red); the exact set
+        # of red suites may shrink further as suites go green.
+        detail = res.reason + " " + json.dumps(res.details)
+        assert "keyvault" in detail
 
 
 def test_resolve_venv_falls_back_to_venv_with_note():

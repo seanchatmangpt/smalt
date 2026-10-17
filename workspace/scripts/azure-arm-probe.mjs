@@ -26,6 +26,16 @@ const TENANT = process.env.SMALT_PROBE_TENANT || "smalt-tenant";
 const APIV = "2021-04-01";
 
 let failures = 0;
+
+// Air-gap host guard (SHIM-COURT): mirrors lib/smalt.ts assertLocalUrl for
+// this plain-node probe — only localhost smalt endpoints are reachable.
+function assertLocalUrl(url) {
+  const u = new URL(url);
+  if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(u.hostname)) {
+    throw new Error(`Air-gap violation: refused non-local host "${u.hostname}"`);
+  }
+  return u;
+}
 function record(name, ok, detail) {
   const tag = ok ? "PASS" : "FAIL";
   console.log(`[${tag}] ${name} :: ${detail}`);
@@ -33,7 +43,7 @@ function record(name, ok, detail) {
 }
 
 async function get(path, token) {
-  const res = await fetch(`${ARM_BASE}${path}`, {
+  const res = await fetch(assertLocalUrl(`${ARM_BASE}${path}`), {
     headers: { authorization: `Bearer ${token}` },
   });
   const json = await res.json().catch(() => ({}));
@@ -49,7 +59,7 @@ async function main() {
   // Reachability gate.
   let up = false;
   try {
-    await fetch(`${ARM_BASE}/subscriptions?api-version=${APIV}`);
+    await fetch(assertLocalUrl(`${ARM_BASE}/subscriptions?api-version=${APIV}`));
     up = true;
   } catch {
     console.error(`[probe] substrate unreachable at ${ARM_BASE} (exit 2)`);
@@ -63,7 +73,7 @@ async function main() {
     client_secret: "ws8-probe-secret",
     scope: "https://management.azure.com/.default",
   });
-  const stsRes = await fetch(`${ARM_BASE}/${TENANT}/oauth2/v2.0/token`, {
+  const stsRes = await fetch(assertLocalUrl(`${ARM_BASE}/${TENANT}/oauth2/v2.0/token`), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: body.toString(),
@@ -130,7 +140,7 @@ async function main() {
   );
   // Step 5: read-only ban spot-check — tokenless request must 401 (no
   // accidental actuation surface).
-  const tokenless = await fetch(`${ARM_BASE}/subscriptions?api-version=${APIV}`);
+  const tokenless = await fetch(assertLocalUrl(`${ARM_BASE}/subscriptions?api-version=${APIV}`));
   record(
     "tokenless-401",
     tokenless.status === 401,

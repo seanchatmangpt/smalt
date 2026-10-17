@@ -21,6 +21,7 @@
 import { getReadOnlyArmClient, SMALT_SUBSCRIPTION_ID, ARM_API_VERSION } from "./arm-client.js";
 import type { ArmReadFacade } from "./arm-client.js";
 import { SmaltTokenCredential } from "./credential.js";
+import { assertLocalUrl } from "../smalt.js"; // SHIM-COURT: air-gap host check before any egress
 
 /** A subscription as returned by GET /subscriptions (arm-subscriptions wire). */
 export interface SubscriptionRow {
@@ -90,6 +91,8 @@ function globalThisArmBase(): string {
 async function armGet(path: string): Promise<unknown> {
   const c = ensureContext();
   const token = await c.credential.getToken("https://management.azure.com/.default");
+  // SHIM-COURT: validate the host before any egress (fetchImpl or native).
+  assertLocalUrl(`${c.armBase}${path}`);
   const res = await c.fetchImpl(`${c.armBase}${path}`, {
     method: "GET",
     headers: { authorization: `Bearer ${token.token}` },

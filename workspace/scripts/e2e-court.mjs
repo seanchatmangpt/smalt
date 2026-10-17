@@ -399,15 +399,48 @@ record('composition: panel rendering', 'SKIP',
 // ---------------------------------------------------------------------------
 
 {
+  // Air-gap host guard: mirrors lib/smalt.ts assertLocalUrl for this
+  // plain-node harness — only localhost smalt endpoints are reachable.
+  // Same pattern as scripts/azure-arm-probe.mjs (SHIM-COURT sibling).
+  function assertLocalUrl(url) {
+    const u = new URL(url);
+    if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname)) {
+      throw new Error(`Air-gap violation: refused non-local host "${u.hostname}"`);
+    }
+    return u;
+  }
   const armBase = process.env.SMALT_ARM_BASE || 'http://127.0.0.1:9443';
+  const tenant = process.env.SMALT_TENANT || 'dev';
   const probeUrl = `${armBase}/subscriptions?api-version=2020-01-01`;
   try {
-    const res = await fetch(probeUrl, { signal: AbortSignal.timeout(3000) });
-    const body = await res.text();
-    if (res.ok) {
-      record('live: ARM read-only probe', 'PASS', `GET ${probeUrl} -> ${res.status} (${body.slice(0, 120)})`);
+    // Mint a bearer from the local STS first (same as azure-arm-probe.mjs);
+    // substrate default :enforce auth refuses tokenless GETs (401).
+    const stsRes = await fetch(assertLocalUrl(`${armBase}/${tenant}/oauth2/v2.0/token`), {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: 'e2e-court',
+        client_secret: 'e2e-court-secret',
+        scope: 'https://management.azure.com/.default',
+      }).toString(),
+      signal: AbortSignal.timeout(3000),
+    });
+    const sts = await stsRes.json().catch(() => ({}));
+    const token = sts.access_token;
+    if (typeof token !== 'string' || !token) {
+      record('live: ARM read-only probe', 'FAIL', `STS mint at ${armBase}/${tenant}/oauth2/v2.0/token -> ${stsRes.status}: ${JSON.stringify(sts).slice(0, 120)}`);
     } else {
-      record('live: ARM read-only probe', 'FAIL', `GET ${probeUrl} -> ${res.status}: ${body.slice(0, 120)}`);
+      const res = await fetch(assertLocalUrl(probeUrl), {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      const body = await res.text();
+      if (res.ok) {
+        record('live: ARM read-only probe', 'PASS', `GET ${probeUrl} -> ${res.status} (${body.slice(0, 120)})`);
+      } else {
+        record('live: ARM read-only probe', 'FAIL', `GET ${probeUrl} -> ${res.status}: ${body.slice(0, 120)}`);
+      }
     }
   } catch (e) {
     record('live: ARM read-only probe', 'SKIP', `no smalt substrate on ${armBase} (${e.cause?.code ?? e.name}) — live leg not run`);
