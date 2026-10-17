@@ -7,24 +7,27 @@
   "tier": 0,
   "window": 30,
   "min_points": 8,
-  "seeded": true,
+  "seeded": false,
   "events": [],
   "metrics": [
     {
       "metric": "nfr3_delta_rss_kb",
       "value": -31712.0,
-      "n": 2,
-      "verdict": "SEEDED",
+      "n": 96,
       "center": -31712.0,
-      "note": "seed mode: bands established from baseline"
+      "sigma": 3171.2,
+      "z": 0.0,
+      "tier": 0
     },
     {
       "metric": "nfr4_residue_tables",
       "value": 0,
-      "n": 1,
-      "verdict": "SEEDED",
+      "n": 95,
       "center": 0.0,
-      "note": "seed mode: bands established from baseline"
+      "sigma": 1.0,
+      "z": 0.0,
+      "tier": 0,
+      "remediation": "bench-runner profile"
     }
   ]
 }
