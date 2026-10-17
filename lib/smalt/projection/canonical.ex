@@ -259,15 +259,20 @@ defmodule Smalt.Projection.Canonical do
   # package metadata (hex_metadata.config), else UNVERIFIED (fail-loud).
   defp license_for(name) do
     case read_licenses(name) do
-      {:ok, []} -> metadata_licenses(name)
-      {:ok, [single]} -> single
+      {:ok, []} ->
+        metadata_licenses(name)
+
+      {:ok, [single]} ->
+        single
+
       {:ok, many} ->
         case many do
           ["MIT", "Apache-2.0"] -> "MIT / Apache-2.0 (dual)"
           _ -> Enum.join(many, " / ")
         end
 
-      {:error, _} -> metadata_licenses(name)
+      {:error, _} ->
+        metadata_licenses(name)
     end
   end
 

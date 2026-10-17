@@ -1,9 +1,16 @@
 {
   "packs": {
+    "smalt-semconv-pack": {
+      "locked_by": "26.10.7",
+      "name": "smalt-semconv-pack",
+      "sha256": "d826b945eae4951d377c2195d89e6b45ebd6fd556a60df74ee43ca6843412967",
+      "source": "../ggen-marketplace/packs/smalt-semconv-pack",
+      "version": "26.10.16"
+    },
     "smalt-substrate-pack": {
       "locked_by": "26.10.7",
       "name": "smalt-substrate-pack",
-      "sha256": "e8def62aceb50e3ba30f67da155a502e095f5c7594adf5dd0302451fa2acef14",
+      "sha256": "6d2c0df678ca922d687820c14605282d0f9d508a736ecaead8621b13a23febbd",
       "source": "../ggen-marketplace/packs/smalt-substrate-pack",
       "version": "26.10.14"
     }

@@ -1,5 +1,14 @@
 {
   "entries": {
+    "../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex=>lib/smalt/telemetry/semconv/registry.ex": {
+      "out_template": "lib/smalt/telemetry/semconv/registry.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/telemetry/semconv/registry.ex": "sha256:0f40a374075e84bb5a91cf72de2b2e38570c86db28b73944e86cb6bc8582587a"
+      },
+      "pack_dir": "../ggen-marketplace/packs/smalt-semconv-pack",
+      "template": "../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex",
+      "updated_at": "2026-10-17T18:00:24.623528Z"
+    },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex=>lib/smalt/cascade_edges.ex": {
       "out_template": "lib/smalt/cascade_edges.ex",
       "outputs": {
@@ -39,11 +48,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex=>lib/smalt/store_tables.ex": {
       "out_template": "lib/smalt/store_tables.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/store_tables.ex": "sha256:272ee53a86dc63a5eb27d7c59b6066a3920db6f02a5a8e8e4b93fc53783b5174"
+        "/Users/sac/smalt/lib/smalt/store_tables.ex": "sha256:627c3eabc63b7b77e30f17c14cfe1e37f6cc90f10ae217b694ef4869f112503e"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex",
-      "updated_at": "2026-10-17T17:08:59.705993Z"
+      "updated_at": "2026-10-17T18:05:14.455523Z"
     },
     "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": {
       "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex",

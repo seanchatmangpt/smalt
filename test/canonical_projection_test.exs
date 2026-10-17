@@ -131,15 +131,22 @@ defmodule Smalt.CanonicalProjectionTest do
     end
 
     test "rendered JSON round-trips to the capability document" do
-      doc = Canonical.capability_document()
-      assert Jason.decode!(Canonical.json()) == doc
+      # byte-equal except the self digest, which json/0 fills in over the
+      # doc-without-the-key (fenced separately below); capability_document/0
+      # carries the nil placeholder slot, popped on both sides here.
+      decoded = Jason.decode!(Canonical.json())
+
+      assert pop_in(decoded, ["identity", "contentSha256"]) |> elem(1) ==
+               pop_in(Canonical.capability_document(), ["identity", "contentSha256"]) |> elem(1)
     end
   end
 
   describe "THIRD_PARTY rider (E4 #6/#5b)" do
     test "docs/THIRD_PARTY.md equals third_party_markdown/0 byte-for-byte" do
       path = Path.expand(Canonical.third_party_doc_path(), File.cwd!())
-      assert File.exists?(path), "#{Canonical.third_party_doc_path()} missing — run Canonical.write/0"
+
+      assert File.exists?(path),
+             "#{Canonical.third_party_doc_path()} missing — run Canonical.write/0"
 
       assert File.read!(path) == Canonical.third_party_markdown(),
              "docs/THIRD_PARTY.md is stale vs mix.lock truth — run Canonical.write/0"
@@ -147,7 +154,7 @@ defmodule Smalt.CanonicalProjectionTest do
 
     test "third_party rows cover every mix.lock entry with full shape" do
       packages = Canonical.third_party_packages()
-      assert length(packages) == Map.size(Mix.Dep.Lock.read())
+      assert length(packages) == map_size(Mix.Dep.Lock.read())
 
       for p <- packages do
         assert is_binary(p["name"]) and p["name"] != ""
@@ -173,18 +180,22 @@ defmodule Smalt.CanonicalProjectionTest do
       assert by_name["rustler"]["license"] == "MIT / Apache-2.0 (dual)"
     end
 
-    test "no copyleft license token in the rendered surface" do
-      rendered = Canonical.third_party_markdown()
-
-      for token <- ["GPL", "AGPL", "LGPL", "MPL", "EPL"] do
-        refute rendered =~ token, "copyleft token #{token} in THIRD_PARTY surface"
+    test "no copyleft license token in the license surface" do
+      # The prose footer names the banned families in the negative ("no
+      # copyleft (GPL/AGPL/...)"), so the fence binds over the DATA rows —
+      # every license value — not the prose.
+      for p <- Canonical.third_party_packages() do
+        for token <- ["GPL", "AGPL", "LGPL", "MPL", "EPL"] do
+          refute p["license"] =~ token,
+                 "copyleft token #{token} in license of #{p["name"]}"
+        end
       end
     end
   end
 
   describe "identity block (E4 #5b)" do
     test "shape: packLockSha256, semanticEpoch, contentSha256" do
-      identity = Canonical.capability_document()["identity"]
+      identity = Canonical.json() |> Jason.decode!() |> get_in(["identity"])
 
       assert is_binary(identity["semanticEpoch"]) and identity["semanticEpoch"] != ""
       assert is_binary(identity["packLockSha256"])
@@ -202,7 +213,7 @@ defmodule Smalt.CanonicalProjectionTest do
     end
 
     test "contentSha256 recomputes from the doc with the key removed" do
-      doc = Canonical.capability_document() |> pop_in(["identity", "contentSha256"]) |> elem(0)
+      doc = Canonical.capability_document() |> pop_in(["identity", "contentSha256"]) |> elem(1)
 
       expected =
         doc
@@ -218,8 +229,13 @@ defmodule Smalt.CanonicalProjectionTest do
     test "the content digest is content-sensitive (a mutated doc changes it)" do
       # The non-vacuity half: the digest must actually track doc content,
       # not be a constant stamped on every render.
-      doc = Canonical.capability_document() |> pop_in(["identity", "contentSha256"]) |> elem(0)
-      mutated = put_in(doc, ["endpoints", "amqp"], doc["endpoints"]["amqp"] + 1)
+      doc = Canonical.capability_document() |> pop_in(["identity", "contentSha256"]) |> elem(1)
+      [first_cap | _] = doc["capabilities"]
+
+      mutated =
+        put_in(doc, ["capabilities"], [
+          %{first_cap | "type" => "mutated/type"} | doc["capabilities"] -- [first_cap]
+        ])
 
       digest_of = fn d ->
         d

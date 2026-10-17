@@ -46,13 +46,13 @@ defmodule Smalt.StoreTables do
     # armId | Smalt.Store | sweep=cascade
     :smalt_blob_policy,
 
-    # armId | Smalt.Store | sweep=retention
+    # armId | Smalt.Store | sweep=cascade
     :smalt_blob_snapshots,
 
-    # binaryPrefix | Smalt.Store | sweep=retention
+    # binaryPrefix | Smalt.Store | sweep=cascade
     :smalt_blobs,
 
-    # tuple | Smalt.Store | sweep=cascade
+    # tuple | Smalt.Store | sweep=retention
     :smalt_cosmos_docs,
 
     # tuple | Smalt.Store | sweep=metadata
@@ -64,19 +64,19 @@ defmodule Smalt.StoreTables do
     # tuple | Smalt.Store | sweep=retention
     :smalt_eg_topics,
 
-    # tuple | Smalt.Store | sweep=cascade
+    # tuple | Smalt.Store | sweep=retention
     :smalt_eh_checkpoints,
 
-    # binaryPrefix | Smalt.Store | sweep=cascade
+    # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_eh_partitions,
 
-    # binaryPrefix | Smalt.Store | sweep=cascade
+    # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_event_messages,
 
     # tuple | Smalt.Store | sweep=metadata
     :smalt_ledger_meta,
 
-    # binaryPrefix | Smalt.Store | sweep=cascade
+    # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_ledger_transactions,
 
     # binaryPrefix | Smalt.Store | sweep=retention
@@ -85,10 +85,10 @@ defmodule Smalt.StoreTables do
     # armId | Smalt.Store | sweep=metadata
     :smalt_operations,
 
-    # binaryPrefix | Smalt.Store | sweep=cascade
+    # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_purview_edges,
 
-    # binaryPrefix | Smalt.Store | sweep=cascade
+    # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_purview_entities,
 
     # binaryPrefix | Smalt.Store | sweep=metadata
@@ -106,7 +106,7 @@ defmodule Smalt.StoreTables do
     # tuple | Smalt.Store | sweep=retention
     :smalt_sb_messages,
 
-    # binaryPrefix | Smalt.Store | sweep=cascade
+    # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_sb_queues,
 
     # armId | Smalt.Store | sweep=retention
@@ -121,13 +121,13 @@ defmodule Smalt.StoreTables do
     # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_sentinel_rows,
 
-    # tuple | Smalt.Store | sweep=cascade
+    # tuple | Smalt.Store | sweep=retention
     :smalt_sentinel_streams,
 
     # armId | Smalt.Store | sweep=metadata
     :smalt_subscriptions,
 
-    # tuple | Smalt.Store | sweep=cascade
+    # tuple | Smalt.Store | sweep=retention
     :smalt_vault_keys,
 
     # tuple | Smalt.Store | sweep=cascade
@@ -304,7 +304,7 @@ defmodule Smalt.StoreTables do
       :smalt_blob_snapshots => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
-        sweep_strategy: "retention",
+        sweep_strategy: "cascade",
         metadata_only: false,
         persisted: false,
         ordered_set: true
@@ -312,7 +312,7 @@ defmodule Smalt.StoreTables do
       :smalt_blobs => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "retention",
+        sweep_strategy: "cascade",
         metadata_only: false,
         persisted: true,
         ordered_set: true
@@ -336,7 +336,7 @@ defmodule Smalt.StoreTables do
       :smalt_cosmos_docs => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: true,
         ordered_set: true
@@ -376,7 +376,7 @@ defmodule Smalt.StoreTables do
       :smalt_eh_checkpoints => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: true,
         persisted: false,
         ordered_set: true
@@ -392,7 +392,7 @@ defmodule Smalt.StoreTables do
       :smalt_eh_partitions => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: false,
         ordered_set: true
@@ -408,7 +408,7 @@ defmodule Smalt.StoreTables do
       :smalt_event_messages => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: true,
         ordered_set: true
@@ -424,7 +424,7 @@ defmodule Smalt.StoreTables do
       :smalt_ledger_transactions => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: true,
         ordered_set: true
@@ -464,7 +464,7 @@ defmodule Smalt.StoreTables do
       :smalt_purview_edges => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: false,
         ordered_set: true
@@ -472,7 +472,7 @@ defmodule Smalt.StoreTables do
       :smalt_purview_entities => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: false,
         ordered_set: true
@@ -552,7 +552,7 @@ defmodule Smalt.StoreTables do
       :smalt_sb_queues => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: false,
         ordered_set: true
@@ -608,7 +608,7 @@ defmodule Smalt.StoreTables do
       :smalt_sentinel_streams => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: true,
         persisted: false,
         ordered_set: true
@@ -640,7 +640,7 @@ defmodule Smalt.StoreTables do
       :smalt_vault_keys => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
-        sweep_strategy: "cascade",
+        sweep_strategy: "retention",
         metadata_only: false,
         persisted: false,
         ordered_set: true

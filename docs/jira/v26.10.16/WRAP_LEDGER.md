@@ -1621,3 +1621,90 @@ else in the window close sequence that is docs-executable is DONE
 (generators, docs-dod). Carried close conditions: (1) two-green
 receipt → mint release receipt → publish-dry adjudication, (2) the
 next-window items in NEXT_WINDOW.md unchanged.
+
+## Terminal ledger close — W1/W2 projection landings + runs 30-32 (2026-10-17, terminal ledger lane)
+
+Docs-only close of the terminal ledger. Every verdict below is read
+from disk (logs `tmp/court-x2-wrap-run{30,31,32}.log`; commits via
+`git show`), not recalled.
+
+### W1/W2 projection landings (LANDED)
+
+| Wave | Commit | Landed content | Receipt/fence referents |
+|---|---|---|---|
+| W1 foundation | `8361816` | `lib/smalt/config.ex` — Smalt.Config accessor, 46 keys, exact per-call-site override semantics, 3 exemplar migrations; `lib/smalt/store_tables.ex` — projected StoreTable registry (33 owned + 19 shadow, typed), consumed by `store.ex`/`enclave/state.ex`/`store/dets_mirror.ex` — the hand lists are dead and the swept-but-unowned bug class is closed | replay fences `test/config_replay_identity_test.exs` (139 ln) + `test/store_tables_replay_identity_test.exs` (238 ln), 10/0 per commit message; engine law: graphlaw fixed (no engine selection) |
+| W2 | `6dc0013` | `lib/smalt/cascade_edges.ex` — 23 CascadeEdge rows projected from the StoreTable registry (every sweepStrategy!=none table declared); semconv registry projected from the new smalt-semconv-pack YAML model (hand-sync fence killed); Canonical riders (THIRD_PARTY renderer + capabilities identity block) | `test/cascade_replay_identity_test.exs`, `test/semconv_replay_identity_test.exs`, `test/canonical_projection_test.exs` — green per commit; receipt [final-fin-sweep.md](receipts/final-fin-sweep.md) (ALIVE, idempotence A/B witnessed) landed in the same commit |
+
+W2-late residue: `canonical.ex`, `registry.ex`, `docs/capabilities.json`,
+`docs/THIRD_PARTY.md`, `mix.exs`, `test/canonical_projection_test.exs` +
+new `test/semconv_replay_identity_test.exs` are uncommitted in the
+working tree at this edit (W2-late semconv/Canonical continuation) — the
+run-32 drift-fence reds below sit exactly on this surface.
+
+### KD-94 (noted)
+
+KD-94 CLOSED-SIMULATED via witness [r231-kd94-uppath-witness.md](receipts/r231-kd94-uppath-witness.md)
+(ALIVE, 5/5 subtests — real @azure/cosmos AAD bearer vs smalt fixed
+bearer guard over TLS, substrate `7275032` + working tree); flip landed
+in commit `16a753b`.
+
+### Court ledger extension — runs 30-32 (verdicts read from disk)
+
+**Ledger: 32 completed invocations, 0 two-green.** COURT_X2_RC=1 in
+runs 30-32.
+
+30. **run-30** (`tmp/court-x2-wrap-run30.log`, 02:13-02:17Z): both runs
+    exit 2 — `2435 tests, 1 failure` each, DIFFERENT tests (run 1
+    `Smalt.EventGridTopicsArmTest` eventgrid_topics_arm_test.exs:302;
+    run 2 `Smalt.Amqp.QueueStoreTest` queue_store_test.exs:721,
+    R160b dup-seq). SHIFTING-FAILURE fired. Class: **load-churn**
+    (no member recurred; deterministic class stays empty).
+    COURT_X2_RC=1.
+31. **run-31** (`tmp/court-x2-wrap-run31.log`, mtime 02:56): run 1
+    exit **124** — mix tier reached the sdk-smoke environmental tier
+    (mix-green `2435 tests, 0 failures` per the dispatching lane's
+    report; the log carries the sdk-smoke tail only: 3/3 leg fails,
+    `test-sdk-smoke failed on line 100 with exit code 124` — the
+    1800 s watchdog timeout class of runs 25/27); run 2 header-only —
+    **invocation never completed, abandoned** (log ends at the run-2
+    header; no verdict exists). Class: **environment
+    (sdk-smoke timeout); run 2 never ran**. Not counted as a
+    completed two-run verdict beyond run 1.
+32. **run-32** (`tmp/court-x2-wrap-run32.log`, invocation 10:52-10:54Z,
+    terminal): run 1 exit 2 — `2457 tests, 7 failures` (count rose
+    2435→2457 with the W1/W2 projection fences): all six
+    `Smalt.CanonicalProjectionTest` drift fences + `Smalt.
+    CascadeReplayIdentityTest :85` — deterministic-shaped reds on the
+    W2-late uncommitted projection surface (generated-artifact drift:
+    `docs/capabilities.json`/`docs/THIRD_PARTY.md`/`canonical.ex` regen
+    not re-run at the mid-window tree); run 2 exit 1 at **doctor,
+    zero tests** — `port-in-use` ×3, held by PID 88053 (foreign
+    keeper; doctor fail-closed as designed, run-11/16/22 class).
+    COURT_X2_RC=1. Class: **drift-fence (W2-late tree, regen-gated) +
+    environment (foreign port hold, run 2)**. Close condition: regen
+    the generated artifacts at the committed W2 tree, clear the port
+    holder, re-court.
+
+### Terminal standing (honest)
+
+- **Two-green: PENDING.** 32 invocations, 0 two-green. No green
+  claimed. Run-32 run-1's seven reds are regen-gated drift fences on
+  the uncommitted W2-late tree, not law failures — but they are typed
+  red until a committed tree + regen pass + re-court says otherwise.
+- **hex publish: AUTH-BLOCKED B1 (operator).** Per PUBLISH_RECORD B1
+  and the pre-staged publish-dry record above: ex4pm must go live on
+  hex first (operator `mix hex.publish` in `~/ex4pm`), then the staged
+  dual-pin block in `mix.exs:123-132` flips; gate-1 HEX_BUILD_REFUSED
+  is the typed prediction until then.
+- **Everything else: LANDED** — fin-sweep generators verified at the
+  terminal tree ([final-fin-sweep.md](receipts/final-fin-sweep.md),
+  ALIVE, idempotence-witnessed; supersedes r217's counts), docs-dod
+  gate exit 0 (re-run this lane, real output above/this edit), KD-94
+  closed (r231, flip `16a753b`), W1/W2 projections committed
+  (`8361816`/`6dc0013`), waves closed per the Window-close table.
+- **Carried close conditions** (unchanged + run-32 addition): (1)
+  W2-late residue committed + generated artifacts regenerated at the
+  committed tree → re-court with 9443/8443/5672 free → two-green
+  receipt → mint release receipt → publish-dry adjudication gated on
+  B1; (2) NEXT_WINDOW.md items unchanged.
+- `just docs-dod-check` → **exit 0** at this edit (terminal gate).

@@ -200,7 +200,8 @@ defmodule Smalt.Telemetry.SemConv.Registry do
       identifier: "EventActivityCapability",
       source_field: "span.attributes[\"beam4pm.capability.id\"]",
       target_field: "OCEL event.type override",
-      derivation: "pack prefers it over bare span.name; no smalt emitter currently sets it (reserved)"
+      derivation:
+        "pack prefers it over bare span.name; no smalt emitter currently sets it (reserved)"
     },
     %{
       order: 50,
@@ -215,7 +216,8 @@ defmodule Smalt.Telemetry.SemConv.Registry do
       identifier: "ObjectFromTraceId",
       source_field: "OTLP span.trace_id",
       target_field: "OCEL object {id: \"trace:<id>\", type: \"trace\"}",
-      derivation: "pack derives a trace object; smalt has no OTLP trace context (documented deviation)"
+      derivation:
+        "pack derives a trace object; smalt has no OTLP trace context (documented deviation)"
     },
     %{
       order: 70,

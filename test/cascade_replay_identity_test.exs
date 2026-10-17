@@ -83,18 +83,20 @@ defmodule Smalt.CascadeReplayIdentityTest do
 
   @tag :replay_identity
   test "verify gate is quiet on the live ontology and FIRES on a mutated copy" do
-    # Mutated copy: drop the ce-sa-blob-policy CascadeEdge individual.
-    # :smalt_blob_policy is a sweepStrategy="cascade" StoreTable, so arm B
-    # (cascade-table coverage) must return it.
+    # Mutated copy: drop EVERY CascadeEdge individual targeting
+    # :smalt_blob_policy (ce-rg-blob-policy + ce-sa-blob-policy). Arm B is
+    # per-TABLE, not per-edge: dropping one of two covering edges is not a
+    # firing mutation. With both gone, :smalt_blob_policy (a
+    # sweepStrategy="cascade" StoreTable) is uncovered and arm B returns it.
     ontology = File.read!(Path.expand(@pack_dir <> "/ontology.ttl", root()))
 
     mutated =
       ontology
       |> String.split("\n")
-      |> Enum.reject(&String.contains?(&1, "smalt:ce-sa-blob-policy a smalt:CascadeEdge"))
+      |> Enum.reject(&String.contains?(&1, "-blob-policy a smalt:CascadeEdge"))
       |> Enum.join("\n")
 
-    assert mutated != ontology, "mutation was vacuous: the ce-sa-blob-policy edge was not found"
+    assert mutated != ontology, "mutation was vacuous: the blob-policy edges were not found"
 
     mutated_path = Path.expand("tmp/mutated-ontology-w2a.ttl", root())
     File.write!(mutated_path, mutated)
