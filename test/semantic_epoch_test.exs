@@ -87,10 +87,15 @@ defmodule Smalt.SemanticEpochTest do
       stamped = Enum.filter(alive, &is_binary(&1.pack_name))
       assert stamped != []
 
+      packs = lock_packs()
+
       for row <- stamped do
-        assert row.pack_name == "smalt-substrate-pack"
+        # The shared checkout carries receipts from every locked pack
+        # (substrate + semconv since W2b). Contract: the row's pack is one
+        # the lock admits, and drift is derived from that pack's own digest.
+        assert row.pack_name in Map.keys(packs)
         assert is_binary(row.pack_digest)
-        assert row.lock_digest == lock_digest()
+        assert row.lock_digest == Map.fetch!(packs, row.pack_name)
 
         # The projection derives drift from the digest comparison itself.
         # Since the pack re-sync the real ledger carries BOTH classes of
@@ -98,7 +103,7 @@ defmodule Smalt.SemanticEpochTest do
         # the pinned contract is derivation correctness, not a fixed class:
         # drift_status is :digest_drift iff pack_digest != lock_digest, and
         # the boolean `drift` mirrors drift_status exactly.
-        expected = if row.pack_digest == lock_digest(), do: :ok, else: :digest_drift
+        expected = if row.pack_digest == Map.fetch!(packs, row.pack_name), do: :ok, else: :digest_drift
         assert row.drift_status == expected
         assert row.drift == (expected == :digest_drift)
       end
@@ -149,7 +154,7 @@ defmodule Smalt.SemanticEpochTest do
           deviations_path: Path.join(tmp, "deviations.jsonl")
         )
 
-      assert tl.pack_lock == %{"smalt-substrate-pack" => lock_digest()}
+      assert tl.pack_lock == lock_packs()
     end
 
     test "mutation fences: a degraded ledger (stamped/unstamped/tampered) is caught", %{tmp: tmp} do
@@ -529,10 +534,16 @@ defmodule Smalt.SemanticEpochTest do
   # three hardcoded-digest assertions). The expected digest is derived from
   # the lock file itself at test time via an independent Jason decode.
   defp lock_digest do
-    %{"packs" => %{"smalt-substrate-pack" => %{"sha256" => digest}}} =
-      @pack_lock |> File.read!() |> Jason.decode!()
+    Map.fetch!(lock_packs(), "smalt-substrate-pack")
+  end
 
-    digest
+  # W2b: the checkout consumes multiple locked packs (substrate + semconv),
+  # so pack-set expectations derive from the lock file, never a hardcoded
+  # single-pack world.
+  defp lock_packs do
+    %{"packs" => packs} = @pack_lock |> File.read!() |> Jason.decode!()
+
+    Map.new(packs, fn {name, %{"sha256" => d}} -> {name, d} end)
   end
 end
 

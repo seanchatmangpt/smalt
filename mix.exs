@@ -32,81 +32,12 @@ defmodule Smalt.MixProject do
     [
       # Engine law (2026-10-17): ggen_igniter's query engine is FIXED to
       # graphlaw (--engine flag removed upstream); smalt passes no --engine.
-      "smalt.gen": [
-        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
-          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
-          "--query control_plane=../ggen-marketplace/packs/smalt-substrate-pack/queries/control_plane.rq " <>
-          "--query payload_rules=../ggen-marketplace/packs/smalt-substrate-pack/queries/payload_rules.rq " <>
-          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex " <>
-          "--out lib/smalt/registry.ex",
-        # Replay identity: the generated artifact must be canonical-formatted
-        # so `mix smalt.gen` replay is byte-identical (fenced by
-        # test/smalt_registry_replay_identity_test.exs).
-        "format lib/smalt/registry.ex",
-        # OCEL event-type vocabulary (lane 431): projected from the same
-        # ontology's smalt:OcelEventType rows. spc.drift gates the SPC
-        # emitter (Smalt.Spc.Drift); unknown types stay log-and-drop.
-        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
-          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
-          "--query event_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/event_types.rq " <>
-          "--query object_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/ocel_object_types.rq " <>
-          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/event_registry.ex.eex " <>
-          "--out lib/smalt/ocel/event_registry.ex",
-        "format lib/smalt/ocel/event_registry.ex",
-        # W1b Store table registry (recipe step 5): every ETS table atom —
-        # owned (Smalt.Store @tables) + shadow (lazily created, sweepStrategy
-        # none) — projected from the smalt:StoreTable individuals. The
-        # generated registry REPLACES the hand-written lists (store.ex,
-        # enclave/state.ex, store/dets_mirror.ex consume it). Fenced by
-        # test/store_tables_replay_identity_test.exs.
-        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
-          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
-          "--query store_tables=../ggen-marketplace/packs/smalt-substrate-pack/queries/store_tables.rq " <>
-          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex " <>
-          "--out lib/smalt/store_tables.ex",
-        "format lib/smalt/store_tables.ex",
-        # W2a Cascade dispatch table (capture-then-sweep census): one row
-        # per smalt:CascadeEdge individual. Projects the DECLARATION +
-        # dispatch table only — the owner-module drop functions stay
-        # hand-written (residue doctrine). Fenced by
-        # test/cascade_replay_identity_test.exs +
-        # verify/cascade-coverage.unbound.rq (referential integrity of
-        # childTable -> StoreTable + cascade-table coverage).
-        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
-          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
-          "--query cascade_edges=../ggen-marketplace/packs/smalt-substrate-pack/queries/cascade_edges.rq " <>
-          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex " <>
-          "--out lib/smalt/cascade_edges.ex",
-        "format lib/smalt/cascade_edges.ex",
-        # W1a: ConfigKey census -> Smalt.Config accessors. One zero-arity
-        # accessor per smalt:ConfigKey row; the ontology default is the
-        # ONLY copy of the in-code default. Replay-identity fence:
-        # test/config_replay_identity_test.exs.
-        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
-          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
-          "--query config_keys=../ggen-marketplace/packs/smalt-substrate-pack/queries/config_keys.rq " <>
-          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex " <>
-          "--out lib/smalt/config.ex",
-        "format lib/smalt/config.ex",
-        # W2b: semconv registry — true projection replacing the hand-sync
-        # (smalt.yaml → registry.ex was hand-rendered with a fence). Source
-        # of truth: ggen-marketplace/packs/smalt-semconv-pack/ontology.ttl
-        # (smaltv:SemConvEvent / SemConvAttribute / OcelMappingRule rows);
-        # the YAML stays as the mirrored human-readable model. Byte-identity
-        # is fenced by test/semconv_replay_identity_test.exs; the behavioral
-        # gate remains test/semconv_test.exs (YAML↔registry model fence).
-        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-semconv-pack " <>
-          "--ontology ../ggen-marketplace/packs/smalt-semconv-pack/ontology.ttl " <>
-          "--query semconv_events=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_events.rq " <>
-          "--query semconv_bindings=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_bindings.rq " <>
-          "--query semconv_attributes=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_attributes.rq " <>
-          "--query semconv_mapping_rules=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_mapping_rules.rq " <>
-          "--template ../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex " <>
-          "--out lib/smalt/telemetry/semconv/registry.ex",
-        "format lib/smalt/telemetry/semconv/registry.ex"
-      ],
-      # R164: named tiers. cross_seat runs the auth cross-seat suite in
-      # isolation (default-excluded tag); amqp_wire includes the wire tier.
+      # W2a (2026-10-17): the `smalt.gen` alias moved to
+      # lib/mix/tasks/smalt.gen.ex (Mix.Tasks.Smalt.Gen). The alias chain
+      # invoking `ggen_igniter.sync` N times only executed the FIRST
+      # stanza (Mix.Task.run/2 skips a task already run in the same VM) —
+      # the later stanzas silently skipped and left stale artifacts.
+      # Mix.Task.rerun/2 in the task forces every stanza.
       "test.cross_seat": ["test --only cross_seat test/auth_enforce_test.exs"],
       "test.amqp_wire": ["test --include amqp_wire"]
     ]

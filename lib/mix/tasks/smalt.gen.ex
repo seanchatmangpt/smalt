@@ -1,17 +1,16 @@
 defmodule Mix.Tasks.Smalt.Gen do
-  @shortdoc "Regenerate every projected artifact from the smalt-substrate-pack ontology"
+  @shortdoc "Regenerate every projected artifact from the pack ontologies"
 
   @moduledoc """
-  Regenerates all five projected artifacts from
-  `../ggen-marketplace/packs/smalt-substrate-pack` (W1a/W1b/W2a).
+  Regenerates all six projected artifacts (W1a/W1b/W2a/W2b).
 
   Why a task and not the old alias chain: an alias invoking
   `ggen_igniter.sync` more than once only executes the FIRST stanza —
   `Mix.Task.run/2` skips a task already executed in the current VM, so
-  the store_tables/config/cascade/event_registry stanzas silently
-  skipped (witnessed 2026-10-17, W2a: `mix smalt.gen` after an ontology
-  strategy reclassification left `lib/smalt/store_tables.ex` stale).
-  `Mix.Task.rerun/2` forces each stanza.
+  the store_tables/config/cascade/event_registry/semconv stanzas were
+  silently skipped (witnessed 2026-10-17, W2a: `mix smalt.gen` after an
+  ontology strategy reclassification left `lib/smalt/store_tables.ex`
+  stale). `Mix.Task.rerun/2` forces each stanza.
 
   After each render the artifact is `mix format`ed (replay identity is
   fenced against the canonical-formatted form by the per-artifact
@@ -21,40 +20,45 @@ defmodule Mix.Tasks.Smalt.Gen do
   use Mix.Task
 
   @pack "../ggen-marketplace/packs/smalt-substrate-pack"
+  @common "--pack-dir #{@pack} --ontology #{@pack}/ontology.ttl"
 
   @impl Mix.Task
   def run(_argv) do
     stanzas = [
-      {Smalt.Registry,
-       "--query control_plane=#{@pack}/queries/control_plane.rq " <>
+      {"#{@common} --query control_plane=#{@pack}/queries/control_plane.rq " <>
          "--query payload_rules=#{@pack}/queries/payload_rules.rq " <>
-         "--template #{@pack}/templates/registry.ex.eex", "lib/smalt/registry.ex"},
-      {Smalt.Ocel.EventRegistry,
-       "--query event_types=#{@pack}/queries/event_types.rq " <>
+         "--template #{@pack}/templates/registry.ex.eex --out lib/smalt/registry.ex",
+       "lib/smalt/registry.ex"},
+      {"#{@common} --query event_types=#{@pack}/queries/event_types.rq " <>
          "--query object_types=#{@pack}/queries/ocel_object_types.rq " <>
-         "--template #{@pack}/templates/event_registry.ex.eex",
+         "--template #{@pack}/templates/event_registry.ex.eex --out lib/smalt/ocel/event_registry.ex",
        "lib/smalt/ocel/event_registry.ex"},
-      {Smalt.StoreTables,
-       "--query store_tables=#{@pack}/queries/store_tables.rq " <>
-         "--template #{@pack}/templates/store_tables.ex.eex", "lib/smalt/store_tables.ex"},
-      {Smalt.CascadeEdges,
-       "--query cascade_edges=#{@pack}/queries/cascade_edges.rq " <>
-         "--template #{@pack}/templates/cascade_edges.ex.eex", "lib/smalt/cascade_edges.ex"},
-      {Smalt.Config,
-       "--query config_keys=#{@pack}/queries/config_keys.rq " <>
-         "--template #{@pack}/templates/config.ex.eex", "lib/smalt/config.ex"}
+      {"#{@common} --query store_tables=#{@pack}/queries/store_tables.rq " <>
+         "--template #{@pack}/templates/store_tables.ex.eex --out lib/smalt/store_tables.ex",
+       "lib/smalt/store_tables.ex"},
+      {"#{@common} --query cascade_edges=#{@pack}/queries/cascade_edges.rq " <>
+         "--template #{@pack}/templates/cascade_edges.ex.eex --out lib/smalt/cascade_edges.ex",
+       "lib/smalt/cascade_edges.ex"},
+      {"#{@common} --query config_keys=#{@pack}/queries/config_keys.rq " <>
+         "--template #{@pack}/templates/config.ex.eex --out lib/smalt/config.ex",
+       "lib/smalt/config.ex"},
+      # W2b (cross-lane stanza, disclosed relocation from the alias):
+      # semconv registry from its own pack.
+      {"--pack-dir ../ggen-marketplace/packs/smalt-semconv-pack " <>
+         "--ontology ../ggen-marketplace/packs/smalt-semconv-pack/ontology.ttl " <>
+         "--query semconv_events=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_events.rq " <>
+         "--query semconv_bindings=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_bindings.rq " <>
+         "--query semconv_attributes=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_attributes.rq " <>
+         "--query semconv_mapping_rules=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_mapping_rules.rq " <>
+         "--template ../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex " <>
+         "--out lib/smalt/telemetry/semconv/registry.ex",
+       "lib/smalt/telemetry/semconv/registry.ex"}
     ]
 
-    common = "--pack-dir #{@pack} --ontology #{@pack}/ontology.ttl"
-
-    Enum.each(stanzas, fn {module, args, out} ->
-      Mix.Task.rerun("ggen_igniter.sync", String.split(common <> " " <> args <> " --out " <> out))
-
-      # The generated file is consumed by `module` below only for format
-      # drift detection — format unconditionally (canonical form).
+    Enum.each(stanzas, fn {args, out} ->
+      Mix.Task.rerun("ggen_igniter.sync", String.split(args))
       Mix.Task.rerun("format", [out])
-
-      IO.puts(IO.iodata_to_binary(["smalt.gen: ", out, " (", inspect(module), ")"]))
+      IO.puts("smalt.gen: #{out} ok")
     end)
   end
 end
