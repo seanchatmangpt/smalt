@@ -52,6 +52,36 @@ defmodule Smalt.Corpus.VaultEnrichment do
            "vaultUri enrichment regressed: #{inspect(props)}"
 
     assert String.ends_with?(props["vaultUri"], "/")
+    assert props["sku"]["name"] == "standard"
+  end
+
+  @tag :corpus
+  test "vault PUT deep-merges defaults UNDER user properties and preserves user overrides" do
+    put =
+      arm(
+        :put,
+        "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.KeyVault/vaults/corpus-vault-override?api-version=2021-04-01",
+        %{
+          "location" => "eastus",
+          "properties" => %{
+            "sku" => %{"name" => "premium", "family" => "A"},
+            "vaultUri" => "https://user-custom-vault.example.com/"
+          }
+        }
+      )
+
+    assert put.status == 201, inspect(put.resp_body)
+
+    get =
+      arm(
+        :get,
+        "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.KeyVault/vaults/corpus-vault-override?api-version=2021-04-01"
+      )
+
+    assert get.status == 200, inspect(get.resp_body)
+    props = json(get)["properties"]
+    assert props["vaultUri"] == "https://user-custom-vault.example.com/"
+    assert props["sku"]["name"] == "premium"
   end
 
   @tag :corpus
