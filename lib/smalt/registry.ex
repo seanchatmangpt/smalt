@@ -171,7 +171,7 @@ defmodule Smalt.Registry do
 
       latest when is_binary(latest) ->
         with {:ok, v} <- version |> version_base() |> Date.from_iso8601(),
-             {:ok, l} <- Date.from_iso8601(latest) do
+             {:ok, l} <- latest |> version_base() |> Date.from_iso8601() do
           Date.compare(v, l) in [:lt, :eq]
         else
           _ -> false
