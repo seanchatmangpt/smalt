@@ -1,7 +1,7 @@
 # Known Divergences — v26.10.16 (pointer)
 
 Canonical KD register: [`../v26.10.14/KNOWN_DIVERGENCES.md`](../v26.10.14/KNOWN_DIVERGENCES.md)
-(93 rows, KD-01..KD-93; open/closed status in that file's table — table is ground truth).
+(94 rows, KD-01..KD-94; open/closed status in that file's table — table is ground truth).
 
 This window's flips: KD-45 / KD-46 / KD-53 / KD-54 / KD-68 / KD-70 / KD-71 / KD-76
 CLOSED-SIMULATED; KD-77 / KD-91 / KD-92 / KD-93 minted (OPEN). Witnesses: `receipts/`

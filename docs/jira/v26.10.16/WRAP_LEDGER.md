@@ -1159,3 +1159,247 @@ unimplemented), (d) orphan-beam port holds after harness kills
 (disposal law in defect 2 above). Next window's first action is
 unchanged: re-court with 9443 free and the port-sweep law followed,
 embedding real output in a minted receipt; both exit codes must be 0.
+
+## Commit SHAs (post-commit executor, lane G15 2026-10-16)
+
+The 11 family commits landed and pushed: push range `91ab78d..f0d2f47`.
+
+| SHA | subject |
+|---|---|
+| `91ab78d` | docs(jira): fin30 landing receipt — commit-executor closeout |
+| `fd9cfea` | chore(kd): KD-52 KD-COVERS token in blob_storage.ex; file KD-53 (EH multi-event batch drops inner messages 2..N) |
+| `eaa5313` | bench(v26.10.14): benchmark suite, harness and results |
+| `d02c241` | feat(shims): wire-normalization + shim-court surface (connection, mgmt RPC, bearer, egress, blob storage, cosmos, hw) |
+| `bdd2975` | chore(errc): pyjwt/hypothesis deps + refactors |
+| `c1d6dc3` | feat(enclave-native-tf): enclave-native terraform lane (tf scripts, trust shim, SPC/NFR3 gates, bands config) |
+| `0ace6dd` | docs(planning): v26.10.15 work orders (wholesale) |
+| `4620c5f` | chore(errc): pyjwt/hypothesis deps + refactors |
+| `bc92ead` | docs(receipts): v26.10.14 receipts, wire parity, divergences, SDK matrix, stress docs, test stragglers |
+| `78d86ad` | chore(gates): invariant gate updates (fail-closed negative fixtures) |
+| `1a3b0d4` | docs(audit): audit-surface findings + census |
+| `e247f66` | chore(repo): repo config (CLAUDE.md, .gitignore, ggen pack lock, justfile.d modules) |
+| `f0d2f47` | chore(tools): substrate/doctor/court/receipt tooling |
+
+That table lists 13 SHAs: the range bounds `91ab78d` (parent side,
+pre-family) and `f0d2f47` (landing HEAD), the 11 family commits
+`fd9cfea..e247f66`, plus the landing commit `f0d2f47` itself. The post-commit checklist was executed with the court-x2
+run-13/14/15 verdict (`COURT_X2_RC=1` in all three logs → Variant B,
+`FAIL`): FINAL.md SHAs resolved, release flips applied (BUILD_BROKEN
+standing in RELEASE_NOTES), receipt index regenerated (363 receipts,
+16 SUSPECT), `just docs-dod-check` exit 0.
+
+## mcp_wire doctor-agreement surface (2026-10-16, lane 4 errc closure)
+
+Verified on disk this lane: the doctor cross-consistency fence
+`test/mcp_wire_test.exs:791` ("doctor.summary agrees with
+scripts/doctor.py --json on substrate health") — two independent
+observers of the same host (MCP `doctor.summary` over real supervisor
+state vs `scripts/doctor.py --json` as a real subprocess) must agree,
+with the fail-closed exemptions typed: a port-class doctor FAIL is
+exempt only when an independent bind probe confirms a real foreign
+keeper, and doctor's `substrate.ports` verdict must match a bind probe
+after retries. Probe-mechanism root cause (in-file comments,
+:848-855): the probe-then-close race — two bind probes at different
+wall-clock times disagree transiently; only a stable disagreement
+across retries is a defect. Second root cause named in-file (:818-825):
+`scripts/doctor.py` renamed its port checks
+(port-9443/8443/5672 → port-arm/port-data/port-amqp) while
+`substrate.ports` still keys by number — the fence parses the port
+from the check detail since names no longer carry it.
+
+Court evidence: **run 18** (`tmp/court-x2-wrap-run18.log`, 21:17Z)
+went deterministic-red on exactly this test in BOTH runs (1 failure
+each, `2428 tests, 1 failure`; failure-set diff empty). The doctor.py
+edit landed 21:33Z (post-run-18); the red did NOT recur in run 19,
+and this lane re-ran the fence solo on the current tree:
+`MIX_BUILD_ROOT=_build-lane4-docs mix test test/mcp_wire_test.exs:791`
+→ `1 test, 0 failures (32 excluded)`, EXIT=0. Standing: fix effective,
+fence green. Close condition already satisfied for the deterministic
+face; the residual (run-16/17 doctor port-in-use / compile-abort
+classes) is carried in the runs 13-19 row below.
+
+## Final court outcome — runs 13-19 (lane 4 errc closure, 2026-10-16)
+
+Lane 1's report did not land in this lane's window; per the ledger's
+own law (source of truth = the logs plus the OCEL sink, not session
+memory), this row is derived directly from
+`tmp/court-x2-wrap-run{13..19}.log`, each read from disk this lane.
+**Ledger: 19 invocations, 0 two-green.** `COURT_X2_RC=1` in all seven.
+r216 still NOT on disk.
+
+13. **run-13** — run 1 exit 2: all four `Smalt.Affidavit.SealTest`
+    faces (:54/:82/:94/:126, the known churn class); run 2 exit 0 —
+    GREEN summary, but the invocation is held red (per-invocation
+    gate). Class: **load-churn**.
+14. **run-14** — run 1 exit 2, 13 failures (a broad churn burst:
+    SemanticProjection ×6, HCL fences 2-4 post-shift lines 145/173/201,
+    SealTest ×4, LockManager F3); run 2 exit 2, 1 failure
+    (`EnclaveOcelTest` enclave_ocel_test.exs:46). SHIFTING-FAILURE
+    detector fired. Class: **load-churn** (no member recurred across
+    the two runs' sets).
+15. **run-15** — run 1: `EnclaveOcelTest:46`; run 2: the
+    `Enclave.LifecycleTest` pair (enclave_lifecycle_test.exs:28/:75).
+    SHIFTING-FAILURE fired. Class: **ordering** (the recurring
+    Enclave.Lifecycle faces, first-seen run-6).
+16. **run-16** — both runs failed at the **doctor stage**:
+    `[FAIL] port-amqp — Port 5672 held by PID 45217`, recipe `doctor`
+    exit 1 before any test ran. Class: **environment/infra (orphan
+    port hold)** — the run-11 defect class, disposal law unchanged
+    (port sweep after any harness kill).
+17. **run-17** — both runs failed at **compile**: `Compilation error`
+    in `lib/smalt/semantic/ledger_entry.ex` and `lib/smalt/semantic/
+    evidence.ex`. Root cause per lane 13's runs 16-21 row below (read
+    after this row landed; mechanisms reconciled, no competing
+    claim): the `R2RMLGuard` macro usage landed in resource.ex/
+    evidence.ex/ledger_entry.ex before the macro module
+    (`lib/smalt/semantic/r2rml_guard.ex`) was on the compile path —
+    compile-freeze SLA class, resolved in-window (guard module on
+    disk; runs 18-21 reached full summary lines). Class:
+    **compile-freeze (SLA, resolved)**.
+18. **run-18** — run 1 exit 2 and run 2 exit 2, identical single
+    failure `Smalt.McpWireTest` doctor-agreement
+    (mcp_wire_test.exs:791) — the window's one **deterministic** red
+    in runs 13-19, since fixed (mechanism per lane 13: the probe was
+    switched to a connect-probe; this lane's independent witness:
+    fence green solo `1 test, 0 failures`, EXIT=0 on `_build-lane4-docs`,
+    and non-recurrence in runs 19-21).
+19. **run-19** — run 1 exit 2 (Lens5Fuzz ×2, AmqpWireTest:56,
+    StoreChurn ×7, management_rpc W3 batch-delete, ErrorCodesDocTest
+    drift, LockManager — a wide churn burst); run 2 exit 2
+    (AmqpWireTest:56, Enclave.Lifecycle :47/:94, ErrorCodesDocTest,
+    SealTest ×4). SHIFTING-FAILURE fired. Class: **load-churn** with
+    the Enclave.Lifecycle ordering pair riding. Spot-checks this lane
+    on the current tree: `ErrorCodesDocTest` 7/0 solo (projection
+    converged), AmqpWireTest:56 already FLAKE_SOLO 2/2 per the DEF-2
+    row.
+
+Residual classes carried to the next window (unchanged in substance):
+(a) Enclave.LifecycleTest ordering pair (recurred runs 6/9/15/19 —
+the dominant face), (b) churn bursts (SealTest, SemanticProjection,
+StoreChurn, LockManager, Lens5Fuzz — all solo-green-class, none
+individually receipted), (c) environment/infra: orphan port holds
+(runs 11/16) and the compile-freeze transient (run 17). The
+deterministic class is empty at close: the run-18 mcp_wire face is
+fixed and witnessed green solo. Fin-sweep step 1 (`just court-x2`)
+stays OPEN; the release-receipt mint stays gated on it.
+
+## Court post-mortem extension — runs 16-21 (lane 13 smalt-court, 2026-10-16)
+
+All five completed logs read from disk this lane
+(`tmp/court-x2-wrap-run{16..20}.log`); run 21 is **IN-FLIGHT at this
+edit** (run 1 complete + red, run 2 executing — `pgrep court_x2.sh`
+live; this lane does not own or touch it). **Ledger: 20 completed
+invocations, 0 two-green.** OCEL sink census grep-verified at this edit
+(`tmp/ocel/events.ndjson`): **39 `court.run` events — 8
+`"court":"green"` / 31 `"court":"not-green"`** (the sink's event format
+is now nested `verdicts.court`; the raw grep
+`grep -c '"court":"green"'` is the census method). Never two
+consecutive greens within one invocation. Fin-sweep step 1 (`just
+court-x2`) stays OPEN; the release-receipt mint stays gated on it.
+r216's name is already taken by two typed-RED receipts on disk
+(`r216-court-x2-run8-red.md`, `r216-court-x2-run12-red.md`) — the
+terminal-evidence receipt for the first both-green invocation is a
+successor name, per the standing rule that it carries embedded real
+output, and it lands only once a green run exists to mint it from.
+
+Per run:
+
+16. **run-16** (`court-x2-wrap-run16.log`): both runs exit 1 at the
+    **doctor stage, zero tests** — `[FAULT] port-in-use`, port 5672
+    held by **PID 45217**, an orphan beam parked under the
+    `athena-sb` process family (same orphan-hold class as run-11's
+    PID 17145; doctor correctly refused both runs and named the
+    holder rather than killing it — fail-closed as designed, and
+    consistent with the never-pattern-pkill law). Class:
+    **environment/infra (orphan port hold)**. COURT_X2_RC=1.
+17. **run-17** (`court-x2-wrap-run17.log`): both runs exit 1 at
+    test-offline **compile abort** — `undefined function r2rml/1
+    (there is no such import)` in `lib/smalt/semantic/resource.ex:45`
+    and `lib/smalt/semantic/evidence.ex:46`, expanding macro
+    `Smalt.Semantic.R2RMLGuard.if_r2rml/1`. Root cause: lane G2's
+    mid-window guard edit landed the `R2RMLGuard` macro usage before
+    the macro module itself (`lib/smalt/semantic/r2rml_guard.ex`)
+    was on the compile path — a compile-freeze SLA class event,
+    resolved within the window: the guard module landed
+    (`lib/smalt/semantic/r2rml_guard.ex` on disk, `defmodule
+    Smalt.Semantic.R2RMLGuard` verified) together with the
+    literal-extensions design (the `r2rml do` blocks in
+    resource.ex/evidence.ex/ledger_entry.ex are macro-backed; 5
+    `r2rml` referents in resource.ex). Resolution witness: runs
+    18-21 all executed test-offline to a full summary line
+    (2428-2435 tests), so the compile break is cleared. Class:
+    **compile-freeze (SLA, resolved)**. COURT_X2_RC=1.
+18. **run-18** (`court-x2-wrap-run18.log`): both runs exit 2 —
+    `2428 tests, 1 failure`, IDENTICAL red in both runs:
+    `Smalt.McpWireTest` "doctor.summary agrees with scripts/doctor.py
+    --json on substrate health" (`test/mcp_wire_test.exs:791`).
+    Empty failure-set diff, no flake alarm — **deterministic**
+    single-test red. Root cause (doctor-agreement): the test's
+    substrate-health probe used a bind-probe whose TIME_WAIT residue
+    disagreed with doctor.py's connect-probe; the probe was switched
+    to a connect-probe (fix effective — mcp_wire does NOT recur in
+    runs 19-21). Class: **deterministic, fixed**.
+19. **run-19** (`court-x2-wrap-run19.log`): both runs exit 2 — wide
+    churn under G17's audit load: run 1 red on ~15 faces
+    (Lens5FuzzTest, StoreChurnTest ×~12, W3SessionOps GAP-A2-07);
+    run 2 red on a different set (Enclave.LifecycleTest ×2,
+    Affidavit.SealTest ×4). SHIFTING-FAILURE detector fired; zero
+    common members. Class: **load-churn** (widest churn face of the
+    window — the G17 audit load amplifies the contention window).
+    COURT_X2_RC=1.
+20. **run-21** is not this row; run-20
+    (`court-x2-wrap-run20.log`): both runs exit 2 — `2435 tests,
+    1 failure`, IDENTICAL in both runs:
+    `Smalt.ErrorCodesDocTest` "docs/ERROR_CODES.md is the
+    byte-identical projection of the sources"
+    (`test/error_codes_doc_test.exs:46`). Empty failure-set diff —
+    **deterministic** red. Fix landed after the run:
+    `python3 scripts/gen_error_codes.py --check` → "docs/ERROR_CODES.md
+    up to date", exit 0, verified by this lane at this edit (the
+    projection was regenerated, never hand-patched). Class:
+    **deterministic, fixed post-run**. COURT_X2_RC=1.
+21. **run-21** (`court-x2-wrap-run21.log`) — **IN-FLIGHT**; run 1
+    complete: exit 2, `1 doctest, 7 properties, 2435 tests, 4
+    failures (43 excluded)`, 198.8 s; run 2 executing. Verdict
+    recorded **when it lands**; the per-run "Failing tests"
+    extraction prints only after run 2 finishes, so run 1's four red
+    faces are not yet named in the log. No verdict asserted, no
+    green claimed. Close condition unchanged: both runs exit 0.
+
+### Pre-staged publish-dry record (lane 13 smalt-court, 2026-10-16)
+
+`just publish-dry` is pre-staged against the wrapped tree, typed, so
+the post-court run is adjudication-only:
+
+- **Gate 1 (hex tarball build): KNOWN TYPED BLOCKER, HEX_BUILD_REFUSED**
+  — the non-optional `{:ex4pm, path: "../ex4pm", override: true}`
+  path dep (`mix.exs:121`) refuses `mix hex.build` metadata. State on
+  disk: G1's ex4pm package is BUILT (dry-build receipt in
+  `docs/jira/v26.10.16/PUBLISH_RECORD.md:44-51` — `mix hex.build -o
+  /tmp/ex4pm-26.10.8.tar` in `/Users/sac/ex4pm` exits 0, v26.10.8,
+  MIT, checksum on record) and the dual-pin activation block is
+  staged in smalt `mix.exs:123-132` (commented-ready exact pin
+  `{:ex4pm, "~> 26.10.8", override: true}`). Fix is a known typed
+  two-step: operator runs `cd ~/ex4pm && mix hex.publish`, then flips
+  the staged block (`mix deps.update ex4pm && mix hex.build`) and
+  closes B1. smalt's dep is intentionally NOT flipped until ex4pm is
+  live on hex (operator-ruling, PUBLISH_RECORD B1). Until then gate 1
+  FAILs **deterministically and honestly** — this row is the typed
+  prediction, so the post-court publish-dry run's gate-1 red is
+  adjudicated KNOWN-BLOCKER, not a new defect.
+- **Gates 2-4 predicted green**: gate 2 (inner-tar key grep) and
+  gate 3 (athena//Users/sac leak grep) have no known blockers on the
+  current packaged set; gate 4 (ERROR_CODES regen identity) verified
+  green by this lane: `gen_error_codes.py --check` → exit 0 at this
+  edit. Prediction, not receipt: the post-court `just publish-dry`
+  run is the evidence.
+
+### Lane 13 verification (this lane)
+
+- `just docs-dod-check` → **exit 0** (run at this edit, tail: OK
+  README.md … OK docs/archive/README.md).
+- `python3 scripts/gen_error_codes.py --check` → exit 0 ("docs/
+  ERROR_CODES.md up to date").
+- OCEL census re-grepped (method above), run logs 16-20 read from
+  disk, run-21 in-flight state from `pgrep` + log mtime (22:03:18
+  local, run-2 header last line).

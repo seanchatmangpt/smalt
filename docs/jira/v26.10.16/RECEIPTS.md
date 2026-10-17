@@ -125,6 +125,7 @@ count, or PASS/FAIL token) found in the file.
 | r213-registr | [r213-registry-surface-fence-lane334.md](receipts/r213-registry-surface-fence-lane334.md) | PASS | R212 (ARM registry surface coverage fence, lane 334) |
 | r214-suspect | [r214-suspect-triage.md](receipts/r214-suspect-triage.md) | PASS | r214 — SUSPECT remainder triage (docs lane, 2026-10-16) |
 | r215-affidav | [r215-affidavit-seal-court.md](receipts/r215-affidavit-seal-court.md) | PASS | r215 — affidavit seal-court witness receipt (lane 5 VERIFY; refreshed by lane 4 WITNESS) |
+| r216-court-x | [r216-court-x2-run12-red.md](receipts/r216-court-x2-run12-red.md) | FAIL | Court-x2 wrap run 12 — RED (shifting-failure) |
 | r216-court-x | [r216-court-x2-run8-red.md](receipts/r216-court-x2-run8-red.md) | FAIL | Court-x2 wrap runs 8–9 — RED |
 | r217-fin-swe | [r217-fin-sweep.md](receipts/r217-fin-sweep.md) | PASS | r217 — fin-sweep generated-artifact regen + idempotence (lane X6) |
 | r22-redirect | [r22-redirect-airgap-e2e-court.md](receipts/r22-redirect-airgap-e2e-court.md) | PASS | R22 (redirect:"error" air-gap + e2e court) |

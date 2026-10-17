@@ -41,6 +41,20 @@ the NEXT window, owned by the ex4pm repo, not smalt.
 - **Close condition**: ex4pm published to hex with a version satisfying smalt's pin;
   smalt `mix.exs` carries the hex pin with a local path `override: true`; `mix hex.build`
   on the smalt subject exits 0 for B1-class reasons.
+- **Progress (lane G1, 2026-10-16)**: ex4pm hex-readiness prepared. Metadata verified in
+  `/Users/sac/ex4pm/mix.exs` (`app: :ex4pm`, version `26.10.8`, licenses `["MIT"]`,
+  description, links, `files:` whitelist `["lib","priv","mix.exs","README.md",
+  "CHANGELOG.md","LICENSE"]`; no path deps in ex4pm's own deps list — all hex
+  requirements). Dry build receipt: `mix hex.build -o /tmp/ex4pm-26.10.8.tar` in
+  `/Users/sac/ex4pm` exits 0 — Version 26.10.8, Licenses MIT, package checksum
+  `038d538135c9bfe5a9ac266ed5a87780dbe56ce91eb1a7cb188e1833726b9564`; inner
+  `contents.tar.gz` = 468 files, zero `priv/plts`, `_build/`, or `deps/` leakage.
+  smalt `mix.exs` now carries the commented-ready dual-pin activation block directly
+  above the current path line (exact post-publish pin `{:ex4pm, "~> 26.10.8",
+  override: true}`, optional local path override variant documented). Activation step
+  (operator, requires hex account): `cd ~/ex4pm && mix hex.publish`, then flip the
+  commented block in smalt `mix.exs`, `mix deps.update ex4pm && mix hex.build`,
+  close B1 here. smalt's dep is intentionally NOT flipped until ex4pm is live on hex.
 - **Cross-ref**: `receipts/cap-ex4pm-emitters.md` (emitters capability that anchors the
   runtime-need ruling); `lib/smalt/semantic/domain.ex` (AshEx4pm evidence pattern doc).
 
