@@ -1,0 +1,56 @@
+{
+  "lane": "e1-console-bridge (validation, ring 5, agent 14, lane 512)",
+  "date": "2026-10-16",
+  "subject": "scripts/tf_enclave_loop.sh full loop on post-F1-F3 tree (enrichment + IPv6 127.0.0.1 pins)",
+  "exit_code": 1,
+  "verdict": "FAIL (typed) — native phases green; tf leg blocked by one new KD-class finding (F8) plus tooling finding (F7)",
+  "commands": {
+    "main": "bash scripts/tf_enclave_loop.sh",
+    "variants": [
+      "TF_CLI_CONFIG_FILE=/tmp/e1-mirror.rc bash scripts/tf_enclave_loop.sh  (F7 workaround mirror)",
+      "manual scratch apply against lane substrate 39370-39375 (full-error capture)"
+    ],
+    "workdirs": [
+      "/tmp/tf-enclave-loop.NXKnHL (run1: registry install, plan x509 fail)",
+      "/tmp/tf-enclave-loop.xWiTuw (best run: plan PASS 3-to-add, apply reached real wire)",
+      "/tmp/e1lane (manual scratch apply, full error text)"
+    ]
+  },
+  "phases": [
+    { "phase": "preflight", "verdict": "PASS", "note": "terraform binary, fixture, harnesses, lane ports 39370-39375 free" },
+    { "phase": "substrate-boot", "verdict": "PASS", "note": "ARM 39370 + TLS twin 39371 up (2.3-20s warm)" },
+    { "phase": "exs-harness", "verdict": "FAIL (typed)", "note": "tf_init PASS, tf_plan PASS ('3 to add'), tf_apply FAIL at azurerm_storage_account read-back — F8 (blobServices api-version ceiling); downstream arm_assert/blob/secrets/cosmos/eh SKIP-LOUD on provisioned=false" },
+    { "phase": "mjs-console", "verdict": "PASS", "note": "PASS=5 FAIL=0 SKIP-LOUD=2 (arm rg read + cosmos db-ensure 400, both loud skips); sts mint, blob PUT+GET byte-exact, vault secret read-back on kv-smalt-fixture loopback plane, eventhubs cloudevents ingest+readback all PASS" },
+    { "phase": "tf-init", "verdict": "PASS", "note": "with /tmp/e1-mirror.rc (F7 workaround); without it, init succeeds via registry but plan dies x509 (F7)" },
+    { "phase": "tf-plan", "verdict": "PASS", "note": "3 to add — TLS to the twin fully verified through the trust shim" },
+    { "phase": "tf-apply", "verdict": "FAIL (typed)", "note": "RG create PASS; storage account create PASS; read-back GET blobServices/default?api-version=2023-05-01 -> 400 InvalidApiVersionParameter (ceiling 2021-04-01) = F8. Script's already-exists retry path then trips on the exs harness's leftover RG (harness runs tf inside test/terraform_fixture, contaminated state — F9)" },
+    { "path": "tf-destroy/residue-audit", "phase": "tf-destroy/residue-audit", "verdict": "NOT REACHED" },
+    { "phase": "cleanup (F5)", "verdict": "PASS", "note": "cleanup trap freed 39370-39375 on every run incl. FAIL exits; manual substrate teardown verified free" }
+  ],
+  "findings_closure": {
+    "F1": { "status": "CLOSED (wire-witnessed)", "evidence": "mjs vault hop: PUT /secrets/enclave-loop-secret -> 200, GET -> 200 read-back on kv-smalt-fixture loopback plane; vault_uri no longer real-internet" },
+    "F2": { "status": "CLOSED (wire-witnessed)", "earmark": "double-slash reset", "evidence": "no //subscriptions reset; storage listKeys path reached (storage account create succeeded past metadata/endpoints + STS over the TLS twin)" },
+    "F3": { "status": "CLOSED (wire-witnessed)", "evidence": "storage account create completed with no 'Missing Resource Identity After Create'; provider proceeded to read-back" },
+    "F4": { "status": "CLOSED", "evidence": "leaf now CA-chained with SANs (DNS:localhost, IP:127.0.0.1, management.azure.com, login.microsoftonline.com); openssl verify OK; loop script self-heals via gen_dev_cert.sh + snapshot" },
+    "F5": "CLOSED — cleanup trap freed lane ports on all 6 runs incl. FAIL exits; no manual sweep needed",
+    "F6": { "status": "MITIGATED", "evidence": "loop script snapshots TLS pair per run; no mid-run churn witnessed this session" },
+    "F7": {
+      "status": "OPEN (tooling)",
+      "evidence": "registry azurerm 4.54.0 and azapi 2.4.0 darwin_arm64 binaries are codesigned flags=0x10000(runtime) (hardened) — DYLD_INSERT_LIBRARIES never injects the trust shim, plan dies x509 'localhost certificate is not trusted'.",
+      "workaround_proven": "ad-hoc re-signed offline mirror (/tmp/e1-mirror + rc with include registry.terraform.io/*/*): h1 dirhash rewritten, providers re-signed flags=0x2(adhoc) — tf_plan PASS, apply reached real wire. NOTE: --remove-signature alone SIGKILLs the binary on darwin 26 (unsigned exec kill); must be codesign -f -s -.",
+      "fix_path": "scripts/trust_shim: serve pre-re-signed provider mirror under test/terraform_fixture/provider-mirror (re-signed zip + h1 rewrite + provider-mirror.rc), or drop hardened flag at mirror mint time"
+    },
+    "F8": {
+      "status": "OPEN (KD-class, lib/generated)",
+      "evidence": "azurerm 4.54 read-back GET /blobServices/default?api-version=2023-05-01 -> 400 InvalidApiVersionParameter (ceiling 2021-04-01). lib/smalt/registry.ex:145 pins blobServices=2021-04-01 while line 146 containers=2023-05-01; monotonic gate (router.ex check_version, KD-78).",
+      "fix_path": "bump blobServices ceiling to 2023-05-01 in source TTL, regen via `mix smalt.gen` (registry.ex is generated, replay-fenced); PUT/GET routes for blobServices/default already exist (router.ex:2276-2300), so the ceiling is the only blocker"
+    },
+    "F9": {
+      "status": "OPEN (harness)",
+      "evidence": "scripts/bench/enclave_loop.exs provision_phase runs terraform directly inside test/terraform_fixture (fixture_abs), not a scratch copy — leftover terraform.tfstate/RG from a failed apply poisons the wrapper's scratch run (already-exists on RG) and the script's destroy+retry path.",
+      "fix_path": "harness should cp *.tf into a mkdtemp scratch like the wrapper does"
+    }
+  },
+  "residue": "manual substrate torn down; 39370-39375 free; /tmp/e1-mirror + /tmp/e1lane left as F7 workaround receipts",
+  "standing": "SUSPECT — one ceiling row (F8) from full-green; native phases (mjs console, exs native hops, plan) ALIVE on the wire"
+}

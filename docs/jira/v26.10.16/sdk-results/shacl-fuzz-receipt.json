@@ -1,0 +1,57 @@
+{
+  "receipt": "shacl-fuzz",
+  "milestone": "v26.10.16",
+  "date": "2026-10-16",
+  "subject": {
+    "surface": "Smalt.ArmGateway.Router PUT routes (storage/kv/cosmos/eh/sb families)",
+    "pipeline": "Validate∘Hydrate: Defaults.apply -> check_shape -> persist-time enrichment",
+    "generator": "deterministic seeded (:exsss) — replayable via test/corpus/shacl_fuzz.exs"
+  },
+  "command": "MIX_BUILD_ROOT=_build-lane504 mix test test/corpus_test.exs",
+  "total_payloads": 1000,
+  "seed": [2026, 10, 16],
+  "counts_by_class": {
+    "malformed_binary": 100,
+    "deep_nesting": 100,
+    "unicode_keys": 100,
+    "non_map_body": 100,
+    "partial": 100,
+    "wrong_types": 100,
+    "oversized": 100,
+    "null_heavy": 100,
+    "unhydrated": 100,
+    "benign_valid": 100
+  },
+  "counts_by_verdict": {
+    "admitted": 668,
+    "typed_refusal": 214,
+    "parse_typed": 118,
+    "untyped_crash": 0,
+    "server_error": 0,
+    "untyped_refusal": 0,
+    "l3_violation": 0
+  },
+  "laws": {
+    "L1_no_untyped_escape": "HELD after fence (finding F1)",
+    "L2_hydrate-before-validate": "HELD — sku-less storage + valid location ADMITTED",
+    "L3_no-refusal-mutates-store": "HELD — 0 snapshot diffs across all refused/parse-typed rows"
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "payload": "{\"location\": \"eastus\", \"properties\": [{\"list-not-map\": true}]}",
+      "escape": "untyped BadMapError (wrapped Plug.Conn.WrapperError) raised in build_resource_record/5 persist-time enrichment (Defaults.enrich -> Map.put on a list properties member) AFTER the permissive local shape validator admitted the body",
+      "fix": "check_properties_member/2 fail-closed guard in handle_resource_put (properties must be object-or-absent -> typed 400 InvalidResourceShape) + check_shape/3 rescue fence converting any validator raise into a typed InvalidResourceShape envelope",
+      "status": "FIXED-LANDED"
+    }
+  ],
+  "notes": [
+    "KD-row candidate: the storage/kv/cosmos/eh/sb local DefaultShape validator is not datatype-strict (string booleans, int sku.name, int location all admit); typed datatype enforcement is roadmap",
+    "Binary-garbage bodies refuse wire-typed: Plug.Parsers.ParseError -> bare 400 at the adapter tier (pinned by test/auth_enforce_test.exs); classified parse_typed (118 rows)"
+  ],
+  "pinned_rows": 20,
+  "pinned_rows_note": "20 permanent regression rows pinned to receipted verdict classes in test/corpus/shacl_fuzz.exs pinned_rows/0",
+  "standing": "ALIVE",
+  "verification": "26 tests, 0 failures (test/corpus_test.exs incl. 3 shacl_fuzz tests), seed-replayable"
+}

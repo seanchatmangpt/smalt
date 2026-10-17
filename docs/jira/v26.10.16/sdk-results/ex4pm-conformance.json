@@ -1,0 +1,218 @@
+{
+  "assertion_green_fitness_1_0": true,
+  "deterministic_replay": {
+    "identical": true,
+    "method": "Ex4pm.simulate/2 on the discovered model, invoked twice; byte-identical serialized value required",
+    "simulate_standing": "alive",
+    "simulated_value": "%{paths: [[\"enclave.lifecycle.stage:parse\", \"enclave.lifecycle.stage:apply\", \"enclave.lifecycle.stage:plan\", \"enclave.lifecycle.stage:synthesize\", \"enclave.lifecycle.stage:destroy\", \"enclave.lifecycle.stage:residue\"]], max_depth: 12, max_paths: 128, path_count: 1}"
+  },
+  "discovery_source": "green-01",
+  "discovery_standing": "alive",
+  "fixture": "/Users/sac/smalt/test/terraform_fixture/main.tf",
+  "generated_at": "2026-10-16T19:23:24.663732Z",
+  "green_runs": 9,
+  "interrupted_runs": 1,
+  "model": {
+    "activities": [
+      "enclave.lifecycle.stage:apply",
+      "enclave.lifecycle.stage:destroy",
+      "enclave.lifecycle.stage:parse",
+      "enclave.lifecycle.stage:plan",
+      "enclave.lifecycle.stage:residue",
+      "enclave.lifecycle.stage:synthesize"
+    ],
+    "edges": [
+      {
+        "count": 1,
+        "frequency": null,
+        "from": "\"enclave.lifecycle.stage:apply\"",
+        "to": "\"enclave.lifecycle.stage:plan\""
+      },
+      {
+        "count": 1,
+        "frequency": null,
+        "from": "\"enclave.lifecycle.stage:destroy\"",
+        "to": "\"enclave.lifecycle.stage:residue\""
+      },
+      {
+        "count": 1,
+        "frequency": null,
+        "from": "\"enclave.lifecycle.stage:parse\"",
+        "to": "\"enclave.lifecycle.stage:apply\""
+      },
+      {
+        "count": 1,
+        "frequency": null,
+        "from": "\"enclave.lifecycle.stage:plan\"",
+        "to": "\"enclave.lifecycle.stage:synthesize\""
+      },
+      {
+        "count": 1,
+        "frequency": null,
+        "from": "\"enclave.lifecycle.stage:synthesize\"",
+        "to": "\"enclave.lifecycle.stage:destroy\""
+      }
+    ],
+    "type": "dfg"
+  },
+  "runs": 10,
+  "traces": [
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:93530b43a55d723031f47639e10dd27593f92372b6225aadbef8949ec17e94a0",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:9194b32301a042e2bb9eac98a6aae6fef4d2fa96d73e763eb7c6e64ebb47a581",
+      "trace": "green-01"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:e2e6b23f562424481c64e14afed7f8a54c3390fe472f47c4f502b10530ced194",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:41febdcbcadd28957d6eac96f1c61dcc48e98247d794a5f5e7907081776ef95d",
+      "trace": "green-02"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:61706f6d802dcb2ea0f6b235644262bddbf6a93e6cb486b80456982d7e74801c",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:cb6b556fd3d7999cf24bff7ab795dbd0661251eb1713cb6abf2d4d2349587b8e",
+      "trace": "green-03"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:63668b5caa58545137ff16c6c630ca6596360bd5b2e5d97e1292a25a41b9c1a6",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:073b1fabb39111fa61c79d343eb263e36bce1a044457ecddd3423e1dcb7d282c",
+      "trace": "green-04"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:abed0af21ffafb6c5564e4f34c239f6d32d0d0778198a2836f164fa0ccced6b4",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:96978c9865ceb65b4c747942db64a4d245ae601de3c9a180ca715bfea78c3b09",
+      "trace": "green-05"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:4bc5a34ed508f2842fa9e5a652fb23992446cf7a0f7ffa07fe64659a9170f833",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:b4cc288dcbf6fe5d23374bd79a90063441f6674b4112f7bcf478b1003b95d9e9",
+      "trace": "green-06"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:7fc4315afc38357ce84ad037bcae49c171fddb1b4a978c630f8a7fe560acc3e2",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:187a3637bc92670df6a4099d55926e5e4998c8bed992c1568530a1964249edae",
+      "trace": "green-07"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:0d9c3451927c48978eafe8c1166d2a16d323dd3370040d80a61dc0838884171c",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:6a2a7b42302709d51405d9a9bfc701bcd0cf9fc61c3ef1b3a56c542cd860951c",
+      "trace": "green-08"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "green",
+      "receipt_hash": "sha256:c78d4d4da02fe7fee9f27ecbcde4a903f183b61e2601c6857cdd11459f05f220",
+      "stages": [
+        "apply",
+        "destroy",
+        "parse",
+        "plan",
+        "residue",
+        "synthesize"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:82aa943d95810966d92ecfe5b797fce0078e08323c1c13aa6dcd5eca5dadb9db",
+      "trace": "green-09"
+    },
+    {
+      "fitness": 1.0,
+      "kind": "interrupted",
+      "receipt_hash": "sha256:7dcab4d617433853bde99a6ffdd761d2014abaffcf6b1c57e71065a047da5209",
+      "stages": [
+        "apply",
+        "parse",
+        "plan"
+      ],
+      "standing": "alive",
+      "subject_hash": "sha256:54ed502b92c8700ea97d27280ec68b43936bd4433f030a8d1f5952db4e12c1e9",
+      "trace": "interrupted-10"
+    }
+  ]
+}

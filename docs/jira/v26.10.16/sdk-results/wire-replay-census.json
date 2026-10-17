@@ -1,0 +1,144 @@
+{
+  "generated_by": "lane510 validation (Agent 12, Ring 4)",
+  "date": "2026-10-16",
+  "subject": {
+    "repo": "/Users/sac/smalt",
+    "corpus_suite": "test/corpus_test.exs",
+    "build_root": "_build-lane510"
+  },
+  "run": {
+    "command": "MIX_BUILD_ROOT=_build-lane510 mix test test/corpus_test.exs",
+    "tests": 23,
+    "failures": 0,
+    "families_expected": 8,
+    "families_present": 8,
+    "concurrent_state_note": "Validation window ran on the 8-family corpus (23 tests, 0 failures, fence-proof on that state). While this lane ran, a concurrent lane landed test/corpus/shacl_fuzz.exs (9th family). Re-run on the updated tree: 26 tests, 2 failures \u2014 BOTH in the concurrent lane's in-flight shacl_fuzz.exs (untyped escape #225 BadMapError; pinned row 'sku-int' expected typed_refusal got admitted). Not introduced by lane510; compile-freeze SLA and repair belong to that lane."
+  },
+  "families": [
+    {
+      "file": "api_version_admission.exs",
+      "incident": "azurerm 4.54 api-version cap",
+      "kd_row": "KD-78",
+      "kd_row_status_in_register": "OPEN",
+      "fix_site": "Smalt.ArmGateway.Router.check_version (monotonic admission; SHIM-COURT marker present in lib/smalt/arm_gateway/router.ex)",
+      "corpus_fence": true
+    },
+    {
+      "file": "blob_container_reput.exs",
+      "incident": "duplicate Put Container silently replaced record (WORM clock reset)",
+      "kd_row": null,
+      "fix_site": "Smalt.EgressRouter.container_reput_arm",
+      "corpus_fence": true
+    },
+    {
+      "file": "head_database_account_names.exs",
+      "incident": "azurerm CheckNameExists HEAD 400 + JSON body on HEAD",
+      "kd_row": null,
+      "fix_site": "Smalt.ArmGateway.Router HEAD databaseAccountNames (204/404 empty)",
+      "corpus_fence": true
+    },
+    {
+      "file": "secret_cross_plane_seed.exs",
+      "incident": "ARM secret PUT invisible on data plane",
+      "kd_row": null,
+      "fix_site": "Smalt.ArmGateway.Router.seed_data_plane_secret/4",
+      "corpus_fence": true
+    },
+    {
+      "file": "cosmos_arm_container.exs",
+      "incident": "ARM cosmos children unseeded; partition key unenforced",
+      "kd_row": null,
+      "fix_site": "Smalt.ArmGateway.Router.seed_cosmos_child + PartitionKey.enforce",
+      "corpus_fence": true
+    },
+    {
+      "file": "vault_enrichment.exs",
+      "incident": "azurerm 4.54 FR-5 sparse-record derefs (vaultUri, primaryEndpoints)",
+      "kd_row": "KD-T5-F1 (non-KD-nn GAP token)",
+      "fix_site": "Smalt.ArmGateway.Defaults.enrich/5",
+      "corpus_fence": true
+    },
+    {
+      "file": "eh_created_at.exs",
+      "incident": "EH namespace created_at snake_case vs SB createdAt divergence",
+      "kd_row": null,
+      "fix_site": "Smalt.ArmGateway.Defaults enrichment tables",
+      "corpus_fence": true
+    },
+    {
+      "file": "tags_normalization.exs",
+      "incident": "azurerm \"tags\": null echoed; terraform persistent diff",
+      "kd_row": null,
+      "fix_site": "Smalt.ArmGateway.Router.normalize_tags/1",
+      "corpus_fence": true
+    }
+  ],
+  "kd_coverage_map": {
+    "closed_kd_rows_total": 26,
+    "closed_rows_with_corpus_fence": [],
+    "closed_rows_without_corpus_fence": [
+      "KD-01",
+      "KD-03",
+      "KD-07",
+      "KD-15",
+      "KD-18",
+      "KD-19",
+      "KD-20",
+      "KD-21",
+      "KD-37",
+      "KD-38",
+      "KD-39",
+      "KD-40",
+      "KD-41",
+      "KD-42",
+      "KD-43",
+      "KD-49",
+      "KD-52",
+      "KD-53",
+      "KD-54",
+      "KD-68",
+      "KD-70",
+      "KD-71",
+      "KD-76"
+    ],
+    "note": "23 of 23 identifiable CLOSED rows listed; KD-22 (CLOSED-SIMULATED) and KD-45/46 (CLOSED-SIMULATED, AMQP-tier shims) are also unfenced (26 CLOSED rows total by status-token count). The corpus README contract ('every CLOSED-WITH-RECEIPT wire divergence gets a corpus row') is not satisfied by the register as ground truth.",
+    "named_family_findings": [
+      "KD-78 monotonic: fix landed + corpus fence present, register row still OPEN \u2014 stale/unflipped row (flip gated on witness receipt per kd_flip.py protocol).",
+      "blob idempotency / HEAD routes / cross-plane seeds / enrichment echoes / tags: closed via fix sites + receipts but carry NO KD-nn row \u2014 fenced in corpus yet invisible in the canonical register.",
+      "dual-key: NO corpus family and NO KD row found (nearest row KD-16 KV versioned crypto is OPEN and unfenced) \u2014 coverage gap, flagged.",
+      "vault_enrichment cites 'KD-T5-F1', a non-KD-nn token \u2014 register-integrity drift."
+    ]
+  },
+  "fence_proof": {
+    "method": "sha256-baselined in-place mutation of a cited fix-site token (normalize_tags) in lib/smalt/arm_gateway/router.ex, corpus rerun, byte-exact restore; no git operations",
+    "attempts": [
+      {
+        "mutation": "normalize_tags -> normalize_tags_vacuity (substring-preserving, single occurrence)",
+        "result": "23 tests, 0 failures \u2014 mutation itself vacuous; the fence's =~ substring match tolerates it"
+      },
+      {
+        "mutation": "normalize_tags -> normalize_tags_SHIM-COURT (hyphenated)",
+        "result": "compile abort (SyntaxError at router.ex:425) \u2014 not a fence verdict; rejected as proof"
+      },
+      {
+        "mutation": "all normalize_tags occurrences -> tags_renormalized",
+        "result": "23 tests, 1 failure \u2014 fence fired: 'fix site token \"normalize_tags\" vanished from Elixir.Smalt.ArmGateway.Router' (mix exit 2)",
+        "fence_non_vacuous": true
+      }
+    ],
+    "restore": {
+      "file": "lib/smalt/arm_gateway/router.ex",
+      "sha256_check": "OK (sha256sum -c, byte-exact)",
+      "post_restore_run": "23 tests, 0 failures"
+    }
+  },
+  "verdict": "PASS-WITH-FINDINGS (8-family window); current tree shows 2 failures in concurrent lane shacl_fuzz.exs",
+  "findings": [
+    "F1: KD-78 has a landed monotonic-admission fix + corpus fence but its register row is still OPEN \u2014 candidate flip pending witness receipt.",
+    "F2: 6 of 8 corpus families cite no KD-nn row \u2014 closed incidents are invisible in the canonical register (README contract vs register mismatch).",
+    "F3: 'dual-key' family has neither corpus fence nor KD row \u2014 unfenced, unregistered coverage gap.",
+    "F4: vault_enrichment cites non-KD-nn token KD-T5-F1.",
+    "F5: a substring-preserving token mutation passes the dead-citation fence \u2014 the fence's =~ match is substring-tolerant; consider a stricter whole-token assertion.",
+    "F6: 26 of 26 CLOSED KD rows lack corpus fences; the corpus contract in test/corpus/README.md overclaims relative to the register."
+  ]
+}

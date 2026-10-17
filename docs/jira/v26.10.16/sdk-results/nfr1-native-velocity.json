@@ -1,0 +1,60 @@
+{
+  "ok": 100,
+  "date": "2026-10-16",
+  "errors": [],
+  "n": 100,
+  "lane": "nfr1-native-velocity",
+  "fixture": "test/terraform_fixture/main.tf",
+  "agent": 1,
+  "ring": 1,
+  "per_stage_ms": {
+    "apply": {
+      "p50": 1,
+      "p90": 1,
+      "p99": 73
+    },
+    "parse": {
+      "p50": 0,
+      "p90": 1,
+      "p99": 12
+    },
+    "plan": {
+      "p50": 0,
+      "p90": 0,
+      "p99": 3
+    },
+    "synthesize": {
+      "p50": 1,
+      "p90": 2,
+      "p99": 4
+    },
+    "destroy": {
+      "p50": 13,
+      "p90": 36,
+      "p99": 94
+    },
+    "residue": {
+      "p50": 0,
+      "p90": 0,
+      "p99": 1
+    }
+  },
+  "total_ms": {
+    "p50": 16,
+    "p90": 39,
+    "p99": 131
+  },
+  "machine": {
+    "cpu": "Apple M3 Max",
+    "cores": 16,
+    "ram_gb": 48,
+    "elixir": "1.19.5",
+    "otp": "28",
+    "darwin": "26.2"
+  },
+  "budget": {
+    "apply_p50_ms": 80,
+    "apply_p99_ms": 150
+  },
+  "verdict": "PASS"
+}

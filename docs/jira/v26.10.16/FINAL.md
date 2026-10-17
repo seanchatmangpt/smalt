@@ -1,0 +1,77 @@
+# FINAL — smalt v26.10.16 (terminal)
+
+Standing: **PARTIAL_ALIVE** (pre-court-x2; standing line flips only on the two-green receipt).
+
+- **court-x2**: PENDING — two-green receipt not yet minted; runnable on demand via `just court-x2`. Fin sweep fills this line with the real verdict.
+- **publish-dry**: PENDING — dry-run not yet witnessed this window; fin sweep re-runs `just publish-dry` and records the result here.
+- **Commit SHAs**: **PENDING-POST-COMMIT** — landing commit hash, file count, and push range cannot exist until the wrap commits land; the fin sweep fills this line after them. No commit SHA is minted here.
+
+## Certification (Agent 15 final pass, 2026-10-16 — counts re-verified on this tree, not recalled)
+
+- **Registry**: **41 admitted resource types** (mechanically counted from `@admitted_resource_types` in `lib/smalt/registry.ex`; supersedes the "38 admitted types" prose in `ash-kudzu-integration.md` and `docs/WIRE_PARITY.md` — those name a historical count, the module attribute is ground truth).
+- **KD register** (`docs/jira/v26.10.14/KNOWN_DIVERGENCES.md`, canonical table): **93 rows, KD-01..KD-93 — 28 CLOSED / 65 OPEN** (KD-91/92 minted from the c11 typed findings, fixes landed, witness-pending; KD-93 minted OPEN by the lane X5 registrar — cosmos query-feed scope/freshness — after the 92-row recount) (awk recount over status cells, 2026-10-16: 13 `CLOSED-WITH-RECEIPT` + 5 `CLOSED-with-receipt` + 9 `CLOSED-SIMULATED` + 1 `CLOSED`; supersedes the earlier 78-row / 26-CLOSED arithmetic).
+- **Corpus suite**: `MIX_BUILD_ROOT=_build-lane15 mix test test/corpus_test.exs` → exit 0, **23 tests, 0 failures** (real run this lane, 2026-10-16).
+- **Native pipeline**: per-hop sub-100 ms witnessed — parse 3 / plan 2 / synthesize 1 / apply 52 / destroy 15 / residue 0 ms ([sdk-results/native-lifecycle.md](sdk-results/native-lifecycle.md)); honest caveat: the earlier docs-lane e2-native run measured the full-lifecycle apply hop at 110 ms under load; both are on record, the sub-100 ms figure is the quiet-run number.
+- **PQC gap, honestly stated** ([sdk-results/pqc-attestation-audit.md](sdk-results/pqc-attestation-audit.md), amended record in [WRAP_LEDGER.md](WRAP_LEDGER.md) "PQC attestation-debt closure", witness [r215-affidavit-seal-court.md](receipts/r215-affidavit-seal-court.md)): **GAP_TYPED, NOT_CLOSED** — the attestation surface is classical-only (SHA-256 Merkle + RS256 JWS, tamper-proven); the affidavit-wasm engine smalt mounts has **no ML-DSA-65 verify op** (`verify_signature` supports only ES256/ES256K/Ed25519; `ML_DSA65` → `unsupported_algorithm`, upstream `affidavit-wasm/src/signature.rs:29-55`); the CTRT 112-byte witness region **[240..352] (`pqc_witness_signature`) is ZEROED upstream** and `compiler_binary_digest` is a `0x5a` placeholder (`handlers.rs:336`, `wire_ctrt.rs:249,283,305`) — no signature bytes embedded in the sealed CTRT. What is live: the CTRT **seal path** (PQC-free by construction, `:PQC_AFFIDAVIT_SEALED` may only claim seal + classical verify ops) and the engine's classical verify adjudication; `lib/smalt/trust_profile/trust_profile.ex` returns typed `:PQC_NOT_PROVISIONED` refusal for the `:pqc` profile. **KD-89 remains OPEN / witness-PENDING** per the amended close condition (upstream engine must gain `ML_DSA65` before any forge-verify court can run; a CTRT-byte-layout-only court does not satisfy it). Seal + verify-op courts + `just doctor` green ([r215](receipts/r215-affidavit-seal-court.md): 113 tests/0 failures, forge rejections typed); invariant gates **6/7 PASS** — `appconfig-etag-cas` red (DEF-2, transient boot contention under concurrent lane builds, non-vacuity fixtures all correctly REFUSE). Seal-latency perf face pinned as **KD-90** (b3sum subprocess dominance, p50 4.379 ms, `bench/affidavit-seal.jsonl`). No faked pass.
+- **Docs gates this lane**: `just docs-dod-check` → **exit 0** (23/23 paths OK); Diátaxis relative-link sweep across docs/{tutorials,how-to,reference,explanation} + archive/README → **0 broken links**; `scripts/naming_sweep.sh` → **PASS: 0 violations / 46 allowed**.
+- **Matrix-wave receipts**: 5 of 14 linked from on-disk artifacts, 9 PENDING — table in [WRAP_LEDGER.md](WRAP_LEDGER.md) "Matrix-wave receipts linkage".
+- **Tree checksums (pre-court-x2 working tree)**: `git status --porcelain | wc -l` = **414**; `git diff HEAD --stat | tail -1` = **241 files changed, 64822 insertions(+), 49186 deletions(-)**; sha256 (first 16 hex) of top-level artifacts — FINAL.md `73f8861b0b63e21e` · WRAP_LEDGER.md `cd1382f6a6431168` · RECEIPTS.md `72cfdfe78f797b7a` · KNOWN_DIVERGENCES.md `b7eae9ddec36fa73` · SDK_MATRIX.md `c760e516098bb99a` · BENCH_RESULTS.md `3e36119dae449014`. Note: WRAP_LEDGER/FINAL digests are pre-this-edit; the fin sweep re-hashes at the wrapped tree.
+- **court-x2 / publish-dry / commit SHAs**: PENDING (post court-x2; filled by the fin sweep — see Headline counts block and the checklist below).
+
+## Headline counts (re-witnessed 2026-10-16 by re-running `python3 scripts/receipt_index.py`, grepping the canonical KD table, and running the suites on this tree)
+
+- Receipt index (`just receipt-index`): **receipts=312 sdk=49 total=361 suspects=17** (summary line of `python3 scripts/receipt_index.py` re-run 2026-10-16 on this tree; prior counts 311/49/360/16, 310/49/359/16, 294/39/333/16 and 288/15/303/21 are superseded).
+- KD register (canonical table, `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md`): **93 rows (KD-01..KD-93)**. Status: **28 CLOSED** (13 CLOSED-WITH-RECEIPT + 5 CLOSED-with-receipt + 9 CLOSED-SIMULATED + 1 CLOSED) / **65 OPEN** (per-row machine count; the earlier 78-row / 26-CLOSED / 52-OPEN line is superseded).
+- Test suites, all run 2026-10-16 on this tree (shared-checkout caveats apply: concurrent enclave lane was landing files mid-census; one census attempt was invalidated by a transient compile freeze and re-run):
+  - full offline suite (`mix test`): **2222 tests / 2 failures** (run 3, freshest; an earlier same-day run read 2214/7 — tree was growing between runs). Failures named: `Smalt.ErrorCodesDocTest` ("docs/ERROR_CODES.md is the byte-identical projection of the sources") — regenerable drift from the in-flight enclave lane's new error literals, owner regenerates via `just gen-error-codes`; and `ArmFr5TfDivergenceClosuresTest` "EventHub namespace closures GET namespace carries the full deref-safe property set" — enclave/ARM closures surface, open defect for its owning lane. data_plane: 424/0.
+  - wire tier (`mix test --include amqp_wire`): **2257 tests / 8 failures** (concurrent-lane tree, 2026-10-16).
+  - workspace (`just ws-court`): **PASS=42 FAIL=0 SKIP=1** on the quiet re-run; a first attempt under concurrent mix-suite load failed on staged-copy module-not-found + STS 500 — contention artifact, not a product defect, and the quiet re-run is the standing datum.
+  - enclave + admission suites (`test/enclave_{hcl,engine,state,lifecycle}_test.exs` + `test/admission_projection_test.exs` + `test/api_version_admission_test.exs`): **61 tests / 0 failures**.
+- Lane builds used: `MIX_BUILD_ROOT=_build-lane-docs`; coordinator reclaims at integration (`just lane-clean`).
+
+## Enclave surface (landed this window)
+
+- **Modules**: `lib/smalt/enclave/{hcl,engine,state,lifecycle}.ex` (native HCL pipeline: `Smalt.Enclave.Hcl.parse/1` → `Smalt.Enclave.Engine.apply/2` in-process ARM router, defaults hydrate before shape validation, byte-identical error envelope with `details == []`) → `Smalt.Enclave.State.plan/destroy` (zero-drift / cascade-destroy / residue audit). `lib/smalt/enclave/doctor.ex` (untracked, in flight at census time — now compiling green).
+- **Apply shape enrichment**: defaults/sku hydration in `lib/smalt/enclave/engine.ex:353-713` (`sku.name`, `sku_tier`, per-type defaults hydrate BEFORE `check_shape/3`). Note: no receipt names a "lane 403 apply-shape-enrichment" artifact anywhere in the window — the landing state is witnessed only by the module + tests on disk, not by a numbered lane receipt.
+- **Monotonic admission fence**: `test/admission_projection_test.exs` (16 defs) + `test/api_version_admission_test.exs` (6 defs) ride the 61/0 enclave batch above.
+- **Vaults/secrets + cosmos children with cross-plane seed, cascade + storage DELETE**: exercised by `test/enclave_engine_test.exs` inside the 61/0 batch (cascade + storage DELETE on the in-process ARM router).
+- **KD details[] envelope**: `lib/smalt/enclave/engine.ex:495` — byte-identical error envelope when `details == []`.
+- **api-version HEAD routes**: `test/api_version_admission_test.exs` (6 defs, in the 61/0 batch).
+- **Trust shim dylib (4-leg proof)**: `scripts/trust_shim/` — `smalt_trust_shim.c` + build; loopback-only SAN gate + leaf-fingerprint pin, hardened-runtime refusal, interposed `SecTrustEvaluateWithError`/`SecTrustEvaluate`; use + codesigning constraints witnessed in `scripts/trust_shim/README.md`. Reclassified as host-setup prerequisite, not an enclave capability (WRAP_LEDGER "Enclave trust hop" ruling).
+- **Native HCL pipeline + just ingress**: `justfile.d/22-native.just` (imported from the root Justfile: `cleanroom`, `doctor-json`, `audit-residue`, `trust-status`; private ports 29445-29449, lock fd closed); `justfile.d/21-enclave.just` → `enclave-loop` (e1 bench lane).
+- **e1/e2 lanes + NFR**: `docs/jira/v26.10.16/bench/e1-enclave-loop.jsonl` (+ c9) verdict PASS; `sdk-results/tf-plan.md` (azurerm per-resource plan-parse PASS ×3 + apply divergences typed); `sdk-results/t5-cleanroom.md` **PENDING-EXECUTION** (gated on trusted machine per the trust-hop ruling). NFR-3 gate: `scripts/nfr3_rss_gate.py`; NFR-4 identity stage in `docs/BENCHMARKS.md` T5 ladder. No `e2` lane artifact exists on disk — do not cite an e2 lane as landed.
+- **tf_enclave_loop**: `scripts/tf_enclave_loop.sh` + `scripts/tf_{smoke,cleanroom,plan_check,provider_mirror,trust_check,trust_setup}.sh`.
+
+## Major repairs landed this wave
+
+- **KD-77 delivery-tag repair** — `lib/smalt/messaging/amqp/frame_codec.ex` transfer `delivery-tag` now `{:vbin, t}` (0xA0) not uuid (0x98), tagged `# KD-COVERS: KD-77`; disposition echo + mgmt reply + DLQ-reason wiring in `connection.ex`. Witness [r210-kd77-delivery-tag.md](receipts/r210-kd77-delivery-tag.md) (**PARTIAL_ALIVE**: falsifier pass, one loud skip on a stale locked-survivor premise). **KD-77 row remains OPEN — flip pending `scripts/kd_flip.py --apply`**; close condition in NEXT_WINDOW §1.
+- **KD-52/KD-53** — EH multi-event batch inner messages 2..N (KD-53 filed, CLOSED-SIMULATED; KD-COVERS token in `lib/smalt/data_plane/blob_storage.ex` lineage, [r185e-eh-batch-dup-kind.md](receipts/r185e-eh-batch-dup-kind.md)).
+- **R178e census + KD-45** — census regression replay repair and park; receipts [r178e-census-replay-repair.md](receipts/r178e-census-replay-repair.md), [r178e-census-regression-park.md](receipts/r178e-census-replay-repair.md).
+- **R188/R196/R197 WORM arms + R194 lock chain + R193 egress fences + ETS hygiene R178g/R185i/R189** — see receipts [r188-r196-r197-worm-settle-batch.md](receipts/r188-r196-r197-worm-settle-batch.md), [r124-r126-egress-comp-envelope-sentinel-quote-parse.md](receipts/r124-r126-egress-comp-envelope-sentinel-quote-parse.md), [r178g-ets-hygiene-batch.md](receipts/r178g-ets-hygiene-batch.md).
+- **r212 (DLQ reason echo)** and **r213 (registry-surface fence, lane 334)** — latest receipts; r212 witness [r212-dlq-reason-echo.md](receipts/r212-dlq-reason-echo.md), r213 witness [r213-registry-surface-fence-lane334.md](receipts/r213-registry-surface-fence-lane334.md).
+
+## Court inventory (25 shim-court scripts on disk, incl. `corpus_fence_court.sh`; 22 witnessed of 25, aggregate 21 PASS / 1 loud SKIP among the witnessed — WRAP_LEDGER "Courts final standings")
+
+- **atom_bridge, ets_cleanup, amqp_framing** — fresh PASS in [r211-courts-final-batch.md](receipts/r211-courts-final-batch.md) (non-vacuous, restore byte-exact).
+- **settle_cas** (anchor 742) + **renew_mirror** (anchor 566) — re-anchored PASS, [r211-courts-final-batch.md](receipts/r211-courts-final-batch.md) / [r188-r196-r197-worm-settle-batch.md](receipts/r188-r196-r197-worm-settle-batch.md).
+- **disposition_token** — PARTIAL_ALIVE per r211: loud SKIP (exit 3), flip already landed in connection.ex; close condition named in r211.
+- **blob_worm_arms, tombstone_grace, blob_worm** — scripts on disk (`scripts/shim_court/`); witnessed in this window's batch receipts.
+- **dets_growth, enclave_loop, corpus_fence** — scripts on disk (`scripts/shim_court/{dets_growth,enclave_loop,corpus_fence}_court.sh`); **NO witness receipt names any of the three** (grep over `docs/jira/v26.10.16/receipts/` + `sdk-results/`, re-verified at lane-10 close). dets_growth + enclave_loop carry a **session-witnessed PASS (exit 0, ERRC section of WRAP_LEDGER) with witness receipt PENDING** — they stay excluded from the 22-witnessed aggregate until receipts land (D5 re-scope, sync-fixes.md). corpus_fence is fully unwitnessed.
+- Carried inventory (cosmos patch gates, receipt-index drift gate, error-codes regen fence, ETag final-body, KV CA anchoring, immutability/CAS parity, wire fences W1–W3, api-version + scheduled type-guard gates, court hardening batch) — receipts unchanged from the prior revision, all paths valid under `docs-dod-check` (exit 0, re-run 2026-10-16).
+
+## Parks and closures
+
+- **KD-68** — CLOSED-SIMULATED (shim landed, witness [r200d-kd68-selector-impl.md](receipts/r200d-kd68-selector-impl.md); canonical row flipped). KD-70/KD-71/KD-76 — CLOSED-SIMULATED (r200a/r200b/r200g/r200h). KD-53 CLOSED-SIMULATED. 
+- **KD-77: OPEN** (witness r210 PARTIAL_ALIVE landed; flip pending kd_flip — NEXT_WINDOW §1). **KD-78: OPEN** (azurerm api-version cap; tf-plan probe receipt `sdk-results/tf-plan.md` types per-resource plan-parse PASS + apply divergences; NOT closed).
+- **atom_bridge QueueDescription gaps** — parked (audit 2026-10-16): 9 optional-field gaps + getQueueRuntimeProperties soft spot + PUT round-trip persists only 4 fields; probe-authoring rows are NEXT_WINDOW §4.
+- **ledger-lazy-create-default** — close-condition proposed (WRAP_LEDGER GAP-owner proposals).
+- **dets_mirror union-growth** — BOUNDED-WITNESSED: projection-of-live-ETS sync in `lib/smalt/store/dets_mirror.ex`, census+fence `test/store_dets_growth_test.exs` 8/0.
+- **blob_hardening :1523 perf flake — CLOSED** (timing-sensitive pagination; park retired).
+- **SUSPECT triage** — regenerated index (2026-10-16) reads **17 SUSPECT** (summary line `receipts=312 sdk=49 total=361 suspects=17`; the v26.10.16 window contributes spc-bands.md, also present in the v26.10.14 ledger — earlier census figures 21/23/16 were point-in-time and are superseded); triage remainder is NEXT_WINDOW §3.
+- **T5 tf_cleanroom — PENDING-EXECUTION** (skeleton `sdk-results/t5-cleanroom.md`; gated on trusted machine).
+- KD-70/KD-71/KD-76/KD-68/KD-53 closures above supersede the prior "18 CLOSED" arithmetic.
+
+## Pointers
+
+- [RECEIPTS.md](RECEIPTS.md) · [KNOWN_DIVERGENCES.md](KNOWN_DIVERGENCES.md) (canonical table in [../v26.10.14/KNOWN_DIVERGENCES.md](../v26.10.14/KNOWN_DIVERGENCES.md)) · [WRAP_LEDGER.md](WRAP_LEDGER.md) · [NEXT_WINDOW.md](NEXT_WINDOW.md) (planning handoff — pointer to next window lives there) · [receipts/INDEX.md](receipts/INDEX.md) · [_LANES.md](_LANES.md) · [RESOLUTIONS.md](RESOLUTIONS.md)
+- Planning handoff: filled — [NEXT_WINDOW.md](NEXT_WINDOW.md) carries the next-window work graph (KD-77 flip, SUSPECT triage, QueueDescription probe-authoring, T5 execution).

@@ -1,0 +1,47 @@
+{
+  "checks": [
+    {
+      "check": "hcl_ast_parser_conformance",
+      "code": null,
+      "details": "parsed 10/10 terraform fixtures with 0 faults",
+      "domain": "native_hcl_engine",
+      "severity": null,
+      "status": "PASS"
+    },
+    {
+      "check": "ets_baseline_identity",
+      "code": null,
+      "details": "fresh Store snapshot -> real RG+topic create/delete over Smalt.ArmGateway.Router -> strict ETS identity restored (no residue)",
+      "domain": "store_invariants",
+      "severity": null,
+      "status": "PASS"
+    },
+    {
+      "check": "monotonic_api_version_lattice",
+      "code": null,
+      "details": "monotonic lattice holds for 6/6 baseline types (latest admitted, older admitted, newer+malformed refused)",
+      "domain": "wire_parity_gateway",
+      "latest_versions": {
+        "Microsoft.DocumentDB/databaseAccounts": "2024-08-15",
+        "Microsoft.EventGrid/topics": "2021-04-01",
+        "Microsoft.Resources/resourceGroups": "2023-07-01",
+        "Microsoft.ServiceBus/namespaces/queues": "2021-04-01",
+        "Microsoft.ServiceBus/namespaces/topics": "2021-04-01",
+        "Microsoft.Storage/storageAccounts/blobServices/containers": "2023-05-01"
+      },
+      "severity": null,
+      "status": "PASS"
+    },
+    {
+      "check": "darwin_keychain_trust",
+      "code": null,
+      "details": "smalt-dev-ca trusted in login keychain; wire_parity_tier AVAILABLE",
+      "domain": "host_transport",
+      "severity": null,
+      "status": "PASS"
+    }
+  ],
+  "receipt_timestamp": "2026-10-16T19:24:12.193993Z",
+  "remediation_map": {},
+  "status": "PASS"
+}

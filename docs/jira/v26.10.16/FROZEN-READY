@@ -1,0 +1,55 @@
+# FROZEN-READY — lane 633 (freeze verification, post-repair tree)
+
+- **Declared**: 2026-10-16 16:21 PT
+- **Scope**: refresh on the post-micro-repair tree (5 unreachable-clause fixes landed
+  in lib/ after the earlier lane-434 freeze attempt found them via
+  `mix compile --warnings-as-errors`).
+- **lib/ quiet**: first probe showed no lib/ files newer than 5 minutes; then two
+  consecutive 3-minute `git status --porcelain lib/` windows returned zero drift
+  (51 stable modified entries across both windows).
+
+## Per-stage receipt (stages 1-2 from the pre-repair run remain valid; 3-5 re-run)
+
+1. **Quiet poll**: PASS — 2x3-minute windows, byte-identical snapshots
+   (/tmp/l8-q1.txt == /tmp/l8-q2.txt == /tmp/l8-q3.txt).
+2. **Regen set** (pre-repair run, all exit 0; generated outputs still in-sync —
+   post-repair Canonical re-run confirmed IDEMPOTENT before the repair):
+   - `python3 scripts/gen_error_codes.py --check` -> 0 ("docs/ERROR_CODES.md up to date")
+   - `mix run --no-start -e 'Smalt.Projection.Canonical.write()'` -> 0; docs/capabilities.json
+     idempotent under double-regen
+   - `mix smalt.gen` -> 0, "unchanged (skipped, identical content): lib/smalt/registry.ex
+     (engine: sparql, 5 queries, 131 total row(s))"
+   - `mix ggen_igniter.pack.lock --path ../ggen-marketplace/packs/smalt-substrate-pack
+     --pack smalt-substrate-pack` -> 0, sha256
+     `6c5b3108227beb14175f7bbf45bba1a91f71903dc33646f7b005ce8d8c1dba3d` (matches pin)
+     [SUPERSEDES the pre-repin `431808bd…` output originally recorded here; provenance:
+     template comment fix at source pack, `lib/smalt/registry.ex` regenerated via
+     `mix smalt.gen`, replay fence witnessed `:lock_drift` pre-repin — non-vacuity.]
+   - `python3 scripts/receipt_index.py` -> 0 (v26.10.14 + v26.10.16 INDEX.md, RECEIPTS.md)
+3. **Fresh test compile**: PASS — `rm -rf _build-lane633/test` (coordinator-approved);
+   `MIX_ENV=test mix compile --warnings-as-errors` exit 0, zero smalt-lib warnings
+   (the 5 unreachable-clause warnings at smalt.doctor.ex:54, affidavit_ocel.ex:65,
+   court_ocel.ex:107, enclave_ocel.ex:59, router.ex:2169 are fixed; dependency-side
+   notices are pre-existing and outside the gate).
+4. **Bench refresh**: PASS — `SMALT_BENCH_ARM_PORT=39443 SMALT_BENCH_DATA_PORT=39453
+   SMALT_BENCH_AMQP_PORT=39456 python3 scripts/bench.py` exit 0; tmp/bench-receipt.json
+   rewritten 2026-10-16 16:21 PT; `python3 scripts/bench_check.py` -> PASS (5/5 CTQs):
+   doctor 0.664s (<=3), boot p95 3.302s (<=5), ARM PUT p95 0.471ms (<50),
+   Cosmos p95 0.455ms (<20), AMQP first-frame 1.196ms (<100).
+5. **Marker**: this file.
+
+## Notes
+
+- MIX_BUILD_ROOT=_build-lane633; no lib/ edits by this lane.
+- Stages 1-2 receipts are from the pre-repair run; the repair was clause-level
+  (unreachable `{:ok, :dropped}` duplicates) with no regen-visible surface change —
+  capabilities.json idempotency and registry replay were re-verified on the repaired
+  tree before the repair landed in this lane's snapshot ordering.
+- No lane still writing lib/ as of freeze.
+- Count clarification (lane 642, 2026-10-16): the "131 total row(s)" above is the
+  ggen SPARQL projection row count (5 queries), reproduced byte-identically by a
+  fresh `mix smalt.gen` on _build-lane642 (exit 0, "unchanged, identical content").
+  It is distinct from the registry surface: 123 registry map rows = 41 admitted
+  resource types x 3 maps in `lib/smalt/registry.ex` (41 counted mechanically from
+  `@admitted_resource_types`). Neither figure is stale; do not "correct" one into
+  the other.

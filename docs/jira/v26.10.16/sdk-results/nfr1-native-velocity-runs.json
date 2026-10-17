@@ -1,0 +1,1202 @@
+[
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 73,
+      "parse": 12,
+      "plan": 3,
+      "synthesize": 1,
+      "destroy": 42,
+      "residue": 0
+    },
+    "total_ms": 131
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 3,
+      "destroy": 29,
+      "residue": 0
+    },
+    "total_ms": 34
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 57,
+      "residue": 0
+    },
+    "total_ms": 59
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 53,
+      "residue": 0
+    },
+    "total_ms": 57
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 42,
+      "residue": 0
+    },
+    "total_ms": 44
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 36,
+      "residue": 0
+    },
+    "total_ms": 39
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 17,
+      "residue": 0
+    },
+    "total_ms": 17
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 17,
+      "residue": 0
+    },
+    "total_ms": 18
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 15,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 15,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 17,
+      "residue": 0
+    },
+    "total_ms": 21
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 17
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 16,
+      "residue": 0
+    },
+    "total_ms": 18
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 19,
+      "residue": 0
+    },
+    "total_ms": 21
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 3,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 25,
+      "residue": 0
+    },
+    "total_ms": 27
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 36,
+      "residue": 0
+    },
+    "total_ms": 39
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 17,
+      "residue": 0
+    },
+    "total_ms": 21
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 25,
+      "residue": 0
+    },
+    "total_ms": 27
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 20,
+      "residue": 0
+    },
+    "total_ms": 23
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 4,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 18
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 1,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 16,
+      "residue": 0
+    },
+    "total_ms": 18
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 29,
+      "residue": 0
+    },
+    "total_ms": 29
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 15,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 17
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 3,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 17
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 13
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 54,
+      "residue": 0
+    },
+    "total_ms": 56
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 3,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 17
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 22,
+      "residue": 0
+    },
+    "total_ms": 24
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 12,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 18,
+      "residue": 0
+    },
+    "total_ms": 20
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 17,
+      "residue": 0
+    },
+    "total_ms": 19
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 39,
+      "residue": 0
+    },
+    "total_ms": 41
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 35,
+      "residue": 0
+    },
+    "total_ms": 39
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 28,
+      "residue": 0
+    },
+    "total_ms": 30
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 0,
+      "parse": 1,
+      "plan": 1,
+      "synthesize": 2,
+      "destroy": 20,
+      "residue": 0
+    },
+    "total_ms": 24
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 1,
+      "synthesize": 1,
+      "destroy": 29,
+      "residue": 0
+    },
+    "total_ms": 33
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 40,
+      "residue": 0
+    },
+    "total_ms": 42
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 3,
+      "destroy": 14,
+      "residue": 0
+    },
+    "total_ms": 18
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 2,
+      "destroy": 19,
+      "residue": 0
+    },
+    "total_ms": 23
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 94,
+      "residue": 1
+    },
+    "total_ms": 97
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 15
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 0,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 14
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 15,
+      "residue": 0
+    },
+    "total_ms": 17
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 0,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 23,
+      "residue": 0
+    },
+    "total_ms": 25
+  },
+  {
+    "status": "ok",
+    "timings_ms": {
+      "apply": 1,
+      "parse": 1,
+      "plan": 0,
+      "synthesize": 1,
+      "destroy": 13,
+      "residue": 0
+    },
+    "total_ms": 16
+  }
+]

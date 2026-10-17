@@ -1,0 +1,95 @@
+{
+  "machine": {
+    "cores": 16,
+    "cpu": "Apple M3 Max",
+    "darwin": "26.2",
+    "elixir": "1.19.5",
+    "otp": "28"
+  },
+  "lane": "b42",
+  "storm_ms": 2455,
+  "bad_units": 0,
+  "surface": "dataplane-saturation",
+  "total_requests": 12500,
+  "headline_iops": 5091.65,
+  "families": [
+    {
+      "op": "cosmos_put",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 38.62,
+      "p99_ms": 132.102
+    },
+    {
+      "op": "cosmos_query",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 17.2,
+      "p99_ms": 85.607
+    },
+    {
+      "op": "blob_stage_block",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 1.158,
+      "p99_ms": 38.076
+    },
+    {
+      "op": "blob_commit_block_list",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 1.475,
+      "p99_ms": 16.466
+    },
+    {
+      "op": "blob_get",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 1.056,
+      "p99_ms": 29.913
+    },
+    {
+      "op": "kv_put",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 0.365,
+      "p99_ms": 14.359
+    },
+    {
+      "op": "kv_get",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 0.367,
+      "p99_ms": 2.704
+    },
+    {
+      "op": "amqp_enqueue",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 509.165,
+      "p50_ms": 0.072,
+      "p99_ms": 0.168
+    },
+    {
+      "op": "amqp_dequeue_complete_batch",
+      "errors": 0,
+      "n": 1250,
+      "ops_per_sec": 3246.382,
+      "p50_ms": 0.284,
+      "p99_ms": 0.723
+    }
+  ],
+  "ets_lock_contention_ratio": 0.009,
+  "ets_lock_max_queue": 1,
+  "contention_metric": "fraction of 20ms samples where Smalt.Store GenServer mailbox non-empty (serialized CAS/next_seq path)",
+  "dropped_connections": 0,
+  "read_your_write_violations": 0,
+  "consistency_verdict": "PASS"
+}

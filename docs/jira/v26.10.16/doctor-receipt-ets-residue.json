@@ -1,0 +1,54 @@
+{
+  "checks": [
+    {
+      "check": "hcl_ast_parser_conformance",
+      "code": null,
+      "details": "parsed 10/10 terraform fixtures with 0 faults",
+      "domain": "native_hcl_engine",
+      "severity": null,
+      "status": "PASS"
+    },
+    {
+      "check": "ets_baseline_identity",
+      "code": "ETS_IDENTITY_RESIDUE",
+      "details": "ETS baseline-identity FAULT: lifecycle left residue in tables [:smalt_blob_containers]",
+      "domain": "store_invariants",
+      "severity": "BLOCKING_GATE",
+      "status": "FAIL"
+    },
+    {
+      "check": "monotonic_api_version_lattice",
+      "code": null,
+      "details": "monotonic lattice holds for 6/6 baseline types (latest admitted, older admitted, newer+malformed refused)",
+      "domain": "wire_parity_gateway",
+      "latest_versions": {
+        "Microsoft.DocumentDB/databaseAccounts": "2024-08-15",
+        "Microsoft.EventGrid/topics": "2021-04-01",
+        "Microsoft.Resources/resourceGroups": "2023-07-01",
+        "Microsoft.ServiceBus/namespaces/queues": "2021-04-01",
+        "Microsoft.ServiceBus/namespaces/topics": "2021-04-01",
+        "Microsoft.Storage/storageAccounts/blobServices/containers": "2023-05-01"
+      },
+      "severity": null,
+      "status": "PASS"
+    },
+    {
+      "check": "darwin_keychain_trust",
+      "code": "DARWIN_TRUST_MISSING",
+      "details": "smalt-dev-ca not trusted: DEAD CA: keychain fingerprint 77f5dca82315be95.. != file ad1f58a7b085673e.. (CA re-minted after import; run: /Users/sac/smalt/scripts/tf_trust_setup.sh retrust) (script status=FAIL)",
+      "domain": "host_transport",
+      "remediation": {
+        "action": "USE_NATIVE_MODE",
+        "command": "just test-native"
+      },
+      "severity": "ADVISORY",
+      "status": "WARN"
+    }
+  ],
+  "receipt_timestamp": "2026-10-16T19:22:33.071065Z",
+  "remediation_map": {
+    "DARWIN_TRUST_MISSING": "just test-native",
+    "ETS_IDENTITY_RESIDUE": "mix smalt.audit_residue --strict"
+  },
+  "status": "FAIL"
+}
