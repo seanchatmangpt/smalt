@@ -1,4 +1,6 @@
 defmodule Smalt.Ocel.Revops.PowlBridge do
+  @compile {:no_warn_undefined, Ex4pm}
+
   @moduledoc """
   smalt -> ex4pm bridge: smalt reads and assembles its OCEL 2.0 NDJSON
   through `Smalt.Telemetry.OcelNdjson.assemble_document/1`, hands the
@@ -112,7 +114,7 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
     model_out = Keyword.get(opts, :model_out) || @default_model_path
 
     result =
-      if opts[:via] == :script do
+      if opts[:via] == :script or not Code.ensure_loaded?(Ex4pm) do
         discover_script(path, opts, object_type, model_out)
       else
         with {:ok, log} <- ingest_log(path, opts),
@@ -145,7 +147,7 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   def conform(path, opts \\ []) do
     object_type = Keyword.get(opts, :object_type, @default_object_type)
 
-    if opts[:via] == :script do
+    if opts[:via] == :script or not Code.ensure_loaded?(Ex4pm) do
       conform_script(path, opts, object_type)
     else
       with {:ok, log} <- ingest_log(path, opts),
@@ -212,9 +214,13 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   # -- in-process ingest ------------------------------------------------------
 
   defp discover_run(log, object_type) do
-    case Ex4pm.discover(log, object_type: object_type) do
-      {:ok, run} -> {:ok, run}
-      {:error, refusal} -> {:error, {:ex4pm_refused, refusal}}
+    if Code.ensure_loaded?(Ex4pm) do
+      case Ex4pm.discover(log, object_type: object_type) do
+        {:ok, run} -> {:ok, run}
+        {:error, refusal} -> {:error, {:ex4pm_refused, refusal}}
+      end
+    else
+      {:error, {:ex4pm_unavailable, "Ex4pm module is not loaded"}}
     end
   end
 
@@ -229,15 +235,19 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   end
 
   defp ingest_log(path, _opts) do
-    case OcelNdjson.read_document(path) do
-      {:ok, doc} ->
-        case Ex4pm.ingest(map_log(doc)) do
-          {:ok, log} -> {:ok, log}
-          {:error, reason} -> {:error, {:ex4pm_ingest_refused, reason}}
-        end
+    if Code.ensure_loaded?(Ex4pm) do
+      case OcelNdjson.read_document(path) do
+        {:ok, doc} ->
+          case Ex4pm.ingest(map_log(doc)) do
+            {:ok, log} -> {:ok, log}
+            {:error, reason} -> {:error, {:ex4pm_ingest_refused, reason}}
+          end
 
-      {:error, violations} ->
-        {:error, violations}
+        {:error, violations} ->
+          {:error, violations}
+      end
+    else
+      {:error, {:ex4pm_unavailable, "Ex4pm module is not loaded"}}
     end
   end
 
