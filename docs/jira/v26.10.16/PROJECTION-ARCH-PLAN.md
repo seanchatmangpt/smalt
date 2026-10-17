@@ -1,6 +1,6 @@
 # PROJECTION-ARCH-PLAN — smalt × ggen projection architecture (v26.10.17 opening move)
 
-**Status:** Plan (design decisions + wave execution). Engine law updated 2026-10-17: **one engine, no choice — graphlaw** (operator directive; 7/7 pack queries row-for-row vs the oxigraph reference, sparql + qlever deleted, ORDER BY post-sort workaround retired — ggen_igniter `b514bf5`).
+**Status:** Plan (design decisions + wave execution). Wave status table: §1a (W1 LANDED, W2 lanes LANDED uncommitted, W3-W9 QUEUED). Engine law updated 2026-10-17: **one engine, no choice — graphlaw** (operator directive; 7/7 pack queries row-for-row vs the oxigraph reference, sparql + qlever deleted, ORDER BY post-sort workaround retired — ggen_igniter `b514bf5`).
 
 **Sources:** 5 Explore surveys (E1 routes, E2 store, E3 scaffolds, E4 metadata, E5 blueprint) + the sjira bridge design.
 
@@ -70,6 +70,26 @@ YAML → pack rows; registry.ex.eex template shape; kills the hand-sync fence. R
 
 **W9 — ERROR_CODES judgment call (deferred; variant a on offer)**
 Codes as ontology individuals projecting both the docs table and the emitting code — highest ceiling; land only after W2/W6 hardened the engine. Decision point at the W9 gate: land variant (a) or stand down with a verify query asserting ERROR_CODES.md is a rider of the codes file.
+
+## 1a. Wave status (2026-10-17, terminal-status lane)
+
+| Wave | Status | Evidence (as-of-date, on disk) |
+|---|---|---|
+| W1 ConfigKey + StoreTable | **LANDED** (commit `8361816`) | `lib/smalt/config.ex` 46 keys + 3 exemplar migrations; `lib/smalt/store_tables.ex` 52 rows (33 owned + 19 shadow typed) consumed by `store.ex`/`state.ex`/`dets_mirror.ex` — hand lists dead, swept-but-unowned class closed; replay fences 10/0 (config + store identity tests); pack lock converged |
+| W2 CascadeEdge | **LANDED (uncommitted)** | `lib/smalt/cascade_edges.ex` 281 LOC, 23 CascadeEdge rows, GENERATED/DO-NOT-EDIT header; replay + coverage fence `test/cascade_replay_identity_test.exs` (241 LOC, verify/cascade-coverage.unbound.rq run in-test); drop functions stay hand-written (residue doctrine) |
+| W2 semconv | **LANDED (uncommitted)** | `lib/smalt/telemetry/semconv/registry.ex` 252 LOC projected from `model/smalt.yaml`; closed-names + closed-attrs laws; drift fence `test/semconv_test.exs` (255 LOC: model fence + grep fence) |
+| W2 Canonical riders | **LANDED (uncommitted)** | `lib/smalt/projection/canonical.ex` +277 LOC; THIRD_PARTY (96 lines changed) + capabilities.json (+525) identity blocks as Canonical.write riders; fence `test/canonical_projection_test.exs` (288 LOC) |
+| W3 CascadeEdge full + HashChainLedger | QUEUED | plan §1 W3 (cascade edge-family completion + ledger_writer/confidential_ledger ~70%) |
+| W4 Shim-courts scaffold | QUEUED | plan §1 W4 (1 template + 25 rows; first `Actuate.write_new_file!` production exercise) |
+| W5 KD-fence + corpus scaffold | QUEUED | plan §1 W5 |
+| W6 Route shells, family-by-family | QUEUED | plan §1 W6 (D3b priority law; ~2,400-2,800 arm lines) |
+| W7 semconv pack | QUEUED | plan §1 W7 — note: YAML→registry projection already exercised ahead of the pack formalization (see W2 semconv row) |
+| W8 sjira ProjectionSpec backend | QUEUED | plan §1 W8 (depends W4, W6 recommended) |
+| W9 ERROR_CODES judgment call | QUEUED (deferred) | plan §1 W9 (decision point at the W9 gate) |
+
+Engine law: §4 below is current — graphlaw fixed (one engine, no choice; sparql +
+qlever deleted in ggen_igniter `b514bf5`); no reconciliation needed, the section was
+already amended in-place by the engine lane.
 
 ## 2. Verification (per-wave, uniform)
 

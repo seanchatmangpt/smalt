@@ -1,5 +1,14 @@
 {
   "entries": {
+    "../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex=>lib/smalt/cascade_edges.ex": {
+      "out_template": "lib/smalt/cascade_edges.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/cascade_edges.ex": "sha256:b5a9f0693bf725c3653f10bf734333cf9126c8822e06a691cc7c809bd7bc77d3"
+      },
+      "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
+      "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex",
+      "updated_at": "2026-10-17T17:51:27.577592Z"
+    },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex=>tmp/defaults_projected.ex": {
       "out_template": "tmp/defaults_projected.ex",
       "outputs": {

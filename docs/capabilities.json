@@ -212,6 +212,529 @@
     "dataPlane": 8443,
     "eventHubs": 5673
   },
+  "identity": {
+    "contentSha256": "a2ae5714bf384d783f6f31815bbf6c0760c77b045abd4532c80aac98b2658dc0",
+    "packLockSha256": "78aadb3a2d1fbb962fbac6271119ec586b9fd3dcac8ff4cc1a3abf6c1a0ccf80",
+    "semanticEpoch": "26.10.16"
+  },
   "name": "smalt",
-  "schemaVersion": "v1"
+  "schemaVersion": "v1",
+  "third_party": [
+    {
+      "license": "MIT",
+      "name": "ash",
+      "origin": "hex.pm",
+      "version": "3.36.1"
+    },
+    {
+      "license": "MIT",
+      "name": "ash_admin",
+      "origin": "hex.pm",
+      "version": "1.3.2"
+    },
+    {
+      "license": "MIT",
+      "name": "ash_phoenix",
+      "origin": "hex.pm",
+      "version": "2.3.25"
+    },
+    {
+      "license": "MIT",
+      "name": "ash_state_machine",
+      "origin": "hex.pm",
+      "version": "0.2.13"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "aws_signature",
+      "origin": "hex.pm",
+      "version": "0.4.3"
+    },
+    {
+      "license": "MIT",
+      "name": "bandit",
+      "origin": "hex.pm",
+      "version": "1.13.1"
+    },
+    {
+      "license": "MIT",
+      "name": "benchee",
+      "origin": "hex.pm",
+      "version": "1.5.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "broadway",
+      "origin": "hex.pm",
+      "version": "1.3.0"
+    },
+    {
+      "license": "MIT",
+      "name": "cinder",
+      "origin": "hex.pm",
+      "version": "0.17.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "content_type",
+      "origin": "hex.pm",
+      "version": "0.1.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "cors_plug",
+      "origin": "hex.pm",
+      "version": "3.0.3"
+    },
+    {
+      "license": "MIT",
+      "name": "crux",
+      "origin": "hex.pm",
+      "version": "0.1.4"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "db_connection",
+      "origin": "hex.pm",
+      "version": "2.10.2"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "decimal",
+      "origin": "hex.pm",
+      "version": "3.2.0"
+    },
+    {
+      "license": "MIT",
+      "name": "deep_merge",
+      "origin": "hex.pm",
+      "version": "1.0.2"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "ecto",
+      "origin": "hex.pm",
+      "version": "3.14.2"
+    },
+    {
+      "license": "MIT",
+      "name": "ets",
+      "origin": "hex.pm",
+      "version": "0.9.0"
+    },
+    {
+      "license": "UNVERIFIED",
+      "name": "ex4pm",
+      "origin": "hex.pm",
+      "version": "26.10.1"
+    },
+    {
+      "license": "MIT",
+      "name": "ex_ast",
+      "origin": "hex.pm",
+      "version": "0.16.0"
+    },
+    {
+      "license": "MIT",
+      "name": "explorer",
+      "origin": "hex.pm",
+      "version": "0.13.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "expo",
+      "origin": "hex.pm",
+      "version": "1.1.1"
+    },
+    {
+      "license": "MIT",
+      "name": "finch",
+      "origin": "hex.pm",
+      "version": "0.24.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "gen_stage",
+      "origin": "hex.pm",
+      "version": "1.3.2"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "gen_state_machine",
+      "origin": "hex.pm",
+      "version": "3.0.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "gettext",
+      "origin": "hex.pm",
+      "version": "1.0.2"
+    },
+    {
+      "license": "MIT",
+      "name": "glob_ex",
+      "origin": "hex.pm",
+      "version": "0.1.12"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "hpax",
+      "origin": "hex.pm",
+      "version": "1.1.0"
+    },
+    {
+      "license": "MIT",
+      "name": "igniter",
+      "origin": "hex.pm",
+      "version": "0.8.4"
+    },
+    {
+      "license": "MIT",
+      "name": "iterex",
+      "origin": "hex.pm",
+      "version": "0.1.2"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "jason",
+      "origin": "hex.pm",
+      "version": "1.4.5"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "jcs",
+      "origin": "hex.pm",
+      "version": "0.2.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "joken",
+      "origin": "hex.pm",
+      "version": "2.7.0"
+    },
+    {
+      "license": "MIT",
+      "name": "jose",
+      "origin": "hex.pm",
+      "version": "1.11.12"
+    },
+    {
+      "license": "MIT",
+      "name": "json_ld",
+      "origin": "hex.pm",
+      "version": "1.0.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "mime",
+      "origin": "hex.pm",
+      "version": "2.0.7"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "mint",
+      "origin": "hex.pm",
+      "version": "1.11.0"
+    },
+    {
+      "license": "MIT",
+      "name": "multigraph",
+      "origin": "hex.pm",
+      "version": "0.16.1-mg.5"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "nimble_csv",
+      "origin": "hex.pm",
+      "version": "1.3.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "nimble_options",
+      "origin": "hex.pm",
+      "version": "1.1.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "nimble_pool",
+      "origin": "hex.pm",
+      "version": "1.1.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "owl",
+      "origin": "hex.pm",
+      "version": "0.13.1"
+    },
+    {
+      "license": "MIT",
+      "name": "phoenix",
+      "origin": "hex.pm",
+      "version": "1.8.15"
+    },
+    {
+      "license": "MIT",
+      "name": "phoenix_html",
+      "origin": "hex.pm",
+      "version": "4.3.0"
+    },
+    {
+      "license": "MIT",
+      "name": "phoenix_live_view",
+      "origin": "hex.pm",
+      "version": "1.2.12"
+    },
+    {
+      "license": "MIT",
+      "name": "phoenix_pubsub",
+      "origin": "hex.pm",
+      "version": "2.4.1"
+    },
+    {
+      "license": "MIT",
+      "name": "phoenix_template",
+      "origin": "hex.pm",
+      "version": "1.1.0"
+    },
+    {
+      "license": "MIT",
+      "name": "phoenix_view",
+      "origin": "hex.pm",
+      "version": "2.0.4"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "plug",
+      "origin": "hex.pm",
+      "version": "1.20.3"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "plug_crypto",
+      "origin": "hex.pm",
+      "version": "2.2.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "postgrex",
+      "origin": "hex.pm",
+      "version": "0.22.4"
+    },
+    {
+      "license": "MIT",
+      "name": "protocol_ex",
+      "origin": "hex.pm",
+      "version": "0.5.1"
+    },
+    {
+      "license": "MIT",
+      "name": "rdf",
+      "origin": "hex.pm",
+      "version": "3.0.1"
+    },
+    {
+      "license": "MIT",
+      "name": "rdf_xml",
+      "origin": "hex.pm",
+      "version": "1.2.1"
+    },
+    {
+      "license": "MIT",
+      "name": "reactor",
+      "origin": "hex.pm",
+      "version": "1.0.7"
+    },
+    {
+      "license": "BSD-3-Clause",
+      "name": "recon",
+      "origin": "hex.pm",
+      "version": "2.5.6"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "req",
+      "origin": "hex.pm",
+      "version": "0.7.5"
+    },
+    {
+      "license": "MIT",
+      "name": "rewrite",
+      "origin": "hex.pm",
+      "version": "1.3.0"
+    },
+    {
+      "license": "MIT / Apache-2.0 (dual)",
+      "name": "rustler",
+      "origin": "hex.pm",
+      "version": "0.38.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "rustler_precompiled",
+      "origin": "hex.pm",
+      "version": "0.10.0"
+    },
+    {
+      "license": "MIT",
+      "name": "saxy",
+      "origin": "hex.pm",
+      "version": "1.6.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "sobelow",
+      "origin": "hex.pm",
+      "version": "0.16.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "sourceror",
+      "origin": "hex.pm",
+      "version": "1.12.4"
+    },
+    {
+      "license": "MIT",
+      "name": "spark",
+      "origin": "hex.pm",
+      "version": "2.7.8"
+    },
+    {
+      "license": "MIT",
+      "name": "sparql",
+      "origin": "hex.pm",
+      "version": "0.3.12"
+    },
+    {
+      "license": "MIT",
+      "name": "sparql_client",
+      "origin": "hex.pm",
+      "version": "0.5.1"
+    },
+    {
+      "license": "MIT",
+      "name": "spitfire",
+      "origin": "hex.pm",
+      "version": "0.4.3"
+    },
+    {
+      "license": "MIT",
+      "name": "splode",
+      "origin": "hex.pm",
+      "version": "0.3.2"
+    },
+    {
+      "license": "MIT",
+      "name": "statistex",
+      "origin": "hex.pm",
+      "version": "1.1.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "stream_data",
+      "origin": "hex.pm",
+      "version": "1.4.0"
+    },
+    {
+      "license": "MIT",
+      "name": "sweet_xml",
+      "origin": "hex.pm",
+      "version": "0.7.5"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "table",
+      "origin": "hex.pm",
+      "version": "0.1.2"
+    },
+    {
+      "license": "MIT",
+      "name": "table_rex",
+      "origin": "hex.pm",
+      "version": "4.1.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "telemetry",
+      "origin": "hex.pm",
+      "version": "1.4.2"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "telemetry_metrics",
+      "origin": "hex.pm",
+      "version": "1.2.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "telemetry_metrics_prometheus_core",
+      "origin": "hex.pm",
+      "version": "1.2.1"
+    },
+    {
+      "license": "MIT",
+      "name": "tesla",
+      "origin": "hex.pm",
+      "version": "1.22.0"
+    },
+    {
+      "license": "MIT",
+      "name": "text_diff",
+      "origin": "hex.pm",
+      "version": "0.1.0"
+    },
+    {
+      "license": "MIT",
+      "name": "thousand_island",
+      "origin": "hex.pm",
+      "version": "1.6.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "toml",
+      "origin": "hex.pm",
+      "version": "0.7.0"
+    },
+    {
+      "license": "Apache-2.0",
+      "name": "uniq",
+      "origin": "hex.pm",
+      "version": "0.6.3"
+    },
+    {
+      "license": "MIT",
+      "name": "wasmex",
+      "origin": "hex.pm",
+      "version": "0.15.1"
+    },
+    {
+      "license": "MIT",
+      "name": "websock",
+      "origin": "hex.pm",
+      "version": "0.5.3"
+    },
+    {
+      "license": "MIT",
+      "name": "websock_adapter",
+      "origin": "hex.pm",
+      "version": "0.6.0"
+    },
+    {
+      "license": "BSD-2-Clause",
+      "name": "yamerl",
+      "origin": "hex.pm",
+      "version": "0.10.0"
+    },
+    {
+      "license": "MIT",
+      "name": "yaml_elixir",
+      "origin": "hex.pm",
+      "version": "2.12.2"
+    },
+    {
+      "license": "MIT",
+      "name": "ymlr",
+      "origin": "hex.pm",
+      "version": "5.1.6"
+    }
+  ]
 }

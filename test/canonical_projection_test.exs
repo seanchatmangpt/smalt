@@ -136,6 +136,110 @@ defmodule Smalt.CanonicalProjectionTest do
     end
   end
 
+  describe "THIRD_PARTY rider (E4 #6/#5b)" do
+    test "docs/THIRD_PARTY.md equals third_party_markdown/0 byte-for-byte" do
+      path = Path.expand(Canonical.third_party_doc_path(), File.cwd!())
+      assert File.exists?(path), "#{Canonical.third_party_doc_path()} missing — run Canonical.write/0"
+
+      assert File.read!(path) == Canonical.third_party_markdown(),
+             "docs/THIRD_PARTY.md is stale vs mix.lock truth — run Canonical.write/0"
+    end
+
+    test "third_party rows cover every mix.lock entry with full shape" do
+      packages = Canonical.third_party_packages()
+      assert length(packages) == Map.size(Mix.Dep.Lock.read())
+
+      for p <- packages do
+        assert is_binary(p["name"]) and p["name"] != ""
+        assert is_binary(p["version"]) and p["version"] != ""
+        assert is_binary(p["license"]) and p["license"] != ""
+        assert p["origin"] in ["hex.pm", "path", "git", "unknown"]
+      end
+    end
+
+    test "rows are sorted by name and unique" do
+      names = Enum.map(Canonical.third_party_packages(), & &1["name"])
+      assert names == Enum.sort(names)
+      assert length(names) == MapSet.new(names) |> MapSet.size()
+    end
+
+    test "hex deps are marked hex.pm; the rustler dual license renders explicitly" do
+      packages = Canonical.third_party_packages()
+      by_name = Map.new(packages, &{&1["name"], &1})
+
+      # every lock entry currently resolves to hex.pm
+      for p <- packages, do: assert(p["origin"] == "hex.pm")
+
+      assert by_name["rustler"]["license"] == "MIT / Apache-2.0 (dual)"
+    end
+
+    test "no copyleft license token in the rendered surface" do
+      rendered = Canonical.third_party_markdown()
+
+      for token <- ["GPL", "AGPL", "LGPL", "MPL", "EPL"] do
+        refute rendered =~ token, "copyleft token #{token} in THIRD_PARTY surface"
+      end
+    end
+  end
+
+  describe "identity block (E4 #5b)" do
+    test "shape: packLockSha256, semanticEpoch, contentSha256" do
+      identity = Canonical.capability_document()["identity"]
+
+      assert is_binary(identity["semanticEpoch"]) and identity["semanticEpoch"] != ""
+      assert is_binary(identity["packLockSha256"])
+      assert Regex.match?(~r/^[0-9a-f]{64}$/, identity["packLockSha256"])
+      assert is_binary(identity["contentSha256"])
+      assert Regex.match?(~r/^[0-9a-f]{64}$/, identity["contentSha256"])
+    end
+
+    test "packLockSha256 is the sha256 of ggen_igniter.pack.lock bytes" do
+      expected =
+        :crypto.hash(:sha256, File.read!("ggen_igniter.pack.lock"))
+        |> Base.encode16(case: :lower)
+
+      assert Canonical.capability_document()["identity"]["packLockSha256"] == expected
+    end
+
+    test "contentSha256 recomputes from the doc with the key removed" do
+      doc = Canonical.capability_document() |> pop_in(["identity", "contentSha256"]) |> elem(0)
+
+      expected =
+        doc
+        |> sort_keys()
+        |> Jason.encode!(pretty: true, indent: "  ")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+
+      assert Canonical.json() |> Jason.decode!() |> get_in(["identity", "contentSha256"]) ==
+               expected
+    end
+
+    test "the content digest is content-sensitive (a mutated doc changes it)" do
+      # The non-vacuity half: the digest must actually track doc content,
+      # not be a constant stamped on every render.
+      doc = Canonical.capability_document() |> pop_in(["identity", "contentSha256"]) |> elem(0)
+      mutated = put_in(doc, ["endpoints", "amqp"], doc["endpoints"]["amqp"] + 1)
+
+      digest_of = fn d ->
+        d
+        |> sort_keys()
+        |> Jason.encode!(pretty: true, indent: "  ")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+      end
+
+      refute digest_of.(doc) == digest_of.(mutated)
+    end
+  end
+
+  defp sort_keys(term) when is_map(term) do
+    term |> Enum.map(fn {k, v} -> {to_string(k), sort_keys(v)} end) |> Map.new()
+  end
+
+  defp sort_keys(term) when is_list(term), do: Enum.map(term, &sort_keys/1)
+  defp sort_keys(term), do: term
+
   describe "public projection hides internals (grep fence)" do
     test "rendered doc contains no banned internal tokens" do
       rendered = scrub_type_literals(Canonical.json())

@@ -65,6 +65,19 @@ defmodule Smalt.MixProject do
           "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex " <>
           "--out lib/smalt/store_tables.ex",
         "format lib/smalt/store_tables.ex",
+        # W2a Cascade dispatch table (capture-then-sweep census): one row
+        # per smalt:CascadeEdge individual. Projects the DECLARATION +
+        # dispatch table only — the owner-module drop functions stay
+        # hand-written (residue doctrine). Fenced by
+        # test/cascade_replay_identity_test.exs +
+        # verify/cascade-coverage.unbound.rq (referential integrity of
+        # childTable -> StoreTable + cascade-table coverage).
+        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
+          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
+          "--query cascade_edges=../ggen-marketplace/packs/smalt-substrate-pack/queries/cascade_edges.rq " <>
+          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_edges.ex.eex " <>
+          "--out lib/smalt/cascade_edges.ex",
+        "format lib/smalt/cascade_edges.ex",
         # W1a: ConfigKey census -> Smalt.Config accessors. One zero-arity
         # accessor per smalt:ConfigKey row; the ontology default is the
         # ONLY copy of the in-code default. Replay-identity fence:
@@ -74,7 +87,23 @@ defmodule Smalt.MixProject do
           "--query config_keys=../ggen-marketplace/packs/smalt-substrate-pack/queries/config_keys.rq " <>
           "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex " <>
           "--out lib/smalt/config.ex",
-        "format lib/smalt/config.ex"
+        "format lib/smalt/config.ex",
+        # W2b: semconv registry — true projection replacing the hand-sync
+        # (smalt.yaml → registry.ex was hand-rendered with a fence). Source
+        # of truth: ggen-marketplace/packs/smalt-semconv-pack/ontology.ttl
+        # (smaltv:SemConvEvent / SemConvAttribute / OcelMappingRule rows);
+        # the YAML stays as the mirrored human-readable model. Byte-identity
+        # is fenced by test/semconv_replay_identity_test.exs; the behavioral
+        # gate remains test/semconv_test.exs (YAML↔registry model fence).
+        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-semconv-pack " <>
+          "--ontology ../ggen-marketplace/packs/smalt-semconv-pack/ontology.ttl " <>
+          "--query semconv_events=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_events.rq " <>
+          "--query semconv_bindings=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_bindings.rq " <>
+          "--query semconv_attributes=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_attributes.rq " <>
+          "--query semconv_mapping_rules=../ggen-marketplace/packs/smalt-semconv-pack/queries/semconv_mapping_rules.rq " <>
+          "--template ../ggen-marketplace/packs/smalt-semconv-pack/templates/registry.ex.eex " <>
+          "--out lib/smalt/telemetry/semconv/registry.ex",
+        "format lib/smalt/telemetry/semconv/registry.ex"
       ],
       # R164: named tiers. cross_seat runs the auth cross-seat suite in
       # isolation (default-excluded tag); amqp_wire includes the wire tier.
