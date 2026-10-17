@@ -130,42 +130,49 @@ defmodule Smalt.Auth.Sas do
   defp verify_token(params, conn) do
     with {:ok, key} <- account_key(),
          {:ok, sig} <- decode_sig(params["sig"]),
-         :ok <- required_params(params) do
-      string_to_sign =
-        Enum.join(
-          [
-            params["sp"] || "",
-            params["st"] || "",
-            params["se"],
-            canonical_resource_from_conn(conn),
-            # signedIdentifier (container-level ACL policy id) — not modelled
-            "",
-            # sip (signed IP range) — signed AND enforced post-verify
-            # (audit A13 #2)
-            params["sip"] || "",
-            params["spr"] || "",
-            params["sv"] || "",
-            params["sr"] || "",
-            params["rscc"] || "",
-            params["rscd"] || "",
-            params["rsce"] || "",
-            params["rscl"] || "",
-            params["rsct"] || ""
-          ],
-          "\n"
-        )
-
-      expected = Base.encode64(:crypto.mac(:hmac, :sha256, key, string_to_sign))
-
-      if Plug.Crypto.secure_compare(expected, sig) do
-        with :ok <- check_window(params),
-             :ok <- check_signed_ip(params, conn) do
-          validate_permissions(params)
-        end
-      else
-        {:error, :bad_signature}
-      end
+         :ok <- required_params(params),
+         :ok <- verify_signature(key, sig, params, conn),
+         :ok <- check_window(params),
+         :ok <- check_signed_ip(params, conn) do
+      validate_permissions(params)
     end
+  end
+
+  defp verify_signature(key, sig, params, conn) do
+    canonical = canonical_resource_from_conn(conn)
+    string_to_sign = build_string_to_sign(params, canonical)
+    expected = Base.encode64(:crypto.mac(:hmac, :sha256, key, string_to_sign))
+
+    if Plug.Crypto.secure_compare(expected, sig) do
+      :ok
+    else
+      {:error, :bad_signature}
+    end
+  end
+
+  defp build_string_to_sign(params, canonical_resource) do
+    Enum.join(
+      [
+        params["sp"] || "",
+        params["st"] || "",
+        params["se"],
+        canonical_resource,
+        # signedIdentifier (container-level ACL policy id) — not modelled
+        "",
+        # sip (signed IP range) — signed AND enforced post-verify
+        # (audit A13 #2)
+        params["sip"] || "",
+        params["spr"] || "",
+        params["sv"] || "",
+        params["sr"] || "",
+        params["rscc"] || "",
+        params["rscd"] || "",
+        params["rsce"] || "",
+        params["rscl"] || "",
+        params["rsct"] || ""
+      ],
+      "\n"
+    )
   end
 
   defp validate_permissions(params) do
@@ -211,15 +218,18 @@ defmodule Smalt.Auth.Sas do
          {:ok, window_start, _offset} <- parse_start(params["st"]) do
       now = DateTime.utc_now()
 
-      st_ok =
-        is_nil(window_start) or DateTime.compare(now, window_start) in [:gt, :eq]
-
-      if DateTime.compare(se, now) == :lt or not st_ok do
-        {:error, :expired}
-      else
+      if valid_window?(se, window_start, now) do
         :ok
+      else
+        {:error, :expired}
       end
     end
+  end
+
+  defp valid_window?(se, window_start, now) do
+    se_ok = DateTime.compare(se, now) != :lt
+    st_ok = is_nil(window_start) or DateTime.compare(now, window_start) in [:gt, :eq]
+    se_ok and st_ok
   end
 
   defp parse_iso(value) when is_binary(value) and value != "" do
