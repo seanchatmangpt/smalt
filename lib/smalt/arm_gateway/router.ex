@@ -1874,41 +1874,21 @@ defmodule Smalt.ArmGateway.Router do
         :ok
 
       full_type ->
-        latest = Registry.latest_version(full_type)
+        if Registry.admitted_version?(full_type, version) do
+          :ok
+        else
+          latest = Registry.latest_version(full_type)
 
-        case version_lte?(version, to_string(latest)) do
-          true ->
-            :ok
-
-          false ->
-            {:respond,
-             send_arm_error(
-               conn,
-               400,
-               "InvalidApiVersionParameter",
-               "The api-version '#{version}' is invalid. The latest supported api-version for '#{full_type}' is '#{latest}'."
-             )}
+          {:respond,
+           send_arm_error(
+             conn,
+             400,
+             "InvalidApiVersionParameter",
+             "The api-version '#{version}' is invalid. The latest supported api-version for '#{full_type}' is '#{latest}'."
+           )}
         end
     end
   end
-
-  # Monotonic date comparison over `YYYY-MM-DD` (optionally suffixed, e.g.
-  # `-preview`). Malformed versions are never admitted. KD-78.
-  defp version_lte?(version, latest) when is_binary(version) and is_binary(latest) do
-    with {:ok, v_date} <- version |> version_base() |> Date.from_iso8601(),
-         {:ok, l_date} <- latest |> version_base() |> Date.from_iso8601() do
-      Date.compare(v_date, l_date) in [:lt, :eq]
-    else
-      _ -> false
-    end
-  end
-
-  defp version_lte?(_version, _latest), do: false
-
-  # NOTE: splits on "-preview" only — a hypothetical "2024-01-01-preview2"
-  # would leave "preview2" and fail Date.from_iso8601 (version then never
-  # admitted). The corpus has no such version; malformed stays refused.
-  defp version_base(version), do: hd(String.split(version, "-preview"))
 
   defp check_admitted(conn, raw_type) do
     case find_admitted(raw_type) do
