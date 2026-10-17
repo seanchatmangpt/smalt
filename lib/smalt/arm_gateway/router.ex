@@ -1562,12 +1562,18 @@ defmodule Smalt.ArmGateway.Router do
     if parent_exists? and is_binary(value) and :ets.info(:smalt_vault_secrets) != :undefined do
       version = Integer.to_string(System.unique_integer([:positive]))
 
+      enabled =
+        case get_in(params, ["properties", "attributes", "enabled"]) do
+          bool when is_boolean(bool) -> bool
+          _ -> true
+        end
+
       record =
         %{
           "value" => value,
           "id" => "https://#{conn.host}:8443/secrets/#{name}/#{version}",
           "attributes" => %{
-            "enabled" => get_in(conn.body_params, ["properties", "attributes", "enabled"]) || true,
+            "enabled" => enabled,
             "created" => System.system_time(:second),
             "updated" => System.system_time(:second)
           },
