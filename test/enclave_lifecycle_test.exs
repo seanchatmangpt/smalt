@@ -22,6 +22,25 @@ defmodule Smalt.Enclave.LifecycleTest do
   setup do
     SmaltTest.Lifecycle.ensure_store_up()
     Store.clear()
+
+    # SHIM-COURT-pattern sink isolation: point the shared OCEL NDJSON sink
+    # (`:smalt, :ocel_dir`, read at emit time by OcelNdjson.append/3) at a
+    # per-suite scratch dir so concurrent-family suites' lifecycle events
+    # never cross-pollute another suite's per-stage assertions. Restored in
+    # on_exit (mirrors enclave_ocel/affidavit/court ocel suites).
+    dir = Path.join("tmp", "ocel-lifecycle-test-#{System.system_time(:millisecond)}")
+    File.mkdir_p!(dir)
+    prev = Application.get_env(:smalt, :ocel_dir)
+    Application.put_env(:smalt, :ocel_dir, dir)
+
+    on_exit(fn ->
+      if prev,
+        do: Application.put_env(:smalt, :ocel_dir, prev),
+        else: Application.delete_env(:smalt, :ocel_dir)
+
+      File.rm_rf!(dir)
+    end)
+
     :ok
   end
 

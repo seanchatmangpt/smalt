@@ -84,5 +84,10 @@ otherwise the gate inherits the keychain as a dependency and the
 
 - `docs/jira/v26.10.16/WRAP_LEDGER.md` — zero-touch trust, native
   pipeline, enclave trust hop sections
-- `docs/jira/v26.10.16/sdk-results/native-lifecycle.md`
+- `docs/jira/v26.10.16/receipts/t5-cleanroom-validation.md` — the T5
+  cleanroom lane receipt
+- `docs/jira/v26.10.16/sdk-results/t5-cleanroom.md` — cleanroom ladder
+  results (trust prerequisite gate, external run)
+- `docs/jira/v26.10.16/sdk-results/native-lifecycle.md` — native tier
+  timings + zero-drift/byte-identity witness
 - `scripts/enclave_native.sh`, `scripts/tf_trust_setup.sh`

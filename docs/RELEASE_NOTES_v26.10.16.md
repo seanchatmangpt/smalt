@@ -7,13 +7,13 @@ advanced by a full repair-and-hardening wave. The surface inventory is
 unchanged from v26.10.14; this window's work is correctness and parity:
 128 receipt files landed in `docs/jira/v26.10.16/receipts/`, the SDK
 parity register reached full mechanical coverage, and eight divergence rows
-closed. Standing for this document: **PARTIAL_ALIVE pre-court-x2** — the
-standing line flips only on the two-green receipt.
+closed. Standing for this document: **BUILD_BROKEN** — court-x2 run-8 verdict "FAIL"
+2026-10-16; see `docs/jira/v26.10.16/FINAL.md` court-x2 line.
 
 ## What changed
 
 - **SDK parity register at full coverage** — `KNOWN_DIVERGENCES.md` spans
-  **93 rows (KD-01..KD-93 — 28 CLOSED / 65 OPEN)** in the canonical table
+  **94 rows (KD-01..KD-94 — 28 CLOSED / 66 OPEN)** in the canonical table
   (`docs/jira/v26.10.14/KNOWN_DIVERGENCES.md`; the v26.10.16 window keeps a
   pointer file). KD-91/92 were minted OPEN from the c11 typed findings
   (fixes landed, witness-pending); KD-93 was minted OPEN by the lane X5

@@ -110,6 +110,19 @@ Pack path EVALUATED, not used — disclosed per house law:
 - Heavy transitive tree disclosed: `ash_ex4pm` pulls `ex4pm` (which pulls
   explorer + wasmex Rust NIFs, phoenix, broadway, postgrex). These compile
   locally (cargo) and are dev/test-only.
+- G2 FIX (2026-10-17, PUBLISH_RECORD B2): the `r2rml` sections in
+  `lib/smalt/semantic/*.ex` are guarded by `Smalt.Semantic.R2RMLGuard`
+  (`if_r2rml` drops the section WITHOUT expansion when ash_r2rml is not a
+  loaded compile-time dep). The `extensions: [AshR2RML.Resource]` option
+  stays a compile-time LITERAL — Spark derives section imports from the
+  literal and silently skips a missing module; any indirection (module
+  attribute / macro call) in the option makes Spark silently drop the
+  extension from the import set even in dev. The same guard pattern is now
+  in the source templates
+  (`ash-r2rml-paas-pack/templates/lib/paas.ex.tmpl`,
+  `ash-r2rml-reactor-paas-pack/templates/paas_resources.ex.tmpl`). Gate:
+  `MIX_BUILD_ROOT=_build-lane655 MIX_ENV=prod mix compile` exit 0 (dev-only
+  path deps excluded); semantic suite still 21/0 in dev.
 - Ash requires `config :ash, :default_string_length_count` at resource
   compile time. `config/config.exs` is outside this lane's owned files, so
   each semantic resource sets it via module-level

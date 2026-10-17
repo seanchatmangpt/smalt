@@ -4,87 +4,277 @@
 Azure control/data plane for local development and testing: ARM-style control
 plane on **9443**, TLS twin on **9444**, data plane on **8443**, AMQP Service
 Bus on **5672**, Event Hubs on **5673**, read-only MCP tool surface on
-**9545**. Point SDKs, CLIs, and Terraform-style tooling at loopback — no cloud
+**9545**. Point SDKs, CLIs, and terraform-style tooling at loopback — no cloud
 connection, no host configuration for the native tier.
-
-Badges: native tier green · wire-parity tier opt-in (trust gate).
 
 See `NOTICE.md` for the clean-room interoperability and trademark statement,
 and `LICENSE` (Apache-2.0) for terms.
 
-## Quickstart (verified golden path)
+## Standing (honest, as of 2026-10-16)
+
+- **PQC attestation: GAP_TYPED, NOT_CLOSED** — KD-89 OPEN, witness-PENDING.
+  The attestation surface is classical-only (SHA-256 Merkle + RS256 JWS,
+  tamper-proven); the mounted affidavit-wasm engine has **no ML-DSA-65 verify
+  op** — `verify_signature` supports only ES256/ES256K/Ed25519; `ML_DSA65`
+  returns `unsupported_algorithm` upstream. What is live: the CTRT seal path
+  (PQC-free by construction) and classical verify adjudication; the `:pqc`
+  trust profile refuses typed (`{:refused, :PQC_NOT_PROVISIONED, _}`,
+  `lib/smalt/trust_profile/trust_profile.ex:62`). No forge-verify court has
+  run; none is claimed. What is green with receipts: the seal and verify-op
+  courts plus `just doctor`
+  (`docs/jira/v26.10.16/receipts/r215-affidavit-seal-court.md`: 113 tests,
+  0 failures, forge rejections typed).
+- **PUBLISH-READY: NO — TYPED-BLOCKED** (six evidence-cited blockers B1–B6;
+  `docs/jira/v26.10.16/PUBLISH_RECORD.md`).
+- **Court verdict, current**: the most recent court-x2 wrap runs are
+  **RED — no two-green** (shifting-failure flake family in the semantic
+  projection suite;
+  `docs/jira/v26.10.16/receipts/r216-court-x2-run12-red.md`). The offline
+  tier is stable green (2x 120/0 on a quiet tree); the flake family and the
+  `appconfig-etag-cas` gate (DEF-2) are the open typed defects.
+
+## Part 1 — Hex package (`lib/` + `priv/`)
+
+The hex package ships the runtime surface only: `lib/` and `priv/` (plus
+`mix.exs`, `README.md`, `LICENSE`, `CHANGELOG.md`, `NOTICE.md`).
+Repository tooling — `scripts/`, `docs/`, `test/`, `justfile.d/`, the
+Justfile — does not ship; clone the repository for it.
+
+### Ports and planes
+
+| Plane | Default port | Config key | Entry module (file:line) |
+|---|---|---|---|
+| ARM control | 9443 | `:arm_port` | `Smalt.ArmGateway.Router` — `lib/smalt/arm_gateway/router.ex:1` |
+| ARM TLS twin | 9444 | `:arm_tls_port` | TLS twin dispatch — `lib/smalt/application.ex:130` |
+| Data plane (egress) | 8443 | `:egress_port` | `Smalt.EgressRouter` — `lib/smalt/egress_router.ex:1` |
+| Service Bus (AMQP) | 5672 | `:amqp_port` | `Smalt.AmqpBroker` — `lib/smalt/messaging/amqp_broker.ex:1` |
+| Event Hubs | 5673 | `:event_hubs_port` | `Smalt.Messaging.EventHubs` — `lib/smalt/messaging/event_hubs.ex:1` |
+| MCP tools | 9545 | `:mcp_port` | `Smalt.Mcp.Router` — `lib/smalt/mcp/router.ex:1` |
+
+### Authentication
+
+All HTTP planes honor `config :smalt, :auth_mode`:
+
+- `:enforce` (default) — HS256 Bearer from the emulator STS
+  (`Smalt.Auth.Bearer`, `lib/smalt/auth/bearer.ex:1`), exp/aud/iss checked,
+  401 + ARM error envelope otherwise. The Cosmos plane additionally validates
+  master-key Authorization headers (real string-to-sign HMAC) and applies an
+  optional RU throttle (`config :smalt, :cosmos_ru_limit`); the ARM plane
+  applies a fixed-window 429 throttle with `Retry-After`
+  (`config :smalt, :arm_rate_limit`).
+- `:anonymous` — explicit opt-out (the test suite sets it).
+
+Enforce-mode details: `x-forwarded-*` headers are honored only from
+`config :smalt, :trusted_proxies` and ignored on direct connections
+(fail-closed); the STS cross-seat trusted-authority set is VM-local
+(`:persistent_term`), so a substrate restart wipes it — restart implies
+re-authentication. CORS on the 8443 data plane is
+`config :smalt, :egress_cors_origins` (default `["*"]`, the documented dev
+posture; configure an explicit allowlist otherwise). Exempt paths:
+`/oauth2/*`, `/.well-known/*`, `/metadata/endpoints`, `/common/discovery/*`,
+`/tenant(s)`, `/attest/*`.
+
+### Quickstarts by subsystem
+
+Entry-point-first, with the real config keys each surface reads and its typed
+refusal behavior.
+
+#### Native enclave lifecycle (primary tier)
+
+Entry: `Smalt.Enclave.Engine.apply/2` (`lib/smalt/enclave/engine.ex:55`) over
+`Smalt.Enclave.Hcl.parse/1` (`lib/smalt/enclave/hcl.ex:47`) output.
+Read-your-write through `Smalt.Store` (keyed ETS + DETS mirror; atomic
+`compare_and_swap/4`, `lib/smalt/store.ex:250`).
+
+Config keys: `:lro_delay_ms`, `:lro_retention_ms`, `:doctor_supervisor`.
+Typed refusal: the wire tier is gated fail-closed — without a PASS
+trusted-machine gate it exits `REFUSED[TIER-WIRE-UNAVAILABLE]` (exit 3),
+never degrades silently (`docs/how-to/how-to-run-wire-parity.md`).
+Walkthrough: `docs/tutorials/enclave-lifecycle.md`.
+
+#### ARM gateway (9443)
+
+Entry: `Smalt.ArmGateway.Router` (`lib/smalt/arm_gateway/router.ex:1`), with
+LRO orchestration (`lib/smalt/arm_gateway/lro.ex:1`) and a
+`Sweeper` (`lib/smalt/arm_gateway/lro_sweeper.ex:1`) draining
+`:lro_retention_ms` state. Config keys: `:arm_port`, `:arm_rate_limit`,
+`:lro_delay_ms`, `:lro_retention_ms`, `:lro_sweep_interval_ms`,
+`:rg_token_preserve_options`. Admitted api-version eras are fenced by
+`Smalt.Metrics.version_admitted?/1`
+(`lib/smalt/metrics.ex:35`); an unadmitted era refuses. Reference:
+`docs/reference/arm-gateway.md`.
+
+#### Data plane (8443)
+
+Entry: `Smalt.EgressRouter` (`lib/smalt/egress_router.ex:1`) dispatching the
+`lib/smalt/data_plane/` services (Blob, Cosmos, Key Vault, KQL, Purview,
+Resource Graph, Sentinel, SKR, VaultData). Config keys: `:egress_port`,
+`:blob_account_key`, `:blob_catch_all_hosts`, `:cosmos_master_key`,
+`:kv_master_secret`, `:skr_allow_legacy_header`, `:eventgrid_response_mode`,
+`:sentinel_dcr_strict`, `:sentinel_forensic`, `:maa_measurement_baseline`,
+`:ledger_enforce_existence`. Reference:
+`docs/reference/egress-data-plane.md`.
+
+#### Service Bus (5672)
+
+Entry: `Smalt.AmqpBroker` (`lib/smalt/messaging/amqp_broker.ex:1`) — CBS/SAS
+auth over `:sb_endpoint` with the HMAC key pinned by `:sb_shared_key`
+(nil = generated dev key cached in `:persistent_term`); AMQP tunneled
+through `Smalt.SbRules` over `:amqp_port`. Config keys: `:sb_endpoint`,
+`:sb_shared_key`, `:amqp_port`, `:amqp_sweeper_tick_ms`,
+`:amqp_sweeper_lock_grace_ms`.
+
+#### Event Hubs (5673)
+
+Entry: `Smalt.Messaging.EventHubs` (`lib/smalt/messaging/event_hubs.ex:1`):
+`send_event/3` (`lib/smalt/messaging/event_hubs.ex:75`),
+`receive_events/3` (`:267`), checkpoint compare-and-swap
+(`:341`), lease `reserve_processing/4` (`:380`), `reconcile/3`
+(`:392`). Config keys: `:event_hubs_port`, `:event_stream_dedup_ids`.
+Fixed partition set `["0", "1"]` — pinned by a real-SDK census;
+changes regress real handshakes.
+
+#### MCP surface (9545)
+
+Entry: `Smalt.Mcp.Router` (`lib/smalt/mcp/router.ex:1`). Read-only tool
+surface: every tool descriptor carries `readOnlyHint` (`:214`), and any
+mutating call is answered with the typed code `ACTUATION_REFUSED`
+(`:71`) rather than executed. Config key: `:mcp_port`.
+
+#### Affidavit / evidence seal
+
+Entry: `Smalt.Affidavit.Seal.admit_and_seal/2`
+(`lib/smalt/affidavit/seal.ex:37`) — canonical JSON, SHA-256 Merkle, RS256
+JWS (classical-only; see the Standing block). The WASM engine surface
+(`Smalt.Affidavit.WasmEngine.call/2`,
+`lib/smalt/affidavit/wasm_engine.ex:159`) returns a typed
+engine-unavailable result when the engine is down;
+`call_admit_and_seal/4` (`:234`) is the admitted-transition entry.
+Config keys: `:affidavit_wasm_path`, `:affidavit_wasm_pin_path`,
+`:receipt_signing_key`. Forge refusals are typed:
+`{:error, {:invalid_receipt, field}}` host-side; the engine answers
+`unsupported_algorithm` for `ML_DSA65` (KD-89, open). Reference:
+`docs/reference/reference-affidavit-wasm.md`.
+
+#### Trust profiles
+
+Entry: `Smalt.TrustProfile.profile/1`
+(`lib/smalt/trust_profile/trust_profile.ex:93`). `:classical` is
+provisioned; `:hybrid` and `:pqc` refuse typed
+(`{:refused, :PQC_NOT_PROVISIONED | :HYBRID_NOT_PROVISIONED, _}`, `:62`,
+`:104`) — no PQC is ever faked. Deployment surface:
+`lib/smalt/trust_profile/deployment.ex`.
+
+#### OCEL / telemetry
+
+Entry: `Smalt.Ocel.EventRegistry` (`lib/smalt/ocel/event_registry.ex:6`),
+conformance fitness (`lib/smalt/ocel/conformance.ex:168`), deviation
+admission (`lib/smalt/ocel/deviation_admission.ex`). Telemetry contract:
+`Smalt.Telemetry.SemConv.Registry`
+(`lib/smalt/telemetry/semconv/registry.ex:1`), NDJSON emission via
+`lib/smalt/telemetry/ocel_ndjson.ex`. Config keys: `:ocel_dir`.
+
+#### GraphLaw admission
+
+Entry: `Smalt.GraphLaw.Validator` (`lib/smalt/graphlaw/validator.ex:1`).
+Config key: `:graphlaw_engine`. Non-vacuity is court-proved, not asserted —
+see Mutation court in Part 2.
+
+## Part 2 — Repository
+
+### Bootstrap (fresh machine)
 
 ```sh
 git clone <this-repo>
 cd smalt
-bash scripts/bootstrap.sh   # 8 idempotent stages; ends with GREEN
-just                        # doctor + full native lifecycle (sub-200 ms)
-just apply                  # provision the fixture through the native engine
-just verify                 # read-your-write parity + zero-drift audit
-just destroy                # cascade destroy; fails on any residue
+bash scripts/bootstrap.sh   # 8 idempotent stages; exit 1 names the failed [n/8] stage
 ```
 
-`just` with no arguments is the default recipe: `doctor` first, then the
-native lifecycle test. `just apply` parses unmodified `azurerm` HCL
-(`test/terraform_fixture`), provisions through the in-process engine on a
-private beam (ports 29445-29450), and writes
-`tmp/native-enclave-state.json`. Standing receipt:
-`docs/jira/v26.10.16/sdk-results/native-lifecycle.md`
-(all six lifecycle stages sub-100 ms; max apply 52 ms).
+Stages: prerequisites (elixir/mix/terraform/just/python3) → hex deps →
+compile → dev-environment check → TLS material (`scripts/gen_dev_cert.sh`) →
+doctor `--fix` (`scripts/doctor.py`) → boot smoke (substrate up →
+`GET /metadata/endpoints` → teardown) → proof test (`mix test
+test/smalt_test.exs`). Port-bound stages need 9443 and 9545 free.
+Env template: `.env.example`; details: `docs/FIRST_RUN.md`.
 
-Fresh-machine prerequisites: `brew install elixir terraform just` (python3
-ships with macOS). Details: `docs/FIRST_RUN.md`; env template:
-`.env.example`.
+### Courts ladder
 
-## Hex package vs repository
-
-The hex package ships the runtime surface only: `lib/` and `priv/` (plus
-`mix.exs`, docs, and license files). Repository-only tooling is not packaged:
-`scripts/`, `docs/`, `justfile.d/`, `test/`, and the `Justfile` itself. If you
-need the benches, courts, bootstrap script, or test suites, clone this
-repository and run them from the checkout.
-
-## Two tiers
-
-| Tier | What it is | Trust setup | Entry |
-|---|---|---|---|
-| Native (primary) | in-process engine, raw azurerm HCL, zero-touch | none | `just apply` |
-| Wire (opt-in) | terraform, azurerm 4.54.0, TLS twin | trust shim | `just apply tier=wire` |
-
-The wire tier is gated fail-closed: without a PASS trust status it exits
-`REFUSED[TIER-WIRE-UNAVAILABLE]` rather than degrading silently. Details:
-`docs/TERRAFORM_TRUST.md`.
-
-## Pointer map (Diátaxis tree)
-
-The docs tree is being restructured into the four Diátaxis quadrants
-(`docs/tutorials/`, `docs/how-to/`, `docs/reference/`,
-`docs/explanation/`). Current canonical surfaces, and their planned homes:
-
-| Document | Today | Diátaxis home |
+| Tier | Command | What it proves |
 |---|---|---|
-| First-run walkthrough | `docs/FIRST_RUN.md` | `docs/tutorials/first-run.md` |
-| Daily dev loop | **LANDED**: `docs/how-to/dev-loop.md` | same |
-| Auth modes, STS, CORS | this README (Authentication) | `docs/how-to/auth.md` |
-| Just recipes | `docs/JUST_REFERENCE.md` | `docs/reference/just.md` |
-| Error codes (generated) | `docs/ERROR_CODES.md` | `docs/reference/error-codes.md` |
-| Architecture | **LANDED**: `docs/explanation/architecture.md` | same |
-| Wire parity / KD register | `docs/WIRE_PARITY.md` | `docs/explanation/wire-parity.md` |
-| Terraform trust | `docs/TERRAFORM_TRUST.md` | `docs/explanation/terraform-trust.md` |
-| PQC seal verification | **LANDED**: `docs/how-to/how-to-verify-pqc-seals.md` | same |
-| affidavit-wasm surface | **LANDED**: `docs/reference/reference-affidavit-wasm.md` | same |
+| T0 | `just doctor` | environment and ports are sane before anything runs |
+| T1 | `just test-offline` (`mix test`) | unit suite, no sockets |
+| T2 | `just test-wire` (`mix test test/wire`) | wire-tier protocol behavior over real listeners |
+| T3 | `just test-sdk-smoke` | real Azure SDK clients vs harness-spawned substrate (`SMALT_SDK_ROOT` required) |
+| T4 | `just tf-plan-smoke` | terraform fixture plans against the substrate |
+| T5 | `node test/sdk-smoke/census-run.mjs` | Service Bus SDK census probes vs the AMQP surface |
+| T6 | `mix test test/chaos` | crash isolation: kill the Store mid-run, listeners survive |
+| — | `mix test test/compliance/c1_arm.exs` (+ c2..c7) | per-service wire-contract courts |
+| — | `python3 scripts/mutation_court.py` | GraphLaw admission gate non-vacuous (exit 0/1/2; `--self-check` for restore-failure detection) |
+| — | `just court` | T0..T4 + bench gate in sequence; full court |
+| — | `just court-x2` | two-green release receipt gate (~8 min) |
+| — | `just verify-all` | offline stages only |
 
-Until the restructure lands, the "Today" column is the live path.
+All port-bound tiers boot their own substrate; run one at a time with the
+ports free. Current verdict for the heaviest gates is in the Standing block
+above — this table names commands, not pass states.
 
-## SDK smoke harness environment
+### Invariant gates
+
+Five fail-closed gates with negative-fixture contracts under `gates/`
+(`just invariant-gates`): cosmos-etag-cas, blob-worm, ledger-chain,
+queue-capacity, lock-clamp. A gate that cannot exit 1 is the failure; each
+verdict must REFUSE a mutated observation, never silently pass.
+
+### Shim courts
+
+`scripts/shim_court/<name>_court.sh` — BASELINE → BEFORE → SHIM (marker
+`SHIM-COURT` mandatory) → AFTER (the flip IS the non-vacuity proof) →
+RESTORE (sha256 byte-exact, fail-closed). `just shim-court <name>` /
+`just shim-courts`. Exit 0/1/3; a skip is loud, never a faked pass. A shim
+landed in `lib/` carries `# KD-COVERS: KD-nn`; register flips go through
+`scripts/kd_flip.py --apply`, gated on a witness receipt newer than the
+shim's mtime.
+
+### Benches
+
+```sh
+python3 scripts/bench.py    # measures CTQs against a substrate it spawns (ports must be free)
+just bench-check            # asserts tmp/bench-receipt.json against PRD thresholds
+```
+
+Gate thresholds: doctor <= 3s, boot p95 <= 5s, ARM PUT p95 < 50ms,
+Cosmos round-trip p95 < 20ms, AMQP first frame < 100ms. Lane registry and
+port law: `scripts/bench/REGISTRY.md`; stress harnesses under
+`scripts/stress/` with the authoritative measured-bounds table in
+`docs/STRESS/BOUNDS.md` (fail-closed via `python3 scripts/stress/bounds.py`).
+
+### KD register
+
+Divergences get a `KD-nn` row in
+`docs/jira/v26.10.16/KNOWN_DIVERGENCES.md` (surface, divergence, evidence
+receipt, close condition); the canonical pointer is
+`docs/reference/kd-register.md`. `GAP(name)` tokens in `docs/WIRE_PARITY.md`
+name OPEN gaps and disappear only with a closing receipt. Never mint new GAP
+tokens unilaterally.
+
+### Wrap sequence
+
+Lanes land per dependency order → receipt-gated register flips → fin sweep →
+regenerate all generated artifacts (`docs/ERROR_CODES.md`, `RECEIPTS.md`,
+`receipts/INDEX.md`, `BENCH_RESULTS.md`, `SDK_MATRIX.md` — never hand-edited)
+→ `just court-x2` → commits (`git commit -F <file>`) → `just publish-dry` →
+`FINAL.md` with a planning handoff to the next window. DoD gate:
+`just docs-dod-check` (every receipt path named in user-facing docs must
+exist on disk).
+
+### SDK probe harness environment
 
 No `npm install` in this repo: the Azure SDKs are consumed from an existing
 `node_modules` tree via environment variables.
 
 - `SMALT_SDK_ROOT` — required by every `test/sdk-smoke` harness: a
-  `node_modules` directory containing the vendored `@azure/*` packages
-  (`storage-blob`, `cosmos`, `service-bus`, `event-hubs`). Unset, the harness
-  exits 3 immediately.
+  `node_modules` directory containing the vendored `@azure/*` packages.
+  Unset, the harness exits 3 immediately.
 - `SMALT_REPO` — repo root for `run.mjs`, `census-run.mjs`, and
   `scripts/mutation_court.py`; defaults to the current directory.
 
@@ -97,140 +287,52 @@ The Event Hubs leg (`node test/sdk-smoke/eh-run.mjs`) and the Service Bus
 census (`node test/sdk-smoke/census-run.mjs`) boot their own substrate;
 `eh-run.mjs` defaults to alternate ports (19443/18443/15672/15673,
 override with `SMALT_EH_ARM_PORT`/`SMALT_EH_EGRESS_PORT`/
-`SMALT_EH_AMQP_PORT`/`SMALT_EH_PORT`) so it can run beside other tiers.
+`SMALT_EH_AMQP_PORT`/`SMALT_EH_PORT`).
 
-## Authentication
+## Capability map (entry points, cited)
 
-All HTTP planes honor `config :smalt, :auth_mode`:
-
-- `:enforce` (default) — every non-exempt route on `:9443`/`:8443` requires
-  a valid `Authorization: Bearer` HS256 token signed with the same STS
-  secret (`Smalt.Auth.Bearer`, exp/aud/iss checked; 401 + ARM error envelope
-  otherwise). The Cosmos plane additionally validates master-key
-  Authorization headers (real string-to-sign HMAC) and applies an optional
-  RU throttle (`config :smalt, :cosmos_ru_limit`); the ARM plane applies a
-  fixed-window 429 throttle with `Retry-After`.
-- `:anonymous` — explicit opt-out (the test suite sets it).
-
-Two auth details worth knowing in enforce mode: `x-forwarded-*` headers are
-honored only from configured trusted proxies
-(`config :smalt, :trusted_proxies`) and ignored on direct connections
-(fail-closed); and the STS's cross-seat trusted-authority set is VM-local
-(`:persistent_term`), so a substrate restart wipes it — pre-restart tokens
-minted at a sibling seat are refused after restart (restart implies
-re-authentication).
-
-Exempt paths: `/oauth2/*`, `/.well-known/*`, `/metadata/endpoints`,
-`/common/discovery/*`, `/tenant(s)`, `/attest/*`.
-
-CORS on the 8443 data plane is configurable via
-`config :smalt, :egress_cors_origins` (list of exact origins). The default is
-`["*"]` — the documented dev posture for the emulator; in production configure
-an explicit allowlist (a non-listed origin receives no allow-origin header).
-
-## Verification ladder
-
-| Tier | Command | What it proves |
+| Capability | Entry point (file:line) | Notes |
 |---|---|---|
-| T0 | `just doctor` | environment and ports are sane before anything runs |
-| T1 | `just test-offline` (`mix test`) | unit suite, no sockets |
-| T2 | `just test-wire` (`mix test test/wire`) | wire-tier protocol behavior over real listeners |
-| T3 | `just test-sdk-smoke` | real SDK clients vs harness-spawned substrate |
-| T4 | `just tf-plan-smoke` | terraform fixture plans against the substrate |
-| T5 | `node test/sdk-smoke/census-run.mjs` | Service Bus SDK census probes vs the AMQP surface |
-| T6 | `mix test test/chaos` | crash isolation: kill the Store mid-run, listeners survive |
-| — | `node test/sdk-smoke/eh-run.mjs` | Event Hubs SDK probes on dedicated alternate ports |
-| — | `mix test test/compliance/c1_arm.exs` (+ c2..c7) | per-service wire-contract courts |
-| — | `python3 scripts/mutation_court.py` | GraphLaw admission gate non-vacuous |
-| — | `python3 scripts/bench.py` + `just bench-check` | PRD perf CTQs hold, fresh bench receipt |
-| — | `just gate` | T0..T4 plus the bench gate in sequence; full court |
+| ARM gateway | `lib/smalt/arm_gateway/router.ex:1` | 9443 control plane; LRO at `lib/smalt/arm_gateway/lro.ex:1` |
+| Egress data plane | `lib/smalt/egress_router.ex:1` | 8443; Blob/Cosmos/KV/KQL/Sentinel under `lib/smalt/data_plane/` |
+| Cosmos SQL | `lib/smalt/cosmos_sql.ex:72` | `parse/2` + `eval_docs/2` (`:94`), `run/3` (`:112`) |
+| AMQP broker | `lib/smalt/messaging/amqp_broker.ex:1` | 5672 CBS/SAS |
+| Event Hubs | `lib/smalt/messaging/event_hubs.ex:75` | `send_event/3`; leases `:380` |
+| Event stream | `lib/smalt/messaging/event_stream.ex:1` | dedup via `:event_stream_dedup_ids` |
+| Store | `lib/smalt/store.ex:250` | `compare_and_swap/4`; DETS mirror |
+| Enclave engine | `lib/smalt/enclave/engine.ex:55` | `apply/2`; HCL `lib/smalt/enclave/hcl.ex:47` |
+| Auth (Bearer) | `lib/smalt/auth/bearer.ex:1` | HS256 STS; `:auth_mode` |
+| MCP (read-only) | `lib/smalt/mcp/router.ex:71` | `ACTUATION_REFUSED`; `readOnlyHint` `:214` |
+| Affidavit seal | `lib/smalt/affidavit/seal.ex:37` | `admit_and_seal/2`; classical-only |
+| Affidavit WASM | `lib/smalt/affidavit/wasm_engine.ex:159` | `call/2`; typed unavailable |
+| Trust profiles | `lib/smalt/trust_profile/trust_profile.ex:93` | `:pqc`/`:hybrid` typed refusals |
+| GraphLaw | `lib/smalt/graphlaw/validator.ex:1` | admission gate; mutation-courted |
+| Policy | `lib/smalt/policy.ex:1` | deontic policy surface |
+| OCEL registry | `lib/smalt/ocel/event_registry.ex:6` | fitness `lib/smalt/ocel/conformance.ex:168` |
+| P-PLAN tasks | `lib/smalt/pplan/task.ex:1` | durable task transitions |
+| SemConv | `lib/smalt/telemetry/semconv/registry.ex:1` | telemetry contract |
+| Metrics | `lib/smalt/metrics.ex:35` | api-version era fence |
+| Security/trust | `lib/smalt/security/receipt_signer.ex:1` | + attestation, confidential ledger, ledger writer |
+| Runtime contracts | `lib/smalt/runtime_contracts.ex:1` | + `lib/smalt/runtime_contracts/` |
+| Semantic projection | `lib/smalt/semantic/resource.ex:1` | + `lib/smalt/projection/` (`docs/SEMANTIC_PROJECTION.md`) |
+| DSPy remediation | `lib/smalt/dspy/` | remediation surface |
+| Ash extension | `lib/smalt/ash_extension/` | Ash integration surface |
 
-(T3/T5 need `SMALT_SDK_ROOT` — see the harness environment section above.)
+## Repository layout (selected)
 
-All port-bound tiers (T3-T5, terraform, bench, mutation court) boot
-their own substrate; run them one at a time with the ports free.
-
-## Benchmarks
-
-```sh
-python3 scripts/bench.py    # measures CTQs against a substrate it spawns (ports must be free)
-just bench-check            # asserts tmp/bench-receipt.json against PRD thresholds
-```
-
-Gate thresholds: doctor <= 3s, boot p95 <= 5s, ARM PUT p95 < 50ms, Cosmos
-round-trip p95 < 20ms, AMQP first frame < 100ms.
-
-## Mutation court
-
-```sh
-python3 scripts/mutation_court.py              # boots its own substrate on 9443
-python3 scripts/mutation_court.py --self-check # restore-failure detection only
-```
-
-Proves the GraphLaw admission gate (`lib/smalt/graphlaw/validator.ex`)
-is non-vacuous by injecting a marked gate-bypass mutation, re-probing,
-and restoring the file byte-exact (sha256-verified). Exit 0
-non-vacuous, 1 vacuous/failed, 2 blocked.
-
-## Compliance courts
-
-Seven per-service courts fence the wire contract against real HTTP/AMQP
-traffic (no doubles): `test/compliance/c1_arm.exs` ... `c7_events.exs`,
-receipts in `docs/compliance/C1_ARM_REST.md` ... `C7_EVENT_PLANES.md`.
-
-```sh
-mix test test/compliance/c1_arm.exs          # c2..c7 likewise
-mix test test/compliance/c5_servicebus.exs --include amqp_wire
-```
-
-## Stress suite
-
-Load/chaos harnesses under `scripts/stress/` (soak, spike, TLS churn,
-AMQP throughput/fanout, ARM scale, blob scale, cosmos bulk, LRO storm,
-YCSB-lite, azurite comparison, telemetry overhead, chaos kill, gate cost),
-receipts in `docs/STRESS/`. Just recipes: `just soak`, `just spike`,
-`just tls-churn`; the rest run as `python3 scripts/stress/<harness>.py`
-or `mix run scripts/stress/<driver>.exs`.
-
-The authoritative measured-bounds table lives in `docs/STRESS/BOUNDS.md`,
-gated fail-closed by `python3 scripts/stress/bounds.py`.
-
-## Layout
-
-- `lib/smalt/` — gateway, egress router, AMQP broker, Event Hubs, store
-  (keyed ETS + DETS mirror; atomic `compare_and_swap` transitions).
-- `lib/smalt/enclave/` — native lifecycle: `Hcl.parse/1`, `Engine.apply/2`
-  (in-process ARM router, no terraform), `State.plan/destroy`,
-  zero-drift and residue audit.
-- `lib/smalt/mcp/` — read-only MCP tool surface on `:9545`:
-  generated tool descriptor with `readOnlyHint`, real Store reads, actuation
-  refused by name.
-- `lib/smalt/ocel/` — object-centric event log registry, conformance
-  (fitness + deviations), and deviation admission.
-- `lib/smalt/pplan/` — durable P-PLAN task store: court-validated
-  `admitted -> running -> succeeded | failed` transitions, exclusive CAS
-  claim, crash recovery.
-- `lib/smalt/projection/` + `lib/smalt/semantic/` — semantic projection
-  surface. See `docs/SEMANTIC_PROJECTION.md`.
-- `cli/` — `smaltctl` Rust CLI generated from `cli/ontology.ttl`
-  (`cd cli && cargo test`).
-- `test/` — offline, wire, SDK-smoke, census, terraform-fixture, and chaos
-  tiers; `test/enclave-testbed/` — composite enclave-grade stress testbed
-  (`bash test/enclave-testbed/run.sh`; 9 phases, 9 PASS standing).
-
-## Workspaces & tooling
-
+- `lib/smalt/` — runtime surface (Part 1)
 - `workspace/` — Sovereign Console: air-gapped Next.js evaluation console;
   only `127.0.0.1` endpoints are reachable. `just ws-install` / `ws-build` /
-  `ws-lint` / `ws-court` / `ws-converge`.
+  `ws-lint` / `ws-court` / `ws-converge`
 - `smalt-cli/` — headless Python CLI companion; zero-actuation gate (AU-10)
-  and four-gate verification runner (`smalt-cli/GATES.md`).
-- `test/sdk-full` / `test/sdk-smoke` / `test/sdk-python` — real official
-  Azure SDK probes. `just test-sdk-smoke`; `just census` (needs
-  `SMALT_SDK_ROOT`).
-- DoD tooling: `just court-x2`, `publish-dry`, `verify-all`, `sdk-matrix`,
-  `substrate-up/down/status`, `doctor-dod`, `gap-sync`, `receipt-index`,
-  `docs-dod-check`, `lane-clean`.
+  and four-gate verification runner (`smalt-cli/GATES.md`)
+- `cli/` — `smaltctl` Rust CLI generated from `cli/ontology.ttl`
+- `test/` — offline, wire, SDK-smoke, census, terraform-fixture, compliance,
+  and chaos tiers; `test/enclave-testbed/` composite stress testbed
+- `gates/` — invariant gates (negative-fixture contracts)
+- `scripts/` — benches, shim courts, substrate manager, KD flip, doctor
+- `docs/tutorials/` · `docs/how-to/` · `docs/reference/` ·
+  `docs/explanation/` — Diátaxis tree
 
 ## Legal
 
@@ -242,7 +344,9 @@ compatibility. See `NOTICE.md`.
 
 ## See Also
 
-- `docs/tutorials/` — first-run and lifecycle walkthroughs
-- `docs/how-to/` — task guides (dev loop, wire-parity runs)
-- `docs/reference/` — generated surfaces (ports, error codes, just recipes, KD pointer)
-- `docs/explanation/` — architecture and model explanations
+- `docs/tutorials/enclave-lifecycle.md` — first-run lifecycle walkthrough
+- `docs/how-to/dev-loop.md` — daily dev loop
+- `docs/reference/ports-and-planes.md` — port law
+- `docs/reference/just-recipes.md` — recipe reference
+- `docs/reference/kd-register.md` — KD canonical pointer
+- `docs/explanation/architecture.md` — architecture
