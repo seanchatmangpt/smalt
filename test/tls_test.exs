@@ -69,7 +69,7 @@ defmodule Smalt.TLSTest do
       assert [{:RSAPrivateKey, _, :not_encrypted}] = :public_key.pem_decode(key_pem)
 
       otp = :public_key.pkix_decode_cert(der, :otp)
-      assert extract_cn(otp) == ~c'127.0.0.1'
+      assert extract_cn(otp) in [~c'127.0.0.1', "127.0.0.1"]
 
       sans = extract_san(otp)
       assert {4, <<127, 0, 0, 1>>} in sans
@@ -646,7 +646,7 @@ defmodule Smalt.TLSTest do
   # subject(6), spki(7), issuerUID(8), subjectUID(9), extensions(10)
   defp extract_cn(otp) do
     {:rdnSequence, [rdn | _]} = elem(elem(otp, 1), 6)
-    [{:"AttributeTypeAndValue", @cn_oid, {:printableString, cn}}] = rdn
+    [{:"AttributeTypeAndValue", @cn_oid, {_, cn}}] = rdn
     cn
   end
 
