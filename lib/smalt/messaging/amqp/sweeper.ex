@@ -15,7 +15,8 @@ defmodule Smalt.Amqp.Sweeper do
 
   use GenServer
 
-  @default_tick_ms 250
+  # Former @default_tick_ms 250 now lives ONLY in the ontology
+  # (smalt:ck-amqp-sweeper-tick-ms) via the Smalt.Config projection.
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -157,7 +158,9 @@ defmodule Smalt.Amqp.Sweeper do
     # Process.send_after and raises ArgumentError mid-run, crash-restarting in a
     # storm that exhausts the AmqpBroker restart intensity and kills the broker
     # tree. Better to refuse boot with a typed error than to run mis-throttled.
-    tick_ms = opts[:tick_ms] || Application.get_env(:smalt, :amqp_sweeper_tick_ms, @default_tick_ms)
+    # W1a exemplar (opts-fallback class): opts win, ontology default behind
+    # the Smalt.Config projection (smalt:ck-amqp-sweeper-tick-ms).
+    tick_ms = opts[:tick_ms] || Smalt.Config.amqp_sweeper_tick_ms()
 
     unless is_integer(tick_ms) and tick_ms > 0 do
       raise ArgumentError,

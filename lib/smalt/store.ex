@@ -8,50 +8,12 @@ defmodule Smalt.Store do
   """
   use GenServer
 
-  @tables [
-    :smalt_subscriptions,
-    :smalt_resource_groups,
-    :smalt_resources,
-    :smalt_operations,
-    :smalt_cosmos_docs,
-    :smalt_cosmos_lsn,
-    :smalt_cosmos_pk_meta,
-    :smalt_vault_keys,
-    :smalt_vault_secrets,
-    :smalt_appconfig,
-    :smalt_blobs,
-    :smalt_blob_containers,
-    # Blob snapshots (KD-60 wire lane 524): Store-owned so the table survives
-    # the creating request process — BlobStorage.ensure_snapshot_table's lazy
-    # :ets.new made the table die with the first Bandit request process, so a
-    # snapshot stored over the wire was unreadable by the next request
-    # (witnessed: PUT comp=snapshot 201 then GET sharesnapshot 404).
-    :smalt_blob_snapshots,
-    :smalt_blob_policy,
-    :smalt_ledger_transactions,
-    :smalt_ledger_meta,
-    :smalt_event_messages,
-    :smalt_eg_topics,
-    :smalt_sb_queues,
-    :smalt_sb_messages,
-    :smalt_sb_locks,
-    :smalt_sb_sessions,
-    :smalt_sb_tokens,
-    # Service Bus subscription rules (SHIM-COURT sb-rules lane): one row per
-    # rule, keyed by lowercased full ARM id under the owning subscription.
-    :smalt_sb_rules,
-    :smalt_eh_partitions,
-    :smalt_eh_checkpoints,
-    :smalt_sentinel_streams,
-    :smalt_sentinel_rows,
-    :smalt_purview_entities,
-    :smalt_purview_edges,
-    :smalt_resource_graph_tokens,
-    :smalt_attestation_baseline,
-    # Azure Monitor metric points (microsoft.insights/metrics) — append-only
-    # point rows keyed "<res id>|<metric>|<ts_ms>|<seq>" (Smalt.Metrics).
-    :smalt_metrics
-  ]
+  # W1b projection: the table list is the generated registry
+  # (lib/smalt/store_tables.ex — smalt:StoreTable ontology rows), replacing
+  # the hand-written @tables list. Equivalence at the swap was proven by
+  # test/store_tables_replay_identity_test.exs; DO NOT re-introduce a local
+  # list — regenerate with `mix smalt.gen`.
+  @tables Smalt.StoreTables.table_names()
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)

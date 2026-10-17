@@ -66,7 +66,9 @@ defmodule Smalt.Application do
     end
   end
 
-  defp arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
+  # W1a exemplar (plain-default class): default copy now lives ONLY in the
+  # ontology (smalt:ck-arm-port) via the Smalt.Config projection.
+  defp arm_port, do: Smalt.Config.arm_port()
 
   # Default bind: loopback only. This is a local air-gapped
   # emulator — binding 0.0.0.0 by default exposed every surface to the LAN.
@@ -74,7 +76,9 @@ defmodule Smalt.Application do
   # or `config :smalt, bind_ip: {192,168,1,10}`.
   # KD-COVERS: KD-54
   defp bind_ip do
-    case System.get_env("SMALT_BIND_IP") || Application.get_env(:smalt, :bind_ip) do
+    # W1a exemplar (env-first class): the accessor mirrors the SMALT_BIND_IP
+    # override order exactly; the app-env nilable default lives in the ontology.
+    case Smalt.Config.bind_ip() do
       nil ->
         {127, 0, 0, 1}
 

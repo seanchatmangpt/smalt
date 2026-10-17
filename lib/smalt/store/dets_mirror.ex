@@ -30,18 +30,12 @@ defmodule Smalt.Store.DetsMirror do
   use GenServer
   require Logger
 
-  @default_tables [
-    :smalt_resources,
-    :smalt_cosmos_docs,
-    :smalt_blobs,
-    :smalt_ledger_transactions,
-    # Ledger appends are gated on enforce-existence meta rows ({:latest, L} /
-    # {:seq, L} / {:created, L} in :smalt_ledger_meta); a restore that replays
-    # transactions without meta 404s on the next append and resets duplicate
-    # counters. Mirroring meta makes restore self-consistent for the ledger.
-    :smalt_ledger_meta,
-    :smalt_event_messages
-  ]
+  # W1b projection: the mirror set is the generated registry (persisted rows,
+  # lib/smalt/store_tables.ex). Equivalent to the hand-written list it
+  # replaced; ledger_meta stays mirrored so a restore that replays
+  # transactions does not 404 on enforce-existence meta rows. DO NOT
+  # re-introduce a local list — regenerate with `mix smalt.gen`.
+  @default_tables Smalt.StoreTables.persisted_tables()
 
   @default_interval 5_000
   @default_dir "tmp/dets"

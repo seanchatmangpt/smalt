@@ -52,7 +52,29 @@ defmodule Smalt.MixProject do
           "--query object_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/ocel_object_types.rq " <>
           "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/event_registry.ex.eex " <>
           "--out lib/smalt/ocel/event_registry.ex",
-        "format lib/smalt/ocel/event_registry.ex"
+        "format lib/smalt/ocel/event_registry.ex",
+        # W1b Store table registry (recipe step 5): every ETS table atom —
+        # owned (Smalt.Store @tables) + shadow (lazily created, sweepStrategy
+        # none) — projected from the smalt:StoreTable individuals. The
+        # generated registry REPLACES the hand-written lists (store.ex,
+        # enclave/state.ex, store/dets_mirror.ex consume it). Fenced by
+        # test/store_tables_replay_identity_test.exs.
+        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
+          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
+          "--query store_tables=../ggen-marketplace/packs/smalt-substrate-pack/queries/store_tables.rq " <>
+          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex " <>
+          "--out lib/smalt/store_tables.ex",
+        "format lib/smalt/store_tables.ex",
+        # W1a: ConfigKey census -> Smalt.Config accessors. One zero-arity
+        # accessor per smalt:ConfigKey row; the ontology default is the
+        # ONLY copy of the in-code default. Replay-identity fence:
+        # test/config_replay_identity_test.exs.
+        "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
+          "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
+          "--query config_keys=../ggen-marketplace/packs/smalt-substrate-pack/queries/config_keys.rq " <>
+          "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex " <>
+          "--out lib/smalt/config.ex",
+        "format lib/smalt/config.ex"
       ],
       # R164: named tiers. cross_seat runs the auth cross-seat suite in
       # isolation (default-excluded tag); amqp_wire includes the wire tier.

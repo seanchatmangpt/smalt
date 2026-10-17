@@ -42,21 +42,11 @@ defmodule Smalt.Enclave.State do
   # reverse-topological walk, and a flipped row still polls 200 through the
   # router. No global :lro_retention_ms mutation.
 
-  @metadata_tables [
-    :smalt_operations,
-    # subscription rows are control-plane roots (auto-provisioned), never
-    # per-deployment residue
-    :smalt_subscriptions,
-    :smalt_cosmos_lsn,
-    :smalt_ledger_meta,
-    :smalt_sb_tokens,
-    :smalt_sb_locks,
-    :smalt_sb_sessions,
-    :smalt_eh_checkpoints,
-    :smalt_resource_graph_tokens,
-    :smalt_attestation_baseline,
-    :smalt_sentinel_streams
-  ]
+  # W1b projection: the destroy-residue exclusion list is the generated
+  # registry (metadataOnly rows, lib/smalt/store_tables.ex). Equivalent to
+  # the hand-written list it replaced (replay-identity fence). DO NOT
+  # re-introduce a local list — regenerate with `mix smalt.gen`.
+  @metadata_tables Smalt.StoreTables.metadata_tables()
 
   @lro_poll_max 400
   @lro_poll_ms 5
