@@ -148,6 +148,17 @@ defmodule Smalt.MixProject do
     ]
   end
 
+  defp path_dep(app, opts) do
+    if File.dir?(opts[:path]) do
+      {app, opts}
+    else
+      # If directory does not exist locally (e.g. CI runner), emit dummy tuple
+      # or skip. For Mix deps specification:
+      # {app, opts} with path omitted or optional
+      {app, Keyword.delete(opts, :path) |> Keyword.put(:optional, true)}
+    end
+  end
+
   defp deps do
     [
       {:bandit, "~> 1.6"},
@@ -156,13 +167,13 @@ defmodule Smalt.MixProject do
       {:jason, "~> 1.4"},
       {:joken, "~> 2.6"},
       {:ash, "~> 3.33", optional: true},
-      {:ash_graphlaw, path: "../ash_graphlaw", only: :dev, optional: true},
+      path_dep(:ash_graphlaw, path: "../ash_graphlaw", only: :dev, optional: true),
       # Semantic projection (lane: semantic projection). Path deps per house
       # pattern; `only:` widened from the spec's :dev to [:dev, :test] so the
       # gate (`mix test test/semantic_projection_test.exs`, MIX_ENV=test) can
       # compile them. Disclosed in docs/SEMANTIC_PROJECTION.md.
-      {:ash_r2rml, path: "../ash_r2rml", only: [:dev, :test], optional: true},
-      {:ash_ex4pm, path: "../ash_ex4pm", only: [:dev, :test], optional: true},
+      path_dep(:ash_r2rml, path: "../ash_r2rml", only: [:dev, :test], optional: true),
+      path_dep(:ash_ex4pm, path: "../ash_ex4pm", only: [:dev, :test], optional: true),
       # Process-intelligence + attestation engine (operator ruling,
       # v26.10.16): permanent in-tree RUNTIME dep — it is the OCEL event
       # sink / POWL discovery+conformance backend, not a manufacturing-time
@@ -171,7 +182,7 @@ defmodule Smalt.MixProject do
       # `override: true` — ash_ex4pm pins the HEX package `== 26.10.1`
       # (dev/test only); the in-tree path dep (26.10.8) wins in every env
       # where ash_ex4pm compiles, so both resolve to one ex4pm.
-      {:ex4pm, path: "../ex4pm", override: true},
+      path_dep(:ex4pm, path: "../ex4pm", override: true, optional: true),
       # B1 dual-pin activation block (PUBLISH_RECORD.md, lane G1 2026-10-16).
       # ex4pm 26.10.8 hex dry-build verified: `mix hex.build -o
       # /tmp/ex4pm-26.10.8.tar` exits 0, checksum
@@ -184,7 +195,7 @@ defmodule Smalt.MixProject do
       #   {:ex4pm, path: "../ex4pm", override: true, optional: true},
       # then run `mix deps.update ex4pm && mix hex.build` (smalt) and flip
       # PUBLISH_RECORD.md B1 to CLOSED.
-      {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true},
+      path_dep(:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true),
       # ERRC Raise lane 6: property-based testing with shrinking (test-only
       # usage; declared env-prod because `ash` requires stream_data
       # non-optionally — Mix surface-convergence constraint, never packaged:
