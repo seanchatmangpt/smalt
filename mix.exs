@@ -171,7 +171,7 @@ defmodule Smalt.MixProject do
       # `override: true` — ash_ex4pm pins the HEX package `== 26.10.1`
       # (dev/test only); the in-tree path dep (26.10.8) wins in every env
       # where ash_ex4pm compiles, so both resolve to one ex4pm.
-      {:ex4pm, path: "../ex4pm", override: true},
+      {:ex4pm, path: "../ex4pm", override: true, optional: true},
       # B1 dual-pin activation block (PUBLISH_RECORD.md, lane G1 2026-10-16).
       # ex4pm 26.10.8 hex dry-build verified: `mix hex.build -o
       # /tmp/ex4pm-26.10.8.tar` exits 0, checksum
