@@ -62,6 +62,7 @@ cli/target/
 
 # Logs & ephemeral test runs
 *.log
+/substrate.log
 .logs/
 .work/
 
@@ -80,6 +81,18 @@ node_modules/
 test/sdk-full/node_modules/
 
 
+# Workspace bench artifacts (heapsnapshots etc.)
+workspace/.bench/
+workspace/bench_results/
+
 # Mutation-probe leftovers (sed/python probe scratch)
 *.mut
 .venv*/
+
+# trust shim build artifact (source is committed)
+scripts/trust_shim/*.dylib
+
+# scratch (anneal sweep output)
+/anneal.txt
+.anneal.txt.swp
+/var/

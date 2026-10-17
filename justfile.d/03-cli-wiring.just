@@ -10,7 +10,10 @@
 # satisfies the per-lane venv resolution (ADR-PY-002) via .venvs/<lane>
 # symlinks to .venv-cli. gates.py itself is NOT edited.
 
-SMALT_CLI := justfile_directory() / ".." / "smalt-cli"
+# SHIM-COURT note: under `import`, justfile_directory() resolves to the repo
+# root justfile dir, so no `..` traversal is needed; adding one escapes the
+# checkout (was: a sibling smalt-cli dir next to the repo, nonexistent).
+SMALT_CLI := justfile_directory() / "smalt-cli"
 VENV := SMALT_CLI / ".venv" / "bin" / "python"
 VENV_CLI := SMALT_CLI / ".venv-cli" / "bin" / "python"
 

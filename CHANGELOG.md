@@ -6,6 +6,198 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Calendar Versioning](https://calver.org/) (`YY.0M.MICRO`, e.g. `26.10.14`).
 
+## [Unreleased]
+
+## [26.10.16] - 2026-10-16 — UNRELEASED
+
+Repair-and-hardening wave over the v26.10.14 release surface; no new
+planes. Status: pre-court-x2 — standing flips only on the two-green
+receipt (see `docs/jira/v26.10.16/FINAL.md`).
+
+### Fixed
+
+- Event Hubs multi-event batch delivery (KD-53): inner messages 2..N of a
+  `createBatch` envelope were dropped by the single-body-section unwrap;
+  the decoder now discriminates complete-vs-incomplete on body-section
+  presence (`lib/smalt/messaging/event_hubs.ex`). Receipts:
+  `docs/jira/v26.10.16/receipts/r141-eh-batch-body-discriminator.md`,
+  `r185e-eh-batch-dup-kind.md`. CLOSED-SIMULATED.
+- SB management ATOM+XML (KD-45): queue-create PUT answers well-framed
+  HTTP/1.x so Node's parser no longer rejects; TS Service Bus census
+  replay 12/12 PASS. Receipt: `receipts/r178e-census-replay-repair.md`.
+- EH selector-filter / eventPosition (KD-68): `>=` (inclusive) operator
+  now parsed and applied in `connection.ex`; real-SDK witness green.
+  Receipts: `r200c-kd68-selector-filter.md` (falsifier FIRED),
+  `r200d-kd68-selector-impl.md`. CLOSED-SIMULATED.
+- EH partition-key routing (KD-76): pk-routed sends now deliverable via
+  partition-scoped subscriptions; address classifier no longer
+  lowercase-substring. Receipts: `r200e-kd76-pk-routing.md`,
+  `r200h-kd76-pk-witness-repair.md`. CLOSED-SIMULATED.
+- Blob WORM arms (R188) and settle/lock chain (R194 renew→row mirror,
+  R196 token-scoped settle CAS, R197, R201): receipts
+  `r188-r196-r197-worm-settle-batch.md`,
+  `r144-lock-aba-telemetry-read-guard.md`.
+- Egress fences (R193 / R199 / R185 batch): percent-encoded reserved-
+  namespace fence over the real wire, comp/envelope/sentinel quote-parse.
+  Receipts: `r185-r185d-r185h-wire-fences-batch.md`,
+  `r187b-r190-court-hardening-batch.md`.
+- ETS hygiene (R178g/R189): on_exit record-and-delete guards so seeded
+  `:smalt_resources` rows never leak across tests; non-vacuity court
+  `scripts/shim_court/strata_cleanup_court.sh`. Receipt:
+  `r178g-ets-hygiene-batch.md`.
+- DetsMirror union-growth bounded and witnessed
+  (`lib/smalt/store/dets_mirror.ex`; `docs/jira/v26.10.16/WRAP_LEDGER.md`).
+
+### Changed
+
+- KD register churn: 8 rows flipped CLOSED this window (KD-45/46/53/54/
+  68/70/71/76 — table in
+  `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` is ground truth, **28 CLOSED of
+  KD-01..KD-93 on disk**); KD-49/52 were closed in a prior window (lineage,
+  not this window's flips); KD-77/78/88/89/90/91/92/93 minted (OPEN —
+  KD-91/92/93 from the c11 typed findings + lane X5 registrar, fixes
+  landed, witness-pending).
+
+### Added
+
+- 25 shim courts on disk (22 receipt-witnessed; 16 new this window; 37 files
+  under `scripts/shim_court/`),
+  including blob WORM arms, renew-mirror, strata-cleanup, cosmos-ETag
+  final-body, immutability/CAS parity courts.
+- Harness hardening: shim-court witnesses run under `bash -uc`
+  (`scripts/shim_court/lib.sh`), per-subject flocks for witness runs,
+  multi-window test generators; `fast_test.sh` watch-mode snapshot repair.
+  Receipts: `r187b-r190-court-hardening-batch.md`,
+  `r207-harness-scripts-batch.md`.
+- App Config /kv CRUD + CAS (`lib/smalt/data_plane/kv.ex`): full
+  create/read/update/delete with ETag compare-and-swap on the egress
+  plane.
+- Monitor metrics + azapi emit: metrics list/get route family with
+  azapi-shaped emit for the Terraform provider legs.
+- Event Hubs consumer-group enumeration with `$default` synthesis:
+  GET consumer-groups lists real groups and synthesizes `$default` when
+  absent.
+- Event Grid topics + systemTopics routes with inputSchema-gated EG1
+  (Event Grid schema events only accepted when the input schema declares
+  it).
+- Blob snapshot / metadata / `sharesnapshot` query-parameter surface:
+  point-in-time snapshots, header+query metadata writes.
+- Cosmos container throughput: offer read/update routes per container.
+- Service Bus / Event Hubs child-resource api-version lattice bumped to
+  `2024-01-01` across queues/topics/subscriptions/consumer-groups.
+- ex4pm OCEL doctor/court emitters: event-log emission from smalt doctor
+  and court runs for downstream process mining.
+- Sovereign Console clients: blob, servicebus, eventhubs, keyvault,
+  cosmos, identity, appconfig, ledger (`workspace/`, egress via
+  `lib/smalt.ts` only).
+- Trust shim v2: leaf-exact certificate pinning (fingerprint gate against
+  dead-CA keychain rot, replacing CN/CA-anchored v1 matching).
+- Diátaxis docs restructure: `docs/how-to/`, `docs/explanation/`,
+  `docs/archive/` splits (tutorials/reference/how-to/explanation layout).
+- Affidavit WASM integration: wasmex-mounted fail-closed affidavit engine
+  (`lib/smalt/affidavit/wasm_engine.ex`, sha256-sidecar authority pin,
+  `{:error, :engine_unavailable}` never raise), affidavit seal module
+  (`lib/smalt/affidavit/seal.ex`), and trust_profile witness contract with
+  the `:PQC_NOT_PROVISIONED` typed refusal retained as fail-closed
+  fallback (`lib/smalt/trust_profile/trust_profile.ex`). PQC close
+  (KD-89) pending — no post-quantum claims made.
+- FinOps avoided-spend calculator: pure deterministic TS original
+  (`workspace/lib/finops/calculator.ts`) + 1:1 Elixir port
+  (`lib/smalt/fin_ops/calculator.ex`), honest `pqc_status` field,
+  Elixir-side region multipliers documented as a port extension.
+- Affidavit ingestion functor seal sideband: successful resource PUT and
+  RG-delete cascade admit stored-record bytes through the affidavit engine;
+  a dead engine never changes the HTTP outcome; witnesses live in an ETS
+  sideband (`:smalt_affidavit_witnesses`), never in wire records
+  (`lib/smalt/arm_gateway/router.ex`). Receipts:
+  `docs/jira/v26.10.16/receipts/cap-ingestion-functor.md`,
+  `r215-affidavit-seal-court.md`.
+- Policy/RBAC engine (`lib/smalt/policy.ex`): 80/20 Azure Policy + RBAC —
+  policy definitions/assignments with `deny` (typed 400 PolicyViolation)
+  and `audit` (non-compliance receipt) effects on the generic PUT path,
+  scope-prefix enforcement, built-in role definitions served
+  deterministically. Receipt: `receipts/r133-policy-row-cas.md`.
+- Cosmos NoSQL SQL query engine (`lib/smalt/cosmos_sql.ex`): tokenizer +
+  evaluator for query-with-parameters over stored documents
+  (`run/3`, `eval_docs/2`), pinned by `test/data_plane/cosmos_sql_test.exs`.
+- Key Vault secret rotate (ARM control plane): `POST .../rotate` mints a
+  new data-plane version; cross-plane read-back keeps rotated versions
+  GET-able from the 8443 egress plane
+  (`lib/smalt/arm_gateway/router.ex:1593`, `lib/smalt/egress_router.ex:861`).
+- Docker image builds with the ex4pm sibling context: `--build-context
+  ex4pm=../ex4pm` injection, `/ctx/ex4pm` symlink staging
+  (`docker/Dockerfile`, `docker/compose.smalt.yml`, `docker/README.md`).
+
+### Enclave (in flight)
+
+Approved plan: ARD-PRD-SMALT-26.10.16-V1 — zero-HCL azurerm 4.54.0 enclave
+against the local substrate. Items marked LANDED have an on-disk referent
+(path given); IN-FLIGHT items have none yet and are claimed only as
+approved-plan scope.
+
+- LANDED — Terraform parity fixture: `test/terraform_fixture/`
+  (`versions.tf` pins `azurerm = 4.54.0` and `azapi = 2.4.0`; `main.tf`
+  plans resource group + key vault + storage account; committed
+  `plan.tfplan`). Zero-HCL goal end-to-end is IN-FLIGHT: plan-parse is
+  green on all six provider legs, but apply still fails at the
+  existence-check GET (`docs/jira/v26.10.16/sdk-results/tf-plan.md`,
+  `docs/jira/v26.10.16/WRAP_LEDGER.md` item 6).
+- LANDED — provider matrix + register routes: the registry admits
+  **41 resource types**, including `Microsoft.KeyVault/vaults` +
+  `vaults/keys` + `vaults/secrets`, Cosmos
+  `databaseAccounts/sqlDatabases` / `sqlContainers`, and
+  `Microsoft.Storage/storageAccounts` (`lib/smalt/registry.ex`);
+  generic ARM provider routes at
+  `lib/smalt/arm_gateway/router.ex` (generic ARM provider routes section).
+- LANDED — KD `details[]` error envelope: ARM error bodies carry a
+  non-empty `details` array (`lib/smalt/arm_gateway/router.ex:467,488`);
+  pinned by the error-corpus rows in `test/arm_error_corpus_test.exs`.
+- LANDED — cascade teardown on resource-group delete: children cascade by
+  STORE KEY, not by the record's own `id` member
+  (`lib/smalt/arm_gateway/router.ex:611-636`); the data-plane half
+  (`BlobStorage.drop_account_data/1`,
+  `lib/smalt/data_plane/blob_storage.ex:31`, wired at
+  `lib/smalt/arm_gateway/router.ex:674,2469`) and the top-level
+  storage-account DELETE route
+  (`lib/smalt/arm_gateway/router.ex:2444`) are on disk.
+- LANDED — secrets data plane: `?comp=secrets`-style `/secrets` routes on
+  the 8443 egress plane backed by the `:smalt_vault_secrets` store
+  (`lib/smalt/egress_router.ex:732-810`); pinned by
+  `test/egress_secrets_test.exs` (9 tests).
+- LANDED — darwin trust flow: `scripts/tf_trust_setup.sh` (status/trust/
+  retrust/untrust, fingerprint gate against dead-CA keychain rot) +
+  `scripts/tf_trust_check.sh`; env surface via
+  `scripts/bootstrap_env.sh`.
+- LANDED — pf/hosts reachability: `scripts/pf_redirect.sh`,
+  `scripts/hosts_alias.sh`.
+- LANDED — offline provider mirror: script
+  (`scripts/tf_provider_mirror.sh`) AND material
+  (`test/terraform_fixture/provider-mirror/` + `provider-mirror.rc`)
+  on disk.
+- LANDED — zero-drift defaults: `lib/smalt/arm_gateway/defaults.ex`
+  (`Defaults.apply/2` deep-merge, wired into the storefront PUT path at
+  `lib/smalt/arm_gateway/router.ex:768-814`, including `maybe_put_sku`
+  storage/cosmos sku+kind aliasing); pinned by `test/defaults_test.exs`
+  (9 tests) + `test/zero_drift_serialization_test.exs`. Honest caveat:
+  3 zero-drift serialization cases were red at check time (mid-wave,
+  2026-10-16) — the referent is landed, the fleet's own fence is
+  reporting drift.
+- LANDED — api-version monotonic admission (KD-78): `check_version/3`
+  accepts any version <= latest for the admitted type
+  (`version_lte?/2`), refusing only newer/malformed with a typed
+  `InvalidApiVersionParameter` naming latest
+  (`lib/smalt/arm_gateway/router.ex:1273-1300`); pinned by
+  `test/apiversion_matrix_test.exs` (17 tests).
+- LANDED — e1 enclave-loop bench lane: `justfile.d/21-enclave.just`
+  (`just enclave-loop`) driving `scripts/tf_enclave_loop.sh`
+  (lane-private substrate, loud-skip exit 3); result jsonl at
+  `docs/jira/v26.10.16/bench/e1-enclave-loop.jsonl`.
+- LANDED — NFR gates: `gates/nfr3_rss_gate.py` +
+  `scripts/stress/beam_rss.py` (delta-RSS) +
+  `test/smalt_ets_baseline_identity_test.exs` (ETS-baseline identity).
+- IN-FLIGHT — T5 clean-room lifecycle: no on-disk referent yet
+  (`scripts/tf_enclave_loop.sh` is T5-adjacent, not the T5 subject).
+
 ## [26.10.14] - 2026-10-14
 
 First release. Smalt as a local Azure drop-in substrate on the BEAM: an
@@ -232,7 +424,7 @@ control-plane and audit-plane surfaces no emulator provides.
   `test/terraform_fixture/`; `scripts/doctor.py` diagnostic court;
   `scripts/mutation_court.py` (GraphLaw gate non-vacuity);
   `scripts/bench.py` / `bench_check.py` (bench gate); `scripts/release.sh`.
-- Docs: `docs/ARCHITECTURE.md`, `docs/WIRE_PARITY.md` (surface map with
+- Docs: `docs/explanation/architecture.md` (moved from `docs/ARCHITECTURE.md`), `docs/WIRE_PARITY.md` (surface map with
   per-row falsifiers), `docs/MIGRATION_FROM_EMULATORS.md` (port map +
   honest deltas), `docs/CHEAT_SCAN.md`.
 

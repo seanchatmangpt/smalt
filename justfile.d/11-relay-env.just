@@ -18,7 +18,8 @@
     echo 'export SMALT_ARM="https://127.0.0.1:9443"'
     echo 'export SMALT_EGRESS="https://127.0.0.1:8443"'
     echo 'export SMALT_AMQP="127.0.0.1:5672"'
-    echo 'export SMALT_SB_SHARED_KEY="$(openssl rand -base64 32)"'
+    # SHIM-COURT: SMALT_SB_SHARED_KEY deliberately NOT emitted here — the single
+    # key policy is dev_env.sh's deterministic per-host sha256 key (eval'd below).
     echo "export SMALT_SDK_ROOT=\"\${SMALT_SDK_ROOT:-$REPO/test/sdk-smoke/node_modules}\""
     echo '# TLS dev material (mint with: scripts/gen_dev_cert.sh)'
     echo 'export SMALT_TLS_CERTFILE="$PWD/.smalt/tls/dev-cert.pem"'

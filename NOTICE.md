@@ -35,6 +35,16 @@ time from an external `node_modules` directory supplied via `SMALT_SDK_ROOT`.
 CI installs these packages for verification only; they are NOT distributed
 with smalt and are not part of its release artifacts.
 
+## Bundled artifacts
+
+`priv/wasm/affidavit_wasm.wasm` is a bundled build artifact of the
+[affidavit](https://github.com/seanchatmangpt/affidavit) project, dual
+licensed under the MIT License and the Apache License, Version 2.0.
+Copyright 2026 Sean Chatman. The full license texts are available in the
+affidavit source repository as `LICENSE-APACHE` and `LICENSE-MIT`; they are
+not redistributed here. The artifact is bundled, not generated, by smalt;
+the WASM source and its build pipeline live in the affidavit repository.
+
 ## License
 
 Smalt is licensed under the Apache License, Version 2.0. See `LICENSE`.

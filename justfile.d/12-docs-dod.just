@@ -40,4 +40,21 @@ DOCS_ROOT := parent_directory(justfile_directory())
     check smalt-cli/README.md
     check smalt-cli/GATES.md
     check test/enclave-testbed/README.md
+    # Diátaxis tree (v26.10.16 docs restructure, docs/jira/v26.10.16/
+    # docs-restructure-plan.md). Pinned to the landed set.
+    check docs/tutorials/enclave-lifecycle.md
+    check docs/how-to/dev-loop.md
+    check docs/how-to/how-to-clean.md
+    check docs/how-to/how-to-debug-agent.md
+    check docs/how-to/how-to-develop-native.md
+    check docs/how-to/how-to-run-wire-parity.md
+    check docs/reference/just-recipes.md
+    check docs/explanation/architecture.md
+    check docs/explanation/cascade-teardown.md
+    check docs/explanation/semantic-kernel-roadmap.md
+    check docs/explanation/two-tier-enclave.md
+    check docs/explanation/zero-drift-model.md
+    check docs/archive/README.md
+    # Front door.
+    check README.md
     exit $rc
