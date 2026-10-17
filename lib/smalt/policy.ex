@@ -316,7 +316,7 @@ defmodule Smalt.Policy do
       %{
         "policyAssignmentId" => assignment_id,
         "results" => %{
-          "nonCompliantResources" => rows |> Enum.map(& &1["resourceId"]) |> Enum.uniq() |> length(),
+          "nonCompliantResources" => rows |> MapSet.new(& &1["resourceId"]) |> MapSet.size(),
           "nonCompliantPolicies" => 1
         }
       }
