@@ -39,7 +39,7 @@ Generated from `docs/ERROR_CODES.md` `arm-gateway` rows (regenerate with
 
 - 400: InvalidAction, InvalidApiVersionParameter, MissingApiVersionParameter,
   InvalidResourceShape, InvalidFilter, InvalidAction, LocationMismatch,
-  InvalidApiVersion (egress_router.ex:1767/1786, paired status pending — see
+  InvalidApiVersionParameter (arm_gateway/router.ex:952, paired status pending — see
   the ERROR_CODES drift fence receipt), PolicyViolation
 - 404: ActionNotFound, OperationNotFound, ResourceGroupNotFound,
   ResourceNotFound, RouteNotFound, RuleNotFound, SubscriptionNotFound

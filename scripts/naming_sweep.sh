@@ -105,6 +105,13 @@ ALLOWLIST=(
   # captured redteam receipts (redteam lane; captured output, not source)
   "test/redteam/r1_input_fuzz/receipt.txt:2"
   "test/redteam/r2_state/findings.md:4"
+    # ggen-projection-law.md:38 cites the real pack name athena-matter-pack
+  # (lane 10 explanation rewrite; pack on disk, referenced by legal_gen sync)
+  "docs/explanation/ggen-projection-law.md:38"
+  # docs/verification/ocel/** are chain-hashed evidence receipts (same
+  # exempted class as publish_dry gate 3's OCEL policy) — captured output,
+  # not source
+  "docs/verification/ocel/anti_llm_cheat_lsp_ocel.json:195"
   # eh-run.mjs :14 entry retired 2026-10-15 (fin-14): REPO is now derived
   # repo-relative via HERE, absolute literal removed.
 )

@@ -33,9 +33,9 @@ of its own; the pack is curated to one, with two named exceptions
 (vocabulary-only ports), the reasoning recorded in
 `docs/explanation/semantic-kernel-roadmap.md`.
 
-## The precedent: athena-matter-pack
+## The precedent: the matter projection packs
 
-The legal-matter precedent (`~/ggen-marketplace/packs/athena-matter-pack/`)
+The legal-matter precedent (`ggen-marketplace/packs/matter-pack/`)
 is the proof that the pattern generalizes beyond one repo: an ontology,
 queries, templates, verify queries, and generated/ output organized as
 a matter pack — the same shape smalt's substrate pack uses. Two

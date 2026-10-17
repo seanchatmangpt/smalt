@@ -6,7 +6,7 @@ ETS table inventory. Source of truth: `lib/smalt/store.ex` `@tables`
 keys are lowercased full ARM id strings (or id-shaped paths) so
 `list_prefix/2` scans are deterministic and TF-stable.
 
-Count: **28 core tables** (store.ex `@tables`, lines 11-39) plus **2
+Count: **32 core tables** (store.ex `@tables`, lines 11-50 — includes the appconfig, eg-topics, sb-rules, blob-snapshots, and metrics tables added by the v26.10.16 capability waves) plus **2
 lazily-created `:set` tables** owned by `blob_storage.ex` that sit outside
 `@tables`. (Earlier prose says 27; the on-disk list is 28.)
 
