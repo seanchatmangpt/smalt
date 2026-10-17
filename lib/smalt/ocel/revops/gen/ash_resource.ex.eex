@@ -8,8 +8,7 @@ attrs = spec_parts |> Enum.at(2, "") |> String.split(" , ") %>
 #     --query resources=lib/smalt/ocel/revops/gen/revops_resources.rq \
 #     --template lib/smalt/ocel/revops/gen/ash_resource.ex.eex \
 #     --for-each resources \
-#     --out 'lib/smalt/ocel/revops/<%= name %>.ex' \
-#     --engine sparql
+#     --out 'lib/smalt/ocel/revops/<%= name %>.ex' (engine fixed to graphlaw upstream; no --engine flag)
 # Ontology: lib/smalt/ocel/revops/gen/revops_surface.ttl — composes the
 # ash-ocel-revops-surface-factory-pack candidate vocabulary (r75:AshResource,
 # OcelTimeline, ProcessConformance, ValueEvidence) with the executable

@@ -30,13 +30,15 @@ defmodule Smalt.MixProject do
 
   defp aliases do
     [
+      # Engine law (2026-10-17): ggen_igniter's query engine is FIXED to
+      # graphlaw (--engine flag removed upstream); smalt passes no --engine.
       "smalt.gen": [
         "ggen_igniter.sync --pack-dir ../ggen-marketplace/packs/smalt-substrate-pack " <>
           "--ontology ../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl " <>
           "--query control_plane=../ggen-marketplace/packs/smalt-substrate-pack/queries/control_plane.rq " <>
           "--query payload_rules=../ggen-marketplace/packs/smalt-substrate-pack/queries/payload_rules.rq " <>
           "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex " <>
-          "--out lib/smalt/registry.ex --engine sparql",
+          "--out lib/smalt/registry.ex",
         # Replay identity: the generated artifact must be canonical-formatted
         # so `mix smalt.gen` replay is byte-identical (fenced by
         # test/smalt_registry_replay_identity_test.exs).
@@ -49,7 +51,7 @@ defmodule Smalt.MixProject do
           "--query event_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/event_types.rq " <>
           "--query object_types=../ggen-marketplace/packs/smalt-substrate-pack/queries/ocel_object_types.rq " <>
           "--template ../ggen-marketplace/packs/smalt-substrate-pack/templates/event_registry.ex.eex " <>
-          "--out lib/smalt/ocel/event_registry.ex --engine sparql",
+          "--out lib/smalt/ocel/event_registry.ex",
         "format lib/smalt/ocel/event_registry.ex"
       ],
       # R164: named tiers. cross_seat runs the auth cross-seat suite in

@@ -1310,7 +1310,8 @@ defmodule Smalt.McpTest do
 
   # Generated-artifact fidelity, DETERMINISM tier (lens 7): the generated
   # descriptor's SOURCE ORDER must be canonical (capability_id-sorted). The
-  # ggen `--engine sparql` path drops the query's `ORDER BY ?capability_order`,
+  # (historical, pre-2026-10-17 engine standardization) the retired `--engine sparql`
+  # path dropped the query's `ORDER BY ?capability_order`,
   # so engine solution order used to leak into the file: the committed artifact
   # differed byte-wise between generating sessions (observed for real:
   # `e240a2a2…` -> `e0903d77…`, order-only). The template now sorts, and this

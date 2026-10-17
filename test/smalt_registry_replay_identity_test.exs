@@ -6,7 +6,7 @@ defmodule Smalt.RegistryReplayIdentityTest do
 
   1. **Artifact vs pack checkout** — re-rendering `registry.ex` from
      `../ggen-marketplace/packs/smalt-substrate-pack` (same pipeline as
-     `mix smalt.gen`: Ontology.load! -> Query.run/2 sparql -> build_bindings/1
+     `mix smalt.gen`: Ontology.load! -> Engine.Graphlaw (fixed) -> build_bindings/1
      -> Render.render/2, then `mix format`) must produce byte-identical
      output. Found live: the on-disk artifact could NOT be replayed —
      section-2/3 row order was a generation-time accident of the `sparql`
@@ -75,17 +75,20 @@ defmodule Smalt.RegistryReplayIdentityTest do
 
   defp replay_script do
     """
-    alias GgenIgniter.{Ontology, Query, Render}
+    # Engine FIXED to graphlaw (2026-10-17) -- the same engine `mix smalt.gen`
+    # runs; the retired sparql-hex Query.run path is gone upstream.
+    alias GgenIgniter.{Ontology, Render, Engine.Graphlaw}
     pack = "#{@pack_dir}"
     tpl = File.read!(pack <> "/templates/registry.ex.eex")
     graph = Ontology.load!(pack <> "/ontology.ttl")
+    ctx = Graphlaw.prepare!(graph, [])
 
     results =
       for {n, p} <- [
             {"control_plane", pack <> "/queries/control_plane.rq"},
             {"payload_rules", pack <> "/queries/payload_rules.rq"}
           ] do
-        {n, Query.run(graph, File.read!(p))}
+        {n, Graphlaw.run(ctx, File.read!(p))}
       end
 
     bindings = Mix.Tasks.GgenIgniter.Sync.build_bindings(results)

@@ -47,7 +47,6 @@ mix ggen_igniter.sync \
   --template lib/smalt/ocel/revops/gen/ash_resource.ex.eex \
   --for-each resources \
   --out 'lib/smalt/ocel/revops/<name>.ex' \
-  --engine sparql
 ```
 
 ## Gates (executed 2026-10-14, MIX_ENV=test)

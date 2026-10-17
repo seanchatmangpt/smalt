@@ -7,7 +7,7 @@
 #     --ontology lib/smalt/mcp/gen/smalt_mcp_surface.ttl \
 #     --query caps=<ggen-marketplace checkout>/packs/elixir-mcp-a2a-pack/queries/mcp_capabilities.rq \
 #     --template lib/smalt/mcp/gen/mcp_descriptor.ex.eex \
-#     --out lib/smalt/mcp/generated/mcp_descriptor.ex --engine sparql
+#     --out lib/smalt/mcp/generated/mcp_descriptor.ex
 @prefix ema:   <http://seanchatmangpt.github.io/packs/elixir-mcp-a2a#> .
 @prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .

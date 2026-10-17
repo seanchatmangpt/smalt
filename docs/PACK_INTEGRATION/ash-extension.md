@@ -20,7 +20,7 @@ instead of hardcoding per-resource clauses in a shared manual-read module.
 
 ## Pack consumption: SYNC-OR-ADAPTED (both)
 
-Generated via `mix ggen_igniter.sync --engine oxigraph --verify-cwd ~/ggen_igniter`
+Generated via `mix ggen_igniter.sync --verify-cwd ~/ggen_igniter`
 from a spec ontology (`aex:AshExtensionSpec`, spec IRI
 `http://ggen.io/spec/smalt-substrate-resource`) against the pack templates.
 

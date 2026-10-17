@@ -4,8 +4,7 @@
 #     --query resources=lib/smalt/ocel/revops/gen/revops_resources.rq \
 #     --template lib/smalt/ocel/revops/gen/ash_resource.ex.eex \
 #     --for-each resources \
-#     --out 'lib/smalt/ocel/revops/<name>.ex' \
-#     --engine sparql
+#     --out 'lib/smalt/ocel/revops/<name>.ex' (engine fixed to graphlaw upstream; no --engine flag)
 # REGENERATION-CLOBBERS: re-running the command above overwrites this file
 # in place with a non-compiling skeleton. The shipped gen/ template + TTL
 # still carry non-Ash types (:string_array, :utc) and render no primary key /

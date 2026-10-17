@@ -40,7 +40,22 @@ is the proof that the pattern generalizes beyond one repo: an ontology,
 queries, templates, verify queries, and generated/ output organized as
 a matter pack — the same shape smalt's substrate pack uses. Two
 independent packs, same structure, same projection discipline: the law
-is in the pack family, not in smalt's local config. smalt consumes its
+is in the pack family, not in smalt's local config.
+
+## One engine, no choice (2026-10-17)
+
+The projection pipeline's SPARQL engine is a fixed constant: graphlaw
+(`GgenIgniter.Engine.fixed/0`), not a selectable option. ggen_igniter's
+`--engine` flag (sparql/qlever/oxigraph/comparison mode) was removed —
+standardized on measured evidence: graphlaw matched the oxigraph reference
+row-for-row on the entire smalt-substrate-pack SELECT query set (11 queries,
+including the OPTIONAL/!BOUND gates and ORDER BY), and the old default
+`sparql` hex engine (0.3.12) was bug-ridden (ignored ORDER BY, no
+FILTER NOT EXISTS, broken ASK/CONSTRUCT). `mix smalt.gen` passes no engine
+flag; the templates defensively re-sort, so the engine's row order is not
+load-bearing for byte-identity (the replay fence in
+`test/smalt_registry_replay_identity_test.exs` is the proof, not the doc).
+smalt consumes its
 own capital the same way (self-hosting: ggen.toml pins the ontology and
 pack; `ggen sync run` replays deterministically — the composition
 recorded as C25 in `~/.claude/dfcm/composition-catalog.md`).
