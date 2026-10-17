@@ -4408,6 +4408,22 @@ defmodule Smalt.ArmGateway.Router do
   # requirement. Existence = any stored resource record whose lowercased id ends
   # with /providers/microsoft.documentdb/databaseaccounts/{name}.
   head "/subscriptions/:sub_id/providers/Microsoft.DocumentDB/databaseAccountNames/:name" do
+    handle_head_database_account_names(conn, name)
+  end
+
+  head "/subscriptions/:sub_id/providers/microsoft.documentdb/databaseAccountNames/:name" do
+    handle_head_database_account_names(conn, name)
+  end
+
+  head "/subscriptions/:sub_id/providers/Microsoft.DocumentDB/databaseaccountnames/:name" do
+    handle_head_database_account_names(conn, name)
+  end
+
+  head "/subscriptions/:sub_id/providers/microsoft.documentdb/databaseaccountnames/:name" do
+    handle_head_database_account_names(conn, name)
+  end
+
+  defp handle_head_database_account_names(conn, name) do
     suffix = "/providers/microsoft.documentdb/databaseaccounts/#{String.downcase(name)}"
 
     exists? =

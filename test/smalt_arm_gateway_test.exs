@@ -1223,6 +1223,29 @@ defmodule SmaltArmGatewayTest do
     assert conn.resp_body == ""
   end
 
+  test "HEAD databaseAccountNames handles lowercased path segments" do
+    id =
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/head-rg3/providers/Microsoft.DocumentDB/databaseAccounts/head-acct3"
+      )
+
+    conn_before =
+      conn(:head, "/subscriptions/#{@sub}/providers/microsoft.documentdb/databaseaccountnames/head-acct3")
+      |> call()
+
+    assert conn_before.status == 404
+    assert conn_before.resp_body == ""
+
+    Store.put(:smalt_resources, id, %{"id" => id, "name" => "head-acct3"})
+
+    conn_after =
+      conn(:head, "/subscriptions/#{@sub}/providers/microsoft.documentdb/databaseaccountnames/head-acct3")
+      |> call()
+
+    assert conn_after.status == 204
+    assert conn_after.resp_body == ""
+  end
+
   # Sleep until just after a wall-clock second boundary, so a test that
   # counts requests against the 1-second fixed window has near-seconds of
   # margin before the window rolls over mid-test.
