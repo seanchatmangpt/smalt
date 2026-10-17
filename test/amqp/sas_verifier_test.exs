@@ -77,6 +77,20 @@ defmodule Smalt.Amqp.SasVerifierTest do
              )
   end
 
+  test "signature computed over decoded sr is rejected (URL-encoded sr required for string-to-sign)" do
+    raw_url = "https://smalt.example.com:5671/queues/orders"
+    enc_sr = enc(raw_url)
+    # HMAC signature computed over decoded sr instead of encoded sr
+    sig_over_decoded = sign(raw_url, @now + 600)
+
+    assert {:error, {401, "INVALID_LOCAL_SAS"}} =
+             SasVerifier.verify(
+               token(enc_sr, sig: sig_over_decoded),
+               endpoint_config(),
+               @now
+             )
+  end
+
   test "expired se is rejected" do
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
              SasVerifier.verify(token(enc(sb_url()), @now), endpoint_config(), @now)

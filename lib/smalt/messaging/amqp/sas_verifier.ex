@@ -249,6 +249,8 @@ defmodule Smalt.Amqp.SasVerifier do
   end
 
   # sig = Base64(HMAC-SHA256(key, "#{sr}\n#{se}")), compared constant-time.
+  # The `sr` parameter MUST be the raw URL-encoded signed resource string as it
+  # appears in the wire token, per the Azure SAS specification.
   defp check_signature(sig, sr, se) do
     case Base.decode64(sig, ignore: :whitespace) do
       {:ok, provided} ->
