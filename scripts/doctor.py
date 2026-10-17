@@ -527,16 +527,19 @@ def substrate_summary():
     # 9443 9444 5672 5673) plus the bench-front-door ports; one port set,
     # no doctor-vs-substrate-status mismatch.
     for port in sorted(set(SUBSTRATE_PORTS) | {p for p, _ in REQUIRED_PORTS}):
+        # Live-listener verdict via TCP connect, not bind: a bind probe without
+        # SO_REUSEADDR misreads TIME_WAIT from a just-closed listener (e.g. a
+        # transient keeper releasing a default port) as "listening", while an
+        # independent probe (Erlang gen_tcp, reuseaddr-by-default) sees the
+        # port as free — a phantom disagreement. connect() succeeds iff a live
+        # LISTENer accepts; TIME_WAIT and closed ports both refuse.
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # No SO_REUSEADDR here (unlike check_port): on BSD/macOS reuseaddr lets
-        # bind succeed while a live LISTENer holds the port, misreading held
-        # ports as "free". TIME_WAIT is fine to treat as held for this
-        # informational dict; only a live-listener verdict must be exact.
+        s.settimeout(0.5)
         try:
-            s.bind(("127.0.0.1", port))
-            listening = False
-        except OSError:
+            s.connect(("127.0.0.1", port))
             listening = True
+        except OSError:
+            listening = False
         finally:
             s.close()
         ports[str(port)] = "listening" if listening else "free"
