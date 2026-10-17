@@ -8,10 +8,10 @@ and this project adheres to
 
 ## [Unreleased]
 
-## [26.10.16] - 2026-10-16 — UNRELEASED
+## [26.10.16] - 2026-10-16
 
 Repair-and-hardening wave over the v26.10.14 release surface; no new
-planes. Status: pre-court-x2 — standing flips only on the two-green
+planes. Status: court-x2 run-8 verdict: FAIL
 receipt (see `docs/jira/v26.10.16/FINAL.md`).
 
 ### Fixed

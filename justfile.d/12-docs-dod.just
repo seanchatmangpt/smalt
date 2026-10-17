@@ -55,6 +55,36 @@ DOCS_ROOT := parent_directory(justfile_directory())
     check docs/explanation/two-tier-enclave.md
     check docs/explanation/zero-drift-model.md
     check docs/archive/README.md
+    check docs/how-to/how-to-verify-pqc-seals.md
+    check docs/reference/reference-affidavit-wasm.md
+    check docs/reference/kd-register.md
+    check docs/reference/ports-and-planes.md
+    check docs/reference/arm-gateway.md
+    check docs/reference/ets-tables.md
+    check docs/explanation/affidavit-evidentiary-design.md
+    check docs/WIRE_PARITY.md
+    check docs/TERRAFORM_TRUST.md
+    # Receipts cited by the v26.10.16 user-facing docs (CHANGELOG 26.10.16,
+    # docs/RELEASE_NOTES_v26.10.16.md).
+    check docs/jira/v26.10.14/receipts/dod-07-court-x2.md
+    check docs/jira/v26.10.14/receipts/2026-10-15-kd53-eh-batch-witness.md
+    check docs/jira/v26.10.16/receipts/INDEX.md
+    check docs/jira/v26.10.16/receipts/r141-eh-batch-body-discriminator.md
+    check docs/jira/v26.10.16/receipts/cap-ingestion-functor.md
+    check docs/jira/v26.10.16/receipts/r178e-census-replay-repair.md
+    check docs/jira/v26.10.16/receipts/r119-r123-arm-list-store-reseed.md
+    check docs/jira/v26.10.16/receipts/r200a-kd70-delivery-annotations.md
+    check docs/jira/v26.10.16/receipts/r200b-kd71-xopt-props.md
+    check docs/jira/v26.10.16/receipts/r200d-kd68-selector-impl.md
+    check docs/jira/v26.10.16/receipts/r200f-kd46-mgmt-surface.md
+    check docs/jira/v26.10.16/receipts/r200h-kd76-pk-witness-repair.md
+    # Milestone wrap artifacts the docs name.
+    check docs/jira/v26.10.16/FINAL.md
+    check docs/jira/v26.10.16/RECEIPTS.md
+    check docs/jira/v26.10.16/WRAP_LEDGER.md
+    check docs/jira/v26.10.16/PUBLISH_RECORD.md
+    check docs/jira/v26.10.16/KNOWN_DIVERGENCES.md
+    check docs/RELEASE_NOTES_v26.10.16.md
     # Front door.
     check README.md
     exit $rc
