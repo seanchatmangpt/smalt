@@ -137,6 +137,7 @@ count, or PASS/FAIL token) found in the file.
 | r226-court-x | [r226-court-x2-run30-red.md](receipts/r226-court-x2-run30-red.md) | FAIL | Court-x2 wrap runs 29–30 — RED (shifting-failure, terminal) |
 | r229-court-x | [r229-court-x2-red.md](receipts/r229-court-x2-red.md) | UNKNOWN | Court-x2 wrap runs 29–30 — RED, typed defect list (terminal auditor) |
 | r231-kd94-up | [r231-kd94-uppath-witness.md](receipts/r231-kd94-uppath-witness.md) | ALIVE | r231 — KD-94 up-path witness: real @azure/cosmos AAD bearer vs smalt fixed bearer guard |
+| r232-80-20-e | [r232-80-20-errc-analysis.md](receipts/r232-80-20-errc-analysis.md) | PASS | r232 — 80/20 ERRC Analysis & Verification |
 | r24-vault-re | [r24-vault-recover-versioned.md](receipts/r24-vault-recover-versioned.md) | PASS | R24 (vault soft-delete / recover restores versioned material) |
 | r26-sentinel | [r26-sentinel-kql.md](receipts/r26-sentinel-kql.md) | PASS | R26: sentinel KQL repair |
 | r27-session- | [r27-session-ledger-attempt-entry.md](receipts/r27-session-ledger-attempt-entry.md) | PASS | R27 (session-ledger attempt entry, airgap seam) |

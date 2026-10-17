@@ -45,11 +45,7 @@ test-referenced). Queue = mechanical census first, kills second.
 
 ## REDUCE queue (docs+scripts lanes, may run in the frozen lane class)
 
-4. **`scripts/tf_provider_wrap.sh` kill-or-wire verification.** Only inbound
-   reference is a comment in `scripts/tf_mirror_env.sh:93` ("via
-   scripts/tf_provider_wrap.sh"). Verify whether `tf_mirror_env.sh`/`tf_smoke.sh`
-   actually invoke it; if truly unwired, delete the script + the comment, with a
-   receipt naming the invocation-absence proof (grep over justfile.d + scripts).
+4. **`scripts/tf_provider_wrap.sh` kill-or-wire verification.** VERIFIED-WIRED (2026-10-17, receipt `r232-80-20-errc-analysis.md`). Inbound callers verified in `scripts/smalt-tf:120` and `scripts/bench/c11_tf_loop.sh:406`. Script retained for post-init terraform provider wrapping in zero-dialog plugin environments.
 5. `docs/audit/` (SDK_SURFACE_PARITY_AUDIT.md, census_table.tsv,
    sections/aud1-4) — staleness re-check against the canonical
    `SDK_MATRIX.md` + KD register; archive if it duplicates the register
