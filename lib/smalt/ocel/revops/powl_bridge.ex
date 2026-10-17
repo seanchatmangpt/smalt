@@ -150,18 +150,22 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
     else
       with {:ok, log} <- ingest_log(path, opts),
            {:ok, model} <- fetch_model(opts) do
-        case Ex4pm.conform(log, model, object_type: object_type) do
-          {:ok, run} ->
-            {:ok,
-             %{
-               fitness: run.value.fitness,
-               standing: run.standing,
-               subject_hash: run.subject_hash,
-               receipt_hash: receipt_hash(run)
-             }}
+        if Code.ensure_loaded?(Ex4pm) do
+          case apply(Ex4pm, :conform, [log, model, [object_type: object_type]]) do
+            {:ok, run} ->
+              {:ok,
+               %{
+                 fitness: run.value.fitness,
+                 standing: run.standing,
+                 subject_hash: run.subject_hash,
+                 receipt_hash: receipt_hash(run)
+               }}
 
-          {:error, refusal} ->
-            {:error, {:ex4pm_refused, refusal}}
+            {:error, refusal} ->
+              {:error, {:ex4pm_refused, refusal}}
+          end
+        else
+          {:error, {:ex4pm_unavailable, "Ex4pm module is not available"}}
         end
       end
     end
@@ -212,9 +216,13 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   # -- in-process ingest ------------------------------------------------------
 
   defp discover_run(log, object_type) do
-    case Ex4pm.discover(log, object_type: object_type) do
-      {:ok, run} -> {:ok, run}
-      {:error, refusal} -> {:error, {:ex4pm_refused, refusal}}
+    if Code.ensure_loaded?(Ex4pm) do
+      case apply(Ex4pm, :discover, [log, [object_type: object_type]]) do
+        {:ok, run} -> {:ok, run}
+        {:error, refusal} -> {:error, {:ex4pm_refused, refusal}}
+      end
+    else
+      {:error, {:ex4pm_unavailable, "Ex4pm module is not available"}}
     end
   end
 
@@ -231,9 +239,13 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
   defp ingest_log(path, _opts) do
     case OcelNdjson.read_document(path) do
       {:ok, doc} ->
-        case Ex4pm.ingest(map_log(doc)) do
-          {:ok, log} -> {:ok, log}
-          {:error, reason} -> {:error, {:ex4pm_ingest_refused, reason}}
+        if Code.ensure_loaded?(Ex4pm) do
+          case apply(Ex4pm, :ingest, [map_log(doc)]) do
+            {:ok, log} -> {:ok, log}
+            {:error, reason} -> {:error, {:ex4pm_ingest_refused, reason}}
+          end
+        else
+          {:error, {:ex4pm_unavailable, "Ex4pm module is not available"}}
         end
 
       {:error, violations} ->

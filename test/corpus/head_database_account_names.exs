@@ -72,4 +72,28 @@ defmodule Smalt.Corpus.HeadDatabaseAccountNames do
 
     assert conn.status == 204
   end
+
+  @tag :corpus
+  test "HEAD with lowercased path segments -> 204 when exists, 404 when not exists with EMPTY body" do
+    conn_before =
+      arm(
+        :head,
+        "/subscriptions/#{@sub}/providers/microsoft.documentdb/databaseaccountnames/#{@name}"
+      )
+
+    assert conn_before.status == 404
+    assert conn_before.resp_body == ""
+
+    create = put_account()
+    assert create.status in [200, 201]
+
+    conn_after =
+      arm(
+        :head,
+        "/subscriptions/#{@sub}/providers/microsoft.documentdb/databaseaccountnames/#{@name}"
+      )
+
+    assert conn_after.status == 204
+    assert conn_after.resp_body == ""
+  end
 end
