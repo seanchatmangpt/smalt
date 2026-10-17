@@ -39,8 +39,7 @@ defmodule Smalt.Messaging.EventStream do
       # (last-write-wins by `topic/id` key — pinned divergence); when
       # `:event_stream_dedup_ids` is set, a republish of an id already stored
       # for the topic is refused with a typed error, proving the fix shape.
-      if Application.get_env(:smalt, :event_stream_dedup_ids, false) and
-           Store.get(@table, "#{topic}/#{id}") != :error do
+      if duplicate_id?(topic, id) do
         {:error, :duplicate_id}
       else
         seq = next_seq()
@@ -126,6 +125,14 @@ defmodule Smalt.Messaging.EventStream do
   # ---------------------------------------------------------------------------
 
   defp present?(value), do: is_binary(value) and value != ""
+
+  defp duplicate_id?(topic, id) do
+    dedup_enabled?() and Store.get(@table, "#{topic}/#{id}") != :error
+  end
+
+  defp dedup_enabled? do
+    Application.get_env(:smalt, :event_stream_dedup_ids, false)
+  end
 
   defp event_id(event) do
     case event["id"] do
