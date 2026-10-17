@@ -51,7 +51,7 @@ defmodule SmaltRouteNegativeTest do
 
   test "provider PUT with bad api-version -> 400 InvalidApiVersionParameter" do
     path =
-      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1?api-version=1999-01-01"
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1?api-version=2999-01-01"
 
     conn =
       conn(:put, path, %{"location" => "smalt-local"})
@@ -60,7 +60,7 @@ defmodule SmaltRouteNegativeTest do
     assert conn.status == 400
     body = Jason.decode!(conn.resp_body)
     assert body["error"]["code"] == "InvalidApiVersionParameter"
-    assert body["error"]["message"] =~ "1999-01-01"
+    assert body["error"]["message"] =~ "2999-01-01"
   end
 
   test "PUT of an unadmitted type -> 400 GraphLaw refusal envelope" do
@@ -101,7 +101,7 @@ defmodule SmaltRouteNegativeTest do
     conn =
       conn(
         :get,
-        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts?api-version=1999-01-01"
+        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts?api-version=2999-01-01"
       )
       |> Router.call(@opts)
 
@@ -122,7 +122,7 @@ defmodule SmaltRouteNegativeTest do
     conn =
       conn(
         :delete,
-        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1?api-version=1999-01-01"
+        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1?api-version=2999-01-01"
       )
       |> Router.call(@opts)
 
@@ -247,25 +247,32 @@ defmodule SmaltRouteNegativeTest do
     assert Store.list_prefix(:smalt_resources, String.downcase(rg <> "/providers/")) == []
   end
 
-  # Lens-4 cycle 2 (F1b): a deep-type PUT with NO explicit child route falls
-  # through the 2-segment generic route and the nested-diagnostics glob to
-  # 404 RouteNotFound WITHOUT any store write — no in-repo route can create
-  # the misshapen providers-shaped deep-type key the filter guards against.
+  # Lens-4 cycle 2 (F1b): a deep-type PUT falls through to 404 WITHOUT any
+  # store write — no in-repo route can create the misshapen providers-shaped
+  # deep-type key the filter guards against. virtualNetworkLinks now has a
+  # dedicated parented-child route, so the refusal is parent-gated
+  # (ResourceNotFound) instead of fall-through (RouteNotFound); either code
+  # satisfies the law — the load-bearing fence is the zero-store-write assert.
   test "unrouted deep-type PUT 404s without a store write (filter is defense-in-depth)" do
     rg = "/subscriptions/sub-1/resourceGroups/rg-1"
 
+    # api-version MUST be the registry's latest for the type (2018-09-01):
+    # the refusal-tier chain (api-version → admission → shape → properties)
+    # fires BEFORE the parent-existence 404, so a stale api-version now
+    # answers 400, not 404 — that tiering is asserted in the refusal sweep.
     conn =
       conn(
         :put,
         rg <>
           "/providers/Microsoft.Network/privateDnsZones/pz-1/virtualNetworkLinks/link-1" <>
-          "?api-version=2020-01-01",
+          "?api-version=#{Smalt.Registry.latest_version("Microsoft.Network/privateDnsZones/virtualNetworkLinks")}",
         %{"location" => "eastus"}
       )
       |> Router.call(@opts)
 
     assert conn.status == 404
-    assert Jason.decode!(conn.resp_body)["error"]["code"] == "RouteNotFound"
+
+    assert Jason.decode!(conn.resp_body)["error"]["code"] in ["RouteNotFound", "ResourceNotFound"]
     assert Store.list_prefix(:smalt_resources, String.downcase(rg <> "/")) == []
   end
 

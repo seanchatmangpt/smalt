@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PY-4 lane: real azure-servicebus SDK probes against the smalt substrate.
+Venv: test/sdk-python/.venv-sb (receipt: docs/jira/v26.10.14/sdk-results/py-servicebus.md).
 
 Boots nothing itself — the substrate must already be listening on
 AMQP_PORT/ARM_PORT with SMALT_SB_SHARED_KEY as the broker shared key.

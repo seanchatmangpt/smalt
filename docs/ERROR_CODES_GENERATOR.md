@@ -64,3 +64,8 @@ Any change to the generator's extraction patterns must be mutation-proven:
 delete or perturb a pattern and show the fence (or the new UNRESOLVED_STATUS
 fail-closed) fires; restore byte-identical. See
 `tmp/errc/runtime-contracts-lens4/cycle-N.md` receipts for examples.
+
+## See Also
+
+- `docs/ERROR_CODES.md` (the generated projection this contract covers)
+- `docs/jira/v26.10.16/receipts/r11-error-codes-regen.md` (regen + drift-fence receipt)

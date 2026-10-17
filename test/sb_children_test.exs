@@ -88,17 +88,27 @@ defmodule Smalt.SbChildrenTest do
     end
 
     @tag sb_children: "queue-api-version"
-    test "stale api-version -> 400 InvalidApiVersionParameter" do
+    test "stale api-version admits monotonically; > latest -> 400 InvalidApiVersionParameter" do
       put_ns("sbns3")
 
-      conn =
+      # KD-78 monotonic admission (fenced in test/api_version_admission_test.exs):
+      # stale but parseable versions admit normally.
+      stale_conn =
         conn(:put, sb_path("sbns3", "queues", "q9") <> "?api-version=1999-01-01", %{
           "location" => "eastus"
         })
         |> Router.call(@opts)
 
-      assert {400, "InvalidApiVersionParameter"} = {conn.status, code(conn)}
-      assert body(conn)["error"]["message"] =~ "1999-01-01"
+      assert {201, nil} = {stale_conn.status, code(stale_conn)}
+
+      # Only a version NEWER than the registry latest refuses.
+      future_conn =
+        conn(:put, sb_path("sbns3", "queues", "q9f") <> "?api-version=2099-01-01", %{
+          "location" => "eastus"
+        })
+        |> Router.call(@opts)
+
+      assert {400, "InvalidApiVersionParameter"} = {future_conn.status, code(future_conn)}
     end
 
     @tag sb_children: "queue-missing-parent"
@@ -238,6 +248,41 @@ defmodule Smalt.SbChildrenTest do
 
       gone = conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts)
       assert {404, "ResourceNotFound"} = {gone.status, code(gone)}
+    end
+
+    @tag eh_children: "consumergroup-list-default"
+    test "consumergroup LIST always carries $default; hub with 2 CGs lists 3" do
+      put_eh_ns("ehns3")
+      put_eh_child("ehns3", "eventhubs", "hubd")
+      put_eh_child("ehns3", "eventhubs/hubd/consumergroups", "cg-a")
+      put_eh_child("ehns3", "eventhubs/hubd/consumergroups", "cg-b")
+
+      list_conn =
+        conn(:get, eh_list_path("ehns3", "eventhubs/hubd/consumergroups") <> "?api-version=2021-04-01")
+        |> Router.call(@opts)
+
+      assert list_conn.status == 200
+      value = body(list_conn)["value"]
+      names = Enum.map(value, & &1["name"])
+      assert Enum.sort(names) == ["$default", "cg-a", "cg-b"]
+
+      default = Enum.find(value, &(&1["name"] == "$default"))
+      assert default["type"] == "Microsoft.EventHub/namespaces/eventhubs/consumergroups"
+
+      assert default["id"] ==
+               "/subscriptions/sub-1/resourceGroups/rg-1/namespaces/ehns3/eventhubs/hubd/consumergroups/$default"
+
+      assert is_map(default["properties"])
+
+      # empty hub: value is exactly [$default]
+      put_eh_child("ehns3", "eventhubs", "hub-empty")
+
+      empty_conn =
+        conn(:get, eh_list_path("ehns3", "eventhubs/hub-empty/consumergroups") <> "?api-version=2021-04-01")
+        |> Router.call(@opts)
+
+      assert empty_conn.status == 200
+      assert [%{"name" => "$default"}] = body(empty_conn)["value"]
     end
 
     @tag eh_children: "eventhub-missing-parent"

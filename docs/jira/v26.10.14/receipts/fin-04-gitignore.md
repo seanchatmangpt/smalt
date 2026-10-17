@@ -27,3 +27,21 @@ trailing-slash patterns only match directories:
   remains intentionally ignored as before.
 
 Test dirs removed after the check (`rmdir`). No commits made.
+
+## Re-witness 2026-10-16
+
+```
+$ mkdir -p _build_f16L6 _build-laneX && git check-ignore -v _build_f16L6 _build-laneX; echo "exit=$?"
+.gitignore:4:/_build_*	_build_f16L6
+.gitignore:3:/_build-*/	_build-laneX
+exit=0
+$ rmdir _build_f16L6 _build-laneX && echo "rmdir ok"
+rmdir ok
+```
+
+Both patterns hold on the current tree: `_build_*` via line 4, `_build-lane*` via
+line 3 (`/_build-*/`, directory-only — a bare `git check-ignore` against a
+non-existent `_build-laneX` does not match, the dir must exist to witness the
+trailing-slash rule). Test dirs removed after the check.
+
+check-ignore exit 0; rmdir exit 0. Re-witnessed on the current tree.

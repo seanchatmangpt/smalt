@@ -8,7 +8,7 @@ REPO="$PWD"
 PY=$REPO/test/sdk-python/.venv-eh/bin/python
 LOG=$REPO/test/sdk-python/py5-substrate.log
 
-# private port block (docs/DEV_LOOP.md range 39000-39999), distinct from
+# private port block (docs/how-to/dev-loop.md range 39000-39999), distinct from
 # eh-run.mjs's 39172-39446 block.
 AMQP_PORT=39272
 EH_PORT=39273

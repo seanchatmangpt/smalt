@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PY-3 lane: REAL python azure-cosmos SDK against the smalt substrate Cosmos plane.
+Venv: test/sdk-python/.venv-cosmos (receipt: docs/jira/v26.10.14/sdk-results/py-cosmos.md).
 
 Endpoint: http://127.0.0.1:8443 (MIX_ENV=test anonymous auth). Master key:
 any 64-char hex string (substrate runs anonymous auth; the SDK still signs
@@ -10,13 +11,15 @@ gate (only `SELECT * FROM c` admitted; anything else 400), cross-partition
 query, pagination via continuation (>100 docs), stale-etag 412 on
 replace/delete, list containers with continuation.
 """
+import os
 import secrets
 
 import azure.cosmos.cosmos_client as cc
 from azure.cosmos import exceptions
 from azure.core import MatchConditions
 
-ENDPOINT = "http://127.0.0.1:8443"
+# Lane-351: port env override (sibling pattern: py_arm_resources SMALT_ARM_BASE).
+ENDPOINT = os.environ.get("SMALT_EGRESS_BASE", "http://127.0.0.1:8443")
 KEY = secrets.token_hex(32)
 
 results = []

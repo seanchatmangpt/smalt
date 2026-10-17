@@ -1,5 +1,9 @@
 # PUBLISH_CHECK
 
+> ARCHIVED (v26.10.16). Successor record:
+> `docs/jira/v26.10.16/PUBLISH_RECORD.md` (typed-blocked verdict, per-blocker close
+> conditions, NEXT_WINDOW §13 remediation queue).
+
 Hex publish readiness check for smalt 26.10.14, run 2026-10-14.
 Environment: hex 2.5.1, Elixir 1.19.5, OTP 28.3.1.
 
@@ -33,7 +37,7 @@ Environment: hex 2.5.1, Elixir 1.19.5, OTP 28.3.1.
 `--dry-run` is not a supported flag (hex 2.5.1 supports only `--output/-o`
 and `--unpack`). Equivalent dry run:
 
-```
+```text
 $ mix hex.build -o /tmp/hex-smalt-check/smalt.tar
 Building smalt 26.10.14
   Dependencies:
@@ -78,7 +82,7 @@ Checks:
 
 Run after the leak scan, before publishing:
 
-```
+```text
 just gen-error-codes
 git diff --exit-code docs/ERROR_CODES.md
 ```
@@ -94,7 +98,8 @@ See blocking items 2 and 3 above.
 
 ## 4. mix.exs gaps (coordinator-owned, reported not edited)
 
-- **Path deps in deps list**: the two path deps fail `hex.build`. Options: (a) publish to hex and pin versions, (b) keep
+- **Path deps in deps list**: the two path deps fail `hex.build`. Options: (a) publish to hex and
+   pin versions, (b) keep
   as local dev-only via `only: :dev` so hex ignores them, (c) drop from the
   package's deps list.
 - **No `files:` list**: packaging uses hex defaults. Defaults already
@@ -130,7 +135,7 @@ unchanged — still open.
 
 ## 1. Build transcript (real run)
 
-```
+```text
 $ mix hex.build -o /tmp/hex-smalt-v2/smalt.tar
 Building smalt 26.10.14
   Dependencies:
@@ -263,7 +268,8 @@ v2 blocker 1 (signing.key) — **NOT FIXED.** v2 blockers 2-4 — FIXED/OK
    the three patterns ever fire. `**/*key*.pem` additionally can never
    match: the keys have no `.pem` extension. Fix (mix.exs, coordinator):
    either add `lib/smalt/runtime_contracts/ggen` handling via patterns hex
-   actually matches (e.g. `exclude_patterns: ["lib/smalt/runtime_contracts/ggen/.ggen/**", ...]` verified against a real `mix hex.build`,
+   actually matches (e.g. `exclude_patterns: ["lib/smalt/runtime_contracts/ggen/.ggen/**", ...]`
+   verified against a real `mix hex.build`,
    or simplest and provable: `rm -r` the `.ggen*` dirs from the packaged
    source dir isn't possible for hex, so the robust fix is moving the
    runtime-contract fixtures out of `lib/` (e.g. to
@@ -363,7 +369,7 @@ rotation deliberately NOT performed (coordinator-owned, post-window).
 
 ## Gate (real output, this pass)
 
-```
+```text
 $ mix test test/runtime_contracts_test.exs
 28 tests, 0 failures        (cross-anchor fence green)
 

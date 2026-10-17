@@ -38,7 +38,7 @@ Classification:
 | lib/smalt/data_plane/key_vault_actions.ex:331 verify | BOUNDARY-TRANSLATOR | crypto failure -> `"valid": false` (semantically correct: bad crypto = invalid signature) |
 | lib/smalt/messaging/amqp/primitive_codec.ex:276-277,289-290 | BOUNDARY-TRANSLATOR | `throw` -> `{:error, reason}`; malformed wire never raises |
 | lib/smalt/messaging/amqp/frame_codec.ex:518-532 decode_performative | BOUNDARY-TRANSLATOR (IN-FLIGHT file) | FunctionClauseError -> `{:error, :bad_performative_fields}` — connection answers with clean close/detach |
-| lib/smalt/messaging/amqp/frame_codec.ex:690-693 safe_atom | IN-FLIGHT-SKIP — observation for owner: `ArgumentError -> String.to_atom(name)` creates atoms from wire input; audit for atom-table flood against unbounded wire symbols |
+| lib/smalt/messaging/amqp/frame_codec.ex:745-751 safe_atom | RESOLVED (2026-10-16, lane R95) — v1 observation superseded: the `ArgumentError -> String.to_atom(name)` fallback is GONE; current body is `String.to_existing_atom` + binary passthrough (atoms never minted from wire; see the v2 FIXED entry below). Regression fence: `test/amqp/fuzz_test.exs` `@tag :atom_flood` test — structural asserts primary, retry-windowed atom-delta secondary, 50k-key scale step |
 | lib/smalt/egress_router.ex:1529 safe_dispatch | BOUNDARY-TRANSLATOR (IN-FLIGHT file) | malformed body -> 400 InvalidBody envelope (the doctrine's legal example) |
 | lib/smalt/egress_router.ex:1425-1427 blob encode rescue | BOUNDARY-TRANSLATOR (IN-FLIGHT file) | encode failure -> 500 + Logger.error, refusal not continuation |
 | test/kv_tls_test.exs:235,248 pkix_equal?/rsa_self_verify | WITNESS | rescue -> false makes the assertion fail (typed false) |
@@ -58,9 +58,15 @@ No additional swallow found in those files beyond the frame_codec safe_atom note
 ## Gate receipts
 
 - `mix compile` — 0 errors.
-- `mix test test/telemetry_test.exs test/security/security_hardening_test.exs test/data_plane/cosmos_test.exs` — 69 tests, 0 failures (at the sweep run; **136/0** as of 2026-10-15, docs-corpus cycle 9 re-run — suites grew).
-- `mix test test/tls_test.exs test/metadata_endpoints_test.exs` — 16 tests, 0 failures (at the sweep run; re-verified **16/0 settled 2026-10-15** docs-corpus-lens4 — the 16/2 seen at the sweep was a rotating port-contention flake that settles green run-to-run (16/2 -> 16/0 witnessed same hour); `tls_test` green).
-- `mix test test/amqp/broker_facade_test.exs` — 4 tests, 0 failures (contains the sweeper fail-closed witness).
+- `mix test test/telemetry_test.exs test/security/security_hardening_test.exs
+  test/data_plane/cosmos_test.exs` — 69 tests, 0 failures (at the sweep run; **136/0** as of
+  2026-10-15, docs-corpus cycle 9 re-run — suites grew).
+- `mix test test/tls_test.exs test/metadata_endpoints_test.exs` — 16 tests, 0 failures (at the sweep
+  run; re-verified **16/0 settled 2026-10-15** docs-corpus-lens4 — the 16/2 seen at the sweep was a
+  rotating port-contention flake that settles green run-to-run (16/2 -> 16/0 witnessed same hour);
+  `tls_test` green).
+- `mix test test/amqp/broker_facade_test.exs` — 4 tests, 0 failures (contains the sweeper
+  fail-closed witness).
 - Behavior witnesses: telemetry emit path (11 tests), TLS fail-closed raise path
   (metadata_endpoints https twin boots real Bandit https listener),
   sweeper direct-call pass (broker facade test).
@@ -170,10 +176,11 @@ Each v3.1 entry re-verified against the live checkout:
    grep witness: `kill -9` count 0 across all three runners. The residual
    census hazard (hardcoded front-door ports, no override) was closed in
    lens-2 cycle 1 (SMALT_TEST_* honored, defaults unchanged).
-2. **RESOLVED (re-checked 2026-10-15, docs-corpus-lens4: `lsof -ti tcp:{15672,19443} -sTCP:LISTEN` returns no holders).** Witnessed 2026-10-15 09:49: three orphaned beams from the
+2. **RESOLVED (re-checked 2026-10-15, docs-corpus-lens4: `lsof -ti tcp:{15672,19443} -sTCP:LISTEN`
+  returns no holders).** Witnessed 2026-10-15 09:49: three orphaned beams from the
    adopted 19443 block (PIDs 24774 / 35595 / 2500) holding
    15672/15673/19443/18443/19444. Mitigated by the documented private-port
-   allocation table (docs/DEV_LOOP.md, range 39000-39999) — eh-run defaults
+   allocation table (docs/how-to/dev-loop.md, range 39000-39999) — eh-run defaults
    moved out of that block in cycle 1.
 3. **SUPERSEDED by full-listener auto-scope.** Verified-fresh-single-port is
    insufficient: the Application binds six fixed listeners, and scoping only
@@ -182,7 +189,7 @@ Each v3.1 entry re-verified against the live checkout:
    bench/court auto-scope over the whole listener set + durable readiness
    gate (2 s settle re-probe), receipt records the chosen block.
 
-Canonical range and allocation table: docs/DEV_LOOP.md "Private port
+Canonical range and allocation table: docs/how-to/dev-loop.md "Private port
 allocation" (39000-39999; front door fail-closed, holders never killed).
 
 ## v3.3 addendum — lens-3 (2026-10-15, dx-scripts-lens3 cycles 1-3)

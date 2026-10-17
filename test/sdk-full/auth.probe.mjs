@@ -31,7 +31,7 @@ function pathResolve(rel) {
   return path.resolve(import.meta.dirname, rel);
 }
 
-// Private ports (docs/DEV_LOOP.md private range, unclaimed slots).
+// Private ports (docs/how-to/dev-loop.md private range, unclaimed slots).
 const ARM_PORT = Number(process.env.SMALT_TS_ARM_PORT || 39681);
 const AMQP_PORT = Number(process.env.SMALT_TS_AMQP_PORT || 39682);
 const EH_PORT = Number(process.env.SMALT_TS_EH_PORT || 39683);

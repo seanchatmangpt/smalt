@@ -1,8 +1,10 @@
 // TS-3 lane: real @azure/cosmos SDK probe against smalt Cosmos NoSQL plane (8443).
 import { CosmosClient } from "@azure/cosmos";
 import crypto from "node:crypto";
+import net from "node:net";
 
-const ENDPOINT = "http://127.0.0.1:8443";
+// Lane-351: port env override (mirrors blob.probe.mjs SMALT_TS_EGRESS).
+const ENDPOINT = process.env.SMALT_TS_EGRESS || "http://127.0.0.1:8443";
 const MASTER_KEY = crypto.randomBytes(32).toString("hex");
 const results = [];
 function rec(name, status, detail) { results.push({ name, status, detail }); console.log(`[${status}] ${name} — ${detail}`); }
@@ -15,8 +17,33 @@ const client = () => new CosmosClient({
 });
 const cosmos = client();
 
+// Substrate preflight: this probe attaches, it does not boot. Exit 2
+// (substrate down) loud, never a fake "1 = test fail" on a dead plane;
+// the first createIfNotExists is otherwise an unguarded top-level await
+// whose rejection would exit 1 (harness error masquerading as test fail).
+const COSMOS_PORT = Number(new URL(ENDPOINT).port) || 80;
+await new Promise((resolve) => {
+  const s = net.connect({ host: "127.0.0.1", port: COSMOS_PORT, timeout: 2000 });
+  s.once("connect", () => { s.destroy(); resolve(); });
+  s.once("timeout", () => {
+    s.destroy();
+    console.error(`[cosmos-probe] substrate down: no listener on 127.0.0.1:${COSMOS_PORT} (ENDPOINT=${ENDPOINT}). Exit 2.`);
+    process.exit(2);
+  });
+  s.once("error", () => {
+    console.error(`[cosmos-probe] substrate down: no listener on 127.0.0.1:${COSMOS_PORT} (ENDPOINT=${ENDPOINT}). Exit 2.`);
+    process.exit(2);
+  });
+});
+
 const dbId = `ts3db-${Date.now()}`;
-const { database } = await cosmos.databases.createIfNotExists({ id: dbId });
+let database;
+try {
+  ({ database } = await cosmos.databases.createIfNotExists({ id: dbId }));
+} catch (e) {
+  console.error(`[cosmos-probe] harness error on db.createIfNotExists: ${edesc(e)}`);
+  process.exit(3);
+}
 rec("db.createIfNotExists", "PASS", `database ${dbId} created (statusCode ${database.id ? "ok" : "?"})`);
 const { container } = await database.containers.createIfNotExists({ id: "c1", partitionKey: { paths: ["/pk"] } });
 rec("container.createIfNotExists", "PASS", "container c1 with /pk partition key");

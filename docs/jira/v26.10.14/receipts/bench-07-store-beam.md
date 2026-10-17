@@ -42,3 +42,18 @@ BEAM meta: 16 schedulers, OTP 28.
 ## Standing
 
 ALIVE — executed on the exact subject; JSONL + this receipt on disk.
+
+## Re-witness 2026-10-16
+
+```
+$ MIX_ENV=test MIX_BUILD_ROOT=_build-lane316 mix run --no-start scripts/bench/b7_store_beam.exs 2>&1 | tail -12
+{"lane":"b7","surface":"store-beam","op":"insert_new_race_64","round":10,"n":64,"winners":1,"losers":63,"ok":true,"total_ms":1.079}
+...rounds 11..19 identical shape (winners=1, losers=63, ok=true, 0.649-0.996 ms)...
+{"lane":"b7","surface":"store-beam","op":"insert_new_race_64","round":20,"n":64,"winners":1,"losers":63,"ok":true,"total_ms":0.444}
+{"lane":"b7","surface":"store-beam","op":"done"}
+exit=0
+```
+
+Exactly-one-winner guarantee re-witnessed 20/20 rounds on the current tree
+(`_build-lane316` private build root, no substrate). Full output in session log;
+the 20 rounds re-run end-to-end, exit 0.

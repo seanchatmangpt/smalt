@@ -25,6 +25,7 @@ GATES_UNDER_TEST = [
     "ledger-chain",
     "queue-capacity",
     "lock-clamp",
+    "appconfig-etag-cas",
 ]
 FILES = {
     "cosmos-etag-cas": "cosmos_etag_cas_gate.py",
@@ -32,6 +33,7 @@ FILES = {
     "ledger-chain": "ledger_chain_gate.py",
     "queue-capacity": "queue_capacity_gate.py",
     "lock-clamp": "lock_clamp_gate.py",
+    "appconfig-etag-cas": "appconfig_etag_cas_gate.py",
 }
 
 

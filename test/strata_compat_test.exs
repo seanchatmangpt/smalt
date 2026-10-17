@@ -155,7 +155,7 @@ defmodule StrataCompatTest do
 
       # Duplicate contents refused (smalt's 409 law; strata ledger has no
       # equivalent — strata transitions are value-shaped, not content-deduped).
-      assert {:error, 409, "LedgerItemAlreadyExists"} =
+      assert {:error, 409, %{"error" => %{"code" => "LedgerItemAlreadyExists"}}} =
                Smalt.Security.ConfidentialLedger.append_transaction(
                  "strata-compat-ledger",
                  %{"n" => 1}
@@ -269,6 +269,18 @@ defmodule StrataCompatTest do
 
       :ets.insert(:smalt_resources, {"k", "v0"})
 
+      # R178g disclosure (minimal unblock fix, owner lane R178g store.ex):
+      # this non-map probe row previously leaked into the SHARED
+      # :smalt_resources table with no cleanup, and Smalt.Store.list/1 (a
+      # whole-table walk, correctly unfiltered per the R144 guard contract)
+      # surfaced it into store_churn_test's is_map assertion under module
+      # shuffle. Success-path delete below + on_exit for the failure path.
+      on_exit(fn ->
+        if :ets.info(:smalt_resources) != :undefined do
+          :ets.delete(:smalt_resources, "k")
+        end
+      end)
+
       assert :ok = Smalt.Store.compare_and_swap(:smalt_resources, "k", "v0", "v1")
       assert {:ok, "v1"} = Smalt.Store.get(:smalt_resources, "k")
 
@@ -288,6 +300,8 @@ defmodule StrataCompatTest do
         |> Enum.count(&(&1 == :ok))
 
       assert winner == 1
+
+      :ets.delete(:smalt_resources, "k")
 
       ## DELIBERATE DIFFERENCE: strata store is immutable content-addressed
       ## storage (key = SHA-256(value); CAS = put-if-absent-by-digest with

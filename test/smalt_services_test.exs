@@ -149,16 +149,28 @@ defmodule SmaltServicesTest do
     assert missing_av_conn.status == 400
     assert Jason.decode!(missing_av_conn.resp_body)["error"]["code"] == "MissingApiVersionParameter"
 
-    # Negative: wrong api-version -> 400 InvalidApiVersionParameter
-    bad_av_conn =
+    # KD-78 monotonic api-version admission (operator ruling, fenced in
+    # test/api_version_admission_test.exs): a STALE but parseable version
+    # admits normally; only > latest -> 400 InvalidApiVersionParameter.
+    stale_av_conn =
       conn(:put, hsm_path <> "?api-version=1999-01-01", %{
         "location" => "eastus",
         "properties" => %{"skuName" => "Standard_B1"}
       })
       |> ArmRouter.call(@arm_opts)
 
-    assert bad_av_conn.status == 400
-    assert Jason.decode!(bad_av_conn.resp_body)["error"]["code"] == "InvalidApiVersionParameter"
+    assert stale_av_conn.status in 200..299
+    refute Jason.decode!(stale_av_conn.resp_body)["error"]
+
+    future_av_conn =
+      conn(:put, hsm_path <> "-future?api-version=2099-01-01", %{
+        "location" => "eastus",
+        "properties" => %{"skuName" => "Standard_B1"}
+      })
+      |> ArmRouter.call(@arm_opts)
+
+    assert future_av_conn.status == 400
+    assert Jason.decode!(future_av_conn.resp_body)["error"]["code"] == "InvalidApiVersionParameter"
   end
 
   test "ARM Gateway PUT/GET for Tier 2: AKS Enclave Clusters and WASI Container Apps" do

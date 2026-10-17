@@ -53,3 +53,18 @@ dropped every b8 row (all 6 jsonl lines truncated — missing closing brace) and
 
 ALIVE: recipe invoked, file regenerated from disk jsonl, idempotency witnessed
 by double-run md5 equality.
+
+## Re-witness 2026-10-16
+
+```
+$ just bench-report 2>&1 | tail -4
+[BENCH-REPORT] FAIL(v26.10.14): 16 malformed row(s) skipped; report incomplete
+[BENCH-REPORT] v26.10.14: 44 file(s), 97 rows -> /Users/sac/smalt/docs/jira/v26.10.14/BENCH_RESULTS.md
+[BENCH-REPORT] v26.10.16: 2 file(s), 5 rows -> /Users/sac/smalt/docs/jira/v26.10.16/BENCH_RESULTS.md
+error: recipe `bench-report` failed on line 10 with exit code 1
+```
+
+Verdict differs from the original receipt: the recipe now FAILs (exit 1) because
+16 bench jsonl rows are Elixir-map-syntax rather than JSON (a7/a8 lanes); the
+report is still written (44 files, 97 rows for v26.10.14). Regeneration works;
+the malformed rows are a pre-existing data defect, not a reporter defect.

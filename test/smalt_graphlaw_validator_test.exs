@@ -16,8 +16,9 @@ defmodule Smalt.GraphLaw.ValidatorTest do
         assert Map.has_key?(shapes, name), "missing shape #{name}"
       end
 
-      # 11 shapes as of the ServiceBusNamespaceShape addition (was 10).
-      assert length(Map.keys(shapes)) == 11
+      # 14 shapes: 11 as of ServiceBusNamespaceShape, +KeyVaultSecretShape
+      # +SqlDatabaseShape +SqlContainerShape (added later, pins lagged).
+      assert length(Map.keys(shapes)) == 14
     end
 
     test "extracts required properties and messages" do
@@ -123,6 +124,59 @@ defmodule Smalt.GraphLaw.ValidatorTest do
         })
 
       assert result == {:ok}
+    end
+
+    test "azurerm sku object {name, tier} satisfies skuName (storage + vault)" do
+      # azurerm storageAccounts wire form: sku {name: "Standard_LRS", tier: "Standard"}
+      assert {:ok} =
+               Validator.validate_resource("Microsoft.Storage/storageAccounts", %{
+                 "location" => "eastus",
+                 "sku" => %{"name" => "Standard_LRS", "tier" => "Standard"},
+                 "properties" => %{}
+               })
+
+      assert {:ok} =
+               Validator.validate_resource("Microsoft.Storage/storageAccounts", %{
+                 "location" => "eastus",
+                 "properties" => %{"sku" => %{"name" => "Standard_LRS"}}
+               })
+
+      # vault wire form: sku {name: "standard"} — both containers accepted
+      assert {:ok} =
+               Validator.validate_resource("Microsoft.KeyVault/vaults", %{
+                 "location" => "eastus",
+                 "sku" => %{"name" => "standard"}
+               })
+
+      assert {:ok} =
+               Validator.validate_resource("Microsoft.KeyVault/vaults", %{
+                 "location" => "eastus",
+                 "properties" => %{"sku" => %{"name" => "standard"}}
+               })
+    end
+
+    test "sku alias does not weaken refusals: absent/nil sku still refuses" do
+      # neither sku nor skuName -> minCount violation
+      assert {:invalid, violations} =
+               Validator.validate_resource("Microsoft.Storage/storageAccounts", %{
+                 "location" => "eastus",
+                 "properties" => %{}
+               })
+
+      assert Enum.all?(violations, &(&1.constraint == "minCount"))
+
+      assert {:invalid, _} =
+               Validator.validate_resource("Microsoft.KeyVault/vaults", %{
+                 "location" => "eastus",
+                 "sku" => %{"tier" => "Standard"}
+               })
+
+      # nil sku.name counts as absent, matching the nil-skuName law
+      assert {:invalid, _} =
+               Validator.validate_resource("Microsoft.KeyVault/vaults", %{
+                 "location" => "eastus",
+                 "sku" => %{"name" => nil}
+               })
     end
 
     test "nil property value counts as absent" do
@@ -250,7 +304,7 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       text = File.read!(Path.expand("../priv/shacl/smalt-shapes.ttl", __DIR__))
       shapes = ShapeFile.parse!(text, "smalt-shapes.ttl")
 
-      assert map_size(shapes) == 11
+      assert map_size(shapes) == 14
       assert shapes["DefaultShape"].required != []
     end
 
@@ -310,7 +364,9 @@ defmodule Smalt.GraphLaw.ValidatorTest do
         shape = shape_for_admitted_type(type, Validator.shapes())
         payload = conforming_payload(type)
 
-        for prop <- shape.required do
+        # minCount-0 properties are OPTIONAL vocabulary declarations
+        # (defaults bijection): deleting one must NOT yield a violation.
+        for prop <- Enum.filter(shape.required, &(&1.min_count != 0)) do
           violated =
             case prop.path do
               "location" -> Map.delete(payload, "location")

@@ -4,9 +4,12 @@
 // Run: NODE_EXTRA_CA_CERTS=../../.smalt/tls/ca-cert.pem node keyvault.probe.mjs
 import { KeyClient, CryptographyClient } from "@azure/keyvault-keys";
 import * as crypto_module from "node:crypto";
+import net from "node:net";
 
-const ARM = "http://127.0.0.1:9443";
-const VAULT = "https://127.0.0.1:9444";
+// Lane-351: port env overrides (mirror ts-run.mjs SMALT_TS_* convention).
+const ARM = process.env.SMALT_TS_ARM || "http://127.0.0.1:9443";
+const VAULT = process.env.SMALT_TS_ARM_TLS || "https://127.0.0.1:9444";
+const EGRESS = process.env.SMALT_TS_EGRESS || "http://127.0.0.1:8443";
 const MEASUREMENT = "11".repeat(32);
 
 const results = [];
@@ -34,7 +37,7 @@ async function mintBearer() {
 // Attestation token for SKR release: POST /attest/:type with the seeded
 // baseline measurement; substrate signs the claims (ReceiptSigner).
 async function mintAttestationToken() {
-  const res = await fetch("http://127.0.0.1:8443/attest/maa-v10", {
+  const res = await fetch(`${EGRESS}/attest/maa-v10`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ measurement: MEASUREMENT }),
@@ -63,7 +66,39 @@ class StaticCredential {
   }
 }
 
-const bearer = await mintBearer();
+// Substrate preflight: this probe attaches, it does not boot. Exit 2
+// (substrate down) loud, never a fake "1 = test fail" on a dead plane.
+const preflightPorts = [
+  ["ARM", Number(new URL(ARM).port) || 80],
+  ["VAULT", Number(new URL(VAULT).port) || 443],
+];
+for (const [name, port] of preflightPorts) {
+  await new Promise((resolve) => {
+    const s = net.connect({ host: "127.0.0.1", port, timeout: 2000 });
+    s.once("connect", () => { s.destroy(); resolve(); });
+    s.once("timeout", () => {
+      s.destroy();
+      console.error(`[keyvault-probe] substrate down: no listener on 127.0.0.1:${port} (${name}). Exit 2.`);
+      process.exit(2);
+      resolve();
+    });
+    s.once("error", () => {
+      console.error(`[keyvault-probe] substrate down: no listener on 127.0.0.1:${port} (${name}). Exit 2.`);
+      process.exit(2);
+      resolve();
+    });
+  });
+}
+
+// Guard the unguarded top-level mint: a rejection here would exit 1
+// (harness error masquerading as test fail) — exit 3 per contract.
+let bearer;
+try {
+  bearer = await mintBearer();
+} catch (e) {
+  console.error(`[keyvault-probe] harness error minting bearer: ${e?.name}: ${e?.message}`);
+  process.exit(3);
+}
 console.log("bearer minted, len=" + bearer.length);
 
 // Real SDK 4.10 uses CHALLENGE-BASED auth: it sends "Bearer " with an empty
@@ -87,6 +122,10 @@ function addForceBearer(keyClient, token) {
 
 const client = new KeyClient(VAULT, new StsCredential(bearer), {
   allowInsecureConnection: true,
+  // Lane-351: SDK 4.10 challenge-resource check requires a subdomain of the
+  // challenge host (endsWith "."+hostname) — an IP-literal vault host can
+  // never pass, port-independent. Emulator: disable, like allowInsecureConnection.
+  disableChallengeResourceVerification: true,
   retryOptions: { maxRetries: 0 },
 });
 
@@ -224,7 +263,12 @@ try {
   const attestation = await mintAttestationToken();
   const skrClient = new KeyClient(VAULT, new StaticCredential(attestation), {
     allowInsecureConnection: true,
+    disableChallengeResourceVerification: true,
     retryOptions: { maxRetries: 0 },
+    // SHIM-COURT parity note: emulator enforces real AKV 7.x surface; SDK
+    // default 2025-07-01 returns 400 on releaseKey. serviceVersion pins the
+    // per-client api-version.
+    serviceVersion: "7.4",
   });
   addForceBearer(skrClient, attestation);
   const rel = await skrClient.releaseKey("ts7-skr", "https://example.com/recipient");
@@ -331,6 +375,7 @@ try {
   const cryptoClient = new CryptographyClient(
     `${VAULT}/keys/ts7-crypto`,
     new StsCredential(bearer),
+    { disableChallengeResourceVerification: true, allowInsecureConnection: true },
   );
   addForceBearer(cryptoClient, bearer);
   const plain = Buffer.from("ts7 crypto probe payload");

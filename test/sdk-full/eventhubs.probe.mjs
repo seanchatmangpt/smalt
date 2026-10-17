@@ -18,7 +18,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
-// Private block (docs/DEV_LOOP.md "Private port allocation", 39000-39999):
+// Private block (docs/how-to/dev-loop.md "Private port allocation", 39000-39999):
 // 39690-39694, one allocation for this harness.
 const AMQP_PORT = Number(process.env.SMALT_TSEH_AMQP_PORT || 39690);
 const EH_PORT = Number(process.env.SMALT_TSEH_EH_PORT || 39691);
@@ -240,7 +240,12 @@ async function main() {
             console.error(`[wire-delivery] processError: ${err?.name}: ${String(err?.message).slice(0, 200)}`);
           },
         },
-        { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 2 },
+        // SDK-native surface for the last_enqueued_* delivery annotations:
+        // ReceivedEventData NEVER carries lastEnqueuedOffset/lastSequenceNumber/
+        // lastEnqueuedTime (convertAMQPMesage in partitionReceiver.js drops
+        // them); they surface on context.lastEnqueuedEventProperties only when
+        // trackLastEnqueuedEventProperties is set (partitionPump.js:100-101).
+        { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 2, trackLastEnqueuedEventProperties: true },
       );
       subHandles.push(sub);
 
@@ -325,7 +330,12 @@ async function main() {
             console.error(`[batch-unwrap] processError: ${err?.name}: ${String(err?.message).slice(0, 200)}`);
           },
         },
-        { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 2 },
+        // SDK-native surface for the last_enqueued_* delivery annotations:
+        // ReceivedEventData NEVER carries lastEnqueuedOffset/lastSequenceNumber/
+        // lastEnqueuedTime (convertAMQPMesage in partitionReceiver.js drops
+        // them); they surface on context.lastEnqueuedEventProperties only when
+        // trackLastEnqueuedEventProperties is set (partitionPump.js:100-101).
+        { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 2, trackLastEnqueuedEventProperties: true },
       );
       subHandles.push(sub);
 
@@ -355,6 +365,94 @@ async function main() {
       return `batch of ${N} JSON payloads; bodies deepStrictEqual originals in order; ` +
         `sequenceNumbers=${JSON.stringify(seqs)} strictly increasing; ` +
         `recursive batch-envelope unwrap confirmed at SDK tier`;
+    } finally {
+      for (const s of subHandles) await boundedClose(s, 2500);
+      await boundedClose(consumer);
+      await boundedClose(producer);
+    }
+  });
+
+  // Probe: GAP-A2-03/04 falsifier — the real SDK consumer must surface
+  // enqueuedTimeUtc / offset / partitionKey (from x-opt-* message
+  // annotations) and lastEnqueuedOffset / lastSequenceNumber /
+  // lastEnqueuedTime (from last_enqueued_* delivery annotations). All were
+  // undefined before the W-2 lane; populated = gap closed with witness.
+  probe("wire-delivery-annotations", async () => {
+    const partitionId = "0";
+    const producer = new EventHubProducerClient(CONN, probeOpts());
+    const consumer = new EventHubConsumerClient(
+      EventHubConsumerClient.defaultConsumerGroupName,
+      CONN,
+      probeOpts(),
+    );
+    const subHandles = [];
+    try {
+      const MARK = `ann-${Date.now()}`;
+      const batch = await producer.createBatch({ partitionId, abortSignal: T(15_000) });
+      if (!batch.tryAdd({ body: JSON.stringify({ probe: "annotations", mark: MARK }), partitionKey: "pk-w2" })) {
+        throw new Error("tryAdd failed");
+      }
+      await producer.sendBatch(batch, { abortSignal: T(15_000) });
+
+      const seen = [];
+      const sub = await consumer.subscribe(
+        partitionId,
+        {
+          processEvents: async (events, ctx) => {
+            for (const ev of events) {
+              let body = ev.body;
+              if (typeof body === "string") {
+                try { body = JSON.parse(body); } catch { /* keep raw */ }
+              }
+              if (body && typeof body === "object" && body.probe === "annotations" && body.mark === MARK) {
+                seen.push([ev, ctx]);
+              }
+            }
+          },
+          processError: async (err) => {
+            console.error(`[annotations] processError: ${err?.name}: ${String(err?.message).slice(0, 200)}`);
+          },
+        },
+        // SDK-native surface for the last_enqueued_* delivery annotations:
+        // ReceivedEventData NEVER carries lastEnqueuedOffset/lastSequenceNumber/
+        // lastEnqueuedTime (convertAMQPMesage in partitionReceiver.js drops
+        // them); they surface on context.lastEnqueuedEventProperties only when
+        // trackLastEnqueuedEventProperties is set (partitionPump.js:100-101).
+        { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 2, trackLastEnqueuedEventProperties: true },
+      );
+      subHandles.push(sub);
+
+      const deadline = Date.now() + 20_000;
+      while (seen.length < 1 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (seen.length < 1) throw new Error("ANNOTATIONS_TIMEOUT: marked event never received");
+
+      const [ev, ctx] = seen[0];
+      const problems = [];
+      if (typeof ev.offset !== "string" || ev.offset.length === 0) problems.push(`offset=${JSON.stringify(ev.offset)}`);
+      if (!(ev.enqueuedTimeUtc instanceof Date) || Number.isNaN(ev.enqueuedTimeUtc.getTime())) problems.push(`enqueuedTimeUtc=${String(ev.enqueuedTimeUtc)}`);
+      // partitionId-pinned batch: @azure/event-hubs NEVER transmits an
+      // event-level partitionKey on tryAdd (eventDataBatch.js:268 encodes with
+      // the BATCH-level key only, and createBatch refuses key+id together), so
+      // real-service parity here is partitionKey === undefined.
+      if (ev.partitionKey !== undefined) problems.push(`partitionKey=${JSON.stringify(ev.partitionKey)}`);
+      if (!Number.isInteger(ev.sequenceNumber)) problems.push(`sequenceNumber=${String(ev.sequenceNumber)}`);
+      // last_enqueued_* surface (GAP-A2-03): SDK-native witness = the raw AMQP
+      // message's delivery annotations, stamped by the server on every EH
+      // delivery (eventData.js:98-100 reads the same section).
+      const rawAnn = ev.getRawAmqpMessage ? ev.getRawAmqpMessage().deliveryAnnotations : undefined;
+      if (typeof rawAnn?.last_enqueued_offset !== "string" || rawAnn.last_enqueued_offset.length === 0) problems.push(`lastEnqueuedOffset=${JSON.stringify(rawAnn?.last_enqueued_offset)}`);
+      if (!Number.isInteger(rawAnn?.last_enqueued_sequence_number)) problems.push(`lastSequenceNumber=${JSON.stringify(rawAnn?.last_enqueued_sequence_number)}`);
+      if (!(rawAnn?.last_enqueued_time_utc instanceof Date) || Number.isNaN(rawAnn.last_enqueued_time_utc.getTime())) problems.push(`lastEnqueuedTime=${String(rawAnn?.last_enqueued_time_utc)}`);
+      // tracked surface (partitionPump.js:100-101 -> PartitionProcessor)
+      const lep = ctx?.lastEnqueuedEventProperties;
+      if (!lep || !Number.isInteger(lep.sequenceNumber)) problems.push(`tracked.lastEnqueuedEventProperties.sequenceNumber=${JSON.stringify(lep)}`);
+      if (problems.length > 0) throw new Error(`ANNOTATIONS_MISSING: ${problems.join("; ")}`);
+
+      return `offset=${ev.offset} enqueuedTimeUtc=${ev.enqueuedTimeUtc.toISOString()} seq=${ev.sequenceNumber} ` +
+        `wire last_enqueued_offset=${rawAnn.last_enqueued_offset} last_enqueued_sequence_number=${rawAnn.last_enqueued_sequence_number} ` +
+        `last_enqueued_time_utc=${rawAnn.last_enqueued_time_utc.toISOString()} tracked=${JSON.stringify(lep)} — SDK witness for GAP-A2-03/04`;
     } finally {
       for (const s of subHandles) await boundedClose(s, 2500);
       await boundedClose(consumer);

@@ -42,14 +42,15 @@ defmodule Smalt.ArmErrorCorpusTest do
     test "400 InvalidApiVersionParameter on stale api-version for admitted type" do
       # lib/smalt/arm_gateway/router.ex:422-429 (check_version mismatch branch)
       path =
-        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1?api-version=1999-01-01"
+        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1?api-version=2999-01-01"
 
       conn =
         conn(:put, path, %{"location" => "smalt-local"})
         |> Router.call(@opts)
 
+      # KD-78 monotonic gate: <= latest accepted; beyond-latest is the 400 face.
       assert {400, "InvalidApiVersionParameter"} = {conn.status, code(conn)}
-      assert body(conn)["error"]["message"] =~ "1999-01-01"
+      assert body(conn)["error"]["message"] =~ "2999-01-01"
       refute Map.has_key?(body(conn)["error"], "target")
     end
 
@@ -57,7 +58,7 @@ defmodule Smalt.ArmErrorCorpusTest do
     test "404 ResourceGroupNotFound on GET of a missing resource group" do
       # lib/smalt/arm_gateway/router.ex:214 (handle_rg_get :error branch)
       conn =
-        conn(:get, "/subscriptions/sub-1/resourceGroups/nope-rg?api-version=2021-04-01")
+        conn(:get, "/subscriptions/sub-1/resourceGroups/nope-rg?api-version=2023-07-01")
         |> Router.call(@opts)
 
       assert {404, "ResourceGroupNotFound"} = {conn.status, code(conn)}
@@ -119,6 +120,69 @@ defmodule Smalt.ArmErrorCorpusTest do
       assert body(conn)["error"]["message"] =~ "GraphLaw validation failure"
     end
 
+    @tag corpus: "InvalidResourceShape-details-multi-issue"
+    test "400 InvalidResourceShape carries error.details rows (one per SHACL issue) on multi-issue refusal" do
+      # lib/smalt/arm_gateway/router.ex check_shape {:invalid, issues} branch:
+      # VNetShape requires location AND addressPrefixes; empty payload -> 2 issues
+      # -> 2 details rows {code: InvalidResourceShape, message, target: path}.
+      conn =
+        conn(
+          :put,
+          "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-details?api-version=2021-04-01",
+          %{}
+        )
+        |> Router.call(@opts)
+
+      assert {400, "InvalidResourceShape"} = {conn.status, code(conn)}
+
+      details = body(conn)["error"]["details"]
+      assert is_list(details)
+      assert length(details) == 2
+
+      for row <- details do
+        assert %{"code" => "InvalidResourceShape", "message" => m, "target" => t} = row
+        assert m in ["virtualNetworks require location.", "virtualNetworks require addressPrefixes."]
+        assert t in ["location", "addressPrefixes"]
+      end
+
+      targets = Enum.map(details, & &1["target"]) |> Enum.sort()
+      assert targets == ["addressPrefixes", "location"]
+    end
+
+    @tag corpus: "InvalidResourceShape-details-absent-refused"
+    test "error.details ABSENT on refused-path refusal (no SHACL issues to nest)" do
+      # lib/smalt/arm_gateway/router.ex check_shape {:refused, reason} branch:
+      # unadmitted-type refusal passes details == [] -> envelope byte-identical
+      # to pre-details shape (details key absent, not present-but-empty).
+      conn =
+        conn(
+          :put,
+          "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Fake/things/thing-d?api-version=2021-04-01",
+          %{"location" => "smalt-local"}
+        )
+        |> Router.call(@opts)
+
+      assert {400, "InvalidResourceShape"} = {conn.status, code(conn)}
+      refute Map.has_key?(body(conn)["error"], "details")
+    end
+
+    @tag corpus: "InvalidResourceShape-details-absent-valid"
+    test "details ABSENT on shape-valid PUT (no-issue path)" do
+      # check_shape :ok branch: no refusal emitted; success envelope carries no
+      # error object and therefore no details key (no-op path pinned).
+      conn =
+        conn(
+          :put,
+          "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Network/virtualNetworks/vnet-ok?api-version=2021-04-01",
+          %{"location" => "smalt-local", "properties" => %{"addressPrefixes" => ["10.0.0.0/16"]}}
+        )
+        |> Router.call(@opts)
+
+      assert conn.status in 200..299
+      # Success envelope: no error object at all (hence no details row).
+      refute Map.has_key?(body(conn), "error")
+    end
+
     @tag corpus: "InvalidResourceShape-unadmitted"
     test "400 InvalidResourceShape (target AshGraphLaw.Enforcement) on unadmitted-type PUT" do
       # lib/smalt/arm_gateway/router.ex:437 -> :167-180 send_graphlaw_refusal
@@ -134,6 +198,31 @@ defmodule Smalt.ArmErrorCorpusTest do
       assert {400, "InvalidResourceShape"} = {conn.status, code(conn)}
       assert target(conn) == "AshGraphLaw.Enforcement"
       assert body(conn)["error"]["message"] =~ "not an admitted ontology individual"
+    end
+
+    @tag corpus: "LocationMismatch"
+    test "400 LocationMismatch on resource group PUT that changes location" do
+      # lib/smalt/arm_gateway/router.ex:536 (R30 location-immutability refusal)
+      conn(
+        :put,
+        "/subscriptions/sub-1/resourceGroups/rg-lm?api-version=2023-07-01",
+        %{"location" => "eastus"}
+      )
+      |> Router.call(@opts)
+
+      conn =
+        conn(
+          :put,
+          "/subscriptions/sub-1/resourceGroups/rg-lm?api-version=2023-07-01",
+          %{"location" => "westus"}
+        )
+        |> Router.call(@opts)
+
+      assert {400, "LocationMismatch"} = {conn.status, code(conn)}
+      err = body(conn)["error"]
+      assert err["message"] =~ "rg-lm" or is_binary(err["message"])
+      assert err["message"] =~ "location"
+      assert match?(%{}, err["innererror"])
     end
 
     @tag corpus: "RouteNotFound"
@@ -239,16 +328,31 @@ defmodule Smalt.ArmErrorCorpusTest do
       |> Enum.sort()
       |> Enum.uniq()
 
-    assert emitted == [
+    assert emitted == Enum.sort([
+             # (400, "InvalidResourceShape") registered by the EventGrid-topics
+             # lane: eg_input_schema_param's typed PUT refusal (was previously
+             # only reachable through send_graphlaw_refusal, outside this
+             # census's send_arm_error regex).
              {400, "InvalidApiVersionParameter"},
+             {400, "InvalidResourceShape"},
+             {400, "LocationMismatch"},
              {400, "MissingApiVersionParameter"},
+             # Cross-lane integration: codes emitted by concurrently landed
+             # source edits (sb-rules lane, azapi filter lane) registered here.
+             {400, "InvalidAction"},
+             {400, "InvalidFilter"},
              {404, "ActionNotFound"},
              {404, "OperationNotFound"},
              {404, "ResourceGroupNotFound"},
              {404, "ResourceNotFound"},
              {404, "RouteNotFound"},
-             {404, "SubscriptionNotFound"}
-           ]
+             {404, "RuleNotFound"},
+             {404, "SubscriptionNotFound"},
+             # ARM secret rotation trigger (v26.10.16 console C4 lane): typed
+             # 409 when the ARM record exists but carries no data-plane version
+             # to rotate.
+             {409, "SecretVersionNotFound"}
+           ])
   end
 
   # -- Wire-court shape-consistency (xaas prior-art import, lens-5 cycle 2) -----

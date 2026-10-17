@@ -13,7 +13,7 @@ just up                              # substrate on http://localhost:9443
 `bootstrap.sh` prints eight `[n/8]` staged steps, each ending with
 `ok (Ns)`:
 
-```
+```text
 [1/8] Prerequisites (elixir/mix/terraform/just/python3)
       ok (0s)
 ...
@@ -23,7 +23,7 @@ just up                              # substrate on http://localhost:9443
 
 and finishes with:
 
-```
+```text
 GREEN: bootstrap complete. Start the substrate with: just up
 ```
 

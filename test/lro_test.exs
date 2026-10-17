@@ -216,7 +216,7 @@ defmodule SmaltLroTest do
     conn =
       conn(
         :put,
-        "/subscriptions/#{@sub}/resourceGroups/lro-sync-rg?api-version=2021-04-01",
+        "/subscriptions/#{@sub}/resourceGroups/lro-sync-rg?api-version=2023-07-01",
         %{"location" => "eastus"}
       )
       |> call()
@@ -277,6 +277,36 @@ defmodule SmaltLroTest do
   end
 
   # ---------------------------------------------------------------------------
+  # (5b) RG delete is itself an LRO: 202 + Location + Retry-After, and polling
+  # the Location URL terminates Succeeded (folded from the retired
+  # test/arm/lro_test.exs; the stale variant omitted api-version on the DELETE
+  # and 400'd — the router requires api-version, hence it is carried here).
+  # ---------------------------------------------------------------------------
+  test "RG delete is an LRO: 202 + Location + Retry-After and the poll terminates" do
+    rg = "lro-rg-del-" <> unique()
+    rg_type = "Microsoft.Resources/resourceGroups"
+
+    put =
+      conn(:put, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=2023-07-01", %{
+        "location" => "eastus"
+      })
+      |> call()
+
+    assert put.status in [200, 201]
+
+    del = conn(:delete, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=#{api_v(rg_type)}") |> call()
+    assert del.status == 202
+    assert [loc] = get_resp_header(del, "location")
+    assert ["1"] = get_resp_header(del, "retry-after")
+
+    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 40)
+
+    poll = conn(:get, URI.parse(loc).path) |> call()
+    assert poll.status == 200
+    assert %{"status" => "Succeeded"} = Jason.decode!(poll.resp_body)
+  end
+
+  # ---------------------------------------------------------------------------
   # (6) DELETE of an LRO-created resource
   # ---------------------------------------------------------------------------
   test "DELETE of LRO-created storageAccount returns 200 and subsequent GET is 404" do
@@ -293,7 +323,8 @@ defmodule SmaltLroTest do
     assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
 
     del_conn = conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}") |> call()
-    assert del_conn.status == 200
+    # Wave-2: storageAccounts DELETE is an ARM LRO — 202 + async headers.
+    assert del_conn.status == 202
 
     assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}") |> call() |> Map.get(:status) ==
              404
@@ -372,7 +403,7 @@ defmodule SmaltLroTest do
       conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
       |> call()
 
-    assert del_conn.status == 200
+    assert del_conn.status == 202
     assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
            |> call()
            |> Map.get(:status) == 404
@@ -443,7 +474,7 @@ defmodule SmaltLroTest do
     # Delete the parent mid-op (op stays InProgress at this point).
     assert conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
            |> call()
-           |> Map.get(:status) == 200
+           |> Map.get(:status) == 202
 
     assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
 
@@ -474,10 +505,15 @@ defmodule SmaltLroTest do
 
     assert inventory.status == 200
 
-    resource_types =
-      Jason.decode!(inventory.resp_body)["resourceTypes"] |> MapSet.new(& &1["resourceType"])
+    # Wave-2: the listing is the Registry-projected ProviderMatrix — a "value"
+    # array of provider rows (no top-level subscriptionId/resourceTypes).
+    listing = Jason.decode!(inventory.resp_body)
+    assert is_list(listing["value"]) and listing["value"] != []
 
-    refute MapSet.member?(resource_types, "operations")
+    # No provider row fabricates an "operations" resourceType.
+    refute Enum.any?(listing["value"], fn provider ->
+             Enum.any?(provider["resourceTypes"] || [], &(&1["resourceType"] == "operations"))
+           end)
   end
 
   # ---------------------------------------------------------------------------

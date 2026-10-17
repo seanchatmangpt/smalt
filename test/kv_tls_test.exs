@@ -158,6 +158,17 @@ defmodule KvTlsTest do
 
     {:ok, sock} = connect_with_heal(ctx, pinned_der, verify_fun, match_fun, 5)
 
+    # kv_challenge_guard requires a well-formed Bearer header in both auth
+    # modes (SDK challenge emulation); attach one unless the caller supplied
+    # its own authorization header (R54 pattern). Presence-only check, so the
+    # MAA-token release still uses its own credential.
+    headers =
+      if List.keyfind(headers, "authorization", 0) do
+        headers
+      else
+        headers ++ [{"authorization", "Bearer test-token"}]
+      end
+
     req =
       [
         "#{method} #{path} HTTP/1.1",
@@ -388,7 +399,7 @@ defmodule KvTlsTest do
       Smalt.Security.Attestation.attest_enclave(%{"measurement" => measurement})
 
     {status, body} =
-      https_with_retry(ctx, "POST", "/keys/#{name}/release", Jason.encode!(%{}), [
+      https_with_retry(ctx, "POST", "/keys/#{name}/release?api-version=7.4", Jason.encode!(%{}), [
         {"authorization", "Bearer " <> maa_token}
       ], 10)
 
@@ -427,6 +438,67 @@ defmodule KvTlsTest do
     {status, body} = https(ctx, "GET", "/metadata/endpoints")
     assert status in 200..299
     assert Jason.decode!(body)
+  end
+
+  test "TLS twin dispatches all egress prefixes to EgressRouter, unknown path to ARM", ctx do
+    # R87 (from D59): exercises every @egress_prefixes entry in
+    # Smalt.Application.TlsTwinDispatch through the per-test TLS twin. The two
+    # routers' catch-all envelopes are distinct on purpose:
+    #   EgressRouter -> "No route matches <METHOD> <path>" (blob-style 404)
+    #   ArmGateway   -> "The route '<path>' could not be found."
+    # so absence of ARM's "could not be found" wording per prefix is the
+    # proof the request landed in EgressRouter, not ARM.
+
+    egress_probes = [
+      {"/attest/", "/attest/probe"},
+      {"/app/", "/app/probe"},
+      {"/dbs/", "/dbs/probe/colls"},
+      {"/keys", "/keys/probe-nonexistent/version"},
+      {"/topics/", "/topics/probe/messages"},
+      {"/atlas/", "/atlas/probe"},
+      {"/dataCollectionRules", "/dataCollectionRules/probe"},
+      {"/v1/", "/v1/probe"},
+      {"/providers/", "/providers/probe"}
+    ]
+
+    for {prefix, path} <- egress_probes do
+      {status, body} = https_with_retry(ctx, "GET", path, 5)
+
+      # EgressRouter answered (a real route, its blob-style catch-all, or the
+      # guarded blob two-segment catch-all — e.g. BlobNotFound) — never ARM's
+      # RouteNotFound envelope. Only two routers sit behind the twin, so
+      # refuting ARM's unique wording IS the dispatch proof.
+      refute body =~ "could not be found",
+             "prefix #{prefix} (#{path}) returned ARM envelope #{status}: #{inspect(body)}"
+
+      if status >= 400 do
+        assert Jason.decode!(body)["error"]["code"],
+               "prefix #{prefix} (#{path}) gave no typed error envelope (#{status}): #{inspect(body)}"
+      else
+        # A real egress route answered (e.g. /dbs/probe/colls creates the DB and
+        # returns the Cosmos list shape). Any 2xx from the twin is egress —
+        # ARM's route surface never 200s these paths.
+        assert status in 200..299
+      end
+    end
+
+    # (b) unknown top-level path falls through to ARM's catch-all envelope.
+    {status, body} = https_with_retry(ctx, "GET", "/nonexistent", 5)
+    assert status == 404, "unknown path returned #{status}: #{inspect(body)}"
+    decoded = Jason.decode!(body)
+    assert decoded["error"]["code"] == "RouteNotFound"
+    assert decoded["error"]["message"] =~ "could not be found"
+
+    # (c) trailing-slash edge, pinned-intentional: "/keysX" starts_with? "/keys"
+    # (the one @egress_prefixes entry without a trailing slash), so it routes to
+    # EgressRouter and gets the egress catch-all envelope — NOT ARM's. This is
+    # the documented current behavior; tightening the matcher to a segment
+    # boundary is a behavior change, not a bug fix.
+    {ks_status, ks_body} = https_with_retry(ctx, "GET", "/keysX", 5)
+    refute ks_body =~ "could not be found",
+           "/keysX hit ARM (#{ks_status}): #{inspect(ks_body)}"
+
+    assert ks_body =~ "No route matches", "egress catch-all expected: #{inspect(ks_body)}"
   end
 
   test "handshake fails when the peer cert does not match the pinned identity", ctx do

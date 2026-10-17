@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PY-6 lane: real azure-identity + azure-keyvault SDKs against the smalt substrate.
+Venv: test/sdk-python/.venv-auth (receipt: docs/jira/v26.10.14/sdk-results/py-auth-keyvault.md).
 
 Expects the lane's private enforce-mode substrate on localhost:19443 (ARM/STS)
 and localhost:18443 (egress / Key Vault, plain http). Starts a local
@@ -20,6 +21,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 
 import requests
@@ -182,8 +184,10 @@ def main():
 
     # -- Key Vault via real KeyClient over the TLS proxy ----------------------
     kv_cred = SmaltTokenCredential()
+    # api_version pinned to 7.4 (SHIM-COURT parity note: emulator enforces real
+    # AKV 7.x surface; the SDK default 2025-07-01 returns 400 on release_key).
     client = KeyClient(vault_url=KV_TLS, credential=kv_cred, connection_verify=False,
-                       verify_challenge_resource=False)
+                       verify_challenge_resource=False, api_version="7.4")
 
     name = "py6-sdk-key"
     try:
@@ -252,7 +256,7 @@ def main():
         ver = next(client.list_properties_of_key_versions(name))
         vnum = ver.id.rsplit("/", 1)[-1]
         sdk_crypto = CryptographyClient(f"{KV_TLS}/keys/{name}/{vnum}", credential=kv_cred,
-                                        connection_verify=False, verify_challenge_resource=False)
+                                        connection_verify=False, verify_challenge_resource=False, api_version="7.4")
         sdk_crypto.encrypt("RSA-OAEP-256", b"hi")
         rec("kv.crypto.sdk_versioned_url", False, "unexpected SDK success")
     except HttpResponseError as e:

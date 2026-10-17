@@ -25,7 +25,7 @@ count, or PASS/FAIL token) found in the file.
 | V261014-10 | [10-mcp.md](receipts/10-mcp.md) | UNKNOWN | V261014-10 (MCP Plane) — lane 10 |
 | V261014-11 | [11-publish-blockers.md](receipts/11-publish-blockers.md) | UNKNOWN | V261014-11 (publish blockers, lane 11) |
 | V261014-12 | [12-gate-closure.md](receipts/12-gate-closure.md) | PASS | V261014-12 Gate Closure (lane 12) |
-| V261014-13 | [13-gap-register.md](receipts/13-gap-register.md) | COMPLETE | V261014-13 GAP Register Closure & Tokenization Sweep |
+| V261014-13 | [13-gap-register.md](receipts/13-gap-register.md) | UNSUPPORTED | V261014-13 GAP Register Closure & Tokenization Sweep |
 | V261014-14 | [14-docs-drift.md](receipts/14-docs-drift.md) | DONE | V261014-14 Docs Drift Close-Out (lane 14) |
 | V261014-15 | [15-runtime-contracts-docs.md](receipts/15-runtime-contracts-docs.md) | UNKNOWN | V261014-15 runtime-contracts docs (lane 15) |
 | V261014-16 | [16-ocel-revops.md](receipts/16-ocel-revops.md) | UNKNOWN | V261014-16 (lane 16, ocel-revops) |
@@ -38,21 +38,37 @@ count, or PASS/FAIL token) found in the file.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
+| 2026-10-15-k | [2026-10-15-kd53-eh-batch-witness.md](receipts/2026-10-15-kd53-eh-batch-witness.md) | PASS | KD-53 witness receipt — EH multi-event batch covers shim |
+| a1-change-fe | [a1-change-feed.md](receipts/a1-change-feed.md) | UNKNOWN | A-1 adversarial cross-product bench — Cosmos change-feed → Event Hubs → Blob tiering |
+| a2-cas-conte | [a2-cas-contention.md](receipts/a2-cas-contention.md) | SUSPECT | A-2: High-Contention Optimistic CAS (lane A-2, v26.10.14) |
+| a3-cross-par | [a3-cross-partition.md](receipts/a3-cross-partition.md) | UNKNOWN | A-3 Receipt: Cross-Partition Multi-Entity Atomic Fan-Out — Transaction Semantics |
+| a4-crypto-th | [a4-crypto-throughput.md](receipts/a4-crypto-throughput.md) | UNKNOWN | A-4 — Confidential Ledger / SKR cryptographic throughput (BEAM tier) |
+| a7-hns-renam | [a7-hns-rename.md](receipts/a7-hns-rename.md) | UNKNOWN | A-7: HNS Massive Recursive Rename (ADLS Gen2 parity probe) |
+| a8-lro-storm | [a8-lro-storm.md](receipts/a8-lro-storm.md) | PASS | A-8 LRO sweeper storm under high-rate cancellation |
+| a9-auth-floo | [a9-auth-flood.md](receipts/a9-auth-flood.md) | PASS | A-9 Receipt — Adversarial Cross-Tenant Auth Challenge Flood (v26.10.14) |
+| aud5-consoli | [aud5-consolidation.md](receipts/aud5-consolidation.md) | UNKNOWN | AUD-5 wire-parity consolidation |
 | bench-01-cor | [bench-01-core.md](receipts/bench-01-core.md) | UNKNOWN | bench-01-core (lane B-1, shared bench infra) |
 | bench-02-blo | [bench-02-blob-ts.md](receipts/bench-02-blob-ts.md) | SUSPECT | Bench receipt — B-2: blob SDK (TypeScript) vs live substrate |
 | bench-03-cos | [bench-03-cosmos-ts.md](receipts/bench-03-cosmos-ts.md) | ALIVE (SUSPECT) | bench-03-cosmos-ts.md — Lane B-3: Cosmos SDK (TypeScript) benchmark |
+| bench-04-mes | [bench-04-messaging-ts.md](receipts/bench-04-messaging-ts.md) | SUSPECT | Bench lane B-4 — Messaging throughput, real TS SDKs over AMQP |
 | bench-05-pyt | [bench-05-python-mirror.md](receipts/bench-05-python-mirror.md) | SUSPECT | Bench B-5 — Python SDK parity numbers (blob + cosmos) |
 | bench-06-lro | [bench-06-lro-sdk.md](receipts/bench-06-lro-sdk.md) | UNKNOWN | bench-06-lro-sdk (B-6) |
-| bench-07-sto | [bench-07-store-beam.md](receipts/bench-07-store-beam.md) | SUSPECT | bench-07-store-beam (lane B-7) |
-| bench-08-amq | [bench-08-amqp-beam.md](receipts/bench-08-amqp-beam.md) | SUSPECT | bench-08-amqp-beam (lane B-8) |
+| bench-07-sto | [bench-07-store-beam.md](receipts/bench-07-store-beam.md) | UNKNOWN | bench-07-store-beam (lane B-7) |
+| bench-08-amq | [bench-08-amqp-beam.md](receipts/bench-08-amqp-beam.md) | UNKNOWN | bench-08-amqp-beam (lane B-8) |
 | bench-09-eh- | [bench-09-eh-beam.md](receipts/bench-09-eh-beam.md) | UNKNOWN | B-9: Event Hubs BEAM-level pipeline benchmark (v26.10.14) |
 | bench-10-soa | [bench-10-soak-spike.md](receipts/bench-10-soak-spike.md) | PASS | B-10: Soak + spike re-run (v26.10.14) |
 | bench-11-cha | [bench-11-chaos-tls.md](receipts/bench-11-chaos-tls.md) | UNKNOWN | B-11 chaos kill + TLS churn re-run |
 | bench-12-con | [bench-12-consolidation.md](receipts/bench-12-consolidation.md) | SUSPECT | bench-12-consolidation |
+| c1-cosmos-bl | [c1-cosmos-blob.md](receipts/c1-cosmos-blob.md) | UNKNOWN | bench lane C-1 — Cosmos<->Blob ETL pipeline (ingest/transform/archive) |
+| c4-kv-cosmos | [c4-kv-cosmos.md](receipts/c4-kv-cosmos.md) | ALIVE (SUSPECT) | Bench Lane C-4: Key Vault envelope-encryption -> Cosmos |
+| c5-arm-storm | [c5-arm-storm.md](receipts/c5-arm-storm.md) | PASS | C-5 Receipt: ARM Control-Plane Saturation Storm |
+| c6-sentinel- | [c6-sentinel-rg.md](receipts/c6-sentinel-rg.md) | UNKNOWN | Bench C-6 — Sentinel (Log Analytics) ingest + KQL + Resource Graph |
+| c8-chaos-cro | [c8-chaos-cross.md](receipts/c8-chaos-cross.md) | SUSPECT | C-8 cross-product chaos overlay (composite stress) |
+| c9-cost-mode | [c9-cost-model.md](receipts/c9-cost-model.md) | UNKNOWN | c9-cost-model |
 | errc1-ws | [errc1-ws.md](receipts/errc1-ws.md) | UNKNOWN | ERRC Lane 1 (Eliminate) — Daemon WebSocket: Bandit vs hand-rolled |
-| errc2-benche | [errc2-benchee.md](receipts/errc2-benchee.md) | SUSPECT | ERRC lane 2 (Raise) — benchee adoption for BEAM micro-benchmarks |
+| errc2-benche | [errc2-benchee.md](receipts/errc2-benchee.md) | UNKNOWN | ERRC lane 2 (Raise) — benchee adoption for BEAM micro-benchmarks |
 | errc3-autoca | [errc3-autocannon.md](receipts/errc3-autocannon.md) | PASS | ERRC lane 3 (Eliminate) — spike.py flood phase vs autocannon |
-| errc4-hdr | [errc4-hdr.md](receipts/errc4-hdr.md) | SUSPECT | errc4-hdr.md — ERRC Raise lane 4: HDR-histogram re-emit of TS bench lanes B-2/B-3 |
+| errc4-hdr | [errc4-hdr.md](receipts/errc4-hdr.md) | ALIVE (SUSPECT) | errc4-hdr.md — ERRC Raise lane 4: HDR-histogram re-emit of TS bench lanes B-2/B-3 |
 | errc5-pyjwt | [errc5-pyjwt.md](receipts/errc5-pyjwt.md) | ALIVE | errc5-pyjwt — ERRC lane 5 (Reduce) |
 | errc6-proper | [errc6-property.md](receipts/errc6-property.md) | UNKNOWN | ERRC Raise Lane 6 — Property-Based Testing with Shrinking |
 | errc7-recon | [errc7-recon.md](receipts/errc7-recon.md) | ALIVE | ERRC-7 (Raise): recon BEAM-level soak — no BEAM-level leak |
@@ -60,13 +76,13 @@ count, or PASS/FAIL token) found in the file.
 | fin-01-regis | [fin-01-register-missing.md](receipts/fin-01-register-missing.md) | PASS | fin-01 — Register MISSING SDK_MATRIX cells in KNOWN_DIVERGENCES |
 | fin-02-place | [fin-02-placeholder.md](receipts/fin-02-placeholder.md) | DONE | fin-02 — doctor_dod gap-token census: placeholder + CLOSED-stamp exclusion |
 | fin-03-eh-ci | [fin-03-eh-citation.md](receipts/fin-03-eh-citation.md) | ALIVE | fin-03: Event Hubs wire-lane row citation reword (WIRE_PARITY.md) |
-| fin-04-gitig | [fin-04-gitignore.md](receipts/fin-04-gitignore.md) | SUSPECT | fin-04: .gitignore underscore-variant build dirs (DoD-6 follow-up) |
+| fin-04-gitig | [fin-04-gitignore.md](receipts/fin-04-gitignore.md) | UNKNOWN | fin-04: .gitignore underscore-variant build dirs (DoD-6 follow-up) |
 | fin-05-auth- | [fin-05-auth-mode-pin.md](receipts/fin-05-auth-mode-pin.md) | UNKNOWN | fin-05: substrate auth-mode pin on shared ports 9443/8443 (flake face 2/2) |
 | fin-06-parse | [fin-06-parse-sweep.md](receipts/fin-06-parse-sweep.md) | UNKNOWN | fin-06 — justfile parse sweep (DoD-only finish lane) |
 | fin-07-ts-co | [fin-07-ts-cosmos-cell.md](receipts/fin-07-ts-cosmos-cell.md) | UNKNOWN | fin-07 — TS cosmos probe cell registration (RAISE) |
 | fin-08-sb-ex | [fin-08-sb-extra.md](receipts/fin-08-sb-extra.md) | UNKNOWN | fin-08 — sb-extra.probe.cjs CRC coverage |
 | fin-09-kd-ro | [fin-09-kd-rows.md](receipts/fin-09-kd-rows.md) | UNKNOWN | fin-09 — KD register sync for TS-3 / TS-4 / PY-4 lanes |
-| fin-10-encla | [fin-10-enclave-sync.md](receipts/fin-10-enclave-sync.md) | FAIL | FIN-10 — Enclave testbed doc reconciliation (DoD finish lane) |
+| fin-10-encla | [fin-10-enclave-sync.md](receipts/fin-10-enclave-sync.md) | PASS | FIN-10 — Enclave testbed doc reconciliation (DoD finish lane) |
 | fin-11-censu | [fin-11-census-ports.md](receipts/fin-11-census-ports.md) | ALIVE | fin-11: census front door pins substrate ports (TS-4 harness finding) |
 | fin-12-ws-re | [fin-12-ws-refresh.md](receipts/fin-12-ws-refresh.md) | FAIL | fin-12 workspace court + build refresh |
 | fin-13-compo | [fin-13-composite.md](receipts/fin-13-composite.md) | PASS | FIN-13 — Composite courts section in SDK_MATRIX.md |
@@ -75,7 +91,7 @@ count, or PASS/FAIL token) found in the file.
 | fin-16-docto | [fin-16-doctor-final.md](receipts/fin-16-doctor-final.md) | UNKNOWN | FIN-16 — Final Doctor Receipt (supplemental + pinned) |
 | fin-17-docs- | [fin-17-docs-final.md](receipts/fin-17-docs-final.md) | PASS | fin-17 — final docs truth-sync (DoD-only finish lane) |
 | fin-18-cosmo | [fin-18-cosmos-disposition.md](receipts/fin-18-cosmos-disposition.md) | UNKNOWN | fin-18: cosmos_test.exs "store restart" final disposition |
-| fin-19-row15 | [fin-19-row150.md](receipts/fin-19-row150.md) | ALIVE | FIN-19 — WIRE_PARITY row 150 restated (Event Hubs SDK smoke) |
+| fin-19-row15 | [fin-19-row150.md](receipts/fin-19-row150.md) | FAIL | FIN-19 — WIRE_PARITY row 150 restated (Event Hubs SDK smoke) |
 | fin-20-clean | [fin-20-cleanup.md](receipts/fin-20-cleanup.md) | UNKNOWN | fin-20-cleanup — lane doctor-dod session-residue cleanup |
 | fin-21-final | [fin-21-final-wrap.md](receipts/fin-21-final-wrap.md) | UNKNOWN | fin-21 — Final wrap (coordinator-direct) |
 | fin-22-final | [fin-22-final-index.md](receipts/fin-22-final-index.md) | UNKNOWN | fin-22 — Final index + FINAL.md (finish lane) |
@@ -84,21 +100,39 @@ count, or PASS/FAIL token) found in the file.
 | fin25-bench- | [fin25-bench-final.md](receipts/fin25-bench-final.md) | UNKNOWN | fin25-bench-final |
 | fin26-parity | [fin26-parity-restamp.md](receipts/fin26-parity-restamp.md) | CLOSED | fin26 — parity re-stamp after S-wave KD closures (v26.10.15) |
 | fin27-batch- | [fin27-batch-send.md](receipts/fin27-batch-send.md) | UNKNOWN | fin27: eh-run `batch-send` probe drift fix — receipt |
-| fin31-post-c | [fin31-post-commit.md](receipts/fin31-post-commit.md) | CLOSED | fin31 — Post-Commit Gate Re-Verification |
+| fin28-precom | [fin28-precommit.md](receipts/fin28-precommit.md) | UNKNOWN | fin-28 — Final Pre-Commit Checklist |
+| fin30-landin | [fin30-landing.md](receipts/fin30-landing.md) | SUSPECT | fin30 — Commit Executor Landing Receipt |
+| fin31-post-c | [fin31-post-commit.md](receipts/fin31-post-commit.md) | UNKNOWN | fin31 — Post-Commit Gate Re-Verification |
+| fin32-wrap-f | [fin32-wrap-final.md](receipts/fin32-wrap-final.md) | PARTIAL_ALIVE (SUSPECT) | fin32 — final wrap artifacts (terminal FINAL.md) |
 | fin33-planni | [fin33-planning-summary.md](receipts/fin33-planning-summary.md) | PARTIAL_ALIVE (SUSPECT) | fin-33 — v26.10.15 window planning summary |
 | fin34-ledger | [fin34-ledger-close.md](receipts/fin34-ledger-close.md) | UNKNOWN | fin34 — session knowledge-ledger close |
+| lc1-8hop-tax | [lc1-8hop-tax-chain.md](receipts/lc1-8hop-tax-chain.md) | ALIVE (SUSPECT) | LC-1 Receipt — 8-Hop Cloud-Chain Tax Pipeline (lifecycle harness) |
+| lc2-tco-ledg | [lc2-tco-ledger.md](receipts/lc2-tco-ledger.md) | SUSPECT | lc2-tco-ledger |
+| n1-grid | [n1-grid.md](receipts/n1-grid.md) | PASS | N-1 Grid Lifecycle Stress Receipt |
+| n2-action-st | [n2-action-storm.md](receipts/n2-action-storm.md) | UNKNOWN | N-2 Action Storm Receipt |
+| n3-rsc-race | [n3-rsc-race.md](receipts/n3-rsc-race.md) | UNKNOWN | N-3 RSC Streaming Race Bench — Receipt |
+| n4-ingest-sa | [n4-ingest-saturation.md](receipts/n4-ingest-saturation.md) | PASS | N-4 Ingest Saturation — Receipt |
+| n5-compute-s | [n5-compute-saturation.md](receipts/n5-compute-saturation.md) | UNKNOWN | N-5 Compute Saturation (workspace Next.js lifecycle bench) |
+| n6-isr-stamp | [n6-isr-stampede.md](receipts/n6-isr-stampede.md) | UNKNOWN | N-6 ISR Stampede (lifecycle stress lane) |
+| n7-sse-herd | [n7-sse-herd.md](receipts/n7-sse-herd.md) | UNKNOWN | N-7 SSE Reconnection-Herd Receipt |
+| n8-memory-so | [n8-memory-soak.md](receipts/n8-memory-soak.md) | PASS | N-8 Memory Soak Receipt — Next.js Workspace Lifecycle |
 | q1-shadow-ve | [q1-shadow-verify.md](receipts/q1-shadow-verify.md) | UNKNOWN | Q-1 Shadow Verify Receipt (F-6 pre-flight) |
 | q2-probe-rew | [q2-probe-rewrite.md](receipts/q2-probe-rewrite.md) | PASS | Q-2: `wire-delivery-*` probe rewrite — receipt |
-| q3-kdflip-dr | [q3-kdflip-dryrun.md](receipts/q3-kdflip-dryrun.md) | UNKNOWN | Q-3: kd_flip.py pre-flight dry run (F-3) |
+| q3-kdflip-dr | [q3-kdflip-dryrun.md](receipts/q3-kdflip-dryrun.md) | ALIVE | Q-3: kd_flip.py pre-flight dry run (F-3) |
 | q4-stage-scr | [q4-stage-script.md](receipts/q4-stage-script.md) | ALIVE | Q-4 Receipt: stage_atomic_commits.sh |
+| q5-port-swee | [q5-port-sweep.md](receipts/q5-port-sweep.md) | ALIVE | Q-5 Port Sweep Receipt — Active Scavenger Pass |
 | q6-proxy-sca | [q6-proxy-scaffold.md](receipts/q6-proxy-scaffold.md) | ALIVE | Q-6: WO-23 substrate proxy scaffold |
+| rotate-signi | [rotate-signing-key.md](receipts/rotate-signing-key.md) | UNKNOWN | signing.key rotation (execution lane ROTATE) |
+| s1-amqp-shim | [s1-amqp-shims.md](receipts/s1-amqp-shims.md) | LANDED | S-1 lane — KD-21/KD-49 AMQP shims + mutation court |
 | s2-eh-shims | [s2-eh-shims.md](receipts/s2-eh-shims.md) | UNKNOWN | S-2: KD-18/19/20 EH shims — receipt |
 | s3-kv-challe | [s3-kv-challenge.md](receipts/s3-kv-challenge.md) | CLOSED | S-3 Receipt — KD-15 KV Challenge Auth (v26.10.15, execution lane S-3) |
 | s4-wire-norm | [s4-wire-normalization.md](receipts/s4-wire-normalization.md) | UNKNOWN | S-4 Wire Normalization Receipt (KD-01 / KD-03 / KD-07) |
 | s5-hil-virtu | [s5-hil-virtual.md](receipts/s5-hil-virtual.md) | ALIVE | S-5 — Elixir HIL Virtual Device |
 | s6-shim-cour | [s6-shim-court-harness.md](receipts/s6-shim-court-harness.md) | FAIL | S-6 Receipt: shim-court harness (generalization of mutation_court.py) |
-| s7-kd-flip | [s7-kd-flip.md](receipts/s7-kd-flip.md) | FAIL | S-7 Receipt: KD flip mechanism (contract-keyed shims, machine-driven closure) |
+| s7-kd-flip | [s7-kd-flip.md](receipts/s7-kd-flip.md) | PASS | S-7 Receipt: KD flip mechanism (contract-keyed shims, machine-driven closure) |
 | s8-wave-tele | [s8-wave-telemetry.md](receipts/s8-wave-telemetry.md) | UNKNOWN | s8-wave-telemetry |
+| w6-feed-patc | [w6-feed-patch.md](receipts/w6-feed-patch.md) | ALIVE | W-6 Receipt — Cosmos Change Feed (GAP-AUD1-04) + RFC 6902 Patch (GAP-AUD1-05) |
+| w8-audit-reg | [w8-audit-registration.md](receipts/w8-audit-registration.md) | UNKNOWN | W-8 Registration Receipt — Audit GAP consolidation into KNOWN_DIVERGENCES |
 | WS-01 | [ws-01-scaffold.md](receipts/ws-01-scaffold.md) | UNKNOWN | 1 Scaffold Receipt — Smalt Sovereign Next.js Workspace |
 | WS-02 | [ws-02-navigator.md](receipts/ws-02-navigator.md) | UNKNOWN | 02 Receipt — Sovereign Hierarchy Navigator |
 | WS-03 | [ws-03-inspector.md](receipts/ws-03-inspector.md) | LANDED | 03 — Multi-Mode Resource Inspector |
@@ -107,16 +141,171 @@ count, or PASS/FAIL token) found in the file.
 | WS-06 | [ws-06-serial.md](receipts/ws-06-serial.md) | UNSUPPORTED | 06 Receipt — Web Serial Hardware Gateway |
 | WS-07 | [ws-07-solver.md](receipts/ws-07-solver.md) | UNKNOWN | 7 Receipt: Dynamic Bellman Solver |
 | WS-08 | [ws-08-arm.md](receipts/ws-08-arm.md) | PASS | 8 receipt — pure-Azure ARM client layer (workspace) |
-| WS-09 | [ws-09-dataplane.md](receipts/ws-09-dataplane.md) | PASS | 9 receipt — pure-Azure data-plane client layer (workspace/lib/azure) |
-| WS-10 | [ws-10-attestation.md](receipts/ws-10-attestation.md) | UNKNOWN | 10 — Attestation Receipt Validator |
+| WS-09 | [ws-09-dataplane.md](receipts/ws-09-dataplane.md) | PARTIAL_ALIVE | 9 receipt — pure-Azure data-plane client layer (workspace/lib/azure) |
+| WS-10 | [ws-10-attestation.md](receipts/ws-10-attestation.md) | ALIVE | 10 — Attestation Receipt Validator |
 | WS-11 | [ws-11-compliance.md](receipts/ws-11-compliance.md) | UNKNOWN | 11 Receipt — NIST AU-10 Compliance Surface |
 | WS-12 | [ws-12-e2e.md](receipts/ws-12-e2e.md) | FAIL | 12 Receipt — Workspace E2E Court + Architecture Landing |
 | x1-blocklist | [x1-blocklist-fix.md](receipts/x1-blocklist-fix.md) | UNKNOWN | X-1 — Put Block List data-corruption fix (P0, from bench B-5) |
-| x3-receipts- | [x3-receipts-relocation.md](receipts/x3-receipts-relocation.md) | UNSUPPORTED | x3-receipts-relocation (lane X-3) |
+| x10-s-wave-i | [x10-s-wave-integration.md](receipts/x10-s-wave-integration.md) | FAIL | X-10: S-Wave Integration Gate Receipt |
+| x3-receipts- | [x3-receipts-relocation.md](receipts/x3-receipts-relocation.md) | ALIVE | x3-receipts-relocation (lane X-3) |
 | x4-naming-sc | [x4-naming-scope.md](receipts/x4-naming-scope.md) | UNKNOWN | X-4 naming-sweep scope fix (2026-10-15) |
 | x5-eh-sweep- | [x5-eh-sweep-flake.md](receipts/x5-eh-sweep-flake.md) | UNKNOWN | X-5 Receipt: Event Hubs sweep() flake — deterministic expiry fix |
-| x7-bench-rep | [x7-bench-report.md](receipts/x7-bench-report.md) | SUSPECT | X-7 Receipt: `just bench-report` wiring + BENCH_RESULTS.md regeneration |
+| x6-cli-lease | [x6-cli-lease.md](receipts/x6-cli-lease.md) | ALIVE | X-6: CLI pytest lane lease — fixture-scoped substrate protocol (F-14 + DoD-3) |
+| x7-bench-rep | [x7-bench-report.md](receipts/x7-bench-report.md) | FAIL | X-7 Receipt: `just bench-report` wiring + BENCH_RESULTS.md regeneration |
 | x8-messaging | [x8-messaging-remeasure.md](receipts/x8-messaging-remeasure.md) | FAIL | X-8: messaging bench re-measure on KD-18/19/20 fixed substrate — receipt |
+| V261016-08 | [08-servicebus-census.md](../v26.10.16/receipts/08-servicebus-census.md) | ALIVE | V261016-08 (lane333, Service Bus SDK census + private-port SDK sweep) |
+| b42-dataplan | [b42-dataplane-saturation.md](../v26.10.16/receipts/b42-dataplane-saturation.md) | ALIVE | lane b42 — data-plane saturation pipeline (10,000-request storm) |
+| bench-a1-cha | [bench-a1-change-feed-rerun.md](../v26.10.16/receipts/bench-a1-change-feed-rerun.md) | PASS | a1 change-feed lane re-run (v26.10.16 refresh in place) |
+| bench-c11-tf | [bench-c11-tf-loop.md](../v26.10.16/receipts/bench-c11-tf-loop.md) | ALIVE | Bench receipt — c11 terraform→loopback→read-your-write→destroy lane |
+| cap-affidavi | [cap-affidavit-wasm.md](../v26.10.16/receipts/cap-affidavit-wasm.md) | ALIVE | Capability: affidavit WASM engine (wasmex-mounted, fail-closed) |
+| cap-appconfi | [cap-appconfig-kv.md](../v26.10.16/receipts/cap-appconfig-kv.md) | PARTIAL_ALIVE | cap-appconfig-kv — App Config `/kv` surface capability census (DoD lane, 2026-10-16) |
+| cap-blob-sna | [cap-blob-snapshot-metadata.md](../v26.10.16/receipts/cap-blob-snapshot-metadata.md) | PASS | cap-blob-snapshot-metadata (KD-60 witness material) |
+| cap-cosmos-t | [cap-cosmos-throughput.md](../v26.10.16/receipts/cap-cosmos-throughput.md) | PARTIAL_ALIVE | cap-cosmos-throughput |
+| cap-eh-consu | [cap-eh-consumergroups.md](../v26.10.16/receipts/cap-eh-consumergroups.md) | PASS | EventHubs hub-scoped consumer-group LIST (GAP retirement) |
+| cap-eventgri | [cap-eventgrid-topics.md](../v26.10.16/receipts/cap-eventgrid-topics.md) | PARTIAL_ALIVE | cap-eventgrid-topics — ARM Event Grid topics + systemTopics, inputSchema-gated EG1 admission |
+| cap-ex4pm-em | [cap-ex4pm-emitters.md](../v26.10.16/receipts/cap-ex4pm-emitters.md) | ALIVE | cap-ex4pm-emitters |
+| cap-finops-c | [cap-finops-calculator.md](../v26.10.16/receipts/cap-finops-calculator.md) | PASS | Capability: finops avoided-spend calculator |
+| cap-ingestio | [cap-ingestion-functor.md](../v26.10.16/receipts/cap-ingestion-functor.md) | PASS | Capability: affidavit ingestion functor (ARM PUT / RG-delete seal sideband) |
+| cap-monitor- | [cap-monitor-metrics.md](../v26.10.16/receipts/cap-monitor-metrics.md) | PARTIAL_ALIVE | cap-monitor-metrics — Azure Monitor metrics capability (Smalt.Metrics + ARM wire surface) |
+| cap-sb-eh-ap | [cap-sb-eh-apiversion-2024.md](../v26.10.16/receipts/cap-sb-eh-apiversion-2024.md) | PASS | SB queues + EH eventhubs lattice top 2021-04-01 → 2024-01-01 |
+| lane606-affi | [lane606-affidavit-seal-event.md](../v26.10.16/receipts/lane606-affidavit-seal-event.md) | ALIVE | 606 — affidavit.seal OCEL event |
+| r03-kd-censu | [r03-kd-census-single-sourced.md](../v26.10.16/receipts/r03-kd-census-single-sourced.md) | ALIVE | R3 (KD census prose single-sourced) |
+| r06-do-deadl | [r06-do-deadletter-self-call.md](../v26.10.16/receipts/r06-do-deadletter-self-call.md) | PASS | R6 (QueueStore do_deadletter self-call fix) |
+| r08-receipt- | [r08-receipt-index-drift-gate.md](../v26.10.16/receipts/r08-receipt-index-drift-gate.md) | PASS | R8 (receipt-index-check real gate + injected-drift flip) |
+| r09-receipt- | [r09-receipt-standing-scan-glob.md](../v26.10.16/receipts/r09-receipt-standing-scan-glob.md) | PASS | R9 (receipt standing whole-file scan + version glob) |
+| r10-cosmos-p | [r10-cosmos-patch-admission-gates.md](../v26.10.16/receipts/r10-cosmos-patch-admission-gates.md) | PARTIAL_ALIVE | R10 (cosmos PATCH runs PUT admission gates) |
+| r101-census- | [r101-census-rows.md](../v26.10.16/receipts/r101-census-rows.md) | PARTIAL_ALIVE | R101: SB census rows |
+| r103-c6-corp | [r103-c6-corpus.md](../v26.10.16/receipts/r103-c6-corpus.md) | UNKNOWN | R103: c6 sentinel RG bench corpus |
+| r11-error-co | [r11-error-codes-regen.md](../v26.10.16/receipts/r11-error-codes-regen.md) | PASS | R11 (ERROR_CODES.md regeneration + drift fence) |
+| r115-selecto | [r115-selector-epoch-verify.md](../v26.10.16/receipts/r115-selector-epoch-verify.md) | PASS | R115 — selector-epoch verify-and-report (redo of R69-verify) |
+| r116-telemet | [r116-telemetry-genserver-deleted-table.md](../v26.10.16/receipts/r116-telemetry-genserver-deleted-table.md) | PASS | R116 (telemetry GenServer deleted-table hold) |
+| r117-c6-sent | [r117-c6-sentinel-rg-loud-skip.md](../v26.10.16/receipts/r117-c6-sentinel-rg-loud-skip.md) | PASS | R117 (c6_sentinel_rg loud skip) |
+| r118-cosmos- | [r118-cosmos-put-replace.md](../v26.10.16/receipts/r118-cosmos-put-replace.md) | PASS | R118 (cosmos doc PUT = replace, not merge) |
+| r119-r123-ar | [r119-r123-arm-list-store-reseed.md](../v26.10.16/receipts/r119-r123-arm-list-store-reseed.md) | PASS | R119 + R123 (ARM subscription-wide list; store reseed + TLS call-site reduction) |
+| r12-r29-shim | [r12-r29-shim-courts.md](../v26.10.16/receipts/r12-r29-shim-courts.md) | PASS | R12 + R29 (amqp framing court, EH mgmt court) |
+| r120-w3-sess | [r120-w3-session-ops-port-fix.md](../v26.10.16/receipts/r120-w3-session-ops-port-fix.md) | PARTIAL_ALIVE | R120 (w3 session-ops pytest port fix + skip rationale rewrite) |
+| r120-w3-sess | [r120-w3-session-ops-pytest.md](../v26.10.16/receipts/r120-w3-session-ops-pytest.md) | SKIP-LOUD | R120 (w3 session-ops pytest substrate wiring) |
+| r121-kd-flip | [r121-kd-flip-dry.md](../v26.10.16/receipts/r121-kd-flip-dry.md) | PASS | R121 (kd_flip covers-map dry run) |
+| r122-d14-spl | [r122-d14-splat-comp-default-deny.md](../v26.10.16/receipts/r122-d14-splat-comp-default-deny.md) | PASS | R122 (HEAD/DELETE splat-arm comp default-deny, KD-60) |
+| r124-r126-eg | [r124-r126-egress-comp-envelope-sentinel-quote-parse.md](../v26.10.16/receipts/r124-r126-egress-comp-envelope-sentinel-quote-parse.md) | PASS | R124 + R126 + R136 (egress comp envelopes, sentinel quote-aware parse, header strictness) |
+| r125-error-c | [r125-error-codes-doc.md](../v26.10.16/receipts/r125-error-codes-doc.md) | FAIL | R125 (error-codes doc drift fence) |
+| r128-r129-r1 | [r128-r129-r132-amqp-session-dlq-sweeper.md](../v26.10.16/receipts/r128-r129-r132-amqp-session-dlq-sweeper.md) | PASS | R128 + R129 + R132 (DLQ-full parking, session-gate bypasses, sweeper boot validation) |
+| r13-eh-credi | [r13-eh-credit-leak.md](../v26.10.16/receipts/r13-eh-credit-leak.md) | PARTIAL_ALIVE | R13 (Event Hubs link-credit over-delivery fix + flip witness) |
+| r130-r140-no | [r130-r140-not-receipted.md](../v26.10.16/receipts/r130-r140-not-receipted.md) | PARTIAL_ALIVE | R130, R140 (trace result: no landed artifact found — NOT RECEIPTED) |
+| r131-ledger- | [r131-ledger-name-fence.md](../v26.10.16/receipts/r131-ledger-name-fence.md) | PASS | R131 (confidential-ledger non-UTF8 name fence) |
+| r133-policy- | [r133-policy-row-cas.md](../v26.10.16/receipts/r133-policy-row-cas.md) | PASS | R133 (serialized policy-row CAS for blob container policy) |
+| r134-cosmos- | [r134-cosmos-etag-final-body.md](../v26.10.16/receipts/r134-cosmos-etag-final-body.md) | PASS | R134 (cosmos etag = pure function of final stored body) |
+| r135-r137-r1 | [r135-r137-r138-mgmt-names-path-fence-kv-colon.md](../v26.10.16/receipts/r135-r137-r138-mgmt-names-path-fence-kv-colon.md) | PASS | R135 + R137 + R138 (mgmt entity-name resolution, raw path-segment fence, KV colon-name collision) |
+| r141-eh-batc | [r141-eh-batch-body-discriminator.md](../v26.10.16/receipts/r141-eh-batch-body-discriminator.md) | PASS | R141 (Event Hubs multi-event batch body discriminator, KD-53) |
+| r142-schedul | [r142-scheduled-type-guard.md](../v26.10.16/receipts/r142-scheduled-type-guard.md) | PASS | R142 (scheduled-enqueue-time type guard + scheduled DLQ fence) |
+| r143-apivers | [r143-apiversion-gates.md](../v26.10.16/receipts/r143-apiversion-gates.md) | PASS | R143 (egress api-version admission gates: AKV SKR + Azure Monitor) |
+| r143b-replay | [r143b-replay-timeout-tag-trace.md](../v26.10.16/receipts/r143b-replay-timeout-tag-trace.md) | PARTIAL_ALIVE | R143b (replay timeout tag — trace result) |
+| r144-lock-ab | [r144-lock-aba-telemetry-read-guard.md](../v26.10.16/receipts/r144-lock-aba-telemetry-read-guard.md) | PASS | R144 (lock ABA CAS + telemetry read guard) |
+| r145-skr-api | [r145-skr-apiversion-tests.md](../v26.10.16/receipts/r145-skr-apiversion-tests.md) | PASS | R145 (SKR api-version test updates) |
+| r146-r134deb | [r146-r134debug-noop.md](../v26.10.16/receipts/r146-r134debug-noop.md) | PASS | R146 (no-op: R134DEBUG marker already absent) |
+| r147-r103-co | [r147-r103-corpus-correction.md](../v26.10.16/receipts/r147-r103-corpus-correction.md) | PASS | R147 (r103 c6-corpus receipt correction, SKIP → RESOLVED) |
+| r149-sweeper | [r149-sweeper-raise-fence.md](../v26.10.16/receipts/r149-sweeper-raise-fence.md) | PASS | R149 (sweeper raise fence) |
+| r15-gate-fix | [r15-gate-fixtures-verdict-tightening.md](../v26.10.16/receipts/r15-gate-fixtures-verdict-tightening.md) | PARTIAL_ALIVE | R15 (gate fixtures + verdict tightening) |
+| r150-park-re | [r150-park-receive-exclusion.md](../v26.10.16/receipts/r150-park-receive-exclusion.md) | PASS | R150 (DLQ-full parked rows excluded from receive) |
+| r151-comp-wh | [r151-comp-whitelist-reanchor.md](../v26.10.16/receipts/r151-comp-whitelist-reanchor.md) | PASS | R151 (comp_whitelist re-anchor, shim court non-vacuous) |
+| r152-kv-cour | [r152-kv-court-ca-anchoring.md](../v26.10.16/receipts/r152-kv-court-ca-anchoring.md) | PASS | R152 (KV court CA anchoring) |
+| r153-immutab | [r153-immutability-cas-parity.md](../v26.10.16/receipts/r153-immutability-cas-parity.md) | PASS | R153 (immutability policy CAS parity) |
+| r154-raw-blo | [r154-raw-blob-put-decode.md](../v26.10.16/receipts/r154-raw-blob-put-decode.md) | PASS | R154 (raw blob PUT decoded-to-decoded invariant) |
+| r155-wire-fe | [r155-wire-fences-w1-w3.md](../v26.10.16/receipts/r155-wire-fences-w1-w3.md) | PASS | R155 (wire/dispatch-tier fences W1-W3) |
+| r156-verify- | [r156-verify-pair-spki.md](../v26.10.16/receipts/r156-verify-pair-spki.md) | PASS | R156 (verify_pair = SPKI match, not self-signature) |
+| r157-prune-g | [r157-prune-guard.md](../v26.10.16/receipts/r157-prune-guard.md) | PASS | R157 (telemetry prune guard) |
+| r158-session | [r158-session-gate-untag.md](../v26.10.16/receipts/r158-session-gate-untag.md) | PASS | R158 (session-gate test untag) |
+| r16-frame-co | [r16-frame-codec-target-arity.md](../v26.10.16/receipts/r16-frame-codec-target-arity.md) | PASS | R16 (AMQP target composite: 7-field arity for azure _pyamqp) |
+| r160-r162-r1 | [r160-r162-r165-r169-r170-trace-batch.md](../v26.10.16/receipts/r160-r162-r165-r169-r170-trace-batch.md) | PARTIAL_ALIVE | R160 / R162 / R165 / R169 / R170 (trace batch) |
+| r160b-dup-se | [r160b-dup-seq-dedup.md](../v26.10.16/receipts/r160b-dup-seq-dedup.md) | PASS | R160b (duplicate sequence-number dedup in deferred batches) |
+| r161-wire-no | [r161-wire-norm-court-verdict.md](../v26.10.16/receipts/r161-wire-norm-court-verdict.md) | PASS | R161 (wire_norm court no-op verdict) |
+| r163-probe-a | [r163-probe-apiversion-parity.md](../v26.10.16/receipts/r163-probe-apiversion-parity.md) | PARTIAL_ALIVE | R163 (probe api-version parity, JS + PY) |
+| r163b-clean- | [r163b-clean-hardening-e1-e4.md](../v26.10.16/receipts/r163b-clean-hardening-e1-e4.md) | PASS | R163b (wave-telemetry CLEAN predicate hardening E1-E4) |
+| r164-test-is | [r164-test-isolation-aliases.md](../v26.10.16/receipts/r164-test-isolation-aliases.md) | PASS | R164 (tag aliases + TEST_ISOLATION + convergence doc) |
+| r166-eh-disc | [r166-eh-discriminator-dead-clause.md](../v26.10.16/receipts/r166-eh-discriminator-dead-clause.md) | PARTIAL_ALIVE | R166 — EH discriminator + dead clause |
+| r168-py-hygi | [r168-py-hygiene.md](../v26.10.16/receipts/r168-py-hygiene.md) | PASS | R168 (python hygiene sweep) |
+| r17-w3-sessi | [r17-w3-session-state.md](../v26.10.16/receipts/r17-w3-session-state.md) | PARTIAL_ALIVE | R17 (w3 session-state API fix) |
+| r171-unreach | [r171-unreachable-clause-removal.md](../v26.10.16/receipts/r171-unreachable-clause-removal.md) | PASS | R171 (typed-unreachable clause removal) |
+| r172-lane-cl | [r172-lane-clean-env-guard.md](../v26.10.16/receipts/r172-lane-clean-env-guard.md) | PASS | R172 (lane-clean env-live guard) |
+| r173-kql-ord | [r173-kql-order-parity.md](../v26.10.16/receipts/r173-kql-order-parity.md) | PARTIAL_ALIVE | R173 (KQL order-by numeric parity) |
+| r174-tls-tri | [r174-tls-trio-fuzz-nonrepro.md](../v26.10.16/receipts/r174-tls-trio-fuzz-nonrepro.md) | PASS | R174 — TLS trio + fuzz non-repro |
+| r177-sentine | [r177-sentinel-column-cut.md](../v26.10.16/receipts/r177-sentinel-column-cut.md) | PASS | R177 — Sentinel column cut + query-entry cap |
+| r177b-keyvau | [r177b-keyvault-probe-parity.md](../v26.10.16/receipts/r177b-keyvault-probe-parity.md) | PASS | R177b — KeyVault probe parity + versioned DigestInfo |
+| r177c-union- | [r177c-union-narrow.md](../v26.10.16/receipts/r177c-union-narrow.md) | PASS | R177c — KQL union narrow / predicate totality |
+| r177f-wave-t | [r177f-wave-telemetry-clean-holes.md](../v26.10.16/receipts/r177f-wave-telemetry-clean-holes.md) | PASS | R177f — wave-telemetry CLEAN holes closed loud |
+| r178b-error- | [r178b-error-codes-helper-window.md](../v26.10.16/receipts/r178b-error-codes-helper-window.md) | PARTIAL_ALIVE | R178b — gen_error_codes helper-window widening (11→14) + drift witness |
+| r178c-bare-e | [r178c-bare-entity-sync.md](../v26.10.16/receipts/r178c-bare-entity-sync.md) | PASS | R178c — management_rpc bare_entity sync + lock-token array unwrap |
+| r178d-probe- | [r178d-probe-venv-docs.md](../v26.10.16/receipts/r178d-probe-venv-docs.md) | PASS | R178d — probe venv docs: honest interpreter matrix + README |
+| r178e-census | [r178e-census-regression-park.md](../v26.10.16/receipts/r178e-census-regression-park.md) | PARTIAL_ALIVE | R178e — census regression (PARKED, repair in flight) |
+| r178e-census | [r178e-census-replay-repair.md](../v26.10.16/receipts/r178e-census-replay-repair.md) | ALIVE | Repair lane R178e: census replay witness (2/11 → 11/11) |
+| r178g-ets-hy | [r178g-ets-hygiene-batch.md](../v26.10.16/receipts/r178g-ets-hygiene-batch.md) | PASS | R178g / R189 / R195 (ETS hygiene + test cleanup batch) |
+| r18-arm-list | [r18-arm-list-fences.md](../v26.10.16/receipts/r18-arm-list-fences.md) | PASS | R18 (ARM list fences: deny-by-default before type projections) |
+| r185-r185d-r | [r185-r185d-r185h-wire-fences-batch.md](../v26.10.16/receipts/r185-r185d-r185h-wire-fences-batch.md) | PASS | R185 / R185d / R185h (wire fences + TLS + policy-row wire tier) |
+| r185e-eh-bat | [r185e-eh-batch-dup-kind.md](../v26.10.16/receipts/r185e-eh-batch-dup-kind.md) | PASS | R185e (Event Hubs batch discriminator rewrite: duplicate-section-KIND detection, KD-53) |
+| r185i-r185k- | [r185i-r185k-harness-batch.md](../v26.10.16/receipts/r185i-r185k-harness-batch.md) | PASS | R185i / R185k (test harness batch) |
+| r187b-r190-c | [r187b-r190-court-hardening-batch.md](../v26.10.16/receipts/r187b-r190-court-hardening-batch.md) | PASS | R187b / R190 / R191 / R192 / R199 / R200 (court + harness hardening batch) |
+| r188-r196-r1 | [r188-r196-r197-worm-settle-batch.md](../v26.10.16/receipts/r188-r196-r197-worm-settle-batch.md) | PASS | R188 / R194 / R196 / R197 (WORM / settle / tombstone batch) |
+| r19-sas-st-s | [r19-sas-st-sip.md](../v26.10.16/receipts/r19-sas-st-sip.md) | PARTIAL_ALIVE | R19 (SAS st/sip: start-time window + IP-range claims) |
+| r20-naming-s | [r20-naming-sweep-zero.md](../v26.10.16/receipts/r20-naming-sweep-zero.md) | PASS | R20 (naming-sweep zero violations) |
+| r200a-kd70-d | [r200a-kd70-delivery-annotations.md](../v26.10.16/receipts/r200a-kd70-delivery-annotations.md) | PASS | R200a: KD-70 witness — EH delivery_annotations last_enqueued_* on real @azure/event-hubs receive |
+| r200b-kd71-x | [r200b-kd71-xopt-props.md](../v26.10.16/receipts/r200b-kd71-xopt-props.md) | PASS | R200b: KD-71 witness — x-opt-* annotations mapped onto ReceivedEventData |
+| r200c-kd68-s | [r200c-kd68-selector-filter.md](../v26.10.16/receipts/r200c-kd68-selector-filter.md) | FAIL | R200c: KD-68 falsifier — EH selector-filter (eventPosition {sequenceNumber}) ignored on real @azure/event-hubs |
+| r200d-kd68-s | [r200d-kd68-selector-impl.md](../v26.10.16/receipts/r200d-kd68-selector-impl.md) | ALIVE | r200d — KD-68 selector-filter implementation (lane283 repair) |
+| r200e-kd76-p | [r200e-kd76-pk-routing.md](../v26.10.16/receipts/r200e-kd76-pk-routing.md) | ALIVE | r200e — KD-76 partition-key routing (repair lane 284) |
+| r200f-kd46-m | [r200f-kd46-mgmt-surface.md](../v26.10.16/receipts/r200f-kd46-mgmt-surface.md) | PASS | r200f — KD-46 witness: SB $management surface (deferred redelivery deliveryCount) |
+| r200g-kd76-p | [r200g-kd76-pk-witness.md](../v26.10.16/receipts/r200g-kd76-pk-witness.md) | FAIL | r200g — KD-76 pk-routing witness (lane 296) |
+| r200h-kd76-p | [r200h-kd76-pk-witness-repair.md](../v26.10.16/receipts/r200h-kd76-pk-witness-repair.md) | PASS | r200h — KD-76 pk-routing witness REPAIR (lane 297) |
+| r207-harness | [r207-harness-scripts-batch.md](../v26.10.16/receipts/r207-harness-scripts-batch.md) | PASS | R207 (harness + justfile.d unaccounted-diff batch) |
+| r208-repro-f | [r208-repro-falsifiers-batch.md](../v26.10.16/receipts/r208-repro-falsifiers-batch.md) | PASS | R208 (repro falsifier tests batch) |
+| r209-docs-co | [r209-docs-config-batch.md](../v26.10.16/receipts/r209-docs-config-batch.md) | PASS | R209 (docs/config accuracy batch) |
+| r210-kd77-de | [r210-kd77-delivery-tag.md](../v26.10.16/receipts/r210-kd77-delivery-tag.md) | PARTIAL_ALIVE | r210 — KD-77 delivery-tag UUID TypeError repair lane |
+| r211-courts- | [r211-courts-final-batch.md](../v26.10.16/receipts/r211-courts-final-batch.md) | PASS | R211: courts final batch — disposition_token / ets_cleanup / atom_bridge / amqp_framing / settle_cas |
+| r212-dlq-rea | [r212-dlq-reason-echo.md](../v26.10.16/receipts/r212-dlq-reason-echo.md) | ALIVE | r212 — DLQ reason echo + KD-77 residual debris sweep |
+| r213-registr | [r213-registry-surface-fence-lane334.md](../v26.10.16/receipts/r213-registry-surface-fence-lane334.md) | PASS | R212 (ARM registry surface coverage fence, lane 334) |
+| r214-suspect | [r214-suspect-triage.md](../v26.10.16/receipts/r214-suspect-triage.md) | PASS | r214 — SUSPECT remainder triage (docs lane, 2026-10-16) |
+| r215-affidav | [r215-affidavit-seal-court.md](../v26.10.16/receipts/r215-affidavit-seal-court.md) | PASS | r215 — affidavit seal-court witness receipt (lane 5 VERIFY; refreshed by lane 4 WITNESS) |
+| r216-court-x | [r216-court-x2-run8-red.md](../v26.10.16/receipts/r216-court-x2-run8-red.md) | FAIL | Court-x2 wrap runs 8–9 — RED |
+| r217-fin-swe | [r217-fin-sweep.md](../v26.10.16/receipts/r217-fin-sweep.md) | PASS | r217 — fin-sweep generated-artifact regen + idempotence (lane X6) |
+| r22-redirect | [r22-redirect-airgap-e2e-court.md](../v26.10.16/receipts/r22-redirect-airgap-e2e-court.md) | PASS | R22 (redirect:"error" air-gap + e2e court) |
+| r24-vault-re | [r24-vault-recover-versioned.md](../v26.10.16/receipts/r24-vault-recover-versioned.md) | PASS | R24 (vault soft-delete / recover restores versioned material) |
+| r26-sentinel | [r26-sentinel-kql.md](../v26.10.16/receipts/r26-sentinel-kql.md) | PASS | R26: sentinel KQL repair |
+| r27-session- | [r27-session-ledger-attempt-entry.md](../v26.10.16/receipts/r27-session-ledger-attempt-entry.md) | PASS | R27 (session-ledger attempt entry, airgap seam) |
+| r28-store-pr | [r28-store-prefix-guard.md](../v26.10.16/receipts/r28-store-prefix-guard.md) | PASS | R28 (Store.prefix_keys binary-prefix guard fixup) |
+| r30-arm-rg-p | [r30-arm-rg-parity.md](../v26.10.16/receipts/r30-arm-rg-parity.md) | PASS | R30: ARM resource-group parity |
+| r31-store-re | [r31-store-reseed.md](../v26.10.16/receipts/r31-store-reseed.md) | PASS | R31: store reseed |
+| r32-verify-s | [r32-verify-scratch-keyvault.md](../v26.10.16/receipts/r32-verify-scratch-keyvault.md) | PASS | R32 (verify-scratch keyvault versioned + release-policy probes) |
+| r33-blob-ran | [r33-blob-range-closing-boundary.md](../v26.10.16/receipts/r33-blob-range-closing-boundary.md) | PASS | R33 (blob range closing-boundary fence) |
+| r34-flow-cre | [r34-flow-credit.md](../v26.10.16/receipts/r34-flow-credit.md) | PASS | R34: AMQP flow credit |
+| r35-court-x2 | [r35-court-x2-judge-log.md](../v26.10.16/receipts/r35-court-x2-judge-log.md) | FAIL | R35 (court_x2 green predicate A/B: compile-abort must judge NOT-GREEN) |
+| r36-bench-re | [r36-bench-report-fail-closed.md](../v26.10.16/receipts/r36-bench-report-fail-closed.md) | PASS | R36 (bench report.py fail-closed on malformed rows + wave-telemetry split) |
+| r38-mcp-noti | [r38-mcp-notifications.md](../v26.10.16/receipts/r38-mcp-notifications.md) | PASS | R38: MCP notifications |
+| r39-verb-gat | [r39-verb-gate-8-cases.md](../v26.10.16/receipts/r39-verb-gate-8-cases.md) | PASS | R39 (copilot verb-gate: read-marker semantics over full URL, 8-case court) |
+| r4-r14-kv-re | [r4-r14-kv-recover-and-repairs.md](../v26.10.16/receipts/r4-r14-kv-recover-and-repairs.md) | PASS | R4 + R14 (Key Vault recover/versioned rows + name-shape repairs) |
+| r43-amqp-044 | [r43-amqp-044-pin.md](../v26.10.16/receipts/r43-amqp-044-pin.md) | PARTIAL_ALIVE | R43 (0x44 sasl-outcome descriptor pin — parity tier) |
+| r47-arm-getb | [r47-arm-getbyid-binding.md](../v26.10.16/receipts/r47-arm-getbyid-binding.md) | PASS | R47 (ARM read-only facade: resources.getById binding) |
+| r48-etag-gat | [r48-etag-gate.md](../v26.10.16/receipts/r48-etag-gate.md) | PASS | R48: cosmos etag CAS gate |
+| r5-blob-hold | [r5-blob-hold-and-atom-safety.md](../v26.10.16/receipts/r5-blob-hold-and-atom-safety.md) | PASS | R5 (blob create-under-hold + atom-conversion safety) |
+| r50-r54-r67- | [r50-r54-r67-r99-r111-egress-fences.md](../v26.10.16/receipts/r50-r54-r67-r99-r111-egress-fences.md) | PASS | R50 + R54 + R67 + R99 + R111 (egress fences batch) |
+| r51-r57-r58- | [r51-r57-r58-r68-r81-r95-r96-amqp-batch.md](../v26.10.16/receipts/r51-r57-r58-r68-r81-r95-r96-amqp-batch.md) | PASS | R51 + R57 + R58 + R68 + R95 + R96 + R81 (AMQP/DET-S batch) |
+| r55-egress-o | [r55-egress-outbound-leak.md](../v26.10.16/receipts/r55-egress-outbound-leak.md) | PARTIAL_ALIVE | R55: egress outbound leak |
+| r59-cosmos-e | [r59-cosmos-etag-versioning.md](../v26.10.16/receipts/r59-cosmos-etag-versioning.md) | PASS | R59: cosmos etag versioning |
+| r62-blob-con | [r62-blob-container-etag-worm.md](../v26.10.16/receipts/r62-blob-container-etag-worm.md) | PASS | R62: blob container etag + WORM |
+| r64-r66-r70- | [r64-r66-r70-r91-amqp-queue-repairs.md](../v26.10.16/receipts/r64-r66-r70-r91-amqp-queue-repairs.md) | PASS | R64/R66/R70/R91: AMQP queue repairs (sweep max-delivery, disposition errors, scheduled state, sweeper complete |
+| r74-eh-discr | [r74-eh-discriminator.md](../v26.10.16/receipts/r74-eh-discriminator.md) | PASS | R74: Event Hubs discriminator |
+| r75-r102-led | [r75-r102-ledger-fence-durability.md](../v26.10.16/receipts/r75-r102-ledger-fence-durability.md) | PASS | R75/R102: ledger fence + durability gate |
+| r76-judge-lo | [r76-judge-log-compile-guard.md](../v26.10.16/receipts/r76-judge-log-compile-guard.md) | PASS | R76: court_x2 judge_log compile-abort guard |
+| r77-blob-cre | [r77-blob-create-time-metadata.md](../v26.10.16/receipts/r77-blob-create-time-metadata.md) | PASS | R77: blob create-time metadata |
+| r80-gitignor | [r80-gitignore-and-topo-worker.md](../v26.10.16/receipts/r80-gitignore-and-topo-worker.md) | PASS | R80 (.gitignore bench dirs + topo-worker inline poll) |
+| r82-queue-ma | [r82-queue-max-body.md](../v26.10.16/receipts/r82-queue-max-body.md) | PASS | R82: AMQP max_body clamp |
+| r83-r89-port | [r83-r89-port-sweep.md](../v26.10.16/receipts/r83-r89-port-sweep.md) | PASS | R83/R89: port hygiene (substrate ports + collision detection) |
+| r85-r87-egre | [r85-r87-egress-decode-dispatch.md](../v26.10.16/receipts/r85-r87-egress-decode-dispatch.md) | PARTIAL_ALIVE | R85/R87: egress source/target decode + dispatch tests |
+| r86-kv-leak | [r86-kv-leak.md](../v26.10.16/receipts/r86-kv-leak.md) | PASS | R86: Key Vault leak |
+| r90-r100-tls | [r90-r100-tls-pin.md](../v26.10.16/receipts/r90-r100-tls-pin.md) | PASS | R90/R100: TLS pin |
+| r92-r105-r10 | [r92-r105-r106-telemetry.md](../v26.10.16/receipts/r92-r105-r106-telemetry.md) | PARTIAL_ALIVE | R92/R105/R106: telemetry resilience |
+| r93-kql-fide | [r93-kql-fidelity.md](../v26.10.16/receipts/r93-kql-fidelity.md) | PASS | R93: KQL fidelity |
+| r94-corpus-r | [r94-corpus-row.md](../v26.10.16/receipts/r94-corpus-row.md) | PASS | R94: error corpus row |
+| r98-comp-gat | [r98-comp-gate.md](../v26.10.16/receipts/r98-comp-gate.md) | PASS | R98: comp-whitelist gate |
+| t5-cleanroom | [t5-cleanroom-validation.md](../v26.10.16/receipts/t5-cleanroom-validation.md) | FAIL | T5 Clean-Room Validation Receipt (lane 392) |
 
 ## Workspace (ws-01..12)
 
@@ -130,8 +319,8 @@ count, or PASS/FAIL token) found in the file.
 | WS-06 | [ws-06-serial.md](receipts/ws-06-serial.md) | UNSUPPORTED | 06 Receipt — Web Serial Hardware Gateway |
 | WS-07 | [ws-07-solver.md](receipts/ws-07-solver.md) | UNKNOWN | 7 Receipt: Dynamic Bellman Solver |
 | WS-08 | [ws-08-arm.md](receipts/ws-08-arm.md) | PASS | 8 receipt — pure-Azure ARM client layer (workspace) |
-| WS-09 | [ws-09-dataplane.md](receipts/ws-09-dataplane.md) | PASS | 9 receipt — pure-Azure data-plane client layer (workspace/lib/azure) |
-| WS-10 | [ws-10-attestation.md](receipts/ws-10-attestation.md) | UNKNOWN | 10 — Attestation Receipt Validator |
+| WS-09 | [ws-09-dataplane.md](receipts/ws-09-dataplane.md) | PARTIAL_ALIVE | 9 receipt — pure-Azure data-plane client layer (workspace/lib/azure) |
+| WS-10 | [ws-10-attestation.md](receipts/ws-10-attestation.md) | ALIVE | 10 — Attestation Receipt Validator |
 | WS-11 | [ws-11-compliance.md](receipts/ws-11-compliance.md) | UNKNOWN | 11 Receipt — NIST AU-10 Compliance Surface |
 | WS-12 | [ws-12-e2e.md](receipts/ws-12-e2e.md) | FAIL | 12 Receipt — Workspace E2E Court + Architecture Landing |
 
@@ -142,10 +331,10 @@ count, or PASS/FAIL token) found in the file.
 | cli-01 | [cli-01-scaffold.md](receipts/cli-01-scaffold.md) | UNKNOWN | cli-01-scaffold — smalt-cli Python substrate |
 | cli-03 | [cli-03-gateway.md](receipts/cli-03-gateway.md) | UNKNOWN | CLI-03 wire-gateway core (smalt-cli) |
 | cli-04 | [cli-04-sdk-lanes-a.md](receipts/cli-04-sdk-lanes-a.md) | PASS | CLI-4 receipt — SDK test lanes (Gate 1, part A) |
-| cli-05 | [cli-05-sdk-lanes-b.md](receipts/cli-05-sdk-lanes-b.md) | UNKNOWN | CLI-5 SDK test lanes (Gate 1 part B) |
-| cli-06 | [cli-06-hw.md](receipts/cli-06-hw.md) | PARITY_CONFIRMED | CLI-6 Receipt — AtomVM Hardware Bridge |
+| cli-05 | [cli-05-sdk-lanes-b.md](receipts/cli-05-sdk-lanes-b.md) | ALIVE | CLI-5 SDK test lanes (Gate 1 part B) |
+| cli-06 | [cli-06-hw.md](receipts/cli-06-hw.md) | PARTIAL_ALIVE | CLI-6 Receipt — AtomVM Hardware Bridge |
 | cli-07 | [cli-07-daemon.md](receipts/cli-07-daemon.md) | UNSUPPORTED | CLI-7 Receipt — smalt-cli Daemon Bridge |
-| cli-08 | [cli-08-gates.md](receipts/cli-08-gates.md) | SKIP-LOUD | CLI-8 — Verification Gates Runner Receipt |
+| cli-08 | [cli-08-gates.md](receipts/cli-08-gates.md) | PASS | CLI-8 — Verification Gates Runner Receipt |
 
 No receipt file on disk: cli-02.
 
@@ -153,21 +342,55 @@ No receipt file on disk: cli-02.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
-| enclave-test | [enclave-testbed.md](sdk-results/enclave-testbed.md) | FAIL | Enclave Testbed — v26.10.14 Composite Validation Receipt |
+| enclave-test | [enclave-testbed.md](sdk-results/enclave-testbed.md) | PASS | Enclave Testbed — v26.10.14 Composite Validation Receipt |
 | py-arm-resou | [py-arm-resources.md](sdk-results/py-arm-resources.md) | UNKNOWN | PY-1 — Python azure-mgmt-resource vs smalt ARM gateway |
 | py-auth-keyv | [py-auth-keyvault.md](sdk-results/py-auth-keyvault.md) | PASS | PY-6: Python azure-identity + azure-keyvault vs smalt v26.10.14 |
-| py-cosmos | [py-cosmos.md](sdk-results/py-cosmos.md) | PASS | PY-3 — Real python azure-cosmos SDK vs smalt Cosmos plane |
+| py-cosmos | [py-cosmos.md](sdk-results/py-cosmos.md) | ALIVE | PY-3 — Real python azure-cosmos SDK vs smalt Cosmos plane |
 | py-eventhub- | [py-eventhub-eventgrid.md](sdk-results/py-eventhub-eventgrid.md) | UNKNOWN | PY-5 — Real Python azure-eventhub + azure-eventgrid vs smalt v26.10.14 |
-| py-resourceg | [py-resourcegraph-monitor.md](sdk-results/py-resourcegraph-monitor.md) | FAIL | PY-7 — Python azure-mgmt-resourcegraph + azure-monitor-query SDKs against Resource Graph and Log Analytics (Se |
+| py-resourceg | [py-resourcegraph-monitor.md](sdk-results/py-resourcegraph-monitor.md) | PASS | PY-7 — Python azure-mgmt-resourcegraph + azure-monitor-query SDKs against Resource Graph and Log Analytics (Se |
 | py-servicebu | [py-servicebus.md](sdk-results/py-servicebus.md) | PASS | PY-4 — Real azure-servicebus SDK over loopback AMQP — BLOCKED (substrate AMQP wire gap) |
-| py-storage-b | [py-storage-blob.md](sdk-results/py-storage-blob.md) | FAIL | PY-2 — Python azure-storage-blob SDK against the egress blob plane (8443) |
-| ts-arm-resou | [ts-arm-resources.md](sdk-results/ts-arm-resources.md) | FAIL | TS SDK Results: @azure/arm-resources vs smalt ARM plane (TS-1) |
+| py-storage-b | [py-storage-blob.md](sdk-results/py-storage-blob.md) | PASS | PY-2 — Python azure-storage-blob SDK against the egress blob plane (8443) |
+| ts-arm-resou | [ts-arm-resources.md](sdk-results/ts-arm-resources.md) | PASS | TS SDK Results: @azure/arm-resources vs smalt ARM plane (TS-1) |
 | ts-auth | [ts-auth.md](sdk-results/ts-auth.md) | PASS | TS-6: Real @azure SDK auth-surface probe (ts-auth) |
-| ts-cosmos | [ts-cosmos.md](sdk-results/ts-cosmos.md) | PASS | TS-3: Real TypeScript @azure/cosmos SDK court vs smalt Cosmos NoSQL plane |
+| ts-cosmos | [ts-cosmos.md](sdk-results/ts-cosmos.md) | PARTIAL_ALIVE | TS-3: Real TypeScript @azure/cosmos SDK court vs smalt Cosmos NoSQL plane |
 | ts-event-hub | [ts-event-hubs.md](sdk-results/ts-event-hubs.md) | UNKNOWN | TS-5 — real @azure/event-hubs against the smalt EH lane |
 | ts-keyvault | [ts-keyvault.md](sdk-results/ts-keyvault.md) | PASS | TS-7 — Real `@azure/keyvault-keys` (4.10.2) vs smalt KV surface |
 | ts-servicebu | [ts-servicebus-census.md](sdk-results/ts-servicebus-census.md) | UNSUPPORTED | TS-4 Service Bus SDK Census Receipt — @azure/service-bus 7.10.0 |
 | ts-storage-b | [ts-storage-blob.md](sdk-results/ts-storage-blob.md) | PASS | TS-2 — real @azure/storage-blob (TypeScript) against the smalt blob plane |
+| appconfig-co | [appconfig-console-gap.md](../v26.10.16/sdk-results/appconfig-console-gap.md) | UNKNOWN | GAP RECEIPT — Azure App Configuration data plane absent from smalt substrate |
+| native-lifec | [native-lifecycle.md](../v26.10.16/sdk-results/native-lifecycle.md) | ALIVE | Native enclave lifecycle — equivalence validation receipt (lane 409, 2026-10-16) |
+| nfr3-rss-500 | [nfr3-rss-500.md](../v26.10.16/sdk-results/nfr3-rss-500.md) | ALIVE | NFR-3 hermeticity at scale — 500-cycle RSS slope (lane 501, 2026-10-16) |
+| nfr3-rss | [nfr3-rss.md](../v26.10.16/sdk-results/nfr3-rss.md) | PASS | NFR3 RSS gate receipt |
+| nfr4-identit | [nfr4-identity-proof.md](../v26.10.16/sdk-results/nfr4-identity-proof.md) | CLOSED | NFR-4: composite ETS baseline-identity proof — FAIL-CLOSED (orphans found) |
+| pqc-attestat | [pqc-attestation-audit.md](../v26.10.16/sdk-results/pqc-attestation-audit.md) | COMPLETE | PQC Attestation Audit — smalt (Agent 9, Ring 3) |
+| py-arm-resou | [py-arm-resources.md](../v26.10.16/sdk-results/py-arm-resources.md) | PASS | PY-1 — real azure-mgmt-resources (Python) against the smalt ARM plane |
+| py-atlas | [py-atlas.md](../v26.10.16/sdk-results/py-atlas.md) | PASS | PY-ATLAS — Purview Atlas v2 REST probes (python requests) |
+| py-auth-keyv | [py-auth-keyvault.md](../v26.10.16/sdk-results/py-auth-keyvault.md) | UNKNOWN | PY-6 — real azure-identity + azure-keyvault (Python) against the smalt ARM/KV planes |
+| py-cosmos | [py-cosmos.md](../v26.10.16/sdk-results/py-cosmos.md) | PASS | PY-3: Real python azure-cosmos SDK vs smalt Cosmos plane (v26.10.16 re-run) |
+| py-eventhub- | [py-eventhub-eventgrid.md](../v26.10.16/sdk-results/py-eventhub-eventgrid.md) | PASS | PY-5 — real azure-eventhub + azure-eventgrid (Python) against the smalt EH/egress planes |
+| py-ledger | [py-ledger.md](../v26.10.16/sdk-results/py-ledger.md) | PASS | PY-L — Confidential Ledger py probe (KD-43) |
+| py-resourceg | [py-resourcegraph-monitor.md](../v26.10.16/sdk-results/py-resourcegraph-monitor.md) | PASS | PY-7: Real azure-resourcegraph + azure-monitor-query SDKs vs smalt ResourceGraph / Sentinel / Log Analytics (v |
+| py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane |
+| py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) |
+| shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) |
+| spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) |
+| t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) |
+| tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane |
+| tf-wire-ladd | [tf-wire-ladder.md](../v26.10.16/sdk-results/tf-wire-ladder.md) | PARTIAL_ALIVE | TF Wire Ladder — Lane 509 (Ring 4 validation), 2026-10-16 |
+| ts-arm-resou | [ts-arm-resources.md](../v26.10.16/sdk-results/ts-arm-resources.md) | UNKNOWN | TS-1 — real @azure/arm-resources (TypeScript) against the smalt ARM plane |
+| ts-atlas | [ts-atlas.md](../v26.10.16/sdk-results/ts-atlas.md) | ALIVE | TS Atlas probe — Purview Catalog (Atlas v2) surface (KD-40 lane) |
+| ts-auth | [ts-auth.md](../v26.10.16/sdk-results/ts-auth.md) | PASS | TS-6 — real @azure/identity auth surface (TypeScript) against the smalt ARM/STS plane |
+| ts-cosmos | [ts-cosmos.md](../v26.10.16/sdk-results/ts-cosmos.md) | PASS | TS-3: Real TypeScript @azure/cosmos SDK vs smalt Cosmos NoSQL plane (v26.10.16 re-run) |
+| ts-event-hub | [ts-event-hubs.md](../v26.10.16/sdk-results/ts-event-hubs.md) | PASS | TS-5 — real @azure/event-hubs (TypeScript) against the smalt Event Hubs plane |
+| ts-eventgrid | [ts-eventgrid.md](../v26.10.16/sdk-results/ts-eventgrid.md) | PARTIAL_ALIVE | TS — Real @azure/eventgrid vs smalt v26.10.16 (KD-39 witness cell) |
+| ts-keyvault | [ts-keyvault.md](../v26.10.16/sdk-results/ts-keyvault.md) | FAIL | TS-7: Real `@azure/keyvault-keys` (4.10.x) vs smalt KV/SKR surface (v26.10.16 re-run) |
+| ts-ledger | [ts-ledger.md](../v26.10.16/sdk-results/ts-ledger.md) | ALIVE | TS Ledger Probe — Confidential Ledger REST surface (lane 329) |
+| ts-resourceg | [ts-resourcegraph.md](../v26.10.16/sdk-results/ts-resourcegraph.md) | PASS | TS SDK Results: Azure Resource Graph surface (`@azure/resource-graph` class, raw REST) vs smalt |
+| ts-sentinel | [ts-sentinel.md](../v26.10.16/sdk-results/ts-sentinel.md) | PASS | SDK Probe Receipt: sentinel TS (KD-37) |
+| ts-servicebu | [ts-servicebus-census.md](../v26.10.16/sdk-results/ts-servicebus-census.md) | PASS | TS-08 — Service Bus census (real @azure/service-bus) against the smalt substrate |
+| ts-storage-b | [ts-storage-blob.md](../v26.10.16/sdk-results/ts-storage-blob.md) | PASS | TS-2 — real @azure/storage-blob (TypeScript) against the smalt blob plane |
+| version-latt | [version-lattice-receipt.md](../v26.10.16/sdk-results/version-lattice-receipt.md) | PARTIAL_ALIVE | Version Lattice Receipt — KD-78 monotonic admission across ALL admitted types |
 
 ## Enclave testbed
 
@@ -181,37 +404,42 @@ No receipt file on disk: cli-02.
 |---|---|---|---|
 | dod-01 | [receipts/dod-01-substrate-lock.md](receipts/dod-01-substrate-lock.md) | UNKNOWN | DoD-1: substrate lock leak fix |
 | dod-02 | [receipts/dod-02-workspace.md](receipts/dod-02-workspace.md) | UNKNOWN | DoD-2 Workspace Receipt — v26.10.14 |
-| dod-03 | [receipts/dod-03-cli-wiring.md](receipts/dod-03-cli-wiring.md) | SKIP-LOUD | DoD-3 Receipt — CLI wiring (lane 03-cli-wiring) |
+| dod-03 | [receipts/dod-03-cli-wiring.md](receipts/dod-03-cli-wiring.md) | FAIL | DoD-3 Receipt — CLI wiring (lane 03-cli-wiring) |
 | dod-04 | [receipts/dod-04-sdk-recipes.md](receipts/dod-04-sdk-recipes.md) | FAIL | DoD-4 — SDK validation recipes: runnable, executed, witnessed |
 | dod-05 | [receipts/dod-05-doctor-ext.md](receipts/dod-05-doctor-ext.md) | UNKNOWN | DoD-5 — fail-closed doctor extension (`doctor-dod`) |
 | dod-06 | [receipts/dod-06-lane-cleanup.md](receipts/dod-06-lane-cleanup.md) | UNKNOWN | DoD-6 lane cleanup (v26.10.14) |
 | dod-07 | [receipts/dod-07-court-x2.md](receipts/dod-07-court-x2.md) | PARTIAL_ALIVE | DoD-07 — two-green-court receipt runner (court-x2) |
 | dod-08 | [receipts/dod-08-publish-dry.md](receipts/dod-08-publish-dry.md) | UNKNOWN | DoD-08 publish dry-run gate |
-| dod-09 | [receipts/dod-09-verify-all.md](receipts/dod-09-verify-all.md) | FAIL | dod-09-verify-all.md — DoD-9 receipt (v26.10.14) |
+| dod-09 | [receipts/dod-09-verify-all.md](receipts/dod-09-verify-all.md) | PARTIAL_ALIVE | dod-09-verify-all.md — DoD-9 receipt (v26.10.14) |
 | dod-10 | [receipts/dod-10-gap-sync.md](receipts/dod-10-gap-sync.md) | UNSUPPORTED | DoD-10 gap/defect register sync |
 | dod-11 | [receipts/dod-11-relay-env.md](receipts/dod-11-relay-env.md) | UNKNOWN | DoD-11 Receipt — relay/environment bootstrapping |
 | dod-12 | [receipts/dod-12-docs.md](receipts/dod-12-docs.md) | UNKNOWN | DoD-12 Receipt — Documentation Definition-of-Done |
-| dod-13 | [receipts/dod-13-receipt-index.md](receipts/dod-13-receipt-index.md) | FAIL | DoD-13 manufacturing-receipt index |
+| dod-13 | [receipts/dod-13-receipt-index.md](receipts/dod-13-receipt-index.md) | ALIVE | DoD-13 manufacturing-receipt index |
 | dod-14 | [receipts/dod-14-sdk-matrix.md](receipts/dod-14-sdk-matrix.md) | PASS | DoD-14 — SDK Coverage Matrix (receipt) |
 | dod-15 | (no receipt file — justfile module `justfile.d/15-bench.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-18 | (no receipt file — justfile module `justfile.d/18-shim-court.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-19 | (no receipt file — justfile module `justfile.d/19-wave-telemetry.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-20 | (no receipt file — justfile module `justfile.d/20-sobelow.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-21 | (no receipt file — justfile module `justfile.d/21-enclave.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-22 | (no receipt file — justfile module `justfile.d/22-native.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 
 Receipts asserting results with no real output found in-file:
 
 - **SUSPECT**: `06-blob-x-ms-date-unvalidated.md` (standing UNSUPPORTED)
+- **SUSPECT**: `a2-cas-contention.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-02-blob-ts.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-03-cosmos-ts.md` (standing ALIVE)
+- **SUSPECT**: `bench-04-messaging-ts.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-05-python-mirror.md` (standing UNKNOWN)
-- **SUSPECT**: `bench-07-store-beam.md` (standing UNKNOWN)
-- **SUSPECT**: `bench-08-amqp-beam.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-12-consolidation.md` (standing UNKNOWN)
-- **SUSPECT**: `errc2-benchee.md` (standing UNKNOWN)
-- **SUSPECT**: `errc4-hdr.md` (standing UNKNOWN)
-- **SUSPECT**: `fin-04-gitignore.md` (standing UNKNOWN)
+- **SUSPECT**: `c4-kv-cosmos.md` (standing ALIVE)
+- **SUSPECT**: `c8-chaos-cross.md` (standing UNKNOWN)
+- **SUSPECT**: `errc4-hdr.md` (standing ALIVE)
 - **SUSPECT**: `fin24-p5-doc.md` (standing ALIVE)
+- **SUSPECT**: `fin30-landing.md` (standing UNKNOWN)
+- **SUSPECT**: `fin32-wrap-final.md` (standing PARTIAL_ALIVE)
 - **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
-- **SUSPECT**: `x7-bench-report.md` (standing UNKNOWN)
+- **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
+- **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)

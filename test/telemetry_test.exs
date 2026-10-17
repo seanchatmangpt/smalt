@@ -172,6 +172,58 @@ defmodule Smalt.TelemetryTest do
       assert Telemetry.dump()[key] - (baseline[key] || 0) == 7
     end
 
+    test "prune tick drops rows older than the two-minute window, keeps fresh rows" do
+      table = :smalt_rolling_counters
+      now = System.system_time(:millisecond) |> div(60_000)
+      stale_key = {:bandit_request_stop, "/telemetry-prune-test/stale", 200}
+      fresh_key = {:bandit_request_stop, "/telemetry-prune-test/fresh", 200}
+
+      :ets.insert(table, {{now - 3, stale_key, :self}, 1})
+      :ets.insert(table, {{now, fresh_key, :self}, 1})
+
+      assert Map.has_key?(RollingCounters.per_minute(), {now - 3, stale_key})
+
+      # The supervised instance schedules its own ticks a minute apart; drive
+      # the same handler message directly for a deterministic prune.
+      send(GenServer.whereis(RollingCounters), :prune)
+      wait_until(fn -> not Map.has_key?(RollingCounters.per_minute(), {now - 3, stale_key}) end)
+
+      refute Map.has_key?(RollingCounters.per_minute(), {now - 3, stale_key})
+      assert Map.has_key?(RollingCounters.per_minute(), {now, fresh_key})
+    end
+
+    test "bump/1 survives post-boot table loss (log-and-drop, no raise)" do
+      # Falsifier for the lc1 badarg witness: pre-fix this raised ArgumentError.
+      table = :smalt_rolling_counters
+      saved = :ets.tab2list(table)
+
+      # Replace the supervised table with a deleted one, then restore.
+      :ets.delete(table)
+
+      try do
+        conn = %Plug.Conn{request_path: "/post-boot-loss", status: 200}
+
+        assert %Telemetry{} =
+                 Telemetry.handle_event(
+                   [:bandit, :request, :stop],
+                   %{duration: 0},
+                   %{conn: conn},
+                   :test
+                 )
+      after
+        # SHIM-COURT-free repair (R116): the GenServer holds the deleted
+        # table's tid in its state — a manual :ets.new leaves dump/0 hitting
+        # the stale tid ("table does not exist"). Rebind via supervised
+        # restart: terminate + restart re-runs init/1, which re-creates the
+        # named table with the exact production parameters and a fresh tid.
+        :ok = Supervisor.terminate_child(Smalt.Supervisor, RollingCounters)
+        {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, RollingCounters)
+        :ets.insert(table, saved)
+      end
+
+      assert :ets.info(table) != :undefined
+    end
+
     test "per_minute/0 keys counters by {minute, key}" do
       Telemetry.admit(:ok)
       per_minute = RollingCounters.per_minute()
@@ -194,6 +246,18 @@ defmodule Smalt.TelemetryTest do
   defp assert_whitelisted(metadata) do
     for {k, _v} <- metadata do
       assert k in Telemetry.metadata_keys(), "metadata key #{inspect(k)} is not whitelisted"
+    end
+  end
+
+  defp wait_until(fun, tries \\ 50)
+  defp wait_until(_fun, 0), do: flunk("condition never became true")
+
+  defp wait_until(fun, tries) do
+    if fun.() do
+      :ok
+    else
+      Process.sleep(10)
+      wait_until(fun, tries - 1)
     end
   end
 end

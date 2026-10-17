@@ -50,18 +50,25 @@ deleting the token from this file and `docs/WIRE_PARITY.md`.
 
 - `GAP(eventgrid-eg1-schema-absent)` — UNSUPPORTED: Event Grid **native event
   schema** (EG1/`GRIDEVENT`, system-topic events) not implemented; smalt
-  admits CloudEvents 1.0 only. Close condition: EG1 schema admission path on
+  admits CloudEvents 1.0 only. **Narrowed 2026-10-16 (see
+  cap-eventgrid-topics receipt, docs/jira/v26.10.16/receipts/): EG1 ingest
+  now admitted for ARM topics explicitly declared
+  `inputSchema: "EventGrid"`; token stays OPEN for un-declared topics and
+  system-topic-sourced event ingest.** Close condition: EG1 schema admission path on
   `POST /topics/:topic/events` with a wire fence distinguishing EG1 from
   CloudEvents payloads.
-- `GAP(eventhubs-partition-metadata-absent)` — UNSUPPORTED:
-  `getEventHubProperties` / partition-count surface (REST or AMQP
-  management) not implemented (row C7-2c). Close condition: properties/
-  partition-ids surface returning `name`, `createdTime`, `partitionIds` for
-  the provisioned partitions.
-- `GAP(eventhubs-consumer-group-enumeration-absent)` — UNSUPPORTED: REST/AMQP
-  `$default` consumer-group enumeration not implemented; `$default` exists
-  only as a checkpoint-key convention. Close condition: consumer-group
-  enumeration surface over the stored checkpoint/lease keys.
+- `GAP(eventhubs-partition-metadata-absent)` — ~~UNSUPPORTED~~ RETIRED
+  (2026-10-15/16): surface served per `docs/jira/v26.10.14/receipts/s2-eh-shims.md`
+  (KD-19 closed; properties/partition surface returning `name`,
+  `createdTime`, `partitionIds`; see WIRE_PARITY.md:148 for the struck
+  token). Row C7-2c and the cross-links below refer to this retired token.
+- `GAP(eventhubs-consumer-group-enumeration-absent)` — ~~UNSUPPORTED~~ RETIRED
+  (2026-10-16): hub-scoped consumer-group LIST served per
+  `docs/jira/v26.10.16/receipts/cap-eh-consumergroups.md` — synthesized `$default`
+  via the `build_resource_record` envelope (exactly-once even when a client PUTs a
+  literal `$default`), `handle_cg_list/4` (`arm_gateway/router.ex:1117`), evidence
+  15/0 `sb_children_test.exs` + 18/0 cascade family (sb_children 15 +
+  arm_cascade_teardown 3). Cross-links below refer to this retired token.
 - `GAP(atlas-search-relationship-get-absent)` — UNSUPPORTED: Atlas entity/
   audit search (`POST /atlas/v2/search/collection`) and relationship read/GET
   beyond the edge-minting POST: not implemented. Close condition: search/collection

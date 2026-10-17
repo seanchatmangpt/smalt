@@ -51,9 +51,19 @@
       "type": "Microsoft.DevTestLab/schedules"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2024-08-15",
       "shape": "CosmosAccountShape",
       "type": "Microsoft.DocumentDB/databaseAccounts"
+    },
+    {
+      "apiVersion": "2023-05-01",
+      "shape": "SqlContainerShape",
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlContainers"
+    },
+    {
+      "apiVersion": "2023-05-01",
+      "shape": "SqlDatabaseShape",
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases"
     },
     {
       "apiVersion": "2021-04-01",
@@ -61,12 +71,12 @@
       "type": "Microsoft.EventGrid/topics"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2024-01-01",
       "shape": "DefaultShape",
       "type": "Microsoft.EventHub/namespaces"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2024-01-01",
       "shape": "DefaultShape",
       "type": "Microsoft.EventHub/namespaces/eventhubs"
     },
@@ -86,7 +96,7 @@
       "type": "Microsoft.KeyVault/managedHSMs"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-02-01",
       "shape": "KeyVaultShape",
       "type": "Microsoft.KeyVault/vaults"
     },
@@ -94,6 +104,11 @@
       "apiVersion": "2023-07-01",
       "shape": "DefaultShape",
       "type": "Microsoft.KeyVault/vaults/keys"
+    },
+    {
+      "apiVersion": "2023-07-01",
+      "shape": "KeyVaultSecretShape",
+      "type": "Microsoft.KeyVault/vaults/secrets"
     },
     {
       "apiVersion": "2021-04-01",
@@ -141,7 +156,7 @@
       "type": "Microsoft.Purview/accounts"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-07-01",
       "shape": "ResourceGroupShape",
       "type": "Microsoft.Resources/resourceGroups"
     },
@@ -151,12 +166,12 @@
       "type": "Microsoft.SecurityInsights/onboardingStates"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2024-01-01",
       "shape": "ServiceBusNamespaceShape",
       "type": "Microsoft.ServiceBus/namespaces"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2024-01-01",
       "shape": "DefaultShape",
       "type": "Microsoft.ServiceBus/namespaces/queues"
     },
@@ -171,12 +186,12 @@
       "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-05-01",
       "shape": "StorageAccountShape",
       "type": "Microsoft.Storage/storageAccounts"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-05-01",
       "shape": "DefaultShape",
       "type": "Microsoft.Storage/storageAccounts/blobServices"
     },

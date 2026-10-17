@@ -98,3 +98,18 @@ O(depth)), compounded by F2's tight-loop effect. Not directly comparable.
   same-day hand-rolled reruns were used as the comparison baseline, with the
 pre-lane record shown for provenance.
 - No commits per lane contract.
+## Re-witness 2026-10-16 — SKIP (honest)
+
+```
+$ mix run scripts/bench/benchee_runner.exs 2>&1 | tail -4
+** (Mix) Could not start application smalt: Smalt.Application.start(:normal, []) returned an error: shutdown: failed to start child: {Bandit, #Reference<0.3535657554.2136735746.1477>}
+    ** (EXIT) shutdown: failed to start child: :listener
+        ** (EXIT) :eaddrinuse
+exit=1
+```
+
+SKIP reason: the benchee runner boots the full `Smalt.Application` on its fixed
+ports (9443/8443/5672) and the shared substrate currently holds them
+(`:eaddrinuse`, exit 1). Not re-witnessed this session; the receipt remains
+flagged rather than faked. Re-run requires 9443/8443/5672 free
+(`just substrate-down` first).

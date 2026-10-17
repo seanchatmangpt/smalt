@@ -5,6 +5,7 @@
 // (NODE_TLS_REJECT_UNAUTHORIZED=0 because the substrate's TLS twin currently
 // serves a self-signed leaf; see docs/jira/v26.10.14/sdk-results/ts-arm-resources.md)
 import { ResourceManagementClient } from "@azure/arm-resources";
+import net from "node:net";
 
 const PORTS = {
   arm: Number(process.env.SMALT_TS_ARM_PORT || 9443),
@@ -38,7 +39,32 @@ async function mintToken() {
   return { token: body.access_token, expiresOnTimestamp: Date.now() + 55 * 60_000 };
 }
 
-const CACHED = await mintToken();
+// Substrate preflight: this probe attaches, it does not boot. Exit 2
+// (substrate down) loud, never a fake "1 = test fail" on a dead plane.
+const armTlsPort = Number(new URL(ARM_TLS).port) || 443;
+await new Promise((resolve) => {
+  const s = net.connect({ host: "127.0.0.1", port: armTlsPort, timeout: 2000 });
+  s.once("connect", () => { s.destroy(); resolve(); });
+  s.once("timeout", () => {
+    s.destroy();
+    console.error(`[arm-resources] substrate down: no listener on 127.0.0.1:${armTlsPort} (ARM_TLS=${ARM_TLS}). Exit 2.`);
+    process.exit(2);
+  });
+  s.once("error", () => {
+    console.error(`[arm-resources] substrate down: no listener on 127.0.0.1:${armTlsPort} (ARM_TLS=${ARM_TLS}). Exit 2.`);
+    process.exit(2);
+  });
+});
+
+// Guard the unguarded top-level mint: a rejection here would exit 1
+// (harness error masquerading as test fail) — exit 3 per contract.
+let CACHED;
+try {
+  CACHED = await mintToken();
+} catch (e) {
+  console.error(`[arm-resources] harness error minting STS token: ${e?.name}: ${e?.message}`);
+  process.exit(3);
+}
 const cred = { getToken: async () => CACHED };
 const results = [];
 function record(name, ok, detail) {

@@ -230,7 +230,7 @@ defmodule Enclave.Testbed do
     IO.puts("  appended #{n} receipts (#{first_id} .. #{last_id})")
 
     # duplicate contents -> 409
-    {:error, 409, "LedgerItemAlreadyExists"} =
+    {:error, 409, %{"error" => %{"code" => "LedgerItemAlreadyExists"}}} =
       ConfidentialLedger.append_transaction(ledger, %{"i" => 1, "payload" => "entry-1"})
 
     # chain integrity: zero-root head, prev_hash linkage, hash linkage
@@ -265,7 +265,7 @@ defmodule Enclave.Testbed do
     IO.puts("  tampered receipt -> chain verify FAILS (as required)")
 
     # hostile shapes: typed refusal, never raise
-    {:error, 400, "InvalidLedgerName"} = ConfidentialLedger.append_transaction({:bad, :shape}, %{"a" => 1})
+    {:error, 400, %{"error" => %{"code" => "InvalidLedgerName"}}} = ConfidentialLedger.append_transaction({:bad, :shape}, %{"a" => 1})
     :error = ConfidentialLedger.get_transaction(ledger, 42)
 
     "PASS: append/dup-409/chain-verify/tamper-detect/hostile-typed"

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PY-7 lane: real azure-mgmt-resourcegraph + azure-monitor-query SDK probes
 against the smalt substrate (ARM/STS on :9443 http, egress on :8443 http).
+Venv: test/sdk-python/.venv-rg (receipt: docs/jira/v26.10.14/sdk-results/py-resourcegraph-monitor.md).
 
 Auth: client_credentials against the substrate STS (any client_id/secret),
 mirroring the ARM gateway's issue_token contract (HS256, aud
@@ -12,8 +13,11 @@ Contract targets (from test/data_plane/audit_planes_test.exs + lib):
     - POST /providers/Microsoft.RealGraph...
 """
 import json
+import os
 import sys
 import time
+from typing import Any
+
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,8 +28,9 @@ from azure.mgmt.resourcegraph import ResourceGraphClient
 from azure.mgmt.resourcegraph.models import QueryRequest, QueryRequestOptions
 from azure.monitor.query import LogsQueryClient, LogsQueryStatus
 
-ARM = "http://127.0.0.1:9443"
-EGRESS = "http://127.0.0.1:8443"
+# Lane-351: port env overrides (sibling pattern: py_arm_resources SMALT_ARM_BASE).
+ARM = os.environ.get("SMALT_ARM_BASE", "http://127.0.0.1:9443")
+EGRESS = os.environ.get("SMALT_EGRESS_BASE", "http://127.0.0.1:8443")
 SUB = "sub-py7"
 RG_API = "2022-10-01"
 DCR = f"ws-py7-{int(time.time())}"
@@ -72,13 +77,14 @@ class StsCredential:
         return self._tok
 
 
-def http(method, url, body=None, headers=None):
+def http(method, url, body=None, headers=None) -> "tuple[int, dict[str, Any]] | tuple[int, str]":
     hdrs = {"Content-Type": "application/json"}
     hdrs.update(headers or {})
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers=hdrs)
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
+            # SHIM-COURT: typed return — dict arm on parseable JSON, str arm otherwise
             return r.status, (json.loads(r.read()) if r.read and r.length else {})
     except urllib.error.HTTPError as e:
         raw = e.read()
@@ -203,6 +209,9 @@ def p04b_string_subs_wire():
                         f"?api-version={RG_API}",
                         {"subscriptions": SUB, "query": "project name"}, h)
         assert st == 400, f"wire string subscriptions -> {st}: {body}"
+        # SHIM-COURT: typed refusal asserted on the dict arm; the str arm means
+        # the server returned an unparseable error body — also a probe-fail signal.
+        assert isinstance(body, dict), f"unparseable error body (str arm): {body!r}"
         code = body["error"]["code"]
         assert code == "InvalidParameter", f"code={code}"
         return "wire: 400 InvalidParameter"
@@ -266,21 +275,21 @@ def p20_kql_pipeline():
 
 def p20b_project_not_last_divergence():
     def run():
-        # DIVERGENCE PROBE (evidence): project NOT last. The KQL engine executes
-        # take correctly (5 rows), but the PrimaryResult envelope column list is
-        # extracted with regex \\bproject\\s+(.+)$ that runs to end-of-string,
-        # so a stage after project leaks into the column names.
+        # FIXED (R177, was DIVERGENCE PROBE): project NOT last used to leak the
+        # downstream stage into the envelope column list (greedy \\bproject\\s+(.+)$).
+        # The scan now stops at the next pipe, so columns are exactly the
+        # projected list even when project is mid-pipeline.
         client = logs_client()
         q = "Custom-Logs | project n, msg | take 5"
         res = client.query_workspace(DCR, q, timespan=None, enforce_https=False)
         table = res.tables[0]
         cols = [c if isinstance(c, str) else c.name for c in table.columns]
         leaks = [c for c in cols if "|" in str(c)]
-        assert leaks, f"expected column leak, got cols={cols}"
-        assert len(table.rows) == 5, f"rows={len(table.rows)} (take did execute)"
-        return (f"DIVERGENCE: take executed (5 rows) but envelope columns = {cols}; "
-                "real Log Analytics parses columns from the AST")
-    return probe("logs.project-not-last envelope column leak (documented divergence)", run)
+        assert not leaks, f"column leak persists: {cols}"
+        assert cols == ["n", "msg"], f"unexpected columns: {cols}"
+        assert len(table.rows) == 5, f"rows={len(table.rows)} (take must still execute)"
+        return f"FIXED: project mid-pipeline, envelope columns = {cols}, 5 rows"
+    return probe("logs.project-not-last envelope columns exact (R177 fix)", run)
 
 
 def p21_take_cap():

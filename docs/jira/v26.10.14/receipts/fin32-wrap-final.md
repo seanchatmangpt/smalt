@@ -1,3 +1,4 @@
+SUPERSEDED — see receipts/fin33-planning-summary.md (v26.10.16 planning handoff).
 # Receipt: fin32 — final wrap artifacts (terminal FINAL.md)
 
 - repo: /Users/sac/smalt @ main, HEAD `518b31a54ccc0829cafb9e04538714e58c287a30` (518b31a; no commits after the landing commit — fin30 never landed, no push beyond `db2fe05..518b31a main`)

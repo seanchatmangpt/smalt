@@ -442,7 +442,49 @@ refusals from `ash_extension` `generated_verify.ex`, exercised deliberately
 by `test/ash_extension_test.exs` (`compile_refused` under
 `Code.with_diagnostics`). Not filed, not silenced.
 
-### One-shot mutation probes — dated stamps (V261014-18 §3.3, decision: DEFER full-court upgrade)
+### e1 enclave-loop lane — 2026-10-16
+
+Registered in `scripts/bench/REGISTRY.md` as a new lane family `e`
+(enclave loops): a full provision -> data-plane -> console -> residue
+lifecycle over a terraform-managed ephemeral environment. Not an
+adversarial probe (`a*`), SDK surface probe (`b*`), cross/chaos soak
+(`c*`), or Next.js lifecycle (`n*`) — hence the new letter. Port law:
+`e1 -> 39370..39375` (disjoint from the b-band 39010..39125 and c-law
+39200+).
+
+### Run
+
+```sh
+just enclave-loop   # invokes scripts/tf_enclave_loop.sh
+```
+
+### Phases
+
+1. **Provision** — terraform brings up the ephemeral enclave on the
+   e1 port block; the lane fails closed if a port in 39370..39375 is
+   already held (same law as `bench_boot`).
+2. **Data plane** — drives blob/cosmos/kv ops against the provisioned
+   enclave, collecting latency percentiles.
+3. **Console** — exercises the Sovereign Console path end to end
+   through the enclave endpoints.
+4. **Residue** — verifies the enclave tears down clean: no surviving
+   listeners on 39370..39375, no leftover state files. Residue is
+   fail-closed — a surviving holder fails the lane.
+
+### Result
+
+One jsonl row set in `docs/jira/v26.10.14/bench/e1-enclave-loop.jsonl`
+(script underscore `tf_enclave_loop.sh`, result hyphen — standard
+convention), same row schema as the other lanes.
+
+### Loud-skip semantics
+
+Exit 0 pass / 1 test fail / 3 harness-skip. If terraform (or any
+enclave prereq) is absent, the lane prints `[SKIP] <reason>` to stdout
+and exits 3 — a skip is loud and typed, never a faked pass (smalt
+exit-code contract). No jsonl row is emitted on skip.
+
+## One-shot mutation probes — dated stamps (V261014-18 §3.3, decision: DEFER full-court upgrade)
 
 Per the work order §3.3 decision: the six one-shot mutation-probe claims are
 stamped as dated ONE-SHOT receipts, NOT upgraded to the full-court protocol
@@ -452,9 +494,9 @@ court.** The only full-court protocol in the tree is `scripts/mutation_court.py`
 
 | Probe claim | Doc pin | One-shot date | Stamp |
 |---|---|---|---|
-| cosmos continuation forged-check | `docs/DEV_LOOP.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
-| auth criticality fence | `docs/DEV_LOOP.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
-| blob If-Match precheck | `docs/DEV_LOOP.md:24` ("3/3 non-vacuous") | 2026-10-15 | one-shot — not full-court protocol |
+| cosmos continuation forged-check | `docs/how-to/dev-loop.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
+| auth criticality fence | `docs/how-to/dev-loop.md` (refresh-6 row, 2026-10-15) | 2026-10-15 | one-shot — not full-court protocol |
+| blob If-Match precheck | `docs/how-to/dev-loop.md` (refresh-6 row, "3/3 non-vacuous") | 2026-10-15 | one-shot — not full-court protocol |
 | typ-header fence | `docs/WIRE_PARITY.md:121` | 2026-10-15 | one-shot — not full-court protocol |
 | tee-admit jti | `docs/WIRE_PARITY.md:113` | 2026-10-15 | one-shot — not full-court protocol |
 | LRO lens-9 | `docs/WIRE_PARITY.md:94` | 2026-10-15 | one-shot — not full-court protocol |
@@ -463,3 +505,44 @@ Scope of the runs behind these stamps: plain `mix test` (2026-10-15 refresh
 6, test-corpus-b-lens2 cycle 1) and refresh-9 (lens6_fuzz + lro_test 27/0)
 on the shared checkout mid-landing — one-shot kills, not the full-court
 protocol.
+
+## T5 terraform clean-room ladder (V26.10.16 — authored, pending execution)
+
+Receipt: `docs/jira/v26.10.16/sdk-results/t5-cleanroom.md` (standing
+PENDING-EXECUTION; authored 2026-10-16, execution gated on cascade + a
+trusted machine per the enclave-trust hop ruling).
+
+### Ladder semantics
+
+Full provision → audit → residue lifecycle, five stages, each individually
+gated:
+
+1. **apply** — clean-room `terraform apply -auto-approve`. Budget: wall
+   < 30 s; fail-closed on any port already held in the T5 block (same law
+   as `bench_boot`).
+2. **plan 0 drift** — `terraform plan -detailed-exitcode` immediately after
+   apply. Budget: < 30 s. Pass: exit 0, empty diff — proves the apply is
+   idempotent (no unmanaged drift between create and reconcile).
+3. **data-plane audit** — data-plane probes against the provisioned
+   endpoints, one leg per family matrix. Pass: all probes PASS with the
+   family named per leg.
+4. **destroy** — `terraform destroy -auto-approve`. Budget: < 30 s. Pass:
+   exit 0 and destroyed count == created count.
+5. **NFR-4 identity** — post-destroy residue check: no surviving listeners
+   on the T5 port block, no leftover state files. Fail-closed: a surviving
+   holder fails the ladder.
+
+### Budget gates and exit contract
+
+- apply and destroy each carry an independent < 30 s wall gate.
+- Ladder exit: 0 pass / 1 stage fail / 3 harness-skip (absent trust or
+  terraform prereq → loud `[SKIP] <reason>`, no rows emitted on skip —
+  smalt exit-code contract).
+- Standing flip PENDING-EXECUTION → PASS is receipt-gated: the receipt
+  must embed the real stage table + verbatim output. No receipt, no flip.
+
+## See Also
+
+- `docs/JUST_REFERENCE.md` (`just bench` / `just bench-check` recipes)
+- `docs/how-to/dev-loop.md` (private port allocation, boot-budget contract)
+- `docs/jira/v26.10.16/sdk-results/t5-cleanroom.md` (T5 clean-room ladder receipt)

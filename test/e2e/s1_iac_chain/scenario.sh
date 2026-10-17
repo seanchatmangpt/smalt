@@ -436,10 +436,21 @@ fi
 # ---------------------------------------------------------------------------
 for spec in "Microsoft.KeyVault/vaults/$KV_NAME" "Microsoft.Storage/storageAccounts/$ST_NAME"; do
   CODE="$(arm DELETE "$CP/subscriptions/$SUB/resourceGroups/$RG_NAME/providers/$spec?api-version=$( [ "${spec%%/*}" = "Microsoft.KeyVault" ] && echo "$KV_VER" || echo "$ST_VER")")"
-  if [ "$CODE" != "200" ]; then
-    record "DELETE $spec" "FAIL"
-    fail_receipt
-  fi
+  # Wave-2: storageAccounts DELETE is an ARM LRO (202 + async headers);
+  # vault DELETE stays 200 (generic route).
+  case "$CODE" in
+    200) : ;;
+    202)
+      if [ "${spec%%/*}" != "Microsoft.Storage" ]; then
+        record "DELETE $spec" "FAIL"
+        fail_receipt
+      fi
+      ;;
+    *)
+      record "DELETE $spec" "FAIL"
+      fail_receipt
+      ;;
+  esac
   record "DELETE $spec" "PASS"
 done
 

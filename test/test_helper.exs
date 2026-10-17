@@ -76,11 +76,14 @@ defmodule SmaltTest.Lifecycle do
     end
   end
 
-  def wait_gone(name, n \\ 300)
+  # Private in spirit: used only by stop_shared_tree/0 to bound the shutdown
+  # wait. All clauses defp (same-module calls only; mixed def/defp on one
+  # name is a compile error — SHIM-COURT-lane-R185i unblock, disclosed).
+  defp wait_gone(name, n \\ 300)
 
-  def wait_gone(_name, 0), do: :ok
+  defp wait_gone(_name, 0), do: :ok
 
-  def wait_gone(name, n) do
+  defp wait_gone(name, n) do
     if Process.whereis(name) == nil do
       :ok
     else

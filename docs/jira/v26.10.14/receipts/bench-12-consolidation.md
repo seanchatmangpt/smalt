@@ -1,3 +1,4 @@
+SUPERSEDED — see receipts/bench-07-store-beam.md and receipts/bench-08-amqp-beam.md (re-witnessed 2026-10-16).
 # Receipt: bench-12-consolidation
 
 - **Lane**: B-12 (consolidation)

@@ -11,7 +11,7 @@ defmodule Smalt.Security.Lens5CrashClassTest do
     test "tuple-key contents are a typed 400 refusal; writer survives and stays usable" do
       ledger = "probe-crash-#{System.unique_integer()}"
 
-      assert {:error, 400, "InvalidBody"} =
+      assert {:error, 400, %{"error" => %{"code" => "InvalidBody"}}} =
                ConfidentialLedger.append_transaction(ledger, %{{:a, 1} => "v"})
 
       # Writer alive (not lazily restarted-from-dead: whereis non-nil across a
@@ -28,7 +28,7 @@ defmodule Smalt.Security.Lens5CrashClassTest do
     test "refusal does not burn the dup counter: same contents later admitted (other ledger)" do
       ledger = "probe-crash2-#{System.unique_integer()}"
 
-      assert {:error, 400, "InvalidBody"} =
+      assert {:error, 400, %{"error" => %{"code" => "InvalidBody"}}} =
                ConfidentialLedger.append_transaction(ledger, %{"k" => make_ref()})
 
       assert {:ok, %{"transactionId" => "1.1"}} =

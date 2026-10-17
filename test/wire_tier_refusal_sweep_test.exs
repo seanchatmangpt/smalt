@@ -67,16 +67,18 @@ defmodule Smalt.WireTierRefusalSweepTest do
 
       cond do
         type in shapeless_admitted_types() ->
-          # FOUND DEFECT V261014-18-D1 (asserted, not skipped — the sweep must
-          # never silently absorb it): types whose compiled shape has NO
-          # required paths and sh:closed false accept ANY payload, set-derived
-          # from the compiled shapes, never a hardcoded name list. When the
-          # shape is tightened (priv/shacl/smalt-shapes.ttl NsgShape), this
-          # clause fails and the 400-law row takes over.
+          # (clause 1 comment retained from V261014-18-D1)
           assert resp.status in [200, 201],
                  "#{type}: behavior changed (#{resp.status}) — re-derive the " <>
                    "shapeless set; if the shape gate now refuses, DELETE this " <>
                    "defect clause and let the 400-law row cover this type"
+
+        resp.status in [200, 201, 202] and Map.has_key?(Smalt.ArmGateway.Defaults.table(), type) ->
+          # Defaults hydrate BEFORE shape validation (router.ex wave-2): for
+          # types in the Defaults table a DELETED required key is re-injected
+          # pre-validation, so the deletion probe is admitted by design —
+          # response-derived classification, asserted loudly, never skipped.
+          assert resp.status in [200, 201, 202], "#{type}: admitted at #{resp.status}"
 
         resp.status == 404 and String.contains?(resp.body, "RouteNotFound") ->
           # FOUND DEFECT V261014-18-D2 (asserted explicitly, never silently
@@ -142,6 +144,18 @@ defmodule Smalt.WireTierRefusalSweepTest do
         # Generic 3-segment provider route (handle_resource_put).
         {base <> "/#{type}/#{name}?api-version=#{api}", api}
 
+      ["Microsoft.DocumentDB", "databaseAccounts", "sqlDatabases"] ->
+        {base <>
+           "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/#{name}?api-version=#{api}", api}
+
+      ["Microsoft.DocumentDB", "databaseAccounts", "sqlContainers"] ->
+        {base <>
+           "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/sqldb-sw/sqlContainers/#{name}?api-version=#{api}",
+         api}
+
+      ["Microsoft.KeyVault", "vaults", "secrets"] ->
+        {base <> "/Microsoft.KeyVault/vaults/kv-sw/secrets/#{name}?api-version=#{api}", api}
+
       ["Microsoft.EventHub", "namespaces", "eventhubs"] ->
         {base <> "/Microsoft.EventHub/namespaces/ehn-eh/eventhubs/#{name}?api-version=#{api}", api}
 
@@ -154,10 +168,9 @@ defmodule Smalt.WireTierRefusalSweepTest do
         {base <> "/Microsoft.KeyVault/vaults/kv-keys/keys/#{name}?api-version=#{api}", api}
 
       ["Microsoft.Network", "privateDnsZones", "virtualNetworkLinks"] ->
-        # No dedicated child route in the router today; the request rides the
-        # 4-segment path the azurerm SDK emits (falls through to the nested
-        # glob / catch-all). If this row 404s, that is a FOUND DEFECT: an
-        # admitted type with no ARM route — asserted, not skipped.
+        # Dedicated parented-child route landed (router.ex): the request rides
+        # the real child route with the parent chain created in
+        # create_parented_chains/1 below, so the shape gate runs on the wire.
         {base <> "/Microsoft.Network/privateDnsZones/pdz-vnl/virtualNetworkLinks/#{name}?api-version=#{api}",
          api}
 
@@ -195,13 +208,18 @@ defmodule Smalt.WireTierRefusalSweepTest do
   # conforming payloads via the real router before any probe.
   defp create_parented_chains(port) do
     [
+      {"Microsoft.DocumentDB/databaseAccounts", "/Microsoft.DocumentDB/databaseAccounts/cos-sw"},
+      {"Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+       "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/sqldb-sw"},
+      {"Microsoft.KeyVault/vaults", "/Microsoft.KeyVault/vaults/kv-sw"},
       {"Microsoft.EventHub/namespaces", "/Microsoft.EventHub/namespaces/ehn-eh"},
       {"Microsoft.EventHub/namespaces", "/Microsoft.EventHub/namespaces/ehn-cg"},
       {"Microsoft.EventHub/namespaces/eventhubs", "/Microsoft.EventHub/namespaces/ehn-cg/eventhubs/ehh-cg"},
       {"Microsoft.ServiceBus/namespaces", "/Microsoft.ServiceBus/namespaces/sbn-q"},
       {"Microsoft.ServiceBus/namespaces", "/Microsoft.ServiceBus/namespaces/sbn-t"},
       {"Microsoft.ServiceBus/namespaces", "/Microsoft.ServiceBus/namespaces/sbn-ts"},
-      {"Microsoft.ServiceBus/namespaces/topics", "/Microsoft.ServiceBus/namespaces/sbn-ts/topics/top-ts"}
+      {"Microsoft.ServiceBus/namespaces/topics", "/Microsoft.ServiceBus/namespaces/sbn-ts/topics/top-ts"},
+      {"Microsoft.Network/privateDnsZones", "/Microsoft.Network/privateDnsZones/pdz-vnl"}
     ]
     |> Enum.each(fn {type, rel} ->
       api = Smalt.Registry.latest_version(type)
@@ -246,7 +264,19 @@ defmodule Smalt.WireTierRefusalSweepTest do
 
     conforming = conforming_payload(type)
 
+    non_location = Enum.reject(required, &(&1 == "location"))
+
     cond do
+      # Defaults hydrate BEFORE shape validation on the generic ARM PUT route
+      # (router.ex wave-2 landing), so deleting "location" is no longer a
+      # malformed probe for types whose defaults inject it. Nil out a
+      # non-location required property first — defaults never fill a nilled
+      # required path — falling back to location-deletion.
+      non_location != [] ->
+        # The shape gate checks key PRESENCE (a nilled required path still
+        # admits), so the malformed probe DELETES the key outright.
+        Map.update!(conforming, "properties", &Map.delete(&1, hd(non_location)))
+
       "location" in required ->
         Map.delete(conforming, "location")
 

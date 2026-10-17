@@ -2,6 +2,7 @@
 """Lane PY-5: REAL Python azure-eventhub + azure-eventgrid SDKs against the
 smalt substrate (v26.10.14). Fail-closed, zero skips; every result is printed
 as a machine-readable PROBE line and exits non-zero on any failure.
+Venv: test/sdk-python/.venv-eh (receipt: docs/jira/v26.10.14/sdk-results/py-eventhub-eventgrid.md).
 
 Event Hubs leg: EventHubProducerClient send -> EventHubConsumerClient receive
 over the real AMQP wire, asserting delivery order and sequence numbers.

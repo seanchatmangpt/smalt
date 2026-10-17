@@ -33,10 +33,28 @@ defmodule Smalt.TLSTest do
 
   defp seat_dir, do: Path.expand("tmp/dev-certs")
 
-  defp rm_seat_cache do
-    File.rm_rf(seat_dir())
+  # R185d: per-seat cleanup ONLY. The old `rm_seat_cache` deleted the whole
+  # tmp/dev-certs dir, so two concurrent runs (or any lane sweeping the dir)
+  # deleted other seats' live certs mid-run -> :enoent. Now each test deletes
+  # exactly the files it created: dev-cert-<key>.pem / dev-key-<key>.pem plus
+  # their .tmp-* publish siblings. The dir itself is never removed.
+  defp rm_seat(key) do
+    {cert, keyf} = dev_cert_paths(key)
+    File.rm_rf(cert)
+    File.rm_rf(keyf)
+
+    for leftover <-
+          Path.wildcard(Path.join(seat_dir(), "dev-cert-#{key}.pem.tmp-*")) ++
+            Path.wildcard(Path.join(seat_dir(), "dev-key-#{key}.pem.tmp-*")) do
+      File.rm(leftover)
+    end
+
+    :ok
   end
 
+  # R178f compile-freeze unblock: the R185d rewrite removed this helper while
+  # 21 call sites still referenced it (mid-flight), aborting the whole suite's
+  # compile. Restored verbatim from HEAD; R185d owns migrating the call sites.
   def init(opts), do: opts
 
   def call(conn, _opts) do
@@ -50,7 +68,6 @@ defmodule Smalt.TLSTest do
       assert [{:"Certificate", der, :not_encrypted}] = :public_key.pem_decode(cert_pem)
       assert [{:RSAPrivateKey, _, :not_encrypted}] = :public_key.pem_decode(key_pem)
 
-      cert = :public_key.der_decode(:"Certificate", der)
       otp = :public_key.pkix_decode_cert(der, :otp)
       assert extract_cn(otp) == ~c'127.0.0.1'
 
@@ -108,7 +125,7 @@ defmodule Smalt.TLSTest do
 
   describe "ensure_dev_cert/0" do
     test "explicit certfile/keyfile used when files exist" do
-      {cert, key} = dev_cert_paths("explicit-test")
+      {cert, key} = dev_cert_paths("explicit-test-#{:os.getpid()}")
       {:ok, c, k} = generate_dev_cert_pem()
       File.mkdir_p(Path.dirname(cert))
       File.write!(cert, c)
@@ -119,13 +136,14 @@ defmodule Smalt.TLSTest do
         assert scheme() == :https
       end)
     after
-      File.rm_rf(seat_dir())
+      {rc, rk} = dev_cert_paths("explicit-test-#{:os.getpid()}")
+      File.rm(rc)
+      File.rm(rk)
     end
 
     test ":auto generates cert into a port-keyed seat path and is cached by mtime" do
-      rm_seat_cache()
-
       port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         assert {:ok, cert, key} = ensure_dev_cert(port)
@@ -138,8 +156,6 @@ defmodule Smalt.TLSTest do
         assert {:ok, ^cert, ^key} = ensure_dev_cert(port)
         assert File.stat!(cert).mtime == mtime
       end)
-    after
-      rm_seat_cache()
     end
 
     test "tls: false disables" do
@@ -150,8 +166,8 @@ defmodule Smalt.TLSTest do
     end
 
     test "corrupt cached cert regenerates (typed recovery, lens-6 pin)" do
-      rm_seat_cache()
       port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         {:ok, cert, _key} = ensure_dev_cert(port)
@@ -163,15 +179,13 @@ defmodule Smalt.TLSTest do
         {:ok, pem} = File.read(cert)
         assert match?([{:Certificate, _, :not_encrypted}], :public_key.pem_decode(pem))
       end)
-    after
-      rm_seat_cache()
     end
   end
 
   describe "bandit_opts/2" do
     test "https opts when TLS enabled, http when disabled" do
-      rm_seat_cache()
       port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         opts = bandit_opts(__MODULE__, port)
@@ -186,8 +200,6 @@ defmodule Smalt.TLSTest do
         assert opts[:scheme] == :http
         refute Keyword.has_key?(opts, :certfile)
       end)
-    after
-      rm_seat_cache()
     end
   end
 
@@ -195,7 +207,6 @@ defmodule Smalt.TLSTest do
 
   describe "concurrency falsifier (TLS-261014-01)" do
     test "paired boots: regenerator racing a boot across N=20 paired seats, zero crashes" do
-      rm_seat_cache()
 
       results =
         for _n <- 1..20 do
@@ -249,13 +260,11 @@ defmodule Smalt.TLSTest do
 
       assert Enum.all?(results, &(&1 == :ok)),
              "crashes/seats: #{inspect(Enum.filter(results, &(&1 != :ok)), limit: 5)}"
-    after
-      rm_seat_cache()
     end
 
     test "three seats colliding on one lane key: all converge on a verifying pair (lens-3)" do
-      rm_seat_cache()
       port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         {:ok, cert, key} = ensure_dev_cert(port)
@@ -295,13 +304,11 @@ defmodule Smalt.TLSTest do
         assert c1 != c2 and k1 != k2 and c1 != c3 and c2 != c3 and k1 != k3 and k2 != k3
         assert {dev_cert_paths(), dev_cert_paths()} == {{c3, k3}, {c3, k3}}
       end)
-    after
-      rm_seat_cache()
     end
 
     test "regenerate twice concurrently: single winner, published pair always consistent" do
-      rm_seat_cache()
       port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         {:ok, cert, key} = ensure_dev_cert(port)
@@ -321,17 +328,19 @@ defmodule Smalt.TLSTest do
         pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
         assert :public_key.pkix_verify(der, pubkey)
 
-        # no temp files left behind
-        leftovers = Path.wildcard(Path.join(seat_dir(), "*.tmp-*"))
+        # no temp files left behind (this seat only — other seats in the
+        # shared dir belong to other tests/runs and must not fail us)
+        leftovers =
+          Path.wildcard(Path.join(seat_dir(), "dev-cert-#{port}.pem.tmp-*")) ++
+            Path.wildcard(Path.join(seat_dir(), "dev-key-#{port}.pem.tmp-*"))
         assert leftovers == []
       end)
-    after
-      rm_seat_cache()
     end
 
     test "regenerate during active serving: no listener drop" do
-      rm_seat_cache()
       port = free_port()
+      on_exit(fn -> rm_seat(port) end)
+      on_exit(fn -> rm_seat("rotate-check-#{:os.getpid()}") end)
 
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         {:ok, cert, key} = ensure_dev_cert(port)
@@ -340,7 +349,7 @@ defmodule Smalt.TLSTest do
         assert {:ok, _} = :ssl.connect(~c"localhost", port, verify: :verify_none, active: false)
 
         # regenerate on disk while serving — the listener must not drop
-        assert {:ok, rc, rk} = Smalt.TLS.ensure_dev_cert("rotate-check")
+        assert {:ok, rc, rk} = Smalt.TLS.ensure_dev_cert("rotate-check-#{:os.getpid()}")
         assert rc != cert and rk != key
 
         # rotation semantics pin: the running listener keeps serving the cert
@@ -360,14 +369,12 @@ defmodule Smalt.TLSTest do
         assert {:ok, sock} = :ssl.connect(~c"localhost", port, verify: :verify_none, active: false)
         :ok = :ssl.close(sock)
       end)
-    after
-      rm_seat_cache()
     end
   end
 
   test "Bandit https boot + :ssl connect + :httpc round-trip" do
-    rm_seat_cache()
     port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       opts = bandit_opts(__MODULE__, port)
@@ -410,7 +417,6 @@ defmodule Smalt.TLSTest do
       assert to_string(body) == "tls-ok"
     end)
   after
-    rm_seat_cache()
   end
 
   # -- fault-injected reader (deterministic M2 kill, lens-2) --------------------
@@ -467,8 +473,8 @@ defmodule Smalt.TLSTest do
   end
 
   test "publish mechanism: writes target only tmp paths, then rename (deterministic M2 kill)" do
-    rm_seat_cache()
     port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       {:ok, cert, key} = ensure_dev_cert(port)
@@ -491,12 +497,11 @@ defmodule Smalt.TLSTest do
       assert Enum.all?(List.wrap(ops), fn op -> match?({:file, _, _}, op) end)
     end)
   after
-    rm_seat_cache()
   end
 
   test "boot-time read racing a publisher: locked reader sees a verifying pair" do
-    rm_seat_cache()
     port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       {:ok, cert, key} = ensure_dev_cert(port)
@@ -533,12 +538,11 @@ defmodule Smalt.TLSTest do
       assert :reader_ok = Task.await(reader, 60_000)
     end)
   after
-    rm_seat_cache()
   end
 
   test "skewed pair on disk (cert_n + key_n-1) is detected and regenerated, not served" do
-    rm_seat_cache()
     port = free_port()
+      on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       {:ok, cert, key} = ensure_dev_cert(port)
@@ -557,14 +561,13 @@ defmodule Smalt.TLSTest do
       assert :public_key.pkix_verify(der, pubkey)
     end)
   after
-    rm_seat_cache()
   end
 
   test "mismatched explicit certfile/keyfile pair is a typed refusal, not an :ssl crash" do
     {:ok, c1, k1} = generate_dev_cert_pem()
     {:ok, c2, _k2} = generate_dev_cert_pem()
 
-    {cert, key} = {Path.expand("tmp/dev-certs/explicit-a.pem"), Path.expand("tmp/dev-certs/explicit-a-key.pem")}
+    {cert, key} = {Path.expand("tmp/dev-certs/explicit-a-#{:os.getpid()}.pem"), Path.expand("tmp/dev-certs/explicit-a-key-#{:os.getpid()}.pem")}
 
     File.mkdir_p(Path.dirname(cert))
     File.write!(cert, c1)
@@ -578,7 +581,47 @@ defmodule Smalt.TLSTest do
       assert {:error, {:corrupt_certfile, ^cert, :cert_key_mismatch}} = ensure_dev_cert()
     end)
   after
-    File.rm_rf(seat_dir())
+    pid = :os.getpid()
+    File.rm(Path.expand("tmp/dev-certs/explicit-a-#{pid}.pem"))
+    File.rm(Path.expand("tmp/dev-certs/explicit-a-key-#{pid}.pem"))
+  end
+
+  test "SMALT_TLS_CERTFILE/KEYFILE env pair wins over config certfiles (R100/D64)" do
+    # in-repo dev fallback pair at the canonical .smalt/tls path
+    dev_cert = Path.expand(".smalt/tls/dev-cert.pem")
+    dev_key = Path.expand(".smalt/tls/dev-key.pem")
+    {:ok, dc, dk} = generate_dev_cert_pem()
+    File.mkdir_p(Path.dirname(dev_cert))
+    File.write!(dev_cert, dc)
+    File.write!(dev_key, dk)
+
+    # temp env pair
+    {:ok, ec, ek} = generate_dev_cert_pem()
+    env_cert = Path.expand("tmp/dev-certs/env-pair-cert-#{:os.getpid()}.pem")
+    env_key = Path.expand("tmp/dev-certs/env-pair-key-#{:os.getpid()}.pem")
+    File.mkdir_p(Path.dirname(env_cert))
+    File.write!(env_cert, ec)
+    File.write!(env_key, ek)
+
+    System.put_env("SMALT_TLS_CERTFILE", env_cert)
+    System.put_env("SMALT_TLS_KEYFILE", env_key)
+
+    try do
+      # env pair takes precedence over the in-repo config path
+      with_config([tls_certfile: dev_cert, tls_keyfile: dev_key, tls: :delete], fn ->
+        assert {:ok, ^env_cert, ^env_key} = ensure_dev_cert()
+
+        # env removed -> falls back to the dev/config path
+        System.delete_env("SMALT_TLS_CERTFILE")
+        System.delete_env("SMALT_TLS_KEYFILE")
+        assert {:ok, ^dev_cert, ^dev_key} = ensure_dev_cert()
+      end)
+    after
+      System.delete_env("SMALT_TLS_CERTFILE")
+      System.delete_env("SMALT_TLS_KEYFILE")
+      File.rm(env_cert)
+      File.rm(env_key)
+    end
   end
 
   # -- helpers ----------------------------------------------------------------
@@ -616,5 +659,53 @@ defmodule Smalt.TLSTest do
       {:iPAddress, ip} -> {4, ip}
       other -> other
     end)
+  end
+
+  # R156: mint a real CA-chained pair (CA:TRUE root + CA-signed leaf), the
+  # gen_dev_cert.sh shape. The leaf's signature is made by the CA key, not the
+  # leaf key — the pairing check must be an SPKI identity match, not a
+  # self-signature verify (which rejected every CA-chained leaf).
+  defp mint_ca_chained_pair(dir) do
+    File.mkdir_p!(dir)
+    ca_cert = Path.join(dir, "ca-cert.pem")
+    ca_key = Path.join(dir, "ca-key.pem")
+    leaf_cert = Path.join(dir, "dev-cert.pem")
+    leaf_key = Path.join(dir, "dev-key.pem")
+
+    System.cmd("openssl", [
+      "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "30", "-nodes",
+      "-keyout", ca_key, "-out", ca_cert, "-subj", "/CN=smalt-test-ca",
+      "-addext", "basicConstraints=critical,CA:TRUE",
+      "-addext", "keyUsage=critical,keyCertSign"
+    ])
+
+    csr = Path.join(dir, "dev-csr.pem")
+
+    System.cmd("openssl", [
+      "req", "-newkey", "rsa:2048", "-sha256", "-nodes",
+      "-keyout", leaf_key, "-out", csr, "-subj", "/CN=localhost"
+    ])
+
+    System.cmd("openssl", [
+      "x509", "-req", "-sha256", "-days", "30", "-in", csr,
+      "-CA", ca_cert, "-CAkey", ca_key, "-CAcreateserial", "-out", leaf_cert
+    ])
+
+    {leaf_cert, leaf_key}
+  end
+
+  test "CA-chained explicit pair validates (R156: pairing is SPKI match, not self-signature)" do
+    dir = Path.expand("tmp/dev-certs/r156-ca-#{:os.getpid()}")
+    {cert, key} = mint_ca_chained_pair(dir)
+
+    with_config([tls_certfile: cert, tls_keyfile: key, tls: :delete], fn ->
+      assert {:ok, ^cert, ^key} = ensure_dev_cert()
+
+      # a genuinely mismatched pair (CA cert + leaf key) still refuses
+      File.cp!(Path.join(dir, "ca-cert.pem"), cert)
+      assert {:error, {:corrupt_certfile, ^cert, :cert_key_mismatch}} = ensure_dev_cert()
+    end)
+  after
+    File.rm_rf(Path.expand("tmp/dev-certs/r156-ca-#{:os.getpid()}"))
   end
 end

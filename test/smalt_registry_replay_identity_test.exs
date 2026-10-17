@@ -27,6 +27,10 @@ defmodule Smalt.RegistryReplayIdentityTest do
 
   use ExUnit.Case, async: false
 
+  # V18/V31: the nested `mix run` replay subprocess legitimately needs
+  # cold-build-root compile budget; ExUnit's default 60s is too tight.
+  @moduletag timeout: 240_000
+
   @pack_dir "../ggen-marketplace/packs/smalt-substrate-pack"
   @artifact "lib/smalt/registry.ex"
   @lock_file "ggen_igniter.pack.lock"

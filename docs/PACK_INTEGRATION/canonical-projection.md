@@ -14,7 +14,8 @@ Lane: canonical-projection · 2026-10-14 · checkout `~/smalt` (one canonical ch
   `Smalt.Projection.Canonical.Domain`, deliberately separate from
   `Smalt.Semantic.Domain` so the public surface can never inherit a
   Store-backed action.
-- `docs/capabilities.json` (generated, deterministic): 38 admitted types with
+- `docs/capabilities.json` (generated, deterministic): 41 admitted types
+  (re-counted on disk 2026-10-16) with
   shape + apiVersion each, endpoints `{controlPlane: 9443, dataPlane: 8443,
   amqp: 5672, eventHubs: 5673}`. Regenerate with
   `mix run -e 'Smalt.Projection.Canonical.write()'` (idempotent byte-identical).

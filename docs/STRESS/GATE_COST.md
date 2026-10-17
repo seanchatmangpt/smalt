@@ -13,8 +13,9 @@ python3 scripts/stress/gate_cost.py
 Two phases:
 
 1. **In-process** (`scripts/stress/gate_cost_inner.exs`, via
-   `mix run --no-start`): per-type `validate_resource` latency — 38 admitted
-   types x 500 valid + 500 malformed payloads, p50/p95 microseconds, pure
+   `mix run --no-start`): per-type `validate_resource` latency — all admitted
+   types (41 as of 2026-10-16)
+   x 500 valid + 500 malformed payloads, p50/p95 microseconds, pure
    calls, no HTTP; plus registry lookups (100k each of `shape_for` /
    `latest_version` / `admitted?`), ns/op.
 2. **Wire**: boots the substrate on isolated ports (default ARM 39443;

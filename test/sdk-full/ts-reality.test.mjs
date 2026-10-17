@@ -44,7 +44,7 @@ const MEASUREMENT = process.env.SMALT_TS_MEASUREMENT || "11".repeat(32);
 const SB_KEY = process.env.SMALT_TS_SB_SHARED_KEY;
 if (!SB_KEY) {
   console.error("[ts-reality] SMALT_TS_SB_SHARED_KEY missing — run via ts-run.mjs");
-  process.exit(1);
+  process.exit(3);
 }
 
 // smalt-tf mock AAD identity (all-zero GUIDs per scripts/smalt-tf).

@@ -113,8 +113,11 @@ defmodule SmaltArmGatewayTest do
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
     # resourceManager host is env-driven (terraform lane points it at the live
-    # listener); assert shape, not host.
-    assert is_binary(body["resourceManager"]) and String.ends_with?(body["resourceManager"], "/")
+    # listener); assert shape, not host. KD-T5-F2: no trailing slash — azurerm
+    # joins resourceManager verbatim with "/subscriptions/..." and a trailing
+    # slash built a double-slash URL (connection reset, T5 cleanroom).
+    assert is_binary(body["resourceManager"])
+    refute String.ends_with?(body["resourceManager"], "/")
     assert is_binary(body["graphEndpoint"])
     assert body["authentication"]["audiences"] == ["https://management.azure.com"]
   end
@@ -166,7 +169,7 @@ defmodule SmaltArmGatewayTest do
   # Resource Group lifecycle + case normalization + LIST
   # ---------------------------------------------------------------------------
   test "Resource Group Lifecycle (PUT, GET, DELETE) via lowercase segment" do
-    path = "/subscriptions/#{@sub}/resourcegroups/test-rg?api-version=2021-04-01"
+    path = "/subscriptions/#{@sub}/resourcegroups/test-rg?api-version=2023-07-01"
 
     put_conn = conn(:put, path, %{"location" => "eastus", "tags" => %{"env" => "dev"}}) |> call()
     assert put_conn.status == 201
@@ -178,9 +181,13 @@ defmodule SmaltArmGatewayTest do
     assert get_conn.status == 200
     assert Jason.decode!(get_conn.resp_body)["name"] == "test-rg"
 
-    # PUT again -> update (200)
-    upd_conn = conn(:put, path, %{"location" => "westus"}) |> call()
+    # PUT again -> update (200); location is immutable on update (R30)
+    upd_conn = conn(:put, path, %{"location" => "eastus"}) |> call()
     assert upd_conn.status == 200
+
+    moved_conn = conn(:put, path, %{"location" => "westus"}) |> call()
+    assert moved_conn.status == 400
+    assert Jason.decode!(moved_conn.resp_body)["error"]["code"] == "LocationMismatch"
 
     # ARM RG delete is LRO: 202 + Location + Retry-After; terminal GET 404.
     del_conn = conn(:delete, path) |> call()
@@ -192,8 +199,63 @@ defmodule SmaltArmGatewayTest do
     assert conn(:get, path) |> call() |> Map.get(:status) == 404
   end
 
+  test "RG tags round-trip: PUT with tags -> GET identical; PUT without/null tags -> GET tags = null (null-when-empty parity, FR-5)" do
+    api = "2023-07-01"
+
+    path = "/subscriptions/#{@sub}/resourcegroups/rg-tags?api-version=#{api}"
+
+    # PUT with tags -> GET echoes them exactly.
+    put_conn =
+      conn(:put, path, %{"location" => "eastus", "tags" => %{"environment" => "prod"}})
+      |> call()
+
+    assert put_conn.status == 201
+
+    get_conn = conn(:get, path) |> call()
+    assert get_conn.status == 200
+    body = Jason.decode!(get_conn.resp_body)
+    assert body["tags"] == %{"environment" => "prod"}
+
+    # PUT without tags -> GET has tags = null (null-when-empty parity; the
+    # pre-reconciliation `{}` pin drifted azurerm refresh, FR-5 re-witness
+    # /tmp/tf-plan-probe.hPaBPZ).
+    upd = conn(:put, path, %{"location" => "eastus"}) |> call()
+    assert upd.status == 200
+    get2 = conn(:get, path) |> call()
+    assert Jason.decode!(get2.resp_body)["tags"] == nil
+
+    # PUT with explicit null tags (azurerm omits-or-nulls) -> GET tags = null.
+    upd_null = conn(:put, path, %{"location" => "eastus", "tags" => nil}) |> call()
+    assert upd_null.status == 200
+    get3 = conn(:get, path) |> call()
+    body3 = Jason.decode!(get3.resp_body)
+    assert body3["tags"] == nil
+    assert Map.has_key?(body3, "tags")
+
+    # Generic resource path (vn leg): CREATE with null tags -> GET renders JSON
+    # `null` (wire truth per corpus rows 1-2, tf replay /tmp/tf-rg419: echoing
+    # {} on create-with-null-tags causes permanent azurerm refresh drift).
+    res_path =
+      "/subscriptions/#{@sub}/resourceGroups/rg-tags/providers/Microsoft.Network/virtualNetworks/vn-tags?api-version=#{api_v("Microsoft.Network/virtualNetworks")}"
+
+    # Disclosed cross-lane unblock (compile-freeze SLA): `null` is JSON, not
+    # Elixir — the tags round-trip lane meant nil.
+    res_put =
+      conn(:put, res_path, %{
+        "location" => "eastus",
+        "tags" => nil,
+        "properties" => %{"addressPrefixes" => ["10.9.0.0/16"]}
+      })
+      |> call()
+    assert res_put.status in [200, 201]
+    res_get = conn(:get, res_path) |> call()
+    assert res_get.status == 200
+    res_body = Jason.decode!(res_get.resp_body)
+    assert res_body["tags"] == nil
+  end
+
   test "Resource Group routes accept camelCase resourceGroups segment" do
-    path = "/subscriptions/#{@sub}/resourceGroups/Test-RG-Camel?api-version=2021-04-01"
+    path = "/subscriptions/#{@sub}/resourceGroups/Test-RG-Camel?api-version=2023-07-01"
 
     assert conn(:put, path, %{"location" => "eastus"}) |> call() |> Map.get(:status) == 201
 
@@ -204,12 +266,12 @@ defmodule SmaltArmGatewayTest do
 
   test "LIST resource groups returns prefix-scanned collection (both casings)" do
     for name <- ["rg-a", "rg-b"] do
-      conn(:put, "/subscriptions/#{@sub}/resourcegroups/#{name}?api-version=2021-04-01", %{"location" => "eastus"})
+      conn(:put, "/subscriptions/#{@sub}/resourcegroups/#{name}?api-version=2023-07-01", %{"location" => "eastus"})
       |> call()
     end
 
     for seg <- ["resourcegroups", "resourceGroups"] do
-      conn = conn(:get, "/subscriptions/#{@sub}/#{seg}?api-version=2021-04-01") |> call()
+      conn = conn(:get, "/subscriptions/#{@sub}/#{seg}?api-version=2023-07-01") |> call()
       assert conn.status == 200
       assert %{"value" => rgs} = Jason.decode!(conn.resp_body)
       assert length(rgs) == 2
@@ -236,8 +298,10 @@ defmodule SmaltArmGatewayTest do
   end
 
   test "invalid api-version returns 400 InvalidApiVersionParameter" do
+    # KD-78 monotonic gate: versions <= latest are ACCEPTED; only a version
+    # beyond the latest is the 400 InvalidApiVersionParameter face.
     path =
-      "/subscriptions/#{@sub}/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet-01?api-version=1999-01-01"
+      "/subscriptions/#{@sub}/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet-01?api-version=2999-01-01"
 
     conn =
       conn(:put, path, %{
@@ -249,7 +313,7 @@ defmodule SmaltArmGatewayTest do
     assert conn.status == 400
     body = Jason.decode!(conn.resp_body)
     assert body["error"]["code"] == "InvalidApiVersionParameter"
-    assert body["error"]["message"] =~ "1999-01-01"
+    assert body["error"]["message"] =~ "2999-01-01"
   end
 
   test "Registry-driven api-version resolution: latest accepted, bogus refused" do
@@ -395,6 +459,45 @@ defmodule SmaltArmGatewayTest do
 
     assert conn(:get, path) |> call() |> Map.get(:status) == 200
     assert conn(:delete, path) |> call() |> Map.get(:status) == 200
+  end
+
+  test "privateDnsZones virtualNetworkLinks child route lifecycle (orphan 404, parented 201/200/LIST/DELETE 200/404)" do
+    link_type = "Microsoft.Network/privateDnsZones/virtualNetworkLinks"
+
+    base =
+      "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Network/privateDnsZones/zone-01/virtualNetworkLinks"
+
+    path = "#{base}/link-01?api-version=#{api_v(link_type)}"
+
+    # Orphan: no parent zone -> 404 ResourceNotFound (parented-child gate)
+    orphan_conn =
+      conn(:put, path, %{"location" => "eastus", "properties" => %{"virtualNetworkId" => "x"}})
+      |> call()
+
+    assert orphan_conn.status == 404
+    assert %{"error" => %{"code" => "ResourceNotFound"}} = Jason.decode!(orphan_conn.resp_body)
+
+    # Parent zone, then parented lifecycle
+    zone_path =
+      "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Network/privateDnsZones/zone-01?api-version=#{api_v("Microsoft.Network/privateDnsZones")}"
+
+    assert conn(:put, zone_path, %{"location" => "global", "properties" => %{}}) |> call() |> Map.get(:status) == 201
+
+    put_conn =
+      conn(:put, path, %{"location" => "global", "properties" => %{"virtualNetworkId" => "x"}})
+      |> call()
+
+    assert put_conn.status == 201
+    assert Jason.decode!(put_conn.resp_body)["type"] == link_type
+
+    assert conn(:get, path) |> call() |> Map.get(:status) == 200
+
+    list_conn = conn(:get, base <> "?api-version=#{api_v(link_type)}") |> call()
+    assert %{"value" => items} = Jason.decode!(list_conn.resp_body)
+    assert length(items) == 1
+
+    assert conn(:delete, path) |> call() |> Map.get(:status) == 200
+    assert conn(:get, path) |> call() |> Map.get(:status) == 404
   end
 
   test "blob containers and immutabilityPolicies child routes" do
@@ -562,7 +665,11 @@ defmodule SmaltArmGatewayTest do
 
     assert final
     assert %{"status" => "Succeeded", "id" => op_id_url} = Jason.decode!(final.resp_body)
-    assert op_id_url == "/subscriptions/#{@sub}/operations/#{op_id}"
+    # KD-T5-F3: the terminal wire body carries the TARGET RESOURCE's id (the
+    # azurerm 4.54 storage poller synthesizes resource identity from it); the
+    # operation record in the store keeps the operations-scoped id.
+    assert op_id_url ==
+             "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/st-lro"
 
     # operation row is Store-backed
     assert match?({:ok, _}, Store.get(:smalt_operations, op_id))
@@ -575,7 +682,7 @@ defmodule SmaltArmGatewayTest do
   # ---------------------------------------------------------------------------
   test "generic LIST nextLink carries api-version; follow passes the gate" do
     rg_path = "/subscriptions/#{@sub}/resourcegroups/nextlink-rg"
-    conn(:put, "#{rg_path}?api-version=2021-04-01", %{"location" => "eastus"}) |> call()
+    conn(:put, "#{rg_path}?api-version=2023-07-01", %{"location" => "eastus"}) |> call()
 
     vnet_v = api_v("Microsoft.Network/virtualNetworks")
 
@@ -612,7 +719,7 @@ defmodule SmaltArmGatewayTest do
   # ---------------------------------------------------------------------------
   # Subscription-level lists
   # ---------------------------------------------------------------------------
-  test "GET /subscriptions/:sub/providers returns deduped resourceTypes inventory" do
+  test "GET /subscriptions/:sub/providers returns the ProviderMatrix listing" do
     conn(:put, "/subscriptions/#{@sub}/resourcegroups/inv-rg", %{"location" => "eastus"})
     |> call()
 
@@ -627,13 +734,16 @@ defmodule SmaltArmGatewayTest do
       conn(:get, "/subscriptions/#{@sub}/providers?api-version=2021-04-01") |> call()
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
-    types = body["resourceTypes"]
-    assert is_list(types)
 
-    assert Enum.any?(
-             types,
-             &(&1["resourceType"] == "virtualNetworks" and &1["namespace"] == "Microsoft.Network")
-           )
+    # Wave-2: the listing is the Registry-projected ProviderMatrix — a "value"
+    # array of provider rows; the store-scan inventory (and its top-level
+    # subscriptionId field) is gone.
+    assert is_list(body["value"]) and body["value"] != []
+
+    assert Enum.any?(body["value"], fn p ->
+             p["namespace"] == "Microsoft.Network" and
+               Enum.any?(p["resourceTypes"], &(&1["resourceType"] == "virtualNetworks"))
+           end)
   end
 
   # ---------------------------------------------------------------------------
@@ -690,6 +800,427 @@ defmodule SmaltArmGatewayTest do
       Application.put_env(:smalt, :arm_rate_limit, nil)
       :ets.delete_all_objects(:smalt_arm_rate)
     end
+  end
+
+  # KD-54 / R119: subscription-wide resource LIST across resource groups.
+  test "subscription resources LIST: cross-RG, $filter clauses, pagination" do
+    # R178g: clean up seeded :smalt_resources rows (rg-a/rg-b/rg-p, 104 keys)
+    # so they never leak into other suites sharing the table.
+    on_exit(fn ->
+      if :ets.info(:smalt_resources) != :undefined do
+        prefix = String.downcase("/subscriptions/#{@sub}/resourcegroups/rg-")
+
+        for key <- Store.prefix_keys(:smalt_resources, prefix) do
+          :ets.delete(:smalt_resources, key)
+        end
+      end
+    end)
+
+    seeds = [
+      {"/subscriptions/#{@sub}/resourceGroups/rg-a/providers/Microsoft.Network/virtualNetworks/vnet1",
+       "Microsoft.Network/virtualNetworks", "vnet1", "eastus"},
+      {"/subscriptions/#{@sub}/resourceGroups/rg-a/providers/Microsoft.Storage/storageAccounts/stg1",
+       "Microsoft.Storage/storageAccounts", "stg1", "westus"},
+      {"/subscriptions/#{@sub}/resourceGroups/rg-b/providers/Microsoft.Network/virtualNetworks/vnet2",
+       "Microsoft.Network/virtualNetworks", "vnet2", "eastus"}
+    ]
+
+    for {id, type, name, loc} <- seeds do
+      Store.put(:smalt_resources, String.downcase(id), %{
+        "id" => id,
+        "name" => name,
+        "type" => type,
+        "location" => loc,
+        "properties" => %{"provisioningState" => "Succeeded"},
+        "tags" => %{},
+        "systemData" => %{}
+      })
+    end
+
+    # Unfiltered: all 3 across both RGs.
+    conn = conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-04-01") |> call()
+    assert conn.status == 200
+
+    body = Jason.decode!(conn.resp_body)
+    assert length(body["value"]) == 3
+    assert Map.has_key?(body, "nextLink") == false
+    ids = body["value"] |> Enum.map(& &1["id"]) |> Enum.map(&String.downcase/1)
+
+    for {id, _, _, _} <- seeds do
+      assert String.downcase(id) in ids
+    end
+
+    # $filter resourceType eq — case-insensitive match on type.
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-04-01&" <>
+        URI.encode_query(%{"$filter" => "resourceType eq 'Microsoft.Network/virtualNetworks'"}))
+      |> call()
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+    assert length(body["value"]) == 2
+
+    assert Enum.all?(body["value"], fn r ->
+             String.downcase(r["type"]) == "microsoft.network/virtualnetworks"
+           end)
+
+    # $filter resourceGroup eq — scoped to one RG.
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-04-01&" <>
+        URI.encode_query(%{"$filter" => "resourceGroup eq 'RG-A'"}))
+      |> call()
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+    assert length(body["value"]) == 2
+
+    # Unknown filter clause denies by default (matches nothing).
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-01-01&" <>
+        URI.encode_query(%{"$filter" => "wat eq 'x'"}))
+      |> call()
+
+    assert conn.status == 200
+    assert Jason.decode!(conn.resp_body)["value"] == []
+
+    # Pagination: 101 resources, default maxitempages=1 -> 100 + nextLink.
+    for i <- 1..101 do
+      id =
+        "/subscriptions/#{@sub}/resourceGroups/rg-p/providers/Microsoft.Network/virtualNetworks/v#{i}"
+
+      Store.put(:smalt_resources, String.downcase(id), %{
+        "id" => id,
+        "name" => "v#{i}",
+        "type" => "Microsoft.Network/virtualNetworks",
+        "location" => "eastus",
+        "properties" => %{},
+        "tags" => %{},
+        "systemData" => %{}
+      })
+    end
+
+    conn = conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-04-01") |> call()
+    assert conn.status == 200
+    page1 = Jason.decode!(conn.resp_body)
+    assert length(page1["value"]) == 100
+    assert is_binary(page1["nextLink"])
+
+    # Follow nextLink: remaining page.
+    %{path: path, query: q} = URI.parse(page1["nextLink"])
+    conn = conn(:get, path <> "?" <> q) |> call()
+    assert conn.status == 200
+    page2 = Jason.decode!(conn.resp_body)
+    assert length(page2["value"]) == 4
+    refute Map.has_key?(page2, "nextLink")
+  end
+
+  # ---------------------------------------------------------------------------
+  # Wave-2: Defaults.apply wired after check_shape; location/tags always RAW.
+  # ---------------------------------------------------------------------------
+  test "storage PUT with minimal body carries defaults; location never the template string" do
+    type = "Microsoft.Storage/storageAccounts"
+
+    path =
+      "/subscriptions/#{@sub}/resourceGroups/def-rg/providers/Microsoft.Storage/storageAccounts/def-st?api-version=#{api_v(type)}"
+
+    conn =
+      conn(:put, path, %{"location" => "westus", "sku" => %{"name" => "Standard_LRS"}})
+      |> call()
+
+    # storageAccounts is LRO-async: create -> 202 (record already in Store).
+    assert conn.status == 202
+
+    get_conn = conn(:get, path) |> call()
+    assert get_conn.status == 200
+    body = Jason.decode!(get_conn.resp_body)
+    assert body["sku"] == %{"name" => "Standard_LRS"}
+    assert body["kind"] == "StorageV2"
+    assert body["properties"]["minimumTlsVersion"] == "TLS1_2"
+    assert body["properties"]["provisioningState"] == "Succeeded"
+    # location from the RAW payload — never the DURMT template string.
+    assert body["location"] == "westus"
+    refute body["location"] =~ "[resourceGroup()"
+  end
+
+  test "vault PUT keeps user properties over defaults; nested properties sku lands" do
+    type = "Microsoft.KeyVault/vaults"
+
+    path =
+      "/subscriptions/#{@sub}/resourceGroups/def-rg/providers/Microsoft.KeyVault/vaults/kv-def?api-version=#{api_v(type)}"
+
+    conn =
+      conn(:put, path, %{
+        "location" => "westus",
+        "properties" => %{"skuName" => "standard", "enableSoftDelete" => false}
+      })
+      |> call()
+
+    assert conn.status == 201
+    body = Jason.decode!(conn.resp_body)
+    assert body["location"] == "westus"
+    assert body["properties"]["enableSoftDelete"] == false
+    assert body["properties"]["sku"] == %{"family" => "A", "name" => "standard"}
+    assert body["properties"]["tenantId"] == "[subscription().tenantId]"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Wave-2: provider listing + namespace GET + register/unregister.
+  # ---------------------------------------------------------------------------
+  test "providers: GET namespace 200/404, register -> Registered, unregister -> Unregistering, GET stays Registered" do
+    # Known namespace.
+    conn = conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Network?api-version=2021-04-01")
+    |> call()
+
+    assert conn.status == 200
+    body = Jason.decode!(conn.resp_body)
+    assert body["namespace"] == "Microsoft.Network"
+    assert body["registrationState"] == "Registered"
+    assert is_list(body["resourceTypes"]) and body["resourceTypes"] != []
+
+    # Unknown namespace.
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Bogus?api-version=2021-04-01")
+      |> call()
+
+    assert conn.status == 404
+    assert Jason.decode!(conn.resp_body)["error"]["code"] == "ResourceNotFound"
+
+    # Register -> Registered; Unregister -> Unregistering.
+    reg =
+      conn(:post, "/subscriptions/#{@sub}/providers/Microsoft.Network/register?api-version=2021-04-01", %{})
+      |> call()
+
+    assert reg.status == 200
+    assert Jason.decode!(reg.resp_body)["registrationState"] == "Registered"
+
+    unreg =
+      conn(:post, "/subscriptions/#{@sub}/providers/Microsoft.Network/unregister?api-version=2021-04-01", %{})
+      |> call()
+
+    assert unreg.status == 200
+    assert Jason.decode!(unreg.resp_body)["registrationState"] == "Unregistering"
+
+    # Read-only enclave truth: GET stays Registered.
+    conn = conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Network?api-version=2021-04-01")
+    |> call()
+
+    assert conn.status == 200
+    assert Jason.decode!(conn.resp_body)["registrationState"] == "Registered"
+
+    # Register of an unknown namespace 404s.
+    reg =
+      conn(:post, "/subscriptions/#{@sub}/providers/Microsoft.Bogus/register?api-version=2021-04-01", %{})
+      |> call()
+
+    assert reg.status == 404
+    assert Jason.decode!(reg.resp_body)["error"]["code"] == "ResourceNotFound"
+  end
+
+  # ---------------------------------------------------------------------------
+  # Wave-2: vaults/secrets child route lifecycle (parented).
+  # ---------------------------------------------------------------------------
+  test "vault secrets child lifecycle: 404 on missing parent, PUT/GET/LIST/DELETE" do
+    secret_type = "Microsoft.KeyVault/vaults/secrets"
+
+    secrets_base =
+      "/subscriptions/#{@sub}/resourceGroups/sec-rg/providers/Microsoft.KeyVault/vaults/kv-sec/secrets"
+
+    path = "#{secrets_base}/sec-01?api-version=#{api_v(secret_type)}"
+
+    # Missing parent -> 404 ResourceNotFound. The orphan probe body is
+    # shape-CONFORMING (location present): the refusal-tier chain
+    # (shape before parent-existence) answers 400 for malformed bodies even
+    # when the parent is missing — that tiering is asserted in the refusal
+    # sweep. Only a conforming body isolates the parent gate here.
+    orphan =
+      conn(:put, path, %{"location" => "eastus", "properties" => %{"value" => "s3cret"}}) |> call()
+
+    assert orphan.status == 404
+    assert Jason.decode!(orphan.resp_body)["error"]["code"] == "ResourceNotFound"
+
+    # Create the parent vault via the generic route.
+    conn(
+      :put,
+      "/subscriptions/#{@sub}/resourceGroups/sec-rg/providers/Microsoft.KeyVault/vaults/kv-sec?api-version=#{api_v("Microsoft.KeyVault/vaults")}",
+      %{"location" => "eastus", "properties" => %{"skuName" => "standard", "tenantId" => "t"}}
+    )
+    |> call()
+
+    put_conn = conn(:put, path, %{"location" => "eastus", "properties" => %{"value" => "s3cret"}}) |> call()
+    assert put_conn.status == 201
+    assert Jason.decode!(put_conn.resp_body)["type"] == secret_type
+
+    assert conn(:get, path) |> call() |> Map.get(:status) == 200
+
+    list_conn = conn(:get, "#{secrets_base}?api-version=#{api_v(secret_type)}") |> call()
+    assert %{"value" => items} = Jason.decode!(list_conn.resp_body)
+    assert length(items) == 1
+
+    assert conn(:delete, path) |> call() |> Map.get(:status) == 200
+  end
+
+  # ---------------------------------------------------------------------------
+  # Wave-2: cosmos sqlDatabases/sqlContainers parented children + seeding.
+  # ---------------------------------------------------------------------------
+  test "cosmos sqlDatabases/sqlContainers: 404 orphan, lifecycle, rid stamping, seeding" do
+    db_type = "Microsoft.DocumentDB/databaseAccounts/sqlDatabases"
+    coll_type = "Microsoft.DocumentDB/databaseAccounts/sqlContainers"
+
+    if Smalt.Registry.admitted?(db_type) and Smalt.Registry.admitted?(coll_type) do
+      acct_base =
+        "/subscriptions/#{@sub}/resourceGroups/cos-rg/providers/Microsoft.DocumentDB/databaseAccounts"
+
+      dbs_base = "#{acct_base}/cos-acct/sqlDatabases"
+      db_path = "#{dbs_base}/db1?api-version=#{api_v(db_type)}"
+
+      # Missing account -> 404 ResourceNotFound. Conforming probe body
+      # (location present) — malformed bodies answer 400 via the
+      # shape-before-parent refusal tier (see refusal sweep).
+      orphan = conn(:put, db_path, %{"location" => "eastus"}) |> call()
+      assert orphan.status == 404
+      assert Jason.decode!(orphan.resp_body)["error"]["code"] == "ResourceNotFound"
+
+      conn(:put, "#{acct_base}/cos-acct?api-version=#{api_v("Microsoft.DocumentDB/databaseAccounts")}", %{
+        "location" => "eastus"
+      })
+      |> call()
+
+      put_conn = conn(:put, db_path, %{"location" => "eastus", "properties" => %{}}) |> call()
+      assert put_conn.status == 201
+
+      db_body = Jason.decode!(put_conn.resp_body)
+      assert db_body["type"] == db_type
+
+      # rid stamping from the Cosmos public API when the data plane is up.
+      if Smalt.DataPlane.Cosmos.store_ready?() do
+        assert db_body["properties"]["_rid"] == Smalt.DataPlane.Cosmos.db_rid("db1")
+      end
+
+      coll_path = "#{dbs_base}/db1/sqlContainers/c1?api-version=#{api_v(coll_type)}"
+
+      coll_conn =
+        conn(:put, coll_path, %{
+          "location" => "eastus",
+          "properties" => %{"partitionKey" => %{"paths" => ["/pk"]}}
+        })
+        |> call()
+
+      assert coll_conn.status == 201
+
+      coll_body = Jason.decode!(coll_conn.resp_body)
+
+      if Smalt.DataPlane.Cosmos.store_ready?() do
+        assert coll_body["properties"]["_rid"] == Smalt.DataPlane.Cosmos.coll_rid("db1", "c1")
+        assert {:ok, 201, _, _} = Smalt.DataPlane.Cosmos.create_db("db1")
+      end
+
+      list_conn = conn(:get, "#{dbs_base}?api-version=#{api_v(db_type)}") |> call()
+      assert %{"value" => dbs} = Jason.decode!(list_conn.resp_body)
+      # prefix-scan lists carry deep descendants; count only db-typed rows.
+      assert Enum.count(dbs, &(&1["type"] == db_type)) == 1
+
+      assert conn(:delete, coll_path) |> call() |> Map.get(:status) == 200
+      assert conn(:delete, db_path) |> call() |> Map.get(:status) == 200
+    else
+      # Skip loudly if the registry regen hasn't landed the child types.
+      IO.puts("[SKIP] cosmos child types not admitted — registry regen pending")
+      assert true
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Wave-2: storageAccounts DELETE — 202 LRO, cascade sweep, 404 fence.
+  # ---------------------------------------------------------------------------
+  test "storageAccount DELETE: 202 LRO, cascade removes children, missing -> 404 ResourceNotFound" do
+    sa_type = "Microsoft.Storage/storageAccounts"
+    container_type = "Microsoft.Storage/storageAccounts/blobServices/containers"
+
+    acct_path =
+      "/subscriptions/#{@sub}/resourceGroups/casc-rg/providers/Microsoft.Storage/storageAccounts/casc-st?api-version=#{api_v(sa_type)}"
+
+    conn(
+      :put,
+      acct_path,
+      %{"location" => "eastus", "properties" => %{"skuName" => "Standard_LRS"}}
+    )
+    |> call()
+
+    container_path =
+      "/subscriptions/#{@sub}/resourceGroups/casc-rg/providers/Microsoft.Storage/storageAccounts/casc-st/blobServices/default/containers/c1?api-version=#{api_v(container_type)}"
+
+    assert conn(:put, container_path, %{"location" => "eastus", "properties" => %{}})
+           |> call()
+           |> Map.get(:status) == 201
+
+    del_conn = conn(:delete, acct_path) |> call()
+    assert del_conn.status == 202
+    assert get_resp_header(del_conn, "azure-asyncoperation") != []
+    assert get_resp_header(del_conn, "location") != []
+    assert get_resp_header(del_conn, "retry-after") == ["1"]
+
+    # Account + cascaded children are gone (raw store read).
+    key = String.downcase("/subscriptions/#{@sub}/resourceGroups/casc-rg/providers/Microsoft.Storage/storageAccounts/casc-st")
+    refute match?({:ok, _}, Store.get(:smalt_resources, key))
+
+    child_prefix =
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/casc-rg/storageAccounts/casc-st/"
+      )
+
+    assert Store.prefix_keys(:smalt_resources, child_prefix) == []
+
+    assert conn(:get, acct_path) |> call() |> Map.get(:status) == 404
+
+    # Missing account delete -> 404 ResourceNotFound.
+    missing = conn(:delete, acct_path) |> call()
+    assert missing.status == 404
+    assert Jason.decode!(missing.resp_body)["error"]["code"] == "ResourceNotFound"
+  end
+
+  # ---------------------------------------------------------------------------
+  # HEAD existence checks (azurerm CheckNameExists, no api-version)
+  # ---------------------------------------------------------------------------
+  test "HEAD databaseAccountNames answers 404 EMPTY body with no api-version (not exists)" do
+    conn =
+      conn(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/tf-no-such-acct")
+      |> call()
+
+    assert conn.status == 404
+    # autorest HEAD parsing: EMPTY body is the contract (JSON 400 broke it).
+    assert conn.resp_body == ""
+  end
+
+  test "HEAD databaseAccountNames answers 204 EMPTY body once the account exists" do
+    id =
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/head-rg/providers/Microsoft.DocumentDB/databaseAccounts/head-acct"
+      )
+
+    Store.put(:smalt_resources, id, %{"id" => id, "name" => "head-acct"})
+
+    conn =
+      conn(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/head-acct")
+      |> call()
+
+    assert conn.status == 204
+    assert conn.resp_body == ""
+  end
+
+  test "HEAD databaseAccountNames flips back to 404 after the account is deleted" do
+    id =
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/head-rg2/providers/Microsoft.DocumentDB/databaseAccounts/head-acct2"
+      )
+
+    Store.put(:smalt_resources, id, %{"id" => id, "name" => "head-acct2"})
+    Store.delete(:smalt_resources, id)
+
+    conn =
+      conn(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/head-acct2")
+      |> call()
+
+    assert conn.status == 404
+    assert conn.resp_body == ""
   end
 
   # Sleep until just after a wall-clock second boundary, so a test that

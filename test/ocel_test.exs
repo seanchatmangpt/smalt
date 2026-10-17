@@ -14,10 +14,12 @@ defmodule Smalt.OcelTest do
     File.rm_rf!(@tmp_dir)
     File.mkdir_p!(@tmp_dir)
     Application.put_env(:smalt, :ocel_dir, @tmp_dir)
+
     on_exit(fn ->
       Application.delete_env(:smalt, :ocel_dir)
       File.rm_rf!(@tmp_dir)
     end)
+
     :ok
   end
 
@@ -35,14 +37,23 @@ defmodule Smalt.OcelTest do
 
   # -- EventRegistry ---------------------------------------------------------
 
-  test "closed vocabulary contains the six smalt event types" do
+  test "closed vocabulary matches the ontology-projected event types" do
+    # Projected-source provenance: `affidavit.seal` added by ggen-marketplace
+    # packs/smalt-substrate-pack/ontology.ttl:485 (`smalt:et-affidavit-seal
+    # a smalt:OcelEventType ; smalt:name "affidavit.seal"`); registry
+    # regenerated via `mix smalt.gen`, test expectation reconciled to match.
     assert EventRegistry.event_types() |> Enum.sort() == ~w(
+             affidavit.seal
              amqp.delivery.settled
              arm.resource.transition
              blob.custody.transition
              cosmos.doc.crud
+             court.run
+             doctor.receipt
+             enclave.lifecycle.stage
              ledger.append
              skr.release
+             spc.drift
            )
   end
 
@@ -67,7 +78,11 @@ defmodule Smalt.OcelTest do
     assert path == Path.join(dir, "events.ndjson")
     assert {:ok, doc} = path |> File.read!() |> String.trim() |> Jason.decode()
 
-    assert %{"ocel:eventTypes" => [%{"name" => "arm.resource.transition"}], "ocel:events" => [event]} = doc
+    assert %{
+             "ocel:eventTypes" => [%{"name" => "arm.resource.transition"}],
+             "ocel:events" => [event]
+           } = doc
+
     assert [%{"objectId" => "arm/res-1", "qualifier" => "resource"}] = event["relationships"]
     assert event["attributes"]["phase"] == "create"
   end
@@ -77,7 +92,9 @@ defmodule Smalt.OcelTest do
   end
 
   test "emit drops malformed object entries (matter-isolation)" do
-    assert {:ok, path} = OcelEmitter.emit("skr.release", [%{"payload" => "secret"}, obj("skr-1", "skr")], %{})
+    assert {:ok, path} =
+             OcelEmitter.emit("skr.release", [%{"payload" => "secret"}, obj("skr-1", "skr")], %{})
+
     {:ok, doc} = path |> File.read!() |> String.trim() |> Jason.decode()
     assert [%{"id" => "skr-1"}] = doc["ocel:objects"]
     refute File.read!(path) =~ "secret"
@@ -89,11 +106,18 @@ defmodule Smalt.OcelTest do
     conn = %Plug.Conn{request_path: "/dbs/db/colls/c/docs/1", status: 200, method: "GET"}
 
     assert :ok =
-             OcelEmitter.handle_event([:bandit, :request, :stop], %{duration: 1_000_000}, %{conn: conn}, :ok)
+             OcelEmitter.handle_event(
+               [:bandit, :request, :stop],
+               %{duration: 1_000_000},
+               %{conn: conn},
+               :ok
+             )
 
     path = Path.join(@tmp_dir, "events.ndjson")
     assert File.exists?(path)
-    {:ok, doc} = path |> File.read!() |> String.split("\n", trim: true) |> List.last() |> Jason.decode()
+
+    {:ok, doc} =
+      path |> File.read!() |> String.split("\n", trim: true) |> List.last() |> Jason.decode()
 
     assert [%{"type" => "cosmos.doc.crud", "attributes" => %{"method" => "GET", "status" => 200}}] =
              doc["ocel:events"]
@@ -119,7 +143,9 @@ defmodule Smalt.OcelTest do
         "ocel:eventTypes" => [],
         "ocel:objectTypes" => [],
         "ocel:events" => [ev("e2", "ledger.append", "2026-10-14T00:00:01Z", ["led-1"])],
-        "ocel:objects" => [%{"id" => "led-1", "type" => "ledger", "attributes" => %{"generation" => 2}}]
+        "ocel:objects" => [
+          %{"id" => "led-1", "type" => "ledger", "attributes" => %{"generation" => 2}}
+        ]
       })
 
     assert {:ok, doc} = OcelNdjson.assemble_document([line1, line2])
@@ -141,7 +167,15 @@ defmodule Smalt.OcelTest do
 
   test "sink append gates unknown event types" do
     assert {:ok, :dropped} =
-             OcelNdjson.append(%{"id" => "e9", "type" => "nope", "time" => "t", "attributes" => %{}, "relationships" => []}, [], dir: @tmp_dir)
+             OcelNdjson.append(
+               %{
+                 "id" => "e9",
+                 "type" => "nope",
+                 "time" => "t",
+                 "attributes" => %{},
+                 "relationships" => []
+               },
+               [], dir: @tmp_dir)
   end
 
   # -- Smalt.Ocel queries ----------------------------------------------------
@@ -159,18 +193,33 @@ defmodule Smalt.OcelTest do
 
   test "attribute_history sorts by recordedAt" do
     records = [
-      %{"objectId" => "o", "attribute" => "state", "value" => "b", "recordedAt" => "2026-01-02T00:00:00Z"},
-      %{"objectId" => "o", "attribute" => "state", "value" => "a", "recordedAt" => "2026-01-01T00:00:00Z"}
+      %{
+        "objectId" => "o",
+        "attribute" => "state",
+        "value" => "b",
+        "recordedAt" => "2026-01-02T00:00:00Z"
+      },
+      %{
+        "objectId" => "o",
+        "attribute" => "state",
+        "value" => "a",
+        "recordedAt" => "2026-01-01T00:00:00Z"
+      }
     ]
 
     assert Enum.map(Ocel.attribute_history(records), & &1["value"]) == ["a", "b"]
   end
 
   test "validate_envelope detects dangling relationships" do
-    assert :ok = Ocel.validate_envelope([ev("e1", "ledger.append", "t", ["led-1"])], [obj("led-1", "ledger")])
+    assert :ok =
+             Ocel.validate_envelope([ev("e1", "ledger.append", "t", ["led-1"])], [
+               obj("led-1", "ledger")
+             ])
 
     assert {:error, {:dangling_relationships, [{"e1", "ghost"}]}} =
-             Ocel.validate_envelope([ev("e1", "ledger.append", "t", ["ghost"])], [obj("led-1", "ledger")])
+             Ocel.validate_envelope([ev("e1", "ledger.append", "t", ["ghost"])], [
+               obj("led-1", "ledger")
+             ])
   end
 
   test "encode/decode round-trips an OCEL 2.0 envelope" do
@@ -202,12 +251,13 @@ defmodule Smalt.OcelTest do
   end
 
   test "decode refuses a used-but-undeclared type (closure law holds inbound)" do
-    good = Jason.encode!(%{
-      "ocel:eventTypes" => [%{"name" => "ledger.append"}],
-      "ocel:objectTypes" => [%{"name" => "ledger"}],
-      "ocel:events" => [ev("e1", "ledger.append", "t", ["led-1"])],
-      "ocel:objects" => [obj("led-1", "ledger")]
-    })
+    good =
+      Jason.encode!(%{
+        "ocel:eventTypes" => [%{"name" => "ledger.append"}],
+        "ocel:objectTypes" => [%{"name" => "ledger"}],
+        "ocel:events" => [ev("e1", "ledger.append", "t", ["led-1"])],
+        "ocel:objects" => [obj("led-1", "ledger")]
+      })
 
     assert {:ok, _} = Ocel.decode(good)
 
@@ -258,12 +308,16 @@ defmodule Smalt.OcelTest do
 
   test "conforming result admits nothing" do
     assert {:ok, :conforms} =
-             DeviationAdmission.admit(%{conforms: true, fitness: 1.0, deviations: []}, path: Path.join(@tmp_dir, "dev.jsonl"))
+             DeviationAdmission.admit(%{conforms: true, fitness: 1.0, deviations: []},
+               path: Path.join(@tmp_dir, "dev.jsonl")
+             )
   end
 
   test "conforms:false with empty deviations is refused" do
     assert {:error, :no_deviation} =
-             DeviationAdmission.admit(%{conforms: false, fitness: 0.5, deviations: []}, path: Path.join(@tmp_dir, "dev.jsonl"))
+             DeviationAdmission.admit(%{conforms: false, fitness: 0.5, deviations: []},
+               path: Path.join(@tmp_dir, "dev.jsonl")
+             )
   end
 
   test "conforms:false appends a durable, replayable deviation record" do
@@ -299,13 +353,21 @@ defmodule Smalt.OcelTest do
   test "end-to-end: emitter -> sink file -> assembled document validates" do
     dir = @tmp_dir
 
-    {:ok, _} = OcelEmitter.emit("arm.resource.transition", [obj("r-1", "resource")], %{"phase" => "create"})
-    {:ok, _} = OcelEmitter.emit("amqp.delivery.settled", [obj("r-1", "resource"), obj("q-1", "queue")], %{"settlement" => "accepted"})
+    {:ok, _} =
+      OcelEmitter.emit("arm.resource.transition", [obj("r-1", "resource")], %{"phase" => "create"})
+
+    {:ok, _} =
+      OcelEmitter.emit("amqp.delivery.settled", [obj("r-1", "resource"), obj("q-1", "queue")], %{
+        "settlement" => "accepted"
+      })
 
     path = Path.join(dir, "events.ndjson")
     {:ok, doc} = OcelNdjson.read_document(path)
     assert length(doc["ocel:events"]) == 2
-    assert Enum.sort(Enum.map(doc["ocel:eventTypes"], & &1["name"])) == ~w(amqp.delivery.settled arm.resource.transition)
+
+    assert Enum.sort(Enum.map(doc["ocel:eventTypes"], & &1["name"])) ==
+             ~w(amqp.delivery.settled arm.resource.transition)
+
     # The shared object is stated once after dedup.
     assert length(doc["ocel:objects"]) == 2
     assert :ok = Ocel.validate_envelope(doc["ocel:events"], doc["ocel:objects"])
@@ -314,20 +376,21 @@ defmodule Smalt.OcelTest do
   # -- Object-reference closure (dangling-relationship refusal) ---------------
 
   test "assembly refuses a relationship referencing an unknown object id" do
-    line = Jason.encode!(%{
-      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
-      "ocel:objectTypes" => [],
-      "ocel:events" => [
-        %{
-          "id" => "e-dangle",
-          "type" => "cosmos.doc.crud",
-          "time" => "2026-10-15T00:00:00Z",
-          "attributes" => %{},
-          "relationships" => [%{"objectId" => "ghost-obj", "qualifier" => "resource"}]
-        }
-      ],
-      "ocel:objects" => []
-    })
+    line =
+      Jason.encode!(%{
+        "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+        "ocel:objectTypes" => [],
+        "ocel:events" => [
+          %{
+            "id" => "e-dangle",
+            "type" => "cosmos.doc.crud",
+            "time" => "2026-10-15T00:00:00Z",
+            "attributes" => %{},
+            "relationships" => [%{"objectId" => "ghost-obj", "qualifier" => "resource"}]
+          }
+        ],
+        "ocel:objects" => []
+      })
 
     path = Path.join(@tmp_dir, "dangle.ndjson")
     File.write!(path, line <> "\n")
@@ -340,23 +403,37 @@ defmodule Smalt.OcelTest do
   test "a dangling reference from an EARLIER line is refused even when a later line exists" do
     # The closure check is document-global: an adjacent line cannot
     # launder a reference to an object that appears NOWHERE in the file.
-    line1 = Jason.encode!(%{
-      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
-      "ocel:objectTypes" => [],
-      "ocel:events" => [
-        %{"id" => "e-1", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:00:00Z", "attributes" => %{}, "relationships" => [%{"objectId" => "ghost-cross-line", "qualifier" => "resource"}]}
-      ],
-      "ocel:objects" => []
-    })
+    line1 =
+      Jason.encode!(%{
+        "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+        "ocel:objectTypes" => [],
+        "ocel:events" => [
+          %{
+            "id" => "e-1",
+            "type" => "cosmos.doc.crud",
+            "time" => "2026-10-15T00:00:00Z",
+            "attributes" => %{},
+            "relationships" => [%{"objectId" => "ghost-cross-line", "qualifier" => "resource"}]
+          }
+        ],
+        "ocel:objects" => []
+      })
 
-    line2 = Jason.encode!(%{
-      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
-      "ocel:objectTypes" => [%{"name" => "resource"}],
-      "ocel:events" => [
-        %{"id" => "e-2", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:01:00Z", "attributes" => %{}, "relationships" => []}
-      ],
-      "ocel:objects" => [obj("real-obj", "resource")]
-    })
+    line2 =
+      Jason.encode!(%{
+        "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+        "ocel:objectTypes" => [%{"name" => "resource"}],
+        "ocel:events" => [
+          %{
+            "id" => "e-2",
+            "type" => "cosmos.doc.crud",
+            "time" => "2026-10-15T00:01:00Z",
+            "attributes" => %{},
+            "relationships" => []
+          }
+        ],
+        "ocel:objects" => [obj("real-obj", "resource")]
+      })
 
     path = Path.join(@tmp_dir, "dangle-cross-line.ndjson")
     File.write!(path, line1 <> "\n" <> line2 <> "\n")
@@ -366,23 +443,37 @@ defmodule Smalt.OcelTest do
   end
 
   test "cross-line object references close (object in an earlier line admits the later reference)" do
-    line1 = Jason.encode!(%{
-      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
-      "ocel:objectTypes" => [%{"name" => "resource"}],
-      "ocel:events" => [
-        %{"id" => "e-1", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:00:00Z", "attributes" => %{}, "relationships" => []}
-      ],
-      "ocel:objects" => [obj("res-9", "resource")]
-    })
+    line1 =
+      Jason.encode!(%{
+        "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+        "ocel:objectTypes" => [%{"name" => "resource"}],
+        "ocel:events" => [
+          %{
+            "id" => "e-1",
+            "type" => "cosmos.doc.crud",
+            "time" => "2026-10-15T00:00:00Z",
+            "attributes" => %{},
+            "relationships" => []
+          }
+        ],
+        "ocel:objects" => [obj("res-9", "resource")]
+      })
 
-    line2 = Jason.encode!(%{
-      "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
-      "ocel:objectTypes" => [],
-      "ocel:events" => [
-        %{"id" => "e-2", "type" => "cosmos.doc.crud", "time" => "2026-10-15T00:01:00Z", "attributes" => %{}, "relationships" => [%{"objectId" => "res-9", "qualifier" => "resource"}]}
-      ],
-      "ocel:objects" => []
-    })
+    line2 =
+      Jason.encode!(%{
+        "ocel:eventTypes" => [%{"name" => "cosmos.doc.crud"}],
+        "ocel:objectTypes" => [],
+        "ocel:events" => [
+          %{
+            "id" => "e-2",
+            "type" => "cosmos.doc.crud",
+            "time" => "2026-10-15T00:01:00Z",
+            "attributes" => %{},
+            "relationships" => [%{"objectId" => "res-9", "qualifier" => "resource"}]
+          }
+        ],
+        "ocel:objects" => []
+      })
 
     path = Path.join(@tmp_dir, "crossline.ndjson")
     File.write!(path, line1 <> "\n" <> line2 <> "\n")

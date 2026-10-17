@@ -118,11 +118,14 @@ defmodule SmaltGraphlawMatrixTest do
   end
 
   # Returns {:required, paths} when the type's declared shape carries
-  # sh:minCount constraints, else :none.
+  # sh:minCount >= 1 constraints, else :none. minCount-0 properties are
+  # OPTIONAL vocabulary declarations (defaults bijection) — they must not
+  # demand a violation on the empty payload.
   defp shape_requirements(type, shapes) do
     case Registry.type_shapes()[type] && shapes[Registry.type_shapes()[type]] do
       %{required: required} when is_list(required) and required != [] ->
-        {:required, Enum.map(required, & &1.path)}
+        {:required,
+         required |> Enum.filter(&(&1.min_count != 0)) |> Enum.map(& &1.path)}
 
       _ ->
         :none

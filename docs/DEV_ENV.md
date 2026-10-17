@@ -31,7 +31,7 @@ scripts/dev_env.sh --check     # validate + scripts/doctor.py quick pass
 
 ## Verification receipt (2026-10-14)
 
-```
+```text
 $ bash scripts/dev_env.sh --check; echo "exit=$?"
 [dev_env] --check: validating
   SMALT_SB_SHARED_KEY = 3UKYV3ba... (44 bytes)

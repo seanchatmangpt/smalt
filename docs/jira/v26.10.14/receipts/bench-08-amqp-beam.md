@@ -91,3 +91,23 @@ cost at depth is the store's O(depth) scans, not the codec (41,312 pairs/s) or t
   enqueue 826/846/826, dequeue 456/438/419, frame 44.3k/43.9k/41.3k, e2e 36.4k/42.3k/36.0k).
 - No lib edits, no commits. Only files written: `scripts/bench/b8_amqp_beam.exs`,
   `docs/jira/v26.10.14/bench/b8-amqp-beam.jsonl`, this receipt.
+
+## Re-witness 2026-10-16
+
+```
+$ MIX_ENV=test MIX_BUILD_ROOT=_build-lane316 mix run --no-start scripts/bench/b8_amqp_beam.exs 2>&1 | tail -6
+{"lane":"b8","surface":"amqp-beam","op":"enqueue_1kib","n":50000,"ops_per_sec":753.1,"p50_ms":0.0,"p95_ms":0.0,"p99_ms":0.0,"errors":0,"elapsed_ms":66389.3,...}
+{"lane":"b8","surface":"amqp-beam","op":"dequeue_ack_1kib","n":50000,"ops_per_sec":450.4,"p50_ms":0.0,"p95_ms":0.0,"p99_ms":0.0,"errors":0,"elapsed_ms":111024.7,...}
+{"lane":"b8","surface":"amqp-beam","op":"session_delivery_rt","n":4000,"ops_per_sec":888.1,"p50_ms":0.0,"p95_ms":0.0,"p99_ms":0.0,"errors":0,"elapsed_ms":4504.1,...}
+{"lane":"b8","surface":"amqp-beam","op":"frame_transfer_encdec","n":50000,"ops_per_sec":43872.2,"p50_ms":0.0,"p95_ms":0.0,"p99_ms":0.0,"errors":0,"elapsed_ms":1139.7,...}
+{"lane":"b8","surface":"amqp-beam","op":"e2e_store_rt_1kib","n":50000,"ops_per_sec":37648.9,"p50_ms":0.0,"p95_ms":0.0,"p99_ms":0.0,"errors":0,"elapsed_ms":1328.1,...}
+{"lane":"b8","surface":"amqp-beam","op":"enqueue_1kib_depth1","n":50000,"ops_per_sec":63190.5,"p50_ms":0.0,"p95_ms":0.0,"p99_ms":0.0,"errors":0,"elapsed_ms":791.3,...}
+exit=0
+```
+
+All six ops re-ran clean, 0 errors, exit 0. Headline deltas vs the original
+receipt (within the documented ~5% run-to-run band except where noted):
+enqueue_1kib 753.1 ops/s (original ~826-846 — about 10% lower this run,
+102-min wall dominated by two 50k durable-op benches); dequeue_ack 450.4
+(original 419-456, in band); frame_transfer_encdec 43.9k (in band); e2e 37.6k
+(in band); enqueue_depth1 63.2k.

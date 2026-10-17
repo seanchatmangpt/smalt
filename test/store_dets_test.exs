@@ -100,6 +100,14 @@ defmodule Smalt.StoreDetsTest do
     import Smalt.Store, only: [put: 3, get: 2, update_counter: 3, current_counter: 2]
     table = :smalt_ledger_meta
 
+    # R81: shared app-owned table — clear pre-seed so prior tests (e.g.
+    # security_hardening) cannot make counts == 2+N.
+    if :ets.info(table) == :undefined do
+      :ets.new(table, [:ordered_set, :public, :named_table])
+    end
+
+    :ets.delete_all_objects(table)
+
     put(table, {:latest, "L1"}, %{"txId" => "t9"})
 
     assert 3 == update_counter(table, {:seq, "L1"}, 3)

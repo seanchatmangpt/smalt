@@ -15,6 +15,20 @@ defmodule Smalt.McpWireTest do
 
     # Real substrate state: seed store rows the read tools read back over the
     # wire (same seeds as the in-process suite).
+    # R178g: record + delete the seeded keys on_exit so they never leak into
+    # other suites sharing these tables.
+    seeded =
+      {String.downcase("/subscriptions/#{@default_sub}/resourcegroups/mcp-rg/providers/microsoft.storage/storageaccounts/mcpacct"),
+       "mcpacct/mcpcontainer/notes.txt"}
+
+    on_exit(fn ->
+      {res, blob} = seeded
+
+      for {table, k} <- [{:smalt_resources, res}, {:smalt_blobs, blob}] do
+        if :ets.info(table) != :undefined, do: :ets.delete(table, k)
+      end
+    end)
+
     Smalt.Store.put(
       :smalt_resources,
       String.downcase(
@@ -229,20 +243,31 @@ defmodule Smalt.McpWireTest do
     end
   end
 
+  defp verbs_under_test do
+    ~w(put post create delete update patch set enqueue send complete
+       abandon defer release deadletter encrypt decrypt sign verify wrap
+       unwrap actuate execute run write commit)
+  end
+
   # Actuation-verb property fence: EVERY verb fragment the router law carries
   # must independently produce ACTUATION_REFUSED on an unregistered id. A new
   # verb added to the router list without this fence knowing is a drift the
   # fence cannot see — hence the count guard below.
   @tag :mcp_verb_fence
   test "wire every actuation verb fragment refuses with ACTUATION_REFUSED" do
-    verbs = ~w(put post create delete update patch set enqueue send complete
-               abandon defer release deadletter encrypt decrypt sign verify wrap
-               unwrap actuate execute run write commit)
-
-    for verb <- verbs do
+    for verb <- verbs_under_test() do
       conn = wire_rpc("tools/call", %{"name" => "probe.#{verb}", "arguments" => %{}}, verb)
       assert refusal_code(conn) == "ACTUATION_REFUSED", "verb #{verb} did not refuse"
     end
+  end
+
+  # Count guard: the fence above must cover EVERY fragment the router gate
+  # carries. Asserts against the real list via the router's test-seam
+  # accessor, so a fragment added in lib/ without a matching fence verb is a
+  # loud failure here (SHIM-COURT non-vacuity guard, audit A26 F2).
+  @tag :mcp_verb_fence
+  test "verb fence covers every actuation fragment the router gate carries" do
+    assert length(verbs_under_test()) == length(Smalt.Mcp.Router.actuation_fragments())
   end
 
   # Tool-card schema fence: tightened per-tool inputSchema assertions (exact
@@ -1248,6 +1273,66 @@ defmodule Smalt.McpWireTest do
 
     assert mcp_tools == canonical,
            "wire mcp_tools order is not canonical: #{inspect(mcp_tools)} != #{inspect(canonical)}"
+  end
+
+  # ------------------------------------------------- notification suppression
+  # Unit-tier coverage existed only in test/mcp_test.exs (tools/list, in-proc).
+  # These prove the same contract through the REAL socket: a JSON-RPC request
+  # with NO id is a notification — the server replies 204 with an empty body,
+  # never a result/error envelope.
+
+  # like wire_rpc/3 but the JSON-RPC id field is entirely ABSENT
+  defp wire_notify(method, params \\ %{}) do
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", mcp_port(), [:binary, active: false, send_timeout: 5_000])
+
+    body = Jason.encode!(%{"jsonrpc" => "2.0", "method" => method, "params" => params})
+
+    request =
+      "POST / HTTP/1.1\r\n" <>
+        "Host: 127.0.0.1:#{mcp_port()}\r\n" <>
+        "Content-Type: application/json\r\n" <>
+        "Content-Length: #{byte_size(body)}\r\n" <>
+        "Connection: close\r\n\r\n" <> body
+
+    :ok = :gen_tcp.send(sock, request)
+    resp = recv_all(sock, <<>>)
+    :gen_tcp.close(sock)
+
+    assert {:ok, status, headers, rest} = parse_response(resp)
+    {status, headers, rest}
+  end
+
+  defp assert_notification_suppressed({status, _headers, body}) do
+    # Plug/Bandit sends 204 with NO body and no content-length header — the
+    # contract is: status 204, zero body bytes, never an envelope.
+    assert status == 204, "expected 204 for notification, got #{status} body=#{inspect(body)}"
+    assert body == "", "notification must have empty body, got #{inspect(body)}"
+  end
+
+  test "wire tools/list notification (no id) -> 204, empty body, no envelope" do
+    assert_notification_suppressed(wire_notify("tools/list"))
+  end
+
+  test "wire tools/call notification (no id, kv.get) -> 204, no refusal envelope leaks" do
+    assert_notification_suppressed(
+      wire_notify("tools/call", %{"name" => "kv.get", "arguments" => %{"name" => "ghost-key"}})
+    )
+  end
+
+  test "wire control: same methods WITH ids still get full envelopes" do
+    {200, _h, _} = resp = wire_rpc("tools/list", %{}, "ctl-1")
+    body = decoded(resp)
+    assert body["jsonrpc"] == "2.0"
+    assert body["id"] == "ctl-1"
+    assert is_list(body["result"]["tools"])
+
+    {200, _h, _} =
+      resp2 = wire_rpc("tools/call", %{"name" => "kv.get", "arguments" => %{"name" => "ghost-key"}}, "ctl-2")
+    body2 = decoded(resp2)
+    assert body2["id"] == "ctl-2"
+    assert body2["result"]["isError"] == true
+    assert body2["result"]["structuredContent"]["code"] == "RESOURCE_NOT_FOUND"
   end
 
 end

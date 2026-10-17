@@ -383,7 +383,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
     test "duplicate contents are refused with 409 LedgerItemAlreadyExists" do
       assert {:ok, _} = ConfidentialLedger.append_transaction("ledger-a", %{"dup" => true})
 
-      assert {:error, 409, "LedgerItemAlreadyExists"} =
+      assert {:error, 409, %{"error" => %{"code" => "LedgerItemAlreadyExists"}}} =
                ConfidentialLedger.append_transaction("ledger-a", %{"dup" => true})
     end
 
@@ -658,7 +658,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
       # duplicates of identical contents: exactly ONE admitted, 4 x 409
       admitted = Enum.count(dups, &match?({:ok, _}, &1))
-      refused = Enum.count(dups, &match?({:error, 409, "LedgerItemAlreadyExists"}, &1))
+      refused = Enum.count(dups, &match?({:error, 409, %{"error" => %{"code" => "LedgerItemAlreadyExists"}}}, &1))
       assert admitted == 1
       assert refused == 4
 
@@ -836,7 +836,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
       Application.put_env(:smalt, :ledger_enforce_existence, true)
 
       try do
-        assert {:error, 404, "LedgerNotFound"} =
+        assert {:error, 404, %{"error" => %{"code" => "LedgerNotFound"}}} =
                  ConfidentialLedger.append_transaction("never-created-fenced", %{"a" => 1})
       after
         restore_ledger_enforce_existence(prior)
@@ -960,7 +960,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
         # Under the fence, a never-created ledger refuses 404 (not 409) and the
         # dup counter is never minted for it (computed with the product's own
         # canonicalization: sorted-key JSON -> sha256 hex).
-        assert {:error, 404, "LedgerNotFound"} =
+        assert {:error, 404, %{"error" => %{"code" => "LedgerNotFound"}}} =
                  ConfidentialLedger.append_transaction("fence-precedence", contents)
 
         data_hash =
@@ -993,7 +993,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
       invalid = %{"bad" => {:tuple, :not_json}}
 
       # Typed refusal, not a crash / EXIT.
-      assert {:error, 400, "InvalidBody"} =
+      assert {:error, 400, %{"error" => %{"code" => "InvalidBody"}}} =
                ConfidentialLedger.append_transaction(ledger, invalid)
 
       # Writer alive for everyone: a concurrent-world probe.
@@ -1001,7 +1001,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
                ConfidentialLedger.append_transaction(ledger, %{"valid" => "first"})
 
       # And the invalid shape stays refused while valid traffic flows.
-      assert {:error, 400, "InvalidBody"} =
+      assert {:error, 400, %{"error" => %{"code" => "InvalidBody"}}} =
                ConfidentialLedger.append_transaction(ledger, invalid)
 
       assert {:ok, %{"transactionId" => "2.1"}} =
@@ -1035,7 +1035,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
       # Every refusal is the typed envelope, never a crash.
       Enum.each(invalid_results, fn {:invalid, r} ->
-        assert {:error, 400, "InvalidBody"} = r
+        assert {:error, 400, %{"error" => %{"code" => "InvalidBody"}}} = r
       end)
 
       # Every admitted write persisted, and exactly the valid class did.
@@ -1482,7 +1482,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
       for name <- hostile do
         # No raise may escape; no silent to_string coercion into "42"/"".
-        assert {:error, 400, "InvalidLedgerName"} =
+        assert {:error, 400, %{"error" => %{"code" => "InvalidLedgerName"}}} =
                  ConfidentialLedger.append_transaction(name, %{"x" => 1})
 
         assert :error = ConfidentialLedger.get_transaction(name, "latest")
@@ -1572,7 +1572,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
     test "empty ledger names (binary \"\" and atom :\"\") are refused — no anonymous ledger" do
       for name <- ["", :""] do
-        assert {:error, 400, "InvalidLedgerName"} =
+        assert {:error, 400, %{"error" => %{"code" => "InvalidLedgerName"}}} =
                  ConfidentialLedger.append_transaction(name, %{"x" => 1})
 
         assert :error = ConfidentialLedger.get_transaction(name, "latest")

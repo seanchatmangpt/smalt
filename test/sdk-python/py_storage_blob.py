@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PY-2 lane: real azure-storage-blob SDK probes against the smalt egress blob plane (8443).
+Venv: test/sdk-python/.venv-blob (receipt: docs/jira/v26.10.14/sdk-results/py-storage-blob.md).
 
 Auth: SharedKey (account smaltacct / key smaltacct-key) via connection string,
 mirroring test/sdk-smoke/blob.test.cjs. The immutable-policy opt-out
@@ -9,6 +10,7 @@ pipeline's raw send with a custom header (same pattern as the JS harness's
 fetch() PUT).
 """
 import base64
+import os
 import sys
 import time
 import urllib.request
@@ -21,7 +23,8 @@ from azure.core.exceptions import (
 )
 from azure.storage.blob import BlobServiceClient
 
-BASE = "http://127.0.0.1:8443"
+# Lane-351: port env override (sibling pattern: py_atlas SMALT_EGRESS_BASE).
+BASE = os.environ.get("SMALT_EGRESS_BASE", "http://127.0.0.1:8443")
 ACCOUNT = "smaltacct"
 KEY = "smaltacct-key"  # substrate accepts any non-empty key value in anonymous mode
 

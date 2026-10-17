@@ -1,50 +1,80 @@
-# Terraform Fixture
+# Terraform Fixture — acceptance-test spec
 
-Minimal, unmodified-standard Terraform configuration proving smalt parity with
-real Terraform behavior.
+Standing: **PARTIAL_ALIVE** until the T5 ladder greens on this fixture
+(receipts land in `docs/jira/v26.10.16/receipts/` and
+`docs/jira/v26.10.16/sdk-results/tf-plan.md`).
 
-## What parity it proves
+## Purpose
 
-Running `just tf-plan-smoke` against this fixture exercises the full smalt
-pipeline end to end:
+Minimal, unmodified-standard Terraform configuration proving smalt parity
+with real Terraform behavior. Acceptance record for this fixture lives in
+`docs/jira/v26.10.16/ARD-PRD-SMALT-26.10.16-V1.md`.
 
-1. Bootstrap discovery — Terraform finds the `.tf` files, the pinned provider
-   requirements, and the provider block.
-2. Token acquisition — credentials from `scripts/smalt-tf` environment
-   variables (including `ARM_ENDPOINT`) are exchanged for a plan-time token.
-3. Resource planning — the resource group, key vault, and storage account are
-   planned the same way stock Terraform would plan them.
+## Golden path
+
+```sh
+bash scripts/bootstrap_env.sh          # T5.1 — env + trust gate (exit 0)
+just substrate-up                      # substrate (bootstrap_env does not boot one)
+cd test/terraform_fixture
+terraform init                         # T5.2 — azurerm 4.54.0 / azapi 2.4.0
+terraform plan                         # T5.3 — "Plan: N to add"
+terraform apply -auto-approve          # T5.4 — exit 0
+terraform plan -detailed-exitcode      # T5.4b — exit 0 = zero drift
+terraform destroy -auto-approve        # T5.5 — exit 0
+terraform plan -detailed-exitcode      # T5.5b — exit 0, empty graph = zero residue
+```
+
+`scripts/smalt-tf` supplies the environment (`ARM_ENDPOINT`,
+`ARM_METADATA_HOSTNAME`, credentials); this directory's `.tf` files stay
+standard so smalt is exercised against unmodified Terraform input, which is
+the whole point of the fixture.
+
+## T5 ladder (pass criteria per stage)
+
+| Stage | Command | Exit-code criterion |
+|---|---|---|
+| T5.1 | `bash scripts/bootstrap_env.sh` | 0 |
+| T5.2 | `terraform init` | 0; providers resolved at exact pins |
+| T5.3 | `terraform plan` | 0; "N to add" summary present |
+| T5.4 | `terraform apply -auto-approve` | 0 |
+| T5.4b | `terraform plan -detailed-exitcode` | 0 (no changes) |
+| T5.5 | `terraform destroy -auto-approve` | 0 |
+| T5.5b | `terraform plan -detailed-exitcode` | 0 (empty graph) |
+
+Any non-zero exit other than the documented `tf_smoke.sh` SKIP (77,
+registry unreachable) is a FAIL for the stage; the failure is loud and the
+standing stays PARTIAL_ALIVE.
+
+## Solved hops
+
+| Hop | Mechanism | Gate script |
+|---|---|---|
+| Authority redirect | `ARM_METADATA_HOSTNAME` (no scheme; `ARM_METADATA_HOST` is NOT read) makes azurerm 4.54.0 fetch `https://localhost:9444/metadata/endpoints?api-version=2022-09-01` and build the whole cloud env from it; STS stays on plaintext 9443 (`loginEndpoint = http://localhost:9443/` — azidentity accepts a plaintext authority only for localhost) | substrate metadata document carries full 2022-09-01 schema |
+| TLS pinning | 9444 TLS twin pinned to TLS 1.2 + ECDHE-RSA-AES-GCM (OTP 28 ssl rejects X25519MLKEM768 key shares) | `scripts/tf_smoke.sh`, `just relay-env` |
+| x509 compliance | Apple's strict evaluator rejects CA:TRUE-as-leaf and CN=127.0.0.1 leaves; chain is CA `CN=smalt-dev-ca` + leaf `CN=localhost` (SAN `DNS:localhost, IP:127.0.0.1`) | `scripts/gen_dev_cert.sh` |
+| Keychain trust | darwin Go ignores `SSL_CERT_FILE`; `scripts/tf_trust_setup.sh status/trust/retrust/untrust` fingerprints the keychain copy vs the on-disk CA and routes dead-CA rot to `retrust`; a dismissed SecurityAgent dialog is loud remediation, never a silent pass | `tf_trust_setup.sh status` exit 0 (step 3 of `bootstrap_env.sh`) |
 
 ## Contents
 
 - `versions.tf` — `required_version >= 1.8.5`; `azurerm` pinned to exactly
-  `4.54.0` and `azapi` pinned to exactly `2.4.0`. The `azurerm` provider block
-  is entirely standard: `features {}`,
-  `resource_provider_registrations = "none"`, and a fixed subscription GUID.
+  `= 4.54.0`, `azapi` pinned to exactly `2.4.0`; provider block entirely
+  standard (`features {}`, `resource_provider_registrations = "none"`,
+  fixed all-zero subscription GUID).
 - `main.tf` — one resource group (`rg-smalt-fixture`, location
   `smalt-local`), one key vault (`kv-smalt-fixture`), one storage account
   (`smaltfixturestore`).
-- `outputs.tf` — `rg_id`, `vault_uri`, and `storage_account_id`.
+- `outputs.tf` — `rg_id`, `vault_uri`, `storage_account_id`.
 
 ## Legal note
 
-This configuration is a fixture, not infrastructure. The subscription and
-tenant GUIDs are all-zero sentinels, the location `smalt-local` is not a real
-Azure region, and no secrets are exported: the storage account's primary
-connection string is deliberately omitted from outputs (exporting it would
-leak a credential); `storage_account_id` is exported instead. Applying this
-configuration against a real subscription would be rejected by Azure, which is
-the intended behavior for a plan-only parity fixture.
-
-## Running
-
-```sh
-just tf-plan-smoke
-```
-
-`scripts/smalt-tf` supplies the environment (`ARM_ENDPOINT`, credentials);
-this directory's `.tf` files stay standard so smalt is exercised against
-unmodified Terraform input, which is the whole point of the fixture.
+This configuration is a fixture, not infrastructure. All GUIDs are all-zero
+sentinels, `smalt-local` is not a real Azure region, and no secrets are
+exported: the storage account's primary connection string is deliberately
+omitted from outputs (exporting it would leak a credential);
+`storage_account_id` is exported instead. Applying this configuration
+against a real subscription would be rejected by Azure — the intended
+behavior for a plan-only parity fixture on real Azure, and the golden path
+above applies it only to the loopback substrate.
 
 ## Smoke runner: `scripts/tf_smoke.sh`
 
@@ -52,6 +82,46 @@ unmodified Terraform input, which is the whole point of the fixture.
 against this fixture, and prints a STEP/STATUS receipt. Exit codes: 0 all
 passed; 1 preflight/substrate fault; 2 terraform step fault; 77
 SKIPPED-NETWORK (registry.terraform.io unreachable).
+
+Per-resource-type probes (rg/storage/keyvault/cosmos/servicebus/eventhub)
+run via `scripts/tf_plan_check.sh` against
+`test/terraform_fixture_per_resource/`; receipt:
+`docs/jira/v26.10.16/sdk-results/tf-plan.md`.
+
+## Provider mirror: `scripts/tf_provider_mirror.sh`
+
+Populates `test/terraform_fixture/provider-mirror/` (gitignored) for offline
+provider installs. Integrity + provenance model (2026-10-16, M7/M8 repair):
+
+- **M7 — integrity re-validation**: `terraform providers mirror` is run on
+  EVERY invocation; it validates each mirrored binary against registry
+  checksums and re-downloads on mismatch (the old file-size-only probe could
+  not detect a swapped/corrupted binary). When the connectivity probe fails,
+  an existing mirror is trusted only loudly: receipts record mode
+  `offline-trusted` (NOT re-validated this run) vs `online-revalidated`.
+- **M8 — no committed rc**: there is NO committed `provider-mirror.rc` (it is
+  gitignored; never commit one). `scripts/tf_mirror_env.sh` (sourced by
+  `tf_smoke.sh` / `tf_plan_check.sh`) refreshes the mirror and generates the
+  `TF_CLI_CONFIG_FILE` rc at run time into a `mktemp` path with the real,
+  repo-relative-computed mirror location, so no absolute `/Users/...` path
+  (username leak, non-portable) ever lands in the tree.
+
+## Remaining registered divergences
+
+- **Blob dot-form DNS limitation (documented)**: the storage-account data
+  endpoint is dot-form (`<account>.blob.<host>`), which the loopback
+  zero-touch stack does not route — `scripts/hosts_alias.sh` aliases only
+  `management.azure.com` / `login.microsoftonline.com` and
+  `scripts/pf_redirect.sh` redirects port 443 only. A storage-account apply
+  cannot complete its data-plane round trip without additional per-account
+  aliases. Documented limitation, not a silent failure; registered until a
+  wildcard-DNS or path-form-parity close lands.
+
+## Appendix: historical debugging record (2026-10-14, superseded as spec — kept as record)
+
+The sections below were the fixture README while the hops above were being
+solved. They are retained verbatim as the debugging record; the spec sections
+above supersede them.
 
 ### Observed behavior (2026-10-14)
 
@@ -124,7 +194,7 @@ through, in order, each of these TF_LOG-experienced errors:
 5. Endpoint reached: with the metadata document served, the provider parses
    the custom environment and the remaining hop is TLS trust of the dev CA.
 
-### Remaining blocking hop: darwin TLS trust of the dev CA (macOS-only)
+### Remaining blocking hop (at record time): darwin TLS trust of the dev CA (macOS-only)
 
 `SSL_CERT_FILE` does NOT work on macOS: Go's `crypto/x509` honors it only on
 non-darwin Unix (`root_unix.go`); on darwin every system-pool verification
@@ -137,13 +207,7 @@ security add-trusted-cert -r trustRoot \
   -k ~/Library/Keychains/login.keychain-db .smalt/tls/ca-cert.pem
 ```
 
-`scripts/smalt-tf` attempts this automatically on first run and gates on
-`security find-certificate -c smalt-dev-ca` (NOT `security verify-cert`, which
-returns 1 even for a user-trusted CA). Until that one approval lands, plan
-fails at the metadata GET with `x509: certificate signed by unknown authority`
-— with `TF_LOG=DEBUG` evidence that this is now the ONLY failing hop (the
-provider reaches `https://localhost:9444/metadata/endpoints` and gets the
-smalt metadata document; earlier hops are all green).
-
-On Linux, `SSL_CERT_FILE=$ROOT/.smalt/tls/ca-cert.pem` (already exported by
+This step is now automated and gated by `scripts/tf_trust_setup.sh`
+(status/trust/retrust/untrust; see the solved-hops table). On Linux,
+`SSL_CERT_FILE=$ROOT/.smalt/tls/ca-cert.pem` (already exported by
 `scripts/smalt-tf`) is expected to suffice with no keychain step.

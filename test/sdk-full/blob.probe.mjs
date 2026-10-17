@@ -6,6 +6,7 @@
 // the substrate already up (see /tmp/sdk-ts-blob/boot.sh, flock'd).
 import { createRequire } from "node:module";
 import crypto from "node:crypto";
+import net from "node:net";
 
 const require = createRequire(new URL("./package.json", import.meta.url));
 const {
@@ -41,6 +42,11 @@ function expectStatus(promise, code, label) {
 }
 function assertEqual(a, b, msg) { if (a !== b) throw new Error(msg); }
 function assertOk(cond, msg) { if (!cond) throw new Error(msg); }
+function preflightFail(port) {
+  console.error(`[blob-probe] substrate down: no listener on 127.0.0.1:${port} ` +
+    `(SMALT_TS_EGRESS=${EGRESS}). Boot a substrate first (ts-run.mjs). Exit 2.`);
+  process.exit(2);
+}
 
 // Minimal manual SharedKey signer for raw REST bindings the JS SDK does not
 // expose (same algorithm as ts-reality.test.mjs sharedKeyFetch).
@@ -76,6 +82,16 @@ const tag = Date.now();
 const to = { abortSignal: T(30_000) };
 
 async function main() {
+  // 0. Substrate preflight: this probe attaches, it does not boot. Exit 2
+  //    (substrate down), loud — never a fake "1 = test fail" on a dead plane.
+  const egressPort = Number(new URL(EGRESS).port) || 80;
+  await new Promise((resolve) => {
+    const s = net.connect({ host: "127.0.0.1", port: egressPort, timeout: 2000 });
+    s.once("connect", () => { s.destroy(); resolve(); });
+    s.once("timeout", () => { s.destroy(); preflightFail(egressPort); });
+    s.once("error", () => preflightFail(egressPort));
+  });
+
   // 1. mutable container via substrate x-ms-immutable-policy opt-out (raw, SDK
   //    does not expose the extension header)
   const mut = service.getContainerClient(`ts2-mut-${tag}`);

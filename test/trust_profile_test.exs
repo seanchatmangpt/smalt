@@ -711,8 +711,6 @@ defmodule Smalt.TrustProfileTest do
     end
 
     test "verify/1 fence ordering is total and deterministic (lens-4 cycle-2)" do
-      b64j = fn m -> Base.url_encode64(Jason.encode!(m), padding: false) end
-
       {:ok, env} = TrustProfile.new(subject: "fence-order pin")
       {:ok, token} = TrustProfile.sign(env)
       [h, p, s] = String.split(token, ".", parts: 3)

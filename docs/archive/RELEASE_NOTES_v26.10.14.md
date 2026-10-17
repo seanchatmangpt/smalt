@@ -89,8 +89,9 @@ in-memory (ETS).
   `cli/ontology.ttl` (blob, cosmos query, kv, court/doctor runners).
 - **Verification ladder** — `just gate`: doctor court, offline unit (T1,
   includes the chaos tier in `test/chaos/`), wire tier (T2), SDK smoke with
-  real `@azure/...` JS clients (T3: arm, amqp, blob, cosmos, the 8-probe
-  Service Bus census, and the Event Hubs smoke), terraform fixture plan smoke
+  real `@azure/...` JS clients (T3: arm, amqp, blob, cosmos, the Service Bus
+  census (probe set defined in `test/sdk-smoke/census.test.cjs`), and the
+  Event Hubs smoke), terraform fixture plan smoke
   (T4), and the bench gate (bench thresholds are stated once, in
   `README.md` — Benchmarks). CI runs the ladder on ubuntu-latest +
   macos-14 (Elixir 1.18 / OTP 27, Node 20).
@@ -103,7 +104,8 @@ here. Unique to this release, the latest court runs (re-run 2026-10-15,
 docs-corpus-lens8 cycle 2): compliance courts c1..c7 — c1 26/0, c2 16/0,
 c3 28/0, c4 46/0 (+4 blob-lane fences), c5 16/0
 (`--include amqp_wire`), c6 18/0, c7 17/0
-(**167 tests, 0 failures**; receipts in `docs/compliance/`); CLI court `cd cli && cargo test` 1/0; mutation
+(**167 tests, 0 failures**; receipts in `docs/compliance/`); CLI court `cd cli && cargo test` 1/0;
+mutation
 court non-vacuous. Stress harnesses and receipts: `docs/STRESS/`. Full
 gate: `just gate` (doctor + T1 + T2 + T3 + T4 + bench-check); CI
 (`.github/workflows/ci.yml`, actionlint-clean) runs compile

@@ -154,6 +154,31 @@ defmodule Smalt.Messaging.EventStreamTest do
     assert {:error, :invalid_cloudevent} = EventStream.publish_events("rt", nil)
   end
 
+  # ---------------------------------------------------------------------------
+  # Id dedup (default LWW vs enforced)
+  # ---------------------------------------------------------------------------
+
+  test "default: same-id republish overwrites (LWW) and list shows v2" do
+    {:ok, "dup-1"} = EventStream.publish("dd", valid_event("dup-1", %{"source" => "/smalt/v1"}))
+    {:ok, "dup-1"} = EventStream.publish("dd", valid_event("dup-1", %{"source" => "/smalt/v2"}))
+
+    events = EventStream.list_events("dd")
+    assert [%{"id" => "dup-1", "source" => "/smalt/v2"}] = events
+  end
+
+  test "enforced: :event_stream_dedup_ids refuses duplicate id and keeps first write" do
+    Application.put_env(:smalt, :event_stream_dedup_ids, true)
+
+    {:ok, "dup-2"} = EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v1"}))
+    assert {:error, :duplicate_id} =
+             EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v2"}))
+
+    events = EventStream.list_events("dd2")
+    assert [%{"id" => "dup-2", "source" => "/smalt/v1"}] = events
+  after
+    Application.delete_env(:smalt, :event_stream_dedup_ids)
+  end
+
   test "stored events carry the topic field" do
     {:ok, _} = EventStream.publish("stamped", valid_event("s-1"))
     assert [%{"topic" => "stamped"}] = EventStream.list_events("stamped")

@@ -8,7 +8,7 @@ resolved in `mix.lock`. The `mix deps.audit` task is not available (no
 `MIX_ENV=prod mix deps.get` (verbatim, 2026-10-14; grep -c VULNERABLE = 1, so
 this is the only flagged package):
 
-```
+```text
   bandit 1.12.5 VULNERABLE!
     EEF-CVE-2026-105659 (HIGH)
     aka: CVE-2026-105659, GHSA-69m6-wcv4-rwcf

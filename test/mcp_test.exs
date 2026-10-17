@@ -37,6 +37,24 @@ defmodule Smalt.McpTest do
     assert :ok = SmaltTest.Lifecycle.ensure_store_up()
 
     # Real substrate state: seed store rows the read tools read back.
+    # R178g: record + delete the seeded keys on_exit so they never leak into
+    # other suites sharing these tables.
+    seeded =
+      {String.downcase("/subscriptions/#{@default_sub}/resourcegroups/mcp-rg/providers/microsoft.storage/storageaccounts/mcpacct"),
+       "mcpacct/mcpcontainer/notes.txt", "mcp-key"}
+
+    on_exit(fn ->
+      {res, blob, key} = seeded
+
+      for {table, k} <- [
+            {:smalt_resources, res},
+            {:smalt_blobs, blob},
+            {:smalt_vault_keys, key}
+          ] do
+        if :ets.info(table) != :undefined, do: :ets.delete(table, k)
+      end
+    end)
+
     Smalt.Store.put(
       :smalt_resources,
       String.downcase(
@@ -222,17 +240,17 @@ defmodule Smalt.McpTest do
     end
   end
 
-  test "fuzz: null id and absent id are echoed/typed, never crash" do
+  test "notifications (null id and absent id) are suppressed: 204, no envelope, never crash" do
     for id <- [nil, :absent] do
       req = %{"jsonrpc" => "2.0", "method" => "tools/list"}
       req = if id == :absent, do: req, else: Map.put(req, "id", id)
 
       conn = conn(:post, "/", Jason.encode!(req)) |> Smalt.Mcp.Router.call([])
 
-      assert conn.status == 200
-      body = Jason.decode!(conn.resp_body)
-      assert body["result"]["tools"] |> length() == 8
-      assert Map.has_key?(body, "id")
+      # JSON-RPC 2.0: notifications get NO response — 204, empty body, no
+      # result/error envelope at all.
+      assert conn.status == 204
+      assert conn.resp_body == ""
     end
   end
 
@@ -535,7 +553,12 @@ defmodule Smalt.McpTest do
 
   test "kv.get non-string name -> typed refusal, never dispatched" do
     for bad <- [42, %{}, [], nil] do
-      conn = rpc("tools/call", %{"name" => "kv.get", "arguments" => %{"name" => bad}}, bad)
+      # id must be a real request id — a nil id makes this a notification
+      # (204, no envelope), conflating notification suppression with the
+      # typed-refusal surface under test.
+      conn =
+        rpc("tools/call", %{"name" => "kv.get", "arguments" => %{"name" => bad}}, "kv-nonstring")
+
       assert refusal_code(conn) in ["INVALID_PARAMS", "ACTUATION_REFUSED", "RESOURCE_NOT_FOUND"]
     end
   end

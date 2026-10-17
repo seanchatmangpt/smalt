@@ -16,7 +16,7 @@ const LOG_DIR = path.join(HERE, ".logs");
 // sb_census_replay.sh front door exports SMALT_TEST_*; when unset, defaults
 // are the front-door ports (unchanged behavior). For a private-port census
 // run, export SMALT_TEST_AMQP_PORT/SMALT_TEST_ARM_PORT from the documented
-// private range 39000-39999 (docs/DEV_LOOP.md "Private port allocation").
+// private range 39000-39999 (docs/how-to/dev-loop.md "Private port allocation").
 const AMQP_PORT = Number(process.env.SMALT_TEST_AMQP_PORT || 5672);
 const ARM_PORT = Number(process.env.SMALT_TEST_ARM_PORT || 9443);
 const POLL_DEADLINE_MS = 60_000;
@@ -47,7 +47,7 @@ async function main() {
         `be another lane's live substrate). Either wait for it to exit, or run ` +
         `a private-port census: export SMALT_TEST_AMQP_PORT / ` +
         `SMALT_TEST_ARM_PORT from the private range 39000-39999 ` +
-        `(docs/DEV_LOOP.md "Private port allocation") and rerun.`,
+        `(docs/how-to/dev-loop.md "Private port allocation") and rerun.`,
       );
       process.exitCode = 3;
       return;

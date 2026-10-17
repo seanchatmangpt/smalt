@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PY-1: real Python azure-mgmt SDK against the smalt ARM gateway.
+Venv: test/sdk-python/.venv-arm (receipt: docs/jira/v26.10.14/sdk-results/py-arm-resources.md).
 
 Probes:
   P0 discovery: GET /metadata/endpoints (raw wire)

@@ -1,13 +1,31 @@
 {
   "entries": {
+    "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex=>tmp/defaults_projected.ex": {
+      "out_template": "tmp/defaults_projected.ex",
+      "outputs": {
+        "/Users/sac/smalt/tmp/defaults_projected.ex": "sha256:c84f3276f9d8b3e71f093d68340cc720283e2a415dd9ff3b26148cf627ef9782"
+      },
+      "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
+      "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex",
+      "updated_at": "2026-10-16T17:15:41.842368Z"
+    },
+    "../ggen-marketplace/packs/smalt-substrate-pack/templates/event_registry.ex.eex=>lib/smalt/ocel/event_registry.ex": {
+      "out_template": "lib/smalt/ocel/event_registry.ex",
+      "outputs": {
+        "/Users/sac/smalt/lib/smalt/ocel/event_registry.ex": "sha256:c8d1dc54c8949dc8e96416179f2d123f8ebd7512ec4a7d16f44f3bd65cdc8985"
+      },
+      "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
+      "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/event_registry.ex.eex",
+      "updated_at": "2026-10-16T21:51:02.212536Z"
+    },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex=>lib/smalt/registry.ex": {
       "out_template": "lib/smalt/registry.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:e656421c2abcae4477774811f84f7a1dba9e7551850ba957fb072cfc41a73c2c"
+        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:8e2135be8064c76efe410aa72d4a03ca18b085087948c2e237129e8407f4c073"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex",
-      "updated_at": "2026-10-15T20:58:05.208640Z"
+      "updated_at": "2026-10-17T01:06:25.998895Z"
     },
     "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": {
       "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex",
@@ -44,6 +62,15 @@
       "pack_dir": null,
       "template": "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/verify.ex.tmpl",
       "updated_at": "2026-10-15T05:54:20.943025Z"
+    },
+    "/Users/sac/ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_sweep.ex.eex=>tmp/cascade_render/cascade_sweep.ex": {
+      "out_template": "tmp/cascade_render/cascade_sweep.ex",
+      "outputs": {
+        "/Users/sac/smalt/tmp/cascade_render/cascade_sweep.ex": "sha256:2121ca93e5f128877c5599145bc46770b98197feed111c490b57a581f126c880"
+      },
+      "pack_dir": "/Users/sac/ggen-marketplace/packs/smalt-substrate-pack",
+      "template": "/Users/sac/ggen-marketplace/packs/smalt-substrate-pack/templates/cascade_sweep.ex.eex",
+      "updated_at": "2026-10-16T17:36:44.230493Z"
     },
     "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>lib/smalt/mcp/generated/mcp_descriptor.ex": {
       "out_template": "lib/smalt/mcp/generated/mcp_descriptor.ex",

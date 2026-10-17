@@ -12,7 +12,7 @@ resource "azurerm_key_vault" "smalt_fixture" {
 }
 
 resource "azurerm_storage_account" "smalt_fixture" {
-  name                     = "smaltfixturestore"
+  name                     = "t5smaltfixturestore"
   resource_group_name      = azurerm_resource_group.smalt_fixture.name
   location                 = azurerm_resource_group.smalt_fixture.location
   account_tier             = "Standard"

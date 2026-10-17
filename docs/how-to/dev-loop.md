@@ -1,8 +1,33 @@
-# Dev Inner Loop
+# dev loop
 
 How to iterate on smalt without paying full-suite cost on every save.
 Numbers measured 2026-10-14 on this checkout (Elixir 1.19.5 / OTP 28, warm shared `_build`);
-full-suite row refreshed 2026-10-15 (suite has grown since the 10-14 measurement).
+full-suite rows refreshed 2026-10-15/16 (the suite has grown since the 10-14 measurement).
+Diátaxis home: `docs/how-to/dev-loop.md` (moved from `docs/DEV_LOOP.md`;
+see `docs/jira/v26.10.16/docs-restructure-plan.md`).
+
+## The loop (just ingress)
+
+The default iteration path is just-first; the script-level fallbacks below
+are the same gates with their handles exposed.
+
+1. `just doctor` — preflight (deps/ports/certs/toolchain, ~2s). Run first;
+   it is also the first stage of every court.
+2. Edit `lib/` or `test/`.
+3. Focused gate:
+   - Enclave work: `just test-native` (native lifecycle: HCL parse →
+     engine apply → zero-drift plan → cascade destroy → residue audit,
+     on private ports 29445-29449, dedicated beam, shared-checkout safe).
+   - Other work: `scripts/fast_test.sh <file[:line]>` or a targeted
+     `mix test` (timing table below).
+4. `mix test` — full offline suite before you think you're done.
+5. Enclave provisioning loop: `just apply` (fixture → state JSON) →
+   `just verify` (read-your-write parity audit; SKIP-LOUD exit 3 without
+   applied state) → `just destroy` (cascade + residue, fails on residue).
+   Both `apply` and `destroy` default to `tier=native`; `tier=wire` is an
+   explicit opt-in to the external terraform cleanroom and is refused with
+   `TIER-WIRE-UNAVAILABLE` unless the trusted-machine gate reports PASS.
+6. `just court` before push/PR.
 
 ## Scripts
 
@@ -25,6 +50,7 @@ full-suite row refreshed 2026-10-15 (suite has grown since the 10-14 measurement
 | full `mix test` (2026-10-15 refresh 8, docs-corpus-lens6 cycle 5) | — | NOT re-run full-suite (courts + targeted suites on a shared checkout mid-landing). Courts c1..c7 re-run settled: c1 26/0, c2 16/0, c3 28/0 (+2), c4 36/0 (+7), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 16/0 = **156/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 147/0). Targeted: blob_hardening+egress_wire 91/0; codec gate 34/0 (lens-7 decode-mirror failure window REPORTED + resolved by codec lane); semantic_projection 18/0 + arm_gateway canary 26/0 (SEMANTIC_PROJECTION receipt refreshed). Docs landed this lens: WIRE_PARITY codec encode-guard + blob splat + ledger/cosmos GAP flips, PUBLISH_CHECK blockers 2+3 CLEARED, TEST_ISOLATION 25-file inventory, NAMING_SWEEP 2 CONFIRMED-FIXED flips, ERROR_SWEEP chaos_kill re-pins, SEMANTIC_PROJECTION counts |
 | full `mix test` (2026-10-15 refresh 9, docs-corpus-lens7 cycle 3) | — | NOT re-run full-suite (courts + targeted suites on a shared checkout mid-landing). Courts c1..c7 re-run settled: c1 26/0, c2 16/0, c3 28/0, c4 **42**/0 (+6), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 **17**/0 (+1) = **163/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 156/0). Targeted: lens6_fuzz + lro_test 27/0 (tee-admit + LRO Failed-terminal adoption evidence); semantic_projection 21/0 (+3) + arm_gateway canary 26/0 (SEMANTIC_PROJECTION receipt refreshed); hex build court: `mix hex.build` rc=0, checksum `284efbdf…`, still carries the 5 key paths (PUBLISH_CHECK blocker 1 STANDS, corroborated). Docs landed this lens: WIRE_PARITY SKR tee-admit/claim_value + ARM Failed-terminal rows, blob splat into CHANGELOG, c4/egress pin re-derivation, ERROR_SWEEP chaos_kill/soak/gates re-pins, XAAS_PRIOR_ART G1 witness, SEMANTIC_PROJECTION counts |
 | full `mix test` (2026-10-15 refresh 10, docs-corpus-lens8 cycle 2) | — | NOT re-run full-suite (courts on a shared checkout mid-landing). Courts c1..c7 re-run settled (MIX_BUILD_ROOT=_build-docs8): c1 26/0, c2 16/0, c3 28/0, c4 **46**/0 (+4 blob-lane fences), c5 16/0 (`--include amqp_wire`), c6 18/0, c7 17/0 = **167/0** — counts refreshed in RELEASE_NOTES + CHANGELOG (was 163/0). error_codes fence: stale on arrival (foreign c4_blob.exs drift 1219->1223), regenerated, `--check` rc=0. Hex build court re-derived: `mix hex.build` rc=0, checksum `71461bd6…`, 5 leak paths still in the inner contents.tar.gz (PUBLISH_CHECK blocker 1 STANDS; outer-tar grep reads 0 — grep the INNER contents listing, not the outer). Docs landed this lens: 7 WIRE_PARITY pin re-derivations, 17 ERROR_SWEEP pin re-derivations, NAMING_SWEEP 7-row CONFIRMED-FIXED flips + eh-run:143/stress re-pins + count refresh, DEV_LOOP lane build-root lease note (37 orphaned `_build-*` dirs), PUBLISH_CHECK lens-8 corroboration |
+| native lifecycle ladder (2026-10-16, lane 409) | **73ms-class** | parse 3 / apply 52 / plan 2 / synthesize 1 / destroy 15 / residue 0 ms (`TIMINGS_MS`, receipt `docs/jira/v26.10.16/sdk-results/native-lifecycle.md`); `just test-native` gate 1 test 0 failures on the same run |
 | `fast_test` first run on a new target file | 51-62s | one-time cold compile of the isolated build root |
 | `fast_test` warm single file | 1-2s | 37 tests, 0 failures |
 | `fast_test file:line` (warm) | 1-2s | 1 test, 0 failures (36 excluded) |
@@ -69,10 +95,10 @@ to absorb lock wait — that trades a real quiet-tree signal for silence.
 Per the same-checkout fan-out cleanup law, `MIX_BUILD_ROOT=_build-lane*`
 directories are leases, not assets: the coordinator deletes every lane build
 root at integration, BEFORE the final commit. As of lens-8 the tree carries
-**37 orphaned lane build roots** matching `_build-lane*` (32 dirs),
-`_build-lens9`, `_build-docs8`, `_build-docsl3` (2) — plus
-`_build-f16*` x9 and misc (`_build-compliance`, `_build-doclane`, `_build-l4..l8`,
-`_build-verdict`, `_build-stab3`) — 53 `_build-*` dirs total in the tree root. These are coordinator-owned integration
+**272 `_build-lane*` dirs / 281 `_build-*` dirs total** in the tree root at
+last count (2026-10-16); retired families `_build-l4..l8`/misc are gone —
+current families are `_build-ft-*` (per-hash fast_test roots), `_build-r133-fresh`,
+`_build-w6docs`. These are coordinator-owned integration
 cleanup (a docs lane does not delete build roots); each surviving root should
 be either deleted or re-leased by its owner at the next integration. A fan-out
 whose integration commit leaves new `_build-*` dirs behind is an incomplete
@@ -132,10 +158,12 @@ table-listed private ports and record the chosen ports in their receipt.
    `SUITES=(test/<subsystem>_test.exs ...)`; the mtime-snapshot/poll/re-run pattern is
    identical to `fast_test --watch`, just over multiple paths and suites. `--once` runs
    the subset a single time (used for all measurements above).
-3. **Before push**: full `mix test` (~41s as of 2026-10-15 — cheap enough to run every time you
+3. **Before push**: full `mix test` (58s-class as of 2026-10-15, growing with suite; see
+   refresh rows above — cheap enough to run every time you
    think you're done, not just before push).
 4. **Pre-PR**: `just court` (doctor + test-offline + test-wire + test-sdk-smoke +
-   tf-plan-smoke + bench-check, per `Justfile:149`).
+   tf-plan-smoke + bench-check + mutation-court + census + invariant-gates +
+   naming-sweep, per the root Justfile `court` recipe).
 
 ## Workspace / SDK / release tooling recipes
 
@@ -150,7 +178,7 @@ surface):
 | `just test-sdk-smoke` | `test/sdk-smoke/run.mjs` | T3 SDK smoke tier (already in `just court`) |
 | `just census` | `scripts/sb_census_replay.sh` | SB census; SKIP-loud without `SMALT_SDK_ROOT` |
 | `bash test/enclave-testbed/run.sh` | enclave stress testbed | exclusive substrate lock; exit 0 = all phases PASS; just recipe pending |
-| `cd smalt-cli && .venv/bin/python run_gates.py` | smalt-cli 4-gate runner | just recipe (`cli-gates`) pending, lane 03-cli-wiring |
+| `cd smalt-cli && .venv/bin/python run_gates.py` | smalt-cli 4-gate runner | LANDED: `just cli-gates` (`justfile.d/03-cli-wiring.just:34`) |
 | `just publish-dry` | hex publish dry-run gate | inner-tar leak grep + ERROR_CODES regen identity |
 | `just court-x2` | release receipt gate | full court twice; two consecutive greens required |
 | `just docs-dod-check` | docs truth-sync | receipt/doc paths named in README/DEV_LOOP/CHANGELOG exist on disk |
@@ -167,10 +195,17 @@ default-excluded tiers are named in `test/test_helper.exs` (re-enable per run wi
 
 ## Known state (pre-existing, observed during measurement)
 
-- Full suite: 26 failures (2026-10-15; was 30-32 on 2026-10-14, count varies run to run)
-  — pre-existing on this checkout; not touched by this lane.
+- Full suite: latest counted state is the refresh-4 row above (8/1529, 2026-10-15);
+  the older "26 failures" figure (2026-10-15) predates the current suite (was 30-32 on
+  2026-10-14) — pre-existing on this checkout; not touched by this lane.
 - `test/smalt_services_test.exs:231` ETS-table failure also fires in the graphlaw subset.
 - During measurement a compile-abort in `test/error_codes_doc_test.exs` (invalid syntax
   `test "..." well_formed: true do`) blocked the full suite; it was fixed on disk by
   another lane mid-measurement (compile-freeze SLA) and the 3x baseline above was taken
   after that fix. This lane made no edits outside its owned files.
+
+## See Also
+
+- `docs/JUST_REFERENCE.md` (full recipe surface + exit contracts)
+- `docs/explanation/architecture.md` (substrate containers, enclave tiers)
+- `docs/XAAS_PRIOR_ART.md` (status-flip discipline, G4/G5)

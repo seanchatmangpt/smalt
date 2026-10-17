@@ -16,7 +16,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../..");
 const LOG_DIR = path.join(HERE, ".logs");
 // Defaults live in the documented private port range 39000-39999
-// (docs/DEV_LOOP.md "Private port allocation") so eh-run never contends the
+// (docs/how-to/dev-loop.md "Private port allocation") so eh-run never contends the
 // front door (5672/9443/8443) or the previously-published block
 // (15672/15673/19443/18443/19444) that a sibling lane adopted.
 const AMQP_PORT = Number(process.env.SMALT_EH_AMQP_PORT || 39172);
@@ -51,7 +51,7 @@ async function main() {
         `[eh-run] port ${port} is occupied. Do NOT kill the holder (it may be ` +
         `another lane's live substrate). Wait for it to exit, or rerun with a ` +
         `private-port override from the range 39000-39999 ` +
-        `(docs/DEV_LOOP.md "Private port allocation").`,
+        `(docs/how-to/dev-loop.md "Private port allocation").`,
       );
       process.exitCode = 3;
       return;

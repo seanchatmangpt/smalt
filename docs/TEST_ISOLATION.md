@@ -39,7 +39,8 @@ ownered exception — not a blanket skip. Re-enable a tier with
 
 | Tag | Meaning | Owner lane | Re-enable condition |
 |---|---|---|---|
-| `:amqp_wire` | Drives the real AMQP wire tier (real broker/listener on the AMQP port). Off by default so the plain `mix test` stays broker-independent. Carried by `test/compliance/c5_servicebus.exs` and the `test/amqp/` suites (`connection`, `management_rpc`, `pyamqp_parity`, `broker_facade`, `flow_credit` tests). | amqp wire tier | Broker available; run `mix test --include amqp_wire` |
+| `:amqp_wire` | Drives the real AMQP wire tier (real broker/listener on the AMQP port). Off by default so the plain `mix test` stays broker-independent. Carried by `test/compliance/c5_servicebus.exs` and the `test/amqp/` suites (`broker_facade`, `event_hubs` (2 tests), `management_rpc`, `primitive_codec`, `selector_epoch`). Run via `mix test.amqp_wire`. | amqp wire tier | Broker available; run `mix test --include amqp_wire` |
+| `:cross_seat` | Auth cross-seat suite inside `test/auth_enforce_test.exs` (out-of-seat token/seat-boundary cases). Default-excluded so the offline tier stays broker-free; run in isolation via `mix test.cross_seat`. | R164 | Included-only run: `mix test --only cross_seat test/auth_enforce_test.exs` |
 | ~~`:arm_seam`~~ | **RETIRED 2026-10-15 (V261014-13)**: vacuous exclusion entry deleted from `test/test_helper.exs`; no test carries this tag; re-introduce only with a real named-gap test. `GAP(vacuous-tag-arm-seam)` CLOSED — token deleted | — | — |
 | ~~`:dp_seam`~~ | **RETIRED 2026-10-15 (V261014-13)**: the re-enable condition landed (`Store.list_prefix/2` at `lib/smalt/store.ex:128`, used by `lib/smalt/data_plane/cosmos.ex:504,589`), no test carries the tag, and the cosmos fallback this row described is gone (If-Match replace is now one atomic `Store.compare_and_swap/4`); vacuous exclusion entry deleted from `test/test_helper.exs`; re-introduce only with a real named-gap test. `GAP(vacuous-tag-dp-seam)` CLOSED — token deleted | — | — |
 | ~~`:closed_shape_gap`~~ | **RETIRED 2026-10-15**: the vacuous exclusion entry was deleted from `test/test_helper.exs` (store+graphlaw lane, cycle-6 receipt). No test carries this tag; re-introduce it only with a real named-gap test. | — | — |
@@ -117,3 +118,91 @@ ownered exception — not a blanket skip. Re-enable a tier with
   racers, private supervisors/servers the test itself started) — not shared
   supervised children; `test_helper.exs` kill-fallbacks in
   `Lifecycle.stop_shared_tree/0` are the sanctioned shared-tree stop path.
+
+## 5. v26.10.16 — ETS-contamination class (store_read fences + shared-table hygiene)
+
+Landed 2026-10-16; receipts
+`docs/jira/v26.10.16/receipts/r178g-ets-hygiene-batch.md` and
+`docs/jira/v26.10.16/receipts/r185i-r185k-harness-batch.md`.
+
+### 5a. Read-path fence: refuse non-map Store rows (`Smalt.Semantic.StoreRead`)
+
+`lib/smalt/semantic/store_read.ex` is the read path from the semantic surface
+into the shared, untyped ETS `Store`. Because every suite shares those
+tables, one suite's stray row used to crash (or poison) another suite's read.
+Fences now guard every projected table:
+
+- `refuse_non_map_rows/2` (`store_read.ex:26`, `:34`, `:41`; def `:73-74`):
+  a non-map value under `:smalt_resources`, `:smalt_ledger_transactions`, or
+  `:ocel_deviations` refuses the whole read TYPED (`{:error, msg}`) — never a
+  `FunctionClauseError` from `project_resource/1`, never a silent skip. This
+  is the boundary-crash class lens-1 closed at the ledger boundaries.
+- `refuse_vacuous_identity/3` (`:89`): a row whose identity key is nil/`""`
+  (or whitespace-only, via `Smalt.Projection.Identity.valid?/1`) refuses the
+  read typed too — a PK-less struct carries zero identity bits.
+- Field-VALUE policy stays lenient by design (`:124`, `:132`): a
+  non-conformant value projects nil (parse_ts precedent); only row STRUCTURE
+  and identity are refused.
+
+Test-visible consequence: a poisoned shared table now fails as a typed
+`{:error, "semantic projection: non-map Store row ..."}` naming the table,
+so the contaminating suite is identifiable from the failure alone.
+
+### 5b. Shared-table cleanup pattern (success-path delete + on_exit)
+
+Every test seeding rows into a SHARED ETS table (`:smalt_resources` et al.)
+must clean up on BOTH paths, deleting only its own prefix:
+
+1. Success-path delete inside the test body (covers the normal case).
+2. `on_exit` guard (covers flunk/timeout exits), gated on the table being
+   alive:
+
+```elixir
+on_exit(fn ->
+  if :ets.info(@table) != :undefined do
+    for key <- Smalt.Store.prefix_keys(@table, @prefix), do: :ets.delete(@table, key)
+  end
+end)
+```
+
+Model implementation: `test/store_churn_test.exs:17`. The prefix-scoped
+delete (not `delete_all_objects`) is the point: the table is shared, so a
+nuclear wipe would destroy other suites' state mid-run.
+
+Two sanctioned variants exist:
+- Whole-table wipe (`:ets.delete_all_objects(:smalt_resources)`) is allowed
+  ONLY where the suite is the table's sole realistic tenant within the run —
+  the R185i `audit_planes` quarantine (`test/data_plane/audit_planes_test.exs:25`)
+  seeds id-less maps (`%{"name" => "r1"}`) that poison later semantic-read
+  tests with "vacuous identity" refusals, and clearing only at setup let rows
+  outlive the test until the NEXT audit_planes setup under ExUnit shuffle.
+- Record-and-delete guards on specific seeded keys (R178g batch:
+  `test/strata_compat_test.exs:272/:278`, `test/mcp_test.exs:40/:46/:903`,
+  `test/mcp_wire_test.exs:18`, `test/smalt_arm_gateway_test.exs:701` — the
+  rg-a/rg-b/rg-p seed batch, 104 keys).
+
+Non-vacuity: `scripts/shim_court/strata_cleanup_court.sh` shims the cleanup
+out and proves the non-map-row leak reproduces on the real shared ETS
+(`[PASS] strata_cleanup_court`, restore byte-exact; witness in the r178g
+receipt).
+
+### 5c. Session cleanups landing under this class
+
+- **R178g** (strata CAS row): the compare-and-swap test now deletes its
+  seeded row on the success path (`test/store_churn_test.exs` CAS tests) in
+  addition to the setup `on_exit`; non-map row leak court-verified non-vacuous.
+- **R185i** (frame-property winner row + audit_planes quarantine):
+  `test/property/frame_codec_property_test.exs` (7 properties, 0 failures)
+  runs the AMQP frame codec property suite — the surviving winner row of its
+  batch — and the audit_planes `on_exit` quarantine described in 5b.
+  `test_helper.exs` `wait_gone/2` is all-`defp` (the mixed def/defp compile
+  error was fixed by the SHIM-COURT-lane-R185i unblock, disclosed in-source
+  at line 81).
+- **R189** (arm/mcp seed cleanups): `on_exit` cleanup blocks landed in
+  `test/mcp_test.exs`, `test/mcp_wire_test.exs`, and
+  `test/smalt_arm_gateway_test.exs` so seeded `:smalt_resources` rows never
+  leak across tests.
+
+Verification (from the receipts, 2026-10-16): 102 tests 0 failures across
+store_churn + strata + mcp + arm_gateway; management_rpc 33/0; strata
+cleanup court PASS with byte-exact restore.

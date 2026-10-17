@@ -103,7 +103,7 @@ test("arm: create rg + storage account (LRO to Succeeded)", { timeout: 60_000 },
   chain.rg = `e2e-pipe-rg-${RUN}`;
   chain.storageAccount = `e2epipestore${RUN}`;
 
-  const rg = await jfetch(`${ARM}/subscriptions/${SUB}/resourcegroups/${chain.rg}?api-version=2021-04-01`, {
+  const rg = await jfetch(`${ARM}/subscriptions/${SUB}/resourcegroups/${chain.rg}?api-version=2023-07-01`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ location: "eastus" }),

@@ -52,7 +52,7 @@ async function main() {
         `[sdk-smoke] port ${port} is occupied. Do NOT kill the holder (it may be ` +
         `another lane's live substrate). Wait for it to exit, or rerun with a ` +
         `private-port override from the range 39000-39999 ` +
-        `(docs/DEV_LOOP.md "Private port allocation").`,
+        `(docs/how-to/dev-loop.md "Private port allocation").`,
       );
       process.exitCode = 3;
       return;

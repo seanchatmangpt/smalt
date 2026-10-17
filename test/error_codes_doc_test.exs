@@ -27,7 +27,20 @@ defmodule Smalt.ErrorCodesDocTest do
     {404, "SubscriptionNotFound"},
     # send_graphlaw_refusal (pinned 400) + inline 412 (NOT via send_arm_error)
     {400, "InvalidResourceShape"},
-    {412, "PreconditionFailed"}
+    {412, "PreconditionFailed"},
+    # R30 resource-group location immutability (do_rg_put/4 send_arm_error site)
+    {400, "LocationMismatch"},
+    # Cross-lane integration: codes emitted by concurrently landed source edits
+    # (sb-rules lane, azapi filter lane) registered here.
+    {400, "InvalidAction"},
+    {400, "InvalidFilter"},
+    {404, "RuleNotFound"},
+    # ARM secret rotation trigger (v26.10.16 console C4 lane): typed 409 when
+    # the ARM record exists but carries no data-plane version to rotate.
+    {409, "SecretVersionNotFound"},
+    # Smalt.Policy inline denial (violation_body/2, NOT send_arm_error; fixed
+    # 400 per the module doc) — generator parses policy.ex directly (X7).
+    {400, "PolicyViolation"}
   ]
 
   test "docs/ERROR_CODES.md is the byte-identical projection of the sources" do
@@ -85,7 +98,10 @@ defmodule Smalt.ErrorCodesDocTest do
       |> Enum.flat_map(fn f ->
         src = File.read!(f)
 
-        Regex.scan(~r/\[\s*"code"\s*\]\s*==\s*"([A-Za-z][A-Za-z0-9-]*)"/, src)
+        # Mirror the generator's compliance pattern exactly: the "error" member
+        # (RFC 6749 §5.2 OAuth token endpoint, compliance/c6-oauth) and
+        # underscore codes (invalid_request et al.) are pinned codes too.
+        Regex.scan(~r/\[\s*"(?:code|error)"\s*\]\s*==\s*"([A-Za-z0-9_-]+)"/, src)
         |> Enum.map(fn [_, code] ->
           {"compliance/#{Path.basename(f, ".exs") |> String.replace("_", "-")}", code}
         end)
@@ -114,7 +130,42 @@ defmodule Smalt.ErrorCodesDocTest do
       |> Enum.map(&Enum.at(&1, 1))
       |> MapSet.new()
 
-    expected = MapSet.union(literal_codes, not_found_codes)
+    # Mirror the generator's helper-def skip (R143): "code" literals inside a
+    # defp ...error / defp ...api_version definition window are emitted with a
+    # fixed status added separately (witnessed: invalid_eg1_event_error's
+    # InvalidEventGridEvent), so they are NOT standalone doc rows.
+    lines = String.split(src, "\n")
+
+    helper_skipped =
+      Enum.with_index(lines, 1)
+      |> Enum.flat_map(fn {line, i} ->
+        if Regex.match?(~r/"code"\s*=>\s*"([A-Za-z][A-Za-z0-9-]*)"/, line) do
+          window = Enum.slice(lines, max(0, i - 15), 15)
+
+          if Enum.any?(window, &Regex.match?(~r/defp\s+\w*(error|api_version)/, &1)) do
+            case Regex.run(~r/"code"\s*=>\s*"([A-Za-z][A-Za-z0-9-]*)"/, line) do
+              [_, code] -> [code]
+              _ -> []
+            end
+          else
+            []
+          end
+        else
+          []
+        end
+      end)
+      |> MapSet.new()
+
+    expected =
+      literal_codes
+      |> MapSet.difference(helper_skipped)
+      # The generator re-adds the helper-defined envelopes with fixed statuses
+      # (see gen_error_codes.py "helper-defined envelopes" table, R143).
+      |> MapSet.union(
+        MapSet.new(["RouteNotReady", "InvalidBody", "InvalidCloudEvent", "InvalidQueryParameter", "InvalidApiVersion", "InvalidEventGridEvent"])
+      )
+      |> MapSet.union(not_found_codes)
+
     doc_codes = doc_rows() |> rows_for_surface("egress") |> MapSet.new(& &1.code)
 
     assert doc_codes == expected

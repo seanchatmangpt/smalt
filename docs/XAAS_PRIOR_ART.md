@@ -98,3 +98,9 @@ Falsifier for this doc: every xaas-side citation is `tmp/errc/xaas-learn/<file>.
 (section-quoted); every smalt-side claim cites a repo path or WIRE_PARITY row
 re-read 2026-10-15. Deleting a cited survey finding or showing a cited smalt
 path diverges from the tree refutes the corresponding row.
+
+## See Also
+
+- `docs/WIRE_PARITY.md` (GAP-token convention, falsifier-pinned rows)
+- `docs/TEST_ISOLATION.md` (GAP tokens in the tag table)
+- `docs/how-to/dev-loop.md` (status-flip discipline — G4/G5 adoption)
