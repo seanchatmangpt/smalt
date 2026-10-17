@@ -290,9 +290,9 @@ if [ "$WRITE_RECEIPT" -eq 1 ]; then
     echo
     echo "- Date: 2026-10-16"
     echo "- Lane: tf-plan-probe (lane 332, ports $ARM_PORT/$ATLS_PORT/$EGRESS_PORT)"
-    echo "- Subject: \`/Users/sac/smalt\` v26.10.16 working tree (multi-lane)"
-    echo "- Fixtures: \`/Users/sac/smalt/test/terraform_fixture_per_resource/<name>.tf\`"
-    echo "- Probe: \`/Users/sac/smalt/scripts/tf_plan_check.sh --write-receipt\`"
+    echo "- Subject: smalt repo root (git toplevel) v26.10.16 working tree (multi-lane)"
+    echo "- Fixtures: \`test/terraform_fixture_per_resource/<name>.tf\`"
+    echo "- Probe: \`scripts/tf_plan_check.sh --write-receipt\`"
     echo "- Work dir (kept): \`$WORK\` (per-fixture plan.log = wire evidence)"
     echo
     echo "## Verdict: per-resource plan-parse"
