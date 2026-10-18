@@ -39,7 +39,9 @@ def main():
             continue
         cwdp = sh("lsof -p %s 2>/dev/null | awk '$4==\"cwd\" {print $NF}'" % pid[0])
         cwd = (cwdp.stdout or "").strip() if cwdp else ""
-        if cwd != os.getcwd():
+        # Prefix match: a beam whose cwd is a subdir of this checkout (e.g.
+        # deps/<pkg> after a dep compile) belongs to THIS checkout.
+        if not (cwd == os.getcwd() or cwd.startswith(os.getcwd() + os.sep)):
             violations.append("stray beam pid %s cwd=%r (not this checkout)" % (pid[0], cwd))
 
     for port in COURT_PORTS:
