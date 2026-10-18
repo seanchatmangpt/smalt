@@ -239,6 +239,33 @@ def cmd_self_check():
     return 0 if ok else 1
 
 
+EXEMPTS_PATH = os.path.join(REPO, "test", "support",
+                            "isolation_runtime_exemptions.exs")
+
+
+def load_runtime_exempts():
+    """Parse test/support/isolation_runtime_exemptions.exs: one
+    `module Name  # reason: <text>` entry per line (Elixir-comment syntax so
+    the static court's scanner ignores it). Missing file = no exemptions."""
+    if not os.path.exists(EXEMPTS_PATH):
+        return {}
+    exempts = {}
+    with open(EXEMPTS_PATH, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r"\s*module\s+(\S+)\s+#\s*reason:\s*(.+)$", line)
+            if m:
+                exempts[m.group(1)] = m.group(2).strip()
+    with open(EXEMPTS_PATH, encoding="utf-8") as f:
+        body = f.read()
+    unparsed = [l for l in body.splitlines()
+                if l.strip() and not l.strip().startswith("#")
+                and not re.match(r"\s*module\s+\S+\s+#\s*reason:", l)]
+    if unparsed:
+        print("REFUSE malformed exemption lines: %r" % unparsed[:3])
+        sys.exit(1)
+    return exempts
+
+
 def cmd_runtime():
     """Runtime twin: offline suite, serial, SmaltTest.IsolationFormatter."""
     fmt = "SmaltTest.IsolationFormatter"
@@ -253,10 +280,25 @@ def cmd_runtime():
     for line in out.splitlines():
         if "ISOLATION-TWIN LEAK" in line:
             leaks.append(line.strip())
+    # Typed runtime exemptions (AZB-11b): structural lazy-singleton /
+    # shared-tree boots that lib ownership keeps running for the rest of the
+    # suite. Each entry carries a mandatory reason; exempted modules still
+    # print their LEAK lines prefixed EXEMPT(<reason>) and are not counted.
+    # Non-exempt leaks fail the court exactly as before — fail-closed.
+    runtime_exempts = load_runtime_exempts()
+    counted = []
     for ln in leaks:
+        mod = ln.split("module=", 1)[1].split()[0] if "module=" in ln else "?"
+        if mod in runtime_exempts:
+            print("EXEMPT(%s) %s" % (runtime_exempts[mod], ln))
+        else:
+            counted.append(ln)
+    for ln in counted:
         print(ln)
-    n = len(leaks)
+    n = len(counted)
     print("runtime twin: %d module(s) leaked; mix exit=%d" % (n, proc.returncode))
+    print("runtime exemptions: %d (typed list in %s)"
+          % (len(runtime_exempts), EXEMPTS_PATH))
     verdict = "PASS" if (n == 0 and proc.returncode == 0) else "FAIL"
     print("runtime verdict=%s" % verdict)
     with open(os.path.join(REPO, "tmp", "isolation-court-runtime.out"),

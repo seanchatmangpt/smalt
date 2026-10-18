@@ -931,14 +931,13 @@ defmodule Smalt.McpTest do
 
     {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one)
 
-    # Leak fix (i21 batch 3): restore the PREVIOUS env value, not a literal.
-    # A literal Smalt.Supervisor restore can clobber another suite's override
-    # and would itself be wrong if the app default ever changes.
-    saved_supervisor = Application.get_env(:smalt, :doctor_supervisor, Smalt.Supervisor)
-    Application.put_env(:smalt, :doctor_supervisor, sup)
+    # Leak fix (i21 batch 3), AZB-11b conversion: restore the PREVIOUS env
+    # value, absence-preserving — the old default-literal restore wrote
+    # `doctor_supervisor: Smalt.Supervisor` into app env even when the key
+    # was unset before the test (twin leak class `doctor_supervisor`).
+    SmaltTest.Env.put_restored(doctor_supervisor: sup)
 
     on_exit(fn ->
-      Application.put_env(:smalt, :doctor_supervisor, saved_supervisor)
       Process.exit(sup, :kill)
     end)
 

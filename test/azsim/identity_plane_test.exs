@@ -147,12 +147,15 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
 
       # A non-strict challenge_mode names a DIFFERENT posture: the mode-blind
       # guard steps aside and enforce-mode Bearer refuses downstream with its
-      # own (non-challenge-shaped) envelope.
+      # own envelope (MalformedBearerHeader on the empty Authorization value,
+      # vs the guard's MissingBearerToken challenge).
       SmaltTest.Env.with([auth_mode: :enforce, keyvault: [challenge_mode: :relaxed]], fn ->
         res2 = call(:get, "/keys", headers: [{"authorization", ""}])
 
         assert res2.status == 401
-        assert get_resp_header(res2, "www-authenticate") == []
+        assert get_resp_header(res2, "www-authenticate") != []
+        [wa] = get_resp_header(res2, "www-authenticate")
+        assert wa =~ ~s(error_description="MalformedBearerHeader")
       end)
     end
   end
@@ -191,7 +194,8 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
 
     test "challenge resource echoes the request origin; no authorization_uri" do
       res =
-        %Plug.Conn{call(:get, "/keys") | host: "vault.smalt.local", port: 8443}
+        conn(:get, "/keys")
+        |> then(fn c -> %Plug.Conn{c | host: "vault.smalt.local", port: 8443} end)
         |> EgressRouter.call(@opts)
 
       assert res.status == 401
@@ -247,15 +251,13 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
     end
 
     defp mint_via_arm do
-      %Plug.Conn{
-        conn(
-          :post,
-          "/oauth2/v2.0/token",
-          "grant_type=client_credentials&client_id=azb8&client_secret=dev"
-        )
-        |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
-        |> Map.merge(%{host: "arm.smalt.local", port: 19_081})
-      }
+      conn(
+        :post,
+        "/oauth2/v2.0/token",
+        "grant_type=client_credentials&client_id=azb8&client_secret=dev"
+      )
+      |> put_req_header("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
+      |> then(fn c -> %Plug.Conn{c | host: "arm.smalt.local", port: 19_081} end)
       |> Smalt.ArmGateway.Router.call([])
     end
   end

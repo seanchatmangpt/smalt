@@ -42,7 +42,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
       blob = "stadium"
       blob_key = "#{account}/#{container}/#{blob}"
 
-      {:ok, _} = BlobStorage.create_container(account, container, %{"immutable" => false})
+      {:ok, _} = ensure_container(account, container)
       {:ok, _} = BlobStorage.put_blob(account, container, blob, "seed")
 
       tally =
@@ -89,7 +89,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
     test "mid-slice returns 206 + exact Content-Range" do
       account = "azb06range"
       container = "rng"
-      {:ok, _} = BlobStorage.create_container(account, container, %{"immutable" => false})
+      {:ok, _} = ensure_container(account, container)
       {:ok, _} = BlobStorage.put_blob(account, container, "r.bin", @content)
 
       conn =
@@ -106,6 +106,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
     test "suffix range bytes=-5 returns 206 + Content-Range" do
       account = "azb06range"
+      {:ok, _} = ensure_container(account, "rng")
       {:ok, _} = BlobStorage.put_blob(account, "rng", "s.bin", @content)
 
       conn =
@@ -128,7 +129,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
   describe "conditional HEAD/GET" do
     test "If-None-Match match -> 304 over the wire; mismatch serves 200" do
       account = "azb06cond"
-      {:ok, _} = BlobStorage.create_container(account, "cnd", %{"immutable" => false})
+      {:ok, _} = ensure_container(account, "cnd")
       {:ok, blob} = BlobStorage.put_blob(account, "cnd", "k", "payload")
 
       conn =
@@ -154,7 +155,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
     test "If-Modified-Since: unmodified -> 304, modified-after -> 200, engine shapes" do
       account = "azb06ims"
-      {:ok, _} = BlobStorage.create_container(account, "cnd", %{"immutable" => false})
+      {:ok, _} = ensure_container(account, "cnd")
       {:ok, blob} = BlobStorage.put_blob(account, "cnd", "k", "ims-payload")
       {:ok, lm, _off} = DateTime.from_iso8601(blob["last_modified"])
 
@@ -321,11 +322,9 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
       {_, 0} = System.cmd("kill", ["-9", os_pid])
 
-      receive do
-        {^port, :closed} -> :ok
-      after
-        30_000 -> raise "child port never closed after SIGKILL"
-      end
+      # Await child death: SIGKILL exit (137) or port close. Loud raise with
+      # whatever arrived otherwise — never a silent hang.
+      wait_close(port)
 
       # Reboot leg: fresh mirror over the SIGKILLed dir (repair: true — the
       # child never got to close its :dets files), restore into this VM's
@@ -360,9 +359,33 @@ defmodule Smalt.Azsim.DataPlaneTest do
   # Internals
   # ---------------------------------------------------------------------------
 
+  # Container create is idempotent within the run: the wire suite shares
+  # accounts across tests, and Azure create is not idempotent (409 on reuse).
+  defp ensure_container(account, container) do
+    case BlobStorage.create_container(account, container, %{"immutable" => false}) do
+      {:ok, _} -> {:ok, :created}
+      {:error, 409, "ContainerAlreadyExists", _} -> {:ok, :exists}
+      other -> other
+    end
+  end
+
   defp router_call(conn) do
     SmaltTest.Lifecycle.ensure_store_up()
     EgressRouter.call(conn, EgressRouter.init([]))
+  end
+
+  # Awaits the SIGKILLed child's port close / exit status. 137 = 128+9.
+  defp wait_close(port) do
+    receive do
+      {^port, {:exit_status, 137}} -> :ok
+      {^port, :closed} -> :ok
+
+      {^port, {:exit_status, other}} ->
+        raise "child exited with #{other}, expected SIGKILL (137)"
+
+      after
+        30_000 -> raise "child port never closed after SIGKILL"
+    end
   end
 
   # Collects port data until the child's ACKED line (or its death, which
