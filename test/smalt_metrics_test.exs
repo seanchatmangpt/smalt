@@ -250,7 +250,7 @@ defmodule Smalt.MetricsWireTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Unit-level: interval parser
+  # Unit-level: interval & timespan parsers
   # ---------------------------------------------------------------------------
   test "parse_interval handles the common ISO durations" do
     assert {:ok, 60_000} = Smalt.Metrics.parse_interval("PT1M")
@@ -260,6 +260,35 @@ defmodule Smalt.MetricsWireTest do
     assert {:ok, 61_500} = Smalt.Metrics.parse_interval("PT1M1.5S")
     assert :error = Smalt.Metrics.parse_interval("bogus")
     assert {:ok, 60_000} = Smalt.Metrics.parse_interval(nil)
+  end
+
+  test "parse_timespan handles nil, valid, and malformed inputs" do
+    now = Smalt.Metrics.now_ms()
+
+    # nil input returns default 24h window
+    {start_ms, end_ms} = Smalt.Metrics.parse_timespan(nil)
+    assert_in_delta end_ms, now, 1000
+    assert_in_delta end_ms - start_ms, 86_400_000, 1000
+
+    # valid ISO8601 start/end
+    t1 = "2026-10-16T12:00:00Z"
+    t2 = "2026-10-16T13:00:00Z"
+    {:ok, dt1, _} = DateTime.from_iso8601(t1)
+    {:ok, dt2, _} = DateTime.from_iso8601(t2)
+    expected_start = DateTime.to_unix(dt1, :millisecond)
+    expected_end = DateTime.to_unix(dt2, :millisecond)
+    assert {^expected_start, ^expected_end} = Smalt.Metrics.parse_timespan("#{t1}/#{t2}")
+
+    # malformed / unparseable inputs fallback gracefully
+    {start_fallback, end_fallback} = Smalt.Metrics.parse_timespan("invalid_start/2026-10-16T13:00:00Z")
+    {start_bad_end, _end_bad_end} = Smalt.Metrics.parse_timespan("2026-10-16T12:00:00Z/invalid_end")
+    {no_slash_start, no_slash_end} = Smalt.Metrics.parse_timespan("invalid_format_no_slash")
+
+    assert end_fallback == expected_end
+    assert_in_delta end_fallback - start_fallback, 86_400_000, 1000
+
+    assert start_bad_end == expected_start
+    assert_in_delta no_slash_end - no_slash_start, 86_400_000, 1000
   end
 
   # -- helpers ------------------------------------------------------------------
