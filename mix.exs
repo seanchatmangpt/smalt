@@ -117,7 +117,13 @@ defmodule Smalt.MixProject do
       # override dropped 2026-10-17: with the hex pin resolved there is no
       # conflicting path dep in prod scope (ash_ex4pm is dev/test-only), and
       # `mix hex.build` refuses overridden deps.
-      {:ex4pm, "~> 26.10.8"},
+      # "~> 26.10.1" (not .8): hex ash_ex4pm 26.10.4 (latest) pins
+      # {:ex4pm, "== 26.10.1"}, so .8 is unsatisfiable tree-wide until
+      # ash_ex4pm relaxes its pin (sibling-repo release, operator-gated).
+      # 26.10.8 is a version-alignment release with Public contract UNCHANGED
+      # (its CHANGELOG), so .1 is functionally equivalent; the resolver picks
+      # .8 automatically the moment the constraint allows.
+      {:ex4pm, "~> 26.10.1"},
       {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true},
       # ERRC Raise lane 6: property-based testing with shrinking (test-only
       # usage; declared env-prod because `ash` requires stream_data
