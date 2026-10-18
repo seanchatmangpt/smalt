@@ -22,7 +22,8 @@ Last wake: 2026-10-18 wake 4. Receipts dir now live
 | B4 | store-lro-wasm §1/§2 + lro backdate + sleeps A1-A7/B2 | LANDED (PASS; mid-session lro 37/3 were sibling WIP — receipt run 37/0) | receipts/b4-lro-store.md | store_dets stress 6/0 x2 + receipt run; lro 37/0; corpus 19/0 x3; blob 116/0 x2; MIX_BUILD_ROOT=_build-ft-b4 |
 | b-wasm-supervisor | lib-redesign-wasm-lro Part 1 | LANDED (ALIVE; full suite run was in flight at wake 15) | receipts/b-wasm-supervisor.md | affidavit fences 1-12 green incl. fence-11 hammer + fence-12 already_started passthrough, MIX_BUILD_ROOT=_build-ft-ws |
 | b-lro-notifier | LRO one-writer convergence (Notifier + await) — unblocks b-await-migration sites 1-3 | LANDED (PARTIAL_ALIVE -> ALIVE pending full-suite receipt, per receipt self-note) | receipts/b-lro-notifier.md | 37/0; 23/0 (2 excluded); B0-3 notifier-down typed fail-safe fence |
-| B5 | auth-wire-egress + e2e-wire D1/D4 | BLOCKED (B0, B1 resilient_clear) | — | — |
+| B5 | auth-wire-egress + e2e-wire D1/D4 | LANDED (ALIVE; one order-dependent leak-batch defect (token_audiences) found+fixed in-batch) | receipts/b5-auth-wire.md | all touched files green x2; full wire tier green; eventgrid pair 21/0; MIX_BUILD_ROOT=_build-ft-b5 |
+| v-pinion-audit | wire-pinion audit (§3 risk note) | LANDED (PASS 16/16 pinions, 0 dropped, 0 CRITICAL; pins 5-9 were PENDING-RECEIPT at audit time — b5 has since filed, b2 still owed) | receipts/v-pinion-audit.md | per-pinion verdict table; textual survival re-verified after each observed mtime change |
 | B6 | apiversion-refusal + arm_error_corpus 2nd pass + mcp-ash-misc §1/§2 | LANDED-PARTIAL (PASS files 1+2 cite-system; arm_error_corpus 2nd pass + mcp-ash-misc §1/§2 + trust_profile deferred to post-B4 sequential pass) | receipts/b6-cites.md | apiversion_matrix 243/0 x2; wire_tier_refusal_sweep 3/0 x2; RouteCites registry 17 keys, fence fails on handler rename |
 | b-e2e-wire | e2e-wire D1/D4 | LANDED (ALIVE) | receipts/b-e2e-wire.md | touched suites 57/0 x2 exit 0; s6 mix-run exit 0 EXACTLY_ONCE_OK; leak gate FAIL-TREE-LEAKS = pre-existing baseline, non-regression |
 | B7 | gates-python + js-harness + e2e-wire D2/D3 + stress tagging + budget-gate | BLOCKED (B0) | — | — |
@@ -48,5 +49,6 @@ second pass correctly deferred to post-B4 per master plan §1.3.
 11/18 batches LANDED (61%): B0, B1, B3, B4, B6 (partial), B8 (partial),
 b-await-migration, b-e2e-wire, b-js-harness, b-wasm-supervisor, b-lro-notifier.
 Outstanding: B2 (amqp), B5 (auth-wire-egress), B7 (gates-python/budget/stress
-non-JS slice), v1-soak, v2-soak, v-pinion-audit; w1-w18 review receipts all
-present (18/18).
+non-JS slice), v1-soak, v2-soak, v-pinion-audit. W-review lanes: 17/18
+(w14-review.md ABSENT — _build-ft-w14 lane in flight, coordinator WORKQUEUE
+also flags it).

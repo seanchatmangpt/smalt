@@ -23,6 +23,8 @@
 #   L3  no refusal mutates the Store: snapshot of :smalt_resources +
 #       :smalt_resource_groups is byte-identical across every refused/crashed
 #       request.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.ShaclFuzz do
   @moduledoc false
 

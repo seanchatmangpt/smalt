@@ -11,6 +11,8 @@
 # latest as the stale-beam diagnostic).
 #
 # FENCE (this corpus row): the CLOSED wire shape cannot regress.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.ApiVersionAdmission do
   @moduledoc false
 

@@ -414,13 +414,31 @@ count, or PASS/FAIL token) found in the file.
 | b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE **NO-CONTEXT** |
 | b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
 | b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) **NO-CONTEXT** |
+| b-lro-notifi | [b-lro-notifier.md](../v26.10.18/receipts/b-lro-notifier.md) | PARTIAL_ALIVE | B0: LRO one-writer convergence (Notifier + await) **NO-CONTEXT** |
+| b-wasm-super | [b-wasm-supervisor.md](../v26.10.18/receipts/b-wasm-supervisor.md) | ALIVE | b-wasm-supervisor - WasmEngine supervised restart (lib redesign Part 1) **NO-CONTEXT** |
 | b0-foundatio | [b0-foundations.md](../v26.10.18/receipts/b0-foundations.md) | UNKNOWN | B0 FOUNDATIONS — test/support compile path + canonical helpers **NO-CONTEXT** |
+| b1-corpus | [b1-corpus.md](../v26.10.18/receipts/b1-corpus.md) | ALIVE | B1 — corpus + compliance scaffolding consolidation (corpus-compliance.md) **NO-CONTEXT** |
+| b3-fence10 | [b3-fence10.md](../v26.10.18/receipts/b3-fence10.md) | ALIVE | B3 — Fence-10 conversion receipt (lane B3, v26.10.18) |
+| b4-lro-store | [b4-lro-store.md](../v26.10.18/receipts/b4-lro-store.md) | PASS | B4 LRO/STORE batch — v26.10.18 rewrite (Context: slice) **NO-CONTEXT** |
 | b6-cites | [b6-cites.md](../v26.10.18/receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) **NO-CONTEXT** |
 | b8-doctrine | [b8-doctrine.md](../v26.10.18/receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) **NO-CONTEXT** |
 | w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) **NO-CONTEXT** |
+| w10-review | [w10-review.md](../v26.10.18/receipts/w10-review.md) | PASS | W10 residual review — group 9 (review lane, Context: solo) **NO-CONTEXT** |
+| w11-review | [w11-review.md](../v26.10.18/receipts/w11-review.md) | PASS | W11 residual review — group 10 (review lane, Context: solo) **NO-CONTEXT** |
+| w12-review | [w12-review.md](../v26.10.18/receipts/w12-review.md) | PASS | W12 residual review — group 11 (5 files) **NO-CONTEXT** |
+| w13-review | [w13-review.md](../v26.10.18/receipts/w13-review.md) | PASS | W13 residual review — group 12 (review lane, Context: solo) **NO-CONTEXT** |
+| w15-review | [w15-review.md](../v26.10.18/receipts/w15-review.md) | PASS | W15 residual review — workqueue group 14 **NO-CONTEXT** |
+| w16-review | [w16-review.md](../v26.10.18/receipts/w16-review.md) | PASS | W16 residual review — workqueue group 15 **NO-CONTEXT** |
+| w17-review | [w17-review.md](../v26.10.18/receipts/w17-review.md) | PASS | W17 — residual review lane, group 16 (solo) **NO-CONTEXT** |
+| w18-review | [w18-review.md](../v26.10.18/receipts/w18-review.md) | UNKNOWN | W18 residual review — FINAL residual group (review lane, Context: solo) **NO-CONTEXT** |
 | w2-review | [w2-review.md](../v26.10.18/receipts/w2-review.md) | UNKNOWN | W2 residual review receipt — v26.10.18 **NO-CONTEXT** |
 | w3-review | [w3-review.md](../v26.10.18/receipts/w3-review.md) | PARTIAL_ALIVE | w3-review — PARTIAL_ALIVE **NO-CONTEXT** |
 | w4-review | [w4-review.md](../v26.10.18/receipts/w4-review.md) | PASS | W4 residual review receipt — group 3 (solo lane) |
+| w5-review | [w5-review.md](../v26.10.18/receipts/w5-review.md) | ALIVE | W5 residual review — group 4 (solo) **NO-CONTEXT** |
+| w6-review | [w6-review.md](../v26.10.18/receipts/w6-review.md) | UNKNOWN | W6 residual review receipt — v26.10.18 **NO-CONTEXT** |
+| w7-review | [w7-review.md](../v26.10.18/receipts/w7-review.md) | PASS | W7 residual review — group 6 (review lane, Context: solo) **NO-CONTEXT** |
+| w8-review | [w8-review.md](../v26.10.18/receipts/w8-review.md) | PASS | W8 residual review — workqueue group 7 **NO-CONTEXT** |
+| w9-review | [w9-review.md](../v26.10.18/receipts/w9-review.md) | UNKNOWN | W9 residual review — group 8 (review lane, Context: solo) **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 
@@ -489,7 +507,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |

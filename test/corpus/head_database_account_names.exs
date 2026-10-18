@@ -13,6 +13,8 @@
 # /providers/microsoft.documentdb/databaseaccounts/{name}.
 #
 # FENCE (this corpus row): the CLOSED wire shape cannot regress.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.HeadDatabaseAccountNames do
   @moduledoc false
 

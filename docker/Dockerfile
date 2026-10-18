@@ -1,80 +1,56 @@
-# Multi-stage build for the smalt substrate release.
+# smalt burn-suite image (MIX_ENV=test, alpine).
 #
-# The three sibling path dependencies are injected as extra build contexts:
+# Pin rationale: hexpm/elixir 1.19.5 / OTP 28.5.0.2 / alpine 3.20.9. The
+# coordinator-specified tag `1.19.5-erlang-28-alpine-3.20` does not exist on
+# Docker Hub (hub API 404, verified 2026-10-18); this is the closest real tag
+# preserving the OTP-28 + alpine-3.20 contract. wasmex and ex4pm
+# (explorer) ship rust NIFs; the base OTP is host-matched to the NIF ABI the
+# tree was developed against (OTP 28). musl compatibility of the NIF builds is
+# a known risk — fallback base is debian-slim (docker/compose.smalt.yml's
+# image lineage already builds clean on debian).
 #
-#   docker build -f docker/Dockerfile -t smalt:local . \
-#     --build-context ash_graphlaw=../ash_graphlaw \
-#     --build-context ggen_igniter=../ggen_igniter \
-#     --build-context ex4pm=../ex4pm
-#
-# See docker/README.md.
+# One deviation from the coordinator package list, disclosed: `rust cargo`
+# added — wasmex (rustler) and ex4pm's explorer both compile native crates;
+# rustler_precompiled has no musl triplet for this OTP/ABI combination, so the
+# NIFs build from source and need a rust toolchain.
+FROM hexpm/elixir:1.19.5-erlang-28.5.0.2-alpine-3.20.9
 
-FROM elixir:1.18-slim AS build
+RUN apk add --no-cache \
+      git bash python3 make gcc musl-dev curl openssl \
+      rust cargo
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential git ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ENV LANG=C.UTF-8 \
+    MIX_ENV=test \
+    SMALT_CERT_DIR=/smalt/.smalt/tls \
+    SSL_CERT_FILE=/smalt/.smalt/tls/ca-cert.pem
 
-ENV MIX_ENV=prod
-ENV LANG=C.UTF-8
+WORKDIR /smalt
 
-WORKDIR /app
-
+# --- warm dependency layer (changes only when mix.lock moves) -------------
 COPY mix.exs mix.lock ./
 
-# Sibling path deps must exist at ../ash_graphlaw and ../ggen_igniter
-# relative to /app (i.e. /ash_graphlaw, /ggen_igniter). Copy the injected
-# build contexts and symlink them into those paths.
-# ash_r2rml / ash_ex4pm are optional-only deps (dev/test) — not copied here.
-COPY --from=ash_graphlaw / /ctx/ash_graphlaw
-COPY --from=ggen_igniter / /ctx/ggen_igniter
-COPY --from=ex4pm / /ctx/ex4pm
-RUN mkdir /sibs \
- && ln -sfn /ctx/ash_graphlaw /ash_graphlaw \
- && ln -sfn /ctx/ggen_igniter /ggen_igniter \
- && ln -sfn /ctx/ex4pm /ex4pm
+# ash_r2rml is a path dep in scope for MIX_ENV=test (only: [:dev, :test]);
+# the other sibling path deps (ash_graphlaw, ggen_igniter) are :dev-only and
+# out of scope here. Injected as an extra build context:
+#   docker build -f docker/Dockerfile ... --build-context ash_r2rml=../ash_r2rml
+COPY --from=ash_r2rml / /ctx/ash_r2rml
+RUN mkdir -p /sibs && ln -sfn /ctx/ash_r2rml /ash_r2rml
 
-RUN mix local.hex --force \
- && mix local.rebar --force
+RUN mix local.hex --force && mix local.rebar --force
+RUN mix deps.get
+RUN MIX_ENV=test mix compile
 
-RUN mix deps.get \
- && mix deps.compile
+# --- source + burn harness layer ------------------------------------------
+COPY lib config test scripts priv model ./
+COPY docker/gen_dev_cert_linux.sh /usr/local/bin/gen_dev_cert_linux.sh
 
-COPY lib ./lib
-COPY priv ./priv
-COPY config ./config
-
-RUN mix compile
-
-RUN mix release smalt --path /app/_release
-
-# ---------------------------------------------------------------------------
-# Runtime: Debian slim, release only. No Elixir/Mix toolchain.
-# ---------------------------------------------------------------------------
-FROM debian:trixie-slim AS runtime
-
-RUN apt-get update \
- && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates bash \
- && rm -rf /var/lib/apt/lists/*
-
-# Non-root, distroless-style UID/GID.
-RUN groupadd -g 65532 nonroot \
- && useradd -u 65532 -g 65532 -s /usr/sbin/nologin nonroot
-
-ENV HOME=/tmp
-ENV RELEASE_TMP=/tmp
-ENV RELEASE_DISTRIBUTION=none
-ENV RELEASE_NODE=smalt
-
-COPY --from=build --chown=65532:65532 /app/_release /opt/smalt
-
-USER 65532:65532
-WORKDIR /tmp
+# Dev TLS material minted IN-IMAGE (same .smalt/tls layout as
+# scripts/gen_dev_cert.sh; the Linux variant is baked to
+# /usr/local/bin/gen_dev_cert_linux.sh).
+RUN gen_dev_cert_linux.sh
 
 EXPOSE 9443 9444 8443 5672 5673 9545
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9443"]
-
-ENTRYPOINT ["/opt/smalt/bin/smalt"]
-CMD ["start"]
+# Default: quiet identity probe. Burn lanes come in through
+# docker/compose.yaml services (burn-a..d) which override `command`.
+CMD ["mix", "run", "-e", "IO.puts(:smalt)"]

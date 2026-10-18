@@ -14,6 +14,8 @@
 #
 # FENCE (this corpus row): ARM-created containers stay listable on the data
 # plane and the pk law stays live.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.CosmosArmContainer do
   @moduledoc false
 

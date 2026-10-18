@@ -12,6 +12,8 @@
 # property sets. GET stays verbatim.
 #
 # FENCE (this corpus row): the enriched read shape cannot regress.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.VaultEnrichment do
   @moduledoc false
 

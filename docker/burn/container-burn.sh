@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# container-burn.sh — in-container burn probe for the parallel matrix
+# (docker/burn). Runs INSIDE the smalt:local image (bash + the release only;
+# no python in the runtime image — this script is bash-only by construction).
+#
+# Per container:
+#   1. Start the release; deadline-poll for the ARM listener (9443 in-container).
+#   2. Atom-flood the container's own AMQP port 5672: connect -> partial HTTP
+#      request line -> mid-request close (the i22 :closed flood class,
+#      docs/jira/v26.10.17/receipts/i22-atom-flood-fix.md).
+#   3. Deadline-poll the flood process to finish; count `[amqp-atom]` debug
+#      lines in the release log — the fix must hold: zero `:closed` lines.
+#   4. Emit one JSONL row to /burn-results/burn-<service>.jsonl and exit
+#      0 clean / 1 dirty (matrix driver asserts 4/4 clean).
+#
+# Env: BURN_SERVICE (service name), BURN_FLOOD_SECONDS (default 15).
+set -u
+
+SERVICE="${BURN_SERVICE:-smalt-burn-unknown}"
+FLOOD_SECONDS="${BURN_FLOOD_SECONDS:-15}"
+RESULTS_DIR="${BURN_RESULTS_DIR:-/burn-results}"
+LOG=/tmp/burn-smalt.log
+JSONL="$RESULTS_DIR/burn-$SERVICE.jsonl"
+START_TS=$SECONDS
+DEADLINE=$((START_TS + 300))
+
+mkdir -p "$RESULTS_DIR"
+
+emit() { # emit <clean 0/1> <detail>
+  printf '{"schema":"smalt.burn-container/1","ts":"%s","service":"%s","clean":%s,"detail":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SERVICE" \
+    "$([ "$1" = 0 ] && echo true || echo false)" \
+    "$(printf '%s' "$2" | tr -d '"' | cut -c1-200)" >> "$JSONL"
+}
+
+port_open() { exec 3<>/dev/tcp/127.0.0.1/"$1" 2>/dev/null || return 1; exec 3>&- 3<&-; return 0; }
+
+wait_port() { # wait_port <port> <what> — deadline poll, no fixed sleep
+  while [ "$SECONDS" -lt "$DEADLINE" ]; do
+    if port_open "$1"; then echo "[BURN] $2 up on :$1 (${SECONDS}s)"; return 0; fi
+    read -t 2 -u 0 _ </dev/null 2>/dev/null || true
+  done
+  echo "[BURN] deadline waiting for $2 on :$1" >&2
+  return 1
+}
+
+echo "[BURN] container burn: service=$SERVICE flood=${FLOOD_SECONDS}s"
+: > "$LOG"
+/opt/smalt/bin/smalt start >"$LOG" 2>&1 &
+SMALT_PID=$!
+
+if ! wait_port 9443 "ARM control plane"; then
+  emit 1 "release never opened :9443 within deadline"
+  kill "$SMALT_PID" 2>/dev/null || true
+  exit 1
+fi
+
+# Atom flood: bash-only (no python in the runtime image). Each iteration:
+# connect, send a partial HTTP request line, close mid-request.
+FLOOD_PID=""
+(
+  end=$((SECONDS + FLOOD_SECONDS))
+  n=0
+  while [ "$SECONDS" -lt "$end" ]; do
+    if exec 3<>/dev/tcp/127.0.0.1/5672 2>/dev/null; then
+      printf 'PUT /flood HTTP/1.1\r\n' >&3 2>/dev/null || true
+      exec 3>&- 3<&- 2>/dev/null || true
+      n=$((n + 1))
+    fi
+  done
+  echo "$n" > "$RESULTS_DIR/flood-count-$SERVICE"
+) &
+FLOOD_PID=$!
+
+# Deadline-poll the flood subshell to completion (no fixed sleep).
+while kill -0 "$FLOOD_PID" 2>/dev/null && [ "$SECONDS" -lt "$DEADLINE" ]; do
+  wait "$FLOOD_PID" 2>/dev/null && break
+  read -t 2 -u 0 _ </dev/null 2>/dev/null || true
+done
+kill "$FLOOD_PID" 2>/dev/null || true
+wait "$FLOOD_PID" 2>/dev/null || true
+
+CLOSED_LINES=$(grep -c 'request read failed: :closed' "$LOG" 2>/dev/null || true)
+ATOM_LINES=$(grep -c '\[amqp-atom\]' "$LOG" 2>/dev/null || true)
+FLOOD_CONNS=$(cat "$RESULTS_DIR/flood-count-$SERVICE" 2>/dev/null || echo 0)
+
+kill "$SMALT_PID" 2>/dev/null || true
+
+if [ "$CLOSED_LINES" -eq 0 ] && [ "$FLOOD_CONNS" -gt 0 ]; then
+  emit 0 "flood_conns=$FLOOD_CONNS closed_log_lines=0 atom_log_lines=$ATOM_LINES"
+  echo "[BURN] CLEAN service=$SERVICE flood_conns=$FLOOD_CONNS closed_log_lines=0"
+  exit 0
+fi
+emit 1 "flood_conns=$FLOOD_CONNS closed_log_lines=$CLOSED_LINES atom_log_lines=$ATOM_LINES"
+echo "[BURN] DIRTY service=$SERVICE flood_conns=$FLOOD_CONNS closed_log_lines=$CLOSED_LINES" >&2
+exit 1

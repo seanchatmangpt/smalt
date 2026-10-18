@@ -15,6 +15,8 @@
 #
 # FENCE (this corpus row): tags never round-trips as the stale `{}` literal —
 # untagged resources echo `"tags": null`, tagged resources round-trip.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.TagsNormalization do
   @moduledoc false
 

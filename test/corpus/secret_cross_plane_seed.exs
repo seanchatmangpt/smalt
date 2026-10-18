@@ -12,6 +12,8 @@
 # absent or the body carries no string "value" (control-plane-only record).
 #
 # FENCE (this corpus row): the round-trip cannot regress.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.SecretCrossPlaneSeed do
   @moduledoc false
 

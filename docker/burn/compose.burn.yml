@@ -1,0 +1,48 @@
+# compose.burn.yml — 4-service parallel burn matrix (docker/burn).
+#
+# Four independent smalt:local containers, each running docker/burn/container-burn.sh:
+# boot the release, atom-flood its own AMQP port (the i22 :closed logger-flood
+# class, docs/jira/v26.10.17/receipts/i22-atom-flood-fix.md), assert zero
+# `:closed` log lines, emit one JSONL row to the shared results mount.
+# Driver: docker/burn/parallel-matrix.sh (`just burn-matrix`).
+#
+# Containers are self-contained (loopback inside the container netns) — no
+# host port mappings, so concurrent burn runs never collide on ports.
+
+x-burn-common: &burn-common
+  image: smalt:local
+  entrypoint: ["bash", "/burn/container-burn.sh"]
+  volumes:
+    - ../burn:/burn:ro
+    - ./results:/burn-results
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  restart: "no"
+
+services:
+  smalt-burn-1:
+    <<: *burn-common
+    environment:
+      BURN_SERVICE: smalt-burn-1
+      BURN_FLOOD_SECONDS: "15"
+
+  smalt-burn-2:
+    <<: *burn-common
+    environment:
+      BURN_SERVICE: smalt-burn-2
+      BURN_FLOOD_SECONDS: "15"
+
+  smalt-burn-3:
+    <<: *burn-common
+    environment:
+      BURN_SERVICE: smalt-burn-3
+      BURN_FLOOD_SECONDS: "15"
+
+  smalt-burn-4:
+    <<: *burn-common
+    environment:
+      BURN_SERVICE: smalt-burn-4
+      BURN_FLOOD_SECONDS: "15"

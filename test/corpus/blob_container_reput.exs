@@ -11,6 +11,8 @@
 # The WORM/lease gates stay AHEAD of the comparison.
 #
 # FENCE (this corpus row): the CLOSED wire shape cannot regress.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.BlobContainerReput do
   @moduledoc false
 

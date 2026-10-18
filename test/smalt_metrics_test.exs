@@ -16,42 +16,24 @@ defmodule Smalt.MetricsWireTest do
   @sub "00000000-0000-0000-0000-000000000000"
   @rg "metrics-rg"
 
+  # NO-SLEEP-DOCTRINE form (v26.10.18 W14): the local ensure_store/0 with a
+  # 500ms receive-after `:ok` fallback was a wait-and-hope (it could proceed
+  # against a dead store). Canonical resilient_setup instead — the seed runs
+  # INSIDE AssertEventually's retry window, so no clock fallback exists.
   setup do
-    ensure_store()
-    Store.clear()
-
-    Store.put(:smalt_subscriptions, @sub, %{
-      "id" => "/subscriptions/#{@sub}",
-      "subscriptionId" => @sub,
-      "displayName" => "Sovereign Smalt Subscription",
-      "state" => "Enabled"
-    })
-
-    :ok
+    SmaltTest.Store.resilient_setup(
+      post_seed: fn ->
+        Store.put(:smalt_subscriptions, @sub, %{
+          "id" => "/subscriptions/#{@sub}",
+          "subscriptionId" => @sub,
+          "displayName" => "Sovereign Smalt Subscription",
+          "state" => "Enabled"
+        })
+      end
+    )
   end
 
   defp call(conn), do: Router.call(conn, @opts)
-
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        if :ets.info(:smalt_subscriptions) == :undefined do
-          pid = Process.whereis(Store)
-          ref = Process.monitor(pid)
-
-          receive do
-            {:DOWN, ^ref, :process, ^pid, _} -> ensure_store()
-          after
-            500 -> :ok
-          end
-        else
-          :ok
-        end
-    end
-  end
 
   defp resource_path(ns \\ "Microsoft.DevTestLab", type \\ "schedules", name \\ "shutdown-19h") do
     "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/#{ns}/#{type}/#{name}"

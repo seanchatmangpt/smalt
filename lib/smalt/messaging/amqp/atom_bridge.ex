@@ -71,7 +71,11 @@ defmodule Smalt.Amqp.AtomBridge do
       # storms (court-x2-v17-run1.log: 35,547 lines, 14:49-14:50). Silent exit
       # on :closed; typed debug retained for non-terminal read errors
       # (:too_large, :bad_content_length, :timeout-adjacent recv faults).
-      {:error, :closed} ->
+      # i23: the rest of the expected socket-teardown vocabulary from unlinked
+      # serve-loop tasks (test harness closes sockets mid-loop): :einval on a
+      # peer-reset socket, :enotconn/:notconn on an already-closed local end.
+      # Same class as :closed — terminal for this socket, :ok, no log.
+      {:error, reason} when reason in [:einval, :enotconn, :notconn] ->
         :ok
 
       {:error, reason} ->

@@ -12,6 +12,8 @@
 #
 # FENCE (this corpus row): both namespaces carry createdAt (camel) and the
 # EH dual-key emission; neither key may vanish from the wire.
+Code.require_file("helper.exs", __DIR__)
+
 defmodule Smalt.Corpus.EhCreatedAt do
   @moduledoc false
 

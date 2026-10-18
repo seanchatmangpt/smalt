@@ -1,0 +1,65 @@
+# Burn-suite services: four concurrent burn lanes over one image.
+#
+# Each service is its own container/network namespace, so the private
+# six-listener port blocks used by scripts/stress/* never collide on the
+# host. CPU dials are per-service `cpus` limits, dialed so the four lanes
+# together stay inside one mid-size dev machine.
+#
+#   docker compose -f docker/compose.yaml build
+#   docker compose -f docker/compose.yaml up burn-a burn-b burn-c burn-d
+
+x-smalt-common: &smalt-common
+  image: smalt-burn:latest
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+    additional_contexts:
+      ash_r2rml: ../../ash_r2rml
+  environment:
+    MIX_ENV: test
+    SMALT_CERT_DIR: /smalt/.smalt/tls
+    SSL_CERT_FILE: /smalt/.smalt/tls/ca-cert.pem
+  working_dir: /smalt
+  init: true
+
+services:
+  # Lane A — sustained soak: 25-min mixed traffic vs private substrate.
+  burn-a:
+    <<: *smalt-common
+    command: ["python3", "scripts/stress/soak.py"]
+    cpus: 2.0
+    mem_limit: 4g
+
+  # Lane B — chaos: kill-under-load, listen-queue fill, recovery timing.
+  burn-b:
+    <<: *smalt-common
+    command: ["python3", "scripts/stress/chaos_kill.py"]
+    cpus: 1.5
+    mem_limit: 3g
+
+  # Lane C — stress test tier: Class-B faces via the :stress tag.
+  burn-c:
+    <<: *smalt-common
+    command: ["mix", "test", "--include", "stress"]
+    cpus: 2.0
+    mem_limit: 4g
+
+  # Lane D — boot burn: repeated full app boot/exit cycles.
+  burn-d:
+    <<: *smalt-common
+    command:
+      - bash
+      - -c
+      - >-
+        for i in $$(seq 1 $${SMALT_BOOT_BURN_ITERS:-20}); do
+        mix run -e 'Application.ensure_all_started(:smalt); Process.sleep(250)'
+        || exit 1;
+        echo "[boot-burn] iter $$i ok";
+        done
+    environment:
+      MIX_ENV: test
+      SMALT_CERT_DIR: /smalt/.smalt/tls
+      SSL_CERT_FILE: /smalt/.smalt/tls/ca-cert.pem
+      SMALT_BOOT_BURN_ITERS: 20
+    cpus: 1.0
+    mem_limit: 2g
