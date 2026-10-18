@@ -20,8 +20,10 @@ defmodule Smalt.Enclave.LifecycleTest do
   # seed and other files' leftovers (vault kv-2 / secret s-2, "kv-shape")
   # would otherwise be reported as destroy residue (witnessed FR-6 T1/T2).
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # Canonical resilient shared-Store setup (v26.10.18): the bare
+    # ensure_store_up(); Store.clear() window races async siblings'
+    # shared-tree teardown (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
 
     # SHIM-COURT-pattern sink isolation: point the shared OCEL NDJSON sink
     # (`:smalt, :ocel_dir`, read at emit time by OcelNdjson.append/3) at a

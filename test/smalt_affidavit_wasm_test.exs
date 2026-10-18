@@ -20,6 +20,8 @@ defmodule Smalt.AffidavitWasmTest do
 
   alias Smalt.Affidavit.WasmEngine
 
+  import SmaltTest.AssertEventually, only: [eventually: 2]
+
   @artifact "priv/wasm/affidavit_wasm.wasm"
   @tariff 12_345
   @modality 0x01
@@ -32,7 +34,14 @@ defmodule Smalt.AffidavitWasmTest do
   setup do
     if pid = Process.whereis(WasmEngine) do
       GenServer.stop(pid, :normal)
-      wait_until(fn -> is_nil(Process.whereis(WasmEngine)) end)
+
+      eventually(
+        fn ->
+          if Process.whereis(WasmEngine), do: :retry, else: {:ok, nil}
+        end,
+        observable: "WasmEngine process stopped",
+        deadline_ms: 5_000
+      )
     end
 
     on_exit(fn ->
@@ -108,18 +117,5 @@ defmodule Smalt.AffidavitWasmTest do
 
     assert pid = Process.whereis(WasmEngine)
     assert Process.alive?(pid)
-  end
-
-  defp wait_until(fun, tries \\ 100)
-
-  defp wait_until(_fun, 0), do: flunk("engine did not stop in time")
-
-  defp wait_until(fun, tries) do
-    if fun.() do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until(fun, tries - 1)
-    end
   end
 end

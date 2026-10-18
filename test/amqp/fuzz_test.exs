@@ -1495,22 +1495,25 @@ defmodule Smalt.Amqp.FuzzTest do
     flat = List.duplicate(7, n)
     lis = IO.iodata_to_binary(PrimitiveCodec.encode(flat))
 
-    best = fn b, f ->
-      for _ <- 1..5 do
-        t0 = System.monotonic_time(:millisecond)
-        f.(b)
-        System.monotonic_time(:millisecond) - t0
-      end
-      |> Enum.min()
+    # Legs timed in MICROSECONDS (:timer.tc): a list leg measured in whole ms
+    # makes the ratio step 2x on a one-tick difference. Same paired-round
+    # min-of-5 form, same measured geometry, same bound 3.0 — the noise floor
+    # drops from ±1 ms to ±1 us per leg, so the bound stays valid without
+    # re-derivation.
+    timed_us = fn b, f ->
+      {us, _} = :timer.tc(fn -> f.(b) end)
+      us
     end
 
-    arr_ms = best.(bin, fn b -> {:ok, _} = PrimitiveCodec.decode_all(b) end)
-    list_ms = best.(lis, fn b -> {:ok, _} = PrimitiveCodec.decode_all(b) end)
-    ratio = arr_ms / list_ms
+    ratio =
+      for _ <- 1..5 do
+        timed_us.(bin, fn b -> {:ok, _} = PrimitiveCodec.decode_all(b) end) /
+          timed_us.(lis, fn b -> {:ok, _} = PrimitiveCodec.decode_all(b) end)
+      end
+      |> Enum.min()
 
     assert ratio < 3.0,
-           "array/list decode ratio #{Float.round(ratio, 2)} " <>
-             "(array #{arr_ms}ms vs list #{list_ms}ms at n=#{n}) — quadratic regression"
+           "array/list decode ratio #{Float.round(ratio, 2)} at n=#{n} — quadratic regression"
   end
 
   # ---------------------------------------------------------------------------
@@ -1532,10 +1535,11 @@ defmodule Smalt.Amqp.FuzzTest do
     flat = Enum.flat_map(Map.to_list(map), fn {k, v} -> [k, v] end)
     lis = IO.iodata_to_binary(PrimitiveCodec.encode(flat))
 
-    timed = fn b, f ->
-      t0 = System.monotonic_time(:millisecond)
-      f.(b)
-      System.monotonic_time(:millisecond) - t0
+    # Legs timed in MICROSECONDS (:timer.tc) — same precision raise as the
+    # bare-array fence above (whole-ms legs step the ratio 2x on one tick).
+    timed_us = fn b, f ->
+      {us, _} = :timer.tc(fn -> f.(b) end)
+      us
     end
 
     map_f = fn b -> {:ok, _, <<>>} = PrimitiveCodec.decode(b) end
@@ -1543,15 +1547,12 @@ defmodule Smalt.Amqp.FuzzTest do
 
     ratio =
       for _ <- 1..5 do
-        timed.(bin, map_f) / timed.(lis, list_f)
+        timed_us.(bin, map_f) / timed_us.(lis, list_f)
       end
       |> Enum.min()
 
-    map_ms = timed.(bin, map_f)
-    list_ms = timed.(lis, list_f)
-
     assert ratio < 1.4,
-           "map decode ratio #{Float.round(ratio, 2)} (map #{map_ms}ms vs list #{list_ms}ms) — double-decode regression"
+           "map decode ratio #{Float.round(ratio, 2)} — double-decode regression"
   end
 
   # ---------------------------------------------------------------------------
@@ -1681,6 +1682,9 @@ defmodule Smalt.Amqp.FuzzTest do
     # there rather than taking the test (or a connection process) down.
     hostile = build_hostile_nested(1_000_000)
 
+    # Fail-safe deadline only: the decode either completes in microseconds or
+    # hangs. The success path never approaches 30 s, so this bound has no flake
+    # channel — it fences a hang, it does not SAMPLE behavior. Keep as-is.
     result =
       Task.await(
         Task.async(fn ->
@@ -1745,6 +1749,8 @@ defmodule Smalt.Amqp.FuzzTest do
       other -> flunk("hostile frame nesting: #{inspect(other, limit: 5)}")
     end
 
+    # Same hang fail-safe (not a settle-wait) — see the comment at the 1M-depth
+    # probe above. The beyond-cap leg below is refusal-before-decode (no timing).
     beyond_inner = build_hostile_nested(500_000)
 
     beyond_body =

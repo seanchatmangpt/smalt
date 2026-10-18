@@ -162,7 +162,11 @@ defmodule Smalt.Enclave.State do
 
   defp poll_loop(loc, n) do
     conn = plain_request(:get, loc)
-    if conn.status != 202, do: Process.sleep(@lro_poll_ms)
+    # SLEEP-CLASS: SIGNALABLE-PENDING-REDESIGN (LRO.await; see
+    # docs/jira/v26.10.18/rewrite-drafts/lib-redesign-wasm-lro.md). Fixed
+    # 2026-10-18: predicate was inverted (slept AFTER terminal, polled hot
+    # on 202 InProgress); sleep now covers only the still-InProgress step.
+    if conn.status == 202, do: Process.sleep(@lro_poll_ms)
     if conn.status == 202, do: poll_loop(loc, n - 1), else: conn.status
   end
 

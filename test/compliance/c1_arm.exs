@@ -21,12 +21,13 @@ defmodule Smalt.Compliance.C1ArmTest do
   # test_helper.exs exclusion list, so untagged/default runs are unchanged.
   @moduletag :compliance
 
+  alias Smalt.Corpus.Helper
   alias Smalt.Store
 
   @sub "00000000-0000-0000-0000-000000000000"
 
   setup context do
-    resilient_clear(fn ->
+    Helper.resilient_clear(fn ->
       Store.put(:smalt_subscriptions, @sub, %{
         "id" => "/subscriptions/#{@sub}",
         "subscriptionId" => @sub,
@@ -40,10 +41,12 @@ defmodule Smalt.Compliance.C1ArmTest do
     Application.put_env(:smalt, :lro_delay_ms, 0)
 
     port = free_port()
-    {:ok, server} = Bandit.start_link(plug: Smalt.ArmGateway.Router, port: port)
+
+    # start_supervised!: listener lifecycle is tied to the test process —
+    # no on_exit Process.exit, no orphaned Bandit on a mid-setup failure.
+    start_supervised!({Bandit, plug: Smalt.ArmGateway.Router, port: port})
 
     on_exit(fn ->
-      Process.exit(server, :shutdown)
       Application.put_env(:smalt, :auth_mode, prev_auth || :anonymous)
     end)
 
@@ -396,6 +399,7 @@ defmodule Smalt.Compliance.C1ArmTest do
     # Align to the next wall-clock second so all 10 requests land in ONE
     # fixed window — this makes the window's admit count exactly assertable.
     ms = System.system_time(:millisecond)
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(1000 - rem(ms, 1000) + 5)
 
     statuses_limited =
@@ -419,6 +423,7 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     # Window expiry: after the 1s window rolls over the counter is reset —
     # the next request is admitted again (fixed window, not a permanent ban).
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(1100)
     {status_after, _h, _b} = put!(port, path, body: sa_body(name))
     assert status_after == 200
@@ -664,26 +669,22 @@ defmodule Smalt.Compliance.C1ArmTest do
     end
   end
 
-  defp poll_until_terminal(port, async_url, attempts \\ 100)
+  # LRO poll: deadline-bounded, not a fixed 20ms x 100 grid. The terminal
+  # condition is the wire's own 200; the InProgress 202 keeps the loop hot.
+  @lro_poll_deadline_ms 10_000
 
-  defp poll_until_terminal(_port, _url, 0), do: flunk("LRO never reached terminal status")
-
-  defp poll_until_terminal(port, async_url, attempts) do
-    Process.sleep(20)
-
+  defp poll_until_terminal(port, async_url) do
     # The gateway advertises the authority the client actually used (row 10,
     # fixed): strip to the path and probe through the same listener.
-    %URI{host: _host, path: path} = URI.parse(async_url)
+    %URI{path: path} = URI.parse(async_url)
 
-    url = path
-
-    {status, _headers, body} = get!(port, url)
-
-    cond do
-      status == 200 -> {200, json(body)}
-      status == 202 -> poll_until_terminal(port, async_url, attempts - 1)
-      true -> flunk("unexpected poll status #{status}: #{body}")
-    end
+    Helper.assert_eventually!("LRO terminal #{async_url}", @lro_poll_deadline_ms, fn ->
+      case get!(port, path) do
+        {200, _h, body} -> {:ok, {200, json(body)}}
+        {202, _h, _body} -> :in_progress
+        {status, _h, body} -> flunk("unexpected poll status #{status}: #{body}")
+      end
+    end)
   end
 
   defp delete!(port, path, opts \\ []) do
@@ -797,51 +798,9 @@ defmodule Smalt.Compliance.C1ArmTest do
     port
   end
 
-  # i22 corpus-seed hardening: bounded typed retry around the racy
-  # ensure-store + clear + seed window (see
-  # docs/jira/v26.10.17/receipts/i21-ets-race-fix.md). Rescues ONLY the
-  # dead-table ArgumentError; past the bound it raises loudly.
-  @i22_retry_bound 50
-  @i22_dead_table_msg "table identifier does not refer to an existing ETS table"
-
-  defp resilient_clear(post_seed \\ fn -> :ok end, remaining \\ @i22_retry_bound)
-
-  defp resilient_clear(_post_seed, 0) do
-    raise "shared Store unavailable after #{@i22_retry_bound} retries (i22 corpus-seed hardening)"
-  end
-
-  defp resilient_clear(post_seed, remaining) do
-    ensure_store()
-    Store.clear()
-    post_seed.()
-  rescue
-    e in ArgumentError ->
-      if Exception.message(e) == @i22_dead_table_msg do
-        Process.sleep(10)
-        resilient_clear(post_seed, remaining - 1)
-      else
-        reraise e, __STACKTRACE__
-      end
-  end
-
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        if :ets.info(:smalt_subscriptions) == :undefined do
-          pid = Process.whereis(Store)
-          ref = Process.monitor(pid)
-
-          receive do
-            {:DOWN, ^ref, :process, ^pid, _} -> ensure_store()
-          after
-            500 -> :ok
-          end
-        else
-          :ok
-        end
-    end
-  end
+  # i22 corpus-seed hardening tail DELETED (this window): the private
+  # resilient_clear/ensure_store copies moved to the canonical
+  # Smalt.Corpus.Helper (post_seed runs inside the retry window; the
+  # Bandit listener is Supervisor-owned via start_supervised!). See
+  # docs/jira/v26.10.18/receipts/b1-corpus.md.
 end

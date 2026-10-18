@@ -13,15 +13,15 @@ defmodule Smalt.AzapiActionsTest do
 
   alias Smalt.ArmGateway.Router
   alias Smalt.Registry
-  alias Smalt.Store
 
   @opts Router.init([])
   @sub "sub-1"
   @rg "test-rg"
 
   setup do
-    ensure_store()
-    Store.clear()
+    # Canonical resilient shared-Store setup (v26.10.18): retries only the
+    # dead-table race between ensure_store_up and clear (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 
@@ -464,13 +464,4 @@ defmodule Smalt.AzapiActionsTest do
   end
 
   defp body(conn), do: Jason.decode!(conn.resp_body)
-
-  # The router is stateless over public ETS; the Store GenServer is started
-  # defensively so this file also runs under `mix test --no-start` when the
-  # shared tree's application start is blocked by a concurrent lane.
-  defp ensure_store do
-    SmaltTest.Lifecycle.ensure_store_up()
-
-    :ok
-  end
 end

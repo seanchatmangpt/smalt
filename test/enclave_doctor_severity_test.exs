@@ -54,32 +54,43 @@ defmodule EnclaveDoctorSeverityTest do
   describe "forced failure (real temp residue rows, no mocks)" do
     test "residue rows during doctor run -> store_invariants FAIL with ETS_IDENTITY_RESIDUE / BLOCKING_GATE + remediation" do
       prefix = "lane430-residue-"
+      rows = 2000
 
-      # Residue injector: a real process inserting unique resource rows into
-      # the real :smalt_resources table throughout the doctor run, so rows
-      # land after the doctor's baseline snapshot and the strict identity
-      # assert (baseline == after_state) must observe the residue.
-      {:ok, injector} =
-        Task.start(fn ->
-          loop = fn
-            _loop, n when n <= 0 ->
-              :ok
+      # Residue injector, NO-SLEEP-DOCTRINE form (v26.10.18 W14): no paced
+      # Process.sleep loop. The doctor run executes in a Task; the strict
+      # identity check's baseline snapshot strictly precedes the lifecycle's
+      # doctor-identity-rg RG PUT, so that Store row is the observable that
+      # proves "baseline taken". Bounded poll (SmaltTest.AssertEventually)
+      # waits for it, then the test process inserts the residue rows
+      # synchronously — they land deterministically between the two
+      # snapshots, so the identity assert must observe the residue.
+      doctor =
+        Task.async(fn -> Smalt.Enclave.Doctor.run() end)
 
-            loop, n ->
-              :ets.insert(
-                :smalt_resources,
-                {prefix <> Integer.to_string(n), %{"type" => "Microsoft.Storage/storageAccounts"}}
-              )
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          visible? =
+            :smalt_resources
+            |> :ets.tab2list()
+            |> Enum.any?(fn {k, _} ->
+              is_binary(k) and String.contains?(k, "doctor-identity-rg")
+            end)
 
-              Process.sleep(2)
-              loop.(loop, n - 1)
-          end
+          if visible?, do: {:ok, :baseline_taken}, else: :retry
+        end,
+        observable: "doctor lifecycle RG row (baseline snapshot taken)",
+        deadline_ms: 15_000
+      )
 
-          loop.(loop, 2000)
-        end)
+      for n <- 1..rows do
+        :ets.insert(
+          :smalt_resources,
+          {prefix <> Integer.to_string(n), %{"type" => "Microsoft.Storage/storageAccounts"}}
+        )
+      end
 
       try do
-        report = Smalt.Enclave.Doctor.run()
+        report = Task.await(doctor, 60_000)
 
         ets_check = Enum.find(report["checks"], &(&1["check"] == "ets_baseline_identity"))
 
@@ -96,7 +107,6 @@ defmodule EnclaveDoctorSeverityTest do
       after
         # Cleanup: sweep every injected row regardless of outcome.
         sweep(prefix)
-        Process.exit(injector, :kill)
       end
     end
 

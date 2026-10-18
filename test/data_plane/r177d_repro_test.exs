@@ -1,11 +1,9 @@
 defmodule Smalt.DataPlane.R177dReproTest do
   use ExUnit.Case, async: false
   alias Smalt.DataPlane.{BlobStorage, BlobService}
-  alias Smalt.Store
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    SmaltTest.Store.resilient_clear()
     BlobStorage.ensure_policy_table()
     :ets.delete_all_objects(:smalt_blob_policy)
     :ok
@@ -64,9 +62,14 @@ defmodule Smalt.DataPlane.R177dReproTest do
       end)
     end)
 
-    Enum.each(1..80, fn _ ->
+    # Bounded drain: a crashed racer would never send :done, so an unbounded
+    # receive here hangs the suite forever. Typed immediate-fail on deadline
+    # expiry (No-Sleep Law 1: observe, don't wait-and-hope).
+    Enum.each(1..80, fn i ->
       receive do
         :done -> :ok
+      after
+        30_000 -> flunk("racer #{i}/80 never reported :done (spawn crashed)")
       end
     end)
 

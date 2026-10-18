@@ -34,7 +34,17 @@ defmodule Smalt.Application do
         # child, application.ex shared this wave): closes
         # GAP(lro-lazy-terminality) by driving terminal flips without a poll,
         # plus opt-in :lro_retention_ms eviction (default :infinity).
-        Smalt.ArmGateway.LRO.Sweeper
+        # v26.10.18 one-writer redesign: the sweeper is the SINGLE terminal
+        # writer; the Notifier (before it, so it is up first) is its explicit
+        # completion-signal hub for LRO.await waiters.
+        Smalt.ArmGateway.LRO.Notifier,
+        Smalt.ArmGateway.LRO.Sweeper,
+        # Supervised WasmEngine restart envelope (v26.10.18 lib redesign
+        # Part 1, disclosed additive child): one_for_one 3/1s around an
+        # owner GenServer that start_links + monitors the named engine and
+        # owns every retry in its own mailbox (zero caller-path sleeps;
+        # engine module is structurally sleep-free, fence 10).
+        Smalt.Affidavit.WasmEngine.Supervisor
         # HIL virtual device (lane S-5): opt-in only via SMALT_SIMULATE_HARDWARE=1
         # — default startup is untouched (child spec is [] when unset).
         | virtual_hw_child()

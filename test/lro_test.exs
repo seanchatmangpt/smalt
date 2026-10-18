@@ -33,7 +33,14 @@ defmodule SmaltLroTest do
     end)
 
     Application.put_env(:smalt, :lro_delay_ms, 20)
-    :ok
+
+    # Test-owned sweeper instance (v26.10.18 B4): anonymous (`name: nil`) and
+    # fully manual (`tick_ms: :manual`) — init fires NO pass, no background
+    # tick can land between before/after reads, and the global singleton
+    # stays app-owned and untouched. Lifetime tied to the test via
+    # start_supervised!.
+    sweeper = start_supervised!({Smalt.ArmGateway.LRO.Sweeper, name: nil, tick_ms: :manual})
+    %{sweeper: sweeper}
   end
 
   defp restore_env(_key, nil), do: :ok
@@ -590,7 +597,9 @@ defmodule SmaltLroTest do
   # GONE at raw get, in-window terminals remain, and an InProgress record is
   # NEVER evicted at any age.
   # ---------------------------------------------------------------------------
-  test "op records reach terminal at rest with zero polls; default retention keeps all 500" do
+  test "op records reach terminal at rest with zero polls; default retention keeps all 500", %{
+    sweeper: sweeper
+  } do
     rid =
       "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/retention-probe"
 
@@ -608,7 +617,7 @@ defmodule SmaltLroTest do
     # clear from another module can transiently remove records mid-check, so a
     # single sleep-then-assert is a contention face — retry under a generous
     # deadline and fail with a typed message naming the offending record keys.
-    sweep_until_terminal(ids, rid)
+    sweep_until_terminal(ids, rid, sweeper)
 
     for id <- ids do
       assert {:ok, %{"status" => "Succeeded", "resourceId" => ^rid}} =
@@ -640,7 +649,7 @@ defmodule SmaltLroTest do
     in_progress = LRO.start_op(rid)
     ip_id = in_progress["name"]
 
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
 
     # Past-window terminal GONE at raw get.
     assert :error = Store.get(:smalt_operations, old_id)
@@ -648,8 +657,9 @@ defmodule SmaltLroTest do
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, fresh_id)
     # InProgress NEVER evicted (this one is genuinely in-window AND the sweep
     # must not touch it even after its delay elapses mid-sweep).
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, ip_id)
 
     Application.put_env(:smalt, :lro_retention_ms, :infinity)
@@ -661,7 +671,9 @@ defmodule SmaltLroTest do
   # sweep + margin. Before the sweeper, a never-polled record stayed
   # InProgress at rest forever (GAP(lro-lazy-terminality) at-rest face).
   # ---------------------------------------------------------------------------
-  test "at-rest terminality with zero polls: never-polled op reads terminal at raw get" do
+  test "at-rest terminality with zero polls: never-polled op reads terminal at raw get", %{
+    sweeper: sweeper
+  } do
     rid =
       "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/atrest-probe"
 
@@ -669,12 +681,13 @@ defmodule SmaltLroTest do
     id = op["name"]
 
     delay = Application.get_env(:smalt, :lro_delay_ms, 0)
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(delay + 10)
 
     # Pre-sweep raw read: still InProgress (no lazy path has ever touched it).
     assert {:ok, %{"status" => "InProgress"}} = Store.get(:smalt_operations, id)
 
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
 
     # Raw get AFTER the sweep: terminal, persisted, scheduling fields gone.
     assert {:ok, %{"status" => "Succeeded"} = stored} = Store.get(:smalt_operations, id)
@@ -687,10 +700,12 @@ defmodule SmaltLroTest do
   # (10c) No-op fence (V261014-05): a sweep over an EMPTY store and over a
   # store of ALL-terminal records writes NOTHING (count + endTime stability).
   # ---------------------------------------------------------------------------
-  test "sweep over empty store and all-terminal store is a no-op (0 writes)" do
+  test "sweep over empty store and all-terminal store is a no-op (0 writes)", %{
+    sweeper: sweeper
+  } do
     # Empty store.
     assert Store.list(:smalt_operations) == []
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
     assert Store.list(:smalt_operations) == []
 
     # All-terminal store: nothing is rewritten.
@@ -698,8 +713,9 @@ defmodule SmaltLroTest do
       "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/noop-probe"
 
     ids = for _ <- 1..5, do: LRO.start_op(rid)["name"]
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
 
     before =
       Map.new(ids, fn id ->
@@ -707,7 +723,7 @@ defmodule SmaltLroTest do
         {id, rec["endTime"]}
       end)
 
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
 
     after_ =
       Map.new(ids, fn id ->
@@ -725,19 +741,22 @@ defmodule SmaltLroTest do
   # byte-identical body — no lock needed, the shared functions write the same
   # record.
   # ---------------------------------------------------------------------------
-  test "sweep racing a wire poll converges to one persisted terminal, byte-identical body" do
+  test "sweep racing a wire poll converges to one persisted terminal, byte-identical body", %{
+    sweeper: sweeper
+  } do
     rid =
       "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/race-sweep-probe"
 
     op = LRO.start_op(rid)
     id = op["name"]
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
 
     parent = self()
 
-    sweeper =
+    sweep_task =
       Task.async(fn ->
-        :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+        :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
         send(parent, :swept)
       end)
 
@@ -746,7 +765,7 @@ defmodule SmaltLroTest do
         conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
       end)
 
-    Task.await(sweeper)
+    Task.await(sweep_task)
     poll_res = Task.await(poll)
     assert poll_res.status in [200, 202]
 
@@ -756,7 +775,7 @@ defmodule SmaltLroTest do
     refute Map.has_key?(stored, "startedAtMs")
     refute Map.has_key?(stored, "delayMs")
 
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
     assert {:ok, stored_after} = Store.get(:smalt_operations, id)
     assert stored_after == stored
   end
@@ -1177,10 +1196,11 @@ defmodule SmaltLroTest do
   # id reads {:ok, terminal} at a RAW store read. A concurrent Store teardown /
   # clear (cross-module ETS race, r241 face) transiently removes records;
   # retry under one deadline, then flunk with a typed message naming the
-  # record keys still missing or unterminal.
-  defp sweep_until_terminal(ids, rid, deadline \\ deadline_from_now())
+  # record keys still missing or unterminal. Threads the test-OWNED sweeper
+  # pid — no global singleton call anywhere in this file's sweeper faces.
+  defp sweep_until_terminal(ids, rid, sweeper, deadline \\ deadline_from_now())
 
-  defp sweep_until_terminal(ids, rid, deadline) do
+  defp sweep_until_terminal(ids, rid, sweeper, deadline) do
     {terminal, not_terminal} =
       Enum.split_with(ids, fn id ->
         match?(
@@ -1203,9 +1223,9 @@ defmodule SmaltLroTest do
         )
       end
 
-      :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+      :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
       Process.sleep(20)
-      sweep_until_terminal(ids, rid, deadline)
+      sweep_until_terminal(ids, rid, sweeper, deadline)
     end
   end
 
@@ -1293,5 +1313,144 @@ defmodule Smalt.ArmGateway.LRO.SweeperBoundaryTest do
 
     # nil endTime record falls out of the eligibility flat_map entirely
     assert {:ok, _} = Store.get(:smalt_operations, "op-nostatus")
+  end
+end
+
+# ---------------------------------------------------------------------------
+# v26.10.18 B0 — LRO one-writer convergence fences (lib-redesign-wasm-lro.md
+# Part 2). The explicit completion signal (`LRO.Notifier` + `LRO.await/3`),
+# the single-writer read path, and the notifier-down fail-safe.
+# ---------------------------------------------------------------------------
+defmodule Smalt.ArmGateway.LRO.NotifierTest do
+  use ExUnit.Case, async: false
+
+  alias Smalt.ArmGateway.LRO
+  alias Smalt.ArmGateway.LRO.Notifier
+  alias Smalt.Store
+
+  @sub "00000000-0000-0000-0000-000000000000"
+  @other_sub "22222222-2222-2222-2222-222222222222"
+
+  setup do
+    SmaltTest.Lifecycle.ensure_store_up()
+
+    if :ets.info(:smalt_operations) != :undefined do
+      :ets.delete_all_objects(:smalt_operations)
+    end
+
+    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
+    Application.put_env(:smalt, :lro_delay_ms, 20)
+
+    on_exit(fn ->
+      case prev_delay do
+        nil -> :ok
+        v -> Application.put_env(:smalt, :lro_delay_ms, v)
+      end
+    end)
+
+    :ok
+  end
+
+  defp rid(name),
+    do:
+      "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/#{name}"
+
+  # (B0-1) Signal wake, zero polls, zero sweeps: await registers BEFORE the
+  # delay elapses; the Notifier's due-check timer fires, casts the SINGLE
+  # writer (sweeper), the persist publishes the terminal, and the waiter
+  # wakes on the explicit signal. Raw store read pins the single-writer
+  # persistence (store-key persistence law: under the awaited op_id).
+  test "await wakes on the explicit terminal signal with zero polls and zero sweeps" do
+    id = LRO.start_op(rid("signal-wake"))["name"]
+    parent = self()
+
+    task =
+      Task.async(fn ->
+        res = LRO.await(id, 5_000)
+        send(parent, :await_returned)
+        res
+      end)
+
+    # Await is registered (not store-first-converged) before the delay window
+    # closes: give the 20ms delay a beat, then the signal must deliver.
+    assert_receive :await_returned, 5_000
+    assert {:ok, %{"status" => "Succeeded"} = rec} = Task.await(task)
+
+    # Single-writer persistence under the awaited store key (F7 raw read).
+    assert {:ok, %{"status" => "Succeeded"} = stored} = Store.get(:smalt_operations, id)
+    refute Map.has_key?(stored, "startedAtMs")
+    refute Map.has_key?(stored, "delayMs")
+
+    # Signal and store agree on the terminal body.
+    assert rec["endTime"] == stored["endTime"]
+  end
+
+  # (B0-2) Typed timeout: an await whose budget expires on a not-yet-due op
+  # returns the TYPED timeout — never a raise, never a wedge.
+  test "await times out typed on a not-yet-due op" do
+    id = LRO.start_op(rid("typed-timeout"))["name"]
+    assert {:error, :timeout} = LRO.await(id, 0)
+  end
+
+  # (B0-3) Notifier-down face (the new fence): kill the Notifier MID-AWAIT.
+  # The waiter observes the DOWN and falls back to bounded store polling
+  # (single-writer routed get_op); the store converges via the at-rest flip
+  # path and await returns the terminal — fail-safe, never a wedge, never a
+  # raise. The Notifier is supervised: the kill is repaired by its restart.
+  test "notifier killed mid-await: typed fail-safe convergence, store converges" do
+    id = LRO.start_op(rid("notifier-down"))["name"]
+
+    assert notifier_pid = Process.whereis(Notifier)
+
+    task = Task.async(fn -> LRO.await(id, 5_000) end)
+
+    # Let the waiter register, then kill the signal hub mid-await.
+    Process.sleep(5)
+    true = Process.exit(notifier_pid, :kill)
+
+    # DOWN -> bounded store-poll fallback -> the single writer persists via
+    # the routed get_op -> await converges typed.
+    assert {:ok, %{"status" => "Succeeded"} = rec} = Task.await(task, 10_000)
+    assert is_binary(rec["endTime"])
+
+    # Store converged under the awaited key.
+    assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, id)
+
+    # Supervision repaired the signal hub for later tests.
+    wait_until(fn ->
+      case Process.whereis(Notifier) do
+        nil -> :retry
+        pid when is_pid(pid) -> {:ok, :up}
+      end
+    end)
+  end
+
+  # (B0-4) Subscription-scoped deny-by-default awaiter registration: a
+  # cross-subscription await is refused :error WITHOUT registering a waiter
+  # (no waiter entry, no signal ever delivered), while the owner's await
+  # succeeds.
+  test "cross-subscription await is denied by default and registers no waiter" do
+    id = LRO.start_op(rid("cross-sub-await"))["name"]
+
+    # Foreign await: refused, no waiter. Delay is 20ms — the refusal must be
+    # immediate (registration refusal), not a timeout-shaped wait.
+    {foreign_us, foreign_res} =
+      :timer.tc(fn -> LRO.await(id, @other_sub, 5_000) end)
+
+    assert :error = foreign_res
+    assert foreign_us < 100_000
+
+    # Owner await converges (signal path).
+    assert {:ok, %{"status" => "Succeeded"}} = LRO.await(id, @sub, 5_000)
+
+    # Unknown op: refused identically, no wedge.
+    assert :error = LRO.await("no-such-op-anywhere", @sub, 50)
+  end
+
+  defp wait_until(fun, deadline_ms \\ 5_000) do
+    SmaltTest.AssertEventually.eventually(fun,
+      deadline_ms: deadline_ms,
+      observable: "lro notifier fence precondition"
+    )
   end
 end

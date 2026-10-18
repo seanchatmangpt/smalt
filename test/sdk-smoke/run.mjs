@@ -93,21 +93,36 @@ async function main() {
   child.stdout.pipe(process.stdout);
   child.stderr.pipe(process.stderr);
 
-  const killSubstrate = (signal = "SIGTERM") => {
+  // Teardown of record is main()'s finally block. killSubstrate escalates:
+  // signal -> bounded 5s wait on close -> SIGKILL (deadline, not coordination).
+  const killSubstrate = async (signal = "SIGTERM") => {
     try {
       if (child.pid && child.exitCode === null && !child.killed) {
         try { process.kill(-child.pid, signal); } catch { /* group gone */ }
         child.kill(signal);
       }
     } catch { /* already gone */ }
+    await Promise.race([
+      new Promise((r) => child.once("close", r)),
+      new Promise((r) => setTimeout(r, 5000)),
+    ]).catch(() => {});
+    try {
+      if (child.exitCode === null && child.pid) {
+        try { process.kill(-child.pid, "SIGKILL"); } catch { /* group gone */ }
+        child.kill("SIGKILL");
+      }
+    } catch { /* already gone */ }
   };
-  // killEnforce is defined later; handlers hold a ref set at definition.
-  const killEnforceRef = { fn: null };
+  // killEnforce is defined later (inside the try); handlers and the finally
+  // hold a ref set at definition. `log` is the enforce log stream.
+  // Signal handlers keep only the crash path (they run while the loop is
+  // alive); the finally block is the teardown of record for completion paths.
+  const killEnforceRef = { fn: null, log: null };
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(sig, () => { killSubstrate("SIGKILL"); killEnforceRef.fn?.(); process.exit(130); });
   }
-  process.on("exit", () => { killSubstrate("SIGKILL"); killEnforceRef.fn?.(); });
 
+  try {
   // 3. Poll TCP 9443 + 8443 (hard), 5672 log-only (broker may still be landing).
   const start = Date.now();
   let amqpUp = false;
@@ -117,12 +132,18 @@ async function main() {
       tryConnect(EGRESS_PORT),
     ]);
     if (arm && egress) break;
+    if (child.exitCode !== null) {
+      console.error(
+        `[sdk-smoke] substrate died mid-boot (rc=${child.exitCode}). Log: ${logPath}`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     if (Date.now() - start > POLL_DEADLINE_MS) {
       console.error(
         `[sdk-smoke] substrate did not open ${ARM_PORT}/${EGRESS_PORT} within ` +
         `${POLL_DEADLINE_MS / 1000}s. Substrate log: ${logPath}`,
       );
-      killSubstrate("SIGKILL");
       process.exitCode = 2;
       return;
     }
@@ -167,7 +188,7 @@ async function main() {
     } catch { /* already gone */ }
   };
   killEnforceRef.fn = killEnforce;
-  process.on("exit", () => killEnforce());
+  killEnforceRef.log = enforceLog;
   const enforceStart = Date.now();
   let enforceUp = false;
   for (;;) {
@@ -186,8 +207,6 @@ async function main() {
       `${ENFORCE_ARM_PORT}/${ENFORCE_EGRESS_PORT} within ` +
       `${POLL_DEADLINE_MS / 1000}s. Log: ${enforceLogPath}`,
     );
-    killSubstrate("SIGKILL");
-    killEnforce();
     process.exitCode = 2;
     return;
   }
@@ -213,16 +232,12 @@ async function main() {
   );
   if (!tokenRes.ok) {
     console.error(`[sdk-smoke] token mint failed: HTTP ${tokenRes.status}`);
-    killSubstrate("SIGKILL");
-    killEnforce();
     process.exitCode = 2;
     return;
   }
   const tokenBody = await tokenRes.json();
   if (!tokenBody.access_token) {
     console.error("[sdk-smoke] token mint returned no access_token");
-    killSubstrate("SIGKILL");
-    killEnforce();
     process.exitCode = 2;
     return;
   }
@@ -254,8 +269,6 @@ async function main() {
       "substituted VM is serving these ports. Remediation: kill listeners " +
       "on 9443/8443 and re-run.",
     );
-    killSubstrate("SIGKILL");
-    killEnforce();
     process.exitCode = 2;
     return;
   }
@@ -285,12 +298,23 @@ async function main() {
     stdio: "inherit",
   });
   const code = await new Promise((resolve) => testRun.once("close", resolve));
-  // v26.10.17 (T3 root-cause, receipts/i21c-t3-sdk-smoke.md): the spawned
-  // `mix run --no-halt` beam child keeps this process's event loop referenced,
-  // so the "exit" teardown event never fires and exitCode is never consulted
-  // — the court watchdog killed this harness at 30 min (exit 124) even on a
-  // fully green 286ms probe set. Hard-exit to force the teardown path.
-  process.exit(code === 0 ? 0 : 1);
+  process.exitCode = code === 0 ? 0 : 1;
+  } finally {
+    // Structural teardown: runs on every completion path (success, early
+    // return, throw). The beam child references the event loop, so an
+    // "exit"-event teardown would never fire (witnessed i21c-T3, exit 124).
+    await killSubstrate("SIGTERM"); // escalation to SIGKILL stays inside
+    killEnforceRef.fn?.();
+    logStream.end();
+    killEnforceRef.log?.end();
+    try { child.stdout.destroy(); child.stderr.destroy(); } catch { /* gone */ }
+    if (killEnforceRef.log) {
+      try { killEnforceRef.log.destroy?.(); } catch { /* gone */ }
+    }
+  }
+  // Belt-and-suspenders: teardown is complete above, so a hard exit here is
+  // safe and drains any residual loop handles deterministically.
+  process.exit(process.exitCode || 0);
 }
 
 main().catch((err) => {

@@ -386,7 +386,10 @@ count, or PASS/FAIL token) found in the file.
 | i22-corpus-s | [i22-corpus-seed-hardening.md](../v26.10.17/receipts/i22-corpus-seed-hardening.md) | PASS | i22 — corpus/compliance shared-seed hardening (resilient clear) **NO-CONTEXT** |
 | i22-error-co | [i22-error-corpus-lro.md](../v26.10.17/receipts/i22-error-corpus-lro.md) | PASS | i22 — arm_error_corpus LRO PUT 202 + Azure-AsyncOperation poll (attempt-4 leg-2 face) **NO-CONTEXT** |
 | i22-fuzz-ato | [i22-fuzz-atom-fix.md](../v26.10.17/receipts/i22-fuzz-atom-fix.md) | UNKNOWN | i22 — fuzz_test.exs:561 atom-flood measurement fence (attempt 4, leg 1) **NO-CONTEXT** |
+| i22-pair-con | [i22-pair-context.md](../v26.10.17/receipts/i22-pair-context.md) | UNKNOWN | i22 — pair-context lane: court leg composition T1/T2 back-to-back x2 **NO-CONTEXT** |
 | i22-seed-chu | [i22-seed-churn.md](../v26.10.17/receipts/i22-seed-churn.md) | ALIVE | i22 — seed-order hardening: shacl_fuzz under shuffled seeds (churn harness) |
+| i22-shacl-fu | [i22-shacl-fuzz-fix.md](../v26.10.17/receipts/i22-shacl-fuzz-fix.md) | PARTIAL_ALIVE | i22 — shacl-fuzz snapshot hardening (faces :79 / :98 / :146) **NO-CONTEXT** |
+| i22-soak-c | [i22-soak-c.md](../v26.10.17/receipts/i22-soak-c.md) | UNKNOWN | i22 — Soak lane C: 3x full-suite runs post-i22-fixes **NO-CONTEXT** |
 | i22-tags-nor | [i22-tags-norm-fix.md](../v26.10.17/receipts/i22-tags-norm-fix.md) | UNKNOWN | i22 — tags_normalization.exs:49 resource PUT tags:null flake (attempt 4 leg 2) **NO-CONTEXT** |
 | i3-witness-s | [i3-witness-sweep.md](../v26.10.17/receipts/i3-witness-sweep.md) | PASS | i3 — witness receipts over in-flight lib/ (lane I3) **NO-CONTEXT** |
 | i5-complianc | [i5-compliance-witness.md](../v26.10.17/receipts/i5-compliance-witness.md) | PARTIAL_ALIVE | I5 — compliance witness + THIRD_PARTY.md NOTICE path fix **NO-CONTEXT** |
@@ -408,6 +411,16 @@ count, or PASS/FAIL token) found in the file.
 | r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
 | r245-t3-tear | [r245-t3-teardown-fix.md](../v26.10.17/receipts/r245-t3-teardown-fix.md) | PASS | r245 — T3 sdk-smoke teardown deadlock root-caused + fixed; leg green |
 | r246-attempt | [r246-attempt4-invalid-typed-red.md](../v26.10.17/receipts/r246-attempt4-invalid-typed-red.md) | UNKNOWN | r246 — court-x2 attempt 4: INVALID (mid-gate tree edit) + typed RED; WO-2 carries to v26.10.18 **NO-CONTEXT** |
+| b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE **NO-CONTEXT** |
+| b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
+| b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) **NO-CONTEXT** |
+| b0-foundatio | [b0-foundations.md](../v26.10.18/receipts/b0-foundations.md) | UNKNOWN | B0 FOUNDATIONS — test/support compile path + canonical helpers **NO-CONTEXT** |
+| b6-cites | [b6-cites.md](../v26.10.18/receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) **NO-CONTEXT** |
+| b8-doctrine | [b8-doctrine.md](../v26.10.18/receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) **NO-CONTEXT** |
+| w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) **NO-CONTEXT** |
+| w2-review | [w2-review.md](../v26.10.18/receipts/w2-review.md) | UNKNOWN | W2 residual review receipt — v26.10.18 **NO-CONTEXT** |
+| w3-review | [w3-review.md](../v26.10.18/receipts/w3-review.md) | PARTIAL_ALIVE | w3-review — PARTIAL_ALIVE **NO-CONTEXT** |
+| w4-review | [w4-review.md](../v26.10.18/receipts/w4-review.md) | PASS | W4 residual review receipt — group 3 (solo lane) |
 
 ## Workspace (ws-01..12)
 
@@ -476,7 +489,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -531,6 +544,9 @@ No receipt file on disk: cli-02.
 | dod-25 | (no receipt file — justfile module `justfile.d/25-leak-court.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-26 | (no receipt file — justfile module `justfile.d/26-rewitness.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-27 | (no receipt file — justfile module `justfile.d/27-scratch-soak.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-28 | (no receipt file — justfile module `justfile.d/28-stress.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-28 | (no receipt file — justfile module `justfile.d/28-test-budget.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

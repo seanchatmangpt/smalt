@@ -33,48 +33,21 @@ defmodule Smalt.EventGridConformanceTest do
 
   use ExUnit.Case, async: false
 
+  import SmaltTest.Wire, only: [http_request: 3, http_request: 4]
+
   setup do
-    port = get_free_port()
+    port = SmaltTest.Wire.get_free_port()
 
-    stop_existing_tree()
+    # Stop the shared app tree before booting the private one (same contract
+    # as the old stop_existing_tree/0, normalized to the superset name list).
+    SmaltTest.Wire.stop_existing_tree()
+    SmaltTest.Wire.pin_ports!(nil, port)
+    SmaltTest.Wire.start_wire_tree(arm_port: nil, egress_port: port)
 
-    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
-    prev = %{
-      arm_port: Application.get_env(:smalt, :arm_port),
-      egress_port: Application.get_env(:smalt, :egress_port),
-      amqp_port: Application.get_env(:smalt, :amqp_port)
-    }
-
-    Application.put_env(:smalt, :arm_port, get_free_port())
-    Application.put_env(:smalt, :egress_port, port)
-    Application.put_env(:smalt, :amqp_port, get_free_port())
-
-    children = [
-      Smalt.Store,
-      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
-    ]
-
-    {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one, name: Smalt.ConfWireSup)
-
-    on_exit(fn ->
-      stop_tree(sup)
-
-      if prev.arm_port == nil,
-        do: Application.delete_env(:smalt, :arm_port),
-        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
-
-      if prev.egress_port == nil,
-        do: Application.delete_env(:smalt, :egress_port),
-        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
-
-      if prev.amqp_port == nil,
-        do: Application.delete_env(:smalt, :amqp_port),
-        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
-
-      # Teardown repair: this suite stops the main app tree (stop_existing_tree
-      # above) and runs a private Store child. Restore the shared app on the
-      # shifted ports so downstream modules always see a live Store, whatever
-      # the module run order.
+    ExUnit.Callbacks.on_exit(fn ->
+      # Teardown repair: this suite stops the main app tree and runs a private
+      # Store child. Restore the shared app on the shifted ports so downstream
+      # modules always see a live Store, whatever the module run order.
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -467,89 +440,6 @@ defmodule Smalt.EventGridConformanceTest do
   end
 
   # ---------------------------------------------------------------------------
-  # helpers (mirrors test/wire/egress_wire_test.exs)
+  # helpers — transport/lifecycle live in SmaltTest.Wire (shared harness)
   # ---------------------------------------------------------------------------
-
-  defp stop_tree(sup) do
-    try do
-      Supervisor.stop(sup, :normal, 5000)
-    catch
-      _, _ -> Process.exit(sup, :kill)
-    end
-  end
-
-  defp stop_existing_tree do
-    case Process.whereis(Smalt.Supervisor) do
-      nil ->
-        for name <- [Smalt.Store, Smalt.AmqpBroker] do
-          if pid = Process.whereis(name), do: GenServer.stop(pid)
-        end
-
-      sup ->
-        SmaltTest.Lifecycle.stop_shared_tree()
-    end
-  end
-
-  defp wait_until_gone(name, n \\ 100)
-
-  defp wait_until_gone(_name, 0), do: :ok
-
-  defp wait_until_gone(name, n) do
-    if Process.whereis(name) == nil do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until_gone(name, n - 1)
-    end
-  end
-
-  defp get_free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(socket)
-    :gen_tcp.close(socket)
-    port
-  end
-
-  defp http_request(port, method, path, opts \\ []) do
-    headers = Keyword.get(opts, :headers, [])
-    body = Keyword.get(opts, :body, "")
-
-    {:ok, sock} =
-      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5000)
-
-    header_lines =
-      Enum.map_join(
-        headers ++ [{"host", "127.0.0.1:#{port}"}, {"connection", "close"}],
-        "\r\n",
-        fn {k, v} -> "#{k}: #{v}" end
-      )
-
-    request =
-      "#{method} #{path} HTTP/1.1\r\n" <>
-        header_lines <>
-        "\r\ncontent-length: #{byte_size(body)}\r\n\r\n" <> body
-
-    :ok = :gen_tcp.send(sock, request)
-    raw = recv_all(sock)
-    :gen_tcp.close(sock)
-    parse_response(raw)
-  end
-
-  defp recv_all(sock) do
-    case :gen_tcp.recv(sock, 0, 5000) do
-      {:ok, data} -> [data | recv_all(sock)]
-      {:error, :closed} -> []
-    end
-  end
-
-  defp parse_response(raw) do
-    raw = IO.iodata_to_binary(raw)
-    [status_line, rest] = :binary.split(raw, "\r\n")
-    [header_block, body] = :binary.split(rest, "\r\n\r\n")
-
-    status =
-      status_line |> String.split(" ") |> Enum.at(1) |> String.to_integer()
-
-    %{status: status, headers: header_block, body: body}
-  end
 end

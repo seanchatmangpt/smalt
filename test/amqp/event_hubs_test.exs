@@ -145,7 +145,9 @@ defmodule Smalt.Messaging.EventHubsTest do
       # same owner re-reserves freely (renewal)
       assert :ok = EventHubs.reserve_processing(g, p, :a, 10)
 
-      Process.sleep(30)
+      # Authored expiry: the claim's `until` IS the contract — expired at the
+      # moment sweep runs, deterministically (no sweep-lands-in-window race).
+      expire_claim!(g, p)
       assert EventHubs.sweep() >= 0
       assert :ok = EventHubs.reserve_processing(g, p, :b, 5_000)
       assert {:error, :conflict} = EventHubs.reserve_processing(g, p, :a, 5_000)
@@ -404,7 +406,10 @@ defmodule Smalt.Messaging.EventHubsTest do
 
       assert :ok = EventHubs.reserve_processing(g1, p1, :live, 60_000)
       assert :ok = EventHubs.reserve_processing(g2, p2, :expired, 1)
-      Process.sleep(10)
+
+      # Authored expiry replaces the 10 ms TTL + settle sleep: expired at the
+      # moment sweep runs, deterministically.
+      expire_claim!(g2, p2)
 
       cleared = EventHubs.sweep()
       assert is_integer(cleared) and cleared >= 1
@@ -435,7 +440,9 @@ defmodule Smalt.Messaging.EventHubsTest do
       gx = "l6-shape-exp-#{System.unique_integer([:positive])}"
       px = part("l6-shape-x")
       assert :ok = EventHubs.reserve_processing(gx, px, :expired, 15)
-      Process.sleep(60)
+
+      # Authored expiry replaces the 15 ms TTL + settle sleep.
+      expire_claim!(gx, px)
 
       parent = self()
 
@@ -549,7 +556,11 @@ defmodule Smalt.Messaging.EventHubsTest do
   describe "lens-5 concurrent first-use (F-4)" do
     test "32 concurrent ensure_tables after table deletion all survive" do
       # Any process may delete a named public table; recreate through the
-      # public seam and race 32 first-users on the pristine name.
+      # public seam and race 32 first-users on the pristine name. NAMED
+      # EXCEPTION (kept, disclosed): the delete MUST target the canonical
+      # names or ensure_tables/0 is not exercised. Crash-mid-test restore:
+      on_exit(fn -> EventHubs.ensure_tables() end)
+
       :ets.delete(:smalt_eh_partitions)
       :ets.delete(:smalt_eh_checkpoints)
 
@@ -582,36 +593,7 @@ defmodule Smalt.Messaging.EventHubsTest do
   describe "V261014-04 F1 wire-level receiver delivery" do
     @tag :amqp_wire
     test "receiver link on /eventhubs/ path receives sent events in sequence order with x-opt-sequence-number" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       partition = "0"
 
@@ -620,7 +602,7 @@ defmodule Smalt.Messaging.EventHubsTest do
           "#{System.unique_integer([:positive])}" <> "/partitions/" <> partition
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         # sender link (client role :sender) on the EH entity path
         :ok =
@@ -753,36 +735,7 @@ defmodule Smalt.Messaging.EventHubsTest do
 
     @tag :amqp_wire
     test "wire delivery carries last_enqueued_* delivery annotations and x-opt-* message annotations" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       hub = "ann-hub-#{System.unique_integer([:positive])}"
       # Test isolation: EH delivery keys the stream/cursor by the address's
@@ -793,7 +746,7 @@ defmodule Smalt.Messaging.EventHubsTest do
       eh_address = "/eventhubs/#{hub}/partitions/1"
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         # sender link with a partition-key-stamped event (message annotation)
         :ok =
@@ -1078,36 +1031,7 @@ defmodule Smalt.Messaging.EventHubsTest do
 
     @tag :amqp_wire
     test "wire: 2-inner batch -> 2 events; truncated non-tail inner -> 1; valid single -> 1" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       hub = "r166-hub-#{System.unique_integer([:positive])}"
       eh_address = "/eventhubs/#{hub}/partitions/0"
@@ -1127,7 +1051,7 @@ defmodule Smalt.Messaging.EventHubsTest do
       anns = %{"x-opt-partition-key" => "r166-pk"}
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         :ok =
           send_b(
@@ -1272,41 +1196,12 @@ defmodule Smalt.Messaging.EventHubsTest do
   describe "KD-76 partition-key routing" do
     @tag :amqp_wire
     test "pk-routed hub send reaches exactly one partition + the hub receiver; x-opt-partition-key round-trips" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       hub = "kd76-hub-#{System.unique_integer([:positive])}"
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         # sender on the HUB address (real producer shape: no /partitions segment)
         :ok =
@@ -1412,36 +1307,7 @@ defmodule Smalt.Messaging.EventHubsTest do
 
     @tag :amqp_wire
     test "r200h: SDK capital-P partition receivers (.../ConsumerGroups/$Default/Partitions/{n}) get pk-routed events" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       hub = "kd76cap-hub-#{System.unique_integer([:positive])}"
       pk = "r200h-pk"
@@ -1449,7 +1315,7 @@ defmodule Smalt.Messaging.EventHubsTest do
       expected = Integer.to_string(rem(f, 2))
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         # hub-address sender with a partition key (real producer shape)
         :ok =
@@ -1551,41 +1417,12 @@ defmodule Smalt.Messaging.EventHubsTest do
 
     @tag :amqp_wire
     test "r200h: capital-P direct-partition send meets capital-P receiver at the same storage partition" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       hub = "kd76cap2-hub-#{System.unique_integer([:positive])}"
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         # sender pinned to partition 1 via the SDK's capital-P target form
         :ok =
@@ -1700,41 +1537,12 @@ defmodule Smalt.Messaging.EventHubsTest do
     # typed detach amqp:not-allowed — never a silently-attached black hole.
     @tag :amqp_wire
     test "out-of-pin partition attach is refused: attach echo then typed detach" do
-      Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
-
-      if GenServer.whereis(Smalt.Store) == nil do
-        start_supervised!(Smalt.Store)
-      end
-
-      EventHubs.ensure_tables()
-
-      {:ok, listener} =
-        :gen_tcp.listen(0, [
-          :binary,
-          packet: :raw,
-          active: false,
-          reuseaddr: true,
-          ip: {127, 0, 0, 1}
-        ])
-
-      {:ok, port} = :inet.port(listener)
-
-      accept_task =
-        Task.async(fn ->
-          {:ok, sock} = :gen_tcp.accept(listener, 5000)
-          {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
-          :ok = :gen_tcp.controlling_process(sock, pid)
-          {:ok, pid}
-        end)
-
-      {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
-      {:ok, _conn} = Task.await(accept_task, 5000)
+      {client, _port} = wire_conn!()
 
       hub = "outpin-hub-#{System.unique_integer([:positive])}"
 
       try do
-        wh(client)
+        # handshake already performed by wire_conn!/0
 
         :ok =
           send_b(
@@ -1961,5 +1769,55 @@ defmodule Smalt.Messaging.EventHubsTest do
       [{_k, cp}] -> Map.delete(cp, "claim")
       [] -> nil
     end
+  end
+
+  # Test-fixture state construction: author the claim's `until` in the past.
+  # The tables are :public :named and server-owned; this is the same
+  # authored-state pattern as broker_facade's claim-GC test. The production
+  # caller-side-write ban is enforced separately by the F-3 trace court (which
+  # traces the SWEEPING caller, not test setup).
+  defp expire_claim!(g, p) do
+    [{_k, cp}] = :ets.lookup(:smalt_eh_checkpoints, {g, p})
+    expired = put_in(cp, ["claim", "until"], System.system_time(:millisecond) - 60_000)
+    true = :ets.insert(:smalt_eh_checkpoints, {{g, p}, expired})
+    :ok
+  end
+
+  # Wire harness shared by every :amqp_wire test in this module (was ~120 lines
+  # of hand-rolled duplication): sb_shared_key env + canonical Store readiness
+  # gate + ephemeral listener + accept task handing the socket to a real
+  # Connection + SASL ANONYMOUS handshake (the pinion lives in wh/1, one place
+  # to fix if it ever changes). Returns {client, port}.
+  defp wire_conn! do
+    Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
+    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    assert :ok = SmaltTest.Lifecycle.ensure_store_up()
+    EventHubs.ensure_tables()
+
+    {:ok, listener} =
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        active: false,
+        reuseaddr: true,
+        ip: {127, 0, 0, 1}
+      ])
+
+    {:ok, port} = :inet.port(listener)
+
+    accept_task =
+      Task.async(fn ->
+        {:ok, sock} = :gen_tcp.accept(listener, 5000)
+        {:ok, pid} = Smalt.Amqp.Connection.start_link(socket: sock)
+        :ok = :gen_tcp.controlling_process(sock, pid)
+        {:ok, pid}
+      end)
+
+    {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+    {:ok, _conn} = Task.await(accept_task, 5000)
+
+    on_exit(fn -> :gen_tcp.close(client) end)
+    wh(client)
+    {client, port}
   end
 end

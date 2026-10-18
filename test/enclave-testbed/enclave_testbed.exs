@@ -607,6 +607,7 @@ defmodule Enclave.Testbed do
       IO.puts("  started 50 LRO operations (delay 15ms)")
 
       # let the deadline pass, then drive the at-rest sweeper
+      # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
       Process.sleep(60)
 
       _ = Sweeper.sweep_now()
@@ -696,7 +697,7 @@ defmodule Enclave.Testbed do
     consumer =
       Task.async(fn ->
         last = 0
-        seen = consume(part, last, 0)
+        seen = consume(part, last, 0, System.monotonic_time(:millisecond) + 30_000)
 
         seen
       end)
@@ -761,7 +762,10 @@ defmodule Enclave.Testbed do
     "PASS: EH wire delivery under producer/consumer contention + CAS race semantics"
   end
 
-  defp consume(part, after_seq, acc) do
+  # Poll step inside the ONE audited local poll loop for the testbed script
+  # (SmaltTest.AssertEventually is not compiled into :dev env, which is how
+  # run.sh drives this .exs via `mix run`). Bounded by a monotonic deadline.
+  defp consume(part, after_seq, acc, deadline) do
     events = EventHubs.receive_events(part, after_seq, 20)
 
     case events do
@@ -769,8 +773,13 @@ defmodule Enclave.Testbed do
         if acc >= 50 do
           acc
         else
+          if System.monotonic_time(:millisecond) >= deadline do
+            raise "consume/4 deadline (30s) exceeded with #{acc}/50 events (after_seq=#{after_seq})"
+          end
+
+          # POLL-STEP: bounded backoff pass inside the audited poll loop above.
           Process.sleep(10)
-          consume(part, after_seq, acc)
+          consume(part, after_seq, acc, deadline)
         end
 
       evs ->
@@ -795,7 +804,7 @@ defmodule Enclave.Testbed do
             IO.puts("  [f2] checkpoint CAS conflict at seq #{after_seq} (raced)")
         end
 
-        consume(part, last, acc)
+        consume(part, last, acc, deadline)
     end
   end
 
@@ -827,14 +836,24 @@ defmodule Enclave.Testbed do
     if not restart_ok, do: raise("sweeper did not restart and serve after kill")
 
     # substrate still serving: a fresh LRO still converges, ledger still appends
-    Application.put_env(:smalt, :lro_delay_ms, 1)
+    prev_delay = Application.get_env(:smalt, :lro_delay_ms, 0)
 
-    rec =
-      LRO.start_op("/subscriptions/enclave/providers/microsoft.storage/storageaccounts/chaos1")
+    try do
+      Application.put_env(:smalt, :lro_delay_ms, 1)
 
-    Process.sleep(30)
-    _ = Sweeper.sweep_now()
-    {:ok, %{"status" => "Succeeded"}} = LRO.get_op(rec["name"])
+      rec =
+        LRO.start_op("/subscriptions/enclave/providers/microsoft.storage/storageaccounts/chaos1")
+
+      # SLEEP-CLASS: TIME-ADVANCE — crosses the 1ms LRO deadline window (the
+      # condition under test is elapsed time, no pollable observable; the
+      # at-rest sweeper is driven explicitly afterwards).
+      Process.sleep(30)
+
+      _ = Sweeper.sweep_now()
+      {:ok, %{"status" => "Succeeded"}} = LRO.get_op(rec["name"])
+    after
+      Application.put_env(:smalt, :lro_delay_ms, prev_delay)
+    end
 
     {:ok, _} =
       ConfidentialLedger.append_transaction("enclave-ledger", %{"chaos" => "post-kill"})
@@ -842,11 +861,15 @@ defmodule Enclave.Testbed do
     "PASS: sweeper child killed -> supervisor restart -> serves again; substrate kept serving"
   end
 
+  # THE audited bounded poll implementation for this script (mix-run in :dev
+  # env — SmaltTest.AssertEventually is test-env-only). All sleeps below are
+  # POLL-STEPs of this loop, bounded by the monotonic deadline argument.
   defp wait_until(deadline, fun) do
     if fun.() do
       true
     else
       if System.monotonic_time(:millisecond) < deadline do
+        # POLL-STEP: backoff pass of the audited loop above.
         Process.sleep(50)
         wait_until(deadline, fun)
       else

@@ -15,9 +15,18 @@
 # remains the contract for suites that stop/restart the shared tree.
 ExUnit.configure(
   exclude: [
-    :amqp_wire
+    :amqp_wire,
+    # :stress tier (v26.10.18): 15 expensive test bodies (replay-identity
+    # fences, DETS churn, 10k-op fuzz, 1000-PUT corpus sweep). Excluded from
+    # plain `mix test`; run with `mix test --include stress` / `just
+    # test-stress`. Population fenced by test/stress_tier_census_test.exs.
+    :stress
   ]
 )
+
+# Per-run shared name registry for SmaltTest.Singleton (started ONCE per
+# run here — per-test registry starts race under async).
+{:ok, _} = Registry.start_link(keys: :unique, name: SmaltTest.Registry)
 
 # Degraded-host law (runs 21-30): timing-sensitive suites flip under CPU
 # contention (Metadata indexer / concurrent builds). SMALT_MAX_CASES caps
@@ -78,6 +87,40 @@ defmodule SmaltTest.Lifecycle do
 
         wait_gone(Smalt.Store)
         wait_gone(Smalt.Supervisor)
+    end
+  end
+
+  @doc """
+  `stop_shared_tree/0` plus a nil-supervisor fallback that stops the
+  Store/AmqpBroker children directly (the egress/amqp wire suites' former
+  private `stop_existing_tree/0`, folded here per e2e-wire D4).
+  """
+  def stop_shared_tree_with_children do
+    case Process.whereis(Smalt.Supervisor) do
+      nil ->
+        for name <- [Smalt.Store, Smalt.AmqpBroker] do
+          if pid = Process.whereis(name), do: GenServer.stop(pid)
+        end
+
+      sup ->
+        stop_shared_tree()
+    end
+  end
+
+  @doc """
+  Public bounded wait for a registered name to disappear (100 x 10ms by
+  default; the wire suites' former private `wait_until_gone/2`, e2e-wire D4).
+  """
+  def await_gone(name, n \\ 100)
+
+  def await_gone(_name, 0), do: :ok
+
+  def await_gone(name, n) do
+    if Process.whereis(name) == nil do
+      :ok
+    else
+      Process.sleep(10)
+      await_gone(name, n - 1)
     end
   end
 
@@ -168,10 +211,21 @@ defmodule SmaltTest.Lifecycle do
   # {:already_started, _}} are both success for our purposes; the table wait
   # below is the real gate.
   defp restart_store_child do
-    case Supervisor.restart_child(Smalt.Supervisor, Smalt.Store) do
-      {:error, _} = e -> e
-      {:ok, _pid} -> :ok
-      other -> {:error, other}
+    # If the supervision tree itself is gone (Application.stop raced another
+    # module's on_exit while the application master still reports :started),
+    # restart_child would GenServer.call a dead name and crash the on_exit
+    # runner (witnessed: warm-up 2026-10-18, AmqpWireTest on_exit vs
+    # canonical_projection's Application.stop). Force a true reboot instead.
+    if Process.whereis(Smalt.Supervisor) == nil do
+      _ = Application.stop(:smalt)
+      _ = restore_app()
+      :ok
+    else
+      case Supervisor.restart_child(Smalt.Supervisor, Smalt.Store) do
+        {:error, _} = e -> e
+        {:ok, _pid} -> :ok
+        other -> {:error, other}
+      end
     end
   end
 

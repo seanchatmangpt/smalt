@@ -6,11 +6,11 @@ defmodule Smalt.DataPlane.R5RepairReproTest do
   use ExUnit.Case, async: false
 
   alias Smalt.DataPlane.BlobStorage
-  alias Smalt.Store
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # Canonical resilient setup (v26.10.18): the bare ensure→clear window
+    # races an async sibling's shared-tree teardown (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
     BlobStorage.ensure_policy_table()
     :ets.delete_all_objects(:smalt_blob_policy)
     :ok

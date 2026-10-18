@@ -17,14 +17,14 @@ defmodule Smalt.SbRulesTest do
   use Plug.Test
 
   alias Smalt.ArmGateway.Router
-  alias Smalt.Store
   alias Smalt.SbRules
 
   @opts Router.init([])
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # v26.10.18: canonical resilient shared-Store setup (dead-table retry on
+    # AssertEventually; replaces bare ensure_store_up + clear).
+    :ok = SmaltTest.Store.resilient_clear()
     :ok
   end
 

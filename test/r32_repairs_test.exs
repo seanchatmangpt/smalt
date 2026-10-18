@@ -9,9 +9,8 @@ defmodule Smalt.R32VerifyScratchTest do
   @opts EgressRouter.init([])
 
   setup do
-    Application.put_env(:smalt, :auth_mode, :anonymous)
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    SmaltTest.Env.put_restored(auth_mode: :anonymous)
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 

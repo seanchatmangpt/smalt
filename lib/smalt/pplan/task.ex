@@ -139,22 +139,41 @@ defmodule Smalt.PPlan.Task do
     end
   end
 
-  @max_ensure_wait_tries 5_000
+  @max_ensure_wait_tries 100
 
+  # Readiness handshake (sleep deleted 2026-10-18): the 1ms poll-spin is gone.
+  # The table owner replies to `GenServer.call(pid, :ready)` only after its
+  # init/handle_continue has created the table — message ordering guarantees
+  # a queued call is answered after continue runs, so the start-order race
+  # terminates on a MESSAGE, not a clock. Bounded: if the winner died before
+  # readiness, the caller re-enters ensure/0 (which restarts the owner); past
+  # @max_ensure_wait_tries the next :ets op fails typed (badarg) rather than
+  # hanging the caller forever.
   defp wait_table(tries \\ @max_ensure_wait_tries)
 
-  defp wait_table(0) do
-    # Bounded: if the winner died before init created the table, the next
-    # :ets op fails typed (badarg) rather than hanging the caller forever.
-    :ok
-  end
+  defp wait_table(0), do: :ok
 
   defp wait_table(tries) do
-    if :ets.info(@table) == :undefined do
-      Process.sleep(1)
-      wait_table(tries - 1)
-    else
+    if :ets.info(@table) != :undefined do
       :ok
+    else
+      # A call exit (noproc / timeout mid-race) falls back to the bounded
+      # retry, never crashes the ensure caller.
+      try do
+        case GenServer.whereis(__MODULE__) do
+          nil ->
+            # Winner died before readiness; the caller's next ensure/0
+            # restarts it. Do not return success on a missing table.
+            nil
+
+          pid ->
+            GenServer.call(pid, :ready, 5_000)
+        end
+      catch
+        :exit, _ -> nil
+      end
+
+      if :ets.info(@table) != :undefined, do: :ok, else: wait_table(tries - 1)
     end
   end
 
@@ -422,8 +441,19 @@ defmodule Smalt.PPlan.Task do
       ])
     end
 
-    {:ok, %{}}
+    # Table creation is synchronous inside init; the continue marks the
+    # owner ready so `handle_call(:ready)` (the client handshake) is only
+    # ever answered by a fully-initialized owner (message ordering: any
+    # queued :ready call is processed after this continue runs).
+    {:ok, %{}, {:continue, :signal_ready}}
   end
+
+  @impl true
+  def handle_continue(:signal_ready, state), do: {:noreply, state}
+
+  @doc false
+  @impl true
+  def handle_call(:ready, _from, state), do: {:reply, :ready, state}
 
   # Lease liveness contract (pinned): recovery keys on pid identity, and the
   # BEAM may in principle recycle pids. If a dead claimant's pid is reused by

@@ -26,6 +26,7 @@ defmodule Smalt.EtsCompositeIdentityTest do
   @rg_path "/subscriptions/#{@sub}/resourceGroups/#{@rg}"
 
   @moduletag timeout: 300_000
+  @moduletag :stress
 
   @opts Router.init([])
 

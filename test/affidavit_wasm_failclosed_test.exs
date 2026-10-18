@@ -499,8 +499,9 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
   # load-bearing only on the :engine_start_failed class. 5 start/kill cycles
   # with 10 parallel tasks interleaving bogus-path artifact refusals and
   # valid-path restarts racing the wasmtime NIF async-teardown window:
-  #   - every bogus-path start refuses FAST (<100ms) and typed — the retry
-  #     must never leak sleep onto the artifact-refusal path;
+  #   - every bogus-path start refuses FAST (structurally sleep-free: zero
+  #     Process.sleep in the engine module) and typed — the retry must
+  #     never leak sleep onto the artifact-refusal path;
   #   - every valid start resolves to a live engine or an already-started
   #     registry (never a persistent fabricated unavailability);
   #   - after the hammering stops, one more valid start succeeds outright
@@ -543,19 +544,47 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     {valid, bogus} = Enum.split_with(flat, fn {i, _, _} -> rem(i, 2) == 1 end)
 
     # bogus-path artifact refusals: typed AND fast (no retry sleep leaked).
-    # The bound is the engine's own retry delay (250ms/attempt,
-    # @start_retry_delay_ms in WasmEngine), not an arbitrary wall-clock
-    # number: Process.sleep/1 never returns early, so ANY leaked retry sleep
-    # makes a refusal take >=250ms deterministically, while a clean refusal
-    # path carries no sleep at all. Prior 100ms bound was a PERSISTENT-FLAKE
-    # under parallel scheduler load (witnessed 129ms clean refusal, court
-    # attempt 3 both legs; solo refusals are single-digit ms) — it fenced
-    # scheduler jitter, not the sleep-leak regression class. 250ms still
-    # fences the regression exactly: one leaked sleep => >=250ms => RED.
-    Enum.each(bogus, fn {i, r, ms} ->
+    # STRUCTURAL fence (v26.10.18, replaces the absolute 250ms bound; the
+    # supervised-restart redesign in lib/smalt/affidavit/wasm_engine.ex made
+    # the ratio fence subjectless — there is no caller-path sleep left to
+    # time). The fence reads the engine module's own compiled source path
+    # (module_info(:compile)[:source]) and refuses ANY Process.sleep in the
+    # module: the supervised-restart contract moves retry into the
+    # supervisor's restart intensity, so a re-introduced sleep anywhere in
+    # the engine (retry loop, refusal path, handle_call) is the regression
+    # class by construction. Source-scan not beam-scan: the compiled module
+    # keeps its .ex source path, so the fence tracks the live lib file.
+    # Prior history: 100ms absolute bound was a PERSISTENT-FLAKE under
+    # parallel scheduler load (witnessed 129ms clean refusal, court attempt
+    # 3); 250ms hugged the retry constant; the ratio conversion
+    # (fence10-ratio.md) was probed and REJECTED — a start_link-surface
+    # baseline cannot be sleep-free under the leak regression (witnessed:
+    # the probe's shimmed subject + directory baseline both rode the same
+    # `:error ->` refusal clause, ratio collapsed to ~1.0, fence stayed
+    # GREEN under a 300ms leak => vacuous). Structural form has no such
+    # masking channel: one Process.sleep token = RED.
+    Enum.each(bogus, fn {i, r, _ms} ->
       assert {:error, :engine_unavailable} = r, "bogus start #{i}: #{inspect(r)}"
-      assert ms < 250, "artifact refusal #{i} took #{ms}ms — retry sleep leaked onto refusal path"
     end)
+
+    src_path =
+      WasmEngine.module_info(:compile)[:source]
+      |> List.to_string()
+
+    assert File.exists?(src_path), "engine source not found at #{src_path}"
+
+    engine_src = File.read!(src_path)
+
+    sleep_lines =
+      engine_src
+      |> String.split(["\n", "\r\n"])
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {line, _i} -> String.contains?(line, "Process.sleep(") end)
+
+    assert sleep_lines == [],
+           "Process.sleep/1 call re-introduced into WasmEngine (supervised-restart " <>
+             "contract: retry lives in the supervisor, zero caller-path sleep): " <>
+             inspect(Enum.map(sleep_lines, fn {l, i} -> {i, String.trim(l)} end))
 
     # valid starts: live engine or already-started registry, never a hang or
     # a persistent unavailability
@@ -571,5 +600,151 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     assert {:ok, pid} = typed_start([])
     GenServer.stop(pid, :normal)
     WasmEngine.reset_last_init_refusal()
+  end
+
+  # ---------------------------------------------------------------------------
+  # Fence 11 (v26.10.18 lib redesign Part 1): supervised-restart hammer.
+  # Re-arms the WasmEngine.Supervisor owner and kill-loops the OWNER-OWNED
+  # engine under parallel load. Contract under supervision:
+  #   - every concurrent caller observes ONLY typed vocabulary —
+  #     {:ok,_} | {:error, :engine_unavailable} | {:error,
+  #     {:already_started,_}} — never a raise, never a hang;
+  #   - the engine comes back after every kill (owner own-mailbox restart,
+  #     zero supervisor-intensity consumption, so the hammer cannot murder
+  #     the supervision tree via a 3/1s give-up);
+  #   - after the hammering stops, service is restored: a valid call
+  #     succeeds against a live engine generation.
+  # ---------------------------------------------------------------------------
+
+  @tag :lane644
+  test "fence 11: supervised-restart hammer — kill-loop under load stays typed, engine returns" do
+    alias Smalt.Affidavit.WasmEngine.Supervisor
+
+    # Re-arm ownership: restore_owner stops any live engine, terminates the
+    # current owner and starts a fresh one that owns a new generation.
+    assert {:ok, _owner} = Supervisor.restore_owner()
+
+    assert {:ok, pid0} = wait_for(&engine_pid/0, 200)
+
+    assert is_pid(pid0)
+
+    # Parallel load: 6 caller workers doing calls + direct starts WHILE the
+    # kill-loop runs in this process (tasks spawned unawaited; await AFTER
+    # the kill-loop completes so load and kills actually interleave).
+    load_tasks =
+      Enum.map(1..6, fn _w ->
+        Task.async(fn ->
+          Enum.map(1..40, fn _i ->
+            pid = Process.whereis(WasmEngine)
+
+            cond do
+              is_nil(pid) ->
+                WasmEngine.start_link([])
+
+              rem(System.unique_integer(), 4) == 0 ->
+                WasmEngine.start_link([])
+
+              :else ->
+                WasmEngine.call(pid, @valid_request)
+            end
+          end)
+        end)
+      end)
+
+    # Kill-loop paced by reappearance + own-mailbox spacing (receive-after,
+    # never Process.sleep): 4 cycles, every kill of the owned engine is
+    # observed by the owner as an abnormal DOWN.
+    for _cycle <- 1..4 do
+      pid = Process.whereis(WasmEngine)
+
+      if is_pid(pid) do
+        Process.exit(pid, :kill)
+      end
+
+      # reappearance wait in this process's OWN mailbox (doubling capped)
+      wait_for(
+        fn ->
+          p = Process.whereis(WasmEngine)
+          is_pid(p) and p != pid and Process.alive?(p)
+        end,
+        100
+      )
+
+      receive do
+      after
+        150 -> :ok
+      end
+    end
+
+    # every observation typed (tasks awaited after the kill-loop)
+    flat = List.flatten(Task.await_many(load_tasks, 60_000))
+    assert length(flat) > 0
+
+    Enum.each(flat, fn r ->
+      assert match?({:ok, _}, r) or match?({:error, :engine_unavailable}, r) or
+               match?({:error, {:already_started, _}}, r),
+             "untyped observation under hammer: #{inspect(r)}"
+    end)
+
+    # service restored after the hammer
+    assert {:ok, _owner2} = Supervisor.restore_owner()
+
+    assert {:ok, _pidN} = wait_for(&engine_pid/0, 200)
+
+    assert {:ok, resp} = WasmEngine.call(Process.whereis(WasmEngine), @valid_request)
+    assert {:ok, %{"ok" => true}} = Jason.decode(resp)
+
+    WasmEngine.reset_last_init_refusal()
+  end
+
+  # ---------------------------------------------------------------------------
+  # Fence 12: deterministic already_started passthrough — with the whereis
+  # probe in start_link/1, a start while the engine (any generation, any
+  # owner) is registered returns the typed {:error, {:already_started, pid}}
+  # passthrough (lane644 face, preserved verbatim; it is also the owner's
+  # adoption guard). Never :engine_unavailable, never a raise.
+  # ---------------------------------------------------------------------------
+
+  @tag :lane644
+  test "fence 12: start while running is typed already_started passthrough" do
+    assert {:ok, _owner} = Smalt.Affidavit.WasmEngine.Supervisor.restore_owner()
+
+    assert {:ok, _pid} = wait_for(&engine_pid/0, 200)
+
+    pid = Process.whereis(WasmEngine)
+    assert {:error, {:already_started, ^pid}} = WasmEngine.start_link([])
+    assert Process.alive?(pid)
+
+    # cleanup back to the module's standard post-state
+    GenServer.stop(pid, :normal)
+    WasmEngine.reset_last_init_refusal()
+  end
+
+  # Typed reappearance probe for wait_for/2: :error while the engine name
+  # is absent or the observed pid is dead.
+  defp engine_pid do
+    case Process.whereis(WasmEngine) do
+      nil -> :error
+      p -> if Process.alive?(p), do: {:ok, p}, else: :error
+    end
+  end
+
+  # Own-mailbox reappearance poll: receive-after pacing, never
+  # Process.sleep. fun returns :error while the condition is unmet.
+  defp wait_for(fun, tries)
+
+  defp wait_for(_fun, 0), do: flunk("wait_for: condition never met")
+
+  defp wait_for(fun, tries) do
+    case fun.() do
+      :error ->
+        receive do
+        after
+          25 -> wait_for(fun, tries - 1)
+        end
+
+      other ->
+        other
+    end
   end
 end

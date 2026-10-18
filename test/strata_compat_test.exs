@@ -134,7 +134,7 @@ defmodule StrataCompatTest do
   describe "strata-ledger-pack contract" do
     @tag :strata_compat
     test "receipt chaining law: each receipt's prev root equals the prior state root" do
-      Smalt.Store.clear()
+      SmaltTest.Store.resilient_clear()
 
       {:ok, r1} =
         Smalt.Security.ConfidentialLedger.append_transaction("strata-compat-ledger", %{"n" => 1})
@@ -167,7 +167,7 @@ defmodule StrataCompatTest do
 
     @tag :strata_compat
     test "canonical JSON data hashing is deterministic across key order" do
-      Smalt.Store.clear()
+      SmaltTest.Store.resilient_clear()
 
       {:ok, r1} =
         Smalt.Security.ConfidentialLedger.append_transaction("strata-canon-ledger", %{
@@ -271,7 +271,7 @@ defmodule StrataCompatTest do
 
     @tag :strata_compat
     test "smalt CAS: serialized compare-and-swap, exactly one winner (real ETS)" do
-      Smalt.Store.clear()
+      SmaltTest.Store.resilient_clear()
       start_supervised!()
 
       :ets.insert(:smalt_resources, {"k", "v0"})

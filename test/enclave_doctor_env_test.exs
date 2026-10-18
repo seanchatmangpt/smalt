@@ -7,16 +7,9 @@ defmodule EnclaveDoctorEnvTest do
   # if unset), so a following check sees the original env.
 
   test "store_invariants check restores prior :lro_retention_ms env" do
-    prev_retention = Application.get_env(:smalt, :lro_retention_ms)
-    Application.put_env(:smalt, :lro_retention_ms, 123_456)
-
-    on_exit(fn ->
-      if is_nil(prev_retention) do
-        Application.delete_env(:smalt, :lro_retention_ms)
-      else
-        Application.put_env(:smalt, :lro_retention_ms, prev_retention)
-      end
-    end)
+    # Canonical save/restore (SmaltTest.Env, foundations §3.3): put_restored
+    # records the prior value (unset-aware) and restores via on_exit.
+    :ok = SmaltTest.Env.put_restored(lro_retention_ms: 123_456)
 
     report = Smalt.Enclave.Doctor.run()
 
@@ -28,6 +21,9 @@ defmodule EnclaveDoctorEnvTest do
   end
 
   test "store_invariants check deletes env when none was set" do
+    # Unset-prior case: put_restored records the key as :__unset__ and the
+    # on_exit restore delete_envs it — the delete-before-run is still needed
+    # to reach the unset state under an externally-set value.
     prev_retention = Application.get_env(:smalt, :lro_retention_ms)
     Application.delete_env(:smalt, :lro_retention_ms)
 

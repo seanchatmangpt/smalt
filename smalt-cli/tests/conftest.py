@@ -149,11 +149,11 @@ def _substrate_reachable(url=ARM):
         return False
 
 
-def _port_open(port):
+def _port_open(port, timeout=1.0):
     import socket
 
     with socket.socket() as s:
-        s.settimeout(1)
+        s.settimeout(timeout)
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
@@ -206,10 +206,14 @@ def _sweep_stale_listeners(ports):
                 os.kill(pid, signal.SIGTERM)
             except (ProcessLookupError, PermissionError):
                 pass
-    for _ in range(10):
+    # Deadline-bounded drain poll (D1): observable condition is every lane
+    # port refusing connections; typed expiry False (caller fails closed to a
+    # fresh boot either way — call-site semantic unchanged).
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
         if not any(_port_open(p) for p in ports):
             return True
-        time.sleep(1)
+        time.sleep(0.2)
     return False
 
 
@@ -314,13 +318,21 @@ def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
             stderr=subprocess.STDOUT, start_new_session=True,
         )
         up = False
-        for _ in range(120):
-            if all(_port_open(p) for p in ports) and (ready is None or ready()):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            rc = proc.poll()
+            if rc is not None:
+                tail = open(log_path).read()[-500:]
+                raise RuntimeError(
+                    f"SUBSTRATE_DIED rc={rc} pre-ready — boot log {log_path} "
+                    f"tail: {tail}"
+                )
+            if all(_port_open(p, 0.25) for p in ports) and (
+                ready is None or ready()
+            ):
                 up = True
                 break
-            if proc.poll() is not None:
-                break
-            time.sleep(1)
+            time.sleep(0.25)
         if not up:
             tail = open(log_path).read()[-500:]
             raise RuntimeError(
@@ -346,7 +358,13 @@ def _kill_substrate(proc):
         os.killpg(proc.pid, signal.SIGTERM)
     except ProcessLookupError:
         return
-    time.sleep(1)
+    # Escalate only at the deadline: poll actual exit instead of a blind 1s
+    # sleep (D3 — pays 20ms when the beam exits in 20ms).
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.05)
     try:
         os.killpg(proc.pid, signal.SIGKILL)
     except ProcessLookupError:

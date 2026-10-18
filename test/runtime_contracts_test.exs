@@ -28,14 +28,14 @@ defmodule Smalt.RuntimeContractsTest do
   setup do
     ensure_store()
 
-    prev_auth = Application.get_env(:smalt, :auth_mode)
-    Application.put_env(:smalt, :auth_mode, :anonymous)
-    prev_lro = Application.get_env(:smalt, :lro_delay_ms)
-    Application.put_env(:smalt, :lro_delay_ms, 0)
+    # Nil-preserving save/restore (v26.10.18 e2e-wire D1): the previous inline
+    # restore re-put `nil` via bare put_env when a key was absent — not
+    # byte-identical to "key absent" for get_env(k, default) readers. Fixed.
+    prev = SmaltTest.PortEnv.snapshot([:auth_mode, :lro_delay_ms])
+    SmaltTest.PortEnv.apply(auth_mode: :anonymous, lro_delay_ms: 0)
 
     on_exit(fn ->
-      Application.put_env(:smalt, :auth_mode, prev_auth)
-      Application.put_env(:smalt, :lro_delay_ms, prev_lro)
+      SmaltTest.PortEnv.restore(prev)
     end)
 
     Smalt.Store.clear()

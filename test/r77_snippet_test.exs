@@ -4,13 +4,11 @@ defmodule R77SnippetTest do
   import Plug.Conn
 
   alias Smalt.EgressRouter
-  alias Smalt.Store
 
   @opts EgressRouter.init([])
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 

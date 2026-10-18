@@ -29,13 +29,13 @@ defmodule Smalt.DataPlane.BlobServiceTest do
   end
 
   alias Smalt.DataPlane.{BlobService, BlobStorage}
-  alias Smalt.Store
 
   @account "acc1"
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # Canonical resilient shared-Store setup (v26.10.18): replaces the bare
+    # ensure_store_up(); Store.clear() window (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
     BlobStorage.ensure_policy_table()
     :ets.delete_all_objects(:smalt_blob_policy)
     :ok

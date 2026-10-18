@@ -109,8 +109,8 @@ async function main() {
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(sig, () => { killSubstrate("SIGKILL"); process.exit(130); });
   }
-  process.on("exit", () => { try { if (child.pid && child.exitCode === null) process.kill(-child.pid, "SIGKILL"); } catch {} });
 
+  try {
   // 3. Poll TCP until all five listeners accept.
   const start = Date.now();
   for (;;) {
@@ -120,12 +120,18 @@ async function main() {
       tryConnect(ARM_PORT),
     ]);
     if (amqp && eh && arm) break;
+    if (child.exitCode !== null) {
+      console.error(
+        `[eh-run] substrate died mid-boot (rc=${child.exitCode}). Log: ${logPath}`,
+      );
+      process.exitCode = 2;
+      return;
+    }
     if (Date.now() - start > POLL_DEADLINE_MS) {
       console.error(
         `[eh-run] substrate did not open ${AMQP_PORT}/${EH_PORT}/${ARM_PORT} within ` +
         `${POLL_DEADLINE_MS / 1000}s. Substrate log: ${logPath}`,
       );
-      await killSubstrate("SIGKILL");
       process.exitCode = 2;
       return;
     }
@@ -148,7 +154,13 @@ async function main() {
   });
   const code = await new Promise((resolve) => testRun.once("close", resolve));
   process.exitCode = code === 0 ? 0 : 1;
-  await killSubstrate("SIGTERM");
+  } finally {
+    // Structural teardown: guaranteed on every completion path, unlike the
+    // deleted "exit"-event handler (beam child references the event loop).
+    await killSubstrate("SIGTERM");
+    logStream.end();
+    try { child.stdout.destroy(); child.stderr.destroy(); } catch { /* gone */ }
+  }
 }
 
 main().catch((err) => {

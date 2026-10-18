@@ -42,26 +42,31 @@ Application.put_env(:smalt, :event_hubs_port, $EH_PORT);
 Application.put_env(:smalt, :arm_port, $ARM_PORT);
 Application.put_env(:smalt, :egress_port, $EGRESS_PORT);
 Application.put_env(:smalt, :arm_tls_port, $ARM_TLS_PORT);
-{:ok, _} = Application.ensure_all_started(:smalt)" >"$LOG" 2>&1 &
+{:ok, _} = Application.ensure_all_started(:smalt)" 9>&- >"$LOG" 2>&1 &
 SUB_PID=$!
 
+# Bounded TERM->KILL escalation: poll actual death, escalate only at deadline.
 cleanup() {
   kill -TERM -- -$SUB_PID 2>/dev/null || kill $SUB_PID 2>/dev/null
-  sleep 1
+  for i in $(seq 1 100); do
+    kill -0 -- -$SUB_PID 2>/dev/null || break
+    sleep 0.05
+  done
   kill -KILL -- -$SUB_PID 2>/dev/null
 }
 trap cleanup EXIT
 
-# wait for AMQP + EH + egress listeners
-up=0
-for i in $(seq 1 60); do
-  if nc -z 127.0.0.1 $EH_PORT 2>/dev/null && nc -z 127.0.0.1 $AMQP_PORT 2>/dev/null \
-     && nc -z 127.0.0.1 $EGRESS_PORT 2>/dev/null; then up=1; break; fi
-  sleep 1
+# Wait for AMQP + EH + egress listeners (deadline-bounded poll with
+# child-death early-out: a crashed beam fails in seconds, not after 60s).
+deadline=$(( SECONDS + 180 ))
+until nc -z 127.0.0.1 $EH_PORT 2>/dev/null && nc -z 127.0.0.1 $AMQP_PORT 2>/dev/null \
+   && nc -z 127.0.0.1 $EGRESS_PORT 2>/dev/null; do
+  kill -0 "$SUB_PID" 2>/dev/null || {
+    echo "SUBSTRATE_DIED — log: $LOG"; tail -20 "$LOG"; exit 2; }
+  [ "$SECONDS" -lt "$deadline" ] || {
+    echo "SUBSTRATE_TIMEOUT — log: $LOG"; tail -20 "$LOG"; exit 2; }
+  sleep 0.2
 done
-if [ $up -ne 1 ]; then
-  echo "SUBSTRATE_TIMEOUT — log: $LOG"; tail -20 "$LOG"; exit 2
-fi
 echo "[py5] substrate up (amqp=$AMQP_PORT eh=$EH_PORT egress=$EGRESS_PORT)"
 
 SMALT_EH_CONNECTION_STRING="Endpoint=sb://127.0.0.1:$EH_PORT;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=$SHARED_KEY;EntityPath=smoke-hub;UseDevelopmentEmulator=true" \

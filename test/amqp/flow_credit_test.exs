@@ -1,8 +1,9 @@
 defmodule Smalt.Amqp.FlowCreditTest do
   @moduledoc """
   Wire-tier flow-credit tests over REAL `:gen_tcp` sockets against a REAL
-  `Smalt.AmqpBroker` listener (ephemeral port via the Application env override
-  pattern from `test/wire/amqp_wire_test.exs`).
+  `Smalt.AmqpBroker` listener on ephemeral ports via the direct child-spec
+  pattern (`Smalt.AmqpBroker.children(sb_port:/eh_port:)` — no global app-env
+  mutation).
 
   Client-side role: frames are built/decoded with `Smalt.Amqp.FrameCodec` on
   the raw socket. Exercised end to end:
@@ -38,78 +39,40 @@ defmodule Smalt.Amqp.FlowCreditTest do
   # ===========================================================================
 
   setup do
-    port = get_free_port()
-
-    stop_existing_tree()
-
-    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
-    prev = %{
-      arm_port: Application.get_env(:smalt, :arm_port),
-      egress_port: Application.get_env(:smalt, :egress_port),
-      amqp_port: Application.get_env(:smalt, :amqp_port),
-      event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
-    }
-
-    Application.put_env(:smalt, :arm_port, get_free_port())
-    Application.put_env(:smalt, :egress_port, get_free_port())
-    Application.put_env(:smalt, :amqp_port, port)
-    Application.put_env(:smalt, :event_hubs_port, get_free_port())
-
-    assert Code.ensure_loaded?(Smalt.AmqpBroker), "Smalt.AmqpBroker is not compiled"
+    ports = %{amqp: get_free_port(), eh: get_free_port()}
 
     # Queue attaches are CBS-authorized by the landed broker; admit claims via
     # the real put-token wire path in each test, so the shared key must exist.
     Application.put_env(:smalt, :sb_shared_key, Base.encode64(:crypto.strong_rand_bytes(48)))
+    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
 
-    on_exit(fn ->
-      Application.delete_env(:smalt, :sb_shared_key)
+    assert Code.ensure_loaded?(Smalt.AmqpBroker), "Smalt.AmqpBroker is not compiled"
 
-      if prev.arm_port == nil,
-        do: Application.delete_env(:smalt, :arm_port),
-        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+    # Canonical readiness gate for the SHARED Store seam (never a private
+    # child — the shared tree owns it; starting it per-test collides with
+    # :already_started under the wire tier where the app tree is live).
+    assert :ok = SmaltTest.Lifecycle.ensure_store_up()
 
-      if prev.egress_port == nil,
-        do: Application.delete_env(:smalt, :egress_port),
-        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
-
-      if prev.amqp_port == nil,
-        do: Application.delete_env(:smalt, :amqp_port),
-        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
-
-      if prev.event_hubs_port == nil,
-        do: Application.delete_env(:smalt, :event_hubs_port),
-        else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
-    end)
+    # Direct child-spec ports: `Smalt.AmqpBroker.children/1` accepts
+    # sb_port:/eh_port: (pinned by broker_facade's spec test) and the Listener
+    # reads NO Application env on the start-arg path — so the broker boots on
+    # ephemeral ports WITHOUT mutating global app env. The named Sweeper child
+    # is dropped from the PRIVATE tree (it would collide with the shared
+    # singleton; these tests need no background tick). Removed with the four
+    # env writes: the prev/restore block, `stop_existing_tree/0` (the private
+    # tree no longer touches the shared tree at all — Store is the shared seam
+    # via the gate above) and the module-scoped restore_app on_exit (no app
+    # teardown happens anymore).
+    children =
+      Smalt.AmqpBroker.children(sb_port: ports.amqp, eh_port: ports.eh)
+      |> List.delete(Smalt.Amqp.Sweeper)
 
     {:ok, sup} =
-      Supervisor.start_link(
-        [Smalt.Store, {Smalt.AmqpBroker, []}],
-        strategy: :one_for_one,
-        name: Smalt.FlowCreditTestSup
-      )
+      Supervisor.start_link(children, strategy: :one_for_one, name: Smalt.FlowCreditTestSup)
 
-    # Teardown per test stops only the private tree. The full-app restore is
-    # module-scoped (below): per-test restore_app() booted the whole
-    # application (Bandit routers etc.) between every pair of tests, and that
-    # churn raced the next test's sup — the 12:14 failure window (fc4.log)
-    # shows 4 tests dying with {:error, :closed} right after mid-suite
-    # "Running Smalt.ArmGateway.Router" binds from the restored app tree.
     on_exit(fn -> stop_tree(sup) end)
 
-    # Module-scoped restore: runs once, after the LAST test of this module
-    # (ExUnit named on_exit is replaced by re-registration, so per-test setup
-    # re-registering the same name keeps exactly one final restore).
-    on_exit(:flow_credit_restore_app, fn ->
-      case Process.whereis(Smalt.FlowCreditTestSup) do
-        nil -> :ok
-        pid -> stop_tree(pid)
-      end
-
-      SmaltTest.Lifecycle.restore_app()
-      SmaltTest.Lifecycle.ensure_store_up()
-    end)
-
-    {:ok, amqp: port, queue: "flow-credit-#{System.unique_integer([:positive])}"}
+    {:ok, amqp: ports.amqp, queue: "flow-credit-#{System.unique_integer([:positive])}"}
   end
 
   # ===========================================================================
@@ -156,8 +119,15 @@ defmodule Smalt.Amqp.FlowCreditTest do
     {transfers, c} = collect_transfers(c, 2)
     assert length(transfers) == 2
 
-    # and no third delivery sneaks in afterwards
-    :ok = expect_silence(c, 1000)
+    # Barrier, not silence: a client-issued flow(echo: true) forces the broker
+    # to answer with its own flow frame, and session-level per-link ordering
+    # (spec §2.5) means any transfer it was still going to deliver under the
+    # earlier credit precedes that reply. Observing the reply with zero
+    # interleaved transfers is a happens-before proof at ANY latency, not a
+    # 1 s timed sample.
+    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0, echo: true}})
+    {inter, c} = drain_until_performative(c, :flow, @recv_timeout)
+    refute :transfer in inter
 
     bodies = bodies(transfers)
     assert Enum.sort(bodies) == ["msg-1", "msg-2"]
@@ -257,10 +227,13 @@ defmodule Smalt.Amqp.FlowCreditTest do
     c = send_frame(c, {:attach, %{name: "rx", handle: 1, role: true, source: %{address: queue}}})
     {%{performative: %{performative: :attach}}, c} = next_frame(c)
 
-    # explicit zero credit: no delivery may arrive
-    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0}})
+    # explicit zero credit: no delivery may arrive. Same echo-barrier proof as
+    # test 1 — the echoed flow is the barrier; a transfer interleaving it is a
+    # credit violation caught at any latency.
+    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0, echo: true}})
 
-    :ok = expect_silence(c, 1000)
+    {inter, _c} = drain_until_performative(c, :flow, @recv_timeout)
+    refute :transfer in inter
 
     :gen_tcp.close(c.sock)
   end
@@ -354,11 +327,20 @@ defmodule Smalt.Amqp.FlowCreditTest do
     # no echo flow frame comes back. Pin that honestly.
     c = send_frame(c, {:flow, %{handle: 1, link_credit: 0, drain: true}})
 
-    perfs = drain_performatives(c, 1000)
+    # Probe barrier: an echoed flow (drain NOT set) forces the broker to
+    # answer. Per the drain pin, the drain itself produces no reply; the echo
+    # does. Per-link ordering makes everything the broker was going to send
+    # after the drain precede the echo reply — an ordering proof, not a 1 s
+    # sample.
+    c = send_frame(c, {:flow, %{handle: 1, echo: true}})
 
-    # no flow echo, and no further transfer (credit is 0 and nothing requeues)
-    refute :flow in perfs
-    refute :transfer in perfs
+    {inter, _c} = drain_until_performative(c, :flow, @recv_timeout)
+
+    # no flow echo to the drain (no :flow besides our own echo reply), and no
+    # further transfer (credit is 0 and nothing requeues). Pinned contract
+    # unchanged — only the observation of the silence changed.
+    refute :flow in inter
+    refute :transfer in inter
 
     :gen_tcp.close(c.sock)
   end
@@ -749,31 +731,24 @@ defmodule Smalt.Amqp.FlowCreditTest do
     end
   end
 
-  # Drains whatever the broker sends until the timeout expires; returns the
-  # list of performatives observed. Fails the test on a decode error.
-  defp drain_performatives(c, timeout, acc \\ [])
-
-  defp drain_performatives(c, timeout, acc) do
+  # Drains frames until a performative of `name` is seen; returns the
+  # performatives observed BEFORE it (excluding it). Bounded recv keeps
+  # @recv_timeout as hang fail-safe only — it fires on a hang, never on load.
+  defp drain_until_performative(c, name, timeout, acc \\ []) do
     case pop_frame(c.buf) do
+      {:ok, %{performative: %{performative: ^name}}, rest} ->
+        {Enum.reverse(acc), %{c | buf: rest}}
+
       {:ok, frame, rest} ->
-        drain_performatives(%{c | buf: rest}, timeout, [frame.performative.performative | acc])
+        drain_until_performative(%{c | buf: rest}, name, timeout, [
+          frame.performative.performative | acc
+        ])
 
       :incomplete ->
-        case :gen_tcp.recv(c.sock, 0, timeout) do
-          {:ok, data} ->
-            drain_performatives(%{c | buf: <<c.buf::binary, data::binary>>}, timeout, acc)
+        assert {:ok, data} = :gen_tcp.recv(c.sock, 0, timeout)
 
-          {:error, _} ->
-            Enum.reverse(acc)
-        end
+        drain_until_performative(%{c | buf: <<c.buf::binary, data::binary>>}, name, timeout, acc)
     end
-  end
-
-  # Asserts NO frame of any kind arrives within the timeout window.
-  defp expect_silence(c, timeout) do
-    perfs = drain_performatives(c, timeout)
-    assert perfs == [], "expected silence, got: #{inspect(perfs)}"
-    :ok
   end
 
   defp bodies(transfers) do
@@ -834,18 +809,6 @@ defmodule Smalt.Amqp.FlowCreditTest do
       Supervisor.stop(sup, :normal, 5000)
     catch
       _, _ -> Process.exit(sup, :kill)
-    end
-  end
-
-  defp stop_existing_tree do
-    case Process.whereis(Smalt.Supervisor) do
-      nil ->
-        for name <- [Smalt.Store, Smalt.AmqpBroker] do
-          if pid = Process.whereis(name), do: GenServer.stop(pid)
-        end
-
-      sup ->
-        SmaltTest.Lifecycle.stop_shared_tree()
     end
   end
 

@@ -20,13 +20,13 @@ defmodule Smalt.Kd78ChildLatticeWireTest do
 
   alias Smalt.ArmGateway.Router
   alias Smalt.Registry
-  alias Smalt.Store
 
   @opts Router.init([])
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # Canonical resilient setup (v26.10.18): the bare ensure→clear window
+    # races an async sibling's shared-tree teardown (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 

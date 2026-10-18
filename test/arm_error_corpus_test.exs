@@ -474,47 +474,47 @@ defmodule Smalt.ArmErrorCorpusTest do
     now = div(System.system_time(:millisecond), 1000)
 
     if System.system_time(:millisecond) - now * 1000 > 800 do
+      # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
       Process.sleep(300)
     end
   end
 
-  # Bounded retry-until-terminal (i22 hardening, mirrors i21 sweep_until_terminal):
-  # the LRO completion write races concurrent suites under a shared store, so a short
-  # attempt budget can flake. Poll until terminal or a generous 5000 ms deadline,
-  # then flunk with a TYPED message naming the last observed status.
+  # Bounded retry-until-terminal via the SHARED AssertEventually primitive
+  # (v26.10.18 B4, replaces the hand-rolled recursive poll-sleep-retry):
+  # `eventually/2` retries `:retry`/`{:retry, detail}` under a 5000 ms
+  # deadline and flunks typed naming the last observed status; any other
+  # outcome flunks immediately (crashes are defects, not eventual-conditions).
   # Forensics (mechanism lane 2): async suites mutate GLOBAL :lro_delay_ms
   # (test/lro_test.exs:35 sets 20ms; affidavit_ingestion, arm_cascade,
   # enclave_engine/state, runtime_contracts also touch it), stretching per-poll
   # latency under load, and Store.clear can delete the op row mid-poll. The env
   # is only honored at flip evaluation, so pinning it to 0 in setup makes flips
-  # immediate regardless of concurrent mutation.
+  # immediate regardless of concurrent mutation. The 5s deadline and the
+  # :lro_delay_ms=0 pin above STAY — this is a helper migration, not a budget
+  # change.
   @poll_deadline_ms 5000
 
-  defp poll_until_succeeded(path, deadline \\ System.monotonic_time(:millisecond) + @poll_deadline_ms)
+  defp poll_until_succeeded(path) do
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        conn = conn(:get, path) |> Router.call(@opts)
+        op = body(conn)
 
-  defp poll_until_succeeded(path, deadline) do
-    conn = conn(:get, path) |> Router.call(@opts)
-    op = body(conn)
+        cond do
+          op["status"] == "Succeeded" ->
+            assert conn.status == 200, "expected 200 on terminal poll, got #{conn.status}"
+            {:ok, op}
 
-    cond do
-      op["status"] == "Succeeded" ->
-        assert conn.status == 200, "expected 200 on terminal poll, got #{conn.status}"
-        op
+          conn.status == 202 ->
+            {:retry, op["status"]}
 
-      conn.status == 202 ->
-        if System.monotonic_time(:millisecond) >= deadline do
-          flunk(
-            "LRO never reached Succeeded within #{@poll_deadline_ms} ms " <>
-              "(path=#{path}, last_status=#{inspect(op["status"])})"
-          )
+          true ->
+            flunk("unexpected poll status #{conn.status} for #{path}: #{inspect(op)}")
         end
-
-        Process.sleep(10)
-        poll_until_succeeded(path, deadline)
-
-      true ->
-        flunk("unexpected poll status #{conn.status} for #{path}: #{inspect(op)}")
-    end
+      end,
+      deadline_ms: @poll_deadline_ms,
+      observable: "LRO poll #{path}"
+    )
   end
 
   defp body(conn), do: Jason.decode!(conn.resp_body)

@@ -13,10 +13,9 @@ defmodule Smalt.OcelTest do
   setup do
     File.rm_rf!(@tmp_dir)
     File.mkdir_p!(@tmp_dir)
-    Application.put_env(:smalt, :ocel_dir, @tmp_dir)
+    SmaltTest.Env.put_restored(ocel_dir: @tmp_dir)
 
     on_exit(fn ->
-      Application.delete_env(:smalt, :ocel_dir)
       File.rm_rf!(@tmp_dir)
     end)
 

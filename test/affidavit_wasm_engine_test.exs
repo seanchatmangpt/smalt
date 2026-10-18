@@ -61,6 +61,24 @@ defmodule Smalt.Affidavit.WasmEngineTest do
   end
 
   test "missing artifact fails closed with {:error, :engine_unavailable}" do
+    # v26.10.18 lib redesign: the app tree now owns the named engine via
+    # WasmEngine.Supervisor's owner child, so a bare bogus-path start_link
+    # hit the whereis passthrough ({:error, {:already_started, _}}) before
+    # admission ever ran. A NORMAL stop is the typed seam that frees the
+    # name: the owner classifies it as intentional and idles (no restart),
+    # so the missing-artifact admission path is actually exercised. Tests
+    # below re-arm through start_engine!/1 either way.
+    if pid = Process.whereis(WasmEngine) do
+      :ok = GenServer.stop(pid, :normal)
+
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          if is_nil(Process.whereis(WasmEngine)), do: {:ok, :gone}, else: :retry
+        end,
+        observable: "engine name released after normal stop"
+      )
+    end
+
     assert {:error, :engine_unavailable} =
              WasmEngine.start_link(path: "/nonexistent/affidavit_wasm.wasm")
   end

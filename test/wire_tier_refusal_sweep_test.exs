@@ -24,6 +24,31 @@ defmodule Smalt.WireTierRefusalSweepTest do
 
   @types Smalt.Registry.admitted_resource_types()
 
+  # Route keys this resolver can build an ARM path for. The @path_coverage
+  # fence (compile-time, module attribute) asserts every admitted type's
+  # SmaltTest.RouteCites classification is covered — the suite fails at LOAD
+  # naming the uncovered types, instead of raising per-type at runtime (the
+  # old `raise "no ARM path builder"` fallthrough is gone).
+  @resolver_keys MapSet.new([
+                   :generic_provider_put,
+                   :vault_keys_put,
+                   :vault_secrets_put,
+                   :cosmos_sqldatabases_put,
+                   :cosmos_sqlcontainers_put,
+                   :subnet_put,
+                   :blob_services_put,
+                   :containers_put,
+                   :immutability_policies_put,
+                   :sb_queues_put,
+                   :sb_topics_put,
+                   :sb_subscriptions_put,
+                   :eh_eventhubs_put,
+                   :eh_consumergroups_put,
+                   :vnet_links_put
+                 ])
+
+  @path_coverage SmaltTest.RouteCites.assert_path_coverage!(@resolver_keys)
+
   setup do
     ports = %{arm: get_free_port()}
 
@@ -154,11 +179,12 @@ defmodule Smalt.WireTierRefusalSweepTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Type -> ARM path resolution (the router's own admitted-type table drives
-  # this: route SHAPE follows the type's segment count and the router's
-  # declared child routes — generic 3-segment route for 2-segment types,
-  # child routes for nested Registry types, parented-child gating types get
-  # their parent chain created first with conforming payloads).
+  # Type -> ARM path resolution, driven by the SHARED route_key registry
+  # (SmaltTest.RouteCites): one classification answers both "which handler
+  # does this type's PUT ride" and "which path shape does the probe use" —
+  # a newly admitted child type needs one registry row (+ one resolver case
+  # where a dedicated path shape exists), not a case + a cite string.
+  # Coverage is asserted at compile time by @path_coverage above.
   # ---------------------------------------------------------------------------
 
   defp resource_path(type, tag) do
@@ -166,79 +192,78 @@ defmodule Smalt.WireTierRefusalSweepTest do
     base = "/subscriptions/#{@sub_id}/resourceGroups/#{@rg}/providers"
     name = "sweep-#{tag}"
 
-    case String.split(type, "/") do
-      [_ns, _leaf] ->
-        # Generic 3-segment provider route (handle_resource_put).
+    case SmaltTest.RouteCites.route_key_for_type!(type) do
+      # Generic 3-segment provider route (handle_resource_put/5).
+      :generic_provider_put ->
         {base <> "/#{type}/#{name}?api-version=#{api}", api}
 
-      ["Microsoft.DocumentDB", "databaseAccounts", "sqlDatabases"] ->
+      # Cosmos children ride handle_parented_child (delegating to
+      # handle_cosmos_child_put/5); parent chain created below.
+      :cosmos_sqldatabases_put ->
         {base <>
            "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.DocumentDB", "databaseAccounts", "sqlContainers"] ->
+      :cosmos_sqlcontainers_put ->
         {base <>
            "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/sqldb-sw/sqlContainers/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.KeyVault", "vaults", "secrets"] ->
+      :vault_secrets_put ->
         {base <> "/Microsoft.KeyVault/vaults/kv-sw/secrets/#{name}?api-version=#{api}", api}
 
-      ["Microsoft.EventHub", "namespaces", "eventhubs"] ->
+      :eh_eventhubs_put ->
         {base <> "/Microsoft.EventHub/namespaces/ehn-eh/eventhubs/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.EventHub", "namespaces", "eventhubs", "consumergroups"] ->
+      :eh_consumergroups_put ->
         {base <>
            "/Microsoft.EventHub/namespaces/ehn-cg/eventhubs/ehh-cg/consumergroups/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.KeyVault", "vaults", "keys"] ->
-        # Child route (handle_child_put): no parent gating.
+      # Dedicated child route (handle_child_put/5): no parent gating.
+      :vault_keys_put ->
         {base <> "/Microsoft.KeyVault/vaults/kv-keys/keys/#{name}?api-version=#{api}", api}
 
-      ["Microsoft.Network", "privateDnsZones", "virtualNetworkLinks"] ->
-        # Dedicated parented-child route landed (router.ex): the request rides
-        # the real child route with the parent chain created in
-        # create_parented_chains/1 below, so the shape gate runs on the wire.
+      # Microsoft.Network/subnets is a 2-segment registry type that ALSO has a
+      # dedicated child route; the probe rides the generic provider path
+      # (previous segment-count resolver behavior, preserved verbatim).
+      :subnet_put ->
+        {base <> "/#{type}/#{name}?api-version=#{api}", api}
+
+      # Dedicated parented-child route: the request rides the real child route
+      # with the parent chain created in create_parented_chains/1 below, so
+      # the shape gate runs on the wire.
+      :vnet_links_put ->
         {base <>
            "/Microsoft.Network/privateDnsZones/pdz-vnl/virtualNetworkLinks/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.ServiceBus", "namespaces", "queues"] ->
+      :sb_queues_put ->
         {base <> "/Microsoft.ServiceBus/namespaces/sbn-q/queues/#{name}?api-version=#{api}", api}
 
-      ["Microsoft.ServiceBus", "namespaces", "topics"] ->
+      :sb_topics_put ->
         {base <> "/Microsoft.ServiceBus/namespaces/sbn-t/topics/#{name}?api-version=#{api}", api}
 
-      ["Microsoft.ServiceBus", "namespaces", "topics", "subscriptions"] ->
+      :sb_subscriptions_put ->
         {base <>
            "/Microsoft.ServiceBus/namespaces/sbn-ts/topics/top-ts/subscriptions/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.Storage", "storageAccounts", "blobServices"] ->
+      :blob_services_put ->
         {base <>
            "/Microsoft.Storage/storageAccounts/sa-bs/blobServices/default?api-version=#{api}",
          api}
 
-      ["Microsoft.Storage", "storageAccounts", "blobServices", "containers"] ->
+      :containers_put ->
         {base <>
            "/Microsoft.Storage/storageAccounts/sa-ct/blobServices/default/containers/#{name}?api-version=#{api}",
          api}
 
-      [
-        "Microsoft.Storage",
-        "storageAccounts",
-        "blobServices",
-        "containers",
-        "immutabilityPolicies"
-      ] ->
+      :immutability_policies_put ->
         {base <>
            "/Microsoft.Storage/storageAccounts/sa-im/blobServices/default/containers/ct-im/immutabilityPolicies/#{name}?api-version=#{api}",
          api}
-
-      _ ->
-        raise "no ARM path builder for admitted type #{type} — extend the resolver, never skip"
     end
   end
 

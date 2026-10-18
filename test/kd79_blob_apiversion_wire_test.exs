@@ -28,8 +28,10 @@ defmodule Kd79BlobApiVersionWireTest do
   @witnessed "2023-05-01"
 
   setup do
-    ensure_store()
-    Store.clear()
+    # i21 armor: resilient clear rides out async-sibling ETS teardown
+    # (SmaltTest.Wire.resilient_clear!/0; replaces ensure_store/0 + bare
+    # Store.clear() — same race, weaker armor, see egress_dispatch_test).
+    SmaltTest.Wire.resilient_clear!()
 
     Store.put(:smalt_subscriptions, @sub, %{
       "id" => "/subscriptions/#{@sub}",
@@ -39,33 +41,14 @@ defmodule Kd79BlobApiVersionWireTest do
     })
 
     # Real storage account parent through the real router.
-    sa_path =
-      "providers/Microsoft.Storage/storageAccounts/kd79store"
-
-    payload = %{"location" => "eastus", "properties" => %{}}
-
-    conn =
-      :put
-      |> conn(
-        "/subscriptions/#{@sub}/resourceGroups/#{@rg}/#{sa_path}?api-version=#{@witnessed}",
-        Jason.encode!(payload)
-      )
-      |> put_req_header("content-type", "application/json")
-
-    resp = Router.call(conn, @opts)
-    assert resp.status in [200, 201, 202], "parent SA creation failed: #{resp.status}"
+    put_parent!(
+      "providers/Microsoft.Storage/storageAccounts/kd79store",
+      %{"location" => "eastus", "properties" => %{}},
+      "parent SA"
+    )
 
     # Real resource group parent.
-    conn =
-      :put
-      |> conn(
-        "/subscriptions/#{@sub}/resourceGroups/#{@rg}?api-version=#{@witnessed}",
-        Jason.encode!(%{"location" => "eastus"})
-      )
-      |> put_req_header("content-type", "application/json")
-
-    resp = Router.call(conn, @opts)
-    assert resp.status in [200, 201, 202], "parent RG creation failed: #{resp.status}"
+    put_parent!("", %{"location" => "eastus"}, "parent RG")
 
     :ok
   after
@@ -116,6 +99,23 @@ defmodule Kd79BlobApiVersionWireTest do
 
   ## helpers
 
+  # Real-router parent fixture whose failure names the fixture (a setup assert
+  # otherwise reads as a cryptic bare assert). Fixture discipline unchanged.
+  defp put_parent!(child_path, payload, fixture_name) do
+    uri =
+      "/subscriptions/#{@sub}/resourceGroups/#{@rg}/#{child_path}?api-version=#{@witnessed}"
+
+    conn =
+      :put
+      |> conn(uri, Jason.encode!(payload))
+      |> put_req_header("content-type", "application/json")
+
+    resp = Router.call(conn, @opts)
+
+    assert resp.status in [200, 201, 202],
+           "#{fixture_name} creation failed: #{resp.status} #{resp.resp_body}"
+  end
+
   defp arm_put(child_path, version \\ @witnessed) do
     uri =
       "/subscriptions/#{@sub}/resourceGroups/#{@rg}/#{child_path}?api-version=#{version}"
@@ -140,23 +140,4 @@ defmodule Kd79BlobApiVersionWireTest do
   end
 
   defp response_body(conn), do: conn.resp_body || ""
-
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        if :ets.info(:smalt_subscriptions) == :undefined do
-          pid = Process.whereis(Store)
-          ref = Process.monitor(pid)
-
-          receive do
-            {:DOWN, ^ref, :process, ^pid, _} -> ensure_store()
-          after
-            500 -> ensure_store()
-          end
-        end
-    end
-  end
 end

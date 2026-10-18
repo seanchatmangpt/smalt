@@ -30,18 +30,15 @@ defmodule ZeroDriftSerializationTest do
     })
 
     # Restore-on-exit: leaked :lro_delay_ms previously changed LRO-poll timing
-    # for later modules in the batch (v26.10.17 interference sweep).
-    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
+    # for later modules in the batch (v26.10.17 interference sweep). Canonical
+    # nil-preserving helper (v26.10.18 e2e-wire D1) — behavior-identical swap.
+    prev = SmaltTest.PortEnv.snapshot([:lro_delay_ms])
+    SmaltTest.PortEnv.apply(lro_delay_ms: 0)
 
     on_exit(fn ->
-      if prev_delay == nil do
-        Application.delete_env(:smalt, :lro_delay_ms)
-      else
-        Application.put_env(:smalt, :lro_delay_ms, prev_delay)
-      end
+      SmaltTest.PortEnv.restore(prev)
     end)
 
-    Application.put_env(:smalt, :lro_delay_ms, 0)
     :ok
   end
 

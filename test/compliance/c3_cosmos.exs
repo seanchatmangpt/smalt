@@ -15,25 +15,28 @@ defmodule Smalt.Compliance.C3CosmosTest do
   use ExUnit.Case, async: false
 
   alias Smalt.DataPlane.Cosmos
-  alias Smalt.Store
 
   @db "c3fence"
   @coll "fencecoll"
   @pk_hdr {"x-ms-documentdb-partitionkey", ~s(["acme"])}
   @json {"content-type", "application/json"}
 
+  alias Smalt.Corpus.Helper
+
   setup do
-    resilient_clear()
+    Helper.resilient_clear()
 
     prev_auth = Application.get_env(:smalt, :auth_mode)
     Application.put_env(:smalt, :auth_mode, :anonymous)
 
     port = free_port()
     :persistent_term.put({__MODULE__, :port}, port)
-    {:ok, server} = Bandit.start_link(plug: Smalt.EgressRouter, port: port)
+
+    # start_supervised!: listener lifecycle is tied to the test process —
+    # no on_exit Process.exit, no orphaned Bandit on a mid-setup failure.
+    start_supervised!({Bandit, plug: Smalt.EgressRouter, port: port})
 
     on_exit(fn ->
-      stop_server(server)
       Application.put_env(:smalt, :auth_mode, prev_auth || :anonymous)
     end)
 
@@ -1011,54 +1014,19 @@ defmodule Smalt.Compliance.C3CosmosTest do
     end)
   end
 
-  defp stop_server(server) do
-    try do
-      Supervisor.stop(server, :normal, 1_000)
-    catch
-      _, _ -> Process.exit(server, :kill)
-    end
-
-    :ok
-  end
+  # stop_server/1 and the private i22 resilient_clear/ensure_store tail are
+  # DELETED (this window): the Supervisor owns the Bandit listener via
+  # start_supervised! and the canonical Smalt.Corpus.Helper.resilient_clear/1
+  # owns the clear (this file's copy notably LACKED the already-started
+  # monitor-wait — the deletion is itself the defect fix; no receipted
+  # assertion depended on the weaker behavior). See
+  # docs/jira/v26.10.18/receipts/b1-corpus.md.
 
   defp free_port do
     {:ok, sock} = :gen_tcp.listen(0, [:binary, active: false])
     {:ok, port} = :inet.port(sock)
     :gen_tcp.close(sock)
     port
-  end
-
-  # i22 corpus-seed hardening: bounded typed retry around the racy
-  # ensure-store + clear window (see
-  # docs/jira/v26.10.17/receipts/i21-ets-race-fix.md). Rescues ONLY the
-  # dead-table ArgumentError; past the bound it raises loudly.
-  @i22_retry_bound 50
-  @i22_dead_table_msg "table identifier does not refer to an existing ETS table"
-
-  defp resilient_clear(remaining \\ @i22_retry_bound)
-
-  defp resilient_clear(0) do
-    raise "shared Store unavailable after #{@i22_retry_bound} retries (i22 corpus-seed hardening)"
-  end
-
-  defp resilient_clear(remaining) do
-    ensure_store()
-    Store.clear()
-  rescue
-    e in ArgumentError ->
-      if Exception.message(e) == @i22_dead_table_msg do
-        Process.sleep(10)
-        resilient_clear(remaining - 1)
-      else
-        reraise e, __STACKTRACE__
-      end
-  end
-
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-    end
   end
 
   defp token_lsn(token), do: token |> String.split("#") |> List.last() |> String.to_integer()

@@ -5,15 +5,12 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
   alias Smalt.Store
 
   setup do
-    # Store must be unlinked from the test process (lens-4): plain start +
-    # named registration keeps the tables alive regardless of test exits;
-    # :already_started is fine.
-    case GenServer.start(Store, [], name: Store) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-    end
-
-    Store.clear()
+    # v26.10.18: canonical resilient shared-Store setup. The previous
+    # lens-4 hand-roll (unlinked GenServer.start + clear) is retired into
+    # SmaltTest.Store.resilient_clear/1 — same unlink-safety contract
+    # (Lifecycle restores the SUPERVISED Store child, tables survive test
+    # exits), one audited implementation for the dead-table retry window.
+    :ok = SmaltTest.Store.resilient_clear()
     :ok
   end
 
@@ -439,9 +436,9 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
     setup do
       m1 = :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
 
-      Application.put_env(:smalt, :maa_measurement_baseline, [m1])
-
-      on_exit(fn -> Application.delete_env(:smalt, :maa_measurement_baseline) end)
+      # v26.10.18: canonical save/restore — the previous unconditional
+      # delete_env on_exit destroyed a pre-existing baseline set by a sibling.
+      :ok = SmaltTest.Env.put_restored(maa_measurement_baseline: [m1])
 
       {:ok, m1: m1}
     end

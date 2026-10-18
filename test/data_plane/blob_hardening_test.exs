@@ -9,8 +9,10 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
   alias Smalt.Auth.Sas
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # i21 armor: resilient clear rides out async-sibling ETS teardown
+    # (SmaltTest.Wire.resilient_clear!/0). Receipted clear order unchanged:
+    # tables ensured BEFORE the delete_all_objects sweeps.
+    SmaltTest.Wire.resilient_clear!()
     BlobStorage.ensure_policy_table()
     BlobStorage.ensure_block_table()
     BlobStorage.ensure_snapshot_table()
@@ -1645,11 +1647,36 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # NOT fence: it exceeds the ~205 quiet revert estimate.
     @perf_budget_ms 180
 
-    test "pagination perf contract: 10-page chain over 8000x2KiB under budget" do
-      container("perf", "acct")
-      content = :crypto.strong_rand_bytes(2048)
+    # Budget manifest (v26.10.18 B4): the anchors + budget above are the
+    # in-file derivation record; the committed manifest
+    # test/data_plane/fixtures/pagination_budget.json is the machine-readable
+    # single source of truth read at RUNTIME (a module attribute cannot
+    # reliably resolve a relative path at compile time). The test below
+    # parameterizes reps/pages/blobs/bytes from the manifest, keeps the
+    # min-of-5 marker-threaded chain verbatim, self-checks that the budget
+    # still fences the revert class (budget < revert anchor), and enriches
+    # the typed flunk to name the manifest anchors.
+    defp perf_manifest do
+      "test/data_plane/fixtures/pagination_budget.json"
+      |> File.read!()
+      |> Jason.decode!()
+    end
 
-      for i <- 1..8000 do
+    test "pagination perf contract: 10-page chain over 8000x2KiB under budget" do
+      m = perf_manifest()
+
+      # Manifest self-check (drift fence): a future budget bump that crosses
+      # the revert-class estimate must fail HERE, not silently weaken the
+      # fence.
+      assert m["budget_ms"] < m["anchors"]["revert_class_quiet_ms"],
+             "pagination budget #{m["budget_ms"]} ms must stay below the " <>
+               "revert-class quiet anchor #{m["anchors"]["revert_class_quiet_ms"]} ms — " <>
+               "the fence would no longer catch a materialization revert"
+
+      container("perf", "acct")
+      content = :crypto.strong_rand_bytes(m["blob_bytes"])
+
+      for i <- 1..m["blobs"] do
         BlobStorage.put_blob(
           "perf",
           "acct",
@@ -1661,6 +1688,8 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       # thread the continuation marker via recursion: a `for` body cannot
       # rebind an outer variable, so a naive comprehension never advances
       # the page and silently measures the same first page 10 times.
+      pages = m["chain_pages"]
+
       chain = fn marker0 ->
         {ms, marker_final} =
           :timer.tc(fn ->
@@ -1668,7 +1697,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
               {_xml, next} = BlobStorage.list_blobs_xml("perf", "acct", %{"marker" => m})
               next || ""
             end)
-            |> Enum.take(11)
+            |> Enum.take(pages)
             |> List.last()
           end)
 
@@ -1676,25 +1705,26 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       end
 
       # warmup rep: primes the list path; its timing is deliberately
-      # unmeasured (the min-of-5 below is the contract)
+      # unmeasured (the min-of-reps below is the contract)
       {_ms_first, marker_after} = chain.("")
       assert marker_after != ""
 
       runs =
-        for _rep <- 1..5 do
+        for _rep <- 1..m["reps"] do
           {ms, _} = chain.("")
           ms
         end
 
       ms = Enum.min(runs)
 
-      if ms > @perf_budget_ms do
+      if ms > m["budget_ms"] do
         flunk("""
-        pagination perf contract violated: #{ms} ms > #{@perf_budget_ms} ms budget
-        (per-rep runs: #{inspect(runs)}). Likely regression to full-value
-        materialization (measured ~3.3x slower; the ~205 ms quiet revert
-        estimate stays under this budget's fence — see the block comment
-        above @perf_budget_ms).
+        pagination perf contract violated: #{ms} ms > #{m["budget_ms"]} ms budget
+        (per-rep runs: #{inspect(runs)}; manifest anchors: #{inspect(m["anchors"])}).
+        Likely regression to full-value materialization (revert-class anchors
+        in the manifest: ~#{m["anchors"]["revert_class_quiet_ms"]} ms quiet).
+        See test/data_plane/fixtures/pagination_budget.json for the anchor
+        derivation protocol.
         """)
       end
     end

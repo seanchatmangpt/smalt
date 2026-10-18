@@ -481,18 +481,27 @@ async function main() {
     } catch (err) {
       out.push(`send-bad-partition: ${err?.name ?? "?"}(${err?.code ?? "-"}) ${String(err?.message).slice(0, 120)}`);
     }
-    // (c) nonexistent consumer group on $Default-named consumer
+    // (c) nonexistent consumer group on $Default-named consumer. The
+    // observation is negative (error-channel silence), so it is bounded-time:
+    // poll the processError channel under a 5s deadline instead of a fixed
+    // 3000ms sleep that could only prove "nothing happened yet".
     try {
       const badConsumer = new EventHubConsumerClient("no-such-group", CONN, probeOpts());
+      const errs = [];
       const badSub = await badConsumer.subscribe(
         "0",
-        { processEvents: async () => {}, processError: async () => {} },
+        { processEvents: async () => {}, processError: async (e) => { errs.push(e); } },
         { startPosition: { offset: "-1" }, maxWaitTimeInSeconds: 1 },
       );
-      await new Promise((r) => setTimeout(r, 3000));
+      const pollEnd = Date.now() + 5_000;
+      while (errs.length === 0 && Date.now() < pollEnd) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
       await boundedClose(badSub, 1500);
       await boundedClose(badConsumer);
-      out.push("nonexistent-consumer-group: no synchronous error (processError channel observed above if any)");
+      out.push(errs.length
+        ? `nonexistent-consumer-group: ${errs[0]?.name ?? "?"}(${errs[0]?.code ?? "-"}) ${String(errs[0]?.message).slice(0, 120)}`
+        : "nonexistent-consumer-group: no processError within 5s (negative observation, bounded-time)");
     } catch (err) {
       out.push(`nonexistent-consumer-group: ${err?.name ?? "?"}(${err?.code ?? "-"}) ${String(err?.message).slice(0, 120)}`);
     }

@@ -14,6 +14,7 @@ defmodule Smalt.ConfigReplayIdentityTest do
   use ExUnit.Case, async: false
 
   @moduletag timeout: 240_000
+  @moduletag :stress
 
   @pack_dir "../ggen-marketplace/packs/smalt-substrate-pack"
   @artifact "lib/smalt/config.ex"

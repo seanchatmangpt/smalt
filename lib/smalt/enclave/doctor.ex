@@ -180,6 +180,9 @@ defmodule Smalt.Enclave.Doctor do
       Application.put_env(:smalt, :lro_retention_ms, 0)
 
       try do
+        # SLEEP-CLASS: SIGNALABLE-PENDING-REDESIGN — eviction_pass reads env
+        # synchronously instead (settle-delay removal); redesign:
+        # docs/jira/v26.10.18/rewrite-drafts/lib-redesign-wasm-lro.md
         Process.sleep(10)
         :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
       after
@@ -256,6 +259,9 @@ defmodule Smalt.Enclave.Doctor do
           raise "doctor: LRO op #{path} never reached terminality: #{inspect(body)}"
         end
 
+        # SLEEP-CLASS: SIGNALABLE-PENDING-REDESIGN — poll step; candidate to
+        # fold into LRO.await shared poll primitive; redesign:
+        # docs/jira/v26.10.18/rewrite-drafts/lib-redesign-wasm-lro.md
         Process.sleep(20)
         do_poll(path, api, opts, deadline)
 
@@ -552,20 +558,49 @@ defmodule Smalt.Enclave.Doctor do
   end
 
   # Real engine load: named WasmEngine GenServer. Already-running counts as
-  # loaded (whereis); a fresh start exercises the engine's own admit+
-  # instantiate path. The engine fails closed to :engine_unavailable for
-  # every admission/instantiation refusal (never raises).
+  # loaded (whereis). Under the supervised envelope, a miss KICKS the owner
+  # child and awaits reappearance with own-mailbox receive-after retries
+  # (backoff doubling capped) — zero caller-path sleep. Direct typed start
+  # remains the fallback when the owner is not running (isolated faces).
+  # The engine fails closed to :engine_unavailable for every admission/
+  # instantiation refusal (never raises).
+  @await_initial_ms 25
+  @await_cap_ms 400
+  @await_max_tries 6
+
   defp engine_loads?(_path) do
-    if Process.whereis(Smalt.Affidavit.WasmEngine) do
-      :ok
-    else
-      case Smalt.Affidavit.WasmEngine.start_link() do
-        {:ok, _pid} -> :ok
-        {:error, reason} -> {:error, reason}
-      end
+    cond do
+      Process.whereis(Smalt.Affidavit.WasmEngine) ->
+        :ok
+
+      owner = Process.whereis(Smalt.Affidavit.WasmEngine.Supervisor.Owner) ->
+        send(owner, {:engine_kick, self()})
+        await_engine(@await_max_tries, @await_initial_ms)
+
+      true ->
+        case Smalt.Affidavit.WasmEngine.start_link() do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
     end
   rescue
     e -> {:error, Exception.format(:error, e, __STACKTRACE__)}
+  end
+
+  # Monitored reappearance poll in THIS process's own mailbox: receive-after
+  # backoff (doubling, capped) — never Process.sleep.
+  defp await_engine(tries, _delay) when tries <= 0, do: {:error, :engine_unavailable}
+
+  defp await_engine(tries, delay) do
+    if Process.whereis(Smalt.Affidavit.WasmEngine) do
+      :ok
+    else
+      receive do
+      after
+        delay -> await_engine(tries - 1, min(delay * 2, @await_cap_ms))
+      end
+    end
   end
 
   defp warn(base, code, details) do

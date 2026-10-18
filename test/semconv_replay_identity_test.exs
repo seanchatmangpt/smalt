@@ -32,6 +32,7 @@ defmodule Smalt.SemconvReplayIdentityTest do
   use ExUnit.Case, async: false
 
   @moduletag timeout: 300_000
+  @moduletag :stress
 
   @pack_dir "../ggen-marketplace/packs/smalt-semconv-pack"
   @artifact "lib/smalt/telemetry/semconv/registry.ex"

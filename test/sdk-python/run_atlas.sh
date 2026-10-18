@@ -39,21 +39,26 @@ Application.put_env(:smalt, :arm_tls_port, $ARM_TLS_PORT);
 {:ok, _} = Application.ensure_all_started(:smalt)" >"$LOG" 2>&1 9>&- &
 SUB_PID=$!
 
+# Bounded TERM->KILL escalation: poll actual death, escalate only at deadline.
 cleanup() {
   kill -TERM -- -$SUB_PID 2>/dev/null || kill $SUB_PID 2>/dev/null
-  sleep 1
+  for i in $(seq 1 100); do
+    kill -0 -- -$SUB_PID 2>/dev/null || break
+    sleep 0.05
+  done
   kill -KILL -- -$SUB_PID 2>/dev/null
 }
 trap cleanup EXIT
 
-up=0
-for i in $(seq 1 600); do
-  if nc -z 127.0.0.1 $EGRESS_PORT 2>/dev/null; then up=1; break; fi
-  sleep 1
+# Deadline-bounded boot poll with child-death early-out (was fixed seq 1 600).
+deadline=$(( SECONDS + 180 ))
+until nc -z 127.0.0.1 $EGRESS_PORT 2>/dev/null; do
+  kill -0 "$SUB_PID" 2>/dev/null || {
+    echo "SUBSTRATE_DIED — log: $LOG"; tail -20 "$LOG"; exit 2; }
+  [ "$SECONDS" -lt "$deadline" ] || {
+    echo "SUBSTRATE_TIMEOUT — log: $LOG"; tail -20 "$LOG"; exit 2; }
+  sleep 0.2
 done
-if [ $up -ne 1 ]; then
-  echo "SUBSTRATE_TIMEOUT — log: $LOG"; tail -20 "$LOG"; exit 2
-fi
 echo "[atlas] substrate up (egress=$EGRESS_PORT amqp=$AMQP_PORT)"
 
 SMALT_EGRESS_BASE="http://127.0.0.1:$EGRESS_PORT" \

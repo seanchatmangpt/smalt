@@ -40,6 +40,11 @@ defmodule ComplianceLoaderTest do
     "c7_events"
   ]
 
+  # c1/c3/c4 now dispatch through the canonical corpus helper
+  # (Smalt.Corpus.Helper — see docs/jira/v26.10.18/receipts/b1-corpus.md),
+  # so the corpus helper must be loaded before the compliance families.
+  Code.require_file(Path.join(Path.dirname(@compliance_dir), "corpus/helper.exs"))
+
   Enum.each(c_files, fn name ->
     Code.require_file(Path.join(@compliance_dir, "#{name}.exs"))
   end)

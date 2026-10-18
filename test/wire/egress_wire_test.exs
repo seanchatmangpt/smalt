@@ -19,20 +19,19 @@ defmodule Smalt.Wire.EgressWireTest do
   use ExUnit.Case, async: false
 
   setup do
-    ports = %{egress: get_free_port()}
+    ports = %{egress: SmaltTest.PortEnv.free_port()}
 
-    stop_existing_tree()
+    SmaltTest.Lifecycle.stop_shared_tree_with_children()
 
-    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
-    prev = %{
-      arm_port: Application.get_env(:smalt, :arm_port),
-      egress_port: Application.get_env(:smalt, :egress_port),
-      amqp_port: Application.get_env(:smalt, :amqp_port)
-    }
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate), via the
+    # canonical nil-preserving helper (v26.10.18 e2e-wire D1/D4).
+    prev = SmaltTest.PortEnv.snapshot([:arm_port, :egress_port, :amqp_port])
 
-    Application.put_env(:smalt, :arm_port, get_free_port())
-    Application.put_env(:smalt, :egress_port, ports.egress)
-    Application.put_env(:smalt, :amqp_port, get_free_port())
+    SmaltTest.PortEnv.apply(
+      arm_port: SmaltTest.PortEnv.free_port(),
+      egress_port: ports.egress,
+      amqp_port: SmaltTest.PortEnv.free_port()
+    )
 
     children = [
       Smalt.Store,
@@ -44,19 +43,7 @@ defmodule Smalt.Wire.EgressWireTest do
 
     on_exit(fn ->
       stop_tree(sup)
-
-      if prev.arm_port == nil,
-        do: Application.delete_env(:smalt, :arm_port),
-        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
-
-      if prev.egress_port == nil,
-        do: Application.delete_env(:smalt, :egress_port),
-        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
-
-      if prev.amqp_port == nil,
-        do: Application.delete_env(:smalt, :amqp_port),
-        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
-
+      SmaltTest.PortEnv.restore(prev)
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -1015,38 +1002,6 @@ defmodule Smalt.Wire.EgressWireTest do
     catch
       _, _ -> Process.exit(sup, :kill)
     end
-  end
-
-  defp stop_existing_tree do
-    case Process.whereis(Smalt.Supervisor) do
-      nil ->
-        for name <- [Smalt.Store, Smalt.AmqpBroker] do
-          if pid = Process.whereis(name), do: GenServer.stop(pid)
-        end
-
-      sup ->
-        SmaltTest.Lifecycle.stop_shared_tree()
-    end
-  end
-
-  defp wait_until_gone(name, n \\ 100)
-
-  defp wait_until_gone(_name, 0), do: :ok
-
-  defp wait_until_gone(name, n) do
-    if Process.whereis(name) == nil do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until_gone(name, n - 1)
-    end
-  end
-
-  defp get_free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(socket)
-    :gen_tcp.close(socket)
-    port
   end
 
   defp http_request(port, method, path, opts \\ []) do

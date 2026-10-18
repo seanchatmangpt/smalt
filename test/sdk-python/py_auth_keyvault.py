@@ -17,6 +17,7 @@ import http.server
 import json
 import os
 import ssl
+import socket
 import subprocess
 import sys
 import threading
@@ -148,7 +149,18 @@ def start_tls_proxy():
 
 def main():
     srv = start_tls_proxy()
-    time.sleep(0.5)
+    # Poll the observable condition: the TLS listener actually accepts on
+    # 19455 (deadline-bounded; a fixed sleep here only masked connect-refused).
+    _dl = time.monotonic() + 5.0
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", 19455), timeout=0.25):
+                break
+        except OSError:
+            if time.monotonic() >= _dl:
+                raise RuntimeError(
+                    "local keyvault TLS proxy never bound :19455 within 5s")
+            time.sleep(0.05)
 
     cred = SmaltTokenCredential()
     token = cred.get_token("https://management.azure.com/.default").token

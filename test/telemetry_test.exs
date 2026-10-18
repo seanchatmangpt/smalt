@@ -192,7 +192,15 @@ defmodule Smalt.TelemetryTest do
       # The supervised instance schedules its own ticks a minute apart; drive
       # the same handler message directly for a deterministic prune.
       send(GenServer.whereis(RollingCounters), :prune)
-      wait_until(fn -> not Map.has_key?(RollingCounters.per_minute(), {now - 3, stale_key}) end)
+
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          if Map.has_key?(RollingCounters.per_minute(), {now - 3, stale_key}),
+            do: :retry,
+            else: {:ok, :ok}
+        end,
+        observable: "prune drops stale row {#{now - 3}, #{inspect(stale_key)}}"
+      )
 
       refute Map.has_key?(RollingCounters.per_minute(), {now - 3, stale_key})
       assert Map.has_key?(RollingCounters.per_minute(), {now, fresh_key})
@@ -252,18 +260,6 @@ defmodule Smalt.TelemetryTest do
   defp assert_whitelisted(metadata) do
     for {k, _v} <- metadata do
       assert k in Telemetry.metadata_keys(), "metadata key #{inspect(k)} is not whitelisted"
-    end
-  end
-
-  defp wait_until(fun, tries \\ 50)
-  defp wait_until(_fun, 0), do: flunk("condition never became true")
-
-  defp wait_until(fun, tries) do
-    if fun.() do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until(fun, tries - 1)
     end
   end
 end

@@ -953,6 +953,7 @@ defmodule Smalt.McpWireTest do
     assert {:ok, 200, _h1, b1} = keep_alive_response_full(sock, <<>>)
     assert Jason.decode!(b1)["result"]["structuredContent"]["status"] == "ok"
 
+    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
     Process.sleep(1_500)
 
     body2 = rpc_body("tools/call", %{"name" => "substrate.capabilities", "arguments" => %{}}, 2)

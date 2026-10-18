@@ -23,7 +23,10 @@ defmodule ApiVersionMatrixTest do
     PUT route matches only one resource-type segment. When a dedicated child
     route lands, move the type into @child_routes and join the three-PUT fence.
 
-  Each row cites the router file:line of the PUT route it exercises.
+  Each row cites its PUT route as a `route_key` atom resolved through the
+  `SmaltTest.RouteCites` registry (route_key -> {Router, handler, arity});
+  the cite fence verifies the cited MFA exists in the Router's compiled
+  debug_info, so router line insertions can never rot a citation.
   """
 
   use ExUnit.Case
@@ -37,8 +40,9 @@ defmodule ApiVersionMatrixTest do
   @sub "00000000-0000-0000-0000-000000000000"
   @rg "matrix-rg"
 
-  # router.ex:2451 — generic provider PUT route
-  @generic_put_line "lib/smalt/arm_gateway/router.ex:2408"
+  # Generic provider PUT route (handle_resource_put/5) — cited by symbol, not
+  # by line. Registry: SmaltTest.RouteCites.route_cites().
+  @generic_put_route_key :generic_provider_put
 
   setup do
     ensure_store()
@@ -146,59 +150,59 @@ defmodule ApiVersionMatrixTest do
   # Route inventory (each row cites its PUT route in the router)
   # ===========================================================================
 
-  # Child-path types with DEDICATED PUT routes in router.ex (grep of
-  # handle_child_put call sites; each row cites the route's file:line).
+  # Child-path types with DEDICATED PUT routes in router.ex (handle_child_put
+  # call sites; each row cites the route by registry route_key, not by line).
   @child_routes [
     {"Microsoft.Network/subnets",
      "providers/Microsoft.Network/virtualNetworks/matrix-vnet/subnets/matrix-subnet",
-     "lib/smalt/arm_gateway/router.ex:1496"},
+     :subnet_put},
     {"Microsoft.KeyVault/vaults/keys",
      "providers/Microsoft.KeyVault/vaults/matrix-vault/keys/matrix-key",
-     "lib/smalt/arm_gateway/router.ex:1537"},
+     :vault_keys_put},
     {"Microsoft.Storage/storageAccounts/blobServices",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default",
-     "lib/smalt/arm_gateway/router.ex:1578"},
+     :blob_services_put},
     {"Microsoft.Storage/storageAccounts/blobServices/containers",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default/containers/matrix-container",
-     "lib/smalt/arm_gateway/router.ex:1609"},
+     :containers_put},
     {"Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default/containers/matrix-container/immutabilityPolicies/matrix-policy",
-     "lib/smalt/arm_gateway/router.ex:1650"}
+     :immutability_policies_put}
   ]
 
   # SB/EH messaging children: LANDED in router.ex (handle_parented_child PUT
-  # routes, router.ex:1691/1740/1789/1838/1887) but NOT admitted in Registry — the
-  # api-version fence below pins the expected 400 InvalidApiVersionParameter
-  # for them too; rows go red until Registry admits the type.
+  # routes) but NOT admitted in Registry — the api-version fence below pins the
+  # expected 400 InvalidApiVersionParameter for them too; rows go red until
+  # Registry admits the type.
   @parented_routes [
     {"Microsoft.ServiceBus/namespaces/queues", {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/queues/matrix-queue",
-     "lib/smalt/arm_gateway/router.ex:1691"},
+     :sb_queues_put},
     {"Microsoft.ServiceBus/namespaces/topics", {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic",
-     "lib/smalt/arm_gateway/router.ex:1740"},
+     :sb_topics_put},
     {"Microsoft.ServiceBus/namespaces/topics/subscriptions",
      {"Microsoft.ServiceBus/namespaces/topics", "matrix-topic"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic/subscriptions/matrix-sub",
-     "lib/smalt/arm_gateway/router.ex:1789"},
+     :sb_subscriptions_put},
     {"Microsoft.EventHub/namespaces/eventhubs", {"Microsoft.EventHub/namespaces", "matrix-ehns"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub",
-     "lib/smalt/arm_gateway/router.ex:1838"},
+     :eh_eventhubs_put},
     {"Microsoft.EventHub/namespaces/eventhubs/consumergroups",
      {"Microsoft.EventHub/namespaces/eventhubs", "matrix-hub"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub/consumergroups/matrix-cg",
-     "lib/smalt/arm_gateway/router.ex:1887"},
+     :eh_consumergroups_put},
     {"Microsoft.Network/privateDnsZones/virtualNetworkLinks",
      {"Microsoft.Network/privateDnsZones", "matrix-zone"},
      "providers/Microsoft.Network/privateDnsZones/matrix-zone/virtualNetworkLinks/matrix-link",
-     "lib/smalt/arm_gateway/router.ex:2805"}
+     :vnet_links_put}
   ]
 
   @child_types MapSet.new(Enum.map(@child_routes, fn {t, _, _} -> t end))
 
   # Types with a landed PUT route but no dedicated child route ride the generic
-  # provider PUT route (router.ex:2451): single-segment resource types only —
-  # that route matches exactly :provider_ns/:resource_type/:resource_name.
+  # provider PUT route (handle_resource_put/5): single-segment resource types
+  # only — that route matches exactly :provider_ns/:resource_type/:resource_name.
   @generic_rows Registry.admitted_resource_types()
                 |> Enum.reject(&MapSet.member?(@child_types, &1))
                 |> Enum.sort()
@@ -206,7 +210,7 @@ defmodule ApiVersionMatrixTest do
                   case String.split(type, "/", parts: 2) do
                     [ns, leaf] ->
                       if leaf != "" and not String.contains?(leaf, "/") do
-                        [{type, "providers/#{ns}/#{leaf}/matrix-res", @generic_put_line}]
+                        [{type, "providers/#{ns}/#{leaf}/matrix-res", @generic_put_route_key}]
                       else
                         []
                       end
@@ -332,6 +336,52 @@ defmodule ApiVersionMatrixTest do
   # Registry-completeness row: router route type literals ⊆ admitted types
   # ===========================================================================
 
+  # Excluded from the registry-completeness literal sweep — each exclusion is
+  # a named, individually reviewable row with its close condition. The fence
+  # also asserts each excluded literal still appears in router.ex, so a stale
+  # exclusion (literal removed from the router) turns red instead of silently
+  # widening the exclusion set.
+  @excluded_literals [
+    # Response-envelope type literal in the azapi lock action body, not a
+    # route's resource-type string. Not an admitted registry type; rides the
+    # POST action route, not a PUT route.
+    {"Microsoft.Authorization/locks",
+     "response-envelope literal in the azapi lock action body; rides the POST action route, not a PUT route"},
+
+    # String prefix guard routing cosmos child PUTs to handle_cosmos_child_put/5,
+    # not a route's resource-type string. The real route types sqlDatabases /
+    # sqlContainers are admitted.
+    {"Microsoft.DocumentDB/databaseAccounts/sql",
+     "String prefix guard routing cosmos child PUTs (handle_cosmos_child_put/5); real route types sqlDatabases/sqlContainers are admitted"},
+
+    # 80/20 Policy + RBAC lane, v26.10.16: served by dedicated routes backed by
+    # Smalt.Policy (:smalt_policy / :smalt_rbac ETS), NOT by the generic
+    # admitted-type resource path. api-version gate is check_api_version/2 —
+    # presence required (400 MissingApiVersionParameter), value never validated
+    # (check_version/3 :ok for non-Registry types).
+    {"Microsoft.Authorization/roleDefinitions",
+     "Policy+RBAC surface (Smalt.Policy); api-version gate check_api_version/2 presence-only; close: register in ggen-marketplace smalt-substrate-pack ontology"},
+    {"Microsoft.Authorization/policyDefinitions",
+     "Policy+RBAC surface (Smalt.Policy); api-version gate check_api_version/2 presence-only; close: register in ggen-marketplace smalt-substrate-pack ontology"},
+    {"Microsoft.Authorization/policyAssignments",
+     "Policy+RBAC surface (Smalt.Policy); api-version gate check_api_version/2 presence-only; close: register in ggen-marketplace smalt-substrate-pack ontology"},
+    {"Microsoft.PolicyInsights/policyStates",
+     "Policy+RBAC surface (Smalt.Policy); api-version gate check_api_version/2 presence-only; close: register in ggen-marketplace smalt-substrate-pack ontology"},
+
+    # 80/20 SB subscription rules lane, v26.10.16: rules ride dedicated routes
+    # backed by :smalt_sb_rules (Smalt.SbRules); check_api_version/2 gate.
+    {"Microsoft.ServiceBus/namespaces/topics/subscriptions/rules",
+     "SB rules lane (Smalt.SbRules); api-version gate check_api_version/2 presence-only; close: register in ggen-marketplace smalt-substrate-pack ontology"},
+
+    # Soft-delete purge lane, v26.10.16: gates the dedicated deleted-vault
+    # purge route (POST .../deletedVaults/:name/purge) — azurerm destroy calls
+    # this after DELETE; RouteNotFound there failed tf destroy (c11-tf-loop
+    # lane receipt, tmp/c11-tf-loop-34762.log, 2026-10-16). check_api_version/2
+    # gate.
+    {"Microsoft.KeyVault/deletedVaults",
+     "deleted-vault purge route (POST .../purge, tf-destroy evidence tmp/c11-tf-loop-34762.log); api-version gate check_api_version/2 presence-only; close: register in ggen-marketplace smalt-substrate-pack ontology"}
+  ]
+
   test "every route resource-type literal in router.ex is an admitted registry type" do
     router_source = File.read!("lib/smalt/arm_gateway/router.ex")
 
@@ -339,47 +389,7 @@ defmodule ApiVersionMatrixTest do
       Regex.scan(~r/"(Microsoft\.[A-Za-z]+(?:\/[A-Za-z]+)+)"/, router_source)
       |> Enum.map(&Enum.at(&1, 1))
       |> MapSet.new()
-      # Excluded: "Microsoft.Authorization/locks" is a response-envelope type
-      # literal in the azapi lock action body (router.ex:1026), not a route's
-      # resource-type string. It is not an admitted registry type and rides the
-      # POST action route, not a PUT route.
-      |> MapSet.delete("Microsoft.Authorization/locks")
-      # Excluded: "Microsoft.DocumentDB/databaseAccounts/sql" is a String
-      # prefix guard (router.ex:899, routing cosmos child PUTs to
-      # handle_cosmos_child_put/5), not a route's resource-type string.
-      # The real route types sqlDatabases / sqlContainers are admitted.
-      |> MapSet.delete("Microsoft.DocumentDB/databaseAccounts/sql")
-      # Excluded (80/20 Policy + RBAC lane, v26.10.16): the Microsoft.Authorization
-      # policy surface (roleDefinitions / policyDefinitions / policyAssignments)
-      # and Microsoft.PolicyInsights/policyStates are served by dedicated routes
-      # backed by Smalt.Policy (:smalt_policy / :smalt_rbac ETS), NOT by the
-      # generic admitted-type resource path. Their api-version gate is
-      # check_api_version/2 — presence required (400 MissingApiVersionParameter),
-      # value never validated (check_version/3 returns :ok for non-Registry
-      # types). Registering them in the ggen-marketplace smalt-substrate-pack
-      # ontology is the close condition that removes these exclusions.
-      |> MapSet.delete("Microsoft.Authorization/roleDefinitions")
-      |> MapSet.delete("Microsoft.Authorization/policyDefinitions")
-      |> MapSet.delete("Microsoft.Authorization/policyAssignments")
-      |> MapSet.delete("Microsoft.PolicyInsights/policyStates")
-      # Excluded (80/20 SB subscription rules lane, v26.10.16): rules ride
-      # dedicated routes backed by :smalt_sb_rules (Smalt.SbRules); api-version
-      # gate is check_api_version/2 (presence required, value never validated
-      # for this non-Registry type). Registering the rules type in the
-      # ggen-marketplace smalt-substrate-pack ontology is the close condition.
-      |> MapSet.delete("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules")
-      # Excluded (soft-delete purge lane, v26.10.16): the Microsoft.KeyVault/
-      # deletedVaults literal gates the dedicated deleted-vault purge route
-      # (POST .../providers/Microsoft.KeyVault/locations/:loc/deletedVaults/
-      # :name/purge, router.ex) — azurerm destroy calls this after DELETE;
-      # RouteNotFound there failed tf destroy (c11-tf-loop lane receipt,
-      # tmp/c11-tf-loop-34762.log, 2026-10-16). It is served by a dedicated
-      # route, NOT the generic admitted-type resource path, and its api-version
-      # gate is check_api_version/2 (presence required, value never validated
-      # for this non-Registry type). Registering the deletedVaults type in the
-      # ggen-marketplace smalt-substrate-pack ontology is the close condition
-      # that removes this exclusion.
-      |> MapSet.delete("Microsoft.KeyVault/deletedVaults")
+      |> MapSet.difference(MapSet.new(Enum.map(@excluded_literals, &elem(&1, 0))))
 
     admitted = MapSet.new(Registry.admitted_resource_types())
 
@@ -390,48 +400,35 @@ defmodule ApiVersionMatrixTest do
              inspect(MapSet.to_list(unadmitted))
   end
 
-  # ===========================================================================
-  # Cite-drift fence: every `router.ex:LINE` citation in this file resolves to
-  # a line whose content matches the expected construct — future router
-  # insertions turn this fence red instead of silently rotting the citations.
-  # ===========================================================================
+  test "every @excluded_literals row still names a literal present in router.ex" do
+    router_source = File.read!("lib/smalt/arm_gateway/router.ex")
 
-  # Line cites re-anchored 2026-10-17 after router.ex insertions shifted the
-  # route table (each still pins its family's PUT/defining route line).
-  @cite_drift [
-    {"lib/smalt/arm_gateway/router.ex:2751",
-     "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
-    {"lib/smalt/arm_gateway/router.ex:2792", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3105", "blobServices/default\""},
-    {"lib/smalt/arm_gateway/router.ex:3155", "blobServices/default/containers/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3196", "immutabilityPolicies/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3237",
-     "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3286",
-     "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3335", "topics/:topic/subscriptions/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3407",
-     "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3456", "eventhubs/:hub/consumergroups/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3664",
-     "providers/:provider_ns/:resource_type/:resource_name"},
-    {"lib/smalt/arm_gateway/router.ex:1848", "Microsoft.Authorization/locks"}
-  ]
-
-  test "cite-drift fence: every router.ex:LINE citation resolves to the expected construct" do
-    lines =
-      "lib/smalt/arm_gateway/router.ex"
-      |> File.read!()
-      |> String.split("\n")
-
-    for {cite, expected} <- @cite_drift do
-      "lib/smalt/arm_gateway/router.ex:" <> line_no = cite
-      content = Enum.at(lines, String.to_integer(line_no) - 1)
-
-      assert content != nil and String.contains?(content, expected),
-             "stale citation #{cite}: expected line content matching #{inspect(expected)} " <>
-               "but got #{inspect(content)}"
+    for {literal, _reason} <- @excluded_literals do
+      assert String.contains?(router_source, literal),
+             "stale exclusion #{literal}: no longer appears in router.ex — " <>
+               "delete the @excluded_literals row, never keep a dead exclusion"
     end
+  end
+
+  # ===========================================================================
+  # Cite fence: every route cite is an atom into the SmaltTest.RouteCites
+  # registry and resolves to a live Router symbol via the compiled module's
+  # abstract_code debug_info. Line insertions in router.ex cannot break this
+  # fence — only a handler rename/removal can (and should).
+  # ===========================================================================
+
+  test "every matrix row cites a route_key registered in SmaltTest.RouteCites" do
+    registered = SmaltTest.RouteCites.route_cites()
+
+    for {type, _path, route_key} <- @matrix_rows ++ @parented_routes_as_rows do
+      assert Map.has_key?(registered, route_key),
+             "#{type}: route_key #{inspect(route_key)} is not in the " <>
+               "SmaltTest.RouteCites registry — add one registry row, never a file:line cite"
+    end
+  end
+
+  test "cite fence: every route cite resolves to a live Router symbol" do
+    SmaltTest.RouteCites.assert_cites_resolve!()
   end
 
   # ===========================================================================

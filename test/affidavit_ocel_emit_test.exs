@@ -14,15 +14,12 @@ defmodule Smalt.Telemetry.AffidavitOcelEmitTest do
   setup do
     dir = Path.join("tmp", "ocel-affidavit-test-#{System.system_time(:millisecond)}")
     File.mkdir_p!(dir)
-    prev = Application.get_env(:smalt, :ocel_dir)
-    Application.put_env(:smalt, :ocel_dir, dir)
+    # Canonical env save/restore (SmaltTest.Env): put-if-non-nil / delete-if-unset
+    # restore discipline is load-bearing (leak-batch1 finding 2).
+    SmaltTest.Env.put_restored(ocel_dir: dir)
     log = Path.join(dir, "events.ndjson")
 
     on_exit(fn ->
-      if prev,
-        do: Application.put_env(:smalt, :ocel_dir, prev),
-        else: Application.delete_env(:smalt, :ocel_dir)
-
       File.rm_rf!(dir)
     end)
 

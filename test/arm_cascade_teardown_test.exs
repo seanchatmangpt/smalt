@@ -8,16 +8,6 @@ defmodule ArmCascadeTeardownTest do
   @opts Router.init([])
   @sub "00000000-0000-0000-0000-000000000000"
 
-  @tables [
-    :smalt_resources,
-    :smalt_resource_groups,
-    :smalt_blob_containers,
-    :smalt_blobs,
-    :smalt_blob_blocks,
-    :smalt_blob_policy,
-    :smalt_blob_snapshots
-  ]
-
   setup do
     case Store.start_link([]) do
       {:ok, _} -> :ok
@@ -271,14 +261,6 @@ defmodule ArmCascadeTeardownTest do
     # FR-6 completion (D127): data-plane tables must be swept for the account
     post_c = Store.prefix_keys(:smalt_blob_containers, "")
     post_b = Store.prefix_keys(:smalt_blobs, "")
-
-    # residue audit: every Store table's remaining keys
-
-    for t <- @tables do
-      if :ets.info(t) == :undefined do
-      else
-      end
-    end
 
     assert post_c == [],
            "DATA-PLANE RESIDUE :smalt_blob_containers=#{inspect(post_c)} (D127 cascade sweep not applied to data-plane tables)"

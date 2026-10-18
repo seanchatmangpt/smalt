@@ -11,20 +11,15 @@ defmodule ArmFr5TfDivergenceClosuresTest do
 
   alias Smalt.ArmGateway.Defaults
   alias Smalt.ArmGateway.Router
-  alias Smalt.Store
 
   @opts Router.init([])
   @sub "00000000-0000-0000-0000-000000000000"
 
   setup do
-    case Store.start_link([]) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-    end
-
-    Store.clear()
-
-    Application.put_env(:smalt, :lro_delay_ms, 0)
+    # v26.10.18: canonical resilient shared-Store setup + save/restore env
+    # (the previous setup leaked lro_delay_ms=0 to siblings on failure).
+    :ok = SmaltTest.Store.resilient_clear()
+    :ok = SmaltTest.Env.put_restored(lro_delay_ms: 0)
     :ok
   end
 
@@ -419,25 +414,27 @@ defmodule ArmFr5TfDivergenceClosuresTest do
 
     test "LRO InProgress poll body keeps the operation shape (no identity enrichment yet)" do
       put_rg()
-      Application.put_env(:smalt, :lro_delay_ms, 60_000)
 
-      path =
-        "/subscriptions/#{@sub}/resourceGroups/rg-fr5/providers/Microsoft.Storage/storageAccounts/stt5f3b"
+      # Scoped mutation (v26.10.18): restore is exception-safe in `with/2` —
+      # the trailing bare put_env leaked 60_000 to siblings on any failure.
+      SmaltTest.Env.with([lro_delay_ms: 60_000], fn ->
+        path =
+          "/subscriptions/#{@sub}/resourceGroups/rg-fr5/providers/Microsoft.Storage/storageAccounts/stt5f3b"
 
-      resp = put_res(path, %{"location" => "smalt-local"})
-      assert resp.status == 202
+        resp = put_res(path, %{"location" => "smalt-local"})
+        assert resp.status == 202
 
-      {_, op_path} = Enum.find(resp.resp_headers, fn {k, _} -> k == "azure-asyncoperation" end)
-      op_id = op_path |> String.split("/") |> List.last()
+        {_, op_path} = Enum.find(resp.resp_headers, fn {k, _} -> k == "azure-asyncoperation" end)
 
-      poll = get_res("/subscriptions/#{@sub}/operations/#{op_id}")
-      assert poll.status == 202
-      body = Jason.decode!(poll.resp_body)
-      assert body["status"] == "InProgress"
-      refute Map.has_key?(body, "type")
-      refute body["id"] == path
+        op_id = op_path |> String.split("/") |> List.last()
 
-      Application.put_env(:smalt, :lro_delay_ms, 0)
+        poll = get_res("/subscriptions/#{@sub}/operations/#{op_id}")
+        assert poll.status == 202
+        body = Jason.decode!(poll.resp_body)
+        assert body["status"] == "InProgress"
+        refute Map.has_key?(body, "type")
+        refute body["id"] == path
+      end)
     end
   end
 end

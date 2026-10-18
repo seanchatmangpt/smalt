@@ -5,13 +5,17 @@ defmodule Smalt.DataPlane.VaultDataTest do
   alias Smalt.Store
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-
-    if :ets.info(:smalt_vault_secrets) != :undefined do
-      :ets.delete_all_objects(:smalt_vault_secrets)
-    end
-
-    :ok
+    # Canonical resilient setup: the wipe runs INSIDE the bounded retry
+    # window, so a shared-Store teardown racing the clear is retried, not
+    # a dead-table ArgumentError (SmaltTest.Store, i21/i22 hardening).
+    SmaltTest.Store.resilient_clear(
+      post_seed: fn ->
+        case :ets.info(:smalt_vault_secrets) do
+          :undefined -> :ok
+          _ -> :ets.delete_all_objects(:smalt_vault_secrets)
+        end
+      end
+    )
   end
 
   test "vault_secret_names/1 matches both key conventions + uniqs" do

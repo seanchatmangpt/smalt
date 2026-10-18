@@ -23,6 +23,11 @@ defmodule Smalt.SemanticEpochTest do
 
     File.mkdir_p!(Path.join(tmp, "receipts"))
 
+    # Lane-cleanup law: the fixture dir is a lease — reclaimed on exit
+    # regardless of test outcome (the doc'd teardown in later tests is
+    # best-effort; this is the guarantee).
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(tmp) end)
+
     # Seed fixture copies: byte-identical copies of the real receipt ledgers.
     for file <- File.ls!(@receipts_dir), String.ends_with?(file, ".jsonl") do
       File.cp!(Path.join(@receipts_dir, file), Path.join([tmp, "receipts", file]))

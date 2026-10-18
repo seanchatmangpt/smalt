@@ -16,7 +16,9 @@ defmodule Smalt.MetadataEndpointsTest do
   @tenant "00000000-0000-0000-0000-000000000000"
 
   setup do
-    stop_existing_tree()
+    # Canonical shared-tree teardown (v26.10.18 review lane): was a local
+    # copy of the two-branch whereis shape; SmaltTest.Wire normalizes it.
+    SmaltTest.Wire.stop_existing_tree()
 
     port = free_port()
     tls_port = free_port()
@@ -352,31 +354,6 @@ defmodule Smalt.MetadataEndpointsTest do
   # ---------------------------------------------------------------------------
   # helpers
   # ---------------------------------------------------------------------------
-
-  # The application tree under test_helper is not always terminated cleanly;
-  # fall back to a hard kill so teardown never fails the run. Teardown only.
-  defp stop_existing_tree do
-    case Process.whereis(Smalt.Supervisor) do
-      nil ->
-        if pid = Process.whereis(Smalt.Store), do: GenServer.stop(pid)
-
-      sup ->
-        SmaltTest.Lifecycle.stop_shared_tree()
-    end
-  end
-
-  defp wait_until_gone(name, n \\ 100)
-
-  defp wait_until_gone(_name, 0), do: :ok
-
-  defp wait_until_gone(name, n) do
-    if Process.whereis(name) == nil do
-      :ok
-    else
-      Process.sleep(10)
-      wait_until_gone(name, n - 1)
-    end
-  end
 
   defp jwt_claims!(token) do
     [_header, payload, _sig] = String.split(token, ".")

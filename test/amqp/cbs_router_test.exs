@@ -8,8 +8,10 @@ defmodule Smalt.Amqp.CbsRouterTest do
   @cbs_type "servicebus.windows.net:sastoken"
 
   setup do
-    Application.put_env(:smalt, :sb_shared_key, @key)
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    # Canonical nil-preserving env restore (SmaltTest.Env): a pre-existing
+    # :sb_shared_key is put back, an absent one is delete_env'd — never the
+    # reverse (leak-batch1 finding 2).
+    SmaltTest.Env.put_restored(sb_shared_key: @key)
     table = :ets.new(:cbs_test_claims, [:set, :public, keypos: 1])
 
     {:ok, router} =

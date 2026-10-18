@@ -74,33 +74,33 @@ defmodule Smalt.Affidavit.WasmEngine do
   override). Fails closed with `{:error, :engine_unavailable}` when the
   artifact is missing, the sha256 sidecar pin mismatches, admission
   fails, or instantiation fails. Never raises.
+
+  Zero caller-path sleep (v26.10.18 lib redesign): `start_link/1` is a
+  whereis probe plus ONE typed admission attempt — no in-module retry, no
+  `Process.sleep` anywhere in this module. The bounded start retry moved to
+  `Smalt.Affidavit.WasmEngine.Supervisor`: the supervised owner child
+  restarts the engine via `send_after` retries in its OWN mailbox (backoff
+  doubling, capped), so the `:engine_start_failed` NIF-teardown class stays
+  retried without ever putting a sleep on the caller path. Artifact
+  refusals still refuse FAST and are never retried by this module.
   """
   @spec start_link(keyword()) ::
-          {:ok, pid()} | {:error, :engine_unavailable} | {:error, :artifact_digest_mismatch}
-  # Lane-644 churn hardening: the wasmtime NIF releases store/module resources
-  # of a just-stopped engine asynchronously; under full-suite load that window
-  # widens past what lane 614's one-shot 100ms retry covered (witnessed 4 red
-  # tests under load, green solo). Bounded typed retry — 3 attempts, 250ms
-  # apart, <1s total — on the :engine_start_failed init-refusal class only
-  # (NIF teardown window: store creation / module compile / instantiation).
-  # Artifact refusals are NEVER retried: a missing file or digest-mismatch
-  # pin must refuse FAST ({:error, :artifact_digest_mismatch} /
-  # :artifact_missing_or_admission_failed) with no sleep on the path.
-  @start_retry_attempts 3
-  @start_retry_delay_ms 250
-
+          {:ok, pid()}
+          | {:error, :engine_unavailable}
+          | {:error, :artifact_digest_mismatch}
+          | {:error, {:already_started, pid()}}
   def start_link(opts \\ []) do
-    start_with_retry(opts, @start_retry_attempts)
-  end
+    # Whereis probe first: on a hit the typed already_started passthrough IS
+    # the result (lane644 face, preserved verbatim — it is also the
+    # supervisor owner's adoption guard). On a miss, one admission attempt;
+    # every retry/backoff lives in WasmEngine.Supervisor (own-mailbox
+    # send_after), never here (structural zero-sleep form of fence 10).
+    case Process.whereis(__MODULE__) do
+      pid when is_pid(pid) ->
+        {:error, {:already_started, pid}}
 
-  defp start_with_retry(opts, attempts_left) do
-    case start_once(opts) do
-      {:error, :engine_start_failed} when attempts_left > 1 ->
-        Process.sleep(@start_retry_delay_ms)
-        start_with_retry(opts, attempts_left - 1)
-
-      result ->
-        result
+      nil ->
+        start_once(opts)
     end
   end
 
@@ -113,23 +113,21 @@ defmodule Smalt.Affidavit.WasmEngine do
 
         # Named-singleton race: a concurrent start wins the name. Typed
         # passthrough — never collapsed to :engine_unavailable (lane644
-        # restart-hammer face).
+        # restart-hammer face). Deterministic under the whereis probe.
         {:error, {:already_started, _pid}} = err ->
-          err
-
-        {:error, :engine_start_failed} = err ->
           err
 
         # DEF-1 (lane630): do not collapse the init reason — log + persist it
         # verbatim, then hand callers the same typed :engine_unavailable atom.
+        # This branch now also carries the :engine_start_failed class (NIF
+        # teardown window): the supervised owner re-persists the refusal on
+        # EVERY supervised attempt; the retry itself is the owner's
+        # own-mailbox send_after loop — never a sleep in this module.
         {:error, reason} ->
           unavailable(reason)
       end
     else
       {:error, :artifact_digest_mismatch} = err ->
-        err
-
-      {:error, :engine_start_failed} = err ->
         err
 
       {:error, reason} ->

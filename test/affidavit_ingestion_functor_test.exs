@@ -5,6 +5,8 @@ defmodule AffidavitIngestionFunctorTest do
   alias Smalt.ArmGateway.Router
   alias Smalt.Store
 
+  import SmaltTest.AssertEventually, only: [eventually: 2]
+
   @opts Router.init([])
   @sub "00000000-0000-0000-0000-000000000000"
   @rg "seal-rg"
@@ -13,8 +15,9 @@ defmodule AffidavitIngestionFunctorTest do
   @subject String.downcase(@res_id)
 
   setup do
-    ensure_store()
-    Store.clear()
+    # v26.10.18: canonical resilient shared-Store setup (dead-table retry on
+    # AssertEventually; replaces the hand-rolled ensure_store/1 poll).
+    :ok = SmaltTest.Store.resilient_clear()
 
     Store.put(:smalt_subscriptions, @sub, %{
       "id" => "/subscriptions/#{@sub}",
@@ -23,16 +26,9 @@ defmodule AffidavitIngestionFunctorTest do
       "state" => "Enabled"
     })
 
-    prev_lro_delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Application.put_env(:smalt, :lro_delay_ms, 0)
-
-    on_exit(fn ->
-      if prev_lro_delay == 0 do
-        Application.delete_env(:smalt, :lro_delay_ms)
-      else
-        Application.put_env(:smalt, :lro_delay_ms, prev_lro_delay)
-      end
-    end)
+    # v26.10.18: canonical save/restore (put when prev non-nil, delete when
+    # unset — never the reverse).
+    :ok = SmaltTest.Env.put_restored(lro_delay_ms: 0)
 
     if :ets.info(:smalt_affidavit_witnesses) != :undefined do
       :ets.delete_all_objects(:smalt_affidavit_witnesses)
@@ -43,27 +39,8 @@ defmodule AffidavitIngestionFunctorTest do
 
   defp call(conn), do: Router.call(conn, @opts)
 
-  # Idempotent Store boot (same contract as smalt_arm_gateway_test.exs).
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        if :ets.info(:smalt_subscriptions) == :undefined do
-          pid = Process.whereis(Store)
-          ref = Process.monitor(pid)
-
-          receive do
-            {:DOWN, ^ref, :process, ^pid, _} -> ensure_store()
-          after
-            500 -> :ok
-          end
-        else
-          :ok
-        end
-    end
-  end
+  # (the hand-rolled ensure_store/1 idempotent-boot helper was retired into
+  # SmaltTest.Store.resilient_clear/1 — one audited implementation, B0).
 
   defp api_v(type) do
     case Smalt.Registry.latest_version(type) do
@@ -151,15 +128,11 @@ defmodule AffidavitIngestionFunctorTest do
     start_engine()
     dir = Path.join("tmp", "ocel-lane622-#{System.system_time(:millisecond)}")
     File.mkdir_p!(dir)
-    prev = Application.get_env(:smalt, :ocel_dir)
-    Application.put_env(:smalt, :ocel_dir, dir)
+    # v26.10.18: canonical save/restore for the sink-dir env.
+    :ok = SmaltTest.Env.put_restored(ocel_dir: dir)
     log = Path.join(dir, "events.ndjson")
 
     on_exit(fn ->
-      if prev,
-        do: Application.put_env(:smalt, :ocel_dir, prev),
-        else: Application.delete_env(:smalt, :ocel_dir)
-
       File.rm_rf!(dir)
     end)
 
@@ -223,6 +196,8 @@ defmodule AffidavitIngestionFunctorTest do
             other -> send(parent, {:engine_failed, other})
           end
 
+          # Process-park of the linked holder — the condition is "never wake",
+          # no pollable observable (No-Sleep Law 1 :infinity exception).
           Process.sleep(:infinity)
         end)
 
@@ -231,7 +206,7 @@ defmodule AffidavitIngestionFunctorTest do
           :ok
 
         {:engine_failed, other} ->
-          flunk("affidavit WASM engine failed to start: \#{inspect(other)}")
+          flunk("affidavit WASM engine failed to start: #{inspect(other)}")
       after
         10_000 -> flunk("affidavit WASM engine start timed out")
       end
@@ -250,17 +225,16 @@ defmodule AffidavitIngestionFunctorTest do
       pid ->
         GenServer.stop(pid, :normal)
 
-        wait_until(fn ->
-          Process.whereis(Smalt.Affidavit.WasmEngine) == nil
-        end)
+        # v26.10.18: shared bounded poll (replaces the local wait_until/1
+        # count-bounded sleeper).
+        eventually(
+          fn ->
+            if Process.whereis(Smalt.Affidavit.WasmEngine) == nil,
+              do: {:ok, :stopped},
+              else: :retry
+          end,
+          observable: "affidavit WASM engine stopped", deadline_ms: 5_000
+        )
     end
-  end
-
-  defp wait_until(fun), do: wait_until(fun, 50)
-
-  defp wait_until(_fun, 0), do: :ok
-
-  defp wait_until(fun, n) do
-    if fun.(), do: :ok, else: Process.sleep(10) && wait_until(fun, n - 1)
   end
 end

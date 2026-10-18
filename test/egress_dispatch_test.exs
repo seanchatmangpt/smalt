@@ -6,47 +6,20 @@ defmodule EgressDispatchTest do
   alias Smalt.EgressRouter
   alias Smalt.Store
 
+  import SmaltTest.Wire,
+    only: [resilient_clear!: 0, get_free_port: 0, http_request: 4, save_restore: 1]
+
   @opts EgressRouter.init([])
 
   setup do
     # Other suites stop the main app tree to run private trees; never assume
     # module run order — restore the shared app if the Store is gone.
-    SmaltTest.Lifecycle.ensure_store_up()
-
     # r241/i21: even with the Store ensured up, an async sibling suite
-    # (eventgrid_topics_arm_test private trees) can tear the shared ETS
-    # tables down in the window between ensure_store_up and Store.clear/0,
-    # so clear's seed_default_subscription insert hits a dead table
-    # ("table identifier does not refer to an existing ETS table").
-    # Bounded typed retry: re-ensure, then re-clear; a persistent failure
-    # after the bound re-raises the original error (loud, not swallowed).
-    case resilient_clear() do
-      :ok ->
-        :ok
-
-      {:error, :store_unavailable} ->
-        raise "EgressDispatchTest setup: shared Store unavailable after retry bound"
-    end
-  end
-
-  @clear_retries 50
-
-  defp resilient_clear(retries \\ @clear_retries)
-
-  defp resilient_clear(0), do: {:error, :store_unavailable}
-
-  defp resilient_clear(retries) do
-    SmaltTest.Lifecycle.ensure_store_up()
-
-    Store.clear()
-  rescue
-    # NOTE(i21 leak-batch2 lane, compile-freeze SLA unblock): the original clause
-    # `ArgumentError in [message: "..."]` is not legal Elixir rescue syntax
-    # (the `in` form matches aliases only, never keyword message filters).
-    # Narrowed to the ArgumentError type; the retry loop preserves intent.
-    ArgumentError ->
-      Process.sleep(10)
-      resilient_clear(retries - 1)
+    # (eventgrid private trees) can tear the shared ETS tables down in the
+    # window between ensure_store_up and Store.clear/0. The bounded typed
+    # retry (50 x 10ms, ArgumentError-narrowed, loud on persistent failure)
+    # now lives in SmaltTest.Wire.resilient_clear!/0 (shared harness).
+    SmaltTest.Wire.resilient_clear!()
   end
 
   defp call(method, path, opts \\ []) do
@@ -289,9 +262,7 @@ defmodule EgressDispatchTest do
   end
 
   test "SKR: legacy raw header refused when skr_allow_legacy_header disabled" do
-    prev_skr_legacy = Application.get_env(:smalt, :skr_allow_legacy_header)
-    Process.put(:prev_skr_legacy, prev_skr_legacy)
-    Application.put_env(:smalt, :skr_allow_legacy_header, false)
+    save_restore(skr_allow_legacy_header: false)
 
     call(:post, "/keys/legacy-key/create",
       body: %{"kty" => "RSA-HSM", "release_policy" => %{"claim" => "azure-compliant-cvm"}}
@@ -304,18 +275,10 @@ defmodule EgressDispatchTest do
 
     assert conn.status == 403
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "UnauthorizedAttestation"
-  after
-    if is_nil(Process.get(:prev_skr_legacy)) do
-      Application.delete_env(:smalt, :skr_allow_legacy_header)
-    else
-      Application.put_env(:smalt, :skr_allow_legacy_header, Process.get(:prev_skr_legacy))
-    end
   end
 
   test "SKR: legacy raw header honored when skr_allow_legacy_header enabled" do
-    prev_skr_legacy = Application.get_env(:smalt, :skr_allow_legacy_header)
-    Process.put(:prev_skr_legacy, prev_skr_legacy)
-    Application.put_env(:smalt, :skr_allow_legacy_header, true)
+    save_restore(skr_allow_legacy_header: true)
 
     call(:post, "/keys/legacy-key2/create",
       body: %{"kty" => "RSA-HSM", "release_policy" => %{"claim" => "azure-compliant-cvm"}}
@@ -328,12 +291,6 @@ defmodule EgressDispatchTest do
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["status"] == "Released"
-  after
-    if is_nil(Process.get(:prev_skr_legacy)) do
-      Application.delete_env(:smalt, :skr_allow_legacy_header)
-    else
-      Application.put_env(:smalt, :skr_allow_legacy_header, Process.get(:prev_skr_legacy))
-    end
   end
 
   test "SKR: bogus bearer token refused 403" do
@@ -456,35 +413,34 @@ defmodule EgressDispatchTest do
     assert is_map(body)
   end
 
-  test "lane 19 item 6: CORS default answers allow-origin *" do
-    prev_cors = Application.get_env(:smalt, :egress_cors_origins)
-    Process.put(:prev_cors, prev_cors)
-    conn = call(:get, "/keys", headers: [{"origin", "https://x.example"}])
-
-    assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
-  after
-    if is_nil(Process.get(:prev_cors)) do
+  describe "CORS" do
+    test "lane 19 item 6: CORS default answers allow-origin *" do
+      # The default ["*"] leg keys on env ABSENCE (get_env default), not on a
+      # nil value — save_restore/1 cannot express "unset during body" (it only
+      # puts overrides), so this leg keeps an explicit delete + prev-restore
+      # (disclosed B5 seam; Process.put style retired).
+      prev = Application.get_env(:smalt, :egress_cors_origins)
       Application.delete_env(:smalt, :egress_cors_origins)
-    else
-      Application.put_env(:smalt, :egress_cors_origins, Process.get(:prev_cors))
+
+      ExUnit.Callbacks.on_exit(fn ->
+        if is_nil(prev),
+          do: Application.delete_env(:smalt, :egress_cors_origins),
+          else: Application.put_env(:smalt, :egress_cors_origins, prev)
+      end)
+
+      conn = call(:get, "/keys", headers: [{"origin", "https://x.example"}])
+
+      assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
     end
-  end
 
-  test "lane 19 item 6: configured CORS allowlist admits listed, refuses unlisted" do
-    prev_cors = Application.get_env(:smalt, :egress_cors_origins)
-    Process.put(:prev_cors, prev_cors)
-    Application.put_env(:smalt, :egress_cors_origins, ["https://allowed.example"])
+    test "lane 19 item 6: configured CORS allowlist admits listed, refuses unlisted" do
+      save_restore(egress_cors_origins: ["https://allowed.example"])
 
-    listed = call(:get, "/keys", headers: [{"origin", "https://allowed.example"}])
-    unlisted = call(:get, "/keys", headers: [{"origin", "https://evil.example"}])
+      listed = call(:get, "/keys", headers: [{"origin", "https://allowed.example"}])
+      unlisted = call(:get, "/keys", headers: [{"origin", "https://evil.example"}])
 
-    assert get_resp_header(listed, "access-control-allow-origin") == ["https://allowed.example"]
-    assert get_resp_header(unlisted, "access-control-allow-origin") == []
-  after
-    if is_nil(Process.get(:prev_cors)) do
-      Application.delete_env(:smalt, :egress_cors_origins)
-    else
-      Application.put_env(:smalt, :egress_cors_origins, Process.get(:prev_cors))
+      assert get_resp_header(listed, "access-control-allow-origin") == ["https://allowed.example"]
+      assert get_resp_header(unlisted, "access-control-allow-origin") == []
     end
   end
 
@@ -1048,84 +1004,80 @@ defmodule EgressDispatchTest do
   end
 
   # ---------------------------------------------------------------------------
-  # 8MB boundary fence (two-layer cap, measured 2026-10-15 over the real
-  # Bandit adapter): the router's read cap engages at the exact boundary byte
-  # — 8,000,001 -> 413 {"error":{"code":"RequestBodyTooLarge", "8,000,000-byte
-  # request body limit"}}. Beneath it the blob engine enforces a stricter
-  # 1,048,576-byte per-PUT limit, so a body inside the router cap can still be
-  # refused 413 by the engine (wire test pins that refusal shape). The
-  # Plug.Test adapter cannot represent "body length == :length" as :ok (it
-  # caps the chunk at :length and answers :more), so the exact-cap admission
-  # class is asserted over the real adapter only.
-  # ---------------------------------------------------------------------------
+  describe "two-layer 413 boundary" do
+    # 8MB boundary fence (two-layer cap, measured 2026-10-15 over the real
+    # Bandit adapter): the router's read cap engages at the exact boundary byte
+    # — 8,000,001 -> 413 {"error":{"code":"RequestBodyTooLarge", "8,000,000-byte
+    # request body limit"}}. Beneath it the blob engine enforces a stricter
+    # 1,048,576-byte per-PUT limit, so a body inside the router cap can still be
+    # refused 413 by the engine (wire test pins that refusal shape). The
+    # Plug.Test adapter cannot represent "body length == :length" as :ok (it
+    # caps the chunk at :length and answers :more), so the exact-cap admission
+    # class is asserted over the real adapter only.
+    # ---------------------------------------------------------------------------
 
-  test "blob PUT 8MB boundary: 8_000_001 -> 413 RequestBodyTooLarge" do
-    if loaded?(Smalt.DataPlane.BlobStorage) do
-      hts = [{"x-ms-version", "2021-12-02"}]
+    test "blob PUT 8MB boundary: 8_000_001 -> 413 RequestBodyTooLarge" do
+      if loaded?(Smalt.DataPlane.BlobStorage) do
+        hts = [{"x-ms-version", "2021-12-02"}]
 
-      conn = call(:put, "/bnd/c01", headers: hts)
-      assert conn.status == 201
+        conn = call(:put, "/bnd/c01", headers: hts)
+        assert conn.status == 201
 
-      conn =
-        call(:put, "/bnd/c01/edge1", body: String.duplicate("a", 8_000_001), headers: hts)
+        conn =
+          call(:put, "/bnd/c01/edge1", body: String.duplicate("a", 8_000_001), headers: hts)
 
-      assert conn.status == 413
-      assert Jason.decode!(conn.resp_body)["error"]["code"] == "RequestBodyTooLarge"
+        assert conn.status == 413
+        assert Jason.decode!(conn.resp_body)["error"]["code"] == "RequestBodyTooLarge"
+      end
     end
+
+    test "blob PUT 8MB boundary over real Bandit: boundary byte 413, exact-cap refused by engine per-PUT limit" do
+      port = get_free_port()
+      SmaltTest.Wire.stop_existing_tree()
+      SmaltTest.Wire.pin_ports!(nil, port)
+      SmaltTest.Wire.start_wire_tree(arm_port: nil, egress_port: port)
+
+      ExUnit.Callbacks.on_exit(fn ->
+        SmaltTest.Lifecycle.restore_app()
+        SmaltTest.Lifecycle.ensure_store_up()
+      end)
+
+      hts = [{"x-ms-version", "2021-12-02"}]
+      base = "/wbnd/wc1"
+
+      resp = http_request(port, "PUT", "#{base}", headers: hts)
+      assert resp.status == 201
+
+      # Exact cap: inside the router's read cap but above the engine's
+      # 1,048,576-byte per-PUT limit -> engine 413 RequestBodyTooLarge.
+      resp =
+        http_request(port, "PUT", "#{base}/edge",
+          headers: hts,
+          body: String.duplicate("a", 8_000_000)
+        )
+
+      assert resp.status == 413
+      assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
+      assert String.contains?(resp.body, "1,048,576")
+
+      # Boundary byte: router read cap -> router 413 envelope.
+      resp =
+        http_request(port, "PUT", "#{base}/edge1",
+          headers: hts,
+          body: String.duplicate("a", 8_000_001)
+        )
+
+      assert resp.status == 413
+      assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
+      assert String.contains?(resp.body, "8,000,000")
+    end
+
+    # ---------------------------------------------------------------------------
+    # Content-type x method x x-ms-version fuzz: wrong content-type on any
+    # multi-service route must answer the exact gate envelope (400 InvalidBody /
+    # 415 UnsupportedMediaType), never a 5xx crash.
+    # ---------------------------------------------------------------------------
   end
-
-  test "blob PUT 8MB boundary over real Bandit: boundary byte 413, exact-cap refused by engine per-PUT limit" do
-    port = get_free_port()
-    stop_existing_tree()
-
-    children = [
-      Smalt.Store,
-      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
-    ]
-
-    {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one)
-
-    on_exit(fn ->
-      stop_tree(sup)
-      SmaltTest.Lifecycle.restore_app()
-      SmaltTest.Lifecycle.ensure_store_up()
-    end)
-
-    hts = [{"x-ms-version", "2021-12-02"}]
-    base = "/wbnd/wc1"
-
-    resp = wire_request(port, "PUT", "#{base}", headers: hts)
-    assert resp.status == 201
-
-    # Exact cap: inside the router's read cap but above the engine's
-    # 1,048,576-byte per-PUT limit -> engine 413 RequestBodyTooLarge.
-    resp =
-      wire_request(port, "PUT", "#{base}/edge",
-        headers: hts,
-        body: String.duplicate("a", 8_000_000)
-      )
-
-    assert resp.status == 413
-    assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
-    assert String.contains?(resp.body, "1,048,576")
-
-    # Boundary byte: router read cap -> router 413 envelope.
-    resp =
-      wire_request(port, "PUT", "#{base}/edge1",
-        headers: hts,
-        body: String.duplicate("a", 8_000_001)
-      )
-
-    assert resp.status == 413
-    assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
-    assert String.contains?(resp.body, "8,000,000")
-  end
-
-  # ---------------------------------------------------------------------------
-  # Content-type x method x x-ms-version fuzz: wrong content-type on any
-  # multi-service route must answer the exact gate envelope (400 InvalidBody /
-  # 415 UnsupportedMediaType), never a 5xx crash.
-  # ---------------------------------------------------------------------------
 
   test "content-type fuzz: wrong types on multi-service routes never 5xx" do
     targets = [
@@ -1167,53 +1119,55 @@ defmodule EgressDispatchTest do
   # ---------------------------------------------------------------------------
 
   # ---------------------------------------------------------------------------
-  # KD-15 (v26.10.15) — Key Vault 401-with-params courts (both auth modes):
-  # a tokenless /keys request answers 401 + enriched WWW-Authenticate
-  # (Bearer authorization="…", resource="…", error="invalid_token",
-  # error_description="…") in BOTH modes — anonymous mode no longer passes
-  # tokenless /keys through, enforce mode keeps refusing downstream.
-  # Grammar: `authorization` (NOT authorization_uri) and `resource` are the
-  # @azure keyvault-common parseWWWAuthenticate whitelist entries; resource
-  # must echo the request origin (keyVaultAuthenticationPolicy hostname check).
-  # ---------------------------------------------------------------------------
+  describe "KD-15 /keys challenge" do
+    # KD-15 (v26.10.15) — Key Vault 401-with-params courts (both auth modes):
+    # a tokenless /keys request answers 401 + enriched WWW-Authenticate
+    # (Bearer authorization="…", resource="…", error="invalid_token",
+    # error_description="…") in BOTH modes — anonymous mode no longer passes
+    # tokenless /keys through, enforce mode keeps refusing downstream.
+    # Grammar: `authorization` (NOT authorization_uri) and `resource` are the
+    # @azure keyvault-common parseWWWAuthenticate whitelist entries; resource
+    # must echo the request origin (keyVaultAuthenticationPolicy hostname check).
+    # ---------------------------------------------------------------------------
 
-  test "KD-15: tokenless GET /keys challenges with 401 + params in anonymous mode" do
-    Application.put_env(:smalt, :auth_mode, :anonymous)
+    test "KD-15: tokenless GET /keys challenges with 401 + params in anonymous mode" do
+      Application.put_env(:smalt, :auth_mode, :anonymous)
 
-    conn = call(:get, "/keys", headers: [{"authorization", ""}])
+      conn = call(:get, "/keys", headers: [{"authorization", ""}])
 
-    assert conn.status == 401
-    [wa] = get_resp_header(conn, "www-authenticate")
-    assert wa =~ ~s(error="invalid_token")
-    assert wa =~ ~s(error_description="MissingBearerToken")
-    assert wa =~ ~r/^Bearer authorization="[^"]+\/organizations"/
-    assert wa =~ ~r{resource="https?://[^"]+"}
+      assert conn.status == 401
+      [wa] = get_resp_header(conn, "www-authenticate")
+      assert wa =~ ~s(error="invalid_token")
+      assert wa =~ ~s(error_description="MissingBearerToken")
+      assert wa =~ ~r/^Bearer authorization="[^"]+\/organizations"/
+      assert wa =~ ~r{resource="https?://[^"]+"}
 
-    # whitelist-grammar: the SDK parser keys must all be present, and
-    # authorization_uri must NOT appear
-    refute wa =~ "authorization_uri"
+      # whitelist-grammar: the SDK parser keys must all be present, and
+      # authorization_uri must NOT appear
+      refute wa =~ "authorization_uri"
+    end
+
+    test "KD-15: tokenless GET /keys challenges with 401 + params in enforce mode" do
+      Application.put_env(:smalt, :auth_mode, :enforce)
+
+      conn = call(:get, "/keys", headers: [{"authorization", ""}])
+
+      assert conn.status == 401
+      [wa] = get_resp_header(conn, "www-authenticate")
+      assert wa =~ ~s(error="invalid_token")
+      assert wa =~ ~s(error_description="MissingBearerToken")
+      assert wa =~ ~r/^Bearer authorization="/
+      assert wa =~ ~r{resource="https?://[^"]+"}
+    after
+      Application.put_env(:smalt, :auth_mode, :anonymous)
+    end
+
+    test "KD-15: non-/keys tokenless routes keep their prior behavior" do
+      conn = call(:get, "/dbs", headers: [{"x-ms-version", "2021-12-02"}])
+      assert conn.status != 401
+    end
+
   end
-
-  test "KD-15: tokenless GET /keys challenges with 401 + params in enforce mode" do
-    Application.put_env(:smalt, :auth_mode, :enforce)
-
-    conn = call(:get, "/keys", headers: [{"authorization", ""}])
-
-    assert conn.status == 401
-    [wa] = get_resp_header(conn, "www-authenticate")
-    assert wa =~ ~s(error="invalid_token")
-    assert wa =~ ~s(error_description="MissingBearerToken")
-    assert wa =~ ~r/^Bearer authorization="/
-    assert wa =~ ~r{resource="https?://[^"]+"}
-  after
-    Application.put_env(:smalt, :auth_mode, :anonymous)
-  end
-
-  test "KD-15: non-/keys tokenless routes keep their prior behavior" do
-    conn = call(:get, "/dbs", headers: [{"x-ms-version", "2021-12-02"}])
-    assert conn.status != 401
-  end
-
   test "auth seam: /attest exempt, service routes 401 in enforce mode" do
     Application.put_env(:smalt, :auth_mode, :enforce)
 
@@ -2058,107 +2012,6 @@ defmodule EgressDispatchTest do
     end
   end
 
-  # -- wire-tier helpers (local; Bandit + raw :gen_tcp, no HTTP client dep) ----
-
-  defp stop_tree(sup) do
-    try do
-      Supervisor.stop(sup, :normal, 5000)
-    catch
-      _, _ -> Process.exit(sup, :kill)
-    end
-  end
-
-  defp stop_existing_tree do
-    case Process.whereis(Smalt.Supervisor) do
-      nil ->
-        for name <- [Smalt.Store, Smalt.AmqpBroker] do
-          if pid = Process.whereis(name), do: GenServer.stop(pid)
-        end
-
-      _sup ->
-        SmaltTest.Lifecycle.stop_shared_tree()
-    end
-  end
-
-  defp get_free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true])
-    {:ok, port} = :inet.port(socket)
-    :gen_tcp.close(socket)
-    port
-  end
-
-  defp wire_request(port, method, path, opts \\ []) do
-    headers = Keyword.get(opts, :headers, [])
-    body = Keyword.get(opts, :body, "")
-
-    {:ok, sock} =
-      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5000)
-
-    header_lines =
-      Enum.map_join(
-        headers ++ [{"host", "127.0.0.1:#{port}"}, {"connection", "close"}],
-        "\r\n",
-        fn {k, v} -> "#{k}: #{v}" end
-      )
-
-    request =
-      "#{method} #{path} HTTP/1.1\r\n" <>
-        header_lines <> "\r\ncontent-length: #{byte_size(body)}\r\n\r\n" <> body
-
-    :ok = :gen_tcp.send(sock, request)
-    raw = recv_all(sock) |> IO.iodata_to_binary()
-    :gen_tcp.close(sock)
-    parse_response(raw)
-  end
-
-  defp recv_all(sock) do
-    case :gen_tcp.recv(sock, 0, 15000) do
-      {:ok, data} -> [data | recv_all(sock)]
-      {:error, :closed} -> []
-    end
-  end
-
-  defp parse_response(raw) do
-    [head, rest] = :binary.split(raw, "\r\n\r\n")
-    [status_line | header_lines] = String.split(head, "\r\n")
-    [_, status, _reason] = String.split(status_line, " ", parts: 3)
-    body = rest
-
-    body =
-      if get_header(header_lines, "transfer-encoding") == "chunked" do
-        decode_chunked(body)
-      else
-        body
-      end
-
-    %{status: String.to_integer(status), body: body, headers: header_lines}
-  end
-
-  defp get_header(lines, name) do
-    case Enum.find(lines, fn l -> String.starts_with?(String.downcase(l), name) end) do
-      nil -> nil
-      l -> l |> String.split(": ", parts: 2) |> Enum.at(1)
-    end
-  end
-
-  defp decode_chunked(bin, acc \\ [])
-
-  defp decode_chunked("\r\n" <> rest, acc), do: decode_chunked(rest, acc)
-
-  defp decode_chunked(bin, acc) do
-    case Integer.parse(bin, 16) do
-      {0, _} ->
-        IO.iodata_to_binary(Enum.reverse(acc))
-
-      {size, rest} ->
-        <<chunk::binary-size(size), "\r\n", rest2::binary>> = rest
-        decode_chunked(rest2, [chunk | acc])
-
-      :error ->
-        IO.iodata_to_binary(Enum.reverse(acc))
-    end
-  end
-
   # ---------------------------------------------------------------------------
   # Lens-4 cycle 1: splat traversal fuzz + auth-exempt x blob-splat composition
   # ---------------------------------------------------------------------------
@@ -2420,17 +2273,11 @@ defmodule EgressDispatchTest do
 
   test "wire-tier (Bandit): encoded traversal and exempt-prefix blob paths fail closed at the socket" do
     port = get_free_port()
-    stop_existing_tree()
+    SmaltTest.Wire.stop_existing_tree()
+    SmaltTest.Wire.pin_ports!(nil, port)
+    SmaltTest.Wire.start_wire_tree(arm_port: nil, egress_port: port)
 
-    children = [
-      Smalt.Store,
-      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
-    ]
-
-    {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one)
-
-    on_exit(fn ->
-      stop_tree(sup)
+    ExUnit.Callbacks.on_exit(fn ->
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -2443,7 +2290,7 @@ defmodule EgressDispatchTest do
           {"/.well-known/acct/cont/blob", "BlobNotFound"},
           {"/oauth2/acct/cont/blob", "BlobNotFound"}
         ] do
-      resp = wire_request(port, "GET", path, headers: hts)
+      resp = http_request(port, "GET", path, headers: hts)
       assert resp.status == 404, "#{path} answered #{resp.status} at the wire"
       assert resp.body =~ "#{want}", "#{path} body: #{resp.body}"
     end
@@ -2718,30 +2565,13 @@ defmodule EgressDispatchTest do
         Code.ensure_loaded(cosmos)
         stop_tree_quiet()
 
-        case Process.get({__MODULE__, :isolated_ports_prev}) do
-          {arm, egress, amqp} ->
-            if is_nil(arm),
-              do: Application.delete_env(:smalt, :arm_port),
-              else: Application.put_env(:smalt, :arm_port, arm)
-
-            if is_nil(egress),
-              do: Application.delete_env(:smalt, :egress_port),
-              else: Application.put_env(:smalt, :egress_port, egress)
-
-            if is_nil(amqp),
-              do: Application.delete_env(:smalt, :amqp_port),
-              else: Application.put_env(:smalt, :amqp_port, amqp)
-
-          _ ->
-            :ok
-        end
-
+        # Port-env restore rides pin_ports!/3's own on_exit (boot_isolated_tree).
         SmaltTest.Lifecycle.restore_app()
       end)
 
       # BEFORE — real HTTP, real loaded engine.
       assert Code.ensure_loaded?(cosmos)
-      before = wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+      before = http_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
 
       assert before.status == 200,
              "BEFORE baseline answered #{before.status} (#{before.body}) — court precondition"
@@ -2759,7 +2589,7 @@ defmodule EgressDispatchTest do
       refute Code.ensure_loaded?(cosmos),
              "engine module still loaded after purge+delete+beam-hide"
 
-      killed = wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+      killed = http_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
 
       assert killed.status == 503,
              "KILLED engine answered #{killed.status} (#{killed.body}) — expected 503 RouteNotReady"
@@ -2778,7 +2608,7 @@ defmodule EgressDispatchTest do
       assert Code.ensure_loaded?(cosmos)
 
       after_resp =
-        wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+        http_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
 
       assert after_resp.status == 200,
              "RESTORE answered #{after_resp.status} (#{after_resp.body}) — the kill was real " <>
@@ -2787,49 +2617,20 @@ defmodule EgressDispatchTest do
   end
 
   defp boot_isolated_tree do
-    stop_existing_tree()
-
+    # Shared-tree stop + port-env save/restore now ride the shared harness
+    # (pin_ports!/3 folds the former Process.put isolated_ports_prev +
+    # on_exit port-env restore into one on_exit; start_wire_tree/1 makes the
+    # private tree ExUnit-owned via start_supervised!, so the named
+    # __MODULE__.EngineKillSup + stop_tree_quiet bookkeeping is gone —
+    # stop_tree_quiet remains as a no-op for the on_exit call shape).
+    SmaltTest.Wire.stop_existing_tree()
     port = get_free_port()
-
-    prev_arm_port = Application.get_env(:smalt, :arm_port)
-    prev_egress_port = Application.get_env(:smalt, :egress_port)
-    prev_amqp_port = Application.get_env(:smalt, :amqp_port)
-
-    Process.put(
-      {__MODULE__, :isolated_ports_prev},
-      {prev_arm_port, prev_egress_port, prev_amqp_port}
-    )
-
-    Application.put_env(:smalt, :arm_port, get_free_port())
-    Application.put_env(:smalt, :egress_port, port)
-    Application.put_env(:smalt, :amqp_port, get_free_port())
-
-    {:ok, sup} =
-      Supervisor.start_link(
-        [Smalt.Store, {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}],
-        strategy: :one_for_one,
-        name: __MODULE__.EngineKillSup
-      )
-
-    Process.put({__MODULE__, :engine_kill_sup}, sup)
+    SmaltTest.Wire.pin_ports!(nil, port)
+    SmaltTest.Wire.start_wire_tree(arm_port: nil, egress_port: port)
     port
   end
 
-  defp stop_tree_quiet do
-    case Process.get({__MODULE__, :engine_kill_sup}) do
-      nil ->
-        :ok
-
-      sup ->
-        try do
-          Supervisor.stop(sup, :normal, 5000)
-        catch
-          _, _ -> Process.exit(sup, :kill)
-        end
-
-        :ok
-    end
-  end
+  defp stop_tree_quiet, do: :ok
 
   # ---------------------------------------------------------------------------
   # R155 (DoD D87) wire/dispatch-tier fences W1-W3

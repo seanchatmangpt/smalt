@@ -15,9 +15,10 @@ defmodule Smalt.KvSecretsChildrenTest do
   @opts Router.init([])
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
-    :ok
+    # Canonical resilient shared-Store setup: the bare ensure_store_up +
+    # Store.clear() window races an async sibling's shared-tree teardown
+    # (FLAKE_LEDGER F2-F5) — the clear is retried inside the bounded window.
+    SmaltTest.Store.resilient_setup()
   end
 
   defp call(conn), do: Router.call(conn, @opts)

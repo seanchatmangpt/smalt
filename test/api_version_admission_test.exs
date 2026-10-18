@@ -22,7 +22,6 @@ defmodule ApiVersionAdmissionTest do
 
   alias Smalt.ArmGateway.Router
   alias Smalt.Registry
-  alias Smalt.Store
 
   @opts Router.init([])
   @sub "00000000-0000-0000-0000-000000000000"
@@ -32,8 +31,10 @@ defmodule ApiVersionAdmissionTest do
   @baseline_types Enum.sort(Registry.admitted_resource_types()) |> Enum.take(4)
 
   setup do
-    ensure_store()
-    Store.clear()
+    # Canonical resilient shared-Store setup (v26.10.18) — replaces the
+    # hand-rolled ensure_store/0 bootstrap (monitor + bounded-recursion
+    # retry, one more per-suite reimplementation of the audited primitive).
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 
@@ -111,25 +112,6 @@ defmodule ApiVersionAdmissionTest do
     |> conn(uri, Jason.encode!(payload))
     |> put_req_header("content-type", "application/json")
     |> Router.call(@opts)
-  end
-
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        if :ets.info(:smalt_subscriptions) == :undefined do
-          pid = Process.whereis(Store)
-          ref = Process.monitor(pid)
-
-          receive do
-            {:DOWN, ^ref, :process, ^pid, _} -> ensure_store()
-          after
-            500 -> ensure_store()
-          end
-        end
-    end
   end
 
   defp error_code(conn) do

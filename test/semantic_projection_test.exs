@@ -256,6 +256,7 @@ defmodule Smalt.SemanticProjectionTest do
 
   describe "R2RML determinism with registry regeneration interleaved" do
     @tag :regen_interleave
+    @tag :stress
     @tag timeout: 600_000
     test "renders stay byte-identical while `mix smalt.gen` runs concurrently" do
       seed_arm_resource()

@@ -17,6 +17,8 @@ defmodule Smalt.Chaos.CrashIsolationTest do
 
   alias Smalt.Store
 
+  import SmaltTest.AssertEventually, only: [eventually: 2]
+
   @sub "00000000-0000-0000-0000-000000000000"
 
   setup_all do
@@ -29,7 +31,7 @@ defmodule Smalt.Chaos.CrashIsolationTest do
     # still be in flight when this module's setup runs (ExUnit on_exit ordering
     # is not synchronized with the next module's setup). Wait until the ARM
     # port actually answers before the kill-window probes.
-    wait_listener(100)
+    wait_listener()
 
     :ok
   end
@@ -39,31 +41,42 @@ defmodule Smalt.Chaos.CrashIsolationTest do
   # attempt instead of pinning a stale port.
   defp current_arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
 
-  defp wait_listener(0), do: :ok
+  # Bounded poll on a real observable (the ARM port answers). Lawful form 1:
+  # deadline-bounded poll via the canonical AssertEventually primitive; the
+  # sleep lives inside the one audited poll implementation.
+  defp wait_listener do
+    eventually(
+      fn ->
+        case :gen_tcp.connect(~c"127.0.0.1", current_arm_port(), [:binary, active: false], 50) do
+          {:ok, sock} ->
+            :gen_tcp.close(sock)
+            {:ok, :up}
 
-  defp wait_listener(n) do
-    case :gen_tcp.connect(~c"127.0.0.1", current_arm_port(), [:binary, active: false], 50) do
-      {:ok, sock} ->
-        :gen_tcp.close(sock)
-        :ok
-
-      {:error, _} ->
-        Process.sleep(30)
-        wait_listener(n - 1)
-    end
+          {:error, _} ->
+            :retry
+        end
+      end,
+      observable: "ARM listener answering",
+      deadline_ms: 5_000,
+      backoff_ms: 30
+    )
   end
 
-  defp wait_connect(0), do: {:error, :econnrefused}
+  defp wait_connect do
+    eventually(
+      fn ->
+        case :gen_tcp.connect(~c"127.0.0.1", current_arm_port(), [:binary, active: false], 50) do
+          {:ok, sock} ->
+            {:ok, sock}
 
-  defp wait_connect(n) do
-    case :gen_tcp.connect(~c"127.0.0.1", current_arm_port(), [:binary, active: false], 50) do
-      {:ok, sock} ->
-        {:ok, sock}
-
-      {:error, _} ->
-        Process.sleep(30)
-        wait_connect(n - 1)
-    end
+          {:error, _} ->
+            :retry
+        end
+      end,
+      observable: "ARM listener connectable",
+      deadline_ms: 10_000,
+      backoff_ms: 30
+    )
   end
 
   test "store crash is contained: store restarts, listeners never go down" do
@@ -82,7 +95,7 @@ defmodule Smalt.Chaos.CrashIsolationTest do
     # on_exit stop/restore cycle can still be landing (ExUnit on_exit ordering
     # is not synchronized with this module) — wait for the ARM port to answer
     # instead of racing a half-restored tree.
-    assert {:ok, sock} = wait_connect(300)
+    assert {:ok, sock} = wait_connect()
     :gen_tcp.close(sock)
 
     # Real kill, mid-run, with a live value in a table.
@@ -124,22 +137,32 @@ defmodule Smalt.Chaos.CrashIsolationTest do
     refute Process.alive?(old_pid)
   end
 
-  defp wait_for_new_store(old_pid, deadline \\ 5_000)
-
-  defp wait_for_new_store(old_pid, deadline) when deadline <= 0 do
-    flunk("Smalt.Store was not restarted under supervision within 5s (still #{inspect(old_pid)})")
-  end
-
-  defp wait_for_new_store(old_pid, deadline) do
-    case Process.whereis(Store) do
-      ^old_pid -> Process.sleep(20) && wait_for_new_store(old_pid, deadline - 20)
-      pid when is_pid(pid) -> pid
-      nil -> Process.sleep(20) && wait_for_new_store(old_pid, deadline - 20)
-    end
+  # Supervision-restart wait: bounded poll on the named-process observable.
+  # Sleep lives inside AssertEventually (the one audited implementation).
+  defp wait_for_new_store(old_pid) do
+    eventually(
+      fn ->
+        case Process.whereis(Store) do
+          ^old_pid -> :retry
+          pid when is_pid(pid) -> {:ok, pid}
+          nil -> :retry
+        end
+      end,
+      observable:
+        "Smalt.Store restarted under supervision (no longer #{inspect(old_pid)}) within 5s",
+      deadline_ms: 5_000,
+      backoff_ms: 20
+    )
   end
 
   # Every probe in the window must connect — a single refused/closed probe is
   # listener downtime, which is what this tier refuses to pass on.
+  #
+  # The interval sleep here is NOT wait-for-condition coordination: it is the
+  # sampling cadence of the fence itself (probes distributed across the
+  # ~1s kill window is part of the claim — "answered every probe during the
+  # window"). Bounded by construction (attempts × interval), inside this one
+  # audited implementation.
   defp listener_stayed_up?(port, opts) do
     attempts = Keyword.fetch!(opts, :attempts)
     interval = Keyword.fetch!(opts, :interval)

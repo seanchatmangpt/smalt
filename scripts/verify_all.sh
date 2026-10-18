@@ -70,6 +70,27 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# (c2) test-stress — stress tier (mix test --include stress), sequentially.
+#      Expensive bodies (replay-identity fences, DETS churn, 10k-op fuzz)
+#      excluded from T1 by test/test_helper.exs.
+# -----------------------------------------------------------------------------
+if recipe_visible "test-stress"; then
+  run_stage "test-stress" -- just --justfile "$JUSTFILE" test-stress
+else
+  skip_stage "test-stress" "recipe 'test-stress' not in Justfile (justfile.d/28-stress.just missing)"
+fi
+
+# -----------------------------------------------------------------------------
+# (c3) test-budget — per-test timing budget gate (fail-closed, non-vacuity
+#      fixtures). Offline; full mix test with the budget formatter.
+# -----------------------------------------------------------------------------
+if recipe_visible "test-budget"; then
+  run_stage "test-budget" -- just --justfile "$JUSTFILE" test-budget
+else
+  skip_stage "test-budget" "recipe 'test-budget' not in Justfile (justfile.d/28-test-budget.just missing)"
+fi
+
+# -----------------------------------------------------------------------------
 # (d) workspace court — node workspace/scripts/e2e-court.mjs
 # -----------------------------------------------------------------------------
 if [ -f workspace/scripts/e2e-court.mjs ] && command -v node >/dev/null 2>&1; then
@@ -117,6 +138,18 @@ if recipe_visible "invariant-gates"; then
   run_stage "invariant-gates" -- just --justfile "$JUSTFILE" invariant-gates
 else
   skip_stage "invariant-gates" "recipe 'invariant-gates' not in Justfile"
+fi
+
+# -----------------------------------------------------------------------------
+# (g) sleep-gate (NO-SLEEP-DOCTRINE Law 3, v26.10.18 B8) — enforce-gated.
+# Honest red pending the repair WOs (docs/NO_SLEEP_DOCTRINE.md adoption step 5):
+# SKIP is loud with the live violation count; SLEEP_GATE_ENFORCE=1 enforces.
+# -----------------------------------------------------------------------------
+if [ "${SLEEP_GATE_ENFORCE:-0}" = "1" ]; then
+  run_stage "sleep-gate" -- python3 scripts/sleep_gate.py
+else
+  n=$(python3 scripts/sleep_gate.py 2>/dev/null | head -1 | grep -oE '^[^0-9]*([0-9]+)' | grep -oE '[0-9]+' || echo "?")
+  skip_stage "sleep-gate" "honest-red pending repair WOs (${n:-?} unclassified sites); SLEEP_GATE_ENFORCE=1 to enforce"
 fi
 
 # -----------------------------------------------------------------------------

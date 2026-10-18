@@ -2,10 +2,11 @@ defmodule Smalt.Messaging.EventStreamTest do
   use ExUnit.Case, async: false
 
   alias Smalt.Messaging.EventStream
-  alias Smalt.Store
 
   setup do
-    Store.clear()
+    # Canonical resilient shared-Store setup (v26.10.18): ensures the Store is
+    # up and retries only the dead-table clear race (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 
@@ -180,17 +181,18 @@ defmodule Smalt.Messaging.EventStreamTest do
   end
 
   test "enforced: :event_stream_dedup_ids refuses duplicate id and keeps first write" do
-    Application.put_env(:smalt, :event_stream_dedup_ids, true)
+    # Canonical Application-env scoping (SmaltTest.Env.with): prev saved, restore
+    # in an exception-safe after — put when prev was non-nil, delete when unset.
+    SmaltTest.Env.with([event_stream_dedup_ids: true], fn ->
+      {:ok, "dup-2"} =
+        EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v1"}))
 
-    {:ok, "dup-2"} = EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v1"}))
+      assert {:error, :duplicate_id} =
+               EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v2"}))
 
-    assert {:error, :duplicate_id} =
-             EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v2"}))
-
-    events = EventStream.list_events("dd2")
-    assert [%{"id" => "dup-2", "source" => "/smalt/v1"}] = events
-  after
-    Application.delete_env(:smalt, :event_stream_dedup_ids)
+      events = EventStream.list_events("dd2")
+      assert [%{"id" => "dup-2", "source" => "/smalt/v1"}] = events
+    end)
   end
 
   test "stored events carry the topic field" do

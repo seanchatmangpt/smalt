@@ -10,6 +10,7 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
   alias Smalt.Amqp.Listener
   alias Smalt.Amqp.Sweeper
   alias Smalt.Messaging.EventHubs
+  alias SmaltTest.AssertEventually
 
   defp unique_name(prefix) do
     n = :erlang.unique_integer([:positive, :monotonic])
@@ -56,11 +57,14 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       assert is_integer(port) and port > 0
 
       socks = for _ <- 1..3, do: tcp_connect!(port)
-      assert Process.alive?(pid)
 
-      # Listener stays healthy across client disconnects
+      # Listener stays healthy across client disconnects. Survival is proven
+      # structurally: the acceptor must still hand out a fresh connection. No
+      # settle sleep — a dead acceptor fails the connect below, and a live one
+      # passes with zero race window; the alive-check sits AFTER the structural
+      # proof (an accept) instead of after a blind wait.
       Enum.each(socks, &:gen_tcp.close/1)
-      Process.sleep(50)
+      assert match?({:ok, _}, :gen_tcp.connect(~c"127.0.0.1", port, [:binary], 1_000))
       assert Process.alive?(pid)
 
       # Still accepting after churn
@@ -77,23 +81,33 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
 
       {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 1_000)
 
-      # Wait for the Connection child to appear
+      # Wait for the Connection child to appear (deadline-bounded, not
+      # count-bounded — deadline measures time under load)
       conn_pid =
-        wait_until(fn ->
-          children = DynamicSupervisor.which_children(conn_sup)
+        AssertEventually.eventually(
+          fn ->
+            children = DynamicSupervisor.which_children(conn_sup)
 
-          case Enum.find(children, fn {_, pid, _, _} -> is_pid(pid) and pid != :undefined end) do
-            {_, pid, _, _} -> pid
-            nil -> nil
-          end
-        end)
+            case Enum.find(children, fn {_, pid, _, _} -> is_pid(pid) and pid != :undefined end) do
+              {_, pid, _, _} -> {:ok, pid}
+              nil -> :retry
+            end
+          end,
+          observable: "Connection child appears under ConnSup",
+          deadline_ms: 5_000
+        )
 
       assert is_pid(conn_pid)
       assert Process.alive?(conn_pid)
 
-      # Kill the connection: the listener (and ConnSup) must survive
+      # Kill the connection: the listener (and ConnSup) must survive. The DOWN
+      # message is the actual death event, not a 50 ms guess at it — the test
+      # can neither pass by the connection dying slowly nor flake by it dying
+      # fast.
+      ref = Process.monitor(conn_pid)
       Process.exit(conn_pid, :kill)
-      Process.sleep(50)
+
+      assert_receive {:DOWN, ^ref, :process, ^conn_pid, _}, 1_000
 
       assert Process.alive?(pid)
       assert Process.alive?(Process.whereis(Smalt.AmqpBroker.ConnSup))
@@ -219,21 +233,13 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       expired = put_in(cp, ["claim", "until"], now_ms - 60_000)
       true = :ets.insert(:smalt_eh_checkpoints, {key, expired})
 
-      # Neutralize the background racer for the assertion window: the setup's
-      # 20 ms tick would otherwise be able to fire EventHubs.sweep() between
-      # the authored write and our explicit sweep, stealing the count. The
-      # sweeper is supervised, so a bare stop just restarts it — park it on a
-      # 1-hour tick instead (restart re-reads the env at init).
-      Application.put_env(:smalt, :amqp_sweeper_tick_ms, 3_600_000)
-
-      on_exit(fn -> Application.delete_env(:smalt, :amqp_sweeper_tick_ms) end)
-
-      sweeper = Process.whereis(Sweeper)
-
-      if sweeper do
-        :ok = GenServer.stop(sweeper)
-        wait_until(fn -> if Process.whereis(Sweeper) != sweeper, do: :restarted end)
-      end
+      # Neutralize the background racer WITHOUT a restart: a suspended Sweeper
+      # cannot tick EventHubs.sweep() into our window. No env churn, no restart
+      # race, no wait for re-registration — suspend is synchronous, so the
+      # racer is provably parked, not probably-restarted.
+      pid = own_sweeper!(nil)
+      :sys.suspend(pid)
+      on_exit(fn -> :sys.resume(pid) end)
 
       assert EventHubs.sweep() >= 1
       assert %{"claim" => nil} = elem(hd(:ets.lookup(:smalt_eh_checkpoints, key)), 1)
@@ -242,78 +248,44 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
 
     test "refuses boot on non-positive tick_ms (R132 fail-closed, typed ArgumentError)" do
       for bad <- [0, -1] do
-        # init reads opts[:tick_ms] first, so the bad value rides the opts; the
-        # env-only path stays covered by the supervised restarts in this suite.
-        # The supervised instance owns the registered name, so park it first and
-        # race the supervisor's own restart for the named start attempt.
-        Application.put_env(:smalt, :amqp_sweeper_tick_ms, 3_600_000)
-        sweeper = Process.whereis(Sweeper)
-
-        if sweeper do
-          :ok = GenServer.stop(sweeper)
-          wait_until(fn -> if Process.whereis(Sweeper) != sweeper, do: :restarted end)
-        end
-
+        # init/1 IS the boot refusal: it raises the typed ArgumentError BEFORE
+        # any registration, so GenServer.start_link surfaces it as the raised
+        # error (or the {%ArgumentError{}, stack} exit form) — but only when
+        # the registered name is free; with the shared instance alive the
+        # start returns {:error, {:already_started, _}} without ever reaching
+        # init. Observing init/1 directly is the SAME typed refusal with no
+        # name race and no stop/restart dance (the env-only path stays covered
+        # by the supervised restarts in this suite).
         raised =
-          wait_until(fn ->
-            # init raises BEFORE the server is started, so the observation is the
-            # boot refusal itself: with the caller trapping exits, a start_link
-            # init crash surfaces as the raised ArgumentError (caught below) or
-            # as an exit carrying the {%ArgumentError{}, stack} — same typed
-            # refusal either way; :already_started means the supervisor's
-            # restart won the race for the registered name, so park and retry.
-            Process.flag(:trap_exit, true)
+          try do
+            Sweeper.init(tick_ms: bad)
+            flunk("expected init to raise on tick_ms=#{bad}")
+          rescue
+            e in ArgumentError -> e
+          end
 
-            result =
-              try do
-                Sweeper.start_link(tick_ms: bad)
-              rescue
-                e in ArgumentError -> {:error, e}
-              catch
-                :exit, {%ArgumentError{message: msg} = e, _stack} -> {:error, e}
-                :exit, {:already_started, _pid} = r -> {:error, r}
-              end
-
-            case result do
-              {:error, {%ArgumentError{message: msg}, _stack}} ->
-                assert msg =~ "Smalt.Amqp.Sweeper tick_ms must be a positive integer"
-                assert msg =~ inspect(bad)
-                assert msg =~ "amqp_sweeper_tick_ms"
-                true
-
-              {:error, %ArgumentError{message: msg}} ->
-                assert msg =~ "Smalt.Amqp.Sweeper tick_ms must be a positive integer"
-                assert msg =~ inspect(bad)
-                assert msg =~ "amqp_sweeper_tick_ms"
-                true
-
-              {:error, {:already_started, pid}} ->
-                :ok = GenServer.stop(pid)
-                nil
-
-              other ->
-                flunk("expected init to raise on tick_ms=#{bad}, got: #{inspect(other)}")
-            end
-          end)
-
-        assert raised == true,
-               "start_link(tick_ms: #{bad}) never reached init (already_started race window exhausted)"
+        assert raised.message =~ "Smalt.Amqp.Sweeper tick_ms must be a positive integer"
+        assert raised.message =~ inspect(bad)
+        assert raised.message =~ "amqp_sweeper_tick_ms"
       end
     end
   end
 
-  defp wait_until(fun, tries \\ 50)
-
-  defp wait_until(_fun, 0), do: nil
-
-  defp wait_until(fun, tries) do
-    case fun.() do
+  # Own-or-park: boot a fresh ExUnit-managed Sweeper when the shared one is
+  # absent; when shared, PARK its background tick for the test window with
+  # :sys.suspend. A suspended Sweeper processes no messages, so it cannot tick
+  # EventHubs.sweep() mid-window; run_pass/0 stays callable (plain function).
+  # Resume is on_exit-safe. No stop/restart dance, no name race.
+  defp own_sweeper!(tick_ms) do
+    case GenServer.whereis(Sweeper) do
       nil ->
-        Process.sleep(20)
-        wait_until(fun, tries - 1)
+        if tick_ms, do: Application.put_env(:smalt, :amqp_sweeper_tick_ms, tick_ms)
+        start_supervised!(Sweeper)
 
-      value ->
-        value
+      pid ->
+        :sys.suspend(pid)
+        on_exit(fn -> :sys.resume(pid) end)
+        pid
     end
   end
 end

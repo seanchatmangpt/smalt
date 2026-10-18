@@ -11,9 +11,14 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
     gateway has no supervisor of its own), never under a request process.
   - **Flip pass**: every InProgress record whose delay has fully elapsed —
     and every malformed record — is driven through `Smalt.ArmGateway.LRO`'s
-    PUBLIC `evaluate/2` / `fail_closed/2`, the exact functions the lazy poll
-    path calls, so swept and polled records converge to the identical
-    persisted terminal and the two paths cannot diverge.
+    PUBLIC `evaluate/2` / `fail_closed/2`. Since the v26.10.18 one-writer
+    redesign (lib-redesign-wasm-lro.md Part 2) this process is the SINGLE
+    terminal writer: the read path (`LRO.get_op/1`) and the Notifier's
+    due-check route their persistence here (`flip_key/2`, `{:fail_closed, _}`
+    requests), so swept and routed records converge to the identical
+    persisted terminal and the two paths cannot diverge. Each flip is
+    published through `Smalt.ArmGateway.LRO.Notifier` so `LRO.await/3`
+    waiters wake on the explicit signal.
   - **Eviction pass** (only when `Application.get_env(:smalt, :lro_retention_ms,
     :infinity)` is a non-negative integer): terminal records (`status` ≠
     `"InProgress"`) whose parsed `endTime` is older than the window are
@@ -33,13 +38,103 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
   use GenServer
 
   alias Smalt.ArmGateway.LRO
+  alias Smalt.ArmGateway.LRO.Notifier
   alias Smalt.Store
 
   @tick_key {__MODULE__, :tick_ms}
   @default_tick_ms 30_000
 
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    name = Keyword.get(opts, :name, __MODULE__)
+    GenServer.start_link(__MODULE__, opts, name: name)
+  end
+
+  # -- single-writer request API -------------------------------------------------
+  # The v26.10.18 one-writer redesign (lib-redesign-wasm-lro.md Part 2) makes
+  # THIS process the single terminal writer on the flip path: the read path
+  # (`LRO.get_op/1`) and the Notifier's due-check route due/malformed
+  # persistence here via these requests instead of writing themselves. Every
+  # flip below persists through the PUBLIC shared `LRO.evaluate/2` /
+  # `LRO.fail_closed/2` (sole terminal-transition authority) and publishes the
+  # terminal through the Notifier via an explicit cast.
+
+  @doc """
+  Single-writer flip of ONE key: an InProgress record past its delay is
+  evaluated (and persisted terminal) through the shared `LRO.evaluate/2`;
+  anything else is returned unchanged (`{:ok, record}` / `{:error,
+  :not_found}`), always idempotent. Used by the read path (`LRO.get_op/1`)
+  and the Notifier's due-check cast.
+  """
+  def flip_key(server \\ __MODULE__, key) do
+    GenServer.call(server, {:flip_due, key}, 10_000)
+  end
+
+  @impl true
+  def handle_call({:flip_due, key}, _from, state) do
+    {:reply, flip_key_write(key), state}
+  end
+
+  @impl true
+  def handle_call({:fail_closed, key, record}, _from, state) do
+    {:reply, fail_key_write(key, record), state}
+  end
+
+  # Persist the terminal via the shared evaluate/2, then publish through the
+  # Notifier (explicit cast — the sweeper is the ONLY flip-path component
+  # invoking evaluate/fail_closed). Idempotent under races: an already-flipped
+  # or vanished key replies without publishing.
+  defp flip_key_write(key) do
+    case Store.get(:smalt_operations, key) do
+      {:ok, %{"status" => "InProgress"} = record} ->
+        case LRO.evaluate(record, key) do
+          %{"status" => "InProgress"} = unchanged ->
+            # Not yet due (race with a concurrent flip): untouched.
+            {:ok, unchanged}
+
+          terminal ->
+            GenServer.cast(Notifier, {:terminal, key, terminal})
+            {:ok, terminal}
+        end
+
+      {:ok, record} ->
+        {:ok, record}
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  defp fail_key_write(key, record) do
+    terminal = LRO.fail_closed(record, key)
+    GenServer.cast(Notifier, {:terminal, key, terminal})
+    {:ok, terminal}
+  end
+
+  # -- GenServer ----------------------------------------------------------------
+    case Store.get(:smalt_operations, key) do
+      {:ok, %{"status" => "InProgress"} = record} ->
+        case LRO.evaluate(record, key) do
+          %{"status" => "InProgress"} = unchanged ->
+            # Not yet due (race with a concurrent flip): untouched.
+            {:ok, unchanged}
+
+          terminal ->
+            GenServer.cast(Notifier, {:terminal, key, terminal})
+            {:ok, terminal}
+        end
+
+      {:ok, record} ->
+        {:ok, record}
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  defp fail_key_write(key, record) do
+    terminal = LRO.fail_closed(record, key)
+    GenServer.cast(Notifier, {:terminal, key, terminal})
+    {:ok, terminal}
   end
 
   @doc """
@@ -76,15 +171,27 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
     :ok
   end
 
-  # The record is due (or malformed) -> drive the shared function; still
-  # InProgress -> untouched. Malformed scheduling fields route to the
-  # fail_closed clause of evaluate/2 (public), identical to the lazy path.
+  # The record is due (or malformed) -> drive the shared function and publish
+  # the terminal through the Notifier; still InProgress -> untouched. Malformed
+  # scheduling fields route to the fail_closed clause of evaluate/2 (public),
+  # identical to the read path's routed request.
   defp evaluate_if_due(%{"startedAtMs" => started, "delayMs" => delay} = record, key, now)
        when is_integer(started) and is_integer(delay) do
-    if now - started >= delay, do: LRO.evaluate(record, key), else: :ok
+    if now - started >= delay do
+      case LRO.evaluate(record, key) do
+        %{"status" => "InProgress"} -> :ok
+        terminal -> GenServer.cast(Notifier, {:terminal, key, terminal})
+      end
+    else
+      :ok
+    end
   end
 
-  defp evaluate_if_due(record, key, _now), do: LRO.evaluate(record, key)
+  defp evaluate_if_due(record, key, _now) do
+    terminal = LRO.evaluate(record, key)
+    GenServer.cast(Notifier, {:terminal, key, terminal})
+    :ok
+  end
 
   @doc """
   Retention eviction pass. Eligibility: terminal (`status` ≠ `"InProgress"`)
@@ -146,9 +253,24 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
     tick_ms =
       opts[:tick_ms] || Application.get_env(:smalt, :lro_sweep_interval_ms, @default_tick_ms)
 
-    :persistent_term.put(@tick_key, tick_ms)
-    Process.send_after(self(), :tick, 0)
-    {:ok, %{tick_ms: tick_ms}}
+    # tick_ms: :manual (or any non-positive-integer) disables the periodic
+    # tick entirely: init fires NO pass and the instance is driven only by
+    # explicit sweep_now/1. Test-owned instances use this so no background
+    # pass can land between before/after reads; the app-owned default is
+    # byte-identical to the previous behavior.
+    if is_integer(tick_ms) and tick_ms > 0 do
+      :persistent_term.put(@tick_key, tick_ms)
+      Process.send_after(self(), :tick, 0)
+      {:ok, %{tick_ms: tick_ms}}
+    else
+      {:ok, :manual}
+    end
+  end
+
+  @impl true
+  def handle_call(:sweep, _from, :manual) do
+    run_pass()
+    {:reply, :ok, :manual}
   end
 
   @impl true
@@ -156,6 +278,22 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
     run_pass()
     {:reply, :ok, state}
   end
+
+  # Notifier due-check (and any async single-writer trigger) flips here.
+  @impl true
+  def handle_cast({:flip_due, key}, state) do
+    flip_key_write(key)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:fail_closed, key, record}, state) do
+    fail_key_write(key, record)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:tick, :manual), do: {:noreply, :manual}
 
   @impl true
   def handle_info(:tick, state) do

@@ -12,12 +12,10 @@ defmodule Smalt.Amqp.AtomBridgeTest do
   alias Smalt.Store
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-
-    if :ets.info(:smalt_resources) != :undefined do
-      :ets.delete_all_objects(:smalt_resources)
-    end
-
+    # Canonical resilient setup (v26.10.18): the guarded single-table wipe is
+    # the ensure→wipe window that races an async sibling's shared-tree
+    # teardown (FLAKE_LEDGER F2-F5/F10 class).
+    SmaltTest.Store.resilient_setup()
     fresh_client()
   end
 

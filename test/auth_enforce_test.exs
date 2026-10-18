@@ -10,6 +10,7 @@ defmodule Smalt.AuthEnforceTest do
   use ExUnit.Case, async: false
   import Plug.Test
   import Plug.Conn, only: [get_resp_header: 2, put_req_header: 3]
+  import SmaltTest.Wire, only: [save_restore: 1]
 
   @secret "smalt-auth-enforce-test-secret-0123456789abcdef"
   @aud "https://management.azure.com"
@@ -23,29 +24,28 @@ defmodule Smalt.AuthEnforceTest do
     :ok
   end
 
+  # ONE setup discipline (v26.10.18 flatten): enforce-mode pin via
+  # save_restore/1 — read-prev / put / on_exit-restore in one style. No
+  # :persistent_term pin: the gateway prefers the env secret (cycle-4
+  # precedence fix), so this suite PROVES mint/verify agreement even when
+  # the dev secret was already generated at app-restore boot.
   setup do
-    prev = %{
-      auth_mode: Application.get_env(:smalt, :auth_mode, :__unset__),
-      sts_signing_secret: Application.get_env(:smalt, :sts_signing_secret, :__unset__),
-      token_audiences: Application.get_env(:smalt, :token_audiences, :__unset__),
-      trusted_proxies: Application.get_env(:smalt, :trusted_proxies, :__unset__)
-    }
+    save_restore(auth_mode: :enforce, sts_signing_secret: @secret)
 
-    Application.put_env(:smalt, :auth_mode, :enforce)
-    Application.put_env(:smalt, :sts_signing_secret, @secret)
-    # No :persistent_term pin: the gateway now prefers the env secret
-    # (cycle-4 precedence fix), so this suite PROVES mint/verify agreement
-    # even when the dev secret was already generated at app-restore boot.
+    # Leak shield (load-bearing, witnessed: dropping it leaked
+    # token_audiences=[] out of the wave5 fail-closed court into every later
+    # accept-leg — 8 order-dependent failures): restore-only for keys this
+    # suite's tests mutate without their own cleanup. save_restore/1 cannot
+    # express restore-without-override, so this leg stays explicit.
+    for key <- [:token_audiences, :trusted_proxies] do
+      prev = Application.get_env(:smalt, key, :__unset__)
 
-    on_exit(fn ->
-      for {k, v} <- prev do
-        if v == :__unset__ do
-          Application.delete_env(:smalt, k)
-        else
-          Application.put_env(:smalt, k, v)
-        end
-      end
-    end)
+      ExUnit.Callbacks.on_exit(fn ->
+        if prev == :__unset__,
+          do: Application.delete_env(:smalt, key),
+          else: Application.put_env(:smalt, key, prev)
+      end)
+    end
 
     :ok
   end
@@ -88,127 +88,130 @@ defmodule Smalt.AuthEnforceTest do
     assert challenge =~ "Bearer", "#{label}: WWW-Authenticate must carry the Bearer scheme"
   end
 
-  test "enforce: anonymous GET /subscriptions -> 401 + WWW-Authenticate: Bearer" do
-    conn = arm_req(:get, "/subscriptions?api-version=2021-04-01")
-    assert_challenge(conn, "anonymous arm")
+  # -- section banner retained inside describe for receipts -------------------
+  describe "A. challenge matrix + sub-code corpus" do
+    test "enforce: anonymous GET /subscriptions -> 401 + WWW-Authenticate: Bearer" do
+      conn = arm_req(:get, "/subscriptions?api-version=2021-04-01")
+      assert_challenge(conn, "anonymous arm")
 
-    body = Jason.decode!(conn.resp_body)
-    assert body["error"]["code"] in ["AuthenticationFailed", "InvalidAuthenticationToken"]
-  end
-
-  test "enforce: valid STS-minted bearer -> 200" do
-    token = mint()
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2022-09-01", [
-        {"authorization", "Bearer #{token}"}
-      ])
-
-    assert conn.status == 200, "valid bearer must pass, got #{conn.status}"
-  end
-
-  test "enforce: expired token -> 401 TokenExpired" do
-    now = System.system_time(:second)
-    token = mint(%{"iat" => now - 7200, "nbf" => now - 7200, "exp" => now - 3600})
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "Bearer #{token}"}
-      ])
-
-    assert_challenge(conn, "expired token")
-    assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "TokenExpired"
-  end
-
-  test "enforce: tampered signature -> 401 SignatureVerificationFailed" do
-    token = mint()
-    [h, p, sig] = String.split(token, ".")
-
-    flipped =
-      sig
-      |> :binary.first()
-      |> Bitwise.bxor(0x01)
-      |> then(&<<&1>>)
-      |> Kernel.<>(binary_part(sig, 1, byte_size(sig) - 1))
-      |> Base.url_encode64(padding: false)
-
-    tampered = Enum.join([h, p, flipped], ".")
-    assert tampered != token
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "Bearer #{tampered}"}
-      ])
-
-    assert_challenge(conn, "tampered signature")
-    assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "SignatureVerificationFailed"
-  end
-
-  test "enforce: wrong-audience token -> 401 AudienceMismatch" do
-    token = mint(%{"aud" => "https://vault.smalt.local"})
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "Bearer #{token}"}
-      ])
-
-    assert_challenge(conn, "wrong aud")
-    assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "AudienceMismatch"
-  end
-
-  test "enforce: wrong-issuer token -> 401 IssuerMismatch" do
-    token = mint(%{"iss" => "https://evil.example.com/t/v2.0"})
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "Bearer #{token}"}
-      ])
-
-    assert_challenge(conn, "wrong iss")
-    assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "IssuerMismatch"
-  end
-
-  test "enforce: cross-secret token -> 401 SignatureVerificationFailed" do
-    foreign_signer = Joken.Signer.create("HS256", "completely-other-secret-0123456789abcdef")
-    token = mint(%{}, foreign_signer)
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "Bearer #{token}"}
-      ])
-
-    assert_challenge(conn, "cross-secret token")
-    assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "SignatureVerificationFailed"
-  end
-
-  test "enforce: exempt paths pass without a token" do
-    for path <- [
-          "/metadata/endpoints",
-          "/common/discovery/instance",
-          "/.well-known/openid-configuration",
-          "/tenants"
-        ] do
-      conn = arm_req(:get, path)
-      assert conn.status == 200, "expected 200 for #{path}, got #{conn.status}"
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"]["code"] in ["AuthenticationFailed", "InvalidAuthenticationToken"]
     end
-  end
 
-  test "enforce: egress Cosmos anonymous -> 401" do
-    conn =
-      egress_req(:post, "/dbs/enforce-db/colls/enforce-db/docs", [
-        {"content-type", "application/json"}
-      ])
+    test "enforce: valid STS-minted bearer -> 200" do
+      token = mint()
 
-    assert_challenge(conn, "anonymous cosmos")
-  end
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2022-09-01", [
+          {"authorization", "Bearer #{token}"}
+        ])
 
-  test "enforce: malformed Authorization header -> 401" do
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "Basic dXNlcjpwYXNz"}
-      ])
+      assert conn.status == 200, "valid bearer must pass, got #{conn.status}"
+    end
 
-    assert_challenge(conn, "basic scheme")
+    test "enforce: expired token -> 401 TokenExpired" do
+      now = System.system_time(:second)
+      token = mint(%{"iat" => now - 7200, "nbf" => now - 7200, "exp" => now - 3600})
+
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+          {"authorization", "Bearer #{token}"}
+        ])
+
+      assert_challenge(conn, "expired token")
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "TokenExpired"
+    end
+
+    test "enforce: tampered signature -> 401 SignatureVerificationFailed" do
+      token = mint()
+      [h, p, sig] = String.split(token, ".")
+
+      flipped =
+        sig
+        |> :binary.first()
+        |> Bitwise.bxor(0x01)
+        |> then(&<<&1>>)
+        |> Kernel.<>(binary_part(sig, 1, byte_size(sig) - 1))
+        |> Base.url_encode64(padding: false)
+
+      tampered = Enum.join([h, p, flipped], ".")
+      assert tampered != token
+
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+          {"authorization", "Bearer #{tampered}"}
+        ])
+
+      assert_challenge(conn, "tampered signature")
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "SignatureVerificationFailed"
+    end
+
+    test "enforce: wrong-audience token -> 401 AudienceMismatch" do
+      token = mint(%{"aud" => "https://vault.smalt.local"})
+
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+          {"authorization", "Bearer #{token}"}
+        ])
+
+      assert_challenge(conn, "wrong aud")
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "AudienceMismatch"
+    end
+
+    test "enforce: wrong-issuer token -> 401 IssuerMismatch" do
+      token = mint(%{"iss" => "https://evil.example.com/t/v2.0"})
+
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+          {"authorization", "Bearer #{token}"}
+        ])
+
+      assert_challenge(conn, "wrong iss")
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "IssuerMismatch"
+    end
+
+    test "enforce: cross-secret token -> 401 SignatureVerificationFailed" do
+      foreign_signer = Joken.Signer.create("HS256", "completely-other-secret-0123456789abcdef")
+      token = mint(%{}, foreign_signer)
+
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+          {"authorization", "Bearer #{token}"}
+        ])
+
+      assert_challenge(conn, "cross-secret token")
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "SignatureVerificationFailed"
+    end
+
+    test "enforce: exempt paths pass without a token" do
+      for path <- [
+            "/metadata/endpoints",
+            "/common/discovery/instance",
+            "/.well-known/openid-configuration",
+            "/tenants"
+          ] do
+        conn = arm_req(:get, path)
+        assert conn.status == 200, "expected 200 for #{path}, got #{conn.status}"
+      end
+    end
+
+    test "enforce: egress Cosmos anonymous -> 401" do
+      conn =
+        egress_req(:post, "/dbs/enforce-db/colls/enforce-db/docs", [
+          {"content-type", "application/json"}
+        ])
+
+      assert_challenge(conn, "anonymous cosmos")
+    end
+
+    test "enforce: malformed Authorization header -> 401" do
+      conn =
+        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
+          {"authorization", "Basic dXNlcjpwYXNz"}
+        ])
+
+      assert_challenge(conn, "basic scheme")
+    end
   end
 
   # -- Cycle 1: extract_token fuzz + header robustness + exp boundary ----------
@@ -324,7 +327,7 @@ defmodule Smalt.AuthEnforceTest do
     # Forwarded headers are honored ONLY from trusted proxies (fail-closed
     # gating); Plug.Test conns have direct peer {127,0,0,1}, so the test acts
     # as a real reverse-proxy seat by configuring it trusted.
-    Application.put_env(:smalt, :trusted_proxies, [{127, 0, 0, 1}])
+    save_restore(trusted_proxies: [{127, 0, 0, 1}])
 
     tid = "00000000-0000-0000-0000-000000000000"
     now = System.system_time(:second)
@@ -359,8 +362,6 @@ defmodule Smalt.AuthEnforceTest do
 
     assert_challenge(conn2, "wrong forwarded authority")
     assert Jason.decode!(conn2.resp_body)["error"]["message"] =~ "IssuerMismatch"
-  after
-    Application.delete_env(:smalt, :trusted_proxies)
   end
 
   # -- Cycle 3: fail-closed forwarded-header gating + cross-port mint authority --
@@ -512,14 +513,7 @@ defmodule Smalt.AuthEnforceTest do
   test "trusted-proxy CIDR: /8 outside the /24 string prefix is honored (true CIDR math)" do
     # 10.99.1.1 is inside 10.0.0.0/8 but does NOT share a string prefix with
     # "10.0.0.0" — a naive prefix-string match would refuse it.
-    prev_proxies = Application.get_env(:smalt, :trusted_proxies, :__unset__)
-    Application.put_env(:smalt, :trusted_proxies, ["10.0.0.0/8"])
-
-    on_exit(fn ->
-      if prev_proxies == :__unset__,
-        do: Application.delete_env(:smalt, :trusted_proxies),
-        else: Application.put_env(:smalt, :trusted_proxies, prev_proxies)
-    end)
+    save_restore(trusted_proxies: ["10.0.0.0/8"])
 
     # Issuer is bound to the forwarded authority so the court exercises the
     # DERIVATION, not the legacy AAD-prefix issuer leg (which would mask it).
@@ -559,14 +553,7 @@ defmodule Smalt.AuthEnforceTest do
   test "trusted-proxy CIDR: /16 range member outside the octet-3 prefix is honored" do
     # 10.0.200.1 is inside 10.0.0.0/16 but "10.0.200.1" does not start with
     # "10.0.0." — kills any prefix-string regression in both directions.
-    prev_proxies = Application.get_env(:smalt, :trusted_proxies, :__unset__)
-    Application.put_env(:smalt, :trusted_proxies, ["10.0.0.0/16"])
-
-    on_exit(fn ->
-      if prev_proxies == :__unset__,
-        do: Application.delete_env(:smalt, :trusted_proxies),
-        else: Application.put_env(:smalt, :trusted_proxies, prev_proxies)
-    end)
+    save_restore(trusted_proxies: ["10.0.0.0/16"])
 
     tid = "00000000-0000-0000-0000-000000000000"
     now = System.system_time(:second)
@@ -743,12 +730,12 @@ defmodule Smalt.AuthEnforceTest do
     # one challenge header, all printable ASCII, no CR/LF, for every class.
     now = System.system_time(:second)
 
+    # Header-grammar rows (malformed scheme / empty token / CRLF) moved to the
+    # merged @header_grammar_rows table (section B/L — redundancy-only deletion,
+    # every row survives there); this court keeps the CLAIM-class rows: the
+    # one-challenge printable-ASCII pin must hold for every refusal class.
     cases = [
       {"missing token", arm_req(:get, "/subscriptions?api-version=2021-04-01")},
-      {"malformed scheme",
-       arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", "Digest abc"}])},
-      {"empty token",
-       arm_req(:get, "/subscriptions?api-version=2021-04-01", [{"authorization", "Bearer "}])},
       {"expired",
        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
          {"authorization", "Bearer #{mint(%{"exp" => now - 10})}"}
@@ -768,11 +755,7 @@ defmodule Smalt.AuthEnforceTest do
           arm_req(:get, "/subscriptions?api-version=2021-04-01", [
             {"authorization", "Bearer #{Enum.join([h, p, "AAAA"], ".")}"}
           ])
-        end).()},
-      {"crlf in token",
-       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-         {"authorization", "Bearer abc\r\nX-Injected: 1"}
-       ])}
+        end).()}
     ]
 
     for {label, conn} <- cases do
@@ -977,19 +960,8 @@ defmodule Smalt.AuthEnforceTest do
 
   # -- wave-2 fuzz vectors (fresh seeds) ------------------------------------------
 
-  test "wave2: leading-whitespace authorization value refused" do
-    token = mint()
-
-    conn =
-      arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-        {"authorization", "  Bearer #{token}"}
-      ])
-
-    assert_challenge(conn, "leading ws")
-  end
-
   test "wave2: x-forwarded-proto HTTPS (uppercase) honored under trusted proxy" do
-    Application.put_env(:smalt, :trusted_proxies, [{127, 0, 0, 1}])
+    save_restore(trusted_proxies: [{127, 0, 0, 1}])
 
     tid = "00000000-0000-0000-0000-000000000000"
     now = System.system_time(:second)
@@ -1015,12 +987,10 @@ defmodule Smalt.AuthEnforceTest do
       ])
 
     assert conn.status == 200, "uppercase HTTPS proto must be honored, got #{conn.status}"
-  after
-    Application.delete_env(:smalt, :trusted_proxies)
   end
 
   test "wave2: forwarded-host byte-case must not broaden issuer acceptance" do
-    Application.put_env(:smalt, :trusted_proxies, [{127, 0, 0, 1}])
+    save_restore(trusted_proxies: [{127, 0, 0, 1}])
 
     tid = "00000000-0000-0000-0000-000000000000"
     now = System.system_time(:second)
@@ -1046,8 +1016,6 @@ defmodule Smalt.AuthEnforceTest do
       ])
 
     assert_challenge(conn, "case-shifted forwarded host")
-  after
-    Application.delete_env(:smalt, :trusted_proxies)
   end
 
   # -- Cycle 9: STS mint-side courts ----------------------------------------------
@@ -1938,21 +1906,51 @@ defmodule Smalt.AuthEnforceTest do
     "eyJhbGciOiJSUzI1NiJ9"
   ]
 
-  test "lens2 fuzz: class-partitioned JWS-sequence corpus all refused on a live route" do
-    :rand.seed(:exsss, {777_001, 42, 9001})
+  # v26.10.18 fuzz-registry merge: the former lens-6 byte-mutation corpus
+  # (200 mutants, seed {20_261_015, 20_261_016, 20_261_017}) pinned the same
+  # law as this class-partitioned corpus ("malformed token never verifies,
+  # message in the six-class set"). Kept: THIS deterministic corpus; the two
+  # distinctive byte-mutation operators (truncate-sig, no-dots) are folded in
+  # as additional operators, and the six-class message pin rides every row.
+  @merged_fuzz_seed {20_261_015, 20_261_016, 20_261_017}
+
+  test "fuzz registry: class-partitioned JWS-sequence + byte-mutation corpus, all refused with a message in the six-class set" do
+    :rand.seed(:exsss, @merged_fuzz_seed)
+
+    good = mint(%{})
+    assert [gh, gp, gsig] = String.split(good, ".")
 
     tokens =
       for _ <- 1..400 do
         n = Enum.random(2..5)
 
-        (
-          segs = for _ <- 1..n, do: Enum.random(@fuzz_classes)
-          Enum.join(segs, ".")
-        )
+        case :rand.uniform(8) do
+          # -- class-partitioned generation (deterministic corpus) ----------
+          op when op in [1, 2, 3, 4, 5, 6] ->
+            segs = for _ <- 1..n, do: Enum.random(@fuzz_classes)
+            Enum.join(segs, ".")
+
+          # -- folded byte-mutation operator: truncate signature ------------
+          7 ->
+            "#{gh}.#{gp}"
+
+          # -- folded byte-mutation operator: no dots ------------------------
+          _ ->
+            gh <> gp <> gsig
+        end
       end
 
     # Deterministic corpus: include the exact "alg":"none" 2-segment form.
     tokens = ["eyJhbGciOiJub25lIn0.e30."] ++ tokens
+
+    six_class = [
+      "SignatureVerificationFailed",
+      "MalformedBearerHeader",
+      "TokenExpired",
+      "AudienceMismatch",
+      "IssuerMismatch",
+      "TokenNotYetValid"
+    ]
 
     for token <- tokens do
       c =
@@ -1961,6 +1959,9 @@ defmodule Smalt.AuthEnforceTest do
         ])
 
       assert c.status == 401, "fuzz token must be refused: #{inspect(token)}"
+
+      assert Jason.decode!(c.resp_body)["error"]["message"] in six_class,
+             "fuzz token message out of the six-class set: #{inspect(token)}"
     end
   end
 
@@ -2287,7 +2288,7 @@ defmodule Smalt.AuthEnforceTest do
 
   test "lens4 fwd fuzz: forwarded header garbage never 5xx; degradation rows exact" do
     :rand.seed(:exsss, {314_005, 42, 9001})
-    Application.put_env(:smalt, :trusted_proxies, [{127, 0, 0, 1}])
+    save_restore(trusted_proxies: [{127, 0, 0, 1}])
 
     # Registry precondition: direct/forwarded leg pins are only valid when the
     # involved authorities are NOT registered (ExUnit random order — the real
@@ -2434,8 +2435,6 @@ defmodule Smalt.AuthEnforceTest do
       assert c.status in [200, 401],
              "fuzz forwarded host=#{inspect(host)} proto=#{inspect(proto)}: got #{c.status}"
     end
-  after
-    Application.delete_env(:smalt, :trusted_proxies)
   end
 
   defp forwarded_authority_of(host_hdr, proto) do
@@ -2539,65 +2538,6 @@ defmodule Smalt.AuthEnforceTest do
   #   C. path fuzz with encoded dot/traversal segments through BOTH routers
   # Invariants: never a 5xx; a mutated token NEVER verifies (200) on the
   # protected route; exempt-prefix traversals never escape 401/404.
-  test "lens6 fuzz: byte-mutated tokens never verify on the protected route" do
-    :rand.seed(:exsss, {20_261_015, 20_261_016, 20_261_017})
-    good = mint(%{})
-    parts = String.split(good, ".")
-    assert [h, p, sig] = parts
-    pool = String.graphemes(~s(ABCDEF0123456789.~_-{}"abc[]:,))
-
-    for _ <- 1..200 do
-      mutant =
-        case :rand.uniform(6) do
-          1 ->
-            # shuffle can return the identity permutation; redraw until the
-            # part order actually differs (mutation provably differs from good)
-            Stream.repeatedly(fn -> Enum.shuffle(parts) |> Enum.join(".") end)
-            |> Enum.find(&(&1 != good))
-
-          # truncate signature
-          2 ->
-            "#{h}.#{p}"
-
-          # no dots
-          3 ->
-            h <> p <> sig
-
-          4 ->
-            String.replace(good, ".", "_", global: false)
-
-          5 ->
-            i = :rand.uniform(byte_size(sig)) - 1
-            <<pre::binary-size(i), orig, post::binary>> = sig
-            pre <> Enum.random(Enum.reject(pool, &(&1 == <<orig>>))) <> post
-
-          6 ->
-            # mutate a payload byte -> different claims bytes
-            i = :rand.uniform(byte_size(p)) - 1
-            <<pre::binary-size(i), orig, post::binary>> = p
-            pre <> Enum.random(Enum.reject(pool, &(&1 == <<orig>>))) <> post
-        end
-
-      assert mutant != good, "mutant must differ from the valid token"
-
-      c =
-        arm_req(:get, "/subscriptions?api-version=2021-04-01", [
-          {"authorization", "Bearer #{mutant}"}
-        ])
-
-      assert c.status == 401, "mutant must refuse, got #{c.status}: #{inspect(mutant)}"
-
-      assert Jason.decode!(c.resp_body)["error"]["message"] in [
-               "SignatureVerificationFailed",
-               "MalformedBearerHeader",
-               "TokenExpired",
-               "AudienceMismatch",
-               "IssuerMismatch",
-               "TokenNotYetValid"
-             ]
-    end
-  end
-
   test "lens6 fuzz: header-shape fuzz never 5xx and never false-accept" do
     :rand.seed(:exsss, {20_261_015, 20_261_017, 20_261_018})
     good = mint(%{})
@@ -2829,7 +2769,7 @@ defmodule Smalt.AuthEnforceTest do
   test "lens5 registry audit: malformed trusted_proxies entries stay fail-closed (no crash, no open)" do
     token = mint(%{})
 
-    Application.put_env(:smalt, :trusted_proxies, [
+    save_restore(trusted_proxies: [
       "",
       "not-an-ip",
       "10.0.0.0",
@@ -2839,8 +2779,6 @@ defmodule Smalt.AuthEnforceTest do
       {:nine, :element, :tuple, :here, 5, 6, 7, 8, 9},
       42
     ])
-
-    on_exit(fn -> Application.delete_env(:smalt, :trusted_proxies) end)
 
     # Spoofed forwarded headers must be ignored on a non-trusted direct peer:
     # the token's iss binds the DIRECT test authority, so acceptance proves
@@ -2859,7 +2797,7 @@ defmodule Smalt.AuthEnforceTest do
 
   @egress_ver [{"x-ms-version", "2021-12-02"}]
 
-  describe "lens7: egress-handoff joint court (auth surface)" do
+  describe "E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation)" do
     # Same wire facts the egress_dispatch lane pins on its side (lens-4
     # cycle-1 "auth-exempt namespace never reaches the blob splat"), read
     # from the AUTH surface: the exemption predicate and the blob_route/2
@@ -3246,7 +3184,7 @@ defmodule Smalt.AuthEnforceTest do
     end
   end
 
-  describe "lens8: STS mint/verify round-trip property (claim shapes at the mint boundary)" do
+  describe "H+L. STS mint/verify round-trip property (mint contract / fuzz registry)" do
     # Mission item 2. The mint's ONLY client-controlled claim inputs are:
     #   - `tid` — the URL path segment of /:tid/oauth2/v2.0/token (Plug
     #     Router URI-decodes each segment, so %-encoded characters — %2F
@@ -3451,51 +3389,86 @@ defmodule Smalt.AuthEnforceTest do
 
     # -- cycle 3: fresh-seed fuzz rotation ------------------------------------
 
-    # Family A: Authorization header VALUE corpus (scheme/token grammar).
-    # Every row must answer 401 with a typed envelope, never 5xx.
-    test "lens8 fuzz: Authorization header value grammar never 5xx and never false-accepts" do
+    # Family A: Authorization header VALUE corpus (scheme/token grammar) —
+    # the merged @header_grammar_rows table (v26.10.18 fuzz-registry merge:
+    # former cycle-7 www-authenticate fuzz per-class list + this table
+    # overlapped 8/11 rows; the superset lives HERE in exact-status-list
+    # style, with the one-challenge printable-ASCII pin on every refusal).
+    @header_grammar_rows [
+      # {label, value, expected status}
+      {"empty header", "", 401},
+      {"scheme only", :scheme_only, 401},
+      {"scheme + space, empty token", "Bearer ", 401},
+      {"tab separator (not RFC split)", :tab, 401},
+      {"no space", :no_space, 401},
+      {"repeated scheme", :repeated, 401},
+      {"basic scheme with token", :basic, 401},
+      {"bearer word case token junk", "Bearer .", 401},
+      {"bearer empty segments", "Bearer ..", 401},
+      {"token with spaces inside", "Bearer ab cd", 401},
+      {"crlf in value", "Bearer abc\r\nX-Injected: 1", 401},
+      {"leading whitespace", :leading_ws, 401},
+      {"trailing junk", :trailing_junk, 401},
+      {"trailing junk x2", :trailing_junk2, 401},
+      # RFC 7235 §2.1 accepts: case-insensitive scheme, 1*SP padding
+      {"bEaReR case mix", :case_mix, 200},
+      {"bearer multi-space", :multi_space, 200},
+      {"double-space padding", :double_space, 200}
+    ]
+
+    test "header grammar table: Authorization value corpus — exact status list, one printable challenge per refusal" do
       good = mint()
 
-      rows = [
-        {"empty header", ""},
-        {"scheme only", "Bearer"},
-        {"scheme + space, empty token", "Bearer "},
-        {"tab separator (not RFC split)", "Bearer\t#{good}"},
-        {"no space", "Bearer#{good}"},
-        {"repeated scheme", "Bearer Bearer #{good}"},
-        {"basic scheme with token", "Basic #{good}"},
-        {"bearer word case token junk", "Bearer ."},
-        {"bearer empty segments", "Bearer .."},
-        {"token with spaces inside", "Bearer ab cd"},
-        {"crlf in value", "Bearer abc\r\nX-Injected: 1"}
-      ]
-
-      conn_for = fn v ->
-        conn(:get, "/subscriptions?api-version=2021-04-01")
-        |> put_req_header("authorization", v)
-        |> Smalt.ArmGateway.Router.call([])
+      value_for = fn
+        "", _ -> ""
+        :scheme_only, _ -> "Bearer"
+        :tab, t -> "Bearer\t#{t}"
+        :no_space, t -> "Bearer#{t}"
+        :repeated, _ -> "Bearer Bearer abc"
+        :basic, t -> "Basic #{t}"
+        :leading_ws, t -> "  Bearer #{t}"
+        :trailing_junk, t -> "Bearer #{t} extra"
+        :trailing_junk2, t -> "Bearer #{t} extra more junk"
+        :case_mix, t -> "bEaReR #{t}"
+        :multi_space, t -> "bearer   #{t}"
+        :double_space, t -> "Bearer  #{t}"
+        v, _ -> v
       end
 
-      for {label, v} <- rows do
-        c = conn_for.(v)
+      {refusals, accepts} = Enum.split_with(@header_grammar_rows, fn {_, _, s} -> s == 401 end)
+
+      for {label, v, expected} <- refusals do
+        value = value_for.(v, good)
+
+        c =
+          conn(:get, "/subscriptions?api-version=2021-04-01")
+          |> put_req_header("authorization", value)
+          |> Smalt.ArmGateway.Router.call([])
 
         assert c.status == 401,
                "#{label}: expected 401, got #{c.status} body=#{inspect(c.resp_body)}"
 
         assert Jason.decode!(c.resp_body)["error"]["code"],
                "#{label}: untyped refusal body"
+
+        # one-challenge printable-ASCII pin (former cycle-7 court, per-row)
+        assert [challenge] = get_resp_header(c, "www-authenticate"),
+               "#{label}: expected exactly one challenge header"
+
+        assert challenge =~ ~r/^[ -~]+$/,
+               "#{label}: challenge must be single-line printable ASCII, got #{inspect(challenge)}"
       end
 
-      # Benign pin: "Bearer  token" (DOUBLE space) ADMITS — String.split/3
-      # parts:2 + trim tolerates 1*SP between scheme and credentials, which
-      # is the RFC 7235 §2.1 grammar (scheme 1*SP token68). The token still
-      # verifies; no ambiguity is introduced by the padding.
-      c_pad =
-        conn(:get, "/subscriptions?api-version=2022-09-01")
-        |> put_req_header("authorization", "Bearer  #{good}")
-        |> Smalt.ArmGateway.Router.call([])
+      for {label, v, expected} <- accepts do
+        value = value_for.(v, good)
 
-      assert c_pad.status == 200, "1*SP-padded bearer answered #{c_pad.status}"
+        c =
+          conn(:get, "/subscriptions?api-version=2022-09-01")
+          |> put_req_header("authorization", value)
+          |> Smalt.ArmGateway.Router.call([])
+
+        assert c.status == 200, "#{label}: 1*SP/case-mix admit answered #{c.status}"
+      end
     end
 
     # Family B: token STRUCTURE corpus — JWS segment grammar abuse over a
@@ -3687,7 +3660,7 @@ defmodule Smalt.AuthEnforceTest do
   # The real SDK sends `Authorization: type=aad&ver=1.0&sig=<jwt>` (no Bearer
   # scheme). The sig JWT must verify through the SAME HS256/claims path as a
   # Bearer token; a garbage sig refuses fail-closed.
-  describe "KD-94 cosmos AAD header shape" do
+  describe "J. KD-94 cosmos AAD header shape" do
     @aad_prefix "type=aad&ver=1.0&sig="
 
     test "real SDK-shaped AAD header is admitted (sig verified as the token)" do

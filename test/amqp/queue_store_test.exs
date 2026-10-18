@@ -591,39 +591,31 @@ defmodule Smalt.Amqp.QueueStoreTest do
       {:ok, _} = QueueStore.ensure_queue("sweep-renew-q")
       {:ok, _} = QueueStore.enqueue("sweep-renew-q", "keep")
 
-      # CONTENTION slack (i21d): the 100ms-floor variant left only ~40ms of
-      # deadline slack; under load, sweep jitter past the renewed expiry
-      # legitimately flips the row to :available. Lock duration is clamped to
-      # 100..30000 (LockManager.clamp_duration), so 1000ms is lawful. Renew
-      # refuses after original expiry (:lock_lost), so the renew budget is
-      # 1000ms; sweep must land in (original=+1000, renewed=+2000) — sweep-early
-      # is harmless (sweep of a live lock is a no-op), so we bias early at
-      # +1300ms, tolerating ~700ms of scheduler jitter in both sleeps.
+      # Deterministic clock, zero sleeps: dequeue at t=1000 with duration 1000
+      # -> original expiry 2000. Renew at t=1500 (renew reuses the claim's
+      # duration: LockManager renew clamps opts[:duration_ms] ||
+      # lock.duration_ms) -> renewed expiry 2500, mirrored into the row. No
+      # real time passes that matters; the contract is read back directly
+      # instead of being sampled through two sleeps — the i21d contention
+      # comment's reason disappears with the window.
       assert {:ok, m, lock} =
-               QueueStore.dequeue_matching("sweep-renew-q", lock_duration_ms: 1000)
+               QueueStore.dequeue_matching("sweep-renew-q",
+                 now_ms: 1_000,
+                 lock_duration_ms: 1_000
+               )
 
-      # renew at ~+700ms (well before original expiry +1000ms, ~300ms jitter
-      # budget) -> renewed expiry at ~+1700ms
-      Process.sleep(700)
-      assert {:ok, _} = LockManager.renew(lock.lock_token, System.system_time(:millisecond))
+      assert {:ok, %{locked_until: 2_500}} = LockManager.renew(lock.lock_token, 1_500)
 
-      # sleep past the ORIGINAL expiry (+1000ms) but before the renewed one (~+1700ms)
-      Process.sleep(500)
-
-      assert QueueStore.sweep() >= 0
-
-      assert {:ok, %{state: :locked, lock_token: token, locked_until: until, delivery_count: dc}} =
+      # The mirror IS the mechanism under test: the message row must carry the
+      # RENEWED expiry — exactly why a sweep at any t in (2000, 2500) sees a
+      # live lock. Exact equality; the landed `>=` form was weakened only by
+      # real-clock slop that no longer exists.
+      assert {:ok, %{state: :locked, locked_until: 2_500, delivery_count: dc} = row} =
                Smalt.Store.get(:smalt_sb_messages, {"sweep-renew-q", m.seq})
 
-      assert token == lock.lock_token
-      # token row still alive
-      assert {:ok, _} = LockManager.get(lock.lock_token)
-      # the message row's expiry was extended by the mirror
-      assert until >= lock.locked_until
-      # never swept: delivery_count is the claim's own increment (claim_next
-      # bumps by 1 on dequeue); a sweep reclaim would have flipped state to
-      # :available / deadlettered the row. Message stays locked, count intact.
+      assert row.lock_token == lock.lock_token
       assert dc == m.delivery_count
+      assert {:ok, %{locked_until: 2_500}} = LockManager.get(lock.lock_token)
     end
 
     test "sweep/0 deadletters an expired lock when delivery_count >= max_delivery_count (R64/F1)" do

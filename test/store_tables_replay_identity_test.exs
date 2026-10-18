@@ -33,6 +33,7 @@ defmodule Smalt.StoreTablesReplayIdentityTest do
   use ExUnit.Case, async: false
 
   @moduletag timeout: 300_000
+  @moduletag :stress
 
   @pack_dir "../ggen-marketplace/packs/smalt-substrate-pack"
   @artifact "lib/smalt/store_tables.ex"

@@ -7,8 +7,9 @@ defmodule Smalt.DataPlane.R133PolicyCasTest do
   alias Smalt.Store
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # Canonical resilient shared-Store setup (v26.10.18): retries only the
+    # dead-table race between ensure_store_up and clear (FLAKE_LEDGER F2-F5/F10).
+    SmaltTest.Store.resilient_setup()
     BlobStorage.ensure_policy_table()
     :ets.delete_all_objects(:smalt_blob_policy)
     :ok

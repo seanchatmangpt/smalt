@@ -26,7 +26,8 @@ defmodule Smalt.Corpus.TagsNormalization do
   @rg "corpus-rg"
 
   setup do
-    ensure_store()
+    # routes through the canonical Helper.resilient_clear/1 (i22 hardening)
+    :ok = ensure_store()
   end
 
   @tag :corpus

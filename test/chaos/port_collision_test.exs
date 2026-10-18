@@ -150,19 +150,17 @@ defmodule Smalt.Chaos.PortCollisionTest do
         :ok
 
       {:error, {app, reason}} ->
+        # No fixed sleep (NO-SLEEP-DOCTRINE Law 1): the failure released
+        # nothing we must wait for — retry immediately with FRESHLY probed
+        # ports; the attempt bound is the deadline.
         send(self(), {:boot_retry, app, reason})
-        Process.sleep(100)
         boot_with_retry(attempts - 1)
     end
   end
 
   # Probe-then-close ephemeral port (accept the TOCTOU bind race).
-  defp probe_free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [])
-    {:ok, port} = :inet.port(socket)
-    :gen_tcp.close(socket)
-    port
-  end
+  # Canonical helper: SmaltTest.PortEnv.free_port/0 (D4 collapse).
+  defp probe_free_port, do: SmaltTest.PortEnv.free_port()
 
   defp assert_process_whereis(name) do
     assert is_pid(Process.whereis(name)), "expected #{inspect(name)} to be registered"

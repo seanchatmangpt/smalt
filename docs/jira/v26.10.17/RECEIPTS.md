@@ -67,7 +67,10 @@ count, or PASS/FAIL token) found in the file.
 | i22-corpus-s | [i22-corpus-seed-hardening.md](receipts/i22-corpus-seed-hardening.md) | PASS | i22 — corpus/compliance shared-seed hardening (resilient clear) **NO-CONTEXT** |
 | i22-error-co | [i22-error-corpus-lro.md](receipts/i22-error-corpus-lro.md) | PASS | i22 — arm_error_corpus LRO PUT 202 + Azure-AsyncOperation poll (attempt-4 leg-2 face) **NO-CONTEXT** |
 | i22-fuzz-ato | [i22-fuzz-atom-fix.md](receipts/i22-fuzz-atom-fix.md) | UNKNOWN | i22 — fuzz_test.exs:561 atom-flood measurement fence (attempt 4, leg 1) **NO-CONTEXT** |
+| i22-pair-con | [i22-pair-context.md](receipts/i22-pair-context.md) | UNKNOWN | i22 — pair-context lane: court leg composition T1/T2 back-to-back x2 **NO-CONTEXT** |
 | i22-seed-chu | [i22-seed-churn.md](receipts/i22-seed-churn.md) | ALIVE | i22 — seed-order hardening: shacl_fuzz under shuffled seeds (churn harness) |
+| i22-shacl-fu | [i22-shacl-fuzz-fix.md](receipts/i22-shacl-fuzz-fix.md) | PARTIAL_ALIVE | i22 — shacl-fuzz snapshot hardening (faces :79 / :98 / :146) **NO-CONTEXT** |
+| i22-soak-c | [i22-soak-c.md](receipts/i22-soak-c.md) | UNKNOWN | i22 — Soak lane C: 3x full-suite runs post-i22-fixes **NO-CONTEXT** |
 | i22-tags-nor | [i22-tags-norm-fix.md](receipts/i22-tags-norm-fix.md) | UNKNOWN | i22 — tags_normalization.exs:49 resource PUT tags:null flake (attempt 4 leg 2) **NO-CONTEXT** |
 | i3-witness-s | [i3-witness-sweep.md](receipts/i3-witness-sweep.md) | PASS | i3 — witness receipts over in-flight lib/ (lane I3) **NO-CONTEXT** |
 | i5-complianc | [i5-compliance-witness.md](receipts/i5-compliance-witness.md) | PARTIAL_ALIVE | I5 — compliance witness + THIRD_PARTY.md NOTICE path fix **NO-CONTEXT** |
@@ -136,6 +139,9 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-25 | (no receipt file — justfile module `justfile.d/25-leak-court.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-26 | (no receipt file — justfile module `justfile.d/26-rewitness.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-27 | (no receipt file — justfile module `justfile.d/27-scratch-soak.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-28 | (no receipt file — justfile module `justfile.d/28-stress.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-28 | (no receipt file — justfile module `justfile.d/28-test-budget.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

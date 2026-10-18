@@ -20,8 +20,7 @@ defmodule Smalt.Amqp.SelectorEpochTest do
   @epoch_evict_condition "com.microsoft:epoch-lock-lost"
 
   setup do
-    Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    SmaltTest.Env.put_restored(sb_shared_key: "test-shared-key-0123456789abcdef012345")
 
     if GenServer.whereis(Smalt.Store) == nil do
       start_supervised!(Smalt.Store)

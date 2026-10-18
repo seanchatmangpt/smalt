@@ -25,6 +25,7 @@ defmodule Smalt.EtsBaselineIdentityTest do
   @topic_api Registry.latest_version("Microsoft.EventGrid/topics") || "2021-04-01"
 
   @moduletag timeout: 240_000
+  @moduletag :stress
 
   @opts Router.init([])
 

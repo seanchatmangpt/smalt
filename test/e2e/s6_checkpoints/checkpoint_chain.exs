@@ -9,6 +9,10 @@
 # Started with `mix run --no-start` and boots :smalt on alternate ports so the
 # scenario never collides with another lane's running instance (9443/8443).
 
+# Canonical save-prev/after-restore helper (v26.10.18 e2e-wire D1a): loaded
+# without test_helper via require_file, so the mix-run script can drive it.
+Code.require_file(Path.expand("test/support/port_env.ex", File.cwd!()))
+
 wins_dir =
   System.argv() |> Enum.reject(&(&1 == "--")) |> Enum.at(0) ||
     raise "usage: mix run checkpoint_chain.exs -- <wins-dir>"
@@ -17,21 +21,25 @@ wins_dir =
 # alternate-port env mutations are restored even on a crashed scenario.
 # `prev` is bound BEFORE the try so it is visible inside `after` (try-body
 # locals are not).
-prev = %{
-  arm_port: Application.get_env(:smalt, :arm_port),
-  arm_tls_port: Application.get_env(:smalt, :arm_tls_port),
-  egress_port: Application.get_env(:smalt, :egress_port),
-  amqp_port: Application.get_env(:smalt, :amqp_port),
-  event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
-}
+prev =
+  SmaltTest.PortEnv.snapshot([
+    :arm_port,
+    :arm_tls_port,
+    :egress_port,
+    :amqp_port,
+    :event_hubs_port
+  ])
 
 {exit_code, receipt} =
   try do
-    Application.put_env(:smalt, :arm_port, 19443)
-    Application.put_env(:smalt, :arm_tls_port, 19444)
-    Application.put_env(:smalt, :egress_port, 18443)
-    Application.put_env(:smalt, :amqp_port, 15672)
-    Application.put_env(:smalt, :event_hubs_port, 15673)
+    SmaltTest.PortEnv.apply(
+      arm_port: 19443,
+      arm_tls_port: 19444,
+      egress_port: 18443,
+      amqp_port: 15672,
+      event_hubs_port: 15673
+    )
+
     {:ok, _} = Application.ensure_all_started(:smalt)
 
     group = "cg-s6"
@@ -136,25 +144,7 @@ prev = %{
 
     {if(exactly_once, do: 0, else: 1), receipt}
   after
-    if prev.arm_port == nil,
-      do: Application.delete_env(:smalt, :arm_port),
-      else: Application.put_env(:smalt, :arm_port, prev.arm_port)
-
-    if prev.arm_tls_port == nil,
-      do: Application.delete_env(:smalt, :arm_tls_port),
-      else: Application.put_env(:smalt, :arm_tls_port, prev.arm_tls_port)
-
-    if prev.egress_port == nil,
-      do: Application.delete_env(:smalt, :egress_port),
-      else: Application.put_env(:smalt, :egress_port, prev.egress_port)
-
-    if prev.amqp_port == nil,
-      do: Application.delete_env(:smalt, :amqp_port),
-      else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
-
-    if prev.event_hubs_port == nil,
-      do: Application.delete_env(:smalt, :event_hubs_port),
-      else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
+    SmaltTest.PortEnv.restore(prev)
   end
 
 File.write!(Path.join(wins_dir, "receipt.json"), Jason.encode!(receipt, pretty: true))

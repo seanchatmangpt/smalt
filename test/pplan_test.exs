@@ -914,6 +914,7 @@ defmodule Smalt.PPlanTest do
     @describetag :pplan_lens2
 
     @tag :pplan_stress
+    @tag :stress
     test "2000 replacements spawned between kill and sweep: 0 pid reuse, sweep still recovers" do
       id = "pplan-test-lens2-pid-reuse"
       on_exit(fn -> cleanup([id]) end)
@@ -1219,6 +1220,7 @@ defmodule Smalt.PPlanTest do
     end
 
     @tag :pplan_stress
+    @tag :stress
     test "3000-op stress fuzz with interleaved concurrent recover/0 sweeps" do
       id = "pplan-test-model-fuzz-stress"
       on_exit(fn -> cleanup([id]) end)
@@ -1622,6 +1624,7 @@ defmodule Smalt.PPlanTest do
   describe "lens3 model fuzz" do
     @describetag :pplan_lens3
     @tag :pplan_stress
+    @tag :stress
     # 10k-op fuzz is legitimately >60s under suite load (witnessed pair-context,
     # receipts/i22-pair-context.md); the default 60s ExUnit timeout trips on
     # load, not on regression. 3x margin, typed.

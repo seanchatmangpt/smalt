@@ -2211,10 +2211,10 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   # Tariff: Smalt.FinOps.Calculator.avoided_tariff_cents/2 (F lane, contract:
-  # type :: String.t() x proxy :: %{bytes: pos_integer()}) when compiled, with
-  # a brief bounded poll for the not-yet-compiled lane; otherwise a
-  # deterministic local proxy (1_000_000 cents + 100 cents per canonical byte)
-  # so the seal path stays exercisable before the calculator lands.
+  # type :: String.t() x proxy :: %{bytes: pos_integer()}) when loaded, with a
+  # single non-blocking load check; otherwise a deterministic local proxy
+  # (1_000_000 cents + 100 cents per canonical byte) so the seal path stays
+  # exercisable before the calculator lands.
   defp affidavit_tariff(record, state_delta) do
     if finops_loaded?() do
       proxy = %{"bytes" => byte_size(state_delta)}
@@ -2237,31 +2237,17 @@ defmodule Smalt.ArmGateway.Router do
       true ->
         true
 
-      cache ->
-        loaded? = poll_finops(cache)
+      _cache ->
+        # Single non-blocking readiness check (sleep deleted 2026-10-18: the
+        # old 5x100ms retry loop is gone). The calculator module is either
+        # already loaded (steady state) or the caller fails closed to
+        # proxy_tariff immediately — never a blocking wait on module load.
+        loaded? = match?({:module, _}, Code.ensure_loaded(Smalt.FinOps.Calculator))
+
         if loaded?, do: :persistent_term.put({__MODULE__, :finops_loaded}, true)
+
         loaded?
     end
-  end
-
-  # Bounded poll (5 x 100ms) for the F-lane calculator; zero-cost once loaded
-  # (persistent_term cache). The poll runs only while the module is missing.
-  defp poll_finops(:polled_once) do
-    :persistent_term.put({__MODULE__, :finops_loaded}, :polled_once)
-    match?({:module, _}, Code.ensure_loaded(Smalt.FinOps.Calculator))
-  end
-
-  defp poll_finops(_) do
-    loaded? = match?({:module, _}, Code.ensure_loaded(Smalt.FinOps.Calculator))
-
-    unless loaded? do
-      for _ <- 1..4 do
-        Process.sleep(100)
-        if match?({:module, _}, Code.ensure_loaded(Smalt.FinOps.Calculator)), do: nil
-      end
-    end
-
-    loaded?
   end
 
   defp proxy_tariff(state_delta), do: 1_000_000 + byte_size(state_delta)

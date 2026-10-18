@@ -15,20 +15,20 @@ defmodule SmaltServicesTest do
   @off_baseline_measurement String.duplicate("cd", 32)
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
-    Application.put_env(:smalt, :maa_measurement_baseline, [@measurement])
-
-    on_exit(fn -> Application.delete_env(:smalt, :maa_measurement_baseline) end)
+    SmaltTest.Env.put_restored(maa_measurement_baseline: [@measurement])
 
     default_sub = "00000000-0000-0000-0000-000000000000"
 
-    Store.put(:smalt_subscriptions, default_sub, %{
-      "id" => "/subscriptions/#{default_sub}",
-      "subscriptionId" => default_sub,
-      "displayName" => "Sovereign Smalt Subscription",
-      "state" => "Enabled"
-    })
+    SmaltTest.Store.resilient_setup(
+      post_seed: fn ->
+        Store.put(:smalt_subscriptions, default_sub, %{
+          "id" => "/subscriptions/#{default_sub}",
+          "subscriptionId" => default_sub,
+          "displayName" => "Sovereign Smalt Subscription",
+          "state" => "Enabled"
+        })
+      end
+    )
 
     :ok
   end
@@ -57,14 +57,22 @@ defmodule SmaltServicesTest do
     poll(op_path)
   end
 
+  # Bounded poll on the LRO status observable (NO-SLEEP-DOCTRINE Law 1):
+  # retries only "not terminal yet"; any other shape fails immediately with
+  # the offending body — never an unbounded recursion on non-Succeeded.
   defp poll(op_path) do
-    conn = conn(:get, op_path) |> ArmRouter.call(@arm_opts)
-    body = Jason.decode!(conn.resp_body)
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        conn = conn(:get, op_path) |> ArmRouter.call(@arm_opts)
+        body = Jason.decode!(conn.resp_body)
 
-    case body["status"] do
-      "Succeeded" -> conn
-      _ -> poll(op_path)
-    end
+        case body["status"] do
+          "Succeeded" -> {:ok, conn}
+          _ -> {:retry, body["status"]}
+        end
+      end,
+      observable: "LRO #{op_path} terminal status"
+    )
   end
 
   # ===========================================================================

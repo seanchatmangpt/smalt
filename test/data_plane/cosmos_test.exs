@@ -830,6 +830,7 @@ defmodule Smalt.DataPlane.CosmosTest do
     # 10k sequential creates are legitimately >60s under suite load (pair-context
     # witness, receipts/i22-pair-context.md) — default ExUnit timeout trips on
     # load, not regression. 3x margin, typed.
+    @tag :stress
     @tag timeout: 180_000
     test "_rid uniqueness: 10k doc creates, zero collisions, grammar holds" do
       db = "ridu"
@@ -2291,6 +2292,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       end)
     end
 
+    @tag :stress
     @tag timeout: 150_000
     test "store restart: docs replayed (cross-session DETS snapshot) or dropped (same-session), old-grammar token still typed 400" do
       db = "lrst"
