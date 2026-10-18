@@ -83,3 +83,15 @@ lane families must stay disjoint from that band:
   a/n lane must register its block here or be retired; result files without an
   active registered lane are historical artifacts (same rule as b10/b11).
 - c11 terraform lifecycle lane (scripts/bench/c11_tf_loop.sh) — tf init/plan/apply -> read-your-write (blob/secret/cosmos) -> destroy against a lane-private substrate; ports 39310..39315; result c11-tf-loop.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/c11-tf-loop.jsonl).
+
+## Container burn lanes (v26.10.18, lane B-1 burn section)
+
+Container burn lanes — `boot-burn`, `chaos-kill`, `soak`, `matrix` — run in
+per-container network namespaces, so the host port law (lane `bN` ->
+`39000+10N..+5` and friends, above) is superseded inside containers: port
+collisions across burn lanes are impossible by namespace isolation, not by the
+host `bench_boot` pre-flight check. Receipts land as JSONL with the
+`smalt-burn/v1` row schema under `docs/jira/v26.10.18/burn/` (NOT the
+`docs/jira/v*/bench/` dir host lanes use). Host lanes and container lanes never
+share a result directory; do not point a container lane at `bench/`, and do not
+point a host lane at `burn/`.

@@ -34,6 +34,19 @@ W4: affidavit_seal, azapi_actions, +4
 W5: affidavit_wasm_engine, canonical_projection, +4
 W6–W18: (see JSON — 6 files each)
 
+## Status (2026-10-18)
+
+LANDED (receipt at docs/jira/v26.10.18/receipts/):
+
+- B lanes: B0 `b0-foundations.md`, B1 `b1-corpus.md`, B3 `b3-fence10.md`,
+  B4 `b4-lro-store.md`, B6 `b6-cites.md`, B8 `b8-doctrine.md`,
+  b-js `b-js-harness.md`, b-e2e `b-e2e-wire.md`, b-await `b-await-migration.md`
+- W1–W13, W15–W18: `w<N>-review.md` for each landed lane (W1 w1-review.md,
+  W2 w2-review.md, … W18 w18-review.md)
+
+NOT LANDED: W14 — no receipt exists (docs/jira/v26.10.18/receipts/w14-review.md
+absent); remains open per the docs DoD gate (no dangling receipt paths).
+
 ## Non-dispatchable files (contract preserves)
 
 - test/sdk-smoke/run.mjs, census-run.mjs, eh-run.mjs — JS batch lane's lease

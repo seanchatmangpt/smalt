@@ -151,3 +151,9 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   wrap sequence is WOs → receipts → GAP → court-x2 → commits → publish-dry
   → FINAL.md/RECEIPTS.md. Docs DoD gate: `just docs-dod-check` (every
   receipt path named in docs must exist).
+- **No-sleep doctrine**: `Process.sleep` is not acceptable test or production
+  methodology — tests poll observables via `SmaltTest.AssertEventually`
+  (or a `# SLEEP-CLASS:` annotated exception); `lib/` sleeps only as
+  SCHEDULING (`send_after`) — readiness is monitors/GenServer/
+  `handle_continue`. Enforced by `just sleep-gate` (fail-closed) +
+  `just sleep-gate-court` (non-vacuity). See `docs/NO_SLEEP_DOCTRINE.md`.
