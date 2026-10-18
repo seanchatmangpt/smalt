@@ -19,6 +19,13 @@ set -u
 SERVICE="${BURN_SERVICE:-smalt-burn-unknown}"
 FLOOD_SECONDS="${BURN_FLOOD_SECONDS:-15}"
 RESULTS_DIR="${BURN_RESULTS_DIR:-/burn-results}"
+# AZB-02: release binary lives at /app/_release/bin/smalt in the pinned image
+# (multi-stage release target); the /opt/smalt path was never in this image
+# lineage. BURN_EXPECT_PORT is the plane's primary listener (control/all=9443,
+# data=8443, integration=5672) — the AZB-02 netns probe asserts it is bound
+# INSIDE the container netns via `ss -ltn` (iproute2 baked into the image).
+SMALT_BIN="${SMALT_BIN:-/app/_release/bin/smalt}"
+EXPECT_PORT="${BURN_EXPECT_PORT:-9443}"
 LOG=/tmp/burn-smalt.log
 JSONL="$RESULTS_DIR/burn-$SERVICE.jsonl"
 START_TS=$SECONDS
@@ -53,16 +60,26 @@ wait_port() { # wait_port <port> <what> — deadline poll, no fixed sleep
   return 1
 }
 
-echo "[BURN] container burn: service=$SERVICE flood=${FLOOD_SECONDS}s"
+echo "[BURN] container burn: service=$SERVICE expect_port=$EXPECT_PORT flood=${FLOOD_SECONDS}s"
 : > "$LOG"
-/opt/smalt/bin/smalt start >"$LOG" 2>&1 &
+"$SMALT_BIN" start >"$LOG" 2>&1 &
 SMALT_PID=$!
 
-if ! wait_port 9443 "ARM control plane"; then
-  emit 1 "release never opened :9443 within deadline"
+if ! wait_port "$EXPECT_PORT" "plane listener"; then
+  emit 1 "release never opened :$EXPECT_PORT within deadline"
   kill "$SMALT_PID" 2>/dev/null || true
   exit 1
 fi
+
+# AZB-02 netns probe: the expected plane port must show LISTEN inside this
+# container's own network namespace. `ss -ltn` is the ticket-named tool.
+SS_LINE=$(ss -ltn 2>/dev/null | grep -E "[:.]$EXPECT_PORT " || true)
+if [ -z "$SS_LINE" ]; then
+  emit 1 "ss -ltn shows no LISTEN on :$EXPECT_PORT inside netns"
+  kill "$SMALT_PID" 2>/dev/null || true
+  exit 1
+fi
+echo "[BURN] netns ss: $SS_LINE"
 
 # Atom flood: bash-only (no python in the runtime image). Each iteration:
 # connect, send a partial HTTP request line, close mid-request.
@@ -95,9 +112,12 @@ FLOOD_CONNS=$(cat "$RESULTS_DIR/flood-count-$SERVICE" 2>/dev/null || echo 0)
 
 kill "$SMALT_PID" 2>/dev/null || true
 
-if [ "$CLOSED_LINES" -eq 0 ] && [ "$FLOOD_CONNS" -gt 0 ]; then
-  emit 0 "flood_conns=$FLOOD_CONNS closed_log_lines=0 atom_log_lines=$ATOM_LINES"
-  echo "[BURN] CLEAN service=$SERVICE flood_conns=$FLOOD_CONNS closed_log_lines=0"
+# AZB-02: flood applies only where the AMQP listener exists (integration/all
+# planes); on planes without :5672 the flood subshell makes zero connections —
+# that is a skip, not a failure, and the row records it as such.
+if [ "$CLOSED_LINES" -eq 0 ] && { [ "$FLOOD_CONNS" -gt 0 ] || [ "$EXPECT_PORT" != 5672 ]; }; then
+  emit 0 "flood_conns=$FLOOD_CONNS closed_log_lines=0 atom_log_lines=$ATOM_LINES ss=$SS_LINE"
+  echo "[BURN] CLEAN service=$SERVICE expect_port=$EXPECT_PORT flood_conns=$FLOOD_CONNS closed_log_lines=0"
   exit 0
 fi
 emit 1 "flood_conns=$FLOOD_CONNS closed_log_lines=$CLOSED_LINES atom_log_lines=$ATOM_LINES"

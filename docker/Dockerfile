@@ -59,6 +59,11 @@ ENV HEX_HTTP_CONCURRENCY=1 HEX_HTTP_TIMEOUT=120
 RUN mix deps.get
 RUN MIX_ENV=test mix deps.compile
 RUN MIX_ENV=prod mix deps.compile
+# AZB-02: iproute2 provides `ss` — per-container netns listener probes
+# (`ss -ltn` inside each burn container) require it; busybox netstat is not
+# the ticket-named tool. Appended after deps.compile so the expensive
+# deps.get/deps.compile layers stay cached.
+RUN apk add --no-cache iproute2
 
 # --- test target ------------------------------------------------------------
 FROM deps AS test
