@@ -582,7 +582,12 @@ defmodule Smalt.Amqp.ManagementRpcTest do
 end
 
 defmodule Smalt.Amqp.ManagementRpc.W3SessionOpsTest do
-  use ExUnit.Case, async: true
+  # async: false (v26.10.17, receipts/i21d-store-clear-async.md round-2 audit):
+  # this module LEAKS locks/session records/messages into the shared
+  # :smalt_sb_* tables on every run (no wipe) — the async:true sibling of the
+  # already-fixed store-wiper above, and the witnessed W3SessionOps DLQ-row
+  # vanish's other half. Serializes against the async:false pool.
+  use ExUnit.Case, async: false
 
   alias Smalt.Amqp.ManagementRpc
 

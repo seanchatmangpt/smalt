@@ -17,7 +17,11 @@
     #!/usr/bin/env bash
     set -euo pipefail
     echo "[QUIESCE] warm-up: full offline suite pass (absorbs cold run-1 load faces)"
-    MIX_BUILD_ROOT=_build-warmup mix test 2>&1 | tail -2
-    rm -rf _build-warmup
+    # Warm the DEFAULT _build root (ATTEMPT5-WARMBUILD.patch.md, option B):
+    # the court legs consume _build, so the warm-up must populate it — the
+    # old _build-warmup + rm -rf pattern mechanically could not absorb the
+    # cold-run-1 compile class. Compilation is not test state; legs still
+    # execute every test fresh (mix re-checks staleness per source).
+    mix test 2>&1 | tail -2
     just quiet-check
     echo "[QUIESCE] machine settled — clear for court-x2"

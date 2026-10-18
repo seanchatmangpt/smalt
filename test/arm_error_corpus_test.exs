@@ -17,6 +17,19 @@ defmodule Smalt.ArmErrorCorpusTest do
   @opts Router.init([])
 
   setup do
+    # Pin GLOBAL :lro_delay_ms to 0 (i22 forensics, mechanism lane 2): async
+    # suites mutate this global (test/lro_test.exs:35 sets 20ms), stretching
+    # per-poll latency; the env is only honored at flip evaluation, so pinning
+    # here makes LRO flips immediate regardless of concurrent mutation.
+    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
+    Application.put_env(:smalt, :lro_delay_ms, 0)
+    on_exit(fn ->
+      case prev_delay do
+        nil -> Application.delete_env(:smalt, :lro_delay_ms)
+        v -> Application.put_env(:smalt, :lro_delay_ms, v)
+      end
+    end)
+
     ensure_store()
     Store.clear()
     :ok
@@ -465,21 +478,42 @@ defmodule Smalt.ArmErrorCorpusTest do
     end
   end
 
-  defp poll_until_succeeded(path, attempts \\ 50)
+  # Bounded retry-until-terminal (i22 hardening, mirrors i21 sweep_until_terminal):
+  # the LRO completion write races concurrent suites under a shared store, so a short
+  # attempt budget can flake. Poll until terminal or a generous 5000 ms deadline,
+  # then flunk with a TYPED message naming the last observed status.
+  # Forensics (mechanism lane 2): async suites mutate GLOBAL :lro_delay_ms
+  # (test/lro_test.exs:35 sets 20ms; affidavit_ingestion, arm_cascade,
+  # enclave_engine/state, runtime_contracts also touch it), stretching per-poll
+  # latency under load, and Store.clear can delete the op row mid-poll. The env
+  # is only honored at flip evaluation, so pinning it to 0 in setup makes flips
+  # immediate regardless of concurrent mutation.
+  @poll_deadline_ms 5000
 
-  defp poll_until_succeeded(_path, 0), do: flunk("LRO never reached Succeeded")
+  defp poll_until_succeeded(path, deadline \\ System.monotonic_time(:millisecond) + @poll_deadline_ms)
 
-  defp poll_until_succeeded(path, attempts) do
+  defp poll_until_succeeded(path, deadline) do
     conn = conn(:get, path) |> Router.call(@opts)
     op = body(conn)
 
-    if op["status"] == "Succeeded" do
-      assert conn.status == 200
-      op
-    else
-      assert conn.status == 202
-      Process.sleep(10)
-      poll_until_succeeded(path, attempts - 1)
+    cond do
+      op["status"] == "Succeeded" ->
+        assert conn.status == 200, "expected 200 on terminal poll, got #{conn.status}"
+        op
+
+      conn.status == 202 ->
+        if System.monotonic_time(:millisecond) >= deadline do
+          flunk(
+            "LRO never reached Succeeded within #{@poll_deadline_ms} ms " <>
+              "(path=#{path}, last_status=#{inspect(op["status"])})"
+          )
+        end
+
+        Process.sleep(10)
+        poll_until_succeeded(path, deadline)
+
+      true ->
+        flunk("unexpected poll status #{conn.status} for #{path}: #{inspect(op)}")
     end
   end
 

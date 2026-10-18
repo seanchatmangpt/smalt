@@ -27,8 +27,7 @@ defmodule Smalt.Compliance.C4BlobTest do
   @v4_guid ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
   setup do
-    ensure_store()
-    Store.clear()
+    resilient_clear()
 
     prev_auth = Application.get_env(:smalt, :auth_mode)
     Application.put_env(:smalt, :auth_mode, :anonymous)
@@ -1495,6 +1494,32 @@ defmodule Smalt.Compliance.C4BlobTest do
     {:ok, port} = :inet.port(sock)
     :gen_tcp.close(sock)
     port
+  end
+
+  # i22 corpus-seed hardening: bounded typed retry around the racy
+  # ensure-store + clear window (see
+  # docs/jira/v26.10.17/receipts/i21-ets-race-fix.md). Rescues ONLY the
+  # dead-table ArgumentError; past the bound it raises loudly.
+  @i22_retry_bound 50
+  @i22_dead_table_msg "table identifier does not refer to an existing ETS table"
+
+  defp resilient_clear(remaining \\ @i22_retry_bound)
+
+  defp resilient_clear(0) do
+    raise "shared Store unavailable after #{@i22_retry_bound} retries (i22 corpus-seed hardening)"
+  end
+
+  defp resilient_clear(remaining) do
+    ensure_store()
+    Store.clear()
+  rescue
+    e in ArgumentError ->
+      if Exception.message(e) == @i22_dead_table_msg do
+        Process.sleep(10)
+        resilient_clear(remaining - 1)
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   defp ensure_store do

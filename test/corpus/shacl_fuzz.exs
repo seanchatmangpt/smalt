@@ -50,8 +50,9 @@ defmodule Smalt.Corpus.ShaclFuzz do
   @rg_prefix "fuzz-rg-"
 
   setup do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    # i22: resilient clear (bounded typed retry) instead of bare
+    # ensure_store_up + Store.clear — see Smalt.Corpus.Helper.resilient_clear/0.
+    Smalt.Corpus.Helper.resilient_clear()
     opts = Router.init([])
 
     # One valid resource group per family (refusal-invariant snapshots are
@@ -95,6 +96,10 @@ defmodule Smalt.Corpus.ShaclFuzz do
   # L1+L3 fuzz sweep: 1,000 seeded payloads
   # ---------------------------------------------------------------------------
   @tag :corpus
+  # 1000-PUT full-pipeline sweep is legitimately >60s under suite load
+  # (witnessed soak C run 2, receipts/i22-soak-c.md); default ExUnit timeout
+  # trips on load, not regression. 3x margin, typed.
+  @tag timeout: 180_000
   test "fuzz sweep: #{@total} seeded adversarial PUTs — no untyped escape, no refusal mutation",
        %{
          opts: opts
@@ -463,7 +468,77 @@ defmodule Smalt.Corpus.ShaclFuzz do
     resource_path(0, type, av, name)
   end
 
+  # ---------------------------------------------------------------------------
+  # i22 snapshot hardening (faces :98 / :146, mechanism per
+  # docs/jira/v26.10.17/receipts/i20b-contention-mechanism.md + the i22
+  # topology report):
+  #   1. Subscription-scoped key sets. The refusal-mutation law (L3) can only
+  #      ever be violated by keys derived from OUR request paths — the
+  #      Validate∘Hydrate pipeline writes keys under the request's own
+  #      /subscriptions/fuzz-sub/ id. Concurrent async:true siblings
+  #      (test/amqp/fuzz_test.exs sweeps) write OTHER subscriptions' rows into
+  #      the same shared :smalt_resources table; under full-suite load those
+  #      foreign inserts landed between pre and post snapshots and were
+  #      misread as L3 violations. Filtering to /subscriptions/fuzz-sub/
+  #      removes exactly the interference term; any insert/move WITHIN our
+  #      subscription during a refusal still fails the law loudly.
+  #   2. Bounded quiesce-retry with deadline slack. Store.keys/1 is a
+  #      GenServer.call on the default 5000ms timeout; under the i20b measured
+  #      load envelope (sync calls 350x tail, 1s from the cliff) a snapshot
+  #      read can exit :timeout. Reads retry on exit until two consecutive
+  #      reads agree (a torn mid-write read is discarded), bounded at
+  #      @snapshot_retry_bound; past the bound we raise loudly — never a
+  #      silent pass.
+  # ---------------------------------------------------------------------------
+  @snapshot_scope "/subscriptions/#{@sub}/"
+  @snapshot_retry_bound 20
+  @snapshot_backoff_ms 25
+
   defp snapshot do
-    {Enum.sort(Store.keys(:smalt_resources)), Enum.sort(Store.keys(:smalt_resource_groups))}
+    # First two reads are back-to-back with no sleep — the quiet path costs
+    # one extra :ets scan, zero wall-clock. Sleep only on a torn read.
+    do_snapshot(@snapshot_retry_bound, :first_read)
+  end
+
+  defp do_snapshot(0, _prev) do
+    raise "shacl-fuzz snapshot: shared Store unreadable after #{@snapshot_retry_bound} " <>
+            "quiesce retries (i22 hardening) — raising loudly, never a silent pass"
+  end
+
+  defp do_snapshot(remaining, prev) do
+    read = fn table ->
+      table
+      |> Store.keys()
+      |> Enum.filter(fn k ->
+        is_binary(k) and String.contains?(String.downcase(k), @snapshot_scope)
+      end)
+      |> Enum.sort()
+    end
+
+    cur = {read.(:smalt_resources), read.(:smalt_resource_groups)}
+
+    # Two consecutive agreeing reads => the read window is quiescent (not a
+    # torn mid-write read). Sleep only after a disagreement.
+    if cur == prev do
+      cur
+    else
+      if prev != :first_read, do: Process.sleep(@snapshot_backoff_ms)
+      do_snapshot(remaining - 1, cur)
+    end
+  rescue
+    e in ArgumentError ->
+      # Dead-table window while an async sibling restarts the shared app
+      # tree — same typed face the i22 corpus-seed hardening rescues.
+      if Exception.message(e) == "table identifier does not refer to an existing ETS table" do
+        Process.sleep(@snapshot_backoff_ms)
+        do_snapshot(remaining - 1, prev)
+      else
+        reraise e, __STACKTRACE__
+      end
+  catch
+    # i20b: Store.keys rides the default 5000ms GenServer cliff under load.
+    :exit, {:timeout, {GenServer, :call, [_store, _req, 5000]}} ->
+      Process.sleep(@snapshot_backoff_ms)
+      do_snapshot(remaining - 1, prev)
   end
 end

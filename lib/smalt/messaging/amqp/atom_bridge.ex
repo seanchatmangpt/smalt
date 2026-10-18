@@ -65,6 +65,15 @@ defmodule Smalt.Amqp.AtomBridge do
         respond(sock, status, ctype, payload)
         :ok
 
+      # i22: :closed is terminal for this socket — the caller closes it and the
+      # connection stops (connection.ex:219 -> {:closed, state}). Logging it
+      # here flooded the logger ~390 lines/ms during court teardown socket
+      # storms (court-x2-v17-run1.log: 35,547 lines, 14:49-14:50). Silent exit
+      # on :closed; typed debug retained for non-terminal read errors
+      # (:too_large, :bad_content_length, :timeout-adjacent recv faults).
+      {:error, :closed} ->
+        :ok
+
       {:error, reason} ->
         Logger.debug("[amqp-atom] request read failed: #{inspect(reason)}")
         :ok

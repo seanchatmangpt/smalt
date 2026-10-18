@@ -26,15 +26,14 @@ defmodule Smalt.Compliance.C1ArmTest do
   @sub "00000000-0000-0000-0000-000000000000"
 
   setup context do
-    ensure_store()
-    Store.clear()
-
-    Store.put(:smalt_subscriptions, @sub, %{
-      "id" => "/subscriptions/#{@sub}",
-      "subscriptionId" => @sub,
-      "displayName" => "Sovereign Smalt Subscription",
-      "state" => "Enabled"
-    })
+    resilient_clear(fn ->
+      Store.put(:smalt_subscriptions, @sub, %{
+        "id" => "/subscriptions/#{@sub}",
+        "subscriptionId" => @sub,
+        "displayName" => "Sovereign Smalt Subscription",
+        "state" => "Enabled"
+      })
+    end)
 
     prev_auth = Application.get_env(:smalt, :auth_mode)
     Application.put_env(:smalt, :auth_mode, :anonymous)
@@ -796,6 +795,33 @@ defmodule Smalt.Compliance.C1ArmTest do
     {:ok, port} = :inet.port(sock)
     :gen_tcp.close(sock)
     port
+  end
+
+  # i22 corpus-seed hardening: bounded typed retry around the racy
+  # ensure-store + clear + seed window (see
+  # docs/jira/v26.10.17/receipts/i21-ets-race-fix.md). Rescues ONLY the
+  # dead-table ArgumentError; past the bound it raises loudly.
+  @i22_retry_bound 50
+  @i22_dead_table_msg "table identifier does not refer to an existing ETS table"
+
+  defp resilient_clear(post_seed \\ fn -> :ok end, remaining \\ @i22_retry_bound)
+
+  defp resilient_clear(_post_seed, 0) do
+    raise "shared Store unavailable after #{@i22_retry_bound} retries (i22 corpus-seed hardening)"
+  end
+
+  defp resilient_clear(post_seed, remaining) do
+    ensure_store()
+    Store.clear()
+    post_seed.()
+  rescue
+    e in ArgumentError ->
+      if Exception.message(e) == @i22_dead_table_msg do
+        Process.sleep(10)
+        resilient_clear(post_seed, remaining - 1)
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   defp ensure_store do

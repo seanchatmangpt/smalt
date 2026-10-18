@@ -17,9 +17,44 @@ defmodule Smalt.Corpus.Helper do
 
   @doc "Ensure the shared Store is up and empty for a corpus test."
   def ensure_store do
-    SmaltTest.Lifecycle.ensure_store_up()
-    Store.clear()
+    resilient_clear()
     :ok
+  end
+
+  @doc """
+  i22 hardening (see docs/jira/v26.10.17/receipts/i21-ets-race-fix.md): the
+  window between `ensure_store_up()` and `Store.clear/0` is racy when an
+  async sibling suite tears the shared app tree down — the named ETS tables
+  die mid-clear and `seed_default_subscription/0` raises
+  `ArgumentError "table identifier does not refer to an existing ETS table"`.
+  Bounded typed retry: re-run `ensure_store_up()` then `Store.clear/0`,
+  rescuing ONLY that exact dead-table ArgumentError; anything past the bound
+  raises loudly (never a silent pass).
+  """
+  @retry_bound 50
+  @retry_backoff_ms 10
+  @dead_table_msg "table identifier does not refer to an existing ETS table"
+
+  def resilient_clear do
+    do_resilient_clear(@retry_bound)
+  end
+
+  defp do_resilient_clear(0) do
+    raise "shared Store unavailable after #{@retry_bound} retries (i22 corpus-seed hardening)"
+  end
+
+  defp do_resilient_clear(remaining) do
+    SmaltTest.Lifecycle.ensure_store_up()
+
+    Store.clear()
+  rescue
+    e in ArgumentError ->
+      if Exception.message(e) == @dead_table_msg do
+        Process.sleep(@retry_backoff_ms)
+        do_resilient_clear(remaining - 1)
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   @doc """

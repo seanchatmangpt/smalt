@@ -353,16 +353,41 @@ count, or PASS/FAIL token) found in the file.
 | i21-blob-bud | [i21-blob-budget.md](../v26.10.17/receipts/i21-blob-budget.md) | ALIVE | i21 — blob pagination perf budget: 110 -> 180 ms (load-robust, revert-fenced) |
 | i21-brokerfa | [i21-brokerfacade-sweeper.md](../v26.10.17/receipts/i21-brokerfacade-sweeper.md) | PASS | i21 — broker_facade_test: Sweeper-whereis-nil seed fix (i20c face) **NO-CONTEXT** |
 | i21-churn-bu | [i21-churn-budget.md](../v26.10.17/receipts/i21-churn-budget.md) | ALIVE | i21 — churn test budget raise: 300s → 600s |
+| i21-corpus-s | [i21-corpus-soak.md](../v26.10.17/receipts/i21-corpus-soak.md) | PASS | i21 — corpus-soak gate (load-condition corpus rounds after i21 fixes) **NO-CONTEXT** |
 | i21-doc-toke | [i21-doc-token-sweep.md](../v26.10.17/receipts/i21-doc-token-sweep.md) | PASS | i21-doc-token-sweep — stale `InvalidQueryParameter` token sweep (lease docs) |
+| i21-ets-hamm | [i21-ets-hammer.md](../v26.10.17/receipts/i21-ets-hammer.md) | ALIVE | i21 — ETS race fix verification hammer (bench-runner lane) **NO-CONTEXT** |
 | i21-ets-race | [i21-ets-race-fix.md](../v26.10.17/receipts/i21-ets-race-fix.md) | PASS | i21 — EgressDispatchTest setup ETS race fix (r241 repair surface) **NO-CONTEXT** |
 | i21-fence10- | [i21-fence10-fix.md](../v26.10.17/receipts/i21-fence10-fix.md) | ALIVE | i21 — Fence 10 PERSISTENT-FLAKE fix (r241 repair surface) **NO-CONTEXT** |
+| i21-fence10- | [i21-fence10-hammer.md](../v26.10.17/receipts/i21-fence10-hammer.md) | ALIVE | i21 — Fence 10 hammer: GREEN (12/12 legs, 12 tests each) |
+| i21-full-sui | [i21-full-suite-postfix.md](../v26.10.17/receipts/i21-full-suite-postfix.md) | UNKNOWN | i21 — Full Offline Suite Post-Fix (Pre-Gate) **NO-CONTEXT** |
 | i21-leak-bat | [i21-leak-batch1.md](../v26.10.17/receipts/i21-leak-batch1.md) | PASS | i21-leak-batch1 — leak-court batch 1 (env restore discipline) **NO-CONTEXT** |
 | i21-leak-bat | [i21-leak-batch2.md](../v26.10.17/receipts/i21-leak-batch2.md) | ALIVE | i21 — leak-court batch 2 (test-isolation save-prev/restore conversions) **NO-CONTEXT** |
 | i21-leak-bat | [i21-leak-batch3.md](../v26.10.17/receipts/i21-leak-batch3.md) | ALIVE | i21-leak-batch3 — test-isolation leak batch 3 (lane: leak3) **NO-CONTEXT** |
+| i21-leak-bat | [i21-leak-batch4.md](../v26.10.17/receipts/i21-leak-batch4.md) | PARTIAL_ALIVE | i21-leak-batch4 — test-isolation leak court, batch 4 (lane lease: top-4 unleased offender files) **NO-CONTEXT** |
+| i21-leak-bat | [i21-leak-batch5.md](../v26.10.17/receipts/i21-leak-batch5.md) | ALIVE | i21-leak-batch5 — test-isolation leak batch 5 (lane: leak5) **NO-CONTEXT** |
 | i21-leak-cou | [i21-leak-court-delta.md](../v26.10.17/receipts/i21-leak-court-delta.md) | PARTIAL_ALIVE | i21-leak-court-delta — post-batch leak-court delta (baseline 122 → 101) |
 | i21-lro-face | [i21-lro-face.md](../v26.10.17/receipts/i21-lro-face.md) | PARTIAL_ALIVE | i21 — SmaltLroTest :543 op-record store miss (contention face → bounded sweeper-sync retry) **NO-CONTEXT** |
+| i21-surfaces | [i21-surfaces-postfix.md](../v26.10.17/receipts/i21-surfaces-postfix.md) | PARTIAL_ALIVE | i21 surfaces postfix — verification lane receipt **NO-CONTEXT** |
 | i21b-coordin | [i21b-coordinator-flips.md](../v26.10.17/receipts/i21b-coordinator-flips.md) | PASS | i21b — coordinator-approved flips: NEXT_WINDOW strike + KD-04 WIRE_PARITY prose **NO-CONTEXT** |
+| i21b-enclave | [i21b-enclave-testbed-shape.md](../v26.10.17/receipts/i21b-enclave-testbed-shape.md) | ALIVE | i21b — enclave testbed leak-court residual: non-literal put_env shape fix **NO-CONTEXT** |
+| i21b-format- | [i21b-format-sweep.md](../v26.10.17/receipts/i21b-format-sweep.md) | PASS | i21b-format-sweep — integration hygiene, format + compile gate **NO-CONTEXT** |
+| i21b-leak-co | [i21b-leak-corpus.md](../v26.10.17/receipts/i21b-leak-corpus.md) | ALIVE | i21b — leak-court closure: compliance corpus c3/c5/c7 **NO-CONTEXT** |
+| i21b-leak-wi | [i21b-leak-wire.md](../v26.10.17/receipts/i21b-leak-wire.md) | PARTIAL_ALIVE | i21b — leak-court wire/amqp/eventgrid lane (leak7) **NO-CONTEXT** |
 | i21b-receipt | [i21b-receipt-audit.md](../v26.10.17/receipts/i21b-receipt-audit.md) | PASS | i21b — receipt audit: r241/r243/r244 + all i21-* (RECEIPT_CONTEXT_LAW spot-audit) |
+| i21c-bench-f | [i21c-bench-fresh.md](../v26.10.17/receipts/i21c-bench-fresh.md) | PASS | i21c — bench fresh receipt (court bench-check pre-run #1) **NO-CONTEXT** |
+| i21c-fast-st | [i21c-fast-stages.md](../v26.10.17/receipts/i21c-fast-stages.md) | PARTIAL_ALIVE | i21c — fast court stages pre-run #4 (80/20) |
+| i21c-mutatio | [i21c-mutation-census.md](../v26.10.17/receipts/i21c-mutation-census.md) | PASS | i21c — mutation-court + census court-stage pre-run #3 |
+| i21c-t1t2-pr | [i21c-t1t2-prererun.md](../v26.10.17/receipts/i21c-t1t2-prererun.md) | PARTIAL_ALIVE | i21c — T1+T2 court pre-run #5 (decisive, load-context) **NO-CONTEXT** |
+| i21c-t3-sdk- | [i21c-t3-sdk-smoke.md](../v26.10.17/receipts/i21c-t3-sdk-smoke.md) | PARTIAL_ALIVE | i21c — Court T3 `test-sdk-smoke` pre-run #2 **NO-CONTEXT** |
+| i21d-queuest | [i21d-queuestore-st4.md](../v26.10.17/receipts/i21d-queuestore-st4.md) | UNKNOWN | i21d — QueueStore ST4 renew/sweep court T1 classification **NO-CONTEXT** |
+| i21d-store-c | [i21d-store-clear-async.md](../v26.10.17/receipts/i21d-store-clear-async.md) | PARTIAL_ALIVE | i21d — Store-clear async race root cause + fix **NO-CONTEXT** |
+| i22-atom-flo | [i22-atom-flood-fix.md](../v26.10.17/receipts/i22-atom-flood-fix.md) | PASS | i22 — amqp-atom `:closed` log flood fix **NO-CONTEXT** |
+| i22-atom-pre | [i22-atom-pressure.md](../v26.10.17/receipts/i22-atom-pressure.md) | PASS | i22 — atom-table pressure vs scheduler jitter for fuzz/atom-mint tests **NO-CONTEXT** |
+| i22-corpus-s | [i22-corpus-seed-hardening.md](../v26.10.17/receipts/i22-corpus-seed-hardening.md) | PASS | i22 — corpus/compliance shared-seed hardening (resilient clear) **NO-CONTEXT** |
+| i22-error-co | [i22-error-corpus-lro.md](../v26.10.17/receipts/i22-error-corpus-lro.md) | PASS | i22 — arm_error_corpus LRO PUT 202 + Azure-AsyncOperation poll (attempt-4 leg-2 face) **NO-CONTEXT** |
+| i22-fuzz-ato | [i22-fuzz-atom-fix.md](../v26.10.17/receipts/i22-fuzz-atom-fix.md) | UNKNOWN | i22 — fuzz_test.exs:561 atom-flood measurement fence (attempt 4, leg 1) **NO-CONTEXT** |
+| i22-seed-chu | [i22-seed-churn.md](../v26.10.17/receipts/i22-seed-churn.md) | ALIVE | i22 — seed-order hardening: shacl_fuzz under shuffled seeds (churn harness) |
+| i22-tags-nor | [i22-tags-norm-fix.md](../v26.10.17/receipts/i22-tags-norm-fix.md) | UNKNOWN | i22 — tags_normalization.exs:49 resource PUT tags:null flake (attempt 4 leg 2) **NO-CONTEXT** |
 | i3-witness-s | [i3-witness-sweep.md](../v26.10.17/receipts/i3-witness-sweep.md) | PASS | i3 — witness receipts over in-flight lib/ (lane I3) **NO-CONTEXT** |
 | i5-complianc | [i5-compliance-witness.md](../v26.10.17/receipts/i5-compliance-witness.md) | PARTIAL_ALIVE | I5 — compliance witness + THIRD_PARTY.md NOTICE path fix **NO-CONTEXT** |
 | i6-amqp-surf | [i6-amqp-surface.md](../v26.10.17/receipts/i6-amqp-surface.md) | PASS | I6 — AMQP surface verify-only receipt **NO-CONTEXT** |
@@ -381,6 +406,8 @@ count, or PASS/FAIL token) found in the file.
 | r241-court-x | [r241-court-x2-attempt3-typed-red.md](../v26.10.17/receipts/r241-court-x2-attempt3-typed-red.md) | UNKNOWN | r241 — court-x2 attempt 3 (final): TYPED-RED, pre-mortem mitigation did not hold |
 | r243-termina | [r243-terminal-receipt.md](../v26.10.17/receipts/r243-terminal-receipt.md) | PARTIAL_ALIVE | r243 — v26.10.17 terminal receipt |
 | r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
+| r245-t3-tear | [r245-t3-teardown-fix.md](../v26.10.17/receipts/r245-t3-teardown-fix.md) | PASS | r245 — T3 sdk-smoke teardown deadlock root-caused + fixed; leg green |
+| r246-attempt | [r246-attempt4-invalid-typed-red.md](../v26.10.17/receipts/r246-attempt4-invalid-typed-red.md) | UNKNOWN | r246 — court-x2 attempt 4: INVALID (mid-gate tree edit) + typed RED; WO-2 carries to v26.10.18 **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 

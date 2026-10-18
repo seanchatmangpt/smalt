@@ -1622,6 +1622,10 @@ defmodule Smalt.PPlanTest do
   describe "lens3 model fuzz" do
     @describetag :pplan_lens3
     @tag :pplan_stress
+    # 10k-op fuzz is legitimately >60s under suite load (witnessed pair-context,
+    # receipts/i22-pair-context.md); the default 60s ExUnit timeout trips on
+    # load, not on regression. 3x margin, typed.
+    @tag timeout: 180_000
 
     test "10000-op model fuzz with poison-patch transitions matches the machine model" do
       id = "pplan-test-lens3-fuzz-10000"
