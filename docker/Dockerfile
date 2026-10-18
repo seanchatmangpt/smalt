@@ -41,7 +41,7 @@ RUN mix deps.get
 RUN MIX_ENV=test mix compile
 
 # --- source + burn harness layer ------------------------------------------
-COPY lib config test scripts priv model ./
+COPY lib config test scripts priv ./
 COPY docker/gen_dev_cert_linux.sh /usr/local/bin/gen_dev_cert_linux.sh
 
 # Dev TLS material minted IN-IMAGE (same .smalt/tls layout as

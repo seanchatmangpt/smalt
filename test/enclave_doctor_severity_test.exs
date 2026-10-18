@@ -54,40 +54,26 @@ defmodule EnclaveDoctorSeverityTest do
   describe "forced failure (real temp residue rows, no mocks)" do
     test "residue rows during doctor run -> store_invariants FAIL with ETS_IDENTITY_RESIDUE / BLOCKING_GATE + remediation" do
       prefix = "lane430-residue-"
-      rows = 2000
 
       # Residue injector, NO-SLEEP-DOCTRINE form (v26.10.18 W14): no paced
-      # Process.sleep loop. The doctor run executes in a Task; the strict
-      # identity check's baseline snapshot strictly precedes the lifecycle's
-      # doctor-identity-rg RG PUT, so that Store row is the observable that
-      # proves "baseline taken". Bounded poll (SmaltTest.AssertEventually)
-      # waits for it, then the test process inserts the residue rows
-      # synchronously — they land deterministically between the two
-      # snapshots, so the identity assert must observe the residue.
-      doctor =
-        Task.async(fn -> Smalt.Enclave.Doctor.run() end)
+      # Process.sleep loop. The doctor run executes in a Task while this
+      # process inserts unique residue rows in a tight loop for the entire
+      # lifetime of the run, so rows land strictly after the strict identity
+      # check's baseline snapshot and strictly before its after_state
+      # snapshot — the assert (baseline == after_state) must observe the
+      # residue deterministically, with no timing guess. The injector is
+      # killed after the doctor Task completes; rows are swept by prefix.
+      doctor = Task.async(fn -> Smalt.Enclave.Doctor.run() end)
 
-      SmaltTest.AssertEventually.eventually(
-        fn ->
-          visible? =
-            :smalt_resources
-            |> :ets.tab2list()
-            |> Enum.any?(fn {k, _} ->
-              is_binary(k) and String.contains?(k, "doctor-identity-rg")
-            end)
-
-          if visible?, do: {:ok, :baseline_taken}, else: :retry
-        end,
-        observable: "doctor lifecycle RG row (baseline snapshot taken)",
-        deadline_ms: 15_000
-      )
-
-      for n <- 1..rows do
-        :ets.insert(
-          :smalt_resources,
-          {prefix <> Integer.to_string(n), %{"type" => "Microsoft.Storage/storageAccounts"}}
-        )
-      end
+      {:ok, injector} =
+        Task.start(fn ->
+          for n <- Stream.iterate(1, &(&1 + 1)) do
+            :ets.insert(
+              :smalt_resources,
+              {prefix <> Integer.to_string(n), %{"type" => "Microsoft.Storage/storageAccounts"}}
+            )
+          end
+        end)
 
       try do
         report = Task.await(doctor, 60_000)
@@ -106,6 +92,7 @@ defmodule EnclaveDoctorSeverityTest do
                  "mix smalt.audit_residue --strict"
       after
         # Cleanup: sweep every injected row regardless of outcome.
+        Process.exit(injector, :kill)
         sweep(prefix)
       end
     end

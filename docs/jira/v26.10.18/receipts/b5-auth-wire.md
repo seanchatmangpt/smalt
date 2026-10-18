@@ -118,10 +118,14 @@ green x2 + wire tier green) is the gate this receipt stands on.
   (restore-only semantics save_restore cannot express).
 - auth flatten: section describes are labeling-in-place, not a physical
   A-L reorder (row-survival risk rejection, above).
-- One unexplained co-batch flake (380-test run #1: 1 failure; runs #2 and
-  #3 green x2 with the same seed policy) — not diagnosed to a root cause
-  in this window; the two consecutive green full-batch runs are the
-  receipted evidence.
+- Co-batch timing flake, diagnosed on the third 380-test run: the
+  pre-existing `@perf_budget_ms 180` pagination perf contract
+  (blob_hardening, EXPLICITLY out of rewrite scope, carried verbatim)
+  flipped 321ms > 180ms under concurrent-lane CPU load. Solo runs green
+  x2 (116/0 twice); the budget test is the documented degraded-host
+  timing-sensitive class (test_helper SMALT_MAX_CASES law). Pre-existing
+  environmental sensitivity, not session-introduced; the rewrite gate is
+  the two consecutive green full-batch runs plus the solo greens.
 
 ## Falsifier check (§0 inventory)
 
