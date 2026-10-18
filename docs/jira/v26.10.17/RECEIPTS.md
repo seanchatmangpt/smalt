@@ -44,6 +44,7 @@ count, or PASS/FAIL token) found in the file.
 | r236-court-r | [r236-court-run1-red-75.md](receipts/r236-court-run1-red-75.md) | UNKNOWN | r236 — court run-1 RED: 75 failures at T1 offline (milestone-doc lane) |
 | r237-integra | [r237-integration-fixes.md](receipts/r237-integration-fixes.md) | ALIVE | r237 — Integration fixes verification (bench-report empty window, ggen ledger sync, test_cosmos premise rewrit |
 | r238-bench-r | [r238-bench-registry-rulings.md](receipts/r238-bench-registry-rulings.md) | PASS | r238 — Bench registry drift rulings (receipt-form only; REGISTRY.md untouched) |
+| r239-kd97-co | [r239-kd97-conditional-head-landing.md](receipts/r239-kd97-conditional-head-landing.md) | ALIVE | r239 — KD-97 conditional/ranged HEAD + blob response-header parity (landing receipt) |
 
 ## Workspace (ws-01..12)
 
