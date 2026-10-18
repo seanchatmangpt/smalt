@@ -27,7 +27,13 @@ defmodule Smalt.Spc.DriftTest do
     {center, sigma} = probe(history, Path.join(dir, "source.jsonl"))
 
     source = Path.join(dir, "source.jsonl")
-    File.write!(source, ~s({"machine": {"parse_ms": #{center + 1.5 * sigma}}}) <> "\n" <> ~s({"residue_tables": 0}) <> "\n")
+
+    File.write!(
+      source,
+      ~s({"machine": {"parse_ms": #{center + 1.5 * sigma}}}) <>
+        "\n" <> ~s({"residue_tables": 0}) <> "\n"
+    )
+
     write_history(history)
 
     {out, 0} = run_gate(history, source)
@@ -52,7 +58,13 @@ defmodule Smalt.Spc.DriftTest do
     {center, sigma} = probe(history, Path.join(dir, "source.jsonl"))
 
     source = Path.join(dir, "source.jsonl")
-    File.write!(source, ~s({"machine": {"parse_ms": #{center + 4.0 * sigma}}}) <> "\n" <> ~s({"residue_tables": 0}) <> "\n")
+
+    File.write!(
+      source,
+      ~s({"machine": {"parse_ms": #{center + 4.0 * sigma}}}) <>
+        "\n" <> ~s({"residue_tables": 0}) <> "\n"
+    )
+
     write_history(history)
 
     {out, 1} = run_gate(history, source)
@@ -67,7 +79,9 @@ defmodule Smalt.Spc.DriftTest do
   end
 
   test "PASS verdict emits nothing; unknown gate and malformed input are typed skips/errors" do
-    pass = Jason.encode!(%{"gate" => "spc-bands", "verdict" => "PASS", "tier" => 0, "metrics" => []})
+    pass =
+      Jason.encode!(%{"gate" => "spc-bands", "verdict" => "PASS", "tier" => 0, "metrics" => []})
+
     assert {:ok, :skipped} = Drift.emit(pass)
 
     unknown_gate = Jason.encode!(%{"gate" => "something-else", "verdict" => "EVENT", "tier" => 1})
@@ -88,7 +102,11 @@ defmodule Smalt.Spc.DriftTest do
   # it (write_history) before the graded run — the graded series is then
   # byte-identical to the probed one, making z deterministic.
   defp probe(history, source) do
-    File.write!(source, ~s({"machine": {"parse_ms": 100}}) <> "\n" <> ~s({"residue_tables": 0}) <> "\n")
+    File.write!(
+      source,
+      ~s({"machine": {"parse_ms": 100}}) <> "\n" <> ~s({"residue_tables": 0}) <> "\n"
+    )
+
     {out, _status} = run_gate(history, source)
 
     m =
@@ -115,6 +133,13 @@ defmodule Smalt.Spc.DriftTest do
     )
   end
 
-  defp decode(out), do: out |> String.split("\n") |> Enum.reject(&String.starts_with?(&1, "[spc]")) |> Enum.join("\n") |> Jason.decode!()
+  defp decode(out),
+    do:
+      out
+      |> String.split("\n")
+      |> Enum.reject(&String.starts_with?(&1, "[spc]"))
+      |> Enum.join("\n")
+      |> Jason.decode!()
+
   defp receipt(out), do: decode(out)
 end

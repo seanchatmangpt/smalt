@@ -290,16 +290,22 @@ defmodule Smalt.DataPlane.KQL do
   # Backslash escape: real Kusto consumes the backslash — \' -> ', \" -> ",
   # \\ -> \, \n -> newline, \t -> tab, \r -> CR. Unknown escapes keep the
   # escaped byte itself (backslash dropped), matching lenient Kusto behavior.
-  defp lex_string(<<?\\, ?n, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, ?\n>>)
-  defp lex_string(<<?\\, ?t, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, ?\t>>)
-  defp lex_string(<<?\\, ?r, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, ?\r>>)
+  defp lex_string(<<?\\, ?n, rest::binary>>, q, acc),
+    do: lex_string(rest, q, <<acc::binary, ?\n>>)
+
+  defp lex_string(<<?\\, ?t, rest::binary>>, q, acc),
+    do: lex_string(rest, q, <<acc::binary, ?\t>>)
+
+  defp lex_string(<<?\\, ?r, rest::binary>>, q, acc),
+    do: lex_string(rest, q, <<acc::binary, ?\r>>)
 
   defp lex_string(<<?\\, c, rest::binary>>, q, acc) when is_integer(c),
     do: lex_string(rest, q, <<acc::binary, c>>)
 
   defp lex_string(<<q, rest::binary>>, q, acc), do: {:ok, acc, rest}
 
-  defp lex_string(<<c::utf8, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, c::utf8>>)
+  defp lex_string(<<c::utf8, rest::binary>>, q, acc),
+    do: lex_string(rest, q, <<acc::binary, c::utf8>>)
 
   # Invalid UTF-8 byte inside a string literal: consume as a raw byte (fuzz fence).
   defp lex_string(<<c, rest::binary>>, q, acc), do: lex_string(rest, q, <<acc::binary, c>>)
@@ -417,7 +423,9 @@ defmodule Smalt.DataPlane.KQL do
     parse_comparison(col, rest)
   end
 
-  defp parse_operand([{tok, val} | _]), do: {:error, "unexpected #{tok} #{inspect(val)} in predicate"}
+  defp parse_operand([{tok, val} | _]),
+    do: {:error, "unexpected #{tok} #{inspect(val)} in predicate"}
+
   defp parse_operand([]), do: {:error, "unexpected end of predicate"}
 
   defp parse_comparison(col, [{:word, op} | rest]) do

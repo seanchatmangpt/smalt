@@ -77,7 +77,10 @@ defmodule Smalt.TrustProfileTest do
       assert payload["version"] == TrustProfile.envelope_version()
       assert payload["algorithm"] == "RS256"
       assert payload["profile"] == "classical"
-      assert payload["subject_digest"] == Base.encode16(:crypto.hash(:sha256, "receipt-1"), case: :lower)
+
+      assert payload["subject_digest"] ==
+               Base.encode16(:crypto.hash(:sha256, "receipt-1"), case: :lower)
+
       assert byte_size(payload["nonce"]) == 32
       assert payload["domain_tag"] == TrustProfile.domain_tag()
     end
@@ -101,12 +104,18 @@ defmodule Smalt.TrustProfileTest do
     end
 
     test "new/1 refuses malformed opts typed instead of crashing" do
-      assert {:error, {:malformed_envelope, :bad_opts}} = TrustProfile.new(subject: "x", ttl: "60")
+      assert {:error, {:malformed_envelope, :bad_opts}} =
+               TrustProfile.new(subject: "x", ttl: "60")
+
       assert {:error, {:malformed_envelope, :bad_opts}} = TrustProfile.new(subject: "x", ttl: 0)
       assert {:error, {:malformed_envelope, :bad_opts}} = TrustProfile.new(subject: 42)
       assert {:error, {:malformed_envelope, :bad_opts}} = TrustProfile.new(subject: "x", nonce: 7)
-      assert {:error, {:malformed_envelope, :bad_opts}} = TrustProfile.new(subject: "x", policy_epoch: -1)
-      assert {:error, {:malformed_envelope, :bad_opts}} = TrustProfile.new(subject: "x", key_id: :atom)
+
+      assert {:error, {:malformed_envelope, :bad_opts}} =
+               TrustProfile.new(subject: "x", policy_epoch: -1)
+
+      assert {:error, {:malformed_envelope, :bad_opts}} =
+               TrustProfile.new(subject: "x", key_id: :atom)
     end
 
     test "new/1 admits valid typed opts" do
@@ -141,11 +150,14 @@ defmodule Smalt.TrustProfileTest do
 
     test "sign/1: hostile audience (invalid UTF-8) refuses in-spec as bad_fields, not a jcs leak (lens-9)" do
       {:ok, env} = TrustProfile.new(subject: "utf8-audience")
-      assert {:error, {:malformed_envelope, :bad_fields}} = TrustProfile.sign(%{env | audience: "ok" <> <<0xFF>>})
+
+      assert {:error, {:malformed_envelope, :bad_fields}} =
+               TrustProfile.sign(%{env | audience: "ok" <> <<0xFF>>})
     end
 
     test "sign/1: hostile key_id (invalid UTF-8) refuses in-spec as bad_fields, not a crash" do
       {:ok, env} = TrustProfile.new(subject: "utf8-key-id")
+
       assert {:error, {:malformed_envelope, :bad_fields}} =
                TrustProfile.sign(%{env | key_id: "k" <> <<0xFF>>})
     end
@@ -164,8 +176,11 @@ defmodule Smalt.TrustProfileTest do
       none_header = Base.url_encode64("{\"alg\":\"none\"}", padding: false)
       hs_header = Base.url_encode64("{\"alg\":\"HS256\"}", padding: false)
 
-      assert {:error, {:bad_alg, "none"}} = TrustProfile.verify(Enum.join([none_header, p, s], "."))
-      assert {:error, {:bad_alg, "HS256"}} = TrustProfile.verify(Enum.join([hs_header, p, s], "."))
+      assert {:error, {:bad_alg, "none"}} =
+               TrustProfile.verify(Enum.join([none_header, p, s], "."))
+
+      assert {:error, {:bad_alg, "HS256"}} =
+               TrustProfile.verify(Enum.join([hs_header, p, s], "."))
     end
 
     test "tampered signature segment fails with exactly :bad_signature" do
@@ -176,7 +191,9 @@ defmodule Smalt.TrustProfileTest do
       # flip one char inside the signature b64, keep header+payload intact
       {:ok, sig} = Base.url_decode64(s, padding: false)
       <<a::size(8), rest::binary>> = sig
-      corrupted_sig = Base.url_encode64(<<Bitwise.bxor(a, 1)::size(8), rest::binary>>, padding: false)
+
+      corrupted_sig =
+        Base.url_encode64(<<Bitwise.bxor(a, 1)::size(8), rest::binary>>, padding: false)
 
       assert {:error, :bad_signature} = TrustProfile.verify(Enum.join([h, p, corrupted_sig], "."))
     end
@@ -187,9 +204,13 @@ defmodule Smalt.TrustProfileTest do
       [_h, p, s] = String.split(token, ".", parts: 3)
 
       other_kid_header =
-        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "ctp-envelope-v1", "kid" => "rogue"}), padding: false)
+        Base.url_encode64(
+          Jason.encode!(%{"alg" => "RS256", "typ" => "ctp-envelope-v1", "kid" => "rogue"}),
+          padding: false
+        )
 
-      assert {:error, :bad_signature} = TrustProfile.verify(Enum.join([other_kid_header, p, s], "."))
+      assert {:error, :bad_signature} =
+               TrustProfile.verify(Enum.join([other_kid_header, p, s], "."))
     end
 
     test "tampered payload field (audience swap) fails signature" do
@@ -243,8 +264,10 @@ defmodule Smalt.TrustProfileTest do
         Enum.map([h64, p64], &(&1 |> Base.url_decode64!(padding: false) |> Jason.decode!()))
 
       assert MapSet.new(Map.keys(payload)) ==
-               MapSet.new(~w(version algorithm key_id profile policy_epoch revocation_epoch
-                             generation nonce not_before expires_at subject_digest audience domain_tag))
+               MapSet.new(
+                 ~w(version algorithm key_id profile policy_epoch revocation_epoch
+                             generation nonce not_before expires_at subject_digest audience domain_tag)
+               )
 
       assert MapSet.new(Map.keys(header)) == MapSet.new(["alg", "typ", "kid"])
       assert header["typ"] == TrustProfile.envelope_version()
@@ -284,7 +307,10 @@ defmodule Smalt.TrustProfileTest do
       [h, p, s] = String.split(token, ".", parts: 3)
       {:ok, payload_bin} = Base.url_decode64(p, padding: false)
 
-      bogus = Base.url_encode64(Jason.encode!(Map.put(Jason.decode!(payload_bin), "profile", "pqc")), padding: false)
+      bogus =
+        Base.url_encode64(Jason.encode!(Map.put(Jason.decode!(payload_bin), "profile", "pqc")),
+          padding: false
+        )
 
       assert {:error, :bad_signature} = TrustProfile.verify(Enum.join([h, bogus, s], "."))
     end
@@ -294,15 +320,21 @@ defmodule Smalt.TrustProfileTest do
       original = :persistent_term.get(key_ref, :missing)
 
       retired_token =
-        fn ->
-          {:ok, env} = TrustProfile.new(subject: "rotation")
-          {:ok, token} = TrustProfile.sign(env)
-          token
-        end.()
+        (fn ->
+           {:ok, env} = TrustProfile.new(subject: "rotation")
+           {:ok, token} = TrustProfile.sign(env)
+           token
+         end).()
 
       # swap in a fresh keypair (the rotation)
       new_priv = :public_key.generate_key({:rsa, 2048, 65_537})
-      new_pub = :public_key.der_encode(:RSAPublicKey, {:RSAPublicKey, new_priv |> elem(2), new_priv |> elem(3)})
+
+      new_pub =
+        :public_key.der_encode(
+          :RSAPublicKey,
+          {:RSAPublicKey, new_priv |> elem(2), new_priv |> elem(3)}
+        )
+
       new_pub = :public_key.der_decode(:RSAPublicKey, new_pub)
       :persistent_term.put(key_ref, {new_priv, new_pub})
 
@@ -316,10 +348,11 @@ defmodule Smalt.TrustProfileTest do
         assert {:ok, payload} = TrustProfile.verify(token)
         assert payload["key_id"] == TrustProfile.key_id()
       after
-        if original == :missing, do: :persistent_term.erase(key_ref), else: :persistent_term.put(key_ref, original)
+        if original == :missing,
+          do: :persistent_term.erase(key_ref),
+          else: :persistent_term.put(key_ref, original)
       end
     end
-
 
     test "field-closure boundary fuzz: sign refuses wrong-typed struct fields, typed" do
       base = fn overrides ->
@@ -482,7 +515,11 @@ defmodule Smalt.TrustProfileTest do
       app_env_orig = Application.get_env(:smalt, :receipt_signing_key)
 
       priv = :public_key.generate_key({:rsa, 2048, 65_537})
-      pub = priv |> then(&:public_key.der_encode(:RSAPublicKey, {:RSAPublicKey, elem(&1, 2), elem(&1, 3)}))
+
+      pub =
+        priv
+        |> then(&:public_key.der_encode(:RSAPublicKey, {:RSAPublicKey, elem(&1, 2), elem(&1, 3)}))
+
       pub = :public_key.der_decode(:RSAPublicKey, pub)
 
       pem_pair = %{
@@ -507,11 +544,21 @@ defmodule Smalt.TrustProfileTest do
         # domain structure in BOTH directions under shared key material.
         {:ok, env} = TrustProfile.new(subject: "shared")
         {:ok, tp_token} = TrustProfile.sign(env)
-        assert {:error, {:bad_typ, "ctp-envelope-v1"}} = Smalt.Security.ReceiptSigner.verify(tp_token)
+
+        assert {:error, {:bad_typ, "ctp-envelope-v1"}} =
+                 Smalt.Security.ReceiptSigner.verify(tp_token)
       after
-        if app_env_orig == nil, do: Application.delete_env(:smalt, :receipt_signing_key), else: Application.put_env(:smalt, :receipt_signing_key, app_env_orig)
-        if tp_orig == :missing, do: :persistent_term.erase(tp_ref), else: :persistent_term.put(tp_ref, tp_orig)
-        if rs_orig == :missing, do: :persistent_term.erase(rs_ref), else: :persistent_term.put(rs_ref, rs_orig)
+        if app_env_orig == nil,
+          do: Application.delete_env(:smalt, :receipt_signing_key),
+          else: Application.put_env(:smalt, :receipt_signing_key, app_env_orig)
+
+        if tp_orig == :missing,
+          do: :persistent_term.erase(tp_ref),
+          else: :persistent_term.put(tp_ref, tp_orig)
+
+        if rs_orig == :missing,
+          do: :persistent_term.erase(rs_ref),
+          else: :persistent_term.put(rs_ref, rs_orig)
       end
     end
   end
@@ -541,7 +588,13 @@ defmodule Smalt.TrustProfileTest do
       # code-point order would reverse them. Verified against the JS oracle:
       # ["￿","\u{10000}"].sort() -> ["𐀀","￿"].
       assert {:ok, j} =
-               TrustProfile.jcs(%{"\uFFFF" => 1, "\u{10000}" => 2, "a" => 3, "aa" => 4, "\u00E1" => 5})
+               TrustProfile.jcs(%{
+                 "\uFFFF" => 1,
+                 "\u{10000}" => 2,
+                 "a" => 3,
+                 "aa" => 4,
+                 "\u00E1" => 5
+               })
 
       pos = fn s -> :binary.match(j, s) |> elem(0) end
 
@@ -572,6 +625,7 @@ defmodule Smalt.TrustProfileTest do
     test "numbers: integers within 2^53 - 1 emitted, 2^53 and beyond refused typed" do
       assert {:ok, "9007199254740991"} = TrustProfile.jcs(9_007_199_254_740_991)
       assert {:ok, "-9007199254740991"} = TrustProfile.jcs(-9_007_199_254_740_991)
+
       assert {:error, {:non_canonical_number, 9_007_199_254_740_992}} =
                TrustProfile.jcs(9_007_199_254_740_992)
 
@@ -697,11 +751,25 @@ defmodule Smalt.TrustProfileTest do
       refuse.(b64j.(%{"alg" => 1}) <> "." <> b64j.(%{}) <> "." <> b.(), :bad_alg)
       refuse.(b64j.(%{"alg" => ["RS256"]}) <> "." <> b64j.(%{}) <> "." <> b.(), :bad_alg)
       # key_id list-shaped
-      refuse.(b64j.(%{"alg" => "RS256"}) <> "." <> b64j.(%{"key_id" => ["a"]}) <> "." <> b.(), :unknown_key_id)
+      refuse.(
+        b64j.(%{"alg" => "RS256"}) <> "." <> b64j.(%{"key_id" => ["a"]}) <> "." <> b.(),
+        :unknown_key_id
+      )
+
       # float epochs (checked before RSA: kid gate fires first)
-      refuse.(b64j.(%{"alg" => "RS256"}) <> "." <> b64j.(%{"not_before" => 1.5, "expires_at" => 2.5}) <> "." <> b.(), :unknown_key_id)
+      refuse.(
+        b64j.(%{"alg" => "RS256"}) <>
+          "." <> b64j.(%{"not_before" => 1.5, "expires_at" => 2.5}) <> "." <> b.(),
+        :unknown_key_id
+      )
+
       # string epochs
-      refuse.(b64j.(%{"alg" => "RS256"}) <> "." <> b64j.(%{"not_before" => "1", "expires_at" => "2"}) <> "." <> b.(), :unknown_key_id)
+      refuse.(
+        b64j.(%{"alg" => "RS256"}) <>
+          "." <> b64j.(%{"not_before" => "1", "expires_at" => "2"}) <> "." <> b.(),
+        :unknown_key_id
+      )
+
       # wrong segment counts / malformed shapes (measured: 4-segment token
       # fails b64 on the dotted tail; "a..b" fails b64 on the 1-char segment)
       assert {:error, :invalid_base64} = TrustProfile.verify("a.b.c.d")
@@ -729,7 +797,8 @@ defmodule Smalt.TrustProfileTest do
       # bad payload-kid AND bad alg: alg wins (alg is checked first)
       assert {:error, {:bad_alg, "RS384"}} =
                verdict.(
-                 enc.(Map.put(hm, "alg", "RS384")) <> "." <>
+                 enc.(Map.put(hm, "alg", "RS384")) <>
+                   "." <>
                    enc.(Map.put(pm, "key_id", "deadbeefdeadbeef")) <> "." <> s
                )
 
@@ -848,12 +917,15 @@ defmodule Smalt.TrustProfileTest do
 
     test "sovereign_enterprise admits fully hardened config" do
       cfg = %{auth_mode: :enforce, tls: true, sb_shared_key: "secret"}
-      assert {:ok, %{profile: :sovereign_enterprise, findings: ["all hardening requirements met"]}} =
+
+      assert {:ok,
+              %{profile: :sovereign_enterprise, findings: ["all hardening requirements met"]}} =
                Deployment.validate(:sovereign_enterprise, cfg)
     end
 
     test "validate/2 is pure: same input, same verdict" do
       cfg = %{auth_mode: :enforce, tls: false, sb_shared_key: "k"}
+
       assert Deployment.validate(:sovereign_enterprise, cfg) ==
                Deployment.validate(:sovereign_enterprise, cfg)
     end
@@ -866,59 +938,73 @@ defmodule Smalt.TrustProfileTest do
       Application.delete_env(:smalt, :tls_keyfile)
 
       try do
+        auth_modes = [:enforce, :anonymous, :bearer, nil]
+        tls_values = [true, false, :auto, nil]
+        keys = ["secret", nil]
 
-      auth_modes = [:enforce, :anonymous, :bearer, nil]
-      tls_values = [true, false, :auto, nil]
-      keys = ["secret", nil]
+        for auth <- auth_modes,
+            tls <- tls_values,
+            key <- keys do
+          cfg = %{auth_mode: auth, tls: tls, sb_shared_key: key}
 
-      for auth <- auth_modes,
-          tls <- tls_values,
-          key <- keys do
-        cfg = %{auth_mode: auth, tls: tls, sb_shared_key: key}
+          # loopback_dev admits every cell, and is pure
+          assert {:ok, %{profile: :loopback_dev, findings: findings}} =
+                   Deployment.validate(:loopback_dev, cfg)
 
-        # loopback_dev admits every cell, and is pure
-        assert {:ok, %{profile: :loopback_dev, findings: findings}} =
-                 Deployment.validate(:loopback_dev, cfg)
+          assert is_list(findings)
 
-        assert is_list(findings)
-        assert Deployment.validate(:loopback_dev, cfg) == {:ok, %{profile: :loopback_dev, config: cfg, findings: findings}}
+          assert Deployment.validate(:loopback_dev, cfg) ==
+                   {:ok, %{profile: :loopback_dev, config: cfg, findings: findings}}
 
-        # sovereign_enterprise: refusal iff any hardening requirement unmet; reasons exact
-        expected_reasons =
-          Enum.reject(
-            [
-              if(auth == :enforce, do: nil, else: :missing_auth_enforce),
-              if(tls == true, do: nil, else: :tls_not_enabled),
-              if(is_binary(key), do: nil, else: :sb_shared_key_missing)
-            ],
-            &is_nil/1
-          )
+          # sovereign_enterprise: refusal iff any hardening requirement unmet; reasons exact
+          expected_reasons =
+            Enum.reject(
+              [
+                if(auth == :enforce, do: nil, else: :missing_auth_enforce),
+                if(tls == true, do: nil, else: :tls_not_enabled),
+                if(is_binary(key), do: nil, else: :sb_shared_key_missing)
+              ],
+              &is_nil/1
+            )
 
-        actual = Deployment.validate(:sovereign_enterprise, cfg)
+          actual = Deployment.validate(:sovereign_enterprise, cfg)
 
-        if expected_reasons == [] do
-          assert {:ok, %{profile: :sovereign_enterprise, findings: ["all hardening requirements met"]}} = actual
-        else
-          assert {:refused, violations} = actual
-          assert Enum.map(violations, &elem(&1, 0)) |> Enum.sort() == Enum.sort(expected_reasons)
+          if expected_reasons == [] do
+            assert {:ok,
+                    %{
+                      profile: :sovereign_enterprise,
+                      findings: ["all hardening requirements met"]
+                    }} = actual
+          else
+            assert {:refused, violations} = actual
+
+            assert Enum.map(violations, &elem(&1, 0)) |> Enum.sort() ==
+                     Enum.sort(expected_reasons)
+          end
         end
-      end
 
-      # closed enum + non-map configs stay typed at the boundary
-      for bad_profile <- [:hybrid_dev, :pqc_dev, "classical", 42, nil, %{}],
-          bad_config <- ["nope", 42, nil, [1, 2], :atom] do
-        assert {:refused, [_ | _]} = Deployment.validate(bad_profile, %{})
-        assert {:refused, [{:bad_config, _}]} = Deployment.validate(:loopback_dev, bad_config)
-      end
+        # closed enum + non-map configs stay typed at the boundary
+        for bad_profile <- [:hybrid_dev, :pqc_dev, "classical", 42, nil, %{}],
+            bad_config <- ["nope", 42, nil, [1, 2], :atom] do
+          assert {:refused, [_ | _]} = Deployment.validate(bad_profile, %{})
+          assert {:refused, [{:bad_config, _}]} = Deployment.validate(:loopback_dev, bad_config)
+        end
 
-      # string-keyed config maps are refused, never coerced-to-empty (AAIF law)
-      for bad_config <- [%{"tls" => true}, %{"auth_mode" => :enforce, 1 => 2}] do
-        assert {:refused, [{:bad_config, _}]} = Deployment.validate(:loopback_dev, bad_config)
-        assert {:refused, [{:bad_config, _}]} = Deployment.validate(:sovereign_enterprise, bad_config)
-      end
+        # string-keyed config maps are refused, never coerced-to-empty (AAIF law)
+        for bad_config <- [%{"tls" => true}, %{"auth_mode" => :enforce, 1 => 2}] do
+          assert {:refused, [{:bad_config, _}]} = Deployment.validate(:loopback_dev, bad_config)
+
+          assert {:refused, [{:bad_config, _}]} =
+                   Deployment.validate(:sovereign_enterprise, bad_config)
+        end
       after
-        if old_cert, do: Application.put_env(:smalt, :tls_certfile, old_cert), else: Application.delete_env(:smalt, :tls_certfile)
-        if old_key, do: Application.put_env(:smalt, :tls_keyfile, old_key), else: Application.delete_env(:smalt, :tls_keyfile)
+        if old_cert,
+          do: Application.put_env(:smalt, :tls_certfile, old_cert),
+          else: Application.delete_env(:smalt, :tls_certfile)
+
+        if old_key,
+          do: Application.put_env(:smalt, :tls_keyfile, old_key),
+          else: Application.delete_env(:smalt, :tls_keyfile)
       end
     end
 
@@ -933,7 +1019,10 @@ defmodule Smalt.TrustProfileTest do
         Application.put_env(:smalt, :tls_keyfile, key)
 
         cfg = %{auth_mode: :enforce, tls: nil, sb_shared_key: "secret"}
-        assert {:ok, %{profile: :sovereign_enterprise}} = Deployment.validate(:sovereign_enterprise, cfg)
+
+        assert {:ok, %{profile: :sovereign_enterprise}} =
+                 Deployment.validate(:sovereign_enterprise, cfg)
+
         assert %{tls: true} = Deployment.current_config()
       after
         File.rm(cert)
@@ -953,7 +1042,8 @@ defmodule Smalt.TrustProfileTest do
       File.rm(cert)
       File.rm(key)
 
-      saved = for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
+      saved =
+        for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
 
       try do
         Application.delete_env(:smalt, :tls_certfile)
@@ -968,7 +1058,7 @@ defmodule Smalt.TrustProfileTest do
 
           # regenerated file is a real, parseable certificate
           assert {:ok, pem} = File.read(cert)
-          assert [{:"Certificate", der, :not_encrypted} | _] = :public_key.pem_decode(pem)
+          assert [{:Certificate, der, :not_encrypted} | _] = :public_key.pem_decode(pem)
           assert match?({:OTPCertificate, _, _, _}, :public_key.pkix_decode_cert(der, :otp))
         end
       after
@@ -976,7 +1066,9 @@ defmodule Smalt.TrustProfileTest do
         File.rm(key)
 
         for {k, v} <- saved do
-          if v == nil, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
+          if v == nil,
+            do: Application.delete_env(:smalt, k),
+            else: Application.put_env(:smalt, k, v)
         end
       end
     end
@@ -991,7 +1083,8 @@ defmodule Smalt.TrustProfileTest do
       File.rm(cert)
       File.rm(key)
 
-      saved = for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
+      saved =
+        for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
 
       try do
         Application.delete_env(:smalt, :tls_certfile)
@@ -1003,6 +1096,7 @@ defmodule Smalt.TrustProfileTest do
         :ok = Smalt.TLS.write_dev_cert(cert, key)
         bytes_before = File.read!(cert)
         assert {:ok, ^cert, ^key} = Smalt.TLS.ensure_dev_cert(lane)
+
         assert File.read!(cert) == bytes_before,
                "valid cached dev cert was regenerated — parse_cert rejects valid certs"
       after
@@ -1010,7 +1104,9 @@ defmodule Smalt.TrustProfileTest do
         File.rm(key)
 
         for {k, v} <- saved do
-          if v == nil, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
+          if v == nil,
+            do: Application.delete_env(:smalt, k),
+            else: Application.put_env(:smalt, k, v)
         end
       end
     end
@@ -1024,7 +1120,8 @@ defmodule Smalt.TrustProfileTest do
         :ok = Smalt.TLS.write_dev_cert(cert, key)
 
         for {mutate, expect} <- [
-              {fn -> File.write!(cert, "-----BEGIN CERTIFICATE-----\nTRUNCATEDGARBAGE\n") end, :unparseable_cert},
+              {fn -> File.write!(cert, "-----BEGIN CERTIFICATE-----\nTRUNCATEDGARBAGE\n") end,
+               :unparseable_cert},
               {fn -> File.write!(key, "not a pem at all\n") end, :unparseable_key},
               # lens-8 cycle-2: empty key file — safe_pem_decode returns
               # {:ok, []} (not :error); this cell crashed WithClauseError
@@ -1110,7 +1207,9 @@ defmodule Smalt.TrustProfileTest do
         token = b64j.(h) <> "." <> b64j.(p) <> ".eA"
 
         case TrustProfile.verify(token) do
-          {:ok, _} -> :ok
+          {:ok, _} ->
+            :ok
+
           {:error, r} ->
             assert r in allowed or match?({:bad_alg, _}, r) or match?({:malformed_envelope, _}, r),
                    "off-spec verify error shape: #{inspect(r)}"
@@ -1126,7 +1225,9 @@ defmodule Smalt.TrustProfileTest do
       assert tls in [true, false, :auto]
       assert sk == Application.get_env(:smalt, :sb_shared_key)
 
-      if old, do: Application.put_env(:smalt, :auth_mode, old), else: Application.delete_env(:smalt, :auth_mode)
+      if old,
+        do: Application.put_env(:smalt, :auth_mode, old),
+        else: Application.delete_env(:smalt, :auth_mode)
     end
   end
 
@@ -1140,11 +1241,23 @@ defmodule Smalt.TrustProfileTest do
       :rand.seed(:exsss, {91, i, 5})
 
       case rem(i, 5) do
-        0 -> %{oracle_key() => oracle_string(1 + :rand.uniform(8))}
-        1 -> %{oracle_key() => oracle_number(), oracle_key() => :rand.uniform(1000)}
-        2 -> %{oracle_key() => %{oracle_key() => oracle_string(4)}, oracle_key() => [oracle_string(3)]}
-        3 -> %{oracle_key() => for(_ <- 1..:rand.uniform(6), do: oracle_leaf())}
-        _ -> %{oracle_key() => oracle_leaf(), "idx" => i}
+        0 ->
+          %{oracle_key() => oracle_string(1 + :rand.uniform(8))}
+
+        1 ->
+          %{oracle_key() => oracle_number(), oracle_key() => :rand.uniform(1000)}
+
+        2 ->
+          %{
+            oracle_key() => %{oracle_key() => oracle_string(4)},
+            oracle_key() => [oracle_string(3)]
+          }
+
+        3 ->
+          %{oracle_key() => for(_ <- 1..:rand.uniform(6), do: oracle_leaf())}
+
+        _ ->
+          %{oracle_key() => oracle_leaf(), "idx" => i}
       end
     end
 
@@ -1188,13 +1301,19 @@ defmodule Smalt.TrustProfileTest do
     defp oracle_string(len) do
       for _ <- 1..len do
         case :rand.uniform(4) do
-          1 -> <<?a + :rand.uniform(26) - 1>>
-          2 -> <<:rand.uniform(0x7FF)::utf8>>
+          1 ->
+            <<?a + :rand.uniform(26) - 1>>
+
+          2 ->
+            <<:rand.uniform(0x7FF)::utf8>>
+
           3 ->
             c = :rand.uniform(0xFFFF - 0x800) + 0x800
             c = if c in 0xD800..0xDFFF, do: c + 0x800, else: c
             <<c::utf8>>
-          _ -> Enum.random([" ", "F", "", "\"", "\\"])
+
+          _ ->
+            Enum.random([" ", "F", "", "\"", "\\"])
         end
       end
       |> IO.iodata_to_binary()
@@ -1228,10 +1347,18 @@ defmodule Smalt.TrustProfileTest do
     defp simple(nil), do: "null"
 
     defp simple(%{} = m),
-      do: "{" <> Enum.map_join(m, ",", fn {k, x} -> elem(TrustProfile.jcs(k), 1) <> ":" <> simple(x) end) <> "}"
+      do:
+        "{" <>
+          Enum.map_join(m, ",", fn {k, x} -> elem(TrustProfile.jcs(k), 1) <> ":" <> simple(x) end) <>
+          "}"
 
     defp run_node_oracle(docs_jsonl) do
-      path = Path.join(System.tmp_dir!(), "tp_suite_oracle_#{System.unique_integer([:positive])}.jsonl")
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "tp_suite_oracle_#{System.unique_integer([:positive])}.jsonl"
+        )
+
       File.write!(path, docs_jsonl)
 
       try do
@@ -1243,11 +1370,18 @@ defmodule Smalt.TrustProfileTest do
     end
 
     defp run_python_oracle(docs_jsonl) do
-      path = Path.join(System.tmp_dir!(), "tp_suite_oracle_py_#{System.unique_integer([:positive])}.jsonl")
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "tp_suite_oracle_py_#{System.unique_integer([:positive])}.jsonl"
+        )
+
       File.write!(path, docs_jsonl)
 
       try do
-        {out, 0} = System.cmd("sh", ["-c", "python3 test/support/tp_oracle/tp_oracle2.py < " <> path])
+        {out, 0} =
+          System.cmd("sh", ["-c", "python3 test/support/tp_oracle/tp_oracle2.py < " <> path])
+
         String.split(out, "\n", trim: true)
       after
         File.rm(path)
@@ -1262,7 +1396,10 @@ defmodule Smalt.TrustProfileTest do
       ours = ours_from(docs)
       assert length(oracle) == length(ours)
 
-      comparable = Enum.zip(ours, oracle) |> Enum.reject(fn {a, _} -> String.starts_with?(a, ":refused:") end)
+      comparable =
+        Enum.zip(ours, oracle)
+        |> Enum.reject(fn {a, _} -> String.starts_with?(a, ":refused:") end)
+
       assert length(comparable) >= 900, "expected mostly-comparable corpus"
       mismatches = Enum.filter(comparable, fn {a, b} -> a != b end)
       assert mismatches == []
@@ -1272,7 +1409,10 @@ defmodule Smalt.TrustProfileTest do
         for d <- docs do
           case d do
             %{} = m ->
-              "{" <> Enum.map_join(Enum.sort(m), ",", fn {k, v} -> elem(TrustProfile.jcs(k), 1) <> ":" <> simple(v) end) <> "}"
+              "{" <>
+                Enum.map_join(Enum.sort(m), ",", fn {k, v} ->
+                  elem(TrustProfile.jcs(k), 1) <> ":" <> simple(v)
+                end) <> "}"
 
             d ->
               simple(d)
@@ -1291,7 +1431,10 @@ defmodule Smalt.TrustProfileTest do
       ours = ours_from(docs)
       assert length(oracle) == length(ours)
 
-      comparable = Enum.zip(ours, oracle) |> Enum.reject(fn {a, _} -> String.starts_with?(a, ":refused:") end)
+      comparable =
+        Enum.zip(ours, oracle)
+        |> Enum.reject(fn {a, _} -> String.starts_with?(a, ":refused:") end)
+
       assert length(comparable) >= 900
       mismatches = Enum.filter(comparable, fn {a, b} -> a != b end)
       assert mismatches == []
@@ -1303,7 +1446,9 @@ defmodule Smalt.TrustProfileTest do
               body =
                 m
                 |> Enum.sort(fn {a, _}, {b, _} -> a <= b end)
-                |> Enum.map_join(",", fn {k, v} -> elem(TrustProfile.jcs(k), 1) <> ":" <> simple(v) end)
+                |> Enum.map_join(",", fn {k, v} ->
+                  elem(TrustProfile.jcs(k), 1) <> ":" <> simple(v)
+                end)
 
               "{" <> body <> "}"
 

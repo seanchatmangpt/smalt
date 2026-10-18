@@ -50,7 +50,7 @@ Generated from `docs/ERROR_CODES.md` `egress` / `egress-auth` rows:
 
 - 400: ATLAS-400-00-001, BadRequest, InvalidApiVersion, InvalidBody,
   InvalidCloudEvent, InvalidEventGridEvent, InvalidInput, InvalidParameter,
-  InvalidQueryParameter, InvalidRequestBody, InvalidXmlOrJson,
+  InvalidQueryParameterValue, InvalidRequestBody, InvalidXmlOrJson,
   MissingXMsVersion, NotImplemented, SubRequestCountExceedsLimit,
   UnsupportedKeyType
 - 401: AuthenticationFailed, InvalidAuthenticationToken,
@@ -80,7 +80,12 @@ Blob:
 - KD-01 `comp=metadata` 201 vs 200
 - KD-02 `comp=list` XML RFC-1123
 - KD-03 container props last-modified format
-- KD-04 400 InvalidQueryParameter vs InvalidQueryParameterValue
+- KD-04 blob error-code token delta: source now emits 400
+  InvalidQueryParameterValue (renamed 2026-10-17 across lib/, receipt
+  `docs/jira/v26.10.16/receipts/kd04-token-rename-witness.md`); the maxresults
+  arm briefly kept the old `InvalidQueryParameter` token as a deliberate
+  post-lane-06 shape (KD register `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:76`)
+  until the KD-04 rename landed — flip pending kd_flip pass
 - KD-05 container DELETE mis-route
 - KD-52 block-commit corruption (Put Block List)
 - KD-60 `comp` mis-dispatch CLASS (generic splat arms)

@@ -56,14 +56,22 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
     resp = ingest(dcr, stream, [%{"msg" => "contract"}], @api_version)
 
     Support.assert_equal(resp.status, 204, "ingest must 204")
-    Support.assert(is_binary(resp.headers["x-ms-request-id"]) and resp.headers["x-ms-request-id"] != "",
-      "ingest carries x-ms-request-id")
+
+    Support.assert(
+      is_binary(resp.headers["x-ms-request-id"]) and resp.headers["x-ms-request-id"] != "",
+      "ingest carries x-ms-request-id"
+    )
   end
 
   defp check_api_version_gate do
     resp = ingest(unique("dcr-"), "Custom-Logs", [%{"msg" => "x"}], "1999-01-01")
     Support.assert_equal(resp.status, 400, "wrong api-version -> 400")
-    Support.assert_equal(json(resp.body)["error"]["code"], "InvalidApiVersion", "api-version gate code")
+
+    Support.assert_equal(
+      json(resp.body)["error"]["code"],
+      "InvalidApiVersion",
+      "api-version gate code"
+    )
   end
 
   defp check_query_envelope do
@@ -79,7 +87,7 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
     table = hd(tables)
     Support.assert_equal(table["name"], "PrimaryResult", "table name PrimaryResult")
     Support.assert(is_list(table["columns"]) and is_list(table["rows"]), "columns + rows arrays")
-  envelope_columns(table)
+    envelope_columns(table)
   end
 
   defp envelope_columns(table) do
@@ -99,6 +107,7 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
     Support.assert(length(rows) >= 1, "ingested row is queryable")
 
     row = row_map(table_columns(dcr), hd(rows))
+
     for col <- ["ledgerId", "tenantId", "subjectSha256", "eventId", "sha256Hash"] do
       v = Map.get(row, col)
       Support.assert(is_binary(v) and v != "", "augmented #{col} non-empty on stored row")
@@ -113,7 +122,10 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
 
     rows = query_rows(dcr, "| where level == 'error'")
 
-    Support.assert(length(rows) == 1, "where filter selects only matching rows (got #{length(rows)})")
+    Support.assert(
+      length(rows) == 1,
+      "where filter selects only matching rows (got #{length(rows)})"
+    )
   end
 
   defp check_bad_query do
@@ -138,9 +150,12 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
   end
 
   defp query(workspace, kql) do
-    Support.dispatch(Smalt.EgressRouter, "post",
+    Support.dispatch(
+      Smalt.EgressRouter,
+      "post",
       "/v1/workspaces/#{workspace}/query?api-version=2023-01-01",
-      body: Jason.encode!(%{"query" => kql}))
+      body: Jason.encode!(%{"query" => kql})
+    )
   end
 
   defp table_columns(workspace) do
@@ -152,9 +167,13 @@ defmodule Smalt.RuntimeContracts.SentinelIngest do
     resp = query(workspace, kql)
     # SHIM-COURT-adjacent fail-closed: never parse a non-200 envelope as a table.
     Support.assert_equal(resp.status, 200, "query status (#{kql})")
+
     case json(resp.body)["tables"] do
-      [%{"rows" => rows} | _] when is_list(rows) -> rows
-      other -> raise "query envelope missing tables/rows (status #{resp.status}): #{inspect(other)}"
+      [%{"rows" => rows} | _] when is_list(rows) ->
+        rows
+
+      other ->
+        raise "query envelope missing tables/rows (status #{resp.status}): #{inspect(other)}"
     end
   end
 

@@ -37,7 +37,11 @@ defmodule Smalt.R32VerifyScratchTest do
     big = :crypto.strong_rand_bytes(300)
 
     assert {:error, 400, %{"error" => %{"code" => "InvalidValue"}}} =
-             KeyVaultActions.encrypt("r32-big", %{"value" => b64u(big), "alg" => "RSA-OAEP-256"}, nil)
+             KeyVaultActions.encrypt(
+               "r32-big",
+               %{"value" => b64u(big), "alg" => "RSA-OAEP-256"},
+               nil
+             )
   end
 
   test "1b. normal-size RSA encrypt/decrypt still round-trips" do
@@ -45,7 +49,11 @@ defmodule Smalt.R32VerifyScratchTest do
     plain = :crypto.strong_rand_bytes(100)
 
     assert {:ok, 200, %{"value" => ct}} =
-             KeyVaultActions.encrypt("r32-ok", %{"value" => b64u(plain), "alg" => "RSA-OAEP-256"}, nil)
+             KeyVaultActions.encrypt(
+               "r32-ok",
+               %{"value" => b64u(plain), "alg" => "RSA-OAEP-256"},
+               nil
+             )
 
     assert {:ok, 200, %{"value" => pt}} =
              KeyVaultActions.decrypt("r32-ok", %{"value" => ct, "alg" => "RSA-OAEP-256"}, nil)
@@ -71,7 +79,11 @@ defmodule Smalt.R32VerifyScratchTest do
 
     for form <- forms do
       assert {:ok, 200, %{"value" => pt}} =
-               KeyVaultActions.decrypt("r32-b64", %{"value" => form, "alg" => "RSA-OAEP-256"}, nil)
+               KeyVaultActions.decrypt(
+                 "r32-b64",
+                 %{"value" => form, "alg" => "RSA-OAEP-256"},
+                 nil
+               )
 
       assert pt == b64u(plain)
     end
@@ -87,7 +99,11 @@ defmodule Smalt.R32VerifyScratchTest do
 
     assert is_binary(k1) and is_binary(k2)
     assert k1 != k2
-    assert k1 == Base.url_encode64(Smalt.DataPlane.KeyVaultActions.derive_oct_key("r32-oct-a"), padding: false)
+
+    assert k1 ==
+             Base.url_encode64(Smalt.DataPlane.KeyVaultActions.derive_oct_key("r32-oct-a"),
+               padding: false
+             )
   end
 
   test "4. create JWK body carries kty + key_ops; policy intersects key_ops" do
@@ -97,10 +113,12 @@ defmodule Smalt.R32VerifyScratchTest do
     assert body["kty"] == "RSA-HSM"
     assert body["key_ops"] == ["encrypt", "decrypt", "sign", "verify", "wrapKey", "unwrapKey"]
 
-    cp = keyv("/keys/r32-rsa-p/create", %{
-      "kty" => "oct",
-      "release_policy" => %{"allowed_operations" => ["encrypt", "verify"]}
-    })
+    cp =
+      keyv("/keys/r32-rsa-p/create", %{
+        "kty" => "oct",
+        "release_policy" => %{"allowed_operations" => ["encrypt", "verify"]}
+      })
+
     assert cp.status == 200
     body_p = Jason.decode!(cp.resp_body)["key"]
     assert body_p["key_ops"] == ["encrypt"]

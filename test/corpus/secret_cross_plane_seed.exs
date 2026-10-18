@@ -51,8 +51,12 @@ defmodule Smalt.Corpus.SecretCrossPlaneSeed do
     secret = put_secret("corpus-kv", "corpus-secret", "corpus-seed-value")
     assert secret.status in [200, 201], inspect(secret.resp_body)
 
-    get = egress(:get, "/secrets/corpus-secret", %{}, [{"authorization", "Bearer corpus-harness"}])
-    assert get.status == 200, "cross-plane seed regressed: #{get.status} #{inspect(get.resp_body)}"
+    get =
+      egress(:get, "/secrets/corpus-secret", %{}, [{"authorization", "Bearer corpus-harness"}])
+
+    assert get.status == 200,
+           "cross-plane seed regressed: #{get.status} #{inspect(get.resp_body)}"
+
     assert json(get)["value"] == "corpus-seed-value"
   end
 
@@ -61,7 +65,9 @@ defmodule Smalt.Corpus.SecretCrossPlaneSeed do
     secret = put_secret("missing-vault", "orphan-secret", "v")
     assert secret.status == 404
 
-    get = egress(:get, "/secrets/orphan-secret", %{}, [{"authorization", "Bearer corpus-harness"}])
+    get =
+      egress(:get, "/secrets/orphan-secret", %{}, [{"authorization", "Bearer corpus-harness"}])
+
     assert get.status == 404, "seeded a secret with no parent vault: #{get.status}"
   end
 end

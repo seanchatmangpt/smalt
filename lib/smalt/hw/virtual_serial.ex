@@ -161,17 +161,24 @@ defmodule Smalt.Hw.VirtualSerial do
   defp start_stdio_reader(pid) do
     Task.start(fn ->
       case IO.binread(:stdio, 1) do
-        :eof -> send(pid, {:hw_eof, nil})
+        :eof ->
+          send(pid, {:hw_eof, nil})
+
         data ->
-          send(pid, {:hw_chunk, data}); stdio_loop(pid)
+          send(pid, {:hw_chunk, data})
+          stdio_loop(pid)
       end
     end)
   end
 
   defp stdio_loop(pid) do
     case IO.binread(:stdio, 1) do
-      :eof -> send(pid, {:hw_eof, nil})
-      data -> send(pid, {:hw_chunk, data}); stdio_loop(pid)
+      :eof ->
+        send(pid, {:hw_eof, nil})
+
+      data ->
+        send(pid, {:hw_chunk, data})
+        stdio_loop(pid)
     end
   end
 
@@ -219,6 +226,7 @@ defmodule Smalt.Hw.VirtualSerial do
 
   defp dispatch(<<@type_enroll>>, _serial, counter) do
     fw = @fw_version
+
     body =
       <<@type_capabilities, 1::8, 1::8, byte_size(fw)::8, fw::binary,
         @max_payload::little-integer-size(16)>>
@@ -229,6 +237,7 @@ defmodule Smalt.Hw.VirtualSerial do
   defp dispatch(<<@type_sign_challenge, digest::binary-size(32)>>, serial, counter) do
     counter = counter + 1
     sig = Signer.sign(digest)
+
     body =
       <<@type_signed_receipt, sig::binary-size(64), serial::binary,
         counter::little-integer-size(32)>>

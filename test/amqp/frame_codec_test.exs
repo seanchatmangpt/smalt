@@ -126,7 +126,9 @@ defmodule Smalt.Amqp.FrameCodecTest do
     def decode(<<0xA1, len, v::binary-size(len), rest::binary>>), do: {:ok, v, rest}
     def decode(<<0xB1, len::32, v::binary-size(len), rest::binary>>), do: {:ok, v, rest}
     def decode(<<0xA3, len, v::binary-size(len), rest::binary>>), do: {:ok, {:symbol, v}, rest}
-    def decode(<<0xB3, len::32, v::binary-size(len), rest::binary>>), do: {:ok, {:symbol, v}, rest}
+
+    def decode(<<0xB3, len::32, v::binary-size(len), rest::binary>>),
+      do: {:ok, {:symbol, v}, rest}
 
     def decode(<<0x00, constructor::binary>>) do
       case decode(constructor) do
@@ -242,7 +244,9 @@ defmodule Smalt.Amqp.FrameCodecTest do
     Application.put_env(:smalt, :primitive_codec, TestPrimitiveCodec)
 
     on_exit(fn ->
-      if prev, do: Application.put_env(:smalt, :primitive_codec, prev), else: Application.delete_env(:smalt, :primitive_codec)
+      if prev,
+        do: Application.put_env(:smalt, :primitive_codec, prev),
+        else: Application.delete_env(:smalt, :primitive_codec)
     end)
 
     :ok
@@ -280,7 +284,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "sasl frame header uses type 0x01" do
       frame =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:sasl, 0, {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :sasl,
+            0,
+            {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}}
+          )
         )
 
       <<size::32, 2::8, 0x01::8, 0::16, _::binary>> = frame
@@ -388,7 +396,9 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "R16 tripwire: target composite carries exactly 7 fields (pyamqp Target arity), source keeps 8" do
       for {key, desc, expected_count} <- [{:source, 0x28, 8}, {:target, 0x29, 7}] do
         fields = %{name: "l", handle: 0, role: 1} |> Map.put(key, %{address: "q"})
-        payload = IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
+
+        payload =
+          IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
 
         # Byte-level: locate the composite's descriptor (0x00 0x53 <desc>),
         # then the list8 constructor that follows it and read its element
@@ -431,7 +441,9 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "source descriptor is 0x28 and target descriptor is 0x29, by role not filter presence" do
       for {key, desc} <- [source: 0x28, target: 0x29] do
         fields = %{name: "l", handle: 0, role: 1} |> Map.put(key, %{address: "q"})
-        payload = IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
+
+        payload =
+          IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
 
         # byte-level: the composite's descriptor (0x00 0x53 <desc>) appears on
         # the wire — source 0x28, target 0x29 — regardless of filter presence
@@ -461,7 +473,7 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
       encoded =
         IO.iodata_to_binary([
-          <<(IO.iodata_length(body) + 8)::32, 2::8, 0x00::8, 0::16>>,
+          <<IO.iodata_length(body) + 8::32, 2::8, 0x00::8, 0::16>>,
           body
         ])
 
@@ -506,7 +518,13 @@ defmodule Smalt.Amqp.FrameCodecTest do
       payload = "raw-bytes-payload"
 
       {_bin, dec} =
-        roundtrip(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 7, delivery_tag: "tag", message_format: 0, settled: false}, payload})
+        roundtrip(
+          :amqp,
+          0,
+          {:transfer,
+           %{handle: 0, delivery_id: 7, delivery_tag: "tag", message_format: 0, settled: false},
+           payload}
+        )
 
       assert dec.performative.performative == :transfer
       assert dec.performative.handle == 0
@@ -547,7 +565,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
       assert dec.performative.state == :released
 
       {_bin, dec} =
-        roundtrip(:amqp, 0, {:disposition, %{role: 1, first: 2, state: {:modified, %{delivery_failed: true}}}})
+        roundtrip(
+          :amqp,
+          0,
+          {:disposition, %{role: 1, first: 2, state: {:modified, %{delivery_failed: true}}}}
+        )
 
       assert {:modified, _} = dec.performative.state
     end
@@ -574,14 +596,22 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
     test "sasl mechanisms / init / outcome" do
       {_bin, dec} =
-        roundtrip(:sasl, 0, {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}, {:symbol, "PLAIN"}]}})
+        roundtrip(
+          :sasl,
+          0,
+          {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}, {:symbol, "PLAIN"}]}}
+        )
 
       assert dec.type == :sasl
       assert dec.performative.performative == :sasl_mechanisms
       assert dec.performative.server_mechanisms == [{:symbol, "ANONYMOUS"}, {:symbol, "PLAIN"}]
 
       {_bin, dec} =
-        roundtrip(:sasl, 0, {:sasl_init, %{mechanism: {:symbol, "ANONYMOUS"}, initial_response: "", hostname: "sb"}})
+        roundtrip(
+          :sasl,
+          0,
+          {:sasl_init, %{mechanism: {:symbol, "ANONYMOUS"}, initial_response: "", hostname: "sb"}}
+        )
 
       assert dec.performative.performative == :sasl_init
       assert dec.performative.mechanism == {:symbol, "ANONYMOUS"}
@@ -597,7 +627,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
       # descriptor bytes: descriptor constructor 0x00, smallulong 0x52, 0x44.
       bin =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:sasl, 0, {:sasl_outcome, %{code: 0, additional_data: nil}})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :sasl,
+            0,
+            {:sasl_outcome, %{code: 0, additional_data: nil}}
+          )
         )
 
       # frame header: 4-byte size, 1-byte doff, type 0x01, 2-byte channel
@@ -614,7 +648,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test ":more until full frame buffered, then decode" do
       frame =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 1, {:begin, %{next_outgoing_id: 0, incoming_window: 100, outgoing_window: 100}})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :amqp,
+            1,
+            {:begin, %{next_outgoing_id: 0, incoming_window: 100, outgoing_window: 100}}
+          )
         )
 
       # Empty buffer
@@ -639,13 +677,15 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "byte-at-a-time reassembly across two frames" do
       f1 =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:close, %{error: %{condition: "amqp:connection-close", description: nil}}})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :amqp,
+            0,
+            {:close, %{error: %{condition: "amqp:connection-close", description: nil}}}
+          )
         )
 
       f2 =
-        IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:end, %{}})
-        )
+        IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:end, %{}}))
 
       buffer = f1 <> f2
 
@@ -684,14 +724,18 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
   describe "oversized frames" do
     test "declared size over 1 MiB + overhead errors" do
-      oversized = <<(1 * 1024 * 1024 + 1024)::32, 2::8, 0x00::8, 0::16>>
+      oversized = <<1 * 1024 * 1024 + 1024::32, 2::8, 0x00::8, 0::16>>
       assert {:error, :frame_too_size} = FrameCodec.decode_frame(oversized)
     end
 
     test "1 MiB frame (max legal) decodes" do
       perf_frame =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1}, <<>>})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :amqp,
+            0,
+            {:transfer, %{handle: 0, delivery_id: 1}, <<>>}
+          )
         )
 
       payload_len = 1 * 1024 * 1024 - byte_size(perf_frame)
@@ -699,7 +743,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
       frame =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1}, payload})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :amqp,
+            0,
+            {:transfer, %{handle: 0, delivery_id: 1}, payload}
+          )
         )
 
       assert byte_size(frame) == 1 * 1024 * 1024
@@ -728,7 +776,7 @@ defmodule Smalt.Amqp.FrameCodecTest do
       Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
 
       body = <<0xFF>>
-      frame = <<(byte_size(body) + 8)::32, 2::8, 0x00::8, 0::16, body::binary>>
+      frame = <<byte_size(body) + 8::32, 2::8, 0x00::8, 0::16, body::binary>>
       assert {:error, {:bad_frame_body, :invalid_constructor}} = FrameCodec.decode_frame(frame)
     after
       Application.delete_env(:smalt, :primitive_codec)
@@ -737,10 +785,12 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "extended header (doff > 2): body starts at doff*4, padding skipped" do
       body = TestPrimitiveCodec.encode({:described, 0x14, [0]}) |> IO.iodata_to_binary()
       # transfer performative, doff=3: 4 pad bytes between fixed header and body
-      frame = <<byte_size(body) + 12::32, 3::8, 0::8, 7::16, 0xAA, 0xBB, 0xCC, 0xDD, body::binary>>
+      frame =
+        <<byte_size(body) + 12::32, 3::8, 0::8, 7::16, 0xAA, 0xBB, 0xCC, 0xDD, body::binary>>
 
-      assert {:ok, %{type: :amqp, channel: 7, performative: %{performative: :transfer},
-                    payload: <<>>}} = FrameCodec.decode_frame(frame)
+      assert {:ok,
+              %{type: :amqp, channel: 7, performative: %{performative: :transfer}, payload: <<>>}} =
+               FrameCodec.decode_frame(frame)
     end
 
     test "falsy fields never dropped (lane-107 fence): detach handle 0 / closed false" do
@@ -796,31 +846,61 @@ defmodule Smalt.Amqp.FrameCodecTest do
   describe "message sections" do
     test "full service-bus message round-trip through transfer frame" do
       sections = [
-        {:header, %{delivery_count: 1, ttl: 60_000, durable: true, priority: 4, first_acquirer: false}},
+        {:header,
+         %{delivery_count: 1, ttl: 60_000, durable: true, priority: 4, first_acquirer: false}},
         {:delivery_annotations, %{}},
-        {:message_annotations, %{"x-opt-sequence-number" => 42, "x-opt-locked-until" => {:timestamp, 1_700_000_000_000}, "x-opt-enqueued-time-utc" => {:timestamp, 1_699_000_000_000}}},
-        {:properties, %{message_id: "mid-1", correlation_id: "cid-9", reply_to: "resp-q", subject: "subj", to: "to-q", content_type: "application/json", creation_time: {:timestamp, 1_699_000_000_000}}},
-        {:application_properties, %{"DeliveryCount" => 1, "LockedUntilUtc" => {:timestamp, 1_700_000_000_000}}},
+        {:message_annotations,
+         %{
+           "x-opt-sequence-number" => 42,
+           "x-opt-locked-until" => {:timestamp, 1_700_000_000_000},
+           "x-opt-enqueued-time-utc" => {:timestamp, 1_699_000_000_000}
+         }},
+        {:properties,
+         %{
+           message_id: "mid-1",
+           correlation_id: "cid-9",
+           reply_to: "resp-q",
+           subject: "subj",
+           to: "to-q",
+           content_type: "application/json",
+           creation_time: {:timestamp, 1_699_000_000_000}
+         }},
+        {:application_properties,
+         %{"DeliveryCount" => 1, "LockedUntilUtc" => {:timestamp, 1_700_000_000_000}}},
         {:body_data, "hello service bus"}
       ]
 
       encoded =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1}, {:sections, sections}})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :amqp,
+            0,
+            {:transfer, %{handle: 0, delivery_id: 1}, {:sections, sections}}
+          )
         )
 
       assert {:ok, %{payload: payload}} = FrameCodec.decode_frame(encoded)
       assert {:ok, decoded_sections} = FrameCodec.decode_message(payload)
 
       assert {:header, header} = Enum.find(decoded_sections, &match?({:header, _}, &1))
-      assert header == %{delivery_count: 1, ttl: 60_000, durable: true, priority: 4, first_acquirer: false}
 
-      assert {:message_annotations, ann} = Enum.find(decoded_sections, &match?({:message_annotations, _}, &1))
+      assert header == %{
+               delivery_count: 1,
+               ttl: 60_000,
+               durable: true,
+               priority: 4,
+               first_acquirer: false
+             }
+
+      assert {:message_annotations, ann} =
+               Enum.find(decoded_sections, &match?({:message_annotations, _}, &1))
+
       assert ann["x-opt-sequence-number"] == 42
       assert ann["x-opt-locked-until"] == {:timestamp, 1_700_000_000_000}
       assert ann["x-opt-enqueued-time-utc"] == {:timestamp, 1_699_000_000_000}
 
       assert {:properties, props} = Enum.find(decoded_sections, &match?({:properties, _}, &1))
+
       assert props == %{
                message_id: "mid-1",
                correlation_id: "cid-9",
@@ -831,10 +911,16 @@ defmodule Smalt.Amqp.FrameCodecTest do
                creation_time: {:timestamp, 1_699_000_000_000}
              }
 
-      assert {:application_properties, app_props} = Enum.find(decoded_sections, &match?({:application_properties, _}, &1))
-      assert app_props == %{"DeliveryCount" => 1, "LockedUntilUtc" => {:timestamp, 1_700_000_000_000}}
+      assert {:application_properties, app_props} =
+               Enum.find(decoded_sections, &match?({:application_properties, _}, &1))
 
-      assert {:body_data, "hello service bus"} = Enum.find(decoded_sections, &match?({:body_data, _}, &1))
+      assert app_props == %{
+               "DeliveryCount" => 1,
+               "LockedUntilUtc" => {:timestamp, 1_700_000_000_000}
+             }
+
+      assert {:body_data, "hello service bus"} =
+               Enum.find(decoded_sections, &match?({:body_data, _}, &1))
     end
 
     test "body variants: sequence and amqp-value" do
@@ -842,7 +928,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
       encoded =
         IO.iodata_to_binary(
-          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0}, {:sections, sections}})
+          Smalt.Amqp.FrameCodec.encode_frame(
+            :amqp,
+            0,
+            {:transfer, %{handle: 0}, {:sections, sections}}
+          )
         )
 
       assert {:ok, %{payload: payload}} = FrameCodec.decode_frame(encoded)
@@ -856,7 +946,12 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
     test "payload bytes preserved exactly for raw transfer" do
       raw = <<0x53, 0x70, 0xFF>>
-      encoded = IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0}, raw}))
+
+      encoded =
+        IO.iodata_to_binary(
+          Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0}, raw})
+        )
+
       assert {:ok, %{payload: ^raw}} = FrameCodec.decode_frame(encoded)
     end
 
@@ -887,7 +982,10 @@ defmodule Smalt.Amqp.FrameCodecTest do
         name: "link-receiver",
         handle: 1,
         role: 1,
-        source: %{address: "myqueue", filter: %{"com.microsoft:session-filter" => {:session_filter, sel}}}
+        source: %{
+          address: "myqueue",
+          filter: %{"com.microsoft:session-filter" => {:session_filter, sel}}
+        }
       }
 
       bin = IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
@@ -895,7 +993,19 @@ defmodule Smalt.Amqp.FrameCodecTest do
       # Azure parity: source composite described(0x28, 8 fields, filter at 7)
       expected_source =
         IO.iodata_to_binary(
-          PrimitiveCodec.encode({:described, 0x28, ["myqueue", nil, nil, nil, nil, nil, nil, {:described, {:symbol, "com.microsoft:session-filter"}, sel}]})
+          PrimitiveCodec.encode(
+            {:described, 0x28,
+             [
+               "myqueue",
+               nil,
+               nil,
+               nil,
+               nil,
+               nil,
+               nil,
+               {:described, {:symbol, "com.microsoft:session-filter"}, sel}
+             ]}
+          )
         )
 
       assert :binary.match(bin, expected_source) != :no
@@ -910,7 +1020,8 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
     test "falsy section fields are preserved (cycle-13: falsy sweep, layer 3)" do
       sections = [
-        {:header, %{delivery_count: 0, ttl: 0, durable: false, priority: 0, first_acquirer: false}},
+        {:header,
+         %{delivery_count: 0, ttl: 0, durable: false, priority: 0, first_acquirer: false}},
         {:properties, %{group_sequence: 0}}
       ]
 
@@ -941,7 +1052,8 @@ defmodule Smalt.Amqp.FrameCodecTest do
       header_int = PrimitiveCodec.encode({:described, 0x70, 42}) |> IO.iodata_to_binary()
       assert {:error, {:bad_section, :malformed_header}} = FrameCodec.decode_message(header_int)
 
-      props_sym = PrimitiveCodec.encode({:described, 0x73, {:symbol, "x"}}) |> IO.iodata_to_binary()
+      props_sym =
+        PrimitiveCodec.encode({:described, 0x73, {:symbol, "x"}}) |> IO.iodata_to_binary()
 
       assert {:error, {:bad_section, :malformed_properties}} =
                FrameCodec.decode_message(props_sym)
@@ -952,7 +1064,9 @@ defmodule Smalt.Amqp.FrameCodecTest do
       assert {:error, {:bad_section, :malformed_body_data}} = FrameCodec.decode_message(bad_data)
 
       bad_seq = PrimitiveCodec.encode({:described, 0x76, 42}) |> IO.iodata_to_binary()
-      assert {:error, {:bad_section, :malformed_body_sequence}} = FrameCodec.decode_message(bad_seq)
+
+      assert {:error, {:bad_section, :malformed_body_sequence}} =
+               FrameCodec.decode_message(bad_seq)
     end
 
     # Lens-2 cycle-5: frame type byte and performative must belong to the same
@@ -961,7 +1075,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
     # state machine.
     test "performative must match the frame's layer (lens-2 c5)" do
       sasl_open =
-        Smalt.Amqp.FrameCodec.encode_frame(:sasl, 0, {:open, %{container_id: "x", max_frame_size: 512}})
+        Smalt.Amqp.FrameCodec.encode_frame(
+          :sasl,
+          0,
+          {:open, %{container_id: "x", max_frame_size: 512}}
+        )
         |> IO.iodata_to_binary()
 
       assert {:error, :performative_layer_mismatch} = FrameCodec.decode_frame(sasl_open)
@@ -974,7 +1092,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
       # control: correct-layer frames still decode
       sasl_mechs =
-        Smalt.Amqp.FrameCodec.encode_frame(:sasl, 0, {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}})
+        Smalt.Amqp.FrameCodec.encode_frame(
+          :sasl,
+          0,
+          {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}}
+        )
         |> IO.iodata_to_binary()
 
       assert {:ok, %{type: :sasl, performative: %{performative: :sasl_mechanisms}}} =
@@ -990,7 +1112,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
       Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
 
       assert_raise ArgumentError, fn ->
-        Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:open, %{container_id: :an_unencodable_atom}})
+        Smalt.Amqp.FrameCodec.encode_frame(
+          :amqp,
+          0,
+          {:open, %{container_id: :an_unencodable_atom}}
+        )
       end
 
       assert_raise ArgumentError, fn ->
@@ -1042,7 +1168,8 @@ defmodule Smalt.Amqp.AttachTopLevelArityTest do
         )
         |> Map.merge(Enum.into(extras, %{}))
 
-      payload = IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
+      payload =
+        IO.iodata_to_binary(Smalt.Amqp.FrameCodec.encode_frame(:amqp, 0, {:attach, fields}))
 
       # attach descriptor 0x12; constructor may be 0xC0 (list8) after it.
       {desc_start, 3} = :binary.match(payload, <<0x00, 0x53, 0x12>>)

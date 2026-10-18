@@ -57,11 +57,18 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
     Support.assert_equal(resp.status, 200, "query status")
     body = json(resp.body)
 
-    Support.assert(is_integer(body["count"]) and body["count"] >= length(ids),
-      "count integer >= seeded (#{inspect(body["count"])} < #{length(ids)})")
+    Support.assert(
+      is_integer(body["count"]) and body["count"] >= length(ids),
+      "count integer >= seeded (#{inspect(body["count"])} < #{length(ids)})"
+    )
+
     Support.assert(is_list(body["data"]), "data array")
-    Support.assert(is_integer(body["totalRecords"]) and body["totalRecords"] >= body["count"],
-      "totalRecords >= count")
+
+    Support.assert(
+      is_integer(body["totalRecords"]) and body["totalRecords"] >= body["count"],
+      "totalRecords >= count"
+    )
+
     Support.assert(is_boolean(body["resultTruncated"]), "resultTruncated boolean")
   end
 
@@ -80,7 +87,10 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
 
     page2 =
       json(
-        query(%{"subscriptions" => [@sub], "options" => %{"$top" => 2, "$skipToken" => page1["$skipToken"]}}).body
+        query(%{
+          "subscriptions" => [@sub],
+          "options" => %{"$top" => 2, "$skipToken" => page1["$skipToken"]}
+        }).body
       )
 
     Support.assert(is_list(page2["data"]), "page 2 data array")
@@ -90,10 +100,16 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
 
     Support.assert(MapSet.disjoint?(ids1, ids2), "pages do not overlap")
 
-    Support.assert_equal(page1["count"] + page2["count"], min(total, 4),
-      "pages cover the baseline set (server cap aside)")
-    Support.assert(is_map_key(page2, "$skipToken") == false or total > 4,
-      "no token past the final page (unless other seeds remain)")
+    Support.assert_equal(
+      page1["count"] + page2["count"],
+      min(total, 4),
+      "pages cover the baseline set (server cap aside)"
+    )
+
+    Support.assert(
+      is_map_key(page2, "$skipToken") == false or total > 4,
+      "no token past the final page (unless other seeds remain)"
+    )
   end
 
   defp check_top do
@@ -115,8 +131,11 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
     )
 
     body_all = json(query(%{"options" => %{"$top" => 1000}}).body)
-    Support.assert(Enum.any?(body_all["data"], &(&1["id"] =~ other_sub)),
-      "unfiltered query includes the cross-subscription resource")
+
+    Support.assert(
+      Enum.any?(body_all["data"], &(&1["id"] =~ other_sub)),
+      "unfiltered query includes the cross-subscription resource"
+    )
   end
 
   defp check_kql_where do
@@ -125,10 +144,18 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
 
     body =
       json(
-        query(%{"subscriptions" => [@sub], "query" => "where name == '#{marker}'", "options" => %{"$top" => 1000}}).body
+        query(%{
+          "subscriptions" => [@sub],
+          "query" => "where name == '#{marker}'",
+          "options" => %{"$top" => 1000}
+        }).body
       )
 
-    Support.assert(Enum.any?(body["data"], &(&1["name"] == marker)), "KQL where finds seeded resource")
+    Support.assert(
+      Enum.any?(body["data"], &(&1["name"] == marker)),
+      "KQL where finds seeded resource"
+    )
+
     Support.assert(length(body["data"]) == 1, "KQL where returns exactly the match")
   end
 
@@ -142,7 +169,12 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
       )
 
     Support.assert_equal(resp.status, 400, "wrong api-version -> 400")
-    Support.assert_equal(json(resp.body)["error"]["code"], "InvalidApiVersion", "api-version gate code")
+
+    Support.assert_equal(
+      json(resp.body)["error"]["code"],
+      "InvalidApiVersion",
+      "api-version gate code"
+    )
   end
 
   # ===========================================================================
@@ -167,7 +199,11 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
         body: ~s({"location": "eastus"})
       )
 
-    Support.assert(resp.status in [200, 201], "seed PUT via ARM router succeeded (#{resp.status})")
+    Support.assert(
+      resp.status in [200, 201],
+      "seed PUT via ARM router succeeded (#{resp.status})"
+    )
+
     id
   end
 

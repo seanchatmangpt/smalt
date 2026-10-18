@@ -50,6 +50,7 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
     test "uint: zero form 0x43, small form 0x52, wide form 0x70" do
       assert IO.iodata_to_binary(PrimitiveCodec.encode(0)) == <<0x43>>
       assert IO.iodata_to_binary(PrimitiveCodec.encode(7)) == <<0x52, 7>>
+
       assert IO.iodata_to_binary(PrimitiveCodec.encode(1000)) ==
                <<0x70, 0x00, 0x00, 0x03, 0xE8>>
 
@@ -154,12 +155,16 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
   describe "uuid and timestamp" do
     test "uuid 0x98, 16 bytes" do
       uuid = <<1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16>>
-      assert IO.iodata_to_binary(PrimitiveCodec.encode({:uuid, uuid})) == [0x98 | uuid] |> IO.iodata_to_binary()
+
+      assert IO.iodata_to_binary(PrimitiveCodec.encode({:uuid, uuid})) ==
+               [0x98 | uuid] |> IO.iodata_to_binary()
+
       roundtrip({:uuid, uuid})
     end
 
     test "timestamp 0x83, signed 64-bit ms" do
       ms = 1_697_000_000_000
+
       assert IO.iodata_to_binary(PrimitiveCodec.encode({:timestamp, ms})) ==
                <<0x83, 0x00, 0x00, 0x01, 0x8B, 0x1D, 0x15, 0x0A, 0x00>>
 
@@ -184,7 +189,10 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
     test "list32 0xD0 when >255 bytes" do
       long = List.duplicate(String.duplicate("y", 20), 20)
       bin = roundtrip(long)
-      assert <<0xD0, size::unsigned-integer-size(32), count::unsigned-integer-size(32), _::binary>> = bin
+
+      assert <<0xD0, size::unsigned-integer-size(32), count::unsigned-integer-size(32),
+               _::binary>> = bin
+
       assert count == 20
       assert size == byte_size(bin) - 5
     end
@@ -201,7 +209,10 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
     test "map32 0xD1 when >255 bytes" do
       big = Map.new(0..30, fn i -> {"key#{i}", String.duplicate("v", 20)} end)
       bin = roundtrip(big)
-      assert <<0xD1, size::unsigned-integer-size(32), count::unsigned-integer-size(32), _::binary>> = bin
+
+      assert <<0xD1, size::unsigned-integer-size(32), count::unsigned-integer-size(32),
+               _::binary>> = bin
+
       assert count == 62
       assert size == byte_size(bin) - 5
     end
@@ -211,6 +222,7 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
     test "array8 0xE0 with uniform constructors" do
       assert IO.iodata_to_binary(PrimitiveCodec.encode({:array, [1, 2, 3]})) ==
                <<0xE0, 5, 3, 0x52, 1, 2, 3>>
+
       # element constructor byte emitted once, then bare element bodies
 
       roundtrip({:array, [1, 2, 3]})
@@ -219,7 +231,10 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
 
     test "array32 0xF0 when >255 bytes" do
       bin = roundtrip({:array, List.duplicate(String.duplicate("a", 20), 50)})
-      assert <<0xF0, size::unsigned-integer-size(32), count::unsigned-integer-size(32), _::binary>> = bin
+
+      assert <<0xF0, size::unsigned-integer-size(32), count::unsigned-integer-size(32),
+               _::binary>> = bin
+
       assert count == 50
       assert size == byte_size(bin) - 5
     end
@@ -267,6 +282,7 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
 
       # integer/symbol descriptors still decode; list containers still fine
       assert {:ok, {:described, 3, nil}, <<>>} = PrimitiveCodec.decode(<<0x00, 0x52, 3, 0x40>>)
+
       assert {:ok, {:described, {:symbol, "s"}, nil}, <<>>} =
                PrimitiveCodec.decode(<<0x00, 0xA3, 1, ?s, 0x40>>)
     end
@@ -357,7 +373,8 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
                PrimitiveCodec.decode(<<0xD0, 0, 0, 0, 4, 2, 0x52, 0x07>>)
 
       # control: matching count decodes fully
-      assert {:ok, [7, 9], <<>>} = PrimitiveCodec.decode(<<0xC0, 0x05, 0x02, 0x52, 0x07, 0x52, 0x09>>)
+      assert {:ok, [7, 9], <<>>} =
+               PrimitiveCodec.decode(<<0xC0, 0x05, 0x02, 0x52, 0x07, 0x52, 0x09>>)
     end
 
     test "garbage constructor errors" do
@@ -450,7 +467,7 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
       <<0x00, 0x00>>,
       <<0x00, 0x00, 0x00, 0x00>>,
       <<0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>>,
-      <<0x00:: unsigned-size(128)>>,
+      <<0x00::unsigned-size(128)>>,
       <<0x00, 0x00, 0x00, 0x01>>,
       <<0x00, 0x00, 0x00, 0x02, 0x41>>,
       <<0x00, 0x00, 0x00, 0x04, 0x41, 0x41, 0x41, 0x41>>,
@@ -508,18 +525,26 @@ defmodule Smalt.Amqp.PrimitiveCodecTest do
         assert decoded?,
                "pinned-recognized ctor 0x#{Integer.to_string(ctor, 16)} decodes NO corpus body — " <>
                  "table pin is stale"
-        end
+      end
     end
 
     test "unrecognized set equals the spec-unused constructor space (exhaustive)" do
       # Spec §1.6 constructor space: every byte not in the recognized set is
       # unused/reserved (including 0x73 char and 0x9x reserved — see receipt).
       spec_unused =
-        Enum.to_list(0x01..0x3F) ++ Enum.to_list(0x46..0x4F) ++ Enum.to_list(0x57..0x5F) ++
-          Enum.to_list(0x62..0x6F) ++ [0x73] ++ Enum.to_list(0x74..0x7F) ++
+        Enum.to_list(0x01..0x3F) ++
+          Enum.to_list(0x46..0x4F) ++
+          Enum.to_list(0x57..0x5F) ++
+          Enum.to_list(0x62..0x6F) ++
+          [0x73] ++
+          Enum.to_list(0x74..0x7F) ++
           Enum.to_list(0xB4..0xBF) ++
-          Enum.to_list(0x84..0x97) ++ Enum.to_list(0x99..0x9F) ++ Enum.to_list(0xA4..0xAF) ++
-          Enum.to_list(0xC2..0xCF) ++ Enum.to_list(0xD2..0xDF) ++ Enum.to_list(0xE1..0xEF) ++
+          Enum.to_list(0x84..0x97) ++
+          Enum.to_list(0x99..0x9F) ++
+          Enum.to_list(0xA4..0xAF) ++
+          Enum.to_list(0xC2..0xCF) ++
+          Enum.to_list(0xD2..0xDF) ++
+          Enum.to_list(0xE1..0xEF) ++
           Enum.to_list(0xF1..0xFF)
 
       assert Enum.sort(@unrecognized_ctor_bytes) == Enum.sort(spec_unused)

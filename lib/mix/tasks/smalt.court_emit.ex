@@ -14,7 +14,9 @@ defmodule Mix.Tasks.Smalt.CourtEmit do
   @impl Mix.Task
   def run(args) do
     {parsed, _argv, _invalid} =
-      OptionParser.parse(args, strict: [receipt: :string, run: :integer, verdict: :string, stages: :string])
+      OptionParser.parse(args,
+        strict: [receipt: :string, run: :integer, verdict: :string, stages: :string]
+      )
 
     receipt_path = Keyword.get(parsed, :receipt, "")
 
@@ -58,7 +60,10 @@ defmodule Mix.Tasks.Smalt.CourtEmit do
   defp judge_body(body) do
     nonzero = Regex.match?(~r/[1-9][0-9]* failures?/, body)
     zero = String.contains?(body, "0 failures")
-    compile_abort = String.contains?(body, "== Compilation error") or String.contains?(body, " compilation failed")
+
+    compile_abort =
+      String.contains?(body, "== Compilation error") or
+        String.contains?(body, " compilation failed")
 
     cond do
       zero and not nonzero and not compile_abort -> "green"

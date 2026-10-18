@@ -29,7 +29,10 @@ defmodule Smalt.Corpus.HeadDatabaseAccountNames do
   end
 
   defp head_name do
-    arm(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/#{@name}")
+    arm(
+      :head,
+      "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/#{@name}"
+    )
   end
 
   defp put_account do

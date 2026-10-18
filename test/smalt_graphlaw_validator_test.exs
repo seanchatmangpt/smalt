@@ -433,7 +433,10 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       # auto-pass, and the pure validator holds no shared state to corrupt.
       for bad <- [nil, 42, {:tuple, 1}, ["list"]] do
         assert_raise FunctionClauseError, fn -> Validator.validate_resource(bad, %{}) end
-        assert_raise FunctionClauseError, fn -> Validator.validate_resource("Microsoft.Compute/disks", bad) end
+
+        assert_raise FunctionClauseError, fn ->
+          Validator.validate_resource("Microsoft.Compute/disks", bad)
+        end
       end
     end
   end
@@ -458,6 +461,7 @@ defmodule Smalt.GraphLaw.ValidatorTest do
 
       # Resolution itself still works for present bindings.
       assert Validator.resolve_shape(Validator.shapes(), "KeyVaultShape")
+
       assert Validator.resolve_shape(Validator.shapes(), "KeyVaultShapeShape") ||
                Validator.resolve_shape(Validator.shapes(), "KeyVault")
     end
@@ -467,12 +471,15 @@ defmodule Smalt.GraphLaw.ValidatorTest do
     test "every shape in the file declares sh:closed false explicitly (vocabulary incomplete)" do
       for {name, shape} <- Validator.shapes() do
         assert shape.closed == false,
-               "shape " <> name <> " must be sh:closed false: ARM payload vocabulary " <>
+               "shape " <>
+                 name <>
+                 " must be sh:closed false: ARM payload vocabulary " <>
                  "(tags, sku, dnsPrefix, ...) exceeds its declared property list"
 
         for prop <- shape.required do
           assert Map.has_key?(prop, :datatype) and is_nil(prop.datatype),
-                 "property " <> name <> "." <> prop.path <> " must record datatype (nil when absent)"
+                 "property " <>
+                   name <> "." <> prop.path <> " must record datatype (nil when absent)"
         end
       end
     end
@@ -481,7 +488,10 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       shape = closed_location_shape()
 
       assert {:invalid, violations} =
-               Validator.validate_shape(shape, %{"location" => "eastus", "tags" => %{"env" => "dev"}})
+               Validator.validate_shape(shape, %{
+                 "location" => "eastus",
+                 "tags" => %{"env" => "dev"}
+               })
 
       assert Enum.any?(violations, &(&1.path == "tags" and &1.constraint == "closed"))
     end
@@ -495,7 +505,10 @@ defmodule Smalt.GraphLaw.ValidatorTest do
                  "properties" => %{"ledgerType" => "Private"}
                })
 
-      assert Enum.any?(violations, &(&1.path == "properties.ledgerType" and &1.constraint == "closed"))
+      assert Enum.any?(
+               violations,
+               &(&1.path == "properties.ledgerType" and &1.constraint == "closed")
+             )
     end
 
     test "closed shape accepts payloads carrying only declared paths (plus the properties container)" do
@@ -540,12 +553,17 @@ defmodule Smalt.GraphLaw.ValidatorTest do
 
       huge = String.duplicate("K", 1_000_000)
 
-      for payload <- [%{huge => 1, "location" => "x"}, %{String.duplicate("Z", 500) => 1, "location" => "x"}] do
+      for payload <- [
+            %{huge => 1, "location" => "x"},
+            %{String.duplicate("Z", 500) => 1, "location" => "x"}
+          ] do
         assert {:invalid, violations} = Validator.validate_shape(shape, payload)
 
         for v <- violations do
           assert byte_size(v.path) <= 200, "path echo not capped: #{byte_size(v.path)} bytes"
-          assert byte_size(v.message) <= 300, "message echo not capped: #{byte_size(v.message)} bytes"
+
+          assert byte_size(v.message) <= 300,
+                 "message echo not capped: #{byte_size(v.message)} bytes"
         end
       end
     end
@@ -612,6 +630,7 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       """
 
       shape = Smalt.GraphLaw.Validator.ShapeFile.parse!(ttl, "inline-test.ttl")["TypedShape"]
+
       assert %{"count" => count_prop, "enabled" => enabled_prop} =
                Map.new(shape.required, &{&1.path, &1})
 
@@ -619,11 +638,14 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       assert enabled_prop.datatype == :boolean
       assert enabled_prop.min_count == 1
 
-      assert Validator.validate_shape(shape, %{"properties" => %{"count" => 3, "enabled" => true}}) == {:ok}
+      assert Validator.validate_shape(shape, %{"properties" => %{"count" => 3, "enabled" => true}}) ==
+               {:ok}
 
       assert match?(
                {:invalid, _},
-               Validator.validate_shape(shape, %{"properties" => %{"count" => "3", "enabled" => true}})
+               Validator.validate_shape(shape, %{
+                 "properties" => %{"count" => "3", "enabled" => true}
+               })
              )
 
       assert match?(
@@ -795,7 +817,9 @@ defmodule Smalt.GraphLaw.ValidatorTest do
 
       invalid =
         Task.async_stream(1..32, fn _ ->
-          Validator.validate_resource("Microsoft.Compute/virtualMachines", %{"location" => "eastus"})
+          Validator.validate_resource("Microsoft.Compute/virtualMachines", %{
+            "location" => "eastus"
+          })
         end)
 
       assert Enum.all?(valid, &match?({:ok, {:ok}}, &1))
@@ -924,7 +948,7 @@ defmodule Smalt.GraphLaw.ValidatorTest do
       {:invalid, vs} = Validator.validate_shape(shape, hostile)
       assert length(vs) == 4
 
-      assert Enum.all?(vs, &is_binary(&1.path) and String.length(&1.path) <= 200),
+      assert Enum.all?(vs, &(is_binary(&1.path) and String.length(&1.path) <= 200)),
              "echoed closed-violation paths must be capped at 200 chars"
     end
 

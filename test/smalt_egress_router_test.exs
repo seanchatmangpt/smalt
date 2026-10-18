@@ -40,6 +40,7 @@ defmodule SmaltEgressRouterTest do
     update_conn =
       conn(:put, "#{path}/item-1", %{"count" => 2})
       |> put_req_header("if-match", etag)
+
     update_conn = EgressRouter.call(update_conn, @opts)
     assert update_conn.status == 200
 
@@ -51,6 +52,7 @@ defmodule SmaltEgressRouterTest do
     stale_conn =
       conn(:put, "#{path}/item-1", %{"count" => 3})
       |> put_req_header("if-match", etag)
+
     stale_conn = EgressRouter.call(stale_conn, @opts)
     assert stale_conn.status == 412
     assert Jason.decode!(stale_conn.resp_body)["code"] == "PreconditionFailed"
@@ -78,10 +80,11 @@ defmodule SmaltEgressRouterTest do
     # Create exportable key with release policy
     create_conn =
       conn(:post, create_path, %{
-      "kty" => "RSA-HSM",
-      "key_size" => 2048,
-      "release_policy" => %{"claim" => "azure-compliant-cvm"}
-    })
+        "kty" => "RSA-HSM",
+        "key_size" => 2048,
+        "release_policy" => %{"claim" => "azure-compliant-cvm"}
+      })
+
     create_conn = EgressRouter.call(call(create_conn), @opts)
     assert create_conn.status == 200
 
@@ -98,6 +101,7 @@ defmodule SmaltEgressRouterTest do
       conn(:post, release_path, %{})
       |> put_req_header("x-ms-compliance-status", "azure-compliant-cvm")
       |> call()
+
     auth_conn = EgressRouter.call(auth_conn, @opts)
     assert auth_conn.status == 200
     res = Jason.decode!(auth_conn.resp_body)

@@ -263,7 +263,9 @@ defmodule Smalt.Telemetry.RollingCounters do
     # :named_table is required: bump/1 addresses the table by name from any
     # emitter process; without it the atom is a throwaway suggestion and every
     # named access raises ArgumentError (boot-order false positive).
-    table = :ets.new(:smalt_rolling_counters, [:set, :public, :named_table, write_concurrency: true])
+    table =
+      :ets.new(:smalt_rolling_counters, [:set, :public, :named_table, write_concurrency: true])
+
     :persistent_term.put({__MODULE__, :booted}, true)
     schedule_prune()
     {:ok, %{table: table}}

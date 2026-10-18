@@ -49,7 +49,9 @@ defmodule Mix.Tasks.Smalt.EnclaveCommon do
   @spec require_flag!(OptionParser.parsed(), atom(), String.t()) :: String.t()
   def require_flag!(opts, key, task) do
     case Keyword.fetch(opts, key) do
-      {:ok, v} -> v
+      {:ok, v} ->
+        v
+
       :error ->
         IO.puts(:stderr, "[smalt] ERROR :missing_required_flag task=#{task} flag=--#{key}")
         IO.puts(:stderr, "run `mix help #{task}` for usage")

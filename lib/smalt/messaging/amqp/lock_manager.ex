@@ -153,16 +153,22 @@ defmodule Smalt.Amqp.LockManager do
     end
   end
 
-  defp mirror_message_renew(%{kind: :message, queue: queue, seq: seq, lock_token: token, locked_until: until}) do
+  defp mirror_message_renew(%{
+         kind: :message,
+         queue: queue,
+         seq: seq,
+         lock_token: token,
+         locked_until: until
+       }) do
     # Table-absent (unit harnesses that only provision the lock tables): the
     # token-row renewal already happened; there is no message row to mirror.
     if :ets.info(:smalt_sb_messages) == :undefined do
       :ok
     else
       case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
-      # Token-scoped mirror (ABA-safe): if the message row was re-claimed by a
-      # different token, leave it alone — the old token's renewal must not
-      # extend the new claim.
+        # Token-scoped mirror (ABA-safe): if the message row was re-claimed by a
+        # different token, leave it alone — the old token's renewal must not
+        # extend the new claim.
         {:ok, %{lock_token: ^token} = m} ->
           Smalt.Store.put(:smalt_sb_messages, {queue, seq}, %{m | locked_until: until})
 
@@ -219,7 +225,8 @@ defmodule Smalt.Amqp.LockManager do
   concurrent racer can win the get-check-put window (the ST4 TOCTOU): losers
   get `{:error, :already_locked}`, never two winners.
   """
-  @spec session_acquire(String.t(), String.t(), keyword()) :: {:ok, lock()} | {:error, :already_locked}
+  @spec session_acquire(String.t(), String.t(), keyword()) ::
+          {:ok, lock()} | {:error, :already_locked}
   def session_acquire(queue, session_id, opts \\ []) do
     now = opts[:now_ms] || System.system_time(:millisecond)
     GenServer.call(Smalt.Amqp.QueueStore.server(), {:session_claim, queue, session_id, now, opts})
@@ -232,7 +239,9 @@ defmodule Smalt.Amqp.LockManager do
 
     case Smalt.Store.get(:smalt_sb_sessions, key) do
       {:ok, lock} ->
-        if expired?(lock, now), do: do_session_acquire(key, now, opts), else: {:error, :already_locked}
+        if expired?(lock, now),
+          do: do_session_acquire(key, now, opts),
+          else: {:error, :already_locked}
 
       :error ->
         do_session_acquire(key, now, opts)
@@ -367,7 +376,10 @@ defmodule Smalt.Amqp.LockManager do
         :error -> nil
       end
 
-    GenServer.call(Smalt.Amqp.QueueStore.server(), {:session_release, queue, session_id, expected_token})
+    GenServer.call(
+      Smalt.Amqp.QueueStore.server(),
+      {:session_release, queue, session_id, expected_token}
+    )
   end
 
   @doc false

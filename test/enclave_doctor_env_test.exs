@@ -7,8 +7,16 @@ defmodule EnclaveDoctorEnvTest do
   # if unset), so a following check sees the original env.
 
   test "store_invariants check restores prior :lro_retention_ms env" do
+    prev_retention = Application.get_env(:smalt, :lro_retention_ms)
     Application.put_env(:smalt, :lro_retention_ms, 123_456)
-    on_exit(fn -> Application.delete_env(:smalt, :lro_retention_ms) end)
+
+    on_exit(fn ->
+      if is_nil(prev_retention) do
+        Application.delete_env(:smalt, :lro_retention_ms)
+      else
+        Application.put_env(:smalt, :lro_retention_ms, prev_retention)
+      end
+    end)
 
     report = Smalt.Enclave.Doctor.run()
 
@@ -20,7 +28,16 @@ defmodule EnclaveDoctorEnvTest do
   end
 
   test "store_invariants check deletes env when none was set" do
+    prev_retention = Application.get_env(:smalt, :lro_retention_ms)
     Application.delete_env(:smalt, :lro_retention_ms)
+
+    on_exit(fn ->
+      if is_nil(prev_retention) do
+        Application.delete_env(:smalt, :lro_retention_ms)
+      else
+        Application.put_env(:smalt, :lro_retention_ms, prev_retention)
+      end
+    end)
 
     report = Smalt.Enclave.Doctor.run()
 

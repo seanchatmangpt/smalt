@@ -32,6 +32,7 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
         "tmp",
         "ocel-test-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
       )
+
     File.mkdir_p!(dir)
     prev = Application.get_env(:smalt, :ocel_dir)
     Application.put_env(:smalt, :ocel_dir, dir)
@@ -48,9 +49,10 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
     {:ok, log: log, dir: dir}
   end
 
-  test "a real lifecycle run emits one stage event per stage with enclave/fixture/resource objects", %{
-    log: log
-  } do
+  test "a real lifecycle run emits one stage event per stage with enclave/fixture/resource objects",
+       %{
+         log: log
+       } do
     state_path =
       Path.join(
         "tmp",
@@ -93,7 +95,6 @@ defmodule Smalt.Telemetry.EnclaveOcelTest do
   test "bridge: discover + conform same data at fitness 1.0; mutated trace is penalized", %{
     log: log
   } do
-
     # Seed a small real log from two stage emissions (no full ladder needed
     # for the bridge law: assemble -> ingest -> DFG -> conform round trip).
     for stage <- [:parse, :apply] do

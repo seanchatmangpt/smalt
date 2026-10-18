@@ -53,7 +53,8 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
   # ===========================================================================
 
   defp check_frame_header do
-    frame = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 3, {:open, %{container_id: "rtc"}}))
+    frame =
+      IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 3, {:open, %{container_id: "rtc"}}))
 
     <<size::32, doff::8, type_code::8, channel::16, _rest::binary>> = frame
 
@@ -67,7 +68,12 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
 
     Support.assert_equal(decoded.channel, 3, "decoded channel")
     Support.assert_equal(decoded.type, :amqp, "decoded frame type")
-    Support.assert_equal(decoded.performative[:container_id], "rtc", "open container_id round-trip")
+
+    Support.assert_equal(
+      decoded.performative[:container_id],
+      "rtc",
+      "open container_id round-trip"
+    )
   end
 
   defp check_performatives do
@@ -94,7 +100,12 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
 
     # transfer carries a payload, decoded separately
     payload = "rtc-payload"
-    frame = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1}, payload}))
+
+    frame =
+      IO.iodata_to_binary(
+        FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1}, payload})
+      )
+
     {:ok, decoded} = FrameCodec.decode_frame(frame)
     Support.assert_equal(decoded.payload, payload, "transfer payload round-trip")
   end
@@ -102,13 +113,22 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
   defp check_sasl do
     frame =
       IO.iodata_to_binary(
-        FrameCodec.encode_frame(:sasl, 0, {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}})
+        FrameCodec.encode_frame(
+          :sasl,
+          0,
+          {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}]}}
+        )
       )
 
     {:ok, decoded} = FrameCodec.decode_frame(frame)
 
     Support.assert_equal(decoded.type, :sasl, "decoded frame type :sasl")
-    Support.assert_equal(decoded.performative[:performative], :sasl_mechanisms, "decoded performative name")
+
+    Support.assert_equal(
+      decoded.performative[:performative],
+      :sasl_mechanisms,
+      "decoded performative name"
+    )
 
     Support.assert_equal(
       decoded.performative[:server_mechanisms],
@@ -176,6 +196,7 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
     )
 
     Support.assert_equal(ma["x-opt-sequence-number"], 42, "x-opt-sequence-number")
+
     Support.assert_equal(
       get_in(sections, [:application_properties, "DeadLetterReason"]),
       "max-delivery",
@@ -196,7 +217,10 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
       |> FrameCodec.decode_message()
 
     Support.assert_equal(
-      Enum.any?(decoded, &match?({:message_annotations, %{"com.microsoft:locked-until-utc" => _}}, &1)),
+      Enum.any?(
+        decoded,
+        &match?({:message_annotations, %{"com.microsoft:locked-until-utc" => _}}, &1)
+      ),
       true,
       "filetime annotation survives wire round-trip"
     )

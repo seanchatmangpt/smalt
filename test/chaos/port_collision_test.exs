@@ -76,16 +76,18 @@ defmodule Smalt.Chaos.PortCollisionTest do
 
         case Supervisor.start_link(
                [
-                 {Bandit,
-                  plug: Smalt.ArmGateway.Router,
-                  scheme: :http,
-                  # SHIM-COURT-style fail-closed pin: bind the SPECIFIC loopback
-                  # address. Without `ip:` a wildcard (default) bind co-exists
-                  # with the specific-address first listener on macOS
-                  # (SO_REUSEADDR), silently returning {:ok, pid} instead of
-                  # eaddrinuse.
-                  ip: {127, 0, 0, 1},
-                  port: ports.arm}
+                 {
+                   Bandit,
+                   # SHIM-COURT-style fail-closed pin: bind the SPECIFIC loopback
+                   # address. Without `ip:` a wildcard (default) bind co-exists
+                   # with the specific-address first listener on macOS
+                   # (SO_REUSEADDR), silently returning {:ok, pid} instead of
+                   # eaddrinuse.
+                   plug: Smalt.ArmGateway.Router,
+                   scheme: :http,
+                   ip: {127, 0, 0, 1},
+                   port: ports.arm
+                 }
                ],
                strategy: :one_for_one,
                name: second_sup
@@ -97,7 +99,8 @@ defmodule Smalt.Chaos.PortCollisionTest do
             Supervisor.stop(pid)
             exit({:second_bind_succeeded, second_sup})
 
-          {:error, _} = e -> exit(e)
+          {:error, _} = e ->
+            exit(e)
         end
       end)
       |> case do

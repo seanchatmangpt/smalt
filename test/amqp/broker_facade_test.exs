@@ -42,7 +42,8 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       assert match?({Smalt.Messaging.EventHubs.Listener, {:eh, 2}}, Enum.at(ports, 1))
 
       # Legacy integer start argument (current Application child) still normalizes
-      assert Smalt.AmqpBroker.children(sb_port: 9999) |> Enum.at(0) == {Smalt.Amqp.Listener, {:sb, 9999}}
+      assert Smalt.AmqpBroker.children(sb_port: 9999) |> Enum.at(0) ==
+               {Smalt.Amqp.Listener, {:sb, 9999}}
     end
   end
 
@@ -147,8 +148,15 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
         {Smalt.Messaging.EventHubs, :sweep, 0}
       ]
 
-      sweeper_pid = GenServer.whereis(Sweeper)
-      assert sweeper_pid != nil
+      # The shared app-level Sweeper may be down if another module's private-tree
+      # teardown stopped it mid-flight; boot a fresh ExUnit-managed instance
+      # (auto-cleaned) instead of depending on the shared singleton surviving.
+      sweeper_pid =
+        case GenServer.whereis(Sweeper) do
+          nil -> start_supervised!(Sweeper)
+          pid -> pid
+        end
+
       :sys.suspend(sweeper_pid)
 
       for {m, f, a} <- siblings do
@@ -179,7 +187,8 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
         if m == Smalt.Amqp.CbsRouter and GenServer.whereis(Smalt.Amqp.CbsRouter) == nil do
           assert count == 0, "#{inspect(m)}.#{f} invoked with no live server (#{inspect(count)})"
         else
-          assert count == 1, "run_pass/0 did not invoke #{inspect(m)}.#{f} (count=#{inspect(count)})"
+          assert count == 1,
+                 "run_pass/0 did not invoke #{inspect(m)}.#{f} (count=#{inspect(count)})"
         end
       end
     end

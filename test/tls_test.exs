@@ -12,14 +12,18 @@ defmodule Smalt.TLSTest do
       end
 
     for {k, v} <- overrides do
-      if v == :delete, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
+      if v == :delete,
+        do: Application.delete_env(:smalt, k),
+        else: Application.put_env(:smalt, k, v)
     end
 
     try do
       fun.()
     after
       for {k, v} <- saved do
-        if v == nil, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
+        if v == nil,
+          do: Application.delete_env(:smalt, k),
+          else: Application.put_env(:smalt, k, v)
       end
     end
   end
@@ -65,7 +69,7 @@ defmodule Smalt.TLSTest do
     test "produces parseable PEM with CN and SAN 127.0.0.1 + localhost" do
       assert {:ok, cert_pem, key_pem} = generate_dev_cert_pem()
 
-      assert [{:"Certificate", der, :not_encrypted}] = :public_key.pem_decode(cert_pem)
+      assert [{:Certificate, der, :not_encrypted}] = :public_key.pem_decode(cert_pem)
       assert [{:RSAPrivateKey, _, :not_encrypted}] = :public_key.pem_decode(key_pem)
 
       otp = :public_key.pkix_decode_cert(der, :otp)
@@ -79,7 +83,7 @@ defmodule Smalt.TLSTest do
     test "self-signature verifies" do
       {:ok, cert_pem, _} = generate_dev_cert_pem()
       [{_, der, :not_encrypted}] = :public_key.pem_decode(cert_pem)
-      cert = :public_key.der_decode(:"Certificate", der)
+      cert = :public_key.der_decode(:Certificate, der)
       tbs = elem(cert, 1)
       spki_der = elem(elem(tbs, 7), 2)
       pubkey = :public_key.der_decode(:RSAPublicKey, spki_der)
@@ -190,8 +194,10 @@ defmodule Smalt.TLSTest do
       with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
         opts = bandit_opts(__MODULE__, port)
         assert opts[:scheme] == :https
+
         assert opts[:certfile] |> List.to_string() |> Path.expand() ==
                  Path.expand("tmp/dev-certs/dev-cert-#{port}.pem")
+
         assert opts[:plug] == __MODULE__
       end)
 
@@ -207,7 +213,6 @@ defmodule Smalt.TLSTest do
 
   describe "concurrency falsifier (TLS-261014-01)" do
     test "paired boots: regenerator racing a boot across N=20 paired seats, zero crashes" do
-
       results =
         for _n <- 1..20 do
           port = free_port()
@@ -222,6 +227,7 @@ defmodule Smalt.TLSTest do
                 {c, _k} = Smalt.TLS.dev_cert_paths(port)
                 File.mkdir_p(Path.dirname(c))
                 File.write!(c, "trunc")
+
                 case Smalt.TLS.ensure_dev_cert(port) do
                   {:ok, _, _} -> :ok
                   other -> other
@@ -242,7 +248,11 @@ defmodule Smalt.TLSTest do
                   {:ok, cpem} = File.read(c)
                   {:ok, kpem} = File.read(k)
                   assert match?([{:Certificate, _, :not_encrypted}], :public_key.pem_decode(cpem))
-                  assert match?([{:RSAPrivateKey, _, :not_encrypted}], :public_key.pem_decode(kpem))
+
+                  assert match?(
+                           [{:RSAPrivateKey, _, :not_encrypted}],
+                           :public_key.pem_decode(kpem)
+                         )
                 end
 
                 :ok
@@ -292,7 +302,7 @@ defmodule Smalt.TLSTest do
           key |> File.read!() |> :public_key.pem_decode()
 
         priv = :public_key.der_decode(:RSAPrivateKey, kder)
-        pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
+        pubkey = {:RSAPublicKey, elem(priv, 2), elem(priv, 3)}
         assert :public_key.pkix_verify(der, pubkey)
 
         # fallback-uniqueness probe: distinct lane keys never collide on one
@@ -325,7 +335,7 @@ defmodule Smalt.TLSTest do
         [{_, der, :not_encrypted}] = cert |> File.read!() |> :public_key.pem_decode()
         [{:RSAPrivateKey, kder, :not_encrypted}] = key |> File.read!() |> :public_key.pem_decode()
         priv = :public_key.der_decode(:RSAPrivateKey, kder)
-        pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
+        pubkey = {:RSAPublicKey, elem(priv, 2), elem(priv, 3)}
         assert :public_key.pkix_verify(der, pubkey)
 
         # no temp files left behind (this seat only — other seats in the
@@ -333,6 +343,7 @@ defmodule Smalt.TLSTest do
         leftovers =
           Path.wildcard(Path.join(seat_dir(), "dev-cert-#{port}.pem.tmp-*")) ++
             Path.wildcard(Path.join(seat_dir(), "dev-key-#{port}.pem.tmp-*"))
+
         assert leftovers == []
       end)
     end
@@ -359,14 +370,18 @@ defmodule Smalt.TLSTest do
         old_serial = cert_serial(cert)
         assert :ok = Smalt.TLS.write_dev_cert(cert, key)
 
-        assert {:ok, sock} = :ssl.connect(~c"localhost", port, verify: :verify_none, active: false)
+        assert {:ok, sock} =
+                 :ssl.connect(~c"localhost", port, verify: :verify_none, active: false)
+
         {:ok, peer_der} = :ssl.peercert(sock)
         :ok = :ssl.close(sock)
         assert cert_serial_der(peer_der) == old_serial
         assert :ok = Smalt.TLS.write_dev_cert(cert, key)
 
         # old listener still serves (cert is read at listener start)
-        assert {:ok, sock} = :ssl.connect(~c"localhost", port, verify: :verify_none, active: false)
+        assert {:ok, sock} =
+                 :ssl.connect(~c"localhost", port, verify: :verify_none, active: false)
+
         :ok = :ssl.close(sock)
       end)
     end
@@ -374,7 +389,7 @@ defmodule Smalt.TLSTest do
 
   test "Bandit https boot + :ssl connect + :httpc round-trip" do
     port = free_port()
-      on_exit(fn -> rm_seat(port) end)
+    on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       opts = bandit_opts(__MODULE__, port)
@@ -394,7 +409,10 @@ defmodule Smalt.TLSTest do
         :ssl.connect(~c"localhost", port,
           verify: :verify_peer,
           active: false,
-          cacertfile: String.to_charlist(Path.expand(bandit_opts(__MODULE__, port)[:certfile] |> List.to_string())),
+          cacertfile:
+            String.to_charlist(
+              Path.expand(bandit_opts(__MODULE__, port)[:certfile] |> List.to_string())
+            ),
           depth: 1,
           server_name_indication: ~c"localhost",
           verify_fun: {verify_fun, :ok}
@@ -412,7 +430,12 @@ defmodule Smalt.TLSTest do
       :ssl.start()
 
       assert {:ok, {{_, 200, _}, _, body}} =
-               :httpc.request(:get, {~c"https://localhost:#{port}/", []}, [ssl: [verify: :verify_none]], [])
+               :httpc.request(
+                 :get,
+                 {~c"https://localhost:#{port}/", []},
+                 [ssl: [verify: :verify_none]],
+                 []
+               )
 
       assert to_string(body) == "tls-ok"
     end)
@@ -474,7 +497,7 @@ defmodule Smalt.TLSTest do
 
   test "publish mechanism: writes target only tmp paths, then rename (deterministic M2 kill)" do
     port = free_port()
-      on_exit(fn -> rm_seat(port) end)
+    on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       {:ok, cert, key} = ensure_dev_cert(port)
@@ -487,7 +510,9 @@ defmodule Smalt.TLSTest do
 
       # no in-place write ever touches the live cert/key paths — under the
       # in-place mutant these hold the live paths and renames are empty.
-      assert Enum.all?(writes, fn w -> not live_pem_path?(w, cert) and not live_pem_path?(w, key) end),
+      assert Enum.all?(writes, fn w ->
+               not live_pem_path?(w, cert) and not live_pem_path?(w, key)
+             end),
              "in-place write on live path: #{inspect(writes)}"
 
       assert Enum.any?(renames, fn {_f, t} -> live_pem_path?(t, cert) end),
@@ -501,7 +526,7 @@ defmodule Smalt.TLSTest do
 
   test "boot-time read racing a publisher: locked reader sees a verifying pair" do
     port = free_port()
-      on_exit(fn -> rm_seat(port) end)
+    on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       {:ok, cert, key} = ensure_dev_cert(port)
@@ -527,7 +552,7 @@ defmodule Smalt.TLSTest do
               key |> File.read!() |> :public_key.pem_decode()
 
             priv = :public_key.der_decode(:RSAPrivateKey, kder)
-            pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
+            pubkey = {:RSAPublicKey, elem(priv, 2), elem(priv, 3)}
             assert :public_key.pkix_verify(der, pubkey)
           end
 
@@ -542,7 +567,7 @@ defmodule Smalt.TLSTest do
 
   test "skewed pair on disk (cert_n + key_n-1) is detected and regenerated, not served" do
     port = free_port()
-      on_exit(fn -> rm_seat(port) end)
+    on_exit(fn -> rm_seat(port) end)
 
     with_config([tls: :auto, tls_certfile: nil, tls_keyfile: nil], fn ->
       {:ok, cert, key} = ensure_dev_cert(port)
@@ -557,7 +582,7 @@ defmodule Smalt.TLSTest do
         key |> File.read!() |> :public_key.pem_decode()
 
       priv = :public_key.der_decode(:RSAPrivateKey, kder)
-      pubkey = {:"RSAPublicKey", elem(priv, 2), elem(priv, 3)}
+      pubkey = {:RSAPublicKey, elem(priv, 2), elem(priv, 3)}
       assert :public_key.pkix_verify(der, pubkey)
     end)
   after
@@ -567,7 +592,9 @@ defmodule Smalt.TLSTest do
     {:ok, c1, k1} = generate_dev_cert_pem()
     {:ok, c2, _k2} = generate_dev_cert_pem()
 
-    {cert, key} = {Path.expand("tmp/dev-certs/explicit-a-#{:os.getpid()}.pem"), Path.expand("tmp/dev-certs/explicit-a-key-#{:os.getpid()}.pem")}
+    {cert, key} =
+      {Path.expand("tmp/dev-certs/explicit-a-#{:os.getpid()}.pem"),
+       Path.expand("tmp/dev-certs/explicit-a-key-#{:os.getpid()}.pem")}
 
     File.mkdir_p(Path.dirname(cert))
     File.write!(cert, c1)
@@ -632,7 +659,7 @@ defmodule Smalt.TLSTest do
   end
 
   defp cert_serial_der(der) do
-    elem(:public_key.der_decode(:"Certificate", der), 1) |> elem(2)
+    elem(:public_key.der_decode(:Certificate, der), 1) |> elem(2)
   end
 
   defp recv_all(sock, acc) do
@@ -646,13 +673,15 @@ defmodule Smalt.TLSTest do
   # subject(6), spki(7), issuerUID(8), subjectUID(9), extensions(10)
   defp extract_cn(otp) do
     {:rdnSequence, [rdn | _]} = elem(elem(otp, 1), 6)
-    [{:"AttributeTypeAndValue", @cn_oid, {:printableString, cn}}] = rdn
+    [{:AttributeTypeAndValue, @cn_oid, {:printableString, cn}}] = rdn
     cn
   end
 
   defp extract_san(otp) do
     exts = elem(elem(otp, 1), 10)
-    {:"Extension", {2, 5, 29, 17}, _, der} = Enum.find(exts, &match?({:"Extension", {2, 5, 29, 17}, _, _}, &1))
+
+    {:Extension, {2, 5, 29, 17}, _, der} =
+      Enum.find(exts, &match?({:Extension, {2, 5, 29, 17}, _, _}, &1))
 
     Enum.map(der, fn
       {:dNSName, name} -> {2, name}
@@ -673,22 +702,57 @@ defmodule Smalt.TLSTest do
     leaf_key = Path.join(dir, "dev-key.pem")
 
     System.cmd("openssl", [
-      "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "30", "-nodes",
-      "-keyout", ca_key, "-out", ca_cert, "-subj", "/CN=smalt-test-ca",
-      "-addext", "basicConstraints=critical,CA:TRUE",
-      "-addext", "keyUsage=critical,keyCertSign"
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-sha256",
+      "-days",
+      "30",
+      "-nodes",
+      "-keyout",
+      ca_key,
+      "-out",
+      ca_cert,
+      "-subj",
+      "/CN=smalt-test-ca",
+      "-addext",
+      "basicConstraints=critical,CA:TRUE",
+      "-addext",
+      "keyUsage=critical,keyCertSign"
     ])
 
     csr = Path.join(dir, "dev-csr.pem")
 
     System.cmd("openssl", [
-      "req", "-newkey", "rsa:2048", "-sha256", "-nodes",
-      "-keyout", leaf_key, "-out", csr, "-subj", "/CN=localhost"
+      "req",
+      "-newkey",
+      "rsa:2048",
+      "-sha256",
+      "-nodes",
+      "-keyout",
+      leaf_key,
+      "-out",
+      csr,
+      "-subj",
+      "/CN=localhost"
     ])
 
     System.cmd("openssl", [
-      "x509", "-req", "-sha256", "-days", "30", "-in", csr,
-      "-CA", ca_cert, "-CAkey", ca_key, "-CAcreateserial", "-out", leaf_cert
+      "x509",
+      "-req",
+      "-sha256",
+      "-days",
+      "30",
+      "-in",
+      csr,
+      "-CA",
+      ca_cert,
+      "-CAkey",
+      ca_key,
+      "-CAcreateserial",
+      "-out",
+      leaf_cert
     ])
 
     {leaf_cert, leaf_key}

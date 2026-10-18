@@ -26,8 +26,7 @@ defmodule Smalt.Enclave.Remediations do
   def table do
     %{
       # HCL term failed the pre-hydration shape contract (engine stage).
-      "SHAPE_REJECTED_BEFORE_DEFAULT_HYDRATION" =>
-        "bash scripts/tf_plan_check.sh",
+      "SHAPE_REJECTED_BEFORE_DEFAULT_HYDRATION" => "bash scripts/tf_plan_check.sh",
       # Strict residue audit over the live Store tables.
       "ETS_IDENTITY_RESIDUE" => "mix smalt.audit_residue --strict",
       # macOS trust evaluator rejects the dev CA: fall back to native mode.
@@ -45,8 +44,7 @@ defmodule Smalt.Enclave.Remediations do
       "API_VERSION_LATTICE_FAULT" => "mix smalt.gen",
       "DARWIN_TRUST_UNREACHABLE" => "just test-native",
       # NFR3 BEAM memory-budget fence (scripts/nfr3_rss_gate.py).
-      "NFR3_RSS_BUDGET_BREACH" =>
-        "python3 scripts/nfr3_rss_gate.py --keep",
+      "NFR3_RSS_BUDGET_BREACH" => "python3 scripts/nfr3_rss_gate.py --keep",
       # Affidavit-wasm artifact missing / sha256 mismatch / engine load failure.
       "AFFIDAVIT_WASM_DEGRADED" => "bash scripts/affidavit_wasm_build.sh",
       # Affidavit engine check itself crashed (W17/D2): the doctor refused

@@ -140,7 +140,7 @@ defmodule Smalt.Ocel do
   defp check_closure(records, declared, kind) do
     used = records |> Enum.map(& &1["type"]) |> Enum.uniq()
 
-    case Enum.find(used, &(is_binary(&1) and not (&1 in declared))) do
+    case Enum.find(used, &(is_binary(&1) and &1 not in declared)) do
       nil -> :ok
       bad -> {:error, {:invalid_envelope, {:used_type_not_declared, kind, bad}}}
     end

@@ -100,6 +100,7 @@ defmodule SmaltGraphlawMatrixTest do
       case shape_requirements(type, shapes) do
         {:required, paths} ->
           assert {:invalid, issues} = result
+
           assert is_list(issues) and issues != [],
                  "shape requires #{inspect(paths)} but empty payload was not invalid for #{type}: #{inspect(result)}"
 
@@ -124,8 +125,7 @@ defmodule SmaltGraphlawMatrixTest do
   defp shape_requirements(type, shapes) do
     case Registry.type_shapes()[type] && shapes[Registry.type_shapes()[type]] do
       %{required: required} when is_list(required) and required != [] ->
-        {:required,
-         required |> Enum.filter(&(&1.min_count != 0)) |> Enum.map(& &1.path)}
+        {:required, required |> Enum.filter(&(&1.min_count != 0)) |> Enum.map(& &1.path)}
 
       _ ->
         :none
@@ -133,11 +133,13 @@ defmodule SmaltGraphlawMatrixTest do
   end
 
   test "unknown type is refused as :type_not_admitted" do
-    assert {:refused, :type_not_admitted} = Validator.validate_resource("Microsoft.Fake/NotReal", %{
-             "location" => "smalt-local"
-           })
+    assert {:refused, :type_not_admitted} =
+             Validator.validate_resource("Microsoft.Fake/NotReal", %{
+               "location" => "smalt-local"
+             })
 
-    assert {:refused, :type_not_admitted} = Validator.validate_resource("Microsoft.Fake/NotReal", %{})
+    assert {:refused, :type_not_admitted} =
+             Validator.validate_resource("Microsoft.Fake/NotReal", %{})
   end
 
   # async: true is safe here: this suite touches no shared process state.

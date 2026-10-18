@@ -350,6 +350,19 @@ count, or PASS/FAIL token) found in the file.
 | i20f-egmerge | [i20f-egmerge-fix.md](../v26.10.17/receipts/i20f-egmerge-fix.md) | ALIVE | i20f — egress topic-readback merge: one seq domain (EG1 + CloudEvents) **NO-CONTEXT** |
 | i20g-c7-fres | [i20g-c7-freshness.md](../v26.10.17/receipts/i20g-c7-freshness.md) | PASS | i20g — c7_events PARTIAL fence freshness fix **NO-CONTEXT** |
 | i20h-c6-firs | [i20h-c6-first-witness.md](../v26.10.17/receipts/i20h-c6-first-witness.md) | PASS | i20h — C6 OAuth first per-file witness (ever-green audit closure) |
+| i21-blob-bud | [i21-blob-budget.md](../v26.10.17/receipts/i21-blob-budget.md) | ALIVE | i21 — blob pagination perf budget: 110 -> 180 ms (load-robust, revert-fenced) |
+| i21-brokerfa | [i21-brokerfacade-sweeper.md](../v26.10.17/receipts/i21-brokerfacade-sweeper.md) | PASS | i21 — broker_facade_test: Sweeper-whereis-nil seed fix (i20c face) **NO-CONTEXT** |
+| i21-churn-bu | [i21-churn-budget.md](../v26.10.17/receipts/i21-churn-budget.md) | ALIVE | i21 — churn test budget raise: 300s → 600s |
+| i21-doc-toke | [i21-doc-token-sweep.md](../v26.10.17/receipts/i21-doc-token-sweep.md) | PASS | i21-doc-token-sweep — stale `InvalidQueryParameter` token sweep (lease docs) |
+| i21-ets-race | [i21-ets-race-fix.md](../v26.10.17/receipts/i21-ets-race-fix.md) | PASS | i21 — EgressDispatchTest setup ETS race fix (r241 repair surface) **NO-CONTEXT** |
+| i21-fence10- | [i21-fence10-fix.md](../v26.10.17/receipts/i21-fence10-fix.md) | ALIVE | i21 — Fence 10 PERSISTENT-FLAKE fix (r241 repair surface) **NO-CONTEXT** |
+| i21-leak-bat | [i21-leak-batch1.md](../v26.10.17/receipts/i21-leak-batch1.md) | PASS | i21-leak-batch1 — leak-court batch 1 (env restore discipline) **NO-CONTEXT** |
+| i21-leak-bat | [i21-leak-batch2.md](../v26.10.17/receipts/i21-leak-batch2.md) | ALIVE | i21 — leak-court batch 2 (test-isolation save-prev/restore conversions) **NO-CONTEXT** |
+| i21-leak-bat | [i21-leak-batch3.md](../v26.10.17/receipts/i21-leak-batch3.md) | ALIVE | i21-leak-batch3 — test-isolation leak batch 3 (lane: leak3) **NO-CONTEXT** |
+| i21-leak-cou | [i21-leak-court-delta.md](../v26.10.17/receipts/i21-leak-court-delta.md) | PARTIAL_ALIVE | i21-leak-court-delta — post-batch leak-court delta (baseline 122 → 101) |
+| i21-lro-face | [i21-lro-face.md](../v26.10.17/receipts/i21-lro-face.md) | PARTIAL_ALIVE | i21 — SmaltLroTest :543 op-record store miss (contention face → bounded sweeper-sync retry) **NO-CONTEXT** |
+| i21b-coordin | [i21b-coordinator-flips.md](../v26.10.17/receipts/i21b-coordinator-flips.md) | PASS | i21b — coordinator-approved flips: NEXT_WINDOW strike + KD-04 WIRE_PARITY prose **NO-CONTEXT** |
+| i21b-receipt | [i21b-receipt-audit.md](../v26.10.17/receipts/i21b-receipt-audit.md) | PASS | i21b — receipt audit: r241/r243/r244 + all i21-* (RECEIPT_CONTEXT_LAW spot-audit) |
 | i3-witness-s | [i3-witness-sweep.md](../v26.10.17/receipts/i3-witness-sweep.md) | PASS | i3 — witness receipts over in-flight lib/ (lane I3) **NO-CONTEXT** |
 | i5-complianc | [i5-compliance-witness.md](../v26.10.17/receipts/i5-compliance-witness.md) | PARTIAL_ALIVE | I5 — compliance witness + THIRD_PARTY.md NOTICE path fix **NO-CONTEXT** |
 | i6-amqp-surf | [i6-amqp-surface.md](../v26.10.17/receipts/i6-amqp-surface.md) | PASS | I6 — AMQP surface verify-only receipt **NO-CONTEXT** |
@@ -365,7 +378,9 @@ count, or PASS/FAIL token) found in the file.
 | r238-bench-r | [r238-bench-registry-rulings.md](../v26.10.17/receipts/r238-bench-registry-rulings.md) | PASS | r238 — Bench registry drift rulings (receipt-form only; REGISTRY.md untouched) **NO-CONTEXT** |
 | r239-kd97-co | [r239-kd97-conditional-head-landing.md](../v26.10.17/receipts/r239-kd97-conditional-head-landing.md) | ALIVE | r239 — KD-97 conditional/ranged HEAD + blob response-header parity (landing receipt) |
 | r240-court-x | [r240-court-x2-attempts12-typed-red.md](../v26.10.17/receipts/r240-court-x2-attempts12-typed-red.md) | UNKNOWN | r240 — court-x2 attempts 1-2: typed RED, shifting-failure class **NO-CONTEXT** |
-| r241-court-x | [r241-court-x2-attempt3-typed-red.md](../v26.10.17/receipts/r241-court-x2-attempt3-typed-red.md) | UNKNOWN | r241 — court-x2 attempt 3 (final): TYPED-RED, pre-mortem mitigation did not hold **NO-CONTEXT** |
+| r241-court-x | [r241-court-x2-attempt3-typed-red.md](../v26.10.17/receipts/r241-court-x2-attempt3-typed-red.md) | UNKNOWN | r241 — court-x2 attempt 3 (final): TYPED-RED, pre-mortem mitigation did not hold |
+| r243-termina | [r243-terminal-receipt.md](../v26.10.17/receipts/r243-terminal-receipt.md) | PARTIAL_ALIVE | r243 — v26.10.17 terminal receipt |
+| r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
 
 ## Workspace (ws-01..12)
 

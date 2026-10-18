@@ -113,27 +113,39 @@ defmodule Smalt.PolicyRbacTest do
       assert ra["properties"]["scope"] == "/subscriptions/sub-1"
 
       get_conn =
-        conn(:get, "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1?#{@av}")
+        conn(
+          :get,
+          "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert get_conn.status == 200
       assert body(get_conn)["name"] == "ra-1"
 
       list_conn =
-        conn(:get, "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments?#{@av}")
+        conn(
+          :get,
+          "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert list_conn.status == 200
       assert [%{"name" => "ra-1"}] = body(list_conn)["value"]
 
       del_conn =
-        conn(:delete, "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1?#{@av}")
+        conn(
+          :delete,
+          "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert del_conn.status == 200
 
       get_after =
-        conn(:get, "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1?#{@av}")
+        conn(
+          :get,
+          "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert get_after.status == 404
@@ -184,7 +196,10 @@ defmodule Smalt.PolicyRbacTest do
       end
 
       missing =
-        conn(:get, "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/NoSuchRole?#{@av}")
+        conn(
+          :get,
+          "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/NoSuchRole?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert missing.status == 404
@@ -214,7 +229,10 @@ defmodule Smalt.PolicyRbacTest do
       assert body(get_conn)["properties"]["policyRule"]["if"]["notIn"] == ["eastus", "westus"]
 
       list_conn =
-        conn(:get, "/subscriptions/sub-1/providers/Microsoft.Authorization/policyDefinitions?#{@av}")
+        conn(
+          :get,
+          "/subscriptions/sub-1/providers/Microsoft.Authorization/policyDefinitions?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert [%{"name" => "allowed-locations"}] = body(list_conn)["value"]
@@ -225,7 +243,10 @@ defmodule Smalt.PolicyRbacTest do
       assert body(put_conn)["properties"]["scope"] == rg_path()
 
       get_conn =
-        conn(:get, "#{rg_path()}/providers/Microsoft.Authorization/policyAssignments/loc-guard?#{@av}")
+        conn(
+          :get,
+          "#{rg_path()}/providers/Microsoft.Authorization/policyAssignments/loc-guard?#{@av}"
+        )
         |> Router.call(@opts)
 
       assert get_conn.status == 200
@@ -249,7 +270,10 @@ defmodule Smalt.PolicyRbacTest do
       assert body(conn)["error"]["target"] =~ "policyAssignments/loc-guard"
       assert body(conn)["error"]["innererror"] == %{}
 
-      refute match?({:ok, _}, Store.get(:smalt_resources, String.downcase(resource_path("bad-thing"))))
+      refute match?(
+               {:ok, _},
+               Store.get(:smalt_resources, String.downcase(resource_path("bad-thing")))
+             )
     end
 
     test "compliant PUT -> 201 and clears prior non-compliance receipts" do
@@ -281,7 +305,9 @@ defmodule Smalt.PolicyRbacTest do
       assert put_resource("tagged-thing", %{"tags" => %{"env" => "prod"}}).status in [200, 202]
 
       entry =
-        Enum.find(summarize(), fn e -> e["policyAssignmentId"] =~ "policyAssignments/env-audit" end)
+        Enum.find(summarize(), fn e ->
+          e["policyAssignmentId"] =~ "policyAssignments/env-audit"
+        end)
 
       assert entry["results"]["nonCompliantResources"] == 1
     end
@@ -332,7 +358,10 @@ defmodule Smalt.PolicyRbacTest do
       assert conn.status == 400
       assert body(conn)["error"]["code"] == "PolicyViolation"
 
-      assert put_resource("small-vm", %{"sku" => %{"name" => "Standard_LRS"}}).status in [200, 202]
+      assert put_resource("small-vm", %{"sku" => %{"name" => "Standard_LRS"}}).status in [
+               200,
+               202
+             ]
     end
   end
 

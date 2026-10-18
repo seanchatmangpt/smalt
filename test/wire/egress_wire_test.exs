@@ -22,6 +22,14 @@ defmodule Smalt.Wire.EgressWireTest do
     ports = %{egress: get_free_port()}
 
     stop_existing_tree()
+
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev = %{
+      arm_port: Application.get_env(:smalt, :arm_port),
+      egress_port: Application.get_env(:smalt, :egress_port),
+      amqp_port: Application.get_env(:smalt, :amqp_port)
+    }
+
     Application.put_env(:smalt, :arm_port, get_free_port())
     Application.put_env(:smalt, :egress_port, ports.egress)
     Application.put_env(:smalt, :amqp_port, get_free_port())
@@ -36,6 +44,19 @@ defmodule Smalt.Wire.EgressWireTest do
 
     on_exit(fn ->
       stop_tree(sup)
+
+      if prev.arm_port == nil,
+        do: Application.delete_env(:smalt, :arm_port),
+        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+      if prev.egress_port == nil,
+        do: Application.delete_env(:smalt, :egress_port),
+        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+      if prev.amqp_port == nil,
+        do: Application.delete_env(:smalt, :amqp_port),
+        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
+
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -111,15 +132,23 @@ defmodule Smalt.Wire.EgressWireTest do
   end
 
   @tag :wire
-  test "Key Vault: release without valid CVM attestation returns 403 over the wire", %{egress: port} do
+  test "Key Vault: release without valid CVM attestation returns 403 over the wire", %{
+    egress: port
+  } do
     http_request(port, "POST", "/keys/wirekey/create",
       headers: [{"content-type", "application/json"}],
-      body: Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"anyOf" => [%{"claim" => "x-ms-attestation-type", "equals" => "sevsnpvm"}]}})
+      body:
+        Jason.encode!(%{
+          "kty" => "RSA-HSM",
+          "release_policy" => %{
+            "anyOf" => [%{"claim" => "x-ms-attestation-type", "equals" => "sevsnpvm"}]
+          }
+        })
     )
 
+    # R143: api-version gate landed on the release route (GAP S8) —
+    # existing tests carry ?api-version=7.4 (premise change).
     resp =
-      # R143: api-version gate landed on the release route (GAP S8) —
-      # existing tests carry ?api-version=7.4 (premise change).
       http_request(port, "POST", "/keys/wirekey/release?api-version=7.4",
         headers: [{"x-ms-compliance-status", "not-attested"}],
         body: ""
@@ -131,9 +160,10 @@ defmodule Smalt.Wire.EgressWireTest do
   end
 
   @tag :wire
-  test "Key Vault: release with valid CVM attestation returns released key material over the wire", %{
-    egress: port
-  } do
+  test "Key Vault: release with valid CVM attestation returns released key material over the wire",
+       %{
+         egress: port
+       } do
     # Full wire flow: seed the MAA baseline, attest over the wire, then release
     # the key with the attestation token as a Bearer credential.
     measurement = :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
@@ -151,7 +181,13 @@ defmodule Smalt.Wire.EgressWireTest do
 
     http_request(port, "POST", "/keys/wirekey2/create",
       headers: [{"content-type", "application/json"}],
-      body: Jason.encode!(%{"kty" => "RSA-HSM", "release_policy" => %{"anyOf" => [%{"claim" => "x-ms-attestation-type", "equals" => "sevsnpvm"}]}})
+      body:
+        Jason.encode!(%{
+          "kty" => "RSA-HSM",
+          "release_policy" => %{
+            "anyOf" => [%{"claim" => "x-ms-attestation-type", "equals" => "sevsnpvm"}]
+          }
+        })
     )
 
     resp =
@@ -197,9 +233,10 @@ defmodule Smalt.Wire.EgressWireTest do
   # container arms answer a typed 400 InvalidQueryParameterValue naming the GAP,
   # with the Azure x-ms-error-code header, never a silent 201/200 fallthrough.
   @tag :wire
-  test "Blob: container PUT comp=lease/acl answers 400 InvalidQueryParameterValue over the wire", %{
-    egress: port
-  } do
+  test "Blob: container PUT comp=lease/acl answers 400 InvalidQueryParameterValue over the wire",
+       %{
+         egress: port
+       } do
     for comp <- ["lease", "acl"] do
       resp =
         http_request(port, "PUT", "/wireacct/r155cont?comp=#{comp}",
@@ -217,9 +254,10 @@ defmodule Smalt.Wire.EgressWireTest do
   end
 
   @tag :wire
-  test "Blob: container GET comp=lease/acl answers 400 InvalidQueryParameterValue over the wire", %{
-    egress: port
-  } do
+  test "Blob: container GET comp=lease/acl answers 400 InvalidQueryParameterValue over the wire",
+       %{
+         egress: port
+       } do
     for comp <- ["lease", "acl"] do
       resp =
         http_request(port, "GET", "/wireacct/r155cont?comp=#{comp}",
@@ -280,6 +318,7 @@ defmodule Smalt.Wire.EgressWireTest do
 
     assert patch.status == 200, "valid patch answered #{patch.status}: #{patch.body}"
     assert Jason.decode!(patch.body)["code"] == "A2"
+
     assert is_binary(Jason.decode!(patch.body)["_etag"]) and
              Jason.decode!(patch.body)["_etag"] != ""
 
@@ -290,8 +329,7 @@ defmodule Smalt.Wire.EgressWireTest do
           {"content-type", "application/json"},
           {"x-ms-documentdb-partitionkey", ~s(["w2"])}
         ],
-        body:
-          Jason.encode!([%{"op" => "replace", "path" => "/tenantId", "value" => "elsewhere"}])
+        body: Jason.encode!([%{"op" => "replace", "path" => "/tenantId", "value" => "elsewhere"}])
       )
 
     assert pk_move.status == 400, "pk-move answered #{pk_move.status}: #{pk_move.body}"
@@ -380,9 +418,10 @@ defmodule Smalt.Wire.EgressWireTest do
   # verbatim).
   # ---------------------------------------------------------------------
   @tag :wire
-  test "R137: encoded reserved namespace PUT answers 404 and stores nothing; encoded dbs GET answers 400; plain splat stays 201", %{
-    egress: port
-  } do
+  test "R137: encoded reserved namespace PUT answers 404 and stores nothing; encoded dbs GET answers 400; plain splat stays 201",
+       %{
+         egress: port
+       } do
     # PUT /%6beys/vltkey?restype=container (encoded "keys"): KV-plane 404
     # envelope, naming the reserved namespace and the nothing-stored law.
     enc_put =
@@ -413,6 +452,7 @@ defmodule Smalt.Wire.EgressWireTest do
 
     assert flat["code"] == "NotImplemented",
            "encoded dbs GET body: #{enc_get.body}"
+
     assert String.contains?(flat["message"], "reserved namespace 'dbs'")
 
     # Whitelist law flip witness: the same blob-shaped PUT with a PLAIN
@@ -435,9 +475,10 @@ defmodule Smalt.Wire.EgressWireTest do
   # parity).
   # ---------------------------------------------------------------------
   @tag :wire
-  test "R185h: concurrent metadata PUTs vs hold toggles over the wire answer only 200/409 and leave the row coherent", %{
-    egress: port
-  } do
+  test "R185h: concurrent metadata PUTs vs hold toggles over the wire answer only 200/409 and leave the row coherent",
+       %{
+         egress: port
+       } do
     acct = "r185h-#{System.unique_integer([:positive])}"
     cont = "c01"
 
@@ -516,14 +557,16 @@ defmodule Smalt.Wire.EgressWireTest do
       )
 
     assert get.status == 200
+
     assert String.contains?(get.headers, "x-ms-legal-hold") and
              String.contains?(get.headers, "x-ms-legal-hold: true")
   end
 
   @tag :wire
-  test "R185h: metadata PUT under an active hold answers 409 ContainerLocked with stamped x-ms-error-code", %{
-    egress: port
-  } do
+  test "R185h: metadata PUT under an active hold answers 409 ContainerLocked with stamped x-ms-error-code",
+       %{
+         egress: port
+       } do
     acct = "r185h-#{System.unique_integer([:positive])}"
     cont = "c02"
 
@@ -808,9 +851,10 @@ defmodule Smalt.Wire.EgressWireTest do
   end
 
   @tag :wire
-  test "Blob: GET sharesnapshot=<ts> reads back the frozen bytes byte-exact; later base mutations stay invisible", %{
-    egress: port
-  } do
+  test "Blob: GET sharesnapshot=<ts> reads back the frozen bytes byte-exact; later base mutations stay invisible",
+       %{
+         egress: port
+       } do
     acct = "snap-#{System.unique_integer([:positive])}"
     cont = "c01"
 
@@ -882,7 +926,9 @@ defmodule Smalt.Wire.EgressWireTest do
   end
 
   @tag :wire
-  test "Blob: GET comp=metadata echoes the x-ms-meta-* written by PUT comp=metadata", %{egress: port} do
+  test "Blob: GET comp=metadata echoes the x-ms-meta-* written by PUT comp=metadata", %{
+    egress: port
+  } do
     acct = "meta-#{System.unique_integer([:positive])}"
     cont = "c01"
 
@@ -923,7 +969,9 @@ defmodule Smalt.Wire.EgressWireTest do
   end
 
   @tag :wire
-  test "Blob: snapshot create under an active legal hold answers 409 ContainerLocked", %{egress: port} do
+  test "Blob: snapshot create under an active legal hold answers 409 ContainerLocked", %{
+    egress: port
+  } do
     acct = "snap-#{System.unique_integer([:positive])}"
     cont = "c01"
 
@@ -954,10 +1002,10 @@ defmodule Smalt.Wire.EgressWireTest do
       )
 
     assert snap.status == 409, "snapshot under hold answered #{snap.status}: #{snap.body}"
+
     assert String.contains?(snap.headers, "x-ms-error-code: ContainerLocked") or
              String.contains?(snap.body, "ContainerLocked")
   end
-
 
   # Teardown resilience: fall back to a hard kill if graceful stop fails.
   # Teardown only — assertions are never softened.

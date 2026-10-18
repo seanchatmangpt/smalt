@@ -82,7 +82,11 @@ defmodule EgressSecretsTest do
       conn = call(:get, "/secrets")
       assert conn.status == 200
       %{"value" => items} = Jason.decode!(conn.resp_body)
-      names = Enum.map(items, & &1["id"]) |> Enum.map(fn id -> id |> String.split("/") |> Enum.at(4) end)
+
+      names =
+        Enum.map(items, & &1["id"])
+        |> Enum.map(fn id -> id |> String.split("/") |> Enum.at(4) end)
+
       assert MapSet.new(names) |> MapSet.equal?(MapSet.new(["s1", "s2"]))
       refute Enum.any?(items, &Map.has_key?(&1, "value"))
     end

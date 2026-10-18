@@ -1,5 +1,6 @@
 defmodule Smalt.Amqp.ManagementRpc do
   require Logger
+
   @moduledoc """
   `$management` request/response handling (Service Bus emulator dialect).
 
@@ -75,12 +76,17 @@ defmodule Smalt.Amqp.ManagementRpc do
 
   # Service Bus operation names (the pre-KD19 surface plus the GAP-A2-05/06/07
   # session/DLQ management surface).
-  @sb_ops ["com.microsoft:renew-lock", "com.microsoft:renew-session-lock",
-           "com.microsoft:peek-message", "com.microsoft:update-disposition",
-           "com.microsoft:receive-by-sequence-number",
-           "com.microsoft:set-session-state", "com.microsoft:get-session-state",
-           "com.microsoft:get-message-sessions",
-           "com.microsoft:batch-delete-messages"]
+  @sb_ops [
+    "com.microsoft:renew-lock",
+    "com.microsoft:renew-session-lock",
+    "com.microsoft:peek-message",
+    "com.microsoft:update-disposition",
+    "com.microsoft:receive-by-sequence-number",
+    "com.microsoft:set-session-state",
+    "com.microsoft:get-session-state",
+    "com.microsoft:get-message-sessions",
+    "com.microsoft:batch-delete-messages"
+  ]
 
   # KD-19: hub topology shim — the probe's hub is created with two partitions.
   @eh_partition_ids ["0", "1"]
@@ -117,18 +123,41 @@ defmodule Smalt.Amqp.ManagementRpc do
     body = Map.get(request, :body, %{})
 
     case normalize_op(op, Map.get(request, :type)) do
-      :renew_lock -> renew_lock(body, correlation_id, context, now)
-      :renew_session_lock -> renew_session_lock(body, request[:queue], correlation_id, context, now)
-      :peek_message -> peek_message(body, request[:queue], correlation_id, context, now)
-      :update_disposition -> update_disposition(body, request[:queue], correlation_id, context, now)
-      :receive_by_sequence_number -> receive_by_sequence_number(body, request[:queue], correlation_id, context, now)
-      :set_session_state -> set_session_state(body, request[:queue], correlation_id, context, now)
-      :get_session_state -> get_session_state(body, request[:queue], correlation_id, context, now)
-      :get_message_sessions -> get_message_sessions(body, request[:queue], correlation_id, context, now)
-      :batch_delete_messages -> batch_delete_messages(body, request[:queue], correlation_id, context, now)
-      :read_eventhub -> read_eventhub(request, correlation_id, now)
-      :read_partition -> read_partition(request, correlation_id, now)
-      :unknown -> respond(501, "UNSUPPORTED_OPERATION", nil, correlation_id)
+      :renew_lock ->
+        renew_lock(body, correlation_id, context, now)
+
+      :renew_session_lock ->
+        renew_session_lock(body, request[:queue], correlation_id, context, now)
+
+      :peek_message ->
+        peek_message(body, request[:queue], correlation_id, context, now)
+
+      :update_disposition ->
+        update_disposition(body, request[:queue], correlation_id, context, now)
+
+      :receive_by_sequence_number ->
+        receive_by_sequence_number(body, request[:queue], correlation_id, context, now)
+
+      :set_session_state ->
+        set_session_state(body, request[:queue], correlation_id, context, now)
+
+      :get_session_state ->
+        get_session_state(body, request[:queue], correlation_id, context, now)
+
+      :get_message_sessions ->
+        get_message_sessions(body, request[:queue], correlation_id, context, now)
+
+      :batch_delete_messages ->
+        batch_delete_messages(body, request[:queue], correlation_id, context, now)
+
+      :read_eventhub ->
+        read_eventhub(request, correlation_id, now)
+
+      :read_partition ->
+        read_partition(request, correlation_id, now)
+
+      :unknown ->
+        respond(501, "UNSUPPORTED_OPERATION", nil, correlation_id)
     end
   end
 
@@ -159,7 +188,10 @@ defmodule Smalt.Amqp.ManagementRpc do
       true ->
         case renew_each(lock_tokens, context, now) do
           {:ok, expirations} ->
-            respond(200, "OK", %{"expirations" => Enum.map(expirations, &{:timestamp, &1})},
+            respond(
+              200,
+              "OK",
+              %{"expirations" => Enum.map(expirations, &{:timestamp, &1})},
               correlation_id
             )
 
@@ -345,11 +377,20 @@ defmodule Smalt.Amqp.ManagementRpc do
     do: store_call(context, queue, :complete, [queue, lock.seq])
 
   defp apply_disposition("abandoned", lock, _body, queue, context),
-    do: store_call(context, queue, :release, [queue, lock.seq, [now_ms: System.system_time(:millisecond)]])
+    do:
+      store_call(context, queue, :release, [
+        queue,
+        lock.seq,
+        [now_ms: System.system_time(:millisecond)]
+      ])
 
   defp apply_disposition("suspended", lock, body, queue, context) do
-    reason = body_field(body, "dead-letter-reason") || body_field(body, "deadletter-reason") || "DeadLetter"
-    description = body_field(body, "dead-letter-description") || body_field(body, "deadletter-description")
+    reason =
+      body_field(body, "dead-letter-reason") || body_field(body, "deadletter-reason") ||
+        "DeadLetter"
+
+    description =
+      body_field(body, "dead-letter-description") || body_field(body, "deadletter-description")
 
     # V261014-08 task 08-3: custom dead-letter-properties (string ->
     # primitive map) ride through to the DLQ message's application
@@ -357,7 +398,13 @@ defmodule Smalt.Amqp.ManagementRpc do
     props = body_field(body, "dead-letter-properties") || %{}
     props = if is_map(props), do: props, else: %{}
 
-    store_call(context, queue, :deadletter, [queue, lock.seq, reason, description, [properties: props]])
+    store_call(context, queue, :deadletter, [
+      queue,
+      lock.seq,
+      reason,
+      description,
+      [properties: props]
+    ])
   end
 
   defp apply_disposition("defered", lock, _body, queue, context),
@@ -409,7 +456,11 @@ defmodule Smalt.Amqp.ManagementRpc do
         respond(400, "SEQUENCE_NUMBERS_REQUIRED", nil, correlation_id)
 
       true ->
-        case invoke(context, :queue_store, @default_queue_store, :receive_deferred, [queue, seqs, [now_ms: now]]) do
+        case invoke(context, :queue_store, @default_queue_store, :receive_deferred, [
+               queue,
+               seqs,
+               [now_ms: now]
+             ]) do
           {:ok, messages} when is_list(messages) ->
             payload = %{
               "messages" =>
@@ -517,7 +568,10 @@ defmodule Smalt.Amqp.ManagementRpc do
       true ->
         case store_call(context, :list_sessions, [queue, [skip: skip, top: top]]) do
           {:ok, ids} when is_list(ids) ->
-            respond(200, "OK", %{"sessions-ids" => ids, "skip" => skip + length(ids)},
+            respond(
+              200,
+              "OK",
+              %{"sessions-ids" => ids, "skip" => skip + length(ids)},
               correlation_id
             )
 
@@ -581,12 +635,17 @@ defmodule Smalt.Amqp.ManagementRpc do
   # reads info.created_at via new Date(...) — an AMQP timestamp section
   # ({:timestamp, ms}) round-trips as a Date.
   defp read_eventhub(request, correlation_id, now) do
-    respond(200, "OK", %{
-      "name" => eh_entity(request),
-      "created_at" => {:timestamp, now},
-      "partition_ids" => @eh_partition_ids,
-      "georeplication_factor" => 1
-    }, correlation_id)
+    respond(
+      200,
+      "OK",
+      %{
+        "name" => eh_entity(request),
+        "created_at" => {:timestamp, now},
+        "partition_ids" => @eh_partition_ids,
+        "georeplication_factor" => 1
+      },
+      correlation_id
+    )
   end
 
   # Partition runtime info. READ is non-mutating: the last enqueued sequence is
@@ -601,15 +660,20 @@ defmodule Smalt.Amqp.ManagementRpc do
       row = eh_partition_row(partition)
       last = eh_last_seq(row)
 
-      respond(200, "OK", %{
-        "name" => eh_entity(request),
-        "partition" => partition,
-        "begin_sequence_number" => 1,
-        "last_enqueued_sequence_number" => last,
-        "last_enqueued_time_utc" => {:timestamp, if(last == 0, do: 0, else: now)},
-        "last_enqueued_offset" => to_string(last),
-        "is_partition_empty" => last == 0
-      }, correlation_id)
+      respond(
+        200,
+        "OK",
+        %{
+          "name" => eh_entity(request),
+          "partition" => partition,
+          "begin_sequence_number" => 1,
+          "last_enqueued_sequence_number" => last,
+          "last_enqueued_time_utc" => {:timestamp, if(last == 0, do: 0, else: now)},
+          "last_enqueued_offset" => to_string(last),
+          "is_partition_empty" => last == 0
+        },
+        correlation_id
+      )
     else
       respond(404, "PARTITION_NOT_FOUND", nil, correlation_id)
     end
@@ -795,12 +859,14 @@ defmodule Smalt.Amqp.ManagementRpc do
 
   defp coerce_long(n) when is_integer(n), do: n
   defp coerce_long(n) when is_float(n), do: trunc(n)
+
   defp coerce_long(binary) when is_binary(binary) do
     case Integer.parse(binary) do
       {n, ""} -> n
       _ -> :error
     end
   end
+
   defp coerce_long(_), do: :error
 
   # R135 (W5-17): management ops that resolve an entity by name must accept

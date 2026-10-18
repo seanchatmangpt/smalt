@@ -7,8 +7,7 @@ defmodule Smalt.Application do
     children =
       [
         Smalt.Store,
-        {Bandit,
-         plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port(), ip: bind_ip()},
+        {Bandit, plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port(), ip: bind_ip()},
         # TLS twin of the ARM gateway (https), for https-only clients such as
         # azurerm's ARM_METADATA_HOST fetch, which hardcodes the https scheme.
         # Also serves the Key Vault data-plane surface (/keys/*) over TLS so
@@ -18,15 +17,17 @@ defmodule Smalt.Application do
         # application.ex (owned by another lane); additive single child, cert
         # via Smalt.TLS.ensure_dev_cert/0.
         {Bandit, arm_tls_opts() ++ [ip: bind_ip()]},
-        {Bandit,
-         plug: Smalt.EgressRouter, scheme: :http, port: egress_port(), ip: bind_ip()},
+        {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: egress_port(), ip: bind_ip()},
         # MCP read-only tool surface (lane I15): JSON-RPC 2.0, actuation
         # refused by the router's @actuation_fragments gate (SHIM-COURT:
         # unregistered+verb id -> ACTUATION_REFUSED; other unknown id ->
         # TOOL_NOT_FOUND; registered ids via Descriptor.describe/1) — no DO
         # from MCP.
-        {Bandit, plug: {Smalt.Mcp.Router, []}, scheme: :http,
-         port: Application.get_env(:smalt, :mcp_port, 9545), ip: bind_ip()},
+        {Bandit,
+         plug: {Smalt.Mcp.Router, []},
+         scheme: :http,
+         port: Application.get_env(:smalt, :mcp_port, 9545),
+         ip: bind_ip()},
         {Smalt.AmqpBroker, []},
         Smalt.Telemetry.RollingCounters,
         # ARM LRO at-rest sweeper (lane 05, V261014-05 — disclosed additive
@@ -120,6 +121,7 @@ defmodule Smalt.Application do
         end
     end
   end
+
   defp arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
 
   # TLS twin dispatch: ARM paths to ArmGateway.Router, Key Vault / data-plane
@@ -168,5 +170,6 @@ defmodule Smalt.Application do
   defp arm_tls_opts do
     Smalt.TLS.bandit_opts(TlsTwinDispatch, arm_tls_port())
   end
+
   defp egress_port, do: Application.get_env(:smalt, :egress_port, 8443)
 end

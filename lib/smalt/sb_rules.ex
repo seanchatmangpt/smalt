@@ -93,7 +93,7 @@ defmodule Smalt.SbRules do
     props = unwrap_filter(props)
 
     case normalize_filter(props) do
-      {:ok, {:true, _}} -> true
+      {:ok, {true, _}} -> true
       _ -> false
     end
   end
@@ -145,18 +145,29 @@ defmodule Smalt.SbRules do
 
   defp normalize_filter(props) do
     cond do
-      sql = props["sqlExpression"] -> {:ok, {:sql, sql}}
+      sql = props["sqlExpression"] ->
+        {:ok, {:sql, sql}}
+
       props["correlationId"] || props["properties"] || props["subject"] ||
-      props["replyTo"] || props["to"] || props["sessionId"] -> {:ok, {:correlation, props}}
-      props["trueFilter"] -> {:ok, {:true, nil}}
-      true -> {:ok, {:true, nil}}
+        props["replyTo"] || props["to"] || props["sessionId"] ->
+        {:ok, {:correlation, props}}
+
+      props["trueFilter"] ->
+        {:ok, {true, nil}}
+
+      true ->
+        {:ok, {true, nil}}
     end
   end
 
   defp parse_filter(props) do
     case normalize_filter(props) do
-      {:ok, {:true, _}} -> {:ok, {:true, nil}}
-      {:ok, {:correlation, corr}} -> {:ok, {:correlation, corr}}
+      {:ok, {true, _}} ->
+        {:ok, {true, nil}}
+
+      {:ok, {:correlation, corr}} ->
+        {:ok, {:correlation, corr}}
+
       {:ok, {:sql, sql}} ->
         case parse_sql(sql) do
           {:ok, ast} -> {:ok, {:sql_ast, ast}}
@@ -167,26 +178,31 @@ defmodule Smalt.SbRules do
 
   defp parse_action(props) do
     case props["action"] do
-      nil -> :ok
+      nil ->
+        :ok
+
       %{"sqlExpression" => sql} when is_binary(sql) and sql != "" ->
         case parse_set_action(sql) do
           {:ok, _sets} -> :ok
           {:error, fragment} -> {:error, :invalid_action, fragment}
         end
-      _ -> :ok
+
+      _ ->
+        :ok
     end
   end
 
   # --- Correlation filter matching ------------------------------------------------
 
-  defp filter_matches?({:true, _}, _msg), do: true
+  defp filter_matches?({true, _}, _msg), do: true
 
   defp filter_matches?({:correlation, corr}, msg) do
     corr_id = corr["correlationId"]
     app = msg[:app_props] || %{}
 
     id_ok =
-      is_nil(corr_id) or (is_binary(corr_id) and (msg[:message_id] == corr_id or app["correlation-id"] == corr_id))
+      is_nil(corr_id) or
+        (is_binary(corr_id) and (msg[:message_id] == corr_id or app["correlation-id"] == corr_id))
 
     props_ok =
       case corr["properties"] do
@@ -234,7 +250,9 @@ defmodule Smalt.SbRules do
   defp eval({:and, a, b}, msg), do: eval(a, msg) and eval(b, msg)
   defp eval({:or, a, b}, msg), do: eval(a, msg) or eval(b, msg)
 
-  defp lookup("sys.label", msg), do: if(is_nil(msg[:label]), do: :missing, else: {:ok, msg[:label]})
+  defp lookup("sys.label", msg),
+    do: if(is_nil(msg[:label]), do: :missing, else: {:ok, msg[:label]})
+
   defp lookup("sys." <> _rest, _msg), do: :missing
 
   defp lookup(path, msg) do
@@ -447,6 +465,7 @@ defmodule Smalt.SbRules do
 
   defp parse_set_list(body) do
     parts = split_top_commas(body)
+
     Enum.reduce_while(parts, {:ok, []}, fn part, {:ok, acc} ->
       case Regex.run(~r/^\s*([\w.]+)\s*=\s*('.*?'|-?\d+(\.\d+)?)\s*$/, part) do
         [_, name, lit] -> {:cont, {:ok, [{name, unquote_lit(lit)} | acc]}}
@@ -471,7 +490,9 @@ defmodule Smalt.SbRules do
 
   defp unquote_lit(lit) do
     case Integer.parse(lit) do
-      {n, ""} -> n
+      {n, ""} ->
+        n
+
       _ ->
         {f, _} = Float.parse(lit)
         f
@@ -521,9 +542,7 @@ defmodule Smalt.SbRules do
   """
   def fan_out(sub_base, ns, topic, msg) do
     subs_prefix =
-      String.downcase(
-        "#{sub_base}/namespaces/#{ns}/topics/#{topic}/subscriptions/"
-      )
+      String.downcase("#{sub_base}/namespaces/#{ns}/topics/#{topic}/subscriptions/")
 
     # Subscriptions are ARM resources (:smalt_resources); rules live in
     # :smalt_sb_rules — two different tables, never one `store` param.

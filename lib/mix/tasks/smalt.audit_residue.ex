@@ -31,7 +31,9 @@ defmodule Mix.Tasks.Smalt.AuditResidue do
         EnclaveCommon.help!(@moduledoc)
 
       invalid != [] or argv != [] ->
-        EnclaveCommon.fail!(":bad_args task=smalt.audit_residue invalid=#{inspect(invalid)} argv=#{inspect(argv)}")
+        EnclaveCommon.fail!(
+          ":bad_args task=smalt.audit_residue invalid=#{inspect(invalid)} argv=#{inspect(argv)}"
+        )
 
       true ->
         main(opts)

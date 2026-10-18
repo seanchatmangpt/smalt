@@ -114,8 +114,12 @@ defmodule Smalt.FinOps.Calculator do
           non_neg_integer()
   def avoided_tariff_cents!(resource_type, quantity, opts \\ []) do
     case avoided_tariff_cents(resource_type, quantity, opts) do
-      {:ok, cents} -> cents
-      {:error, reason} -> raise ArgumentError, "finops: #{reason} (#{inspect(resource_type)}/#{inspect(opts[:region])})"
+      {:ok, cents} ->
+        cents
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "finops: #{reason} (#{inspect(resource_type)}/#{inspect(opts[:region])})"
     end
   end
 

@@ -251,8 +251,15 @@ defmodule Smalt.Messaging.EventHubs do
 
   # Message sections that precede the body: seeing one in a bodyless tail means
   # an inner message started but never reached its body section.
-  defp pre_body_section?({k, _}) when k in [:header, :delivery_annotations, :message_annotations, :properties, :application_properties],
-    do: true
+  defp pre_body_section?({k, _})
+       when k in [
+              :header,
+              :delivery_annotations,
+              :message_annotations,
+              :properties,
+              :application_properties
+            ],
+       do: true
 
   defp pre_body_section?(_), do: false
 
@@ -559,10 +566,11 @@ defmodule Smalt.Messaging.EventHubs do
         end
 
       if Map.delete(current, "claim") == expect do
-        cp = case current["claim"] do
-          nil -> new
-          claim -> Map.put(new, "claim", claim)
-        end
+        cp =
+          case current["claim"] do
+            nil -> new
+            claim -> Map.put(new, "claim", claim)
+          end
 
         :ets.insert(@checkpoints, {key, cp})
         {:reply, :ok, state}

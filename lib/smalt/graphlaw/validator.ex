@@ -178,42 +178,47 @@ defmodule Smalt.GraphLaw.Validator.ShapeFile do
 
   defp add_property(shape, block, source) do
     {prop, _last_keyword} =
-      Enum.reduce(block, {%{path: nil, min_count: nil, max_count: nil, datatype: nil, message: nil}, nil}, fn
-        {:punct, _}, acc ->
-          acc
+      Enum.reduce(
+        block,
+        {%{path: nil, min_count: nil, max_count: nil, datatype: nil, message: nil}, nil},
+        fn
+          {:punct, _}, acc ->
+            acc
 
-        # value tokens arrive bound to the keyword that preceded them
-        {:word, keyword}, {prop, _}
-        when keyword in @datatype_keywords ->
-          {prop, keyword}
+          # value tokens arrive bound to the keyword that preceded them
+          {:word, keyword}, {prop, _}
+          when keyword in @datatype_keywords ->
+            {prop, keyword}
 
-        value, {prop, "sh:path"} ->
-          {%{prop | path: term_value(value)}, nil}
+          value, {prop, "sh:path"} ->
+            {%{prop | path: term_value(value)}, nil}
 
-        value, {prop, "sh:minCount"} ->
-          {%{prop | min_count: parse_int(value, "sh:minCount", source)}, nil}
+          value, {prop, "sh:minCount"} ->
+            {%{prop | min_count: parse_int(value, "sh:minCount", source)}, nil}
 
-        value, {prop, "sh:maxCount"} ->
-          {%{prop | max_count: parse_int(value, "sh:maxCount", source)}, nil}
+          value, {prop, "sh:maxCount"} ->
+            {%{prop | max_count: parse_int(value, "sh:maxCount", source)}, nil}
 
-        value, {prop, "sh:datatype"} ->
-          {%{prop | datatype: parse_datatype(value, source)}, nil}
+          value, {prop, "sh:datatype"} ->
+            {%{prop | datatype: parse_datatype(value, source)}, nil}
 
-        {:string, msg}, {prop, "sh:message"} ->
-          {%{prop | message: msg}, nil}
+          {:string, msg}, {prop, "sh:message"} ->
+            {%{prop | message: msg}, nil}
 
-        # unknown keyword: the error names the actual offending keyword,
-        # never a misrouted sh:minCount parse failure
-        {:word, keyword}, _acc ->
-          raise CompileError,
-            file: source,
-            description: "unsupported sh:property constraint #{inspect(keyword)}"
+          # unknown keyword: the error names the actual offending keyword,
+          # never a misrouted sh:minCount parse failure
+          {:word, keyword}, _acc ->
+            raise CompileError,
+              file: source,
+              description: "unsupported sh:property constraint #{inspect(keyword)}"
 
-        value, {_prop, nil} ->
-          raise CompileError,
-            file: source,
-            description: "unexpected property value #{inspect(value)} before any constraint keyword"
-      end)
+          value, {_prop, nil} ->
+            raise CompileError,
+              file: source,
+              description:
+                "unexpected property value #{inspect(value)} before any constraint keyword"
+        end
+      )
 
     case prop do
       %{path: nil} ->
@@ -228,9 +233,15 @@ defmodule Smalt.GraphLaw.Validator.ShapeFile do
           shape
           | required:
               shape.required ++
-                [%{path: path, min_count: prop.min_count || 1,
-                   max_count: prop.max_count, datatype: prop.datatype,
-                   message: prop.message}]
+                [
+                  %{
+                    path: path,
+                    min_count: prop.min_count || 1,
+                    max_count: prop.max_count,
+                    datatype: prop.datatype,
+                    message: prop.message
+                  }
+                ]
         }
     end
   end
@@ -253,15 +264,17 @@ defmodule Smalt.GraphLaw.Validator.ShapeFile do
   defp parse_datatype({:word, word}, source) do
     raise CompileError,
       file: source,
-      description: "unsupported sh:datatype #{inspect(word)} " <>
-        "(supported: xsd:string, xsd:integer, xsd:boolean)"
+      description:
+        "unsupported sh:datatype #{inspect(word)} " <>
+          "(supported: xsd:string, xsd:integer, xsd:boolean)"
   end
 
   defp parse_datatype(value, source) do
     raise CompileError,
       file: source,
-      description: "unsupported sh:datatype #{inspect(value)} " <>
-        "(supported: xsd:string, xsd:integer, xsd:boolean)"
+      description:
+        "unsupported sh:datatype #{inspect(value)} " <>
+          "(supported: xsd:string, xsd:integer, xsd:boolean)"
   end
 
   defp term_value({:string, s}), do: s
@@ -490,7 +503,10 @@ defmodule Smalt.GraphLaw.Validator do
                   path: path,
                   constraint: "datatype",
                   message:
-                    "property " <> path <> " must be a JSON " <> Atom.to_string(datatype) <>
+                    "property " <>
+                      path <>
+                      " must be a JSON " <>
+                      Atom.to_string(datatype) <>
                       " (sh:datatype xsd:" <> Atom.to_string(datatype) <> ")"
                 }
               ]

@@ -30,7 +30,10 @@ defmodule Smalt.KvSecretsChildrenTest do
     conn(
       :put,
       "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.KeyVault/vaults/#{vault}?api-version=2021-04-01",
-      %{"location" => "eastus", "properties" => %{"sku" => %{"name" => "standard", "family" => "A"}}}
+      %{
+        "location" => "eastus",
+        "properties" => %{"sku" => %{"name" => "standard", "family" => "A"}}
+      }
     )
     |> call()
     |> tap(fn c -> assert c.status == 201 end)

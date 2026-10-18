@@ -63,8 +63,11 @@ defmodule ApiVersionMatrixTest do
     # Parents created in dependency order through the real router. Payloads
     # satisfy the GraphLaw shapes (priv/shacl/smalt-shapes.ttl): SB namespaces
     # need properties.skuName; EH hub needs nothing beyond location.
-    create("Microsoft.ServiceBus/namespaces", "providers/Microsoft.ServiceBus/namespaces/matrix-ns",
-           %{"location" => "eastus", "properties" => %{"skuName" => "Standard"}})
+    create(
+      "Microsoft.ServiceBus/namespaces",
+      "providers/Microsoft.ServiceBus/namespaces/matrix-ns",
+      %{"location" => "eastus", "properties" => %{"skuName" => "Standard"}}
+    )
 
     # Topic and hub are themselves UNADMITTED (the defect under test), so a
     # router PUT refuses with InvalidResourceShape and the nested parent never
@@ -72,14 +75,22 @@ defmodule ApiVersionMatrixTest do
     # handle_child_put/5 derives, so the child fence rows hit the real route.
     Store.put(
       :smalt_resources,
-      String.downcase("/subscriptions/#{@sub}/resourceGroups/#{@rg}/namespaces/matrix-ns/topics/matrix-topic"),
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/#{@rg}/namespaces/matrix-ns/topics/matrix-topic"
+      ),
       %{"id" => "seeded", "type" => "Microsoft.ServiceBus/namespaces/topics", "properties" => %{}}
     )
 
     Store.put(
       :smalt_resources,
-      String.downcase("/subscriptions/#{@sub}/resourceGroups/#{@rg}/namespaces/matrix-ehns/eventhubs/matrix-hub"),
-      %{"id" => "seeded", "type" => "Microsoft.EventHub/namespaces/eventhubs", "properties" => %{}}
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/#{@rg}/namespaces/matrix-ehns/eventhubs/matrix-hub"
+      ),
+      %{
+        "id" => "seeded",
+        "type" => "Microsoft.EventHub/namespaces/eventhubs",
+        "properties" => %{}
+      }
     )
 
     # privateDnsZones parent for the virtualNetworkLinks child row (admitted,
@@ -90,12 +101,17 @@ defmodule ApiVersionMatrixTest do
       %{"id" => "seeded", "type" => "Microsoft.Network/privateDnsZones", "properties" => %{}}
     )
 
-    create("Microsoft.EventHub/namespaces", "providers/Microsoft.EventHub/namespaces/matrix-ehns",
-           %{"location" => "eastus", "properties" => %{}})
+    create(
+      "Microsoft.EventHub/namespaces",
+      "providers/Microsoft.EventHub/namespaces/matrix-ehns",
+      %{"location" => "eastus", "properties" => %{}}
+    )
 
-    create("Microsoft.EventHub/namespaces/eventhubs",
-           "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub",
-           %{"location" => "eastus", "properties" => %{}})
+    create(
+      "Microsoft.EventHub/namespaces/eventhubs",
+      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub",
+      %{"location" => "eastus", "properties" => %{}}
+    )
   end
 
   defp create(parent_type, path, payload) do
@@ -133,9 +149,11 @@ defmodule ApiVersionMatrixTest do
   # Child-path types with DEDICATED PUT routes in router.ex (grep of
   # handle_child_put call sites; each row cites the route's file:line).
   @child_routes [
-    {"Microsoft.Network/subnets", "providers/Microsoft.Network/virtualNetworks/matrix-vnet/subnets/matrix-subnet",
+    {"Microsoft.Network/subnets",
+     "providers/Microsoft.Network/virtualNetworks/matrix-vnet/subnets/matrix-subnet",
      "lib/smalt/arm_gateway/router.ex:1496"},
-    {"Microsoft.KeyVault/vaults/keys", "providers/Microsoft.KeyVault/vaults/matrix-vault/keys/matrix-key",
+    {"Microsoft.KeyVault/vaults/keys",
+     "providers/Microsoft.KeyVault/vaults/matrix-vault/keys/matrix-key",
      "lib/smalt/arm_gateway/router.ex:1537"},
     {"Microsoft.Storage/storageAccounts/blobServices",
      "providers/Microsoft.Storage/storageAccounts/matrix-acct/blobServices/default",
@@ -153,20 +171,17 @@ defmodule ApiVersionMatrixTest do
   # api-version fence below pins the expected 400 InvalidApiVersionParameter
   # for them too; rows go red until Registry admits the type.
   @parented_routes [
-    {"Microsoft.ServiceBus/namespaces/queues",
-     {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
+    {"Microsoft.ServiceBus/namespaces/queues", {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/queues/matrix-queue",
      "lib/smalt/arm_gateway/router.ex:1691"},
-    {"Microsoft.ServiceBus/namespaces/topics",
-     {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
+    {"Microsoft.ServiceBus/namespaces/topics", {"Microsoft.ServiceBus/namespaces", "matrix-ns"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic",
      "lib/smalt/arm_gateway/router.ex:1740"},
     {"Microsoft.ServiceBus/namespaces/topics/subscriptions",
      {"Microsoft.ServiceBus/namespaces/topics", "matrix-topic"},
      "providers/Microsoft.ServiceBus/namespaces/matrix-ns/topics/matrix-topic/subscriptions/matrix-sub",
      "lib/smalt/arm_gateway/router.ex:1789"},
-    {"Microsoft.EventHub/namespaces/eventhubs",
-     {"Microsoft.EventHub/namespaces", "matrix-ehns"},
+    {"Microsoft.EventHub/namespaces/eventhubs", {"Microsoft.EventHub/namespaces", "matrix-ehns"},
      "providers/Microsoft.EventHub/namespaces/matrix-ehns/eventhubs/matrix-hub",
      "lib/smalt/arm_gateway/router.ex:1838"},
     {"Microsoft.EventHub/namespaces/eventhubs/consumergroups",
@@ -184,24 +199,22 @@ defmodule ApiVersionMatrixTest do
   # Types with a landed PUT route but no dedicated child route ride the generic
   # provider PUT route (router.ex:2451): single-segment resource types only —
   # that route matches exactly :provider_ns/:resource_type/:resource_name.
-  @generic_rows (
-    Registry.admitted_resource_types()
-    |> Enum.reject(&MapSet.member?(@child_types, &1))
-    |> Enum.sort()
-    |> Enum.flat_map(fn type ->
-      case String.split(type, "/", parts: 2) do
-        [ns, leaf] ->
-          if leaf != "" and not String.contains?(leaf, "/") do
-            [{type, "providers/#{ns}/#{leaf}/matrix-res", @generic_put_line}]
-          else
-            []
-          end
+  @generic_rows Registry.admitted_resource_types()
+                |> Enum.reject(&MapSet.member?(@child_types, &1))
+                |> Enum.sort()
+                |> Enum.flat_map(fn type ->
+                  case String.split(type, "/", parts: 2) do
+                    [ns, leaf] ->
+                      if leaf != "" and not String.contains?(leaf, "/") do
+                        [{type, "providers/#{ns}/#{leaf}/matrix-res", @generic_put_line}]
+                      else
+                        []
+                      end
 
-        _ ->
-          []
-      end
-    end)
-  )
+                    _ ->
+                      []
+                  end
+                end)
 
   @matrix_rows @child_routes ++ @generic_rows
 
@@ -209,13 +222,11 @@ defmodule ApiVersionMatrixTest do
   @parented_routes_as_rows Enum.map(@parented_routes, fn {t, _, path, cite} -> {t, path, cite} end)
 
   # Admitted child-path types whose child route has NOT landed.
-  @gap_types (
-    Registry.admitted_resource_types()
-    |> MapSet.new()
-    |> MapSet.difference(MapSet.new(Enum.map(@matrix_rows, fn {t, _, _} -> t end)))
-    |> MapSet.to_list()
-    |> Enum.sort()
-  )
+  @gap_types Registry.admitted_resource_types()
+             |> MapSet.new()
+             |> MapSet.difference(MapSet.new(Enum.map(@matrix_rows, fn {t, _, _} -> t end)))
+             |> MapSet.to_list()
+             |> Enum.sort()
 
   test "route inventory rows cover every single-segment admitted type" do
     deep_single_segment =
@@ -273,7 +284,11 @@ defmodule ApiVersionMatrixTest do
         old =
           if latest do
             {:ok, d, _} = DateTime.from_iso8601("#{version_base(latest)}T00:00:00Z")
-            d |> DateTime.add(-365 * 24 * 3600, :second) |> DateTime.to_date() |> Date.to_iso8601()
+
+            d
+            |> DateTime.add(-365 * 24 * 3600, :second)
+            |> DateTime.to_date()
+            |> Date.to_iso8601()
           else
             "2019-01-01"
           end
@@ -369,6 +384,7 @@ defmodule ApiVersionMatrixTest do
     admitted = MapSet.new(Registry.admitted_resource_types())
 
     unadmitted = MapSet.difference(route_type_literals, admitted)
+
     assert MapSet.size(unadmitted) == 0,
            "router route type literals not present in Registry.admitted_resource_types/0: " <>
              inspect(MapSet.to_list(unadmitted))
@@ -383,18 +399,23 @@ defmodule ApiVersionMatrixTest do
   # Line cites re-anchored 2026-10-17 after router.ex insertions shifted the
   # route table (each still pins its family's PUT/defining route line).
   @cite_drift [
-    {"lib/smalt/arm_gateway/router.ex:2725", "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
-    {"lib/smalt/arm_gateway/router.ex:2766", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3039", "blobServices/default\""},
-    {"lib/smalt/arm_gateway/router.ex:3089", "blobServices/default/containers/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3130", "immutabilityPolicies/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3171", "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3220", "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3269", "topics/:topic/subscriptions/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3341", "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
-    {"lib/smalt/arm_gateway/router.ex:3390", "eventhubs/:hub/consumergroups/:name"},
-    {"lib/smalt/arm_gateway/router.ex:4149", "providers/:provider_ns/:resource_type/:resource_name"},
-    {"lib/smalt/arm_gateway/router.ex:1831", "Microsoft.Authorization/locks"}
+    {"lib/smalt/arm_gateway/router.ex:2751",
+     "Microsoft.Network/virtualNetworks/:parent/subnets/:name"},
+    {"lib/smalt/arm_gateway/router.ex:2792", "Microsoft.KeyVault/vaults/:parent/keys/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3105", "blobServices/default\""},
+    {"lib/smalt/arm_gateway/router.ex:3155", "blobServices/default/containers/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3196", "immutabilityPolicies/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3237",
+     "Microsoft.ServiceBus/namespaces/:parent/queues/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3286",
+     "Microsoft.ServiceBus/namespaces/:parent/topics/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3335", "topics/:topic/subscriptions/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3407",
+     "Microsoft.EventHub/namespaces/:parent/eventhubs/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3456", "eventhubs/:hub/consumergroups/:name"},
+    {"lib/smalt/arm_gateway/router.ex:3664",
+     "providers/:provider_ns/:resource_type/:resource_name"},
+    {"lib/smalt/arm_gateway/router.ex:1848", "Microsoft.Authorization/locks"}
   ]
 
   test "cite-drift fence: every router.ex:LINE citation resolves to the expected construct" do
@@ -422,7 +443,12 @@ defmodule ApiVersionMatrixTest do
     "providers/#{ns}/#{leaf}/matrix-res"
   end
 
-  defp put_resource(_type, child_path, version, payload \\ %{"location" => "eastus", "properties" => %{}}) do
+  defp put_resource(
+         _type,
+         child_path,
+         version,
+         payload \\ %{"location" => "eastus", "properties" => %{}}
+       ) do
     path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/#{child_path}"
 
     uri =
@@ -454,7 +480,8 @@ defmodule ApiVersionMatrixTest do
     # route table (matches the generic GET-resource route as vault "keys",
     # validating against Microsoft.KeyVault/vaults), and the deep types'
     # dedicated list routes are already fenced by the child-route matrix.
-    for type <- Enum.sort(Registry.admitted_resource_types()), byte_size(type) - byte_size(String.replace(type, "/", "")) == 1 do
+    for type <- Enum.sort(Registry.admitted_resource_types()),
+        byte_size(type) - byte_size(String.replace(type, "/", "")) == 1 do
       test "sweep #{type}: matched GET-list with latest passes validation" do
         type = unquote(type)
         [ns | rest] = String.split(type, "/", parts: 2)

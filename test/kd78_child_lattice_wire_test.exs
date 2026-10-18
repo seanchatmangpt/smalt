@@ -113,10 +113,12 @@ defmodule Smalt.Kd78ChildLatticeWireTest do
   # -- helpers -------------------------------------------------------------------
 
   defp child_path(:sb_queue, ns, name),
-    do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/queues/#{name}"
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/queues/#{name}"
 
   defp child_path(:eh_hub, ns, name),
-    do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.EventHub/namespaces/#{ns}/eventhubs/#{name}"
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.EventHub/namespaces/#{ns}/eventhubs/#{name}"
 
   defp put_child(path, ver) do
     conn(:put, path <> "?api-version=#{ver}", %{

@@ -25,7 +25,8 @@ defmodule Smalt.DataPlane.Purview do
   # Note the envelope body itself is a map, so the bare-map clause must not
   # catch `{"entity" => "x"}` — hence the explicit non-map-entity refusal here.
   def create_entity(%{"entity" => entity}, _opts) when not is_map(entity) do
-    {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
+    {:error, 400,
+     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
   end
 
   def create_entity(%{"entity" => entity}, opts) when is_map(entity), do: do_create(entity, opts)
@@ -33,7 +34,8 @@ defmodule Smalt.DataPlane.Purview do
   def create_entity(entity, opts) when is_map(entity), do: do_create(entity, opts)
 
   def create_entity(_body, _opts) do
-    {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
+    {:error, 400,
+     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
   end
 
   defp do_create(entity, _opts) do
@@ -77,7 +79,8 @@ defmodule Smalt.DataPlane.Purview do
   end
 
   def bulk_entities(_body, _opts) do
-    {:error, 400, %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entities array required"}}}
+    {:error, 400,
+     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entities array required"}}}
   end
 
   @doc "Fetches an entity by guid. `{:ok, 200, entity}` | `{:error, 404, body}`."
@@ -131,7 +134,8 @@ defmodule Smalt.DataPlane.Purview do
 
     edges = Store.list(:smalt_purview_edges)
 
-    {relations, visited} = walk(MapSet.new([base]), MapSet.new([base]), direction, depth, edges, MapSet.new())
+    {relations, visited} =
+      walk(MapSet.new([base]), MapSet.new([base]), direction, depth, edges, MapSet.new())
 
     guid_entity_map =
       Map.new(visited, fn g ->
@@ -172,8 +176,12 @@ defmodule Smalt.DataPlane.Purview do
           to = edge["toEntityId"]
 
           case dir do
-            "input" -> if to == guid and not MapSet.member?(visited, from), do: [from], else: []
-            "output" -> if from == guid and not MapSet.member?(visited, to), do: [to], else: []
+            "input" ->
+              if to == guid and not MapSet.member?(visited, from), do: [from], else: []
+
+            "output" ->
+              if from == guid and not MapSet.member?(visited, to), do: [to], else: []
+
             "both" ->
               cond do
                 from == guid and to == guid -> []

@@ -61,19 +61,24 @@ defmodule Smalt.DataPlane.Sentinel do
         do_ingest(dcr, stream, rows)
 
       true ->
-      {:error, 400,
-       %{
-         "error" => %{
-           "code" => "InvalidData",
-           "message" => "every record must be a JSON object"
-         }
-       }}
+        {:error, 400,
+         %{
+           "error" => %{
+             "code" => "InvalidData",
+             "message" => "every record must be a JSON object"
+           }
+         }}
     end
   end
 
   def ingest(_dcr, _stream, _rows, _other) do
     {:error, 400,
-     %{"error" => %{"code" => "InvalidApiVersion", "message" => "api-version must be #{@api_version}"}}}
+     %{
+       "error" => %{
+         "code" => "InvalidApiVersion",
+         "message" => "api-version must be #{@api_version}"
+       }
+     }}
   end
 
   # A DCR "exists" when it has prior stream state (any stream row under
@@ -254,8 +259,11 @@ defmodule Smalt.DataPlane.Sentinel do
 
       pipeline ->
         case KQL.run(stored_rows, pipeline) do
-          {:ok, rows} -> envelope(rows, project_columns(pipeline))
-          {:error, {_kind, msg}} -> {:error, 400, %{"error" => %{"code" => "BadQuery", "message" => msg}}}
+          {:ok, rows} ->
+            envelope(rows, project_columns(pipeline))
+
+          {:error, {_kind, msg}} ->
+            {:error, 400, %{"error" => %{"code" => "BadQuery", "message" => msg}}}
         end
     end
   end
@@ -272,7 +280,8 @@ defmodule Smalt.DataPlane.Sentinel do
        "tables" => [
          %{
            "name" => "PrimaryResult",
-           "columns" => Enum.map(columns, fn name -> %{"name" => name, "type" => column_type(rows, name)} end),
+           "columns" =>
+             Enum.map(columns, fn name -> %{"name" => name, "type" => column_type(rows, name)} end),
            "rows" => Enum.map(rows, fn row -> Enum.map(columns, &stringify(Map.get(row, &1))) end)
          }
        ]
@@ -332,7 +341,9 @@ defmodule Smalt.DataPlane.Sentinel do
     |> Enum.map(&Map.get(&1, column))
     |> Enum.reject(&is_nil/1)
     |> case do
-      [] -> "string"
+      [] ->
+        "string"
+
       values ->
         cond do
           Enum.all?(values, &is_integer/1) -> "long"
@@ -390,7 +401,14 @@ defmodule Smalt.DataPlane.Sentinel do
     end
   end
 
-  @base_columns ["TimeGenerated", "ledgerId", "tenantId", "subjectSha256", "eventId", "sha256Hash"]
+  @base_columns [
+    "TimeGenerated",
+    "ledgerId",
+    "tenantId",
+    "subjectSha256",
+    "eventId",
+    "sha256Hash"
+  ]
 
   defp columns_for([]), do: @base_columns
 

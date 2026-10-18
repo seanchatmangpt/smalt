@@ -334,7 +334,7 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("arm.get", args) do
     with %{"resource_group" => rg, "resource_type" => type, "resource_name" => name}
-           when is_binary(rg) and is_binary(type) and is_binary(name) <-
+         when is_binary(rg) and is_binary(type) and is_binary(name) <-
            args,
          sub when is_binary(sub) <- Map.get(args, "subscription_id", default_subscription()),
          res_id =
@@ -355,7 +355,12 @@ defmodule Smalt.Mcp.Router do
     case args do
       %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
         with {:ok, headers} <- partition_key_headers(args["partition_key"]) do
-          case Smalt.DataPlane.Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, headers) do
+          case Smalt.DataPlane.Cosmos.query_docs(
+                 db,
+                 coll,
+                 %{"query" => "SELECT * FROM c"},
+                 headers
+               ) do
             {:ok, 200, _headers, body} ->
               {:ok, body}
 

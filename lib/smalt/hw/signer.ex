@@ -42,6 +42,7 @@ defmodule Smalt.Hw.Signer do
 
   @doc "Deterministic chipset serial derived from the public key."
   def serial do
-    "SIM-SMALT-" <> Base.encode16(:crypto.hash(:sha256, public_key()), case: :lower) |> binary_part(0, 12)
+    ("SIM-SMALT-" <> Base.encode16(:crypto.hash(:sha256, public_key()), case: :lower))
+    |> binary_part(0, 12)
   end
-  end
+end

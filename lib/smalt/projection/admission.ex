@@ -172,19 +172,19 @@ defmodule Smalt.Projection.Admission do
         case refuse_degenerate_ids(records, path) do
           :ok ->
             Enum.map(records, fn rec ->
-            row = %__MODULE__{
-              id: "ledger_deviation:" <> rec["id"],
-            family: :ledger_deviation,
-            subject: "#{rec["referenceTraceId"]}/#{rec["candidateTraceId"]}",
-            verdict: :deviation,
-            standing: :admitted,
-            code: rec["deviatingMove"],
-            timestamp: rec["timestamp"]
-          }
+              row = %__MODULE__{
+                id: "ledger_deviation:" <> rec["id"],
+                family: :ledger_deviation,
+                subject: "#{rec["referenceTraceId"]}/#{rec["candidateTraceId"]}",
+                verdict: :deviation,
+                standing: :admitted,
+                code: rec["deviatingMove"],
+                timestamp: rec["timestamp"]
+              }
 
-          Store.put(@table, row.id, row)
-          row
-        end)
+              Store.put(@table, row.id, row)
+              row
+            end)
 
           bad ->
             raise ArgumentError,
@@ -263,6 +263,7 @@ defmodule Smalt.Projection.Admission do
   @spec matrix() :: [record()]
   def matrix do
     ensure_table()
+
     @table
     |> Store.keys()
     |> Enum.flat_map(fn key ->

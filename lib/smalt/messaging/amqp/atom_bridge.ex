@@ -175,7 +175,8 @@ defmodule Smalt.Amqp.AtomBridge do
     end
   end
 
-  defp dispatch(_method, _path, _body), do: {405, atom_content_type(), error_xml(405, "MethodNotAllowed")}
+  defp dispatch(_method, _path, _body),
+    do: {405, atom_content_type(), error_xml(405, "MethodNotAllowed")}
 
   # -- Queue records ------------------------------------------------------------
 

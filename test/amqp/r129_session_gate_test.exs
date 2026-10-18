@@ -33,7 +33,13 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     end
 
     {:ok, listener} =
-      :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        active: false,
+        reuseaddr: true,
+        ip: {127, 0, 0, 1}
+      ])
 
     {:ok, port} = :inet.port(listener)
 
@@ -90,7 +96,9 @@ defmodule Smalt.Amqp.R129SessionGateTest do
         se = System.system_time(:second) + 600
 
         sig =
-          Base.encode64(:crypto.mac(:hmac, :sha256, @test_key, sr <> "\n" <> Integer.to_string(se)))
+          Base.encode64(
+            :crypto.mac(:hmac, :sha256, @test_key, sr <> "\n" <> Integer.to_string(se))
+          )
 
         token =
           "SharedAccessSignature sr=#{sr}&sig=#{sig}&se=#{se}&skn=RootManageSharedAccessKey"
@@ -103,7 +111,8 @@ defmodule Smalt.Amqp.R129SessionGateTest do
           token: token
         }
 
-        assert {:ok, {200, _}} = Smalt.Amqp.CbsRouter.put_token(Smalt.Amqp.CbsRouter, request, conn)
+        assert {:ok, {200, _}} =
+                 Smalt.Amqp.CbsRouter.put_token(Smalt.Amqp.CbsRouter, request, conn)
       end
     )
   end
@@ -117,14 +126,36 @@ defmodule Smalt.Amqp.R129SessionGateTest do
 
     # sender link with a trailing-slash target — previously a shadow namespace
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue <> "/"}}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue <> "/"}}}
+        )
+      )
 
     assert %{performative: %{performative: :attach}} = recv_frame(client)
 
     # no group-id -> enqueue now errors :session_required (was {:ok, 1} into
     # the shadow queue)
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 7, delivery_tag: <<1, 2, 3, 4>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m1"}]}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: 0,
+             delivery_id: 7,
+             delivery_tag: <<1, 2, 3, 4>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:body_amqp_value, "m1"}]}}
+        )
+      )
 
     resp = recv_frame(client)
 
@@ -139,7 +170,13 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     # positive control: WITH a group-id the enqueue succeeds — and the
     # message must be keyed under the BARE entity (namespace collapse)
     {:ok, listener2} =
-      :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        active: false,
+        reuseaddr: true,
+        ip: {127, 0, 0, 1}
+      ])
 
     {:ok, port2} = :inet.port(listener2)
 
@@ -160,12 +197,34 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     :ok = handshake(client2)
 
     :ok =
-      send_bytes(client2, enc_frame(:amqp, 0, {:attach, %{name: "s2", handle: 0, role: false, target: %{address: queue <> "/"}}}))
+      send_bytes(
+        client2,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "s2", handle: 0, role: false, target: %{address: queue <> "/"}}}
+        )
+      )
 
     assert %{performative: %{performative: :attach}} = recv_frame(client2)
 
     :ok =
-      send_bytes(client2, enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 8, delivery_tag: <<2, 2, 3, 4>>, message_format: 0, settled: true, more: false}, {:sections, [{:properties, %{group_id: "sid-A"}}, {:body_amqp_value, "m2"}]}}))
+      send_bytes(
+        client2,
+        enc_frame(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: 0,
+             delivery_id: 8,
+             delivery_tag: <<2, 2, 3, 4>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:properties, %{group_id: "sid-A"}}, {:body_amqp_value, "m2"}]}}
+        )
+      )
 
     assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client2)
 
@@ -174,7 +233,23 @@ defmodule Smalt.Amqp.R129SessionGateTest do
 
     # a sessioned receiver on the BARE name can claim it
     :ok =
-      send_bytes(client2, enc_frame(:amqp, 0, {:attach, %{name: "r2", handle: 1, role: true, source: %{address: queue, filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => "sid-A"}}}}}))
+      send_bytes(
+        client2,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach,
+           %{
+             name: "r2",
+             handle: 1,
+             role: true,
+             source: %{
+               address: queue,
+               filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => "sid-A"}}
+             }
+           }}
+        )
+      )
 
     at = recv_until(client2, :attach)
     assert at.performative.role == false
@@ -183,7 +258,8 @@ defmodule Smalt.Amqp.R129SessionGateTest do
 
   # --- exploit 2: unfiltered receiver on a requiresSession queue -------------
 
-  test "unfiltered receiver attach on sessionful queue -> typed detach; sessioned still works", ctx do
+  test "unfiltered receiver attach on sessionful queue -> typed detach; sessioned still works",
+       ctx do
     client = ctx.client
     queue = ctx.queue
     sid = "s-" <> Integer.to_string(System.unique_integer([:positive]))
@@ -195,7 +271,14 @@ defmodule Smalt.Amqp.R129SessionGateTest do
 
     # unfiltered receiver (no session-filter): must be refused, not registered
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r-none", handle: 0, role: true, source: %{address: queue}}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r-none", handle: 0, role: true, source: %{address: queue}}}
+        )
+      )
 
     echo = recv_frame(client)
     assert echo.performative.performative == :attach
@@ -215,7 +298,23 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     # lock must still be free: a sessioned receiver on the same sid attaches
     # and gets the lock grant right after
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue, filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}}}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach,
+           %{
+             name: "r1",
+             handle: 1,
+             role: true,
+             source: %{
+               address: queue,
+               filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}
+             }
+           }}
+        )
+      )
 
     at = recv_until(client, :attach)
     assert at.performative.role == false
@@ -224,7 +323,8 @@ defmodule Smalt.Amqp.R129SessionGateTest do
 
   # --- harness helpers ---------------------------------------------------------
 
-  defp enc_frame(layer, channel, performative), do: FrameCodec.encode_frame(layer, channel, performative)
+  defp enc_frame(layer, channel, performative),
+    do: FrameCodec.encode_frame(layer, channel, performative)
 
   defp send_bytes(client, iodata), do: :gen_tcp.send(client, iodata)
 
@@ -291,12 +391,32 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     assert {:ok, @header} = recv_exact(client, 8)
 
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:open, %{container_id: "r129-client", max_frame_size: 65_536, channel_max: 65_535}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:open, %{container_id: "r129-client", max_frame_size: 65_536, channel_max: 65_535}}
+        )
+      )
 
     recv_frame(client)
 
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:begin,
+           %{
+             next_outgoing_id: 1,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
+      )
 
     recv_frame(client)
     :ok

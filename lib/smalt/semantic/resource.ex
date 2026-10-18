@@ -22,6 +22,7 @@ defmodule Smalt.Semantic.Resource do
   # without ash_r2rml. The extensions option stays a compile-time LITERAL:
   # Spark derives section imports from it (lane G2 / PUBLISH_RECORD B2).
   import Smalt.Semantic.R2RMLGuard, only: [if_r2rml: 1]
+
   use Ash.Resource,
     domain: Smalt.Semantic.Domain,
     data_layer: Ash.DataLayer.Simple,

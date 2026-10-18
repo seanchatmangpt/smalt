@@ -329,7 +329,7 @@ defmodule ArmFr5TfDivergenceClosuresTest do
       assert resp.status == 200
       keys = Jason.decode!(resp.resp_body)["keys"]
       assert [%{"keyName" => "key1", "permissions" => "FULL"}, %{"keyName" => "key2"}] = keys
-      assert Enum.all?(keys, &is_binary(&1["value"]) and byte_size(&1["value"]) > 0)
+      assert Enum.all?(keys, &(is_binary(&1["value"]) and byte_size(&1["value"]) > 0))
     end
   end
 
@@ -398,8 +398,10 @@ defmodule ArmFr5TfDivergenceClosuresTest do
         body = Jason.decode!(resp.resp_body)
         assert body["name"] == "default"
         assert body["type"] == "Microsoft.Storage/storageAccounts/#{service}"
+
         assert body["id"] ==
                  "/subscriptions/#{@sub}/resourceGroups/rg-fr5/providers/Microsoft.Storage/storageAccounts/stt5f4/#{service}/default"
+
         assert is_map(body["properties"])
       end
 

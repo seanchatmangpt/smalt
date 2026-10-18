@@ -33,7 +33,17 @@ defmodule ArmCascadeTeardownTest do
       "state" => "Enabled"
     })
 
+    prev_lro_delay_ms = Application.get_env(:smalt, :lro_delay_ms)
     Application.put_env(:smalt, :lro_delay_ms, 0)
+
+    on_exit(fn ->
+      if is_nil(prev_lro_delay_ms) do
+        Application.delete_env(:smalt, :lro_delay_ms)
+      else
+        Application.put_env(:smalt, :lro_delay_ms, prev_lro_delay_ms)
+      end
+    end)
+
     :ok
   end
 
@@ -49,6 +59,7 @@ defmodule ArmCascadeTeardownTest do
   defp req(method, path, body \\ nil, type \\ nil) do
     path =
       if type, do: "#{path}?api-version=#{api_v(type)}", else: "#{path}?api-version=2023-07-01"
+
     conn = if body, do: Plug.Test.conn(method, path, body), else: Plug.Test.conn(method, path)
     call(conn)
   end
@@ -107,7 +118,7 @@ defmodule ArmCascadeTeardownTest do
     rg = "fr6-rg1"
     acct = "fr6acct1"
 
-  rg_put = req(:put, "/subscriptions/#{@sub}/resourcegroups/#{rg}", %{"location" => "westus"})
+    rg_put = req(:put, "/subscriptions/#{@sub}/resourcegroups/#{rg}", %{"location" => "westus"})
     assert rg_put.status in [200, 201], "RG PUT #{rg_put.status} #{rg_put.resp_body}"
 
     acct_put =
@@ -388,7 +399,9 @@ defmodule ArmCascadeTeardownTest do
 
     # (c) vault DELETE sweeps its data-plane secret rows
     del_vault = req(:delete, "#{vault_base}/fr6vault", nil, "Microsoft.KeyVault/vaults")
-    assert del_vault.status == 200, "vault DELETE status=#{del_vault.status} #{del_vault.resp_body}"
+
+    assert del_vault.status == 200,
+           "vault DELETE status=#{del_vault.status} #{del_vault.resp_body}"
 
     assert Store.get(:smalt_vault_secrets, "kv-shape") == :error,
            "FR-6 RESIDUE :smalt_vault_secrets=[\"kv-shape\"] after vault delete"

@@ -119,10 +119,18 @@ defmodule Smalt.Messaging.EventHubsTest do
 
       results =
         [1, 2, 3, 4]
-        |> Enum.map(fn _ -> Task.async(fn -> EHServer.transaction({:cas_claim_blind, key, expect, new}) end) end)
+        |> Enum.map(fn _ ->
+          Task.async(fn -> EHServer.transaction({:cas_claim_blind, key, expect, new}) end)
+        end)
         |> Task.await_many(10_000)
 
-      assert Enum.sort(results) == [:ok, {:error, :conflict}, {:error, :conflict}, {:error, :conflict}]
+      assert Enum.sort(results) == [
+               :ok,
+               {:error, :conflict},
+               {:error, :conflict},
+               {:error, :conflict}
+             ]
+
       assert {:ok, %{"checkpoint" => %{"seq" => 1}}} = EventHubs.reconcile(g, p)
     end
   end
@@ -184,7 +192,7 @@ defmodule Smalt.Messaging.EventHubsTest do
           end)
         end
 
-      for task <- tasks, do: assert :ok = Task.await(task, 10_000)
+      for task <- tasks, do: assert(:ok = Task.await(task, 10_000))
 
       parent = self()
 
@@ -435,7 +443,9 @@ defmodule Smalt.Messaging.EventHubsTest do
         spawn(fn ->
           # Handshake start: tracing is installed before the sweep runs, so
           # the caller can never finish (and exit) before being traced.
-          receive do :go -> :ok end
+          receive do
+            :go -> :ok
+          end
 
           EventHubs.sweep()
         end)
@@ -476,8 +486,11 @@ defmodule Smalt.Messaging.EventHubsTest do
 
       caller_writes =
         Enum.count(drain_trace([]), fn
-          {:trace, ^caller, :call, {mod, fun, args}} -> MapSet.member?(traced, {mod, fun, length(args)})
-          _ -> false
+          {:trace, ^caller, :call, {mod, fun, args}} ->
+            MapSet.member?(traced, {mod, fun, length(args)})
+
+          _ ->
+            false
         end)
 
       # Reset the local trace pattern so it cannot slow the rest of the run.
@@ -579,7 +592,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -595,13 +614,25 @@ defmodule Smalt.Messaging.EventHubsTest do
       {:ok, _conn} = Task.await(accept_task, 5000)
 
       partition = "0"
-      eh_address = "/eventhubs/wire-hub-" <> "#{System.unique_integer([:positive])}" <> "/partitions/" <> partition
+
+      eh_address =
+        "/eventhubs/wire-hub-" <>
+          "#{System.unique_integer([:positive])}" <> "/partitions/" <> partition
 
       try do
         wh(client)
 
         # sender link (client role :sender) on the EH entity path
-        :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-s", handle: 0, role: false, target: %{address: eh_address}}}))
+        :ok =
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach, %{name: "eh-s", handle: 0, role: false, target: %{address: eh_address}}}
+            )
+          )
+
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
         # send 3 events over the wire (each a bare-body_data transfer)
@@ -609,7 +640,19 @@ defmodule Smalt.Messaging.EventHubsTest do
           :ok =
             send_b(
               client,
-              enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: i, delivery_tag: <<i::8>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_data, "eh-event-#{i}"}]}})
+              enc(
+                :amqp,
+                0,
+                {:transfer,
+                 %{
+                   handle: 0,
+                   delivery_id: i,
+                   delivery_tag: <<i::8>>,
+                   message_format: 0,
+                   settled: true,
+                   more: false
+                 }, {:sections, [{:body_data, "eh-event-#{i}"}]}}
+              )
             )
 
           # server settles accepted
@@ -618,7 +661,16 @@ defmodule Smalt.Messaging.EventHubsTest do
         end
 
         # receiver link (client role :receiver) on the same partition
-        :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-r", handle: 1, role: true, source: %{address: eh_address}}}))
+        :ok =
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach, %{name: "eh-r", handle: 1, role: true, source: %{address: eh_address}}}
+            )
+          )
+
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
         # grant credit -> drain
@@ -711,7 +763,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -739,7 +797,14 @@ defmodule Smalt.Messaging.EventHubsTest do
 
         # sender link with a partition-key-stamped event (message annotation)
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "ann-s", handle: 0, role: false, target: %{address: eh_address}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach, %{name: "ann-s", handle: 0, role: false, target: %{address: eh_address}}}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
@@ -748,15 +813,34 @@ defmodule Smalt.Messaging.EventHubsTest do
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:message_annotations, pk_anns}, {:body_data, "ann-event"}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: 1,
+                 delivery_tag: <<1::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               }, {:sections, [{:message_annotations, pk_anns}, {:body_data, "ann-event"}]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # receiver link on the same partition
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "ann-r", handle: 1, role: true, source: %{address: eh_address}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach, %{name: "ann-r", handle: 1, role: true, source: %{address: eh_address}}}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
         :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 5}}))
@@ -935,7 +1019,12 @@ defmodule Smalt.Messaging.EventHubsTest do
       # heterogeneous kind-sequences -> homogeneity -> fail-closed ONE event
       g1 = IO.iodata_to_binary(FrameCodec.encode_message([{:body_data, "r185e-garbage"}]))
       g2 = IO.iodata_to_binary(FrameCodec.encode_message([{:body_data, "r185e-two"}]))
-      g3 = IO.iodata_to_binary(FrameCodec.encode_message([{:header, %{}}, {:body_data, "r185e-three"}]))
+
+      g3 =
+        IO.iodata_to_binary(
+          FrameCodec.encode_message([{:header, %{}}, {:body_data, "r185e-three"}])
+        )
+
       stream = g1 <> g2 <> g3
 
       assert {:ok, 1, _} = EventHubs.send_event(p, r185e_envelope(stream))
@@ -948,14 +1037,20 @@ defmodule Smalt.Messaging.EventHubsTest do
     test "4. KD-53 minimal inners [body]/[header,body] still split" do
       p = part("r185e-minimal")
       b = fn body -> IO.iodata_to_binary(FrameCodec.encode_message([{:body_data, body}])) end
-      hb = fn body -> IO.iodata_to_binary(FrameCodec.encode_message([{:header, %{}}, {:body_data, body}])) end
+
+      hb = fn body ->
+        IO.iodata_to_binary(FrameCodec.encode_message([{:header, %{}}, {:body_data, body}]))
+      end
+
       stream = b.("r185e-m1") <> b.("r185e-m2") <> hb.("r185e-m3")
 
       # mixed minimal shapes are heterogeneous -> fail-closed ONE event
       assert {:ok, 1, _} = EventHubs.send_event(p, r185e_envelope(stream))
 
       # homogeneous minimal [body] batch still splits
-      assert {:ok, 2, _} = EventHubs.send_event(p, r185e_envelope(b.("r185e-m4") <> b.("r185e-m5")))
+      assert {:ok, 2, _} =
+               EventHubs.send_event(p, r185e_envelope(b.("r185e-m4") <> b.("r185e-m5")))
+
       events = EventHubs.receive_events(p, 0, 100)
       assert length(events) == 3
       assert Enum.map(events, & &1["seq"]) == [1, 2, 3]
@@ -963,6 +1058,7 @@ defmodule Smalt.Messaging.EventHubsTest do
       # event 1: mixed minimal batch fail-closed ONE event (homogeneity)
       assert Enum.map(1..3, fn i -> String.contains?(Enum.at(bodies, 0), "r185e-m#{i}") end) ==
                [true, true, true]
+
       # events 2..3: homogeneous minimal [body] batch split
       assert String.contains?(Enum.at(bodies, 1), "r185e-m4")
       assert String.contains?(Enum.at(bodies, 2), "r185e-m5")
@@ -992,7 +1088,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -1028,7 +1130,14 @@ defmodule Smalt.Messaging.EventHubsTest do
         wh(client)
 
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "r166-s", handle: 0, role: false, target: %{address: eh_address}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach, %{name: "r166-s", handle: 0, role: false, target: %{address: eh_address}}}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
@@ -1038,36 +1147,81 @@ defmodule Smalt.Messaging.EventHubsTest do
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: delivery_id, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:message_annotations, anns}, {:body_data, inner.("r166-a") <> inner.("r166-b")}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: delivery_id,
+                 delivery_tag: <<1::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               },
+               {:sections,
+                [{:message_annotations, anns}, {:body_data, inner.("r166-a") <> inner.("r166-b")}]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # -- case 2: truncated non-tail inner -> fail-closed to 1 event ---
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: delivery_id + 1, delivery_tag: <<2::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:body_data, truncated_leading}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: delivery_id + 1,
+                 delivery_tag: <<2::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               }, {:sections, [{:body_data, truncated_leading}]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # -- case 3: valid single-event batch -> exactly 1 event ----------
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: delivery_id + 2, delivery_tag: <<3::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:message_annotations, anns}, {:body_data, inner.("r166-solo")}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: delivery_id + 2,
+                 delivery_tag: <<3::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               }, {:sections, [{:message_annotations, anns}, {:body_data, inner.("r166-solo")}]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # -- drain: one receiver link, credit granted only now, so all four
         #    events (2 + 1 + 1) arrive on this link in seq order ------------
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "r166-r", handle: 1, role: true, source: %{address: eh_address}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach, %{name: "r166-r", handle: 1, role: true, source: %{address: eh_address}}}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
         :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 10}}))
@@ -1128,7 +1282,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -1150,18 +1310,43 @@ defmodule Smalt.Messaging.EventHubsTest do
 
         # sender on the HUB address (real producer shape: no /partitions segment)
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "kd76-s", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}"}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach,
+               %{name: "kd76-s", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}"}}}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:message_annotations, %{"x-opt-partition-key" => "kd76-pk"}}, {:body_data, "kd76-event"}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: 1,
+                 delivery_tag: <<1::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               },
+               {:sections,
+                [
+                  {:message_annotations, %{"x-opt-partition-key" => "kd76-pk"}},
+                  {:body_data, "kd76-event"}
+                ]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # receivers: partition "0", partition "1", and the hub address itself
         links = [
@@ -1173,7 +1358,16 @@ defmodule Smalt.Messaging.EventHubsTest do
         # attach ALL receivers first (echoes are consumed in order), then
         # grant credit — deliveries fire on flow, after every attach echo.
         for {name, h, addr} <- links do
-          :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}))
+          :ok =
+            send_b(
+              client,
+              enc(
+                :amqp,
+                0,
+                {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}
+              )
+            )
+
           assert %{performative: %{performative: :attach}} = recv_f(client)
         end
 
@@ -1228,7 +1422,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -1253,18 +1453,43 @@ defmodule Smalt.Messaging.EventHubsTest do
 
         # hub-address sender with a partition key (real producer shape)
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "r200h-s", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}"}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach,
+               %{name: "r200h-s", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}"}}}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:message_annotations, %{"x-opt-partition-key" => pk}}, {:body_data, "r200h-event"}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: 1,
+                 delivery_tag: <<1::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               },
+               {:sections,
+                [
+                  {:message_annotations, %{"x-opt-partition-key" => pk}},
+                  {:body_data, "r200h-event"}
+                ]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # receivers attached at the REAL SDK wire form (capital P):
         # {hub}/ConsumerGroups/$Default/Partitions/{n}
@@ -1275,7 +1500,16 @@ defmodule Smalt.Messaging.EventHubsTest do
         ]
 
         for {name, h, addr} <- links do
-          :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}))
+          :ok =
+            send_b(
+              client,
+              enc(
+                :amqp,
+                0,
+                {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}
+              )
+            )
+
           assert %{performative: %{performative: :attach}} = recv_f(client)
         end
 
@@ -1327,7 +1561,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -1349,18 +1589,43 @@ defmodule Smalt.Messaging.EventHubsTest do
 
         # sender pinned to partition 1 via the SDK's capital-P target form
         :ok =
-          send_b(client, enc(:amqp, 0, {:attach, %{name: "r200h-s2", handle: 0, role: false, target: %{address: "/eventhubs/#{hub}/Partitions/1"}}}))
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach,
+               %{
+                 name: "r200h-s2",
+                 handle: 0,
+                 role: false,
+                 target: %{address: "/eventhubs/#{hub}/Partitions/1"}
+               }}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
 
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:body_data, "r200h-pinned"}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 0,
+                 delivery_id: 1,
+                 delivery_tag: <<1::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               }, {:sections, [{:body_data, "r200h-pinned"}]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
         # receiver at the SDK consumer form for the same partition
         links = [
@@ -1369,7 +1634,16 @@ defmodule Smalt.Messaging.EventHubsTest do
         ]
 
         for {name, h, addr} <- links do
-          :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}))
+          :ok =
+            send_b(
+              client,
+              enc(
+                :amqp,
+                0,
+                {:attach, %{name: name, handle: h, role: true, source: %{address: addr}}}
+              )
+            )
+
           assert %{performative: %{performative: :attach}} = recv_f(client)
         end
 
@@ -1405,7 +1679,18 @@ defmodule Smalt.Messaging.EventHubsTest do
       # every key maps into the pinned set {0, 1} and the mapping is a pure
       # function of the key (recompute is identical)
       assert Enum.all?(routed, &(&1 in [0, 1]))
-      assert routed == for(pk <- pks, do: pk |> then(fn pk -> <<f::unsigned-8, _::binary>> = :erlang.md5(pk); rem(f, 2) end))
+
+      assert routed ==
+               for(
+                 pk <- pks,
+                 do:
+                   pk
+                   |> then(fn pk ->
+                     <<f::unsigned-8, _::binary>> = :erlang.md5(pk)
+                     rem(f, 2)
+                   end)
+               )
+
       # distribution sanity: 40 keys should touch both partitions
       assert length(Enum.uniq(routed)) == 2
     end
@@ -1425,7 +1710,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       EventHubs.ensure_tables()
 
       {:ok, listener} =
-        :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+        :gen_tcp.listen(0, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
 
       {:ok, port} = :inet.port(listener)
 
@@ -1448,7 +1739,17 @@ defmodule Smalt.Messaging.EventHubsTest do
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:attach, %{name: "outpin-r", handle: 0, role: true, source: %{address: "/eventhubs/#{hub}/Partitions/2"}}})
+            enc(
+              :amqp,
+              0,
+              {:attach,
+               %{
+                 name: "outpin-r",
+                 handle: 0,
+                 role: true,
+                 source: %{address: "/eventhubs/#{hub}/Partitions/2"}
+               }}
+            )
           )
 
         # rhea contract: attach echo FIRST, then the typed detach.
@@ -1465,7 +1766,17 @@ defmodule Smalt.Messaging.EventHubsTest do
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:attach, %{name: "inpin-s", handle: 1, role: false, target: %{address: "/eventhubs/#{hub}/Partitions/0"}}})
+            enc(
+              :amqp,
+              0,
+              {:attach,
+               %{
+                 name: "inpin-s",
+                 handle: 1,
+                 role: false,
+                 target: %{address: "/eventhubs/#{hub}/Partitions/0"}
+               }}
+            )
           )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
@@ -1473,13 +1784,39 @@ defmodule Smalt.Messaging.EventHubsTest do
         :ok =
           send_b(
             client,
-            enc(:amqp, 0, {:transfer, %{handle: 1, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false},
-                 {:sections, [{:body_data, "inpin-event"}]}})
+            enc(
+              :amqp,
+              0,
+              {:transfer,
+               %{
+                 handle: 1,
+                 delivery_id: 1,
+                 delivery_tag: <<1::8>>,
+                 message_format: 0,
+                 settled: true,
+                 more: false
+               }, {:sections, [{:body_data, "inpin-event"}]}}
+            )
           )
 
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
 
-        :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: "inpin-r", handle: 2, role: true, source: %{address: "/eventhubs/#{hub}/Partitions/0"}}}))
+        :ok =
+          send_b(
+            client,
+            enc(
+              :amqp,
+              0,
+              {:attach,
+               %{
+                 name: "inpin-r",
+                 handle: 2,
+                 role: true,
+                 source: %{address: "/eventhubs/#{hub}/Partitions/0"}
+               }}
+            )
+          )
 
         assert %{performative: %{performative: :attach}} = recv_f(client)
         :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 2, link_credit: 5}}))
@@ -1504,18 +1841,40 @@ defmodule Smalt.Messaging.EventHubsTest do
     assert {:ok, "AMQP\x00\x01\x00\x00"} = rx(client, 8)
 
     :ok =
-      send_b(client, enc(:amqp, 0, {:open, %{container_id: "eh-test-client", max_frame_size: 65_536, channel_max: 65_535}}))
+      send_b(
+        client,
+        enc(
+          :amqp,
+          0,
+          {:open, %{container_id: "eh-test-client", max_frame_size: 65_536, channel_max: 65_535}}
+        )
+      )
 
     _opened = recv_f(client)
 
     :ok =
-      send_b(client, enc(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}}))
+      send_b(
+        client,
+        enc(
+          :amqp,
+          0,
+          {:begin,
+           %{
+             next_outgoing_id: 1,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
+      )
 
     _begun = recv_f(client)
     :ok
   end
 
-  defp enc(layer, channel, performative), do: Smalt.Amqp.FrameCodec.encode_frame(layer, channel, performative)
+  defp enc(layer, channel, performative),
+    do: Smalt.Amqp.FrameCodec.encode_frame(layer, channel, performative)
+
   defp send_b(client, iodata), do: :gen_tcp.send(client, iodata)
 
   defp recv_until(client, name, timeout \\ 2000) do

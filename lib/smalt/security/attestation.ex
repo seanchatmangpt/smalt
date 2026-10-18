@@ -27,7 +27,8 @@ defmodule Smalt.Security.Attestation do
           {:ok, String.t(), map()} | {:error, 400, String.t()}
   def attest_enclave(measurement_params, type \\ @attestation_type)
       when is_map(measurement_params) do
-    measurement = Map.get(measurement_params, "measurement") || Map.get(measurement_params, :measurement)
+    measurement =
+      Map.get(measurement_params, "measurement") || Map.get(measurement_params, :measurement)
 
     # Crash-class law (lens-10): the attestation TYPE rides into the signed
     # claims and is JSON-encoded on the success path — a hostile shape (tuple/

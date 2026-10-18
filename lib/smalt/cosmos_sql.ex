@@ -292,8 +292,8 @@ defmodule Smalt.CosmosSql do
     :contains,
     :startswith,
     :array_contains,
-    :true,
-    :false,
+    true,
+    false,
     :null
   ]
 
@@ -360,6 +360,7 @@ defmodule Smalt.CosmosSql do
       else
         {:ident, w}
       end
+
     do_tokenize(rest2, [token | acc])
   end
 
@@ -412,7 +413,12 @@ defmodule Smalt.CosmosSql do
           other
       end
 
-    %{ast | :where => strip_alias(ast.where, down), :order_by => order_by, :projection => projection}
+    %{
+      ast
+      | :where => strip_alias(ast.where, down),
+        :order_by => order_by,
+        :projection => projection
+    }
   end
 
   defp strip_path_alias([head | rest], down) do
@@ -615,8 +621,8 @@ defmodule Smalt.CosmosSql do
 
   defp parse_operand([{:lit, v} | rest]), do: {:ok, {:lit, v}, rest}
   defp parse_operand([{:param, name} | rest]), do: {:ok, {:param, name}, rest}
-  defp parse_operand([{:kw, :true} | rest]), do: {:ok, {:lit, true}, rest}
-  defp parse_operand([{:kw, :false} | rest]), do: {:ok, {:lit, false}, rest}
+  defp parse_operand([{:kw, true} | rest]), do: {:ok, {:lit, true}, rest}
+  defp parse_operand([{:kw, false} | rest]), do: {:ok, {:lit, false}, rest}
   defp parse_operand([{:kw, :null} | rest]), do: {:ok, {:lit, nil}, rest}
 
   defp parse_operand([{:ident, name} | rest]),

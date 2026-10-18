@@ -72,7 +72,7 @@ defmodule Smalt.GraphLaw.SHACLProjection do
     @shapes
     |> Enum.sort_by(fn {name, _} -> name end)
     |> Enum.map_join("\n", fn {name, shape} -> shape_doc(name, shape) end)
-    |> then(&doc_header() <> &1)
+    |> then(&(doc_header() <> &1))
   end
 
   # -- JSON Schema construction ------------------------------------------------

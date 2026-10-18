@@ -12,11 +12,21 @@ defmodule Smalt.DataPlane.ConditionalHeadersTest do
 
   test "RFC 7232 precedence: IM and INM evaluated independently" do
     # IM fails -> 412 even with INM present
-    assert ConditionalHeaders.evaluate(%{"if-match" => "\"dead\"", "if-none-match" => @etag}, @etag) == {:halt, 412}
+    assert ConditionalHeaders.evaluate(
+             %{"if-match" => "\"dead\"", "if-none-match" => @etag},
+             @etag
+           ) == {:halt, 412}
+
     # IM passes -> INM evaluated -> 304
-    assert ConditionalHeaders.evaluate(%{"if-match" => @etag, "if-none-match" => @etag}, @etag) == {:halt, 304}
+    assert ConditionalHeaders.evaluate(%{"if-match" => @etag, "if-none-match" => @etag}, @etag) ==
+             {:halt, 304}
+
     # IM passes -> INM mismatch -> proceed
-    assert ConditionalHeaders.evaluate(%{"if-match" => @etag, "if-none-match" => "\"other\""}, @etag) == :proceed
+    assert ConditionalHeaders.evaluate(
+             %{"if-match" => @etag, "if-none-match" => "\"other\""},
+             @etag
+           ) == :proceed
+
     # IM absent -> INM alone
     assert ConditionalHeaders.evaluate(%{"if-none-match" => @etag}, @etag) == {:halt, 304}
     assert ConditionalHeaders.evaluate(%{"if-none-match" => "\"other\""}, @etag) == :proceed
@@ -41,7 +51,8 @@ defmodule Smalt.DataPlane.ConditionalHeadersTest do
            ) == {:halt, 304}
 
     # IM list with no match -> 412
-    assert ConditionalHeaders.evaluate(%{"if-match" => ~s("dead", "stale")}, @etag) == {:halt, 412}
+    assert ConditionalHeaders.evaluate(%{"if-match" => ~s("dead", "stale")}, @etag) ==
+             {:halt, 412}
   end
 
   test "lens-5: unquoted candidate matches the quoted current etag (strip_quotes leg)" do

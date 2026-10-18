@@ -79,7 +79,10 @@ defmodule StrataCompatTest do
       assert @strata_digest_len == 32
       # FIPS 180-4 vectors pinned by the pack's courts ("" and "abc").
       assert sha256_hex("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-      assert sha256_hex("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+      assert sha256_hex("abc") ==
+               "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
       # smalt's ledger digest is the same 32-byte SHA-256, lowercase hex.
       assert byte_size(sha256_hex("x")) == 64
     end
@@ -167,7 +170,10 @@ defmodule StrataCompatTest do
       Smalt.Store.clear()
 
       {:ok, r1} =
-        Smalt.Security.ConfidentialLedger.append_transaction("strata-canon-ledger", %{"a" => 1, "b" => 2})
+        Smalt.Security.ConfidentialLedger.append_transaction("strata-canon-ledger", %{
+          "a" => 1,
+          "b" => 2
+        })
 
       # Different ledger (same ledger would 409 the duplicate contents).
       {:ok, r2} =
@@ -258,6 +264,7 @@ defmodule StrataCompatTest do
       # Fold: SHA-256 over concatenated 32-byte keys in lexicographic order
       # pins to the witnessed KAT root (gates/030_store_cas_composition.rq).
       root = kat |> Enum.map(&elem(&1, 0)) |> strata_store_root_digest()
+
       assert Base.encode16(root, case: :lower) ==
                "a8378cfa4e6e508f54c0287eac99f6e6b07f2fc8b9123bab1f7b2be494f0ef08"
     end

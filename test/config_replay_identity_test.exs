@@ -41,13 +41,18 @@ defmodule Smalt.ConfigReplayIdentityTest do
     on_disk = File.read!(Path.expand(@artifact, root()))
 
     # env-first class (bind_ip)
-    assert on_disk =~ "def bind_ip, do: System.get_env(\"SMALT_BIND_IP\") || Application.get_env(:smalt, :bind_ip)"
+    assert on_disk =~
+             "def bind_ip, do: System.get_env(\"SMALT_BIND_IP\") || Application.get_env(:smalt, :bind_ip)"
+
     # app-env-first class (blob_account_key)
-    assert on_disk =~ "Application.get_env(:smalt, :blob_account_key) || System.get_env(\"SMALT_BLOB_ACCOUNT_KEY\")"
+    assert on_disk =~
+             "Application.get_env(:smalt, :blob_account_key) || System.get_env(\"SMALT_BLOB_ACCOUNT_KEY\")"
+
     # plain default class (arm_port)
     assert on_disk =~ "def arm_port, do: Application.get_env(:smalt, :arm_port, 9443)"
     # nilable (sts_signing_secret)
-    assert on_disk =~ "def sts_signing_secret, do: Application.get_env(:smalt, :sts_signing_secret)"
+    assert on_disk =~
+             "def sts_signing_secret, do: Application.get_env(:smalt, :sts_signing_secret)"
   end
 
   @tag :replay_identity

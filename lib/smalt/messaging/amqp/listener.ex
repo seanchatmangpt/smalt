@@ -101,7 +101,11 @@ defmodule Smalt.Amqp.Listener do
 
       {:error, reason} ->
         attempts = state.attempts + 1
-        Logger.warning("[amqp] #{state.lane} accept error #{inspect(reason)} (attempt #{attempts})")
+
+        Logger.warning(
+          "[amqp] #{state.lane} accept error #{inspect(reason)} (attempt #{attempts})"
+        )
+
         schedule_accept(%{state | attempts: attempts}, backoff_ms(attempts))
     end
     |> then(fn
@@ -143,6 +147,7 @@ defmodule Smalt.Amqp.Listener do
 
         {:error, reason} ->
           :gen_tcp.close(socket)
+
           log_once({__MODULE__, :conn_start_failed}, fn ->
             Logger.warning(
               "[amqp] could not start Smalt.Amqp.Connection for #{state.lane} socket: #{inspect(reason)}"
@@ -151,8 +156,11 @@ defmodule Smalt.Amqp.Listener do
       end
     else
       :gen_tcp.close(socket)
+
       log_once({__MODULE__, :conn_sup_down}, fn ->
-        Logger.warning("[amqp] conn supervisor #{inspect(sup)} not running; dropping accepted socket")
+        Logger.warning(
+          "[amqp] conn supervisor #{inspect(sup)} not running; dropping accepted socket"
+        )
       end)
     end
 

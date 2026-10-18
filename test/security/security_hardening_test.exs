@@ -37,7 +37,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
     test "rejects HS256 alg confusion" do
       claims = %{"exp" => System.system_time(:second) + 60, "sub" => "attacker"}
 
-      header = Base.url_encode64(Jason.encode!(%{"alg" => "HS256", "typ" => "JWT"}), padding: false)
+      header =
+        Base.url_encode64(Jason.encode!(%{"alg" => "HS256", "typ" => "JWT"}), padding: false)
+
       payload = Base.url_encode64(Jason.encode!(claims), padding: false)
 
       forged_sig =
@@ -86,10 +88,15 @@ defmodule Smalt.Security.SecurityHardeningTest do
     test "rejects foreign-key-signed token (replayed/foreign MAA JWT)" do
       foreign_priv = :public_key.generate_key({:rsa, 2048, 65_537})
 
-      header = Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
+      header =
+        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
+
       payload =
         Base.url_encode64(
-          Jason.encode!(%{"exp" => System.system_time(:second) + 60, "iss" => "https://evil.example/"}),
+          Jason.encode!(%{
+            "exp" => System.system_time(:second) + 60,
+            "iss" => "https://evil.example/"
+          }),
           padding: false
         )
 
@@ -107,11 +114,15 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # bypass or crash
       foreign_priv = :public_key.generate_key({:rsa, 1024, 65_537})
 
-      header = Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
+      header =
+        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
 
       payload =
         Base.url_encode64(
-          Jason.encode!(%{"exp" => System.system_time(:second) + 60, "iss" => "https://evil.example/"}),
+          Jason.encode!(%{
+            "exp" => System.system_time(:second) + 60,
+            "iss" => "https://evil.example/"
+          }),
           padding: false
         )
 
@@ -126,7 +137,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
     test "rejects non-map JSON payload" do
       # split/decode rejects the array shape before any key material is touched
       payload = Base.url_encode64(Jason.encode!([1, 2, 3]), padding: false)
-      header = Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
+
+      header =
+        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
 
       assert {:error, :invalid_json} =
                ReceiptSigner.verify(header <> "." <> payload <> "." <> header)
@@ -205,10 +218,13 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # classic alg-confusion: HMAC "secret" = the would-be public key bytes.
       # check_alg refuses before any key material or MAC is touched, so the
       # secret bytes never influence the verdict.
-      header = Base.url_encode64(Jason.encode!(%{"alg" => "HS256", "typ" => "JWT"}), padding: false)
+      header =
+        Base.url_encode64(Jason.encode!(%{"alg" => "HS256", "typ" => "JWT"}), padding: false)
 
       payload =
-        Base.url_encode64(Jason.encode!(%{"exp" => System.system_time(:second) + 60}), padding: false)
+        Base.url_encode64(Jason.encode!(%{"exp" => System.system_time(:second) + 60}),
+          padding: false
+        )
 
       mac =
         :crypto.mac(:hmac, :sha256, "public-key-bytes-as-secret", header <> "." <> payload)
@@ -241,7 +257,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
       [_, p, s] = String.split(token, ".", parts: 3)
 
       forged_header =
-        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "b64" => false, "crit" => ["b64"]}), padding: false)
+        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "b64" => false, "crit" => ["b64"]}),
+          padding: false
+        )
 
       assert {:error, :bad_signature} =
                ReceiptSigner.verify(forged_header <> "." <> p <> "." <> s)
@@ -425,7 +443,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
       tasks =
         for i <- 1..32 do
           Task.async(fn ->
-            {:ok, receipt} = ConfidentialLedger.append_transaction("ledger-race", %{"writer" => i})
+            {:ok, receipt} =
+              ConfidentialLedger.append_transaction("ledger-race", %{"writer" => i})
+
             send(parent, {:done, i})
             receipt
           end)
@@ -434,16 +454,18 @@ defmodule Smalt.Security.SecurityHardeningTest do
       receipts = Task.await_many(tasks, 30_000)
       assert length(receipts) == 32
 
-      receipts = Enum.sort_by(receipts, fn %{"transactionId" => tx} ->
-        {seq, _} = Integer.parse(tx)
-        seq
-      end)
+      receipts =
+        Enum.sort_by(receipts, fn %{"transactionId" => tx} ->
+          {seq, _} = Integer.parse(tx)
+          seq
+        end)
 
       # Contiguous unique seqs 1..32.
-      seqs = Enum.map(receipts, fn %{"transactionId" => tx} ->
-        {seq, _} = Integer.parse(tx)
-        seq
-      end)
+      seqs =
+        Enum.map(receipts, fn %{"transactionId" => tx} ->
+          {seq, _} = Integer.parse(tx)
+          seq
+        end)
 
       assert seqs == Enum.to_list(1..32)
 
@@ -521,7 +543,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
       # 12 appends force double-digit seqs: "10.1" must sort AFTER "9.1"
       # (numeric parse, not string compare — string sort would invert).
-      fetched = Enum.map(1..12, fn i -> ConfidentialLedger.get_transaction("ledger-a", "#{i}.1") end)
+      fetched =
+        Enum.map(1..12, fn i -> ConfidentialLedger.get_transaction("ledger-a", "#{i}.1") end)
+
       assert fetched == Enum.map(receipts, &{:ok, &1})
 
       assert {:ok, latest} = ConfidentialLedger.get_transaction("ledger-a", "latest")
@@ -658,7 +682,13 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
       # duplicates of identical contents: exactly ONE admitted, 4 x 409
       admitted = Enum.count(dups, &match?({:ok, _}, &1))
-      refused = Enum.count(dups, &match?({:error, 409, %{"error" => %{"code" => "LedgerItemAlreadyExists"}}}, &1))
+
+      refused =
+        Enum.count(
+          dups,
+          &match?({:error, 409, %{"error" => %{"code" => "LedgerItemAlreadyExists"}}}, &1)
+        )
+
       assert admitted == 1
       assert refused == 4
 
@@ -698,7 +728,13 @@ defmodule Smalt.Security.SecurityHardeningTest do
     end
 
     test "jti near-collision: same-jti releases within one clock tick, first-writer-wins" do
-      put_skr_key = fn name -> Store.put(:smalt_vault_keys, name, %{"kid" => "k-" <> name, "release_policy" => %{"authority" => "smalt-test"}}) end
+      put_skr_key = fn name ->
+        Store.put(:smalt_vault_keys, name, %{
+          "kid" => "k-" <> name,
+          "release_policy" => %{"authority" => "smalt-test"}
+        })
+      end
+
       put_skr_key.("skr-tick-a")
       put_skr_key.("skr-tick-b")
 
@@ -720,7 +756,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
         end
 
       # release both workers once both are parked
-      for _ <- tasks, do: receive do: (:ready -> :ok)
+      for _ <- tasks, do: receive(do: (:ready -> :ok))
       for t <- tasks, do: send(t.pid, barrier)
 
       results = Task.await_many(tasks, 30_000)
@@ -769,7 +805,8 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # Distinct token grammars: ledger receipts and MAA tokens carry no
       # envelope key_id, so the TrustProfile gate refuses them before any
       # signature check can make them pass (check_key_id precedes check_rsa).
-      token = ReceiptSigner.sign(%{"sub" => "ledger-1", "exp" => System.system_time(:second) + 60})
+      token =
+        ReceiptSigner.sign(%{"sub" => "ledger-1", "exp" => System.system_time(:second) + 60})
 
       assert {:error, :unknown_key_id} = Smalt.TrustProfile.verify(token)
     end
@@ -1029,7 +1066,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
         end)
         |> Task.await_many(30_000)
 
-      {valid_results, invalid_results} = Enum.split_with(results, fn {kind, _} -> kind == :valid end)
+      {valid_results, invalid_results} =
+        Enum.split_with(results, fn {kind, _} -> kind == :valid end)
+
       assert length(valid_results) == 24
       assert length(invalid_results) == 8
 
@@ -1044,7 +1083,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
       settled = ConfidentialLedger.list_transactions(ledger)
       assert length(settled) == 24
 
-      seqs = Enum.map(settled, fn %{"transactionId" => id} -> id |> String.split(".") |> hd() |> String.to_integer() end)
+      seqs =
+        Enum.map(settled, fn %{"transactionId" => id} ->
+          id |> String.split(".") |> hd() |> String.to_integer()
+        end)
+
       assert seqs == Enum.to_list(1..24)
 
       # Chain coherence across the settled prefix (recompute like the cycle-1
@@ -1060,6 +1103,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
     # restarts it and the chain must continue WITHOUT fork or seq reuse.
     test "writer death mid-stream: lazy restart continues the chain without fork or seq reuse" do
       ledger = "writer-death-lens4"
+
       assert {:ok, %{"transactionId" => "1.1"}} =
                ConfidentialLedger.append_transaction(ledger, %{"n" => 1})
 
@@ -1259,8 +1303,10 @@ defmodule Smalt.Security.SecurityHardeningTest do
         expected =
           for p <- [p1, p2], into: %{} do
             h = :crypto.hash(:sha256, Jason.encode!(p))
+
             {Base.url_encode64(h, padding: false),
-             SKR.hkdf_sha256(ikm, "skr-race", "smalt-skr-release" <> h, 32) |> Base.url_encode64(padding: false)}
+             SKR.hkdf_sha256(ikm, "skr-race", "smalt-skr-release" <> h, 32)
+             |> Base.url_encode64(padding: false)}
           end
 
         token =
@@ -1273,7 +1319,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
         rotator =
           Task.async(fn ->
             loop = fn loop, current ->
-              Store.put(:smalt_vault_keys, "skr-race", %{"kid" => "k-race", "release_policy" => current})
+              Store.put(:smalt_vault_keys, "skr-race", %{
+                "kid" => "k-race",
+                "release_policy" => current
+              })
+
               next = if current == p1, do: p2, else: p1
 
               receive do
@@ -1313,8 +1363,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
         assert Enum.sort(versions) == Enum.to_list(1..16)
 
         # Coherence means determinism: same hash -> same material across releases.
-        Enum.each(Enum.group_by(results, fn {:ok, 200, body} -> body["policyHash"] end), fn {_h, group} ->
-          assert Enum.all?(group, fn {:ok, 200, body} -> body["value"] == elem(hd(group), 2)["value"] end)
+        Enum.each(Enum.group_by(results, fn {:ok, 200, body} -> body["policyHash"] end), fn {_h,
+                                                                                             group} ->
+          assert Enum.all?(group, fn {:ok, 200, body} ->
+                   body["value"] == elem(hd(group), 2)["value"]
+                 end)
         end)
 
         # Non-vacuity note: which rotation versions get exercised is timing-
@@ -1413,7 +1466,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
       payload = Base.url_encode64(Jason.encode!(claims), padding: false)
 
       raw = fn typ_value ->
-        header = Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => typ_value}), padding: false)
+        header =
+          Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => typ_value}),
+            padding: false
+          )
+
         signing_input = header <> "." <> payload
 
         sig =
@@ -1456,7 +1513,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # path guarantees the keypair exists before the raw read.
       _warm = ReceiptSigner.sign(%{"verify_raw_warmup" => true})
 
-      header = Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
+      header =
+        Base.url_encode64(Jason.encode!(%{"alg" => "RS256", "typ" => "JWT"}), padding: false)
+
       payload = Base.url_encode64(payload_json, padding: false)
       signing_input = header <> "." <> payload
 

@@ -36,14 +36,18 @@ defmodule EgressWiringTest do
     plain = :crypto.strong_rand_bytes(48)
     b64url = Base.url_encode64(plain, padding: false)
 
-    conn = call(:post, "/keys/rsa-key/encrypt", body: %{"alg" => "RSA-OAEP-256", "value" => b64url})
+    conn =
+      call(:post, "/keys/rsa-key/encrypt", body: %{"alg" => "RSA-OAEP-256", "value" => b64url})
 
     assert conn.status == 200
     ct = Jason.decode!(conn.resp_body)
     assert is_binary(ct["value"]) and ct["value"] != b64url
     assert ct["kid"] =~ "/keys/rsa-key"
 
-    conn = call(:post, "/keys/rsa-key/decrypt", body: %{"alg" => "RSA-OAEP-256", "value" => ct["value"]})
+    conn =
+      call(:post, "/keys/rsa-key/decrypt",
+        body: %{"alg" => "RSA-OAEP-256", "value" => ct["value"]}
+      )
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["value"] == b64url
@@ -67,11 +71,12 @@ defmodule EgressWiringTest do
     conn =
       call(:post, "/keys/oct-key/decrypt",
         body: %{
-        "alg" => "A256GCM",
-        "value" => ct["value"],
-        "iv" => ct["iv"],
-        "tag" => ct["tag"]
-      })
+          "alg" => "A256GCM",
+          "value" => ct["value"],
+          "iv" => ct["iv"],
+          "tag" => ct["tag"]
+        }
+      )
 
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
@@ -112,13 +117,18 @@ defmodule EgressWiringTest do
 
     cek = :crypto.strong_rand_bytes(32)
 
-    conn = call(:post, "/keys/wrap-key/wrapKey", body: %{"alg" => "RSA-OAEP-256", "value" => Base.url_encode64(cek, padding: false)})
+    conn =
+      call(:post, "/keys/wrap-key/wrapKey",
+        body: %{"alg" => "RSA-OAEP-256", "value" => Base.url_encode64(cek, padding: false)}
+      )
 
     assert conn.status == 200
     wrapped = Jason.decode!(conn.resp_body)
 
     conn =
-      call(:post, "/keys/wrap-key/unwrapKey", body: %{"alg" => "RSA-OAEP-256", "value" => wrapped["value"]})
+      call(:post, "/keys/wrap-key/unwrapKey",
+        body: %{"alg" => "RSA-OAEP-256", "value" => wrapped["value"]}
+      )
 
     assert conn.status == 200
     assert Base.url_decode64!(Jason.decode!(conn.resp_body)["value"], padding: false) == cek
@@ -127,7 +137,11 @@ defmodule EgressWiringTest do
   test "action suffix is case-insensitive and unknown action is 404 RouteNotFound" do
     :ok = create_key("case-key")
 
-    conn = call(:post, "/keys/case-key/ENCRYPT", body: %{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")})
+    conn =
+      call(:post, "/keys/case-key/ENCRYPT",
+        body: %{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")}
+      )
+
     assert conn.status == 200
 
     conn = call(:post, "/keys/case-key/notAnAction", body: %{"v" => 1})
@@ -155,7 +169,11 @@ defmodule EgressWiringTest do
   end
 
   test "crypto action on unknown key -> 404 KeyNotFound" do
-    conn = call(:post, "/keys/absent-key/encrypt", body: %{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")})
+    conn =
+      call(:post, "/keys/absent-key/encrypt",
+        body: %{"alg" => "RSA-OAEP-256", "value" => Base.encode64("x")}
+      )
+
     assert conn.status == 404
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "KeyNotFound"
   end
@@ -199,7 +217,11 @@ defmodule EgressWiringTest do
 
     conn =
       call(:put, "/metaacct/c01?comp=metadata",
-        headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-owner", "smalt"}, {"x-ms-meta-tier", "hot"}]
+        headers: [
+          {"x-ms-version", "2021-12-02"},
+          {"x-ms-meta-owner", "smalt"},
+          {"x-ms-meta-tier", "hot"}
+        ]
       )
 
     assert conn.status == 200
@@ -213,7 +235,11 @@ defmodule EgressWiringTest do
     assert "hot" in get_resp_header(conn, "x-ms-meta-tier")
 
     # metadata on a missing container -> 404 ContainerNotFound
-    conn = call(:put, "/metaacct/nope?comp=metadata", headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-a", "b"}])
+    conn =
+      call(:put, "/metaacct/nope?comp=metadata",
+        headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-a", "b"}]
+      )
+
     assert conn.status == 404
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerNotFound"
   end
@@ -221,15 +247,21 @@ defmodule EgressWiringTest do
   test "container properties: GET ?restype=container returns etag and meta headers" do
     create_container("propacct", "c01")
 
-    call(:put, "/propacct/c01?comp=metadata", headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-env", "prod"}])
+    call(:put, "/propacct/c01?comp=metadata",
+      headers: [{"x-ms-version", "2021-12-02"}, {"x-ms-meta-env", "prod"}]
+    )
 
-    conn = call(:get, "/propacct/c01?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+    conn =
+      call(:get, "/propacct/c01?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+
     assert conn.status == 200
     assert conn |> get_resp_header("etag") != []
     assert "prod" in get_resp_header(conn, "x-ms-meta-env")
     assert conn |> get_resp_header("x-ms-has-legal-hold") == ["false"]
 
-    conn = call(:get, "/propacct/missing?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+    conn =
+      call(:get, "/propacct/missing?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
+
     assert conn.status == 404
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerNotFound"
   end

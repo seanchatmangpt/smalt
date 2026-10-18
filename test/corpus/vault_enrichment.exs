@@ -48,6 +48,7 @@ defmodule Smalt.Corpus.VaultEnrichment do
 
     assert get.status == 200, inspect(get.resp_body)
     props = json(get)["properties"]
+
     assert is_binary(props["vaultUri"]) and props["vaultUri"] != "",
            "vaultUri enrichment regressed: #{inspect(props)}"
 

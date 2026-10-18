@@ -47,7 +47,11 @@ defmodule Smalt.ArmGateway.DefaultsTest do
       merged = Defaults.apply(@cosmos, %{})
       assert merged["kind"] == "GlobalDocumentDB"
       assert merged["properties"]["databaseAccountOfferType"] == "Standard"
-      assert merged["properties"]["consistencyPolicy"] == %{"defaultConsistencyLevel" => "Session"}
+
+      assert merged["properties"]["consistencyPolicy"] == %{
+               "defaultConsistencyLevel" => "Session"
+             }
+
       assert merged["properties"]["enableMultipleWriteLocations"] == false
     end
 

@@ -111,7 +111,9 @@ defmodule Smalt.Amqp.Sweeper do
 
         first_swept_at =
           case existing do
-            [{^token, t}] -> t
+            [{^token, t}] ->
+              t
+
             [] ->
               if :ets.insert_new(@tombstone_table, {token, now}) do
                 now
@@ -143,7 +145,13 @@ defmodule Smalt.Amqp.Sweeper do
 
   defp ensure_tombstone_table do
     if :ets.info(@tombstone_table) == :undefined do
-      :ets.new(@tombstone_table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+      :ets.new(@tombstone_table, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
     end
 
     :ok

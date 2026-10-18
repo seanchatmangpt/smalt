@@ -30,7 +30,7 @@ defmodule Smalt.Corpus.BlobContainerReput do
       :put,
       "/#{@acct}/#{@container}?restype=container",
       "",
-      [ {"x-ms-version", "2021-12-02"} | Enum.map(meta, fn {k, v} -> {"x-ms-meta-#{k}", v} end) ]
+      [{"x-ms-version", "2021-12-02"} | Enum.map(meta, fn {k, v} -> {"x-ms-meta-#{k}", v} end)]
     )
   end
 
@@ -60,7 +60,8 @@ defmodule Smalt.Corpus.BlobContainerReput do
         [{"x-ms-version", "2021-12-02"}, {"x-ms-legal-hold", "true"}]
       )
 
-    assert hold.status in [200, 201], "legal hold did not arm: #{hold.status} #{inspect(hold.resp_body)}"
+    assert hold.status in [200, 201],
+           "legal hold did not arm: #{hold.status} #{inspect(hold.resp_body)}"
 
     reput = put_container(%{"a" => "1"})
 

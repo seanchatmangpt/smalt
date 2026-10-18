@@ -41,6 +41,15 @@ defmodule Smalt.Amqp.FlowCreditTest do
     port = get_free_port()
 
     stop_existing_tree()
+
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev = %{
+      arm_port: Application.get_env(:smalt, :arm_port),
+      egress_port: Application.get_env(:smalt, :egress_port),
+      amqp_port: Application.get_env(:smalt, :amqp_port),
+      event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
+    }
+
     Application.put_env(:smalt, :arm_port, get_free_port())
     Application.put_env(:smalt, :egress_port, get_free_port())
     Application.put_env(:smalt, :amqp_port, port)
@@ -51,7 +60,26 @@ defmodule Smalt.Amqp.FlowCreditTest do
     # Queue attaches are CBS-authorized by the landed broker; admit claims via
     # the real put-token wire path in each test, so the shared key must exist.
     Application.put_env(:smalt, :sb_shared_key, Base.encode64(:crypto.strong_rand_bytes(48)))
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+
+    on_exit(fn ->
+      Application.delete_env(:smalt, :sb_shared_key)
+
+      if prev.arm_port == nil,
+        do: Application.delete_env(:smalt, :arm_port),
+        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+      if prev.egress_port == nil,
+        do: Application.delete_env(:smalt, :egress_port),
+        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+      if prev.amqp_port == nil,
+        do: Application.delete_env(:smalt, :amqp_port),
+        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
+
+      if prev.event_hubs_port == nil,
+        do: Application.delete_env(:smalt, :event_hubs_port),
+        else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
+    end)
 
     {:ok, sup} =
       Supervisor.start_link(
@@ -103,11 +131,19 @@ defmodule Smalt.Amqp.FlowCreditTest do
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: i, delivery_tag: <<i>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: i,
+            delivery_tag: <<i>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:body_amqp_value, "msg-#{i}"}]}
         })
 
-      {%{performative: :disposition, state: :accepted, first: ^i} = _disp, _c2} = await_disposition(c)
+      {%{performative: :disposition, state: :accepted, first: ^i} = _disp, _c2} =
+        await_disposition(c)
     end
 
     # receiver link on the same queue (second handle)
@@ -147,7 +183,14 @@ defmodule Smalt.Amqp.FlowCreditTest do
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: i, delivery_tag: <<i>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: i,
+            delivery_tag: <<i>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:body_amqp_value, "msg-#{i}"}]}
         })
 
@@ -166,7 +209,10 @@ defmodule Smalt.Amqp.FlowCreditTest do
       Enum.reduce(transfers, c, fn t, c ->
         id = t.performative.delivery_id
 
-        send_frame(c, {:disposition, %{role: true, first: id, last: id, settled: true, state: :accepted}})
+        send_frame(
+          c,
+          {:disposition, %{role: true, first: id, last: id, settled: true, state: :accepted}}
+        )
       end)
 
     c = send_frame(c, {:flow, %{handle: 1, link_credit: 2}})
@@ -194,7 +240,14 @@ defmodule Smalt.Amqp.FlowCreditTest do
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: i, delivery_tag: <<i>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: i,
+            delivery_tag: <<i>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:body_amqp_value, "msg-#{i}"}]}
         })
 
@@ -242,11 +295,19 @@ defmodule Smalt.Amqp.FlowCreditTest do
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: i, delivery_tag: <<i>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: i,
+            delivery_tag: <<i>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:body_amqp_value, "msg-#{i}"}]}
         })
 
-      {%{performative: :disposition, state: :accepted, first: ^i} = _disp, _c2} = await_disposition(c)
+      {%{performative: :disposition, state: :accepted, first: ^i} = _disp, _c2} =
+        await_disposition(c)
     end
 
     :gen_tcp.close(c.sock)
@@ -269,7 +330,14 @@ defmodule Smalt.Amqp.FlowCreditTest do
     c =
       send_frame(c, {
         :transfer,
-        %{handle: 0, delivery_id: 1, delivery_tag: <<1>>, message_format: 0, settled: true, more: false},
+        %{
+          handle: 0,
+          delivery_id: 1,
+          delivery_tag: <<1>>,
+          message_format: 0,
+          settled: true,
+          more: false
+        },
         {:sections, [{:body_amqp_value, "msg-1"}]}
       })
 
@@ -301,10 +369,11 @@ defmodule Smalt.Amqp.FlowCreditTest do
   # frames (more=true until last) and reassembles byte-exact client-side.
   # ===========================================================================
 
-  test "outbound transfer larger than peer max_frame_size is split (more=true) and reassembles byte-exact", %{
-    amqp: port,
-    queue: queue
-  } do
+  test "outbound transfer larger than peer max_frame_size is split (more=true) and reassembles byte-exact",
+       %{
+         amqp: port,
+         queue: queue
+       } do
     c = connect(port) |> handshake()
     c = authorize(c, Smalt.Amqp.SasVerifier.endpoint() <> "/" <> queue)
 
@@ -316,7 +385,14 @@ defmodule Smalt.Amqp.FlowCreditTest do
     c =
       send_frame(c, {
         :transfer,
-        %{handle: 0, delivery_id: 1, delivery_tag: <<1>>, message_format: 0, settled: true, more: false},
+        %{
+          handle: 0,
+          delivery_id: 1,
+          delivery_tag: <<1>>,
+          message_format: 0,
+          settled: true,
+          more: false
+        },
         {:sections, [{:body_data, bin_body}]}
       })
 
@@ -357,10 +433,11 @@ defmodule Smalt.Amqp.FlowCreditTest do
   # 6. payload-class round-trip: binary body_data / amqp-value string / map
   # ===========================================================================
 
-  test "binary data, amqp-value string and amqp-value map bodies round-trip byte-exact over real sockets", %{
-    amqp: port,
-    queue: queue
-  } do
+  test "binary data, amqp-value string and amqp-value map bodies round-trip byte-exact over real sockets",
+       %{
+         amqp: port,
+         queue: queue
+       } do
     c = connect(port) |> handshake()
     c = authorize(c, Smalt.Amqp.SasVerifier.endpoint() <> "/" <> queue)
 
@@ -383,7 +460,14 @@ defmodule Smalt.Amqp.FlowCreditTest do
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: i, delivery_tag: <<i>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: i,
+            delivery_tag: <<i>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [Enum.at(payloads, i - 1)]}
         })
 
@@ -401,7 +485,7 @@ defmodule Smalt.Amqp.FlowCreditTest do
     # (bodies/1 unwraps the delivered body_data re-wrap to the original value)
     delivered = bodies(transfers)
 
-    assert Enum.find(delivered, &is_binary(&1) and byte_size(&1) == 0x400) == bin_body
+    assert Enum.find(delivered, &(is_binary(&1) and byte_size(&1) == 0x400)) == bin_body
     assert str_body in delivered
     assert map_body in delivered
   end
@@ -411,7 +495,9 @@ defmodule Smalt.Amqp.FlowCreditTest do
   # ===========================================================================
 
   defp connect(port) do
-    {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+
     %{sock: sock, buf: <<>>}
   end
 
@@ -424,6 +510,7 @@ defmodule Smalt.Amqp.FlowCreditTest do
 
     # string-to-sign uses the URL-ENCODED sr (SasVerifier contract)
     enc_sr = URI.encode_www_form(audience)
+
     sig =
       :crypto.mac(:hmac, :sha256, key, "#{enc_sr}\n#{se}")
       |> Base.encode64()
@@ -432,17 +519,35 @@ defmodule Smalt.Amqp.FlowCreditTest do
     token =
       "SharedAccessSignature sr=#{enc_sr}&sig=#{sig}&se=#{se}&skn=RootManageSharedAccessKey"
 
-    c = send_frame(c, {:attach, %{name: "cbs-tx", handle: 2, role: false, target: %{address: "$cbs"}}})
-    c = send_frame(c, {:attach, %{name: "cbs-rx", handle: 3, role: true, source: %{address: "$cbs"}}})
+    c =
+      send_frame(
+        c,
+        {:attach, %{name: "cbs-tx", handle: 2, role: false, target: %{address: "$cbs"}}}
+      )
+
+    c =
+      send_frame(
+        c,
+        {:attach, %{name: "cbs-rx", handle: 3, role: true, source: %{address: "$cbs"}}}
+      )
 
     c =
       send_frame(c, {
         :transfer,
-        %{handle: 2, delivery_id: 100, delivery_tag: <<100>>, message_format: 0, settled: true, more: false},
-        {:sections, [
-          {:application_properties, %{"operation" => "put-token", "type" => @cbs_type, "name" => audience}},
-          {:body_amqp_value, token}
-        ]}
+        %{
+          handle: 2,
+          delivery_id: 100,
+          delivery_tag: <<100>>,
+          message_format: 0,
+          settled: true,
+          more: false
+        },
+        {:sections,
+         [
+           {:application_properties,
+            %{"operation" => "put-token", "type" => @cbs_type, "name" => audience}},
+           {:body_amqp_value, token}
+         ]}
       })
 
     # wait for the $cbs reply transfer carrying a 200 status annotation
@@ -457,10 +562,10 @@ defmodule Smalt.Amqp.FlowCreditTest do
         {:ok, sections} = FrameCodec.decode_message(f.payload)
 
         case Enum.find(sections, fn
-              {:application_properties, %{"statusCode" => 200}} -> true
-              {:message_annotations, %{"x-opt-status-code" => 200}} -> true
-              _ -> false
-            end) do
+               {:application_properties, %{"statusCode" => 200}} -> true
+               {:message_annotations, %{"x-opt-status-code" => 200}} -> true
+               _ -> false
+             end) do
           nil -> wait_cbs_reply(%{c | buf: rest}, n - 1)
           _ -> %{c | buf: rest}
         end
@@ -490,11 +595,21 @@ defmodule Smalt.Amqp.FlowCreditTest do
     :ok = :gen_tcp.send(c.sock, @header)
     {:ok, @header, c} = recv_exact(c, 8)
 
-    c = send_frame(c, {:open, %{container_id: "flow-credit-client", max_frame_size: 65_536, channel_max: 65_535}})
+    c =
+      send_frame(
+        c,
+        {:open,
+         %{container_id: "flow-credit-client", max_frame_size: 65_536, channel_max: 65_535}}
+      )
+
     {%{performative: %{performative: :open}}, c} = next_frame(c)
 
     c =
-      send_frame(c, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+      send_frame(
+        c,
+        {:begin,
+         %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}}
+      )
 
     {%{performative: %{performative: :begin}}, c} = next_frame(c)
 
@@ -548,7 +663,12 @@ defmodule Smalt.Amqp.FlowCreditTest do
 
           :incomplete ->
             assert {:ok, data} = :gen_tcp.recv(c.sock, 0, @recv_timeout)
-            do_await_sender_link(%{c | buf: <<c.buf::binary, data::binary>>}, attach_seen?, flow_seen?)
+
+            do_await_sender_link(
+              %{c | buf: <<c.buf::binary, data::binary>>},
+              attach_seen?,
+              flow_seen?
+            )
         end
     end
   end
@@ -580,7 +700,8 @@ defmodule Smalt.Amqp.FlowCreditTest do
   # a split delivery), bounded by `max` frames.
   defp collect_until_final_transfer(c, max, acc \\ [])
 
-  defp collect_until_final_transfer(c, max, acc) when length(acc) >= max, do: flunk("no terminal transfer frame")
+  defp collect_until_final_transfer(c, max, acc) when length(acc) >= max,
+    do: flunk("no terminal transfer frame")
 
   defp collect_until_final_transfer(c, max, acc) do
     case pop_frame(c.buf) do
@@ -617,9 +738,14 @@ defmodule Smalt.Amqp.FlowCreditTest do
   # Pops one whole frame from the buffer, or :incomplete.
   defp pop_frame(buf) do
     case FrameCodec.decode_frame(buf) do
-      {:ok, frame} -> {:ok, frame, binary_part(buf, frame_size(buf), byte_size(buf) - frame_size(buf))}
-      {:more, _} -> :incomplete
-      {:error, reason} -> flunk("frame decode error: #{inspect(reason)}")
+      {:ok, frame} ->
+        {:ok, frame, binary_part(buf, frame_size(buf), byte_size(buf) - frame_size(buf))}
+
+      {:more, _} ->
+        :incomplete
+
+      {:error, reason} ->
+        flunk("frame decode error: #{inspect(reason)}")
     end
   end
 

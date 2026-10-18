@@ -135,9 +135,12 @@ defmodule Smalt.Amqp.CbsRouter do
       |> Enum.uniq()
       |> Enum.reject(&Process.alive?/1)
 
-    Enum.each(table |> :ets.tab2list() |> Enum.filter(fn {{owner, _}, _} -> owner in dead end), fn key ->
-      :ets.delete(table, key)
-    end)
+    Enum.each(
+      table |> :ets.tab2list() |> Enum.filter(fn {{owner, _}, _} -> owner in dead end),
+      fn key ->
+        :ets.delete(table, key)
+      end
+    )
 
     length(dead)
   end
@@ -199,7 +202,9 @@ defmodule Smalt.Amqp.CbsRouter do
   defp do_delete(_request, _owner_ref, state), do: {{:error, {400, "INVALID_CBS_BODY"}}, state}
 
   defp check_operation(request, expected) do
-    if Map.get(request, :operation) == expected, do: :ok, else: {:error, {400, "UNSUPPORTED_CBS_REQUEST"}}
+    if Map.get(request, :operation) == expected,
+      do: :ok,
+      else: {:error, {400, "UNSUPPORTED_CBS_REQUEST"}}
   end
 
   # pyamqp dialect (S-1, disclosed in s1-amqp-shims receipt): the Python

@@ -33,7 +33,8 @@ defmodule Smalt.MetadataEndpointsTest do
     # application uses; probed alongside http, never instead of it.
     listeners =
       (
-        saved = for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
+        saved =
+          for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
 
         for k <- [:tls, :tls_certfile, :tls_keyfile] do
           Application.delete_env(:smalt, k)
@@ -43,7 +44,9 @@ defmodule Smalt.MetadataEndpointsTest do
         opts = Smalt.TLS.bandit_opts(Router, tls_port)
 
         for {k, v} <- saved do
-          if v == nil, do: Application.delete_env(:smalt, k), else: Application.put_env(:smalt, k, v)
+          if v == nil,
+            do: Application.delete_env(:smalt, k),
+            else: Application.put_env(:smalt, k, v)
         end
 
         if opts[:scheme] == :https do
@@ -118,8 +121,13 @@ defmodule Smalt.MetadataEndpointsTest do
       assert resp.status == 200, "#{scheme}: expected 200, got #{resp.status}"
 
       body = Jason.decode!(resp.body)
-      assert is_binary(body["activeDirectoryEndpoint"]) and byte_size(body["activeDirectoryEndpoint"]) > 0
-      assert is_binary(body["activeDirectoryResourceId"]) and byte_size(body["activeDirectoryResourceId"]) > 0
+
+      assert is_binary(body["activeDirectoryEndpoint"]) and
+               byte_size(body["activeDirectoryEndpoint"]) > 0
+
+      assert is_binary(body["activeDirectoryResourceId"]) and
+               byte_size(body["activeDirectoryResourceId"]) > 0
+
       assert is_binary(body["managementEndpoint"]) and byte_size(body["managementEndpoint"]) > 0
     end
   end
@@ -164,7 +172,9 @@ defmodule Smalt.MetadataEndpointsTest do
       assert resp.status == 200
 
       body = Jason.decode!(resp.body)
-      assert is_binary(body["tenant_discovery_endpoint"]) and byte_size(body["tenant_discovery_endpoint"]) > 0
+
+      assert is_binary(body["tenant_discovery_endpoint"]) and
+               byte_size(body["tenant_discovery_endpoint"]) > 0
     end
   end
 
@@ -195,7 +205,8 @@ defmodule Smalt.MetadataEndpointsTest do
       # the same authority and tenant — issuer .../<tid>/v2.0, token_endpoint
       # .../<tid>/oauth2/v2.0/token (not a suffix relationship; the v2 token
       # endpoint lives under /oauth2/).
-      assert body["token_endpoint"] == "#{body["issuer"] |> String.replace_suffix("/v2.0", "")}/oauth2/v2.0/token",
+      assert body["token_endpoint"] ==
+               "#{body["issuer"] |> String.replace_suffix("/v2.0", "")}/oauth2/v2.0/token",
              "#{scheme}: issuer #{body["issuer"]} does not match token_endpoint #{body["token_endpoint"]}"
 
       assert body["issuer"] =~ "/#{tid}/v2.0"
@@ -235,10 +246,12 @@ defmodule Smalt.MetadataEndpointsTest do
           # azidentity/msal-node acquisition path).
           case key do
             "token_endpoint" ->
-              tok = request(scheme, port, "POST", uri.path,
-                headers: [{"content-type", "application/x-www-form-urlencoded"}],
-                body: "grant_type=client_credentials&client_id=metadata-fence&client_secret=metadata-secret"
-              )
+              tok =
+                request(scheme, port, "POST", uri.path,
+                  headers: [{"content-type", "application/x-www-form-urlencoded"}],
+                  body:
+                    "grant_type=client_credentials&client_id=metadata-fence&client_secret=metadata-secret"
+                )
 
               assert tok.status == 200,
                      "#{scheme}#{path}: advertised token_endpoint #{uri.path} did not resolve (#{tok.status})"
@@ -267,7 +280,12 @@ defmodule Smalt.MetadataEndpointsTest do
 
       body = Jason.decode!(resp.body)
 
-      for key <- ["tenant_discovery_endpoint", "token_endpoint", "authorization_endpoint", "issuer"] do
+      for key <- [
+            "tenant_discovery_endpoint",
+            "token_endpoint",
+            "authorization_endpoint",
+            "issuer"
+          ] do
         uri = URI.parse(body[key])
 
         assert "#{uri.scheme}://#{uri.host}:#{uri.port}" == authority,
@@ -279,6 +297,7 @@ defmodule Smalt.MetadataEndpointsTest do
       assert follow.status == 200, "#{scheme}: tenant_discovery_endpoint did not resolve"
 
       followed = Jason.decode!(follow.body)
+
       assert followed["token_endpoint"] == body["token_endpoint"],
              "#{scheme}: tenant_discovery chain advertises a different token_endpoint"
     end
@@ -310,7 +329,8 @@ defmodule Smalt.MetadataEndpointsTest do
       resp =
         request(scheme, port, "POST", "/#{@tenant}/oauth2/v2.0/token",
           headers: [{"content-type", "application/x-www-form-urlencoded"}],
-          body: "grant_type=client_credentials&client_id=metadata-fence&client_secret=metadata-secret"
+          body:
+            "grant_type=client_credentials&client_id=metadata-fence&client_secret=metadata-secret"
         )
 
       assert resp.status == 200, "#{scheme}: expected 200, got #{resp.status}"
@@ -403,7 +423,9 @@ defmodule Smalt.MetadataEndpointsTest do
   end
 
   defp with_tcp(port, request) do
-    {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5000)
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5000)
+
     :ok = :gen_tcp.send(sock, request)
     data = recv_all(sock, [], &:gen_tcp.recv/3)
     :gen_tcp.close(sock)

@@ -19,6 +19,7 @@ defmodule Smalt.Semantic.Evidence do
   # The extensions option stays a compile-time LITERAL (Spark section-import
   # requirement — see Smalt.Semantic.R2RMLGuard moduledoc). Lane G2.
   import Smalt.Semantic.R2RMLGuard, only: [if_r2rml: 1]
+
   use Ash.Resource,
     domain: Smalt.Semantic.Domain,
     data_layer: Ash.DataLayer.Simple,

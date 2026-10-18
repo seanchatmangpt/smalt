@@ -96,10 +96,16 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
 
     put =
-      req!(port(), :put, "/#{acct()}/#{cont()}?restype=container&comp=metadata", @v ++ [
-        {"x-ms-meta-owner", "c4"},
-        {"x-ms-meta-purpose", "fence"}
-      ])
+      req!(
+        port(),
+        :put,
+        "/#{acct()}/#{cont()}?restype=container&comp=metadata",
+        @v ++
+          [
+            {"x-ms-meta-owner", "c4"},
+            {"x-ms-meta-purpose", "fence"}
+          ]
+      )
 
     assert put.status == 200
     put_hdrs = header_map(put)
@@ -214,9 +220,15 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     # Container default is immutable WORM (1095d) — release the default lock
     # by moving retention to zero via a fresh unlocked container.
-    assert req!(port(), :put, "/#{acct()}/unlocked?restype=container", @v ++ [
-             {"x-ms-immutable-policy", "false"}
-           ]).status == 201
+    assert req!(
+             port(),
+             :put,
+             "/#{acct()}/unlocked?restype=container",
+             @v ++
+               [
+                 {"x-ms-immutable-policy", "false"}
+               ]
+           ).status == 201
 
     req!(port(), :put, "/#{acct()}/unlocked/doomed",
       headers: @v ++ [{"content-type", "application/octet-stream"}],
@@ -237,9 +249,15 @@ defmodule Smalt.Compliance.C4BlobTest do
   end
 
   test "If-Match mismatch on overwrite returns 412 PreconditionFailed" do
-    assert req!(port(), :put, "/#{acct()}/unlocked?restype=container", @v ++ [
-             {"x-ms-immutable-policy", "false"}
-           ]).status == 201
+    assert req!(
+             port(),
+             :put,
+             "/#{acct()}/unlocked?restype=container",
+             @v ++
+               [
+                 {"x-ms-immutable-policy", "false"}
+               ]
+           ).status == 201
 
     put =
       req!(port(), :put, "/#{acct()}/unlocked/etag",
@@ -284,18 +302,29 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
 
     put =
-      req!(port(), :put, "/#{acct()}/#{cont()}?comp=legalhold", @v ++ [{"x-ms-legal-hold", "true"}])
+      req!(
+        port(),
+        :put,
+        "/#{acct()}/#{cont()}?comp=legalhold",
+        @v ++ [{"x-ms-legal-hold", "true"}]
+      )
 
     assert put.status == 200
     assert header_map(put)["x-ms-has-legal-hold"] == "true"
-    assert is_binary(header_map(put)["x-ms-request-id"]) and header_map(put)["x-ms-request-id"] =~ @v4_guid
+
+    assert is_binary(header_map(put)["x-ms-request-id"]) and
+             header_map(put)["x-ms-request-id"] =~ @v4_guid
+
     assert header_map(put)["x-ms-version"] == @version
     assert Jason.decode!(put.body)["has_legal_hold"] == true
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?comp=legalhold", @v)
     assert get.status == 200
     assert header_map(get)["x-ms-legal-hold"] == "true"
-    assert is_binary(header_map(get)["x-ms-request-id"]) and header_map(get)["x-ms-request-id"] =~ @v4_guid
+
+    assert is_binary(header_map(get)["x-ms-request-id"]) and
+             header_map(get)["x-ms-request-id"] =~ @v4_guid
+
     assert header_map(get)["x-ms-version"] == @version
   end
 
@@ -317,7 +346,10 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     get = req!(port(), :get, "/#{acct()}/#{cont()}?comp=immutabilityPolicy", @v)
     assert get.status == 200
-    assert is_binary(header_map(get)["x-ms-request-id"]) and header_map(get)["x-ms-request-id"] =~ @v4_guid
+
+    assert is_binary(header_map(get)["x-ms-request-id"]) and
+             header_map(get)["x-ms-request-id"] =~ @v4_guid
+
     assert header_map(get)["x-ms-version"] == @version
     policy = Jason.decode!(get.body)
     assert policy["period_days"] == 30
@@ -419,6 +451,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     assert req!(port(), :put, "/#{acct()}/#{cont()}?restype=container", @v).status == 201
 
     names = for i <- 1..7, do: "b#{i}"
+
     Enum.each(names, fn name ->
       req!(port(), :put, "/#{acct()}/#{cont()}/#{name}",
         headers: @v ++ [{"content-type", "application/octet-stream"}],
@@ -431,7 +464,10 @@ defmodule Smalt.Compliance.C4BlobTest do
     # space (no repeats, no skips) and loop termination on the final page.
     {pages, seen, _marker_end, hops} =
       Enum.reduce_while(1..10, {[], [], nil, 0}, fn _hop, {pages, seen, marker, n} ->
-        q = if marker, do: "comp=list&restype=container&maxresults=3&marker=#{marker}", else: "comp=list&restype=container&maxresults=3"
+        q =
+          if marker,
+            do: "comp=list&restype=container&maxresults=3&marker=#{marker}",
+            else: "comp=list&restype=container&maxresults=3"
 
         resp = req!(port(), :get, "/#{acct()}/#{cont()}?#{q}", @v)
         assert resp.status == 200
@@ -450,7 +486,7 @@ defmodule Smalt.Compliance.C4BlobTest do
 
         # an intermediate page MUST emit a marker; the final page MUST NOT
         if marker == nil or got != [] do
-          assert is_binary(next) == (length(seen) + length(got) < length(names)),
+          assert is_binary(next) == length(seen) + length(got) < length(names),
                  "expected marker presence=#{length(seen) + length(got) < length(names)} " <>
                    "but got #{inspect(next)} on page with #{inspect(got)}"
         end
@@ -522,8 +558,10 @@ defmodule Smalt.Compliance.C4BlobTest do
       end)
 
     assert hops <= 10
+
     assert seen == Enum.sort(["fencecont", "tc1", "tc2", "tc3", "tc4", "tc5", "tc6", "tc7"]),
            "partition mismatch: #{inspect(pages)}"
+
     assert length(pages) == 3
   end
 
@@ -602,7 +640,7 @@ defmodule Smalt.Compliance.C4BlobTest do
            "delimiter round-trip partition mismatch: #{inspect(pages)}"
   end
 
-    # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   # Cycle-21/22 parity: conditional-write fences at the wire
   # ---------------------------------------------------------------------------
 
@@ -639,9 +677,10 @@ defmodule Smalt.Compliance.C4BlobTest do
              body: "v1"
            ).status == 201
 
-    del = req!(port(), :delete, "/#{acct()}/#{cont()}/inm-del",
-      headers: @v ++ [{"if-none-match", "*"}]
-    )
+    del =
+      req!(port(), :delete, "/#{acct()}/#{cont()}/inm-del",
+        headers: @v ++ [{"if-none-match", "*"}]
+      )
 
     assert del.status == 412
     assert_std_blob_headers(del)
@@ -697,6 +736,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     # the blob_error_xml arm owns it. The compliance copy predated the landing
     # and JSON-decoded; fence the XML envelope instead.
     assert resp.body =~ ~r/<Error>/
+
     assert resp.body =~
              ~r/<Code>InvalidQueryParameterValue<\/Code>/
 
@@ -796,7 +836,10 @@ defmodule Smalt.Compliance.C4BlobTest do
     # is evaluated FIRST: a mismatching If-Match yields 412 even though the
     # If-None-Match matches (a swap would answer 304 and leak stale reads).
     both =
-      req!(port(), :get, "/#{acct()}/condread/cb",
+      req!(
+        port(),
+        :get,
+        "/#{acct()}/condread/cb",
         @v ++ [{"if-match", "\"dead\""}, {"if-none-match", etag}]
       )
 
@@ -835,13 +878,27 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     # mismatching If-Match + Range -> 412 (NOT 206 — no bytes leak past a
     # failed precondition even when a range is requested)
-    m = req!(port(), :get, "/#{acct()}/condrange/pr.bin", @v ++ [{"if-match", "\"dead\""}, {"range", "bytes=0-2"}])
+    m =
+      req!(
+        port(),
+        :get,
+        "/#{acct()}/condrange/pr.bin",
+        @v ++ [{"if-match", "\"dead\""}, {"range", "bytes=0-2"}]
+      )
+
     assert m.status == 412
     assert m.body =~ "PreconditionFailed"
     assert_std_blob_headers(m)
 
     # matching If-None-Match + Range -> 304 (NOT 206)
-    n = req!(port(), :get, "/#{acct()}/condrange/pr.bin", @v ++ [{"if-none-match", etag}, {"range", "bytes=0-2"}])
+    n =
+      req!(
+        port(),
+        :get,
+        "/#{acct()}/condrange/pr.bin",
+        @v ++ [{"if-none-match", etag}, {"range", "bytes=0-2"}]
+      )
+
     assert n.status == 304
     assert n.body == ""
     # lens-5: 304 carries the full fence even when it wins over a Range.
@@ -849,7 +906,10 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     # matching If-Match + Range -> 206 (precondition passes, range applies)
     p =
-      req!(port(), :get, "/#{acct()}/condrange/pr.bin",
+      req!(
+        port(),
+        :get,
+        "/#{acct()}/condrange/pr.bin",
         @v ++ [{"if-match", etag}, {"range", "bytes=0-2"}]
       )
 
@@ -860,7 +920,10 @@ defmodule Smalt.Compliance.C4BlobTest do
     # lens-4 cycle-3: If-None-Match: * + Range -> 304 (the star matches any
     # current entity; a range cannot leak bytes past a matched INM).
     star =
-      req!(port(), :get, "/#{acct()}/condrange/pr.bin",
+      req!(
+        port(),
+        :get,
+        "/#{acct()}/condrange/pr.bin",
         @v ++ [{"if-none-match", "*"}, {"range", "bytes=0-2"}]
       )
 
@@ -871,9 +934,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     # lens-4 cycle-3: Range on a MISSING blob -> 404 BlobNotFound (existence
     # precedes the range branch — never 416, never a content-range header).
     missing =
-      req!(port(), :get, "/#{acct()}/condrange/no-such-blob",
-        @v ++ [{"range", "bytes=0-2"}]
-      )
+      req!(port(), :get, "/#{acct()}/condrange/no-such-blob", @v ++ [{"range", "bytes=0-2"}])
 
     assert missing.status == 404
     assert Jason.decode!(missing.body)["error"]["code"] == "BlobNotFound"
@@ -903,6 +964,7 @@ defmodule Smalt.Compliance.C4BlobTest do
     # trimming on the storage path. Round-trip must be byte-exact,
     # trailing newline included.
     json_body = ~s({"k": "v", "n": 1}\n\n)
+
     putj =
       req!(port(), :put, "/#{acct()}/vdirs/w/2",
         headers: @v ++ [{"content-type", "application/json"}],
@@ -957,7 +1019,8 @@ defmodule Smalt.Compliance.C4BlobTest do
 
     for {n, v} <- [{"meta-blob", "platform"}, {"esc-blob", "a&<b>"}] do
       assert req!(port(), :put, "/#{acct()}/incmeta/#{n}",
-               headers: @v ++ [{"content-type", "application/octet-stream"}, {"x-ms-meta-owner", v}],
+               headers:
+                 @v ++ [{"content-type", "application/octet-stream"}, {"x-ms-meta-owner", v}],
                body: "x"
              ).status == 201
     end
@@ -998,7 +1061,10 @@ defmodule Smalt.Compliance.C4BlobTest do
     # presence first so the wire gap reads as a typed assertion, never a
     # clause crash.
     assert is_binary(hdrs["x-ms-request-id"]), "x-ms-request-id header missing"
-    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid, "x-ms-request-id missing/not v4"
+
+    assert is_binary(hdrs["x-ms-request-id"]) and hdrs["x-ms-request-id"] =~ @v4_guid,
+           "x-ms-request-id missing/not v4"
+
     assert hdrs["x-ms-version"] == @version
     hdrs
   end
@@ -1085,10 +1151,16 @@ defmodule Smalt.Compliance.C4BlobTest do
            ).status == 201
 
     resp =
-      req!(port(), :get, "/#{acct()}/rangeprec/p.bin", @v ++ [
-        {"range", "bytes=99-"},
-        {"x-ms-range", "bytes=0-2"}
-      ])
+      req!(
+        port(),
+        :get,
+        "/#{acct()}/rangeprec/p.bin",
+        @v ++
+          [
+            {"range", "bytes=99-"},
+            {"x-ms-range", "bytes=0-2"}
+          ]
+      )
 
     assert resp.status == 206
     hdrs = assert_std_blob_headers(resp)
@@ -1205,10 +1277,16 @@ defmodule Smalt.Compliance.C4BlobTest do
     etag = header_map(get)["etag"]
 
     head =
-      req!(port(), :head, "/#{acct()}/condhead3/c.bin", @v ++ [
-        {"if-match", etag},
-        {"x-ms-range", "bytes=0-2"}
-      ])
+      req!(
+        port(),
+        :head,
+        "/#{acct()}/condhead3/c.bin",
+        @v ++
+          [
+            {"if-match", etag},
+            {"x-ms-range", "bytes=0-2"}
+          ]
+      )
 
     assert head.status == 206
     hdrs = assert_std_blob_headers(head)
@@ -1219,16 +1297,24 @@ defmodule Smalt.Compliance.C4BlobTest do
     unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
     assert req!(port(), :put, "/#{acct()}/hdrcomp?restype=container", unlocked).status == 201
 
-    assert req!(port(), :put, "/#{acct()}/hdrcomp?comp=metadata", @v ++ [
-             {"x-ms-meta-owner", "c4"}
-           ]).status == 200
+    assert req!(
+             port(),
+             :put,
+             "/#{acct()}/hdrcomp?comp=metadata",
+             @v ++
+               [
+                 {"x-ms-meta-owner", "c4"}
+               ]
+           ).status == 200
 
     md = req!(port(), :get, "/#{acct()}/hdrcomp?comp=metadata", @v)
     assert md.status == 200
     assert header_map(md)["x-ms-meta-owner"] == "c4"
     assert_std_blob_headers(md)
 
-    hold = req!(port(), :put, "/#{acct()}/hdrcomp?comp=legalhold", @v ++ [{"x-ms-legal-hold", "true"}])
+    hold =
+      req!(port(), :put, "/#{acct()}/hdrcomp?comp=legalhold", @v ++ [{"x-ms-legal-hold", "true"}])
+
     assert hold.status == 200
 
     get_hold = req!(port(), :get, "/#{acct()}/hdrcomp?comp=legalhold", @v)
@@ -1329,7 +1415,8 @@ defmodule Smalt.Compliance.C4BlobTest do
     Code.ensure_loaded(Smalt.DataPlane.BlobStorage)
   end
 
-  test "lens-5: per-request uniqueness holds across the std-header surfaces" do    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
+  test "lens-5: per-request uniqueness holds across the std-header surfaces" do
+    unlocked = @v ++ [{"x-ms-immutable-policy", "false"}]
     assert req!(port(), :put, "/#{acct()}/hdruniq?restype=container", unlocked).status == 201
 
     a = req!(port(), :get, "/#{acct()}/hdruniq", @v)

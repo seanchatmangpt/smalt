@@ -80,7 +80,8 @@ defmodule Smalt.AshExtension.SubstrateResource.Verify do
       other ->
         {:error,
          Spark.Error.DslError.exception(
-           message: "smalt substrate_resource: expected exactly one substrate declaration, got #{inspect(other)}",
+           message:
+             "smalt substrate_resource: expected exactly one substrate declaration, got #{inspect(other)}",
            path: [:substrate]
          )}
     end

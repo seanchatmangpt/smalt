@@ -58,7 +58,11 @@ defmodule Smalt.Amqp.SasVerifierTest do
 
   test "valid token when audience config is a string endpoint" do
     assert {:ok, _claims} =
-             SasVerifier.verify(token(enc("amqps://other.host:5671/q")), "amqps://other.host:5671", @now)
+             SasVerifier.verify(
+               token(enc("amqps://other.host:5671/q")),
+               "amqps://other.host:5671",
+               @now
+             )
   end
 
   test "wrong signature is rejected" do
@@ -88,11 +92,13 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "se exactly 86400 seconds out is accepted" do
-    assert {:ok, _} = SasVerifier.verify(token(enc(sb_url()), @now + 86_400), endpoint_config(), @now)
+    assert {:ok, _} =
+             SasVerifier.verify(token(enc(sb_url()), @now + 86_400), endpoint_config(), @now)
   end
 
   test "non-integer se is rejected" do
-    fields = "sr=#{enc(sb_url())}&sig=#{sign(sb_url(), @now + 600)}&se=abc&skn=RootManageSharedAccessKey"
+    fields =
+      "sr=#{enc(sb_url())}&sig=#{sign(sb_url(), @now + 600)}&se=abc&skn=RootManageSharedAccessKey"
 
     assert {:error, {400, "INVALID_LOCAL_SAS"}} =
              SasVerifier.verify("SharedAccessSignature " <> fields, endpoint_config(), @now)
@@ -108,7 +114,9 @@ defmodule Smalt.Amqp.SasVerifierTest do
 
   test "duplicate field is rejected" do
     se = @now + 600
-    body = "sr=#{enc(sb_url())}&sr=#{enc(sb_url())}&sig=#{sign(sb_url(), se)}&se=#{se}&skn=RootManageSharedAccessKey"
+
+    body =
+      "sr=#{enc(sb_url())}&sr=#{enc(sb_url())}&sig=#{sign(sb_url(), se)}&se=#{se}&skn=RootManageSharedAccessKey"
 
     assert {:error, {400, "INVALID_LOCAL_SAS"}} =
              SasVerifier.verify("SharedAccessSignature " <> body, endpoint_config(), @now)
@@ -116,7 +124,9 @@ defmodule Smalt.Amqp.SasVerifierTest do
 
   test "appended extra field is rejected" do
     se = @now + 600
-    body = "sr=#{enc(sb_url())}&sig=#{sign(sb_url(), se)}&se=#{se}&skn=RootManageSharedAccessKey&ver=1"
+
+    body =
+      "sr=#{enc(sb_url())}&sig=#{sign(sb_url(), se)}&se=#{se}&skn=RootManageSharedAccessKey&ver=1"
 
     assert {:error, {400, "INVALID_LOCAL_SAS"}} =
              SasVerifier.verify("SharedAccessSignature " <> body, endpoint_config(), @now)
@@ -155,27 +165,47 @@ defmodule Smalt.Amqp.SasVerifierTest do
 
   test "audience host mismatch is rejected" do
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
-             SasVerifier.verify(token(enc("https://evil.example.com:5671/q")), endpoint_config(), @now)
+             SasVerifier.verify(
+               token(enc("https://evil.example.com:5671/q")),
+               endpoint_config(),
+               @now
+             )
   end
 
   test "audience scheme mismatch is rejected" do
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
-             SasVerifier.verify(token(enc("ftp://smalt.example.com:5671/q")), endpoint_config(), @now)
+             SasVerifier.verify(
+               token(enc("ftp://smalt.example.com:5671/q")),
+               endpoint_config(),
+               @now
+             )
   end
 
   test "audience port mismatch is rejected" do
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
-             SasVerifier.verify(token(enc("https://smalt.example.com:9999/q")), endpoint_config(), @now)
+             SasVerifier.verify(
+               token(enc("https://smalt.example.com:9999/q")),
+               endpoint_config(),
+               @now
+             )
   end
 
   test "audience with query is rejected" do
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
-             SasVerifier.verify(token(enc(sb_url() <> "?api-version=2021")), endpoint_config(), @now)
+             SasVerifier.verify(
+               token(enc(sb_url() <> "?api-version=2021")),
+               endpoint_config(),
+               @now
+             )
   end
 
   test "audience with userinfo is rejected" do
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
-             SasVerifier.verify(token(enc("https://alice@smalt.example.com:5671/q")), endpoint_config(), @now)
+             SasVerifier.verify(
+               token(enc("https://alice@smalt.example.com:5671/q")),
+               endpoint_config(),
+               @now
+             )
   end
 
   test "audience with fragment is rejected" do
@@ -251,7 +281,11 @@ defmodule Smalt.Amqp.SasVerifierTest do
 
   test "back-compat: 2-arity verify with explicit audience config unchanged" do
     assert {:ok, claims} =
-             SasVerifier.verify(token(enc(sb_url()), System.system_time(:second) + 600), endpoint_config())
+             SasVerifier.verify(
+               token(enc(sb_url()), System.system_time(:second) + 600),
+               endpoint_config()
+             )
+
     assert is_integer(claims.se)
 
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
@@ -288,7 +322,10 @@ defmodule Smalt.Amqp.SasPinnedFallbackTest do
       |> Base.encode64()
       |> URI.encode_www_form()
 
-    "SharedAccessSignature sr=" <> sr <> "&sig=" <> sig <>
+    "SharedAccessSignature sr=" <>
+      sr <>
+      "&sig=" <>
+      sig <>
       "&se=" <> Integer.to_string(expiry) <> "&skn=RootManageSharedAccessKey"
   end
 

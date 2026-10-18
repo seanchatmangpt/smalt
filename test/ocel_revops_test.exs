@@ -89,8 +89,14 @@ defmodule Smalt.OcelRevopsTest do
     # under the canonical net vs 0.4666666666666667 (live-computed)
     # under the historical full_courier_net; the verdict MUST be the
     # canonical one.
-    assert by_id["res-1"].fitness == Conformance.check_trace(Conformance.happy_path_net(), Conformance.happy_path_trace()).fitness
-    assert by_id["res-1"].fitness != Conformance.check_trace(Conformance.full_courier_net(), Conformance.happy_path_trace()).fitness
+    assert by_id["res-1"].fitness ==
+             Conformance.check_trace(Conformance.happy_path_net(), Conformance.happy_path_trace()).fitness
+
+    assert by_id["res-1"].fitness !=
+             Conformance.check_trace(
+               Conformance.full_courier_net(),
+               Conformance.happy_path_trace()
+             ).fitness
 
     assert by_id["res-2"].conforms == false
 

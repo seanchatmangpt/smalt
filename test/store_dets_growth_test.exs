@@ -65,6 +65,7 @@ defmodule Smalt.StoreDetsGrowthTest do
     {after_delete, mirror_keys} = dets_rows(dir)
 
     live_keys = MapSet.new(:ets.tab2list(@table), fn {k, _} -> k end)
+
     assert after_delete == n - div(n, 2), """
     mirror row count #{after_delete} != live key count #{n - div(n, 2)} after delete+sync:
     #{after_delete - (n - div(n, 2))} stale row(s) leaked — the union write path is unbounded.

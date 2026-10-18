@@ -17,9 +17,9 @@ defmodule Smalt.Ocel.RevOps do
   use Ash.Domain, validate_config_inclusion?: false
 
   resources do
-    resource Smalt.Ocel.RevOps.OcelTrace
-    resource Smalt.Ocel.RevOps.OcelDeviation
-    resource Smalt.Ocel.RevOps.FitnessVerdict
+    resource(Smalt.Ocel.RevOps.OcelTrace)
+    resource(Smalt.Ocel.RevOps.OcelDeviation)
+    resource(Smalt.Ocel.RevOps.FitnessVerdict)
   end
 
   @doc """

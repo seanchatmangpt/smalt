@@ -41,7 +41,8 @@ defmodule Smalt.Telemetry.OcelNdjson do
   `Smalt.Ocel.EventRegistry` — unknown types are logged and dropped
   (`{:ok, :dropped}`), never raised. Returns `{:ok, path}` on append.
   """
-  @spec append(map(), [map()], keyword()) :: {:ok, String.t()} | {:ok, :dropped} | {:error, term()}
+  @spec append(map(), [map()], keyword()) ::
+          {:ok, String.t()} | {:ok, :dropped} | {:error, term()}
   def append(event, objects \\ [], opts \\ []) when is_map(event) and is_list(objects) do
     type = Map.get(event, "type")
 
@@ -52,7 +53,8 @@ defmodule Smalt.Telemetry.OcelNdjson do
       line =
         %{
           "ocel:eventTypes" => [%{"name" => type}],
-          "ocel:objectTypes" => objects |> Enum.map(& &1["type"]) |> Enum.uniq() |> Enum.map(&%{"name" => &1}),
+          "ocel:objectTypes" =>
+            objects |> Enum.map(& &1["type"]) |> Enum.uniq() |> Enum.map(&%{"name" => &1}),
           "ocel:events" => [event],
           "ocel:objects" => objects
         }
@@ -80,7 +82,14 @@ defmodule Smalt.Telemetry.OcelNdjson do
     |> Stream.map(&String.trim/1)
     |> Stream.reject(&(&1 == ""))
     |> Enum.reduce_while(
-      {:ok, %{events: [], objects: [], object_ids: MapSet.new(), event_types: MapSet.new(), object_types: MapSet.new()}},
+      {:ok,
+       %{
+         events: [],
+         objects: [],
+         object_ids: MapSet.new(),
+         event_types: MapSet.new(),
+         object_types: MapSet.new()
+       }},
       fn line, {:ok, acc} ->
         case ingest_line(line, acc) do
           {:ok, acc} -> {:cont, {:ok, acc}}
@@ -103,7 +112,10 @@ defmodule Smalt.Telemetry.OcelNdjson do
       for event <- acc.events,
           %{"objectId" => oid} <- event["relationships"] || [],
           oid not in acc.object_ids do
-        %{path: "$.ocel:events[id:#{Map.get(event, "id")}].relationships", reason: "references unknown object id: #{inspect(oid)}"}
+        %{
+          path: "$.ocel:events[id:#{Map.get(event, "id")}].relationships",
+          reason: "references unknown object id: #{inspect(oid)}"
+        }
       end
 
     case dangling do
@@ -176,9 +188,15 @@ defmodule Smalt.Telemetry.OcelNdjson do
          objects: new_objects,
          object_ids: object_ids,
          event_types:
-           MapSet.union(acc.event_types, MapSet.new(declared_names(doc, "ocel:eventTypes") ++ used_event_types)),
+           MapSet.union(
+             acc.event_types,
+             MapSet.new(declared_names(doc, "ocel:eventTypes") ++ used_event_types)
+           ),
          object_types:
-           MapSet.union(acc.object_types, MapSet.new(declared_names(doc, "ocel:objectTypes") ++ used_object_types))
+           MapSet.union(
+             acc.object_types,
+             MapSet.new(declared_names(doc, "ocel:objectTypes") ++ used_object_types)
+           )
      }}
   end
 

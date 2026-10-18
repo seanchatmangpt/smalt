@@ -61,6 +61,7 @@ defmodule Smalt.EgressRouter do
     origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
     CORSPlug.call(conn, CORSPlug.init(origin: origins))
   end
+
   # KD-COVERS: KD-15
   # KD-15 (v26.10.15): mode-blind Key Vault challenge guard. The real
   # @azure/keyvault-keys SDK is challenge-based: it sends a tokenless request
@@ -82,6 +83,7 @@ defmodule Smalt.EgressRouter do
       String.starts_with?(conn.request_path, "/keys") or
         String.starts_with?(conn.request_path, "/secrets") or
         String.starts_with?(conn.request_path, "/kv")
+
     tokenless? = auth == [] or auth == [""]
 
     # CORS preflight (OPTIONS) stays auth-exempt — it must answer before any
@@ -190,7 +192,8 @@ defmodule Smalt.EgressRouter do
 
           params when is_map(params) ->
             case ConfidentialLedger.append_transaction("default_ledger", params) do
-              {:ok, receipt} -> send_json(conn, 201, receipt)
+              {:ok, receipt} ->
+                send_json(conn, 201, receipt)
 
               # The writer returns the full wire-ready error envelope
               # (R143-era convention, D126 coherence): render it directly —
@@ -199,7 +202,8 @@ defmodule Smalt.EgressRouter do
               {:error, status, env} when is_integer(status) and is_map(env) ->
                 blob_error(conn, status, env)
 
-              other -> blob_error(conn, 500, %{"error" => inspect(other)})
+              other ->
+                blob_error(conn, 500, %{"error" => inspect(other)})
             end
 
           _non_object ->
@@ -237,8 +241,14 @@ defmodule Smalt.EgressRouter do
       case Cosmos.list_dbs() do
         {:ok, status, headers, %{"Databases" => dbs}} ->
           case Enum.find(dbs, &(&1["id"] == db)) do
-            nil -> blob_error(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
-            record -> cosmos_respond(conn, {:ok, status, headers, record})
+            nil ->
+              blob_error(conn, 404, %{
+                "code" => "NotFound",
+                "message" => "Entity with id #{db} not found"
+              })
+
+            record ->
+              cosmos_respond(conn, {:ok, status, headers, record})
           end
 
         # Lens7 fail-closed: not-ready must never be masked as NotFound.
@@ -246,7 +256,10 @@ defmodule Smalt.EgressRouter do
           route_not_ready(conn)
 
         _ ->
-          blob_error(conn, 404, %{"code" => "NotFound", "message" => "Entity with id #{db} not found"})
+          blob_error(conn, 404, %{
+            "code" => "NotFound",
+            "message" => "Entity with id #{db} not found"
+          })
       end
     end)
   end
@@ -347,8 +360,13 @@ defmodule Smalt.EgressRouter do
         |> put_resp_header("etag", @pkranges_etag)
         |> send_json(200, %{
           "PartitionKeyRanges" => [
-            %{"id" => "0", "minInclusive" => "", "maxExclusive" => "FF",
-              "ridPrefix" => 0, "throughputFraction" => 1.0}
+            %{
+              "id" => "0",
+              "minInclusive" => "",
+              "maxExclusive" => "FF",
+              "ridPrefix" => 0,
+              "throughputFraction" => 1.0
+            }
           ],
           "_count" => 1
         })
@@ -460,6 +478,7 @@ defmodule Smalt.EgressRouter do
         # version is kept in a list on the row so /keys/{name}/{version} and
         # /keys/{name}/{version}/{action} can resolve it.
         version = Integer.to_string(System.unique_integer([:positive]))
+
         key_record = %{
           "kid" => "https://#{conn.host}:8443/keys/#{name}/#{version}",
           "versions" => [version],
@@ -493,24 +512,35 @@ defmodule Smalt.EgressRouter do
 
           key_record = Map.update!(key_record, "versions", &(&1 ++ prior_versions))
           Store.put(:smalt_vault_keys, name, key_record)
-          Store.put(:smalt_vault_keys, {name, version}, Map.put(key_record, "is_version_row", true))
+
+          Store.put(
+            :smalt_vault_keys,
+            {name, version},
+            Map.put(key_record, "is_version_row", true)
+          )
 
           # the private DER never leaves the vault; project the public record
           # (SHIM-COURT-KV86: internal bookkeeping stripped too).
           send_json(
             conn,
             200,
-            Map.drop(key_record, ["key_material", "is_version_row", "versions"])  # R111: release_policy stays public (egress_dispatch_test.exs:415)
+            # R111: release_policy stays public (egress_dispatch_test.exs:415)
+            Map.drop(key_record, ["key_material", "is_version_row", "versions"])
           )
         end
       else
         {:kty_error, kty} ->
           blob_error(conn, 400, %{
-            "error" => %{"code" => "UnsupportedKeyType", "message" => "kty #{kty} is not supported"}
+            "error" => %{
+              "code" => "UnsupportedKeyType",
+              "message" => "kty #{kty} is not supported"
+            }
           })
 
         {:policy_error, message} ->
-          blob_error(conn, 400, %{"error" => %{"code" => "InvalidParameter", "message" => message}})
+          blob_error(conn, 400, %{
+            "error" => %{"code" => "InvalidParameter", "message" => message}
+          })
       end
     end)
   end
@@ -540,8 +570,12 @@ defmodule Smalt.EgressRouter do
   defp jwk_for_kty(kty, name, policy) when kty in ["oct", "oct-HSM"] do
     k = Smalt.DataPlane.KeyVaultActions.derive_oct_key(name)
 
-    {:ok, %{"kty" => kty, "key_ops" => jwk_key_ops(kty, policy),
-            "k" => Base.url_encode64(k, padding: false)}, nil}
+    {:ok,
+     %{
+       "kty" => kty,
+       "key_ops" => jwk_key_ops(kty, policy),
+       "k" => Base.url_encode64(k, padding: false)
+     }, nil}
   end
 
   defp jwk_for_kty(kty, _name, _policy), do: {:kty_error, kty}
@@ -616,10 +650,12 @@ defmodule Smalt.EgressRouter do
           send_json(
             conn,
             200,
-            Map.drop(key_record, ["key_material", "is_version_row", "versions"])  # R111: release_policy stays public (egress_dispatch_test.exs:415)
+            # R111: release_policy stays public (egress_dispatch_test.exs:415)
+            Map.drop(key_record, ["key_material", "is_version_row", "versions"])
           )
 
-        :error -> blob_error(conn, 404, not_found_error("KeyNotFound"))
+        :error ->
+          blob_error(conn, 404, not_found_error("KeyNotFound"))
       end
     end
   end
@@ -639,7 +675,8 @@ defmodule Smalt.EgressRouter do
           {:error, status, body} -> send_json(conn, status, body)
         end
 
-      {:error, status, body} -> send_json(conn, status, body)
+      {:error, status, body} ->
+        send_json(conn, status, body)
     end
   end
 
@@ -692,7 +729,8 @@ defmodule Smalt.EgressRouter do
           send_json(
             conn,
             200,
-            Map.drop(key_record, ["key_material", "is_version_row", "versions"])  # R111: release_policy stays public (egress_dispatch_test.exs:415)
+            # R111: release_policy stays public (egress_dispatch_test.exs:415)
+            Map.drop(key_record, ["key_material", "is_version_row", "versions"])
           )
 
         :error ->
@@ -865,6 +903,7 @@ defmodule Smalt.EgressRouter do
       case Store.get(:smalt_vault_secrets, name) do
         {:ok, record} ->
           Store.delete(:smalt_vault_secrets, name)
+
           send_json(conn, 200, %{
             "id" => record["id"],
             "attributes" => public_attributes(record)
@@ -1011,7 +1050,7 @@ defmodule Smalt.EgressRouter do
 
         :error ->
           blob_error(conn, 404, not_found_error("KvNotFound"))
-        end
+      end
     end
   end
 
@@ -1068,7 +1107,9 @@ defmodule Smalt.EgressRouter do
   # and contentType may ride top-level or inside attributes.
   defp secret_params(%{"value" => value} = params) when is_binary(value) do
     attrs =
-      params["attributes"] |> coerce_secret_attrs() |> Map.merge(Map.take(params, ["contentType"]))
+      params["attributes"]
+      |> coerce_secret_attrs()
+      |> Map.merge(Map.take(params, ["contentType"]))
 
     {:ok, value, attrs}
   end
@@ -1224,8 +1265,11 @@ defmodule Smalt.EgressRouter do
                 |> put_resp_header("x-ms-request-id", generate_request_id())
                 |> send_resp(204, "")
 
-              {:ok, status, body} -> blob_error(conn, status, body)
-              {:error, status, body} -> blob_error(conn, status, body)
+              {:ok, status, body} ->
+                blob_error(conn, status, body)
+
+              {:error, status, body} ->
+                blob_error(conn, status, body)
             end
 
           {:error, :invalid_body} ->
@@ -1248,7 +1292,8 @@ defmodule Smalt.EgressRouter do
               {:error, status, body} -> blob_error(conn, status, body)
             end
 
-          {:error, status, body} -> blob_error(conn, status, body)
+          {:error, status, body} ->
+            blob_error(conn, status, body)
         end
       end)
     end)
@@ -1469,7 +1514,12 @@ defmodule Smalt.EgressRouter do
           else
             case immutability_policy_from_wire(conn) do
               {:ok, policy, conn} ->
-                case BlobStorage.set_immutability_policy(account, container, policy, header_map(conn)) do
+                case BlobStorage.set_immutability_policy(
+                       account,
+                       container,
+                       policy,
+                       header_map(conn)
+                     ) do
                   {:ok, status, headers, record} ->
                     conn
                     |> put_resp_headers(headers)
@@ -1518,7 +1568,8 @@ defmodule Smalt.EgressRouter do
                 # dropped — a fresh no-policy container must seed (R62's gate
                 # does not block it); only hold/locked refusals may skip it.
                 case BlobService.set_container_metadata(account, container, meta_headers(conn)) do
-                  {:ok, 200, _} -> :ok
+                  {:ok, 200, _} ->
+                    :ok
 
                   {:error, _status, _code, _msg} = seeding ->
                     require Logger
@@ -1566,7 +1617,8 @@ defmodule Smalt.EgressRouter do
               # create_container/3 as {:ok, map()} only (no error clauses in the
               # data plane), so the shape is not statically indexable; the dead
               # branch stays as a runtime safety net without elem/2 indexing.
-              other -> blob_error(conn, 500, %{"error" => inspect(other)})
+              other ->
+                blob_error(conn, 500, %{"error" => inspect(other)})
             end
           else
             {:error, status, code, msg} ->
@@ -1628,8 +1680,7 @@ defmodule Smalt.EgressRouter do
           blob_error(conn, 409, %{
             "error" => %{
               "code" => "ContainerAlreadyExists",
-              "message" =>
-                "The specified container already exists with different metadata."
+              "message" => "The specified container already exists with different metadata."
             }
           })
         end
@@ -1763,6 +1814,7 @@ defmodule Smalt.EgressRouter do
     # Azure virtual directories: the tail may carry `/` (blob lane cycles
     # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
     blob_name = Enum.join(blob_name, "/")
+
     blob_route(conn, fn conn ->
       # GAP-AUD1-01 (v26.10.14, lane W-5): fail-closed comp registration on the
       # blob PUT arm. Any comp value with no implemented handler here (snapshot,
@@ -1774,126 +1826,141 @@ defmodule Smalt.EgressRouter do
       if unhandled_comp?(conn, @blob_put_comps) do
         unhandled_blob_comp_error(conn, conn.query_params["comp"])
       else
-      # X-1 (v26.10.14): Put Block / Put Block List get dedicated arms BEFORE
-      # the generic Put Blob fallback — previously comp=blocklist fell into
-      # put_blob and stored the request XML as the blob body (P0 data
-      # corruption found by bench B-5).
-      if conn.query_params["comp"] in ["block", "blocklist"] do
-        blob_block_arm(conn, account, container, blob_name)
-      else
-      # KD-01 wire normalization (Azure Put Blob Metadata): comp=metadata is
-      # answered BEFORE the body read — 200 EMPTY with etag, never the old
-      # 201 + JSON debug body (which also silently emptied the content).
-      if conn.query_params["comp"] == "metadata" do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
+        # X-1 (v26.10.14): Put Block / Put Block List get dedicated arms BEFORE
+        # the generic Put Blob fallback — previously comp=blocklist fell into
+        # put_blob and stored the request XML as the blob body (P0 data
+        # corruption found by bench B-5).
+        if conn.query_params["comp"] in ["block", "blocklist"] do
+          blob_block_arm(conn, account, container, blob_name)
         else
-          case BlobStorage.set_blob_metadata(account, container, blob_name, meta_headers(conn)) do
-            {:ok, status, headers} ->
-              send_headers(conn, status, headers)
+          # KD-01 wire normalization (Azure Put Blob Metadata): comp=metadata is
+          # answered BEFORE the body read — 200 EMPTY with etag, never the old
+          # 201 + JSON debug body (which also silently emptied the content).
+          if conn.query_params["comp"] == "metadata" do
+            if not_ready?(conn, [BlobStorage]) do
+              route_not_ready(conn)
+            else
+              case BlobStorage.set_blob_metadata(
+                     account,
+                     container,
+                     blob_name,
+                     meta_headers(conn)
+                   ) do
+                {:ok, status, headers} ->
+                  send_headers(conn, status, headers)
 
-            # SHIM-COURT: metadata PUT under WORM hold/locked policy -> 409
-            # ContainerLocked (R183 finding 2; keep in lockstep with the
-            # put_blob / commit_block_list arms above).
-            {:error, :worm_locked, msg} ->
-              blob_error(conn, 409, %{"error" => %{"code" => "ContainerLocked", "message" => msg}})
+                # SHIM-COURT: metadata PUT under WORM hold/locked policy -> 409
+                # ContainerLocked (R183 finding 2; keep in lockstep with the
+                # put_blob / commit_block_list arms above).
+                {:error, :worm_locked, msg} ->
+                  blob_error(conn, 409, %{
+                    "error" => %{"code" => "ContainerLocked", "message" => msg}
+                  })
 
-            {:error, status, code, msg} ->
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                {:error, status, code, msg} ->
+                  blob_error(conn, status, not_found_error(code) |> put_message(msg))
+              end
+            end
+          else
+            # KD-COVERS: KD-60 — Snapshot Blob wire arm (KD-52's engine
+            # snapshot_blob/5 was previously engine-only; an unregistered comp hit
+            # the typed 400). Azure answers 201 with the x-ms-snapshot timestamp
+            # header; the engine handles existence + WORM (legal hold blocks the
+            # snapshot create arm with 409 ContainerLocked).
+            if conn.query_params["comp"] == "snapshot" do
+              if not_ready?(conn, [BlobStorage]) do
+                route_not_ready(conn)
+              else
+                case BlobStorage.snapshot_blob(account, container, blob_name, header_map(conn)) do
+                  {:ok, 201, headers, nil} ->
+                    send_headers(conn, 201, headers)
+
+                  # WORM create arm: legal hold (or locked policy) -> 409
+                  # ContainerLocked, same shape as the metadata/put_blob arms.
+                  {:error, 409, "ContainerLocked", msg} ->
+                    blob_error(conn, 409, %{
+                      "error" => %{"code" => "ContainerLocked", "message" => msg}
+                    })
+
+                  {:error, status, code, msg} when is_integer(status) ->
+                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                end
+              end
+            else
+              case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
+                {:ok, raw_body, conn} ->
+                  case BlobStorage.put_blob(
+                         account,
+                         container,
+                         blob_name,
+                         raw_body,
+                         header_map(conn)
+                       ) do
+                    {:ok, blob} ->
+                      # Metadata-only body: raw "content" (arbitrary bytes, frequently
+                      # invalid UTF-8) must never reach Jason — a metadata projection
+                      # is total over binary content.
+                      conn
+                      |> put_resp_header("etag", blob["etag"])
+                      |> put_resp_content_type("application/json")
+                      |> send_resp(201, Jason.encode!(BlobStorage.blob_metadata(blob)))
+
+                    {:error, :worm_locked, msg} ->
+                      blob_error(conn, 409, %{
+                        "error" => %{"code" => "ContainerLocked", "message" => msg}
+                      })
+
+                    {:error, :precondition_failed, msg} ->
+                      blob_error(conn, 412, %{
+                        "error" => %{"code" => "PreconditionFailed", "message" => msg}
+                      })
+
+                    {:error, :too_large, msg} ->
+                      blob_error(conn, 413, %{
+                        "error" => %{"code" => "RequestBodyTooLarge", "message" => msg}
+                      })
+
+                    {:error, :container_not_found} ->
+                      blob_error(conn, 404, not_found_error("ContainerNotFound"))
+
+                    {:error, status, code, msg} when is_integer(status) ->
+                      # engine-emitted typed HTTP errors (e.g. 400 InvalidMetadata)
+                      blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                  end
+
+                # A partial read is oversize only when it fills the cap; a small
+                # partial means the body was truncated mid-flight (transport stopped
+                # early) — Plug.Conn.read_body is single-shot, so {:more, small, _}
+                # is a truncation, not a size refusal. Measured with a real
+                # partial-then-error adapter (egress cycle-8).
+                {:more, partial, _conn} when byte_size(partial) >= 8_000_000 ->
+                  blob_error(conn, 413, %{
+                    "error" => %{
+                      "code" => "RequestBodyTooLarge",
+                      "message" => "Blob exceeds the 8,000,000-byte request body limit."
+                    }
+                  })
+
+                {:more, partial, _conn} ->
+                  blob_error(conn, 400, %{
+                    "error" => %{
+                      "code" => "InvalidRequestBody",
+                      "message" =>
+                        "The request body was truncated mid-flight " <>
+                          "(read #{byte_size(partial)} of the declared bytes)."
+                    }
+                  })
+
+                # Plug >= 1.14 read_body returns {:error, reason} without the conn; the
+                # historical {:error, term, _conn} clause here was typed-unreachable.
+                {:error, reason} ->
+                  blob_error(conn, 400, %{
+                    "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
+                  })
+              end
+            end
           end
         end
-      else
-      # KD-COVERS: KD-60 — Snapshot Blob wire arm (KD-52's engine
-      # snapshot_blob/5 was previously engine-only; an unregistered comp hit
-      # the typed 400). Azure answers 201 with the x-ms-snapshot timestamp
-      # header; the engine handles existence + WORM (legal hold blocks the
-      # snapshot create arm with 409 ContainerLocked).
-      if conn.query_params["comp"] == "snapshot" do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
-        else
-          case BlobStorage.snapshot_blob(account, container, blob_name, header_map(conn)) do
-            {:ok, 201, headers, nil} ->
-              send_headers(conn, 201, headers)
-
-            # WORM create arm: legal hold (or locked policy) -> 409
-            # ContainerLocked, same shape as the metadata/put_blob arms.
-            {:error, 409, "ContainerLocked", msg} ->
-              blob_error(conn, 409, %{
-                "error" => %{"code" => "ContainerLocked", "message" => msg}
-              })
-
-            {:error, status, code, msg} when is_integer(status) ->
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
-          end
-        end
-      else
-        case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
-        {:ok, raw_body, conn} ->
-          case BlobStorage.put_blob(account, container, blob_name, raw_body, header_map(conn)) do
-            {:ok, blob} ->
-              # Metadata-only body: raw "content" (arbitrary bytes, frequently
-              # invalid UTF-8) must never reach Jason — a metadata projection
-              # is total over binary content.
-              conn
-              |> put_resp_header("etag", blob["etag"])
-              |> put_resp_content_type("application/json")
-              |> send_resp(201, Jason.encode!(BlobStorage.blob_metadata(blob)))
-
-            {:error, :worm_locked, msg} ->
-              blob_error(conn, 409, %{"error" => %{"code" => "ContainerLocked", "message" => msg}})
-
-            {:error, :precondition_failed, msg} ->
-              blob_error(conn, 412, %{
-                "error" => %{"code" => "PreconditionFailed", "message" => msg}
-              })
-
-            {:error, :too_large, msg} ->
-              blob_error(conn, 413, %{
-                "error" => %{"code" => "RequestBodyTooLarge", "message" => msg}
-              })
-
-            {:error, :container_not_found} ->
-              blob_error(conn, 404, not_found_error("ContainerNotFound"))
-
-            {:error, status, code, msg} when is_integer(status) ->
-              # engine-emitted typed HTTP errors (e.g. 400 InvalidMetadata)
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
-          end
-
-        # A partial read is oversize only when it fills the cap; a small
-        # partial means the body was truncated mid-flight (transport stopped
-        # early) — Plug.Conn.read_body is single-shot, so {:more, small, _}
-        # is a truncation, not a size refusal. Measured with a real
-        # partial-then-error adapter (egress cycle-8).
-        {:more, partial, _conn} when byte_size(partial) >= 8_000_000 ->
-          blob_error(conn, 413, %{
-            "error" => %{
-              "code" => "RequestBodyTooLarge",
-              "message" => "Blob exceeds the 8,000,000-byte request body limit."
-            }
-          })
-
-        {:more, partial, _conn} ->
-          blob_error(conn, 400, %{
-            "error" => %{
-              "code" => "InvalidRequestBody",
-              "message" =>
-                "The request body was truncated mid-flight " <>
-                  "(read #{byte_size(partial)} of the declared bytes)."
-            }
-          })
-
-        # Plug >= 1.14 read_body returns {:error, reason} without the conn; the
-        # historical {:error, term, _conn} clause here was typed-unreachable.
-        {:error, reason} ->
-          blob_error(conn, 400, %{
-            "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
-          })
-      end
-      end
-      end
-      end
       end
     end)
   end
@@ -1902,6 +1969,7 @@ defmodule Smalt.EgressRouter do
     # Azure virtual directories: the tail may carry `/` (blob lane cycles
     # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
     blob_name = Enum.join(blob_name, "/")
+
     blob_route(conn, fn conn ->
       # GAP-AUD1-01 (v26.10.14, lane W-5): same fail-closed comp registration
       # on the GET arm — comp=pagelist/tags previously fell past the blocklist
@@ -1910,145 +1978,157 @@ defmodule Smalt.EgressRouter do
       if unhandled_comp?(conn, @blob_get_comps) do
         unhandled_blob_comp_error(conn, conn.query_params["comp"])
       else
-      # KD-COVERS: KD-60 — Get Blob Metadata (`GET ?comp=metadata`): 200 EMPTY
-      # with the stored x-ms-meta-* headers echoed back, mirroring the PUT
-      # comp=metadata arm's meta_headers/stored_meta_wire read path.
-      if conn.query_params["comp"] == "metadata" do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
+        # KD-COVERS: KD-60 — Get Blob Metadata (`GET ?comp=metadata`): 200 EMPTY
+        # with the stored x-ms-meta-* headers echoed back, mirroring the PUT
+        # comp=metadata arm's meta_headers/stored_meta_wire read path.
+        if conn.query_params["comp"] == "metadata" do
+          if not_ready?(conn, [BlobStorage]) do
+            route_not_ready(conn)
+          else
+            case BlobStorage.get_blob(account, container, blob_name) do
+              {:ok, blob} ->
+                conn
+                |> put_resp_headers(stored_meta_wire(blob))
+                |> put_resp_header("etag", blob["etag"])
+                |> put_resp_header("x-ms-request-id", generate_request_id())
+                |> put_resp_header("x-ms-version", "2021-12-02")
+                |> send_resp(200, "")
+
+              :error ->
+                blob_error(conn, 404, not_found_error("BlobNotFound"))
+            end
+          end
         else
-          case BlobStorage.get_blob(account, container, blob_name) do
-            {:ok, blob} ->
-              conn
-              |> put_resp_headers(stored_meta_wire(blob))
-              |> put_resp_header("etag", blob["etag"])
-              |> put_resp_header("x-ms-request-id", generate_request_id())
-              |> put_resp_header("x-ms-version", "2021-12-02")
-              |> send_resp(200, "")
+          # X-1 (v26.10.14): Get Block List — Azure answers application/xml; the
+          # old fallback served the blob body as octet-stream (SDK DecodeError).
+          if conn.query_params["comp"] == "blocklist" do
+            if not_ready?(conn, [BlobStorage]) do
+              route_not_ready(conn)
+            else
+              case BlobStorage.get_block_list(account, container, blob_name) do
+                {:ok, committed, uncommitted} ->
+                  conn
+                  |> put_resp_header("x-ms-request-id", generate_request_id())
+                  |> put_resp_header("x-ms-version", "2021-12-02")
+                  |> put_resp_content_type("application/xml")
+                  |> send_resp(200, BlobStorage.block_list_xml(committed, uncommitted))
 
-            :error ->
-              blob_error(conn, 404, not_found_error("BlobNotFound"))
+                :error ->
+                  blob_error(conn, 404, not_found_error("BlobNotFound"))
+              end
+            end
+          else
+            # KD-COVERS: KD-60 — snapshot read-back (`GET ?sharesnapshot=<ts>`):
+            # serves the frozen point-in-time record from :smalt_blob_snapshots
+            # byte-exact; base-blob mutations after the snapshot stay invisible
+            # through the snapshot. Without the param the normal GET path runs.
+            if conn.query_params["sharesnapshot"] in [nil, ""] do
+              # Azure storage semantics: the range rides `x-ms-range` (python/JS SDKs)
+              # or the standard `Range` header; honor both. x-ms-range WINS when both
+              # are present (Azure parity + C4 fence): the engine takes List.first.
+              range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
+
+              # Conditional read (Azure parity, cycle-30): If-Match / If-None-Match
+              # evaluated before the range branch; RFC 7232 precedence (If-Match
+              # first, 412; then If-None-Match, 304).
+              case BlobStorage.get_blob_conditional(
+                     account,
+                     container,
+                     blob_name,
+                     header_map(conn)
+                   ) do
+                {:error, 412, code, msg} ->
+                  blob_error(conn, 412, not_found_error(code) |> put_message(msg))
+
+                {:not_modified, etag} ->
+                  conn
+                  |> put_resp_header("etag", etag)
+                  |> put_resp_header("x-ms-request-id", generate_request_id())
+                  |> put_resp_header("x-ms-version", "2021-12-02")
+                  |> send_resp(304, "")
+
+                :error ->
+                  blob_error(conn, 404, not_found_error("BlobNotFound"))
+
+                {:ok, _blob} ->
+                  case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
+                    {:ok, blob, nil} ->
+                      conn
+                      |> put_resp_headers(stored_meta_wire(blob))
+                      |> put_resp_header("etag", blob["etag"])
+                      |> put_resp_header(
+                        "content-length",
+                        blob["content"] |> byte_size() |> Integer.to_string()
+                      )
+                      |> put_resp_content_type("application/octet-stream")
+                      |> send_resp(200, blob["content"])
+
+                    {:ok, blob, {first, last}} ->
+                      body = binary_part(blob["content"], first, last - first + 1)
+
+                      conn
+                      |> put_resp_headers(stored_meta_wire(blob))
+                      |> put_resp_header("etag", blob["etag"])
+                      |> put_resp_header(
+                        "content-range",
+                        "bytes #{first}-#{last}/#{byte_size(blob["content"])}"
+                      )
+                      |> put_resp_header(
+                        "content-length",
+                        (last - first + 1) |> Integer.to_string()
+                      )
+                      |> put_resp_content_type("application/octet-stream")
+                      |> send_resp(206, body)
+
+                    {:error, :range_not_satisfiable, total} ->
+                      conn
+                      |> put_resp_header("content-range", "bytes */#{total}")
+                      |> put_resp_content_type("application/json")
+                      |> send_resp(
+                        416,
+                        Jason.encode!(%{
+                          "error" => %{
+                            "code" => "InvalidRange",
+                            "message" =>
+                              "The range specified is invalid for a blob of #{total} bytes."
+                          }
+                        })
+                      )
+
+                    :error ->
+                      blob_error(conn, 404, not_found_error("BlobNotFound"))
+                  end
+              end
+            else
+              # Snapshot read arm (sharesnapshot present).
+              if not_ready?(conn, [BlobStorage]) do
+                route_not_ready(conn)
+              else
+                case BlobStorage.get_blob_snapshot(
+                       account,
+                       container,
+                       blob_name,
+                       conn.query_params["sharesnapshot"]
+                     ) do
+                  {:ok, blob} ->
+                    conn
+                    |> put_resp_headers(stored_meta_wire(blob))
+                    |> put_resp_header("etag", blob["etag"])
+                    |> put_resp_header("x-ms-snapshot", conn.query_params["sharesnapshot"])
+                    |> put_resp_header(
+                      "content-length",
+                      blob["content"] |> byte_size() |> Integer.to_string()
+                    )
+                    |> put_resp_content_type("application/octet-stream")
+                    |> send_resp(200, blob["content"])
+
+                  {:error, _status, _code, _msg} ->
+                    blob_error(conn, 404, not_found_error("BlobNotFound"))
+                end
+              end
+            end
           end
         end
-      else
-      # X-1 (v26.10.14): Get Block List — Azure answers application/xml; the
-      # old fallback served the blob body as octet-stream (SDK DecodeError).
-      if conn.query_params["comp"] == "blocklist" do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
-        else
-          case BlobStorage.get_block_list(account, container, blob_name) do
-            {:ok, committed, uncommitted} ->
-              conn
-              |> put_resp_header("x-ms-request-id", generate_request_id())
-              |> put_resp_header("x-ms-version", "2021-12-02")
-              |> put_resp_content_type("application/xml")
-              |> send_resp(200, BlobStorage.block_list_xml(committed, uncommitted))
-
-            :error ->
-              blob_error(conn, 404, not_found_error("BlobNotFound"))
-          end
-        end
-      else
-      # KD-COVERS: KD-60 — snapshot read-back (`GET ?sharesnapshot=<ts>`):
-      # serves the frozen point-in-time record from :smalt_blob_snapshots
-      # byte-exact; base-blob mutations after the snapshot stay invisible
-      # through the snapshot. Without the param the normal GET path runs.
-      if conn.query_params["sharesnapshot"] in [nil, ""] do
-      # Azure storage semantics: the range rides `x-ms-range` (python/JS SDKs)
-      # or the standard `Range` header; honor both. x-ms-range WINS when both
-      # are present (Azure parity + C4 fence): the engine takes List.first.
-      range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
-
-      # Conditional read (Azure parity, cycle-30): If-Match / If-None-Match
-      # evaluated before the range branch; RFC 7232 precedence (If-Match
-      # first, 412; then If-None-Match, 304).
-      case BlobStorage.get_blob_conditional(account, container, blob_name, header_map(conn)) do
-        {:error, 412, code, msg} ->
-          blob_error(conn, 412, not_found_error(code) |> put_message(msg))
-
-        {:not_modified, etag} ->
-          conn
-          |> put_resp_header("etag", etag)
-          |> put_resp_header("x-ms-request-id", generate_request_id())
-          |> put_resp_header("x-ms-version", "2021-12-02")
-          |> send_resp(304, "")
-
-        :error ->
-          blob_error(conn, 404, not_found_error("BlobNotFound"))
-
-        {:ok, _blob} ->
-          case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
-            {:ok, blob, nil} ->
-          conn
-          |> put_resp_headers(stored_meta_wire(blob))
-          |> put_resp_header("etag", blob["etag"])
-          |> put_resp_header(
-            "content-length",
-            blob["content"] |> byte_size() |> Integer.to_string()
-          )
-          |> put_resp_content_type("application/octet-stream")
-          |> send_resp(200, blob["content"])
-
-        {:ok, blob, {first, last}} ->
-          body = binary_part(blob["content"], first, last - first + 1)
-
-          conn
-          |> put_resp_headers(stored_meta_wire(blob))
-          |> put_resp_header("etag", blob["etag"])
-          |> put_resp_header("content-range", "bytes #{first}-#{last}/#{byte_size(blob["content"])}")
-          |> put_resp_header(
-            "content-length",
-            (last - first + 1) |> Integer.to_string()
-          )
-          |> put_resp_content_type("application/octet-stream")
-          |> send_resp(206, body)
-
-        {:error, :range_not_satisfiable, total} ->
-          conn
-          |> put_resp_header("content-range", "bytes */#{total}")
-          |> put_resp_content_type("application/json")
-          |> send_resp(416, Jason.encode!(%{
-            "error" => %{
-              "code" => "InvalidRange",
-              "message" => "The range specified is invalid for a blob of #{total} bytes."
-            }
-          }))
-
-            :error ->
-              blob_error(conn, 404, not_found_error("BlobNotFound"))
-          end
-        end
-      else
-        # Snapshot read arm (sharesnapshot present).
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
-        else
-          case BlobStorage.get_blob_snapshot(
-                 account,
-                 container,
-                 blob_name,
-                 conn.query_params["sharesnapshot"]
-               ) do
-            {:ok, blob} ->
-              conn
-              |> put_resp_headers(stored_meta_wire(blob))
-              |> put_resp_header("etag", blob["etag"])
-              |> put_resp_header("x-ms-snapshot", conn.query_params["sharesnapshot"])
-              |> put_resp_header(
-                "content-length",
-                blob["content"] |> byte_size() |> Integer.to_string()
-              )
-              |> put_resp_content_type("application/octet-stream")
-              |> send_resp(200, blob["content"])
-
-            {:error, _status, _code, _msg} ->
-              blob_error(conn, 404, not_found_error("BlobNotFound"))
-          end
-        end
-      end
-      end
-      end
       end
     end)
   end
@@ -2086,6 +2166,7 @@ defmodule Smalt.EgressRouter do
     # Azure virtual directories: the tail may carry `/` (blob lane cycles
     # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
     blob_name = Enum.join(blob_name, "/")
+
     blob_route(conn, fn conn ->
       # D14 (R122, KD-60): HEAD splat arm default-deny — comp=appendblock (and
       # any other unimplemented comp) previously served 200 header metadata as
@@ -2096,69 +2177,75 @@ defmodule Smalt.EgressRouter do
       if unhandled_comp?(conn, []) do
         unhandled_blob_comp_error(conn, conn.query_params["comp"])
       else
-      # KD-COVERS: KD-97 — conditional/ranged HEAD parity (v26.10.17): the HEAD
-      # arm previously dispatched to unconditional get_blob and answered 200 to
-      # every conditional probe. Mirror the GET arm's engine (If-Match 412,
-      # If-None-Match 304, Range 206/416) with empty bodies; content-length
-      # still reflects the effective (range) size, as Azure parity requires.
-      range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
+        # KD-COVERS: KD-97 — conditional/ranged HEAD parity (v26.10.17): the HEAD
+        # arm previously dispatched to unconditional get_blob and answered 200 to
+        # every conditional probe. Mirror the GET arm's engine (If-Match 412,
+        # If-None-Match 304, Range 206/416) with empty bodies; content-length
+        # still reflects the effective (range) size, as Azure parity requires.
+        range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
 
-      case BlobStorage.get_blob_conditional(account, container, blob_name, header_map(conn)) do
-        {:error, 412, code, msg} ->
-          blob_error(conn, 412, not_found_error(code) |> put_message(msg))
+        case BlobStorage.get_blob_conditional(account, container, blob_name, header_map(conn)) do
+          {:error, 412, code, msg} ->
+            blob_error(conn, 412, not_found_error(code) |> put_message(msg))
 
-        {:not_modified, etag} ->
-          conn
-          |> put_resp_header("etag", etag)
-          |> put_resp_header("x-ms-request-id", generate_request_id())
-          |> put_resp_header("x-ms-version", "2021-12-02")
-          |> send_resp(304, "")
+          {:not_modified, etag} ->
+            conn
+            |> put_resp_header("etag", etag)
+            |> put_resp_header("x-ms-request-id", generate_request_id())
+            |> put_resp_header("x-ms-version", "2021-12-02")
+            |> send_resp(304, "")
 
-        :error ->
-          blob_error(conn, 404, not_found_error("BlobNotFound"))
+          :error ->
+            blob_error(conn, 404, not_found_error("BlobNotFound"))
 
-        {:ok, _blob} ->
-          case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
-            {:ok, blob, nil} ->
-              conn
-              |> put_resp_headers(stored_meta_wire(blob))
-              |> put_resp_header("etag", blob["etag"])
-              |> put_resp_header("x-ms-request-id", generate_request_id())
-              |> put_resp_header(
-                "content-length",
-                blob["content"] |> byte_size() |> Integer.to_string()
-              )
-              |> put_resp_content_type("application/octet-stream")
-              |> send_resp(200, "")
+          {:ok, _blob} ->
+            case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
+              {:ok, blob, nil} ->
+                conn
+                |> put_resp_headers(stored_meta_wire(blob))
+                |> put_resp_header("etag", blob["etag"])
+                |> put_resp_header("x-ms-request-id", generate_request_id())
+                |> put_resp_header(
+                  "content-length",
+                  blob["content"] |> byte_size() |> Integer.to_string()
+                )
+                |> put_resp_content_type("application/octet-stream")
+                |> send_resp(200, "")
 
-            {:ok, blob, {first, last}} ->
-              conn
-              |> put_resp_headers(stored_meta_wire(blob))
-              |> put_resp_header("etag", blob["etag"])
-              |> put_resp_header("content-range", "bytes #{first}-#{last}/#{byte_size(blob["content"])}")
-              |> put_resp_header("x-ms-request-id", generate_request_id())
-              |> put_resp_header(
-                "content-length",
-                (last - first + 1) |> Integer.to_string()
-              )
-              |> put_resp_content_type("application/octet-stream")
-              |> send_resp(206, "")
+              {:ok, blob, {first, last}} ->
+                conn
+                |> put_resp_headers(stored_meta_wire(blob))
+                |> put_resp_header("etag", blob["etag"])
+                |> put_resp_header(
+                  "content-range",
+                  "bytes #{first}-#{last}/#{byte_size(blob["content"])}"
+                )
+                |> put_resp_header("x-ms-request-id", generate_request_id())
+                |> put_resp_header(
+                  "content-length",
+                  (last - first + 1) |> Integer.to_string()
+                )
+                |> put_resp_content_type("application/octet-stream")
+                |> send_resp(206, "")
 
-            {:error, :range_not_satisfiable, total} ->
-              conn
-              |> put_resp_header("content-range", "bytes */#{total}")
-              |> put_resp_content_type("application/json")
-              |> send_resp(416, Jason.encode!(%{
-                "error" => %{
-                  "code" => "InvalidRange",
-                  "message" => "The range specified is invalid for a blob of #{total} bytes."
-                }
-              }))
+              {:error, :range_not_satisfiable, total} ->
+                conn
+                |> put_resp_header("content-range", "bytes */#{total}")
+                |> put_resp_content_type("application/json")
+                |> send_resp(
+                  416,
+                  Jason.encode!(%{
+                    "error" => %{
+                      "code" => "InvalidRange",
+                      "message" => "The range specified is invalid for a blob of #{total} bytes."
+                    }
+                  })
+                )
 
-            :error ->
-              blob_error(conn, 404, not_found_error("BlobNotFound"))
-          end
-      end
+              :error ->
+                blob_error(conn, 404, not_found_error("BlobNotFound"))
+            end
+        end
       end
     end)
   end
@@ -2167,6 +2254,7 @@ defmodule Smalt.EgressRouter do
     # Azure virtual directories: the tail may carry `/` (blob lane cycles
     # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
     blob_name = Enum.join(blob_name, "/")
+
     blob_route(conn, fn conn ->
       # D14 (R122, KD-60): DELETE splat arm default-deny — no blob-level comp
       # has an implemented DELETE handler, so ANY comp (lease, appendblock,
@@ -2175,15 +2263,15 @@ defmodule Smalt.EgressRouter do
       if unhandled_comp?(conn, []) do
         unhandled_blob_comp_error(conn, conn.query_params["comp"])
       else
-      case BlobStorage.delete_blob(account, container, blob_name, header_map(conn)) do
-        {:ok, status, headers, _record} ->
-          conn
-          |> put_resp_headers(headers)
-          |> send_resp(status, "")
+        case BlobStorage.delete_blob(account, container, blob_name, header_map(conn)) do
+          {:ok, status, headers, _record} ->
+            conn
+            |> put_resp_headers(headers)
+            |> send_resp(status, "")
 
-        {:error, status, code, msg} ->
-          blob_error(conn, status, not_found_error(code) |> put_message(msg))
-      end
+          {:error, status, code, msg} ->
+            blob_error(conn, status, not_found_error(code) |> put_message(msg))
+        end
       end
     end)
   end
@@ -2299,7 +2387,8 @@ defmodule Smalt.EgressRouter do
           blob_error(conn, 413, %{
             "error" => %{
               "code" => "RequestBodyTooLarge",
-              "message" => "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes)."
+              "message" =>
+                "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes)."
             }
           })
 
@@ -2514,7 +2603,6 @@ defmodule Smalt.EgressRouter do
         |> put_resp_header("x-ms-request-id", generate_request_id())
         |> put_resp_header("x-ms-version", "2021-12-02")
 
-
       # Auth-lens interplay (egress lens-4 cycle 1, measured): the auth-exempt
       # namespace (/.well-known/, /oauth2/, /attest/, /metadata/endpoints,
       # /{tid}/oauth2/v2.0/token) composes with the blob splat — account=
@@ -2632,8 +2720,7 @@ defmodule Smalt.EgressRouter do
       blob_error(conn, 400, %{
         "error" => %{
           "code" => "MissingXMsVersion",
-          "message" =>
-            "Missing required x-ms-version header, SAS token, or allowlisted host."
+          "message" => "Missing required x-ms-version header, SAS token, or allowlisted host."
         }
       })
       |> halt()
@@ -2747,7 +2834,6 @@ defmodule Smalt.EgressRouter do
 
               {:ok, parts} ->
                 send_batch_response(conn, account, parts)
-
             end
 
           :error ->
@@ -2890,7 +2976,8 @@ defmodule Smalt.EgressRouter do
         batch_dispatch_op(method, segments, query, headers)
 
       :error ->
-        {400, [{"x-ms-error-code", "InvalidInput"}], batch_error_body("InvalidInput", "Malformed sub-request.")}
+        {400, [{"x-ms-error-code", "InvalidInput"}],
+         batch_error_body("InvalidInput", "Malformed sub-request.")}
     end
   end
 
@@ -2898,17 +2985,28 @@ defmodule Smalt.EgressRouter do
     blob_name = Enum.join(blob_segments, "/")
 
     case BlobStorage.delete_blob(account, container, blob_name, headers) do
-      {:ok, status, headers, _record} -> {status, Map.to_list(headers), ""}
-      {:error, status, code, msg} -> {status, [{"x-ms-error-code", code}], batch_error_body(code, msg)}
+      {:ok, status, headers, _record} ->
+        {status, Map.to_list(headers), ""}
+
+      {:error, status, code, msg} ->
+        {status, [{"x-ms-error-code", code}], batch_error_body(code, msg)}
     end
   end
 
-  defp batch_dispatch_op("PUT", [account, container | blob_segments], %{"comp" => "tier"}, headers) do
+  defp batch_dispatch_op(
+         "PUT",
+         [account, container | blob_segments],
+         %{"comp" => "tier"},
+         headers
+       ) do
     blob_name = Enum.join(blob_segments, "/")
 
     case BlobStorage.set_blob_tier(account, container, blob_name, headers["x-ms-access-tier"]) do
-      {:ok, status, headers, _} -> {status, Map.to_list(headers), ""}
-      {:error, status, code, msg} -> {status, [{"x-ms-error-code", code}], batch_error_body(code, msg)}
+      {:ok, status, headers, _} ->
+        {status, Map.to_list(headers), ""}
+
+      {:error, status, code, msg} ->
+        {status, [{"x-ms-error-code", code}], batch_error_body(code, msg)}
     end
   end
 
@@ -3063,7 +3161,13 @@ defmodule Smalt.EgressRouter do
     # R50 repair 3: CaseClauseError admitted (measured through the ledger
     # append clause mismatch, comment at post /app/transactions) — typed 400
     # InvalidBody, never a blanket catch-all.
-    e in [Protocol.UndefinedError, ArgumentError, BadMapError, FunctionClauseError, CaseClauseError] ->
+    e in [
+      Protocol.UndefinedError,
+      ArgumentError,
+      BadMapError,
+      FunctionClauseError,
+      CaseClauseError
+    ] ->
       Logger.warning("egress invalid body on #{conn.request_path}: #{inspect(e.__struct__)}")
 
       send_json(conn, 400, invalid_body_error())
@@ -3203,7 +3307,11 @@ defmodule Smalt.EgressRouter do
             })
 
           batch when is_list(batch) ->
-            send_json(conn, 200, Enum.map(batch, &%{"id" => Map.get(&1, "id"), "status" => "Published"}))
+            send_json(
+              conn,
+              200,
+              Enum.map(batch, &%{"id" => Map.get(&1, "id"), "status" => "Published"})
+            )
         end
 
       _ ->
@@ -3511,8 +3619,6 @@ defmodule Smalt.EgressRouter do
   defp comp_str(v) when is_list(v), do: Enum.join(v, ", ")
   defp comp_str(v), do: v
 
-
-
   # R124 message convention (both comp-error envelopes): the wire-visible
   # prefix `The comp value '<v>' is not supported` is byte-identical and
   # test-pinned (blob_hardening_test.exs). The GAP clause
@@ -3623,8 +3729,9 @@ defmodule Smalt.EgressRouter do
   # metadata is wire-safe to emit.
   defp stored_meta_wire(blob) do
     blob
-    |> Map.get("headers", %{}) || %{}
-    |> Enum.filter(fn {k, _v} -> String.starts_with?(k, "x-ms-meta-") end)
+    |> Map.get("headers", %{}) ||
+      %{}
+      |> Enum.filter(fn {k, _v} -> String.starts_with?(k, "x-ms-meta-") end)
   end
 
   defp put_resp_headers(conn, headers) do

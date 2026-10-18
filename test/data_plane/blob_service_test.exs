@@ -28,7 +28,6 @@ defmodule Smalt.DataPlane.BlobServiceTest do
       :ok
   end
 
-
   alias Smalt.DataPlane.{BlobService, BlobStorage}
   alias Smalt.Store
 
@@ -62,18 +61,29 @@ defmodule Smalt.DataPlane.BlobServiceTest do
       assert page1["next_marker"] == "c0050"
 
       {:ok, page2} =
-        BlobService.list_containers(@account, %{"maxresults" => "50", "marker" => page1["next_marker"]})
+        BlobService.list_containers(@account, %{
+          "maxresults" => "50",
+          "marker" => page1["next_marker"]
+        })
 
       assert length(page2["containers"]) == 50
       assert page2["next_marker"] == "c0100"
 
       {:ok, page3} =
-        BlobService.list_containers(@account, %{"maxresults" => "50", "marker" => page2["next_marker"]})
+        BlobService.list_containers(@account, %{
+          "maxresults" => "50",
+          "marker" => page2["next_marker"]
+        })
 
       assert length(page3["containers"]) == 20
       assert page3["next_marker"] == nil
 
-      names = Enum.map(page1["containers"] ++ page2["containers"] ++ page3["containers"], & &1["container"])
+      names =
+        Enum.map(
+          page1["containers"] ++ page2["containers"] ++ page3["containers"],
+          & &1["container"]
+        )
+
       assert length(Enum.uniq(names)) == 120
       assert names == Enum.sort(names)
       assert List.first(names) == "c0001"

@@ -211,6 +211,7 @@ defmodule Smalt.PPlan.Task do
   @spec get(id()) :: t() | nil
   def get(id) do
     :ok = ensure()
+
     case Store.get(@table, id) do
       {:ok, task} -> task
       :error -> nil

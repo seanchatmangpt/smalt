@@ -95,8 +95,16 @@ defmodule SmaltLroTest do
     assert [location_url] = get_resp_header(conn, "location")
     assert ["1"] = get_resp_header(conn, "retry-after")
 
-    assert String.starts_with?(async_url, "http://www.example.com/subscriptions/#{@sub}/operations/")
-    assert String.starts_with?(location_url, "http://www.example.com/subscriptions/#{@sub}/operations/")
+    assert String.starts_with?(
+             async_url,
+             "http://www.example.com/subscriptions/#{@sub}/operations/"
+           )
+
+    assert String.starts_with?(
+             location_url,
+             "http://www.example.com/subscriptions/#{@sub}/operations/"
+           )
+
     assert async_url == location_url
 
     # Body: operation record in progress.
@@ -105,8 +113,11 @@ defmodule SmaltLroTest do
     assert op["startTime"]
     refute op["endTime"]
     assert op["id"] == URI.parse(async_url).path
+
     assert op["resourceId"] |> String.downcase() ==
-             String.downcase("/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/#{name}")
+             String.downcase(
+               "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/#{name}"
+             )
 
     # The resource itself is already materialized in the Store with an
     # InProgress-style provisioning view pending; the op record is Store-backed.
@@ -188,7 +199,10 @@ defmodule SmaltLroTest do
     conn = conn(:get, "/subscriptions/#{@sub}/operations/not-a-real-op") |> call()
 
     assert conn.status == 404
-    assert %{"error" => %{"code" => "OperationNotFound", "message" => msg}} = Jason.decode!(conn.resp_body)
+
+    assert %{"error" => %{"code" => "OperationNotFound", "message" => msg}} =
+             Jason.decode!(conn.resp_body)
+
     assert msg =~ "not-a-real-op"
   end
 
@@ -211,7 +225,13 @@ defmodule SmaltLroTest do
     assert put_conn.status == 202
 
     [async_url] = get_resp_header(put_conn, "azure-asyncoperation")
-    op_id = async_url |> String.split("/operations/") |> List.last() |> String.split("?") |> List.first()
+
+    op_id =
+      async_url
+      |> String.split("/operations/")
+      |> List.last()
+      |> String.split("?")
+      |> List.first()
 
     # Owner polls fine; the other subscription gets 404 for the same op id.
     owner = conn(:get, "/subscriptions/#{@sub}/operations/#{op_id}") |> call()
@@ -307,7 +327,10 @@ defmodule SmaltLroTest do
 
     assert put.status in [200, 201]
 
-    del = conn(:delete, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=#{api_v(rg_type)}") |> call()
+    del =
+      conn(:delete, "/subscriptions/#{@sub}/resourceGroups/#{rg}?api-version=#{api_v(rg_type)}")
+      |> call()
+
     assert del.status == 202
     assert [loc] = get_resp_header(del, "location")
     assert ["1"] = get_resp_header(del, "retry-after")
@@ -330,16 +353,28 @@ defmodule SmaltLroTest do
     op = Jason.decode!(put_conn.resp_body)
 
     # Resource is GET-able even before the op flips (record already in Store).
-    get_path = String.trim_trailing(sa_path(name), "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
-    assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}") |> call() |> Map.get(:status) == 200
+    get_path =
+      String.trim_trailing(
+        sa_path(name),
+        "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}"
+      )
+
+    assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+           |> call()
+           |> Map.get(:status) == 200
 
     assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
 
-    del_conn = conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}") |> call()
+    del_conn =
+      conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+      |> call()
+
     # Wave-2: storageAccounts DELETE is an ARM LRO — 202 + async headers.
     assert del_conn.status == 202
 
-    assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}") |> call() |> Map.get(:status) ==
+    assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+           |> call()
+           |> Map.get(:status) ==
              404
 
     # The operation record remains queryable and stays Succeeded — pinned by a
@@ -409,7 +444,10 @@ defmodule SmaltLroTest do
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
     get_path =
-      String.trim_trailing(sa_path(name), "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+      String.trim_trailing(
+        sa_path(name),
+        "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}"
+      )
 
     # Delete the parent resource WHILE the op is InProgress.
     del_conn =
@@ -417,6 +455,7 @@ defmodule SmaltLroTest do
       |> call()
 
     assert del_conn.status == 202
+
     assert conn(:get, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
            |> call()
            |> Map.get(:status) == 404
@@ -442,9 +481,12 @@ defmodule SmaltLroTest do
     put_conn = conn(:put, rg_path, %{"location" => "eastus"}) |> call()
     assert put_conn.status == 201
 
-    sa_get_path = "/subscriptions/#{@sub}/resourceGroups/lro-cascade-rg/providers/#{sa_type}/#{name}"
+    sa_get_path =
+      "/subscriptions/#{@sub}/resourceGroups/lro-cascade-rg/providers/#{sa_type}/#{name}"
 
-    put_conn = conn(:put, sa_get_path <> "?api-version=#{api_v(sa_type)}", sa_body(name)) |> call()
+    put_conn =
+      conn(:put, sa_get_path <> "?api-version=#{api_v(sa_type)}", sa_body(name)) |> call()
+
     assert put_conn.status == 202
     op = Jason.decode!(put_conn.resp_body)
 
@@ -453,13 +495,18 @@ defmodule SmaltLroTest do
     assert del_conn.status == 202
 
     # Child record removed by the cascade…
-    assert conn(:get, sa_get_path <> "?api-version=#{api_v(sa_type)}") |> call() |> Map.get(:status) == 404
+    assert conn(:get, sa_get_path <> "?api-version=#{api_v(sa_type)}")
+           |> call()
+           |> Map.get(:status) == 404
 
     # …the in-flight op still terminates…
     assert {:ok, %{"status" => "Succeeded"}} = wait_terminal(op["name"])
 
     # …and the cascade is not undone by the flip.
-    assert conn(:get, sa_get_path <> "?api-version=#{api_v(sa_type)}") |> call() |> Map.get(:status) == 404
+    assert conn(:get, sa_get_path <> "?api-version=#{api_v(sa_type)}")
+           |> call()
+           |> Map.get(:status) == 404
+
     assert conn(:get, rg_path) |> call() |> Map.get(:status) == 404
   end
 
@@ -482,7 +529,10 @@ defmodule SmaltLroTest do
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
     get_path =
-      String.trim_trailing(sa_path(name), "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+      String.trim_trailing(
+        sa_path(name),
+        "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}"
+      )
 
     # Delete the parent mid-op (op stays InProgress at this point).
     assert conn(:delete, get_path <> "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
@@ -541,7 +591,8 @@ defmodule SmaltLroTest do
   # NEVER evicted at any age.
   # ---------------------------------------------------------------------------
   test "op records reach terminal at rest with zero polls; default retention keeps all 500" do
-    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/retention-probe"
+    rid =
+      "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/retention-probe"
 
     Application.put_env(:smalt, :lro_retention_ms, :infinity)
 
@@ -551,15 +602,17 @@ defmodule SmaltLroTest do
     # collision analysis, cycle-1).
     assert Enum.uniq(ids) |> length() == 500
 
-    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Process.sleep(delay + 10)
-
-    # ZERO POLLS: one sweeper pass drives all 500 to their persisted terminal
-    # through the SAME shared evaluate/2 the lazy path uses.
-    :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+    # ZERO POLLS: sweeper passes drive all 500 to their persisted terminal
+    # through the SAME shared evaluate/2 the lazy path uses. Bounded
+    # retry-until-or-timeout (i21 face, r241): a concurrent Store teardown /
+    # clear from another module can transiently remove records mid-check, so a
+    # single sleep-then-assert is a contention face — retry under a generous
+    # deadline and fail with a typed message naming the offending record keys.
+    sweep_until_terminal(ids, rid)
 
     for id <- ids do
-      assert {:ok, %{"status" => "Succeeded", "resourceId" => ^rid}} = Store.get(:smalt_operations, id)
+      assert {:ok, %{"status" => "Succeeded", "resourceId" => ^rid}} =
+               Store.get(:smalt_operations, id)
     end
 
     # Default retention is :infinity: nothing was evicted by the sweep.
@@ -609,7 +662,9 @@ defmodule SmaltLroTest do
   # InProgress at rest forever (GAP(lro-lazy-terminality) at-rest face).
   # ---------------------------------------------------------------------------
   test "at-rest terminality with zero polls: never-polled op reads terminal at raw get" do
-    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/atrest-probe"
+    rid =
+      "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/atrest-probe"
+
     op = LRO.start_op(rid)
     id = op["name"]
 
@@ -639,7 +694,9 @@ defmodule SmaltLroTest do
     assert Store.list(:smalt_operations) == []
 
     # All-terminal store: nothing is rewritten.
-    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/noop-probe"
+    rid =
+      "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/noop-probe"
+
     ids = for _ <- 1..5, do: LRO.start_op(rid)["name"]
     Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
     :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
@@ -669,7 +726,9 @@ defmodule SmaltLroTest do
   # record.
   # ---------------------------------------------------------------------------
   test "sweep racing a wire poll converges to one persisted terminal, byte-identical body" do
-    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/race-sweep-probe"
+    rid =
+      "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/race-sweep-probe"
+
     op = LRO.start_op(rid)
     id = op["name"]
     Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
@@ -708,7 +767,8 @@ defmodule SmaltLroTest do
   # collisions cannot happen by construction (crypto.strong_rand_bytes(12)).
   # ---------------------------------------------------------------------------
   test "same-parent ops get distinct op ids and distinct polling paths" do
-    rid = "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/collision-probe"
+    rid =
+      "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/collision-probe"
 
     a = LRO.start_op(rid)
     b = LRO.start_op(rid)
@@ -919,7 +979,10 @@ defmodule SmaltLroTest do
       "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
     })
 
-    foreign = conn(:get, "/subscriptions/99999999-9999-9999-9999-999999999999/operations/#{no_id}") |> call()
+    foreign =
+      conn(:get, "/subscriptions/99999999-9999-9999-9999-999999999999/operations/#{no_id}")
+      |> call()
+
     assert foreign.status == 404
     assert %{"error" => %{"code" => "OperationNotFound"}} = Jason.decode!(foreign.resp_body)
 
@@ -973,7 +1036,9 @@ defmodule SmaltLroTest do
     Application.put_env(:smalt, :lro_delay_ms, "20")
 
     assert_raise ArgumentError, ~r/:lro_delay_ms must be an integer/, fn ->
-      LRO.start_op("/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/cfg-probe")
+      LRO.start_op(
+        "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/cfg-probe"
+      )
     end
 
     # No doomed record was minted.
@@ -1007,13 +1072,17 @@ defmodule SmaltLroTest do
         ] do
       id = "nostatus" <> unique()
 
-      Store.put(:smalt_operations, id, Map.merge(seed, %{
-        "id" => "/subscriptions/#{@sub}/operations/#{id}",
-        "name" => id,
-        "startTime" => "2026-01-01T00:00:00Z",
-        "endTime" => nil,
-        "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
-      }))
+      Store.put(
+        :smalt_operations,
+        id,
+        Map.merge(seed, %{
+          "id" => "/subscriptions/#{@sub}/operations/#{id}",
+          "name" => id,
+          "startTime" => "2026-01-01T00:00:00Z",
+          "endTime" => nil,
+          "resourceId" => "/subscriptions/#{@sub}/resourceGroups/lro-rg/missing"
+        })
+      )
 
       assert {:ok, %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}}} =
                LRO.get_op(id)
@@ -1024,11 +1093,11 @@ defmodule SmaltLroTest do
 
       poll = conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
       assert poll.status == 200
+
       assert %{"status" => "Failed", "error" => %{"code" => "OperationRecordIncomplete"}} =
                Jason.decode!(poll.resp_body)
     end
   end
-
 
   # ---------------------------------------------------------------------------
   # (21) Lens-10 cycle-3: a NON-MAP record under an operations key (only
@@ -1060,7 +1129,6 @@ defmodule SmaltLroTest do
 
   # ---------------------------------------------------------------------------
 
-
   # ---------------------------------------------------------------------------
   # (22) Lens-10 cycle-4: concurrent lazy-poll race. 24 concurrent wire polls
   # of one elapsed InProgress op must all render 200 with the SAME terminal
@@ -1070,11 +1138,16 @@ defmodule SmaltLroTest do
   # a mixed-vocabulary terminal (Succeeded/Failed flip-flop).
   # ---------------------------------------------------------------------------
   test "24 concurrent polls of one elapsed op: all 200, one terminal body, store converges" do
-    op = LRO.start_op("/subscriptions/#{@sub}/resourceGroups/race-rg/providers/Microsoft.Storage/storageAccounts/raceacct")
+    op =
+      LRO.start_op(
+        "/subscriptions/#{@sub}/resourceGroups/race-rg/providers/Microsoft.Storage/storageAccounts/raceacct"
+      )
+
     id = op["name"]
     Process.sleep(60)
 
     parent = self()
+
     Enum.each(1..24, fn _ ->
       spawn(fn ->
         c = conn(:get, "/subscriptions/#{@sub}/operations/#{id}") |> call()
@@ -1097,6 +1170,46 @@ defmodule SmaltLroTest do
   end
 
   defp unique, do: inspect(make_ref()) |> String.replace(~r/[^0-9a-zA-Z]/, "")
+
+  @sweep_retry_deadline_ms 5_000
+
+  # Bounded retry-until-or-timeout over the sweeper's observable effect: every
+  # id reads {:ok, terminal} at a RAW store read. A concurrent Store teardown /
+  # clear (cross-module ETS race, r241 face) transiently removes records;
+  # retry under one deadline, then flunk with a typed message naming the
+  # record keys still missing or unterminal.
+  defp sweep_until_terminal(ids, rid, deadline \\ deadline_from_now())
+
+  defp sweep_until_terminal(ids, rid, deadline) do
+    {terminal, not_terminal} =
+      Enum.split_with(ids, fn id ->
+        match?(
+          {:ok, %{"status" => "Succeeded", "resourceId" => ^rid}},
+          Store.get(:smalt_operations, id)
+        )
+      end)
+
+    missing = Enum.reject(not_terminal, &match?({:ok, _}, Store.get(:smalt_operations, &1)))
+    unterminal = not_terminal -- missing
+
+    if missing == [] and unterminal == [] do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk(
+          "op records did not reach Succeeded within #{@sweep_retry_deadline_ms}ms " <>
+            "after sweeper passes (rid=#{rid}) — missing=#{inspect(missing)} " <>
+            "unterminal=#{inspect(Enum.map(unterminal, &{&1, Store.get(:smalt_operations, &1)}))}"
+        )
+      end
+
+      :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now()
+      Process.sleep(20)
+      sweep_until_terminal(ids, rid, deadline)
+    end
+  end
+
+  defp deadline_from_now, do: System.monotonic_time(:millisecond) + @sweep_retry_deadline_ms
 
   defp wait_terminal(op_id, tries \\ 100) do
     case Smalt.ArmGateway.LRO.get_op(op_id) do

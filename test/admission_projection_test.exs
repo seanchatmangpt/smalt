@@ -84,6 +84,7 @@ defmodule Smalt.AdmissionProjectionTest do
     {:refuse, code, reason} = Bearer.verify_bearer(empty_conn())
 
     row = Admission.seed(:auth, "/egress/x", {:refuse, code, reason})
+
     assert %{family: :auth, verdict: :refuse, standing: :unknown, code: "AuthenticationFailed"} =
              row
 
@@ -158,6 +159,7 @@ defmodule Smalt.AdmissionProjectionTest do
     # raw. (Pre-fix kill: ArgumentError from binary concat, message lacks
     # the identity refusal.)
     File.write!(malformed, ~s({"id": null, "referenceTraceId": "r"}\n))
+
     assert_raise ArgumentError, ~r/malformed_ledger_identity/, fn ->
       Admission.from_store(malformed)
     end
@@ -171,7 +173,9 @@ defmodule Smalt.AdmissionProjectionTest do
         candidate_trace_id: "c-fuzz"
       )
 
-    assert [%{verdict: :deviation, code: "loop/skip"}] = Admission.from_store(Path.join(dir, "real.jsonl"))
+    assert [%{verdict: :deviation, code: "loop/skip"}] =
+             Admission.from_store(Path.join(dir, "real.jsonl"))
+
     File.rm_rf!(dir)
   end
 
@@ -217,6 +221,7 @@ defmodule Smalt.AdmissionProjectionTest do
     # the refuser here (one record cannot duplicate), so the blank guard
     # itself must fire.
     File.write!(path, rec.("", "only"))
+
     assert_raise ArgumentError, ~r/malformed_ledger_identity/, fn ->
       Admission.from_store(path)
     end
@@ -445,7 +450,9 @@ defmodule Smalt.AdmissionProjectionTest do
     routes = for i <- 1..50, do: "/race-50/#{i}"
 
     for {route, i} <- Enum.with_index(routes, 1) do
-      if rem(i, 2) == 0, do: Telemetry.admit(:ok, route: route), else: Telemetry.refuse(:code_r, code: :code_r, route: route)
+      if rem(i, 2) == 0,
+        do: Telemetry.admit(:ok, route: route),
+        else: Telemetry.refuse(:code_r, code: :code_r, route: route)
     end
 
     eventually = fn fun ->

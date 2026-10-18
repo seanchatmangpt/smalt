@@ -20,6 +20,16 @@ defmodule Smalt.Wire.ArmWireTest do
     }
 
     stop_existing_tree()
+
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev =
+      %{
+        arm_port: Application.get_env(:smalt, :arm_port),
+        egress_port: Application.get_env(:smalt, :egress_port),
+        amqp_port: Application.get_env(:smalt, :amqp_port),
+        event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
+      }
+
     Application.put_env(:smalt, :arm_port, ports.arm)
     Application.put_env(:smalt, :egress_port, ports.egress)
     Application.put_env(:smalt, :amqp_port, ports.amqp)
@@ -41,6 +51,23 @@ defmodule Smalt.Wire.ArmWireTest do
 
     on_exit(fn ->
       stop_tree(sup)
+
+      if prev.arm_port == nil,
+        do: Application.delete_env(:smalt, :arm_port),
+        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+      if prev.egress_port == nil,
+        do: Application.delete_env(:smalt, :egress_port),
+        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+      if prev.amqp_port == nil,
+        do: Application.delete_env(:smalt, :amqp_port),
+        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
+
+      if prev.event_hubs_port == nil,
+        do: Application.delete_env(:smalt, :event_hubs_port),
+        else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
+
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -68,9 +95,10 @@ defmodule Smalt.Wire.ArmWireTest do
   end
 
   @tag :wire
-  test "mint -> Bearer GET /subscriptions 200; stripped token -> 401 + WWW-Authenticate (enforce)", %{
-    arm: port
-  } do
+  test "mint -> Bearer GET /subscriptions 200; stripped token -> 401 + WWW-Authenticate (enforce)",
+       %{
+         arm: port
+       } do
     # Wire tier must be a verify+challenge superset of the STS mint, not
     # mint-only: flip the real supervision tree into :enforce for this test.
     prev = Application.get_env(:smalt, :auth_mode)
@@ -134,7 +162,13 @@ defmodule Smalt.Wire.ArmWireTest do
 
     assert update.status == 200
 
-    get = http_request(port, "GET", "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2023-07-01")
+    get =
+      http_request(
+        port,
+        "GET",
+        "/subscriptions/#{@sub_id}/resourceGroups/wire-rg?api-version=2023-07-01"
+      )
+
     assert get.status == 200
     assert Jason.decode!(get.body)["name"] == "wire-rg"
   end

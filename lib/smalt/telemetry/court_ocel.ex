@@ -31,7 +31,8 @@ defmodule Smalt.Telemetry.CourtOcel do
   Attributes: aggregate `status` plus the per-check verdict summary
   (`code => status`, ids only — never check bodies).
   """
-  @spec doctor_receipt(map(), String.t()) :: {:ok, String.t()} | {:ok, :dropped} | {:error, term()}
+  @spec doctor_receipt(map(), String.t()) ::
+          {:ok, String.t()} | {:ok, :dropped} | {:error, term()}
   def doctor_receipt(receipt, receipt_path) when is_map(receipt) and is_binary(receipt_path) do
     checks = Map.get(receipt, "checks", [])
 

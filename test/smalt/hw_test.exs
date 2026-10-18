@@ -20,6 +20,7 @@ defmodule Smalt.HwTest do
     assert Base.decode16!("7E04007D5E7D5DFF0038717E") == Frame.encode(<<0x7E, 0x7D, 0xFF, 0x00>>)
 
     digest = :binary.copy(<<0xAA>>, 32)
+
     assert Base.decode16!("7E210001" <> String.duplicate("AA", 32) <> "C1597E") ==
              Frame.encode(<<0x01, digest::binary>>)
   end

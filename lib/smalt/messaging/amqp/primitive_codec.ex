@@ -75,7 +75,8 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     end
   end
 
-  def encode(n) when is_integer(n) and n in -9_223_372_036_854_775_808..9_223_372_036_854_775_807 do
+  def encode(n)
+      when is_integer(n) and n in -9_223_372_036_854_775_808..9_223_372_036_854_775_807 do
     if n in -128..127 do
       [0x55, <<n::signed-size(8)>>]
     else
@@ -127,8 +128,9 @@ defmodule Smalt.Amqp.PrimitiveCodec do
 
   def encode({:uuid, <<_::128>> = uuid}), do: [0x98, uuid]
 
-  def encode({:timestamp, ms}) when is_integer(ms) and ms in -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
-    do: [0x83, <<ms::signed-integer-size(64)>>]
+  def encode({:timestamp, ms})
+      when is_integer(ms) and ms in -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+      do: [0x83, <<ms::signed-integer-size(64)>>]
 
   # --- collections ---
   def encode([]), do: [0x45]
@@ -138,7 +140,11 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     # FunctionClauseError out of Enum.map instead of the documented
     # ArgumentError (lens-6 encode-path differential finding).
     unless proper_list?(list),
-      do: raise(ArgumentError, "cannot encode improper list as AMQP list: #{inspect(list, limit: 10)}")
+      do:
+        raise(
+          ArgumentError,
+          "cannot encode improper list as AMQP list: #{inspect(list, limit: 10)}"
+        )
 
     body = Enum.map(list, &encode/1)
     count = length(list)
@@ -148,7 +154,12 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     if body_len + 1 <= 255 and count <= 255 do
       [0xC0, body_len + 1, count, body]
     else
-      [0xD0, <<(body_len + 4)::unsigned-integer-size(32)>>, <<count::unsigned-integer-size(32)>>, body]
+      [
+        0xD0,
+        <<body_len + 4::unsigned-integer-size(32)>>,
+        <<count::unsigned-integer-size(32)>>,
+        body
+      ]
     end
   end
 
@@ -169,7 +180,12 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     if body_len + 1 <= 255 and count <= 255 do
       [0xC1, body_len + 1, count, body]
     else
-      [0xD1, <<(body_len + 4)::unsigned-integer-size(32)>>, <<count::unsigned-integer-size(32)>>, body]
+      [
+        0xD1,
+        <<body_len + 4::unsigned-integer-size(32)>>,
+        <<count::unsigned-integer-size(32)>>,
+        body
+      ]
     end
   end
 
@@ -197,7 +213,7 @@ defmodule Smalt.Amqp.PrimitiveCodec do
       else
         [
           0xF0,
-          <<(body_len + 5)::unsigned-integer-size(32)>>,
+          <<body_len + 5::unsigned-integer-size(32)>>,
           <<count::unsigned-integer-size(32)>>,
           ctor,
           bodies
@@ -218,7 +234,12 @@ defmodule Smalt.Amqp.PrimitiveCodec do
     if body_len + 1 <= 255 and count <= 255 do
       [0xC1, body_len + 1, count, body]
     else
-      [0xD1, <<(body_len + 4)::unsigned-integer-size(32)>>, <<count::unsigned-integer-size(32)>>, body]
+      [
+        0xD1,
+        <<body_len + 4::unsigned-integer-size(32)>>,
+        <<count::unsigned-integer-size(32)>>,
+        body
+      ]
     end
   end
 
@@ -232,6 +253,7 @@ defmodule Smalt.Amqp.PrimitiveCodec do
 
   defp encode_descriptor(d) when is_integer(d) and d >= 0 and d <= 0xFFFF_FFFF_FFFF_FFFF,
     do: encode_ulong_descriptor(d)
+
   defp encode_descriptor({:symbol, bin}) when is_binary(bin), do: encode({:symbol, bin})
 
   # Plain-binary descriptors used to be accepted (bin -> encoded as symbol,
@@ -339,7 +361,10 @@ defmodule Smalt.Amqp.PrimitiveCodec do
   defp decode_typed(0x80, <<n::unsigned-integer-size(64), rest::binary>>), do: {:ok, n, rest}
   defp decode_typed(0x81, <<n::signed-integer-size(64), rest::binary>>), do: {:ok, n, rest}
   defp decode_typed(0x82, <<f::float-size(64), rest::binary>>), do: {:ok, f, rest}
-  defp decode_typed(0x83, <<ms::signed-integer-size(64), rest::binary>>), do: {:ok, {:timestamp, ms}, rest}
+
+  defp decode_typed(0x83, <<ms::signed-integer-size(64), rest::binary>>),
+    do: {:ok, {:timestamp, ms}, rest}
+
   defp decode_typed(0x98, <<uuid::binary-size(16), rest::binary>>), do: {:ok, {:uuid, uuid}, rest}
 
   # --- variable-length: bin/str/sym in 8- and 32-bit forms ---
@@ -459,15 +484,15 @@ defmodule Smalt.Amqp.PrimitiveCodec do
       {:ok, {:array, []}, <<>>}
     else
       case rest do
-      <<element_ctor, element_rest::binary>> ->
-        case decode_bare_elements(element_rest, element_ctor, count, []) do
-          {:ok, items, <<>>} -> {:ok, {:array, items}, <<>>}
-          {:ok, _, _} -> {:error, :invalid_length}
-          {:error, reason} -> {:error, reason}
-        end
+        <<element_ctor, element_rest::binary>> ->
+          case decode_bare_elements(element_rest, element_ctor, count, []) do
+            {:ok, items, <<>>} -> {:ok, {:array, items}, <<>>}
+            {:ok, _, _} -> {:error, :invalid_length}
+            {:error, reason} -> {:error, reason}
+          end
 
-      _ ->
-        {:error, :truncated}
+        _ ->
+          {:error, :truncated}
       end
     end
   end

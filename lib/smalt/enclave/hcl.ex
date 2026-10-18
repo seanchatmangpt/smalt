@@ -487,7 +487,10 @@ defmodule Smalt.Enclave.Hcl do
         labels ->
           # SHIM-COURT: malformed resource block (fewer than 2 labels) is a
           # typed parse error, not a raw MatchError.
-          {:halt, {:error, {:hcl_parse, meta.__line__, "resource block needs exactly 2 labels, got #{length(labels)}"}}}
+          {:halt,
+           {:error,
+            {:hcl_parse, meta.__line__,
+             "resource block needs exactly 2 labels, got #{length(labels)}"}}}
       end
     end)
     |> case do
@@ -508,7 +511,10 @@ defmodule Smalt.Enclave.Hcl do
         labels ->
           # SHIM-COURT: malformed provider block (not exactly 1 label) is a
           # typed parse error, not a raw MatchError.
-          {:halt, {:error, {:hcl_parse, meta.__line__, "provider block needs exactly 1 label, got #{length(labels)}"}}}
+          {:halt,
+           {:error,
+            {:hcl_parse, meta.__line__,
+             "provider block needs exactly 1 label, got #{length(labels)}"}}}
       end
     end)
   end

@@ -91,7 +91,7 @@ defmodule Smalt.GraphLaw.SHACLProjectionTest do
       assert SHACLProjection.shapes() == Smalt.GraphLaw.Validator.shapes()
     end
 
-    test "markdown doc covers every shape and every property" , %{parsed: parsed} do
+    test "markdown doc covers every shape and every property", %{parsed: parsed} do
       doc = SHACLProjection.docs_markdown()
 
       assert String.starts_with?(doc, "# SHACL Shape Documentation")
@@ -117,9 +117,11 @@ defmodule Smalt.GraphLaw.SHACLProjectionTest do
       defs = schema["$defs"]
 
       assert MapSet.new(Map.keys(defs)) ==
-               MapSet.new(Enum.map(parsed, fn {_n, s} ->
-                 s.target_class |> String.split(["#", "/"]) |> List.last()
-               end))
+               MapSet.new(
+                 Enum.map(parsed, fn {_n, s} ->
+                   s.target_class |> String.split(["#", "/"]) |> List.last()
+                 end)
+               )
 
       Enum.each(parsed, fn {_name, shape} ->
         class = shape.target_class |> String.split(["#", "/"]) |> List.last()
@@ -128,7 +130,10 @@ defmodule Smalt.GraphLaw.SHACLProjectionTest do
         assert def["type"] == "object"
 
         expected_required =
-          shape.required |> Enum.filter(&(&1.min_count >= 1)) |> Enum.map(& &1.path) |> Enum.sort()
+          shape.required
+          |> Enum.filter(&(&1.min_count >= 1))
+          |> Enum.map(& &1.path)
+          |> Enum.sort()
 
         assert Enum.sort(def["required"]) == expected_required
 

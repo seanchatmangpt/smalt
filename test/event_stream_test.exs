@@ -11,7 +11,12 @@ defmodule Smalt.Messaging.EventStreamTest do
 
   defp valid_event(id \\ "evt-1", overrides \\ %{}) do
     Map.merge(
-      %{"specversion" => "1.0", "id" => id, "source" => "/smalt/test", "type" => "smalt.test.event"},
+      %{
+        "specversion" => "1.0",
+        "id" => id,
+        "source" => "/smalt/test",
+        "type" => "smalt.test.event"
+      },
       overrides
     )
   end
@@ -72,8 +77,12 @@ defmodule Smalt.Messaging.EventStreamTest do
   end
 
   test "rejects missing or empty type (matrix)" do
-    assert {:error, :invalid_cloudevent} = EventStream.publish("t", Map.delete(valid_event(), "type"))
-    assert {:error, :invalid_cloudevent} = EventStream.publish("t", valid_event("e", %{"type" => ""}))
+    assert {:error, :invalid_cloudevent} =
+             EventStream.publish("t", Map.delete(valid_event(), "type"))
+
+    assert {:error, :invalid_cloudevent} =
+             EventStream.publish("t", valid_event("e", %{"type" => ""}))
+
     assert EventStream.list_events("t") == []
   end
 
@@ -81,8 +90,12 @@ defmodule Smalt.Messaging.EventStreamTest do
     assert {:error, :invalid_cloudevent} =
              EventStream.publish("t", Map.delete(valid_event(), "source"))
 
-    assert {:error, :invalid_cloudevent} = EventStream.publish("t", valid_event("e", %{"source" => ""}))
-    assert {:error, :invalid_cloudevent} = EventStream.publish("t", valid_event("e", %{"source" => 42}))
+    assert {:error, :invalid_cloudevent} =
+             EventStream.publish("t", valid_event("e", %{"source" => ""}))
+
+    assert {:error, :invalid_cloudevent} =
+             EventStream.publish("t", valid_event("e", %{"source" => 42}))
+
     assert EventStream.list_events("t") == []
   end
 
@@ -170,6 +183,7 @@ defmodule Smalt.Messaging.EventStreamTest do
     Application.put_env(:smalt, :event_stream_dedup_ids, true)
 
     {:ok, "dup-2"} = EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v1"}))
+
     assert {:error, :duplicate_id} =
              EventStream.publish("dd2", valid_event("dup-2", %{"source" => "/smalt/v2"}))
 

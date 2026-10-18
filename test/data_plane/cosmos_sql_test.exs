@@ -29,14 +29,39 @@ defmodule Smalt.CosmosSqlTest do
 
   defp corpus do
     [
-      %{"id" => "d1", "name" => "alice", "age" => 30, "tags" => ["a", "b"],
-        "addr" => %{"city" => "paris"}, "active" => true},
-      %{"id" => "d2", "name" => "bob", "age" => 25, "nums" => [7], "tags" => ["b"],
-        "addr" => %{"city" => "rome"}, "active" => false},
-      %{"id" => "d3", "name" => "carol", "age" => 35, "tags" => [],
-        "addr" => %{"city" => "oslo"}, "active" => true},
-      %{"id" => "d4", "name" => "dan", "age" => 20, "tags" => ["c"],
-        "addr" => %{"city" => "paris"}, "active" => false}
+      %{
+        "id" => "d1",
+        "name" => "alice",
+        "age" => 30,
+        "tags" => ["a", "b"],
+        "addr" => %{"city" => "paris"},
+        "active" => true
+      },
+      %{
+        "id" => "d2",
+        "name" => "bob",
+        "age" => 25,
+        "nums" => [7],
+        "tags" => ["b"],
+        "addr" => %{"city" => "rome"},
+        "active" => false
+      },
+      %{
+        "id" => "d3",
+        "name" => "carol",
+        "age" => 35,
+        "tags" => [],
+        "addr" => %{"city" => "oslo"},
+        "active" => true
+      },
+      %{
+        "id" => "d4",
+        "name" => "dan",
+        "age" => 20,
+        "tags" => ["c"],
+        "addr" => %{"city" => "paris"},
+        "active" => false
+      }
     ]
   end
 
@@ -66,22 +91,48 @@ defmodule Smalt.CosmosSqlTest do
 
     test "WHERE equality, range, AND, OR, NOT" do
       assert ids(runq("SELECT * FROM c WHERE c.age = 30", corpus())) == ["d1"]
-      assert ids(runq("SELECT * FROM c WHERE c.age > 20 AND c.age <= 30", corpus())) == ["d1", "d2"]
+
+      assert ids(runq("SELECT * FROM c WHERE c.age > 20 AND c.age <= 30", corpus())) == [
+               "d1",
+               "d2"
+             ]
+
       assert ids(runq("SELECT * FROM c WHERE c.age < 25 OR c.age > 30", corpus())) == ["d3", "d4"]
       assert ids(runq("SELECT * FROM c WHERE NOT c.age < 30", corpus())) == ["d1", "d3"]
-      assert ids(runq("SELECT * FROM c WHERE c.name != null", corpus())) == ["d1", "d2", "d3", "d4"]
+
+      assert ids(runq("SELECT * FROM c WHERE c.name != null", corpus())) == [
+               "d1",
+               "d2",
+               "d3",
+               "d4"
+             ]
     end
 
     test "IN, CONTAINS, STARTSWITH, ARRAY_CONTAINS" do
-      assert ids(runq("SELECT * FROM c WHERE c.name IN ('alice', 'dan')", corpus())) == ["d1", "d4"]
+      assert ids(runq("SELECT * FROM c WHERE c.name IN ('alice', 'dan')", corpus())) == [
+               "d1",
+               "d4"
+             ]
+
       assert ids(runq("SELECT * FROM c WHERE CONTAINS(c.name, 'li')", corpus())) == ["d1"]
       assert ids(runq("SELECT * FROM c WHERE STARTSWITH(c.name, 'b')", corpus())) == ["d2"]
-      assert ids(runq("SELECT * FROM c WHERE ARRAY_CONTAINS(c.tags, 'b')", corpus())) == ["d1", "d2"]
+
+      assert ids(runq("SELECT * FROM c WHERE ARRAY_CONTAINS(c.tags, 'b')", corpus())) == [
+               "d1",
+               "d2"
+             ]
     end
 
     test "ORDER BY asc and desc, LIMIT" do
       assert ids(runq("SELECT * FROM c ORDER BY c.age ASC", corpus())) == ["d4", "d2", "d1", "d3"]
-      assert ids(runq("SELECT * FROM c ORDER BY c.age DESC", corpus())) == ["d3", "d1", "d2", "d4"]
+
+      assert ids(runq("SELECT * FROM c ORDER BY c.age DESC", corpus())) == [
+               "d3",
+               "d1",
+               "d2",
+               "d4"
+             ]
+
       assert ids(runq("SELECT * FROM c WHERE c.age > 0 LIMIT 2", corpus())) == ["d1", "d2"]
     end
 
@@ -90,6 +141,7 @@ defmodule Smalt.CosmosSqlTest do
       assert {:error, {:syntax, _}} = runq("SELECT * FROM udf.x(c)", corpus())
       assert {:error, {:syntax, _}} = runq("SELECT COUNT(1) FROM c", corpus())
       assert {:error, {:syntax, _}} = runq("SELECT * FROM c OFFSET 1 LIMIT 1", corpus())
+
       assert {:error, {:syntax, "Unbound parameter(s): p"}} =
                runq("SELECT * FROM c WHERE c.age > @p", corpus())
     end
@@ -161,7 +213,12 @@ defmodule Smalt.CosmosSqlTest do
       ])
 
       {:ok, 200, _, body} =
-        Cosmos.query_docs("wdb5", "wc5", %{"query" => "SELECT * FROM c WHERE ARRAY_CONTAINS(c.tags, 't2')"}, %{})
+        Cosmos.query_docs(
+          "wdb5",
+          "wc5",
+          %{"query" => "SELECT * FROM c WHERE ARRAY_CONTAINS(c.tags, 't2')"},
+          %{}
+        )
 
       assert Enum.map(body["Documents"], & &1["id"]) == ["b"]
     end
@@ -210,8 +267,11 @@ defmodule Smalt.CosmosSqlTest do
                "seeded query failed to parse: " <> sql
 
         expected = corpus() |> Enum.filter(oracle) |> Enum.map(& &1["id"]) |> Enum.sort()
+
         assert Enum.sort(ids_ok(out)) == expected,
-               "query: " <> sql <> " | got: " <> inspect(Enum.sort(ids_ok(out))) <> " | want: " <> inspect(expected)
+               "query: " <>
+                 sql <>
+                 " | got: " <> inspect(Enum.sort(ids_ok(out))) <> " | want: " <> inspect(expected)
       end
     end
   end
@@ -255,7 +315,6 @@ defmodule Smalt.CosmosSqlTest do
       {"c.active", fn d -> d["active"] end}
     ])
   end
-
 
   defp cmp_op do
     Enum.random([
@@ -305,19 +364,24 @@ defmodule Smalt.CosmosSqlTest do
 
       4 ->
         v = Enum.random([true, false])
-        {"c.active = " <> (v |> to_string() |> String.capitalize()), fn d -> cmpv(d["active"], v, fn a, b -> a == b end) end}
+
+        {"c.active = " <> (v |> to_string() |> String.capitalize()),
+         fn d -> cmpv(d["active"], v, fn a, b -> a == b end) end}
 
       5 ->
         names = Enum.take_random(["alice", "bob", "carol", "dan", "zed"], 2)
         quoted = Enum.map(names, &("'" <> &1 <> "'"))
-        {"c.name IN (" <> Enum.join(quoted, ", ") <> ")", fn d -> d["name"] != nil and d["name"] in names end}
+
+        {"c.name IN (" <> Enum.join(quoted, ", ") <> ")",
+         fn d -> d["name"] != nil and d["name"] in names end}
 
       _ ->
         v = Enum.random(["a", "b", "c", "zz"])
-        {"ARRAY_CONTAINS(c.tags, '" <> v <> "')", fn d ->
+
+        {"ARRAY_CONTAINS(c.tags, '" <> v <> "')",
+         fn d ->
            is_list(d["tags"]) and Enum.any?(d["tags"], fn x -> x === v end)
          end}
     end
   end
-
 end

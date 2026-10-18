@@ -40,8 +40,9 @@ defmodule Smalt.McpTest do
     # R178g: record + delete the seeded keys on_exit so they never leak into
     # other suites sharing these tables.
     seeded =
-      {String.downcase("/subscriptions/#{@default_sub}/resourcegroups/mcp-rg/providers/microsoft.storage/storageaccounts/mcpacct"),
-       "mcpacct/mcpcontainer/notes.txt", "mcp-key"}
+      {String.downcase(
+         "/subscriptions/#{@default_sub}/resourcegroups/mcp-rg/providers/microsoft.storage/storageaccounts/mcpacct"
+       ), "mcpacct/mcpcontainer/notes.txt", "mcp-key"}
 
     on_exit(fn ->
       {res, blob, key} = seeded
@@ -208,7 +209,12 @@ defmodule Smalt.McpTest do
         "/",
         Jason.encode!([
           %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list"},
-          %{"jsonrpc" => "2.0", "id" => 2, "method" => "tools/call", "params" => %{"name" => "kv.get", "arguments" => %{}}}
+          %{
+            "jsonrpc" => "2.0",
+            "id" => 2,
+            "method" => "tools/call",
+            "params" => %{"name" => "kv.get", "arguments" => %{}}
+          }
         ])
       )
       |> Smalt.Mcp.Router.call([])
@@ -659,11 +665,20 @@ defmodule Smalt.McpTest do
           {:ok, _} = Smalt.Store.get(:smalt_blobs, "perfmcp/perfcont/blob-00001")
 
           conn =
-            conn(:post, "/", %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/call",
-                               "params" => %{"name" => "blob.list",
-                                             "arguments" => %{"account" => "perfmcp",
-                                                              "container" => "perfcont"}}}
-                  |> Jason.encode!())
+            conn(
+              :post,
+              "/",
+              %{
+                "jsonrpc" => "2.0",
+                "id" => 1,
+                "method" => "tools/call",
+                "params" => %{
+                  "name" => "blob.list",
+                  "arguments" => %{"account" => "perfmcp", "container" => "perfcont"}
+                }
+              }
+              |> Jason.encode!()
+            )
             |> Smalt.Mcp.Router.call([])
 
           mem_kb = div(elem(:erlang.process_info(self(), :memory), 1), 1024)
@@ -684,6 +699,7 @@ defmodule Smalt.McpTest do
       """)
     end
   end
+
   # Call-shape contract for the keys-only blob.list scan (lens-2). Measured:
   # neither wall time (~25 ms both ways) nor process memory (refc binaries
   # live off-heap) discriminates the revert to full-value materialization, so
@@ -776,7 +792,12 @@ defmodule Smalt.McpTest do
           %{arg => bad}
         )
 
-      conn = rpc("tools/call", %{"name" => tool, "arguments" => args}, "#{tool}-#{arg}-#{inspect(bad)}")
+      conn =
+        rpc(
+          "tools/call",
+          %{"name" => tool, "arguments" => args},
+          "#{tool}-#{arg}-#{inspect(bad)}"
+        )
 
       assert conn.status == 200,
              "#{tool}.#{arg}=#{inspect(bad)} crashed: HTTP #{conn.status} #{conn.resp_body}"
@@ -806,7 +827,9 @@ defmodule Smalt.McpTest do
     for {tool, valid} <- required_args do
       for dropped <- Map.keys(valid) do
         args = Map.delete(valid, dropped)
-        conn = rpc("tools/call", %{"name" => tool, "arguments" => args}, "#{tool}-minus-#{dropped}")
+
+        conn =
+          rpc("tools/call", %{"name" => tool, "arguments" => args}, "#{tool}-minus-#{dropped}")
 
         assert conn.status == 200, "#{tool} without #{dropped} crashed: #{conn.status}"
 
@@ -835,12 +858,22 @@ defmodule Smalt.McpTest do
     assert conn.status == 200
     assert refusal_code(conn) == "RESOURCE_NOT_FOUND"
 
-    conn = rpc("tools/call", %{"name" => "blob.list", "arguments" => %{"account" => "a\0b", "container" => "c\0d"}})
+    conn =
+      rpc("tools/call", %{
+        "name" => "blob.list",
+        "arguments" => %{"account" => "a\0b", "container" => "c\0d"}
+      })
+
     assert conn.status == 200
     body = structured(conn)
     assert body["count"] == 0
 
-    conn = rpc("tools/call", %{"name" => "cosmos.query", "arguments" => %{"db" => "d\0b", "coll" => "c\0b"}})
+    conn =
+      rpc("tools/call", %{
+        "name" => "cosmos.query",
+        "arguments" => %{"db" => "d\0b", "coll" => "c\0b"}
+      })
+
     assert conn.status == 200
     assert result(conn)["isError"] in [true, false]
 
@@ -898,10 +931,14 @@ defmodule Smalt.McpTest do
 
     {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one)
 
+    # Leak fix (i21 batch 3): restore the PREVIOUS env value, not a literal.
+    # A literal Smalt.Supervisor restore can clobber another suite's override
+    # and would itself be wrong if the app default ever changes.
+    saved_supervisor = Application.get_env(:smalt, :doctor_supervisor, Smalt.Supervisor)
     Application.put_env(:smalt, :doctor_supervisor, sup)
 
     on_exit(fn ->
-      Application.put_env(:smalt, :doctor_supervisor, Smalt.Supervisor)
+      Application.put_env(:smalt, :doctor_supervisor, saved_supervisor)
       Process.exit(sup, :kill)
     end)
 
@@ -940,6 +977,7 @@ defmodule Smalt.McpTest do
     # (the fence inspect-renders every id so embedded ref tokens cannot hide
     # in string ids; a plain string therefore arrives quoted).
     plain = Enum.find(rendered_ids, &(&1 =~ ~r/plain-string-id/))
+
     assert plain == inspect("plain-string-id"),
            "plain id not rendered as its quoted literal: #{inspect(plain)}"
   end
@@ -1109,7 +1147,8 @@ defmodule Smalt.McpTest do
 
   defp collect_traced_calls(acc) do
     receive do
-      {:trace, _pid, :call, {m, f, a}} when m == Smalt.Store -> collect_traced_calls([{f, a} | acc])
+      {:trace, _pid, :call, {m, f, a}} when m == Smalt.Store ->
+        collect_traced_calls([{f, a} | acc])
     after
       500 -> :lists.reverse(acc)
     end
@@ -1125,8 +1164,12 @@ defmodule Smalt.McpTest do
   # is still just a non-object body and must land in the same typed verdict,
   # never dispatched, never a 500.
   test "lens5 fuzz: batch-of-batches (nested arrays) -> typed INVALID_REQUEST, never dispatched" do
-    inner = %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/call",
-              "params" => %{"name" => "substrate.status", "arguments" => %{}}}
+    inner = %{
+      "jsonrpc" => "2.0",
+      "id" => 1,
+      "method" => "tools/call",
+      "params" => %{"name" => "substrate.status", "arguments" => %{}}
+    }
 
     variants = [
       [inner],
@@ -1213,7 +1256,8 @@ defmodule Smalt.McpTest do
 
     hammer = fn ->
       for _ <- 1..200 do
-        conn = rpc("tools/call", %{"name" => "substrate.status", "arguments" => %{}}, :reload_probe)
+        conn =
+          rpc("tools/call", %{"name" => "substrate.status", "arguments" => %{}}, :reload_probe)
 
         assert structured(conn)["status"] == "ok",
                "torn read under descriptor reload: tools/call lost substrate.status"
@@ -1301,8 +1345,13 @@ defmodule Smalt.McpTest do
       assert meta.name == cap["capability_name"], "name drift for #{id}"
       assert meta.description == cap["capability_description"], "description drift for #{id}"
       assert to_string(meta.observation_scope) == cap["observation_scope"]
-      assert to_string(meta.mutation_scope) == cap["mutation_scope"], "mutation_scope drift for #{id}"
-      assert meta.requires_authority == cap["requires_authority"], "authority flag drift for #{id}"
+
+      assert to_string(meta.mutation_scope) == cap["mutation_scope"],
+             "mutation_scope drift for #{id}"
+
+      assert meta.requires_authority == cap["requires_authority"],
+             "authority flag drift for #{id}"
+
       assert meta.reversible == cap["is_reversible"], "reversible flag drift for #{id}"
       assert to_string(meta.consequence) == cap["consequence"], "consequence drift for #{id}"
     end
@@ -1340,7 +1389,7 @@ defmodule Smalt.McpTest do
       |> String.split("\n")
       |> Enum.flat_map(fn line ->
         case Regex.run(~r/^\s{4}"([^"]+)" => %\{/, line) do
-          [_ , id] -> [id]
+          [_, id] -> [id]
           _ -> []
         end
       end)
@@ -1368,7 +1417,16 @@ defmodule Smalt.Mcp.ProtocolVersionBridgeTest do
              Regex.run(~r/ema:mcpProtocolVersion\s+"([^"]+)"/, ttl)
 
     conn =
-      conn(:post, "/", Jason.encode!(%{"jsonrpc" => "2.0", "id" => 1, "method" => "initialize", "params" => %{"protocolVersion" => "2024-11-05"}}))
+      conn(
+        :post,
+        "/",
+        Jason.encode!(%{
+          "jsonrpc" => "2.0",
+          "id" => 1,
+          "method" => "initialize",
+          "params" => %{"protocolVersion" => "2024-11-05"}
+        })
+      )
       |> Smalt.Mcp.Router.call([])
 
     assert conn.status == 200

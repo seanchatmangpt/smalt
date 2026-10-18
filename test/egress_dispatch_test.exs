@@ -11,10 +11,42 @@ defmodule EgressDispatchTest do
   setup do
     # Other suites stop the main app tree to run private trees; never assume
     # module run order — restore the shared app if the Store is gone.
-          SmaltTest.Lifecycle.ensure_store_up()
+    SmaltTest.Lifecycle.ensure_store_up()
+
+    # r241/i21: even with the Store ensured up, an async sibling suite
+    # (eventgrid_topics_arm_test private trees) can tear the shared ETS
+    # tables down in the window between ensure_store_up and Store.clear/0,
+    # so clear's seed_default_subscription insert hits a dead table
+    # ("table identifier does not refer to an existing ETS table").
+    # Bounded typed retry: re-ensure, then re-clear; a persistent failure
+    # after the bound re-raises the original error (loud, not swallowed).
+    case resilient_clear() do
+      :ok ->
+        :ok
+
+      {:error, :store_unavailable} ->
+        raise "EgressDispatchTest setup: shared Store unavailable after retry bound"
+    end
+  end
+
+  @clear_retries 50
+
+  defp resilient_clear(retries \\ @clear_retries)
+
+  defp resilient_clear(0), do: {:error, :store_unavailable}
+
+  defp resilient_clear(retries) do
+    SmaltTest.Lifecycle.ensure_store_up()
 
     Store.clear()
-    :ok
+  rescue
+    # NOTE(i21 leak-batch2 lane, compile-freeze SLA unblock): the original clause
+    # `ArgumentError in [message: "..."]` is not legal Elixir rescue syntax
+    # (the `in` form matches aliases only, never keyword message filters).
+    # Narrowed to the ArgumentError type; the retry loop preserves intent.
+    ArgumentError ->
+      Process.sleep(10)
+      resilient_clear(retries - 1)
   end
 
   defp call(method, path, opts \\ []) do
@@ -32,14 +64,14 @@ defmodule EgressDispatchTest do
     # This harness speaks for an already-challenged client: attach a
     # placeholder token on /keys calls unless the test supplies its own
     # Authorization header (the KD-15 courts below pass headers explicitly).
+    # X-10 integration unblock (cross-lane merge artifact with the SKR
+    # legacy-header lane): a call carrying the legacy SKR attestation
+    # header speaks for the legacy path — do NOT overwrite it with the
+    # placeholder bearer, or the legacy-header court 403s in the SKR
+    # release handler.
     headers =
       if String.starts_with?(path, "/keys") and
            not Enum.any?(headers, fn {k, _} -> k == "authorization" end) and
-           # X-10 integration unblock (cross-lane merge artifact with the SKR
-           # legacy-header lane): a call carrying the legacy SKR attestation
-           # header speaks for the legacy path — do NOT overwrite it with the
-           # placeholder bearer, or the legacy-header court 403s in the SKR
-           # release handler.
            not Enum.any?(headers, fn {k, _} -> k == "x-ms-compliance-status" end) do
         [{"authorization", "Bearer egress-harness-challenged-client"} | headers]
       else
@@ -92,7 +124,9 @@ defmodule EgressDispatchTest do
       assert Jason.decode!(cold.resp_body)["error"]["code"] == "LedgerNotFound"
 
       Store.put(:smalt_ledger_meta, {:created, "default_ledger"}, true)
-      if prior == nil, do: Application.delete_env(:smalt, :ledger_enforce_existence),
+
+      if prior == nil,
+        do: Application.delete_env(:smalt, :ledger_enforce_existence),
         else: Application.put_env(:smalt, :ledger_enforce_existence, prior)
 
       conn = call(:post, "/app/transactions", body: %{"data" => "a"})
@@ -138,7 +172,9 @@ defmodule EgressDispatchTest do
 
       etag = doc["_etag"]
 
-      conn = call(:put, "/dbs/db1/colls/c1/docs/d1", body: %{"v" => 2}, headers: [{"if-match", etag}])
+      conn =
+        call(:put, "/dbs/db1/colls/c1/docs/d1", body: %{"v" => 2}, headers: [{"if-match", etag}])
+
       assert conn.status == 200
 
       etag2 = Jason.decode!(conn.resp_body)["_etag"]
@@ -165,7 +201,9 @@ defmodule EgressDispatchTest do
       assert get_resp_header(conn, "x-ms-request-id") != []
 
       conn =
-        call(:post, "/v1/workspaces/ws-1/query?api-version=2023-01-01", body: %{"query" => "MyTable | take 10"})
+        call(:post, "/v1/workspaces/ws-1/query?api-version=2023-01-01",
+          body: %{"query" => "MyTable | take 10"}
+        )
 
       assert conn.status == 200
       assert Jason.decode!(conn.resp_body)["tables"]
@@ -204,15 +242,17 @@ defmodule EgressDispatchTest do
   test "event stream dispatch hits Smalt.Messaging.EventStream" do
     if loaded?(Smalt.Messaging.EventStream) do
       conn =
-        call(:post, "/topics/t1/events", body: [
-          %{
-            "specversion" => "1.0",
-            "type" => "smalt.test",
-            "source" => "/smalt",
-            "id" => "e1",
-            "data" => %{}
-          }
-        ])
+        call(:post, "/topics/t1/events",
+          body: [
+            %{
+              "specversion" => "1.0",
+              "type" => "smalt.test",
+              "source" => "/smalt",
+              "id" => "e1",
+              "data" => %{}
+            }
+          ]
+        )
 
       assert conn.status == 200
 
@@ -239,7 +279,9 @@ defmodule EgressDispatchTest do
       )
 
       conn =
-        call(:post, "/keys/skr-key/release?api-version=7.4", headers: [{"authorization", "Bearer " <> token}])
+        call(:post, "/keys/skr-key/release?api-version=7.4",
+          headers: [{"authorization", "Bearer " <> token}]
+        )
 
       assert conn.status == 200
       assert Jason.decode!(conn.resp_body)["status"] == "Released"
@@ -247,6 +289,8 @@ defmodule EgressDispatchTest do
   end
 
   test "SKR: legacy raw header refused when skr_allow_legacy_header disabled" do
+    prev_skr_legacy = Application.get_env(:smalt, :skr_allow_legacy_header)
+    Process.put(:prev_skr_legacy, prev_skr_legacy)
     Application.put_env(:smalt, :skr_allow_legacy_header, false)
 
     call(:post, "/keys/legacy-key/create",
@@ -261,10 +305,16 @@ defmodule EgressDispatchTest do
     assert conn.status == 403
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "UnauthorizedAttestation"
   after
-    Application.put_env(:smalt, :skr_allow_legacy_header, true)
+    if is_nil(Process.get(:prev_skr_legacy)) do
+      Application.delete_env(:smalt, :skr_allow_legacy_header)
+    else
+      Application.put_env(:smalt, :skr_allow_legacy_header, Process.get(:prev_skr_legacy))
+    end
   end
 
   test "SKR: legacy raw header honored when skr_allow_legacy_header enabled" do
+    prev_skr_legacy = Application.get_env(:smalt, :skr_allow_legacy_header)
+    Process.put(:prev_skr_legacy, prev_skr_legacy)
     Application.put_env(:smalt, :skr_allow_legacy_header, true)
 
     call(:post, "/keys/legacy-key2/create",
@@ -278,6 +328,12 @@ defmodule EgressDispatchTest do
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["status"] == "Released"
+  after
+    if is_nil(Process.get(:prev_skr_legacy)) do
+      Application.delete_env(:smalt, :skr_allow_legacy_header)
+    else
+      Application.put_env(:smalt, :skr_allow_legacy_header, Process.get(:prev_skr_legacy))
+    end
   end
 
   test "SKR: bogus bearer token refused 403" do
@@ -286,7 +342,9 @@ defmodule EgressDispatchTest do
     )
 
     conn =
-      call(:post, "/keys/bogus-key/release?api-version=7.4", headers: [{"authorization", "Bearer not.a.jwt"}])
+      call(:post, "/keys/bogus-key/release?api-version=7.4",
+        headers: [{"authorization", "Bearer not.a.jwt"}]
+      )
 
     assert conn.status == 403
     assert Jason.decode!(conn.resp_body)["claim"] == nil
@@ -330,7 +388,10 @@ defmodule EgressDispatchTest do
       body: %{"kty" => "RSA-HSM", "release_policy" => %{"claim" => "azure-compliant-cvm"}}
     )
 
-    conn = call(:post, "/keys/r143-s8/release", headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}])
+    conn =
+      call(:post, "/keys/r143-s8/release",
+        headers: [{"x-ms-compliance-status", "azure-compliant-cvm"}]
+      )
 
     assert conn.status == 400
     assert Jason.decode!(conn.resp_body)["error"]["code"] == "InvalidApiVersion"
@@ -396,14 +457,22 @@ defmodule EgressDispatchTest do
   end
 
   test "lane 19 item 6: CORS default answers allow-origin *" do
+    prev_cors = Application.get_env(:smalt, :egress_cors_origins)
+    Process.put(:prev_cors, prev_cors)
     conn = call(:get, "/keys", headers: [{"origin", "https://x.example"}])
 
     assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
   after
-    Application.delete_env(:smalt, :egress_cors_origins)
+    if is_nil(Process.get(:prev_cors)) do
+      Application.delete_env(:smalt, :egress_cors_origins)
+    else
+      Application.put_env(:smalt, :egress_cors_origins, Process.get(:prev_cors))
+    end
   end
 
   test "lane 19 item 6: configured CORS allowlist admits listed, refuses unlisted" do
+    prev_cors = Application.get_env(:smalt, :egress_cors_origins)
+    Process.put(:prev_cors, prev_cors)
     Application.put_env(:smalt, :egress_cors_origins, ["https://allowed.example"])
 
     listed = call(:get, "/keys", headers: [{"origin", "https://allowed.example"}])
@@ -412,7 +481,11 @@ defmodule EgressDispatchTest do
     assert get_resp_header(listed, "access-control-allow-origin") == ["https://allowed.example"]
     assert get_resp_header(unlisted, "access-control-allow-origin") == []
   after
-    Application.delete_env(:smalt, :egress_cors_origins)
+    if is_nil(Process.get(:prev_cors)) do
+      Application.delete_env(:smalt, :egress_cors_origins)
+    else
+      Application.put_env(:smalt, :egress_cors_origins, Process.get(:prev_cors))
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -529,7 +602,11 @@ defmodule EgressDispatchTest do
     assert get_resp_header(conn, "etag") == ["\"smalt-pkranges-v1\""]
     assert Jason.decode!(conn.resp_body)["_count"] == 1
 
-    conn304 = call(:get, "/dbs/db3/colls/c3/pkranges", headers: [{"if-none-match", "\"smalt-pkranges-v1\""}])
+    conn304 =
+      call(:get, "/dbs/db3/colls/c3/pkranges",
+        headers: [{"if-none-match", "\"smalt-pkranges-v1\""}]
+      )
+
     assert conn304.status == 304
   end
 
@@ -569,9 +646,7 @@ defmodule EgressDispatchTest do
 
   test "blob delete: 404 BlobNotFound with F5 headers on unknown blob" do
     conn =
-      call(:delete, "/dl/cont/blob-gone",
-        headers: [{"x-ms-version", "2021-12-02"}]
-      )
+      call(:delete, "/dl/cont/blob-gone", headers: [{"x-ms-version", "2021-12-02"}])
 
     assert conn.status == 404
     # Engine checks the container before the blob: with neither present the
@@ -616,9 +691,7 @@ defmodule EgressDispatchTest do
     assert created.status == 201
 
     conn =
-      call(:head, "/hc/cont?restype=container",
-        headers: [{"x-ms-version", "2021-12-02"}]
-      )
+      call(:head, "/hc/cont?restype=container", headers: [{"x-ms-version", "2021-12-02"}])
 
     assert conn.status == 200
     assert conn.resp_body == ""
@@ -637,9 +710,7 @@ defmodule EgressDispatchTest do
 
     # x-ms-immutable-policy: false — without it the router defaults the
     # container to immutable and the delete below answers 409 ContainerLocked.
-    call(:put, "/vd/cont?restype=container",
-      headers: ver ++ [{"x-ms-immutable-policy", "false"}]
-    )
+    call(:put, "/vd/cont?restype=container", headers: ver ++ [{"x-ms-immutable-policy", "false"}])
 
     body = "vdir-payload"
     put = call(:put, "/vd/cont/w/1", body: body, headers: ver)
@@ -679,6 +750,7 @@ defmodule EgressDispatchTest do
     # Literal prefixes still win over the splat at every depth.
     for path <- ["/dbs", "/atlas/v2/entity/guid/g1", "/keys/k1", "/app/transactions"] do
       c = call(:get, path, headers: ver)
+
       refute c.status == 404 and Jason.decode!(c.resp_body)["error"]["code"] == "RouteNotFound",
              "#{path} fell through to the catch-all 404"
     end
@@ -771,7 +843,10 @@ defmodule EgressDispatchTest do
   test "body gate mutation: scalar JSON bodies (null/int/string/bool) refused 400" do
     for raw <- ["null", "5", "\"str\"", "true"] do
       conn =
-        call(:post, "/app/transactions", body: raw, headers: [{"content-type", "application/json"}])
+        call(:post, "/app/transactions",
+          body: raw,
+          headers: [{"content-type", "application/json"}]
+        )
 
       assert conn.status == 400,
              "body #{inspect(raw)} answered #{conn.status}, expected 400"
@@ -785,7 +860,10 @@ defmodule EgressDispatchTest do
       before = ledger_append_probe()
 
       conn =
-        call(:post, "/app/transactions", body: raw, headers: [{"content-type", "application/json"}])
+        call(:post, "/app/transactions",
+          body: raw,
+          headers: [{"content-type", "application/json"}]
+        )
 
       assert conn.status == 400,
              "body #{inspect(raw)} answered #{conn.status}, expected 400"
@@ -885,7 +963,10 @@ defmodule EgressDispatchTest do
     conn =
       call(:put, "/acct4/cont4/blob4",
         body: body,
-        headers: [{"x-ms-version", "2021-12-02"}, {"content-type", "application/x-www-form-urlencoded"}]
+        headers: [
+          {"x-ms-version", "2021-12-02"},
+          {"content-type", "application/x-www-form-urlencoded"}
+        ]
       )
 
     assert conn.status == 201
@@ -924,31 +1005,37 @@ defmodule EgressDispatchTest do
     # service route must still answer as itself — never the blob catch-all,
     # never a 500, never an empty 200.
     checks = [
-      {:get, "/dbs", fn c ->
+      {:get, "/dbs",
+       fn c ->
          assert c.status == 200
          assert is_map(Jason.decode!(c.resp_body))
          # Blob list-containers would answer XML; Cosmos answers JSON.
          refute String.contains?(c.resp_body, "<")
        end},
-      {:get, "/keys", fn c ->
+      {:get, "/keys",
+       fn c ->
          assert c.status == 200
          assert is_map(Jason.decode!(c.resp_body))
        end},
-      {:get, "/topics/lit-t1/events", fn c ->
+      {:get, "/topics/lit-t1/events",
+       fn c ->
          assert c.status == 200
          assert is_list(Jason.decode!(c.resp_body))
        end},
-      {:get, "/app/transactions", fn c ->
+      {:get, "/app/transactions",
+       fn c ->
          assert c.status == 200
          assert is_list(Jason.decode!(c.resp_body))
        end},
-      {:get, "/atlas", fn c ->
+      {:get, "/atlas",
+       fn c ->
          # Unclaimed single segment: even with x-ms-version, no comp=list ->
          # the guarded 404 envelope, never XML and never a 500.
          assert c.status == 404
          assert Jason.decode!(c.resp_body)["error"]["code"] == "RouteNotFound"
        end},
-      {:get, "/atlas/v2/lineage/both/lit-guid", fn c ->
+      {:get, "/atlas/v2/lineage/both/lit-guid",
+       fn c ->
          assert c.status in [200, 404]
          assert is_map(Jason.decode!(c.resp_body))
        end}
@@ -1012,13 +1099,23 @@ defmodule EgressDispatchTest do
 
     # Exact cap: inside the router's read cap but above the engine's
     # 1,048,576-byte per-PUT limit -> engine 413 RequestBodyTooLarge.
-    resp = wire_request(port, "PUT", "#{base}/edge", headers: hts, body: String.duplicate("a", 8_000_000))
+    resp =
+      wire_request(port, "PUT", "#{base}/edge",
+        headers: hts,
+        body: String.duplicate("a", 8_000_000)
+      )
+
     assert resp.status == 413
     assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
     assert String.contains?(resp.body, "1,048,576")
 
     # Boundary byte: router read cap -> router 413 envelope.
-    resp = wire_request(port, "PUT", "#{base}/edge1", headers: hts, body: String.duplicate("a", 8_000_001))
+    resp =
+      wire_request(port, "PUT", "#{base}/edge1",
+        headers: hts,
+        body: String.duplicate("a", 8_000_001)
+      )
+
     assert resp.status == 413
     assert Jason.decode!(resp.body)["error"]["code"] == "RequestBodyTooLarge"
     assert String.contains?(resp.body, "8,000,000")
@@ -1048,13 +1145,18 @@ defmodule EgressDispatchTest do
         Plug.Test.conn(method, path, body)
         |> Plug.Conn.put_req_header("authorization", "Bearer egress-harness-challenged-client")
         |> Plug.Conn.put_req_header("content-type", ct)
-        |> then(fn c -> Enum.reduce(xms, c, fn {k, v}, c -> Plug.Conn.put_req_header(c, k, v) end) end)
+        |> then(fn c ->
+          Enum.reduce(xms, c, fn {k, v}, c -> Plug.Conn.put_req_header(c, k, v) end)
+        end)
         |> EgressRouter.call(@opts)
 
       assert conn.status < 500,
              "#{method} #{path} ct=#{ct} -> #{conn.status}: #{conn.resp_body}"
 
-      assert Jason.decode!(conn.resp_body)["error"]["code"] in ["InvalidBody", "UnsupportedMediaType"]
+      assert Jason.decode!(conn.resp_body)["error"]["code"] in [
+               "InvalidBody",
+               "UnsupportedMediaType"
+             ]
     end
   end
 
@@ -1398,8 +1500,8 @@ defmodule EgressDispatchTest do
             {"/app/transactions", [], "application/json"},
             {"/dbs/acpt/colls/acptc/docs", [], "application/json"},
             {"/acpt/cont/b", [{"x-ms-version", "2021-12-02"}], "application/octet-stream"},
-            {"/acpt/cont?restype=container&comp=list",
-             [{"x-ms-version", "2021-12-02"}], "application/xml"}
+            {"/acpt/cont?restype=container&comp=list", [{"x-ms-version", "2021-12-02"}],
+             "application/xml"}
           ] do
         for accept <- ["text/xml", "application/json", "*/*"] do
           conn =
@@ -1409,6 +1511,7 @@ defmodule EgressDispatchTest do
                  "GET #{path} accept=#{accept} -> #{conn.status}"
 
           ct = get_resp_header(conn, "content-type") |> List.first()
+
           assert ct =~ expected_ct,
                  "GET #{path} accept=#{accept} answered content-type #{ct}, expected #{expected_ct}"
         end
@@ -1428,7 +1531,8 @@ defmodule EgressDispatchTest do
             {:get, "/app/transactions", "", 200},
             {:get, "/app/transactions/latest", "", 200},
             {:post, "/app/transactions", Jason.encode!(%{"data" => "b"}), 201},
-            {:post, "/keys/ap2/encrypt", Jason.encode!(%{"value" => "aGk=", "alg" => "A256GCM"}), :any},
+            {:post, "/keys/ap2/encrypt", Jason.encode!(%{"value" => "aGk=", "alg" => "A256GCM"}),
+             :any},
             {:get, "/keys", "", 200},
             {:get, "/topics/ap3/events", "", 200}
           ] do
@@ -1442,7 +1546,10 @@ defmodule EgressDispatchTest do
 
           conn =
             Plug.Test.conn(method, path, body)
-            |> Plug.Conn.put_req_header("authorization", "Bearer egress-harness-challenged-client")
+            |> Plug.Conn.put_req_header(
+              "authorization",
+              "Bearer egress-harness-challenged-client"
+            )
             |> Plug.Conn.put_req_header("accept", accept)
             |> then(fn c ->
               if body != "",
@@ -1451,10 +1558,12 @@ defmodule EgressDispatchTest do
             end)
             |> EgressRouter.call(@opts)
 
-          assert conn.status in ([expected_status] ++ if expected_status == :any, do: [200, 201, 400], else: []),
+          assert conn.status in ([expected_status] ++
+                                   if(expected_status == :any, do: [200, 201, 400], else: [])),
                  "#{method} #{path} accept=#{accept} -> #{conn.status}"
 
           ct = get_resp_header(conn, "content-type") |> List.first()
+
           assert ct =~ "application/json",
                  "#{method} #{path} accept=#{accept} answered content-type #{ct}"
         end
@@ -1571,7 +1680,10 @@ defmodule EgressDispatchTest do
       # Unfiltered listing still returns everything (no over-restriction).
       conn = call(:get, "/pf/cont?restype=container&comp=list", headers: ver)
       assert conn.status == 200
-      for name <- ["a", "pfx-1", "pfx-2", "z"], do: assert conn.resp_body =~ "<Name>#{name}</Name>"
+
+      for name <- ["a", "pfx-1", "pfx-2", "z"],
+          do: assert(conn.resp_body =~ "<Name>#{name}</Name>")
+
       refute conn.resp_body =~ "<Prefix>pfx-</Prefix>"
     end
   end
@@ -1603,9 +1715,7 @@ defmodule EgressDispatchTest do
       assert conn.status == 200
 
       conn =
-        call(:put, "/jx/dup?restype=container",
-          headers: ver ++ [{"x-ms-meta-color", "blue"}]
-        )
+        call(:put, "/jx/dup?restype=container", headers: ver ++ [{"x-ms-meta-color", "blue"}])
 
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"]["code"] == "ContainerAlreadyExists"
@@ -1681,9 +1791,7 @@ defmodule EgressDispatchTest do
       # Query-namespace token (v1) on the LIST gate (v2-only): typed 400,
       # never a cross-surface silent resume.
       conn =
-        call(:get, "/dbs/k6/colls/k6c/docs",
-          headers: [{"x-ms-continuation", "1#5:d1"}]
-        )
+        call(:get, "/dbs/k6/colls/k6c/docs", headers: [{"x-ms-continuation", "1#5:d1"}])
 
       assert conn.status == 400
       assert Jason.decode!(conn.resp_body)["code"] == "BadRequest"
@@ -1857,7 +1965,8 @@ defmodule EgressDispatchTest do
           {:get, "/topics/t7/events", []},
           # blob catch-all (x-ms-version satisfies the guard)
           {:get, "/l7acct", [{"x-ms-version", "2021-12-02"}], "comp=list"},
-          {:get, "/l7acct/l7cont", [{"x-ms-version", "2021-12-02"}], "comp=list&restype=container"}
+          {:get, "/l7acct/l7cont", [{"x-ms-version", "2021-12-02"}],
+           "comp=list&restype=container"}
         ]
 
         Enum.each(probes, fn
@@ -2073,6 +2182,7 @@ defmodule EgressDispatchTest do
         # guard (fail-closed first), so the answer is 404 BlobNotFound, not
         # the 400 MissingXMsVersion envelope.
         no_ver = call(:get, path)
+
         assert no_ver.status == 404,
                "#{path} without x-ms-version answered #{no_ver.status}"
 
@@ -2127,6 +2237,7 @@ defmodule EgressDispatchTest do
               "/tid/oauth2/v2.0/token/extra"
             ] do
           conn = call(:get, path, headers: @ver)
+
           assert conn.status in [401, 404],
                  "exempt-prefix blob path #{path} answered #{conn.status} (bypass reachable)"
 
@@ -2606,12 +2717,32 @@ defmodule EgressDispatchTest do
         :code.purge(cosmos)
         Code.ensure_loaded(cosmos)
         stop_tree_quiet()
+
+        case Process.get({__MODULE__, :isolated_ports_prev}) do
+          {arm, egress, amqp} ->
+            if is_nil(arm),
+              do: Application.delete_env(:smalt, :arm_port),
+              else: Application.put_env(:smalt, :arm_port, arm)
+
+            if is_nil(egress),
+              do: Application.delete_env(:smalt, :egress_port),
+              else: Application.put_env(:smalt, :egress_port, egress)
+
+            if is_nil(amqp),
+              do: Application.delete_env(:smalt, :amqp_port),
+              else: Application.put_env(:smalt, :amqp_port, amqp)
+
+          _ ->
+            :ok
+        end
+
         SmaltTest.Lifecycle.restore_app()
       end)
 
       # BEFORE — real HTTP, real loaded engine.
       assert Code.ensure_loaded?(cosmos)
       before = wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
+
       assert before.status == 200,
              "BEFORE baseline answered #{before.status} (#{before.body}) — court precondition"
 
@@ -2624,7 +2755,9 @@ defmodule EgressDispatchTest do
       File.rename!(beam, hidden)
       :code.purge(cosmos)
       :code.delete(cosmos)
-      refute Code.ensure_loaded?(cosmos), "engine module still loaded after purge+delete+beam-hide"
+
+      refute Code.ensure_loaded?(cosmos),
+             "engine module still loaded after purge+delete+beam-hide"
 
       killed = wire_request(port, "GET", "/dbs", headers: [{"content-type", "application/json"}])
 
@@ -2657,6 +2790,15 @@ defmodule EgressDispatchTest do
     stop_existing_tree()
 
     port = get_free_port()
+
+    prev_arm_port = Application.get_env(:smalt, :arm_port)
+    prev_egress_port = Application.get_env(:smalt, :egress_port)
+    prev_amqp_port = Application.get_env(:smalt, :amqp_port)
+
+    Process.put(
+      {__MODULE__, :isolated_ports_prev},
+      {prev_arm_port, prev_egress_port, prev_amqp_port}
+    )
 
     Application.put_env(:smalt, :arm_port, get_free_port())
     Application.put_env(:smalt, :egress_port, port)
@@ -2746,15 +2888,21 @@ defmodule EgressDispatchTest do
       pk = [{"x-ms-documentdb-partitionkey", ~s(["r155"])}, {"content-type", "application/json"}]
 
       for {id, code} <- [{"doc-a", "A"}, {"doc-b", "B"}] do
-        create = call(:post, "/dbs/r155db/colls/r155coll/docs", headers: pk, body: %{"id" => id, "tenantId" => "r155", "code" => code})
+        create =
+          call(:post, "/dbs/r155db/colls/r155coll/docs",
+            headers: pk,
+            body: %{"id" => id, "tenantId" => "r155", "code" => code}
+          )
+
         assert create.status == 201, "#{id} create answered #{create.status}: #{create.resp_body}"
       end
 
       # Valid replace: 200 with a fresh _etag.
-      patch = call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-a",
-        headers: pk,
-        body: [%{"op" => "replace", "path" => "/code", "value" => "A2"}]
-      )
+      patch =
+        call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-a",
+          headers: pk,
+          body: [%{"op" => "replace", "path" => "/code", "value" => "A2"}]
+        )
 
       assert patch.status == 200, "valid patch answered #{patch.status}: #{patch.resp_body}"
       body = Jason.decode!(patch.resp_body)
@@ -2762,20 +2910,22 @@ defmodule EgressDispatchTest do
       assert is_binary(body["_etag"]) and body["_etag"] != ""
 
       # Partition-key move (patched body pk no longer matches the header): 400.
-      pk_move = call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-a",
-        headers: pk,
-        body: [%{"op" => "replace", "path" => "/tenantId", "value" => "elsewhere"}]
-      )
+      pk_move =
+        call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-a",
+          headers: pk,
+          body: [%{"op" => "replace", "path" => "/tenantId", "value" => "elsewhere"}]
+        )
 
       assert pk_move.status == 400, "pk-move answered #{pk_move.status}: #{pk_move.resp_body}"
       assert Jason.decode!(pk_move.resp_body)["code"] == "BadRequest"
 
       # Unique-key steal (doc-b's /code -> "A2", already held by doc-a after
       # the valid patch above): 409.
-      steal = call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-b",
-        headers: pk,
-        body: [%{"op" => "replace", "path" => "/code", "value" => "A2"}]
-      )
+      steal =
+        call(:patch, "/dbs/r155db/colls/r155coll/docs/doc-b",
+          headers: pk,
+          body: [%{"op" => "replace", "path" => "/code", "value" => "A2"}]
+        )
 
       assert steal.status == 409, "unique-key steal answered #{steal.status}: #{steal.resp_body}"
       assert Jason.decode!(steal.resp_body)["code"] == "Conflict"
@@ -2790,20 +2940,28 @@ defmodule EgressDispatchTest do
       call(:post, "/dbs/r155cfdb/colls", body: %{"id" => "r155cfcoll"})
 
       for i <- 1..2 do
-        create = call(:post, "/dbs/r155cfdb/colls/r155cfcoll/docs", body: %{"id" => "seed-#{i}", "n" => i})
+        create =
+          call(:post, "/dbs/r155cfdb/colls/r155cfcoll/docs",
+            body: %{"id" => "seed-#{i}", "n" => i}
+          )
+
         assert create.status == 201, "seed-#{i} answered #{create.status}"
       end
 
-      feed = call(:get, "/dbs/r155cfdb/colls/r155cfcoll/docs", headers: [{"a-im", "Incremental feed"}])
+      feed =
+        call(:get, "/dbs/r155cfdb/colls/r155cfcoll/docs", headers: [{"a-im", "Incremental feed"}])
 
       assert feed.status == 200, "feed answered #{feed.status}: #{feed.resp_body}"
       assert Jason.decode!(feed.resp_body)["_count"] == 2
       assert get_resp_header(feed, "x-ms-continuation") != []
 
-      third = call(:post, "/dbs/r155cfdb/colls/r155cfcoll/docs", body: %{"id" => "seed-3", "n" => 3})
+      third =
+        call(:post, "/dbs/r155cfdb/colls/r155cfcoll/docs", body: %{"id" => "seed-3", "n" => 3})
+
       assert third.status == 201
 
-      feed2 = call(:get, "/dbs/r155cfdb/colls/r155cfcoll/docs", headers: [{"a-im", "Incremental feed"}])
+      feed2 =
+        call(:get, "/dbs/r155cfdb/colls/r155cfcoll/docs", headers: [{"a-im", "Incremental feed"}])
 
       assert feed2.status == 200
       body2 = Jason.decode!(feed2.resp_body)
@@ -2812,12 +2970,18 @@ defmodule EgressDispatchTest do
       assert get_resp_header(feed2, "x-ms-continuation") != []
     end
   end
+
   describe "KV soft-delete routes" do
     @ver [{"x-ms-version", "2021-12-02"}]
     @ver_ct @ver ++ [{"content-type", "application/json"}]
 
     test "delete -> get deleted -> recover -> purge cycle" do
-      conn = call(:post, "/keys/delkey1/create", body: %{"kty" => "RSA", "key_ops" => ["sign", "verify"]}, headers: @ver_ct)
+      conn =
+        call(:post, "/keys/delkey1/create",
+          body: %{"kty" => "RSA", "key_ops" => ["sign", "verify"]},
+          headers: @ver_ct
+        )
+
       assert conn.status in [200, 201], conn.resp_body
 
       conn = call(:delete, "/keys/delkey1", headers: @ver)
@@ -2860,5 +3024,4 @@ defmodule EgressDispatchTest do
       assert call(:get, "/deletedkeys/no-such-key", headers: @ver).status == 404
     end
   end
-
 end

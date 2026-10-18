@@ -33,13 +33,13 @@ defmodule Smalt.TLS do
   # Extension: extnID, critical, extnValue
   # Validity: notBefore, notAfter (each {:utcTime | :generalizedTime, charlist})
 
-  @sha256_rsa_oid {1, 2, 840, 113549, 1, 1, 11}
-  @rsa_enc_oid {1, 2, 840, 113549, 1, 1, 1}
+  @sha256_rsa_oid {1, 2, 840, 113_549, 1, 1, 11}
+  @rsa_enc_oid {1, 2, 840, 113_549, 1, 1, 1}
 
-  defp alg, do: {:"AlgorithmIdentifier", @sha256_rsa_oid, :asn1_NOVALUE}
+  defp alg, do: {:AlgorithmIdentifier, @sha256_rsa_oid, :asn1_NOVALUE}
 
   # SPKI must carry rsaEncryption (with NULL params), not a signature algorithm.
-  defp spki_alg, do: {:"AlgorithmIdentifier", @rsa_enc_oid, <<0x05, 0x00>>}
+  defp spki_alg, do: {:AlgorithmIdentifier, @rsa_enc_oid, <<0x05, 0x00>>}
   @cn_oid {2, 5, 4, 3}
   @san_oid {2, 5, 29, 17}
   @basic_constraints_oid {2, 5, 29, 19}
@@ -170,8 +170,11 @@ defmodule Smalt.TLS do
           ]
         ]
 
-        [scheme: :https, certfile: to_charlist(Path.expand(cert)),
-         keyfile: to_charlist(Path.expand(key))] ++ tls_pin ++ base
+        [
+          scheme: :https,
+          certfile: to_charlist(Path.expand(cert)),
+          keyfile: to_charlist(Path.expand(key))
+        ] ++ tls_pin ++ base
 
       # Explicit plaintext opt-out is a typed configuration, not a failure.
       {:error, :tls_disabled} ->
@@ -233,7 +236,7 @@ defmodule Smalt.TLS do
   # gen_dev_cert.sh pair), silently deadening SMALT_TLS_CERTFILE.
   defp verify_pair(cert, key) do
     with {:ok, pem} <- File.read(cert),
-         [{:"Certificate", der, :not_encrypted} | _] <- :public_key.pem_decode(pem),
+         [{:Certificate, der, :not_encrypted} | _] <- :public_key.pem_decode(pem),
          {:ok, kpem} <- File.read(key),
          [key_entry | _] <- :public_key.pem_decode(kpem),
          {:ok, priv} <- rsa_key_der(key_entry) do
@@ -325,8 +328,8 @@ defmodule Smalt.TLS do
   defp parse_cert(path) do
     with {:ok, pem} <- File.read(path),
          {:ok, entries} when is_list(entries) and entries != [] <- safe_pem_decode(pem),
-         [{:"Certificate", der, :not_encrypted} | _] <-
-           Enum.filter(entries, &match?({:"Certificate", _, :not_encrypted}, &1)),
+         [{:Certificate, der, :not_encrypted} | _] <-
+           Enum.filter(entries, &match?({:Certificate, _, :not_encrypted}, &1)),
          decoded when decoded != :error <- safe_decode(der) do
       {:ok, path}
     else
@@ -344,7 +347,7 @@ defmodule Smalt.TLS do
   end
 
   defp safe_decode(der) do
-    {:ok, :public_key.der_decode(:"Certificate", der)}
+    {:ok, :public_key.der_decode(:Certificate, der)}
   rescue
     _ -> :error
   end
@@ -398,29 +401,29 @@ defmodule Smalt.TLS do
     pubkey = rsa_pub_from_priv(key)
     spki_der = :public_key.der_encode(:RSAPublicKey, pubkey)
 
-    spki = {:"SubjectPublicKeyInfo", spki_alg(), spki_der}
+    spki = {:SubjectPublicKeyInfo, spki_alg(), spki_der}
 
     tbs =
-      {:"OTPTBSCertificate", :v3, serial(), alg(), {:rdnSequence, name("127.0.0.1")},
-       {:"Validity", {:utcTime, ~c'250101000000Z'}, {:utcTime, ~c'351231235959Z'}},
+      {:OTPTBSCertificate, :v3, serial(), alg(), {:rdnSequence, name("127.0.0.1")},
+       {:Validity, {:utcTime, ~c'250101000000Z'}, {:utcTime, ~c'351231235959Z'}},
        {:rdnSequence, name("127.0.0.1")}, spki, :asn1_NOVALUE, :asn1_NOVALUE,
        [
-         {:"Extension", @basic_constraints_oid, true, <<0x30, 0x03, 0x01, 0x01, 0xFF>>},
-         {:"Extension", @san_oid, false, san_der()}
+         {:Extension, @basic_constraints_oid, true, <<0x30, 0x03, 0x01, 0x01, 0xFF>>},
+         {:Extension, @san_oid, false, san_der()}
        ]}
 
     {:ok, tbs, key}
   end
 
   defp name(cn) do
-    atv = {:"AttributeTypeAndValue", @cn_oid, {:printableString, String.to_charlist(cn)}}
+    atv = {:AttributeTypeAndValue, @cn_oid, {:printableString, String.to_charlist(cn)}}
     [[atv]]
   end
 
   # RSAPrivateKey record: tag, version, modulus, publicExponent, ...
   # RSAPublicKey record: tag, modulus, publicExponent
   defp rsa_pub_from_priv(key) do
-    {:"RSAPublicKey", elem(key, 2), elem(key, 3)}
+    {:RSAPublicKey, elem(key, 2), elem(key, 3)}
   end
 
   defp san_der do
@@ -437,12 +440,12 @@ defmodule Smalt.TLS do
   end
 
   defp sign_tbs(tbs, key) do
-    der = :public_key.der_encode(:"OTPTBSCertificate", tbs)
+    der = :public_key.der_encode(:OTPTBSCertificate, tbs)
     signature = :public_key.sign(der, :sha256, key, [])
 
-    cert = {:"OTPCertificate", tbs, alg(), signature}
+    cert = {:OTPCertificate, tbs, alg(), signature}
 
-    {:ok, :public_key.der_encode(:"OTPCertificate", cert)}
+    {:ok, :public_key.der_encode(:OTPCertificate, cert)}
   rescue
     e -> {:error, e}
   end

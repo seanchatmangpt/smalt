@@ -19,7 +19,17 @@ defmodule EnclaveEngineTest do
       "state" => "Enabled"
     })
 
+    prev_lro_delay_ms = Application.get_env(:smalt, :lro_delay_ms)
     Application.put_env(:smalt, :lro_delay_ms, 0)
+
+    on_exit(fn ->
+      if is_nil(prev_lro_delay_ms) do
+        Application.delete_env(:smalt, :lro_delay_ms)
+      else
+        Application.put_env(:smalt, :lro_delay_ms, prev_lro_delay_ms)
+      end
+    end)
+
     :ok
   end
 
@@ -65,7 +75,8 @@ defmodule EnclaveEngineTest do
 
   test "baseline fixture applies in dependency order, all 201/202, store records" do
     resources = [
-      {:resource, "azurerm_resource_group", :rg, %{name: "rg-smalt-fixture", location: "smalt-local"}},
+      {:resource, "azurerm_resource_group", :rg,
+       %{name: "rg-smalt-fixture", location: "smalt-local"}},
       {:resource, "azurerm_key_vault", :kv,
        %{
          name: "kv-smalt-fixture",
@@ -97,7 +108,9 @@ defmodule EnclaveEngineTest do
     sa = Engine.outcome_for(outcomes, :sa)
     assert kv.status == 201
     assert kv.arm_type == "Microsoft.KeyVault/vaults"
-    assert kv.id == "/subscriptions/#{@sub}/resourceGroups/rg-smalt-fixture/providers/Microsoft.KeyVault/vaults/kv-smalt-fixture"
+
+    assert kv.id ==
+             "/subscriptions/#{@sub}/resourceGroups/rg-smalt-fixture/providers/Microsoft.KeyVault/vaults/kv-smalt-fixture"
 
     # storage accounts are an LRO type: create is 202
     assert sa.status == 202
@@ -114,7 +127,8 @@ defmodule EnclaveEngineTest do
 
   test "per-resource families: cosmos, eventhub, servicebus apply 201" do
     resources = [
-      {:resource, "azurerm_resource_group", :rg, %{name: "rg-enclave-fam", location: "smalt-local"}},
+      {:resource, "azurerm_resource_group", :rg,
+       %{name: "rg-enclave-fam", location: "smalt-local"}},
       {:resource, "azurerm_cosmosdb_account", :cosmos,
        %{
          name: "cos-enclave-fam",
@@ -193,8 +207,7 @@ defmodule EnclaveEngineTest do
 
   test "cycle -> typed error naming the cycle members" do
     resources = [
-      {:resource, "azurerm_resource_group", :a,
-       %{name: "rg-a", location: {:ref, :b, :location}}},
+      {:resource, "azurerm_resource_group", :a, %{name: "rg-a", location: {:ref, :b, :location}}},
       {:resource, "azurerm_resource_group", :b,
        %{name: {:ref, :a, :name}, location: "smalt-local"}}
     ]

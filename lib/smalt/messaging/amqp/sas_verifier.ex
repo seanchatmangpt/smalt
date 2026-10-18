@@ -95,7 +95,7 @@ defmodule Smalt.Amqp.SasVerifier do
 
               _ ->
                 {:halt, :malformed}
-              end
+            end
           end)
 
         case fields do
@@ -157,7 +157,8 @@ defmodule Smalt.Amqp.SasVerifier do
 
     if sr != "" and String.length(sr) <= @max_audience_chars do
       case URI.new(sr) do
-        {:ok, %URI{scheme: scheme, userinfo: nil, query: nil, fragment: nil, host: host, port: port}}
+        {:ok,
+         %URI{scheme: scheme, userinfo: nil, query: nil, fragment: nil, host: host, port: port}}
         when is_binary(scheme) and is_binary(host) ->
           if audience_matches?(scheme, host, port, audience_config) do
             {:ok, sr}
@@ -253,6 +254,7 @@ defmodule Smalt.Amqp.SasVerifier do
     case Base.decode64(sig, ignore: :whitespace) do
       {:ok, provided} ->
         expected = :crypto.mac(:hmac, :sha256, shared_key(), "#{sr}\n#{se}")
+
         if Plug.Crypto.secure_compare(provided, expected) do
           :ok
         else

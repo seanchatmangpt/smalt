@@ -35,19 +35,22 @@ defmodule Smalt.SbRulesTest do
     test "PUT 201 -> GET carries filter, LIST shows it, DELETE -> GET 404" do
       setup_topic_sub("sbns-r1", "t1", "s1")
 
-      put_conn = put_rule("sbns-r1", "t1", "s1", "order-only", %{
-        "sqlExpression" => "ordertype = 'priority' OR sys.label = 'vip'"
-      })
+      put_conn =
+        put_rule("sbns-r1", "t1", "s1", "order-only", %{
+          "sqlExpression" => "ordertype = 'priority' OR sys.label = 'vip'"
+        })
 
       assert put_conn.status == 201
       record = Jason.decode!(put_conn.resp_body)
       assert record["name"] == "order-only"
       assert record["type"] == "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules"
+
       assert record["properties"]["filter"]["sqlExpression"] ==
                "ordertype = 'priority' OR sys.label = 'vip'"
 
       get_conn = rule_req(:get, "sbns-r1", "t1", "s1", "order-only")
       assert get_conn.status == 200
+
       assert Jason.decode!(get_conn.resp_body)["properties"]["filter"]["sqlExpression"] ==
                "ordertype = 'priority' OR sys.label = 'vip'"
 
@@ -200,7 +203,8 @@ defmodule Smalt.SbRulesTest do
 
       msg = %{body: "payload", message_id: "m-1", app_props: %{"tier" => "gold"}, label: "orig"}
 
-      delivered = SbRules.fan_out("/subscriptions/sub-1/resourceGroups/rg-1", "sbns-f1", "t1", msg)
+      delivered =
+        SbRules.fan_out("/subscriptions/sub-1/resourceGroups/rg-1", "sbns-f1", "t1", msg)
 
       assert Enum.sort(delivered) == ["s-sql", "s-true"]
 
@@ -250,26 +254,38 @@ defmodule Smalt.SbRulesTest do
   # -- Helpers ------------------------------------------------------------------------
 
   defp put_ns(ns) do
-    conn(:put, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}?api-version=2021-04-01", %{
-      "location" => "eastus",
-      "properties" => %{"skuName" => "Standard"}
-    })
+    conn(
+      :put,
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}?api-version=2021-04-01",
+      %{
+        "location" => "eastus",
+        "properties" => %{"skuName" => "Standard"}
+      }
+    )
     |> Router.call(@opts)
     |> assert_status_in([200, 201])
   end
 
   defp put_topic(ns, topic) do
-    conn(:put, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/topics/#{topic}?api-version=2021-04-01", %{
-      "location" => "eastus"
-    })
+    conn(
+      :put,
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/topics/#{topic}?api-version=2021-04-01",
+      %{
+        "location" => "eastus"
+      }
+    )
     |> Router.call(@opts)
     |> assert_status_in([200, 201])
   end
 
   defp put_sub(ns, topic, sub) do
-    conn(:put, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/topics/#{topic}/subscriptions/#{sub}?api-version=2021-04-01", %{
-      "location" => "eastus"
-    })
+    conn(
+      :put,
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/topics/#{topic}/subscriptions/#{sub}?api-version=2021-04-01",
+      %{
+        "location" => "eastus"
+      }
+    )
     |> Router.call(@opts)
     |> assert_status_in([200, 201])
   end
@@ -312,7 +328,9 @@ defmodule Smalt.SbRulesTest do
   end
 
   defp assert_status_in(conn, wants) do
-    assert conn.status in wants, "expected one of #{inspect(wants)}, got #{conn.status}: #{conn.resp_body}"
+    assert conn.status in wants,
+           "expected one of #{inspect(wants)}, got #{conn.status}: #{conn.resp_body}"
+
     conn
   end
 

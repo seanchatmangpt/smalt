@@ -35,6 +35,7 @@ defmodule Smalt.Enclave.LifecycleTest do
         "tmp",
         "ocel-lifecycle-test-#{System.system_time(:millisecond)}-#{System.unique_integer([:positive])}"
       )
+
     File.mkdir_p!(dir)
     prev = Application.get_env(:smalt, :ocel_dir)
     Application.put_env(:smalt, :ocel_dir, dir)

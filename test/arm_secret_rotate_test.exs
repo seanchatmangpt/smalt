@@ -87,6 +87,7 @@ defmodule Smalt.ArmSecretRotateTest do
     latest = egress(:get, "/secrets/s-rot", @bearer)
     assert latest.status == 200
     latest_body = Jason.decode!(latest.resp_body)
+
     assert latest_body["id"] |> String.split("/") |> List.last() ==
              envelope["properties"]["version"]
 
@@ -100,19 +101,25 @@ defmodule Smalt.ArmSecretRotateTest do
 
     # a non-latest version is a typed 404, not a splat fall-through
     stale = egress(:get, "/secrets/s-rot/999-stale", @bearer)
-    assert {404, "SecretNotFound"} = {stale.status, Jason.decode!(stale.resp_body)["error"]["code"]}
+
+    assert {404, "SecretNotFound"} =
+             {stale.status, Jason.decode!(stale.resp_body)["error"]["code"]}
   end
 
   test "rotate unknown secret -> typed 404" do
     put_vault("kv-rot-2")
 
     conn = arm(:post, rotate_path("kv-rot-2", "nope"))
-    assert {404, "ResourceNotFound"} = {conn.status, Jason.decode!(conn.resp_body)["error"]["code"]}
+
+    assert {404, "ResourceNotFound"} =
+             {conn.status, Jason.decode!(conn.resp_body)["error"]["code"]}
   end
 
   test "rotate with no parent vault -> typed 404" do
     conn = arm(:post, rotate_path("kv-absent", "s-x"))
-    assert {404, "ResourceNotFound"} = {conn.status, Jason.decode!(conn.resp_body)["error"]["code"]}
+
+    assert {404, "ResourceNotFound"} =
+             {conn.status, Jason.decode!(conn.resp_body)["error"]["code"]}
   end
 
   test "rotate with no data-plane version to carry forward -> typed 409" do
@@ -124,6 +131,7 @@ defmodule Smalt.ArmSecretRotateTest do
     Store.delete(:smalt_vault_secrets, "s-ctl")
 
     conn = arm(:post, rotate_path("kv-rot-3", "s-ctl"))
+
     assert {409, "SecretVersionNotFound"} =
              {conn.status, Jason.decode!(conn.resp_body)["error"]["code"]}
   end

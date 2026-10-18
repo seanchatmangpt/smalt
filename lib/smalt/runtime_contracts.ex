@@ -22,7 +22,15 @@ defmodule Smalt.RuntimeContracts do
   `docs/PACK_INTEGRATION/runtime-contracts.md`).
   """
 
-  alias Smalt.RuntimeContracts.{AmqpDialect, ArmEnvelope, CosmosHeader, PurviewAtlas, ResourceGraphQuery, SentinelIngest, Support}
+  alias Smalt.RuntimeContracts.{
+    AmqpDialect,
+    ArmEnvelope,
+    CosmosHeader,
+    PurviewAtlas,
+    ResourceGraphQuery,
+    SentinelIngest,
+    Support
+  }
 
   @typedoc "Full verdict map from `verify/0`."
   @type verdict :: %{
@@ -34,7 +42,14 @@ defmodule Smalt.RuntimeContracts do
           failure_count: non_neg_integer()
         }
 
-  @wired [ArmEnvelope, CosmosHeader, AmqpDialect, SentinelIngest, ResourceGraphQuery, PurviewAtlas]
+  @wired [
+    ArmEnvelope,
+    CosmosHeader,
+    AmqpDialect,
+    SentinelIngest,
+    ResourceGraphQuery,
+    PurviewAtlas
+  ]
 
   @doc "Wired contract modules (revops structural factory output)."
   @spec contracts() :: [module()]
@@ -101,20 +116,22 @@ defmodule Smalt.RuntimeContracts do
             {[{name, result}], [{name, plane} | acc]}
 
           {:error, bad_plane} ->
-            {[{name,
-               %{
-                 result
-                 | pass: false,
-                   failures:
-                     result.failures ++
-                       [
-                         %{
-                           check: :contract_malformed_plane,
-                           detail:
-                             "plane/0 returned a non-atom (#{inspect(bad_plane)}); planes is typed %{atom() => [atom()]}"
-                         }
-                       ]
-             }}], [{name, :contract_malformed_plane} | acc]}
+            {[
+               {name,
+                %{
+                  result
+                  | pass: false,
+                    failures:
+                      result.failures ++
+                        [
+                          %{
+                            check: :contract_malformed_plane,
+                            detail:
+                              "plane/0 returned a non-atom (#{inspect(bad_plane)}); planes is typed %{atom() => [atom()]}"
+                          }
+                        ]
+                }}
+             ], [{name, :contract_malformed_plane} | acc]}
         end
       end)
 
@@ -133,20 +150,22 @@ defmodule Smalt.RuntimeContracts do
             {[{name, result}], acc}
 
           {:error, bad_name} ->
-            {[{name,
-               %{
-                 result
-                 | pass: false,
-                   failures:
-                     result.failures ++
-                       [
-                         %{
-                           check: :contract_malformed_name,
-                           detail:
-                             "name/0 returned a non-atom (#{inspect(bad_name)}); the contract behaviour types name/0 as atom()"
-                         }
-                       ]
-               }}], acc}
+            {[
+               {name,
+                %{
+                  result
+                  | pass: false,
+                    failures:
+                      result.failures ++
+                        [
+                          %{
+                            check: :contract_malformed_name,
+                            detail:
+                              "name/0 returned a non-atom (#{inspect(bad_name)}); the contract behaviour types name/0 as atom()"
+                          }
+                        ]
+                }}
+             ], acc}
         end
       end)
 
@@ -268,7 +287,7 @@ defmodule Smalt.RuntimeContracts do
   # name/0, or a non-module entry resolve via the guess (unchanged behavior —
   # those are already typed by name_of/1's fallback, not silent type breaks).
   defp typed_name(contracts, name) do
-    case Enum.find(contracts, &is_atom(&1) and name_of(&1) == name) do
+    case Enum.find(contracts, &(is_atom(&1) and name_of(&1) == name)) do
       nil ->
         {:ok, name}
 
@@ -288,8 +307,10 @@ defmodule Smalt.RuntimeContracts do
   # is malformed too (lens-6: resolving by raw name/0 masked the plane marker
   # behind contract_malformed_name — the plane violation resolved :unknown).
   defp plane_of(contracts, name) do
-    case Enum.find(contracts, &name_of(&1) == name) do
-      nil -> {:ok, :unknown}
+    case Enum.find(contracts, &(name_of(&1) == name)) do
+      nil ->
+        {:ok, :unknown}
+
       mod ->
         case mod.plane() do
           plane when is_atom(plane) -> {:ok, plane}

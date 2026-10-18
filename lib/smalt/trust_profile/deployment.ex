@@ -67,18 +67,25 @@ defmodule Smalt.TrustProfile.Deployment do
           | {:refused, [{atom, String.t()}]}
   def validate(profile, config)
 
-  def validate(profile, config) when is_map(config) and profile in [:loopback_dev, :sovereign_enterprise] do
+  def validate(profile, config)
+      when is_map(config) and profile in [:loopback_dev, :sovereign_enterprise] do
     if Enum.all?(Map.keys(config), &is_atom/1) do
       do_validate(profile, config)
     else
       {:refused,
-       [{:bad_config, "config keys must be atoms (got non-atom keys: #{inspect(Map.keys(config) |> Enum.reject(&is_atom/1))}); string-keyed configs are coerced-to-empty under atom Access and are refused, never coerced"}]}
+       [
+         {:bad_config,
+          "config keys must be atoms (got non-atom keys: #{inspect(Map.keys(config) |> Enum.reject(&is_atom/1))}); string-keyed configs are coerced-to-empty under atom Access and are refused, never coerced"}
+       ]}
     end
   end
 
   def validate(profile, _config) when profile not in [:loopback_dev, :sovereign_enterprise] do
     {:refused,
-     [{:unknown_profile, "profile must be one of #{inspect(profiles())}, got #{inspect(profile)}"}]}
+     [
+       {:unknown_profile,
+        "profile must be one of #{inspect(profiles())}, got #{inspect(profile)}"}
+     ]}
   end
 
   def validate(_profile, config) do
@@ -90,20 +97,34 @@ defmodule Smalt.TrustProfile.Deployment do
   defp do_validate(:loopback_dev, config) do
     findings =
       []
-      |> maybe_finding(config[:auth_mode] == :anonymous,
-        "auth_mode is :anonymous — no bearer enforcement; local-only")
-      |> maybe_finding(config[:auth_mode] != :anonymous,
-        "auth_mode is #{inspect(config[:auth_mode])} — bearer enforcement active")
-      |> maybe_finding(config[:tls] == false,
-        "tls is false — plaintext HTTP; local-only")
-      |> maybe_finding(config[:tls] == :auto,
-        "tls is :auto — self-signed dev cert; local-only")
-      |> maybe_finding(config[:tls] == true,
-        "tls is true — TLS enabled in a dev profile (unusual)")
-      |> maybe_finding(is_binary(config[:sb_shared_key]),
-        "sb_shared_key present — SAS HMAC verification active (unusual for loopback)")
-      |> maybe_finding(not is_binary(config[:sb_shared_key]),
-        "sb_shared_key absent — no SAS HMAC shared key; local-only")
+      |> maybe_finding(
+        config[:auth_mode] == :anonymous,
+        "auth_mode is :anonymous — no bearer enforcement; local-only"
+      )
+      |> maybe_finding(
+        config[:auth_mode] != :anonymous,
+        "auth_mode is #{inspect(config[:auth_mode])} — bearer enforcement active"
+      )
+      |> maybe_finding(
+        config[:tls] == false,
+        "tls is false — plaintext HTTP; local-only"
+      )
+      |> maybe_finding(
+        config[:tls] == :auto,
+        "tls is :auto — self-signed dev cert; local-only"
+      )
+      |> maybe_finding(
+        config[:tls] == true,
+        "tls is true — TLS enabled in a dev profile (unusual)"
+      )
+      |> maybe_finding(
+        is_binary(config[:sb_shared_key]),
+        "sb_shared_key present — SAS HMAC verification active (unusual for loopback)"
+      )
+      |> maybe_finding(
+        not is_binary(config[:sb_shared_key]),
+        "sb_shared_key absent — no SAS HMAC shared key; local-only"
+      )
 
     {:ok, %{profile: :loopback_dev, config: config, findings: findings}}
   end
@@ -111,12 +132,21 @@ defmodule Smalt.TrustProfile.Deployment do
   defp do_validate(:sovereign_enterprise, config) do
     violations =
       []
-      |> require(config[:auth_mode] == :enforce, {:missing_auth_enforce,
-        "sovereign-enterprise requires auth_mode == :enforce; got #{inspect(config[:auth_mode])}"})
-      |> require(tls_enabled?(config), {:tls_not_enabled,
-        "sovereign-enterprise requires TLS enabled or explicit certfiles; got #{inspect(config[:tls])}"})
-      |> require(is_binary(config[:sb_shared_key]), {:sb_shared_key_missing,
-        "sovereign-enterprise requires a binary :sb_shared_key; got #{inspect(config[:sb_shared_key])}"})
+      |> require(
+        config[:auth_mode] == :enforce,
+        {:missing_auth_enforce,
+         "sovereign-enterprise requires auth_mode == :enforce; got #{inspect(config[:auth_mode])}"}
+      )
+      |> require(
+        tls_enabled?(config),
+        {:tls_not_enabled,
+         "sovereign-enterprise requires TLS enabled or explicit certfiles; got #{inspect(config[:tls])}"}
+      )
+      |> require(
+        is_binary(config[:sb_shared_key]),
+        {:sb_shared_key_missing,
+         "sovereign-enterprise requires a binary :sb_shared_key; got #{inspect(config[:sb_shared_key])}"}
+      )
 
     if violations == [] do
       {:ok,

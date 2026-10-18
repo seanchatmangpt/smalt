@@ -15,10 +15,15 @@ defmodule Smalt.TrustProfile.DeploymentTest do
   describe "validate/2" do
     test "loopback_dev admits anonymous config, naming the relaxation as a finding" do
       {:ok, %{findings: findings}} =
-        Deployment.validate(:loopback_dev, %{auth_mode: :anonymous, tls: false, sb_shared_key: nil})
+        Deployment.validate(:loopback_dev, %{
+          auth_mode: :anonymous,
+          tls: false,
+          sb_shared_key: nil
+        })
 
       assert Enum.any?(findings, &(&1 =~ "anonymous"))
     end
+
     test "loopback_dev admits enforce config without the anonymous finding" do
       {:ok, %{findings: findings}} =
         Deployment.validate(:loopback_dev, %{auth_mode: :enforce, tls: true, sb_shared_key: "k"})

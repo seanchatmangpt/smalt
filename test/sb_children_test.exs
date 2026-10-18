@@ -62,9 +62,13 @@ defmodule Smalt.SbChildrenTest do
       assert get_conn.status == 200
       # id follows the landed subnet/container child pattern: rg + rel path
       # (no /providers/ segment), matching handle_child_put's record shape.
-      assert body(get_conn)["id"] == "/subscriptions/sub-1/resourceGroups/rg-1/namespaces/sbns1/queues/q1"
+      assert body(get_conn)["id"] ==
+               "/subscriptions/sub-1/resourceGroups/rg-1/namespaces/sbns1/queues/q1"
 
-      list_conn = conn(:get, sb_list_path("sbns1", "queues") <> "?api-version=2021-04-01") |> Router.call(@opts)
+      list_conn =
+        conn(:get, sb_list_path("sbns1", "queues") <> "?api-version=2021-04-01")
+        |> Router.call(@opts)
+
       assert list_conn.status == 200
       names = Enum.map(body(list_conn)["value"], & &1["name"])
       assert "q1" in names
@@ -144,7 +148,10 @@ defmodule Smalt.SbChildrenTest do
       path = sb_path("sbns4", "topics", "t1")
 
       conn =
-        conn(:put, path <> "?api-version=2021-04-01", %{"location" => "eastus", "properties" => %{"maxSizeInMegabytes" => 1024}})
+        conn(:put, path <> "?api-version=2021-04-01", %{
+          "location" => "eastus",
+          "properties" => %{"maxSizeInMegabytes" => 1024}
+        })
         |> Router.call(@opts)
 
       assert conn.status == 201
@@ -154,7 +161,8 @@ defmodule Smalt.SbChildrenTest do
       assert conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> ok?()
       assert list_contains?(sb_list_path("sbns4", "topics"), "t1")
 
-      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() == 200
+      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() ==
+               200
 
       gone = conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts)
       assert {404, "ResourceNotFound"} = {gone.status, code(gone)}
@@ -180,7 +188,8 @@ defmodule Smalt.SbChildrenTest do
       assert conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> ok?()
       assert list_contains?(sb_list_path("sbns5", "topics/t1/subscriptions"), "s1")
 
-      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() == 200
+      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() ==
+               200
 
       gone = conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts)
       assert {404, "ResourceNotFound"} = {gone.status, code(gone)}
@@ -191,9 +200,13 @@ defmodule Smalt.SbChildrenTest do
       put_ns("sbns6")
 
       conn =
-        conn(:put, sb_path("sbns6", "topics/t1/subscriptions", "s1") <> "?api-version=2021-04-01", %{
-          "location" => "eastus"
-        })
+        conn(
+          :put,
+          sb_path("sbns6", "topics/t1/subscriptions", "s1") <> "?api-version=2021-04-01",
+          %{
+            "location" => "eastus"
+          }
+        )
         |> Router.call(@opts)
 
       assert {404, "ResourceNotFound"} = {conn.status, code(conn)}
@@ -222,7 +235,8 @@ defmodule Smalt.SbChildrenTest do
       assert conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> ok?()
       assert list_contains?(eh_list_path("ehns1", "eventhubs"), "hub1")
 
-      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() == 200
+      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() ==
+               200
 
       gone = conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts)
       assert {404, "ResourceNotFound"} = {gone.status, code(gone)}
@@ -235,7 +249,10 @@ defmodule Smalt.SbChildrenTest do
       path = eh_path("ehns2", "eventhubs/hub1/consumergroups", "cg1")
 
       conn =
-        conn(:put, path <> "?api-version=2021-04-01", %{"location" => "eastus", "properties" => %{"userMetadata" => "dev"}})
+        conn(:put, path <> "?api-version=2021-04-01", %{
+          "location" => "eastus",
+          "properties" => %{"userMetadata" => "dev"}
+        })
         |> Router.call(@opts)
 
       assert conn.status == 201
@@ -244,7 +261,8 @@ defmodule Smalt.SbChildrenTest do
       assert conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> ok?()
       assert list_contains?(eh_list_path("ehns2", "eventhubs/hub1/consumergroups"), "cg1")
 
-      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() == 200
+      assert conn(:delete, path <> "?api-version=2021-04-01") |> Router.call(@opts) |> status() ==
+               200
 
       gone = conn(:get, path <> "?api-version=2021-04-01") |> Router.call(@opts)
       assert {404, "ResourceNotFound"} = {gone.status, code(gone)}
@@ -258,7 +276,10 @@ defmodule Smalt.SbChildrenTest do
       put_eh_child("ehns3", "eventhubs/hubd/consumergroups", "cg-b")
 
       list_conn =
-        conn(:get, eh_list_path("ehns3", "eventhubs/hubd/consumergroups") <> "?api-version=2021-04-01")
+        conn(
+          :get,
+          eh_list_path("ehns3", "eventhubs/hubd/consumergroups") <> "?api-version=2021-04-01"
+        )
         |> Router.call(@opts)
 
       assert list_conn.status == 200
@@ -278,7 +299,10 @@ defmodule Smalt.SbChildrenTest do
       put_eh_child("ehns3", "eventhubs", "hub-empty")
 
       empty_conn =
-        conn(:get, eh_list_path("ehns3", "eventhubs/hub-empty/consumergroups") <> "?api-version=2021-04-01")
+        conn(
+          :get,
+          eh_list_path("ehns3", "eventhubs/hub-empty/consumergroups") <> "?api-version=2021-04-01"
+        )
         |> Router.call(@opts)
 
       assert empty_conn.status == 200
@@ -381,20 +405,28 @@ defmodule Smalt.SbChildrenTest do
   # Guarantee the shared Store is alive: other suites stop the main app tree
   # to run private trees; on_exit restores it, but never assume run order.
   defp ensure_store do
-          SmaltTest.Lifecycle.ensure_store_up()
+    SmaltTest.Lifecycle.ensure_store_up()
   end
 
-  defp sb_path(ns, leaf, name), do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/#{leaf}/#{name}"
-  defp sb_list_path(ns, leaf), do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/#{leaf}"
+  defp sb_path(ns, leaf, name),
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/#{leaf}/#{name}"
+
+  defp sb_list_path(ns, leaf),
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ServiceBus/namespaces/#{ns}/#{leaf}"
 
   defp eh_path(ns, leaf, name),
-    do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.EventHub/namespaces/#{ns}/#{leaf}/#{name}"
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.EventHub/namespaces/#{ns}/#{leaf}/#{name}"
 
   defp eh_list_path(ns, leaf),
-    do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.EventHub/namespaces/#{ns}/#{leaf}"
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.EventHub/namespaces/#{ns}/#{leaf}"
 
   defp sa_diags_path(sa, name),
-    do: "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/#{sa}/providers/Microsoft.Insights/diagnosticSettings/#{name}"
+    do:
+      "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/#{sa}/providers/Microsoft.Insights/diagnosticSettings/#{name}"
 
   defp lock_path do
     "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/sa-1/blobServices/default/containers/c-1/immutabilityPolicies/default/lock?api-version=2023-05-01"

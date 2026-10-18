@@ -42,7 +42,12 @@ defmodule Smalt.DataPlane.ResourceGraph do
 
   def query(_subscriptions, _body, _other) do
     {:error, 400,
-     %{"error" => %{"code" => "InvalidApiVersion", "message" => "api-version must be #{@api_version}"}}}
+     %{
+       "error" => %{
+         "code" => "InvalidApiVersion",
+         "message" => "api-version must be #{@api_version}"
+       }
+     }}
   end
 
   # Lane 19 (v26.10.14) item 3: `matching_resources/1` had only nil/is_list
@@ -107,8 +112,22 @@ defmodule Smalt.DataPlane.ResourceGraph do
 
     options = Map.merge(token_options, options)
 
-    top = options |> Map.get("$top") |> parse_int() |> Kernel.||(Map.get(body, "$top")) |> parse_int() |> Kernel.||(@default_top) |> max(1)
-    skip = options |> Map.get("$skip") |> parse_int() |> Kernel.||(Map.get(body, "$skip")) |> parse_int() |> Kernel.||(0)
+    top =
+      options
+      |> Map.get("$top")
+      |> parse_int()
+      |> Kernel.||(Map.get(body, "$top"))
+      |> parse_int()
+      |> Kernel.||(@default_top)
+      |> max(1)
+
+    skip =
+      options
+      |> Map.get("$skip")
+      |> parse_int()
+      |> Kernel.||(Map.get(body, "$skip"))
+      |> parse_int()
+      |> Kernel.||(0)
 
     {offset, facets_subscriptions} =
       case skip_token(body, options) do

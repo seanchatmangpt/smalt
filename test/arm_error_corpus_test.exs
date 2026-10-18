@@ -29,9 +29,13 @@ defmodule Smalt.ArmErrorCorpusTest do
     test "400 MissingApiVersionParameter on PUT without api-version" do
       # lib/smalt/arm_gateway/router.ex:402 (check_api_version nil branch)
       conn =
-        conn(:put, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1", %{
-          "location" => "smalt-local"
-        })
+        conn(
+          :put,
+          "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1",
+          %{
+            "location" => "smalt-local"
+          }
+        )
         |> Router.call(@opts)
 
       assert {400, "MissingApiVersionParameter"} = {conn.status, code(conn)}
@@ -141,7 +145,12 @@ defmodule Smalt.ArmErrorCorpusTest do
 
       for row <- details do
         assert %{"code" => "InvalidResourceShape", "message" => m, "target" => t} = row
-        assert m in ["virtualNetworks require location.", "virtualNetworks require addressPrefixes."]
+
+        assert m in [
+                 "virtualNetworks require location.",
+                 "virtualNetworks require addressPrefixes."
+               ]
+
         assert t in ["location", "addressPrefixes"]
       end
 
@@ -309,7 +318,10 @@ defmodule Smalt.ArmErrorCorpusTest do
       assert get_conn.status == 200
 
       record = body(get_conn)
-      assert is_binary(record["id"]) and record["id"] =~ "/providers/Microsoft.EventGrid/topics/topic-1"
+
+      assert is_binary(record["id"]) and
+               record["id"] =~ "/providers/Microsoft.EventGrid/topics/topic-1"
+
       assert record["name"] == "topic-1"
       assert record["type"] == "Microsoft.EventGrid/topics"
       assert record["location"] == "eastus"
@@ -328,31 +340,32 @@ defmodule Smalt.ArmErrorCorpusTest do
       |> Enum.sort()
       |> Enum.uniq()
 
-    assert emitted == Enum.sort([
-             # (400, "InvalidResourceShape") registered by the EventGrid-topics
-             # lane: eg_input_schema_param's typed PUT refusal (was previously
-             # only reachable through send_graphlaw_refusal, outside this
-             # census's send_arm_error regex).
-             {400, "InvalidApiVersionParameter"},
-             {400, "InvalidResourceShape"},
-             {400, "LocationMismatch"},
-             {400, "MissingApiVersionParameter"},
-             # Cross-lane integration: codes emitted by concurrently landed
-             # source edits (sb-rules lane, azapi filter lane) registered here.
-             {400, "InvalidAction"},
-             {400, "InvalidFilter"},
-             {404, "ActionNotFound"},
-             {404, "OperationNotFound"},
-             {404, "ResourceGroupNotFound"},
-             {404, "ResourceNotFound"},
-             {404, "RouteNotFound"},
-             {404, "RuleNotFound"},
-             {404, "SubscriptionNotFound"},
-             # ARM secret rotation trigger (v26.10.16 console C4 lane): typed
-             # 409 when the ARM record exists but carries no data-plane version
-             # to rotate.
-             {409, "SecretVersionNotFound"}
-           ])
+    assert emitted ==
+             Enum.sort([
+               # (400, "InvalidResourceShape") registered by the EventGrid-topics
+               # lane: eg_input_schema_param's typed PUT refusal (was previously
+               # only reachable through send_graphlaw_refusal, outside this
+               # census's send_arm_error regex).
+               {400, "InvalidApiVersionParameter"},
+               {400, "InvalidResourceShape"},
+               {400, "LocationMismatch"},
+               {400, "MissingApiVersionParameter"},
+               # Cross-lane integration: codes emitted by concurrently landed
+               # source edits (sb-rules lane, azapi filter lane) registered here.
+               {400, "InvalidAction"},
+               {400, "InvalidFilter"},
+               {404, "ActionNotFound"},
+               {404, "OperationNotFound"},
+               {404, "ResourceGroupNotFound"},
+               {404, "ResourceNotFound"},
+               {404, "RouteNotFound"},
+               {404, "RuleNotFound"},
+               {404, "SubscriptionNotFound"},
+               # ARM secret rotation trigger (v26.10.16 console C4 lane): typed
+               # 409 when the ARM record exists but carries no data-plane version
+               # to rotate.
+               {409, "SecretVersionNotFound"}
+             ])
   end
 
   # -- Wire-court shape-consistency (xaas prior-art import, lens-5 cycle 2) -----
@@ -380,6 +393,8 @@ defmodule Smalt.ArmErrorCorpusTest do
       # window's key, then spend it (same scoping as the gateway throttle test:
       # fresh-window wait + seed + cleanup, so no stray 429 leaks to adjacent
       # suites in the same run).
+      prev_rate_limit = Application.get_env(:smalt, :arm_rate_limit)
+
       throttled =
         try do
           Application.put_env(:smalt, :arm_rate_limit, 3)
@@ -397,7 +412,12 @@ defmodule Smalt.ArmErrorCorpusTest do
             conn(:get, "/subscriptions/sub-1?api-version=2021-04-01") |> Router.call(@opts)
           end)
         after
-          Application.put_env(:smalt, :arm_rate_limit, nil)
+          if is_nil(prev_rate_limit) do
+            Application.delete_env(:smalt, :arm_rate_limit)
+          else
+            Application.put_env(:smalt, :arm_rate_limit, prev_rate_limit)
+          end
+
           :ets.delete_all_objects(:smalt_arm_rate)
         end
 
@@ -421,7 +441,9 @@ defmodule Smalt.ArmErrorCorpusTest do
                "envelope from #{kind} lacks the present-but-empty innererror"
 
         # HTTP-layer consistency: every refusal is JSON.
-        assert Plug.Conn.get_resp_header(conn, "content-type") |> hd() |> String.starts_with?("application/json")
+        assert Plug.Conn.get_resp_header(conn, "content-type")
+               |> hd()
+               |> String.starts_with?("application/json")
       end
 
       # target: a string whenever present (GraphLaw pins the enforcement

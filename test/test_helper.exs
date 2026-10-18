@@ -39,27 +39,27 @@ defmodule SmaltTest.Lifecycle do
   # runs (multiple lanes share this checkout) never collide on a fixed
   # shifted set like 29443.
   @shifted (
-    base_envs = [
-      arm_port: 29_443,
-      arm_tls_port: 29_444,
-      egress_port: 28_443,
-      amqp_port: 25_672,
-      event_hubs_port: 25_673
-    ]
+             base_envs = [
+               arm_port: 29_443,
+               arm_tls_port: 29_444,
+               egress_port: 28_443,
+               amqp_port: 25_672,
+               event_hubs_port: 25_673
+             ]
 
-    Enum.map(base_envs, fn {k, default} ->
-      {k,
-       case :gen_tcp.listen(0, [:binary, active: false]) do
-         {:ok, sock} ->
-           {:ok, port} = :inet.port(sock)
-           :gen_tcp.close(sock)
-           port
+             Enum.map(base_envs, fn {k, default} ->
+               {k,
+                case :gen_tcp.listen(0, [:binary, active: false]) do
+                  {:ok, sock} ->
+                    {:ok, port} = :inet.port(sock)
+                    :gen_tcp.close(sock)
+                    port
 
-         _ ->
-           default
-       end}
-    end)
-  )
+                  _ ->
+                    default
+                end}
+             end)
+           )
 
   def shifted_envs, do: @shifted
 

@@ -97,7 +97,8 @@ defmodule Smalt.Compliance.C1ArmTest do
   test "error envelope carries error.code and error.message with json; charset=utf-8", %{
     port: port
   } do
-    {status, headers, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
+    {status, headers, body} =
+      get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
 
     assert status == 404
     assert headers["content-type"] == "application/json; charset=utf-8"
@@ -282,9 +283,11 @@ defmodule Smalt.Compliance.C1ArmTest do
         body: Jason.encode!(%{"location" => "eastus"})
       )
 
-    {200, _h, _} = get!(port, "/subscriptions/#{@sub}/resourcegroups/#{rg}?api-version=2023-07-01")
+    {200, _h, _} =
+      get!(port, "/subscriptions/#{@sub}/resourcegroups/#{rg}?api-version=2023-07-01")
 
-    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2023-07-01")
+    {200, _h, list_body} =
+      get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2023-07-01")
 
     list = json(list_body)
     assert is_list(list["value"])
@@ -338,7 +341,8 @@ defmodule Smalt.Compliance.C1ArmTest do
   # ===========================================================================
 
   test "every response echoes x-ms-request-id (echoes client-supplied value)", %{port: port} do
-    {s1, headers, _b} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
+    {s1, headers, _b} =
+      get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
 
     assert s1 == 404
 
@@ -422,7 +426,9 @@ defmodule Smalt.Compliance.C1ArmTest do
   end
 
   test "error envelopes carry innererror (present-but-empty)", %{port: port} do
-    {_s, _h, body} = get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
+    {_s, _h, body} =
+      get!(port, "/subscriptions/#{@sub}/resourceGroups/rg1?api-version=2023-07-01")
+
     assert json(body)["error"]["innererror"] == %{}
 
     # KD-78: future version (> latest) is the refused class; stale would be
@@ -474,7 +480,10 @@ defmodule Smalt.Compliance.C1ArmTest do
     names =
       for _ <- 1..105 do
         name = "disk-pg-" <> unique()
-        {201, _h, _} = put!(port, disks_path(name), body: Jason.encode!(%{"location" => "eastus"}))
+
+        {201, _h, _} =
+          put!(port, disks_path(name), body: Jason.encode!(%{"location" => "eastus"}))
+
         name
       end
 
@@ -533,7 +542,10 @@ defmodule Smalt.Compliance.C1ArmTest do
     names =
       for _ <- 1..105 do
         name = "disk-fz-" <> unique()
-        {201, _h, _} = put!(port, disks_path(name), body: Jason.encode!(%{"location" => "eastus"}))
+
+        {201, _h, _} =
+          put!(port, disks_path(name), body: Jason.encode!(%{"location" => "eastus"}))
+
         name
       end
 
@@ -711,7 +723,11 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     # KD-78: future api-version (> latest) -> 400 InvalidApiVersionParameter
     # naming the latest (a stale version would be admitted monotonic).
-    {400, _h, body2} = put!(port, base <> "?api-version=2099-01-01", body: Jason.encode!(%{"location" => "eastus"}))
+    {400, _h, body2} =
+      put!(port, base <> "?api-version=2099-01-01",
+        body: Jason.encode!(%{"location" => "eastus"})
+      )
+
     err2 = json(body2)["error"]
     assert err2["code"] == "InvalidApiVersionParameter"
 
@@ -724,10 +740,15 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     # Valid latest api-version -> the wire behaves exactly as before the gate.
     {201, _h, _} =
-      put!(port, base <> "?api-version=2021-04-01", body: Jason.encode!(%{"location" => "eastus"}))
+      put!(port, base <> "?api-version=2021-04-01",
+        body: Jason.encode!(%{"location" => "eastus"})
+      )
 
     {200, _h, _} = get!(port, base <> "?api-version=2021-04-01")
-    {200, _h, list_body} = get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2023-07-01")
+
+    {200, _h, list_body} =
+      get!(port, "/subscriptions/#{@sub}/resourcegroups?api-version=2023-07-01")
+
     assert is_list(json(list_body)["value"])
   end
 
@@ -740,7 +761,9 @@ defmodule Smalt.Compliance.C1ArmTest do
   # seam; this fence pins the wire tier). Closes the wire half of
   # GAP(lro-no-failed-path)'s close condition.
   # ---------------------------------------------------------------------------
-  test "row 5b: polling a Failed operation returns 200 with status Failed and error member", %{port: port} do
+  test "row 5b: polling a Failed operation returns 200 with status Failed and error member", %{
+    port: port
+  } do
     id = "handseeded0000000000000000"
 
     # Seed an InProgress record with no scheduling fields; the poll flips it to

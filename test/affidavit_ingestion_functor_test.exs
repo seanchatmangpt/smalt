@@ -23,7 +23,16 @@ defmodule AffidavitIngestionFunctorTest do
       "state" => "Enabled"
     })
 
+    prev_lro_delay = Application.get_env(:smalt, :lro_delay_ms, 0)
     Application.put_env(:smalt, :lro_delay_ms, 0)
+
+    on_exit(fn ->
+      if prev_lro_delay == 0 do
+        Application.delete_env(:smalt, :lro_delay_ms)
+      else
+        Application.put_env(:smalt, :lro_delay_ms, prev_lro_delay)
+      end
+    end)
 
     if :ets.info(:smalt_affidavit_witnesses) != :undefined do
       :ets.delete_all_objects(:smalt_affidavit_witnesses)
@@ -105,13 +114,18 @@ defmodule AffidavitIngestionFunctorTest do
   test "RG-delete cascade seals the deleted RG record (sideband, 202 unchanged)" do
     start_engine()
 
-    rg_path = "/subscriptions/#{@sub}/resourcegroups/#{@rg}?api-version=#{api_v("Microsoft.Resources/resourceGroups")}"
+    rg_path =
+      "/subscriptions/#{@sub}/resourcegroups/#{@rg}?api-version=#{api_v("Microsoft.Resources/resourceGroups")}"
 
     # Create the RG (201), then delete (202 + Location).
     put_conn =
-      conn(:put, "/subscriptions/#{@sub}/resourceGroups/#{@rg}?api-version=#{api_v("Microsoft.Resources/resourceGroups")}", %{
-        "location" => "eastus"
-      })
+      conn(
+        :put,
+        "/subscriptions/#{@sub}/resourceGroups/#{@rg}?api-version=#{api_v("Microsoft.Resources/resourceGroups")}",
+        %{
+          "location" => "eastus"
+        }
+      )
       |> call()
 
     assert put_conn.status == 201
@@ -157,9 +171,13 @@ defmodule AffidavitIngestionFunctorTest do
     assert seal_events != [], "expected at least one affidavit.seal event in the sink"
 
     for event <- seal_events do
-      assert is_binary(event["attributes"]["subject_sha"]) and event["attributes"]["subject_sha"] != ""
+      assert is_binary(event["attributes"]["subject_sha"]) and
+               event["attributes"]["subject_sha"] != ""
+
       assert event["attributes"]["verdict"] in ["admitted", "refused"]
-      assert is_binary(event["attributes"]["engine_hash"]) and event["attributes"]["engine_hash"] != ""
+
+      assert is_binary(event["attributes"]["engine_hash"]) and
+               event["attributes"]["engine_hash"] != ""
     end
 
     for rel <- Enum.flat_map(seal_events, & &1["relationships"]) do
@@ -209,8 +227,11 @@ defmodule AffidavitIngestionFunctorTest do
         end)
 
       receive do
-        {:engine_started, _} -> :ok
-        {:engine_failed, other} -> flunk("affidavit WASM engine failed to start: \#{inspect(other)}")
+        {:engine_started, _} ->
+          :ok
+
+        {:engine_failed, other} ->
+          flunk("affidavit WASM engine failed to start: \#{inspect(other)}")
       after
         10_000 -> flunk("affidavit WASM engine start timed out")
       end
@@ -240,6 +261,6 @@ defmodule AffidavitIngestionFunctorTest do
   defp wait_until(_fun, 0), do: :ok
 
   defp wait_until(fun, n) do
-    if fun.(), do: :ok, else: (Process.sleep(10) && wait_until(fun, n - 1))
+    if fun.(), do: :ok, else: Process.sleep(10) && wait_until(fun, n - 1)
   end
 end

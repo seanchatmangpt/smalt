@@ -193,7 +193,10 @@ defmodule Smalt.Affidavit.SealTest do
   end
 
   defp mutate_hex(hex) do
-    flipped = if String.starts_with?(hex, "0"), do: "1" <> String.slice(hex, 1..-1//1), else: "0" <> String.slice(hex, 1..-1//1)
+    flipped =
+      if String.starts_with?(hex, "0"),
+        do: "1" <> String.slice(hex, 1..-1//1),
+        else: "0" <> String.slice(hex, 1..-1//1)
 
     assert flipped != hex
     flipped

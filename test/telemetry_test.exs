@@ -126,7 +126,9 @@ defmodule Smalt.TelemetryTest do
       Telemetry.refuse(:SHAPE_INVALID)
 
       dump = Telemetry.dump()
-      assert (dump[{[:smalt, :admit], %{event: :ok}}] || 0) - (baseline[{[:smalt, :admit], %{event: :ok}}] || 0) == 2
+
+      assert (dump[{[:smalt, :admit], %{event: :ok}}] || 0) -
+               (baseline[{[:smalt, :admit], %{event: :ok}}] || 0) == 2
 
       assert (dump[{[:smalt, :refuse], %{event: :SHAPE_INVALID}}] || 0) -
                (baseline[{[:smalt, :refuse], %{event: :SHAPE_INVALID}}] || 0) == 1
@@ -139,8 +141,12 @@ defmodule Smalt.TelemetryTest do
       Telemetry.handle_event([:bandit, :request, :stop], %{duration: 0}, %{conn: conn}, :test)
 
       dump = Telemetry.dump()
-      assert (dump[{:bandit_request_stop, "/egress/dispatch", 404}] || 0) - (baseline[{:bandit_request_stop, "/egress/dispatch", 404}] || 0) == 1
-      assert (dump[{:bandit_request_stop, :error}] || 0) - (baseline[{:bandit_request_stop, :error}] || 0) == 1
+
+      assert (dump[{:bandit_request_stop, "/egress/dispatch", 404}] || 0) -
+               (baseline[{:bandit_request_stop, "/egress/dispatch", 404}] || 0) == 1
+
+      assert (dump[{:bandit_request_stop, :error}] || 0) -
+               (baseline[{:bandit_request_stop, :error}] || 0) == 1
     end
 
     test "dump/0 shape: map of tuple-key => positive integer" do

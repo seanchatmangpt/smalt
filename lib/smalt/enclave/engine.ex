@@ -212,7 +212,7 @@ defmodule Smalt.Enclave.Engine do
 
     ready =
       remaining
-      |> Enum.filter(&(MapSet.subset?(Map.fetch!(deps, &1), placed)))
+      |> Enum.filter(&MapSet.subset?(Map.fetch!(deps, &1), placed))
       |> Enum.sort()
 
     case ready do
@@ -358,6 +358,7 @@ defmodule Smalt.Enclave.Engine do
   defp arm_type("azurerm_resource_group"), do: {:ok, "Microsoft.Resources/resourceGroups"}
   defp arm_type("azurerm_key_vault"), do: {:ok, "Microsoft.KeyVault/vaults"}
   defp arm_type("azurerm_storage_account"), do: {:ok, "Microsoft.Storage/storageAccounts"}
+
   defp arm_type("azurerm_storage_container"),
     do: {:ok, "Microsoft.Storage/storageAccounts/blobServices/containers"}
 
@@ -465,8 +466,7 @@ defmodule Smalt.Enclave.Engine do
     name = Map.fetch!(attrs, "name")
 
     {provider_path(sub, rg, "Microsoft.DocumentDB", "databaseAccounts", account) <>
-       "/sqlDatabases/" <> name,
-     %{"location" => Map.get(attrs, "location", "smalt-local")}}
+       "/sqlDatabases/" <> name, %{"location" => Map.get(attrs, "location", "smalt-local")}}
   end
 
   defp arm_target("azurerm_cosmosdb_sql_container", _arm_type, attrs, sub) do
@@ -503,7 +503,8 @@ defmodule Smalt.Enclave.Engine do
       |> maybe_put("partitionCount", Map.get(attrs, "partition_count"))
       |> maybe_put("messageRetentionInDays", Map.get(attrs, "message_retention_in_days"))
 
-    {provider_path(sub, rg, "Microsoft.EventHub", "namespaces", namespace) <> "/eventhubs/" <> name,
+    {provider_path(sub, rg, "Microsoft.EventHub", "namespaces", namespace) <>
+       "/eventhubs/" <> name,
      %{"location" => Map.get(attrs, "location", "smalt-local"), "properties" => properties}}
   end
 

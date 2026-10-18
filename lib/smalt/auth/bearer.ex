@@ -185,13 +185,13 @@ defmodule Smalt.Auth.Bearer do
     # segment guard, and any suffix fails the `$` anchor.
     path = String.replace_leading(path, "//", "/")
 
+    # Tenant-scoped STS mint endpoint (C6 row 5: /{tid}/oauth2/v2.0/token).
+    # Bootstrap class — the client cannot hold a token yet. The shape is a
+    # bounded 4-segment form: it canNOT collide with egress routes (max 3
+    # segments; the blob catch-all is additionally x-ms-version-guarded),
+    # and %-encoded suffixes fail the `$` anchor fail-closed.
     path in @exempt_exact or
       Enum.any?(@exempt_prefixes, fn prefix -> String.starts_with?(path, prefix) end) or
-      # Tenant-scoped STS mint endpoint (C6 row 5: /{tid}/oauth2/v2.0/token).
-      # Bootstrap class — the client cannot hold a token yet. The shape is a
-      # bounded 4-segment form: it canNOT collide with egress routes (max 3
-      # segments; the blob catch-all is additionally x-ms-version-guarded),
-      # and %-encoded suffixes fail the `$` anchor fail-closed.
       Regex.match?(~r{^/[^/]+/oauth2/v2\.0/token$}, path)
   end
 
@@ -238,20 +238,20 @@ defmodule Smalt.Auth.Bearer do
 
           :not_aad ->
             case String.split(value, " ", parts: 2) do
-          [scheme, token] ->
-            # RFC 7235 §2.1: the auth-scheme is case-insensitive; real AAD
-            # accepts "bearer"/"BEARER". Trim handles multi-space padding.
-            token = String.trim(token)
+              [scheme, token] ->
+                # RFC 7235 §2.1: the auth-scheme is case-insensitive; real AAD
+                # accepts "bearer"/"BEARER". Trim handles multi-space padding.
+                token = String.trim(token)
 
-            if String.downcase(scheme) == "bearer" and byte_size(token) > 0 do
-              {:ok, token}
-            else
-              {:refuse, "InvalidAuthenticationToken", "MalformedBearerHeader"}
+                if String.downcase(scheme) == "bearer" and byte_size(token) > 0 do
+                  {:ok, token}
+                else
+                  {:refuse, "InvalidAuthenticationToken", "MalformedBearerHeader"}
+                end
+
+              _ ->
+                {:refuse, "InvalidAuthenticationToken", "MalformedBearerHeader"}
             end
-
-          _ ->
-            {:refuse, "InvalidAuthenticationToken", "MalformedBearerHeader"}
-          end
         end
     end
   end
@@ -318,7 +318,9 @@ defmodule Smalt.Auth.Bearer do
 
   defp verify_sig(token, signer) do
     case Joken.verify(token, signer) do
-      {:ok, claims} -> {:ok, claims}
+      {:ok, claims} ->
+        {:ok, claims}
+
       {:error, _reason} ->
         {:refuse, "InvalidAuthenticationToken", "SignatureVerificationFailed"}
     end

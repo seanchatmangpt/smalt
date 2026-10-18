@@ -36,7 +36,13 @@ defmodule Smalt.Amqp.ConnectionTest do
     end
 
     {:ok, listener} =
-      :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        active: false,
+        reuseaddr: true,
+        ip: {127, 0, 0, 1}
+      ])
 
     {:ok, port} = :inet.port(listener)
 
@@ -63,7 +69,9 @@ defmodule Smalt.Amqp.ConnectionTest do
 
     sr = "sb://127.0.0.1:5672/" <> queue
     se = System.system_time(:second) + 600
-    sig = Base.encode64(:crypto.mac(:hmac, :sha256, @test_key, sr <> "\n" <> Integer.to_string(se)))
+
+    sig =
+      Base.encode64(:crypto.mac(:hmac, :sha256, @test_key, sr <> "\n" <> Integer.to_string(se)))
 
     token =
       "SharedAccessSignature sr=#{sr}&sig=#{sig}&se=#{se}&skn=RootManageSharedAccessKey"
@@ -112,7 +120,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:open, %{container_id: "test-client", max_frame_size: 65_536, channel_max: 65_535}})
+        enc_frame(
+          :amqp,
+          0,
+          {:open, %{container_id: "test-client", max_frame_size: 65_536, channel_max: 65_535}}
+        )
       )
 
     opened = recv_frame(client)
@@ -120,7 +132,21 @@ defmodule Smalt.Amqp.ConnectionTest do
     assert opened.performative.container_id == "smalt-local"
     assert opened.performative.max_frame_size == 1_048_576
 
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:begin,
+           %{
+             next_outgoing_id: 1,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
+      )
 
     begun = recv_frame(client)
     assert begun.performative.performative == :begin
@@ -130,7 +156,9 @@ defmodule Smalt.Amqp.ConnectionTest do
   # Pinion: SASL ANONYMOUS ONLY — a non-ANONYMOUS mechanism is refused with
   # sasl-outcome code 1 and the connection tears down (amqp:unauthorized-access).
   # Previously only the redteam cjs touched this edge; now ExUnit pins it.
-  test "non-ANONYMOUS SASL mechanism is refused with outcome code 1 and teardown", %{client: client} do
+  test "non-ANONYMOUS SASL mechanism is refused with outcome code 1 and teardown", %{
+    client: client
+  } do
     :ok = :gen_tcp.send(client, @sasl_header)
     assert {:ok, @sasl_header} = recv_exact(client, 8)
 
@@ -162,7 +190,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "l1", handle: 0, role: false, target: %{address: ctx.queue}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "l1", handle: 0, role: false, target: %{address: ctx.queue}}}
+        )
       )
 
     at = recv_until(client, :attach)
@@ -171,7 +203,19 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 7, delivery_tag: <<1, 2, 3, 4>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "hello"}]}})
+        enc_frame(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: 0,
+             delivery_id: 7,
+             delivery_tag: <<1, 2, 3, 4>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:body_amqp_value, "hello"}]}}
+        )
       )
 
     disp = recv_frame(client)
@@ -190,7 +234,14 @@ defmodule Smalt.Amqp.ConnectionTest do
     client = ctx.client
     :ok = handshake(client)
 
-    attach = IO.iodata_to_binary(enc_frame(:amqp, 0, {:attach, %{name: "l1", handle: 0, role: false, target: %{address: ctx.queue}}}))
+    attach =
+      IO.iodata_to_binary(
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "l1", handle: 0, role: false, target: %{address: ctx.queue}}}
+        )
+      )
 
     for <<byte::8 <- attach>> do
       :ok = :gen_tcp.send(client, <<byte>>)
@@ -210,19 +261,49 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok = handshake(client)
 
     # enqueue via sender link
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}
+        )
+      )
+
     assert %{performative: %{performative: :attach}} = recv_frame(client)
 
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 7, delivery_tag: <<1, 2, 3, 4>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m1"}]}})
+        enc_frame(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: 0,
+             delivery_id: 7,
+             delivery_tag: <<1, 2, 3, 4>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:body_amqp_value, "m1"}]}}
+        )
       )
 
     assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client)
 
     # receiver link
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}
+        )
+      )
+
     at = recv_until(client, :attach)
     assert at.performative.role == false
 
@@ -260,7 +341,12 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:disposition, %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}})
+        enc_frame(
+          :amqp,
+          0,
+          {:disposition,
+           %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}}
+        )
       )
 
     Process.sleep(50)
@@ -277,7 +363,16 @@ defmodule Smalt.Amqp.ConnectionTest do
     queue = ctx.queue
     :ok = handshake(client)
 
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}
+        )
+      )
+
     assert %{performative: %{performative: :attach}} = recv_frame(client)
     :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{link_credit: 1}}))
 
@@ -293,20 +388,32 @@ defmodule Smalt.Amqp.ConnectionTest do
       |> :ets.match_object({{queue, :_}, :_})
 
     assert msg.lock_token
-    Smalt.Store.put(:smalt_sb_messages, {queue, msg.seq}, %{msg | lock_token: "stale-new-owner-token"})
+
+    Smalt.Store.put(:smalt_sb_messages, {queue, msg.seq}, %{
+      msg
+      | lock_token: "stale-new-owner-token"
+    })
 
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:disposition, %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}})
+        enc_frame(
+          :amqp,
+          0,
+          {:disposition,
+           %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}}
+        )
       )
 
-    assert %{performative: %{performative: :disposition, state: {:rejected, err}}} = recv_frame(client)
+    assert %{performative: %{performative: :disposition, state: {:rejected, err}}} =
+             recv_frame(client)
+
     # decoded error is the raw AMQP error LIST [condition, description, info]
     assert [{:symbol, "com.microsoft:message-lock-lost"}, _desc, _info] = err
 
     # message untouched: still present, still under the NEW owner's token
-    assert {:ok, %{lock_token: "stale-new-owner-token"}} = Smalt.Store.get(:smalt_sb_messages, {queue, msg.seq})
+    assert {:ok, %{lock_token: "stale-new-owner-token"}} =
+             Smalt.Store.get(:smalt_sb_messages, {queue, msg.seq})
   end
 
   # ===========================================================================
@@ -318,20 +425,50 @@ defmodule Smalt.Amqp.ConnectionTest do
     queue = ctx.queue
     :ok = handshake(client)
 
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}
+        )
+      )
+
     assert %{performative: %{performative: :attach}} = recv_frame(client)
 
     for id <- 1..2 do
       :ok =
         send_bytes(
           client,
-          enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: id, delivery_tag: <<id::8>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m#{id}"}]}})
+          enc_frame(
+            :amqp,
+            0,
+            {:transfer,
+             %{
+               handle: 0,
+               delivery_id: id,
+               delivery_tag: <<id::8>>,
+               message_format: 0,
+               settled: true,
+               more: false
+             }, {:sections, [{:body_amqp_value, "m#{id}"}]}}
+          )
         )
 
       assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client)
     end
 
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}
+        )
+      )
+
     assert %{performative: %{performative: :attach}} = recv_frame(client)
     :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{link_credit: 2}}))
 
@@ -346,14 +483,30 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:disposition, %{role: true, first: id1, last: id1, settled: true, state: {:modified, %{undeliverable_here: true}}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:disposition,
+           %{
+             role: true,
+             first: id1,
+             last: id1,
+             settled: true,
+             state: {:modified, %{undeliverable_here: true}}
+           }}
+        )
       )
 
     # rejected -> deadletter
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:disposition, %{role: true, first: id2, last: id2, settled: true, state: {:rejected, nil}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:disposition,
+           %{role: true, first: id2, last: id2, settled: true, state: {:rejected, nil}}}
+        )
       )
 
     Process.sleep(50)
@@ -378,7 +531,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "l1", handle: 0, role: false, target: %{address: other_queue}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "l1", handle: 0, role: false, target: %{address: other_queue}}}
+        )
       )
 
     # rhea (core-amqp) requires the broker attach echo BEFORE any detach
@@ -407,7 +564,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     closed = recv_frame(client)
     assert closed.performative.performative == :close
     assert error_condition(closed.performative.error) == "amqp:internal-error"
-    assert error_description(closed.performative.error) in [":bad_protocol_header", ":frame_too_size"]
+
+    assert error_description(closed.performative.error) in [
+             ":bad_protocol_header",
+             ":frame_too_size"
+           ]
 
     assert {:error, :closed} = :gen_tcp.recv(client, 1, 2000)
   end
@@ -438,7 +599,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "tx", handle: 0, role: false, target: %{address: ctx.queue}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "tx", handle: 0, role: false, target: %{address: ctx.queue}}}
+        )
       )
 
     at = recv_until(client, :attach)
@@ -449,7 +614,14 @@ defmodule Smalt.Amqp.ConnectionTest do
         client,
         enc_frame(:amqp, 0, {
           :transfer,
-          %{handle: 0, delivery_id: 1, delivery_tag: <<1>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: 1,
+            delivery_tag: <<1>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:body_amqp_value, "m1"}]}
         })
       )
@@ -461,7 +633,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "rx", handle: 1, role: true, source: %{address: ctx.queue}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "rx", handle: 1, role: true, source: %{address: ctx.queue}}}
+        )
       )
 
     at2 = recv_until(client, :attach)
@@ -477,7 +653,17 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 10, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+        enc_frame(
+          :amqp,
+          0,
+          {:begin,
+           %{
+             next_outgoing_id: 10,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
       )
 
     begun = recv_frame(client)
@@ -487,7 +673,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 1, {:attach, %{name: "tx2", handle: 0, role: false, target: %{address: ctx.queue}}})
+        enc_frame(
+          :amqp,
+          1,
+          {:attach, %{name: "tx2", handle: 0, role: false, target: %{address: ctx.queue}}}
+        )
       )
 
     at3 = recv_until(client, :attach)
@@ -498,7 +688,15 @@ defmodule Smalt.Amqp.ConnectionTest do
         client,
         enc_frame(:amqp, 1, {
           :transfer,
-          %{handle: 0, delivery_id: 1, delivery_id_note: :ch1, delivery_tag: <<2>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: 1,
+            delivery_id_note: :ch1,
+            delivery_tag: <<2>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:body_amqp_value, "m2"}]}
         })
       )
@@ -529,12 +727,20 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{
-          name: "r1",
-          handle: 1,
-          role: true,
-          source: %{address: queue, filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}}
-        }})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach,
+           %{
+             name: "r1",
+             handle: 1,
+             role: true,
+             source: %{
+               address: queue,
+               filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}
+             }
+           }}
+        )
       )
 
     at1 = recv_until(client, :attach)
@@ -548,16 +754,29 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{
-          name: "r2",
-          handle: 2,
-          role: true,
-          source: %{address: ctx.queue, filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}}
-        }})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach,
+           %{
+             name: "r2",
+             handle: 2,
+             role: true,
+             source: %{
+               address: ctx.queue,
+               filter: {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid}}
+             }
+           }}
+        )
       )
 
     frames = recv_many(client, 2)
-    assert [%{performative: %{performative: :attach}}, %{performative: %{performative: :detach}} = det] = frames
+
+    assert [
+             %{performative: %{performative: :attach}},
+             %{performative: %{performative: :detach}} = det
+           ] = frames
+
     assert det.performative.handle == 2
     assert error_condition(det.performative.error) == "com.microsoft:session-cannot-be-locked"
 
@@ -566,7 +785,12 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "mg1", handle: 3, role: true, source: %{address: queue <> "/$management"}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach,
+           %{name: "mg1", handle: 3, role: true, source: %{address: queue <> "/$management"}}}
+        )
       )
 
     assert %{performative: %{performative: :attach}} = recv_frame(client)
@@ -574,7 +798,12 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "mg2", handle: 4, role: false, target: %{address: queue <> "/$management"}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach,
+           %{name: "mg2", handle: 4, role: false, target: %{address: queue <> "/$management"}}}
+        )
       )
 
     assert %{performative: %{performative: :attach}} = recv_frame(client)
@@ -584,18 +813,36 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:transfer, %{handle: 3, delivery_id: 21, delivery_tag: <<>>, message_format: 0, settled: true, more: false},
-           {:sections, [
-             {:properties, %{correlation_id: "c1"}},
-             {:application_properties, %{"operation" => "com.microsoft:renew-session-lock", "associated-link-name" => "r1"}},
-             {:body_amqp_value, body}
-           ]}})
+        enc_frame(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: 3,
+             delivery_id: 21,
+             delivery_tag: <<>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           },
+           {:sections,
+            [
+              {:properties, %{correlation_id: "c1"}},
+              {:application_properties,
+               %{
+                 "operation" => "com.microsoft:renew-session-lock",
+                 "associated-link-name" => "r1"
+               }},
+              {:body_amqp_value, body}
+            ]}}
+        )
       )
 
     reply = recv_until(client, :transfer)
     assert %{performative: %{performative: :transfer}} = reply
 
     {:ok, sections} = FrameCodec.decode_message(reply.payload)
+
     assert {:body_amqp_value, %{"expiration" => {:timestamp, exp_ms}}} =
              Enum.find(sections, &match?({:body_amqp_value, _}, &1))
 
@@ -618,7 +865,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}})
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}}
+        )
       )
 
     assert %{performative: %{performative: :attach}} = recv_frame(client)
@@ -629,7 +880,8 @@ defmodule Smalt.Amqp.ConnectionTest do
     assert %{performative: %{performative: :close}} = recv_until(client, :close)
 
     assert {:ok, %{state: state}} =
-             Smalt.Store.get(:smalt_sb_messages, {queue, 1}) |> then(fn
+             Smalt.Store.get(:smalt_sb_messages, {queue, 1})
+             |> then(fn
                {:ok, m} -> {:ok, m}
                :error -> {:error, :gone}
              end)
@@ -642,7 +894,15 @@ defmodule Smalt.Amqp.ConnectionTest do
     Process.sleep(50)
 
     # connection process alive: a fresh begin on the same socket still answers
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 100, outgoing_window: 100}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:begin, %{next_outgoing_id: 1, incoming_window: 100, outgoing_window: 100}}
+        )
+      )
   end
 
   # ===========================================================================
@@ -657,13 +917,24 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:open, %{container_id: "big-peer", max_frame_size: 16_000_000, channel_max: 65_535}})
+        enc_frame(
+          :amqp,
+          0,
+          {:open, %{container_id: "big-peer", max_frame_size: 16_000_000, channel_max: 65_535}}
+        )
       )
 
     assert %{performative: %{performative: :open}} = recv_frame(client)
 
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000}}
+        )
+      )
 
     assert %{performative: %{performative: :begin}} = recv_frame(client)
 
@@ -673,10 +944,18 @@ defmodule Smalt.Amqp.ConnectionTest do
     # identity the single 1.5MB frame goes out unsplit and this fails.
     # Contract pin: enqueue/2 returns {:ok, seq} on success (@max_body is
     # 4MB, so 1.5MB enqueues cleanly); {:error, :too_large} only past cap.
-    assert {:ok, _seq} = Smalt.Amqp.QueueStore.enqueue(queue, :crypto.strong_rand_bytes(1_500_000))
+    assert {:ok, _seq} =
+             Smalt.Amqp.QueueStore.enqueue(queue, :crypto.strong_rand_bytes(1_500_000))
 
     :ok =
-      send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}}))
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r", handle: 1, role: true, source: %{address: queue}}}
+        )
+      )
 
     assert %{performative: %{performative: :attach}} = recv_frame(client)
     :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{handle: 1, link_credit: 1}}))
@@ -691,7 +970,9 @@ defmodule Smalt.Amqp.ConnectionTest do
 
     <<size::unsigned-integer-size(32), _doff, _type, _ch::16>> = hdr
     body = elem(recv_exact(client, size - 8), 1)
-    assert {:ok, %{performative: %{performative: :transfer, more: true}}} = FrameCodec.decode_frame(hdr <> body)
+
+    assert {:ok, %{performative: %{performative: :transfer, more: true}}} =
+             FrameCodec.decode_frame(hdr <> body)
 
     # clamp bound: frame never exceeds our local decode cap even though the
     # peer advertised 16MB
@@ -711,25 +992,56 @@ defmodule Smalt.Amqp.ConnectionTest do
   # Session end retires the session's outbound deliveries (R55)
   # ===========================================================================
 
-  test "session :end retires outbound deliveries; stale delivery-id cannot settle the old message", ctx do
+  test "session :end retires outbound deliveries; stale delivery-id cannot settle the old message",
+       ctx do
     client = ctx.client
     queue = ctx.queue
     :ok = handshake(client)
 
     # enqueue m1 via sender link on channel 0
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "s1", handle: 0, role: false, target: %{address: queue}}}
+        )
+      )
+
     assert %{performative: %{performative: :attach}} = recv_frame(client)
 
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:transfer, %{handle: 0, delivery_id: 7, delivery_tag: <<1, 2, 3, 4>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m1"}]}})
+        enc_frame(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: 0,
+             delivery_id: 7,
+             delivery_tag: <<1, 2, 3, 4>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:body_amqp_value, "m1"}]}}
+        )
       )
 
     assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client)
 
     # receiver link on channel 0: server delivers m1 (locked) with server id d
-    :ok = send_bytes(client, enc_frame(:amqp, 0, {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          0,
+          {:attach, %{name: "r1", handle: 1, role: true, source: %{address: queue}}}
+        )
+      )
+
     recv_until(client, :attach)
     :ok = send_bytes(client, enc_frame(:amqp, 0, {:flow, %{link_credit: 10}}))
 
@@ -747,7 +1059,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:disposition, %{role: true, first: d, last: d, settled: true, state: :accepted}})
+        enc_frame(
+          :amqp,
+          0,
+          {:disposition, %{role: true, first: d, last: d, settled: true, state: :accepted}}
+        )
       )
 
     Process.sleep(50)
@@ -759,25 +1075,65 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 1, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+        enc_frame(
+          :amqp,
+          1,
+          {:begin,
+           %{
+             next_outgoing_id: 1,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
       )
 
     recv_frame(client)
 
     # enqueue m2 via sender on channel 1
-    :ok = send_bytes(client, enc_frame(:amqp, 1, {:attach, %{name: "s2", handle: 1, role: false, target: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          1,
+          {:attach, %{name: "s2", handle: 1, role: false, target: %{address: queue}}}
+        )
+      )
+
     recv_until(client, :attach)
 
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 1, {:transfer, %{handle: 1, delivery_id: 7, delivery_tag: <<2>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_amqp_value, "m2"}]}})
+        enc_frame(
+          :amqp,
+          1,
+          {:transfer,
+           %{
+             handle: 1,
+             delivery_id: 7,
+             delivery_tag: <<2>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:body_amqp_value, "m2"}]}}
+        )
       )
 
     assert %{performative: %{performative: :disposition, state: :accepted}} = recv_frame(client)
 
     # receiver on channel 1: m2 delivered with server id 0 (reuses d)
-    :ok = send_bytes(client, enc_frame(:amqp, 1, {:attach, %{name: "r2", handle: 0, role: true, source: %{address: queue}}}))
+    :ok =
+      send_bytes(
+        client,
+        enc_frame(
+          :amqp,
+          1,
+          {:attach, %{name: "r2", handle: 0, role: true, source: %{address: queue}}}
+        )
+      )
+
     recv_until(client, :attach)
     :ok = send_bytes(client, enc_frame(:amqp, 1, {:flow, %{handle: 0, link_credit: 10}}))
 
@@ -789,7 +1145,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 1, {:disposition, %{role: true, first: d, last: d, settled: true, state: :accepted}})
+        enc_frame(
+          :amqp,
+          1,
+          {:disposition, %{role: true, first: d, last: d, settled: true, state: :accepted}}
+        )
       )
 
     Process.sleep(50)
@@ -798,7 +1158,8 @@ defmodule Smalt.Amqp.ConnectionTest do
     assert count_state(queue, :locked) == 1
   end
 
-  defp enc_frame(layer, channel, performative), do: FrameCodec.encode_frame(layer, channel, performative)
+  defp enc_frame(layer, channel, performative),
+    do: FrameCodec.encode_frame(layer, channel, performative)
 
   defp send_bytes(client, iodata), do: :gen_tcp.send(client, iodata)
 
@@ -873,7 +1234,11 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:open, %{container_id: "test-client", max_frame_size: 65_536, channel_max: 65_535}})
+        enc_frame(
+          :amqp,
+          0,
+          {:open, %{container_id: "test-client", max_frame_size: 65_536, channel_max: 65_535}}
+        )
       )
 
     recv_frame(client)
@@ -881,7 +1246,17 @@ defmodule Smalt.Amqp.ConnectionTest do
     :ok =
       send_bytes(
         client,
-        enc_frame(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+        enc_frame(
+          :amqp,
+          0,
+          {:begin,
+           %{
+             next_outgoing_id: 1,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
       )
 
     recv_frame(client)

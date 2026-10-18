@@ -16,7 +16,17 @@ defmodule EnclaveStateTest do
     end
 
     Store.clear()
+    prev_lro_delay_ms = Application.get_env(:smalt, :lro_delay_ms)
     Application.put_env(:smalt, :lro_delay_ms, 0)
+
+    on_exit(fn ->
+      if is_nil(prev_lro_delay_ms) do
+        Application.delete_env(:smalt, :lro_delay_ms)
+      else
+        Application.put_env(:smalt, :lro_delay_ms, prev_lro_delay_ms)
+      end
+    end)
+
     :ok
   end
 
@@ -29,7 +39,10 @@ defmodule EnclaveStateTest do
       end
 
     conn = if body, do: Plug.Test.conn(method, path, body), else: Plug.Test.conn(method, path)
-    conn = if body, do: Plug.Conn.put_req_header(conn, "content-type", "application/json"), else: conn
+
+    conn =
+      if body, do: Plug.Conn.put_req_header(conn, "content-type", "application/json"), else: conn
+
     Router.call(conn, @opts)
   end
 
@@ -45,16 +58,32 @@ defmodule EnclaveStateTest do
 
     assert req(:put, rg, ~s({"location":"eastus"})).status == 201
 
-    put_acct = req(:put, acct, ~s({"location":"eastus","properties":{}}), "Microsoft.Storage/storageAccounts")
+    put_acct =
+      req(
+        :put,
+        acct,
+        ~s({"location":"eastus","properties":{}}),
+        "Microsoft.Storage/storageAccounts"
+      )
+
     assert put_acct.status in [200, 201, 202]
 
-    assert req(:put, vault, ~s({"location":"eastus","properties":{}}), "Microsoft.KeyVault/vaults").status ==
+    assert req(
+             :put,
+             vault,
+             ~s({"location":"eastus","properties":{}}),
+             "Microsoft.KeyVault/vaults"
+           ).status ==
              201
 
     put_c =
-      req(:put, container, ~s({"location":"eastus","properties":{"publicAccess":"None"}}),
+      req(
+        :put,
+        container,
+        ~s({"location":"eastus","properties":{"publicAccess":"None"}}),
         "Microsoft.Storage/storageAccounts/blobServices/containers"
       )
+
     assert put_c.status in [200, 201], "container PUT -> #{put_c.status}: #{put_c.resp_body}"
 
     # non-vacuity witness: the container is reachable through the same route
@@ -115,7 +144,10 @@ defmodule EnclaveStateTest do
 
     declared = %{
       "vault" =>
-        Map.put(outcome["vault"], :attributes, %{"location" => "eastus", "type" => "Microsoft.KeyVault/vaults"}),
+        Map.put(outcome["vault"], :attributes, %{
+          "location" => "eastus",
+          "type" => "Microsoft.KeyVault/vaults"
+        }),
       "acct" => Map.put(outcome["acct"], :attributes, %{"location" => "eastus"})
     }
 
@@ -129,7 +161,12 @@ defmodule EnclaveStateTest do
     assert {:drift, "vault", "location", "eastus", "westus"} in State.plan(declared)
 
     # missing resource -> :missing, never a silent pass
-    missing = Map.put(declared, "ghost", %{id: "#{ids.rg}/providers/Microsoft.KeyVault/vaults/ghost", type: "Microsoft.KeyVault/vaults"})
+    missing =
+      Map.put(declared, "ghost", %{
+        id: "#{ids.rg}/providers/Microsoft.KeyVault/vaults/ghost",
+        type: "Microsoft.KeyVault/vaults"
+      })
+
     assert {:missing, "ghost"} in State.plan(missing)
   end
 

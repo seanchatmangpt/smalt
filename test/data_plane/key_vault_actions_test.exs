@@ -12,6 +12,7 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       {:ok, _} -> :ok
       {:error, {:already_started, _}} -> :ok
     end
+
     Store.clear()
     :ok
   end
@@ -31,7 +32,8 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
   defp b64(bin), do: Base.url_encode64(bin, padding: false)
   defp b64_decode!(s), do: Base.url_decode64!(s, padding: false)
 
-  defp assert_op_not_allowed({:error, 403, %{"error" => %{"code" => "OperationNotAllowed"}}}), do: :ok
+  defp assert_op_not_allowed({:error, 403, %{"error" => %{"code" => "OperationNotAllowed"}}}),
+    do: :ok
 
   # ---------------------------------------------------------------------------
   # RSA-OAEP-256 encrypt / decrypt
@@ -43,7 +45,10 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       plain = :crypto.strong_rand_bytes(32)
 
       assert {:ok, 200, %{"value" => ct, "kid" => kid}} =
-               KeyVaultActions.encrypt("rsa-enc", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)})
+               KeyVaultActions.encrypt("rsa-enc", %{
+                 "alg" => "RSA-OAEP-256",
+                 "value" => b64(plain)
+               })
 
       assert is_binary(ct)
       assert kid == "https://smalt.local:8443/keys/rsa-enc"
@@ -100,6 +105,7 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
     test "wrong-key ciphertext fails decrypt with 400" do
       put_key("rsa-a")
       put_key("rsa-b")
+
       {:ok, 200, %{"value" => ct}} =
         KeyVaultActions.encrypt("rsa-b", %{"alg" => "RSA-OAEP-256", "value" => b64("secret")})
 
@@ -135,8 +141,12 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       put_key("oct-rand", "oct")
       plain = :crypto.strong_rand_bytes(24)
 
-      {:ok, 200, e1} = KeyVaultActions.encrypt("oct-rand", %{"alg" => "A256GCM", "value" => b64(plain)})
-      {:ok, 200, e2} = KeyVaultActions.encrypt("oct-rand", %{"alg" => "A256GCM", "value" => b64(plain)})
+      {:ok, 200, e1} =
+        KeyVaultActions.encrypt("oct-rand", %{"alg" => "A256GCM", "value" => b64(plain)})
+
+      {:ok, 200, e2} =
+        KeyVaultActions.encrypt("oct-rand", %{"alg" => "A256GCM", "value" => b64(plain)})
+
       refute e1["value"] == e2["value"]
 
       for env <- [e1, e2] do
@@ -150,7 +160,9 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
     test "tampered tag fails decrypt with 400" do
       put_key("oct-tamper", "oct")
 
-      {:ok, 200, env} = KeyVaultActions.encrypt("oct-tamper", %{"alg" => "A256GCM", "value" => b64("x")})
+      {:ok, 200, env} =
+        KeyVaultActions.encrypt("oct-tamper", %{"alg" => "A256GCM", "value" => b64("x")})
+
       bad = %{env | "tag" => b64(:crypto.strong_rand_bytes(16))}
 
       assert {:error, 400, %{"error" => %{"code" => "InvalidValue"}}} =
@@ -171,17 +183,26 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
                KeyVaultActions.sign("rsa-sign", %{"alg" => "RS256", "value" => b64(data)})
 
       assert {:ok, 200, %{"value" => true}} =
-               KeyVaultActions.verify("rsa-sign", %{"alg" => "RS256", "value" => b64(data), "signature" => sig})
+               KeyVaultActions.verify("rsa-sign", %{
+                 "alg" => "RS256",
+                 "value" => b64(data),
+                 "signature" => sig
+               })
     end
 
     test "PS256 round-trip" do
       put_key("ps-sign")
       data = "pss payload"
 
-      {:ok, 200, %{"value" => sig}} = KeyVaultActions.sign("ps-sign", %{"alg" => "PS256", "value" => b64(data)})
+      {:ok, 200, %{"value" => sig}} =
+        KeyVaultActions.sign("ps-sign", %{"alg" => "PS256", "value" => b64(data)})
 
       assert {:ok, 200, %{"value" => true}} =
-               KeyVaultActions.verify("ps-sign", %{"alg" => "PS256", "value" => b64(data), "signature" => sig})
+               KeyVaultActions.verify("ps-sign", %{
+                 "alg" => "PS256",
+                 "value" => b64(data),
+                 "signature" => sig
+               })
     end
 
     test "tampered payload verifies invalid (200, valid: false)" do
@@ -191,7 +212,11 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
         KeyVaultActions.sign("rsa-v", %{"alg" => "RS256", "value" => b64("real")})
 
       assert {:ok, 200, %{"value" => false}} =
-               KeyVaultActions.verify("rsa-v", %{"alg" => "RS256", "value" => b64("forged"), "signature" => sig})
+               KeyVaultActions.verify("rsa-v", %{
+                 "alg" => "RS256",
+                 "value" => b64("forged"),
+                 "signature" => sig
+               })
 
       assert {:ok, 200, %{"value" => false}} =
                KeyVaultActions.verify("rsa-v", %{
@@ -203,10 +228,16 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
 
     test "PS256 signature does not verify as RS256" do
       put_key("alg-mix")
-      {:ok, 200, %{"value" => sig}} = KeyVaultActions.sign("alg-mix", %{"alg" => "PS256", "value" => b64("m")})
+
+      {:ok, 200, %{"value" => sig}} =
+        KeyVaultActions.sign("alg-mix", %{"alg" => "PS256", "value" => b64("m")})
 
       assert {:ok, 200, %{"value" => false}} =
-               KeyVaultActions.verify("alg-mix", %{"alg" => "RS256", "value" => b64("m"), "signature" => sig})
+               KeyVaultActions.verify("alg-mix", %{
+                 "alg" => "RS256",
+                 "value" => b64("m"),
+                 "signature" => sig
+               })
     end
 
     test "sign on oct key is 400 InvalidAlgorithm" do
@@ -227,10 +258,16 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       cek = :crypto.strong_rand_bytes(32)
 
       assert {:ok, 200, %{"value" => wrapped}} =
-               KeyVaultActions.wrap_key("rsa-wrap", %{"alg" => "RSA-OAEP-256", "value" => b64(cek)})
+               KeyVaultActions.wrap_key("rsa-wrap", %{
+                 "alg" => "RSA-OAEP-256",
+                 "value" => b64(cek)
+               })
 
       assert {:ok, 200, %{"value" => unwrapped}} =
-               KeyVaultActions.unwrap_key("rsa-wrap", %{"alg" => "RSA-OAEP-256", "value" => wrapped})
+               KeyVaultActions.unwrap_key("rsa-wrap", %{
+                 "alg" => "RSA-OAEP-256",
+                 "value" => wrapped
+               })
 
       assert b64_decode!(unwrapped) == cek
     end
@@ -239,7 +276,8 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       put_key("oct-wrap", "oct")
       cek = :crypto.strong_rand_bytes(32)
 
-      {:ok, 200, wrapped} = KeyVaultActions.wrap_key("oct-wrap", %{"alg" => "A256GCM", "value" => b64(cek)})
+      {:ok, 200, wrapped} =
+        KeyVaultActions.wrap_key("oct-wrap", %{"alg" => "A256GCM", "value" => b64(cek)})
 
       assert {:ok, 200, %{"value" => unwrapped}} =
                KeyVaultActions.unwrap_key("oct-wrap", Map.merge(%{"alg" => "A256GCM"}, wrapped))
@@ -255,31 +293,55 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
   describe "release policy gate" do
     test "missing policy allows all default operations" do
       put_key("open")
-      assert {:ok, 200, _} = KeyVaultActions.encrypt("open", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
-      assert {:ok, 200, _} = KeyVaultActions.sign("open", %{"alg" => "RS256", "value" => b64("x")})
+
+      assert {:ok, 200, _} =
+               KeyVaultActions.encrypt("open", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
+
+      assert {:ok, 200, _} =
+               KeyVaultActions.sign("open", %{"alg" => "RS256", "value" => b64("x")})
     end
 
     test "operation absent from allowed_operations -> 400 OperationNotAllowed" do
       put_key("locked", "RSA-HSM", %{"allowed_operations" => ["sign", "verify"]})
 
-      assert_op_not_allowed(KeyVaultActions.encrypt("locked", %{"alg" => "RSA-OAEP-256", "value" => b64("x")}))
-      assert_op_not_allowed(KeyVaultActions.decrypt("locked", %{"alg" => "RSA-OAEP-256", "value" => b64("x")}))
-      assert {:ok, 200, %{"value" => sig}} = KeyVaultActions.sign("locked", %{"alg" => "RS256", "value" => b64("x")})
+      assert_op_not_allowed(
+        KeyVaultActions.encrypt("locked", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
+      )
+
+      assert_op_not_allowed(
+        KeyVaultActions.decrypt("locked", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
+      )
+
+      assert {:ok, 200, %{"value" => sig}} =
+               KeyVaultActions.sign("locked", %{"alg" => "RS256", "value" => b64("x")})
 
       assert {:ok, 200, %{"value" => true}} =
-               KeyVaultActions.verify("locked", %{"alg" => "RS256", "value" => b64("x"), "signature" => sig})
+               KeyVaultActions.verify("locked", %{
+                 "alg" => "RS256",
+                 "value" => b64("x"),
+                 "signature" => sig
+               })
     end
 
     test "camelize allowedOperations is honored" do
       put_key("camel", "RSA-HSM", %{"allowedOperations" => ["encrypt"]})
 
-      assert {:ok, 200, _} = KeyVaultActions.encrypt("camel", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
-      assert_op_not_allowed(KeyVaultActions.sign("camel", %{"alg" => "RS256", "value" => b64("x")}))
+      assert {:ok, 200, _} =
+               KeyVaultActions.encrypt("camel", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
+
+      assert_op_not_allowed(
+        KeyVaultActions.sign("camel", %{"alg" => "RS256", "value" => b64("x")})
+      )
     end
 
     test "empty policy list falls back to defaults" do
       put_key("empty-policy", "RSA-HSM", %{})
-      assert {:ok, 200, _} = KeyVaultActions.encrypt("empty-policy", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
+
+      assert {:ok, 200, _} =
+               KeyVaultActions.encrypt("empty-policy", %{
+                 "alg" => "RSA-OAEP-256",
+                 "value" => b64("x")
+               })
     end
   end
 
@@ -315,7 +377,10 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       put_key("oct-mismatch", "oct")
 
       assert {:error, 400, %{"error" => %{"code" => "InvalidAlgorithm"}}} =
-               KeyVaultActions.encrypt("oct-mismatch", %{"alg" => "RSA-OAEP-256", "value" => b64("x")})
+               KeyVaultActions.encrypt("oct-mismatch", %{
+                 "alg" => "RSA-OAEP-256",
+                 "value" => b64("x")
+               })
 
       assert {:error, 400, %{"error" => %{"code" => "InvalidAlgorithm"}}} =
                KeyVaultActions.encrypt("mismatch", %{"alg" => "A256GCM", "value" => b64("x")})
@@ -340,10 +405,14 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       put_key("rsa-list")
       plain = "leak check"
 
-      {:ok, 200, _} = KeyVaultActions.encrypt("rsa-list", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)})
+      {:ok, 200, _} =
+        KeyVaultActions.encrypt("rsa-list", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)})
 
       {:ok, 200, %{"value" => keys}} = KeyVaultActions.list_keys()
-      names = keys |> Enum.map(&(&1["kid"] |> String.split("/keys/") |> List.last())) |> Enum.sort()
+
+      names =
+        keys |> Enum.map(&(&1["kid"] |> String.split("/keys/") |> List.last())) |> Enum.sort()
+
       assert names == Enum.sort(["k-a", "k-b", "rsa-list"])
 
       # private material never leaves the vault
@@ -428,7 +497,8 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       put_skr_key("skr-pol-2", %{"authority" => "smalt-test", "use" => "sign"})
       assert {:ok, 200, v2} = SKR.release("skr-pol-2", release_conn(attest_token()))
       assert v1["policyHash"] == v2["policyHash"]
-      refute v1["value"] == v2["value"] # salt (key name) still differs
+      # salt (key name) still differs
+      refute v1["value"] == v2["value"]
 
       # different policy: different policyHash AND different material for the
       # SAME key name
@@ -518,7 +588,7 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
 
     test "HKDF-SHA256 derivation matches RFC 5869 test vectors" do
       # RFC 5869 Appendix B vectors for SHA-256: A.1 (TC1) and A.3 (TC3, empty salt+info)
-      ikm = String.duplicate(<<0x0b>>, 22)
+      ikm = String.duplicate(<<0x0B>>, 22)
       salt = Base.decode16!("000102030405060708090A0B0C")
       info = Base.decode16!("F0F1F2F3F4F5F6F7F8F9")
 
@@ -645,10 +715,18 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       plain = :crypto.strong_rand_bytes(16)
 
       assert {:error, 404, %{"error" => %{"code" => "KeyNotFound"}}} =
-               KeyVaultActions.encrypt("r14-phantom", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v999")
+               KeyVaultActions.encrypt(
+                 "r14-phantom",
+                 %{"alg" => "RSA-OAEP-256", "value" => b64(plain)},
+                 "v999"
+               )
 
       assert {:error, 404, %{"error" => %{"code" => "KeyNotFound"}}} =
-               KeyVaultActions.decrypt("r14-phantom", %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v999")
+               KeyVaultActions.decrypt(
+                 "r14-phantom",
+                 %{"alg" => "RSA-OAEP-256", "value" => b64(plain)},
+                 "v999"
+               )
     end
 
     test "versioned crypto op does not surface a duplicate key in list_keys" do
@@ -658,7 +736,11 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       # any row (phantom-version defect). A REAL version row must stay hidden
       # from list_keys even after its material is generated.
       assert {:error, 404, _} =
-               KeyVaultActions.encrypt("r14-dup", %{"alg" => "RSA-OAEP-256", "value" => b64("x")}, "v999")
+               KeyVaultActions.encrypt(
+                 "r14-dup",
+                 %{"alg" => "RSA-OAEP-256", "value" => b64("x")},
+                 "v999"
+               )
 
       {:ok, 200, %{"value" => keys}} = KeyVaultActions.list_keys()
       assert length(keys) == 1
@@ -675,7 +757,11 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       Store.put(:smalt_vault_keys, {"r14-dup", "v1"}, version_record)
 
       assert {:ok, 200, _} =
-               KeyVaultActions.encrypt("r14-dup", %{"alg" => "RSA-OAEP-256", "value" => b64("x")}, "v1")
+               KeyVaultActions.encrypt(
+                 "r14-dup",
+                 %{"alg" => "RSA-OAEP-256", "value" => b64("x")},
+                 "v1"
+               )
 
       {:ok, 200, %{"value" => keys}} = KeyVaultActions.list_keys()
       assert length(keys) == 1
@@ -684,10 +770,17 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
     test "oct versions derive distinct material; bare name keeps legacy derivation" do
       put_key("r14-oct", "oct-HSM")
 
-      assert KeyVaultActions.derive_oct_key("r14-oct") == KeyVaultActions.derive_oct_key("r14-oct", nil)
-      assert KeyVaultActions.derive_oct_key("r14-oct") == :crypto.hash(:sha256, "smalt-vault-derived:r14-oct")
-      refute KeyVaultActions.derive_oct_key("r14-oct") == KeyVaultActions.derive_oct_key("r14-oct", "v1")
-      refute KeyVaultActions.derive_oct_key("r14-oct", "v1") == KeyVaultActions.derive_oct_key("r14-oct", "v2")
+      assert KeyVaultActions.derive_oct_key("r14-oct") ==
+               KeyVaultActions.derive_oct_key("r14-oct", nil)
+
+      assert KeyVaultActions.derive_oct_key("r14-oct") ==
+               :crypto.hash(:sha256, "smalt-vault-derived:r14-oct")
+
+      refute KeyVaultActions.derive_oct_key("r14-oct") ==
+               KeyVaultActions.derive_oct_key("r14-oct", "v1")
+
+      refute KeyVaultActions.derive_oct_key("r14-oct", "v1") ==
+               KeyVaultActions.derive_oct_key("r14-oct", "v2")
 
       # Round-trip through a versioned oct op uses the version-bound material.
       # A versioned op requires an existing {name, version} row (create route
@@ -704,11 +797,20 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
         KeyVaultActions.encrypt("r14-oct", %{"alg" => "A256GCM", "value" => b64(plain)}, "v1")
 
       assert {:error, 400, _} =
-               KeyVaultActions.decrypt("r14-oct", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag})
+               KeyVaultActions.decrypt("r14-oct", %{
+                 "alg" => "A256GCM",
+                 "value" => ct,
+                 "iv" => iv,
+                 "tag" => tag
+               })
 
       # Decrypting under the SAME version succeeds.
       assert {:ok, 200, %{"value" => pt}} =
-               KeyVaultActions.decrypt("r14-oct", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag}, "v1")
+               KeyVaultActions.decrypt(
+                 "r14-oct",
+                 %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag},
+                 "v1"
+               )
 
       assert b64_decode!(pt) == plain
     end
@@ -737,11 +839,20 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       # the separator collision is structurally impossible post-fix, so the
       # wrong-material decrypt path is unreachable.
       assert {:error, 404, %{"error" => %{"code" => "KeyNotFound"}}} =
-               KeyVaultActions.decrypt("w5a:V", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag})
+               KeyVaultActions.decrypt("w5a:V", %{
+                 "alg" => "A256GCM",
+                 "value" => ct,
+                 "iv" => iv,
+                 "tag" => tag
+               })
 
       # Legit versioned decrypt still round-trips.
       assert {:ok, 200, %{"value" => pt}} =
-               KeyVaultActions.decrypt("w5a", %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag}, "V")
+               KeyVaultActions.decrypt(
+                 "w5a",
+                 %{"alg" => "A256GCM", "value" => ct, "iv" => iv, "tag" => tag},
+                 "V"
+               )
 
       assert b64_decode!(pt) == plain
     end
@@ -780,11 +891,22 @@ defmodule Smalt.DataPlane.KeyVaultActionsTest do
       plain = :crypto.strong_rand_bytes(16)
 
       assert {:ok, 200, %{"value" => ct}} =
-               KeyVaultActions.encrypt(name, %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v1")
+               KeyVaultActions.encrypt(
+                 name,
+                 %{"alg" => "RSA-OAEP-256", "value" => b64(plain)},
+                 "v1"
+               )
 
       # Soft delete, then recover.
       assert {:ok, 200, _} = KeyVaultActions.delete_key(name)
-      assert {:error, 404, _} = KeyVaultActions.encrypt(name, %{"alg" => "RSA-OAEP-256", "value" => b64(plain)}, "v1")
+
+      assert {:error, 404, _} =
+               KeyVaultActions.encrypt(
+                 name,
+                 %{"alg" => "RSA-OAEP-256", "value" => b64(plain)},
+                 "v1"
+               )
+
       assert {:ok, 200, _} = KeyVaultActions.recover_deleted_key(name)
 
       # The versioned fetch path must find the restored {name, "v1"} row and

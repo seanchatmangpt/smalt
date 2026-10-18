@@ -308,7 +308,10 @@ defmodule Smalt.Amqp.ManagementRpcTest do
     test "abandoned requeues with delivery_count increment (SDK redelivery parity)" do
       queue = "ud-#{System.unique_integer([:positive])}"
       assert {:ok, _} = Smalt.Amqp.QueueStore.enqueue(queue, "m1")
-      assert {:ok, %{seq: seq, delivery_count: dc0}, lock} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+
+      assert {:ok, %{seq: seq, delivery_count: dc0}, lock} =
+               Smalt.Amqp.QueueStore.dequeue_matching(queue)
+
       raw = Smalt.Amqp.LockManager.token_to_raw(lock.lock_token)
 
       resp =
@@ -322,7 +325,10 @@ defmodule Smalt.Amqp.ManagementRpcTest do
         )
 
       assert resp.status_code == 200
-      assert {:ok, %{seq: ^seq, delivery_count: dc}, _} = Smalt.Amqp.QueueStore.dequeue_matching(queue)
+
+      assert {:ok, %{seq: ^seq, delivery_count: dc}, _} =
+               Smalt.Amqp.QueueStore.dequeue_matching(queue)
+
       assert dc > dc0
     end
 
@@ -397,7 +403,10 @@ defmodule Smalt.Amqp.ManagementRpcTest do
 
       resp =
         ManagementRpc.handle(
-          %{operation: "com.microsoft:receive-by-sequence-number", body: %{"queue" => queue, "sequence-numbers" => [seq]}},
+          %{
+            operation: "com.microsoft:receive-by-sequence-number",
+            body: %{"queue" => queue, "sequence-numbers" => [seq]}
+          },
           %{now: @now}
         )
 
@@ -408,7 +417,10 @@ defmodule Smalt.Amqp.ManagementRpcTest do
       # re-locked: a second receive-by-seq for the same seq is no longer deferred
       resp2 =
         ManagementRpc.handle(
-          %{operation: "com.microsoft:receive-by-sequence-number", body: %{"queue" => queue, "sequence-numbers" => [seq]}},
+          %{
+            operation: "com.microsoft:receive-by-sequence-number",
+            body: %{"queue" => queue, "sequence-numbers" => [seq]}
+          },
           %{now: @now}
         )
 
@@ -445,8 +457,16 @@ defmodule Smalt.Amqp.ManagementRpcTest do
     test "400 SEQUENCE_NUMBERS_REQUIRED on blank or malformed sequence list" do
       queue = "rbsn-#{System.unique_integer([:positive])}"
 
-      for body <- [%{"queue" => queue, "sequence-numbers" => []}, %{"queue" => queue, "sequence-numbers" => ["x"]}] do
-        resp = ManagementRpc.handle(%{operation: "com.microsoft:receive-by-sequence-number", body: body}, %{now: @now})
+      for body <- [
+            %{"queue" => queue, "sequence-numbers" => []},
+            %{"queue" => queue, "sequence-numbers" => ["x"]}
+          ] do
+        resp =
+          ManagementRpc.handle(
+            %{operation: "com.microsoft:receive-by-sequence-number", body: body},
+            %{now: @now}
+          )
+
         assert %{status_code: 400, status_description: "SEQUENCE_NUMBERS_REQUIRED"} = resp
       end
     end
@@ -509,7 +529,12 @@ defmodule Smalt.Amqp.ManagementRpcTest do
 
       assert resp.status_code == 200
 
-      assert {:ok, dlq_msg} = Smalt.Store.get(:smalt_sb_messages, {Smalt.Amqp.QueueStore.deadletter_queue(queue), 1})
+      assert {:ok, dlq_msg} =
+               Smalt.Store.get(
+                 :smalt_sb_messages,
+                 {Smalt.Amqp.QueueStore.deadletter_queue(queue), 1}
+               )
+
       assert dlq_msg.app_props["DeadLetterReason"] == "COURT_REJECTED"
       assert dlq_msg.app_props["DeadLetterErrorDescription"] == "local-test"
       assert dlq_msg.app_props["CourtId"] == "c-42"
@@ -538,13 +563,17 @@ defmodule Smalt.Amqp.ManagementRpcTest do
 
       assert resp.status_code == 200
 
-      assert {:ok, dlq_msg} = Smalt.Store.get(:smalt_sb_messages, {Smalt.Amqp.QueueStore.deadletter_queue(queue), 1})
+      assert {:ok, dlq_msg} =
+               Smalt.Store.get(
+                 :smalt_sb_messages,
+                 {Smalt.Amqp.QueueStore.deadletter_queue(queue), 1}
+               )
+
       assert dlq_msg.app_props["DeadLetterReason"] == "R"
       assert dlq_msg.app_props["CourtId"] == nil
     end
   end
 end
-
 
 defmodule Smalt.Amqp.ManagementRpc.W3SessionOpsTest do
   use ExUnit.Case, async: true
@@ -642,7 +671,10 @@ defmodule Smalt.Amqp.ManagementRpc.W3SessionOpsTest do
 
       # set AND get on a session with no record -> 404 SESSION_NOT_FOUND
       for op <- ~w(com.microsoft:set-session-state com.microsoft:get-session-state) do
-        body = if String.contains?(op, "set"), do: %{"session-id" => "ghost", "session-state" => "x"}, else: %{"session-id" => "ghost"}
+        body =
+          if String.contains?(op, "set"),
+            do: %{"session-id" => "ghost", "session-state" => "x"},
+            else: %{"session-id" => "ghost"}
 
         resp =
           ManagementRpc.handle(%{operation: op, body: body, queue: queue}, %{now: @now})
@@ -700,7 +732,11 @@ defmodule Smalt.Amqp.ManagementRpc.W3SessionOpsTest do
 
       resp =
         ManagementRpc.handle(
-          %{operation: "com.microsoft:get-message-sessions", body: %{"skip" => 1, "top" => 1}, queue: queue},
+          %{
+            operation: "com.microsoft:get-message-sessions",
+            body: %{"skip" => 1, "top" => 1},
+            queue: queue
+          },
           %{now: @now}
         )
 

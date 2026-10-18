@@ -31,8 +31,11 @@ defmodule EnclaveDoctorSeverityTest do
       end
 
       case report["status"] do
-        "PASS" -> assert report["remediation_map"] == %{}
-        "DEGRADED" -> assert report["remediation_map"]["DARWIN_TRUST_MISSING"] == "just test-native"
+        "PASS" ->
+          assert report["remediation_map"] == %{}
+
+        "DEGRADED" ->
+          assert report["remediation_map"]["DARWIN_TRUST_MISSING"] == "just test-native"
       end
     end
 
@@ -59,9 +62,15 @@ defmodule EnclaveDoctorSeverityTest do
       {:ok, injector} =
         Task.start(fn ->
           loop = fn
-            _loop, n when n <= 0 -> :ok
+            _loop, n when n <= 0 ->
+              :ok
+
             loop, n ->
-              :ets.insert(:smalt_resources, {prefix <> Integer.to_string(n), %{"type" => "Microsoft.Storage/storageAccounts"}})
+              :ets.insert(
+                :smalt_resources,
+                {prefix <> Integer.to_string(n), %{"type" => "Microsoft.Storage/storageAccounts"}}
+              )
+
               Process.sleep(2)
               loop.(loop, n - 1)
           end
@@ -81,7 +90,9 @@ defmodule EnclaveDoctorSeverityTest do
         assert ets_check["severity"] == :BLOCKING_GATE
 
         assert report["status"] == "FAIL"
-        assert report["remediation_map"]["ETS_IDENTITY_RESIDUE"] == "mix smalt.audit_residue --strict"
+
+        assert report["remediation_map"]["ETS_IDENTITY_RESIDUE"] ==
+                 "mix smalt.audit_residue --strict"
       after
         # Cleanup: sweep every injected row regardless of outcome.
         sweep(prefix)
@@ -98,7 +109,7 @@ defmodule EnclaveDoctorSeverityTest do
         %{residue: residue} = Smalt.Enclave.State.destroy(%{})
 
         assert Enum.any?(residue, fn
-                 {:smalt_resources, keys} -> prefix <> "a" in keys and prefix <> "b" in keys
+                 {:smalt_resources, keys} -> (prefix <> "a") in keys and (prefix <> "b") in keys
                  _ -> false
                end)
       after
@@ -132,6 +143,7 @@ defmodule EnclaveDoctorSeverityTest do
         assert check["details"] =~ "not found"
 
         assert report["status"] == "DEGRADED"
+
         assert report["remediation_map"]["AFFIDAVIT_WASM_DEGRADED"] ==
                  "bash scripts/affidavit_wasm_build.sh"
       after
@@ -181,7 +193,8 @@ defmodule EnclaveDoctorSeverityTest do
 
   defp restore_env(_key, nil), do: Application.delete_env(:smalt, :affidavit_wasm_path)
 
-  defp restore_env(:affidavit_wasm_path, value), do: Application.put_env(:smalt, :affidavit_wasm_path, value)
+  defp restore_env(:affidavit_wasm_path, value),
+    do: Application.put_env(:smalt, :affidavit_wasm_path, value)
 
   defp sweep(prefix) do
     for {k, _} <- :ets.tab2list(:smalt_resources), is_binary(k), String.starts_with?(k, prefix) do

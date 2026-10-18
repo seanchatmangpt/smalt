@@ -30,7 +30,15 @@ defmodule ComplianceLoaderTest do
     "c7_events" => 17
   }
 
-  c_files = ["c1_arm", "c2_keyvault", "c3_cosmos", "c4_blob", "c5_servicebus", "c6_oauth", "c7_events"]
+  c_files = [
+    "c1_arm",
+    "c2_keyvault",
+    "c3_cosmos",
+    "c4_blob",
+    "c5_servicebus",
+    "c6_oauth",
+    "c7_events"
+  ]
 
   Enum.each(c_files, fn name ->
     Code.require_file(Path.join(@compliance_dir, "#{name}.exs"))
@@ -45,9 +53,12 @@ defmodule ComplianceLoaderTest do
   test "compliance inventory: per-file test counts match the register" do
     Enum.each(@register_counts, fn {name, expected} ->
       body = File.read!(Path.join(@compliance_dir, "#{name}.exs"))
-      actual = Enum.count(String.split(body, "\n"), fn line ->
-        Regex.match?(~r/^\s*test /, line)
-      end)
+
+      actual =
+        Enum.count(String.split(body, "\n"), fn line ->
+          Regex.match?(~r/^\s*test /, line)
+        end)
+
       assert actual == expected, "compliance #{name}: #{actual} tests, register says #{expected}"
     end)
   end

@@ -86,7 +86,8 @@ defmodule Smalt.Auth.Sas do
     container = Map.get(params, "container", "")
     blob = Map.get(params, "blob")
 
-    canonical = "/blob/" <> Enum.join(Enum.reject([account, container, blob], &(&1 in [nil, ""])), "/")
+    canonical =
+      "/blob/" <> Enum.join(Enum.reject([account, container, blob], &(&1 in [nil, ""])), "/")
 
     sp = Map.get(params, "sp", "r")
     st = Map.get(params, "st", "")
@@ -246,7 +247,7 @@ defmodule Smalt.Auth.Sas do
       sip when is_binary(sip) and sip != "" ->
         remote = conn.remote_ip
 
-        if Enum.any?(String.split(sip, ","), &(ip_in_range?(remote, &1))) do
+        if Enum.any?(String.split(sip, ","), &ip_in_range?(remote, &1)) do
           :ok
         else
           {:error, :bad_signature}
@@ -273,7 +274,7 @@ defmodule Smalt.Auth.Sas do
         octets = [a, b, c, d] |> Enum.map(&Integer.parse/1) |> Enum.map(&elem(&1, 0))
 
         if length(octets) == 4 and Enum.all?(octets, &(&1 in 0..255)) and
-             Enum.all?(String.split(s, "."), &(Regex.match?(~r/^\d+$/, &1))) do
+             Enum.all?(String.split(s, "."), &Regex.match?(~r/^\d+$/, &1)) do
           {:ok, List.to_tuple(octets)}
         else
           :error
@@ -298,7 +299,10 @@ defmodule Smalt.Auth.Sas do
   end
 
   defp cidr_mask(0), do: {:ok, 0}
-  defp cidr_mask(p) when p in 1..32, do: {:ok, :erlang.band(:erlang.bsl(0xFFFFFFFF, 32 - p), 0xFFFFFFFF)}
+
+  defp cidr_mask(p) when p in 1..32,
+    do: {:ok, :erlang.band(:erlang.bsl(0xFFFFFFFF, 32 - p), 0xFFFFFFFF)}
+
   defp ipv4_to_int({a, b, c, d}), do: a * 16_777_216 + b * 65_536 + c * 256 + d
 
   defp canonical_resource_from_conn(conn) do

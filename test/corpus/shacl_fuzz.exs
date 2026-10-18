@@ -58,9 +58,13 @@ defmodule Smalt.Corpus.ShaclFuzz do
     # taken AFTER this setup, so the RG seeds never count as mutations).
     Enum.each(Enum.with_index(@families), fn {_fam, i} ->
       conn =
-        put_conn(opts, "/subscriptions/#{@sub}/resourceGroups/#{@rg_prefix}#{i}?api-version=2023-07-01", %{
-          "location" => "eastus"
-        })
+        put_conn(
+          opts,
+          "/subscriptions/#{@sub}/resourceGroups/#{@rg_prefix}#{i}?api-version=2023-07-01",
+          %{
+            "location" => "eastus"
+          }
+        )
 
       assert conn.status in [200, 201], inspect(conn.resp_body)
     end)
@@ -72,9 +76,10 @@ defmodule Smalt.Corpus.ShaclFuzz do
   # L2: hydrate-before-validate (the named law)
   # ---------------------------------------------------------------------------
   @tag :corpus
-  test "L2: sku-less storage PUT with valid location is ADMITTED (Defaults.apply before check_shape)", %{
-    opts: opts
-  } do
+  test "L2: sku-less storage PUT with valid location is ADMITTED (Defaults.apply before check_shape)",
+       %{
+         opts: opts
+       } do
     conn =
       put_conn(
         opts,
@@ -90,9 +95,10 @@ defmodule Smalt.Corpus.ShaclFuzz do
   # L1+L3 fuzz sweep: 1,000 seeded payloads
   # ---------------------------------------------------------------------------
   @tag :corpus
-  test "fuzz sweep: #{@total} seeded adversarial PUTs — no untyped escape, no refusal mutation", %{
-    opts: opts
-  } do
+  test "fuzz sweep: #{@total} seeded adversarial PUTs — no untyped escape, no refusal mutation",
+       %{
+         opts: opts
+       } do
     :rand.seed(:exsss, @seed)
     payloads = generate_payloads(@total)
 
@@ -101,7 +107,8 @@ defmodule Smalt.Corpus.ShaclFuzz do
     counts = Enum.frequencies_by(payloads, fn {class, _body} -> class end)
 
     results =
-      Enum.with_index(payloads) |> Enum.map(fn {{class, body}, i} ->
+      Enum.with_index(payloads)
+      |> Enum.map(fn {{class, body}, i} ->
         run_fuzz(opts, class, body, i)
       end)
 
@@ -109,7 +116,9 @@ defmodule Smalt.Corpus.ShaclFuzz do
 
     # L1: zero untyped escapes (crash / 5xx / untyped 4xx / refusal-mutation).
     crashes =
-      Enum.filter(results, fn r -> r.verdict in [:untyped_crash, :server_error, :untyped_refusal, :l3_violation] end)
+      Enum.filter(results, fn r ->
+        r.verdict in [:untyped_crash, :server_error, :untyped_refusal, :l3_violation]
+      end)
 
     for r <- crashes do
       flunk("untyped escape ##{r.index} [#{r.class}]: #{inspect(r.detail)}")
@@ -243,7 +252,10 @@ defmodule Smalt.Corpus.ShaclFuzz do
   defp generate(:oversized, i) do
     if rem(i, 2) == 0 do
       # ~1 MiB string value
-      %{"location" => "eastus", "properties" => %{"blob" => String.duplicate("x", 1_048_576 - 128)}}
+      %{
+        "location" => "eastus",
+        "properties" => %{"blob" => String.duplicate("x", 1_048_576 - 128)}
+      }
     else
       # 20k keys
       %{"location" => "eastus", "properties" => Map.new(0..20_000, fn k -> {"k#{k}", k} end)}
@@ -295,9 +307,9 @@ defmodule Smalt.Corpus.ShaclFuzz do
   defp pinned_rows do
     [
       {"skuless-hydrate", 0, %{"location" => "eastus", "properties" => %{}}, :admitted},
-      {"sku-int", 0, %{"location" => "eastus", "sku" => %{"name" => 100}},
-       :admitted},
-      {"string-bool", 0, %{"location" => "eastus", "properties" => %{"supportsHttpsTrafficOnly" => "true"}},
+      {"sku-int", 0, %{"location" => "eastus", "sku" => %{"name" => 100}}, :admitted},
+      {"string-bool", 0,
+       %{"location" => "eastus", "properties" => %{"supportsHttpsTrafficOnly" => "true"}},
        :admitted},
       # Validator gate truth: the storage shape is minCount-only (no
       # sh:datatype on location), so an integer location passes present? and
@@ -328,11 +340,10 @@ defmodule Smalt.Corpus.ShaclFuzz do
       {"nested-256", 0,
        %{
          "location" => "eastus",
-         "nest" =>
-           Enum.reduce(1..256, %{"leaf" => "v"}, fn _d, acc -> %{"properties" => acc} end)
+         "nest" => Enum.reduce(1..256, %{"leaf" => "v"}, fn _d, acc -> %{"properties" => acc} end)
        }, :admitted},
-      {"unicode-keys", 0,
-       %{"location" => "eastus", "properties" => %{"キー" => "v", "🔒" => "v"}}, :admitted},
+      {"unicode-keys", 0, %{"location" => "eastus", "properties" => %{"キー" => "v", "🔒" => "v"}},
+       :admitted},
       {"kv-sku-string", 1, %{"location" => "eastus", "properties" => %{"sku" => "free"}},
        :typed_refusal},
       # Cosmos account defaults hydrate databaseAccountOfferType; empty
@@ -384,7 +395,8 @@ defmodule Smalt.Corpus.ShaclFuzz do
     do_dispatch(opts, path, bytes)
   end
 
-  defp dispatch(opts, path, body) when is_map(body) or is_list(body) or is_number(body) or is_boolean(body) do
+  defp dispatch(opts, path, body)
+       when is_map(body) or is_list(body) or is_number(body) or is_boolean(body) do
     do_dispatch(opts, path, Jason.encode!(body))
   end
 

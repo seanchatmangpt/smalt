@@ -8,7 +8,13 @@ defmodule Smalt.Amqp.LockManagerTest do
   setup do
     Enum.each(@tables, fn table ->
       if :ets.info(table) == :undefined do
-        :ets.new(table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+        :ets.new(table, [
+          :set,
+          :public,
+          :named_table,
+          read_concurrency: true,
+          write_concurrency: true
+        ])
       end
     end)
 
@@ -46,7 +52,8 @@ defmodule Smalt.Amqp.LockManagerTest do
       assert lock.kind == :message
       assert {:ok, ^lock} = LockManager.get(lock.lock_token)
 
-      assert Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      assert Regex.match?(
+               ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
                lock.lock_token
              )
 
@@ -74,7 +81,8 @@ defmodule Smalt.Amqp.LockManagerTest do
     end
 
     test "renew unknown token -> 404 :not_found" do
-      assert {:error, :not_found} = LockManager.renew("00000000-0000-4000-8000-000000000000", 1_000)
+      assert {:error, :not_found} =
+               LockManager.renew("00000000-0000-4000-8000-000000000000", 1_000)
     end
 
     test "renew expired token -> 410 :lock_lost" do
@@ -102,7 +110,9 @@ defmodule Smalt.Amqp.LockManagerTest do
 
   describe "session locks" do
     test "session_acquire / renew / release keyed by {queue, session_id}" do
-      assert {:ok, lock} = LockManager.session_acquire("q", "s1", now_ms: 1_000, duration_ms: 1_000)
+      assert {:ok, lock} =
+               LockManager.session_acquire("q", "s1", now_ms: 1_000, duration_ms: 1_000)
+
       assert lock.kind == :session
       assert lock.session_id == "s1"
       assert lock.locked_until == 2_000
@@ -150,7 +160,9 @@ defmodule Smalt.Amqp.LockManagerTest do
         winners = Enum.count(results, &match?({:ok, _}, &1))
         losers = Enum.count(results, &match?({:error, :already_locked}, &1))
 
-        assert winners == 1, "phase got #{winners} winners: #{inspect(results |> Enum.frequencies() |> Map.to_list() |> List.first())}"
+        assert winners == 1,
+               "phase got #{winners} winners: #{inspect(results |> Enum.frequencies() |> Map.to_list() |> List.first())}"
+
         assert losers == 199
 
         :ok = LockManager.session_release("race", "s1")
@@ -230,13 +242,16 @@ defmodule Smalt.Amqp.LockManagerTest do
       for phase <- 1..50 do
         Enum.each(@tables, &:ets.delete_all_objects/1)
 
-        {:ok, a_lock} = LockManager.session_acquire(queue, "s1", now_ms: 1_000, duration_ms: 5_000)
+        {:ok, a_lock} =
+          LockManager.session_acquire(queue, "s1", now_ms: 1_000, duration_ms: 5_000)
 
         releaser =
           Task.async(fn -> LockManager.session_release(queue, "s1") end)
 
         claimer =
-          Task.async(fn -> LockManager.session_acquire(queue, "s1", now_ms: 1_100, duration_ms: 5_000) end)
+          Task.async(fn ->
+            LockManager.session_acquire(queue, "s1", now_ms: 1_100, duration_ms: 5_000)
+          end)
 
         assert :ok = Task.await(releaser)
         claim_result = Task.await(claimer)
@@ -297,9 +312,13 @@ defmodule Smalt.Amqp.LockManagerTest do
 
         # byte-level reorder shape: first 3 pairs swapped
         assert raw == <<b3, b2, b1, b0, b5, b4, b7, b6, 0::size(64)>>
-        assert t2 == Enum.map_join([b3, b2, b1, b0], &hex.(&1)) <> "-" <>
-                       Enum.map_join([b5, b4], &hex.(&1)) <> "-" <>
-                       Enum.map_join([b7, b6], &hex.(&1)) <> "-0000-000000000000"
+
+        assert t2 ==
+                 Enum.map_join([b3, b2, b1, b0], &hex.(&1)) <>
+                   "-" <>
+                   Enum.map_join([b5, b4], &hex.(&1)) <>
+                   "-" <>
+                   Enum.map_join([b7, b6], &hex.(&1)) <> "-0000-000000000000"
       end
     end
   end

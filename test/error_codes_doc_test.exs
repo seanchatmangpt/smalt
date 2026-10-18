@@ -45,9 +45,7 @@ defmodule Smalt.ErrorCodesDocTest do
 
   test "docs/ERROR_CODES.md is the byte-identical projection of the sources" do
     {output, exit_code} =
-      System.cmd("python3", ["scripts/gen_error_codes.py", "--check"],
-        stderr_to_stdout: true
-      )
+      System.cmd("python3", ["scripts/gen_error_codes.py", "--check"], stderr_to_stdout: true)
 
     assert exit_code == 0, """
     docs/ERROR_CODES.md is stale relative to the sources.
@@ -58,16 +56,19 @@ defmodule Smalt.ErrorCodesDocTest do
   end
 
   test "arm-gateway rows equal the error set re-derived from the router source" do
-    doc_codes = doc_rows() |> rows_for_surface("arm-gateway") |> MapSet.new(&{String.to_integer(&1.status), &1.code})
+    doc_codes =
+      doc_rows()
+      |> rows_for_surface("arm-gateway")
+      |> MapSet.new(&{String.to_integer(&1.status), &1.code})
 
     # The LRO poll route emits its typed error member (status Failed at 200)
     # from lro.ex, not router.ex — re-derive it the same way the generator
     # does (the "code" literal inside the evaluate/2 fallback) so a new LRO
     # error code without a doc regen fails this fence (lens-10 cycle-1).
     lro_src = File.read!("lib/smalt/arm_gateway/lro.ex")
+    # def/p-def tolerant anchor (sibling refactor promoted evaluate/2 to
+    # def; witnessed 2026-10-15, v26.10.14 lane 14) — matches the generator
     lro_codes =
-      # def/p-def tolerant anchor (sibling refactor promoted evaluate/2 to
-      # def; witnessed 2026-10-15, v26.10.14 lane 14) — matches the generator
       case Regex.run(~r/defp? evaluate\((?s:.)*"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"/, lro_src) do
         [_, code] -> MapSet.new([{200, code}])
         _ -> MapSet.new()
@@ -162,7 +163,14 @@ defmodule Smalt.ErrorCodesDocTest do
       # The generator re-adds the helper-defined envelopes with fixed statuses
       # (see gen_error_codes.py "helper-defined envelopes" table, R143).
       |> MapSet.union(
-        MapSet.new(["RouteNotReady", "InvalidBody", "InvalidCloudEvent", "InvalidQueryParameterValue", "InvalidApiVersion", "InvalidEventGridEvent"])
+        MapSet.new([
+          "RouteNotReady",
+          "InvalidBody",
+          "InvalidCloudEvent",
+          "InvalidQueryParameterValue",
+          "InvalidApiVersion",
+          "InvalidEventGridEvent"
+        ])
       )
       |> MapSet.union(not_found_codes)
 

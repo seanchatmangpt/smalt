@@ -22,12 +22,14 @@ defmodule SmaltServicesTest do
     on_exit(fn -> Application.delete_env(:smalt, :maa_measurement_baseline) end)
 
     default_sub = "00000000-0000-0000-0000-000000000000"
+
     Store.put(:smalt_subscriptions, default_sub, %{
       "id" => "/subscriptions/#{default_sub}",
       "subscriptionId" => default_sub,
       "displayName" => "Sovereign Smalt Subscription",
       "state" => "Enabled"
     })
+
     :ok
   end
 
@@ -48,7 +50,9 @@ defmodule SmaltServicesTest do
   # terminal status via the router's polling route.
   defp await_lro(conn) do
     assert conn.status == 202
-    op_path = get_resp_header(conn, "azure-asyncoperation") |> hd() |> URI.parse() |> Map.get(:path)
+
+    op_path =
+      get_resp_header(conn, "azure-asyncoperation") |> hd() |> URI.parse() |> Map.get(:path)
 
     poll(op_path)
   end
@@ -105,10 +109,15 @@ defmodule SmaltServicesTest do
 
     # 2. Put Confidential Ledger (DefaultShape: location required)
     acl_type = "Microsoft.ConfidentialLedger/ledgers"
-    acl_path = "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.ConfidentialLedger/ledgers/smalt-acl"
+
+    acl_path =
+      "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.ConfidentialLedger/ledgers/smalt-acl"
 
     put_conn =
-      arm_put(acl_path, acl_type, %{"location" => "eastus", "properties" => %{"ledgerType" => "Private"}})
+      arm_put(acl_path, acl_type, %{
+        "location" => "eastus",
+        "properties" => %{"ledgerType" => "Private"}
+      })
 
     assert put_conn.status == 201
     assert Jason.decode!(put_conn.resp_body)["type"] == acl_type
@@ -119,7 +128,9 @@ defmodule SmaltServicesTest do
 
     # 3. Put Managed HSM (ManagedHsmShape: location + properties.skuName)
     hsm_type = "Microsoft.KeyVault/managedHSMs"
-    hsm_path = "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.KeyVault/managedHSMs/smalt-hsm"
+
+    hsm_path =
+      "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.KeyVault/managedHSMs/smalt-hsm"
 
     hsm_conn =
       arm_put(hsm_path, hsm_type, %{
@@ -143,11 +154,16 @@ defmodule SmaltServicesTest do
 
     # Negative: missing api-version -> 400 MissingApiVersionParameter
     missing_av_conn =
-      conn(:put, hsm_path, %{"location" => "eastus", "properties" => %{"skuName" => "Standard_B1"}})
+      conn(:put, hsm_path, %{
+        "location" => "eastus",
+        "properties" => %{"skuName" => "Standard_B1"}
+      })
       |> ArmRouter.call(@arm_opts)
 
     assert missing_av_conn.status == 400
-    assert Jason.decode!(missing_av_conn.resp_body)["error"]["code"] == "MissingApiVersionParameter"
+
+    assert Jason.decode!(missing_av_conn.resp_body)["error"]["code"] ==
+             "MissingApiVersionParameter"
 
     # KD-78 monotonic api-version admission (operator ruling, fenced in
     # test/api_version_admission_test.exs): a STALE but parseable version
@@ -170,7 +186,9 @@ defmodule SmaltServicesTest do
       |> ArmRouter.call(@arm_opts)
 
     assert future_av_conn.status == 400
-    assert Jason.decode!(future_av_conn.resp_body)["error"]["code"] == "InvalidApiVersionParameter"
+
+    assert Jason.decode!(future_av_conn.resp_body)["error"]["code"] ==
+             "InvalidApiVersionParameter"
   end
 
   test "ARM Gateway PUT/GET for Tier 2: AKS Enclave Clusters and WASI Container Apps" do
@@ -179,23 +197,37 @@ defmodule SmaltServicesTest do
 
     # AKS (DefaultShape: location required)
     aks_type = "Microsoft.ContainerService/managedClusters"
-    aks_path = "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.ContainerService/managedClusters/smalt-aks"
 
-    aks_conn = arm_put(aks_path, aks_type, %{"location" => "eastus", "properties" => %{"dnsPrefix" => "smalt-enclave"}})
+    aks_path =
+      "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.ContainerService/managedClusters/smalt-aks"
+
+    aks_conn =
+      arm_put(aks_path, aks_type, %{
+        "location" => "eastus",
+        "properties" => %{"dnsPrefix" => "smalt-enclave"}
+      })
+
     assert aks_conn.status == 201
 
     # Container App WASI (DefaultShape: location required)
     wasi_type = "Microsoft.App/containerApps"
-    wasi_path = "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.App/containerApps/graphlaw-wasi"
+
+    wasi_path =
+      "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.App/containerApps/graphlaw-wasi"
 
     wasi_conn =
-      arm_put(wasi_path, wasi_type, %{"location" => "eastus", "properties" => %{"template" => %{"containers" => []}}})
+      arm_put(wasi_path, wasi_type, %{
+        "location" => "eastus",
+        "properties" => %{"template" => %{"containers" => []}}
+      })
 
     assert wasi_conn.status == 201
 
     # Negative: malformed shape (missing required location) -> 400
     # InvalidResourceShape
-    malformed_conn = arm_put(wasi_path <> "-bad", wasi_type, %{"properties" => %{"template" => %{}}})
+    malformed_conn =
+      arm_put(wasi_path <> "-bad", wasi_type, %{"properties" => %{"template" => %{}}})
+
     assert malformed_conn.status == 400
     assert Jason.decode!(malformed_conn.resp_body)["error"]["code"] == "InvalidResourceShape"
   end
@@ -206,19 +238,31 @@ defmodule SmaltServicesTest do
 
     # Purview (DefaultShape)
     purview_type = "Microsoft.Purview/accounts"
-    conn = arm_put("/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.Purview/accounts/smalt-purview", purview_type, %{"location" => "eastus"})
+
+    conn =
+      arm_put(
+        "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.Purview/accounts/smalt-purview",
+        purview_type,
+        %{"location" => "eastus"}
+      )
+
     assert conn.status == 201
 
     # Sentinel Log Analytics Workspace (DefaultShape)
     sentinel_type = "Microsoft.OperationalInsights/workspaces"
-    sentinel_path = "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.OperationalInsights/workspaces/smalt-siem"
+
+    sentinel_path =
+      "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.OperationalInsights/workspaces/smalt-siem"
+
     conn = arm_put(sentinel_path, sentinel_type, %{"location" => "eastus"})
     assert conn.status == 201
 
     # Storage Account (StorageAccountShape: location + properties.skuName;
     # LRO type -> 202 + Azure-AsyncOperation, then poll to Succeeded)
     storage_type = "Microsoft.Storage/storageAccounts"
-    storage_path = "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.Storage/storageAccounts/smaltwormstore"
+
+    storage_path =
+      "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.Storage/storageAccounts/smaltwormstore"
 
     storage_conn =
       arm_put(storage_path, storage_type, %{
@@ -233,7 +277,14 @@ defmodule SmaltServicesTest do
 
     # EventHub Namespace (DefaultShape)
     eh_type = "Microsoft.EventHub/namespaces"
-    conn = arm_put("/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.EventHub/namespaces/smalt-events", eh_type, %{"location" => "eastus"})
+
+    conn =
+      arm_put(
+        "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.EventHub/namespaces/smalt-events",
+        eh_type,
+        %{"location" => "eastus"}
+      )
+
     assert conn.status == 201
   end
 
@@ -289,7 +340,9 @@ defmodule SmaltServicesTest do
       |> EgressRouter.call(@egress_opts)
 
     assert off_baseline_conn.status == 400
-    assert Jason.decode!(off_baseline_conn.resp_body)["error"]["code"] == "attestationFailedVerdict"
+
+    assert Jason.decode!(off_baseline_conn.resp_body)["error"]["code"] ==
+             "attestationFailedVerdict"
 
     # Negative: malformed (non-hex64) measurement is refused the same way.
     malformed_conn =
@@ -311,15 +364,18 @@ defmodule SmaltServicesTest do
     put_container =
       conn(:put, "/#{account}/#{container}", %{})
       |> put_req_header("x-ms-version", "2021-04-01")
+
     put_container = EgressRouter.call(put_container, @egress_opts)
     assert put_container.status == 201
 
     # Put Block Blob
     blob_content = "RAW BATES STAMPED LITIGATION EVIDENCE EXHIBIT A"
+
     put_blob =
       conn(:put, "/#{account}/#{container}/exhibit_a.pdf", blob_content)
       |> put_req_header("content-type", "application/pdf")
       |> put_req_header("x-ms-version", "2021-04-01")
+
     put_blob = EgressRouter.call(put_blob, @egress_opts)
     assert put_blob.status == 201
     blob_meta = Jason.decode!(put_blob.resp_body)
@@ -330,6 +386,7 @@ defmodule SmaltServicesTest do
       conn(:put, "/#{account}/#{container}/exhibit_a.pdf", "TAMPERED DATA")
       |> put_req_header("content-type", "application/pdf")
       |> put_req_header("x-ms-version", "2021-04-01")
+
     overwrite_attempt = EgressRouter.call(overwrite_attempt, @egress_opts)
     assert overwrite_attempt.status == 409
     err = Jason.decode!(overwrite_attempt.resp_body)["error"]
@@ -339,6 +396,7 @@ defmodule SmaltServicesTest do
     get_blob =
       conn(:get, "/#{account}/#{container}/exhibit_a.pdf")
       |> put_req_header("x-ms-version", "2021-04-01")
+
     get_blob = EgressRouter.call(get_blob, @egress_opts)
     assert get_blob.status == 200
     assert get_blob.resp_body == blob_content
@@ -347,6 +405,7 @@ defmodule SmaltServicesTest do
     list_xml =
       conn(:get, "/#{account}/#{container}")
       |> put_req_header("x-ms-version", "2021-04-01")
+
     list_xml = EgressRouter.call(list_xml, @egress_opts)
     assert list_xml.status == 200
     assert String.contains?(list_xml.resp_body, "<EnumerationResults")
@@ -358,6 +417,7 @@ defmodule SmaltServicesTest do
   # ===========================================================================
   test "Event Grid accepts CloudEvents 1.0 and routes to subscribers" do
     topic = "discovery-events"
+
     cloudevent = %{
       "specversion" => "1.0",
       "type" => "com.microsoft.azure.blob.created",
@@ -370,6 +430,7 @@ defmodule SmaltServicesTest do
     pub_conn =
       conn(:post, "/topics/#{topic}/events", Jason.encode!([cloudevent]))
       |> put_req_header("content-type", "application/json")
+
     pub_conn = EgressRouter.call(pub_conn, @egress_opts)
     assert pub_conn.status == 200
 

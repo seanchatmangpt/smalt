@@ -38,7 +38,8 @@ defmodule Smalt.Spc.Drift do
   FAIL verdicts, unknown gate, registry gate closed), or
   `{:error, {:malformed, term}}` on undecodable input.
   """
-  @spec emit(String.t() | map()) :: {:ok, [String.t()]} | {:ok, :skipped} | {:error, {:malformed, term()}}
+  @spec emit(String.t() | map()) ::
+          {:ok, [String.t()]} | {:ok, :skipped} | {:error, {:malformed, term()}}
   def emit(raw) when is_binary(raw) do
     json =
       raw
@@ -46,7 +47,7 @@ defmodule Smalt.Spc.Drift do
       |> Enum.reject(&String.starts_with?(&1, "[spc]"))
       |> Enum.join("\n")
 
-    case Jason.decode(json)  do
+    case Jason.decode(json) do
       {:ok, receipt} -> emit(receipt)
       {:error, reason} -> {:error, {:malformed, reason}}
     end

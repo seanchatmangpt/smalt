@@ -29,7 +29,9 @@ defmodule Mix.Tasks.Smalt.NativeLadder do
         EnclaveCommon.help!(@moduledoc)
 
       invalid != [] or argv != [] ->
-        EnclaveCommon.fail!(":bad_args task=smalt.native_ladder invalid=#{inspect(invalid)} argv=#{inspect(argv)}")
+        EnclaveCommon.fail!(
+          ":bad_args task=smalt.native_ladder invalid=#{inspect(invalid)} argv=#{inspect(argv)}"
+        )
 
       true ->
         main(opts)
@@ -41,6 +43,7 @@ defmodule Mix.Tasks.Smalt.NativeLadder do
       opts
       |> EnclaveCommon.require_flag!(:fixture, "smalt.native_ladder")
       |> EnclaveCommon.resolve_fixture()
+
     timeout_ms = Keyword.get(opts, :timeout, 60_000)
     EnclaveCommon.ensure_store!()
 

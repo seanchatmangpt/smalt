@@ -34,28 +34,33 @@ defmodule Mix.Tasks.Smalt.Doctor do
       receipt = Smalt.Enclave.Doctor.run([])
       json = Jason.encode!(receipt, pretty: true)
 
-    IO.puts(json)
+      IO.puts(json)
 
-    receipt_path =
-      case Keyword.fetch(parsed, :json_receipt) do
-        {:ok, path} ->
-          path = Path.expand(path)
-          path |> Path.dirname() |> File.mkdir_p!()
-          File.write!(path, json <> "\n")
-          File.write!(Path.expand(path), json <> "\n")
-          path
+      receipt_path =
+        case Keyword.fetch(parsed, :json_receipt) do
+          {:ok, path} ->
+            path = Path.expand(path)
+            path |> Path.dirname() |> File.mkdir_p!()
+            File.write!(path, json <> "\n")
+            File.write!(Path.expand(path), json <> "\n")
+            path
 
-        :error ->
-          ""
+          :error ->
+            ""
+        end
+
+      # OCEL emission (fail-safe): one doctor.receipt event per completed
+      # doctor run; a telemetry failure never fails the doctor.
+      case Smalt.Telemetry.CourtOcel.doctor_receipt(receipt, receipt_path) do
+        {:ok, :dropped} ->
+          IO.puts("[doctor] ocel: doctor.receipt dropped (registry gate)")
+
+        {:ok, _} ->
+          IO.puts("[doctor] ocel: doctor.receipt emitted")
+
+        {:error, reason} ->
+          IO.puts("[doctor] ocel: emission failed, dropped (fail-safe): #{inspect(reason)}")
       end
-
-    # OCEL emission (fail-safe): one doctor.receipt event per completed
-    # doctor run; a telemetry failure never fails the doctor.
-    case Smalt.Telemetry.CourtOcel.doctor_receipt(receipt, receipt_path) do
-      {:ok, :dropped} -> IO.puts("[doctor] ocel: doctor.receipt dropped (registry gate)")
-      {:ok, _} -> IO.puts("[doctor] ocel: doctor.receipt emitted")
-      {:error, reason} -> IO.puts("[doctor] ocel: emission failed, dropped (fail-safe): #{inspect(reason)}")
-    end
 
       :ok
     end)

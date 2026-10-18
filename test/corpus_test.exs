@@ -45,9 +45,18 @@ defmodule CorpusTest do
   # registered with ExUnit for THIS run — one `mix test test/corpus_test.exs`
   # executes the whole corpus.
   corpus_files =
-    ["helper", "api_version_admission", "blob_container_reput", "head_database_account_names",
-     "secret_cross_plane_seed", "cosmos_arm_container", "vault_enrichment", "eh_created_at",
-     "tags_normalization", "shacl_fuzz"]
+    [
+      "helper",
+      "api_version_admission",
+      "blob_container_reput",
+      "head_database_account_names",
+      "secret_cross_plane_seed",
+      "cosmos_arm_container",
+      "vault_enrichment",
+      "eh_created_at",
+      "tags_normalization",
+      "shacl_fuzz"
+    ]
 
   Enum.each(corpus_files, fn name ->
     Code.require_file(Path.join(@corpus_dir, "#{name}.exs"))
@@ -74,6 +83,7 @@ defmodule CorpusTest do
         end)
 
       assert File.exists?(src)
+
       assert File.read!(src) =~ token,
              "fix site token #{inspect(token)} vanished from #{module}"
     end)
@@ -84,7 +94,10 @@ defmodule CorpusTest do
 
     for name <- @corpus_modules do
       expected =
-        name |> Module.split() |> List.last() |> Macro.underscore()
+        name
+        |> Module.split()
+        |> List.last()
+        |> Macro.underscore()
         |> then(&(&1 <> ".exs"))
 
       assert expected in files, "missing corpus file #{expected} in #{@corpus_dir}"

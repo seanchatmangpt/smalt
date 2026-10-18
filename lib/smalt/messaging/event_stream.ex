@@ -66,7 +66,8 @@ defmodule Smalt.Messaging.EventStream do
   Stops at the first invalid event, returning `{:error, :invalid_cloudevent}`;
   events before it remain stored. Returns `{:ok, [id]}` when all are stored.
   """
-  @spec publish_many(String.t() | atom, [map]) :: {:ok, [String.t()]} | {:error, :invalid_cloudevent}
+  @spec publish_many(String.t() | atom, [map]) ::
+          {:ok, [String.t()]} | {:error, :invalid_cloudevent}
   def publish_many(topic, events) when is_list(events) do
     Enum.reduce_while(events, {:ok, []}, fn event, {:ok, ids} ->
       case publish(topic, event) do

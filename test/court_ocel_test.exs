@@ -56,7 +56,11 @@ defmodule Smalt.Telemetry.CourtOcelTest do
   end
 
   test "court_run emits one court.run event with stages, verdicts, run" do
-    assert {:ok, _} = CourtOcel.court_run([run: 2, verdict: "green", stages: "test,bench"], "/tmp/court.log")
+    assert {:ok, _} =
+             CourtOcel.court_run(
+               [run: 2, verdict: "green", stages: "test,bench"],
+               "/tmp/court.log"
+             )
 
     assert {:ok, doc} = OcelNdjson.read_document(log_path())
     assert [%{"type" => "court.run"} = event] = doc["ocel:events"]

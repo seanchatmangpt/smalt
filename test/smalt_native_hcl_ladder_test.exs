@@ -95,7 +95,26 @@ defmodule Smalt.NativeHclLadderTest do
 
       on_exit(fn ->
         if Process.whereis(Smalt.Store.DetsMirror) == nil do
-          _ = Smalt.Store.DetsMirror.start_link(dir: "tmp/dets")
+          # Leak fix (i21 batch 3): DetsMirror.start_link fail-closes on a
+          # missing mirror dir (dets open repair:false), so the bare restart
+          # could itself raise in on_exit and the mirror would silently stay
+          # down. mkdir_p the default dir first, then verify the restart
+          # actually landed. Disclosure: the pre-stop mirror's dir is not
+          # recoverable after GenServer.stop; every caller that leaves a
+          # default-registered mirror running at ladder time uses the
+          # default dir ("tmp/dets"), so the restart target matches the
+          # stopped process in every witnessed case.
+          File.mkdir_p!("tmp/dets")
+
+          case Smalt.Store.DetsMirror.start_link(dir: "tmp/dets") do
+            {:ok, _pid} ->
+              if Process.whereis(Smalt.Store.DetsMirror) == nil do
+                raise "DetsMirror on_exit restart did not register the name"
+              end
+
+            other ->
+              raise "DetsMirror on_exit restart failed: #{inspect(other)}"
+          end
         end
       end)
     end
@@ -205,6 +224,7 @@ defmodule Smalt.NativeHclLadderTest do
 
     # Pre-destroy: records ARE in the resource-bearing tables.
     ids = Map.values(om) |> Enum.map(& &1.id)
+
     assert Enum.all?(ids, fn id ->
              case Store.get(:smalt_resources, String.downcase(id)) do
                {:ok, _} -> true
@@ -229,5 +249,4 @@ defmodule Smalt.NativeHclLadderTest do
     # Post-destroy plan sees the world as missing (all three gone).
     assert [{:missing, _}, {:missing, _}, {:missing, _}] = State.plan(om)
   end
-
 end

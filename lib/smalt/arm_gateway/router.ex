@@ -212,7 +212,7 @@ defmodule Smalt.ArmGateway.Router do
   # - unparseable/missing grant_type -> invalid_request
   # - wrong grant_type              -> unsupported_grant_type
   # - missing client_id/secret      -> invalid_client
-    defp validate_token_request(conn) do
+  defp validate_token_request(conn) do
     params = conn.body_params
 
     # Duplicate form parameters are refused (OAuth 2.1 draft security
@@ -453,9 +453,11 @@ defmodule Smalt.ArmGateway.Router do
   # -> null on the wire; an existing non-empty map round-trips unchanged.
   # WITNESS: /tmp/tf-rg419 single-fixture apply+refresh (lane 419).
   defp normalize_tags(nil), do: nil
+
   defp normalize_tags(%{} = tags) do
     if map_size(tags) == 0, do: nil, else: tags
   end
+
   defp normalize_tags(_), do: nil
 
   # SHIM-COURT tags (2026-10-16, lane 429 reconciliation, FR-5 re-witness
@@ -780,7 +782,8 @@ defmodule Smalt.ArmGateway.Router do
       res_id = resource_id(sub_id, rg_name, ns_of(full_type), leaf_of(full_type), resource_name)
       payload = conn.body_params
 
-      record = build_resource_record(full_type, res_id, resource_name, payload, request_authority(conn))
+      record =
+        build_resource_record(full_type, res_id, resource_name, payload, request_authority(conn))
 
       # Policy enforcement hook (80/20 Azure Policy, v26.10.16 lane): assigned
       # policies at RG then subscription scope gate the generic resource PUT.
@@ -1218,17 +1221,22 @@ defmodule Smalt.ArmGateway.Router do
               handle_child_put(conn, child_type, sub_id, rg_name, rel_path)
             end
 
-          :get -> handle_child_get(conn, child_type, sub_id, rg_name, rel_path)
-          :list -> handle_child_list(conn, child_type, sub_id, rg_name, parent_rel)
+          :get ->
+            handle_child_get(conn, child_type, sub_id, rg_name, rel_path)
+
+          :list ->
+            handle_child_list(conn, child_type, sub_id, rg_name, parent_rel)
 
           # SHIM-COURT cg-default (2026-10-16, lane 526 KD row: EventHub
           # consumer-group enumeration) — real Azure always carries $default,
           # so the hub-scoped consumergroups LIST merges a synthesized $default
           # ahead of any stored records; a user-created "$default" record
           # renders verbatim exactly once.
-          :list_cg -> handle_cg_list(conn, child_type, sub_id, rg_name, parent_rel)
+          :list_cg ->
+            handle_cg_list(conn, child_type, sub_id, rg_name, parent_rel)
 
-          :delete -> handle_child_delete(conn, child_type, sub_id, rg_name, rel_path)
+          :delete ->
+            handle_child_delete(conn, child_type, sub_id, rg_name, rel_path)
         end
 
       :error ->
@@ -1340,9 +1348,7 @@ defmodule Smalt.ArmGateway.Router do
 
   defp run_sb_rule(conn, :list, base, ns, topic, sub_name, _rule_name, _sub_id) do
     prefix =
-      String.downcase(
-        "#{base}/namespaces/#{ns}/topics/#{topic}/subscriptions/#{sub_name}/rules/"
-      )
+      String.downcase("#{base}/namespaces/#{ns}/topics/#{topic}/subscriptions/#{sub_name}/rules/")
 
     stored = Smalt.SbRules.list_rules(:smalt_sb_rules, prefix)
     sub_id = base |> String.split("/") |> Enum.fetch!(2)
@@ -1358,7 +1364,9 @@ defmodule Smalt.ArmGateway.Router do
 
     filter_props =
       cond do
-        sql = filter["sqlExpression"] -> %{"sqlExpression" => sql}
+        sql = filter["sqlExpression"] ->
+          %{"sqlExpression" => sql}
+
         filter["correlationId"] != nil || filter["properties"] != nil || filter["subject"] != nil ->
           %{
             "correlationId" => filter["correlationId"],
@@ -1366,7 +1374,8 @@ defmodule Smalt.ArmGateway.Router do
             "subject" => filter["subject"]
           }
 
-        true -> %{"trueFilter" => true}
+        true ->
+          %{"trueFilter" => true}
       end
 
     Map.put(filter_props, "action", props["action"])
@@ -1480,6 +1489,7 @@ defmodule Smalt.ArmGateway.Router do
 
         {db, coll} when is_binary(db) and is_binary(coll) ->
           paths = cosmos_pk_paths(payload)
+
           if is_list(paths) and paths != [] do
             # SHIM-COURT lane 398: seed BOTH the {0, db} and {1, db, coll}
             # pk_meta records in the exact shape do_create_db/do_create_collection
@@ -1562,7 +1572,13 @@ defmodule Smalt.ArmGateway.Router do
     rel = String.downcase("vaults/#{parent}")
 
     parent_exists? =
-      match?({:ok, _}, Store.get(:smalt_resources, base <> String.downcase("providers/Microsoft.KeyVault/" <> rel))) or
+      match?(
+        {:ok, _},
+        Store.get(
+          :smalt_resources,
+          base <> String.downcase("providers/Microsoft.KeyVault/" <> rel)
+        )
+      ) or
         match?({:ok, _}, Store.get(:smalt_resources, base <> rel))
 
     params = if conn.body_params == %{}, do: conn.params, else: conn.body_params
@@ -1576,7 +1592,8 @@ defmodule Smalt.ArmGateway.Router do
           "value" => value,
           "id" => "https://#{conn.host}:8443/secrets/#{name}/#{version}",
           "attributes" => %{
-            "enabled" => get_in(conn.body_params, ["properties", "attributes", "enabled"]) || true,
+            "enabled" =>
+              get_in(conn.body_params, ["properties", "attributes", "enabled"]) || true,
             "created" => System.system_time(:second),
             "updated" => System.system_time(:second)
           },
@@ -1958,8 +1975,12 @@ defmodule Smalt.ArmGateway.Router do
   # absent (shacl-fuzz fence, v26.10.16).
   defp check_properties_member(conn, merged) when is_map(merged) do
     case Map.get(merged, "properties") do
-      nil -> :ok
-      p when is_map(p) -> :ok
+      nil ->
+        :ok
+
+      p when is_map(p) ->
+        :ok
+
       other ->
         {:respond,
          send_graphlaw_refusal(
@@ -2176,13 +2197,18 @@ defmodule Smalt.ArmGateway.Router do
            engine_hash: engine_hash
          ) do
       # {:ok, _} covers {:ok, :dropped}; both map to :ok
-      {:ok, _} -> :ok
-      {:error, reason} -> Logger.warning("SHIM-COURT lane622: affidavit.seal OCEL dropped: #{inspect(reason)}")
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("SHIM-COURT lane622: affidavit.seal OCEL dropped: #{inspect(reason)}")
     end
   rescue
-    e -> Logger.warning("SHIM-COURT lane622: affidavit.seal OCEL emission failed: #{Exception.message(e)}")
+    e ->
+      Logger.warning(
+        "SHIM-COURT lane622: affidavit.seal OCEL emission failed: #{Exception.message(e)}"
+      )
   end
-
 
   # Tariff: Smalt.FinOps.Calculator.avoided_tariff_cents/2 (F lane, contract:
   # type :: String.t() x proxy :: %{bytes: pos_integer()}) when compiled, with
@@ -2487,17 +2513,17 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id" do
     with :ok <- check_api_version(conn, nil) do
       case Store.get(:smalt_subscriptions, sub_id) do
-      {:ok, sub} ->
-        send_json(conn, 200, Jason.encode!(sub))
+        {:ok, sub} ->
+          send_json(conn, 200, Jason.encode!(sub))
 
-      :error ->
-        send_arm_error(
-          conn,
-          404,
-          "SubscriptionNotFound",
-          "The subscription '#{sub_id}' was not found.",
-          "/subscriptions/#{sub_id}"
-        )
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "SubscriptionNotFound",
+            "The subscription '#{sub_id}' was not found.",
+            "/subscriptions/#{sub_id}"
+          )
       end
     else
       {:respond, conn} -> conn
@@ -2857,22 +2883,28 @@ defmodule Smalt.ArmGateway.Router do
   # ServiceBus/EventHub namespaces; storageAccounts listKeys POST.
 
   defp handle_network_rule_set_get(conn, sub_id, rg_name, provider_ns, parent) do
-    base = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/#{provider_ns}/namespaces/#{parent}"
+    base =
+      "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/#{provider_ns}/namespaces/#{parent}"
+
     parent_key = String.downcase(base)
 
     case Store.get(:smalt_resources, parent_key) do
       {:ok, _} ->
-        send_json(conn, 200, Jason.encode!(%{
-          "id" => "#{base}/networkRuleSets/default",
-          "name" => "default",
-          "type" => "#{provider_ns}/namespaces/networkRuleSets",
-          "properties" => %{
-            "defaultAction" => "Allow",
-            "publicNetworkAccess" => "Enabled",
-            "ipRules" => [],
-            "virtualNetworkRules" => []
-          }
-        }))
+        send_json(
+          conn,
+          200,
+          Jason.encode!(%{
+            "id" => "#{base}/networkRuleSets/default",
+            "name" => "default",
+            "type" => "#{provider_ns}/namespaces/networkRuleSets",
+            "properties" => %{
+              "defaultAction" => "Allow",
+              "publicNetworkAccess" => "Enabled",
+              "ipRules" => [],
+              "virtualNetworkRules" => []
+            }
+          })
+        )
 
       :error ->
         send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
@@ -2880,24 +2912,33 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp handle_authorization_rule_list_keys(conn, sub_id, rg_name, provider_ns, parent, rule) do
-    base = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/#{provider_ns}/namespaces/#{parent}"
+    base =
+      "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/#{provider_ns}/namespaces/#{parent}"
+
     parent_key = String.downcase(base)
 
     case Store.get(:smalt_resources, parent_key) do
       {:ok, _} ->
         primary = Base.encode64(:crypto.hash(:sha256, "#{provider_ns}/#{parent}/#{rule}/primary"))
-        secondary = Base.encode64(:crypto.hash(:sha256, "#{provider_ns}/#{parent}/#{rule}/secondary"))
+
+        secondary =
+          Base.encode64(:crypto.hash(:sha256, "#{provider_ns}/#{parent}/#{rule}/secondary"))
+
         endpoint = "https://#{parent}.servicebus.smalt.local:443/"
 
-        send_json(conn, 200, Jason.encode!(%{
-          "keyName" => rule,
-          "primaryKey" => primary,
-          "secondaryKey" => secondary,
-          "primaryConnectionString" =>
-            "Endpoint=#{endpoint};SharedAccessKeyName=#{rule};SharedAccessKey=#{primary}",
-          "secondaryConnectionString" =>
-            "Endpoint=#{endpoint};SharedAccessKeyName=#{rule};SharedAccessKey=#{secondary}"
-        }))
+        send_json(
+          conn,
+          200,
+          Jason.encode!(%{
+            "keyName" => rule,
+            "primaryKey" => primary,
+            "secondaryKey" => secondary,
+            "primaryConnectionString" =>
+              "Endpoint=#{endpoint};SharedAccessKeyName=#{rule};SharedAccessKey=#{primary}",
+            "secondaryConnectionString" =>
+              "Endpoint=#{endpoint};SharedAccessKeyName=#{rule};SharedAccessKey=#{secondary}"
+          })
+        )
 
       :error ->
         send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
@@ -2905,7 +2946,9 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp handle_storage_list_keys(conn, sub_id, rg_name, parent) do
-    base = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/Microsoft.Storage/storageAccounts/#{parent}"
+    base =
+      "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/Microsoft.Storage/storageAccounts/#{parent}"
+
     parent_key = String.downcase(base)
 
     case Store.get(:smalt_resources, parent_key) do
@@ -2913,13 +2956,17 @@ defmodule Smalt.ArmGateway.Router do
         key1 = Base.encode64(:crypto.hash(:sha256, "storage/#{parent}/key1"))
         key2 = Base.encode64(:crypto.hash(:sha256, "storage/#{parent}/key2"))
 
-        send_json(conn, 200, Jason.encode!(%{
-          "keys" => [
-            %{"keyName" => "key1", "value" => key1, "permissions" => "FULL"},
-            %{"keyName" => "key2", "value" => key2, "permissions" => "FULL"}
-          ],
-          "storageAccountName" => parent
-        }))
+        send_json(
+          conn,
+          200,
+          Jason.encode!(%{
+            "keys" => [
+              %{"keyName" => "key1", "value" => key1, "permissions" => "FULL"},
+              %{"keyName" => "key2", "value" => key2, "permissions" => "FULL"}
+            ],
+            "storageAccountName" => parent
+          })
+        )
 
       :error ->
         send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
@@ -2950,7 +2997,14 @@ defmodule Smalt.ArmGateway.Router do
 
   post "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/authorizationRules/:rule/listKeys" do
     if fr5_parent_exists?(sub_id, rg_name, "providers/Microsoft.ServiceBus/namespaces/#{parent}") do
-      handle_authorization_rule_list_keys(conn, sub_id, rg_name, "Microsoft.ServiceBus", parent, rule)
+      handle_authorization_rule_list_keys(
+        conn,
+        sub_id,
+        rg_name,
+        "Microsoft.ServiceBus",
+        parent,
+        rule
+      )
     else
       send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
     end
@@ -2958,14 +3012,25 @@ defmodule Smalt.ArmGateway.Router do
 
   post "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.EventHub/namespaces/:parent/authorizationRules/:rule/listKeys" do
     if fr5_parent_exists?(sub_id, rg_name, "providers/Microsoft.EventHub/namespaces/#{parent}") do
-      handle_authorization_rule_list_keys(conn, sub_id, rg_name, "Microsoft.EventHub", parent, rule)
+      handle_authorization_rule_list_keys(
+        conn,
+        sub_id,
+        rg_name,
+        "Microsoft.EventHub",
+        parent,
+        rule
+      )
     else
       send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
     end
   end
 
   post "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Storage/storageAccounts/:parent/listKeys" do
-    if fr5_parent_exists?(sub_id, rg_name, "providers/Microsoft.Storage/storageAccounts/#{parent}") do
+    if fr5_parent_exists?(
+         sub_id,
+         rg_name,
+         "providers/Microsoft.Storage/storageAccounts/#{parent}"
+       ) do
       handle_storage_list_keys(conn, sub_id, rg_name, parent)
     else
       send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
@@ -2978,6 +3043,7 @@ defmodule Smalt.ArmGateway.Router do
   # an azurerm_key_vault_secret apply is visible on the 8443 data plane.
   put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.KeyVault/vaults/:parent/secrets/:name" do
     seed_data_plane_secret(conn, sub_id, rg_name, parent, name)
+
     handle_parented_child(
       conn,
       :put,
@@ -3754,11 +3820,23 @@ defmodule Smalt.ArmGateway.Router do
           if renderable_record?(record) do
             send_json(conn, 200, Jason.encode!(record))
           else
-            send_arm_error(conn, 404, "ResourceNotFound", "The Resource '#{name}' was not found.", key)
+            send_arm_error(
+              conn,
+              404,
+              "ResourceNotFound",
+              "The Resource '#{name}' was not found.",
+              key
+            )
           end
 
         :error ->
-          send_arm_error(conn, 404, "ResourceNotFound", "The Resource '#{name}' was not found.", key)
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The Resource '#{name}' was not found.",
+            key
+          )
       end
     else
       {:respond, conn} -> conn
@@ -3921,8 +3999,16 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id/providers/Microsoft.Authorization/roleAssignments/:name" do
     with :ok <- check_api_version(conn, @ra_type) do
       case Policy.get_role_assignment("/subscriptions/#{sub_id}", name) do
-        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
-        :error -> send_arm_error(conn, 404, "ResourceNotFound", "The role assignment '#{name}' was not found.")
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The role assignment '#{name}' was not found."
+          )
       end
     else
       {:respond, conn} -> conn
@@ -3968,8 +4054,16 @@ defmodule Smalt.ArmGateway.Router do
       scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
 
       case Policy.get_role_assignment(scope, name) do
-        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
-        :error -> send_arm_error(conn, 404, "ResourceNotFound", "The role assignment '#{name}' was not found.")
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The role assignment '#{name}' was not found."
+          )
       end
     else
       {:respond, conn} -> conn
@@ -3999,8 +4093,16 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id/providers/Microsoft.Authorization/roleDefinitions/:name" do
     with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
       case Policy.role_definition("/subscriptions/#{sub_id}", name) do
-        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
-        :error -> send_arm_error(conn, 404, "ResourceNotFound", "The role definition '#{name}' was not found.")
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The role definition '#{name}' was not found."
+          )
       end
     else
       {:respond, conn} -> conn
@@ -4020,8 +4122,16 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyDefinitions/:name" do
     with :ok <- check_api_version(conn, @pd_type) do
       case Policy.get_policy_definition(sub_id, name) do
-        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
-        :error -> send_arm_error(conn, 404, "ResourceNotFound", "The policy definition '#{name}' was not found.")
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy definition '#{name}' was not found."
+          )
       end
     else
       {:respond, conn} -> conn
@@ -4050,8 +4160,16 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyAssignments/:name" do
     with :ok <- check_api_version(conn, @pa_type) do
       case Policy.get_policy_assignment("/subscriptions/#{sub_id}", name) do
-        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
-        :error -> send_arm_error(conn, 404, "ResourceNotFound", "The policy assignment '#{name}' was not found.")
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy assignment '#{name}' was not found."
+          )
       end
     else
       {:respond, conn} -> conn
@@ -4090,8 +4208,16 @@ defmodule Smalt.ArmGateway.Router do
       scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
 
       case Policy.get_policy_assignment(scope, name) do
-        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
-        :error -> send_arm_error(conn, 404, "ResourceNotFound", "The policy assignment '#{name}' was not found.")
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy assignment '#{name}' was not found."
+          )
       end
     else
       {:respond, conn} -> conn
@@ -4232,7 +4358,7 @@ defmodule Smalt.ArmGateway.Router do
             "The Resource '#{resource_name}' was not found.",
             res_id
           )
-        end
+      end
     else
       {:respond, conn} -> conn
     end
@@ -4273,9 +4399,11 @@ defmodule Smalt.ArmGateway.Router do
   defp cosmos_swept_containers(keys) do
     keys
     |> Enum.flat_map(fn key ->
-      case Regex.run(~r/databaseaccounts\/[^\/]+\/sqldatabases\/([^\/]+)\/sqlcontainers\/([^\/]+)/i, key,
-               capture: :all_but_first
-             ) do
+      case Regex.run(
+             ~r/databaseaccounts\/[^\/]+\/sqldatabases\/([^\/]+)\/sqlcontainers\/([^\/]+)/i,
+             key,
+             capture: :all_but_first
+           ) do
         [db, coll] -> [{db, coll}]
         _ -> []
       end
@@ -4293,8 +4421,8 @@ defmodule Smalt.ArmGateway.Router do
       keys
       |> Enum.flat_map(fn key ->
         case Regex.run(~r/databaseaccounts\/[^\/]+\/sqldatabases\/([^\/]+)$/i, key,
-                capture: :all_but_first
-              ) do
+               capture: :all_but_first
+             ) do
           [db] -> [db]
           _ -> []
         end
@@ -4361,7 +4489,7 @@ defmodule Smalt.ArmGateway.Router do
             "The Resource '#{resource_name}' was not found.",
             res_id
           )
-        end
+      end
     else
       {:respond, conn} -> conn
     end

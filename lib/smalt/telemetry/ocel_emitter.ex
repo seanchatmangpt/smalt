@@ -42,7 +42,12 @@ defmodule Smalt.Telemetry.OcelEmitter do
   """
   @spec attach() :: :ok
   def attach do
-    case :telemetry.attach_many("smalt-ocel-emitter", attached_events(), &__MODULE__.handle_event/4, :ok) do
+    case :telemetry.attach_many(
+           "smalt-ocel-emitter",
+           attached_events(),
+           &__MODULE__.handle_event/4,
+           :ok
+         ) do
       :ok -> :ok
       {:error, :already_exists} -> :ok
     end
@@ -56,7 +61,9 @@ defmodule Smalt.Telemetry.OcelEmitter do
   def handle_event(@bandit_request_stop, measurements, metadata, _config) do
     try do
       conn = Map.get(metadata, :conn)
-      duration_ms = measurements |> Map.get(:duration, 0) |> System.convert_time_unit(:native, :millisecond)
+
+      duration_ms =
+        measurements |> Map.get(:duration, 0) |> System.convert_time_unit(:native, :millisecond)
 
       resource_id = if conn && conn.request_path, do: conn.request_path, else: "unknown"
       method = if conn && conn.method, do: conn.method, else: "UNKNOWN"
@@ -71,7 +78,8 @@ defmodule Smalt.Telemetry.OcelEmitter do
       objects = [%{"id" => resource_id, "type" => "resource", "attributes" => %{}}]
       append(event, objects)
     rescue
-      e -> Logger.error("Smalt.Telemetry.OcelEmitter: dropped bandit event: #{Exception.message(e)}")
+      e ->
+        Logger.error("Smalt.Telemetry.OcelEmitter: dropped bandit event: #{Exception.message(e)}")
     end
 
     :ok
@@ -95,7 +103,10 @@ defmodule Smalt.Telemetry.OcelEmitter do
       |> build_event(attributes)
       |> append(sanitize_objects(objects))
     else
-      Logger.warning("Smalt.Telemetry.OcelEmitter: dropping unknown event type #{inspect(event_type)}")
+      Logger.warning(
+        "Smalt.Telemetry.OcelEmitter: dropping unknown event type #{inspect(event_type)}"
+      )
+
       {:ok, :dropped}
     end
   end
@@ -140,10 +151,12 @@ defmodule Smalt.Telemetry.OcelEmitter do
   # UUIDv7 (time-ordered): 48-bit unix ms, version 7, RFC 4122 variant.
   defp uuid_v7 do
     ms = System.system_time(:millisecond)
+
     <<r1::unsigned-integer-size(12), r2::unsigned-integer-size(62), _::size(6)>> =
       :crypto.strong_rand_bytes(10)
 
-    <<a::binary-size(4), b::binary-size(2), c::binary-size(2), d::binary-size(2), e::binary-size(6)>> =
+    <<a::binary-size(4), b::binary-size(2), c::binary-size(2), d::binary-size(2),
+      e::binary-size(6)>> =
       <<ms::48, 7::4, r1::12, 2::2, r2::62>>
 
     [a, b, c, d, e]

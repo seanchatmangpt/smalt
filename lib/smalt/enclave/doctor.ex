@@ -23,7 +23,8 @@ defmodule Smalt.Enclave.Doctor do
       [
         {"native_hcl_engine", "hcl_ast_parser_conformance", fn -> check_native_hcl() end},
         {"store_invariants", "ets_baseline_identity", fn -> check_store_invariants() end},
-        {"wire_parity_gateway", "monotonic_api_version_lattice", fn -> check_wire_parity_gateway() end},
+        {"wire_parity_gateway", "monotonic_api_version_lattice",
+         fn -> check_wire_parity_gateway() end},
         {"host_transport", "darwin_keychain_trust", fn -> check_host_transport(opts) end},
         {"affidavit_wasm", "artifact_integrity_and_engine", fn -> check_affidavit_wasm() end}
       ]
@@ -108,7 +109,11 @@ defmodule Smalt.Enclave.Doctor do
       "check" => "hcl_ast_parser_conformance",
       "status" => status,
       "code" => code,
-      "details" => fault_details("parsed #{parsed}/#{length(fixtures)} terraform fixtures with 0 faults", faults)
+      "details" =>
+        fault_details(
+          "parsed #{parsed}/#{length(fixtures)} terraform fixtures with 0 faults",
+          faults
+        )
     }
   end
 
@@ -154,10 +159,12 @@ defmodule Smalt.Enclave.Doctor do
 
     with {:put_rg, conn} <- {:put_rg, put_json(rg_path, rg_api, %{"location" => "eastus"}, opts)},
          :ok <- expect_status({:put_rg, conn}, [200, 201]),
-         {:put_res, conn} <- {:put_res, put_json(res_path, topic_api, %{"location" => "eastus"}, opts)},
+         {:put_res, conn} <-
+           {:put_res, put_json(res_path, topic_api, %{"location" => "eastus"}, opts)},
          :ok <- expect_status({:put_res, conn}, [200, 201]),
          :ok <- expect_status({:get_res, wire(:get, res_path, topic_api, opts)}, [200]),
-         :ok <- expect_status({:del_res, wire(:delete, res_path, topic_api, opts)}, [200, 202, 204]),
+         :ok <-
+           expect_status({:del_res, wire(:delete, res_path, topic_api, opts)}, [200, 202, 204]),
          :ok <- expect_status({:get_res2, wire(:get, res_path, topic_api, opts)}, [404]),
          :ok <- expect_status({:del_rg, wire(:delete, rg_path, rg_api, opts)}, [200, 202, 204]),
          :ok <- expect_status({:get_rg, wire(:get, rg_path, rg_api, opts)}, [404]) do
@@ -171,6 +178,7 @@ defmodule Smalt.Enclave.Doctor do
       # the original env (previously leaked :lro_retention_ms 0 permanently).
       prior_retention = Application.get_env(:smalt, :lro_retention_ms)
       Application.put_env(:smalt, :lro_retention_ms, 0)
+
       try do
         Process.sleep(10)
         :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
@@ -299,7 +307,8 @@ defmodule Smalt.Enclave.Doctor do
                 {[{type, "latest #{latest} NOT admitted"} | faults], latests}
 
               not older_admitted ->
-                {[{type, "older version NOT admitted (lattice must be (-inf, latest])"} | faults], latests}
+                {[{type, "older version NOT admitted (lattice must be (-inf, latest])"} | faults],
+                 latests}
 
               not newer_refused ->
                 {[{type, "newer-than-latest WRONGLY admitted"} | faults], latests}
@@ -404,7 +413,8 @@ defmodule Smalt.Enclave.Doctor do
       "check" => "darwin_keychain_trust",
       "status" => "WARN",
       "code" => "DARWIN_TRUST_MISSING",
-      "details" => "smalt-dev-ca not trusted: #{decoded["reason"]} (script status=#{decoded["status"]})",
+      "details" =>
+        "smalt-dev-ca not trusted: #{decoded["reason"]} (script status=#{decoded["status"]})",
       "remediation" => %{"action" => "USE_NATIVE_MODE", "command" => "just test-native"}
     }
   end
@@ -446,7 +456,10 @@ defmodule Smalt.Enclave.Doctor do
         "code" => "AFFIDAVIT_ENGINE_UNAVAILABLE",
         "details" =>
           "affidavit engine check crashed and was refused typed: #{Exception.format(:error, e, __STACKTRACE__)}",
-        "remediation" => %{"action" => "REBUILD_ARTIFACT", "command" => "bash scripts/affidavit_wasm_build.sh"}
+        "remediation" => %{
+          "action" => "REBUILD_ARTIFACT",
+          "command" => "bash scripts/affidavit_wasm_build.sh"
+        }
       }
   end
 
@@ -492,7 +505,11 @@ defmodule Smalt.Enclave.Doctor do
             end
 
           {:error, :pin_file_missing} ->
-            warn(base, "AFFIDAVIT_WASM_DEGRADED", "sha256 pin not found (artifact present at #{path})")
+            warn(
+              base,
+              "AFFIDAVIT_WASM_DEGRADED",
+              "sha256 pin not found (artifact present at #{path})"
+            )
 
           {:error, {:mismatch, pinned, actual}} ->
             warn(

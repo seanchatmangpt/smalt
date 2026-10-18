@@ -16,7 +16,7 @@ defmodule Smalt.Compliance.C6OauthTest do
   @tid "00000000-0000-0000-0000-000000000000"
 
   setup_all do
-          SmaltTest.Lifecycle.ensure_store_up()
+    SmaltTest.Lifecycle.ensure_store_up()
 
     :ok
   end

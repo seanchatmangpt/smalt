@@ -106,7 +106,8 @@ defmodule Smalt.DataPlane.Cosmos do
 
   # Real Cosmos: resource names are 1-255 chars; "/" is reserved for the path
   # grammar (and is this engine's key delimiter).
-  defp valid_name?(name), do: is_binary(name) and byte_size(name) in 1..255 and not contains_slash?(name)
+  defp valid_name?(name),
+    do: is_binary(name) and byte_size(name) in 1..255 and not contains_slash?(name)
 
   defp contains_slash?(name), do: String.contains?(name, "/")
 
@@ -141,7 +142,8 @@ defmodule Smalt.DataPlane.Cosmos do
           {:ok, 400, %{"x-ms-request-charge" => @request_charge},
            %{
              "code" => "BadRequest",
-             "message" => "Invalid database or container name: must be 1-255 chars and must not contain '/'."
+             "message" =>
+               "Invalid database or container name: must be 1-255 chars and must not contain '/'."
            }}
       end
     else
@@ -237,12 +239,10 @@ defmodule Smalt.DataPlane.Cosmos do
         {:error, 400,
          %{
            "code" => "BadRequest",
-           "message" =>
-             "Invalid throughput: expected a positive integer, got: #{inspect(other)}"
+           "message" => "Invalid throughput: expected a positive integer, got: #{inspect(other)}"
          }}
     end
   end
-
 
   @doc "GET /dbs/:db/colls — list container records for a database."
   def list_collections(db) do
@@ -1254,29 +1254,32 @@ defmodule Smalt.DataPlane.Cosmos do
     lsn = current_lsn(db, coll)
     cont_hdr = header(headers, @continuation_header)
 
-      with :ok <- parse_list_continuation(cont_hdr, prefix, lsn, db, coll) do
-        docs =
-          @docs_table
-          |> Store.list_prefix("#{db}/#{coll}/#{prefix}")
-          |> Enum.sort_by(& &1["id"])
+    with :ok <- parse_list_continuation(cont_hdr, prefix, lsn, db, coll) do
+      docs =
+        @docs_table
+        |> Store.list_prefix("#{db}/#{coll}/#{prefix}")
+        |> Enum.sort_by(& &1["id"])
 
-        # Same ORDER-based (deletion-safe) cursor as the query feed: the token
-        # encodes the last id of the previous page, so deleting that doc
-        # mid-resume cannot skip or stall the feed (row-18 contract).
-        docs =
-          case list_cursor(cont_hdr) do
-            {:ok, _b64c, _tok_prefix, last_id} -> Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
-            :none -> docs
-          end
+      # Same ORDER-based (deletion-safe) cursor as the query feed: the token
+      # encodes the last id of the previous page, so deleting that doc
+      # mid-resume cannot skip or stall the feed (row-18 contract).
+      docs =
+        case list_cursor(cont_hdr) do
+          {:ok, _b64c, _tok_prefix, last_id} ->
+            Enum.drop_while(docs, fn d -> d["id"] <= last_id end)
 
-        page = Enum.take(docs, @query_limit)
+          :none ->
+            docs
+        end
 
-        extra =
-          if length(docs) > @query_limit do
-            %{@continuation_header => list_continuation_token(db, coll, prefix, lsn, page)}
-          else
-            %{}
-          end
+      page = Enum.take(docs, @query_limit)
+
+      extra =
+        if length(docs) > @query_limit do
+          %{@continuation_header => list_continuation_token(db, coll, prefix, lsn, page)}
+        else
+          %{}
+        end
 
       {:ok, 200, success_headers(db, coll, lsn, extra), page}
     else
@@ -1397,7 +1400,8 @@ defmodule Smalt.DataPlane.Cosmos do
       |> Store.list_prefix("#{db}/#{coll}/")
       |> Enum.sort_by(& &1["id"])
 
-    with :ok <- parse_continuation(header(headers, @continuation_header), pk_hdr, ledger, db, coll),
+    with :ok <-
+           parse_continuation(header(headers, @continuation_header), pk_hdr, ledger, db, coll),
          :ok <- query_pk_check(pk_hdr, paths) do
       docs =
         if paths == [] do
@@ -1631,7 +1635,6 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-
   # ---------------------------------------------------------------------------
   # Request gate: master-key Authorization validation + RU throttle + echo
   # ---------------------------------------------------------------------------
@@ -1857,6 +1860,7 @@ defmodule Smalt.DataPlane.Cosmos do
   """
   def rid_segment(value, chars) do
     data = value
+
     :crypto.hash(:sha256, data)
     |> Base.url_encode64(padding: false)
     |> binary_part(0, chars)

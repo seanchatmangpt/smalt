@@ -18,6 +18,7 @@ projection).
 |---|---|---|---|
 | ash | 3.36.1 | MIT | hex.pm |
 | ash_admin | 1.3.2 | MIT | hex.pm |
+| ash_ex4pm | 26.10.4 | MIT | hex.pm |
 | ash_phoenix | 2.3.25 | MIT | hex.pm |
 | ash_state_machine | 0.2.13 | MIT | hex.pm |
 | aws_signature | 0.4.3 | Apache-2.0 | hex.pm |
@@ -33,7 +34,7 @@ projection).
 | deep_merge | 1.0.2 | MIT | hex.pm |
 | ecto | 3.14.2 | Apache-2.0 | hex.pm |
 | ets | 0.9.0 | MIT | hex.pm |
-| ex4pm | 26.10.1 | UNVERIFIED | hex.pm |
+| ex4pm | 26.10.1 | MIT | hex.pm |
 | ex_ast | 0.16.0 | MIT | hex.pm |
 | explorer | 0.13.0 | MIT | hex.pm |
 | expo | 1.1.1 | Apache-2.0 | hex.pm |
@@ -103,7 +104,7 @@ projection).
 | yaml_elixir | 2.12.2 | MIT | hex.pm |
 | ymlr | 5.1.6 | MIT | hex.pm |
 
-86 packages total. License tally: MIT x47, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1, UNVERIFIED x1.
+87 packages total. License tally: MIT x49, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
 
 ## Apache-2.0 NOTICE compatibility
 
@@ -111,7 +112,6 @@ Every permissively-licensed dependency (MIT, Apache-2.0, BSD) is
 compatible with smalt's Apache-2.0 license. Packages outside the plain
 MIT / Apache-2.0 set:
 
-- **ex4pm (UNVERIFIED)**: dep source not vendored under deps/ — license could not be verified at generation time; verify before distribution.
 - **recon (BSD-3-Clause)**: outside the plain MIT / Apache-2.0 set; its LICENSE file under deps/recon/ is the distribution-time authority.
 - **rustler (MIT / Apache-2.0 (dual))**: outside the plain MIT / Apache-2.0 set; its LICENSE file under deps/rustler/ is the distribution-time authority.
 - **yamerl (BSD-2-Clause)**: outside the plain MIT / Apache-2.0 set; its LICENSE file under deps/yamerl/ is the distribution-time authority.

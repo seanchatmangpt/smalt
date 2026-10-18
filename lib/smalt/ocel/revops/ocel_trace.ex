@@ -38,31 +38,34 @@ defmodule Smalt.Ocel.RevOps.OcelTrace do
   mixed formats/timezone offsets sort lexically, not chronologically.
   Known caveat, not scheduled for fix.
   """
-  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple, primary_read_warning?: false
+  use Ash.Resource,
+    domain: Smalt.Ocel.RevOps,
+    data_layer: Ash.DataLayer.Simple,
+    primary_read_warning?: false
 
   attributes do
-    attribute :id, :string, allow_nil?: false, primary_key?: true, public?: true
+    attribute(:id, :string, allow_nil?: false, primary_key?: true, public?: true)
 
-    attribute :trace_id, :string, allow_nil?: false, public?: true
+    attribute(:trace_id, :string, allow_nil?: false, public?: true)
 
-    attribute :event_count, :integer, allow_nil?: false, public?: true
+    attribute(:event_count, :integer, allow_nil?: false, public?: true)
 
-    attribute :event_types, {:array, :string}, allow_nil?: false, public?: true
+    attribute(:event_types, {:array, :string}, allow_nil?: false, public?: true)
 
-    attribute :start_time, :utc_datetime_usec, allow_nil?: true, public?: true
+    attribute(:start_time, :utc_datetime_usec, allow_nil?: true, public?: true)
 
-    attribute :end_time, :utc_datetime_usec, allow_nil?: true, public?: true
+    attribute(:end_time, :utc_datetime_usec, allow_nil?: true, public?: true)
   end
 
   actions do
-    defaults []
+    defaults([])
 
     read :read do
-      primary? true
+      primary?(true)
 
-      argument :events_path, :string, allow_nil?: false, default: "tmp/ocel/events.ndjson"
+      argument(:events_path, :string, allow_nil?: false, default: "tmp/ocel/events.ndjson")
 
-      prepare fn query, _context ->
+      prepare(fn query, _context ->
         path = query.arguments.events_path
 
         records =
@@ -91,12 +94,12 @@ defmodule Smalt.Ocel.RevOps.OcelTrace do
           end
 
         Ash.DataLayer.Simple.set_data(query, records)
-      end
+      end)
     end
   end
 
   code_interface do
-    define :read_traces, action: :read
+    define(:read_traces, action: :read)
   end
 
   defp parse_ts(nil), do: nil

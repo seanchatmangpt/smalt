@@ -59,6 +59,7 @@ defmodule Smalt.PPlanTest do
 
   defp assert_no_leaks(tracer) do
     send(tracer, {:finish, self()})
+
     leaks =
       receive do
         {:leaks, leaks} -> leaks
@@ -70,9 +71,10 @@ defmodule Smalt.PPlanTest do
     # node-lifetime infrastructure: restart rows re-create it from the test
     # process and it outlives the test BY CONTRACT. Everything else the test
     # spawned must be dead.
-    leaks = Enum.reject(leaks, fn pid ->
-      Process.info(pid, :registered_name) |> elem(1) == Smalt.PPlan.Task
-    end)
+    leaks =
+      Enum.reject(leaks, fn pid ->
+        Process.info(pid, :registered_name) |> elem(1) == Smalt.PPlan.Task
+      end)
 
     assert leaks == [],
            "test leaked #{Enum.count(leaks)} spawned process(es) past its end: " <>
@@ -217,7 +219,11 @@ defmodule Smalt.PPlanTest do
       # under the original store key (key/record split-brain). The pre-fence
       # behaviour is exactly a bare Enum.reduce of the patch over the task:
       # exhibit it to prove this row would fail without the fence.
-      unfenced = Enum.reduce([id: "pplan-hijacked-key", status: :failed], t1, fn {k, v}, acc -> Map.put(acc, k, v) end)
+      unfenced =
+        Enum.reduce([id: "pplan-hijacked-key", status: :failed], t1, fn {k, v}, acc ->
+          Map.put(acc, k, v)
+        end)
+
       assert unfenced.id != stored.id
       assert unfenced.status != stored.status
     end
@@ -411,6 +417,7 @@ defmodule Smalt.PPlanTest do
 
       stored = Task.get(id)
       assert stored.status in [:succeeded, :failed]
+
       assert Enum.count(results, fn
                {:ok, t} -> t.status == stored.status
                _ -> false
@@ -480,7 +487,13 @@ defmodule Smalt.PPlanTest do
 
       {:ok, _} = Task.put(new_task(id))
 
-      claimant = spawn(fn -> receive do :stop -> :ok end end)
+      claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, _} = Task.claim(id, claimant)
 
       Process.exit(claimant, :kill)
@@ -511,6 +524,7 @@ defmodule Smalt.PPlanTest do
             # No synchronization: the kill can land before, during, or after
             # the claim CAS settles inside the Store GenServer.
             send(me, {:claimed, Task.claim(id, self())})
+
             receive do
               :stop -> :ok
             end
@@ -573,7 +587,13 @@ defmodule Smalt.PPlanTest do
       # 19 kill-mid-run cycles: claim -> kill claimant -> recover. Attempts
       # increment exactly once per claim and are never reset by recover.
       for n <- 1..19 do
-        claimant = spawn(fn -> receive do :stop -> :ok end end)
+        claimant =
+          spawn(fn ->
+            receive do
+              :stop -> :ok
+            end
+          end)
+
         assert {:ok, claimed} = Task.claim(id, claimant)
         assert claimed.attempts == n
 
@@ -616,12 +636,24 @@ defmodule Smalt.PPlanTest do
 
       for id <- ids, do: {:ok, _} = Task.put(new_task(id))
 
-      dead_claimant = spawn(fn -> receive do :stop -> :ok end end)
+      dead_claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, _} = Task.claim(dead_id, dead_claimant)
 
       assert {:ok, _} = Task.claim(alive_id, self())
 
-      failed_claimant = spawn(fn -> receive do :stop -> :ok end end)
+      failed_claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, f1} = Task.claim(failed_id, failed_claimant)
       {:ok, f2} = Task.transition(f1, :failed, error: "terminal")
       assert f2.status == :failed
@@ -703,7 +735,13 @@ defmodule Smalt.PPlanTest do
       on_exit(fn -> cleanup([id]) end)
 
       {:ok, _} = Task.put(new_task(id))
-      holder = spawn(fn -> receive do :stop -> :ok end end)
+
+      holder =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
 
       assert {:ok, _} = Task.claim(id, holder)
       assert :taken = Task.claim(id, :other)
@@ -769,7 +807,12 @@ defmodule Smalt.PPlanTest do
       # (stripped pre-reduce), only genuinely caller-owned payload keys land.
       # Holder is joined (killed) after the transition (holder-leak audit,
       # lens8 cycle-1) — previously leaked alive for the rest of the suite.
-      hijack_claimant = spawn(fn -> receive do :stop -> :ok end end)
+      hijack_claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
 
       hijack = %{
         id: "pplan-hijacked",
@@ -800,7 +843,14 @@ defmodule Smalt.PPlanTest do
       on_exit(fn -> cleanup([id]) end)
 
       {:ok, _} = Task.put(new_task(id))
-      claimant = spawn(fn -> receive do :stop -> :ok end end)
+
+      claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, claimed} = Task.claim(id, claimant)
 
       results =
@@ -844,7 +894,10 @@ defmodule Smalt.PPlanTest do
       # Exhibit the unfenced behaviour (bare reduce over the patch, the exact
       # pre-fix reduce): the forged lease lands and the attempts bump is
       # skipped — precisely what the fence must refuse.
-      unfenced = Enum.reduce([claimed_by: self(), attempts: 1], t0, fn {k, v}, acc -> Map.put(acc, k, v) end)
+      unfenced =
+        Enum.reduce([claimed_by: self(), attempts: 1], t0, fn {k, v}, acc ->
+          Map.put(acc, k, v)
+        end)
 
       assert unfenced.claimed_by == self()
       assert unfenced.attempts == 1
@@ -867,7 +920,13 @@ defmodule Smalt.PPlanTest do
 
       {:ok, _} = Task.put(new_task(id))
 
-      claimant = spawn(fn -> receive do :stop -> :ok end end)
+      claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, _} = Task.claim(id, claimant)
 
       Process.exit(claimant, :kill)
@@ -881,14 +940,18 @@ defmodule Smalt.PPlanTest do
       # "no reuse within 2000 subsequent pid allocations on this node".
       replacements =
         for _ <- 1..2000 do
-          spawn(fn -> receive do :stop -> :ok end end)
+          spawn(fn ->
+            receive do
+              :stop -> :ok
+            end
+          end)
         end
 
       reuse = Enum.count(replacements, &(&1 == claimant))
       assert reuse == 0, "pid reuse witnessed within 2000 allocations: #{inspect(claimant)}"
 
       for pid <- replacements, do: Process.exit(pid, :kill)
-      wait_until(fn -> Enum.all?(replacements, &not Process.alive?(&1)) end)
+      wait_until(fn -> Enum.all?(replacements, &(not Process.alive?(&1))) end)
 
       # The sweep recovers the lease despite the replacement pressure — OR the
       # BEAM recycled the dead claimant's pid in the [death, sweep] window:
@@ -924,7 +987,14 @@ defmodule Smalt.PPlanTest do
       on_exit(fn -> cleanup([id]) end)
 
       {:ok, _} = Task.put(new_task(id))
-      claimant = spawn(fn -> receive do :stop -> :ok end end)
+
+      claimant =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, _} = Task.claim(id, claimant)
 
       {kill_us, _} =
@@ -976,6 +1046,7 @@ defmodule Smalt.PPlanTest do
 
       for {from, to} <- Task.transitions() do
         edge = {@pcp_map[from], @pcp_map[to]}
+
         assert edge in ontology,
                "court drift: machine edge #{inspect({from, to})} (#{inspect(edge)}) " <>
                  "has no pcp:t_* counterpart in the protocol-court ontology"
@@ -1018,7 +1089,13 @@ defmodule Smalt.PPlanTest do
 
       @ontology_path
       |> File.read!()
-      |> then(&Regex.scan(~r/pcp:t_\w+\s+a\s+pcp:Transition.*?pcp:from\s+pcp:s_(\w+)\s*;\s*pcp:to\s+pcp:s_(\w+)/s, &1, capture: :all_but_first))
+      |> then(
+        &Regex.scan(
+          ~r/pcp:t_\w+\s+a\s+pcp:Transition.*?pcp:from\s+pcp:s_(\w+)\s*;\s*pcp:to\s+pcp:s_(\w+)/s,
+          &1,
+          capture: :all_but_first
+        )
+      )
       |> Enum.map(fn [from, to] -> {from, to} end)
     end
 
@@ -1069,6 +1146,7 @@ defmodule Smalt.PPlanTest do
       for n <- 1..n do
         spawn(fn ->
           send(me, {:ready, self()})
+
           receive do
             :go -> :ok
           end
@@ -1082,6 +1160,7 @@ defmodule Smalt.PPlanTest do
         {:ready, _pid} -> :ok
       end
     end
+
     for pid <- racers, do: send(pid, :go)
 
     by_pid =
@@ -1225,7 +1304,12 @@ defmodule Smalt.PPlanTest do
   defp candidate_ops(_status, false), do: [:recover_sweep, :terminal, :illegal_transition]
 
   defp apply_op(:claim, id, m) do
-    claimant = spawn(fn -> receive do :stop -> :ok end end)
+    claimant =
+      spawn(fn ->
+        receive do
+          :stop -> :ok
+        end
+      end)
 
     case Task.claim(id, claimant) do
       {:ok, _} ->
@@ -1403,7 +1487,13 @@ defmodule Smalt.PPlanTest do
 
       {:ok, _} = Task.put(new_task(id))
 
-      foreign = spawn(fn -> receive do :stop -> :ok end end)
+      foreign =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       assert {:ok, _} = Task.claim(id, foreign)
 
       # The claimant is alive (not the test process): dead?/1 must see alive.
@@ -1470,9 +1560,18 @@ defmodule Smalt.PPlanTest do
 
         claimant =
           case cs do
-            :claimed_self -> self()
-            :claimed_dead -> spawn(fn -> receive do :stop -> :ok end end)
-            _ -> nil
+            :claimed_self ->
+              self()
+
+            :claimed_dead ->
+              spawn(fn ->
+                receive do
+                  :stop -> :ok
+                end
+              end)
+
+            _ ->
+              nil
           end
 
         if cs == :claimed_dead do
@@ -1615,6 +1714,7 @@ defmodule Smalt.PPlanTest do
       assert {:error, {:invalid_record, :attempts}} = Task.put(%{new_task(id) | attempts: -1})
       assert {:error, {:invalid_record, :attempts}} = Task.put(%{new_task(id) | attempts: 1.5})
       assert {:error, {:invalid_record, :attempts}} = Task.put(%{new_task(id) | attempts: false})
+
       assert {:error, {:invalid_record, :attempts}} =
                Task.put(Map.delete(new_task(id), :attempts))
 
@@ -1675,9 +1775,11 @@ defmodule Smalt.PPlanTest do
       atom_worker = :worker_pool
 
       assert {:ok, _} =
-               (Task.delete(id)
-                Task.put(new_task(id))
-                Task.claim(id, atom_worker))
+               (
+                 Task.delete(id)
+                 Task.put(new_task(id))
+                 Task.claim(id, atom_worker)
+               )
     end
 
     test "attempts cap pin: no cap exists — claim works at arbitrary bignum attempts" do
@@ -1762,7 +1864,9 @@ defmodule Smalt.PPlanTest do
 
                 {:error, :conflict} ->
                   {m, rng2}
-                _ -> {m, rng2}
+
+                _ ->
+                  {m, rng2}
               end
 
             :put_rewrite ->
@@ -1811,7 +1915,6 @@ defmodule Smalt.PPlanTest do
       if is_pid(model.alive_claimant) and Process.alive?(model.alive_claimant),
         do: Process.exit(model.alive_claimant, :kill)
     end
-
   end
 
   # ------------------------------------------------------------------
@@ -1825,7 +1928,13 @@ defmodule Smalt.PPlanTest do
     @describetag :pplan_lens5
 
     defp spawn_holder do
-      pid = spawn(fn -> receive do :stop -> :ok end end)
+      pid =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       on_exit(fn -> if Process.alive?(pid), do: Process.exit(pid, :kill) end)
       pid
     end
@@ -1918,8 +2027,11 @@ defmodule Smalt.PPlanTest do
       # never stuck (terminal edge reachable from running; absorbing from
       # succeeded).
       case stored.status do
-        :running -> assert {:ok, _} = Task.transition(stored, :succeeded)
-        :succeeded -> assert {:error, {:refused, :succeeded, _}} = Task.transition(stored, :failed)
+        :running ->
+          assert {:ok, _} = Task.transition(stored, :succeeded)
+
+        :succeeded ->
+          assert {:error, {:refused, :succeeded, _}} = Task.transition(stored, :failed)
       end
     end
 
@@ -2144,8 +2256,11 @@ defmodule Smalt.PPlanTest do
 
       # Composite no-stuck: settle to a claimable state and reclaim.
       case stored.status do
-        :running -> assert {:error, {:refused, :running, :admitted}} = Task.transition(stored, :admitted)
-        :admitted -> assert {:ok, _} = Task.claim(id, self())
+        :running ->
+          assert {:error, {:refused, :running, :admitted}} = Task.transition(stored, :admitted)
+
+        :admitted ->
+          assert {:ok, _} = Task.claim(id, self())
       end
     end
 
@@ -2158,30 +2273,31 @@ defmodule Smalt.PPlanTest do
 
       # Drive every public mutation surface through 3 full cycles, asserting
       # attempts never regresses at any observation point.
-      seen = for cycle <- 1..3 do
-        assert {:ok, claimed} = Task.claim(id, self())
-        # The previous cycle reset attempts to 0 via the fenced put escape,
-        # so this claim observes exactly one bump.
-        assert claimed.attempts == 1
-        assert Task.get(id).attempts == 1
+      seen =
+        for cycle <- 1..3 do
+          assert {:ok, claimed} = Task.claim(id, self())
+          # The previous cycle reset attempts to 0 via the fenced put escape,
+          # so this claim observes exactly one bump.
+          assert claimed.attempts == 1
+          assert Task.get(id).attempts == 1
 
-        # A concurrent recover sweep during a live claim must not touch it.
-        assert Task.recover() |> Enum.all?(&(&1.id != id))
-        assert Task.get(id).attempts == 1
+          # A concurrent recover sweep during a live claim must not touch it.
+          assert Task.recover() |> Enum.all?(&(&1.id != id))
+          assert Task.get(id).attempts == 1
 
-        # Terminal transition preserves; refused transition preserves.
-        assert {:ok, t} = Task.transition(claimed, :succeeded, effects: %{"c" => cycle})
-        assert t.attempts == 1
-        assert {:error, {:refused, :succeeded, :running}} = Task.transition(t, :running)
-        assert Task.get(id).attempts == 1
-        assert Task.recover() |> Enum.all?(&(&1.id != id))
-        assert Task.get(id).attempts == 1
+          # Terminal transition preserves; refused transition preserves.
+          assert {:ok, t} = Task.transition(claimed, :succeeded, effects: %{"c" => cycle})
+          assert t.attempts == 1
+          assert {:error, {:refused, :succeeded, :running}} = Task.transition(t, :running)
+          assert Task.get(id).attempts == 1
+          assert Task.recover() |> Enum.all?(&(&1.id != id))
+          assert Task.get(id).attempts == 1
 
-        # Cycle reset goes through the ONE lawful decrement path: the fenced
-        # manual put/1 escape (documented operator lever).
-        assert {:ok, _} = Task.put(%{new_task(id) | attempts: 0})
-        Task.get(id).attempts
-      end
+          # Cycle reset goes through the ONE lawful decrement path: the fenced
+          # manual put/1 escape (documented operator lever).
+          assert {:ok, _} = Task.put(%{new_task(id) | attempts: 0})
+          Task.get(id).attempts
+        end
 
       assert seen == [0, 0, 0]
 
@@ -2367,7 +2483,7 @@ defmodule Smalt.PPlanTest do
             after
               0 ->
                 Process.sleep(1)
-              loop.(loop)
+                loop.(loop)
             end
           end
 
@@ -2477,7 +2593,14 @@ defmodule Smalt.PPlanTest do
       id = "pplan-test-l6-restart-wipe"
       on_exit(fn -> cleanup([id]) end)
       {:ok, _} = Task.put(new_task(id))
-      holder = spawn(fn -> receive do :stop -> :ok end end)
+
+      holder =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       {:ok, _} = Task.claim(id, holder)
 
       # Named ETS tables die with their owner: re-ensure starts an EMPTY table.
@@ -2536,7 +2659,13 @@ defmodule Smalt.PPlanTest do
       # Lens8 cross-check: seed a tombstone whose holder is killed only AFTER
       # the restart, so recovery across a REAL restart (not the manual
       # terminate_child path the lens7 row uses) is pinned on this row too.
-      holder = spawn(fn -> receive do :stop -> :ok end end)
+      holder =
+        spawn(fn ->
+          receive do
+            :stop -> :ok
+          end
+        end)
+
       {:ok, _} = Task.put(%{new_task(tomb_id) | status: :running, claimed_by: holder})
       {:ok, _} = Task.put(new_task(probe_id))
 
@@ -2620,7 +2749,9 @@ defmodule Smalt.PPlanTest do
       # Harness-carried ledger re-seeds (attempts==6, lease to the holder, as
       # claimed pre-boundary); the law (only claims touch attempts) holds on
       # the re-seeded subject.
-      {:ok, _} = Task.put(%{seeded | attempts: 6, status: :running, claimed_by: holder, updated_at: 0})
+      {:ok, _} =
+        Task.put(%{seeded | attempts: 6, status: :running, claimed_by: holder, updated_at: 0})
+
       assert Task.get(id).attempts == 6
       kill_and_wait(holder)
       assert [%{id: ^id, attempts: 6, status: :admitted, claimed_by: nil}] = Task.recover()
@@ -2651,7 +2782,13 @@ defmodule Smalt.PPlanTest do
             run_racers(40, fn _n ->
               cond do
                 op == :claim ->
-                  claimant = spawn(fn -> receive do :stop -> :ok end end)
+                  claimant =
+                    spawn(fn ->
+                      receive do
+                        :stop -> :ok
+                      end
+                    end)
+
                   res = Task.claim(id, claimant)
                   send(claimant, :stop)
                   res
@@ -2679,7 +2816,7 @@ defmodule Smalt.PPlanTest do
                   # recover: only meaningful when a dead lease exists; the
                   # law checked is "never crashes, never invents records".
                   is_list(Task.recover()) and length(Task.recover()) <= 1
-                end
+              end
             end)
 
           cond do
@@ -2718,6 +2855,7 @@ defmodule Smalt.PPlanTest do
 
     test "Store down: reads/writes keep working, CAS paths exit {:noproc, _}, typed" do
       id = "pplan-test-lens7-store-down-half-degraded"
+
       on_exit(fn ->
         cleanup([id])
         # Safety net: never leave the substrate Store down for the suite.
@@ -2730,6 +2868,7 @@ defmodule Smalt.PPlanTest do
 
       # Hold Store down deterministically (manual terminate, no intensity cost).
       :ok = Supervisor.terminate_child(Smalt.Supervisor, Smalt.Store)
+
       try do
         assert Process.whereis(Smalt.Store) == nil
 
@@ -2756,7 +2895,13 @@ defmodule Smalt.PPlanTest do
 
         # recover/0: list() works, but the FIRST dead-lease CAS exits — pin the
         # typed exit even on a table with work to do (seed a hand-built tombstone).
-        {:ok, _} = Task.put(%{new_task(id <> "-tomb") | status: :running, claimed_by: spawn(fn -> :ok end)})
+        {:ok, _} =
+          Task.put(%{
+            new_task(id <> "-tomb")
+            | status: :running,
+              claimed_by: spawn(fn -> :ok end)
+          })
+
         tomb = Task.get(id <> "-tomb")
         wait_until(fn -> not Process.alive?(tomb.claimed_by) end)
         assert :typed = noproc.(fn -> Task.recover() end)
@@ -2809,5 +2954,4 @@ defmodule Smalt.PPlanTest do
 
     :ok
   end
-
 end

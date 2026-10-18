@@ -231,7 +231,8 @@ defmodule Smalt.Store do
   def compare_and_swap_delete(table, key, expect) do
     # Same fail-closed contract as compare_and_swap/4.
     if :ets.info(table) == :undefined do
-      raise ArgumentError, "Smalt.Store.compare_and_swap_delete/3: unknown table #{inspect(table)}"
+      raise ArgumentError,
+            "Smalt.Store.compare_and_swap_delete/3: unknown table #{inspect(table)}"
     end
 
     GenServer.call(__MODULE__, {:cas_delete, table, key, expect})
@@ -305,8 +306,15 @@ defmodule Smalt.Store do
 
     if Application.get_env(:smalt, :sentinel_forensic, false) do
       case :ets.info(:smalt_sentinel_forensic) do
-        :undefined -> :ok
-        _ -> :ets.insert(:smalt_sentinel_forensic, {System.unique_integer([:monotonic, :positive]), {:cas, table, key, expect, new, look}, self()})
+        :undefined ->
+          :ok
+
+        _ ->
+          :ets.insert(
+            :smalt_sentinel_forensic,
+            {System.unique_integer([:monotonic, :positive]),
+             {:cas, table, key, expect, new, look}, self()}
+          )
       end
     end
 

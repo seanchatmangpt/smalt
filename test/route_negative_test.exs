@@ -39,9 +39,13 @@ defmodule SmaltRouteNegativeTest do
 
   test "provider PUT without api-version -> 400 MissingApiVersionParameter" do
     conn =
-      conn(:put, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1", %{
-        "location" => "smalt-local"
-      })
+      conn(
+        :put,
+        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1",
+        %{
+          "location" => "smalt-local"
+        }
+      )
       |> Router.call(@opts)
 
     assert conn.status == 400
@@ -90,7 +94,10 @@ defmodule SmaltRouteNegativeTest do
 
   test "generic provider LIST without api-version -> 400 MissingApiVersionParameter (400 before 404)" do
     conn =
-      conn(:get, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts")
+      conn(
+        :get,
+        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts"
+      )
       |> Router.call(@opts)
 
     assert conn.status == 400
@@ -111,7 +118,10 @@ defmodule SmaltRouteNegativeTest do
 
   test "generic provider DELETE without api-version -> 400 MissingApiVersionParameter (400 before 404)" do
     conn =
-      conn(:delete, "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1")
+      conn(
+        :delete,
+        "/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.Storage/storageAccounts/acct1"
+      )
       |> Router.call(@opts)
 
     assert conn.status == 400
@@ -160,14 +170,22 @@ defmodule SmaltRouteNegativeTest do
   test "type-scoped LIST does not leak deep-type descendants (real-ARM parity)" do
     rg = "/subscriptions/sub-1/resourceGroups/rg-1"
     sa_v = Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts")
-    c_v = Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
+
+    c_v =
+      Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
 
     Store.put(
       :smalt_resources,
       String.downcase(rg <> "/providers/microsoft.storage/storageaccounts/st-1"),
-      %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-1",
-        "type" => "Microsoft.Storage/storageAccounts", "name" => "st-1", "location" => "eastus",
-        "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+      %{
+        "id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-1",
+        "type" => "Microsoft.Storage/storageAccounts",
+        "name" => "st-1",
+        "location" => "eastus",
+        "properties" => %{},
+        "tags" => %{},
+        "systemData" => %{}
+      }
     )
 
     # A providers-shaped deep-type record (the only shape that can physically
@@ -176,10 +194,21 @@ defmodule SmaltRouteNegativeTest do
     # reach this prefix — the filter pins the hostile/misshapen case only.
     Store.put(
       :smalt_resources,
-      String.downcase(rg <> "/providers/microsoft.storage/storageaccounts/st-1/blobservices/default/containers/c-1"),
-      %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-1/blobServices/default/containers/c-1",
-        "type" => "Microsoft.Storage/storageAccounts/blobServices/containers", "name" => "c-1",
-        "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+      String.downcase(
+        rg <>
+          "/providers/microsoft.storage/storageaccounts/st-1/blobservices/default/containers/c-1"
+      ),
+      %{
+        "id" =>
+          rg <>
+            "/providers/Microsoft.Storage/storageAccounts/st-1/blobServices/default/containers/c-1",
+        "type" => "Microsoft.Storage/storageAccounts/blobServices/containers",
+        "name" => "c-1",
+        "location" => "eastus",
+        "properties" => %{},
+        "tags" => %{},
+        "systemData" => %{}
+      }
     )
 
     conn =
@@ -202,9 +231,15 @@ defmodule SmaltRouteNegativeTest do
     Store.put(
       :smalt_resources,
       String.downcase(rg <> "/storageaccounts/st-1/blobservices/default/containers/c-2"),
-      %{"id" => rg <> "/storageAccounts/st-1/blobServices/default/containers/c-2",
-        "type" => "Microsoft.Storage/storageAccounts/blobServices/containers", "name" => "c-2",
-        "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+      %{
+        "id" => rg <> "/storageAccounts/st-1/blobServices/default/containers/c-2",
+        "type" => "Microsoft.Storage/storageAccounts/blobServices/containers",
+        "name" => "c-2",
+        "location" => "eastus",
+        "properties" => %{},
+        "tags" => %{},
+        "systemData" => %{}
+      }
     )
 
     conn2 =
@@ -225,7 +260,9 @@ defmodule SmaltRouteNegativeTest do
   # so the record lands OUTSIDE the generic type-scoped LIST prefix scan.
   test "live child PUT stores without a /providers key segment (leak filter is defense-in-depth)" do
     rg = "/subscriptions/sub-1/resourceGroups/rg-1"
-    c_v = Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
+
+    c_v =
+      Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
 
     conn =
       conn(
@@ -285,7 +322,9 @@ defmodule SmaltRouteNegativeTest do
   test "type-scoped LIST filter composes with nextLink pagination (followed pages honor the filter)" do
     rg = "/subscriptions/sub-1/resourceGroups/rg-1"
     sa_v = Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts")
-    c_v = Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
+
+    c_v =
+      Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")
 
     parent_names = for i <- 0..149, do: "st-#{i}"
     deep_names = for i <- 0..49, do: "c-#{i}"
@@ -294,9 +333,15 @@ defmodule SmaltRouteNegativeTest do
       Store.put(
         :smalt_resources,
         String.downcase(rg <> "/providers/microsoft.storage/storageaccounts/#{name}"),
-        %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/#{name}",
-          "type" => "Microsoft.Storage/storageAccounts", "name" => name,
-          "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+        %{
+          "id" => rg <> "/providers/Microsoft.Storage/storageAccounts/#{name}",
+          "type" => "Microsoft.Storage/storageAccounts",
+          "name" => name,
+          "location" => "eastus",
+          "properties" => %{},
+          "tags" => %{},
+          "systemData" => %{}
+        }
       )
     end
 
@@ -304,11 +349,20 @@ defmodule SmaltRouteNegativeTest do
       Store.put(
         :smalt_resources,
         String.downcase(
-          rg <> "/providers/microsoft.storage/storageaccounts/st-1/blobservices/default/containers/#{name}"
+          rg <>
+            "/providers/microsoft.storage/storageaccounts/st-1/blobservices/default/containers/#{name}"
         ),
-        %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-1/blobServices/default/containers/#{name}",
-          "type" => "Microsoft.Storage/storageAccounts/blobServices/containers", "name" => name,
-          "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+        %{
+          "id" =>
+            rg <>
+              "/providers/Microsoft.Storage/storageAccounts/st-1/blobServices/default/containers/#{name}",
+          "type" => "Microsoft.Storage/storageAccounts/blobServices/containers",
+          "name" => name,
+          "location" => "eastus",
+          "properties" => %{},
+          "tags" => %{},
+          "systemData" => %{}
+        }
       )
     end
 
@@ -430,9 +484,15 @@ defmodule SmaltRouteNegativeTest do
     Store.put(
       :smalt_resources,
       String.downcase(rg <> "/providers/microsoft.storage/storageaccounts/st-0"),
-      %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-0",
-        "type" => "Microsoft.Storage/storageAccounts", "name" => "st-0",
-        "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+      %{
+        "id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-0",
+        "type" => "Microsoft.Storage/storageAccounts",
+        "name" => "st-0",
+        "location" => "eastus",
+        "properties" => %{},
+        "tags" => %{},
+        "systemData" => %{}
+      }
     )
 
     other_page =
@@ -478,9 +538,15 @@ defmodule SmaltRouteNegativeTest do
       Store.put(
         :smalt_resources,
         String.downcase(rg <> "/providers/microsoft.storage/storageaccounts/st-#{i}"),
-        %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-#{i}",
-          "type" => "Microsoft.Storage/storageAccounts", "name" => "st-#{i}",
-          "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+        %{
+          "id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-#{i}",
+          "type" => "Microsoft.Storage/storageAccounts",
+          "name" => "st-#{i}",
+          "location" => "eastus",
+          "properties" => %{},
+          "tags" => %{},
+          "systemData" => %{}
+        }
       )
     end
 
@@ -515,9 +581,15 @@ defmodule SmaltRouteNegativeTest do
       Store.put(
         :smalt_resources,
         String.downcase(rg <> "/providers/microsoft.storage/storageaccounts/st-#{i}"),
-        %{"id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-#{i}",
-          "type" => "Microsoft.Storage/storageAccounts", "name" => "st-#{i}",
-          "location" => "eastus", "properties" => %{}, "tags" => %{}, "systemData" => %{}}
+        %{
+          "id" => rg <> "/providers/Microsoft.Storage/storageAccounts/st-#{i}",
+          "type" => "Microsoft.Storage/storageAccounts",
+          "name" => "st-#{i}",
+          "location" => "eastus",
+          "properties" => %{},
+          "tags" => %{},
+          "systemData" => %{}
+        }
       )
     end
 
@@ -525,7 +597,8 @@ defmodule SmaltRouteNegativeTest do
       conn =
         conn(
           :get,
-          rg <> "/providers/Microsoft.Storage/storageAccounts?api-version=#{sa_v}&maxitempages=#{bad}"
+          rg <>
+            "/providers/Microsoft.Storage/storageAccounts?api-version=#{sa_v}&maxitempages=#{bad}"
         )
         |> Router.call(@opts)
 

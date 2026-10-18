@@ -89,7 +89,10 @@ defmodule Smalt.AffidavitWasmTest do
     # mutated out-of-domain argument (modality outside {1,2}) refuses typed.
     garbage = <<0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0xFF>>
 
-    assert match?({:ok, %{ctrt_bytes: _}}, WasmEngine.call_admit_and_seal(garbage, @tariff, @modality, %{})) or
+    assert match?(
+             {:ok, %{ctrt_bytes: _}},
+             WasmEngine.call_admit_and_seal(garbage, @tariff, @modality, %{})
+           ) or
              match?({:error, _}, WasmEngine.call_admit_and_seal(garbage, @tariff, @modality, %{}))
 
     assert {:error, _typed} =

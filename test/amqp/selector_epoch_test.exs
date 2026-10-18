@@ -30,7 +30,13 @@ defmodule Smalt.Amqp.SelectorEpochTest do
     Smalt.Messaging.EventHubs.ensure_tables()
 
     {:ok, listener} =
-      :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        active: false,
+        reuseaddr: true,
+        ip: {127, 0, 0, 1}
+      ])
 
     {:ok, port} = :inet.port(listener)
 
@@ -68,14 +74,29 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       for i <- 1..3 do
         send_event(client, s, i)
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
       end
 
       # receiver with x-opt-offset > '1' -> first delivery must be seq 2
       selector = "amqp.annotation.x-opt-offset > '1'"
 
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-r", handle: 1, role: true, source: source_with_selector(eh_address, selector)}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "eh-r",
+               handle: 1,
+               role: true,
+               source: source_with_selector(eh_address, selector)
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
 
@@ -99,13 +120,28 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       for i <- 1..3 do
         send_event(client, s, i)
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
       end
 
       selector = "amqp.annotation.x-opt-sequence-number > '2'"
 
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-r", handle: 1, role: true, source: source_with_selector(eh_address, selector)}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "eh-r",
+               handle: 1,
+               role: true,
+               source: source_with_selector(eh_address, selector)
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
       :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 10}}))
@@ -123,7 +159,9 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       for i <- 1..3 do
         send_event(client, s, i)
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
       end
 
       # r200c falsifier shape: 6.x SDK startingPosition {sequenceNumber: 2,
@@ -132,7 +170,20 @@ defmodule Smalt.Amqp.SelectorEpochTest do
       selector = "amqp.annotation.x-opt-sequence-number >= '2'"
 
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-r", handle: 1, role: true, source: source_with_selector(eh_address, selector)}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "eh-r",
+               handle: 1,
+               role: true,
+               source: source_with_selector(eh_address, selector)
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
       :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 10}}))
@@ -152,7 +203,9 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       for i <- 1..2 do
         send_event(client, s, i)
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
       end
 
       # Free-form SQL-ish selector is not one of the eventPosition forms the
@@ -160,7 +213,20 @@ defmodule Smalt.Amqp.SelectorEpochTest do
       selector = "amqp.annotation.x-opt-sequence-number > '1' AND body LIKE '%x%'"
 
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-r", handle: 1, role: true, source: source_with_selector(eh_address, selector)}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "eh-r",
+               handle: 1,
+               role: true,
+               source: source_with_selector(eh_address, selector)
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
 
@@ -189,10 +255,23 @@ defmodule Smalt.Amqp.SelectorEpochTest do
       :ok =
         send_b(
           client,
-          enc(:amqp, 0, {:transfer, %{handle: s, delivery_id: 1, delivery_tag: <<1::8>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_data, "old-event"}]}})
+          enc(
+            :amqp,
+            0,
+            {:transfer,
+             %{
+               handle: s,
+               delivery_id: 1,
+               delivery_tag: <<1::8>>,
+               message_format: 0,
+               settled: true,
+               more: false
+             }, {:sections, [{:body_data, "old-event"}]}}
+          )
         )
 
-      assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+      assert %{performative: %{settled: true, state: :accepted}} =
+               recv_until(client, :disposition)
 
       # rewind its enqueued time directly in the partition row
       # (key mirrors Connection.eh_partition/1: hub-scoped, not last segment)
@@ -201,17 +280,43 @@ defmodule Smalt.Amqp.SelectorEpochTest do
           [_, rest] -> String.replace_leading(rest, "/", "")
           _ -> eh_address |> String.split("/") |> List.last()
         end
+
       [{^partition, row}] = :ets.lookup(:smalt_eh_partitions, partition)
       [{seq1, {body, props, meta}} | rest] = row["events"]
-      :ets.insert(:smalt_eh_partitions, {partition, %{row | "events" => [{seq1, {body, props, Map.put(meta, "enqueued_ms", now - 60_000)}} | rest]}})
+
+      :ets.insert(
+        :smalt_eh_partitions,
+        {partition,
+         %{
+           row
+           | "events" => [
+               {seq1, {body, props, Map.put(meta, "enqueued_ms", now - 60_000)}} | rest
+             ]
+         }}
+      )
 
       send_event(client, s, 2)
-      assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+      assert %{performative: %{settled: true, state: :accepted}} =
+               recv_until(client, :disposition)
 
       selector = "amqp.annotation.x-opt-enqueued-time > '#{now - 30_000}'"
 
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-r", handle: 1, role: true, source: source_with_selector(eh_address, selector)}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "eh-r",
+               handle: 1,
+               role: true,
+               source: source_with_selector(eh_address, selector)
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
       :ok = send_b(client, enc(:amqp, 0, {:flow, %{handle: 1, link_credit: 10}}))
@@ -245,18 +350,48 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       for i <- 1..2 do
         send_event(client, s, i)
-        assert %{performative: %{settled: true, state: :accepted}} = recv_until(client, :disposition)
+
+        assert %{performative: %{settled: true, state: :accepted}} =
+                 recv_until(client, :disposition)
       end
 
       # epoch-1 receiver on handle 1
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "r-e1", handle: 1, role: true, source: %{address: eh_address}, properties: %{"com.microsoft:epoch" => 1}}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "r-e1",
+               handle: 1,
+               role: true,
+               source: %{address: eh_address},
+               properties: %{"com.microsoft:epoch" => 1}
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
 
       # epoch-2 receiver on handle 2 evicts handle 1
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "r-e2", handle: 2, role: true, source: %{address: eh_address}, properties: %{"com.microsoft:epoch" => 2}}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "r-e2",
+               handle: 2,
+               role: true,
+               source: %{address: eh_address},
+               properties: %{"com.microsoft:epoch" => 2}
+             }}
+          )
+        )
 
       attach_echo = recv_f(client)
       assert %{performative: %{performative: :attach}} = attach_echo
@@ -282,13 +417,41 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       # epoch 2 first
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "r-e2", handle: 1, role: true, source: %{address: eh_address}, properties: %{"com.microsoft:epoch" => 2}}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "r-e2",
+               handle: 1,
+               role: true,
+               source: %{address: eh_address},
+               properties: %{"com.microsoft:epoch" => 2}
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
 
       # epoch 1 attach refused: attach echo then typed detach on handle 2
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "r-e1", handle: 2, role: true, source: %{address: eh_address}, properties: %{"com.microsoft:epoch" => 1}}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "r-e1",
+               handle: 2,
+               role: true,
+               source: %{address: eh_address},
+               properties: %{"com.microsoft:epoch" => 1}
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
 
@@ -305,7 +468,21 @@ defmodule Smalt.Amqp.SelectorEpochTest do
       wh(client)
 
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "r-e1", handle: 1, role: true, source: %{address: eh_address}, properties: %{"com.microsoft:epoch" => 1}}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "r-e1",
+               handle: 1,
+               role: true,
+               source: %{address: eh_address},
+               properties: %{"com.microsoft:epoch" => 1}
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
 
@@ -314,7 +491,21 @@ defmodule Smalt.Amqp.SelectorEpochTest do
 
       # the same epoch must now be re-admittable on a fresh handle
       :ok =
-        send_b(client, enc(:amqp, 0, {:attach, %{name: "r-e1b", handle: 2, role: true, source: %{address: eh_address}, properties: %{"com.microsoft:epoch" => 1}}}))
+        send_b(
+          client,
+          enc(
+            :amqp,
+            0,
+            {:attach,
+             %{
+               name: "r-e1b",
+               handle: 2,
+               role: true,
+               source: %{address: eh_address},
+               properties: %{"com.microsoft:epoch" => 1}
+             }}
+          )
+        )
 
       assert %{performative: %{performative: :attach}} = recv_f(client)
       # no detach follows
@@ -336,19 +527,48 @@ defmodule Smalt.Amqp.SelectorEpochTest do
     assert {:ok, "AMQP\x00\x01\x00\x00"} = rx(client, 8)
 
     :ok =
-      send_b(client, enc(:amqp, 0, {:open, %{container_id: "sep-test-client", max_frame_size: 65_536, channel_max: 65_535}}))
+      send_b(
+        client,
+        enc(
+          :amqp,
+          0,
+          {:open, %{container_id: "sep-test-client", max_frame_size: 65_536, channel_max: 65_535}}
+        )
+      )
 
     _opened = recv_f(client)
 
     :ok =
-      send_b(client, enc(:amqp, 0, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}}))
+      send_b(
+        client,
+        enc(
+          :amqp,
+          0,
+          {:begin,
+           %{
+             next_outgoing_id: 1,
+             incoming_window: 10_000,
+             outgoing_window: 10_000,
+             handle_max: 100
+           }}
+        )
+      )
 
     _begun = recv_f(client)
     :ok
   end
 
   defp attach_sender(client, address) do
-    :ok = send_b(client, enc(:amqp, 0, {:attach, %{name: "eh-s", handle: 0, role: false, target: %{address: address}}}))
+    :ok =
+      send_b(
+        client,
+        enc(
+          :amqp,
+          0,
+          {:attach, %{name: "eh-s", handle: 0, role: false, target: %{address: address}}}
+        )
+      )
+
     assert %{performative: %{performative: :attach}} = recv_f(client)
     {:ok, 0}
   end
@@ -357,12 +577,27 @@ defmodule Smalt.Amqp.SelectorEpochTest do
     :ok =
       send_b(
         client,
-        enc(:amqp, 0, {:transfer, %{handle: sender_handle, delivery_id: i, delivery_tag: <<i::8>>, message_format: 0, settled: true, more: false}, {:sections, [{:body_data, "eh-event-#{i}"}]}})
+        enc(
+          :amqp,
+          0,
+          {:transfer,
+           %{
+             handle: sender_handle,
+             delivery_id: i,
+             delivery_tag: <<i::8>>,
+             message_format: 0,
+             settled: true,
+             more: false
+           }, {:sections, [{:body_data, "eh-event-#{i}"}]}}
+        )
       )
   end
 
   defp source_with_selector(address, clause) do
-    %{address: address, filter: %{"apache.org:selector-filter:string" => {:selector_filter, clause}}}
+    %{
+      address: address,
+      filter: %{"apache.org:selector-filter:string" => {:selector_filter, clause}}
+    }
   end
 
   defp drain_transfers(client) do
@@ -413,7 +648,9 @@ defmodule Smalt.Amqp.SelectorEpochTest do
   defp error_description([{:symbol, _}, d | _]) when is_binary(d), do: d
   defp error_description(%{description: d}) when is_binary(d), do: d
 
-  defp enc(layer, channel, performative), do: Smalt.Amqp.FrameCodec.encode_frame(layer, channel, performative)
+  defp enc(layer, channel, performative),
+    do: Smalt.Amqp.FrameCodec.encode_frame(layer, channel, performative)
+
   defp send_b(client, iodata), do: :gen_tcp.send(client, iodata)
 
   defp recv_f(client, timeout \\ 2000) do

@@ -51,10 +51,23 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   defp gen_performative_spec do
     specs = [
       {:amqp, :open,
-       %{container_id: gen_text(), hostname: gen_text(), max_frame_size: gen_u32(), channel_max: integer(0..65_535), idle_time_out: gen_u32()}},
-      {:amqp, :begin, %{next_outgoing_id: gen_u32(), incoming_window: gen_u32(), outgoing_window: gen_u32(), handle_max: gen_u32()}},
+       %{
+         container_id: gen_text(),
+         hostname: gen_text(),
+         max_frame_size: gen_u32(),
+         channel_max: integer(0..65_535),
+         idle_time_out: gen_u32()
+       }},
+      {:amqp, :begin,
+       %{
+         next_outgoing_id: gen_u32(),
+         incoming_window: gen_u32(),
+         outgoing_window: gen_u32(),
+         handle_max: gen_u32()
+       }},
       {:amqp, :attach, %{name: gen_text(), handle: gen_u32()}},
-      {:amqp, :flow, %{next_incoming_id: gen_u32(), incoming_window: gen_u32(), outgoing_window: gen_u32()}},
+      {:amqp, :flow,
+       %{next_incoming_id: gen_u32(), incoming_window: gen_u32(), outgoing_window: gen_u32()}},
       {:amqp, :transfer, %{delivery_id: gen_u32(), settled: boolean(), more: boolean()}},
       {:amqp, :disposition, %{role: boolean(), settled: boolean()}},
       {:amqp, :detach, %{handle: gen_u32(), closed: boolean()}},
@@ -80,9 +93,11 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   # ---------------------------------------------------------------------------
 
   property "P1: encode_frame -> decode_frame round-trips generated performatives" do
-    check all channel <- integer(0..65_535),
-              {type, perf, fields} <- gen_performative_spec(),
-              max_runs: 150 do
+    check all(
+            channel <- integer(0..65_535),
+            {type, perf, fields} <- gen_performative_spec(),
+            max_runs: 150
+          ) do
       encoded = IO.iodata_to_binary(FrameCodec.encode_frame(type, channel, {perf, fields}))
 
       assert {:ok, decoded} = FrameCodec.decode_frame(encoded)
@@ -102,8 +117,10 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   # ---------------------------------------------------------------------------
 
   property "P2: decode_frame is total over arbitrary binaries" do
-    check all buf <- binary(max_length: 600),
-              max_runs: 200 do
+    check all(
+            buf <- binary(max_length: 600),
+            max_runs: 200
+          ) do
       result = FrameCodec.decode_frame(buf)
 
       assert match?({:ok, _}, result) or match?({:more, _}, result) or
@@ -113,8 +130,10 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   end
 
   property "P2b: PrimitiveCodec.decode is total over arbitrary binaries" do
-    check all buf <- binary(max_length: 400),
-              max_runs: 200 do
+    check all(
+            buf <- binary(max_length: 400),
+            max_runs: 200
+          ) do
       result = PrimitiveCodec.decode(buf)
 
       assert match?({:ok, _, _}, result) or match?({:error, _}, result),
@@ -136,9 +155,11 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   end
 
   property "P3: Hw.Frame round-trips arbitrary payloads across arbitrary chunk splits" do
-    check all payload <- binary(max_length: 2048),
-              cuts <- list_of(integer(1..256), max_length: 8),
-              max_runs: 150 do
+    check all(
+            payload <- binary(max_length: 2048),
+            cuts <- list_of(integer(1..256), max_length: 8),
+            max_runs: 150
+          ) do
       frame = Frame.encode(payload)
       chunks = split_binary(frame, cuts)
 
@@ -149,8 +170,10 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   end
 
   property "P3b: Hw decoder drops frames with corrupted CRC" do
-    check all payload <- binary(max_length: 2048),
-              max_runs: 100 do
+    check all(
+            payload <- binary(max_length: 2048),
+            max_runs: 100
+          ) do
       frame = Frame.encode(payload)
       # Replace the trailing CRC pair (just before the closing flag) with
       # 0x00 0x00. Stuffed streams never contain a bare 0x7E, so this cannot
@@ -165,9 +188,11 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   end
 
   property "P4: Hw decoder is total over arbitrary byte soup, any chunking" do
-    check all soup <- binary(max_length: 2048),
-              chunk <- integer(1..97),
-              max_runs: 200 do
+    check all(
+            soup <- binary(max_length: 2048),
+            chunk <- integer(1..97),
+            max_runs: 200
+          ) do
       decoder =
         soup
         |> :binary.bin_to_list()
@@ -194,10 +219,12 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
   defp unique_key, do: "property-test-" <> Integer.to_string(System.unique_integer([:positive]))
 
   property "P5: N racing CAS/insert_new on generated keys keep exactly one winner" do
-    check all n <- integer(2..12),
-              keys <- list_of(binary(min_length: 1, max_length: 12), min_length: 1, max_length: 4),
-              initial <- integer(0..1000),
-              max_runs: 25 do
+    check all(
+            n <- integer(2..12),
+            keys <- list_of(binary(min_length: 1, max_length: 12), min_length: 1, max_length: 4),
+            initial <- integer(0..1000),
+            max_runs: 25
+          ) do
       assert :ok = SmaltTest.Lifecycle.ensure_store_up()
 
       full_keys = Enum.map(keys, fn k -> unique_key() <> "-" <> k end)
@@ -208,7 +235,8 @@ defmodule Smalt.Property.FrameCodecPropertyTest do
 
           cas_outs =
             1..n
-            |> Task.async_stream(fn i -> {i, Store.compare_and_swap(@cas_table, key, initial, "winner-#{i}")} end,
+            |> Task.async_stream(
+              fn i -> {i, Store.compare_and_swap(@cas_table, key, initial, "winner-#{i}")} end,
               max_concurrency: n,
               timeout: 5_000
             )

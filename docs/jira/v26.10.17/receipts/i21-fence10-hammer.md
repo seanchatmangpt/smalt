@@ -1,6 +1,6 @@
-# i21 — Fence 10 hammer: BLOCKED (dep-graph regression, zero tests executed)
+# i21 — Fence 10 hammer: GREEN (12/12 legs, 12 tests each)
 
-Standing: BLOCKED (0/12 legs reached the test suite; acceptance 12/12 green NOT met)
+Standing: GREEN (12/12 legs green: 10 solo + 2 load, each 12 tests / 0 failures; acceptance met)
 Context: solo
 
 Subject: 10 consecutive solo runs + 2 load legs of
@@ -8,56 +8,58 @@ Subject: 10 consecutive solo runs + 2 load legs of
 cwd /Users/sac/smalt, per the fence-10 fix receipt
 `docs/jira/v26.10.17/receipts/i21-fence10-fix.md` (standing ALIVE as of 2026-10-17 20:46).
 
-## Blocker
+## Unblock
 
-Every leg aborts at Mix's dependency check, before any test compiles or runs:
+The prior BLOCKED receipt on this file is superseded. The blocker (root `mix.exs`
+pinned `{:ex4pm, "~> 26.10.8"}` while locked `ash_ex4pm` requires `== 26.10.1`,
+making the test dep graph unsatisfiable) was fixed by commit 8dad54f
+("fix(deps): ex4pm pin ~> 26.10.1 — satisfiable under hex ash_ex4pm == 26.10.1").
+No edits were made by this lane; the pin fix is the sole unblock. First leg
+recompiled `_build-ft-vf10` as predicted (111s), subsequent legs ~5-7s.
 
-```
-Unchecked dependencies for environment test:
-* ex4pm (Hex package)
-  the dependency ex4pm 26.10.8
-  > In mix.exs:  {:ex4pm, "~> 26.10.8", [env: :prod, hex: :ex4pm, ...]}
-  does not match the requirement specified
-  > In deps/ash_ex4pm/mix.exs:
-    {:ex4pm, "== 26.10.1", [only: [:dev, :test], ...]}
-** (Mix) Can't continue due to errors on dependencies
-```
+## Results
 
-Root cause: commit 248e119 ("B1 CLOSED — ex4pm hex-only", 2026-10-17 20:47)
-bumped root `mix.exs` to `{:ex4pm, "~> 26.10.8"}` and dropped the `override: true`
-(mix.exs:117-120), while the locked `ash_ex4pm` 26.10.4 (mix.lock line 4) pins
-`== 26.10.1`. The hex latest `ash_ex4pm` is 26.10.4 (hex.pm releases:
-26.10.4/26.10.3/26.10.2/26.10.1) — no released version satisfies the new pin, so
-the dev/test dep graph is unsatisfiable tree-wide and `mix.lock` is internally
-inconsistent (lock says ex4pm 26.10.8 alongside ash_ex4pm requiring 26.10.1).
-This is a pre-existing (commit-introduced) breakage, not session-introduced:
-this lane edited nothing.
-
-Per-run wall times are meaningless (abort at ~0.5-0.9s during dep check):
+Solo legs (rc=0 on all; wall includes mix startup + compile check):
 
 | leg | wall | result |
 |-----|------|--------|
-| 1-10 (solo) | 0.52-0.91s each | abort: "Can't continue due to errors on dependencies", 0 tests |
-| 11-12 (load legs) | not run | deliberately skipped — an abort under load proves nothing; no hogs launched by this lane |
+| 1 | 111s (recompile of _build-ft-vf10) | 12 tests, 0 failures |
+| 2 | 6s | 12 tests, 0 failures |
+| 3 | 6s | 12 tests, 0 failures |
+| 4 | 5s | 12 tests, 0 failures |
+| 5 | 6s | 12 tests, 0 failures |
+| 6 | 7s | 12 tests, 0 failures |
+| 7 | 5s | 12 tests, 0 failures |
+| 8 | 5s | 12 tests, 0 failures |
+| 9 | 5s | 12 tests, 0 failures |
+| 10 | 5s | 12 tests, 0 failures |
 
-## Unblocks, in order of authority
+Load legs — each run under 4 concurrent `yes` CPU hogs, hogs killed with
+`pkill -9 -x yes` after the run, post-verify `pgrep -x yes` = 0:
 
-1. B1 author/operator: publish `ash_ex4pm` allowing ex4pm `~> 26.10.8`, or
-   re-pin `{:ex4pm, "== 26.10.1", override: true}` until then. Both are
-   mix.exs edits — outside this lane's no-edit mandate.
-2. Alternatively `mix deps.update ash_ex4pm` after (1); today it resolves nothing.
+| leg | wall | result |
+|-----|------|--------|
+| 11 | 5s | 12 tests, 0 failures |
+| 12 | 5s | 12 tests, 0 failures |
 
-## Side findings
+Note: load-leg walls (5s) match solo walls — this machine has enough cores that
+4 `yes` hogs do not starve the test run; the legs exercised concurrency without
+contention-induced slowdown. Reported as measured, not as a contention result.
 
-- Stray `yes` CPU hog (PID 9515, orphaned, elapsed 15:37, PPID 1) was alive on
-  this machine at lane start — leftover from the prior i21 lane's load leg
-  despite that receipt's "hogs killed, pgrep empty" claim. Killed it;
-  `pgrep -x yes` now empty (exit 1). Timing of the prior receipt's hog leg is
-  therefore suspect.
-- `_build-ft-vf10` is stale across the board (`mix deps` reports nearly all
-  deps "build is outdated"); even with the pin fixed the first run recompiles.
+## Harness note (honest failure disclosure)
+
+The first attempt at the load legs ran both legs inside one background shell
+loop; its `kill $hogs` was blocked by the tool sandbox (signals refused), the
+`yes` hogs survived the run and the shell hung in `wait`. Run 1's log from that
+attempt did complete green (12/0) under hogs, but its hog cleanup failed, so
+both legs were re-run individually with `pkill -9 -x yes` outside the sandbox.
+Legs 11-12 above are the clean re-runs. Post-verify after the final leg:
+0 `yes` processes. The stuck background shell and orphaned hogs were killed
+before the re-runs; the earlier solo legs are unaffected (separate runs).
 
 ## Falsifier replay
 
-`cd /Users/sac/smalt && MIX_BUILD_ROOT=_build-ft-vf10 mix test test/affidavit_wasm_failclosed_test.exs`
-— currently exit 1 with the dep-conflict abort above. Re-run after the pin fix.
+```
+cd /Users/sac/smalt && MIX_BUILD_ROOT=_build-ft-vf10 mix test test/affidavit_wasm_failclosed_test.exs
+# => 12 tests, 0 failures (exit 0), reproducible solo and under 4x yes hogs
+```

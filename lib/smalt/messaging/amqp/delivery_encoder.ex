@@ -64,7 +64,10 @@ defmodule Smalt.Amqp.DeliveryEncoder do
     |> maybe_put(:header, build_header(opts))
     |> maybe_put(:properties, build_properties(opts))
     |> maybe_put(:message_annotations, build_message_annotations(opts))
-    |> maybe_put(:application_properties, Map.merge(app_props, build_dlq_footer(opts) || %{}) |> empty_map_to_nil())
+    |> maybe_put(
+      :application_properties,
+      Map.merge(app_props, build_dlq_footer(opts) || %{}) |> empty_map_to_nil()
+    )
   end
 
   # ===========================================================================

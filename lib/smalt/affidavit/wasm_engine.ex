@@ -141,9 +141,7 @@ defmodule Smalt.Affidavit.WasmEngine do
   end
 
   defp unavailable(reason) do
-    Logger.warning(
-      "Smalt.Affidavit.WasmEngine unavailable; init reason: #{inspect(reason)}"
-    )
+    Logger.warning("Smalt.Affidavit.WasmEngine unavailable; init reason: #{inspect(reason)}")
 
     :persistent_term.put(@last_refusal_key, reason)
     @engine_unavailable
@@ -187,7 +185,9 @@ defmodule Smalt.Affidavit.WasmEngine do
   until the register names real values.
   """
   @spec affi_admit_and_seal(binary()) ::
-          {:ok, binary()} | {:error, {:seal_refused, non_neg_integer()}} | {:error, :engine_unavailable}
+          {:ok, binary()}
+          | {:error, {:seal_refused, non_neg_integer()}}
+          | {:error, :engine_unavailable}
   def affi_admit_and_seal(canonical) when is_binary(canonical) do
     case call_admit_and_seal(canonical, 0, 1, %{}) do
       {:ok, %{ctrt_bytes: ctrt}} -> {:ok, ctrt}
@@ -483,14 +483,26 @@ defmodule Smalt.Affidavit.WasmEngine do
 
   # affi_admit_and_seal(delta_ptr, delta_len, tariff_cents, modality,
   #   out_ctrt_ptr) -> u32 machine code; 0x0000 = sealed.
-  defp run_seal(delta, tariff, modality, lease, %{instance: instance, store: store, memory: memory}) do
+  defp run_seal(delta, tariff, modality, lease, %{
+         instance: instance,
+         store: store,
+         memory: memory
+       }) do
     len = byte_size(delta)
 
-    with {:ok, [delta_ptr]} when delta_ptr != 0 <- Wasmex.call_function(instance, "af_alloc", [len]),
+    with {:ok, [delta_ptr]} when delta_ptr != 0 <-
+           Wasmex.call_function(instance, "af_alloc", [len]),
          :ok <- write_mem(store, memory, delta_ptr, delta),
-         {:ok, [out_ptr]} when out_ptr != 0 <- Wasmex.call_function(instance, "af_alloc", [@ctrt_bytes]),
+         {:ok, [out_ptr]} when out_ptr != 0 <-
+           Wasmex.call_function(instance, "af_alloc", [@ctrt_bytes]),
          {:ok, [0x0000]} <-
-           Wasmex.call_function(instance, "affi_admit_and_seal", [delta_ptr, len, tariff, modality, out_ptr]),
+           Wasmex.call_function(instance, "affi_admit_and_seal", [
+             delta_ptr,
+             len,
+             tariff,
+             modality,
+             out_ptr
+           ]),
          ctrt <- read_mem(store, memory, out_ptr, @ctrt_bytes),
          :ok <- free_out(instance, out_ptr, @ctrt_bytes),
          :ok <- invariant_gate(ctrt, delta, tariff, modality, lease) do
@@ -547,7 +559,8 @@ defmodule Smalt.Affidavit.WasmEngine do
   # every call. Hash via a temp file instead — same blake3 semantics, still
   # fail-closed (:error on non-zero exit).
   defp blake3(delta) do
-    tmp = Path.join(System.tmp_dir!(), "affidavit-b3sum-" <> Integer.to_string(System.system_time()))
+    tmp =
+      Path.join(System.tmp_dir!(), "affidavit-b3sum-" <> Integer.to_string(System.system_time()))
 
     try do
       File.write!(tmp, delta)

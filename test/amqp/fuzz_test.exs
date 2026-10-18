@@ -151,10 +151,10 @@ defmodule Smalt.Amqp.FuzzTest do
 
     base =
       base ++
-      [
-        {Enum.random([:delivery_annotations, :message_annotations]), gen_map_shallow()},
-        {:body_sequence, for(_ <- 1..:rand.uniform(3), do: gen_binary())}
-      ]
+        [
+          {Enum.random([:delivery_annotations, :message_annotations]), gen_map_shallow()},
+          {:body_sequence, for(_ <- 1..:rand.uniform(3), do: gen_binary())}
+        ]
 
     extra =
       if depth > 0 and :rand.uniform(2) == 1 do
@@ -263,7 +263,9 @@ defmodule Smalt.Amqp.FuzzTest do
             assert decoded == term, dump(seed, "round-trip mismatch", term)
 
           {:ok, other} ->
-            flunk(dump(seed, "expected exactly one value, got: #{inspect(other, limit: 20)}", term))
+            flunk(
+              dump(seed, "expected exactly one value, got: #{inspect(other, limit: 20)}", term)
+            )
 
           {:error, reason} ->
             flunk(dump(seed, "decode_all error: #{inspect(reason)}", term))
@@ -296,21 +298,26 @@ defmodule Smalt.Amqp.FuzzTest do
         try do
           assert_tuple(PrimitiveCodec.decode(bin))
         rescue
-          e -> flunk("FUZZ FAILURE PrimitiveCodec.decode #{label}: #{Exception.format(:error, e)}")
+          e ->
+            flunk("FUZZ FAILURE PrimitiveCodec.decode #{label}: #{Exception.format(:error, e)}")
         end
 
         # PrimitiveCodec.decode_all/1
         try do
           assert_tuple(PrimitiveCodec.decode_all(bin))
         rescue
-          e -> flunk("FUZZ FAILURE PrimitiveCodec.decode_all #{label}: #{Exception.format(:error, e)}")
+          e ->
+            flunk(
+              "FUZZ FAILURE PrimitiveCodec.decode_all #{label}: #{Exception.format(:error, e)}"
+            )
         end
 
         # FrameCodec.decode_frame/1
         try do
           assert_tuple(FrameCodec.decode_frame(bin))
         rescue
-          e -> flunk("FUZZ FAILURE FrameCodec.decode_frame #{label}: #{Exception.format(:error, e)}")
+          e ->
+            flunk("FUZZ FAILURE FrameCodec.decode_frame #{label}: #{Exception.format(:error, e)}")
         end
       end
     end
@@ -420,8 +427,11 @@ defmodule Smalt.Amqp.FuzzTest do
             assert is_binary(payload)
 
             case FrameCodec.decode_message(payload) do
-              {:ok, decoded} -> decoded
-              {:error, reason} -> flunk(dump(seed, "decode_message error: #{inspect(reason)}", payload))
+              {:ok, decoded} ->
+                decoded
+
+              {:error, reason} ->
+                flunk(dump(seed, "decode_message error: #{inspect(reason)}", payload))
             end
           rescue
             e -> flunk(dump(seed, "raised #{Exception.format(:error, e)}", payload))
@@ -534,6 +544,7 @@ defmodule Smalt.Amqp.FuzzTest do
     }
 
     sections = gen_message_sections(2)
+
     FrameCodec.encode_frame(:amqp, int_in(0, 65_535), {:transfer, fields, {:sections, sections}})
     |> IO.iodata_to_binary()
   end
@@ -557,19 +568,20 @@ defmodule Smalt.Amqp.FuzzTest do
     # Hand-built attach whose source is a raw AMQP map of hostile keys — the
     # exact shape that used to hit the String.to_atom/1 fallback in safe_atom/1.
     body =
-      Smalt.Amqp.PrimitiveCodec.encode({:described, 0x12, [
-        "link-flood",
-        0,
-        0,
-        nil,
-        nil,
-        # source sits at positional index 5 in the attach field order
-        {:map_rhea, keys}
-      ]})
+      Smalt.Amqp.PrimitiveCodec.encode({:described, 0x12,
+       [
+         "link-flood",
+         0,
+         0,
+         nil,
+         nil,
+         # source sits at positional index 5 in the attach field order
+         {:map_rhea, keys}
+       ]})
 
     encoded =
       IO.iodata_to_binary([
-        <<(IO.iodata_length(body) + 8)::32, 2::8, 0x00::8, 0::16>>,
+        <<IO.iodata_length(body) + 8::32, 2::8, 0x00::8, 0::16>>,
         body
       ])
 
@@ -617,18 +629,21 @@ defmodule Smalt.Amqp.FuzzTest do
       end)
 
     big_body =
-      Smalt.Amqp.PrimitiveCodec.encode({:described, 0x12, [
-        "link-scale",
-        0,
-        0,
-        nil,
-        nil,
-        {:map_rhea, big_keys}
-      ]})
+      Smalt.Amqp.PrimitiveCodec.encode(
+        {:described, 0x12,
+         [
+           "link-scale",
+           0,
+           0,
+           nil,
+           nil,
+           {:map_rhea, big_keys}
+         ]}
+      )
 
     big_encoded =
       IO.iodata_to_binary([
-        <<(IO.iodata_length(big_body) + 8)::32, 2::8, 0x00::8, 0::16>>,
+        <<IO.iodata_length(big_body) + 8::32, 2::8, 0x00::8, 0::16>>,
         big_body
       ])
 
@@ -638,6 +653,7 @@ defmodule Smalt.Amqp.FuzzTest do
     assert big_src[:filter] == nil
     assert Enum.all?(Map.keys(big_src), &(&1 == :filter or is_binary(&1)))
   end
+
   # ---------------------------------------------------------------------------
   # Property 5: compound truncation (cycle-5/6 fences)
   # ---------------------------------------------------------------------------
@@ -684,7 +700,9 @@ defmodule Smalt.Amqp.FuzzTest do
       {mctor, mcount, msize} =
         if byte_size(body) + 1 <= 255,
           do: {0xC1, <<1::8>>, <<byte_size(body) + 1::8>>},
-          else: {0xD1, <<1::unsigned-integer-size(32)>>, <<byte_size(body) + 4::unsigned-integer-size(32)>>}
+          else:
+            {0xD1, <<1::unsigned-integer-size(32)>>,
+             <<byte_size(body) + 4::unsigned-integer-size(32)>>}
 
       pair_form = <<mctor, msize::binary, mcount::binary, body::binary>>
 
@@ -705,7 +723,6 @@ defmodule Smalt.Amqp.FuzzTest do
     end
   end
 
-
   test "frame decode-never-crash: mutated frame headers return tagged tuples (cycle-7)" do
     base = FrameCodec.encode_frame(:amqp, 7, {:transfer, %{handle: 0, delivery_id: 1}, "payload"})
     base = IO.iodata_to_binary(base)
@@ -720,7 +737,7 @@ defmodule Smalt.Amqp.FuzzTest do
       bump(:frame_mutate, 1)
 
       try do
-        assert match?({:ok, _} , FrameCodec.decode_frame(mutated)) or
+        assert match?({:ok, _}, FrameCodec.decode_frame(mutated)) or
                  match?({:more, _}, FrameCodec.decode_frame(mutated)) or
                  match?({:error, _}, FrameCodec.decode_frame(mutated)),
                "non-tagged result"
@@ -732,11 +749,12 @@ defmodule Smalt.Amqp.FuzzTest do
     IO.puts("frame-mutate iterations: #{count(:frame_mutate)}")
   end
 
-
   test "frame decode-never-crash: adjacent two-byte mutations (cycle-8)" do
     base =
       IO.iodata_to_binary(
-        FrameCodec.encode_frame(:amqp, 7,
+        FrameCodec.encode_frame(
+          :amqp,
+          7,
           {:transfer, %{handle: 0, delivery_id: 1, settled: false},
            {:sections, [{:body_data, "payload bytes"}]}}
         )
@@ -753,7 +771,9 @@ defmodule Smalt.Amqp.FuzzTest do
 
       try do
         result = FrameCodec.decode_frame(mutated)
-        assert match?({:ok, _}, result) or match?({:more, _}, result) or match?({:error, _}, result)
+
+        assert match?({:ok, _}, result) or match?({:more, _}, result) or
+                 match?({:error, _}, result)
       rescue
         e -> flunk(dump(seed, "2-byte mutation raised: " <> Exception.format(:error, e), mutated))
       end
@@ -761,8 +781,6 @@ defmodule Smalt.Amqp.FuzzTest do
 
     IO.puts("frame-mutate2 iterations: #{count(:frame_mutate2)}")
   end
-
-
 
   # ---------------------------------------------------------------------------
   # Property 7 (lens-2): differential performative round-trip fuzz
@@ -776,17 +794,58 @@ defmodule Smalt.Amqp.FuzzTest do
   # error-map -> [condition, desc, info] list, delivery-state rewrap).
 
   @perf_orders %{
-    open: [:container_id, :hostname, :max_frame_size, :channel_max, :idle_time_out,
-           :outgoing_locales, :incoming_locales, :offered_capabilities, :desired_capabilities,
-           :properties],
+    open: [
+      :container_id,
+      :hostname,
+      :max_frame_size,
+      :channel_max,
+      :idle_time_out,
+      :outgoing_locales,
+      :incoming_locales,
+      :offered_capabilities,
+      :desired_capabilities,
+      :properties
+    ],
     begin: [:remote_channel, :next_outgoing_id, :incoming_window, :outgoing_window, :handle_max],
-    attach: [:name, :handle, :role, :snd_settle_mode, :rcv_settle_mode, :source, :target,
-             :unsettled, :incomplete_unsettled, :initial_delivery_count, :max_message_size,
-             :offered_capabilities, :desired_capabilities, :properties],
-    flow: [:next_incoming_id, :incoming_window, :next_outgoing_id, :outgoing_window, :handle,
-           :delivery_count, :link_credit, :available, :drain, :echo, :properties],
-    transfer: [:handle, :delivery_id, :delivery_tag, :message_format, :settled, :more,
-               :rcv_settle_mode, :state],
+    attach: [
+      :name,
+      :handle,
+      :role,
+      :snd_settle_mode,
+      :rcv_settle_mode,
+      :source,
+      :target,
+      :unsettled,
+      :incomplete_unsettled,
+      :initial_delivery_count,
+      :max_message_size,
+      :offered_capabilities,
+      :desired_capabilities,
+      :properties
+    ],
+    flow: [
+      :next_incoming_id,
+      :incoming_window,
+      :next_outgoing_id,
+      :outgoing_window,
+      :handle,
+      :delivery_count,
+      :link_credit,
+      :available,
+      :drain,
+      :echo,
+      :properties
+    ],
+    transfer: [
+      :handle,
+      :delivery_id,
+      :delivery_tag,
+      :message_format,
+      :settled,
+      :more,
+      :rcv_settle_mode,
+      :state
+    ],
     disposition: [:role, :first, :last, :settled, :state, :batchable],
     detach: [:handle, :closed, :error],
     end: [:error],
@@ -799,6 +858,7 @@ defmodule Smalt.Amqp.FuzzTest do
 
       for perf <- [:open, :begin, :attach, :flow, :transfer, :disposition, :detach, :end, :close] do
         fields = gen_performative_fields(perf, @perf_orders[perf])
+
         frame =
           FrameCodec.encode_frame(:amqp, rem(seed, 65_536), {perf, fields})
           |> IO.iodata_to_binary()
@@ -838,13 +898,34 @@ defmodule Smalt.Amqp.FuzzTest do
   defp gen_performative_fields(perf, order) do
     order
     |> Enum.map(fn
-      :source -> {:source, %{address: symbol_body()}}
-      :target -> {:target, %{address: symbol_body()}}
-      :error -> {:error, error_map()}
-      k when k in [:role, :settled, :more, :drain, :echo, :batchable, :closed,
-                   :durable, :incomplete_unsettled] -> {k, Enum.random([true, false, nil])}
-      :state -> {:state, Enum.random([:accepted, :released, nil])}
-      k -> {k, rand_val()}
+      :source ->
+        {:source, %{address: symbol_body()}}
+
+      :target ->
+        {:target, %{address: symbol_body()}}
+
+      :error ->
+        {:error, error_map()}
+
+      k
+      when k in [
+             :role,
+             :settled,
+             :more,
+             :drain,
+             :echo,
+             :batchable,
+             :closed,
+             :durable,
+             :incomplete_unsettled
+           ] ->
+        {k, Enum.random([true, false, nil])}
+
+      :state ->
+        {:state, Enum.random([:accepted, :released, nil])}
+
+      k ->
+        {k, rand_val()}
     end)
     |> Map.new()
     |> Map.merge(%{any_marker: nil})
@@ -903,10 +984,10 @@ defmodule Smalt.Amqp.FuzzTest do
         cond_v = Map.get(v, :condition)
 
         got == [
-          (case cond_v do
-             {:symbol, _} = s -> s
-             b when is_binary(b) -> {:symbol, b}
-           end),
+          case cond_v do
+            {:symbol, _} = s -> s
+            b when is_binary(b) -> {:symbol, b}
+          end,
           Map.get(v, :description),
           Map.get(v, :info)
         ]
@@ -981,7 +1062,9 @@ defmodule Smalt.Amqp.FuzzTest do
         {:symbol, String.duplicate("s", 256)},
         {:uuid, <<0::128>>},
         {:uuid, <<0xFF::128>>},
-        [], [[]], [[], []],
+        [],
+        [[]],
+        [[], []],
         {:array, []},
         {:array, List.duplicate(-0x8000_0000_0000_0000, 3)},
         {:array, List.duplicate(for(i <- 0..255, into: "", do: <<i>>), 3)},
@@ -995,7 +1078,7 @@ defmodule Smalt.Amqp.FuzzTest do
         -0.0,
         1.0e308,
         -1.0e308
-    ])
+      ])
 
     for term <- terms do
       bump(:extreme_roundtrip, 1)
@@ -1062,11 +1145,27 @@ defmodule Smalt.Amqp.FuzzTest do
       # only performatives whose field order HAS the field
       fields =
         fields
-        |> then(fn f -> if :error in order, do: Map.put(f, :error, %{condition: "amqp:internal-error"}), else: Map.delete(f, :error) end)
-        |> then(fn f -> if :state in order, do: Map.put(f, :state, :accepted), else: Map.delete(f, :state) end)
-        |> then(fn f -> if :role in order, do: Map.put(f, :role, true), else: Map.delete(f, :role) end)
-        |> then(fn f -> if :source in order, do: Map.put(f, :source, %{address: "q"}), else: Map.delete(f, :source) end)
-        |> then(fn f -> if :target in order, do: Map.put(f, :target, %{address: "q"}), else: Map.delete(f, :target) end)
+        |> then(fn f ->
+          if :error in order,
+            do: Map.put(f, :error, %{condition: "amqp:internal-error"}),
+            else: Map.delete(f, :error)
+        end)
+        |> then(fn f ->
+          if :state in order, do: Map.put(f, :state, :accepted), else: Map.delete(f, :state)
+        end)
+        |> then(fn f ->
+          if :role in order, do: Map.put(f, :role, true), else: Map.delete(f, :role)
+        end)
+        |> then(fn f ->
+          if :source in order,
+            do: Map.put(f, :source, %{address: "q"}),
+            else: Map.delete(f, :source)
+        end)
+        |> then(fn f ->
+          if :target in order,
+            do: Map.put(f, :target, %{address: "q"}),
+            else: Map.delete(f, :target)
+        end)
 
       bump(:extreme_perf, 1)
 
@@ -1074,14 +1173,18 @@ defmodule Smalt.Amqp.FuzzTest do
         try do
           FrameCodec.encode_frame(:amqp, 0, {perf, fields}) |> IO.iodata_to_binary()
         rescue
-          e -> flunk(dump("extreme-perf #{perf}", "encode raised #{Exception.format(:error, e)}", v))
+          e ->
+            flunk(dump("extreme-perf #{perf}", "encode raised #{Exception.format(:error, e)}", v))
         end
 
       got =
         try do
           case FrameCodec.decode_frame(frame) do
-            {:ok, %{performative: decoded}} -> decoded
-            other -> flunk(dump("extreme-perf #{perf}", "decode -> #{inspect(other, limit: 10)}", v))
+            {:ok, %{performative: decoded}} ->
+              decoded
+
+            other ->
+              flunk(dump("extreme-perf #{perf}", "decode -> #{inspect(other, limit: 10)}", v))
           end
         rescue
           e -> flunk(dump("extreme-perf #{perf}", "raised #{Exception.format(:error, e)}", frame))
@@ -1094,6 +1197,7 @@ defmodule Smalt.Amqp.FuzzTest do
                  "field #{k}: #{inspect(x, limit: 12)} -> #{inspect(got[k], limit: 12)}",
                  v
                )
+
         :ok
       end
     end
@@ -1118,8 +1222,11 @@ defmodule Smalt.Amqp.FuzzTest do
 
       frames =
         for _ <- 1..3 do
-          FrameCodec.encode_frame(:amqp, rem(seed, 65_536), {:transfer, %{handle: 0, delivery_id: seed},
-            {:sections, gen_message_sections(2)}})
+          FrameCodec.encode_frame(
+            :amqp,
+            rem(seed, 65_536),
+            {:transfer, %{handle: 0, delivery_id: seed}, {:sections, gen_message_sections(2)}}
+          )
           |> IO.iodata_to_binary()
         end
 
@@ -1158,7 +1265,10 @@ defmodule Smalt.Amqp.FuzzTest do
                 )
             end
           rescue
-            e -> flunk("FUZZ FAILURE multi-frame seed=#{seed} offset=#{offset}: #{Exception.format(:error, e)}")
+            e ->
+              flunk(
+                "FUZZ FAILURE multi-frame seed=#{seed} offset=#{offset}: #{Exception.format(:error, e)}"
+              )
           end
 
         _ = got
@@ -1203,7 +1313,10 @@ defmodule Smalt.Amqp.FuzzTest do
           try do
             f.(bin)
           rescue
-            e -> flunk("ctor sweep #{label} ctor=0x#{Integer.to_string(ctor, 16)} raised: #{Exception.format(:error, e)}")
+            e ->
+              flunk(
+                "ctor sweep #{label} ctor=0x#{Integer.to_string(ctor, 16)} raised: #{Exception.format(:error, e)}"
+              )
           end
 
         assert match?({:ok, _}, result) or match?({:ok, _, _}, result) or
@@ -1371,6 +1484,7 @@ defmodule Smalt.Amqp.FuzzTest do
     end)
     |> then(fn {out, totals} -> {out, Enum.reverse(totals)} end)
   end
+
   test "bare-array decode stays linear: 200k elements decode in bounded time (lens-2)" do
     n = 200_000
 
@@ -1490,13 +1604,18 @@ defmodule Smalt.Amqp.FuzzTest do
   test "structural shape symmetry: nested/empty composites round-trip (lens-4)" do
     for term <- @structural_shapes do
       bin = IO.iodata_to_binary(PrimitiveCodec.encode(term))
+
       assert {:ok, [^term]} = PrimitiveCodec.decode_all(bin),
              "primitive round-trip failed for #{inspect(term, limit: 10)}"
 
       # frame layer: same term as a transfer body_amqp_value section
       frame =
         IO.iodata_to_binary(
-          FrameCodec.encode_frame(:amqp, 3, {:transfer, %{handle: 0, delivery_id: 1}, {:sections, [{:body_amqp_value, term}]}})
+          FrameCodec.encode_frame(
+            :amqp,
+            3,
+            {:transfer, %{handle: 0, delivery_id: 1}, {:sections, [{:body_amqp_value, term}]}}
+          )
         )
 
       assert {:ok, %{payload: payload}} = FrameCodec.decode_frame(frame)
@@ -1517,7 +1636,9 @@ defmodule Smalt.Amqp.FuzzTest do
     # compound's size+count fields, which is exactly the bare wire form.
     for t <- [{:array, [%{}]}, {:array, [%{"a" => 1}, %{"b" => 2}]}, {:array, [[1], [2, 3]]}] do
       bin = IO.iodata_to_binary(PrimitiveCodec.encode(t))
-      assert {:ok, [^t]} = PrimitiveCodec.decode_all(bin), "compound-element array failed: #{inspect(t)}"
+
+      assert {:ok, [^t]} = PrimitiveCodec.decode_all(bin),
+             "compound-element array failed: #{inspect(t)}"
     end
 
     for t <- mixing do
@@ -1526,7 +1647,9 @@ defmodule Smalt.Amqp.FuzzTest do
 
     # homogeneous sanity: the same shapes with uniform ctors encode fine
     assert {:ok, [{:array, [1, 2, 3]}]} =
-             PrimitiveCodec.encode({:array, [1, 2, 3]}) |> IO.iodata_to_binary() |> PrimitiveCodec.decode_all()
+             PrimitiveCodec.encode({:array, [1, 2, 3]})
+             |> IO.iodata_to_binary()
+             |> PrimitiveCodec.decode_all()
 
     # hand-wired MIXED bare array on the wire (attacker form): one declared
     # element constructor, but the bytes are a different type. The decoder
@@ -1630,7 +1753,10 @@ defmodule Smalt.Amqp.FuzzTest do
     end
 
     beyond_inner = build_hostile_nested(500_000)
-    beyond_body = IO.iodata_to_binary(PrimitiveCodec.encode({:described, 0x77, {:vbin, beyond_inner}}))
+
+    beyond_body =
+      IO.iodata_to_binary(PrimitiveCodec.encode({:described, 0x77, {:vbin, beyond_inner}}))
+
     beyond_size = 8 + byte_size(beyond_body)
     beyond = <<beyond_size::32, 2::8, 0::8, 0::16, beyond_body::binary>>
 
@@ -1648,7 +1774,8 @@ defmodule Smalt.Amqp.FuzzTest do
   # random TCP chunk feeder (P13's machinery, structural inputs).
 
   test "canonical idempotence: decode → re-encode reproduces exact bytes (lens-4)" do
-    shapes = @structural_shapes ++ [{:array, [1, 2, 3]}, {:array, [%{"a" => 1}]}, {:timestamp, -1}]
+    shapes =
+      @structural_shapes ++ [{:array, [1, 2, 3]}, {:array, [%{"a" => 1}]}, {:timestamp, -1}]
 
     for term <- shapes do
       bin = encode_ok(term)
@@ -1664,7 +1791,11 @@ defmodule Smalt.Amqp.FuzzTest do
     for term <- Enum.take_every(@structural_shapes, 2) do
       frame =
         IO.iodata_to_binary(
-          FrameCodec.encode_frame(:amqp, 7, {:transfer, %{handle: 0, delivery_id: 1}, {:sections, [{:body_amqp_value, term}]}})
+          FrameCodec.encode_frame(
+            :amqp,
+            7,
+            {:transfer, %{handle: 0, delivery_id: 1}, {:sections, [{:body_amqp_value, term}]}}
+          )
         )
 
       # random split points, feed byte-accumulated chunks through decode_frame
@@ -1678,9 +1809,17 @@ defmodule Smalt.Amqp.FuzzTest do
 
     chunks =
       case :rand.uniform(3) do
-        1 -> [frame]
-        2 -> [binary_part(frame, 0, div(size, 2)), binary_part(frame, div(size, 2), size - div(size, 2))]
-        _ -> for(i <- 0..(size - 1), do: binary_part(frame, i, 1))
+        1 ->
+          [frame]
+
+        2 ->
+          [
+            binary_part(frame, 0, div(size, 2)),
+            binary_part(frame, div(size, 2), size - div(size, 2))
+          ]
+
+        _ ->
+          for(i <- 0..(size - 1), do: binary_part(frame, i, 1))
       end
 
     chunks
@@ -1716,7 +1855,15 @@ defmodule Smalt.Amqp.FuzzTest do
   test "frame-size cap asymmetry: encode is unbounded, decode refuses >1MiB (lens-4, pinned)" do
     # 1.1 MiB payload: encodes fine...
     big_body = :binary.copy(<<7>>, 1_100_000)
-    frame_bin = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:transfer, %{handle: 0}, {:sections, [{:body_data, big_body}]}}))
+
+    frame_bin =
+      IO.iodata_to_binary(
+        FrameCodec.encode_frame(
+          :amqp,
+          0,
+          {:transfer, %{handle: 0}, {:sections, [{:body_data, big_body}]}}
+        )
+      )
 
     assert byte_size(frame_bin) > 1 * 1024 * 1024 + 512
 
@@ -1751,13 +1898,23 @@ defmodule Smalt.Amqp.FuzzTest do
         for _seed <- 1..5 do
           {:sasl,
            IO.iodata_to_binary(
-             FrameCodec.encode_frame(:sasl, 0, {:sasl_mechanisms, %{server_mechanisms: [{:symbol, "ANONYMOUS"}, {:symbol, "PLAIN"}]}})
+             FrameCodec.encode_frame(
+               :sasl,
+               0,
+               {:sasl_mechanisms,
+                %{server_mechanisms: [{:symbol, "ANONYMOUS"}, {:symbol, "PLAIN"}]}}
+             )
            )}
         end ++
         for _seed <- 1..5 do
           {:sasl,
            IO.iodata_to_binary(
-             FrameCodec.encode_frame(:sasl, 0, {:sasl_init, %{mechanism: {:symbol, "ANONYMOUS"}, initial_response: "r", hostname: "sb"}})
+             FrameCodec.encode_frame(
+               :sasl,
+               0,
+               {:sasl_init,
+                %{mechanism: {:symbol, "ANONYMOUS"}, initial_response: "r", hostname: "sb"}}
+             )
            )}
         end ++
         for _seed <- 1..5 do
@@ -1782,21 +1939,28 @@ defmodule Smalt.Amqp.FuzzTest do
             flipped = <<prefix::binary, Bitwise.bxor(b, bit), suffix::binary>>
             bump(:bitflip, 1)
 
-            label = "kind=#{kind} byte=#{byte_i} bit=#{bit} input=#{Base.encode16(flipped, case: :lower)}"
+            label =
+              "kind=#{kind} byte=#{byte_i} bit=#{bit} input=#{Base.encode16(flipped, case: :lower)}"
 
             # The gate: no entry point ever raises.
             prim =
               try do
                 PrimitiveCodec.decode(flipped)
               rescue
-                e -> flunk("BITFLIP RAISE PrimitiveCodec.decode #{label}: #{Exception.format(:error, e)}")
+                e ->
+                  flunk(
+                    "BITFLIP RAISE PrimitiveCodec.decode #{label}: #{Exception.format(:error, e)}"
+                  )
               end
 
             frame =
               try do
                 FrameCodec.decode_frame(flipped)
               rescue
-                e -> flunk("BITFLIP RAISE FrameCodec.decode_frame #{label}: #{Exception.format(:error, e)}")
+                e ->
+                  flunk(
+                    "BITFLIP RAISE FrameCodec.decode_frame #{label}: #{Exception.format(:error, e)}"
+                  )
               end
 
             for r <- [prim, frame], do: assert_tuple(r)
@@ -1917,6 +2081,7 @@ defmodule Smalt.Amqp.FuzzTest do
 
         assert {:ok, dec} = FrameCodec.decode_frame(flipped)
         assert dec.channel != base.channel
+
         assert Map.delete(dec, :channel) == Map.delete(base, :channel),
                "channel flip changed more than the channel"
       end
@@ -1942,6 +2107,7 @@ defmodule Smalt.Amqp.FuzzTest do
         bump(:ext_flip, 1)
 
         assert {:ok, dec} = FrameCodec.decode_frame(flipped_ext)
+
         assert Map.delete(dec, :payload) == Map.delete(base, :payload),
                "extended-header byte #{i} bit #{bit} changed the decode"
       end
@@ -1990,8 +2156,11 @@ defmodule Smalt.Amqp.FuzzTest do
             end
 
           # trailing-rest decodes and tagged errors are out of scope here
-          {:ok, _, _} -> :ok
-          {:error, _} -> :ok
+          {:ok, _, _} ->
+            :ok
+
+          {:error, _} ->
+            :ok
         end
       end
     end
@@ -2029,7 +2198,22 @@ defmodule Smalt.Amqp.FuzzTest do
       prim = PrimitiveCodec.decode(<<0x00, ctor, body::binary>>)
       bump(:desc_slot, 1)
 
-      if ctor in [0x43, 0x44, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x60, 0x61, 0x70, 0x71, 0x80, 0x81] do
+      if ctor in [
+           0x43,
+           0x44,
+           0x50,
+           0x51,
+           0x52,
+           0x53,
+           0x54,
+           0x55,
+           0x60,
+           0x61,
+           0x70,
+           0x71,
+           0x80,
+           0x81
+         ] do
         assert match?({:ok, {:described, _, _}, _}, prim),
                "ulong ctor 0x#{Integer.to_string(ctor, 16)} refused in descriptor slot: #{inspect(prim)}"
       else
@@ -2043,7 +2227,24 @@ defmodule Smalt.Amqp.FuzzTest do
 
       msg = FrameCodec.decode_message(<<0x00, ctor, body::binary>>)
 
-      if ctor in [0x43, 0x44, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x60, 0x61, 0x70, 0x71, 0x80, 0x81, 0xA3, 0xB3] do
+      if ctor in [
+           0x43,
+           0x44,
+           0x50,
+           0x51,
+           0x52,
+           0x53,
+           0x54,
+           0x55,
+           0x60,
+           0x61,
+           0x70,
+           0x71,
+           0x80,
+           0x81,
+           0xA3,
+           0xB3
+         ] do
         assert match?({:ok, _}, msg) or match?({:error, _}, msg)
       else
         assert match?({:error, _}, msg) or msg == {:ok, []},
@@ -2077,8 +2278,13 @@ defmodule Smalt.Amqp.FuzzTest do
           try do
             PrimitiveCodec.encode(mutated) |> IO.iodata_to_binary()
           rescue
-            e in ArgumentError -> {:raised, e}
-            e -> flunk(dump(seed, "non-ArgumentError raise: #{Exception.format(:error, e)}", mutated))
+            e in ArgumentError ->
+              {:raised, e}
+
+            e ->
+              flunk(
+                dump(seed, "non-ArgumentError raise: #{Exception.format(:error, e)}", mutated)
+              )
           end
 
         case result do
@@ -2089,7 +2295,11 @@ defmodule Smalt.Amqp.FuzzTest do
             case PrimitiveCodec.decode_all(bin) do
               {:ok, [decoded]} ->
                 assert decoded == mutated,
-                       dump(seed, "encode emitted non-round-tripping bytes\nmutated=#{inspect(mutated, limit: 30)}\ndecoded=#{inspect(decoded, limit: 30)}", bin)
+                       dump(
+                         seed,
+                         "encode emitted non-round-tripping bytes\nmutated=#{inspect(mutated, limit: 30)}\ndecoded=#{inspect(decoded, limit: 30)}",
+                         bin
+                       )
 
               other ->
                 flunk(dump(seed, "encode emitted undecodable bytes: #{inspect(other)}", mutated))
@@ -2116,7 +2326,8 @@ defmodule Smalt.Amqp.FuzzTest do
 
       4 ->
         # described with out-of-domain descriptor
-        {:described, Enum.random([-1, 2 ** 64, "plain-bin", {:symbol, 1}, {:uuid, <<0::128>>, :extra}]), term}
+        {:described,
+         Enum.random([-1, 2 ** 64, "plain-bin", {:symbol, 1}, {:uuid, <<0::128>>, :extra}]), term}
 
       5 ->
         # array with a hostile element (mixed ctor or non-encodable)
@@ -2144,7 +2355,9 @@ defmodule Smalt.Amqp.FuzzTest do
     else
       case term do
         [h | t] ->
-          if :rand.uniform(2) == 1, do: [replace_leaf(h, leaf) | t], else: [h | replace_leaf(t, leaf)]
+          if :rand.uniform(2) == 1,
+            do: [replace_leaf(h, leaf) | t],
+            else: [h | replace_leaf(t, leaf)]
 
         {tag, v} when tag in [:symbol, :vbin, :uuid, :timestamp] and is_binary(v) ->
           {tag, v}
@@ -2161,7 +2374,7 @@ defmodule Smalt.Amqp.FuzzTest do
 
         other ->
           if is_integer(other) and not is_boolean(other), do: leaf, else: other
-        end
+      end
     end
   end
 
@@ -2196,10 +2409,30 @@ defmodule Smalt.Amqp.FuzzTest do
   # pairs), classifying ulong/symbol acceptance at BOTH levels.
   test "two-level described nesting: descriptor ctor acceptance composes (lens-6)" do
     reps = [0x43, 0x53, 0x80, 0xA3, 0xB3, 0xA1]
-    ulong_or_sym = [0x43, 0x44, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x60, 0x61, 0x70, 0x71, 0x80, 0x81, 0xA3, 0xB3]
+
+    ulong_or_sym = [
+      0x43,
+      0x44,
+      0x50,
+      0x51,
+      0x52,
+      0x53,
+      0x54,
+      0x55,
+      0x60,
+      0x61,
+      0x70,
+      0x71,
+      0x80,
+      0x81,
+      0xA3,
+      0xB3
+    ]
 
     for {outer, inner} <- pairs(reps) do
-      wire = <<0x00, outer, desc_payload(outer)::binary, 0x00, inner, desc_payload(inner)::binary, 0x40>>
+      wire =
+        <<0x00, outer, desc_payload(outer)::binary, 0x00, inner, desc_payload(inner)::binary,
+          0x40>>
 
       prim = PrimitiveCodec.decode(wire)
       bump(:nested_desc, 1)
@@ -2290,7 +2523,7 @@ defmodule Smalt.Amqp.FuzzTest do
       {:uint32_max, 0x70, <<0xFFFF_FFFF::32>>, 4_294_967_295},
       {:ulong64_max, 0x80, <<0xFFFF_FFFF_FFFF_FFFF::64>>, 18_446_744_073_709_551_615},
       {:ulong64_two_pow_63, 0x80, <<0x8000_0000_0000_0000::64>>, 0x8000_0000_0000_0000},
-      {:ulong64_above_uint32, 0x80, <<(0xFFFF_FFFF + 1)::64>>, 0xFFFF_FFFF + 1},
+      {:ulong64_above_uint32, 0x80, <<0xFFFF_FFFF + 1::64>>, 0xFFFF_FFFF + 1},
       # signed fixed widths, both extremes
       {:tinyint_min, 0x51, <<0x80>>, -128},
       {:tinyint_max, 0x51, <<0x7F>>, 127},
@@ -2306,6 +2539,7 @@ defmodule Smalt.Amqp.FuzzTest do
 
     for {label, ctor, body, expected} <- boundary_wires do
       wire = <<ctor, body::binary>>
+
       assert {:ok, ^expected, <<>>} = PrimitiveCodec.decode(wire),
              "#{label}: exact-width decode broke: #{inspect(PrimitiveCodec.decode(wire))}"
 
@@ -2331,10 +2565,23 @@ defmodule Smalt.Amqp.FuzzTest do
 
     # one-byte-short of every fixed width converges to :truncated (raise-leak
     # twin: never a raise, always a tagged error)
-    for {ctor, width} <- [{0x60, 2}, {0x61, 2}, {0x70, 4}, {0x71, 4}, {0x72, 4}, {0x80, 8}, {0x81, 8}, {0x82, 8}, {0x83, 8}, {0x98, 16}] do
+    for {ctor, width} <- [
+          {0x60, 2},
+          {0x61, 2},
+          {0x70, 4},
+          {0x71, 4},
+          {0x72, 4},
+          {0x80, 8},
+          {0x81, 8},
+          {0x82, 8},
+          {0x83, 8},
+          {0x98, 16}
+        ] do
       wire = <<ctor, :binary.copy(<<0>>, width - 1)::binary>>
+
       assert {:error, :invalid_constructor} = PrimitiveCodec.decode(wire),
              "ctor 0x#{Integer.to_string(ctor, 16)} short-by-one did not tag an error: #{inspect(PrimitiveCodec.decode(wire))}"
+
       bump(:mirror_short, 1)
     end
 
@@ -2372,7 +2619,8 @@ defmodule Smalt.Amqp.FuzzTest do
     proper_term?(h) and proper_term?(t)
   end
 
-  defp proper_term?(map) when is_map(map), do: Enum.all?(map, fn {k, v} -> proper_term?(k) and proper_term?(v) end)
+  defp proper_term?(map) when is_map(map),
+    do: Enum.all?(map, fn {k, v} -> proper_term?(k) and proper_term?(v) end)
 
   defp proper_term?({:array, l}) when is_list(l), do: proper_term?(l)
 
@@ -2455,8 +2703,11 @@ defmodule Smalt.Amqp.FuzzTest do
           end
 
         if expect_ok do
-          assert {:ok, enc} = result, "boundary value #{n} unexpectedly raised: #{inspect(result)}"
-          assert {:ok, [^n]} = PrimitiveCodec.decode_all(enc), "boundary value #{n} broke round-trip"
+          assert {:ok, enc} = result,
+                 "boundary value #{n} unexpectedly raised: #{inspect(result)}"
+
+          assert {:ok, [^n]} = PrimitiveCodec.decode_all(enc),
+                 "boundary value #{n} broke round-trip"
         else
           assert :raised = result, "over-range value #{n} did not raise ArgumentError"
         end

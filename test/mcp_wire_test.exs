@@ -18,8 +18,9 @@ defmodule Smalt.McpWireTest do
     # R178g: record + delete the seeded keys on_exit so they never leak into
     # other suites sharing these tables.
     seeded =
-      {String.downcase("/subscriptions/#{@default_sub}/resourcegroups/mcp-rg/providers/microsoft.storage/storageaccounts/mcpacct"),
-       "mcpacct/mcpcontainer/notes.txt"}
+      {String.downcase(
+         "/subscriptions/#{@default_sub}/resourcegroups/mcp-rg/providers/microsoft.storage/storageaccounts/mcpacct"
+       ), "mcpacct/mcpcontainer/notes.txt"}
 
     on_exit(fn ->
       {res, blob} = seeded
@@ -63,7 +64,8 @@ defmodule Smalt.McpWireTest do
     {:ok, sock} =
       :gen_tcp.connect(~c"127.0.0.1", mcp_port(), [:binary, active: false, send_timeout: 5_000])
 
-    body = Jason.encode!(%{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
+    body =
+      Jason.encode!(%{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
 
     request =
       "POST / HTTP/1.1\r\n" <>
@@ -166,7 +168,8 @@ defmodule Smalt.McpWireTest do
   end
 
   test "wire substrate.status reports the live substrate" do
-    status = wire_rpc("tools/call", %{"name" => "substrate.status", "arguments" => %{}}) |> structured()
+    status =
+      wire_rpc("tools/call", %{"name" => "substrate.status", "arguments" => %{}}) |> structured()
 
     assert status["status"] == "ok"
     assert status["store_alive"] == true
@@ -180,7 +183,10 @@ defmodule Smalt.McpWireTest do
       |> structured()
 
     assert caps["admitted_resource_types"] == Smalt.Registry.admitted_resource_types()
-    assert caps["admitted_resource_type_count"] == length(Smalt.Registry.admitted_resource_types())
+
+    assert caps["admitted_resource_type_count"] ==
+             length(Smalt.Registry.admitted_resource_types())
+
     assert Map.has_key?(caps["api_versions"], "Microsoft.Storage/storageAccounts")
     assert "substrate.status" in caps["mcp_tools"]
   end
@@ -372,7 +378,8 @@ defmodule Smalt.McpWireTest do
     {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
 
     call = fn method, params, id ->
-      body = Jason.encode!(%{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
+      body =
+        Jason.encode!(%{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
 
       :ok =
         :gen_tcp.send(
@@ -480,8 +487,10 @@ defmodule Smalt.McpWireTest do
           :ok = :gen_tcp.send(sock, request_bytes(port, big))
           assert {:ok, status, headers, body} = parse_response(recv_all(sock, <<>>))
           :gen_tcp.close(sock)
+
           {i, status, Jason.decode!(body)["error"]["data"]["code"],
-           byte_size(body) == String.to_integer(List.keyfind(headers, "content-length", 0) |> elem(1))}
+           byte_size(body) ==
+             String.to_integer(List.keyfind(headers, "content-length", 0) |> elem(1))}
         end,
         max_concurrency: 2,
         timeout: 30_000
@@ -495,7 +504,9 @@ defmodule Smalt.McpWireTest do
   end
 
   defp connect!(port) do
-    {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false, send_timeout: 30_000])
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false, send_timeout: 30_000])
+
     sock
   end
 
@@ -651,18 +662,18 @@ defmodule Smalt.McpWireTest do
         {{_code, body}, pending} = pipeline_response(sock, pending)
         body = Jason.decode!(body)
 
-      assert body["id"] == "p#{i}",
-             "pipelined response #{i} was not id-faithful: #{inspect(body["id"])}"
+        assert body["id"] == "p#{i}",
+               "pipelined response #{i} was not id-faithful: #{inspect(body["id"])}"
 
-      case tool do
-        "substrate.status" ->
-          assert body["result"]["structuredContent"]["status"] == "ok"
+        case tool do
+          "substrate.status" ->
+            assert body["result"]["structuredContent"]["status"] == "ok"
 
-        "substrate.capabilities" ->
-          assert Map.has_key?(body["result"]["structuredContent"], "admitted_resource_types")
-      end
+          "substrate.capabilities" ->
+            assert Map.has_key?(body["result"]["structuredContent"], "admitted_resource_types")
+        end
 
-      pending
+        pending
     end
 
     :gen_tcp.close(sock)
@@ -730,7 +741,8 @@ defmodule Smalt.McpWireTest do
   test "wire lens4 blob.list sentinel: content sentinels absent from raw bytes" do
     sentinels =
       for i <- 1..3 do
-        {"l4acct/l4cont/wireblob#{i}", "L4WIRE-SECRET-#{:erlang.unique_integer([:positive])}-#{i}"}
+        {"l4acct/l4cont/wireblob#{i}",
+         "L4WIRE-SECRET-#{:erlang.unique_integer([:positive])}-#{i}"}
       end
 
     for {key, content} <- sentinels do
@@ -747,7 +759,10 @@ defmodule Smalt.McpWireTest do
     end
 
     {status, _headers, raw} =
-      wire_rpc("tools/call", %{"name" => "blob.list", "arguments" => %{"account" => "l4acct", "container" => "l4cont"}})
+      wire_rpc("tools/call", %{
+        "name" => "blob.list",
+        "arguments" => %{"account" => "l4acct", "container" => "l4cont"}
+      })
 
     assert status == 200
 
@@ -823,7 +838,14 @@ defmodule Smalt.McpWireTest do
       # default ports are environment, not a substrate defect) -- the port
       # number is parsed from the check DETAIL, since names no longer carry
       # it.
-      assert check["name"] in ["port-arm", "port-data", "port-amqp", "port-9443", "port-8443", "port-5672"],
+      assert check["name"] in [
+               "port-arm",
+               "port-data",
+               "port-amqp",
+               "port-9443",
+               "port-8443",
+               "port-5672"
+             ],
              "non-port doctor check FAILed: #{check["name"]}: #{check["detail"]}"
 
       port =
@@ -893,11 +915,12 @@ defmodule Smalt.McpWireTest do
     collect_doctor(port, "", nil)
   end
 
-  defp doctor_bin, do: System.find_executable("python3") || raise "python3 not on PATH"
+  defp doctor_bin, do: System.find_executable("python3") || raise("python3 not on PATH")
 
   defp doctor_script, do: Path.join(File.cwd!(), "scripts/doctor.py")
 
-  defp enum_env(map), do: Enum.map(map, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
+  defp enum_env(map),
+    do: Enum.map(map, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
 
   defp collect_doctor(port, out, status) do
     receive do
@@ -1196,7 +1219,9 @@ defmodule Smalt.McpWireTest do
             body =
               body_of("tools/call", %{"name" => "substrate.status", "arguments" => %{}}, "r#{i}")
 
-            sock = raw_post(port, "Content-Length: #{byte_size(body)}\r\nConnection: close\r\n", body)
+            sock =
+              raw_post(port, "Content-Length: #{byte_size(body)}\r\nConnection: close\r\n", body)
+
             resp = recv_all(sock, <<>>)
             :gen_tcp.close(sock)
 
@@ -1328,11 +1353,16 @@ defmodule Smalt.McpWireTest do
     assert is_list(body["result"]["tools"])
 
     {200, _h, _} =
-      resp2 = wire_rpc("tools/call", %{"name" => "kv.get", "arguments" => %{"name" => "ghost-key"}}, "ctl-2")
+      resp2 =
+      wire_rpc(
+        "tools/call",
+        %{"name" => "kv.get", "arguments" => %{"name" => "ghost-key"}},
+        "ctl-2"
+      )
+
     body2 = decoded(resp2)
     assert body2["id"] == "ctl-2"
     assert body2["result"]["isError"] == true
     assert body2["result"]["structuredContent"]["code"] == "RESOURCE_NOT_FOUND"
   end
-
 end

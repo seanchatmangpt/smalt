@@ -17,6 +17,7 @@ defmodule Smalt.AshExtension.SubstrateResource.Persist do
   def transform(dsl_state) do
     store_table = Spark.Dsl.Transformer.get_option(dsl_state, [:substrate], :store_table)
     matter_scope = Spark.Dsl.Transformer.get_option(dsl_state, [:substrate], :matter_scope)
+
     persisted = %{
       substrate: [
         %{store_table: store_table, matter_scope: matter_scope}

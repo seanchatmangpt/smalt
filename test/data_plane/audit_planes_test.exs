@@ -41,7 +41,13 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     test "ingests rows with seq and registers the stream" do
       # Real Log Analytics DCR ingest answers 204 No Content (x-ms-request-id
       # rides the HTTP response headers at the router seam).
-      assert {:ok, 204, ""} = Sentinel.ingest("dcr-1", "Custom-Logs", [%{"msg" => "a"}, %{"msg" => "b"}], "2023-01-01")
+      assert {:ok, 204, ""} =
+               Sentinel.ingest(
+                 "dcr-1",
+                 "Custom-Logs",
+                 [%{"msg" => "a"}, %{"msg" => "b"}],
+                 "2023-01-01"
+               )
 
       assert {:ok, stream} = Store.get(:smalt_sentinel_streams, "dcr-1/Custom-Logs")
       assert stream["dcr"] == "dcr-1"
@@ -49,15 +55,29 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       keys = Store.list_prefix(:smalt_sentinel_rows, "dcr-1/Custom-Logs/") |> length()
       assert keys == 2
 
-      assert {:ok, _} = Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0"))
-      assert {:ok, _} = Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("2", 20, "0"))
+      assert {:ok, _} =
+               Store.get(
+                 :smalt_sentinel_rows,
+                 "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0")
+               )
+
+      assert {:ok, _} =
+               Store.get(
+                 :smalt_sentinel_rows,
+                 "dcr-1/Custom-Logs/" <> String.pad_leading("2", 20, "0")
+               )
     end
 
     test "continues seq numbering across ingests" do
       Sentinel.ingest("dcr-1", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
       Sentinel.ingest("dcr-1", "Custom-Logs", [%{"msg" => "b"}], "2023-01-01")
 
-      assert {:ok, row} = Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("2", 20, "0"))
+      assert {:ok, row} =
+               Store.get(
+                 :smalt_sentinel_rows,
+                 "dcr-1/Custom-Logs/" <> String.pad_leading("2", 20, "0")
+               )
+
       assert row["msg"] == "b"
     end
 
@@ -70,9 +90,15 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
     test "augments every row with the five string columns" do
       {:ok, 204, ""} =
-        Sentinel.ingest("dcr-1", "Custom-Logs", [%{"msg" => "a", "subject" => "alice"}], "2023-01-01")
+        Sentinel.ingest(
+          "dcr-1",
+          "Custom-Logs",
+          [%{"msg" => "a", "subject" => "alice"}],
+          "2023-01-01"
+        )
 
-      {:ok, row} = Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0"))
+      {:ok, row} =
+        Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0"))
 
       for col <- ~w(ledgerId tenantId subjectSha256 eventId sha256Hash) do
         assert is_binary(row[col]), "expected #{col} to be a string, got: #{inspect(row[col])}"
@@ -90,7 +116,9 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, 204, ""} =
         Sentinel.ingest("dcr-1", "Custom-Logs", [%{"tenantId" => "my-tenant"}], "2023-01-01")
 
-      {:ok, row} = Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0"))
+      {:ok, row} =
+        Store.get(:smalt_sentinel_rows, "dcr-1/Custom-Logs/" <> String.pad_leading("1", 20, "0"))
+
       assert row["tenantId"] == "my-tenant"
     end
 
@@ -107,7 +135,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
                Sentinel.ingest("dcr-nil", "Custom-Logs", [42], "2023-01-01")
 
       # A clean batch afterwards still works and starts at seq 1.
-      assert {:ok, 204, ""} = Sentinel.ingest("dcr-nil", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+      assert {:ok, 204, ""} =
+               Sentinel.ingest("dcr-nil", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
 
       assert length(Store.list_prefix(:smalt_sentinel_rows, "dcr-nil/Custom-Logs/")) == 1
     end
@@ -145,7 +174,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       rows = [%{"msg" => "hit", "eventId" => "x"}, %{"msg" => "miss", "eventId" => "y"}]
       Sentinel.ingest("ws-kql", "Custom-Logs", rows, "2023-01-01")
 
-      {:ok, 200, resp} = Sentinel.query("ws-kql", %{"query" => "Custom-Logs | where eventId == 'x'"})
+      {:ok, 200, resp} =
+        Sentinel.query("ws-kql", %{"query" => "Custom-Logs | where eventId == 'x'"})
 
       table = hd(resp["tables"])
       assert table["name"] == "PrimaryResult"
@@ -204,7 +234,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     test "all-nil column and empty rows report string type" do
       Sentinel.ingest("ws-types", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
 
-      {:ok, 200, resp} = Sentinel.query("ws-types", %{"query" => "Custom-Logs | project missing_col"})
+      {:ok, 200, resp} =
+        Sentinel.query("ws-types", %{"query" => "Custom-Logs | project missing_col"})
 
       assert hd(hd(resp["tables"])["columns"])["type"] == "string"
       assert hd(resp["tables"])["rows"] == [[nil]]
@@ -255,7 +286,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
   defp seed_resources(count, sub \\ "sub-1") do
     for i <- 1..count do
       Store.put(:smalt_resources, "sub-1/rg#{rem(i, 3)}/res#{i}", %{
-        "id" => "/subscriptions/#{sub}/resourceGroups/rg#{rem(i, 3)}/providers/Microsoft.Compute/vm#{i}",
+        "id" =>
+          "/subscriptions/#{sub}/resourceGroups/rg#{rem(i, 3)}/providers/Microsoft.Compute/vm#{i}",
         "name" => "res#{i}",
         "type" => "Microsoft.Compute/virtualMachines",
         "subscriptionId" => sub
@@ -318,13 +350,15 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       sub = "11111111-2222-3333-4444-555555555555"
 
       Store.put(:smalt_resources, "#{sub}/rg1/vault1", %{
-        "id" => "/subscriptions/#{sub}/resourceGroups/rg1/providers/Microsoft.KeyVault/vaults/vault1",
+        "id" =>
+          "/subscriptions/#{sub}/resourceGroups/rg1/providers/Microsoft.KeyVault/vaults/vault1",
         "name" => "vault1",
         "type" => "Microsoft.KeyVault/vaults"
       })
 
       Store.put(:smalt_resources, "other-sub/rg1/vault2", %{
-        "id" => "/subscriptions/other-sub/resourceGroups/rg1/providers/Microsoft.KeyVault/vaults/vault2",
+        "id" =>
+          "/subscriptions/other-sub/resourceGroups/rg1/providers/Microsoft.KeyVault/vaults/vault2",
         "name" => "vault2",
         "type" => "Microsoft.KeyVault/vaults"
       })
@@ -434,7 +468,11 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         })
       end
 
-      {names, last_had_token?} = collect_pages(["sub-1"], %{"$top" => 3, "query" => "where type == 'Microsoft.Storage/storageAccounts'"})
+      {names, last_had_token?} =
+        collect_pages(["sub-1"], %{
+          "$top" => 3,
+          "query" => "where type == 'Microsoft.Storage/storageAccounts'"
+        })
 
       assert length(names) == 7
       assert length(Enum.uniq(names)) == 7
@@ -526,7 +564,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
   describe "Purview entities" do
     test "create_entity assigns guid and returns 201" do
-      {:ok, 201, entity} = Purview.create_entity(%{"entity" => %{"typeName" => "azure_sql_table"}}, %{})
+      {:ok, 201, entity} =
+        Purview.create_entity(%{"entity" => %{"typeName" => "azure_sql_table"}}, %{})
 
       assert entity["guid"]
       assert {:ok, _} = Store.get(:smalt_purview_entities, entity["guid"])
@@ -672,7 +711,10 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     test "depth caps traversal at the given level", %{g: g} do
       {:ok, 200, resp} = Purview.lineage(g["a"], "output", 1)
 
-      refute {g["b"], g["c"]} in Enum.map(resp["relations"], &{&1["fromEntityId"], &1["toEntityId"]})
+      refute {g["b"], g["c"]} in Enum.map(
+               resp["relations"],
+               &{&1["fromEntityId"], &1["toEntityId"]}
+             )
     end
 
     test "guidEntityMap carries reached entities", %{g: g} do
@@ -701,7 +743,11 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     }
 
     for {id, name} <- [a: "table_a", b: "table_b", c: "table_c"] do
-      Store.put(:smalt_purview_entities, g[id], %{"guid" => g[id], "typeName" => "azure_sql_table", "name" => name})
+      Store.put(:smalt_purview_entities, g[id], %{
+        "guid" => g[id],
+        "typeName" => "azure_sql_table",
+        "name" => name
+      })
     end
 
     Purview.put_edge(g["a"], g["b"], "process", %{"relationshipId" => "e1"})
@@ -719,6 +765,18 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       saved_forensic = Application.get_env(:smalt, :sentinel_forensic, false)
       Application.put_env(:smalt, :sentinel_forensic, true)
 
+      # Leak fix (i21 batch 3): this test creates the owner-durable
+      # :smalt_sentinel_forensic named table but never deleted it — it
+      # survived the whole VM and the "off-state costs zero" court below
+      # had to clean up a predecessor's residue to stay green. Unconditional
+      # on_exit delete (the table is deleted with prejudice; the mid-test
+      # forensics path only ever reads it).
+      on_exit(fn ->
+        if :ets.info(:smalt_sentinel_forensic) != :undefined do
+          :ets.delete(:smalt_sentinel_forensic)
+        end
+      end)
+
       # Restore discipline (corpus-b lens-3): if this test crashes before
       # restoring, the forensic hook stays ON for the whole VM and every
       # later Store.update_counter/CAS across all suites probes the
@@ -733,16 +791,21 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     end
 
     defp run_sentinel_race_assertions do
-
       # Owner-durable forensic table: created by THIS (test) process, which
       # stays alive for the whole test, so the timeline cannot vanish with a
       # short-lived first-caller (the same owner-churn defect class repaired
       # in EventStream in cycle 1).
       if :ets.info(:smalt_sentinel_forensic) == :undefined do
-        :ets.new(:smalt_sentinel_forensic, [:named_table, :public, :ordered_set, write_concurrency: true])
+        :ets.new(:smalt_sentinel_forensic, [
+          :named_table,
+          :public,
+          :ordered_set,
+          write_concurrency: true
+        ])
       end
 
       :ets.delete_all_objects(:smalt_sentinel_forensic)
+
       tasks =
         1..8
         |> Enum.map(fn t ->
@@ -755,6 +818,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       Task.await_many(tasks, 10_000)
 
       keys = Store.list_prefix(:smalt_sentinel_rows, "dcr-race/Custom-Logs/")
+
       if length(keys) != 40 do
         Application.put_env(:smalt, :sentinel_forensic, true)
 
@@ -778,8 +842,14 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
           |> Enum.sort()
 
         IO.puts("GAPS: #{inspect(Enum.to_list(1..40) -- seqs)}")
-        IO.puts("DUP_VALUES: #{inspect((length(keys) - length(Enum.uniq_by(keys, & &1["eventId"]))))}")
-        IO.puts("COUNTER: #{inspect(:ets.lookup(:smalt_sentinel_streams, {:seq_counter, "dcr-race", "Custom-Logs"}))}")
+
+        IO.puts(
+          "DUP_VALUES: #{inspect(length(keys) - length(Enum.uniq_by(keys, & &1["eventId"])))}"
+        )
+
+        IO.puts(
+          "COUNTER: #{inspect(:ets.lookup(:smalt_sentinel_streams, {:seq_counter, "dcr-race", "Custom-Logs"}))}"
+        )
       end
 
       assert length(keys) == 40, "expected 40 distinct rows, got #{length(keys)}"
@@ -793,7 +863,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
   describe "lens-2 Sentinel strict-DCR fence" do
     test "default: ingest to a never-created DCR implicitly creates it (documented divergence)" do
-      assert {:ok, 204, ""} = Sentinel.ingest("never-dcr", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
+      assert {:ok, 204, ""} =
+               Sentinel.ingest("never-dcr", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
 
       assert length(Store.list_prefix(:smalt_sentinel_rows, "never-dcr/Custom-Logs/")) == 1
     end
@@ -803,7 +874,12 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
       try do
         assert {:error, 404, %{"error" => %{"code" => "DCRNotFound"}}} =
-                 Sentinel.ingest("fenced-dcr", "Custom-Logs", [%{"msg" => "a"}, %{"msg" => "b"}], "2023-01-01")
+                 Sentinel.ingest(
+                   "fenced-dcr",
+                   "Custom-Logs",
+                   [%{"msg" => "a"}, %{"msg" => "b"}],
+                   "2023-01-01"
+                 )
 
         assert Store.list_prefix(:smalt_sentinel_rows, "fenced-dcr/") == []
         assert Store.list_prefix(:smalt_sentinel_streams, "fenced-dcr/") == []
@@ -830,14 +906,27 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     test "enforced: a DCR with prior stream state admits ingests" do
       # Seed state with the fence off (the seed ingest itself would otherwise be
       # the implicit create), then flip the fence: prior state admits ingests.
-      assert {:ok, 204, ""} = Sentinel.ingest("fenced-existing", "Custom-Logs", [%{"msg" => "seed"}], "2023-01-01")
+      assert {:ok, 204, ""} =
+               Sentinel.ingest(
+                 "fenced-existing",
+                 "Custom-Logs",
+                 [%{"msg" => "seed"}],
+                 "2023-01-01"
+               )
+
       Application.put_env(:smalt, :sentinel_dcr_strict, true)
 
       try do
         assert {:ok, 204, ""} =
-                 Sentinel.ingest("fenced-existing", "Custom-Logs", [%{"msg" => "next"}], "2023-01-01")
+                 Sentinel.ingest(
+                   "fenced-existing",
+                   "Custom-Logs",
+                   [%{"msg" => "next"}],
+                   "2023-01-01"
+                 )
 
-        assert length(Store.list_prefix(:smalt_sentinel_rows, "fenced-existing/Custom-Logs/")) == 2
+        assert length(Store.list_prefix(:smalt_sentinel_rows, "fenced-existing/Custom-Logs/")) ==
+                 2
       after
         Application.delete_env(:smalt, :sentinel_dcr_strict)
       end
@@ -865,7 +954,11 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       g = %{"x" => "c-xxxxxxxxxxxx1", "y" => "c-yyyyyyyyyyyy2"}
 
       for {id, name} <- [{"c-xxxxxxxxxxxx1", "entity_x"}, {"c-yyyyyyyyyyyy2", "entity_y"}] do
-        Store.put(:smalt_purview_entities, id, %{"guid" => id, "typeName" => "table", "name" => name})
+        Store.put(:smalt_purview_entities, id, %{
+          "guid" => id,
+          "typeName" => "table",
+          "name" => name
+        })
       end
 
       Purview.put_edge(g["x"], g["y"], "process", %{"relationshipId" => "r-xy"})
@@ -981,7 +1074,11 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       assert length(Enum.uniq(Enum.map(events, & &1["id"]))) == 80
 
       # Durability: a second read from a fresh process sees the identical list.
-      {:ok, checker} = Task.start(fn -> send(parent, {:reread, Smalt.Messaging.EventStream.list_events("order-topic")}) end)
+      {:ok, checker} =
+        Task.start(fn ->
+          send(parent, {:reread, Smalt.Messaging.EventStream.list_events("order-topic")})
+        end)
+
       ref = Process.monitor(checker)
 
       assert_receive {:reread, reread}, 5_000
@@ -992,7 +1089,12 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     test "publish_events (router path) then list preserves CloudEvents payload and order" do
       batch =
         for i <- 1..25 do
-          %{"specversion" => "1.0", "source" => "/plane/cross", "type" => "com.smalt.cross", "n" => i}
+          %{
+            "specversion" => "1.0",
+            "source" => "/plane/cross",
+            "type" => "com.smalt.cross",
+            "n" => i
+          }
         end
 
       assert :ok = Smalt.Messaging.EventStream.publish_events("cross-topic", batch)
@@ -1004,17 +1106,24 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
     test "ResourceGraph skipToken minted in a dead task is honored afterwards (lane-restart compat)" do
       for i <- 1..7 do
-        Store.put(:smalt_resources, "/subscriptions/sub-rx/resourcegroups/rg#{i}/providers/microsoft.storage/storageaccounts/sa#{i}", %{
-          "id" => "/subscriptions/sub-rx/resourceGroups/rg#{i}/providers/Microsoft.Storage/storageAccounts/sa#{i}",
-          "name" => "sa#{i}",
-          "type" => "Microsoft.Storage/storageAccounts"
-        })
+        Store.put(
+          :smalt_resources,
+          "/subscriptions/sub-rx/resourcegroups/rg#{i}/providers/microsoft.storage/storageaccounts/sa#{i}",
+          %{
+            "id" =>
+              "/subscriptions/sub-rx/resourceGroups/rg#{i}/providers/Microsoft.Storage/storageAccounts/sa#{i}",
+            "name" => "sa#{i}",
+            "type" => "Microsoft.Storage/storageAccounts"
+          }
+        )
       end
 
       # Mint the token inside a task that then exits (the "pre-restart" lane).
       token =
         Task.async(fn ->
-          {:ok, 200, body} = ResourceGraph.query(["sub-rx"], %{"options" => %{"$top" => 3}}, "2022-10-01")
+          {:ok, 200, body} =
+            ResourceGraph.query(["sub-rx"], %{"options" => %{"$top" => 3}}, "2022-10-01")
+
           assert body["count"] == 3
           assert is_binary(body["$skipToken"])
           body["$skipToken"]
@@ -1023,7 +1132,9 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
       # "Post-restart": the minting process is gone; the token must still page.
       {:ok, 200, body} =
-        Task.async(fn -> ResourceGraph.query(nil, %{"options" => %{"$skipToken" => token}}, "2022-10-01") end)
+        Task.async(fn ->
+          ResourceGraph.query(nil, %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+        end)
         |> Task.await(5_000)
 
       assert body["count"] == 4
@@ -1043,7 +1154,11 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       end
 
       {:ok, 200, body} =
-        ResourceGraph.query(["sub-rx2"], %{"options" => %{"$skipToken" => "deadbeef", "$top" => 2}}, "2022-10-01")
+        ResourceGraph.query(
+          ["sub-rx2"],
+          %{"options" => %{"$skipToken" => "deadbeef", "$top" => 2}},
+          "2022-10-01"
+        )
 
       assert body["count"] == 2
       assert body["totalRecords"] == 5
@@ -1070,7 +1185,9 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       tasks =
         for _t <- 1..24 do
           Task.async(fn ->
-            {:ok, 200, body} = ResourceGraph.query([sub], %{"options" => %{"$top" => 4}}, "2022-10-01")
+            {:ok, 200, body} =
+              ResourceGraph.query([sub], %{"options" => %{"$top" => 4}}, "2022-10-01")
+
             body
           end)
         end
@@ -1114,7 +1231,6 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, 200, resp} = Sentinel.query(dcr, %{"query" => "Custom-Logs | take 2000"})
       assert length(hd(resp["tables"])["rows"]) == 101
     end
-
   end
 
   # ---------------------------------------------------------------------------
@@ -1127,10 +1243,15 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       dcr = "eid-dcr-#{System.unique_integer([:positive])}"
 
       assert {:ok, 204, ""} =
-               Sentinel.ingest(dcr, "Custom-Logs", [
-                 %{"msg" => "a", "eventId" => "my-explicit-id-42"},
-                 %{"msg" => "b", "eventId" => 77}
-               ], "2023-01-01")
+               Sentinel.ingest(
+                 dcr,
+                 "Custom-Logs",
+                 [
+                   %{"msg" => "a", "eventId" => "my-explicit-id-42"},
+                   %{"msg" => "b", "eventId" => 77}
+                 ],
+                 "2023-01-01"
+               )
 
       rows = Store.list_prefix(:smalt_sentinel_rows, "#{dcr}/Custom-Logs/")
 
@@ -1197,7 +1318,14 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
   describe "lens-2 cycle 5" do
     test "EventStream republish with the same id overwrites by topic/id key (pinned divergence)" do
       topic = "dup-topic-#{System.unique_integer([:positive])}"
-      ev = %{"specversion" => "1.0", "source" => "/dup", "type" => "com.smalt.dup", "id" => "fixed-id", "v" => 1}
+
+      ev = %{
+        "specversion" => "1.0",
+        "source" => "/dup",
+        "type" => "com.smalt.dup",
+        "id" => "fixed-id",
+        "v" => 1
+      }
 
       assert {:ok, "fixed-id"} = Smalt.Messaging.EventStream.publish(topic, ev)
       assert {:ok, "fixed-id"} = Smalt.Messaging.EventStream.publish(topic, %{ev | "v" => 2})
@@ -1248,6 +1376,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       assert map_size(d2["guidEntityMap"]) == 4
     end
   end
+
   # ---------------------------------------------------------------------------
   # Lens-2 cycle 7: one-flip coordinator pivots — flagged fix-shape proofs for
   # the two remaining pinned divergences (strict-DCR already fenced cycle 1).
@@ -1258,14 +1387,19 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       sub = "opt-d-#{System.unique_integer([:positive])}"
 
       for i <- 1..9 do
-        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{"id" => "/subscriptions/#{sub}/r#{i}", "name" => "r#{i}"})
+        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{
+          "id" => "/subscriptions/#{sub}/r#{i}",
+          "name" => "r#{i}"
+        })
       end
 
       {:ok, 200, page1} = ResourceGraph.query([sub], %{"options" => %{"$top" => 3}}, "2022-10-01")
       token = page1["$skipToken"]
 
       # No $top re-supplied: default page = everything remaining (6).
-      {:ok, 200, page2} = ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+      {:ok, 200, page2} =
+        ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+
       assert page2["count"] == 6
     end
 
@@ -1273,7 +1407,10 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       sub = "opt-e-#{System.unique_integer([:positive])}"
 
       for i <- 1..9 do
-        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{"id" => "/subscriptions/#{sub}/r#{i}", "name" => "r#{i}"})
+        Store.put(:smalt_resources, "/subscriptions/#{sub}/r#{i}", %{
+          "id" => "/subscriptions/#{sub}/r#{i}",
+          "name" => "r#{i}"
+        })
       end
 
       {:ok, 200, page1} = ResourceGraph.query([sub], %{"options" => %{"$top" => 3}}, "2022-10-01")
@@ -1284,13 +1421,19 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       try do
         # Explicit options still win over stored ones.
         {:ok, 200, p2a} =
-          ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token, "$top" => 2}}, "2022-10-01")
+          ResourceGraph.query(
+            [sub],
+            %{"options" => %{"$skipToken" => token, "$top" => 2}},
+            "2022-10-01"
+          )
 
         assert p2a["count"] == 2
         assert Enum.map(p2a["data"], & &1["name"]) |> Enum.sort() == ["r4", "r5"]
 
         # Omitted $top falls back to the stored value (3).
-        {:ok, 200, p2b} = ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+        {:ok, 200, p2b} =
+          ResourceGraph.query([sub], %{"options" => %{"$skipToken" => token}}, "2022-10-01")
+
         assert p2b["count"] == 3
         assert Enum.map(p2b["data"], & &1["name"]) |> Enum.sort() == ["r4", "r5", "r6"]
       after
@@ -1317,7 +1460,9 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
       try do
         assert {:ok, "same"} = Smalt.Messaging.EventStream.publish(topic, ev)
-        assert {:error, :duplicate_id} = Smalt.Messaging.EventStream.publish(topic, %{ev | "v" => 2})
+
+        assert {:error, :duplicate_id} =
+                 Smalt.Messaging.EventStream.publish(topic, %{ev | "v" => 2})
 
         # First write intact, last-write-wins defeated.
         assert [%{"v" => 1}] = Smalt.Messaging.EventStream.list_events(topic)
@@ -1328,7 +1473,10 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         # publish_many halts at the duplicate (partial insert semantics
         # documented in cycle 5: earlier events remain stored).
         assert {:error, :duplicate_id} =
-                 Smalt.Messaging.EventStream.publish_many(topic, [%{ev | "id" => "ok3"}, %{ev | "id" => "same"}])
+                 Smalt.Messaging.EventStream.publish_many(topic, [
+                   %{ev | "id" => "ok3"},
+                   %{ev | "id" => "same"}
+                 ])
 
         # Generated ids (no explicit id) never collide.
         assert {:ok, _} = Smalt.Messaging.EventStream.publish(topic, %{ev | "id" => nil})
@@ -1351,6 +1499,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
       :ets.new(table, [:set, :public, :named_table])
       :ets.give_away(table, owner, nil)
+
       on_exit(fn ->
         if :ets.info(table) != :undefined, do: :ets.delete(table)
       end)
@@ -1372,6 +1521,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
       :ets.new(table, [:set, :public, :named_table])
       :ets.give_away(table, owner, nil)
+
       on_exit(fn ->
         if :ets.info(table) != :undefined, do: :ets.delete(table)
       end)
@@ -1401,6 +1551,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, owner} = Task.start(fn -> Process.sleep(:infinity) end)
       :ets.new(table, [:set, :public, :named_table])
       :ets.give_away(table, owner, nil)
+
       on_exit(fn ->
         if :ets.info(table) != :undefined, do: :ets.delete(table)
       end)
@@ -1486,6 +1637,13 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     test "forensic off-state costs zero: no :smalt_sentinel_forensic table is ever created" do
       saved = Application.get_env(:smalt, :sentinel_forensic, false)
       Application.put_env(:smalt, :sentinel_forensic, false)
+
+      # Leak fix (i21 batch 3): unconditional on_exit delete for :l4_off_cas.
+      # The in-test `after` is skipped when the VM is tearing the test down
+      # abnormally; on_exit always runs.
+      on_exit(fn ->
+        if :ets.info(:l4_off_cas) != :undefined, do: :ets.delete(:l4_off_cas)
+      end)
 
       try do
         if :ets.info(:smalt_sentinel_forensic) != :undefined do
@@ -1595,11 +1753,15 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       # Fill to the cap with age-ordered tokens; the next mint must evict the
       # oldest to stay at the cap.
       Enum.each(1..1000, fn i ->
-        Store.put(:smalt_resource_graph_tokens, "tok-#{String.pad_leading(Integer.to_string(i), 5, "0")}", %{
-          "offset" => i,
-          "subscriptions" => nil,
-          "created_at" => now - (1000 - i)
-        })
+        Store.put(
+          :smalt_resource_graph_tokens,
+          "tok-#{String.pad_leading(Integer.to_string(i), 5, "0")}",
+          %{
+            "offset" => i,
+            "subscriptions" => nil,
+            "created_at" => now - (1000 - i)
+          }
+        )
       end)
 
       Store.put(:smalt_resources, "r1", %{
@@ -1622,5 +1784,4 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       assert length(Store.keys(:smalt_resource_graph_tokens)) == 1000
     end
   end
-
 end

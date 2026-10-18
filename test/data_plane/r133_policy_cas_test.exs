@@ -38,9 +38,16 @@ defmodule Smalt.DataPlane.R133PolicyCasTest do
             end
 
             if rem(i, 2) == 0 do
-              send(parent, {:r133_meta, round, i, BlobService.set_container_metadata(account, container, %{"k#{i}" => "v#{i}"})})
+              send(
+                parent,
+                {:r133_meta, round, i,
+                 BlobService.set_container_metadata(account, container, %{"k#{i}" => "v#{i}"})}
+              )
             else
-              send(parent, {:r133_hold, round, i, BlobStorage.set_legal_hold(account, container, true)})
+              send(
+                parent,
+                {:r133_hold, round, i, BlobStorage.set_legal_hold(account, container, true)}
+              )
             end
           end)
         end

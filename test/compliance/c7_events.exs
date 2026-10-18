@@ -19,6 +19,14 @@ defmodule Smalt.Compliance.C7EventsTest do
     port = get_free_port()
 
     SmaltTest.Lifecycle.stop_shared_tree()
+
+    # save-prev (leak-court): carry across the on_exit seam via the process
+    # dictionary (try/on_exit bodies are separate scopes — i21-leak-batch2).
+    prev_arm = Application.get_env(:smalt, :arm_port)
+    prev_egress = Application.get_env(:smalt, :egress_port)
+    prev_amqp = Application.get_env(:smalt, :amqp_port)
+    Process.put({__MODULE__, :ports_prev}, {prev_arm, prev_egress, prev_amqp})
+
     Application.put_env(:smalt, :arm_port, get_free_port())
     Application.put_env(:smalt, :egress_port, port)
     Application.put_env(:smalt, :amqp_port, get_free_port())
@@ -32,6 +40,26 @@ defmodule Smalt.Compliance.C7EventsTest do
 
     on_exit(fn ->
       stop_tree(sup)
+
+      # conditional restore of the port-config keys saved in setup
+      case Process.get({__MODULE__, :ports_prev}) do
+        {arm, egress, amqp} ->
+          if is_nil(arm),
+            do: Application.delete_env(:smalt, :arm_port),
+            else: Application.put_env(:smalt, :arm_port, arm)
+
+          if is_nil(egress),
+            do: Application.delete_env(:smalt, :egress_port),
+            else: Application.put_env(:smalt, :egress_port, egress)
+
+          if is_nil(amqp),
+            do: Application.delete_env(:smalt, :amqp_port),
+            else: Application.put_env(:smalt, :amqp_port, amqp)
+
+        _ ->
+          :ok
+      end
+
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -124,7 +152,8 @@ defmodule Smalt.Compliance.C7EventsTest do
     resp =
       http_request(port, "POST", "/topics/c7-uuid/events",
         headers: [{"content-type", "application/cloudevents+json"}],
-        body: Jason.encode!(%{"specversion" => "1.0", "source" => "/c7/uuid", "type" => "C7.Uuid"})
+        body:
+          Jason.encode!(%{"specversion" => "1.0", "source" => "/c7/uuid", "type" => "C7.Uuid"})
       )
 
     assert resp.status == 200
@@ -139,9 +168,10 @@ defmodule Smalt.Compliance.C7EventsTest do
     assert byte_size(e) == 12
   end
 
-  test "[binding] REQUIRED attributes: missing specversion / source / type -> 400 InvalidCloudEvent, nothing stored", %{
-    egress: port
-  } do
+  test "[binding] REQUIRED attributes: missing specversion / source / type -> 400 InvalidCloudEvent, nothing stored",
+       %{
+         egress: port
+       } do
     for bad <- [
           %{"specversion" => "0.3", "id" => "x", "source" => "/c7", "type" => "C7.Bad"},
           %{"specversion" => "1.0", "id" => "x", "type" => "C7.Bad"},
@@ -213,11 +243,17 @@ defmodule Smalt.Compliance.C7EventsTest do
     assert rec["seq"] == 2
 
     # CAS checkpoint: one winner, one conflict.
-    :ok = Smalt.Messaging.EventHubs.compare_and_swap(group, part, %{"seq" => 0, "offset" => 0, "etag" => 0}, %{
-      "seq" => 2,
-      "offset" => 2,
-      "etag" => 1
-    })
+    :ok =
+      Smalt.Messaging.EventHubs.compare_and_swap(
+        group,
+        part,
+        %{"seq" => 0, "offset" => 0, "etag" => 0},
+        %{
+          "seq" => 2,
+          "offset" => 2,
+          "etag" => 1
+        }
+      )
 
     {:ok, rec2} = Smalt.Messaging.EventHubs.reconcile(group, part)
     assert rec2["checkpoint"]["seq"] == 2
@@ -243,9 +279,22 @@ defmodule Smalt.Compliance.C7EventsTest do
   # ---------------------------------------------------------------------------
 
   test "[la] DCR ingest api-version gate: 2023-01-01 accepted with 204 (real shape), other rejected 400" do
-    assert {:ok, 204, ""} = Smalt.DataPlane.Sentinel.ingest("c7-dcr", "Custom-Logs", [%{"a" => "1"}], "2023-01-01")
+    assert {:ok, 204, ""} =
+             Smalt.DataPlane.Sentinel.ingest(
+               "c7-dcr",
+               "Custom-Logs",
+               [%{"a" => "1"}],
+               "2023-01-01"
+             )
 
-    assert {:error, 400, err} = Smalt.DataPlane.Sentinel.ingest("c7-dcr", "Custom-Logs", [%{"a" => "1"}], "2022-01-01")
+    assert {:error, 400, err} =
+             Smalt.DataPlane.Sentinel.ingest(
+               "c7-dcr",
+               "Custom-Logs",
+               [%{"a" => "1"}],
+               "2022-01-01"
+             )
+
     assert err["error"]["code"] == "InvalidApiVersion"
 
     # Lens-3 cross-court round 2: byte-exact message pin for the LA surface
@@ -256,7 +305,10 @@ defmodule Smalt.Compliance.C7EventsTest do
 
   test "[la] DCR ingest over the wire answers 204 with x-ms-request-id", %{egress: port} do
     resp =
-      http_request(port, "POST", "/dataCollectionRules/c7-wire-dcr/streams/Custom-Logs?api-version=2023-01-01",
+      http_request(
+        port,
+        "POST",
+        "/dataCollectionRules/c7-wire-dcr/streams/Custom-Logs?api-version=2023-01-01",
         headers: [{"content-type", "application/json"}],
         body: Jason.encode!([%{"a" => "1"}])
       )
@@ -267,20 +319,29 @@ defmodule Smalt.Compliance.C7EventsTest do
     # replaced the 32-hex form with a v4 dashed GUID — F3 unification, drift
     # watch cycle 11 caught the change by FAILING this fence first):
     # exactly one x-ms-request-id, GUID form matching the ARM surface c1 pins.
-    assert [{_, req_id}] = Enum.filter(resp.headers, fn {name, _} -> name == "x-ms-request-id" end)
+    assert [{_, req_id}] =
+             Enum.filter(resp.headers, fn {name, _} -> name == "x-ms-request-id" end)
+
     assert is_binary(req_id) and byte_size(req_id) == 36
 
-    assert Regex.match?(~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, req_id),
+    assert Regex.match?(
+             ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+             req_id
+           ),
            "x-ms-request-id must be a v4 GUID, got: #{inspect(req_id)}"
   end
 
   test "[la] query PrimaryResult envelope: projected column order + value-shaped types (CONFORMANT)" do
     {:ok, 204, ""} =
-      Smalt.DataPlane.Sentinel.ingest("c7-dcr-q", "Custom-Logs", [%{"count" => 7, "at" => "2026-01-01T00:00:00Z"}],
+      Smalt.DataPlane.Sentinel.ingest(
+        "c7-dcr-q",
+        "Custom-Logs",
+        [%{"count" => 7, "at" => "2026-01-01T00:00:00Z"}],
         "2023-01-01"
       )
 
-    {:ok, 200, env} = Smalt.DataPlane.Sentinel.query("c7-dcr-q", %{"query" => "| project count, at"})
+    {:ok, 200, env} =
+      Smalt.DataPlane.Sentinel.query("c7-dcr-q", %{"query" => "| project count, at"})
 
     assert [%{"name" => "PrimaryResult", "columns" => cols, "rows" => rows}] = env["tables"]
 
@@ -306,28 +367,40 @@ defmodule Smalt.Compliance.C7EventsTest do
   # behavior change is engine-lane-owned).
   test "[rg] skipToken scope binding + forged-token fallback (current bytes)" do
     for i <- 1..5 do
-      Smalt.Store.put(:smalt_resources, "/subscriptions/rg8subA/providers/Microsoft.Storage/storageAccounts/a#{i}", %{
-        "id" => "/subscriptions/rg8subA/providers/Microsoft.Storage/storageAccounts/a#{i}",
-        "name" => "a#{i}",
-        "type" => "microsoft.storage/storageaccounts",
-        "location" => "eastus",
-        "subscriptionId" => "rg8subA"
-      })
+      Smalt.Store.put(
+        :smalt_resources,
+        "/subscriptions/rg8subA/providers/Microsoft.Storage/storageAccounts/a#{i}",
+        %{
+          "id" => "/subscriptions/rg8subA/providers/Microsoft.Storage/storageAccounts/a#{i}",
+          "name" => "a#{i}",
+          "type" => "microsoft.storage/storageaccounts",
+          "location" => "eastus",
+          "subscriptionId" => "rg8subA"
+        }
+      )
     end
 
     for i <- 1..2 do
-      Smalt.Store.put(:smalt_resources, "/subscriptions/rg8subB/providers/Microsoft.Storage/storageAccounts/b#{i}", %{
-        "id" => "/subscriptions/rg8subB/providers/Microsoft.Storage/storageAccounts/b#{i}",
-        "name" => "b#{i}",
-        "type" => "microsoft.storage/storageaccounts",
-        "location" => "eastus",
-        "subscriptionId" => "rg8subB"
-      })
+      Smalt.Store.put(
+        :smalt_resources,
+        "/subscriptions/rg8subB/providers/Microsoft.Storage/storageAccounts/b#{i}",
+        %{
+          "id" => "/subscriptions/rg8subB/providers/Microsoft.Storage/storageAccounts/b#{i}",
+          "name" => "b#{i}",
+          "type" => "microsoft.storage/storageaccounts",
+          "location" => "eastus",
+          "subscriptionId" => "rg8subB"
+        }
+      )
     end
 
     # Page 1 over subA only, $top=2 -> token T carries scope [rg8subA].
     {:ok, 200, page1} =
-      Smalt.DataPlane.ResourceGraph.query(["rg8subA"], %{"$top" => 2, "query" => "Resources"}, "2022-10-01")
+      Smalt.DataPlane.ResourceGraph.query(
+        ["rg8subA"],
+        %{"$top" => 2, "query" => "Resources"},
+        "2022-10-01"
+      )
 
     assert page1["count"] == 2
     tok = page1["$skipToken"]
@@ -364,7 +437,8 @@ defmodule Smalt.Compliance.C7EventsTest do
     resources =
       for i <- 1..5 do
         %{
-          "id" => "/subscriptions/c7-sub/resourcegroups/c7rg/providers/Microsoft.Storage/storageAccounts/c7sa#{i}",
+          "id" =>
+            "/subscriptions/c7-sub/resourcegroups/c7rg/providers/Microsoft.Storage/storageAccounts/c7sa#{i}",
           "name" => "c7sa#{i}",
           "type" => "microsoft.storage/storageaccounts",
           "location" => "eastus",
@@ -375,7 +449,11 @@ defmodule Smalt.Compliance.C7EventsTest do
     Enum.each(resources, &Smalt.Store.put(:smalt_resources, &1["id"], &1))
 
     {:ok, 200, page1} =
-      Smalt.DataPlane.ResourceGraph.query(["c7-sub"], %{"$top" => 2, "query" => "Resources"}, "2022-10-01")
+      Smalt.DataPlane.ResourceGraph.query(
+        ["c7-sub"],
+        %{"$top" => 2, "query" => "Resources"},
+        "2022-10-01"
+      )
 
     assert page1["count"] == 2
     assert page1["totalRecords"] == 5
@@ -430,7 +508,9 @@ defmodule Smalt.Compliance.C7EventsTest do
     assert is_map(entity)
 
     # bare-map shape
-    assert {:ok, 201, %{"guid" => g2}} = Smalt.DataPlane.Purview.create_entity(%{"typeName" => "c7_table"})
+    assert {:ok, 201, %{"guid" => g2}} =
+             Smalt.DataPlane.Purview.create_entity(%{"typeName" => "c7_table"})
+
     assert is_binary(g2)
   end
 
@@ -457,11 +537,19 @@ defmodule Smalt.Compliance.C7EventsTest do
   end
 
   test "[atlas] lineage: relationship edge -> guidEntityMap + relations in lineage response" do
-    {:ok, 201, a} = Smalt.DataPlane.Purview.create_entity(%{"typeName" => "c7_src", "guid" => "c7-lin-a"})
-    {:ok, 201, b} = Smalt.DataPlane.Purview.create_entity(%{"typeName" => "c7_dst", "guid" => "c7-lin-b"})
+    {:ok, 201, a} =
+      Smalt.DataPlane.Purview.create_entity(%{"typeName" => "c7_src", "guid" => "c7-lin-a"})
+
+    {:ok, 201, b} =
+      Smalt.DataPlane.Purview.create_entity(%{"typeName" => "c7_dst", "guid" => "c7-lin-b"})
+
     assert a["guid"] == "c7-lin-a" and b["guid"] == "c7-lin-b"
 
-    edge = Smalt.DataPlane.Purview.put_edge("c7-lin-a", "c7-lin-b", "c7_process", %{"relationshipId" => "rel-1"})
+    edge =
+      Smalt.DataPlane.Purview.put_edge("c7-lin-a", "c7-lin-b", "c7_process", %{
+        "relationshipId" => "rel-1"
+      })
+
     assert edge["relationshipId"] == "rel-1"
 
     {:ok, 200, lin} = Smalt.DataPlane.Purview.lineage("c7-lin-b", "input", 1)
@@ -469,8 +557,13 @@ defmodule Smalt.Compliance.C7EventsTest do
     assert Map.has_key?(lin["guidEntityMap"], "c7-lin-a")
     # CONFORMANT vs real Atlas v2: lineage relations carry the stored
     # relationship guid, not a recomputed "from->to" string.
-    assert [%{"fromEntityId" => "c7-lin-a", "toEntityId" => "c7-lin-b",
-              "relationshipId" => "rel-1"}] = lin["relations"]
+    assert [
+             %{
+               "fromEntityId" => "c7-lin-a",
+               "toEntityId" => "c7-lin-b",
+               "relationshipId" => "rel-1"
+             }
+           ] = lin["relations"]
   end
 
   # ---------------------------------------------------------------------------
@@ -539,7 +632,8 @@ defmodule Smalt.Compliance.C7EventsTest do
 
     %{
       status: status,
-      headers: Enum.map(header_lines, fn h -> String.split(h, ": ", parts: 2) |> List.to_tuple() end),
+      headers:
+        Enum.map(header_lines, fn h -> String.split(h, ": ", parts: 2) |> List.to_tuple() end),
       body: body
     }
   end

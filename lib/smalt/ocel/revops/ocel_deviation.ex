@@ -28,35 +28,38 @@ defmodule Smalt.Ocel.RevOps.OcelDeviation do
   conformance result reads back as an evidence record through Ash. No
   create/update/destroy: admission stays owned by the admission module.
   """
-  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple, primary_read_warning?: false
+  use Ash.Resource,
+    domain: Smalt.Ocel.RevOps,
+    data_layer: Ash.DataLayer.Simple,
+    primary_read_warning?: false
 
   attributes do
-    attribute :id, :string, allow_nil?: false, primary_key?: true, public?: true
+    attribute(:id, :string, allow_nil?: false, primary_key?: true, public?: true)
 
-    attribute :reference_trace_id, :string, allow_nil?: true, public?: true
+    attribute(:reference_trace_id, :string, allow_nil?: true, public?: true)
 
-    attribute :candidate_trace_id, :string, allow_nil?: true, public?: true
+    attribute(:candidate_trace_id, :string, allow_nil?: true, public?: true)
 
-    attribute :deviating_move, :string, allow_nil?: true, public?: true
+    attribute(:deviating_move, :string, allow_nil?: true, public?: true)
 
-    attribute :fitness, :float, allow_nil?: true, public?: true
+    attribute(:fitness, :float, allow_nil?: true, public?: true)
 
-    attribute :status, :string, allow_nil?: true, public?: true
+    attribute(:status, :string, allow_nil?: true, public?: true)
 
-    attribute :timestamp, :utc_datetime_usec, allow_nil?: true, public?: true
+    attribute(:timestamp, :utc_datetime_usec, allow_nil?: true, public?: true)
 
-    attribute :trace, {:array, :string}, allow_nil?: true, public?: true
+    attribute(:trace, {:array, :string}, allow_nil?: true, public?: true)
   end
 
   actions do
-    defaults []
+    defaults([])
 
     read :read do
-      primary? true
+      primary?(true)
 
-      argument :path, :string, allow_nil?: false, default: "tmp/ocel/deviations.jsonl"
+      argument(:path, :string, allow_nil?: false, default: "tmp/ocel/deviations.jsonl")
 
-      prepare fn query, _context ->
+      prepare(fn query, _context ->
         path = query.arguments.path
 
         records =
@@ -80,12 +83,12 @@ defmodule Smalt.Ocel.RevOps.OcelDeviation do
           end
 
         Ash.DataLayer.Simple.set_data(query, records)
-      end
+      end)
     end
   end
 
   code_interface do
-    define :read_deviations, action: :read
+    define(:read_deviations, action: :read)
   end
 
   defp parse_ts(nil), do: nil

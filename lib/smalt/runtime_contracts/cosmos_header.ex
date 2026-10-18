@@ -91,6 +91,7 @@ defmodule Smalt.RuntimeContracts.CosmosHeader do
 
     body = Jason.decode!(resp.body)
     Support.assert_equal(body["code"], "NotFound", "404 code")
+
     Support.assert_equal(
       body["message"],
       "Entity with the specified id does not exist in the system.",
@@ -104,7 +105,13 @@ defmodule Smalt.RuntimeContracts.CosmosHeader do
     Support.assert(doc["_etag"] =~ ~r/^"[0-9a-f]{64}"$/, "_etag is quoted 64-hex")
 
     reread = get_doc("etag-doc")
-    Support.assert_equal(Jason.decode!(reread.body)["_etag"], doc["_etag"], "_etag stable on read")
+
+    Support.assert_equal(
+      Jason.decode!(reread.body)["_etag"],
+      doc["_etag"],
+      "_etag stable on read"
+    )
+
     Support.assert_equal(reread.headers["etag"], doc["_etag"], "ETag header equals body _etag")
 
     put =
@@ -123,7 +130,13 @@ defmodule Smalt.RuntimeContracts.CosmosHeader do
     doc = create_and_read("sysprops-doc")
 
     Support.assert(is_binary(doc["_rid"]) and doc["_rid"] != "", "_rid present")
-    Support.assert_equal(doc["_self"], "/dbs/#{@db}/colls/#{@coll}/docs/sysprops-doc", "_self grammar")
+
+    Support.assert_equal(
+      doc["_self"],
+      "/dbs/#{@db}/colls/#{@coll}/docs/sysprops-doc",
+      "_self grammar"
+    )
+
     Support.assert(is_integer(doc["_ts"]), "_ts integer seconds")
   end
 
@@ -131,7 +144,11 @@ defmodule Smalt.RuntimeContracts.CosmosHeader do
     create_doc("sem-doc")
     etag = Jason.decode!(get_doc("sem-doc").body)["_etag"]
 
-    resp = dispatch(:delete, "/dbs/#{@db}/colls/#{@coll}/docs/sem-doc", headers: [{"if-match", etag}, @pk])
+    resp =
+      dispatch(:delete, "/dbs/#{@db}/colls/#{@coll}/docs/sem-doc",
+        headers: [{"if-match", etag}, @pk]
+      )
+
     Support.assert_equal(resp.status, 204, "conditional delete with matching If-Match -> 204")
 
     resp = dispatch(:delete, "/dbs/#{@db}/colls/#{@coll}/docs/sem-doc")
@@ -169,9 +186,15 @@ defmodule Smalt.RuntimeContracts.CosmosHeader do
 
     Support.assert_equal(resp.status, 200, "query POST -> 200")
     body = Jason.decode!(resp.body)
-    Support.assert_equal(MapSet.new(Map.keys(body)), MapSet.new(["_rid", "Documents", "_count"]), "feed keys")
+
+    Support.assert_equal(
+      MapSet.new(Map.keys(body)),
+      MapSet.new(["_rid", "Documents", "_count"]),
+      "feed keys"
+    )
 
     Support.assert(body["_count"] >= 2, "feed count includes seeded docs")
+
     Support.assert(
       Enum.all?(body["Documents"], &(&1["tenantId"] == "acme")),
       "query respects partition filter"

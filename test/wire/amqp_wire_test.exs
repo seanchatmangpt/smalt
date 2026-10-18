@@ -25,6 +25,16 @@ defmodule Smalt.Wire.AmqpWireTest do
     port = get_free_port()
 
     stop_existing_tree()
+
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev =
+      %{
+        arm_port: Application.get_env(:smalt, :arm_port),
+        egress_port: Application.get_env(:smalt, :egress_port),
+        amqp_port: Application.get_env(:smalt, :amqp_port),
+        event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
+      }
+
     Application.put_env(:smalt, :arm_port, get_free_port())
     Application.put_env(:smalt, :egress_port, get_free_port())
     Application.put_env(:smalt, :amqp_port, port)
@@ -44,6 +54,23 @@ defmodule Smalt.Wire.AmqpWireTest do
 
       on_exit(fn ->
         stop_tree(sup)
+
+        if prev.arm_port == nil,
+          do: Application.delete_env(:smalt, :arm_port),
+          else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+        if prev.egress_port == nil,
+          do: Application.delete_env(:smalt, :egress_port),
+          else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+        if prev.amqp_port == nil,
+          do: Application.delete_env(:smalt, :amqp_port),
+          else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
+
+        if prev.event_hubs_port == nil,
+          do: Application.delete_env(:smalt, :event_hubs_port),
+          else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
+
         SmaltTest.Lifecycle.restore_app()
         SmaltTest.Lifecycle.ensure_store_up()
       end)
@@ -102,7 +129,6 @@ defmodule Smalt.Wire.AmqpWireTest do
       {:error, reason} -> {:error, reason}
     end
   end
-
 
   defp stop_existing_tree do
     case Process.whereis(Smalt.Supervisor) do

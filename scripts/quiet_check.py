@@ -7,7 +7,11 @@ Checks (each can veto):
      checkout's own _build tree.
   2. Court ports (9443/8443/5672/5673/9444/9445) free.
   3. No concurrent mix test/court/substrate processes.
-  4. Load average < ncpu * 1.0 (cold run-1 load faces fire above this).
+  4. Load gating: load1 > ncpu OR load5 > ncpu * 0.75 refuses.
+
+Caveat: load gating guards machine-level load only. The r241 failure class
+(async teardown race, fence-10 persistent flake) is NOT load-remediable;
+quiet-check is not a proxy for court readiness on those faces.
 Exit 0 quiet / 1 with a typed violation list.
 """
 
@@ -47,11 +51,11 @@ def main():
     if suites and (suites.stdout or "").strip():
         violations.append("concurrent suite/court processes: %s" % suites.stdout.strip()[:200])
 
-    load1 = os.getloadavg()[0]
+    load1, load5 = os.getloadavg()[:2]
     ncpu = os.cpu_count() or 4
-    if load1 > ncpu:
+    if load1 > ncpu or load5 > ncpu * 0.75:
         violations.append(
-            "load %.1f > %d cpus (cold run-1 load-face threshold)" % (load1, ncpu)
+            "load %.1f/%.1f > threshold (%d cpus)" % (load1, load5, ncpu)
         )
 
     if violations:
@@ -59,7 +63,7 @@ def main():
         for v in violations:
             print("  - " + v)
         return 1
-    print("QUIET-CHECK: clear (beams ok, ports free, no concurrent suites, load %.1f < %d)" % (load1, ncpu))
+    print("QUIET-CHECK: clear (beams ok, ports free, no concurrent suites, load %.1f/%.1f < %d)" % (load1, load5, ncpu))
     return 0
 
 

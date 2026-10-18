@@ -175,7 +175,9 @@ defmodule Smalt.OcelTest do
                  "attributes" => %{},
                  "relationships" => []
                },
-               [], dir: @tmp_dir)
+               [],
+               dir: @tmp_dir
+             )
   end
 
   # -- Smalt.Ocel queries ----------------------------------------------------

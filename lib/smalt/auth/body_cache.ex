@@ -27,8 +27,7 @@ defmodule Smalt.Auth.BodyCache do
         {:ok, body, Plug.Conn.put_private(conn, :smalt_raw_body, already <> body)}
 
       {:more, chunk, conn} ->
-        {:more, chunk,
-         Plug.Conn.put_private(conn, :smalt_raw_body, already <> chunk)}
+        {:more, chunk, Plug.Conn.put_private(conn, :smalt_raw_body, already <> chunk)}
 
       {:error, reason} ->
         {:error, reason}

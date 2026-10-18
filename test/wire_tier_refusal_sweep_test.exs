@@ -28,6 +28,16 @@ defmodule Smalt.WireTierRefusalSweepTest do
     ports = %{arm: get_free_port()}
 
     stop_existing_tree()
+
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev =
+      %{
+        arm_port: Application.get_env(:smalt, :arm_port),
+        egress_port: Application.get_env(:smalt, :egress_port),
+        amqp_port: Application.get_env(:smalt, :amqp_port),
+        event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
+      }
+
     Application.put_env(:smalt, :arm_port, ports.arm)
     Application.put_env(:smalt, :egress_port, get_free_port())
     Application.put_env(:smalt, :amqp_port, get_free_port())
@@ -42,6 +52,23 @@ defmodule Smalt.WireTierRefusalSweepTest do
 
     on_exit(fn ->
       stop_tree(sup)
+
+      if prev.arm_port == nil,
+        do: Application.delete_env(:smalt, :arm_port),
+        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+      if prev.egress_port == nil,
+        do: Application.delete_env(:smalt, :egress_port),
+        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+      if prev.amqp_port == nil,
+        do: Application.delete_env(:smalt, :amqp_port),
+        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
+
+      if prev.event_hubs_port == nil,
+        do: Application.delete_env(:smalt, :event_hubs_port),
+        else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
+
       SmaltTest.Lifecycle.restore_app()
     end)
 
@@ -146,7 +173,8 @@ defmodule Smalt.WireTierRefusalSweepTest do
 
       ["Microsoft.DocumentDB", "databaseAccounts", "sqlDatabases"] ->
         {base <>
-           "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/#{name}?api-version=#{api}", api}
+           "/Microsoft.DocumentDB/databaseAccounts/cos-sw/sqlDatabases/#{name}?api-version=#{api}",
+         api}
 
       ["Microsoft.DocumentDB", "databaseAccounts", "sqlContainers"] ->
         {base <>
@@ -157,10 +185,12 @@ defmodule Smalt.WireTierRefusalSweepTest do
         {base <> "/Microsoft.KeyVault/vaults/kv-sw/secrets/#{name}?api-version=#{api}", api}
 
       ["Microsoft.EventHub", "namespaces", "eventhubs"] ->
-        {base <> "/Microsoft.EventHub/namespaces/ehn-eh/eventhubs/#{name}?api-version=#{api}", api}
+        {base <> "/Microsoft.EventHub/namespaces/ehn-eh/eventhubs/#{name}?api-version=#{api}",
+         api}
 
       ["Microsoft.EventHub", "namespaces", "eventhubs", "consumergroups"] ->
-        {base <> "/Microsoft.EventHub/namespaces/ehn-cg/eventhubs/ehh-cg/consumergroups/#{name}?api-version=#{api}",
+        {base <>
+           "/Microsoft.EventHub/namespaces/ehn-cg/eventhubs/ehh-cg/consumergroups/#{name}?api-version=#{api}",
          api}
 
       ["Microsoft.KeyVault", "vaults", "keys"] ->
@@ -171,7 +201,8 @@ defmodule Smalt.WireTierRefusalSweepTest do
         # Dedicated parented-child route landed (router.ex): the request rides
         # the real child route with the parent chain created in
         # create_parented_chains/1 below, so the shape gate runs on the wire.
-        {base <> "/Microsoft.Network/privateDnsZones/pdz-vnl/virtualNetworkLinks/#{name}?api-version=#{api}",
+        {base <>
+           "/Microsoft.Network/privateDnsZones/pdz-vnl/virtualNetworkLinks/#{name}?api-version=#{api}",
          api}
 
       ["Microsoft.ServiceBus", "namespaces", "queues"] ->
@@ -186,14 +217,22 @@ defmodule Smalt.WireTierRefusalSweepTest do
          api}
 
       ["Microsoft.Storage", "storageAccounts", "blobServices"] ->
-        {base <> "/Microsoft.Storage/storageAccounts/sa-bs/blobServices/default?api-version=#{api}", api}
+        {base <>
+           "/Microsoft.Storage/storageAccounts/sa-bs/blobServices/default?api-version=#{api}",
+         api}
 
       ["Microsoft.Storage", "storageAccounts", "blobServices", "containers"] ->
         {base <>
            "/Microsoft.Storage/storageAccounts/sa-ct/blobServices/default/containers/#{name}?api-version=#{api}",
          api}
 
-      ["Microsoft.Storage", "storageAccounts", "blobServices", "containers", "immutabilityPolicies"] ->
+      [
+        "Microsoft.Storage",
+        "storageAccounts",
+        "blobServices",
+        "containers",
+        "immutabilityPolicies"
+      ] ->
         {base <>
            "/Microsoft.Storage/storageAccounts/sa-im/blobServices/default/containers/ct-im/immutabilityPolicies/#{name}?api-version=#{api}",
          api}
@@ -214,11 +253,13 @@ defmodule Smalt.WireTierRefusalSweepTest do
       {"Microsoft.KeyVault/vaults", "/Microsoft.KeyVault/vaults/kv-sw"},
       {"Microsoft.EventHub/namespaces", "/Microsoft.EventHub/namespaces/ehn-eh"},
       {"Microsoft.EventHub/namespaces", "/Microsoft.EventHub/namespaces/ehn-cg"},
-      {"Microsoft.EventHub/namespaces/eventhubs", "/Microsoft.EventHub/namespaces/ehn-cg/eventhubs/ehh-cg"},
+      {"Microsoft.EventHub/namespaces/eventhubs",
+       "/Microsoft.EventHub/namespaces/ehn-cg/eventhubs/ehh-cg"},
       {"Microsoft.ServiceBus/namespaces", "/Microsoft.ServiceBus/namespaces/sbn-q"},
       {"Microsoft.ServiceBus/namespaces", "/Microsoft.ServiceBus/namespaces/sbn-t"},
       {"Microsoft.ServiceBus/namespaces", "/Microsoft.ServiceBus/namespaces/sbn-ts"},
-      {"Microsoft.ServiceBus/namespaces/topics", "/Microsoft.ServiceBus/namespaces/sbn-ts/topics/top-ts"},
+      {"Microsoft.ServiceBus/namespaces/topics",
+       "/Microsoft.ServiceBus/namespaces/sbn-ts/topics/top-ts"},
       {"Microsoft.Network/privateDnsZones", "/Microsoft.Network/privateDnsZones/pdz-vnl"}
     ]
     |> Enum.each(fn {type, rel} ->

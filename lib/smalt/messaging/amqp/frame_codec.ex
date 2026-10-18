@@ -77,7 +77,13 @@ defmodule Smalt.Amqp.FrameCodec do
   # frames (type 0x00) carry only the session/link performatives. The layers
   # are negotiated independently (start SASL, toggle to AMQP), so a mismatch
   # is a protocol violation, not a tolerant case.
-  @sasl_performatives [:sasl_mechanisms, :sasl_init, :sasl_challenge, :sasl_response, :sasl_outcome]
+  @sasl_performatives [
+    :sasl_mechanisms,
+    :sasl_init,
+    :sasl_challenge,
+    :sasl_response,
+    :sasl_outcome
+  ]
 
   # Field orders per AMQP 1.0 performative definitions (nil = null filler).
   @field_orders %{
@@ -266,7 +272,8 @@ defmodule Smalt.Amqp.FrameCodec do
   # with the wire element count and reconstructs performatives as
   # `NamedTuple(*frame)`, so a padded attach crashed the SDK handler
   # (TypeError 17-vs-15). Trailing nulls are dropped before encoding.
-  defp trim_trailing_nulls(list), do: Enum.reverse(list) |> Enum.drop_while(&is_nil/1) |> Enum.reverse()
+  defp trim_trailing_nulls(list),
+    do: Enum.reverse(list) |> Enum.drop_while(&is_nil/1) |> Enum.reverse()
 
   defp prepare_fields(:attach, fields) do
     fields
@@ -377,19 +384,29 @@ defmodule Smalt.Amqp.FrameCodec do
 
   # Error maps (detach/end/close/rejected) encode as the AMQP error list
   # [condition(symbol), description, info].
-  defp normalize_field(%{} = error) when is_map_key(error, :condition) or is_map_key(error, "condition"),
-    do: [sym(Map.get(error, :condition) || Map.get(error, "condition")),
+  defp normalize_field(%{} = error)
+       when is_map_key(error, :condition) or is_map_key(error, "condition"),
+       do: [
+         sym(Map.get(error, :condition) || Map.get(error, "condition")),
          Map.get(error, :description) || Map.get(error, "description"),
-         Map.get(error, :info) || Map.get(error, "info")]
+         Map.get(error, :info) || Map.get(error, "info")
+       ]
 
-  defp normalize_field({:rejected, error}), do: {:described, state_desc(:rejected), encode_error_list(error)}
-  defp normalize_field({:modified, opts}), do: {:described, state_desc(:modified), encode_modified_list(opts)}
+  defp normalize_field({:rejected, error}),
+    do: {:described, state_desc(:rejected), encode_error_list(error)}
+
+  defp normalize_field({:modified, opts}),
+    do: {:described, state_desc(:modified), encode_modified_list(opts)}
+
   defp normalize_field(:accepted), do: {:described, state_desc(:accepted), []}
   defp normalize_field(:released), do: {:described, state_desc(:released), []}
+
   defp normalize_field({:selector_filter, selector}),
     do: {:described, {:symbol, "apache.org:selector-filter:string"}, selector}
+
   defp normalize_field({:session_filter, selector}),
     do: {:described, {:symbol, "com.microsoft:session-filter"}, selector}
+
   defp normalize_field(v), do: v
 
   defp state_desc(name), do: Map.fetch!(@delivery_state_descriptors, name)
@@ -433,7 +450,13 @@ defmodule Smalt.Amqp.FrameCodec do
   frames.
   """
   @spec decode_frame(binary()) ::
-          {:ok, %{type: frame_type(), channel: non_neg_integer(), performative: map(), payload: binary()}}
+          {:ok,
+           %{
+             type: frame_type(),
+             channel: non_neg_integer(),
+             performative: map(),
+             payload: binary()
+           }}
           | {:more, pos_integer()}
           | {:error, term()}
   def decode_frame(buffer) when is_binary(buffer) do
@@ -507,7 +530,13 @@ defmodule Smalt.Amqp.FrameCodec do
               true ->
                 case decode_performative(name, fields) do
                   {:ok, decoded} ->
-                    {:ok, %{type: type, channel: channel, performative: decoded, payload: remaining_payload(remaining, rest)}}
+                    {:ok,
+                     %{
+                       type: type,
+                       channel: channel,
+                       performative: decoded,
+                       payload: remaining_payload(remaining, rest)
+                     }}
 
                   # Malformed performative field shape (rescued FunctionClauseError
                   # in decode_performative): surface as a tagged error instead of
@@ -554,6 +583,7 @@ defmodule Smalt.Amqp.FrameCodec do
     # that silently kills the connection process (R3 red-team finding).
     named =
       decode_fields(name, raw)
+
     {:ok, Map.put(named, :performative, name)}
   rescue
     FunctionClauseError -> {:error, :bad_performative_fields}
@@ -588,7 +618,9 @@ defmodule Smalt.Amqp.FrameCodec do
   # Canonical rhea/Azure SDK encoding for simple queue attaches (R3 red-team
   # finding): a spec-legal attach with target = {:symbol, "orders"} crashed
   # decode_source_target/1 and the connection died with a silent TCP close.
-  defp decode_source_target(_role, {:symbol, address}) when is_binary(address), do: %{address: address}
+  defp decode_source_target(_role, {:symbol, address}) when is_binary(address),
+    do: %{address: address}
+
   defp decode_source_target(_role, address) when is_binary(address), do: %{address: address}
 
   # Positional source/target field list (FrameCodec's own encode_source_target
@@ -642,13 +674,15 @@ defmodule Smalt.Amqp.FrameCodec do
             {{:symbol, "com.microsoft:session-filter"}, selector} ->
               {"com.microsoft:session-filter", {:session_filter, selector}}
 
-            {"apache.org:selector-filter:string", {:described, _, selector}} when is_binary(selector) ->
+            {"apache.org:selector-filter:string", {:described, _, selector}}
+            when is_binary(selector) ->
               {"apache.org:selector-filter:string", {:selector_filter, selector}}
 
             {"apache.org:selector-filter:string", selector} when is_binary(selector) ->
               {"apache.org:selector-filter:string", {:selector_filter, selector}}
 
-            {"com.microsoft:session-filter", {:described, _, selector}} when is_binary(selector) ->
+            {"com.microsoft:session-filter", {:described, _, selector}}
+            when is_binary(selector) ->
               {"com.microsoft:session-filter", {:session_filter, selector}}
 
             {"com.microsoft:session-filter", selector} when is_binary(selector) ->
@@ -789,12 +823,18 @@ defmodule Smalt.Amqp.FrameCodec do
   end
 
   defp encode_section({:properties, %{} = map}) do
-    described(@message_section_descriptors.properties, Enum.map(@properties_order, &Map.get(map, &1)))
+    described(
+      @message_section_descriptors.properties,
+      Enum.map(@properties_order, &Map.get(map, &1))
+    )
   end
 
   defp encode_section({:delivery_annotations, map}), do: map_section(:delivery_annotations, map)
   defp encode_section({:message_annotations, map}), do: map_section(:message_annotations, map)
-  defp encode_section({:application_properties, map}), do: map_section(:application_properties, map)
+
+  defp encode_section({:application_properties, map}),
+    do: map_section(:application_properties, map)
+
   defp encode_section({:footer, map}), do: map_section(:footer, map)
 
   defp encode_section({:body_data, data}) when is_binary(data) do

@@ -62,6 +62,7 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
     resp = get("/subscriptions/#{@sub}/resourceGroups/rg-does-not-exist?api-version=2021-04-01")
 
     Support.assert_equal(resp.status, 404, "unknown resource group must 404")
+
     Support.assert_equal(
       resp.headers["content-type"],
       "application/json; charset=utf-8",
@@ -139,7 +140,12 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
     resp = put(resource_path(name), sa_body(name))
 
     Support.assert_equal(resp.status, 202, "LRO PUT -> 202")
-    Support.assert(is_binary(resp.headers["azure-asyncoperation"]), "Azure-AsyncOperation present")
+
+    Support.assert(
+      is_binary(resp.headers["azure-asyncoperation"]),
+      "Azure-AsyncOperation present"
+    )
+
     Support.assert(is_binary(resp.headers["location"]), "Location present")
     Support.assert_equal(resp.headers["retry-after"], "1", "Retry-After: 1")
     Support.assert_equal(json(resp.body)["status"], "InProgress", "LRO body status InProgress")
@@ -171,6 +177,7 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
     # cross-lane unblock: 1999-01-01 is now <= latest, hence accepted).
     resp = put(resource_path("stcx", "2999-01-01"), sa_body("stcx"))
     Support.assert_equal(resp.status, 400, "invalid api-version PUT -> 400")
+
     Support.assert_equal(
       json(resp.body)["error"]["code"],
       "InvalidApiVersionParameter",
@@ -182,12 +189,16 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
     name = unique("stc-")
     put(resource_path(name), sa_body(name))
 
-    resp = get("/subscriptions/#{@sub}/resourceGroups/rg1/providers/Microsoft.Storage/storageAccounts" <>
-      "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}")
+    resp =
+      get(
+        "/subscriptions/#{@sub}/resourceGroups/rg1/providers/Microsoft.Storage/storageAccounts" <>
+          "?api-version=#{api_v("Microsoft.Storage/storageAccounts")}"
+      )
 
     Support.assert_equal(resp.status, 200, "LIST status")
     list = json(resp.body)
     Support.assert(is_list(list["value"]), "LIST carries value array")
+
     Support.assert(
       Enum.any?(list["value"], &(&1["name"] == name)),
       "LIST includes the created resource"
@@ -221,7 +232,10 @@ defmodule Smalt.RuntimeContracts.ArmEnvelope do
   end
 
   defp sa_body(name) do
-    Jason.encode!(%{"location" => "eastus", "properties" => %{"skuName" => "Standard_LRS", "name" => name}})
+    Jason.encode!(%{
+      "location" => "eastus",
+      "properties" => %{"skuName" => "Standard_LRS", "name" => name}
+    })
   end
 
   defp api_v(type) do

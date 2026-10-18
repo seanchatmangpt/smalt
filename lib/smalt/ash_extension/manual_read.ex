@@ -95,8 +95,7 @@ defmodule Smalt.AshExtension.SubstrateResource.ManualRead do
       |> Map.new(fn attr ->
         name = attr.name
 
-        {name,
-         field_value(attr, Map.get(row, name) || Map.get(row, Atom.to_string(name)))}
+        {name, field_value(attr, Map.get(row, name) || Map.get(row, Atom.to_string(name)))}
       end)
 
     metadata =

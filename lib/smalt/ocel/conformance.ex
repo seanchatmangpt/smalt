@@ -45,7 +45,11 @@ defmodule Smalt.Ocel.Conformance do
   `%{input: marking(), output: marking()}`; `initial`/`final` are marking
   maps (omitted places hold 0).
   """
-  @spec net(%{optional(String.t()) => %{input: marking(), output: marking()}}, marking(), marking()) :: t()
+  @spec net(
+          %{optional(String.t()) => %{input: marking(), output: marking()}},
+          marking(),
+          marking()
+        ) :: t()
   def net(transitions, initial, final)
       when is_map(transitions) and is_map(initial) and is_map(final) do
     %__MODULE__{transitions: transitions, initial: initial, final: final}
@@ -131,11 +135,23 @@ defmodule Smalt.Ocel.Conformance do
 
         marking =
           marking
-          |> then(fn mk -> Enum.reduce(tr.input, mk, fn {pl, w}, m2 -> Map.put(m2, pl, max(0, Map.get(m2, pl, 0) - w)) end) end)
-          |> then(fn mk -> Enum.reduce(tr.output, mk, fn {pl, w}, m2 -> Map.put(m2, pl, Map.get(m2, pl, 0) + w) end) end)
+          |> then(fn mk ->
+            Enum.reduce(tr.input, mk, fn {pl, w}, m2 ->
+              Map.put(m2, pl, max(0, Map.get(m2, pl, 0) - w))
+            end)
+          end)
+          |> then(fn mk ->
+            Enum.reduce(tr.output, mk, fn {pl, w}, m2 ->
+              Map.put(m2, pl, Map.get(m2, pl, 0) + w)
+            end)
+          end)
 
-        {%{acc | consumed: acc.consumed + consumed_here, produced: acc.produced + produced_here, missing: acc.missing + missing_here},
-         marking}
+        {%{
+           acc
+           | consumed: acc.consumed + consumed_here,
+             produced: acc.produced + produced_here,
+             missing: acc.missing + missing_here
+         }, marking}
       end)
 
     deficit = marking_delta(end_marking, net.final, :deficit)
@@ -208,7 +224,8 @@ defmodule Smalt.Ocel.Conformance do
 
   @doc "Pure typed drift decision: `C < 1 - epsilon` => `:DRIFT`, else `:NO_DRIFT`."
   @spec drift_decision(number(), number()) :: :DRIFT | :NO_DRIFT
-  def drift_decision(c, epsilon_threshold) when is_number(c) and is_number(epsilon_threshold) and epsilon_threshold >= 0 do
+  def drift_decision(c, epsilon_threshold)
+      when is_number(c) and is_number(epsilon_threshold) and epsilon_threshold >= 0 do
     if c < 1 - epsilon_threshold, do: :DRIFT, else: :NO_DRIFT
   end
 
@@ -221,8 +238,14 @@ defmodule Smalt.Ocel.Conformance do
 
       marking =
         marking
-        |> then(fn mk -> Enum.reduce(tr.input, mk, fn {pl, w}, m2 -> Map.put(m2, pl, max(0, Map.get(m2, pl, 0) - w)) end) end)
-        |> then(fn mk -> Enum.reduce(tr.output, mk, fn {pl, w}, m2 -> Map.put(m2, pl, Map.get(m2, pl, 0) + w) end) end)
+        |> then(fn mk ->
+          Enum.reduce(tr.input, mk, fn {pl, w}, m2 ->
+            Map.put(m2, pl, max(0, Map.get(m2, pl, 0) - w))
+          end)
+        end)
+        |> then(fn mk ->
+          Enum.reduce(tr.output, mk, fn {pl, w}, m2 -> Map.put(m2, pl, Map.get(m2, pl, 0) + w) end)
+        end)
 
       {if(underfed?, do: tname), marking}
     end)
@@ -235,8 +258,14 @@ defmodule Smalt.Ocel.Conformance do
       tr = Map.fetch!(net.transitions, tname)
 
       marking
-      |> then(fn mk -> Enum.reduce(tr.input, mk, fn {pl, w}, m2 -> Map.put(m2, pl, max(0, Map.get(m2, pl, 0) - w)) end) end)
-      |> then(fn mk -> Enum.reduce(tr.output, mk, fn {pl, w}, m2 -> Map.put(m2, pl, Map.get(m2, pl, 0) + w) end) end)
+      |> then(fn mk ->
+        Enum.reduce(tr.input, mk, fn {pl, w}, m2 ->
+          Map.put(m2, pl, max(0, Map.get(m2, pl, 0) - w))
+        end)
+      end)
+      |> then(fn mk ->
+        Enum.reduce(tr.output, mk, fn {pl, w}, m2 -> Map.put(m2, pl, Map.get(m2, pl, 0) + w) end)
+      end)
     end)
   end
 

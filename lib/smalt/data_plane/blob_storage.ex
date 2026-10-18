@@ -82,20 +82,20 @@ defmodule Smalt.DataPlane.BlobStorage do
     with :error <- Smalt.Store.get(:smalt_blob_containers, key) do
       created_at = Map.get(opts, "created_at_ms") || System.os_time(:millisecond)
 
-    record = %{
-      "account" => account,
-      "container" => container,
-      "immutable" => Map.get(opts, "immutable", true),
-      "retention_days" => Map.get(opts, "retention_days", 1095),
-      "created_at" => created_at,
-      "created" => DateTime.from_unix!(created_at, :millisecond) |> DateTime.to_iso8601()
-    }
-    Store.put(:smalt_blob_containers, key, record)
+      record = %{
+        "account" => account,
+        "container" => container,
+        "immutable" => Map.get(opts, "immutable", true),
+        "retention_days" => Map.get(opts, "retention_days", 1095),
+        "created_at" => created_at,
+        "created" => DateTime.from_unix!(created_at, :millisecond) |> DateTime.to_iso8601()
+      }
+
+      Store.put(:smalt_blob_containers, key, record)
       {:ok, record}
     else
       {:ok, _existing} ->
-        {:error, 409, "ContainerAlreadyExists",
-         "The specified container already exists."}
+        {:error, 409, "ContainerAlreadyExists", "The specified container already exists."}
     end
   end
 
@@ -117,8 +117,9 @@ defmodule Smalt.DataPlane.BlobStorage do
   def check_maxresults(_), do: maxresults_error()
 
   defp maxresults_error,
-    do: {:error, 400, "InvalidQueryParameterValue",
-         "Value for maxresults is invalid (must be a positive integer)."}
+    do:
+      {:error, 400, "InvalidQueryParameterValue",
+       "Value for maxresults is invalid (must be a positive integer)."}
 
   @doc """
   Time-aware policy evaluation for a container. `:now_ms` is injected
@@ -243,7 +244,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       # keys that collide visually in blob.list — same fence vocabulary as
       # Smalt.Projection.Identity.valid?/1 (shared read-side fence).
       name == "" or byte_size(name) > @max_blob_name_bytes or
-        not Smalt.Projection.Identity.valid?(name) ->
+          not Smalt.Projection.Identity.valid?(name) ->
         {:error, 400, "InvalidResourceName",
          "The specified blob name is invalid (must be 1 to 1024 visible bytes)."}
 
@@ -267,7 +268,8 @@ defmodule Smalt.DataPlane.BlobStorage do
             not Regex.match?(@meta_name_re, name) or
               not (is_binary(v) and not Regex.match?(~r/[\x00-\x1F\x7F]/, v))
 
-          _ -> false
+          _ ->
+            false
         end
       end)
 
@@ -309,9 +311,15 @@ defmodule Smalt.DataPlane.BlobStorage do
   @doc false
   def ensure_block_table do
     if :ets.info(@block_table) == :undefined do
-      :ets.new(@block_table, [:set, :public, :named_table,
-        read_concurrency: true, write_concurrency: true])
+      :ets.new(@block_table, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
     end
+
     :ok
   end
 
@@ -326,7 +334,8 @@ defmodule Smalt.DataPlane.BlobStorage do
     ensure_block_table()
 
     with :ok <- check_blob_name(blob_name),
-         {:ok, _container_meta} <- Store.get(:smalt_blob_containers, container_key(account, container)),
+         {:ok, _container_meta} <-
+           Store.get(:smalt_blob_containers, container_key(account, container)),
          :ok <- check_content(content),
          :ok <- check_put_size(content),
          :ok <- check_block_id(block_id) do
@@ -337,8 +346,7 @@ defmodule Smalt.DataPlane.BlobStorage do
         "staged_at" => now_ms(opts)
       })
 
-      {:ok, 201,
-       %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}}
+      {:ok, 201, %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}}
     else
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, 400, _code, _msg} = invalid -> invalid
@@ -351,8 +359,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   # oversize id — with 400 InvalidQueryParameterValue, Azure's wire shape).
   defp check_block_id(block_id) when is_binary(block_id) do
     if block_id == "" or byte_size(block_id) > 64 do
-      {:error, 400, "InvalidQueryParameterValue",
-       "The blockid must be between 1 and 64 bytes."}
+      {:error, 400, "InvalidQueryParameterValue", "The blockid must be between 1 and 64 bytes."}
     else
       :ok
     end
@@ -365,7 +372,9 @@ defmodule Smalt.DataPlane.BlobStorage do
     # NUL separator: blob names may contain "/" (slash-blobs are legal), so a
     # "/" join could collide with blob names ending in /<blockid>.
     :erlang.iolist_to_binary([
-      "#{account}/#{container}/#{blob_name}", 0, block_id
+      "#{account}/#{container}/#{blob_name}",
+      0,
+      block_id
     ])
   end
 
@@ -410,19 +419,27 @@ defmodule Smalt.DataPlane.BlobStorage do
           # Azure Put Block List honors x-ms-blob-content-* on the commit
           # request; fold them into the stored header map as canonical keys.
           headers =
-            Enum.reduce(["content-type", "content-encoding", "content-language"], headers, fn wire, acc ->
-              case header_value(headers, "x-ms-blob-" <> wire) do
-                nil -> acc
-                value -> Map.put(acc, wire, value)
+            Enum.reduce(
+              ["content-type", "content-encoding", "content-language"],
+              headers,
+              fn wire, acc ->
+                case header_value(headers, "x-ms-blob-" <> wire) do
+                  nil -> acc
+                  value -> Map.put(acc, wire, value)
+                end
               end
-            end)
+            )
 
           {:ok, blob} = store_blob(account, container, blob_name, content, headers)
 
           blob =
-            Map.put(blob, "blocks", Enum.map(blocks, fn b ->
-              %{"block_id" => b["block_id"], "size" => b["size"]}
-            end))
+            Map.put(
+              blob,
+              "blocks",
+              Enum.map(blocks, fn b ->
+                %{"block_id" => b["block_id"], "size" => b["size"]}
+              end)
+            )
 
           Store.put(:smalt_blobs, blob_key, blob)
 
@@ -624,8 +641,7 @@ defmodule Smalt.DataPlane.BlobStorage do
          :ok <- check_if_none_match(headers) do
       Store.delete(:smalt_blobs, blob_key)
 
-      {:ok, 202,
-       %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}, nil}
+      {:ok, 202, %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}, nil}
     else
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, :not_found} -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
@@ -835,8 +851,7 @@ defmodule Smalt.DataPlane.BlobStorage do
           do: Map.put(base_headers, "immutability-policy-until", until),
           else: base_headers
 
-      {:ok, 200, headers,
-       %{"locked" => locked, "until" => until, "period_days" => period_days}}
+      {:ok, 200, headers, %{"locked" => locked, "until" => until, "period_days" => period_days}}
     else
       {:error, 400, code, msg} -> {:error, 400, code, msg}
       {:error, 404, code, msg} -> {:error, 404, code, msg}
@@ -887,6 +902,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   """
   @spec check_content(binary) :: :ok | {:error, 400, String.t(), String.t()}
   def check_content(content) when is_binary(content), do: :ok
+
   def check_content(_),
     do: {:error, 400, "InvalidInput", "Blob content must be a binary."}
 
@@ -896,8 +912,9 @@ defmodule Smalt.DataPlane.BlobStorage do
   # "until" in the year 2737909033).
   @max_retention_days 146_000
 
-  defp validate_period_days(days) when is_integer(days) and days >= 0 and days <= @max_retention_days,
-    do: :ok
+  defp validate_period_days(days)
+       when is_integer(days) and days >= 0 and days <= @max_retention_days,
+       do: :ok
 
   defp validate_period_days(_),
     do:
@@ -926,14 +943,12 @@ defmodule Smalt.DataPlane.BlobStorage do
            cas_policy_row(container_key, fn policy ->
              {:ok, policy |> Map.put("legal_hold", flag) |> put_in_worm_defaults()}
            end) do
-
       {:ok, 200,
        %{
          "x-ms-request-id" => request_id(),
          "x-ms-version" => "2021-12-02",
          "x-ms-has-legal-hold" => to_string(flag)
-       },
-       %{"has_legal_hold" => flag}}
+       }, %{"has_legal_hold" => flag}}
     else
       # Store.get/2 returns a bare :error on a missing row — without this
       # clause the with raises WithClauseError (a 500), never a typed 404.
@@ -952,6 +967,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   @doc "Returns the container's policy record or nil."
   def get_policy(account, container) do
     ensure_policy_table()
+
     case Store.get(@policy_table, "#{account}/#{container}") do
       {:ok, policy} -> policy
       :error -> nil
@@ -982,10 +998,11 @@ defmodule Smalt.DataPlane.BlobStorage do
          # ContainerLocked (real Azure refuses metadata writes under hold).
          {:ok, container_meta} <- Store.get(:smalt_blob_containers, "#{account}/#{container}"),
          :ok <- check_metadata_names(meta_wire_headers(metadata)),
-         :ok <- if(worm_blocked?(container_meta, "overwrite", now),
-                   do: {:worm, container_meta},
-                   else: :ok
-                 ) do
+         :ok <-
+           if(worm_blocked?(container_meta, "overwrite", now),
+             do: {:worm, container_meta},
+             else: :ok
+           ) do
       stripped =
         Map.reject(blob["headers"] || %{}, fn {k, _v} ->
           String.starts_with?(k, "x-ms-meta-")
@@ -1196,10 +1213,25 @@ defmodule Smalt.DataPlane.BlobStorage do
       keys = :smalt_blobs |> Store.prefix_keys(key_prefix) |> Enum.sort()
       page_keys = Enum.take(keys, max_results)
 
-      next_marker = if length(keys) > max_results, do: String.replace_prefix(List.last(page_keys), key_prefix, ""), else: nil
+      next_marker =
+        if length(keys) > max_results,
+          do: String.replace_prefix(List.last(page_keys), key_prefix, ""),
+          else: nil
 
       xml =
-        render_blobs(page_keys, next_marker, account, container, marker, max_results, "", prefix, key_prefix, include_meta)
+        render_blobs(
+          page_keys,
+          next_marker,
+          account,
+          container,
+          marker,
+          max_results,
+          "",
+          prefix,
+          key_prefix,
+          include_meta
+        )
+
       {xml, next_marker}
     else
       # Delimiter/prefix/marker composition (Azure parity, cycle-27):
@@ -1272,7 +1304,18 @@ defmodule Smalt.DataPlane.BlobStorage do
   # v26.10.14 lane 06): the fast path previously interpolated the full stored
   # key prefix directly instead of routing through the same
   # `if(prefix == "", do: key_prefix, else: prefix)` echo.
-  defp render_blobs(page_keys, next_marker, account, container, marker, max_results, delimiter_xml, prefix, key_prefix, include_meta) do
+  defp render_blobs(
+         page_keys,
+         next_marker,
+         account,
+         container,
+         marker,
+         max_results,
+         delimiter_xml,
+         prefix,
+         key_prefix,
+         include_meta
+       ) do
     items =
       Enum.map_join(page_keys, "\n", fn key ->
         render_blob(String.replace_prefix(key, key_prefix, ""), key, key_prefix, include_meta)
@@ -1291,6 +1334,7 @@ defmodule Smalt.DataPlane.BlobStorage do
     </EnumerationResults>
     """
   end
+
   defp render_blob(name, key, _key_prefix, include_meta) do
     case Store.get(:smalt_blobs, key) do
       {:ok, b} ->
@@ -1398,6 +1442,7 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp store_blob(account, container, blob_name, content, headers) do
     etag = "\"#{:crypto.hash(:md5, content) |> Base.encode16(case: :lower)}\""
+
     blob = %{
       "name" => blob_name,
       "content" => content,
@@ -1406,6 +1451,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "headers" => headers
     }
+
     Store.put(:smalt_blobs, "#{account}/#{container}/#{blob_name}", blob)
     {:ok, blob}
   end
@@ -1427,10 +1473,13 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp check_if_match(headers, current_etag) do
     case ConditionalHeaders.header(headers || %{}, "if-match") do
-      nil -> :ok
-      _ -> if ConditionalHeaders.evaluate(headers, current_etag) == {:halt, 412},
-        do: {:error, {:precondition}},
-        else: :ok
+      nil ->
+        :ok
+
+      _ ->
+        if ConditionalHeaders.evaluate(headers, current_etag) == {:halt, 412},
+          do: {:error, {:precondition}},
+          else: :ok
     end
   end
 
@@ -1516,6 +1565,7 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp fetch_policy(container_meta) do
     ensure_policy_table()
+
     case Store.get(@policy_table, "#{container_meta["account"]}/#{container_meta["container"]}") do
       {:ok, p} -> p
       :error -> nil
@@ -1660,7 +1710,11 @@ defmodule Smalt.DataPlane.BlobStorage do
   end
 
   defp put_in_worm_defaults(policy) do
-    Map.put_new(policy, "immutability_policy", %{"locked" => false, "until" => nil, "period_days" => 0})
+    Map.put_new(policy, "immutability_policy", %{
+      "locked" => false,
+      "until" => nil,
+      "period_days" => 0
+    })
   end
 
   defp default_until(days, now_ms) when is_integer(days) and days > 0 do
@@ -1676,9 +1730,15 @@ defmodule Smalt.DataPlane.BlobStorage do
   @doc false
   def ensure_policy_table do
     if :ets.info(@policy_table) == :undefined do
-      :ets.new(@policy_table, [:set, :public, :named_table,
-        read_concurrency: true, write_concurrency: true])
+      :ets.new(@policy_table, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
     end
+
     :ok
   end
 
@@ -1700,5 +1760,4 @@ defmodule Smalt.DataPlane.BlobStorage do
     ])
     |> IO.iodata_to_binary()
   end
-
 end

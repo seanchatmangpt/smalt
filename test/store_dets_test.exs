@@ -141,7 +141,10 @@ defmodule Smalt.StoreDetsTest do
     end
   end
 
-  @tag timeout: 300_000
+  # 600s budget: receipts/i20b-contention-mechanism.md measured a 350x sync tail
+  # under 16-core machine load, and receipts/r241 witnessed the previous 300s
+  # budget blow out under load (4/4 green quiet at 93-204s body time).
+  @tag timeout: 600_000
   test "restore x insert_new churn: insert_new :ok implies the FRESH value wins (no stale clobber)",
        %{
          dir: dir

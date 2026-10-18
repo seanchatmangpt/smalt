@@ -101,7 +101,6 @@ defmodule Smalt.AshExtensionTest do
     """
   end
 
-
   # Specimen refusal: a Spark verifier failure during `Code.compile_string/1`
   # can surface as an async parallel-checker crash rather than a synchronous
   # raise (Elixir 1.19), so the refusal is witnessed as EITHER a raised
@@ -362,6 +361,7 @@ defmodule Smalt.AshExtensionTest do
       System.monotonic_time(:millisecond) < stop
     end)
   end
+
   # Lens-2 cycle 4: boundary crash class on the read path. Store is an
   # untyped key-value table; ManualRead.build/2 has an is_map guard, so a
   # non-map value under a :smalt_resources key crashed the WHOLE Ash read
@@ -403,6 +403,7 @@ defmodule Smalt.AshExtensionTest do
     assert Ash.read!(SmaltTest.AshExtension.Probe)
   end
 end
+
 # Lens-4 cycle 1: whitespace-only / invisible-format-only primary keys on the
 # generic substrate read path — same vacuous-identity class, one shared fence
 # (Smalt.Projection.Identity).
@@ -487,4 +488,3 @@ defmodule Smalt.AshExtension.Lens7FieldPolicyTest do
     Store.delete(:smalt_resources, good)
   end
 end
-

@@ -26,7 +26,8 @@ defmodule Smalt.Messaging.EventHubs.Listener do
   @doc "Starts the EH listener. Accepts `{:eh, port}`."
   def start_link({:eh, port}) do
     Smalt.Amqp.Listener.start_link(
-      {:eh, port, name: Module.concat(Smalt.Amqp.Listener, :Eh), conn_sup: Smalt.AmqpBroker.conn_sup_name()}
+      {:eh, port,
+       name: Module.concat(Smalt.Amqp.Listener, :Eh), conn_sup: Smalt.AmqpBroker.conn_sup_name()}
     )
   end
 end

@@ -44,6 +44,7 @@ defmodule Smalt.DataPlane.R5RepairReproTest do
 
   test "parse_block_list_xml maps all three kinds without to_existing_atom" do
     xml = "<Block><Latest>a</Latest><Committed>b</Committed><Uncommitted>c</Uncommitted></Block>"
+
     assert {:ok, [latest: "a", committed: "b", uncommitted: "c"]} =
              BlobStorage.parse_block_list_xml(xml)
   end

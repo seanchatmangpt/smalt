@@ -55,7 +55,9 @@ defmodule Smalt.DataPlane.BlobService do
         name = record["container"]
         {name, record}
       end)
-      |> Enum.reject(fn {name, _} -> name != nil and not String.starts_with?(name, prefix_filter) end)
+      |> Enum.reject(fn {name, _} ->
+        name != nil and not String.starts_with?(name, prefix_filter)
+      end)
       |> Enum.reject(fn {name, _} -> marker != "" and name <= marker end)
       # Deterministic name order (Azure lists containers in lexicographic order)
       |> Enum.sort_by(fn {name, _} -> name end)
@@ -169,7 +171,11 @@ defmodule Smalt.DataPlane.BlobService do
          # runs against the row inside the CAS update fn, so a hold landed
          # between our read and our write-back is SEEN on the retry and the
          # metadata PUT refuses with 409 — never a silent clear.
-         :ok <- check_metadata_worm(record, BlobStorage.get_policy(record["account"], record["container"])),
+         :ok <-
+           check_metadata_worm(
+             record,
+             BlobStorage.get_policy(record["account"], record["container"])
+           ),
          :ok <-
            BlobStorage.cas_policy_row(container_key, fn policy ->
              case check_metadata_worm(record, policy) do
@@ -321,9 +327,9 @@ defmodule Smalt.DataPlane.BlobService do
     end
   end
 
-
   defp normalize_max(nil), do: @max_page
   defp normalize_max(value) when is_integer(value) and value > 0, do: min(value, @max_page)
+
   defp normalize_max(value) when is_binary(value) do
     case Integer.parse(value) do
       {n, _} when n > 0 -> min(n, @max_page)
@@ -355,8 +361,12 @@ defmodule Smalt.DataPlane.BlobService do
     bad = Enum.find(meta, fn {k, _} -> not Regex.match?(@meta_name_re, k) end)
 
     case bad do
-      nil -> :ok
-      {k, _} -> {:error, 400, "InvalidMetadata", "Invalid metadata name (must be a valid C# identifier): #{k}."}
+      nil ->
+        :ok
+
+      {k, _} ->
+        {:error, 400, "InvalidMetadata",
+         "Invalid metadata name (must be a valid C# identifier): #{k}."}
     end
   end
 
@@ -371,11 +381,16 @@ defmodule Smalt.DataPlane.BlobService do
   @meta_value_re ~r/^[^\x00-\x1F\x7F]*$/
 
   defp validate_metadata_values(meta) when is_map(meta) do
-    bad = Enum.find(meta, fn {_k, v} -> not (is_binary(v) and Regex.match?(@meta_value_re, v)) end)
+    bad =
+      Enum.find(meta, fn {_k, v} -> not (is_binary(v) and Regex.match?(@meta_value_re, v)) end)
 
     case bad do
-      nil -> :ok
-      {k, _} -> {:error, 400, "InvalidMetadata", "Invalid metadata value for #{k}: values must be valid HTTP header values (no control characters)."}
+      nil ->
+        :ok
+
+      {k, _} ->
+        {:error, 400, "InvalidMetadata",
+         "Invalid metadata value for #{k}: values must be valid HTTP header values (no control characters)."}
     end
   end
 

@@ -88,7 +88,9 @@ defmodule Smalt.Amqp.QueueStore do
         %{}
 
       matches ->
-        case Enum.find(matches, fn [key, _record] -> is_binary(key) and String.ends_with?(key, suffix) end) do
+        case Enum.find(matches, fn [key, _record] ->
+               is_binary(key) and String.ends_with?(key, suffix)
+             end) do
           [_key, record] when is_map(record) ->
             case record do
               %{"properties" => props} when is_map(props) -> props
@@ -199,7 +201,8 @@ defmodule Smalt.Amqp.QueueStore do
   # body section {:body_data | :body_amqp_value, value} stored as-is so the
   # delivery path can re-emit the section kind the client sent (as-sent body
   # preservation; disclosed cross-lane unblock from the connection lane).
-  def enqueue(queue, body, opts \\ []) when is_binary(body) or (is_tuple(body) and tuple_size(body) == 2) do
+  def enqueue(queue, body, opts \\ [])
+      when is_binary(body) or (is_tuple(body) and tuple_size(body) == 2) do
     {:ok, _} = ensure_queue(queue)
 
     settings = queue_settings(queue)
@@ -493,7 +496,8 @@ defmodule Smalt.Amqp.QueueStore do
   sequence numbers are skipped (they do not fail the batch). Returns
   `{:ok, deleted_count}`. Serialized through the claim/settle server.
   """
-  @spec delete_by_sequence(String.t(), [integer()]) :: {:ok, non_neg_integer()} | {:error, :not_found}
+  @spec delete_by_sequence(String.t(), [integer()]) ::
+          {:ok, non_neg_integer()} | {:error, :not_found}
   def delete_by_sequence(queue, seqs) when is_list(seqs) do
     GenServer.call(server(), {:delete_by_sequence, queue, seqs})
   end
@@ -678,14 +682,20 @@ defmodule Smalt.Amqp.QueueStore do
         msg =
           m
           |> Map.update!(:delivery_count, &(&1 + 1))
-          |> Map.merge(%{state: :locked, lock_token: lock.lock_token, locked_until: lock.locked_until})
+          |> Map.merge(%{
+            state: :locked,
+            lock_token: lock.lock_token,
+            locked_until: lock.locked_until
+          })
 
         Smalt.Store.put(:smalt_sb_messages, {queue, m.seq}, msg)
         {:ok, msg, lock}
     end
   end
 
-  defp locked_now?(%{state: :locked, locked_until: until}, now) when is_integer(until), do: until > now
+  defp locked_now?(%{state: :locked, locked_until: until}, now) when is_integer(until),
+    do: until > now
+
   defp locked_now?(_, _), do: false
 
   # -- settlement internals (run inside the server) -----------------------------
@@ -720,7 +730,14 @@ defmodule Smalt.Amqp.QueueStore do
   defp do_defer(queue, seq) do
     with {:ok, m} <- Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do
       if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
-      Smalt.Store.put(:smalt_sb_messages, {queue, seq}, %{m | state: :deferred, lock_token: nil, locked_until: nil})
+
+      Smalt.Store.put(:smalt_sb_messages, {queue, seq}, %{
+        m
+        | state: :deferred,
+          lock_token: nil,
+          locked_until: nil
+      })
+
       :ok
     else
       :error -> :error
@@ -742,7 +759,9 @@ defmodule Smalt.Amqp.QueueStore do
     sequence_numbers = Enum.uniq(sequence_numbers)
 
     loaded =
-      Enum.map(sequence_numbers, fn seq -> {seq, Smalt.Store.get(:smalt_sb_messages, {queue, seq})} end)
+      Enum.map(sequence_numbers, fn seq ->
+        {seq, Smalt.Store.get(:smalt_sb_messages, {queue, seq})}
+      end)
 
     refused =
       for {seq, {:ok, m}} <- loaded,
@@ -759,12 +778,17 @@ defmodule Smalt.Amqp.QueueStore do
       # guarantees every sequence is present and lockable before we get here.
       {:ok,
        Enum.map(loaded, fn {_seq, {:ok, m}} ->
-         {:ok, lock} = Smalt.Amqp.LockManager.acquire(queue, m.seq, now_ms: now, duration_ms: duration)
+         {:ok, lock} =
+           Smalt.Amqp.LockManager.acquire(queue, m.seq, now_ms: now, duration_ms: duration)
 
          msg =
            m
            |> Map.update!(:delivery_count, &(&1 + 1))
-           |> Map.merge(%{state: :locked, lock_token: lock.lock_token, locked_until: lock.locked_until})
+           |> Map.merge(%{
+             state: :locked,
+             lock_token: lock.lock_token,
+             locked_until: lock.locked_until
+           })
 
          Smalt.Store.put(:smalt_sb_messages, {queue, m.seq}, msg)
          msg
@@ -783,7 +807,10 @@ defmodule Smalt.Amqp.QueueStore do
         # SHIM-COURT R64 (F3): propagate DLQ-capacity failure — a deadletter
         # that cannot land in the DLQ must not be reported as :ok, or the
         # message is stranded with a lying receipt.
-        case do_deadletter(queue, seq, "MaxDeliveryCountExceeded",
+        case do_deadletter(
+               queue,
+               seq,
+               "MaxDeliveryCountExceeded",
                "delivery_count #{m.delivery_count} >= max_delivery_count #{max_delivery}",
                # Thread the disposition token: the internal deadletter settles
                # under the same CAS the release was admitted by (R244).
@@ -811,7 +838,8 @@ defmodule Smalt.Amqp.QueueStore do
 
             {:error, :capacity}
 
-          _ -> :ok
+          _ ->
+            :ok
         end
       else
         if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
@@ -858,28 +886,29 @@ defmodule Smalt.Amqp.QueueStore do
             {:error, :capacity}
 
           true ->
-            {:ok, dlq_seq} = do_enqueue_locked(dlq, m.body,
-              session_id: m.session_id,
-              # SDK parity: deadLetterReason/deadLetterErrorDescription are read
-              # from the DLQ message's APPLICATION PROPERTIES
-              # (serviceBusMessage.js:302), not message annotations. They were
-              # previously merged into annotations, so the census dead-letter
-              # probe read undefined.
-              app_props:
-                (m[:app_props] || %{})
-                |> Map.merge(%{
-                  "DeadLetterReason" => reason,
-                  "DeadLetterErrorDescription" => description
-                })
-                |> Map.merge(opts[:properties] || %{}),
-              annotations:
-                m.annotations
-                |> Map.merge(%{
-                  "DeadLetterReason" => reason,
-                  "DeadLetterErrorDescription" => description
-                }),
-              now_ms: opts[:now_ms]
-            )
+            {:ok, dlq_seq} =
+              do_enqueue_locked(dlq, m.body,
+                session_id: m.session_id,
+                # SDK parity: deadLetterReason/deadLetterErrorDescription are read
+                # from the DLQ message's APPLICATION PROPERTIES
+                # (serviceBusMessage.js:302), not message annotations. They were
+                # previously merged into annotations, so the census dead-letter
+                # probe read undefined.
+                app_props:
+                  (m[:app_props] || %{})
+                  |> Map.merge(%{
+                    "DeadLetterReason" => reason,
+                    "DeadLetterErrorDescription" => description
+                  })
+                  |> Map.merge(opts[:properties] || %{}),
+                annotations:
+                  m.annotations
+                  |> Map.merge(%{
+                    "DeadLetterReason" => reason,
+                    "DeadLetterErrorDescription" => description
+                  }),
+                now_ms: opts[:now_ms]
+              )
 
             Smalt.Store.delete(:smalt_sb_messages, {queue, seq})
             if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
@@ -895,7 +924,12 @@ defmodule Smalt.Amqp.QueueStore do
   defp do_session_state_put(queue, session_id, state) do
     case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
       {:ok, lock} ->
-        Smalt.Store.put(:smalt_sb_sessions, {queue, session_id}, Map.put(lock, :session_state, state))
+        Smalt.Store.put(
+          :smalt_sb_sessions,
+          {queue, session_id},
+          Map.put(lock, :session_state, state)
+        )
+
         :ok
 
       :error ->
@@ -962,7 +996,10 @@ defmodule Smalt.Amqp.QueueStore do
         max_delivery = queue_settings(m.queue).max_delivery_count
 
         if m[:dlq_full_park] == true or m.delivery_count >= max_delivery do
-          case do_deadletter(m.queue, m.seq, "MaxDeliveryCountExceeded",
+          case do_deadletter(
+                 m.queue,
+                 m.seq,
+                 "MaxDeliveryCountExceeded",
                  "delivery_count #{m.delivery_count} >= max_delivery_count #{max_delivery} on lock expiry",
                  now_ms: now
                ) do

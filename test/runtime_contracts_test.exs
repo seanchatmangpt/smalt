@@ -15,6 +15,7 @@ defmodule Smalt.RuntimeContractsTest do
   use ExUnit.Case, async: false
 
   alias Smalt.RuntimeContracts
+
   @wired [
     Smalt.RuntimeContracts.ArmEnvelope,
     Smalt.RuntimeContracts.CosmosHeader,
@@ -53,7 +54,14 @@ defmodule Smalt.RuntimeContractsTest do
       assert verdict.contract_count == 6
       assert verdict.failure_count == 0
 
-      for name <- [:arm_envelope, :cosmos_header, :amqp_dialect, :sentinel_ingest, :resource_graph_query, :purview_atlas] do
+      for name <- [
+            :arm_envelope,
+            :cosmos_header,
+            :amqp_dialect,
+            :sentinel_ingest,
+            :resource_graph_query,
+            :purview_atlas
+          ] do
         result = verdict.contracts[name]
         assert result, "missing contract #{name}"
         assert result.pass, "contract #{name} failed: #{inspect(result.failures)}"
@@ -107,7 +115,11 @@ defmodule Smalt.RuntimeContractsTest do
       assert length(entries) == 6
 
       for e <- entries do
-        mod = Module.concat([Smalt.RuntimeContracts, String.to_atom(e.module |> String.split(".") |> List.last())])
+        mod =
+          Module.concat([
+            Smalt.RuntimeContracts,
+            String.to_atom(e.module |> String.split(".") |> List.last())
+          ])
 
         # generated `module` column names the hand-written wired module
         assert String.to_atom("Elixir." <> e.module) in @wired,
@@ -170,11 +182,17 @@ defmodule Smalt.RuntimeContractsTest do
 
         def check do
           Support.contract(:arm_envelope_broken, [
-            {:injected_break_catch_all_404, fn ->
-              resp = Support.dispatch(Smalt.ArmGateway.Router, "get", "/definitely/not/a/route?api-version=2021-04-01")
+            {:injected_break_catch_all_404,
+             fn ->
+               resp =
+                 Support.dispatch(
+                   Smalt.ArmGateway.Router,
+                   "get",
+                   "/definitely/not/a/route?api-version=2021-04-01"
+                 )
 
-              Support.assert_equal(resp.status, 500, "INJECTED BREAK: expect catch-all to 500")
-            end}
+               Support.assert_equal(resp.status, 500, "INJECTED BREAK: expect catch-all to 500")
+             end}
           ])
         end
       end
@@ -192,7 +210,6 @@ defmodule Smalt.RuntimeContractsTest do
       refute RuntimeContracts.verify([]).pass
     end
   end
-
 
   # ===========================================================================
   # gate-registry fuzz (lens-2 cycle 1): verify/1 must fail closed with typed
@@ -246,11 +263,15 @@ defmodule Smalt.RuntimeContractsTest do
       defmodule FailingDupGate do
         def name, do: :dup_gate
         def plane, do: :control_plane
-        def check, do: %{name: :dup_gate, pass: false, checks: 1, failures: [%{check: :injected, detail: "broken"}]}
+
+        def check,
+          do: %{
+            name: :dup_gate,
+            pass: false,
+            checks: 1,
+            failures: [%{check: :injected, detail: "broken"}]
+          }
       end
-
-
-
 
       defmodule PassingDupGate do
         def name, do: :dup_gate
@@ -606,7 +627,8 @@ defmodule Smalt.RuntimeContractsTest do
         def check do
           Smalt.RuntimeContracts.Support.contract(:partial_fail_contract, [
             {:first_ok, fn -> :ok end},
-            {:second_fails, fn -> Smalt.RuntimeContracts.Support.assert(false, "injected break") end},
+            {:second_fails,
+             fn -> Smalt.RuntimeContracts.Support.assert(false, "injected break") end},
             {:third_ok, fn -> :ok end}
           ])
         end

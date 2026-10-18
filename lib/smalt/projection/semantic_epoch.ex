@@ -293,6 +293,7 @@ defmodule Smalt.Projection.SemanticEpoch do
   # nil → epoch-0 sort bucket), extended to non-binaries.
   defp parse_ts(nil), do: nil
   defp parse_ts(ts) when not is_binary(ts), do: nil
+
   defp parse_ts(ts) when is_binary(ts) do
     case DateTime.from_iso8601(ts) do
       {:ok, dt, _} -> dt
@@ -300,7 +301,9 @@ defmodule Smalt.Projection.SemanticEpoch do
     end
   end
 
-  defp ensure_datetime(%{started_at: nil} = row), do: %{row | started_at: ~U[1970-01-01T00:00:00Z]}
+  defp ensure_datetime(%{started_at: nil} = row),
+    do: %{row | started_at: ~U[1970-01-01T00:00:00Z]}
+
   defp ensure_datetime(row), do: row
 
   defp read_pack_lock(path) do

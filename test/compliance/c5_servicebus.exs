@@ -62,7 +62,8 @@ defmodule Smalt.Compliance.C5ServicebusTest do
     end
 
     test "trailing null fields are omitted (spec 1.4.3 list encoding)" do
-      frame = IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:open, %{container_id: "x"}}))
+      frame =
+        IO.iodata_to_binary(FrameCodec.encode_frame(:amqp, 0, {:open, %{container_id: "x"}}))
 
       <<_::32, 2, 0, 0::16, 0x00, 0x53, 0x10, 0xC0, sz, count, 0xA1, 1, "x">> = frame
 
@@ -77,7 +78,13 @@ defmodule Smalt.Compliance.C5ServicebusTest do
         frame_body(
           FrameCodec.encode_frame(:amqp, 0, {
             :begin,
-            %{remote_channel: 0, next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}
+            %{
+              remote_channel: 0,
+              next_outgoing_id: 1,
+              incoming_window: 10_000,
+              outgoing_window: 10_000,
+              handle_max: 100
+            }
           })
         )
 
@@ -122,7 +129,17 @@ defmodule Smalt.Compliance.C5ServicebusTest do
         frame_body(
           FrameCodec.encode_frame(:amqp, 0, {
             :flow,
-            %{next_incoming_id: 5, incoming_window: 1000, next_outgoing_id: 7, outgoing_window: 1000, handle: 1, delivery_count: 0, link_credit: 10, drain: false, echo: true}
+            %{
+              next_incoming_id: 5,
+              incoming_window: 1000,
+              next_outgoing_id: 7,
+              outgoing_window: 1000,
+              handle: 1,
+              delivery_count: 0,
+              link_credit: 10,
+              drain: false,
+              echo: true
+            }
           })
         )
 
@@ -161,7 +178,9 @@ defmodule Smalt.Compliance.C5ServicebusTest do
           disposition_frame(%{
             role: true,
             first: 1,
-            state: {:rejected, %{condition: "amqp:internal-error", description: "boom", info: %{"k" => 1}}}
+            state:
+              {:rejected,
+               %{condition: "amqp:internal-error", description: "boom", info: %{"k" => 1}}}
           })
         )
 
@@ -178,13 +197,19 @@ defmodule Smalt.Compliance.C5ServicebusTest do
 
       body =
         frame_body(
-          disposition_frame(%{role: true, first: 1, state: {:modified, %{delivery_failed: true, undeliverable_here: false}}})
+          disposition_frame(%{
+            role: true,
+            first: 1,
+            state: {:modified, %{delivery_failed: true, undeliverable_here: false}}
+          })
         )
 
       # modified field set: deliveryFailed, undeliverableHere, annotations(nil
       # retained inside the described body — trailing-null trim applies to the
       # performative list, not described delivery-state bodies)
-      assert {:ok, {:described, 0x15, [true, 1, nil, nil, {:described, 0x27, [true, false, nil]}]}, <<>>} =
+      assert {:ok,
+              {:described, 0x15, [true, 1, nil, nil, {:described, 0x27, [true, false, nil]}]},
+              <<>>} =
                PrimitiveCodec.decode(body)
     end
   end
@@ -192,7 +217,9 @@ defmodule Smalt.Compliance.C5ServicebusTest do
   describe "map count = pairs (OASIS 1.6.9 map encoding)" do
     test "application-properties map8 writes count 2 x entries" do
       payload =
-        IO.iodata_to_binary(FrameCodec.encode_message([{:application_properties, %{"a" => 1, "b" => 2}}]))
+        IO.iodata_to_binary(
+          FrameCodec.encode_message([{:application_properties, %{"a" => 1, "b" => 2}}])
+        )
 
       # 0x00 desc(0x53 0x74), 0xC1 map8, size, count=4 (2 pairs x 2)
       # uint values 1 and 2 encode as 0x52 (u8); count field = 2 pairs x 2
@@ -221,7 +248,10 @@ defmodule Smalt.Compliance.C5ServicebusTest do
               name: "s",
               handle: 0,
               role: true,
-              source: %{address: "q", filter: %{"com.microsoft:session-filter" => {:session_filter, "sess-1"}}}
+              source: %{
+                address: "q",
+                filter: %{"com.microsoft:session-filter" => {:session_filter, "sess-1"}}
+              }
             }
           })
         )
@@ -231,8 +261,10 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       {:described, 0x28, src} = Enum.at(fields, 5)
 
       # filter-set is a MAP of filter-name -> described filter instance
-      assert %{"com.microsoft:session-filter" =>
-               {:described, {:symbol, "com.microsoft:session-filter"}, "sess-1"}} = Enum.at(src, 7)
+      assert %{
+               "com.microsoft:session-filter" =>
+                 {:described, {:symbol, "com.microsoft:session-filter"}, "sess-1"}
+             } = Enum.at(src, 7)
     end
 
     test "locked-until-utc filetime conversion (100ns ticks since 0001-01-01)" do
@@ -241,7 +273,9 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       # 2023-11-14T22:13:20Z = 1_700_000_000_000 epoch ms
       assert DeliveryEncoder.filetime_from_ms(1_700_000_000_000) == 638_355_968_000_000_000
 
-      sections = DeliveryEncoder.build_sections(sequence_number: 1, locked_until: 1_700_000_000_000)
+      sections =
+        DeliveryEncoder.build_sections(sequence_number: 1, locked_until: 1_700_000_000_000)
+
       annotations = sections.message_annotations
 
       assert annotations["com.microsoft:locked-until-utc"] == 638_355_968_000_000_000
@@ -256,7 +290,15 @@ defmodule Smalt.Compliance.C5ServicebusTest do
         frame_body(
           FrameCodec.encode_frame(:amqp, 0, {
             :flow,
-            %{next_incoming_id: 0, incoming_window: 10_000, next_outgoing_id: 0, outgoing_window: 10_000, handle: 0, delivery_count: 0, link_credit: 1000}
+            %{
+              next_incoming_id: 0,
+              incoming_window: 10_000,
+              next_outgoing_id: 0,
+              outgoing_window: 10_000,
+              handle: 0,
+              delivery_count: 0,
+              link_credit: 1000
+            }
           })
         )
 
@@ -296,6 +338,14 @@ defmodule Smalt.Compliance.C5ServicebusTest do
 
       SmaltTest.Lifecycle.stop_shared_tree()
 
+      # save-prev (leak-court): carry across the on_exit seam via the process
+      # dictionary (try/on_exit bodies are separate scopes — i21-leak-batch2).
+      prev_arm = Application.get_env(:smalt, :arm_port)
+      prev_egress = Application.get_env(:smalt, :egress_port)
+      prev_amqp = Application.get_env(:smalt, :amqp_port)
+      prev_eh = Application.get_env(:smalt, :event_hubs_port)
+      Process.put({__MODULE__, :ports_prev}, {prev_arm, prev_egress, prev_amqp, prev_eh})
+
       Application.put_env(:smalt, :arm_port, get_free_port())
       Application.put_env(:smalt, :egress_port, get_free_port())
       Application.put_env(:smalt, :amqp_port, port)
@@ -326,6 +376,29 @@ defmodule Smalt.Compliance.C5ServicebusTest do
             end
         end
 
+        # conditional restore of the port-config keys saved in setup
+        case Process.get({__MODULE__, :ports_prev}) do
+          {arm, egress, amqp, eh} ->
+            if is_nil(arm),
+              do: Application.delete_env(:smalt, :arm_port),
+              else: Application.put_env(:smalt, :arm_port, arm)
+
+            if is_nil(egress),
+              do: Application.delete_env(:smalt, :egress_port),
+              else: Application.put_env(:smalt, :egress_port, egress)
+
+            if is_nil(amqp),
+              do: Application.delete_env(:smalt, :amqp_port),
+              else: Application.put_env(:smalt, :amqp_port, amqp)
+
+            if is_nil(eh),
+              do: Application.delete_env(:smalt, :event_hubs_port),
+              else: Application.put_env(:smalt, :event_hubs_port, eh)
+
+          _ ->
+            :ok
+        end
+
         SmaltTest.Lifecycle.restore_app()
         SmaltTest.Lifecycle.ensure_store_up()
       end)
@@ -341,14 +414,27 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       c = connect(port) |> handshake() |> authorize(queue)
 
       # sender link
-      c = send_frame(c, {:attach, %{name: "c5-tx", handle: 0, role: false, target: %{address: queue}}})
+      c =
+        send_frame(
+          c,
+          {:attach, %{name: "c5-tx", handle: 0, role: false, target: %{address: queue}}}
+        )
+
       c = await_sender_link(c)
 
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: 1, delivery_tag: <<1>>, message_format: 0, settled: true, more: false},
-          {:sections, [{:properties, %{message_id: "c5-msg-1"}}, {:body_amqp_value, "c5-payload"}]}
+          %{
+            handle: 0,
+            delivery_id: 1,
+            delivery_tag: <<1>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
+          {:sections,
+           [{:properties, %{message_id: "c5-msg-1"}}, {:body_amqp_value, "c5-payload"}]}
         })
 
       {disp, _c} = await_disposition(c)
@@ -356,7 +442,12 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       assert disp.first == 1
 
       # receiver link on the same connection, new handle
-      c = send_frame(c, {:attach, %{name: "c5-rx", handle: 1, role: true, source: %{address: queue}}})
+      c =
+        send_frame(
+          c,
+          {:attach, %{name: "c5-rx", handle: 1, role: true, source: %{address: queue}}}
+        )
+
       {%{performative: %{performative: :attach}}, c} = next_frame(c)
 
       c = send_frame(c, {:flow, %{handle: 1, link_credit: 10}})
@@ -372,7 +463,11 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       # settle accepted
       id = transfer.performative.delivery_id
 
-      send_frame(c, {:disposition, %{role: true, first: id, last: id, settled: true, state: :accepted}})
+      send_frame(
+        c,
+        {:disposition, %{role: true, first: id, last: id, settled: true, state: :accepted}}
+      )
+
       :gen_tcp.close(c.sock)
     end
 
@@ -387,7 +482,11 @@ defmodule Smalt.Compliance.C5ServicebusTest do
 
       {:ok, _} = GenServer.start(Smalt.Amqp.CbsRouter, [], name: Smalt.Amqp.CbsRouter)
 
-      c = send_frame(c, {:attach, %{name: "nope", handle: 0, role: true, source: %{address: "c5-no-auth"}}})
+      c =
+        send_frame(
+          c,
+          {:attach, %{name: "nope", handle: 0, role: true, source: %{address: "c5-no-auth"}}}
+        )
 
       {detach, _c} = await_performative(c, :detach)
       # error decodes as the positional list [condition(symbol), description, info]
@@ -395,20 +494,33 @@ defmodule Smalt.Compliance.C5ServicebusTest do
     end
 
     @tag :c5_live
-    test "second acceptSession on a locked session gets com.microsoft:session-cannot-be-locked", %{
-      port: port,
-      queue: queue
-    } do
+    test "second acceptSession on a locked session gets com.microsoft:session-cannot-be-locked",
+         %{
+           port: port,
+           queue: queue
+         } do
       c = connect(port) |> handshake() |> authorize(queue)
 
       # enqueue a session message
-      c = send_frame(c, {:attach, %{name: "s-tx", handle: 0, role: false, target: %{address: queue}}})
+      c =
+        send_frame(
+          c,
+          {:attach, %{name: "s-tx", handle: 0, role: false, target: %{address: queue}}}
+        )
+
       c = await_sender_link(c)
 
       c =
         send_frame(c, {
           :transfer,
-          %{handle: 0, delivery_id: 1, delivery_tag: <<1>>, message_format: 0, settled: true, more: false},
+          %{
+            handle: 0,
+            delivery_id: 1,
+            delivery_tag: <<1>>,
+            message_format: 0,
+            settled: true,
+            more: false
+          },
           {:sections, [{:properties, %{group_id: "sess-c5"}}, {:body_amqp_value, "s"}]}
         })
 
@@ -418,13 +530,34 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       c =
         send_frame(c, {
           :attach,
-          %{name: "s-rx-1", handle: 1, role: true, source: %{address: queue, filter: %{"com.microsoft:session-filter" => {:session_filter, "sess-c5"}}}}
+          %{
+            name: "s-rx-1",
+            handle: 1,
+            role: true,
+            source: %{
+              address: queue,
+              filter: %{"com.microsoft:session-filter" => {:session_filter, "sess-c5"}}
+            }
+          }
         })
 
       {%{performative: %{performative: :attach}}, c} = next_frame(c)
 
       # second acceptSession on the same session id -> session-cannot-be-locked
-      c = send_frame(c, {:attach, %{name: "s-rx-2", handle: 2, role: true, source: %{address: queue, filter: %{"com.microsoft:session-filter" => {:session_filter, "sess-c5"}}}}})
+      c =
+        send_frame(
+          c,
+          {:attach,
+           %{
+             name: "s-rx-2",
+             handle: 2,
+             role: true,
+             source: %{
+               address: queue,
+               filter: %{"com.microsoft:session-filter" => {:session_filter, "sess-c5"}}
+             }
+           }}
+        )
 
       # Was GAP R9 (docs/compliance/C5_SERVICEBUS.md), fixed:
       # decode_source_target/1 now unwraps the {:described, ...} wrapper on the
@@ -433,7 +566,12 @@ defmodule Smalt.Compliance.C5ServicebusTest do
       # acceptSession with a detach carrying the real Service Bus error.
       {detach, _c} = await_performative(c, :detach)
       assert detach.handle == 2
-      assert [{:symbol, "com.microsoft:session-cannot-be-locked"}, "SESSION_CANNOT_BE_LOCKED", nil] =
+
+      assert [
+               {:symbol, "com.microsoft:session-cannot-be-locked"},
+               "SESSION_CANNOT_BE_LOCKED",
+               nil
+             ] =
                detach.error
     end
   end
@@ -443,7 +581,6 @@ defmodule Smalt.Compliance.C5ServicebusTest do
   # ===========================================================================
 
   defp disposition_frame(fields), do: FrameCodec.encode_frame(:amqp, 0, {:disposition, fields})
-
 
   defp frame_body(frame) do
     <<_::binary-size(8), body::binary>> = IO.iodata_to_binary(frame)
@@ -458,7 +595,9 @@ defmodule Smalt.Compliance.C5ServicebusTest do
   end
 
   defp connect(port) do
-    {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+    {:ok, sock} =
+      :gen_tcp.connect(~c"127.0.0.1", port, [:binary, packet: :raw, active: false], 5_000)
+
     %{sock: sock, buf: <<>>}
   end
 
@@ -475,16 +614,34 @@ defmodule Smalt.Compliance.C5ServicebusTest do
 
     token = "SharedAccessSignature sr=#{enc_sr}&sig=#{sig}&se=#{se}&skn=RootManageSharedAccessKey"
 
-    c = send_frame(c, {:attach, %{name: "cbs-tx", handle: 2, role: false, target: %{address: "$cbs"}}})
-    c = send_frame(c, {:attach, %{name: "cbs-rx", handle: 3, role: true, source: %{address: "$cbs"}}})
+    c =
+      send_frame(
+        c,
+        {:attach, %{name: "cbs-tx", handle: 2, role: false, target: %{address: "$cbs"}}}
+      )
+
+    c =
+      send_frame(
+        c,
+        {:attach, %{name: "cbs-rx", handle: 3, role: true, source: %{address: "$cbs"}}}
+      )
 
     send_frame(c, {
       :transfer,
-      %{handle: 2, delivery_id: 100, delivery_tag: <<100>>, message_format: 0, settled: true, more: false},
-      {:sections, [
-        {:application_properties, %{"operation" => "put-token", "type" => @cbs_type, "name" => audience}},
-        {:body_amqp_value, token}
-      ]}
+      %{
+        handle: 2,
+        delivery_id: 100,
+        delivery_tag: <<100>>,
+        message_format: 0,
+        settled: true,
+        more: false
+      },
+      {:sections,
+       [
+         {:application_properties,
+          %{"operation" => "put-token", "type" => @cbs_type, "name" => audience}},
+         {:body_amqp_value, token}
+       ]}
     })
 
     wait_cbs_reply(c, 60)
@@ -527,11 +684,20 @@ defmodule Smalt.Compliance.C5ServicebusTest do
     :ok = :gen_tcp.send(c.sock, @header)
     {:ok, @header, c} = recv_exact(c, 8)
 
-    c = send_frame(c, {:open, %{container_id: "c5-client", max_frame_size: 65_536, channel_max: 65_535}})
+    c =
+      send_frame(
+        c,
+        {:open, %{container_id: "c5-client", max_frame_size: 65_536, channel_max: 65_535}}
+      )
+
     {%{performative: %{performative: :open}}, c} = next_frame(c)
 
     c =
-      send_frame(c, {:begin, %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+      send_frame(
+        c,
+        {:begin,
+         %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}}
+      )
 
     {%{performative: %{performative: :begin}}, c} = next_frame(c)
 

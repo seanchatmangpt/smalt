@@ -101,7 +101,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   digested server-side). Returns
   `{:ok, 200, %{"value" => signature-b64url, "kid" => kid}}`.
   """
-  def sign(name, params, version \\ nil), do: secret_key_op(name, "sign", params, version, &do_sign/3)
+  def sign(name, params, version \\ nil),
+    do: secret_key_op(name, "sign", params, version, &do_sign/3)
 
   @doc """
   `POST /keys/:name/verify`. Body `{"alg", "digest", "value": signature}`
@@ -359,7 +360,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   defp purge_protection?(record) do
-    record["purge_protection"] == true or get_in(record, ["attributes", "purgeProtection"]) == true
+    record["purge_protection"] == true or
+      get_in(record, ["attributes", "purgeProtection"]) == true
   end
 
   defp public_deleted_record(deleted) do
@@ -440,6 +442,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   defp allowed_operations(%{"release_policy" => nil}), do: @default_ops
+
   defp allowed_operations(%{"release_policy" => policy}) when is_map(policy) do
     # SHIM-COURT: absent list falls open to defaults; an explicit EMPTY list
     # is deny-all (fail-closed) — empty and absent are distinguished.
@@ -448,6 +451,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
       _ -> @default_ops
     end
   end
+
   defp allowed_operations(_), do: @default_ops
 
   # ---------------------------------------------------------------------------
@@ -487,8 +491,11 @@ defmodule Smalt.DataPlane.KeyVaultActions do
         # never surfaces it as a duplicate live key.
         record =
           case store_key do
-            {_name, _version} -> record |> Map.put("key_material", der) |> Map.put("is_version_row", true)
-            _name_only -> Map.put(record, "key_material", der)
+            {_name, _version} ->
+              record |> Map.put("key_material", der) |> Map.put("is_version_row", true)
+
+            _name_only ->
+              Map.put(record, "key_material", der)
           end
 
         Store.put(:smalt_vault_keys, store_key, record)
@@ -513,7 +520,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     do: :crypto.hash(:sha256, "smalt-vault-derived:" <> name)
 
   def derive_oct_key(name, version),
-    do: :crypto.hash(:sha256, "smalt-vault-derived:" <> <<byte_size(name)::32>> <> name <> version)
+    do:
+      :crypto.hash(:sha256, "smalt-vault-derived:" <> <<byte_size(name)::32>> <> name <> version)
 
   defp rsa_public({:rsa, key}), do: {:RSAPublicKey, elem(key, 2), elem(key, 3)}
 
@@ -540,7 +548,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
             {ct, %{"iv" => b64url_encode(iv), "tag" => b64url_encode(tag)}}
         end
 
-      {:ok, 200, Map.merge(%{"value" => b64url_encode(cipher), "kid" => kid, "alg" => alg}, extra)}
+      {:ok, 200,
+       Map.merge(%{"value" => b64url_encode(cipher), "kid" => kid, "alg" => alg}, extra)}
     end
   rescue
     _ in [ErlangError, ArgumentError] ->
@@ -598,8 +607,11 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     case params["digest"] do
       d when is_binary(d) ->
         case b64_decode(d) do
-          {:ok, digest} -> {:ok, digest}
-          :error -> {:error, 400, bad_request("InvalidValue", "digest is not valid base64/base64url")}
+          {:ok, digest} ->
+            {:ok, digest}
+
+          :error ->
+            {:error, 400, bad_request("InvalidValue", "digest is not valid base64/base64url")}
         end
 
       _ ->
@@ -616,7 +628,6 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
     with {:ok, digest} <- sign_digest(params),
          {:ok, alg} <- sign_alg(params) do
-
       # SHIM-COURT (R32): `digest` arrives PRE-HASHED (RS256 contract).
       # A real digest-type re-hashes the input (double-hash defect); :none
       # alone omits the DigestInfo ASN.1 wrapper real RS256 requires — so the
@@ -628,11 +639,18 @@ defmodule Smalt.DataPlane.KeyVaultActions do
       sig =
         case alg do
           "RS256" ->
-            :public_key.sign(sha256_digestinfo <> digest, :none, key, rsa_padding: :rsa_pkcs1_padding)
+            :public_key.sign(sha256_digestinfo <> digest, :none, key,
+              rsa_padding: :rsa_pkcs1_padding
+            )
+
           # Erlang crypto has no PSS-over-prehashed mode (:none + PSS EXITs),
           # so PS256 rides :sha256 — self-consistent server-side round-trip;
           # documented divergence for external local-verify of PS256 sigs.
-          "PS256" -> :public_key.sign(digest, :sha256, key, rsa_padding: :rsa_pkcs1_pss_padding, rsa_pss_saltlen: 32)
+          "PS256" ->
+            :public_key.sign(digest, :sha256, key,
+              rsa_padding: :rsa_pkcs1_pss_padding,
+              rsa_pss_saltlen: 32
+            )
         end
 
       {:ok, 200, %{"value" => b64url_encode(sig), "kid" => kid, "alg" => alg}}
@@ -655,7 +673,6 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     with {:ok, digest} <- sign_digest(params),
          {:ok, sig} <- verify_signature(params),
          {:ok, alg} <- sign_alg(params) do
-
       valid =
         try do
           result =
@@ -716,13 +733,23 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   defp encrypt_alg({:rsa, _}, %{"alg" => "RSA-OAEP-256"}), do: {:ok, "RSA-OAEP-256"}
   defp encrypt_alg({:oct, _}, %{"alg" => "A256GCM"}), do: {:ok, "A256GCM"}
-  defp encrypt_alg({:oct, _}, %{"alg" => "RSA-OAEP-256"}), do: {:error, 400, unsupported_alg_for_key_type()}
-  defp encrypt_alg({:rsa, _}, %{"alg" => "A256GCM"}), do: {:error, 400, unsupported_alg_for_key_type()}
-  defp encrypt_alg(_, %{"alg" => other}), do: {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg #{other}")}
+
+  defp encrypt_alg({:oct, _}, %{"alg" => "RSA-OAEP-256"}),
+    do: {:error, 400, unsupported_alg_for_key_type()}
+
+  defp encrypt_alg({:rsa, _}, %{"alg" => "A256GCM"}),
+    do: {:error, 400, unsupported_alg_for_key_type()}
+
+  defp encrypt_alg(_, %{"alg" => other}),
+    do: {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg #{other}")}
+
   defp encrypt_alg(_, _), do: {:error, 400, bad_request("InvalidAlgorithm", "alg is required")}
 
   defp sign_alg(%{"alg" => alg}) when alg in ["RS256", "PS256"], do: {:ok, alg}
-  defp sign_alg(%{"alg" => other}), do: {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg #{other}")}
+
+  defp sign_alg(%{"alg" => other}),
+    do: {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg #{other}")}
+
   defp sign_alg(_), do: {:error, 400, bad_request("InvalidAlgorithm", "alg is required")}
 
   defp unsupported_alg_for_key_type do
@@ -748,8 +775,11 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     case params[field] || opts[:default] do
       value when is_binary(value) ->
         case b64_decode(value) do
-          {:ok, decoded} -> {:ok, decoded}
-          :error -> {:error, 400, bad_request("InvalidValue", "#{field} is not valid base64/base64url")}
+          {:ok, decoded} ->
+            {:ok, decoded}
+
+          :error ->
+            {:error, 400, bad_request("InvalidValue", "#{field} is not valid base64/base64url")}
         end
 
       _ ->
@@ -759,8 +789,11 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   defp b64_field_value(value, field) do
     case b64_decode(value) do
-      {:ok, decoded} -> {:ok, decoded}
-      :error -> {:error, 400, bad_request("InvalidValue", "#{field} is not valid base64/base64url")}
+      {:ok, decoded} ->
+        {:ok, decoded}
+
+      :error ->
+        {:error, 400, bad_request("InvalidValue", "#{field} is not valid base64/base64url")}
     end
   end
 

@@ -20,6 +20,7 @@ defmodule Smalt.SemanticEpochTest do
         System.tmp_dir!(),
         "smalt-epoch-test-#{System.system_time(:native)}-#{System.unique_integer([:positive])}"
       )
+
     File.mkdir_p!(Path.join(tmp, "receipts"))
 
     # Seed fixture copies: byte-identical copies of the real receipt ledgers.
@@ -103,7 +104,9 @@ defmodule Smalt.SemanticEpochTest do
         # the pinned contract is derivation correctness, not a fixed class:
         # drift_status is :digest_drift iff pack_digest != lock_digest, and
         # the boolean `drift` mirrors drift_status exactly.
-        expected = if row.pack_digest == Map.fetch!(packs, row.pack_name), do: :ok, else: :digest_drift
+        expected =
+          if row.pack_digest == Map.fetch!(packs, row.pack_name), do: :ok, else: :digest_drift
+
         assert row.drift_status == expected
         assert row.drift == (expected == :digest_drift)
       end
@@ -248,20 +251,29 @@ defmodule Smalt.SemanticEpochTest do
 
       ## Duplicate receipt ids -> typed refusal (double-admission).
       assert {:error, {:duplicate_receipt_id, "rcpt_dup"}} =
-               timeline_for.(good <> "\n" <> String.replace(good, "rcpt_good", "rcpt_dup") <>
-                               "\n" <> String.replace(good, "rcpt_good", "rcpt_dup"))
+               timeline_for.(
+                 good <>
+                   "\n" <>
+                   String.replace(good, "rcpt_good", "rcpt_dup") <>
+                   "\n" <> String.replace(good, "rcpt_good", "rcpt_dup")
+               )
 
       ## Lens-2 cycle 2: receipt with a null/missing id -> typed refusal
       ## (R_missing_identity). Previously two id-less receipts BOTH projected
       ## because the dup check filtered to binaries first.
       assert {:error, {:receipt_missing_id, nil}} =
-               timeline_for.(~s({"id": null, "standing": "alive", "started_at": "2026-10-15T00:00:00Z"}))
+               timeline_for.(
+                 ~s({"id": null, "standing": "alive", "started_at": "2026-10-15T00:00:00Z"})
+               )
 
       assert {:error, {:receipt_missing_id, 7}} =
-               timeline_for.(~s({"id": 7, "standing": "alive", "started_at": "2026-10-15T00:00:00Z"}))
+               timeline_for.(
+                 ~s({"id": 7, "standing": "alive", "started_at": "2026-10-15T00:00:00Z"})
+               )
 
       ## Out-of-order timestamps normalize: output ascending, no crash.
-      later = String.replace(good, "rcpt_good", "rcpt_late") |> String.replace("00:00:00", "01:00:00")
+      later =
+        String.replace(good, "rcpt_good", "rcpt_late") |> String.replace("00:00:00", "01:00:00")
 
       assert {:ok, tl} = timeline_for.(later <> "\n" <> good)
 
@@ -280,11 +292,12 @@ defmodule Smalt.SemanticEpochTest do
                )
 
       assert dir == Path.join(tmp, "nope")
-               Smalt.Projection.SemanticEpoch.timeline(
-                 receipts_dir: Path.join(tmp, "nope"),
-                 pack_lock: @pack_lock,
-                 deviations_path: Path.join(tmp, "deviations.jsonl")
-               )
+
+      Smalt.Projection.SemanticEpoch.timeline(
+        receipts_dir: Path.join(tmp, "nope"),
+        pack_lock: @pack_lock,
+        deviations_path: Path.join(tmp, "deviations.jsonl")
+      )
 
       ## Malformed DEVIATIONS ledger -> typed refusal (boundary adapter over
       ## DeviationAdmission.read_all/1's Jason.decode! raise).
@@ -372,13 +385,17 @@ defmodule Smalt.SemanticEpochTest do
       # 10k line ledger, malformed LAST line -> typed refusal with exact line no.
       bad_dir = Path.join(tmp, "scale-bad")
       File.mkdir_p!(bad_dir)
-      File.write!(Path.join(bad_dir, "scale.jsonl"), Enum.map_join(1..10_000, "\n", line) <> "\n{broken\n")
+
+      File.write!(
+        Path.join(bad_dir, "scale.jsonl"),
+        Enum.map_join(1..10_000, "\n", line) <> "\n{broken\n"
+      )
 
       assert {:error, {:malformed_receipt, _, 10_001, %Jason.DecodeError{}}} =
                Smalt.Projection.SemanticEpoch.timeline(
                  receipts_dir: bad_dir,
                  pack_lock: @pack_lock,
-            deviations_path: Path.join(tmp, "deviations.jsonl")
+                 deviations_path: Path.join(tmp, "deviations.jsonl")
                )
 
       # Perf budget: each pass well under 5s.
@@ -583,7 +600,11 @@ defmodule Smalt.Projection.IdentityTest do
     test "semantic_epoch refuses a whitespace-only receipt id (typed)" do
       tmp = Path.join("tmp", "f16L4-ep-ws-#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp)
-      File.write!(Path.join(tmp, "r.jsonl"), Jason.encode!(Map.put(@shared_receipts, "id", "  \t")) <> "\n")
+
+      File.write!(
+        Path.join(tmp, "r.jsonl"),
+        Jason.encode!(Map.put(@shared_receipts, "id", "  \t")) <> "\n"
+      )
 
       assert {:error, {:receipt_missing_id, "  \t"}} =
                Smalt.Projection.SemanticEpoch.timeline(
@@ -598,7 +619,11 @@ defmodule Smalt.Projection.IdentityTest do
     test "semantic_epoch refuses an invisible-format-only receipt id (typed)" do
       tmp = Path.join("tmp", "f16L4-ep-zw-#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp)
-      File.write!(Path.join(tmp, "r.jsonl"), Jason.encode!(Map.put(@shared_receipts, "id", "​")) <> "\n")
+
+      File.write!(
+        Path.join(tmp, "r.jsonl"),
+        Jason.encode!(Map.put(@shared_receipts, "id", "​")) <> "\n"
+      )
 
       assert {:error, {:receipt_missing_id, "​"}} =
                Smalt.Projection.SemanticEpoch.timeline(
@@ -614,8 +639,10 @@ defmodule Smalt.Projection.IdentityTest do
       tmp = Path.join("tmp", "f16L4-ep-twin-#{System.unique_integer([:positive])}")
       File.mkdir_p!(tmp)
 
-      File.write!(Path.join(tmp, "r.jsonl"),
-        Jason.encode!(Map.put(@shared_receipts, "id", "abc")) <> "\n" <>
+      File.write!(
+        Path.join(tmp, "r.jsonl"),
+        Jason.encode!(Map.put(@shared_receipts, "id", "abc")) <>
+          "\n" <>
           Jason.encode!(Map.put(@shared_receipts, "id", "abc​")) <> "\n"
       )
 
@@ -637,6 +664,7 @@ defmodule Smalt.Projection.IdentityTest do
         Path.join(System.tmp_dir!(), "smalt-l5-nonmap-#{System.unique_integer([:positive])}")
 
       File.mkdir_p!(Path.join(tmp, "receipts"))
+
       File.write!(
         Path.join([tmp, "receipts", "r.jsonl"]),
         Jason.encode!(%{"id" => "good"}) <> "\n[1,2]\n"
@@ -662,7 +690,10 @@ end
 defmodule Smalt.Projection.SemanticEpoch.Lens6LockTest do
   use ExUnit.Case, async: false
 
-  @lock_namelist Path.join(System.tmp_dir!(), "smalt-l6-lock-#{System.unique_integer([:positive])}")
+  @lock_namelist Path.join(
+                   System.tmp_dir!(),
+                   "smalt-l6-lock-#{System.unique_integer([:positive])}"
+                 )
 
   test "malformed pack entries fold the lock to %{} and show :no_pack drift, never crash" do
     dir = @lock_namelist
@@ -714,7 +745,12 @@ defmodule Smalt.Projection.SemanticEpoch.Lens6LockTest do
   test "a well-formed lock still pins digests (fence does not over-refuse)" do
     dir = @lock_namelist <> "-good"
     File.mkdir_p!(dir)
-    File.write!(Path.join(dir, "r.jsonl"), Jason.encode!(%{"id" => "g", "standing" => "alive"}) <> "\n")
+
+    File.write!(
+      Path.join(dir, "r.jsonl"),
+      Jason.encode!(%{"id" => "g", "standing" => "alive"}) <> "\n"
+    )
+
     lock = Path.join(dir, "lock.json")
     File.write!(lock, ~s({"packs": {"p": {"sha256": "cafe"}}}))
 

@@ -8,30 +8,79 @@
 #
 # When ENCLAVE_PRIVATE_PORTS=1 (set by run.sh), pin the enclave port set
 # BEFORE the app boots, then boot the application exactly once.
-if System.get_env("ENCLAVE_PRIVATE_PORTS") == "1" do
-  Enum.each(
-    [
-      {:amqp_port, 29440},
-      {:event_hubs_port, 29441},
-      {:arm_port, 29442},
-      {:egress_port, 29443},
-      {:arm_tls_port, 29444}
-    ],
-    fn {k, v} -> Application.put_env(:smalt, k, v) end
-  )
+enclave_pins? = System.get_env("ENCLAVE_PRIVATE_PORTS") == "1"
+
+if enclave_pins? do
+  # Boot-time pins BEFORE the app boots. Save-prev + end-of-run restore per
+  # the test-isolation leak gate (literal keys mandatory; non-literal
+  # put_env keys are hard-REFUSEd as "unresolved"). Prev values are carried
+  # through the process dictionary because a try `after` clause is a
+  # separate scope (i21-leak-batch2 gotcha).
+  prev_amqp = Application.get_env(:smalt, :amqp_port)
+  Process.put(:encl_prev_amqp_port, prev_amqp)
+  Application.put_env(:smalt, :amqp_port, 29440)
+
+  prev_eh = Application.get_env(:smalt, :event_hubs_port)
+  Process.put(:encl_prev_event_hubs_port, prev_eh)
+  Application.put_env(:smalt, :event_hubs_port, 29441)
+
+  prev_arm = Application.get_env(:smalt, :arm_port)
+  Process.put(:encl_prev_arm_port, prev_arm)
+  Application.put_env(:smalt, :arm_port, 29442)
+
+  prev_egress = Application.get_env(:smalt, :egress_port)
+  Process.put(:encl_prev_egress_port, prev_egress)
+  Application.put_env(:smalt, :egress_port, 29443)
+
+  prev_arm_tls = Application.get_env(:smalt, :arm_tls_port)
+  Process.put(:encl_prev_arm_tls_port, prev_arm_tls)
+  Application.put_env(:smalt, :arm_tls_port, 29444)
 end
 
-booted? =
-  case :ets.whereis(:smalt_resources) do
-    :undefined ->
-      {:ok, _} = Application.ensure_all_started(:smalt)
-      true
+try do
+  booted? =
+    case :ets.whereis(:smalt_resources) do
+      :undefined ->
+        {:ok, _} = Application.ensure_all_started(:smalt)
+        true
 
-    _ ->
-      false
+      _ ->
+        false
+    end
+
+  IO.puts("[enclave] substrate booted: #{booted?}")
+after
+  # Boot-scope restore of the port pins (leak-gate discipline: every
+  # put_env carries a save-prev + after-region restore). The listeners are
+  # already bound by the time this runs, so the run's observable behavior
+  # is unchanged; the substrate dies with the VM at the end of the script.
+  if enclave_pins? do
+    case Process.get(:encl_prev_amqp_port) do
+      nil -> Application.delete_env(:smalt, :amqp_port)
+      v -> Application.put_env(:smalt, :amqp_port, v)
+    end
+
+    case Process.get(:encl_prev_event_hubs_port) do
+      nil -> Application.delete_env(:smalt, :event_hubs_port)
+      v -> Application.put_env(:smalt, :event_hubs_port, v)
+    end
+
+    case Process.get(:encl_prev_arm_port) do
+      nil -> Application.delete_env(:smalt, :arm_port)
+      v -> Application.put_env(:smalt, :arm_port, v)
+    end
+
+    case Process.get(:encl_prev_egress_port) do
+      nil -> Application.delete_env(:smalt, :egress_port)
+      v -> Application.put_env(:smalt, :egress_port, v)
+    end
+
+    case Process.get(:encl_prev_arm_tls_port) do
+      nil -> Application.delete_env(:smalt, :arm_tls_port)
+      v -> Application.put_env(:smalt, :arm_tls_port, v)
+    end
   end
-
-IO.puts("[enclave] substrate booted: #{booted?}")
+end
 
 defmodule Enclave.Testbed do
   @moduledoc false
@@ -56,7 +105,9 @@ defmodule Enclave.Testbed do
   @blocked "BLOCKED"
 
   def main do
-    IO.puts("\n=== SMALT ENCLAVE TESTBED v26.10.14 — #{DateTime.utc_now() |> DateTime.to_iso8601()} ===")
+    IO.puts(
+      "\n=== SMALT ENCLAVE TESTBED v26.10.14 — #{DateTime.utc_now() |> DateTime.to_iso8601()} ==="
+    )
 
     results =
       [
@@ -97,7 +148,14 @@ defmodule Enclave.Testbed do
     out = fun.()
     {:ok, List.wrap(out)}
   rescue
-    e -> {:error, [Exception.format(:error, e, __STACKTRACE__) |> String.split("\n") |> Enum.take(40) |> Enum.join("\n")]}
+    e ->
+      {:error,
+       [
+         Exception.format(:error, e, __STACKTRACE__)
+         |> String.split("\n")
+         |> Enum.take(40)
+         |> Enum.join("\n")
+       ]}
   end
 
   # ------------------------------------------------------------------------- A
@@ -113,7 +171,11 @@ defmodule Enclave.Testbed do
       Attestation.attest_enclave(%{"measurement" => "zz"})
 
     key = "enclave-skr-key"
-    Store.put(:smalt_vault_keys, key, %{"kid" => "kid-" <> key, "release_policy" => %{"exportable" => true}})
+
+    Store.put(:smalt_vault_keys, key, %{
+      "kid" => "kid-" <> key,
+      "release_policy" => %{"exportable" => true}
+    })
 
     conn = conn_with_token(token)
     {:ok, 200, body} = SKR.release(key, conn)
@@ -136,10 +198,14 @@ defmodule Enclave.Testbed do
 
     # non-exportable + missing + hostile name
     Store.put(:smalt_vault_keys, "enclave-noexp", %{"kid" => "k2", "release_policy" => nil})
-    {:error, 400, %{"error" => %{"code" => "KeyNotExportable"}}} = SKR.release("enclave-noexp", conn_with_token(token2))
+
+    {:error, 400, %{"error" => %{"code" => "KeyNotExportable"}}} =
+      SKR.release("enclave-noexp", conn_with_token(token2))
 
     {:error, 404, _} = SKR.release("enclave-never-existed", conn_with_token(token2))
-    {:error, 400, %{"error" => %{"code" => "InvalidParameter"}}} = SKR.release(:hostile_atom, conn_with_token(token2))
+
+    {:error, 400, %{"error" => %{"code" => "InvalidParameter"}}} =
+      SKR.release(:hostile_atom, conn_with_token(token2))
 
     "PASS: attest->release->replay refusal->determinism->typed refusals"
   end
@@ -154,27 +220,49 @@ defmodule Enclave.Testbed do
     acct = "enclaveacct"
     cont = "enclave-worm"
 
-    {:ok, created} = BlobStorage.create_container(acct, cont, %{"created_at_ms" => now_ms(), "retention_days" => 1})
+    {:ok, created} =
+      BlobStorage.create_container(acct, cont, %{
+        "created_at_ms" => now_ms(),
+        "retention_days" => 1
+      })
+
     %{"created_at" => created_at, "retention_days" => 1} = created
 
     # duplicate create refused (WORM clock-reset class)
     {:error, 409, "ContainerAlreadyExists", _} = BlobStorage.create_container(acct, cont)
 
     blob = "worm-blob.txt"
-    {:ok, put1} = BlobStorage.put_blob(acct, cont, blob, "immutable payload v1", %{}, now_ms: now_ms())
+
+    {:ok, put1} =
+      BlobStorage.put_blob(acct, cont, blob, "immutable payload v1", %{}, now_ms: now_ms())
+
     "immutable payload v1" = put1["content"]
 
     # legal hold blocks overwrite + delete + purge
     {:ok, 200, _, _} = BlobStorage.set_legal_hold(acct, cont, true)
-    {:error, :worm_locked, _} = BlobStorage.put_blob(acct, cont, blob, "v2", %{}, now_ms: now_ms())
-    {:error, 409, "ContainerLocked", _} = BlobStorage.delete_blob(acct, cont, blob, %{}, now_ms: now_ms())
+
+    {:error, :worm_locked, _} =
+      BlobStorage.put_blob(acct, cont, blob, "v2", %{}, now_ms: now_ms())
+
+    {:error, 409, "ContainerLocked", _} =
+      BlobStorage.delete_blob(acct, cont, blob, %{}, now_ms: now_ms())
 
     # release hold, lock immutability policy (requires If-Match: "*")
     {:ok, 200, _, _} = BlobStorage.set_legal_hold(acct, cont, false)
-    {:ok, 200, _, _} =
-      BlobStorage.set_immutability_policy(acct, cont, %{"locked" => true, "period_days" => 1}, %{"if-match" => ["*"]})
 
-    {:error, :worm_locked, _} = BlobStorage.put_blob(acct, cont, blob, "v2", %{}, now_ms: now_ms())
+    {:ok, 200, _, _} =
+      BlobStorage.set_immutability_policy(
+        acct,
+        cont,
+        %{"locked" => true, "period_days" => 1},
+        %{
+          "if-match" => ["*"]
+        }
+      )
+
+    {:error, :worm_locked, _} =
+      BlobStorage.put_blob(acct, cont, blob, "v2", %{}, now_ms: now_ms())
+
     IO.puts("  legal hold + locked policy both refuse overwrite/delete")
 
     # expiry unlock via time injection: now past created_at + 1 day
@@ -187,22 +275,29 @@ defmodule Enclave.Testbed do
     # but a legal hold NEVER expires
     {:ok, 200, _, _} = BlobStorage.set_legal_hold(acct, cont, true)
 
-    # ENCLAVE-1 disposition (coordinator, 2026-10-15): RESOLVED-INVALID.
-    # The original finding asserted that put_blob's CREATE path must refuse
-    # under legal hold / locked policy. Real Azure immutable storage permits
-    # writing NEW blobs into a locked/legal-hold container — that is how
-    # WORM containers are populated ("Once a container is in the Locked
-    # state, new blobs can be written"; legal hold likewise permits new
-    # writes). Only overwrite/delete of EXISTING blobs are refused. The
-    # pre-finding behavior was correct-by-Azure; the blob-hardening suite
-    # (91/0) pins it. The law pinned here is now the Azure-correct one:
-    # create ADMITTED, overwrite/delete/purge REFUSED under an active hold.
-    {:ok, _} = BlobStorage.put_blob(acct, cont, blob, "v4", %{}, now_ms: future + 86_400_000 * 30)
-    IO.puts("  create under active legal hold ADMITTED (Azure semantics: WORM protects existing blobs)")
+    # DISPOSITION UPDATE (v26.10.17, i21b): the 2026-10-15 ENCLAVE-1
+    # "create-admitted" disposition is SUPERSEDED by the d092caa court-RED
+    # closure re-pin: an active legal hold blocks BOTH overwrite AND create
+    # (blob_storage.ex put_blob/commit_block_list existence-scoped WORM arm,
+    # KD-52; blob-hardening suite 116/0 green on the modified tree pins it).
+    # Azure real-service semantics re-checked per the parity-defect rule:
+    # legal hold (unlike time-retention) blocks new-blob writes too.
+    # Law pinned here: hold -> create REFUSED (typed :worm_locked);
+    # time-retention -> only existing-blob overwrite refused.
+    {:error, :worm_locked, _} =
+      BlobStorage.put_blob(acct, cont, blob, "v4", %{}, now_ms: future + 86_400_000 * 30)
+
+    IO.puts(
+      "  create under active legal hold REFUSED (legal hold blocks create, not just overwrite)"
+    )
 
     # second witness: brand-new blob name under the same active hold
-    {:ok, _} = BlobStorage.put_blob(acct, cont, "worm-blob-new.txt", "new blob under hold", %{}, now_ms: now_ms())
-    IO.puts("  fresh-blob CREATE under active legal hold ADMITTED (same law)")
+    {:error, :worm_locked, _} =
+      BlobStorage.put_blob(acct, cont, "worm-blob-new.txt", "new blob under hold", %{},
+        now_ms: now_ms()
+      )
+
+    IO.puts("  fresh-blob CREATE under active legal hold REFUSED (same law)")
 
     {:ok, state} = BlobStorage.policy_state(acct, cont, now_ms: future)
     %{"legal_hold" => true, "expired" => true} = state
@@ -219,7 +314,10 @@ defmodule Enclave.Testbed do
 
     receipts =
       Enum.map(1..n, fn i ->
-        case ConfidentialLedger.append_transaction(ledger, %{"i" => i, "payload" => "entry-#{i}"}) do
+        case ConfidentialLedger.append_transaction(ledger, %{
+               "i" => i,
+               "payload" => "entry-#{i}"
+             }) do
           {:ok, r} -> r
           other -> raise "append #{i} refused: #{inspect(other)}"
         end
@@ -256,7 +354,12 @@ defmodule Enclave.Testbed do
     # tamper: rewrite one persisted receipt's data_hash -> verify fails
     tx_key = "#{ledger}/#{last_id}"
     {:ok, tampered} = Store.get(:smalt_ledger_transactions, tx_key)
-    Store.put(:smalt_ledger_transactions, tx_key, Map.put(tampered, "data_hash", String.duplicate("f", 64)))
+
+    Store.put(
+      :smalt_ledger_transactions,
+      tx_key,
+      Map.put(tampered, "data_hash", String.duplicate("f", 64))
+    )
 
     if chain_ok?.() do
       raise "tampered ledger still verified (DEFECT: chain verify does not bind data_hash)"
@@ -265,7 +368,9 @@ defmodule Enclave.Testbed do
     IO.puts("  tampered receipt -> chain verify FAILS (as required)")
 
     # hostile shapes: typed refusal, never raise
-    {:error, 400, %{"error" => %{"code" => "InvalidLedgerName"}}} = ConfidentialLedger.append_transaction({:bad, :shape}, %{"a" => 1})
+    {:error, 400, %{"error" => %{"code" => "InvalidLedgerName"}}} =
+      ConfidentialLedger.append_transaction({:bad, :shape}, %{"a" => 1})
+
     :error = ConfidentialLedger.get_transaction(ledger, 42)
 
     "PASS: append/dup-409/chain-verify/tamper-detect/hostile-typed"
@@ -279,10 +384,11 @@ defmodule Enclave.Testbed do
     |> Enum.chunk_every(2, 1, :discard)
     |> Enum.all?(fn [prev, cur] ->
       String.downcase(cur["prev_hash"]) == String.downcase(prev["merkle_root"])
-    end)
-    and
+    end) and
       Enum.all?(rs, fn r ->
-        recomputed = :crypto.hash(:sha256, r["prev_hash"] <> r["data_hash"]) |> Base.encode16(case: :lower)
+        recomputed =
+          :crypto.hash(:sha256, r["prev_hash"] <> r["data_hash"]) |> Base.encode16(case: :lower)
+
         recomputed == String.downcase(r["merkle_root"])
       end)
   end
@@ -290,45 +396,83 @@ defmodule Enclave.Testbed do
   # ------------------------------------------------------------------------- D
   defp phase_d do
     # Purview: entities + lineage
-    {:ok, 201, src} = Purview.create_entity(%{"entity" => %{"typeName" => "azure_sql_table", "attributes" => %{"name" => "src"}}})
-    {:ok, 201, mid} = Purview.create_entity(%{"entity" => %{"typeName" => "azure_sql_table", "attributes" => %{"name" => "mid"}}})
-    {:ok, 201, dst} = Purview.create_entity(%{"entity" => %{"typeName" => "azure_sql_table", "attributes" => %{"name" => "dst"}}})
+    {:ok, 201, src} =
+      Purview.create_entity(%{
+        "entity" => %{"typeName" => "azure_sql_table", "attributes" => %{"name" => "src"}}
+      })
+
+    {:ok, 201, mid} =
+      Purview.create_entity(%{
+        "entity" => %{"typeName" => "azure_sql_table", "attributes" => %{"name" => "mid"}}
+      })
+
+    {:ok, 201, dst} =
+      Purview.create_entity(%{
+        "entity" => %{"typeName" => "azure_sql_table", "attributes" => %{"name" => "dst"}}
+      })
 
     true = is_binary(src["guid"]) and is_binary(dst["guid"])
     Purview.put_edge(src["guid"], mid["guid"], "dataset_to_dataset_process")
     Purview.put_edge(mid["guid"], dst["guid"], "dataset_to_dataset_process")
 
-    {:ok, 200, %{"relations" => rels, "guidEntityMap" => gm}} = Purview.lineage(src["guid"], "output", 2)
+    {:ok, 200, %{"relations" => rels, "guidEntityMap" => gm}} =
+      Purview.lineage(src["guid"], "output", 2)
+
     2 = length(rels)
     3 = map_size(gm)
     {:error, 400, _} = Purview.lineage(src["guid"], "sideways", 1)
     {:error, 400, _} = Purview.create_entity(%{"entity" => 42})
-    IO.puts("  purview: 3 entities, 2-hop lineage (#{length(rels)} relations), hostile shapes 400")
+
+    IO.puts(
+      "  purview: 3 entities, 2-hop lineage (#{length(rels)} relations), hostile shapes 400"
+    )
 
     # Sentinel: DCR ingest -> strict-mode creation marker -> KQL query
     dcr = "enclave-dcr"
-    {:ok, 204, ""} = Sentinel.ingest(dcr, "Custom-enclave", [%{"level" => "err", "msg" => "boom"}, %{"level" => "info", "msg" => "fine"}], "2023-01-01")
-    {:ok, true} = Store.get(:smalt_sentinel_streams, {:dcr_created, dcr})
-    {:error, 400, _} = Sentinel.ingest(dcr, "Custom-enclave", [%{"ok" => 1}, "not-a-map"], "2022-01-01")
 
-    {:ok, 200, %{"tables" => [table]}} = Sentinel.query(dcr, %{"query" => "Custom-enclave | take 10"})
+    {:ok, 204, ""} =
+      Sentinel.ingest(
+        dcr,
+        "Custom-enclave",
+        [%{"level" => "err", "msg" => "boom"}, %{"level" => "info", "msg" => "fine"}],
+        "2023-01-01"
+      )
+
+    {:ok, true} = Store.get(:smalt_sentinel_streams, {:dcr_created, dcr})
+
+    {:error, 400, _} =
+      Sentinel.ingest(dcr, "Custom-enclave", [%{"ok" => 1}, "not-a-map"], "2022-01-01")
+
+    {:ok, 200, %{"tables" => [table]}} =
+      Sentinel.query(dcr, %{"query" => "Custom-enclave | take 10"})
+
     2 = length(table["rows"])
-    {:ok, 200, %{"tables" => [t2]}} = Sentinel.query(dcr, %{"query" => "Custom-enclave | where level == 'err' | project msg"})
+
+    {:ok, 200, %{"tables" => [t2]}} =
+      Sentinel.query(dcr, %{"query" => "Custom-enclave | where level == 'err' | project msg"})
+
     [["boom"]] = t2["rows"]
     IO.puts("  sentinel: ingest 204, strict-mode marker written, KQL take + where|count = 1")
 
     # Resource Graph: seed resources, query, hostile shapes -> typed 400
     Enum.each(1..3, fn i ->
-      Store.put(:smalt_resources, "/subscriptions/s#{i}/resourcegroups/rg/providers/microsoft.storage/storageaccounts/enclave#{i}", %{
-        "id" => "/subscriptions/s#{i}/resourcegroups/rg/providers/microsoft.storage/storageaccounts/enclave#{i}",
-        "name" => "enclave#{i}",
-        "type" => "microsoft.storage/storageaccounts",
-        "location" => "enclavehub",
-        "properties" => %{"tier" => "gold"}
-      })
+      Store.put(
+        :smalt_resources,
+        "/subscriptions/s#{i}/resourcegroups/rg/providers/microsoft.storage/storageaccounts/enclave#{i}",
+        %{
+          "id" =>
+            "/subscriptions/s#{i}/resourcegroups/rg/providers/microsoft.storage/storageaccounts/enclave#{i}",
+          "name" => "enclave#{i}",
+          "type" => "microsoft.storage/storageaccounts",
+          "location" => "enclavehub",
+          "properties" => %{"tier" => "gold"}
+        }
+      )
     end)
 
-    {:ok, 200, body} = ResourceGraph.query(["s1", "s2", "s3"], %{"query" => "project name, tier"}, "2022-10-01")
+    {:ok, 200, body} =
+      ResourceGraph.query(["s1", "s2", "s3"], %{"query" => "project name, tier"}, "2022-10-01")
+
     names = Enum.map(body["data"], & &1["name"]) |> Enum.sort()
     "enclave1" = hd(names)
 
@@ -345,13 +489,21 @@ defmodule Enclave.Testbed do
       """
     end
 
-    {:error, 400, %{"error" => %{"code" => "InvalidParameter"}}} = ResourceGraph.query("not-a-list", %{"query" => "name"}, "2022-10-01")
+    {:error, 400, %{"error" => %{"code" => "InvalidParameter"}}} =
+      ResourceGraph.query("not-a-list", %{"query" => "name"}, "2022-10-01")
+
     # documented: a bare unknown word is treated as a table reference (filters
     # nothing, 200); a real KQL parse error is the typed 400 BadQuery
     {:ok, 200, _} = ResourceGraph.query(["s1"], %{"query" => "???gibberish"}, "2022-10-01")
-    {:error, 400, %{"error" => %{"code" => "BadQuery"}}} = ResourceGraph.query(["s1"], %{"query" => "| frobnicate x"}, "2022-10-01")
+
+    {:error, 400, %{"error" => %{"code" => "BadQuery"}}} =
+      ResourceGraph.query(["s1"], %{"query" => "| frobnicate x"}, "2022-10-01")
+
     {:error, 400, _} = ResourceGraph.query(["s1"], %{"query" => "name"}, "1999-01-01")
-    IO.puts("  resource graph: 3 rows, hostile subscriptions shape + bad query + bad api-version all typed 400")
+
+    IO.puts(
+      "  resource graph: 3 rows, hostile subscriptions shape + bad query + bad api-version all typed 400"
+    )
 
     "PASS: purview lineage, sentinel ingest->marker->KQL, RG typed 400s"
   end
@@ -361,13 +513,20 @@ defmodule Enclave.Testbed do
     db = "enclavedb"
     coll = "enclavecoll"
     {:ok, 201, _, _} = Cosmos.create_db(db)
-    {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"partitionKey" => %{"paths" => ["/pk"]}})
+
+    {:ok, 201, _, _} =
+      Cosmos.create_collection(db, coll, %{"partitionKey" => %{"paths" => ["/pk"]}})
 
     header = Smalt.DataPlane.PartitionKey.header_name()
     pk = fn v -> %{header => Jason.encode!([v])} end
 
     Enum.each(1..500, fn i ->
-      case Cosmos.create_doc(db, coll, %{"id" => "doc-#{i}", "pk" => "p#{rem(i, 5)}", "v" => i}, pk.("p#{rem(i, 5)}")) do
+      case Cosmos.create_doc(
+             db,
+             coll,
+             %{"id" => "doc-#{i}", "pk" => "p#{rem(i, 5)}", "v" => i},
+             pk.("p#{rem(i, 5)}")
+           ) do
         {:ok, 201, _, _} -> :ok
         other -> raise "create doc #{i} -> #{inspect(other)}"
       end
@@ -380,14 +539,17 @@ defmodule Enclave.Testbed do
       Stream.resource(
         fn -> headers end,
         fn
-          nil -> {:halt, :done}
+          nil ->
+            {:halt, :done}
+
           hdrs ->
             case Cosmos.query_docs(db, coll, %{"query" => "select * from c"}, hdrs) do
               {:ok, 200, resp_headers, %{"Documents" => docs}} ->
-                next = case resp_headers["x-ms-continuation"] do
-                  nil -> nil
-                  tok -> Map.put(hdrs, "x-ms-continuation", tok)
-                end
+                next =
+                  case resp_headers["x-ms-continuation"] do
+                    nil -> nil
+                    tok -> Map.put(hdrs, "x-ms-continuation", tok)
+                  end
 
                 {docs, next}
 
@@ -407,12 +569,19 @@ defmodule Enclave.Testbed do
     IO.puts("  cross-partition query: #{total} docs via #{page_count} continuation pages")
 
     # partition-scoped query
-    {:ok, 200, _, %{"Documents" => scoped}} = Cosmos.query_docs(db, coll, %{"query" => "select * from c"}, pk.("p1"))
+    {:ok, 200, _, %{"Documents" => scoped}} =
+      Cosmos.query_docs(db, coll, %{"query" => "select * from c"}, pk.("p1"))
+
     100 = length(scoped)
 
     # forged continuation token -> typed 400, never silent all-docs
     {:ok, 400, _, _} =
-      Cosmos.query_docs(db, coll, %{"query" => "select * from c"}, Map.put(pk.("p1"), "x-ms-continuation", "forged-token"))
+      Cosmos.query_docs(
+        db,
+        coll,
+        %{"query" => "select * from c"},
+        Map.put(pk.("p1"), "x-ms-continuation", "forged-token")
+      )
 
     "PASS: 500-doc seed, cross-partition walk 500 via continuation, pk-scoped 100, forged token 400"
   end
@@ -420,41 +589,48 @@ defmodule Enclave.Testbed do
   # ------------------------------------------------------------------------ E2
   defp phase_e2 do
     prev_delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Application.put_env(:smalt, :lro_delay_ms, 15)
 
-    ops =
-      Enum.map(1..50, fn i ->
-        rec = LRO.start_op("/subscriptions/enclave/providers/microsoft.storage/storageaccounts/lro#{i}")
-        %{"status" => "InProgress"} = rec
-        rec["name"]
+    try do
+      Application.put_env(:smalt, :lro_delay_ms, 15)
+
+      ops =
+        Enum.map(1..50, fn i ->
+          rec =
+            LRO.start_op(
+              "/subscriptions/enclave/providers/microsoft.storage/storageaccounts/lro#{i}"
+            )
+
+          %{"status" => "InProgress"} = rec
+          rec["name"]
+        end)
+
+      IO.puts("  started 50 LRO operations (delay 15ms)")
+
+      # let the deadline pass, then drive the at-rest sweeper
+      Process.sleep(60)
+
+      _ = Sweeper.sweep_now()
+
+      statuses =
+        Enum.map(ops, fn id ->
+          case LRO.get_op(id) do
+            {:ok, %{"status" => "Succeeded"}} -> :succeeded
+            _ -> :not_terminal
+          end
+        end)
+
+      50 = Enum.count(statuses, &(&1 == :succeeded))
+      IO.puts("  sweeper convergence: 50/50 terminal Succeeded")
+
+      # idempotence: second sweep writes byte-identical terminals, zero regressions
+      _ = Sweeper.sweep_now()
+
+      Enum.each(ops, fn id ->
+        {:ok, %{"status" => "Succeeded"}} = LRO.get_op(id)
       end)
-
-    IO.puts("  started 50 LRO operations (delay 15ms)")
-
-    # let the deadline pass, then drive the at-rest sweeper
-    Process.sleep(60)
-
-    _ = Sweeper.sweep_now()
-
-    statuses =
-      Enum.map(ops, fn id ->
-        case LRO.get_op(id) do
-          {:ok, %{"status" => "Succeeded"}} -> :succeeded
-          _ -> :not_terminal
-        end
-      end)
-
-    50 = Enum.count(statuses, &(&1 == :succeeded))
-    IO.puts("  sweeper convergence: 50/50 terminal Succeeded")
-
-    # idempotence: second sweep writes byte-identical terminals, zero regressions
-    _ = Sweeper.sweep_now()
-
-    Enum.each(ops, fn id ->
-      {:ok, %{"status" => "Succeeded"}} = LRO.get_op(id)
-    end)
-
-    Application.put_env(:smalt, :lro_delay_ms, prev_delay)
+    after
+      Application.put_env(:smalt, :lro_delay_ms, prev_delay)
+    end
 
     "PASS: 50 ops started, sweeper drove 50/50 to terminal, second sweep idempotent"
   end
@@ -481,14 +657,22 @@ defmodule Enclave.Testbed do
     :empty = QueueStore.dequeue_matching(queue, session_id: "sess-1")
 
     # deadletter with custom DLQ properties
-    {:ok, dlq_seq} = QueueStore.deadletter(queue, seq, "MaxDeliveryCountExceeded", "enclave test", properties: %{"EnclaveProbe" => "F1"})
+    {:ok, dlq_seq} =
+      QueueStore.deadletter(queue, seq, "MaxDeliveryCountExceeded", "enclave test",
+        properties: %{"EnclaveProbe" => "F1"}
+      )
 
-    {:ok, [dlq_msg | _]} = QueueStore.peek(QueueStore.deadletter_queue(queue), message_count: 10)
+    {:ok, [dlq_msg | _]} =
+      QueueStore.peek(QueueStore.deadletter_queue(queue), message_count: 10)
+
     props = dlq_msg[:app_props] || dlq_msg["app_props"] || %{}
     "MaxDeliveryCountExceeded" = props["DeadLetterReason"]
     "enclave test" = props["DeadLetterErrorDescription"]
     "F1" = props["EnclaveProbe"]
-    IO.puts("  session lock exclusivity + DLQ properties (reason/description/custom) preserved on wire record")
+
+    IO.puts(
+      "  session lock exclusivity + DLQ properties (reason/description/custom) preserved on wire record"
+    )
 
     QueueStore.complete(queue, seq)
     QueueStore.complete(queue, seq2)
@@ -525,7 +709,10 @@ defmodule Enclave.Testbed do
     [first | _] = drain
     [last | _] = Enum.reverse(drain)
     true = last["seq"] > first["seq"]
-    IO.puts("  EH: 50 events delivered in order while consumer CAS'd checkpoints; final readback 50")
+
+    IO.puts(
+      "  EH: 50 events delivered in order while consumer CAS'd checkpoints; final readback 50"
+    )
 
     # CAS checkpoint: exactly one of two racing expect-equal claims wins
     {:ok, _seq0, _} = EventHubs.send_event(part, "cas-target")
@@ -544,7 +731,11 @@ defmodule Enclave.Testbed do
         ]
         |> Enum.reject(&is_nil/1),
         fn expect0 ->
-          case EventHubs.compare_and_swap("enclave-group", part, expect0, %{"seq" => 0, "offset" => 0, "etag" => 0}) do
+          case EventHubs.compare_and_swap("enclave-group", part, expect0, %{
+                 "seq" => 0,
+                 "offset" => 0,
+                 "etag" => 0
+               }) do
             :ok -> :ok
             _ -> nil
           end
@@ -557,7 +748,9 @@ defmodule Enclave.Testbed do
 
     outcomes =
       Enum.map(1..2, fn _ ->
-        Task.async(fn -> EventHubs.compare_and_swap("enclave-group", part, expect, %{"seq" => target["seq"]}) end)
+        Task.async(fn ->
+          EventHubs.compare_and_swap("enclave-group", part, expect, %{"seq" => target["seq"]})
+        end)
       end)
       |> Enum.map(&Task.await(&1, 10_000))
 
@@ -587,13 +780,19 @@ defmodule Enclave.Testbed do
         case EventHubs.compare_and_swap(
                "enclave-group-f2",
                part,
-               if(after_seq == 0, do: %{"seq" => 0, "offset" => 0, "etag" => 0}, else: %{"seq" => after_seq}),
+               if(after_seq == 0,
+                 do: %{"seq" => 0, "offset" => 0, "etag" => 0},
+                 else: %{"seq" => after_seq}
+               ),
                %{"seq" => last, "offset" => last, "etag" => last}
              ) do
-          :ok -> :ok
+          :ok ->
+            :ok
+
           # benign in the contention lane: another writer raced the checkpoint;
           # the final 50-event readback is the delivery assertion.
-          {:error, :conflict} -> IO.puts("  [f2] checkpoint CAS conflict at seq #{after_seq} (raced)")
+          {:error, :conflict} ->
+            IO.puts("  [f2] checkpoint CAS conflict at seq #{after_seq} (raced)")
         end
 
         consume(part, last, acc)
@@ -605,7 +804,7 @@ defmodule Enclave.Testbed do
     # chaos overlay: kill the LRO sweeper child mid-run; supervisor restarts it
     pid = Process.whereis(Sweeper)
 
-    if is_nil(pid), do: raise "sweeper not running"
+    if is_nil(pid), do: raise("sweeper not running")
 
     Process.exit(pid, :kill)
 
@@ -619,21 +818,26 @@ defmodule Enclave.Testbed do
               :ok -> true
               _ -> false
             end
+
           _ ->
             false
         end
       end)
 
-    if not restart_ok, do: raise "sweeper did not restart and serve after kill"
+    if not restart_ok, do: raise("sweeper did not restart and serve after kill")
 
     # substrate still serving: a fresh LRO still converges, ledger still appends
     Application.put_env(:smalt, :lro_delay_ms, 1)
-    rec = LRO.start_op("/subscriptions/enclave/providers/microsoft.storage/storageaccounts/chaos1")
+
+    rec =
+      LRO.start_op("/subscriptions/enclave/providers/microsoft.storage/storageaccounts/chaos1")
+
     Process.sleep(30)
     _ = Sweeper.sweep_now()
     {:ok, %{"status" => "Succeeded"}} = LRO.get_op(rec["name"])
 
-    {:ok, _} = ConfidentialLedger.append_transaction("enclave-ledger", %{"chaos" => "post-kill"})
+    {:ok, _} =
+      ConfidentialLedger.append_transaction("enclave-ledger", %{"chaos" => "post-kill"})
 
     "PASS: sweeper child killed -> supervisor restart -> serves again; substrate kept serving"
   end

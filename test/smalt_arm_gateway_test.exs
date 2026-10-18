@@ -247,6 +247,7 @@ defmodule SmaltArmGatewayTest do
         "properties" => %{"addressPrefixes" => ["10.9.0.0/16"]}
       })
       |> call()
+
     assert res_put.status in [200, 201]
     res_get = conn(:get, res_path) |> call()
     assert res_get.status == 200
@@ -266,7 +267,9 @@ defmodule SmaltArmGatewayTest do
 
   test "LIST resource groups returns prefix-scanned collection (both casings)" do
     for name <- ["rg-a", "rg-b"] do
-      conn(:put, "/subscriptions/#{@sub}/resourcegroups/#{name}?api-version=2023-07-01", %{"location" => "eastus"})
+      conn(:put, "/subscriptions/#{@sub}/resourcegroups/#{name}?api-version=2023-07-01", %{
+        "location" => "eastus"
+      })
       |> call()
     end
 
@@ -481,7 +484,9 @@ defmodule SmaltArmGatewayTest do
     zone_path =
       "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Network/privateDnsZones/zone-01?api-version=#{api_v("Microsoft.Network/privateDnsZones")}"
 
-    assert conn(:put, zone_path, %{"location" => "global", "properties" => %{}}) |> call() |> Map.get(:status) == 201
+    assert conn(:put, zone_path, %{"location" => "global", "properties" => %{}})
+           |> call()
+           |> Map.get(:status) == 201
 
     put_conn =
       conn(:put, path, %{"location" => "global", "properties" => %{"virtualNetworkId" => "x"}})
@@ -732,6 +737,7 @@ defmodule SmaltArmGatewayTest do
 
     conn =
       conn(:get, "/subscriptions/#{@sub}/providers?api-version=2021-04-01") |> call()
+
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
 
@@ -792,7 +798,12 @@ defmodule SmaltArmGatewayTest do
 
       # And the window counter still counts toward the limit (no regression to
       # the fixed-window 429 semantics fenced in c1_arm row 12).
-      for _ <- 1..3, do: conn(:get, "/subscriptions/#{@sub}?api-version=2021-04-01") |> call() |> Map.get(:status)
+      for _ <- 1..3,
+          do:
+            conn(:get, "/subscriptions/#{@sub}?api-version=2021-04-01")
+            |> call()
+            |> Map.get(:status)
+
       throttled = conn(:get, "/subscriptions/#{@sub}?api-version=2021-04-01") |> call()
       assert throttled.status == 429
       assert get_resp_header(throttled, "retry-after") == ["1"]
@@ -852,8 +863,11 @@ defmodule SmaltArmGatewayTest do
 
     # $filter resourceType eq — case-insensitive match on type.
     conn =
-      conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-04-01&" <>
-        URI.encode_query(%{"$filter" => "resourceType eq 'Microsoft.Network/virtualNetworks'"}))
+      conn(
+        :get,
+        "/subscriptions/#{@sub}/resources?api-version=2021-04-01&" <>
+          URI.encode_query(%{"$filter" => "resourceType eq 'Microsoft.Network/virtualNetworks'"})
+      )
       |> call()
 
     assert conn.status == 200
@@ -866,8 +880,11 @@ defmodule SmaltArmGatewayTest do
 
     # $filter resourceGroup eq — scoped to one RG.
     conn =
-      conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-04-01&" <>
-        URI.encode_query(%{"$filter" => "resourceGroup eq 'RG-A'"}))
+      conn(
+        :get,
+        "/subscriptions/#{@sub}/resources?api-version=2021-04-01&" <>
+          URI.encode_query(%{"$filter" => "resourceGroup eq 'RG-A'"})
+      )
       |> call()
 
     assert conn.status == 200
@@ -876,8 +893,11 @@ defmodule SmaltArmGatewayTest do
 
     # Unknown filter clause denies by default (matches nothing).
     conn =
-      conn(:get, "/subscriptions/#{@sub}/resources?api-version=2021-01-01&" <>
-        URI.encode_query(%{"$filter" => "wat eq 'x'"}))
+      conn(
+        :get,
+        "/subscriptions/#{@sub}/resources?api-version=2021-01-01&" <>
+          URI.encode_query(%{"$filter" => "wat eq 'x'"})
+      )
       |> call()
 
     assert conn.status == 200
@@ -968,8 +988,9 @@ defmodule SmaltArmGatewayTest do
   # ---------------------------------------------------------------------------
   test "providers: GET namespace 200/404, register -> Registered, unregister -> Unregistering, GET stays Registered" do
     # Known namespace.
-    conn = conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Network?api-version=2021-04-01")
-    |> call()
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Network?api-version=2021-04-01")
+      |> call()
 
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
@@ -987,29 +1008,42 @@ defmodule SmaltArmGatewayTest do
 
     # Register -> Registered; Unregister -> Unregistering.
     reg =
-      conn(:post, "/subscriptions/#{@sub}/providers/Microsoft.Network/register?api-version=2021-04-01", %{})
+      conn(
+        :post,
+        "/subscriptions/#{@sub}/providers/Microsoft.Network/register?api-version=2021-04-01",
+        %{}
+      )
       |> call()
 
     assert reg.status == 200
     assert Jason.decode!(reg.resp_body)["registrationState"] == "Registered"
 
     unreg =
-      conn(:post, "/subscriptions/#{@sub}/providers/Microsoft.Network/unregister?api-version=2021-04-01", %{})
+      conn(
+        :post,
+        "/subscriptions/#{@sub}/providers/Microsoft.Network/unregister?api-version=2021-04-01",
+        %{}
+      )
       |> call()
 
     assert unreg.status == 200
     assert Jason.decode!(unreg.resp_body)["registrationState"] == "Unregistering"
 
     # Read-only enclave truth: GET stays Registered.
-    conn = conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Network?api-version=2021-04-01")
-    |> call()
+    conn =
+      conn(:get, "/subscriptions/#{@sub}/providers/Microsoft.Network?api-version=2021-04-01")
+      |> call()
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["registrationState"] == "Registered"
 
     # Register of an unknown namespace 404s.
     reg =
-      conn(:post, "/subscriptions/#{@sub}/providers/Microsoft.Bogus/register?api-version=2021-04-01", %{})
+      conn(
+        :post,
+        "/subscriptions/#{@sub}/providers/Microsoft.Bogus/register?api-version=2021-04-01",
+        %{}
+      )
       |> call()
 
     assert reg.status == 404
@@ -1033,7 +1067,8 @@ defmodule SmaltArmGatewayTest do
     # when the parent is missing — that tiering is asserted in the refusal
     # sweep. Only a conforming body isolates the parent gate here.
     orphan =
-      conn(:put, path, %{"location" => "eastus", "properties" => %{"value" => "s3cret"}}) |> call()
+      conn(:put, path, %{"location" => "eastus", "properties" => %{"value" => "s3cret"}})
+      |> call()
 
     assert orphan.status == 404
     assert Jason.decode!(orphan.resp_body)["error"]["code"] == "ResourceNotFound"
@@ -1046,7 +1081,10 @@ defmodule SmaltArmGatewayTest do
     )
     |> call()
 
-    put_conn = conn(:put, path, %{"location" => "eastus", "properties" => %{"value" => "s3cret"}}) |> call()
+    put_conn =
+      conn(:put, path, %{"location" => "eastus", "properties" => %{"value" => "s3cret"}})
+      |> call()
+
     assert put_conn.status == 201
     assert Jason.decode!(put_conn.resp_body)["type"] == secret_type
 
@@ -1080,9 +1118,13 @@ defmodule SmaltArmGatewayTest do
       assert orphan.status == 404
       assert Jason.decode!(orphan.resp_body)["error"]["code"] == "ResourceNotFound"
 
-      conn(:put, "#{acct_base}/cos-acct?api-version=#{api_v("Microsoft.DocumentDB/databaseAccounts")}", %{
-        "location" => "eastus"
-      })
+      conn(
+        :put,
+        "#{acct_base}/cos-acct?api-version=#{api_v("Microsoft.DocumentDB/databaseAccounts")}",
+        %{
+          "location" => "eastus"
+        }
+      )
       |> call()
 
       put_conn = conn(:put, db_path, %{"location" => "eastus", "properties" => %{}}) |> call()
@@ -1159,13 +1201,15 @@ defmodule SmaltArmGatewayTest do
     assert get_resp_header(del_conn, "retry-after") == ["1"]
 
     # Account + cascaded children are gone (raw store read).
-    key = String.downcase("/subscriptions/#{@sub}/resourceGroups/casc-rg/providers/Microsoft.Storage/storageAccounts/casc-st")
+    key =
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/casc-rg/providers/Microsoft.Storage/storageAccounts/casc-st"
+      )
+
     refute match?({:ok, _}, Store.get(:smalt_resources, key))
 
     child_prefix =
-      String.downcase(
-        "/subscriptions/#{@sub}/resourceGroups/casc-rg/storageAccounts/casc-st/"
-      )
+      String.downcase("/subscriptions/#{@sub}/resourceGroups/casc-rg/storageAccounts/casc-st/")
 
     assert Store.prefix_keys(:smalt_resources, child_prefix) == []
 
@@ -1182,7 +1226,10 @@ defmodule SmaltArmGatewayTest do
   # ---------------------------------------------------------------------------
   test "HEAD databaseAccountNames answers 404 EMPTY body with no api-version (not exists)" do
     conn =
-      conn(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/tf-no-such-acct")
+      conn(
+        :head,
+        "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/tf-no-such-acct"
+      )
       |> call()
 
     assert conn.status == 404
@@ -1199,7 +1246,10 @@ defmodule SmaltArmGatewayTest do
     Store.put(:smalt_resources, id, %{"id" => id, "name" => "head-acct"})
 
     conn =
-      conn(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/head-acct")
+      conn(
+        :head,
+        "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/head-acct"
+      )
       |> call()
 
     assert conn.status == 204
@@ -1216,7 +1266,10 @@ defmodule SmaltArmGatewayTest do
     Store.delete(:smalt_resources, id)
 
     conn =
-      conn(:head, "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/head-acct2")
+      conn(
+        :head,
+        "/subscriptions/#{@sub}/providers/Microsoft.DocumentDB/databaseAccountNames/head-acct2"
+      )
       |> call()
 
     assert conn.status == 404

@@ -38,6 +38,13 @@ defmodule Smalt.EventGridTopicsArmTest do
 
     stop_existing_tree()
 
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev = %{
+      arm_port: Application.get_env(:smalt, :arm_port),
+      egress_port: Application.get_env(:smalt, :egress_port),
+      amqp_port: Application.get_env(:smalt, :amqp_port)
+    }
+
     Application.put_env(:smalt, :arm_port, arm)
     Application.put_env(:smalt, :egress_port, egress)
     Application.put_env(:smalt, :amqp_port, get_free_port())
@@ -52,6 +59,18 @@ defmodule Smalt.EventGridTopicsArmTest do
 
     on_exit(fn ->
       stop_tree(sup)
+
+      if prev.arm_port == nil,
+        do: Application.delete_env(:smalt, :arm_port),
+        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+      if prev.egress_port == nil,
+        do: Application.delete_env(:smalt, :egress_port),
+        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+      if prev.amqp_port == nil,
+        do: Application.delete_env(:smalt, :amqp_port),
+        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
 
       # Teardown repair (same contract as the conformance suite): this suite
       # stops the main app tree and runs a private Store child. Restore the
@@ -91,7 +110,9 @@ defmodule Smalt.EventGridTopicsArmTest do
     assert record["location"] == "westus"
     assert record["properties"]["provisioningState"] == "Succeeded"
     assert record["properties"]["inputSchema"] == "CloudEvents"
-    assert record["properties"]["endpoint"] == "http://localhost:#{egress_port()}/topics/crud-topic/events"
+
+    assert record["properties"]["endpoint"] ==
+             "http://localhost:#{egress_port()}/topics/crud-topic/events"
 
     # GET
     resp = http_request(arm, "GET", "#{base}/crud-topic?api-version=#{@topic_api}")
@@ -102,7 +123,11 @@ defmodule Smalt.EventGridTopicsArmTest do
     resp =
       http_request(arm, "PUT", "#{base}/crud-topic?api-version=#{@topic_api}",
         headers: [{"content-type", "application/json"}],
-        body: Jason.encode!(%{"location" => "westus", "properties" => %{"inputSchema" => "EventGrid"}})
+        body:
+          Jason.encode!(%{
+            "location" => "westus",
+            "properties" => %{"inputSchema" => "EventGrid"}
+          })
       )
 
     assert resp.status == 200, resp.body
@@ -158,7 +183,8 @@ defmodule Smalt.EventGridTopicsArmTest do
     resp =
       http_request(arm, "PUT", "#{base}/bad-schema?api-version=#{@topic_api}",
         headers: [{"content-type", "application/json"}],
-        body: Jason.encode!(%{"location" => "eastus", "properties" => %{"inputSchema" => "Fancy"}})
+        body:
+          Jason.encode!(%{"location" => "eastus", "properties" => %{"inputSchema" => "Fancy"}})
       )
 
     assert resp.status == 400, resp.body
@@ -234,9 +260,10 @@ defmodule Smalt.EventGridTopicsArmTest do
     assert Enum.map(Jason.decode!(resp.body), & &1["id"]) == ["eg1-b1", "eg1-b2"]
   end
 
-  test "EG1 envelope with a missing member is a typed 400 InvalidEventGridEvent, nothing stored", %{
-    egress: egress
-  } do
+  test "EG1 envelope with a missing member is a typed 400 InvalidEventGridEvent, nothing stored",
+       %{
+         egress: egress
+       } do
     create_topic(arm_port(), "eg1-invalid", "EventGrid")
 
     resp =
@@ -258,7 +285,9 @@ defmodule Smalt.EventGridTopicsArmTest do
     assert Jason.decode!(resp.body) == []
   end
 
-  test "EG1 envelope on an UNdeclared topic keeps the 400 InvalidCloudEvent refusal", %{egress: egress} do
+  test "EG1 envelope on an UNdeclared topic keeps the 400 InvalidCloudEvent refusal", %{
+    egress: egress
+  } do
     create_topic(arm_port(), "eg1-undeclared", "CloudEvents")
 
     resp =
@@ -306,14 +335,22 @@ defmodule Smalt.EventGridTopicsArmTest do
     http_request(egress, "POST", "/topics/mixed-topic/events",
       headers: [{"content-type", "application/cloudevents+json"}],
       body:
-        Jason.encode!(%{"specversion" => "1.0", "id" => "mix-ce", "source" => "/s", "type" => "T.Ce"})
+        Jason.encode!(%{
+          "specversion" => "1.0",
+          "id" => "mix-ce",
+          "source" => "/s",
+          "type" => "T.Ce"
+        })
     )
 
     # Flip the topic's declared schema to EventGrid and publish an EG1 event.
-    http_request(arm, "PUT",
+    http_request(
+      arm,
+      "PUT",
       "/subscriptions/sub-1/resourceGroups/rg-eg1/providers/Microsoft.EventGrid/topics/mixed-topic?api-version=#{@topic_api}",
       headers: [{"content-type", "application/json"}],
-      body: Jason.encode!(%{"location" => "eastus", "properties" => %{"inputSchema" => "EventGrid"}})
+      body:
+        Jason.encode!(%{"location" => "eastus", "properties" => %{"inputSchema" => "EventGrid"}})
     )
 
     http_request(egress, "POST", "/topics/mixed-topic/events",
@@ -339,7 +376,9 @@ defmodule Smalt.EventGridTopicsArmTest do
 
   defp create_topic(arm, name, schema) do
     resp =
-      http_request(arm, "PUT",
+      http_request(
+        arm,
+        "PUT",
         "/subscriptions/sub-1/resourceGroups/rg-eg1/providers/Microsoft.EventGrid/topics/#{name}?api-version=#{@topic_api}",
         headers: [{"content-type", "application/json"}],
         body: Jason.encode!(%{"location" => "eastus", "properties" => %{"inputSchema" => schema}})

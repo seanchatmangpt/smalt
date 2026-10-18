@@ -44,7 +44,9 @@ defmodule Smalt.DataPlane.KQLTest do
 
   test "where contains" do
     rows = [%{"sha256Hash" => "deadbeef"}, %{"sha256Hash" => "cafe"}]
-    assert KQL.run(rows, "| where sha256Hash contains 'dead'") == {:ok, [%{"sha256Hash" => "deadbeef"}]}
+
+    assert KQL.run(rows, "| where sha256Hash contains 'dead'") ==
+             {:ok, [%{"sha256Hash" => "deadbeef"}]}
   end
 
   test "where startswith" do
@@ -81,7 +83,10 @@ defmodule Smalt.DataPlane.KQLTest do
            |> ids() == ["L-001", "L-002", "L-003"]
 
     # and binds tighter than or
-    assert KQL.run(@rows, "| where tenantId == 't-b' or tenantId == 't-a' and ledgerId == 'L-001'")
+    assert KQL.run(
+             @rows,
+             "| where tenantId == 't-b' or tenantId == 't-a' and ledgerId == 'L-001'"
+           )
            |> ids() == ["L-001", "L-002"]
   end
 
@@ -277,6 +282,7 @@ defmodule Smalt.DataPlane.KQLTest do
 
     for q <- hand_hostile do
       result = KQL.run(rows, q)
+
       assert match?({:ok, _}, result) or match?({:error, {_, _}}, result),
              "untyped result for #{inspect(q)}: #{inspect(result)}"
     end
@@ -286,10 +292,47 @@ defmodule Smalt.DataPlane.KQLTest do
       Enum.concat([
         Enum.map(?a..?z, &<<&1>>),
         Enum.map(?0..?9, &<<&1>>),
-        ["|", "where", "take", "order", "by", "project", "and", "or", "==", "!=",
-         ">", "<", ">=", "<=", "contains", "startswith", "(", ")", ",", "'", "\"",
-         "\\", " ", "asc", "desc", "\t", "\n", "\r", <<0xFF>>, <<0x00>>, "*", "-",
-         "+", ".", "1e5", "0x", "'\\''", "''", "\"\""]
+        [
+          "|",
+          "where",
+          "take",
+          "order",
+          "by",
+          "project",
+          "and",
+          "or",
+          "==",
+          "!=",
+          ">",
+          "<",
+          ">=",
+          "<=",
+          "contains",
+          "startswith",
+          "(",
+          ")",
+          ",",
+          "'",
+          "\"",
+          "\\",
+          " ",
+          "asc",
+          "desc",
+          "\t",
+          "\n",
+          "\r",
+          <<0xFF>>,
+          <<0x00>>,
+          "*",
+          "-",
+          "+",
+          ".",
+          "1e5",
+          "0x",
+          "'\\''",
+          "''",
+          "\"\""
+        ]
       ])
 
     :rand.seed(:exsss, {8, 15, 2026})
@@ -297,6 +340,7 @@ defmodule Smalt.DataPlane.KQLTest do
     for _i <- 1..500 do
       q = Enum.map_join(1..:rand.uniform(60), fn _ -> Enum.random(alphabet) end)
       result = KQL.run(rows, q)
+
       assert match?({:ok, _}, result) or match?({:error, {_, _}}, result),
              "untyped result for #{inspect(q)}: #{inspect(result)}"
     end

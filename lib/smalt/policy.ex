@@ -50,7 +50,13 @@ defmodule Smalt.Policy do
     for table <- [:smalt_policy, :smalt_rbac] do
       if :ets.info(table) == :undefined do
         try do
-          :ets.new(table, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
+          :ets.new(table, [
+            :named_table,
+            :public,
+            :set,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
         rescue
           ArgumentError -> :ok
         end
@@ -161,7 +167,8 @@ defmodule Smalt.Policy do
     rule = get_in(body, ["properties", "policyRule"]) || %{}
 
     record = %{
-      "id" => "/subscriptions/#{sub_id}/providers/Microsoft.Authorization/policyDefinitions/#{name}",
+      "id" =>
+        "/subscriptions/#{sub_id}/providers/Microsoft.Authorization/policyDefinitions/#{name}",
       "name" => name,
       "type" => "Microsoft.Authorization/policyDefinitions",
       "properties" => %{
@@ -254,7 +261,9 @@ defmodule Smalt.Policy do
 
   def list_policy_assignments(scope_prefix) do
     ensure_tables()
-    prefix = String.downcase("#{scope_prefix}/providers/microsoft.authorization/policyassignments/")
+
+    prefix =
+      String.downcase("#{scope_prefix}/providers/microsoft.authorization/policyassignments/")
 
     :smalt_policy
     |> :ets.tab2list()
@@ -316,7 +325,8 @@ defmodule Smalt.Policy do
       %{
         "policyAssignmentId" => assignment_id,
         "results" => %{
-          "nonCompliantResources" => rows |> Enum.map(& &1["resourceId"]) |> Enum.uniq() |> length(),
+          "nonCompliantResources" =>
+            rows |> Enum.map(& &1["resourceId"]) |> Enum.uniq() |> length(),
           "nonCompliantPolicies" => 1
         }
       }
@@ -407,8 +417,12 @@ defmodule Smalt.Policy do
 
   defp compare(cond, value) do
     Enum.any?(cond, fn
-      {"field", _} -> false
-      {"then", _} -> false
+      {"field", _} ->
+        false
+
+      {"then", _} ->
+        false
+
       {op, expected} ->
         case op do
           "equals" -> value == expected
@@ -439,14 +453,17 @@ defmodule Smalt.Policy do
 
   defp condition_reason(rule) do
     case rule do
-      %{"if" => %{"field" => field}} -> "Resource field '#{field}' does not satisfy policy"
+      %{"if" => %{"field" => field}} ->
+        "Resource field '#{field}' does not satisfy policy"
+
       %{"allof" => subs} when is_list(subs) ->
         case Enum.find(subs, &match?(%{"field" => _}, &1)) do
           %{"field" => field} -> "Resource field '#{field}' does not satisfy policy"
           _ -> "Resource does not satisfy policy"
         end
 
-      _ -> "Resource does not satisfy policy"
+      _ ->
+        "Resource does not satisfy policy"
     end
   end
 

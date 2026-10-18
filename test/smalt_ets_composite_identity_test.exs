@@ -56,72 +56,141 @@ defmodule Smalt.EtsCompositeIdentityTest do
     assert status in [200, 201], "storage account PUT -> #{status}: #{body}"
 
     bsvc_path = acct_path <> "/blobServices/default"
-    assert {status, body} = put_res(bsvc_path, api("Microsoft.Storage/storageAccounts/blobServices"), %{"location" => "eastus"})
+
+    assert {status, body} =
+             put_res(bsvc_path, api("Microsoft.Storage/storageAccounts/blobServices"), %{
+               "location" => "eastus"
+             })
+
     assert status in [200, 201], "blobServices PUT -> #{status}: #{body}"
 
     cont_path = bsvc_path <> "/containers/etscompcont"
+
     assert {status, body} =
-             put_res(cont_path, api("Microsoft.Storage/storageAccounts/blobServices/containers"), %{
-               "location" => "eastus",
-               "properties" => %{"publicAccess" => "None"}
-             })
+             put_res(
+               cont_path,
+               api("Microsoft.Storage/storageAccounts/blobServices/containers"),
+               %{
+                 "location" => "eastus",
+                 "properties" => %{"publicAccess" => "None"}
+               }
+             )
 
     assert status in [200, 201], "container PUT -> #{status}: #{body}"
 
     # key vault -> secret
     kv_path = @rg_path <> "/providers/Microsoft.KeyVault/vaults/ets-comp-kv"
+
     assert {status, body} =
-             put_res(kv_path, api("Microsoft.KeyVault/vaults"), %{"location" => "eastus", "properties" => %{"sku" => %{"family" => "A", "name" => "standard"}, "tenantId" => @sub, "enableSoftDelete" => true}})
+             put_res(kv_path, api("Microsoft.KeyVault/vaults"), %{
+               "location" => "eastus",
+               "properties" => %{
+                 "sku" => %{"family" => "A", "name" => "standard"},
+                 "tenantId" => @sub,
+                 "enableSoftDelete" => true
+               }
+             })
 
     assert status in [200, 201], "vault PUT -> #{status}: #{body}"
 
     sec_path = kv_path <> "/secrets/ets-comp-secret"
+
     assert {status, body} =
-             put_res(sec_path, api("Microsoft.KeyVault/vaults/secrets"), %{"location" => "eastus", "properties" => %{"value" => "s3cret"}})
+             put_res(sec_path, api("Microsoft.KeyVault/vaults/secrets"), %{
+               "location" => "eastus",
+               "properties" => %{"value" => "s3cret"}
+             })
 
     assert status in [200, 201], "secret PUT -> #{status}: #{body}"
 
     # cosmos account -> sqlDatabase -> sqlContainer
     cosmos_path = @rg_path <> "/providers/Microsoft.DocumentDB/databaseAccounts/ets-comp-cosmos"
+
     assert {status, body} =
-             put_res(cosmos_path, api("Microsoft.DocumentDB/databaseAccounts"), %{"location" => "eastus", "kind" => "GlobalDocumentDB", "properties" => %{"databaseAccountOfferType" => "Standard"}})
+             put_res(cosmos_path, api("Microsoft.DocumentDB/databaseAccounts"), %{
+               "location" => "eastus",
+               "kind" => "GlobalDocumentDB",
+               "properties" => %{"databaseAccountOfferType" => "Standard"}
+             })
 
     assert status in [200, 201], "cosmos account PUT -> #{status}: #{body}"
 
     db_path = cosmos_path <> "/sqlDatabases/etscompdb"
-    assert {status, body} = put_res(db_path, api("Microsoft.DocumentDB/databaseAccounts/sqlDatabases"), %{"location" => "eastus", "properties" => %{}})
+
+    assert {status, body} =
+             put_res(db_path, api("Microsoft.DocumentDB/databaseAccounts/sqlDatabases"), %{
+               "location" => "eastus",
+               "properties" => %{}
+             })
+
     assert status in [200, 201], "sqlDatabase PUT -> #{status}: #{body}"
 
     col_path = db_path <> "/sqlContainers/etscompcol"
+
     assert {status, body} =
              put_res(col_path, api("Microsoft.DocumentDB/databaseAccounts/sqlContainers"), %{
                "location" => "eastus",
-               "properties" => %{"resource" => %{"id" => "etscompcol", "partitionKey" => %{"paths" => ["/pk"]}}}
+               "properties" => %{
+                 "resource" => %{"id" => "etscompcol", "partitionKey" => %{"paths" => ["/pk"]}}
+               }
              })
 
     assert status in [200, 201], "sqlContainer PUT -> #{status}: #{body}"
 
     # service bus namespace -> queue
     sb_path = @rg_path <> "/providers/Microsoft.ServiceBus/namespaces/ets-comp-sb-ns"
-    assert {status, body} = put_res(sb_path, api("Microsoft.ServiceBus/namespaces"), %{"location" => "eastus", "sku" => %{"name" => "Standard", "tier" => "Standard"}})
+
+    assert {status, body} =
+             put_res(sb_path, api("Microsoft.ServiceBus/namespaces"), %{
+               "location" => "eastus",
+               "sku" => %{"name" => "Standard", "tier" => "Standard"}
+             })
+
     assert status in [200, 201], "SB namespace PUT -> #{status}: #{body}"
 
     q_path = sb_path <> "/queues/ets-comp-q"
-    assert {status, body} = put_res(q_path, api("Microsoft.ServiceBus/namespaces/queues"), %{"location" => "eastus", "properties" => %{"lockDuration" => "PT1M"}})
+
+    assert {status, body} =
+             put_res(q_path, api("Microsoft.ServiceBus/namespaces/queues"), %{
+               "location" => "eastus",
+               "properties" => %{"lockDuration" => "PT1M"}
+             })
+
     assert status in [200, 201], "SB queue PUT -> #{status}: #{body}"
 
     # event hub namespace -> hub
     eh_path = @rg_path <> "/providers/Microsoft.EventHub/namespaces/ets-comp-eh-ns"
 
-    assert {status, body} = put_res(eh_path, api("Microsoft.EventHub/namespaces"), %{"location" => "eastus", "sku" => %{"name" => "Standard", "tier" => "Standard"}})
+    assert {status, body} =
+             put_res(eh_path, api("Microsoft.EventHub/namespaces"), %{
+               "location" => "eastus",
+               "sku" => %{"name" => "Standard", "tier" => "Standard"}
+             })
+
     assert status in [200, 201], "EH namespace PUT -> #{status}: #{body}"
 
     hub_path = eh_path <> "/eventhubs/ets-comp-hub"
-    assert {status, body} = put_res(hub_path, api("Microsoft.EventHub/namespaces/eventhubs"), %{"location" => "eastus", "properties" => %{"partitionCount" => 2}})
+
+    assert {status, body} =
+             put_res(hub_path, api("Microsoft.EventHub/namespaces/eventhubs"), %{
+               "location" => "eastus",
+               "properties" => %{"partitionCount" => 2}
+             })
+
     assert status in [200, 201], "eventhub PUT -> #{status}: #{body}"
 
     # ---------- GET spot-checks (real 200s on the wire path) ----------
-    for path <- [acct_path, cont_path, kv_path, sec_path, cosmos_path, db_path, col_path, q_path, hub_path] do
+    for path <- [
+          acct_path,
+          cont_path,
+          kv_path,
+          sec_path,
+          cosmos_path,
+          db_path,
+          col_path,
+          q_path,
+          hub_path
+        ] do
       conn =
         :get
         |> conn(path <> "?api-version=2020-06-01")
@@ -164,8 +233,14 @@ defmodule Smalt.EtsCompositeIdentityTest do
     # through the genuine route.
     for op_id <- all_op_keys(), do: poll_to_terminal(op_id)
 
+    prev_lro = Application.get_env(:smalt, :lro_retention_ms, :__unset__)
     Application.put_env(:smalt, :lro_retention_ms, 0)
-    on_exit(fn -> Application.delete_env(:smalt, :lro_retention_ms) end)
+
+    on_exit(fn ->
+      if prev_lro == :__unset__,
+        do: Application.delete_env(:smalt, :lro_retention_ms),
+        else: Application.put_env(:smalt, :lro_retention_ms, prev_lro)
+    end)
 
     Process.sleep(10)
     :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
@@ -225,9 +300,21 @@ defmodule Smalt.EtsCompositeIdentityTest do
 
   # Orphan-hunt classifier: any key that still references a composite-family
   # name after teardown is residue regardless of which table carries it.
-  @composite_families ["etscompacct", "ets-comp-sb-ns", "ets-comp-eh-ns", "ets-comp-cosmos", "ets-comp-kv", "etscompdb", "ets-comp-q", "ets-comp-hub", "ets-composite-rg"]
+  @composite_families [
+    "etscompacct",
+    "ets-comp-sb-ns",
+    "ets-comp-eh-ns",
+    "ets-comp-cosmos",
+    "ets-comp-kv",
+    "etscompdb",
+    "ets-comp-q",
+    "ets-comp-hub",
+    "ets-composite-rg"
+  ]
 
-  defp orphanish?(key) when is_binary(key), do: Enum.any?(@composite_families, &String.contains?(key, &1))
+  defp orphanish?(key) when is_binary(key),
+    do: Enum.any?(@composite_families, &String.contains?(key, &1))
+
   defp orphanish?(key) when is_tuple(key), do: Enum.any?(Tuple.to_list(key), &orphanish?/1)
   defp orphanish?(_), do: false
 

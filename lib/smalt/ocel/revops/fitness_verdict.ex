@@ -30,29 +30,32 @@ defmodule Smalt.Ocel.RevOps.FitnessVerdict do
   happy-path net's vocabulary are not replayable and get no verdict row
   (replay coverage = the net's transition vocabulary, by construction).
   """
-  use Ash.Resource, domain: Smalt.Ocel.RevOps, data_layer: Ash.DataLayer.Simple, primary_read_warning?: false
+  use Ash.Resource,
+    domain: Smalt.Ocel.RevOps,
+    data_layer: Ash.DataLayer.Simple,
+    primary_read_warning?: false
 
   attributes do
-    attribute :id, :string, allow_nil?: false, primary_key?: true, public?: true
+    attribute(:id, :string, allow_nil?: false, primary_key?: true, public?: true)
 
-    attribute :trace_id, :string, allow_nil?: false, public?: true
+    attribute(:trace_id, :string, allow_nil?: false, public?: true)
 
-    attribute :conforms, :boolean, allow_nil?: false, public?: true
+    attribute(:conforms, :boolean, allow_nil?: false, public?: true)
 
-    attribute :fitness, :float, allow_nil?: false, public?: true
+    attribute(:fitness, :float, allow_nil?: false, public?: true)
 
-    attribute :deviation_count, :integer, allow_nil?: false, public?: true
+    attribute(:deviation_count, :integer, allow_nil?: false, public?: true)
   end
 
   actions do
-    defaults []
+    defaults([])
 
     read :read do
-      primary? true
+      primary?(true)
 
-      argument :events_path, :string, allow_nil?: false, default: "tmp/ocel/events.ndjson"
+      argument(:events_path, :string, allow_nil?: false, default: "tmp/ocel/events.ndjson")
 
-      prepare fn query, _context ->
+      prepare(fn query, _context ->
         path = query.arguments.events_path
         net = Smalt.Ocel.Conformance.happy_path_net()
         known = Map.keys(net.transitions)
@@ -78,11 +81,11 @@ defmodule Smalt.Ocel.RevOps.FitnessVerdict do
           end
 
         Ash.DataLayer.Simple.set_data(query, records)
-      end
+      end)
     end
   end
 
   code_interface do
-    define :read_verdicts, action: :read
+    define(:read_verdicts, action: :read)
   end
 end

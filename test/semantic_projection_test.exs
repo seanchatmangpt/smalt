@@ -207,7 +207,8 @@ defmodule Smalt.SemanticProjectionTest do
       mutators =
         for i <- 1..8 do
           Task.async(fn ->
-            id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-fuzz/providers/Microsoft.KeyVault/vaults/fuzz-#{i}-#{System.unique_integer([:positive])}"
+            id =
+              "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-fuzz/providers/Microsoft.KeyVault/vaults/fuzz-#{i}-#{System.unique_integer([:positive])}"
 
             record = %{
               "id" => id,
@@ -307,9 +308,7 @@ defmodule Smalt.SemanticProjectionTest do
       registry_after = File.read!("lib/smalt/registry.ex")
 
       if registry_after != registry_before do
-        flunk(
-          "mix smalt.gen mutated lib/smalt/registry.ex (exit #{gen_exit}); tail: #{gen_tail}"
-        )
+        flunk("mix smalt.gen mutated lib/smalt/registry.ex (exit #{gen_exit}); tail: #{gen_tail}")
       end
     end
   end
@@ -462,6 +461,7 @@ defmodule Smalt.Semantic.StoreRead.Lens6StructuralTest do
 
   test "a Store row with a non-map properties projects provisioning_state nil, never crashes" do
     uid = "sem-flat-props-#{System.unique_integer([:positive])}"
+
     Smalt.Store.put(:smalt_resources, uid, %{
       "id" => uid,
       "name" => "x",
@@ -627,7 +627,8 @@ defmodule Smalt.Semantic.StoreRead.Lens7FieldPolicyTest do
       end
     end)
 
-    assert %Smalt.Semantic.Evidence{} = ev =
+    assert %Smalt.Semantic.Evidence{} =
+             ev =
              Enum.find(Ash.read!(Smalt.Semantic.Evidence), &(&1.id == "l7-status"))
 
     assert ev.status == "observed"

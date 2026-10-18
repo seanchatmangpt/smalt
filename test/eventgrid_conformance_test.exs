@@ -37,6 +37,14 @@ defmodule Smalt.EventGridConformanceTest do
     port = get_free_port()
 
     stop_existing_tree()
+
+    # save-prev/on_exit-restore discipline (test-isolation-leak gate):
+    prev = %{
+      arm_port: Application.get_env(:smalt, :arm_port),
+      egress_port: Application.get_env(:smalt, :egress_port),
+      amqp_port: Application.get_env(:smalt, :amqp_port)
+    }
+
     Application.put_env(:smalt, :arm_port, get_free_port())
     Application.put_env(:smalt, :egress_port, port)
     Application.put_env(:smalt, :amqp_port, get_free_port())
@@ -50,6 +58,18 @@ defmodule Smalt.EventGridConformanceTest do
 
     on_exit(fn ->
       stop_tree(sup)
+
+      if prev.arm_port == nil,
+        do: Application.delete_env(:smalt, :arm_port),
+        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
+
+      if prev.egress_port == nil,
+        do: Application.delete_env(:smalt, :egress_port),
+        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
+
+      if prev.amqp_port == nil,
+        do: Application.delete_env(:smalt, :amqp_port),
+        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
 
       # Teardown repair: this suite stops the main app tree (stop_existing_tree
       # above) and runs a private Store child. Restore the shared app on the
@@ -67,9 +87,10 @@ defmodule Smalt.EventGridConformanceTest do
   # ---------------------------------------------------------------------------
 
   @tag :wire
-  test "single-event structured POST (JSON object) stores the event and returns 200 with its id", %{
-    egress: port
-  } do
+  test "single-event structured POST (JSON object) stores the event and returns 200 with its id",
+       %{
+         egress: port
+       } do
     resp =
       http_request(port, "POST", "/topics/conf-topic/events",
         headers: [{"content-type", "application/cloudevents+json"}],
@@ -170,9 +191,10 @@ defmodule Smalt.EventGridConformanceTest do
   # ---------------------------------------------------------------------------
 
   @tag :wire
-  test "event missing required source returns 400 InvalidCloudEvent and stores nothing (all-or-nothing)", %{
-    egress: port
-  } do
+  test "event missing required source returns 400 InvalidCloudEvent and stores nothing (all-or-nothing)",
+       %{
+         egress: port
+       } do
     resp =
       http_request(port, "POST", "/topics/conf-invalid/events",
         headers: [{"content-type", "application/cloudevents-batch+json"}],
@@ -313,9 +335,10 @@ defmodule Smalt.EventGridConformanceTest do
   end
 
   @tag :wire
-  test "malformed (non-JSON) body with application/json is a bare 400 with empty body (DIVERGENCE)", %{
-    egress: port
-  } do
+  test "malformed (non-JSON) body with application/json is a bare 400 with empty body (DIVERGENCE)",
+       %{
+         egress: port
+       } do
     resp =
       http_request(port, "POST", "/topics/conf-garbage/events",
         headers: [{"content-type", "application/json"}],

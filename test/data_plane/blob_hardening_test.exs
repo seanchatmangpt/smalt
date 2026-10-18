@@ -85,7 +85,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       BlobStorage.put_blob("acc1", "cont1", "b1", "data")
       assert {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", true)
 
-      assert {:error, 409, "ContainerLocked", msg} = BlobStorage.delete_blob("acc1", "cont1", "b1")
+      assert {:error, 409, "ContainerLocked", msg} =
+               BlobStorage.delete_blob("acc1", "cont1", "b1")
+
       assert msg =~ "legal hold"
 
       # Clearing the hold unblocks delete
@@ -96,11 +98,15 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "locked immutability policy -> 409 ContainerLocked naming locked policy" do
       container()
       BlobStorage.put_blob("acc1", "cont1", "b1", "data")
-      assert {:ok, 200, _, _} =
-               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-                 %{"if-match" => "*"})
 
-      assert {:error, 409, "ContainerLocked", msg} = BlobStorage.delete_blob("acc1", "cont1", "b1")
+      assert {:ok, 200, _, _} =
+               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true}, %{
+                 "if-match" => "*"
+               })
+
+      assert {:error, 409, "ContainerLocked", msg} =
+               BlobStorage.delete_blob("acc1", "cont1", "b1")
+
       assert msg =~ "immutability policy is locked"
     end
 
@@ -138,7 +144,10 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       # releasing the hold unblocks the snapshot
       assert {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", false)
-      assert {:ok, 201, %{"x-ms-snapshot" => ts}, nil} = BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+
+      assert {:ok, 201, %{"x-ms-snapshot" => ts}, nil} =
+               BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+
       assert {:ok, _} = BlobStorage.get_blob_snapshot("acc1", "cont1", "b1", ts)
     end
 
@@ -166,8 +175,13 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       BlobStorage.put_blob("acc1", "cont1", "b1", "v1", %{}, now_ms: 0)
 
       assert {:ok, 200, _, _} =
-               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-                 %{"if-match" => "*"}, now_ms: 0)
+               BlobStorage.set_immutability_policy(
+                 "acc1",
+                 "cont1",
+                 %{"locked" => true},
+                 %{"if-match" => "*"},
+                 now_ms: 0
+               )
 
       assert {:error, 409, "ContainerLocked", _} =
                BlobStorage.set_blob_tier("acc1", "cont1", "b1", "Cool", now_ms: 86_400_000)
@@ -181,7 +195,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       container()
       BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
 
-      assert {:ok, 201, %{"x-ms-snapshot" => ts}, nil} = BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+      assert {:ok, 201, %{"x-ms-snapshot" => ts}, nil} =
+               BlobStorage.snapshot_blob("acc1", "cont1", "b1")
+
       assert {:ok, snap} = BlobStorage.get_blob_snapshot("acc1", "cont1", "b1", ts)
       assert snap["content"] == "v1"
 
@@ -192,6 +208,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
   describe "immutability policy + legal hold API" do
     test "set policy returns until header, stored in :smalt_blob_policy" do
       container()
+
       {:ok, 200, headers, body} =
         BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 30})
 
@@ -212,9 +229,11 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
     test "locked policy refuses change -> 409 ContainerLocked" do
       container()
+
       {:ok, 200, _, _} =
-        BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-          %{"if-match" => "*"})
+        BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true}, %{
+          "if-match" => "*"
+        })
 
       assert {:error, 409, "ContainerLocked", _} =
                BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 60})
@@ -255,7 +274,11 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "malformed immutability period -> 400 InvalidXmlDocument, policy unchanged" do
       container()
 
-      for bad <- [%{"period_days" => -5}, %{"period_days" => "abc"}, %{"period_days" => 10_000_000}] do
+      for bad <- [
+            %{"period_days" => -5},
+            %{"period_days" => "abc"},
+            %{"period_days" => 10_000_000}
+          ] do
         assert {:error, 400, "InvalidXmlDocument", msg} =
                  BlobStorage.set_immutability_policy("acc1", "cont1", bad)
 
@@ -270,7 +293,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "period grammar boundaries: 0 and 146000 accepted, 146001 refused" do
       container()
 
-      assert {:ok, 200, _, _} = BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 0})
+      assert {:ok, 200, _, _} =
+               BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 0})
+
       assert {:ok, 200, _, _} =
                BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 146_000})
 
@@ -283,7 +308,8 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       conn =
         :put
-        |> conn("/acc1/cont1?comp=immutabilityPolicy",
+        |> conn(
+          "/acc1/cont1?comp=immutabilityPolicy",
           Jason.encode!(%{"immutabilityPeriodSinceCreationInDays" => -5})
         )
         |> put_req_header("content-type", "application/json")
@@ -311,6 +337,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
         BlobStorage.get_blob_range("acc1", "cont1", "ranged.bin", ["bytes=50-99"])
 
       assert {first, last} == {50, 99}
+
       assert binary_part(blob["content"], first, last - first + 1) ==
                binary_part(@content, 50, 50)
     end
@@ -424,7 +451,8 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       for result <- results do
         case result do
           {:range, spec, f, l, content} ->
-            assert f >= 0 and f <= l and l < total, "bad bounds for #{inspect(spec)}: {#{f}, #{l}}"
+            assert f >= 0 and f <= l and l < total,
+                   "bad bounds for #{inspect(spec)}: {#{f}, #{l}}"
 
             assert binary_part(content, f, l - f + 1) ==
                      binary_part(@content, f, l - f + 1)
@@ -432,7 +460,8 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
           {:full, spec, content} ->
             # legal only for malformed specs or last < first (ignored per RFC 9110):
             # the served body must be the FULL content, byte-identical
-            assert content == @content, "full-body result for #{inspect(spec)} is not the full blob"
+            assert content == @content,
+                   "full-body result for #{inspect(spec)} is not the full blob"
 
           {:unsat, _spec, t} ->
             assert t == total
@@ -834,14 +863,18 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       container("acc1", "cont1")
 
       assert {:ok, blob} =
-               BlobStorage.put_blob("acc1", "cont1", "meta.bin", "d", %{"x-ms-meta-owner" => "sre"})
+               BlobStorage.put_blob("acc1", "cont1", "meta.bin", "d", %{
+                 "x-ms-meta-owner" => "sre"
+               })
 
       assert blob["headers"]["x-ms-meta-owner"] == "sre"
 
       # mixed-case prefix is NOT a metadata name per engine contract (the
       # transport never delivers one — it would have been normalized)
       assert {:ok, blob2} =
-               BlobStorage.put_blob("acc1", "cont1", "meta2.bin", "d", %{"X-MS-META-Owner" => "sre"})
+               BlobStorage.put_blob("acc1", "cont1", "meta2.bin", "d", %{
+                 "X-MS-META-Owner" => "sre"
+               })
 
       # stored opaquely as a non-metadata header, never mis-parsed
       assert blob2["headers"]["X-MS-META-Owner"] == "sre"
@@ -877,11 +910,12 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       for hostile <- ["m" <> <<1>> <> "m", "a" <> <<0>> <> "b", <<31>>] do
         {xml_m, _} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"marker" => hostile})
-        refute String.contains?(xml_m, <<1>>) and refute String.contains?(xml_m, <<0>>)
+        refute String.contains?(xml_m, <<1>>) and refute(String.contains?(xml_m, <<0>>))
         assert xml_m =~ ~s(<?xml version="1.0" encoding="utf-8"?>)
       end
 
-      {xml_p, _} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"marker" => "", "maxresults" => "50"})
+      {xml_p, _} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{"marker" => "", "maxresults" => "50"})
 
       # prefix param rides <Prefix> — control bytes dropped there too
       assert xml_p =~ "<Prefix>acc1/cont1/</Prefix>"
@@ -913,8 +947,14 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
         |> router_call()
 
       assert conn2.status == 200
-      assert {:ok, %{"only" => "later"}} = BlobService.get_container_metadata("acc1", "create-meta")
-      refute Map.has_key?(BlobService.get_container_metadata("acc1", "create-meta") |> elem(1), "team")
+
+      assert {:ok, %{"only" => "later"}} =
+               BlobService.get_container_metadata("acc1", "create-meta")
+
+      refute Map.has_key?(
+               BlobService.get_container_metadata("acc1", "create-meta") |> elem(1),
+               "team"
+             )
 
       # hostile metadata at create -> 400 AND the container is NOT created
       conn3 =
@@ -926,6 +966,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       assert conn3.status == 400
       assert Jason.decode!(conn3.resp_body)["error"]["code"] == "InvalidMetadata"
+
       assert {:error, 404, "ContainerNotFound", _} =
                BlobService.get_container_metadata("acc1", "hostile-create")
     end
@@ -969,9 +1010,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       assert headers["x-ms-request-id"] =~ @v4_guid
 
       assert {:ok, 200, policy_headers, _} =
-               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => false},
-                 %{"if-match" => "*"}
-               )
+               BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => false}, %{
+                 "if-match" => "*"
+               })
 
       assert policy_headers["x-ms-request-id"] =~ @v4_guid
       assert policy_headers["x-ms-request-id"] != headers["x-ms-request-id"]
@@ -987,8 +1028,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       container()
 
       for bad <-
-            ["", "   ", " ", " \u200B ", "﻿", "­",
-             String.duplicate("\u200B", 50)] do
+            ["", "   ", " ", " \u200B ", "﻿", "­", String.duplicate("\u200B", 50)] do
         assert {:error, 400, "InvalidResourceName", msg} =
                  BlobStorage.put_blob("acc1", "cont1", bad, "d")
 
@@ -1005,6 +1045,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       # nothing hostile stored: listing projects only the legal names
       {xml, nil} = BlobStorage.list_blobs_xml("acc1", "cont1")
+
       names =
         ~r/<Name>([^<]*)<\/Name>/ |> Regex.scan(xml, capture: :all_but_first) |> List.flatten()
 
@@ -1019,8 +1060,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # never mapped, so any missing-container call crashed).
     test "immutability policy on missing container -> 404 ContainerNotFound, no raise" do
       assert {:error, 404, "ContainerNotFound", _} =
-               BlobStorage.set_immutability_policy("acc1", "hostile-nope", %{"locked" => true},
-                 %{"if-match" => "*"})
+               BlobStorage.set_immutability_policy("acc1", "hostile-nope", %{"locked" => true}, %{
+                 "if-match" => "*"
+               })
 
       assert {:error, 404, "ContainerNotFound", _} =
                BlobStorage.set_immutability_policy("acc1", "hostile-nope", %{"period_days" => 30})
@@ -1049,8 +1091,11 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "put_blob non-binary or control-char metadata value -> 400 InvalidMetadata, no raise" do
       container()
 
-      for bad <- [%{"x-ms-meta-A" => {:t, 1}}, %{"x-ms-meta-A" => %{"deep" => [1, {:x}]}},
-                  %{"x-ms-meta-A" => "bad" <> <<1>>}] do
+      for bad <- [
+            %{"x-ms-meta-A" => {:t, 1}},
+            %{"x-ms-meta-A" => %{"deep" => [1, {:x}]}},
+            %{"x-ms-meta-A" => "bad" <> <<1>>}
+          ] do
         assert {:error, 400, "InvalidMetadata", msg} =
                  BlobStorage.put_blob("acc1", "cont1", "mv", "d", bad)
 
@@ -1058,12 +1103,18 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       end
 
       # non-meta headers untouched by the rule (round-trip opaquely)
-      assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "mv-ok", "d", %{"X-Odd" => {:raw, 1}})
+      assert {:ok, _} =
+               BlobStorage.put_blob("acc1", "cont1", "mv-ok", "d", %{"X-Odd" => {:raw, 1}})
     end
 
     test "non-meta header values round-trip opaquely (no InvalidMetadata rule)" do
       container()
-      {:ok, blob} = BlobStorage.put_blob("acc1", "cont1", "opaque", "d", %{"X-Opaque" => "any bytes " <> <<1>>})
+
+      {:ok, blob} =
+        BlobStorage.put_blob("acc1", "cont1", "opaque", "d", %{
+          "X-Opaque" => "any bytes " <> <<1>>
+        })
+
       assert blob["headers"]["X-Opaque"] == "any bytes " <> <<1>>
     end
 
@@ -1072,6 +1123,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # silently ignored end-to-end (over-disclosure to prefix-scoped readers).
     test "list_blobs_xml honors prefix filter and echoes it in <Prefix>" do
       container()
+
       Enum.each(["alpha-1", "alpha-2", "beta-1"], fn n ->
         BlobStorage.put_blob("acc1", "cont1", n, "d")
       end)
@@ -1092,16 +1144,30 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       container()
       for i <- 1..5, do: BlobStorage.put_blob("acc1", "cont1", "p-#{i}", "d")
 
-      {xml1, m1} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "p-", "maxresults" => "2"})
+      {xml1, m1} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "p-", "maxresults" => "2"})
+
       assert xml1 =~ "<Name>p-1</Name>"
       refute xml1 =~ "p-3"
       assert is_binary(m1) and m1 == "p-2"
 
-      {xml2, m2} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "p-", "marker" => m1, "maxresults" => "2"})
+      {xml2, m2} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{
+          "prefix" => "p-",
+          "marker" => m1,
+          "maxresults" => "2"
+        })
+
       assert xml2 =~ "<Name>p-3</Name>"
       assert m2 == "p-4"
 
-      {xml3, nil} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "p-", "marker" => m2, "maxresults" => "2"})
+      {xml3, nil} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{
+          "prefix" => "p-",
+          "marker" => m2,
+          "maxresults" => "2"
+        })
+
       assert xml3 =~ "<Name>p-5</Name>"
     end
 
@@ -1143,14 +1209,19 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       assert {:error, :precondition_failed, _} =
                BlobStorage.put_blob("acc1", "cont1", "ghost", "v", %{"if-match" => "*"})
+
       assert {:error, :precondition_failed, _} =
                BlobStorage.put_blob("acc1", "cont1", "ghost", "v", %{"if-match" => "\"0x1\""})
 
       {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
+
       assert {:error, :precondition_failed, _} =
                BlobStorage.put_blob("acc1", "cont1", "b1", "v2", %{"if-none-match" => "*"})
+
       # if-none-match on a NEW blob proceeds (conditional create allowed)
-      assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "b2", "v", %{"if-none-match" => "*"})
+      assert {:ok, _} =
+               BlobStorage.put_blob("acc1", "cont1", "b2", "v", %{"if-none-match" => "*"})
+
       # unconditional paths unchanged
       assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "b1", "v3")
     end
@@ -1173,8 +1244,18 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # 400 InvalidResourceName otherwise. Previously ANY byte string was
     # accepted (empty, control chars, uppercase, 1MB).
     test "container name grammar -> 400 InvalidResourceName for violations" do
-      for bad <- ["", "ab", "a" <> <<1>>, "-abc", "abc-", "AB-C", "a b", String.duplicate("x", 64),
-                  nil, "UPPER"] do
+      for bad <- [
+            "",
+            "ab",
+            "a" <> <<1>>,
+            "-abc",
+            "abc-",
+            "AB-C",
+            "a b",
+            String.duplicate("x", 64),
+            nil,
+            "UPPER"
+          ] do
         assert {:error, 400, "InvalidResourceName", msg} =
                  BlobStorage.create_container("acc1", bad, %{})
 
@@ -1192,6 +1273,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # resetting the WORM clock and flipping policy flags).
     test "duplicate create_container -> 409 ContainerAlreadyExists, record preserved" do
       {:ok, original} = BlobStorage.create_container("acc1", "dupc", %{"immutable" => false})
+
       assert {:error, 409, "ContainerAlreadyExists", msg} =
                BlobStorage.create_container("acc1", "dupc", %{})
 
@@ -1231,13 +1313,19 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       refute xml2 =~ "d/sub/3"
 
       # prefixes count toward maxresults and paginate
-      {p1, m1} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"delimiter" => "/", "maxresults" => "2"})
+      {p1, m1} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{"delimiter" => "/", "maxresults" => "2"})
+
       assert p1 =~ "<Name>a.txt</Name>"
       assert p1 =~ "<BlobPrefix>\n    <Name>d/</Name>\n  </BlobPrefix>"
       assert m1 == "d/"
 
       {p2, m2} =
-        BlobStorage.list_blobs_xml("acc1", "cont1", %{"delimiter" => "/", "marker" => m1, "maxresults" => "2"})
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{
+          "delimiter" => "/",
+          "marker" => m1,
+          "maxresults" => "2"
+        })
 
       assert p2 =~ "<Name>e.txt</Name>"
       assert m2 == nil
@@ -1263,10 +1351,14 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       refute xml2 =~ "<Metadata>"
 
       # unknown include values are inert (no decoration)
-      {xml3, _} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"include" => "snapshots,versions,tags"})
+      {xml3, _} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{"include" => "snapshots,versions,tags"})
+
       refute xml3 =~ "<Metadata>"
       # metadata+unknown compose (comma list containing metadata)
-      {xml4, _} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"include" => "snapshots,metadata"})
+      {xml4, _} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{"include" => "snapshots,metadata"})
+
       assert xml4 =~ "<Metadata>"
     end
 
@@ -1282,26 +1374,43 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       assert {:ok, _} = BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{})
 
       # If-Match
-      assert {:ok, _} = BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-match" => etag})
-      assert {:ok, _} = BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-match" => "*"})
+      assert {:ok, _} =
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-match" => etag})
+
+      assert {:ok, _} =
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-match" => "*"})
+
       assert {:error, 412, "PreconditionFailed", _} =
                BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-match" => "\"dead\""})
 
       # If-None-Match
-      assert {:not_modified, ^etag} = BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-none-match" => etag})
-      assert {:not_modified, ^etag} = BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-none-match" => "*"})
-      assert {:ok, _} = BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-none-match" => "\"other\""})
+      assert {:not_modified, ^etag} =
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-none-match" => etag})
+
+      assert {:not_modified, ^etag} =
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-none-match" => "*"})
+
+      assert {:ok, _} =
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{
+                 "if-none-match" => "\"other\""
+               })
 
       # etag list form
       assert {:not_modified, ^etag} =
-               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-none-match" => "\"x\", #{etag}"})
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{
+                 "if-none-match" => "\"x\", #{etag}"
+               })
 
       # RFC precedence: failing If-Match -> 412 even when INM also present
       assert {:error, 412, _, _} =
-               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{"if-match" => "\"dead\"", "if-none-match" => etag})
+               BlobStorage.get_blob_conditional("acc1", "cont1", "b1", %{
+                 "if-match" => "\"dead\"",
+                 "if-none-match" => etag
+               })
 
       # missing blob -> :error regardless of conditionals
-      assert :error = BlobStorage.get_blob_conditional("acc1", "cont1", "ghost", %{"if-match" => "*"})
+      assert :error =
+               BlobStorage.get_blob_conditional("acc1", "cont1", "ghost", %{"if-match" => "*"})
     end
 
     # Engine totality (cycle-14): a non-binary content argument answers 400
@@ -1339,8 +1448,14 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
     test "120 blobs paginate across 3 marker pages (50/50/20)" do
       container()
+
       for i <- 1..120 do
-        BlobStorage.put_blob("acc1", "cont1", "blob-#{String.pad_leading(Integer.to_string(i), 4, "0")}", "d#{i}")
+        BlobStorage.put_blob(
+          "acc1",
+          "cont1",
+          "blob-#{String.pad_leading(Integer.to_string(i), 4, "0")}",
+          "d#{i}"
+        )
       end
 
       {xml1, m1} = BlobStorage.list_blobs_xml("acc1", "cont1", %{})
@@ -1364,6 +1479,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
     test "wire comp=list on the container path serves the paginated form" do
       container()
+
       for i <- 1..3 do
         BlobStorage.put_blob("acc1", "cont1", "wire-#{i}", "w")
       end
@@ -1382,6 +1498,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
     test "marker pagination edges: past-end marker, junk/zero/negative/capped maxresults" do
       container()
+
       for i <- 1..3 do
         BlobStorage.put_blob("acc1", "cont1", "edge-#{i}", "e")
       end
@@ -1433,7 +1550,10 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       {pages_rev, final_marker} =
         Enum.reduce_while(1..10, {[], m1}, fn _i, {acc, marker} ->
           {xml, next} =
-            BlobStorage.list_blobs_xml("acc1", "cont1", %{"marker" => marker || "", "maxresults" => "3"})
+            BlobStorage.list_blobs_xml("acc1", "cont1", %{
+              "marker" => marker || "",
+              "maxresults" => "3"
+            })
 
           if next == nil, do: {:halt, {[xml | acc], nil}}, else: {:cont, {[xml | acc], next}}
         end)
@@ -1451,7 +1571,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       # Azure semantics: pages ALREADY SERVED stand (page 1 returned cd-02
       # before the delete); the continuation yields the surviving names after
       # the marker exactly once, in order; no MatchError class.
-      expected = Enum.filter(names, &(&1 in ["cd-01", "cd-02", "cd-03"]) or &1 in survivors)
+      expected = Enum.filter(names, &(&1 in ["cd-01", "cd-02", "cd-03"] or &1 in survivors))
 
       assert seen == expected
     end
@@ -1509,18 +1629,33 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     # the page) made the true 10-page chain measurable: 5 runs -> 62/62/62/62
     # (per-rep [63,62,62]-class, min 62 every run; the earlier 38-50 ms reads
     # measured 10x the FIRST page only). Single-run flake this session had
-    # exceeded the old 80 ms budget. Fix = min-of-3 reps (scheduler noise
-    # averages out; a ~3.3x revert cannot hide behind noise) + budget 110 ms
-    # (~1.7x the measured full-chain 62 ms, well under the ~205 ms revert
-    # estimate = 3.3 x 62). A revert trips it.
-    @perf_budget_ms 110
+    # exceeded the old 80 ms budget. Fix = min-of-N reps (scheduler noise
+    # averages out; a ~3.3x revert cannot hide behind noise).
+    #
+    # Budget 180 ms (2026-10-18, i21): the old 110 ms flaked even QUIET
+    # (min-of-3 read 128 ms on a scheduler burst) and under 2 yes-hogs the
+    # loaded runs read [138, 119, 170]. Measured anchors: quiet full-chain
+    # ~62-67 ms (64/67 min-of-3 re-measured this session, quiet and loaded);
+    # the full-value-materialization revert class measured ~3.3x the keys-only
+    # chain -> ~205 ms quiet, scaling with load to ~3.3 x 170 = ~560 ms.
+    # 180 ms = ~2.8x the quiet median (2.9x the re-measured 62), clears the
+    # worst quiet flake (128) with 1.4x headroom and the worst loaded rep
+    # (170) with margin, and still sits BELOW the ~205 ms quiet revert
+    # estimate — a revert trips it even before load scaling. 300 ms would
+    # NOT fence: it exceeds the ~205 quiet revert estimate.
+    @perf_budget_ms 180
 
     test "pagination perf contract: 10-page chain over 8000x2KiB under budget" do
       container("perf", "acct")
       content = :crypto.strong_rand_bytes(2048)
 
       for i <- 1..8000 do
-        BlobStorage.put_blob("perf", "acct", "blob-" <> String.pad_leading(Integer.to_string(i), 5, "0"), content)
+        BlobStorage.put_blob(
+          "perf",
+          "acct",
+          "blob-" <> String.pad_leading(Integer.to_string(i), 5, "0"),
+          content
+        )
       end
 
       # thread the continuation marker via recursion: a `for` body cannot
@@ -1541,22 +1676,25 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       end
 
       # warmup rep: primes the list path; its timing is deliberately
-      # unmeasured (the min-of-3 below is the contract)
+      # unmeasured (the min-of-5 below is the contract)
       {_ms_first, marker_after} = chain.("")
       assert marker_after != ""
 
       runs =
-        for _rep <- 1..3 do
+        for _rep <- 1..5 do
           {ms, _} = chain.("")
           ms
         end
 
       ms = Enum.min(runs)
+
       if ms > @perf_budget_ms do
         flunk("""
         pagination perf contract violated: #{ms} ms > #{@perf_budget_ms} ms budget
         (per-rep runs: #{inspect(runs)}). Likely regression to full-value
-        materialization (measured ~3.3x slower).
+        materialization (measured ~3.3x slower; the ~205 ms quiet revert
+        estimate stays under this budget's fence — see the block comment
+        above @perf_budget_ms).
         """)
       end
     end
@@ -1586,7 +1724,8 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "engine refuses content over 1 MiB with :too_large; boundary 1 MiB accepted" do
       container()
 
-      assert {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "ok.bin", String.duplicate("A", @miib))
+      assert {:ok, _} =
+               BlobStorage.put_blob("acc1", "cont1", "ok.bin", String.duplicate("A", @miib))
 
       assert {:error, :too_large, msg} =
                BlobStorage.put_blob("acc1", "cont1", "big.bin", String.duplicate("A", @miib + 1))
@@ -1663,25 +1802,40 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "locked policy before retention end -> overwrite 409-protected" do
       {"acc1", "cont1", _} = immutable_container("acc1", "cont1", %{})
       BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
-      BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-        %{"if-match" => "*"}, now_ms: 0)
+
+      BlobStorage.set_immutability_policy(
+        "acc1",
+        "cont1",
+        %{"locked" => true},
+        %{"if-match" => "*"},
+        now_ms: 0
+      )
 
       assert {:error, :worm_locked, msg} =
                BlobStorage.put_blob("acc1", "cont1", "b1", "v2", %{}, now_ms: @day)
+
       assert msg =~ "locked"
 
-      assert {:ok, %{"expired" => false}} = BlobStorage.policy_state("acc1", "cont1", now_ms: @day)
+      assert {:ok, %{"expired" => false}} =
+               BlobStorage.policy_state("acc1", "cont1", now_ms: @day)
     end
 
     test "post-expiry overwrite -> 201-class success and policy reports expired: true" do
       {"acc1", "cont1", _} = immutable_container("acc1", "cont1", %{})
       BlobStorage.put_blob("acc1", "cont1", "b1", "v1", %{}, now_ms: 0)
-      BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-        %{"if-match" => "*"}, now_ms: 0)
+
+      BlobStorage.set_immutability_policy(
+        "acc1",
+        "cont1",
+        %{"locked" => true},
+        %{"if-match" => "*"},
+        now_ms: 0
+      )
 
       # 30-day retention: day 31 is past the end
       assert {:ok, updated} =
                BlobStorage.put_blob("acc1", "cont1", "b1", "v2", %{}, now_ms: 31 * @day)
+
       assert updated["content"] == "v2"
 
       {:ok, state} = BlobStorage.policy_state("acc1", "cont1", now_ms: 31 * @day)
@@ -1696,8 +1850,14 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
     test "post-expiry delete succeeds" do
       {"acc1", "cont1", _} = immutable_container("acc1", "cont1", %{})
       BlobStorage.put_blob("acc1", "cont1", "b1", "data", %{}, now_ms: 0)
-      BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-        %{"if-match" => "*"}, now_ms: 0)
+
+      BlobStorage.set_immutability_policy(
+        "acc1",
+        "cont1",
+        %{"locked" => true},
+        %{"if-match" => "*"},
+        now_ms: 0
+      )
 
       assert {:error, 409, "ContainerLocked", _} =
                BlobStorage.delete_blob("acc1", "cont1", "b1", %{}, now_ms: @day)
@@ -1708,27 +1868,43 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
     test "expired locked policy may be changed (container unlocked)" do
       {"acc1", "cont1", _} = immutable_container("acc1", "cont1", %{})
-      BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-        %{"if-match" => "*"}, now_ms: 0)
+
+      BlobStorage.set_immutability_policy(
+        "acc1",
+        "cont1",
+        %{"locked" => true},
+        %{"if-match" => "*"},
+        now_ms: 0
+      )
 
       assert {:ok, 200, _, _} =
-               BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 60},
-                 %{}, now_ms: 31 * @day)
+               BlobStorage.set_immutability_policy("acc1", "cont1", %{"period_days" => 60}, %{},
+                 now_ms: 31 * @day
+               )
     end
 
     test "legal hold still blocks post-expiry (never auto-expires)" do
       {"acc1", "cont1", _} = immutable_container("acc1", "cont1", %{})
       BlobStorage.put_blob("acc1", "cont1", "b1", "v1", %{}, now_ms: 0)
-      BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-        %{"if-match" => "*"}, now_ms: 0)
+
+      BlobStorage.set_immutability_policy(
+        "acc1",
+        "cont1",
+        %{"locked" => true},
+        %{"if-match" => "*"},
+        now_ms: 0
+      )
+
       {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", true)
 
       assert {:error, :worm_locked, msg} =
                BlobStorage.put_blob("acc1", "cont1", "b1", "v2", %{}, now_ms: 365 * @day)
+
       assert msg =~ "legal hold"
 
       assert {:error, 409, "ContainerLocked", msg} =
                BlobStorage.delete_blob("acc1", "cont1", "b1", %{}, now_ms: 365 * @day)
+
       assert msg =~ "legal hold"
 
       {:ok, state} = BlobStorage.policy_state("acc1", "cont1", now_ms: 365 * @day)
@@ -1737,6 +1913,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       # explicit release lifts the block even post-expiry
       {:ok, 200, _, _} = BlobStorage.set_legal_hold("acc1", "cont1", false)
+
       assert {:ok, _} =
                BlobStorage.put_blob("acc1", "cont1", "b1", "v2", %{}, now_ms: 365 * @day)
     end
@@ -1747,8 +1924,14 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       {:ok, legacy} = Store.get(:smalt_blob_containers, "acc1/cont1")
       Store.put(:smalt_blob_containers, "acc1/cont1", Map.delete(legacy, "created_at"))
       BlobStorage.put_blob("acc1", "cont1", "b1", "v1")
-      BlobStorage.set_immutability_policy("acc1", "cont1", %{"locked" => true},
-        %{"if-match" => "*"}, now_ms: 0)
+
+      BlobStorage.set_immutability_policy(
+        "acc1",
+        "cont1",
+        %{"locked" => true},
+        %{"if-match" => "*"},
+        now_ms: 0
+      )
 
       far_future = System.os_time(:millisecond) + 100 * 365 * @day
 
@@ -1759,7 +1942,6 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
                BlobStorage.policy_state("acc1", "cont1", now_ms: far_future)
     end
   end
-
 
   # ===========================================================================
   # Lens 2, cycle-35: listed-vs-stored consistency across ALL listing variants
@@ -1825,7 +2007,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       for p <- ["row-", "dir-a/", "dir-b/", "z"] do
         {xml, _} = BlobStorage.list_blobs_xml("l2acc", "l2cont", %{"prefix" => p})
         assert_wf.(xml, %{"prefix" => p})
-        assert Enum.sort(listed_names.(xml)) == esc.(Enum.filter(stored, &String.starts_with?(&1, p))),
+
+        assert Enum.sort(listed_names.(xml)) ==
+                 esc.(Enum.filter(stored, &String.starts_with?(&1, p))),
                "prefix #{inspect(p)} projection inconsistent"
       end
 
@@ -1907,7 +2091,9 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
 
       for inc <- ["", "metadatabase", "metadatax", "meta", "Metadata", "SNAPSHOTS", "met adata"] do
         {xml, _} = BlobStorage.list_blobs_xml("l2acc", "l2cont", %{"include" => inc})
-        refute String.contains?(xml, "<Metadata>"), "include=#{inspect(inc)} must not enable metadata"
+
+        refute String.contains?(xml, "<Metadata>"),
+               "include=#{inspect(inc)} must not enable metadata"
       end
 
       # and the blob set is unchanged by any include value
@@ -1954,7 +2140,8 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
                   :exit, _ -> :fatal
                 end
 
-              assert {:parsed, {{:xmlElement, :EnumerationResults, _, _, _, _, _, _, _, _, _, _}, _}} =
+              assert {:parsed,
+                      {{:xmlElement, :EnumerationResults, _, _, _, _, _, _, _, _, _, _}, _}} =
                        parsed
 
               assert xml =~ "<Name>c-1</Name>"
@@ -1986,14 +2173,14 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
       assert blob["headers"]["x-ms-meta-gen"] in Enum.map(1..20, &Integer.to_string/1)
     end
 
-defp get_in_meta(block, key) do
+    defp get_in_meta(block, key) do
       case Regex.run(Regex.compile!("<" <> key <> ">([^<]*)</" <> key <> ">"), block) do
         [_, v] -> v
         _ -> nil
       end
     end
 
-        defp chain_pages(opts) do
+    defp chain_pages(opts) do
       do_chain(Map.merge(%{"maxresults" => "5"}, opts), [], 0)
     end
 
@@ -2010,7 +2197,6 @@ defp get_in_meta(block, key) do
     defp do_chain(_opts, acc, _n), do: {:ok, Enum.reverse(acc), :overflow}
   end
 
-
   # ===========================================================================
   # Lens 2, cycle-36: delimiter+prefix+marker triple-compose property
   # ===========================================================================
@@ -2026,8 +2212,16 @@ defp get_in_meta(block, key) do
       container("tc-acc", "tc-cont")
 
       names = [
-        "a.txt", "b.txt", "d/1", "d/2", "d/sub/1", "d/sub/2", "d/sub/deep/x",
-        "e.txt", "d-adjacent", "d-mar"
+        "a.txt",
+        "b.txt",
+        "d/1",
+        "d/2",
+        "d/sub/1",
+        "d/sub/2",
+        "d/sub/deep/x",
+        "e.txt",
+        "d-adjacent",
+        "d-mar"
       ]
 
       for name <- names do
@@ -2056,7 +2250,9 @@ defp get_in_meta(block, key) do
         assert bps == Enum.sort(bps), "BlobPrefixes unordered: #{inspect({p, d, bps})}"
         assert visible == Enum.sort(visible), "blobs unordered: #{inspect({p, d, visible})}"
 
-        hidden = Enum.flat_map(bps, fn bp -> Enum.filter(stored, &String.starts_with?(&1, bp)) end)
+        hidden =
+          Enum.flat_map(bps, fn bp -> Enum.filter(stored, &String.starts_with?(&1, bp)) end)
+
         expected = Enum.filter(stored, &String.starts_with?(&1, p))
 
         assert Enum.sort(visible ++ hidden) == expected,
@@ -2081,7 +2277,8 @@ defp get_in_meta(block, key) do
         assert bps == Enum.uniq(bps) and bps == Enum.sort(bps),
                "prefix set inconsistent for delimiter #{inspect(d)}: #{inspect(bps)}"
 
-        hidden = Enum.flat_map(bps, fn bp -> Enum.filter(stored, &String.starts_with?(&1, bp)) end)
+        hidden =
+          Enum.flat_map(bps, fn bp -> Enum.filter(stored, &String.starts_with?(&1, bp)) end)
 
         assert Enum.sort(visible ++ hidden) == stored,
                "partition violated for delimiter #{inspect(d)}: bps #{inspect(bps)}"
@@ -2294,12 +2491,17 @@ defp get_in_meta(block, key) do
       BlobStorage.put_blob("acc1", "cont1", "pe-b", "2")
 
       {plain, nil} = BlobStorage.list_blobs_xml("acc1", "cont1", %{})
-      {composed, _} = BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "", "marker" => "a"})
+
+      {composed, _} =
+        BlobStorage.list_blobs_xml("acc1", "cont1", %{"prefix" => "", "marker" => "a"})
 
       assert plain =~ ~r/<Prefix>[^<]*<\/Prefix>/
 
-      plain_prefix = plain |> String.split("<Prefix>") |> Enum.at(1) |> String.split("</Prefix>") |> hd()
-      composed_prefix = composed |> String.split("<Prefix>") |> Enum.at(1) |> String.split("</Prefix>") |> hd()
+      plain_prefix =
+        plain |> String.split("<Prefix>") |> Enum.at(1) |> String.split("</Prefix>") |> hd()
+
+      composed_prefix =
+        composed |> String.split("<Prefix>") |> Enum.at(1) |> String.split("</Prefix>") |> hd()
 
       assert plain_prefix == composed_prefix
     end
@@ -2450,21 +2652,26 @@ defp get_in_meta(block, key) do
 
       # block / blocklist round trip
       bid = Base.encode64("blk-a")
+
       conn =
         :put
         |> conn("/acc1/cont1/wl.bin?comp=block&blockid=#{bid}", "block-bytes")
         |> put_req_header("content-type", "application/octet-stream")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
+
       assert conn.status == 201
 
-      commit_xml = ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>#{bid}</Latest></BlockList>)
+      commit_xml =
+        ~s(<?xml version="1.0" encoding="utf-8"?><BlockList><Latest>#{bid}</Latest></BlockList>)
+
       conn =
         :put
         |> conn("/acc1/cont1/wl.bin?comp=blocklist", commit_xml)
         |> put_req_header("content-type", "application/xml")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
+
       assert conn.status == 201
 
       conn =
@@ -2472,6 +2679,7 @@ defp get_in_meta(block, key) do
         |> conn("/acc1/cont1/wl.bin?comp=blocklist")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
+
       assert conn.status == 200
       assert get_resp_header(conn, "content-type") |> hd() =~ "application/xml"
 
@@ -2482,6 +2690,7 @@ defp get_in_meta(block, key) do
         |> put_req_header("x-ms-meta-k", "v")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
+
       assert conn.status == 200
 
       # plain PUT/GET with NO comp still reaches the generic arms
@@ -2490,6 +2699,7 @@ defp get_in_meta(block, key) do
         |> conn("/acc1/cont1/plain.bin", "plain-body")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
+
       assert conn.status == 201
 
       conn =
@@ -2497,6 +2707,7 @@ defp get_in_meta(block, key) do
         |> conn("/acc1/cont1/plain.bin")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
+
       assert conn.status == 200
       assert conn.resp_body == "plain-body"
     end
@@ -2518,10 +2729,14 @@ defp get_in_meta(block, key) do
     end
 
     defp batch_part(boundary, id, request_text) do
-      "--" <> boundary <> "\r\n" <>
+      "--" <>
+        boundary <>
+        "\r\n" <>
         "Content-Type: application/http\r\n" <>
         "Content-Transfer-Encoding: binary\r\n" <>
-        "Content-ID: " <> id <> "\r\n" <>
+        "Content-ID: " <>
+        id <>
+        "\r\n" <>
         "\r\n" <>
         request_text
     end
@@ -2534,7 +2749,11 @@ defp get_in_meta(block, key) do
 
       parts =
         for i <- 1..3 do
-          batch_part(boundary, Integer.to_string(i - 1), "DELETE /acc1/cont1/b#{i} HTTP/1.1\r\nx-ms-version: 2021-12-02\r\n\r\n")
+          batch_part(
+            boundary,
+            Integer.to_string(i - 1),
+            "DELETE /acc1/cont1/b#{i} HTTP/1.1\r\nx-ms-version: 2021-12-02\r\n\r\n"
+          )
         end
 
       body = Enum.join(parts) <> "--" <> boundary <> "--\r\n"
@@ -2570,7 +2789,11 @@ defp get_in_meta(block, key) do
       boundary = "batch_w7_2"
 
       body =
-        batch_part(boundary, "0", "PUT /acc1/cont1/tier-blob?comp=tier HTTP/1.1\r\nx-ms-access-tier: Cool\r\n\r\n") <>
+        batch_part(
+          boundary,
+          "0",
+          "PUT /acc1/cont1/tier-blob?comp=tier HTTP/1.1\r\nx-ms-access-tier: Cool\r\n\r\n"
+        ) <>
           "--" <> boundary <> "--\r\n"
 
       conn = batch_post("/acc1/cont1?comp=batch", body, boundary)
@@ -2589,7 +2812,11 @@ defp get_in_meta(block, key) do
 
       parts =
         for i <- 1..257 do
-          batch_part(boundary, Integer.to_string(i - 1), "DELETE /acc1/cont1/ghost#{i} HTTP/1.1\r\n\r\n")
+          batch_part(
+            boundary,
+            Integer.to_string(i - 1),
+            "DELETE /acc1/cont1/ghost#{i} HTTP/1.1\r\n\r\n"
+          )
         end
 
       body = Enum.join(parts) <> "--" <> boundary <> "--\r\n"
@@ -2620,7 +2847,13 @@ defp get_in_meta(block, key) do
 
     defp sas_sig(sp, blob, expiry, key \\ "w7-sas-test-account-key") do
       Sas.mint(
-        %{"account" => "acc1", "container" => "cont1", "blob" => blob, "sp" => sp, "se" => expiry},
+        %{
+          "account" => "acc1",
+          "container" => "cont1",
+          "blob" => blob,
+          "sp" => sp,
+          "se" => expiry
+        },
         key
       )
     end
@@ -2736,6 +2969,7 @@ defp get_in_meta(block, key) do
   describe "blob snapshots" do
     test "snapshot_blob freezes content and metadata; later base mutations are invisible" do
       container()
+
       {:ok, _} =
         BlobStorage.put_blob("acc1", "cont1", "snap1", "v1", %{"x-ms-meta-owner" => "team-a"})
 
@@ -2744,9 +2978,13 @@ defp get_in_meta(block, key) do
 
       # Mutate base content AND metadata after the snapshot.
       {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "snap1", "v2")
-      {:ok, _, _} = BlobStorage.set_blob_metadata("acc1", "cont1", "snap1", %{"owner" => "team-b"})
 
-      {:ok, frozen} = BlobStorage.get_blob_snapshot("acc1", "cont1", "snap1", resp_headers["x-ms-snapshot"])
+      {:ok, _, _} =
+        BlobStorage.set_blob_metadata("acc1", "cont1", "snap1", %{"owner" => "team-b"})
+
+      {:ok, frozen} =
+        BlobStorage.get_blob_snapshot("acc1", "cont1", "snap1", resp_headers["x-ms-snapshot"])
+
       assert frozen["content"] == "v1"
       assert frozen["etag"] == "\"#{:crypto.hash(:md5, "v1") |> Base.encode16(case: :lower)}\""
       assert {"x-ms-meta-owner", "team-a"} in Enum.to_list(frozen["headers"] || %{})
@@ -2767,14 +3005,18 @@ defp get_in_meta(block, key) do
 
       assert {:ok, snaps} = BlobStorage.list_snapshots("acc1", "cont1", "s2")
       assert length(snaps) == 2
+
       assert Enum.map(snaps, & &1["snapshot"]) ==
                Enum.sort([h1["x-ms-snapshot"], h2["x-ms-snapshot"]], :desc)
+
       assert Enum.all?(snaps, &(&1["content"] == "v1"))
     end
 
     test "snapshot of missing blob -> 404 BlobNotFound; missing container -> ContainerNotFound" do
       container()
-      assert {:error, 404, "BlobNotFound", _} = BlobStorage.snapshot_blob("acc1", "cont1", "ghost")
+
+      assert {:error, 404, "BlobNotFound", _} =
+               BlobStorage.snapshot_blob("acc1", "cont1", "ghost")
 
       assert {:error, 404, "ContainerNotFound", _} =
                BlobStorage.snapshot_blob("acc1", "nocontainer", "b")

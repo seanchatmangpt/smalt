@@ -395,7 +395,12 @@ defmodule Smalt.Compliance.C3CosmosTest do
 
     resume =
       req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
-        headers: q_headers ++ [{"x-ms-continuation", "1##{lsn}:" <> Base.url_encode64("#{@db}/#{@coll}", padding: false) <> ":d1"}],
+        headers:
+          q_headers ++
+            [
+              {"x-ms-continuation",
+               "1##{lsn}:" <> Base.url_encode64("#{@db}/#{@coll}", padding: false) <> ":d1"}
+            ],
         body: q_body
       )
 
@@ -518,9 +523,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
     # Resume with the server's OWN token: exactly the remainder, no
     # repeats, and the last page carries no token (SDK loop terminates).
     resume =
-      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
-        headers: [{"x-ms-continuation", tok}]
-      )
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs", headers: [{"x-ms-continuation", tok}])
 
     assert resume.status == 200
     feed2 = Jason.decode!(resume.body)
@@ -663,8 +666,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
     # less v2 token would be refused by the scope check instead).
     v2_on_query =
       req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
-        headers:
-          q_headers ++ [{"x-ms-continuation", ~s(2##{lsn}:["acme"]/0100)}],
+        headers: q_headers ++ [{"x-ms-continuation", ~s(2##{lsn}:["acme"]/0100)}],
         body: q_body
       )
 
@@ -674,8 +676,7 @@ defmodule Smalt.Compliance.C3CosmosTest do
     # partition — ONLY the scope conjunct can refuse it.
     cross_scope =
       req!(port(), :post, "/dbs/#{@db}/colls/#{@coll}/docs",
-        headers:
-          q_headers ++ [{"x-ms-continuation", "1##{lsn}:[\"other\"]/0100"}],
+        headers: q_headers ++ [{"x-ms-continuation", "1##{lsn}:[\"other\"]/0100"}],
         body: q_body
       )
 
@@ -711,18 +712,14 @@ defmodule Smalt.Compliance.C3CosmosTest do
     # least as far (101 docs), prefix matches (""), cursor grammar valid —
     # ONLY the container binding can refuse.
     resume_b =
-      req!(port(), :get, "/dbs/#{@db}/colls/collB/docs",
-        headers: [{"x-ms-continuation", tok}]
-      )
+      req!(port(), :get, "/dbs/#{@db}/colls/collB/docs", headers: [{"x-ms-continuation", tok}])
 
     assert resume_b.status == 400
 
     # Control: the same token on its OWN container still resumes (200) —
     # the refusal is the binding, not the token bytes going stale.
     resume_a =
-      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs",
-        headers: [{"x-ms-continuation", tok}]
-      )
+      req!(port(), :get, "/dbs/#{@db}/colls/#{@coll}/docs", headers: [{"x-ms-continuation", tok}])
 
     assert resume_a.status == 200
     feed = Jason.decode!(resume_a.body)
@@ -748,6 +745,10 @@ defmodule Smalt.Compliance.C3CosmosTest do
     create_db()
     create_coll()
 
+    # save-prev (leak-court): carry across the `after` seam via the process
+    # dictionary (try/after bodies are separate scopes — i21-leak-batch2).
+    prev_ru = Application.get_env(:smalt, :cosmos_ru_limit)
+    Process.put({__MODULE__, :prev_ru_limit}, prev_ru)
     Application.put_env(:smalt, :cosmos_ru_limit, 5)
     if :ets.info(:smalt_cosmos_ru) != :undefined, do: :ets.delete_all_objects(:smalt_cosmos_ru)
 
@@ -769,7 +770,10 @@ defmodule Smalt.Compliance.C3CosmosTest do
     assert header_map(throttled)["x-ms-retry-after-ms"] == "1"
     assert Jason.decode!(throttled.body)["code"] == "TooManyRequests"
   after
-    Application.delete_env(:smalt, :cosmos_ru_limit)
+    case Process.get({__MODULE__, :prev_ru_limit}) do
+      nil -> Application.delete_env(:smalt, :cosmos_ru_limit)
+      prev -> Application.put_env(:smalt, :cosmos_ru_limit, prev)
+    end
 
     if :ets.info(:smalt_cosmos_ru) != :undefined, do: :ets.delete_all_objects(:smalt_cosmos_ru)
   end
@@ -791,6 +795,11 @@ defmodule Smalt.Compliance.C3CosmosTest do
     create_doc("d1")
 
     key = "c3fence-master-key-0123456789abcdef"
+
+    # save-prev (leak-court): carry across the `after` seam via the process
+    # dictionary (try/after bodies are separate scopes — i21-leak-batch2).
+    prev_key = Application.get_env(:smalt, :cosmos_master_key)
+    Process.put({__MODULE__, :prev_master_key}, prev_key)
     Application.put_env(:smalt, :cosmos_master_key, key)
     Application.put_env(:smalt, :auth_mode, :enforce)
 
@@ -830,7 +839,11 @@ defmodule Smalt.Compliance.C3CosmosTest do
 
     assert err["code"] == "Unauthorized"
   after
-    Application.delete_env(:smalt, :cosmos_master_key)
+    case Process.get({__MODULE__, :prev_master_key}) do
+      nil -> Application.delete_env(:smalt, :cosmos_master_key)
+      prev -> Application.put_env(:smalt, :cosmos_master_key, prev)
+    end
+
     Application.put_env(:smalt, :auth_mode, :anonymous)
   end
 
@@ -916,7 +929,9 @@ defmodule Smalt.Compliance.C3CosmosTest do
         body: ~s({"id":"#{id}","tenantId":"acme"})
       )
 
-    assert resp.status == 201, "create_doc_in(#{coll},#{id}) returned #{resp.status}: #{inspect(resp.body)}"
+    assert resp.status == 201,
+           "create_doc_in(#{coll},#{id}) returned #{resp.status}: #{inspect(resp.body)}"
+
     resp
   end
 

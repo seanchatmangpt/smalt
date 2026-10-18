@@ -305,7 +305,8 @@ defmodule Smalt.DataPlane.SKR do
                 {:rsa_oaep_md, :sha256}
               ])
 
-            {:ok, b64url_encode(wrapped), %{"transport" => "RSA-OAEP-256", "mode" => "attested-recipient"}}
+            {:ok, b64url_encode(wrapped),
+             %{"transport" => "RSA-OAEP-256", "mode" => "attested-recipient"}}
           rescue
             _ -> {:error, 400, invalid_recipient_jwk()}
           end

@@ -170,7 +170,9 @@ defmodule Smalt.AzapiActionsTest do
       # lib/smalt/arm_gateway/router.ex:1018-1038 (check_version mismatch)
       path = put_container_path() <> "?api-version=2019-01-01"
 
-      conn = conn(:put, path, %{"location" => "smalt-local", "properties" => %{}}) |> Router.call(@opts)
+      conn =
+        conn(:put, path, %{"location" => "smalt-local", "properties" => %{}})
+        |> Router.call(@opts)
 
       assert conn.status == 400
       assert body(conn)["error"]["code"] == "InvalidApiVersionParameter"
@@ -198,8 +200,7 @@ defmodule Smalt.AzapiActionsTest do
             "key_size" => 3072,
             "key_ops" => ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
             "release_policy" => %{
-              "data" =>
-                "<condition>cnsentence1</condition>",
+              "data" => "<condition>cnsentence1</condition>",
               "content_type" => "text/plain;charset=utf-8",
               "dataObjectEncoding" => "base64url"
             }
@@ -230,7 +231,8 @@ defmodule Smalt.AzapiActionsTest do
       path = key_path() <> "?api-version=2021-04-01"
 
       conn =
-        conn(:put, path, %{"location" => "smalt-local", "properties" => %{}}) |> Router.call(@opts)
+        conn(:put, path, %{"location" => "smalt-local", "properties" => %{}})
+        |> Router.call(@opts)
 
       assert conn.status == 400
       assert body(conn)["error"]["message"] =~ "2023-07-01"
@@ -319,7 +321,8 @@ defmodule Smalt.AzapiActionsTest do
         conn(:put, path, %{
           "location" => "smalt-local",
           "properties" => %{
-            "workspaceId" => "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.OperationalInsights/workspaces/ws-1",
+            "workspaceId" =>
+              "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.OperationalInsights/workspaces/ws-1",
             "logs" => [%{"category" => "StorageRead", "enabled" => true}],
             "metrics" => [%{"category" => "Transaction", "enabled" => true}]
           }
@@ -377,13 +380,20 @@ defmodule Smalt.AzapiActionsTest do
 
   test "fence api-versions match Smalt.Registry.latest_version (drift falsifier)" do
     # lib/smalt/registry.ex:100-139 (@api_versions)
-    assert Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers") == "2023-05-01"
-    assert Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies") ==
+    assert Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers") ==
              "2023-05-01"
+
+    assert Registry.latest_version(
+             "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies"
+           ) ==
+             "2023-05-01"
+
     assert Registry.latest_version("Microsoft.KeyVault/vaults/keys") == "2023-07-01"
     assert Registry.latest_version("Microsoft.DevTestLab/schedules") == "2018-09-15"
     assert Registry.latest_version("Microsoft.Authorization/roleAssignments") == "2022-04-01"
-    assert Registry.latest_version("Microsoft.Insights/diagnosticSettings") == "2021-05-01-preview"
+
+    assert Registry.latest_version("Microsoft.Insights/diagnosticSettings") ==
+             "2021-05-01-preview"
   end
 
   # ===========================================================================
@@ -394,8 +404,13 @@ defmodule Smalt.AzapiActionsTest do
     "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.Storage/storageAccounts/sa-1/blobServices/default/containers"
   end
 
-  defp put_container_path, do: "#{container_base()}/c-1?api-version=#{Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")}"
-  defp lock_path, do: "#{container_base()}/c-1/immutabilityPolicies/default/lock?api-version=2023-05-01"
+  defp put_container_path,
+    do:
+      "#{container_base()}/c-1?api-version=#{Registry.latest_version("Microsoft.Storage/storageAccounts/blobServices/containers")}"
+
+  defp lock_path,
+    do: "#{container_base()}/c-1/immutabilityPolicies/default/lock?api-version=2023-05-01"
+
   defp lock_request_path, do: lock_path() |> String.split("?") |> List.first()
 
   defp legal_hold_path, do: "#{container_base()}/c-1/setLegalHold?api-version=2023-05-01"
@@ -421,7 +436,8 @@ defmodule Smalt.AzapiActionsTest do
       "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.Authorization/roleAssignments/11111111-2222-3333-4444-555555555555?api-version=#{Registry.latest_version("Microsoft.Authorization/roleAssignments")}"
 
   defp storage_account_path,
-    do: "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.Storage/storageAccounts/sa-1"
+    do:
+      "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.Storage/storageAccounts/sa-1"
 
   defp put_container do
     conn(:put, put_container_path(), %{
@@ -433,7 +449,10 @@ defmodule Smalt.AzapiActionsTest do
 
   # Seed an immutability policy so the lock action targets an existing policy.
   defp put_policy(path) do
-    conn(:put, path, %{"location" => "smalt-local", "properties" => %{"immutabilityPeriodSinceCreationInDays" => 30}})
+    conn(:put, path, %{
+      "location" => "smalt-local",
+      "properties" => %{"immutabilityPeriodSinceCreationInDays" => 30}
+    })
     |> Router.call(@opts)
     |> tap(&assert(&1.status == 201))
   end

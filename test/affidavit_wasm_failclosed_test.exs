@@ -173,6 +173,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
       assert Process.alive?(pid)
 
       assert {:ok, resp} = WasmEngine.call(pid, @valid_request)
+
       assert {:ok, %{"ok" => true, "abi_version" => 1, "module" => "affidavit-wasm"}} =
                Jason.decode(resp)
     end)
@@ -270,7 +271,11 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
       assert Process.whereis(WasmEngine) == pid
 
       sub_cap = Jason.encode!(%{"op" => "capabilities", "n" => 1})
-      refute match?({:error, :payload_too_large}, WasmEngine.call_admit_and_seal(sub_cap, 0, 1, %{}))
+
+      refute match?(
+               {:error, :payload_too_large},
+               WasmEngine.call_admit_and_seal(sub_cap, 0, 1, %{})
+             )
 
       # and a valid call still gets a real guest response afterwards
       assert {:ok, resp} = WasmEngine.call(pid, @valid_request)
@@ -296,7 +301,8 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
 
       jobs =
         [
-          {:oversized, fn -> WasmEngine.call_admit_and_seal(:binary.copy(<<0>>, 16_777_217), 0, 1, %{}) end},
+          {:oversized,
+           fn -> WasmEngine.call_admit_and_seal(:binary.copy(<<0>>, 16_777_217), 0, 1, %{}) end},
           {:bad_modality, fn -> WasmEngine.call_admit_and_seal(~s({"op":"x"}), 0, 3, %{}) end}
         ] ++
           Enum.with_index(deltas, fn d, i ->
@@ -371,7 +377,9 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
       # the next TWO calls are typed refusals; the test process survives
       # (no crash-loop) and the refusal is identical both times.
       assert {:error, :engine_unavailable} = WasmEngine.call(self(), @valid_request)
-      assert {:error, :engine_unavailable} = WasmEngine.call_admit_and_seal(~s({"op":"x"}), 0, 1, %{})
+
+      assert {:error, :engine_unavailable} =
+               WasmEngine.call_admit_and_seal(~s({"op":"x"}), 0, 1, %{})
 
       # healthy restart: the second (post-crash) generation still answers
       # typed-correct with a real guest response.
@@ -379,6 +387,7 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
       assert pid2 != pid
 
       assert {:ok, resp} = WasmEngine.call(pid2, @valid_request)
+
       assert {:ok, %{"ok" => true, "abi_version" => 1, "module" => "affidavit-wasm"}} =
                Jason.decode(resp)
     end)
@@ -533,10 +542,19 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     flat = List.flatten(all_results)
     {valid, bogus} = Enum.split_with(flat, fn {i, _, _} -> rem(i, 2) == 1 end)
 
-    # bogus-path artifact refusals: typed AND fast (no retry sleep leaked)
+    # bogus-path artifact refusals: typed AND fast (no retry sleep leaked).
+    # The bound is the engine's own retry delay (250ms/attempt,
+    # @start_retry_delay_ms in WasmEngine), not an arbitrary wall-clock
+    # number: Process.sleep/1 never returns early, so ANY leaked retry sleep
+    # makes a refusal take >=250ms deterministically, while a clean refusal
+    # path carries no sleep at all. Prior 100ms bound was a PERSISTENT-FLAKE
+    # under parallel scheduler load (witnessed 129ms clean refusal, court
+    # attempt 3 both legs; solo refusals are single-digit ms) — it fenced
+    # scheduler jitter, not the sleep-leak regression class. 250ms still
+    # fences the regression exactly: one leaked sleep => >=250ms => RED.
     Enum.each(bogus, fn {i, r, ms} ->
       assert {:error, :engine_unavailable} = r, "bogus start #{i}: #{inspect(r)}"
-      assert ms < 100, "artifact refusal #{i} took #{ms}ms — retry leaked onto refusal path"
+      assert ms < 250, "artifact refusal #{i} took #{ms}ms — retry sleep leaked onto refusal path"
     end)
 
     # valid starts: live engine or already-started registry, never a hang or

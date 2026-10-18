@@ -9,14 +9,26 @@ defmodule Smalt.Amqp.SweeperTest do
   setup do
     Enum.each(@tables, fn table ->
       if :ets.info(table) == :undefined do
-        :ets.new(table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+        :ets.new(table, [
+          :set,
+          :public,
+          :named_table,
+          read_concurrency: true,
+          write_concurrency: true
+        ])
       end
     end)
 
     Enum.each(@tables, &:ets.delete_all_objects/1)
 
     if :ets.info(@tombstones) == :undefined do
-      :ets.new(@tombstones, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+      :ets.new(@tombstones, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
     end
 
     :ets.delete_all_objects(@tombstones)
@@ -45,7 +57,9 @@ defmodule Smalt.Amqp.SweeperTest do
 
       # token row deleted by the sweeps, re-inserted by the grace
       assert {:ok, %{locked_until: 1_100}} = LockManager.get(lock.lock_token)
-      assert {:error, :lock_lost} = LockManager.renew(lock.lock_token, System.system_time(:millisecond))
+
+      assert {:error, :lock_lost} =
+               LockManager.renew(lock.lock_token, System.system_time(:millisecond))
     end
 
     test "grace survives a second pass (tombstone refresh), still 410" do
@@ -55,7 +69,9 @@ defmodule Smalt.Amqp.SweeperTest do
       assert :ok = Sweeper.run_pass()
 
       assert {:ok, %{locked_until: 1_100}} = LockManager.get(lock.lock_token)
-      assert {:error, :lock_lost} = LockManager.renew(lock.lock_token, System.system_time(:millisecond))
+
+      assert {:error, :lock_lost} =
+               LockManager.renew(lock.lock_token, System.system_time(:millisecond))
     end
 
     test "past the grace window the tombstone expires: renew is 404 :not_found" do
@@ -72,7 +88,9 @@ defmodule Smalt.Amqp.SweeperTest do
         assert :ok = Sweeper.run_pass()
 
         assert :error = LockManager.get(lock.lock_token)
-        assert {:error, :not_found} = LockManager.renew(lock.lock_token, System.system_time(:millisecond))
+
+        assert {:error, :not_found} =
+                 LockManager.renew(lock.lock_token, System.system_time(:millisecond))
       after
         Application.delete_env(:smalt, :amqp_sweeper_lock_grace_ms)
         :ets.delete_all_objects(@tombstones)
@@ -87,7 +105,9 @@ defmodule Smalt.Amqp.SweeperTest do
 
         assert :ok = Sweeper.run_pass()
         assert :error = LockManager.get(lock.lock_token)
-        assert {:error, :not_found} = LockManager.renew(lock.lock_token, System.system_time(:millisecond))
+
+        assert {:error, :not_found} =
+                 LockManager.renew(lock.lock_token, System.system_time(:millisecond))
       after
         Application.delete_env(:smalt, :amqp_sweeper_lock_grace_ms)
       end

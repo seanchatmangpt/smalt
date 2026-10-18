@@ -68,8 +68,8 @@ defmodule Kd79BlobApiVersionWireTest do
     assert resp.status in [200, 201, 202], "parent RG creation failed: #{resp.status}"
 
     :ok
-    after
-      Store.clear()
+  after
+    Store.clear()
   end
 
   test "registry lattice top for blobServices is the witnessed 2023-05-01" do

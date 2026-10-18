@@ -163,7 +163,11 @@ defmodule Smalt.DSPy.Remediation do
   markdown. The review file is a PROPOSAL — nothing in the repo consumes it
   without human admission.
   """
-  @spec render_review(String.t(), %{adopted: [t()], needs_review: [t()], evidence_digest: String.t()}, map()) ::
+  @spec render_review(
+          String.t(),
+          %{adopted: [t()], needs_review: [t()], evidence_digest: String.t()},
+          map()
+        ) ::
           String.t()
   def render_review(doc, proposals, verdict) do
     total = length(proposals.adopted) + length(proposals.needs_review)
@@ -202,7 +206,12 @@ defmodule Smalt.DSPy.Remediation do
   Returns {:ok, path, summary} — never calls an LLM, never touches the network.
   """
   @spec run(doc_path :: String.t(), out_path :: String.t()) ::
-          {:ok, String.t(), %{total: non_neg_integer(), adopted: non_neg_integer(), needs_review: non_neg_integer()}}
+          {:ok, String.t(),
+           %{
+             total: non_neg_integer(),
+             adopted: non_neg_integer(),
+             needs_review: non_neg_integer()
+           }}
   def run(doc_path \\ "docs/ERROR_CODES.md", out_path \\ @review_path) do
     doc = File.read!(doc_path)
     rows = parse(doc)

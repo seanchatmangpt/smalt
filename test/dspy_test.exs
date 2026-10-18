@@ -154,7 +154,9 @@ defmodule Smalt.DSPy.RemediationTest do
         """
 
         assert [%Remediation{} = row] = Remediation.parse(doc)
-        assert row.meaning == String.trim(source), "real-esc round-trip failed for #{inspect(source)}"
+
+        assert row.meaning == String.trim(source),
+               "real-esc round-trip failed for #{inspect(source)}"
       end
     end
   end
@@ -220,13 +222,14 @@ defmodule Smalt.DSPy.RemediationTest do
 
   describe "run/2 end-to-end (real file IO, temp dir cleaned on exit)" do
     test "writes the review file with expected summary" do
-      out_dir = Path.join(System.tmp_dir!(), "smalt-dspy-test-#{System.unique_integer([:positive])}")
+      out_dir =
+        Path.join(System.tmp_dir!(), "smalt-dspy-test-#{System.unique_integer([:positive])}")
+
       out_path = Path.join(out_dir, "review.md")
 
       on_exit(fn -> File.rm_rf!(out_dir) end)
 
-      assert {:ok, ^out_path,
-              %{total: total, adopted: adopted, needs_review: needs_review}} =
+      assert {:ok, ^out_path, %{total: total, adopted: adopted, needs_review: needs_review}} =
                Remediation.run(@doc_path, out_path)
 
       assert total == adopted + needs_review and total > 0

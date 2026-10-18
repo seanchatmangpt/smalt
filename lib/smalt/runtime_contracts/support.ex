@@ -39,9 +39,10 @@ defmodule Smalt.RuntimeContracts.Support do
     # real wire, where every client sends application/json (compliance-court
     # parity, c1/c3 helper defaults).
     headers =
-      if body != nil and not Enum.any?(headers, fn {k, _} ->
-           String.downcase(to_string(k)) == "content-type"
-         end) do
+      if body != nil and
+           not Enum.any?(headers, fn {k, _} ->
+             String.downcase(to_string(k)) == "content-type"
+           end) do
         [{"content-type", "application/json"} | headers]
       else
         headers
@@ -106,7 +107,7 @@ defmodule Smalt.RuntimeContracts.Support do
   @spec assert(term(), String.t()) :: :ok
   def assert(value, message)
 
-  def assert(value, _message) when not (value in [nil, false]), do: :ok
+  def assert(value, _message) when value not in [nil, false], do: :ok
 
   def assert(_value, message), do: raise(__MODULE__.AssertionError, message: message)
 

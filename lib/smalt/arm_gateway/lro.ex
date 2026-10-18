@@ -64,13 +64,11 @@ defmodule Smalt.ArmGateway.LRO do
   def get_op(op_id) do
     case Store.get(:smalt_operations, op_id) do
       {:ok, %{"status" => "InProgress"} = record} -> {:ok, evaluate(record, op_id)}
-
       # A binary status that is not InProgress is a terminal vocabulary (the
       # router's default-terminal principle: anything not InProgress renders
       # 200) — pass through untouched, never rewrite an externally-authored
       # terminal.
       {:ok, %{"status" => status} = record} when is_binary(status) -> {:ok, record}
-
       # Missing or non-binary "status": a malformed record no in-codebase
       # writer can produce (start_op/1 and evaluate/2 always write a binary
       # status). It would otherwise sit at rest forever, never evaluated, and
@@ -79,7 +77,6 @@ defmodule Smalt.ArmGateway.LRO do
       # scheduling clause, which could otherwise return a status-less record
       # unchanged during its delay window).
       {:ok, record} when is_map(record) -> {:ok, fail_closed(record, op_id)}
-
       # A NON-MAP record (list/integer/... under an operations key — only
       # reachable via a direct external write) previously crashed the poll
       # with BadMapError (wire 500-forever, lens-10 cycle-3, measured — same
@@ -88,7 +85,6 @@ defmodule Smalt.ArmGateway.LRO do
       # the terminal's malformed/absent "id" makes it 404 (OperationNotFound)
       # through the subscription-scoped poll — deny-by-default, never a 500.
       {:ok, _non_map_record} -> {:ok, fail_closed(%{}, op_id)}
-
       other -> other
     end
   end
@@ -130,10 +126,10 @@ defmodule Smalt.ArmGateway.LRO do
   the polled key (lens-9 cycle-2, measured).
   """
   def evaluate(
-         %{"startedAtMs" => started, "delayMs" => delay} = record,
-         op_id
-       )
-       when is_integer(started) and is_integer(delay) do
+        %{"startedAtMs" => started, "delayMs" => delay} = record,
+        op_id
+      )
+      when is_integer(started) and is_integer(delay) do
     if System.system_time(:millisecond) - started >= delay do
       record =
         record

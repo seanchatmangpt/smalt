@@ -99,6 +99,7 @@ defmodule Smalt.Security.Lens6FuzzTest do
       "exp" => now + 7200
     }
   end
+
   # lens-6 cycle-8: wave 2 on the SKR.release entry — a fresh shape family:
   # hostile key names / key records, and hostile-but-legible claim shapes
   # (nbf, typ, nested runtime) never raise.
@@ -255,7 +256,7 @@ defmodule Smalt.Security.Lens6FuzzTest do
     # RSA recipient JWK inside the tee releases ATTESTED (RSA-OAEP-256), not
     # plaintext dev mode.
     recipient_priv = :public_key.generate_key({:rsa, 2048, 65_537})
-    {:"RSAPrivateKey", _, _, _, n, e, _, _, _, _, _} = recipient_priv
+    {:RSAPrivateKey, _, _, _, n, e, _, _, _, _, _} = recipient_priv
 
     tee_jwk_token =
       ReceiptSigner.sign(%{
@@ -276,7 +277,6 @@ defmodule Smalt.Security.Lens6FuzzTest do
            "tee-form recipient JWK must wrap to the attested recipient, not dev plaintext"
   end
 
-
   # lens-9 wave 4: SPLIT claim placement. The MAA real-world form is not
   # always all-flat or all-nested: individual claims can sit on either side
   # of the tee boundary. Law (via the canonical claim_value/2 accessor, per
@@ -293,15 +293,31 @@ defmodule Smalt.Security.Lens6FuzzTest do
 
     put_compliance = fn claims, where, value ->
       case where do
-        :flat -> Map.put(claims, "x-ms-compliance-status", value)
-        :tee -> Map.update(claims, "x-ms-isolation-tee", %{"x-ms-compliance-status" => value}, &Map.put(&1, "x-ms-compliance-status", value))
+        :flat ->
+          Map.put(claims, "x-ms-compliance-status", value)
+
+        :tee ->
+          Map.update(
+            claims,
+            "x-ms-isolation-tee",
+            %{"x-ms-compliance-status" => value},
+            &Map.put(&1, "x-ms-compliance-status", value)
+          )
       end
     end
 
     put_runtime = fn claims, where, jti ->
       case where do
-        :flat -> Map.put(claims, "x-ms-runtime", %{"jti" => jti})
-        :tee -> Map.update(claims, "x-ms-isolation-tee", %{"x-ms-runtime" => %{"jti" => jti}}, &Map.put(&1, "x-ms-runtime", %{"jti" => jti}))
+        :flat ->
+          Map.put(claims, "x-ms-runtime", %{"jti" => jti})
+
+        :tee ->
+          Map.update(
+            claims,
+            "x-ms-isolation-tee",
+            %{"x-ms-runtime" => %{"jti" => jti}},
+            &Map.put(&1, "x-ms-runtime", %{"jti" => jti})
+          )
       end
     end
 
@@ -325,6 +341,7 @@ defmodule Smalt.Security.Lens6FuzzTest do
     # All 4 admit; every jti placement is single-use (second release 403).
     for {c, j, first, second} <- results do
       assert {:ok, 200, _} = first, "placement #{inspect({c, j})} must admit"
+
       assert {:error, 403, %{"error" => %{"code" => "TokenReplay"}}} = second,
              "placement #{inspect({c, j})} replay must be 403 TokenReplay"
     end

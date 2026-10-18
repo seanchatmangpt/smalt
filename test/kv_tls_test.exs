@@ -60,7 +60,13 @@ defmodule KvTlsTest do
     # the client pin must be that exact cert, and must track the twin across
     # heal restarts (restart_twin re-probes a fresh port).
     {port_cert, _} = Smalt.TLS.dev_cert_paths(port)
-    :persistent_term.put({__MODULE__, :twin}, %{port: port, opts: opts, cert: Path.expand(port_cert)})
+
+    :persistent_term.put({__MODULE__, :twin}, %{
+      port: port,
+      opts: opts,
+      cert: Path.expand(port_cert)
+    })
+
     :persistent_term.put({__MODULE__, :twin_sup}, sup)
     wait_twin(port, 50)
 
@@ -102,20 +108,20 @@ defmodule KvTlsTest do
 
   defp twin_alive?(port) do
     match?({:ok, _}, :gen_tcp.connect(~c"localhost", port, [], 250)) and
-      (case :gen_tcp.connect(~c"localhost", port, [], 250) do
-         {:ok, s} ->
-           :gen_tcp.close(s)
-           true
+      case :gen_tcp.connect(~c"localhost", port, [], 250) do
+        {:ok, s} ->
+          :gen_tcp.close(s)
+          true
 
-         _ ->
-           false
-       end)
+        _ ->
+          false
+      end
   end
 
   defp wait_twin(_port, 0), do: :ok
 
   defp wait_twin(port, n) do
-    if twin_alive?(port), do: :ok, else: (Process.sleep(100) && wait_twin(port, n - 1))
+    if twin_alive?(port), do: :ok, else: Process.sleep(100) && wait_twin(port, n - 1)
   end
 
   # -- real-TLS HTTP client ------------------------------------------------------
@@ -130,7 +136,7 @@ defmodule KvTlsTest do
       end
 
     {:ok, pem} = File.read(cert_path)
-    [{:"Certificate", pinned_der, :not_encrypted}] = :public_key.pem_decode(pem)
+    [{:Certificate, pinned_der, :not_encrypted}] = :public_key.pem_decode(pem)
     pinned_cert = :public_key.pkix_decode_cert(pinned_der, :otp)
     match_fun = :public_key.pkix_verify_hostname_match_fun(:https)
     self_signed? = rsa_self_verify(pinned_der)
@@ -240,7 +246,13 @@ defmodule KvTlsTest do
     {port, opts} = boot_twin(10)
     {:ok, sup} = Supervisor.start_link([{Bandit, opts}], strategy: :one_for_one)
     {port_cert, _} = Smalt.TLS.dev_cert_paths(port)
-    :persistent_term.put({__MODULE__, :twin}, %{port: port, opts: opts, cert: Path.expand(port_cert)})
+
+    :persistent_term.put({__MODULE__, :twin}, %{
+      port: port,
+      opts: opts,
+      cert: Path.expand(port_cert)
+    })
+
     :persistent_term.put({__MODULE__, :twin_sup}, sup)
     wait_twin(port, 50)
   end
@@ -255,6 +267,7 @@ defmodule KvTlsTest do
 
   defp pkix_equal?(cert, pinned_otp) do
     otp = cert_as_otp(cert)
+
     elem(otp, 1) |> elem(3) == elem(pinned_otp, 1) |> elem(3) and
       spki_key(otp) == spki_key(pinned_otp)
   rescue
@@ -269,7 +282,7 @@ defmodule KvTlsTest do
   defp rsa_self_verify(der) when is_binary(der) do
     otp = :public_key.pkix_decode_cert(der, :otp)
     {:RSAPublicKey, n, e} = elem(elem(otp, 1), 7) |> then(&elem(&1, 2))
-    :public_key.pkix_verify(der, {:"RSAPublicKey", n, e})
+    :public_key.pkix_verify(der, {:RSAPublicKey, n, e})
   rescue
     _ -> false
   end
@@ -373,7 +386,10 @@ defmodule KvTlsTest do
     name = "kv-tls-#{System.unique_integer([:positive])}"
 
     {status, body} =
-      https(ctx, "POST", "/keys/#{name}/create",
+      https(
+        ctx,
+        "POST",
+        "/keys/#{name}/create",
         Jason.encode!(%{
           "kty" => "RSA-HSM",
           "release_policy" => %{"claim" => "azure-compliant-cvm"}
@@ -399,9 +415,16 @@ defmodule KvTlsTest do
       Smalt.Security.Attestation.attest_enclave(%{"measurement" => measurement})
 
     {status, body} =
-      https_with_retry(ctx, "POST", "/keys/#{name}/release?api-version=7.4", Jason.encode!(%{}), [
-        {"authorization", "Bearer " <> maa_token}
-      ], 10)
+      https_with_retry(
+        ctx,
+        "POST",
+        "/keys/#{name}/release?api-version=7.4",
+        Jason.encode!(%{}),
+        [
+          {"authorization", "Bearer " <> maa_token}
+        ],
+        10
+      )
 
     assert status == 200, "release returned #{status}: #{inspect(body)}"
     assert Jason.decode!(body)["status"] == "Released"
@@ -416,7 +439,9 @@ defmodule KvTlsTest do
   test "list keys over verified https includes the created key", ctx do
     name = "kv-tls-list-#{System.unique_integer([:positive])}"
 
-    {cstatus, cbody} = https(ctx, "POST", "/keys/#{name}/create", Jason.encode!(%{"kty" => "oct"}))
+    {cstatus, cbody} =
+      https(ctx, "POST", "/keys/#{name}/create", Jason.encode!(%{"kty" => "oct"}))
+
     assert cstatus == 200, "create returned #{cstatus}: #{inspect(cbody)}"
 
     {status, body} = https_with_retry(ctx, "GET", "/keys", 10)
@@ -495,6 +520,7 @@ defmodule KvTlsTest do
     # the documented current behavior; tightening the matcher to a segment
     # boundary is a behavior change, not a bug fix.
     {ks_status, ks_body} = https_with_retry(ctx, "GET", "/keysX", 5)
+
     refute ks_body =~ "could not be found",
            "/keysX hit ARM (#{ks_status}): #{inspect(ks_body)}"
 
@@ -507,7 +533,7 @@ defmodule KvTlsTest do
     # very same server cert the positive tests accept.
     match_fun = :public_key.pkix_verify_hostname_match_fun(:https)
 
-    [{:"Certificate", pinned_der, :not_encrypted}] = :public_key.pem_decode(File.read!(ctx.cert))
+    [{:Certificate, pinned_der, :not_encrypted}] = :public_key.pem_decode(File.read!(ctx.cert))
     pinned_cert = :public_key.pkix_decode_cert(pinned_der, :otp)
     self_signed? = rsa_self_verify(pinned_der)
 
@@ -516,7 +542,8 @@ defmodule KvTlsTest do
          cert, {:bad_cert, :selfsigned_peer}, acc ->
            verified? =
              pkix_equal?(cert, pinned_cert) and self_signed? and
-               :public_key.pkix_verify_hostname(cert, dns_id: ~c"evil.example.com",
+               :public_key.pkix_verify_hostname(cert,
+                 dns_id: ~c"evil.example.com",
                  match_fun: match_fun
                )
 

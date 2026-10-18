@@ -64,12 +64,15 @@ defmodule Smalt.ArmGateway.ProviderMatrix do
   @spec provider(namespace() | String.t()) :: map() | nil
   def provider(ns) do
     case resource_types(ns) do
-      [] -> nil
-      rts -> %{
-               "namespace" => ns,
-               "resourceTypes" => rts,
-               "registrationState" => @registration_state
-             }
+      [] ->
+        nil
+
+      rts ->
+        %{
+          "namespace" => ns,
+          "resourceTypes" => rts,
+          "registrationState" => @registration_state
+        }
     end
   end
 

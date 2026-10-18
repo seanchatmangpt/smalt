@@ -30,7 +30,9 @@ defmodule EgressKvAppconfigTest do
   describe "PUT /kv/:key" do
     test "create is 201 with etag + roundtrips via GET" do
       conn =
-        call(:put, "/kv/myapp:feature", body: %{"value" => "{\"enabled\":true}", "contentType" => "application/json"})
+        call(:put, "/kv/myapp:feature",
+          body: %{"value" => "{\"enabled\":true}", "contentType" => "application/json"}
+        )
 
       assert conn.status == 201
       body = Jason.decode!(conn.resp_body)
@@ -189,8 +191,7 @@ defmodule EgressKvAppconfigTest do
         call(:put, "/kv/Beta",
           body: %{
             "value" => flag_value,
-            "contentType" =>
-              "application/vnd.microsoft.appconfig.kv+json;ctype-feature"
+            "contentType" => "application/vnd.microsoft.appconfig.kv+json;ctype-feature"
           }
         )
 

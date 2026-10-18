@@ -4,7 +4,15 @@ defmodule Smalt.ArmCorsTest do
   import Plug.Test
 
   setup do
-    on_exit(fn -> Application.delete_env(:smalt, :arm_cors_origins) end)
+    prev_cors_origins = Application.get_env(:smalt, :arm_cors_origins)
+
+    on_exit(fn ->
+      if is_nil(prev_cors_origins) do
+        Application.delete_env(:smalt, :arm_cors_origins)
+      else
+        Application.put_env(:smalt, :arm_cors_origins, prev_cors_origins)
+      end
+    end)
     :ok
   end
 

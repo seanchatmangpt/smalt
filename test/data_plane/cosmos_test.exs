@@ -62,7 +62,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
     test "multi-candidate If-Match list: any match proceeds" do
       assert ConditionalHeaders.evaluate(%{"if-match" => "\"x\", \"abc\""}, "\"abc\"") == :proceed
-      assert ConditionalHeaders.evaluate(%{"if-match" => "\"x\", \"y\""}, "\"abc\"") == {:halt, 412}
+
+      assert ConditionalHeaders.evaluate(%{"if-match" => "\"x\", \"y\""}, "\"abc\"") ==
+               {:halt, 412}
     end
   end
 
@@ -91,40 +93,72 @@ defmodule Smalt.DataPlane.CosmosTest do
     end
 
     test "numeric pk end to end: unwritable container becomes writable and query-scoped" do
-      Cosmos.create_collection("npk", "npkc", %{"id" => "npkc", "partitionKey" => %{"paths" => ["/n"]}})
-      {:ok, 201, _, _} = Cosmos.create_doc("npk", "npkc", %{"id" => "a", "n" => 7}, %{"x-ms-documentdb-partitionkey" => ~s([7])})
-      {:ok, 201, _, _} = Cosmos.create_doc("npk", "npkc", %{"id" => "b", "n" => 8}, %{"x-ms-documentdb-partitionkey" => ~s([8])})
+      Cosmos.create_collection("npk", "npkc", %{
+        "id" => "npkc",
+        "partitionKey" => %{"paths" => ["/n"]}
+      })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("npk", "npkc", %{"id" => "a", "n" => 7}, %{
+          "x-ms-documentdb-partitionkey" => ~s([7])
+        })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("npk", "npkc", %{"id" => "b", "n" => 8}, %{
+          "x-ms-documentdb-partitionkey" => ~s([8])
+        })
 
       assert {:ok, 200, _, scoped} =
-               Cosmos.query_docs("npk", "npkc", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s([7])})
+               Cosmos.query_docs("npk", "npkc", %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-documentdb-partitionkey" => ~s([7])
+               })
 
       assert scoped["_count"] == 1
       assert hd(scoped["Documents"])["id"] == "a"
 
       # header string form matches the doc's numeric value (same normalization)
       assert {:ok, 200, _, scoped2} =
-               Cosmos.query_docs("npk", "npkc", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["7"])})
+               Cosmos.query_docs("npk", "npkc", %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-documentdb-partitionkey" => ~s(["7"])
+               })
 
       assert scoped2["_count"] == 1
 
       # mismatched numeric partition still 400s
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-               Cosmos.create_doc("npk", "npkc", %{"id" => "c", "n" => 7}, %{"x-ms-documentdb-partitionkey" => ~s([9])})
+               Cosmos.create_doc("npk", "npkc", %{"id" => "c", "n" => 7}, %{
+                 "x-ms-documentdb-partitionkey" => ~s([9])
+               })
     end
 
     test "boolean pk end to end: write, scoped query, mismatch 400" do
-      Cosmos.create_collection("bpk", "bpkc", %{"id" => "bpkc", "partitionKey" => %{"paths" => ["/b"]}})
-      {:ok, 201, _, _} = Cosmos.create_doc("bpk", "bpkc", %{"id" => "a", "b" => true}, %{"x-ms-documentdb-partitionkey" => ~s([true])})
-      {:ok, 201, _, _} = Cosmos.create_doc("bpk", "bpkc", %{"id" => "d", "b" => false}, %{"x-ms-documentdb-partitionkey" => ~s([false])})
+      Cosmos.create_collection("bpk", "bpkc", %{
+        "id" => "bpkc",
+        "partitionKey" => %{"paths" => ["/b"]}
+      })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("bpk", "bpkc", %{"id" => "a", "b" => true}, %{
+          "x-ms-documentdb-partitionkey" => ~s([true])
+        })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("bpk", "bpkc", %{"id" => "d", "b" => false}, %{
+          "x-ms-documentdb-partitionkey" => ~s([false])
+        })
 
       assert {:ok, 200, _, scoped} =
-               Cosmos.query_docs("bpk", "bpkc", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s([true])})
+               Cosmos.query_docs("bpk", "bpkc", %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-documentdb-partitionkey" => ~s([true])
+               })
 
       assert scoped["_count"] == 1
       assert hd(scoped["Documents"])["id"] == "a"
 
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-               Cosmos.create_doc("bpk", "bpkc", %{"id" => "e", "b" => true}, %{"x-ms-documentdb-partitionkey" => ~s([false])})
+               Cosmos.create_doc("bpk", "bpkc", %{"id" => "e", "b" => true}, %{
+                 "x-ms-documentdb-partitionkey" => ~s([false])
+               })
     end
 
     test "parse rejects empty array, multi-element, non-scalar, and malformed JSON" do
@@ -186,7 +220,10 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert doc["_rid"] == Cosmos.doc_rid("db1", "coll1", "d1")
 
       assert Cosmos.db_rid("db1") == Cosmos.rid_segment("db1", 8)
-      assert Cosmos.coll_rid("db1", "coll1") == Cosmos.db_rid("db1") <> Cosmos.rid_segment("coll1", 4)
+
+      assert Cosmos.coll_rid("db1", "coll1") ==
+               Cosmos.db_rid("db1") <> Cosmos.rid_segment("coll1", 4)
+
       assert is_integer(doc["_ts"])
       assert <<?", _::binary>> = doc["_etag"]
       assert String.ends_with?(doc["_etag"], "\"")
@@ -609,7 +646,10 @@ defmodule Smalt.DataPlane.CosmosTest do
       body = Jason.decode!(resp.resp_body)
       assert body["kind"] == "DatabaseAccount"
       assert body["id"] != "localhost"
-      assert %{"name" => _, "databaseAccountEndpoint" => _} = body["writableLocations"] |> List.first()
+
+      assert %{"name" => _, "databaseAccountEndpoint" => _} =
+               body["writableLocations"] |> List.first()
+
       assert body["readableLocations"] |> List.first() |> Map.has_key?("databaseAccountEndpoint")
       assert body["userConsistencyPolicy"]["defaultConsistencyLevel"]
       refute is_nil(body["databasesLink"])
@@ -716,7 +756,9 @@ defmodule Smalt.DataPlane.CosmosTest do
         assert {:ok, 400, headers, %{"code" => "BadRequest", "message" => msg}} =
                  Cosmos.create_doc("msgdb", "mc", body, h)
 
-        assert msg == "Partition key provided in the header doesn't match the partition key of the document."
+        assert msg ==
+                 "Partition key provided in the header doesn't match the partition key of the document."
+
         assert headers["x-ms-request-charge"] == "1.0"
         assert headers["x-ms-alt-content-path"] == "dbs/msgdb/colls/mc"
       end)
@@ -737,7 +779,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
                Cosmos.put_doc("msgdb", "mcq", "q", %{"v" => 2}, %{
                  "x-ms-documentdb-partitionkey" => ~s(["wrong"])
-                 })
+               })
 
       # put without header -> 400
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
@@ -745,12 +787,16 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # query with matching pk header returns only that partition
       {:ok, 200, _, feed} =
-        Cosmos.query_docs("msgdb", "mcq", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["acme"])})
+        Cosmos.query_docs("msgdb", "mcq", %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["acme"])
+        })
 
       assert feed["_count"] == 1
 
       {:ok, 200, _, feed2} =
-        Cosmos.query_docs("msgdb", "mcq", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["other"])})
+        Cosmos.query_docs("msgdb", "mcq", %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["other"])
+        })
 
       assert feed2["_count"] == 0
     end
@@ -772,7 +818,8 @@ defmodule Smalt.DataPlane.CosmosTest do
           "SELECT * FROM c"
         ],
         fn bad ->
-          assert {:ok, 400, headers, %{"code" => "BadRequest", "message" => "The query is invalid."}} =
+          assert {:ok, 400, headers,
+                  %{"code" => "BadRequest", "message" => "The query is invalid."}} =
                    Cosmos.query_docs("qvb", "qvb-c", bad, %{})
 
           assert headers["x-ms-request-charge"] == "1.0"
@@ -849,7 +896,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
     test "255-char names accepted; 256-char and slash names -> 400 BadRequest" do
       assert {:ok, 201, _, _} = Cosmos.create_db(String.duplicate("a", 255))
-      assert {:ok, 400, _, %{"code" => "BadRequest"}} = Cosmos.create_db(String.duplicate("a", 256))
+
+      assert {:ok, 400, _, %{"code" => "BadRequest"}} =
+               Cosmos.create_db(String.duplicate("a", 256))
 
       assert {:ok, 400, _, %{"code" => "BadRequest"}} = Cosmos.create_db("bad/name")
       assert {:ok, 400, _, %{"code" => "BadRequest"}} = Cosmos.create_db("")
@@ -889,7 +938,9 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert {:ok, 201, _, doc} = Cosmos.create_doc(@big_name, "c", %{"id" => "d"}, %{})
       assert doc["_rid"] == Cosmos.doc_rid(@big_name, "c", "d")
 
-      assert {:ok, 200, _, _} = Cosmos.query_docs(@big_name, "c", %{"query" => "SELECT * FROM c"}, %{})
+      assert {:ok, 200, _, _} =
+               Cosmos.query_docs(@big_name, "c", %{"query" => "SELECT * FROM c"}, %{})
+
       assert {:ok, 200, _, _} = Cosmos.list_docs(@big_name, "c")
     end
 
@@ -898,7 +949,10 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       assert {:ok, 201, hc, _} = Cosmos.create_doc("chg", "chg-c", %{"id" => "a"}, %{})
       assert {:ok, 200, hg, _} = Cosmos.get_doc("chg", "chg-c", "a", %{})
-      assert {:ok, 200, hq, _} = Cosmos.query_docs("chg", "chg-c", %{"query" => "SELECT * FROM c"}, %{})
+
+      assert {:ok, 200, hq, _} =
+               Cosmos.query_docs("chg", "chg-c", %{"query" => "SELECT * FROM c"}, %{})
+
       assert {:ok, 204, hd, ""} = Cosmos.delete_doc("chg", "chg-c", "a", %{})
 
       Enum.each([hc, hg, hq, hd], fn h ->
@@ -986,7 +1040,9 @@ defmodule Smalt.DataPlane.CosmosTest do
       deep_where = "| where " <> String.duplicate("(x == 1) and ", 300) <> "x == 2"
       assert {:error, {:limit, _}} = Smalt.DataPlane.KQL.run([], deep_where)
 
-      assert {:error, {:limit, _}} = Smalt.DataPlane.KQL.run([], String.duplicate("| take 1", 400))
+      assert {:error, {:limit, _}} =
+               Smalt.DataPlane.KQL.run([], String.duplicate("| take 1", 400))
+
       # just under the cap still parses
       assert {:ok, []} = Smalt.DataPlane.KQL.run([], String.duplicate("| take 1", 90))
     end
@@ -998,6 +1054,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       # Double-quoted literals and backslash escapes (real Kusto parity):
       # both quote styles match; escapes are consumed (\n -> newline, etc.).
       row = %{"s" => "it's", "n" => "a\nb"}
+
       assert {:ok, [%{"s" => "it's"}]} =
                Smalt.DataPlane.KQL.run([row], "| where s == \"it's\"")
 
@@ -1008,12 +1065,14 @@ defmodule Smalt.DataPlane.CosmosTest do
                Smalt.DataPlane.KQL.run([row], "| where n == 'a\\nb'")
 
       row2 = %{"s" => "a\\b"}
+
       assert {:ok, [%{"s" => "a\\b"}]} =
                Smalt.DataPlane.KQL.run([row2], "| where s == 'a\\\\b'")
 
       assert {:ok, []} = Smalt.DataPlane.KQL.run([], "| where s == \"no match\" | take 1")
 
       row = %{"col" => "héllo→日本語"}
+
       assert {:ok, [%{"col" => "héllo→日本語"}]} =
                Smalt.DataPlane.KQL.run([row], "| where col == 'héllo→日本語' | take 5")
 
@@ -1081,14 +1140,24 @@ defmodule Smalt.DataPlane.CosmosTest do
                Cosmos.create_doc("iddb", "idc", %{"id" => "", "v" => 1}, %{})
 
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-               Cosmos.create_doc("iddb", "idc", %{"id" => String.duplicate("d", 256), "v" => 1}, %{})
+               Cosmos.create_doc(
+                 "iddb",
+                 "idc",
+                 %{"id" => String.duplicate("d", 256), "v" => 1},
+                 %{}
+               )
 
       # nothing was stored under any of the poisoned keys
       assert Store.list_prefix(:smalt_cosmos_docs, "iddb/idc/") == []
 
       # 255-char id is the inclusive boundary: still legal
       assert {:ok, 201, _, _} =
-               Cosmos.create_doc("iddb", "idc", %{"id" => String.duplicate("d", 255), "v" => 1}, %{})
+               Cosmos.create_doc(
+                 "iddb",
+                 "idc",
+                 %{"id" => String.duplicate("d", 255), "v" => 1},
+                 %{}
+               )
     end
 
     test "non-string doc id (integer/nil-dotted forms) -> 400 BadRequest, nothing stored" do
@@ -1152,11 +1221,17 @@ defmodule Smalt.DataPlane.CosmosTest do
     # fields must be gone. Previously Map.merge retained stale top-level keys.
     test "R118: PUT omitting a field removes it from the stored doc (was: retained by merge)" do
       Cosmos.create_collection("r118", "r118c", %{"id" => "r118c"})
-      {:ok, 201, _, _} = Cosmos.create_doc("r118", "r118c", %{"id" => "d", "a" => 1, "b" => 2}, %{})
 
-      assert {:ok, 200, _, replaced} = Cosmos.put_doc("r118", "r118c", "d", %{"id" => "d", "a" => 9}, %{})
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("r118", "r118c", %{"id" => "d", "a" => 1, "b" => 2}, %{})
+
+      assert {:ok, 200, _, replaced} =
+               Cosmos.put_doc("r118", "r118c", "d", %{"id" => "d", "a" => 9}, %{})
+
       assert replaced["a"] == 9
-      refute Map.has_key?(replaced, "b"), "stale key b must not survive a replace, got: #{inspect(replaced)}"
+
+      refute Map.has_key?(replaced, "b"),
+             "stale key b must not survive a replace, got: #{inspect(replaced)}"
 
       assert {:ok, 200, _, stored} = Cosmos.get_doc("r118", "r118c", "d", %{})
       refute Map.has_key?(stored, "b")
@@ -1213,7 +1288,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       # Creates may 201 (absent at check time) or 409 (lost the insert_new);
       # deletes may 204 (present) or 404 (absent). No other statuses allowed.
       assert Enum.all?(statuses, fn
-             {_t, s} -> s in [201, 409, 204, 404]
+               {_t, s} -> s in [201, 409, 204, 404]
              end)
 
       # Terminal consistency: if the doc exists it carries a 201-minted etag
@@ -1246,7 +1321,8 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       results =
         1..8
-        |> Task.async_stream(fn _ -> Cosmos.delete_doc("dd", "ddc", "race", %{"if-match" => etag}) end,
+        |> Task.async_stream(
+          fn _ -> Cosmos.delete_doc("dd", "ddc", "race", %{"if-match" => etag}) end,
           max_concurrency: 8
         )
         |> Enum.to_list()
@@ -1309,7 +1385,8 @@ defmodule Smalt.DataPlane.CosmosTest do
       Cosmos.create_collection("dd2", "dd2c", %{"id" => "dd2c"})
       {:ok, 201, _, doc} = Cosmos.create_doc("dd2", "dd2c", %{"id" => "x", "v" => 0}, %{})
 
-      {:ok, 200, _, _} = Cosmos.put_doc("dd2", "dd2c", "x", %{"v" => 1}, %{"if-match" => doc["_etag"]})
+      {:ok, 200, _, _} =
+        Cosmos.put_doc("dd2", "dd2c", "x", %{"v" => 1}, %{"if-match" => doc["_etag"]})
 
       # the OLD etag no longer governs: conditional delete must 412
       assert {:ok, 412, _, %{"code" => "PreconditionFailed"}} =
@@ -1354,9 +1431,20 @@ defmodule Smalt.DataPlane.CosmosTest do
 
   describe "lens-2: session-token / continuation semantics (typed GAPs, pinned)" do
     test "malformed pk header on a partitioned query -> 400, never a cross-partition leak" do
-      Cosmos.create_collection("leak", "leakc", %{"id" => "leakc", "partitionKey" => %{"paths" => ["/t"]}})
-      {:ok, 201, _, _} = Cosmos.create_doc("leak", "leakc", %{"id" => "a", "t" => "x"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
-      {:ok, 201, _, _} = Cosmos.create_doc("leak", "leakc", %{"id" => "b", "t" => "y"}, %{"x-ms-documentdb-partitionkey" => ~s(["y"])})
+      Cosmos.create_collection("leak", "leakc", %{
+        "id" => "leakc",
+        "partitionKey" => %{"paths" => ["/t"]}
+      })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("leak", "leakc", %{"id" => "a", "t" => "x"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["x"])
+        })
+
+      {:ok, 201, _, _} =
+        Cosmos.create_doc("leak", "leakc", %{"id" => "b", "t" => "y"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["y"])
+        })
 
       for bad <- ["not-json", "[]", ~s(["x","y"]), ~s([null]), ""] do
         assert {:ok, 400, _, %{"code" => "BadRequest"}} =
@@ -1368,19 +1456,28 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # A parseable header still scopes; absent header still cross-partitions.
       assert {:ok, 200, _, scoped} =
-               Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+               Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-documentdb-partitionkey" => ~s(["x"])
+               })
 
       assert scoped["_count"] == 1
 
-      assert {:ok, 200, _, all} = Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT * FROM c"}, %{})
+      assert {:ok, 200, _, all} =
+               Cosmos.query_docs("leak", "leakc", %{"query" => "SELECT * FROM c"}, %{})
+
       assert all["_count"] == 2
     end
 
     test "hostile headers through every point op: {:ok,..} | {:error,:store_not_ready} only, never a raise" do
-      Cosmos.create_collection("hz", "hzc", %{"id" => "hzc", "partitionKey" => %{"paths" => ["/t"]}})
+      Cosmos.create_collection("hz", "hzc", %{
+        "id" => "hzc",
+        "partitionKey" => %{"paths" => ["/t"]}
+      })
 
       {:ok, 201, _, _} =
-        Cosmos.create_doc("hz", "hzc", %{"id" => "d", "t" => "x"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+        Cosmos.create_doc("hz", "hzc", %{"id" => "d", "t" => "x"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["x"])
+        })
 
       hostile = [
         %{"if-match" => :crypto.strong_rand_bytes(64)},
@@ -1408,7 +1505,10 @@ defmodule Smalt.DataPlane.CosmosTest do
 
         # the anchor doc survives the sweep (re-created: the unconditional
         # delete inside the sweep legitimately removed the previous one)
-        Cosmos.create_doc("hz", "hzc", %{"id" => "d", "t" => "x"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+        Cosmos.create_doc("hz", "hzc", %{"id" => "d", "t" => "x"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["x"])
+        })
+
         assert match?({:ok, 200, _, _}, Cosmos.get_doc("hz", "hzc", "d", %{}))
       end)
     end
@@ -1421,7 +1521,12 @@ defmodule Smalt.DataPlane.CosmosTest do
         1..20
         |> Task.async_stream(fn i ->
           {:ok, 201, h, _} =
-            Cosmos.create_doc("mono", "monoc", %{"id" => "m" <> String.pad_leading(Integer.to_string(i), 2, "0")}, %{})
+            Cosmos.create_doc(
+              "mono",
+              "monoc",
+              %{"id" => "m" <> String.pad_leading(Integer.to_string(i), 2, "0")},
+              %{}
+            )
 
           h["x-ms-session-token"]
         end)
@@ -1461,8 +1566,12 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       for i <- 0..104 do
         {:ok, 201, _, _} =
-          Cosmos.create_doc("cont", "contc", %{"id" => "q" <> String.pad_leading(Integer.to_string(i), 4, "0")},
-            %{})
+          Cosmos.create_doc(
+            "cont",
+            "contc",
+            %{"id" => "q" <> String.pad_leading(Integer.to_string(i), 4, "0")},
+            %{}
+          )
       end
 
       {:ok, 200, h, res} =
@@ -1484,7 +1593,12 @@ defmodule Smalt.DataPlane.CosmosTest do
       # 40 concurrent creates while 10 queries + 10 lists run.
       spin =
         Task.async_stream(1..40, fn i ->
-          Cosmos.create_doc("churn", "churnc", %{"id" => "c" <> String.pad_leading(Integer.to_string(i), 3, "0")}, %{})
+          Cosmos.create_doc(
+            "churn",
+            "churnc",
+            %{"id" => "c" <> String.pad_leading(Integer.to_string(i), 3, "0")},
+            %{}
+          )
         end)
 
       reads =
@@ -1536,7 +1650,13 @@ defmodule Smalt.DataPlane.CosmosTest do
       {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
 
       for i <- 0..104 do
-        {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "d-#{String.pad_leading(Integer.to_string(i), 4, "0")}"}, %{})
+        {:ok, 201, _, _} =
+          Cosmos.create_doc(
+            db,
+            coll,
+            %{"id" => "d-#{String.pad_leading(Integer.to_string(i), 4, "0")}"},
+            %{}
+          )
       end
 
       {:ok, 200, h1, p1} = Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{})
@@ -1546,7 +1666,9 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert is_binary(token) and token =~ ~r/^1#\d+:[A-Za-z0-9_-]+:d-0099$/
 
       {:ok, 200, h2, p2} =
-        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => token})
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-continuation" => token
+        })
 
       assert p2["_count"] == 5
       assert h2["x-ms-continuation"] == nil
@@ -1567,7 +1689,12 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       for i <- 0..104 do
         {:ok, 201, _, _} =
-          Cosmos.create_doc(db, coll, %{"id" => "k-#{String.pad_leading(Integer.to_string(i), 4, "0")}"}, %{})
+          Cosmos.create_doc(
+            db,
+            coll,
+            %{"id" => "k-#{String.pad_leading(Integer.to_string(i), 4, "0")}"},
+            %{}
+          )
       end
 
       {:ok, 200, h1, p1} = Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{})
@@ -1578,7 +1705,9 @@ defmodule Smalt.DataPlane.CosmosTest do
       {:ok, 204, _, _} = Cosmos.delete_doc(db, coll, "k-0099", %{})
 
       {:ok, 200, h2, p2} =
-        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => token})
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-continuation" => token
+        })
 
       assert p2["_count"] == 5
       assert h2["x-ms-continuation"] == nil
@@ -1613,7 +1742,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       for bad <- forged do
         assert {:ok, 400, headers, %{"code" => "BadRequest"}} =
-                 Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => bad})
+                 Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+                   "x-ms-continuation" => bad
+                 })
 
         assert headers["x-ms-request-charge"] == "1.0"
       end
@@ -1632,7 +1763,10 @@ defmodule Smalt.DataPlane.CosmosTest do
           Cosmos.create_doc(
             db,
             coll,
-            %{"id" => "p-#{part}-#{String.pad_leading(Integer.to_string(i), 3, "0")}", "t" => part},
+            %{
+              "id" => "p-#{part}-#{String.pad_leading(Integer.to_string(i), 3, "0")}",
+              "t" => part
+            },
             %{"x-ms-documentdb-partitionkey" => ~s(["#{part}"])}
           )
       end
@@ -1714,7 +1848,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       results =
         Enum.map(tokens, fn tok ->
-          Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => tok})
+          Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+            "x-ms-continuation" => tok
+          })
         end)
 
       # Never a raise, never a 5xx: every forged probe is a typed 200 or 400.
@@ -1739,7 +1875,10 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       dispatch = fn c -> EgressRouter.call(c, router_opts) end
 
-      conn(:post, "/dbs", %{"id" => db}) |> dispatch.() |> status_response() |> then(&assert &1 == 201)
+      conn(:post, "/dbs", %{"id" => db})
+      |> dispatch.()
+      |> status_response()
+      |> then(&assert &1 == 201)
 
       conn(:post, "/dbs/#{db}/colls", %{"id" => coll, "partitionKey" => %{"paths" => ["/p"]}})
       |> dispatch.()
@@ -1747,7 +1886,12 @@ defmodule Smalt.DataPlane.CosmosTest do
       |> then(&assert &1 == 201)
 
       for i <- 0..104 do
-        body = Jason.encode!(%{"id" => "w-#{String.pad_leading(Integer.to_string(i), 4, "0")}", "p" => "ten"})
+        body =
+          Jason.encode!(%{
+            "id" => "w-#{String.pad_leading(Integer.to_string(i), 4, "0")}",
+            "p" => "ten"
+          })
+
         conn(:post, "/dbs/#{db}/colls/#{coll}/docs", body)
         |> put_req_header("content-type", "application/json")
         |> put_req_header("x-ms-documentdb-partitionkey", ~s(["ten"]))
@@ -1806,7 +1950,12 @@ defmodule Smalt.DataPlane.CosmosTest do
       Cosmos.create_collection(db, coll, %{"id" => coll})
 
       for i <- 1..105 do
-        Cosmos.create_doc(db, coll, %{"id" => "d" <> String.pad_leading(Integer.to_string(i), 3, "0")}, %{})
+        Cosmos.create_doc(
+          db,
+          coll,
+          %{"id" => "d" <> String.pad_leading(Integer.to_string(i), 3, "0")},
+          %{}
+        )
       end
 
       {:ok, 200, h1, page1} = Cosmos.list_docs(db, coll)
@@ -1834,7 +1983,15 @@ defmodule Smalt.DataPlane.CosmosTest do
       coll = "lcp"
       {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
 
-      for i <- 1..105, do: {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "a#{String.pad_leading(Integer.to_string(i), 3, "0")}"}, %{})
+      for i <- 1..105,
+          do:
+            {:ok, 201, _, _} =
+              Cosmos.create_doc(
+                db,
+                coll,
+                %{"id" => "a#{String.pad_leading(Integer.to_string(i), 3, "0")}"},
+                %{}
+              )
 
       for i <- 1..60, do: {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "b#{i}"}, %{})
 
@@ -1847,7 +2004,10 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # Same-prefix resume completes the feed, last page tokenless.
       {:ok, 200, h2, page2} = Cosmos.list_docs(db, coll, "a", %{"x-ms-continuation" => token})
-      assert Enum.map(page2, & &1["id"]) == Enum.map(101..105, &"a#{String.pad_leading(Integer.to_string(&1), 3, "0")}")
+
+      assert Enum.map(page2, & &1["id"]) ==
+               Enum.map(101..105, &"a#{String.pad_leading(Integer.to_string(&1), 3, "0")}")
+
       assert h2["x-ms-continuation"] == nil
 
       # Cross-prefix resume: a DIFFERENT prefix is a typed 400 — a token is
@@ -1872,8 +2032,12 @@ defmodule Smalt.DataPlane.CosmosTest do
         p = if rem(i, 2) == 0, do: "A", else: "B"
 
         {:ok, 201, _, _} =
-          Cosmos.create_doc(db, coll, %{"id" => "m#{String.pad_leading(Integer.to_string(i), 3, "0")}", "p" => p},
-            %{"x-ms-documentdb-partitionkey" => ~s(["#{p}"])})
+          Cosmos.create_doc(
+            db,
+            coll,
+            %{"id" => "m#{String.pad_leading(Integer.to_string(i), 3, "0")}", "p" => p},
+            %{"x-ms-documentdb-partitionkey" => ~s(["#{p}"])}
+          )
       end
 
       # Truncated cross-partition page: cursor at m100.
@@ -1893,7 +2057,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # The unscoped resume (same scope) still completes the remaining 20.
       {:ok, 200, h2, p2} =
-        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => token})
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-continuation" => token
+        })
 
       assert p2["_count"] == 20 and h2["x-ms-continuation"] == nil
     end
@@ -1904,7 +2070,12 @@ defmodule Smalt.DataPlane.CosmosTest do
       Cosmos.create_collection(db, coll, %{"id" => coll})
 
       for i <- 1..12 do
-        Cosmos.create_doc(db, coll, %{"id" => "k" <> String.pad_leading(Integer.to_string(i), 2, "0")}, %{})
+        Cosmos.create_doc(
+          db,
+          coll,
+          %{"id" => "k" <> String.pad_leading(Integer.to_string(i), 2, "0")},
+          %{}
+        )
       end
 
       # Force a 10-doc page: page 1 = k01..k10, token cursor k10.
@@ -2008,20 +2179,25 @@ defmodule Smalt.DataPlane.CosmosTest do
       # List feed (v2): token minted on A, resumed on B.
       {:ok, 200, ha, _} = Cosmos.list_docs(db_a, coll_a, "", %{})
       assert tok_a = ha["x-ms-continuation"]
+
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
                Cosmos.list_docs(db_b, coll_b, "", %{"x-ms-continuation" => tok_a})
 
       # Symmetric: B's token refused on A.
       {:ok, 200, hb, _} = Cosmos.list_docs(db_b, coll_b, "", %{})
       assert tok_b = hb["x-ms-continuation"]
+
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
                Cosmos.list_docs(db_a, coll_a, "", %{"x-ms-continuation" => tok_b})
 
       # Query feed (v1): token minted on A, resumed on B.
       {:ok, 200, hqa, _} = Cosmos.query_docs(db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{})
       assert tq_a = hqa["x-ms-continuation"]
+
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-               Cosmos.query_docs(db_b, coll_b, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => tq_a})
+               Cosmos.query_docs(db_b, coll_b, %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-continuation" => tq_a
+               })
 
       # The A token still resumes lawfully on A (fence refuses only cross-container).
       {:ok, 200, h2, page2} = Cosmos.list_docs(db_a, coll_a, "", %{"x-ms-continuation" => tok_a})
@@ -2048,8 +2224,11 @@ defmodule Smalt.DataPlane.CosmosTest do
       # Real minted tokens: v1 unscoped (A), v1 pk-scoped (A), v2 list (A).
       {:ok, 200, h1, _} = Cosmos.query_docs(db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{})
       v1 = h1["x-ms-continuation"]
+
       {:ok, 200, h2, _} =
-        Cosmos.query_docs(db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"])})
+        Cosmos.query_docs(db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["x"])
+        })
 
       # pk-scoped feed needs a pk-defined container? No: header on pk-less
       # container is ignored (paths []), so scope "" — hand-mint instead.
@@ -2060,10 +2239,16 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       lawful =
         [
-          {Cosmos, :query_docs, [db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => v1}]},
+          {Cosmos, :query_docs,
+           [db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => v1}]},
           {Cosmos, :list_docs, [db_a, coll_a, "", %{"x-ms-continuation" => v2}]},
           {Cosmos, :query_docs,
-           [db_a, coll_a, %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => ~s(["x"]), "x-ms-continuation" => v1_scoped}]}
+           [
+             db_a,
+             coll_a,
+             %{"query" => "SELECT * FROM c"},
+             %{"x-ms-documentdb-partitionkey" => ~s(["x"]), "x-ms-continuation" => v1_scoped}
+           ]}
         ]
 
       Enum.each(lawful, fn {m, f, args} ->
@@ -2089,7 +2274,12 @@ defmodule Smalt.DataPlane.CosmosTest do
           if tok == v2 do
             Cosmos.list_docs(db, coll, "", Map.put(extra, "x-ms-continuation", tok))
           else
-            Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, Map.put(extra, "x-ms-continuation", tok))
+            Cosmos.query_docs(
+              db,
+              coll,
+              %{"query" => "SELECT * FROM c"},
+              Map.put(extra, "x-ms-continuation", tok)
+            )
           end
 
         assert {:ok, 400, _, %{"code" => "BadRequest"}} = res,
@@ -2116,7 +2306,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       # 5s cap).
       restarted? =
         Enum.reduce_while(1..2000, false, fn _, _ ->
-          if Cosmos.store_ready?(), do: {:halt, true}, else: (Process.sleep(50) && {:cont, false})
+          if Cosmos.store_ready?(), do: {:halt, true}, else: Process.sleep(50) && {:cont, false}
         end)
 
       assert restarted?
@@ -2130,6 +2320,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       # a forced sync + fresh DETS file.) So accept either outcome after the
       # readiness wait: replayed (length 3) or dropped (empty).
       {:ok, 200, _, post} = Cosmos.list_docs(db, coll, "", %{})
+
       assert post in [[], pre] or length(post) == 3,
              "post-restart feed must be replayed (3 docs) or dropped ([]), got #{inspect(post)}"
 
@@ -2157,8 +2348,13 @@ defmodule Smalt.DataPlane.CosmosTest do
           ] do
         res =
           case surface do
-            :query -> Cosmos.query_docs("g7db", "g7c", %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => tok})
-            :list -> Cosmos.list_docs("g7db", "g7c", "", %{"x-ms-continuation" => tok})
+            :query ->
+              Cosmos.query_docs("g7db", "g7c", %{"query" => "SELECT * FROM c"}, %{
+                "x-ms-continuation" => tok
+              })
+
+            :list ->
+              Cosmos.list_docs("g7db", "g7c", "", %{"x-ms-continuation" => tok})
           end
 
         assert {:ok, 400, _, %{"code" => "BadRequest"}} = res,
@@ -2181,7 +2377,9 @@ defmodule Smalt.DataPlane.CosmosTest do
       # token scope. The scope contains ":" — the b64url middle segment must
       # keep the split exact (scope colons ride in the tail).
       {:ok, 200, h1, _} =
-        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-documentdb-partitionkey" => hdr})
+        Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+          "x-ms-documentdb-partitionkey" => hdr
+        })
 
       assert tok = h1["x-ms-continuation"]
       assert tok =~ ~r/^1#\d+:[A-Za-z0-9_-]+:\["a:b"\]\/s100$/
@@ -2198,7 +2396,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # Scope mutation (colon dropped): typed 400.
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-               Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => tok})
+               Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+                 "x-ms-continuation" => tok
+               })
     end
 
     test "valid-shape ahead-of-ledger token is refused by the lsn conjunct (both namespaces)" do
@@ -2214,8 +2414,13 @@ defmodule Smalt.DataPlane.CosmosTest do
 
         res =
           case surface do
-            :query -> Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{"x-ms-continuation" => tok})
-            :list -> Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => tok})
+            :query ->
+              Cosmos.query_docs(db, coll, %{"query" => "SELECT * FROM c"}, %{
+                "x-ms-continuation" => tok
+              })
+
+            :list ->
+              Cosmos.list_docs(db, coll, "", %{"x-ms-continuation" => tok})
           end
 
         assert {:ok, 400, _, %{"code" => "BadRequest"}} = res,
@@ -2259,7 +2464,9 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       for junk <- ["5x", "5 ", "+5", "05", "99999999999999999999999"] do
         assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-                 Cosmos.list_docs(db, coll, nil, %{"x-ms-continuation" => "2#" <> junk <> ":" <> b64c <> ":a1"})
+                 Cosmos.list_docs(db, coll, nil, %{
+                   "x-ms-continuation" => "2#" <> junk <> ":" <> b64c <> ":a1"
+                 })
       end
     end
   end
@@ -2307,7 +2514,15 @@ defmodule Smalt.DataPlane.CosmosTest do
       coll = "npc07"
       {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"id" => coll})
 
-      for i <- 1..105, do: {:ok, 201, _, _} = Cosmos.create_doc(db, coll, %{"id" => "n#{String.pad_leading(Integer.to_string(i), 3, "0")}"}, %{})
+      for i <- 1..105,
+          do:
+            {:ok, 201, _, _} =
+              Cosmos.create_doc(
+                db,
+                coll,
+                %{"id" => "n#{String.pad_leading(Integer.to_string(i), 3, "0")}"},
+                %{}
+              )
 
       # Mint under nil prefix: the token tail must NOT embed "nil/".
       {:ok, 200, h1, page1} = Cosmos.list_docs(db, coll, nil, %{})
@@ -2412,7 +2627,15 @@ defmodule Smalt.DataPlane.CosmosTest do
 
       # An update (new _ts via patch/put) re-surfaces the doc once.
       _ = d1
-      {:ok, 200, _, _} = Cosmos.patch_doc(db, coll, "old", [%{"op" => "replace", "path" => "/v", "value" => 9}], %{})
+
+      {:ok, 200, _, _} =
+        Cosmos.patch_doc(
+          db,
+          coll,
+          "old",
+          [%{"op" => "replace", "path" => "/v", "value" => 9}],
+          %{}
+        )
 
       {:ok, 200, _, feed4} = Cosmos.change_feed(db, coll)
       assert Enum.map(feed4["Documents"], & &1["id"]) == ["old"]
@@ -2459,22 +2682,31 @@ defmodule Smalt.DataPlane.CosmosTest do
       coll = "pc1"
       dispatch = fn c -> EgressRouter.call(c, @router_opts) end
 
-      conn(:post, "/dbs", %{"id" => db}) |> dispatch.() |> status_response() |> then(&assert &1 == 201)
-      conn(:post, "/dbs/#{db}/colls", %{"id" => coll}) |> dispatch.() |> status_response() |> then(&assert &1 == 201)
+      conn(:post, "/dbs", %{"id" => db})
+      |> dispatch.()
+      |> status_response()
+      |> then(&assert &1 == 201)
+
+      conn(:post, "/dbs/#{db}/colls", %{"id" => coll})
+      |> dispatch.()
+      |> status_response()
+      |> then(&assert &1 == 201)
 
       conn(:post, "/dbs/#{db}/colls/#{coll}/docs", %{"id" => "d1", "name" => "n", "tags" => ["x"]})
       |> dispatch.()
-      |> status_response() |> then(&assert &1 == 201)
+      |> status_response()
+      |> then(&assert &1 == 201)
 
-      patch_body = Jason.encode!([
-        %{"op" => "test", "path" => "/name", "value" => "n"},
-        %{"op" => "add", "path" => "/age", "value" => 42},
-        %{"op" => "replace", "path" => "/name", "value" => "n2"},
-        %{"op" => "add", "path" => "/tags/0", "value" => "w"},
-        %{"op" => "copy", "from" => "/name", "path" => "/copy_of_name"},
-        %{"op" => "move", "from" => "/copy_of_name", "path" => "/moved"},
-        %{"op" => "remove", "path" => "/tags/0"}
-      ])
+      patch_body =
+        Jason.encode!([
+          %{"op" => "test", "path" => "/name", "value" => "n"},
+          %{"op" => "add", "path" => "/age", "value" => 42},
+          %{"op" => "replace", "path" => "/name", "value" => "n2"},
+          %{"op" => "add", "path" => "/tags/0", "value" => "w"},
+          %{"op" => "copy", "from" => "/name", "path" => "/copy_of_name"},
+          %{"op" => "move", "from" => "/copy_of_name", "path" => "/moved"},
+          %{"op" => "remove", "path" => "/tags/0"}
+        ])
 
       patch_conn =
         conn(:patch, "/dbs/#{db}/colls/#{coll}/docs/d1", patch_body)
@@ -2504,14 +2736,26 @@ defmodule Smalt.DataPlane.CosmosTest do
       etag = doc["_etag"]
 
       assert {:ok, 412, _, %{"code" => "PreconditionFailed"}} =
-               Cosmos.patch_doc(db, coll, "d", [%{"op" => "replace", "path" => "/v", "value" => 2}], %{
-                 "if-match" => "\"stale\""
-               })
+               Cosmos.patch_doc(
+                 db,
+                 coll,
+                 "d",
+                 [%{"op" => "replace", "path" => "/v", "value" => 2}],
+                 %{
+                   "if-match" => "\"stale\""
+                 }
+               )
 
       assert {:ok, 200, h, patched} =
-               Cosmos.patch_doc(db, coll, "d", [%{"op" => "replace", "path" => "/v", "value" => 3}], %{
-                 "if-match" => etag
-               })
+               Cosmos.patch_doc(
+                 db,
+                 coll,
+                 "d",
+                 [%{"op" => "replace", "path" => "/v", "value" => 3}],
+                 %{
+                   "if-match" => etag
+                 }
+               )
 
       assert patched["v"] == 3
       assert h["etag"] != etag
@@ -2521,7 +2765,13 @@ defmodule Smalt.DataPlane.CosmosTest do
       Cosmos.create_collection("pd3", "pc3", %{"id" => "pc3"})
 
       assert {:ok, 404, _, %{"code" => "NotFound"}} =
-               Cosmos.patch_doc("pd3", "pc3", "nope", [%{"op" => "add", "path" => "/a", "value" => 1}], %{})
+               Cosmos.patch_doc(
+                 "pd3",
+                 "pc3",
+                 "nope",
+                 [%{"op" => "add", "path" => "/a", "value" => 1}],
+                 %{}
+               )
     end
 
     test "malformed patch is typed 400 (engine + router)" do
@@ -2564,7 +2814,13 @@ defmodule Smalt.DataPlane.CosmosTest do
       {:ok, 201, _, _} = Cosmos.create_doc(db, "pc5", %{"id" => "d", "v" => 1}, %{})
 
       assert {:ok, 400, _, %{"code" => "BadRequest"}} =
-               Cosmos.patch_doc(db, "pc5", "d", [%{"op" => "test", "path" => "/v", "value" => 999}], %{})
+               Cosmos.patch_doc(
+                 db,
+                 "pc5",
+                 "d",
+                 [%{"op" => "test", "path" => "/v", "value" => 999}],
+                 %{}
+               )
 
       {:ok, 200, _, doc} = Cosmos.get_doc(db, "pc5", "d", %{})
       assert doc["v"] == 1
@@ -2598,14 +2854,26 @@ defmodule Smalt.DataPlane.CosmosTest do
       })
 
       {:ok, 201, _, _} =
-        Cosmos.create_doc("ukdb", "ukc", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+        Cosmos.create_doc("ukdb", "ukc", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["t1"])
+        })
 
       assert {:ok, 409, _, %{"code" => "Conflict"}} =
-               Cosmos.create_doc("ukdb", "ukc", %{"id" => "b", "pk" => "t1", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+               Cosmos.create_doc(
+                 "ukdb",
+                 "ukc",
+                 %{"id" => "b", "pk" => "t1", "email" => "x@y.z"},
+                 %{"x-ms-documentdb-partitionkey" => ~s(["t1"])}
+               )
 
       # different unique-key value, same partition -> admitted
       assert {:ok, 201, _, _} =
-               Cosmos.create_doc("ukdb", "ukc", %{"id" => "c", "pk" => "t1", "email" => "w@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+               Cosmos.create_doc(
+                 "ukdb",
+                 "ukc",
+                 %{"id" => "c", "pk" => "t1", "email" => "w@y.z"},
+                 %{"x-ms-documentdb-partitionkey" => ~s(["t1"])}
+               )
     end
 
     test "same unique-key value in a DIFFERENT partition is admitted (partition-scoped)" do
@@ -2616,10 +2884,17 @@ defmodule Smalt.DataPlane.CosmosTest do
       })
 
       {:ok, 201, %{"x-ms-alt-content-path" => _}, _} =
-        Cosmos.create_doc("ukdb", "ukc", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t1"])})
+        Cosmos.create_doc("ukdb", "ukc", %{"id" => "a", "pk" => "t1", "email" => "x@y.z"}, %{
+          "x-ms-documentdb-partitionkey" => ~s(["t1"])
+        })
 
       assert {:ok, 201, _, _} =
-               Cosmos.create_doc("ukdb", "ukc", %{"id" => "b", "pk" => "t2", "email" => "x@y.z"}, %{"x-ms-documentdb-partitionkey" => ~s(["t2"])})
+               Cosmos.create_doc(
+                 "ukdb",
+                 "ukc",
+                 %{"id" => "b", "pk" => "t2", "email" => "x@y.z"},
+                 %{"x-ms-documentdb-partitionkey" => ~s(["t2"])}
+               )
     end
 
     test "PUT replace that steals another doc's unique-key value is 409; keeping own value is 200" do
@@ -2638,10 +2913,22 @@ defmodule Smalt.DataPlane.CosmosTest do
         Cosmos.create_doc("ukdb", "ukp", %{"id" => "b", "pk" => "t1", "email" => "w@y.z"}, hk)
 
       assert {:ok, 409, _, %{"code" => "Conflict"}} =
-               Cosmos.put_doc("ukdb", "ukp", "b", %{"id" => "b", "pk" => "t1", "email" => "x@y.z"}, hk)
+               Cosmos.put_doc(
+                 "ukdb",
+                 "ukp",
+                 "b",
+                 %{"id" => "b", "pk" => "t1", "email" => "x@y.z"},
+                 hk
+               )
 
       assert {:ok, 200, _, _} =
-               Cosmos.put_doc("ukdb", "ukp", "b", %{"id" => "b", "pk" => "t1", "email" => "w@y.z"}, hk)
+               Cosmos.put_doc(
+                 "ukdb",
+                 "ukp",
+                 "b",
+                 %{"id" => "b", "pk" => "t1", "email" => "w@y.z"},
+                 hk
+               )
     end
 
     # R10 repair (audit A2 finding 1): PATCH previously ran doc_id_check only —
@@ -2660,9 +2947,15 @@ defmodule Smalt.DataPlane.CosmosTest do
         Cosmos.create_doc("ukdb", "ukq", %{"id" => "a", "pk" => "t1", "v" => 1}, hk)
 
       assert {:ok, 400, _, %{"code" => code}} =
-               Cosmos.patch_doc("ukdb", "ukq", "a", [
-                 %{"op" => "replace", "path" => "/pk", "value" => "t2"}
-               ], hk)
+               Cosmos.patch_doc(
+                 "ukdb",
+                 "ukq",
+                 "a",
+                 [
+                   %{"op" => "replace", "path" => "/pk", "value" => "t2"}
+                 ],
+                 hk
+               )
 
       assert code in ["BadRequest", "PartitionKeyMismatch", "MissingPartitionKey"]
 
@@ -2689,9 +2982,15 @@ defmodule Smalt.DataPlane.CosmosTest do
         Cosmos.create_doc("ukdb", "ukr", %{"id" => "b", "pk" => "t1", "email" => "w@y.z"}, hk)
 
       assert {:ok, 409, _, %{"code" => "Conflict"}} =
-               Cosmos.patch_doc("ukdb", "ukr", "b", [
-                 %{"op" => "replace", "path" => "/email", "value" => "x@y.z"}
-               ], hk)
+               Cosmos.patch_doc(
+                 "ukdb",
+                 "ukr",
+                 "b",
+                 [
+                   %{"op" => "replace", "path" => "/email", "value" => "x@y.z"}
+                 ],
+                 hk
+               )
 
       # b keeps its own email after the refused patch.
       assert {:ok, 200, _, doc} = Cosmos.get_doc("ukdb", "ukr", "b", hk)

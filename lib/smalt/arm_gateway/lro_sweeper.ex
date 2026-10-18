@@ -143,7 +143,9 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
 
   @impl true
   def init(opts) do
-    tick_ms = opts[:tick_ms] || Application.get_env(:smalt, :lro_sweep_interval_ms, @default_tick_ms)
+    tick_ms =
+      opts[:tick_ms] || Application.get_env(:smalt, :lro_sweep_interval_ms, @default_tick_ms)
+
     :persistent_term.put(@tick_key, tick_ms)
     Process.send_after(self(), :tick, 0)
     {:ok, %{tick_ms: tick_ms}}

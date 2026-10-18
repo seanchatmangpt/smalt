@@ -25,7 +25,13 @@ defmodule Smalt.Amqp.AtomBridgeTest do
 
   defp fresh_client do
     {:ok, listener} =
-      :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      :gen_tcp.listen(0, [
+        :binary,
+        packet: :raw,
+        active: false,
+        reuseaddr: true,
+        ip: {127, 0, 0, 1}
+      ])
 
     {:ok, port} = :inet.port(listener)
 
@@ -128,7 +134,8 @@ defmodule Smalt.Amqp.AtomBridgeTest do
   test "http?/1 truth table" do
     assert AtomBridge.http?("GET /q HTTP/1.1\r\n")
     assert AtomBridge.http?("PUT /q HTTP/1.1\r\n")
-    assert AtomBridge.http?("DELE /q HTTP/1.1\r\n")  # sniff matches the 4-char prefix, not the full verb
+    # sniff matches the 4-char prefix, not the full verb
+    assert AtomBridge.http?("DELE /q HTTP/1.1\r\n")
     assert AtomBridge.http?("POST /q HTTP/1.1\r\n")
     refute AtomBridge.http?("AMQP\x00\x01\x00\x00")
     refute AtomBridge.http?(<<0, 0, 0, 60, 2, 0, 0, 0, 0, 65>>)
@@ -199,6 +206,7 @@ defmodule Smalt.Amqp.AtomBridgeTest do
     assert match?({:resp, _}, result) or match?({:closed, _}, result) or
              match?({:error, :timeout}, result)
   end
+
   defp atom_queue_key(name) do
     String.downcase(
       "/subscriptions/emulator-atom/resourceGroups/emulator/providers/Microsoft.ServiceBus/namespaces/emulator/queues/#{name}"

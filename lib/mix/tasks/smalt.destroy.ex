@@ -30,7 +30,9 @@ defmodule Mix.Tasks.Smalt.Destroy do
         EnclaveCommon.help!(@moduledoc)
 
       invalid != [] or argv != [] ->
-        EnclaveCommon.fail!(":bad_args task=smalt.destroy invalid=#{inspect(invalid)} argv=#{inspect(argv)}")
+        EnclaveCommon.fail!(
+          ":bad_args task=smalt.destroy invalid=#{inspect(invalid)} argv=#{inspect(argv)}"
+        )
 
       true ->
         main(opts)
@@ -42,6 +44,7 @@ defmodule Mix.Tasks.Smalt.Destroy do
       opts
       |> EnclaveCommon.require_flag!(:fixture, "smalt.destroy")
       |> EnclaveCommon.resolve_fixture()
+
     EnclaveCommon.ensure_store!()
 
     # Dev-loop CLI: anonymous router face (same as the ExUnit suite) —
@@ -53,14 +56,20 @@ defmodule Mix.Tasks.Smalt.Destroy do
            %{deleted: deleted, residue: residue} <- State.destroy(outcome_map(outcomes)) do
         case nonempty_residue(residue) do
           [] ->
-            Mix.shell().info("[destroy] OK fixture=#{fixture} deleted=#{length(deleted)} residue=0")
+            Mix.shell().info(
+              "[destroy] OK fixture=#{fixture} deleted=#{length(deleted)} residue=0"
+            )
 
           survivors ->
-            EnclaveCommon.fail!(":residue_nonzero fixture=#{fixture} survivors=#{inspect(survivors, limit: 20)}")
+            EnclaveCommon.fail!(
+              ":residue_nonzero fixture=#{fixture} survivors=#{inspect(survivors, limit: 20)}"
+            )
         end
       else
         {:error, reason} ->
-          EnclaveCommon.fail!(":destroy_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}")
+          EnclaveCommon.fail!(
+            ":destroy_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}"
+          )
       end
     end)
   end

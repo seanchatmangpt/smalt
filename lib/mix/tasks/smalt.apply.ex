@@ -29,7 +29,9 @@ defmodule Mix.Tasks.Smalt.Apply do
         EnclaveCommon.help!(@moduledoc)
 
       invalid != [] or argv != [] ->
-        EnclaveCommon.fail!(":bad_args task=smalt.apply invalid=#{inspect(invalid)} argv=#{inspect(argv)}")
+        EnclaveCommon.fail!(
+          ":bad_args task=smalt.apply invalid=#{inspect(invalid)} argv=#{inspect(argv)}"
+        )
 
       true ->
         main(opts)
@@ -41,6 +43,7 @@ defmodule Mix.Tasks.Smalt.Apply do
       opts
       |> EnclaveCommon.require_flag!(:fixture, "smalt.apply")
       |> EnclaveCommon.resolve_fixture()
+
     output = EnclaveCommon.require_flag!(opts, :output, "smalt.apply")
     EnclaveCommon.ensure_store!()
 
@@ -52,10 +55,15 @@ defmodule Mix.Tasks.Smalt.Apply do
            terms = to_terms(doc),
            {:ok, outcomes} <- Engine.apply(terms, []) do
         State.write(outcome_map(outcomes), output)
-        Mix.shell().info("[apply] OK fixture=#{fixture} output=#{output} resources=#{length(outcomes)}")
+
+        Mix.shell().info(
+          "[apply] OK fixture=#{fixture} output=#{output} resources=#{length(outcomes)}"
+        )
       else
         {:error, reason} ->
-          EnclaveCommon.fail!(":apply_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}")
+          EnclaveCommon.fail!(
+            ":apply_failed fixture=#{fixture} reason=#{inspect(reason, limit: 20)}"
+          )
       end
     end)
   end

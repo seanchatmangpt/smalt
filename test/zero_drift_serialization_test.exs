@@ -207,10 +207,10 @@ defmodule ZeroDriftSerializationTest do
 
     subnet_type = "Microsoft.Network/subnets"
 
+    # Disclosed cross-lane unblock: virtualNetworks SHACL requires
+    # properties.addressPrefixes on the RAW body (check_shape precedes
+    # Defaults.apply), so the parent PUT must carry a conforming prefix.
     {vstatus, _} =
-      # Disclosed cross-lane unblock: virtualNetworks SHACL requires
-      # properties.addressPrefixes on the RAW body (check_shape precedes
-      # Defaults.apply), so the parent PUT must carry a conforming prefix.
       put_res("Microsoft.Network/virtualNetworks", "vnet-01", %{
         "location" => "eastus",
         "properties" => %{"addressPrefixes" => ["10.0.0.0/16"]}

@@ -95,7 +95,6 @@ defmodule Smalt.Security.LedgerWriter do
         catch
           {:ledger_sign_refused, _ledger} ->
             ledger_error(400, "InvalidLedgerItem", "Ledger item could not be signed.")
-
         end
 
       :error ->
@@ -128,7 +127,6 @@ defmodule Smalt.Security.LedgerWriter do
   end
 
   defp do_append_valid(ledger, contents, data_hash) do
-
     # Atomic duplicate detection: first append leaves the counter at 1; any
     # later append of identical contents increments past it and is refused.
     if Store.update_counter(:smalt_ledger_meta, {:dup, ledger, data_hash}, 1) > 1 do
