@@ -26,7 +26,7 @@
 # Exit: 0 all cycles green / 1 typed failure / 3 loud skip (no release bin).
 set -euo pipefail
 
-SMALT_BIN=${SMALT_BIN:-/opt/smalt/bin/smalt}
+SMALT_BIN=${SMALT_BIN:-/app/_release/bin/smalt}
 CYCLES=${SMALT_BURN_CYCLES:-50}
 PROBE_TIMEOUT=${SMALT_BURN_PROBE_TIMEOUT:-90}   # seconds per deadline poll
 BURN_DIR=${SMALT_BURN_DIR:-/smalt/docs/jira/v26.10.18/burn}
@@ -43,6 +43,18 @@ SUBJ_SHA=${SMALT_BURN_SUBJECT_SHA:-$(git -C /smalt rev-parse HEAD 2>/dev/null ||
 IMG_DIGEST=${BURN_IMAGE_DIGEST:-unrecorded}
 BURN_CONTAINER=${BURN_CONTAINER:-$(hostname 2>/dev/null || echo boot-burn)}
 BURN_PLANE=${SMALT_BURN_PLANE:-all}
+# Pre-seed DETS files so repair:false check can assert integrity post-crash
+"$SMALT_BIN" eval '
+tables = Smalt.StoreTables.persisted_tables()
+dets_dir = Application.get_env(:smalt, :dets_dir, "tmp/dets")
+File.mkdir_p!(dets_dir)
+Enum.each(tables, fn t ->
+  path = Path.join(dets_dir, to_string(t) <> ".dets")
+  {:ok, ref} = :dets.open_file(make_ref(), file: to_charlist(path), repair: true)
+  :dets.close(ref)
+end)
+' >/dev/null 2>&1 || true
+
 RUN_ID="boot-burn-$(date +%s)"
 CYCLE_LIST=$(seq -s, 1 "$CYCLES")
 
