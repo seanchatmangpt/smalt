@@ -285,7 +285,12 @@ async function main() {
     stdio: "inherit",
   });
   const code = await new Promise((resolve) => testRun.once("close", resolve));
-  process.exitCode = code === 0 ? 0 : 1;
+  // v26.10.17 (T3 root-cause, receipts/i21c-t3-sdk-smoke.md): the spawned
+  // `mix run --no-halt` beam child keeps this process's event loop referenced,
+  // so the "exit" teardown event never fires and exitCode is never consulted
+  // — the court watchdog killed this harness at 30 min (exit 124) even on a
+  // fully green 286ms probe set. Hard-exit to force the teardown path.
+  process.exit(code === 0 ? 0 : 1);
 }
 
 main().catch((err) => {
