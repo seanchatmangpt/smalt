@@ -95,7 +95,9 @@ defmodule Smalt.Chaos.CrashIsolationTest do
     # on_exit stop/restore cycle can still be landing (ExUnit on_exit ordering
     # is not synchronized with this module) — wait for the ARM port to answer
     # instead of racing a half-restored tree.
-    assert {:ok, sock} = wait_connect()
+    # eventually/2 unwraps {:ok, value} -> value
+    assert sock = wait_connect()
+    assert is_port(sock)
     :gen_tcp.close(sock)
 
     # Real kill, mid-run, with a live value in a table.

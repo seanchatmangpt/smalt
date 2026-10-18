@@ -53,19 +53,30 @@ defmodule Smalt.Amqp.FlowCreditTest do
     # :already_started under the wire tier where the app tree is live).
     assert :ok = SmaltTest.Lifecycle.ensure_store_up()
 
-    # Direct child-spec ports: `Smalt.AmqpBroker.children/1` accepts
-    # sb_port:/eh_port: (pinned by broker_facade's spec test) and the Listener
-    # reads NO Application env on the start-arg path — so the broker boots on
-    # ephemeral ports WITHOUT mutating global app env. The named Sweeper child
-    # is dropped from the PRIVATE tree (it would collide with the shared
-    # singleton; these tests need no background tick). Removed with the four
-    # env writes: the prev/restore block, `stop_existing_tree/0` (the private
-    # tree no longer touches the shared tree at all — Store is the shared seam
-    # via the gate above) and the module-scoped restore_app on_exit (no app
-    # teardown happens anymore).
-    children =
-      Smalt.AmqpBroker.children(sb_port: ports.amqp, eh_port: ports.eh)
-      |> List.delete(Smalt.Amqp.Sweeper)
+    # Direct child-spec ports WITHOUT global app-env mutation: the Listener
+    # reads no Application env on the start-arg path, so the broker boots on
+    # ephemeral ports with per-test UNIQUE names (the production children/1
+    # names collide with the live shared tree under the wire tier). Removed
+    # with the four env writes: the prev/restore block, `stop_existing_tree/0`
+    # (the private tree no longer touches the shared tree at all — Store is
+    # the shared seam via the gate above) and the module-scoped restore_app
+    # on_exit (no app teardown happens anymore).
+    n = System.unique_integer([:positive])
+    sb_name = String.to_atom("Elixir.Smalt.Test.FlowCreditSb#{n}")
+    eh_name = String.to_atom("Elixir.Smalt.Test.FlowCreditEh#{n}")
+    conn_sup = String.to_atom("Elixir.Smalt.Test.FlowCreditConnSup#{n}")
+
+    children = [
+      Supervisor.child_spec(
+        {Smalt.Amqp.Listener, {:sb, ports.amqp, name: sb_name, conn_sup: conn_sup}},
+        id: :flow_credit_sb_listener
+      ),
+      Supervisor.child_spec(
+        {Smalt.Amqp.Listener, {:eh, ports.eh, name: eh_name, conn_sup: conn_sup}},
+        id: :flow_credit_eh_listener
+      ),
+      {DynamicSupervisor, name: conn_sup, strategy: :one_for_one}
+    ]
 
     {:ok, sup} =
       Supervisor.start_link(children, strategy: :one_for_one, name: Smalt.FlowCreditTestSup)
@@ -119,14 +130,20 @@ defmodule Smalt.Amqp.FlowCreditTest do
     {transfers, c} = collect_transfers(c, 2)
     assert length(transfers) == 2
 
-    # Barrier, not silence: a client-issued flow(echo: true) forces the broker
-    # to answer with its own flow frame, and session-level per-link ordering
-    # (spec §2.5) means any transfer it was still going to deliver under the
-    # earlier credit precedes that reply. Observing the reply with zero
-    # interleaved transfers is a happens-before proof at ANY latency, not a
-    # 1 s timed sample.
-    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0, echo: true}})
-    {inter, c} = drain_until_performative(c, :flow, @recv_timeout)
+    # Barrier, not silence: the landed broker does NOT answer flow echo (the
+    # drain pin in test 5 witnesses the flow-path no-reply), so the ordered
+    # probe is an ATTACH echo — a new sender link on a scratch address. The
+    # broker processes session frames in order (spec §2.5), so its attach echo
+    # happens after it fully handled the credit-0 flow above, and any transfer
+    # it was still going to deliver under the earlier credit precedes that
+    # echo. Observing the echo with zero interleaved transfers is a
+    # happens-before proof at ANY latency, not a 1 s timed sample.
+    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0}})
+
+    c =
+      send_frame(c, {:attach, %{name: "barrier-tx", handle: 2, role: false, target: %{address: "barrier-scratch"}}})
+
+    {inter, c} = drain_until_performative(c, :attach, @recv_timeout)
     refute :transfer in inter
 
     bodies = bodies(transfers)
@@ -227,12 +244,15 @@ defmodule Smalt.Amqp.FlowCreditTest do
     c = send_frame(c, {:attach, %{name: "rx", handle: 1, role: true, source: %{address: queue}}})
     {%{performative: %{performative: :attach}}, c} = next_frame(c)
 
-    # explicit zero credit: no delivery may arrive. Same echo-barrier proof as
-    # test 1 — the echoed flow is the barrier; a transfer interleaving it is a
-    # credit violation caught at any latency.
-    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0, echo: true}})
+    # explicit zero credit: no delivery may arrive. Same attach-echo barrier
+    # proof as test 1 — a transfer interleaving the barrier is a credit
+    # violation caught at any latency.
+    c = send_frame(c, {:flow, %{handle: 1, link_credit: 0}})
 
-    {inter, _c} = drain_until_performative(c, :flow, @recv_timeout)
+    c =
+      send_frame(c, {:attach, %{name: "zero-credit-barrier", handle: 2, role: false, target: %{address: "zero-credit-scratch"}}})
+
+    {inter, _c} = drain_until_performative(c, :attach, @recv_timeout)
     refute :transfer in inter
 
     :gen_tcp.close(c.sock)
@@ -327,18 +347,19 @@ defmodule Smalt.Amqp.FlowCreditTest do
     # no echo flow frame comes back. Pin that honestly.
     c = send_frame(c, {:flow, %{handle: 1, link_credit: 0, drain: true}})
 
-    # Probe barrier: an echoed flow (drain NOT set) forces the broker to
-    # answer. Per the drain pin, the drain itself produces no reply; the echo
-    # does. Per-link ordering makes everything the broker was going to send
-    # after the drain precede the echo reply — an ordering proof, not a 1 s
-    # sample.
-    c = send_frame(c, {:flow, %{handle: 1, echo: true}})
+    # Probe barrier: the drain itself produces no reply (the pin), so the
+    # ordered probe is an attach echo (drain-adjacent flows get no reply from
+    # the landed broker — see test 1's barrier comment). Session ordering makes
+    # everything the broker was going to send after the drain precede the
+    # attach echo — an ordering proof, not a 1 s sample.
+    c =
+      send_frame(c, {:attach, %{name: "drain-barrier", handle: 2, role: false, target: %{address: "drain-scratch"}}})
 
-    {inter, _c} = drain_until_performative(c, :flow, @recv_timeout)
+    {inter, _c} = drain_until_performative(c, :attach, @recv_timeout)
 
-    # no flow echo to the drain (no :flow besides our own echo reply), and no
-    # further transfer (credit is 0 and nothing requeues). Pinned contract
-    # unchanged — only the observation of the silence changed.
+    # no flow echo to the drain, and no further transfer (credit is 0 and
+    # nothing requeues). Pinned contract unchanged — only the observation of
+    # the silence changed.
     refute :flow in inter
     refute :transfer in inter
 

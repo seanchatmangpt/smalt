@@ -140,10 +140,13 @@ defmodule Smalt.Messaging.EventHubsTest do
       g = "lease-#{System.unique_integer([:positive])}"
       p = part("lease")
 
-      assert :ok = EventHubs.reserve_processing(g, p, :a, 10)
+      # Live-TTL legs use a long TTL (60 s): exclusivity must not depend on a
+      # short TTL surviving a scheduler gap — expiry is authored below, so the
+      # live legs only ever need to prove EXCLUSION.
+      assert :ok = EventHubs.reserve_processing(g, p, :a, 60_000)
       assert {:error, :conflict} = EventHubs.reserve_processing(g, p, :b, 5_000)
       # same owner re-reserves freely (renewal)
-      assert :ok = EventHubs.reserve_processing(g, p, :a, 10)
+      assert :ok = EventHubs.reserve_processing(g, p, :a, 60_000)
 
       # Authored expiry: the claim's `until` IS the contract — expired at the
       # moment sweep runs, deterministically (no sweep-lands-in-window race).

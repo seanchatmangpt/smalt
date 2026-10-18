@@ -74,7 +74,7 @@ defmodule Smalt.Corpus.Helper do
     do_poll(label, started + deadline_ms, deadline_ms, fun, poll_every_ms, nil, started)
   end
 
-  defp do_poll(label, deadline, deadline_ms, fun, every, last, now) when now >= deadline do
+  defp do_poll(label, deadline, deadline_ms, fun, _every, last, now) when now >= deadline do
     flunk("assert_eventually!(#{inspect(label)}) timed out after #{deadline_ms}ms; " <>
             "last observation: #{inspect(last)}")
   end

@@ -43,7 +43,7 @@ def parse_export(path):
             if not line:
                 continue
             parts = line.split("\t")
-            if len(parts) != LINE_FIELDS or not parts[1].isdigit() or ":" not in parts[2]:
+            if len(parts) != LINE_FIELDS or not parts[1].isdigit() or not parts[2]:
                 raise ValueError(f"{path}:{n}: malformed line: {line!r}")
             ms = int(parts[1])
             tid = parts[2]

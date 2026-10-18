@@ -79,6 +79,18 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
     {:reply, fail_key_write(key, record), state}
   end
 
+  @impl true
+  def handle_call(:sweep, _from, :manual) do
+    run_pass()
+    {:reply, :ok, :manual}
+  end
+
+  @impl true
+  def handle_call(:sweep, _from, state) do
+    run_pass()
+    {:reply, :ok, state}
+  end
+
   # Persist the terminal via the shared evaluate/2, then publish through the
   # Notifier (explicit cast — the sweeper is the ONLY flip-path component
   # invoking evaluate/fail_closed). Idempotent under races: an already-flipped
@@ -111,31 +123,6 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
   end
 
   # -- GenServer ----------------------------------------------------------------
-    case Store.get(:smalt_operations, key) do
-      {:ok, %{"status" => "InProgress"} = record} ->
-        case LRO.evaluate(record, key) do
-          %{"status" => "InProgress"} = unchanged ->
-            # Not yet due (race with a concurrent flip): untouched.
-            {:ok, unchanged}
-
-          terminal ->
-            GenServer.cast(Notifier, {:terminal, key, terminal})
-            {:ok, terminal}
-        end
-
-      {:ok, record} ->
-        {:ok, record}
-
-      :error ->
-        {:error, :not_found}
-    end
-  end
-
-  defp fail_key_write(key, record) do
-    terminal = LRO.fail_closed(record, key)
-    GenServer.cast(Notifier, {:terminal, key, terminal})
-    {:ok, terminal}
-  end
 
   @doc """
   Run one full pass immediately (flip pass, then eviction pass when
@@ -265,18 +252,6 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
     else
       {:ok, :manual}
     end
-  end
-
-  @impl true
-  def handle_call(:sweep, _from, :manual) do
-    run_pass()
-    {:reply, :ok, :manual}
-  end
-
-  @impl true
-  def handle_call(:sweep, _from, state) do
-    run_pass()
-    {:reply, :ok, state}
   end
 
   # Notifier due-check (and any async single-writer trigger) flips here.

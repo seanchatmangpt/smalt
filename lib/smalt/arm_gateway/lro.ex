@@ -365,9 +365,11 @@ defmodule Smalt.ArmGateway.LRO do
   delay has fully elapsed and persists the terminal record. A record missing
   or carrying malformed scheduling fields routes to `fail_closed/2` instead.
 
-  PUBLIC precisely so the background sweeper (`Smalt.ArmGateway.LRO.Sweeper`)
-  and the lazy poll path call the SAME function and cannot diverge: a swept
-  record and a polled record converge to the identical persisted terminal.
+  PUBLIC precisely so the single terminal writer
+  (`Smalt.ArmGateway.LRO.Sweeper` — every flip-path invocation, whether from
+  the periodic pass or a read-path-routed request, happens here) drives the
+  SAME function and cannot diverge: a swept record and a routed record
+  converge to the identical persisted terminal.
   The terminal is persisted under the STORE KEY the caller used (`op_id`),
   never `record["name"]` — in the mint path the two are identical, but an
   incomplete record can lack "name", and persisting under nil re-livelocks
