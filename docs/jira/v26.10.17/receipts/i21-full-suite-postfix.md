@@ -91,3 +91,12 @@ The diff body is a wholesale shift of `lib/smalt/arm_gateway/router.ex:LINE` and
 ## Transient observed during lane (pre-existing, not session-introduced)
 
 Two initial attempts aborted pre-test with a mix dep-resolution error: `the dependency ex4pm 26.10.8 ... does not match the requirement specified ... In deps/ash_ex4pm/mix.exs: {:ex4pm, "26.10.1"}` — while `mix.lock` on disk pinned ex4pm 26.10.1, `git status` showed mix.exs/mix.lock clean, and `mix deps` showed both `ash_ex4pm 26.10.4` and `ex4pm 26.10.1` locked and converged. Suspected concurrent-lane mix churn during the fan-out; the retry resolved cleanly. Recorded for honesty; not reproduced at run time.
+
+## SUPERSEDED-IN-PART (coordinator, 2026-10-17 21:5x)
+
+All 4 drift-fence failures named above were subsequently fixed and
+re-verified green: ERROR_CODES regen + Canonical.write riders + 10 cite
+re-anchors → `mix test test/apiversion_matrix_test.exs
+test/error_codes_doc_test.exs test/canonical_projection_test.exs` →
+**268 tests, 0 failures** (committed 9c74de3). No behavioral failures
+existed in this run; the six i21 fix surfaces ran clean.
