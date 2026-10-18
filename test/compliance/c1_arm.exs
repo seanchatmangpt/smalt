@@ -21,24 +21,28 @@ defmodule Smalt.Compliance.C1ArmTest do
   # test_helper.exs exclusion list, so untagged/default runs are unchanged.
   @moduletag :compliance
 
-  alias Smalt.Corpus.Helper
   alias Smalt.Store
 
   @sub "00000000-0000-0000-0000-000000000000"
 
   setup context do
-    Helper.resilient_clear(fn ->
-      Store.put(:smalt_subscriptions, @sub, %{
-        "id" => "/subscriptions/#{@sub}",
-        "subscriptionId" => @sub,
-        "displayName" => "Sovereign Smalt Subscription",
-        "state" => "Enabled"
-      })
-    end)
+    # Canonical foundations helper (SmaltTest.Store.resilient_clear) — the
+    # corpus Helper is loader-scoped (Code.require_file by corpus_test.exs)
+    # and unavailable in standalone compliance runs (witnessed: v0 interim).
+    SmaltTest.Store.resilient_clear(
+      post_seed: fn ->
+        Store.put(:smalt_subscriptions, @sub, %{
+          "id" => "/subscriptions/#{@sub}",
+          "subscriptionId" => @sub,
+          "displayName" => "Sovereign Smalt Subscription",
+          "state" => "Enabled"
+        })
+      end
+    )
 
     prev_auth = Application.get_env(:smalt, :auth_mode)
-    Application.put_env(:smalt, :auth_mode, :anonymous)
-    Application.put_env(:smalt, :lro_delay_ms, 0)
+    SmaltTest.Env.put_restored(auth_mode: :anonymous)
+    SmaltTest.Env.put_restored(lro_delay_ms: 0)
 
     port = free_port()
 
@@ -47,7 +51,14 @@ defmodule Smalt.Compliance.C1ArmTest do
     start_supervised!({Bandit, plug: Smalt.ArmGateway.Router, port: port})
 
     on_exit(fn ->
-      Application.put_env(:smalt, :auth_mode, prev_auth || :anonymous)
+      # Direct restore: put_restored/1 registers its own on_exit, which is
+      # illegal from inside an on_exit callback (witnessed: v0 interim,
+      # receipts/v0-interim.md — every C1ArmTest teardown failed).
+      if prev_auth == nil do
+        Application.delete_env(:smalt, :auth_mode)
+      else
+        Application.put_env(:smalt, :auth_mode, prev_auth)
+      end
     end)
 
     {:ok, port: port, test_name: context.test}
@@ -388,9 +399,7 @@ defmodule Smalt.Compliance.C1ArmTest do
     refute 429 in statuses
 
     # Configured: fixed-window 429 + Retry-After once the limit is exceeded.
-    Application.put_env(:smalt, :arm_rate_limit, 5)
-
-    on_exit(fn -> Application.put_env(:smalt, :arm_rate_limit, nil) end)
+    SmaltTest.Env.put_restored(arm_rate_limit: 5)
 
     if :ets.info(:smalt_arm_rate) != :undefined do
       :ets.delete_all_objects(:smalt_arm_rate)
@@ -678,13 +687,17 @@ defmodule Smalt.Compliance.C1ArmTest do
     # fixed): strip to the path and probe through the same listener.
     %URI{path: path} = URI.parse(async_url)
 
-    Helper.assert_eventually!("LRO terminal #{async_url}", @lro_poll_deadline_ms, fn ->
-      case get!(port, path) do
-        {200, _h, body} -> {:ok, {200, json(body)}}
-        {202, _h, _body} -> :in_progress
-        {status, _h, body} -> flunk("unexpected poll status #{status}: #{body}")
-      end
-    end)
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        case get!(port, path) do
+          {200, _h, body} -> {:ok, {200, json(body)}}
+          {202, _h, _body} -> :retry
+          {status, _h, body} -> flunk("unexpected poll status #{status}: #{body}")
+        end
+      end,
+      observable: "LRO terminal #{async_url}",
+      deadline_ms: @lro_poll_deadline_ms
+    )
   end
 
   defp delete!(port, path, opts \\ []) do
