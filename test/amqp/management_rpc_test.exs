@@ -1,5 +1,11 @@
 defmodule Smalt.Amqp.ManagementRpcTest do
-  use ExUnit.Case, async: true
+  # async: false — setup blocks wipe the SHARED tables (:smalt_sb_queues/
+  # :smalt_sb_messages/:smalt_sb_locks) via :ets.delete_all_objects/1; run
+  # async:true this raced sibling tests' enqueues (witnessed: W3SessionOps DLQ
+  # row vanish, receipts/i21-full-suite-postfix.md run2/run3). Root-cause fix:
+  # receipts/i21d-store-clear-async.md — async:false serializes against ALL
+  # modules, eliminating the clear-race.
+  use ExUnit.Case, async: false
 
   alias Smalt.Amqp.ManagementRpc
 
