@@ -30,3 +30,9 @@ burn: burn-soak burn-matrix
 @burn-clean:
     just lane-clean
     bash -c 'cd "{{BURN_ROOT}}" && docker compose -f docker/burn/compose.burn.yml -p smalt-burn down -v --remove-orphans >/dev/null 2>&1 || true; docker volume prune -f >/dev/null 2>&1 || true; rm -rf docker/burn/results; echo "[BURN-CLEAN] lane roots + burn volumes + results reclaimed"'
+
+# Project smalt-burn JSONL receipts into conformant OCEL 2.0 documents and validate.
+@burn-ocel:
+    python3 scripts/burn_to_ocel2.py docs/jira/v26.10.18/burn/boot-burn.jsonl docs/jira/v26.10.18/burn/boot-burn.ocel.json
+    python3 scripts/burn_to_ocel2.py docs/jira/v26.10.18/burn/chaos-kill.jsonl docs/jira/v26.10.18/burn/chaos-kill.ocel.json
+    python3 scripts/validate_ocel2.py docs/jira/v26.10.18/burn/*.ocel.json

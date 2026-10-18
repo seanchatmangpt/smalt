@@ -1,0 +1,221 @@
+{
+  "ocel:globalLog": {
+    "ocel:version": "2.0",
+    "ocel:ordering": "timestamp",
+    "ocel:attributeNames": [
+      "verdict",
+      "exit_code",
+      "detail",
+      "recovery_ms",
+      "crash_reports",
+      "orphans_count",
+      "name",
+      "plane",
+      "image_digest",
+      "sha",
+      "cycle",
+      "container",
+      "path"
+    ]
+  },
+  "ocel:eventTypes": [
+    "burn.chaos-kill.chaos",
+    "burn.chaos-kill.probe"
+  ],
+  "ocel:objectTypes": [
+    "burn-cycle",
+    "container",
+    "receipt",
+    "subject"
+  ],
+  "ocel:events": [
+    {
+      "id": "ev-burn-24704844f86d-0-chaos-1",
+      "type": "burn.chaos-kill.chaos",
+      "time": "2026-10-18T23:34:07Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "0",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/24704844f86d",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/24704844f86d/0",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/chaos-kill.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-24704844f86d-0-chaos-2",
+      "type": "burn.chaos-kill.chaos",
+      "time": "2026-10-18T23:34:12Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "0",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/24704844f86d",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/24704844f86d/0",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/chaos-kill.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-24704844f86d-0-chaos-3",
+      "type": "burn.chaos-kill.chaos",
+      "time": "2026-10-18T23:34:18Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "0",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/24704844f86d",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/24704844f86d/0",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/chaos-kill.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-24704844f86d-0-chaos-4",
+      "type": "burn.chaos-kill.chaos",
+      "time": "2026-10-18T23:34:23Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "0",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/24704844f86d",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/24704844f86d/0",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/chaos-kill.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-24704844f86d-0-probe-5",
+      "type": "burn.chaos-kill.probe",
+      "time": "2026-10-18T23:34:23Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "0",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/24704844f86d",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/24704844f86d/0",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/chaos-kill.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    }
+  ],
+  "ocel:objects": [
+    {
+      "id": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+      "type": "subject",
+      "attributes": {
+        "sha": "29bb0371426a270c9c9ac2dc483b7e2a9d226938"
+      }
+    },
+    {
+      "id": "container/24704844f86d",
+      "type": "container",
+      "attributes": {
+        "name": "24704844f86d",
+        "plane": "all",
+        "image_digest": "unrecorded"
+      }
+    },
+    {
+      "id": "burn-cycle/24704844f86d/0",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 0,
+        "container": "24704844f86d"
+      }
+    },
+    {
+      "id": "receipt/chaos-kill.jsonl",
+      "type": "receipt",
+      "attributes": {
+        "path": "/smalt/docs/jira/v26.10.18/burn/chaos-kill.jsonl"
+      }
+    }
+  ]
+}
