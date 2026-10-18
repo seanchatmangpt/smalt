@@ -49,7 +49,35 @@ def main():
         if r and (r.stdout or "").strip():
             violations.append("court port %s occupied" % port)
 
-    suites = sh("ps -axo command | grep -E '[m]ix (test|court)|[c]ourt_x2|[b]ench' | grep -v grep")
+    # Match only real suite processes (beam.smp running mix, or direct mix
+    # invocations) — zsh -c harness wrappers carrying the words in their
+    # command string self-matched and refused the gate spuriously
+    # (witnessed: attempt-5 pre-check, 2026-10-18).
+    # Exclude our own ancestry: the driver shell that invoked quiesce ->
+    # quiet_check carries "court_x2.sh" in its command string and would
+    # self-match (witnessed attempt-5 pre-check 2). Walk the parent chain.
+    ancestry = set()
+    pid = os.getpid()
+    for _ in range(10):
+        out = sh("ps -p %d -o ppid=" % pid)
+        try:
+            pid = int((out.stdout or "0").strip() or 0)
+        except ValueError:
+            break
+        if pid <= 1:
+            break
+        ancestry.add(pid)
+    suites = sh("ps -axo pid=,command | grep -E '[b]eam.smp.*mix (test|run)|^/opt/homebrew/bin/mix (test|court)|[c]ourt_x2.sh' | grep -v grep")
+    if suites and suites.stdout:
+        keep = []
+        for line in suites.stdout.splitlines():
+            try:
+                if int(line.strip().split(None, 1)[0]) in ancestry:
+                    continue
+            except (ValueError, IndexError):
+                pass
+            keep.append(line)
+        suites.stdout = "\n".join(keep)
     if suites and (suites.stdout or "").strip():
         violations.append("concurrent suite/court processes: %s" % suites.stdout.strip()[:200])
 
