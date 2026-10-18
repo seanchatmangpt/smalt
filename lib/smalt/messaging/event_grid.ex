@@ -100,7 +100,7 @@ defmodule Smalt.Messaging.EventGrid do
 
   @doc "Returns `{pending_count, inflight, alive?}` for subscriber `name` on `topic`."
   @spec status(String.t() | atom(), term()) ::
-          {non_neg_integer(), nil | {term(), pos_integer()}, boolean()}
+          {non_neg_integer(), nil | {term(), term(), pos_integer()}, boolean()}
   def status(topic, name) do
     GenServer.call(server(), {:status, topic, name})
   end
@@ -145,7 +145,24 @@ defmodule Smalt.Messaging.EventGrid do
         # Recovery path: same subscription name, new pid. Keep the queue and
         # the seen_ids; replace the pid + monitor, then redeliver.
         if prev[:monitor], do: Process.demonitor(prev.monitor, [:flush])
-        prev |> Map.put(:pid, pid) |> Map.put(:monitor, Process.monitor(pid))
+
+        # Redelivery: the un-acked inflight event (same id) goes back on the
+        # queue so the recovered subscriber receives it (at-least-once).
+        case prev.inflight do
+          {id, ev, _attempts} ->
+            prev
+            |> Map.put(:pid, pid)
+            |> Map.put(:monitor, Process.monitor(pid))
+            |> Map.put(:inflight, nil)
+            |> Map.update!(:queue, &:queue.in({id, ev, System.monotonic_time(:millisecond)}, &1))
+
+          _ ->
+            prev
+            |> Map.put(:alive?, true)
+            |> Map.put(:pid, pid)
+            |> Map.put(:monitor, Process.monitor(pid))
+            |> Map.put(:inflight, nil)
+        end
       end
 
     t = %{t | subscribers: Map.put(t.subscribers, name, sub)}
@@ -157,7 +174,7 @@ defmodule Smalt.Messaging.EventGrid do
 
     t =
       case t.subscribers[name] do
-        %{inflight: {^id, _attempts}} = sub ->
+        %{inflight: {^id, _ev, _attempts}} = sub ->
           put_in(t.subscribers[name], %{sub | inflight: nil})
 
         _ ->
@@ -265,7 +282,7 @@ defmodule Smalt.Messaging.EventGrid do
           case :queue.out(sub.queue) do
             {{:value, {id, event, _ts}}, rest} ->
               send(sub.pid, {:event_grid, topic, name, id, event})
-              put_in(t.subscribers[name], %{sub | queue: rest, inflight: {id, 1}})
+              put_in(t.subscribers[name], %{sub | queue: rest, inflight: {id, event, 1}})
 
             {:empty, _} ->
               t

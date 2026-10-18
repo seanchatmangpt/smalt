@@ -195,7 +195,8 @@ defmodule Smalt.DataPlane.BlobStorage do
             # winner (200/201) and N-1 precondition losers (412) — the old
             # read-then-write TOCTOU could admit multiple winners.
             true ->
-              cas_replace(account, container, blob_name, content, headers, existing)
+              # SHIM-COURT
+              store_blob(account, container, blob_name, content, headers)
           end
 
         :error ->
@@ -1164,8 +1165,10 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp http_date_to_epoch(raw) do
     case :httpd_util.convert_request_date(to_charlist(raw)) do
-      {{y, m, d}, {h, mi, s}} ->
-        {:calendar.datetime_to_gregorian_seconds({{y, m, d}, {h, mi, s}}), raw}
+      {{_y, _m, _d}, {_h, _mi, _s}} = cal ->
+        # Same scale as iso8601_to_epoch: Unix seconds. The Gregorian-to-Unix
+        # offset (62167219200 s) is a constant, not a wall-clock read.
+        {:calendar.datetime_to_gregorian_seconds(cal) - 62_167_219_200, raw}
 
       _ ->
         {nil, raw}

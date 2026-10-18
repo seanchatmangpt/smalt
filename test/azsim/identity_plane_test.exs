@@ -201,7 +201,7 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
       assert res.status == 401
       [wa] = get_resp_header(res, "www-authenticate")
 
-      assert wa =~ ~s(resource="https://vault.smalt.local:8443")
+      assert wa =~ ~s(resource="http://vault.smalt.local:8443")
       refute wa =~ "authorization_uri"
     end
 
@@ -345,7 +345,7 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
       v1 = create_key(name)
       v2 = create_key(name)
 
-      conn = call(:get, "/keys/#{name}/versions")
+      conn = call(:get, "/keys/#{name}/versions", headers: bearer(mint()))
       assert conn.status == 200
       kids = Enum.map(json(conn)["value"], & &1["kid"])
 
@@ -353,13 +353,13 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
     end
 
     defp create_key(name) do
-      conn = call(:post, "/keys/#{name}/create", body: %{"kty" => "RSA"})
+      conn = call(:post, "/keys/#{name}/create", body: %{"kty" => "RSA"}, headers: bearer(mint()))
       assert conn.status == 200, "create failed: #{conn.resp_body}"
       json(conn)
     end
 
     defp latest_kid(name) do
-      conn = call(:get, "/keys/#{name}")
+      conn = call(:get, "/keys/#{name}", headers: bearer(mint()))
       assert conn.status == 200, "GET /keys/#{name} failed: #{conn.resp_body}"
       json(conn)["kid"]
     end

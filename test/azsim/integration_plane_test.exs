@@ -37,12 +37,12 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
   test "send/receive/complete round-trip" do
     queue = "it-plane-#{System.unique_integer([:positive])}"
 
-    assert :ok = QueueStore.enqueue(queue, "payload-1")
-    assert {:ok, [msg]} = QueueStore.dequeue_matching(queue)
-
+    assert {:ok, _} = QueueStore.enqueue(queue, "payload-1")
+    assert {:ok, msg, _lock} = QueueStore.dequeue_matching(queue)
     assert msg.body == "payload-1"
-    assert :ok = QueueStore.complete(queue, msg.sequence_number)
-    assert {:ok, []} = QueueStore.dequeue_matching(queue)
+    assert msg.delivery_count == 1
+    assert :ok = QueueStore.complete(queue, msg.seq)
+    assert :empty = QueueStore.dequeue_matching(queue)
   end
 
   test "abandon requeues; deadletter after max-delivery-count" do
@@ -55,23 +55,23 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       %{"properties" => %{"maxDeliveryCount" => 2}}
     })
 
-    assert :ok = QueueStore.enqueue(queue, "poison")
-    assert {:ok, [m1]} = QueueStore.dequeue_matching(queue)
-    assert m1.delivery_count == 0
+    assert {:ok, _} = QueueStore.enqueue(queue, "poison")
+    assert {:ok, m1, _l1} = QueueStore.dequeue_matching(queue)
+    assert m1.delivery_count == 1
 
     # Abandon 1: requeued, delivery_count preserved.
-    assert :ok = QueueStore.release(queue, m1.sequence_number)
-    assert {:ok, [m2]} = QueueStore.dequeue_matching(queue)
-    assert m2.sequence_number == m1.sequence_number
-    assert m2.delivery_count == 1
+    assert :ok = QueueStore.release(queue, m1.seq)
+    assert {:ok, m2, _l2} = QueueStore.dequeue_matching(queue)
+    assert m2.seq == m1.seq
+    assert m2.delivery_count == 2
 
     # Abandon 2 hits max-delivery-count => deadletter (MaxDeliveryCountExceeded).
-    assert :ok = QueueStore.release(queue, m2.sequence_number)
+    assert :ok = QueueStore.release(queue, m2.seq)
 
     dlq = QueueStore.deadletter_queue(queue)
-    assert {:ok, [dl]} = QueueStore.dequeue_matching(dlq)
+    assert {:ok, dl} = Smalt.Store.get(:smalt_sb_messages, {dlq, 1})
     assert dl.body == "poison"
-    assert dl.system_properties["DeadLetterReason"] == "MaxDeliveryCountExceeded"
+    assert dl.annotations["DeadLetterReason"] == "MaxDeliveryCountExceeded"
   end
 
   # ===========================================================================

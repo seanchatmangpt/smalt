@@ -299,7 +299,11 @@ defmodule Smalt.StoreDetsTest do
         {:error, {:needs_repair, _}} = torn ->
           retry_or_raise(torn, path, attempt)
 
-        {:error, :not_a_dets_file} = torn ->
+        {:error, {:not_a_dets_file, _}} = torn ->
+          retry_or_raise(torn, path, attempt)
+
+        # defensive: some OTP streams emit the bare-atom form
+        {:error, tag} = torn when tag in [:needs_repair, :not_a_dets_file] ->
           retry_or_raise(torn, path, attempt)
 
         {:error, other} ->

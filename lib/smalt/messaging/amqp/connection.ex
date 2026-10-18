@@ -167,7 +167,8 @@ defmodule Smalt.Amqp.Connection do
     # the typed detach; the connection stays up so the relink is clean.
     {detached, links} =
       Enum.flat_map_reduce(state.links, %{}, fn {{ch, h}, link}, acc ->
-        if link[:role] == :receiver and link[:address] == address do
+        if link[:kind] == :eventhubs and link[:role] == false and
+             link[:address] == address do
           send_frame(state, ch, {:detach,
             %{handle: h, closed: true,
               error: %{condition: "amqp:link:detach-forced",

@@ -113,6 +113,7 @@ RUN mix release smalt --path /app/_release
 # `mix release` does not package. Overlay it (glob cp — the versioned release
 # dir name is not COPY-able at build time).
 COPY config/env /tmp/burn-env/
-RUN cp /tmp/burn-env/*.exs /app/_release/releases/*/env/ && rm -rf /tmp/burn-env
+RUN for d in /app/_release/releases/*/; do mkdir -p "$d/env" \
+      && cp /tmp/burn-env/*.exs "$d/env/" ; done && rm -rf /tmp/burn-env
 EXPOSE 9443 9444 8443 5672 5673 9545
 CMD ["/app/_release/bin/smalt", "start"]

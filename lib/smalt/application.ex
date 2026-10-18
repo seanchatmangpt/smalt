@@ -151,6 +151,8 @@ defmodule Smalt.Application do
       "/app/",
       "/dbs/",
       "/keys",
+      "/secrets",
+      "/kv",
       "/topics/",
       "/atlas/",
       "/dataCollectionRules",

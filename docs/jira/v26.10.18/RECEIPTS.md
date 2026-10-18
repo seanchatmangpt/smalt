@@ -15,9 +15,11 @@ count, or PASS/FAIL token) found in the file.
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
 | azb-01-image | [azb-01-image-pin.md](receipts/azb-01-image-pin.md) | ALIVE | AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5) **NO-CONTEXT** |
+| azb-02-netns | [azb-02-netns.md](receipts/azb-02-netns.md) | ALIVE | AZB-02 Per-container network namespaces, zero host port publish **NO-CONTEXT** |
 | azb-03-burn- | [azb-03-burn-schema.md](receipts/azb-03-burn-schema.md) | ALIVE | AZB-03 — Burn JSONL receipt schema + validator **NO-CONTEXT** |
 | azb-04-plane | [azb-04-plane-loader.md](receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT **NO-CONTEXT** |
 | azb-11-isola | [azb-11-isolation-court.md](receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) **NO-CONTEXT** |
+| azb-12-ratio | [azb-12-ratio.md](receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
 | b-await-migr | [b-await-migration.md](receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE **NO-CONTEXT** |
 | b-e2e-wire | [b-e2e-wire.md](receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
@@ -33,10 +35,12 @@ count, or PASS/FAIL token) found in the file.
 | b6-cites | [b6-cites.md](receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) **NO-CONTEXT** |
 | b7-tiers | [b7-tiers.md](receipts/b7-tiers.md) | PARTIAL_ALIVE | B7 — harness/tiers batch receipt (stress tier + budget gate) |
 | b8-doctrine | [b8-doctrine.md](receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) **NO-CONTEXT** |
+| burn-image | [burn-image.md](receipts/burn-image.md) | ALIVE | Burn-suite image receipt (v26.10.18 azsim-burn) **NO-CONTEXT** |
 | burn-scripts | [burn-scripts.md](receipts/burn-scripts.md) | PARTIAL_ALIVE | docker/burn boot-burn + chaos-kill scripts **NO-CONTEXT** |
 | burn-soak-sc | [burn-soak-scripts.md](receipts/burn-soak-scripts.md) | PARTIAL_ALIVE | burn lane — soak.sh + parallel-matrix.sh + 30-burn.just **NO-CONTEXT** |
 | i23-fence11- | [i23-fence11-flip.md](receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
 | i23-standalo | [i23-standalone-noise.md](receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing **NO-CONTEXT** |
+| i24-store-de | [i24-store-dets-torn.md](receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` **NO-CONTEXT** |

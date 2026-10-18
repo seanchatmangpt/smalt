@@ -31,6 +31,7 @@ exemption-marker path.
 Exit: 0 = static green (and, with --runtime, twin clean); 1 = offenders /
 vacuous; 3 = self-check SKIP (mix unavailable). No git. Stdlib only.
 """
+import fnmatch
 import os
 import re
 import subprocess
@@ -245,25 +246,67 @@ EXEMPTS_PATH = os.path.join(REPO, "test", "support",
 
 def load_runtime_exempts():
     """Parse test/support/isolation_runtime_exemptions.exs: one
-    `module Name  # reason: <text>` entry per line (Elixir-comment syntax so
-    the static court's scanner ignores it). Missing file = no exemptions."""
+    `name <glob>  # reason: <text>` entry per line (Elixir-comment syntax so
+    the static court's scanner ignores it). A leak block is exempt iff it has
+    NO env deltas and EVERY names_new/names_lost entry matches a pattern.
+    Missing file = no exemptions."""
     if not os.path.exists(EXEMPTS_PATH):
-        return {}
-    exempts = {}
-    with open(EXEMPTS_PATH, encoding="utf-8") as f:
-        for line in f:
-            m = re.match(r"\s*module\s+(\S+)\s+#\s*reason:\s*(.+)$", line)
-            if m:
-                exempts[m.group(1)] = m.group(2).strip()
+        return []
+    exempts = []
     with open(EXEMPTS_PATH, encoding="utf-8") as f:
         body = f.read()
-    unparsed = [l for l in body.splitlines()
-                if l.strip() and not l.strip().startswith("#")
-                and not re.match(r"\s*module\s+\S+\s+#\s*reason:", l)]
-    if unparsed:
-        print("REFUSE malformed exemption lines: %r" % unparsed[:3])
-        sys.exit(1)
+    for line in body.splitlines():
+        m = re.match(r"\s*name\s+(\S+)\s+#\s*reason:\s*(.+)$", line)
+        if m:
+            exempts.append((m.group(1), m.group(2).strip()))
+            continue
+        if line.strip() and not line.strip().startswith("#"):
+            print("REFUSE malformed exemption line: %r" % line.strip())
+            sys.exit(1)
     return exempts
+
+
+def classify_leaks(out, exempts):
+    """Group LEAK lines with their detail lines; exempt a block only when it
+    carries no env delta and all its name deltas match an exempt pattern."""
+    blocks = []
+    cur = None
+    for line in out.splitlines():
+        if "ISOLATION-TWIN LEAK" in line:
+            cur = {"module": line.split("module=", 1)[1].split()[0],
+                   "lines": [line.strip()], "detail": []}
+            blocks.append(cur)
+        elif cur is not None and line.startswith("ISOLATION-TWIN"):
+            cur["detail"].append(line.strip())
+    counted = []
+    for b in blocks:
+        names = []
+        env_lines = []
+        for d in b["detail"]:
+            if "names_new=" in d:
+                names += _bracketed(d, "names_new=")
+            if "names_lost=" in d:
+                names += _bracketed(d, "names_lost=")
+            if " env " in d:
+                env_lines.append(d)
+        unm = [n for n in names
+               if not any(fnmatch.fnmatch(n, pat) for pat, _ in exempts)]
+        if env_lines or unm:
+            counted.append(b)
+            for l in b["lines"] + b["detail"]:
+                print(l)
+        else:
+            reason = "; ".join(
+                r for n in names for pat, r in exempts if fnmatch.fnmatch(n, pat))
+            print("EXEMPT(%s) %s" % (reason[:120], b["lines"][0]))
+    return counted
+
+
+def _bracketed(line, key):
+    seg = line.split(key, 1)[1]
+    seg = seg.split("names_", 1)[0] if key == "names_new=" else seg
+    inner = seg[seg.find("[") + 1:seg.find("]")]
+    return [p.strip() for p in inner.split(",") if p.strip()]
 
 
 def cmd_runtime():
@@ -276,29 +319,17 @@ def cmd_runtime():
     proc = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True,
                           text=True)
     out = (proc.stdout or "") + (proc.stderr or "")
-    leaks = []
-    for line in out.splitlines():
-        if "ISOLATION-TWIN LEAK" in line:
-            leaks.append(line.strip())
-    # Typed runtime exemptions (AZB-11b): structural lazy-singleton /
-    # shared-tree boots that lib ownership keeps running for the rest of the
-    # suite. Each entry carries a mandatory reason; exempted modules still
-    # print their LEAK lines prefixed EXEMPT(<reason>) and are not counted.
-    # Non-exempt leaks fail the court exactly as before — fail-closed.
-    runtime_exempts = load_runtime_exempts()
-    counted = []
-    for ln in leaks:
-        mod = ln.split("module=", 1)[1].split()[0] if "module=" in ln else "?"
-        if mod in runtime_exempts:
-            print("EXEMPT(%s) %s" % (runtime_exempts[mod], ln))
-        else:
-            counted.append(ln)
-    for ln in counted:
-        print(ln)
+    # Typed runtime exemptions (AZB-11b): structural registered-name classes
+    # (lib-owned lazy singletons, kernel-owned VM-lifetime processes,
+    # shared-tree lazy-boot shifts). Exemption is name-pattern based with a
+    # mandatory reason; a leak block counts ONLY if it carries an env delta
+    # or an unmatched name delta — env leaks are never exemptable.
+    exempts = load_runtime_exempts()
+    counted = classify_leaks(out, exempts)
     n = len(counted)
     print("runtime twin: %d module(s) leaked; mix exit=%d" % (n, proc.returncode))
-    print("runtime exemptions: %d (typed list in %s)"
-          % (len(runtime_exempts), EXEMPTS_PATH))
+    print("runtime exemptions: %d pattern(s) in %s"
+          % (len(exempts), EXEMPTS_PATH))
     verdict = "PASS" if (n == 0 and proc.returncode == 0) else "FAIL"
     print("runtime verdict=%s" % verdict)
     with open(os.path.join(REPO, "tmp", "isolation-court-runtime.out"),
