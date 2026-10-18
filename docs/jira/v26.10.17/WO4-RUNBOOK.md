@@ -37,7 +37,7 @@ after. No edits in the canonical checkout.
 
 1. **Precondition**: two-green (or the documented typed-RED waiver) landed.
    Confirm standing per `docs/jira/v26.10.17/FINAL.md`.
-2. **Bump versions** (from repo root `/Users/sac/smalt`):
+2. **Bump versions** (from the repo root):
 
    ```bash
    sed -i '' 's/@version "26.10.16"/@version "26.10.17"/' mix.exs

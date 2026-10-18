@@ -15,6 +15,8 @@
 # evidence/planning-record class as the v26.10.15 exclusion below).
 # Also excluded (2026-10-15, lane X-4): docs/jira/*/receipts/ and
 # docs/jira/*/sdk-results/ — 163 hits across 80 files. These are evidence
+# Extended (2026-10-17, coordinator): docs/jira/*/verify-ledger/ (machine
+# verdict ledgers from the 20-wide verify pool quoting captured command
 # Extended (2026-10-16, coordinator): docs/jira/*/bench/ (machine JSONL quoting
 # absolute stack/series paths — 22-hit class from the C/A bench waves) and
 # docs/jira/v26.10.15/ (planning docs citing the checkout root). Same
@@ -113,7 +115,7 @@ ALLOWLIST=(
 
 # 1. Sweep tracked files only, excluding machine/self-quote surfaces.
 hits="$(git ls-files -z \
-  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/v26\.10\.15/|docs/jira/v26\.10\.16/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
+  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/[^/]+/verify-ledger/|docs/jira/v26\.10\.15/|docs/jira/v26\.10\.16/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
   | xargs -0 grep -niE "$PATTERN" 2>/dev/null || true)"
 
 allowed=0

@@ -1,6 +1,6 @@
 # RECEIPT_CONTEXT_LAW — batch-context witness law (milestone-doc lane, item #2)
 
-Window: v26.10.17. Repo: /Users/sac/smalt. Standing: LAW (binding from this
+Window: v26.10.17. Repo: the smalt checkout root. Standing: LAW (binding from this
 window forward).
 
 ## 1. The law

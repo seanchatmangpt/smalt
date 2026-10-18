@@ -18,7 +18,7 @@ overall still NOT RELEASABLE pending gate 1 two-green only.
 | 3c | — B4 checksum | — | **FIXED** (package built + checksum on record, r244). | — |
 | 3d | — B5/B6 naming | — | **ADVISORY** ("ARM-style" prose; no mechanical hex gate). | — |
 | 4 | docs-dod-check | `just docs-dod-check` | **GREEN — exit 0** (re-run on this tree 2026-10-17 post repair-wave; 54/54 paths OK, every receipt path named in docs exists on disk). | Stays green by regeneration discipline; re-run after any docs/receipt edit. |
-| 5 | quiet-check | `just quiet-check` | **RED right now** (re-run 2026-10-17): stray beam pid 17834 cwd `/Users/sac/ex4pm/deps/rdf` (not this checkout) + concurrent beam suite + load 11.6/13.8 above threshold — transient machine-state faces, not a tree defect. Prior green witnesses: attempt 3 preconditions, load 6.3 / 9.0 < 16 (r241). | Clear the foreign beam (port_sweep or kill its owner), wait for load < threshold, no concurrent suites; re-run GREEN. This is a precondition gate for #1, not a release gate by itself. |
+| 5 | quiet-check | `just quiet-check` | **RED right now** (re-run 2026-10-17): stray beam pid 17834 cwd `the ex4pm sibling checkout (deps/rdf)` (not this checkout) + concurrent beam suite + load 11.6/13.8 above threshold — transient machine-state faces, not a tree defect. Prior green witnesses: attempt 3 preconditions, load 6.3 / 9.0 < 16 (r241). | Clear the foreign beam (port_sweep or kill its owner), wait for load < threshold, no concurrent suites; re-run GREEN. This is a precondition gate for #1, not a release gate by itself. |
 
 ## Notes
 

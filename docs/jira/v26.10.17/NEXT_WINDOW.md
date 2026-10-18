@@ -136,6 +136,60 @@ ETS `:smalt_subscriptions` teardown race (victims :1474/:975), Lro :543
 op-record store miss. The gate carries to v26.10.18 with this honest
 witness — no two-green exists; version stays 26.10.16.
 
+**REPAIR UPDATE 2026-10-18 (milestone-doc, receipt-cited):** all five
+named r241 court faces are REPAIRED with landing receipts; the
+court-x2 gate itself is NOT closed — **attempt 4 is still pending** and
+remains the open residual. Per-face status:
+
+- **Fence 10 / WasmEngineFailClosed (was PERSISTENT-FLAKE)** —
+  REPAIRED (`receipts/i21-fence10-fix.md`, ALIVE): the 100ms wall-clock
+  bound was replaced by the engine's own 250ms retry-delay bound, which
+  provably fences the leaked-sleep class (any leaked sleep >=250ms;
+  clean path single-digit ms solo, 129ms witnessed worst-case under
+  load) instead of measuring scheduler jitter. Verification: 5x solo
+  green + green under artificial load embedded in the receipt.
+- **EgressDispatchTest ETS `:smalt_subscriptions` setup race (victims
+  :1474/:975)** — REPAIRED (`receipts/i21-ets-race-fix.md`, PASS):
+  test-side bounded typed retry (`resilient_clear/1`, 50x/10ms) that
+  re-runs `ensure_store_up()` on the exact dead-table `ArgumentError`;
+  `lib/smalt/store.ex` NOT touched (disclosed in the receipt).
+- **Lro :543 op-record store miss** — REPAIRED
+  (`receipts/i21-lro-face.md`, PARTIAL_ALIVE — face fixed and verified
+  solo x3 + paired; court-x2 not run in that lane): fixed
+  sleep+single-sweep+hard-assert replaced by `sweep_until_terminal/3`
+  (5s bounded retry with typed failure naming offending record keys).
+  The PARTIAL_ALIVE standing is exactly the attempt-4 dependency.
+- **BrokerFacade sweeper whereis-nil (i20c face)** — REPAIRED
+  (`receipts/i21-brokerfacade-sweeper.md`, PASS): test boots a fresh
+  ExUnit-managed Sweeper via `start_supervised!` when the shared
+  singleton was torn down by a sibling (`whereis == nil`), 3x solo +
+  1x paired green in the receipt.
+- **StoreDets churn 300s budget + blob pagination 110ms perf budget** —
+  REPAIRED (`receipts/i21-churn-budget.md`, ALIVE: 300s -> 600s with
+  receipt-cited 350x sync-tail evidence, 1 test 0 failures exit 0;
+  `receipts/i21-blob-budget.md`, ALIVE: 110 -> 180ms with min-of-5
+  reps, revert-fenced — 180 stays under the ~205ms quiet revert
+  estimate so the fence still trips on the regression class).
+
+**Still open after the repairs (unchanged close conditions):**
+
+1. **court-x2 attempt 4** — the only path to the two-green gate. Close
+   condition: two consecutive green legs over the repaired tree with a
+   receipt carrying literal RC=0 output; per the receipt context law
+   the witness must be Context: full, not per-file greens.
+2. **leak-court remediation continuation** — the 109-finding leak-court
+   baseline is being worked down in batches
+   (`receipts/i21-leak-batch1.md`, `i21-leak-batch2.md`,
+   `i21-leak-batch3.md`, `i21-leak-court-delta.md`); close condition is
+   the leak-court delta receipt showing 109 -> 0 (or a per-remaining-
+   finding typed disposition), re-derived at v26.10.18 open.
+3. **publish B1 (ex4pm hex)** — `mix.exs` is already flipped hex-only
+   (`{:ex4pm, "~> 26.10.8", override: true}`, path dep retired, B1
+   marked CLOSED 2026-10-17 per the operator "hex.pm only" ruling);
+   the remaining dependency is the actual `mix hex.publish` of ex4pm
+   26.10.8 from `~/ex4pm` plus the NOTICE attribution remainder —
+   close conditions unchanged from §4 below, receipt-gated.
+
 ## 4. NOTICE upstream-attribution — B1 CLOSED 2026-10-17 (r244); NOTICE
 attribution remainder still open
 
