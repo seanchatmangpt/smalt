@@ -17,7 +17,7 @@ Last wake: 2026-10-18 wake 4. Receipts dir now live
 | B0 | foundations P0 (+c567 uid/1) | LANDED (ALIVE) | receipts/b0-foundations.md | test_helper smoke 2/0; 37/37 reference suites; real test_helper path |
 | b-await-migration | lib await-migration (sites 4+5) | LANDED (PARTIAL_ALIVE: sites 4+5 landed, sites 1-3 gated on b-lro-notifier) | receipts/b-await-migration.md | mix compile --warnings-as-errors exit 0; pplan 70/0; enclave 15/0 x2; 92-162/0 x2; sleep-grep zero hits both files |
 | B1 | corpus-compliance | LANDED (ALIVE) | receipts/b1-corpus.md | corpus 26/0 x3 (verdicts 668/214/118 byte-equal across runs); compliance 157/0 x2; c3 divergence closed by construction |
-| B2 | amqp.md x5 files | BLOCKED (B0) | — | — |
+| B2 | amqp.md x5 files | LANDED (ALIVE; draft deviations verified-then-landed; hang fail-safes kept with role comments) | receipts/b2-amqp.md | amqp 331/0 (45 excluded); wire tier 376/0 passes A+B |
 | B3 | fence10-ratio + sleeps A5 | LANDED (ALIVE — structural conversion (lib-redesign path per R4), vacuity-probed, 12x-green; ratio fence NOT landed, per R4 alternatives) | receipts/b3-fence10.md | fence-10 sleep-free; affidavit suite green incl. fence line-numbered failure output |
 | B4 | store-lro-wasm §1/§2 + lro backdate + sleeps A1-A7/B2 | LANDED (PASS; mid-session lro 37/3 were sibling WIP — receipt run 37/0) | receipts/b4-lro-store.md | store_dets stress 6/0 x2 + receipt run; lro 37/0; corpus 19/0 x3; blob 116/0 x2; MIX_BUILD_ROOT=_build-ft-b4 |
 | b-wasm-supervisor | lib-redesign-wasm-lro Part 1 | LANDED (ALIVE; full suite run was in flight at wake 15) | receipts/b-wasm-supervisor.md | affidavit fences 1-12 green incl. fence-11 hammer + fence-12 already_started passthrough, MIX_BUILD_ROOT=_build-ft-ws |

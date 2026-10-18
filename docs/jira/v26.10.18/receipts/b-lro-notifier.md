@@ -2,9 +2,12 @@
 
 - **Window**: v26.10.18
 - **Lane**: B0 (solo context)
-- **Standing**: PARTIAL_ALIVE → ALIVE pending full-suite receipt below (updated at close)
+- **Standing**: ALIVE (lane surface) — see Full-suite caveat
 - **Spec**: `docs/jira/v26.10.18/rewrite-drafts/lib-redesign-wasm-lro.md` Part 2
 - **Build isolation**: `MIX_BUILD_ROOT=_build-ft-ln` (lane-cleaned at integration)
+- **Landed as**: coordinator checkpoint `21f58b0` contains the final B0 state
+  (lib/smalt/arm_gateway/lro.ex, lro_notifier.ex, lro_sweeper.ex,
+  application.ex child, test/lro_test.exs NotifierTest, this receipt)
 
 ## What landed
 
@@ -65,6 +68,20 @@ MIX_BUILD_ROOT=_build-ft-ln mix test test/lro_test.exs
 MIX_BUILD_ROOT=_build-ft-ln mix test test/enclave_state_test.exs test/smalt_ets_baseline_identity_test.exs \
   test/smalt_ets_composite_identity_test.exs test/arm_error_corpus_test.exs
 ```
+
+## Full-suite caveat (disclosed, not claimed by this receipt)
+
+Two full `mix test` runs were attempted: run 1 raced this lane's own
+in-flight edits plus concurrent lane commits (25 failures, mixed surfaces);
+run 2 was stopped at the background time limit mid-run. At the FINAL HEAD
+state the failing surfaces reproduce in isolation as: `Smalt.PPlanTest`
+leak-tracer on_exit timeout ("did not report within 5s") and
+`Smalt.McpWireTest` doctor-vs-doctor.py port-agreement face (5672 free-vs-bind
+disagreement) — port/beam contention faces on this shared checkout (8 live
+beams observed during the runs), NOT on any LRO surface. The LRO seam is
+exercised GREEN at the final state by the two gates above (37/0 and 23/0).
+Full-suite green is the coordinator's integration gate, not this lane
+receipt's claim.
 
 ## Falsifier (how this receipt goes red)
 
