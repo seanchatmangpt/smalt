@@ -2385,21 +2385,6 @@
     "Elixir.Smalt.CanonicalProjectionTest.test public projection hides internals (grep fence) rendered doc contains no banned internal tokens": {
       "tier": "default"
     },
-    "Elixir.Smalt.CascadeReplayIdentityTest.test cascade_edges.ex replays byte-identical from the pack checkout": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.CascadeReplayIdentityTest.test dispatch table covers every table the hand-written paths sweep (E2 oracle)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.CascadeReplayIdentityTest.test every CascadeEdge childTable resolves to a StoreTable individual (referential integrity)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.CascadeReplayIdentityTest.test the projected census matches the swap-time census (23 edges)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.CascadeReplayIdentityTest.test verify gate is quiet on the live ontology and FIRES on a mutated copy": {
-      "tier": "default"
-    },
     "Elixir.Smalt.Chaos.CrashIsolationTest.test store crash is contained: store restarts, listeners never go down": {
       "tier": "default"
     },
@@ -2766,18 +2751,6 @@
     "Elixir.Smalt.Compliance.C5ServicebusTest.test settlement outcomes (OASIS 2.7.6 delivery states) accepted 0x24 / released 0x26 empty bodies; rejected 0x25 carries error list; modified 0x27 field set": {
       "tier": "default"
     },
-    "Elixir.Smalt.ConfigReplayIdentityTest.test census is closed at 47 keys; coverage and bijection gates hold": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.ConfigReplayIdentityTest.test config.ex replays byte-identical from the pack checkout": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.ConfigReplayIdentityTest.test override semantics are mirrored on the projected accessors": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.ConfigReplayIdentityTest.test pack lock digest matches the live pack checkout": {
-      "tier": "default"
-    },
     "Elixir.Smalt.Corpus.ApiVersionAdmission.test api-version == latest admits (no api-version 400)": {
       "tier": "default"
     },
@@ -2824,9 +2797,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.Corpus.ShaclFuzz.test L2: sku-less storage PUT with valid location is ADMITTED (Defaults.apply before check_shape)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Corpus.ShaclFuzz.test fuzz sweep: 1000 seeded adversarial PUTs \u2014 no untyped escape, no refusal mutation": {
       "tier": "default"
     },
     "Elixir.Smalt.Corpus.ShaclFuzz.test pinned regression rows replay with their receipted verdict classes": {
@@ -3746,18 +3716,12 @@
     "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) prefix-resume fence: a token minted under prefix A resumed under prefix B is a typed 400": {
       "tier": "default"
     },
-    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) store restart: docs replayed (cross-session DETS snapshot) or dropped (same-session), old-grammar token still typed 400": {
-      "tier": "default"
-    },
     "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) truncated list emits a v2 token, resume completes the feed, last page tokenless": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test name-path parity 255-char names accepted; 256-char and slash names -> 400 BadRequest": {
       "max_ms": 11422,
       "tier": "stress"
-    },
-    "Elixir.Smalt.DataPlane.CosmosTest.test partition-key 400 messages (real Cosmos parity) _rid uniqueness: 10k doc creates, zero collisions, grammar holds": {
-      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test partition-key 400 messages (real Cosmos parity) query POST without a query document -> 400 BadRequest (row 8)": {
       "max_ms": 16166,
@@ -3964,12 +3928,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.ErrorCodesDocTest.test only compliance surfaces may carry an unspecified (?) HTTP status": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.EtsBaselineIdentityTest.test resource create+delete via HTTP restores strict ETS identity": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.EtsCompositeIdentityTest.test full composite provision + reverse-topological teardown restores strict ETS identity": {
       "tier": "default"
     },
     "Elixir.Smalt.EventGridConformanceTest.test GET list is topic-scoped": {
@@ -4998,16 +4956,10 @@
     "Elixir.Smalt.PPlanTest.test lens2 ontology drift alarm ontology terminal states are absorbing (court terminal set stays consistent)": {
       "tier": "default"
     },
-    "Elixir.Smalt.PPlanTest.test lens2 pid-reuse window 2000 replacements spawned between kill and sweep: 0 pid reuse, sweep still recovers": {
-      "tier": "default"
-    },
     "Elixir.Smalt.PPlanTest.test lens2 pid-reuse window measured window: recover sweep latency and pid-allocation distance": {
       "tier": "default"
     },
     "Elixir.Smalt.PPlanTest.test lens3 court matrix every (from,to) x claim-state x patch-shape: verdict + fence + no partial write": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.PPlanTest.test lens3 model fuzz 10000-op model fuzz with poison-patch transitions matches the machine model": {
       "tier": "default"
     },
     "Elixir.Smalt.PPlanTest.test lens3 payload fence a struct-like patch map is refused, not crashed on": {
@@ -5101,9 +5053,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.PPlanTest.test model fuzz 300 random ops against the real store match the machine model": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.PPlanTest.test model fuzz 3000-op stress fuzz with interleaved concurrent recover/0 sweeps": {
       "tier": "default"
     },
     "Elixir.Smalt.PPlanTest.test store conformance law: CAS conflict detected, no clobber": {
@@ -5200,12 +5149,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.R32VerifyScratchTest.test 4. create JWK body carries kty + key_ops; policy intersects key_ops": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.RegistryReplayIdentityTest.test pack lock digest matches the live pack checkout": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.RegistryReplayIdentityTest.test registry.ex replays byte-identical from the pack checkout": {
       "tier": "default"
     },
     "Elixir.Smalt.RuntimeContractsTest.test Support court residuals (lens-3) a contract whose name/0 raises runs under a guessed name, fan-out survives": {
@@ -5461,16 +5404,7 @@
     "Elixir.Smalt.Semantic.StoreRead.Lens7FieldPolicyTest.test non-binary ledger fields project nil; truthy non-binary Evidence status defaults": {
       "tier": "default"
     },
-    "Elixir.Smalt.SemanticProjectionTest.test R2RML determinism with registry regeneration interleaved renders stay byte-identical while `mix smalt.gen` runs concurrently": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission compiles all three resources into a mapping bundle": {
-      "tier": "default"
-    },
     "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission materializes a seeded resource into RDF triples": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission renders deterministic W3C R2RML TTL in the smalt vocabulary": {
       "tier": "default"
     },
     "Elixir.Smalt.SemanticProjectionTest.test R2RML render determinism under concurrent Store mutation render stays byte-identical while Store is concurrently mutated": {
@@ -5479,37 +5413,10 @@
     "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation non-map Store row refuses the semantic read typed, never crashes": {
       "tier": "default"
     },
-    "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation semantic Store-backed rows only project Registry-admitted types": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation vacuous ledger transactionId refuses the LedgerEntry read typed": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation vacuous primary keys (nil and blank) refuse the semantic read typed": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemanticProjectionTest.test domain read path over Store reads a seeded ARM resource as an Ash record": {
-      "tier": "default"
-    },
     "Elixir.Smalt.SemanticProjectionTest.test domain read path over Store reads a seeded ledger receipt as a LedgerEntry": {
       "tier": "default"
     },
     "Elixir.Smalt.SemanticProjectionTest.test ex4pm evidence admission admits an OCEL deviation record and projects it as evidence": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemanticProjectionTest.test ex4pm evidence admission evidence surface is read-only: known != authorized": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemconvReplayIdentityTest.test every span/event name in the model YAML has an ontology row (census)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemconvReplayIdentityTest.test graph census pins the pack surface (anti-vacuity on this suite)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemconvReplayIdentityTest.test registry.ex replays byte-identical from the pack checkout": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.SemconvReplayIdentityTest.test verify gate is quiet on the live ontology and FIRES on a mutated copy": {
       "tier": "default"
     },
     "Elixir.Smalt.Spc.DriftTest.test 1-sigma drift emits a CloudEvents spc.drift row into :smalt_event_messages": {
@@ -5543,21 +5450,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.StoreDetsTest.test restore replays ledger meta so enforce-existence admits post-restore appends": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.StoreDetsTest.test restore x insert_new churn: insert_new :ok implies the FRESH value wins (no stale clobber)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.StoreTablesReplayIdentityTest.test every :smalt_ atom referenced in lib/ is a registry row (coverage)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.StoreTablesReplayIdentityTest.test generated lists equal the hand-written lists they replaced (step 7 witness)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.StoreTablesReplayIdentityTest.test store_tables.ex replays byte-identical from the pack checkout": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.StoreTablesReplayIdentityTest.test verify gate is quiet on the live ontology and FIRES on a mutated copy": {
       "tier": "default"
     },
     "Elixir.Smalt.TLSTest.test Bandit https boot + :ssl connect + :httpc round-trip": {

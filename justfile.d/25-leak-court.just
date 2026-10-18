@@ -15,3 +15,12 @@
     python3 gates/test_isolation_leak_gate.py > /tmp/leak-court.out 2>&1
     rc=$?
     echo "[LEAK-COURT] exit=$rc $(grep -c 'uncovered' /tmp/leak-court.out 2>/dev/null || echo '?') uncovered-mutation lines (see /tmp/leak-court.out)"
+
+# AZB-11 isolation court: static (start_supervised! + put_env restore
+# discipline, inline `# isolation-court: exempt <reason>` only) over test/.
+@isolation-court:
+    python3 scripts/isolation_court.py
+
+# Runtime twin: serial offline suite with per-module registered()/env diffs.
+@isolation-court-runtime:
+    python3 scripts/isolation_court.py --runtime-only

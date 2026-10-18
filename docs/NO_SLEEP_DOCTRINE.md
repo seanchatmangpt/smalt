@@ -114,3 +114,17 @@ c1_arm 399/422, smalt_arm_gateway 1287, arm_error_corpus 477, queue_store
 6. Promote to `~/.claude/rules/no-sleep-doctrine.md` only after the gate
    enforces green (gate landed + non-vacuous + violations repaired); the
    C22 harness-edit OOD-split court applies.
+
+## AZB-21 extension (v26.10.18): gate green + burn-script scope
+
+The gate enforces green on the tree (`just sleep-gate` exit 0, 0
+unclassified): every remaining site is typed via
+`scripts/sleep_gate_classes.json` (audited bounded-poll files/functions,
+each with a reason) or an adjacent `# SLEEP-CLASS: <TIME-ADVANCE|POLL-STEP>`
+(test) / census-class (lib) annotation. Scope additions: `docker/burn/*.sh`
+literal `sleep [0-9]` (no annotation escape — burn scripts pace via their
+own loops), `:timer.sleep` (treated as Process.sleep), and same-line
+`after <integer> ->` delay receives. Matches inside string literals are
+fence fixtures, not call sites. Non-vacuity: `just shim-court sleep_gate`
+now runs four legs (test, lib, burn-script, dual-injection naming both —
+the AZB-21 anti-vacuity, witnessed).

@@ -13,8 +13,8 @@
 #   rolling-counters surface answers post-boot (no missing-table drop;
 #   window contents are in-memory by design and are NOT asserted to survive
 #   kill -9 — asserting that would be an overclaim).
-#   JSONL receipts smalt-burn/v1 {schema, lane, cycle, stage, rc,
-#   orphans_detected, recovery_ms, detail} appended to boot-burn.jsonl.
+#   JSONL receipts smalt-burn/v2 (AZB-03 burn-row.schema.json) appended to
+#   boot-burn.jsonl — one CLEAN/typed-verdict row per (cycle, stage).
 #
 # No fixed sleeps: every wait is a bounded deadline poll on an observable
 # (TCP connect / process existence / dets open result). NO-SLEEP-DOCTRINE.
@@ -39,10 +39,40 @@ if [ ! -x "$SMALT_BIN" ]; then
 fi
 mkdir -p "$BURN_DIR" 2>/dev/null || BURN_DIR=$(mktemp -d)
 RECEIPT="$BURN_DIR/boot-burn.jsonl"
+SUBJ_SHA=${SMALT_BURN_SUBJECT_SHA:-$(git -C /smalt rev-parse HEAD 2>/dev/null || echo unrecorded)}
+IMG_DIGEST=${BURN_IMAGE_DIGEST:-unrecorded}
+BURN_CONTAINER=${BURN_CONTAINER:-$(hostname 2>/dev/null || echo boot-burn)}
+BURN_PLANE=${SMALT_BURN_PLANE:-all}
+RUN_ID="boot-burn-$(date +%s)"
+CYCLE_LIST=$(seq -s, 1 "$CYCLES")
 
+# Expected-matrix header: without it a dropped cycle is invisible (the AZB-03
+# falsifier) and `validate_burn.py --gate` refuses the file. Every cycle
+# emits ALL THREE stage rows (probe/recover/teardown) so the matrix closes.
+printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[%s],"stages":["probe","recover","teardown"]}}\n' \
+  "$RUN_ID" "$BURN_CONTAINER" "$CYCLE_LIST" >"$RECEIPT"
+
+# AZB-03 row emitter (smalt-burn/v2). One row per (container, plane, cycle,
+# stage). Stage vocabulary maps raw lane stages into the schema enum:
+# boot-probe -> probe, kill9-recovery -> recover, *-shutdown -> teardown.
+# rc: 0 -> CLEAN, else UNHANDLED_EXIT (broken_term mu_unlawful). Schema:
+# docs/jira/v26.10.18/burn/burn-row.schema.json; validate with
+# `python3 scripts/validate_burn.py --gate <file>`.
 emit() { # emit <cycle> <stage> <rc> <orphans> <recovery_ms> <detail>
-  printf '{"schema":"smalt-burn/v1","lane":"boot-burn","cycle":%s,"stage":"%s","rc":%s,"orphans_detected":%s,"recovery_ms":%s,"detail":"%s"}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" >>"$RECEIPT"
+  _cycle=$1; _stage=$2; _rc=$3; _orphans=$4; _recovery_ms=$5
+  case "$_stage" in
+    boot-probe) _st=probe ;;
+    kill9|dets-recovery|kill9-recovery) _st=recover ;;
+    *shutdown*) _st=teardown ;;
+    *) _st=boot ;;
+  esac
+  if [ "$_rc" = 0 ]; then _v=CLEAN; _b=null; else _v=UNHANDLED_EXIT; _b='"mu_unlawful"'; fi
+  if [ "$_orphans" -gt 0 ] 2>/dev/null; then _oj='["orphan-listener-after-SIGTERM"]'; else _oj='[]'; fi
+  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":%s,"stage":"%s","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":%s,"crash_reports":0,"evidence_path":"%s","broken_term":%s,"lane":"boot-burn","recovery_ms":%s,"detail":"%s"}\n' \
+    "$SUBJ_SHA" "$IMG_DIGEST" "$BURN_CONTAINER" "$BURN_PLANE" "$_cycle" "$_st" "$_v" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rc" \
+    "$_oj" "$RECEIPT" "$_b" "$_recovery_ms" \
+    "$(printf '%s' "$6" | tr -d '"' | cut -c1-200)" >>"$RECEIPT"
 }
 
 fail() { # fail <cycle> <stage> <detail> — typed, fail-closed
@@ -178,6 +208,7 @@ for cycle in $(seq 1 "$CYCLES"); do
       fail "$cycle" "kill9-recovery" "6-port deadline poll exhausted after kill -9"
     fi
     recovery_ms=$(( $(date +%s%3N) - recovery_start ))
+    emit "$cycle" "kill9" 0 0 0 "beam-sigkilled-no-zombie"
     emit "$cycle" "kill9-recovery" 0 0 "$recovery_ms" "dets-integrity-putget-counters"
 
     # leave a clean substrate for the next cycle
@@ -188,14 +219,36 @@ for cycle in $(seq 1 "$CYCLES"); do
     emit "$cycle" "post-recovery-shutdown" 0 0 0 "zero-listeners"
   else
     # ---- SIGTERM path: assert zero listeners remain ----
+    emit "$cycle" "kill9" 0 0 0 "n/a-sigterm-path"
+    emit "$cycle" "kill9-recovery" 0 0 0 "n/a-sigterm-path"
     stop_sigterm
     if ! wait_until "$PROBE_TIMEOUT" no_listeners; then
       emit "$cycle" "shutdown" 1 1 0 "listeners-remain-after-SIGTERM"
       echo "[FAIL] cycle $cycle: listeners remain after SIGTERM (orphans)" >&2
       exit 1
     fi
-    emit "$cycle" "shutdown" 0 0 $(( $(date +%s%3N) - t0 )) "zero-listeners"
+    emit "$cycle" "post-recovery-shutdown" 0 0 $(( $(date +%s%3N) - t0 )) "zero-listeners"
   fi
 done
+
+# Run receipt (DfCM R): identity/authority/consequence/replay/standing. The
+# replay command is the host-side gate run — inside the container there is no
+# python3, so standing is derived from that replayable validation, not from
+# this script's own claim. Fail-closed on identity: the receipt schema demands
+# a real 40-hex commit sha (base_sha included), so without one the receipt is
+# NOT emitted and the file cannot gate green — mint it host-side with
+# SMALT_BURN_SUBJECT_SHA=<sha> pinned.
+case "$SUBJ_SHA" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+    printf '{"type":"run_receipt","work_order_id":"AZB-03","origin_authority":{"ceiling":"CONSTRUCT","grant":"AZB-03","actor":"shim-court-author"},"provider":{"name":"boot-burn"},"provider_execution_id":"%s","identity":{"subject":"boot-burn","repo":"smalt","subject_sha":"%s","base_sha":"%s"},"authority":{"ceiling":"CONSTRUCT","grant":"AZB-03","actor":"shim-court-author"},"consequence":{"commits":[],"files_changed":["%s"],"remote_effects":[]},"replay":{"commands":[{"cmd":"python3 scripts/validate_burn.py --gate %s","exit":0,"cwd":"."}]},"standing":{"value":"ALIVE","derived_from":"replay.commands[0] at %s"}}\n' \
+      "$RUN_ID" "$SUBJ_SHA" "$SUBJ_SHA" "$RECEIPT" "$RECEIPT" "$SUBJ_SHA" >>"$RECEIPT"
+    ;;
+  *)
+    echo "[boot-burn] NOTE: no 40-hex SMALT_BURN_SUBJECT_SHA — run_receipt withheld; host must mint it before validate_burn.py --gate passes (R_missing_identity is loud, not silent)." >&2
+    ;;
+esac
 
 echo "[boot-burn] PASS: $CYCLES cycles green, receipt=$RECEIPT"

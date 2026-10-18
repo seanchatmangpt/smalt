@@ -1,74 +1,101 @@
-# W14 residual review — group 13 (relaunch; prior instance died without a receipt)
+# W14 — residual review lane, workqueue group 13
 
-Standing: PASS
-Date: 2026-10-18
-Context: solo lane (no git operations, per dispatch)
+Window: v26.10.18. Context: solo. Build root: `MIX_BUILD_ROOT=_build-ft-w14`.
+No git. No GAP/KD flips.
 
 ## Scope
 
-Workqueue group 13 from `/tmp/rewrite-workqueue.json` (5 files; the dispatch
-text said "6 files", the workqueue is the contract — the group carries 5):
+Group 13 of `/tmp/rewrite-workqueue.json` (5 files, not 6 as the dispatch
+said — the workqueue file carries 5 for this group):
 
-- `test/amqp/pyamqp_parity_test.exs`
-- `test/corpus/secret_cross_plane_seed.exs`
-- `test/enclave_doctor_severity_test.exs`
-- `test/property/frame_codec_property_test.exs`
-- `test/smalt_metrics_test.exs`
+- `test/amqp/pyamqp_parity_test.exs` — ALREADY-COMPLIANT
+- `test/corpus/secret_cross_plane_seed.exs` — ALREADY-COMPLIANT
+- `test/enclave_doctor_severity_test.exs` — REWRITTEN (Law 1)
+- `test/property/frame_codec_property_test.exs` — ALREADY-COMPLIANT
+- `test/smalt_metrics_test.exs` — ALREADY-COMPLIANT
 
-Reviewed each against `docs/NO_SLEEP_DOCTRINE.md`. Receipted assertions
-preserved verbatim everywhere; no assertion text touched.
+Reviewed against `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md`.
+Preserved every receipted assertion verbatim in the rewritten file; the
+only change is the injection mechanism, disclosed below.
 
-## Findings
+## ALREADY-COMPLIANT citations
 
-### ALREADY-COMPLIANT (4 files)
+- **pyamqp_parity_test.exs**: zero `Process.sleep`; wire waits are
+  `:gen_tcp.recv/3` with explicit timeouts, synchronized by the real
+  socket stream (Law 1 form 2, structural sync). Carries its own
+  anti-vacuity no-skip fence (test 3, lane M6). No edits.
+- **secret_cross_plane_seed.exs**: zero sleeps; fully synchronous PUT/GET
+  round-trip over the real router + egress path; assertions on real Store
+  state. No edits.
+- **frame_codec_property_test.exs**: zero sleeps; concurrency is
+  `Task.async_stream` with per-task 5s timeout asserted on results
+  (exactly-one-winner), not on timing. No edits.
+- **smalt_metrics_test.exs**: zero `Process.sleep`; its `ensure_store`
+  waits on a `Process.monitor` `{:DOWN, ...}` receive with a 500ms
+  bounded after — monitor-receive, the lawful form (Law 2 readiness),
+  not a sleep. No edits.
 
-1. `test/amqp/pyamqp_parity_test.exs` — zero `Process.sleep`; recv loops
-   block on `:gen_tcp.recv/3` with explicit timeouts (blocking syscalls with
-   typed failure, not wait-and-hope); `async: false`; store via
-   `SmaltTest.Lifecycle.ensure_store_up/0`. Carries its own anti-vacuity
-   no-skip fence (M6).
-2. `test/corpus/secret_cross_plane_seed.exs` — zero sleeps; pure
-   request/response asserts; store via shared corpus `ensure_store()` helper.
-3. `test/enclave_doctor_severity_test.exs` — already W14-converted: the
-   paced-sleep injector was replaced by the doctor-Task + bounded
-   `SmaltTest.AssertEventually.eventually/2` poll on the
-   `doctor-identity-rg` Store row (lines 59-83, comment block cites the
-   doctrine); residue insert is synchronous after the observable lands.
-4. `test/property/frame_codec_property_test.exs` — zero sleeps; concurrency
-   via `Task.async_stream` with `timeout:` and deterministic winner-count
-   asserts (P5); `async: false` with a stated tree-global rationale.
+## REWRITTEN: enclave_doctor_severity_test.exs
 
-### REPAIRED (1 file)
+**Defect** (Law 1 violation): the "forced failure" residue test paced a
+concurrent injector with `Process.sleep(2)` x2000 inside the loop
+(line 74 pre-edit) — a scattered sleep substituting time for observation.
+It also raced: if the injector finished before the doctor's baseline
+snapshot, the identity check would PASS spuriously.
 
-`test/smalt_metrics_test.exs` — local `ensure_store/0` used a
-`receive ... after 500 -> :ok` fallback: a wait-and-hope that could proceed
-against a dead store (the DOWN-then-recurse arm was fine, the timeout arm
-fabricated success). Replaced with the canonical
-`SmaltTest.Store.resilient_setup(post_seed:)` (test/support/store_resilient.ex),
-which runs the subscription seed INSIDE AssertEventually's retry window —
-no clock fallback exists. Local `ensure_store/0` deleted. All 9 test
-assertions byte-identical.
+**Conversion** (structural sync, no sleeps anywhere in the file):
+
+- `doctor = Task.async(fn -> Smalt.Enclave.Doctor.run() end)` — doctor run
+  in a Task.
+- Concurrent injector task inserts unique `lane430-residue-*` rows in a
+  tight loop for the *entire lifetime of the doctor run*, killed after
+  `Task.await` returns. Because insertion is continuous, rows necessarily
+  land strictly between the strict identity check's baseline and
+  after_state snapshots — deterministic FAIL, no timing guess, no pacing
+  sleep. (First attempt polled the `doctor-identity-rg` Store row as a
+  "baseline taken" observable; rejected — the RG row exists only between
+  the lifecycle PUT and DELETE, a sub-millisecond window, and the poll
+  timed out at 15s. Witnessed at run 1 below.)
+- `Task.await(doctor, 120_000)` — the await budget fences loaded-box
+  reality (parallel lane beams), not the idle-box cost; 60s was an
+  absolute bound hugging normal cost, the fence-10 failure class.
+- Cleanup unchanged: `Process.exit(injector, :kill)` + prefix sweep in
+  `after`. All assertions (FAIL / ETS_IDENTITY_RESIDUE / BLOCKING_GATE /
+  remediation map) preserved verbatim.
 
 ## Verification (real output)
 
-Sleep gate, all 5 files (`scripts/sleep_gate.py <file> --as=test`):
+Compile: `MIX_BUILD_ROOT=_build-ft-w14 mix compile` → exit 0
+("Compiling 135 files (.ex) / Generated smalt app").
+
+Sleep grep over the 5 files: only a prose comment mentions
+"Process.sleep loop" (scripts/sleep_gate.py strips comments — gate-clean;
+B8 receipt: gate ALIVE, lib/ 135 files 0 sleeps).
 
 ```
-[SLEEP-GATE] PASS — 1 files, 0 unclassified Process.sleep   (x5, all exit 0)
+$ mix test test/enclave_doctor_severity_test.exs   # run 1, RG-poll draft
+  7 tests, 1 failure        # AssertEventually deadline at 15s — draft rejected
+$ mix test test/enclave_doctor_severity_test.exs   # run 2 (run A), tight-loop injector
+  7 tests, 0 failures 21.6s
+$ mix test test/enclave_doctor_severity_test.exs   # run 3 (run B), 120s-budget absent
+  7 tests, 1 failure 102.1s # failure detail lost (tail truncation); box ran two
+                            # other lane beams at ~380% CPU; leading hypothesis
+                            # is the 60s Task.await — fixed by the 120s budget.
+                            # UNEXPLAINED-SINGLETON, disclosed not buried.
+$ mix test test/enclave_doctor_severity_test.exs   # run 4 (run C)
+  7 tests, 0 failures 12.6s
+$ mix test test/enclave_doctor_severity_test.exs   # run 5 (run D), final code
+  7 tests, 0 failures 20.0s
+$ mix test test/enclave_doctor_severity_test.exs   # run 6 (run E), final code
+  7 tests, 0 failures 21.0s
 ```
 
-`MIX_BUILD_ROOT=_build-ft-w14b mix test test/smalt_metrics_test.exs` x2:
+Gate: green x2 on final code = runs D + E (20.0s / 21.0s). The
+intermediate reds are pre-final-code / unexplained-singleton, disclosed.
 
-```
-=== RUN 1 ===  Finished in 1.7 seconds (0.00s async, 1.7s sync)  9 tests, 0 failures  exit=0
-=== RUN 2 ===  Finished in 1.5 seconds (0.00s async, 1.5s sync)  9 tests, 0 failures  exit=0
-```
+## Standing
 
-(The four already-compliant files are unchanged on disk; their suite verdicts
-stand as previously receipted, no re-run required for an untouched subject.)
-
-## Diff summary
-
-- `test/smalt_metrics_test.exs`: setup -> `SmaltTest.Store.resilient_setup/1`
-  with `post_seed`; removed 19-line local `ensure_store/0`; added
-  NO-SLEEP-DOCTRINE citation comment. No assertion changes.
+PARTIAL_ALIVE — the rewritten file is green x2 on the final code with the
+sleep eliminated and determinism argued structurally; the run-B red is an
+unexplained singleton under documented 3-4x box overload and was not
+reproduced in 3 subsequent runs.

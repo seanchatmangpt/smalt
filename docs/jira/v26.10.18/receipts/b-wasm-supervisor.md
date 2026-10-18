@@ -89,3 +89,79 @@ after every kill; post-hammer valid call
   not fixed by this lane).
 - Full-suite `mix test` was launched in the background; its tail lands as
   an addendum below when it completes.
+
+## Full-suite addendum (offline tier)
+
+$ MIX_BUILD_ROOT=_build-ft-ws mix test   (full offline suite)
+  Finished in 597.4 seconds (25.5s async, 571.8s sync)
+  1 doctest, 7 properties, 2633 tests, 1 failure (90 excluded)
+  Failure: Smalt.DataPlane.R133PolicyCasTest "concurrent metadata PUTs vs
+  hold-sets (W5-8 race)" — ExUnit.TimeoutError 60000ms in a 500-round
+  concurrent loop; test/data_plane/r133_policy_cas_test.exs:83.
+  NOT this lane's surface (data-plane policy CAS, zero WasmEngine
+  involvement). Attributed to load: at run time THREE other lanes were
+  running full/partial mix test beams concurrently (witnessed 574% and
+  414% CPU beam.smp processes). Solo rerun after the load cleared:
+  $ MIX_BUILD_ROOT=_build-ft-ws mix test test/data_plane/r133_policy_cas_test.exs
+    Finished in 8.7 seconds
+    4 tests, 0 failures
+
+## Shared-tree disclosures
+
+- ERROR_CODES.md drift (caused by the sibling LRO lane's lro.ex citation
+  line shift 423->430, not this lane) fixed by REGENERATION, not hand-edit:
+  $ python3 scripts/gen_error_codes.py
+  wrote /Users/sac/smalt/docs/ERROR_CODES.md (109 rows)
+  (net diff: 1 line, the lro.ex line-number citation)
+- Compile-freeze observations, not this lane's files, owner fixed within
+  the SLA window: lib/smalt/arm_gateway/lro_notifier.ex (guard compile
+  error, self-fixed by its lane mid-run), lro.ex unreachable-clause
+  warning, test/support/isolation_formatter.ex (ExUnit.RunnerCase struct
+  error, self-fixed before the retry).
+
+## Files touched by this lane (absolute)
+
+- /Users/sac/smalt/lib/smalt/affidavit/wasm_engine.ex
+- /Users/sac/smalt/lib/smalt/affidavit/wasm_engine_supervisor.ex (new)
+- /Users/sac/smalt/lib/smalt/application.ex (one additive child)
+- /Users/sac/smalt/lib/smalt/enclave/doctor.ex (engine_loads?/await_engine)
+- /Users/sac/smalt/test/affidavit_wasm_failclosed_test.exs (fences 11+12)
+- /Users/sac/smalt/docs/jira/v26.10.18/receipts/b-wasm-supervisor.md
+- /Users/sac/smalt/docs/ERROR_CODES.md (regenerated artifact)
+
+## Shake witnesses (interim fixes during stability runs)
+
+Three real defects the shake surfaced and closed, in order:
+
+1. Fence 7 kill-face interference: the doctor suites leave the owner
+   OWNING the engine; a dangling owner :retry_start restarted the engine
+   mid-fence. Fix: the failclosed module terminates the owner in setup
+   (typed, reversible; fences 11/12 re-arm via restore_owner/0).
+2. Fence 11 "(EXIT ...) killed": a worker task winning a direct start is
+   LINKED to the engine, so killing that generation propagated :kill
+   worker->test. Fix: workers trap_exit; AND the owner traps exits +
+   handles {:EXIT, pid, reason} so its start_link-created link is inert -
+   the monitor design is now load-bearing (owner never dies with the
+   engine, so kill-hammers consume zero supervisor intensity).
+3. Owner reclaim hole: a foreign-owned generation dying abnormally left
+   the owner passive forever (hammer deadlock face). Fix: the passive
+   owner monitor-by-name pins the current generation; normal DOWN -> idle,
+   abnormal DOWN -> reclaim via own-mailbox restart.
+
+Combined set (failclosed + engine + live-artifact + both doctor suites +
+seal + ingestion functor), final code:
+  40 tests, 0 failures (x3 consecutive)
+Solo failclosed, final code: 6/6 and 3/3 legs green across shake legs
+(earlier single-leg failures were the three witnesses above).
+
+## Post-shake additions to the supervisor
+
+- Owner init: Process.flag(:trap_exit, true) + {:EXIT, pid, reason}
+  clauses (idle on :normal, own-mailbox restart on abnormal).
+- Passive state now holds a by-name monitor; DOWN normal -> idle, DOWN
+  abnormal -> reclaim. Re-probe passive branch re-monitors.
+- test setup: stop_owner() via Supervisor.terminate_child (typed faces
+  :ok | {:error, :not_found}); kill-loop uses name-resolved
+  GenServer.stop(WasmEngine, :kill); workers + wait_for use own-mailbox
+  receive-after pacing; stop_engine made exit-tolerant (sibling lane's
+  concurrent fix, SLEEP-CLASS marker preserved).

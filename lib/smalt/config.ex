@@ -3,7 +3,7 @@ defmodule Smalt.Config do
   Application-env configuration accessors (W1a projection).
 
   Auto-projected from smalt-substrate-pack ontology.ttl (smalt:ConfigKey
-  census, 46 keys / 88 call sites) via queries/config_keys.rq through
+  closed census) via queries/config_keys.rq through
   templates/config.ex.eex. DO NOT HAND-EDIT; regenerate with `mix smalt.gen`.
   Replay identity is fenced by test/config_replay_identity_test.exs.
 
@@ -31,6 +31,15 @@ defmodule Smalt.Config do
         default: "priv/wasm/affidavit.sha256",
         secret: false,
         surface: "affidavit",
+        env_var: nil,
+        override: "none"
+      },
+      %{
+        name: :amqp,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
         env_var: nil,
         override: "none"
       },
@@ -67,6 +76,15 @@ defmodule Smalt.Config do
         default: ["*"],
         secret: false,
         surface: "control_plane",
+        env_var: nil,
+        override: "none"
+      },
+      %{
+        name: :arm_gateway,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
         env_var: nil,
         override: "none"
       },
@@ -134,6 +152,24 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :blob_storage,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
+        env_var: nil,
+        override: "none"
+      },
+      %{
+        name: :cosmos,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
+        env_var: nil,
+        override: "none"
+      },
+      %{
         name: :cosmos_master_key,
         type: "string",
         default: "nil",
@@ -179,6 +215,15 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :event_grid,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
+        env_var: nil,
+        override: "none"
+      },
+      %{
         name: :event_hubs_port,
         type: "integer",
         default: 5673,
@@ -215,11 +260,29 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :graph_law,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
+        env_var: nil,
+        override: "none"
+      },
+      %{
         name: :graphlaw_engine,
         type: "atom",
         default: nil,
         secret: false,
         surface: "graphlaw",
+        env_var: nil,
+        override: "none"
+      },
+      %{
+        name: :keyvault,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
         env_var: nil,
         override: "none"
       },
@@ -293,6 +356,15 @@ defmodule Smalt.Config do
         secret: false,
         surface: "ocel",
         env_var: nil,
+        override: "none"
+      },
+      %{
+        name: :planes,
+        type: "atom",
+        default: :all,
+        secret: false,
+        surface: "planes",
+        env_var: "SMALT_PLANES",
         override: "none"
       },
       %{
@@ -377,6 +449,15 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :sts,
+        type: "keyword-list",
+        default: [],
+        secret: false,
+        surface: "planes",
+        env_var: nil,
+        override: "none"
+      },
+      %{
         name: :sts_authority_url,
         type: "string",
         default: "nil",
@@ -450,6 +531,8 @@ defmodule Smalt.Config do
   def affidavit_wasm_pin_path,
     do: Application.get_env(:smalt, :affidavit_wasm_pin_path, "priv/wasm/affidavit.sha256")
 
+  @doc "Integration-plane AMQP profile keyword list (sasl_mechanisms:, max_frame_size:). NO port key: the endpoint+port is the flat key :sb_endpoint."
+  def amqp, do: Application.get_env(:smalt, :amqp, [])
   @doc "AMQP Service Bus listener port (mode :sb)."
   def amqp_port, do: Application.get_env(:smalt, :amqp_port, 5672)
   @doc "Grace window before a lock tombstone is dropped by the AMQP sweeper."
@@ -460,6 +543,9 @@ defmodule Smalt.Config do
   def amqp_sweeper_tick_ms, do: Application.get_env(:smalt, :amqp_sweeper_tick_ms, 250)
   @doc "CORS allow-list for the ARM control-plane (9443/9444) responses."
   def arm_cors_origins, do: Application.get_env(:smalt, :arm_cors_origins, ["*"])
+
+  @doc "Control-plane profile keyword list (e.g. strict_version_validation:). NO port key: the port is the flat key :arm_port."
+  def arm_gateway, do: Application.get_env(:smalt, :arm_gateway, [])
   @doc "ARM-style control plane REST port."
   def arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
   @doc "ARM gateway rate limit (:infinity disables the limiter)."
@@ -476,6 +562,11 @@ defmodule Smalt.Config do
 
   @doc "Extra hosts routed to the blob catch-all egress rule."
   def blob_catch_all_hosts, do: Application.get_env(:smalt, :blob_catch_all_hosts, [])
+  @doc "Data-plane Blob profile keyword list (persistence:, sync_interval_ms:). NO port key."
+  def blob_storage, do: Application.get_env(:smalt, :blob_storage, [])
+
+  @doc "Data-plane Cosmos profile keyword list (endpoint:, max_ru_limit:). NO port key: the listener port is the flat key :egress_port."
+  def cosmos, do: Application.get_env(:smalt, :cosmos, [])
   @doc "Cosmos emulator master key for enforce-mode authorization."
   def cosmos_master_key, do: Application.get_env(:smalt, :cosmos_master_key)
   @doc "Cosmos request-unit budget per query (:infinity disables budgeting)."
@@ -486,6 +577,8 @@ defmodule Smalt.Config do
   def egress_cors_origins, do: Application.get_env(:smalt, :egress_cors_origins, ["*"])
   @doc "Data plane router port."
   def egress_port, do: Application.get_env(:smalt, :egress_port, 8443)
+  @doc "Integration-plane Event Grid profile keyword list (delivery_mode:)."
+  def event_grid, do: Application.get_env(:smalt, :event_grid, [])
   @doc "Event Hubs listener port (mode :eh)."
   def event_hubs_port, do: Application.get_env(:smalt, :event_hubs_port, 5673)
   @doc "Emit dedup-id metadata on event stream rows."
@@ -496,8 +589,12 @@ defmodule Smalt.Config do
   def ex4pm_dir,
     do: Application.get_env(:smalt, :ex4pm_dir, "Path.expand(../ex4pm/ex4pm, File.cwd!())")
 
+  @doc "Graphlaw enforcement profile keyword list (enforcement: :fail_closed). Distinct from the :graphlaw_engine handle."
+  def graph_law, do: Application.get_env(:smalt, :graph_law, [])
   @doc "WASM fast-path selector; :ash_graphlaw enables the ash_graphlaw validator."
   def graphlaw_engine, do: Application.get_env(:smalt, :graphlaw_engine)
+  @doc "Identity-plane KeyVault profile keyword list (api_version:, challenge_mode:)."
+  def keyvault, do: Application.get_env(:smalt, :keyvault, [])
   @doc "KeyVault emulator master secret."
   def kv_master_secret, do: Application.get_env(:smalt, :kv_master_secret)
   @doc "Refuse ledger appends referencing nonexistent ledger rows."
@@ -514,6 +611,9 @@ defmodule Smalt.Config do
   def mcp_port, do: Application.get_env(:smalt, :mcp_port, 9545)
   @doc "OCEL NDJSON telemetry directory."
   def ocel_dir, do: Application.get_env(:smalt, :ocel_dir, "Path.join(\"tmp\", \"ocel\")")
+
+  @doc "Plane selection: :all or list of :control/:data/:integration/:identity. SMALT_PLANES (comma list) is parsed + validated at runtime-config time (config/runtime.exs, Smalt.Planes); unknown name refuses boot with {:invalid_plane, name}. With :all no config/env profile is imported."
+  def planes, do: Application.get_env(:smalt, :planes, :all)
   @doc "AMQP primitive codec module dispatched by the frame codec."
   def primitive_codec,
     do: Application.get_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
@@ -536,6 +636,8 @@ defmodule Smalt.Config do
   def sentinel_forensic, do: Application.get_env(:smalt, :sentinel_forensic, false)
   @doc "Accept the legacy SKR release header variant."
   def skr_allow_legacy_header, do: Application.get_env(:smalt, :skr_allow_legacy_header, false)
+  @doc "Identity-plane STS profile keyword list (token_ttl_seconds:, pki_envelope:)."
+  def sts, do: Application.get_env(:smalt, :sts, [])
   @doc "Explicit STS authority URL overriding the loopback organizations default."
   def sts_authority_url, do: Application.get_env(:smalt, :sts_authority_url)
   @doc "HS256 STS signing secret; mandatory when :prod is set."

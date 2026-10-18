@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatmangpt.com/schema/smalt/burn-row/v2",
+  "title": "smalt burn JSONL row (AZB-03)",
+  "description": "One row per (container, plane, cycle, stage). Rows are written to docs/jira/v26.10.18/burn/<run-id>.jsonl (tracked, never tmp/ — avoids R_missing_replay).",
+  "type": "object",
+  "required": [
+    "schema",
+    "subject_sha",
+    "image_digest",
+    "container",
+    "plane",
+    "cycle",
+    "stage",
+    "verdict",
+    "t_start",
+    "t_end",
+    "exit_code",
+    "orphans",
+    "crash_reports",
+    "evidence_path",
+    "broken_term"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "smalt-burn/v2"},
+    "subject_sha": {"type": "string", "pattern": "^[0-9a-f]{7,64}$|^[Uu]nrecorded$"},
+    "image_digest": {"type": "string", "minLength": 1, "maxLength": 128, "description": "image identity; 'unrecorded' when the emitter could not see it"},
+    "plane": {"enum": ["control", "data", "integration", "identity", "all"]},
+    "container": {"type": "string", "minLength": 1},
+    "cycle": {"type": "integer", "minimum": 0},
+    "stage": {"enum": ["boot", "probe", "chaos", "recover", "teardown", "soak"]},
+    "verdict": {
+      "enum": ["CLEAN", "ORPHAN_LISTENER", "ZOMBIE_BEAM", "UNHANDLED_EXIT", "DETS_UNREPAIRED", "TYPED_VOCAB_MISMATCH", "TIMEOUT_DEADLINE"]
+    },
+    "t_start": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "t_end": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "exit_code": {"type": "integer"},
+    "orphans": {"type": "array", "items": {"type": "string"}},
+    "crash_reports": {"type": "integer", "minimum": 0},
+    "evidence_path": {"type": "string", "minLength": 1},
+    "broken_term": {
+      "enum": [null, "mu_on_O", "admission_vacuous", "mu_unlawful", "R_missing_identity", "R_missing_authority", "R_missing_consequence", "R_missing_replay", "R_missing_standing", "R_not_fed_back"]
+    },
+    "lane": {"type": "string"},
+    "detail": {"type": "string"},
+    "recovery_ms": {"type": "integer", "minimum": 0},
+    "clean": {"type": "boolean"},
+    "tier": {"type": "string"},
+    "tests": {"type": "integer", "minimum": 0},
+    "failures": {"type": "integer", "minimum": 0},
+    "faces": {"type": "array", "items": {"type": "object"}},
+    "flood_conns": {"type": "integer"},
+    "hogs": {"type": "integer", "minimum": 0},
+    "note": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "CLEAN"}}},
+      "then": {"properties": {"broken_term": {"const": null}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"enum": ["ORPHAN_LISTENER", "ZOMBIE_BEAM", "UNHANDLED_EXIT", "DETS_UNREPAIRED", "TYPED_VOCAB_MISMATCH", "TIMEOUT_DEADLINE"]}}},
+      "then": {"properties": {"broken_term": {"type": "string", "minLength": 1}}}
+    }
+  ]
+}

@@ -15,7 +15,7 @@ Last wake: 2026-10-18 wake 4. Receipts dir now live
 | Batch | Spec (drafts) | Status | Receipt | Validation evidence |
 |---|---|---|---|---|
 | B0 | foundations P0 (+c567 uid/1) | LANDED (ALIVE) | receipts/b0-foundations.md | test_helper smoke 2/0; 37/37 reference suites; real test_helper path |
-| b-await-migration | lib await-migration (sites 4+5) | LANDED (PARTIAL_ALIVE: sites 4+5 landed, sites 1-3 gated on b-lro-notifier) | receipts/b-await-migration.md | mix compile --warnings-as-errors exit 0; pplan 70/0; enclave 15/0 x2; 92-162/0 x2; sleep-grep zero hits both files |
+| b-await-migration | lib await-migration (sites 4+5) | LANDED (PARTIAL_ALIVE: sites 4+5 landed; sites 1-3 unblocked — b-lro-notifier landed) | receipts/b-await-migration.md | mix compile --warnings-as-errors exit 0; pplan 70/0; enclave 15/0 x2; 92-162/0 x2; sleep-grep zero hits both files |
 | B1 | corpus-compliance | LANDED (ALIVE) | receipts/b1-corpus.md | corpus 26/0 x3 (verdicts 668/214/118 byte-equal across runs); compliance 157/0 x2; c3 divergence closed by construction |
 | B2 | amqp.md x5 files | LANDED (ALIVE; draft deviations verified-then-landed; hang fail-safes kept with role comments) | receipts/b2-amqp.md | amqp 331/0 (45 excluded); wire tier 376/0 passes A+B |
 | B3 | fence10-ratio + sleeps A5 | LANDED (ALIVE — structural conversion (lib-redesign path per R4), vacuity-probed, 12x-green; ratio fence NOT landed, per R4 alternatives) | receipts/b3-fence10.md | fence-10 sleep-free; affidavit suite green incl. fence line-numbered failure output |
@@ -46,9 +46,14 @@ second pass correctly deferred to post-B4 per master plan §1.3.
 
 ## Completion
 
-11/18 batches LANDED (61%): B0, B1, B3, B4, B6 (partial), B8 (partial),
-b-await-migration, b-e2e-wire, b-js-harness, b-wasm-supervisor, b-lro-notifier.
-Outstanding: B2 (amqp), B5 (auth-wire-egress), B7 (gates-python/budget/stress
-non-JS slice), v1-soak, v2-soak, v-pinion-audit. W-review lanes: 17/18
-(w14-review.md ABSENT — _build-ft-w14 lane in flight, coordinator WORKQUEUE
-also flags it).
+14/18 tracker batches LANDED (78%): B0, B1, B2, B3, B4, B5, B6 (partial),
+B8 (partial), b-await-migration, b-e2e-wire, b-js-harness, b-wasm-supervisor,
+b-lro-notifier, v-pinion-audit.
+Outstanding: B7 (gates-python/budget/stress non-JS slice; its js-harness
+portion already landed via b-js-harness), v1-soak, v2-soak.
+Post-window extras observed (not tracker rows): burn-soak-scripts.md
+(PARTIAL_ALIVE), azb-03-burn-schema.md (ALIVE), burn-scripts.md,
+azb-21-zero-sleep.md. W-review lanes: 18/18 LANDED (w14 PASS on relaunch).
+Open caveats: b-wasm-supervisor full-suite run still in flight per its
+receipt; b-lro-notifier full-suite caveat disclosed (run 1 raced concurrent
+lane edits, 25 mixed failures).

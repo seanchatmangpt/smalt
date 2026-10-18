@@ -26,10 +26,19 @@ DEADLINE=$((START_TS + 300))
 
 mkdir -p "$RESULTS_DIR"
 
+# AZB-03 row emitter (smalt-burn/v2). One row per (container, plane, cycle,
+# stage); this single-shot probe emits stage=probe cycle=0. The legacy
+# "clean":true/false field is kept so parallel-matrix.sh's verdict parse is
+# unchanged. rc: 0 -> CLEAN, else UNHANDLED_EXIT (broken_term mu_unlawful).
+SUBJ_SHA=${SMALT_BURN_SUBJECT_SHA:-unrecorded}
+IMG_DIGEST=${BURN_IMAGE_DIGEST:-unrecorded}
+BURN_PLANE=${SMALT_BURN_PLANE:-all}
 emit() { # emit <clean 0/1> <detail>
-  printf '{"schema":"smalt.burn-container/1","ts":"%s","service":"%s","clean":%s,"detail":"%s"}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SERVICE" \
-    "$([ "$1" = 0 ] && echo true || echo false)" \
+  if [ "$1" = 0 ]; then _v=CLEAN; _b=null; _clean=true; else _v=UNHANDLED_EXIT; _b='"mu_unlawful"'; _clean=false; fi
+  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":0,"stage":"probe","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":[],"crash_reports":0,"evidence_path":"%s","broken_term":%s,"lane":"container-burn","clean":%s,"detail":"%s"}\n' \
+    "$SUBJ_SHA" "$IMG_DIGEST" "$SERVICE" "$BURN_PLANE" "$_v" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" \
+    "$JSONL" "$_b" "$_clean" \
     "$(printf '%s' "$2" | tr -d '"' | cut -c1-200)" >> "$JSONL"
 }
 

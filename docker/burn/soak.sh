@@ -81,13 +81,36 @@ emit() { # emit <round> <tier> <rc> <tests> <failures> <faces-json> <note>
   python3 - "$JSONL" "$1" "$2" "$3" "$4" "$5" "$6" "${7:-}" "$FLOOD_STATUS" "$HOGS" <<'PY'
 import json, os, sys, time
 (path, rnd, tier, rc, tests, fails, faces, note, flood_status, hogs) = sys.argv[1:11]
+# AZB-03 row emitter (smalt-burn/v2): one row per (container, plane, cycle,
+# stage). Tier mapping: offline -> probe, wire -> soak. Validate with
+# `python3 scripts/validate_burn.py --gate <file>` against
+# docs/jira/v26.10.18/burn/burn-row.schema.json.
+subj_sha = os.environ.get("SMALT_BURN_SUBJECT_SHA") or "unrecorded"
+img_digest = os.environ.get("BURN_IMAGE_DIGEST") or "unrecorded"
+container = os.environ.get("BURN_CONTAINER") or os.uname().nodename
+plane = os.environ.get("SMALT_BURN_PLANE") or "all"
+stage = {"offline": "probe", "wire": "soak"}.get(tier, "soak")
+verdict = "CLEAN" if int(rc) == 0 else "UNHANDLED_EXIT"
+broken = None if verdict == "CLEAN" else "mu_unlawful"
+ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 row = {
-    "schema": "smalt.burn-soak/1",
-    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "schema": "smalt-burn/v2",
+    "subject_sha": subj_sha,
+    "image_digest": img_digest,
+    "container": container,
+    "plane": plane,
+    "cycle": int(rnd),
+    "stage": stage,
+    "verdict": verdict,
+    "t_start": ts,
+    "t_end": ts,
+    "exit_code": int(rc),
+    "orphans": [],
+    "crash_reports": 0,
+    "evidence_path": path,
+    "broken_term": broken,
     "lane": "burn-soak",
-    "round": int(rnd),
     "tier": tier,
-    "exit": int(rc),
     "tests": int(tests),
     "failures": int(fails),
     "faces": json.loads(faces) if faces else [],

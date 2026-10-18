@@ -108,6 +108,7 @@ defmodule SmaltTest.IsolationFormatter do
   # ExUnit delivers formatter events as casts of the raw event tuple;
   # handle_event/2 returns {:ok, state}, GenServer wants {:noreply, state}.
   def handle_cast(event, state) when is_tuple(event) do
+    if System.get_env("ISO_FMT_DEBUG"), do: IO.puts("EVT #{inspect(event |> Tuple.to_list() |> hd())}")
     case handle_event(event, state) do
       {:ok, state} -> {:noreply, state}
       other -> other

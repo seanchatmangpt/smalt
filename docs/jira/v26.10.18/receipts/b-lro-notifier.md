@@ -51,13 +51,13 @@ in the spec):
 
 ```
 $ MIX_BUILD_ROOT=_build-ft-ln mix test test/lro_test.exs
-Finished in 3.0 seconds (0.00s async, 3.0s sync)
+Finished in 3.3 seconds (0.00s async, 3.3s sync)
 37 tests, 0 failures
 ```
 
 ```
 $ MIX_BUILD_ROOT=_build-ft-ln mix test test/enclave_state_test.exs test/smalt_ets_baseline_identity_test.exs test/smalt_ets_composite_identity_test.exs test/arm_error_corpus_test.exs
-Finished in 1.5 seconds (0.00s async, 1.5s sync)
+Finished in 3.5 seconds (0.00s async, 3.5s sync)
 23 tests, 0 failures (2 excluded)
 ```
 

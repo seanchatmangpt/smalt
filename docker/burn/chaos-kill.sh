@@ -45,16 +45,60 @@ if [ ! -x "$SMALT_BIN" ]; then
 fi
 mkdir -p "$BURN_DIR" 2>/dev/null || BURN_DIR=$(mktemp -d)
 RECEIPT="$BURN_DIR/chaos-kill.jsonl"
+SUBJ_SHA=${SMALT_BURN_SUBJECT_SHA:-$(git -C /smalt rev-parse HEAD 2>/dev/null || echo unrecorded)}
+IMG_DIGEST=${BURN_IMAGE_DIGEST:-unrecorded}
+BURN_CONTAINER=${BURN_CONTAINER:-$(hostname 2>/dev/null || echo chaos-kill)}
+BURN_PLANE=${SMALT_BURN_PLANE:-all}
+RUN_ID="chaos-kill-$(date +%s)"
 
+# Expected-matrix header (AZB-03 falsifier: without it a dropped scenario is
+# invisible and `validate_burn.py --gate` refuses the file). Scenarios emit
+# stage=chaos rows; the gates stage emits stage=probe rows.
+printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[0],"stages":["chaos","probe"]}}\n' \
+  "$RUN_ID" "$BURN_CONTAINER" >"$RECEIPT"
+
+# AZB-03 row emitter (smalt-burn/v2). One row per (container, plane, cycle,
+# stage). Stage vocabulary maps raw lane stages into the schema enum:
+# gate-* -> probe, everything else -> chaos. rc: 0 -> CLEAN, else
+# UNHANDLED_EXIT (broken_term mu_unlawful). Schema:
+# docs/jira/v26.10.18/burn/burn-row.schema.json; validate with
+# `python3 scripts/validate_burn.py --gate <file>`.
 emit() { # emit <stage> <rc> <detail>
-  printf '{"schema":"smalt-burn/v1","lane":"chaos-kill","cycle":0,"stage":"%s","rc":%s,"orphans_detected":0,"recovery_ms":%s,"detail":"%s"}\n' \
-    "$1" "$2" "$3" "$4" >>"$RECEIPT"
+  _stage=$1; _rc=$2
+  case "$_stage" in gate-*) _st=probe ;; *) _st=chaos ;; esac
+  if [ "$_rc" = 0 ]; then _v=CLEAN; _b=null; else _v=UNHANDLED_EXIT; _b='"mu_unlawful"'; fi
+  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":0,"stage":"%s","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":[],"crash_reports":0,"evidence_path":"%s","broken_term":%s,"lane":"chaos-kill","detail":"%s"}\n' \
+    "$SUBJ_SHA" "$IMG_DIGEST" "$BURN_CONTAINER" "$BURN_PLANE" "$_st" "$_v" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rc" \
+    "$RECEIPT" "$_b" "$(printf '%s' "$3" | tr -d '"' | cut -c1-200)" >>"$RECEIPT"
 }
 
 fail() { # fail <stage> <detail>
   emit "$1" 1 0 "$2"
   echo "[FAIL] chaos-kill stage=$1: $2" >&2
   exit 1
+}
+
+# Run receipt (DfCM R): the replay command is the host-side gate run — inside
+# the container there is no python3, so standing derives from that replayable
+# validation, not from this script's own claim. Emitted only on the full-green
+# path (4 scenarios + 6 gates CLEAN) AND only with a real 40-hex commit sha —
+# the receipt schema demands identity (subject_sha + base_sha 40-hex); without
+# one the receipt is withheld and the file cannot gate green (loud
+# R_missing_identity, never a faked pass).
+emit_run_receipt() {
+  case "$SUBJ_SHA" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+      printf '{"type":"run_receipt","work_order_id":"AZB-03","origin_authority":{"ceiling":"CONSTRUCT","grant":"AZB-03","actor":"shim-court-author"},"provider":{"name":"chaos-kill"},"provider_execution_id":"%s","identity":{"subject":"chaos-kill","repo":"smalt","subject_sha":"%s","base_sha":"%s"},"authority":{"ceiling":"CONSTRUCT","grant":"AZB-03","actor":"shim-court-author"},"consequence":{"commits":[],"files_changed":["%s"],"remote_effects":[]},"replay":{"commands":[{"cmd":"python3 scripts/validate_burn.py --gate %s","exit":0,"cwd":"."}]},"standing":{"value":"ALIVE","derived_from":"replay.commands[0] at %s"}}\n' \
+        "$RUN_ID" "$SUBJ_SHA" "$SUBJ_SHA" "$RECEIPT" "$RECEIPT" "$SUBJ_SHA" >>"$RECEIPT"
+      ;;
+    *)
+      echo "[chaos-kill] NOTE: no 40-hex SMALT_BURN_SUBJECT_SHA — run_receipt withheld; host must mint it before validate_burn.py --gate passes." >&2
+      ;;
+  esac
 }
 
 # eval <name> — run an Elixir snippet named docker/burn/eval/<name>.exs-ish
@@ -245,12 +289,19 @@ verdict =
 
 {:witnessed, _} = verdict
 
-# supervised restart: deadline poll until seal succeeds
+# supervised restart: paced deadline poll until seal succeeds (receive-based
+# ~50ms cadence; NO-SLEEP-DOCTRINE poll-loop exception lives here)
 sealed? =
-  Enum.reduce_while(1..600, false, fn _, acc ->
+  Enum.reduce_while(1..1200, false, fn _, acc ->
     case Seal.admit_and_seal(receipt) do
-      {:ok, %{sealed: sealed}} when is_binary(sealed) -> {:halt, true}
-      _ -> {:cont, false}
+      {:ok, %{sealed: sealed}} when is_binary(sealed) ->
+        {:halt, true}
+
+      _ ->
+        receive do
+        after
+          50 -> {:cont, false}
+        end
     end
   end)
 
@@ -287,7 +338,7 @@ first =
 
 # wire surface: the same over-limit condition closes the link with
 # amqp:link-message-size-exceeded (connection.ex error_close mapping).
-info = Smalt.Amqp.QueueStore.queue_info(queue)
+{:ok, info} = Smalt.Amqp.QueueStore.queue_info(queue)
 4096 = info.capacity
 
 IO.puts("CHAOS_OK s4 capacity-4096-refused-4097-typed")
@@ -320,6 +371,7 @@ if [ "$GATES_HOST" = "1" ] && [ -n "$GATES_DIR" ] && [ -d "$GATES_DIR" ]; then
     emit "gate-$(basename "$g")" 0 0 "gate-green"
   done
   [ "$gates_rc" -eq 0 ] || exit 1
+  emit_run_receipt
   echo "[chaos-kill] PASS: 4 scenarios + 6 gates green, receipt=$RECEIPT"
 else
   emit "gates" 3 0 "BURN_GATES_UNAVAILABLE_IN_IMAGE"

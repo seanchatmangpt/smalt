@@ -22,6 +22,22 @@ Scans lib/ and test/ for Process.sleep sites and enforces:
            SIGNALABLE-PENDING-REDESIGN | CONTRACT). Annotation removal
            re-fails the site; annotation growth is a reviewed diff.
 
+AZB-21 (v26.10.18) scope extensions:
+  docker/burn/*.sh — `sleep [0-9]` FAILS (burn scripts must delay via their
+    own pacing mechanisms, never a literal shell sleep).
+  :timer.sleep — treated identically to Process.sleep (lib + test).
+  `after <integer> ->` on a single line — flagged as a delay primitive
+    unless annotated (deadline receives that pair `after` with a matched
+    message across multiple lines are not lexically delays; the same-line
+    form is the delay idiom this gate targets). Escape hatch: same
+    SLEEP-CLASS annotation.
+  String-literal exemption — a match that lies inside a double-quoted
+    string on the line is a fence fixture (a no-sleep assertion quoting
+    the primitive), not a call site; skipped.
+  Allowlist lives in a typed classification file,
+    scripts/sleep_gate_classes.json ({files: [{path, reason}],
+    functions: [{name, reason}]}), fail-closed if missing/unreadable.
+
 Exit 0 = pass, 1 = violations (or fail-closed: no files scanned, unreadable
 file). Stdlib only. Companion docs/NO_SLEEP_DOCTRINE.md.
 
@@ -30,59 +46,38 @@ PASSES and a sleep-injected file is REFUSED (BEFORE/AFTER flip under the
 shim-court protocol).
 """
 
+import json
 import os
 import re
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Typed classification file (AZB-21): the ONLY allowlist. Loaded at start,
+# fail-closed if missing/unreadable/malformed.
+CLASSES_PATH = os.path.join(REPO, "scripts", "sleep_gate_classes.json")
+
+
+def load_classes():
+    try:
+        with open(CLASSES_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        files = {os.path.normpath(e["path"]): e.get("reason", "") for e in data["files"]}
+        fns = {e["name"]: e.get("reason", "") for e in data["functions"]}
+        return files, fns
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print("[SLEEP-GATE] [FAIL] classification file unreadable: %s" % exc)
+        sys.exit(1)
+
+
 # Audited poll implementations: the sleep lives inside one bounded poll
 # loop, owned and reviewed. Growth of this list is a reviewed diff.
-AUDITED_POLL_FILES = {
-    os.path.normpath(os.path.join("test", "support", "assert_eventually.ex")),
-}
+AUDITED_POLL_FILES, AUDITED_POLL_FNS = load_classes()
 
 # Function-name allowlist: per-suite bounded poll / retry helpers whose
 # sleep is a poll STEP (bounded by the loop's deadline/attempt count), per
 # the v26.10.18 census (rewrite-drafts/sleeps.md class C retry-loop idiom).
-AUDITED_POLL_FNS = {
-    "sweep_until_terminal",
-    "poll_until_succeeded",
-    "poll_until_terminal",
-    "poll_until",
-    "poll_loop",
-    "do_poll",
-    "resilient_clear",
-    "resilient_delete",
-    "wait_until",
-    "wait_gone",
-    "wait_for_gone",
-    "wait_for_fresh_window",
-    "wait_listener",
-    "wait_for_ephemeral_port",
-    "connect_with_heal",
-    "retry_5xx",
-    "boot_with_retry",
-    "typed_start",
-    "await_dead",
-    "consume",
-    "port_verdict_agrees?",
-    "evict_until",
-    "sweep_until",
-    "wait_until_gone",
-    "wait_twin",
-    "wait_terminal",
-    "wait_store_tables",
-    "do_ensure_store_up",
-    "ensure_store_up",
-    "collect_traced_calls",
-    "collect_publish_ops",
-    "do_snapshot",
-    "do_resilient_clear",
-    "do_clear",
-    "wait_connect",
-    "wait_for_new_store",
-}
+# (Moved to scripts/sleep_gate_classes.json — AZB-21 typed classification.)
 
 # Lawful lib/ classes (census-audited vocabulary). Anything else fails.
 LIB_CLASSES = {
@@ -93,8 +88,10 @@ LIB_CLASSES = {
     "CONTRACT",
 }
 
-SLEEP_RE = re.compile(r"\bProcess\.sleep\b")
+SLEEP_RE = re.compile(r"\b(?:Process|:timer)\.sleep\b")
 ANN_RE = re.compile(r"#\s*SLEEP-CLASS:\s*([A-Za-z-]+)")
+RECV_AFTER_RE = re.compile(r"\bafter\s+\d[\d_]*\s*->")
+SH_SLEEP_RE = re.compile(r"\bsleep [0-9]")
 DEF_RE = re.compile(r"^\s*def(p?)\s+([a-z_][a-zA-Z0-9_?!]*)")
 TEST_RE = re.compile(r'^\s*(test|property|describe)\s+"')
 
@@ -141,6 +138,28 @@ def annotate_class(lines, idx):
     return found
 
 
+def in_string_literal(line, start, end):
+    """True if the span [start:end) lies inside a double-quoted string on
+    this line (single-quote/double-quote toggle scan; only ever skips
+    fence fixtures, never skips real call sites — a real Process.sleep
+    call is never syntactically inside a string)."""
+    quote = None
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if quote is None:
+            if c == '"':
+                quote = '"'
+        elif c == '"' and line[i - 1] != "\\":
+            if start >= i:
+                return True
+            quote = None
+        if quote is not None and start >= i:
+            return True
+        i += 1
+    return False
+
+
 def scan_file(path, rel):
     violations = []
     try:
@@ -170,11 +189,25 @@ def scan_file(path, rel):
     is_test = rel == "test" or rel.startswith("test/")
 
     for i, line in enumerate(lines):
-        if doc[i] or not SLEEP_RE.search(strip_comment(line)):
+        if doc[i]:
             continue
 
+        raw = strip_comment(line)
+
         # :infinity park (process fixture) — allowed both sides.
-        if re.search(r"Process\.sleep\(\s*:?infinity\s*\)", line):
+        if re.search(r"(?:Process|:timer)\.sleep\(\s*:?infinity\s*\)", raw):
+            continue
+
+        sleep_hits = [
+            m
+            for m in SLEEP_RE.finditer(raw)
+            if not in_string_literal(raw, m.start(), m.end())
+        ]
+
+        # Same-line `after <integer> ->` delay primitive (AZB-21).
+        after_hit = RECV_AFTER_RE.search(raw)
+
+        if not sleep_hits and not after_hit:
             continue
 
         if is_test:
@@ -184,15 +217,16 @@ def scan_file(path, rel):
             if fn in AUDITED_POLL_FNS:
                 continue
             cls = annotate_class(lines, i)
-            if cls == "TIME-ADVANCE":
+            if cls in TEST_CLASSES:
                 continue
             where = fn or "<module body>"
             violations.append(
                 (
                     rel,
                     i + 1,
-                    "unclassified test Process.sleep in %s (audited-poll "
-                    "allowlist or # SLEEP-CLASS: TIME-ADVANCE required)" % where,
+                    "unclassified test sleep primitive in %s (audited-poll "
+                    "allowlist or # SLEEP-CLASS: <TIME-ADVANCE|POLL-STEP> "
+                    "required): `%s`" % (where, raw.strip()),
                 )
             )
         elif is_lib:
@@ -203,9 +237,9 @@ def scan_file(path, rel):
                 (
                     rel,
                     i + 1,
-                    "unclassified lib Process.sleep (# SLEEP-CLASS: "
+                    "unclassified lib sleep primitive (# SLEEP-CLASS: "
                     "<SCHEDULING|POLL-STEP|SIGNALABLE-PENDING-REDESIGN|CONTRACT> "
-                    "required)",
+                    "required): `%s`" % raw.strip(),
                 )
             )
         else:
@@ -213,6 +247,35 @@ def scan_file(path, rel):
             # gate's jurisdiction; skipped by path filter below.
             pass
 
+    return violations
+
+
+# Lawful test-side annotation classes (AZB-21): TIME-ADVANCE (the sleep
+# crosses a real time window — rate-limit boundary, lock expiry, LRO
+# retention, teardown/propagation settle) or POLL-STEP (the sleep is one
+# bounded step inside a poll/retry loop with a numeric attempt/deadline
+# bound).
+TEST_CLASSES = {"TIME-ADVANCE", "POLL-STEP"}
+
+
+def scan_sh_file(path, rel):
+    """docker/burn/*.sh: any literal `sleep [0-9]` is a violation. Shell
+    comments (# ...) stripped. No annotation escape: burn scripts delay
+    via their own pacing (loops/poll), never a literal sleep."""
+    violations = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    except OSError as exc:
+        return [(rel, 0, "FAIL-CLOSED: unreadable burn script: %s" % exc)]
+    for i, line in enumerate(lines):
+        raw = line.split("#", 1)[0]
+        if SH_SLEEP_RE.search(raw):
+            violations.append(
+                (rel, i + 1, "unclassified burn-script `sleep N` (literal shell "
+                 "sleep banned in docker/burn/; see docs/NO_SLEEP_DOCTRINE.md): "
+                 "`%s`" % raw.strip())
+            )
     return violations
 
 
@@ -229,7 +292,12 @@ def main(argv):
             return 1
         else:
             paths.append(a)
-    paths = paths or [os.path.join(REPO, "lib"), os.path.join(REPO, "test")]
+    # Default scan target set (AZB-21: burn scripts in scope).
+    paths = paths or [
+        os.path.join(REPO, "lib"),
+        os.path.join(REPO, "test"),
+        os.path.join(REPO, "docker", "burn"),
+    ]
     violations = []
     files_scanned = 0
 
@@ -247,6 +315,12 @@ def main(argv):
             print("[SLEEP-GATE] [FAIL] path not found: %s" % p)
             return 1
         for f in walk(p):
+            if f.endswith(".sh"):
+                rel = os.path.relpath(os.path.abspath(f), REPO)
+                if rel.startswith("docker" + os.sep + "burn" + os.sep):
+                    violations.extend(scan_sh_file(f, rel))
+                    files_scanned += 1
+                continue
             if not EX_RE.search(f):
                 continue
             rel = os.path.relpath(os.path.abspath(f), REPO)
@@ -263,7 +337,7 @@ def main(argv):
             violations.extend(scan_file(f, rel))
 
     if files_scanned == 0:
-        print("[SLEEP-GATE] [FAIL] no .ex/.exs files scanned — fail-closed")
+        print("[SLEEP-GATE] [FAIL] no .ex/.exs/.sh files scanned — fail-closed")
         return 1
 
     if violations:
@@ -277,7 +351,7 @@ def main(argv):
         )
         return 1
 
-    print("[SLEEP-GATE] PASS — %d files, 0 unclassified Process.sleep" % files_scanned)
+    print("[SLEEP-GATE] PASS — %d files, 0 unclassified sleep primitives" % files_scanned)
     return 0
 
 

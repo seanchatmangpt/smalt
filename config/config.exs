@@ -37,6 +37,12 @@ config :smalt, :egress_port, 8443
 config :smalt, :sb_endpoint, "sb://127.0.0.1:5672"
 config :smalt, :sb_shared_key, nil
 
+# Plane selection (AZB-04): SMALT_PLANES (comma list) or explicit list;
+# default :all boots exactly today's child list (no env-profile import).
+# Parsing + validation (invalid_plane refusal) happen at runtime-config time
+# in config/runtime.exs via Smalt.Planes.resolve/0.
+config :smalt, :planes, :all
+
 if config_env() == :test do
   import_config "test.exs"
 end

@@ -63,4 +63,67 @@ apply_shim() {
 
 with_shim "$SUBJECT" "$(declare -f lib_before); lib_before" "$(declare -f lib_after); lib_after"
 
-printf '[PASS] sleep_gate court: clean PASSES, injected sleep REFUSED (both sides), restore byte-exact\n'
+# ---------------------------------------------------------------------------
+# Leg 3: burn-script classification (AZB-21): docker/burn/*.sh `sleep [0-9]`
+# ---------------------------------------------------------------------------
+BURN_DIR="$(cd "$(dirname "$GATE")/.." && pwd)/docker/burn"
+BURN_SUBJECT="$BURN_DIR/.shim_court_subject.sh"
+export BURN_SUBJECT GATE
+
+printf '#!/usr/bin/env bash\n# AZB-21 shim-court scratch burn subject (deleted by court)\necho ok\n' > "$BURN_SUBJECT"
+
+burn_before() { python3 "$GATE" "$BURN_SUBJECT" >/dev/null; }
+burn_after() {
+    if python3 "$GATE" "$BURN_SUBJECT" >/dev/null 2>&1; then
+        echo "[FAIL] gate ACCEPTED burn-script sleep 1 — VACUOUS GATE" >&2
+        return 1
+    fi
+    python3 "$GATE" "$BURN_SUBJECT" 2>&1 | grep -q "sleep 1" || {
+        echo "[FAIL] gate verdict does not name the injected \`sleep 1\`" >&2
+        return 1
+    }
+    return 0
+}
+
+apply_shim() {
+    printf 'sleep 1 # SHIM-COURT injected burn-script sleep\n' >> "$SHIM_FILE"
+}
+
+with_shim "$BURN_SUBJECT" "$(declare -f burn_before); burn_before" "$(declare -f burn_after); burn_after"
+rm -f "$BURN_SUBJECT"
+
+# ---------------------------------------------------------------------------
+# Leg 4 (AZB-21 anti-vacuity, exact ticket form): seed Process.sleep(10) in a
+# test AND `sleep 1` in a burn script -> gate exit 1 NAMING BOTH.
+# ---------------------------------------------------------------------------
+BURN_SUBJECT2="$BURN_DIR/.shim_court_subject2.sh"
+REPO_ROOT="$(cd "$(dirname "$GATE")/.." && pwd)"
+TEST_SUBJECT2="$REPO_ROOT/test/.shim_court_subject2.exs"
+export BURN_SUBJECT2 TEST_SUBJECT2
+
+printf '# AZB-21 shim-court scratch test subject (deleted by court)\n' > "$TEST_SUBJECT2"
+printf '#!/usr/bin/env bash\n# AZB-21 shim-court scratch burn subject (deleted by court)\necho ok\n' > "$BURN_SUBJECT2"
+
+both_before() { python3 "$GATE" "$TEST_SUBJECT2" "$BURN_SUBJECT2" >/dev/null; }
+both_after() {
+    local out
+    if out="$(python3 "$GATE" "$TEST_SUBJECT2" "$BURN_SUBJECT2" 2>&1)"; then
+        echo "[FAIL] gate ACCEPTED dual injection — VACUOUS GATE" >&2
+        return 1
+    fi
+    echo "$out" | grep -q "subject2.exs" || { echo "[FAIL] verdict does not name the test subject" >&2; return 1; }
+    echo "$out" | grep -q "shim_court_subject2.sh" || { echo "[FAIL] verdict does not name the burn subject" >&2; return 1; }
+    echo "$out" | grep -q "Process.sleep(10)" || { echo "[FAIL] verdict does not name Process.sleep(10)" >&2; return 1; }
+    echo "$out" | grep -q "sleep 1" || { echo "[FAIL] verdict does not name sleep 1" >&2; return 1; }
+    return 0
+}
+
+apply_shim() {
+    printf 'Process.sleep(10) # SHIM-COURT unclassified test sleep\n' >> "$TEST_SUBJECT2"
+    printf 'sleep 1 # SHIM-COURT injected burn-script sleep\n' >> "$SHIM_FILE"
+}
+
+with_shim "$BURN_SUBJECT2" "$(declare -f both_before); both_before" "$(declare -f both_after); both_after"
+rm -f "$BURN_SUBJECT2" "$TEST_SUBJECT2"
+
+printf '[PASS] sleep_gate court: clean PASSES, injected sleep REFUSED (test + lib + burn + dual-naming), restore byte-exact\n'

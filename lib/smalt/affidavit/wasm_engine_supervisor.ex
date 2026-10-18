@@ -108,6 +108,13 @@ defmodule Smalt.Affidavit.WasmEngine.Supervisor.Owner do
 
   @impl true
   def init(:ok) do
+    # Trap exits: the owner start_links the engine (GenServer.start_link
+    # always links), so without trapping every engine kill would kill the
+    # owner, consume supervisor intensity, and bypass the monitor/restart
+    # design. With trapping, engine death arrives as {:EXIT, ...} in THIS
+    # mailbox and the own-mailbox restart is the only retry path.
+    Process.flag(:trap_exit, true)
+
     case attempt_start() do
       {:ok, pid} ->
         ref = Process.monitor(pid)
@@ -115,9 +122,13 @@ defmodule Smalt.Affidavit.WasmEngine.Supervisor.Owner do
 
       {:passive, _pid} ->
         # already_started passthrough face: the engine was started by
-        # someone else (tests, doctor fallback) - the owner never touches
-        # it (adoption guard).
-        {:ok, :passive}
+        # someone else (tests, doctor fallback). The owner does not touch
+        # the LIVE foreign generation (adoption guard), but it MONITORS the
+        # name (monitor-by-name pins the current generation): on a normal
+        # DOWN it idles (intentional stop respected); on an abnormal DOWN
+        # it reclaims via the own-mailbox restart.
+        ref = Process.monitor(WasmEngine)
+        {:ok, {:passive, ref}}
 
       {:refused, err} ->
         refused_init(err)
@@ -132,7 +143,9 @@ defmodule Smalt.Affidavit.WasmEngine.Supervisor.Owner do
         {:noreply, {:owned, pid, ref, 0}}
 
       {:passive, _pid} ->
-        {:noreply, :passive}
+        # Re-probe raced a foreign start: monitor that generation.
+        ref = Process.monitor(WasmEngine)
+        {:noreply, {:passive, ref}}
 
       {:refused, err} ->
         handle_refused(err, state)
@@ -148,6 +161,33 @@ defmodule Smalt.Affidavit.WasmEngine.Supervisor.Owner do
 
   # Owned engine died. Normal = intentional stop (tests, teardown): idle.
   # Abnormal = crash/kill: own-mailbox restart (supervised retry face).
+  def handle_info({:DOWN, ref, :process, _pid, :normal}, {:passive, ref}) do
+    {:noreply, :idle}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, {:passive, ref}) do
+    # Foreign-owned generation died abnormally: the supervisor RECLAIMS
+    # the engine (own-mailbox restart). Without this, a kill of a
+    # worker/test-owned generation leaves the surface down forever.
+    require Logger
+    Logger.warning("WasmEngine owner: foreign generation died (#{inspect(reason)}); reclaiming")
+    send_after_restart()
+    {:noreply, {:restarting, @restart_delay_ms, 0}}
+  end
+
+  # Linked-engine death (owner-owned generation): with trap_exit, arrives
+  # here instead of killing the owner.
+  def handle_info({:EXIT, pid, :normal}, {:owned, pid, _ref, _n}) do
+    {:noreply, :idle}
+  end
+
+  def handle_info({:EXIT, pid, reason}, {:owned, pid, _ref, _n}) do
+    require Logger
+    Logger.warning("WasmEngine owner: engine died (#{inspect(reason)}); restarting in-mailbox")
+    send_after_restart()
+    {:noreply, {:restarting, @restart_delay_ms, 0}}
+  end
+
   def handle_info({:DOWN, ref, :process, pid, :normal}, {:owned, pid, ref, _n}) do
     {:noreply, :idle}
   end
