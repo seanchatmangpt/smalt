@@ -71,6 +71,7 @@ defmodule Smalt.Messaging.EventGrid do
   @spec publish(String.t() | atom(), %{required(:id) => term(), optional(term()) => term()}) ::
           :fresh | :duplicate
   def publish(topic, %{id: id} = event) when is_map(event) do
+    validate_delivery_mode!()
     GenServer.call(server(), {:publish, topic, event, id})
   end
 
@@ -97,9 +98,9 @@ defmodule Smalt.Messaging.EventGrid do
     GenServer.call(server(), {:ack, topic, name, id})
   end
 
-  @doc "Returns `{pending_count, inflight}` for subscriber `name` on `topic`."
+  @doc "Returns `{pending_count, inflight, alive?}` for subscriber `name` on `topic`."
   @spec status(String.t() | atom(), term()) ::
-          {non_neg_integer(), nil | {term(), pos_integer()}}
+          {non_neg_integer(), nil | {term(), pos_integer()}, boolean()}
   def status(topic, name) do
     GenServer.call(server(), {:status, topic, name})
   end
@@ -227,14 +228,25 @@ defmodule Smalt.Messaging.EventGrid do
 
   defp put_topic(state, topic, t), do: %{state | topics: Map.put(state.topics, topic, t)}
 
-  defp sub_status(nil), do: {0, nil}
-  defp sub_status(sub), do: {:queue.len(sub.queue), sub.inflight}
+  defp sub_status(nil), do: {0, nil, false}
+  defp sub_status(sub), do: {:queue.len(sub.queue), sub.inflight, sub.alive?}
 
   defp enqueue(t, name, id, event) do
     case t.subscribers[name] do
-      %{alive?: true} = sub ->
-        q = :queue.join(sub.queue, :queue.from_list([{id, event, System.monotonic_time(:millisecond)}]))
-        put_in(t.subscribers[name], %{sub | queue: q, queued: MapSet.put(sub.queued, id)})
+      # Queue for DOWN subscriptions too: the event must be there when the
+      # subscriber recovers (never loss).
+      %{queue: q, queued: queued} = sub ->
+        entry = {id, event, System.monotonic_time(:millisecond)}
+
+        if MapSet.member?(queued, id) do
+          t
+        else
+          put_in(t.subscribers[name], %{
+            sub
+            | queue: :queue.join(q, :queue.from_list([entry])),
+              queued: MapSet.put(queued, id)
+          })
+        end
 
       _ ->
         t
@@ -252,15 +264,6 @@ defmodule Smalt.Messaging.EventGrid do
         %{alive?: true, inflight: nil} ->
           case :queue.out(sub.queue) do
             {{:value, {id, event, _ts}}, rest} ->
-              mode = delivery_mode()
-
-              unless mode == :at_least_once do
-                raise ArgumentError,
-                      "Smalt.Messaging.EventGrid: unsupported delivery_mode " <>
-                        "#{inspect(mode)} (only :at_least_once; a lossy mode is " <>
-                        "deliberately not implemented)"
-              end
-
               send(sub.pid, {:event_grid, topic, name, id, event})
               put_in(t.subscribers[name], %{sub | queue: rest, inflight: {id, 1}})
 
@@ -309,6 +312,15 @@ defmodule Smalt.Messaging.EventGrid do
     case Smalt.Config.event_grid()[:delivery_mode] do
       nil -> :at_least_once
       mode -> mode
+    end
+  end
+
+  defp validate_delivery_mode! do
+    unless delivery_mode() == :at_least_once do
+      raise ArgumentError,
+            "Smalt.Messaging.EventGrid: unsupported delivery_mode " <>
+              "#{inspect(delivery_mode())} (only :at_least_once; a lossy mode is " <>
+              "deliberately not implemented)"
     end
   end
 

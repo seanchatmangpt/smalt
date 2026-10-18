@@ -309,7 +309,7 @@ defmodule Smalt.StoreDetsTest do
   end
 
   defp retry_or_raise(_torn, path, attempt) when attempt < @probe_attempts do
-    Process.sleep(@probe_backoff_ms)
+    Process.sleep(@probe_backoff_ms)  # SLEEP-CLASS: POLL-STEP — bounded probe backoff retry
     {:cont, nil}
   end
 

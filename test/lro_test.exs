@@ -43,7 +43,10 @@ defmodule SmaltLroTest do
     %{sweeper: sweeper}
   end
 
-  defp restore_env(_key, nil), do: :ok
+  # nil-preserving restore (AZB-11b): a nil prev must DELETE the key, not
+  # no-op — the no-op form left the test's :lro_retention_ms / :lro_delay_ms
+  # value in app env after the suite (twin leak class `lro_retention_ms`).
+  defp restore_env(key, nil), do: Application.delete_env(:smalt, key)
   defp restore_env(key, val), do: Application.put_env(:smalt, key, val)
 
   defp call(conn), do: Router.call(conn, @opts)

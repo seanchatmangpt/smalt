@@ -411,22 +411,38 @@ count, or PASS/FAIL token) found in the file.
 | r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
 | r245-t3-tear | [r245-t3-teardown-fix.md](../v26.10.17/receipts/r245-t3-teardown-fix.md) | PASS | r245 — T3 sdk-smoke teardown deadlock root-caused + fixed; leg green |
 | r246-attempt | [r246-attempt4-invalid-typed-red.md](../v26.10.17/receipts/r246-attempt4-invalid-typed-red.md) | UNKNOWN | r246 — court-x2 attempt 4: INVALID (mid-gate tree edit) + typed RED; WO-2 carries to v26.10.18 **NO-CONTEXT** |
+| azb-01-image | [azb-01-image-pin.md](../v26.10.18/receipts/azb-01-image-pin.md) | ALIVE | AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5) **NO-CONTEXT** |
+| azb-03-burn- | [azb-03-burn-schema.md](../v26.10.18/receipts/azb-03-burn-schema.md) | ALIVE | AZB-03 — Burn JSONL receipt schema + validator **NO-CONTEXT** |
+| azb-04-plane | [azb-04-plane-loader.md](../v26.10.18/receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT **NO-CONTEXT** |
+| azb-11-isola | [azb-11-isolation-court.md](../v26.10.18/receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) **NO-CONTEXT** |
+| azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
 | b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE **NO-CONTEXT** |
 | b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
 | b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) **NO-CONTEXT** |
-| b-lro-notifi | [b-lro-notifier.md](../v26.10.18/receipts/b-lro-notifier.md) | PARTIAL_ALIVE | B0: LRO one-writer convergence (Notifier + await) **NO-CONTEXT** |
+| b-lro-notifi | [b-lro-notifier.md](../v26.10.18/receipts/b-lro-notifier.md) | ALIVE | B0: LRO one-writer convergence (Notifier + await) **NO-CONTEXT** |
 | b-wasm-super | [b-wasm-supervisor.md](../v26.10.18/receipts/b-wasm-supervisor.md) | ALIVE | b-wasm-supervisor - WasmEngine supervised restart (lib redesign Part 1) **NO-CONTEXT** |
 | b0-foundatio | [b0-foundations.md](../v26.10.18/receipts/b0-foundations.md) | UNKNOWN | B0 FOUNDATIONS — test/support compile path + canonical helpers **NO-CONTEXT** |
 | b1-corpus | [b1-corpus.md](../v26.10.18/receipts/b1-corpus.md) | ALIVE | B1 — corpus + compliance scaffolding consolidation (corpus-compliance.md) **NO-CONTEXT** |
+| b2-amqp | [b2-amqp.md](../v26.10.18/receipts/b2-amqp.md) | ALIVE | B2 AMQP batch — five-file sleep/timing/singleton rewrite **NO-CONTEXT** |
 | b3-fence10 | [b3-fence10.md](../v26.10.18/receipts/b3-fence10.md) | ALIVE | B3 — Fence-10 conversion receipt (lane B3, v26.10.18) |
 | b4-lro-store | [b4-lro-store.md](../v26.10.18/receipts/b4-lro-store.md) | PASS | B4 LRO/STORE batch — v26.10.18 rewrite (Context: slice) **NO-CONTEXT** |
+| b5-auth-wire | [b5-auth-wire.md](../v26.10.18/receipts/b5-auth-wire.md) | ALIVE | B5 receipt — auth / wire / egress rewrite (v26.10.18) **NO-CONTEXT** |
 | b6-cites | [b6-cites.md](../v26.10.18/receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) **NO-CONTEXT** |
+| b7-tiers | [b7-tiers.md](../v26.10.18/receipts/b7-tiers.md) | PARTIAL_ALIVE | B7 — harness/tiers batch receipt (stress tier + budget gate) |
 | b8-doctrine | [b8-doctrine.md](../v26.10.18/receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) **NO-CONTEXT** |
+| burn-scripts | [burn-scripts.md](../v26.10.18/receipts/burn-scripts.md) | PARTIAL_ALIVE | docker/burn boot-burn + chaos-kill scripts **NO-CONTEXT** |
+| burn-soak-sc | [burn-soak-scripts.md](../v26.10.18/receipts/burn-soak-scripts.md) | PARTIAL_ALIVE | burn lane — soak.sh + parallel-matrix.sh + 30-burn.just **NO-CONTEXT** |
+| i23-fence11- | [i23-fence11-flip.md](../v26.10.18/receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
+| i23-standalo | [i23-standalone-noise.md](../v26.10.18/receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing **NO-CONTEXT** |
+| v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
+| v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
+| v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` **NO-CONTEXT** |
 | w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) **NO-CONTEXT** |
 | w10-review | [w10-review.md](../v26.10.18/receipts/w10-review.md) | PASS | W10 residual review — group 9 (review lane, Context: solo) **NO-CONTEXT** |
 | w11-review | [w11-review.md](../v26.10.18/receipts/w11-review.md) | PASS | W11 residual review — group 10 (review lane, Context: solo) **NO-CONTEXT** |
 | w12-review | [w12-review.md](../v26.10.18/receipts/w12-review.md) | PASS | W12 residual review — group 11 (5 files) **NO-CONTEXT** |
 | w13-review | [w13-review.md](../v26.10.18/receipts/w13-review.md) | PASS | W13 residual review — group 12 (review lane, Context: solo) **NO-CONTEXT** |
+| w14-review | [w14-review.md](../v26.10.18/receipts/w14-review.md) | UNKNOWN | W14 — residual review lane, workqueue group 13 **NO-CONTEXT** |
 | w15-review | [w15-review.md](../v26.10.18/receipts/w15-review.md) | PASS | W15 residual review — workqueue group 14 **NO-CONTEXT** |
 | w16-review | [w16-review.md](../v26.10.18/receipts/w16-review.md) | PASS | W16 residual review — workqueue group 15 **NO-CONTEXT** |
 | w17-review | [w17-review.md](../v26.10.18/receipts/w17-review.md) | PASS | W17 — residual review lane, group 16 (solo) **NO-CONTEXT** |
@@ -565,6 +581,7 @@ No receipt file on disk: cli-02.
 | dod-28 | (no receipt file — justfile module `justfile.d/28-stress.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-28 | (no receipt file — justfile module `justfile.d/28-test-budget.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-30 | (no receipt file — justfile module `justfile.d/30-burn.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

@@ -403,37 +403,72 @@ defmodule Smalt.SemanticEpochTest do
                  deviations_path: Path.join(tmp, "deviations.jsonl")
                )
 
-      # Relative ratio fence (AZB-12): each timeline pass vs an INDEPENDENT
+      # Relative ratio fence (AZB-12): each timeline leg vs an INDEPENDENT
       # same-run control op — raw Jason line decode of the same 10k-line
-      # ledger (median of 5, sleep-free). Jason decode does not call
+      # ledger, sleep-free. Jason decode does not call
       # SemanticEpoch.timeline/1, so a slowdown injected into timeline
       # cannot slow the baseline leg (the fence10-ratio vacuity lesson).
-      # Measured clean geometry on this host: ratio 1.3-2.5 (timeline ~20-40ms
-      # vs ~15ms raw decode). Bound 6.0 sits 2.4x over the clean ceiling and
-      # a 10x injected subject-op slowdown lands ratio ~13-25, 2-4x past it
-      # (probe witnessed: SHIM-COURT 20x payload -> ratio 129.97 RED).
+      # PAIRED rounds, min-of-5 (the fuzz_test.exs precedent): each round
+      # times timeline then decode back-to-back so 8-hog desched hits both
+      # legs co-monotonically, and the min per-round ratio sheds load spikes.
+      # A single-shot subject over a median baseline went RED under burn-chaos
+      # 8-hog load with no product change (ratio 11.51) — that falsifier
+      # witness is why this site is paired. Clean geometry: 1.3-2.5; loaded:
+      # <= ~4. Bound 6.0 sits 2.4x over the clean ceiling; an injected 10x
+      # subject slowdown lands ratio ~13+, far past it (probe witnessed:
+      # SHIM-COURT payload -> ratio 129.97 RED).
       ledger = Path.join(uniq_dir, "scale.jsonl")
       lines = File.read!(ledger) |> String.split("\n", trim: true)
+      decode_all = fn -> for l <- lines, do: Jason.decode!(l) end
 
-      baseline_us =
-        Smalt.Test.Ratio.calibrate(fn ->
-          for l <- lines, do: Jason.decode!(l)
-        end)
+      paired = fn subject_fun ->
+        for _ <- 1..5 do
+          s = Smalt.Test.Ratio.time_us(subject_fun)
+          b = Smalt.Test.Ratio.time_us(decode_all)
+          {s, b}
+        end
+        |> Enum.min_by(fn {s, b} -> s / b end)
+      end
 
-      Smalt.Test.Ratio.assert_ratio(t_uniq, baseline_us,
+      {uniq_s, uniq_b} = paired.(fn ->
+        Smalt.Projection.SemanticEpoch.timeline(
+          receipts_dir: uniq_dir,
+          pack_lock: @pack_lock,
+          deviations_path: Path.join(tmp, "deviations.jsonl")
+        )
+      end)
+
+      Smalt.Test.Ratio.assert_ratio(uniq_s, uniq_b,
         max: 6.0,
-        context: "10k unique parse vs raw decode control"
+        context: "10k unique parse vs raw decode control (paired, min-of-5)"
       )
 
-      Smalt.Test.Ratio.assert_ratio(t_re, baseline_us,
+      {re_s, re_b} = paired.(fn ->
+        Smalt.Projection.SemanticEpoch.timeline(
+          receipts_dir: uniq_dir,
+          pack_lock: @pack_lock,
+          deviations_path: Path.join(tmp, "deviations.jsonl")
+        )
+      end)
+
+      Smalt.Test.Ratio.assert_ratio(re_s, re_b,
         max: 6.0,
-        context: "10k re-parse vs raw decode control"
+        context: "10k re-parse vs raw decode control (paired, min-of-5)"
       )
 
-      Smalt.Test.Ratio.assert_ratio(t_dup, baseline_us,
+      {dup_s, dup_b} = paired.(fn ->
+        Smalt.Projection.SemanticEpoch.timeline(
+          receipts_dir: dup_dir,
+          pack_lock: @pack_lock,
+          deviations_path: Path.join(tmp, "deviations.jsonl")
+        )
+      end)
+
+      Smalt.Test.Ratio.assert_ratio(dup_s, dup_b,
         max: 6.0,
-        context: "10k dup scan vs raw decode control"
+        context: "10k dup scan vs raw decode control (paired, min-of-5)"
       )
+
 
       File.rm_rf!(uniq_dir)
       File.rm_rf!(dup_dir)

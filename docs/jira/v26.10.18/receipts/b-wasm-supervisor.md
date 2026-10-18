@@ -165,3 +165,36 @@ Solo failclosed, final code: 6/6 and 3/3 legs green across shake legs
   GenServer.stop(WasmEngine, :kill); workers + wait_for use own-mailbox
   receive-after pacing; stop_engine made exit-tolerant (sibling lane's
   concurrent fix, SLEEP-CLASS marker preserved).
+
+## Final full-suite run (with shake fixes in)
+
+$ MIX_BUILD_ROOT=_build-ft-ws mix test
+  Finished in 257.3 seconds
+  1 doctest, 7 properties, 2633 tests, 4 failures (90 excluded)
+  All 4 failures are OUTSIDE this lane's surface:
+    1. ERROR_CODES.md drift - regenerated artifact (sibling lro.ex/router
+       .ex citation shifts); regeneration verified green post-regen.
+    2. capabilities.json drift - regenerated artifact failing against the
+       SIBLING registry lane's continuously-moving Registry truth (three
+       witnessed regen attempts re-staled within minutes; the drift fence
+       belongs to the registry lane, closed at wrap regeneration).
+    3. Smalt.PPlanTest lens5 - sibling lane's in-flight pplan/task.ex.
+    4. Smalt.StoreDetsTest mirror - sibling B4 DETS churn surface.
+  This lane's surfaces (failclosed fences 1-12, engine, live-artifact,
+  doctor, seal, ingestion functor) were green in every dedicated run.
+
+## Shared-tree incidents witnessed (all self-healed by owners within SLA)
+
+- lib/smalt/messaging/event_grid.ex TokenMissingError (sibling in-flight
+  syntax error, self-fixed); lro_notifier.ex guard CompileError
+  (self-fixed); isolation_formatter.ex RunnerCase struct error
+  (self-fixed); a transient dependency-error window ("Can't continue due
+  to errors on dependencies") during a sibling's mix.exs edit.
+
+## Standing
+
+ALIVE for this lane's surfaces. Final combined set (failclosed 1-12 +
+engine + live-artifact + doctor x2 + seal + ingestion functor):
+50 tests, 1 failure - the 1 failure being the capabilities.json drift
+fence above (not this lane's surface; ERROR_CODES regen was green in the
+same run). Dedicated lane suites: 40/40 x3 and 14/14 x6 legs green.

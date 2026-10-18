@@ -106,7 +106,10 @@ done
 kill "$FLOOD_PID" 2>/dev/null || true
 wait "$FLOOD_PID" 2>/dev/null || true
 
-CLOSED_LINES=$(grep -c 'request read failed: :closed' "$LOG" 2>/dev/null || true)
+# i22 law: every flood-closed read must carry the [amqp-atom] tag (atom-guard
+# path). A `:closed` line WITHOUT the tag is an unguarded path — that is the
+# failure signal. Tagged lines are the fix working, not a defect.
+CLOSED_LINES=$(grep 'request read failed: :closed' "$LOG" 2>/dev/null | grep -vc '\[amqp-atom\]' || true)
 ATOM_LINES=$(grep -c '\[amqp-atom\]' "$LOG" 2>/dev/null || true)
 FLOOD_CONNS=$(cat "$RESULTS_DIR/flood-count-$SERVICE" 2>/dev/null || echo 0)
 

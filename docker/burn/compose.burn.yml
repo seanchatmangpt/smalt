@@ -147,7 +147,6 @@ services:
     <<: *burn-common
     environment:
       BURN_SERVICE: smalt-burn-all-1
-      SMALT_PLANES: all
       BURN_EXPECT_PORT: "9443"
       BURN_FLOOD_SECONDS: "15"
 
@@ -155,7 +154,6 @@ services:
     <<: *burn-common
     environment:
       BURN_SERVICE: smalt-burn-all-2
-      SMALT_PLANES: all
       BURN_EXPECT_PORT: "9443"
       BURN_FLOOD_SECONDS: "15"
 
@@ -163,7 +161,6 @@ services:
     <<: *burn-common
     environment:
       BURN_SERVICE: smalt-burn-all-3
-      SMALT_PLANES: all
       BURN_EXPECT_PORT: "9443"
       BURN_FLOOD_SECONDS: "15"
 
@@ -171,7 +168,6 @@ services:
     <<: *burn-common
     environment:
       BURN_SERVICE: smalt-burn-all-4
-      SMALT_PLANES: all
       BURN_EXPECT_PORT: "9443"
       BURN_FLOOD_SECONDS: "15"
 

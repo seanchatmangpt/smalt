@@ -101,13 +101,15 @@ HDR
         integration) exp=5672 ;;
         identity) exp=9443 ;;
       esac
+      # SMALT_PLANES is set ONLY for single-plane services; 'all' is the
+      # unset default (the loader refuses the literal :all).
+      if [ "$p" = all ]; then planes_line=""; else planes_line="      SMALT_PLANES: $p"$'\n'; fi
       cat <<SVC
   $s:
     <<: *burn-common
     environment:
       BURN_SERVICE: $s
-      SMALT_PLANES: $p
-      BURN_EXPECT_PORT: "$exp"
+$planes_line      BURN_EXPECT_PORT: "$exp"
       BURN_FLOOD_SECONDS: "15"
 
 SVC
@@ -125,6 +127,7 @@ DC=(docker compose -f "$COMPOSE_FILE" -p "$PROJECT")
 
 # --- preflight: zero host port publish, fail-closed --------------------------
 preflight() {
+  mkdir -p "$RESULTS_DIR"
   command -v docker >/dev/null 2>&1 || { echo "[BURN-MATRIX] docker not on PATH" >&2; exit 2; }
   docker info >/dev/null 2>&1 || { echo "[BURN-MATRIX] docker daemon not reachable" >&2; exit 2; }
   docker image inspect smalt:local >/dev/null 2>&1 || {
@@ -140,6 +143,10 @@ preflight() {
     exit 2
   fi
   echo "[BURN-MATRIX] preflight OK: 0 published host ports (netns isolation)"
+  # Baseline the host's own listeners (a dev substrate may legitimately hold
+  # canonical ports); the falsifier asserts no NEW host listeners post-run.
+  lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '{print $9}' | sort -u \
+    > "$RESULTS_DIR/host-baseline.txt" || true
 }
 
 # Services under test for this run: the plane's replica row.
@@ -212,17 +219,19 @@ for s in "${SERVICES[@]}"; do
   esac
 done
 
-# Host-side falsifier check: after down, no host listener may remain on a
-# canonical smalt port (the netns law's host half).
+# Host-side falsifier check: after down, no NEW host listener on a canonical
+# smalt port vs the pre-run baseline (the netns law's host half).
+lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '{print $9}' | sort -u \
+  > "$RESULTS_DIR/host-after.txt" || true
 HOST_HITS=0
 for port in 9443 9444 8443 5672 5673 9545; do
-  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "[BURN-MATRIX] HOST PORT CONFLICT: $port listening on host after run" >&2
+  if grep -q ":$port " "$RESULTS_DIR/host-after.txt" && ! grep -q ":$port " "$RESULTS_DIR/host-baseline.txt"; then
+    echo "[BURN-MATRIX] HOST PORT CONFLICT: new host listener on $port after run" >&2
     HOST_HITS=$((HOST_HITS + 1))
   fi
 done
-[ "$HOST_HITS" -eq 0 ] || { echo "[BURN-MATRIX] VERDICT: FAIL — host listeners on canonical ports" >&2; exit 1; }
+[ "$HOST_HITS" -eq 0 ] || { echo "[BURN-MATRIX] VERDICT: FAIL — new host listeners on canonical ports" >&2; exit 1; }
 
-echo "[BURN-MATRIX] clean services: $CLEAN/4; host canonical-port listeners: 0"
+echo "[BURN-MATRIX] clean services: $CLEAN/4; new host canonical-port listeners: 0 (baseline preserved)"
 [ "$CLEAN" -eq 4 ] || { echo "[BURN-MATRIX] VERDICT: FAIL — not 4/4 clean" >&2; exit 1; }
 echo "[BURN-MATRIX] VERDICT: CLEAN — 4/4 containers green, netns-isolated, zero host publish"

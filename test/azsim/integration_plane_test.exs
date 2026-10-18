@@ -79,7 +79,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
   # ===========================================================================
 
   test "oversize frame closes with amqp:frame-size-too-small" do
-    SmaltTest.Env.put_restored(amqp: sasl_mechanisms: [:anonymous], max_frame_size: 2048)
+    SmaltTest.Env.put_restored(amqp: [sasl_mechanisms: [:anonymous], max_frame_size: 2048])
 
     {client, conn} = wire_conn!()
 
@@ -102,7 +102,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
   end
 
   test "profile excluding :anonymous refuses SASL with typed unauthorized-access" do
-    SmaltTest.Env.put_restored(amqp: sasl_mechanisms: [:plain])
+    SmaltTest.Env.put_restored(amqp: [sasl_mechanisms: [:plain]])
 
     {client, conn} = wire_conn!()
 
@@ -206,7 +206,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
 
     assert_receive {:event_grid, ^topic, :sub, "e1", _}, 2000
     assert :ok = EventGrid.ack(topic, :sub, "e1")
-    assert {0, nil} = EventGrid.status(topic, :sub)
+    assert {0, nil, true} = EventGrid.status(topic, :sub)
   end
 
   test "event grid: subscriber crash => redelivery with same id (never loss)" do
@@ -272,13 +272,14 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       })
 
     EventGrid.subscribe(topic, :sub, sub_pid)
-    GenServer.stop(sub_pid, :kill)
+    send(sub_pid, :azb07_crash)
+    Process.exit(sub_pid, :kill)
 
     # Wait for the DOWN (no sleep: poll real state via a bounded eventually).
     SmaltTest.AssertEventually.eventually(
       fn ->
         case EventGrid.status(topic, :sub) do
-          {_, nil} -> {:ok, :down_observed}
+          {_, _, false} -> {:ok, :down_observed}
           _ -> :retry
         end
       end,
@@ -286,7 +287,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
     )
 
     assert :fresh = EventGrid.publish(topic, %{id: "down-1"})
-    assert {1, nil} = EventGrid.status(topic, :sub)
+    assert {1, nil, false} = EventGrid.status(topic, :sub)
 
     start_supervised!(%{
       id: :azb07_sub4,
@@ -307,7 +308,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
   end
 
   test "event grid: non-at-least-once delivery_mode typed-refused" do
-    SmaltTest.Env.put_restored(event_grid: delivery_mode: :at_most_once)
+    SmaltTest.Env.put_restored(event_grid: [delivery_mode: :at_most_once])
     topic = unique_topic()
     EventGrid.reset(topic)
     EventGrid.subscribe(topic, :sub)
@@ -413,7 +414,9 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
     end
   end
 
+  defp error_condition([{:symbol, c} | _]) when is_binary(c), do: c
   defp error_condition(%{condition: c}) when is_binary(c), do: c
 
+  defp error_description([_sym, d | _]) when is_binary(d), do: d
   defp error_description(%{description: d}) when is_binary(d), do: d
 end

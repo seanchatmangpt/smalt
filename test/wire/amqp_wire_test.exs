@@ -51,9 +51,12 @@ defmodule Smalt.Wire.AmqpWireTest do
 
       on_exit(fn ->
         stop_tree(sup)
-        SmaltTest.PortEnv.restore(prev)
         SmaltTest.Lifecycle.restore_app()
         SmaltTest.Lifecycle.ensure_store_up()
+
+        # AZB-11b: the env snapshot must win — restore_app/0 re-writes the
+        # shifted port envs, so the saved prev values are applied AFTER it.
+        SmaltTest.PortEnv.restore(prev)
       end)
     end
 

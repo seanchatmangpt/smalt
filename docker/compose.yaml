@@ -16,6 +16,8 @@ x-smalt-common: &smalt-common
     target: test
     additional_contexts:
       ash_r2rml: ../../ash_r2rml
+      ash_graphlaw: ../../ash_graphlaw
+      ggen_igniter: ../../ggen_igniter
   environment:
     MIX_ENV: test
     SMALT_CERT_DIR: /smalt/.smalt/tls

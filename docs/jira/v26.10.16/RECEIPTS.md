@@ -280,6 +280,7 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-28 | (no receipt file — justfile module `justfile.d/28-stress.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-28 | (no receipt file — justfile module `justfile.d/28-test-budget.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-30 | (no receipt file — justfile module `justfile.d/30-burn.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

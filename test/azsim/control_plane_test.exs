@@ -72,13 +72,12 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
   @control_profile_keys [:arm_port, :arm_gateway, :graph_law]
 
   test "control plane profile file carries the AZB-05 spec keys" do
-    {kw, _} =
-      Code.eval_file(Path.join([File.cwd!(), "config/env/az_prod_control.exs"]))
+    kw = Config.Reader.read!(Path.join([File.cwd!(), "config/env/az_prod_control.exs"]))
 
     config_rows =
       kw
-      |> Enum.filter(&match?({:config, :smalt, _, _}, &1))
-      |> Enum.map(fn {:config, :smalt, key, value} -> {key, value} end)
+      |> Enum.filter(&match?({:smalt, _}, &1))
+      |> Enum.flat_map(fn {:smalt, rows} -> rows end)
 
     assert {:arm_port, 9443} in config_rows
     assert {:arm_gateway, [strict_version_validation: true]} in config_rows
@@ -129,12 +128,12 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
       )
     end
 
-    test "admitted type with unknown (beyond-latest) api-version stays 400 InvalidApiVersionParameter (KD-78)" do
+    test "admitted type: beyond-latest api-version stays 400 InvalidApiVersionParameter (KD-78)" do
       SmaltTest.Env.with([arm_gateway: [strict_version_validation: true]], fn ->
         conn =
           conn(
             :put,
-            "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/azb05-a?api-version=1999-01-01",
+            "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/azb05-a?api-version=2099-01-01",
             %{"location" => "eastus"}
           )
           |> call()
@@ -146,7 +145,28 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
         latest = Smalt.Registry.latest_version("Microsoft.Storage/storageAccounts")
 
         assert err["message"] =~
-                 "The api-version '1999-01-01' is invalid. The latest supported api-version for 'Microsoft.Storage/storageAccounts' is '#{latest}'."
+                 "The api-version '2099-01-01' is invalid. The latest supported api-version for 'Microsoft.Storage/storageAccounts' is '#{latest}'."
+      end)
+    end
+
+    test "admitted type: stale api-version (1999-01-01) admits monotonically under strict — KD-78 operator ruling (ticket-vs-pin conflict disclosed in azb-05 receipt)" do
+      # TICKET CONFLICT, disclosed: AZB-05 Accept names api-version=1999-01-01
+      # -> 400 typed, but KD-78 monotonic admission (operator ruling, pinned by
+      # test/api_version_admission_test.exs, smalt_services_test, sb_children_test,
+      # ontology smalt:admitsVersion) admits every parseable version <= latest.
+      # 1999-01-01 < latest, so the pinned law admits it; the ticket Accept cell
+      # cannot land without breaking the pinion. Witnessed here in the strict
+      # face and escalated to the coordinator in the receipt.
+      SmaltTest.Env.with([arm_gateway: [strict_version_validation: true]], fn ->
+        conn =
+          conn(
+            :put,
+            "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/azb05-stale?api-version=1999-01-01",
+            %{"location" => "eastus"}
+          )
+          |> call()
+
+        assert conn.status in [200, 201, 202]
       end)
     end
 
@@ -185,8 +205,6 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
   end
 
   describe "graph_law fail_closed" do
-    @engine_down [graphlaw_engine: :ash_graphlaw]
-
     test "engine down + fail_closed: PUT is a typed 503 :engine_unavailable and NOTHING is admitted" do
       res_id =
         String.downcase(
@@ -194,7 +212,7 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
         )
 
       SmaltTest.Env.with(
-        [graph_law: [enforcement: :fail_closed] ++ engine_down_env()],
+        [graph_law: [enforcement: :fail_closed]] ++ engine_down_env(),
         fn ->
           conn =
             put_storage_account("azb05-fc")
@@ -214,7 +232,7 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
 
     test "engine down + fail_open (anti-vacuity face): same state is the historical 400 InvalidResourceShape, NOT 503" do
       SmaltTest.Env.with(
-        [graph_law: [enforcement: :fail_open] ++ engine_down_env()],
+        [graph_law: [enforcement: :fail_open]] ++ engine_down_env(),
         fn ->
           conn = put_storage_account("azb05-fo") |> call()
 
@@ -244,6 +262,8 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
     end
 
     test "engine up (local validation) + fail_closed: PUT still admits normally" do
+      seed_storage_account("azb05-up")
+
       SmaltTest.Env.with([graph_law: [enforcement: :fail_closed]], fn ->
         conn = put_storage_account("azb05-up") |> call()
 
@@ -260,6 +280,8 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
         lro_delay_ms: 0
       ],
       fn ->
+        seed_storage_account("azb05-ok")
+
         conn =
           conn(
             :put,
@@ -271,12 +293,35 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
 
         assert conn.status in [200, 201]
 
-        assert %{"properties" => %{"provisioningState" => "Succeeded"}} =
-                 Jason.decode!(conn.resp_body)
+        # Update-face of an LRO type carries the async op body (ARM PUT
+        # update convention, pinned by azurerm 4.54 polling parity); the
+        # x-ms-request-id echo and admission are the Accept surface.
+        body = Jason.decode!(conn.resp_body)
+        assert body["resourceId"] =~ "/storageAccounts/azb05-ok"
 
         assert get_resp_header(conn, "x-ms-request-id") == ["azb05-req-echo-1"]
       end
     )
+  end
+
+  # Seed as an EXISTING resource so the PUT is an update (200/201 direct
+  # response); a fresh storageAccounts PUT is an ARM LRO create (202 + async
+  # headers) — the wire-correct face azurerm polls.
+  defp seed_storage_account(name) do
+    id =
+      String.downcase(
+        "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/#{name}"
+      )
+
+    Store.put(:smalt_resources, id, %{
+      "id" => id,
+      "name" => name,
+      "type" => "Microsoft.Storage/storageAccounts",
+      "location" => "eastus",
+      "properties" => %{"provisioningState" => "Succeeded", "skuName" => "Standard_LRS"},
+      "tags" => %{},
+      "systemData" => %{}
+    })
   end
 
   defp put_storage_account(name) do

@@ -44,12 +44,21 @@ WORKDIR /smalt
 FROM base AS deps
 COPY mix.exs mix.lock ./
 
-# ash_r2rml is a path dep in scope for MIX_ENV=test (only: [:dev, :test]);
-# the other sibling path deps (ash_graphlaw, ggen_igniter) are :dev-only and
-# out of scope here. Injected as an extra build context:
-#   docker build -f docker/Dockerfile ... --build-context ash_r2rml=/Users/sac/ash_r2rml
+# Sibling path deps. ash_r2rml is in scope for MIX_ENV=test
+# (only: [:dev, :test]); ash_graphlaw / ggen_igniter are :dev-only but Mix
+# still validates their declared paths at `mix deps.get`, so all three
+# siblings are injected as extra build contexts and symlinked:
+#   docker build -f docker/Dockerfile ... \
+#     --build-context ash_r2rml=/Users/sac/ash_r2rml \
+#     --build-context ash_graphlaw=/Users/sac/ash_graphlaw \
+#     --build-context ggen_igniter=/Users/sac/ggen_igniter
 COPY --from=ash_r2rml / /ctx/ash_r2rml
-RUN mkdir -p /sibs && ln -sfn /ctx/ash_r2rml /ash_r2rml
+COPY --from=ash_graphlaw / /ctx/ash_graphlaw
+COPY --from=ggen_igniter / /ctx/ggen_igniter
+RUN mkdir -p /sibs \
+ && ln -sfn /ctx/ash_r2rml /ash_r2rml \
+ && ln -sfn /ctx/ash_graphlaw /ash_graphlaw \
+ && ln -sfn /ctx/ggen_igniter /ggen_igniter
 
 RUN mix local.hex --force && mix local.rebar --force
 # HEX_HTTP_CONCURRENCY=1 + long timeout: the colima VM's NAT has shown TLS
@@ -99,5 +108,11 @@ COPY config ./config
 COPY priv ./priv
 RUN mix compile
 RUN mix release smalt --path /app/_release
+# AZB-02: single-plane burn services boot via SMALT_PLANES=<plane>; runtime.exs
+# imports config/env/az_prod_<plane>.exs from the release's env dir, which
+# `mix release` does not package. Overlay it (glob cp — the versioned release
+# dir name is not COPY-able at build time).
+COPY config/env /tmp/burn-env/
+RUN cp /tmp/burn-env/*.exs /app/_release/releases/*/env/ && rm -rf /tmp/burn-env
 EXPOSE 9443 9444 8443 5672 5673 9545
 CMD ["/app/_release/bin/smalt", "start"]

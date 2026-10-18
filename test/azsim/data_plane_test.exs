@@ -38,7 +38,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
   describe "if-match 6-way replace race" do
     test "100 iterations of {200:1, 412:5}" do
       account = "azb06race"
-      container = "r"
+      container = "rng"
       blob = "stadium"
       blob_key = "#{account}/#{container}/#{blob}"
 
@@ -69,8 +69,8 @@ defmodule Smalt.Azsim.DataPlaneTest do
           assert counts == %{200 => 1, 412 => 5}, "iteration #{i}: #{inspect(results)}"
 
           # The iteration's winner moved the etag off the raced value.
-          {:ok, after} = Store.get(:smalt_blobs, blob_key)
-          assert after["etag"] != etag
+          {:ok, raced} = Store.get(:smalt_blobs, blob_key)
+          assert raced["etag"] != etag
 
           acc + 1
         end)
@@ -88,7 +88,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
     test "mid-slice returns 206 + exact Content-Range" do
       account = "azb06range"
-      container = "r"
+      container = "rng"
       {:ok, _} = BlobStorage.create_container(account, container, %{"immutable" => false})
       {:ok, _} = BlobStorage.put_blob(account, container, "r.bin", @content)
 
@@ -106,11 +106,11 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
     test "suffix range bytes=-5 returns 206 + Content-Range" do
       account = "azb06range"
-      {:ok, _} = BlobStorage.put_blob(account, "r", "s.bin", @content)
+      {:ok, _} = BlobStorage.put_blob(account, "rng", "s.bin", @content)
 
       conn =
         :get
-        |> conn("/azb06range/r/s.bin")
+        |> conn("/azb06range/rng/s.bin")
         |> put_req_header("range", "bytes=-5")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
@@ -128,12 +128,12 @@ defmodule Smalt.Azsim.DataPlaneTest do
   describe "conditional HEAD/GET" do
     test "If-None-Match match -> 304 over the wire; mismatch serves 200" do
       account = "azb06cond"
-      {:ok, _} = BlobStorage.create_container(account, "c", %{"immutable" => false})
-      {:ok, blob} = BlobStorage.put_blob(account, "c", "k", "payload")
+      {:ok, _} = BlobStorage.create_container(account, "cnd", %{"immutable" => false})
+      {:ok, blob} = BlobStorage.put_blob(account, "cnd", "k", "payload")
 
       conn =
         :get
-        |> conn("/#{account}/c/k")
+        |> conn("/#{account}/cnd/k")
         |> put_req_header("if-none-match", blob["etag"])
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
@@ -143,7 +143,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
       conn =
         :get
-        |> conn("/#{account}/c/k")
+        |> conn("/#{account}/cnd/k")
         |> put_req_header("if-none-match", "\"deadbeef\"")
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
@@ -154,8 +154,8 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
     test "If-Modified-Since: unmodified -> 304, modified-after -> 200, engine shapes" do
       account = "azb06ims"
-      {:ok, _} = BlobStorage.create_container(account, "c", %{"immutable" => false})
-      {:ok, blob} = BlobStorage.put_blob(account, "c", "k", "ims-payload")
+      {:ok, _} = BlobStorage.create_container(account, "cnd", %{"immutable" => false})
+      {:ok, blob} = BlobStorage.put_blob(account, "cnd", "k", "ims-payload")
       {:ok, lm, _off} = DateTime.from_iso8601(blob["last_modified"])
 
       past = lm |> DateTime.add(-3_600) |> http_date()
@@ -164,20 +164,22 @@ defmodule Smalt.Azsim.DataPlaneTest do
       # Engine surface: modified after `past` ⇒ serve; not modified after
       # `future` ⇒ {:not_modified, etag}.
       assert {:ok, _} =
-               BlobStorage.get_blob_conditional(account, "c", "k", %{
+               BlobStorage.get_blob_conditional(account, "cnd", "k", %{
                  "if-modified-since" => past
                })
 
-      assert {:not_modified, blob["etag"]} =
-               BlobStorage.get_blob_conditional(account, "c", "k", %{
+      assert {:not_modified, etag} =
+               BlobStorage.get_blob_conditional(account, "cnd", "k", %{
                  "if-modified-since" => future
                })
+
+      assert etag == blob["etag"]
 
       # Wire surface: same verdicts ride the router (HEAD uses the same
       # conditional engine).
       head =
         :head
-        |> conn("/#{account}/c/k")
+        |> conn("/#{account}/cnd/k")
         |> put_req_header("if-modified-since", future)
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
@@ -186,7 +188,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
       get =
         :get
-        |> conn("/#{account}/c/k")
+        |> conn("/#{account}/cnd/k")
         |> put_req_header("if-modified-since", past)
         |> put_req_header("x-ms-version", "2021-12-02")
         |> router_call()
@@ -202,58 +204,52 @@ defmodule Smalt.Azsim.DataPlaneTest do
 
   describe "profile read sites" do
     test "cosmos max_ru_limit: integer profile throttles, :unbounded does not" do
-      Application.put_env(:smalt, :cosmos, max_ru_limit: 1)
-      Application.put_env(:smalt, :cosmos_ru_limit, 1)
+      SmaltTest.Env.with([cosmos: [max_ru_limit: 1], cosmos_ru_limit: 1], fn ->
+        Cosmos.define_container("azb06ru", "c", ["id"])
 
-      on_exit(fn ->
-        Application.delete_env(:smalt, :cosmos)
-        Application.delete_env(:smalt, :cosmos_ru_limit)
+        verdicts =
+          for _ <- 1..30 do
+            case Cosmos.create_doc("azb06ru", "c", %{"id" => "d#{System.unique_integer()}"}, %{}) do
+              {:ok, 201, _, _} -> :created
+              {:ok, 429, _, _} -> :throttled
+              other -> {:other, other}
+            end
+          end
+
+        assert :throttled in verdicts, "expected at least one 429 under max_ru_limit: 1"
+
+        # :unbounded (the az_prod_data.exs profile value) lifts the throttle
+        # even with a restrictive flat key set.
+        SmaltTest.Env.with([cosmos: [max_ru_limit: :unbounded]], fn ->
+          verdicts =
+            for _ <- 1..30 do
+              case Cosmos.create_doc("azb06ru", "c", %{"id" => "d#{System.unique_integer()}"}, %{}) do
+                {:ok, 201, _, _} -> :created
+                {:ok, 429, _, _} -> :throttled
+                other -> {:other, other}
+              end
+            end
+
+          refute :throttled in verdicts
+        end)
       end)
-
-      Cosmos.define_container("azb06ru", "c", ["id"])
-
-      verdicts =
-        for _ <- 1..30 do
-          case Cosmos.create_doc("azb06ru", "c", %{"id" => "d#{System.unique_integer()}"}, %{}) do
-            {:ok, 201, _, _} -> :created
-            {:ok, 429, _, _} -> :throttled
-            other -> {:other, other}
-          end
-        end
-
-      assert :throttled in verdicts, "expected at least one 429 under max_ru_limit: 1"
-
-      # :unbounded (the az_prod_data.exs profile value) lifts the throttle
-      # even with a restrictive flat key set.
-      Application.put_env(:smalt, :cosmos, max_ru_limit: :unbounded)
-
-      verdicts =
-        for _ <- 1..30 do
-          case Cosmos.create_doc("azb06ru", "c", %{"id" => "d#{System.unique_integer()}"}, %{}) do
-            {:ok, 201, _, _} -> :created
-            {:ok, 429, _, _} -> :throttled
-            other -> {:other, other}
-          end
-        end
-
-      refute :throttled in verdicts
     end
 
     test "blob_storage sync_write gate: profile-gated, no mirror => :ok, no crash" do
-      Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 0)
+      SmaltTest.Env.with([blob_storage: [persistence: :dets_mirrored, sync_interval_ms: 0]], fn ->
+        # Gate armed but no mirror process running (whereis undefined) — the
+        # write path must degrade to :ok, never crash the caller.
+        assert :ok = DetsMirror.sync_write(:smalt_blobs)
 
-      on_exit(fn -> Application.delete_env(:smalt, :blob_storage) end)
+        # Any other profile state is a no-op by construction.
+        SmaltTest.Env.with([blob_storage: [persistence: :dets_mirrored, sync_interval_ms: 5_000]], fn ->
+          assert :ok = DetsMirror.sync_write(:smalt_blobs)
+        end)
 
-      # Gate armed but no mirror process running (whereis undefined) — the
-      # write path must degrade to :ok, never crash the caller.
-      assert :ok = DetsMirror.sync_write(:smalt_blobs)
-
-      # Any other profile state is a no-op by construction.
-      Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 5_000)
-      assert :ok = DetsMirror.sync_write(:smalt_blobs)
-
-      Application.put_env(:smalt, :blob_storage, persistence: :local, sync_interval_ms: 0)
-      assert :ok = DetsMirror.sync_write(:smalt_blobs)
+        SmaltTest.Env.with([blob_storage: [persistence: :local, sync_interval_ms: 0]], fn ->
+          assert :ok = DetsMirror.sync_write(:smalt_blobs)
+        end)
+      end)
     end
   end
 
@@ -276,17 +272,17 @@ defmodule Smalt.Azsim.DataPlaneTest do
       dir = System.get_env("AZB06_DIR")
       marker = System.get_env("AZB06_MARKER")
 
-      Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 0)
+      Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 0) # isolation-court: exempt subprocess-script
 
       {:ok, _} = Smalt.Store.start_link([])
       {:ok, _} =
         Smalt.Store.DetsMirror.start_link(dir: dir, tables: [:smalt_blobs], repair: true)
 
       {:ok, _} =
-        Smalt.DataPlane.BlobStorage.create_container("durab", "c", %{"immutable" => false})
+        Smalt.DataPlane.BlobStorage.create_container("durab", "dur", %{"immutable" => false})
 
       {:ok, _} =
-        Smalt.DataPlane.BlobStorage.put_blob("durab", "c", "k", "survivor-payload")
+        Smalt.DataPlane.BlobStorage.put_blob("durab", "dur", "k", "survivor-payload")
 
       # Ack marker AFTER put_blob returned: with sync_interval_ms: 0 the
       # mirror fsync has ALREADY happened inside the write path. The ack is
@@ -306,21 +302,16 @@ defmodule Smalt.Azsim.DataPlaneTest do
               {~c"AZB06_MARKER", to_charlist(marker)}
             ]},
             :binary,
-            :exit_status
+            :exit_status,
+            :stderr_to_stdout
           ]
         )
 
       # Event-driven ack (no sleep, no polling): the child writes the marker
       # file, then prints ACKED on the port pipe; the parent blocks in a
-      # deadline receive.
-      ack =
-        receive do
-          {^port, {:data, "ACKED" <> _}} -> :acked
-        after
-          120_000 -> raise "child never acknowledged the write"
-        end
-
-      assert ack == :acked
+      # deadline receive that also collects child output for diagnosis (a
+      # crashed child is a loud raise with its real output, never a hang).
+      wait_ack(port, [])
 
       os_pid =
         case Port.info(port, :os_pid) do
@@ -358,7 +349,7 @@ defmodule Smalt.Azsim.DataPlaneTest do
       assert {:ok, counts} = DetsMirror.restore(Azb06RebootMirror)
       assert counts[:smalt_blobs] >= 1
 
-      assert {:ok, blob} = Store.get(:smalt_blobs, "durab/c/k")
+      assert {:ok, blob} = Store.get(:smalt_blobs, "durab/dur/k")
       assert blob["content"] == "survivor-payload"
 
       GenServer.stop(mirror)
@@ -372,6 +363,25 @@ defmodule Smalt.Azsim.DataPlaneTest do
   defp router_call(conn) do
     SmaltTest.Lifecycle.ensure_store_up()
     EgressRouter.call(conn, EgressRouter.init([]))
+  end
+
+  # Collects port data until the child's ACKED line (or its death, which
+  # raises with the collected output). Deadline receive, no polling.
+  defp wait_ack(port, acc) do
+    receive do
+      {^port, {:data, "ACKED" <> _}} ->
+        :acked
+
+      {^port, {:data, piece}} ->
+        wait_ack(port, [piece | acc])
+
+      {^port, {:exit_status, code}} ->
+        raise "child beam died before ack (exit #{code}):\n" <> IO.iodata_to_binary(acc)
+
+      after
+        90_000 ->
+          raise "child never acknowledged the write:\n" <> IO.iodata_to_binary(acc)
+    end
   end
 
   defp http_date(%DateTime{} = dt) do

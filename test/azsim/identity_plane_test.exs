@@ -49,16 +49,6 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
       keyvault: [api_version: "7.4", challenge_mode: :strict_bearer]
     )
 
-    # :sts_clock is injected per-test via SmaltTest.Env.with/2; restore-only
-    # here in case a test mutates it outside the scoped helper.
-    prev_clock = Application.get_env(:smalt, :sts_clock, :__unset__)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      if prev_clock == :__unset__,
-        do: Application.delete_env(:smalt, :sts_clock),
-        else: Application.put_env(:smalt, :sts_clock, prev_clock)
-    end)
-
     :ok
   end
 
@@ -132,38 +122,38 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
       assert Smalt.Config.sts()[:token_ttl_seconds] == 3600
 
       # Profile absent (`:all` boot): defaults keep behavior byte-identical.
-      Application.delete_env(:smalt, :keyvault)
-      Application.delete_env(:smalt, :sts)
+      SmaltTest.Env.with([keyvault: :__unset__, sts: :__unset__], fn ->
+        Application.delete_env(:smalt, :keyvault) # isolation-court: exempt test-profile-delete
+        Application.delete_env(:smalt, :sts) # isolation-court: exempt test-profile-delete
 
-      assert Bearer.kv_challenge_mode() == :strict_bearer
-      assert Smalt.DataPlane.KeyVaultActions.api_version() == "7.4"
-      assert Smalt.Config.sts() == []
+        assert Bearer.kv_challenge_mode() == :strict_bearer
+        assert Smalt.DataPlane.KeyVaultActions.api_version() == "7.4"
+        assert Smalt.Config.sts() == []
+      end)
     end
 
     test "challenge guard consults the challenge_mode profile key" do
       # strict_bearer (the profile value): tokenless /keys challenges even in
       # :anonymous mode — the KD-15 mode-blind posture, now profile-named.
-      Application.put_env(:smalt, :auth_mode, :anonymous)
+      SmaltTest.Env.with([auth_mode: :anonymous], fn ->
+        res =
+          SmaltTest.Env.with([keyvault: [challenge_mode: :strict_bearer]], fn ->
+            call(:get, "/keys", headers: [{"authorization", ""}])
+          end)
 
-      res =
-        SmaltTest.Env.with([keyvault: [challenge_mode: :strict_bearer]], fn ->
-          call(:get, "/keys", headers: [{"authorization", ""}])
-        end)
-
-      assert res.status == 401
-      assert get_resp_header(res, "www-authenticate") != []
+        assert res.status == 401
+        assert get_resp_header(res, "www-authenticate") != []
+      end)
 
       # A non-strict challenge_mode names a DIFFERENT posture: the mode-blind
       # guard steps aside and enforce-mode Bearer refuses downstream with its
       # own (non-challenge-shaped) envelope.
-      res2 =
-        SmaltTest.Env.with([keyvault: [challenge_mode: :relaxed]], fn ->
-          Application.put_env(:smalt, :auth_mode, :enforce)
-          call(:get, "/keys", headers: [{"authorization", ""}])
-        end)
+      SmaltTest.Env.with([auth_mode: :enforce, keyvault: [challenge_mode: :relaxed]], fn ->
+        res2 = call(:get, "/keys", headers: [{"authorization", ""}])
 
-      assert res2.status == 401
-      assert get_resp_header(res2, "www-authenticate") == []
+        assert res2.status == 401
+        assert get_resp_header(res2, "www-authenticate") == []
+      end)
     end
   end
 
@@ -173,19 +163,19 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
     test "tokenless /keys challenge is byte-equal in :enforce and :anonymous" do
       wa_by_mode =
         for mode <- [:enforce, :anonymous], into: %{} do
-          Application.put_env(:smalt, :auth_mode, mode)
+          SmaltTest.Env.with([auth_mode: mode], fn ->
+            res = call(:get, "/keys", headers: [{"authorization", ""}])
 
-          res = call(:get, "/keys", headers: [{"authorization", ""}])
+            assert res.status == 401, "mode #{mode}: expected 401, got #{res.status}"
 
-          assert res.status == 401, "mode #{mode}: expected 401, got #{res.status}"
+            case get_resp_header(res, "www-authenticate") do
+              [wa] ->
+                {mode, wa}
 
-          case get_resp_header(res, "www-authenticate") do
-            [wa] ->
-              {mode, wa}
-
-            other ->
-              flunk("mode #{mode}: expected exactly ONE www-authenticate, got #{inspect(other)}")
-          end
+              other ->
+                flunk("mode #{mode}: expected exactly ONE www-authenticate, got #{inspect(other)}")
+            end
+          end)
         end
 
       assert wa_by_mode[:enforce] == wa_by_mode[:anonymous],
@@ -238,7 +228,13 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
 
     test "default TTL stays 3600 when the profile key is absent (pinion: exp-iat==3600)" do
       prev = Application.get_env(:smalt, :sts, :__unset__)
-      Application.delete_env(:smalt, :sts)
+      Application.delete_env(:smalt, :sts) # isolation-court: exempt delete-then-restore
+
+      on_exit(fn ->
+        if prev == :__unset__,
+          do: Application.delete_env(:smalt, :sts),
+          else: Application.put_env(:smalt, :sts, prev)
+      end)
 
       arm_conn = mint_via_arm()
 
@@ -248,11 +244,6 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
 
       {:ok, claims} = Joken.peek_claims(body["access_token"])
       assert claims["exp"] - claims["iat"] == 3600
-
-      # Restore (the scoped helper cannot express delete-then-restore).
-      if prev == :__unset__,
-        do: Application.delete_env(:smalt, :sts),
-        else: Application.put_env(:smalt, :sts, prev)
     end
 
     defp mint_via_arm do
