@@ -413,7 +413,7 @@ defmodule Smalt.TLS do
   end
 
   defp name(cn) do
-    atv = {:"AttributeTypeAndValue", @cn_oid, {:printableString, String.to_charlist(cn)}}
+    atv = {:"AttributeTypeAndValue", @cn_oid, {:printableString, cn}}
     [[atv]]
   end
 
