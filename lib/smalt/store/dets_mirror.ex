@@ -25,6 +25,10 @@ defmodule Smalt.Store.DetsMirror do
     * `:dir` — directory for `.dets` files (default `"tmp/dets"`, created on start)
     * `:tables` — ETS tables to mirror (default: the 5 highest-value tables)
     * `:interval` — sync tick in ms (default `5_000`)
+    * `:repair` — open mirror files with `repair: true` (default `false`). A
+      mirror rebooted after a `kill -9` (un-closed `:dets` files) must open
+      with repair; a file synced by `sync_write/2` survives the repair
+      byte-exact (AZB-06 durability leg).
   """
 
   use GenServer
@@ -46,13 +50,15 @@ defmodule Smalt.Store.DetsMirror do
     dir = Map.get(map, :dir, @default_dir)
     tables = Map.get(map, :tables, @default_tables)
 
+    repair = Keyword.get(opts, :repair, false)
+
     # Fail closed in the caller: validate every mirror file up front so a
     # corrupt :dets file raises a clear ArgumentError instead of taking the
     # mirror (or silently repairing) at runtime.
     Enum.each(tables, fn table ->
       path = Path.join(dir, "#{table}.dets")
 
-      case :dets.open_file(make_ref(), file: to_charlist(path), repair: false) do
+      case :dets.open_file(make_ref(), file: to_charlist(path), repair: repair) do
         {:ok, dets} ->
           :dets.close(dets)
 
@@ -77,6 +83,31 @@ defmodule Smalt.Store.DetsMirror do
   end
 
   @doc """
+  AZB-06 write-through hook. When the `:blob_storage` profile selects
+  `persistence: :dets_mirrored` with `sync_interval_ms: 0`, an acknowledged
+  blob write is fsynced to the mirror BEFORE the write returns to the caller
+  (durability for chaos AZB-14). Any other profile state — including the
+  default (no profile, `:all` boot) and a running poll mirror — is a no-op,
+  so the default boot stays byte-identical (AZB-04 falsifier).
+
+  Called from the blob write path after the `Smalt.Store` write is committed.
+  If no mirror process is running the write is simply not mirrored (the
+  mirror is opt-in infrastructure).
+  """
+  @spec sync_write(atom(), GenServer.server()) :: :ok
+  def sync_write(table, server \\ __MODULE__) do
+    profile = Smalt.Config.blob_storage()
+
+    if Keyword.get(profile, :persistence) == :dets_mirrored and
+         Keyword.get(profile, :sync_interval_ms) == 0 and
+         :erlang.whereis(server) != :undefined do
+      GenServer.call(server, {:sync_table, table}, 30_000)
+    else
+      :ok
+    end
+  end
+
+  @doc """
   Forces an immediate sync of all mirrored tables to disk. Returns `:ok`.
   """
   @spec sync(GenServer.server()) :: :ok
@@ -94,9 +125,10 @@ defmodule Smalt.Store.DetsMirror do
     dir = Map.get(opts, :dir, @default_dir)
     tables = Map.get(opts, :tables, @default_tables)
     interval = Map.get(opts, :interval, @default_interval)
+    repair = Map.get(opts, :repair, false)
     File.mkdir_p!(dir)
 
-    case open_all(tables, dir) do
+    case open_all(tables, dir, repair) do
       {:ok, dets} ->
         Process.send_after(self(), :tick, interval)
         {:ok, %{dets: dets, interval: interval}}
@@ -106,11 +138,11 @@ defmodule Smalt.Store.DetsMirror do
     end
   end
 
-  defp open_all(tables, dir) do
+  defp open_all(tables, dir, repair) do
     Enum.reduce_while(tables, {:ok, %{}}, fn table, {:ok, acc} ->
       path = Path.join(dir, "#{table}.dets")
 
-      case :dets.open_file(table, file: to_charlist(path), repair: false) do
+      case :dets.open_file(table, file: to_charlist(path), repair: repair) do
         {:ok, dets} ->
           {:cont, {:ok, Map.put(acc, table, dets)}}
 
@@ -134,6 +166,25 @@ defmodule Smalt.Store.DetsMirror do
   end
 
   @impl true
+  def handle_call({:sync_table, table}, _from, state) do
+    reply =
+      case Map.fetch(state.dets, table) do
+        {:ok, dets_file} ->
+          sync_table(dets_file, table)
+          :ok
+
+        :error ->
+          Logger.warning(
+            "DetsMirror: table #{inspect(table)} not mirrored, sync_write skipped"
+          )
+
+          :ok
+      end
+
+    {:reply, reply, state}
+  end
+
+  @impl true
   def handle_call(:restore, _from, state) do
     counts =
       Map.new(state.dets, fn {table, dets} ->
@@ -154,32 +205,40 @@ defmodule Smalt.Store.DetsMirror do
 
   defp sync_all(dets) do
     Enum.each(dets, fn {table, dets_file} ->
-      case :ets.info(table) do
-        :undefined ->
-          Logger.warning("DetsMirror: ETS table #{inspect(table)} missing, skipping sync")
-
-        _ ->
-          rows = :ets.tab2list(table)
-
-          # Bounded-growth fence (SHIM-COURT census: test/store_dets_growth_test.exs):
-          # the mirror is a PROJECTION of the live ETS table, not a historical
-          # union — keys deleted from ETS are deleted from the mirror on the
-          # next sync, so mirror size tracks live size and restore never
-          # resurrects deleted rows. A bare :dets.insert upsert-union leaked
-          # 100/200 stale rows in the census falsifier.
-          live_keys = MapSet.new(rows, fn {key, _val} -> key end)
-
-          stale =
-            dets_file
-            |> :dets.match_object(:_)
-            |> Enum.map(fn {key, _val} -> key end)
-            |> Enum.reject(&MapSet.member?(live_keys, &1))
-
-          Enum.each(stale, &:dets.delete(dets_file, &1))
-          :dets.insert(dets_file, rows)
-          :dets.sync(dets_file)
-      end
+      sync_table(dets_file, table)
     end)
+
+    :ok
+  end
+
+  # One-table body of the old sync_all — shared by the poll tick, the
+  # full `sync/1` call, and the AZB-06 per-write `sync_write/2` path.
+  defp sync_table(dets_file, table) do
+    case :ets.info(table) do
+      :undefined ->
+        Logger.warning("DetsMirror: ETS table #{inspect(table)} missing, skipping sync")
+
+      _ ->
+        rows = :ets.tab2list(table)
+
+        # Bounded-growth fence (SHIM-COURT census: test/store_dets_growth_test.exs):
+        # the mirror is a PROJECTION of the live ETS table, not a historical
+        # union — keys deleted from ETS are deleted from the mirror on the
+        # next sync, so mirror size tracks live size and restore never
+        # resurrects deleted rows. A bare :dets.insert upsert-union leaked
+        # 100/200 stale rows in the census falsifier.
+        live_keys = MapSet.new(rows, fn {key, _val} -> key end)
+
+        stale =
+          dets_file
+          |> :dets.match_object(:_)
+          |> Enum.map(fn {key, _val} -> key end)
+          |> Enum.reject(&MapSet.member?(live_keys, &1))
+
+        Enum.each(stale, &:dets.delete(dets_file, &1))
+        :dets.insert(dets_file, rows)
+        :dets.sync(dets_file)
+    end
 
     :ok
   end

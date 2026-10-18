@@ -189,8 +189,13 @@ defmodule Smalt.DataPlane.BlobStorage do
             if_none_match_star?(headers) ->
               {:error, :precondition_failed, precondition_message()}
 
+            # AZB-06: the If-Match replace runs as a Store CAS
+            # (compare_and_swap/4 inside the Store GenServer), so N concurrent
+            # replaces carrying the same If-Match etag yield EXACTLY one
+            # winner (200/201) and N-1 precondition losers (412) — the old
+            # read-then-write TOCTOU could admit multiple winners.
             true ->
-              store_blob(account, container, blob_name, content, headers)
+              cas_replace(account, container, blob_name, content, headers, existing)
           end
 
         :error ->
@@ -1106,10 +1111,13 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   @doc """
   Conditional read engine (Azure parity, cycle-30 Get Blob): evaluates
-  If-Match then If-None-Match per RFC 7232 precedence.
+  If-Match, then If-None-Match, then If-Modified-Since per RFC 7232
+  precedence (AZB-06).
 
     * `{:ok, blob}` — preconditions pass (or absent): serve the read
-    * `{:not_modified, etag}` — If-None-Match matched (incl. `*`): 304
+    * `{:not_modified, etag}` — If-None-Match matched (incl. `*`), or
+      If-Modified-Since present and the blob was NOT modified after that date
+      (whole-second HTTP-date comparison): 304
     * `{:error, 412, "PreconditionFailed", msg}` — If-Match failed
     * `:error` — blob missing (404)
   """
@@ -1119,6 +1127,7 @@ defmodule Smalt.DataPlane.BlobStorage do
         etag = blob["etag"]
         if_match = ConditionalHeaders.header(headers, "if-match")
         if_none_match = ConditionalHeaders.header(headers, "if-none-match")
+        if_modified_since = ConditionalHeaders.header(headers, "if-modified-since")
 
         cond do
           if_match != nil and not conditional_etag_match?(if_match, etag) ->
@@ -1126,6 +1135,9 @@ defmodule Smalt.DataPlane.BlobStorage do
              "The condition specified using HTTP conditional header(s) is not met."}
 
           if_none_match != nil and conditional_etag_match?(if_none_match, etag) ->
+            {:not_modified, etag}
+
+          if_modified_since != nil and not modified_since?(blob["last_modified"], if_modified_since) ->
             {:not_modified, etag}
 
           true ->
@@ -1138,6 +1150,37 @@ defmodule Smalt.DataPlane.BlobStorage do
   end
 
   def get_blob_conditional(_account, _container, _blob_name, _headers), do: :error
+
+  # AZB-06 If-Modified-Since: HTTP-date comparison at whole-second
+  # granularity (RFC 7232 §2.2 — the stored ISO-8601 last_modified is
+  # truncated to seconds). Unparseable dates never match a 304 (serve the
+  # read), never crash.
+  defp modified_since?(last_modified, if_modified_since) do
+    case {http_date_to_epoch(if_modified_since), iso8601_to_epoch(last_modified)} do
+      {{ims, _raw}, {lm, _}} when ims != nil and lm != nil -> lm > ims
+      _ -> true
+    end
+  end
+
+  defp http_date_to_epoch(raw) do
+    case :httpd_util.convert_request_date(to_charlist(raw)) do
+      {{y, m, d}, {h, mi, s}} ->
+        {:calendar.datetime_to_gregorian_seconds({{y, m, d}, {h, mi, s}}), raw}
+
+      _ ->
+        {nil, raw}
+    end
+  end
+
+  defp iso8601_to_epoch(raw) do
+    case DateTime.from_iso8601(raw || "") do
+      {:ok, dt, _off} ->
+        {DateTime.to_unix(dt, :second), raw}
+
+      {:error, _, _} ->
+        {nil, raw}
+    end
+  end
 
   defp conditional_etag_match?("*", _etag), do: true
 
@@ -1453,7 +1496,53 @@ defmodule Smalt.DataPlane.BlobStorage do
     }
 
     Store.put(:smalt_blobs, "#{account}/#{container}/#{blob_name}", blob)
+
+    # AZB-06 durability: with `persistence: :dets_mirrored, sync_interval_ms: 0`
+    # the acknowledged write is fsynced to the mirror before this function
+    # returns (so before the HTTP 201/200 ack). No profile / no mirror => no-op.
+    Smalt.Store.DetsMirror.sync_write(:smalt_blobs)
+
     {:ok, blob}
+  end
+
+  # AZB-06 If-Match race: the replace runs as ONE Store compare_and_swap so
+  # exactly one concurrent racer wins. On CAS conflict we re-read and re-check
+  # the caller's If-Match against the CURRENT etag — the first writer already
+  # moved it, so the losers take the 412 path; if the current etag still
+  # matches (e.g. a metadata mutation raced in between) we retry the CAS.
+  defp cas_replace(account, container, blob_name, content, headers, expected) do
+    etag = "\"#{:crypto.hash(:md5, content) |> Base.encode16(case: :lower)}\""
+    blob_key = "#{account}/#{container}/#{blob_name}"
+
+    blob = %{
+      "name" => blob_name,
+      "content" => content,
+      "content_length" => byte_size(content),
+      "etag" => etag,
+      "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "headers" => headers
+    }
+
+    case Store.compare_and_swap(:smalt_blobs, blob_key, expected, blob) do
+      :ok ->
+        Smalt.Store.DetsMirror.sync_write(:smalt_blobs)
+        {:ok, blob}
+
+      {:error, :conflict} ->
+        case Store.get(:smalt_blobs, blob_key) do
+          {:ok, current} ->
+            if mismatched_if_match?(headers, current["etag"]) do
+              {:error, :precondition_failed, precondition_message()}
+            else
+              cas_replace(account, container, blob_name, content, headers, current)
+            end
+
+          # Deleted concurrently while we held a stale expect — an If-Match
+          # precondition on a resource that no longer exists fails (cycle-21).
+          :error ->
+            {:error, :precondition_failed, precondition_message()}
+        end
+    end
   end
 
   defp mismatched_if_match?(headers, current_etag) do

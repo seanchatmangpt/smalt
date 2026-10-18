@@ -58,6 +58,17 @@ defmodule Smalt.Amqp.Connection do
     GenServer.start_link(__MODULE__, opts)
   end
 
+  @doc """
+  AZB-07: broker-forced partition detach — sends the typed
+  `amqp:link:detach-forced` detach for the receiver link(s) on `address`,
+  keeping the connection up so the client relink is clean (real Event Hubs
+  service behavior).
+  """
+  def force_partition_detach(conn_pid, address) when is_pid(conn_pid) do
+    send(conn_pid, {:azb07_force_partition_detach, address})
+    :ok
+  end
+
   # ===========================================================================
   # GenServer callbacks
   # ===========================================================================
@@ -123,6 +134,11 @@ defmodule Smalt.Amqp.Connection do
         close_reason =
           case reason do
             :timeout -> "amqp:resource-limit-exceeded"
+            # AZB-07: profile-configured frame cap (integration plane) — typed
+            # condition, connection close, never a crash.
+            {:frame_exceeds_configured_max, _declared, _max} ->
+              "amqp:frame-size-too-small"
+
             _other -> "amqp:internal-error"
           end
 
@@ -142,6 +158,29 @@ defmodule Smalt.Amqp.Connection do
         eh_epoch_release(link)
         {:noreply, %{state | links: Map.delete(state.links, {channel, handle})}}
     end
+  end
+
+  def handle_info({:azb07_force_partition_detach, address}, state) do
+    # AZB-07: broker-forced partition detach (real Event Hubs behavior: the
+    # service detaches a partition receiver with `amqp:link:detach-forced`;
+    # well-behaved clients relink cleanly). Receiver links on `address` get
+    # the typed detach; the connection stays up so the relink is clean.
+    {detached, links} =
+      Enum.flat_map_reduce(state.links, %{}, fn {{ch, h}, link}, acc ->
+        if link[:role] == :receiver and link[:address] == address do
+          send_frame(state, ch, {:detach,
+            %{handle: h, closed: true,
+              error: %{condition: "amqp:link:detach-forced",
+                      description: "PARTITION_DETACH"}}})
+
+          eh_epoch_release(link)
+          {[{ch, h}], acc}
+        else
+          {[], Map.put(acc, {ch, h}, link)}
+        end
+      end)
+
+    if detached == [], do: {:noreply, state}, else: {:noreply, %{state | links: links}}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
@@ -227,15 +266,45 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp next_input(%{buffer: buf} = state) do
-    case FrameCodec.decode_frame(buf) do
-      {:ok, frame} ->
-        {:ok, {:frame, frame}, %{state | buffer: rest_after(buf, frame)}}
+    case configured_frame_size_violation(buf) do
+      {declared, max} ->
+        {:error, {:frame_exceeds_configured_max, declared, max}, state}
 
-      {:more, n} ->
-        need_more(state, n - byte_size(buf))
+      nil ->
+        case FrameCodec.decode_frame(buf) do
+          {:ok, frame} ->
+            {:ok, {:frame, frame}, %{state | buffer: rest_after(buf, frame)}}
 
-      {:error, reason} ->
-        {:error, reason, state}
+          {:more, n} ->
+            need_more(state, n - byte_size(buf))
+
+          {:error, reason} ->
+            {:error, reason, state}
+        end
+    end
+  end
+
+  # AZB-07 (:amqp profile read site, one-source via Smalt.Config.amqp/0): when
+  # the integration-plane profile sets :max_frame_size, a frame whose declared
+  # size exceeds the configured cap closes with the typed
+  # amqp:frame-size-too-small condition — never a crash. Unset = the
+  # frame_codec hard cap governs (default boot byte-identical).
+  defp configured_frame_size_violation(buf) when byte_size(buf) >= 4 do
+    with max when is_integer(max) <- configured_max_frame_size(),
+         <<declared::unsigned-integer-size(32), _::binary>> <- buf,
+         true <- declared > max do
+      {declared, max}
+    else
+      _ -> nil
+    end
+  end
+
+  defp configured_frame_size_violation(_buf), do: nil
+
+  defp configured_max_frame_size do
+    case Smalt.Config.amqp()[:max_frame_size] do
+      n when is_integer(n) and n > 0 -> min(n, FrameCodec.max_frame_size())
+      _ -> nil
     end
   end
 
@@ -290,17 +359,35 @@ defmodule Smalt.Amqp.Connection do
   defp handle_sasl(%{performative: :sasl_init} = perf, state) do
     mech = mech_name(perf.mechanism)
 
-    if mech == @sasl_anonymous do
-      send_frame(state, 0, {:sasl_outcome, %{code: 0}})
-      %{state | phase: :amqp_header}
-    else
-      send_frame(state, 0, {:sasl_outcome, %{code: 1}})
-      error_close(state, "amqp:unauthorized-access", "unsupported SASL mechanism")
+    cond do
+      mech == @sasl_anonymous and configured_sasl_admits_anonymous?() ->
+        send_frame(state, 0, {:sasl_outcome, %{code: 0}})
+        %{state | phase: :amqp_header}
+
+      mech == @sasl_anonymous ->
+        # AZB-07 :amqp profile read site: a configured sasl_mechanisms list
+        # that excludes :anonymous types the refusal. The advertised set on
+        # the wire stays exactly [ANONYMOUS] (wire-compat pinion, verbatim).
+        send_frame(state, 0, {:sasl_outcome, %{code: 1}})
+        error_close(state, "amqp:unauthorized-access", "SASL :anonymous excluded by profile")
+
+      true ->
+        send_frame(state, 0, {:sasl_outcome, %{code: 1}})
+        error_close(state, "amqp:unauthorized-access", "unsupported SASL mechanism")
     end
   end
 
   defp handle_sasl(_perf, state) do
     error_close(state, "amqp:internal-error", "unexpected SASL frame")
+  end
+
+  # AZB-07: nil/unset config = ANONYMOUS admitted (today's behavior).
+  defp configured_sasl_admits_anonymous? do
+    case Smalt.Config.amqp()[:sasl_mechanisms] do
+      nil -> true
+      mechs when is_list(mechs) -> :anonymous in mechs
+      _ -> true
+    end
   end
 
   defp mech_name({:symbol, s}) when is_binary(s), do: s
@@ -351,7 +438,7 @@ defmodule Smalt.Amqp.Connection do
       :open,
       %{
         container_id: @container_id,
-        max_frame_size: @max_frame_size,
+        max_frame_size: configured_max_frame_size() || @max_frame_size,
         channel_max: 65_535,
         idle_time_out: idle
       }

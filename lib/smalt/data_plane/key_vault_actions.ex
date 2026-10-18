@@ -61,6 +61,34 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   @default_ops ["encrypt", "decrypt", "sign", "verify", "wrapKey", "unwrapKey"]
 
   # ---------------------------------------------------------------------------
+  # Identity-plane profile read sites (AZB-08)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  The Key Vault data-plane API version served on `/:keys`+`/secrets` routes —
+  `config :smalt, :keyvault, api_version: "7.4"` (identity-plane profile,
+  config/env/az_prod_identity.exs). Default "7.4" when the profile is not
+  loaded (`:all` boot), so the default boot is byte-identical. Consumed by
+  the AKV api-version gate in `EgressRouter` (refusal-message example) and
+  by the identity-plane court.
+  """
+  @spec api_version :: binary()
+  def api_version do
+    Keyword.get(Smalt.Config.keyvault(), :api_version, "7.4")
+  end
+
+  @doc """
+  The Key Vault challenge posture — `config :smalt, :keyvault,
+  challenge_mode: :strict_bearer`. See `Smalt.Auth.Bearer.kv_challenge_mode/0`
+  (the single read surface the router consumes); this accessor exists so the
+  profile key has one named reader per surface, matching `api_version/0`.
+  """
+  @spec challenge_mode :: :strict_bearer | atom()
+  def challenge_mode do
+    Keyword.get(Smalt.Config.keyvault(), :challenge_mode, :strict_bearer)
+  end
+
+  # ---------------------------------------------------------------------------
   # Encrypt / decrypt
   # ---------------------------------------------------------------------------
 

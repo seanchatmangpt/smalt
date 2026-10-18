@@ -13,6 +13,7 @@ x-smalt-common: &smalt-common
   build:
     context: ..
     dockerfile: docker/Dockerfile
+    target: test
     additional_contexts:
       ash_r2rml: ../../ash_r2rml
   environment:

@@ -26,62 +26,84 @@ defmodule SmaltTest.IsolationFormatter do
      %{
        stdout: opts[:stdout] || Process.group_leader(),
        baselines: %{},
+       pending: nil,
        leaks: [],
        tests: 0,
        failures: 0
      }}
   end
 
+  # Diff point: the case AFTER the module finished (suite_finished for the
+  # last module), not case_finished. ExUnit on_exit restores and supervision
+  # teardown for a case's last test can still be in flight when case_finished
+  # is delivered (formatter events are casts); diffing there flags both the
+  # mutator and its serial neighbor (AZB-11b baseline finding). Deferring the
+  # diff to the next case_started means any restore that completes before the
+  # next module begins counts as clean — serial runs only (--max-cases 1).
   @impl true
   def handle_event({:case_started, %ExUnit.TestCase{name: name}}, state) do
+    state = settle_pending(state)
     {names, env} = snapshot()
     {:ok, put_in(state.baselines[name], {names, env})}
   end
 
-  def handle_event({:case_finished, %ExUnit.TestCase{name: name}}, state) do
-    case Map.pop(state.baselines, name) do
-      {nil, _} ->
-        {:ok, state}
 
-      {{base_names, base_env}, baselines} ->
-        {names, env} = snapshot()
+  def handle_event({:suite_finished, _times}, state) when is_map(_times) do
+    state = settle_pending(state)
 
-        new_names = names -- base_names
-        lost_names = base_names -- names
+    io(state, "ISOLATION-TWIN SUMMARY modules_leaked=#{length(state.leaks)}" <>
+                " tests=#{state.tests} failures=#{state.failures}")
 
-        base_map = Map.new(base_env)
-        now_map = Map.new(env)
+    {:ok, %{state | baselines: %{}, pending: nil}}
+  end
 
-        env_added =
-          for {k, v} <- now_map,
-              base_map[k] != v,
-              do: {k, v}
+  defp settle_pending(%{pending: nil} = state), do: state
 
-        env_removed =
-          for {k, v} <- base_map,
-              now_map[k] != v,
-              do: {k, v}
+  defp settle_pending(%{pending: name} = state) do
+    {base_names, base_env} = Map.fetch!(state.baselines, name)
+    {names, env} = snapshot()
 
-        if new_names == [] and lost_names == [] and env_added == [] and
-             env_removed == [] do
-          {:ok, %{state | baselines: baselines}}
-        else
-          io(state, "ISOLATION-TWIN LEAK module=#{inspect(name)}")
+    new_names = names -- base_names
+    lost_names = base_names -- names
 
-          io(
-            state,
-            "ISOLATION-TWIN   names_new=#{inspect(new_names)}" <>
-              " names_lost=#{inspect(lost_names)}"
-          )
+    base_map = Map.new(base_env)
+    now_map = Map.new(env)
 
-          Enum.each(env_added ++ env_removed, fn {k, v} ->
-            io(state, "ISOLATION-TWIN   env #{inspect(k)} -> #{inspect(v)}")
-          end)
+    env_added =
+      for {k, v} <- now_map,
+          base_map[k] != v,
+          do: {k, v}
 
-          leak = %{module: name, names_new: new_names, env: env_added}
-          {:ok, %{state | baselines: baselines, leaks: [leak | state.leaks]}}
-        end
+    env_removed =
+      for {k, v} <- base_map,
+          now_map[k] != v,
+          do: {k, v}
+
+    baselines = Map.delete(state.baselines, name)
+
+    if new_names == [] and lost_names == [] and env_added == [] and
+         env_removed == [] do
+      %{state | baselines: baselines, pending: nil}
+    else
+      io(state, "ISOLATION-TWIN LEAK module=#{inspect(name)}")
+
+      io(
+        state,
+        "ISOLATION-TWIN   names_new=#{inspect(new_names)}" <>
+          " names_lost=#{inspect(lost_names)}"
+      )
+
+      Enum.each(env_added ++ env_removed, fn {k, v} ->
+        io(state, "ISOLATION-TWIN   env #{inspect(k)} -> #{inspect(v)}")
+      end)
+
+      leak = %{module: name, names_new: new_names, env: env_added}
+      %{state | baselines: baselines, pending: nil, leaks: [leak | state.leaks]}
     end
+  end
+
+  def handle_event({:case_finished, %ExUnit.TestCase{name: name}}, state) do
+    {:ok, %{state | pending: name}}
   end
 
   def handle_event({:test_finished, %ExUnit.Test{state: nil}}, state) do
@@ -94,13 +116,13 @@ defmodule SmaltTest.IsolationFormatter do
 
   def handle_event({:suite_started, _opts}, state), do: {:ok, state}
 
-  def handle_event(_event, state), do: {:ok, state}
-
-  def handle_event({:suite_finished, _run_us, _load_us}, state) do
+  def handle_event({:suite_finished, _times}, state) when is_map(_times) do
     io(state, "ISOLATION-TWIN SUMMARY modules_leaked=#{length(state.leaks)}" <>
                 " tests=#{state.tests} failures=#{state.failures}")
     {:ok, state}
   end
+
+  def handle_event(_event, state), do: {:ok, state}
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
@@ -108,7 +130,6 @@ defmodule SmaltTest.IsolationFormatter do
   # ExUnit delivers formatter events as casts of the raw event tuple;
   # handle_event/2 returns {:ok, state}, GenServer wants {:noreply, state}.
   def handle_cast(event, state) when is_tuple(event) do
-    if System.get_env("ISO_FMT_DEBUG"), do: IO.puts("EVT #{inspect(event |> Tuple.to_list() |> hd())}")
     case handle_event(event, state) do
       {:ok, state} -> {:noreply, state}
       other -> other

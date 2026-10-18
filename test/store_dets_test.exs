@@ -34,15 +34,18 @@ defmodule Smalt.StoreDetsTest do
     # Wait past one full tick + epsilon
     Process.sleep(150)  # SLEEP-CLASS: TIME-ADVANCE — crosses one full periodic dets sync tick + epsilon
 
-    # Read the dets files directly (closed read) to prove rows hit disk
-    {:ok, res} = :dets.open_file(:probe_res, file: ~c"#{dir}/dm_t_resources.dets", repair: false)
-    rows_res = :dets.match_object(res, :_)
-    :dets.close(res)
+    # Read the dets files directly (closed read) to prove rows hit disk.
+    # FLAKE_LEDGER F12 (receipts/i24-store-dets-torn.md): under full-suite
+    # fleet load the mirror GenServer can be mid-`:dets.sync/1` when the
+    # probe lands — header/footer momentarily torn — so a repair:false open
+    # returns {:needs_repair, _} or :not_a_dets_file even though the file is
+    # healthy. Bounded-retry the probe; a file still torn after the budget
+    # fails loudly with a typed message naming the torn state. repair:false
+    # is NEVER widened to true — that would mask real corruption.
+    rows_res = probe_rows(~c"#{dir}/dm_t_resources.dets")
     assert {"/r/a", %{"name" => "a"}} in rows_res
 
-    {:ok, docs} = :dets.open_file(:probe_docs, file: ~c"#{dir}/dm_t_docs.dets", repair: false)
-    rows_docs = :dets.match_object(docs, :_)
-    :dets.close(docs)
+    rows_docs = probe_rows(~c"#{dir}/dm_t_docs.dets")
     assert {"docs/1", %{"id" => 1}} in rows_docs
 
     GenServer.stop(pid)
@@ -271,6 +274,51 @@ defmodule Smalt.StoreDetsTest do
       end)
 
     {clobbers, wins, if(wins == 0, do: 1, else: 0)}
+  end
+
+  # Closed-read probe with a bounded torn-state retry. The mirror holds the
+  # dets file open and rewrites it on every sync; a probe racing a sync can
+  # observe the transient torn state ({:needs_repair, _} or :not_a_dets_file).
+  # Budget: 20 attempts x 250ms = 5s, sized to cover the measured 4008ms
+  # sync fat tail (receipts/i20b-contention-mechanism.md). Persistent tear
+  # (real corruption) still fails — with a message naming the torn state.
+  @probe_attempts 20
+  @probe_backoff_ms 250
+
+  defp probe_rows(path) do
+    Enum.reduce_while(1..@probe_attempts, nil, fn attempt, _acc ->
+      case :dets.open_file(String.to_atom("probe_#{System.unique_integer([:positive])}"),
+             file: path,
+             repair: false
+           ) do
+        {:ok, dets} ->
+          rows = :dets.match_object(dets, :_)
+          :dets.close(dets)
+          {:halt, rows}
+
+        {:error, {:needs_repair, _}} = torn ->
+          retry_or_raise(torn, path, attempt)
+
+        {:error, :not_a_dets_file} = torn ->
+          retry_or_raise(torn, path, attempt)
+
+        {:error, other} ->
+          raise "dets probe of #{path} failed with unexpected error: #{inspect(other)}"
+      end
+    end)
+  end
+
+  defp retry_or_raise(_torn, path, attempt) when attempt < @probe_attempts do
+    Process.sleep(@probe_backoff_ms)
+    {:cont, nil}
+  end
+
+  defp retry_or_raise(torn, path, _attempt) do
+    raise """
+    dets probe of #{path} still torn after #{@probe_attempts}x#{@probe_backoff_ms}ms: \
+    #{inspect(torn)}. Either real corruption (fail closed) or the mirror's sync \
+    exceeded the probe budget — both are loud, never a silent pass.
+    """
   end
 
   defp lookup_val(table, key) do

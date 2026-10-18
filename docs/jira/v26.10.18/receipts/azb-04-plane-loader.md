@@ -15,6 +15,8 @@
 | `../ggen-marketplace/packs/smalt-substrate-pack/ontology.ttl` | 10 new `smalt:ConfigKey` rows: `:planes` + 9 profile keys (`:arm_gateway`, `:cosmos`, `:blob_storage`, `:amqp`, `:event_grid`, `:keyvault`, `:sts`, `:graph_law`) |
 | `../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex` | census-count text made count-agnostic ("46 keys" hardcoded count dropped) |
 | `lib/smalt/config.ex` | REGENERATED via `mix smalt.gen` — 10 new accessors, no hand-edit |
+| `test/config_replay_identity_test.exs` | census pin 47 → 56 (ticket-mandated ontology additions; pin updated WITH the ticket, disclosed) + disclosure comment |
+| `ggen_igniter.pack.lock` | re-pinned via the test-prescribed command after the pack edits (`mix ggen_igniter.pack.lock --path ../ggen-marketplace/packs/smalt-substrate-pack --pack smalt-substrate-pack`) |
 
 `config/test.exs` untouched (witnessed: `git status --porcelain config/test.exs` → empty).
 
@@ -124,6 +126,14 @@ AZB-04 scope (config + ontology, which add no tests by ticket design).
    opt-in; `:all` preserves today's boot exactly (falsifier). If the wave
    wants `:all` to import all four profiles, that is a one-line runtime.exs
    change with a re-run falsifier.
+4. Census fence: `test/config_replay_identity_test.exs` "census is closed"
+   pinned 47 keys; AZB-04's 10 ontology additions move it to 56 — pin updated
+   in the same ticket with a disclosure comment (coverage 56, bijection 0,
+   GATES_OK). Pack lock re-pinned after the pack edits; full replay-identity
+   court: `4 tests, 0 failures` (with `--include stress`).
+5. During receipt-writing, the integration lane's mid-write
+   `lib/smalt/messaging/event_grid.ex` froze shared compiles for ~3.5 min;
+   self-resolved by its owner (SLA honored, no cross-lane fix needed).
 
 ## Replay
 

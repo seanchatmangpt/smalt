@@ -1,97 +1,50 @@
-# Build receipt — smalt:local (2026-10-14)
+# Build receipt — smalt:local (AZB-01, 2026-10-18)
+
+Standing: **ALIVE** (full receipt: `docs/jira/v26.10.18/receipts/azb-01-image-pin.md`).
 
 ## Identity
 
-- Tree: `/Users/sac/smalt` (not a git checkout — no SHA available).
-- Image: `smalt:local`, ID `461e8cb08c84`, 262 MB, built 2026-10-14 ~18:17 PT.
-- Docker: Colima `default` profile, docker server 29.5.2 / client 28.0.4,
-  macOS Virtualization.Framework, aarch64.
+- Tree: `/Users/sac/smalt` @ `29bb0371426a270c9c9ac2dc483b7e2a9d226938` (label
+  `org.smalt.subject` on the image carries the same SHA).
+- Image: `smalt:local` (target `test`), ID/digest
+  `sha256:1fc62d357a4cb11eb4e7d76762f19cd1e2fe3f75094363da024cd78dd213ffa9`,
+  linux/arm64, colima docker 29.5.2.
+- Base pinned by digest:
+  `hexpm/elixir:1.19.5-erlang-28.5.0.2-alpine-3.20.9@sha256:29c51579d430b307d4f6182775373bb18c90173d382ba23011d81808b0fab8cd`.
+- Versions in image: OTP 28 (erts 16.4.0.2), Elixir 1.19.5 (probed via
+  `docker run ... elixir --version`, exact output in the full receipt).
 
 ## Build
 
-Full-context build with both sibling path deps injected:
-
 ```sh
-docker build -f docker/Dockerfile -t smalt:local . \
-  --build-context ash_graphlaw=/Users/sac/ash_graphlaw \
-  --build-context ggen_igniter=/Users/sac/ggen_igniter
+docker build -f docker/Dockerfile -t smalt:local --target test \
+  --build-context ash_r2rml=/Users/sac/ash_r2rml --progress=plain .
+# exit 0; second build after `touch lib/smalt/registry.ex` shows
+# mix deps.get / MIX_ENV=test mix deps.compile / MIX_ENV=prod mix deps.compile
+# all CACHED — the warm deps layer moves only when mix.lock moves.
+# Release target: same file, --target release (MIX_ENV=prod, mix release
+# smalt --path /app/_release), same shared deps stage.
 ```
 
-- Result: exit 0. `mix deps.get`, `mix deps.compile`, `mix compile`, and
-  `mix release smalt --path /app/_release` all succeeded inside the build
-  (`_release/bin/smalt start|remote|stop` listed by the release step).
-- Full context (not trimmed) worked; no Dockerfile changes needed.
+## Anti-vacuity (witnessed)
 
-## Environment repair (pre-existing, disclosed)
+`jason 1.4.5 → 1.4.6` bump in a `git archive` scratch context: the deps layer
+cache key moved — `RUN mix deps.get` re-executed (not CACHED) and failed typed
+with `(Mix) Unknown package version jason 1.4.6 in lockfile`. Frozen checkout
+untouched (mix.lock md5 unchanged before/after).
 
-- The Colima docker daemon socket was dead at session start:
-  `Cannot connect to the Docker daemon at unix:///Users/sac/.colima/default/docker.sock`
-  Two `colima restart` cycles later it served requests; it flapped (daemon
-  socket refused connections) twice more mid-session, once during a census
-  run. Each time `colima restart` recovered it. This instability is
-  environment-level, not image-level.
+## Deviations (disclosed)
 
-## Run + verification (compose profile)
+- `rust cargo` added to the apk set (rustler/explorer NIFs build from source
+  on musl; no precompiled triplet for this OTP/ABI).
+- The ticket's literal `1.19.5-erlang-28-alpine-3.20` tag does not exist on
+  Docker Hub (hub API 404, 2026-10-18); the digest-pinned
+  `1.19.5-erlang-28.5.0.2-alpine-3.20.9` is the real tag preserving the
+  contract.
 
-- `docker compose -f docker/compose.smalt.yml up -d` → container `smalt`
-  reached `healthy`.
-- `curl http://127.0.0.1:9443/common/discovery/instance` → 200:
-  `{"authorization_endpoint":"https://login.smalt.local/00000000-.../oauth2/authorize","issuer":"https://login.smalt.local/00000000-.../v2.0","name":"smalt-sovereign",...}`
-- `curl http://127.0.0.1:9443/subscriptions` → 200:
-  `{"value":[{"displayName":"Sovereign Smalt Subscription","id":"/subscriptions/00000000-...","state":"Enabled",...}]}`
+## Downstream contract (AZB-02+)
 
-## Census against the containerized broker — FAILING (fail-closed)
-
-The container mints an unknown dev SAS key at boot
-(`SasVerifier.shared_key/0` falls back to a random `:persistent_term` key
-when `:sb_shared_key` is nil), so the container was re-run with a pinned
-key via a release eval override (same ports/hardening):
-
-```sh
-docker run -d --name smalt ... smalt:local eval \
-  'Application.put_env(:smalt, :sb_shared_key, "<key>"); {:ok,_}=Application.ensure_all_started(:smalt); Process.sleep(:infinity)'
-```
-
-`node --test census.test.cjs` with `SMALT_SDK_ROOT=/Users/sac/cai/athena/playground/node_modules`
-and the matching `SMALT_SB_SHARED_KEY` → **0/8 probes pass**:
-
-- probe: authentication — FAIL (timeout; broker log shows the SDK's CBS
-  `put-token` arriving and answering `401 INVALID_LOCAL_SAS`)
-- probe: bytes / exclusive-session / renewal-peek / abandon-complete /
-  stale-handle / dead-letter / ordered-session — FAIL
-
-Rerun after a daemon flap reproduced 0/8 identically: the failure is
-deterministic, not infra noise.
-
-## Control run: host substrate (`census-run.mjs`) — also FAILING
-
-To separate container-specific failure from census convergence state, the
-harness was run as designed against a host `mix run` substrate:
-
-- 0/8 probes. probe: authentication → 401 `INVALID_LOCAL_SAS` + timeout;
-  probes 2–8 → `ECONNREFUSED 127.0.0.1:5672` because the substrate's
-  `QueueStore.dequeue_matching/2` hit a **typing violation**
-  (`lib/smalt/messaging/amqp/queue_store.ex:134`, Elixir 1.19 set-theoretic
-  type check) and the beam process died mid-run.
-- So the census is mid-convergence against the host substrate too: the SAS
-  verification scheme (`sig = HMAC(key, "#{sr}\n#{se}")` in
-  `lib/smalt/messaging/amqp/sas_verifier.ex:246`) does not match the Azure
-  Service Bus SDK's CBS put-token signature derivation, and the substrate
-  crashes on `dequeue_matching/2`. Both defects are in `lib/`, outside
-  this lane's owned files — reported, not touched.
-
-## Harness notes (read-only observations)
-
-- `census-run.mjs` must be launched from the repo root: it resolves the
-  test path as `test/sdk-smoke/census.test.cjs` relative to `process.cwd()`;
-  launched from `test/sdk-smoke/` it prints
-  `Could not find 'test/sdk-smoke/census.test.cjs'` (exit 1).
-- Stray `mix run --no-halt` substrates from killed runs hold 5672/9443 and
-  must be `kill -9`'d before the next run.
-
-## Cleanup
-
-- `docker compose -f docker/compose.smalt.yml down` — done (network removed,
-  container removed).
-- Stray substrate/node processes killed; ports 5672/9443 free at handoff.
-- Image `smalt:local` (461e8cb08c84) retained.
+Burn builds must pass `--target test` (or `--target release`) and
+`--build-context ash_r2rml=/Users/sac/ash_r2rml`. A bare `docker build -f
+docker/Dockerfile -t smalt:local .` builds the release target and needs the
+context.

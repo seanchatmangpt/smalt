@@ -57,12 +57,15 @@ defmodule Smalt.ConfigReplayIdentityTest do
   end
 
   @tag :replay_identity
-  test "census is closed at 47 keys; coverage and bijection gates hold" do
+  test "census is closed at 56 keys; coverage and bijection gates hold" do
     %{out: out, path: out_path} = run_mix(gate_script())
 
     assert out =~ "GATES_OK"
 
-    assert %{"census" => 47, "coverage" => cov, "bijection" => 0} =
+    # 47 → 56: AZB-04 (lane planes) added :planes + 9 plane-profile keys to the
+    # ontology per the AZB-04 ticket; census pin updated with the ticket, not
+    # silently drifted.
+    assert %{"census" => 56, "coverage" => cov, "bijection" => 0} =
              out_path |> File.read!() |> Jason.decode!()
 
     assert cov >= 1

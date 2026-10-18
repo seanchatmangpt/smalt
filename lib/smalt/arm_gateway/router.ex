@@ -260,6 +260,12 @@ defmodule Smalt.ArmGateway.Router do
     signer = sts_signer()
     now = System.system_time(:second)
 
+    # AZB-08 config read site: the identity-plane profile
+    # `config :smalt, :sts, token_ttl_seconds: 3600` names the mint TTL.
+    # Default 3600 keeps the pinned STS mint contract (exp - iat == 3600,
+    # expires_in == 3600) byte-identical on a plain `:all` boot.
+    ttl = Keyword.get(Smalt.Config.sts(), :token_ttl_seconds, 3600)
+
     # Cross-seat issuer acceptance (F4 v3 finding 1): record the authority the
     # token is minted under so sibling seats (Cosmos :8443, blob, kv) accept
     # it. Server-side only — membership is added at mint time, never from
@@ -274,7 +280,7 @@ defmodule Smalt.ArmGateway.Router do
       "iss" => "#{authority}/#{tenant_id}/v2.0",
       "iat" => now,
       "nbf" => now,
-      "exp" => now + 3600,
+      "exp" => now + ttl,
       "appid" => "00000000-0000-0000-0000-000000000000",
       "azp" => "00000000-0000-0000-0000-000000000000",
       "oid" => "00000000-0000-0000-0000-000000000001",
@@ -288,8 +294,8 @@ defmodule Smalt.ArmGateway.Router do
     body =
       Jason.encode!(%{
         "token_type" => "Bearer",
-        "expires_in" => 3600,
-        "ext_expires_in" => 3600,
+        "expires_in" => ttl,
+        "ext_expires_in" => ttl,
         "access_token" => token
       })
 
@@ -558,6 +564,26 @@ defmodule Smalt.ArmGateway.Router do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(400, body)
+  end
+
+  # AZB-05: typed 503 face for engine-down under :fail_closed. ARM error
+  # envelope shape; code EngineUnavailable; message names the typed atom
+  # :engine_unavailable (ticket vocabulary).
+  defp send_engine_unavailable(conn) do
+    body =
+      Jason.encode!(%{
+        "error" => %{
+          "code" => "EngineUnavailable",
+          "message" =>
+            "graphlaw validation engine is unavailable (:engine_unavailable); request refused fail-closed, never admitted.",
+          "target" => "AshGraphLaw.Enforcement",
+          "innererror" => %{}
+        }
+      })
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(503, body)
   end
 
   # RG api-version gate (row 6b, coordinator-authorized landing 2026-10-15):
@@ -1888,16 +1914,43 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
-  defp check_version(_conn, nil, _version), do: :ok
+  # AZB-05 control-plane profile: strict_version_validation widens the
+  # api-version gate to UNADMITTED types. Default mode keeps today's
+  # permissive pass-through (KD-78 invariant on the default boot — the
+  # `:all` plane imports no profile, so the default gate is untouched).
+  # Strict refusal reuses the refusal-tier vocabulary from
+  # docs/jira/v26.10.18/rewrite-drafts/apiversion-refusal.md:
+  # 400 InvalidApiVersionParameter, message names NoRegisteredProviderFound.
+  defp strict_version_validation? do
+    Smalt.Config.arm_gateway()[:strict_version_validation] == true
+  end
+
+  # AZB-05: fail_closed graphlaw enforcement — an unavailable engine is a
+  # typed refusal (see do_check_shape), never an admission.
+  defp graph_law_fail_closed? do
+    Smalt.Config.graph_law()[:enforcement] == :fail_closed
+  end
 
   # KD-78: api-version admission is MONOTONIC (real ARM semantics): any version
   # <= latest for the admitted type is accepted; only versions > latest or
   # malformed versions are refused (typed InvalidApiVersionParameter, naming
   # latest). SHIM-COURT surface: this gate is the anti-vacuity subject.
+  defp check_version(_conn, nil, _version), do: :ok
+
   defp check_version(conn, raw_type, version) do
     case find_admitted(raw_type) do
       nil ->
-        :ok
+        if strict_version_validation?() do
+          {:respond,
+           send_arm_error(
+             conn,
+             400,
+             "InvalidApiVersionParameter",
+             "NoRegisteredProviderFound: no registered provider '#{raw_type}' can serve api-version '#{version}'."
+           )}
+        else
+          :ok
+        end
 
       full_type ->
         latest = Registry.latest_version(full_type)
@@ -2025,6 +2078,18 @@ defmodule Smalt.ArmGateway.Router do
           end)
 
         {:respond, send_graphlaw_refusal(conn, reason, details)}
+
+      # AZB-05 control-plane profile: when graphlaw enforcement is
+      # :fail_closed, an engine configured-but-unavailable is a TYPED 503
+      # (:engine_unavailable), never an admission and never a generic 400
+      # InvalidResourceShape (that 400 face stays for :fail_open / default —
+      # the anti-vacuity flip surface). No payload is admitted either way.
+      {:refused, :engine_unavailable} ->
+        if graph_law_fail_closed?() do
+          {:respond, send_engine_unavailable(conn)}
+        else
+          {:respond, send_graphlaw_refusal(conn, to_string(:engine_unavailable))}
+        end
 
       {:refused, reason} ->
         {:respond, send_graphlaw_refusal(conn, to_string(reason))}

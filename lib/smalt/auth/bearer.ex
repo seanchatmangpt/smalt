@@ -368,7 +368,7 @@ defmodule Smalt.Auth.Bearer do
   defp valid_typ?(_), do: false
 
   defp validate_claims(claims, conn) do
-    now = System.system_time(:second)
+    now = clock_now()
 
     # Env normalization: a bare-binary (or other non-list) :token_audiences
     # value must not crash `in/2` into a 500 out of the auth plug. nil falls
@@ -399,6 +399,17 @@ defmodule Smalt.Auth.Bearer do
 
       true ->
         :ok
+    end
+  end
+
+  # AZB-08: injected verify clock. The default is the wall clock; tests (and
+  # only tests — prod never sets it) pin `:smalt, :sts_clock` to an integer
+  # epoch-seconds value, so TTL expiry is exercised by moving the clock, not
+  # by sleeping (zero-Process.sleep law).
+  defp clock_now do
+    case Application.get_env(:smalt, :sts_clock) do
+      now when is_integer(now) -> now
+      _ -> System.system_time(:second)
     end
   end
 
@@ -591,6 +602,17 @@ defmodule Smalt.Auth.Bearer do
     resource = "#{conn.scheme}://#{conn.host}:#{conn.port}"
 
     ~s(Bearer authorization="#{authorization}", resource="#{resource}", error="invalid_token", error_description="#{reason}")
+  end
+
+  # AZB-08 config read site: the identity-plane profile key
+  # `config :smalt, :keyvault, challenge_mode: :strict_bearer` names the
+  # KD-15 mode-blind challenge posture. `:strict_bearer` is the default even
+  # when the profile is not loaded (plain `:all` boot), so the default boot
+  # is byte-identical AND the identity profile is the single named source of
+  # the same behavior — no dual truth.
+  @spec kv_challenge_mode :: :strict_bearer | atom()
+  def kv_challenge_mode do
+    Keyword.get(Smalt.Config.keyvault(), :challenge_mode, :strict_bearer)
   end
 
   @doc """

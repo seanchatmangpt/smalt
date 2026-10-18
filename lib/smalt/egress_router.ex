@@ -98,7 +98,13 @@ defmodule Smalt.EgressRouter do
     # shadow the handler's typed verdict with a 401.
     legacy_skr? = get_req_header(conn, "x-ms-compliance-status") != []
 
-    if kv_path? and conn.method != "OPTIONS" and tokenless? and not legacy_skr? do
+    # AZB-08: the mode-blind challenge posture is named by the identity-plane
+    # profile key `challenge_mode: :strict_bearer` (default :strict_bearer —
+    # KD-15 is the pinned default, byte-identical boot). Read via the Bearer
+    # module (single read surface), never a private copy.
+    strict_bearer? = Smalt.Auth.Bearer.kv_challenge_mode() == :strict_bearer
+
+    if kv_path? and conn.method != "OPTIONS" and tokenless? and not legacy_skr? and strict_bearer? do
       Smalt.Auth.Bearer.send_challenge(conn, "MissingBearerToken")
     else
       conn
@@ -2526,8 +2532,12 @@ defmodule Smalt.EgressRouter do
   # missing/wrong version is a typed 400 InvalidApiVersion before any key or
   # policy lookup. The gate lives at the router seam (route handler is the
   # only place `conn` query params are visible to the SKR flow).
+  # AZB-08 config read site: the pinned 7.x grammar stays (wire-compat), but
+  # the example version in the refusal message is the configured
+  # `:keyvault, api_version` (default "7.4") — single source, no dual truth.
   defp check_akv_api_version(conn) do
     version = Map.get(conn.query_params, "api-version", "")
+    example = Smalt.DataPlane.KeyVaultActions.api_version()
 
     if Regex.match?(~r/^7\.\d+$/, version) do
       :ok
@@ -2536,7 +2546,7 @@ defmodule Smalt.EgressRouter do
        %{
          "error" => %{
            "code" => "InvalidApiVersion",
-           "message" => "api-version must be 7.x (e.g. api-version=7.4)"
+           "message" => "api-version must be 7.x (e.g. api-version=#{example})"
          }
        }}
     end

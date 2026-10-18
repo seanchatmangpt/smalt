@@ -1727,11 +1727,28 @@ defmodule Smalt.DataPlane.Cosmos do
      }}
   end
 
+  # AZB-06 data-plane profile read site: the `:cosmos` profile's
+  # `max_ru_limit` (config/env/az_prod_data.exs) maps ONTO the existing flat
+  # key `:cosmos_ru_limit` — profile wins when present, flat key stays
+  # authoritative otherwise (single source; default boot unchanged).
+  # `:unbounded` is the profile's explicit no-throttle value.
+  defp ru_limit do
+    profile = Smalt.Config.cosmos()
+
+    case profile do
+      kw when is_list(kw) ->
+        Keyword.get(kw, :max_ru_limit, Application.get_env(:smalt, :cosmos_ru_limit, :infinity))
+
+      _ ->
+        Application.get_env(:smalt, :cosmos_ru_limit, :infinity)
+    end
+  end
+
   # Fixed-window (1s) in-memory counter per partition-route. ETS table is
   # created lazily and left to die with the VM (in-memory by definition).
   defp throttle(route_key) do
-    case Application.get_env(:smalt, :cosmos_ru_limit, :infinity) do
-      :infinity ->
+    case ru_limit() do
+      limit when limit in [:infinity, :unbounded] ->
         :ok
 
       limit when is_integer(limit) and limit > 0 ->
