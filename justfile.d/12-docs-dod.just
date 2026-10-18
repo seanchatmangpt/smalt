@@ -85,6 +85,10 @@ DOCS_ROOT := parent_directory(justfile_directory())
     check docs/jira/v26.10.16/PUBLISH_RECORD.md
     check docs/jira/v26.10.16/KNOWN_DIVERGENCES.md
     check docs/RELEASE_NOTES_v26.10.16.md
+    # v26.10.17 active window (gate closed TYPED-RED, r241: no wrap artifacts
+    # FINAL.md/WRAP_LEDGER.md yet — version stays 26.10.16; receipts ledger exists).
+    check docs/jira/v26.10.17/receipts/r241-court-x2-attempt3-typed-red.md
+    check docs/jira/v26.10.17/RECEIPTS.md
     # Front door.
     check README.md
     exit $rc

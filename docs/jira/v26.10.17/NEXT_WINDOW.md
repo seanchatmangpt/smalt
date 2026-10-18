@@ -122,7 +122,19 @@ two-green**; the residual classes are carried, not faked:
 If WO-2 closes typed-RED again this window, the gate carries to
 v26.10.18 with an honest witness — never a faked pass.
 
-**<WO-2 VERDICT — filled at wrap>**
+**WO-2 VERDICT (filled at wrap): TYPED-RED (honest).** Attempt 3 of 3
+(`receipts/r241-court-x2-attempt3-typed-red.md`) closed the chain:
+quiet-check clear twice, `just quiesce` warm-up RC=2 (1 failure / 2655
+tests), then `bash scripts/court_x2.sh` RC=1 — run 1 = 4 failures, run 2
+= 1 failure (tmp/court-x2-v17-wrap3.log, COURT_X2_RC=1 at line 86).
+Corrections r240→r241: fence 10 (WasmEngineFailClosed "restart hammer",
+test/affidavit_wasm_failclosed_test.exs:502) REPEATED in both court legs
+of attempt 3 — upgraded from CONTENTION to **PERSISTENT-FLAKE** (solo
+PASS on same tree, repeats under court load; needs a real fix, not a
+warm-up). Remaining faces contention-class: EgressDispatchTest setup
+ETS `:smalt_subscriptions` teardown race (victims :1474/:975), Lro :543
+op-record store miss. The gate carries to v26.10.18 with this honest
+witness — no two-green exists; version stays 26.10.16.
 
 ## 4. NOTICE upstream-attribution — publish typed-blocked (B1)
 
@@ -191,3 +203,80 @@ re-derive at v26.10.18 open):
   300s budget under self-load, BrokerFacade sweeper whereis-nil (private-tree
   stop vs async modules). Close condition: quiesce + warm-up before the gate;
   per-face falsifiers in receipts/i20b-contention-mechanism.md.
+
+## 7. Top WOs for v26.10.18 — court residual repair surfaces (from r241)
+
+### WO-A: WasmEngineFailClosed fence 10 (restart hammer) — PERSISTENT-FLAKE fix
+
+- **Surface**: `test/affidavit_wasm_failclosed_test.exs:502` ("restart
+  hammer", fence 10). Solo PASS on the same tree (r241); repeated in
+  BOTH court legs of attempt 3 (wrap3.log lines 68 + 72) — the only
+  repeating face in the window. Witnessed timing face: 129ms vs a
+  bound that fires at 1.08x budget under suite load (see BUDGET-1 in
+  the verify ledger; the 110ms perf-budget class acts as a load
+  sensor, not a regression detector).
+- **Repair**: give fence 10's timing bound real slack (budget raised
+  to the documented ~3.3x revert-threshold discrimination band) or
+  serialize/de-parallelize the restart hammer in the harness — either
+  is a real fix; a warm-up is not (r241 showed warm-start does not
+  de-conflict it).
+- **Close condition**: a court-context witness (not solo) showing
+  fence 10 PASS across two consecutive `just court` legs, plus the
+  court-x2 gate; flip recorded in the receipt chain (r241 successor),
+  registrar-owned.
+
+### WO-B: EgressDispatchTest seed_default_subscription async isolation
+
+- **Surface**: `Smalt.Store.seed_default_subscription/0`
+  (`lib/smalt/store.ex:194`) seeding ETS `:smalt_subscriptions` in
+  EgressDispatchTest setup races another async module's Store
+  teardown — "table identifier does not refer to an existing ETS
+  table" (r241 pre-court full log; victims `:1474` and `:975`, same
+  mechanism both). Typed as async-module isolation, NOT a product
+  defect (r241 disposition).
+- **Repair**: async-isolation boundary for the seeded table (async
+  context tag / per-test ownership of `:smalt_subscriptions`, or move
+  the seeding test out of async), not a retry.
+- **Close condition**: wire-visible witness: the two victim tests PASS
+  inside a full batched suite run with the teardown race absent
+  (Context: full per the receipt context law), repeated across two
+  court legs; contention-class faces Lro :543 and the remaining
+  shifters re-evaluated on the same receipt.
+
+## 8. Verify-ledger confirmed findings — carry-forwards (2026-10-17 wrap)
+
+Source of truth: `docs/jira/v26.10.17/verify-ledger/` (w0 x 24 + w1 x
+14 batch files, re-derived on disk). Ledger actuals at wrap: 78
+finding verdict entries; 55 unique CONFIRMED findings; 6 PREMISE-ROT
+(F1, F2, SDK-7, TIL-06, TIL-07, IG-7) and 1 CONTENTION (C12) complete
+the set. (The wrap dispatch figure of "36 confirmed" does not
+re-derive against the ledger on disk — ledger counts above are the
+ground truth; re-derive at v26.10.18 open.)
+
+Families folded into carry-forwards (each finding carries its own
+file:line evidence in the ledger; none closed by listing here):
+
+- **SDK-surface (SDK-1..SDK-9)** — SDK parity/divergence claims;
+  per-row evidence in w0-b19..b23 / w1-b11..b14. Close per-finding:
+  probe receipt or registrar-minted KD row.
+- **UC-01..UC-12 (receipt-orphaned surfaces)** — confirmed surfaces
+  with no this-window receipt: e2e scenario courts (s1_iac..s10_attest,
+  incl. s7_worm / s8_cosmos_race — court composition has no e2e
+  stage), plus fin_ops/hw, pplan, dspy receipt-orphaned surfaces.
+  Close: a real witness receipt per surface or explicit
+  retire/register disposition.
+- **IG-2..IG-6 (invariant-gates integrity)** — isolation receipt
+  FAIL-TREE-LEAKS under a green aggregate (IG-2), and kin. Close:
+  fail-closed gate receipt where the aggregate cannot go green while
+  the isolation receipt is RED.
+- **BUDGET-1..BUDGET-3 (perf-budget sensor class)** — blob pagination
+  110ms budget fires at 1.08x under suite load (witnessed 119ms;
+  ~3.3x is the documented revert threshold). Close: budget re-based
+  to the discrimination band or a load-invariant measurement harness.
+- **TIL-01..TIL-09 (test-env isolation)** — bare
+  `Application.put_env` port keys in wire-tier setups with no
+  save/restore (test/wire/amqp_wire_test.exs:28-33 et al.). Close:
+  save/restore on every mutated env key, batched-run witness.
+- **Court-doc residue (F3, F05-F09, C1-C11, KD-04/KD-13/KD-AMQP/
+  KD-LEDGER rows)** — claim/ledger drift items, each with file:line
+  in the ledger; close per-finding with a corrected doc or receipt.

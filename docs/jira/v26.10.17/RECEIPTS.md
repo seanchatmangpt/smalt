@@ -14,37 +14,39 @@ count, or PASS/FAIL token) found in the file.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
-| i10-sdk-matr | [i10-sdk-matrix-check.md](receipts/i10-sdk-matrix-check.md) | PASS | i10 — sdk-matrix read-only check |
-| i11-cli-test | [i11-cli-test.md](receipts/i11-cli-test.md) | PARTIAL_ALIVE | I11 — cli-test leg 2 interpreter fix (ADR-PY-002 fallback) |
-| i12-invarian | [i12-invariant-gates-witness.md](receipts/i12-invariant-gates-witness.md) | PASS | I12 Witness Receipt — invariant-gates (coordinator-run, verify-only) |
-| i13-error-co | [i13-error-codes-blindspot-closed.md](receipts/i13-error-codes-blindspot-closed.md) | ALIVE | r-i13: ERROR_CODES extractor blind-spot closed (lane I13) |
-| i15-mcp-desc | [i15-mcp-descriptor-regen.md](receipts/i15-mcp-descriptor-regen.md) | PASS | I15 — MCP descriptor regen (no-op refresh) |
-| i16-replay-f | [i16-replay-fences.md](receipts/i16-replay-fences.md) | PASS | I16 — smalt.gen replay identity fences (byte-identical regen products) |
-| i17-bench-de | [i17-bench-decision.md](receipts/i17-bench-decision.md) | PARTIAL_ALIVE | I17 — Bench decision (wrap window, no new bench lanes) |
-| i17b-bench-r | [i17b-bench-report-empty-window.md](receipts/i17b-bench-report-empty-window.md) | PASS | i17b — bench-report: empty-window skip (integration fix) |
-| i18-kd-falsi | [i18-kd-falsifiers.md](receipts/i18-kd-falsifiers.md) | PASS | I18: KD79 / KD87 falsifier suites |
-| i18-store-de | [i18-store-dets-churn-quiet.md](receipts/i18-store-dets-churn-quiet.md) | PASS | I18: store_dets churn test — quiet-tree confirmation |
-| i20b-content | [i20b-contention-mechanism.md](receipts/i20b-contention-mechanism.md) | PARTIAL_ALIVE | I20b: contention mechanism — cosmos-etag-cas gate vs StoreDets churn flake |
-| i20c-seed-re | [i20c-seed-replay.md](receipts/i20c-seed-replay.md) | PARTIAL_ALIVE | i20c — seed replay 71461 (measurement lane) |
-| i20d-kd87-ab | [i20d-kd87-ablation.md](receipts/i20d-kd87-ablation.md) | PARTIAL_ALIVE | i20d-kd87 — shim-court ablation: in-flight router.ex/bearer.ex vs batch 401s |
-| i20e-leak-co | [i20e-leak-court.md](receipts/i20e-leak-court.md) | FAIL | i20e (mechanical test-isolation leak court) |
-| i20f-egmerge | [i20f-egmerge-fix.md](receipts/i20f-egmerge-fix.md) | ALIVE | i20f — egress topic-readback merge: one seq domain (EG1 + CloudEvents) |
-| i20g-c7-fres | [i20g-c7-freshness.md](receipts/i20g-c7-freshness.md) | PASS | i20g — c7_events PARTIAL fence freshness fix |
+| i10-sdk-matr | [i10-sdk-matrix-check.md](receipts/i10-sdk-matrix-check.md) | PASS | i10 — sdk-matrix read-only check **NO-CONTEXT** |
+| i11-cli-test | [i11-cli-test.md](receipts/i11-cli-test.md) | PARTIAL_ALIVE | I11 — cli-test leg 2 interpreter fix (ADR-PY-002 fallback) **NO-CONTEXT** |
+| i12-invarian | [i12-invariant-gates-witness.md](receipts/i12-invariant-gates-witness.md) | PASS | I12 Witness Receipt — invariant-gates (coordinator-run, verify-only) **NO-CONTEXT** |
+| i13-error-co | [i13-error-codes-blindspot-closed.md](receipts/i13-error-codes-blindspot-closed.md) | ALIVE | r-i13: ERROR_CODES extractor blind-spot closed (lane I13) **NO-CONTEXT** |
+| i15-mcp-desc | [i15-mcp-descriptor-regen.md](receipts/i15-mcp-descriptor-regen.md) | PASS | I15 — MCP descriptor regen (no-op refresh) **NO-CONTEXT** |
+| i16-replay-f | [i16-replay-fences.md](receipts/i16-replay-fences.md) | PASS | I16 — smalt.gen replay identity fences (byte-identical regen products) **NO-CONTEXT** |
+| i17-bench-de | [i17-bench-decision.md](receipts/i17-bench-decision.md) | PARTIAL_ALIVE | I17 — Bench decision (wrap window, no new bench lanes) **NO-CONTEXT** |
+| i17b-bench-r | [i17b-bench-report-empty-window.md](receipts/i17b-bench-report-empty-window.md) | PASS | i17b — bench-report: empty-window skip (integration fix) **NO-CONTEXT** |
+| i18-kd-falsi | [i18-kd-falsifiers.md](receipts/i18-kd-falsifiers.md) | PASS | I18: KD79 / KD87 falsifier suites **NO-CONTEXT** |
+| i18-store-de | [i18-store-dets-churn-quiet.md](receipts/i18-store-dets-churn-quiet.md) | PASS | I18: store_dets churn test — quiet-tree confirmation **NO-CONTEXT** |
+| i20b-content | [i20b-contention-mechanism.md](receipts/i20b-contention-mechanism.md) | PARTIAL_ALIVE | I20b: contention mechanism — cosmos-etag-cas gate vs StoreDets churn flake **NO-CONTEXT** |
+| i20c-seed-re | [i20c-seed-replay.md](receipts/i20c-seed-replay.md) | PARTIAL_ALIVE | i20c — seed replay 71461 (measurement lane) **NO-CONTEXT** |
+| i20d-kd87-ab | [i20d-kd87-ablation.md](receipts/i20d-kd87-ablation.md) | PARTIAL_ALIVE | i20d-kd87 — shim-court ablation: in-flight router.ex/bearer.ex vs batch 401s **NO-CONTEXT** |
+| i20e-leak-co | [i20e-leak-court.md](receipts/i20e-leak-court.md) | FAIL | i20e (mechanical test-isolation leak court) **NO-CONTEXT** |
+| i20f-egmerge | [i20f-egmerge-fix.md](receipts/i20f-egmerge-fix.md) | ALIVE | i20f — egress topic-readback merge: one seq domain (EG1 + CloudEvents) **NO-CONTEXT** |
+| i20g-c7-fres | [i20g-c7-freshness.md](receipts/i20g-c7-freshness.md) | PASS | i20g — c7_events PARTIAL fence freshness fix **NO-CONTEXT** |
 | i20h-c6-firs | [i20h-c6-first-witness.md](receipts/i20h-c6-first-witness.md) | PASS | i20h — C6 OAuth first per-file witness (ever-green audit closure) |
-| i3-witness-s | [i3-witness-sweep.md](receipts/i3-witness-sweep.md) | PASS | i3 — witness receipts over in-flight lib/ (lane I3) |
-| i5-complianc | [i5-compliance-witness.md](receipts/i5-compliance-witness.md) | PARTIAL_ALIVE | I5 — compliance witness + THIRD_PARTY.md NOTICE path fix |
-| i6-amqp-surf | [i6-amqp-surface.md](receipts/i6-amqp-surface.md) | PASS | I6 — AMQP surface verify-only receipt |
-| i7-workspace | [i7-workspace-gates.md](receipts/i7-workspace-gates.md) | PASS | I7 — Workspace Gates (ws-lint / ws-build / ws-court) |
-| i8-substrate | [i8-substrate-guard.md](receipts/i8-substrate-guard.md) | PASS | I8 — substrate.sh key-guard shim verification |
-| i9-naming-sw | [i9-naming-sweep.md](receipts/i9-naming-sweep.md) | PASS | I9 — Naming Sweep Receipt |
-| r232-smalt-g | [r232-smalt-gen-taskification-replay.md](receipts/r232-smalt-gen-taskification-replay.md) | PASS | r232 — smalt.gen Mix task-ification: byte-identical replay over all 6 artifacts |
-| r233-ggen-ig | [r233-ggen-igniter-ledger-sync.md](receipts/r233-ggen-igniter-ledger-sync.md) | PARTIAL_ALIVE | r233 — ggen_igniter manifest + 2026-10-17 receipt ledger sync (W2b) |
-| r234-spc-ban | [r234-spc-bands-regen.md](receipts/r234-spc-bands-regen.md) | PASS | r234 — spc-bands regeneration from scripts/spc_gate.py (rolling window) |
-| r235-test-co | [r235-test-compliance-alias.md](receipts/r235-test-compliance-alias.md) | PARTIAL_ALIVE | r235 — mix.exs `test.compliance` alias: first witnessed run FAILS (40 failures) |
-| r236-court-r | [r236-court-run1-red-75.md](receipts/r236-court-run1-red-75.md) | UNKNOWN | r236 — court run-1 RED: 75 failures at T1 offline (milestone-doc lane) |
-| r237-integra | [r237-integration-fixes.md](receipts/r237-integration-fixes.md) | ALIVE | r237 — Integration fixes verification (bench-report empty window, ggen ledger sync, test_cosmos premise rewrit |
-| r238-bench-r | [r238-bench-registry-rulings.md](receipts/r238-bench-registry-rulings.md) | PASS | r238 — Bench registry drift rulings (receipt-form only; REGISTRY.md untouched) |
+| i3-witness-s | [i3-witness-sweep.md](receipts/i3-witness-sweep.md) | PASS | i3 — witness receipts over in-flight lib/ (lane I3) **NO-CONTEXT** |
+| i5-complianc | [i5-compliance-witness.md](receipts/i5-compliance-witness.md) | PARTIAL_ALIVE | I5 — compliance witness + THIRD_PARTY.md NOTICE path fix **NO-CONTEXT** |
+| i6-amqp-surf | [i6-amqp-surface.md](receipts/i6-amqp-surface.md) | PASS | I6 — AMQP surface verify-only receipt **NO-CONTEXT** |
+| i7-workspace | [i7-workspace-gates.md](receipts/i7-workspace-gates.md) | PASS | I7 — Workspace Gates (ws-lint / ws-build / ws-court) **NO-CONTEXT** |
+| i8-substrate | [i8-substrate-guard.md](receipts/i8-substrate-guard.md) | PASS | I8 — substrate.sh key-guard shim verification **NO-CONTEXT** |
+| i9-naming-sw | [i9-naming-sweep.md](receipts/i9-naming-sweep.md) | PASS | I9 — Naming Sweep Receipt **NO-CONTEXT** |
+| r232-smalt-g | [r232-smalt-gen-taskification-replay.md](receipts/r232-smalt-gen-taskification-replay.md) | PASS | r232 — smalt.gen Mix task-ification: byte-identical replay over all 6 artifacts **NO-CONTEXT** |
+| r233-ggen-ig | [r233-ggen-igniter-ledger-sync.md](receipts/r233-ggen-igniter-ledger-sync.md) | PARTIAL_ALIVE | r233 — ggen_igniter manifest + 2026-10-17 receipt ledger sync (W2b) **NO-CONTEXT** |
+| r234-spc-ban | [r234-spc-bands-regen.md](receipts/r234-spc-bands-regen.md) | PASS | r234 — spc-bands regeneration from scripts/spc_gate.py (rolling window) **NO-CONTEXT** |
+| r235-test-co | [r235-test-compliance-alias.md](receipts/r235-test-compliance-alias.md) | PARTIAL_ALIVE | r235 — mix.exs `test.compliance` alias: first witnessed run FAILS (40 failures) **NO-CONTEXT** |
+| r236-court-r | [r236-court-run1-red-75.md](receipts/r236-court-run1-red-75.md) | UNKNOWN | r236 — court run-1 RED: 75 failures at T1 offline (milestone-doc lane) **NO-CONTEXT** |
+| r237-integra | [r237-integration-fixes.md](receipts/r237-integration-fixes.md) | ALIVE | r237 — Integration fixes verification (bench-report empty window, ggen ledger sync, test_cosmos premise rewrit **NO-CONTEXT** |
+| r238-bench-r | [r238-bench-registry-rulings.md](receipts/r238-bench-registry-rulings.md) | PASS | r238 — Bench registry drift rulings (receipt-form only; REGISTRY.md untouched) **NO-CONTEXT** |
 | r239-kd97-co | [r239-kd97-conditional-head-landing.md](receipts/r239-kd97-conditional-head-landing.md) | ALIVE | r239 — KD-97 conditional/ranged HEAD + blob response-header parity (landing receipt) |
+| r240-court-x | [r240-court-x2-attempts12-typed-red.md](receipts/r240-court-x2-attempts12-typed-red.md) | UNKNOWN | r240 — court-x2 attempts 1-2: typed RED, shifting-failure class **NO-CONTEXT** |
+| r241-court-x | [r241-court-x2-attempt3-typed-red.md](receipts/r241-court-x2-attempt3-typed-red.md) | UNKNOWN | r241 — court-x2 attempt 3 (final): TYPED-RED, pre-mortem mitigation did not hold **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 
@@ -88,6 +90,10 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-21 | (no receipt file — justfile module `justfile.d/21-enclave.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-22 | (no receipt file — justfile module `justfile.d/22-native.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-23 | (no receipt file — justfile module `justfile.d/23-compliance.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-24 | (no receipt file — justfile module `justfile.d/24-quiesce.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-25 | (no receipt file — justfile module `justfile.d/25-leak-court.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-26 | (no receipt file — justfile module `justfile.d/26-rewitness.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-27 | (no receipt file — justfile module `justfile.d/27-scratch-soak.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 
