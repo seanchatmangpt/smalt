@@ -130,6 +130,14 @@ def scan(d, version, out_root):
         suspect = ""
         if not has_evidence(text):
             suspect = " **SUSPECT**"
+        # RECEIPT_CONTEXT_LAW.md (v26.10.17): every receipt names its run context.
+        # Context-less receipts flag **NO-CONTEXT** (advisory, not SUSPECT — the
+        # law grandfathers pre-law receipts until next touch).
+        if re.search(r"^Context:\s*(solo|pair\(|slice\(|full)", text, re.M) is None:
+            context_flag = " **NO-CONTEXT**"
+        else:
+            context_flag = ""
+        summary = (summary + context_flag).strip()
         rows.append(
             {
                 "lane": lane_id(name, version),

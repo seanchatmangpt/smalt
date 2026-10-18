@@ -1,0 +1,17 @@
+# 25-leak-court — test-isolation leak court (v26.10.17, receipts/i20e-leak-court).
+# NOT wired into `just court` until the 122 flagged mutations are remediated
+# (a gate that currently exits 1 on 122 findings must not gate the ladder);
+# the recipe makes it runnable and the court wiring is a NEXT_WINDOW item.
+
+# Static test-isolation leak court: flags Application env / :persistent_term /
+# named-ETS mutations in test/ without save-restore discipline.
+@leak-court:
+    python3 gates/test_isolation_leak_gate.py
+
+# Advisory count only — never fails (for `just status`-style reporting).
+@leak-court-count:
+    #!/usr/bin/env bash
+    set +e
+    python3 gates/test_isolation_leak_gate.py > /tmp/leak-court.out 2>&1
+    rc=$?
+    echo "[LEAK-COURT] exit=$rc $(grep -c 'uncovered' /tmp/leak-court.out 2>/dev/null || echo '?') uncovered-mutation lines (see /tmp/leak-court.out)"

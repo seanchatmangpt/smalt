@@ -179,3 +179,15 @@ re-derive at v26.10.18 open):
   71 failures in one batched invocation — and `receipts/r236-court-run1-red-75.md`).
   Adopt `docs/jira/v26.10.17/RECEIPT_CONTEXT_LAW.md` in the next window's
   receipt template + spot-audit.
+
+### Court ledger + residual classes (2026-10-17 wrap, r240 chain)
+
+- court-x2 ledger: 34 completed invocations, 0 two-green (attempts 1-2 this
+  window typed-RED, receipts r240-court-x2-attempts12-typed-red.md). Both run-1
+  faces were CONTENTION class, solo-green 3/3; run 2 of each attempt green.
+- Known load faces for the next court: WasmEngineFailClosedTest fence 10
+  (restart hammer), EgressDispatchTest batch-list boundary (:1221), blob
+  pagination 110ms perf budget (witnessed 119ms under load), StoreDets churn
+  300s budget under self-load, BrokerFacade sweeper whereis-nil (private-tree
+  stop vs async modules). Close condition: quiesce + warm-up before the gate;
+  per-face falsifiers in receipts/i20b-contention-mechanism.md.

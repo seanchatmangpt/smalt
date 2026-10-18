@@ -103,6 +103,18 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
 
 ## Conventions
 
+- **Corpus premise pins (v26.10.17 lessons, receipts r239/r240 chain)**: KV
+  corpus clients must perform the KD-15 challenge handshake (send tokenless,
+  take the 401 + `WWW-Authenticate`, resend bearer) or the legacy-SKR
+  fallthrough — tokenless-only clients are premise rot. Api-version refusal
+  pins use a FUTURE version (`2099-01-01`), never a past one (KD-78 monotonic
+  admission admits anything ≤ latest). Every witness receipt carries
+  `Context: solo|pair|slice|full` (RECEIPT_CONTEXT_LAW.md; `receipt_index.py`
+  flags **NO-CONTEXT**). Court precondition: `just quiet-check` before any
+  court; `just quiesce` when the machine was busy (both court-x2 attempts
+  failed cold run 1, passed warm run 2). Helpers: `just leak-court`,
+  `just rewitness <KD-nn>`, `just kd-stale`, `just wt-scratch <sha>`,
+  `just corpus-soak <n>`.
 - **KD register**: divergences get a `KD-nn` row in `KNOWN_DIVERGENCES.md`
   (surface, divergence, evidence receipt, close condition). A shim landed
   in `lib/` carries `# KD-COVERS: KD-nn`. Flip rows only via
