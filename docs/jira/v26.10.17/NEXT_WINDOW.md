@@ -136,7 +136,8 @@ ETS `:smalt_subscriptions` teardown race (victims :1474/:975), Lro :543
 op-record store miss. The gate carries to v26.10.18 with this honest
 witness — no two-green exists; version stays 26.10.16.
 
-## 4. NOTICE upstream-attribution — publish typed-blocked (B1)
+## 4. NOTICE upstream-attribution — B1 CLOSED 2026-10-17 (r244); NOTICE
+attribution remainder still open
 
 publish-dry is TYPED-BLOCKED per the v26.10.16 PUBLISH_RECORD (item B1
 of the publish B1/B2 chain). Operator ruling stands: ex4pm is a
@@ -145,8 +146,8 @@ permanent runtime dep; publish ex4pm to hex first, then dual-pin
 upstream license/attribution block (verified 2026-10-17). Close
 conditions (all receipt-gated):
 
-- ex4pm on hex satisfying smalt's pin; smalt `mix.exs` flipped to the
-  dual-pin.
+- ~~ex4pm on hex satisfying smalt's pin; smalt `mix.exs` flipped to the
+  dual-pin~~ — **DONE (2026-10-17)**, witness `receipts/r244-publish-record.md`.
 - `mix hex.publish --dry-run` exit 0, or each warning dispositioned in
   a receipt — including the NOTICE attribution remainder (upstream
   license/attribution block added to `NOTICE.md`).

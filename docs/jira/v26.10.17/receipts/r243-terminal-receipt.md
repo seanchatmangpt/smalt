@@ -1,6 +1,7 @@
 # r243 — v26.10.17 terminal receipt
 
 Standing: **PARTIAL_ALIVE** (terminal). The window's release gate (`just court-x2`, WO-2)
+Context: full (window-close receipt over the typed-RED tree)
 closed **honest TYPED-RED** after 3 attempts — **0 two-green in 35 completed gate
 invocations** (32 prior across windows + 3 this window; counts as stated in
 [r240](r240-court-x2-attempts12-typed-red.md) and

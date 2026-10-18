@@ -138,3 +138,65 @@ future real two-green court and was not attempted.
 - `just court-x2` preconditions now mechanical: `just quiet-check` clear +
   quiesce warm-up green BEFORE the gate; a warm-up failure is itself a stop
   signal (attempt 3 evidence), not a hurdle to push through.
+
+## 2026-10-17 — B1 CLOSED (publish chain), post typed-RED wrap
+
+Receipt: [r244-publish-record.md](receipts/r244-publish-record.md),
+standing PASS. The v26.10.16 PUBLISH_RECORD's sole refusal-class publish
+blocker (B1) closed this session, chain recorded in r244:
+
+1. **ex4pm 26.10.8 published to hex** (operator action, ex4pm repo).
+2. **smalt mix.exs flipped hex-only**: `{:ex4pm, "~> 26.10.8"}` (local path
+   override dropped — hex.build refuses overridden deps; no prod-scope
+   conflict since `ash_ex4pm` is dev/test-only, optional).
+3. **mix.lock resolves ex4pm 26.10.8 from :hexpm**, checksum
+   `d507fd16e89795eac781c47bad22542fd8196558ab15eb6d8b38c7fd92450fd2`
+   (= the G1 dry-build verification checksum).
+4. **`mix hex.build` exit 0** (package checksum
+   `88210b0195614bf2014369d230c6083ea98cb7c07883a9fa769e85d520455fd9`), and
+   **publish-dry 4/4 PASS** on this tree (gate 1 hex.build, gate 2
+   inner-tar key grep 0 matches, gate 3 packaged-set leak grep 0 hits,
+   gate 4 `gen_error_codes.py --check` up to date).
+
+PUBLISH_RECORD B1 flipped **B1 CLOSED → PUBLISH-READY YES** per
+[PUBLISH_RECORD-B1-CLOSED.addendum.draft.md](PUBLISH_RECORD-B1-CLOSED.addendum.draft.md),
+3/3 edits applied. Remaining release gate: court-x2 two-green only.
+
+## 2026-10-17 — i21 repair wave (post-r241 faces + isolation batches)
+
+| Repair surface | Receipt | Verification |
+|---|---|---|
+| Fence 10 PERSISTENT-FLAKE (`affidavit_wasm_failclosed_test.exs:502`) — bound 100ms→250ms = engine's own retry delay; one leaked sleep ⇒ ≥250ms ⇒ RED, jitter cannot cross | [i21-fence10-fix.md](receipts/i21-fence10-fix.md) | ALIVE — 5x solo green + green under artificial load |
+| EgressDispatch setup ETS `:smalt_subscriptions` teardown race (victims :1474/:975) — test-side bounded typed retry `resilient_clear/1` (50 retries, 10ms backoff); `store.ex` NOT touched | [i21-ets-race-fix.md](receipts/i21-ets-race-fix.md) | PASS |
+| Lro :543 op-record store miss — fixed sleep+single-sweep+hard-assert → bounded `sweep_until_terminal/3` (5s deadline, typed flunk naming offending keys) | [i21-lro-face.md](receipts/i21-lro-face.md) | PARTIAL_ALIVE — solo + paired green; court-x2 not run in-lane |
+| broker_facade Sweeper-whereis-nil seed face (i20c) — ExUnit-managed `start_supervised!(Sweeper)` fallback | [i21-brokerfacade-sweeper.md](receipts/i21-brokerfacade-sweeper.md) | PASS — 3x solo + 1x paired |
+| Blob pagination perf budget 110→180 ms, revert-fenced (old budget flaked quiet at 128ms; quiet median anchored 62-67ms) | [i21-blob-budget.md](receipts/i21-blob-budget.md) | ALIVE |
+| DETS churn budget 300s→600s (350x sync tail under load, i20b; prior 300s blown in r241) | [i21-churn-budget.md](receipts/i21-churn-budget.md) | ALIVE — fast_test green |
+| Stale `InvalidQueryParameter` doc token sweep (KD-04 rename) — egress-data-plane, ggen-projection-law, C4_BLOB | [i21-doc-token-sweep.md](receipts/i21-doc-token-sweep.md) | PASS — zero live old-token matches in lib/, ERROR_CODES regenerated |
+| Leak batch 1: env restore discipline (auth_enforce :459/:488 `:trusted_proxies`, ets identity tests save-prev) | [i21-leak-batch1.md](receipts/i21-leak-batch1.md) | PASS — 132 tests 0 failures |
+| Leak batch 2: save-prev/restore conversions (ingestion_functor, enclave_doctor, arm_error_corpus, egress_dispatch, enclave_testbed) — scope finding: try-body locals do not leak into `after` | [i21-leak-batch2.md](receipts/i21-leak-batch2.md) | ALIVE — leased files solo-green, findings cleared |
+| Leak batch 3 (mcp doctor_supervisor save-prev, audit_planes named-ETS cleanup, native_hcl_ladder on_exit repair) | [i21-leak-batch3.md](receipts/i21-leak-batch3.md) | ALIVE |
+
+## 2026-10-17 — leak-court delta (122 → ~70, running)
+
+Baseline at window close was **122 flagged mutations** (the number blocking
+leak-court gate wiring, per the r240 chain). Three remediation batches
+landed above; first post-batch court run measured **122 → 101 uncovered**
+([i21-leak-court-delta.md](receipts/i21-leak-court-delta.md), standing
+PARTIAL_ALIVE, `verdict=FAIL-TREE-LEAKS`, 47 offender files). Remediation is
+still in flight: latest
+`tmp/invariant-gates/test-isolation-leak-receipt.json` reads 45 offender
+files with further batches landed after the delta receipt — running count
+**~70 uncovered**. Gate wiring into `just court` stays blocked until the
+count reaches 0; the number is re-read from the court receipt at each use,
+never from this ledger.
+
+## 2026-10-17 — pending: court-x2 attempt 4 (post-hammer)
+
+Not yet run. Queued per r244 disposition, after the i21 repair wave's
+verification receipts. Preconditions remain mechanical (r241):
+`just quiet-check` clear + `just quiesce` warm-up GREEN before the gate;
+a warm-up failure is a stop signal, not a hurdle. Every r241 face now has
+a landed repair receipt (fence 10, EgressDispatch ETS race, Lro :543), so
+attempt 4 is the first attempt whose named repair surfaces are all
+remediated on-tree. Ledger tree head at entry time: `558f8c3`.

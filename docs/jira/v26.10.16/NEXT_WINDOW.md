@@ -85,18 +85,16 @@ remaining order per D1:
    invocation with a successor witness receipt (r216 name is taken by
    two typed-RED receipts); RELEASE_NOTES standing flip receipt-gated
    on it — no court-x2 receipt, no flip.
-2. **ex4pm hex auth + dual-pin flip (publish B1/B2).** publish-dry is
-   TYPED-BLOCKED per `docs/jira/v26.10.16/PUBLISH_RECORD.md`. Operator
-   ruling stands: ex4pm is a permanent runtime dep; publish ex4pm to
-   hex first, then dual-pin (hex version + path override locally).
-   Cross-repo close condition owned by the ex4pm repo. Close: ex4pm on
-   hex satisfying smalt's pin; smalt `mix.exs` flipped to the dual-pin;
-   `mix hex.publish --dry-run` exit 0 (or each warning dispositioned in
-   a receipt, including the NOTICE attribution remainder — `NOTICE.md`
-   still carries no upstream license/attribution block, verified
-   2026-10-17; sub-item (b) AshR2RML guard/stub-or-exclude and (c)
-   `stream_data` `only: :test` retarget also open per the pre-publish
-   sweep).
+2. **ex4pm hex auth + dual-pin flip (publish B1/B2).** ~~B1 half: publish-dry
+   TYPED-BLOCKED on ex4pm-not-on-hex; cross-repo close owned by the ex4pm
+   repo~~ — **B1 DONE (2026-10-17)**: ex4pm 26.10.8 live on hex.pm; smalt
+   `mix.exs` hex dual-pin flipped (d-date 2026-10-17); `mix hex.build` exit 0.
+   Witness: `docs/jira/v26.10.17/receipts/r244-publish-record.md` (closes
+   PUBLISH_RECORD.md B1 and §4-table item 10). REMAINING OPEN (not closed by
+   B1): `mix hex.publish --dry-run` exit 0 or per-warning disposition receipts;
+   NOTICE.md upstream license/attribution block (verified absent 2026-10-17);
+   sub-item (b) AshR2RML prod-compile re-check post-pin-flip; sub-item (c)
+   `stream_data` `only: :test` retarget (B3).
 3. **PQC ledger-attestation half (KD-89's ledger half).** The forge
    half is CLOSED (§1); the ledger-level GAP is unchanged: the
    attestation surface is classical-only (SHA-256 Merkle + RS256 JWS
@@ -119,7 +117,7 @@ Re-read from the canonical register and tree at this edit:
 | 7. ERROR_CODES extractor extension | **DONE** (§1) |
 | 8. ash_extension manifest hand-adapted provenance | **OPEN** (no receipt on disk names it; 3 stale manifest entries per the lane-16 finding) |
 | 9. `--check` modes for the three generators | **OPEN** — `scripts/receipt_index.py` has documented idempotence (`final-fin-sweep.md`, RI-IDEMPOTENT) but no `--check` flag; `scripts/bench_report.py` does not exist under that name on disk — re-inventory the actual generator scripts before authoring |
-| 10. ex4pm dual-pin | **OPEN** (now §3.2) |
+| 10. ex4pm dual-pin | ~~**OPEN** (now §3.2)~~ **DONE (2026-10-17)** — ex4pm 26.10.8 live on hex.pm; smalt `mix.exs` hex pin `{:ex4pm, "~> 26.10.8", override: true}` flipped (d-date 2026-10-17); `mix hex.build` exit 0. Witness: `docs/jira/v26.10.17/receipts/r244-publish-record.md` (also closes PUBLISH_RECORD.md B1; §3 item 2 remainder = NOTICE upstream-attribution + B3/B5/B6 dispositions, unchanged). |
 | 11. KD-91 ARM CheckNameExists | **OPEN, witness-pending** (fix landed `lib/smalt/arm_gateway/router.ex:4410-4420`; flip receipt-gated) |
 | 12. KD-92 ARM/data-plane container store split | **OPEN** (mirror-or-shared-store fix + falsifier probe; flip receipt-gated) |
 | 13. KD-93 cosmos query feed scope/freshness | **OPEN** (falsifier probe: `WHERE c.mark = @mark` must return the just-written doc; flip receipt-gated) |

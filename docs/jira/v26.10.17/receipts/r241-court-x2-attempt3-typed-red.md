@@ -1,6 +1,7 @@
 # r241 — court-x2 attempt 3 (final): TYPED-RED, pre-mortem mitigation did not hold
 
 Standing: TYPED-RED (honest; WO-2 attempt 3 of 3, closes per r240 fallback)
+Context: full (two fresh `just court` legs + warm-up suite)
 Date: 2026-10-17
 Gate: `bash scripts/court_x2.sh` (two fresh `just court` legs; both must be 0 failures)
 Log: `tmp/court-x2-v17-wrap3.log`, `COURT_X2_RC=1` (line 86)

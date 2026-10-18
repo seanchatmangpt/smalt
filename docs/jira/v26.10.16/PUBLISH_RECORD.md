@@ -1,8 +1,9 @@
 # PUBLISH_RECORD — v26.10.16 hex publish record
 
-- **Standing**: **PUBLISH-READY: NO — TYPED-BLOCKED** (updated 2026-10-17: **B1 only** —
-  ex4pm hex auth, operator action; package built + checksum on record. B2 FIXED by lane
-  G2's landed guard; B4 FIXED; B5/B6 advisory; gates green; remediation = NEXT_WINDOW §13)
+- **Standing**: **PUBLISH-READY: YES (B1 CLOSED 2026-10-17)** — see the B1 closure
+  addendum below and the witness receipt
+  `docs/jira/v26.10.17/receipts/r244-publish-record.md`. B2 FIXED (lane G2 guard);
+  B4 FIXED (T5); B3/B5/B6 advisory with dispositions on record; gates green.
 - **Scope**: docs-only lane X8, repo `/Users/sac/smalt`
 - **Date**: 2026-10-16
 - **Exemplar**: `docs/jira/v26.10.14/` pattern; active window `docs/jira/v26.10.16/`
@@ -196,7 +197,7 @@ installed-tarball smoke (extract tarball, compile, start app, engine resolves si
 
 ## Final verdict (T5 finalize, 2026-10-16)
 
-**v26.10.16 hex.publish = TYPED-BLOCKED (B1 only).**
+**v26.10.16 hex.publish = PUBLISH-READY (B1 CLOSED 2026-10-17; B3/B5/B6 advisory).**
 
 - Refusal-class blocker remaining: **B1 only** (ex4pm non-optional path dep refuses
   `mix hex.build` metadata; close owned by the ex4pm repo's hex publish — operator hex
@@ -232,8 +233,10 @@ installed-tarball smoke (extract tarball, compile, start app, engine resolves si
 
 ## NEXT_WINDOW close conditions (all six blockers)
 
-1. ex4pm → hex publish, then smalt dual-pin (B1) — owned by ex4pm repo (**sole
-   remaining refusal-class blocker**)
+1. ~~ex4pm → hex publish, then smalt dual-pin (B1) — owned by ex4pm repo (**sole
+   remaining refusal-class blocker**)~~ — **DONE (2026-10-17)**: ex4pm 26.10.8 on
+   hex.pm; smalt hex pin flipped; `mix hex.build` exit 0. Witness:
+   `docs/jira/v26.10.17/receipts/r244-publish-record.md`.
 2. ~~B2: prod-compile the packaged file list clean~~ — **DONE (2026-10-17)**:
    `lib/smalt/semantic/r2rml_guard.ex` landed by lane G2; `MIX_ENV=prod mix compile
    --force` exit 0 (128 files); semantic suites 21/0 + 21/0 in dev
