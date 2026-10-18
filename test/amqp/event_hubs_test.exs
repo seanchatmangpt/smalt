@@ -1792,8 +1792,7 @@ defmodule Smalt.Messaging.EventHubsTest do
   # Connection + SASL ANONYMOUS handshake (the pinion lives in wh/1, one place
   # to fix if it ever changes). Returns {client, port}.
   defp wire_conn! do
-    Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    SmaltTest.Env.put_restored(sb_shared_key: "test-shared-key-0123456789abcdef012345")
     assert :ok = SmaltTest.Lifecycle.ensure_store_up()
     EventHubs.ensure_tables()
 

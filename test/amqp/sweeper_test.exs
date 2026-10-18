@@ -75,7 +75,7 @@ defmodule Smalt.Amqp.SweeperTest do
     end
 
     test "past the grace window the tombstone expires: renew is 404 :not_found" do
-      Application.put_env(:smalt, :amqp_sweeper_lock_grace_ms, 1)
+      SmaltTest.Env.put_restored(amqp_sweeper_lock_grace_ms: 1)
 
       try do
         {:ok, lock} = LockManager.acquire("tq", 1, now_ms: 1_000, duration_ms: 100)
@@ -93,13 +93,13 @@ defmodule Smalt.Amqp.SweeperTest do
         assert {:error, :not_found} =
                  LockManager.renew(lock.lock_token, System.system_time(:millisecond))
       after
-        Application.delete_env(:smalt, :amqp_sweeper_lock_grace_ms)
+        # isolation-court: exempt restore now structural via put_restored on_exit
         :ets.delete_all_objects(@tombstones)
       end
     end
 
     test "grace disabled (0 ms): swept token stays deleted, renew 404 (old behavior)" do
-      Application.put_env(:smalt, :amqp_sweeper_lock_grace_ms, 0)
+      SmaltTest.Env.put_restored(amqp_sweeper_lock_grace_ms: 0)
 
       try do
         {:ok, lock} = LockManager.acquire("tq", 1, now_ms: 1_000, duration_ms: 100)
@@ -110,7 +110,8 @@ defmodule Smalt.Amqp.SweeperTest do
         assert {:error, :not_found} =
                  LockManager.renew(lock.lock_token, System.system_time(:millisecond))
       after
-        Application.delete_env(:smalt, :amqp_sweeper_lock_grace_ms)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
 

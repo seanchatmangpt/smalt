@@ -529,7 +529,7 @@ defmodule Smalt.TrustProfileTest do
 
       :persistent_term.erase(tp_ref)
       :persistent_term.erase(rs_ref)
-      Application.put_env(:smalt, :receipt_signing_key, pem_pair)
+      SmaltTest.Env.put_restored(receipt_signing_key: pem_pair)
 
       try do
         # ReceiptSigner signs plain claims; TrustProfile.verify refuses it even
@@ -1015,8 +1015,8 @@ defmodule Smalt.TrustProfileTest do
       File.write!(key, "KEY")
 
       try do
-        Application.put_env(:smalt, :tls_certfile, cert)
-        Application.put_env(:smalt, :tls_keyfile, key)
+        SmaltTest.Env.put_restored(tls_certfile: cert)
+        SmaltTest.Env.put_restored(tls_keyfile: key)
 
         cfg = %{auth_mode: :enforce, tls: nil, sb_shared_key: "secret"}
 
@@ -1048,7 +1048,7 @@ defmodule Smalt.TrustProfileTest do
       try do
         Application.delete_env(:smalt, :tls_certfile)
         Application.delete_env(:smalt, :tls_keyfile)
-        Application.put_env(:smalt, :tls, :auto)
+        SmaltTest.Env.put_restored(tls: :auto)
 
         for content <- ["-----BEGIN CERTIFICATE-----\nMIIB\n", "nope\n", ""] do
           File.write!(cert, content)
@@ -1089,7 +1089,7 @@ defmodule Smalt.TrustProfileTest do
       try do
         Application.delete_env(:smalt, :tls_certfile)
         Application.delete_env(:smalt, :tls_keyfile)
-        Application.put_env(:smalt, :tls, :auto)
+        SmaltTest.Env.put_restored(tls: :auto)
 
         # A freshly written valid cert must be accepted as-is: byte identity
         # across a boot proves no regeneration happened (mtime alone can race).
@@ -1114,6 +1114,7 @@ defmodule Smalt.TrustProfileTest do
     test "explicit corrupt certfile/keyfile is typed {:corrupt_certfile, path, reason}; bandit_opts raises typed ArgumentError (lens-6 cycle-2 pin)" do
       cert = Path.join(System.tmp_dir!(), "smalt-tp-l6-cert-#{:rand.uniform(1_000_000)}.pem")
       key = Path.join(System.tmp_dir!(), "smalt-tp-l6-key-#{:rand.uniform(1_000_000)}.pem")
+      prev_tls = Application.get_env(:smalt, :tls)
 
       try do
         # Baseline: valid pair on disk (generated once, then mutated per cell).
@@ -1133,8 +1134,8 @@ defmodule Smalt.TrustProfileTest do
           :ok = Smalt.TLS.write_dev_cert(cert, key)
           mutate.()
 
-          Application.put_env(:smalt, :tls_certfile, cert)
-          Application.put_env(:smalt, :tls_keyfile, key)
+          SmaltTest.Env.put_restored(tls_certfile: cert)
+          SmaltTest.Env.put_restored(tls_keyfile: key)
 
           assert {:error, {:corrupt_certfile, ^cert, ^expect}} = Smalt.TLS.ensure_dev_cert()
 
@@ -1150,9 +1151,11 @@ defmodule Smalt.TrustProfileTest do
       after
         File.rm(cert)
         File.rm(key)
-        Application.delete_env(:smalt, :tls_certfile)
-        Application.delete_env(:smalt, :tls_keyfile)
-        Application.delete_env(:smalt, :tls)
+        if prev_tls == nil do
+          Application.delete_env(:smalt, :tls)
+        else
+          Application.put_env(:smalt, :tls, prev_tls)
+        end
       end
     end
 
@@ -1219,7 +1222,7 @@ defmodule Smalt.TrustProfileTest do
 
     test "current_config/0 reflects application environment" do
       old = Application.get_env(:smalt, :auth_mode)
-      Application.put_env(:smalt, :auth_mode, :anonymous)
+      SmaltTest.Env.put_restored(auth_mode: :anonymous)
 
       assert %{auth_mode: :anonymous, tls: tls, sb_shared_key: sk} = Deployment.current_config()
       assert tls in [true, false, :auto]

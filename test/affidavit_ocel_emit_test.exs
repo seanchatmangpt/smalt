@@ -76,7 +76,7 @@ defmodule Smalt.Telemetry.AffidavitOcelEmitTest do
   end
 
   test "emitter is fail-safe: an unwritable sink path drops, never raises" do
-    Application.put_env(:smalt, :ocel_dir, "/proc/definitely-not-writable-lane606")
+    SmaltTest.Env.put_restored(ocel_dir: "/proc/definitely-not-writable-lane606")
 
     assert {:error, _} =
              AffidavitOcel.seal(subject_sha: "ab", verdict: "refused", engine_hash: "h")

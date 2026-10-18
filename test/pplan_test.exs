@@ -531,7 +531,7 @@ defmodule Smalt.PPlanTest do
           end)
 
         # Kill at a random point relative to the claim CAS.
-        if rem(run, 2) == 0, do: Process.sleep(1)
+        if rem(run, 2) == 0, do: Process.sleep(1)  # SLEEP-CLASS: TIME-ADVANCE — kill-timing jitter window relative to claim CAS
         Process.exit(racer, :kill)
         wait_until(fn -> not Process.alive?(racer) end)
 
@@ -1007,12 +1007,24 @@ defmodule Smalt.PPlanTest do
       {sweep_us, recovered} = :timer.tc(fn -> Task.recover() end)
       assert [%{id: ^id}] = recovered
 
-      # Window measured on this node: kill->sweep in microseconds. Pin an
-      # upper bound an order of magnitude above the measurement so the row
-      # tracks pathological regressions (e.g. a sweep that starts scanning
-      # per-record liveness serially) without being flaky on slow CI.
-      window_us = kill_us + sweep_us
-      assert window_us < 100_000, "kill->recover window #{window_us}us exceeds 100ms pin"
+      # Relative ratio fence (AZB-12): recover-sweep op vs an INDEPENDENT
+      # same-run control op (Task.get/1 single-record read). get/1 does not
+      # call recover/0 — a slowdown injected into the sweep cannot slow the
+      # baseline leg, so the ratio cannot collapse (fence10-ratio vacuity
+      # lesson). The subject is floor-of-5 post-recovery sweeps (idempotent:
+      # the store scan is the regression class being fenced — a sweep gone
+      # serial-per-record liveness-scan stays slow on every repeat); the
+      # single-shot kill_us+sweep_us window stays in the measurement receipt
+      # below. Baseline is median-of-5, sleep-free.
+      subject_us =
+        Smalt.Test.Ratio.floor_us(fn -> Task.recover() end)
+
+      baseline_us = Smalt.Test.Ratio.calibrate(fn -> Task.get(id) end)
+
+      Smalt.Test.Ratio.assert_ratio(subject_us, baseline_us,
+        max: 50.0,
+        context: "recover sweep vs single-record get control"
+      )
 
       on_exit(fn ->
         path = Path.expand("tmp/errc/pplan-lens2/pid-window-measurement.txt")
@@ -1021,7 +1033,7 @@ defmodule Smalt.PPlanTest do
 
         File.write!(
           path,
-          "kill_us=#{kill_us} sweep_us=#{sweep_us} window_us=#{window_us} pin_us=100000\n"
+          "kill_us=#{kill_us} sweep_us=#{sweep_us} subject_us=#{subject_us} baseline_us=#{baseline_us}\n"
         )
       end)
     end
@@ -1126,7 +1138,7 @@ defmodule Smalt.PPlanTest do
   defp wait_until_collecting(fun, tries) do
     case fun.() do
       {:cont, val} ->
-        Process.sleep(1)
+        Process.sleep(1)  # SLEEP-CLASS: POLL-STEP — bounded recursive collection poll
         {n, vals} = wait_until_collecting(fun, tries - 1)
         {n + 1, [val | vals]}
 
@@ -1242,7 +1254,7 @@ defmodule Smalt.PPlanTest do
               :stop -> :ok
             after
               0 ->
-                Process.sleep(1)
+                Process.sleep(1)  # SLEEP-CLASS: POLL-STEP — bounded pacing loop (receive after 0 -> non-blocking poll step)
                 loop.(loop)
             end
           end
@@ -2489,7 +2501,7 @@ defmodule Smalt.PPlanTest do
               :stop -> :ok
             after
               0 ->
-                Process.sleep(1)
+                Process.sleep(1)  # SLEEP-CLASS: POLL-STEP — bounded pacing loop (receive after 0 -> non-blocking poll step)
                 loop.(loop)
             end
           end

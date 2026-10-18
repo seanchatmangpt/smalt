@@ -22,7 +22,7 @@ defmodule Smalt.MetadataEndpointsTest do
 
     port = free_port()
     tls_port = free_port()
-    Application.put_env(:smalt, :arm_port, port)
+    SmaltTest.Env.put_restored(arm_port: port)
 
     children = [
       Smalt.Store,
@@ -42,7 +42,7 @@ defmodule Smalt.MetadataEndpointsTest do
           Application.delete_env(:smalt, k)
         end
 
-        Application.put_env(:smalt, :tls, :auto)
+        SmaltTest.Env.put_restored(tls: :auto)
         opts = Smalt.TLS.bandit_opts(Router, tls_port)
 
         for {k, v} <- saved do

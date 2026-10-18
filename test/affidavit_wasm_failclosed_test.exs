@@ -34,12 +34,22 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
 
   defp stop_engine do
     if pid = Process.whereis(WasmEngine) do
-      GenServer.stop(pid, :normal)
+      # Supervisor-owned engine: the owner can kill/restart the registered
+      # generation asynchronously between our whereis and the stop
+      # (fence-11 shake witness: EXIT noproc in setup, 5/13 shake legs).
+      # Bounded-deadline typed stop — tolerate the dead-pid exit as typed
+      # vocabulary; the wait gates on the name actually clearing.
+      try do
+        GenServer.stop(pid, :normal, 5_000)
+      catch
+        :exit, {:noproc, _} -> :ok
+      end
+
       wait_until(fn -> is_nil(Process.whereis(WasmEngine)) end)
       # lane10 settle: wasmtime store/instance teardown is asynchronous
       # behind the NIF; an immediate re-start races it and init fails
       # :engine_start_failed (witnessed inter-test flake). Small settle.
-      Process.sleep(25)
+      Process.sleep(25)  # SLEEP-CLASS: TIME-ADVANCE — NIF/wasmtime async teardown settle window (witnessed flake)
     end
 
     :ok
@@ -66,7 +76,14 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
   defp typed_start(opts) do
     case WasmEngine.start_link(opts) do
       {:error, {:already_started, pid}} ->
-        GenServer.stop(pid, :normal)
+        # Same bounded-deadline tolerance as stop_engine/0: the observed pid
+        # can be dead by the time we stop it (owner kill/restart race).
+        try do
+          GenServer.stop(pid, :normal, 5_000)
+        catch
+          :exit, {:noproc, _} -> :ok
+        end
+
         wait_until(fn -> is_nil(Process.whereis(WasmEngine)) end)
         Process.sleep(25)
         WasmEngine.start_link(opts)
@@ -107,8 +124,28 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
   defp sha256(bytes), do: Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
 
   setup do
+    # Terminate the supervised owner for this module (typed, reversible):
+    # a live owner with a dangling :retry_start could otherwise restart the
+    # engine mid-fence (witnessed: fence 7 kill face, engine observed back
+    # within the owner's 250ms restart delay). Fences 11/12 re-arm it
+    # explicitly via WasmEngine.Supervisor.restore_owner/0.
+    stop_owner()
     stop_engine()
     on_exit(fn -> stop_engine() end)
+    :ok
+  end
+
+  defp stop_owner do
+    sup = Smalt.Affidavit.WasmEngine.Supervisor
+    owner = Smalt.Affidavit.WasmEngine.Supervisor.Owner
+
+    if Process.whereis(sup) do
+      case Supervisor.terminate_child(sup, owner) do
+        :ok -> wait_until(fn -> is_nil(Process.whereis(owner)) end)
+        {:error, :not_found} -> :ok
+      end
+    end
+
     :ok
   end
 
@@ -634,6 +671,11 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     load_tasks =
       Enum.map(1..6, fn _w ->
         Task.async(fn ->
+          # Trap exits: a worker that wins a direct start is LINKED to the
+          # engine; without trapping, a kill of that generation propagates
+          # :kill worker->test and dies the whole test (witnessed).
+          Process.flag(:trap_exit, true)
+
           Enum.map(1..40, fn _i ->
             pid = Process.whereis(WasmEngine)
 
@@ -655,17 +697,25 @@ defmodule Smalt.Affidavit.WasmEngineFailClosedTest do
     # never Process.sleep): 4 cycles, every kill of the owned engine is
     # observed by the owner as an abnormal DOWN.
     for _cycle <- 1..4 do
-      pid = Process.whereis(WasmEngine)
-
-      if is_pid(pid) do
-        Process.exit(pid, :kill)
+      # Name-resolved kill: GenServer.stop/3 resolves the registration at
+      # call time on the server, so a pid captured before the engine died
+      # can never be redirected onto a recycled pid (witnessed: the old
+      # Process.exit(whereis(...), :kill) form killed the TEST process via
+      # pid recycling under hammer churn).
+      case Process.whereis(WasmEngine) do
+        nil -> :ok
+        _p -> GenServer.stop(WasmEngine, :kill)
       end
 
-      # reappearance wait in this process's OWN mailbox (doubling capped)
+      # reappearance wait in this process's OWN mailbox (doubling capped):
+      # any live registration OTHER than the killed generation counts
+      # (generation change is the observed fact, not a stale pid compare).
       wait_for(
         fn ->
-          p = Process.whereis(WasmEngine)
-          is_pid(p) and p != pid and Process.alive?(p)
+          case Process.whereis(WasmEngine) do
+            nil -> :error
+            p -> if Process.alive?(p), do: {:ok, p}, else: :error
+          end
         end,
         100
       )

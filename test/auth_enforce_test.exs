@@ -393,7 +393,7 @@ defmodule Smalt.AuthEnforceTest do
     assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "IssuerMismatch"
 
     # The SAME token IS accepted once the peer is a configured trusted proxy.
-    Application.put_env(:smalt, :trusted_proxies, [{127, 0, 0, 1}])
+    SmaltTest.Env.put_restored(trusted_proxies: [{127, 0, 0, 1}])
 
     conn2 =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -405,7 +405,7 @@ defmodule Smalt.AuthEnforceTest do
     assert conn2.status == 200, "trusted-proxy seat must honor forwarded authority"
 
     # A CIDR entry also grants trust (10.0.0.0/8 does not cover 127.0.0.1).
-    Application.put_env(:smalt, :trusted_proxies, ["10.0.0.0/8"])
+    SmaltTest.Env.put_restored(trusted_proxies: ["10.0.0.0/8"])
 
     conn3 =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -416,7 +416,8 @@ defmodule Smalt.AuthEnforceTest do
 
     assert_challenge(conn3, "non-matching CIDR")
   after
-    Application.delete_env(:smalt, :trusted_proxies)
+    # isolation-court: exempt restore now structural via put_restored on_exit
+    :ok
   end
 
   test "fail-closed: spoofed forwarded host cannot redirect issuer acceptance for a direct token" do
@@ -501,7 +502,7 @@ defmodule Smalt.AuthEnforceTest do
     assert Jason.decode!(egress_conn.resp_body)["error"]["message"] =~
              "SignatureVerificationFailed"
   after
-    Application.put_env(:smalt, :auth_mode, :enforce)
+    SmaltTest.Env.put_restored(auth_mode: :enforce)
   end
 
   defp token_params do
@@ -699,7 +700,7 @@ defmodule Smalt.AuthEnforceTest do
   test "config fuzz: bare-binary :token_audiences does not 500 (normalized)" do
     # `aud not in audiences` with a binary RHS would raise ArgumentError and
     # crash the plug into a 500. The plug normalizes the env to a list.
-    Application.put_env(:smalt, :token_audiences, @aud)
+    SmaltTest.Env.put_restored(token_audiences: @aud)
 
     conn =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -710,7 +711,7 @@ defmodule Smalt.AuthEnforceTest do
   end
 
   test "config fuzz: nil :token_audiences falls back to the default audience" do
-    Application.put_env(:smalt, :token_audiences, nil)
+    SmaltTest.Env.put_restored(token_audiences: nil)
 
     conn =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -719,7 +720,8 @@ defmodule Smalt.AuthEnforceTest do
 
     assert conn.status == 200, "nil audiences env must fall back to default, got #{conn.status}"
   after
-    Application.delete_env(:smalt, :token_audiences)
+    # isolation-court: exempt restore now structural via put_restored on_exit
+    :ok
   end
 
   # -- Cycle 7: header composition + RFC 7235 extraction fuzz --------------------
@@ -1339,7 +1341,7 @@ defmodule Smalt.AuthEnforceTest do
   end
 
   test "wave5: empty :token_audiences list refuses EVERYTHING (fail-closed config)" do
-    Application.put_env(:smalt, :token_audiences, [])
+    SmaltTest.Env.put_restored(token_audiences: [])
 
     conn =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -1351,7 +1353,7 @@ defmodule Smalt.AuthEnforceTest do
   end
 
   test "wave5: non-binary audience ENTRIES fail closed (AudienceMismatch, no crash)" do
-    Application.put_env(:smalt, :token_audiences, [12_345, :management])
+    SmaltTest.Env.put_restored(token_audiences: [12_345, :management])
 
     conn =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -1364,7 +1366,7 @@ defmodule Smalt.AuthEnforceTest do
 
   test "wave5: large audiences list still admits members (membership not degraded)" do
     long = for i <- 1..2000, do: "https://aud-#{i}.example.com"
-    Application.put_env(:smalt, :token_audiences, long ++ [@aud])
+    SmaltTest.Env.put_restored(token_audiences: long ++ [@aud])
 
     conn =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -1373,16 +1375,17 @@ defmodule Smalt.AuthEnforceTest do
 
     assert conn.status == 200, "2001-entry audiences list must still admit members"
   after
-    Application.delete_env(:smalt, :token_audiences)
+    # isolation-court: exempt restore now structural via put_restored on_exit
+    :ok
   end
 
   test "anonymous mode: no token required (explicit opt-out honoured)" do
-    Application.put_env(:smalt, :auth_mode, :anonymous)
+    SmaltTest.Env.put_restored(auth_mode: :anonymous)
 
     conn = arm_req(:get, "/subscriptions?api-version=2021-04-01")
     assert conn.status == 200
   after
-    Application.put_env(:smalt, :auth_mode, :enforce)
+    SmaltTest.Env.put_restored(auth_mode: :enforce)
   end
 
   # -- lens-2 cycle 1 -----------------------------------------------------------
@@ -1480,7 +1483,7 @@ defmodule Smalt.AuthEnforceTest do
     token = mint(%{})
 
     # Mid-flight rotation: env A -> env B (A != B, both set).
-    Application.put_env(:smalt, :sts_signing_secret, @secret <> "-rotated")
+    SmaltTest.Env.put_restored(sts_signing_secret: @secret <> "-rotated")
 
     conn =
       arm_req(:get, "/subscriptions?api-version=2021-04-01", [
@@ -1490,12 +1493,13 @@ defmodule Smalt.AuthEnforceTest do
     assert_challenge(conn, "post-rotation token")
     assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "SignatureVerificationFailed"
   after
-    Application.put_env(:smalt, :sts_signing_secret, @secret)
+    :ok
   end
 
   test "lens2 rotation: env secret DELETED between mint and verify -> refused (no silent dev-secret fallback)" do
     token = mint(%{})
 
+    prev_secret = Application.get_env(:smalt, :sts_signing_secret)
     Application.delete_env(:smalt, :sts_signing_secret)
 
     # Fail-closed: unless the dev secret happens to be absent too, falling
@@ -1513,13 +1517,19 @@ defmodule Smalt.AuthEnforceTest do
              "SignatureVerificationFailed",
              "NoSigningSecretConfigured"
            ]
-  after
-    Application.put_env(:smalt, :sts_signing_secret, @secret)
+
+    on_exit(fn ->
+      if prev_secret == nil do
+        Application.delete_env(:smalt, :sts_signing_secret)
+      else
+        Application.put_env(:smalt, :sts_signing_secret, prev_secret)
+      end
+    end)
   end
 
   test "lens2 rotation: 50 parallel verifies ACROSS a mid-flight rotation — no crash, deterministic post-rotation" do
     token_a = mint(%{})
-    Application.put_env(:smalt, :sts_signing_secret, @secret <> "-B")
+    SmaltTest.Env.put_restored(sts_signing_secret: @secret <> "-B")
     token_b = mint(%{}, Joken.Signer.create("HS256", @secret <> "-B"))
 
     results =

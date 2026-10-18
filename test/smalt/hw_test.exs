@@ -65,7 +65,7 @@ defmodule Smalt.HwTest do
   # -- device dispatch ----------------------------------------------------------
 
   test "enroll -> capabilities with sim-0.1+ed25519" do
-    {:ok, pid} = VirtualSerial.start_link(name: :hw_test_dev1)
+    pid = start_supervised!({VirtualSerial, name: :hw_test_dev1})
 
     caps = VirtualSerial.handle_payload(pid, <<0x03>>)
     <<0x04, se, sha, fw_len, fw::binary-size(fw_len), max::little-integer-size(16)>> = caps
@@ -75,7 +75,7 @@ defmodule Smalt.HwTest do
   end
 
   test "sign -> SIGNED_RECEIPT with strictly increasing counter" do
-    {:ok, pid} = VirtualSerial.start_link(name: :hw_test_dev2)
+    pid = start_supervised!({VirtualSerial, name: :hw_test_dev2})
 
     digest = :crypto.hash(:sha256, "challenge")
 
@@ -90,7 +90,7 @@ defmodule Smalt.HwTest do
   end
 
   test "unknown type -> 0x7F ERROR UNKNOWN_TYPE; short digest -> BAD_DIGEST" do
-    {:ok, pid} = VirtualSerial.start_link(name: :hw_test_dev3)
+    pid = start_supervised!({VirtualSerial, name: :hw_test_dev3})
 
     err = VirtualSerial.handle_payload(pid, <<0xAB, 0x00>>)
     assert <<0x7F, 2, "unknown message type 0xab">> = err

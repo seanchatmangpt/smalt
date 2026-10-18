@@ -2312,7 +2312,7 @@ defmodule Smalt.DataPlane.CosmosTest do
       # 5s cap).
       restarted? =
         Enum.reduce_while(1..2000, false, fn _, _ ->
-          if Cosmos.store_ready?(), do: {:halt, true}, else: Process.sleep(50) && {:cont, false}
+          if Cosmos.store_ready?(), do: {:halt, true}, else: Process.sleep(50) && {:cont, false}  # SLEEP-CLASS: POLL-STEP — bounded 2000x store_ready? restart poll
         end)
 
       assert restarted?

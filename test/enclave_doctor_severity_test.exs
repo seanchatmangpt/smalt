@@ -76,7 +76,10 @@ defmodule EnclaveDoctorSeverityTest do
         end)
 
       try do
-        report = Task.await(doctor, 60_000)
+        # 120s await budget: a loaded box (parallel lane beams) can push the
+        # full doctor run past 60s; the budget must fence load, not hug the
+        # idle-box cost (same ratio-fence law as fence-10).
+        report = Task.await(doctor, 120_000)
 
         ets_check = Enum.find(report["checks"], &(&1["check"] == "ets_baseline_identity"))
 

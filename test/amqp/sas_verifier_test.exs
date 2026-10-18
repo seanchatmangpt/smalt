@@ -7,8 +7,7 @@ defmodule Smalt.Amqp.SasVerifierTest do
   @now 1_700_000_000
 
   setup do
-    Application.put_env(:smalt, :sb_shared_key, @key)
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    SmaltTest.Env.put_restored(sb_shared_key: @key)
     :ok
   end
 
@@ -226,7 +225,15 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "dev fallback key is generated, cached, and at least 32 bytes" do
+    prev_key = Application.get_env(:smalt, :sb_shared_key)
     Application.delete_env(:smalt, :sb_shared_key)
+    on_exit(fn ->
+      if prev_key == nil do
+        Application.delete_env(:smalt, :sb_shared_key)
+      else
+        Application.put_env(:smalt, :sb_shared_key, prev_key)
+      end
+    end)
 
     k1 = SasVerifier.shared_key()
     k2 = SasVerifier.shared_key()
@@ -237,8 +244,7 @@ defmodule Smalt.Amqp.SasVerifierTest do
   # -- config-driven endpoint --------------------------------------------------
 
   test "verify/1 honors the configured :sb_endpoint" do
-    Application.put_env(:smalt, :sb_endpoint, "amqps://other.host:5671")
-    on_exit(fn -> Application.delete_env(:smalt, :sb_endpoint) end)
+    SmaltTest.Env.put_restored(sb_endpoint: "amqps://other.host:5671")
 
     sr = enc("amqps://other.host:5671/q")
     assert {:ok, claims} = SasVerifier.verify(token(sr, System.system_time(:second) + 600))
@@ -246,8 +252,7 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "verify/1 rejects a token audience foreign to the configured endpoint" do
-    Application.put_env(:smalt, :sb_endpoint, "amqps://other.host:5671")
-    on_exit(fn -> Application.delete_env(:smalt, :sb_endpoint) end)
+    SmaltTest.Env.put_restored(sb_endpoint: "amqps://other.host:5671")
 
     assert {:error, {401, "INVALID_LOCAL_SAS"}} =
              SasVerifier.verify(
@@ -256,15 +261,22 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "malformed configured endpoint yields INVALID_LOCAL_AUDIENCE" do
-    Application.put_env(:smalt, :sb_endpoint, ":::not a url")
-    on_exit(fn -> Application.delete_env(:smalt, :sb_endpoint) end)
+    SmaltTest.Env.put_restored(sb_endpoint: ":::not a url")
 
     assert {:error, {400, "INVALID_LOCAL_AUDIENCE"}} =
              SasVerifier.verify(token(enc(sb_url()), System.system_time(:second) + 600))
   end
 
   test "endpoint/0 defaults to the local emulator endpoint" do
+    prev_ep = Application.get_env(:smalt, :sb_endpoint)
     Application.delete_env(:smalt, :sb_endpoint)
+    on_exit(fn ->
+      if prev_ep == nil do
+        Application.delete_env(:smalt, :sb_endpoint)
+      else
+        Application.put_env(:smalt, :sb_endpoint, prev_ep)
+      end
+    end)
     assert SasVerifier.endpoint() == "sb://127.0.0.1:5672"
   end
 
@@ -330,8 +342,7 @@ defmodule Smalt.Amqp.SasPinnedFallbackTest do
   end
 
   defp verify_with(key) do
-    Application.put_env(:smalt, :sb_shared_key, key)
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    SmaltTest.Env.put_restored(sb_shared_key: key)
 
     SasVerifier.verify(
       token_for(@payload, @floor_key, @now + 600),

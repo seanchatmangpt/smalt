@@ -2866,8 +2866,7 @@ defmodule Smalt.DataPlane.BlobHardeningTest do
   # ---------------------------------------------------------------------------
   describe "W-7 SAS token verification (GAP-AUD1-03)" do
     setup do
-      Application.put_env(:smalt, :blob_account_key, "w7-sas-test-account-key")
-      on_exit(fn -> Application.delete_env(:smalt, :blob_account_key) end)
+      SmaltTest.Env.put_restored(blob_account_key: "w7-sas-test-account-key")
       :ok
     end
 

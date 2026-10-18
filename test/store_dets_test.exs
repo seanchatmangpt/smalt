@@ -32,7 +32,7 @@ defmodule Smalt.StoreDetsTest do
     :ets.insert(:dm_t_docs, {"docs/1", %{"id" => 1}})
 
     # Wait past one full tick + epsilon
-    Process.sleep(150)
+    Process.sleep(150)  # SLEEP-CLASS: TIME-ADVANCE — crosses one full periodic dets sync tick + epsilon
 
     # Read the dets files directly (closed read) to prove rows hit disk
     {:ok, res} = :dets.open_file(:probe_res, file: ~c"#{dir}/dm_t_resources.dets", repair: false)

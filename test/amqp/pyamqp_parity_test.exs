@@ -89,8 +89,7 @@ defmodule Smalt.Amqp.PyamqpParityTest do
   # shape as connection_test.exs).
   # ---------------------------------------------------------------------------
   setup do
-    Application.put_env(:smalt, :sb_shared_key, "test-shared-key-0123456789abcdef012345")
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    SmaltTest.Env.put_restored(sb_shared_key: "test-shared-key-0123456789abcdef012345")
 
     SmaltTest.Lifecycle.ensure_store_up()
 

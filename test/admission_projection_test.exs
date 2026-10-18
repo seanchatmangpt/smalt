@@ -413,7 +413,7 @@ defmodule Smalt.AdmissionProjectionTest do
 
     survived =
       Enum.any?(1..200, fn _ ->
-        if surviving?.(), do: true, else: Process.sleep(10) && false
+        if surviving?.(), do: true, else: Process.sleep(10) && false  # SLEEP-CLASS: POLL-STEP — bounded 1..200 heir-survival poll
       end)
 
     assert survived, "table or its rows vanished after creator exit (heir missing)"
@@ -457,7 +457,7 @@ defmodule Smalt.AdmissionProjectionTest do
 
     eventually = fn fun ->
       Enum.any?(1..100, fn _ ->
-        fun.() or (Process.sleep(20) and false)
+        fun.() or (Process.sleep(20) and false)  # SLEEP-CLASS: POLL-STEP — bounded 1..100 code_r poll
       end)
     end
 

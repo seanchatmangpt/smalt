@@ -1276,7 +1276,7 @@ defmodule Smalt.McpTest do
         assert {:module, Smalt.Mcp.Descriptor} =
                  :code.load_binary(Smalt.Mcp.Descriptor, charpath, beam)
 
-        Process.sleep(1)
+        Process.sleep(1)  # SLEEP-CLASS: POLL-STEP — bounded 200x descriptor reload loop
       end
 
       :ok

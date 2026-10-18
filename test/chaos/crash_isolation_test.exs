@@ -176,7 +176,7 @@ defmodule Smalt.Chaos.CrashIsolationTest do
       case probe do
         {:ok, sock} ->
           :gen_tcp.close(sock)
-          Process.sleep(interval)
+          Process.sleep(interval)  # SLEEP-CLASS: POLL-STEP — bounded tcp-probe poll step (interval-paced)
           true
 
         {:error, _} ->

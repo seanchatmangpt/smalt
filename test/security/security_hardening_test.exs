@@ -270,7 +270,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
   describe "Attestation" do
     test "in-baseline measurement yields signed compliant token" do
-      Application.put_env(:smalt, :maa_measurement_baseline, [@measurement])
+      SmaltTest.Env.put_restored(maa_measurement_baseline: [@measurement])
 
       assert {:ok, token, claims} = Attestation.attest_enclave(%{"measurement" => @measurement})
 
@@ -281,11 +281,20 @@ defmodule Smalt.Security.SecurityHardeningTest do
       assert {:ok, verified} = Attestation.verify_token(token)
       assert verified["x-ms-compliance-status"] == "azure-compliant-cvm"
 
+      prev_maa = Application.get_env(:smalt, :maa_measurement_baseline)
       Application.delete_env(:smalt, :maa_measurement_baseline)
+
+      on_exit(fn ->
+        if prev_maa == nil do
+          Application.delete_env(:smalt, :maa_measurement_baseline)
+        else
+          Application.put_env(:smalt, :maa_measurement_baseline, prev_maa)
+        end
+      end)
     end
 
     test "client_payload_hash is invariant under key-order permutation (nested maps)" do
-      Application.put_env(:smalt, :maa_measurement_baseline, [@measurement])
+      SmaltTest.Env.put_restored(maa_measurement_baseline: [@measurement])
 
       nested_a = %{
         "measurement" => @measurement,
@@ -336,7 +345,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
     end
 
     test "verify_token rejects tampered attestation token" do
-      Application.put_env(:smalt, :maa_measurement_baseline, [@measurement])
+      SmaltTest.Env.put_restored(maa_measurement_baseline: [@measurement])
       {:ok, token, _} = Attestation.attest_enclave(%{"measurement" => @measurement})
       Application.delete_env(:smalt, :maa_measurement_baseline)
 
@@ -709,7 +718,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
     # -- cycle-9: wave-2 courts ------------------------------------------------
 
     test "baseline tamper: flipping ONE measurement byte refuses attestation" do
-      Application.put_env(:smalt, :maa_measurement_baseline, [@measurement])
+      SmaltTest.Env.put_restored(maa_measurement_baseline: [@measurement])
 
       # single-bit flip in the last hex char: adjacent to the valid baseline
       flipped =
@@ -854,9 +863,9 @@ defmodule Smalt.Security.SecurityHardeningTest do
   # (out of this court's scope, receipted).
   defp restore_ledger_enforce_existence(prior) do
     if prior == nil do
-      Application.delete_env(:smalt, :ledger_enforce_existence)
+      Application.delete_env(:smalt, :ledger_enforce_existence)  # isolation-court: exempt helper invoked from after-block callers
     else
-      Application.put_env(:smalt, :ledger_enforce_existence, prior)
+      Application.put_env(:smalt, :ledger_enforce_existence, prior)  # isolation-court: exempt helper invoked from after-block callers
     end
   end
 
@@ -870,7 +879,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
     test "enforced: append to never-created ledger is refused with the 404-class envelope" do
       prior = Application.get_env(:smalt, :ledger_enforce_existence)
-      Application.put_env(:smalt, :ledger_enforce_existence, true)
+      SmaltTest.Env.put_restored(ledger_enforce_existence: true)
 
       try do
         assert {:error, 404, %{"error" => %{"code" => "LedgerNotFound"}}} =
@@ -882,7 +891,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
     test "enforced: explicit creation marker admits the append (fix shape works)" do
       prior = Application.get_env(:smalt, :ledger_enforce_existence)
-      Application.put_env(:smalt, :ledger_enforce_existence, true)
+      SmaltTest.Env.put_restored(ledger_enforce_existence: true)
 
       try do
         Store.put(:smalt_ledger_meta, {:created, "fenced-created"}, true)
@@ -899,7 +908,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # the implicit create), then flip the fence: prior state admits appends.
       assert {:ok, _} = ConfidentialLedger.append_transaction("fenced-existing", %{"seed" => 1})
       prior = Application.get_env(:smalt, :ledger_enforce_existence)
-      Application.put_env(:smalt, :ledger_enforce_existence, true)
+      SmaltTest.Env.put_restored(ledger_enforce_existence: true)
 
       try do
         assert {:ok, %{"transactionId" => "2.1"}} =
@@ -989,7 +998,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
   describe "lens-2 fence precedence + policy-hash binding" do
     test "existence fence fires BEFORE the dup check: no 409, no state leaked" do
       prior = Application.get_env(:smalt, :ledger_enforce_existence)
-      Application.put_env(:smalt, :ledger_enforce_existence, true)
+      SmaltTest.Env.put_restored(ledger_enforce_existence: true)
 
       try do
         contents = %{"fence" => "precedence"}
@@ -1112,7 +1121,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
       assert is_pid(pid)
       Process.exit(pid, :kill)
       # Let the monitor Down propagate before the next append.
-      Process.sleep(10)
+      Process.sleep(10)  # SLEEP-CLASS: TIME-ADVANCE — monitor DOWN propagation window before next append
 
       assert {:ok, %{"transactionId" => "2.1", "prev_hash" => prev2, "merkle_root" => root2}} =
                ConfidentialLedger.append_transaction(ledger, %{"n" => 2})
@@ -1290,8 +1299,8 @@ defmodule Smalt.Security.SecurityHardeningTest do
     test "policy snapshot at admission binds: every release is coherent with exactly one rotated policy version" do
       prior_secret = Application.get_env(:smalt, :kv_master_secret)
       prior_legacy = Application.get_env(:smalt, :skr_allow_legacy_header)
-      Application.put_env(:smalt, :kv_master_secret, "lens3-rotation-court")
-      Application.put_env(:smalt, :skr_allow_legacy_header, false)
+      SmaltTest.Env.put_restored(kv_master_secret: "lens3-rotation-court")
+      SmaltTest.Env.put_restored(skr_allow_legacy_header: false)
 
       try do
         p1 = %{"rotation" => "v1"}
@@ -1375,8 +1384,8 @@ defmodule Smalt.Security.SecurityHardeningTest do
         # flaky; the binding pin is per-release coherence with the expected
         # HKDF of the returned hash, which is asserted above for every release.
       after
-        Application.put_env(:smalt, :kv_master_secret, prior_secret)
-        Application.put_env(:smalt, :skr_allow_legacy_header, prior_legacy)
+        SmaltTest.Env.put_restored(kv_master_secret: prior_secret)
+        SmaltTest.Env.put_restored(skr_allow_legacy_header: prior_legacy)
       end
     end
   end
@@ -1597,7 +1606,7 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
     test "hostile attestation type params are typed 400 refusals, never raises, never coerced" do
       measurement = String.duplicate("ab", 32)
-      Application.put_env(:smalt, :maa_measurement_baseline, [measurement])
+      SmaltTest.Env.put_restored(maa_measurement_baseline: [measurement])
 
       try do
         for type <- [{:t, 1}, [:l], 42, 3.14] do

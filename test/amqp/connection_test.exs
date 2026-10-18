@@ -26,8 +26,7 @@ defmodule Smalt.Amqp.ConnectionTest do
   @test_key "test-shared-key-0123456789abcdef012345"
 
   setup do
-    Application.put_env(:smalt, :sb_shared_key, @test_key)
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    SmaltTest.Env.put_restored(sb_shared_key: @test_key)
 
     SmaltTest.Lifecycle.ensure_store_up()
 
@@ -349,7 +348,7 @@ defmodule Smalt.Amqp.ConnectionTest do
         )
       )
 
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async disposition-settle propagation window before exact-state assert
     assert count_state(queue, :any) == 0
   end
 
@@ -509,7 +508,7 @@ defmodule Smalt.Amqp.ConnectionTest do
         )
       )
 
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async disposition-settle propagation window before exact-state assert
     assert count_state(queue, :deferred) == 1
     assert count_state(queue, :available) == 0
     assert count_state(queue <> "/$deadletterqueue", :any) == 1
@@ -891,7 +890,7 @@ defmodule Smalt.Amqp.ConnectionTest do
     # killed by this assertion. Release is synchronous before the close
     # frame is written, so :available is deterministic on close receipt.
     assert state == :available
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async disposition-settle propagation window before exact-state assert
 
     # connection process alive: a fresh begin on the same socket still answers
     :ok =
@@ -1066,7 +1065,7 @@ defmodule Smalt.Amqp.ConnectionTest do
         )
       )
 
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async disposition-settle propagation window before exact-state assert
     assert count_state(queue, :any) == 1
     assert count_state(queue, :locked) == 1
 
@@ -1152,7 +1151,7 @@ defmodule Smalt.Amqp.ConnectionTest do
         )
       )
 
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async disposition-settle propagation window before exact-state assert
     # m2 settled; m1 untouched (still locked)
     assert count_state(queue, :any) == 1
     assert count_state(queue, :locked) == 1

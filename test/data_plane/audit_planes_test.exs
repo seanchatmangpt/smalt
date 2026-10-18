@@ -420,7 +420,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
               "subscriptionId" => "walk-sub"
             })
 
-            Process.sleep(2)
+            Process.sleep(2)  # SLEEP-CLASS: TIME-ADVANCE — writer pacing between ARM-put bursts (deliberate temporal spacing)
           end
 
           :done
@@ -647,7 +647,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
             found = Enum.count(stored, &(&1["guid"] in guids))
             # all-or-nothing: readers observe 0 or 100 of this batch, never a slice
             assert found == 0 or found == 100, "partial visibility: #{found}/100"
-            Process.sleep(1)
+            Process.sleep(1)  # SLEEP-CLASS: POLL-STEP — bounded 200x visibility reader loop
           end
         end)
 
@@ -763,7 +763,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
   describe "Sentinel concurrent ingest" do
     test "parallel ingests to one stream never collide on row seq" do
       saved_forensic = Application.get_env(:smalt, :sentinel_forensic, false)
-      Application.put_env(:smalt, :sentinel_forensic, true)
+      SmaltTest.Env.put_restored(sentinel_forensic: true)
 
       # Leak fix (i21 batch 3): this test creates the owner-durable
       # :smalt_sentinel_forensic named table but never deleted it — it
@@ -786,7 +786,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       try do
         run_sentinel_race_assertions()
       after
-        Application.put_env(:smalt, :sentinel_forensic, saved_forensic)
+        SmaltTest.Env.put_restored(sentinel_forensic: saved_forensic)
       end
     end
 
@@ -820,7 +820,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       keys = Store.list_prefix(:smalt_sentinel_rows, "dcr-race/Custom-Logs/")
 
       if length(keys) != 40 do
-        Application.put_env(:smalt, :sentinel_forensic, true)
+        SmaltTest.Env.put_restored(sentinel_forensic: true)
 
         if :ets.info(:smalt_sentinel_forensic) != :undefined do
           timeline =
@@ -870,7 +870,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     end
 
     test "enforced: ingest to a never-created DCR is refused with the 404-class envelope, no partial insert" do
-      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+      SmaltTest.Env.put_restored(sentinel_dcr_strict: true)
 
       try do
         assert {:error, 404, %{"error" => %{"code" => "DCRNotFound"}}} =
@@ -884,12 +884,13 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         assert Store.list_prefix(:smalt_sentinel_rows, "fenced-dcr/") == []
         assert Store.list_prefix(:smalt_sentinel_streams, "fenced-dcr/") == []
       after
-        Application.delete_env(:smalt, :sentinel_dcr_strict)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
 
     test "enforced: explicit creation marker admits the ingest (fix shape works)" do
-      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+      SmaltTest.Env.put_restored(sentinel_dcr_strict: true)
 
       try do
         Store.put(:smalt_sentinel_streams, {:dcr_created, "fenced-marked"}, true)
@@ -899,7 +900,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
         assert length(Store.list_prefix(:smalt_sentinel_rows, "fenced-marked/Custom-Logs/")) == 1
       after
-        Application.delete_env(:smalt, :sentinel_dcr_strict)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
 
@@ -914,7 +916,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
                  "2023-01-01"
                )
 
-      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+      SmaltTest.Env.put_restored(sentinel_dcr_strict: true)
 
       try do
         assert {:ok, 204, ""} =
@@ -928,18 +930,20 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         assert length(Store.list_prefix(:smalt_sentinel_rows, "fenced-existing/Custom-Logs/")) ==
                  2
       after
-        Application.delete_env(:smalt, :sentinel_dcr_strict)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
 
     test "enforced: api-version is still checked first (400 InvalidApiVersion wins over 404)" do
-      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+      SmaltTest.Env.put_restored(sentinel_dcr_strict: true)
 
       try do
         assert {:error, 400, %{"error" => %{"code" => "InvalidApiVersion"}}} =
                  Sentinel.ingest("never-dcr-2", "Custom-Logs", [%{}], "2022-01-01")
       after
-        Application.delete_env(:smalt, :sentinel_dcr_strict)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
   end
@@ -1416,7 +1420,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       {:ok, 200, page1} = ResourceGraph.query([sub], %{"options" => %{"$top" => 3}}, "2022-10-01")
       token = page1["$skipToken"]
 
-      Application.put_env(:smalt, :rg_token_preserve_options, true)
+      SmaltTest.Env.put_restored(rg_token_preserve_options: true)
 
       try do
         # Explicit options still win over stored ones.
@@ -1437,7 +1441,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         assert p2b["count"] == 3
         assert Enum.map(p2b["data"], & &1["name"]) |> Enum.sort() == ["r4", "r5", "r6"]
       after
-        Application.delete_env(:smalt, :rg_token_preserve_options)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
   end
@@ -1456,7 +1461,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       topic = "dedup-e-#{System.unique_integer([:positive])}"
       ev = %{"specversion" => "1.0", "source" => "/s", "type" => "t", "id" => "same", "v" => 1}
 
-      Application.put_env(:smalt, :event_stream_dedup_ids, true)
+      SmaltTest.Env.put_restored(event_stream_dedup_ids: true)
 
       try do
         assert {:ok, "same"} = Smalt.Messaging.EventStream.publish(topic, ev)
@@ -1481,7 +1486,8 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         # Generated ids (no explicit id) never collide.
         assert {:ok, _} = Smalt.Messaging.EventStream.publish(topic, %{ev | "id" => nil})
       after
-        Application.delete_env(:smalt, :event_stream_dedup_ids)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
   end
@@ -1636,7 +1642,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
 
     test "forensic off-state costs zero: no :smalt_sentinel_forensic table is ever created" do
       saved = Application.get_env(:smalt, :sentinel_forensic, false)
-      Application.put_env(:smalt, :sentinel_forensic, false)
+      SmaltTest.Env.put_restored(sentinel_forensic: false)
 
       # Leak fix (i21 batch 3): unconditional on_exit delete for :l4_off_cas.
       # The in-test `after` is skipped when the VM is tearing the test down
@@ -1658,7 +1664,7 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
         Store.update_counter(:l4_off_cas, {:k}, 1)
         Store.compare_and_swap(:l4_off_cas, {:k}, 1, 2)
       after
-        Application.put_env(:smalt, :sentinel_forensic, saved)
+        SmaltTest.Env.put_restored(sentinel_forensic: saved)
         if :ets.info(:l4_off_cas) != :undefined, do: :ets.delete(:l4_off_cas)
       end
 
@@ -1675,13 +1681,14 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
       assert {:ok, 204, ""} =
                Sentinel.ingest("lane19-dcr", "Custom-Logs", [%{"msg" => "seed"}], "2023-01-01")
 
-      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+      SmaltTest.Env.put_restored(sentinel_dcr_strict: true)
 
       try do
         assert {:ok, 204, ""} =
                  Sentinel.ingest("lane19-dcr", "Custom-Logs", [%{"msg" => "next"}], "2023-01-01")
       after
-        Application.delete_env(:smalt, :sentinel_dcr_strict)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
 
       {:ok, 200, body} =
@@ -1692,13 +1699,14 @@ defmodule Smalt.DataPlane.AuditPlanesTest do
     end
 
     test "item 2: strict mode still refuses a truly never-created DCR" do
-      Application.put_env(:smalt, :sentinel_dcr_strict, true)
+      SmaltTest.Env.put_restored(sentinel_dcr_strict: true)
 
       try do
         assert {:error, 404, %{"error" => %{"code" => "DCRNotFound"}}} =
                  Sentinel.ingest("lane19-never", "Custom-Logs", [%{"msg" => "a"}], "2023-01-01")
       after
-        Application.delete_env(:smalt, :sentinel_dcr_strict)
+        # isolation-court: exempt restore now structural via put_restored on_exit
+        :ok
       end
     end
 

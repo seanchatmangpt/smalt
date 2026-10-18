@@ -24,7 +24,7 @@ defmodule Smalt.Amqp.R129SessionGateTest do
   @test_key "test-shared-key-0123456789abcdef012345"
 
   setup do
-    Application.put_env(:smalt, :sb_shared_key, @test_key)
+    SmaltTest.Env.put_restored(sb_shared_key: @test_key)
 
     SmaltTest.Lifecycle.ensure_store_up()
 
@@ -69,8 +69,6 @@ defmodule Smalt.Amqp.R129SessionGateTest do
       if :ets.info(:smalt_resources) != :undefined do
         :ets.delete_all_objects(:smalt_resources)
       end
-
-      Application.delete_env(:smalt, :sb_shared_key)
     end)
 
     if GenServer.whereis(Smalt.Amqp.CbsRouter) do
@@ -163,7 +161,7 @@ defmodule Smalt.Amqp.R129SessionGateTest do
            "expected error close, got: #{inspect(resp.performative.performative)}"
 
     # nothing may land in the shadow namespace
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async close-cleanup propagation window before exact-count assert
     assert 0 == count_state(queue <> "/", :any)
     assert 0 == count_state(queue, :any)
 
@@ -293,7 +291,7 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     # must not match a registered link (a queue+session link release would
     # kill a legitimate receiver's session lock)
     :ok = send_bytes(client, enc_frame(:amqp, 0, {:detach, %{handle: 0, closed: true}}))
-    Process.sleep(50)
+    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async detach-cleanup propagation window before exact-count assert
 
     # lock must still be free: a sessioned receiver on the same sid attaches
     # and gets the lock grant right after

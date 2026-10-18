@@ -19,7 +19,7 @@ defmodule SmaltArmGatewayTest do
       "state" => "Enabled"
     })
 
-    Application.put_env(:smalt, :lro_delay_ms, 0)
+    SmaltTest.Env.put_restored(lro_delay_ms: 0)
     :ok
   end
 
@@ -633,7 +633,7 @@ defmodule SmaltArmGatewayTest do
   # LRO storage account flow
   # ---------------------------------------------------------------------------
   test "storageAccounts PUT starts LRO and poll flips to Succeeded" do
-    Application.put_env(:smalt, :lro_delay_ms, 50)
+    SmaltTest.Env.put_restored(lro_delay_ms: 50)
 
     path =
       "/subscriptions/#{@sub}/resourceGroups/test-rg/providers/Microsoft.Storage/storageAccounts/st-lro?api-version=#{api_v("Microsoft.Storage/storageAccounts")}"
@@ -664,7 +664,7 @@ defmodule SmaltArmGatewayTest do
 
         case Jason.decode!(poll.resp_body)["status"] do
           "Succeeded" -> {:halt, poll}
-          _ -> {:cont, Process.sleep(25) && poll}
+          _ -> {:cont, Process.sleep(25) && poll}  # SLEEP-CLASS: POLL-STEP — bounded 20x LRO status poll
         end
       end)
 
@@ -771,7 +771,7 @@ defmodule SmaltArmGatewayTest do
   test "arm throttle prunes the previous fixed-window key" do
     ensure_store()
 
-    Application.put_env(:smalt, :arm_rate_limit, 3)
+    SmaltTest.Env.put_restored(arm_rate_limit: 3)
 
     try do
       # Deterministic window scoping: all five counted requests must land in
@@ -808,7 +808,7 @@ defmodule SmaltArmGatewayTest do
       assert throttled.status == 429
       assert get_resp_header(throttled, "retry-after") == ["1"]
     after
-      Application.put_env(:smalt, :arm_rate_limit, nil)
+      SmaltTest.Env.put_restored(arm_rate_limit: nil)
       :ets.delete_all_objects(:smalt_arm_rate)
     end
   end

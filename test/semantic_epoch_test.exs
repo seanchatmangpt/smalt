@@ -403,10 +403,37 @@ defmodule Smalt.SemanticEpochTest do
                  deviations_path: Path.join(tmp, "deviations.jsonl")
                )
 
-      # Perf budget: each pass well under 5s.
-      assert t_uniq < 5_000_000, "10k unique parse took #{t_uniq}us"
-      assert t_re < 5_000_000, "10k re-parse took #{t_re}us"
-      assert t_dup < 5_000_000, "10k dup scan took #{t_dup}us"
+      # Relative ratio fence (AZB-12): each timeline pass vs an INDEPENDENT
+      # same-run control op — raw Jason line decode of the same 10k-line
+      # ledger (median of 5, sleep-free). Jason decode does not call
+      # SemanticEpoch.timeline/1, so a slowdown injected into timeline
+      # cannot slow the baseline leg (the fence10-ratio vacuity lesson).
+      # Measured clean geometry on this host: ratio 1.3-2.5 (timeline ~20-40ms
+      # vs ~15ms raw decode). Bound 6.0 sits 2.4x over the clean ceiling and
+      # a 10x injected subject-op slowdown lands ratio ~13-25, 2-4x past it
+      # (probe witnessed: SHIM-COURT 20x payload -> ratio 129.97 RED).
+      ledger = Path.join(uniq_dir, "scale.jsonl")
+      lines = File.read!(ledger) |> String.split("\n", trim: true)
+
+      baseline_us =
+        Smalt.Test.Ratio.calibrate(fn ->
+          for l <- lines, do: Jason.decode!(l)
+        end)
+
+      Smalt.Test.Ratio.assert_ratio(t_uniq, baseline_us,
+        max: 6.0,
+        context: "10k unique parse vs raw decode control"
+      )
+
+      Smalt.Test.Ratio.assert_ratio(t_re, baseline_us,
+        max: 6.0,
+        context: "10k re-parse vs raw decode control"
+      )
+
+      Smalt.Test.Ratio.assert_ratio(t_dup, baseline_us,
+        max: 6.0,
+        context: "10k dup scan vs raw decode control"
+      )
 
       File.rm_rf!(uniq_dir)
       File.rm_rf!(dup_dir)

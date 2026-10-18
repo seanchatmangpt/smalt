@@ -25,6 +25,18 @@ defmodule SmaltTest.BudgetFormatter do
   end
 
   def handle_cast({:test_finished, %ExUnit.Test{} = test}, st) do
+    # Excluded/skipped tests never ran: no timing line (a 0ms ghost line in
+    # the export would corrupt the manifest's STALE bookkeeping).
+    case test.state do
+      {:excluded, _} -> :skip
+      {:skipped, _} -> :skip
+      _ -> write_line(test, st)
+    end
+
+    {:noreply, st}
+  end
+
+  defp write_line(test, st) do
     ms = div(test.time || 0, 1000)
     tid = "#{test.case}.#{test.name}"
 

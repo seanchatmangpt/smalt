@@ -148,7 +148,7 @@ defmodule SmaltLroTest do
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
     delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Process.sleep(delay + 10)
+    Process.sleep(delay + 10)  # SLEEP-CLASS: TIME-ADVANCE — crosses the server-side LRO delay window before first poll
 
     poll = conn(:get, op_path) |> call()
 
@@ -184,7 +184,7 @@ defmodule SmaltLroTest do
             {:halt, {poll, n + 1}}
 
           _ ->
-            Process.sleep(20)
+            Process.sleep(20)  # SLEEP-CLASS: POLL-STEP — bounded Reduce LRO status poll
             {:cont, {poll, n + 1}}
         end
       end)
@@ -342,7 +342,7 @@ defmodule SmaltLroTest do
     assert [loc] = get_resp_header(del, "location")
     assert ["1"] = get_resp_header(del, "retry-after")
 
-    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 40)
+    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 40)  # SLEEP-CLASS: TIME-ADVANCE — crosses retry-after=1 LRO window before poll
 
     poll = conn(:get, URI.parse(loc).path) |> call()
     assert poll.status == 200
@@ -406,7 +406,7 @@ defmodule SmaltLroTest do
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
     delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Process.sleep(delay + 5)
+    Process.sleep(delay + 5)  # SLEEP-CLASS: TIME-ADVANCE — crosses the server-side LRO delay window before racing reads
 
     results =
       1..10
@@ -838,7 +838,7 @@ defmodule SmaltLroTest do
       assert poll.status == 200
       assert %{"status" => "Succeeded"} = Jason.decode!(poll.resp_body)
       assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, op["name"])
-      Process.sleep(5)
+      Process.sleep(5)  # SLEEP-CLASS: POLL-STEP — bounded 3x terminal-state stability poll
     end
   end
 
@@ -1163,7 +1163,7 @@ defmodule SmaltLroTest do
       )
 
     id = op["name"]
-    Process.sleep(60)
+    Process.sleep(60)  # SLEEP-CLASS: TIME-ADVANCE — op-registration propagation window before racing writers
 
     parent = self()
 
@@ -1405,7 +1405,7 @@ defmodule Smalt.ArmGateway.LRO.NotifierTest do
     task = Task.async(fn -> LRO.await(id, 5_000) end)
 
     # Let the waiter register, then kill the signal hub mid-await.
-    Process.sleep(5)
+    Process.sleep(5)  # SLEEP-CLASS: TIME-ADVANCE — waiter-registration window before killing signal hub mid-await
     true = Process.exit(notifier_pid, :kill)
 
     # DOWN -> bounded store-poll fallback -> the single writer persists via
@@ -1438,7 +1438,23 @@ defmodule Smalt.ArmGateway.LRO.NotifierTest do
       :timer.tc(fn -> LRO.await(id, @other_sub, 5_000) end)
 
     assert :error = foreign_res
-    assert foreign_us < 100_000
+
+    # Relative ratio fence (AZB-12): refusal latency vs an INDEPENDENT same-run
+    # control op (get_op/2 authorized read). get_op does not ride await/3's
+    # cross-subscription refusal clause, so a slowdown injected into that
+    # refusal clause cannot slow the baseline leg (the fence10-ratio vacuity
+    # lesson). Subject is floor-of-5 refusals (repeatable, observationally
+    # neutral — no waiter is registered), baseline median-of-5, both
+    # sleep-free. Bound 50.0 sits far above the clean refusal-to-read
+    # geometry and far under any timeout-shaped wait leaking into the
+    # refusal path (a single 20ms delay-shaped wait is > 50x a read).
+    subject_us = Smalt.Test.Ratio.floor_us(fn -> LRO.await(id, @other_sub, 5_000) end)
+    baseline_us = Smalt.Test.Ratio.calibrate(fn -> LRO.get_op(id, @sub) end)
+
+    Smalt.Test.Ratio.assert_ratio(subject_us, baseline_us,
+      max: 50.0,
+      context: "cross-sub await refusal vs authorized get_op read"
+    )
 
     # Owner await converges (signal path).
     assert {:ok, %{"status" => "Succeeded"}} = LRO.await(id, @sub, 5_000)

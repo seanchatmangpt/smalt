@@ -243,7 +243,7 @@ defmodule Smalt.EtsCompositeIdentityTest do
         else: Application.put_env(:smalt, :lro_retention_ms, prev_lro)
     end)
 
-    Process.sleep(10)
+    Process.sleep(10)  # SLEEP-CLASS: TIME-ADVANCE — crosses lro_retention_ms window before eviction_pass
     :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
 
     # ---------- strict identity fence ----------

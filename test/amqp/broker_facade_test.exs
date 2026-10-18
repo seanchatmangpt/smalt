@@ -121,8 +121,7 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
 
   describe "Sweeper" do
     setup do
-      Application.put_env(:smalt, :amqp_sweeper_tick_ms, 20)
-      on_exit(fn -> Application.delete_env(:smalt, :amqp_sweeper_tick_ms) end)
+      SmaltTest.Env.put_restored(amqp_sweeper_tick_ms: 20)
       EventHubs.ensure_tables()
 
       # Real collaborator: the sweep touches :smalt_sb_sessions, owned by
@@ -279,7 +278,18 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
   defp own_sweeper!(tick_ms) do
     case GenServer.whereis(Sweeper) do
       nil ->
-        if tick_ms, do: Application.put_env(:smalt, :amqp_sweeper_tick_ms, tick_ms)
+        if tick_ms do
+          prev_tick = Application.get_env(:smalt, :amqp_sweeper_tick_ms)
+          on_exit(fn ->
+            if prev_tick == nil do
+              Application.delete_env(:smalt, :amqp_sweeper_tick_ms)
+            else
+              Application.put_env(:smalt, :amqp_sweeper_tick_ms, prev_tick)
+            end
+          end)
+          Application.put_env(:smalt, :amqp_sweeper_tick_ms, tick_ms)
+        end
+
         start_supervised!(Sweeper)
 
       pid ->
