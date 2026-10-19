@@ -1901,7 +1901,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test multi-frame buffer: every frame recovered in order at every split offset (lens-3)": {
-      "tier": "default"
+      "max_ms": 10727,
+      "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test mutation x chunking: flipped frames fed chunked converge to the whole-buffer result (lens-5)": {
       "tier": "default"

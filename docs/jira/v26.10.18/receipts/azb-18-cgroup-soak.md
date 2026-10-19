@@ -294,3 +294,84 @@ planes that ran show ~44-45 real failures. Follow-ups: (1) persist 2g in the scr
 default (file still says 1g); (2) control/integration need >2g or staged compilation;
 (3) triage the 44/45 data/identity failures — subject 2a9ccd4f includes checkpoint5
 receipts only, so failures may be environment (cgroup CPU caps) not code.
+
+---
+
+# AZB-18 container-leg execution (2026-10-19 addendum)
+
+Context: solo (STAGED→executed; container leg RAN, verdict RED)
+**Standing: RED (FAIL)** — the container leg executed for real but did NOT go green; kept
+typed, not faked. STAGED→ALIVE flip **not** earned.
+
+## Execution record (real output)
+
+- HEAD at run: `9526db07aca0cb934edbd1d5cf07d40d30eb6e8d`.
+- Image: `smalt-burn:latest`, digest
+  `sha256:238622b3a4db3147fea3f932253aa9ecb24cef7a0d3e7d1e8c6029c343e70369`
+  (created 2026-10-18T23:11:01-07:00, 8.95GB).
+
+### Build (two attempts, both disk-bound; budget exhausted)
+
+- Attempt 1: compiled the full test tree (`#31 [test 8/8] RUN mix compile` → `Compiling 155
+  files (.ex)` … `Generated smalt app`, DONE) and tagged `smalt-burn:latest`, but the layer
+  extract failed:
+  `ERROR: failed to extract layer sha256:fbe065…: write .../test/sdk-python/.venv-cosmos/.../prepare.py: no space left on device`.
+  The tag survived; the missing layer is ONLY the sdk-python `.venv-cosmos` venv — verified
+  irrelevant to the offline leg: in-container `cd /smalt && mix test test/smalt_test.exs` →
+  `1 doctest, 1 test, 0 failures`.
+- Attempt 2 (the one retry, after `docker builder prune -f` reclaimed 0B): failed harder —
+  `MIX_ENV=prod mix deps.compile` →
+  `** (File.Error) could not write to file "/smalt/_build/prod/lib/expo/ebin/...beam": no space left on device`.
+  Docker VM (58.9G) hit 100% mid-export/compile both times; `docker builder prune -f` reclaims
+  0B (cache active). Prune+retry budget exhausted per dispatch.
+
+### Run 1 — dispatch spec (cpus 2.0/1.5/2.0/1.0, mem=1g, pids=512, cycles=1)
+
+Preflight OK (zero published ports, subject_sha + image digest pinned). All 4 containers
+UNHANDLED_EXIT mid-compile, no compiler error in any leg log — cgroup OOM signature at mem=1g.
+Rows: `docs/jira/v26.10.18/burn/cgroup-20261019T063833Z.jsonl` (4 dirty rows, gate
+STANDING_REFUSED, verdict FAIL, exit 1).
+
+### Run 2 — diagnostic (identical but SMALT_SOAK_MEM_LIMIT=2g, the documented env override)
+
+- data: **2740 tests, 44 failures**, 1 invalid — suite COMPLETED under cap.
+- identity: **2740 tests, ~45 failures** — suite COMPLETED under cap.
+- control, integration: UNHANDLED_EXIT mid-suite, no crash output in leg logs (OOM signature
+  again; 2g still insufficient for the heaviest planes). Suite counts for these two: 0 rows
+  with tests>0.
+- Gate: STANDING_REFUSED over 4 dirty rows; UNLEDGERED face census host-side (subset): dspy
+  (4 faces), canonical_projection (6), error_codes_doc (6), trust_profile (2), pplan (3),
+  spc_drift (2), mcp_wire (2), topology (4), dr_scenarios (4+4), runtime_contracts (1),
+  smalt_graphlaw_matrix (1), adversarial_joe (1), store_churn (OPEN-ROTATING, known ledgered);
+  semantic_epoch faces all CLOSED/CLOSED-FILE. Full JSON census in the run-2 leg logs under
+  `docker/burn/results/leg-smalt-soak-<plane>-c1.log` (host classify output preserved in the
+  run log `/tmp/azb18-soak2.log`, scratch).
+- Merged diag rows: `/tmp/azb18-diag.jsonl` (scratch — run 1's tracked file carries the gate
+  verdict; run 2 was diagnostic, rows kept out of the tracked burn dir deliberately).
+- Verdict: FAIL, exit 1. **mem_limit 1g OOM-kills compile; 2g completes data/identity but not
+  control/integration; the per-plane failure faces are UNLEDGERED and must be ledgered or
+  fixed before any re-burn can derive ALIVE.**
+
+## Known-face note (s4-amqp-capacity)
+
+The integration cell did NOT reach a verdict on `s4-amqp-capacity` — it died mid-suite with
+the OOM signature before reaching that face. Nothing to record for or against it; no green
+faked for the integration plane.
+
+## Replay
+
+```bash
+docker image inspect smalt-burn:latest --format '{{index .RepoDigests 0}}'
+docker run --rm smalt-burn:latest bash -c 'cd /smalt && MIX_BUILD_ROOT=_build-cgroup-soak mix test test/smalt_test.exs'
+bash docker/burn/cgroup-soak.sh --cycles 1   # gate refuses; rows: docs/jira/v26.10.18/burn/cgroup-20261019T063833Z.jsonl
+python3 scripts/validate_burn.py --gate docs/jira/v26.10.18/burn/cgroup-20261019T063833Z.jsonl   # STANDING_REFUSED, exit 1
+```
+
+## Disclosures
+
+- Both build attempts hit Docker VM ENOSPC (58.9G virtual disk, 100% during export/compile);
+  prune+retry budget exhausted. A disk raise + rebuild remains the close condition for a
+  byte-complete image (missing `.venv-cosmos` layer).
+- Run 2 was a diagnostic variant (mem 2g) outside the dispatch spec — disclosed, rows kept in
+  scratch; the tracked result file is from the on-spec run 1.
+- s4-amqp-capacity integration face: NOT witnessed either way (died before reaching it).
