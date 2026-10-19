@@ -6,6 +6,7 @@ where defective, PRESERVE receipted assertions verbatim. Foundations landed
 (AssertEventually / Store.resilient / Env / PortEnv in `test/support/`).
 
 Standing: **PASS** — 95 tests across the 6 files, 0 failures, two green
+Context: slice(6-file batch, 95 tests 0 failures, x2)
 passes (MIX_BUILD_ROOT=_build-ft-w15 via scripts/fast_test.sh).
 
 ## Findings + actions (per file)

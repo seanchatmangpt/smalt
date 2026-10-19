@@ -1,5 +1,7 @@
 # W18 residual review — FINAL residual group (review lane, Context: solo)
 
+Context: slice(5-file batch, 41 tests 0 failures, x2, exit 0)
+
 Window: v26.10.18. Contract: WORKQUEUE.md residual lane W18 (group 17 of
 `/tmp/rewrite-workqueue.json` — 5 files; the WORKQUEUE prose says "6 files
 each" for W6–W18 but the JSON group holds 5 — JSON is the dispatch source).

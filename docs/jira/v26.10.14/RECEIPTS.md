@@ -411,65 +411,71 @@ count, or PASS/FAIL token) found in the file.
 | r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
 | r245-t3-tear | [r245-t3-teardown-fix.md](../v26.10.17/receipts/r245-t3-teardown-fix.md) | PASS | r245 — T3 sdk-smoke teardown deadlock root-caused + fixed; leg green |
 | r246-attempt | [r246-attempt4-invalid-typed-red.md](../v26.10.17/receipts/r246-attempt4-invalid-typed-red.md) | UNKNOWN | r246 — court-x2 attempt 4: INVALID (mid-gate tree edit) + typed RED; WO-2 carries to v26.10.18 **NO-CONTEXT** |
-| adversarial- | [adversarial-joe-attack-matrix.md](../v26.10.18/receipts/adversarial-joe-attack-matrix.md) | UNKNOWN | Adversarial Joe Armstrong Attack Matrix Receipt **NO-CONTEXT** |
+| adversarial- | [adversarial-joe-attack-matrix.md](../v26.10.18/receipts/adversarial-joe-attack-matrix.md) | PASS | Adversarial Joe Armstrong Attack Matrix Receipt **NO-CONTEXT** |
 | azb-01-image | [azb-01-image-pin.md](../v26.10.18/receipts/azb-01-image-pin.md) | ALIVE | AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5) **NO-CONTEXT** |
 | azb-02-netns | [azb-02-netns.md](../v26.10.18/receipts/azb-02-netns.md) | ALIVE | AZB-02 Per-container network namespaces, zero host port publish **NO-CONTEXT** |
 | azb-03-burn- | [azb-03-burn-schema.md](../v26.10.18/receipts/azb-03-burn-schema.md) | ALIVE | AZB-03 — Burn JSONL receipt schema + validator **NO-CONTEXT** |
-| azb-04-plane | [azb-04-plane-loader.md](../v26.10.18/receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT **NO-CONTEXT** |
-| azb-05-contr | [azb-05-control-plane.md](../v26.10.18/receipts/azb-05-control-plane.md) | PASS | AZB-05 — Control plane profile (ARM) — RECEIPT **NO-CONTEXT** |
-| azb-06-data- | [azb-06-data-plane.md](../v26.10.18/receipts/azb-06-data-plane.md) | PASS | AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT **NO-CONTEXT** |
-| azb-07-integ | [azb-07-integration-plane.md](../v26.10.18/receipts/azb-07-integration-plane.md) | ALIVE | AZB-07 — Integration plane profile (Service Bus AMQP + Event Grid) **NO-CONTEXT** |
-| azb-08-ident | [azb-08-identity-plane.md](../v26.10.18/receipts/azb-08-identity-plane.md) | PASS | AZB-08 — Identity plane profile (KeyVault + Entra STS) — RECEIPT **NO-CONTEXT** |
-| azb-09-plane | [azb-09-plane-subtrees.md](../v26.10.18/receipts/azb-09-plane-subtrees.md) | ALIVE | AZB-09 Plane-Scoped Supervision Subtrees **NO-CONTEXT** |
-| azb-10-cross | [azb-10-cross-plane.md](../v26.10.18/receipts/azb-10-cross-plane.md) | ALIVE | AZB-10 Cross-plane wiring (loopback, zero egress) **NO-CONTEXT** |
-| azb-11-isola | [azb-11-isolation-court.md](../v26.10.18/receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) **NO-CONTEXT** |
+| azb-04-plane | [azb-04-plane-loader.md](../v26.10.18/receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT |
+| azb-05-contr | [azb-05-control-plane.md](../v26.10.18/receipts/azb-05-control-plane.md) | PASS | AZB-05 — Control plane profile (ARM) — RECEIPT |
+| azb-06-data- | [azb-06-data-plane.md](../v26.10.18/receipts/azb-06-data-plane.md) | PASS | AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT |
+| azb-07-integ | [azb-07-integration-plane.md](../v26.10.18/receipts/azb-07-integration-plane.md) | ALIVE | AZB-07 — Integration plane profile (Service Bus AMQP + Event Grid) |
+| azb-08-ident | [azb-08-identity-plane.md](../v26.10.18/receipts/azb-08-identity-plane.md) | PASS | AZB-08 — Identity plane profile (KeyVault + Entra STS) — RECEIPT |
+| azb-09-plane | [azb-09-plane-subtrees.md](../v26.10.18/receipts/azb-09-plane-subtrees.md) | ALIVE | AZB-09 Plane-Scoped Supervision Subtrees |
+| azb-10-cross | [azb-10-cross-plane.md](../v26.10.18/receipts/azb-10-cross-plane.md) | ALIVE | AZB-10 Cross-plane wiring (loopback, zero egress) |
+| azb-11-isola | [azb-11-isolation-court.md](../v26.10.18/receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) |
+| azb-11b-leak | [azb-11b-leak-remediation.md](../v26.10.18/receipts/azb-11b-leak-remediation.md) | PARTIAL_ALIVE | AZB-11b receipt — runtime-twin leak remediation slice (v26.10.18) |
 | azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-13-boot- | [azb-13-boot-burn.md](../v26.10.18/receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
-| b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE **NO-CONTEXT** |
+| b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
 | b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
 | b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) **NO-CONTEXT** |
-| b-lro-notifi | [b-lro-notifier.md](../v26.10.18/receipts/b-lro-notifier.md) | ALIVE | B0: LRO one-writer convergence (Notifier + await) **NO-CONTEXT** |
-| b-wasm-super | [b-wasm-supervisor.md](../v26.10.18/receipts/b-wasm-supervisor.md) | ALIVE | b-wasm-supervisor - WasmEngine supervised restart (lib redesign Part 1) **NO-CONTEXT** |
-| b0-foundatio | [b0-foundations.md](../v26.10.18/receipts/b0-foundations.md) | UNKNOWN | B0 FOUNDATIONS — test/support compile path + canonical helpers **NO-CONTEXT** |
-| b1-corpus | [b1-corpus.md](../v26.10.18/receipts/b1-corpus.md) | ALIVE | B1 — corpus + compliance scaffolding consolidation (corpus-compliance.md) **NO-CONTEXT** |
-| b2-amqp | [b2-amqp.md](../v26.10.18/receipts/b2-amqp.md) | ALIVE | B2 AMQP batch — five-file sleep/timing/singleton rewrite **NO-CONTEXT** |
+| b-lro-notifi | [b-lro-notifier.md](../v26.10.18/receipts/b-lro-notifier.md) | ALIVE | B0: LRO one-writer convergence (Notifier + await) |
+| b-wasm-super | [b-wasm-supervisor.md](../v26.10.18/receipts/b-wasm-supervisor.md) | ALIVE | b-wasm-supervisor - WasmEngine supervised restart (lib redesign Part 1) |
+| b0-foundatio | [b0-foundations.md](../v26.10.18/receipts/b0-foundations.md) | ALIVE | B0 FOUNDATIONS — test/support compile path + canonical helpers |
+| b1-corpus | [b1-corpus.md](../v26.10.18/receipts/b1-corpus.md) | ALIVE | B1 — corpus + compliance scaffolding consolidation (corpus-compliance.md) |
+| b2-amqp | [b2-amqp.md](../v26.10.18/receipts/b2-amqp.md) | ALIVE | B2 AMQP batch — five-file sleep/timing/singleton rewrite |
 | b3-fence10 | [b3-fence10.md](../v26.10.18/receipts/b3-fence10.md) | ALIVE | B3 — Fence-10 conversion receipt (lane B3, v26.10.18) |
-| b4-lro-store | [b4-lro-store.md](../v26.10.18/receipts/b4-lro-store.md) | PASS | B4 LRO/STORE batch — v26.10.18 rewrite (Context: slice) **NO-CONTEXT** |
-| b5-auth-wire | [b5-auth-wire.md](../v26.10.18/receipts/b5-auth-wire.md) | ALIVE | B5 receipt — auth / wire / egress rewrite (v26.10.18) **NO-CONTEXT** |
-| b6-cites | [b6-cites.md](../v26.10.18/receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) **NO-CONTEXT** |
+| b4-lro-store | [b4-lro-store.md](../v26.10.18/receipts/b4-lro-store.md) | PASS | B4 LRO/STORE batch — v26.10.18 rewrite (Context: slice) |
+| b5-auth-wire | [b5-auth-wire.md](../v26.10.18/receipts/b5-auth-wire.md) | ALIVE | B5 receipt — auth / wire / egress rewrite (v26.10.18) |
+| b6-cites | [b6-cites.md](../v26.10.18/receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) |
 | b7-tiers | [b7-tiers.md](../v26.10.18/receipts/b7-tiers.md) | PARTIAL_ALIVE | B7 — harness/tiers batch receipt (stress tier + budget gate) |
-| b8-doctrine | [b8-doctrine.md](../v26.10.18/receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) **NO-CONTEXT** |
+| b8-doctrine | [b8-doctrine.md](../v26.10.18/receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) |
 | burn-image | [burn-image.md](../v26.10.18/receipts/burn-image.md) | ALIVE | Burn-suite image receipt (v26.10.18 azsim-burn) **NO-CONTEXT** |
 | burn-scripts | [burn-scripts.md](../v26.10.18/receipts/burn-scripts.md) | PARTIAL_ALIVE | docker/burn boot-burn + chaos-kill scripts **NO-CONTEXT** |
+| burn-soak-li | [burn-soak-live.md](../v26.10.18/receipts/burn-soak-live.md) | PARTIAL_ALIVE | Burn-soak live host receipt (first live host burn-soak, v26.10.18) **NO-CONTEXT** |
 | burn-soak-sc | [burn-soak-scripts.md](../v26.10.18/receipts/burn-soak-scripts.md) | PARTIAL_ALIVE | burn lane — soak.sh + parallel-matrix.sh + 30-burn.just **NO-CONTEXT** |
 | i23-fence11- | [i23-fence11-flip.md](../v26.10.18/receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
-| i23-standalo | [i23-standalone-noise.md](../v26.10.18/receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing **NO-CONTEXT** |
-| i24-store-de | [i24-store-dets-torn.md](../v26.10.18/receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) **NO-CONTEXT** |
-| i25-atom-bri | [i25-atom-bridge-noise.md](../v26.10.18/receipts/i25-atom-bridge-noise.md) | ALIVE | i25: atom_bridge test-harness teardown noise **NO-CONTEXT** |
-| i25-lro-back | [i25-lro-backdate.md](../v26.10.18/receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite **NO-CONTEXT** |
-| i25-sleeps-b | [i25-sleeps-b2.md](../v26.10.18/receipts/i25-sleeps-b2.md) | ALIVE | i25 — sleeps.md §B2: `eventually_stays/2` + 4 absence-check migrations **NO-CONTEXT** |
+| i23-standalo | [i23-standalone-noise.md](../v26.10.18/receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing |
+| i24-store-de | [i24-store-dets-torn.md](../v26.10.18/receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) |
+| i25-atom-bri | [i25-atom-bridge-noise.md](../v26.10.18/receipts/i25-atom-bridge-noise.md) | ALIVE | i25: atom_bridge test-harness teardown noise |
+| i25-c567 | [i25-c567.md](../v26.10.18/receipts/i25-c567.md) | PARTIAL_ALIVE | i25-c567 — c5/c6/c7 rewrite-draft landing (rewrite-drafts/c567.md) |
+| i25-lro-back | [i25-lro-backdate.md](../v26.10.18/receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite |
+| i25-sleeps-a | [i25-sleeps-a.md](../v26.10.18/receipts/i25-sleeps-a.md) | ALIVE | I25 — rewrite-drafts/sleeps.md §A: poll-replaceable sync-waits |
+| i25-sleeps-b | [i25-sleeps-b2.md](../v26.10.18/receipts/i25-sleeps-b2.md) | ALIVE | i25 — sleeps.md §B2: `eventually_stays/2` + 4 absence-check migrations |
+| i26-azb13-re | [i26-azb13-revalidate.md](../v26.10.18/receipts/i26-azb13-revalidate.md) | CLOSED | I26 — AZB-13 transient first-validation refusal re-run **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
-| v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` **NO-CONTEXT** |
-| w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) **NO-CONTEXT** |
-| w10-review | [w10-review.md](../v26.10.18/receipts/w10-review.md) | PASS | W10 residual review — group 9 (review lane, Context: solo) **NO-CONTEXT** |
-| w11-review | [w11-review.md](../v26.10.18/receipts/w11-review.md) | PASS | W11 residual review — group 10 (review lane, Context: solo) **NO-CONTEXT** |
-| w12-review | [w12-review.md](../v26.10.18/receipts/w12-review.md) | PASS | W12 residual review — group 11 (5 files) **NO-CONTEXT** |
-| w13-review | [w13-review.md](../v26.10.18/receipts/w13-review.md) | PASS | W13 residual review — group 12 (review lane, Context: solo) **NO-CONTEXT** |
-| w14-review | [w14-review.md](../v26.10.18/receipts/w14-review.md) | UNKNOWN | W14 — residual review lane, workqueue group 13 **NO-CONTEXT** |
-| w15-review | [w15-review.md](../v26.10.18/receipts/w15-review.md) | PASS | W15 residual review — workqueue group 14 **NO-CONTEXT** |
-| w16-review | [w16-review.md](../v26.10.18/receipts/w16-review.md) | PASS | W16 residual review — workqueue group 15 **NO-CONTEXT** |
-| w17-review | [w17-review.md](../v26.10.18/receipts/w17-review.md) | PASS | W17 — residual review lane, group 16 (solo) **NO-CONTEXT** |
-| w18-review | [w18-review.md](../v26.10.18/receipts/w18-review.md) | UNKNOWN | W18 residual review — FINAL residual group (review lane, Context: solo) **NO-CONTEXT** |
-| w2-review | [w2-review.md](../v26.10.18/receipts/w2-review.md) | UNKNOWN | W2 residual review receipt — v26.10.18 **NO-CONTEXT** |
-| w3-review | [w3-review.md](../v26.10.18/receipts/w3-review.md) | PARTIAL_ALIVE | w3-review — PARTIAL_ALIVE **NO-CONTEXT** |
+| v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` |
+| v2-soak | [v2-soak.md](../v26.10.18/receipts/v2-soak.md) | UNKNOWN | v2 soak RELAUNCH — 3x full `mix test` + 2x wire tier, `_build-ft-v2b` |
+| w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) |
+| w10-review | [w10-review.md](../v26.10.18/receipts/w10-review.md) | PASS | W10 residual review — group 9 (review lane, Context: solo) |
+| w11-review | [w11-review.md](../v26.10.18/receipts/w11-review.md) | PASS | W11 residual review — group 10 (review lane, Context: solo) |
+| w12-review | [w12-review.md](../v26.10.18/receipts/w12-review.md) | PASS | W12 residual review — group 11 (5 files) |
+| w13-review | [w13-review.md](../v26.10.18/receipts/w13-review.md) | PASS | W13 residual review — group 12 (review lane, Context: solo) |
+| w14-review | [w14-review.md](../v26.10.18/receipts/w14-review.md) | PARTIAL_ALIVE | W14 — residual review lane, workqueue group 13 |
+| w15-review | [w15-review.md](../v26.10.18/receipts/w15-review.md) | PASS | W15 residual review — workqueue group 14 |
+| w16-review | [w16-review.md](../v26.10.18/receipts/w16-review.md) | PASS | W16 residual review — workqueue group 15 |
+| w17-review | [w17-review.md](../v26.10.18/receipts/w17-review.md) | PASS | W17 — residual review lane, group 16 (solo) |
+| w18-review | [w18-review.md](../v26.10.18/receipts/w18-review.md) | UNKNOWN | W18 residual review — FINAL residual group (review lane, Context: solo) |
+| w2-review | [w2-review.md](../v26.10.18/receipts/w2-review.md) | PASS | W2 residual review receipt — v26.10.18 |
+| w3-review | [w3-review.md](../v26.10.18/receipts/w3-review.md) | PARTIAL_ALIVE | w3-review — PARTIAL_ALIVE |
 | w4-review | [w4-review.md](../v26.10.18/receipts/w4-review.md) | PASS | W4 residual review receipt — group 3 (solo lane) |
-| w5-review | [w5-review.md](../v26.10.18/receipts/w5-review.md) | ALIVE | W5 residual review — group 4 (solo) **NO-CONTEXT** |
-| w6-review | [w6-review.md](../v26.10.18/receipts/w6-review.md) | UNKNOWN | W6 residual review receipt — v26.10.18 **NO-CONTEXT** |
-| w7-review | [w7-review.md](../v26.10.18/receipts/w7-review.md) | PASS | W7 residual review — group 6 (review lane, Context: solo) **NO-CONTEXT** |
-| w8-review | [w8-review.md](../v26.10.18/receipts/w8-review.md) | PASS | W8 residual review — workqueue group 7 **NO-CONTEXT** |
-| w9-review | [w9-review.md](../v26.10.18/receipts/w9-review.md) | UNKNOWN | W9 residual review — group 8 (review lane, Context: solo) **NO-CONTEXT** |
+| w5-review | [w5-review.md](../v26.10.18/receipts/w5-review.md) | ALIVE | W5 residual review — group 4 (solo) |
+| w6-review | [w6-review.md](../v26.10.18/receipts/w6-review.md) | PASS | W6 residual review receipt — v26.10.18 |
+| w7-review | [w7-review.md](../v26.10.18/receipts/w7-review.md) | PASS | W7 residual review — group 6 (review lane, Context: solo) |
+| w8-review | [w8-review.md](../v26.10.18/receipts/w8-review.md) | PASS | W8 residual review — workqueue group 7 |
+| w9-review | [w9-review.md](../v26.10.18/receipts/w9-review.md) | UNKNOWN | W9 residual review — group 8 (review lane, Context: solo) |
 
 ## Workspace (ws-01..12)
 
@@ -538,7 +544,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | SUSPECT | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -618,4 +624,3 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
 - **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
 - **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)
-- **SUSPECT**: `spc-bands.md` (standing UNKNOWN)

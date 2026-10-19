@@ -1,5 +1,7 @@
 # AZB-05 — Control plane profile (ARM) — RECEIPT
 
+Context: solo (control_plane_test.exs 12/0) + slice(7-file batch 327/0) + full (mix test exit 0; count-bearing rerun SIGKILLed — see Disclosure)
+
 - **Ticket**: AZB-05 (docs/jira/v26.10.18/azsim-burn/TICKETS.md)
 - **Lane**: planes · **Standing**: PASS (with one disclosed ticket-vs-pinion conflict below)
 - **Date**: 2026-10-18

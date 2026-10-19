@@ -1,6 +1,7 @@
 # burn lane — soak.sh + parallel-matrix.sh + 30-burn.just
 
 Standing: PARTIAL_ALIVE — static + dry-run validation witnessed below; the
+Context: static + dry-run validation ([BURN-SOAK][DRY-RUN]); no suite run
 live 3-round host soak and the 4/4 container matrix are not yet executed
 (requires a quiet host and the `smalt:local` image; run `just burn-soak` /
 `just burn-matrix` to close).

@@ -1,6 +1,7 @@
 # b-wasm-supervisor - WasmEngine supervised restart (lib redesign Part 1)
 
 Standing: ALIVE (solo + load faces green; full suite run in flight)
+Context: solo (affidavit wasm files x2) + full (mix test, full offline suite)
 Repo: /Users/sac/smalt, window v26.10.18, lane: lib redesign batch.
 Build root: _build-ft-ws. No git actions taken.
 

@@ -1,6 +1,7 @@
 # Receipt — AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5)
 
 Standing: **ALIVE** — all three Accept commands ran for real with exit 0 on the live
+Context: docker build/release verification + in-image probes (exit codes embedded below); no mix test invocation
 tree; Falsifier conditions checked and not observed; Anti-vacuity mutation witnessed
 flipping the outcome (cache reuse → rebuild).
 

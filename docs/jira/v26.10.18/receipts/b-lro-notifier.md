@@ -3,6 +3,7 @@
 - **Window**: v26.10.18
 - **Lane**: B0 (solo context)
 - **Standing**: ALIVE (lane surface) — see Full-suite caveat
+Context: solo (lro_test.exs) + slice(4-file identity/error batch)
 - **Spec**: `docs/jira/v26.10.18/rewrite-drafts/lib-redesign-wasm-lro.md` Part 2
 - **Build isolation**: `MIX_BUILD_ROOT=_build-ft-ln` (lane-cleaned at integration)
 - **Landed as**: coordinator checkpoint `21f58b0` contains the final B0 state

@@ -1,5 +1,7 @@
 # Receipt: B2 AMQP batch — five-file sleep/timing/singleton rewrite
 
+Context: full (mix test test/amqp/ directory + wire tier x2 green)
+
 **Window**: v26.10.18 · **Lane**: B2 · **Date**: 2026-10-18 · **Repo**: /Users/sac/smalt
 **Spec**: docs/jira/v26.10.18/rewrite-drafts/amqp.md · **Context**: slice+wire
 **Build root**: MIX_BUILD_ROOT=_build-ft-b2 · **B0 dependency**: receipts/b0-foundations.md (polled, landed, AssertEventually available)

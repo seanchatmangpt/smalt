@@ -1,5 +1,7 @@
 # W11 residual review — group 10 (review lane, Context: solo)
 
+Context: solo (ocel_test.exs x2) + slice(lock_manager batch) + solo (corpus_test.exs x2)
+
 Window: v26.10.18. Contract: WORKQUEUE.md group 10 of
 `/tmp/rewrite-workqueue.json` (6 files). Doctrine:
 `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md` (Law 1 sub-laws:

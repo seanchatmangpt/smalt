@@ -1,5 +1,7 @@
 # W13 residual review — group 12 (review lane, Context: solo)
 
+Context: solo (test/corpus_test.exs loader); standalone corpus-family files cannot compile (receipted)
+
 Window: v26.10.18. Contract: WORKQUEUE.md group 12
 (`/tmp/rewrite-workqueue.json` index 12, 5 files). Doctrine:
 `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md`. Standing: PASS

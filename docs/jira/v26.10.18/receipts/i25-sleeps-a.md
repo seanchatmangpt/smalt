@@ -1,6 +1,7 @@
 # I25 — rewrite-drafts/sleeps.md §A: poll-replaceable sync-waits
 
 Standing: **ALIVE** (7 sites converted, green x2; 3 sites skipped with typed reasons)
+Context: slice(4 files x pass1/pass2 per table below)
 
 Scope: §A conversions in `/Users/sac/smalt/docs/jira/v26.10.18/rewrite-drafts/sleeps.md`
 (12 sites/7 drafts). Helper contract is the LIVE `SmaltTest.AssertEventually.eventually/2`

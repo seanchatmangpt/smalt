@@ -1,6 +1,7 @@
 # W12 residual review — group 11 (5 files)
 
 Standing: PASS. Date: 2026-10-18. Context: solo lane.
+Context: slice(amqp batch, per embedded command)
 Contract: docs/jira/v26.10.18/rewrite-drafts/WORKQUEUE.md (lane contract).
 Doctrine: docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md.
 

@@ -1,6 +1,7 @@
 # W17 — residual review lane, group 16 (solo)
 
 Standing: PASS (green x2, embedded output below)
+Context: solo per-file (pass 1 + pass 2 per embedded commands)
 Window: v26.10.18 · Repo: /Users/sac/smalt · Build root: `MIX_BUILD_ROOT=_build-ft-w17`
 Contract: WORKQUEUE.md / /tmp/rewrite-workqueue.json group 16 · review vs
 `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md` · no git

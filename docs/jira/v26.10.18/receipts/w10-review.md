@@ -4,6 +4,7 @@
 - **Lane**: W10 residual review, group 9 of `/tmp/rewrite-workqueue.json` (5 files as queued)
 - **Repo**: /Users/sac/smalt (no git actions per contract)
 - **Standing**: PASS
+Context: solo (test/corpus_test.exs loader, 25/0); standalone per-file runs cannot compile (receipted finding)
 - **Doctrine**: `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md`
 - **Foundations treated as landed**: `SmaltTest.AssertEventually.eventually/2`,
   `SmaltTest.Env`, `SmaltTest.Store.resilient_clear/resilient_setup`,

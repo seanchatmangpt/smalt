@@ -1,6 +1,7 @@
 # i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite
 
 Standing: ALIVE (37 tests, 0 failures, x2 green)
+Context: solo (test/lro_test.exs, x2)
 
 ## Order
 

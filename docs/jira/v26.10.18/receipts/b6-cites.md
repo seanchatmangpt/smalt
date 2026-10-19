@@ -1,5 +1,8 @@
 # B6 — cite-system swap (apiversion-refusal draft, files 1+2)
 
+Context: solo (apiversion_matrix_test.exs 243/0 x2; wire_tier_refusal_sweep_test.exs 3/0 x2) + drift probe
+Standing: PASS for the B6 cite-system scope (full-suite x3 gate is a coordinator batch item; detail in Standing section)
+
 Window: v26.10.18. Batch: B6 (master plan §2). Context: solo.
 Spec: `docs/jira/v26.10.18/rewrite-drafts/apiversion-refusal.md` (files 1 and 2
 only — file 3 `arm_error_corpus_test.exs` cite tags defer to B4's landing per

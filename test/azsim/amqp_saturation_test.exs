@@ -28,6 +28,7 @@ defmodule Smalt.Amqp.SaturationTest do
   use ExUnit.Case, async: false
 
   @moduletag :stress
+  @moduletag timeout: :infinity
 
   alias Smalt.Amqp.{Connection, FrameCodec, QueueStore}
 
@@ -42,6 +43,7 @@ defmodule Smalt.Amqp.SaturationTest do
   @link_concurrency 32
   @poison_queues 8
   @atom_budget 64
+  @wave_size 256
   @process_budget_pct 1.0
   @mem_budget_pct 10.0
 
@@ -120,20 +122,35 @@ defmodule Smalt.Amqp.SaturationTest do
 
     queues = for i <- 1..n_queues, do: "sat-q-#{System.unique_integer([:positive])}-#{i}"
 
-    results =
+    conns =
       queues
-      |> Task.async_stream(
-        &queue_cycle/1,
-        max_concurrency: @link_concurrency,
-        timeout: :infinity,
-        ordered: false
-      )
-      |> Enum.to_list()
+      |> Enum.chunk_every(@wave_size)
+      |> Enum.flat_map(fn wave ->
+        results =
+          wave
+          |> Task.async_stream(
+            &queue_cycle/1,
+            max_concurrency: @link_concurrency,
+            timeout: :infinity,
+            ordered: false
+          )
+          |> Enum.to_list()
 
-    case Enum.filter(results, &(!match?({:ok, :ok}, &1))) do
-      [] -> :ok
-      bad -> flunk("at least one queue cycle failed: #{inspect(hd(bad))}")
-    end
+        wave_conns =
+          case Enum.filter(results, &(!match?({:ok, {:ok, _conn}}, &1))) do
+            [] ->
+              Enum.map(results, fn {:ok, {:ok, conn}} -> conn end)
+
+          bad ->
+            flunk("at least one queue cycle failed: #{inspect(hd(bad))}")
+        end
+
+        # link teardown is observable per wave: every connection must die on
+        # socket close before the next wave claims its CBS slot (the broker
+        # caps total claims at 4096 and reaps dead owners lazily — a conn
+        # that survives its close is a link leak, the falsifier with teeth).
+            assert_conns_dead(wave_conns)
+      end)
 
     for q <- Enum.take(queues, 64) do
       assert QueueStore.queue_settings(q) != :error
@@ -211,9 +228,60 @@ defmodule Smalt.Amqp.SaturationTest do
         send_frame(client, {:disposition,
          %{role: true, first: Enum.min(ids), last: Enum.max(ids), settled: true, state: :accepted}})
 
-      :ok
+      {:ok, conn}
     after
+      # Teardown protocol: an AMQP close performative (server stops its conn
+      # process deterministically), then a linger{0} abortive close (RST) —
+      # a graceful-only close on 12k rapid connections drives the host into
+      # TIME_WAIT ephemeral-port exhaustion (:eaddrnotavail). Data is fully
+      # settled before close, so nothing in-flight is lost.
+      send_frame(client, {:close, %{}})
+      :inet.setopts(client, linger: {true, 0})
       :gen_tcp.close(client)
+    end
+  end
+
+  # Every connection must be DEAD before the next wave: bounded poll, no
+  # fixed sleep. A conn that survives its socket close is a link leak — the
+  # process-count falsifier with per-wave teeth.
+  defp assert_conns_dead(conns) do
+    deadline = System.monotonic_time(:millisecond) + 15_000
+
+    wait_dead = fn wait ->
+      if Enum.any?(conns, &Process.alive?/1) do
+        if System.monotonic_time(:millisecond) < deadline, do: wait.(wait), else: :timeout
+      else
+        :all_dead
+      end
+    end
+
+    case wait_dead.(wait_dead) do
+      :all_dead ->
+        :ok
+
+      :timeout ->
+        # diagnostics: kick each survivor's recv pump, then re-check
+        alive = Enum.filter(conns, &Process.alive?/1)
+        Enum.each(alive, &send(&1, :recv))
+        kick_deadline = System.monotonic_time(:millisecond) + 3000
+
+        wait_kick = fn wk ->
+          if Enum.any?(alive, &Process.alive?/1) do
+            if System.monotonic_time(:millisecond) < kick_deadline, do: wk.(wk), else: :still_alive_after_kick
+          else
+            :died_after_kick
+          end
+        end
+
+        kick_result = wait_kick.(wait_kick)
+
+        first = hd(alive)
+
+        flunk(
+          "LINK_LEAK: #{length(alive)}/#{length(conns)} connection processes still alive after socket close " <>
+            "(kick result: #{inspect(kick_result)}; sample #{inspect(first)}: " <>
+            "#{inspect(:erlang.process_info(first, [:current_function, :message_queue_len, :messages]))})"
+        )
     end
   end
 
@@ -299,6 +367,8 @@ defmodule Smalt.Amqp.SaturationTest do
       end
     end
 
+    def log(%{msg: {:string, s}}, config), do: log(%{msg: {:text, s}}, config)
+
     def log(%{msg: {fmt, args}} = ev, config),
       do: log(%{ev | msg: {:text, IO.iodata_to_binary(:io_lib.format(fmt, args))}}, config)
 
@@ -350,6 +420,7 @@ defmodule Smalt.Amqp.SaturationTest do
 
     {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
     {:ok, conn} = Task.await(accept_task, 5000)
+    :gen_tcp.close(listener)
     {client, conn}
   end
 

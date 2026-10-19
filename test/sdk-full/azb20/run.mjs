@@ -71,6 +71,9 @@ function runProbe(name, file, env, timeoutMs = 180_000) {
 }
 
 // Boot one plane; returns the child (or null if never up).
+let currentChild = null;
+let currentChildSet = (c) => { currentChild = c; };
+
 async function bootPlane(plane) {
   const portsToCheck = [PRIV.arm, PRIV.armTls, PRIV.egress, PRIV.amqp, PRIV.eh, PRIV.mcp, PRIV.proxy];
   for (const p of portsToCheck) {
@@ -92,6 +95,7 @@ async function bootPlane(plane) {
     detached: true,
   });
   child.stdout.pipe(logStream); child.stderr.pipe(logStream);
+  currentChildSet(child);
   // Liveness: the top-level MCP listener opens last on every plane shape.
   const up = await waitPort(PRIV.mcp, 180_000);
   if (!up) {
@@ -104,13 +108,16 @@ async function bootPlane(plane) {
 }
 
 const killTree = async (child) => {
-  if (!child || child.exitCode !== null) return;
+  if (!child) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  if (child.exitCode !== null) { await Promise.race([exited, new Promise((r) => setTimeout(r, 100))]); return; }
   try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
-  const dl = Date.now() + 5000;
-  while (child.exitCode === null && Date.now() < dl) await new Promise((r) => setTimeout(r, 200));
-  if (child.exitCode === null) { try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); } }
-  await waitExit(child);
+  const won = await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
+  if (!won) { try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); } await exited; }
 };
+const cleanup = () => { try { if (currentChild && currentChild.exitCode === null) process.kill(-currentChild.pid, "SIGKILL"); } catch {} };
+process.on("exit", cleanup);
+process.on("SIGINT", () => { cleanup(); process.exit(130); });
 
 // Recording proxy lifecycle. Returns {stop(), audit()} — audit() runs after
 // SIGTERM and resolves {pass, violations, count}.
@@ -224,7 +231,7 @@ for (const plane of ["control", "data", "integration", "identity"]) {
     const res = await proxy.stop();
     matrix.push({
       plane, probe: "HEADER-AUDIT", exit: res.code, verdict: res.code === 0 ? "PASS" : "FAIL",
-      detail: res.log.split("\n").filter((l) => l.includes("AUDIT")).join(" | "),
+      detail: res.log.split("\n").filter((l) => l.includes("AUDIT") || l.includes("VIOLATION")).slice(0, 8).join(" | "),
     });
     console.log(`[${plane}] header audit -> exit ${res.code}`);
   }

@@ -1,6 +1,7 @@
 # i25: atom_bridge test-harness teardown noise
 
 Standing: ALIVE
+Context: solo (test/amqp/atom_bridge_test.exs x2) + full (mix test test/amqp/ directory)
 Lane: i25 (w15-review repair candidate)
 Scope: test/amqp/atom_bridge_test.exs (fixture) + minimal typed-error routing in lib/smalt/messaging/amqp/atom_bridge.ex
 Git: no commit (per task instruction)

@@ -1,5 +1,7 @@
 # AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT
 
+Context: solo (data_plane_test.exs 8/0 x3) + pair(blob_hardening + data_plane, 124/0) + full (2686 tests / 28 failures exit 1 — all foreign, disclosed below)
+
 - **Ticket**: AZB-06 (docs/jira/v26.10.18/azsim-burn/TICKETS.md)
 - **Lane**: planes · **Standing**: PASS (see Full-suite section for shared-tree caveat)
 - **Date**: 2026-10-18

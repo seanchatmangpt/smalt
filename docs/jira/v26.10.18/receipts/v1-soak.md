@@ -1,5 +1,8 @@
 # Receipt: v1 soak — 3x full `mix test` on `_build-ft-v1`
 
+Context: full x3 (mix test, stress excluded, _build-ft-v1)
+Standing: SUSPECT — tree NOT 3x-green under full context (detail in Standing section)
+
 Date: 2026-10-18 15:22 PDT · HEAD 8b5bb9b0bed1ee2838787f9832cd2d7bee88e04e · Context: full
 Lane: bench-runner verification (no edits, no git actions).
 

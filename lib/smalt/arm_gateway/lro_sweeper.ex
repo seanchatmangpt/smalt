@@ -278,8 +278,17 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
   end
 
   defp run_pass do
-    flip_pass()
-    eviction_pass()
-    :ok
+    if :ets.info(:smalt_operations) == :undefined do
+      # AZB-20 interop unblock (disclosed in the AZB-20 receipt): on a
+      # control-only plane boot (SMALT_PLANES=control) the data-plane Store —
+      # owner of the :smalt_operations ETS table — is not running. The pass
+      # no-ops until the table exists instead of crash-looping the whole
+      # control plane (topology defect, not a data defect).
+      :ok
+    else
+      flip_pass()
+      eviction_pass()
+      :ok
+    end
   end
 end

@@ -1,6 +1,7 @@
 # i24 — store_dets_test torn-DETS probe flake (F12 family)
 
 Standing: ALIVE (fix landed, red→green witnessed, load-replayed 3/3 green)
+Context: solo (test/store_dets_test.exs)
 
 Repo: /Users/sac/smalt. Lane build root `_build-ft-sdt`. No git (coordinator owns transitions;
 note: coordinator commit 2a82b29 swept this lane's in-flight test edit into `feat(affidavit):

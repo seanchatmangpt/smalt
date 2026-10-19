@@ -7,7 +7,9 @@
 #   p1 {t1-offline ∥ mutation-court ∥ tf-plan-smoke ∥ port-free statics}
 #   p2 {t2-wire}
 #   p3 {t3-sdk-smoke}
-# Laws: never T1 ∥ T3 (load class); per-stage MIX_BUILD_ROOT=_build-burn-19-<stage>;
+# Laws: never T1 ∥ T3 (load class); per-stage MIX_BUILD_ROOT=tmp/azb19/roots/<stage>
+# (outside the _build* lane-clean sweep — a concurrent lane-clean reclaimed
+# in-sweep roots mid-run, witnessed 2026-10-18);
 # two overlapped stages sharing a MIX_BUILD_ROOT ⇒ RESOURCE_CONFLICT refusal
 # (anti-vacuity); any serial-vs-overlapped verdict difference is the falsifier.
 #
@@ -25,8 +27,8 @@ cd "$(dirname "$0")/.."
 
 TAG="${AZB19_TAG:-azb19}"
 RUNS_ROOT="${AZB19_RUNS_ROOT:-tmp/azb19}"
-BASE_ROOT="${AZB19_BASE_ROOT:-_build-burn-19-base}"
-ROOT_PREFIX="${AZB19_ROOT_PREFIX:-_build-burn-19-}"
+BASE_ROOT="${AZB19_BASE_ROOT:-tmp/azb19/roots/base}"
+ROOT_PREFIX="${AZB19_ROOT_PREFIX:-tmp/azb19/roots/}"
 
 # ---------------------------------------------------------------------------
 # Stage table:  name|phase|resources|command
@@ -136,7 +138,7 @@ run_stage() {
         ensure_build_root "${tok#build:}"
     done
     if (( ! declared )) && ! grep -q "MIX_BUILD_ROOT=" <<<"$cmd"; then
-        cmd="env MIX_BUILD_ROOT=${ROOT_PREFIX}${name} $cmd"
+        cmd="export MIX_BUILD_ROOT=${ROOT_PREFIX}${name}; $cmd"
     fi
     (
         eval "$cmd"

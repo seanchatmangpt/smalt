@@ -1,5 +1,8 @@
 # W14 — residual review lane, workqueue group 13
 
+Context: solo (test/enclave_doctor_severity_test.exs, runs 1-6)
+Standing: PARTIAL_ALIVE (rewritten file green x2; run-B red unexplained singleton under overload; detail in Standing section)
+
 Window: v26.10.18. Context: solo. Build root: `MIX_BUILD_ROOT=_build-ft-w14`.
 No git. No GAP/KD flips.
 

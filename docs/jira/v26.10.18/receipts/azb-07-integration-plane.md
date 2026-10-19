@@ -1,6 +1,7 @@
 # AZB-07 — Integration plane profile (Service Bus AMQP + Event Grid)
 
 Standing: ALIVE
+Context: solo (integration_plane_test.exs 9/0) + slice(5-file batch per Verification)
 
 ## Identity
 

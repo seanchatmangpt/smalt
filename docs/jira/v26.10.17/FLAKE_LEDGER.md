@@ -64,6 +64,41 @@ grep -F "ApiVersionMatrix" tmp/court-x2-v17-run1.log                         # F
 grep -F "test/amqp/event_hubs_test.exs:402" <i3 wire log>                    # F17
 ```
 
+## v26.10.18 window (appended 2026-10-18)
+
+Witnesses: `docs/jira/v26.10.18/receipts/v1-soak.md` (6 full-suite runs across two
+instances, 15:0x–15:21 PDT), `v2-soak.md` (3 full + 2 wire legs, 15:29–18:2x PDT),
+`burn-soak-live.md` (9 burn attempts, 14:39–19:29 PDT, 10,813 tests / 80 failures /
+58 unique faces), fixes `i23-fence11-flip.md`, `i24-store-dets-torn.md`, conversion
+`azb-12-ratio.md`. Trees moved under the lanes (HEAD moved 6x mid-v2); every standing
+is per-run-tree, stale-by-default per the header law.
+
+| # | Face | First witness | Mechanism | Fix receipt | Hammer evidence | Recur | Standing |
+|---|---|---|---|---|---|---|---|
+| F18 | `test/store_churn_test.exs:37` — list_prefix mid-walk deletes, 0 rows (ledger F14 identity) | `receipts/v1-soak.md` run 3 (`/tmp/v1-soak-run3.log`) | Same OPEN-ROTATING row F14: concurrent churn deletes vs list_prefix walk; mechanism UNRESOLVED (i21d: table `:smalt_resources`, `/churn-test/` prefix not wiped by management_rpc) | none — recurrence count for F14: **+1** (now 2) | v1 run 3 1/3 runs; quiet 0/5 in v2 | 2 | OPEN-ROTATING (carries F14's solo-bisect-first protocol) |
+| F19 | `test/store_dets_test.exs` torn-DETS probe — `{:needs_repair, …}` / `{:not_a_dets_file, …}` from `:dets.open_file(repair: false)` (F12 family, NEW mechanism) | pre-session 2/2 + 1/3; load-witnessed `receipts/i24-store-dets-torn.md` RED run 1 | `DetsMirror` mid-sync rewrites `dm_t_resources.dets`; a `repair: false` closed-read probe lands in the transient header/footer tear and is correctly refused — probe-side race, not mirror corruption; widening `repair: true` rejected (masks real corruption) | `receipts/i24-store-dets-torn.md` — test-side `probe_rows/1` bounded retry (20 x 250 ms, sized to the measured 4008 ms sync tail), retries ONLY the torn tuple shapes; `repair: false` never widened | red→green pair under 4 yes-hogs: RED 1/3 (bare-atom matcher missed tuple shape), corrected matcher GREEN 3/3 under same hogs + solo green | 1 (+2 pre-session) | CLOSED |
+| F20 | `test/store_dets_test.exs:27` — `{:not_a_dets_file, ~c"…/dm_t_resources.dets"}` MatchError at probe (`:38`), full-suite fleet load | `receipts/v1-soak.md` Instance B diagnostic run 4 (`/tmp/v1_soak_run5.log`) | Same torn-file mechanism as F19 (per-run mirror dir under ~/.cache/tmp); same-row fix applies | `receipts/i24-store-dets-torn.md` (tuple-shape matcher — this run's exact tuple shape is the one the RED intermediate matcher missed) | i24 GREEN 3/3 under 4 hogs + solo | 1 | CLOSED (merged into F19's fix) |
+| F21 | `test/affidavit_wasm_failclosed_test.exs` fence-11 supervisor noproc — setup `GenServer.stop(pid, :normal, :infinity)` EXIT noproc via `stop_engine/0` (`:37`→`:116`; faces at `:532`, `:280`, `:640`) | `receipts/v1-soak.md` run 1 (`:532`) + Instance B run 4 (`:640` EXIT :kill); shaken 5/13 in `receipts/i23-fence11-flip.md` | Two faces, one root: (A) supervisor owner killed/restarted the engine async between `whereis` and the setup stop → noproc; (B) hammer load workers `start_link`ed from `Task.async` bodies, kill-loop `:kill` propagated task→test — (B) closed mid-flight by the owning wasm-supervisor lane's `Process.flag(:trap_exit, true)` | `receipts/i23-fence11-flip.md` — `stop_engine/0` + `typed_start/1` `already_started` branch: bounded 5 s deadline + `{:noproc, _}` tolerance; face B disclosed as owner-lane patch | i23: shake 5/13 RED pre-fix → green gate 7/7 (5 solo + 2 hog) post-fix | 3 witnessed pre-fix (v1 2 legs + i23 shake) | CLOSED |
+| F22 | `test/semantic_epoch_test.exs:323` — 10k parse vs raw-decode perf ratio `89.56 >= max 15.0` (subject_us 941,674 / baseline 10,514) | `receipts/v1-soak.md` Instance B diagnostic run 5 (under heavy concurrent load: 2 full-suite beams + ggen replay) | Load skew, not regression: single-shot absolute/ratio bound over an independent baseline is not co-monotonic under desched — solo re-run green confirmed load artifact; closed structurally by the AZB-12 conversion | `receipts/azb-12-ratio.md` — 3 absolute bounds → paired `assert_ratio(min-of-5 rounds, max: 6.0)` (subject and baseline timed back-to-back per round, co-monotonic under load); anti-vacuity shim P3e/P3f RED post-retighten | AZB-12: solo combined 5/5 green quiet-window; burn-chaos 8 hogs — all three converted fences GREEN, 0 of 16 loaded failures were converted fences | 1 | CLOSED |
+| F23 | Stress-tier exclusion question — C1 `ExUnit.TimeoutError 60000ms` class: 80 failures / **58 unique faces**, ALL unledgered (mcp_wire 22, auth_enforce 9, pplan 3, azsim/integration 3, tls 2, canonical_projection 2, enclave_lifecycle 2, mcp 2, +10 files x1), load-correlated (load-1 109→442 across the window) | `receipts/burn-soak-live.md` (9 attempts, 4 hogs + AMQP atom-flood) | Saturation-timeout class: 60 s ExUnit budget under hog+flood load with fleet contention on top; per-face mechanism NOT individually bisected — the class question is whether these faces belong to a stress tier excluded from the default suite (v26.10.18 stress-tier draft `docs/jira/v26.10.18/rewrite-drafts/stress-tier.md`) or are per-test budget defects | none — OPEN per burn-soak-live follow-up (1): "ledger the C1 saturation-timeout faces or fix the owning tests"; C6 soak.sh per-leg-log truncation destroyed per-face evidence for attempts 6/9 | attempt-5 leg log witnessed 16/16 as `ExUnit.TimeoutError … timed out after 60000ms`; i22 atom-flood fix WITNESSED holding through the same window (290,458 flood closes, 0 error-level lines) | 80 failures / 58 faces, one window | OPEN — needs a disposition decision (stress-tier exclusion vs per-test budget fix); no face may be closed without a solo-bisect receipt |
+
+Derive commands (v26.10.18 rows; scratch logs in `/tmp` are ephemeral — the
+receipts carry verbatim captures):
+
+```
+grep -F "store_churn_test.exs:37" docs/jira/v26.10.18/receipts/v1-soak.md        # F18
+grep -F "not_a_dets_file" docs/jira/v26.10.18/receipts/i24-store-dets-torn.md    # F19/F20
+grep -F "stop_engine/0" docs/jira/v26.10.18/receipts/i23-fence11-flip.md         # F21
+grep -F "89.56" docs/jira/v26.10.18/receipts/v1-soak.md                          # F22
+grep -F "58 unique faces" docs/jira/v26.10.18/receipts/burn-soak-live.md         # F23
+```
+
+Attempt-5 classification note for this window: F18 keeps F14's protocol
+(solo-bisect first); a timeout face matching F23 is load-class pending the
+stress-tier disposition, not a new per-face defect; F19/F20/F21/F22 faces
+matching their CLOSED rows after a fix regression is a re-open citing the
+fix receipt, per the header protocol.
+
 Attempt-5 classification protocol: a RED face matching a CLOSED row is a
 witness that the fix regressed, not a new defect — cite the row, re-run the
 fix receipt's hammer; a face matching an OPEN-ROTATING row keeps its named

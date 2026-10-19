@@ -1,5 +1,7 @@
 # AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT
 
+Context: solo (config probes via mix run -e) + full (mix test, 2633 tests / 4 failures — all foreign, disclosed below)
+
 - **Ticket**: AZB-04 (docs/jira/v26.10.18/azsim-burn/TICKETS.md)
 - **Lane**: planes · **Standing**: PASS (with disclosures below)
 - **Date**: 2026-10-18

@@ -1,6 +1,7 @@
 # AZB-11b receipt — runtime-twin leak remediation slice (v26.10.18)
 
 Standing: PARTIAL_ALIVE — twin hardening + remediation slices landed and
+Context: full (serial twin run-e, 2784 tests, fleet load) + slice(touched files x2, 122 tests / 2 pre-existing failures)
 witnessed; full-suite twin residue reduced 26 (baseline) → 8 raw / classified
 3-counted on the completed run-e log under 14 typed exemption patterns, of
 which two (SecurityHardening maa, WireTierRefusalSweep ports) were fixed by

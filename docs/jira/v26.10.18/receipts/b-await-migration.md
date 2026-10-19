@@ -3,6 +3,7 @@
 **Window**: v26.10.18 LIB simplification batch · Context: solo
 **Date**: 2026-10-18 · **Lane file ownership**: router.ex (finops site), pplan/task.ex
 **Standing**: PARTIAL_ALIVE — sites 4+5 landed; sites 1-3 BLOCKED on b-lro-notifier
+Context: slice(mix test file-lists as embedded per Verification section)
 
 ## Scope landed
 

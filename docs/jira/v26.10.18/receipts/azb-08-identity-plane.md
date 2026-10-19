@@ -1,5 +1,7 @@
 # AZB-08 — Identity plane profile (KeyVault + Entra STS) — RECEIPT
 
+Context: solo (identity_plane_test.exs 12/0) + slice(bearer 128/0, kd79 107/0); full-context run exit 2 with all failures foreign (disclosed below)
+
 - **Ticket**: AZB-08 (docs/jira/v26.10.18/azsim-burn/TICKETS.md)
 - **Lane**: planes · **Standing**: PASS (disclosures below)
 - **Date**: 2026-10-18

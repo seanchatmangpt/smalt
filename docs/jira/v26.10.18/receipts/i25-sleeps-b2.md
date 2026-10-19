@@ -1,6 +1,7 @@
 # i25 — sleeps.md §B2: `eventually_stays/2` + 4 absence-check migrations
 
 Standing: **ALIVE**
+Context: slice(multi-file batch, per embedded commands)
 
 Window: v26.10.18 · Lane: sleeps-b2 (sb2) · Date: 2026-10-18
 Subject: working tree at main, 9f4c19d (feat(planes) ...) + this lane's edits, no git actions taken.

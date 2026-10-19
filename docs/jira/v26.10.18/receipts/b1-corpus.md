@@ -1,6 +1,7 @@
 # B1 — corpus + compliance scaffolding consolidation (corpus-compliance.md)
 
 Standing: ALIVE
+Context: solo(corpus_test.exs) + solo(compliance_test.exs) + pair(corpus+compliance, with/without --include stress)
 Window: docs/jira/v26.10.18 · Batch B1 · MIX_BUILD_ROOT=_build-ft-b1
 Draft: docs/jira/v26.10.18/rewrite-drafts/corpus-compliance.md
 Master plan: docs/jira/v26.10.18/rewrite-drafts/00-MASTER-PLAN.md

@@ -1,5 +1,8 @@
 # Receipt: AZB-10 Cross-plane wiring (loopback, zero egress)
 
+Context: solo (topology_test.exs)
+Standing: ALIVE (all Accept gates executed, anti-vacuity witnessed; detail in Standing section)
+
 - **Ticket**: AZB-10 (`docs/jira/v26.10.18/azsim-burn/TICKETS.md`, binding)
 - **Subject**: `config/env/az_prod_{control,identity,data,integration}.exs`,
   `lib/smalt/egress_router.ex` (nested `Smalt.EgressRouter.Peers` — peer

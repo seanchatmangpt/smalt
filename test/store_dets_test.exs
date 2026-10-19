@@ -158,11 +158,20 @@ defmodule Smalt.StoreDetsTest do
     end
   end
 
-  # 600s budget: receipts/i20b-contention-mechanism.md measured a 350x sync tail
-  # under 16-core machine load, and receipts/r241 witnessed the previous 300s
-  # budget blow out under load (4/4 green quiet at 93-204s body time).
+  # Round-sizing face (receipts/i25-churn-sizing.md): the round budget must be
+  # MEASURED, not assumed. Rounds are attempt-budgeted by construction (fixed
+  # attempt counts, no spin), so wall-clock here guards hangs only — a round
+  # that is merely SLOW under machine contention must never trip it. The
+  # deadline therefore scales with observed machine speed: a fixed-work
+  # calibration loop is timed immediately before the rounds on the same
+  # machine, and the per-round deadline is max(30s floor, 1000 x calib_ms).
+  # A quiet machine calibrates in tens of ms (floor applies); a contended
+  # machine calibrates slower and the deadline widens proportionally. The
+  # per-round async_stream deadline is the only bound — total runtime stays
+  # bounded by construction at @max_rounds x deadline, so the outer test
+  # timeout is :infinity rather than a second assumed budget.
   @tag :stress
-  @tag timeout: 600_000
+  @tag timeout: :infinity
   test "restore x insert_new churn: insert_new :ok implies the FRESH value wins (no stale clobber)",
        %{
          dir: dir
@@ -200,12 +209,33 @@ defmodule Smalt.StoreDetsTest do
   @racer_keys 100
   @attempts_per_key 50
 
+  # Calibration workload (fixed work, timed on the live machine): 5M loop
+  # iterations. Quiet this is tens of ms; under contention it slows and the
+  # derived deadline widens — measured, never assumed.
+  @calib_iters 5_000_000
+  # Floor keeps the quiet-machine hang guard at the previously-witnessed
+  # budget; factor widens the guard proportionally to measured contention.
+  @round_deadline_floor_ms 30_000
+  @calib_deadline_factor 1000
+
+  defp round_deadline_ms do
+    t0 = System.monotonic_time(:millisecond)
+    calib(@calib_iters)
+    calib_ms = max(1, System.monotonic_time(:millisecond) - t0)
+    max(@round_deadline_floor_ms, @calib_deadline_factor * calib_ms)
+  end
+
+  defp calib(0), do: :ok
+  defp calib(n), do: calib(n - 1)
+
   defp race_rounds(table, dir) do
+    deadline_ms = round_deadline_ms()
+
     1..@max_rounds
     |> Task.async_stream(
-      fn round -> race_round(table, round, Path.join(dir, "round-#{round}")) end,
+      fn round -> race_round(table, round, Path.join(dir, "round-#{round}"), deadline_ms) end,
       max_concurrency: 1,
-      timeout: 30_000,
+      timeout: deadline_ms,
       on_timeout: :kill_task
     )
     |> Enum.reduce({[], 0, 0}, fn
@@ -217,7 +247,7 @@ defmodule Smalt.StoreDetsTest do
     end)
   end
 
-  defp race_round(table, round, rdir) do
+  defp race_round(table, round, rdir, deadline_ms) do
     File.mkdir_p!(rdir)
     {:ok, sup} = Task.Supervisor.start_link(name: nil)
 
@@ -262,9 +292,9 @@ defmodule Smalt.StoreDetsTest do
     restore_task =
       Task.Supervisor.async_nolink(sup, fn -> Smalt.Store.DetsMirror.restore(mirror_pid) end)
 
-    {:ok, _} = Task.await(restore_task, 30_000)
+    {:ok, _} = Task.await(restore_task, deadline_ms)
 
-    results = Task.await_many(racers, 30_000)
+    results = Task.await_many(racers, deadline_ms)
 
     Supervisor.stop(sup)
     GenServer.stop(mirror_pid, :normal)

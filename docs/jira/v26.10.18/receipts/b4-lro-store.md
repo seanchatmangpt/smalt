@@ -1,6 +1,7 @@
 # Receipt: B4 LRO/STORE batch — v26.10.18 rewrite (Context: slice)
 
 Standing: PASS (all four faces green x2; two cross-lane disclosures below)
+Context: solo (lro_test.exs, arm_error_corpus_test.exs, blob_hardening_test.exs — each x2)
 
 ## Scope
 

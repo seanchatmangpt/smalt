@@ -1,5 +1,8 @@
 # W6 residual review receipt — v26.10.18
 
+Context: solo (r177d_repro_test.exs x2) + slice(4-file batch, 35 tests 0 failures)
+Standing: PASS — 1 file REWRITTEN, 3 ALREADY-COMPLIANT, touched file green x2
+
 Lane: W6 (group 5 of /tmp/rewrite-workqueue.json), solo. Date: 2026-10-18.
 Contract: docs/jira/v26.10.18/rewrite-drafts/WORKQUEUE.md (lane contract).
 Build root: `_build-ft-w6`. No git operations.

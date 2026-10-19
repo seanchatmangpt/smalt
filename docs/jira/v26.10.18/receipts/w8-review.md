@@ -6,6 +6,7 @@ where defective, PRESERVE receipted assertions verbatim. Foundations landed
 (AssertEventually / Env / Store.resilient / PortEnv in `test/support/`).
 
 Standing: **PASS** — 39 test results across the 5 files, 0 failures, two
+Context: solo per-file (5 files, x2, per table below)
 green passes each (MIX_BUILD_ROOT=_build-ft-w8).
 
 ## Findings + actions (per file)

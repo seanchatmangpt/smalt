@@ -7,6 +7,7 @@ PRESERVE receipted assertions verbatim. Foundations landed (AssertEventually
 / Env / Store.resilient / Singleton in `test/support/`).
 
 Standing: **PASS** — 41 test results across the 5 files, 0 failures, two
+Context: slice(5-file batch, 33+8 tests 0 failures, x2)
 green passes each (MIX_BUILD_ROOT=_build-ft-w16).
 
 ## Findings + actions (per file)

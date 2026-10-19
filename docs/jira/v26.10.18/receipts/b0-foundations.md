@@ -1,5 +1,8 @@
 # Receipt: B0 FOUNDATIONS — test/support compile path + canonical helpers
 
+Context: pair(test/mix_auth_scope_test.exs, test/lro_test.exs)
+Standing: ALIVE (five SmaltTest modules compile + exercised; both reference suites green; detail in Standing section)
+
 Window: v26.10.18. Lane: B0 (solo). Date: 2026-10-18. Repo: /Users/sac/smalt.
 Spec: docs/jira/v26.10.18/rewrite-drafts/foundations.md (§1, §2, §3.2-3.4)
 + rewrite-drafts/assert-eventually.ex.md (canonical module of record).

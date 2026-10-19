@@ -1,6 +1,7 @@
 # i23 — standalone corpus invocation + atom_bridge teardown-noise typing
 
 Standing: PASS (both repairs verified green x2, real output embedded)
+Context: solo per-file (test/corpus/*.exs standalone) + full (mix test test/amqp/ directory x2)
 Date: 2026-10-18
 Lane: i23 (single-lane repair, no git)
 

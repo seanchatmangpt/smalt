@@ -1,6 +1,7 @@
 # AZB-03 — Burn JSONL receipt schema + validator
 
 Standing: ALIVE
+Context: script gates (validate_burn.py --gate over burn fixtures); no mix test invocation
 
 Work order: AZB-03 (`docs/jira/v26.10.18/azsim-burn/TICKETS.md`). Lane foundry, Q CREATE, deps none.
 

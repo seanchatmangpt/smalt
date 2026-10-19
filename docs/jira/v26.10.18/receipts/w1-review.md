@@ -1,5 +1,7 @@
 # W1 residual review — group 0 (review lane, Context: solo)
 
+Context: slice(reviewed-file batch, 58 tests 0 failures, x2, exit 0)
+
 Window: v26.10.18. Contract: WORKQUEUE.md group 0 (6 files). Doctrine:
 `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md`. Standing: PASS
 (review lane; no edits required).

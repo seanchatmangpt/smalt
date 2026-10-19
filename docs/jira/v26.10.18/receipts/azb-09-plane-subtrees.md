@@ -1,5 +1,7 @@
 # Receipt: AZB-09 Plane-Scoped Supervision Subtrees
 
+Context: solo (plane_supervision_test.exs 2/0)
+
 - **Ticket**: AZB-09
 - **Subject**: `lib/smalt/plane/{control,data,integration,identity}_supervisor.ex`, `lib/smalt/application.ex`, `test/azsim/plane_supervision_test.exs`
 - **Commit**: `a932816`

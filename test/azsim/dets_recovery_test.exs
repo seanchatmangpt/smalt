@@ -23,6 +23,7 @@ defmodule SmaltTest.Azsim.DetsRecoveryTest do
 
   use ExUnit.Case, async: false
   use Plug.Test
+  import Bitwise
 
   alias Smalt.ArmGateway.Router
   alias Smalt.Store

@@ -1,4 +1,7 @@
 # Adversarial Joe Armstrong Attack Matrix Receipt
+Standing: PASS (4/4 attack vectors + 3 gates PASS; output below)
+
+Context: gates (just sleep-gate, isolation_court.py, just burn-ocel — all PASS) + solo(test/azsim/adversarial_joe_test.exs); no suite-context run
 
 - **Date**: 2026-10-18
 - **Commit**: `5a73c47`

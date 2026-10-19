@@ -1,6 +1,7 @@
 # AZB-11 receipt — isolation court (v26.10.18)
 
 Standing: PARTIAL_ALIVE — static court GREEN (`just isolation-court` exit 0,
+Context: solo (compliance_test.exs, 157 tests 0 failures)
 fixtures refusing, self-check proving temp-file detection naming file:line);
 runtime twin operational with leak detection witnessed (falsifier probe:
 bare `Application.put_env` + named `Agent.start_link` ⇒

@@ -1,5 +1,8 @@
 # Receipt: w3-review — PARTIAL_ALIVE
 
+Context: solo per-file (5 files, x2 each, per embedded commands)
+Standing: PARTIAL_ALIVE — group 2 green x2 under no-sleep doctrine (detail in Standing section)
+
 Date: 2026-10-18 · Lane: W3 residual review · Context: **solo** (no fan-out; single
 reviewer + executor, one canonical checkout) · Build root: `_build-ft-w3`
 

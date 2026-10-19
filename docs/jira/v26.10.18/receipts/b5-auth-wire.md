@@ -1,6 +1,7 @@
 # B5 receipt — auth / wire / egress rewrite (v26.10.18)
 
 Standing: ALIVE (all touched files green x2 + full wire tier green; one
+Context: solo per-family runs (table in Verification: eventgrid pair, egress, co-batch, kd79, blob_hardening, auth_enforce)
 disclosed co-batch flake, see Deviations). Slice lane B5, spec:
 `docs/jira/v26.10.18/rewrite-drafts/auth-wire-egress.md` (§5 apply sequence,
 falsifier §0 inventory = the batch gate).
