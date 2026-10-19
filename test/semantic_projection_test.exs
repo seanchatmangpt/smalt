@@ -33,7 +33,16 @@ defmodule Smalt.SemanticProjectionTest do
 
       entries = Ash.read!(Smalt.Semantic.LedgerEntry)
 
-      projected = Enum.find(entries, fn e -> e.tx_id == tx["transactionId"] end)
+      # Identity law (i29-ledger-txid-qualify): the wire "transactionId"
+      # ("N.1") is unique PER LEDGER only — the store key is ledger-qualified
+      # ("#{ledger}/#{tx_id}"). A cross-ledger consumer must match on the
+      # qualified pair {sub_ledger_id, tx_id}; matching the bare tx_id can
+      # hit a FOREIGN ledger's entry under concurrent scheduling and assert
+      # the wrong merkle_root.
+      projected =
+        Enum.find(entries, fn e ->
+          e.sub_ledger_id == ledger and e.tx_id == tx["transactionId"]
+        end)
 
       assert projected, "seeded ledger receipt not projected"
       assert projected.merkle_root == tx["merkle_root"]

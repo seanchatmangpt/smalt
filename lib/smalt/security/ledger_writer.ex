@@ -134,6 +134,12 @@ defmodule Smalt.Security.LedgerWriter do
     else
       prev_hash = latest_root(ledger)
       seq = Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, 1)
+      # Identity law (i29-ledger-txid-qualify): tx_id is a PER-LEDGER display
+      # id ("N.1"). It is UNIQUE only within `ledger`; the store key below is
+      # the ledger-qualified identity ("#{ledger}/#{tx_id}"). The wire form is
+      # pinned (strata_compat/security_hardening/ledger.probe round-trip it),
+      # so it is deliberately NOT minted qualified — any cross-ledger consumer
+      # (semantic projection, tests) must match on {subLedgerId, transactionId}.
       tx_id = "#{seq}.1"
       merkle_root = hash(prev_hash <> data_hash)
 
