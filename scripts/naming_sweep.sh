@@ -99,6 +99,7 @@ ALLOWLIST=(
   "docs/jira/v26.10.18/burn/cgroup-20261019T064350Z.jsonl:6"
   "docs/jira/v26.10.18/burn/cgroup-20261019T064704Z.jsonl:6"
   "docs/jira/v26.10.18/burn/cgroup-20261019T065557Z.jsonl:6"
+  "docs/jira/v26.10.18/burn/cgroup-20261019T061643Z.jsonl:6"
 # KD-94 row moved 252 -> 262 -> 269 (i29 window edits + KD-98 registration
   # 2026-10-18); same KD-register-quotes-own-evidence class as the 157 pin.
   "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:269"
