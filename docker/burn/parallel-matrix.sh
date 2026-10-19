@@ -328,6 +328,12 @@ if [ "$DRY_RUN" = 1 ]; then
   exit 0
 fi
 
+# AZB-17: regenerate compose.burn.yml at the requested N before every run —
+# the file is a GENERATED artifact shared by concurrent lanes; each run must
+# be self-consistent with its own --replicas value, never trust disk state.
+emit_compose "$REPLICAS" > "$COMPOSE_FILE"
+echo "[BURN-MATRIX] compose regenerated for N=$REPLICAS before run (generated-artifact law)"
+
 preflight
 
 mkdir -p "$RESULTS_DIR"
