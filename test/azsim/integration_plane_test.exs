@@ -426,6 +426,4 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
   defp error_condition([{:symbol, c} | _]) when is_binary(c), do: c
   defp error_condition(%{condition: c}) when is_binary(c), do: c
 
-  defp error_description([_sym, d | _]) when is_binary(d), do: d
-  defp error_description(%{description: d}) when is_binary(d), do: d
 end

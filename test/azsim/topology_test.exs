@@ -146,6 +146,11 @@ defmodule SmaltTest.Azsim.TopologyTest do
     # bridge queue subscriber.
     :ok = EventGrid.subscribe("resources", "azb10-topology", self())
 
+    # Control-plane bearer: minted over the wire at the identity STS (real
+    # socket), so the trusted-authority registration matches this run's
+    # shifted ARM authority — never a hard-coded port.
+    {:ok, token} = mint_over_wire(arm_port)
+
     name = "azb10sa" <> unique()
     path = resource_path(name)
 
@@ -156,7 +161,7 @@ defmodule SmaltTest.Azsim.TopologyTest do
     res =
       http_request(arm_port, "PUT", path,
         headers: [
-          {"authorization", "Bearer " <> mint_local()},
+          {"authorization", "Bearer " <> token},
           {"content-type", "application/json"}
         ],
         body:

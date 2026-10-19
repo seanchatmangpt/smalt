@@ -472,7 +472,7 @@ defmodule Smalt.TLSTest do
 
     # trace events were all sent before the writer returned; poll the tracer
     # round-trip until the publish-op log is non-empty (sleeps.md §A4).
-    {:ok, ops} =
+    ops =
       SmaltTest.AssertEventually.eventually(
         fn ->
           send(tracer, {:ops, parent})

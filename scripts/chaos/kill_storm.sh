@@ -107,6 +107,7 @@ boot_substrate() { # <log> -> sets SUB_PID; fail-closed on boot deadline
   # Settle: the boot deadline already covers late lazy-bind crashes; assert
   # the spawn is still alive before we trust the boot.
   kill -0 "$SUB_PID" 2>/dev/null || fail "substrate exited during boot (log: $log)"
+
 }
 
 boot_eval() {
@@ -122,7 +123,7 @@ Application.put_env(:smalt, :mcp_port, $MCP_PORT)
 Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 0)
 {:ok, _} = Application.ensure_all_started(:smalt)
 {:ok, _} = Smalt.Store.DetsMirror.start_link(dir: "$DATA_DIR", repair: true, interval: 5_000)
-:ok = Smalt.Store.DetsMirror.restore()
+{:ok, _} = Smalt.Store.DetsMirror.restore()
 EOF
 }
 
@@ -190,6 +191,7 @@ run_cycle() {
   local t0=$SECONDS
   boot_substrate "$LOG_BOOT" || { append_row "chaos" TIMEOUT_DEADLINE 1 0 "boot failed: $(tail -3 "$LOG_BOOT" | tr '\n' ' ')"; return 1; }
   mint_token || { append_row "chaos" TIMEOUT_DEADLINE 2 0 "token mint failed"; return 1; }
+  kill -0 "$SUB_PID" 2>/dev/null || { append_row "chaos" UNHANDLED_EXIT 6 0 "substrate exited right after boot: $(tail -3 "$LOG_BOOT" | tr '\n' ' ')"; return 1; }
 
   # Container (idempotent; 201 create or 409 already-present both proceed)
   local cc

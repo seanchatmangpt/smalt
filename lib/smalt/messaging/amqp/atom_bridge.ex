@@ -102,6 +102,12 @@ defmodule Smalt.Amqp.AtomBridge do
           {:ok, data} -> read_request(sock, <<buf::binary, data::binary>>, limit)
           {:error, _} = err -> err
         end
+
+      # i25: split_request's typed {:error, :bad_content_length} (and
+      # {:error, :bad_request}) must reach serve/2's typed-debug path, not
+      # raise CaseClauseError into the calling serve task.
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -119,7 +125,13 @@ defmodule Smalt.Amqp.AtomBridge do
             :more
           end
         else
+          # i25: content_length/1 returns typed {:error, :bad_content_length};
+          # without this clause it fell out of the `with` as a WithClauseError
+          # that crashed the serve task (Task terminating noise in the test
+          # harness). Typed error in, typed error through serve/2's existing
+          # typed-debug path — never a raise.
           :error -> {:error, :bad_request}
+          {:error, _} = err -> err
         end
 
       [_whole] ->

@@ -100,7 +100,34 @@ shared tree is under heavy concurrent-lane load (coordinator committing
 mid-run; load average 340 cited by coordinator), so the authoritative count is
 recorded as of the final completed run:
 
-<!-- SUITE_RESULT -->
+```
+$ MIX_BUILD_ROOT=_build-lane6 mix test      # exit 1
+1 doctest, 7 properties, 2686 tests, 28 failures (90 excluded)
+```
+
+**Classification — zero failures in AZB-06 scope.** `Smalt.Azsim.DataPlaneTest`
+is absent from the failure list (0/8), and its companion blob surface passes
+standalone under my diff:
+
+```
+$ MIX_BUILD_ROOT=_build-lane6 mix test test/data_plane/blob_hardening_test.exs test/azsim/data_plane_test.exs
+124 tests, 0 failures
+```
+
+All 28 are shared-tree/concurrent-lane classes, matching the AZB-04 receipt's
+pattern: planes-lane tickets in flight (`Azsim.IntegrationPlaneTest` AZB-07,
+`Azsim.TopologyTest` AZB-10, `Azsim.ControlPlaneTest` AZB-05,
+`plane_supervision` compile residue), shared generated artifacts
+(`Smalt.ErrorCodesDocTest`, `Smalt.CanonicalProjectionTest` — regenerated at
+wrap by law), load-sensitive suites under ~10+ concurrent lane beams
+(`SmaltLroTest`, `Smalt.PPlanTest`, `Smalt.TLSTest`, `Smalt.McpTest`,
+`McpWireTest`, `Enclave*`, `StressTierCensusTest`, `C1ArmTest`,
+`R133PolicyCasTest`), and one torn-read compile error
+(`egress_router.ex` mid-edit TokenMissingError, owner-fixed during the run;
+the retry leg of this same suite had aborted MIX_EXIT=2 on it — a compile
+abort, 0 tests executed, per the census law).
+
+Tree count is 2686 (≥ the ticket's 2655 bar).
 
 ## Disclosures
 
