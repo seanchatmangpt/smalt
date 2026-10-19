@@ -338,23 +338,15 @@ defmodule Smalt.Compliance.C5ServicebusTest do
 
       SmaltTest.Lifecycle.stop_shared_tree()
 
-      # save-prev (leak-court): save_envs/1 captures the pre-setup state of the
-      # port keys (+ :sb_shared_key, folded here — its standalone delete on_exit
-      # is subsumed by restore_envs/1).
-      token =
-        SmaltTest.Lifecycle.save_envs([
-          :arm_port,
-          :egress_port,
-          :amqp_port,
-          :event_hubs_port,
-          :sb_shared_key
-        ])
-
-      Application.put_env(:smalt, :arm_port, get_free_port())
-      Application.put_env(:smalt, :egress_port, get_free_port())
-      Application.put_env(:smalt, :amqp_port, port)
-      Application.put_env(:smalt, :event_hubs_port, get_free_port())
-      Application.put_env(:smalt, :sb_shared_key, Base.encode64(:crypto.strong_rand_bytes(48)))
+      # save-prev (leak-court): put_restored captures the pre-setup state of the
+      # port keys (+ :sb_shared_key) and restores on exit.
+      SmaltTest.Env.put_restored(
+        arm_port: get_free_port(),
+        egress_port: get_free_port(),
+        amqp_port: port,
+        event_hubs_port: get_free_port(),
+        sb_shared_key: Base.encode64(:crypto.strong_rand_bytes(48))
+      )
 
       {:ok, _sup} =
         Supervisor.start_link([Smalt.Store, {Smalt.AmqpBroker, []}],
@@ -377,9 +369,6 @@ defmodule Smalt.Compliance.C5ServicebusTest do
               _, _ -> Process.exit(sup, :kill)
             end
         end
-
-        # conditional restore of the port-config keys saved in setup
-        SmaltTest.Lifecycle.restore_envs(token)
 
         SmaltTest.Lifecycle.restore_app()
         SmaltTest.Lifecycle.ensure_store_up()
