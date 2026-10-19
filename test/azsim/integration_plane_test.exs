@@ -177,15 +177,12 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       assert %{performative: %{performative: :attach}} = recv_frame(client)
       :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 10}}))
 
-      assert {:ok, 1, _} = Smalt.Messaging.EventHubs.send_event(String.trim_leading(eh_address, "/"), "post-relink-event")
+      assert {:ok, 1, _} = Smalt.Messaging.EventHubs.send_event(storage_key(eh_address), "post-relink-event")
 
       # Drain-on-demand: a credit grant after the publish triggers the pump
       # to deliver the queued event on the relinked receiver.
       :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 5}}))
 
-      # wake the pump so the drain runs
-      :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 5}}))
-      IO.inspect(Smalt.Messaging.EventHubs.receive_events(hub_key(eh_address), 0, 10), label: "DBG-events")
       tr = recv_until(client, :transfer, 3000)
       assert {:ok, sections} = FrameCodec.decode_message(tr.payload)
 
@@ -334,8 +331,11 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
 
   defp unique_topic, do: :"eg-topic-#{System.unique_integer([:positive])}"
 
-  defp hub_key(addr) do
-    String.trim_leading(addr, "/")
+  # Wire senders store under "{hub}/partitions/{n}" (eh_storage_partition);
+  # the in-process API must use the same key for the drain to see the event.
+  defp storage_key(addr) do
+    "eventhubs/" <> rest = String.trim_leading(addr, "/")
+    rest
   end
 
   defp wire_conn! do

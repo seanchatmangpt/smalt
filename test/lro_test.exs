@@ -150,18 +150,10 @@ defmodule SmaltLroTest do
     op = Jason.decode!(put_conn.resp_body)
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
-    # Poll-replaceable sync-wait (sleeps.md §A1): poll the RAW store read for
-    # terminality instead of gambling delay+epsilon on scheduler jitter.
-    SmaltTest.AssertEventually.eventually(
-      fn ->
-        case Store.get(:smalt_operations, op["name"]) do
-          {:ok, %{"status" => "Succeeded"}} = ok -> ok
-          other -> {:retry, other}
-        end
-      end,
-      deadline_ms: 5_000,
-      observable: "LRO op #{op["name"]} terminal in store"
-    )
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift startedAtMs into the past instead of waiting out the delay window,
+    # so the FIRST wire poll flips the op.
+    backdate_op(op["name"])
 
     poll = conn(:get, op_path) |> call()
 
@@ -431,18 +423,9 @@ defmodule SmaltLroTest do
     op = Jason.decode!(put_conn.resp_body)
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
-    # Poll-replaceable sync-wait (sleeps.md §A1): store-level terminality poll
-    # before the 10-concurrent-poller fan-out.
-    SmaltTest.AssertEventually.eventually(
-      fn ->
-        case Store.get(:smalt_operations, op["name"]) do
-          {:ok, %{"status" => "Succeeded"}} = ok -> ok
-          other -> {:retry, other}
-        end
-      end,
-      deadline_ms: 5_000,
-      observable: "LRO op #{op["name"]} terminal before concurrent-poll fan-out"
-    )
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift startedAtMs into the past so the op is due for the racing pollers.
+    backdate_op(op["name"])
 
     results =
       1..10
@@ -1209,18 +1192,9 @@ defmodule SmaltLroTest do
 
     id = op["name"]
 
-    # Poll-replaceable sync-wait (sleeps.md §A1): poll the RAW store read to
-    # terminality before the 24-concurrent-poller fan-out.
-    SmaltTest.AssertEventually.eventually(
-      fn ->
-        case Store.get(:smalt_operations, id) do
-          {:ok, %{"status" => "Succeeded"}} = ok -> ok
-          other -> {:retry, other}
-        end
-      end,
-      deadline_ms: 5_000,
-      observable: "LRO op #{id} terminal before 24-poller fan-out"
-    )
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift startedAtMs into the past so the op is elapsed for the 24 pollers.
+    backdate_op(id)
 
     parent = self()
 

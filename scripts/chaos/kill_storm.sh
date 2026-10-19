@@ -216,7 +216,7 @@ run_cycle() {
   # Kill at the seeded offset: as soon as >= kill_at acks are on the ledger.
   local kd
   kd=$(beam_pid)
-  [ -n "$kd" ] || { fail "no beam listener on :$ARM_PORT to kill"; }
+  [ -n "$kd" ] || { fail "no beam listener on :$ARM_PORT to kill (lsof: $(lsof -nP -iTCP:"$ARM_PORT" 2>/dev/null | head -3 | tr '\n' ';'))"; }
   local killed=0
   local deadline=$(( SECONDS + 120 ))
   while :; do

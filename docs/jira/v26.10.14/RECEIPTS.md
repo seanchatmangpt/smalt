@@ -411,10 +411,14 @@ count, or PASS/FAIL token) found in the file.
 | r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
 | r245-t3-tear | [r245-t3-teardown-fix.md](../v26.10.17/receipts/r245-t3-teardown-fix.md) | PASS | r245 — T3 sdk-smoke teardown deadlock root-caused + fixed; leg green |
 | r246-attempt | [r246-attempt4-invalid-typed-red.md](../v26.10.17/receipts/r246-attempt4-invalid-typed-red.md) | UNKNOWN | r246 — court-x2 attempt 4: INVALID (mid-gate tree edit) + typed RED; WO-2 carries to v26.10.18 **NO-CONTEXT** |
+| adversarial- | [adversarial-joe-attack-matrix.md](../v26.10.18/receipts/adversarial-joe-attack-matrix.md) | UNKNOWN | Adversarial Joe Armstrong Attack Matrix Receipt **NO-CONTEXT** |
 | azb-01-image | [azb-01-image-pin.md](../v26.10.18/receipts/azb-01-image-pin.md) | ALIVE | AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5) **NO-CONTEXT** |
 | azb-02-netns | [azb-02-netns.md](../v26.10.18/receipts/azb-02-netns.md) | ALIVE | AZB-02 Per-container network namespaces, zero host port publish **NO-CONTEXT** |
 | azb-03-burn- | [azb-03-burn-schema.md](../v26.10.18/receipts/azb-03-burn-schema.md) | ALIVE | AZB-03 — Burn JSONL receipt schema + validator **NO-CONTEXT** |
 | azb-04-plane | [azb-04-plane-loader.md](../v26.10.18/receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT **NO-CONTEXT** |
+| azb-05-contr | [azb-05-control-plane.md](../v26.10.18/receipts/azb-05-control-plane.md) | PASS | AZB-05 — Control plane profile (ARM) — RECEIPT **NO-CONTEXT** |
+| azb-06-data- | [azb-06-data-plane.md](../v26.10.18/receipts/azb-06-data-plane.md) | PASS | AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT **NO-CONTEXT** |
+| azb-09-plane | [azb-09-plane-subtrees.md](../v26.10.18/receipts/azb-09-plane-subtrees.md) | ALIVE | AZB-09 Plane-Scoped Supervision Subtrees **NO-CONTEXT** |
 | azb-11-isola | [azb-11-isolation-court.md](../v26.10.18/receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) **NO-CONTEXT** |
 | azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
@@ -438,6 +442,7 @@ count, or PASS/FAIL token) found in the file.
 | i23-fence11- | [i23-fence11-flip.md](../v26.10.18/receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
 | i23-standalo | [i23-standalone-noise.md](../v26.10.18/receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing **NO-CONTEXT** |
 | i24-store-de | [i24-store-dets-torn.md](../v26.10.18/receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) **NO-CONTEXT** |
+| i25-lro-back | [i25-lro-backdate.md](../v26.10.18/receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` **NO-CONTEXT** |
@@ -527,7 +532,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | SUSPECT | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -607,4 +612,3 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
 - **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
 - **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)
-- **SUSPECT**: `spc-bands.md` (standing UNKNOWN)

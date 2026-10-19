@@ -34,33 +34,58 @@ defmodule Smalt.Amqp.AtomBridgeTest do
     {:ok, port} = :inet.port(listener)
 
     Task.start(fn ->
-      loop_accept(listener)
+      accept_serve(listener)
     end)
 
     {:ok, client} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
     %{client: client}
   end
 
-  defp loop_accept(listener) do
+  # KD-45 harness task (unlinked scaffolding, never a test assertion): accept
+  # → serve over the real serve/2. Its lifecycle EXPECTS the teardown
+  # vocabulary — :timeout on the idle accept window, and :closed/:einval/
+  # :enotconn/:notconn when sockets die mid-loop (same typing as serve/2's
+  # i22/i23 silent teardown). It exits silently on all of them instead of
+  # crashing with CaseClause noise; anything outside that vocabulary is a
+  # typed exit, not a crash log.
+  defp accept_serve(listener) do
     case :gen_tcp.accept(listener, 10_000) do
       {:ok, sock} ->
-        Task.start(fn ->
-          # serve/2 is one request per call; loop until the client goes away.
-          serve_loop(sock)
-        end)
+        serve_conn(sock)
+        accept_serve(listener)
 
-        loop_accept(listener)
+      {:error, :timeout} ->
+        accept_serve(listener)
 
-      {:error, :closed} ->
+      {:error, reason} when reason in [:closed, :einval, :enotconn, :notconn] ->
         :ok
+
+      {:error, other} ->
+        exit({:atom_bridge_harness_accept, other})
     end
   end
 
-  # serve/2 handles ONE request per call; loop until the client goes away.
-  defp serve_loop(sock) do
-    case AtomBridge.serve(sock) do
-      :ok -> serve_loop(sock)
-      _ -> :gen_tcp.close(sock)
+  # serve/2 answers ONE request then returns :ok unconditionally (silent
+  # teardown typing, i22/i23), so a naive `:ok -> recurse` loop can never see
+  # a dead peer and spins on it. Instead the loop probes liveness with a
+  # 0-timeout 1-byte recv (no spin, no swallowed response bytes): bytes read
+  # are buffered and handed to serve/2, :timeout means the peer is alive but
+  # idle so serve/2 blocks for the next request, and the teardown vocabulary
+  # closes the socket and ends the connection with a structured exit.
+  defp serve_conn(sock, buf \\ <<>>) do
+    case :gen_tcp.recv(sock, 1, 0) do
+      {:ok, data} ->
+        serve_conn(sock, <<buf::binary, data::binary>>)
+
+      {:error, :timeout} ->
+        AtomBridge.serve(sock, buf)
+        serve_conn(sock)
+
+      {:error, reason} when reason in [:closed, :einval, :enotconn, :notconn] ->
+        :gen_tcp.close(sock)
+
+      {:error, other} ->
+        exit({:atom_bridge_harness_serve, other})
     end
   end
 
