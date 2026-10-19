@@ -71,8 +71,21 @@ defmodule Smalt.Azsim.GracefulStopTest do
 
   @tag :azb22b
   test "stopping the Control subtree terminates the WasmEngine owner typed (not :killed)" do
-    owner = GenServer.whereis(Owner)
-    assert is_pid(owner), "WasmEngine owner must be running (app booted)"
+    # F59 boot premise: under load the app tree may still be starting when
+    # this test runs — the owner lookup is a boot observable, not an
+    # instantaneous fact. Bounded poll on the real :erlang.whereis state;
+    # on timeout the flunk is typed with the last observed state (no sleeps).
+    owner =
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          case GenServer.whereis(Owner) do
+            pid when is_pid(pid) -> {:ok, pid}
+            other -> {:retry, other}
+          end
+        end,
+        deadline_ms: 10_000,
+        observable: "WasmEngine owner running (app booted)"
+      )
 
     ref = Process.monitor(owner)
 
