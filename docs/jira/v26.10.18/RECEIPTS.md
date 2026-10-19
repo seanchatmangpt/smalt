@@ -64,8 +64,10 @@ count, or PASS/FAIL token) found in the file.
 | docimpl-8 | [docimpl-8.md](receipts/docimpl-8.md) | PASS | docimpl-8 — TEST_ISOLATION.md ground-truth rewrite (d6 findings) **NO-CONTEXT** |
 | docimpl-9 | [docimpl-9.md](receipts/docimpl-9.md) | PASS | docimpl-9 — D10 group A mechanical crosslink rewrite **NO-CONTEXT** |
 | have-1-ledge | [have-1-ledger.md](receipts/have-1-ledger.md) | PASS | HAVE-1: state_ledger.py — run_state.jsonl ledger **NO-CONTEXT** |
+| have-13-docs | [have-13-docs.md](receipts/have-13-docs.md) | ALIVE | HAVE-13: HAVE doc-tree integration (runbook, cross-links, recipes, DoD pin) **NO-CONTEXT** |
 | have-2-pool- | [have-2-pool-guard.md](receipts/have-2-pool-guard.md) | ALIVE | HAVE-2 pool saturation guard **NO-CONTEXT** |
 | have-3-watch | [have-3-watchdog.md](receipts/have-3-watchdog.md) | ALIVE | HAVE component 3 — scripts/have/meta_watchdog.py (Level-2 30m watchdog) **NO-CONTEXT** |
+| have-4-telem | [have-4-telemetry.md](receipts/have-4-telemetry.md) | ALIVE | HAVE-4 — telemetry.py metric catalog emitter **NO-CONTEXT** |
 | have-5-alert | [have-5-alerts.md](receipts/have-5-alerts.md) | PASS | HAVE-5: alert_policy.py — SEV matrix + jidoka engine **NO-CONTEXT** |
 | have-6-stora | [have-6-storage-probe.md](receipts/have-6-storage-probe.md) | ALIVE | HAVE-6 — RP-02 deterministic storage recovery probe **NO-CONTEXT** |
 | have-8-petri | [have-8-petri.md](receipts/have-8-petri.md) | ALIVE | HAVE component 8 — RP-04 Petri conformance over OCEL 2.0 **NO-CONTEXT** |
@@ -86,11 +88,13 @@ count, or PASS/FAIL token) found in the file.
 | i26-canonica | [i26-canonical-residual.md](receipts/i26-canonical-residual.md) | PASS | i26 — Canonical projection residual drift (capabilities.json) **NO-CONTEXT** |
 | i26-enqueue- | [i26-enqueue-shape.md](receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) **NO-CONTEXT** |
 | i26-fence11- | [i26-fence11-quiet.md](receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 **NO-CONTEXT** |
+| i27-determin | [i27-deterministic-pair.md](receipts/i27-deterministic-pair.md) | ALIVE | i27 — deterministic pair (v2-soak) + pplan lens7 extension **NO-CONTEXT** |
 | i27-rotating | [i27-rotating-bisect.md](receipts/i27-rotating-bisect.md) | UNKNOWN | i27 — solo bisect of the v2-soak rotating faces **NO-CONTEXT** |
 | i28-azsim-re | [i28-azsim-regression.md](receipts/i28-azsim-regression.md) | UNKNOWN | i28 — azsim regression court (full set, current tree) **NO-CONTEXT** |
 | i28-budget-e | [i28-budget-e2e.md](receipts/i28-budget-e2e.md) | FAIL | i28 — Budget gate end-to-end verification (solo) **NO-CONTEXT** |
 | i28-pinion-r | [i28-pinion-reaudit.md](receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) **NO-CONTEXT** |
 | i28-sleep-ga | [i28-sleep-gate-full.md](receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) **NO-CONTEXT** |
+| i28-stress-v | [i28-stress-verify.md](receipts/i28-stress-verify.md) | PARTIAL_ALIVE | i28 — Stress Tier Verification (Current Tree) **NO-CONTEXT** |
 | mod-r1-scaff | [mod-r1-scaffold.md](receipts/mod-r1-scaffold.md) | ALIVE | mod-r1-scaffold — ratchet mod scaffold **NO-CONTEXT** |
 | mod-r10-docs | [mod-r10-docs.md](receipts/mod-r10-docs.md) | PASS | mod-r10: ratchet mod DOCS + INSTALL lane **NO-CONTEXT** |
 | mod-r2-state | [mod-r2-state.md](receipts/mod-r2-state.md) | PASS | mod-r2-state (ratchet mod state module) **NO-CONTEXT** |

@@ -1,4 +1,4 @@
-Code.require_file("test/support/assert_eventually.ex", "/burn-evidence")
+Code.require_file("../support/assert_eventually.ex", __DIR__)
 
 defmodule Smalt.Azsim.AzureCommonIssuesTest do
   @moduledoc """

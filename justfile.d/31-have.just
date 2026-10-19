@@ -67,7 +67,6 @@ HAVE_DIR := root / "tmp" / "have"
 # canonical settlement Petri net. Exit 0 conformant / 1 imbalance
 # (REGRESSION quarantines to tmp/have/QUARANTINE) / 2 usage/IO.
 @have-rp04:
-    # RP-04 formal conformance (petri_conformance.py)
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{root}}"
@@ -98,29 +97,30 @@ HAVE_DIR := root / "tmp" / "have"
     fi
     echo "-- alert summary --"
     python3 - <<'PY'
-import json, os
-for name in ("state_ledger.jsonl", "dispatch_requests.jsonl"):
-    p = os.path.join("tmp", "have", name)
-    if not os.path.exists(p):
-        print(f"{name}: ABSENT (guard never ran)")
-        continue
-    sev, kinds = {}, {}
-    total = 0
-    for line in open(p):
-        line = line.strip()
-        if not line:
+    import json, os
+    for name in ("state_ledger.jsonl", "dispatch_requests.jsonl"):
+        p = os.path.join("tmp", "have", name)
+        if not os.path.exists(p):
+            print(f"{name}: ABSENT (guard never ran)")
             continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        total += 1
-        kinds[row.get("kind", row.get("type", "?"))] = kinds.get(row.get("kind", row.get("type", "?")), 0) + 1
-        s = row.get("severity")
-        if s:
-            sev[s] = sev.get(s, 0) + 1
-    print(f"{name}: {total} rows; kinds={kinds}" + (f"; severities={sev}" if sev else ""))
-PY
+        sev, kinds = {}, {}
+        total = 0
+        for line in open(p):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total += 1
+            k = row.get("kind", row.get("type", "?"))
+            kinds[k] = kinds.get(k, 0) + 1
+            s = row.get("severity")
+            if s:
+                sev[s] = sev.get(s, 0) + 1
+        print(f"{name}: {total} rows; kinds={kinds}" + (f"; severities={sev}" if sev else ""))
+    PY
 
 # Print (never install) the two cron lines for the HAVE loops, adapted from
 # docs/reference/have-runbook.md templates with this checkout's absolute path.
@@ -129,8 +129,8 @@ PY
     set -euo pipefail
     ROOT="{{root}}"
     cat <<EOF
-# HAVE loops — add with 'crontab -e'. Print-only recipe; nothing was installed.
-*/5 * * * * cd $ROOT && python3 scripts/have/pool_saturation_guard.py >> $ROOT/tmp/have/cron.log 2>&1
-*/30 * * * * cd $ROOT && python3 scripts/have/meta_watchdog.py >> $ROOT/tmp/have/cron.log 2>&1
-EOF
+    # HAVE loops — add with 'crontab -e'. Print-only recipe; nothing was installed.
+    */5 * * * * cd $ROOT && python3 scripts/have/pool_saturation_guard.py >> $ROOT/tmp/have/cron.log 2>&1
+    */30 * * * * cd $ROOT && python3 scripts/have/meta_watchdog.py >> $ROOT/tmp/have/cron.log 2>&1
+    EOF
     echo "[HAVE-INSTALL-CRONTAB] printed 2 lines; install manually with 'crontab -e' (never auto-install)"

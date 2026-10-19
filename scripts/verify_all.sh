@@ -153,6 +153,22 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# (h) HAVE stages (justfile.d/31-have.just, v26.10.18 component 9) —
+#     enforce-gated, sleep-gate precedent. Default: LOUD-SKIP with the live
+#     reason; HAVE_ENFORCE=1 runs the offline-safe pair for real (guard cycle
+#     + telemetry emit). The watchdog live-run is NOT wired here by design:
+#     its enforce path sweeps dead beams — run `just have-watchdog` /
+#     `just have-rp01` explicitly, armed via HAVE_ENFORCE=1.
+# -----------------------------------------------------------------------------
+if [ "${HAVE_ENFORCE:-0}" = "1" ]; then
+  run_stage "have-guard" -- just --justfile "$JUSTFILE" have-guard
+  run_stage "have-telemetry" -- just --justfile "$JUSTFILE" have-telemetry
+else
+  skip_stage "have-guard" "un-enforced pending cron install (just have-install-crontab); HAVE_ENFORCE=1 to enforce"
+  skip_stage "have-telemetry" "un-enforced pending cron install; HAVE_ENFORCE=1 to enforce"
+fi
+
+# -----------------------------------------------------------------------------
 # Final table + aggregate
 # -----------------------------------------------------------------------------
 echo ""
