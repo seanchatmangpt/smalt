@@ -14,6 +14,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   Create-or-overwrite verbs (e.g. Put Block List) resolve the arm from
   blob existence — never hardcode the arm at the call site.
   """
+  alias Smalt.DataPlane.BlobService
   alias Smalt.DataPlane.ConditionalHeaders
   alias Smalt.Store
 
@@ -65,7 +66,8 @@ defmodule Smalt.DataPlane.BlobStorage do
     now = now_ms(opts)
 
     with {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
-         :ok <- check_worm(container_meta, now) do
+         :ok <- check_worm(container_meta, now),
+         :ok <- check_lease_on_delete(container_meta, opts, now) do
       base = "#{account}/#{container}/"
 
       # Cascade deletion of blobs, policies, blocks, snapshots under container
@@ -97,6 +99,11 @@ defmodule Smalt.DataPlane.BlobStorage do
 
       {:error, {:worm, reason}} ->
         {:error, 409, "ContainerLocked", worm_message_reason(reason)}
+
+      # KD-108: active lease blocks Delete Container (409 ContainerLeased)
+      # unless the request carries the matching x-ms-lease-id.
+      {:error, 409, "ContainerLeased", msg} ->
+        {:error, 409, "ContainerLeased", msg}
     end
   end
 
@@ -1861,7 +1868,353 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp default_until(_, _), do: nil
 
-  defp container_key(account, container), do: "#{account}/#{container}"
+  # ---------------------------------------------------------------------------
+  # KD-COVERS: KD-108 — container lease + ACL surface.
+  # Container lease (KD-108) — `?comp=lease` surface. Lease state lives in the
+  # container row's existing map (additive "lease" key, no new Store table).
+  # Azure shapes: acquire -> 201 + ETag/Last-Modified/x-ms-lease-id; renew ->
+  # 200; release -> 200; break -> 202 + x-ms-lease-time. An ACTIVE lease
+  # (state "leased", unexpired) blocks Delete Container -> 409 ContainerLeased
+  # unless the request carries the matching x-ms-lease-id; a BROKEN lease does
+  # not block (Azure parity: break leaves the lease breakable-releaseable).
+  # ---------------------------------------------------------------------------
+  @lease_actions ~w(acquire renew release break)
+
+  @doc """
+  Container lease operations (`PUT ?comp=lease&restype=container` with
+  `x-ms-lease-action`). State rides the container record map — no new table.
+  Returns `{:ok, status, headers, nil}` or `{:error, status, code, msg}`.
+  """
+  def lease_container(account, container, action, headers \\ %{}, opts \\ []) do
+    container_key = container_key(account, container)
+    now = now_ms(opts)
+    lease_id = header_value(headers, "x-ms-lease-id")
+
+    with {:ok, record} <- Store.get(:smalt_blob_containers, container_key) do
+      case normalize_action(action) do
+        :acquire ->
+          case lease_duration(headers) do
+            {:ok, seconds} ->
+              lease = Map.get(record, "lease")
+
+              if lease_active?(lease, now) do
+                {:error, 409, "LeaseAlreadyPresent",
+                 "There is already a lease present on the container."}
+              else
+                id = request_id()
+                expires = if seconds == :infinity, do: :infinity, else: now + seconds * 1000
+
+                new_lease = %{
+                  "id" => id,
+                  "state" => "leased",
+                  "expires_at" => expires,
+                  "duration" => seconds
+                }
+
+                put_lease(container_key, record, new_lease)
+                {:ok, 201, lease_success_headers(record, id), nil}
+              end
+
+            {:error, status, code, msg} ->
+              {:error, status, code, msg}
+          end
+
+        :renew ->
+          with :ok <- require_lease(record, lease_id, now),
+               {:ok, seconds} <- lease_duration(headers) do
+            lease = extend_lease(Map.get(record, "lease"), now, seconds)
+            put_lease(container_key, record, lease)
+            {:ok, 200, lease_success_headers(record, Map.get(lease, "id")), nil}
+          end
+
+        :release ->
+          with :ok <- require_lease(record, lease_id, now, :leased_or_broken) do
+            put_lease(container_key, record, Map.delete(record, "lease"))
+            {:ok, 200, lease_success_headers(record, nil), nil}
+          end
+
+        :break ->
+          with :ok <- require_lease(record, lease_id, now, :leased_or_broken) do
+            lease = Map.get(record, "lease")
+
+            remaining =
+              case Map.get(lease, "expires_at") do
+                :infinity -> 0
+                ms when is_integer(ms) -> max(0, div(ms - now, 1000))
+                _ -> 0
+              end
+
+            broken = Map.merge(lease, %{"state" => "broken", "expires_at" => nil})
+
+            put_lease(container_key, record, broken)
+            {:ok, 202, Map.put(lease_success_headers(record, Map.get(lease, "id")), "x-ms-lease-time", Integer.to_string(remaining)), nil}
+          end
+
+        other when other in [nil, :error] ->
+          {:error, 400, "InvalidQueryParameterValue",
+           "Invalid or missing x-ms-lease-action (expected acquire|renew|release|break)."}
+      end
+    else
+      :error -> {:error, 404, "ContainerNotFound", "The specified container does not exist."}
+    end
+  end
+
+  defp normalize_action(a) when is_binary(a) do
+    case String.downcase(a) do
+      a when a in @lease_actions -> String.to_existing_atom(a)
+      _ -> :error
+    end
+  end
+
+  defp normalize_action(_), do: :error
+
+  # NOTE: lease-id presence rules — release/break/renew REQUIRE a lease id
+  # header; acquire does not. Mismatch is 409 LeaseIdMismatchWithLeaseOperation.
+  # Renew requires an ACTIVE lease; release/break accept a lease in either
+  # the leased OR broken state (Azure parity: break leaves the lease
+  # breakable-releaseable — refusing release after break deadlocks the lease).
+  defp require_lease(record, lease_id, now, mode \\ :active) do
+    lease = Map.get(record, "lease")
+    present? = lease_active?(lease, now) or mode == :leased_or_broken and lease_present?(lease)
+
+    cond do
+      not present? ->
+        {:error, 409, "LeaseNotPresentWithLeaseOperation",
+         "There is no active lease on the container."}
+
+      is_nil(lease_id) ->
+        {:error, 409, "LeaseIdMismatchWithLeaseOperation",
+         "The lease id is missing (send the x-ms-lease-id header)."}
+
+      lease_id != Map.get(lease, "id") ->
+        {:error, 409, "LeaseIdMismatchWithLeaseOperation",
+         "The lease id specified did not match the lease id for the container."}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp lease_present?(lease) when is_map(lease), do: Map.get(lease, "state") in ["leased", "broken"]
+  defp lease_present?(_), do: false
+
+  defp lease_active?(nil, _now), do: false
+
+  defp lease_active?(lease, now) when is_map(lease) do
+    Map.get(lease, "state") == "leased" and
+      (Map.get(lease, "expires_at") == :infinity or
+         (is_integer(Map.get(lease, "expires_at")) and Map.get(lease, "expires_at") > now))
+  end
+
+  # x-ms-lease-duration: "-1" (infinite) or a positive integer seconds; absent
+  # defaults to infinite (Azure parity for acquire). Anything else is a typed
+  # 400 InvalidHeaderValue.
+  defp lease_duration(headers) do
+    case header_value(headers, "x-ms-lease-duration") do
+      nil ->
+        {:ok, :infinity}
+
+      "-1" ->
+        {:ok, :infinity}
+
+      raw when is_binary(raw) ->
+        case Integer.parse(raw) do
+          {n, ""} when n > 0 -> {:ok, n}
+          _ -> {:error, 400, "InvalidHeaderValue", "x-ms-lease-duration must be -1 or a positive integer number of seconds."}
+        end
+
+      _ ->
+        {:error, 400, "InvalidHeaderValue", "x-ms-lease-duration must be -1 or a positive integer number of seconds."}
+    end
+  end
+
+  defp extend_lease(lease, _now, :infinity), do: Map.put(lease, "expires_at", :infinity)
+
+  defp extend_lease(lease, now, n) when is_integer(n),
+    do: Map.put(lease, "expires_at", now + n * 1000)
+
+  defp container_key(account, container), do: account <> "/" <> container
+
+  defp put_lease(container_key, record, lease) do
+    record = Map.put(record, "lease", lease)
+    Store.put(:smalt_blob_containers, container_key, record)
+  end
+
+  # Standard success header set for lease ops (Azure shape): quoted ETag +
+  # RFC 1123 Last-Modified from the container record, x-ms-lease-id when one
+  # applies, request-id + version stamped by blob_route entry.
+  defp lease_success_headers(record, lease_id) do
+    {:ok, created_dt, _} = DateTime.from_iso8601(record["created"])
+    lm = Calendar.strftime(created_dt, "%a, %d %b %Y %H:%M:%S GMT")
+
+    base = %{
+      "etag" => container_etag_value(record),
+      "last-modified" => lm,
+      "x-ms-request-id" => request_id(),
+      "x-ms-version" => "2021-12-02"
+    }
+
+    if lease_id, do: Map.put(base, "x-ms-lease-id", lease_id), else: base
+  end
+
+  # BlobService.container_etag/1 is the canonical quoted container ETag
+  # (md5 of account/container/created_at); reuse, never re-derive.
+  defp container_etag_value(record), do: BlobService.container_etag(record)
+
+  # Azure Delete Container conflict: an ACTIVE lease (leased + unexpired)
+  # refuses 409 ContainerLeased unless the request carries the matching
+  # x-ms-lease-id. A broken or absent lease never blocks.
+  defp check_lease_on_delete(container_meta, headers, now) do
+    lease = Map.get(container_meta, "lease")
+
+    if lease_active?(lease, now) do
+      supplied = header_value(headers, "x-ms-lease-id")
+
+      if supplied == Map.get(lease, "id") do
+        :ok
+      else
+        {:error, 409, "ContainerLeased",
+         "There is currently a lease on the container and no lease ID was specified in the request."}
+      end
+    else
+      :ok
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Container ACL / signed identifiers (KD-108) — GET/PUT ?comp=acl&restype=
+  # container. Stored as an additive "acl" key in the container row's map
+  # (list of identifier maps). Azure shapes: PUT -> 204 No Content; GET ->
+  # 200 SignedIdentifiers XML. Bounded at 5 signed identifiers; permission
+  # letters restricted to rpwdl. When SAS verification (lib/smalt/auth/sas.ex)
+  # evaluates signed identifiers, it reads this row via get_acl/2.
+  # ---------------------------------------------------------------------------
+  @max_signed_identifiers 5
+  @acl_permissions ~w(r p w d l)
+
+  @doc "Signed identifiers for a container (stored additive in the container row)."
+  def get_acl(account, container) do
+    case Store.get(:smalt_blob_containers, container_key(account, container)) do
+      {:ok, record} -> {:ok, Map.get(record, "acl", [])}
+      :error -> {:error, :container_not_found}
+    end
+  end
+
+  @doc """
+  Put Container ACL: store <=5 signed identifiers. Body is the Azure
+  SignedIdentifiers XML (parsed here); an empty body clears the ACL.
+  Returns `{:ok, 204, headers, nil}` or `{:error, status, code, msg}`.
+  """
+  def set_container_acl(account, container, body, _headers \\ %{}, _opts \\ []) do
+    container_key = container_key(account, container)
+
+    with {:ok, record} <- Store.get(:smalt_blob_containers, container_key),
+         {:ok, identifiers} <- parse_signed_identifiers(body) do
+      record = Map.put(record, "acl", identifiers)
+      Store.put(:smalt_blob_containers, container_key, record)
+
+      {:ok, 204,
+       %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02",
+         "etag" => container_etag_value(record),
+         "last-modified" => Calendar.strftime(DateTime.from_iso8601(record["created"]) |> elem(1), "%a, %d %b %Y %H:%M:%S GMT")},
+       nil}
+    else
+      :error -> {:error, 404, "ContainerNotFound", "The specified container does not exist."}
+      {:error, _, _, _} = e -> e
+    end
+  end
+
+  # Minimal XML parse of the SignedIdentifiers document. Azure emits one
+  # <SignedIdentifier> per id with <Id>, and optionally <AccessPolicy> with
+  # <Start>/<Expiry>/<Permission>. Regex-parse only this bounded grammar.
+  def parse_signed_identifiers(body) when body in [nil, ""] do
+    {:ok, []}
+  end
+
+  def parse_signed_identifiers(body) when is_binary(body) do
+    id_blocks = Regex.scan(~r/<SignedIdentifier>(.*?)<\/SignedIdentifier>/s, body)
+
+    identifiers =
+      Enum.map(id_blocks, fn [_, block] ->
+        id =
+          case Regex.run(~r/<Id>(.*?)<\/Id>/s, block) do
+            [_, v] -> v
+            _ -> ""
+          end
+
+        {start, expiry, perms} =
+          case Regex.run(~r/<AccessPolicy>(.*?)<\/AccessPolicy>/s, block) do
+            [_, ap] ->
+              {xml_text(ap, "Start"), xml_text(ap, "Expiry"),
+               xml_text(ap, "Permission")}
+
+            _ ->
+              {nil, nil, nil}
+          end
+
+        %{"id" => id, "start" => start, "expiry" => expiry, "permissions" => perms}
+      end)
+
+    with :ok <- check_acl_count(identifiers),
+         :ok <- check_acl_permissions(identifiers) do
+      {:ok, identifiers}
+    end
+  end
+
+  def parse_signed_identifiers(_), do: {:error, 400, "InvalidXmlDocument", "Request body is not valid SignedIdentifiers XML."}
+
+  defp check_acl_count(identifiers) when length(identifiers) <= @max_signed_identifiers, do: :ok
+
+  defp check_acl_count(_),
+    do: {:error, 400, "InvalidArgument", "Too many signed identifiers (max 5 per container)."}
+
+  defp check_acl_permissions(identifiers) do
+    bad =
+      Enum.find(identifiers, fn idf ->
+        perms = idf["permissions"]
+
+        is_binary(perms) and perms != "" and
+          not (perms |> String.graphemes() |> Enum.all?(&(&1 in @acl_permissions)))
+      end)
+
+    if bad,
+      do: {:error, 400, "InvalidXmlDocument",
+           "Invalid permission letter in SignedIdentifier AccessPolicy (allowed: r, p, w, d, l)."},
+      else: :ok
+  end
+
+  defp xml_text(block, tag) do
+    case Regex.run(~r/<#{tag}>(.*?)<\/#{tag}>/s, block) do
+      [_, v] -> v
+      _ -> nil
+    end
+  end
+
+  @doc "Render the GET ?comp=acl SignedIdentifiers XML document."
+  def acl_xml(identifiers) do
+    inner =
+      Enum.map(identifiers, fn idf ->
+        policy =
+          if idf["start"] || idf["expiry"] || idf["permissions"] do
+            "<AccessPolicy>" <>
+              (if idf["start"], do: "<Start>#{idf["start"]}</Start>", else: "") <>
+              (if idf["expiry"], do: "<Expiry>#{idf["expiry"]}</Expiry>", else: "") <>
+              (if idf["permissions"], do: "<Permission>#{idf["permissions"]}</Permission>", else: "") <>
+              "</AccessPolicy>"
+          else
+            ""
+          end
+
+        "<SignedIdentifier><Id>#{xml_escape(idf["id"] || "")}</Id>#{policy}</SignedIdentifier>"
+      end)
+      |> Enum.join()
+
+    "<?xml version=\"1.0\" encoding=\"utf-8\"?><SignedIdentifiers>#{inner}</SignedIdentifiers>"
+  end
+
+  # Compile-freeze unblock (lane verification/py, disclosed): the newer def
+  # xml_escape/1 above covers this older private copy — the duplicate name
+  # does not compile.
 
   @doc false
   def ensure_policy_table do
