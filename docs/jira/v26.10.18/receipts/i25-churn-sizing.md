@@ -1,6 +1,7 @@
 # i25 — store_dets churn court round-sizing (i24 leftover face)
 
 Standing: PARTIAL_ALIVE (fix landed, green 3/3 under the pinned 4-hog protocol;
+Context: solo(test/store_dets_test.exs:152 --include stress, pinned 4-hog protocol, green 3/3)
 pre-session red witness stands in i24; in-session red NOT witnessed — see
 "Red honesty" below)
 

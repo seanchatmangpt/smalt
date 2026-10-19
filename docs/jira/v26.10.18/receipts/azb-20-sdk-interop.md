@@ -2,6 +2,7 @@
 
 - **Ticket**: AZB-20 (`docs/jira/v26.10.18/azsim-burn/TICKETS.md`, binding)
 - **Standing**: PARTIAL_ALIVE — per-plane matrix + header audit executed for real; accept `just azsim-sdk` exit 0 NOT met (6 FAIL-class cells stand as open typed gaps)
+Context: pair(test/lro_test.exs, test/azsim/topology_test.exs — 45 tests) + slice(test/amqp — 331 tests) + solo(test/sdk-full/azb20/run.mjs per-plane orchestrator)
 - **Subject SHA**: `467d7d13ccbf83ff0ab51a828a9781b165cec847` (shared checkout; other lanes hold unrelated in-flight files — untouched by this lane)
 - **Date**: 2026-10-18
 - **Commit**: not minted (no-git constraint per dispatch)

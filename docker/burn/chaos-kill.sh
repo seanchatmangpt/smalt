@@ -125,6 +125,11 @@ RUN_ID="chaos-kill-$(date +%s)"
 # AZB-14: storm cycles 1..SMALT_STORM_CYCLES join cycle 0 (the four eval
 # scenarios) in the expected matrix — --gate refuses a dropped storm cycle.
 SABOTAGE_MODE=${SMALT_CHAOS_SABOTAGE:-}
+# AZB-17 plane-scoped scenario selection: SMALT_CHAOS_SCENARIO=s1..s5 (full
+# name or sN) runs ONLY that eval scenario (the matrix per-plane chaos stage);
+# unset = legacy behavior (s1-s4 + storm).
+SCENARIO_ONLY=${SMALT_CHAOS_SCENARIO:-}
+want() { case "$SCENARIO_ONLY" in ""|all) return 0 ;; "$1"*) return 0 ;; *) return 1 ;; esac; }
 if [ -n "$SABOTAGE_MODE" ]; then
   echo "[chaos-kill] sabotage mode=$SABOTAGE_MODE: skipping s1-s4 + storm (AV leg decides)"
 fi
@@ -250,7 +255,7 @@ storm_fail() { # storm_fail <cycle> <detail> — jidoka typed stop
   exit 1
 }
 
-if [ -z "$SABOTAGE_MODE" ]; then
+if [ -z "$SABOTAGE_MODE" ] && [ -z "$SCENARIO_ONLY" ]; then
 for cycle in $(seq 1 "$STORM_CYCLES"); do
   lcg; junk=$(( (LCG % 64) + 1 ))
   lcg; variant=$(( LCG % 23 ))
@@ -357,7 +362,7 @@ if [ "${SMALT_CHAOS_SABOTAGE:-}" = "dets-unrepaired" ]; then
 fi
 
 
-if [ -z "$SABOTAGE_MODE" ]; then run_eval s1-store-kill "$s1" || exit 1; fi
+if [ -z "$SABOTAGE_MODE" ] && want s1; then run_eval s1-store-kill "$s1" || exit 1; fi
 
 # ==========================================================================
 # s2 — LRO sweeper killed mid-flip: one-terminal convergence
@@ -431,7 +436,7 @@ true = (et1 == et2)
 IO.puts("CHAOS_OK s2 lro-terminal=#{terminal_status} idempotent")
 '
 
-if [ -z "$SABOTAGE_MODE" ]; then run_eval s2-lro-flip "$s2" || exit 1; fi
+if [ -z "$SABOTAGE_MODE" ] && want s2; then run_eval s2-lro-flip "$s2" || exit 1; fi
 
 # ==========================================================================
 # s3 — wasm engine killed mid-seal: typed vocabulary + supervised restart
@@ -515,7 +520,7 @@ true = sealed?
 IO.puts("CHAOS_OK s3 engine_unavailable-witnessed-then-seal-ok")
 '
 
-if [ -z "$SABOTAGE_MODE" ]; then run_eval s3-wasm-seal "$s3" || exit 1; fi
+if [ -z "$SABOTAGE_MODE" ] && want s3; then run_eval s3-wasm-seal "$s3" || exit 1; fi
 
 # ==========================================================================
 # s4 — AMQP queue filled to 4096, #4097 refused
@@ -550,7 +555,32 @@ first =
 IO.puts("CHAOS_OK s4 capacity-4096-refused-4097-typed")
 '
 
-if [ -z "$SABOTAGE_MODE" ]; then run_eval s4-amqp-capacity "$s4" || exit 1; fi
+if [ -z "$SABOTAGE_MODE" ] && want s4; then run_eval s4-amqp-capacity "$s4" || exit 1; fi
+
+# ==========================================================================
+# s5 — identity-plane STS gate killed: mint gate closes typed, reopens on
+# supervised restart (AZB-15 scenario 3, in-image). Identity-only profile:
+# Smalt.Supervisor holds IdentitySupervisor; killing it is the DR kill window.
+# ==========================================================================
+s5='
+{:ok, _} = Application.ensure_all_started(:smalt)
+sup = Smalt.Supervisor
+pid = Process.whereis(Smalt.Plane.IdentitySupervisor)
+true = is_pid(pid)
+:ok = Supervisor.terminate_child(sup, Smalt.Plane.IdentitySupervisor)
+false = Smalt.Plane.Identity.StsGate.mint_allowed?()
+:ok = Supervisor.restart_child(sup, Smalt.Plane.IdentitySupervisor)
+open =
+  Enum.reduce_while(1..600, false, fn _, acc ->
+    case Smalt.Plane.Identity.StsGate.mint_allowed?() do
+      true -> {:halt, true}
+      _ -> {:cont, false}
+    end
+  end)
+true = open
+IO.puts("CHAOS_OK s5 identity-sts-gate-closed-typed-then-reopened")
+'
+if [ -z "$SABOTAGE_MODE" ] && want s5; then run_eval s5-identity-sts "$s5" || exit 1; fi
 
 # ==========================================================================
 # gates — the 6 invariant gates re-run green
@@ -581,7 +611,7 @@ if [ "$GATES_HOST" = "1" ] && [ -n "$GATES_DIR" ] && [ -d "$GATES_DIR" ]; then
   echo "[chaos-kill] PASS: 4 scenarios + 6 gates green, receipt=$RECEIPT"
 else
   # In-image mode: 4 scenarios executed clean
-  emit "probe" 0 0 "in-image-4-scenarios-verified"
+  emit "probe" 0 0 "in-image-verified scenarios=${SCENARIO_ONLY:-all}"
   emit_run_receipt
   echo "[chaos-kill] PASS: 4 scenarios green (in-image standalone mode), receipt=$RECEIPT"
   exit 0

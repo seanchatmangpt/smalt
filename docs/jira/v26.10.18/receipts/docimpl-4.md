@@ -1,6 +1,7 @@
 # docimpl-4 — D12/D13/D14 docs-audit implementation receipt
 
 Standing: ALIVE
+Context: solo(docs-audit D12/D13/D14 verification greps + docker compose config gate; no mix test invocation)
 Date: 2026-10-18
 Subject: smalt @ 05f5a9b (edits landed on disk; concurrent coordinator lanes
 swept most of them into commits 756e806 / 05f5a9b; `workspace/ARCHITECTURE.md`

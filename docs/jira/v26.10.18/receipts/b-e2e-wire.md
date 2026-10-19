@@ -1,7 +1,7 @@
 # b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18)
 
 Standing: ALIVE (all validation gates green on the touched surfaces)
-Context: slice of v26.10.18 rewrite batch (e2e-wire draft D1/D4; D2/D3 out of
+Context: slice(e2e-wire draft D1/D4 of the v26.10.18 rewrite batch; D2/D3 out of lease; s6/s9 run.sh untouched; docs lane, no test invocation)
 this slice's lease; s6/s9 run.sh scripts untouched).
 
 ## Scope

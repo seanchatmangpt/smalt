@@ -411,10 +411,10 @@ count, or PASS/FAIL token) found in the file.
 | r244-publish | [r244-publish-record.md](../v26.10.17/receipts/r244-publish-record.md) | PASS | r244 — B1 CLOSED: ex4pm hex-only resolution + smalt package builds green |
 | r245-t3-tear | [r245-t3-teardown-fix.md](../v26.10.17/receipts/r245-t3-teardown-fix.md) | PASS | r245 — T3 sdk-smoke teardown deadlock root-caused + fixed; leg green |
 | r246-attempt | [r246-attempt4-invalid-typed-red.md](../v26.10.17/receipts/r246-attempt4-invalid-typed-red.md) | UNKNOWN | r246 — court-x2 attempt 4: INVALID (mid-gate tree edit) + typed RED; WO-2 carries to v26.10.18 **NO-CONTEXT** |
-| adversarial- | [adversarial-joe-attack-matrix.md](../v26.10.18/receipts/adversarial-joe-attack-matrix.md) | PASS | Adversarial Joe Armstrong Attack Matrix Receipt **NO-CONTEXT** |
-| azb-01-image | [azb-01-image-pin.md](../v26.10.18/receipts/azb-01-image-pin.md) | ALIVE | AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5) **NO-CONTEXT** |
-| azb-02-netns | [azb-02-netns.md](../v26.10.18/receipts/azb-02-netns.md) | ALIVE | AZB-02 Per-container network namespaces, zero host port publish **NO-CONTEXT** |
-| azb-03-burn- | [azb-03-burn-schema.md](../v26.10.18/receipts/azb-03-burn-schema.md) | ALIVE | AZB-03 — Burn JSONL receipt schema + validator **NO-CONTEXT** |
+| adversarial- | [adversarial-joe-attack-matrix.md](../v26.10.18/receipts/adversarial-joe-attack-matrix.md) | PASS | Adversarial Joe Armstrong Attack Matrix Receipt |
+| azb-01-image | [azb-01-image-pin.md](../v26.10.18/receipts/azb-01-image-pin.md) | ALIVE | AZB-01 Pinned warm image (OTP 28 + Elixir 1.19.5) |
+| azb-02-netns | [azb-02-netns.md](../v26.10.18/receipts/azb-02-netns.md) | ALIVE | AZB-02 Per-container network namespaces, zero host port publish |
+| azb-03-burn- | [azb-03-burn-schema.md](../v26.10.18/receipts/azb-03-burn-schema.md) | ALIVE | AZB-03 — Burn JSONL receipt schema + validator |
 | azb-04-plane | [azb-04-plane-loader.md](../v26.10.18/receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT |
 | azb-05-contr | [azb-05-control-plane.md](../v26.10.18/receipts/azb-05-control-plane.md) | PASS | AZB-05 — Control plane profile (ARM) — RECEIPT |
 | azb-06-data- | [azb-06-data-plane.md](../v26.10.18/receipts/azb-06-data-plane.md) | PASS | AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT |
@@ -424,18 +424,18 @@ count, or PASS/FAIL token) found in the file.
 | azb-10-cross | [azb-10-cross-plane.md](../v26.10.18/receipts/azb-10-cross-plane.md) | ALIVE | AZB-10 Cross-plane wiring (loopback, zero egress) |
 | azb-11-isola | [azb-11-isolation-court.md](../v26.10.18/receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) |
 | azb-11b-leak | [azb-11b-leak-remediation.md](../v26.10.18/receipts/azb-11b-leak-remediation.md) | PARTIAL_ALIVE | AZB-11b receipt — runtime-twin leak remediation slice (v26.10.18) |
-| azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
-| azb-13-boot- | [azb-13-boot-burn.md](../v26.10.18/receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
-| azb-14-sigki | [azb-14-sigkill-storm.md](../v26.10.18/receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary **NO-CONTEXT** |
+| azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) |
+| azb-13-boot- | [azb-13-boot-burn.md](../v26.10.18/receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) |
+| azb-14-sigki | [azb-14-sigkill-storm.md](../v26.10.18/receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary |
 | azb-15-dr-su | [azb-15-dr-subtrees.md](../v26.10.18/receipts/azb-15-dr-subtrees.md) | ALIVE | AZB-15 Plane subtree DR kills (enterprise disaster scenarios) |
-| azb-16-amqp- | [azb-16-amqp-saturation.md](../v26.10.18/receipts/azb-16-amqp-saturation.md) | ALIVE | AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard **NO-CONTEXT** |
-| azb-19-overl | [azb-19-overlap.md](../v26.10.18/receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling **NO-CONTEXT** |
-| azb-20-sdk-i | [azb-20-sdk-interop.md](../v26.10.18/receipts/azb-20-sdk-interop.md) | PARTIAL_ALIVE | AZB-20 — Unmodified Microsoft SDK interop per plane **NO-CONTEXT** |
-| azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
-| azb-22-burn- | [azb-22-burn-ring.md](../v26.10.18/receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) **NO-CONTEXT** |
+| azb-16-amqp- | [azb-16-amqp-saturation.md](../v26.10.18/receipts/azb-16-amqp-saturation.md) | ALIVE | AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard |
+| azb-19-overl | [azb-19-overlap.md](../v26.10.18/receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling |
+| azb-20-sdk-i | [azb-20-sdk-interop.md](../v26.10.18/receipts/azb-20-sdk-interop.md) | PARTIAL_ALIVE | AZB-20 — Unmodified Microsoft SDK interop per plane |
+| azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) |
+| azb-22-burn- | [azb-22-burn-ring.md](../v26.10.18/receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) |
 | b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
-| b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
-| b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) **NO-CONTEXT** |
+| b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) |
+| b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) |
 | b-lro-notifi | [b-lro-notifier.md](../v26.10.18/receipts/b-lro-notifier.md) | ALIVE | B0: LRO one-writer convergence (Notifier + await) |
 | b-wasm-super | [b-wasm-supervisor.md](../v26.10.18/receipts/b-wasm-supervisor.md) | ALIVE | b-wasm-supervisor - WasmEngine supervised restart (lib redesign Part 1) |
 | b0-foundatio | [b0-foundations.md](../v26.10.18/receipts/b0-foundations.md) | ALIVE | B0 FOUNDATIONS — test/support compile path + canonical helpers |
@@ -447,61 +447,76 @@ count, or PASS/FAIL token) found in the file.
 | b6-cites | [b6-cites.md](../v26.10.18/receipts/b6-cites.md) | PASS | B6 — cite-system swap (apiversion-refusal draft, files 1+2) |
 | b7-tiers | [b7-tiers.md](../v26.10.18/receipts/b7-tiers.md) | PARTIAL_ALIVE | B7 — harness/tiers batch receipt (stress tier + budget gate) |
 | b8-doctrine | [b8-doctrine.md](../v26.10.18/receipts/b8-doctrine.md) | PARTIAL_ALIVE | B8 — doctrine/gates (sleep gate + NO-SLEEP-DOCTRINE landing) |
-| burn-image | [burn-image.md](../v26.10.18/receipts/burn-image.md) | ALIVE | Burn-suite image receipt (v26.10.18 azsim-burn) **NO-CONTEXT** |
-| burn-scripts | [burn-scripts.md](../v26.10.18/receipts/burn-scripts.md) | PARTIAL_ALIVE | docker/burn boot-burn + chaos-kill scripts **NO-CONTEXT** |
-| burn-soak-li | [burn-soak-live.md](../v26.10.18/receipts/burn-soak-live.md) | PARTIAL_ALIVE | Burn-soak live host receipt (first live host burn-soak, v26.10.18) **NO-CONTEXT** |
-| burn-soak-sc | [burn-soak-scripts.md](../v26.10.18/receipts/burn-soak-scripts.md) | PARTIAL_ALIVE | burn lane — soak.sh + parallel-matrix.sh + 30-burn.just **NO-CONTEXT** |
+| burn-image | [burn-image.md](../v26.10.18/receipts/burn-image.md) | ALIVE | Burn-suite image receipt (v26.10.18 azsim-burn) |
+| burn-scripts | [burn-scripts.md](../v26.10.18/receipts/burn-scripts.md) | PARTIAL_ALIVE | docker/burn boot-burn + chaos-kill scripts |
+| burn-soak-li | [burn-soak-live.md](../v26.10.18/receipts/burn-soak-live.md) | PARTIAL_ALIVE | Burn-soak live host receipt (first live host burn-soak, v26.10.18) |
+| burn-soak-sc | [burn-soak-scripts.md](../v26.10.18/receipts/burn-soak-scripts.md) | PARTIAL_ALIVE | burn lane — soak.sh + parallel-matrix.sh + 30-burn.just |
 | docimpl-1 | [docimpl-1.md](../v26.10.18/receipts/docimpl-1.md) | PASS | docimpl-1 — docs-audit D1+D11 implementation (README/CLAUDE.md/dev-loop) |
-| docimpl-2 | [docimpl-2.md](../v26.10.18/receipts/docimpl-2.md) | PASS | docimpl-2 — docs-audit D3 reference-surface implementation receipt **NO-CONTEXT** |
-| docimpl-3 | [docimpl-3.md](../v26.10.18/receipts/docimpl-3.md) | PASS | docimpl-3 — D4 explanation-page implementation (anchors, stale mechanisms, missing clusters) **NO-CONTEXT** |
-| docimpl-4 | [docimpl-4.md](../v26.10.18/receipts/docimpl-4.md) | ALIVE | docimpl-4 — D12/D13/D14 docs-audit implementation receipt **NO-CONTEXT** |
-| docimpl-5 | [docimpl-5.md](../v26.10.18/receipts/docimpl-5.md) | ALIVE | docimpl-5: D15 Diataxis gap pages (7) **NO-CONTEXT** |
-| docimpl-6 | [docimpl-6.md](../v26.10.18/receipts/docimpl-6.md) | ALIVE | docimpl-6 — moduledoc audit (d8 re-run), 2026-10-18 **NO-CONTEXT** |
-| docimpl-7 | [docimpl-7.md](../v26.10.18/receipts/docimpl-7.md) | PARTIAL_ALIVE | docimpl-7 — docs-audit D5 (C1-C7) implementation receipt **NO-CONTEXT** |
-| docimpl-8 | [docimpl-8.md](../v26.10.18/receipts/docimpl-8.md) | PASS | docimpl-8 — TEST_ISOLATION.md ground-truth rewrite (d6 findings) **NO-CONTEXT** |
-| docimpl-9 | [docimpl-9.md](../v26.10.18/receipts/docimpl-9.md) | PASS | docimpl-9 — D10 group A mechanical crosslink rewrite **NO-CONTEXT** |
-| have-1-ledge | [have-1-ledger.md](../v26.10.18/receipts/have-1-ledger.md) | PASS | HAVE-1: state_ledger.py — run_state.jsonl ledger **NO-CONTEXT** |
-| have-2-pool- | [have-2-pool-guard.md](../v26.10.18/receipts/have-2-pool-guard.md) | ALIVE | HAVE-2 pool saturation guard **NO-CONTEXT** |
-| have-3-watch | [have-3-watchdog.md](../v26.10.18/receipts/have-3-watchdog.md) | ALIVE | HAVE component 3 — scripts/have/meta_watchdog.py (Level-2 30m watchdog) **NO-CONTEXT** |
-| have-5-alert | [have-5-alerts.md](../v26.10.18/receipts/have-5-alerts.md) | PASS | HAVE-5: alert_policy.py — SEV matrix + jidoka engine **NO-CONTEXT** |
-| have-6-stora | [have-6-storage-probe.md](../v26.10.18/receipts/have-6-storage-probe.md) | ALIVE | HAVE-6 — RP-02 deterministic storage recovery probe **NO-CONTEXT** |
-| have-8-petri | [have-8-petri.md](../v26.10.18/receipts/have-8-petri.md) | ALIVE | HAVE component 8 — RP-04 Petri conformance over OCEL 2.0 **NO-CONTEXT** |
+| docimpl-2 | [docimpl-2.md](../v26.10.18/receipts/docimpl-2.md) | PASS | docimpl-2 — docs-audit D3 reference-surface implementation receipt |
+| docimpl-3 | [docimpl-3.md](../v26.10.18/receipts/docimpl-3.md) | PASS | docimpl-3 — D4 explanation-page implementation (anchors, stale mechanisms, missing clusters) |
+| docimpl-4 | [docimpl-4.md](../v26.10.18/receipts/docimpl-4.md) | ALIVE | docimpl-4 — D12/D13/D14 docs-audit implementation receipt |
+| docimpl-5 | [docimpl-5.md](../v26.10.18/receipts/docimpl-5.md) | ALIVE | docimpl-5: D15 Diataxis gap pages (7) |
+| docimpl-6 | [docimpl-6.md](../v26.10.18/receipts/docimpl-6.md) | ALIVE | docimpl-6 — moduledoc audit (d8 re-run), 2026-10-18 |
+| docimpl-7 | [docimpl-7.md](../v26.10.18/receipts/docimpl-7.md) | PARTIAL_ALIVE | docimpl-7 — docs-audit D5 (C1-C7) implementation receipt |
+| docimpl-8 | [docimpl-8.md](../v26.10.18/receipts/docimpl-8.md) | PASS | docimpl-8 — TEST_ISOLATION.md ground-truth rewrite (d6 findings) |
+| docimpl-9 | [docimpl-9.md](../v26.10.18/receipts/docimpl-9.md) | PASS | docimpl-9 — D10 group A mechanical crosslink rewrite |
+| have-1-ledge | [have-1-ledger.md](../v26.10.18/receipts/have-1-ledger.md) | PASS | HAVE-1: state_ledger.py — run_state.jsonl ledger |
+| have-11-dril | [have-11-drill.md](../v26.10.18/receipts/have-11-drill.md) | ALIVE | HAVE-11 end-to-end fault drill |
+| have-13-docs | [have-13-docs.md](../v26.10.18/receipts/have-13-docs.md) | PASS | HAVE-13: HAVE doc-tree integration (runbook, cross-links, recipes, DoD pin) |
+| have-2-pool- | [have-2-pool-guard.md](../v26.10.18/receipts/have-2-pool-guard.md) | ALIVE | HAVE-2 pool saturation guard |
+| have-3-watch | [have-3-watchdog.md](../v26.10.18/receipts/have-3-watchdog.md) | ALIVE | HAVE component 3 — scripts/have/meta_watchdog.py (Level-2 30m watchdog) |
+| have-4-telem | [have-4-telemetry.md](../v26.10.18/receipts/have-4-telemetry.md) | ALIVE | HAVE-4 — telemetry.py metric catalog emitter |
+| have-5-alert | [have-5-alerts.md](../v26.10.18/receipts/have-5-alerts.md) | PASS | HAVE-5: alert_policy.py — SEV matrix + jidoka engine |
+| have-6-stora | [have-6-storage-probe.md](../v26.10.18/receipts/have-6-storage-probe.md) | ALIVE | HAVE-6 — RP-02 deterministic storage recovery probe |
+| have-8-petri | [have-8-petri.md](../v26.10.18/receipts/have-8-petri.md) | ALIVE | HAVE component 8 — RP-04 Petri conformance over OCEL 2.0 |
+| have-9-justf | [have-9-justfile.md](../v26.10.18/receipts/have-9-justfile.md) | ALIVE | HAVE-9 justfile.d/31-have.just — `just have-*` operator surface |
 | i23-fence11- | [i23-fence11-flip.md](../v26.10.18/receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
 | i23-standalo | [i23-standalone-noise.md](../v26.10.18/receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing |
 | i24-store-de | [i24-store-dets-torn.md](../v26.10.18/receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) |
-| i24-warnings | [i24-warnings.md](../v26.10.18/receipts/i24-warnings.md) | PASS | i24-warnings — compile warnings blocking `--warnings-as-errors` **NO-CONTEXT** |
+| i24-warnings | [i24-warnings.md](../v26.10.18/receipts/i24-warnings.md) | PASS | i24-warnings — compile warnings blocking `--warnings-as-errors` |
 | i25-atom-bri | [i25-atom-bridge-noise.md](../v26.10.18/receipts/i25-atom-bridge-noise.md) | ALIVE | i25: atom_bridge test-harness teardown noise |
 | i25-c567 | [i25-c567.md](../v26.10.18/receipts/i25-c567.md) | PARTIAL_ALIVE | i25-c567 — c5/c6/c7 rewrite-draft landing (rewrite-drafts/c567.md) |
-| i25-churn-si | [i25-churn-sizing.md](../v26.10.18/receipts/i25-churn-sizing.md) | PARTIAL_ALIVE | i25 — store_dets churn court round-sizing (i24 leftover face) **NO-CONTEXT** |
-| i25-kill-sto | [i25-kill-storm-host.md](../v26.10.18/receipts/i25-kill-storm-host.md) | ALIVE | i25 — kill_storm.sh: AZB-14 HOST-FORM precursor (SIGKILL storm + DETS repair + typed vocabulary) **NO-CONTEXT** |
+| i25-churn-si | [i25-churn-sizing.md](../v26.10.18/receipts/i25-churn-sizing.md) | PARTIAL_ALIVE | i25 — store_dets churn court round-sizing (i24 leftover face) |
+| i25-kill-sto | [i25-kill-storm-host.md](../v26.10.18/receipts/i25-kill-storm-host.md) | ALIVE | i25 — kill_storm.sh: AZB-14 HOST-FORM precursor (SIGKILL storm + DETS repair + typed vocabulary) |
 | i25-lro-back | [i25-lro-backdate.md](../v26.10.18/receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite |
 | i25-sleeps-a | [i25-sleeps-a.md](../v26.10.18/receipts/i25-sleeps-a.md) | ALIVE | I25 — rewrite-drafts/sleeps.md §A: poll-replaceable sync-waits |
-| i25-sleeps-b | [i25-sleeps-b1.md](../v26.10.18/receipts/i25-sleeps-b1.md) | PARTIAL_ALIVE | i25-sleeps-b1: §B1 inherent time-advance, named + parameterized windows **NO-CONTEXT** |
+| i25-sleeps-b | [i25-sleeps-b1.md](../v26.10.18/receipts/i25-sleeps-b1.md) | PARTIAL_ALIVE | i25-sleeps-b1: §B1 inherent time-advance, named + parameterized windows |
 | i25-sleeps-b | [i25-sleeps-b2.md](../v26.10.18/receipts/i25-sleeps-b2.md) | ALIVE | i25 — sleeps.md §B2: `eventually_stays/2` + 4 absence-check migrations |
-| i26-adversar | [i26-adversarial-joe.md](../v26.10.18/receipts/i26-adversarial-joe.md) | ALIVE | i26 — adversarial_joe Vectors 1 & 3 (AZB-10 flagged, pre-existing) **NO-CONTEXT** |
-| i26-azb13-re | [i26-azb13-revalidate.md](../v26.10.18/receipts/i26-azb13-revalidate.md) | CLOSED | I26 — AZB-13 transient first-validation refusal re-run **NO-CONTEXT** |
-| i26-canonica | [i26-canonical-residual.md](../v26.10.18/receipts/i26-canonical-residual.md) | PASS | i26 — Canonical projection residual drift (capabilities.json) **NO-CONTEXT** |
-| i26-enqueue- | [i26-enqueue-shape.md](../v26.10.18/receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) **NO-CONTEXT** |
-| i26-fence11- | [i26-fence11-quiet.md](../v26.10.18/receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 **NO-CONTEXT** |
-| i27-rotating | [i27-rotating-bisect.md](../v26.10.18/receipts/i27-rotating-bisect.md) | UNKNOWN | i27 — solo bisect of the v2-soak rotating faces **NO-CONTEXT** |
-| i28-azsim-re | [i28-azsim-regression.md](../v26.10.18/receipts/i28-azsim-regression.md) | UNKNOWN | i28 — azsim regression court (full set, current tree) **NO-CONTEXT** |
-| i28-budget-e | [i28-budget-e2e.md](../v26.10.18/receipts/i28-budget-e2e.md) | FAIL | i28 — Budget gate end-to-end verification (solo) **NO-CONTEXT** |
-| i28-pinion-r | [i28-pinion-reaudit.md](../v26.10.18/receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) **NO-CONTEXT** |
-| i28-sleep-ga | [i28-sleep-gate-full.md](../v26.10.18/receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) **NO-CONTEXT** |
-| mod-r1-scaff | [mod-r1-scaffold.md](../v26.10.18/receipts/mod-r1-scaffold.md) | ALIVE | mod-r1-scaffold — ratchet mod scaffold **NO-CONTEXT** |
-| mod-r10-docs | [mod-r10-docs.md](../v26.10.18/receipts/mod-r10-docs.md) | PASS | mod-r10: ratchet mod DOCS + INSTALL lane **NO-CONTEXT** |
-| mod-r2-state | [mod-r2-state.md](../v26.10.18/receipts/mod-r2-state.md) | PASS | mod-r2-state (ratchet mod state module) **NO-CONTEXT** |
-| mod-r3-panel | [mod-r3-panel.md](../v26.10.18/receipts/mod-r3-panel.md) | ALIVE | mod-r3-panel — Ratchet mod status band renderer (R3) **NO-CONTEXT** |
-| mod-r4-injec | [mod-r4-inject.md](../v26.10.18/receipts/mod-r4-inject.md) | PARTIAL_ALIVE | mod-r4 — ratchet auto-execute inject module **NO-CONTEXT** |
-| mod-r5-turn | [mod-r5-turn.md](../v26.10.18/receipts/mod-r5-turn.md) | PARTIAL_ALIVE | mod-r5: ratchet turn-complete enforcement hook **NO-CONTEXT** |
-| mod-r6-comma | [mod-r6-commands.md](../v26.10.18/receipts/mod-r6-commands.md) | ALIVE (SUSPECT) | mod-r6-commands — ratchet mod /ratchet* commands (R6) **NO-CONTEXT** |
-| mod-r7-gate | [mod-r7-gate.md](../v26.10.18/receipts/mod-r7-gate.md) | ALIVE | mod R7 — ratchet gate policy (`lib/gate.js`) **NO-CONTEXT** |
-| mod-r8-tests | [mod-r8-tests.md](../v26.10.18/receipts/mod-r8-tests.md) | ALIVE | MOD-R8 — ratchet mod automated test suite (lane R8, lease test/) **NO-CONTEXT** |
-| mod-r9-integ | [mod-r9-integration.md](../v26.10.18/receipts/mod-r9-integration.md) | ALIVE | mod-r9 — ratchet INTEGRATION lane: final hooks.json + register.js **NO-CONTEXT** |
+| i26-adversar | [i26-adversarial-joe.md](../v26.10.18/receipts/i26-adversarial-joe.md) | ALIVE | i26 — adversarial_joe Vectors 1 & 3 (AZB-10 flagged, pre-existing) |
+| i26-azb13-re | [i26-azb13-revalidate.md](../v26.10.18/receipts/i26-azb13-revalidate.md) | CLOSED | I26 — AZB-13 transient first-validation refusal re-run |
+| i26-canonica | [i26-canonical-residual.md](../v26.10.18/receipts/i26-canonical-residual.md) | PASS | i26 — Canonical projection residual drift (capabilities.json) |
+| i26-enqueue- | [i26-enqueue-shape.md](../v26.10.18/receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) |
+| i26-fence11- | [i26-fence11-quiet.md](../v26.10.18/receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 |
+| i27-determin | [i27-deterministic-pair.md](../v26.10.18/receipts/i27-deterministic-pair.md) | ALIVE | i27 — deterministic pair (v2-soak) + pplan lens7 extension |
+| i27-rotating | [i27-rotating-bisect.md](../v26.10.18/receipts/i27-rotating-bisect.md) | UNKNOWN | i27 — solo bisect of the v2-soak rotating faces |
+| i28-azsim-re | [i28-azsim-regression.md](../v26.10.18/receipts/i28-azsim-regression.md) | UNKNOWN | i28 — azsim regression court (full set, current tree) |
+| i28-budget-e | [i28-budget-e2e.md](../v26.10.18/receipts/i28-budget-e2e.md) | FAIL | i28 — Budget gate end-to-end verification (solo) |
+| i28-pinion-r | [i28-pinion-reaudit.md](../v26.10.18/receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) |
+| i28-sleep-ga | [i28-sleep-gate-full.md](../v26.10.18/receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) |
+| i28-stress-v | [i28-stress-verify.md](../v26.10.18/receipts/i28-stress-verify.md) | PARTIAL_ALIVE | i28 — Stress Tier Verification (Current Tree) |
+| i29-corpus-s | [i29-corpus-soak.md](../v26.10.18/receipts/i29-corpus-soak.md) | PASS | I29 — corpus soak: 3x corpus + compliance (both loaders) |
+| i29-court-su | [i29-court-surfaces.md](../v26.10.18/receipts/i29-court-surfaces.md) | FAIL | i29 — Court Surfaces Receipt |
+| i29-full-soa | [i29-full-soak.md](../v26.10.18/receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
+| i29-have-sna | [i29-have-snapshot.md](../v26.10.18/receipts/i29-have-snapshot.md) | PARTIAL_ALIVE | i29 HAVE snapshot (guard + watchdog + telemetry + status) |
+| i29-mod-test | [i29-mod-tests.md](../v26.10.18/receipts/i29-mod-tests.md) | UNKNOWN | i29: mods/ratchet test suite + plugin validation (receipt i29-mod-tests) |
+| i29-receipt- | [i29-receipt-final.md](../v26.10.18/receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
+| i29-wire-2x | [i29-wire-2x.md](../v26.10.18/receipts/i29-wire-2x.md) | PASS | i29 — wire tier 2x clean run |
+| i30-checkpoi | [i30-checkpoint-prep.md](../v26.10.18/receipts/i30-checkpoint-prep.md) | PASS | I30 checkpoint prep — integration-prep sweep |
+| mod-r1-scaff | [mod-r1-scaffold.md](../v26.10.18/receipts/mod-r1-scaffold.md) | ALIVE | mod-r1-scaffold — ratchet mod scaffold |
+| mod-r10-docs | [mod-r10-docs.md](../v26.10.18/receipts/mod-r10-docs.md) | PASS | mod-r10: ratchet mod DOCS + INSTALL lane |
+| mod-r2-state | [mod-r2-state.md](../v26.10.18/receipts/mod-r2-state.md) | PASS | mod-r2-state (ratchet mod state module) |
+| mod-r3-panel | [mod-r3-panel.md](../v26.10.18/receipts/mod-r3-panel.md) | ALIVE | mod-r3-panel — Ratchet mod status band renderer (R3) |
+| mod-r4-injec | [mod-r4-inject.md](../v26.10.18/receipts/mod-r4-inject.md) | PARTIAL_ALIVE | mod-r4 — ratchet auto-execute inject module |
+| mod-r5-turn | [mod-r5-turn.md](../v26.10.18/receipts/mod-r5-turn.md) | PARTIAL_ALIVE | mod-r5: ratchet turn-complete enforcement hook |
+| mod-r6-comma | [mod-r6-commands.md](../v26.10.18/receipts/mod-r6-commands.md) | ALIVE | mod-r6-commands — ratchet mod /ratchet* commands (R6) |
+| mod-r7-gate | [mod-r7-gate.md](../v26.10.18/receipts/mod-r7-gate.md) | ALIVE | mod R7 — ratchet gate policy (`lib/gate.js`) |
+| mod-r8-tests | [mod-r8-tests.md](../v26.10.18/receipts/mod-r8-tests.md) | ALIVE | MOD-R8 — ratchet mod automated test suite (lane R8, lease test/) |
+| mod-r9-integ | [mod-r9-integration.md](../v26.10.18/receipts/mod-r9-integration.md) | ALIVE | mod-r9 — ratchet INTEGRATION lane: final hooks.json + register.js |
 | v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` |
-| v2-soak | [v2-soak.md](../v26.10.18/receipts/v2-soak.md) | UNKNOWN | v2 soak — 3x full `mix test` + wire court 2x, on `_build-ft-v2` **NO-CONTEXT** |
+| v2-soak | [v2-soak.md](../v26.10.18/receipts/v2-soak.md) | UNKNOWN | v2 soak — 3x full `mix test` + wire court 2x, on `_build-ft-v2` |
+| v3-soak | [v3-soak.md](../v26.10.18/receipts/v3-soak.md) | UNKNOWN | v3-soak — 3x full-suite soak, failure-identity classification |
 | w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) |
 | w10-review | [w10-review.md](../v26.10.18/receipts/w10-review.md) | PASS | W10 residual review — group 9 (review lane, Context: solo) |
 | w11-review | [w11-review.md](../v26.10.18/receipts/w11-review.md) | PASS | W11 residual review — group 10 (review lane, Context: solo) |
@@ -588,7 +603,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -669,4 +684,3 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
 - **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
 - **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)
-- **SUSPECT**: `mod-r6-commands.md` (standing ALIVE)

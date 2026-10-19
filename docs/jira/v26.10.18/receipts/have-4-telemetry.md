@@ -1,6 +1,7 @@
 # HAVE-4 — telemetry.py metric catalog emitter
 
 **Standing: ALIVE**
+Context: solo(scripts/have/telemetry.py emitter runs; no mix test invocation)
 
 ## Subject
 

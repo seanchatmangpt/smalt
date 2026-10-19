@@ -1,6 +1,7 @@
 # i28 — Stress Tier Verification (Current Tree)
 
 Standing: **PARTIAL_ALIVE** — stress tier executes end to end (population fence green,
+Context: full (just test-stress, mix test --include stress) + full (mix test default tier) — full-suite default tier BLOCKED by foreign in-flight edit, disclosed
 churn-court measured budget green), but the full `--include stress` run is not green on
 this tree: recurring cross-test contamination failures under full-suite concurrency plus
 a concurrent lane's in-flight edit that broke full-suite compilation mid-session.

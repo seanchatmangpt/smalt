@@ -1,7 +1,7 @@
 # Receipt — docker/burn boot-burn + chaos-kill scripts
 
 Standing: PARTIAL_ALIVE — syntax + envelope validated; all four chaos
-Context: host burn-script executions (chaos-kill scenarios vs real app) + envelope validation; no suite context
+Context: solo(docker/burn boot-burn.sh + chaos-kill.sh host executions vs real app; no suite context)
 scenarios witnessed green against the real app on the host (real kills, real
 supervisors); not yet run against a real container image (in-image
 `smalt:local` predates v26.10.18).

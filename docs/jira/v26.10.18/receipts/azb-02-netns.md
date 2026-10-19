@@ -1,7 +1,7 @@
 # Receipt — AZB-02 Per-container network namespaces, zero host port publish
 
 Standing: **ALIVE** — every Accept command ran for real with output below; the
-Context: script gates (parallel-matrix.sh --emit-compose/--plane all; anti-vacuity preflight exit 2); no mix test invocation
+Context: solo(docker/burn/parallel-matrix.sh --emit-compose / --plane all; anti-vacuity preflight exit 2; no mix test invocation)
 Falsifier conditions were exercised and not observed; the Anti-vacuity mutation
 was witnessed flipping the outcome (exit 2 `HOST_PORT_PUBLISH_REFUSED`), with
 the subject restored byte-exact.

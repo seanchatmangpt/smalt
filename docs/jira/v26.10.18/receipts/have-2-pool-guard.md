@@ -1,6 +1,7 @@
 # Receipt: HAVE-2 pool saturation guard
 
 Standing: ALIVE
+Context: solo(scripts/have/pool_saturation_guard.py live runs; no mix test invocation)
 Date: 2026-10-19
 Subject: `/Users/sac/smalt/scripts/have/pool_saturation_guard.py` (HAVE component 2, Level-1 5m guard)
 State dir: `/Users/sac/smalt/tmp/have/` (`state_ledger.jsonl`, `dispatch_requests.jsonl`, `heartbeat.json`)

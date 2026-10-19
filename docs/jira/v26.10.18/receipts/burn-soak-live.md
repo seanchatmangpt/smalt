@@ -1,7 +1,7 @@
 # Burn-soak live host receipt (first live host burn-soak, v26.10.18)
 
 Standing: **PARTIAL_ALIVE — typed FAIL verdict on unledgered faces; 3/3-clean NOT met; atom-flood fix i22 WITNESSED holding**
-Context: burn harness (just burn-soak, 9 attempts x 3 rounds offline+wire, host saturation)
+Context: full (docker/burn/soak.sh — full suite 3 rounds offline+wire, 9 attempts, host saturation)
 
 - Repo: /Users/sac/smalt, branch main @ 63c7082 (dirty tree; v26.10.18 rewrite wave in flight)
 - Lane shape: `just burn-soak` = 4x yes-CPU hogs + AMQP atom-flood across 3x (offline + wire tier)

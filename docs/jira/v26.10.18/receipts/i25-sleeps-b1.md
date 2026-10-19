@@ -1,6 +1,7 @@
 # Receipt — i25-sleeps-b1: §B1 inherent time-advance, named + parameterized windows
 
 Standing: PARTIAL_ALIVE (all owned sites landed and green x2; 4 lro sites superseded mid-flight by i25-lro-backdate; 2 disclosed unblock edits)
+Context: slice(owned sleep-window files: c1_arm.exs, smalt_arm_gateway_test.exs, arm_error_corpus_test.exs, sweeper_test.exs, mcp_wire_test.exs, lro_test.exs — 2 runs)
 Lane: i25-sleeps-b1 (lease: rewrite-drafts/sleeps.md §B1, 13 sites)
 Date: 2026-10-18
 

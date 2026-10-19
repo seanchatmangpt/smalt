@@ -1,6 +1,7 @@
 # HAVE-5: alert_policy.py — SEV matrix + jidoka engine
 
 **Standing: PASS** (22/22 self-test checks, end-to-end CLI runs exit-contract verified)
+Context: solo(alert_policy.py self-test 22/22 + CLI exit-contract runs; no mix test invocation)
 
 ## Subject
 

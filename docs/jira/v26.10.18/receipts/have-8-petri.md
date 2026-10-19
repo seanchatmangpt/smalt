@@ -1,6 +1,7 @@
 # HAVE component 8 — RP-04 Petri conformance over OCEL 2.0
 
 **Standing**: ALIVE (all three verdict paths executed on real fixtures with real exits)
+Context: solo(scripts/have/petri_conformance.py 3 verdict paths on real fixtures; no mix test invocation)
 **Date**: 2026-10-18
 **Subject**: `scripts/have/petri_conformance.py` @ main (uncommitted, per work order "no git")
 **Authority**: HAVE component 8 work order (RP-04 formal conformance remediation)

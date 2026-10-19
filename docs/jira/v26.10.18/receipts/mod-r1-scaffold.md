@@ -1,6 +1,7 @@
 # mod-r1-scaffold — ratchet mod scaffold
 
 Standing: PASS (scaffold ALIVE at scaffold scope; runtime TIMER behavior is compile-checked + unit-smoked, not yet witnessed in a live mods host)
+Context: solo(node --check hooks/register.js + unit smoke)
 
 Date: 2026-10-18
 Lane files: `mods/ratchet/.claude-plugin/plugin.json`, `mods/ratchet/hooks/hooks.json`, `mods/ratchet/hooks/register.js` ONLY (other lanes add modules via imports).

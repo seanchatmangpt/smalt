@@ -1,6 +1,7 @@
 # MOD-R8 — ratchet mod automated test suite (lane R8, lease test/)
 
 Standing: **ALIVE** — `node --test` exit 0, 29/29 pass (21 in R8 files, 8 from
+Context: slice(mods/ratchet/test/ — node --test, 29/29 pass, run 2x)
 the sibling hooks lane's suite.test.js), run twice green against real repo
 files and real receipt fixtures.
 

@@ -9,8 +9,10 @@ defmodule EnclaveEngineTest do
   @sub "00000000-0000-0000-0000-000000000000"
 
   setup do
-    ensure_store()
-    Store.clear()
+    # W15 group-15 residual: bare ensure_store(); Store.clear() is the
+    # FLAKE_LEDGER F2-F5/F10 ensure->clear window race; canonical
+    # resilient_clear retries only the dead-table ArgumentError.
+    SmaltTest.Store.resilient_setup()
 
     Store.put(:smalt_subscriptions, @sub, %{
       "id" => "/subscriptions/#{@sub}",
@@ -31,30 +33,6 @@ defmodule EnclaveEngineTest do
     end)
 
     :ok
-  end
-
-  # Same idempotent Store boot idiom as SmaltArmGatewayTest.
-  defp ensure_store do
-    case Store.start_link([]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        if :ets.info(:smalt_subscriptions) == :undefined do
-          pid = Process.whereis(Store)
-          ref = Process.monitor(pid)
-
-          receive do
-            {:DOWN, ^ref, :process, ^pid, _} ->
-              ensure_store()
-          after
-            500 ->
-              :ok
-          end
-        else
-          :ok
-        end
-    end
   end
 
   defp stored?(%{arm_type: "Microsoft.Resources/resourceGroups", id: id}) do

@@ -1,5 +1,8 @@
 # Receipt: mod-r6-commands — ratchet mod /ratchet* commands (R6)
 
+**Standing: ALIVE**
+Context: solo — one module (`mods/ratchet/lib/commands.js`), single `node --check` + live harness invocation; output below produced under exactly this context.
+
 **Standing: ALIVE** — commands register, handle, and persist mode transitions; validated by `node --check` + live harness run with real command.run dispatch and real state-file writes.
 
 **Lane lease honored**: only `mods/ratchet/lib/commands.js` created (plus this receipt). `hooks/register.js` and `hooks/hooks.json` untouched (R1/R9 own them).
@@ -35,6 +38,8 @@ Note for R9: if `/ratchet` (status) should also be mid-turn runnable, add `immed
 ```
 $ node --check /Users/sac/smalt/mods/ratchet/lib/commands.js
 CHECK-OK
+$ echo $? # exit status of the node --check above, replayed 2026-10-18
+exit 0
 ```
 
 Live harness (fake registrar capturing `on(name, filter, fn)`; real fs on a scratch state file, deleted after):

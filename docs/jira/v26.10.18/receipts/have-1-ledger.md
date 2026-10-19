@@ -1,6 +1,7 @@
 # HAVE-1: state_ledger.py — run_state.jsonl ledger
 
 **Standing: PASS** (9/9 unit tests OK, real-path CLI smoke executed)
+Context: solo(python3 -m unittest tmp/have/test_state_ledger.py — 9/9 + CLI smoke; no mix test invocation)
 
 Component: HAVE L1 state ledger. `/Users/sac/smalt/scripts/have/state_ledger.py`.
 

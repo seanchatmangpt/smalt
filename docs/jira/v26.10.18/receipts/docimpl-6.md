@@ -1,6 +1,7 @@
 # docimpl-6 — moduledoc audit (d8 re-run), 2026-10-18
 
 **Standing: ALIVE** — 17-module d8 scope re-audited against current mechanisms
+Context: solo(docs-audit d8 moduledoc re-audit greps; no mix test invocation)
 (post LRO one-writer, post WasmEngine.Supervisor, post planes, post AZB-06/14
 DETS, post AZB-07 Event Grid); 4 files fixed, docstring-only, zero behavior
 change. Suites green. No git.

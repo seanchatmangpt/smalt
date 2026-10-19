@@ -86,8 +86,6 @@ defmodule Smalt.NativeHclLadderTest do
   # measurably kills the shared tree: measured this session, "Application
   # smalt exited: shutdown"). Restored best-effort in on_exit.
   setup do
-    assert :ok = SmaltTest.Lifecycle.ensure_store_up()
-
     dets_pid = Process.whereis(Smalt.Store.DetsMirror)
 
     if dets_pid do
@@ -119,7 +117,10 @@ defmodule Smalt.NativeHclLadderTest do
       end)
     end
 
-    Store.clear()
+    # W15 group-15 residual: bare Store.clear() after the DetsMirror stop is
+    # the FLAKE_LEDGER F2-F5/F10 ensure->clear window race; canonical
+    # resilient_clear retries only the dead-table ArgumentError.
+    SmaltTest.Store.resilient_setup()
     :ok
   end
 

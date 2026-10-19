@@ -1,6 +1,7 @@
 # mod-r4 — ratchet auto-execute inject module
 
 Standing: **PARTIAL_ALIVE** (guards + bounded prompt ALIVE on a real-file court; the
+Context: solo(node --check inject.js + node /tmp/inject-court.mjs real-file court)
 final `$.prompt.submit` hop is static — it only resolves inside a live Claude Code
 session, see boundary below).
 

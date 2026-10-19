@@ -1,7 +1,7 @@
 # AZB-21 — Zero-sleep gate (lib + test + burn scripts)
 
 Standing: ALIVE (gate exit 0 on tree; non-vacuity witnessed, 4 legs)
-Context: gates (just sleep-gate + just shim-court sleep_gate, 4 legs); no mix test invocation
+Context: solo(scripts/sleep_gate.py gate + shim court, 4 legs; no mix test invocation)
 
 Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-21 (lane gates,
 exclusive file `justfile.d/29-sleep.just`; gate script

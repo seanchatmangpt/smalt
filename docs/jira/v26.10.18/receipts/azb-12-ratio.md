@@ -3,7 +3,7 @@
 Standing: **ALIVE** (converted, vacuity-probed ×3, loaded witness, restore fail-closed)
 Subject: `test/support/ratio.ex` + 3 converted sites + `test/semantic_epoch_test.exs` scale fence
 Date: 2026-10-18
-Context: shared checkout, concurrent lanes; build root `_build-lane12`
+Context: slice(test/semantic_epoch_test.exs scale fence + 3 converted sites; build root _build-lane12)
 
 ## Diff
 

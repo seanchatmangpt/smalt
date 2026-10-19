@@ -1,7 +1,7 @@
 # Burn-suite image receipt (v26.10.18 azsim-burn)
 
 Standing: ALIVE (build exit 0 + in-image verification exit 0, real output below)
-Context: docker build + in-image verification (exit 0 embedded); no mix test invocation
+Context: solo(docker build + in-image verification, exits embedded; no mix test invocation)
 Date: 2026-10-18
 Lane files: `docker/Dockerfile`, `docker/compose.yaml`, `docker/gen_dev_cert_linux.sh`
 Tree: `/Users/sac/smalt` @ 6f17c6e (lane had no git authority; no commits)

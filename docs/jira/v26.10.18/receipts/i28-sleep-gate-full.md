@@ -1,6 +1,7 @@
 # i28 — Sleep Gate Full Verification (Current Tree)
 
 Standing: PASS
+Context: solo(python3 scripts/sleep_gate.py --as=test / --as=lib + shim court; no mix test invocation)
 
 Date: 2026-10-18. Scope: verify the sleep gate on the current tree as run by
 `bench-runner` (gate-lane, context: gates). No edits, no git operations.

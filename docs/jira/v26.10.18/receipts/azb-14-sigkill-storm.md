@@ -1,6 +1,7 @@
 # AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary
 
 **Standing: ALIVE** (storm 50/50 green under `validate_burn.py --gate`; ExUnit court 5/5; anti-vacuity witnessed)
+Context: pair(test/azsim/dets_recovery_test.exs, test/store_dets_test.exs) — separate per-file invocations; full-suite run at this HEAD disclosed in-body (10 failures, other lane in-flight supervision)
 
 Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-14 (receipt name per ticket:
 `azb-14-sigkill-dets.md`; filed here as `azb-14-sigkill-storm.md` per dispatch naming).

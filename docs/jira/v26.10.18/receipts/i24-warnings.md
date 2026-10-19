@@ -1,6 +1,7 @@
 # i24-warnings — compile warnings blocking `--warnings-as-errors`
 
 Standing: PASS (gate exit 0, 0 warnings; zero behavior change evidenced)
+Context: solo(MIX_ENV=test mix compile --warnings-as-errors --force) + full (mix test offline default tier, exit=0)
 Lane: i24-warnings
 Date: 2026-10-18
 Window: docs/jira/v26.10.18

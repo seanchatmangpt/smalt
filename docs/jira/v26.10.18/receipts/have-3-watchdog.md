@@ -1,6 +1,7 @@
 # Receipt: HAVE component 3 — scripts/have/meta_watchdog.py (Level-2 30m watchdog)
 
 Standing: ALIVE
+Context: solo(scripts/have/meta_watchdog.py runs; no mix test invocation)
 Date: 2026-10-18
 Subject: `/Users/sac/smalt/scripts/have/meta_watchdog.py` (new, imports `scripts/quiet_check.py` + `scripts/have/state_ledger.py`)
 Milestone: v26.10.18, HAVE component 3

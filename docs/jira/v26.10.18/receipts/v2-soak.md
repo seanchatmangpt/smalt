@@ -1,4 +1,5 @@
 # Receipt: v2 soak — 3x full `mix test` + wire court 2x, on `_build-ft-v2`
+Context: full (mix test, full suite 3x on _build-ft-v2) + slice(test/wire --include amqp_wire, wire court 2x)
 
 Date: 2026-10-18 (runs 20:07–20:56 PDT) · HEAD c6f6243 → 24cb2cd mid-run (coordinator docs commits; all counted runs started at c6f6243 tree, no test-relevant diff between) · Context: full
 Lane: bench-runner verification wave 2 (no edits, no git actions).

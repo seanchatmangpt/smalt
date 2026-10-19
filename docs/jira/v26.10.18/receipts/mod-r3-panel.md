@@ -1,6 +1,7 @@
 # mod-r3-panel — Ratchet mod status band renderer (R3)
 
 Standing: **ALIVE**
+Context: solo(node --check panel.js lib+hooks)
 
 ## Subject
 

@@ -1,6 +1,7 @@
 # docimpl-7 — docs-audit D5 (C1-C7) implementation receipt
 
 Standing: PARTIAL_ALIVE (all D5 findings implemented; counts re-measured at HEAD)
+Context: solo(docs-audit D5 C1-C7 verification greps + just docs-dod-check; no mix test invocation)
 
 Subject: docs-audit findings `docs/jira/v26.10.18/docs-audit/d5-compliance-azsim.md`
 C1-C7, applied to the seven compliance registers in `docs/compliance/` at

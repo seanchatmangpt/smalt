@@ -1,4 +1,5 @@
 # docimpl-8 — TEST_ISOLATION.md ground-truth rewrite (d6 findings)
+Context: solo(docs-audit d6 ground-truth greps + just docs-dod-check exit 0; no mix test invocation)
 
 Date: 2026-10-18 · Lane: docs-audit D6 implement · No git (per dispatch)
 Subject: `/Users/sac/smalt` @ main, HEAD 6681746 + in-flight tree

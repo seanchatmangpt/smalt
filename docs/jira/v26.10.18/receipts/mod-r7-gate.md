@@ -1,6 +1,7 @@
 # mod R7 — ratchet gate policy (`lib/gate.js`)
 
 Standing: **ALIVE** — all branches exercised with real output embedded below; `node --check` exit 0.
+Context: solo(node --check gate.js + node gate.js self-check on real receipts)
 
 Subject: `/Users/sac/smalt`, file `mods/ratchet/lib/gate.js` (sole leased file; no other files touched, no git commands run).
 

@@ -1,6 +1,7 @@
 # docimpl-3 — D4 explanation-page implementation (anchors, stale mechanisms, missing clusters)
 
 Standing: PASS
+Context: solo(docs-audit D4 anchor/cluster fixes verification greps; no mix test invocation)
 
 ## Scope (dispatch)
 

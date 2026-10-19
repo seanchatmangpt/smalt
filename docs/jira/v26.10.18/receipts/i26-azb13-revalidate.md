@@ -1,7 +1,7 @@
 # I26 — AZB-13 transient first-validation refusal re-run
 
 Standing: PASS (transient CLOSED)
-Context: burn harness (boot-burn revalidation, 3 runs x 5 files OK); no mix test invocation
+Context: solo(boot-burn revalidation, 3 runs x 5 files OK; no mix test invocation)
 
 ## Task
 

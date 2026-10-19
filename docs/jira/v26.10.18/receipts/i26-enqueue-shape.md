@@ -1,6 +1,7 @@
 # i26: azsim plane-batch enqueue return-shape (v2 soak finding)
 
 **Standing: PASS (no-op — already resolved)**
+Context: pair(test/azsim/integration_plane_test.exs, test/azsim/amqp_saturation_test.exs) under MIX_BUILD_ROOT=_build-ft-enq
 
 ## Finding re-check
 

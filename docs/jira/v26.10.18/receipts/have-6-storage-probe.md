@@ -1,6 +1,7 @@
 # HAVE-6 — RP-02 deterministic storage recovery probe
 
 Standing: **ALIVE** (all four modes executed on real dets subjects, exit codes witnessed)
+Context: solo(scripts/have/storage_probe.py 4 modes on real dets subjects; no mix test invocation)
 
 Component 6 of the HAVE plan: `scripts/have/storage_probe.py`, the RP-02
 read-only storage probe. Never repairs (`repair: false` is the only open

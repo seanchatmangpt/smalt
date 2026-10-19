@@ -1,6 +1,7 @@
 # Receipt — docimpl-5: D15 Diataxis gap pages (7)
 
 Standing: **ALIVE**
+Context: solo(docs-audit D15 verification greps + just docs-dod-check; no mix test invocation)
 
 Date: 2026-10-18. Window: v26.10.18, docs-audit D15
 (`docs/jira/v26.10.18/docs-audit/d15-diataxis-gaps.md`).

@@ -1,6 +1,7 @@
 # docimpl-9 — D10 group A mechanical crosslink rewrite
 
 Standing: PASS
+Context: solo(docs-audit D10 group A crosslink grep census; no mix test invocation)
 Lane: docs-audit D10 group A (mechanical)
 Date: 2026-10-18
 

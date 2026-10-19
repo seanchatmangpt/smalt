@@ -1,6 +1,7 @@
 # i27 — deterministic pair (v2-soak) + pplan lens7 extension
 
 Standing: ALIVE (all target tests red-then-green, 3x green repeat, neighbor suites green)
+Context: slice(target deterministic-pair files, _build-ft-det, 3x green) + full (wave full offline mix test, 2710 tests / 7 failures — disclosed)
 
 Lane: i27 deterministic pair. Repo: /Users/sac/smalt. Build root: `_build-ft-det`.
 Private ports 39711-39716 (a foreign lane substrate held the default ports;

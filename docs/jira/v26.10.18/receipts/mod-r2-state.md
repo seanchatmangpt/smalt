@@ -1,6 +1,7 @@
 # Receipt — mod-r2-state (ratchet mod state module)
 
 Standing: PASS
+Context: solo(node --check state.js + node -e stateFromRepo import check)
 Subject: `/Users/sac/smalt/mods/ratchet/lib/state.js` (ESM, sole leased file)
 Date: 2026-10-18
 

@@ -1,6 +1,7 @@
 # mod-r10: ratchet mod DOCS + INSTALL lane
 
 Standing: PASS (with two disclosed seam fixes outside the named lease)
+Context: solo(install-path verification + node -e gate smoke + node turn.js self-check)
 Scope: README + CLAUDE.md bullet (lease); install-path verification.
 
 ## Deliverables

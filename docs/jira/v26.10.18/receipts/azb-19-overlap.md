@@ -1,6 +1,7 @@
 # Receipt — AZB-19 Port-free stage overlap scheduling
 
 Standing: **PARTIAL_ALIVE** — the scheduler, resource validator, and just
+Context: solo(scripts/overlap_court.sh serial/overlap 10-stage pairs; no mix test invocation)
 recipes are landed and witnessed (anti-vacuity refusals, non-vacuous
 falsifier, verdict identity on full 10-stage pairs); the ≥40% median
 wall-clock Accept is **NOT certified** on this window: 37.1% on the one fully

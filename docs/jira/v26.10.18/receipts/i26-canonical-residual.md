@@ -1,6 +1,7 @@
 # i26 — Canonical projection residual drift (capabilities.json)
 
 Standing: PASS
+Context: pair(test/error_codes_doc_test.exs, test/canonical_projection_test.exs) under MIX_BUILD_ROOT=_build-ft-canon
 
 ## Symptom
 

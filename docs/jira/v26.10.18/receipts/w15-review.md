@@ -113,3 +113,72 @@ Finished in 31.2 seconds (0.00s async, 31.2s sync)
 
 (First pass-1 attempt, before the unwrap fix: `95 tests, 1 failure` —
 CrashIsolationTest match error; fixed forward, no reset.)
+
+## Group-15 residual delta (2026-10-18, same lane)
+
+Workqueue said 6 members for group 15, JSON held 5; verified individually.
+Files: `test/amqp/sas_verifier_test.exs`, `test/corpus/vault_enrichment.exs`,
+`test/enclave_engine_test.exs`, `test/provider_matrix_test.exs`,
+`test/smalt_native_hcl_ladder_test.exs`.
+
+### test/amqp/sas_verifier_test.exs — ALREADY-COMPLIANT
+No `Process.sleep`/`:timer.sleep`; no Store coordination at all. Env
+mutation is `SmaltTest.Env.put_restored(sb_shared_key: @key)` — already the
+canonical restore discipline. All SAS signature/audience/replay assertions
+preserved verbatim. Zero edits.
+
+### test/corpus/vault_enrichment.exs — ALREADY-COMPLIANT
+No sleeps; setup is `ensure_store()` from `test/corpus/helper.exs`, whose
+`ensure_store/0` delegates to the helper's own `resilient_clear/1`
+(bounded-retry ensure→clear, @retry_bound attempts). All FR-5 enrichment
+fences (vaultUri authority echo, primaryEndpoints non-empty map) verbatim.
+Zero edits.
+
+### test/enclave_engine_test.exs — CONVERTED (setup)
+No sleeps. Defect: bespoke local `ensure_store/0` (start_link +
+already_started + dead-table monitor recursion) followed by bare
+`Store.clear()` — the FLAKE_LEDGER F2-F5/F10 ensure→clear window race.
+Converted to `SmaltTest.Store.resilient_setup/0`; deleted the 22-line local
+`ensure_store/0`. `Store.put(:smalt_subscriptions, ...)` seed and the
+:lro_delay_ms try/after restore are untouched; all ARM engine assertions
+verbatim. Zero assertion edits.
+
+### test/provider_matrix_test.exs — ALREADY-COMPLIANT
+No sleeps; async: true; no Store — the module asserts ProviderMatrix is a
+projection of Registry (registry_namespaces, apiVersions ==
+[latest_version], sorted resourceTypes, nil for unknown namespace). Nothing
+in sleep-law or coordination scope. Zero edits.
+
+### test/smalt_native_hcl_ladder_test.exs — CONVERTED (setup tail)
+No sleeps. Defect: `Lifecycle.ensure_store_up()` + (after the DetsMirror
+stop/restore block) bare `Store.clear()` — same F2-F5/F10 window race.
+Replaced the trailing bare `Store.clear()` with
+`SmaltTest.Store.resilient_setup/0`, preserving the established order
+(DetsMirror stop → resilient clear); the documented DetsMirror stop +
+fail-closed on_exit restart isolation is unchanged. Ladder-marker
+order-isolation fences and all HCL parse/apply/outcome assertions verbatim.
+Zero assertion edits.
+
+### Verification (group-15 delta, real output, build root _build-ft-w15b)
+Note: fast_test.sh derives a per-hash private build root; the w15b name
+requested in the contract resolved to the per-hash roots shown.
+
+Pass 1 (the two CONVERTED files):
+
+```
+Finished in 0.3 seconds (0.00s async, 0.3s sync)
+13 tests, 0 failures
+[21:49:13] wall: 140s (build root: _build-ft-106843a3)
+```
+
+Pass 2 (all five group-15 files):
+
+```
+Finished in 1.1 seconds (0.2s async, 0.8s sync)
+63 tests, 0 failures
+[21:54:24] wall: 295s (build root: _build-ft-be4e6622)
+```
+
+Standing (group 15): **PASS** — 63 tests across the 5 files, 0 failures,
+two green passes; 2 files converted, 3 already-compliant, zero assertion
+edits.

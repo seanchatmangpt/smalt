@@ -1,6 +1,7 @@
 # AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard
 
 Standing: **ALIVE** (host ×3 green; container ×3 green under `--cpus 2`; anti-vacuity shim court red→restored byte-exact)
+Context: solo(test/azsim/amqp_saturation_test.exs --include stress, x3) + slice(test/azsim/ non-stress tier, 63 tests)
 
 ## Scope landed
 

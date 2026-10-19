@@ -1,7 +1,7 @@
 # Receipt — AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie)
 
 Standing: **ALIVE** — Accept commands ran for real with output embedded below;
-Context: burn harness (boot-burn.sh --cycles 50) + validate_burn.py gate; no mix test invocation
+Context: solo(docker/burn/boot-burn.sh --planes all,control,data,integration,identity --cycles 50; no mix test invocation)
 the falsifier condition (orphan listener / zombie BEAM across 250 cycles) was
 exercised and not observed; the anti-vacuity mutation was witnessed flipping
 the outcome to a typed `ORPHAN_LISTENER` row with exit 1.

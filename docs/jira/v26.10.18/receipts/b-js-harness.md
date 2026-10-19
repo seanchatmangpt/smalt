@@ -3,7 +3,7 @@
 - **Batch**: b-js-harness (master plan B7 slice: js-harness.md + gates-python.md)
 - **Lane**: solo
 - **Standing**: ALIVE
-Context: harness (node test/sdk-smoke/run.mjs self-booted substrate + smalt-cli pytest); no mix test invocation
+Context: solo(node test/sdk-smoke/run.mjs self-booted substrate + smalt-cli pytest; no mix test invocation)
 - **Date**: 2026-10-18
 - **Repo**: /Users/sac/smalt (same-checkout fan-out, wave v26.10.18)
 

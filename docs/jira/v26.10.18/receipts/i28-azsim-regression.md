@@ -1,6 +1,7 @@
 # i28 — azsim regression court (full set, current tree)
 
 Standing: **SUSPECT** (2 NEW deterministic failures, unregistered anywhere)
+Context: slice(test/azsim/ full set) under MIX_BUILD_ROOT=_build-ft-azr
 
 Date: 2026-10-18 · Build root: `_build-ft-azr` · No edits, no git.
 

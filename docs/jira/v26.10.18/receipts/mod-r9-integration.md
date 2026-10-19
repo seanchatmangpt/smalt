@@ -1,6 +1,7 @@
 # mod-r9 — ratchet INTEGRATION lane: final hooks.json + register.js
 
 Standing: ALIVE
+Context: slice(mods/ratchet — node --check all files + node --test suite)
 Subject: /Users/sac/smalt/mods/ratchet (canonical checkout, single writer = R9 integration lane)
 Authority: mod-ratchets WO, hooks/hooks.json + hooks/register.js final form
 Falsifier: `claude plugin validate` non-zero, or any node --test failure, or a lib seam

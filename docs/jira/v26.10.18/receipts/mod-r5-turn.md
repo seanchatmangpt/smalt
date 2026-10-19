@@ -1,6 +1,7 @@
 # mod-r5: ratchet turn-complete enforcement hook
 
 Standing: PARTIAL_ALIVE (syntax gate PASS; runtime self-test permission-blocked, see below)
+Context: solo(node --check turn.js; runtime self-test permission-blocked, disclosed)
 
 ## Subject
 

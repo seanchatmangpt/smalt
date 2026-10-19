@@ -1,6 +1,7 @@
 # i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3
 
 Standing: **ALIVE** (residue closed)
+Context: solo(AZB-11b sweeper-grace flake site, quiet-clean x3)
 
 ## Subject
 

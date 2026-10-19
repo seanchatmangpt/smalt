@@ -1,6 +1,7 @@
 # docimpl-2 — docs-audit D3 reference-surface implementation receipt
 
 Standing: PASS (all 7 findings implemented; gates below run for real).
+Context: solo(docs-audit D2 implementation verification greps + just gates; no mix test invocation)
 
 Date: 2026-10-19 @ HEAD 6681746. Audit source:
 `docs/jira/v26.10.18/docs-audit/d3-reference.md`. No git actions taken.

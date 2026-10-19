@@ -1,6 +1,7 @@
 # i25 — kill_storm.sh: AZB-14 HOST-FORM precursor (SIGKILL storm + DETS repair + typed vocabulary)
 
 Standing: ALIVE (live 3-cycle run 3/3 CLEAN, burn rows validate OK, sleep-gate PASS)
+Context: solo(kill_storm.sh live 3-cycle run + validate_burn.py --gate; no mix test invocation)
 
 Repo: /Users/sac/smalt. Ticket AZB-14
 (`docs/jira/v26.10.18/azsim-burn/TICKETS.md`). Host-form precursor of
