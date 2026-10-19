@@ -21,7 +21,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="$ROOT/test/terraform_fixture"
+FIXTURE="$ROOT/scripts/tf_fixtures"
 EXS_HARNESS="$ROOT/scripts/bench/enclave_loop.exs"
 MJS_HARNESS="$ROOT/workspace/scripts/enclave-loop.mjs"
 WORK="$(mktemp -d /tmp/tf-enclave-loop.XXXXXX)"
@@ -102,7 +102,7 @@ cleanup() {
       kill -TERM "$pid" 2>/dev/null || true
       for _ in $(seq 1 10); do
         kill -0 "$pid" 2>/dev/null || break
-        sleep 0.5
+        sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded reap poll, 10x0.5s deadline)
       done
       kill -9 "$pid" 2>/dev/null || true
       pkill -9 -P "$pid" 2>/dev/null || true
@@ -112,7 +112,7 @@ cleanup() {
   # Wait for the port block to actually free (up to 15s).
   for _ in $(seq 1 30); do
     any_lane_port_held || break
-    sleep 0.5
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x0.5s deadline)
   done
   # Beam still holds a port: kill by the holder PID (recorded at boot via lsof).
   for p in $LANE_PORTS; do
@@ -123,14 +123,19 @@ cleanup() {
   done
   for _ in $(seq 1 30); do
     any_lane_port_held || break
-    sleep 0.5
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x0.5s deadline)
   done
   for p in $LANE_PORTS; do
     for b in $(port_holders "$p"); do
       kill -9 "$b" 2>/dev/null || true
     done
   done
-  sleep 1
+  # Bounded settle poll: confirm ports freed (5s deadline) instead of a
+  # fixed settle sleep.
+  for _ in $(seq 1 10); do
+    any_lane_port_held || break
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 5s deadline)
+  done
   if any_lane_port_held; then
     for p in $LANE_PORTS; do
       for b in $(port_holders "$p"); do
@@ -218,7 +223,7 @@ for _ in 1 2 3 4 5; do
   bash "$ROOT/scripts/gen_dev_cert.sh" >/dev/null 2>&1 || true
   rm -f "$ROOT/.smalt/tls/dev-cert.pem" "$ROOT/.smalt/tls/dev-key.pem"
   bash "$ROOT/scripts/gen_dev_cert.sh" >/dev/null 2>&1 || true
-  sleep 2
+  sleep 2 # SLEEP-CLASS: POLL-STEP (backoff pacing in 5-attempt-bounded self-heal retry)
 done
 if [ "$SNAP_OK" -ne 1 ]; then
   fail_run 1 "tls snapshot: no chain-verified cert/key pair after self-heal (re-mint churn) — refusing to boot against a self-signed leaf"
@@ -258,7 +263,7 @@ for _ in $(seq 1 120); do
     tail -n 40 "$SUB_LOG" >&2
     fail_run 1 "substrate process exited during boot"
   fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded bind poll, 120x1s deadline)
 done
 if [ "$up" -ne 1 ]; then
   echo "[FAULT] substrate never bound $ARM_PORT within 120s; log tail:" >&2
@@ -270,7 +275,7 @@ tick "substrate up: ARM $ARM_PORT"
 up=0
 for _ in $(seq 1 60); do
   if lsof -nP -iTCP:"$ATLS_PORT" -sTCP:LISTEN >/dev/null 2>&1; then up=1; break; fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded bind poll, 60x1s deadline)
 done
 [ "$up" -eq 1 ] || fail_run 1 "TLS twin never bound $ATLS_PORT"
 tick "substrate up: TLS twin $ATLS_PORT"
@@ -330,7 +335,7 @@ if [ "$(uname)" = "Darwin" ]; then
     SMALT_LEAF_SHA256="$(openssl x509 -in "$CERT_SNAP/dev-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
     CA_FP="$(openssl x509 -in "$CERT_SNAP/ca-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
     PROBE_BIN="$(mktemp -t smalt_probe)" && mv "$PROBE_BIN" "$PROBE_BIN.bin" && PROBE_BIN="$PROBE_BIN.bin"
-    if ! (cd "$ROOT/test/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
+    if ! (cd "$ROOT/scripts/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
       fail_run 1 "SHIM-PROBE: trust_shim_probe could not be built (go build failed — native tier needs no shim)"
     elif (DYLD_INSERT_LIBRARIES="$SHIM_DYLIB" \
           SMALT_LEAF_SHA256="$SMALT_LEAF_SHA256" SMALT_CA_SHA256="$CA_FP" \

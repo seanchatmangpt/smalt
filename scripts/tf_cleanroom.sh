@@ -25,7 +25,7 @@
 #      with the pinned dylib); keychain status shown informationally
 #   3. terraform init (offline mirror, runtime rc via scripts/tf_mirror_env.sh)
 #      + apply -auto-approve on
-#      test/terraform_fixture (fresh scratch copy, tfplan round-trip)
+#      scripts/tf_fixtures (fresh scratch copy, tfplan round-trip)
 #   4. terraform plan -detailed-exitcode MUST be 0 with "No changes" (zero drift)
 #   5. data-plane read-your-write audit via scripts/bench/enclave_loop.exs
 #      (env-driven ports; blob/secrets/cosmos/EH SKIP-LOUD semantics honored)
@@ -41,7 +41,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="$ROOT/test/terraform_fixture"
+FIXTURE="$ROOT/scripts/tf_fixtures"
 EXS_HARNESS="$ROOT/scripts/bench/enclave_loop.exs"
 MJS_HARNESS="$ROOT/workspace/scripts/enclave-loop.mjs"
 ETS_TEST="$ROOT/test/smalt_ets_baseline_identity_test.exs"
@@ -143,7 +143,7 @@ cleanup() {
       kill -TERM "$pid" 2>/dev/null || true
       for _ in $(seq 1 10); do
         kill -0 "$pid" 2>/dev/null || break
-        sleep 0.5
+        sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded reap poll, 10x0.5s deadline)
       done
       kill -9 "$pid" 2>/dev/null || true
       pkill -9 -P "$pid" 2>/dev/null || true
@@ -153,7 +153,7 @@ cleanup() {
   # Wait for the port block to actually free (up to 15s).
   for _ in $(seq 1 30); do
     any_lane_port_held || break
-    sleep 0.5
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x0.5s deadline)
   done
   # Beam still holds a port: kill by the holder PID (recorded at boot via lsof).
   for p in $LANE_PORTS; do
@@ -164,14 +164,19 @@ cleanup() {
   done
   for _ in $(seq 1 30); do
     any_lane_port_held || break
-    sleep 0.5
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x0.5s deadline)
   done
   for p in $LANE_PORTS; do
     for b in $(port_holders "$p"); do
       kill -9 "$b" 2>/dev/null || true
     done
   done
-  sleep 1
+  # Bounded settle poll: confirm ports freed (5s deadline) instead of a
+  # fixed settle sleep.
+  for _ in $(seq 1 10); do
+    any_lane_port_held || break
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 5s deadline)
+  done
   if any_lane_port_held; then
     for p in $LANE_PORTS; do
       for b in $(port_holders "$p"); do
@@ -265,7 +270,7 @@ for _ in $(seq 1 120); do
     tail -n 40 "$SUB_LOG" >&2
     fail_run 1 "substrate process exited during boot"
   fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded bind poll, 120x1s deadline)
 done
 [ "$up" -eq 1 ] || fail_run 1 "substrate never bound $ARM_PORT within 120s"
 record "stage1: fresh substrate up (ARM $ARM_PORT, zero state)" "PASS"
@@ -273,7 +278,7 @@ record "stage1: fresh substrate up (ARM $ARM_PORT, zero state)" "PASS"
 up=0
 for _ in $(seq 1 60); do
   if lsof -nP -iTCP:"$ATLS_PORT" -sTCP:LISTEN >/dev/null 2>&1; then up=1; break; fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded bind poll, 60x1s deadline)
 done
 [ "$up" -eq 1 ] || fail_run 1 "TLS twin never bound $ATLS_PORT"
 record "stage1: TLS twin up ($ATLS_PORT)" "PASS"
@@ -330,7 +335,7 @@ else
     LEAF_FP="$(openssl x509 -in "$ROOT/.smalt/tls/dev-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
     CA_FP="$(openssl x509 -in "$ROOT/.smalt/tls/ca-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
     PROBE_BIN="$(mktemp -t smalt_probe)" && mv "$PROBE_BIN" "$PROBE_BIN.bin" && PROBE_BIN="$PROBE_BIN.bin"
-    if ! (cd "$ROOT/test/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
+    if ! (cd "$ROOT/scripts/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
       fail_run 1 "stage2: trust_shim_probe could not be built (go build failed)"
     elif (DYLD_INSERT_LIBRARIES="$SHIM_DYLIB" \
           SMALT_LEAF_SHA256="$LEAF_FP" SMALT_CA_SHA256="$CA_FP" \

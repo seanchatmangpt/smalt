@@ -3,7 +3,7 @@
 # state check) against a lane-private smalt substrate (ARM 39330, TLS twin
 # 39331, data 39332, amqp/ehub/mcp 39333-39335).
 #
-# For each fixture in test/terraform_fixture_per_resource/<name>.tf:
+# For each fixture in scripts/tf_fixtures_per_resource/<name>.tf:
 #   terraform init + plan + apply -auto-approve + post-apply plan (expect
 #   "No changes" — proves state/refresh round-trips through the emulator).
 # Verdicts:
@@ -21,7 +21,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURES="$ROOT/test/terraform_fixture_per_resource"
+FIXTURES="$ROOT/scripts/tf_fixtures_per_resource"
 RECEIPT="$ROOT/docs/jira/v26.10.16/sdk-results/tf-plan.md"
 WORK="$(mktemp -d /tmp/tf-plan-probe.XXXXXX)"
 LOG="$WORK/run.log"
@@ -97,7 +97,7 @@ if [ "$(uname)" = "Darwin" ] && [ -f "$CA" ]; then
   SMALT_LEAF_SHA256="$(openssl x509 -in "$TLS_DIR/dev-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
   CA_FP="$(openssl x509 -in "$CA" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
   PROBE_BIN="$(mktemp -t smalt_probe)" && mv "$PROBE_BIN" "$PROBE_BIN.bin" && PROBE_BIN="$PROBE_BIN.bin"
-  if ! (cd "$ROOT/test/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
+  if ! (cd "$ROOT/scripts/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
     echo "[FAULT] SHIM-PROBE: trust_shim_probe could not be built (go build failed — native tier needs no shim)" >&2
     exit 1
   elif (DYLD_INSERT_LIBRARIES="$SHIM_DYLIB" \
@@ -135,7 +135,7 @@ SMALT_TLS_CERTFILE="$TLS_DIR/dev-cert.pem" \
 SMALT_TLS_KEYFILE="$TLS_DIR/dev-key.pem" \
 SMALT_TEST_ARM_PORT=$ARM_PORT SMALT_TEST_EGRESS_PORT=$EGRESS_PORT \
 SMALT_TEST_AMQP_PORT=$AMQP_PORT SMALT_TEST_EVENT_HUBS_PORT=$EHUB_PORT \
-mix run --no-start -e "$EVAL" --no-halt >"$SUB_LOG" 2>&1 &
+mix run --no-start -e "$EVAL" --no-halt 9>&- >"$SUB_LOG" 2>&1 &
 SUB_PID=$!
 # Keep $WORK for post-run wire evidence (per-fixture plan/apply logs); the
 # operator cleans /tmp/tf-plan-probe.* manually.
@@ -145,7 +145,7 @@ up=0
 for _ in $(seq 1 120); do
   if lsof -nP -iTCP:"$ARM_PORT" -sTCP:LISTEN >/dev/null 2>&1; then up=1; break; fi
   kill -0 "$SUB_PID" 2>/dev/null || break
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded bind poll, 120x1s deadline)
 done
 if [ "$up" -ne 1 ]; then
   echo "[FAULT] lane substrate never bound $ARM_PORT; log tail:" >&2
@@ -202,6 +202,13 @@ now_ms() {
 declare -a NAMES=() VERDICTS=() NOTES=()
 CUR=0
 FAILED=0
+# Fail-closed fixture guard (v26.10.19): the per-resource fixture family was
+# deleted with test/ at 64f6099; re-author it under scripts/tf_fixtures_per_resource
+# before this probe can run (a glob of an absent dir would silently plan zero).
+if [ ! -d "$FIXTURES" ] || ! ls "$FIXTURES"/*.tf >/dev/null 2>&1; then
+  echo "[RETIRED/MISSING] tf_plan_check: fixture family $FIXTURES absent (deleted at 64f6099). Re-author per-resource fixtures before running. Exit 1." >&2
+  exit 1
+fi
 for f in "$FIXTURES"/*.tf; do
   name="$(basename "$f" .tf)"
   [ "$name" = "versions" ] && continue
@@ -291,7 +298,7 @@ if [ "$WRITE_RECEIPT" -eq 1 ]; then
     echo "- Date: 2026-10-16"
     echo "- Lane: tf-plan-probe (lane 332, ports $ARM_PORT/$ATLS_PORT/$EGRESS_PORT)"
     echo "- Subject: smalt repo root (git toplevel) v26.10.16 working tree (multi-lane)"
-    echo "- Fixtures: \`test/terraform_fixture_per_resource/<name>.tf\`"
+    echo "- Fixtures: \`scripts/tf_fixtures_per_resource/<name>.tf\`"
     echo "- Probe: \`scripts/tf_plan_check.sh --write-receipt\`"
     echo "- Work dir (kept): \`$WORK\` (per-fixture plan.log = wire evidence)"
     echo

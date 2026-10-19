@@ -4,7 +4,7 @@ set -euo pipefail
 # scripts/tf_provider_mirror.sh — ONLINE provider mirror for the terraform
 # fixtures, re-validated on every run.
 #
-# Downloads the azurerm provider into test/terraform_fixture/provider-mirror/
+# Downloads the azurerm provider into scripts/tf_fixtures/provider-mirror/
 # (gitignored — binaries are tens of MB). The terraform CLI rc is NOT written
 # here: consumers (tf_smoke.sh / tf_plan_check.sh via scripts/tf_mirror_env.sh)
 # generate it at run time into a temp path, so no absolute /Users/... path is
@@ -27,7 +27,7 @@ set -euo pipefail
 # missing, or mirror verification failed).
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="$ROOT/test/terraform_fixture"
+FIXTURE="$ROOT/scripts/tf_fixtures"
 MIRROR="$FIXTURE/provider-mirror"
 
 if ! command -v terraform >/dev/null 2>&1; then

@@ -125,9 +125,9 @@ elif [ "$(uname)" = "Darwin" ]; then
     # that exercises the actual Go/Security.framework verification path, but
     # it needs a terraform init'd fixture and may hit the network, so failure
     # here is INDETERMINATE, not FAIL.
-    if command -v terraform >/dev/null 2>&1 && [ -d "$ROOT/test/terraform_fixture" ]; then
+    if command -v terraform >/dev/null 2>&1 && [ -d "$ROOT/scripts/tf_fixtures" ]; then
       say "last-resort authoritative probe: scripts/smalt-tf plan (dry attempt)"
-      if (cd "$ROOT/test/terraform_fixture" && timeout 120 "$ROOT/scripts/smalt-tf" plan -input=false -no-color -refresh=false >/tmp/tf-trust-plan.log 2>&1); then
+      if (cd "$ROOT/scripts/tf_fixtures" && timeout 120 "$ROOT/scripts/smalt-tf" plan -input=false -no-color -refresh=false >/tmp/tf-trust-plan.log 2>&1); then
         mark "authoritative: smalt-tf plan" PASS "Go/Security.framework accepted the chain"
       else
         # Distinguish trust failure from network/init failure.

@@ -15,18 +15,22 @@ Exit 0 = every cell pass-or-registered. Exit 1 = findings (MISSING cells or
 UNREGISTERED-GAP) exist. Findings are surfaced, not hidden.
 
 Also CRCs the Service Bus census: counts probe() registrations in
-test/sdk-smoke/census.test.cjs against the claim in
+verification/ts/census.test.cjs against the claim in
 receipts/08-servicebus-census.md.
 """
 
+import argparse
+import json
 import re
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-CENSUS = ROOT / "test/sdk-smoke/census.test.cjs"
+CENSUS = ROOT / "verification/ts/census.test.cjs"
 JIRA = ROOT / "docs/jira"
+WF_JSON = ROOT / "verification/workflows.json"
+WF_VERSION = 1
 
 def window_paths(win):
     """Per-window paths (multi-window: each docs/jira/vX renders its own
@@ -42,13 +46,13 @@ def window_paths(win):
 # registrations are counted into registered_total so an unregistered
 # supplementary file cannot silently escape the census CRC.
 EXTRA_PROBES = [
-    ("test/sdk-smoke/sb-extra.probe.cjs", r'record\("([\w-]+)"'),
+    ("verification/ts/sb-extra.probe.cjs", r'record\("([\w-]+)"'),
 ]
 
 # ---------------------------------------------------------------------------
 # Surface inventory. Each surface is grounded in >=1 mechanical source:
 # ground: {lib-relative file: [keywords]} verified against the live file;
-# ts / py: probe-filename substrings under test/sdk-full, test/sdk-python;
+# ts / py: probe-filename substrings under verification/ts, verification/py;
 # receipts: receipt filenames under docs/jira/v26.10.14/sdk-results.
 # ---------------------------------------------------------------------------
 SURFACES: list[dict[str, Any]] = [
@@ -202,7 +206,7 @@ def grounding_ok(s):
     return True
 
 def find_probe(kind, patterns):
-    base = ROOT / ("test/sdk-full" if kind == "ts" else "test/sdk-python")
+    base = ROOT / ("verification/ts" if kind == "ts" else "verification/py")
     pats = patterns if patterns else []
     for f in sorted(base.glob("*.probe.mjs" if kind == "ts" else "py_*.py")):
         for pat in pats:
@@ -291,6 +295,150 @@ def kd_for_receipt(kds, receipt_name):
             or base in v.get("status_full", "")]
     return sorted(hits)
 
+# ---------------------------------------------------------------------------
+# Primary tier: external-workflow receipts (v26.10.19 wave). The workflows in
+# verification/workflows.json are the PRIMARY verification tier; their receipts
+# (docs/jira/v<win>/sdk-results/wfN-<lang>-<slug>.md) win over legacy
+# sdk-results verdicts wherever they speak.
+# ---------------------------------------------------------------------------
+
+def load_workflows():
+    """Ingest verification/workflows.json. Returns {} when the file is
+    absent (tier not deployed); fails closed (exit != 0) on unparseable
+    JSON or an unsupported registry version."""
+    if not WF_JSON.exists():
+        return {}
+    try:
+        data = json.loads(WF_JSON.read_text())
+    except json.JSONDecodeError as e:
+        sys.exit(f"GATE: FAIL — verification/workflows.json unparseable: {e}")
+    if not isinstance(data, dict) or data.get("version") != WF_VERSION:
+        sys.exit(f"GATE: FAIL — workflows.json version "
+                 f"{data.get('version')!r} unsupported (want {WF_VERSION})")
+    return data
+
+def wf_surfaces(wf):
+    """(surface-id, lang) pairs a workflow declares (cap: prefix stripped)."""
+    out = set()
+    for sid in wf.get("surfaces", []):
+        sid = sid.split("cap:")[-1] if sid.startswith("cap:") else sid
+        for lang in wf.get("langs", []):
+            out.add((sid, lang))
+    return out
+
+def check_cell_discovery(wfs, findings):
+    """Discovery fence: every SURFACES (surface, lang) cell that has a probe
+    on disk must be declared by >=1 workflow cell, or covered by a
+    KD-annotation cell. Cap cells must be declared by some workflow too.
+    Undeclared cells are MISSING findings."""
+    wfs = wfs.get("workflows", []) if isinstance(wfs, dict) else wfs
+    covered = set()
+    cap_covered = set()
+    for wf in wfs:
+        for sid in wf.get("surfaces", []):
+            if sid.startswith("cap:"):
+                cap_covered.add(sid[4:])
+            for lang in wf.get("langs", []):
+                covered.add((sid, lang))
+    kd_covered = {(s, l) for s, l, _k in KD_CELLS}
+    for s in SURFACES:
+        for lang in ("ts", "py"):
+            if find_probe(lang, s.get(lang, [])) is None:
+                continue
+            if (s["id"], lang) in covered or (s["id"], lang) in kd_covered:
+                continue
+            findings.append(
+                f"{s['id']}/{lang}: probe cell declared by NO workflow in "
+                "workflows.json and no KD cell (cell-discovery fence)")
+    for c in CAP_CELLS:
+        if c["id"] not in cap_covered:
+            findings.append(
+                f"{c['id']}/cap: capability cell declared by NO workflow in "
+                "workflows.json (cell-discovery fence)")
+
+# Per-cell assertion tag grammar (receipt body line):
+#   <surface>:<op>: <surface>/<op> PASS|FAIL|SKIP|BLOCKED [ (KD-xx[, KD-yy]) ]
+# A FAIL smears only its own surface cell, never sibling surfaces.
+CELL_TAG_RE = re.compile(
+    r"^\s*[-*]?\s*([A-Za-z][\w-]*):([\w./@-]+):\s+"
+    r"([\w-]+)/([\w./@-]+)\s+"
+    r"(PASS|FAIL|SKIP|BLOCKED)\b\s*(?:\((KD-[\w, -]+)\))?", re.M)
+
+def parse_cell_tags(text):
+    """Receipt text -> [tag dicts] (surface, op, verdict, kds)."""
+    tags = []
+    for m in CELL_TAG_RE.finditer(text):
+        kds = [k.strip() for k in m.group(6).split(",")] if m.group(6) else []
+        tags.append({"surface": m.group(1), "op": m.group(2),
+                     "verdict": m.group(5), "kds": kds})
+    return tags
+
+def cell_verdict(tags, surface):
+    """Per-surface rollup. Precedence FAIL > BLOCKED > SKIP > PASS; a FAIL
+    counts only the surfaces its own tags name (anti-smearing). Returns
+    (verdict, kds); verdict NONE when the surface has no tags."""
+    own = [t for t in tags if t["surface"] == surface]
+    if not own:
+        return "NONE", []
+    for bad in ("FAIL", "BLOCKED", "SKIP"):
+        hits = [t for t in own if t["verdict"] == bad]
+        if hits:
+            return bad, sorted({k for t in hits for k in t["kds"]})
+    return "PASS", []
+
+WF_HEADER_RE = {
+    "workflow": re.compile(r"^Workflow:\s*(.+)$", re.M),
+    "lang": re.compile(r"^Lang:\s*(\w+)$", re.M),
+    "window": re.compile(r"^Window:\s*(v[\w.]+)$", re.M),
+    "subject_sha": re.compile(r"^SUBJECT_SHA:\s*([0-9a-f]{7,40})$", re.M),
+    "profile": re.compile(r"^Profile:\s*(.+)$", re.M),
+}
+
+def parse_wf_receipt(path, win, strict, findings, notes):
+    """Parse one primary-tier receipt. Returns dict or None. Header problems
+    are findings under --strict (gate exit 1); otherwise notes only and the
+    receipt is ignored (falls through to legacy evidence)."""
+    rel = str(path.relative_to(ROOT))
+    text = read(path)
+    hdr = {k: (m.group(1).strip() if (m := rx.search(text)) else None)
+           for k, rx in WF_HEADER_RE.items()}
+    problems = [f"{rel}: header field missing: {k}"
+                for k, v in hdr.items() if not v]
+    if hdr["window"] and hdr["window"] != win:
+        problems.append(f"{rel}: header window {hdr['window']} != rendering "
+                        f"window {win}")
+    m = re.match(r"^(wf\d+)-([a-z]+)-(.+)\.md$", path.name)
+    if not m:
+        problems.append(f"{rel}: filename does not match wfN-<lang>-<slug>.md")
+    else:
+        if hdr["workflow"] and not hdr["workflow"].startswith(m.group(1) + "-"):
+            problems.append(
+                f"{rel}: filename {m.group(1)} vs header workflow "
+                f"{hdr['workflow']} mismatch")
+        if hdr["lang"] and hdr["lang"] != m.group(2):
+            problems.append(
+                f"{rel}: filename lang {m.group(2)} vs header lang "
+                f"{hdr['lang']} mismatch")
+    tags = parse_cell_tags(text)
+    for p in problems:
+        (findings if strict else notes).append(
+            f"wf-receipt (strict): {p}" if strict else f"wf-receipt note: {p}")
+    if problems:
+        return None
+    return {"path": rel, "name": path.name, "hdr": hdr, "tags": tags,
+            "verdicts": {s: cell_verdict(tags, s)
+                         for s in dict.fromkeys(t["surface"] for t in tags)}}
+
+def resolve_wf_receipts(win, strict, findings, notes):
+    """All primary-tier receipts for a window, parsed and validated."""
+    results_dir = window_paths(win)["results"]
+    out = []
+    for p in sorted(results_dir.glob("wf*-*.md")):
+        rec = parse_wf_receipt(p, win, strict, findings, notes)
+        if rec:
+            out.append(rec)
+    return out
+
 def census_crc(census_rcpt):
     """Cross-check census probe registrations vs receipt claim."""
     text = read(CENSUS)
@@ -337,7 +485,7 @@ def discover_windows():
         p.parent.name for p in JIRA.glob("v*/KNOWN_DIVERGENCES.md")
     )
 
-def compile_window(win):
+def compile_window(win, strict=False):
     wp = window_paths(win)
     results, kd_path, matrix_md, census_rcpt = (
         wp["results"], wp["kd"], wp["matrix"], wp["census_rcpt"])
@@ -351,6 +499,42 @@ def compile_window(win):
     kds.update(load_kd(kd_path))
     rows = []
     findings = []
+    wf_notes = []
+    # ---- primary tier: external workflow receipts win over legacy ----
+    wfs = load_workflows()
+    check_cell_discovery(wfs, findings)
+    wf_receipts = resolve_wf_receipts(win, strict, findings, wf_notes)
+    wf_by_num = {}
+    for wf in wfs.get("workflows", []):
+        mnum = re.match(r"^(wf\d+)-", wf.get("id", ""))
+        if mnum:
+            wf_by_num[mnum.group(1)] = wf
+    primary = {}  # (surface, lang) -> (wf-id, verdict, kds)
+    for rec in wf_receipts:
+        m = re.match(r"^(wf\d+)-([a-z]+)-", rec["name"])
+        wf = wf_by_num.get(m.group(1)) if m else None
+        if wf is None:
+            continue
+        lang = m.group(2)
+        for sid in wf.get("surfaces", []):
+            if sid.startswith("cap:"):
+                continue
+            verdict, v_kds = rec["verdicts"].get(sid, ("NONE", []))
+            if verdict in ("PASS", "FAIL"):
+                primary.setdefault((sid, lang),
+                                   (wf["id"], verdict, list(v_kds),
+                                    rec["name"]))
+    n_wf = len(wf_receipts)
+    print(f"primary tier: workflows.json version {wfs.get('version', '-')}"
+          f" ({len(wfs.get('workflows', []))} workflows);"
+          f" receipts parsed: {n_wf}"
+          + (f" ({len(wf_notes)} notes)" if wf_notes else ""))
+    for note in wf_notes:
+        print(f"NOTE: {note}")
+    for rec in wf_receipts:
+        print(f"  wf-receipt {rec['name']}: "
+              + " ".join(f"{s}={v}" for s, (v, _k)
+                         in rec["verdicts"].items()))
     for s in SURFACES:
         row = {"id": s["id"], "grounded": grounding_ok(s)}
         for lang in ("ts", "py"):
@@ -369,7 +553,23 @@ def compile_window(win):
             verdict = parse_receipt(rpath) if rcpt_name else None
             kd_ids = kd_for_receipt(kds, rcpt_name) if rcpt_name else []
             missing_kd = s.get("missing_kd", {}).get(lang)
-            if probe is None and missing_kd:
+            prim = primary.get((s["id"], lang))
+            wf_id = prim[0] if prim else None
+            if prim and prim[1] == "PASS":
+                # primary tier wins: workflow receipt says PASS
+                status = "PASS"
+            elif prim and prim[1] == "FAIL":
+                kd_ids = sorted(set(prim[2]) | set(kd_ids)
+                                | set(kd_for_receipt(kds, prim[3])))
+                if kd_ids:
+                    status = "REGISTERED-DIVERGENCE"
+                else:
+                    status = "UNREGISTERED-GAP"
+                    findings.append(
+                        f"{s['id']}/{lang}: UNREGISTERED-GAP (primary tier: "
+                        f"workflow receipt {prim[0]} records FAIL with no KD "
+                        "row citing it)")
+            elif probe is None and missing_kd:
                 status = "MISSING-REGISTERED"
                 kd_ids = missing_kd
             elif verdict is None and missing_kd:
@@ -408,6 +608,7 @@ def compile_window(win):
                 "receipt": rcpt_name,
                 "verdict": verdict,
                 "kd": kd_ids,
+                "wf": wf_id,
                 "status": status,
             }
         rows.append(row)
@@ -526,7 +727,10 @@ def compile_window(win):
     # ---- SDK_MATRIX.md ----
     md = ["# SDK Coverage Matrix (DoD-14)", "",
           "GENERATED by `scripts/sdk_coverage.py` — do not hand-edit.",
-          f"Divergence register: KNOWN_DIVERGENCES.md ({len(kds)} KD rows).", "",
+          f"Divergence register: KNOWN_DIVERGENCES.md ({len(kds)} KD rows).",
+          "Primary verification tier: the external workflows declared in "
+          "`verification/workflows.json`; their receipts (primary tier) win "
+          "over legacy probe receipts wherever they speak.", "",
           "| surface | grounded | TS probe | TS receipt | TS status | PY probe | PY receipt | PY status |",
           "|---|---|---|---|---|---|---|---|"]
     for r in rows:
@@ -535,6 +739,8 @@ def compile_window(win):
                 return "-"
             v = c["verdict"] or {}
             base = c[key] or "-"
+            if key == "probe" and c.get("wf"):
+                base = f'{base}<br>wf:{c["wf"]}'
             st = c["status"] + (f" ({','.join(c['kd'])})" if c["kd"] else "")
             extra = f'<br>pass={v["pass"]} fail={v["fail"]} div={v["div"]} blk={v["blocked"]}' if v else ""
             return f"{base}{extra}<br>**{st}**"
@@ -564,6 +770,22 @@ def compile_window(win):
         md.append(f"| {c['id']} | {'ok' if c['grounded'] else 'FAIL'} "
                   f"| {c['receipt'] or '-'} | {c['standing'] or '-'} "
                   f"| **{c['status']}** |")
+    md += ["", "## External workflow receipts (primary tier)", "",
+           f"Window {win}: receipts minted by `scripts/run_external_wf.py` "
+           f"from `verification/workflows.json`. Per-surface verdicts use "
+           "the per-cell tag grammar; a FAIL covers only its own cell.", "",
+           "| receipt | workflow | lang | SUBJECT_SHA | profile | cells |",
+           "|---|---|---|---|---|---|"]
+    if wf_receipts:
+        for rec in wf_receipts:
+            cells = " ".join(
+                f"{s}:{v}" + (f"[{','.join(k)}]" if k else "")
+                for s, (v, k) in rec["verdicts"].items())
+            h = rec["hdr"]
+            md.append(f"| {rec['name']} | {h['workflow']} | {h['lang']} "
+                      f"| {h['subject_sha']} | {h['profile']} | {cells} |")
+    else:
+        md.append("- none minted this window")
     md += ["", "## Service Bus census CRC",
            "",
            f"registered={crc['registered']}"
@@ -577,6 +799,11 @@ def compile_window(win):
     return findings
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--strict", action="store_true",
+                    help="malformed/missing primary-tier receipt headers and "
+                         "window/filename mismatches become findings (exit 1)")
+    args = ap.parse_args()
     all_findings = []
     for win in discover_windows():
         has_results = window_paths(win)["results"].is_dir()
@@ -585,7 +812,7 @@ def main():
         if not gating:
             print(f"[non-gating] window {win}: no sdk-results/ and empty "
                   f"divergence register — rendered, excluded from exit")
-        fnd = compile_window(win)
+        fnd = compile_window(win, strict=args.strict)
         if not gating:
             fnd = []
         all_findings += fnd

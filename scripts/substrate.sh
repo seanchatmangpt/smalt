@@ -155,7 +155,7 @@ cmd_down() {
   [ "$killed" -eq 0 ] && echo "[DOWN] nothing to stop"
   for _ in $(seq 1 20); do
     any_listener_present || break
-    sleep 0.5
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 20x0.5s deadline)
   done
   for p in $PORTS; do
     if lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -214,7 +214,7 @@ cmd_up() {
       break
     fi
     kill -0 "$spawn_pid" 2>/dev/null || break
-    sleep 1
+    sleep 1 # SLEEP-CLASS: POLL-STEP (bounded health poll, UP_TIMEOUT deadline)
   done
   if [ "$up" -ne 1 ]; then
     echo "[UP] FAIL: substrate not serving within ${UP_TIMEOUT}s; log tail ($LOG):" >&2

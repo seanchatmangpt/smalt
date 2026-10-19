@@ -18,7 +18,7 @@
 
 tf_mirror_env_setup() {
   TF_MIRROR_REFRESH_LOG="${TMPDIR:-/tmp}/tf-mirror-refresh.$$"
-  local mirror_dir="$ROOT/test/terraform_fixture/provider-mirror"
+  local mirror_dir="$ROOT/scripts/tf_fixtures/provider-mirror"
 
   # M7 amendment (2026-10-16, zero-dialog trust lane): the mirror script is
   # now self-validating (terraform providers mirror re-download + registry

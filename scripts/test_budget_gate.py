@@ -3,7 +3,7 @@
 and gates/common.py).
 
 Reads the TSV timing export written by SmaltTest.BudgetFormatter
-(test/support/budget_formatter.ex):
+(budget export formatter module):
 
     file:line<TAB>duration_ms<TAB>Case.test_name
 

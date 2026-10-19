@@ -12,7 +12,7 @@ set -euo pipefail
 #   77 SKIPPED-NETWORK: provider download from registry.terraform.io failed
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="$ROOT/test/terraform_fixture"
+FIXTURE="$ROOT/scripts/tf_fixtures"
 # Port overrides (lane-concurrency fix, 2026-10-16): the shared substrate
 # holds 9443/9444, so a concurrent tf_smoke must be able to shift lanes.
 # Defaults unchanged: SMALT_TF_PORT=9443, SMALT_TLS_PORT=9444. Sibling data
@@ -82,7 +82,12 @@ cleanup() {
     pid="$(cat "$PID_FILE")"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
-      sleep 1
+      # Bounded reap poll: escalate to -9 only after the pid is observed
+      # dead (or a 10s deadline expires) — never a fixed settle sleep.
+      for _ in $(seq 1 20); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded reap poll, 10s deadline)
+      done
       kill -9 "$pid" 2>/dev/null || true
     fi
     rm -f "$PID_FILE"
@@ -129,7 +134,7 @@ if [ "$(uname)" = "Darwin" ]; then
     SMALT_LEAF_SHA256="$(openssl x509 -in "$ROOT/.smalt/tls/dev-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
     CA_FP="$(openssl x509 -in "$ROOT/.smalt/tls/ca-cert.pem" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 | tr -d ':')"
     PROBE_BIN="$(mktemp -t smalt_probe)" && mv "$PROBE_BIN" "$PROBE_BIN.bin" && PROBE_BIN="$PROBE_BIN.bin"
-    if ! (cd "$ROOT/test/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
+    if ! (cd "$ROOT/scripts/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
       fail_step "shim-probe: probe built" 1 "trust_shim_probe go build failed (native tier needs no shim)"
     elif (DYLD_INSERT_LIBRARIES="$SHIM_DYLIB" \
           SMALT_LEAF_SHA256="$SMALT_LEAF_SHA256" SMALT_CA_SHA256="$CA_FP" \
@@ -174,7 +179,7 @@ Process.sleep(:infinity)"
   SMALT_TEST_AMQP_PORT=$AMQP_PORT SMALT_TEST_EVENT_HUBS_PORT=$EHUB_PORT \
   SMALT_TLS_CERTFILE="$ROOT/.smalt/tls/dev-cert.pem" \
   SMALT_TLS_KEYFILE="$ROOT/.smalt/tls/dev-key.pem" \
-  exec mix run --no-start -e "$EVAL" --no-halt) >"$SUBSTRATE_LOG" 2>&1 &
+  exec mix run --no-start -e "$EVAL" --no-halt 9>&-) >"$SUBSTRATE_LOG" 2>&1 &
 SUB_PID=$!
 echo "$SUB_PID" > "$PID_FILE"
 echo "[tf-smoke] lane substrate: ARM $PORT, TLS $TLS_PORT, egress $EGRESS_PORT, amqp $AMQP_PORT, ehub $EHUB_PORT, mcp $MCP_PORT"
@@ -187,7 +192,7 @@ for _ in $(seq 1 30); do
     tail -n 40 "$SUBSTRATE_LOG" >&2
     fail_step "substrate bound $PORT <=30s" 1 "substrate process died"
   fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded nc bind poll, 30x1s deadline)
 done
 
 if [ "$up" -ne 1 ]; then
@@ -200,7 +205,7 @@ record "substrate bound $PORT <=30s" "PASS"
 up=0
 for _ in $(seq 1 30); do
   if nc -z 127.0.0.1 "$TLS_PORT" 2>/dev/null; then up=1; break; fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded nc bind poll, 30x1s deadline)
 done
 if [ "$up" -ne 1 ]; then
   echo "[FAULT] substrate never bound TLS port $TLS_PORT within 30s; log tail:" >&2
