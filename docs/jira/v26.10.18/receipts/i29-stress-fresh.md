@@ -2,6 +2,8 @@
 
 Standing: BLOCKED[BUILD_BROKEN_TEST_COMPILE] — pre-existing, foreign-lane, same class as dda0bf5.
 
+Context: slice(mix test --include stress, compile-abort census at sovereign_midnight_test.exs; zero tests executed, no edits, no git ops)
+
 ## Command
 
 ```

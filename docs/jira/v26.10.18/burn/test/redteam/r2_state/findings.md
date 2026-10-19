@@ -1,7 +1,7 @@
 # r2_state — State/Isolation Redteam Findings
 
 Run: 2026-10-15T03:58:34Z (canonical run, /tmp/r2-final-run.log).
-Subject: smalt substrate @ /Users/sac/smalt (fresh `mix run --no-halt`, MIX_ENV=test,
+Subject: smalt substrate @ ~/smalt (fresh `mix run --no-halt`, MIX_ENV=test,
 lro_delay_ms=12000), via `test/redteam/r2_state/run.sh`.
 Result: **12 pass / 1 CRITICAL finding** (13 scenarios). S6a failed in every run (5/5).
 

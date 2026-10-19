@@ -10,8 +10,8 @@ x-burn-common: &burn-common
   volumes:
     - ../burn:/burn:ro
     - ./results:/burn-results
-    - /Users/sac/beam4pm:/beam4pm:ro
-    - /Users/sac/xaas:/xaas:ro
+    - ${HOME}/beam4pm:/beam4pm:ro
+    - ${HOME}/xaas:/xaas:ro
   tmpfs:
     - /tmp
   cap_drop: [ALL]
@@ -30,7 +30,7 @@ services:
       BURN_REPLICA: "1"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -46,7 +46,7 @@ services:
       BURN_REPLICA: "2"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -62,7 +62,7 @@ services:
       BURN_REPLICA: "3"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -78,7 +78,7 @@ services:
       BURN_REPLICA: "4"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -94,7 +94,7 @@ services:
       BURN_REPLICA: "5"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -110,7 +110,7 @@ services:
       BURN_REPLICA: "6"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -126,7 +126,7 @@ services:
       BURN_REPLICA: "7"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -142,7 +142,7 @@ services:
       BURN_REPLICA: "8"
       BURN_REPLICA_TOTAL: "8"
       SMALT_BURN_PLANE: control
-      BURN_CHAOS_SCENARIO: "s2-lro-flip"
+      BURN_CHAOS_SCENARIO: "s3-wasm-seal"
       SMALT_STORM_CYCLES: ${SMALT_STORM_CYCLES:-50}
       SMALT_BURN_SUBJECT_SHA: ${SMALT_BURN_SUBJECT_SHA:-}
       BURN_IMAGE_DIGEST: ${BURN_IMAGE_DIGEST:-}
@@ -409,7 +409,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-1
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "1"
       BURN_REPLICA_TOTAL: "8"
@@ -425,7 +425,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-2
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "2"
       BURN_REPLICA_TOTAL: "8"
@@ -441,7 +441,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-3
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "3"
       BURN_REPLICA_TOTAL: "8"
@@ -457,7 +457,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-4
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "4"
       BURN_REPLICA_TOTAL: "8"
@@ -473,7 +473,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-5
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "5"
       BURN_REPLICA_TOTAL: "8"
@@ -489,7 +489,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-6
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "6"
       BURN_REPLICA_TOTAL: "8"
@@ -505,7 +505,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-7
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "7"
       BURN_REPLICA_TOTAL: "8"
@@ -521,7 +521,7 @@ services:
     environment:
       BURN_SERVICE: smalt-burn-identity-8
       SMALT_PLANES: identity
-      BURN_EXPECT_PORT: "9443"
+      BURN_EXPECT_PORT: "9545"
       BURN_FLOOD_SECONDS: "15"
       BURN_REPLICA: "8"
       BURN_REPLICA_TOTAL: "8"

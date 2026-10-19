@@ -121,8 +121,8 @@ in_image() { # in_image <container-name> <script> [env k=v ...]
   docker run --rm --name "$cname" \
     -v "$ROOT/$BURN:/burn:ro" \
     -v "$RING_DIR:/ring" \
-    -v /Users/sac/beam4pm:/beam4pm:ro \
-    -v /Users/sac/xaas:/xaas:ro \
+    -v "$HOME/beam4pm:/beam4pm:ro" \
+    -v "$HOME/xaas:/xaas:ro" \
     -e SMALT_BURN_SUBJECT_SHA="$SUBJECT_SHA" \
     -e BURN_IMAGE_DIGEST="$IMAGE_ID" \
     -e SMALT_BURN_PLANE=all \

@@ -1,6 +1,6 @@
 # Rewrite draft: per-test timing budget gate
 
-Status: DRAFT (ERRC-Create, no edits landed). Repo: /Users/sac/smalt.
+Status: DRAFT (ERRC-Create, no edits landed). Repo: ~/smalt.
 Shaped after `gates/common.py` (fail-closed contract, receipt) and
 `scripts/bench_check.py` (stdlib-only, receipt-in, CTQ table, exit 0/1).
 

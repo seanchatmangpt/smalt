@@ -1,6 +1,6 @@
 # Rewrite drafts — JS/Python SDK harnesses (structural teardown + readiness polls)
 
-Repo: /Users/sac/smalt (read-only; drafts only). Basis: file reads + grep on
+Repo: ~/smalt (read-only; drafts only). Basis: file reads + grep on
 2026-10-18, current tree. Chicago rule: no wall-clock coordination; poll
 observable readiness with deadlines. Fixed `sleep`/`setTimeout` delays that
 gate a *transition* (boot, teardown, delivery) are the defect class; a

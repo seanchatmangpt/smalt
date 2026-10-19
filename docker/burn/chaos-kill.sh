@@ -569,7 +569,7 @@ pid = Process.whereis(Smalt.Plane.IdentitySupervisor)
 true = is_pid(pid)
 :ok = Supervisor.terminate_child(sup, Smalt.Plane.IdentitySupervisor)
 false = Smalt.Plane.Identity.StsGate.mint_allowed?()
-:ok = Supervisor.restart_child(sup, Smalt.Plane.IdentitySupervisor)
+{:ok, _} = Supervisor.restart_child(sup, Smalt.Plane.IdentitySupervisor)
 open =
   Enum.reduce_while(1..600, false, fn _, acc ->
     case Smalt.Plane.Identity.StsGate.mint_allowed?() do

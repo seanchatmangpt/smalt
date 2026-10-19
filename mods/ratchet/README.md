@@ -2,7 +2,7 @@
 
 A smalt marketplace mod that keeps a 20-agent ratchet in flight: N agents
 concurrently ratcheting tickets to done, with a panel, auto-execute, and a
-court gate. Plugin root: `/Users/sac/smalt/mods/ratchet`.
+court gate. Plugin root: `~/smalt/mods/ratchet`.
 
 ## What the mod does
 
@@ -36,21 +36,21 @@ lib/state.js                 turn-facing state + computeNextAction over the tick
 ### Marketplace (persistent)
 
 ```
-claude plugin marketplace add /Users/sac/smalt/mods
+claude plugin marketplace add ~/smalt/mods
 /plugin install ratchet@smalt-mods
 ```
 
 ### One session (`--plugin-dir`)
 
 ```
-claude --plugin-dir /Users/sac/smalt/mods/ratchet
+claude --plugin-dir ~/smalt/mods/ratchet
 ```
 
 ### Validation
 
 ```
-$ claude plugin validate /Users/sac/smalt/mods/ratchet
-Validating plugin manifest: /Users/sac/smalt/mods/ratchet/.claude-plugin/plugin.json
+$ claude plugin validate ~/smalt/mods/ratchet
+Validating plugin manifest: ~/smalt/mods/ratchet/.claude-plugin/plugin.json
 ✔ Validation passed with warnings
 exit=0
 ```

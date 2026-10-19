@@ -46,7 +46,7 @@ false` — an unregistered field is a validation failure.
 | `orphans` | array of strings |
 | `crash_reports` | integer >= 0 |
 | `evidence_path` | non-empty string |
-| `broken_term` | null or one of the ten DfCM terms: `mu_on_O`, `admission_vacuous`, `mu_unlawful`, `R_missing_identity`, `R_missing_authority`, `R_missing_consequence`, `R_missing_replay`, `R_missing_standing`, `R_not_fed_back` |
+| `broken_term` | null or one of the nine DfCM terms: `mu_on_O`, `admission_vacuous`, `mu_unlawful`, `R_missing_identity`, `R_missing_authority`, `R_missing_consequence`, `R_missing_replay`, `R_missing_standing`, `R_not_fed_back` |
 | optional | `lane`, `detail`, `recovery_ms` (>= 0), `clean` (bool), `tier`, `tests` (>= 0), `failures` (>= 0), `faces` (array of objects), `flood_conns`, `hogs` (>= 0), `note` |
 
 ## Conditional constraint (the coupling law)

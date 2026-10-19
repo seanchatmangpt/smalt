@@ -8,7 +8,7 @@ const { test } = require("node:test");
 const path = require("node:path");
 
 const SDK_ROOT =
-  process.env.SMALT_SDK_ROOT || "/Users/sac/smalt/test/sdk-full/node_modules";
+  process.env.SMALT_SDK_ROOT || "~/smalt/test/sdk-full/node_modules";
 const { BlobServiceClient, StorageSharedKeyCredential } = require(
   path.join(SDK_ROOT, "@azure/storage-blob"),
 );

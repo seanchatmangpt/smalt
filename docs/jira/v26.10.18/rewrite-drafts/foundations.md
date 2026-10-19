@@ -1,7 +1,7 @@
 # Draft: test foundations — test_helper post-rewrite + test/support consolidation
 
 Status: DRAFT (frozen tree; no edits, no git). Window: v26.10.18.
-Date: 2026-10-18. Repo: /Users/sac/smalt.
+Date: 2026-10-18. Repo: ~/smalt.
 
 Cross-references (do not duplicate): `assert-eventually.ex.md` (canonical
 AssertEventually module of record, already smoke-verified),

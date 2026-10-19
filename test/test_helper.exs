@@ -21,12 +21,12 @@ ExUnit.configure(
     # plain `mix test`; run with `mix test --include stress` / `just
     # test-stress`. Population fenced by test/stress_tier_census_test.exs.
     :stress,
-    # :sovereign_gap (v26.10.18): 6 failing phase bodies of the Sovereign
-    # Midnight capstone spec (test/azsim/sovereign_midnight/) matching the
-    # spec's G1–G6 MISSING gaps (KeyVault crypto ops, ARM NSG ETag race,
-    # Policy 403, SB lock-lost 410, EH checkpointing, ARG KQL). Typed
-    # exclusions — run with `mix test --include sovereign_gap` until the
-    # v26.10.19 gaps close.
+    # :sovereign_gap (v26.10.18): the ONE real product gap of the Sovereign
+    # Midnight capstone triage (receipts/i29-sovereign-gap-triage.md) — 5.3
+    # ARG KQL (ResourceGraph HTTP route family absent, maps to G6; the other
+    # 5 tagged bodies passed deterministically and were un-tagged). Typed
+    # exclusion — run with `mix test --include sovereign_gap` until the
+    # v26.10.19 route family lands.
     :sovereign_gap
   ]
 )

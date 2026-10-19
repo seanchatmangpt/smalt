@@ -73,7 +73,7 @@ SMALT_PLANES=staging just up   # or: mix run -e 'Smalt.Planes.resolve()'
 `Smalt.Planes.resolve/0` raises `Smalt.Planes.InvalidPlane`, rendered
 exactly as:
 
-```
+```text
 {:invalid_plane, :staging} (known planes: [:control, :data, :integration, :identity])
 ```
 

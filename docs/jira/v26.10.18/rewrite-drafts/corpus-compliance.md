@@ -4,7 +4,7 @@ Scope: `test/corpus/helper.exs`, `test/corpus/shacl_fuzz.exs`,
 `test/corpus/tags_normalization.exs`, `test/compliance/c1_arm.exs`,
 `test/compliance/c3_cosmos.exs`, `test/compliance/c4_blob.exs`.
 
-Tree: `/Users/sac/smalt` (READ-ONLY — these are drafts, nothing edited).
+Tree: `~/smalt` (READ-ONLY — these are drafts, nothing edited).
 
 ## Design decisions (first principles)
 

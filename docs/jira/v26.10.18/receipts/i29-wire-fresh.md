@@ -2,6 +2,8 @@
 
 Standing: PASS (2/2 clean runs)
 
+Context: slice(mix test test/wire --include amqp_wire, 2 runs, private root _build-ft-w3)
+
 ## Subject
 
 Fresh-build wire tier run, private build root `_build-ft-w3` (deleted after receipt).

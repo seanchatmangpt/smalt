@@ -77,7 +77,7 @@ probe(F) ->
 '''
 
 def _escript() -> str:
-    for cand in ("/Users/sac/.erlmcp/otp-28.3.1/bin/escript", shutil.which("escript") or ""):
+    for cand in (os.path.expanduser("~/.erlmcp/otp-28.3.1/bin/escript"), shutil.which("escript") or ""):
         if cand and os.path.exists(cand):
             return cand
     return "escript"

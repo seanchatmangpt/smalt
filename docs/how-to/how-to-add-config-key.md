@@ -49,8 +49,8 @@ accessor.
 `test/config_replay_identity_test.exs` pins census CLOSED at 56. A new key
 makes the live census 57 — the gate FAILS, and that is the point: the pin
 moves only with the ontology diff, never silently. Update the pin in the
-same change (the test comment says: "census pin updated with the ticket,
-not" silently).
+same change (the test comment says: "census pin updated with the ticket, not
+silently drifted").
 
 ## Step 4: override semantics
 

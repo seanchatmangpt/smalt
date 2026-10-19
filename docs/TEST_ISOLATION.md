@@ -4,7 +4,7 @@
 > (adds the async topology, the isolation court, and the runtime exemption
 > registry). This file remains as the historical audit ledger.
 
-# Smalt Test Isolation Contract
+## Smalt Test Isolation Contract
 
 ## 1. Per-test unique keys
 
@@ -38,7 +38,7 @@ MUST NOT hardcode the substrate defaults. Use the Application-env contract
 
 Default excludes are configured in `test/test_helper.exs`
 (`ExUnit.configure(exclude: [...])`). Every exclusion is a NAMED,
-ownered exception — not a blanket skip. Re-enable a tier with
+owned exception — not a blanket skip. Re-enable a tier with
 `mix test --include <tag>`.
 
 | Tag | Meaning | Owner lane | Re-enable condition |
@@ -46,7 +46,7 @@ ownered exception — not a blanket skip. Re-enable a tier with
 | `:amqp_wire` | Drives the real AMQP wire tier (real broker/listener on the AMQP port). Off by default so the plain `mix test` stays broker-independent. Carried by `test/compliance/c5_servicebus.exs` and the `test/amqp/` suites (`broker_facade`, `event_hubs` (2 tests), `management_rpc`, `primitive_codec`, `selector_epoch`). Run via `mix test.amqp_wire`. | amqp wire tier | Broker available; run `mix test --include amqp_wire` |
 | `:cross_seat` | Auth cross-seat suite inside `test/auth_enforce_test.exs` (out-of-seat token/seat-boundary cases). **CORRECTED 2026-10-17: `:cross_seat` was NEVER default-excluded** — `test/test_helper.exs` excludes only `:amqp_wire`, so the 8 cross_seat tests run in every plain `mix test`. `mix test.cross_seat` is a selection-only focused run (test + `--only cross_seat` excludes everything untagged), not an isolation mechanism. | R164 | Included-only run: `mix test --only cross_seat test/auth_enforce_test.exs` |
 | `:stress` | Stress tier (v26.10.18): 15 expensive test bodies — the byte-identical replay/identity + regen-interleave fences (7 moduletag files, 34+ cases), DETS churn, 1000-PUT shacl fuzz, 10k-op pplan fuzz, 10k cosmos creates, store-restart replay-or-drop. Inventory + measured evidence: `docs/jira/v26.10.18/rewrite-drafts/stress-tier.md` §3. Excluded from plain `mix test` (T1) so load-class 60 s timeout faces stop tripping under suite contention; runs sequentially via `just test-stress`. Tier population fenced by `test/stress_tier_census_test.exs` (>= 20 stress cases assert). | B7 (v26.10.18 harness/tiers lane) | `mix test --include stress` / `just test-stress` |
-| `:sovereign_gap` | Sovereign Midnight capstone (v26.10.18): 6 failing phase bodies of `test/azsim/sovereign_midnight/sovereign_midnight_test.exs` — KeyVault crypto ops, ARM NSG ETag race, Policy 403, SB lock-lost 410, EH checkpointing, ARG KQL — matching the spec gap register G1–G6 (docs/jira/v26.10.18/azsim-burn/SOVEREIGN_MIDNIGHT.md). Typed exclusion; re-enable when the v26.10.19 gaps close. | coordinator (spec-derived file) | `mix test --include sovereign_gap` |
+| `:sovereign_gap` | Sovereign Midnight capstone (v26.10.18): ONE real product gap survives triage (receipts/i29-sovereign-gap-triage.md) — 5.3 ARG KQL in `test/azsim/sovereign_midnight/sovereign_midnight_test.exs` (ResourceGraph HTTP route family absent, maps to spec gap G6). The other 5 tagged bodies passed deterministically (1.3/2.2/2.3/3.1/3.2) and were un-tagged; 3.1 lock-lost flake (1/4) filed for root-cause. Typed exclusion; re-enable when the v26.10.19 route family lands. | coordinator (spec-derived file) | `mix test --include sovereign_gap` |
 | `:compliance` | Whole-court selection tag on `test/compliance/c1_arm.exs` (the ONLY family carrying it). The 7-family compliance corpus (170 tests) is loaded and fenced by `test/compliance_test.exs` / `just test-compliance` — added 2026-10-17; before that the `test/compliance/*.exs` filenames never matched the `*_test.exs` glob and the 170 tests never ran in any gate. | compliance tier | `mix test test/compliance_test.exs` (154 run / 16 c5 skip by default); `just test-compliance-wire` for the full 170 |
 | ~~`:arm_seam`~~ | **RETIRED 2026-10-15 (V261014-13)**: vacuous exclusion entry deleted from `test/test_helper.exs`; no test carries this tag; re-introduce only with a real named-gap test. `GAP(vacuous-tag-arm-seam)` CLOSED — token deleted | — | — |
 | ~~`:dp_seam`~~ | **RETIRED 2026-10-15 (V261014-13)**: the re-enable condition landed (`Store.list_prefix/2` at `lib/smalt/store.ex:128`, used by `lib/smalt/data_plane/cosmos.ex:504,589`), no test carries the tag, and the cosmos fallback this row described is gone (If-Match replace is now one atomic `Store.compare_and_swap/4`); vacuous exclusion entry deleted from `test/test_helper.exs`; re-introduce only with a real named-gap test. `GAP(vacuous-tag-dp-seam)` CLOSED — token deleted | — | — |
@@ -289,10 +289,10 @@ where the condition under test IS time (rate-limit window alignment,
 LRO delay/retention elapse, tombstone grace, wire keep-alive idle gap), no
 observable can be polled, so the sleep is named and derived from its
 configured constant instead of a bare literal. Six windows:
-`second_boundary_ms/1`, `fixed_window_rollover_ms/0`, `lro_delay_elapse_ms/1`,
-`lro_retention_elapse_ms/1`, `sweeper_grace_elapse_ms/0`, `mcp_idle_gap_ms/0`.
+`second_boundary_ms/1`, `fixed_window_rollover_ms/1`, `lro_delay_elapse_ms/2`,
+`lro_deadline_elapse_ms/1`, `sweeper_grace_elapse_ms/2`, `mcp_idle_gap_ms/1`.
 The adjacent sleep keeps its `# SLEEP-CLASS: TIME-ADVANCE` annotation.
-Current consumers: `test/amqp/sweeper_test.exs`,
-`test/arm_error_corpus_test.exs`, `test/compliance/c1_arm.exs`,
-`test/enclave-testbed/enclave_testbed.exs`, `test/mcp_wire_test.exs`,
+Current consumers (grep `SmaltTest.SleepWindows\.` test/, 2026-10-18):
+`test/amqp/sweeper_test.exs`, `test/arm_error_corpus_test.exs`,
+`test/compliance/c1_arm.exs`, `test/mcp_wire_test.exs`,
 `test/smalt_arm_gateway_test.exs`.

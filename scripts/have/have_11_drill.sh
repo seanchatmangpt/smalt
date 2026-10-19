@@ -16,7 +16,7 @@
 
 set -uo pipefail
 
-REPO=/Users/sac/smalt
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESULT="$REPO/docs/jira/v26.10.18/bench/have-11-drill.jsonl"
 LOGDIR="$REPO/tmp/have/drill"
 TS=$(date -u +%Y%m%dT%H%M%SZ)

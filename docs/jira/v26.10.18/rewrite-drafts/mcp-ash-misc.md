@@ -1,6 +1,6 @@
 # Rewrite drafts: mcp / ash-extension / lro sweeper / misc (v26.10.18)
 
-Status: DRAFT (frozen tree; no edits, no git). Repo: /Users/sac/smalt.
+Status: DRAFT (frozen tree; no edits, no git). Repo: ~/smalt.
 Scope: `test/mcp_test.exs`, `test/ash_extension_test.exs`, `test/lro_test.exs`
 (sweeper face only — other lane's drafts checked first, see §3),
 `test/trust_profile_deployment_test.exs`, misc sleep sweep (§4).

@@ -2,6 +2,8 @@
 
 - Standing: ALIVE
 - Date: 2026-10-18
+
+Context: solo(fresh-compile census in private root _build-ft-cc, no shared _build touched)
 - Subject: smalt @ main (dda0bf5), private build root `_build-ft-cc`
 - Command: `MIX_ENV=test MIX_BUILD_ROOT=_build-ft-cc mix compile --warnings-as-errors`
 

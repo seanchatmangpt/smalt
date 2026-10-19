@@ -10,7 +10,7 @@ lives in `tmp/have/` (gitignored; `.gitignore` line 116).
 
 Three tiers:
 
-```
+```text
 +------------------------------------------------------------------+
 | TIER 1 — SUPERVISORY (cron, 5m)                                  |
 |   scripts/have/pool_saturation_guard.py per cycle:               |
@@ -204,21 +204,21 @@ The 5m guard cycle as cron (script exits 0 even on deficit — the alert row
 is the signal; never let cron mail-storm on the deficit path):
 
 ```cron
-# HAVE L1 pool-saturation guard, every 5 minutes (repo: /Users/sac/smalt)
-*/5 * * * * cd /Users/sac/smalt && python3 scripts/have/pool_saturation_guard.py >> tmp/have/cron.log 2>&1
+# HAVE L1 pool-saturation guard, every 5 minutes (repo: ~/smalt)
+*/5 * * * * cd ~/smalt && python3 scripts/have/pool_saturation_guard.py >> tmp/have/cron.log 2>&1
 ```
 
 The 30m watchdog as cron. Dry-run by default; add `HAVE_ENFORCE=1` to arm
 RP-01 automation (see section 5b):
 
 ```cron
-*/30 * * * * cd /Users/sac/smalt && python3 scripts/have/meta_watchdog.py >> tmp/have/cron.log 2>&1
+*/30 * * * * cd ~/smalt && python3 scripts/have/meta_watchdog.py >> tmp/have/cron.log 2>&1
 ```
 
 Equivalent `just` form:
 
 ```cron
-*/5 * * * * cd /Users/sac/smalt && just have-guard >> tmp/have/cron.log 2>&1
+*/5 * * * * cd ~/smalt && just have-guard >> tmp/have/cron.log 2>&1
 ```
 
 Optional external watchdog (RP-02b): a second, independent entry that
@@ -227,7 +227,7 @@ observe its own death, so the external timer is the only detector:
 
 ```cron
 # L1-down detector, hourly; fires only when the heartbeat is stale > 10 min
-15 * * * * test $(cd /Users/sac/smalt && python3 -c "import time,pathlib;hb=pathlib.Path('tmp/have/have_l1.heartbeat');print(0 if not hb.exists() else time.time()-float(hb.read_text().strip()))") -lt 600 || echo "HAVE L1 DOWN: heartbeat stale > 600s" | mail -s "SEV1 HAVE-L1-DOWN" "$USER"
+15 * * * * test $(cd ~/smalt && python3 -c "import time,pathlib;hb=pathlib.Path('tmp/have/have_l1.heartbeat');print(0 if not hb.exists() else time.time()-float(hb.read_text().strip()))") -lt 600 || echo "HAVE L1 DOWN: heartbeat stale > 600s" | mail -s "SEV1 HAVE-L1-DOWN" "$USER"
 ```
 
 `tmp/have/cron.log` is scratch (under the gitignored `tmp/have/`), not an
@@ -235,7 +235,7 @@ indexed receipt.
 
 ## 7. Triage quick-reference
 
-```
+```text
 alert row?
 ├─ type=have_worker_fleet_active_count
 │   ├─ severity=SEV1  -> counter fail: check pgrep availability, run RP-01

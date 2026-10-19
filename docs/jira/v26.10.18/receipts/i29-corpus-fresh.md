@@ -2,6 +2,8 @@
 
 Standing: PASS (3/3 clean, 182/0 class)
 
+Context: slice(mix test test/corpus_test.exs test/compliance_test.exs, 3 runs, private root _build-ft-cs3)
+
 Subject: smalt HEAD `dda0bf5c504268a6d3b620c691520d97c1c384ac`, private build root `_build-ft-cs3` (fresh compile, no shared `_build` reuse).
 
 Scope: `MIX_BUILD_ROOT=_build-ft-cs3 mix test test/corpus_test.exs test/compliance_test.exs`, 3 runs at HEAD.

@@ -161,7 +161,17 @@ CLOSED-SIMULATED + 1 CLOSED). Re-count 2026-10-17 (kd-registrar): KD-89 flipped
 CLOSED-WITH-RECEIPT via `scripts/kd_flip.py --apply` on witness
 `docs/jira/v26.10.16/receipts/kd89-ml-dsa-closure.md` (postdates shim
 `lib/smalt/trust_profile/trust_profile.ex`; engine-adjudicated ML-DSA-65 forge
-court, KAT accepted / tamper refused, 25/0 + 76/0 suites). The table is ground truth; open/closed status
+court, KAT accepted / tamper refused, 25/0 + 76/0 suites). Census correction
+2026-10-18 (kd-registrar, receipt
+`docs/jira/v26.10.18/receipts/i29-kd-census-fix.md`): the running prose above
+is a historical log and had drifted; the table is ground truth. Table-derived
+counts as of 2026-10-18: **95 rows**, KD-01..KD-97, no duplicate ids —
+**55 OPEN-class / 40 closed-class**. Replay:
+`grep -c '^| KD-' docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` → 95;
+`python3 -c "import sys;rows=[l for l in open('docs/jira/v26.10.14/KNOWN_DIVERGENCES.md') if l.startswith('| KD-')];print(sum(1 for l in rows if l.strip().strip('|').split('|')[-1].strip().startswith('OPEN')))"` → 55 OPEN
+(last table column = status cell; rows whose status cell starts with `OPEN`
+count OPEN-class, all others closed-class). Any other count in this prose is
+historical, not current. The table is ground truth; open/closed status
 lives in the table and the cited receipts.
 
 C2 servicebus additions 2026-10-16 (kd-registrar lane 522): KD-84 (settlement

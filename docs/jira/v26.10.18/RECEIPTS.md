@@ -97,13 +97,22 @@ count, or PASS/FAIL token) found in the file.
 | i28-pinion-r | [i28-pinion-reaudit.md](receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) |
 | i28-sleep-ga | [i28-sleep-gate-full.md](receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) |
 | i28-stress-v | [i28-stress-verify.md](receipts/i28-stress-verify.md) | PARTIAL_ALIVE | i28 — Stress Tier Verification (Current Tree) |
+| i29-compile- | [i29-compile-clean.md](receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
+| i29-corpus-f | [i29-corpus-fresh.md](receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
 | i29-corpus-s | [i29-corpus-soak.md](receipts/i29-corpus-soak.md) | PASS | I29 — corpus soak: 3x corpus + compliance (both loaders) |
 | i29-court-su | [i29-court-surfaces.md](receipts/i29-court-surfaces.md) | FAIL | i29 — Court Surfaces Receipt |
+| i29-full-soa | [i29-full-soak-b.md](receipts/i29-full-soak-b.md) | UNKNOWN | i29 — Full soak leg b: `mix test` (fs6, complements fs4/fs5) |
 | i29-full-soa | [i29-full-soak.md](receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
 | i29-have-sna | [i29-have-snapshot.md](receipts/i29-have-snapshot.md) | PARTIAL_ALIVE | i29 HAVE snapshot (guard + watchdog + telemetry + status) |
+| i29-isolatio | [i29-isolation-count.md](receipts/i29-isolation-count.md) | FAIL | i29 (isolation courts, advisory count run) **NO-CONTEXT** |
 | i29-mod-test | [i29-mod-tests.md](receipts/i29-mod-tests.md) | UNKNOWN | i29: mods/ratchet test suite + plugin validation (receipt i29-mod-tests) |
+| i29-pinion-s | [i29-pinion-spot.md](receipts/i29-pinion-spot.md) | PASS | i29 — pinion spot-audit (6 highest-churn, post-AZB-06/07/10/22b) |
+| i29-publish- | [i29-publish-dry-fresh.md](receipts/i29-publish-dry-fresh.md) | PARTIAL_ALIVE | i29 — Publish-gate dry run + generated-artifact freshness (post-0009df3) |
 | i29-receipt- | [i29-receipt-final.md](receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
+| i29-stress-f | [i29-stress-fresh.md](receipts/i29-stress-fresh.md) | UNKNOWN | i29 — fresh stress leg (churn court calibration + fence conversions) |
 | i29-wire-2x | [i29-wire-2x.md](receipts/i29-wire-2x.md) | PASS | i29 — wire tier 2x clean run |
+| i29-wire-fre | [i29-wire-fresh.md](receipts/i29-wire-fresh.md) | PASS | i29 wire fresh-leg receipt |
+| i29-wrap-pre | [i29-wrap-prep.md](receipts/i29-wrap-prep.md) | PASS | i29 — wrap prep for AZB-23/24 (receipt-index, docs-dod, TEST_ISOLATION, TICKETS sweep) |
 | i30-checkpoi | [i30-checkpoint-prep.md](receipts/i30-checkpoint-prep.md) | PASS | I30 checkpoint prep — integration-prep sweep |
 | mod-r1-scaff | [mod-r1-scaffold.md](receipts/mod-r1-scaffold.md) | ALIVE | mod-r1-scaffold — ratchet mod scaffold |
 | mod-r10-docs | [mod-r10-docs.md](receipts/mod-r10-docs.md) | PASS | mod-r10: ratchet mod DOCS + INSTALL lane |

@@ -47,8 +47,8 @@ burn: burn-soak burn-matrix
 # In-container validation using mounted ~/beam4pm and ~/xaas
 @burn-in-container-verify:
     docker run --rm \
-      -v /Users/sac/beam4pm:/beam4pm:ro \
-      -v /Users/sac/xaas:/xaas:ro \
+      -v $HOME/beam4pm:/beam4pm:ro \
+      -v $HOME/xaas:/xaas:ro \
       -v {{BURN_ROOT}}/docker/burn:/burn:ro \
       -v {{BURN_ROOT}}/docs/jira/v26.10.18/burn:/burn-evidence:ro \
       smalt:local elixir /burn/in_container_conformance.exs

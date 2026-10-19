@@ -16,7 +16,7 @@
 #     cross-replica service DNS is unresolvable and every cross-replica TCP
 #     attempt must fail. This is the cross-tenant isolation claim.
 #   - Per-plane chaos stage: each plane container runs its plane's scenario
-#     from chaos-kill.sh (control=s2-lro-flip, data=s1-store-kill,
+#     from chaos-kill.sh (control=s3-wasm-seal, data=s1-store-kill,
 #     integration=s4-amqp-scenario, identity=s5-identity-sts) BEFORE the
 #     daemon boot (eval VMs bind ports; daemon rebinds after).
 #   - Tenant canary: replica-unique marker roundtrip in own namespace +
@@ -49,7 +49,7 @@ GATE_TS="$(date +%s)"
 # no single scenario — the legacy 'all' row runs probe-only).
 scenario_for() {
   case "$1" in
-    control) echo "s2-lro-flip" ;;
+    control) echo "s3-wasm-seal" ;;
     data) echo "s1-store-kill" ;;
     integration) echo "s4-amqp-capacity" ;;
     identity) echo "s5-identity-sts" ;;
@@ -131,15 +131,15 @@ emit_compose() {
   echo "# chaos scenario + replica identity via service env)."
   echo "# Do not hand-edit; regenerate. Zero 'ports:' publish — every container is"
   echo "# its own network namespace; canonical ports bind inside the netns only."
-  cat <<'HDR'
+  cat <<HDR
 x-burn-common: &burn-common
   image: smalt:local
   entrypoint: ["bash", "/burn/container-burn.sh"]
   volumes:
     - ../burn:/burn:ro
     - ./results:/burn-results
-    - /Users/sac/beam4pm:/beam4pm:ro
-    - /Users/sac/xaas:/xaas:ro
+    - ${HOME}/beam4pm:/beam4pm:ro
+    - ${HOME}/xaas:/xaas:ro
   tmpfs:
     - /tmp
   cap_drop: [ALL]
@@ -153,7 +153,11 @@ HDR
     for i in $(seq 1 "$n"); do
       s="$(svc_name "$p" "$i")"
       case "$p" in
-        control|all|identity) exp=9443 ;;
+        control|all) exp=9443 ;;
+        # identity plane carries NO plane-local listener (AZB-09: KV/STS ride
+        # the shared control-plane surfaces); its netns probe asserts the
+        # shared MCP listener, and chaos s5 proves the identity subtree.
+        identity) exp=9545 ;;
         data) exp=8443 ;;
         integration) exp=5672 ;;
       esac
@@ -275,11 +279,11 @@ receive do _ -> :ok end' \
 case :dets.open_file(:azb17_av, file: ~c"/dets/av.dets") do
   {:ok, _} ->
     case :dets.lookup(:azb17_av, "azb17-av-marker") do
-      [{"azb17-av-marker", v}] -> IO.puts("AV-B: CANARY_CROSS_READ foreign marker read: \#{inspect(v)}")
+      [{"azb17-av-marker", v}] -> IO.puts("AV-B: CANARY_CROSS_READ foreign marker read: #{inspect(v)}")
       _ -> IO.puts("AV-B: MARKER_ABSENT")
     end
     :dets.close(:azb17_av)
-  {:error, r} -> IO.puts("AV-B: CANARY_FIRED_DETS_SHARED_REFUSED \#{inspect(r)}")
+  {:error, r} -> IO.puts("AV-B: CANARY_FIRED_DETS_SHARED_REFUSED #{inspect(r)}")
 end' \
     --entrypoint bash smalt:local -c '
       /app/_release/bin/smalt eval "$AV_EVAL_CODE" 2>&1
@@ -358,7 +362,8 @@ for PLANE_ROW in "${SELECTED[@]}"; do
     while [ "$SECONDS" -lt "$DEADLINE" ]; do
       HAVE=0
       for s in "${ROW_SERVICES[@]}"; do
-        if [ -s "$RESULTS_DIR/burn-$s.jsonl" ] && tail -1 "$RESULTS_DIR/burn-$s.jsonl" | grep -q '"clean":'; then
+        if [ -s "$RESULTS_DIR/burn-$s.jsonl" ] && tail -1 "$RESULTS_DIR/burn-$s.jsonl" | grep -q '"stage":"probe"' \
+           && ! "$DC[@]" ps -q "$s" 2>/dev/null | grep -q .; then
           HAVE=$((HAVE + 1))
         elif [ ! -s "$RESULTS_DIR/.ssdone-$s" ]; then
           # Falsifier witness: capture in-netns ss lines WHILE the container
@@ -433,7 +438,7 @@ GATE_FILE="docs/jira/v26.10.18/burn/parallel-matrix-${REPLICAS}x${#SELECTED[@]}-
   printf '{"type":"run_header","run_id":"azb17-parallel-matrix-%s","expected":{"containers":[' "$GATE_TS"
   sep=""
   for s in "${SERVICES[@]}"; do printf '%s"%s"' "$sep" "$s"; sep=","; done
-  printf '],"cycles":[0],"stages":[%s]}\n' "$EXPECT_STAGES"
+  printf '],"cycles":[0],"stages":[%s]}}\n' "$EXPECT_STAGES"
   for s in "${SERVICES[@]}"; do cat "$RESULTS_DIR/burn-$s.jsonl" 2>/dev/null || true; done
   printf '{"type":"run_receipt","work_order_id":"AZB-17","origin_authority":{"ceiling":"CONSTRUCT","grant":"AZB-17","actor":"bench-runner"},"provider":{"name":"parallel-matrix"},"provider_execution_id":"azb17-%s","identity":{"subject":"parallel-matrix","repo":"smalt","subject_sha":"%s","base_sha":"%s"},"authority":{"ceiling":"CONSTRUCT","grant":"AZB-17","actor":"bench-runner"},"consequence":{"commits":[],"files_changed":["%s"],"remote_effects":[]},"replay":{"commands":[{"cmd":"python3 scripts/validate_burn.py --gate %s","exit":0,"cwd":"."}]},"standing":{"value":"ALIVE","derived_from":"replay.commands[0] at %s"}}\n' \
     "$GATE_TS" "$SMALT_BURN_SUBJECT_SHA" "$SMALT_BURN_SUBJECT_SHA" "$GATE_FILE" "$GATE_FILE" "$SMALT_BURN_SUBJECT_SHA"

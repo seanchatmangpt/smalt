@@ -49,9 +49,9 @@ COPY mix.exs mix.lock ./
 # still validates their declared paths at `mix deps.get`, so all three
 # siblings are injected as extra build contexts and symlinked:
 #   docker build -f docker/Dockerfile ... \
-#     --build-context ash_r2rml=/Users/sac/ash_r2rml \
-#     --build-context ash_graphlaw=/Users/sac/ash_graphlaw \
-#     --build-context ggen_igniter=/Users/sac/ggen_igniter
+#     --build-context ash_r2rml=~/ash_r2rml \
+#     --build-context ash_graphlaw=~/ash_graphlaw \
+#     --build-context ggen_igniter=~/ggen_igniter
 COPY --from=ash_r2rml / /ctx/ash_r2rml
 COPY --from=ash_graphlaw / /ctx/ash_graphlaw
 COPY --from=ggen_igniter / /ctx/ggen_igniter

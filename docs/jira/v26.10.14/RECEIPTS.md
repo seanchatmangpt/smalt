@@ -494,13 +494,22 @@ count, or PASS/FAIL token) found in the file.
 | i28-pinion-r | [i28-pinion-reaudit.md](../v26.10.18/receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) |
 | i28-sleep-ga | [i28-sleep-gate-full.md](../v26.10.18/receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) |
 | i28-stress-v | [i28-stress-verify.md](../v26.10.18/receipts/i28-stress-verify.md) | PARTIAL_ALIVE | i28 — Stress Tier Verification (Current Tree) |
+| i29-compile- | [i29-compile-clean.md](../v26.10.18/receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
+| i29-corpus-f | [i29-corpus-fresh.md](../v26.10.18/receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
 | i29-corpus-s | [i29-corpus-soak.md](../v26.10.18/receipts/i29-corpus-soak.md) | PASS | I29 — corpus soak: 3x corpus + compliance (both loaders) |
 | i29-court-su | [i29-court-surfaces.md](../v26.10.18/receipts/i29-court-surfaces.md) | FAIL | i29 — Court Surfaces Receipt |
+| i29-full-soa | [i29-full-soak-b.md](../v26.10.18/receipts/i29-full-soak-b.md) | UNKNOWN | i29 — Full soak leg b: `mix test` (fs6, complements fs4/fs5) |
 | i29-full-soa | [i29-full-soak.md](../v26.10.18/receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
 | i29-have-sna | [i29-have-snapshot.md](../v26.10.18/receipts/i29-have-snapshot.md) | PARTIAL_ALIVE | i29 HAVE snapshot (guard + watchdog + telemetry + status) |
+| i29-isolatio | [i29-isolation-count.md](../v26.10.18/receipts/i29-isolation-count.md) | FAIL | i29 (isolation courts, advisory count run) **NO-CONTEXT** |
 | i29-mod-test | [i29-mod-tests.md](../v26.10.18/receipts/i29-mod-tests.md) | UNKNOWN | i29: mods/ratchet test suite + plugin validation (receipt i29-mod-tests) |
+| i29-pinion-s | [i29-pinion-spot.md](../v26.10.18/receipts/i29-pinion-spot.md) | PASS | i29 — pinion spot-audit (6 highest-churn, post-AZB-06/07/10/22b) |
+| i29-publish- | [i29-publish-dry-fresh.md](../v26.10.18/receipts/i29-publish-dry-fresh.md) | PARTIAL_ALIVE | i29 — Publish-gate dry run + generated-artifact freshness (post-0009df3) |
 | i29-receipt- | [i29-receipt-final.md](../v26.10.18/receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
+| i29-stress-f | [i29-stress-fresh.md](../v26.10.18/receipts/i29-stress-fresh.md) | UNKNOWN | i29 — fresh stress leg (churn court calibration + fence conversions) |
 | i29-wire-2x | [i29-wire-2x.md](../v26.10.18/receipts/i29-wire-2x.md) | PASS | i29 — wire tier 2x clean run |
+| i29-wire-fre | [i29-wire-fresh.md](../v26.10.18/receipts/i29-wire-fresh.md) | PASS | i29 wire fresh-leg receipt |
+| i29-wrap-pre | [i29-wrap-prep.md](../v26.10.18/receipts/i29-wrap-prep.md) | PASS | i29 — wrap prep for AZB-23/24 (receipt-index, docs-dod, TEST_ISOLATION, TICKETS sweep) |
 | i30-checkpoi | [i30-checkpoint-prep.md](../v26.10.18/receipts/i30-checkpoint-prep.md) | PASS | I30 checkpoint prep — integration-prep sweep |
 | mod-r1-scaff | [mod-r1-scaffold.md](../v26.10.18/receipts/mod-r1-scaffold.md) | ALIVE | mod-r1-scaffold — ratchet mod scaffold |
 | mod-r10-docs | [mod-r10-docs.md](../v26.10.18/receipts/mod-r10-docs.md) | PASS | mod-r10: ratchet mod DOCS + INSTALL lane |
@@ -603,7 +612,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |

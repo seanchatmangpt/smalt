@@ -2,7 +2,7 @@
 
 Standing: PASS (6/6)
 Date: 2026-10-18
-Context: read-only spot-audit at current HEAD (dda0bf5); no edits, no git ops.
+Context: solo(read-only spot-audit at HEAD dda0bf5; no edits, no git ops)
 Build root: `MIX_BUILD_ROOT=_build-ft-pa`. Subset of the 16-pin v-pinion-audit (pins 10-16 class).
 
 ## Method

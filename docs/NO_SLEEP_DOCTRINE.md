@@ -60,7 +60,7 @@ which the process has nothing to do until it elapses). Otherwise:
 
 - **Retries** → supervision restart or `send_after` backoff timers, never
   a blocking sleep.
-- **Readiness/wait coordination** → monitors, `GenServer.call`, 
+- **Readiness/wait coordination** → monitors, `GenServer.call`,
   `handle_continue`; readiness is a state-machine transition on an event,
   never a clock expiry.
 - **Start-order races** → supervision ordering, named-process `:await`,

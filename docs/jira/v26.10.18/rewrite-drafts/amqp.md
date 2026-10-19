@@ -4,11 +4,11 @@ Status: DRAFT (frozen tree; no edits, no git)
 Window: v26.10.18
 Files in scope (absolute, one canonical checkout):
 
-- `/Users/sac/smalt/test/amqp/fuzz_test.exs`
-- `/Users/sac/smalt/test/amqp/broker_facade_test.exs`
-- `/Users/sac/smalt/test/amqp/flow_credit_test.exs`
-- `/Users/sac/smalt/test/amqp/queue_store_test.exs`
-- `/Users/sac/smalt/test/amqp/event_hubs_test.exs`
+- `~/smalt/test/amqp/fuzz_test.exs`
+- `~/smalt/test/amqp/broker_facade_test.exs`
+- `~/smalt/test/amqp/flow_credit_test.exs`
+- `~/smalt/test/amqp/queue_store_test.exs`
+- `~/smalt/test/amqp/event_hubs_test.exs`
 
 Primitives used: `SmaltTest.AssertEventually.eventually/2` (draft of record:
 `docs/jira/v26.10.18/rewrite-drafts/assert-eventually.ex.md`), `start_supervised!/1`
@@ -67,7 +67,7 @@ Every rewrite below preserves these; none is classified as flake debris:
 
 ---
 
-## 1. `/Users/sac/smalt/test/amqp/fuzz_test.exs`
+## 1. `~/smalt/test/amqp/fuzz_test.exs`
 
 Verdict: **nearest to clean of the five.** Deterministic seeds, structural
 asserts, relative fences already in place. Remaining items:
@@ -117,7 +117,7 @@ jitter).
 
 ---
 
-## 2. `/Users/sac/smalt/test/amqp/broker_facade_test.exs`
+## 2. `~/smalt/test/amqp/broker_facade_test.exs`
 
 | Item | Site | Class | Treatment |
 |---|---|---|---|
@@ -256,7 +256,7 @@ The authored-past `until` write stays exactly as landed (it is the exemplar).
 
 ---
 
-## 3. `/Users/sac/smalt/test/amqp/flow_credit_test.exs`
+## 3. `~/smalt/test/amqp/flow_credit_test.exs`
 
 | Item | Site | Class | Treatment |
 |---|---|---|---|
@@ -388,7 +388,7 @@ by broker_facade; the env path is the one being retired.
 
 ---
 
-## 4. `/Users/sac/smalt/test/amqp/queue_store_test.exs`
+## 4. `~/smalt/test/amqp/queue_store_test.exs`
 
 | Item | Site | Class | Treatment |
 |---|---|---|---|
@@ -459,7 +459,7 @@ load-bearing precisely because of the shared tables; do not "fix" it to
 
 ---
 
-## 5. `/Users/sac/smalt/test/amqp/event_hubs_test.exs`
+## 5. `~/smalt/test/amqp/event_hubs_test.exs`
 
 | Item | Site | Class | Treatment |
 |---|---|---|---|

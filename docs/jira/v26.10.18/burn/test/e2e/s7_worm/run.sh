@@ -18,7 +18,7 @@ for p in "${PORTS[@]}"; do
   fi
 done
 
-SMALT_SDK_ROOT="${SMALT_SDK_ROOT:-/Users/sac/smalt/test/sdk-full/node_modules}"
+SMALT_SDK_ROOT="${SMALT_SDK_ROOT:-~/smalt/test/sdk-full/node_modules}"
 export SMALT_SDK_ROOT
 if [ ! -d "$SMALT_SDK_ROOT/@azure/storage-blob" ]; then
   echo "[s7_worm] SMALT_SDK_ROOT=$SMALT_SDK_ROOT has no @azure/storage-blob." >&2

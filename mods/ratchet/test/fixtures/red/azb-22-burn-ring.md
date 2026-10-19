@@ -3,7 +3,7 @@
 Standing: **RED — typed defect witnessed (ZOMBIE_BEAM at boot stage, jidoka line-stop)**; ring machinery itself GREEN where witnessed (chaos ×50 all green, gate + subject-moved guard both refusing as designed, no vacuous pass). Re-run `just burn-ring` after the shutdown defect below is repaired.
 
 Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-22 (lane burn coordinator; deps AZB-11 + AZB-12 per coordinator directive — AZB-18/19/20 receipts had not landed at ring time and are disclosed as UNKNOWN standing inputs).
-Subject: `/Users/sac/smalt`, ring `ring-ringsmoke` (init at `3688e449`, image `sha256:941a40219f49…`, rebuilt twice during the session as concurrent lanes moved HEAD: `a39f7ba6` → `4af05536` → `effd8770` → `9581b930`; every image/subject binding was checked at init and every subject-move was caught by the summary guard — see Anti-vacuity).
+Subject: `~/smalt`, ring `ring-ringsmoke` (init at `3688e449`, image `sha256:941a40219f49…`, rebuilt twice during the session as concurrent lanes moved HEAD: `a39f7ba6` → `4af05536` → `effd8770` → `9581b930`; every image/subject binding was checked at init and every subject-move was caught by the summary guard — see Anti-vacuity).
 
 ## What landed
 
