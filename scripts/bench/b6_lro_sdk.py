@@ -3,7 +3,7 @@
 
 Sibling of scripts/stress/lro_storm.py (BEAM tier); this lane adds the
 real-Python-mgmt-SDK tier (azure-mgmt-resource, track2 LRO pollers), auth via
-the smalt-STS TokenCredential pattern from test/sdk-python/py_arm_resources.py.
+the smalt-STS TokenCredential pattern from verification/py/py_arm_resources.py.
 
 Self-boots an anonymous substrate on private ports 39840-39843 (no
 scripts/bench/lib.sh existed; anonymous = no erlang cookie, load-only).

@@ -23,7 +23,7 @@
 import { createRequire } from "node:module";
 import fs from "node:fs";
 
-const require = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
+const require = createRequire(new URL("../../package.json", import.meta.url));
 const autocannon = require("autocannon");
 
 const ARM = process.env.FLOOD_ARM || "http://127.0.0.1:39460";

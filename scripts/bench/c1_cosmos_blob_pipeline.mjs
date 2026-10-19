@@ -33,9 +33,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const require = createRequire(path.join(ROOT, "test/sdk-full/package.json"));
+const require = createRequire(path.join(ROOT, "verification/ts/package.json"));
 const { BlobServiceClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
-const { CosmosClient } = await import(path.join(ROOT, "test/sdk-full/node_modules/@azure/cosmos/dist/esm/index.js"));
+const { CosmosClient } = await import(path.join(ROOT, "verification/ts/node_modules/@azure/cosmos/dist/esm/index.js"));
 
 const EP = process.env.C1_ENDPOINT ?? "http://127.0.0.1:39211";
 const OUT = process.env.C1_OUT ?? path.join(ROOT, "docs/jira/v26.10.14/bench/c1-cosmos-blob.jsonl");
@@ -346,8 +346,8 @@ async function phaseWorm(service, tag) {
 // ---------------------------------------------------------------------------
 async function main() {
   log("c1 start. endpoint", EP, "tag", TAG);
-  const cosmosMeta = JSON.parse(fs.readFileSync(path.join(ROOT, "test/sdk-full/node_modules/@azure/cosmos/package.json"), "utf8")).version;
-  const blobMeta = JSON.parse(fs.readFileSync(path.join(ROOT, "test/sdk-full/node_modules/@azure/storage-blob/package.json"), "utf8")).version;
+  const cosmosMeta = JSON.parse(fs.readFileSync(path.join(ROOT, "verification/ts/node_modules/@azure/cosmos/package.json"), "utf8")).version;
+  const blobMeta = JSON.parse(fs.readFileSync(path.join(ROOT, "verification/ts/node_modules/@azure/storage-blob/package.json"), "utf8")).version;
   log("meta", JSON.stringify({ cosmos: cosmosMeta, blob: blobMeta, node: process.version }));
 
   const { database } = await cosmos.databases.createIfNotExists({ id: DB_ID });

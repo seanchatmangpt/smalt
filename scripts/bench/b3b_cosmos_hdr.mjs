@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK_DIR = path.join(ROOT, "test/sdk-full");
+const SDK_DIR = path.join(ROOT, "verification/ts");
 const ENDPOINT = process.env.B3_ENDPOINT ?? "http://127.0.0.1:39031";
 const OUT = process.env.B3B_OUT || path.join(ROOT, "docs/jira/v26.10.14/bench/b3b-cosmos-hdr.jsonl");
 

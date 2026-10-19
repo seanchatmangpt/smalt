@@ -8,7 +8,7 @@
 
 import { createRequire } from "node:module";
 import crypto from "node:crypto";
-const require2 = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
+const require2 = createRequire(new URL("../../verification/ts/package.json", import.meta.url));
 const { CosmosClient } = require2("@azure/cosmos");
 
 const ENDPOINT = process.env.EGRESS_URL || "http://127.0.0.1:8443";

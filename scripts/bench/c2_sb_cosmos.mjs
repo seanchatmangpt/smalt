@@ -28,7 +28,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK_DIR = path.join(REPO, "test/sdk-full");
+const SDK_DIR = path.join(REPO, "verification/ts");
 const OUT =
   process.env.C2_OUT ||
   path.join(REPO, "docs/jira/v26.10.14/bench/c2-sb-cosmos.jsonl");

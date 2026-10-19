@@ -45,7 +45,7 @@ if (!process.env.NODE_EXTRA_CA_CERTS) {
 }
 
 
-const SDK_DIR = path.join(REPO, "test/sdk-full");
+const SDK_DIR = path.join(REPO, "verification/ts");
 const OUT =
   process.env.C7_OUT ||
   path.join(REPO, "docs/jira/v26.10.14/bench/c7-cross-soak.jsonl");
@@ -420,7 +420,7 @@ async function kvWorker() {
   });
   // The substrate never issues a 401 + WWW-Authenticate challenge, so the SDK
   // never attaches the token — force it via a Sign-phase pipeline policy
-  // (same technique as test/sdk-full/keyvault.probe.mjs).
+  // (same technique as verification/ts/keyvault.probe.mjs).
   const pipeline = cryptoClient.client?.pipeline;
   if (pipeline?.addPolicy) {
     pipeline.addPolicy({

@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK_PKG = path.join(ROOT, "test/sdk-full/package.json");
+const SDK_PKG = path.join(ROOT, "verification/ts/package.json");
 const require = createRequire(SDK_PKG);
 const { BlobServiceClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
 const hdr = require("hdr-histogram-js");

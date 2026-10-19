@@ -100,7 +100,7 @@ boot_substrate() { # <log> -> sets SUB_PID; fail-closed on boot deadline
   : > "$log"
   # Lane-private build root (no contention with other lanes' mix lock).
   MIX_BUILD_ROOT=${SMALT_KS_BUILD_ROOT:-_build-kill-storm} \
-    mix run --no-start --no-halt --eval "$(boot_eval)" </dev/null >>"$log" 2>&1 &
+    mix run --no-start --no-halt --eval "$(boot_eval)" </dev/null 9>&- >>"$log" 2>&1 &
   SUB_PID=$!
   poll_port_up 150 "$ARM_PORT"   || fail "arm :$ARM_PORT never bound (log: $log)"
   poll_port_up 20  "$DATA_PORT"  || fail "data :$DATA_PORT never bound (log: $log)"

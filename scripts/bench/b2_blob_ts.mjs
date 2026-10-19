@@ -1,7 +1,7 @@
 // b2_blob_ts.mjs — lane B-2: blob throughput via the REAL TypeScript
 // @azure/storage-blob SDK against the live smalt substrate (private-port boot
 // via scripts/bench/lib.sh bench_boot). Auth shape mirrors
-// test/sdk-full/blob.probe.mjs (StorageSharedKeyCredential, account
+// verification/ts/blob.probe.mjs (StorageSharedKeyCredential, account
 // "smaltacct" / "smaltacct-key", plain-HTTP egress).
 //
 // Measures:
@@ -20,7 +20,7 @@ import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-const require = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
+const require = createRequire(new URL("../../verification/ts/package.json", import.meta.url));
 const { BlobServiceClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
 
 const EGRESS = process.env.B2_EGRESS || "http://127.0.0.1:39021";

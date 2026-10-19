@@ -35,7 +35,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
+const require = createRequire(new URL("../../verification/ts/package.json", import.meta.url));
 const autocannon = require("autocannon");
 
 const ARM = process.env.A9_ARM || "http://127.0.0.1:39490";

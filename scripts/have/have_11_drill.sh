@@ -65,7 +65,7 @@ end
 IO.puts("WRITER_DONE_50000")
 Process.sleep(:infinity)'
 
-MIX_ENV=test mix run --no-start -e "$EVAL_CODE" --no-halt > "$WORK/writer.log" 2>&1 &
+MIX_ENV=test mix run --no-start -e "$EVAL_CODE" --no-halt 9>&- > "$WORK/writer.log" 2>&1 &
 WPID=$!
 READY=0
 for i in $(seq 1 120); do

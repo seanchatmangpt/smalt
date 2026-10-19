@@ -97,12 +97,22 @@ Application.put_env(:smalt, :mcp_port, $mcp); \
 {:ok, _} = Application.ensure_all_started(:smalt); \
 Process.sleep(:infinity)"
 
+  # Spawn hygiene (lock-fd-inheritance law): close inherited fds (9 in case a
+  # caller holds a flock; 0 since the substrate never reads stdin) so the beam
+  # cannot pin a lane lock or a terminal after its driver exits.
   MIX_ENV=test \
   SMALT_TEST_ARM_PORT=$arm SMALT_TEST_EGRESS_PORT=$data \
   SMALT_TEST_AMQP_PORT=$amqp SMALT_TEST_EVENT_HUBS_PORT=$ehub \
   mix run --no-start -e "$eval_code" --no-halt \
-    >"$log" 2>&1 &
+    >"$log" 2>&1 </dev/null 9>&- &
   local pid=$!
+  BENCH_BOOT_PID="$pid"
+
+  #EXIT-TRAP: if the sourcing lane has no EXIT trap of its own, install one
+  # that reaps the substrate on driver exit/interrupt (no orphan beams).
+  if [ -z "$(trap -p EXIT)" ]; then
+    trap 'bench_down "${BENCH_BOOT_PID:-}"' EXIT INT TERM
+  fi
 
   # Health: ARM front door accepts TCP (matches scripts/bench.py readiness).
   local i
@@ -112,11 +122,13 @@ Process.sleep(:infinity)"
       return 0
     fi
     kill -0 "$pid" 2>/dev/null || break
+    # SLEEP-CLASS: POLL-STEP — bounded readiness poll on a real observable
+    # (lsof LISTEN check above), deadline SMALT_BENCH_UP_TIMEOUT iterations.
     sleep 1
   done
-  echo "bench_boot[$lane]: substrate pid $pid failed to listen on $arm within timeout; log: $log" >&2
-  kill "$pid" 2>/dev/null || true
-  return 1
+  echo "bench_boot[$lane]: TYPED-TIMEOUT(124): substrate pid $pid failed to listen on $arm within ${SMALT_BENCH_UP_TIMEOUT:-120}s; log: $log" >&2
+  bench_down "$pid"
+  return 124
 }
 
 bench_down() {
@@ -125,6 +137,15 @@ bench_down() {
   kill "$pid" 2>/dev/null || true
   # Reap the process group too (mix -> beam), best-effort.
   pkill -P "$pid" 2>/dev/null || true
+  # Bounded reap: poll for actual death (observable: kill -0), escalate to
+  # SIGKILL at the deadline — never an unbounded wait on a stuck beam.
+  local i
+  for i in $(seq 1 10); do
+    kill -0 "$pid" 2>/dev/null || { wait "$pid" 2>/dev/null || true; return 0; }
+    sleep 0.2 # SLEEP-CLASS: POLL-STEP (bounded reap poll)
+  done
+  kill -9 "$pid" 2>/dev/null || true
+  pkill -9 -P "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 }
 

@@ -72,7 +72,7 @@ const ACCOUNT_KEY = "smaltacct-key";
 const EGRESS = `http://127.0.0.1:${EGRESS_PORT}`;
 
 const { EventHubProducerClient, EventHubConsumerClient } = createRequire(
-  path.join(REPO, "test/sdk-full/package.json"))("@azure/event-hubs");
+  path.join(REPO, "verification/ts/package.json"))("@azure/event-hubs");
 
 const machine = {
   cpu: os.cpus()[0]?.model || "unknown",
@@ -193,7 +193,7 @@ async function listBlobs(container, prefix) {
 }
 
 // ---------------------------------------------------------------------------
-// Substrate boot — mirrors test/sdk-full/eventhubs.probe.mjs (private ports,
+// Substrate boot — mirrors verification/ts/eventhubs.probe.mjs (private ports,
 // MIX_ENV=test, random shared key). Kills the beam on exit.
 // ---------------------------------------------------------------------------
 let child = null;
@@ -219,7 +219,7 @@ async function bootSubstrate() {
     `{:ok, _} = Application.ensure_all_started(:smalt)`,
     `Process.sleep(:infinity)`,
   ].join("; ");
-  const logPath = path.join(REPO, "test/sdk-full/.logs/c3-substrate.log");
+  const logPath = path.join(REPO, "verification/ts/.logs/c3-substrate.log");
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const log = fs.createWriteStream(logPath, { flags: "w" });
   child = spawn("mix", ["run", "--no-start", "--no-halt", "-e", bootEval], {

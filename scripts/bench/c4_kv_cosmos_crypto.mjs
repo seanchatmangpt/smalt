@@ -25,7 +25,7 @@ import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK_DIR = path.join(ROOT, "test/sdk-full");
+const SDK_DIR = path.join(ROOT, "verification/ts");
 const ARM = process.env.C4_ARM ?? "http://127.0.0.1:39240";
 const COSMOS = process.env.C4_COSMOS ?? "http://127.0.0.1:39241";
 const VAULT = process.env.C4_VAULT ?? "https://127.0.0.1:39244";

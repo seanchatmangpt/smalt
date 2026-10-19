@@ -25,12 +25,12 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const require = createRequire(path.join(REPO, "test/sdk-full/package.json"));
+const require = createRequire(path.join(REPO, "verification/ts/package.json"));
 const { BlobServiceClient, StorageSharedKeyCredential } = require("@azure/storage-blob");
 const { CosmosClient } = await import(
-  path.join(REPO, "test/sdk-full/node_modules/@azure/cosmos/dist/esm/index.js"));
+  path.join(REPO, "verification/ts/node_modules/@azure/cosmos/dist/esm/index.js"));
 const { EventHubProducerClient } = await import(
-  path.join(REPO, "test/sdk-full/node_modules/@azure/event-hubs/dist/esm/index.js"));
+  path.join(REPO, "verification/ts/node_modules/@azure/event-hubs/dist/esm/index.js"));
 
 const EGRESS = Number(process.env.C8_EGRESS_PORT || 39281);
 const EHUB = Number(process.env.C8_EHUB_PORT || 39283);

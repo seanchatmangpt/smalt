@@ -54,7 +54,7 @@ Application.put_env(:smalt, :arm_tls_port, 39284); \
 Application.put_env(:smalt, :mcp_port, 39285); \
 {:ok, _} = Application.ensure_all_started(:smalt); \
 Process.sleep(:infinity)"
-  MIX_ENV=test mix run --no-start -e "$eval_code" --no-halt >"$log" 2>&1 &
+  MIX_ENV=test mix run --no-start -e "$eval_code" --no-halt 9>&- >"$log" 2>&1 &
   local pid=$!
   local i
   for i in $(seq 1 120); do
@@ -92,7 +92,7 @@ T0=$(TS)
 C8_EGRESS_PORT=39281 C8_EHUB_PORT=39283 C8_OUT="$OUT" \
   C8_EMPHASIS_FILE="$EMP" C8_DURATION_MS=270000 C8_T0_EPOCH="$T0" \
   C8_SB_KEY="$SB_SHARED_KEY" \
-  node "$REPO/scripts/bench/c8_chaos_cross.mjs" &
+  node "$REPO/scripts/bench/c8_chaos_cross.mjs" 9>&- &
 NODE_PID=$!
 
 # Port-watch sampler: every 1s, if any of 39280..39285 is LISTENed by a pid

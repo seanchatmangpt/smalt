@@ -13,7 +13,7 @@ Usage (run under each lane venv):
   .venv-blob/bin/python   scripts/bench/b5_python_mirror.py blob   <egress_base>
   .venv-cosmos/bin/python scripts/bench/b5_python_mirror.py cosmos <egress_base>
 
-Auth shapes mirror test/sdk-python/py_storage_blob.py (SharedKey conn string,
+Auth shapes mirror verification/py/py_storage_blob.py (SharedKey conn string,
 account smaltacct) and py_cosmos.py (64-hex master key, substrate anonymous
 mode signs with real master-key wire headers).
 

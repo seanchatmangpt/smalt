@@ -25,7 +25,7 @@ RESULT_RE = re.compile(r"^RESULT_JSON: (.*)$", re.M)
 def run_mode(repo: str, mode: str, puts: int, env_extra: dict) -> dict:
     # PATH: prefer the pinned erlmcp OTP if present, else the ambient PATH
     # (checkout-relative, no hardcoded user paths).
-    erlmcp_bin = "/Users/sac/.erlmcp/otp-28.3.1/bin"
+    erlmcp_bin = os.path.join(os.path.expanduser("~"), ".erlmcp", "otp-28.3.1/bin")
     path = (f"{erlmcp_bin}:{os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin')}"
             if os.path.isdir(erlmcp_bin)
             else os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"))

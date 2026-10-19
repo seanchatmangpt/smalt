@@ -40,7 +40,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK = path.join(REPO, "test/sdk-full");
+const SDK = path.join(REPO, "verification/ts");
 const JSONL = path.join(REPO, "docs/jira/v26.10.14/bench/lifecycle-8hop.jsonl");
 const LANE = "lc1";
 

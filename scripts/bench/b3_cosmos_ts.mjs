@@ -14,11 +14,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK_DIR = path.join(ROOT, "test/sdk-full");
+const SDK_DIR = path.join(ROOT, "verification/ts");
 const ENDPOINT = process.env.B3_ENDPOINT ?? "http://127.0.0.1:39031";
 const OUT = process.env.B3_OUT ?? path.join(ROOT, "docs/jira/v26.10.14/bench/b3-cosmos-ts.jsonl");
 
-// resolve SDK from test/sdk-full/node_modules (no root install): real ESM build
+// resolve SDK from verification/ts/node_modules (no root install): real ESM build
 const { CosmosClient } = await import(path.join(SDK_DIR, "node_modules/@azure/cosmos/dist/esm/index.js"));
 
 const MASTER_KEY = crypto.randomBytes(32).toString("hex");

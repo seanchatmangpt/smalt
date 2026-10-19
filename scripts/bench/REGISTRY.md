@@ -95,3 +95,35 @@ host `bench_boot` pre-flight check. Receipts land as JSONL with the
 `docs/jira/v*/bench/` dir host lanes use). Host lanes and container lanes never
 share a result directory; do not point a container lane at `bench/`, and do not
 point a host lane at `burn/`.
+
+## v-law (v26.10.19 bench re-registry, staleness-repair lane)
+
+Drafted in the v26.10.19 plan; landed here because REGISTRY.md is the bench
+registry of record.
+
+- **v-law port bands**: lane `vN` -> `39700 + 10N .. +5` (v1 39710..39715,
+  v2 39720..39725, ... verification-surface lanes); spare block
+  `39826..39839` reserved for ad hoc probes; the substrate spawn lock is the
+  `flock -x 9` fd-9 namespace on `/tmp/smalt-substrate.lock` (spawn with the
+  lock fd CLOSED: `9>&-`, fan-out law 4).
+- **LIVE-vs-ORPHAN**: a substrate holder is LIVE only when its whole
+  flock->mix->beam tree owns a LISTEN socket; a tree with no LISTEN socket is
+  an ORPHAN and may be swept (`scripts/port_sweep.sh -y`). Private-port lanes
+  are LIVE, not orphans.
+- **Retire markings (v26.10.19 reset, 64f6099)**: the a-family (a1-a9),
+  n-family (n1-n8) and b42 lanes are RETIRED — their subjects (test/sdk-full
+  SDK corpora, workspace lifecycle surfaces they drove) were deleted or their
+  result files have no active registered lane. Result files in
+  docs/jira/v*/bench/ are historical artifacts. No v-lane may revive an a/n
+  subject without re-registering here with a port block + successor receipt.
+- **Collision-storm falsifier**: the v-law's disjointness is falsifiable —
+  run all v-lanes concurrently; the run is VOID if any two lanes share a port
+  or any lane's `bench_boot` pre-flight fails spuriously (witness: hold port
+  39711 and boot v1 -> `bench_boot` must REFUSE with the held-port row; a
+  boot that succeeds over a held port = registry is vacuous).
+- SDK-dependent host lanes b2/b2b/b3/b3b/b4/b5/b6 are DORMANT pending
+  V261019-08/09: their SDK resolution paths (test/sdk-full/node_modules,
+  test/sdk-python) were deleted at 64f6099 and verification/ts+py are not
+  landed. They have no scripts on disk until repointed to verification/ —
+  running one before the repoint fails loudly at SDK import, which is the
+  honest verdict; do not fake a SKIP.

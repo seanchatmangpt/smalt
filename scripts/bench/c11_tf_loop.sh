@@ -212,7 +212,7 @@ for _ in 1 2 3 4 5; do
   fi
   rm -f "$ROOT/.smalt/tls/dev-cert.pem" "$ROOT/.smalt/tls/dev-key.pem"
   bash "$ROOT/scripts/gen_dev_cert.sh" >/dev/null 2>&1 || true
-  sleep 2
+  sleep 2  # SLEEP-CLASS: POLL-STEP
 done
 [ "$SNAP_OK" -eq 1 ] || blocked_row "substrate_tls" "no chain-verified cert/key pair after self-heal — refusing to boot against a self-signed leaf"
 # Zero-dialog trust shim for the azurerm provider's Go TLS stack (Darwin only;

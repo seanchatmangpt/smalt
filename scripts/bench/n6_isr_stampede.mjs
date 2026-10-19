@@ -35,7 +35,7 @@ import fs from "node:fs";
 import http from "node:http";
 import { execFileSync } from "node:child_process";
 
-const require = createRequire(new URL("../../test/sdk-full/package.json", import.meta.url));
+const require = createRequire(new URL("../../verification/ts/package.json", import.meta.url));
 const autocannon = require("autocannon");
 
 const BASE = process.env.N6_URL || "http://127.0.0.1:3116";

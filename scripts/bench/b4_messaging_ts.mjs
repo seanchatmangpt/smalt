@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SDK_DIR = path.join(REPO, "test/sdk-full");
+const SDK_DIR = path.join(REPO, "verification/ts");
 const OUT =
   process.env.B4_OUT ||
   path.join(REPO, "docs/jira/v26.10.14/bench/b4-messaging-ts.jsonl");
