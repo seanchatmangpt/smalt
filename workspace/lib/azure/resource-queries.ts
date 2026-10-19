@@ -20,7 +20,7 @@
  */
 import { getReadOnlyArmClient, SMALT_SUBSCRIPTION_ID, ARM_API_VERSION } from "./arm-client.js";
 import type { ArmReadFacade } from "./arm-client.js";
-import { SmaltTokenCredential } from "./credential.js";
+import { ClientSecretCredential } from "@azure/identity";
 import { assertLocalUrl } from "../smalt.js"; // SHIM-COURT: air-gap host check before any egress
 
 /** A subscription as returned by GET /subscriptions (arm-subscriptions wire). */
@@ -46,14 +46,14 @@ export interface QueryContext {
   queryClientSecret?: string;
   clientSecret?: string;
   /** Injected credential (tests); otherwise built from armBase. */
-  credential?: SmaltTokenCredential;
+  credential?: ClientSecretCredential;
   /** Fetch override (tests only). */
   fetchImpl?: typeof fetch;
 }
 
 /** The one credential/client the query module uses. Internal. */
 let ctx: {
-  credential: SmaltTokenCredential;
+  credential: ClientSecretCredential;
   facade: ArmReadFacade;
   fetchImpl: typeof fetch;
   armBase: string;
@@ -63,15 +63,24 @@ function ensureContext(q?: QueryContext): NonNullable<typeof ctx> {
   if (ctx && !q) return ctx;
   const armBase = q?.armBase ?? globalThisArmBase();
   const fetchImpl = q?.fetchImpl ?? fetch;
+  // SHIM-COURT: refuse non-local armBase — it is the msal authorityHost (the
+  // only egress ClientSecretCredential makes) and the ARM endpoint.
+  assertLocalUrl(armBase);
   const credential =
     q?.credential ??
-    new SmaltTokenCredential({
-      armBase,
-      tenant: q?.tenant,
-      clientId: q?.clientId,
-      clientSecret: q?.clientSecret ?? q?.queryClientSecret,
-      fetchImpl,
-    });
+    new ClientSecretCredential(
+      q?.tenant ?? "smalt-tenant",
+      q?.clientId ?? "workspace-console",
+      q?.clientSecret ?? q?.queryClientSecret ?? "workspace-secret",
+      // authorityHost = ORIGIN (scheme+host+port, no path); msal appends
+      // /{tenant}/v2.0/... itself. disableInstanceDiscovery: see arm-client.ts
+      // — msal-node queries the real cloud instance endpoint, not the local
+      // envelope (witnessed invalid_instance live).
+      {
+        authorityHost: new URL(armBase).origin,
+        disableInstanceDiscovery: true,
+      },
+    );
   ctx = {
     armBase,
     credential,

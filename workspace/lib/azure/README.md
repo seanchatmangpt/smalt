@@ -7,15 +7,24 @@ not invented.
 
 ## Modules
 
-- `credential.ts` — `SmaltTokenCredential` (a `@azure/core-auth`
-  TokenCredential). Mints ARM bearer tokens via the raw STS client_credentials
-  POST (`POST {armBase}/{tenant}/oauth2/v2.0/token`), caches until
-  `expires_in` minus a 60s refresh slack, single-flight on concurrent
-  `getToken` calls. Raw POST is required because @azure/identity's
-  ClientSecretCredential fails against the emulator (msal OIDC instance
-  discovery is not served: `endpoints_resolution_error`; witnessed in
-  docs/jira/v26.10.14/sdk-results/ts-arm-resources.md, constraint 1). On real
-  Azure, swap for `ClientSecretCredential`.
+- Auth: official `@azure/identity` `ClientSecretCredential` (zero custom
+  credential code — `credential.ts`/`SmaltTokenCredential` was DELETED in the
+  clean-room reset). The emulator STS mints RS256 (RFC 7638-thumbprint `kid`
+  in the JWS header) and publishes the matching JWKS at
+  `{authority}/{tenant}/discovery/v2.0/keys`; the client passes
+  `{authorityHost: <armBase origin>, disableInstanceDiscovery: true}`.
+  Witnessed live (2026-10-19, @azure/identity 4.x / msal-node 6): msal's
+  instance discovery does NOT read the local `/common/discovery/instance`
+  envelope — it queries the REAL login.microsoftonline.com instance endpoint
+  with the custom authority's authorization_endpoint as a query param, which
+  answers `error=invalid_instance` for any emulator authority. The official
+  opt-out is the `disableInstanceDiscovery` constructor option (no custom
+  code); the emulator still serves the envelope (AAD shape, aliases include
+  the request host, per-entry tenant_discovery_endpoint) for consumers that
+  do read it. The air-gap discipline is preserved: both `arm-client.ts` and
+  `resource-queries.ts` run `assertLocalUrl(armBase)` before constructing the
+  credential. Legacy HS256 dev mode remains server-side only
+  (`config :smalt, :sts_key_mode, :hs256_dev`); no client code exists for it.
 - `arm-client.ts` — builds `ResourceManagementClient` with
   `{ endpoint: NEXT_PUBLIC_SMALT_ARM, apiVersion: "2021-04-01", allowInsecureConnection: true }`.
   api-version is pinned to the emulator's ceiling (the emulator is

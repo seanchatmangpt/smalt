@@ -400,6 +400,11 @@ _ENFORCE_BOOT = (
     'Application.put_env(:smalt, :sb_shared_key, "' + _ENFORCE_SB_KEY + '");'
     'Application.put_env(:smalt, :sts_signing_secret, '
     '"py-lane6-known-secret-0123456789abcdef");'
+    # Post-reset bearer.ex is alg-aware and mode-gated (Smalt.Auth.StsKey):
+    # default mode is :rs256, which refuses HS256 fail-closed before claims
+    # are checked (SignatureVerificationFailed swallows TokenExpired et al).
+    # This lane mints HS256 self-signed tokens — pin the legacy mode.
+    "Application.put_env(:smalt, :sts_key_mode, :hs256_dev);"
     'Application.put_env(:smalt, :auth_mode, :enforce);'
     'Application.put_env(:smalt, :amqp_port, 38672);'
     'Application.put_env(:smalt, :event_hubs_port, 38673);'

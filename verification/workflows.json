@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "window": "v26.10.19",
+  "schema_note": "Workflow registry for the external verification tier. Surface ids are drawn mechanically from scripts/sdk_coverage.py: SURFACES (12), CENSUS_SURFACE (servicebus), CAP_CELLS (prefixed cap:, 7) — 20 inventory ids. Every inventory id must appear in >=1 workflow's surfaces[] or be covered by a cited kd_rows entry; orphans are listed in coverage.orphans. Unrecognized surface ids are parser findings. 'landed' is a tree-reconciliation marker: true = both language trees named in entry[] exist on disk.",
+  "notes": [
+    "All five workflows landed (verified on disk 2026-10-19): verification/ts/wf{1..5}/index.ts and verification/py/test_wf{1,2,3,4,5}_{governance,concurrency,messaging,crypto,throttling}.py.",
+    "scripts/sdk_coverage.py still probes the legacy filename patterns verification/ts/*.probe.mjs and verification/py/py_*.py; the landed suites use wfN/index.ts and test_wfN_*.py, so all 24 probe cells read MISSING in the coverage gate. This is a finder-script pattern skew, not absence of probes — reconciling the finder patterns is owned by the sdk_coverage WO, not this registry.",
+    "The Service Bus census files sdk_coverage.py CRCs (verification/ts/census.test.cjs, verification/ts/sb-extra.probe.cjs, verification/receipts/08-service-bus-census.md) do not exist on disk, so the servicebus/census cell reads CRC FAIL. Real open finding, owned by the Service Bus census work order; not fixable by registry edits.",
+    "Entry points on disk: TS suite = node verification/ts/run-all.mjs (sequential wf1..wf4 on a shared v-block substrate, wf5 on a private throttle-profile substrate; exit 0/1/2/3/4/124); PY suite = bash verification/py/run.sh (substrate-ctl up --block v1 --auth enforce, venv ensure, pytest --timeout=180; exit 0/1/2/3/4).",
+    "just sdk-ts / sdk-py / sdk-all (justfile.d/04-sdk-recipes.just) are still RETIRED exit-1 placeholders pending rewiring to the landed suites (V261019-08 / V261019-09); the direct node/run.sh entry points above are the working commands today."
+  ],
+  "receipt_tag_grammar": "<surface>:<op>[@lang][#KD-xx[,KD-yy...]][=VERDICT]",
+  "workflows": [
+    {
+      "id": "wf1-provisioning-governance",
+      "landed": true,
+      "langs": ["ts", "py"],
+      "surfaces": ["arm", "resource-graph", "purview-atlas", "appconfig",
+                   "cap:eventgrid-topics-arm", "cap:appconfig-kv"],
+      "kd_rows": ["KD-22", "KD-23", "KD-24", "KD-25", "KD-26", "KD-27",
+                  "KD-30", "KD-31", "KD-32", "KD-35", "KD-38", "KD-40",
+                  "KD-41", "KD-42", "KD-91"],
+      "entry": {"ts": "verification/ts/wf1/index.ts",
+                "py": "verification/py/test_wf1_governance.py"}
+    },
+    {
+      "id": "wf2-multistore-concurrency",
+      "landed": true,
+      "langs": ["ts", "py"],
+      "surfaces": ["blob", "cosmos", "ledger",
+                   "cap:blob-snapshot-metadata", "cap:cosmos-throughput"],
+      "kd_rows": ["KD-01", "KD-02", "KD-03", "KD-04", "KD-05",
+                  "KD-06", "KD-07", "KD-08", "KD-09",
+                  "KD-36", "KD-43", "KD-44", "KD-92", "KD-93"],
+      "entry": {"ts": "verification/ts/wf2/index.ts",
+                "py": "verification/py/test_wf2_concurrency.py"}
+    },
+    {
+      "id": "wf3-messaging-eventing",
+      "landed": true,
+      "langs": ["ts", "py"],
+      "surfaces": ["eventgrid", "eventhubs", "servicebus",
+                   "cap:eh-consumergroups", "cap:sb-eh-2024-children"],
+      "kd_rows": ["KD-99", "KD-101",
+                  "KD-18", "KD-19", "KD-20", "KD-21", "KD-39",
+                  "KD-45", "KD-53", "KD-70", "KD-71", "KD-76", "KD-77"],
+      "entry": {"ts": "verification/ts/wf3/index.ts",
+                "py": "verification/py/test_wf3_messaging.py"}
+    },
+    {
+      "id": "wf4-crypto-custody",
+      "landed": true,
+      "langs": ["ts", "py"],
+      "surfaces": ["keyvault", "skr"],
+      "kd_rows": ["KD-99", "KD-100", "KD-105",
+                  "KD-10", "KD-11", "KD-12", "KD-13", "KD-14", "KD-15",
+                  "KD-16", "KD-17", "KD-33", "KD-34"],
+      "entry": {"ts": "verification/ts/wf4/index.ts",
+                "py": "verification/py/test_wf4_crypto.py"}
+    },
+    {
+      "id": "wf5-edge-resilience",
+      "landed": true,
+      "langs": ["ts", "py"],
+      "surfaces": ["sentinel", "cap:monitor-metrics"],
+      "kd_rows": ["KD-37", "KD-110"],
+      "entry": {"ts": "verification/ts/wf5/index.ts",
+                "py": "verification/py/test_wf5_throttling.py"}
+    }
+  ],
+  "coverage": {
+    "inventory_sources": {
+      "SURFACES": ["arm", "blob", "cosmos", "keyvault", "skr", "eventgrid",
+                   "eventhubs", "sentinel", "resource-graph", "purview-atlas",
+                   "ledger", "appconfig"],
+      "CENSUS_SURFACE": ["servicebus"],
+      "CAP_CELLS": ["cap:appconfig-kv", "cap:monitor-metrics",
+                    "cap:eh-consumergroups", "cap:eventgrid-topics-arm",
+                    "cap:blob-snapshot-metadata", "cap:cosmos-throughput",
+                    "cap:sb-eh-2024-children"]
+    },
+    "cell_coverage_map": {
+      "arm": "wf1",
+      "blob": "wf2",
+      "cosmos": "wf2",
+      "keyvault": "wf4",
+      "skr": "wf4 (shares keyvault probe/receipt files per SURFACES)",
+      "eventgrid": "wf3 (HTTP webhook delivery infeasible on HEAD — KD-101; no @azure/eventgrid dep in the TS suite)",
+      "eventhubs": "wf3",
+      "servicebus": "wf3 (census cell)",
+      "sentinel": "wf5",
+      "resource-graph": "wf1",
+      "purview-atlas": "wf1",
+      "ledger": "wf2",
+      "appconfig": "wf1",
+      "cap:appconfig-kv": "wf1",
+      "cap:monitor-metrics": "wf5",
+      "cap:eh-consumergroups": "wf3",
+      "cap:eventgrid-topics-arm": "wf1",
+      "cap:blob-snapshot-metadata": "wf2",
+      "cap:cosmos-throughput": "wf2",
+      "cap:sb-eh-2024-children": "wf3"
+    },
+    "orphans": [],
+    "missing": []
+  }
+}

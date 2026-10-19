@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: smalt-py-verification
+Version: 0.1.0
+Summary: External Python Azure-SDK verification suite for the smalt emulator
+Requires-Python: >=3.10
+Provides-Extra: azure
+Requires-Dist: azure-servicebus; extra == "azure"
+Requires-Dist: azure-eventhub; extra == "azure"
+Requires-Dist: azure-storage-blob; extra == "azure"
+Requires-Dist: azure-cosmos; extra == "azure"
+Requires-Dist: azure-mgmt-resource; extra == "azure"
+Requires-Dist: azure-keyvault-keys; extra == "azure"
+Requires-Dist: azure-identity; extra == "azure"
+Requires-Dist: azure-appconfiguration; extra == "azure"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Requires-Dist: pytest-timeout; extra == "dev"
+Requires-Dist: requests; extra == "dev"
+Requires-Dist: cryptography; extra == "dev"

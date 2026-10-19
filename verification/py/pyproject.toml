@@ -1,0 +1,34 @@
+[project]
+name = "smalt-py-verification"
+version = "0.1.0"
+description = "External Python Azure-SDK verification suite for the smalt emulator"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+azure = [
+  "azure-servicebus",
+  "azure-eventhub",
+  "azure-storage-blob",
+  "azure-cosmos",
+  "azure-mgmt-resource",
+  "azure-keyvault-keys",
+  "azure-identity",
+  "azure-appconfiguration",
+]
+dev = ["pytest", "pytest-asyncio", "pytest-timeout", "requests", "cryptography"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["harness"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+timeout = 180
+markers = [
+  "anonymous: needs an anonymous-auth substrate",
+  "enforce: needs an :enforce-auth substrate",
+]

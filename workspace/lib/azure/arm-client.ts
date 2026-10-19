@@ -2,7 +2,9 @@
  * Pure-Azure ARM client layer for the smalt workspace console.
  *
  * Builds a real @azure/arm-resources ResourceManagementClient over
- * SmaltTokenCredential, pointed at the smalt ARM emulator (NEXT_PUBLIC_SMALT_ARM),
+ * @azure/identity ClientSecretCredential (zero custom credential code — the
+ * emulator serves msal instance discovery + JWKS + RS256 mint), pointed at
+ * the smalt ARM emulator (NEXT_PUBLIC_SMALT_ARM),
  * pinned to api-version 2021-04-01 - the emulator is latest-version-only and
  * rejects newer api-versions (400 InvalidApiVersionParameter naming 2021-04-01
  * as the ceiling; witnessed in docs/jira/v26.10.14/sdk-results/ts-arm-resources.md,
@@ -18,7 +20,8 @@
  * (workspace/lib/copilot/session-ledger.ts) by the query wrappers.
  */
 import { ResourceManagementClient } from "@azure/arm-resources";
-import { SmaltTokenCredential } from "./credential.js";
+import { ClientSecretCredential } from "@azure/identity";
+import { assertLocalUrl } from "../smalt.js"; // SHIM-COURT: air-gap host check on armBase
 
 /** api-version pin: emulator ceiling (the emulator is latest-version-only). */
 export const ARM_API_VERSION = "2021-04-01";
@@ -45,19 +48,34 @@ export function resolveArmBase(): string {
   return base;
 }
 
-let cachedCredential: SmaltTokenCredential | null = null;
+let cachedCredential: ClientSecretCredential | null = null;
 let cachedClient: ResourceManagementClient | null = null;
 
 function ensureClient(config?: ArmClientConfig): ResourceManagementClient {
   if (!config && cachedClient && cachedCredential) return cachedClient;
   const armBase = config?.armBase ?? resolveArmBase();
   if (!cachedCredential || config) {
-    cachedCredential = new SmaltTokenCredential({
-      armBase,
-      tenant: config?.tenant,
-      clientId: config?.clientId,
-      clientSecret: config?.clientSecret,
-    });
+    // SHIM-COURT: refuse non-local armBase at construction — it is both the
+    // msal authorityHost (the only egress ClientSecretCredential makes) and
+    // the ARM endpoint.
+    assertLocalUrl(armBase);
+    cachedCredential = new ClientSecretCredential(
+      config?.tenant ?? "smalt-tenant",
+      config?.clientId ?? "workspace-console",
+      config?.clientSecret ?? "workspace-secret",
+      // authorityHost must be the ORIGIN (scheme+host+port, no path): msal
+      // appends /{tenant}/v2.0/... itself. disableInstanceDiscovery: msal-node
+      // 6 does NOT read the local /common/discovery/instance envelope — it
+      // queries the real login.microsoftonline.com instance endpoint with the
+      // emulator's authorization_endpoint as a query param, which answers
+      // error=invalid_instance for a non-AAD authority (witnessed live,
+      // msal-common Authority.getCloudDiscoveryMetadataFromNetwork). The
+      // official opt-out is a constructor option, not custom code.
+      {
+        authorityHost: new URL(armBase).origin,
+        disableInstanceDiscovery: true,
+      },
+    );
   }
   if (!cachedClient || config) {
     cachedClient = new ResourceManagementClient(cachedCredential, SMALT_SUBSCRIPTION_ID, {

@@ -1,0 +1,17 @@
+
+[azure]
+azure-servicebus
+azure-eventhub
+azure-storage-blob
+azure-cosmos
+azure-mgmt-resource
+azure-keyvault-keys
+azure-identity
+azure-appconfiguration
+
+[dev]
+pytest
+pytest-asyncio
+pytest-timeout
+requests
+cryptography
