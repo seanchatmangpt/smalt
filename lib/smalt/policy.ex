@@ -54,8 +54,17 @@ defmodule Smalt.Policy do
             :named_table,
             :public,
             :set,
-            read_concurrency: true,
-            write_concurrency: true
+            {:read_concurrency, true},
+            {:write_concurrency, true},
+            # Shadow-table law (PW lane, wire witness 2026-10-19): these tables
+            # are NOT in Store's boot list (StoreTables.shadow_tables), so the
+            # first creator can be a Bandit request task — without an heir the
+            # table DIES with that request process and every later request sees
+            # a fresh store (witnessed: PUT 201 then GET 404 on the same beam).
+            # Heir to :init (permanent, node-local) makes the table outlive its
+            # creator; ensure_tables' ArgumentError rescue keeps the create race
+            # fail-safe when several requests race the first insert.
+            {:heir, Process.whereis(:init), []}
           ])
         rescue
           ArgumentError -> :ok
@@ -276,6 +285,221 @@ defmodule Smalt.Policy do
     do: "#{scope_prefix}/providers/Microsoft.Authorization/policyAssignments/#{name}"
 
   # ===========================================================================
+  # Policy set definitions (initiatives)
+  # ===========================================================================
+
+  @doc """
+  Puts a policy SET definition (initiative): a named list of member policy
+  definition references. Returns `{:ok, record}` or `{:error, refusal}` when
+  the body is malformed (missing or empty `policyDefinitions` member list).
+  """
+  def put_policy_set_definition(sub_id, name, body) do
+    ensure_tables()
+
+    raw_members = get_in(body, ["properties", "policyDefinitions"])
+    members = if is_list(raw_members), do: raw_members, else: nil
+
+    cond do
+      is_nil(members) or members == [] ->
+        {:error, set_refusal(name, "policyDefinitions must be a non-empty list of member definitions")}
+
+      true ->
+        member_ids =
+          for m <- members,
+              id = (is_map(m) and get_in(m, ["policyDefinitionId"])) || (is_binary(m) and m),
+              do: id
+
+        if member_ids == [] or length(member_ids) != length(members) do
+          {:error,
+           set_refusal(name, "every policyDefinitions member must carry a policyDefinitionId")}
+        else
+          record = %{
+            "id" =>
+              "/subscriptions/#{sub_id}/providers/Microsoft.Authorization/policySetDefinitions/#{name}",
+            "name" => name,
+            "type" => "Microsoft.Authorization/policySetDefinitions",
+            "properties" => %{
+              "policyType" => get_in(body, ["properties", "policyType"]) || "Custom",
+              "policyDefinitions" =>
+                Enum.map(member_ids, &%{"policyDefinitionId" => &1})
+            }
+          }
+
+          :ets.insert(:smalt_policy, {String.downcase(record["id"]), record})
+          {:ok, record}
+        end
+    end
+  end
+
+  def get_policy_set_definition(sub_id, name) do
+    ensure_tables()
+
+    case :ets.lookup(:smalt_policy, String.downcase(psd_id(sub_id, name))) do
+      [{_, record}] -> {:ok, record}
+      [] -> :error
+    end
+  end
+
+  def list_policy_set_definitions(sub_id) do
+    ensure_tables()
+    prefix = String.downcase(psd_prefix(sub_id))
+
+    :smalt_policy
+    |> :ets.tab2list()
+    |> Enum.map(fn {_, r} -> r end)
+    |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/policySetDefinitions"))
+    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    |> Enum.sort_by(& &1["id"])
+  end
+
+  defp psd_id(sub_id, name),
+    do: "/subscriptions/#{sub_id}/providers/Microsoft.Authorization/policySetDefinitions/#{name}"
+
+  defp psd_prefix(sub_id),
+    do: "/subscriptions/#{sub_id}/providers/Microsoft.Authorization/policySetDefinitions/"
+
+  defp set_refusal(name, reason),
+    do: %{
+      "error" => %{
+        "code" => "PolicySetDefinitionInvalid",
+        "message" => "Policy set definition '#{name}' is invalid. #{reason}.",
+        "target" => nil,
+        "innererror" => %{}
+      }
+    }
+
+  # ===========================================================================
+  # Policy exemptions
+  # ===========================================================================
+
+  @doc """
+  Puts a policy exemption at a scope (subscription or RG placement). Requires
+  `properties.policyAssignmentId`; honors `properties.expiresOn` (ISO-8601).
+  Returns `{:ok, record}` or `{:error, refusal}` for a malformed body.
+  """
+  def put_policy_exemption(scope_prefix, name, body) do
+    ensure_tables()
+
+    assignment_id = get_in(body, ["properties", "policyAssignmentId"])
+    expires_on = get_in(body, ["properties", "expiresOn"])
+
+    cond do
+      not is_binary(assignment_id) or assignment_id == "" ->
+        {:error, exemption_refusal(scope_prefix, name, "policyAssignmentId is required")}
+
+      expires_on != nil and not is_binary(expires_on) ->
+        {:error, exemption_refusal(scope_prefix, name, "expiresOn must be an ISO-8601 string")}
+
+      true ->
+        record = %{
+          "id" => "#{scope_prefix}/providers/Microsoft.Authorization/policyExemptions/#{name}",
+          "name" => name,
+          "type" => "Microsoft.Authorization/policyExemptions",
+          "properties" => %{
+            "policyAssignmentId" => assignment_id,
+            "scope" => get_in(body, ["properties", "scope"]) || scope_prefix,
+            "expiresOn" => expires_on,
+            "category" => get_in(body, ["properties", "category"]) || "Waiver"
+          }
+        }
+
+        :ets.insert(:smalt_policy, {String.downcase(record["id"]), record})
+        {:ok, record}
+    end
+  end
+
+  def get_policy_exemption(scope_prefix, name) do
+    ensure_tables()
+
+    case :ets.lookup(:smalt_policy, String.downcase(exemption_id(scope_prefix, name))) do
+      [{_, record}] -> {:ok, record}
+      [] -> :error
+    end
+  end
+
+  def list_policy_exemptions(scope_prefix) do
+    ensure_tables()
+
+    prefix =
+      String.downcase("#{scope_prefix}/providers/microsoft.authorization/policyexemptions/")
+
+    :smalt_policy
+    |> :ets.tab2list()
+    |> Enum.map(fn {_, r} -> r end)
+    |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/policyExemptions"))
+    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    |> Enum.sort_by(& &1["id"])
+  end
+
+  @doc """
+  Deletes an exemption. An exemption whose `expiresOn` is in the past is
+  swept too (ARM semantics: an expired exemption no longer exempts, so it
+  must not linger GETable).
+  """
+  def delete_policy_exemption(scope_prefix, name) do
+    ensure_tables()
+
+    case get_policy_exemption(scope_prefix, name) do
+      {:ok, record} ->
+        # Cascade the exemption's receipts keyed by its exemption id.
+        ex_id_low = String.downcase(record["id"])
+
+        for {key, _} <- :ets.tab2list(:smalt_policy),
+            is_binary(key) and String.starts_with?(key, "exr:#{ex_id_low}:") do
+          :ets.delete(:smalt_policy, key)
+        end
+
+        :ets.delete(:smalt_policy, ex_id_low)
+        :ok
+
+      :error ->
+        :ok
+    end
+  end
+
+  defp exemption_id(scope_prefix, name),
+    do: "#{scope_prefix}/providers/Microsoft.Authorization/policyExemptions/#{name}"
+
+  defp exemption_refusal(scope_prefix, name, reason),
+    do: %{
+      "error" => %{
+        "code" => "PolicyExemptionInvalid",
+        "message" => "Policy exemption '#{name}' at scope '#{scope_prefix}' is invalid. #{reason}.",
+        "target" => nil,
+        "innererror" => %{}
+      }
+    }
+
+  # ===========================================================================
+  # Clock seam
+  # ===========================================================================
+
+  @doc """
+  Expiry clock, overridable in tests via
+  `Application.put_env(:smalt, :policy_now_ms, ms)`.
+  """
+  def now_ms do
+    Application.get_env(:smalt, :policy_now_ms) ||
+      DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+  end
+
+  defp expired?(nil), do: false
+
+  defp expired?(expires_on) when is_binary(expires_on) do
+    case DateTime.from_iso8601(expires_on) do
+      {:ok, dt, _} -> DateTime.to_unix(dt, :millisecond) <= now_ms()
+      _ -> false
+    end
+  end
+
+  defp expired?(_), do: false
+
+  @doc "Whether the exemption record is active (exists and expiresOn not past)."
+  def exemption_active?(record) do
+    is_map(record) and not expired?(get_in(record, ["properties", "expiresOn"]))
+  end
+
+  # ===========================================================================
   # Enforcement
   # ===========================================================================
 
@@ -367,29 +591,119 @@ defmodule Smalt.Policy do
   end
 
   defp evaluate_assignment(assignment, record) do
-    rule =
+    rules =
       case get_in(assignment, ["properties", "policyDefinitionId"]) do
-        nil -> nil
-        def_id -> get_in(lookup_definition_by_id(def_id) || %{}, ["properties", "policyRule"])
+        nil ->
+          []
+
+        def_id ->
+          case definition_rules(def_id) do
+            {:single, rule} -> [{def_id, rule}]
+            {:set, members} -> members
+            :missing -> []
+          end
       end
 
-    cond do
-      is_nil(rule) or rule == %{} ->
+    rules
+    |> Enum.map(fn {def_id, rule} -> evaluate_rule(assignment, def_id, rule, record) end)
+    |> Enum.reject(&(&1 == :ok))
+    |> case do
+      [] ->
         :ok
 
-      true ->
-        effect = get_in(rule, ["then", "effect"]) || "deny"
-
-        if condition_matches?(rule, record) do
-          if effect == "audit" do
-            {:audit, assignment, condition_reason(rule)}
-          else
-            {:deny, assignment, condition_reason(rule)}
-          end
-        else
-          :ok
-        end
+      verdicts ->
+        # Deterministic worst-effect: any deny wins, first by sorted assignment id.
+        verdicts
+        |> Enum.map(fn {effect, _def_id, reason} -> {effect, assignment, reason} end)
+        |> Enum.sort_by(fn {effect, a, _} -> {effect_rank(effect), a["id"]} end)
+        |> List.first()
     end
+  end
+
+  defp effect_rank("deny"), do: 0
+  defp effect_rank(_), do: 1
+
+  # Resolves an assignment's policyDefinitionId into its member rules:
+  # a plain definition -> {:single, rule}; an initiative (policySet) ->
+  # {:set, [{def_id, rule}]} iterating member definitions; unknown -> :missing.
+  defp definition_rules(def_id) do
+    case lookup_definition_by_id(def_id) do
+      nil ->
+        :missing
+
+      %{"type" => "Microsoft.Authorization/policySetDefinitions"} = set ->
+        members =
+          set
+          |> get_in(["properties", "policyDefinitions"])
+          |> List.wrap()
+          |> Enum.map(fn
+            %{"policyDefinitionId" => mid} ->
+              {mid, get_in(lookup_definition_by_id(mid) || %{}, ["properties", "policyRule"])}
+
+            mid when is_binary(mid) ->
+              {mid, get_in(lookup_definition_by_id(mid) || %{}, ["properties", "policyRule"])}
+          end)
+
+        {:set, members}
+
+      definition ->
+        {:single, get_in(definition, ["properties", "policyRule"])}
+    end
+  end
+
+  defp evaluate_rule(_assignment, _def_id, rule, _record) when is_nil(rule) or rule == %{},
+    do: :ok
+
+  defp evaluate_rule(assignment, def_id, rule, record) do
+    effect = get_in(rule, ["then", "effect"]) || "deny"
+
+    if condition_matches?(rule, record) do
+      if exemption_applies?(assignment, record) do
+        record_exemption_receipt(assignment, def_id, record)
+        :ok
+      else
+        reason = condition_reason(rule)
+        effect = if effect == "audit", do: :audit, else: :deny
+        {effect, def_id, reason}
+      end
+    else
+      :ok
+    end
+  end
+
+  # An ACTIVE (non-expired) exemption for this assignment exempts the
+  # resource: the deny is skipped and an exemption receipt recorded.
+  defp exemption_applies?(assignment, record) do
+    assignment_id = assignment["id"]
+    resource_id = record["id"] || ""
+
+    :smalt_policy
+    |> :ets.tab2list()
+    |> Enum.map(fn {_, r} -> r end)
+    |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/policyExemptions"))
+    |> Enum.any?(fn ex ->
+      get_in(ex, ["properties", "policyAssignmentId"]) == assignment_id and
+        exemption_active?(ex) and
+        exemption_covers?(ex, resource_id)
+    end)
+  end
+
+  defp exemption_covers?(ex, resource_id_low) do
+    scope = get_in(ex, ["properties", "scope"]) |> to_string() |> String.downcase()
+    resource_id_low == scope or String.starts_with?(resource_id_low, scope <> "/")
+  end
+
+  defp record_exemption_receipt(assignment, def_id, record) do
+    ex_key =
+      String.downcase("exr:#{assignment["id"]}:#{record["id"] || ""}:#{def_id}")
+
+    :ets.insert(:smalt_policy, {ex_key, %{
+      "smaltReceiptType" => "policyExemption",
+      "policyAssignmentId" => assignment["id"],
+      "policyDefinitionId" => def_id,
+      "resourceId" => record["id"] || "",
+      "exempted" => true
+    }})
   end
 
   defp lookup_definition_by_id(def_id) do

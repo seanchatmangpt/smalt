@@ -15,6 +15,11 @@ defmodule Smalt.ArmGateway.Router do
   - ARM error envelopes; GraphLaw refusal -> HTTP 400 (pinned)
   """
   use Plug.Router
+  # GAP-AZB20-3 crash-path fence: without Plug.ErrorHandler a route crash is
+  # adapter-rendered (Bandit), bypassing every register_before_send callback —
+  # the naked 500 carries no x-ms-request-id. The handler below renders the ARM
+  # envelope on the crash path.
+  use Plug.ErrorHandler
   require Logger
   alias Smalt.ArmGateway.LRO
   alias Smalt.ArmGateway.Defaults
@@ -30,6 +35,9 @@ defmodule Smalt.ArmGateway.Router do
   plug(Plug.Logger)
   plug(:arm_cors)
   plug(:normalize_leading_empty_segment)
+  # X-ARR-ClientCert mTLS gateway termination (WO-2 G2). No-op by default
+  # (config :smalt, :x_arr_cert, require: false) — byte-identical when off.
+  plug(Smalt.Auth.XArrCert)
   plug(Smalt.Auth.Bearer)
 
   # Per-request CORS knob for the 9443/9444 control plane (mirrors the egress
@@ -105,9 +113,41 @@ defmodule Smalt.ArmGateway.Router do
         _ -> generate_uuid()
       end
 
-    register_before_send(conn, fn conn ->
+    # Stash the id so the crash path (handle_errors/2) reuses it — a 500
+    # rendered by Plug.ErrorHandler never runs register_before_send callbacks.
+    conn
+    |> put_private(:arm_request_id, request_id)
+    |> register_before_send(fn conn ->
       put_resp_header(conn, "x-ms-request-id", request_id)
     end)
+  end
+
+  # GAP-AZB20-3: crash-path ARM envelope. Plug.ErrorHandler calls handle_errors
+  # and then ALWAYS re-raises (deps/plug error_handler.ex __catch__), so this
+  # handler must send the response itself when nothing was sent yet — a double
+  # send is impossible because Plug.ErrorHandler skips the handler via the
+  # {:plug_conn, :sent} message when the response already went out. Renders a
+  # well-formed ARM 500 InternalServerError with x-ms-request-id (stashed id,
+  # else fresh). (No @impl: handle_errors is defp — Plug.ErrorHandler calls it
+  # dynamically, and @impl on a private function is a compile warning.)
+  defp handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
+    Logger.error("arm_gateway crash 500: #{Exception.format(kind, reason, stack)}")
+
+    # :unsent is not a real Plug conn.state — "nothing sent yet" is
+    # state in [:unset, :set].
+    if conn.state in [:unset, :set] do
+      rid = conn.private[:arm_request_id] || generate_uuid()
+
+      send_arm_error(
+        put_resp_header(conn, "x-ms-request-id", rid),
+        500,
+        "InternalServerError",
+        "Internal server error.",
+        conn.request_path
+      )
+    end
+
+    :ok
   end
 
   defp generate_uuid do
@@ -130,7 +170,7 @@ defmodule Smalt.ArmGateway.Router do
   # :smalt, :arm_rate_limit is exceeded. Default :infinity — responses stay
   # byte-identical unless configured (mirrors the cosmos :cosmos_ru_limit gate).
   defp arm_throttle(conn, _opts) do
-    case Application.get_env(:smalt, :arm_rate_limit, :infinity) do
+    case Smalt.Config.arm_rate_limit() do
       limit when is_integer(limit) and limit > 0 ->
         second = div(System.system_time(:millisecond), 1000)
         key = {:smalt_arm_rate, second}
@@ -159,7 +199,21 @@ defmodule Smalt.ArmGateway.Router do
   defp rate_table do
     if :ets.info(:smalt_arm_rate) == :undefined do
       try do
-        :ets.new(:smalt_arm_rate, [:named_table, :public, :set, read_concurrency: true])
+        # Silent-disarm law (KD-110 lane, burst witness 2026-10-19): the first
+        # creator is a Bandit request task — without an heir the counter table
+        # DIES with that request, and the next burst re-creates a fresh table
+        # mid-window (update_counter re-seeds at 0 → limiter disarmed, and a
+        # racing delete can raise → 500s). Heir to :init (permanent,
+        # node-local) makes the table outlive its creator; the ArgumentError
+        # rescue keeps the create race fail-safe. Mirrors policy.ex
+        # ensure_tables/0 (PW lane, same defect class).
+        :ets.new(:smalt_arm_rate, [
+          :named_table,
+          :public,
+          :set,
+          {:read_concurrency, true},
+          {:heir, Process.whereis(:init), []}
+        ])
       rescue
         ArgumentError -> :ok
       end
@@ -270,7 +324,6 @@ defmodule Smalt.ArmGateway.Router do
   defp blank?(v), do: not is_binary(v) or v == ""
 
   defp issue_token(conn, tenant_id) do
-    signer = sts_signer()
     now = System.system_time(:second)
 
     # AZB-08 config read site: the identity-plane profile
@@ -302,7 +355,11 @@ defmodule Smalt.ArmGateway.Router do
       "roles" => ["Contributor", "Owner"]
     }
 
-    {:ok, token, _} = Joken.generate_and_sign(%{}, claims, signer)
+    # Mint via the mode's key: RS256 emits {"typ":"JWT","alg":"RS256",
+    # "kid":<thumbprint>} (JOSE-direct — Joken's JWS.compact strips custom JWS
+    # header members); :hs256_dev stays on the legacy Joken path, wire
+    # byte-identical to pre-StsKey.
+    {:ok, token} = Smalt.Auth.StsKey.mint(claims)
 
     body =
       Jason.encode!(%{
@@ -318,68 +375,10 @@ defmodule Smalt.ArmGateway.Router do
     |> send_json(200, body)
   end
 
-  # STS signing secret: configured via Application.get_env(:smalt, :sts_signing_secret);
-  # fail-fast in prod when unset, otherwise generate once per VM lifetime and
-  # cache in :persistent_term (mirrors Smalt.Security.ReceiptSigner).
-  #
-  # Precedence matches Smalt.Auth.Bearer.signer/0: an env-configured secret
-  # (>= 32 bytes) wins over the cached dev secret. Otherwise configuring or
-  # rotating :sts_signing_secret AFTER gateway boot only takes effect on the
-  # verify side while the mint side keeps the generated dev key — every fresh
-  # token would 401 SignatureVerificationFailed (witnessed: combined-suite
-  # order dependence, cycle 3).
-  defp sts_signer do
-    case Application.get_env(:smalt, :sts_signing_secret) do
-      secret when is_binary(secret) and byte_size(secret) >= 32 ->
-        Joken.Signer.create("HS256", secret)
-
-      other when is_binary(other) ->
-        raise ArgumentError,
-              "smalt :sts_signing_secret must be >= 32 bytes when set (got #{byte_size(other)})"
-
-      _ ->
-        case :persistent_term.get({__MODULE__, :sts_signing_secret}, :missing) do
-          :missing -> generate_and_cache_secret()
-          secret -> Joken.Signer.create("HS256", secret)
-        end
-    end
-  end
-
-  defp generate_and_cache_secret do
-    global_key = {__MODULE__, :secret_lock}
-
-    secret =
-      :global.trans({global_key, node()}, fn ->
-        case :persistent_term.get({__MODULE__, :sts_signing_secret}, :missing) do
-          :missing ->
-            secret =
-              case Application.get_env(:smalt, :sts_signing_secret) do
-                secret when is_binary(secret) and byte_size(secret) >= 32 ->
-                  secret
-
-                other when is_binary(other) ->
-                  raise ArgumentError,
-                        "smalt :sts_signing_secret must be >= 32 bytes when set (got #{byte_size(other)})"
-
-                nil ->
-                  if Application.get_env(:smalt, :prod, false) do
-                    raise ArgumentError,
-                          "smalt :sts_signing_secret must be configured in prod (Application.get_env(:smalt, :sts_signing_secret))"
-                  else
-                    :crypto.strong_rand_bytes(32)
-                  end
-              end
-
-            :persistent_term.put({__MODULE__, :sts_signing_secret}, secret)
-            secret
-
-          secret ->
-            {:ok, secret}
-        end
-      end)
-
-    Joken.Signer.create("HS256", secret)
-  end
+  # STS signing key: RS256 via Smalt.Auth.StsKey (env-PEM-first precedence,
+  # :global-locked once-per-VM generation, :persistent_term-cached with the
+  # mode stamped). The legacy HS256 secret logic moved into
+  # Smalt.Auth.StsKey.hs_signer/0 / generate_and_cache_dev_secret/0.
 
   # Request-derived authority: scheme://host[:port] as the CLIENT reached us
   # (lane 90 TS court: advertising login.smalt.local — an NXDOMAIN — made
@@ -387,6 +386,15 @@ defmodule Smalt.ArmGateway.Router do
   # STS: endpoints_resolution_error). Single derivation shared with the auth
   # plug: forwarded headers honored ONLY from trusted proxies (fail-closed).
   defp request_authority(conn), do: Smalt.Auth.Bearer.request_authority(conn)
+
+  # "https://arm.internal:19081" -> "arm.internal" (scheme + port stripped):
+  # the instance-discovery alias for THIS substrate's authority.
+  defp instance_alias_host(base) do
+    case String.split(base, "://", parts: 2) do
+      [_scheme, rest] -> hd(String.split(rest, ":", parts: 2))
+      _ -> base
+    end
+  end
 
   defp openid_envelope(conn, tenant_id) do
     base = "#{request_authority(conn)}/#{tenant_id}"
@@ -396,7 +404,13 @@ defmodule Smalt.ArmGateway.Router do
       "token_endpoint" => "#{base}/oauth2/v2.0/token",
       "authorization_endpoint" => "#{base}/oauth2/v2.0/authorize",
       "jwks_uri" => "#{base}/discovery/v2.0/keys",
-      "id_token_signing_alg_values_supported" => ["HS256"],
+      # Mode-conditional: AAD advertises ["RS256"]; the HS256 dev pin
+      # advertises what it actually uses (self-consistent with the mint).
+      "id_token_signing_alg_values_supported" =>
+        case Smalt.Auth.StsKey.mode() do
+          :rs256 -> ["RS256"]
+          :hs256_dev -> ["HS256"]
+        end,
       # OIDC Discovery 3.0 REQUIRED members.
       "response_types_supported" => ["token"],
       "subject_types_supported" => ["public"]
@@ -2623,7 +2637,24 @@ defmodule Smalt.ArmGateway.Router do
         "authorization_endpoint" => "#{base}/#{tid}/oauth2/v2.0/authorize",
         "token_endpoint" => "#{base}/#{tid}/oauth2/v2.0/token",
         "issuer" => "#{base}/#{tid}/v2.0",
-        "tenant_discovery_endpoint" => "#{base}/#{tid}/v2.0/.well-known/openid-configuration"
+        "tenant_discovery_endpoint" => "#{base}/#{tid}/v2.0/.well-known/openid-configuration",
+        # msal instance discovery (the envelope that unblocks
+        # ClientSecretCredential): AAD-shape metadata array. Each entry MUST
+        # carry tenant_discovery_endpoint (msal-common's
+        # CloudInstanceDiscoveryResponse validates it per-entry — a flat
+        # top-level one alone answers invalid_instance). The request
+        # authority's HOST (scheme+port stripped) rides the aliases so the
+        # emulator's own authority is admitted as an instance alias.
+        "metadata" => [
+          %{
+            "preferred_network" => "login.microsoftonline.com",
+            "preferred_cache" => "login.windows.net",
+            "aliases" =>
+              ["login.microsoftonline.com", "login.windows.net", "login.microsoft.com"] ++
+                [instance_alias_host(base)],
+            "tenant_discovery_endpoint" => "#{base}/#{tid}/v2.0/.well-known/openid-configuration"
+          }
+        ]
       })
 
     send_json(conn, 200, body)
@@ -2637,11 +2668,18 @@ defmodule Smalt.ArmGateway.Router do
     send_json(conn, 200, Jason.encode!(openid_envelope(conn, tenant_id)))
   end
 
-  # JWKS endpoint (HS256 dev-mode: the shared secret is never published, so the
-  # key set is honestly empty — an OIDC-compliant doc must not advertise a
+  # JWKS endpoint: under :rs256 the STS public key is published (kty/n/e/use/
+  # alg/kid); under :hs256_dev the shared secret is never published, so the
+  # key set stays honestly empty (an OIDC-compliant doc must not advertise a
   # jwks_uri that 404s).
   get "/:tenant_id/discovery/v2.0/keys" do
-    send_json(conn, 200, Jason.encode!(%{"keys" => []}))
+    keys =
+      case Smalt.Auth.StsKey.mode() do
+        :rs256 -> [Smalt.Auth.StsKey.jwk_map()]
+        :hs256_dev -> []
+      end
+
+    send_json(conn, 200, Jason.encode!(%{"keys" => keys}))
   end
 
   get "/tenant" do
@@ -4160,6 +4198,8 @@ defmodule Smalt.ArmGateway.Router do
   @ra_type "Microsoft.Authorization/roleAssignments"
   @pd_type "Microsoft.Authorization/policyDefinitions"
   @pa_type "Microsoft.Authorization/policyAssignments"
+  @pe_type "Microsoft.Authorization/policyExemptions"
+  @psd_type "Microsoft.Authorization/policySetDefinitions"
 
   # Subscription-scope role assignments
   put "/subscriptions/:sub_id/providers/Microsoft.Authorization/roleAssignments/:name" do
@@ -4415,6 +4455,158 @@ defmodule Smalt.ArmGateway.Router do
     with :ok <- check_api_version(conn, @pa_type) do
       Policy.delete_policy_assignment("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", name)
       send_json(conn, 200, "")
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # Policy exemptions (subscription scope AND RG scope). put returns
+  # {:ok, record} | {:error, PolicyExemptionInvalid envelope} — the error is
+  # the typed-400 body, never a 201 admission.
+  put "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyExemptions/:name" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      case Policy.put_policy_exemption("/subscriptions/#{sub_id}", name, conn.body_params) do
+        {:ok, record} ->
+          send_json(conn, 201, Jason.encode!(record))
+
+        {:error, body} ->
+          send_json(conn, 400, Jason.encode!(body))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyExemptions/:name" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      case Policy.get_policy_exemption("/subscriptions/#{sub_id}", name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy exemption '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyExemptions" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      send_list(conn, Policy.list_policy_exemptions("/subscriptions/#{sub_id}"))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyExemptions/:name" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      Policy.delete_policy_exemption("/subscriptions/#{sub_id}", name)
+      send_json(conn, 200, "")
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyExemptions/:name" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Policy.put_policy_exemption(scope, name, conn.body_params) do
+        {:ok, record} ->
+          send_json(conn, 201, Jason.encode!(record))
+
+        {:error, body} ->
+          send_json(conn, 400, Jason.encode!(body))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyExemptions/:name" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Policy.get_policy_exemption(scope, name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy exemption '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyExemptions" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+      send_list(conn, Policy.list_policy_exemptions(scope))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyExemptions/:name" do
+    with :ok <- check_api_version(conn, @pe_type) do
+      Policy.delete_policy_exemption("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", name)
+      send_json(conn, 200, "")
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # Policy set definitions (initiatives, subscription scope). Members are
+  # policyDefinitions references; evaluate_assignment/2 resolves an
+  # assignment's policyDefinitionId through the set (worst-effect wins).
+  put "/subscriptions/:sub_id/providers/Microsoft.Authorization/policySetDefinitions/:name" do
+    with :ok <- check_api_version(conn, @psd_type) do
+      case Policy.put_policy_set_definition(sub_id, name, conn.body_params) do
+        {:ok, record} ->
+          send_json(conn, 201, Jason.encode!(record))
+
+        {:error, body} ->
+          send_json(conn, 400, Jason.encode!(body))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policySetDefinitions/:name" do
+    with :ok <- check_api_version(conn, @psd_type) do
+      case Policy.get_policy_set_definition(sub_id, name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy set definition '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policySetDefinitions" do
+    with :ok <- check_api_version(conn, @psd_type) do
+      send_list(conn, Policy.list_policy_set_definitions(sub_id))
     else
       {:respond, conn} -> conn
     end
@@ -4742,6 +4934,34 @@ defmodule Smalt.ArmGateway.Router do
 
     # HEAD responses carry EMPTY bodies (autorest parses nothing).
     send_resp(conn, if(exists?, do: 204, else: 404), "")
+  end
+
+  # GAP-AZB20-6: Resource Graph query on the ARM (9443) surface — the handler
+  # previously existed only behind the TLS twin (EgressRouter, 8443); plain-HTTP
+  # ARM answered catch-all 404. First top-level /providers prefix on ARM.
+  post "/providers/Microsoft.ResourceGraph/resources" do
+    # A hostile body (invalid JSON raises in Plug.Parsers; a non-map decoded
+    # body) refuses typed 400, never a crash-path 500.
+    try do
+      body = if is_map(conn.body_params), do: conn.body_params, else: %{}
+
+      case Smalt.DataPlane.ResourceGraph.query(
+             Map.get(body, "subscriptions"),
+             body,
+             Map.get(conn.query_params || %{}, "api-version", "")
+           ) do
+        {:ok, status, resp} -> send_json(conn, status, Jason.encode!(resp))
+        {:error, status, resp} -> send_json(conn, status, Jason.encode!(resp))
+      end
+    rescue
+      e ->
+        send_arm_error(
+          conn,
+          400,
+          "InvalidBody",
+          "The request body could not be processed: #{e.__struct__}"
+        )
+    end
   end
 
   # -- Catch-all (proper ARM envelope) -------------------------------------------
