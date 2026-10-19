@@ -504,12 +504,13 @@ count, or PASS/FAIL token) found in the file.
 | i29-audited- | [i29-audited-caps-leakfix.md](../v26.10.18/receipts/i29-audited-caps-leakfix.md) | PASS | i29: audited_capabilities_test.exs leak-fix (9 ETS sites -> 0) |
 | i29-azb20-li | [i29-azb20-lib-land.md](../v26.10.18/receipts/i29-azb20-lib-land.md) | ALIVE | i29-azb20-lib-land — azb-20 lib lane adoption **NO-CONTEXT** |
 | i29-azb20-ve | [i29-azb20-verify.md](../v26.10.18/receipts/i29-azb20-verify.md) | PARTIAL_ALIVE | i29-azb20-verify — AZB-20 gap-fix lane verification **NO-CONTEXT** |
+| i29-azb24-bu | [i29-azb24-bump.md](../v26.10.18/receipts/i29-azb24-bump.md) | UNKNOWN | i29 AZB-24 Version Bump (26.10.18) |
 | i29-azsim-re | [i29-azsim-regression.md](../v26.10.18/receipts/i29-azsim-regression.md) | PARTIAL_ALIVE | i29 — azsim regression run |
 | i29-bench-ch | [i29-bench-check.md](../v26.10.18/receipts/i29-bench-check.md) | FAIL | i29 bench-lane smoke (post-0009df3) |
 | i29-budget-e | [i29-budget-export-fix.md](../v26.10.18/receipts/i29-budget-export-fix.md) | FAIL | i29 — budget export concurrent-lane isolation (justfile recipe fix) |
 | i29-budget-f | [i29-budget-final.md](../v26.10.18/receipts/i29-budget-final.md) | PASS | i29-budget-final |
 | i29-budget-f | [i29-budget-final2.md](../v26.10.18/receipts/i29-budget-final2.md) | PASS | i29 budget gate final (lane receipt) **NO-CONTEXT** |
-| i29-budget-r | [i29-budget-reseed.md](../v26.10.18/receipts/i29-budget-reseed.md) | PASS | i29 budget reseed adoption (orphan manifest ADOPTED) |
+| i29-budget-r | [i29-budget-reseed.md](../v26.10.18/receipts/i29-budget-reseed.md) | CLOSED | i29 Budget Re-Seed (test_budgets.json refresh, 2026-10-18/19) |
 | i29-budget-v | [i29-budget-verify.md](../v26.10.18/receipts/i29-budget-verify.md) | PASS | i29 budget gate verification (NOT re-seed verification) |
 | i29-canonica | [i29-canonical-fresh.md](../v26.10.18/receipts/i29-canonical-fresh.md) | PASS | i29 — Canonical projection regen-verify (capabilities.json + THIRD_PARTY.md) |
 | i29-capabili | [i29-capabilities-drift.md](../v26.10.18/receipts/i29-capabilities-drift.md) | PASS | i29 capabilities.json drift — canonical_projection fence |
