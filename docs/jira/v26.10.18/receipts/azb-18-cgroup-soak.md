@@ -1,7 +1,7 @@
 # AZB-18 — cgroup-constrained soak harness
 
 Context: solo (STAGED harness validation; container leg not executed)
-**Standing: STAGED** — harness authored, syntax- and config-validated, gate wiring proven in both
+**Standing: BLOCKED[unledgered-failure-faces + harness-mount-gap]** — leg executed 2x (2026-10-19, see Adopted execution); gate refused both (STANDING_REFUSED, 4x DIRTY_ROW UNHANDLED_EXIT); data+identity planes completed the suite (2740 tests, 44/45 failures), control+integration SIGKILLed; dominant face is a harness mount-surface gap (.ggen_igniter/receipts absent in container)
 directions on a synthetic row file; the container leg is **NOT executed** (see Executed-vs-staged).
 
 Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-18 (Q RAISE, lane burn, deps AZB-17).
@@ -197,3 +197,100 @@ superseded — that file also flips to PARTIAL_ALIVE under this validator
 2 of 4 planes now execute the full offline tier, 2 still OOM at 2g.
 
 Replay: `python3 scripts/validate_burn.py --gate /tmp/azb18-diag.jsonl` (exit 1, output above).
+
+## Adopted execution — 2026-10-19 (Context: solo, watch-lane adoption)
+
+The staged leg was adopted after the lane watch window closed: 20 polls x 60s (23:11–23:31 PDT)
+with **no receipt change (still STAGED)** and **zero smalt-burn/smalt-soak containers** for 35+
+minutes; `smalt-burn:latest` had since been built (8.95GB, ~20 min old), clearing the prior
+image blocker. Adopting lane then ran the staged recipe twice. All commands real; outputs above
+and inline below.
+
+### Attempt 1 — staged caps (cpus 2.0/1.5/2.0/1.0, mem=1g, pids=512)
+
+`bash docker/burn/cgroup-soak.sh --cycles 1 --deadline 2700`
+
+- Preflight OK (config valid, zero published ports, subject_sha=d1298be513121ac1828b44b13eb77b8a084c7f75,
+  image=sha256:14bbd6...).
+- All 4 containers SIGKILLed **exit 137 at tests=0**, logs ending mid-dependency-compile
+  (ash 659 files). Classified as cgroup `mem_limit=1g` OOM during parallel Elixir compilation.
+- First launch was additionally killed by the adopting lane's own harness timeout mid-compile
+  (driver EXIT trap downed the containers); relaunched detached (nohup+disown). Disclosed.
+- Gate: `cgroup-20261019T064350Z.jsonl` → derived_standing **PARTIAL_ALIVE**,
+  4x `DIRTY_ROW ... UNHANDLED_EXIT broken_term=mu_unlawful`, `STANDING_REFUSED: ALIVE claimed
+  over dirty rows`. VERDICT: FAIL (exit 1).
+
+### Attempt 2 — retry at SMALT_SOAK_MEM_LIMIT=2g (documented override, disclosed)
+
+`SMALT_SOAK_MEM_LIMIT=2g bash docker/burn/cgroup-soak.sh --cycles 1 --deadline 2700`
+
+- Compile completed; **data + identity planes ran the full offline suite**:
+  - smalt-soak-data: **2740 tests, 44 failures** (exit 2, suite completed)
+  - smalt-soak-identity: **2740 tests, 45 failures** (exit 2, suite completed)
+  - smalt-soak-control, smalt-soak-integration: **exit 137 (SIGKILL) mid-suite, tests=0**
+    (unclassified SIGKILL even at 2g; containers removed before OOMKilled flag could be read —
+    compose down in driver cleanup)
+- Gate: `cgroup-20261019T065557Z.jsonl` → **STANDING_REFUSED** over 4 dirty rows; FLAKE_LEDGER
+  classification flagged **~40 distinct UNLEDGERED failure faces** (recurring cross-container:
+  `test/dspy_test.exs`, `test/canonical_projection_test.exs`, `test/error_codes_doc_test.exs`,
+  `test/azsim/topology_test.exs`, `test/azsim/dr_scenarios_test.exs`, `test/pplan_test.exs`,
+  `test/trust_profile_test.exs`, `test/spc_drift_test.exs`, `test/mcp_wire_test.exs`,
+  `test/runtime_contracts_test.exs`, `test/smalt_graphlaw_matrix_test.exs:21`), plus CLOSED /
+  OPEN-ROTATING faces already in the ledger. VERDICT: FAIL (exit 1).
+
+### Failure-class note (honest, not ledgered by this lane)
+
+A recurring environment-class face dominates: `** (File.Error) could not list directory
+".ggen_igniter/receipts": no such file or directory` — the compose mounts only `test/`+`lib/`
+over `/smalt`, so dot-directories the suite reads (`.ggen_igniter/receipts`) are absent in
+container. This is a **harness mount-surface defect** (mount-set gap), not a product flake; it
+must be fixed (mount the dot-dirs read-only or seed the dir in the runner) before a re-burn can
+produce ledgerable signal. Ledger-first-and-reburn remains the standing instruction for the
+remaining faces.
+
+### Standing
+
+**BLOCKED[unledgered-failure-faces + harness-mount-gap]** — the leg executed end-to-end twice
+(4/4 containers per attempt, gate refused both attempts with typed reasons: STANDING_REFUSED /
+DIRTY_ROW mu_unlawful / unledgered faces). Harness, compose preflight, gate, and FLAKE_LEDGER
+classification all exercised for real (non-vacuous: both gates REFUSED). Not ALIVE: no clean
+cycle under the design caps was produced. Replay:
+
+```bash
+SMALT_SOAK_MEM_LIMIT=2g bash docker/burn/cgroup-soak.sh --cycles 1 --deadline 2700
+python3 scripts/validate_burn.py --gate docs/jira/v26.10.18/burn/cgroup-20261019T065557Z.jsonl
+```
+
+## Cycle 2 — mem raised to 2g (env override), validator fix witnessed — 2026-10-19 (Context: solo)
+
+The 2g did NOT land as a file edit: `docker/burn/cgroup-soak.sh` is unchanged (default
+`${SMALT_SOAK_MEM_LIMIT:-1g}` at lines 36/108/132); the running cycle got 2g via
+`SMALT_SOAK_MEM_LIMIT=2g` at launch (verified `docker inspect` `HostConfig.Memory=2147483648`
+on all four services). An interim 1g leg also ran during the watch window (jsonl
+`cgroup-20261019T063833Z` / `T064350Z` / `T064704Z`): all 4 planes 137/0-tests, identical
+to cycle 1.
+
+Newest cycle result: `docs/jira/v26.10.18/burn/cgroup-20261019T065557Z.jsonl`
+(subject 2a9ccd4f, image `smalt-burn@sha256:238622b…`, mem=2g, pids per script).
+
+Per-plane verdicts:
+
+| plane | exit | tests | failures | verdict |
+|---|---|---|---|---|
+| control (cpus 2.0) | 137 (SIGKILL) | 0 | 0 | UNHANDLED_EXIT / mu_unlawful — still OOM at 2g |
+| data (cpus 1.5) | 2 | 2740 | 44 | UNHANDLED_EXIT / mu_unlawful — tests RAN, real failures |
+| integration (cpus 2.0) | 137 (SIGKILL) | 0 | 0 | UNHANDLED_EXIT / mu_unlawful — still OOM at 2g |
+| identity (cpus 1.0) | 2 | 2740 | 45 | UNHANDLED_EXIT / mu_unlawful — tests RAN, real failures |
+
+Gate (`python3 scripts/validate_burn.py --gate docs/jira/v26.10.18/burn/cgroup-20261019T065557Z.jsonl`)
+exit **1**: `derived_standing=PARTIAL_ALIVE`, `STANDING_REFUSED: ALIVE claimed over dirty rows`,
+4× DIRTY_ROW. **The 086c6aa validator fix is witnessed live**: the embedded run_receipt
+claimed `standing: ALIVE` from replay-exit 0 alone and the gate refused it, capping at
+PARTIAL_ALIVE.
+
+Standing: **PARTIAL_ALIVE** — 2g unblocked the offline tier on data/identity (2740 tests
+executed each, so the tier fits in 2g) but control/integration still OOM at 2g, and the
+planes that ran show ~44-45 real failures. Follow-ups: (1) persist 2g in the script
+default (file still says 1g); (2) control/integration need >2g or staged compilation;
+(3) triage the 44/45 data/identity failures — subject 2a9ccd4f includes checkpoint5
+receipts only, so failures may be environment (cgroup CPU caps) not code.
