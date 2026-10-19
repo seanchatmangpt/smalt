@@ -4,49 +4,18 @@ defmodule Smalt.Application do
 
   @impl true
   def start(_type, _args) do
+    # AZB-09: Plane-scoped supervision subtrees.
+    # Shared top-level infra: RollingCounters, MCP router, and HIL virtual hardware.
+    # Planes: Data, Control, Integration, Identity subtrees.
     children =
+      plane_children() ++
       [
-        Smalt.Store,
-        {Bandit, plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port(), ip: bind_ip()},
-        # TLS twin of the ARM gateway (https), for https-only clients such as
-        # azurerm's ARM_METADATA_HOST fetch, which hardcodes the https scheme.
-        # Also serves the Key Vault data-plane surface (/keys/*) over TLS so
-        # real Key Vault SDKs (azure-keyvault-keys, azure-security-keyvault-*)
-        # — which refuse plaintext http — can complete key create/get/release
-        # against the local substrate. Disclosed: listener wiring touches
-        # application.ex (owned by another lane); additive single child, cert
-        # via Smalt.TLS.ensure_dev_cert/0.
-        {Bandit, arm_tls_opts() ++ [ip: bind_ip()]},
-        {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: egress_port(), ip: bind_ip()},
-        # MCP read-only tool surface (lane I15): JSON-RPC 2.0, actuation
-        # refused by the router's @actuation_fragments gate (SHIM-COURT:
-        # unregistered+verb id -> ACTUATION_REFUSED; other unknown id ->
-        # TOOL_NOT_FOUND; registered ids via Descriptor.describe/1) — no DO
-        # from MCP.
+        Smalt.Telemetry.RollingCounters,
         {Bandit,
          plug: {Smalt.Mcp.Router, []},
          scheme: :http,
          port: Application.get_env(:smalt, :mcp_port, 9545),
-         ip: bind_ip()},
-        {Smalt.AmqpBroker, []},
-        Smalt.Telemetry.RollingCounters,
-        # ARM LRO at-rest sweeper (lane 05, V261014-05 — disclosed additive
-        # child, application.ex shared this wave): closes
-        # GAP(lro-lazy-terminality) by driving terminal flips without a poll,
-        # plus opt-in :lro_retention_ms eviction (default :infinity).
-        # v26.10.18 one-writer redesign: the sweeper is the SINGLE terminal
-        # writer; the Notifier (before it, so it is up first) is its explicit
-        # completion-signal hub for LRO.await waiters.
-        Smalt.ArmGateway.LRO.Notifier,
-        Smalt.ArmGateway.LRO.Sweeper,
-        # Supervised WasmEngine restart envelope (v26.10.18 lib redesign
-        # Part 1, disclosed additive child): one_for_one 3/1s around an
-        # owner GenServer that start_links + monitors the named engine and
-        # owns every retry in its own mailbox (zero caller-path sleeps;
-        # engine module is structurally sleep-free, fence 10).
-        Smalt.Affidavit.WasmEngine.Supervisor
-        # HIL virtual device (lane S-5): opt-in only via SMALT_SIMULATE_HARDWARE=1
-        # — default startup is untouched (child spec is [] when unset).
+         ip: bind_ip()}
         | virtual_hw_child()
       ]
 
@@ -76,10 +45,6 @@ defmodule Smalt.Application do
       []
     end
   end
-
-  # W1a exemplar (plain-default class): default copy now lives ONLY in the
-  # ontology (smalt:ck-arm-port) via the Smalt.Config projection.
-  defp arm_port, do: Smalt.Config.arm_port()
 
   # Default bind: loopback only. This is a local air-gapped
   # emulator — binding 0.0.0.0 by default exposed every surface to the LAN.
@@ -132,8 +97,6 @@ defmodule Smalt.Application do
     end
   end
 
-  defp arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
-
   # TLS twin dispatch: ARM paths to ArmGateway.Router, Key Vault / data-plane
   # egress paths to EgressRouter. Plug.Cascade is NOT usable here: both routers
   # define a catch-all `match _` that *sends* a 404, so cascade would stop at
@@ -172,16 +135,27 @@ defmodule Smalt.Application do
     end
   end
 
-  # TLS twin of the ARM gateway. Cert material comes from SMALT_TLS_CERTFILE /
-  # SMALT_TLS_KEYFILE (minted by scripts/gen_dev_cert.sh) when set, else the
-  # Smalt.TLS dev-cert path. Falls back to :http when no cert is available.
-  # R90/D52: cert resolution (env pair first, config pair, dev-cert) and the
-  # unconditional TLS 1.2 + cipher pin now live in Smalt.TLS.bandit_opts/2;
-  # this is the single call site (repair lane R123: no KD row — internal
-  # reduction, not a divergence).
-  defp arm_tls_opts do
-    Smalt.TLS.bandit_opts(TlsTwinDispatch, arm_tls_port())
+  # AZB-09: Partitioned plane supervisors preserving boot order:
+  # Data (Store) -> Control (ARM + Sweeper) -> Integration (AMQP) -> Identity
+  defp plane_children do
+    case Application.get_env(:smalt, :planes, :all) do
+      :all ->
+        [
+          Smalt.Plane.DataSupervisor,
+          Smalt.Plane.ControlSupervisor,
+          Smalt.Plane.IntegrationSupervisor,
+          Smalt.Plane.IdentitySupervisor
+        ]
+
+      planes when is_list(planes) ->
+        Enum.flat_map(planes, fn
+          :data -> [Smalt.Plane.DataSupervisor]
+          :control -> [Smalt.Plane.ControlSupervisor]
+          :integration -> [Smalt.Plane.IntegrationSupervisor]
+          :identity -> [Smalt.Plane.IdentitySupervisor]
+          _ -> []
+        end)
+    end
   end
 
-  defp egress_port, do: Application.get_env(:smalt, :egress_port, 8443)
 end
