@@ -31,7 +31,7 @@ construction, so the comparable in-repo surface is directly comparable.
 | code | location | verdict | note |
 |---|---|---|---|
 | CLAIM-004 | `.github/workflows/ci.yml:52,70` | FALSE POSITIVE — shell `for...done` | unchanged from pass 1 |
-| CLAIM-004 | `docs/CHEAT_SCAN.md:69-74` | NOISE — this report quoting pass-1 findings (self-referential) | new surface |
+| CLAIM-004 | `docs/archive/CHEAT_SCAN.md:69-74` | NOISE — this report quoting pass-1 findings (self-referential) | new surface |
 | CLAIM-004 | `erl_crash.dump:183006,223259` | NOISE — crash-dump cruft; still present, still should be deleted | repo-owner |
 | CLAIM-004 | `scripts/doctor.py:4` | FALSE POSITIVE — exit-code legend docstring | unchanged |
 | CLAIM-004 | `scripts/release.sh:24,44,63,67` | FALSE POSITIVE — shell `for...done` / log helper | new file |
@@ -174,7 +174,7 @@ removed from the COPY only: all `.venv` python environments under `test/`
 - Release blockers: **0 (NO)**. Direct grep of the canonical tree:
   `smalt-sovereign-azure-secret-key-32b!` and
   `smalt-maa-attestation-signing-key-32b` exist only as quoted text in two
-  docs (`docs/CHEAT_SCAN.md`, `docs/PUBLISH_CHECK.md:21,160` — both asserting
+  docs (`docs/archive/CHEAT_SCAN.md`, `docs/archive/PUBLISH_CHECK.md:21,160` — both asserting
   the literal's absence). No code/config/test/script hit.
 - Old blocker fix confirmed still in place (STS signing secret via
   `Application.get_env(:smalt, :sts_signing_secret)`).
@@ -198,7 +198,7 @@ VERSION-001, 3 STRANGE-009, 3 STANDING-001, 1 each RECEIPT-003, STRANGE-008/
 | STRANGE-008 | `cli/src/main.rs:9` | FALSE POSITIVE | actually `eprintln!` on the error/exit path of a CLI binary — legitimate |
 | RECEIPT-003 | `.ggen_igniter/receipts/2026-10-14.jsonl:1` | NOISE | machine-written ggen receipt (`completed_at: null` — a run in flight); tooling artifact, not smalt code |
 | AUTH-002 | `cli/Cargo.toml:19`, `test/strata_compat_test.exs:12,312,316,320`, `docs/PACK_INTEGRATION/*` | FALSE POSITIVE | "CLAP" here is the strata STX1/CLAP/1.0 wire protocol (docs explicitly pin it NOT-APPLICABLE) and the `clap-noun-verb` dep name — not a fake abstraction |
-| STANDING-001 | `docs/PUBLISH_CHECK.md:6,109,197` | FALSE POSITIVE | scope is stated in surrounding prose of the publish checklist |
+| STANDING-001 | `docs/archive/PUBLISH_CHECK.md:6,109,197` | FALSE POSITIVE | scope is stated in surrounding prose of the publish checklist |
 
 Known classes recurred on new files with the same verdicts as v2: CLAIM-004
 shell `done` (`e2e/*/run.sh`, `scripts/stress/*`, `bootstrap.sh`,

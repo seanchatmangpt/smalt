@@ -1,7 +1,7 @@
 # Loopback-only hardened local deployment of the smalt substrate.
 # Run from the repo root:  docker compose -f docker/compose.smalt.yml up --build
 #
-# Sibling path deps (../ash_graphlaw, ../ggen_igniter, ../ex4pm) are injected
+# Sibling path deps (../ash_graphlaw, ../ggen_igniter, ../ash_r2rml) are injected
 # as extra build contexts; see the build section and docker/README.md.
 
 services:
@@ -14,7 +14,7 @@ services:
       additional_contexts:
         ash_graphlaw: ../../ash_graphlaw
         ggen_igniter: ../../ggen_igniter
-        ex4pm: ../../ex4pm
+        ash_r2rml: ../../ash_r2rml
     image: smalt:local
     container_name: smalt
     environment:

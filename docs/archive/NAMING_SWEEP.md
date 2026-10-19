@@ -27,8 +27,8 @@ over the full repo, excluding `deps/`, `_build/`, `.git/`, `tmp/`, `.elixir_ls/`
 
 | file:line | before → after |
 |---|---|
-| `docs/CHEAT_SCAN.md:4` | `/Users/sac/anti-llm-cheat-lsp` → "the `anti-llm-cheat-lsp` repo" |
-| `docs/CHEAT_SCAN.md:10` | `/Users/sac/smalt` → `~/smalt` |
+| `docs/archive/CHEAT_SCAN.md:4` | `/Users/sac/anti-llm-cheat-lsp` → "the `anti-llm-cheat-lsp` repo" |
+| `docs/archive/CHEAT_SCAN.md:10` | `/Users/sac/smalt` → `~/smalt` |
 | `docs/QUICKSTART_RECEIPT.md:3` | `/Users/sac/smalt` → `~/smalt` |
 
 ## Verified-clean items
@@ -75,7 +75,7 @@ sweep re-run with the same exclusions (`deps/`, `_build/`, `.git/`, `tmp/`,
 REPORTED to the env/dx lane: `.env.example` (a root published template) ships
 absolute personal defaults including the legacy `cai/athena` path
 (`.env.example:12,15,19,20,24`). FIRST_RUN.md points readers at this file.
-`docs/PUBLISH_CHECK.md`'s line-192 finding (`smalt_mcp_surface.ttl:8`) is
+`docs/archive/PUBLISH_CHECK.md`'s line-192 finding (`smalt_mcp_surface.ttl:8`) is
 HEALED — the ttl greps 0 for `/Users/sac` and `athena`.
 
 ## Resolved this sweep
@@ -132,11 +132,11 @@ Path de-identification across 22 owned files: `/Users/sac/smalt` → `~/smalt`,
 | file | lines fixed |
 |---|---|
 | `docs/CENSUS.md:13` | legacy SDK path → `<legacy-sdk-root>/playground/node_modules` |
-| `docs/CHEAT_SCAN.md:5,7` | scanner repo path → "the `anti-llm-cheat-lsp` repo"; `/Users/sac/smalt` → `~/smalt` (v2 fix had been overwritten by a later lane edit; re-applied) |
+| `docs/archive/CHEAT_SCAN.md:5,7` | scanner repo path → "the `anti-llm-cheat-lsp` repo"; `/Users/sac/smalt` → `~/smalt` (v2 fix had been overwritten by a later lane edit; re-applied) |
 | `docs/JUST_REFERENCE.md:5` | `/Users/sac/smalt` → `~/smalt` |
 | `docs/DEV_ENV.md:19,38-42` | legacy SDK path + 4 `/Users/sac/smalt` paths |
 | `docs/ERROR_SWEEP.md:3` | `/Users/sac/smalt` → `~/smalt` |
-| `docs/PUBLISH_CHECK.md:156` | pack query path → `~/ggen-marketplace/...` |
+| `docs/archive/PUBLISH_CHECK.md:156` | pack query path → `~/ggen-marketplace/...` |
 | `docs/compliance/C1_ARM_REST.md:22`, `C3_COSMOS.md:27`, `C4_BLOB.md:8` | `cd /Users/sac/smalt` / subject paths → `~/smalt` |
 | `docs/STRESS/AZURITE_COMPARE.md:17`, `TLS_CHURN.md:10`, `SUITE_STABILITY.md:3,113` | legacy SDK path + `/Users/sac/smalt` paths |
 | `docs/PACK_INTEGRATION/*.md` (runtime-contracts 3,28; semantic-epoch 8; mcp-a2a 3,70; ea-projection 3,56; ash-extension 5,23; REMAINING_CENSUS 3; ash-pplan 4,35,53,72,92; ash-ocel-revops 8; otel-weaver 3; canonical-projection 3) | 15 lines of checkout/pack-root paths → `~/smalt`, `~/ggen-marketplace`, `~/ggen_igniter` |
@@ -186,7 +186,7 @@ Total: 45 lines fixed across 22 owned files.
 | `test/azapi_actions_test.exs:3` | `athena's terraform` comment | test owner |
 | `test/redteam/r1_input_fuzz/receipt.txt:2`, `r2_state/findings.md:4` | `/Users/sac/smalt` in captured receipt/prose | redteam r1/r2 owners |
 | `test/e2e/s4_oauth_negatives/.work/*.log` (18), `s10_attest_adversary/.logs/substrate.log:935` | machine-written run logs embedding absolute paths | e2e harness owner (add `.work/`, `.logs/` to sweep excludes) |
-| `lib/smalt/mcp/gen/smalt_mcp_surface.ttl:8` | `/Users/sac/...` comment in generated ttl | MCP surface lane (also `docs/PUBLISH_CHECK.md:192` known-issue) |
+| `lib/smalt/mcp/gen/smalt_mcp_surface.ttl:8` | `/Users/sac/...` comment in generated ttl | MCP surface lane (also `docs/archive/PUBLISH_CHECK.md:192` known-issue) |
 | `ggen_igniter.pack.lock:7` | unchanged from v2 | pack/ggen lane |
 | `docker/README.md:42`, `docker/BUILD_RECEIPT.md:5,16,17,28` | `Athena` prose + local paths | docker docs owner (v2 open item) |
 | `.ggen_igniter/manifest.json` (16 lines), `.ggen_igniter/receipts/*.jsonl` (105 lines) | machine-generated manifest/receipt paths | ggen_igniter lane — machine artifacts, hash-chained, not hand-editable |
@@ -194,7 +194,7 @@ Total: 45 lines fixed across 22 owned files.
 ### Intentional (meta self-reference, exempt)
 
 - `docs/NAMING_SWEEP.md` itself (this ledger — quotes the grep terms).
-- `docs/PUBLISH_CHECK.md:69,154,192` — quote the scan terms `/Users/sac` and
+- `docs/archive/PUBLISH_CHECK.md:69,154,192` — quote the scan terms `/Users/sac` and
   `athena` as the terms the publication checklist instructs to scan for; not
   leaks.
 

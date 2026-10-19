@@ -189,12 +189,25 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp handle_token(conn, tenant_id) do
-    case validate_token_request(conn) do
-      :ok ->
-        issue_token(conn, tenant_id)
+    # AZB-15 identity-plane DR gate: when the identity subtree booted in this
+    # VM and was then killed, NEW mints answer a typed 503 (retryable). A
+    # control-only boot (split profile / wire tree, no identity plane) keeps
+    # minting — the marker is set only by StsGate.init in a booted identity
+    # subtree.
+    if Smalt.Plane.Identity.StsGate.mint_allowed?() do
+      case validate_token_request(conn) do
+        :ok ->
+          issue_token(conn, tenant_id)
 
-      {:error, code} ->
-        token_error(conn, code)
+        {:error, code} ->
+          token_error(conn, code)
+      end
+    else
+      conn
+      |> put_resp_header("retry-after", "1")
+      |> put_resp_content_type("application/json")
+      |> send_resp(503, Jason.encode!(%{"error" => "StsUnavailable"}))
+      |> halt()
     end
   end
 

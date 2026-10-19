@@ -5,11 +5,15 @@ Canonical build commands (run from repo root):
 ```sh
 # release target (image pin)
 docker build -f docker/Dockerfile -t smalt:local . \
-  --build-context ash_r2rml=/Users/sac/ash_r2rml
+  --build-context ash_r2rml=/Users/sac/ash_r2rml \
+  --build-context ash_graphlaw=/Users/sac/ash_graphlaw \
+  --build-context ggen_igniter=/Users/sac/ggen_igniter
 
 # test target (burn lanes)
 docker build -f docker/Dockerfile --target test -t smalt-burn:latest . \
-  --build-context ash_r2rml=../ash_r2rml
+  --build-context ash_r2rml=$PWD/../ash_r2rml \
+  --build-context ash_graphlaw=$PWD/../ash_graphlaw \
+  --build-context ggen_igniter=$PWD/../ggen_igniter
 ```
 
 Full command output, layer-cache evidence, anti-vacuity mutation, and disclosures:

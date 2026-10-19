@@ -20,11 +20,11 @@ just up / down     # boot/stop substrate (up is FOREGROUND; PID in /tmp/smalt.pi
 just substrate-up / substrate-down / substrate-status   # flock-managed, lane-safe (scripts/substrate.sh)
 just court         # full admission court: doctor + test tiers + tf smoke + bench-check + mutation-court + census + invariant-gates + naming-sweep
 just court-x2      # two-green release receipt gate (~8 min)
-just verify-all    # offline stages only: doctor, test-offline, ws-court, cli pytest, naming-sweep, invariant-gates
+just verify-all    # offline stages: doctor, test-offline, ws-court, cli pytest, naming-sweep, invariant-gates, test-stress, test-budget, sleep-gate
 just publish-dry   # publish gates dry-run (tarball leak greps, ERROR_CODES identity)
 just receipts      # recent court/bench receipts
 just shim-courts   # shim-court anti-vacuity mutations
-just invariant-gates  # 5 fail-closed gates (cosmos-etag-cas, blob-worm, ledger-chain, queue-capacity, lock-clamp)
+just invariant-gates  # 6 fail-closed gates (cosmos-etag-cas, appconfig-etag-cas, blob-worm, ledger-chain, queue-capacity, lock-clamp)
 just logs          # tail newest tmp/*.log
 just bootstrap     # zero-to-green first-run (deps, certs, doctor, boot smoke)
 ```
@@ -48,6 +48,9 @@ scripts/fast_test.sh test/foo_test.exs[:LINE] [--watch]   # per-hash private bui
 just sdk-ts / sdk-census / sdk-py / sdk-all   # real-Azure-SDK probes; exit 0 pass / 1 fail / 2 substrate down / 3 SKIP
 just ws-lint / ws-build / ws-court / ws-converge   # Next.js workspace gates
 just cli-test                   # smalt-cli pytest (two venvs)
+just test-stress                # :stress tier (expensive bodies, excluded from plain mix test; mix test --include stress)
+just test-budget                # per-test timing budget gate (seed once via test-budget-seed)
+just sleep-gate                 # no-sleep doctrine gate (fail-closed); non-vacuity: just sleep-gate-court
 ```
 
 Exit-code contract for self-booting harnesses (e2e, sdk-*): 0 pass / 1 test
@@ -98,7 +101,8 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
 | `docs/jira/v*/SDK_MATRIX.md` | `just sdk-matrix-md` (fails on MISSING/UNREGISTERED-GAP) |
 | `lib/smalt/mcp/generated/mcp_descriptor.ex` | ggen_igniter.sync from `lib/smalt/mcp/gen/smalt_mcp_surface.ttl` |
 | `lib/smalt/registry.ex` | `mix smalt.gen` (byte-identical replay test-fenced) |
-| `lib/smalt/config.ex`, `lib/smalt/store_tables.ex`, `lib/smalt/cascade_edges.ex`, `lib/smalt/telemetry/semconv/registry.ex` | `mix smalt.gen` (byte-identical replay test-fenced; semconv from `model/smalt.yaml`) |
+| `lib/smalt/config.ex`, `lib/smalt/store_tables.ex`, `lib/smalt/cascade_edges.ex`, `lib/smalt/telemetry/semconv/registry.ex` | `mix smalt.gen` (byte-identical replay test-fenced; semconv from
+`lib/smalt/telemetry/semconv/model/smalt.yaml`) |
 | `docs/capabilities.json`, `docs/THIRD_PARTY.md` | `mix run -e 'Smalt.Projection.Canonical.write()'` (Canonical.write riders) |
 
 ## Conventions
@@ -109,7 +113,8 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   fallthrough — tokenless-only clients are premise rot. Api-version refusal
   pins use a FUTURE version (`2099-01-01`), never a past one (KD-78 monotonic
   admission admits anything ≤ latest). Every witness receipt carries
-  `Context: solo|pair|slice|full` (RECEIPT_CONTEXT_LAW.md; `receipt_index.py`
+  `Context: solo|pair|slice|full`
+  (`docs/jira/v26.10.17/RECEIPT_CONTEXT_LAW.md`; `receipt_index.py`
   flags **NO-CONTEXT**). Court precondition: `just quiet-check` before any
   court; `just quiesce` when the machine was busy (both court-x2 attempts
   failed cold run 1, passed warm run 2). Helpers: `just leak-court`,
@@ -151,6 +156,18 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   wrap sequence is WOs → receipts → GAP → court-x2 → commits → publish-dry
   → FINAL.md/RECEIPTS.md. Docs DoD gate: `just docs-dod-check` (every
   receipt path named in docs must exist).
+- **Planes**: `SMALT_PLANES` (comma list) or `config :smalt, :planes`
+  boots a subset of `control,data,integration,identity` (`:all` default,
+  byte-identical); unknown names refuse boot `{:invalid_plane, name}`
+  (`lib/smalt/planes.ex`). Plane-profile SDK interop: `just azsim-sdk`
+  (`test/sdk-full/azb20/run.mjs`).
+- **Stress tier**: the `:stress` tag excludes expensive test bodies from
+  plain `mix test`; `just test-stress` runs them, population-fenced by
+  `test/stress_tier_census_test.exs` (bounds table `docs/STRESS/BOUNDS.md`).
+- **Budget gate**: `just test-budget` fail-closed-checks per-test timings
+  against the seeded manifest (`just test-budget-seed`; regressions,
+  renamed/deleted tests, unbudgeted new tests all exit 1;
+  `scripts/test_budget_gate.py`).
 - **No-sleep doctrine**: `Process.sleep` is not acceptable test or production
   methodology — tests poll observables via `SmaltTest.AssertEventually`
   (or a `# SLEEP-CLASS:` annotated exception); `lib/` sleeps only as

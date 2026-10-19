@@ -43,10 +43,14 @@ const isBlobFamily = (p) => {
 const isKeyed = (p) => /^\/(keys|secrets|kv)\//.test(p) || /^\/keys\??/.test(p);
 
 const rules = {
-  control: (entry) => {
+    control: (entry) => {
     const req = [];
-    // ARM router plug stamps x-ms-request-id on EVERY response.
-    req.push("x-ms-request-id");
+    // ARM router plug stamps x-ms-request-id on EVERY response it renders.
+    // Twin-dispatched prefixes (/keys,/secrets,/kv,/deletedkeys) never reach
+    // the ARM router through this proxy (they belong to the egress router on
+    // the real TLS twin) and are out of the proxy's coverage.
+    const twinDispatched = /^\/(keys|secrets|kv|deletedkeys)\b/.test(entry.path);
+    if (!twinDispatched) req.push("x-ms-request-id");
     return req;
   },
   data: (entry) => {

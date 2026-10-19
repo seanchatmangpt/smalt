@@ -6,7 +6,8 @@
 # hand-listed. ggen has no compose templating pack in this tree
 # (UNSUPPORTED(generator-capability), recorded in azb-02-netns.md), so the
 # template lives here and the checked-in compose.burn.yml is its output for
-# the default N=4.
+# the default N=8 (SMALT_RING_REPLICAS / the AZB-22 ring default; the
+# historical default was N=4).
 #
 # Preflight (AZB-02 anti-vacuity contract): `docker compose config` on the
 # burn project must show ZERO published host ports. Any `published:` key in

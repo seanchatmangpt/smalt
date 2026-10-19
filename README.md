@@ -10,7 +10,7 @@ connection, no host configuration for the native tier.
 See `NOTICE.md` for the clean-room interoperability and trademark statement,
 and `LICENSE` (Apache-2.0) for terms.
 
-## Standing (honest, as of 2026-10-16)
+## Standing (honest, as of 2026-10-18)
 
 - **PQC attestation: GAP_TYPED, NOT_CLOSED** — KD-89 OPEN, witness-PENDING.
   The attestation surface is classical-only (SHA-256 Merkle + RS256 JWS,
@@ -220,9 +220,9 @@ above — this table names commands, not pass states.
 
 ### Invariant gates
 
-Five fail-closed gates with negative-fixture contracts under `gates/`
-(`just invariant-gates`): cosmos-etag-cas, blob-worm, ledger-chain,
-queue-capacity, lock-clamp. A gate that cannot exit 1 is the failure; each
+Six fail-closed gates with negative-fixture contracts under `gates/`
+(`just invariant-gates`): cosmos-etag-cas, appconfig-etag-cas, blob-worm,
+ledger-chain, queue-capacity, lock-clamp. A gate that cannot exit 1 is the failure; each
 verdict must REFUSE a mutated observation, never silently pass.
 
 ### Shim courts
@@ -247,6 +247,76 @@ Cosmos round-trip p95 < 20ms, AMQP first frame < 100ms. Lane registry and
 port law: `scripts/bench/REGISTRY.md`; stress harnesses under
 `scripts/stress/` with the authoritative measured-bounds table in
 `docs/STRESS/BOUNDS.md` (fail-closed via `python3 scripts/stress/bounds.py`).
+
+### Planes (SMALT_PLANES)
+
+`SMALT_PLANES` (comma list) or `config :smalt, :planes` selects a boot
+subset of the planes `control,data,integration,identity` (`:all` default,
+byte-identical boot). Unknown names refuse boot with
+`{:invalid_plane, name}` (`lib/smalt/planes.ex:38`; loader receipt
+`docs/jira/v26.10.18/receipts/azb-04-plane-loader.md`). Plane-profile SDK
+interop: `just azsim-sdk` (`test/sdk-full/azb20/run.mjs`).
+
+### azsim tier
+
+`test/azsim/` — 10-file adversarial suite over the plane topology
+(saturation, graceful stop, DETS recovery, identity/integration planes,
+supervision). Runs with the offline suite; chaos legs (e.g. the AZB-14
+SIGKILL storm in `test/azsim/amqp_saturation_test.exs`) are receipted under
+`docs/jira/v26.10.18/receipts/azb-14-sigkill-storm.md`.
+
+### Burn suite
+
+Docker burn lanes under `docker/burn/` driven by `justfile.d/30-burn.just`:
+`just burn-soak` / `burn-chaos` / `burn-matrix` / `burn-ring` /
+`burn-boot` (AZB-13, 50 boot/probe/teardown cycles per plane,
+`docs/jira/v26.10.18/receipts/azb-13-boot-burn.md`) / `burn-chaos-kill`
+(AZB-14 SIGKILL storm, sabotage-mode anti-vacuity) / `burn-ocel`
+(OCEL 2.0 projection) / `burn-clean`. Image receipt:
+`docs/jira/v26.10.18/receipts/burn-image.md`.
+
+### Stress tier
+
+The `:stress` tag carries the expensive test bodies (replay-identity
+fences, DETS churn, 10k-op fuzz, 1000-PUT corpus sweep), excluded from
+plain `mix test` by `test/test_helper.exs`. `just test-stress`
+(`mix test --include stress`) runs them sequentially; population fence
+`test/stress_tier_census_test.exs`. Measured-bounds table:
+`docs/STRESS/BOUNDS.md` (fail-closed via `python3 scripts/stress/bounds.py`).
+
+### Budget gate
+
+`just test-budget-seed` records the per-test timing manifest; every
+`just test-budget` run re-exports timings and fail-closed-checks
+regression above budget, deleted/renamed tests, and unbudgeted new tests
+(`scripts/test_budget_gate.py`; design
+`docs/jira/v26.10.18/rewrite-drafts/budget-gate.md`). Non-vacuity: mutated
+fixtures run through the same verdict — an ACCEPTED mutation is VACUOUS
+GATE, exit 1.
+
+### Zero-sleep doctrine
+
+`Process.sleep` is not acceptable test or production methodology: tests
+poll observables via `SmaltTest.AssertEventually`; `lib/` sleeps only as
+SCHEDULING (`send_after`). Enforced fail-closed by `just sleep-gate`
++ `just sleep-gate-court` non-vacuity
+(`docs/NO_SLEEP_DOCTRINE.md`; receipt
+`docs/jira/v26.10.18/receipts/azb-21-zero-sleep.md`).
+
+### Hex-only ex4pm
+
+`ex4pm` resolves from hex.pm like every other dependency (path dep
+retired, operator ruling 2026-10-17, mix.exs; dry-build receipt in
+`docs/jira/v26.10.16/PUBLISH_RECORD.md`). `ash_ex4pm` stays a
+dev/test-only optional dep (`mix.exs:107`).
+
+### SmaltTest foundations
+
+`SmaltTest.Case` (`test/support/case.ex`) is the canonical base for
+new/migrated suites: one `use` imports `AssertEventually`, `Env`, `Store`,
+and `Singleton.start_supervised_singleton!/2`. Migration is per-file and
+optional — plain `use ExUnit.Case` keeps working. Isolation rules:
+`docs/TEST_ISOLATION.md`.
 
 ### KD register
 
@@ -285,9 +355,10 @@ SMALT_SDK_ROOT=/path/to/node_modules SMALT_REPO=/path/to/smalt \
 
 The Event Hubs leg (`node test/sdk-smoke/eh-run.mjs`) and the Service Bus
 census (`node test/sdk-smoke/census-run.mjs`) boot their own substrate;
-`eh-run.mjs` defaults to alternate ports (19443/18443/15672/15673,
-override with `SMALT_EH_ARM_PORT`/`SMALT_EH_EGRESS_PORT`/
-`SMALT_EH_AMQP_PORT`/`SMALT_EH_PORT`).
+`eh-run.mjs` defaults to private-range ports (AMQP 39172, EH 39173, ARM
+39444, egress 39445, ARM-TLS 39446 — override with `SMALT_EH_AMQP_PORT`/
+`SMALT_EH_PORT`/`SMALT_EH_ARM_PORT`/`SMALT_EH_EGRESS_PORT`/
+`SMALT_EH_ARM_TLS_PORT`).
 
 ## Capability map (entry points, cited)
 

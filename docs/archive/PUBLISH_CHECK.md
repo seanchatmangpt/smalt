@@ -20,7 +20,7 @@ Environment: hex 2.5.1, Elixir 1.19.5, OTP 28.3.1.
    `mix hex.publish` will hit the same gate. Fix (mix.exs, coordinator-owned):
    consume published hex versions of ash_graphlaw / ggen_igniter, or drop them
    from the published package's deps list entirely (see gap list below).
-2. ~~`docs/CHEAT_SCAN.md` declares "Release blockers: BLOCKER — still present"~~
+2. ~~`docs/archive/CHEAT_SCAN.md` declares "Release blockers: BLOCKER — still present"~~
    **CLEARED (docs-corpus-lens6 cycle 5)**: CHEAT_SCAN.md was re-run by its
    owner — "Release blockers — RESOLVED (second pass)"; the literal
    `smalt-sovereign-azure-secret-key-32b!` has zero hits in the tree
@@ -200,7 +200,7 @@ key (it is burned once published anywhere) and exclude via explicit
 
 ### ~~NEW BLOCKER B — hardcoded-secret gate still formally open~~
 
-**CLEARED (docs-corpus-lens6 cycle 5 re-verify)**: `docs/CHEAT_SCAN.md`
+**CLEARED (docs-corpus-lens6 cycle 5 re-verify)**: `docs/archive/CHEAT_SCAN.md`
 was re-run by its owner; its "Release blockers" section now reads
 "RESOLVED (second pass)" and the secret literal has zero tree hits. The
 gate document is no longer stale; nothing to re-run.
@@ -286,7 +286,7 @@ v2 blocker 1 (signing.key) — **NOT FIXED.** v2 blockers 2-4 — FIXED/OK
    `--query caps=<ggen-marketplace checkout>/packs/elixir-mcp-a2a-pack/queries/mcp_capabilities.rq`.
    Rebuild `/tmp/hex-v3b.tar` after the edit: `grep -rl '/Users/sac'` over
    the unpacked contents = **0 hits**; `athena` = **0 hits**.
-3. **CHEAT_SCAN stale blocker — FIXED.** `docs/CHEAT_SCAN.md` "Release
+3. **CHEAT_SCAN stale blocker — FIXED.** `docs/archive/CHEAT_SCAN.md` "Release
    blockers" section updated: the pass-1 "BLOCKER — still present" heading
    now reads "RESOLVED (second pass, see top of this file)" with the
    historical finding preserved, matching the second-pass section that

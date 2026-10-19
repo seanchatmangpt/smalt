@@ -49,38 +49,62 @@ ownered exception — not a blanket skip. Re-enable a tier with
 
 ## 4. Audit findings (re-audited 2026-10-15; 2026-10-14 snapshot superseded)
 
-- `async: true` — 11 files (grep-verified):
-  `test/dspy_test.exs`, `test/ocel_revops_test.exs`,
-  `test/ocel_conformance_test.exs`, `test/shacl_projection_test.exs`,
-  `test/smalt_graphlaw_matrix_test.exs`, `test/smalt_graphlaw_validator_test.exs`,
+- `async: true` — 16 files (re-derived at HEAD 2026-10-18 by
+  `grep -rln "async: true" test/ --include='*.exs'`):
   `test/amqp/delivery_encoder_test.exs`, `test/amqp/fuzz_test.exs`,
-  `test/amqp/primitive_codec_test.exs`, `test/amqp/management_rpc_test.exs`,
-  `test/data_plane/kql_test.exs`. ALL are `Store`-clean — the 2026-10-14
-  offender (`test/smalt_graphlaw_matrix_test.exs` starting its own Store under
-  `async: true`) is RESOLVED: the file now has zero Store references (its
-  in-file comment documents the grep verification) and `async: true` is safe.
-  No async+Store race remains.
-- `Store.clear()` in setup — 24 files (grep-verified 2026-10-15 lens-6; was
-  23 — `test/data_plane/conditional_headers_test.exs` joined;
-  `test/pplan_test.exs` was retired from this count — its setup installs a
-  generalized spawn-leak tracer instead, see the leak-tracer section), all
-  `async: false`, so
-  they do not race each other, and with the graphlaw matrix fix above no
-  `async: true` module touches the shared Store. Current inventory:
-  `test/smalt_services_test.exs`, `test/arm_error_corpus_test.exs`,
-  `test/runtime_contracts_test.exs`, `test/egress_wiring_test.exs`,
-  `test/azapi_actions_test.exs`, `test/smalt_egress_router_test.exs`,
-  `test/apiversion_matrix_test.exs`, `test/strata_compat_test.exs`,
-  `test/sb_children_test.exs`, `test/smalt_arm_gateway_test.exs`,
-  `test/lro_test.exs`, `test/event_stream_test.exs`,
-  `test/egress_dispatch_test.exs`, `test/route_negative_test.exs`,
+  `test/amqp/primitive_codec_test.exs`, `test/assert_eventually_test.exs`,
+  `test/data_plane/kql_test.exs`, `test/defaults_test.exs`,
+  `test/dspy_test.exs`, `test/enclave_hcl_test.exs`,
+  `test/fin_ops_calculator_test.exs`, `test/ocel_conformance_test.exs`,
+  `test/ocel_revops_test.exs`, `test/provider_matrix_test.exs`,
+  `test/shacl_projection_test.exs`, `test/smalt_graphlaw_matrix_test.exs`,
+  `test/smalt_graphlaw_validator_test.exs`, `test/stress_tier_census_test.exs`.
+  The six new files since the 2026-10-15 snapshot (11 files) are
+  `assert_eventually`, `defaults`, `enclave_hcl`, `fin_ops_calculator`,
+  `provider_matrix`, `stress_tier_census`. `test/amqp/management_rpc_test.exs`
+  LEFT the inventory: it is now `async: false` ×2 (`use ExUnit.Case` at :8
+  and the :585 module) because its setup wipes the SHARED sb tables —
+  under `async: true` that raced sibling tests' enqueues (witnessed DLQ
+  corruption under shuffle; citation
+  `docs/jira/v26.10.17/receipts/i21d-store-clear-async.md`).
+  ALL 16 are `Store`-clean (re-verified per-file
+  `grep -c "Store\\." -> 0` at HEAD; the single `smalt_graphlaw_matrix`
+  hit is its in-file comment documenting the earlier fix). The 2026-10-14
+  offender (graphlaw matrix starting its own Store under `async: true`)
+  stays RESOLVED. No async+Store race remains.
+- `Store.clear` — 39 files / 53 call sites under `test/` (re-derived at
+  HEAD 2026-10-18 by `grep -rn "Store\.clear" test/`), plus 2 lib sites in
+  `lib/smalt/enclave/doctor.ex` (:277, :292 — the enclave doctor's own
+  reset path, not test code). The 53 test sites decompose as 37 `.exs`
+  test modules + 2 `test/support` helpers (`store_resilient.ex`,
+  `wire_helpers.ex`). All clearing test modules are `async: false` — with
+  the `management_rpc` flip above, no `async: true` module touches the
+  shared Store. Inventory (37 modules):
+  `test/apiversion_matrix_test.exs`, `test/arm_cascade_teardown_test.exs`,
+  `test/arm_error_corpus_test.exs`, `test/arm_secret_rotate_test.exs`,
+  `test/azsim/control_plane_test.exs`, `test/azsim/dets_recovery_test.exs`,
+  `test/corpus/helper.exs`, `test/corpus/shacl_fuzz.exs`,
+  `test/data_plane/audit_planes_test.exs`,
+  `test/data_plane/blob_hardening_test.exs`,
+  `test/data_plane/blob_service_test.exs`,
+  `test/data_plane/conditional_headers_test.exs`,
+  `test/data_plane/cosmos_sql_test.exs`, `test/data_plane/cosmos_test.exs`,
+  `test/egress_dispatch_test.exs`, `test/egress_kv_appconfig_test.exs`,
+  `test/egress_secrets_test.exs`, `test/egress_wiring_test.exs`,
+  `test/enclave_engine_test.exs`, `test/enclave_lifecycle_test.exs`,
+  `test/enclave_ocel_test.exs`, `test/enclave_state_test.exs`,
+  `test/kd79_blob_apiversion_wire_test.exs`,
+  `test/kv_secrets_children_test.exs`, `test/lro_test.exs`,
+  `test/policy_rbac_test.exs`, `test/pplan_test.exs`,
+  `test/route_negative_test.exs`, `test/runtime_contracts_test.exs`,
+  `test/sb_children_test.exs`,
   `test/security/security_hardening_test.exs`,
-  `test/compliance/c1_arm.exs`, `test/compliance/c3_cosmos.exs`,
-  `test/compliance/c4_blob.exs`,
-  `test/data_plane/audit_planes_test.exs`, `test/data_plane/blob_hardening_test.exs`,
-  `test/data_plane/key_vault_actions_test.exs`, `test/data_plane/blob_service_test.exs`,
-  `test/data_plane/cosmos_test.exs`,
-  `test/data_plane/conditional_headers_test.exs`.
+  `test/smalt_arm_gateway_test.exs`,
+  `test/smalt_egress_router_test.exs`,
+  `test/smalt_ets_baseline_identity_test.exs`,
+  `test/smalt_ets_composite_identity_test.exs`,
+  `test/smalt_native_hcl_ladder_test.exs`,
+  `test/zero_drift_serialization_test.exs`.
 - Fixed substrate ports — the wire tier (`test/wire/*_test.exs`) pins the
   default ports by design (that is the tier's contract). Outside the wire
   tier, listeners are ephemeral-port or Application-env driven (re-verified
@@ -208,3 +232,62 @@ receipt).
 Verification (from the receipts, 2026-10-16): 102 tests 0 failures across
 store_churn + strata + mcp + arm_gateway; management_rpc 33/0; strata
 cleanup court PASS with byte-exact restore.
+
+## 6. Isolation court (AZB-11) — static + runtime twin
+
+Landed v26.10.17/18 (`scripts/isolation_court.py`,
+`justfile.d/25-leak-court.just`). Two twins over one surface:
+
+**Static twin** (`just isolation-court`, default mode): extends
+`gates/test_isolation_leak_gate.py`'s env scanner (inherited, not
+duplicated) with three rules over every `test/**/*.exs` (minus
+`test_helper.exs` and the twin probe file):
+
+1. **Env-restore rule** — every `Application.put_env/delete_env/...`
+   mutation must be covered by a save-prev + `on_exit` restore. The house
+   helper `SmaltTest.Env.put_restored(k: v, ...)` counts as fully covered
+   (structural save-prev + on_exit). Inline exemption only via a mandatory
+   `# isolation-court: exempt <reason>` marker on the offending line.
+2. **start_link discipline** — a bare `GenServer/Agent/Task.start_link`
+   (or any `start_link` with a literal `name:`) in a test body must be
+   `start_supervised!/1` (or `SmaltTest.Singleton.start_supervised_singleton!`,
+   or an error-path assert). Same inline-exemption channel.
+3. **Fail-closed fixtures** — the court runs its own in-memory
+   positive/negative fixtures on every invocation (a bare `put_env` must be
+   REFUSED naming file:line; the `put_restored` discipline must PASS), so
+   a scanner regression cannot read as a green run. `--self-check` proves
+   the same on real temp files, including the exemption-marker path.
+
+**Runtime twin** (`just isolation-court-runtime`, `--runtime-only`): boots
+the offline suite serially (`mix test --formatter
+SmaltTest.IsolationFormatter --max-cases 1`) and diffs
+`Process.registered()` + `Application.get_all_env(:smalt)` per module; any
+`ISOLATION-TWIN LEAK module=...` block fails the court. Baseline witness:
+`tmp/isolation-court-runtime.out` (26/153 modules leaked pre-exemption).
+
+**Exemption registry** (`test/support/isolation_runtime_exemptions.exs`):
+typed, per-pattern runtime exemptions — one `name <glob> # reason: <text>`
+line per entry, mandatory reason, currently 14 patterns in three classes:
+lib-owned lazy singletons (`LedgerWriter`, `WasmEngine*`, `EventGrid`),
+harness-owned shared-tree members (`Smalt.Supervisor`, `Store`,
+`AmqpBroker*`, `Amqp.*`, `LRO.*`, `Plane.*`, …), and kernel/VM-lifetime
+processes (`:inet_gethost_native*`, `:dets`, `:dets_sup`, `PPlan.Task`).
+Exemption applies ONLY to registered-name deltas — a leak block carrying
+any env delta is never exemptable (fail-closed). A malformed registry line
+REFUSES the court.
+
+## 7. SleepWindows — named B1 time-advance windows
+
+`test/support/sleep_windows.ex` (`SmaltTest.SleepWindows`) is the Law-1 B1
+annotated exception to the no-sleep doctrine (`docs/NO_SLEEP_DOCTRINE.md`):
+where the condition under test IS time (rate-limit window alignment,
+LRO delay/retention elapse, tombstone grace, wire keep-alive idle gap), no
+observable can be polled, so the sleep is named and derived from its
+configured constant instead of a bare literal. Six windows:
+`second_boundary_ms/1`, `fixed_window_rollover_ms/0`, `lro_delay_elapse_ms/1`,
+`lro_retention_elapse_ms/1`, `sweeper_grace_elapse_ms/0`, `mcp_idle_gap_ms/0`.
+The adjacent sleep keeps its `# SLEEP-CLASS: TIME-ADVANCE` annotation.
+Current consumers: `test/amqp/sweeper_test.exs`,
+`test/arm_error_corpus_test.exs`, `test/compliance/c1_arm.exs`,
+`test/enclave-testbed/enclave_testbed.exs`, `test/mcp_wire_test.exs`,
+`test/smalt_arm_gateway_test.exs`.

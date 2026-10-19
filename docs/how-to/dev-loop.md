@@ -6,7 +6,7 @@ full-suite rows refreshed 2026-10-15/16 (the suite has grown since the 10-14 mea
 Diátaxis home: `docs/how-to/dev-loop.md` (moved from `docs/DEV_LOOP.md`;
 see `docs/jira/v26.10.16/docs-restructure-plan.md`).
 
-## The loop (just ingress)
+## The loop
 
 The default iteration path is just-first; the script-level fallbacks below
 are the same gates with their handles exposed.
@@ -17,7 +17,7 @@ are the same gates with their handles exposed.
 3. Focused gate:
    - Enclave work: `just test-native` (native lifecycle: HCL parse →
      engine apply → zero-drift plan → cascade destroy → residue audit,
-     on private ports 29445-29449, dedicated beam, shared-checkout safe).
+     on private ports 29445-29450, dedicated beam, shared-checkout safe).
    - Other work: `scripts/fast_test.sh <file[:line]>` or a targeted
      `mix test` (timing table below).
 4. `mix test` — full offline suite before you think you're done.
@@ -190,12 +190,16 @@ surface):
 file:line` reports excluded siblings as `(N excluded)` — that is the line filter, not a
 tag skip. `--only tag:value` / `--exclude` compose with file args for tier focus; the
 default-excluded tiers are named in `test/test_helper.exs` (re-enable per run with
-`--include <tag>`). Because the full suite is only ~8s, prefer full `mix test` over
-`--only` gymnastics unless a single tier needs a cold build.
+`--include <tag>`). The full suite is 40-60s-class and growing with the suite
+(see the refresh rows above — the ~8s figure was the 2026-10-14 three-file-era
+suite), so prefer full `mix test` over `--only` gymnastics unless a single tier
+needs a cold build.
 
 ## Known state (pre-existing, observed during measurement)
 
-- Full suite: latest counted state is the refresh-4 row above (8/1529, 2026-10-15);
+- Full suite: latest counted state is the refresh-4 row above (8/1529, 2026-10-15,
+  still the latest counted as of 2026-10-18 — later rows are lane windows, not
+  full-suite runs);
   the older "26 failures" figure (2026-10-15) predates the current suite (was 30-32 on
   2026-10-14) — pre-existing on this checkout; not touched by this lane.
 - `test/smalt_services_test.exs:231` ETS-table failure also fires in the graphlaw subset.

@@ -243,7 +243,12 @@ soak_rounds = int(env["SOAK_ROUNDS"])
 # init, never from the rows themselves (a mirrored header would make --gate
 # vacuous). containers: ring-boot, ring-chaos-1..N, smalt-burn-all-1..8,
 # ring-soak-host.
-expected = {"ring-boot": (boot_cycles, ["probe", "recover", "teardown"])}
+# The emitter is the contract (2026-10-18 docs-audit D14): boot-burn declares
+# boot/probe/teardown for EVERY cycle and adds recover only on kill -9 cycles
+# (every 10th, AZB-14 fence). Declaring recover here would make the gate
+# demand a cell the emitter never writes — ring green unreachable. The gate
+# checks MISSING_CELL/DIRTY_ROW, so the extra recover rows stay legal.
+expected = {"ring-boot": (boot_cycles, ["boot", "probe", "teardown"])}
 for i in range(1, chaos_iters + 1):
     expected[f"ring-chaos-{i}"] = ([0], ["chaos", "probe"])
 for i in range(1, replicas + 1):

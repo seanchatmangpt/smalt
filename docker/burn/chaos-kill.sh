@@ -20,16 +20,18 @@
 #                    restart the seal succeeds.
 #   s4-amqp-capacity fill queue to 4096, enqueue #4097 -> {:error, :capacity}
 #                    (wire: amqp:link-message-size-exceeded).
-#   gates            the 6 invariant gates re-run green. In-image there is no
-#                    python3/mix — the gates stage is host-assisted: with
-#                    SMALT_GATES_HOST=1 the script invokes the real gate
-#                    binaries from a host checkout; without it, the stage is
-#                    a LOUD rc=3 skip named BURN_GATES_UNAVAILABLE_IN_IMAGE —
-#                    never a faked pass.
+#   gates            host mode only: with SMALT_GATES_HOST=1 + SMALT_GATES_DIR
+#                    set, the 6 invariant gate binaries from a host checkout
+#                    re-run green and the receipt says so. In-image standalone
+#                    mode runs the 4 scenarios and exits 0 — the old loud
+#                    rc=3 skip (BURN_GATES_UNAVAILABLE_IN_IMAGE) is superseded;
+#                    gates coverage in-image is a burn-ring concern, not a
+#                    per-iteration refusal.
 #
 # No fixed sleeps: every wait is a bounded deadline poll (NO-SLEEP-DOCTRINE).
 #
-# Exit: 0 all scenarios + gates green / 1 typed failure / 3 loud skip.
+# Exit: 0 all scenarios green (gates green too in host mode) / 1 typed
+# failure / 2 preflight refusal (no release bin off-image) / 3 loud skip.
 set -euo pipefail
 
 SMALT_BIN=${SMALT_BIN:-/app/_release/bin/smalt}
@@ -106,7 +108,7 @@ if [ ! -x "$SMALT_BIN" ] && [ "${SMALT_BURN_IN_CONTAINER:-0}" != "1" ]; then
 fi
 
 if [ ! -x "$SMALT_BIN" ]; then
-  echo "[SKIP] smalt-burn/v1 chaos-kill: release bin not executable at $SMALT_BIN (not in container?)" >&2
+  echo "[SKIP] smalt-burn/v2 chaos-kill: release bin not executable at $SMALT_BIN (not in container?)" >&2
   exit 3
 fi
 mkdir -p "$BURN_DIR" 2>/dev/null || BURN_DIR=$(mktemp -d)

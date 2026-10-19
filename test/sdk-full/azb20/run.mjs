@@ -199,11 +199,19 @@ function probePlan(plane) {
     SMALT_TS_KV_ENDPOINT: egress, SMALT_TS_KV_ARM: armHttp,
     LEDGER_ENDPOINT: egress,
   };
+  // KV/secret surfaces live behind the TLS-twin dispatch (TlsTwinDispatch
+  // routes /keys,/secrets,/kv to the egress router), so the kv + secrets
+  // probes target the REAL TLS twin directly — not the recording proxy,
+  // which fronts the plain ARM router and would mis-route those prefixes.
+  const kvDirect = {
+    SMALT_TS_ARM_TLS_PORT: String(PRIV.armTls),
+    SMALT_TS_ARM_TLS: `https://localhost:${PRIV.armTls}`,
+  };
   const plan = [
     ["arm-resources.probe.mjs", base],
     ["resourcegraph.probe.mjs", base],
-    ["keyvault.probe.mjs", base],
-    ["secrets.probe.mjs", base],
+    ["keyvault.probe.mjs", { ...base, ...kvDirect }],
+    ["secrets.probe.mjs", { ...base, ...kvDirect }],
     ["appconfig.probe.mjs", base],
     ["blob.probe.mjs", base],
     ["cosmos.probe.mjs", base],

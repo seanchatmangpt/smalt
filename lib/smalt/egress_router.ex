@@ -2514,8 +2514,12 @@ defmodule Smalt.EgressRouter do
     Enum.all?(tables, fn t -> :ets.info(t) != :undefined end)
   end
 
+  # AZB-15 data-plane DR: a killed Store subtree is "server not ready", never
+  # a raw 500 from :ets raising on a dead table. When the data subtree's
+  # coordinator-owned tables are gone, every guarded surface answers the same
+  # typed retryable 503 the module-load guard already yields.
   defp not_ready?(_conn, modules) do
-    not Enum.all?(modules, &Code.ensure_loaded?/1)
+    (not Enum.all?(modules, &Code.ensure_loaded?/1)) or not tables_ready?(Smalt.Store.table_names())
   end
 
   defp route_not_ready(conn) do

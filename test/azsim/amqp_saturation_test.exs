@@ -210,6 +210,12 @@ defmodule Smalt.Amqp.SaturationTest do
              "UNTAGGED :closed logger lines seen: #{closed_probe_count()}"
     end
 
+    # drop harness references before the bounds read: the residual must be
+    # broker state, not the test process's retained phase data
+    queues = :ok
+    _ = all_conns
+    all_conns = :ok
+
     :ok
   end
 
@@ -414,10 +420,16 @@ defmodule Smalt.Amqp.SaturationTest do
       desc: "stable process count"
     )
 
+    memory = :erlang.memory(:processes)
+
+    if System.get_env("AZB16_MEM_DEBUG") do
+      IO.inspect(processes: :erlang.memory(:processes), processes_used: :erlang.memory(:processes_used), system: :erlang.memory(:system), atom: :erlang.memory(:atom), label: "MEM_baseline")
+    end
+
     %{
       atoms: :erlang.system_info(:atom_count),
       processes: :erlang.system_info(:process_count),
-      memory: :erlang.memory(:processes)
+      memory: memory
     }
   end
 
@@ -431,12 +443,40 @@ defmodule Smalt.Amqp.SaturationTest do
            "PROCESS_LEAK[#{phase}]: process count #{baseline.processes} -> #{p_after} " <>
              "after #{n} queue cycles (±1% budget)"
 
+    # teardown/GC quiesce: memory must SETTLE, not snap-read mid-drain
+    SmaltTest.AssertEventually.eventually_stays(
+      fn -> {:ok, :erlang.memory(:processes)} end,
+      within_ms: 20_000,
+      stability_ms: 3000,
+      interval_ms: 100,
+      desc: "process memory settled"
+    )
+
     mem_after = :erlang.memory(:processes)
     mem_pct = abs(mem_after - baseline.memory) / max(baseline.memory, 1) * 100
 
-    assert mem_pct <= @mem_budget_pct,
-           "MEMORY_DRIFT[#{phase}]: process memory #{baseline.memory} -> #{mem_after} bytes " <>
-             "after #{n} queue cycles (10% budget)"
+    if System.get_env("AZB16_MEM_DEBUG") do
+      IO.inspect(processes: :erlang.memory(:processes), processes_used: :erlang.memory(:processes_used), system: :erlang.memory(:system), atom: :erlang.memory(:atom), label: "MEM_after_#{phase}")
+    end
+
+
+    if mem_pct > @mem_budget_pct do
+      top5 =
+        Process.list()
+        |> Enum.map(fn pid ->
+          info = :erlang.process_info(pid, [:memory, :registered_name]) || [memory: 0]
+          {info[:memory] || 0, "#{inspect(pid)}=#{info[:memory] || 0}B#{if info[:registered_name], do: "(#{inspect(info[:registered_name])})", else: ""}"}
+        end)
+        |> Enum.sort_by(&elem(&1, 0), :desc)
+        |> Enum.take(5)
+        |> Enum.map(&elem(&1, 1))
+        |> Enum.join(", ")
+
+      flunk(
+        "MEMORY_DRIFT[#{phase}]: process memory #{baseline.memory} -> #{mem_after} bytes " <>
+          "after #{n} queue cycles (10% budget); top5=[#{top5}]"
+      )
+    end
 
     :ok
   end
@@ -496,7 +536,16 @@ defmodule Smalt.Amqp.SaturationTest do
     defp count(text) when is_binary(text) do
       if String.contains?(text, "request read failed: :closed") and
            not String.contains?(text, "[amqp-atom]") do
-        :persistent_term.update_counter({__MODULE__, :untagged_closed}, 1)
+        # :ets counter (persistent_term:update_counter/2 does not exist on
+        # this OTP - the original counter call was silently killing this
+        # handler, which would have made the zero-assert vacuous)
+        case :ets.info(:azb16_closed_probe) do
+          :undefined ->
+            :ok
+
+          _ ->
+            :ets.update_counter(:azb16_closed_probe, :untagged, {2, 1}, {:untagged, 0})
+        end
       end
     end
 
@@ -504,7 +553,10 @@ defmodule Smalt.Amqp.SaturationTest do
   end
 
   defp install_closed_probe do
-    :persistent_term.put({ClosedProbe, :untagged_closed}, 0)
+    if :ets.info(:azb16_closed_probe) != :undefined, do: :ets.delete(:azb16_closed_probe)
+
+    :ets.new(:azb16_closed_probe, [:named_table, :public, :set])
+    :ets.insert(:azb16_closed_probe, {:untagged, 0})
 
     case :logger.get_handler_config(:azb16_closed_probe) do
       {:ok, _} ->
@@ -517,7 +569,12 @@ defmodule Smalt.Amqp.SaturationTest do
     :ok
   end
 
-  defp closed_probe_count, do: :persistent_term.get({ClosedProbe, :untagged_closed}, 0)
+  defp closed_probe_count do
+    case :ets.info(:azb16_closed_probe) do
+      :undefined -> 0
+      _ -> :ets.lookup_element(:azb16_closed_probe, :untagged, 2)
+    end
+  end
 
   # ===========================================================================
   # Wire harness (per-queue ephemeral listener + raw gen_tcp client)

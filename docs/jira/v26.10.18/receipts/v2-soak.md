@@ -1,124 +1,94 @@
-# Receipt: v2 soak RELAUNCH — 3x full `mix test` + 2x wire tier, `_build-ft-v2b`
+# Receipt: v2 soak — 3x full `mix test` + wire court 2x, on `_build-ft-v2`
 
-Date: 2026-10-18, runs executed 15:29–18:2x PDT · HEAD at run 1 start: 8b5bb9b0bed1ee2838787f9832cd2d7bee88e04e;
-HEAD moved **6 times mid-lane** (8b5bb9b → c6f6243 → be81187 → 2a82b29 → a39f7ba → d32129c → 4af0553) —
-every run after run 1 executed on a different tree state. Context: full.
-Lane: bench-runner verification (no edits, no git actions).
-Machine: `{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.19.5","otp":"28","darwin":"26.2"}`
-(`just bench-machine`). Gate: v1 receipt present (read at 15:2x; standing SUSPECT, 0/3 clean).
+Date: 2026-10-18 (runs 20:07–20:56 PDT) · HEAD c6f6243 → 24cb2cd mid-run (coordinator docs commits; all counted runs started at c6f6243 tree, no test-relevant diff between) · Context: full
+Lane: bench-runner verification wave 2 (no edits, no git actions).
+Machine: `{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.19.5","otp":"28","darwin":"26.2"}` (`just bench-machine`)
 
-**Standing: SUSPECT / acceptance NOT met — 0 of 3 full runs clean, 0 of 2 wire legs clean.**
-Context: full x3 + wire tier x2 (mix test, _build-ft-v2b)
+## Gate
 
-## Full-suite runs (prescribed 3)
+Polled `docs/jira/v26.10.18/receipts/v1-soak.md` (landed ~17:0x PDT) before run 1.
 
-| Run | Log | Exit | ExUnit summary (verbatim) | Note |
+## Results (3 consecutive full runs, same tree, `MIX_BUILD_ROOT=_build-ft-v2`)
+
+| Run | Log | Exit | Duration | ExUnit summary (verbatim) |
 |---|---|---|---|---|
-| 1 | `/tmp/v2_soak_run1.log` (319,866 ln) | 2 | `Finished in 431.5 s (24.2s async, 407.3s sync)` / `1 doctest, 7 properties, 2633 tests, 3 failures (90 excluded)` | clean execution |
-| 2 | `/tmp/v2_soak_run2.log` (285,219 ln) | 2 | `Finished in 1182.5 s (70.9s async, 1111.6s sync)` / `1 doctest, 7 properties, 2674 tests, 17 failures (90 excluded)` | preceded by one compile abort + 15-min compile-freeze SLA poll |
-| 3 | `/tmp/v2_soak_run3.log` (431,307 ln) | 2* | `Finished in 1587.4 s (68.9s async, 1518.5s sync)` / `1 doctest, 2026 tests, 17 failures (90 excluded)` | ANOMALOUS: test count dropped ~650 vs runs 1–2; multiple other lanes' `mix test` beams were live concurrently; part of the suite did not report. Counted as RED. |
+| 1 | `/tmp/v2-soak-run1.log` | 2 | 123.7 s (13.6 async / 110.0 sync) | `1 doctest, 7 properties, 2700 tests, 9 failures (93 excluded)` |
+| 2 | `/tmp/v2-soak-run2.log` 26,343 lines | 2 | 106.7 s (15.1 async / 91.6 sync) | `1 doctest, 7 properties, 2700 tests, 9 failures (93 excluded)` |
+| 3 | `/tmp/v2-soak-run3.log` | 2 | 101.6 s (14.2 async / 87.4 sync) | `1 doctest, 7 properties, 2700 tests, 8 failures (93 excluded) |
 
-Pre-run-2 compile abort (recorded, not a test failure): `lib/smalt/messaging/event_grid.ex:137`
-`TokenMissingError` (missing `end`) — another lane's in-flight edit; settled under SLA poll
-(~35 min dep+app recompile in the private build root after tree move).
+**Acceptance (3/3 zero-failure full pass) NOT MET: 3/3 RED, 0/3 green.**
+93 excluded = `:amqp_wire` default exclusion. 2700 tests vs v1-soak's 2633 (+67 from
+the day's batch landings).
 
-Run 3 was also killed by the harness's 30-min background cap AFTER the summary line
-landed (`EXIT` wrapper never wrote; beam SIGKILLed during teardown). Summary is real.
+## Wire court T1/T2 (`mix test test/wire --include amqp_wire`)
 
-### Run 1 identities (3/3 recoverable)
-
-1. `test/stress_tier_census_test.exs:13` — `File.Error could not read
-   "test/tiny_iso_probe_test.exs": no such file or directory`. Tree-churn face: the
-   census fixture file was mid-move. On later trees the file set changed entirely
-   (stress tier was rewritten); not reproducible on the final tree state.
-2. `test/canonical_projection_test.exs:125` — `docs/capabilities.json is stale vs
-   Registry truth`. Deterministic drift fence (F15 class). Recurred run 2 + both wire
-   legs → **4/5 runs, all states.**
-3. `test/pplan_test.exs:2490` lens5 — `assert ... <= 2` failed, left 9 right 2.
-   Ledger-adjacent surface; did NOT recur in run 2/3 or wire legs (1/5).
-
-### Run 2 identities (9 of 17 recoverable from log; 8 blocks swallowed by
-interleaved `[debug] [amqp-atom]` spam from concurrent lanes)
-
-- `test/stress_tier_census_test.exs:13` — timeout 60 s (different face of run 1's file)
-- `test/canonical_projection_test.exs:130` — capabilities.json stale (repeat)
-- `test/azsim/data_plane_test.exs:156,107` and `test/azsim/integration_plane_test.exs:37,261,48,137` —
-  **the whole Azsim plane batch red**: If-Modified-Since 304 contract, range GET
-  ContainerAlreadyExists, `QueueStore.enqueue` returns `{:ok, 1}` vs expected `:ok`
-  (API mismatch between the new Azsim tests and `lib/smalt` store), event-grid
-  recovery falsifier timeout, partition detach timeout — in-flight batch surface
-  (HEAD be81187 → 4af0553 was landing this batch during the lane).
-- `error_codes` doc test NOT present in run 2 (regen landed with c6f6243); it came
-  BACK in both wire legs (see below) — the regen did not hold.
-
-### Run 3 identities (9 of 17 recoverable)
-
-Same interleaving truncation. Not re-enumerated individually; wire legs (below) ran on
-the settled tree and carry the reproducible set.
-
-## Wire-tier legs (court T1/T2 shape, `--include amqp_wire`)
-
-| Leg | Log | Exit | ExUnit summary (verbatim) |
+| Leg | Log | Exit | Summary |
 |---|---|---|---|
-| 1 | `/tmp/v2_soak_wire1.log` (28,807 ln) | 2 | `1 doctest, 7 properties, 2747 tests, 11 failures (29 excluded)` |
-| 2 | `/tmp/v2_soak_wire2.log` (26,003 ln) | 2 | `1 doctest, 7 properties, 2755 tests, 11 failures (32 excluded)` |
+| T1 | `/tmp/v2-wire-t1.log` | 0 | `29 tests, 0 failures` |
+| T2 | `/tmp/v2-wire-t2.log | 0 | `29 tests, 0 failures` |
 
-Leg 1 required two compile-abort retries per the SLA: (a) `test/azsim/topology_test.exs:119`
-`SyntaxError` (`endpoint egress_port` — missing comma, in-flight batch edit), (b)
-`test/azsim/adversarial_joe_test.exs:19` — `SmaltTest.Support.Assertions` module not
-loaded/absent (renamed to `test/support/assert_eventually.ex` by the owning lane at 4af0553).
+Wire court 2/2 CLEAN.
 
-### Leg 1 identities (9 of 11 recoverable)
+## Failure identities (unique faces across the 3 runs, 12 total)
 
-1. `test/error_codes_doc_test.exs:46` — `docs/ERROR_CODES.md is stale relative to the
-   sources` — DETERMINISTIC: confirmed off-test, `python3 scripts/gen_error_codes.py --check`
-   exits 1 on the current tree (c1-arm rows drifted again after c6f6243's regen).
-2. `test/pplan_test.exs:2875` lens7 half-degraded-window noproc shape
-3. `test/enclave_ocel_test.exs:52` — enclave lifecycle OCEL stage event
-4. `test/enclave_state_test.exs:173` — reverse-topological destroy residue
-5. `test/canonical_projection_test.exs:134` — capabilities.json stale (repeat, 4/5 runs)
-6. `test/mcp_test.exs:420` — doctor.summary supervisor children
-7. `test/enclave_lifecycle_test.exs:106` — OCEL fail-safe emission
-8. `test/enclave_lifecycle_test.exs:56` — composite baseline fixture lifecycle
-9. `test/mcp_wire_test.exs:2..` — doctor.summary vs scripts/doctor.py --json agreement
+| # | Face | Runs | File state |
+|---|---|---|---|
+| 1 | `Smalt.DSPy.RemediationTest` — parse/1 esc round-trip `** (MatchError) {"", 1}` (`test/dspy_test.exs:131→145`) | 1 | committed-clean |
+| 2 | `EnclaveStateTest` — destroy residue `:smalt_sb_queues: ["resourcewritesuccess"]` (`test/enclave_state_test.exs:173→214`) | 1,2,3 (3/3) | committed-clean |
+| 3 | `Smalt.McpWireTest :806` — doctor.summary `supervisor_children` missing `Smalt.Store` | 1,2 | committed-clean |
+| 4 | `Smalt.McpTest :420` — same doctor.summary face as #3 | 1,2,3 | committed-clean |
+| 5 | `SmaltTest.Azsim.TopologyTest` — ARM PUT ResourceWriteSuccess `body["data"]["resourceUri"] == uri` false (`test/azsim/topology_test.exs:141→187`) | 1,2 | committed-clean |
+| 6 | `SmaltTest.Azsim.DetsRecoveryTest :234` — engine-killed mid-request, assert_eventually timeout (`:274`) | 1 | committed-clean every file I checked |
+|7| `Smalt.Telemetry.EnclaveOcelTest` — one stage event per stage | 2,3 | committed-clean |
+| 8 | `Smalt.Enclave.LifecycleTest` — composite baseline fixture lifecycle | 2,3 | committed-clean |
+| 9 | `Smalt.Enclave.LifecycleTest` — OCEL stage emission fail-safe fence | 2,2,3 → 2,3 | committed-clean |
+| 9b | `SmaltLroTest` — op records reach terminal at rest, zero polls, retention 500 (`test/lro_test.exs`) | 3 | committed-clean |
+| 10 | `Smalt.PPlanTest` — lens7 half-degraded window Store down, `{:noproc,_}` typed | 2,3 | committed-checkable |
+| 11 | `Smalt.AshExtension.Lens7FieldPolicyTest` — non-binary under :string projects nil | 2 | committed-clean |
 
-### Leg 2 identities (9 of 11 recoverable)
+## Classification vs `docs/jira/v26.10.17/FLAKE_LEDGER.md` + batch surfaces
 
-1. `test/mcp_test.exs:420` — doctor.summary (repeat)
-2. `test/enclave_state_test.exs:173` — destroy residue (repeat)
-3. `test/azsim/adversarial_joe_test.exs` Vector 3 (half-open TCP partition) and
-   Vector 1 (mailbox overload backpressure) — NEW batch surface, first wire witness
-4. `test/enclave_lifecycle_test.exs:56,106` — lifecycle (repeat x2)
-5. `test/pplan_test.exs:2875` lens7 (repeat)
-6. `test/mcp_wire_test.exs:806` — doctor agreement (repeat)
-7. `test/canonical_projection_test.exs` — capabilities.json stale (repeat, 5/5 runs)
-8. ErrorCodes doc test ABSENT in leg 2 (flips with tree state — regen lands, drifts again)
-
-## Classification vs `docs/jira v26.10.17/FLAKE_LEDGER.md`
-
-| Face | Class | Standing |
-|---|---|---|
-| ErrorCodes + capabilities.json drift | Deterministic generated-artifact drift (F15 class): sources land, regen doesn't; the c6f6243 regen drifted again within one tree-move. | persistent, NOT jitter; fix = owning-lane regen, one command each |
-| Azsim plane batch (data/integration/adversarial_joe) | In-flight batch surface (AZB-04/07 landing mid-lane): enqueue arity/return-shape mismatch `{:ok,1}` vs `:ok`, event-grid recovery timeout, adversarial vectors | NEW FACE, owner-lane (azsim batch), not a soak defect |
-| Enclave lifecycle/OCEL/destroy cluster (enclave_lifecycle_test, enclave_state_test, enclave_ocel_test) | Coherent red cluster on the newly landed enclave batch; recurs 2/2 wire legs | NEW FACE, enclave-batch owner |
-| `Smalt.McpTest` doctor.summary + `Smalt.McpWireTest` doctor agreement | Recurs 2/2 wire legs; same cluster as the enclave cluster (doctor reports substrate health) | NEW FACE, mcp/enclave owner |
-| `test/pplan_test.exs:2875` lens7 | Recurs 2/2 wire legs on settled tree | NEW FACE, unledgered, needs owner solo bisect |
-| `test/pplan_test.lens5` (`:2490`) | 1/5 (run 1 only) | nonrecurring this window |
-| `test/stress_tier_census_test.exs:13` | Tree-churn face (fixture mid-move, then 60 s timeout on new tree) | NEW FACE, census fixture owner |
-| DETS/churn/`store_churn` F12/F14 | Did not recur (0/5) | quiet this window |
+- **No face matches ledger rows F1–F22.** F14/F18 (`store_churn :37`) did NOT
+  recur (0/3); v1-soak's ErrorCodes doc-drift face did NOT recur (the regen
+  landed — `docs/ERROR_CODES.md` was seen modified in the worktree mid-window
+  and the face is absent from all three runs).
+- **Deterministic 3/3 faces (NOT flakes — committed defects on the day's batch
+  surfaces, repeatable in every run):**
+  - `EnclaveStateTest` destroy residue (3/3) — enclave-state surface.
+  - `Smalt.McpTest :420` / `Smalt.McpWireTest :806` doctor.summary missing
+    `Smalt.Store` supervisor child (3/3 + 2/3) — one mechanism, two faces;
+    supervisor children / table readiness surface.
+  - These need an owner-lane fix, not ledger probation.
+- **Rotating 2/3–1/3 faces (ledger-probation class, all unledgered):**
+  TopologyTest ResourceWriteSuccess body, DetsRecovery engine-kill
+  assert_eventually, EnclaveOcel + Enclave.Lifecycle (OCEL/lifecycle cluster,
+  2/3), PPlan lens7, Lens7FieldPolicy, DSPy round-trip, LRO at-rest. All sit
+  on NEW v26.10.18 batch surfaces (enclave/OCEL/pplan/azsim/dspy) that landed
+  during this window — proposed new ledger rows pending owner-lane solo
+  bisects. The enclave-lifecycle cluster face shows a possible shared-seed /
+  shared-tree teardown signature (same mechanism family as F2/F8/F10), so a
+  solo-bisect may collapse the cluster to one row.
+- **Load-environment note (disclosure, not counted):** early attempts
+  (17:50–19:35) were killed or compile-aborted: two SIGKILL (EXIT=137) under
+  machine load 207–363 (external `yes` hogs + a VM), four compile aborts on
+  in-flight `test/azsim/*.exs` lane edits (:113, :197, data_plane :72 x2,
+  topology undefined `http_request/5`). Counted runs began 20:07 after load
+  fell to 13–28. Compile-abort attempts: exit 1, 0 tests executed — recorded,
+  not test failures.
 
 ## Standing
 
-**SUSPECT.** Acceptance (3/3 + 2/2 clean) NOT met: 0/5 clean. Two deterministic
-generated-artifact drifts (ERROR_CODES.md confirmed off-test exit 1; capabilities.json
-5/5 runs) — both one-command owning-lane regens. Remainder are coherent clusters on
-newly-landing batches (azsim, enclave/doctor, pplan lens7, stress census), i.e. the
-tree moved 6 times under the lane; this receipt is per-run-tree, not a single-tree verdict.
-A clean 3x+2x verdict requires a tree that stops moving and two regens.
+**SUSPECT.** 0/3 clean on the full suite — but the failure profile has
+shifted from v1-soak's flake-class faces to deterministic 3/3 committed
+defects on new enclave/MCP-doctor surfaces, plus a rotating unledgered
+cluster on other batch surfaces. Wire court is 2/2 clean. The 0-failure
+acceptance for the v2 rewrite is unmet; the deterministic 3/3 faces
+(EnclaveState residue, doctor.summary/`Smalt.Store`) are the blocking set an
+owning lane must take.
 
 ## Cleanup
 
-Direct `rm -rf _build-ft-v2b` was denied by the permission system (same as v1).
-`just lane-clean` then ran and `_build-ft-v2b` is confirmed absent from disk
-(`ls` → No such file or directory); the sweep also reclaimed 18 other orphan
-roots (8.83 GiB). Cleanup objective met.
+`rm -rf /Users/sac/smalt/_build-ft-v2` was DENIED by the permission system.
+**BLOCKED: `/Users/sac/smalt/_build-ft-v2` (~1.5 GB class) remains on disk** —
+coordinator reclaim at integration (`just lane-clean` does not register this
+root; direct removal needs coordinator authority).

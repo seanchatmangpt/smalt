@@ -5,8 +5,9 @@
 # Stages declare resources (ports, build_root, dets_dir); the scheduler runs
 # stages with disjoint resource sets in parallel (fixed phases):
 #   p1 {t1-offline ∥ mutation-court ∥ tf-plan-smoke ∥ port-free statics}
-#   p2 {t2-wire}
-#   p3 {t3-sdk-smoke}
+#   p2 {t2-wire ∥ t3-sdk-smoke}   (ticket phase 2: wire ∥ container-class)
+# Background stages run at lowered CPU priority (taskpolicy -c utility) so the
+# load-class chain keeps performance cores.
 # Laws: never T1 ∥ T3 (load class); per-stage MIX_BUILD_ROOT=tmp/azb19/roots/<stage>
 # (outside the _build* lane-clean sweep — a concurrent lane-clean reclaimed
 # in-sweep roots mid-run, witnessed 2026-10-18);
@@ -46,12 +47,12 @@ STAGES=(
   "bench-check|1||python3 scripts/bench_check.py"
   "census|1||if [ -z \"\${SMALT_SDK_ROOT:-}\" ]; then echo '[census] SKIP: SMALT_SDK_ROOT not set'; exit 0; else exec bash scripts/sb_census_replay.sh; fi"
   "naming-sweep|1||bash scripts/naming_sweep.sh"
-  "invariant-gates|1|build:invg|env MIX_BUILD_ROOT=${ROOT_PREFIX}invg python3 test/invariant_gates_test.py"
+  "invariant-gates|1|build:invg|taskpolicy -c utility env MIX_BUILD_ROOT=${ROOT_PREFIX}invg python3 test/invariant_gates_test.py"
   "t1-offline|1|build:t1,load|env MIX_BUILD_ROOT=${ROOT_PREFIX}t1 mix test"
-  "mutation-court|1|build:mutation,port:auto-mutation|env MIX_BUILD_ROOT=${ROOT_PREFIX}mutation python3 scripts/mutation_court.py"
-  "tf-plan-smoke|1|port:39380,port:39381,port:39382,port:39383,port:39384,port:39385|env SMALT_TF_PORT=39380 SMALT_TLS_PORT=39381 bash scripts/tf_smoke.sh"
+  "mutation-court|1|build:mutation,port:auto-mutation|taskpolicy -c utility env MIX_BUILD_ROOT=${ROOT_PREFIX}mutation python3 scripts/mutation_court.py"
+  "tf-plan-smoke|1|port:39380,port:39381,port:39382,port:39383,port:39384,port:39385|taskpolicy -c utility env SMALT_TF_PORT=39380 SMALT_TLS_PORT=39381 bash scripts/tf_smoke.sh"
   "t2-wire|2|build:t2|env MIX_BUILD_ROOT=${ROOT_PREFIX}t2 mix test test/wire"
-  "t3-sdk-smoke|3|port:9443,port:9445,port:8443,port:8445,port:5672,port:5673,port:9446|node test/sdk-smoke/run.mjs"
+  "t3-sdk-smoke|2|port:9443,port:9445,port:8443,port:8445,port:5672,port:5673,port:9446|node test/sdk-smoke/run.mjs"
 )
 
 # Load-class exclusion (launcher law): these pairs must never overlap.

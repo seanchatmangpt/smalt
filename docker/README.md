@@ -13,15 +13,17 @@ Multi-stage container packaging for the smalt BEAM-native substrate
 ## Build
 
 From the repo root. The three sibling path dependencies declared in
-`mix.exs` (`../ash_graphlaw`, `../ggen_igniter`, `../ex4pm`) are injected
-as extra build contexts so the build stays self-contained (`ash_r2rml` /
-`ash_ex4pm` are optional-only deps and are not included):
+`mix.exs` (`../ash_graphlaw`, `../ggen_igniter`, `../ash_r2rml`) are injected
+as extra build contexts so the build stays self-contained (`ex4pm` resolves
+from hex.pm since 26.10.14 — no build context; `ash_graphlaw`/`ggen_igniter`
+are :dev-only and `ash_r2rml` is dev/test-only, but Mix still validates all
+three declared paths at `mix deps.get`, so all three must be present):
 
 ```sh
 docker build -f docker/Dockerfile -t smalt:local . \
-  --build-context ash_graphlaw=../ash_graphlaw \
-  --build-context ggen_igniter=../ggen_igniter \
-  --build-context ex4pm=../ex4pm
+  --build-context ash_graphlaw=$PWD/../ash_graphlaw \
+  --build-context ggen_igniter=$PWD/../ggen_igniter \
+  --build-context ash_r2rml=$PWD/../ash_r2rml
 ```
 
 Or let compose do it:
@@ -62,8 +64,10 @@ network.
 
 ## Health
 
-The image carries a TCP HEALTHCHECK on 9443
-(`exec 3<>/dev/tcp/127.0.0.1/9443`). Check with:
+The **compose deployment** defines a TCP healthcheck on 9443
+(`exec 3<>/dev/tcp/127.0.0.1/9443` in `compose.smalt.yml`'s `healthcheck:` block —
+the image itself carries no HEALTHCHECK instruction, so bare `docker run`
+containers report no health state). Check with:
 
 ```sh
 docker inspect --format '{{.State.Health.Status}}' smalt
@@ -95,9 +99,10 @@ SMALT_SB_SHARED_KEY=<base64-key> \
 node --test test/sdk-smoke/census.test.cjs
 ```
 
-As of 2026-10-14 the census fails 0/8 against both the container and the
-host substrate (SAS signature-scheme mismatch in
-`SasVerifier` + `QueueStore.dequeue_matching/2` typing violation); see
+Census results are a running register, not a fixed snapshot — do not cite a
+dated pass count here. Live truth: `just sdk-census` (exit 0 pass / 1 fail /
+2 substrate down / 3 SKIP) and the generated
+`docs/jira/v<version>/SDK_MATRIX.md`; the container build's own record lives in
 `docker/BUILD_RECEIPT.md`.
 
 ## Hardening
