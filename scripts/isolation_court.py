@@ -100,21 +100,50 @@ def _strip_exemptions(text):
     return "\n".join(out) + "\n"
 
 
+RE_DELETE_ENV = re.compile(r'Application\.delete_env\(:smalt,\s*:(\w+)\)')
+
+
 def _apply_put_restored(text):
     """Normalize put_restored usage so the leak scanner sees full coverage:
     the helper saves prev + restores in on_exit, so replace the call with a
-    canonical save+restore pair the scanner already understands."""
+    canonical save+restore pair the scanner already understands. AZB-11b
+    extension: the capture-then-delete shape —
+
+        SmaltTest.Env.put_restored(k: Application.get_env(:smalt, :k))
+        Application.delete_env(:smalt, :k)
+
+    — pins the restore to the captured prev (the delete is test-scoped and
+    the on_exit re-applies prev), so an Application.delete_env of the SAME
+    key within the two lines after a put_restored call is covered too."""
     if not RE_PUT_RESTORED.search(text):
         return text
-    lines = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    out = []
+    covered_until = -1
+    for i, line in enumerate(lines):
+        if i <= covered_until:
+            continue
         if RE_PUT_RESTORED.search(line):
             indent = re.match(r'\s*', line).group(0)
-            lines.append(indent + "# covered: SmaltTest.Env.put_restored"
+            # gather the full call text (call may span two lines)
+            call_text = line
+            j = i
+            while not call_text.rstrip().endswith(")") and j + 1 < len(lines):
+                j += 1
+                call_text += "\n" + lines[j]
+            # cover adjacent same-key delete_env (capture-then-delete shape)
+            k = j + 1
+            while k <= j + 2 and k < len(lines):
+                m = RE_DELETE_ENV.search(lines[k])
+                if m and m.group(1) in call_text:
+                    covered_until = k
+                    break
+                k += 1
+            out.append(indent + "# covered: SmaltTest.Env.put_restored"
                                  " (save-prev + on_exit restore)")
         else:
-            lines.append(line)
-    return "\n".join(lines) + "\n"
+            out.append(line)
+    return "\n".join(out) + "\n"
 
 
 def scan_env_rule(text, name):

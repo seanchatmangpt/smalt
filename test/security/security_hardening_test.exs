@@ -281,12 +281,6 @@ defmodule Smalt.Security.SecurityHardeningTest do
       assert {:ok, verified} = Attestation.verify_token(token)
       assert verified["x-ms-compliance-status"] == "azure-compliant-cvm"
 
-      # AZB-11b: capture-then-delete (was a hand-rolled nil->delete on_exit
-      # whose nil branch could amplify an absent entry into a permanent
-      # absence). Same canonical shape as the out-of-baseline test below.
-      SmaltTest.Env.put_restored(maa_measurement_baseline:
-                                   Application.get_env(:smalt, :maa_measurement_baseline))
-      Application.delete_env(:smalt, :maa_measurement_baseline)
     end
 
     test "client_payload_hash is invariant under key-order permutation (nested maps)" do
@@ -313,8 +307,6 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # and it really is content-derived: a value change moves the hash
       {:ok, _, claims_c} = Attestation.attest_enclave(Map.put(nested_a, "policy", %{}))
       refute claims_c["x-ms-runtime"]["client_payload_hash"] == hash_a
-
-      Application.delete_env(:smalt, :maa_measurement_baseline)
     end
 
     test "measurement in Store baseline table is attested" do
@@ -734,8 +726,6 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
       assert {:error, 400, "attestationFailedVerdict"} =
                Attestation.attest_enclave(%{"measurement" => String.upcase(@measurement)})
-
-      Application.delete_env(:smalt, :maa_measurement_baseline)
     end
 
     test "jti near-collision: same-jti releases within one clock tick, first-writer-wins" do
