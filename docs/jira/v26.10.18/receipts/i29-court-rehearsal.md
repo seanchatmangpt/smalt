@@ -86,3 +86,18 @@ rehearsal's purpose was to surface this face now rather than at the real gate.
 Cold-start findings: none beyond the known cold-compile wall-clock (~7 min for
 a fresh private build root under load 88.9; test body itself 23.5s). No
 failures, no edits, no kills, no git operations.
+
+## Proximity re-check — 2026-10-19 23:31 (Context: solo(lane, i29-quiet-proximity))
+
+`just quiet-check` re-run from /Users/sac/smalt; exit 1, fail-closed. Four veto states:
+
+- stray beams: CLEAR (0 violations; the one beam.smp found is cwd outside checkout only in the
+  concurrent-suite class, not a stray-cwd hit)
+- canonical ports: 3/6 occupied (9443, 8443, 5672; 5673/9444/9445 free)
+- concurrent suites: 1 (pid 53167, erlmcp otp-28.3.1 beam)
+- load: ACTIVE — 25.1/38.2 > threshold (16 cpus); load1 halved vs the 2026-10-18 rehearsal
+  (88.9 -> ~29 at receipt time)
+
+Veto classes still active: 3 of 4 (ports, concurrent suites, load). Stray-beams clear.
+Machine is approaching but not inside the AZB-23 quiet window; load trend down, ports and the
+erlmcp beam remain the binding constraints. No quiesce performed, no edits beyond this receipt.

@@ -134,3 +134,70 @@ item for AZB-22 closure.
    plan) — the 10s bound converts an infinite hang into a bounded
    brutal-kill, so the zombie assertion should pass either way, but the
    capture would tell us WHY the listener refuses :shutdown under soak load.
+
+## Ring boot re-judge retry — BLOCKED again (typed, third infrastructure strike)
+
+Context: solo(retry lane; re-judge the in-image ZOMBIE_BEAM row via a fresh
+ring boot stage; 2026-10-19T06:16Z window)
+Standing: **SUSPECT** — no ring boot stage ran; the ZOMBIE_BEAM typed row
+remains **open, not re-judged**. Deferred to the next window per the
+third-strike rule.
+
+Host evidence at retry start (2026-10-19T06:16-06:28Z):
+
+```
+$ colima exec -- df -h /var/lib/docker
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vdb1        59G   58G     0 100% /var/lib/docker
+
+$ docker system df (abridged)
+Images 40.78GB (39.3GB reclaimable, in-use-locked)  Build Cache 23.67GB
+(62 entries, ACTIVE — held by concurrent lanes)
+```
+
+Strike 1 — colima VM disk at 100%, **0 bytes available**. Conservative
+reclaim attempted before any build: `docker image prune -f` → `Total
+reclaimed space: 0B`; `docker builder prune -f` → `Total: 0B`. The only
+reclaimable mass is the 23.67GB ACTIVE build cache held by in-flight builds
+from other lanes plus their tagged images — pruning it would sabotage
+concurrent lanes, so it was left intact (no kills mandate).
+
+Strike 2 — sustained concurrent build contention, same face as the prior
+receipt's §5/§6, witnessed live via `ps`:
+
+```
+4 concurrent `docker build` processes against the same tree:
+  70334/70331  -t smalt:local  --build-arg SUBJECT_SHA=d6dbe670…  (since 22:29)
+  28923/28876  -t smalt:local  --build-arg SUBJECT_SHA=806d86e0…  (since 23:18)
+  25300/25260  -t smalt-burn:latest --target test                  (since 23:18)
+plus a prior azb22b retry loop (pid 94023, /tmp/azb22b/) running the same
+lockstep build→ring sequence.
+```
+
+HEAD churn continues in-window: d6dbe67 → 806d86e0 (23:15) → 286c35e
+(23:25) — three heads inside ~50 minutes; the ring's IMAGE_SUBJECT_MISMATCH
+init guard requires image label == HEAD at init, so a lockstep build-and-run
+stays a race against the fleet. The public `smalt:local` at retry time still
+carried the default label `29bb037…` (invalid subject; the mid-edit artifact
+face from the prior receipt's §6 — guard correctly refuses).
+
+Strike 3 — one concrete build attempt at HEAD `286c35e` for a verbatim
+witness (expected futile with 0B free; bounded at 180s):
+
+```
+#11 ERROR: write /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/
+  snapshots/3667/fs/_build-lane-eng/test/lib/ash_a2a/ebin/
+  Elixir.AshA2A.Chicago.Courts.OcelValidity.beam: no space left on device
+#12 CANCELED
+ERROR: failed to solve: ResourceExhausted: write …/Elixir.AshA2A.Chicago.
+  Courts.OcelValidity.beam: no space left on device
+```
+
+(`BUILD_EXIT=0` above is the `tail` pipe's status; the solve failed with
+ResourceExhausted — same containerd-snapshotter exhaustion face as the prior
+receipt's failure 4.)
+
+No ring dir was initialized for this lane (no `ring.env` written), so no
+partial ring artifact was minted. Prior receipt's Open item 2 (fleet law:
+image-build lease) is re-upgraded to blocking: this window failed on exactly
+the un-leased concurrent-build class it names.

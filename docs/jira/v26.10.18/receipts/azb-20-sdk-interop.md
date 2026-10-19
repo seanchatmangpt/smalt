@@ -166,3 +166,67 @@ Artifacts: `tmp/azb20/matrix.json` (46 rows), `tmp/azb20/capture-{control,data}.
   integration (`just lane-clean`).
 - The tree is shared; concurrent lanes' in-flight files (identity/sts_gate.ex, dr_scenarios_test.exs, pplan_test.exs, test/support/lifecycle.ex, docs) are NOT this lane's.
 - No git actions taken (per dispatch).
+
+---
+
+## Re-run 2026-10-18 (AZB-20 interop re-run lane, HEAD `efc8d92778f36ca7af623e3412c373b6f5ff674d`)
+
+Context: solo(test/sdk-full/azb20/run.mjs orchestrator, 2 full matrix runs)
+- **Standing**: PARTIAL_ALIVE (unchanged) — accept `just azsim-sdk` exit 0 **NOT MET**; 6 FAIL-class cells reproduce exactly at `efc8d92`.
+- **Subject SHA**: `efc8d92778f36ca7af623e3412c373b6f5ff674d` (≥ ticket floor; prior receipt was at `467d7d1`, so re-run required — not green).
+
+### Method / environment
+
+Private block 39443-39475 lsof-verified free before run 1; canonical ports (colima-held)
+never touched, no evictions, no kills. Fresh build root `MIX_BUILD_ROOT=_build-lane-azb20r`.
+All 11 probes byte-unmodified; env remaps + dev-CA trust only.
+
+### Real output — run 1 (cold build root, ~22:50-23:13)
+
+Control plane: **SUBSTRATE-NEVER-UP** — the cold compile of `_build-lane-azb20r` exceeded
+the boot deadline (log `test/sdk-full/.logs/azb20-control-substrate.log` ends mid-compile,
+"Compiling 2 files (.erl)"); 11 cells exit 2 SUBSTRATE-NEVER-UP. Run 1 is a harness
+warm-up witness, not a plane defect witness. Data/integration/identity cells identical
+to run 2.
+
+### Real output — run 2 (warm, definitive, ~23:16-23:40)
+
+| probe | control | data | integration | identity |
+|---|---|---|---|---|
+| arm-resources | 1 | 3 | 2 | 2 |
+| resourcegraph | 1 | 3 | 2 | 2 |
+| keyvault | 1 | 2 | 2 | 2 |
+| secrets | 1 | 2 | 2 | 2 |
+| appconfig | 2 | 3 | 2 | 2 |
+| blob | 2 | **0** | 2 | 2 |
+| cosmos | 2 | **1** | 2 | 2 |
+| ledger | 2 | **0** | 2 | 2 |
+| eventgrid/eventhubs/sentinel | 2 | 2 | 2 | 2 |
+| HEADER-AUDIT | **1** (26 violations) | **0** (2 responses, 0 violations) | - | - |
+
+Orchestrator: `[azb20] 6 FAIL/SUBSTRATE-NEVER-UP cells (typed gaps — see tmp/azb20/matrix.json)` — recipe exit 1.
+
+### Verdict per gap (all still OPEN at efc8d92)
+
+- **GAP-AZB20-2** REPRODUCED: control ARM writes 500 (`PUT .../resourcegroups/ts1-sdk-rg → 500 missing x-ms-request-id`).
+- **GAP-AZB20-3** REPRODUCED: control header audit FAIL — 26/26 violations, all 500-class missing `x-ms-request-id` (was 29, same family).
+- **GAP-AZB20-5** REPRODUCED: KV/secrets probes exit 1 on control-only boot.
+- **GAP-AZB20-6** REPRODUCED: resourcegraph 404 RouteNotFound family.
+- **GAP-AZB20-7** REPRODUCED: cosmos bulk-only failure — data plane otherwise PASS; witness: `Bulk request errored with: Partition key provided in the header doesn't match the partition key of the document.` (single- + cross-partition, `code=undefined body=""`).
+- GAP-AZB20-1/4/8 unchanged (harness/plane-topology, not exercised differently).
+- GAP-AZB20-9 (cosmos orchestrated transient) — not reproduced this session; data/cosmos gave the stable bulk-only exit 1 both runs.
+
+### Accept status
+
+- `just azsim-sdk` exit **1** (6 FAIL-class cells).
+- Header audit: data 0 violations (PASS); control FAIL with witnessed cause (GAP-AZB20-3).
+- Falsifier still holds: no SDK needed a patch/monkeypatch beyond endpoint + CA trust.
+
+### Replay
+
+```bash
+MIX_BUILD_ROOT=_build-lane-azb20r just azsim-sdk   # exit 1, ~25 min (cold: +10 min compile)
+```
+Artifacts: `tmp/azb20/matrix.json` (45 rows, run 2), `/tmp/azb20-rerun2.log`,
+`test/sdk-full/.logs/azb20-*-substrate.log`. Build root `_build-lane-azb20r` left for
+coordinator reclaim (`just lane-clean`).

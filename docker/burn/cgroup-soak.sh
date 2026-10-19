@@ -194,7 +194,7 @@ poll_rows() {
   while [ "$((START_TS + DEADLINE_SECS))" -gt "$SECONDS" ]; do
     _done=1
     for p in "${PLANES[@]}"; do
-      _n="$(grep -c '"stage":"soak"' "$RESULTS_DIR/cgroup-smalt-soak-$p.jsonl" 2>/dev/null || echo 0)"
+      _n="$(grep -c '"stage":"soak"' "$RESULTS_DIR/cgroup-smalt-soak-$p.jsonl" 2>/dev/null || true)"; _n="${_n:-0}"
       [ "$_n" -ge "$CYCLES" ] || _done=0
     done
     [ "$_done" = 1 ] && return 0
@@ -205,7 +205,7 @@ poll_rows() {
 if ! poll_rows; then
   echo "[CGROUP-SOAK] deadline waiting for $CYCLES cycle(s) from every service — partial rows below" >&2
   for p in "${PLANES[@]}"; do
-    echo "  smalt-soak-$p: $(grep -c '"stage":"soak"' "$RESULTS_DIR/cgroup-smalt-soak-$p.jsonl" 2>/dev/null || echo 0)/$CYCLES"
+    _n="$(grep -c '"stage":"soak"' "$RESULTS_DIR/cgroup-smalt-soak-$p.jsonl" 2>/dev/null || true)"; echo "  smalt-soak-$p: ${_n:-0}/$CYCLES"
   done
   docker compose -f "$COMPOSE_FILE" -p "$PROJECT" logs --tail 40 >>"$RESULTS_DIR/cgroup-soak-deadline-$TS.log" 2>&1 || true
 fi
@@ -216,7 +216,7 @@ ANY_DIRTY=0
 # run_header: the EXPECTED matrix --gate checks every cell against (the
 # AZB-03 falsifier: a dropped cycle must be visible).
 printf '{"type":"run_header","run_id":"cgroup-%s","expected":{"containers":["smalt-soak-control","smalt-soak-data","smalt-soak-integration","smalt-soak-identity"],"cycles":[%s],"stages":["soak"]}}\n' \
-  "$TS" "$(seq -s, 1 "$CYCLES")" >> "$JSONL"
+    "$TS" "$(awk -v n="$CYCLES" 'BEGIN{for(i=1;i<=n;i++)printf "%s%d",(i>1?",":""),i}')" >> "$JSONL"
 for p in "${PLANES[@]}"; do
   if [ -f "$RESULTS_DIR/cgroup-smalt-soak-$p.jsonl" ]; then
     cat "$RESULTS_DIR/cgroup-smalt-soak-$p.jsonl" >> "$JSONL"

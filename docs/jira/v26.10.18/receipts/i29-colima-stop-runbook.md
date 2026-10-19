@@ -174,3 +174,29 @@ the runbook's P0 already classifies them as acceptable residue, so leaving them 
 
 Standing: PARTIAL_ALIVE (gate verified live; P1-strong executed but reclaimed 0B —
 typed-negative, not a failure; headroom confirmed via busybox df)
+
+## Decision — HOLD (gate failed, no execution)
+
+Context: solo(gate evaluation; read-only checks only; colima NOT stopped)
+Date: 2026-10-18 (decision appended 23:4x local)
+
+Gate conditions evaluated per §2/P0:
+
+- **(a) FAIL — not quiesced.** `docker ps` (exit 0) shows 4 live
+  `smalt-cgroup-soak-smalt-soak-{control,data,integration,identity}-1` containers
+  "Up 4 minutes" — an active cgroup-soak burn cycle, plus dbg-id/dbg-id2
+  (Up ~1 h, acceptable residue per P0) and kind-smalt-{control-plane,worker}
+  (Up ~2 h). The soak containers are exactly the "any smalt-burn-*/soak still
+  Up => NOT quiesced, hold" tripwire. No active docker build observed.
+- **(b) FAIL — Lane C not landed.** `git status --porcelain test/` = 17 dirty
+  (16 modified + test/e2e/s2_byok/s2_run.patch.py untracked), spanning amqp,
+  wire, lro, e2e (s2_byok/s9_lro/s10_attest), sdk-full. No Lane C commit.
+- **(c) PASS (moot).** Newest receipts (i29-isolation-scoped 23:35,
+  i29-shim-courts-fresh 23:30) are non-docker lanes; azb-22b-zombie-fix receipt
+  present but modified-uncommitted. Inconclusive weight is irrelevant given (a)/(b).
+- Port state unchanged: colima ssh mux (pid 61023) holds 9443/8443/5672 LISTEN.
+
+Action: **HOLD** — `colima stop` NOT executed; `just quiet-check` NOT run
+(premature while soak containers live). Rollback: none needed (P0: holding is
+the rollback). Re-evaluate gate after the cgroup-soak cycle reaches quiescence
+and Lane C's test/ diff is committed.

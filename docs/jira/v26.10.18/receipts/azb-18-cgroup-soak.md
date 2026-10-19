@@ -97,3 +97,41 @@ Commands: `docker system df`; `docker run --rm busybox df -h /`; `docker builder
 - `docker builder prune -f` → Total: 0B (all 71 cache entries active/in-use; safe form reclaims nothing).
 - Post: overlay 58.9G, used 55.7G, **753.9M available / 99%** — still below the 3G floor. Standing: BLOCKED[disk-floor] — further reclaim requires non-in-use-safe pruning (`-a`) or image/volume removal, out of scope per lane constraints (no container/daemon mutations beyond builder prune).
 - Containers observed (`docker ps`): azb-18 leg netns set present and fresh — `smalt-burn-smalt-burn-integration-{1..8}-1` all Up ~35s (8/8 expected). Pre-existing, untouched: `dbg-id`, `dbg-id2`, `kind-smalt-worker`, `kind-smalt-control-plane`, `act-sock-relay`.
+
+## Completion — cgroup soak cycle executed — 2026-10-19 (Context: solo)
+
+The container leg ran (image built post-disk-raise; result file
+`docs/jira/v26.10.18/burn/cgroup-20261019T061643Z.jsonl`, subject 806d86e0, image
+`smalt-burn@sha256:238622b…`). Outcome: **cycle 1 failed on all four planes.**
+
+- control / data / integration: SIGKILL exit 137 — the 1g `mem_limit` is below what the
+  offline `mix test` tier needs to compile+run; the kernel OOM-killed the beam before any
+  test executed (`tests: 0, failures: 0` in every row).
+- identity: same 137.
+- control additionally compile-aborted (exit 1, 0 tests) per W672 — a compile-abort is not a
+  failure count and must not read as one.
+
+All 4 rows: `verdict: UNHANDLED_EXIT`, `broken_term: mu_unlawful`, `clean: false`.
+
+**Standing: PARTIAL_ALIVE** — harness + gate are proven (emit/preflight/gate happy+negative
+paths above), but the per-plane soak itself did not execute any tests. **Follow-up for the
+next cycle:** mem 1g / pids 512 are too tight for the offline tier; raise `mem_limit` to
+**2g minimum** in `docker/burn/cgroup-soak.sh` (CPU caps control=2.0 / data=1.5 /
+integration=2.0 / identity=1.0 stay as-is) before re-running.
+
+### Named validator defect — file as v26.10.19 item
+
+`scripts/validate_burn.py` derived the run_receipt `standing: ALIVE` from the replay
+command exit (0) **alone**, while every plane row was `clean:false / UNHANDLED_EXIT`.
+Standing must derive from the plane rows, not replay-exit alone. Fix: `validate_burn.py`
+must require **all** plane rows `clean:true` before it may emit `standing: ALIVE`; any
+non-clean row caps standing at PARTIAL_ALIVE (or worse) and the gate should exit non-zero
+for an ALIVE claim over dirty rows. Non-vacuity: a shim with one `clean:false` row must
+flip the standing.
+
+### Residue check
+
+`docker ps` at receipt time: only pre-existing containers (`dbg-id`, `dbg-id2`,
+`kind-smalt-control-plane`, `kind-smalt-worker`, `act-sock-relay`). The 8
+`smalt-burn-smalt-burn-integration-*` containers seen in the disk-hold check are gone —
+**no soak residue**.
