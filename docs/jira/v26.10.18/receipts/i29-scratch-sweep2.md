@@ -1,6 +1,8 @@
 # i29 — scratch-py sweep #2 (blob_worm_witness None-guards)
 
-Date: 2026-10-18 · Context: solo (single lane, no concurrent writers on this surface)
+Date: 2026-10-18
+
+Context: solo (single lane, no concurrent writers on this surface)
 
 ## Claim swept
 

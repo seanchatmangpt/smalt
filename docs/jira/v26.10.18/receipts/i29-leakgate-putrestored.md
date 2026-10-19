@@ -1,7 +1,7 @@
 # i29 leak-gate put_restored recognition
 
 - Date: 2026-10-18
-- Context: solo
+Context: solo
 - Subject: `gates/test_isolation_leak_gate.py` @ main (pre-edit tree), scope `test/**/*.exs` static scan
 - Standing: **ALIVE**
 

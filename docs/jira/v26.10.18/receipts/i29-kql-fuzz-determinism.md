@@ -1,6 +1,8 @@
 # i29 — KQL fuzz determinism (cosmos_test.exs:1055)
 
-**Standing: PASS** · Context: slice(x5) · 2026-10-18
+**Standing: PASS** · 2026-10-18
+
+Context: slice(x5)
 
 ## Defect
 

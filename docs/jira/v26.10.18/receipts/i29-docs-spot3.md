@@ -2,7 +2,7 @@
 
 - Date: 2026-10-19
 - Subject: /Users/sac/smalt (working tree; read-only audit)
-- Context: solo(spot-audit; 4 files + gate run; no source mutations)
+Context: solo(spot-audit; 4 files + gate run; no source mutations)
 - Standing: PASS (0 mechanical fixes required; 1 structural finding reported)
 
 ## Scope

@@ -1,6 +1,8 @@
 # i29 e2e recheck — s9 spot check (lane: e2e-fix recheck)
 
-Date: 2026-10-18 · Repo: /Users/sac/smalt · Context: solo (shared checkout, 4+ concurrent lanes on shared `_build` lock)
+Date: 2026-10-18 · Repo: /Users/sac/smalt
+
+Context: solo (shared checkout, 4+ concurrent lanes on shared `_build` lock)
 
 ## Gate condition
 

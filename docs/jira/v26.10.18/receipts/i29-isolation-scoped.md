@@ -1,6 +1,8 @@
 # i29 isolation court — scoped (clean-scope) leak figure
 
-Date: 2026-10-18. Context: solo(scoped 11-file serial run, private build root `_build-ft-scoped12`, no git operations, no edits).
+Date: 2026-10-18.
+
+Context: solo(scoped 11-file serial run, private build root `_build-ft-scoped12`, no git operations, no edits).
 
 ## Question
 

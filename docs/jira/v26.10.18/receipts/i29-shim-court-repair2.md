@@ -1,7 +1,7 @@
 # Receipt: i29 shim-court repair2 (2026-10-19)
 
 - Standing: PASS (3/3 previously-FAIL courts flip; restores byte-exact)
-- Context: pair(shim-court-repair2 lane + skeptic re-read of court/witness/lib
+Context: pair(shim-court-repair2 lane + skeptic re-read of court/witness/lib
   sources before each verdict; no mocks — real substrate for etag_cas, real
   ExUnit run for tombstone_grace, real Plug conn through EgressRouter for
   comp_whitelist)

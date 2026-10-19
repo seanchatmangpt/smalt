@@ -1,7 +1,7 @@
 # Receipt: i29 shim-courts fresh run (2026-10-18)
 
 - Standing: SUSPECT (aggregate exit 1 — 12 of 26 courts cannot flip)
-- Context: solo(just shim-courts)
+Context: solo(just shim-courts)
 - Subject: `just shim-courts`, all `scripts/shim_court/*_court.sh` (26 courts), repo /Users/sac/smalt
 - Aggregate summary line (verbatim): `== summary: 14 PASS, 12 FAIL, 0 SKIP ==`
 - `failed: blob_worm comp_whitelist dets_growth disposition_token eh_batch eh_mgmt etag_cas orphan_token renew_mirror settle_cas tombstone_grace wire_norm`

@@ -1,7 +1,7 @@
 # i29 Checkpoint 5 — in-flight lane census at HEAD 0351252
 
 - Subject: /Users/sac/smalt @ `0351252cfa0cbd71481d994c248cf61d83341630` (HEAD advanced past checkpoint4's 086c6aa — coordinator committed 3 receipts 23:5x)
-- Context: solo(census; read-only git; no git mutations)
+Context: solo(census; read-only git; no git mutations)
 - Census time: 2026-10-19 00:0x PDT (after coordinator commits at 23:5x)
 - Commands: `git status --porcelain` (full), `git diff --stat`, `git rev-parse HEAD`, `stat -f '%Sm %N' -t '%H:%M'`, per-file `git diff` reads
 

@@ -1,6 +1,8 @@
 # i29 — Static gate quad re-run, pre-gate 2 (azb-20 landed, G1 queue_storage.ex present)
 
-Date: 2026-10-19 · Context: solo(/Users/sac/smalt) · WO: i29 · Actor: bench-runner lane
+Date: 2026-10-19 · WO: i29 · Actor: bench-runner lane
+
+Context: solo(/Users/sac/smalt)
 
 ## Subject
 

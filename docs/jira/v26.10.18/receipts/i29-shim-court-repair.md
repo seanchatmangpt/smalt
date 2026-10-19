@@ -1,7 +1,7 @@
 # Receipt: i29 shim-court repair (2026-10-18)
 
 - Standing: PASS (12/12 repaired courts flip; 3/3 controls green)
-- Context: slice(12 courts + 3 control)
+Context: slice(12 courts + 3 control)
 - Subject: `scripts/shim_court/*` court/witness scripts, repo /Users/sac/smalt
 - Baseline: `docs/jira/v26.10.18/receipts/i29-shim-courts-fresh.md` (14 PASS / 12 FAIL,
   all restores byte-exact — fail-closed held; FAILs were court-script premise rot)

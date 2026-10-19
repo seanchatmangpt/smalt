@@ -2,7 +2,7 @@
 
 Standing: PASS (6/6 green, structural fix, no sleeps)
 
-## Context: slice(x6)
+Context: slice(x6)
 
 ## Defect
 

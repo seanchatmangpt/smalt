@@ -1,8 +1,9 @@
 # i29 — stress-tier pre-gate at current HEAD (post 50b9860 + e90f076)
 
 Date: 2026-10-19. Subject: /Users/sac/smalt @ main, HEAD `2a9ccd4` (working tree carries
-Lane C `50b9860` + audited_caps `e90f076` diffs uncommitted). Context: solo (private
-build root `_build-ft-str6`; no git commands run by this lane; no edits outside this receipt).
+Lane C `50b9860` + audited_caps `e90f076` diffs uncommitted).
+
+Context: solo (private build root `_build-ft-str6`; no git commands run by this lane; no edits outside this receipt).
 
 ## Command (executed twice)
 

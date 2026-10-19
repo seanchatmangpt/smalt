@@ -1,7 +1,7 @@
 # i29 Checkpoint 4 — in-flight lane census at HEAD 086c6aa
 
 - Subject: /Users/sac/smalt @ `086c6aab61c572855c86b5e546953f6b4a523716` (HEAD advanced past checkpoint3's b9b9199)
-- Context: solo
+Context: solo
 - Census time: 2026-10-18 23:45 PDT
 - Commands: `git status --porcelain` (read-only), `git diff --stat`, `git rev-parse HEAD`, `stat -f '%Sm %N' -t '%H:%M'`
 

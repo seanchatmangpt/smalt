@@ -3,7 +3,7 @@
 - Date: 2026-10-19
 - Repo: /Users/sac/smalt (canonical checkout, no worktrees)
 - Command: `MIX_BUILD_ROOT=_build-ft-fse mix test` (cwd /Users/sac/smalt)
-- Context: solo(full-suite leg e, fresh _build-ft-fse compile)
+Context: solo(full-suite leg e, fresh _build-ft-fse compile)
 
 ## Result
 

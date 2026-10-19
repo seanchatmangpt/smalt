@@ -1,7 +1,7 @@
 # i29 Checkpoint 6 — in-flight lane census at HEAD d577677
 
 - Subject: /Users/sac/smalt @ `d577677b64cff26b71a76d01f95985ac8579e6e5` (parent `148e440`, the checkpoint5 subject — one coordinator commit landed mid-census)
-- Context: solo(census; read-only git; no git mutations)
+Context: solo(census; read-only git; no git mutations)
 - Census time: 2026-10-19 00:2x PDT (open ~00:20 at HEAD 148e440, close ~00:25 at HEAD d577677)
 - Commands: `git status --porcelain` (live, twice), `git log --oneline`, `git rev-parse HEAD`,
   `git diff --stat`, `git diff --cached --stat`, `git show --stat d577677`,
