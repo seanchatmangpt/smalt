@@ -1,5 +1,4 @@
 # D1 — README + tutorials + getting-started audit (2026-10-18)
-Stale claims: README:223-226 "Five fail-closed gates" (now six — appconfig-etag-cas missing; README:34 contradicts); README:288 eh-run ports (19443/18443/15672 vs actual 39172/39173/39444); README:13 Standing dated 10-16; tutorial enclave-lifecycle:8/:130 "28 tables/17 resource-bearing" (now 33/22).
-Wrong/dead commands: dev-loop.md:9 "(just ingress)" dead; dev-loop.md:181 `just cli-gates` is [private] — not user-runnable; dev-loop.md:20 "29445-29449" -> 29445-29450.
-Missing features (8): SMALT_PLANES plane loader; azsim tier (10 test files + just azsim-sdk); burn suite (9 recipes); zero-sleep doctrine + sleep gate; stress tier; budget gate; hex-only ex4pm; canonical SmaltTest foundations. Plus ~20 undocumented recipes surfaced by just --summary.
+Stale: README:223-226 "Five fail-closed gates" (now six — appconfig-etag-cas; README:34 contradicts); README:288 eh-run ports (19443/18443/15672 vs actual 39172/39173/39444); README:13 Standing 10-16; enclave-lifecycle.md "28 tables/17 resource-bearing" (now 33/22); dev-loop.md:186 "suite ~8s" (own receipts 40-58s); dev-loop:196 "8/1529"; dev-loop:9 "(just ingress)" dead; dev-loop:181 cli-gates [private]; ports 29445-29449 -> 29450.
+Missing (8 features): SMALT_PLANES; azsim tier (10 files + azsim-sdk); burn suite (9 recipes); zero-sleep doctrine + gate; stress tier; budget gate; hex-only ex4pm; canonical SmaltTest foundations. Plus ~20 undocumented recipes.
 Clean: every README command resolves; no dead paths; client matrix accurate.
