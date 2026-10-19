@@ -1822,4 +1822,88 @@ defmodule Smalt.Messaging.EventHubsTest do
     wh(client)
     {client, port}
   end
+
+  # ---------------------------------------------------------------------------
+  # audit-A22-F1: the KD-53 batch discriminator requires EVERY outer data
+  # section to decode as a complete inner AMQP message before the split fires
+  # (AMQP §3.2.5 permits multiple data sections per message body). Split when
+  # all inners are complete; if ANY section fails inner-message decode, the
+  # whole outer message stays ONE event (F1 discriminator).
+  # ---------------------------------------------------------------------------
+  describe "audit-A22-F1 multi-data-section split-when-all-inners-complete" do
+    alias Smalt.Amqp.FrameCodec
+
+    defp a22_inner(body) do
+      FrameCodec.encode_message([{:body_data, body}]) |> IO.iodata_to_binary()
+    end
+
+    defp a22_multi_section_envelope(sections) do
+      FrameCodec.encode_message(
+        [{:message_annotations, %{"x-opt-partition-key" => "a22-pk"}}] ++
+          Enum.map(sections, fn s -> {:body_data, s} end)
+      )
+      |> IO.iodata_to_binary()
+    end
+
+    test "2 complete inner data sections split into 2 events with monotonic seqs" do
+      p = part("a22f1-split")
+      envelope = a22_multi_section_envelope([a22_inner("a22-evt-1"), a22_inner("a22-evt-2")])
+
+      assert {:ok, 1, first} = EventHubs.send_event(p, envelope, partition_key: "pk-a22")
+      assert first["seq"] == 1
+
+      events = EventHubs.receive_events(p, 0, 10)
+      assert length(events) == 2
+      assert Enum.map(events, & &1["seq"]) == [1, 2]
+
+      bodies = Enum.map(events, & &1["body"])
+      assert Enum.map(bodies, &String.contains?(&1, "a22-evt-1")) == [true, false]
+      assert Enum.map(bodies, &String.contains?(&1, "a22-evt-2")) == [false, true]
+
+      # sender's partition key rides every inner event
+      assert Enum.all?(events, &(&1["partition_key"] == "pk-a22"))
+    end
+
+    test "3 complete inner data sections split into 3 events" do
+      p = part("a22f1-three")
+
+      envelope =
+        a22_multi_section_envelope([
+          a22_inner("a22-t-1"),
+          a22_inner("a22-t-2"),
+          a22_inner("a22-t-3")
+        ])
+
+      assert {:ok, 1, _} = EventHubs.send_event(p, envelope)
+
+      events = EventHubs.receive_events(p, 0, 10)
+      assert length(events) == 3
+      assert Enum.map(events, & &1["seq"]) == [1, 2, 3]
+
+      bodies = Enum.map(events, & &1["body"])
+
+      for i <- 1..3 do
+        assert Enum.map(bodies, &String.contains?(&1, "a22-t-#{i}")) ==
+                 Enum.map(1..3, &(&1 == i))
+      end
+    end
+
+    test "any incomplete inner data section fail-closes the whole message to ONE event" do
+      p = part("a22f1-fallback")
+
+      # section 2 is NOT a complete inner AMQP message (raw bytes, no body
+      # section on decode) — the Enum.all? guard refuses the split and the
+      # outer message is stored whole as ONE event.
+      envelope =
+        a22_multi_section_envelope([a22_inner("a22-good"), "raw-not-an-amqp-message"])
+
+      assert {:ok, 1, first} = EventHubs.send_event(p, envelope)
+      assert first["seq"] == 1
+
+      events = EventHubs.receive_events(p, 0, 10)
+      assert [%{"seq" => 1}] = events
+      assert String.contains?(hd(events)["body"], "a22-good")
+      assert String.contains?(hd(events)["body"], "raw-not-an-amqp-message")
+    end
+  end
 end
