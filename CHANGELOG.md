@@ -8,6 +8,26 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [26.10.18] - 2026-10-19
+
+AZB burn wave over the v26.10.16 surface. Highlights (receipts:
+docs/jira/v26.10.18/RECEIPTS.md):
+
+- Sovereign Midnight 18/18: all 18 bodies run untagged (`:sovereign_gap`
+  tag retired) — 18 tests, 0 failures.
+- G1 queue storage landed (azsim-burn/G1-QUEUE-STORAGE-SCOPING.md).
+- AZB-17 parallel plane matrix ALIVE: 8 containers x 4 planes
+  (receipts/azb-17-parallel-matrix.md).
+- Isolation gates green: tree GREEN 0 offenders
+  (commit 4106990; receipts/i29-env-leak-remediation.md).
+- KD-98 registered (witness receipts/i29-a22f1-witness.md,
+  receipts/i29-checkpoint3.md).
+- Budget gate 0/0/0 (regressions/renames/unbudgeted).
+- Validator standing fix landed.
+
+Carried to v26.10.19: G2-G4, ring re-run, plane-mounting
+(azsim-burn/G1-QUEUE-STORAGE-SCOPING.md).
+
 ## [26.10.16] - 2026-10-16
 
 Repair-and-hardening wave over the v26.10.14 release surface; no new
