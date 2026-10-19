@@ -95,7 +95,7 @@ if [ ! -x "$SMALT_BIN" ] && [ "${SMALT_BURN_IN_CONTAINER:-0}" != "1" ]; then
       echo "[chaos-kill] ANTI-VACUITY FAILED: sabotage run exited 0 — fence is vacuous" >&2
       exit 1
     fi
-    grep -q '"verdict":"DETS_UNREPAIRED'"'"'"' "$OUT/$RUN_TAG.jsonl" || {
+    grep -q 'DETS_UNREPAIRED' "$OUT/$RUN_TAG.jsonl" || {
       echo "[chaos-kill] ANTI-VACUITY FAILED: sabotage run failed without a DETS_UNREPAIRED row" >&2
       exit 1
     }

@@ -81,7 +81,7 @@ defmodule Smalt.Amqp.SaturationTest do
 
   test "8192 queues: atom delta stays bounded on the warmed table" do
     run_saturation_phase(256, drained_assert?: false, bounds_assert?: false)
-    run_saturation_phase(@n_queues_big, drained_assert?: false, bounds_assert?: true)
+    run_saturation_phase(@n_queues_big, drained_assert?: true, bounds_assert?: true)
   end
 
   test "poisoned messages deadletter with typed reason at saturation scale" do
@@ -445,7 +445,9 @@ defmodule Smalt.Amqp.SaturationTest do
     :erlang.garbage_collect()
 
     for pid <- Process.list() do
-      :erlang.garbage_collect(pid)
+      # major (fullsweep) GC: ordinary incremental GC leaves long-lived
+      # processes on their storm-grown heaps, reading as memory drift
+      :erlang.garbage_collect(pid, type: :major)
     end
 
     :ok
