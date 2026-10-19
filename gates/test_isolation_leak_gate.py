@@ -97,6 +97,15 @@ ALLOWLIST = {
     # The flagged put_env is inside a heredoc SCRIPT executed by a
     # subprocess BEAM (durability twin); zero leak into the test VM.
     "test/azsim/data_plane_test.exs",
+    # Sovereign Midnight injectors: variable-key save_env/2 helper
+    # (prev captured via Application.get_env before each put_env; on_exit
+    # put/delete restores prev, nil-preserving). ExUnit on_exit is LIFO,
+    # so stacked saves of the same key (:sts_clock x3) unwind to the
+    # original value; callbacks run on failure too (crash-safe).
+    # Empirically probed 2026-10-18 (receipt
+    # docs/jira/v26.10.18/receipts/i29-injectors-leakfix.md); scanner
+    # cannot bind variable keys.
+    "test/azsim/sovereign_midnight/sovereign_midnight_injectors_test.exs",
 }
 
 MUT_APPS = ("smalt", "logger")

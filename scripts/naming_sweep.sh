@@ -90,9 +90,9 @@ ALLOWLIST=(
   # docs-dod, 2026-10-16): KD-90-era B-leg note + KD-94 row (athena B-leg
   # receipt text). Same evidence-record class as the 12-gate-closure pins.
   "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:157"
-  # KD-94 row moved 252 -> 262 (10 lines inserted above it, i29 window edits
+  # KD-94 row moved 252 -> 262 -> 269 (i29 window edits + KD-98 registration
   # 2026-10-18); same KD-register-quotes-own-evidence class as the 157 pin.
-  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:262"
+  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:269"
     # v26.10.17 window affidavit quotes its run environment (absolute paths)
   # in its evidence-record tables (2026-10-17 relocation into docs/jira/).
   "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:3"
