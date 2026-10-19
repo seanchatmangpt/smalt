@@ -1,7 +1,7 @@
 # i29 Checkpoint 7 — census at HEAD 2e0b9b2
 
 - Subject: /Users/sac/smalt @ `2e0b9b2` (parent `83d3052`; coordinator landed TWO commits mid-census: `83d3052` budget-final2 and `2e0b9b2` azb-20 verification)
-- Context: solo(census; read-only git; no git mutations)
+Context: solo(census; read-only git; no git mutations)
 - Census time: 2026-10-19 ~00:30-00:40 PDT
 - Commands: `git status --porcelain` (fresh, mid-census), `git log --oneline -5`,
   `git diff --stat`, `git log -1 -- <paths>`, `git ls-files docs/jira/v26.10.18/burn/`,

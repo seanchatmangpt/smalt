@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-19
 - **Subject**: unpushed range `1eb89df..HEAD` (8b4f74f), 68 commits
-- **Context**: solo (read-only audit lane; no mutations performed; working tree was already dirty at lane start with 11 modified files from other in-flight lanes)
+Context: solo (read-only audit lane; no mutations performed; working tree was already dirty at lane start with 11 modified files from other in-flight lanes)
 - **Standing**: PARTIAL_ALIVE — 3 of 4 audit legs green; publish-dry gate 4 FAIL blocks READY
 
 ## Method

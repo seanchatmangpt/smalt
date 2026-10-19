@@ -84,3 +84,25 @@ arithmetic checkable by hand from the stated assumptions.
   stated hours falsifies it.
 - A restatement of the 238×–6204× table (rather than a cross-reference)
   falsifies it.
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+The receipt's Replay block re-run verbatim:
+
+```
+$ cat docs/jira/v26.10.14/receipts/lc1-8hop-tax-chain.md   # exists, 200 lines-class (read OK)
+$ head -3 docs/jira/v26.10.14/LIFECYCLE_TCO.md
+# Lifecycle TCO — the 8-Hop Cost Ledger (LC-2)
+
+Consolidated total-cost-of-ownership view of the 8-hop cloud-chain tax
+$ grep -n "LIFECYCLE_TCO" docs/jira/v26.10.14/BENCH_RESULTS.md
+(no output)
+```
+
+- `cat`/`head`: exit code 0 — the latency source (LC-1 receipt) and the
+  authored doc are both on disk and readable.
+- `grep`: exit code 1 — honest finding: `BENCH_RESULTS.md` is now a generated
+  artifact (`just bench-report`) and the hand-added pointer line this receipt
+  describes was dropped in a later regen. The pointer's absence is drift in
+  the generated file's inputs, not in this receipt; regenerate the report to
+  restore a pointer if wanted.

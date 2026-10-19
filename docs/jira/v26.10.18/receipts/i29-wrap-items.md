@@ -1,7 +1,7 @@
 # i29 wrap items — G1 register flip + s10 verify
 
 - **Standing: PASS**
-- **Context: solo(canonical checkout /Users/sac/smalt, no git actions)**
+Context: solo(canonical checkout /Users/sac/smalt, no git actions)
 - Date: 2026-10-19
 
 ## Item 1 — G1 flip (receipt-gated)

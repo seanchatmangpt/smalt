@@ -59,3 +59,19 @@ carried from fin-21/DoD-07/DoD-08, labeled as such.
 A reader who runs `just receipt-index` and gets totals other than
 receipts=124 sdk=15 total=139 suspects=13 (modulo lanes landing after this receipt),
 or who counts KD rows and finds the OPEN/closed split in FINAL.md wrong.
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+The receipt's own falsifier command, re-run (`just receipt-index`; the
+falsifier's "modulo lanes landing after this receipt" clause applies —
+totals have grown as later windows landed, which is the falsifier's
+sanctioned drift, not a refutation):
+
+```
+$ just receipt-index
+receipts=676 sdk=51 total=727 suspects=12
+```
+
+exit code 0. Note the run above was taken while this appended section was
+not yet on disk (the receipt itself was still counted SUSPECT in that
+run's 12); a regen after this append settles the final index.

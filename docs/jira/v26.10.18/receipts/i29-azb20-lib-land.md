@@ -1,7 +1,7 @@
 # i29-azb20-lib-land — azb-20 lib lane adoption
 
 - Standing: **ALIVE**
-- Context: pair(bench azb-20 census lane → adopt lane `_build-ft-az20h`, 2026-10-19)
+Context: pair(bench azb-20 census lane → adopt lane `_build-ft-az20h`, 2026-10-19)
 - Subject: dirty lib set `lib/smalt/arm_gateway/router.ex`, `lib/smalt/data_plane/blob_storage.ex`,
   `lib/smalt/data_plane/cosmos.ex`, `lib/smalt/data_plane/key_vault_actions.ex`
   (+304 at adoption; +344 after `docs/ERROR_CODES.md` regen, lib diff itself unchanged).

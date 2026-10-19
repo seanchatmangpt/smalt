@@ -2,7 +2,7 @@
 
 - Date: 2026-10-19
 - Subject: `MIX_BUILD_ROOT=_build-ft-fsg mix test` from /Users/sac/smalt (canonical checkout, main @ ab608be)
-- Context: solo
+Context: solo
 - Standing: PARTIAL_ALIVE — suite is green solo-per-file, LOAD-class failures under full-suite concurrency; no deterministic failure observed
 
 ## Command + output

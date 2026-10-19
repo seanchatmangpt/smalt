@@ -1,7 +1,7 @@
 # Receipt: i29-azb20-verify — AZB-20 gap-fix lane verification
 
 - **Standing**: PARTIAL_ALIVE — cosmos bulk partition-key cell CLOSED (full 20-probe witness, both bulk cells PASS); control-plane cells (header-audit x-ms-request-id, ARM control 500s, ARG-on-control 404, KV control 503) all REPRODUCED still-OPEN at the gap-fix tree.
-- **Context**: solo (test/data_plane/ test/arm/ test/wire/ tiers + `just azsim-sdk` matrix + standalone cosmos probe rerun)
+Context: solo (test/data_plane/ test/arm/ test/wire/ tiers + `just azsim-sdk` matrix + standalone cosmos probe rerun)
 - **Date**: 2026-10-19
 - **Subject**: shared dirty tree at HEAD `086c6aa` + in-flight gap-fix diffs in
   `lib/smalt/arm_gateway/router.ex`, `lib/smalt/data_plane/{blob_storage,cosmos,key_vault_actions}.ex`,

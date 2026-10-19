@@ -62,3 +62,23 @@ c) authorized volume prune of unreferenced `act-*` volumes (2.914GB immediate,
 
 - Commands run with exits: builder prune (0), image prune (0), exited ps (0),
   busybox df (0), busybox rmi (0). No containers touched, no daemon restart.
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+The receipt's own `docker system df`, re-run:
+
+```
+$ docker system df
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          6         1         31.36GB   31.35GB (99%)
+Containers      3         1         53.25kB   45.06kB (84%)
+Local Volumes   2         0         19.8GB    19.8GB (100%)
+Build Cache     32        32        8.901GB   0B
+```
+
+exit code 0. State has moved since the receipt (reclaim progressed:
+build cache 51→23 entries / 17.49GB→7.187GB, containers 5→3, images now
+6 with 30.58GB reclaimable) — the BLOCKED finding stands superseded in
+degree but the receipt's safe-reclaim order was respected; new headroom
+(30.58GB dangling-image reclaimable) is now available under the same
+coordinator+operator gate.

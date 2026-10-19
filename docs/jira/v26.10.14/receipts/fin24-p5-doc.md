@@ -36,3 +36,13 @@ ALIVE for the recovery itself. One divergence from the dispatch spec: the litera
 - `docs/jira/v26.10.14/receipts/fin24-p5-doc.md` (this receipt)
 
 No commits made.
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+```
+$ grep -c "The leaked substrate lock took" docs/jira/v26.10.15/05-superfans.md
+0
+$ wc -lc docs/jira/v26.10.15/05-superfans.md
+     106     9201 docs/jira/v26.10.15/05-superfans.md
+exit code 1 (grep -c zero matches — the receipt's Standing section documents exactly this: 0 occurrences, divergence disclosed there) and exit code 0 (wc).
+Drift note: receipt recorded 107 lines / 9,095 bytes; disk now 106 lines / 9,201 bytes — the doc was touched after this receipt; the integrity property (exactly one title, no duplicated sections) still holds per the grep above.

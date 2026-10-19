@@ -2,7 +2,7 @@
 
 - Date: 2026-10-19 00:30 PDT
 - Actor: G1 verify lane (independent re-run)
-- Context: pair(G1 watch lane wrote test file 00:29; this lane verified compile + tests)
+Context: pair(G1 watch lane wrote test file 00:29; this lane verified compile + tests)
 
 ## Checks
 

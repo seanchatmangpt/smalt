@@ -40,7 +40,7 @@ count, or PASS/FAIL token) found in the file.
 |---|---|---|---|
 | 2026-10-15-k | [2026-10-15-kd53-eh-batch-witness.md](receipts/2026-10-15-kd53-eh-batch-witness.md) | PASS | KD-53 witness receipt — EH multi-event batch covers shim **NO-CONTEXT** |
 | a1-change-fe | [a1-change-feed.md](receipts/a1-change-feed.md) | UNKNOWN | A-1 adversarial cross-product bench — Cosmos change-feed → Event Hubs → Blob tiering **NO-CONTEXT** |
-| a2-cas-conte | [a2-cas-contention.md](receipts/a2-cas-contention.md) | SUSPECT | A-2: High-Contention Optimistic CAS (lane A-2, v26.10.14) **NO-CONTEXT** |
+| a2-cas-conte | [a2-cas-contention.md](receipts/a2-cas-contention.md) | UNKNOWN | A-2: High-Contention Optimistic CAS (lane A-2, v26.10.14) **NO-CONTEXT** |
 | a3-cross-par | [a3-cross-partition.md](receipts/a3-cross-partition.md) | UNKNOWN | A-3 Receipt: Cross-Partition Multi-Entity Atomic Fan-Out — Transaction Semantics **NO-CONTEXT** |
 | a4-crypto-th | [a4-crypto-throughput.md](receipts/a4-crypto-throughput.md) | UNKNOWN | A-4 — Confidential Ledger / SKR cryptographic throughput (BEAM tier) **NO-CONTEXT** |
 | a7-hns-renam | [a7-hns-rename.md](receipts/a7-hns-rename.md) | UNKNOWN | A-7: HNS Massive Recursive Rename (ADLS Gen2 parity probe) **NO-CONTEXT** |
@@ -58,7 +58,7 @@ count, or PASS/FAIL token) found in the file.
 | bench-09-eh- | [bench-09-eh-beam.md](receipts/bench-09-eh-beam.md) | UNKNOWN | B-9: Event Hubs BEAM-level pipeline benchmark (v26.10.14) **NO-CONTEXT** |
 | bench-10-soa | [bench-10-soak-spike.md](receipts/bench-10-soak-spike.md) | PASS | B-10: Soak + spike re-run (v26.10.14) **NO-CONTEXT** |
 | bench-11-cha | [bench-11-chaos-tls.md](receipts/bench-11-chaos-tls.md) | UNKNOWN | B-11 chaos kill + TLS churn re-run **NO-CONTEXT** |
-| bench-12-con | [bench-12-consolidation.md](receipts/bench-12-consolidation.md) | SUSPECT | bench-12-consolidation **NO-CONTEXT** |
+| bench-12-con | [bench-12-consolidation.md](receipts/bench-12-consolidation.md) | UNKNOWN | **NO-CONTEXT** |
 | c1-cosmos-bl | [c1-cosmos-blob.md](receipts/c1-cosmos-blob.md) | UNKNOWN | bench lane C-1 — Cosmos<->Blob ETL pipeline (ingest/transform/archive) **NO-CONTEXT** |
 | c4-kv-cosmos | [c4-kv-cosmos.md](receipts/c4-kv-cosmos.md) | ALIVE (SUSPECT) | Bench Lane C-4: Key Vault envelope-encryption -> Cosmos **NO-CONTEXT** |
 | c5-arm-storm | [c5-arm-storm.md](receipts/c5-arm-storm.md) | PASS | C-5 Receipt: ARM Control-Plane Saturation Storm **NO-CONTEXT** |
@@ -96,18 +96,18 @@ count, or PASS/FAIL token) found in the file.
 | fin-21-final | [fin-21-final-wrap.md](receipts/fin-21-final-wrap.md) | UNKNOWN | fin-21 — Final wrap (coordinator-direct) **NO-CONTEXT** |
 | fin-22-final | [fin-22-final-index.md](receipts/fin-22-final-index.md) | UNKNOWN | fin-22 — Final index + FINAL.md (finish lane) **NO-CONTEXT** |
 | fin-23-post- | [fin-23-post-commit.md](receipts/fin-23-post-commit.md) | PASS | fin-23 — post-commit re-verification (fin lane) **NO-CONTEXT** |
-| fin24-p5-doc | [fin24-p5-doc.md](receipts/fin24-p5-doc.md) | ALIVE (SUSPECT) | fin24-p5 — superfans WO doc recovery **NO-CONTEXT** |
+| fin24-p5-doc | [fin24-p5-doc.md](receipts/fin24-p5-doc.md) | ALIVE | fin24-p5 — superfans WO doc recovery **NO-CONTEXT** |
 | fin25-bench- | [fin25-bench-final.md](receipts/fin25-bench-final.md) | UNKNOWN | fin25-bench-final **NO-CONTEXT** |
 | fin26-parity | [fin26-parity-restamp.md](receipts/fin26-parity-restamp.md) | CLOSED | fin26 — parity re-stamp after S-wave KD closures (v26.10.15) **NO-CONTEXT** |
 | fin27-batch- | [fin27-batch-send.md](receipts/fin27-batch-send.md) | UNKNOWN | fin27: eh-run `batch-send` probe drift fix — receipt **NO-CONTEXT** |
 | fin28-precom | [fin28-precommit.md](receipts/fin28-precommit.md) | UNKNOWN | fin-28 — Final Pre-Commit Checklist **NO-CONTEXT** |
-| fin30-landin | [fin30-landing.md](receipts/fin30-landing.md) | SUSPECT | fin30 — Commit Executor Landing Receipt **NO-CONTEXT** |
+| fin30-landin | [fin30-landing.md](receipts/fin30-landing.md) | UNKNOWN | fin30 — Commit Executor Landing Receipt **NO-CONTEXT** |
 | fin31-post-c | [fin31-post-commit.md](receipts/fin31-post-commit.md) | UNKNOWN | fin31 — Post-Commit Gate Re-Verification **NO-CONTEXT** |
-| fin32-wrap-f | [fin32-wrap-final.md](receipts/fin32-wrap-final.md) | PARTIAL_ALIVE (SUSPECT) | fin32 — final wrap artifacts (terminal FINAL.md) **NO-CONTEXT** |
-| fin33-planni | [fin33-planning-summary.md](receipts/fin33-planning-summary.md) | PARTIAL_ALIVE (SUSPECT) | fin-33 — v26.10.15 window planning summary **NO-CONTEXT** |
+| fin32-wrap-f | [fin32-wrap-final.md](receipts/fin32-wrap-final.md) | PARTIAL_ALIVE | fin32 — final wrap artifacts (terminal FINAL.md) **NO-CONTEXT** |
+| fin33-planni | [fin33-planning-summary.md](receipts/fin33-planning-summary.md) | PARTIAL_ALIVE | fin-33 — v26.10.15 window planning summary **NO-CONTEXT** |
 | fin34-ledger | [fin34-ledger-close.md](receipts/fin34-ledger-close.md) | UNKNOWN | fin34 — session knowledge-ledger close **NO-CONTEXT** |
 | lc1-8hop-tax | [lc1-8hop-tax-chain.md](receipts/lc1-8hop-tax-chain.md) | ALIVE (SUSPECT) | LC-1 Receipt — 8-Hop Cloud-Chain Tax Pipeline (lifecycle harness) **NO-CONTEXT** |
-| lc2-tco-ledg | [lc2-tco-ledger.md](receipts/lc2-tco-ledger.md) | SUSPECT | lc2-tco-ledger **NO-CONTEXT** |
+| lc2-tco-ledg | [lc2-tco-ledger.md](receipts/lc2-tco-ledger.md) | UNKNOWN | lc2-tco-ledger **NO-CONTEXT** |
 | n1-grid | [n1-grid.md](receipts/n1-grid.md) | PASS | N-1 Grid Lifecycle Stress Receipt **NO-CONTEXT** |
 | n2-action-st | [n2-action-storm.md](receipts/n2-action-storm.md) | UNKNOWN | N-2 Action Storm Receipt **NO-CONTEXT** |
 | n3-rsc-race | [n3-rsc-race.md](receipts/n3-rsc-race.md) | UNKNOWN | N-3 RSC Streaming Race Bench — Receipt **NO-CONTEXT** |
@@ -502,14 +502,14 @@ count, or PASS/FAIL token) found in the file.
 | i29-amqp-wir | [i29-amqp-wire-fresh.md](../v26.10.18/receipts/i29-amqp-wire-fresh.md) | PARTIAL_ALIVE | i29 — AMQP wire tier, fresh run (2026-10-18) |
 | i29-arg-rout | [i29-arg-route-family.md](../v26.10.18/receipts/i29-arg-route-family.md) | PASS | i29 — ARG route family: :sovereign_gap 5.3 un-tag (G6 close) |
 | i29-audited- | [i29-audited-caps-leakfix.md](../v26.10.18/receipts/i29-audited-caps-leakfix.md) | PASS | i29: audited_capabilities_test.exs leak-fix (9 ETS sites -> 0) |
-| i29-azb20-li | [i29-azb20-lib-land.md](../v26.10.18/receipts/i29-azb20-lib-land.md) | ALIVE | i29-azb20-lib-land — azb-20 lib lane adoption **NO-CONTEXT** |
-| i29-azb20-ve | [i29-azb20-verify.md](../v26.10.18/receipts/i29-azb20-verify.md) | PARTIAL_ALIVE | i29-azb20-verify — AZB-20 gap-fix lane verification **NO-CONTEXT** |
+| i29-azb20-li | [i29-azb20-lib-land.md](../v26.10.18/receipts/i29-azb20-lib-land.md) | ALIVE | i29-azb20-lib-land — azb-20 lib lane adoption |
+| i29-azb20-ve | [i29-azb20-verify.md](../v26.10.18/receipts/i29-azb20-verify.md) | PARTIAL_ALIVE | i29-azb20-verify — AZB-20 gap-fix lane verification |
 | i29-azb24-bu | [i29-azb24-bump.md](../v26.10.18/receipts/i29-azb24-bump.md) | UNKNOWN | i29 AZB-24 Version Bump (26.10.18) |
 | i29-azsim-re | [i29-azsim-regression.md](../v26.10.18/receipts/i29-azsim-regression.md) | PARTIAL_ALIVE | i29 — azsim regression run |
 | i29-bench-ch | [i29-bench-check.md](../v26.10.18/receipts/i29-bench-check.md) | FAIL | i29 bench-lane smoke (post-0009df3) |
 | i29-budget-e | [i29-budget-export-fix.md](../v26.10.18/receipts/i29-budget-export-fix.md) | FAIL | i29 — budget export concurrent-lane isolation (justfile recipe fix) |
 | i29-budget-f | [i29-budget-final.md](../v26.10.18/receipts/i29-budget-final.md) | PASS | i29-budget-final |
-| i29-budget-f | [i29-budget-final2.md](../v26.10.18/receipts/i29-budget-final2.md) | PASS | i29 budget gate final (lane receipt) **NO-CONTEXT** |
+| i29-budget-f | [i29-budget-final2.md](../v26.10.18/receipts/i29-budget-final2.md) | PASS | i29 budget gate final (lane receipt) |
 | i29-budget-r | [i29-budget-reseed.md](../v26.10.18/receipts/i29-budget-reseed.md) | CLOSED | i29 Budget Re-Seed (test_budgets.json refresh, 2026-10-18/19) |
 | i29-budget-v | [i29-budget-verify.md](../v26.10.18/receipts/i29-budget-verify.md) | PASS | i29 budget gate verification (NOT re-seed verification) |
 | i29-canonica | [i29-canonical-fresh.md](../v26.10.18/receipts/i29-canonical-fresh.md) | PASS | i29 — Canonical projection regen-verify (capabilities.json + THIRD_PARTY.md) |
@@ -521,7 +521,8 @@ count, or PASS/FAIL token) found in the file.
 | i29-checkpoi | [i29-checkpoint4.md](../v26.10.18/receipts/i29-checkpoint4.md) | ALIVE | i29 Checkpoint 4 — in-flight lane census at HEAD 086c6aa |
 | i29-checkpoi | [i29-checkpoint5.md](../v26.10.18/receipts/i29-checkpoint5.md) | UNKNOWN | i29 Checkpoint 5 — in-flight lane census at HEAD 0351252 |
 | i29-checkpoi | [i29-checkpoint6.md](../v26.10.18/receipts/i29-checkpoint6.md) | UNKNOWN | i29 Checkpoint 6 — in-flight lane census at HEAD d577677 |
-| i29-checkpoi | [i29-checkpoint7.md](../v26.10.18/receipts/i29-checkpoint7.md) | UNKNOWN | i29 Checkpoint 7 — census at HEAD 2e0b9b2 **NO-CONTEXT** |
+| i29-checkpoi | [i29-checkpoint7.md](../v26.10.18/receipts/i29-checkpoint7.md) | UNKNOWN | i29 Checkpoint 7 — census at HEAD 2e0b9b2 |
+| i29-checkpoi | [i29-checkpoint8.md](../v26.10.18/receipts/i29-checkpoint8.md) | ALIVE | i29 Checkpoint 8 — Dirty-Tree Census (post azb24-bump) |
 | i29-colima-s | [i29-colima-stop-runbook.md](../v26.10.18/receipts/i29-colima-stop-runbook.md) | PARTIAL_ALIVE | I29 — Colima-Stop Runbook (AZB-23 quiet-machine transition) |
 | i29-compile- | [i29-compile-clean.md](../v26.10.18/receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
 | i29-corpus-f | [i29-corpus-fresh.md](../v26.10.18/receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
@@ -540,14 +541,14 @@ count, or PASS/FAIL token) found in the file.
 | i29-court-x2 | [i29-court-x2-final.md](../v26.10.18/receipts/i29-court-x2-final.md) | SUSPECT | **NO-CONTEXT** |
 | i29-court23- | [i29-court23-prep.md](../v26.10.18/receipts/i29-court23-prep.md) | PARTIAL_ALIVE | i29 — AZB-23 gate executor pre-positioned (court23.sh) |
 | i29-dataplan | [i29-dataplane-soak.md](../v26.10.18/receipts/i29-dataplane-soak.md) | PASS | i29 Data-Plane Soak (fresh ×2) |
-| i29-docker-r | [i29-docker-reclaim.md](../v26.10.18/receipts/i29-docker-reclaim.md) | SUSPECT | i29-docker-reclaim — AZB-18 cgroup soak disk reclaim attempt |
+| i29-docker-r | [i29-docker-reclaim.md](../v26.10.18/receipts/i29-docker-reclaim.md) | UNKNOWN | i29-docker-reclaim — AZB-18 cgroup soak disk reclaim attempt |
 | i29-docs-dia | [i29-docs-diaataxis.md](../v26.10.18/receipts/i29-docs-diaataxis.md) | PASS | I29 — Diátaxis structure audit, docs landed this window |
 | i29-docs-dri | [i29-docs-drift-fix.md](../v26.10.18/receipts/i29-docs-drift-fix.md) | PASS | I29 — docs content-drift fixes (follow-up to i29-docs-diaataxis) |
 | i29-docs-gat | [i29-docs-gates2.md](../v26.10.18/receipts/i29-docs-gates2.md) | PASS | i29 — docs gates post-44b0859 (receipt-index, docs-dod-check, naming-sweep, RECEIPTS consistency) |
 | i29-docs-gat | [i29-docs-gates3.md](../v26.10.18/receipts/i29-docs-gates3.md) | PASS | i29 docs gates 3 — post-d1298be receipt-index / docs-dod-check / naming-sweep |
 | i29-docs-spo | [i29-docs-spot3.md](../v26.10.18/receipts/i29-docs-spot3.md) | PASS | i29 docs spot-audit 3 — azsim-burn + checkpoint5 conventions |
 | i29-doctor-d | [i29-doctor-dod-gapcensus.md](../v26.10.18/receipts/i29-doctor-dod-gapcensus.md) | ALIVE | i29-doctor-dod-gapcensus — doctor_dod.py GAP-census retirement |
-| i29-e2e-fina | [i29-e2e-final.md](../v26.10.18/receipts/i29-e2e-final.md) | PASS | i29 — E2E tier full re-verify post-fixes **NO-CONTEXT** |
+| i29-e2e-fina | [i29-e2e-final.md](../v26.10.18/receipts/i29-e2e-final.md) | PASS | i29 — E2E tier full re-verify post-fixes |
 | i29-e2e-fixe | [i29-e2e-fixes.md](../v26.10.18/receipts/i29-e2e-fixes.md) | ALIVE | i29-e2e-fixes — the 4 e2e-tree defects from i29-e2e-fresh closed |
 | i29-e2e-fres | [i29-e2e-fresh.md](../v26.10.18/receipts/i29-e2e-fresh.md) | PARTIAL_ALIVE | i29-e2e-fresh — E2E tier fresh run on post-0009df3 (v26.10.18) |
 | i29-e2e-rech | [i29-e2e-recheck.md](../v26.10.18/receipts/i29-e2e-recheck.md) | UNKNOWN | i29 e2e recheck — s9 spot check (lane: e2e-fix recheck) |
@@ -561,14 +562,15 @@ count, or PASS/FAIL token) found in the file.
 | i29-full-soa | [i29-full-soak-c.md](../v26.10.18/receipts/i29-full-soak-c.md) | PARTIAL_ALIVE | i29 Full Offline Suite — Receipt (full-soak-c) |
 | i29-full-soa | [i29-full-soak-d.md](../v26.10.18/receipts/i29-full-soak-d.md) | PASS | i29-d — Full soak leg D: `mix test` (stress excluded) |
 | i29-full-soa | [i29-full-soak-e.md](../v26.10.18/receipts/i29-full-soak-e.md) | UNKNOWN | i29 — Full-Suite Pre-Gate Leg E (full soak, lane build root) |
-| i29-full-soa | [i29-full-soak-f.md](../v26.10.18/receipts/i29-full-soak-f.md) | UNKNOWN | i29 leg F — full-suite pre-gate soak at HEAD **NO-CONTEXT** |
+| i29-full-soa | [i29-full-soak-f.md](../v26.10.18/receipts/i29-full-soak-f.md) | UNKNOWN | i29 leg F — full-suite pre-gate soak at HEAD |
+| i29-full-soa | [i29-full-soak-g.md](../v26.10.18/receipts/i29-full-soak-g.md) | PARTIAL_ALIVE | i29 full-suite pre-gate leg G (`mix test`) |
 | i29-full-soa | [i29-full-soak.md](../v26.10.18/receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
-| i29-g1-land | [i29-g1-land.md](../v26.10.18/receipts/i29-g1-land.md) | ALIVE | G1 Queue Storage — Land Receipt (i29) **NO-CONTEXT** |
+| i29-g1-land | [i29-g1-land.md](../v26.10.18/receipts/i29-g1-land.md) | ALIVE | G1 Queue Storage — Land Receipt (i29) |
 | i29-g1-scopi | [i29-g1-scoping.md](../v26.10.18/receipts/i29-g1-scoping.md) | PASS | i29 — G1 Queue Storage Scoping Receipt |
-| i29-g1-test- | [i29-g1-test-verify.md](../v26.10.18/receipts/i29-g1-test-verify.md) | UNKNOWN | G1 Verify: queue_storage test exists + green x2 **NO-CONTEXT** |
+| i29-g1-test- | [i29-g1-test-verify.md](../v26.10.18/receipts/i29-g1-test-verify.md) | UNKNOWN | G1 Verify: queue_storage test exists + green x2 |
 | i29-g5-injec | [i29-g5-injectors.md](../v26.10.18/receipts/i29-g5-injectors.md) | ALIVE | i29 — Sovereign Midnight G5-narrow residual injectors landed (test-side, no lib/ changes) |
 | i29-gates-po | [i29-gates-postfix.md](../v26.10.18/receipts/i29-gates-postfix.md) | PARTIAL_ALIVE | i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates) |
-| i29-gates-re | [i29-gates-release-sha.md](../v26.10.18/receipts/i29-gates-release-sha.md) | PASS | i29 — Gates Re-run at Release SHA (AZB23-PREFLIGHT table D refresh) **NO-CONTEXT** |
+| i29-gates-re | [i29-gates-release-sha.md](../v26.10.18/receipts/i29-gates-release-sha.md) | PASS | i29 — Gates Re-run at Release SHA (AZB23-PREFLIGHT table D refresh) |
 | i29-graceful | [i29-gracefulstop-premise.md](../v26.10.18/receipts/i29-gracefulstop-premise.md) | PASS | i29 GracefulStopTest boot-premise fix (F59 face) |
 | i29-have-sna | [i29-have-snapshot.md](../v26.10.18/receipts/i29-have-snapshot.md) | PARTIAL_ALIVE | i29 HAVE snapshot (guard + watchdog + telemetry + status) |
 | i29-host-dis | [i29-host-disk-census.md](../v26.10.18/receipts/i29-host-disk-census.md) | PASS | I29 Host Disk Census |
@@ -593,8 +595,8 @@ count, or PASS/FAIL token) found in the file.
 | i29-publish- | [i29-publish-dry-fresh.md](../v26.10.18/receipts/i29-publish-dry-fresh.md) | PARTIAL_ALIVE | i29 — Publish-gate dry run + generated-artifact freshness (post-0009df3) |
 | i29-push-rea | [i29-push-readiness.md](../v26.10.18/receipts/i29-push-readiness.md) | ALIVE | i29 — push-readiness audit (main vs origin/main), 2026-10-18 |
 | i29-push-rea | [i29-push-readiness2.md](../v26.10.18/receipts/i29-push-readiness2.md) | UNKNOWN | i29-push-readiness2 — re-audit of the unpushed b9a6dc1 lineage |
-| i29-push-rea | [i29-push-readiness3.md](../v26.10.18/receipts/i29-push-readiness3.md) | UNKNOWN | i29 — Push-readiness audit #3 (origin/main..main) **NO-CONTEXT** |
-| i29-push-rea | [i29-push-readiness4.md](../v26.10.18/receipts/i29-push-readiness4.md) | PARTIAL_ALIVE | i29-push-readiness4 — Push-Readiness Audit (read-only) **NO-CONTEXT** |
+| i29-push-rea | [i29-push-readiness3.md](../v26.10.18/receipts/i29-push-readiness3.md) | UNKNOWN | i29 — Push-readiness audit #3 (origin/main..main) |
+| i29-push-rea | [i29-push-readiness4.md](../v26.10.18/receipts/i29-push-readiness4.md) | PARTIAL_ALIVE | i29-push-readiness4 — Push-Readiness Audit (read-only) |
 | i29-ratchet- | [i29-ratchet-regression.md](../v26.10.18/receipts/i29-ratchet-regression.md) | ALIVE | i29 — ratchet mod regression after naming-sweep repair lane |
 | i29-receipt- | [i29-receipt-final.md](../v26.10.18/receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
 | i29-replay-f | [i29-replay-fences.md](../v26.10.18/receipts/i29-replay-fences.md) | PARTIAL_ALIVE | i29 — Generated-Artifact Replay Fences (post-0009df3 tree) |
@@ -620,7 +622,8 @@ count, or PASS/FAIL token) found in the file.
 | i29-stress-p | [i29-stress-pregate.md](../v26.10.18/receipts/i29-stress-pregate.md) | PASS | i29 — stress-tier pre-gate at current HEAD (post 50b9860 + e90f076) |
 | i29-stress-r | [i29-stress-real-fixes.md](../v26.10.18/receipts/i29-stress-real-fixes.md) | PASS | i29 — real deterministic failures from i29-stress-full: store-table coverage + composite ETS residue |
 | i29-stress-r | [i29-stress-residual-classify.md](../v26.10.18/receipts/i29-stress-residual-classify.md) | PASS | i29-stress-residual-classify |
-| i29-true-lea | [i29-true-leak-repair.md](../v26.10.18/receipts/i29-true-leak-repair.md) | FAIL | i29 true-leak repair — scoped isolation court 6→0 **NO-CONTEXT** |
+| i29-suspect- | [i29-suspect-hygiene.md](../v26.10.18/receipts/i29-suspect-hygiene.md) | PASS | i29 suspect hygiene — SUSPECT/NO-CONTEXT receipt sweep (light lane) |
+| i29-true-lea | [i29-true-leak-repair.md](../v26.10.18/receipts/i29-true-leak-repair.md) | FAIL | i29 true-leak repair — scoped isolation court 6→0 |
 | i29-validato | [i29-validator-standing-fix.md](../v26.10.18/receipts/i29-validator-standing-fix.md) | ALIVE | i29 — validate_burn.py standing derivation fix (fail-closed) |
 | i29-verify-r | [i29-verify-residual.md](../v26.10.18/receipts/i29-verify-residual.md) | ALIVE | i29 — verify-all residual faces triage at current HEAD |
 | i29-w3-pytes | [i29-w3-pytest-fix.md](../v26.10.18/receipts/i29-w3-pytest-fix.md) | ALIVE | i29 — w3 session-ops pytest residual face resolved (3 failed → green ×2, zero diff) |
@@ -628,9 +631,10 @@ count, or PASS/FAIL token) found in the file.
 | i29-wire-fre | [i29-wire-fresh.md](../v26.10.18/receipts/i29-wire-fresh.md) | PASS | i29 wire fresh-leg receipt |
 | i29-wire-fre | [i29-wire-fresh2.md](../v26.10.18/receipts/i29-wire-fresh2.md) | UNKNOWN | i29 — Wire tier 2x fresh at HEAD |
 | i29-wire-fre | [i29-wire-fresh3.md](../v26.10.18/receipts/i29-wire-fresh3.md) | FAIL | i29 — Wire tier 2x fresh at HEAD (fresh3) |
-| i29-wire-fre | [i29-wire-fresh4.md](../v26.10.18/receipts/i29-wire-fresh4.md) | UNKNOWN | i29 — Wire tier 2x fresh at HEAD (fresh4) **NO-CONTEXT** |
+| i29-wire-fre | [i29-wire-fresh4.md](../v26.10.18/receipts/i29-wire-fresh4.md) | UNKNOWN | i29 — Wire tier 2x fresh at HEAD (fresh4) |
 | i29-wire-pre | [i29-wire-pregate.md](../v26.10.18/receipts/i29-wire-pregate.md) | UNKNOWN | i29 AMQP wire pre-gate — 2 full legs at current HEAD (build root _build-ft-w8) |
-| i29-wrap-ite | [i29-wrap-items.md](../v26.10.18/receipts/i29-wrap-items.md) | PASS | i29 wrap items — G1 register flip + s10 verify **NO-CONTEXT** |
+| i29-wire-pre | [i29-wire-pregate2.md](../v26.10.18/receipts/i29-wire-pregate2.md) | UNKNOWN | i29 AMQP wire pre-gate ×2 — build root _build-ft-w9 |
+| i29-wrap-ite | [i29-wrap-items.md](../v26.10.18/receipts/i29-wrap-items.md) | PASS | i29 wrap items — G1 register flip + s10 verify |
 | i29-wrap-pre | [i29-wrap-prep.md](../v26.10.18/receipts/i29-wrap-prep.md) | PASS | i29 — wrap prep for AZB-23/24 (receipt-index, docs-dod, TEST_ISOLATION, TICKETS sweep) |
 | i29-ws-cli-f | [i29-ws-cli-fresh.md](../v26.10.18/receipts/i29-ws-cli-fresh.md) | PASS | i29 — ws-lint / ws-build / ws-court / cli-test fresh verification legs |
 | i30-checkpoi | [i30-checkpoint-prep.md](../v26.10.18/receipts/i30-checkpoint-prep.md) | PASS | I30 checkpoint prep — integration-prep sweep |
@@ -735,7 +739,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | SUSPECT | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -801,20 +805,13 @@ No receipt file on disk: cli-02.
 Receipts asserting results with no real output found in-file:
 
 - **SUSPECT**: `06-blob-x-ms-date-unvalidated.md` (standing UNSUPPORTED)
-- **SUSPECT**: `a2-cas-contention.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-02-blob-ts.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-03-cosmos-ts.md` (standing ALIVE)
 - **SUSPECT**: `bench-04-messaging-ts.md` (standing UNKNOWN)
 - **SUSPECT**: `bench-05-python-mirror.md` (standing UNKNOWN)
-- **SUSPECT**: `bench-12-consolidation.md` (standing UNKNOWN)
 - **SUSPECT**: `c4-kv-cosmos.md` (standing ALIVE)
 - **SUSPECT**: `c8-chaos-cross.md` (standing UNKNOWN)
 - **SUSPECT**: `errc4-hdr.md` (standing ALIVE)
-- **SUSPECT**: `fin24-p5-doc.md` (standing ALIVE)
-- **SUSPECT**: `fin30-landing.md` (standing UNKNOWN)
-- **SUSPECT**: `fin32-wrap-final.md` (standing PARTIAL_ALIVE)
-- **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
 - **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
-- **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)
 - **SUSPECT**: `i29-court-x2-final.md` (standing UNKNOWN)
-- **SUSPECT**: `i29-docker-reclaim.md` (standing UNKNOWN)
+- **SUSPECT**: `spc-bands.md` (standing UNKNOWN)

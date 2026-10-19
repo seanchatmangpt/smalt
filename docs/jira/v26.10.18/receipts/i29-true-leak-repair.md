@@ -1,6 +1,7 @@
 # i29 true-leak repair — scoped isolation court 6→0
 
-Date: 2026-10-19. Context: pair(i29 true-leak repair lane, isolation-court
+Date: 2026-10-19
+Context: pair(i29 true-leak repair lane, isolation-court
 scanner twin). Build root `_build-ft-i29`, no git operations.
 
 ## Question

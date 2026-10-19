@@ -41,3 +41,17 @@ proceeded. Residual churners were bench-lane writers (scripts/bench, workspace/l
 ## Files left uncommitted
 
 None.
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+The receipt's HEAD precondition check, re-run on the canonical checkout:
+
+```
+$ git rev-parse --short=7 HEAD
+502c4ed
+$ git log --oneline -1 518b31a
+518b31a v26.10.14: release work-order landing — 20 WOs, 12 workspace lanes, 8 CLI lanes, 15 SDK courts, DoD wave
+```
+
+exit code 0 (both). The receipt's landing base `518b31a` is intact in history;
+HEAD has since advanced (post-window commits), as expected for a closed window.

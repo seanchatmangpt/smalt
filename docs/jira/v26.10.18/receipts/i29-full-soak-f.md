@@ -3,7 +3,7 @@
 - **Date**: 2026-10-19 00:32–00:47 PDT
 - **Subject**: /Users/sac/smalt @ main 2e0b9b2 (dirty tree: in-flight AZB-20-lane edits — blob_storage / egress_router / arm_gateway router / queue_storage, per `git status`)
 - **Command**: `MIX_BUILD_ROOT=_build-ft-fsf mix test` (from /Users/sac/smalt)
-- **Context**: solo(mix test full suite, 3 complete attempts + 1 solo reclass run; concurrent lanes editing the same tree — file mtimes moved mid-observation)
+Context: solo(mix test full suite, 3 complete attempts + 1 solo reclass run; concurrent lanes editing the same tree — file mtimes moved mid-observation)
 
 ## Attempts
 

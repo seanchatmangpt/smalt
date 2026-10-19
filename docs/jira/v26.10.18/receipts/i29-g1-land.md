@@ -1,7 +1,7 @@
 # G1 Queue Storage — Land Receipt (i29)
 
 - **Standing: ALIVE** (surface landed, engine + wire tiers green x2)
-- **Context: pair(egress-lane / G1 queue lane, canonical checkout /Users/sac/smalt, no git commits)**
+Context: pair(egress-lane / G1 queue lane, canonical checkout /Users/sac/smalt, no git commits)
 - Date: 2026-10-19
 
 ## Subject

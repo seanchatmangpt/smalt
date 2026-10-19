@@ -50,3 +50,14 @@ A first BEAM run showed 2 phantom counters at N=100 and 19 at N=1000. Diagnosed 
 - BEAM tier uses fixed-base CAS per round; no backoff/jitter modeled (models the worst-case synchronous retry storm, intentionally).
 - Wire agg throughput at N=100 (4,188/s) > N=10 (2,538/s) is per-connection HTTP keep-alive amortization at 500 vs 50 attempts, not a contention benefit.
 - Post-run `database.delete()` cleanup returned 404 (container delete already cascaded); recorded, no data impact — all rounds read back before cleanup.
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+The receipt's own grep re-run on the immutable JSONL on disk:
+
+```
+$ grep -c '"ok":false' docs/jira/v26.10.14/bench/a2-cas-contention.jsonl docs/jira/v26.10.14/bench/a2-cas-contention-sdk.jsonl
+docs/jira/v26.10.14/bench/a2-cas-contention.jsonl:0
+docs/jira/v26.10.14/bench/a2-cas-contention-sdk.jsonl:0
+```
+exit code 1 (grep -c with zero matches — the expected invariant outcome: zero phantom rows in both files).

@@ -1,6 +1,8 @@
 # i29 — E2E tier full re-verify post-fixes
 
-Date: 2026-10-19 · Context: slice(7 scenarios) · Repo: /Users/sac/smalt
+Date: 2026-10-19
+Context: slice(7 scenarios)
+Repo: /Users/sac/smalt
 Skipped per dispatch: s1_iac_chain, s3_pipeline, s7_worm (canonical-port BLOCKED-ENV).
 Ran sequentially, port 9443 free before start (lsof empty).
 

@@ -44,3 +44,13 @@ justification column, and PLANNING.md says so explicitly on its face.
 A reader who opens `00-*.md` and finds a C1-C6 taxonomy that contradicts the table in
 PLANNING.md §1 — in that case PLANNING.md must be reconciled to the landed baseline
 doc (or the baseline doc to the receipts).
+
+## Replay (2026-10-19, i29 suspect-hygiene lane)
+
+```
+$ ls -l docs/jira/v26.10.15/PLANNING.md
+-rw-r--r--@ 1 sac  staff  6011 Oct 15 20:20 docs/jira/v26.10.15/PLANNING.md
+```
+
+exit code 0 — the subject doc is on disk, unmodified since the receipt
+(mtime 2026-10-15 20:20).

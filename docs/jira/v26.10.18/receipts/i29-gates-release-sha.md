@@ -2,7 +2,7 @@
 
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ `8b7cbcd190af619d171412ce6f007dd49f4b33a4` (branch main, committed 2026-10-18T23:20:28-07:00)
-- **Context**: solo(read-only preflight re-run; no edits outside this receipt, no git state changes, no process kills)
+Context: solo(read-only preflight re-run; no edits outside this receipt, no git state changes, no process kills)
 - **Standing**: **PASS** — all three gates exit 0 at current HEAD.
 
 ## Scope

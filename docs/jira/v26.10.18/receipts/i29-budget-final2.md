@@ -1,7 +1,7 @@
 # i29 budget gate final (lane receipt)
 
 - **Standing**: PASS (gate) / SUSPECT (suite) — gate green, suite carries 4 pre-existing/in-flight-diff failures unrelated to the budget gate.
-- **Context**: solo
+Context: solo
 - **Date**: 2026-10-19
 
 ## Settlement state checked first
