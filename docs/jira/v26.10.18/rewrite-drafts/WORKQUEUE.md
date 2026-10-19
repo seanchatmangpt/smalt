@@ -44,8 +44,9 @@ LANDED (receipt at docs/jira/v26.10.18/receipts/):
 - W1–W13, W15–W18: `w<N>-review.md` for each landed lane (W1 w1-review.md,
   W2 w2-review.md, … W18 w18-review.md)
 
-NOT LANDED: W14 — no receipt exists (docs/jira/v26.10.18/receipts/w14-review.md
-absent); remains open per the docs DoD gate (no dangling receipt paths).
+LANDED: W14 — docs/jira/v26.10.18/receipts/w14-review.md (group 13; 4
+ALREADY-COMPLIANT + 1 REWRITTEN: test/enclave_doctor_severity_test.exs).
+Re-verified 2026-10-18: green x2, 7 tests 0 failures both runs.
 
 ## Non-dispatchable files (contract preserves)
 

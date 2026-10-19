@@ -1,13 +1,13 @@
 'use strict';
 // R9 lane — lib/state.js tests against the REAL repo files (Chicago: real
 // collaborators; the fixtures here are the repo's own TICKETS.md + receipts/).
-// Run: node --test /Users/sac/smalt/mods/ratchet/test/
+// Run: node --test test/
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const REPO = '/Users/sac/smalt';
+const REPO = path.resolve(__dirname, '..', '..', '..');
 const TICKETS = path.join(REPO, 'docs/jira/v26.10.18/azsim-burn/TICKETS.md');
 const RECEIPTS = path.join(REPO, 'docs/jira/v26.10.18/receipts');
 const state = () => import('../lib/state.js');

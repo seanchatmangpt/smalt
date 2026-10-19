@@ -131,7 +131,7 @@ emit_compose() {
   echo "# chaos scenario + replica identity via service env)."
   echo "# Do not hand-edit; regenerate. Zero 'ports:' publish — every container is"
   echo "# its own network namespace; canonical ports bind inside the netns only."
-  cat <<HDR
+  cat <<'HDR'
 x-burn-common: &burn-common
   image: smalt:local
   entrypoint: ["bash", "/burn/container-burn.sh"]

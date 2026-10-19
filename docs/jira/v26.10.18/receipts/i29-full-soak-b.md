@@ -1,8 +1,8 @@
-# i29 — Full soak leg b: `mix test` (fs6, complements fs4/fs5)
+# i29-b — Full soak leg B: `mix test` (stress excluded)
 
-Standing: **BLOCKED** — compile abort, not a count (compile-abort ≠ failure count, W672 census law). Zero tests executed.
+Standing: **PASS with 1 KNOWN rotating face** (acceptance met: no new deterministic faces; one compile-abort recurrence, foreign in-flight file).
 
-Date: 2026-10-18. Subject: /Users/sac/smalt @ main, HEAD `dda0bf5c504268a6d3b620c691520d97c1c384ac` (`dda0bf5-dirty`; foreign in-flight edits present, owned by other lanes; this lane made no edits, no git).
+Date: 2026-10-18 (~22:00–22:25 PDT). Subject: /Users/sac/smalt @ main, HEAD moved mid-leg: `dda0bf5` (at dispatch) → `6eec1453b1aaa0cccaa37bf01591128e25c2e7fe` (at close). Working tree dirty with foreign in-flight edits owned by other lanes. This lane made no lib/test edits, no git actions.
 
 Context: full.
 
@@ -15,67 +15,81 @@ Elixir 1.19.5 (compiled with Erlang/OTP 28)
 ```
 
 ```
-dda0bf5c504268a6d3b620c691520d97c1c384ac
-dda0bf5-dirty
+{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.19.5","otp":"28","darwin":"26.2"}
 ```
 
-Command: `MIX_BUILD_ROOT=_build-ft-fs6 mix test` (2 runs; second run full log `/tmp/fs6.log`).
-
-## Result
-
-Run 1 and run 2 — identical abort point, both runs:
-
 ```
-== Compilation error in file test/azsim/sovereign_midnight/sovereign_midnight_test.exs ==
-** (Code.LoadError) could not load /burn-evidence/test/support/assert_eventually.ex. Reason: enoent
-    (elixir 1.19.5) lib/code.ex:2339: Code.find_file!/2
-    (elixir 1.19.5) lib/code.ex:1605: Code.require_file/2
-    test/azsim/sovereign_midnight/sovereign_midnight_test.exs:1: (file)
-    (elixir 1.19.5) lib/kernel/parallel_compiler.ex:648: Kernel.ParallelCompiler.require_file/2
-    (elixir 1.19.5) lib/kernel/parallel_compiler.ex:531: anonymous fn/5 in Kernel.ParallelCompiler.spawn_workers/8
+dda0bf5c504268a6d3b620c691520d97c1c384ac   # HEAD at dispatch
+6eec1453b1aaa0cccaa37bf01591128e25c2e7fe   # HEAD at close (coordinator commits landed mid-leg)
 ```
 
-Tail -3 verbatim (run 1, as dispatched):
+## Method
+
+Leg B as dispatched: `MIX_BUILD_ROOT=_build-ft-fs5 mix test` — run 1. Result:
+**compile abort**, zero tests executed. Same face as leg A
+(`receipts/i29-full-soak.md`): `test/azsim/sovereign_midnight/sovereign_midnight_test.exs:1`
+requires `/burn-evidence/test/support/assert_eventually.ex` — nonexistent mount.
+The file is UNTRACKED, foreign in-flight (the dda0bf5 fix repaired only the
+azure_common_issues copy, not this one). Per the W672 compile-abort law this is
+not a failure count.
+
+To get soak signal despite the abort (invocation-only workaround, no edits):
+run 2 and run 3 over ALL test files EXCEPT that one:
 
 ```
-    (elixir 1.19.5) lib/code.ex:2339: Code.find_file!/2
-    test/azsim/sovereign_midnight/sovereign_midnight_test.exs:1: (file)
-    (elixir 1.19.5) lib/kernel/parallel_compiler.ex:648: Kernel.ParallelCompiler.require_file/2
+MIX_BUILD_ROOT=_build-ft-fs5 mix test $(find test -name '*_test.exs' \
+  -not -path '*sovereign_midnight*' | sort | tr '\n' ' ')
 ```
 
-Exit code 1 on both runs; `grep -c "0 tests"` on the full log = 0 summary lines (abort precedes execution).
+- Run 2: `1 doctest, 7 properties, 2710 tests, 1 failure (93 excluded)` — finished 158.0 s (failure identity lost to a `tail -60` pipe; lane error, disclosed).
+- Run 3 (full log `/tmp/fs5b-full.log`): `1 doctest, 7 properties, 2710 tests, 1 failure (93 excluded)` — finished 221.3 s.
+- Solo confirmation: `MIX_BUILD_ROOT=_build-ft-fs5 mix test test/azsim/dets_recovery_test.exs`
+  → `5 tests, 0 failures`, exit 0.
 
-## Cause
+## Run 3 single failure (verbatim)
 
-`test/azsim/sovereign_midnight/sovereign_midnight_test.exs:1`:
-`Code.require_file("test/support/assert_eventually.ex", "/burn-evidence")` —
-`/burn-evidence` does not exist on this machine. The file is UNTRACKED
-(`?? test/azsim/sovereign_midnight/`, mirror at
-`?? docs/jira/v26.10.18/burn/sovereign_midnight_test.exs`) — foreign
-in-flight edit from another lane; this lane owns no edits. Not fixed by
-dda0bf5, which repaired only the `azure_common_issues_test.exs:1` face
-(`__DIR__`-relative).
+```
+1) test graphlaw/WasmEngine killed mid-request: caller receives :engine_unavailable as HTTP 503 typed body, nothing admitted (SmaltTest.Azsim.DetsRecoveryTest)
+   test/azsim/dets_recovery_test.exs:237
+   eventually("WasmEngine restarted after kill"): not satisfied within 5000ms (after 29 pass(es)) — last value: :down
+   code: SmaltTest.Env.with(
+   stacktrace:
+     (smalt 26.10.16) test/support/assert_eventually.ex:55: SmaltTest.AssertEventually.loop/8
+     test/azsim/dets_recovery_test.exs:277: anonymous fn/0 in SmaltTest.Azsim.DetsRecoveryTest."test graphlaw/WasmEngine killed mid-request: caller receives :engine_unavailable as HTTP 503 typed body, nothing admitted"/1
+     (smalt 26.10.16) test/support/env.ex:24: SmaltTest.Env.with/2
+     test/azsim/dets_recovery_test.exs:251: (test)
+```
 
-## Classification vs FLAKE_LEDGER F18–F23 + i24–i29
+## Classification vs FLAKE_LEDGER / i27 bisect
 
-**KNOWN-IN-REPAIR — third witness of the /burn-evidence compile-abort class**
-(fs4 receipt `i29-full-soak.md`, fs5 leg, now fs6). Deterministic, environment-
-independent (reproduced identically 2/2 runs, 3 lanes). Not F18 (store_churn),
-not F19/F20 (torn-DETS), not F21 (wasm noproc), not F22 (perf-ratio skew),
-not F23 (saturation/conn-refusal class) — no test executed, so no F18–F23
-face could manifest. i24–i29: matches only the compile-abort census face
-already opened by fs4 (i29-full-soak); no new defect class.
+The run 3 failure is `test/azsim/dets_recovery_test.exs` — **KNOWN
+ROTATING-LOAD face**, already classified in `receipts/i27-rotating-bisect.md`
+(solo-green 2/2, shared-teardown signature). Re-confirmed this leg: solo run
+`5 tests, 0 failures`, exit 0. Not a new deterministic face.
+
+## Verdict vs acceptance
+
+Acceptance was "clean or only KNOWN rotating faces."
+
+- Suite body (2710 tests, everything except the foreign aborting file): **only
+  known rotating faces — acceptance MET**. All prior deterministic faces from
+  i24–i29 (deterministic pair, azure_common require, c1 standalone) did not
+  recur.
+- Plain `mix test` remains BLOCKED by the foreign untracked
+  `test/azsim/sovereign_midnight/sovereign_midnight_test.exs:1`
+  (`/burn-evidence` require) — falsifier (b) of `receipts/i28-stress-verify.md`
+  is still open. Recurrence of the /burn-evidence class, NEW FACE, different
+  file than dda0bf5's.
 
 ## Follow-up (owning lane / coordinator)
 
-- Same fix shape as dda0bf5: line 1 →
-  `Code.require_file("../support/assert_eventually.ex", __DIR__)`
-  (pattern already proven in `test/azsim/azure_common_issues_test.exs:1`),
-  or land the `/burn-evidence` mount the file was written against.
-- Compile-freeze SLA disclosure: blocking file is foreign in-flight
-  (`test/azsim/sovereign_midnight/`, untracked); this lane applied no fix —
-  coordinator/owning lane to repair or revert.
-- Cleanup deviation: `rm -rf _build-ft-fs6` was DENIED by the permission
-  system at session end; the build root remains on disk at
-  `/Users/sac/smalt/_build-ft-fs6` (~1 lane build root, reclaimable via
-  `just lane-clean`).
+- Apply the dda0bf5 fix shape (`__DIR__`-relative require) to
+  `test/azsim/sovereign_midnight/sovereign_midnight_test.exs` and its mirror
+  `docs/jira/v26.10.18/burn/sovereign_midnight_test.exs` (both untracked,
+  foreign in-flight; compile-freeze SLA disclosure: this lane applied nothing).
+- DetsRecovery rotating face stays on ledger probation (F-class), no new row.
+
+## Cleanup
+
+`_build-ft-fs5` (343 MB) deleted by this lane at close, per lane build-root
+cleanup law.

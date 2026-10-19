@@ -18,7 +18,7 @@ const path = require('path');
 
 const RECEIPTS_DIR =
   process.env.RATCHET_RECEIPTS_DIR ||
-  '/Users/sac/smalt/docs/jira/v26.10.18/receipts';
+  path.resolve(__dirname, '..', '..', '..', 'docs/jira/v26.10.18/receipts');
 const RING_RECEIPT = path.join(RECEIPTS_DIR, 'azb-22-burn-ring.md');
 const BOOT_RECEIPT = path.join(RECEIPTS_DIR, 'azb-13-boot-burn.md');
 const FIX_RECEIPT = path.join(RECEIPTS_DIR, 'azb-22b-zombie-fix.md');

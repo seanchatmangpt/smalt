@@ -3,7 +3,7 @@
 // recording sink — no live session exists in a test process); state rides a
 // REAL temp file through $api.fs (same JSON, same reads/writes the module does
 // against its own state path — path-redirect, not a mock).
-// Run: node --test /Users/sac/smalt/mods/ratchet/test/
+// Run: node --test test/
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,7 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const inject = () => import('../lib/inject.js');
-const STATE_PATH = '/Users/sac/smalt/mods/ratchet/state/inject-state.json'; // module constant
+const STATE_PATH = path.resolve(__dirname, '..', 'state', 'inject-state.json'); // must match lib/inject.js derived ROOT
 
 function bindApi(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ratchet-inject-'));

@@ -2,7 +2,7 @@
 // R9 lane — lib/commands.js tests: mode transitions persist through the
 // atomic tmp+rename write, decisionLog is appended + bounded, /ratchet status
 // renders from the REAL TICKETS.md. Chicago: real temp state files, real doc.
-// Run: node --test /Users/sac/smalt/mods/ratchet/test/
+// Run: node --test test/
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -11,7 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const commands = require('../lib/commands.js');
-const TICKETS_PATH = '/Users/sac/smalt/docs/jira/v26.10.18/azsim-burn/TICKETS.md';
+const TICKETS_PATH = path.resolve(__dirname, '..', '..', '..', 'docs/jira/v26.10.18/azsim-burn/TICKETS.md');
 
 function tmpState(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ratchet-cmds-'));

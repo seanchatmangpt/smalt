@@ -57,7 +57,7 @@ test('gate allows an ordinary bash command (silent allow, no stdout)', () => {
 test('gate blocks hand-edit of a generated artifact path', () => {
   const out = runKind('gate', {
     tool_name: 'Edit',
-    tool_input: { file_path: '/Users/sac/smalt/docs/ERROR_CODES.md' },
+    tool_input: { file_path: path.join(ROOT, 'docs/ERROR_CODES.md') },
   });
   assert.match(out, /regenerate, don't patch/);
 });

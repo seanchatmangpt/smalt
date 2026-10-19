@@ -11,8 +11,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const STATE_PATH = '/Users/sac/smalt/docs/jira/v26.10.18/rewrite-drafts/ratchet-state.json';
-const TICKETS_PATH = '/Users/sac/smalt/docs/jira/v26.10.18/azsim-burn/TICKETS.md';
+const REPO = process.env.SMALT_ROOT || path.resolve(__dirname, '..', '..', '..');
+const STATE_PATH = path.join(REPO, 'docs/jira/v26.10.18/rewrite-drafts/ratchet-state.json');
+const TICKETS_PATH = path.join(REPO, 'docs/jira/v26.10.18/azsim-burn/TICKETS.md');
 
 const MODES = ['AUTO', 'OBSERVE', 'OFF'];
 const DEFAULT_MODE = 'OBSERVE';

@@ -90,7 +90,9 @@ ALLOWLIST=(
   # docs-dod, 2026-10-16): KD-90-era B-leg note + KD-94 row (athena B-leg
   # receipt text). Same evidence-record class as the 12-gate-closure pins.
   "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:157"
-  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:252"
+  # KD-94 row moved 252 -> 262 (10 lines inserted above it, i29 window edits
+  # 2026-10-18); same KD-register-quotes-own-evidence class as the 157 pin.
+  "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:262"
     # v26.10.17 window affidavit quotes its run environment (absolute paths)
   # in its evidence-record tables (2026-10-17 relocation into docs/jira/).
   "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:3"
@@ -99,6 +101,15 @@ ALLOWLIST=(
   "docs/jira/v26.10.17/AFFIDAVIT-CHANGES-UPGRADES.md:26"
   # stress-script legacy paths (stress-scripts owner)
   "scripts/stress/telemetry_overhead.py:28"
+  # k8s/kind hostPath mounts (kind CRD requires literal absolute host paths;
+  # k8s does not expand $HOME/env in hostPath. Scoped exemption, i29 naming
+  # fix 2026-10-18: the 6 hostPath literals are the only k8s hits.
+  "k8s/kind/cluster.yaml:22"
+  "k8s/kind/cluster.yaml:25"
+  "k8s/kind/cluster.yaml:28"
+  "k8s/kind/cluster.yaml:32"
+  "k8s/kind/cluster.yaml:35"
+  "k8s/kind/cluster.yaml:38"
   # e2e s7/s9 + azapi test comments/fallbacks (e2e owners)
   "test/e2e/s7_worm/run.sh:21"
   "test/e2e/s7_worm/worm.test.cjs:11"

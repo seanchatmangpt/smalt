@@ -4,7 +4,7 @@
 // gate.js reads RATCHET_RECEIPTS_DIR once at require time, so each scenario
 // re-requires it fresh via loadGate(dir). Chicago: real receipt files on disk,
 // the bus is a plain handler map.
-// Run: node --test /Users/sac/smalt/mods/ratchet/test/
+// Run: node --test test/
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

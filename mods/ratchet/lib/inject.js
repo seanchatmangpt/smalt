@@ -14,7 +14,9 @@
 // (hooks/register.js) binds the mods API once via initInject($) at register
 // time, then any hook or timer may call injectDispatch(promptText).
 
-const ROOT = '/Users/sac/smalt';
+import path from 'node:path';
+
+const ROOT = process.env.SMALT_ROOT || path.resolve(import.meta.dirname, '..', '..', '..');
 const STATE_PATH = ROOT + '/mods/ratchet/state/inject-state.json';
 const TICKETS_DOC = 'docs/jira/v26.10.18/azsim-burn/TICKETS.md';
 const RECEIPTS_DIR = 'docs/jira/v26.10.18/receipts';
