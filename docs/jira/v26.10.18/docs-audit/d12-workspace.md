@@ -1,0 +1,2 @@
+# D12 — workspace docs audit (2026-10-18)
+Stale (7): README:16-19 layout omits src/lib/airgap-fetch.ts + middleware.ts (server air-gap layer); :40-41 endpoints missing 9444 TLS twin; :43-49 lint-rule list understates config (template-literal ban, ws*/superagent/ky); :97-103 Commands missing e2e-court + 13 test suites; ARCHITECTURE:8-10 missing :9444; :13-17 enforcement layers (now 3+: client, server airgap-fetch+middleware, eslint); :114-120 stale court verdict (pre-dates current 50/0/2 surface).
