@@ -23,7 +23,7 @@ Refresh 2026-10-18: all 18 test bodies run untagged (`:sovereign_gap` tag retire
 | 4 Data | AppConfig CAS 10-way + Sync-Token | COVERED | appconfig_etag_cas gate (6/6 receipts) |
 | 4 Data | Cosmos CAS/unique/RU-429 | PARTIAL | etag gate + AZB-06 CAS; RU-429 x-ms-retry-after injector MISSING |
 | 4 Data | Blob WORM/LegalHold/snapshot/range | COVERED | blob_worm gate + AZB-06 (WORM tamper, snapshot) |
-| 4 Data | **Queue Storage (popreceipt, visibility, stale-replay)** | **MISSING** | grep: 0 hits for popreceipt/VisibilityTimeout/"queue storage" in lib/smalt — new data-plane surface |
+| 4 Data | **Queue Storage (popreceipt, visibility, stale-replay)** | **COVERED** | queue_storage.ex engine + egress_router plug arm (queue_storage_plane, before blob splat) + 2 StoreTable rows; engine 11/0 + wire 26/0 + regression 482/0 (receipts/i29-g1-land.md) |
 | 4 Data | Event Grid batch 400 + DLQ blob spillover | PARTIAL | Event Grid engine (azb-07) at-least-once; DLQ-blob spillover MISSING (messaging/event_grid.ex: 0 DLQ/blob hits) |
 | 5 Forensics | Wasm seal + mid-seal kill + bytecode fuzz | COVERED | supervised restart (azb-22b fixing ring RED) |
 | 5 Forensics | Confidential Ledger Merkle tamper probe | COVERED | ledger_chain gate |
@@ -34,7 +34,7 @@ Refresh 2026-10-18: all 18 test bodies run untagged (`:sovereign_gap` tag retire
 | Judge | OCEL 2.0 + BeamPM conformance | PARTIAL | burn_to_ocel2.py; Art72 gate landing with AZB-24 |
 
 ## Gap register (build order for v26.10.19)
-G1. MISSING — Queue Storage data plane (popreceipt/visibility/stale-replay) — new surface (grep: 0 hits in lib/smalt)
+G1. COVERED — Queue Storage data plane landed (queue_storage.ex + egress_router queue_storage_plane arm + 2 StoreTable rows); engine 11/0 + wire 26/0 + regression 482/0 — receipts/i29-g1-land.md
 G2. MISSING — X-ARR-ClientCert mTLS gateway termination + spoof injector — new (grep: 0 hits)
 G3. MISSING — Event Grid DLQ blob spillover — extends azb-07 engine (event_grid.ex: no DLQ path)
 G4. MISSING — Split-brain regional failover plane — new architecture (grep: 0 hits)
