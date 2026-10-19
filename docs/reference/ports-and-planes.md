@@ -63,6 +63,31 @@ are opt-in per explicitly selected plane. Walkthrough:
 | `SMALT_BIND_IP` | bind address override (default loopback) |
 | `SMALT_SIMULATE_HARDWARE=1` (+ optional `SMALT_HW_PTY`) | opt-in HIL virtual device child |
 
+## Plane selection (`SMALT_PLANES`, AZB-04)
+
+Boot can start a subset of the planes instead of all listeners. Sources:
+`lib/smalt/planes.ex` (`Smalt.Planes`), `config/runtime.exs`,
+`config/config.exs:40-44`.
+
+- **Input**: `SMALT_PLANES` (comma list, e.g. `SMALT_PLANES=control,data`)
+  or `config :smalt, :planes, [:control]`; default `:all` (today's boot,
+  byte-identical).
+- **Known planes**: `:control`, `:data`, `:integration`, `:identity`
+  (`Smalt.Planes.known/0`).
+- **Resolution timing**: parsed + validated at runtime-config time in
+  `config/runtime.exs` via `Smalt.Planes.resolve/0`, so releases honor it;
+  the parsed list is written back to `Application` env `:planes`, and
+  `Smalt.Config.planes/0` is the single read surface.
+- **Refusal**: unknown name refuses boot with `{:invalid_plane, name}`
+  (`Smalt.Planes.InvalidPlane`).
+- **Profiles**: with `:all` no `config/env/az_prod_<plane>.exs` profile is
+  imported — profiles are opt-in per explicitly selected plane (AZB-04
+  falsifier keeps the default boot identical).
+- Plane-aware supervisors: `Smalt.Plane.ControlSupervisor` et al. skip
+  foreign-plane children (e.g. the LRO sweeper guards data-plane Store
+  under `SMALT_PLANES=control`; AMQP sweeper guards under
+  `SMALT_PLANES=integration`).
+
 ## See Also
 
 - `lib/smalt/application.ex` — listener child specs and port functions

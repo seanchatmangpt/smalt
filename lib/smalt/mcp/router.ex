@@ -541,14 +541,7 @@ defmodule Smalt.Mcp.Router do
           []
 
         sup ->
-          Supervisor.which_children(sup)
-          |> Enum.map(fn {id, pid, _type, _mods} ->
-            %{
-              "id" => sanitize_child_id(id),
-              "pid" => inspect(pid),
-              "alive" => Process.alive?(pid)
-            }
-          end)
+          flatten_children(sup, 0)
       end
 
     %{
@@ -569,7 +562,52 @@ defmodule Smalt.Mcp.Router do
 
   defp default_subscription, do: "00000000-0000-0000-0000-000000000000"
 
-  # Supervisor child ids render as their atom form where possible; compound
+  # AZB-09: the app tree is partitioned into plane supervisors (Data/Control/
+  # Integration/Identity), so leaf services like Smalt.Store live one level
+  # below the root. Flatten the plane subtrees (bounded depth) so the summary
+  # reports every service, annotating each nested child with its plane. Only
+  # :supervisor-typed children are descended into (a :worker pid is never a
+  # supervisor, so the hostile-id fuzz supervisor's Task children are never
+  # signalled), and the descent is exit-guarded: a dead or non-supervisor
+  # subtree degrades to that plane's own row, never a crash.
+  @doctor_flatten_depth 3
+
+  defp flatten_children(sup, depth) when depth >= @doctor_flatten_depth do
+    Enum.map(Supervisor.which_children(sup), &child_row(&1, nil))
+  end
+
+  defp flatten_children(sup, depth) do
+    Supervisor.which_children(sup)
+    |> Enum.flat_map(fn {id, pid, type, _mods} ->
+      row = child_row({id, pid, type, nil}, nil)
+
+      nested =
+        if type == :supervisor and is_pid(pid) and pid != :undefined and Process.alive?(pid) do
+          try do
+            plane = sanitize_child_id(id)
+            flatten_children(pid, depth + 1) |> Enum.map(&put_plane(&1, plane))
+          catch
+            _class, _reason -> []
+          end
+        else
+          []
+        end
+
+      [row | nested]
+    end)
+  end
+
+  defp child_row({id, pid, _type, _mods}, plane) do
+    row = %{
+      "id" => sanitize_child_id(id),
+      "pid" => inspect(pid),
+      "alive" => is_pid(pid) and Process.alive?(pid)
+    }
+
+    if plane, do: Map.put(row, "plane", plane), else: row
+  end
+
+  defp put_plane(%{} = row, plane), do: Map.put(row, "plane", plane)
   # ids (e.g. {Bandit, #Reference<...>}) keep the module name but collapse
   # session-local reference tokens so no ephemeral internals cross the wire.
   defp sanitize_child_id(id) when is_atom(id), do: inspect(id)

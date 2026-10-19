@@ -12,8 +12,16 @@ Derived: `grep -h "^defmodule" lib/smalt/arm_gateway/*.ex`
 | `Smalt.ArmGateway.Defaults` | `lib/smalt/arm_gateway/defaults.ex` |
 | `Smalt.ArmGateway.LRO` | `lib/smalt/arm_gateway/lro.ex` |
 | `Smalt.ArmGateway.LRO.Sweeper` | `lib/smalt/arm_gateway/lro_sweeper.ex` |
+| `Smalt.ArmGateway.LRO.Notifier` | `lib/smalt/arm_gateway/lro_notifier.ex` |
 | `Smalt.ArmGateway.ProviderMatrix` | `lib/smalt/arm_gateway/provider_matrix.ex` |
 | `Smalt.ArmGateway.Router` | `lib/smalt/arm_gateway/router.ex` |
+
+`LRO.Notifier` (v26.10.18 lib redesign) is the explicit completion-signal
+hub: waiters (`LRO.await/3`) register `op_id -> monitor` and wake on the
+sweeper's terminal cast instead of polling; deny-by-default registration
+(`LRO.scoped?/2` ownership check, `:error, :denied`); fail-safe only —
+`:DOWN` falls back to bounded store polling, the sweeper still flips at
+rest.
 
 ## Config keys
 
@@ -22,8 +30,8 @@ Derived: `grep get_env(:smalt` over `lib/smalt/arm_gateway/`; defaults from
 
 | key | default | set at |
 |---|---|---|
-| `:arm_port` | `9443` | `lib/smalt/application.ex:69` |
-| `:arm_tls_port` | `9444` | `lib/smalt/application.ex:119` |
+| `:arm_port` | `9443` | `config/config.exs:31` (mirror comment: "defaults mirrored from Smalt.Application") |
+| `:arm_tls_port` | `9444` | default resolved in `Smalt.Config.arm_tls_port/0` (`lib/smalt/config.ex:554`); test pin `config/test.exs:46` |
 | `:arm_rate_limit` | `:infinity` | `lib/smalt/arm_gateway/router.ex:124` |
 | `:lro_delay_ms` | `0` | `lib/smalt/arm_gateway/lro.ex:34` |
 | `lro_sweep_interval_ms` | `30_000` | `lro_sweeper.ex` |
@@ -45,7 +53,8 @@ Generated from `docs/ERROR_CODES.md` `arm-gateway` rows (regenerate with
   ResourceNotFound, RouteNotFound, RuleNotFound, SubscriptionNotFound
 - 409: SecretVersionNotFound
 - 412: PreconditionFailed
-- 200-body: OperationRecordIncomplete (LRO terminal poll, `lro.ex:184`)
+- 200-body: OperationRecordIncomplete (LRO terminal poll, `lro.ex:430`;
+  malformed-record fail-closed variant at `lro.ex:354`)
 
 GraphLaw ontology admission refusal is pinned at 400 InvalidResourceShape
 (ARM never 422); admitted types from `Smalt.Registry.admitted_resource_types/0`.

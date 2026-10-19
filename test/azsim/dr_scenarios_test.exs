@@ -42,7 +42,32 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   @iterations 10
 
   setup do
+    restore_planes!()
     assert :ok = SmaltTest.Lifecycle.ensure_store_up()
+
+    on_exit(fn ->
+      restore_planes!()
+      SmaltTest.Lifecycle.ensure_store_up()
+    end)
+
+    :ok
+  end
+
+  # DR law: every kill is undone BEFORE the next test's setup reads the tree.
+  # A crashed iteration must still restore — the on_exit path guarantees it.
+  defp restore_planes! do
+    present =
+      Smalt.Supervisor
+      |> Supervisor.which_children()
+      |> Enum.map(fn {id, _, _, _} -> id end)
+      |> MapSet.new()
+
+    for plane <- [DataSupervisor, ControlSupervisor, IntegrationSupervisor, IdentitySupervisor],
+        plane not in present do
+      _ = Supervisor.restart_child(Smalt.Supervisor, plane)
+      :ok
+    end
+
     :ok
   end
 
@@ -84,7 +109,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         # goes down too — connection refused, the declared blast radius.
         assert :ok = Supervisor.terminate_child(Smalt.Supervisor, DataSupervisor)
         assert_down(egress)
-        _ = Task.stop(stream)
+        _ = Task.shutdown(stream, :brutal_kill)
 
         assert kill_window.status in [503, 410],
                "kill-window response was #{kill_window.status} #{inspect(kill_window.body)} — untyped failure"
@@ -94,7 +119,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         t0 = System.monotonic_time()
         {red0, _} = :erlang.statistics(:reductions)
 
-        assert :ok = Supervisor.restart_child(Smalt.Supervisor, DataSupervisor)
+        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, DataSupervisor)
 
         eventually(
           fn ->
@@ -149,7 +174,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
                "client socket stayed open after integration subtree kill"
 
         # Restart: reconnect + handshake over a REAL socket.
-        assert :ok = Supervisor.restart_child(Smalt.Supervisor, IntegrationSupervisor)
+        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, IntegrationSupervisor)
         client2 = connect_handshake!(amqp_port, 10_000)
         :gen_tcp.close(client2)
 
@@ -189,18 +214,22 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         assert :ok = Supervisor.terminate_child(Smalt.Supervisor, IdentitySupervisor)
 
         # NEW mints: typed retryable 503 StsUnavailable.
-        assert %{status: 503, body: b503} = res = mint(arm),
+        res = mint(arm)
+
+        assert res.status == 503,
                "mint succeeded while identity subtree was dead (iteration #{i}): #{res.status}"
 
-        assert Jason.decode!(b503)["error"] == "StsUnavailable"
+        assert Jason.decode!(res.body)["error"] == "StsUnavailable"
 
         # Cached-valid token STILL accepted by the data plane (local
         # validation — the anti-vacuity court in the receipt proves this
         # assertion has teeth).
-        assert %{status: 200} = res2 = authed_get(egress, token),
-               "cached-valid token rejected during identity outage (iteration #{i}): #{res2.status}"
+        res2 = authed_get(egress, token)
 
-        assert :ok = Supervisor.restart_child(Smalt.Supervisor, IdentitySupervisor)
+        assert res2.status == 200,
+               "cached-valid token rejected during identity outage (iteration #{i}): #{res2.status} #{res2.body}"
+
+        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, IdentitySupervisor)
         wait_mint_ok(arm)
 
         %{iteration: i, recovery_us: 0, recovery_reductions: 0}
@@ -224,17 +253,21 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
 
     metrics =
       Enum.map(1..@iterations, fn i ->
-        assert %{status: 200} = res = query_feed(egress, nil, nil),
+        res = query_feed(egress, nil, nil)
+
+        assert res.status == 200,
                "data plane degraded BEFORE control kill (iteration #{i}): #{res.status}"
 
         assert :ok = Supervisor.terminate_child(Smalt.Supervisor, ControlSupervisor)
         assert_down(arm)
 
         # Data plane UNAFFECTED while control is down.
-        assert %{status: 200} = res2 = query_feed(egress, nil, nil),
+        res2 = query_feed(egress, nil, nil)
+
+        assert res2.status == 200,
                "data plane degraded during control outage (iteration #{i}): #{res2.status}"
 
-        assert :ok = Supervisor.restart_child(Smalt.Supervisor, ControlSupervisor)
+        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, ControlSupervisor)
         t0 = System.monotonic_time()
         wait_tcp_up(arm)
         {red0, _} = :erlang.statistics(:reductions)
@@ -296,18 +329,28 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   # Harness
   # ===========================================================================
 
+  @cosmos_headers [
+    {"content-type", "application/json"},
+    {"x-ms-version", "2021-12-02"}
+  ]
+
   defp create_corpus!(egress, db, coll) do
     assert %{status: 201} =
-             http_request(egress, "POST", "/dbs", body: Jason.encode!(%{"id" => db}))
+             http_request(egress, "POST", "/dbs", headers: @cosmos_headers, body: Jason.encode!(%{"id" => db}))
 
     assert %{status: status} =
-             res = http_request(egress, "POST", "/dbs/#{db}/colls", body: Jason.encode!(%{"id" => coll}))
+             res =
+             http_request(egress, "POST", "/dbs/#{db}/colls",
+               headers: @cosmos_headers,
+               body: Jason.encode!(%{"id" => coll})
+             )
 
     assert status in [201, 409], "coll create: #{res.status} #{res.body}"
 
     Enum.each(1..3, fn i ->
       assert %{status: 201} =
                http_request(egress, "POST", "/dbs/#{db}/colls/#{coll}/docs",
+                 headers: @cosmos_headers,
                  body: Jason.encode!(%{"id" => "doc#{i}", "pk" => "p#{i}"})
                )
     end)

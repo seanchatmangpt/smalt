@@ -89,6 +89,22 @@ modules, never edit the root.
 | 22-native | `cleanroom` | terraform cleanroom ladder |
 | 22-native | `trust-status` | machine-readable `{"status":"PASS\|FAIL\|UNREACHABLE"}` |
 | 22-native | `doctor-json` | JSON doctor receipt variant (just aborts on duplicate names, hence separate recipe) |
+| 22-native | `preflight` / `fix-start TEST` / `fix-end` / `spc-check` | lane preflight; fix-mode freeze of court witnesses around one failing test; SPC band check |
+| 23-compliance | `test-compliance` / `test-compliance-wire` | compliance tier suites (offline + wire args passthrough) |
+| 24-quiesce | `quiet-check` | ports free + no concurrent suites/courts; exit 1 loudly on violation |
+| 24-quiesce | `quiesce` / `quiesce-warm` | quiesce the machine before `just court-x2` (warm variant pre-warms) |
+| 25-leak-court | `leak-court` | `gates/test_isolation_leak_gate.py` static leak scan over `test/` |
+| 25-leak-court | `leak-court-count` | advisory count only, never fails |
+| 25-leak-court | `isolation-court` / `isolation-court-runtime` | start_supervised!/put_env-restore discipline; runtime twin diffs registered()/env per module |
+| 26-rewitness | `kd-stale` | list KD rows whose witness chain is stale (witness mtime < newest shim mtime) |
+| 26-rewitness | `rewitness KD` | re-run one row's witness; missing witness exits 3 typed |
+| 27-scratch-soak | `wt-scratch SHA` | cross-SHA inspection via git archive (no worktree) |
+| 27-scratch-soak | `corpus-soak N` | run the corpus N times, gate on flake rate; exit 1 on any failing round |
+| 28-stress | `test-stress` | stress-tier suite |
+| 28-test-budget | `test-budget-seed` / `test-budget` | export + fail-closed gate against `test_budgets.json` (seed is a reviewed diff) |
+| 29-sleep | `sleep-gate` / `sleep-gate-court` | NO-SLEEP-DOCTRINE Law 3 gate + non-vacuity court (see `docs/NO_SLEEP_DOCTRINE.md`) |
+| 30-burn | `burn` (+ `burn-soak`/`-chaos`/`-matrix`/`-ring`/`-boot`/`-clean`/`-ocel`/`-in-container-verify`/`-chaos-kill`) | full burn: host soak + container matrix; boot rows stop the line on ORPHAN_LISTENER/ZOMBIE_BEAM/UNHANDLED_EXIT |
+| 30-burn | `overlap-court` (+ `-serial`/`-check`/`-compare`/`-report`) | scheduler-overlap anti-vacuity court — a pass from a vacuous scheduler is the failure |
 
 ## See Also
 

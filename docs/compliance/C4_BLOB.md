@@ -3,7 +3,7 @@
 Azure Blob Service REST conformance of smalt's blob surface, validated against
 the real Blob Service REST contract by live probes (curl over real sockets
 against a booted `Smalt.EgressRouter`) plus the wire fence tests in
-`test/compliance/c4_blob.exs` (42 tests, 0 failures, 2026-10-15 lens-9 re-measured; lens-7 added the verbatim-body leg, lens-8 added the emitted-marker round-trip court (emit -> resume -> terminate) and closed FINDING F1: success-path `x-ms-request-id` is now a v4 dashed GUID pinned by the full v4 regex at c4_blob.exs:85/:220).
+`test/compliance/c4_blob.exs` (49 tests, 0 failures, 2026-10-18 re-measured via the compliance loader `mix test test/compliance_test.exs` -> 157 tests, 0 failures (16 excluded); lens-6 added the x-ms-range/Range precedence + ranged-HEAD courts, lens-5 added the request-id/conditional-write fence blocks, lens-7 added the verbatim-body leg, lens-8 added the emitted-marker round-trip court (emit -> resume -> terminate) and closed FINDING F1: success-path `x-ms-request-id` is now a v4 dashed GUID pinned by the full v4 regex at c4_blob.exs:85/:220).
 
 Subject: `~/smalt` @ working tree 2026-10-15. Probe receipts inline.
 
@@ -343,4 +343,4 @@ GET byte-exact round-trip + ETag, 206/416 range semantics, 404 BlobNotFound,
 DELETE 202 shape, If-Match 412 + matched 201, WORM 409 ContainerLocked,
 legal hold header contract, pagination NextMarker.
 
-Result: `mix test test/compliance/c4_blob.exs` → **42 tests, 0 failures** (2026-10-15, lens-9 re-measured; lens-7 receipt preserved: 29/0 at that lens).
+Result: `mix test test/compliance_test.exs` (compliance loader) → **157 tests, 0 failures (16 excluded)** (2026-10-18 re-measure; c4_blob register count fenced at 49 by the loader's inventory fence — 42 was the pre-lens-6/lens-5 count).

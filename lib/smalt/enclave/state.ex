@@ -129,6 +129,16 @@ defmodule Smalt.Enclave.State do
     # resources deleted through paths that bypass those routes.
     Enum.each(deleted, fn %{id: id} -> Smalt.Metrics.drop(id) end)
 
+    # AZB-10 bridge purge: the resource-write fan-out
+    # (Smalt.EgressRouter.Peers.emit_resource_write_success/2) enqueues each
+    # ResourceWriteSuccess event on the Service Bus bridge queue
+    # "resourcewritesuccess" — a queue row (+ {queue, :seq} counter) in
+    # :smalt_sb_queues and message rows in :smalt_sb_messages. The queue is
+    # auto-created by the enclave's own control-plane writes, never
+    # ARM-declared, so the router's cascade can never reach it. Product
+    # contract: the enclave destroyed ⇒ its queues gone; purge explicitly.
+    :ok = purge_resource_write_bridge()
+
     %{deleted: deleted, residue: residue()}
   end
 
@@ -282,6 +292,16 @@ defmodule Smalt.Enclave.State do
       nil -> "2024-01-01"
       v -> v
     end
+  end
+
+  defp purge_resource_write_bridge do
+    bridge = "resourcewritesuccess"
+
+    # message rows are keyed {queue, seq}; the seq counter is {queue, :seq}
+    :ets.match_delete(:smalt_sb_messages, {{bridge, :_}, :_})
+    Store.delete(:smalt_sb_queues, bridge)
+    Store.delete(:smalt_sb_queues, {bridge, :seq})
+    :ok
   end
 
   defp residue() do

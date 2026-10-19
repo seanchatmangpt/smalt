@@ -181,7 +181,7 @@ defmodule Smalt.Amqp.SaturationTest do
     _ = all_conns
 
     for q <- Enum.take(queues, 64) do
-      assert QueueStore.queue_settings(q) != :error
+      assert match?(%{max_delivery_count: _}, QueueStore.queue_settings(q))
     end
 
     # --- atom budget (the i22 class) ---

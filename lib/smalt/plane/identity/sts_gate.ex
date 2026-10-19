@@ -24,7 +24,7 @@ defmodule Smalt.Plane.Identity.StsGate do
 
   @boot_marker {__MODULE__, :booted}
 
-  def start_link(opts \\ []) do
+  def start_link(_opts \\ []) do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 

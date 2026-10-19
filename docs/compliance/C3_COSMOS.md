@@ -16,7 +16,14 @@ envelope, status-code semantics, trailing-slash and account envelope).
 Method: live wire probes — `Smalt.EgressRouter` under Bandit, real sockets
 (curl against a live anonymous-mode egress instance + per-test Bandit
 listeners in the fence suite). Fence tests:
-`test/compliance/c3_cosmos.exs` (28 tests, 0 failures, 2026-10-15 lens-8 re-measured; lens-3 added byte-exact response-content-type pins, lens-4 added the row-18 continuation court, lens-7 added emit-then-resume round-trip courts for BOTH the list feed and the query feed plus the mirror-direction (v2-on-query) and pk-scope-binding wire courts, lens-8 added the cross-container token-binding wire court routed from cosmos lens-6)
+`test/compliance/c3_cosmos.exs` (28 tests, 0 failures, 2026-10-15 lens-8 re-measured; lens-3 added byte-exact response-content-type pins, lens-4 added the row-18 continuation court, lens-7 added emit-then-resume round-trip courts for BOTH the list feed and the query feed plus the mirror-direction (v2-on-query) and pk-scope-binding wire courts, lens-8 added the cross-container token-binding wire court routed from cosmos lens-6).
+Suite setup is the canonical resilient shared-Store helper
+(`Smalt.Corpus.Helper.resilient_clear/1`, `test/corpus/helper.exs`): a bounded
+typed retry (50 x 10ms) around `Lifecycle.ensure_store_up()` + `Store.clear/0`
+that rescues ONLY the dead-table `ArgumentError` from a sibling's shared-tree
+teardown (i21/i22 hardening, v26.10.17 i21-ets-race-fix receipt); past the
+bound it raises loudly, never a silent pass. The former private copies in
+c1/c3/c4 were deleted in favor of this one implementation.
 
 ## Receipt
 
