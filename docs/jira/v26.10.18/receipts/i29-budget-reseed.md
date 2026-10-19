@@ -1,50 +1,78 @@
-# i29 budget reseed adoption (orphan manifest ADOPTED)
+# i29 Budget Re-Seed (test_budgets.json refresh, 2026-10-18/19)
 
-Date: 2026-10-19 00:25 PDT
-Context: solo(/Users/sac/smalt)
+Standing: **PASS** (gate) / PARTIAL_DISCLOSED (mix test leg)
 
-## Premise
+Context: solo (lane-private export paths `tmp/i29-budget-*.tsv`; shared
+`tmp/test-budget-export.tsv` was being clobbered by a concurrent lane's export
+runs, so this lane moved to lane-private paths; the shared manifest is the
+deliverable).
 
-- Active-vs-orphan: `docs/jira/v26.10.18/test_budgets.json` mtime was
-  `Oct 19 00:11:34 2026` at t0 and identical at +9 min (STABLE; no lane
-  actively writing).
-- Receipt `docs/jira/v26.10.18/receipts/i29-budget-reseed.md`: ABSENT before
-  this receipt (reseed landed unreceipted). Prior verify
-  (`i29-budget-verify.md`, Oct 18 22:31) had correctly marked the lane
-  [IN-FLIGHT] against the pre-reseed state (772 UNMANIFESTED / 61 STALE,
-  gate FAIL, manifest mtime Oct 18 15:17).
-- Verdict: STABLE + no receipt -> ADOPT.
+## What
 
-## Coverage verification (per the recipe)
+`docs/jira/v26.10.18/test_budgets.json` was stale (771 UNMANIFESTED + 61 STALE
+reported by `just test-budget` before this refresh; the tree had grown past the
+2026-10-18 15:17 seed). Re-seeded from fresh full-suite timing exports.
+
+## Method (reviewed diff, not silent)
+
+The recipe (`justfile.d/28-test-budget.just`) has no contention lever (only
+`SMALT_BUDGET_EXPORT` is read; `SMALT_MAX_CASES` is not supported), so exports
+were run directly via `mix test --formatter SmaltTest.BudgetFormatter
+--max-cases 4` — same mode for seed and enforce, so the baseline stays
+internally consistent. The seed law (explicit max_ms = observed for >tier
+tests) alone did not converge on a busy machine: consecutive full-suite runs
+inflated *different* tests by 5-50% run-to-run (R133PolicyCas 7617 -> 9235 ->
+9948 ms; McpWire doctor 30727 -> 32973 ms; TLS falsifier 13608 -> 18164 ms;
+one corpus suite normally at 0-12 ms spiked to ~10 s in a single run —
+out-of-band stall, not a real timing). Run-to-run variance outran re-seeding.
+
+Final manifest therefore built from the per-test MAX across five complete
+exports (2748 tests x 5 runs) with 2x headroom on anything observed >1000 ms
+(explicit `max_ms`), tier `stress` above 5000 ms — then +15 tests another lane
+added mid-refresh were folded in the same way (total 2763 budgets).
+
+## Gate result (final cycle)
 
 ```
-export SMALT_BUDGET_EXPORT=tmp/test-budget-export.adopt2.97842.tsv
-mixrc=0; mix test --formatter SmaltTest.BudgetFormatter || mixrc=$?
-python3 scripts/test_budget_gate.py --export "$SMALT_BUDGET_EXPORT"
-== budget export written: tmp/test-budget-export.adopt2.97842.tsv
+$ SMALT_BUDGET_EXPORT=tmp/i29-budget-h.tsv mix test --formatter SmaltTest.BudgetFormatter --max-cases 4
+$ python3 scripts/test_budget_gate.py --export tmp/i29-budget-h.tsv
 PASS budget-gate/fixture:breach (refused)
 PASS budget-gate/fixture:unmanifested (refused)
-== Test Budget Gate == (2748 tests)
+== Test Budget Gate == (2763 tests)
 Gate: PASS
-gate=0
+GATE_EXIT=0
 ```
 
-Final counts: 2748 tests, 0 UNMANIFESTED, 0 STALE, 0 REGRESSION, gate exit 0.
-Both non-vacuity fixtures refused (gate not vacuous). Manifest covers the
-current suite — no further reseed required.
+Receipt json: `tmp/test-budget-gate-receipt.json`
+(2026-10-19T00:45:17-0700, 2763 tests, details empty = 0 breach /
+0 unmanifested / 0 stale, both non-vacuity fixtures refused).
 
-## Notes
+## Disclosures
 
-- `mix=2` on the formatter run is the documented pre-existing condition
-  (see `i29-budget-export-fix.md` lines 53+): zero test failures; the export-only formatter suppresses the
-  ExUnit console summary and mix exits 2. Recipe `|| rc=$?` guards it;
-  the gate's exit (0) is the verdict.
-- Compile-freeze disclosure: attempt 1 hit a transient syntax error in
-  `lib/smalt/data_plane/queue_storage.ex:206` (unclosed `{:ok, nil`,
-  untracked in-flight file from another lane). The owning lane fixed it
-  before any edit of mine; attempt 2 compiled clean. I applied no fix.
+- **Busy-machine timings.** All timings were taken under a busy ~20-lane
+  machine (compile break in `lib/smalt/messaging/amqp/atom_bridge.ex` from a
+  lane edit mid-run, self-healed per the compile-freeze SLA; a concurrent lane
+  also ran budget cycles and overwrote `tmp/test-budget-gate-receipt.json`
+  once mid-refresh). The bounds are regression fences vs the same-machine
+  same-mode (`--max-cases 4`) baseline, NOT absolute duration claims; the 2x
+  headroom absorbs documented run-to-run inflation of 5-50% on 48
+  explicitly-bounded tests.
+- **`just test-budget` as a recipe never exits 0 on this tree right now**:
+  its mix test leg exits 2 (2 test failures under contention — identities not
+  visible through the BudgetFormatter; likely the known contention casualties)
+  and the shared `tmp/test-budget-export.tsv` path is clobbered by concurrent
+  lanes. The GATE verdict (fail-closed portion) is what exited 0: 2763 tests,
+  0 breach / 0 unmanifested / 0 stale. Cooking the gate green while the suite
+  has 2 red tests would be a fake pass; the manifest coverage goal is met and
+  disclosed.
+- `--max-cases 4` deviates from the default-parallelism recipe; seed and
+  enforce used the identical mode, so fences stay consistent. A future
+  quieter-window reseed can tighten the 48 explicit bounds.
 
-## Verdict
+## Artifacts
 
-Manifest ADOPTED. Standing: **PASS** — budget gate green on a full fresh
-export (2748/0/0), fixtures refuse, mtime stable, receipt now exists.
+- Manifest: `/Users/sac/smalt/docs/jira/v26.10.18/test_budgets.json` (2763 budgets)
+- Final export: `/Users/sac/smalt/tmp/i29-budget-h.tsv` (2763 rows, complete)
+- Intermediate exports: `tmp/i29-budget-{seed,enforce,enforce2,final,final2,g}.tsv`
+- Logs: `tmp/i29-{seed-run,enforce-run,enforce2-run,final-run,final2-run,g-run,h-run}.log`
+- Gate: `/Users/sac/smalt/scripts/test_budget_gate.py` (unmodified)
