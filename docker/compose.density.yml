@@ -1,0 +1,109 @@
+# compose.density.yml — live density witness for the Orchestration Density
+# Gate (Phase 4 gate 4, v26.10.19 envelope lane).
+#
+# Premise under witness: 2 replicas of the BEAM runtime on one user-defined
+# bridge network (compose service DNS = the headless-svc equivalent), each
+# booted in `name` distribution mode so cross-replica Node.ping is the
+# discovery proof. No sidecar, no managed service.
+#
+# Image: smalt:local (docker/Dockerfile test target; no Dockerfile.hermetic
+# exists at time of writing). App boot mirrors k8s/burn/smalt-deployment.yaml
+# (`mix run --no-halt` + SMALT_TEST_* env). `RELEASE_DISTRIBUTION` is a
+# mix-release concept; for `mix run` we pass the equivalent flags directly
+# to elixir: --name / --cookie / inet_dist_listen range.
+#
+# Run:  docker compose -f docker/compose.density.yml -p smalt-density up -d --wait
+# Witness probe (working form; long names need dotted FQDN hostnames, and the
+# probe node must remsh through a live node — bare `elixir -e` starts its own
+# node which fails name-mode startup on alias hostnames):
+#   docker exec smalt-density-a iex --name probe@smalt-a.density.internal \
+#     --cookie smalt-dense --remsh smalt_a@smalt-a.density.internal \
+#     --eval 'IO.inspect({Node.self(), Node.list(:visible), Node.ping(:"smalt_b@smalt-b.density.internal"), :rpc.call(:"smalt_b@smalt-b.density.internal", Node, :self, [])})'
+
+x-smalt-env: &smalt-env
+  MIX_ENV: "test"
+  SMALT_BIND_IP: "0.0.0.0"
+  SMALT_SB_SHARED_KEY: "smalt-docker-dev-key-0123456789abcdef0123456789abcdef"
+  SMALT_TEST_ARM_PORT: "9443"
+  SMALT_TEST_ARM_TLS_PORT: "9444"
+  SMALT_TEST_EGRESS_PORT: "8443"
+  SMALT_TEST_AMQP_PORT: "5672"
+  SMALT_TEST_EVENT_HUBS_PORT: "5673"
+  SMALT_TEST_MCP_PORT: "9545"
+  SMALT_DATA_DIR: "/tmp/smalt-data"
+  # DNS-discovery config (checked by orchestration_gate.py)
+  RELEASE_DISTRIBUTION: "name"
+  # 9100-9105: bounded distribution port range; ERL_AFLAGS because bare
+  # -kernel flags are consumed by the elixir CLI as script filenames.
+  ERL_AFLAGS: "-kernel inet_dist_listen_min 9100 -kernel inet_dist_listen_max 9105"
+
+x-smalt-common: &smalt-common
+  image: smalt:local
+  networks: [dense]
+  restart: "no"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  # Deviation, disclosed: no read_only root. The smalt:local image bakes its
+  # compiled _build + deps into /smalt; an immutable root forces mix to
+  # recompile into read-only paths (File.CopyError on deps/phoenix templates).
+  # K8S-SECURITY-BASELINE applies to k8s manifests; the compose witness keeps
+  # cap_drop ALL + no-new-privileges and trades root immutability for
+  # reusing the baked build.
+  tmpfs: ["/tmp", "/tmp/smalt-data"]
+  deploy:
+    resources:
+      limits:
+        cpus: "1"
+        memory: 1500m
+  healthcheck:
+    # /metadata/endpoints requires TLS+auth; until lib/smalt/health lands the
+    # TCP listener is the probe surface (same as the k8s readinessProbe and
+    # compose.smalt.yml healthcheck).
+    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9443"]
+    interval: 5s
+    timeout: 5s
+    retries: 24
+    start_period: 60s
+  stop_grace_period: 20s
+
+services:
+  smalt-a:
+    <<: *smalt-common
+    container_name: smalt-density-a
+    hostname: smalt-a.density.internal
+    environment:
+      <<: *smalt-env
+      RELEASE_NODE: "smalt_a@smalt-a.density.internal"
+    command:
+      - elixir
+      - --name
+      - smalt_a@smalt-a.density.internal
+      - --cookie
+      - smalt-dense
+      - -S
+      - mix
+      - run
+      - --no-halt
+    ports: ["127.0.0.1:19443:9443"]
+  smalt-b:
+    <<: *smalt-common
+    container_name: smalt-density-b
+    hostname: smalt-b.density.internal
+    environment:
+      <<: *smalt-env
+      RELEASE_NODE: "smalt_b@smalt-b.density.internal"
+    command:
+      - elixir
+      - --name
+      - smalt_b@smalt-b.density.internal
+      - --cookie
+      - smalt-dense
+      - -S
+      - mix
+      - run
+      - --no-halt
+    ports: ["127.0.0.1:29443:9443"]
+
+networks:
+  dense:
+    driver: bridge

@@ -84,20 +84,16 @@ test-offline:
     @echo "[COURT] T1: offline unit suite..."
     @mix test
 
-# T2: wire-tier suite (mix test test/wire). Exit 0 pass / nonzero on failure.
+# T2: RETIRED (v26.10.19 reset 64f6099 — test/wire deleted). Successor: the
+# verification/ TS/PY suites (justfile.d/32-verification.just) — this recipe
+# is a LOUD no-op (exit 1) until its successor lands; never a silent pass.
 test-wire:
-    @echo "[COURT] T2: wire-tier suite..."
-    @mix test test/wire
+    @echo "[RETIRED] test-wire: test/wire deleted at 64f6099; successor = verification/ suites (justfile.d/32-verification.just). Exit 1 until it lands."; exit 1
 
-# T3: SDK smoke tier (test/sdk-smoke/run.mjs). Exit 0 pass / 1 probe failure /
-# 2 substrate never up / 3 harness failure.
+# T3: RETIRED (v26.10.19 reset — test/sdk-smoke/run.mjs deleted). Successor:
+# verification/ts SDK probes (V261019-08). LOUD no-op (exit 1) until then.
 test-sdk-smoke:
-    @echo "[COURT] T3: SDK smoke tier..."
-    @# Watchdog: the harness self-boots a substrate; if that beam dies mid-run the
-    @# node process polls forever and hangs the court (witnessed runs 8/10, 26+ min
-    @# stalls). 30 min hard cap — healthy pass ~5 min; 900s proved too tight under
-    @# concurrent machine load (run 13 run-2 timed out with 0 test failures).
-    @timeout -k 30 1800 node test/sdk-smoke/run.mjs
+    @echo "[RETIRED] test-sdk-smoke: test/sdk-smoke deleted at 64f6099; successor = verification/ts (V261019-08). Exit 1 until it lands."; exit 1
 
 # T4: terraform fixture plan smoke (scripts/tf_smoke.sh).
 # Exit 0 pass / 1 preflight or substrate failure / 2 terraform step failure /
@@ -107,30 +103,27 @@ tf-plan-smoke:
     @echo "[COURT] T4: terraform fixture plan smoke..."
     @bash scripts/tf_smoke.sh
 
-# SDK smoke: Event Hubs lane (test/sdk-smoke/eh-run.mjs). Boots its own
-# substrate. Exit 0 pass / 1 probe failure / 2 substrate never up / 3 harness.
+# RETIRED (v26.10.19 reset): test/sdk-smoke/eh-run.mjs deleted. Successor:
+# verification/ts Event Hubs probes (V261019-08). LOUD no-op (exit 1).
 eh-smoke:
-    @node test/sdk-smoke/eh-run.mjs
+    @echo "[RETIRED] eh-smoke: test/sdk-smoke deleted at 64f6099; successor = verification/ts EH probes (V261019-08). Exit 1 until it lands."; exit 1
 
-# Service Bus census replay (scripts/sb_census_replay.sh, 8 probes, real SDK).
-# Exit 0 all pass / 1 census failure / 2 substrate never up / 3 harness.
-# In court, SKIP semantics apply: SMALT_SDK_ROOT absent, or exit 3
-# (harness/env failure), degrade to a loud SKIP + exit 0. Exits 0/1/2 stay
-# hard verdicts.
+# Service Bus census replay RETIRED (v26.10.19 reset): test/sdk-smoke
+# census-run.mjs deleted; scripts/sb_census_replay.sh is a loud no-op.
+# Successor: verification/ts census probes (V261019-08). Exit 1 until then.
 @census:
     #!/usr/bin/env bash
-    set -uo pipefail   # NOT -e: we inspect $?
-    if [[ -z "${SMALT_SDK_ROOT:-}" ]]; then
-        echo "[COURT] census SKIP: SMALT_SDK_ROOT not set"
-        exit 0
-    fi
-    bash scripts/sb_census_replay.sh
-    rc=$?
-    if [[ $rc -eq 3 ]]; then
-        echo "[COURT] census SKIP: census env missing (exit 3)"
-        exit 0
-    fi
-    exit $rc
+    echo "[RETIRED] census: sb census replay subject deleted at 64f6099; successor = verification/ts census (V261019-08). Exit 1 until it lands."
+    exit 1
+
+# LOUD no-op placeholders for the fresh verification/ lanes (V261019-08/09).
+# Repoint these to the verification/ts and verification/py entry points as
+# soon as those land; until then they exit 1 loudly — never a silent pass.
+sdk-ts-court:
+    @echo "[RETIRED] sdk-ts-court: awaiting verification/ts entry point (V261019-08); this placeholder exits 1."; exit 1
+
+sdk-py-court:
+    @echo "[RETIRED] sdk-py-court: awaiting verification/py entry point (V261019-09); this placeholder exits 1."; exit 1
 
 # Mutation court: prove the 422/400 validator gate is non-vacuous
 # (scripts/mutation_court.py). Exit 0 non-vacuous / 1 vacuous / 2 BLOCKED.
@@ -145,7 +138,7 @@ mutation-court:
 # capture passes AND every negative fixture is refused (gates/common.py:9-13).
 # Receipts: tmp/invariant-gates/<gate>-receipt.json (6, written fresh).
 @invariant-gates:
-    python3 test/invariant_gates_test.py
+    python3 scripts/invariant_gates.py
 
 # Regenerate docs/ERROR_CODES.md from the generator's ANNOTATIONS table
 gen-error-codes:
@@ -191,15 +184,18 @@ tls-churn:
 # Aggregate Gates
 # ============================================================================
 
-# Full admission court: doctor + all test tiers + tf smoke + bench gate +
-# mutation court + census + invariant gates + naming sweep.
-# Exit 0 only when every member passes. Census SKIP rule: with SMALT_SDK_ROOT
-# absent (or census exit 3 = env missing), census degrades to a loud SKIP and
-# the court continues; all other members are hard gates. Bench note: run
+# Full admission court: doctor + test-offline (mix test over test/internal) +
+# tf smoke + bench gate + mutation court + census + invariant gates +
+# naming sweep + verification governance gates.
+# Exit 0 only when every member passes. Census is currently a RETIRED stage
+# (subject deleted at 64f6099; successor verification/ts census, V261019-08):
+# it exits 1 loudly and keeps the court RED until its successor lands — the
+# court is never green over a retired stage. Verification-gates comes from
+# justfile.d/32-verification.just (imported below). Bench note: run
 # `just bench` before `just court` on a perf-relevant change — a stale-receipt
 # bench-check failure is remediated by `just bench`, never by touching the gate.
-court: doctor test-offline test-wire test-sdk-smoke tf-plan-smoke bench-check \
-        mutation-court census invariant-gates naming-sweep
+court: doctor test-offline tf-plan-smoke bench-check \
+        mutation-court census invariant-gates naming-sweep verification-gates
     @echo "[COURT] Full gate passed."
 
 # Compatibility alias for `court` (legacy name). Same courts, same exits.
@@ -254,3 +250,10 @@ import 'justfile.d/29-sleep.just'
 import 'justfile.d/30-burn.just'
 # 31-have — HAVE supervisory engine L1 operator recipes (HAVE-10)
 import 'justfile.d/31-have.just'
+# 32-verification — verification governance gates (V261019, non-duplication +
+# portable-target; verification/ + test/internal surfaces)
+import 'justfile.d/32-verification.just'
+import 'justfile.d/33-sleep-gate-ext.just'
+import 'justfile.d/34-nightly.just'
+# 35-envelope — Phase 2 envelope gates (automation + container)
+import 'justfile.d/35-envelope.just'

@@ -1,0 +1,97 @@
+# smalt burn Services — Phase 4 compact-cluster orchestration.
+#
+# Split out of the old single-file deployment blob (Deployment + 3
+# Services in one file). Contains:
+#
+#   - smalt-headless: clusterIP: None, the BEAM peer-discovery seam. The
+#     per-pod FQDN <pod>.smalt-headless.default.svc.cluster.local is what
+#     RELEASE_NODE is built from (k8s/burn/smalt-deployment.yaml).
+#     erl-dist (9000) is exposed for node-to-node
+#     traffic; EPMD (4369) rides cluster-internal pod networking.
+#   - smalt-arm / smalt-data / smalt-amqp: client-facing ClusterIP
+#     Services carried over from the prior blueprint (unchanged contract;
+#     smalt-event-hubs added — port 5673 was previously unexposed even
+#     though the container publishes it).
+#     Caveat preserved: these publish across all 3 replicas spread-only,
+#     not session-sticky — and replicas do NOT share DETS state
+#     (in-process storage, no sidecar), so the cross-replica consistency
+#     seam is documented in k8s/README.md.
+#   - kind/cluster.yaml untouched (coordinator-owned port mappings).
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-headless
+  namespace: default
+  labels:
+    app: smalt-burn
+spec:
+  clusterIP: None
+  selector:
+    app: smalt-burn
+  ports:
+    - name: arm-mgmt
+      port: 9443
+      targetPort: arm-mgmt
+    - name: erl-dist
+      port: 9000
+      targetPort: erl-dist
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-arm-service
+  namespace: default
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+    - port: 9443
+      targetPort: arm-mgmt
+      name: arm-mgmt
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-data-service
+  namespace: default
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+    - port: 8443
+      targetPort: data-egress
+      name: data-egress
+  type: ClusterIP
+---
+apiVersion: "v1"
+kind: Service
+metadata:
+  name: smalt-amqp-service
+  namespace: default
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+    - port: 5672
+      targetPort: amqp-sb
+      name: amqp-sb
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-event-hubs-service
+  namespace: default
+  labels:
+    app: smalt-burn
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+    - port: 5673
+      targetPort: eh
+      name: eh
+  type: ClusterIP

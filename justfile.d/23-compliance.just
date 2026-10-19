@@ -1,11 +1,18 @@
-# Compliance corpus tier (170 wire-court tests, loader: test/compliance_test.exs).
-# The family files (test/compliance/*.exs) never matched the *_test.exs glob —
-# this tier is how they run. c5 (servicebus) is :amqp_wire-tagged, so the full
-# 170 execute only with --include amqp_wire.
-SMALT_COMPLIANCE_DIR := "test/compliance"
+# 23-compliance — RETIRED (v26.10.19 staleness-repair lane)
+#
+# Subject deleted: the compliance corpus tier (test/compliance_test.exs,
+# test/compliance/*.exs, 170 wire-court tests) was removed at 64f6099. No
+# successor exists yet — the verification/ suites (V261019-08/09) do not
+# carry a compliance corpus. Both recipes are LOUD no-ops: exit 1, message
+# naming the deleted subject; never a silent pass. Re-author or repoint only
+# with a receipt for a fresh compliance corpus.
 
 @test-compliance:
-    mix test test/compliance_test.exs
+    #!/usr/bin/env bash
+    echo "[RETIRED] test-compliance: test/compliance_test.exs deleted at 64f6099; no successor landed (V261019-08/09 do not carry a compliance corpus). Exit 1."
+    exit 1
 
 @test-compliance-wire *args:
-    mix test test/compliance_test.exs --include amqp_wire {{args}}
+    #!/usr/bin/env bash
+    echo "[RETIRED] test-compliance-wire: test/compliance_test.exs deleted at 64f6099; no successor landed. Exit 1."
+    exit 1

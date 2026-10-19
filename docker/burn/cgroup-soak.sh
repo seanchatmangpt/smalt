@@ -2,7 +2,9 @@
 # cgroup-soak.sh — AZB-18 cgroup-constrained soak (docker/burn).
 #
 # Compose-based soak with PER-SERVICE cgroup limits (the AZB-18 burn design:
-# control=2.0, data=1.5, integration=2.0, identity=1.0 CPU; mem_limit 1g;
+# control=2.0, data=1.5, integration=2.0, identity=1.0 CPU; mem_limit 4g
+# (2g was insufficient for the 2.0-CPU planes — OOM exit 137, see
+# azb-18-cgroup-soak.md cycle 2);
 # pids_limit 512 per ticket). Each service runs the OFFLINE suite inside its
 # container under its own throttling (suite self-boots on ephemeral ports, so
 # 4 parallel containers in their own netns never collide). Per-service row
@@ -33,7 +35,7 @@ CPUS_CONTROL=2.0
 CPUS_DATA=1.5
 CPUS_INTEGRATION=2.0
 CPUS_IDENTITY=1.0
-MEM_LIMIT="${SMALT_SOAK_MEM_LIMIT:-1g}"
+MEM_LIMIT="${SMALT_SOAK_MEM_LIMIT:-4g}"
 PIDS_LIMIT="${SMALT_SOAK_PIDS_LIMIT:-512}"
 TEST_IMG="${SMALT_BURN_TEST_IMAGE:-smalt-burn:latest}"
 LEDGER="$ROOT/docs/jira/v26.10.17/FLAKE_LEDGER.md"
@@ -101,11 +103,15 @@ x-soak-common: &soak-common
     - ./results:/burn-results
     - ../../test:/smalt/test:ro
     - ../../lib:/smalt/lib:ro
+    # WO-4 harness-mount-gap fix: the offline tier reads .ggen_igniter/receipts
+    # (File.Error face in azb-18 cycles); mounted read-only from the sibling
+    # checkout. Path is relative to THIS compose file's dir (docker/burn).
+    - ../../../ggen_igniter:/burn/ggen_igniter:ro
   tmpfs:
     - /tmp
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
-  mem_limit: ${SMALT_SOAK_MEM_LIMIT:-1g}
+  mem_limit: ${SMALT_SOAK_MEM_LIMIT:-4g}
   pids_limit: ${SMALT_SOAK_PIDS_LIMIT:-512}
   restart: "no"
 
@@ -129,7 +135,7 @@ HDR
       BURN_SERVICE: $s
       BURN_PLANE: $p
       BURN_CPUS: "$cpus"
-      BURN_MEM: \${SMALT_SOAK_MEM_LIMIT:-1g}
+      BURN_MEM: \${SMALT_SOAK_MEM_LIMIT:-4g}
 SVC
   done
 }
@@ -175,6 +181,13 @@ if ! docker compose -f "$COMPOSE_FILE" -p "$PROJECT" config --quiet; then
 fi
 if docker compose -f "$COMPOSE_FILE" -p "$PROJECT" config | grep -q 'published:'; then
   echo "[CGROUP-SOAK] PREFLIGHT-FAIL: HOST_PORT_PUBLISH_REFUSED" >&2
+  exit 2
+fi
+# WO-4 mount-surface preflight: the resolved config MUST carry the read-only
+# ggen_igniter mount (the offline tier reads .ggen_igniter/receipts; a soak
+# without it produces UNLEDGERED File.Error faces — azb-18 cycle evidence).
+if ! docker compose -f "$COMPOSE_FILE" -p "$PROJECT" config | grep -q 'ggen_igniter'; then
+  echo "[CGROUP-SOAK] PREFLIGHT-FAIL: GGEN_IGNITER_MOUNT_MISSING" >&2
   exit 2
 fi
 echo "[CGROUP-SOAK] preflight OK: config valid, zero published ports, subject_sha=$SUBJ_SHA image=$IMG_DIGEST"

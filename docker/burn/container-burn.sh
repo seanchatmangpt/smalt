@@ -108,16 +108,12 @@ if [ "${1:-}" = "--saturation" ]; then
   ) &
   FLOOD_PID=$!
 
-  RC=0
-  for i in $(seq 1 "$ROUNDS"); do
-    echo "[BURN] saturation round $i/$ROUNDS (cpus: 2)"
-    if ! docker run --rm --cpus 2 \
-        -e SMALT_SB_SHARED_KEY="$(head -c 24 /dev/urandom | base64)" \
-        -v "$ROOT/test:/smalt/test" -v "$ROOT/lib:/smalt/lib" \
-        "$TEST_IMG" mix test test/azsim/amqp_saturation_test.exs --include stress; then
-      RC=1
-    fi
-  done
+  # RETIRED (clean-room test reset, 64f6099): the saturation subject was
+  # deleted from the retired tree and no verification/ successor exists yet.
+  # Typed preflight-refusal (exit 2 per this script's contract), never a
+  # silent pass.
+  RC=2
+  echo "[BURN][RETIRED] saturation leg retired at 64f6099: subject deleted in the clean-room test reset; no verification/ successor yet" >&2
 
   kill "$FLOOD_PID" 2>/dev/null || true
   wait "$FLOOD_PID" 2>/dev/null || true

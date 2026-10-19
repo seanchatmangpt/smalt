@@ -1,0 +1,176 @@
+# smalt hermetic runtime image (Phase 2, hermetic container rebuild).
+#
+# Goal: a minimal, nonroot, read-only-root-compatible production runtime —
+# ONLY the prod release + CA trust roots + init. NO compilers, package
+# managers (apk removed), dev headers, test engines, or build sources in the
+# final image.
+#
+# Companion entrypoint: docker/hermetic-entrypoint.sh
+# Identity: SUBJECT_SHA is a REQUIRED build-arg validated at build time and
+# carried as org.smalt.subject=${SUBJECT_SHA} (same contract as the burn
+# image, docker/Dockerfile — preserve that discipline).
+#
+# Pin: same builder base as docker/Dockerfile (hexpm/elixir 1.19.5 / OTP
+# 28.5.0.2 / alpine 3.20.9, digest-pinned multi-arch index) so the ERTS/NIF
+# ABI matches the tree's development base. wasmex (rustler) and ex4pm's
+# explorer ship NIFs that compile from source on musl — the builder needs
+# the rust toolchain; the runtime stage needs none of it.
+#
+# Build (sibling path deps ride as extra build contexts, same as the burn
+# image):
+#   docker build -f docker/Dockerfile.hermetic -t smalt-hermetic \
+#     --build-arg SUBJECT_SHA=$(git rev-parse HEAD) \
+#     --build-context ash_r2rml=~/ash_r2rml \
+#     --build-context ash_graphlaw=~/ash_graphlaw \
+#     --build-context ggen_igniter=~/ggen_igniter .
+
+# ============================================================================
+# Stage 1 — builder (discarded; nothing but /app/_release survives)
+# ============================================================================
+FROM hexpm/elixir:1.19.5-erlang-28.5.0.2-alpine-3.20.9@sha256:29c51579d430b307d4f6182775373bb18c90173d382ba23011d81808b0fab8cd AS builder
+
+ARG SUBJECT_SHA
+# Build-time validation: refuse the build if SUBJECT_SHA is unset/empty or
+# not 40-hex (an unbaked default can never ship).
+RUN test -n "$SUBJECT_SHA" \
+      || { echo "FATAL: SUBJECT_SHA build-arg is required (pass --build-arg SUBJECT_SHA=\$(git rev-parse HEAD))" >&2; exit 1; } \
+ && echo "$SUBJECT_SHA" | grep -Eq '^[0-9a-f]{40}$' \
+      || { echo "FATAL: SUBJECT_SHA must be 40-hex, got: $SUBJECT_SHA" >&2; exit 1; }
+
+# Full native toolchain — builder only. Runtime stage never sees these.
+RUN apk add --no-cache \
+      git bash python3 make gcc musl-dev openssl \
+      rust cargo
+
+ENV LANG=C.UTF-8 \
+    MIX_ENV=prod
+
+WORKDIR /smalt
+
+# --- warm dependency layer (changes only when mix.lock moves) ---------------
+FROM builder AS deps
+# `build` below is the stage the runtime COPYs from — it must be the
+# stage that actually ran `mix release` (a COPY --from an ancestor stage
+# sees that stage's own state, not its children's).
+COPY mix.exs mix.lock ./
+
+# Sibling path deps injected as extra build contexts (see header).
+# ash_r2rml / ash_graphlaw are copied whole (31M / 51M). ggen_igniter is
+# trimmed to its mix-compile-required subset (mix.exs mix.lock lib config
+# priv native) — the full tree carries ~2.5 GB of foreign _build-*/target
+# scratch and release tars that are not dep inputs (VM disk pressure
+# witnessed 2026-10-19: ResourceExhausted mid-COPY on a 60GiB colima disk).
+COPY --from=ash_r2rml / /ctx/ash_r2rml
+COPY --from=ash_graphlaw / /ctx/ash_graphlaw
+COPY --from=ggen_igniter /mix.exs /mix.lock /ctx/ggen_igniter/
+COPY --from=ggen_igniter /lib /config /priv /native /ctx/ggen_igniter/
+RUN mkdir -p /sibs \
+ && ln -sfn /ctx/ash_r2rml /ash_r2rml \
+ && ln -sfn /ctx/ash_graphlaw /ash_graphlaw \
+ && ln -sfn /ctx/ggen_igniter /ggen_igniter
+
+RUN mix local.hex --force && mix local.rebar --force
+# Single hex connection: the colima VM NAT has shown TLS flaps to hex.
+ENV HEX_HTTP_CONCURRENCY=1 HEX_HTTP_TIMEOUT=120
+RUN mix deps.get
+RUN mix deps.compile
+
+FROM deps AS build
+COPY lib ./lib
+COPY config ./config
+COPY priv ./priv
+# Plain compile: --warnings-as-errors currently fails on 12 PRE-EXISTING
+# warnings (see docker/Dockerfile comment, 2026-10-18) — parity with the
+# burn image until those land.
+RUN mix compile
+RUN mix release smalt --path /app/_release
+
+# Runtime env overlays: mix release does not package config/env/*.exs; the
+# release's env dir is overlaid at build time (glob cp — the versioned
+# release dir name is not COPY-able at build time).
+COPY config/env /tmp/burn-env/
+RUN for d in /app/_release/releases/*/; do mkdir -p "$d/env" \
+      && cp /tmp/burn-env/*.exs "$d/env/" ; done && rm -rf /tmp/burn-env
+
+# ============================================================================
+# Stage 2 — hermetic runtime
+# ============================================================================
+# Minimal musl base; every package is a runtime link-time requirement of the
+# release (ERTS + NIFs), not tooling:
+#   ca-certificates            CA trust roots (TLS egress)
+#   openssl + libssl3/libcrypto3  crypto NIF link deps
+#   ncurses-libs               ERTS link dep
+#   libstdc++ / libgcc         rust NIF (wasmex, explorer) link deps
+#   zlib                       compression NIF link deps
+FROM alpine:3.20.9 AS runtime
+
+# Re-declare in this stage: build-args do not cross FROM boundaries, so the
+# subject label + receipt env here would otherwise be an UndefinedVar (the
+# burn image's label lives on a single-stage build; a multi-stage build must
+# re-declare per stage that carries the label).
+ARG SUBJECT_SHA
+LABEL org.smalt.subject=${SUBJECT_SHA}
+
+RUN apk add --no-cache \
+      ca-certificates openssl ncurses-libs libstdc++ libgcc zlib \
+ # Strip the package manager + its metadata after install: the runtime image
+ # carries no way to mutate the package set. (Same effect as a distroless
+ # base, retained musl libc because the ERTS/NIFs are musl-linked.)
+ && apk del apk-tools \
+ && rm -rf /etc/apk /var/cache/apk /lib/apk /root /tmp/*
+
+# nonroot identity (uid/gid 1000). Ports are 9443/9444/8443/5672/5673/9545 —
+# all unprivileged.
+RUN addgroup -g 1000 nonroot \
+ && adduser -D -u 1000 -G nonroot -H -h /nonexistent nonroot
+
+COPY --from=build --chown=1000:1000 /app/_release /app/_release
+COPY docker/hermetic-entrypoint.sh /usr/local/bin/hermetic-entrypoint
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN chmod 0755 /usr/local/bin/hermetic-entrypoint
+
+ENV LANG=C.UTF-8 \
+    MIX_ENV=prod \
+    # Identity export for schema-valid receipts (git is absent at runtime).
+    SMALT_BURN_SUBJECT_SHA=${SUBJECT_SHA} \
+    # Zero embedded secrets: no .smalt/tls, no Service Bus keys are baked.
+    # TLS material and credentials are runtime-injected (mount secret / env).
+    # ENV placeholders document the contract:
+    SMALT_CERT_DIR=/smalt/.smalt/tls \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+WORKDIR /app
+USER nonroot
+EXPOSE 9443 9444 8443 5672 5673 9545
+
+# Health observable: ARM control plane GET /metadata/endpoints (router.ex
+# :2520). Control plane answers even when data-plane planes are not ready
+# (router.ex :1573 — control stays independent of data-plane readiness), so
+# this is a liveness/readiness signal for the container itself, not the data
+# planes. Busybox wget is part of the alpine base runtime; TLS self-check is
+# skipped (--no-check-certificate) because the leaf cert is runtime-injected.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -q --spider --no-check-certificate \
+        https://127.0.0.1:9443/metadata/endpoints || exit 1
+
+# readOnlyRootFilesystem compatibility: the only writable paths the BEAM
+# needs are /tmp (beam scratch, ERTS, transient logs) and the release tmp dir.
+# Declare them tmpfs (k8s):
+#   securityContext: {readOnlyRootFilesystem: true, runAsNonRoot: true,
+#                     fsGroup: 1000}
+#   volumeMounts:
+#     - {name: scratch, mountPath: /tmp}
+#     - {name: scratch, mountPath: /app/_release/tmp}
+#   volumes:
+#     - {name: scratch, emptyDir: {}}
+# compose equivalent:
+#   read_only: true
+#   tmpfs: [/tmp, /app/_release/tmp]
+#
+# Init: BEAM as PID 1 reaps children fine for this release (no port/driver
+# spawners beyond the BEAM's own); tini-class init intentionally omitted to
+# keep the image free of extra binaries. Add `init: true` (compose) or
+# `shareProcessNamespace`/tini sidecar if driver subprocesses ever orphan.
+
+ENTRYPOINT ["/usr/local/bin/hermetic-entrypoint"]
+CMD ["start"]

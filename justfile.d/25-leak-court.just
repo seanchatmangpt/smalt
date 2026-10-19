@@ -2,9 +2,14 @@
 # NOT wired into `just court` until the 122 flagged mutations are remediated
 # (a gate that currently exits 1 on 122 findings must not gate the ladder);
 # the recipe makes it runnable and the court wiring is a NEXT_WINDOW item.
+# v26.10.19 staleness-repair note: the gate's scan root (test/) now contains
+# only the residual tier test/internal (+ test_helper.exs) after the 64f6099
+# reset — the scan surface is therefore test/internal without a gate edit
+# (gates/*.py are contracts; not edited by this lane).
 
 # Static test-isolation leak court: flags Application env / :persistent_term /
-# named-ETS mutations in test/ without save-restore discipline.
+# named-ETS mutations in test/ (post-reset: test/internal) without
+# save-restore discipline.
 @leak-court:
     python3 gates/test_isolation_leak_gate.py
 

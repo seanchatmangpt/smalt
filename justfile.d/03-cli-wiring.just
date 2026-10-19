@@ -25,6 +25,10 @@ VENV_CLI := SMALT_CLI / ".venv-cli" / "bin" / "python"
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{SMALT_CLI}}"
+    # smalt-cli lane finding: conftest shells out to `mix run`, which inherits
+    # MIX_BUILD_ROOT — pin it to this lane's private root so the pytest legs
+    # never contend on the shared _build (compile-freeze / lease hygiene).
+    export MIX_BUILD_ROOT=_build-lane-cli
     echo "== SDK wire lanes (tests/) via .venv-cli =="
     "{{VENV_CLI}}" -m pytest tests/ -q -p no:cacheprovider
     echo "== package lanes (smalt_cli/test_*.py) via .venv-cli (ADR-PY-002 fallback) =="

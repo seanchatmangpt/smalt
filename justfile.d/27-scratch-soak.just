@@ -13,14 +13,9 @@
     echo "$dir"
 
 # Load-condition repetition gate for the compliance corpus timing window:
-# run the corpus N times, gate on flake rate. Exits 1 if any round fails.
+# RETIRED — the compliance corpus was deleted at 64f6099; soak of a deleted
+# subject is not runnable. LOUD no-op (exit 1) naming the deleted subject.
 @corpus-soak N="3":
     #!/usr/bin/env bash
-    set -euo pipefail
-    n="{{N}}"
-    for i in $(seq 1 "$n"); do
-      echo "[CORPUS-SOAK] round $i/$n"
-      MIX_BUILD_ROOT=_build-soak mix test test/compliance_test.exs 2>&1 | tail -1
-    done
-    rm -rf _build-soak
-    echo "[CORPUS-SOAK] $n rounds done — any failure line above is a flake witness"
+    echo "[RETIRED] corpus-soak: test/compliance_test.exs deleted at 64f6099; no successor corpus. Exit 1."
+    exit 1

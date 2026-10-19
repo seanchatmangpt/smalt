@@ -121,3 +121,6 @@ tmp/have/
 
 # npm-from-root byproduct (explicit anchor; node_modules/ above already matches)
 /node_modules/
+
+# v26.10.19: tf fixture moved to scripts/tf_fixtures (test/terraform_fixture deleted 64f6099)
+scripts/tf_fixtures/.terraform*/

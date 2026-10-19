@@ -20,7 +20,13 @@
     echo 'export SMALT_AMQP="127.0.0.1:5672"'
     # SHIM-COURT: SMALT_SB_SHARED_KEY deliberately NOT emitted here — the single
     # key policy is dev_env.sh's deterministic per-host sha256 key (eval'd below).
-    echo "export SMALT_SDK_ROOT=\"\${SMALT_SDK_ROOT:-$REPO/test/sdk-smoke/node_modules}\""
+    if [ -d "$REPO/verification/ts/node_modules/@azure" ]; then
+      echo "export SMALT_SDK_ROOT=\"\${SMALT_SDK_ROOT:-$REPO/verification/ts/node_modules}\""
+    else
+      echo '# [RELAY-ENV] WARN: no SDK node_modules on disk (verification/ts/node_modules absent).'
+      echo '# [RELAY-ENV] SMALT_SDK_ROOT left UNSET — set it to a node_modules dir containing @azure'
+      echo '# [RELAY-ENV] once the verification/ts SDK deps land (V261019-08); census legs SKIP loudly without it.'
+    fi
     echo '# TLS dev material (mint with: scripts/gen_dev_cert.sh)'
     echo 'export SMALT_TLS_CERTFILE="$PWD/.smalt/tls/dev-cert.pem"'
     echo 'export SMALT_TLS_KEYFILE="$PWD/.smalt/tls/dev-key.pem"'

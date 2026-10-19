@@ -12,7 +12,14 @@ spec:
         job: smalt-burn-conformance
     spec:
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
       volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: build-volume
+        emptyDir: {}
       - name: beam4pm-volume
         hostPath:
           path: /beam4pm
@@ -29,8 +36,20 @@ spec:
       - name: conformance-runner
         image: smalt:local
         imagePullPolicy: Never
-        command: ["elixir", "/burn-evidence/in_container_conformance.exs"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        command:
+        - elixir
+        - /burn-evidence/in_container_conformance.exs
         volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: build-volume
+          mountPath: /smalt/_build
         - name: beam4pm-volume
           mountPath: /beam4pm
           readOnly: true
@@ -41,8 +60,9 @@ spec:
           mountPath: /burn-evidence
         resources:
           limits:
-            cpu: "2"
-            memory: "2Gi"
+            cpu: '2'
+            memory: 2Gi
           requests:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: 500m
+            memory: 512Mi
+_changed: true

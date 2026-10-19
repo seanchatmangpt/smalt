@@ -3,7 +3,7 @@
 # Wires the landed native lifecycle entrypoints (no `Smalt.Enclave.Lifecycle`
 # module and no `mix smalt.doctor` task have landed; adjusted to reality):
 #
-#   test/terraform_fixture HCL
+#   scripts/tf_fixtures HCL
 #     --Smalt.Enclave.Hcl.parse/1-->  resource terms
 #     --Smalt.Enclave.Engine.apply/2 (in-process ARM router, no terraform)-->
 #     outcomes -> state JSON (tmp/native-enclave-state.json)
@@ -37,7 +37,7 @@ NATIVE_STATE := "tmp/native-enclave-state.json"
     EXS="$EXSDIR/lifecycle.exs"
     trap 'rm -rf "$EXSDIR"' EXIT  # SHIM-COURT-free: single trap covers $EXS (inside $EXSDIR); a second trap would REPLACE this one and leak /tmp/native-lifecycle.* dirs
     export NATIVE_MODE="{{MODE}}"
-    export NATIVE_FIXTURE="${NATIVE_FIXTURE:-test/terraform_fixture}"
+    export NATIVE_FIXTURE="${NATIVE_FIXTURE:-scripts/tf_fixtures}"
     export NATIVE_STATE="${NATIVE_STATE:-{{NATIVE_STATE}}}"
     mkdir -p "$(dirname "$NATIVE_STATE")"
     # Lock fd CLOSED on spawn (fan-out law 4): the beam must not inherit the
@@ -476,7 +476,7 @@ NATIVE_STATE := "tmp/native-enclave-state.json"
 # -> State.destroy (verified cascade) -> residue must be EMPTY (fail-closed).
 # This is the non-vacuity surface for the native engine: a broken Engine,
 # Hcl, State, or ARM router shows up as DRIFT / failed cascade / residue.
-test-native fixture="test/terraform_fixture":
+test-native fixture="scripts/tf_fixtures":
     @just _native-lifecycle test
 
 # Provision the fixture through the in-process engine, write the state JSON.
@@ -484,11 +484,11 @@ test-native fixture="test/terraform_fixture":
 # engine; tier="wire" is EXPLICIT OPT-IN to the external terraform path
 # (scripts/tf_cleanroom.sh) and prints the wire-parity warning first.
 # Invocation note: just 1.56 passes recipe arguments POSITIONALLY —
-# `just apply fixture=test/terraform_fixture tier=wire` arrives with the
+# `just apply fixture=scripts/tf_fixtures tier=wire` arrives with the
 # literal 'name=' prefixes. The recipes below strip an optional 'name='
 # prefix so both positional (`just apply . wire`) and assignment-style
 # (`just apply fixture=... tier=wire`) invocations work.
-apply fixture="test/terraform_fixture" tier="native":
+apply fixture="scripts/tf_fixtures" tier="native":
     #!/usr/bin/env bash
     set -euo pipefail
     FIXTURE="{{fixture}}"; FIXTURE="${FIXTURE#fixture=}"
@@ -534,7 +534,7 @@ destroy tier="native":
 # -> zero-drift -> blob/secrets/cosmos read-your-write over real loopback
 # HTTP on the private native beam -> the enclave-loop console harness
 # (workspace/scripts/enclave-loop.mjs) against the same live beam.
-verify fixture="test/terraform_fixture":
+verify fixture="scripts/tf_fixtures":
     #!/usr/bin/env bash
     set -euo pipefail
     ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -619,8 +619,11 @@ spc-check:
     #!/usr/bin/env bash
     set -euo pipefail
     file="{{TEST}}"; file="${file%%:*}"
-    [ -f "$file" ] || { echo "TEST_FREEZE: test file not found: $file" >&2; exit 1; }
-    case "$file" in test/*.exs) ;; *) echo "TEST_FREEZE: $file is not under test/" >&2; exit 1;; esac
+    [ -f "$file" ] || { echo "TEST_FREEZE: witness file not found: $file" >&2; exit 1; }
+    case "$file" in
+      test/internal/*.exs|verification/*.spec.*|verification/*.test.*|verification/*.py) ;;
+      *) echo "TEST_FREEZE: $file is not under test/internal/ or verification/ (fresh suites, v26.10.19 reset)" >&2; exit 1;;
+    esac
     mkdir -p .smalt
     printf '1\n' > .smalt/fix-mode.tmp && mv .smalt/fix-mode.tmp .smalt/fix-mode
     chmod 0444 .smalt/fix-mode

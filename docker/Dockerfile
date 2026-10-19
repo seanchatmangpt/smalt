@@ -20,11 +20,19 @@
 # the NIFs build from source and need a rust toolchain.
 FROM hexpm/elixir:1.19.5-erlang-28.5.0.2-alpine-3.20.9@sha256:29c51579d430b307d4f6182775373bb18c90173d382ba23011d81808b0fab8cd AS base
 
-# Subject identity: default is the checkpoint-6 head this image lineage was
-# cut from; overridable at build time without breaking the pin
-#   docker build --build-arg SUBJECT_SHA=$(git rev-parse HEAD) ...
-ARG SUBJECT_SHA=29bb0371426a270c9c9ac2dc483b7e2a9d226938
+# Subject identity: REQUIRED build-arg, no baked default. WO-1 root cause 1:
+# the previous stale default (`29bb0371…`) baked a label stale on arrival
+# unless overridden. Every build must pass
+#   --build-arg SUBJECT_SHA=$(git rev-parse HEAD)
+# (scripts/build_burn_image.sh enforces this mechanically).
+ARG SUBJECT_SHA
 LABEL org.smalt.subject=${SUBJECT_SHA}
+# Build-time validation: refuse the build if SUBJECT_SHA is unset/empty or
+# not 40-hex (an unbaked default can never ship).
+RUN test -n "$SUBJECT_SHA" \
+      || { echo "FATAL: SUBJECT_SHA build-arg is required (pass --build-arg SUBJECT_SHA=\$(git rev-parse HEAD))" >&2; exit 1; } \
+ && echo "$SUBJECT_SHA" | grep -Eq '^[0-9a-f]{40}$' \
+      || { echo "FATAL: SUBJECT_SHA must be 40-hex, got: $SUBJECT_SHA" >&2; exit 1; }
 # AZB-03: runtime export so burn emitters mint schema-valid run receipts
 # (identity.subject_sha requires 40-hex; git is absent in the runtime stage).
 ENV SMALT_BURN_SUBJECT_SHA=${SUBJECT_SHA}

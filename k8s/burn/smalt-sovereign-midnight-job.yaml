@@ -12,7 +12,14 @@ spec:
         job: smalt-sovereign-midnight-burn
     spec:
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
       volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: build-volume
+        emptyDir: {}
       - name: burn-evidence-volume
         hostPath:
           path: /burn-evidence
@@ -21,17 +28,31 @@ spec:
       - name: test-runner
         image: smalt:local
         imagePullPolicy: Never
-        command: ["mix", "test", "/burn-evidence/sovereign_midnight_test.exs"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        command:
+        - mix
+        - test
+        - /burn-evidence/sovereign_midnight_test.exs
         env:
         - name: MIX_ENV
-          value: "test"
+          value: test
         volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: build-volume
+          mountPath: /smalt/_build
         - name: burn-evidence-volume
           mountPath: /burn-evidence
         resources:
           limits:
-            cpu: "2"
-            memory: "2Gi"
+            cpu: '2'
+            memory: 2Gi
           requests:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: 500m
+            memory: 512Mi
+_changed: true

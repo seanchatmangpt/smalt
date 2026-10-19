@@ -24,6 +24,15 @@ x-smalt-common: &smalt-common
     SSL_CERT_FILE: /smalt/.smalt/tls/ca-cert.pem
   working_dir: /smalt
   init: true
+  healthcheck:
+    # Burn lanes boot a private substrate on EPHEMERAL ports — there is no
+    # fixed listener to dial, so the healthcheck is BEAM liveness: PID 1
+    # alive and a beam scheduler process running. (Pattern source:
+    # docker/compose.smalt.yml, which dials its fixed 9443 listener.)
+    test: ["CMD", "bash", "-c", "kill -0 1 && pgrep -f 'beam.smp' >/dev/null"]
+    interval: 30s
+    timeout: 5s
+    start_period: 20s
 
 services:
   # Lane A — sustained soak: 25-min mixed traffic vs private substrate.
@@ -32,6 +41,7 @@ services:
     command: ["python3", "scripts/stress/soak.py"]
     cpus: 2.0
     mem_limit: 4g
+    networks: [burn-net-a]
 
   # Lane B — chaos: kill-under-load, listen-queue fill, recovery timing.
   burn-b:
@@ -39,6 +49,7 @@ services:
     command: ["python3", "scripts/stress/chaos_kill.py"]
     cpus: 1.5
     mem_limit: 3g
+    networks: [burn-net-b]
 
   # Lane C — stress test tier: Class-B faces via the :stress tag.
   burn-c:
@@ -46,6 +57,7 @@ services:
     command: ["mix", "test", "--include", "stress"]
     cpus: 2.0
     mem_limit: 4g
+    networks: [burn-net-c]
 
   # Lane D — boot burn: repeated full app boot/exit cycles.
   burn-d:
@@ -66,3 +78,13 @@ services:
       SMALT_BOOT_BURN_ITERS: 20
     cpus: 1.0
     mem_limit: 2g
+    networks: [burn-net-d]
+
+# Each burn lane gets its OWN compose network: the lanes are independent
+# network namespaces (private ephemeral-port substrates), never siblings on
+# a shared fabric — no cross-lane DNS discovery exists or should exist.
+networks:
+  burn-net-a: {}
+  burn-net-b: {}
+  burn-net-c: {}
+  burn-net-d: {}

@@ -216,7 +216,7 @@ beam_pid() { "$SMALT_BIN" pid 2>/dev/null || true; }
 
 start_daemon() {
   : > /tmp/burn-smalt.log
-  nohup "$SMALT_BIN" start >/tmp/burn-smalt.log 2>&1 &
+  "$SMALT_BIN" start </dev/null 9>&- >/tmp/burn-smalt.log 2>&1 &
 }
 
 stop_sigterm() {
@@ -381,7 +381,7 @@ if [ "$SABOTAGE" = "orphan-listener" ]; then
   echo "[boot-burn] SABOTAGE: spawning detached nc -l 9443; teardown must emit ORPHAN_LISTENER"
   # nc -l exits after ONE accepted connection, so the readiness poll's own
   # connect would reap it; hold the listener in a persist loop instead.
-  nohup bash -c 'while :; do nc -l -p 9443 </dev/null >/dev/null 2>&1; done' >/dev/null 2>&1 &
+  bash -c 'while :; do nc -l -p 9443 </dev/null >/dev/null 2>&1; done' >/dev/null 2>&1 9>&- &
   start_daemon
   # nc holds :9443 so readiness cannot complete; poll until nc is observable,
   # stop the daemon, then the orphan assertion must fire on it.

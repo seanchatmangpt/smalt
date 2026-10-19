@@ -39,7 +39,7 @@ DOCS_ROOT := parent_directory(justfile_directory())
     check workspace/ARCHITECTURE.md
     check smalt-cli/README.md
     check smalt-cli/GATES.md
-    check test/enclave-testbed/README.md
+    # test/enclave-testbed/README.md check retired (subject deleted at 64f6099).
     # Diátaxis tree (v26.10.16 docs restructure, docs/jira/v26.10.16/
     # docs-restructure-plan.md). Pinned to the landed set.
     check docs/tutorials/enclave-lifecycle.md

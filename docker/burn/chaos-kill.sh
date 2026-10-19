@@ -20,6 +20,14 @@
 #                    restart the seal succeeds.
 #   s4-amqp-capacity fill queue to 4096, enqueue #4097 -> {:error, :capacity}
 #                    (wire: amqp:link-message-size-exceeded).
+#   s6-dets-storm    AZB-06 write-through SIGKILL storm (docker/burn/
+#                    storm_dets_reboot.exs): boot :dets_mirrored
+#                    sync_interval_ms:0 via put_env, N fsync-ACKed blob
+#                    writes through the real BlobStorage path, junk unsynced
+#                    rows, kill -9 at a seeded ACK offset; reboot verifier
+#                    opens DetsMirror via open_typed/3 — acked survive, zero
+#                    phantoms, both outcomes typed (selected with
+#                    SMALT_CHAOS_SCENARIO=s6).
 #   gates            host mode only: with SMALT_GATES_HOST=1 + SMALT_GATES_DIR
 #                    set, the 6 invariant gate binaries from a host checkout
 #                    re-run green and the receipt says so. In-image standalone
@@ -33,6 +41,28 @@
 # Exit: 0 all scenarios green (gates green too in host mode) / 1 typed
 # failure / 2 preflight refusal (no release bin off-image) / 3 loud skip.
 set -euo pipefail
+
+# Dry-run scenario table: `chaos-kill.sh --list` (or SMALT_CHAOS_LIST=1).
+# Prints the resolved scenario table and exits 0 — no docker, no release bin.
+if [ "${1:-}" = "--list" ] || [ "${SMALT_CHAOS_LIST:-0}" = "1" ]; then
+  cat <<'EOF'
+[chaos-kill] resolved scenario table:
+  s1-store-kill      kill Smalt.Store mid-write -> supervised restart -> put green
+  s2-lro-flip        kill LRO Sweeper mid-flip -> one-terminal convergence (idempotent)
+  s3-wasm-seal       kill WasmEngine mid-seal -> typed :engine_unavailable -> seal ok
+  s4-amqp-capacity   fill queue 4096 -> #4097 {:error, :capacity} (typed wire close)
+  s5-identity-sts    terminate IdentitySupervisor -> STS mint gate closed typed -> reopened
+  s6-dets-storm      AZB-06 write-through SIGKILL storm: boot :dets_mirrored
+                     sync_interval_ms:0 via put_env, N fsync-ACKed blob writes through
+                     the real BlobStorage path, junk unsynced rows, kill -9 at a seeded
+                     ACK offset; reboot verifier opens DetsMirror via open_typed/3 and
+                     asserts acked-survive + zero-phantoms with BOTH outcomes typed
+                     (clean reopen w/ repaired=true+telemetry, or typed store_corrupt).
+                     Selected with SMALT_CHAOS_SCENARIO=s6 (or s6-dets-storm).
+  storm              AZB-14 multi-cycle storm (s1-s4 + storm full runs only)
+EOF
+  exit 0
+fi
 
 SMALT_BIN=${SMALT_BIN:-/app/_release/bin/smalt}
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -581,6 +611,104 @@ true = open
 IO.puts("CHAOS_OK s5 identity-sts-gate-closed-typed-then-reopened")
 '
 if [ -z "$SABOTAGE_MODE" ] && want s5; then run_eval s5-identity-sts "$s5" || exit 1; fi
+
+# ==========================================================================
+# s6-dets-storm — AZB-06 write-through SIGKILL storm (single cycle). The
+# requested name s5-dets-storm collides with the existing s5-identity-sts
+# selection prefix (`want s5` prefix-matches), so this lands as s6.
+# Boot the substrate with persistence :dets_mirrored + sync_interval_ms:0
+# via put_env (the AZB-06 write-through profile), write N fsync-ACKed blob
+# rows through the REAL BlobStorage.put_blob path (each ack only after
+# DetsMirror.sync_write fsyncs), then junk unsynced rows, then kill -9 the
+# whole VM at a seeded ACK offset. Reboot leg: storm_dets_reboot.exs opens
+# DetsMirror through open_typed/3 — acked survive, zero phantoms, and both
+# outcomes typed/printed/non-crashing (clean reopen, or needs_repair healed
+# with telemetry, or a typed store_corrupt refusal).
+# ==========================================================================
+if [ -z "$SABOTAGE_MODE" ] && want s6; then
+  s6_src='
+{:ok, _} = Application.ensure_all_started(:smalt)
+Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 0)
+
+{:ok, _mirror} =
+  Smalt.Store.DetsMirror.start_link(
+    dir: System.fetch_env!("S6_DIR"),
+    tables: [:smalt_blobs],
+    interval: 3_600_000,
+    repair: true
+  )
+
+n = String.to_integer(System.fetch_env!("S6_N"))
+
+# N fsync-ACKed rows: the ACK prints ONLY after put_blob returned, and
+# put_blob only returns after DetsMirror.sync_write fsynced (AZB-06).
+for i <- 1..n do
+  {:ok, _} = Smalt.DataPlane.BlobStorage.put_blob("s6acct", "chaos", "blob-#{i}", "s6-payload-#{i}")
+  IO.puts("ACK s6acct/chaos/blob-#{i}")
+end
+
+# Junk unsynced rows: flip the profile so put_blob stops fsync-mirroring,
+# then write rows that exist only in ETS at kill time (any junk key that
+# STILL reaches the mirror file is a phantom and the verifier fails loud).
+Application.put_env(:smalt, :blob_storage, persistence: :ets_only)
+
+junk = String.to_integer(System.fetch_env!("S6_JUNK"))
+
+for i <- 1..junk do
+  {:ok, _} = Smalt.DataPlane.BlobStorage.put_blob("s6acct", "chaos-junk", "junk-#{i}", "junk-#{i}")
+  IO.puts("JUNK s6acct/chaos-junk/junk-#{i}")
+end
+
+IO.puts("ACKS_DONE")
+
+# Unacked stream until the kill lands (bounded by the storm kill, no sleeps).
+stream = fn f, k ->
+  {:ok, _} = Smalt.DataPlane.BlobStorage.put_blob("s6acct", "chaos-unacked", "unacked-#{k}", "u#{k}")
+  f.(f, k + 1)
+end
+
+stream.(stream, 1)
+'
+  S6_N=${S6_N:-12}
+  S6_JUNK=${S6_JUNK:-8}
+  S6_DIR=/tmp/s6-storm
+  rm -rf "$S6_DIR"
+  mkdir -p "$S6_DIR"
+  lcg; kill_after=$(( (LCG % (S6_N - 2)) + 2 ))   # 2..N-1: mid-write offset
+  echo "[chaos-kill] s6-dets-storm: n=$S6_N junk=$S6_JUNK kill_after=$kill_after"
+
+  S6_DIR="$S6_DIR" S6_N="$S6_N" S6_JUNK="$S6_JUNK" \
+    "$SMALT_BIN" eval "$s6_src" >"$S6_DIR/writer.out" 2>&1 &
+  s6_wpid=$!
+  s6_deadline=$(( $(date +%s) + 60 ))
+  until [ "$(grep -c '^ACK ' "$S6_DIR/writer.out" 2>/dev/null)" -ge "$kill_after" ] ||
+    [ "$(date +%s)" -ge "$s6_deadline" ]; do
+    read -r -t 0.05 -u 0 _ 2>/dev/null || true
+  done
+  acks=$(grep -c '^ACK ' "$S6_DIR/writer.out" || true)
+  [ "$acks" -ge 2 ] || fail "s6-dets-storm" "writer acked only $acks of kill_after=$kill_after (out: $(tail -3 "$S6_DIR/writer.out" | tr -d '"' | cut -c1-200))"
+  kill -9 "$s6_wpid" || fail "s6-dets-storm" "kill -9 $s6_wpid failed"
+  wait "$s6_wpid" 2>/dev/null || true
+
+  ledger=$(grep '^ACK ' "$S6_DIR/writer.out" | awk '{print $2}' | tr '\n' ' ')
+  rc=0
+  SMALT_EBIN_GLOB="/app/_release/lib/*/ebin" STORM_DIR="$S6_DIR" \
+    STORM_LEDGER="$ledger" \
+    "$ELIXIR_BIN" /burn/storm_dets_reboot.exs >"$S6_DIR/reboot.out" 2>&1 || rc=$?
+
+  case "$(cat "$S6_DIR/reboot.out")" in
+    *S6_VIOLATION*|*S6_NOFILE-with-ledger*)
+      fail "s6-dets-storm" "durability contract violated: $(tail -3 "$S6_DIR/reboot.out" | tr -d '"' | cut -c1-200)"
+      ;;
+    *STORM_OK*|*STORM_OK_TYPOUTCOME*|*S6_NOFILE*)
+      emit "s6-dets-storm" 0 "kill9-after=$acks-of-$S6_N $(grep -m1 -E '^STORM_OK' "$S6_DIR/reboot.out" | cut -c1-120)"
+      echo "[chaos-kill] s6-dets-storm PASS: $(grep -m1 -E '^STORM_OK' "$S6_DIR/reboot.out")"
+      ;;
+    *)
+      fail "s6-dets-storm" "reboot leg no typed verdict rc=$rc: $(tail -3 "$S6_DIR/reboot.out" | tr -d '"' | cut -c1-200)"
+      ;;
+  esac
+fi
 
 # ==========================================================================
 # gates — the 6 invariant gates re-run green
