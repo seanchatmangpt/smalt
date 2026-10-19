@@ -1,7 +1,12 @@
 {
   "_comment": "AZB-21 typed classification file for scripts/sleep_gate.py. The ONLY allowlist for the sleep gate: files whose sleep lives inside one audited bounded poll loop, and function names whose sleep is a bounded poll/retry STEP (class C retry-loop idiom, v26.10.18 census rewrite-drafts/sleeps.md). Growth of this file is a reviewed diff; every entry carries a reason. Inline per-site escapes use `# SLEEP-CLASS: TIME-ADVANCE` (real time window) or `# SLEEP-CLASS: POLL-STEP` (bounded poll step) adjacent to the sleep.",
   "files": [
-    {"path": "test/support/assert_eventually.ex", "reason": "audited bounded-poll implementation; sleep is the poll step inside loop/3 with a monotonic deadline"}
+    {"path": "test/support/assert_eventually.ex", "reason": "audited bounded-poll implementation; sleep is the poll step inside loop/3 with a monotonic deadline"},
+    {"path": "test/internal/poll_helper.exs", "reason": "audited bounded-poll implementation (residual internal tier); pace/4 sleep is the bounded poll step min(poll_ms, remaining) under a monotonic deadline; the inline POLL-STEP comment sits on the defp pace header, not adjacent to the sleep line, so the file-tier entry is the typed fix"},
+    {"path": "verification/py/harness/poll.py", "reason": "audited bounded-poll implementation: poll_until() deadline-checked (time.monotonic deadline, typed TimeoutError); the sleep is the poll step"},
+    {"path": "verification/ts/harness/poll.ts", "reason": "audited bounded-poll implementation: boundedPoll() deadline-checked with 10ms-200ms backoff cap and typed PollTimeout; sleep() at line 37 is the poll-step primitive consumed by boundedPoll"},
+    {"path": "verification/ts/harness/substrate.ts", "reason": "audited bounded boot-health poll: 250ms step inside a 90s deadline-checked loop polling tryConnect + /metadata/endpoints; typed SubstrateBootError + SIGKILL at deadline"},
+    {"path": "verification/py/conftest.py", "reason": "audited bounded poll steps only: _sweep 10s deadline port-drain poll (line 132), flock LOCK_EX retry under 20s deadline (line 172), substrate boot readiness poll under 180s deadline polling proc.poll()+port_open (line 196), _kill 5s bounded exit-await before SIGKILL escalation (line 214)"}
   ],
   "functions": [
     {"name": "sweep_until_terminal", "reason": "bounded poll/retry step"},

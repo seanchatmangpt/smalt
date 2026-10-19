@@ -30,7 +30,10 @@ source "scripts/shim_court/lib.sh"
 # degraded to a REPL no-op exiting 0, so both probe legs "passed" on zero
 # output and the flip was vacuous).
 export SUBJECT="lib/smalt/messaging/amqp/connection.ex"
-export PROBE="test/sdk-full/eventhubs.probe.mjs"
+# RETIRED witness (clean-room test reset, 64f6099): the probe tree was
+# deleted with no verification/ successor yet; the court self-skips loudly
+# (exit 3) until a successor witness lands.
+export PROBE=""
 # Lane-local build root for ALL mix legs (compile retry + probe substrate):
 # the shimmed subject must never compile into the shared _build, and the
 # witness vars must be EXPORTED — with_shim runs them via bash -c, where

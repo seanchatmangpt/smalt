@@ -19,7 +19,7 @@ WITNESS=(env MIX_ENV=test mix run --no-start scripts/shim_court/blocklist_witnes
 # compile before baselining, never shim onto a broken tree.
 for _ in $(seq 1 30); do
   if MIX_ENV=test mix compile >/dev/null 2>&1; then break; fi
-  sleep 5
+  sleep 5  # SLEEP-CLASS: POLL-STEP
 done
 if ! MIX_ENV=test mix compile >/dev/null 2>&1; then
   # SHIM-COURT: compile never went green within the wait window; never shim

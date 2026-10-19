@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # test_freeze_gate.sh — protected-test freeze gate (Anthropic deterministic-freeze adaptation)
 #
-# Contract: while SMALT_FIX_MODE=1 (set by `just fix-start`), the working diff
-# (staged + unstaged, vs HEAD) may NOT touch test/. Allowed: lib/, scripts/,
-# priv/, config/. The failing test is committed frozen (0444) first — the
-# "commit the failing test first" ritual — so a fix cannot silently mutate the
-# witness. Exit 0 when FIX_MODE is unset or no test/ file is in the diff.
+# Contract (v26.10.19 reset surfaces): while SMALT_FIX_MODE=1 (set by
+# `just fix-start`), the working diff (staged + unstaged, vs HEAD) may NOT
+# touch the fresh witness surfaces: test/internal/ and verification/. The
+# legacy blanket test/ scope ended when test/ was deleted at 64f6099.
+# The failing test is committed frozen (0444) first — the "commit the failing
+# test first" ritual — so a fix cannot silently mutate the witness.
+# Exit 0 when FIX_MODE is unset or no witness-surface file is in the diff.
 # Fail-closed: any git error or unparseable state is a violation, never a pass.
 #
 # Modes:
@@ -32,8 +34,8 @@ violations() {
   # Untracked-but-new files under test/ count too: a "new failing test" that
   # is still untracked is exactly what the ritual freezes first.
   local untracked
-  untracked=$(git ls-files --others --exclude-standard -- test/ 2>/dev/null) || true
-  printf '%s\n%s\n' "$names" "$untracked" | grep -E '^test/' || true
+  untracked=$(git ls-files --others --exclude-standard -- test/ verification/ 2>/dev/null) || true
+  printf '%s\n%s\n' "$names" "$untracked" | grep -E '^(test/|verification/)' || true
 }
 
 viol_count=0

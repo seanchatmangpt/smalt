@@ -6,7 +6,8 @@
 # Exit 0 = green: prereqs, deps, compile, env check, certs, doctor, boot
 #          smoke, and proof test all passed.
 # Exit 1 = a stage failed; the [n/8] transcript names the exact stage.
-# Exit 2 = missing prereq(s); the exact `brew install` command is printed.
+# Exit 2 = missing prereq(s) (tools or a held port); the remediation is printed.
+# Exit 124 = typed timeout (substrate never became ready within the poll budget).
 #
 # Idempotent: safe to rerun. `mix deps.get` is a no-op when deps are
 # satisfied, `mix compile` is incremental, cert minting reuses existing
@@ -73,13 +74,13 @@ step "Boot smoke (substrate up -> GET /metadata/endpoints -> teardown)"
 for port in 9443 9545; do
   for _ in $(seq 1 30); do
     lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || break
-    sleep 2
+    sleep 2 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x2s deadline)
   done
   if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "ERROR: port $port is held; smalt is single-substrate per host." >&2
     lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2
     echo "Stop the holder (just down / let the other tier finish) and rerun." >&2
-    exit 1
+    exit 2 # typed precondition: port must be free
   fi
 done
 LOG="$(mktemp /tmp/smalt-bootstrap.XXXXXX.log)"
@@ -90,8 +91,17 @@ cleanup() {
   # breaks the next bootstrap run with :eaddrinuse.
   if [ -n "$PID" ]; then
     kill -- "-$PID" >/dev/null 2>&1 || kill "$PID" >/dev/null 2>&1 || true
+    # Bounded reap poll on a real observable (kill -0); escalate to SIGKILL at
+    # the deadline. No fixed coordination sleep.
+    local i
+    for i in $(seq 1 25); do
+      kill -0 "$PID" 2>/dev/null || break
+      sleep 0.2 # SLEEP-CLASS: POLL-STEP (bounded reap poll)
+    done
+    if kill -0 "$PID" 2>/dev/null; then
+      kill -9 -- "-$PID" >/dev/null 2>&1 || kill -9 "$PID" >/dev/null 2>&1 || true
+    fi
     wait "$PID" 2>/dev/null || true
-    sleep 1
   fi
   rm -f "$LOG"
 }
@@ -101,7 +111,9 @@ export SMALT_TLS_CERTFILE="$REPO/.smalt/tls/dev-cert.pem"
 export SMALT_TLS_KEYFILE="$REPO/.smalt/tls/dev-key.pem"
 export SSL_CERT_FILE="$REPO/.smalt/tls/ca-cert.pem"
 set -m
-mix run --no-halt >"$LOG" 2>&1 &
+# Spawn hygiene: stdin closed (substrate never reads it) + fd 9 closed so a
+# caller's flock is never inherited by the beam (lock-fd-inheritance law).
+mix run --no-halt >"$LOG" 2>&1 </dev/null 9>&- &
 PID=$!
 set +m
 
@@ -111,20 +123,20 @@ for _ in $(seq 1 60); do
     UP=1
     break
   fi
-  sleep 1
+  sleep 1 # SLEEP-CLASS: POLL-STEP (bounded endpoint poll, 60x1s deadline)
 done
 if [ "$UP" -ne 1 ]; then
   echo "ERROR: substrate did not serve http://127.0.0.1:9443/metadata/endpoints within 60s" >&2
   echo "--- substrate log tail ($LOG) ---" >&2
   tail -30 "$LOG" >&2
-  exit 1
+  exit 124 # typed timeout (readiness poll exhausted)
 fi
 echo "      GET http://127.0.0.1:9443/metadata/endpoints -> 200"
 done_step
 
 # ---------------------------------------------------------------------------
-step "Proof test (mix test test/smalt_test.exs)"
-mix test test/smalt_test.exs
+step "Proof test (mix test — fresh residual tier)"
+mix test
 done_step
 
 echo ""

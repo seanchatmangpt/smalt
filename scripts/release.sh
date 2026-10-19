@@ -40,7 +40,7 @@ while true; do
   fi
   log "build attempt ${ATTEMPT} failed; waiting 30s and retrying (${ATTEMPT}/2 retries)"
   ATTEMPT=$((ATTEMPT + 1))
-  sleep 30
+  sleep 30 # SLEEP-CLASS: POLL-STEP (backoff pacing in 3-attempt-bounded retry loop)
 done
 [ -x "$REL_DIR/bin/smalt" ] || fail "release binary missing at $REL_DIR/bin/smalt"
 
@@ -63,12 +63,17 @@ for _ in $(seq 1 30); do
   done
   [ "$BOOT_OK" = 1 ] && break
   kill -0 "$BOOT_PID" 2>/dev/null || break
-  sleep 0.5
+  sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded port-listen poll, 30x0.5s)
 done
 if [ "$BOOT_OK" = 1 ]; then
   log "boot verified: ports responding; stopping boot process $BOOT_PID"
   "$REL_DIR/bin/smalt" stop >/dev/null 2>&1 || true
-  sleep 1
+  # Bounded settle poll: wait until the boot process actually exits (5s
+  # deadline) instead of a fixed coordination sleep.
+  for _ in $(seq 1 10); do
+    kill -0 "$BOOT_PID" 2>/dev/null || break
+    sleep 0.5 # SLEEP-CLASS: POLL-STEP (bounded reap poll, 5s deadline)
+  done
   kill "$BOOT_PID" 2>/dev/null || true
   wait "$BOOT_PID" 2>/dev/null || true
 else

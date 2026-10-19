@@ -26,7 +26,7 @@ OUT="${1:-/tmp/hex-publish-dry/smalt.tar}"
 mkdir -p "$(dirname "$OUT")"
 
 INNER_KEY_PAT='signing.key|verifying.key|\.ggen|keys/'
-LEAK_PAT='athena|/Users/sac'
+LEAK_PAT="athena|$HOME"
 
 FAIL=0
 

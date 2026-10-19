@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# scripts/substrate-ctl — ONE CLI for the shared substrate-boot library.
+#
+# Usage:
+#   substrate-ctl up     --block <name> [--auth anonymous|enforce] [--fresh]
+#   substrate-ctl down   --block <name> [--mode owner|sweep]
+#   substrate-ctl status --block <name>
+#   substrate-ctl verify --block <name>
+#
+# Exit contract: 0 up-or-reused / 1 refused / 2 timeout-or-died /
+# 3 lock-timeout-or-port-occupied-after-sweep / 64 usage error.
+#
+# Spawns ride scripts/lib/substrate_boot.sh: MIX_ENV=test, SMALT_AUTH_MODE /
+# put_env boot-eval (ts-run.mjs shape: put_envs then
+# `{:ok,_} = Application.ensure_all_started(:smalt)`), MIX_BUILD_ROOT
+# isolation via env passthrough, log at
+# /tmp/smalt-substrate-state/logs/<block>.log, detached, spawned `9>&-`.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/substrate_boot.sh
+source "$SCRIPT_DIR/lib/substrate_boot.sh"
+
+usage() {
+  cat >&2 <<'USAGE'
+usage:
+  substrate-ctl up     --block <name> [--auth anonymous|enforce] [--fresh]
+  substrate-ctl down   --block <name> [--mode owner|sweep]
+  substrate-ctl status --block <name>
+  substrate-ctl verify --block <name>
+
+blocks: front|canonical, b1..b99, c1..c99, v1..v99
+exit:   0 up-or-reused / 1 refused / 2 timeout-or-died /
+        3 lock-timeout-or-port-occupied-after-sweep / 64 usage
+USAGE
+}
+
+AUTH="${SB_AUTH:-enforce}"
+FRESH=""
+MODE="sweep"
+BLOCK=""
+
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+  up|down|status|verify) ;;
+  *) usage; exit 64 ;;
+esac
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --block) BLOCK="${2:-}"; shift 2 ;;
+    --auth)  AUTH="${2:-}"; shift 2 ;;
+    --fresh) FRESH=1; shift ;;
+    --mode)  MODE="${2:-}"; shift 2 ;;
+    *) usage; exit 64 ;;
+  esac
+done
+
+[ -n "$BLOCK" ] || { usage; exit 64; }
+case "$AUTH" in anonymous|enforce) ;; *) usage; exit 64 ;; esac
+case "$MODE" in owner|sweep) ;; *) usage; exit 64 ;; esac
+export SB_AUTH="$AUTH"
+
+rc=0
+case "$cmd" in
+  up)
+    sb_up "$BLOCK" "$AUTH" "$FRESH" ;;
+  down)
+    sb_down "$BLOCK" "$MODE" ;;
+  status)
+    sb_status "$BLOCK" ;;
+  verify)
+    sb_verify "$BLOCK" ;;
+  *)
+    usage; rc=64 ;;
+esac || rc=$?
+
+exit "$rc"

@@ -35,7 +35,7 @@
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
-PATTERN='athena|/Users/sac|courtroom|\bcai\b|morluto'
+PATTERN="athena|$HOME|courtroom|\bcai\b|morluto"
 
 # Line-precise allowlist (path:line). Hit sets were read off the real tree
 # 2026-10-15; see docs/archive/NAMING_SWEEP.md v3 REPORTED-TO-LANE table.
@@ -120,12 +120,11 @@ ALLOWLIST=(
   "k8s/kind/cluster.yaml:32"
   "k8s/kind/cluster.yaml:35"
   "k8s/kind/cluster.yaml:38"
-  # e2e s7/s9 + azapi test comments/fallbacks (e2e owners)
-  "test/e2e/s7_worm/run.sh:21"
-  "test/e2e/s7_worm/worm.test.cjs:11"
-  # captured redteam receipts (redteam lane; captured output, not source)
-  "test/redteam/r1_input_fuzz/receipt.txt:2"
-  "test/redteam/r2_state/findings.md:4"
+  # allowlist rows for test/e2e/* and test/redteam/* retired: subjects
+  # deleted at 64f6099 (v26.10.19 staleness-repair lane).
+  # v26.10.18 wrap FINAL.md quotes its subject absolute path (wrap-artifact
+  # same class as the docs/jira receipt exemptions).
+  "docs/jira/v26.10.18/FINAL.md:4"
   # docs/verification/ocel/** are chain-hashed evidence receipts (same
   # exempted class as publish_dry gate 3's OCEL policy) — captured output,
   # not source

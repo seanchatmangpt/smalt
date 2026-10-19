@@ -7,6 +7,10 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# Exit contract: 0 two green runs | 1 court failure | 2 precondition missing.
+command -v just >/dev/null 2>&1 || { echo "[COURT-X2] ERROR: 'just' not on PATH (precondition)" >&2; exit 2; }
+[ -f Justfile ] || { echo "[COURT-X2] ERROR: no Justfile at repo root (precondition)" >&2; exit 2; }
+
 LOGDIR="$(mktemp -d /tmp/smalt-court-x2.XXXXXX)"
 trap 'rm -rf "$LOGDIR"' EXIT
 

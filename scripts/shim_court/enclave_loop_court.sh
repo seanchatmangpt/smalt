@@ -56,7 +56,7 @@ wait_for_artifacts() {
         if [ -f "$EXS" ] && [ -f "$MJS" ] && [ -f "$TF" ]; then
             return 0
         fi
-        sleep 5
+        sleep 5  # SLEEP-CLASS: POLL-STEP
     done
     return 1
 }

@@ -81,13 +81,21 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# (c3) test-budget — per-test timing budget gate (fail-closed, non-vacuity
-#      fixtures). Offline; full mix test with the budget formatter.
+# (c3) test-budget — RETIRED stage (v26.10.19 reset): BudgetFormatter deleted
+#      with test/; justfile.d/28-test-budget.just is a loud no-op until the
+#      residual tier re-authors a formatter + reseed. Removed from the ladder
+#      (not softened): re-add when `just test-budget-seed` is runnable again.
 # -----------------------------------------------------------------------------
-if recipe_visible "test-budget"; then
-  run_stage "test-budget" -- just --justfile "$JUSTFILE" test-budget
+
+# -----------------------------------------------------------------------------
+# (c4) verification-gates — verification governance (justfile.d/32): the
+#      non-duplication gate over test/internal + portable-target gate over
+#      verification/. Honest exit codes; fail-closed.
+# -----------------------------------------------------------------------------
+if recipe_visible "verification-gates"; then
+  run_stage "verification-gates" -- just --justfile "$JUSTFILE" verification-gates
 else
-  skip_stage "test-budget" "recipe 'test-budget' not in Justfile (justfile.d/28-test-budget.just missing)"
+  skip_stage "verification-gates" "recipe 'verification-gates' not in Justfile (justfile.d/32-verification.just missing)"
 fi
 
 # -----------------------------------------------------------------------------

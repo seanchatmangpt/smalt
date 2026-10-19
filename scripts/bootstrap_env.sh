@@ -34,7 +34,7 @@ bash "$REPO/scripts/bootstrap.sh" || fail "bootstrap.sh exited non-zero"
 step 2/6 "gen_dev_cert.sh (loopback CA + leaf)"
 bash "$REPO/scripts/gen_dev_cert.sh" || fail "gen_dev_cert.sh exited non-zero"
 
-step 3/6 "trust-shim probe (Security.framework eval via test/trust_shim_probe)"
+step 3/6 "trust-shim probe (Security.framework eval via scripts/trust_shim_probe)"
 # Gate (2026-10-16 operator ruling): shim probe PASS — a REAL Security.framework
 # trust evaluation over the smalt dev chain with the fingerprint-pinned,
 # loopback-only dylib shim injected. The keychain trust attempt is shown as an
@@ -62,7 +62,7 @@ else
     # directly (witnessed 2026-10-16: go run -> SEC-TRUST fail; built binary
     # with identical env -> SEC-TRUST pass).
     PROBE_BIN="$(mktemp -t smalt_probe)" && mv "$PROBE_BIN" "$PROBE_BIN.bin" && PROBE_BIN="$PROBE_BIN.bin"
-    if ! (cd "$REPO/test/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
+    if ! (cd "$REPO/scripts/trust_shim_probe" && go build -o "$PROBE_BIN" .); then
       fail "trust_shim_probe could not be built (go build failed)"
     elif (DYLD_INSERT_LIBRARIES="$SHIM_DYLIB" \
           SMALT_LEAF_SHA256="$LEAF_FP" SMALT_CA_SHA256="$CA_FP" \

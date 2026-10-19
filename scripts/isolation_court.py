@@ -18,7 +18,7 @@ Plus a rule the leak gate does not have:
       or an error-path assert). Exemption only via the inline marker.
 
 Runtime twin (`--runtime`): boots the offline suite with
-SmaltTest.IsolationFormatter (test/support/isolation_formatter.ex) and
+SmaltTest.IsolationFormatter (runtime-twin isolation formatter) and
 --max-cases 1 so per-module diffs of Process.registered() and
 Application.get_all_env(:smalt) are race-free; any
 `ISOLATION-TWIN LEAK module=...` line fails the court with the module name.
@@ -216,7 +216,14 @@ def run_fixtures():
 
 
 def scan_tree():
-    test_dir = os.path.join(REPO, "test")
+    # v26.10.19 reset: the scan surface is the RESIDUAL tier test/internal
+    # (legacy test/ deleted at 64f6099). Fail-closed when the tier is
+    # absent — a scan of zero files is not a pass.
+    test_dir = os.path.join(REPO, "test", "internal")
+    if not os.path.isdir(test_dir):
+        print("[ISO-COURT] [FAIL] scan surface test/internal/ absent "
+              "(residual tier not landed yet) — fail-closed")
+        sys.exit(1)
     results = []
     for root, _dirs, files in os.walk(test_dir):
         for fn in sorted(files):
@@ -271,12 +278,16 @@ def cmd_self_check():
     return 0 if ok else 1
 
 
-EXEMPTS_PATH = os.path.join(REPO, "test", "support",
+# Retired-class file: test/support/isolation_runtime_exemptions.exs was
+# deleted with test/ at 64f6099. load_runtime_exempts() returns [] when it is
+# absent (loud count of 0 patterns); the path is repointed to the residual
+# tier's fresh location when the sibling lane lands one.
+EXEMPTS_PATH = os.path.join(REPO, "test", "internal", "support",
                             "isolation_runtime_exemptions.exs")
 
 
 def load_runtime_exempts():
-    """Parse test/support/isolation_runtime_exemptions.exs: one
+    """Parse the isolation runtime exemptions file (EXEMPTS_PATH): one
     `name <glob>  # reason: <text>` entry per line (Elixir-comment syntax so
     the static court's scanner ignores it). A leak block is exempt iff it has
     NO env deltas and EVERY names_new/names_lost entry matches a pattern.

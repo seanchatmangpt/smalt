@@ -40,15 +40,11 @@ classify() { # echo family for a path
     lib/smalt/data_plane/cosmos.ex|lib/smalt/hw/*|lib/smalt/substrate_identity.ex|\
     lib/smalt/application.ex|lib/smalt/data_plane/blob_service.ex|lib/smalt/messaging/amqp/cbs_router.ex|\
     lib/smalt/*) echo shims ;; # lib/ repair shims + security surface (default for lib/)
-    scripts/shim_court/*|test/amqp/*|test/data_plane/*|test/wire/*|test/compliance/*|\
-    test/chaos/*|test/egress_dispatch_test.exs|test/smalt_egress_router_test.exs|\
-    test/egress_wiring_test.exs|test/wire/egress_wire_test.exs|test/auth_enforce_test.exs|\
-    test/apiversion_matrix_test.exs|\
-    test/azapi_actions_test.exs|test/property/*|test/smalt_hw_virtual_serial_test.exs|\
-    test/smalt/*|test/smalt/hw_test.exs|\
-    test/sdk-smoke/eventhubs.test.cjs|test/sdk-smoke/sb-extra.probe.cjs|\
+    # v26.10.19 reset: the legacy test/ sub-tree patterns are retired; the
+    # residual tier test/internal routes with the shim-court subject family.
+    scripts/shim_court/*|test/internal/*|\
     justfile.d/18-shim-court.just|proxy/*) echo shims ;;
-    mix.exs|mix.lock|smalt-cli/*|test/sdk-full/package.json|test/sdk-full/package-lock.json|\
+    mix.exs|mix.lock|smalt-cli/*|\
     Justfile|justfile.d/04-sdk-recipes.just|justfile.d/06-lane-cleanup.just|\
     justfile.d/10-gap-register-sync.just|justfile.d/20-sobelow.just|\
     scripts/naming_sweep.sh|scripts/sdk_coverage.py|scripts/kd_flip.py|\
@@ -56,7 +52,7 @@ classify() { # echo family for a path
     scripts/tf_*.sh|scripts/tf_h1_dirhash.py|scripts/trust_shim/*|\
     scripts/enclave_native.sh|scripts/nfr3_rss_gate.py|scripts/spc_gate.py|\
     config/bands.yaml|scripts/pf_redirect.sh|scripts/hosts_alias.sh|\
-    scripts/bootstrap_env.sh|scripts/test_freeze_gate.sh|test/trust_shim_probe/*|\
+    scripts/bootstrap_env.sh|scripts/test_freeze_gate.sh|scripts/trust_shim_probe/*|\
     lib/smalt/spc/*|lib/mix/*) echo enclave-native-tf ;;
     docker/*) echo enclave-native-tf ;;
     priv/wasm/*|scripts/affidavit_wasm_build.sh|lib/smalt/affidavit/*|\
@@ -140,7 +136,7 @@ EOF
   cat > "$MSGS/errc" <<'EOF'
 chore(errc): pyjwt/hypothesis deps + refactors
 
-mix.exs, mix.lock, smalt-cli/, test/sdk-full/package(.lock).json,
+mix.exs, mix.lock, smalt-cli/, verification/ probe package updates,
 Justfile + justfile.d recipe updates, scripts tooling, workspace property files.
 EOF
   cat > "$MSGS/enclave-native-tf" <<'EOF'
@@ -149,7 +145,7 @@ feat(enclave-native-tf): enclave-native terraform lane (tf scripts, trust shim, 
 scripts/tf_*, scripts/trust_shim/, scripts/enclave_native.sh,
 scripts/nfr3_rss_gate.py, scripts/spc_gate.py, config/bands.yaml,
 scripts/pf_redirect.sh, scripts/hosts_alias.sh, scripts/bootstrap_env.sh,
-scripts/test_freeze_gate.sh, test/trust_shim_probe/, lib/smalt/spc/, lib/mix/.
+scripts/test_freeze_gate.sh, scripts/trust_shim_probe/, lib/smalt/spc/, lib/mix/.
 EOF
   cat > "$MSGS/planning" <<'EOF'
 docs(planning): v26.10.15 work orders (wholesale)

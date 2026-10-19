@@ -74,9 +74,11 @@ REQUIRED_GITIGNORE = {
     "gitignore-deps": "/deps/",
     "gitignore-tmp": "/tmp/",
     "gitignore-erl-crash": "erl_crash.dump",
-    "gitignore-sdk-node-modules": "test/sdk-full/node_modules/",
-    "gitignore-sdk-smoke-deps": "test/sdk-smoke/.deps/",
-    "gitignore-tf-fixture": "test/terraform_fixture/.terraform*/",
+    # v26.10.19 reset: test/sdk-full, test/sdk-smoke, test/terraform_fixture
+    # deleted at 64f6099; the sdk-node-modules / sdk-smoke-deps /
+    # tf-fixture gitignore checks were retired with their subjects. The
+    # tf-fixture entry is repointed at the fresh scripts/tf_fixtures/.
+    "gitignore-tf-fixture": "scripts/tf_fixtures/.terraform*/",
 }
 
 DEV_KEY_GLOBS = [

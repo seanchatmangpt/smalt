@@ -111,7 +111,7 @@ echo "[SMALT-TF] Routing Terraform execution to sovereign substrate..."
 # validates the mirror zip against the lock), so wrap only for non-init
 # verbs; `smalt-tf init` wraps on the NEXT invocation.
 if [ "$(uname)" = "Darwin" ] && [ "${1:-}" != "init" ] && [ "${TF_NOWRAP:-0}" != "1" ]; then
-  FIXTURE_LOCK="$ROOT/test/terraform_fixture/.terraform.lock.hcl"
+  FIXTURE_LOCK="$ROOT/scripts/tf_fixtures/.terraform.lock.hcl"
   # The wrap adds wrapped-dir h1 entries to the committed lock; they are
   # run-local (the wrapper embeds the leaf fp), so snapshot the committed
   # lock BEFORE the wrap and restore it after terraform exits.

@@ -2,9 +2,9 @@
 # fast_test.sh — single-file / file:line inner-loop test runner.
 #
 # Usage:
-#   scripts/fast_test.sh test/smalt_graphlaw_validator_test.exs
-#   scripts/fast_test.sh test/smalt_graphlaw_validator_test.exs:42
-#   scripts/fast_test.sh test/foo_test.exs:42 --watch
+#   scripts/fast_test.sh test/internal/vm_zero_growth_test.exs
+#   scripts/fast_test.sh test/internal/vm_zero_growth_test.exs:42
+#   scripts/fast_test.sh test/internal/dets_mirror_recovery_test.exs:42 --watch
 #
 # MIX_BUILD_ROOT is derived from a hash of the argument, so parallel
 # invocations never race the shared _build directory. Prints wall time.
@@ -66,7 +66,8 @@ if [[ "$WATCH" == 1 ]]; then
   SNAP=$(find lib -name '*.ex' -print0 | xargs -0 stat -f '%m %N'; stat -f '%m %N' "$FILE" 2>/dev/null)
   run_once || true
   while true; do
-    sleep 1
+    sleep 1 # SLEEP-CLASS: POLL-STEP (mtime poll; bounded by operator Ctrl-C)
+    # (watch loop polls the lib/ mtime snapshot — the observable — each step)
     NEW=$(find lib -name '*.ex' -print0 | xargs -0 stat -f '%m %N'; stat -f '%m %N' "$FILE" 2>/dev/null)
     if [[ "$NEW" != "$SNAP" ]]; then
       SNAP="$NEW"

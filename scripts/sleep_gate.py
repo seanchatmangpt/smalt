@@ -5,7 +5,7 @@ Scans lib/ and test/ for Process.sleep sites and enforces:
 
   test/  — every Process.sleep FAILS unless:
              (a) it lives inside an AUDITED poll implementation
-                 (test/support/assert_eventually.ex, or a function in the
+                 (residual tier: test/internal/poll_helper.exs, or a function in the
                  reviewed AUDITED_POLL_FNS allowlist), or
              (b) it is a `Process.sleep(:infinity)` park (process fixture),
                  or
@@ -27,16 +27,20 @@ AZB-21 (v26.10.18) scope extensions:
     own pacing mechanisms, never a literal shell sleep).
   :timer.sleep — treated identically to Process.sleep (lib + test).
   `after <integer> ->` on a single line — flagged as a delay primitive
-    unless annotated (deadline receives that pair `after` with a matched
-    message across multiple lines are not lexically delays; the same-line
-    form is the delay idiom this gate targets). Escape hatch: same
-    SLEEP-CLASS annotation.
-  String-literal exemption — a match that lies inside a double-quoted
-    string on the line is a fence fixture (a no-sleep assertion quoting
-    the primitive), not a call site; skipped.
+    unless annotated (escape hatch: same SLEEP-CLASS annotation).
+  String-literal exemption — a match inside a double-quoted string is a
+    fence fixture, not a call site; skipped.
   Allowlist lives in a typed classification file,
     scripts/sleep_gate_classes.json ({files: [{path, reason}],
     functions: [{name, reason}]}), fail-closed if missing/unreadable.
+AZB-22 / v26.10.19 staleness-repair scope extensions:
+  verification/ is a scan root (WARN-loud when absent; SLEEP_GATE_STRICT=1
+    makes absence a hard FAIL).
+  .mjs/.cjs/.js/.ts/.tsx under verification/ and test/ — setTimeout(/
+    setInterval(/await sleep( primitives with JS comment stripping (// and
+    /* */) and // SLEEP-CLASS: annotation support (scan_ts_file).
+  .py under verification/ and test/ — time/asyncio/anyio/trio .sleep(
+    primitives with # SLEEP-CLASS: annotation support (scan_py_file).
 
 Exit 0 = pass, 1 = violations (or fail-closed: no files scanned, unreadable
 file). Stdlib only. Companion docs/NO_SLEEP_DOCTRINE.md.
@@ -50,6 +54,24 @@ import json
 import os
 import re
 import sys
+
+# AZB-22 / v26.10.19 staleness-repair lane: TS + PY scanners for the fresh
+# verification/ suites (spec: scan roots + per-language primitives below).
+
+# TS sleep primitives: setTimeout(/setInterval( and the `await sleep(`
+# idiom. JS comment stripping so fence fixtures / quoted mentions never
+# match.
+TS_SLEEP_RE = re.compile(r"\b(?:setTimeout\s*\(|setInterval\s*\(|await\s+sleep\s*\()")
+
+# PY sleep primitives: time/asyncio/anyio/trio .sleep.
+PY_SLEEP_RE = re.compile(
+    r"\b(?:time|asyncio|anyio|trio)\.sleep\s*\(")
+
+TS_ANN_RE = re.compile(r"//\s*SLEEP-CLASS:\s*([A-Za-z-]+)")
+PY_ANN_RE = re.compile(r"#\s*SLEEP-CLASS:\s*([A-Za-z-]+)")
+
+# Verification-side lawful classes: same census vocabulary as test-side.
+VERIF_CLASSES = {"TIME-ADVANCE", "POLL-STEP"}
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -258,6 +280,120 @@ def scan_file(path, rel):
 TEST_CLASSES = {"TIME-ADVANCE", "POLL-STEP"}
 
 
+def scan_ts_file(path, rel):
+    """verification/ TS/JS suites (AZB-22): setTimeout(/setInterval(/
+    await sleep( are delay primitives; JS comments (// and /* */) are
+    stripped so fence fixtures never match; a // SLEEP-CLASS: annotation
+    (same line or the contiguous comment block above) admits the site into
+    VERIF_CLASSES. Fail-closed on unreadable files."""
+    violations = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+    except OSError as exc:
+        return [(rel, 0, "FAIL-CLOSED: unreadable ts/js file: %s" % exc)]
+
+    lines = src.split("\n")
+    # Block-comment toggle (/* ... */), approximated toggle-style like the
+    # Elixir docstring pass — only ever skips, never invents sites.
+    in_block = [False] * len(lines)
+    in_blk = False
+    for i, line in enumerate(lines):
+        stripped = line
+        # count occurrences of /* and */ outside strings is overkill here;
+        # toggle-style: an odd count of /* or */ flips state.
+        opens = stripped.count("/*")
+        closes = stripped.count("*/")
+        if in_blk:
+            in_block[i] = True
+            if closes:
+                in_blk = False
+        elif opens > closes:
+            in_block[i] = True
+            in_blk = True
+
+    for i, line in enumerate(lines):
+        if in_block[i]:
+            continue
+        # strip // comment
+        raw = line.split("//", 1)[0]
+        for m in TS_SLEEP_RE.finditer(raw):
+            if os.path.normpath(rel) in AUDITED_POLL_FILES:
+                continue
+            cls = annotate_ts_class(lines, i)
+            if cls in VERIF_CLASSES:
+                continue
+            violations.append(
+                (rel, i + 1,
+                 "unclassified ts/js sleep primitive (// SLEEP-CLASS: "
+                 "<TIME-ADVANCE|POLL-STEP> required): `%s`" % raw.strip()))
+            break  # one report per line
+    return violations
+
+
+def annotate_ts_class(lines, idx):
+    """// SLEEP-CLASS: on the same line or the contiguous // comment block
+    ending on the line above."""
+    m = TS_ANN_RE.search(lines[idx])
+    if m:
+        return m.group(1)
+    j = idx - 1
+    found = None
+    while j >= 0 and lines[j].lstrip().startswith("//"):
+        mm = TS_ANN_RE.search(lines[j])
+        if mm:
+            found = mm.group(1)
+            break
+        j -= 1
+    return found
+
+
+def scan_py_file(path, rel):
+    """verification/ Python suites: time/asyncio/anyio/trio .sleep( are
+    delay primitives; # SLEEP-CLASS: annotation (same line or contiguous
+    block above) admits the site. Fail-closed on unreadable files."""
+    violations = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    except OSError as exc:
+        return [(rel, 0, "FAIL-CLOSED: unreadable py file: %s" % exc)]
+    for i, line in enumerate(lines):
+        raw = line.split("#", 1)[0]
+        if PY_SLEEP_RE.search(raw):
+            # AZB-22 Leg-7: the typed function allowlist applies to py poll
+            # helpers too — enclosing def name in AUDITED_POLL_FNS admits the
+            # site (DEF_RE matches python `def name(...)` lines).
+            fn = enclosing_function(lines, i - 1)
+            if os.path.normpath(rel) in AUDITED_POLL_FILES:
+                continue
+            if fn in AUDITED_POLL_FNS:
+                continue
+            cls = annotate_py_class(lines, i)
+            if cls in VERIF_CLASSES:
+                continue
+            violations.append(
+                (rel, i + 1,
+                 "unclassified py sleep primitive (# SLEEP-CLASS: "
+                 "<TIME-ADVANCE|POLL-STEP> required): `%s`" % raw.strip()))
+    return violations
+
+
+def annotate_py_class(lines, idx):
+    m = PY_ANN_RE.search(lines[idx])
+    if m:
+        return m.group(1)
+    j = idx - 1
+    found = None
+    while j >= 0 and lines[j].lstrip().startswith("#"):
+        mm = PY_ANN_RE.search(lines[j])
+        if mm:
+            found = mm.group(1)
+            break
+        j -= 1
+    return found
+
+
 def scan_sh_file(path, rel):
     """docker/burn/*.sh: any literal `sleep [0-9]` is a violation. Shell
     comments (# ...) stripped. No annotation escape: burn scripts delay
@@ -292,26 +428,42 @@ def main(argv):
             return 1
         else:
             paths.append(a)
-    # Default scan target set (AZB-21: burn scripts in scope).
+    # Default scan target set (AZB-21: burn scripts in scope; AZB-22 /
+    # v26.10.19: the fresh verification/ suites, WARN-loud when absent —
+    # never a silent narrow-scope pass; SLEEP_GATE_STRICT=1 makes absence a
+    # hard FAIL).
     paths = paths or [
         os.path.join(REPO, "lib"),
         os.path.join(REPO, "test"),
+        os.path.join(REPO, "verification"),
         os.path.join(REPO, "docker", "burn"),
     ]
     violations = []
     files_scanned = 0
+    strict = os.environ.get("SLEEP_GATE_STRICT", "") == "1"
+    verif_warned = False
 
     def walk(p):
         if os.path.isfile(p):
             yield p
         elif os.path.isdir(p):
             for root, dirs, names in os.walk(p):
-                dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "_build", "deps")]
+                dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "_build", "deps", ".venv", "__pycache__", ".terraform")]
                 for n in sorted(names):
                     yield os.path.join(root, n)
 
     for p in paths:
         if not os.path.exists(p):
+            if p.endswith(os.path.join("verification")):
+                msg = ("[SLEEP-GATE] [WARN] verification/ absent — scan scope "
+                       "is narrowed to lib/ + test/ (successor suites not "
+                       "landed yet, V261019-08/09)")
+                if strict:
+                    print(msg.replace("[WARN]", "[FAIL]"))
+                    return 1
+                print(msg)
+                verif_warned = True
+                continue
             print("[SLEEP-GATE] [FAIL] path not found: %s" % p)
             return 1
         for f in walk(p):
@@ -320,6 +472,20 @@ def main(argv):
                 if rel.startswith("docker" + os.sep + "burn" + os.sep):
                     violations.extend(scan_sh_file(f, rel))
                     files_scanned += 1
+                continue
+            if re.search(r"\.(mjs|cjs|js|ts|tsx)$", f):
+                rel = os.path.relpath(os.path.abspath(f), REPO)
+                if rel.startswith("verification" + os.sep) or \
+                   rel.startswith("test" + os.sep):
+                    files_scanned += 1
+                    violations.extend(scan_ts_file(f, rel))
+                continue
+            if f.endswith(".py"):
+                rel = os.path.relpath(os.path.abspath(f), REPO)
+                if rel.startswith("verification" + os.sep) or \
+                   rel.startswith("test" + os.sep):
+                    files_scanned += 1
+                    violations.extend(scan_py_file(f, rel))
                 continue
             if not EX_RE.search(f):
                 continue

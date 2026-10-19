@@ -162,7 +162,17 @@ else
       echo "killing pid $pid"
       kill "$pid" 2>/dev/null
     done
-    sleep 3
+    # Bounded reap poll: escalate to -9 only after TERM is observed dead
+    # (or a 6s deadline expires) — never a fixed settle sleep.
+    reap_deadline=$(( $(date +%s) + 6 ))
+    while [ "$(date +%s)" -lt "$reap_deadline" ]; do
+      any_alive=0
+      for pid in "${KILLS[@]}"; do
+        kill -0 "$pid" 2>/dev/null && any_alive=1
+      done
+      [ "$any_alive" = 0 ] && break
+      sleep 0.1 # SLEEP-CLASS: POLL-STEP (bounded reap poll, 6s deadline)
+    done
     for pid in "${KILLS[@]}"; do
       kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
     done

@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="${1:-$ROOT/test/terraform_fixture/main.tf}"
+FIXTURE="${1:-$ROOT/scripts/tf_fixtures/main.tf}"
 RECEIPT="${SMALT_NATIVE_RECEIPT:-$ROOT/tmp/enclave-native.jsonl}"
 BUILD_ROOT="${MIX_BUILD_ROOT:-_build}"
 

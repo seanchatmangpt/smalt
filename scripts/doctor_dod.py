@@ -50,7 +50,16 @@ LANE_ROOT_RE = re.compile(
 # smalt substrate listener ports (ARM :9443, wire/egress :8443)
 SMALT_PORTS = [9443, 8443]
 
-# envelope/defect cross-check tokens (live-open GAP register, v26.10.18 census)
+# envelope/defect cross-check tokens (live-open GAP register)
+# Every constant below is reconciled to post-reset reality; the measuring
+# command that produced each value is cited inline (re-run to re-derive).
+#
+# Measured 2026-10-19 (post clean-room reset, v26.10.19 lane):
+#   grep -oE 'GAP\([a-z0-9\-]+\)' docs/WIRE_PARITY.md | sort | uniq -c
+#     -> 5 live-open GAP(...) tokens + GAP(name) grammar example. The 5:
+#        atlas-search-relationship-get-absent, blob-comp-lease-absent,
+#        blob-x-ms-date-unvalidated, eventgrid-eg1-schema-absent,
+#        kql-datetime-dynamic-types-absent
 # NOTE: lane-13's 9-token census is retired — 5 of those tokens were
 # receipt-gated closures and are intentionally ABSENT from WIRE_PARITY.md:
 #   blob-error-envelope-json        (retired v26.10.14 lane 06)
@@ -65,9 +74,19 @@ EXPECTED_TOKENS = [
     "GAP(atlas-search-relationship-get-absent)",
     "GAP(kql-datetime-dynamic-types-absent)",
 ]
-# live census: 3 'CLOSED 2026-10-15' stamps remain in the register text
+# Measured 2026-10-19 (post-reset): grep -c 'CLOSED 2026-10-15' docs/WIRE_PARITY.md -> 3
 EXPECTED_CLOSED_COUNT = 3
+# Measured 2026-10-19 (post-reset): the uniq -c GAP census above -> 5 live-open tokens
 EXPECTED_UNSUPPORTED_COUNT = 5
+# Related post-reset census values (documented, enforced by other gates):
+#   KD register rows:
+#     grep -cE '^\| *KD-[0-9]+' docs/jira/v26.10.14/KNOWN_DIVERGENCES.md -> 111
+#   Invariant gates (6 fail-closed gates, `just invariant-gates`):
+#     ls gates/*_gate.py | grep -vE 'test_isolation' | wc -l -> 6
+#   test/internal corpus (post clean-room reset):
+#     ls test/internal/*.exs | wc -l -> 6
+#   Active-window receipts:
+#     ls docs/jira/v26.10.19/receipts/*.md | wc -l -> 28
 
 WARNINGS = []
 FAILURES = []

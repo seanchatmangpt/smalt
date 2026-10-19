@@ -24,7 +24,10 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-WITNESS=test/sdk-full/kv_challenge_witness.mjs
+# RETIRED witness (clean-room test reset, 64f6099): the witness file was
+# deleted with no verification/ successor yet; the court self-skips loudly
+# (exit 3) until a successor witness lands.
+WITNESS=""
 BEARER=lib/smalt/auth/bearer.ex
 ROUTER=lib/smalt/egress_router.ex
 SNAP=/tmp/kd15-court-snap

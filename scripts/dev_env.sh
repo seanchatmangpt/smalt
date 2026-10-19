@@ -33,19 +33,18 @@ export SMALT_SB_SHARED_KEY="$(printf '%s' "$(hostname)smalt-dev-sb" | openssl dg
 # ---------------------------------------------------------------------------
 # 2. SMALT_SDK_ROOT — vendored SDK node_modules convention.
 # ---------------------------------------------------------------------------
-# In-repo default (DoD-11): the vendored SDK harness lives under test/sdk-smoke.
-# A user-provided SMALT_SDK_ROOT always wins.
-DEFAULT_SDK_ROOT="$SMALT_REPO_ROOT/test/sdk-smoke/node_modules"
+# In-repo default (v26.10.19): the SDK node_modules home is verification/ts
+# (V261019-08). A user-provided SMALT_SDK_ROOT always wins.
+DEFAULT_SDK_ROOT="$SMALT_REPO_ROOT/verification/ts/node_modules"
 if [ -n "${SMALT_SDK_ROOT:-}" ]; then
   [ -d "$SMALT_SDK_ROOT" ] || die "SMALT_SDK_ROOT=$SMALT_SDK_ROOT is set but not a directory."
 elif [ -d "$DEFAULT_SDK_ROOT" ]; then
   export SMALT_SDK_ROOT="$DEFAULT_SDK_ROOT"
 else
-  # SHIM-COURT advisory: a fresh clone without the vendored SDK harness is not
-  # fatal — export the default path anyway so the block stays eval-able.
-  echo "[dev_env] WARNING: SMALT_SDK_ROOT not set and in-repo SDK harness not found at $DEFAULT_SDK_ROOT." >&2
-  echo "[dev_env] Install it with: (cd test/sdk-smoke && npm i @azure/cosmos @azure/event-hubs) or export SMALT_SDK_ROOT=<node_modules dir>" >&2
-  export SMALT_SDK_ROOT="$DEFAULT_SDK_ROOT"
+  # LOUD WARN (never a silent default): leave SMALT_SDK_ROOT UNSET until the
+  # verification/ts deps land; census legs SKIP loudly without it.
+  echo "[dev_env] WARNING: SMALT_SDK_ROOT not set and verification/ts/node_modules not found (V261019-08)." >&2
+  echo "[dev_env] Install it with: (cd verification/ts && npm i @azure/cosmos @azure/event-hubs) or export SMALT_SDK_ROOT=<node_modules dir>" >&2
 fi
 
 # ---------------------------------------------------------------------------
@@ -99,7 +98,6 @@ export SMALT_REPO="$SMALT_REPO"
 ${SMALT_TLS_CERTFILE:+export SMALT_TLS_CERTFILE="$SMALT_TLS_CERTFILE"
 export SMALT_TLS_KEYFILE="$SMALT_TLS_KEYFILE"
 export SSL_CERT_FILE="$SSL_CERT_FILE"
-}# Then run consumers, e.g.:
-#   node test/sdk-smoke/census-run.mjs
-#   node test/data_plane/sdk_probe.mjs
+}# Then run consumers, e.g. (verification/ successors, V261019-08/09):
+#   node verification/ts/census-run.mjs
 EOF

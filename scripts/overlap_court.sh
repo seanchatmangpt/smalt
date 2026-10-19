@@ -47,12 +47,13 @@ STAGES=(
   "bench-check|1||python3 scripts/bench_check.py"
   "census|1||if [ -z \"\${SMALT_SDK_ROOT:-}\" ]; then echo '[census] SKIP: SMALT_SDK_ROOT not set'; exit 0; else exec bash scripts/sb_census_replay.sh; fi"
   "naming-sweep|1||bash scripts/naming_sweep.sh"
-  "invariant-gates|1|build:invg|taskpolicy -c utility env MIX_BUILD_ROOT=${ROOT_PREFIX}invg python3 test/invariant_gates_test.py"
+  # t2-wire / t3-sdk-smoke rows RETIRED (v26.10.19 reset 64f6099: test/wire,
+  # test/sdk-smoke deleted). Successors: verification/ suites (V261019-08/09)
+  # — re-add rows when those land; TODO(V261019-08).
+  "invariant-gates|1|build:invg|taskpolicy -c utility env MIX_BUILD_ROOT=${ROOT_PREFIX}invg python3 scripts/invariant_gates.py"
   "t1-offline|1|build:t1,load|env MIX_BUILD_ROOT=${ROOT_PREFIX}t1 mix test"
   "mutation-court|1|build:mutation,port:auto-mutation|taskpolicy -c utility env MIX_BUILD_ROOT=${ROOT_PREFIX}mutation python3 scripts/mutation_court.py"
   "tf-plan-smoke|1|port:39380,port:39381,port:39382,port:39383,port:39384,port:39385|taskpolicy -c utility env SMALT_TF_PORT=39380 SMALT_TLS_PORT=39381 bash scripts/tf_smoke.sh"
-  "t2-wire|2|build:t2|env MIX_BUILD_ROOT=${ROOT_PREFIX}t2 mix test test/wire"
-  "t3-sdk-smoke|2|port:9443,port:9445,port:8443,port:8445,port:5672,port:5673,port:9446|node test/sdk-smoke/run.mjs"
 )
 
 # Load-class exclusion (launcher law): these pairs must never overlap.
@@ -288,14 +289,14 @@ PY
         # 2) t1-offline ∥ t3-sdk-smoke -> LOAD_CONFLICT
         pfx="$ROOT_PREFIX"
         bad_row="dup-build|1|build:shared,dets:tmp/d|env MIX_BUILD_ROOT=${pfx}shared mix test"
-        clash_row="other|1|build:shared|env MIX_BUILD_ROOT=${pfx}shared mix test test/wire"
+        clash_row="other|1|build:shared|env MIX_BUILD_ROOT=${pfx}shared mix test"
         echo "[ANTI-VACUITY] witness 1: two overlapped stages, same MIX_BUILD_ROOT"
         out="$(printf '%s\n%s\n' "$bad_row" "$clash_row" | "$0" check)"
         echo "$out"
         grep -q "RESOURCE_CONFLICT dup-build other build:shared" <<<"$out" || die "anti-vacuity 1 FAILED: dup build root not refused"
         echo "[ANTI-VACUITY] witnessed: RESOURCE_CONFLICT refusal"
         t1row="t1-offline|1|build:t1,load|env MIX_BUILD_ROOT=${pfx}t1 mix test"
-        t3row="t3-sdk-smoke|3|port:9443|node test/sdk-smoke/run.mjs"
+        t3row="t3-sdk-smoke|3|port:9443|node verification/ts/run-all.mjs"
         echo "[ANTI-VACUITY] witness 2: t1-offline scheduled concurrent with t3-sdk-smoke"
         out="$(printf '%s\n%s\n' "$t1row" "$t3row" | "$0" check)"
         echo "$out"
