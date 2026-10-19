@@ -240,15 +240,8 @@ defmodule Smalt.Amqp.FrameCodecTest do
   # ---------------------------------------------------------------------------
 
   setup do
-    prev = Application.get_env(:smalt, :primitive_codec)
-    Application.put_env(:smalt, :primitive_codec, TestPrimitiveCodec)
-
-    on_exit(fn ->
-      if prev,
-        do: Application.put_env(:smalt, :primitive_codec, prev),
-        else: Application.delete_env(:smalt, :primitive_codec)
-    end)
-
+    # Canonical save+on_exit restore (SmaltTest.Env) — presence-preserving.
+    SmaltTest.Env.put_restored(primitive_codec: TestPrimitiveCodec)
     :ok
   end
 
@@ -773,13 +766,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
       # Swap in the real codec: its decode returns {:error, :invalid_constructor}
       # for unknown constructors — FrameCodec must surface that reason, not
       # collapse it into the bare :bad_frame_body atom.
-      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+      SmaltTest.Env.put_restored(primitive_codec: Smalt.Amqp.PrimitiveCodec)
 
       body = <<0xFF>>
       frame = <<byte_size(body) + 8::32, 2::8, 0x00::8, 0::16, body::binary>>
       assert {:error, {:bad_frame_body, :invalid_constructor}} = FrameCodec.decode_frame(frame)
-    after
-      Application.delete_env(:smalt, :primitive_codec)
     end
 
     test "extended header (doff > 2): body starts at doff*4, padding skipped" do
@@ -958,7 +949,7 @@ defmodule Smalt.Amqp.FrameCodecTest do
     test "undecodable section bytes surface the codec reason (cycle-10 fence)" do
       # real codec: its decode returns {:error, :invalid_constructor} — the
       # test codec returns bare :error, which stays a silent stop by contract
-      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+      SmaltTest.Env.put_restored(primitive_codec: Smalt.Amqp.PrimitiveCodec)
 
       sections = [{:body_data, "hello"}]
       payload = FrameCodec.encode_message(sections) |> IO.iodata_to_binary()
@@ -968,13 +959,11 @@ defmodule Smalt.Amqp.FrameCodecTest do
 
       assert {:ok, _} = FrameCodec.decode_message(payload)
       assert {:error, {:bad_section, :invalid_constructor}} = FrameCodec.decode_message(corrupted)
-    after
-      Application.delete_env(:smalt, :primitive_codec)
     end
 
     test "source with session-filter is Azure-identical on the wire (cycle-12 fence)" do
       # real codec: the runtime wire is the real PrimitiveCodec's bytes
-      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+      SmaltTest.Env.put_restored(primitive_codec: Smalt.Amqp.PrimitiveCodec)
 
       sel = "amqp.annotation.x-opt-sequence-number > 100"
 
@@ -1014,8 +1003,6 @@ defmodule Smalt.Amqp.FrameCodecTest do
       assert {:ok, %{performative: %{source: src}}} = FrameCodec.decode_frame(bin)
 
       assert src[:filter] == %{"com.microsoft:session-filter" => {:session_filter, sel}}
-    after
-      Application.delete_env(:smalt, :primitive_codec)
     end
 
     test "falsy section fields are preserved (cycle-13: falsy sweep, layer 3)" do
@@ -1109,7 +1096,7 @@ defmodule Smalt.Amqp.FrameCodecTest do
     # "Outbound encode contract"). Inbound decode stays total.
     test "outbound encode raises ArgumentError on unencodable values, pre-socket (lens-2 c6)" do
       # real codec: the test double raises FunctionClauseError by contract
-      Application.put_env(:smalt, :primitive_codec, Smalt.Amqp.PrimitiveCodec)
+      SmaltTest.Env.put_restored(primitive_codec: Smalt.Amqp.PrimitiveCodec)
 
       assert_raise ArgumentError, fn ->
         Smalt.Amqp.FrameCodec.encode_frame(
@@ -1126,8 +1113,6 @@ defmodule Smalt.Amqp.FrameCodecTest do
       # decode remains total: no raise for arbitrary bytes
       assert {:error, _} =
                FrameCodec.decode_frame(<<0, 0, 0, 8, 2, 0, 0, 0>> <> :rand.bytes(8))
-    after
-      Application.delete_env(:smalt, :primitive_codec)
     end
   end
 end

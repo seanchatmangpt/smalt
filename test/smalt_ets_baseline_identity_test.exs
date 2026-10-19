@@ -95,14 +95,8 @@ defmodule Smalt.EtsBaselineIdentityTest do
     op_id = op_key()
     poll_to_terminal(op_id)
 
-    prev_lro = Application.get_env(:smalt, :lro_retention_ms, :__unset__)
-    Application.put_env(:smalt, :lro_retention_ms, 0)
-
-    on_exit(fn ->
-      if prev_lro == :__unset__,
-        do: Application.delete_env(:smalt, :lro_retention_ms),
-        else: Application.put_env(:smalt, :lro_retention_ms, prev_lro)
-    end)
+    # Canonical save+on_exit restore (SmaltTest.Env).
+    SmaltTest.Env.put_restored(lro_retention_ms: 0)
 
     Process.sleep(10)  # SLEEP-CLASS: TIME-ADVANCE — crosses lro_retention_ms window before eviction_pass
     :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()

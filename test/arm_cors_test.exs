@@ -4,15 +4,14 @@ defmodule Smalt.ArmCorsTest do
   import Plug.Test
 
   setup do
-    prev_cors_origins = Application.get_env(:smalt, :arm_cors_origins)
-
-    on_exit(fn ->
-      if is_nil(prev_cors_origins) do
-        Application.delete_env(:smalt, :arm_cors_origins)
-      else
-        Application.put_env(:smalt, :arm_cors_origins, prev_cors_origins)
-      end
-    end)
+    # Canonical save+on_exit restore (SmaltTest.Env), capture-then-delete:
+    # the key is ABSENT for the test body (the router's ["*"] default) and the
+    # on_exit restores presence exactly — an absent pre-test key is delete_env'd,
+    # a pre-existing one put back verbatim.
+    SmaltTest.Env.put_restored(
+      arm_cors_origins: Application.get_env(:smalt, :arm_cors_origins)
+    )
+    Application.delete_env(:smalt, :arm_cors_origins)
     :ok
   end
 
@@ -29,7 +28,7 @@ defmodule Smalt.ArmCorsTest do
   end
 
   test "allow-listed origin is echoed; disallowed origin gets no ACAO" do
-    Application.put_env(:smalt, :arm_cors_origins, ["https://console.example"])
+    SmaltTest.Env.put_restored(arm_cors_origins: ["https://console.example"])
 
     allowed = get("/subscriptions?api-version=2020-01-01", "https://console.example")
     assert get_resp_header(allowed, "access-control-allow-origin") == ["https://console.example"]
@@ -42,7 +41,7 @@ defmodule Smalt.ArmCorsTest do
     conn = get("/subscriptions?api-version=2020-01-01", "https://console.example")
     assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
 
-    Application.put_env(:smalt, :arm_cors_origins, ["https://console.example"])
+    SmaltTest.Env.put_restored(arm_cors_origins: ["https://console.example"])
     conn2 = get("/subscriptions?api-version=2020-01-01", "https://console.example")
     assert get_resp_header(conn2, "access-control-allow-origin") == ["https://console.example"]
   end

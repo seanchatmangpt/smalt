@@ -191,12 +191,9 @@ defmodule Smalt.Azsim.SovereignMidnightTest do
   # ===========================================================================
   describe "Phase 2: Sovereign Infrastructure Lockdown" do
     test "2.1 APIM & ARM Rate Limiting: 429 TooManyRequests with parseable Retry-After" do
-      prior_limit = Application.get_env(:smalt, :arm_rate_limit, :infinity)
-      Application.put_env(:smalt, :arm_rate_limit, 5)
-
-      on_exit(fn ->
-        Application.put_env(:smalt, :arm_rate_limit, prior_limit)
-      end)
+      # Canonical save+on_exit restore (SmaltTest.Env) — a prev of :infinity
+      # default (key absent) must delete on exit, not put_env(:infinity).
+      SmaltTest.Env.put_restored(arm_rate_limit: 5)
 
       statuses =
         for _ <- 1..15 do

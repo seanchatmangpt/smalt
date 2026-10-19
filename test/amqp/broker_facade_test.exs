@@ -299,15 +299,8 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
     case GenServer.whereis(Sweeper) do
       nil ->
         if tick_ms do
-          prev_tick = Application.get_env(:smalt, :amqp_sweeper_tick_ms)
-          on_exit(fn ->
-            if prev_tick == nil do
-              Application.delete_env(:smalt, :amqp_sweeper_tick_ms)
-            else
-              Application.put_env(:smalt, :amqp_sweeper_tick_ms, prev_tick)
-            end
-          end)
-          Application.put_env(:smalt, :amqp_sweeper_tick_ms, tick_ms)
+          # Canonical save+on_exit restore (SmaltTest.Env).
+          SmaltTest.Env.put_restored(amqp_sweeper_tick_ms: tick_ms)
         end
 
         start_supervised!(Sweeper)

@@ -24,15 +24,11 @@ defmodule SmaltLroTest do
     # without making the suite slow. Restore on exit: the leaked :lro_retention_ms
     # = :infinity (set further down) previously poisoned sweeper timing for every
     # later module in the batch (v26.10.17 interference sweep, court run-1 class).
-    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
-    prev_retention = Application.get_env(:smalt, :lro_retention_ms)
-
-    on_exit(fn ->
-      restore_env(:lro_delay_ms, prev_delay)
-      restore_env(:lro_retention_ms, prev_retention)
-    end)
-
-    Application.put_env(:smalt, :lro_delay_ms, 20)
+    # Canonical save+on_exit restore (SmaltTest.Env) — presence-preserving.
+    SmaltTest.Env.put_restored(
+      lro_delay_ms: 20,
+      lro_retention_ms: Application.get_env(:smalt, :lro_retention_ms)
+    )
 
     # Test-owned sweeper instance (v26.10.18 B4): anonymous (`name: nil`) and
     # fully manual (`tick_ms: :manual`) — init fires NO pass, no background
@@ -42,12 +38,6 @@ defmodule SmaltLroTest do
     sweeper = start_supervised!({Smalt.ArmGateway.LRO.Sweeper, name: nil, tick_ms: :manual})
     %{sweeper: sweeper}
   end
-
-  # nil-preserving restore (AZB-11b): a nil prev must DELETE the key, not
-  # no-op — the no-op form left the test's :lro_retention_ms / :lro_delay_ms
-  # value in app env after the suite (twin leak class `lro_retention_ms`).
-  defp restore_env(key, nil), do: Application.delete_env(:smalt, key)
-  defp restore_env(key, val), do: Application.put_env(:smalt, key, val)
 
   defp call(conn), do: Router.call(conn, @opts)
 
@@ -622,7 +612,7 @@ defmodule SmaltLroTest do
     rid =
       "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/retention-probe"
 
-    Application.put_env(:smalt, :lro_retention_ms, :infinity)
+    SmaltTest.Env.put_restored(lro_retention_ms: :infinity)
 
     ids = for _ <- 1..500, do: LRO.start_op(rid)["name"]
 
@@ -650,7 +640,7 @@ defmodule SmaltLroTest do
     # An old terminal (endTime pushed into the past by backdating its store
     # record), a fresh terminal, and one InProgress op. A short window must
     # evict ONLY the old terminal; InProgress survives at any age.
-    Application.put_env(:smalt, :lro_retention_ms, 1_000)
+    SmaltTest.Env.put_restored(lro_retention_ms: 1_000)
 
     old_id = "retentionold000000000"
     now_dt = DateTime.utc_now() |> DateTime.add(-3_600, :second)
@@ -682,7 +672,7 @@ defmodule SmaltLroTest do
     :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, ip_id)
 
-    Application.put_env(:smalt, :lro_retention_ms, :infinity)
+    SmaltTest.Env.put_restored(lro_retention_ms: :infinity)
   end
 
   # ---------------------------------------------------------------------------
@@ -1080,7 +1070,7 @@ defmodule SmaltLroTest do
   # fleet-wide failure. start_op/1 now fails closed (ArgumentError at mint).
   # ---------------------------------------------------------------------------
   test "non-integer :lro_delay_ms fails closed at mint (ArgumentError), never mints a doomed op" do
-    Application.put_env(:smalt, :lro_delay_ms, "20")
+    SmaltTest.Env.put_restored(lro_delay_ms: "20")
 
     assert_raise ArgumentError, ~r/:lro_delay_ms must be an integer/, fn ->
       LRO.start_op(
@@ -1091,7 +1081,6 @@ defmodule SmaltLroTest do
     # No doomed record was minted.
     assert Store.list(:smalt_operations) == []
 
-    Application.put_env(:smalt, :lro_delay_ms, 20)
   end
 
   # ---------------------------------------------------------------------------
@@ -1386,15 +1375,9 @@ defmodule Smalt.ArmGateway.LRO.NotifierTest do
       :ets.delete_all_objects(:smalt_operations)
     end
 
-    prev_delay = Application.get_env(:smalt, :lro_delay_ms)
-    Application.put_env(:smalt, :lro_delay_ms, 20)
-
-    on_exit(fn ->
-      case prev_delay do
-        nil -> :ok
-        v -> Application.put_env(:smalt, :lro_delay_ms, v)
-      end
-    end)
+    # Canonical save+on_exit restore (SmaltTest.Env) — an absent prev is
+    # delete_env'd on exit, never a silent no-op (leaks the test value).
+    SmaltTest.Env.put_restored(lro_delay_ms: 20)
 
     :ok
   end

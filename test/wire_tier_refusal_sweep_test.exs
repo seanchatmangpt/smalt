@@ -55,18 +55,12 @@ defmodule Smalt.WireTierRefusalSweepTest do
     stop_existing_tree()
 
     # save-prev/on_exit-restore discipline (test-isolation-leak gate):
-    prev =
-      %{
-        arm_port: Application.get_env(:smalt, :arm_port),
-        egress_port: Application.get_env(:smalt, :egress_port),
-        amqp_port: Application.get_env(:smalt, :amqp_port),
-        event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
-      }
-
-    Application.put_env(:smalt, :arm_port, ports.arm)
-    Application.put_env(:smalt, :egress_port, get_free_port())
-    Application.put_env(:smalt, :amqp_port, get_free_port())
-    Application.put_env(:smalt, :event_hubs_port, get_free_port())
+    SmaltTest.Env.put_restored(
+      arm_port: ports.arm,
+      egress_port: get_free_port(),
+      amqp_port: get_free_port(),
+      event_hubs_port: get_free_port()
+    )
 
     children = [
       Smalt.Store,
@@ -78,25 +72,10 @@ defmodule Smalt.WireTierRefusalSweepTest do
     on_exit(fn ->
       stop_tree(sup)
 
-      # AZB-11b: restore_app/0 re-writes the shifted port envs — the saved
-      # prev snapshot must be applied AFTER it or it is clobbered.
+      # AZB-11b: restore_app/0 re-writes the shifted port envs — it must run
+      # BEFORE the put_restored on_exit (LIFO) re-applies the saved prev, or
+      # the shifted values clobber the restore.
       SmaltTest.Lifecycle.restore_app()
-
-      if prev.arm_port == nil,
-        do: Application.delete_env(:smalt, :arm_port),
-        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
-
-      if prev.egress_port == nil,
-        do: Application.delete_env(:smalt, :egress_port),
-        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
-
-      if prev.amqp_port == nil,
-        do: Application.delete_env(:smalt, :amqp_port),
-        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
-
-      if prev.event_hubs_port == nil,
-        do: Application.delete_env(:smalt, :event_hubs_port),
-        else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
     end)
 
     create_parented_chains(ports.arm)

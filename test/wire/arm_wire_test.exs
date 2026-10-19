@@ -22,18 +22,12 @@ defmodule Smalt.Wire.ArmWireTest do
     stop_existing_tree()
 
     # save-prev/on_exit-restore discipline (test-isolation-leak gate):
-    prev =
-      %{
-        arm_port: Application.get_env(:smalt, :arm_port),
-        egress_port: Application.get_env(:smalt, :egress_port),
-        amqp_port: Application.get_env(:smalt, :amqp_port),
-        event_hubs_port: Application.get_env(:smalt, :event_hubs_port)
-      }
-
-    Application.put_env(:smalt, :arm_port, ports.arm)
-    Application.put_env(:smalt, :egress_port, ports.egress)
-    Application.put_env(:smalt, :amqp_port, ports.amqp)
-    Application.put_env(:smalt, :event_hubs_port, get_free_port())
+    SmaltTest.Env.put_restored(
+      arm_port: ports.arm,
+      egress_port: ports.egress,
+      amqp_port: ports.amqp,
+      event_hubs_port: get_free_port()
+    )
 
     children =
       [
@@ -51,23 +45,6 @@ defmodule Smalt.Wire.ArmWireTest do
 
     on_exit(fn ->
       stop_tree(sup)
-
-      if prev.arm_port == nil,
-        do: Application.delete_env(:smalt, :arm_port),
-        else: Application.put_env(:smalt, :arm_port, prev.arm_port)
-
-      if prev.egress_port == nil,
-        do: Application.delete_env(:smalt, :egress_port),
-        else: Application.put_env(:smalt, :egress_port, prev.egress_port)
-
-      if prev.amqp_port == nil,
-        do: Application.delete_env(:smalt, :amqp_port),
-        else: Application.put_env(:smalt, :amqp_port, prev.amqp_port)
-
-      if prev.event_hubs_port == nil,
-        do: Application.delete_env(:smalt, :event_hubs_port),
-        else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
-
       SmaltTest.Lifecycle.restore_app()
       SmaltTest.Lifecycle.ensure_store_up()
     end)
@@ -101,9 +78,7 @@ defmodule Smalt.Wire.ArmWireTest do
        } do
     # Wire tier must be a verify+challenge superset of the STS mint, not
     # mint-only: flip the real supervision tree into :enforce for this test.
-    prev = Application.get_env(:smalt, :auth_mode)
-    Application.put_env(:smalt, :auth_mode, :enforce)
-    on_exit(fn -> Application.put_env(:smalt, :auth_mode, prev) end)
+    SmaltTest.Env.put_restored(auth_mode: :enforce)
 
     mint =
       http_request(port, "POST", "/oauth2/v2.0/token",

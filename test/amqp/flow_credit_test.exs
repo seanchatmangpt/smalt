@@ -43,8 +43,11 @@ defmodule Smalt.Amqp.FlowCreditTest do
 
     # Queue attaches are CBS-authorized by the landed broker; admit claims via
     # the real put-token wire path in each test, so the shared key must exist.
-    Application.put_env(:smalt, :sb_shared_key, Base.encode64(:crypto.strong_rand_bytes(48)))
-    on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
+    # Canonical save+on_exit restore (SmaltTest.Env): an absent pre-test key is
+    # delete_env'd on exit, a pre-existing one is put back — never the reverse
+    # (the old delete-only on_exit converted config's present-with-nil key into
+    # an absent one: suite-wide sb_shared_key presence leak, i29 env-leak batch).
+    SmaltTest.Env.put_restored(sb_shared_key: Base.encode64(:crypto.strong_rand_bytes(48)))
 
     assert Code.ensure_loaded?(Smalt.AmqpBroker), "Smalt.AmqpBroker is not compiled"
 

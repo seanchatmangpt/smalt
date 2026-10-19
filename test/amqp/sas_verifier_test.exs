@@ -225,15 +225,10 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "dev fallback key is generated, cached, and at least 32 bytes" do
-    prev_key = Application.get_env(:smalt, :sb_shared_key)
+    # Canonical save+on_exit restore (SmaltTest.Env): capture-then-delete pins
+    # the restore to the captured prev, preserving config.exs presence semantics.
+    SmaltTest.Env.put_restored(sb_shared_key: Application.get_env(:smalt, :sb_shared_key))
     Application.delete_env(:smalt, :sb_shared_key)
-    on_exit(fn ->
-      if prev_key == nil do
-        Application.delete_env(:smalt, :sb_shared_key)
-      else
-        Application.put_env(:smalt, :sb_shared_key, prev_key)
-      end
-    end)
 
     k1 = SasVerifier.shared_key()
     k2 = SasVerifier.shared_key()
@@ -268,15 +263,9 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "endpoint/0 defaults to the local emulator endpoint" do
-    prev_ep = Application.get_env(:smalt, :sb_endpoint)
+    # Canonical save+on_exit restore (SmaltTest.Env) — presence-preserving.
+    SmaltTest.Env.put_restored(sb_endpoint: Application.get_env(:smalt, :sb_endpoint))
     Application.delete_env(:smalt, :sb_endpoint)
-    on_exit(fn ->
-      if prev_ep == nil do
-        Application.delete_env(:smalt, :sb_endpoint)
-      else
-        Application.put_env(:smalt, :sb_endpoint, prev_ep)
-      end
-    end)
     assert SasVerifier.endpoint() == "sb://127.0.0.1:5672"
   end
 
