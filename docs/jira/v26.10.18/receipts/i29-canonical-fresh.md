@@ -1,7 +1,7 @@
 # i29 — Canonical projection regen-verify (capabilities.json + THIRD_PARTY.md)
 
 - **Standing**: PASS (byte-fresh)
-- **Context**: solo (residual verify lane; no other lane writes these two files)
+Context: solo (residual verify lane; no other lane writes these two files)
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ main (no git transitions; files rewritten in place)
 

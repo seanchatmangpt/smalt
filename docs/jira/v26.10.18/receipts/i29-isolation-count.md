@@ -1,7 +1,7 @@
 # Receipt — i29 (isolation courts, advisory count run)
 
 - **Subject**: `/Users/sac/smalt` working tree, 2026-10-18
-- **Context**: solo(just isolation-court; just leak-court-count; isolation-court-runtime SKIP-foreign-port-holder)
+Context: solo(just isolation-court; just leak-court-count; isolation-court-runtime SKIP-foreign-port-holder)
 - **Standing**: PARTIAL_ALIVE — static courts advisory-run only; runtime twin skipped (foreign port holder); no edits, no git (count lane).
 
 ## Commands + real output
@@ -91,3 +91,38 @@ holder; no eviction attempted.
 - Runtime twin skipped: foreign port holder (colima ssh mux), per lane rule.
 - `just leak-court-count`'s grep-based "1 uncovered-mutation lines" summary
   undercounts; the scanner's own offender table is ground truth (39).
+
+## Verification — 2026-10-18 (leak-remediation status check)
+
+Context: solo(python3 gates/test_isolation_leak_gate.py from /Users/sac/smalt)
+
+```
+== test-isolation-leak court ==
+scanned 170 .exs files under test/ (17 allowlisted)
+-- positive: KNOWN-clean discipline fixtures --
+PASS fixture:clean-intact-save-plus-on_exit (expected PASS, scanner said PASS)
+PASS fixture:on_exit-stripped (expected REFUSE, scanner said REFUSE)
+PASS fixture:literal-restore-no-save (expected REFUSE, scanner said REFUSE)
+-- allowlist --
+ALLOWED test/auth_enforce_test.exs (3) ... [17 files, all "exempt: hand-verified restore"]
+  incl. test/security/security_hardening_test.exs (3),
+        test/sdk-full/azb20/boot_plane.exs (4),
+        test/compliance/c3_cosmos.exs (4), test/lro_test.exs (4),
+        test/kv_tls_test.exs (4), test/tls_test.exs (4),
+        test/trust_profile_test.exs (13), test/data_plane/audit_planes_test.exs (6) ...
+-- OFFENDERS: none --
+verdict=PASS tree=GREEN offenders=0 fixtures_refused=True
+  receipt=/Users/sac/smalt/tmp/invariant-gates/test-isolation-leak-receipt.json
+EXIT:0
+```
+
+- **Before** (this receipt's count run, above): 17 files / 39 mutations
+  uncovered, gate exit 1 (advisory).
+- **Now**: **0 offenders / 0 uncovered mutations, gate exit 0** (170 .exs
+  scanned, 17 files allowlisted as hand-verified restores). Remediation has
+  landed — tree GREEN, no lane in flight.
+- Remediation receipt on disk is `azb-11b-leak-remediation.md` (runtime-twin
+  slice, PARTIAL_ALIVE; 26→3 counted on run-e, 7 real leak fixes). No
+  `i29-leak-remediation.md` exists; the static-count after-figure (0) is
+  witnessed directly by the gate output above, not derived from that receipt.
+- Standing: PASS (static leak court green; fixtures still REFUSED-OK).

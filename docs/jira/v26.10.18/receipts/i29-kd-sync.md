@@ -1,5 +1,6 @@
 # i29 — KD register sync (read-only audit)
 
+Context: solo (read-only audit; no mix test invocation)
 Standing: PASS (audit-only; no flips applied, no register edits, no git)
 
 ## Commands (real output)

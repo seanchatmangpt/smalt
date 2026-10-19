@@ -1,5 +1,6 @@
 # i29 — full stress suite (`mix test --include stress`)
 
+Context: full (mix test --include stress)
 Standing: **PARTIAL_ALIVE** — suite cannot go green this wave; 2 real deterministic failures + 1 compile-abort, remainder typed-classified as load/isolation flakes (pass in isolation).
 
 ## Command

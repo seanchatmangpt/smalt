@@ -32,7 +32,24 @@ defmodule Smalt.Azsim.PlaneSupervisionTest do
     assert is_pid(control_pid)
     assert Process.alive?(control_pid)
 
-    # Restart data subtree to restore baseline state
-    assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, DataSupervisor)
+    # Restart data subtree to restore baseline state.
+    # Bounded poll (no-sleep doctrine): the old ThousandIsland egress listener
+    # releases its socket asynchronously at the OS level; a single restart_child
+    # can hit :eaddrinuse. Poll the real observable — restart_child itself —
+    # until the rebind succeeds within deadline.
+    assert is_pid(
+             SmaltTest.AssertEventually.eventually(
+               fn ->
+                 case Supervisor.restart_child(Smalt.Supervisor, DataSupervisor) do
+                   # environmental: old ThousandIsland socket not yet released
+                   {:error, :eaddrinuse} = err -> {:retry, err}
+                   # any other shape is a typed immediate failure with the value
+                   other -> other
+                 end
+               end,
+               observable: "DataSupervisor restart after egress listener socket release",
+               deadline_ms: 10_000
+             )
+           )
   end
 end

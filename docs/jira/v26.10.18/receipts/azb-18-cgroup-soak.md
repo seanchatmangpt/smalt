@@ -1,5 +1,6 @@
 # AZB-18 — cgroup-constrained soak harness
 
+Context: solo (STAGED harness validation; container leg not executed)
 **Standing: STAGED** — harness authored, syntax- and config-validated, gate wiring proven in both
 directions on a synthetic row file; the container leg is **NOT executed** (see Executed-vs-staged).
 
@@ -43,8 +44,8 @@ window (the ticket ladder remains reachable by re-emitting the compose with diff
 
 **The leg did not run.** Two independent blockers, both still open at receipt time:
 
-1. **Dep not satisfied**: `azb-17-parallel-matrix.md` had not landed; polls (60s interval) were
-   running at receipt time (dispatch: poll 60s x20; ~10 min elapsed across two poll windows).
+1. **Dep not satisfied**: `azb-17-parallel-matrix.md` had not landed; the dispatch poll budget
+   (60s x20, two windows) was exhausted at 2026-10-19T05:28:29Z with the receipt still absent.
 2. **`smalt-burn:latest` absent locally** — four build attempts, all `ResourceExhausted`:
 
    ```

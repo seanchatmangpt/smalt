@@ -2,7 +2,7 @@
 
 - Date: 2026-10-19 05:11 UTC
 - Subject: /Users/sac/smalt @ 0009df32aac4e7d3836d246b8852e65ca8163cb2 (branch main, dirty tree — lane wrote only its own files)
-- Context: solo (single lane on the checkout; global substrate held by external ssh forward pid 61023, untouched)
+Context: solo (single lane on the checkout; global substrate held by external ssh forward pid 61023, untouched)
 
 ## Verdict: PASS (lane b7) / bench-check gate FAIL (stale receipt, pre-existing)
 

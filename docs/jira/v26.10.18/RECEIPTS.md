@@ -32,7 +32,7 @@ count, or PASS/FAIL token) found in the file.
 | azb-14-sigki | [azb-14-sigkill-storm.md](receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary |
 | azb-15-dr-su | [azb-15-dr-subtrees.md](receipts/azb-15-dr-subtrees.md) | ALIVE | AZB-15 Plane subtree DR kills (enterprise disaster scenarios) |
 | azb-16-amqp- | [azb-16-amqp-saturation.md](receipts/azb-16-amqp-saturation.md) | ALIVE | AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard |
-| azb-18-cgrou | [azb-18-cgroup-soak.md](receipts/azb-18-cgroup-soak.md) | UNKNOWN | AZB-18 — cgroup-constrained soak harness **NO-CONTEXT** |
+| azb-18-cgrou | [azb-18-cgroup-soak.md](receipts/azb-18-cgroup-soak.md) | UNKNOWN | AZB-18 — cgroup-constrained soak harness |
 | azb-19-overl | [azb-19-overlap.md](receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling |
 | azb-20-sdk-i | [azb-20-sdk-interop.md](receipts/azb-20-sdk-interop.md) | PARTIAL_ALIVE | AZB-20 — Unmodified Microsoft SDK interop per plane |
 | azb-21-zero- | [azb-21-zero-sleep.md](receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) |
@@ -98,8 +98,11 @@ count, or PASS/FAIL token) found in the file.
 | i28-pinion-r | [i28-pinion-reaudit.md](receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) |
 | i28-sleep-ga | [i28-sleep-gate-full.md](receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) |
 | i28-stress-v | [i28-stress-verify.md](receipts/i28-stress-verify.md) | PARTIAL_ALIVE | i28 — Stress Tier Verification (Current Tree) |
-| i29-azsim-re | [i29-azsim-regression.md](receipts/i29-azsim-regression.md) | PARTIAL_ALIVE | i29 — azsim regression run **NO-CONTEXT** |
-| i29-bench-ch | [i29-bench-check.md](receipts/i29-bench-check.md) | FAIL | i29 bench-lane smoke (post-0009df3) **NO-CONTEXT** |
+| i29-amqp-wir | [i29-amqp-wire-fresh.md](receipts/i29-amqp-wire-fresh.md) | PARTIAL_ALIVE | i29 — AMQP wire tier, fresh run (2026-10-18) |
+| i29-azsim-re | [i29-azsim-regression.md](receipts/i29-azsim-regression.md) | PARTIAL_ALIVE | i29 — azsim regression run |
+| i29-bench-ch | [i29-bench-check.md](receipts/i29-bench-check.md) | FAIL | i29 bench-lane smoke (post-0009df3) |
+| i29-canonica | [i29-canonical-fresh.md](receipts/i29-canonical-fresh.md) | PASS | i29 — Canonical projection regen-verify (capabilities.json + THIRD_PARTY.md) |
+| i29-checkpoi | [i29-checkpoint.md](receipts/i29-checkpoint.md) | PASS | i29 — Integration Checkpoint Prep (pre-coordinator-commit census) |
 | i29-compile- | [i29-compile-clean.md](receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
 | i29-corpus-f | [i29-corpus-fresh.md](receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
 | i29-corpus-f | [i29-corpus-fresh2.md](receipts/i29-corpus-fresh2.md) | PASS | corpus tier fresh ×3, post-0009df3 |
@@ -108,20 +111,24 @@ count, or PASS/FAIL token) found in the file.
 | i29-dataplan | [i29-dataplane-soak.md](receipts/i29-dataplane-soak.md) | PASS | i29 Data-Plane Soak (fresh ×2) |
 | i29-docs-dia | [i29-docs-diaataxis.md](receipts/i29-docs-diaataxis.md) | PASS | I29 — Diátaxis structure audit, docs landed this window |
 | i29-docs-dri | [i29-docs-drift-fix.md](receipts/i29-docs-drift-fix.md) | PASS | I29 — docs content-drift fixes (follow-up to i29-docs-diaataxis) |
+| i29-docs-gat | [i29-docs-gates2.md](receipts/i29-docs-gates2.md) | PASS | i29 — docs gates post-44b0859 (receipt-index, docs-dod-check, naming-sweep, RECEIPTS consistency) |
 | i29-full-soa | [i29-full-soak-b.md](receipts/i29-full-soak-b.md) | PASS | i29-b — Full soak leg B: `mix test` (stress excluded) |
 | i29-full-soa | [i29-full-soak.md](receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
-| i29-gates-po | [i29-gates-postfix.md](receipts/i29-gates-postfix.md) | PARTIAL_ALIVE | i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates) **NO-CONTEXT** |
+| i29-gates-po | [i29-gates-postfix.md](receipts/i29-gates-postfix.md) | PARTIAL_ALIVE | i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates) |
 | i29-have-sna | [i29-have-snapshot.md](receipts/i29-have-snapshot.md) | PARTIAL_ALIVE | i29 HAVE snapshot (guard + watchdog + telemetry + status) |
-| i29-isolatio | [i29-isolation-count.md](receipts/i29-isolation-count.md) | FAIL | i29 (isolation courts, advisory count run) **NO-CONTEXT** |
+| i29-isolatio | [i29-isolation-count.md](receipts/i29-isolation-count.md) | FAIL | i29 (isolation courts, advisory count run) |
 | i29-kd-censu | [i29-kd-census-fix.md](receipts/i29-kd-census-fix.md) | PASS | i29 — KD register census prose fix |
-| i29-kd-sync | [i29-kd-sync.md](receipts/i29-kd-sync.md) | PASS | i29 — KD register sync (read-only audit) **NO-CONTEXT** |
+| i29-kd-sync | [i29-kd-sync.md](receipts/i29-kd-sync.md) | PASS | i29 — KD register sync (read-only audit) |
 | i29-mod-test | [i29-mod-tests.md](receipts/i29-mod-tests.md) | UNKNOWN | i29: mods/ratchet test suite + plugin validation (receipt i29-mod-tests) |
+| i29-naming-f | [i29-naming-fix.md](receipts/i29-naming-fix.md) | PASS | i29 Naming-Sweep Repair (76 → 0) |
 | i29-pinion-s | [i29-pinion-spot.md](receipts/i29-pinion-spot.md) | PASS | i29 — pinion spot-audit (6 highest-churn, post-AZB-06/07/10/22b) |
+| i29-port-cen | [i29-port-census.md](receipts/i29-port-census.md) | PARTIAL_ALIVE | I29 — Port-Hygiene Census (pre AZB-23 court-x2) |
 | i29-publish- | [i29-publish-dry-fresh.md](receipts/i29-publish-dry-fresh.md) | PARTIAL_ALIVE | i29 — Publish-gate dry run + generated-artifact freshness (post-0009df3) |
+| i29-ratchet- | [i29-ratchet-regression.md](receipts/i29-ratchet-regression.md) | ALIVE | i29 — ratchet mod regression after naming-sweep repair lane |
 | i29-receipt- | [i29-receipt-final.md](receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
 | i29-sovereig | [i29-sovereign-gap-triage.md](receipts/i29-sovereign-gap-triage.md) | PASS | i29 — Sovereign Midnight :sovereign_gap triage (1.3 / 2.2 / 2.3 / 3.1 / 3.2 / 5.3) |
 | i29-stress-f | [i29-stress-fresh.md](receipts/i29-stress-fresh.md) | UNKNOWN | i29 — fresh stress leg (churn court calibration + fence conversions) |
-| i29-stress-f | [i29-stress-full.md](receipts/i29-stress-full.md) | PARTIAL_ALIVE | i29 — full stress suite (`mix test --include stress`) **NO-CONTEXT** |
+| i29-stress-f | [i29-stress-full.md](receipts/i29-stress-full.md) | PARTIAL_ALIVE | i29 — full stress suite (`mix test --include stress`) |
 | i29-wire-2x | [i29-wire-2x.md](receipts/i29-wire-2x.md) | PASS | i29 — wire tier 2x clean run |
 | i29-wire-fre | [i29-wire-fresh.md](receipts/i29-wire-fresh.md) | PASS | i29 wire fresh-leg receipt |
 | i29-wrap-pre | [i29-wrap-prep.md](receipts/i29-wrap-prep.md) | PASS | i29 — wrap prep for AZB-23/24 (receipt-index, docs-dod, TEST_ISOLATION, TICKETS sweep) |

@@ -1,5 +1,6 @@
 # i29 — azsim regression run
 
+Context: slice(12-file azsim suite, one invocation)
 Standing: PARTIAL_ALIVE — the 73-test azsim suite (12 files) is green on most runs, with two defects on this subject: (a) `sovereign_midnight_test.exs` cannot compile (pre-existing, untracked file, out of lane scope — no edits allowed); (b) `plane_supervision_test.exs` carries a real, reproduced flake (eaddrinuse on DataSupervisor restart) that cascades to 29 failures in batch runs.
 
 Scope: regression run only — no edits, no git. Receipt context: slice.

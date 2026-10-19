@@ -1,5 +1,6 @@
 # i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates)
 
+Context: solo (gate run: compile + naming-sweep + invariant-gates; no mix test invocation)
 - Repo: /Users/sac/smalt
 - HEAD: `0009df32aac4e7d3836d246b8852e65ca8163cb2` (fix(test): sovereign_midnight require path + typed :sovereign_gap exclusions for G1-G6)
 - Standing: PARTIAL_ALIVE — compile clean, invariant-gates PASS, naming-sweep FAIL (76 pre-existing violations, none from this lane; no edits made).
