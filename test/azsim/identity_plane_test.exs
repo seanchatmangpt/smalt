@@ -122,14 +122,28 @@ defmodule SmaltTest.Azsim.IdentityPlaneTest do
       assert Smalt.Config.sts()[:token_ttl_seconds] == 3600
 
       # Profile absent (`:all` boot): defaults keep behavior byte-identical.
-      SmaltTest.Env.with([keyvault: :__unset__, sts: :__unset__], fn ->
-        Application.delete_env(:smalt, :keyvault) # isolation-court: exempt test-profile-delete
-        Application.delete_env(:smalt, :sts) # isolation-court: exempt test-profile-delete
+      # Scanner-visible save/restore (leak-court remediation): asserts demand
+      # TRUE key absence (`Smalt.Config.sts() == []`), so the keys are
+      # deleted, not set to nil; restore discipline is explicit save + on_exit.
+      prev_kv = Application.get_env(:smalt, :keyvault, :__unset__)
+      prev_sts = Application.get_env(:smalt, :sts, :__unset__)
 
-        assert Bearer.kv_challenge_mode() == :strict_bearer
-        assert Smalt.DataPlane.KeyVaultActions.api_version() == "7.4"
-        assert Smalt.Config.sts() == []
+      on_exit(fn ->
+        if prev_kv == :__unset__,
+          do: Application.delete_env(:smalt, :keyvault),
+          else: Application.put_env(:smalt, :keyvault, prev_kv)
+
+        if prev_sts == :__unset__,
+          do: Application.delete_env(:smalt, :sts),
+          else: Application.put_env(:smalt, :sts, prev_sts)
       end)
+
+      Application.delete_env(:smalt, :keyvault)
+      Application.delete_env(:smalt, :sts)
+
+      assert Bearer.kv_challenge_mode() == :strict_bearer
+      assert Smalt.DataPlane.KeyVaultActions.api_version() == "7.4"
+      assert Smalt.Config.sts() == []
     end
 
     test "challenge guard consults the challenge_mode profile key" do

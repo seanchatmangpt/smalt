@@ -321,10 +321,17 @@ defmodule Smalt.Security.SecurityHardeningTest do
     test "out-of-baseline measurement fails with 400 attestationFailedVerdict" do
       # AZB-11b: capture-and-delete — the bare delete dropped the config-seeded
       # `maa_measurement_baseline: []` entry for the rest of the suite (the
-      # deterministic twin leak class `maa -> []`). put_restored first pins the
-      # restore to the captured prev, then the body deletes test-scoped.
-      SmaltTest.Env.put_restored(maa_measurement_baseline:
-                                   Application.get_env(:smalt, :maa_measurement_baseline))
+      # deterministic twin leak class `maa -> []`). Explicit save + on_exit
+      # restore pins the captured prev, then the body deletes test-scoped
+      # (leak-court remediation: scanner-visible save/restore discipline).
+      prev_baseline = Application.get_env(:smalt, :maa_measurement_baseline, :__unset__)
+
+      on_exit(fn ->
+        if prev_baseline == :__unset__,
+          do: Application.delete_env(:smalt, :maa_measurement_baseline),
+          else: Application.put_env(:smalt, :maa_measurement_baseline, prev_baseline)
+      end)
+
       Application.delete_env(:smalt, :maa_measurement_baseline)
 
       assert {:error, 400, "attestationFailedVerdict"} =
@@ -853,14 +860,6 @@ defmodule Smalt.Security.SecurityHardeningTest do
   # by these after-blocks for every test later in the run, order-masking the
   # pivot's true blast radius. Same masking class as the maa baseline toggles
   # (out of this court's scope, receipted).
-  defp restore_ledger_enforce_existence(prior) do
-    if prior == nil do
-      Application.delete_env(:smalt, :ledger_enforce_existence)  # isolation-court: exempt helper invoked from after-block callers
-    else
-      Application.put_env(:smalt, :ledger_enforce_existence, prior)  # isolation-court: exempt helper invoked from after-block callers
-    end
-  end
-
   describe "lens-2 implicit-create divergence fence" do
     test "default: append to never-created ledger implicitly creates it (documented divergence)" do
       assert {:ok, receipt} =
@@ -877,7 +876,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
         assert {:error, 404, %{"error" => %{"code" => "LedgerNotFound"}}} =
                  ConfidentialLedger.append_transaction("never-created-fenced", %{"a" => 1})
       after
-        restore_ledger_enforce_existence(prior)
+        if prior == nil do
+          Application.delete_env(:smalt, :ledger_enforce_existence)
+        else
+          Application.put_env(:smalt, :ledger_enforce_existence, prior)
+        end
       end
     end
 
@@ -891,7 +894,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
         assert {:ok, %{"transactionId" => "1.1"}} =
                  ConfidentialLedger.append_transaction("fenced-created", %{"a" => 1})
       after
-        restore_ledger_enforce_existence(prior)
+        if prior == nil do
+          Application.delete_env(:smalt, :ledger_enforce_existence)
+        else
+          Application.put_env(:smalt, :ledger_enforce_existence, prior)
+        end
       end
     end
 
@@ -906,7 +913,11 @@ defmodule Smalt.Security.SecurityHardeningTest do
         assert {:ok, %{"transactionId" => "2.1"}} =
                  ConfidentialLedger.append_transaction("fenced-existing", %{"next" => 2})
       after
-        restore_ledger_enforce_existence(prior)
+        if prior == nil do
+          Application.delete_env(:smalt, :ledger_enforce_existence)
+        else
+          Application.put_env(:smalt, :ledger_enforce_existence, prior)
+        end
       end
     end
   end
@@ -1011,12 +1022,16 @@ defmodule Smalt.Security.SecurityHardeningTest do
 
         # Fence off: the same contents append as a FRESH ledger at tx 1.1 —
         # proving the refused append minted no counters under the fence.
-        restore_ledger_enforce_existence(nil)
+        Application.delete_env(:smalt, :ledger_enforce_existence)
 
         assert {:ok, %{"transactionId" => "1.1"}} =
                  ConfidentialLedger.append_transaction("fence-precedence", contents)
       after
-        restore_ledger_enforce_existence(prior)
+        if prior == nil do
+          Application.delete_env(:smalt, :ledger_enforce_existence)
+        else
+          Application.put_env(:smalt, :ledger_enforce_existence, prior)
+        end
       end
     end
 
