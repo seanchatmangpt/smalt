@@ -51,6 +51,25 @@
 | V4 | Push / NEXT_WINDOW.md | PENDING | `i29-push-readiness2.md` (read-only readiness audit) | — |
 | V5 | receipt_index 24/24 + project.py --check | PENDING | `scripts/receipt_index.py` + `~/.zcode/dfcm/project.py --check` | anti-vacuity: delete-one-receipt court spec'd in TICKETS.md |
 
+## Amendment 2026-10-19 — B2/B3 carried to v26.10.19 as TYPED-OPEN
+
+Context: solo(...). Basis: `docs/jira/v26.10.18/receipts/azb-22b-zombie-fix.md`
+section "Ring boot re-judge retry — BLOCKED again" (third infrastructure
+strike: colima disk 100% / 0B reclaimable without sabotaging concurrent
+lanes, sustained concurrent build contention). Per the v26.10.17
+typed-RED honest-close precedent:
+
+- **B2/B3 (AZB-22 ring subject binding) carry to v26.10.19 as TYPED-OPEN.**
+  Evidence: zombie FACE is closed (boot-burn 12/12 CLEAN,
+  `azb-22b-zombie-verify.md` ALIVE) — the full ring re-judge was deferred on
+  un-leased concurrent image builds (3 strikes, embedded in
+  azb-22b-zombie-fix.md).
+- **AZB-23 proceeds without B2/B3**, per the honest-close precedent.
+- **Ring re-run is the first v26.10.19 work order**, alongside G1–G4.
+- **Recommended fix (also carried)**: an image-build lease (flock, same
+  pattern as `scripts/substrate.sh`) so concurrent docker builds cannot
+  strike a ring re-judge again.
+
 ## Blocking chain (shortest path to gate)
 
 1. Lane C lands its `test(env)` commit (10 files) → B1 clears; gate order per `i29-checkpoint3.md`: mix test → test-budget (reseed owns the 4th dirty file) → sleep-gate → docs-dod-check.
