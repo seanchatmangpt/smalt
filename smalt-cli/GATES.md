@@ -25,10 +25,10 @@ Aggregates the SDK wire pytest suites, discovered by convention
 suite runs via subprocess pytest.
 
 **Interpreter matrix — honest description (repair R44, resolved 2026-10-17).**
-ADR-PY-002 prescribes per-lane venvs at `smalt-cli/.venvs/<lane>`. That layout
-still does not exist, and the old `.venvs/test_*.py -> ../.venv-cli` symlinks
-(never a venv layout, never consulted by `resolve_venv`) were deleted on
-2026-10-17. `resolve_venv` now falls back to the **documented fallback**
+ADR-PY-002 prescribes per-lane venvs at `smalt-cli/.venvs/<lane>`. The broken
+`.venvs/test_*.py -> ../.venv-cli` symlinks (never a venv layout, never
+consulted by `resolve_venv`) were deleted on 2026-10-17; the `.venvs/`
+directory still exists but is EMPTY — no per-lane venv lives there. `resolve_venv` now falls back to the **documented fallback**
 `smalt-cli/.venv-cli` and every result carries the loud `venv_note`
 "ADR-PY-002 per-lane venv .venvs/<lane> missing; ran against .venv-cli
 (documented fallback)". The interpreter matrix is therefore **one real
@@ -120,8 +120,9 @@ Standing 2026-10-15: **PASS** (chain intact; all executed ops covered).
 - GATE1 discovery previously pointed at `tests/sdk_wire/**` paths that never
   existed, producing a standing SKIP with a false close condition ("lanes not
   landed yet"). Fixed in R44: discovery matches the real flat `tests/` layout.
-- The ADR-PY-002 per-lane venv layout (`.venvs/<lane>`) does not exist; the
-  broken `test_*.py -> ../.venv-cli` symlinks were deleted 2026-10-17 and
+- The ADR-PY-002 per-lane venv layout (`.venvs/<lane>`) is not populated (the
+  directory exists empty; the broken `test_*.py -> ../.venv-cli` symlinks were
+  deleted 2026-10-17) and
   every suite resolves to the documented `.venv-cli` fallback (loud
   `venv_note` per result). Per-lane venv creation remains open with the
   coordinator.

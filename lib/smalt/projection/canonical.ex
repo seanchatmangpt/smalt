@@ -12,7 +12,7 @@ defmodule Smalt.Projection.Canonical do
 
   Emits a deterministic, secret-free capability document (types, SHACL shape
   bindings, api-versions, plane endpoints) intended to back `GET /capabilities`.
-  Determinism matters: `docs/capability.json` is generated from this module and
+  Determinism matters: `docs/capabilities.json` is generated from this module and
   a fence test compares the committed artifact against Registry-derived truth so
   public docs cannot drift from the ontology projection.
 

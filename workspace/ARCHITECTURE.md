@@ -6,11 +6,16 @@ The smalt Sovereign Console is an air-gapped, zero-actuation evaluation console 
 Fortune-5 sovereign-cloud evaluation of the smalt substrate. It runs as a Next.js
 workspace at `workspace/` inside the smalt repo. Its only permitted
 network host is the local smalt emulator: ARM control plane on `http://127.0.0.1:9443`,
+the ARM TLS twin on `https://127.0.0.1:9444` (real Azure SDK legs ride TLS),
 egress planes on `http://127.0.0.1:8443` (blob/Cosmos docs), AMQP lanes on
 `127.0.0.1:5672` (Service Bus) and `127.0.0.1:5673` (Event Hubs). No WAN egress; the
 console is read-only by construction.
 
-Zero-actuation is enforced at two layers (`lib/copilot/verb-gate.ts`,
+Zero-actuation and the air-gap are enforced at three layers: (1) the client
+fetch wrapper (`lib/smalt.ts` `smaltFetch`/`assertLocalUrl`), (2) the server
+air-gap layer (`src/lib/airgap-fetch.ts` `airgapFetch` + `middleware.ts`
+request-level enforcement; loopback-only hosts, ports 9443/9444/8443), and
+(3) the mutation-verb gate (`lib/copilot/verb-gate.ts`,
 `lib/copilot/session-ledger.ts`): any request whose method+URL matches a mutation
 pattern never reaches the network — a typed refusal (`lib/copilot/typed-refusal.ts`)
 is appended to the hash-chained session ledger (`appendRefusal` → FNV-1a hash chain)
@@ -63,7 +68,8 @@ and actor-host/constellation-actors model the on-device actor surface.
         +-----------+--------+      +-----------+------------+
         | Secure element     |      | smalt local substrate  |
         | (AtomVM wasm+      |      | ARM :9443              |
-        |  silicon)          |      | egress :8443 (blob/    |
+        |  silicon)          |      | TLS twin :9444 (SDKs)  |
+        | ETF over framed    |      | egress :8443 (blob/    |
         | ETF over framed    |      |  cosmos docs, WORM)    |
         | serial protocol    |      | AMQP 5672 (SB)         |
         | boot-digest        |      | AMQP 5673 (EH, PARTIAL)|
@@ -116,8 +122,9 @@ Containers diagram (text C4 L2). L3 component detail follows.
   refuse/pass, attestation trio, ledger chain + guardedFetch, frame codec) +
   component type-surface (tsc --strict --noEmit) + optional live ARM probe
   (SKIP when the substrate is down). Exit 0 only with zero FAILs.
-- Court verdict as of 2026-10-15: PASS=33 FAIL=6 SKIP=2 — see
-  `docs/jira/v26.10.14/receipts/ws-12-e2e.md` for the per-finding detail.
+- Court verdict as of 2026-10-18: PASS=51 FAIL=0 SKIP=1 (`just ws-court` or
+  `node workspace/scripts/e2e-court.mjs`; the SKIP is the node-inexecutable
+  DOM/Web Serial panel rendering, witnessed at the type layer instead).
 
 ## Cost
 

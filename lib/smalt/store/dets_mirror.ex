@@ -23,7 +23,8 @@ defmodule Smalt.Store.DetsMirror do
   Options:
 
     * `:dir` — directory for `.dets` files (default `"tmp/dets"`, created on start)
-    * `:tables` — ETS tables to mirror (default: the 5 highest-value tables)
+    * `:tables` — ETS tables to mirror (default:
+      `Smalt.StoreTables.persisted_tables/0`)
     * `:interval` — sync tick in ms (default `5_000`)
     * `:repair` — open mirror files with `repair: true` (default `false`). A
       mirror rebooted after a `kill -9` (un-closed `:dets` files) must open

@@ -2,7 +2,7 @@ defmodule Smalt.Enclave.Doctor do
   @moduledoc """
   Operator diagnostic engine (v26.10.16 lane 416).
 
-  Four real checks over the live in-process substrate; aggregate verdict
+  Five real checks over the live in-process substrate; aggregate verdict
   PASS / DEGRADED / FAIL. The mix task always exits 0 unless the engine
   itself crashes (Check-4 safety rule: a doctor that exits nonzero on a
   WARN is a doctor CI learns to ignore).
@@ -16,7 +16,7 @@ defmodule Smalt.Enclave.Doctor do
 
   @excluded_tables [:smalt_sb_locks]
 
-  @doc "Runs all four checks; returns the full receipt map."
+  @doc "Runs all five checks; returns the full receipt map."
   @spec run(keyword()) :: map()
   def run(opts \\ []) do
     checks =

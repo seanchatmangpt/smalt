@@ -14,8 +14,12 @@ workspace/
     globals.css        # tailwind entry (WS-1 owned)
   components/          # React components, one file per component, PascalCase
   lib/                 # non-component TS modules, kebab-case
-    smalt.ts           # air-gap fetch helpers — ALL networking goes here
+    smalt.ts           # air-gap fetch helpers — ALL client networking goes here
     types.ts           # shared types contract — DO NOT EDIT (see below)
+  src/lib/
+    airgap-fetch.ts    # SERVER air-gap layer (assertAirGapFetch): 9443/9444/8443
+    azure/             # server-side Azure SDK adapters (same air-gap law)
+  middleware.ts        # server middleware — request-level air-gap enforcement
   package.json         # WS-1 owned
 ```
 
@@ -39,14 +43,24 @@ The console may contact **only** the local smalt emulator:
 
 - `NEXT_PUBLIC_SMALT_ARM` (default `http://127.0.0.1:9443`) — ARM gateway
 - `NEXT_PUBLIC_SMALT_EGRESS` (default `http://127.0.0.1:8443`) — egress router
+- `127.0.0.1:9444` — ARM TLS twin (real Azure SDK legs ride TLS; see
+  `src/lib/airgap-fetch.ts` `AIRGAP_ALLOWED_PORTS`)
 
-Rules, mechanically enforced by `eslint.config.mjs`:
+Rules, mechanically enforced at three layers — client (`lib/smalt.ts` +
+`assertLocalUrl`), server (`src/lib/airgap-fetch.ts` + `middleware.ts`), and
+lint (`eslint.config.mjs`):
 
 1. **No URL string literals in `fetch()`** — build URLs from `SMALT_ARM` /
-   `SMALT_EGRESS` via `smaltFetch()` in `lib/smalt.ts`.
+   `SMALT_EGRESS` via `smaltFetch()` in `lib/smalt.ts`; server code uses
+   `airgapFetch` from `src/lib/airgap-fetch.ts`.
 2. No `XMLHttpRequest`, no http-client imports (`axios`, `got`, `node-fetch`,
-   `undici`, ...).
-3. `lib/smalt.ts#assertLocalUrl` rejects any non-localhost host at runtime.
+   `undici`, `superagent`, `ky`, `ws*`, ...) — banned import group in
+   `eslint.config.mjs`.
+3. No template-literal URL passed to `fetch()` (lint
+   `no-restricted-syntax` — build URLs from the env constants instead).
+4. `lib/smalt.ts#assertLocalUrl` (client) and `src/lib/airgap-fetch.ts`
+   (server) reject any non-loopback host at runtime, ports limited to
+   9443/9444/8443.
 
 ## Stack notes
 
@@ -101,3 +115,16 @@ npm run dev     # next dev
 npm run build   # next build  (gate: must pass)
 npm run lint    # eslint      (gate: must pass)
 ```
+
+Court (from the repo root, or `just ws-court`):
+
+```
+node workspace/scripts/e2e-court.mjs
+```
+
+Unit-import sweep over every `lib/` module (compile + dynamic-import; each
+module's exports load cleanly or the court FAILs) + targeted checks (CRC-16
+vector, ETF round-trip, Bellman determinism, JCS ordering, verb-gate
+refuse/pass, attestation trio, ledger chain + guardedFetch, frame codec) +
+`tsc --strict` type-surface + optional live ARM probe (SKIP when the substrate
+is down). Exit 0 only with zero FAILs.

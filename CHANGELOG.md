@@ -435,7 +435,7 @@ control-plane and audit-plane surfaces no emulator provides.
   `scripts/bench.py` / `bench_check.py` (bench gate); `scripts/release.sh`.
 - Docs: `docs/explanation/architecture.md` (moved from `docs/ARCHITECTURE.md`), `docs/WIRE_PARITY.md` (surface map with
   per-row falsifiers), `docs/MIGRATION_FROM_EMULATORS.md` (port map +
-  honest deltas), `docs/CHEAT_SCAN.md`.
+  honest deltas), `docs/archive/CHEAT_SCAN.md`.
 
 ### Security
 

@@ -91,7 +91,7 @@ per-container network namespaces, so the host port law (lane `bN` ->
 `39000+10N..+5` and friends, above) is superseded inside containers: port
 collisions across burn lanes are impossible by namespace isolation, not by the
 host `bench_boot` pre-flight check. Receipts land as JSONL with the
-`smalt-burn/v1` row schema under `docs/jira/v26.10.18/burn/` (NOT the
+`smalt-burn/v2` row schema under `docs/jira/v26.10.18/burn/` (NOT the
 `docs/jira/v*/bench/` dir host lanes use). Host lanes and container lanes never
 share a result directory; do not point a container lane at `bench/`, and do not
 point a host lane at `burn/`.

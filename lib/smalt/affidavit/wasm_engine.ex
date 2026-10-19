@@ -24,8 +24,12 @@ defmodule Smalt.Affidavit.WasmEngine do
   Wire: UTF-8 JSON requests `{"op":...}` answered by the module itself
   with `{"ok":true,...}` / `{"ok":false,"error":{...}}` — never a trap.
 
-  Fail-closed law: a missing or mismatched artifact, a failed admission,
-  or a dead engine returns `{:error, :engine_unavailable}` — never raise.
+  Fail-closed law: a missing or mismatched artifact or a failed admission
+  returns `{:error, :engine_unavailable}` — never raise. The engine itself is
+  supervised: `Smalt.Affidavit.WasmEngine.Supervisor` (child of
+  `Smalt.Plane.ControlSupervisor`) restarts abnormal engine deaths via its
+  owner child, so `:engine_unavailable` is only the typed vocabulary callers
+  observe during the restart window.
   """
 
   use GenServer

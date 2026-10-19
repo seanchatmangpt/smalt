@@ -29,13 +29,18 @@ The seal path mounts the invariant on every ARM resource PUT/DELETE:
 the state delta is admitted through the WASM engine
 (`affi_admit_and_seal/1`), and an in-variant-violating delta is refused
 by the engine rather than sealed — witnessed by the fail-closed tier of
-the operator test. Register of record:
+the operator test. The engine is not a bare NIF resource: it runs under
+`Smalt.Affidavit.WasmEngine.Supervisor`
+(`lib/smalt/affidavit/wasm_engine_supervisor.ex`), so a degraded or
+killed engine degrades typed and returns supervised rather than taking
+the seal path down. Register of record:
 `docs/jira/v26.10.16/receipts/cap-affidavit-wasm.md` (real-run output
 embedded: `3 tests, 0 failures` via `scripts/fast_test.sh`); the seal
 court: `docs/jira/v26.10.16/receipts/r215-affidavit-seal-court.md`.
 Code: `lib/smalt/affidavit/seal.ex`,
-`lib/smalt/affidavit/wasm_engine.ex` (typed-error contract at :127,
-layout gate at :135-141).
+`lib/smalt/affidavit/wasm_engine.ex` (fail-closed engine-unavailable
+path at :141, typed-error contract at :214-219, CTRT layout gate at
+:219+).
 
 ## Where it lives: the invariant gates
 
@@ -66,6 +71,23 @@ per-run assertion. The full mechanism-by-mechanism register, including
 the honest zeroed/absent set, is
 `docs/explanation/affidavit-evidentiary-design.md`.
 
+## WasmEngine supervision
+
+The engine is owned by `Smalt.Affidavit.WasmEngine.Supervisor`
+(`lib/smalt/affidavit/wasm_engine_supervisor.ex`): `:one_for_one`,
+`max_restarts: 3` per second. The single child is a small owner
+GenServer that start_links the named engine and MONITORS it (never
+links — a kill-hammer must not consume supervisor intensity). All retry
+classes live in the owner's own mailbox: `:engine_start_failed`
+(wasmtime NIF teardown window) retried on `send_after` at 100ms
+doubling capped; abnormal engine death via `:DOWN` through the same
+own-mailbox retry; artifact-class refusals on bounded doubling backoff
+that degrades typed, never crash-loops. Callers see only typed
+vocabulary — `{:ok, _}`, `{:error, :engine_unavailable}`,
+`{:error, :artifact_digest_mismatch}`, `{:error, {:already_started, _}}`
+— never a raise, never a hang. Receipt:
+`docs/jira/v26.10.18/receipts/b-wasm-supervisor.md`.
+
 ## See Also
 
 - `docs/explanation/two-green-court-law.md` — the same fail-closed
@@ -73,4 +95,7 @@ the honest zeroed/absent set, is
 - `docs/explanation/emulation-stance.md` — the same loud-absence
   posture at the wire layer
 - `test/smalt_affidavit_wasm_test.exs` — the operator test
+- `docs/NO_SLEEP_DOCTRINE.md` — the fail-closed/refusal posture here is
+  the same observe-not-sleep law: gates refuse typed, they never
+  wait-and-hope
 - `docs/jira/v26.10.16/WRAP_LEDGER.md` — KD-89 (PQC witness) section

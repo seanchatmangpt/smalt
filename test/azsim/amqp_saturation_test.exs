@@ -194,9 +194,6 @@ defmodule Smalt.Amqp.SaturationTest do
                "(budget #{@atom_budget}) - unbounded atom growth in the link path; " <>
                "new_modules=#{inspect(MapSet.to_list(MapSet.difference(mods1, mods0)))}"
     end
-    # --- teardown: bounds after every link is gone ---
-    if ba, do: assert_saturation_bounds(baseline, n_queues, "saturation-#{n_queues}")
-
     if drained_assert? do
       remaining = drained_total(queues)
       if ba do
@@ -215,6 +212,10 @@ defmodule Smalt.Amqp.SaturationTest do
     queues = :ok
     _ = all_conns
     all_conns = :ok
+
+    if ba do
+      assert_saturation_bounds(baseline, n_queues, "saturation-#{n_queues}")
+    end
 
     :ok
   end

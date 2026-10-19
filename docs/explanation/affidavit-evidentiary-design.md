@@ -32,8 +32,8 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
 - **Mechanism:** canonical state-delta JSON admitted through the WASM
   engine export `affi_admit_and_seal/1`; the engine returns a sealed
   352-byte CTRT token binding the decision.
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:93` (CTRT layout
-  gate), `lib/smalt/affidavit/seal.ex:30-33` (`admit_and_seal/2`).
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:219+` (CTRT
+  layout gate), `lib/smalt/affidavit/seal.ex:30-33` (`admit_and_seal/2`).
 - **Cited authority:** FRCP 37(e) (curable spoliation posture via
   systematic preservation).
 - **smalt integration point:** seal sideband on every successful ARM
@@ -48,8 +48,8 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   nullifier `blake3(delta_hash)` at [176..208]; the host re-derives the
   blake3 leg when `b3sum` is installed and reports the leg as
   `pqc_receipt: unverified_blake3_host` otherwise.
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:135-141`
-  (layout gate and host re-derivation).
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:219+`
+  (layout gate and host re-derivation, :221-228).
 - **Cited authority:** FRCP 37(e); FRE 901(b)(1) (distinctive
   characteristics) as the design's reference for identification.
 - **smalt integration point:** layout gate runs on every
@@ -67,9 +67,10 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
 - **Mechanism:** a 1-byte deontic modality at CTRT offset [175]
   (modality 1 accept / 2 restricted, selected by the tariff threshold
   `@affidavit_high_tariff_cents`).
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:135-137`;
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:219+` (modality
+  slot in the layout gate);
   selection in `lib/smalt/arm_gateway/router.ex` (`affidavit_seal/2`,
-  near :2078-2135).
+  :2226).
 - **Cited authority:** SOX 1514A as the design's reference for
   episodic hold-imposition posture.
 - **smalt integration point:** modality computed per-record at seal
@@ -115,8 +116,9 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   (`:payload_too_large` over 16 MiB, `{:error, _}` on garbage delta); a
   subsequent well-formed call still succeeds (no crash-loop); engine
   load failure is a verbatim BLOCKED flunk, never a skip.
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:127` (typed
-  error contract); real-run tier in
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex` (typed-error
+  contract :214-219; fail-closed engine-unavailable path :141);
+  real-run tier in
   `test/smalt_affidavit_wasm_test.exs` (3 tests, no mocks, no skips).
 - **Cited authority:** FRCP 37(e) is reference for the design position
   that an honest absence is defensible while a fabricated witness is
@@ -134,7 +136,7 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   refused seal, or an unavailable tariff calculator never changes the
   HTTP outcome; witnesses land in the ETS table
   `:smalt_affidavit_witnesses` plus logs, never in wire records.
-- **Code anchor:** `lib/smalt/arm_gateway/router.ex:2078-2090` (wire-up
+- **Code anchor:** `lib/smalt/arm_gateway/router.ex:2191-2195` (wire-up
   law comment + witness table).
 - **Cited authority:** FRE 902(13)-(14) posture reference: records
   certified by a process that demonstrably does not perturb them.

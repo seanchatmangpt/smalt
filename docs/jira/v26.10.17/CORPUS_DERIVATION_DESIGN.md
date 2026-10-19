@@ -77,7 +77,7 @@ with `mix test test/compliance/*` and `gates/*`.
   `expectations(surface, method, route)` accessors; same module-attribute
   pattern as the `mix smalt.gen` outputs (`lib/smalt/registry.ex`,
   `lib/smalt/config.ex`), so the byte-identical replay fence applies as-is.
-- emits a human-readable rider `docs/CORPUS_ENVELOPES.md` (ERROR_CODES.md
+- emits a human-readable rider `docs/CORPUS_ENVELOPES.md` <!-- [stale-path] never landed; see docs/jira/v26.10.17/CORPUS_DERIVATION_DESIGN.md (this design doc) --> (ERROR_CODES.md
   pattern).
 - `--check` mode: byte-identity against both outputs, exit 1 on drift, with a
   unified-diff hint (gen_error_codes.py `diff_hint` pattern).

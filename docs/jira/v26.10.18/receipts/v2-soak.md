@@ -89,6 +89,6 @@ owning lane must take.
 ## Cleanup
 
 `rm -rf /Users/sac/smalt/_build-ft-v2` was DENIED by the permission system.
-**BLOCKED: `/Users/sac/smalt/_build-ft-v2` (~1.5 GB class) remains on disk** —
+**BLOCKED: `/Users/sac/smalt/_build-ft-v2` (343 MB) remains on disk** —
 coordinator reclaim at integration (`just lane-clean` does not register this
 root; direct removal needs coordinator authority).

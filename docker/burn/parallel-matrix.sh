@@ -52,7 +52,7 @@ DRY_RUN=0
 EMIT=0
 DEADLINE_SECS=900
 PLANE="all"
-REPLICAS=4
+REPLICAS=8
 while [ $# -gt 0 ]; do
   case "$1" in
     --plane) PLANE="$2"; shift ;;

@@ -6,7 +6,7 @@
 clap-noun-verb pack family. The RDF graph (`cli/ontology.ttl`) is the source of
 truth; `cli/ggen.toml` composes six packs; `ggen sync run` projects
 `Cargo.toml`, `src/main.rs`, `src/lib.rs`, `src/generated_{cli,behavior,
-boundaries}.rs`, `tests/`, and `docs/command-reference.md` deterministically.
+boundaries}.rs`, `tests/`, and `cli/docs/command-reference.md` deterministically.
 Hand-written domain logic lives only in `src/custom_handlers.rs` (the packs'
 `cnv:CustomBehavior` seam, generated once via `unless_exists: true` and never
 overwritten).
@@ -40,7 +40,7 @@ Nouns: status, kv, blob, cosmos, sb, doctor, court (13 commands, all
     cd cli && ggen sync run
 
 Regeneration never clobbers `src/custom_handlers.rs`. It WILL refuse if a
-generated doc (`docs/command-reference.md`) would differ — delete it and
+generated doc (`cli/docs/command-reference.md`) would differ — delete it and
 re-sync, or add `force: true` in the owning pack template config.
 
 ## Gate admission lessons (schema-pack gates that refused and how they closed)

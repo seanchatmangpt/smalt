@@ -8,10 +8,14 @@ smalt substrate. Zero-actuation is enforced in code (AU-10).
 
 ```sh
 cd smalt-cli
-python3 -m venv .venv
-. .venv/bin/activate
+python3 -m venv .venv-cli
+. .venv-cli/bin/activate
 pip install -e '.[dev]'
 ```
+
+`smalt-cli` uses the single `.venv-cli` interpreter (ADR-PY-002 documented
+fallback — a bare `.venv` does not exist and is never created; the historical
+per-lane `.venvs/<lane>` layout is not in use).
 
 Hard deps: `typer`, `pyserial` only. Python 3.10+. `aiohttp` optional (`aio`
 extra).
@@ -38,11 +42,19 @@ only; nothing is written to disk and nothing leaves loopback.
 
 `python -m smalt_cli.cli <command>`
 
-- `test` — hardware-in-the-loop test profiles against the substrate
-- `hw` — pyserial hardware transport (local only)
-- `daemon` — long-lived loopback daemon (read-only, gate-protected)
-- `audit` — emit the AU-10 audit surface
-- `gate VERB URL` — evaluate a request against the zero-actuation gate
+- `test` — hardware-in-the-loop test profiles against the substrate (scaffold
+  echo; the HIL profile lane is not landed)
+- `hw` — pyserial hardware transport (real implementation when a `typer`
+  import succeeds; a scaffold echo otherwise)
+- `daemon` — scaffold echo for the long-lived loopback daemon (lane not
+  landed; the loopback check still runs)
+- `audit` — scaffold echo for the AU-10 audit surface (lane not landed)
+- `gate` — verification-gates sub-app (lane CLI-8): `gate sdk-wire-conformance`
+  (GATE1 aggregate), `gate hil-attestation` (GATE2), `gate zero-actuation`
+  (GATE3), `gate audit-integrity` (GATE4). The retired
+  `gate VERB URL` scaffold command is superseded by `gate zero-actuation`.
+
+See `smalt-cli/GATES.md` for the gate contracts.
 
 ## Zero-actuation gate (AU-10)
 
@@ -56,8 +68,10 @@ Unknown verbs refused. Refusals are typed JSON on stderr
 
 - **Layout**: one module per lane under `smalt_cli/<module>/`; register new
   commands in `smalt_cli/cli.py` via `@app.command()` or a sub-`typer.Typer()`.
-- **Tests**: `pytest`, files named `test_*.py` co-located in the package
-  (`smalt_cli/test_<module>.py`). Chicago style: real collaborators, no mocks.
+- **Tests**: `pytest`, two real locations — SDK wire suites flat in
+  `tests/test_*.py` (the real layout GATE1 discovery matches; the historical
+  `tests/sdk_wire/**` globs never existed) and package lanes co-located in
+  `smalt_cli/test_*.py`. Chicago style: real collaborators, no mocks.
 - **Language level**: Python 3.10+; stdlib-first. No new hard dependencies —
   propose optional extras via `pyproject.toml [project.optional-dependencies]`.
 - **Everything in-repo**: no `/tmp` artifacts, no external analytics services, zero network egress
@@ -69,8 +83,8 @@ Unknown verbs refused. Refusals are typed JSON on stderr
 ```sh
 python -m smalt_cli.cli --help
 # SDK wire lanes (tests/) run as two auth-exclusive pytest sessions (X-6):
-.venv/bin/python -m pytest tests/ -m anonymous -q   # blob/cosmos — substrate 39643/39644
-.venv/bin/python -m pytest tests/ -m enforce -q     # identity/resourcegraph/servicebus/eventhub/keyvault — substrate 38654-38656/38672-38673
+.venv-cli/bin/python -m pytest tests/ -m anonymous -q   # blob/cosmos — substrate 39643/39644
+.venv-cli/bin/python -m pytest tests/ -m enforce -q     # identity/resourcegraph/servicebus/eventhub/keyvault — substrate 38654-38656/38672-38673
 ```
 
 Wire lanes share NO substrate lock: each session fixture (`tests/conftest.py`)
