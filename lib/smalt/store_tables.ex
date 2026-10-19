@@ -156,6 +156,9 @@ defmodule Smalt.StoreTables do
     # tuple | Smalt.DataPlane.Cosmos | shadow (owner-managed, never swept)
     :smalt_cosmos_ru,
 
+    # atom | Smalt.EgressRouter | shadow (owner-managed, never swept)
+    :smalt_egress_guard,
+
     # tuple | Smalt.Messaging.AMQP.Connection | shadow (owner-managed, never swept)
     :smalt_eh_epochs,
 
@@ -372,6 +375,14 @@ defmodule Smalt.StoreTables do
         metadata_only: false,
         persisted: false,
         ordered_set: true
+      },
+      :smalt_egress_guard => %{
+        key_shape: "atom",
+        owner_module: "Smalt.EgressRouter",
+        sweep_strategy: "none",
+        metadata_only: false,
+        persisted: false,
+        ordered_set: false
       },
       :smalt_eh_checkpoints => %{
         key_shape: "tuple",

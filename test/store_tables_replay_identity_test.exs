@@ -146,9 +146,9 @@ defmodule Smalt.StoreTablesReplayIdentityTest do
     """
 
     # The registry must not be trivially empty either (anti-vacuity on this
-    # test itself): the census is 52 atoms (33 owned + 19 shadow).
+    # test itself): the census is 53 atoms (33 owned + 20 shadow).
     assert length(Smalt.StoreTables.table_names()) == 33
-    assert length(Smalt.StoreTables.shadow_tables()) == 19
+    assert length(Smalt.StoreTables.shadow_tables()) == 20
   end
 
   test "generated lists equal the hand-written lists they replaced (step 7 witness)" do

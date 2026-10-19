@@ -246,6 +246,13 @@ defmodule Smalt.EtsCompositeIdentityTest do
     Process.sleep(10)  # SLEEP-CLASS: TIME-ADVANCE — crosses lro_retention_ms window before eviction_pass
     :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
 
+    # AZB-10 bridge residue: the resource PUTs enqueued ResourceWriteSuccess
+    # events on the auto-created SB bridge queue. This test tears down through
+    # the router DELETE routes (not Enclave.State.destroy/1), so the lawful
+    # destroy-path purge must be invoked explicitly. Synchronous GenServer-free
+    # ETS/Store deletes — structural, no sleeps.
+    :ok = Smalt.Enclave.State.purge_resource_write_bridge()
+
     # ---------- strict identity fence ----------
     after_state = snapshot()
 

@@ -35,7 +35,7 @@ defmodule Smalt.Amqp.Sweeper do
     if :ets.info(:smalt_sb_locks) == :undefined or :ets.info(:smalt_sb_messages) == :undefined do
       # AZB-20 interop unblock (disclosed in the AZB-20 receipt): on an
       # integration-only plane boot (SMALT_PLANES=integration) the data-plane
-      # Store — owner of the :smalt_sb_* ETS tables — is not running. The
+      # Store — owner of the smalt_sb_* ETS tables — is not running. The
       # sweep pass no-ops until the tables exist instead of crash-looping the
       # whole integration plane (same topology-defect class as the AZB-20
       # LRO Sweeper guard).

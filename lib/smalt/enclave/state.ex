@@ -294,7 +294,14 @@ defmodule Smalt.Enclave.State do
     end
   end
 
-  defp purge_resource_write_bridge do
+  @doc """
+  Lawful cleanup for the AZB-10 resource-write bridge queue. Called from
+  destroy/1 after the reverse-topological delete cascade; also callable
+  directly by lifecycle fences (e.g. the NFR-4 composite ETS identity
+  test) whose teardown drives the router DELETE routes without going
+  through destroy/1. Synchronous, structural — no sleeps, no polling.
+  """
+  def purge_resource_write_bridge do
     bridge = "resourcewritesuccess"
 
     # message rows are keyed {queue, seq}; the seq counter is {queue, :seq}
