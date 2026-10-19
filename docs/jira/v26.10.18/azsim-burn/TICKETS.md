@@ -57,7 +57,7 @@ Ticket fields: **Q** quadrant · **Lane** · **Deps** · **Scope** (files) · **
 - **Q** CREATE · **Lane** planes · **Deps** AZB-04
 - **Scope** `config/env/az_prod_control.exs`, `lib/smalt/arm_gateway/*` (config read sites only), `test/azsim/control_plane_test.exs`
 - **Spec** `:plane :control`; `:arm_gateway port: 9443, strict_version_validation: true`; `:graph_law enforcement: :fail_closed`. Strict mode: unknown `api-version` ⇒ ARM-shaped 400 `InvalidApiVersionParameter` / `NoRegisteredProviderFound` (reuse `rewrite-drafts/apiversion-refusal.md` vocabulary). `fail_closed`: graphlaw engine unavailable ⇒ typed `:engine_unavailable` refusal, never admit.
-- **Accept** control-plane test: `PUT .../providers/Microsoft.Storage/storageAccounts/x?api-version=2021-12-02` → 200/201 with `x-ms-request-id`; `api-version=1999-01-01` → 400 typed; graphlaw engine killed → 503 `engine_unavailable`. `terraform plan` (azurerm, `ARM_METADATA_HOST` → plane) exit 0 on `test/fixtures/tf/basic`.
+- **Accept** control-plane test: `PUT .../providers/Microsoft.Storage/storageAccounts/x?api-version=2021-12-02` → 200/201 with `x-ms-request-id`; `api-version=2099-01-01 (amended 2026-10-18, coordinator ruling: the original 1999 stale-version case contradicted the pinned KD-78 monotonic admission — operator ruling, ontology smalt:admitsVersion; refusal pins use a FUTURE version, never a past one. See CLAUDE.md corpus premise pins.)` → 400 typed; graphlaw engine killed → 503 `engine_unavailable`. `terraform plan` (azurerm, `ARM_METADATA_HOST` → plane) exit 0 on `test/fixtures/tf/basic`.
 - **Falsifier** any request admitted while graphlaw engine is down.
 - **Anti-vacuity** flip `enforcement: :fail_open` → engine-down test must fail.
 - **Receipt** `azb-05-control-plane.md`.

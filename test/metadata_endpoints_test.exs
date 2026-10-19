@@ -35,21 +35,15 @@ defmodule Smalt.MetadataEndpointsTest do
     # application uses; probed alongside http, never instead of it.
     listeners =
       (
-        saved =
-          for k <- [:tls, :tls_certfile, :tls_keyfile], do: {k, Application.get_env(:smalt, k)}
+        # AZB-11b: canonical single-put discipline — the old save/delete/
+        # put_restored/restore sandwich captured prev AFTER the deletes, so
+        # the on_exit restore deleted the config-seeded `tls: :auto` entry
+        # (twin leak class `tls -> :auto`). put_restored captures the real
+        # prev (config nil-entries) and restores it verbatim; the deletes are
+        # unnecessary because the config values already ARE the auto path.
+        SmaltTest.Env.put_restored(tls: :auto, tls_certfile: nil, tls_keyfile: nil)
 
-        for k <- [:tls, :tls_certfile, :tls_keyfile] do
-          Application.delete_env(:smalt, k)
-        end
-
-        SmaltTest.Env.put_restored(tls: :auto)
         opts = Smalt.TLS.bandit_opts(Router, tls_port)
-
-        for {k, v} <- saved do
-          if v == nil,
-            do: Application.delete_env(:smalt, k),
-            else: Application.put_env(:smalt, k, v)
-        end
 
         if opts[:scheme] == :https do
           {:ok, tls_sup} = Supervisor.start_link([{Bandit, opts}], strategy: :one_for_one)

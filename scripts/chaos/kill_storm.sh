@@ -57,7 +57,7 @@ rnd() { KSRAND=$(( (KSRAND * 1103515245 + 12345) % 2147483648 )); echo $(( KSRAN
 # POLL-STEP micro-wait: `read -t` on a fd held open by `tail -f /dev/null`
 # (no output, negligible CPU). Closed on exit by the trap.
 exec 3< <(tail -f /dev/null)
-micro_wait() { read -t "${1:-0.05}" -u 3 _ || true; }
+micro_wait() { read -r -t "${1:-0.05}" -u 3 _ || true; }
 
 port_up()   { (exec 4<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 4>&- 4<&-; return 0; } || return 1; }
 cleanup() {
@@ -98,7 +98,9 @@ poll_port_free() {
 boot_substrate() { # <log> -> sets SUB_PID; fail-closed on boot deadline
   local log=$1
   : > "$log"
-  mix run --no-start --no-halt --eval "$(boot_eval)" </dev/null >>"$log" 2>&1 &
+  # Lane-private build root (no contention with other lanes' mix lock).
+  MIX_BUILD_ROOT=${SMALT_KS_BUILD_ROOT:-_build-kill-storm} \
+    mix run --no-start --no-halt --eval "$(boot_eval)" </dev/null >>"$log" 2>&1 &
   SUB_PID=$!
   poll_port_up 150 "$ARM_PORT"   || fail "arm :$ARM_PORT never bound (log: $log)"
   poll_port_up 20  "$DATA_PORT"  || fail "data :$DATA_PORT never bound (log: $log)"
@@ -197,11 +199,10 @@ run_cycle() {
 
   # --- write stream + seeded kill ---
   (
-    local i=0
+    i=0
     while :; do
-      local name="c$CYCLE-blob-$i"
-      local payload="ks-$RUN_ID-c$CYCLE-$i-$(printf 'x%.0s' $(seq 1 64))"
-      local code
+      name="c$CYCLE-blob-$i"
+      payload="ks-$RUN_ID-c$CYCLE-$i-$(printf 'x%.0s' $(seq 1 64))"
       code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X PUT -H "$(auth)" \
         -H "x-ms-blob-type: BlockBlob" --data-binary "$payload" \
         "$HOST:$DATA_PORT/$ACCOUNT/$CONTAINER/$name") || { break; }   # beam died mid-write
@@ -233,7 +234,6 @@ run_cycle() {
 
   # --- reboot on the same dets dir (repair: true exercises needs_repair) ---
   poll_port_free 30 "$DATA_PORT" || fail "data port never freed after SIGKILL"
-  DATA_LOG=$LOG_BOOT2
   boot_substrate "$LOG_BOOT2" || { append_row "chaos" TIMEOUT_DEADLINE 4 0 "reboot failed: $(tail -3 "$LOG_BOOT2" | tr '\n' ' ')"; return 1; }
   mint_token || { append_row "chaos" TIMEOUT_DEADLINE 5 0 "token mint after reboot failed"; return 1; }
   RECOVERY_MS=$(( (SECONDS - t0) * 1000 ))

@@ -155,8 +155,11 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       assert %{performative: %{performative: :attach}} = recv_frame(client)
 
       # Broker-forced partition detach: typed error, connection stays up.
-      IO.inspect(Map.new(:sys.get_state(conn).links, fn {k, v} -> {k, Map.take(v, [:kind, :role, :address])} end), label: "AZB07-DBG")
       :ok = Smalt.Amqp.Connection.force_partition_detach(conn, eh_address)
+
+      # The connection pump blocks in a synchronous recv; a client frame
+      # wakes it so the queued forced-detach message is processed.
+      :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 5}}))
       det = recv_until(client, :detach)
       assert det.performative.handle == 0
       assert det.performative.closed == true
@@ -174,10 +177,15 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       assert %{performative: %{performative: :attach}} = recv_frame(client)
       :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 10}}))
 
-      hub = "it-hub-" <> hub_suffix(eh_address)
+      assert {:ok, 1, _} = Smalt.Messaging.EventHubs.send_event(String.trim_leading(eh_address, "/"), "post-relink-event")
 
-      assert {:ok, 1, _} = Smalt.Messaging.EventHubs.send_event(hub, "post-relink-event")
+      # Drain-on-demand: a credit grant after the publish triggers the pump
+      # to deliver the queued event on the relinked receiver.
+      :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 5}}))
 
+      # wake the pump so the drain runs
+      :ok = :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, {:flow, %{handle: 0, link_credit: 5}}))
+      IO.inspect(Smalt.Messaging.EventHubs.receive_events(hub_key(eh_address), 0, 10), label: "DBG-events")
       tr = recv_until(client, :transfer, 3000)
       assert {:ok, sections} = FrameCodec.decode_message(tr.payload)
 
@@ -326,9 +334,8 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
 
   defp unique_topic, do: :"eg-topic-#{System.unique_integer([:positive])}"
 
-  defp hub_suffix(addr) do
-    "it-hub-" <> rest = addr
-    rest |> String.split("/") |> hd()
+  defp hub_key(addr) do
+    String.trim_leading(addr, "/")
   end
 
   defp wire_conn! do

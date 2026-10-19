@@ -25,6 +25,11 @@ defmodule Smalt.CanonicalProjectionTest do
       port
     end
 
+    # AZB-11b: snapshot ALL six keys (restore_app/0 covers only the five
+    # shifted keys — :mcp_port was previously left at this suite's random pin
+    # for the rest of the run, the twin leak class `mcp_port`).
+    prev_ports = SmaltTest.PortEnv.snapshot([:mcp_port])
+
     for key <- [:arm_port, :arm_tls_port, :egress_port, :amqp_port, :event_hubs_port, :mcp_port] do
       Application.put_env(:smalt, key, free_port.())
     end
@@ -39,6 +44,10 @@ defmodule Smalt.CanonicalProjectionTest do
     on_exit(fn ->
       Application.stop(:smalt)
       SmaltTest.Lifecycle.restore_app()
+
+      # AZB-11b: the shifted restore covers the five base keys only; the
+      # suite's own :mcp_port pin must be restored explicitly (nil-preserving).
+      SmaltTest.PortEnv.restore(prev_ports)
       SmaltTest.Lifecycle.ensure_store_up()
     end)
 

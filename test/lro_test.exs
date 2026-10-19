@@ -693,8 +693,9 @@ defmodule SmaltLroTest do
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, fresh_id)
     # InProgress NEVER evicted (this one is genuinely in-window AND the sweep
     # must not touch it even after its delay elapses mid-sweep).
-    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before sweep (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10))
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift startedAtMs into the past instead of sleeping out the delay window.
+    backdate_op(ip_id)
     :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, ip_id)
 
@@ -716,8 +717,11 @@ defmodule SmaltLroTest do
     op = LRO.start_op(rid)
     id = op["name"]
 
-    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before at-rest raw get (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10, 0))
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift startedAtMs into the past instead of sleeping out the delay window.
+    # The pre-sweep RAW read below is unevaluated, so it still asserts the
+    # InProgress record verbatim.
+    backdate_op(id)
 
     # Pre-sweep raw read: still InProgress (no lazy path has ever touched it).
     assert {:ok, %{"status" => "InProgress"}} = Store.get(:smalt_operations, id)
@@ -749,8 +753,10 @@ defmodule SmaltLroTest do
 
     ids = for _ <- 1..5, do: LRO.start_op(rid)["name"]
 
-    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before sweep (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10))
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift every record's startedAtMs into the past instead of sleeping out
+    # the delay window.
+    Enum.each(ids, &backdate_op/1)
     :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
 
     before =
@@ -786,8 +792,10 @@ defmodule SmaltLroTest do
     op = LRO.start_op(rid)
     id = op["name"]
 
-    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before sweep (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10))
+    # BACKDATE (sleeps.md §3, i25-lro-backdate): completion is record+clock-pure —
+    # shift startedAtMs into the past instead of sleeping out the delay window
+    # before the sweep/poll race.
+    backdate_op(id)
 
     parent = self()
 
@@ -1238,6 +1246,23 @@ defmodule SmaltLroTest do
   end
 
   defp unique, do: inspect(make_ref()) |> String.replace(~r/[^0-9a-zA-Z]/, "")
+
+  # BACKDATE helper (i25-lro-backdate): shift an operation record's startedAtMs
+  # into the past via Store.put so the op is already due — completion is
+  # record+clock-pure (module doc of Smalt.ArmGateway.LRO), so a backdated
+  # record is indistinguishable from one that slept out its delay window.
+  defp backdate_op(op_id, by_ms \\ 1_000) do
+    {:ok, rec} = Store.get(:smalt_operations, op_id)
+
+    :ok =
+      Store.put(
+        :smalt_operations,
+        op_id,
+        Map.put(rec, "startedAtMs", System.system_time(:millisecond) - by_ms)
+      )
+
+    :ok
+  end
 
   @sweep_retry_deadline_ms 5_000
 

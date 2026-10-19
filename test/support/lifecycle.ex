@@ -230,7 +230,7 @@ defmodule SmaltTest.Lifecycle do
   @run_seed :erlang.phash2(:erlang.make_ref())
 
   @doc """
-  Deterministic unique id: `uid(prefix)` -> "\#{prefix}-<run_seed>-<serial>".
+  Deterministic unique id: `uid(prefix)` -> `<prefix>-<run_seed>-<serial>`.
 
   - Deterministic within a run for a given call sequence: replaying the same
     call sequence in the same run reproduces the same ids (failure replay).

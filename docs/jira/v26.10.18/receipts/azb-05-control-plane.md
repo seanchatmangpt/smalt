@@ -125,10 +125,24 @@ Post-restore sha256: `589d3fcfab6e0e595524e0c289cff469b83356a4747ddeb5f278e179f6
 
 ```
 $ MIX_BUILD_ROOT=_build-lane5 mix test
-[exit 0]  (first full-suite run, ~35 min under concurrent-lane load; summary line lost to
-           pipe buffering — rerun capturing /tmp/azb05-full-suite.log, count appended below
-           when the rerun lands)
-SUITE-EXIT=0
+[exit 0]  — first full-suite run completed AFTER my diffs landed (coordinator commits
+          be81187/2a82b29 included them), ~50 min under concurrent-lane load (load avg 340);
+          summary line lost to pipe buffering (only `tail -8` was captured).
+```
+
+A count-bearing rerun was SIGKILL'd at ~55 min (SUITE-EXIT=137, machine under load 340 —
+environment kill, not test failures; `/tmp/azb05-full-suite.log` shows the one in-progress
+failure class before the kill: `docs/capabilities.json` generated-artifact drift from a
+SIBLING lane's registry edits — regen surface, not AZB-05 scope). Scoped regression on the
+AZB-05-adjacent fence files instead, count-bearing:
+
+```
+$ MIX_BUILD_ROOT=_build-lane5 mix test test/api_version_admission_test.exs \
+    test/apiversion_matrix_test.exs test/arm_error_corpus_test.exs \
+    test/wire_tier_refusal_sweep_test.exs test/smalt_arm_gateway_test.exs \
+    test/arm_cors_test.exs
+...
+327 tests, 0 failures
 ```
 
 ## Disclosure — ticket-vs-pinion conflict (escalated to coordinator, NOT self-resolved)
@@ -155,3 +169,13 @@ process on the control-plane request path to SIGKILL).
 PASS — every Accept cell landed with real output except the 1999-01-01 cell, which is
 disclosed as a pinned-law conflict (see Disclosure). Court 12/12 green, tf plan exit 0,
 falsifier + both anti-vacuity shims witnessed, default boot untouched.
+
+## Integration drift (post-court, disclosed)
+
+- The anti-vacuity restore sha (`589d3fcf…`) was byte-exact at court time; coordinator
+  commit `b5e1136` (gap-closure wave) subsequently swept the router — disk == HEAD at
+  sha256 `3df1a7ad82461cb34bf4edc54e1d6a973ed007fac0567100d16c74364997f7bf` with all four
+  AZB-05 markers intact.
+- AZB-10 added a `:peers` row to `config/env/az_prod_control.exs`; the court's profile
+  census was widened to admit the {arm_port, arm_gateway, graph_law, peers} union. Final
+  court on the integrated tree: `12 tests, 0 failures`.

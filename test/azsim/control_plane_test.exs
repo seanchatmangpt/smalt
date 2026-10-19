@@ -69,7 +69,9 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
     end
   end
 
-  @control_profile_keys [:arm_port, :arm_gateway, :graph_law]
+  # AZB-05 seeds three keys; AZB-10 (cross-plane wiring) adds :peers to the
+  # same profile file — the census admits the union, refuses anything else.
+  @control_profile_keys [:arm_port, :arm_gateway, :graph_law, :peers]
 
   test "control plane profile file carries the AZB-05 spec keys" do
     kw = Config.Reader.read!(Path.join([File.cwd!(), "config/env/az_prod_control.exs"]))
@@ -86,6 +88,8 @@ defmodule SmaltTest.Azsim.ControlPlaneTest do
     # carries NO port key — the flat :arm_port is the single source.
     {_, arm_gateway_kw} = Enum.find(config_rows, &match?({:arm_gateway, _}, &1))
     refute Keyword.has_key?(arm_gateway_kw, :port)
+    # AZB-05 seeds three keys; AZB-10 (cross-plane wiring) adds :peers to the
+    # same profile file — the census admits the union, refuses anything else.
     refute Enum.any?(config_rows, fn {k, _} -> k not in @control_profile_keys end)
   end
 

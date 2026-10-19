@@ -125,9 +125,11 @@ def scan_env_rule(text, name):
 def scan_start_link_rule(text, name):
     """start_supervised! discipline for start_link calls in test bodies."""
     offenders = []
+    raw_lines = text.splitlines()
     lines = list(leak._code_lines(text))  # comment-stripping, same as env rule
     for i, line in lines:
-        if RE_EXEMPT.search(line):
+        raw = raw_lines[i - 1] if i - 1 < len(raw_lines) else line
+        if RE_EXEMPT.search(raw):
             continue
         if RE_SL.search(line) or RE_NAMED_SL.search(line):
             if "start_supervised" in line or RE_ERROR_PATH.search(line):
@@ -296,8 +298,8 @@ def classify_leaks(out, exempts):
             for l in b["lines"] + b["detail"]:
                 print(l)
         else:
-            reason = "; ".join(
-                r for n in names for pat, r in exempts if fnmatch.fnmatch(n, pat))
+            reason = "; ".join(dict.fromkeys(
+                r for n in names for pat, r in exempts if fnmatch.fnmatch(n, pat)))
             print("EXEMPT(%s) %s" % (reason[:120], b["lines"][0]))
     return counted
 

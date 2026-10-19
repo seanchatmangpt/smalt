@@ -17,6 +17,6 @@ name Smalt.AmqpBroker*  # reason: shared-tree lazy boot/teardown shift — harne
 name Smalt.Amqp.*  # reason: shared-tree lazy boot/teardown shift — harness-owned listener/queuestore/sweeper members (QueueStore, Listener.Eh/Sb, Sweeper, CbsRouter)
 name Smalt.ArmGateway.LRO.*  # reason: shared-tree lazy boot/teardown shift — harness-owned LRO notifier/sweeper members
 name Smalt.Telemetry.RollingCounters  # reason: shared-tree lazy boot/teardown shift — harness-owned telemetry member
-name inet_gethost_native*  # reason: kernel-owned DNS worker processes, VM-lifetime after first resolver use
+name :inet_gethost_native*  # reason: kernel-owned DNS worker processes, VM-lifetime after first resolver use
 name :dets  # reason: kernel dets owner process, VM-lifetime after first real DETS table
 name :dets_sup  # reason: kernel dets supervisor, VM-lifetime after first real DETS table

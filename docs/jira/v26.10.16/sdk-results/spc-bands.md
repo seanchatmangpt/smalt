@@ -3,31 +3,44 @@
 ```json
 {
   "gate": "spc-bands",
-  "verdict": "PASS",
-  "tier": 0,
+  "verdict": "EVENT",
+  "tier": 1,
   "window": 30,
   "min_points": 8,
-  "seeded": false,
-  "events": [],
+  "seeded": true,
+  "events": [
+    {
+      "spc_drift": [
+        "native_stage_ms.parse",
+        1,
+        107.635
+      ]
+    }
+  ],
   "metrics": [
     {
-      "metric": "nfr3_delta_rss_kb",
-      "value": -31712.0,
-      "n": 223,
-      "center": -31712.0,
-      "sigma": 3171.2,
-      "z": 0.0,
-      "tier": 0
+      "metric": "native_stage_ms.parse",
+      "value": 107.635,
+      "n": 300,
+      "center": 100.0,
+      "sigma": 5.09,
+      "z": 1.5,
+      "tier": 1,
+      "event": {
+        "spc_drift": [
+          "native_stage_ms.parse",
+          1,
+          107.635
+        ]
+      }
     },
     {
       "metric": "nfr4_residue_tables",
-      "value": 0,
-      "n": 222,
+      "value": 0.0,
+      "n": 0,
+      "verdict": "SEEDED",
       "center": 0.0,
-      "sigma": 1.0,
-      "z": 0.0,
-      "tier": 0,
-      "remediation": "bench-runner profile"
+      "note": "seed mode: bands established from baseline"
     }
   ]
 }
