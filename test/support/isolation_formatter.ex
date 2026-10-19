@@ -13,6 +13,24 @@ defmodule SmaltTest.IsolationFormatter do
 
   use GenServer
 
+  @doc """
+  Barrier for test code: blocks until the formatter has processed every
+  event delivered so far. ExUnit delivers formatter events as casts, so a
+  case's `case_started` (and the baseline snapshot inside it) can be
+  processed AFTER the case's first setup already mutated Application env —
+  the baseline then contains the module's own mutation and the settle diff
+  reads as a leak (i29 true-leak repair: every amqp-module block showed the
+  module's own key in its own baseline). Env-mutating setup helpers
+  (`SmaltTest.Env.put_restored/with`) call this before capturing prev.
+  """
+  @spec sync() :: :ok
+  def sync do
+    case :persistent_term.get({__MODULE__, :pid}, nil) do
+      nil -> :ok
+      pid -> if Process.alive?(pid), do: GenServer.call(pid, :isolation_sync), else: :ok
+    end
+  end
+
   defp snapshot do
     names = Process.registered() |> Enum.sort()
     env = Application.get_all_env(:smalt) |> Enum.sort()
@@ -21,6 +39,11 @@ defmodule SmaltTest.IsolationFormatter do
 
   @impl true
   def init(opts) do
+    # The formatter GenServer is anonymous (ExUnit owns the lifecycle), so
+    # sync/0 cannot use Process.whereis — the pid is published via
+    # :persistent_term at init and read by every env-mutating setup.
+    :persistent_term.put({__MODULE__, :pid}, self())
+
     {:ok,
      %{
        stdout: opts[:stdout] || Process.group_leader(),
@@ -39,7 +62,7 @@ defmodule SmaltTest.IsolationFormatter do
   # `@behaviour ExUnit.Formatter` (ExUnit.Formatter is not a behaviour).
   def handle_event({:case_started, %ExUnit.TestCase{name: name}}, state) do
     state = settle_pending(state)
-    {names, env} = snapshot()
+    {names, env} = settle_snapshot()
     {:ok, put_in(state.baselines[name], {names, env})}
   end
 
@@ -76,6 +99,9 @@ defmodule SmaltTest.IsolationFormatter do
   def handle_event(_event, state), do: {:ok, state}
 
   @impl true
+  def handle_call(:isolation_sync, _from, state), do: {:reply, :ok, state}
+
+  @impl true
   def handle_cast(event, state) when is_tuple(event) do
     case handle_event(event, state) do
       {:ok, state} -> {:noreply, state}
@@ -93,7 +119,7 @@ defmodule SmaltTest.IsolationFormatter do
 
   defp settle_pending(%{pending: name} = state) do
     {base_names, base_env} = Map.fetch!(state.baselines, name)
-    {names, env} = snapshot()
+    {names, env} = settle_snapshot()
 
     new_names = names -- base_names
     lost_names = base_names -- names
@@ -133,6 +159,37 @@ defmodule SmaltTest.IsolationFormatter do
       %{state | baselines: baselines, pending: nil, leaks: [leak | state.leaks]}
     end
   end
+
+  # The diff point is a boundary; async ExUnit on_exit restores (separate
+  # process) can still be in flight at it. Bounded stability poll on the real
+  # observable (registered names + app env): snapshot, wait, re-snapshot,
+  # settle on two consecutive equal snapshots or a 200ms deadline — the same
+  # observable-poll law as AssertEventually, never a fixed settle sleep.
+  # SLEEP-CLASS: POLL-STEP (receive-after poll step inside settle_snapshot/0)
+  @stability_poll_ms 2
+  # CanonicalProjection's boundary restore reboots the app tree
+  # (stop/restore_app/ensure_store_up); its env window stays open for
+  # seconds. The poll settles EARLY the moment two consecutive snapshots
+  # agree — the deadline only caps a continuously-shifting env.
+  @stability_deadline_ms 5_000
+  defp settle_snapshot do
+    settle_snapshot(snapshot(), deadline())
+  end
+
+  defp settle_snapshot(snap, deadline) do
+    receive do
+    after @stability_poll_ms ->
+      snap2 = snapshot()
+
+      if snap2 == snap or System.monotonic_time(:millisecond) >= deadline do
+        snap2
+      else
+        settle_snapshot(snap2, deadline)
+      end
+    end
+  end
+
+  defp deadline, do: System.monotonic_time(:millisecond) + @stability_deadline_ms
 
   defp io(state, msg), do: IO.puts(state.stdout, msg)
 end

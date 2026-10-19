@@ -18,6 +18,12 @@ defmodule Smalt.CanonicalProjectionTest do
   # lane's keeper can hold 9545. Start the app here (mix test --no-start) on a
   # fully pinned free-port set instead.
   setup_all do
+    # Baseline barrier (i29): this suite pins all six port keys with raw
+    # Application.put_env (no SmaltTest.Env), so without the barrier the
+    # twin's case_started baseline can race the pins (measured: the suite's
+    # own pin set inside its own baseline, flagged as its own leak).
+    :ok = SmaltTest.IsolationFormatter.sync()
+
     free_port = fn ->
       {:ok, sock} = :gen_tcp.listen(0, [:binary, active: false])
       {:ok, port} = :inet.port(sock)
@@ -25,10 +31,20 @@ defmodule Smalt.CanonicalProjectionTest do
       port
     end
 
-    # AZB-11b: snapshot ALL six keys (restore_app/0 covers only the five
-    # shifted keys — :mcp_port was previously left at this suite's random pin
-    # for the rest of the run, the twin leak class `mcp_port`).
-    prev_ports = SmaltTest.PortEnv.snapshot([:mcp_port])
+    # AZB-11b / i29: snapshot ALL six keys the suite pins. The comment here
+    # already claimed "all six" but the code listed only [:mcp_port], leaving
+    # the other five at this suite's random pins for the rest of the run
+    # (the twin leak class `arm_port`/`arm_tls_port`/`egress_port`/`amqp_port`/
+    # `event_hubs_port`).
+    prev_ports =
+      SmaltTest.PortEnv.snapshot([
+        :arm_port,
+        :arm_tls_port,
+        :egress_port,
+        :amqp_port,
+        :event_hubs_port,
+        :mcp_port
+      ])
 
     for key <- [:arm_port, :arm_tls_port, :egress_port, :amqp_port, :event_hubs_port, :mcp_port] do
       Application.put_env(:smalt, key, free_port.())
@@ -36,18 +52,20 @@ defmodule Smalt.CanonicalProjectionTest do
 
     {:ok, _} = Application.ensure_all_started(:smalt)
 
-    # This suite boots the app on its own pinned free-port set (above), so a
-    # bare restore_app/0 here would be an ensure_all_started NO-OP that leaves
-    # the env claiming shifted ports while the listeners still hold this
-    # suite's pins (measured: downstream connect hit econnrefused). Stop the
-    # tree first so the restore is a true reboot on the run's shifted envs.
+    # This suite boots the app on its own pinned free-port set (above), so the
+    # teardown must be a true reboot: stop the tree, restore the config-time
+    # port env, and start the app back on those restored values so listeners
+    # and env agree for every downstream module (i29 ordering law, below).
     on_exit(fn ->
+      # i29 ordering law: restore the env FIRST, then boot the app on the
+      # restored values. The previous order (restore_app pins the Lifecycle
+      # shifted ports and starts, THEN PortEnv.restore) left env claiming
+      # config-time ports while the fresh listeners held the shifted set —
+      # every downstream wire client (Azsim DrScenarios) connected to ports
+      # with no listener (measured: 4 scenario failures, connect-class).
       Application.stop(:smalt)
-      SmaltTest.Lifecycle.restore_app()
-
-      # AZB-11b: the shifted restore covers the five base keys only; the
-      # suite's own :mcp_port pin must be restored explicitly (nil-preserving).
       SmaltTest.PortEnv.restore(prev_ports)
+      {:ok, _} = Application.ensure_all_started(:smalt)
       SmaltTest.Lifecycle.ensure_store_up()
     end)
 

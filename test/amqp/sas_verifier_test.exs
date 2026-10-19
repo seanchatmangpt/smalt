@@ -225,10 +225,19 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "dev fallback key is generated, cached, and at least 32 bytes" do
-    # Canonical save+on_exit restore (SmaltTest.Env): capture-then-delete pins
-    # the restore to the captured prev, preserving config.exs presence semantics.
-    SmaltTest.Env.put_restored(sb_shared_key: Application.get_env(:smalt, :sb_shared_key))
+    # Canonical prev-sentinel save+on_exit restore (i29): get_env returns nil
+    # both for unset and set-to-nil, so a bare put_restored(k: get_env(k))
+    # re-puts literal nil when the key was absent — the twin counts that entry
+    # as a self-leak. Sentinel form: unset prev restores by delete_env.
+    prev = Application.get_env(:smalt, :sb_shared_key, :__smalt_env_unset__)
     Application.delete_env(:smalt, :sb_shared_key)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case prev do
+        :__smalt_env_unset__ -> Application.delete_env(:smalt, :sb_shared_key)
+        value -> Application.put_env(:smalt, :sb_shared_key, value)
+      end
+    end)
 
     k1 = SasVerifier.shared_key()
     k2 = SasVerifier.shared_key()
@@ -263,9 +272,17 @@ defmodule Smalt.Amqp.SasVerifierTest do
   end
 
   test "endpoint/0 defaults to the local emulator endpoint" do
-    # Canonical save+on_exit restore (SmaltTest.Env) — presence-preserving.
-    SmaltTest.Env.put_restored(sb_endpoint: Application.get_env(:smalt, :sb_endpoint))
+    # Canonical prev-sentinel save+on_exit restore (i29) — nil-preserving
+    # (same literal-nil hazard as the :sb_shared_key site above).
+    prev = Application.get_env(:smalt, :sb_endpoint, :__smalt_env_unset__)
     Application.delete_env(:smalt, :sb_endpoint)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case prev do
+        :__smalt_env_unset__ -> Application.delete_env(:smalt, :sb_endpoint)
+        value -> Application.put_env(:smalt, :sb_endpoint, value)
+      end
+    end)
     assert SasVerifier.endpoint() == "sb://127.0.0.1:5672"
   end
 

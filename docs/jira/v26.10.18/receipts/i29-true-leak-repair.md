@@ -82,10 +82,33 @@ files gives modules_leaked=5 with env-delta blocks (sas_endpoint/sb_shared_key
 mid-flight values in their own baselines) — the pre-repair cast-lag figure.
 Logs: /tmp/i29_final3.log, /tmp/i29_final4.log, /tmp/i29_headbase.log.
 
+## Full-tree court (disclosed FAIL, out-of-scope classes)
+
+`python3 scripts/isolation_court.py --runtime-only` (MIX_BUILD_ROOT=_build-ft-i29):
+
+```
+runtime twin: 19 module(s) leaked; mix exit=2
+ISOLATION-TWIN SUMMARY modules_leaked=43 tests=2862 failures=105
+runtime verdict=FAIL
+```
+
+19 of 43 raw blocks court-counted after the live exemption list. The six
+repaired modules hold at full-tree scale — Smalt.Amqp.R129SessionGateTest and
+Smalt.CanonicalProjectionTest appear as EXEMPT (names-only, no env delta);
+none of the six emits an env-delta block. The 19 counted are other suites'
+classes this lane did not touch: `:ocel_dir` (AuthEnforce, EnclaveOcel,
+WireTierRefusalSweep/Lifecycle), Lifecycle shifted-port env deltas
+(MetadataEndpoints, EventGrid*, AuditedCapabilities, PyamqpParity, AmqpWire,
+StoreRead.Lens4, PortCollision, ArmWire, EgressDispatch), `:lro_retention_ms 0`
+(EnclaveDoctorSeverity — a doctor-lib scope that already self-restores, worth
+its own look), and DETS-mirror name shifts. The 105 failures carry the
+concurrent-load pollution disclosed in the scoped receipt (its figure was 101
+on the same class of background). Log: /tmp/i29_full_court.log; raw twin
+output: tmp/isolation-court-runtime.out.
+
 ## Standing
 
 ALIVE for the scoped gate: counted true-leak figure 0 on both runs, 121/0,
-court classifier applied from the live exemption list. The full-tree
-`isolation_court.py --runtime-only` figure lands in the court log; the
-101-failure concurrent-load pollution disclosed in the scoped receipt
-applies to the full-tree failure count, not to the classified leak figure.
+court classifier applied from the live exemption list. PARTIAL_ALIVE for the
+full tree: verdict FAIL with 19 counted blocks in out-of-scope suites — the
+scoped repair claim does not extend to them.

@@ -16,6 +16,8 @@ defmodule SmaltTest.Env do
   """
   @spec with(keyword, (-> term)) :: term
   def with(kvs, fun) when is_list(kvs) and is_function(fun, 0) do
+    SmaltTest.IsolationFormatter.sync()
+
     prev = Enum.map(kvs, fn {k, _} -> {k, Application.get_env(:smalt, k, @unset)} end)
 
     Enum.each(kvs, fn {k, v} -> Application.put_env(:smalt, k, v) end)
@@ -36,6 +38,11 @@ defmodule SmaltTest.Env do
   """
   @spec put_restored(keyword) :: :ok
   def put_restored(kvs) when is_list(kvs) do
+    # Baseline barrier (i29): ExUnit delivers formatter events as casts, so
+    # the twin's baseline snapshot can race this very setup. Block until the
+    # formatter has processed the case's `case_started` before mutating env.
+    SmaltTest.IsolationFormatter.sync()
+
     prev = Enum.map(kvs, fn {k, _} -> {k, Application.get_env(:smalt, k, @unset)} end)
 
     Enum.each(kvs, fn {k, v} -> Application.put_env(:smalt, k, v) end)
