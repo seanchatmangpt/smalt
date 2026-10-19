@@ -32,6 +32,20 @@ defmodule Smalt.Amqp.Sweeper do
   propagates (crashing the caller) instead of being logged and skipped.
   """
   def run_pass do
+    if :ets.info(:smalt_sb_locks) == :undefined or :ets.info(:smalt_sb_messages) == :undefined do
+      # AZB-20 interop unblock (disclosed in the AZB-20 receipt): on an
+      # integration-only plane boot (SMALT_PLANES=integration) the data-plane
+      # Store — owner of the :smalt_sb_* ETS tables — is not running. The
+      # sweep pass no-ops until the tables exist instead of crash-looping the
+      # whole integration plane (same topology-defect class as the AZB-20
+      # LRO Sweeper guard).
+      :ok
+    else
+      do_run_pass()
+    end
+  end
+
+  defp do_run_pass do
     # SHIM-COURT R245 (audit Finding 3): capture expired message-lock token rows
     # BEFORE the sweeps delete them, then re-put them (tombstone grace) AFTER
     # QueueStore.sweep has re-availed the message rows. The pinned

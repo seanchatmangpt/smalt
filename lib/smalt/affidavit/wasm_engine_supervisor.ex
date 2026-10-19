@@ -201,17 +201,6 @@ defmodule Smalt.Affidavit.WasmEngine.Supervisor.Owner do
     {:noreply, {:restarting, @restart_delay_ms, 0}}
   end
 
-  # AZB-22b (ZOMBIE_BEAM, receipts/azb-22-burn-ring.md): with trap_exit the
-  # supervisor delivers ITS OWN shutdown as {:EXIT, sup, :shutdown} in this
-  # mailbox. The old catch-all swallowed it, so the owner never exited and
-  # graceful stop of the release daemon never completed. Any EXIT that
-  # reaches this clause is from the supervisor — the only other link the
-  # owner has (the owned engine's EXITs are pid-guarded above; :passive and
-  # :restarting states hold no link) — so the owner terminates typed.
-  def handle_info({:EXIT, _sup, reason}, state) do
-    {:stop, {:shutdown, reason}, state}
-  end
-
   def handle_info(_msg, state), do: {:noreply, state}
 
   # -- internals -----------------------------------------------------------

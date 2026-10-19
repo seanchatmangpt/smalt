@@ -48,8 +48,8 @@ STAGES=(
   "naming-sweep|1||bash scripts/naming_sweep.sh"
   "invariant-gates|1|build:invg|env MIX_BUILD_ROOT=${ROOT_PREFIX}invg python3 test/invariant_gates_test.py"
   "t1-offline|1|build:t1,load|env MIX_BUILD_ROOT=${ROOT_PREFIX}t1 mix test"
-  "mutation-court|1|build:mutation,port:39373|env SMALT_BENCH_ARM_PORT=39373 MIX_BUILD_ROOT=${ROOT_PREFIX}mutation python3 scripts/mutation_court.py"
-  "tf-plan-smoke|1|port:39380,port:39381,port:39382,port:39383,port:39384,port:39385|env SMALT_TF_PORT=39380 bash scripts/tf_smoke.sh"
+  "mutation-court|1|build:mutation,port:auto-mutation|env MIX_BUILD_ROOT=${ROOT_PREFIX}mutation python3 scripts/mutation_court.py"
+  "tf-plan-smoke|1|port:39380,port:39381,port:39382,port:39383,port:39384,port:39385|env SMALT_TF_PORT=39380 SMALT_TLS_PORT=39381 bash scripts/tf_smoke.sh"
   "t2-wire|2|build:t2|env MIX_BUILD_ROOT=${ROOT_PREFIX}t2 mix test test/wire"
   "t3-sdk-smoke|3|port:9443,port:9445,port:8443,port:8445,port:5672,port:5673,port:9446|node test/sdk-smoke/run.mjs"
 )
@@ -140,10 +140,15 @@ run_stage() {
     if (( ! declared )) && ! grep -q "MIX_BUILD_ROOT=" <<<"$cmd"; then
         cmd="export MIX_BUILD_ROOT=${ROOT_PREFIX}${name}; $cmd"
     fi
+    local _t0 _t1
+    _t0=$(date +%s)
     (
         eval "$cmd"
     ) >"$log" 2>&1
-    return $?
+    local rc=$?
+    _t1=$(date +%s)
+    printf '%s %s %s\n' "$name" "$rc" $((_t1 - _t0)) >"$rundir/.wall.$name"
+    return $rc
 }
 
 # ---------------------------------------------------------------------------
@@ -165,8 +170,8 @@ serial_run() {
         echo "[OVERLAP-COURT] serial: $name"
         validate_concurrent "$row" >/dev/null || die "self-conflict on $name"
         run_stage "$row" "$rundir"; rc=$?
-        echo "[OVERLAP-COURT] serial: $name exit=$rc"
-        printf '%s %s\n' "$name" "$rc" >>"$rundir/verdicts.txt"
+        echo "[OVERLAP-COURT] serial: $name stage_wall_s=$(cut -d' ' -f3 "$rundir/.wall.$name")"
+        cat "$rundir/.wall.$name" >>"$rundir/verdicts.txt"
     done
     t1=$(python3 -c 'import time; print(time.time())')
     total=$(python3 -c "print(f'{$t1-$t0:.1f}')")
@@ -192,7 +197,7 @@ overlap_run() {
             wait "${pids[$i]}"; rc=$?
             local name; name="$(stage_name "$row")"
             echo "[OVERLAP-COURT] phase $p: $name exit=$rc"
-            printf '%s %s\n' "$name" "$rc" >>"$rundir/verdicts.txt"
+            cat "$rundir/.wall.$name" >>"$rundir/verdicts.txt"
             (( rc != 0 )) && bad=1
             (( i++ ))
         done
@@ -210,9 +215,9 @@ emit_result() {
     {
         printf '{"schema":"smalt-overlap/v1","mode":"%s","tag":"%s","total_s":%s,"head":"%s"}\n' \
             "$mode" "$TAG" "$total" "$head_sha"
-        while read -r n rc; do
-            local wall=""
-            printf '{"stage":"%s","exit":%s}\n' "$n" "$rc"
+        local n rc wall
+        while read -r n rc wall; do
+            printf '{"stage":"%s","exit":%s,"wall_s":%s}\n' "$n" "$rc" "${wall:-null}"
         done <"$rundir/verdicts.txt"
     } >"$rundir/result.jsonl"
 }

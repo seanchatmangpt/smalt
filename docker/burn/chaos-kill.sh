@@ -39,6 +39,69 @@ GATES_HOST=${SMALT_GATES_HOST:-0}
 GATES_DIR=${SMALT_GATES_DIR:-}
 RECEIPT="$BURN_DIR/chaos-kill.jsonl"
 
+# ===========================================================================
+# HOST mode: no release bin on the host -> drive one smalt:local container
+# (AZB-14). Args: --cycles N --seed S --sabotage dets-unrepaired.
+# The green run gate-validates and copies tracked JSONL into docs/jira;
+# the sabotage run EXPECTS the typed DETS_UNREPAIRED row (anti-vacuity).
+# ===========================================================================
+if [ ! -x "$SMALT_BIN" ] && [ "${SMALT_BURN_IN_CONTAINER:-0}" != "1" ]; then
+  CYCLES=50; SEED=2407; SABOTAGE=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --cycles) CYCLES="$2"; shift 2 ;;
+      --seed) SEED="$2"; shift 2 ;;
+      --sabotage) SABOTAGE="$2"; shift 2 ;;
+      *) echo "[chaos-kill] unknown arg $1" >&2; exit 2 ;;
+    esac
+  done
+  command -v docker >/dev/null || { echo "[chaos-kill] docker not on PATH" >&2; exit 2; }
+  docker image inspect "$COMPOSE_IMG" >/dev/null 2>&1 || {
+    echo "[chaos-kill] image $COMPOSE_IMG missing — build per docker/BUILD_RECEIPT.md" >&2; exit 2; }
+  SUBJ_SHA=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unrecorded)
+  IMG_ID=$(docker image inspect "$COMPOSE_IMG" -f '{{.Id}}' 2>/dev/null || echo unrecorded)
+  RUN=$(date +%s)
+  OUT="$ROOT/docker/burn/results/chaos-kill-$RUN"
+  DOC_DIR="$ROOT/docs/jira/v26.10.18/burn"
+  mkdir -p "$OUT" "$DOC_DIR"
+  RUN_TAG="storm"
+  [ -n "$SABOTAGE" ] && RUN_TAG="sabotage-$SABOTAGE"
+  echo "[chaos-kill] host: docker run cycles=$CYCLES seed=$SEED sabotage=${SABOTAGE:-none}"
+  set +e
+  docker run --rm \
+    -e "SMALT_STORM_CYCLES=$CYCLES" -e "SMALT_STORM_SEED=$SEED" \
+    -e "SMALT_CHAOS_SABOTAGE=$SABOTAGE" \
+    -e "SMALT_BURN_SUBJECT_SHA=$SUBJ_SHA" -e "BURN_IMAGE_DIGEST=$IMG_ID" \
+    -e "SMALT_BURN_JSONL=$RUN_TAG.jsonl" -e "SMALT_BURN_DIR=/burn-results" \
+    -v "$HERE:/burn:ro" -v "$OUT:/burn-results" \
+    --entrypoint bash "$COMPOSE_IMG" /burn/chaos-kill.sh
+  rc=$?
+  set -e
+  if [ -z "$SABOTAGE" ]; then
+    [ $rc -eq 0 ] || { echo "[chaos-kill] FAIL: container run rc=$rc" >&2; exit 1; }
+    echo "[chaos-kill] host: gate-validating $OUT/$RUN_TAG.jsonl"
+    python3 "$ROOT/scripts/validate_burn.py" --gate "$OUT/$RUN_TAG.jsonl" || {
+      echo "[chaos-kill] FAIL: validate_burn.py --gate refused the run" >&2; exit 1; }
+    cp "$OUT/$RUN_TAG.jsonl" "$DOC_DIR/chaos-kill-$RUN_TAG-$RUN.jsonl"
+    echo "[chaos-kill] PASS: cycles=$CYCLES seed=$SEED tracked JSONL docs/jira/v26.10.18/burn/chaos-kill-$RUN_TAG-$RUN.jsonl (run $RUN)"
+    exit 0
+  else
+    # Anti-vacuity: the run MUST fail with the typed verdict for the named
+    # sabotage; a green sabotage run is a vacuous fence.
+    if [ $rc -eq 0 ]; then
+      echo "[chaos-kill] ANTI-VACUITY FAILED: sabotage run exited 0 — fence is vacuous" >&2
+      exit 1
+    fi
+    grep -q '"verdict":"DETS_UNREPAIRED'"'"'"' "$OUT/$RUN_TAG.jsonl" || {
+      echo "[chaos-kill] ANTI-VACUITY FAILED: sabotage run failed without a DETS_UNREPAIRED row" >&2
+      exit 1
+    }
+    DETS_ROW=$(grep -c '"verdict":"DETS_UNREPAIRED"' "$OUT/$RUN_TAG.jsonl")
+    echo "[chaos-kill] ANTI-VACUITY WITNESSED: $DETS_ROW DETS_UNREPAIRED row(s), rc=$rc"
+    exit 0
+  fi
+fi
+
 if [ ! -x "$SMALT_BIN" ]; then
   echo "[SKIP] smalt-burn/v1 chaos-kill: release bin not executable at $SMALT_BIN (not in container?)" >&2
   exit 3
@@ -54,8 +117,11 @@ RUN_ID="chaos-kill-$(date +%s)"
 # Expected-matrix header (AZB-03 falsifier: without it a dropped scenario is
 # invisible and `validate_burn.py --gate` refuses the file). Scenarios emit
 # stage=chaos rows; the gates stage emits stage=probe rows.
-printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[0],"stages":["chaos","probe"]}}\n' \
-  "$RUN_ID" "$BURN_CONTAINER" >"$RECEIPT"
+# AZB-14: storm cycles 1..SMALT_STORM_CYCLES join cycle 0 (the four eval
+# scenarios) in the expected matrix — --gate refuses a dropped storm cycle.
+CYCLE_LIST="0$(seq -s, -f ',%g' 1 "${SMALT_STORM_CYCLES:-50}" 2>/dev/null || seq -s, 1 "${SMALT_STORM_CYCLES:-50}" | sed 's/^/,/')"
+printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[%s],"stages":["chaos"]}}\n' \
+  "$RUN_ID" "$BURN_CONTAINER" "$CYCLE_LIST" >"$RECEIPT"
 
 # AZB-03 row emitter (smalt-burn/v2). One row per (container, plane, cycle,
 # stage). Stage vocabulary maps raw lane stages into the schema enum:
@@ -67,8 +133,9 @@ emit() { # emit <stage> <rc> <detail>
   _stage=$1; _rc=$2
   case "$_stage" in gate-*|probe*) _st=probe ;; *) _st=chaos ;; esac
   if [ "$_rc" = 0 ]; then _v=CLEAN; _b=null; else _v=UNHANDLED_EXIT; _b='"mu_unlawful"'; fi
-  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":0,"stage":"%s","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":[],"crash_reports":0,"evidence_path":"%s","broken_term":%s,"lane":"chaos-kill","detail":"%s"}\n' \
-    "$SUBJ_SHA" "$IMG_DIGEST" "$BURN_CONTAINER" "$BURN_PLANE" "$_st" "$_v" \
+  _cycle=${EMIT_CYCLE:-0}
+  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":%s,"stage":"%s","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":[],"crash_reports":0,"evidence_path":"%s","broken_term":%s,"lane":"chaos-kill","detail":"%s"}\n' \
+    "$SUBJ_SHA" "$IMG_DIGEST" "$BURN_CONTAINER" "$BURN_PLANE" "$_cycle" "$_st" "$_v" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rc" \
     "$RECEIPT" "$_b" "$(printf '%s' "$3" | tr -d '"' | cut -c1-200)" >>"$RECEIPT"
 }

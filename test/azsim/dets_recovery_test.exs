@@ -21,7 +21,8 @@ defmodule SmaltTest.Azsim.DetsRecoveryTest do
   """
 
   use ExUnit.Case, async: false
-  use Plug.Test
+  import Plug.Test
+  import Bitwise
 
   alias Smalt.ArmGateway.Router
   alias Smalt.Store
@@ -76,12 +77,12 @@ defmodule SmaltTest.Azsim.DetsRecoveryTest do
 
     body =
       Enum.map_join(1..acked_n, "\n", fn i ->
-        ~s[:dets.insert(d, {"azb14-ack-#{i}", %{"n" => #{i}}} ] |> String.replace(" ]", "]")
+        ~s[:dets.insert(d, {"azb14-ack-#{i}", %{"n" => #{i}}})]
       end)
 
     inflight =
       Enum.map_join(1..inflight_n, "\n", fn i ->
-        ~s[:dets.insert(d, {"azb14-phantom-#{i}", %{"n" => #{i}}} ] |> String.replace(" ]", "]")
+        ~s[:dets.insert(d, {"azb14-phantom-#{i}", %{"n" => #{i}}})]
       end)
 
     File.write!(script, """
@@ -142,7 +143,8 @@ defmodule SmaltTest.Azsim.DetsRecoveryTest do
 
     # Corruption variant (a): truncate the tail.
     size = File.stat!(path).size
-    <<kept::binary-size(div(size, 2))>> <> _rest = File.read!(path)
+    half = div(size, 2)
+    <<kept::binary-size(half)>> <> _rest = File.read!(path)
     File.write!(path, kept)
 
     attach_dets_repaired(:azb14_trunc)

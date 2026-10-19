@@ -220,7 +220,7 @@ defmodule SmaltTest.Lifecycle do
           {k, v} -> Application.put_env(:smalt, k, v)
         end)
 
-        Process.erase(token)
+        Process.delete(token)
         :ok
     end
   end

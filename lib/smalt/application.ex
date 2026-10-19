@@ -11,16 +11,7 @@ defmodule Smalt.Application do
       plane_children() ++
       [
         Smalt.Telemetry.RollingCounters,
-        # AZB-22b: bound graceful-stop (see plane supervisors; a stuck
-        # ThousandIsland listener hung tree stop >60s in the burn ring).
-        Supervisor.child_spec(
-          {Bandit,
-           plug: {Smalt.Mcp.Router, []},
-           scheme: :http,
-           port: Application.get_env(:smalt, :mcp_port, 9545),
-           ip: bind_ip()},
-          shutdown: 10_000
-        )
+        mcp_bandit_child()
         | virtual_hw_child()
       ]
 
@@ -33,6 +24,20 @@ defmodule Smalt.Application do
 
     opts = [strategy: :one_for_one, name: Smalt.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # AZB-22b: bound graceful-stop on the MCP listener (see plane supervisors;
+  # a stuck ThousandIsland listener hung tree stop >60s in the burn ring).
+  @doc false
+  def mcp_bandit_child do
+    Supervisor.child_spec(
+      {Bandit,
+       plug: {Smalt.Mcp.Router, []},
+       scheme: :http,
+       port: Application.get_env(:smalt, :mcp_port, 9545),
+       ip: bind_ip()},
+      shutdown: 10_000
+    )
   end
 
   # Virtual HIL device child spec — [] unless SMALT_SIMULATE_HARDWARE=1.

@@ -82,8 +82,8 @@ defmodule Smalt.Store.DetsMirror do
 
         {:error, {tag, table, path, reason}} when tag in [:store_corrupt, :corrupt_mirror] ->
           raise ArgumentError,
-                "DetsMirror: #{tag} for table #{inspect(table)} " <>
-                  "at #{path}: #{inspect(reason)}"
+                "DetsMirror: cannot open mirror file for table #{inspect(table)} " <>
+                  "at #{path}: #{tag}: #{inspect(reason)}"
       end
     end)
 

@@ -97,11 +97,35 @@ async function bootPlane(plane) {
   child.stdout.pipe(logStream); child.stderr.pipe(logStream);
   currentChildSet(child);
   // Liveness: the top-level MCP listener opens last on every plane shape.
-  const up = await waitPort(PRIV.mcp, 180_000);
-  if (!up) {
-    child.kill("SIGKILL");
-    console.error(`[azb20] ${plane}: substrate never up (MCP ${PRIV.mcp} not listening in 180s)`);
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  const up = await Promise.race([
+    waitPort(PRIV.mcp, 180_000).then((ok) => (ok ? "up" : null)),
+    exited.then(() => "exited"),
+  ]);
+  if (!up || up === "exited") {
+    try { child.kill("SIGKILL"); } catch {}
+    console.error(`[azb20] ${plane}: substrate never up${up === "exited" ? " (boot process exited)" : ""}`);
     return null;
+  }
+  // Plane sockets must open and STAY open (crash-loop detector).
+  const expected = { control: ["arm", "armTls"], data: ["egress"], integration: ["amqp", "eh"], identity: [] }[plane];
+  const portOf = { arm: PRIV.arm, armTls: PRIV.armTls, egress: PRIV.egress, amqp: PRIV.amqp, eh: PRIV.eh };
+  const t0 = Date.now();
+  let sockets = {};
+  for (;;) {
+    if (await Promise.race([exited.then(() => true), new Promise((r) => setTimeout(r, 50))])) {
+      console.error(`[azb20] ${plane}: substrate exited while waiting for sockets ${expected.join(",")}`);
+      return null;
+    }
+    sockets = {};
+    for (const k of expected) sockets[k] = await tryConnect(portOf[k]);
+    if (expected.every((k) => sockets[k])) break;
+    if (Date.now() - t0 > 60_000) {
+      try { child.kill("SIGKILL"); } catch {}
+      console.error(`[azb20] ${plane}: expected sockets never opened: ${JSON.stringify(sockets)}`);
+      return null;
+    }
+    await new Promise((r) => setTimeout(r, 500));
   }
   await new Promise((r) => setTimeout(r, 1500));
   return child;

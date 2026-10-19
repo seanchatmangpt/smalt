@@ -120,8 +120,12 @@ defmodule Smalt.Azsim.AdversarialJoeTest do
   describe "Vector 3: Half-open TCP silent partition handling" do
     test "abrupt silent socket closure unlinks broker resources cleanly" do
       # Establish a real AMQP client connection over loopback
+      # Bind to the test app's actual AMQP listener port (ephemeral under
+      # config/test.exs — never the substrate's fixed 5672)
+      amqp_port = Smalt.Config.amqp_port()
+
       {:ok, client_sock} =
-        :gen_tcp.connect({127, 0, 0, 1}, 5672, [:binary, packet: :raw, active: false], 2000)
+        :gen_tcp.connect({127, 0, 0, 1}, amqp_port, [:binary, packet: :raw, active: false], 2000)
 
       # Send AMQP header 1.0.0
       :ok = :gen_tcp.send(client_sock, "AMQP\x00\x01\x00\x00")
@@ -147,7 +151,7 @@ defmodule Smalt.Azsim.AdversarialJoeTest do
       # We check that the listener and queue store remain healthy and operational
       eventually(
         fn ->
-          case :gen_tcp.connect({127, 0, 0, 1}, 5672, [:binary, packet: :raw, active: false], 500) do
+          case :gen_tcp.connect({127, 0, 0, 1}, amqp_port, [:binary, packet: :raw, active: false], 500) do
             {:ok, sock} ->
               :gen_tcp.close(sock)
               {:ok, :healthy}
