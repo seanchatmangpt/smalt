@@ -71,3 +71,48 @@ window as any gate run, or expect it to re-dirty with fresh gate output
 - `git diff docs/capabilities.json`: 2-line pair (semanticEpoch + contentSha256).
 - `cat docs/jira/v26.10.18/receipts/i29-azb24-bump.md`: standing PASS,
   complete 4-file list matches the dirty set exactly.
+
+## Addendum 2 — dirty-set census, 2026-10-19 (Context: solo)
+
+`git status --porcelain` at census time (real output):
+
+```
+ M docs/jira/v26.10.16/sdk-results/spc-bands.md
+ M docs/jira/v26.10.18/receipts/azb-22b-zombie-fix.md
+ M docs/jira/v26.10.18/receipts/i29-colima-stop-runbook.md
+ M docs/jira/v26.10.18/receipts/i29-court-x2-final.md
+?? docs/jira/v26.10.18/receipts/i29-azb20-postfix.md
+```
+
+Census of the 4 modified paths (all receipt-backed, diff stat 167 insertions
+/ 30 deletions):
+
+1. `spc-bands.md` — `scripts/spc_gate.py` regen (sanctioned per
+   `i29-spc-attrib.md`, commit `09de85e`); content: verdict EVENT/tier-1
+   seeded → PASS/tier-0 unseeded (392-point window, 0 events). Commit-ready.
+2. `azb-22b-zombie-fix.md` — third-strike Re-judge section appended
+   (retry window 2: 6 docker builds, 0 ring runs, HEAD-churn + daemon-EOF;
+   standing BLOCKED, Context solo). Receipt-backed.
+3. `i29-colima-stop-runbook.md` — two quiet-window monitor continuations
+   appended (01:19 / 01:35, Context solo(monitor)/solo(monitor+court));
+   runbook content sections, standing PARTIAL_ALIVE. Receipt-backed (self).
+4. `i29-court-x2-final.md` — no longer empty: HEAD blob `e69de29` (0 bytes)
+   → 14,956 bytes / 60 lines of real appended court-x2 run summaries
+   (gates 1792397604 → 1792400897, verbatim verdict blocks). Carries real
+   content; receipt-backed (self).
+
+Exact commit-ready line for the coordinator:
+
+```bash
+git add docs/jira/v26.10.16/sdk-results/spc-bands.md \
+        docs/jira/v26.10.18/receipts/azb-22b-zombie-fix.md \
+        docs/jira/v26.10.18/receipts/i29-colima-stop-runbook.md \
+        docs/jira/v26.10.18/receipts/i29-court-x2-final.md \
+        docs/jira/v26.10.18/receipts/i29-checkpoint8.md
+```
+
+Untracked decision item (not in this addendum's add line, coordinator
+decides): `docs/jira/v26.10.18/receipts/i29-azb20-postfix.md` (4,255 bytes,
+GAP-AZB20-1/4 postfix re-test, standing per its header — all four cells
+still OPEN). Receipt-backed; include in the same or a follow-up add if
+wanted.

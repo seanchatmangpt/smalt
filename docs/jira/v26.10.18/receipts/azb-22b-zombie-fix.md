@@ -201,3 +201,63 @@ No ring dir was initialized for this lane (no `ring.env` written), so no
 partial ring artifact was minted. Prior receipt's Open item 2 (fleet law:
 image-build lease) is re-upgraded to blocking: this window failed on exactly
 the un-leased concurrent-build class it names.
+
+---
+
+## Re-judge 2026-10-19 (retry window 2)
+
+Context: solo
+Standing: BLOCKED (third strike — defers to next window)
+
+Retry of the burn-ring boot re-judge. The ring itself never ran: every
+attempt died before `burn-ring.sh --stage boot` could initialize a ring dir
+(no `ring.env` minted, no rows emitted, ZOMBIE_BEAM row unchanged).
+
+Sequence (6 docker builds, 0 ring runs):
+
+1. First ring invocation — refused at the identity gate:
+   `[BURN-RING] REFUSED IMAGE_SUBJECT_MISMATCH: image smalt:local label
+   org.smalt.subject=f56ee6be... != ring subject e916d767... — rebuild at
+   HEAD per docker/BUILD_RECEIPT.md`
+2. Build attempt with canonical BUILD_RECEIPT.md command — context path
+   error (`stat ~/ash_r2rml: no such file or directory`, literal tilde not
+   expanded by docker; `$HOME` form works). Not a strike; disclosed.
+3. Full rebuild OK at label `29bb0371...` (image `024b5faeed03`, ~5 min,
+   deps layer cached) — but the Dockerfile default `SUBJECT_SHA=29bb0371…`
+   is a pinned old SHA, so the label was stale on arrival.
+4. Rebuild with `--build-arg SUBJECT_SHA=$(git rev-parse HEAD)` → first try
+   failed at `MIX_ENV=prod mix deps.compile` exit 1 (~25 min; log tail
+   discarded by pipe, verbatim body not captured). Retry with
+   `--progress=plain` full log succeeded — image `6d506d53c73c` —
+   classified transient (NAT/hex or compiler flake), consistent with the
+   colima NAT flake class in the prior receipt.
+5. Subject-bound boot attempt refused again: baked label `13ef4d30...` vs
+   ring subject `5f891060...` — HEAD moved during the ~15 min prod build.
+6. Retry loop (build at pinned SHA → verify HEAD unchanged → boot):
+   - attempts 1+2: `HEAD moved during build` (baked `5f891060…` → head
+     `d577677b…`; baked `d577677b…` → head `5075e892…`)
+   - attempt 3: daemon EOF — `ERROR: failed to receive status: rpc error:
+     code = Unavailable desc = error reading from server: EOF` → colima
+     DEAD (`colima is not running`), 4 consecutive
+     `Cannot connect to the Docker daemon at unix:///var/run/docker.sock`.
+   - colima restarted OK (server 29.5.2, disk fine: host `/` 11% used,
+     docker 27 GB reclaimable); resumed loop baked `f6c2f3fb…` → head
+     `49a9ad10…`, baked `49a9ad10…` → head `98cb529f…` — two more
+     HEAD-churn losses.
+   - loop's final build canceled by the agent harness background time
+     limit (own cancellation, not infra; logged for honesty).
+
+Diagnosis: the ring's subject-binding law (AZB-22 anti-vacuity — one
+subject SHA bound to one image digest) is unrunnable in this window
+because concurrent lanes commit to HEAD every ~5–10 min while a
+subject-pinned prod image build takes ~5–15 min even with warm deps
+layers. Each build is stale on arrival. Combined with the daemon crash
+(infra strike) this window consumed the third strike.
+
+Blocked on: (a) image-build lease (prior receipt Open item 2 —
+concurrent builds + HEAD churn), now compounded by (b) the subject-pin
+vs build-latency race. Next window needs a quiet HEAD (post-integration
+gap) or a coordinator-granted build lease; the boot stage itself is
+otherwise ready — `smalt:local` `6be1ffed651f`/`6e67fcb01330` builds
+cleanly and `just burn-ring --stage boot` will run once HEAD holds still
+for the build duration.

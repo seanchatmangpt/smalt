@@ -383,3 +383,33 @@ all running Application.put_env :smalt auth_mode :enforce / ephemeral ports).
 Per task contract these are outside the repo: not killed, reported to the
 coordinator. court-x2 two-run verdicts: NOT OBTAINED — run 1 never admitted.
 Standing: BLOCKED (foreign concurrent fleet holds the quiet window).
+
+## i29 quiet-window monitor continuation — 2026-10-19 01:19, Context: solo(monitor)
+
+- Command: poll loop (uptime + ps -p 58477; extended to pgrep of `.erlmcp` beam.smp), every 3 min, 4+8 polls; then `bash scripts/court23.sh`.
+- Exit: court23.sh exit 1 — `REFUSED: quiet-check failed — quiet window not open (colima up?)`.
+- Typed refusal detail: `QUIET-CHECK REFUSE — concurrent suite/court processes: 40757 /Users/sac/.erlmcp/.../beam.smp`.
+- Poll trace: original pid 58477 gone by poll 4 (00:49) but the beam tree respawned under new pids continuously (40757→42824→48694→83625→51930→54396; gone at 01:10 poll with load1=20.81, then back as 59911 at 01:19).
+- Identity of the respawning beam (NOT foreign after inspection): `mix run --no-halt test/sdk-full/azb20/boot_plane.exs` — a repo azb-20 plane-profile harness running repeatedly from another lane/session. Not killed (no-kills constraint).
+- Coordinator-decision item: a concurrent lane is looping the azb-20 boot_plane harness; the quiet window never opens for court23. Decision needed: serialize the azb-20 loop vs court23, or scope quiet-check's exclusion list.
+- court-x2 verdicts: NOT RUN — court23 refused at the quiet-check gate before any court-x2 attempt; no tmp/court-x2-*.log written this window.
+- Standing: BLOCKED (quiet-window contention, external to this lane)
+
+## i29 quiet-window monitor continuation 2 — 2026-10-19 01:35, Context: solo(monitor+court)
+
+- Command: poll loop every 3 min (ps beam.smp grep mix test|boot_plane|azb20; uptime), polls 1-14; then `bash scripts/court23.sh` (4 attempts, one successful).
+- Correction to prior entry: the "~/.erlmcp" beams are THIS campaign's own lanes (wire pre-gate x2, azb-20 boot_plane probe, leg G full-soak) — not foreign. Confirmed by tree inspection: pid 59911 = `just azsim-sdk` (59880) → `node test/sdk-full/azb20/run.mjs` (59896) → beam.smp 59911, LISTEN 127.0.0.1:39443/39444.
+- Window trace: cleared at poll 9 (0 beams, load1 6.98); attempt 1 ran court-x2 run1 to completion but the driver was killed at the lane's 600s Bash timeout mid-run2 (court23 exit 144; run1 = 2755 tests, 5 failures, exit 2); attempt 4 quiet-check passed, court-x2 launched, then the harness SIGTERM-ed the tracked background task ~90s in (exit 143) — the court_x2.sh child died with it, log truncated at header. Attempt with `9>&- nohup ... & disown` (detached, lock fd closed) survived to completion.
+- court-x2 verdicts (gate @ 1792399378, log tmp/court-x2-1792399378.log):
+```
+[COURT-X2] Run 1 summary line: FAILURES PRESENT (or unparsable) — NOT GREEN
+[COURT-X2] Run 2 summary line: 0 failures — GREEN
+[COURT-X2] Failing tests — run 1:
+test ARM resource PUT emits ResourceWriteSuccess to integration plane (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:141)
+[COURT-X2] Failing tests — run 2:
+(none)
+[COURT-X2] RECEIPT: gate FAILED (see above).
+```
+- Run 1 detail: run1 aborted in the tf-plan-smoke stage BEFORE the test suite — `tf apply FAIL 929ms`, `error: recipe tf-plan-smoke failed on line 108 with exit code 2`; the 5-failure / NOT GREEN run1 summary reflects the aborted run, and the single TopologyTest failure line is what the parser salvaged. Run 2 passed the same stage and went full-suite 0 failures GREEN. court_x2.sh itself printed the SHIFTING-FAILURE / FLAKE SIGNATURE banner (run1 and run2 failed on different surfaces: tf apply smoke + ARM PUT topology test vs none).
+- court23 receipt-parser note: both runs recorded as UNPARSED in docs/jira/v26.10.18/receipts/i29-court-x2-final.md — the sed verdict patterns in scripts/court23.sh (line 40-41) did not match court_x2.sh's actual "Run N summary line: ... — GREEN/NOT GREEN" text; the verbatim verdicts above are read directly from the log.
+- Standing: PARTIAL_ALIVE — court fired, both verdicts obtained verbatim; gate verdict FAILED (run1 NOT GREEN / run2 GREEN, shifting-failure flake signature: tf apply smoke + SmaltTest.Azsim.TopologyTest ARM PUT, non-reproducing in run 2). Re-run court23 in a clean window to confirm the flake clears both runs.
