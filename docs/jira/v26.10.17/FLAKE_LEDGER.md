@@ -195,3 +195,13 @@ Both faces green solo under load — environmental, no `lib/` fix required.
 |---|---|---|---|---|---|
 | F58 | `test/eventgrid_conformance_test.exs:334` — binary-mode event (ce-* headers + JSON body) round-trip got 503, expected 200 | i29-amqp-wire-fresh (full-tree run, 2783 tests) | 503 = data-plane not yet ready under 11-beam concurrent-fleet load; solo ×3 12/0 green (runs 22:19–22:25 PDT, `_build-ft-4daffc65`) | `receipts/i29-eg-gracefulstop-classify.md` | LOAD-FLAKE (solo 3/3, NEW) |
 | F59 | `test/azsim/graceful_stop_test.exs:73` — WasmEngine owner must be running (app booted) assert fired | i29-amqp-wire-fresh (full-tree run) | Shared-tree boot race with concurrent fleet lanes: owner process not yet registered at test start under load; solo ×3 3/0 green (same build root) | `receipts/i29-eg-gracefulstop-classify.md` | LOAD-FLAKE (solo 3/3, NEW) |
+
+## i29 stress-fresh residual faces (appended 2026-10-18)
+
+Solo ×3 classification per i29-stress-residual-classify (Context: slice(solo ×3 each)).
+Both faces green solo — load-class, no `lib/` fix required.
+
+| # | Face | First witness | Mechanism hypothesis | Witness log | Classification |
+|---|---|---|---|---|---|
+| F60 | `test/wire/egress_wire_test.exs:150` — Key Vault release with valid CVM attestation got 503, expected 200 | i29-stress-fresh (`receipts/i29-stress-fresh2.md`) | Same shape as F58: 503 = egress data-plane not yet ready under concurrent stress-tier load; attest route answered before release route warmed. Solo ×3 3/0 green (runs 22:42–22:43 PDT, `_build-ft-b0d3a2bc`) | `receipts/i29-stress-residual-classify.md` | LOAD-FLAKE (solo 3/3, NEW) |
+| F61 | `test/azsim/topology_test.exs:141` — observed ResourceWriteSuccess resourceUri was Service Bus namespace, expected Storage account URI | i29-stress-fresh (`receipts/i29-stress-fresh2.md`) | Event Grid subscription fan-out raced under stress load: a concurrent test's namespace event landed on this subscriber before the PUT's own write-success; solo ×3 3/0 green (runs 22:45–22:46 PDT, `_build-ft-be19d7a1`) | `receipts/i29-stress-residual-classify.md` | LOAD-FLAKE (solo 3/3, NEW) |
