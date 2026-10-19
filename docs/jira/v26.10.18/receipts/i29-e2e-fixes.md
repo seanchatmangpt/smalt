@@ -16,8 +16,10 @@ lane's own sequential runs)
 | s5_sessions | 0 | 0 |
 | s10_attest_adversary | 0 | 0 |
 
-Logs: /tmp/s2-green{1,2}.log, /tmp/s9-green{2,3}.log, /tmp/s5-green{1,2}.log,
-/tmp/s10-green{6,7}.log.
+Logs: /tmp/s2-green{1,2}.log, /tmp/s9-green{2,3}.log, /tmp/s5-green{1b,2}.log,
+/tmp/s10-green{6,7}.log. (s5-green1.log was clobbered post-run by a stale
+background wrapper's late write of an older pre-fix run — the two on-disk
+s5 green logs are green1b + green2, both rc=0, 6/6 probes each.)
 
 ## Defect 1 — s2 + s10 (KV 401 MissingBearerToken / NoSigningSecretConfigured):
 harness premise rot, fixed test-side

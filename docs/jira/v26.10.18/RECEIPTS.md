@@ -129,6 +129,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-corpus-f | [i29-corpus-fresh2.md](receipts/i29-corpus-fresh2.md) | PASS | corpus tier fresh ×3, post-0009df3 |
 | i29-corpus-f | [i29-corpus-fresh3.md](receipts/i29-corpus-fresh3.md) | UNKNOWN | i29-corpus-fresh3 — corpus soak ×3 at HEAD ≥ d1298be |
 | i29-corpus-p | [i29-corpus-pregate.md](receipts/i29-corpus-pregate.md) | PASS | Corpus pre-gate x2 — i29 |
+| i29-corpus-p | [i29-corpus-pregate2.md](receipts/i29-corpus-pregate2.md) | PASS | i29 — corpus re-soak ×2 pre-gate (post azb-20 lib landing wave) |
 | i29-corpus-s | [i29-corpus-soak.md](receipts/i29-corpus-soak.md) | PASS | I29 — corpus soak: 3x corpus + compliance (both loaders) |
 | i29-court-dr | [i29-court-dry1.md](receipts/i29-court-dry1.md) | UNKNOWN | i29 court-x2 DRY-RUN leg 1 — full `mix test` under load |
 | i29-court-dr | [i29-court-dry2.md](receipts/i29-court-dry2.md) | UNKNOWN | i29 court-x2 DRY-RUN leg 2 — full `mix test` under load |
@@ -147,6 +148,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-docs-gat | [i29-docs-gates3.md](receipts/i29-docs-gates3.md) | PASS | i29 docs gates 3 — post-d1298be receipt-index / docs-dod-check / naming-sweep |
 | i29-docs-spo | [i29-docs-spot3.md](receipts/i29-docs-spot3.md) | PASS | i29 docs spot-audit 3 — azsim-burn + checkpoint5 conventions |
 | i29-doctor-d | [i29-doctor-dod-gapcensus.md](receipts/i29-doctor-dod-gapcensus.md) | ALIVE | i29-doctor-dod-gapcensus — doctor_dod.py GAP-census retirement |
+| i29-e2e-fixe | [i29-e2e-fixes.md](receipts/i29-e2e-fixes.md) | ALIVE | i29-e2e-fixes — the 4 e2e-tree defects from i29-e2e-fresh closed |
 | i29-e2e-fres | [i29-e2e-fresh.md](receipts/i29-e2e-fresh.md) | PARTIAL_ALIVE | i29-e2e-fresh — E2E tier fresh run on post-0009df3 (v26.10.18) |
 | i29-e2e-rech | [i29-e2e-recheck.md](receipts/i29-e2e-recheck.md) | UNKNOWN | i29 e2e recheck — s9 spot check (lane: e2e-fix recheck) |
 | i29-eg-grace | [i29-eg-gracefulstop-classify.md](receipts/i29-eg-gracefulstop-classify.md) | ALIVE | i29 — EventGrid :334 + GracefulStop :73 classification (solo ×3 each) |
@@ -160,7 +162,9 @@ count, or PASS/FAIL token) found in the file.
 | i29-full-soa | [i29-full-soak-d.md](receipts/i29-full-soak-d.md) | PASS | i29-d — Full soak leg D: `mix test` (stress excluded) |
 | i29-full-soa | [i29-full-soak-e.md](receipts/i29-full-soak-e.md) | UNKNOWN | i29 — Full-Suite Pre-Gate Leg E (full soak, lane build root) |
 | i29-full-soa | [i29-full-soak.md](receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
+| i29-g1-land | [i29-g1-land.md](receipts/i29-g1-land.md) | ALIVE | G1 Queue Storage — Land Receipt (i29) **NO-CONTEXT** |
 | i29-g1-scopi | [i29-g1-scoping.md](receipts/i29-g1-scoping.md) | PASS | i29 — G1 Queue Storage Scoping Receipt |
+| i29-g1-test- | [i29-g1-test-verify.md](receipts/i29-g1-test-verify.md) | UNKNOWN | G1 Verify: queue_storage test exists + green x2 **NO-CONTEXT** |
 | i29-g5-injec | [i29-g5-injectors.md](receipts/i29-g5-injectors.md) | ALIVE | i29 — Sovereign Midnight G5-narrow residual injectors landed (test-side, no lib/ changes) |
 | i29-gates-po | [i29-gates-postfix.md](receipts/i29-gates-postfix.md) | PARTIAL_ALIVE | i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates) |
 | i29-gates-re | [i29-gates-release-sha.md](receipts/i29-gates-release-sha.md) | PASS | i29 — Gates Re-run at Release SHA (AZB23-PREFLIGHT table D refresh) **NO-CONTEXT** |
@@ -170,6 +174,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-injector | [i29-injectors-leakfix.md](receipts/i29-injectors-leakfix.md) | FAIL | i29 — injectors leak-gate resolution (allowlist, 25b844f pattern) |
 | i29-isolatio | [i29-isolation-count.md](receipts/i29-isolation-count.md) | PASS | i29 (isolation courts, advisory count run) |
 | i29-isolatio | [i29-isolation-runtime2.md](receipts/i29-isolation-runtime2.md) | FAIL | I29 receipt — runtime-twin isolation court, second slice (v26.10.18) |
+| i29-isolatio | [i29-isolation-runtime5.md](receipts/i29-isolation-runtime5.md) | PARTIAL_ALIVE | I29 receipt — isolation runtime twin, run 5 (settle-on-stable hardening, v26.10.18) |
 | i29-isolatio | [i29-isolation-scoped.md](receipts/i29-isolation-scoped.md) | PARTIAL_ALIVE | i29 isolation court — scoped (clean-scope) leak figure |
 | i29-kd-censu | [i29-kd-census-fix.md](receipts/i29-kd-census-fix.md) | PASS | i29 — KD register census prose fix |
 | i29-kd-sync | [i29-kd-sync.md](receipts/i29-kd-sync.md) | PASS | i29 — KD register sync (read-only audit) |
@@ -212,7 +217,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-stress-p | [i29-stress-pregate.md](receipts/i29-stress-pregate.md) | PASS | i29 — stress-tier pre-gate at current HEAD (post 50b9860 + e90f076) |
 | i29-stress-r | [i29-stress-real-fixes.md](receipts/i29-stress-real-fixes.md) | PASS | i29 — real deterministic failures from i29-stress-full: store-table coverage + composite ETS residue |
 | i29-stress-r | [i29-stress-residual-classify.md](receipts/i29-stress-residual-classify.md) | PASS | i29-stress-residual-classify |
-| i29-true-lea | [i29-true-leak-repair.md](receipts/i29-true-leak-repair.md) | UNKNOWN | i29 true-leak repair — scoped isolation court 6→0 **NO-CONTEXT** |
+| i29-true-lea | [i29-true-leak-repair.md](receipts/i29-true-leak-repair.md) | FAIL | i29 true-leak repair — scoped isolation court 6→0 **NO-CONTEXT** |
 | i29-validato | [i29-validator-standing-fix.md](receipts/i29-validator-standing-fix.md) | ALIVE | i29 — validate_burn.py standing derivation fix (fail-closed) |
 | i29-verify-r | [i29-verify-residual.md](receipts/i29-verify-residual.md) | ALIVE | i29 — verify-all residual faces triage at current HEAD |
 | i29-w3-pytes | [i29-w3-pytest-fix.md](receipts/i29-w3-pytest-fix.md) | ALIVE | i29 — w3 session-ops pytest residual face resolved (3 failed → green ×2, zero diff) |
@@ -222,6 +227,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-wire-fre | [i29-wire-fresh3.md](receipts/i29-wire-fresh3.md) | FAIL | i29 — Wire tier 2x fresh at HEAD (fresh3) |
 | i29-wire-fre | [i29-wire-fresh4.md](receipts/i29-wire-fresh4.md) | UNKNOWN | i29 — Wire tier 2x fresh at HEAD (fresh4) **NO-CONTEXT** |
 | i29-wire-pre | [i29-wire-pregate.md](receipts/i29-wire-pregate.md) | UNKNOWN | i29 AMQP wire pre-gate — 2 full legs at current HEAD (build root _build-ft-w8) |
+| i29-wrap-ite | [i29-wrap-items.md](receipts/i29-wrap-items.md) | PASS | i29 wrap items — G1 register flip + s10 verify **NO-CONTEXT** |
 | i29-wrap-pre | [i29-wrap-prep.md](receipts/i29-wrap-prep.md) | PASS | i29 — wrap prep for AZB-23/24 (receipt-index, docs-dod, TEST_ISOLATION, TICKETS sweep) |
 | i29-ws-cli-f | [i29-ws-cli-fresh.md](receipts/i29-ws-cli-fresh.md) | PASS | i29 — ws-lint / ws-build / ws-court / cli-test fresh verification legs |
 | i30-checkpoi | [i30-checkpoint-prep.md](receipts/i30-checkpoint-prep.md) | PASS | I30 checkpoint prep — integration-prep sweep |

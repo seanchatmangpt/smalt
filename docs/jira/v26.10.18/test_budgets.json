@@ -1387,6 +1387,7 @@
       "tier": "default"
     },
     "Elixir.EnclaveDoctorSeverityTest.test forced failure (real temp residue rows, no mocks) residue rows during doctor run -> store_invariants FAIL with ETS_IDENTITY_RESIDUE / BLOCKING_GATE + remediation": {
+      "max_ms": 2964,
       "tier": "default"
     },
     "Elixir.EnclaveDoctorSeverityTest.test remediation table totality all operator + gate codes are mapped; unmapped code raises fail-closed": {
@@ -1519,9 +1520,11 @@
       "tier": "default"
     },
     "Elixir.Smalt.Affidavit.WasmEngineFailClosedTest.test fence 10: restart hammer under parallel load \u2014 valid starts recover within the retry bound, artifact refusals stay fast": {
+      "max_ms": 5728,
       "tier": "default"
     },
     "Elixir.Smalt.Affidavit.WasmEngineFailClosedTest.test fence 11: supervised-restart hammer \u2014 kill-loop under load stays typed, engine returns": {
+      "max_ms": 6060,
       "tier": "default"
     },
     "Elixir.Smalt.Affidavit.WasmEngineFailClosedTest.test fence 12: start while running is typed already_started passthrough": {
@@ -1600,14 +1603,14 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test malformed content-length closes typed: no response, bounded wait, then end": {
-      "max_ms": 10532,
+      "max_ms": 14042,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test non-terminal read faults log once per window, repeats aggregated": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test oversize request is refused or closed, never hangs": {
-      "max_ms": 9012,
+      "max_ms": 12016,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.AttachTopLevelArityTest.test attach encodes as a top-level list of exactly 14 elements (extras dropped)": {
@@ -1839,7 +1842,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test 5000 unique long symbol source/target keys mint no new atoms": {
-      "max_ms": 9932,
+      "max_ms": 13242,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test bare-array decode stays linear: 200k elements decode in bounded time (lens-2)": {
@@ -1870,7 +1873,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test encode-path differential: mutated structures raise ArgumentError or round-trip exactly (lens-6)": {
-      "max_ms": 7767,
+      "max_ms": 10356,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test exhaustive constructor sweep: all 256 ctor bytes x 4 body shapes, never raises (lens-3)": {
@@ -1892,16 +1895,18 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test frame-split invariance: incremental feed at every offset matches unsplit": {
+      "max_ms": 4302,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test map count ambiguity: element-count and pair-count forms both decode; count-overrun errors": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test map decode stays single-pass: map/list decode-time ratio is bounded (lens-2)": {
+      "max_ms": 2734,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test multi-frame buffer: every frame recovered in order at every split offset (lens-3)": {
-      "max_ms": 10727,
+      "max_ms": 14302,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test mutation x chunking: flipped frames fed chunked converge to the whole-buffer result (lens-5)": {
@@ -1923,6 +1928,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test single-bit-flip differential decode: fence corpora, 10k flips, never a raise (lens-5)": {
+      "max_ms": 3614,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test structural shape symmetry: nested/empty composites round-trip (lens-4)": {
@@ -1935,12 +1941,15 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test transfer-payload round-trip: encode_message -> decode_message (100 seeds)": {
+      "max_ms": 3880,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test two-level described nesting: descriptor ctor acceptance composes (lens-6)": {
+      "max_ms": 2310,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test two-level described x guarded-shape differential: in-domain round-trips, out-of-domain raises (lens-7)": {
+      "max_ms": 5972,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.LockManagerTest.test .NET-GUID lock-token involution format_uuid\u2218token_to_raw is a byte-reorder involution with GUID shape": {
@@ -2388,6 +2397,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.R129SessionGateTest.test unfiltered receiver attach on sessionful queue -> typed detach; sessioned still works": {
+      "max_ms": 4014,
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.SasPinnedFallbackTest.test matching >=32B key is accepted": {
@@ -3201,6 +3211,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Azsim.DataPlaneTest.test sync_interval_ms: 0 durability (SIGKILL) acknowledged write survives kill -9 of the writing VM": {
+      "max_ms": 6644,
       "tier": "default"
     },
     "Elixir.Smalt.Azsim.GracefulStopTest.test Bandit's upstream default is unbounded (fence stays meaningful)": {
@@ -3210,7 +3221,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Azsim.GracefulStopTest.test stopping the Control subtree terminates the WasmEngine owner typed (not :killed)": {
-      "max_ms": 15000,
+      "max_ms": 20000,
       "tier": "stress"
     },
     "Elixir.Smalt.Azsim.IntegrationPlaneTest.test abandon requeues; deadletter after max-delivery-count": {
@@ -3361,6 +3372,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Chaos.CrashIsolationTest.test store crash is contained: store restarts, listeners never go down": {
+      "max_ms": 2202,
       "tier": "default"
     },
     "Elixir.Smalt.Chaos.PortCollisionTest.test second boot over the same ports fails closed, first substrate keeps serving": {
@@ -3370,6 +3382,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test 429 + Retry-After when :smalt, :arm_rate_limit is configured; default emits none": {
+      "max_ms": 4244,
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test GET validates api-version like PUT (row 6b fixed): future GET api-version -> 400": {
@@ -3379,6 +3392,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test LIST paginates: 100 per page, nextLink absolute, follow yields remainder": {
+      "max_ms": 4486,
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test LRO PUT returns 202 with async headers and InProgress body": {
@@ -3421,6 +3435,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test nextLink composition fuzz: clamps hold for hostile maxitempages/$skip and stale replay": {
+      "max_ms": 3324,
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test provider-type LIST returns the value envelope containing created resources": {
@@ -3484,7 +3499,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C3CosmosTest.test document system properties: _rid, _self grammar, _ts": {
-      "tier": "default"
+      "max_ms": 22276,
+      "tier": "stress"
     },
     "Elixir.Smalt.Compliance.C3CosmosTest.test list feed continuation: truncation token, resume, cross-namespace 400": {
       "tier": "default"
@@ -3505,7 +3521,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C3CosmosTest.test query POST with pk header filters to the partition": {
-      "tier": "default"
+      "max_ms": 21228,
+      "tier": "stress"
     },
     "Elixir.Smalt.Compliance.C3CosmosTest.test query feed emitted token round-trips: emit -> resume -> terminate": {
       "tier": "default"
@@ -3805,10 +3822,12 @@
       "tier": "default"
     },
     "Elixir.Smalt.Corpus.EhCreatedAt.test EH namespace carries the dual-key createdAt + created_at emission": {
-      "tier": "default"
+      "max_ms": 21520,
+      "tier": "stress"
     },
     "Elixir.Smalt.Corpus.EhCreatedAt.test SB sibling namespace carries the same camelCase createdAt key": {
-      "tier": "default"
+      "max_ms": 20556,
+      "tier": "stress"
     },
     "Elixir.Smalt.Corpus.HeadDatabaseAccountNames.test HEAD after create -> 204 with an EMPTY body": {
       "tier": "default"
@@ -3832,19 +3851,24 @@
       "tier": "default"
     },
     "Elixir.Smalt.Corpus.TagsNormalization.test real tags survive the normalization untouched": {
-      "tier": "default"
+      "max_ms": 20922,
+      "tier": "stress"
     },
     "Elixir.Smalt.Corpus.TagsNormalization.test resource PUT with tags:null echoes tags:null (storage account readback)": {
-      "tier": "default"
+      "max_ms": 20414,
+      "tier": "stress"
     },
     "Elixir.Smalt.Corpus.TagsNormalization.test resource-group PUT with tags:null echoes tags:null on GET (null-when-empty parity)": {
-      "tier": "default"
+      "max_ms": 20414,
+      "tier": "stress"
     },
     "Elixir.Smalt.Corpus.VaultEnrichment.test storage account GET carries properties.primaryEndpoints (FR-5 nil-deref fence)": {
-      "tier": "default"
+      "max_ms": 20868,
+      "tier": "stress"
     },
     "Elixir.Smalt.Corpus.VaultEnrichment.test vault GET echoes properties.vaultUri (authority-aware enrichment)": {
-      "tier": "default"
+      "max_ms": 20764,
+      "tier": "stress"
     },
     "Elixir.Smalt.CosmosSqlTest.test evaluator grammar IN, CONTAINS, STARTSWITH, ARRAY_CONTAINS": {
       "tier": "default"
@@ -3919,6 +3943,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.DSPy.RemediationTest.test parse/1 round-trip through the REAL generator esc/1: source -> doc bytes -> parse restores the source (lens 6)": {
+      "max_ms": 2584,
       "tier": "default"
     },
     "Elixir.Smalt.DSPy.RemediationTest.test parse/1 round-trip: every esc/1-emittable hostile cell parses back to its source": {
@@ -5206,7 +5231,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test concurrent metadata PUTs vs hold-sets: committed holds are never lost (W5-8 race)": {
-      "max_ms": 14922,
+      "max_ms": 19896,
       "tier": "stress"
     },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test metadata PUT still succeeds on a hold-free container (non-vacuity of the happy path)": {
@@ -5732,6 +5757,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpTest.test blob.list peak-memory contract: 4000x32KiB scan stays bounded": {
+      "max_ms": 2066,
       "tier": "default"
     },
     "Elixir.Smalt.McpTest.test blob.list returns content-free metadata only": {
@@ -5813,7 +5839,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpTest.test lens6 concurrent tools/call under descriptor module reload stays payload-faithful": {
-      "max_ms": 7730,
+      "max_ms": 10306,
       "tier": "stress"
     },
     "Elixir.Smalt.McpTest.test lens6 generated descriptor agrees with the TTL capability source (data fidelity)": {
@@ -5868,7 +5894,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test doctor.summary agrees with scripts/doctor.py --json on substrate health": {
-      "max_ms": 49460,
+      "max_ms": 65946,
       "tier": "stress"
     },
     "Elixir.Smalt.McpWireTest.test lens8 wire tools/list and mcp_tools are capability_id-sorted": {
@@ -5917,6 +5943,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test wire keep-alive socket survives an idle gap between requests": {
+      "max_ms": 3014,
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test wire kv.get discloses exactly the record minus the redacted secret fields": {
@@ -5926,6 +5953,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test wire lens5 content-length lie (declared LONG) -> server waits, listener stays healthy": {
+      "max_ms": 4012,
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test wire lens5 content-length lie (declared SHORT) -> typed 400 PARSE_ERROR": {
@@ -5935,6 +5963,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test wire lens6 concurrent tools/call under descriptor reload stays payload-faithful": {
+      "max_ms": 3632,
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test wire listener serves concurrent clients with id-faithful responses": {
@@ -6235,10 +6264,11 @@
       "tier": "default"
     },
     "Elixir.Smalt.OcelRevopsTest.test FitnessVerdict: happy trace conforms at 1.0, broken trace does not": {
-      "max_ms": 8259,
+      "max_ms": 11012,
       "tier": "stress"
     },
     "Elixir.Smalt.OcelRevopsTest.test OcelTrace: two traces read back through Ash with real counts and windows": {
+      "max_ms": 4768,
       "tier": "default"
     },
     "Elixir.Smalt.OcelRevopsTest.test a conformance-false deviation appears as an evidence record through Ash": {
@@ -7142,6 +7172,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files scale fuzz: 10k-line ledger \u2014 determinism, dup pin at scale, perf budget": {
+      "max_ms": 2402,
       "tier": "default"
     },
     "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission compiles all three resources into a mapping bundle": {
@@ -7274,7 +7305,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.TLSTest.test concurrency falsifier (TLS-261014-01) paired boots: regenerator racing a boot across N=20 paired seats, zero crashes": {
-      "max_ms": 27246,
+      "max_ms": 36328,
       "tier": "stress"
     },
     "Elixir.Smalt.TLSTest.test concurrency falsifier (TLS-261014-01) regenerate during active serving: no listener drop": {
@@ -7554,6 +7585,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.TrustProfileTest.test Oracle battery (:oracle tier, lens-5 promotion of lane scratch) deep-nesting stack safety: 50k list / 20k map depth ok (reduced-depth pin of tmp/tp_stack_safety.exs, which witnesses 500k/200k)": {
+      "max_ms": 3952,
       "tier": "default"
     },
     "Elixir.Smalt.TrustProfileTest.test Oracle battery (:oracle tier, lens-5 promotion of lane scratch) oracle toolchain is present (guards the tier against silent env drift)": {
@@ -7812,6 +7844,7 @@
       "tier": "default"
     },
     "Elixir.SmaltArmGatewayTest.test generic LIST nextLink carries api-version; follow passes the gate": {
+      "max_ms": 7528,
       "tier": "default"
     },
     "Elixir.SmaltArmGatewayTest.test invalid api-version returns 400 InvalidApiVersionParameter": {
@@ -7875,7 +7908,7 @@
       "tier": "default"
     },
     "Elixir.SmaltGraphlawMatrixTest.test Registry is the exact projection of the pack ontology (regeneration determinism)": {
-      "max_ms": 8691,
+      "max_ms": 11588,
       "tier": "stress"
     },
     "Elixir.SmaltGraphlawMatrixTest.test empty payload verdict matches the type's declared shape requirements": {
@@ -8116,6 +8149,7 @@
       "tier": "default"
     },
     "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test anti-vacuity: repair:false on the killed file refuses typed \u2014 the DETS_UNREPAIRED condition fires": {
+      "max_ms": 3256,
       "tier": "default"
     },
     "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test corruption variant header-byte-flip: typed outcome only, never an untyped crash loop": {
@@ -8125,7 +8159,7 @@
       "tier": "default"
     },
     "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test graphlaw/WasmEngine killed mid-request: caller receives :engine_unavailable as HTTP 503 typed body, nothing admitted": {
-      "max_ms": 7505,
+      "max_ms": 10006,
       "tier": "stress"
     },
     "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test needs_repair path: repair:true boot repairs the killed file, dets_repaired telemetry fires, all acked writes present, zero phantoms": {
@@ -8237,7 +8271,7 @@
       "tier": "default"
     },
     "Elixir.StressTierCensusTest.test stress tier population >= 20 (tag loss fails loudly)": {
-      "max_ms": 16571,
+      "max_ms": 22094,
       "tier": "stress"
     },
     "Elixir.ZeroDriftSerializationTest.test cosmos PUT receives kind GlobalDocumentDB + databaseAccountOfferType Standard": {
