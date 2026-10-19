@@ -200,3 +200,47 @@ Action: **HOLD** — `colima stop` NOT executed; `just quiet-check` NOT run
 (premature while soak containers live). Rollback: none needed (P0: holding is
 the rollback). Re-evaluate gate after the cgroup-soak cycle reaches quiescence
 and Lane C's test/ diff is committed.
+
+## Decision — HOLD #2 (gate failed, no execution)
+
+Context: solo(gate re-evaluation; read-only checks only; colima NOT stopped)
+Date: 2026-10-18 (re-check, later than HOLD #1)
+
+- **(a) FAIL — not quiesced.** `docker ps` (exit 0) shows 4 live
+  `smalt-cgroup-soak-smalt-soak-{control,data,integration,identity}-1`
+  (smalt-burn:latest, "Up 2 minutes") — a fresh cgroup-soak burn cycle
+  restarted after HOLD #1. Residue: dbg-id/dbg-id2 (Up ~2 h, acceptable),
+  kind-smalt-{control-plane,worker} (Up ~3 h), act-sock-relay. No active
+  build observed. Exactly the P0 "any soak still Up => hold" tripwire.
+- **(b) FAIL — Lane C not landed.** `git status --porcelain test/ | wc -l`
+  = 17 (unchanged from HOLD #1: 16 modified + s2_run.patch.py untracked).
+- **(c) PASS but moot.** Ports 9443/8443/5672 held by colima ssh mux
+  (pid 61023) — colima-only, as required; irrelevant given (a)/(b).
+
+Action: **HOLD** — `colima stop` NOT executed; `just quiet-check` NOT run.
+Rollback: none (P0: holding is the rollback). Re-evaluate after the soak
+cycle quiesces and Lane C commits its test/ diff.
+
+## Decision — HOLD #3 (gate failed on soak containers; Lane C condition now PASSES)
+
+Context: solo(gate re-evaluation; read-only checks only; colima NOT stopped)
+Date: 2026-10-18 (re-check after Lane C commit 50b9860)
+
+- **(a) FAIL — not quiesced.** `docker ps` (exit 0) shows 4 live
+  `smalt-cgroup-soak-smalt-soak-{control,data,integration,identity}-1`
+  ("Up 4 minutes") — an active cgroup-soak burn cycle. Residue:
+  dbg-id/dbg-id2 (Up ~2 h), kind-smalt-{control-plane,worker} (Up ~3 h),
+  act-sock-relay (Up ~9 h) — the P0-acceptable set. No active docker build
+  observed. Exactly the P0 "any soak still Up => hold" tripwire.
+- **(b) PASS — Lane C landed.** `git status --porcelain test/ | wc -l` = 8,
+  down from 17; residual = the expected azb-20/e2e set (s10_attest_adversary,
+  s2_byok x2 + s2_run.patch.py untracked, s5_sessions, s9_lro_chain,
+  sdk-full/blob.probe.mjs, untracked audited_capabilities_test.exs).
+  Lane C commit 50b9860 on main.
+- **(c) PASS but moot.** Ports 9443/8443/5672 LISTEN held by colima ssh mux
+  (pid 61023) — colima-only, as required; irrelevant given (a).
+
+Action: **HOLD** — `colima stop` NOT executed; `just quiet-check` NOT run
+(conjunction gate: (a) failed, so quiet-check under a live soak would itself
+be suspect). Rollback: none (P0: holding is the rollback). Re-evaluate after
+the cgroup-soak cycle reaches quiescence.
