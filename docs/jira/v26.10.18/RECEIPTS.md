@@ -32,12 +32,14 @@ count, or PASS/FAIL token) found in the file.
 | azb-14-sigki | [azb-14-sigkill-storm.md](receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary |
 | azb-15-dr-su | [azb-15-dr-subtrees.md](receipts/azb-15-dr-subtrees.md) | ALIVE | AZB-15 Plane subtree DR kills (enterprise disaster scenarios) |
 | azb-16-amqp- | [azb-16-amqp-saturation.md](receipts/azb-16-amqp-saturation.md) | ALIVE | AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard |
-| azb-17-paral | [azb-17-parallel-matrix.md](receipts/azb-17-parallel-matrix.md) | PARTIAL_ALIVE | AZB-17 — parallel plane matrix (1x4 salvage probe) |
+| azb-17-paral | [azb-17-parallel-matrix.md](receipts/azb-17-parallel-matrix.md) | ALIVE | AZB-17 Parallel plane matrix (N containers × 4 planes) |
 | azb-18-cgrou | [azb-18-cgroup-soak.md](receipts/azb-18-cgroup-soak.md) | UNKNOWN | AZB-18 — cgroup-constrained soak harness |
 | azb-19-overl | [azb-19-overlap.md](receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling |
 | azb-20-sdk-i | [azb-20-sdk-interop.md](receipts/azb-20-sdk-interop.md) | PARTIAL_ALIVE | AZB-20 — Unmodified Microsoft SDK interop per plane |
 | azb-21-zero- | [azb-21-zero-sleep.md](receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) |
 | azb-22-burn- | [azb-22-burn-ring.md](receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) |
+| azb-22b-zomb | [azb-22b-zombie-fix.md](receipts/azb-22b-zombie-fix.md) | PARTIAL_ALIVE | AZB-22b — ZOMBIE_BEAM repair: Owner EXIT face + Bandit shutdown bounds |
+| azb-22b-zomb | [azb-22b-zombie-verify.md](receipts/azb-22b-zombie-verify.md) | ALIVE | AZB-22b — Zombie-fix verify (boot-stage ZOMBIE_BEAM closed) |
 | b-await-migr | [b-await-migration.md](receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
 | b-e2e-wire | [b-e2e-wire.md](receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) |
 | b-js-harness | [b-js-harness.md](receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) |
@@ -110,12 +112,17 @@ count, or PASS/FAIL token) found in the file.
 | i29-capabili | [i29-capabilities-drift2.md](receipts/i29-capabilities-drift2.md) | PASS | i29 capabilities.json drift — takeover verification (pair) |
 | i29-checkpoi | [i29-checkpoint.md](receipts/i29-checkpoint.md) | PASS | i29 — Integration Checkpoint Prep (pre-coordinator-commit census) |
 | i29-checkpoi | [i29-checkpoint2.md](receipts/i29-checkpoint2.md) | ALIVE | i29 — Checkpoint 2 (post-Context-law remediation census) |
-| i29-colima-s | [i29-colima-stop-runbook.md](receipts/i29-colima-stop-runbook.md) | UNKNOWN | I29 — Colima-Stop Runbook (AZB-23 quiet-machine transition) |
+| i29-checkpoi | [i29-checkpoint3.md](receipts/i29-checkpoint3.md) | UNKNOWN | i29 Checkpoint 3 — in-flight lane census at HEAD b9b9199 |
+| i29-colima-s | [i29-colima-stop-runbook.md](receipts/i29-colima-stop-runbook.md) | PARTIAL_ALIVE | I29 — Colima-Stop Runbook (AZB-23 quiet-machine transition) |
 | i29-compile- | [i29-compile-clean.md](receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
 | i29-corpus-f | [i29-corpus-fresh.md](receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
 | i29-corpus-f | [i29-corpus-fresh2.md](receipts/i29-corpus-fresh2.md) | PASS | corpus tier fresh ×3, post-0009df3 |
+| i29-corpus-f | [i29-corpus-fresh3.md](receipts/i29-corpus-fresh3.md) | UNKNOWN | i29-corpus-fresh3 — corpus soak ×3 at HEAD ≥ d1298be |
 | i29-corpus-s | [i29-corpus-soak.md](receipts/i29-corpus-soak.md) | PASS | I29 — corpus soak: 3x corpus + compliance (both loaders) |
 | i29-court-dr | [i29-court-dry1.md](receipts/i29-court-dry1.md) | UNKNOWN | i29 court-x2 DRY-RUN leg 1 — full `mix test` under load |
+| i29-court-dr | [i29-court-dry2.md](receipts/i29-court-dry2.md) | UNKNOWN | i29 court-x2 DRY-RUN leg 2 — full `mix test` under load |
+| i29-court-dr | [i29-court-dry3.md](receipts/i29-court-dry3.md) | UNKNOWN | Court-x2 DRY-RUN leg 3 — full `mix test` at HEAD 1eb89df |
+| i29-court-dr | [i29-court-dry4.md](receipts/i29-court-dry4.md) | UNKNOWN | Court-x2 DRY-RUN leg 4 — full `mix test` at HEAD f4f129f |
 | i29-court-re | [i29-court-rehearsal.md](receipts/i29-court-rehearsal.md) | PASS | AZB-23 Court Rehearsal (cold-start face, current non-quiet tree) |
 | i29-court-su | [i29-court-surfaces.md](receipts/i29-court-surfaces.md) | FAIL | i29 — Court Surfaces Receipt |
 | i29-dataplan | [i29-dataplane-soak.md](receipts/i29-dataplane-soak.md) | PASS | i29 Data-Plane Soak (fresh ×2) |
@@ -125,16 +132,21 @@ count, or PASS/FAIL token) found in the file.
 | i29-docs-gat | [i29-docs-gates2.md](receipts/i29-docs-gates2.md) | PASS | i29 — docs gates post-44b0859 (receipt-index, docs-dod-check, naming-sweep, RECEIPTS consistency) |
 | i29-docs-gat | [i29-docs-gates3.md](receipts/i29-docs-gates3.md) | PASS | i29 docs gates 3 — post-d1298be receipt-index / docs-dod-check / naming-sweep |
 | i29-doctor-d | [i29-doctor-dod-gapcensus.md](receipts/i29-doctor-dod-gapcensus.md) | ALIVE | i29-doctor-dod-gapcensus — doctor_dod.py GAP-census retirement |
+| i29-e2e-fres | [i29-e2e-fresh.md](receipts/i29-e2e-fresh.md) | PARTIAL_ALIVE | i29-e2e-fresh — E2E tier fresh run on post-0009df3 (v26.10.18) |
 | i29-eg-grace | [i29-eg-gracefulstop-classify.md](receipts/i29-eg-gracefulstop-classify.md) | ALIVE | i29 — EventGrid :334 + GracefulStop :73 classification (solo ×3 each) |
 | i29-eh-shim- | [i29-eh-shim-audit.md](receipts/i29-eh-shim-audit.md) | PARTIAL_ALIVE | i29 EH shim-marker audit (event_hubs.ex SHIM-COURT markers) |
+| i29-env-swee | [i29-env-sweep-verify.md](receipts/i29-env-sweep-verify.md) | PASS | i29 — Lane-C put_restored env-sweep behavior verification (5-file sample) |
 | i29-fence-ha | [i29-fence-hammer.md](receipts/i29-fence-hammer.md) | PASS | i29 fence-10/11/12 triple hammer ×10 |
 | i29-full-soa | [i29-full-soak-b.md](receipts/i29-full-soak-b.md) | PASS | i29-b — Full soak leg B: `mix test` (stress excluded) |
 | i29-full-soa | [i29-full-soak-c.md](receipts/i29-full-soak-c.md) | PARTIAL_ALIVE | i29 Full Offline Suite — Receipt (full-soak-c) |
+| i29-full-soa | [i29-full-soak-d.md](receipts/i29-full-soak-d.md) | PASS | i29-d — Full soak leg D: `mix test` (stress excluded) |
 | i29-full-soa | [i29-full-soak.md](receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
 | i29-g1-scopi | [i29-g1-scoping.md](receipts/i29-g1-scoping.md) | PASS | i29 — G1 Queue Storage Scoping Receipt |
 | i29-g5-injec | [i29-g5-injectors.md](receipts/i29-g5-injectors.md) | ALIVE | i29 — Sovereign Midnight G5-narrow residual injectors landed (test-side, no lib/ changes) |
 | i29-gates-po | [i29-gates-postfix.md](receipts/i29-gates-postfix.md) | PARTIAL_ALIVE | i29 — post-HEAD 0009df3 gate verification (compile + naming-sweep + invariant-gates) |
 | i29-have-sna | [i29-have-snapshot.md](receipts/i29-have-snapshot.md) | PARTIAL_ALIVE | i29 HAVE snapshot (guard + watchdog + telemetry + status) |
+| i29-host-dis | [i29-host-disk-census.md](receipts/i29-host-disk-census.md) | PASS | I29 Host Disk Census |
+| i29-injector | [i29-injectors-leakfix.md](receipts/i29-injectors-leakfix.md) | FAIL | i29 — injectors leak-gate resolution (allowlist, 25b844f pattern) |
 | i29-isolatio | [i29-isolation-count.md](receipts/i29-isolation-count.md) | PASS | i29 (isolation courts, advisory count run) |
 | i29-isolatio | [i29-isolation-runtime2.md](receipts/i29-isolation-runtime2.md) | FAIL | I29 receipt — runtime-twin isolation court, second slice (v26.10.18) |
 | i29-kd-censu | [i29-kd-census-fix.md](receipts/i29-kd-census-fix.md) | PASS | i29 — KD register census prose fix |
@@ -153,6 +165,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-ratchet- | [i29-ratchet-regression.md](receipts/i29-ratchet-regression.md) | ALIVE | i29 — ratchet mod regression after naming-sweep repair lane |
 | i29-receipt- | [i29-receipt-final.md](receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
 | i29-replay-f | [i29-replay-fences.md](receipts/i29-replay-fences.md) | PARTIAL_ALIVE | i29 — Generated-Artifact Replay Fences (post-0009df3 tree) |
+| i29-s4-capac | [i29-s4-capacity-fix.md](receipts/i29-s4-capacity-fix.md) | PARTIAL_ALIVE | i29 — s4-amqp-capacity burn face: per-conn atom-bridge log flood |
 | i29-scratch- | [i29-scratch-sweep.md](receipts/i29-scratch-sweep.md) | PASS | i29 scratch sweep — edit_atom_bridge.py / edit_test.py |
 | i29-sdk-cens | [i29-sdk-census-fresh.md](receipts/i29-sdk-census-fresh.md) | UNKNOWN | i29 SDK census fresh attempt (SUBSTRATE_DOWN → offline tier) |
 | i29-sdk-smok | [i29-sdk-smoke-deps.md](receipts/i29-sdk-smoke-deps.md) | PARTIAL_ALIVE | i29-sdk-smoke-deps — sdk-smoke dependency manifest |
@@ -163,9 +176,12 @@ count, or PASS/FAIL token) found in the file.
 | i29-stress-f | [i29-stress-full.md](receipts/i29-stress-full.md) | PARTIAL_ALIVE | i29 — full stress suite (`mix test --include stress`) |
 | i29-stress-r | [i29-stress-real-fixes.md](receipts/i29-stress-real-fixes.md) | PASS | i29 — real deterministic failures from i29-stress-full: store-table coverage + composite ETS residue |
 | i29-stress-r | [i29-stress-residual-classify.md](receipts/i29-stress-residual-classify.md) | PASS | i29-stress-residual-classify |
+| i29-verify-r | [i29-verify-residual.md](receipts/i29-verify-residual.md) | ALIVE | i29 — verify-all residual faces triage at current HEAD |
+| i29-w3-pytes | [i29-w3-pytest-fix.md](receipts/i29-w3-pytest-fix.md) | ALIVE | i29 — w3 session-ops pytest residual face resolved (3 failed → green ×2, zero diff) |
 | i29-wire-2x | [i29-wire-2x.md](receipts/i29-wire-2x.md) | PASS | i29 — wire tier 2x clean run |
 | i29-wire-fre | [i29-wire-fresh.md](receipts/i29-wire-fresh.md) | PASS | i29 wire fresh-leg receipt |
 | i29-wire-fre | [i29-wire-fresh2.md](receipts/i29-wire-fresh2.md) | UNKNOWN | i29 — Wire tier 2x fresh at HEAD |
+| i29-wire-fre | [i29-wire-fresh3.md](receipts/i29-wire-fresh3.md) | FAIL | i29 — Wire tier 2x fresh at HEAD (fresh3) |
 | i29-wrap-pre | [i29-wrap-prep.md](receipts/i29-wrap-prep.md) | PASS | i29 — wrap prep for AZB-23/24 (receipt-index, docs-dod, TEST_ISOLATION, TICKETS sweep) |
 | i29-ws-cli-f | [i29-ws-cli-fresh.md](receipts/i29-ws-cli-fresh.md) | PASS | i29 — ws-lint / ws-build / ws-court / cli-test fresh verification legs |
 | i30-checkpoi | [i30-checkpoint-prep.md](receipts/i30-checkpoint-prep.md) | PASS | I30 checkpoint prep — integration-prep sweep |

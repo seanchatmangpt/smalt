@@ -1,6 +1,7 @@
 # i29 — injectors leak-gate resolution (allowlist, 25b844f pattern)
 
-Date: 2026-10-18 · Context: solo(smalt @ /Users/sac/smalt, branch main, no git actions)
+Date: 2026-10-18
+Context: solo(smalt @ /Users/sac/smalt, branch main, no git actions)
 Standing: PASS (gate green for the subject file; tree FAIL is other lanes' in-flight files)
 
 ## Subject

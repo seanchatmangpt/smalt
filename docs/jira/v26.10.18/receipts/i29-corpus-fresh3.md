@@ -1,7 +1,7 @@
 # Receipt: i29-corpus-fresh3 — corpus soak ×3 at HEAD ≥ d1298be
 
 - Date: 2026-10-18
-- Context: slice(corpus ×3)
+Context: slice(corpus ×3)
 - Subject: /Users/sac/smalt @ d1298be513121ac1828b44b13eb77b8a084c7f75 (main)
 - Command (run 3× from repo root):
 

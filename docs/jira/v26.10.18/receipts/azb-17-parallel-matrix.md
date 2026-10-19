@@ -6,6 +6,9 @@ read or any non-CLEAN cell) was exercised across 32 cells and never
 observed; the anti-vacuity mutation (two replicas on ONE network with a
 shared DETS volume) was witnessed firing the canary.
 
+Context: solo(launch subject d1298be5 pinned in-row; single-operator local
+matrix run, one image digest throughout)
+
 ## Identity
 
 - Rows pin launch subject `d1298be513121ac1828b44b13eb77b8a084c7f75`.

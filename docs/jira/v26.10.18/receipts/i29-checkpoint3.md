@@ -1,7 +1,7 @@
 # i29 Checkpoint 3 — in-flight lane census at HEAD b9b9199
 
 - Subject: /Users/sac/smalt @ `b9b9199882ab1c8018ee82f24673421ac625bbc1`
-- Context: solo
+Context: solo
 - Command: `git status --porcelain && git rev-parse HEAD`
 
 ```

@@ -1,7 +1,7 @@
 # I29 Host Disk Census
 
 - Date: 2026-10-18
-- Context: solo(read-only census + snapshot check; no deletions required)
+Context: solo(read-only census + snapshot check; no deletions required)
 - Standing: PASS (census complete; no action warranted on snapshots)
 
 ## Host free space

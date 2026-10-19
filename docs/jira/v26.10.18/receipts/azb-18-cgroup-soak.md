@@ -87,3 +87,13 @@ python3 scripts/validate_burn.py --gate docs/jira/v26.10.18/burn/cgroup-<ts>.jso
 - `SMALT_SOAK_MEM_LIMIT`/`SMALT_SOAK_PIDS_LIMIT` env-overridable; the ticket's 0.5/1/2 quota-tier
   ladder is a compose re-emit away (`--emit-compose` with edited caps), recorded here so the
   AZB-18 accept criterion (3 rounds x 3 tiers) is not lost.
+
+## disk-hold check — 2026-10-18 (Context: solo)
+
+Commands: `docker system df`; `docker run --rm busybox df -h /`; `docker builder prune -f` (in-use-safe); re-check df.
+
+- Pre: overlay 58.9G size, **0 available / 100% used** — below the 3G floor (was 9.7G/83% after P1 prune).
+- `docker system df`: Images 41.8GB (32.94GB reclaimable, 78%), Build Cache 26.73GB (3.07GB reclaimable), Volumes 19.8GB (0 reclaimable), Containers 4.1MB.
+- `docker builder prune -f` → Total: 0B (all 71 cache entries active/in-use; safe form reclaims nothing).
+- Post: overlay 58.9G, used 55.7G, **753.9M available / 99%** — still below the 3G floor. Standing: BLOCKED[disk-floor] — further reclaim requires non-in-use-safe pruning (`-a`) or image/volume removal, out of scope per lane constraints (no container/daemon mutations beyond builder prune).
+- Containers observed (`docker ps`): azb-18 leg netns set present and fresh — `smalt-burn-smalt-burn-integration-{1..8}-1` all Up ~35s (8/8 expected). Pre-existing, untouched: `dbg-id`, `dbg-id2`, `kind-smalt-worker`, `kind-smalt-control-plane`, `act-sock-relay`.

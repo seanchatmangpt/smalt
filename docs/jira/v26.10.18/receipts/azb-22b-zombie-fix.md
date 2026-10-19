@@ -10,7 +10,7 @@ remains open (see Open items).
 
 Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-22 (ring surfaced;
 falsifier face of AZB-13 "zombie beam across cycles")
-Context: pair (dispatch: fix Owner catch-all + Bandit shutdown, rerun
+Context: pair(dispatch: fix Owner catch-all + Bandit shutdown, rerun
 `just burn-ring --stage boot`, failclosed 10/11/12 green x2, receipt here,
 No git)
 Subject: `/Users/sac/smalt`; fix landed at **8552eec** (coordinator commit;

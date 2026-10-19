@@ -3,7 +3,7 @@
 - **Date**: 2026-10-18
 - **Subject**: /Users/sac/smalt @ `f4f129f2a73f0edf5c57f88b11d987ebe21891c9` (≥ f4f129f)
 - **Command**: `MIX_BUILD_ROOT=_build-ft-court4 mix test` (cwd /Users/sac/smalt)
-- **Context**: solo(2 runs, same build root `_build-ft-court4`)
+Context: solo(2 runs, same build root `_build-ft-court4`)
 
 ## Runs
 

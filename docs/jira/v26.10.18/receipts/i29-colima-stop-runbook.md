@@ -133,3 +133,44 @@ untouched throughout — only the build cache is consumed.
 - GO for P3 (colima stop → court-x2) only after P2 lands or is typed-FAILED-staged.
 - NO-GO for: `docker image prune -a -f` before P2 completes; killing ssh mux 61023;
   colima stop with any smalt-burn-* container Up; pattern-pkill of any beam.
+
+## 5. Quiesce prep (post-azb-18-leg, 2026-10-18)
+
+Context: solo(gate re-check + P1-strong attempt on live VM; no colima stop, no image/volume deletes)
+
+P0 gate re-check (`docker ps --filter status=running --format '{{.Names}}'`):
+smalt-burn-* containers: **zero present** (leg finished; containers removed cleanly).
+Residue = runbook-acceptable set only: `act-sock-relay`, `dbg-id`, `dbg-id2` (idle probes/relay).
+
+P1-strong executed:
+```
+docker builder prune -a -f
+Total:	0B
+exit=0
+```
+**Freed: 0 B.** Typed reason: all 24 build-cache entries (7.659 GB) are ACTIVE — created
+~45 min ago by the azb-18 leg's image rebuild (`smalt:local` and `smalt-burn` image timestamps
+2-4 min before prune); `builder prune -a` only removes cache not backing a live image. The
+runbook's ~14.3 GB figure predated the leg's rebuild; that older cache was already consumed
+or superseded. No further prune is lawful here without deleting images (P1-escalation is
+gated on azb-18 declaring it cannot proceed — leg landed, so NO-GO).
+
+Post-state:
+```
+docker run --rm busybox df -h /
+Filesystem      Size  Used Available Use% Mounted on
+overlay          58.9G   40.0G     16.4G  71% /
+docker system df: Build Cache 24/24 ACTIVE, 7.659GB, 0B reclaimable;
+Images 6 total, 22.11GB (20.63GB reclaimable — smalt:local 7.38GB + smalt-burn 2.19GB are
+the leg's fresh builds, retained per NO-GO above)
+```
+VM free space: **16.4G available** (71% used) — enough headroom for the P3 court window;
+no builder-prune escalation needed.
+
+dbg-id / dbg-id2: **still present, still disposable** (debug/identity probe lane, ephemeral,
+no persistent state). Report-only per lane contract — not removed. They may be reaped with
+`docker rm -f dbg-id dbg-id2` at P3 if the operator wants a strictly idle VM before colima stop;
+the runbook's P0 already classifies them as acceptable residue, so leaving them is lawful.
+
+Standing: PARTIAL_ALIVE (gate verified live; P1-strong executed but reclaimed 0B —
+typed-negative, not a failure; headroom confirmed via busybox df)
