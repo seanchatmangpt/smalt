@@ -473,7 +473,6 @@ defmodule Smalt.Azsim.SovereignMidnightTest do
       assert conn.status in [200, 201]
     end
 
-    @tag :sovereign_gap
     test "5.3 Azure Resource Graph: KQL asset inventory queries" do
       body = %{
         "query" => "| where type == 'microsoft.storage/storageaccounts'",

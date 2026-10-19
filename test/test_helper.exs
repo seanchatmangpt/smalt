@@ -21,13 +21,12 @@ ExUnit.configure(
     # plain `mix test`; run with `mix test --include stress` / `just
     # test-stress`. Population fenced by test/stress_tier_census_test.exs.
     :stress,
-    # :sovereign_gap (v26.10.18): the ONE real product gap of the Sovereign
-    # Midnight capstone triage (receipts/i29-sovereign-gap-triage.md) — 5.3
-    # ARG KQL (ResourceGraph HTTP route family absent, maps to G6; the other
-    # 5 tagged bodies passed deterministically and were un-tagged). Typed
-    # exclusion — run with `mix test --include sovereign_gap` until the
-    # v26.10.19 route family lands.
-    :sovereign_gap
+    # :sovereign_gap (v26.10.18): CLOSED (v26.10.19) — the one real product
+    # gap (5.3 ARG KQL, ResourceGraph HTTP route family) landed in
+    # EgressRouter (POST /providers/Microsoft.ResourceGraph/resources,
+    # egress_router.ex) backed by DataPlane.ResourceGraph.query/3; the tag
+    # is fully retired — 5.3 runs untagged in plain `mix test`.
+    # (receipts/i29-arg-route-family.md)
   ]
 )
 
