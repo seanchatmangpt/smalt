@@ -361,3 +361,42 @@ Residue (6 paths) stays on the tree: 4 azb-20 lib + 2 e2e receipt.json churn.
   be exactly 5 M + 0 ?? (4 azb-20 lib + at most the e2e receipt.json files unless the
   e2e lane commits or reverts them first).
 - `just docs-dod-check` must stay green with this addendum on disk.
+
+---
+
+## Addendum (census lane, 2026-10-19 00:5x PDT) — correction at HEAD 5dbcb42
+
+- Context: solo(census; read-only git; no git mutations)
+- Commands: `git status --porcelain` (fresh, after 5dbcb42), `git diff` /
+  `git diff --stat` on each dirty path, head reads of the two new untracked receipts.
+
+### Fresh tree: 10 M + 2 untracked
+
+The 6-M census above predates two receipts landing on disk and the index regen churn.
+
+| Path | Status | Verdict |
+|---|---|---|
+| `docs/jira/v26.10.18/receipts/i29-e2e-final.md` (??) | e2e full re-verify: 7/7 scenarios exit 0, 53/53 assertions, embedded per-scenario output; Context: slice | **INCLUDE** (self-backing, ALIVE) |
+| `docs/jira/v26.10.18/receipts/i29-push-readiness4.md` (??) | read-only push-readiness audit of `1eb89df..8b4f74f` (68 commits): secret-grep clean, 3/4 legs green, publish-dry gate 4 FAIL blocks READY; PARTIAL_ALIVE | **INCLUDE** (audit receipt; its findings are the open residue) |
+| `docs/jira/v26.10.14/RECEIPTS.md`, `receipts/INDEX.md`, `docs/jira/v26.10.16/RECEIPTS.md`, `receipts/INDEX.md` (4 M) | generated artifacts, stale vs the new receipts on disk | **REGENERATE then commit**: `just receipt-index`, do not hand-edit |
+| `docs/jira/v26.10.16/sdk-results/spc-bands.md` (M) | still unattributed by any v26.10.18 receipt (checkpoint5 finding unchanged) | **EXCLUDE** |
+| `lib/smalt/arm_gateway/router.ex`, `blob_storage.ex`, `cosmos.ex`, `key_vault_actions.ex` (4 M) | azb-20 lib residue, landing receipt still ABSENT | **EXCLUDE** (lane-hot) |
+| `test/e2e/s4_oauth_negatives/receipt.json`, `test/e2e/s6_checkpoints/receipt.json` (2 M) | `git diff` is EMPTY on both — content-identical, stat-dirty only (run-artifact touch). Refresh the index or ignore; nothing to commit | **NO-OP** |
+
+### Commit-ready `git add` (current)
+
+```
+just receipt-index
+git add docs/jira/v26.10.18/receipts/i29-e2e-final.md \
+        docs/jira/v26.10.18/receipts/i29-push-readiness4.md \
+        docs/jira/v26.10.18/receipts/i29-checkpoint7.md \
+        docs/jira/v26.10.14/RECEIPTS.md docs/jira/v26.10.14/receipts/INDEX.md \
+        docs/jira/v26.10.16/RECEIPTS.md docs/jira/v26.10.16/receipts/INDEX.md
+```
+
+### Falsifiers
+
+- After that add + commit: residue must be exactly 4 azb-20 lib paths + `spc-bands.md`
+  (5 M + 0 ??), unless the e2e lane refreshes the receipt.json files first.
+- `just docs-dod-check` green with this addendum on disk (verified: OK across
+  v26.10.17/v26.10.16 receipts and README at census time).
