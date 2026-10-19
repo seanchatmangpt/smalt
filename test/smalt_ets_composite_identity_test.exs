@@ -252,7 +252,7 @@ defmodule Smalt.EtsCompositeIdentityTest do
         if snapshot() == baseline do
           {:ok, :converged}
         else
-          {:retry, :diverged}
+          {:retry, diffs(baseline, snapshot())}
         end
       end,
       deadline_ms: 5_000,

@@ -86,4 +86,5 @@ last observation: {:raise, :error, %RuntimeError{message: "still settling"}}
 
 ## Cleanup
 
-Lane build root `_build-ft-sb2` deleted at close (per checkout cleanup law).
+Lane build root `_build-ft-sb2` deleted at close via `just lane-clean`
+(also reclaimed other orphans; sb2 line: `DELETED: _build-ft-sb2 (351156 KB)`).
