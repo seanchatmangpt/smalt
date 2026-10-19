@@ -21,6 +21,8 @@ import sys
 
 def load_gate(path):
     spec = importlib.util.spec_from_file_location("blob_worm_gate", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"[witness] cannot load gate module from {path}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -36,6 +38,12 @@ def base_obs():
         "overwrite_locked_code": "ContainerLocked",
         "delete_locked_status": 409,
         "delete_locked_code": "ContainerLocked",
+        # SHIM-COURT re-anchor 2026-10-18: gate evolved snapshot-under-hold
+        # checks (snapshot 409/ContainerLocked + post-release 201); the
+        # healthy observation must carry them or verdict() refuses the base.
+        "snapshot_locked_status": 409,
+        "snapshot_locked_code": "ContainerLocked",
+        "snapshot_after_release": 201,
         "hold_release": 200,
         "delete_after_release": 202,
     }
