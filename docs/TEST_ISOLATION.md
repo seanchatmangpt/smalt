@@ -1,5 +1,9 @@
 # TEST_ISOLATION
 
+> The normative contract now lives at `docs/reference/test-isolation-law.md`
+> (adds the async topology, the isolation court, and the runtime exemption
+> registry). This file remains as the historical audit ledger.
+
 # Smalt Test Isolation Contract
 
 ## 1. Per-test unique keys

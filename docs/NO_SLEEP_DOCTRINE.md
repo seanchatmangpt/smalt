@@ -1,5 +1,7 @@
 # No-Sleep Doctrine (reference)
 
+> Rationale and evidence trail: `docs/explanation/no-sleep.md`.
+
 Status: LANDED (project doc, v26.10.18 B8; promoted from
 `docs/jira/v26.10.18/rewrite-drafts/NO-SLEEP-DOCTRINE.md`). Enforcement:
 `scripts/sleep_gate.py` via `just sleep-gate`; non-vacuity court:

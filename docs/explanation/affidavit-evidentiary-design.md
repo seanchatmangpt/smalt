@@ -32,7 +32,7 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
 - **Mechanism:** canonical state-delta JSON admitted through the WASM
   engine export `affi_admit_and_seal/1`; the engine returns a sealed
   352-byte CTRT token binding the decision.
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:219+` (CTRT
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:225+` (CTRT
   layout gate), `lib/smalt/affidavit/seal.ex:30-33` (`admit_and_seal/2`).
 - **Cited authority:** FRCP 37(e) (curable spoliation posture via
   systematic preservation).
@@ -48,8 +48,8 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   nullifier `blake3(delta_hash)` at [176..208]; the host re-derives the
   blake3 leg when `b3sum` is installed and reports the leg as
   `pqc_receipt: unverified_blake3_host` otherwise.
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:219+`
-  (layout gate and host re-derivation, :221-228).
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:225+`
+  (layout gate and host re-derivation, :225-232).
 - **Cited authority:** FRCP 37(e); FRE 901(b)(1) (distinctive
   characteristics) as the design's reference for identification.
 - **smalt integration point:** layout gate runs on every
@@ -67,10 +67,10 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
 - **Mechanism:** a 1-byte deontic modality at CTRT offset [175]
   (modality 1 accept / 2 restricted, selected by the tariff threshold
   `@affidavit_high_tariff_cents`).
-- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:219+` (modality
+- **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex:225+` (modality
   slot in the layout gate);
   selection in `lib/smalt/arm_gateway/router.ex` (`affidavit_seal/2`,
-  :2226).
+  :2239).
 - **Cited authority:** SOX 1514A as the design's reference for
   episodic hold-imposition posture.
 - **smalt integration point:** modality computed per-record at seal
@@ -115,9 +115,16 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
 - **Mechanism:** degraded inputs return typed errors
   (`:payload_too_large` over 16 MiB, `{:error, _}` on garbage delta); a
   subsequent well-formed call still succeeds (no crash-loop); engine
-  load failure is a verbatim BLOCKED flunk, never a skip.
+  load failure is a verbatim BLOCKED flunk, never a skip. Registration
+  update (v26.10.18): the engine runs supervised —
+  `Smalt.Affidavit.WasmEngine.Supervisor`
+  (`lib/smalt/affidavit/wasm_engine_supervisor.ex`, `:one_for_one`,
+  `max_restarts: 3`/s, own-mailbox retry classes) — so a degraded or
+  killed engine returns via supervised restart instead of leaving the
+  sideband permanently dead; callers keep the same typed vocabulary
+  throughout.
 - **Code anchor:** `lib/smalt/affidavit/wasm_engine.ex` (typed-error
-  contract :214-219; fail-closed engine-unavailable path :141);
+  contract :218-223; fail-closed engine-unavailable path :145);
   real-run tier in
   `test/smalt_affidavit_wasm_test.exs` (3 tests, no mocks, no skips).
 - **Cited authority:** FRCP 37(e) is reference for the design position
@@ -136,7 +143,7 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   refused seal, or an unavailable tariff calculator never changes the
   HTTP outcome; witnesses land in the ETS table
   `:smalt_affidavit_witnesses` plus logs, never in wire records.
-- **Code anchor:** `lib/smalt/arm_gateway/router.ex:2191-2195` (wire-up
+- **Code anchor:** `lib/smalt/arm_gateway/router.ex:2198-2208` (wire-up
   law comment + witness table).
 - **Cited authority:** FRE 902(13)-(14) posture reference: records
   certified by a process that demonstrably does not perturb them.
@@ -246,6 +253,22 @@ affidavit side), **VALIDATION-PENDING** (no transcript available).
   machinery (rules, computation, enforcement) is ABSENT on the
   affidavit side. Design intent only.
 
+## Supervised engine lifecycle (context)
+
+`Smalt.Affidavit.WasmEngine.Supervisor`
+(`lib/smalt/affidavit/wasm_engine_supervisor.ex`) wraps the engine:
+`:one_for_one`, `max_restarts: 3` per second, single owner child that
+start_links the named engine and MONITORS it (never links — a
+kill-hammer must not consume supervisor intensity). Retry classes live
+in the owner's own mailbox: `:engine_start_failed` (wasmtime NIF
+teardown window) on `send_after` 100ms doubling capped; abnormal death
+via `:DOWN` on the same own-mailbox retry; artifact-class refusals on
+bounded doubling backoff that degrades typed. Intentional normal stop
+→ owner idles. Every mechanism above rides this envelope: a dead engine
+is a typed `{:error, :engine_unavailable}` window that supervision
+closes, not a silent evidence loss. Receipt:
+`docs/jira/v26.10.18/receipts/b-wasm-supervisor.md`.
+
 ## Reconciled zero/absent set (single source)
 
 As of the 2026-10-16 reconciled validator verdicts, the absent/zeroed
@@ -276,4 +299,7 @@ register is WITNESSED in the WASM seal path smalt mounts:
 
 See Also: `docs/jira/v26.10.16/WRAP_LEDGER.md` (KD-89 section),
 `docs/jira/v26.10.16/receipts/lane606-affidavit-seal-event.md`,
+`docs/explanation/chatman-invariant.md` (the invariant the seal
+admits), `docs/NO_SLEEP_DOCTRINE.md` (the fail-closed/typed-refusal
+posture shared with the no-sleep law),
 `lib/smalt/affidavit/wasm_engine.ex`, `lib/smalt/fin_ops/calculator.ex`.

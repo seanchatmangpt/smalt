@@ -99,7 +99,7 @@ The refusal envelope's variable members include a `details` array. The
 canonical invariant (KD register, v26.10.16): the error envelope is
 byte-identical when `details == []` — an empty `details` list must
 serialize exactly as its absence did before the field existed
-(`lib/smalt/arm_gateway/router.ex:539` and `:560` carry the ARM face —
+(`lib/smalt/arm_gateway/router.ex:552` and `:573` carry the ARM face —
 `details` is added to the envelope only when non-empty, so the
 serialization is byte-identical when `details == []`; the KD
 row is the register of truth). Consumers that pattern-match the envelope
@@ -109,7 +109,7 @@ must not distinguish "no details" from "empty details".
 
 `azurerm`/`go-azure-sdk` build blob endpoints as
 `<account>.blob.<dnsSuffixes.storage>` from the metadata doc
-(`router.ex:2458-2477`, currently `smalt.local`). `/etc/hosts` cannot
+(`router.ex:2475-2490`, currently `smalt.local`). `/etc/hosts` cannot
 wildcard, so that dot-form is unreachable; smalt serves the
 account-in-path form `http://127.0.0.1:8443/{account}/{container}/{blob}`
 (`MIGRATION_FROM_EMULATORS.md` pattern). Control-plane-only terraform

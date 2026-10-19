@@ -56,11 +56,14 @@ verdicts table, as recorded by the roadmap lane:
 | Version lattice | monotone admission over the projected lattice admits exactly the versions the pinned tests admit, and no malformed version | durable referent = `verify/api_admission.rq` in the pack (41-row probe; the `/tmp/kd78_scratch/registry.ex` output was scratch and may be swept) |
 | Defaults bijection | table ↔ shape bijection: every default validator-acceptable, every shape field defaulted-or-user-required | LANDED — `<repo>/tmp/defaults_projected.ex` + `<repo>/tmp/merged_defaults.ttl` (table equality: true, validator-accepted); gate pairing `verify/defaults-bijection.unbound.rq` |
 | Provider matrix | projected matrix byte-identical to the hand-written supplement on the census fixture | LANDED — proof artifacts `<repo>/tmp/{provider_matrix_generated.ex, hand.json, gen.json}`; `diff hand.json gen.json` → IDENTICAL (16 namespaces / 45 rows), re-run by this lane 2026-10-16; template `templates/provider_matrix.ex.eex` |
-| Canonical normalizer | normalization of the probe IRI corpus idempotent and convention-stable | no on-disk artifact located by this lane — row stays UNLOCATED until its artifact + falsifier receipt lands |
+| Canonical normalizer | normalization of the probe IRI corpus idempotent and convention-stable | LANDED — `lib/smalt/projection/canonical.ex` (`Smalt.Projection.Canonical`), artifacts `docs/capabilities.json` + `docs/THIRD_PARTY.md`, drift-fenced by `test/canonical_projection_test.exs`; residual-drift court receipt `docs/jira/v26.10.18/receipts/i26-canonical-residual.md` (regenerated with `mix run --no-start`, 27-test tier green) |
 
-Honest status note (docs lane, 2026-10-16): artifact paths verified to
-exist on disk by this lane (`ls` + `wc -l` + re-run diff), except the
-canonical-normalizer row, which stays UNLOCATED. `tmp/` artifacts are
+Honest status note (docs lane, 2026-10-16; updated 2026-10-18): artifact
+paths verified to
+exist on disk by this lane (`ls` + `wc -l` + re-run diff); the
+canonical-normalizer row, previously UNLOCATED, is now LANDED —
+`Smalt.Projection.Canonical` is on disk with its drift-fence test and
+the i26 residual-drift court receipt. `tmp/` artifacts are
 scratch-class per repo convention (not indexed); the durable referents
 are the pack files under
 `<ggen-marketplace-repo>/packs/smalt-substrate-pack/`. Where a
@@ -100,3 +103,6 @@ and the registry.
   replaces
 - `~/.claude/rules/dfcm-composition-catalog.md` — C20 generator
   plurality (why the single pack surface is curated)
+- `docs/NO_SLEEP_DOCTRINE.md` — the falsifier-first posture the
+  projections share: gates and projections refuse typed, they never
+  wait-and-hope

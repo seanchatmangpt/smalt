@@ -70,3 +70,5 @@ be reproduced twice is not yet a pass.
 - `docs/jira/v26.10.16/receipts/r35-court-x2-judge-log.md` — judge log
 - `docs/explanation/emulation-stance.md` — the same loud-absence
   posture at the wire layer
+- `docs/NO_SLEEP_DOCTRINE.md` — the same observe-not-wait law at the
+  process level: courts read real state, never slept-for state

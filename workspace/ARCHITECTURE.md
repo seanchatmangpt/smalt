@@ -70,11 +70,10 @@ and actor-host/constellation-actors model the on-device actor surface.
         | (AtomVM wasm+      |      | ARM :9443              |
         |  silicon)          |      | TLS twin :9444 (SDKs)  |
         | ETF over framed    |      | egress :8443 (blob/    |
-        | ETF over framed    |      |  cosmos docs, WORM)    |
-        | serial protocol    |      | AMQP 5672 (SB)         |
-        | boot-digest        |      | AMQP 5673 (EH, PARTIAL)|
-        | allowlist          |      +------------------------+
-        +--------------------+          
+        | serial protocol    |      |  cosmos docs, WORM)    |
+        | boot-digest        |      | AMQP 5672 (SB)         |
+        | allowlist          |      | AMQP 5673 (EH, PARTIAL)|
+        +--------------------+      +------------------------+
 ```
 
 Containers diagram (text C4 L2). L3 component detail follows.

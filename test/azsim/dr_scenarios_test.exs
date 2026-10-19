@@ -3,20 +3,21 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   AZB-15 — Plane subtree DR kills (enterprise disaster scenarios).
 
   Four scenarios over a LIVE all-planes node via
-  `Supervisor.terminate_child/restart_child` on the plane subtrees
-  (AZB-09 subtrees, AZB-10 cross-plane wiring as landed deps):
+  `Supervisor.terminate_child/restart_child` on the AZB-09 plane subtrees
+  (AZB-10 cross-plane wiring as landed):
 
     1. Cosmos partition split: kill the data subtree mid-query stream ⇒
-       client sees a TYPED retryable 503 (`RouteNotReady`) — never an
-       untyped 500 — then success on retry after the subtree restarts.
-    2. Service Bus outage: kill the integration subtree ⇒ the AMQP client
-       loses its transport (the `amqp:connection:forced` shape: the broker
-       side of the TCP connection dies), reconnects, and settled messages
-       peek-able after reconnect show ZERO loss (QueueStore rows live in the
-       data-plane Store, outside the blast radius).
+       client sees a TYPED retryable 503 (`RouteNotFound`-class) — never an
+       untyped 500 — then 200 on retry after the subtree restarts.
+    2. Service Bus outage: the integration subtree kill stops the SB/EH
+       listeners AND the broker-side Connection processes (ConnSup) — the
+       client sees the `amqp:connection:forced` transport shape (dead
+       socket); after restart the client reconnects over real TCP and
+       settled messages peek-able after reconnect show ZERO loss (QueueStore
+       rows live in the data-plane Store, outside the blast radius).
     3. STS outage: kill the identity subtree ⇒ cached-valid tokens are still
-       accepted by data/control until TTL (bearer validation is LOCAL — no
-       runtime call into the identity plane); NEW mints answer a typed 503
+       accepted by the data plane (bearer validation is LOCAL — no runtime
+       call into the identity plane); NEW mints answer a typed 503
        `StsUnavailable`.
     4. ARM outage: kill the control subtree ⇒ the data plane is unaffected
        (200s continue), integration keeps accepting TCP.
@@ -25,14 +26,16 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   per scenario. Time-to-first-200 after each kill is measured (wall µs +
   reductions delta) and REPORTED, never asserted absolutely (ticket law).
 
-  Standing: runs in the default `mix test` tier (shared-tree kills follow
-  the AZB-09 `plane_supervision_test.exs` precedent, async: false).
+  Standing: default `mix test` tier; shared-tree kills follow the AZB-09
+  `plane_supervision_test.exs` precedent (async: false).
   """
 
   use ExUnit.Case, async: false
   import SmaltTest.Wire, only: [http_request: 3, http_request: 4]
+  import SmaltTest.AssertEventually, only: [eventually: 2]
 
   alias Smalt.Amqp.QueueStore
+  alias Smalt.Amqp.{FrameCodec}
   alias Smalt.Plane.{ControlSupervisor, DataSupervisor, IdentitySupervisor, IntegrationSupervisor}
 
   @secret "smalt-azb15-dr-test-secret-0123456789abcdef"
@@ -53,67 +56,69 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
     db = "azb15dr" <> unique()
     coll = "c1"
 
-    create_corpus!(egress, db, coll, 3)
-
-    # Baseline: query feed healthy.
+    create_corpus!(egress, db, coll)
     assert %{status: 200} = query_feed(egress, db, coll)
 
     metrics =
       Enum.map(1..@iterations, fn i ->
-        # Kill the data subtree's Store child MID-STREAM (the query stream
-        # keeps issuing while the kill lands; the listener itself stays up —
-        # only the coordinator-owned tables vanish).
+        # Query stream runs while the kill lands (mid-stream kill).
         stream =
           Task.async(fn ->
-            Enum.reduce_while(1..200, [], fn _, acc ->
+            Enum.reduce_while(1..200, :ok, fn _, acc ->
               case query_feed(egress, db, coll) do
-                %{status: 503} = res -> {:cont, [res | acc]}
-                %{status: 200} = res -> {:cont, [res | acc]}
-                other -> {:halt, [other | acc]}
+                %{status: s} when s in [200, 503] -> {:cont, acc}
+                other -> {:halt, {:unexpected, other}}
               end
             end)
           end)
 
-        assert :ok = Supervisor.terminate_child(Smalt.Supervisor, DataSupervisor)
-        # Whole data subtree (Store + egress listener) down.
-        assert_down(egress)
-        assert :ok = Supervisor.restart_child(Smalt.Supervisor, DataSupervisor)
+        # Kill the data subtree's Store child MID-STREAM: the egress listener
+        # survives, the coordinator-owned tables vanish ⇒ the kill window
+        # answers the TYPED retryable 503 (the not_ready?/2 store-down guard
+        # is load-bearing here — shim court in the receipt proves the flip).
+        assert :ok = Supervisor.terminate_child(DataSupervisor, Smalt.Store)
 
+        kill_window = query_feed(egress, db, coll)
+
+        # Whole-subtree DR edge: the rest of the subtree (egress listener)
+        # goes down too — connection refused, the declared blast radius.
+        assert :ok = Supervisor.terminate_child(Smalt.Supervisor, DataSupervisor)
+        assert_down(egress)
         _ = Task.stop(stream)
 
-        # Post-kill stream leg: typed retryable 503 from the surviving
-        # control/mcp... wait — DataSupervisor restart restores Store+listener,
-        # so probe the DOWN window explicitly: kill Store child only (listener
-        # survives), the in-flight outage surface.
+        assert kill_window.status in [503, 410],
+               "kill-window response was #{kill_window.status} #{inspect(kill_window.body)} — untyped failure"
+
+        # Restart; recovery metric = time-to-first-200 (reported, not
+        # asserted absolutely).
         t0 = System.monotonic_time()
         {red0, _} = :erlang.statistics(:reductions)
 
-        %{status: kill_status} = res = query_feed(egress, db, coll)
+        assert :ok = Supervisor.restart_child(Smalt.Supervisor, DataSupervisor)
 
-        # Restore the subtree: Store first (tables), then verify query 200.
-        t1 = wait_first_200(egress, db, coll, 10_000)
+        eventually(
+          fn ->
+            case query_feed(egress, db, coll) do
+              %{status: 200} -> {:ok, :serving}
+              %{status: s, body: b} -> {:retry, "status #{s} #{b}"}
+            end
+          end,
+          deadline_ms: 10_000,
+          observable: "post-DR first-200 (iteration #{i})"
+        )
+
         {red1, _} = :erlang.statistics(:reductions)
-
-        # FALSIFIER: the kill-window response must be TYPED (503), never an
-        # untyped 500. The store-down guard (egress_router not_ready?/2 now
-        # consults the coordinator-owned table set) is load-bearing here; the
-        # shim court in the receipt proves the flip.
-        assert kill_status in [503, 410],
-               "kill-window response was #{res.status} #{inspect(res.body)} — untyped failure"
-
-        assert t1 != :timeout, "no 200 within 10s of subtree restart (iteration #{i})"
 
         %{
           iteration: i,
-          kill_status: kill_status,
-          recovery_us: System.convert_time_unit(t1 - t0, :native, :microsecond),
+          kill_status: kill_window.status,
+          recovery_us: System.convert_time_unit(System.monotonic_time() - t0, :native, :microsecond),
           recovery_reductions: red1 - red0
         }
       end)
 
-    report_recovery("scenario-1-cosmos", metrics)
+    _ = report_recovery("scenario-1-cosmos", metrics)
 
-    # Zero cross-plane failures outside the blast radius.
     assert_cross_plane_clean()
   end
 
@@ -122,7 +127,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   # ===========================================================================
 
   @tag timeout: :infinity
-  test "scenario 2: integration subtree kill — connection:forced, reconnect, no loss, x#{@iterations}" do
+  test "scenario 2: integration subtree kill — forced close, reconnect, no loss, x#{@iterations}" do
     amqp_port = Application.get_env(:smalt, :amqp_port)
     q = "azb15-dr-" <> unique()
 
@@ -133,11 +138,11 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         assert {:ok, _} = QueueStore.enqueue(q, "azb15-settled-#{i}")
 
         # Client connected and serving (real SB listener, real TCP).
-        {:ok, client} = connect_handshake(amqp_port)
+        client = connect_handshake!(amqp_port, 5_000)
 
-        # Kill the whole integration subtree: SB/EH listeners, ConnSup
-        # (the client's broker-side Connection process) — the client sees
-        # the `amqp:connection:forced` transport shape: a dead socket.
+        # Kill the whole integration subtree: SB/EH listeners, ConnSup (the
+        # client's broker-side Connection process dies) — the client sees
+        # the `amqp:connection:forced` transport shape: a closed socket.
         assert :ok = Supervisor.terminate_child(Smalt.Supervisor, IntegrationSupervisor)
 
         assert {:error, :closed} = recv_closed(client, 5_000),
@@ -145,7 +150,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
 
         # Restart: reconnect + handshake over a REAL socket.
         assert :ok = Supervisor.restart_child(Smalt.Supervisor, IntegrationSupervisor)
-        {:ok, client2} = connect_handshake_poll(amqp_port, 10_000)
+        client2 = connect_handshake!(amqp_port, 10_000)
         :gen_tcp.close(client2)
 
         # Settled-after-reconnect peek: zero loss.
@@ -158,7 +163,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         %{iteration: i, recovery_us: 0, recovery_reductions: 0}
       end)
 
-    report_recovery("scenario-2-servicebus", metrics)
+    _ = report_recovery("scenario-2-servicebus", metrics)
     assert_cross_plane_clean()
   end
 
@@ -184,24 +189,24 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         assert :ok = Supervisor.terminate_child(Smalt.Supervisor, IdentitySupervisor)
 
         # NEW mints: typed retryable 503 StsUnavailable.
-        assert %{status: 503, body: b503} = mint(arm),
-               "mint succeeded while identity subtree was dead (iteration #{i})"
+        assert %{status: 503, body: b503} = res = mint(arm),
+               "mint succeeded while identity subtree was dead (iteration #{i}): #{res.status}"
 
         assert Jason.decode!(b503)["error"] == "StsUnavailable"
 
         # Cached-valid token STILL accepted by the data plane (local
         # validation — the anti-vacuity court in the receipt proves this
         # assertion has teeth).
-        assert %{status: 200} = authed_get(egress, token),
-               "cached-valid token rejected during identity outage (iteration #{i})"
+        assert %{status: 200} = res2 = authed_get(egress, token),
+               "cached-valid token rejected during identity outage (iteration #{i}): #{res2.status}"
 
         assert :ok = Supervisor.restart_child(Smalt.Supervisor, IdentitySupervisor)
-        wait_mint_ok(arm, 10_000)
+        wait_mint_ok(arm)
 
         %{iteration: i, recovery_us: 0, recovery_reductions: 0}
       end)
 
-    report_recovery("scenario-3-sts", metrics)
+    _ = report_recovery("scenario-3-sts", metrics)
     assert_cross_plane_clean()
   end
 
@@ -210,51 +215,61 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   # ===========================================================================
 
   @tag timeout: :infinity
-  @tag :azb15_control_kill
   test "scenario 4: control subtree kill — data plane unaffected, x#{@iterations}" do
     arm = Smalt.Config.arm_port()
     egress = Application.get_env(:smalt, :egress_port)
+    amqp_port = Application.get_env(:smalt, :amqp_port)
 
     assert %{status: 200} = query_feed(egress, nil, nil)
 
     metrics =
       Enum.map(1..@iterations, fn i ->
-        # Data-plane 200 before the kill.
-        assert %{status: 200} = query_feed(egress, nil, nil)
+        assert %{status: 200} = res = query_feed(egress, nil, nil),
+               "data plane degraded BEFORE control kill (iteration #{i}): #{res.status}"
 
         assert :ok = Supervisor.terminate_child(Smalt.Supervisor, ControlSupervisor)
         assert_down(arm)
 
         # Data plane UNAFFECTED while control is down.
-        assert %{status: 200} = res = query_feed(egress, nil, nil),
-               "data plane degraded during control outage (iteration #{i}): #{res.status}"
+        assert %{status: 200} = res2 = query_feed(egress, nil, nil),
+               "data plane degraded during control outage (iteration #{i}): #{res2.status}"
 
         assert :ok = Supervisor.restart_child(Smalt.Supervisor, ControlSupervisor)
-        wait_tcp_up(arm, 10_000)
+        t0 = System.monotonic_time()
+        wait_tcp_up(arm)
+        {red0, _} = :erlang.statistics(:reductions)
+        {red1, _} = :erlang.statistics(:reductions)
 
-        # Integration keeps accepting TCP throughout.
-        assert {:ok, _} =
-                 :gen_tcp.connect(~c"127.0.0.1", Application.get_env(:smalt, :amqp_port), [
-                   :binary,
-                   active: false
-                 ], 2_000)
+        # Integration keeps accepting TCP throughout (unkilled plane).
+        eventually(
+          fn ->
+            case :gen_tcp.connect(~c"127.0.0.1", amqp_port, [:binary, active: false], 500) do
+              {:ok, sock} ->
+                :gen_tcp.close(sock)
+                {:ok, :serving}
 
-        %{iteration: i, recovery_us: 0, recovery_reductions: scenario4_recovery(arm)}
+              {:error, reason} ->
+                {:retry, "amqp connect #{inspect(reason)}"}
+            end
+          end,
+          deadline_ms: 5_000,
+          observable: "integration TCP accept"
+        )
+
+        %{
+          iteration: i,
+          recovery_us: System.convert_time_unit(System.monotonic_time() - t0, :native, :microsecond),
+          recovery_reductions: red1 - red0
+        }
       end)
 
-    report_recovery("scenario-4-arm", metrics)
+    _ = report_recovery("scenario-4-arm", metrics)
     assert_cross_plane_clean()
   end
 
   # ===========================================================================
   # Recovery metric (reported, never asserted absolutely)
   # ===========================================================================
-
-  defp scenario4_recovery(arm) do
-    t0 = System.monotonic_time()
-    wait_tcp_up(arm, 10_000)
-    System.convert_time_unit(System.monotonic_time() - t0, :native, :microsecond)
-  end
 
   defp report_recovery(_scenario, metrics), do: metrics
 
@@ -265,16 +280,15 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   defp assert_cross_plane_clean do
     egress = Application.get_env(:smalt, :egress_port)
 
-    # Control alive and serving; data alive and serving; integration
-    # accepting TCP; identity gate OPEN after the scenario.
+    # Data alive and serving (typed); identity gate OPEN after the scenario.
     assert %{status: status} = http_request(egress, "GET", "/dbs")
     assert status in [200, 401]
 
     assert Smalt.Plane.Identity.StsGate.mint_allowed?()
 
     for plane <- [DataSupervisor, ControlSupervisor, IntegrationSupervisor, IdentitySupervisor] do
-      assert Process.whereis(plane) && Process.alive?(Process.whereis(plane)),
-             "plane subtree #{inspect(plane)} did not survive its scenario"
+      assert pid = Process.whereis(plane)
+      assert Process.alive?(pid), "plane subtree #{inspect(plane)} did not survive its scenario"
     end
   end
 
@@ -282,12 +296,16 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   # Harness
   # ===========================================================================
 
-  defp create_corpus!(egress, db, coll, n_docs) do
-    assert %{status: 201} = http_request(egress, "POST", "/dbs", body: Jason.encode!(%{"id" => db}))
-    assert %{status: status} = res = http_request(egress, "POST", "/dbs/#{db}/colls", body: Jason.encode!(%{"id" => coll}))
+  defp create_corpus!(egress, db, coll) do
+    assert %{status: 201} =
+             http_request(egress, "POST", "/dbs", body: Jason.encode!(%{"id" => db}))
+
+    assert %{status: status} =
+             res = http_request(egress, "POST", "/dbs/#{db}/colls", body: Jason.encode!(%{"id" => coll}))
+
     assert status in [201, 409], "coll create: #{res.status} #{res.body}"
 
-    Enum.each(1..n_docs, fn i ->
+    Enum.each(1..3, fn i ->
       assert %{status: 201} =
                http_request(egress, "POST", "/dbs/#{db}/colls/#{coll}/docs",
                  body: Jason.encode!(%{"id" => "doc#{i}", "pk" => "p#{i}"})
@@ -295,7 +313,8 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
     end)
   end
 
-  defp query_feed(_egress, nil, nil), do: http_request(Application.get_env(:smalt, :egress_port), "GET", "/dbs")
+  defp query_feed(_egress, nil, nil),
+    do: http_request(Application.get_env(:smalt, :egress_port), "GET", "/dbs")
 
   defp query_feed(egress, db, coll),
     do: http_request(egress, "GET", "/dbs/#{db}/colls/#{coll}/docs")
@@ -317,93 +336,54 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
     )
   end
 
-  # Kill-window probe: the egress listener is down → the connection must be
-  # refused/closed (declared blast radius), not served garbage.
+  # Whole-subtree blast radius edge: the plane's listener port must be DOWN
+  # (connection refused/closed), not served garbage.
   defp assert_down(port) do
     assert match?({:error, _}, :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 2_000)),
            "port #{port} still accepting while its plane subtree is dead"
   end
 
-  defp wait_first_200(egress, db, coll, deadline_ms) do
-    deadline = System.monotonic_time() + System.convert_time_unit(deadline_ms, :millisecond, :native)
-
-    do_wait_first_200(egress, db, coll, deadline)
+  defp wait_mint_ok(arm) do
+    eventually(
+      fn ->
+        case mint(arm) do
+          %{status: 200} -> {:ok, :minting}
+          %{status: s} -> {:retry, "mint status #{s}"}
+        end
+      end,
+      deadline_ms: 10_000,
+      observable: "post-restart mint 200"
+    )
   end
 
-  defp do_wait_first_200(egress, db, coll, deadline) do
-    t = System.monotonic_time()
+  defp wait_tcp_up(port) do
+    eventually(
+      fn ->
+        case :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 500) do
+          {:ok, sock} ->
+            :gen_tcp.close(sock)
+            {:ok, :up}
 
-    if t > deadline do
-      :timeout
-    else
-      case query_feed(egress, db, coll) do
-        %{status: 200} -> t
-        _ ->
-          # NOTE: no sleeps in this suite (sleep-gate law): the retry loop
-          # spins on the query itself; a hot spin here starves the Bandit
-          # acceptors. Yield via a blocking 2ms recv on a throwaway socket
-          # instead.
-          {:ok, sock} = :gen_tcp.connect(~c"127.0.0.1", 1, [:binary], 2)
-          _ = :gen_tcp.close(sock)
-          do_wait_first_200(ergress_helper(), db, coll, deadline)
-      end
-    end
-  end
-
-  defp ergress_helper, do: Application.get_env(:smalt, :egress_port)
-
-  defp wait_tcp_up(port, deadline_ms) do
-    deadline = System.monotonic_time() + System.convert_time_unit(deadline_ms, :millisecond, :native)
-
-    do_wait_tcp_up(port, deadline)
-  end
-
-  defp do_wait_tcp_up(port, deadline) do
-    if System.monotonic_time() > deadline do
-      flunk("port #{port} never came back up")
-    end
-
-    case :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 200) do
-      {:ok, sock} ->
-        :gen_tcp.close(sock)
-        :ok
-
-      {:error, _} ->
-        :gen_tcp.connect(~c"127.0.0.1", 1, [:binary], 2)
-        do_wait_tcp_up(port, deadline)
-    end
-  end
-
-  defp wait_mint_ok(arm, deadline_ms) do
-    deadline = System.monotonic_time() + System.convert_time_unit(deadline_ms, :millisecond, :native)
-
-    do_wait_mint_ok(arm, deadline)
-  end
-
-  defp do_wait_mint_ok(arm, deadline) do
-    if System.monotonic_time() > deadline, do: flunk("mint never recovered")
-
-    case mint(arm) do
-      %{status: 200} ->
-        :ok
-
-      _ ->
-        :gen_tcp.connect(~c"127.0.0.1", 1, [:binary], 2)
-        do_wait_mint_ok(arm, deadline)
-    end
+          {:error, reason} ->
+            {:retry, "connect #{inspect(reason)}"}
+        end
+      end,
+      deadline_ms: 10_000,
+      observable: "port #{port} back up"
+    )
   end
 
   defp unique, do: Integer.to_string(System.unique_integer([:positive]))
 
-  # -- raw AMQP 1.0 wire client (mirrors test/amqp/connection_test.exs) -------
+  # ===========================================================================
+  # Raw AMQP 1.0 wire client (mirrors test/azsim/amqp_saturation_test.exs)
+  # ===========================================================================
 
   @sasl_header "AMQP" <> <<3, 1, 0, 0>>
   @header "AMQP" <> <<0, 1, 0, 0>>
 
-  defp connect_handshake(port), do: connect_handshake_poll(port, 5_000)
-
-  defp connect_handshake_poll(port, deadline_ms) do
-    deadline = System.monotonic_time() + System.convert_time_unit(deadline_ms, :millisecond, :native)
+  defp connect_handshake!(port, deadline_ms) do
+    deadline = System.monotonic_time() + ms(deadline_ms)
 
     do_connect_handshake(port, deadline)
   end
@@ -419,47 +399,71 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
 
           {:error, :retry} ->
             :gen_tcp.close(client)
-            :gen_tcp.connect(~c"127.0.0.1", 1, [:binary], 2)
             do_connect_handshake(port, deadline)
 
           {:error, other} ->
             flunk("handshake failed: #{inspect(other)}")
         end
 
-      {:error, _} ->
-        :gen_tcp.connect(~c"127.0.0.1", 1, [:binary], 2)
+      {:error, _reason} ->
         do_connect_handshake(port, deadline)
     end
   end
 
   defp handshake(client) do
     :ok = :gen_tcp.send(client, @sasl_header)
-    assert {:ok, @sasl_header} = recv_exact(client, 8)
 
+    case recv_exact(client, 8) do
+      {:ok, @sasl_header} -> :ok
+      {:ok, other} -> {:error, {:sasl_header, other}}
+      {:error, reason} -> {:error, reason}
+    end
+    |> then(fn
+      :ok -> handshake_open(client)
+      err -> err
+    end)
+  end
+
+  defp handshake_open(client) do
     mech = recv_frame(client)
-    assert mech.performative.performative == :sasl_mechanisms
-    assert mech.performative.server_mechanisms == [{:symbol, "ANONYMOUS"}]
 
-    :ok = send_frame(client, {:sasl_init, %{mechanism: "ANONYMOUS"}})
+    if mech.performative.performative != :sasl_mechanisms do
+      {:error, {:expected_sasl_mechanisms, mech.performative.performative}}
+    else
+      :ok = send_frame(client, {:sasl_init, %{mechanism: "ANONYMOUS"}})
+      outcome = recv_frame(client)
 
-    outcome = recv_frame(client)
-    assert outcome.performative.performative == :sasl_outcome
-    assert outcome.performative.code == 0
+      if outcome.performative.performative == :sasl_outcome and outcome.performative.code == 0 do
+        :ok = :gen_tcp.send(client, @header)
 
-    :ok = :gen_tcp.send(client, @header)
-    assert {:ok, @header} = recv_exact(client, 8)
+        case recv_exact(client, 8) do
+          {:ok, @header} -> open_begin(client)
+          {:ok, other} -> {:error, {:header, other}}
+          {:error, reason} -> {:error, reason}
+        end
+      else
+        {:error, {:expected_sasl_outcome, outcome.performative}}
+      end
+    end
+  end
 
+  defp open_begin(client) do
     :ok =
       send_frame(client, {:open, %{container_id: "azb15", max_frame_size: 65_536, channel_max: 65_535}})
 
-    assert %{performative: %{performative: :open}} = recv_frame(client)
+    frame = recv_frame(client)
 
-    :ok =
-      send_frame(client, {:begin,
-       %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
+    if frame.performative.performative == :open do
+      :ok =
+        send_frame(client, {:begin,
+         %{next_outgoing_id: 1, incoming_window: 10_000, outgoing_window: 10_000, handle_max: 100}})
 
-    assert %{performative: %{performative: :begin}} = recv_frame(client)
-    :ok
+      frame2 = recv_frame(client)
+
+      if frame2.performative.performative == :begin, do: :ok, else: {:error, {:expected_begin, frame2}}
+    else
+      {:error, {:expected_open, frame}}
+    end
   end
 
   defp send_frame(client, {:sasl_init, %{}} = perf) do
@@ -503,4 +507,6 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
       {:ok, _data} -> recv_closed(client, timeout)
     end
   end
+
+  defp ms(n), do: System.convert_time_unit(n, :millisecond, :native)
 end

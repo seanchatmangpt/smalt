@@ -61,6 +61,14 @@ DOCS_ROOT := parent_directory(justfile_directory())
     check docs/reference/ports-and-planes.md
     check docs/reference/arm-gateway.md
     check docs/reference/ets-tables.md
+    # v26.10.18 docs-audit D15: Diataxis gap pages.
+    check docs/tutorials/planes-profiles.md
+    check docs/how-to/how-to-run-burn.md
+    check docs/how-to/how-to-write-tests.md
+    check docs/how-to/how-to-add-config-key.md
+    check docs/reference/test-isolation-law.md
+    check docs/reference/burn-receipt-schema.md
+    check docs/explanation/no-sleep.md
     check docs/explanation/affidavit-evidentiary-design.md
     check docs/WIRE_PARITY.md
     check docs/TERRAFORM_TRUST.md

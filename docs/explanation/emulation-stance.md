@@ -70,3 +70,5 @@ authority, and changing them regresses real handshakes. (Register:
   only by receipt)
 - `docs/explanation/two-tier-enclave.md` — the same 80/20 logic applied
   to the terraform story (native primary, wire opt-in)
+- `docs/NO_SLEEP_DOCTRINE.md` — wire pinions are witnessed on real
+  handshakes, never fixed by waiting

@@ -41,10 +41,23 @@ and refuses to boot on any held port (fail-closed collision check).
 paths. `just sdk-ts` and `test/sdk-smoke/run.mjs` boot their own substrate and
 KILL whatever holds 9443 first — never run concurrently with lane substrates.
 
+## SMALT_PLANES
+
+Plane selection narrows WHICH listeners boot; it never changes the port
+law. `SMALT_PLANES` (comma list) or `config :smalt, :planes, [...]`;
+default `:all` (byte-identical boot). Known planes: `control`, `data`,
+`integration`, `identity`; an unknown name refuses boot typed with
+`{:invalid_plane, name}` at runtime-config time (`config/runtime.exs`,
+`lib/smalt/planes.ex`, `Smalt.Config.planes()` as the read surface). With
+`:all` no `config/env/az_prod_<plane>.exs` profile is imported — profiles
+are opt-in per explicitly selected plane. Walkthrough:
+`docs/tutorials/planes-profiles.md`.
+
 ## Environment variables
 
 | var | effect |
 |---|---|
+| `SMALT_PLANES` | plane selection (see section above) |
 | `SMALT_TEST_ARM_PORT` / `SMALT_TEST_EGRESS_PORT` / `SMALT_TEST_AMQP_PORT` / `SMALT_TEST_EVENT_HUBS_PORT` | harness-level port pins read by `scripts/bench/lib.sh` `bench_boot` |
 | `SMALT_BENCH_{ARM,DATA,AMQP}_PORT` | `just bench` private-port override |
 | `SMALT_BIND_IP` | bind address override (default loopback) |
@@ -55,3 +68,6 @@ KILL whatever holds 9443 first — never run concurrently with lane substrates.
 - `lib/smalt/application.ex` — listener child specs and port functions
 - `scripts/bench/lib.sh` — lane port law implementation
 - `docs/how-to/dev-loop.md` — private port allocation
+- `docs/tutorials/planes-profiles.md` — plane selection walkthrough
+- `docs/reference/burn-receipt-schema.md` — burn row schema (burn lanes
+  write per-plane rows)

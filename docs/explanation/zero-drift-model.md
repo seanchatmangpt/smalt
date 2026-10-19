@@ -105,3 +105,5 @@ like" from a function of the reader into a receipt of the writer.
   `build_resource_record`
 - `docs/explanation/semantic-kernel-roadmap.md` — defaults-bijection
   projection
+- `docs/NO_SLEEP_DOCTRINE.md` — the plan is an observation, not a
+  wait: drift is read from state, never inferred from elapsed time

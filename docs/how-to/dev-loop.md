@@ -213,3 +213,6 @@ needs a cold build.
 - `docs/JUST_REFERENCE.md` (full recipe surface + exit contracts)
 - `docs/explanation/architecture.md` (substrate containers, enclave tiers)
 - `docs/XAAS_PRIOR_ART.md` (status-flip discipline, G4/G5)
+- `docs/how-to/how-to-run-burn.md` (saturation burn lanes)
+- `docs/how-to/how-to-write-tests.md` (canonical test foundations)
+- `docs/how-to/how-to-add-config-key.md` (ontology -> smalt.gen -> census)

@@ -39,8 +39,8 @@ embedded: `3 tests, 0 failures` via `scripts/fast_test.sh`); the seal
 court: `docs/jira/v26.10.16/receipts/r215-affidavit-seal-court.md`.
 Code: `lib/smalt/affidavit/seal.ex`,
 `lib/smalt/affidavit/wasm_engine.ex` (fail-closed engine-unavailable
-path at :141, typed-error contract at :214-219, CTRT layout gate at
-:219+).
+path at :145, typed-error contract at :218-223, CTRT layout gate at
+:225+).
 
 ## Where it lives: the invariant gates
 

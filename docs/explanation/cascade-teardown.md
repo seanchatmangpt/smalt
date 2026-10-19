@@ -127,3 +127,5 @@ ran before it.
 - `test/arm_cascade_teardown_test.exs` — the fence
 - `docs/jira/v26.10.16/WRAP_LEDGER.md` — D127 row, FR-6 teardown scope
 - `docs/explanation/semantic-kernel-roadmap.md` — cascade-DAG projection
+- `docs/NO_SLEEP_DOCTRINE.md` — teardown convergence is polled on
+  observables, never assumed after a delay
