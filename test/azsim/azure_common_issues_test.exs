@@ -91,6 +91,7 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
         |> Enum.map(fn {:ok, res} -> res end)
 
       winners = Enum.filter(results, &match?({:ok, _}, &1))
+      IO.inspect(results, label: "VECTOR_1_RESULTS")
       losers =
         Enum.filter(results, fn res ->
           match?({:error, :precondition_failed, _}, res) or

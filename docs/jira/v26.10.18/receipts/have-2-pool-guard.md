@@ -70,7 +70,7 @@ exit=0
 $ tail -1 tmp/have/state_ledger.jsonl
 {"deficit": 14, "kind": "alert", "severity": "SEV2", "sustained": true, "target_pool": 20, "ts": "2026-10-19T04:30:15Z", "type": "have_worker_fleet_active_count", "workers": 6}
 $ tail -1 tmp/have/dispatch_requests.jsonl
-{"deficit": 14, "kind": "dispatch_request", "requested_by": "pool_saturation_guard", "severity": "SEV2", "target_pool": 20, "ts": "2026-10-19T02:30:15Z"...
+{"deficit": 14, "kind": "dispatch_request", "requested_by": "pool_saturation_guard", "severity": "SEV2", "target_pool": 20, "ts": "2026-10-19T04:30:15Z", "workers": 6}
 ```
 
 Note: the SEV3→SEV2 flip came from the real previous heartbeat
