@@ -228,7 +228,7 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | py-servicebu | [py-servicebus.md](sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](sdk-results/spc-bands.md) | SUSPECT | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -282,9 +282,11 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-30 | (no receipt file — justfile module `justfile.d/30-burn.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-31 | (no receipt file — justfile module `justfile.d/31-have.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-32 | (no receipt file — justfile module `justfile.d/32-verification.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-33 | (no receipt file — justfile module `justfile.d/33-sleep-gate-ext.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-34 | (no receipt file — justfile module `justfile.d/34-nightly.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-35 | (no receipt file — justfile module `justfile.d/35-envelope.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 
-Receipts asserting results with no real output found in-file:
-
-- **SUSPECT**: `spc-bands.md` (standing UNKNOWN)
+None: every receipt contains at least one exit-code, test/probe count, or PASS/FAIL token.

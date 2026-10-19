@@ -18,8 +18,9 @@ seven source families:
    makes any unpaired egress "code" literal exit 1 with a typed
    `UNRESOLVED_STATUS` message instead of emitting a silent `| egress | ? |`
    row.
-3. `test/compliance/*.exs` (`["code"] == "..."` assertions; "?" status by
-   design — the corpus pins the code, not the status)
+3. ~~`test/compliance/*.exs`~~ — RETIRED@64f6099 (compliance corpus deleted;
+   the generator no longer reads a test source family — the doc's "?" status
+   rows for retired compliance pins persist via the ANNOTATIONS table)
 4. `lib/smalt/arm_gateway/lro.ex` (`extract_lro`: LRO terminal-state envelopes)
 5. `lib/smalt/policy.ex` (`extract_policy`: PolicyViolation denial envelope)
 6. `lib/smalt/auth/bearer.ex` (`extract_bearer`: 401 refusal codes via
@@ -46,11 +47,11 @@ carry a mutation proof (see Mutation standard).
 ## Lease: who regens when
 
 - Any lane whose landing touches a wire-visible error path (`router.ex`,
-  `egress_router.ex`, engine error tuples, sentinel/KV/blob error shapes,
-  `test/compliance/*.exs` rows) runs `python3 scripts/gen_error_codes.py` as
+  `egress_router.ex`, engine error tuples, sentinel/KV/blob error shapes)
+  runs `python3 scripts/gen_error_codes.py` as
   the FINAL step of its receipt — same as ARM's regen-last precedent.
 - Lanes not touching wire error paths are exempt.
-- A fence failure (`test/error_codes_doc_test.exs` → `--check` exit 1) observed
+- A fence failure (`--check` exit 1) observed
   from ANOTHER lane's landing is ROUTED to that lane as a typed
   `POLICY_MISS[wire-error-path-without-regen]`; the observer does not regen
   unilaterally (regen-race avoidance). The runtime-contracts lane regens only
@@ -63,9 +64,11 @@ carry a mutation proof (see Mutation standard).
 
 ## The fence
 
-`test/error_codes_doc_test.exs` runs `--check` and fails on any drift —
-including line-cite drift, which is expected under fan-out churn. Expected
-firings: any egress/arm/compliance landing without regen. A firing with NO
+RETIRED@64f6099: `test/error_codes_doc_test.exs` went with the corpus.
+Drift is caught by `python3 scripts/gen_error_codes.py --check` as a manual
+gate / `just publish-dry` regen-identity stage until a successor fence lands
+in `verification/` (per the generator header). Expected firings: any
+egress/arm landing without regen. A firing with NO
 recent source landing is a defect signal, not churn.
 
 ## Mutation standard

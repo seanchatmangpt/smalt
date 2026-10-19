@@ -332,6 +332,10 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-30 | (no receipt file — justfile module `justfile.d/30-burn.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-31 | (no receipt file — justfile module `justfile.d/31-have.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-32 | (no receipt file — justfile module `justfile.d/32-verification.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-33 | (no receipt file — justfile module `justfile.d/33-sleep-gate-ext.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-34 | (no receipt file — justfile module `justfile.d/34-nightly.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-35 | (no receipt file — justfile module `justfile.d/35-envelope.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

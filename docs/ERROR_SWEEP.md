@@ -6,6 +6,13 @@
 > `blob_route_guarded` egress refactor, the lro.ex lens-9 refactor) legitimately
 > move code without invalidating the ruling. Do not treat stale line numbers as
 > findings; re-run the sweep to re-pin.
+>
+> **Post-reset (v26.10.19, 64f6099):** every `test/...` cite in this ledger
+> names a file deleted with the legacy corpus — no successor path exists for
+> those specific suites; the rulings survive as history in git. The
+> `lib/`-only rulings remain pinned to files still on disk. Re-sweep
+> witnesses on the post-reset tree land against `test/internal/` and
+> `verification/{ts,py}`.
 
 Sweep 2026-10-14, canonical checkout ~/smalt, concurrent-lane aware
 (files modified within 15 min of sweep time were skipped and are listed IN-FLIGHT).
@@ -101,7 +108,7 @@ Every site re-classified below. No lib/smalt edits were required.
 | lib/smalt/messaging/amqp/frame_codec.ex:518-532,690-693 | BOUNDARY-TRANSLATOR | v1 IN-FLIGHT file now landed: FunctionClauseError -> `{:error, :bad_performative_fields}` (clean close/detach); v1 safe_atom atom-flood observation FIXED by its lane — `String.to_existing_atom` + binary passthrough, atoms never minted from wire |
 | lib/smalt/egress_router.ex:1425,1529; lib/smalt/tls.ex:126 (bandit_opts),283 (safe_decode),376 (sign_tbs); lib/smalt/graphlaw/validator.ex:405 | (unchanged rulings, re-pinned lens-8) | v1 rulings hold on re-read; tls.ex carries the v1 fail-closed fix |
 
-### v2 python drivers (gates/*.py, scripts/stress/{soak,chaos_kill}.py, test/invariant_gates_test.py)
+### v2 python drivers (gates/*.py, scripts/stress/{soak,chaos_kill}.py; test/invariant_gates_test.py — RETIRED@64f6099, successor `scripts/invariant_gates.py`)
 
 | file:line | class | verdict |
 |---|---|---|
@@ -113,7 +120,7 @@ Every site re-classified below. No lib/smalt edits were required.
 | scripts/stress/chaos_kill.py:416 (gate_pressure) | BOUNDARY-TRANSLATOR | request failures counted into `errors` in the phase receipt (surfaced) |
 | scripts/stress/chaos_kill.py:586-656 main guard | crash-appropriate | traceback :655 + sys.exit(1) :656 |
 | gates/common.py:199-232 (invariant gate: `run_gate`, verdict_ok) | fail-closed | exception -> verdict_ok=False, printed ERROR, recorded in receipt — gate vacuity impossible |
-| test/invariant_gates_test.py, scripts/stress/*.py OSError sites | crash-appropriate | port-probe loops, exit-code-checked subprocesses |
+| test/invariant_gates_test.py (RETIRED@64f6099; successor `scripts/invariant_gates.py`), scripts/stress/*.py OSError sites | crash-appropriate | port-probe loops, exit-code-checked subprocesses |
 
 ### v2 gate receipts
 

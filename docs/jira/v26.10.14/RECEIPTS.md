@@ -677,6 +677,42 @@ count, or PASS/FAIL token) found in the file.
 | w7-review | [w7-review.md](../v26.10.18/receipts/w7-review.md) | PASS | W7 residual review — group 6 (review lane, Context: solo) |
 | w8-review | [w8-review.md](../v26.10.18/receipts/w8-review.md) | PASS | W8 residual review — workqueue group 7 |
 | w9-review | [w9-review.md](../v26.10.18/receipts/w9-review.md) | UNKNOWN | W9 residual review — group 8 (review lane, Context: solo) |
+| kd100-instan | [kd100-instance-discovery-tbd.md](../v26.10.19/receipts/kd100-instance-discovery-tbd.md) | PASS | kd100-instance-discovery-tbd.md — KD-100 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
+| kd101-eg-web | [kd101-eg-webhook-tbd.md](../v26.10.19/receipts/kd101-eg-webhook-tbd.md) | SUSPECT | kd101-eg-webhook-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd102-kv-sec | [kd102-kv-secrets-softdelete-tbd.md](../v26.10.19/receipts/kd102-kv-secrets-softdelete-tbd.md) | PASS | kd102-kv-secrets-softdelete-tbd.md — KD-102 witness (lane, 2026-10-19) |
+| kd103-kv-sec | [kd103-kv-secrets-backup-restore-tbd.md](../v26.10.19/receipts/kd103-kv-secrets-backup-restore-tbd.md) | PASS | kd103-kv-secrets-backup-restore-tbd.md — KD-103 witness (lane, 2026-10-19) |
+| kd104-kv-cer | [kd104-kv-certificates-tbd.md](../v26.10.19/receipts/kd104-kv-certificates-tbd.md) | PASS | kd104-kv-certificates-tbd.md — KD-104 witness (lane, 2026-10-19) |
+| kd105-ps256- | [kd105-ps256-external-verify-tbd.md](../v26.10.19/receipts/kd105-ps256-external-verify-tbd.md) | UNKNOWN | kd105-ps256-external-verify-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd106-skr-re | [kd106-skr-release-contract-tbd.md](../v26.10.19/receipts/kd106-skr-release-contract-tbd.md) | PASS | kd106-skr-release-contract-tbd.md — KD-106 witness (lane, 2026-10-19) |
+| kd107-blob-s | [kd107-blob-snapshots-tbd.md](../v26.10.19/receipts/kd107-blob-snapshots-tbd.md) | SUSPECT | kd107-blob-snapshots-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd108-blob-l | [kd108-blob-lease-acl-tbd.md](../v26.10.19/receipts/kd108-blob-lease-acl-tbd.md) | SUSPECT | kd108-blob-lease-acl-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd109-appcon | [kd109-appconfig-feature-flags-tbd.md](../v26.10.19/receipts/kd109-appconfig-feature-flags-tbd.md) | PASS | kd109-appconfig-feature-flags-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd110-thrott | [kd110-throttling-infinity-tbd.md](../v26.10.19/receipts/kd110-throttling-infinity-tbd.md) | PASS | kd110-throttling-infinity-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd111-arm-lr | [kd111-arm-lro-narrow-tbd.md](../v26.10.19/receipts/kd111-arm-lro-narrow-tbd.md) | PASS | kd111-arm-lro-narrow-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd112-arm-po | [kd112-arm-policy-initiatives-tbd.md](../v26.10.19/receipts/kd112-arm-policy-initiatives-tbd.md) | SUSPECT | kd112-arm-policy-initiatives-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd112-policy | [kd112-policy-exemptions-initiatives.md](../v26.10.19/receipts/kd112-policy-exemptions-initiatives.md) | PASS | lane-pol — KD-112 policy exemptions + initiatives (policySetDefinitions) |
+| kd113-arm-rb | [kd113-arm-rbac-storage-only-tbd.md](../v26.10.19/receipts/kd113-arm-rbac-storage-only-tbd.md) | PASS | kd113-arm-rbac-storage-only-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd99-sts-hs2 | [kd99-sts-hs256-tbd.md](../v26.10.19/receipts/kd99-sts-hs256-tbd.md) | PASS | kd99-sts-hs256-tbd.md — KD-99 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
+| v261019-07-r | [v261019-07-reset-inventory.md](../v26.10.19/receipts/v261019-07-reset-inventory.md) | LANDED | V261019-07 (reset-inventory) |
+| v261019-08-t | [v261019-08-ts-external-suite.md](../v26.10.19/receipts/v261019-08-ts-external-suite.md) | LANDED | V261019-08 (ts-external-suite) |
+| v261019-09-p | [v261019-09-py-external-suite.md](../v26.10.19/receipts/v261019-09-py-external-suite.md) | SUSPECT | V261019-09 (py-external-suite) |
+| v261019-10-r | [v261019-10-residual-elixir-tier.md](../v26.10.19/receipts/v261019-10-residual-elixir-tier.md) | ALIVE | V261019-10 (residual-elixir-tier) |
+| v261019-11-t | [v261019-11-test-deletion-gate.md](../v26.10.19/receipts/v261019-11-test-deletion-gate.md) | LANDED | V261019-11 (test-deletion-gate) |
+| v261019-12-c | [v261019-12-court-x2-close.md](../v26.10.19/receipts/v261019-12-court-x2-close.md) | UNKNOWN | V261019-12 (court-x2-close) |
+| v261019-13-i | [v261019-13-identity-rs256.md](../v26.10.19/receipts/v261019-13-identity-rs256.md) | PASS | V261019-13 (identity-rs256) — REAL WITNESS (kd-registrar lane) |
+| v261019-14-b | [v261019-14-boot-library.md](../v26.10.19/receipts/v261019-14-boot-library.md) | ALIVE | V261019-14 (boot-library) |
+| v261019-15-v | [v261019-15-verification-gates.md](../v26.10.19/receipts/v261019-15-verification-gates.md) | ALIVE | V261019-15 (verification-gates) |
+| v261019-cour | [v261019-court-census.md](../v26.10.19/receipts/v261019-court-census.md) | UNKNOWN | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
+| v261019-enve | [v261019-envelope-automation.md](../v26.10.19/receipts/v261019-envelope-automation.md) | UNKNOWN | v26.10.19 envelope lane — automation-boundary gate + aggregate wiring **NO-CONTEXT** |
+| v261019-enve | [v261019-envelope-container.md](../v26.10.19/receipts/v261019-envelope-container.md) | UNKNOWN | v26.10.19 envelope lane — container-boundary gate wiring skeleton **NO-CONTEXT** |
+| v261019-enve | [v261019-envelope-iac-smoke.md](../v26.10.19/receipts/v261019-envelope-iac-smoke.md) | PARTIAL_ALIVE | v261019-envelope-iac-smoke — Phase 3 gate 3 upstream infrastructure smoke (IaC witness lane) |
+| v261019-enve | [v261019-envelope-leak-check.md](../v26.10.19/receipts/v261019-envelope-leak-check.md) | UNKNOWN | v26.10.19 envelope lane — leak-check wiring receipt **NO-CONTEXT** |
+| v261019-enve | [v261019-envelope-orchestration.md](../v26.10.19/receipts/v261019-envelope-orchestration.md) | UNKNOWN | v26.10.19 envelope lane — orchestration-boundary gate wiring skeleton **NO-CONTEXT** |
+| v261019-enve | [v261019-envelope-port-bands.md](../v26.10.19/receipts/v261019-envelope-port-bands.md) | FAIL | v26.10.19 Envelope: Non-Overlapping Port Reservation Bands |
+| v261019-rc-r | [v261019-rc-rewrite-census.md](../v26.10.19/receipts/v261019-rc-rewrite-census.md) | ALIVE | V261019-RC (rewrite-census: test-volume before/after) |
+| v261019-vol- | [v261019-vol-census.md](../v26.10.19/receipts/v261019-vol-census.md) | UNKNOWN | V261019-FIN (test-volume census) |
+| v261019-wo1- | [v261019-wo1-subject-sha-lease.md](../v26.10.19/receipts/v261019-wo1-subject-sha-lease.md) | ALIVE | WO-1 lane receipt — SUBJECT_SHA required-arg + flock image-build lease |
+| v261019-ws-c | [v261019-ws-court-live.md](../v26.10.19/receipts/v261019-ws-court-live.md) | FAIL | ws-court LIVE leg — substrate up, ARM probe PASS **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 
@@ -745,7 +781,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | SUSPECT | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -764,6 +800,8 @@ No receipt file on disk: cli-02.
 | ts-servicebu | [ts-servicebus-census.md](../v26.10.16/sdk-results/ts-servicebus-census.md) | PASS | TS-08 — Service Bus census (real @azure/service-bus) against the smalt substrate **NO-CONTEXT** |
 | ts-storage-b | [ts-storage-blob.md](../v26.10.16/sdk-results/ts-storage-blob.md) | PASS | TS-2 — real @azure/storage-blob (TypeScript) against the smalt blob plane **NO-CONTEXT** |
 | version-latt | [version-lattice-receipt.md](../v26.10.16/sdk-results/version-lattice-receipt.md) | PARTIAL_ALIVE | Version Lattice Receipt — KD-78 monotonic admission across ALL admitted types **NO-CONTEXT** |
+| wf5-py-edge- | [wf5-py-edge-resilience.md](../v26.10.19/sdk-results/wf5-py-edge-resilience.md) | SUSPECT | External workflow receipt: wf5-edge-resilience (py) **NO-CONTEXT** |
+| wf5-ts-edge- | [wf5-ts-edge-resilience.md](../v26.10.19/sdk-results/wf5-ts-edge-resilience.md) | UNKNOWN | External workflow receipt: wf5-edge-resilience (ts) **NO-CONTEXT** |
 
 ## Enclave testbed
 
@@ -805,6 +843,10 @@ No receipt file on disk: cli-02.
 | dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-30 | (no receipt file — justfile module `justfile.d/30-burn.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-31 | (no receipt file — justfile module `justfile.d/31-have.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-32 | (no receipt file — justfile module `justfile.d/32-verification.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-33 | (no receipt file — justfile module `justfile.d/33-sleep-gate-ext.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-34 | (no receipt file — justfile module `justfile.d/34-nightly.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-35 | (no receipt file — justfile module `justfile.d/35-envelope.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 
@@ -820,4 +862,9 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `errc4-hdr.md` (standing ALIVE)
 - **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
 - **SUSPECT**: `i29-court-x2-final.md` (standing UNKNOWN)
-- **SUSPECT**: `spc-bands.md` (standing UNKNOWN)
+- **SUSPECT**: `kd101-eg-webhook-tbd.md` (standing UNKNOWN)
+- **SUSPECT**: `kd107-blob-snapshots-tbd.md` (standing UNKNOWN)
+- **SUSPECT**: `kd108-blob-lease-acl-tbd.md` (standing UNKNOWN)
+- **SUSPECT**: `kd112-arm-policy-initiatives-tbd.md` (standing UNKNOWN)
+- **SUSPECT**: `v261019-09-py-external-suite.md` (standing UNKNOWN)
+- **SUSPECT**: `wf5-py-edge-resilience.md` (standing UNKNOWN)
