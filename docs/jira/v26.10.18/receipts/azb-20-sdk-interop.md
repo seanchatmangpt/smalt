@@ -230,3 +230,14 @@ MIX_BUILD_ROOT=_build-lane-azb20r just azsim-sdk   # exit 1, ~25 min (cold: +10 
 Artifacts: `tmp/azb20/matrix.json` (45 rows, run 2), `/tmp/azb20-rerun2.log`,
 `test/sdk-full/.logs/azb20-*-substrate.log`. Build root `_build-lane-azb20r` left for
 coordinator reclaim (`just lane-clean`).
+
+### Cross-lane disclosure (compile-freeze SLA, KV feature ownership)
+
+`lib/smalt/data_plane/key_vault_actions.ex` (KV/azb-20 feature surface) was repaired by
+the shim-court-repair lane on 2026-10-18: an in-flight edit had consumed the `end`
+closing `purge_deleted_key/1`, breaking the shared compile; the sibling lane restored the
+`end` in-file under marker `# UNBLOCK-FIX (lane shim-court-repair, 2026-10-18)`.
+Feature ownership of `key_vault_actions.ex` (incl. `purge_deleted_key/1` and the
+`update_key_properties` insertion) stays with the KV/azb-20 lane. Disclosed here per the
+compile-freeze-disclosure law; mirrored in
+`docs/jira/v26.10.18/receipts/i29-shim-court-repair.md` (UNBLOCK-FIX disclosure section).
