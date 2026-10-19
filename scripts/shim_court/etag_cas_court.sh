@@ -46,9 +46,16 @@ src = open(path).read()
 old = ("            ConditionalHeaders.evaluate(headers, existing[\"_etag\"]) == :proceed ->\n"
        "              # Atomic check+write: CAS keyed on the CURRENT STORED RECORD.\n"
        "              case Store.compare_and_swap(@docs_table, key, existing, updated) do")
-new = ("            # SHIM-COURT etag-cas: atomic CAS -> plain put\n"
+# Widen: neutralize the ConditionalHeaders GUARD too, not just the CAS. A
+# narrower shim (CAS -> put, guard kept) cannot flip: each loser re-reads the
+# already-updated record, evaluates its stale If-Match against it, and falls
+# into the `true ->` 412 catch-all — the pristine 1x200+5x412 shape reproduces
+# WITHOUT atomicity (witnessed 2026-10-19). The class under test is the
+# non-atomic check-then-write, so the shim admits EVERY conditional writer
+# through a plain Store.put: six 200s, lost update, gate must refuse.
+new = ("            # SHIM-COURT etag-cas: atomic CAS -> unconditional put\n"
        "            # (every conditional writer wins; the race becomes six 200s)\n"
-       "            ConditionalHeaders.evaluate(headers, existing[\"_etag\"]) == :proceed ->\n"
+       "            if_match != nil ->\n"
        "              case (Store.put(@docs_table, key, updated) && :ok) do")
 assert src.count(old) == 1, f"expected exactly one replace-path CAS, got {src.count(old)}"
 open(path, "w").write(src.replace(old, new))
