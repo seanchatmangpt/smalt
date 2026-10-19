@@ -1,5 +1,7 @@
 # i29 court-x2 DRY-RUN leg 1 — full `mix test` under load
 
+Context: solo(MIX_BUILD_ROOT=_build-ft-court1 mix test, two full runs)
+
 - Date: 2026-10-18, repo /Users/sac/smalt, build root `_build-ft-court1` (no rm, no edits, no git).
 - Context: solo(MIX_BUILD_ROOT=_build-ft-court1 mix test) — two full runs + solo reruns of failing tests.
 - Machine: Darwin 25.2.0 (arm64); tree busy with concurrent lanes (quiet-check deliberately not run — dry-run leg).

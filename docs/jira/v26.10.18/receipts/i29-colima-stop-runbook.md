@@ -1,5 +1,7 @@
 # I29 — Colima-Stop Runbook (AZB-23 quiet-machine transition)
 
+Context: solo(no execution; typed recommendation only)
+
 Standing: **TYPED_RECOMMENDATION** (no execution; Context: solo)
 Date: 2026-10-18
 Inputs: `i29-port-census.md` (colima ssh mux 61023 holds 9443/8443/5672), `i29-docker-reclaim.md`,

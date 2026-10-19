@@ -1,5 +1,7 @@
 # i29 capabilities.json drift — canonical_projection fence
 
+Context: pair(i29-full-soak-c lane, canonical projection fence)
+
 Date: 2026-10-18 22:48 PDT · Context: pair(i29-full-soak-c lane, canonical projection fence)
 
 Standing: **PASS** (drift diagnosed, sanctioned regen applied, fence green x2)

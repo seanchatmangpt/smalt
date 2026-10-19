@@ -1,5 +1,7 @@
 # i29 — Wire tier 2x fresh at HEAD
 
+Context: slice(amqp_wire x2)
+
 - **Context**: slice(amqp_wire x2)
 - **Subject**: /Users/sac/smalt @ HEAD `1a309e2` (>= 2106032 satisfied). Working tree carried in-flight lane edits (`lib/smalt/messaging/event_hubs.ex`, `lib/smalt/plane/integration_supervisor.ex`, `test/test_helper.exs`, etc. per `git status`) — run is at working tree, not a clean HEAD checkout.
 - **Command** (both runs, cwd /Users/sac/smalt):

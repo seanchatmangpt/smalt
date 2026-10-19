@@ -1,5 +1,7 @@
 # i29 capabilities.json drift — takeover verification (pair)
 
+Context: pair(probe lane i29-capabilities-drift.md never landed; this receipt supersedes it)
+
 Date: 2026-10-18 22:50 PDT · Context: pair(probe lane i29-capabilities-drift.md never landed; this receipt supersedes it)
 
 ## Standing: PASS (drift face closed, byte-identical regen confirmed on HEAD)

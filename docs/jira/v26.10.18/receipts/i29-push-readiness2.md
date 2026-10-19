@@ -1,5 +1,7 @@
 # i29-push-readiness2 — re-audit of the unpushed b9a6dc1 lineage
 
+Context: solo(read-only audit, no mutations)
+
 - Date: 2026-10-18, repo /Users/sac/smalt, branch main
 - Range: `origin/main..main` = 12 commits, base 44b0859, HEAD b9a6dc1
 - Method: per-commit `git diff-tree` file counts + secret-pattern grep on each

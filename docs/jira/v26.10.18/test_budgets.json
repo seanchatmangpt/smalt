@@ -921,6 +921,15 @@
     "Elixir.Compliance.C2KeyvaultTest.test C2.9b SKR admission accepts the real nested x-ms-isolation-tee MAA form": {
       "tier": "default"
     },
+    "Elixir.ComplianceLoaderTest.test compliance inventory: all 7 families are present": {
+      "tier": "default"
+    },
+    "Elixir.ComplianceLoaderTest.test compliance inventory: per-file test counts match the register": {
+      "tier": "default"
+    },
+    "Elixir.ComplianceLoaderTest.test compliance inventory: the register sums to 170": {
+      "tier": "default"
+    },
     "Elixir.CorpusTest.test corpus files exist on disk (one per family, plus helper + README)": {
       "tier": "default"
     },
@@ -928,6 +937,327 @@
       "tier": "default"
     },
     "Elixir.CorpusTest.test every corpus fix site still exists in lib/ (dead-citation fence)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test Accept header never changes response content-type or status": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test Accept pinned on ledger tx + KV action routes (round-2 matrix)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test C3 row-8: bad query bodies answer the Cosmos BadRequest envelope, not InvalidBody": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test CORS lane 19 item 6: CORS default answers allow-origin *": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test CORS lane 19 item 6: configured CORS allowlist admits listed, refuses unlisted": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test HEAD container tolerates a partial container record (nil header value)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KD-15 /keys challenge KD-15: non-/keys tokenless routes keep their prior behavior": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KD-15 /keys challenge KD-15: tokenless GET /keys challenges with 401 + params in anonymous mode": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KD-15 /keys challenge KD-15: tokenless GET /keys challenges with 401 + params in enforce mode": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create refusals carry x-ms-request-id and x-ms-version (blob_error F5 fence)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create: allowed_operations list admits; nested claim admits": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create: nested non-claim policy structure is a typed 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create: nil release_policy stays admitted with exportable false": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create: non-list allowed_operations is a typed 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create: policy map with no claim and no ops list is a typed 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV create: release_policy as JSON scalar is a typed 400, never a 500": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV soft-delete routes delete -> get deleted -> recover -> purge cycle": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV soft-delete routes delete unknown key is typed 404; get deleted unknown is 404": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV typed 400 rides the router: sign on oct key answers the engine envelope at 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV versions route dispatches to list_versions with typed 404": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test KV versions: created key lists under /keys/:name/versions": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test List Blobs prefix qparam filters the wire listing on both call sites": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test R143 D8: KQL query without api-version accepted; wrong value -> typed 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test R143 S8: SKR release without api-version -> typed 400 InvalidApiVersion": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test R155 W1 container comp fences GET /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameterValue": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test R155 W1 container comp fences PUT /{acct}/{cont}?comp=lease and ?comp=acl answer 400 InvalidQueryParameterValue": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test R155 W2 Cosmos PATCH gates PATCH valid replace is 200, pk-move is 400, unique-key steal is 409": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test R155 W3 change feed feed returns only-new docs with continuation header": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test RouteNotReady 503 when a sibling module is not compiled": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test SKR: bearer MAA JWT authorizes release": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test SKR: bogus bearer token refused 403": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test SKR: legacy raw header honored when skr_allow_legacy_header enabled": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test SKR: legacy raw header refused when skr_allow_legacy_header disabled": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test atlas entity/bulk dispatches (empty batch admits 201)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test atlas relationship: happy path mints a lineage edge (201, guid)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test atlas relationship: typed 400 when end1/end2 guids missing": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test attestation dispatch hits Smalt.Security.Attestation": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test auth seam: /attest exempt, service routes 401 in enforce mode": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test batch-list boundary: events refuses scalar/null lists 400, empty batch 200": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test batch-list boundary: ledger refuses non-object append classes 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test batch-list boundary: sentinel scalar-element list refused, nil-element list flagged": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob HEAD container (restype=container): header-only properties": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob PUT read_body timeout fault -> 400 InvalidRequestBody (timeout class)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob PUT read_body transport fault -> 400 InvalidRequestBody (M4 kill)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob PUT truncated partial read -> 400 InvalidRequestBody, not 413": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob delete: 404 BlobNotFound with F5 headers on unknown blob": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob routes with x-ms-version hit BlobStorage": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test blob routes without x-ms-version and unlisted host -> 400 MissingXMsVersion": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test body gate mutation: Unfetched (non-JSON content-type) refused 400 InvalidBody": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test body gate mutation: empty body with application/json refused 400 InvalidBody": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test body gate mutation: events ingest with unparsed body refused 400, never 500": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test body gate mutation: scalar JSON bodies (null/int/string/bool) refused 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test body gate mutation: sentinel ingest scalar body refused 400 InvalidBody": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test body gate mutation: top-level JSON array body refused 400, nothing appended": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test content-type fuzz: wrong types on multi-service routes never 5xx": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test cosmos continuation 400s route through dispatch as flat BadRequest envelopes": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test cosmos dispatch hits Smalt.DataPlane.Cosmos": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test cosmos store_not_ready fails closed at dispatch: 503 RouteNotReady, never a 200-empty feed": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test empty batch publish is conformant 200-empty; {\"events\": []} wrapper refused": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test encoded comp query decodes before routing: ?comp=%6De%74adata hits metadata handler": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test engine-kill court: real engine unload -> 503 RouteNotReady over real :gen_tcp BEFORE 2xx / KILL -> 503 RouteNotReady (refute 201/200) / RESTORE -> 2xx": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test event stream dispatch hits Smalt.Messaging.EventStream": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test exempt-prefix fuzz matrix through the canonical predicate (lens-5) PUT exempt-namespace depth-3+ refuses BEFORE body read (no blob state created)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test exempt-prefix fuzz matrix through the canonical predicate (lens-5) canonical predicate agrees with the declared exempt classes (oracle pin)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test exempt-prefix fuzz matrix through the canonical predicate (lens-5) encoded-prefix and double-slash forms never land inside the exempt namespace": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test exempt-prefix fuzz matrix through the canonical predicate (lens-5) every exempt shape x verb x splat depth refuses blob CRUD anonymously": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test immutability policy with unparsed non-JSON body refused 400 InvalidXmlOrJson": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lane 19 item 1: SKR release 200 carries no blob-plane headers": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lane 19 item 1b: SKR release error envelope also stays blob-header-free": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lane 19 item 3: ResourceGraph map subscriptions -> typed 400 InvalidParameter": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lane 19 item 3: ResourceGraph string subscriptions -> typed 400 InvalidParameter": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lane 19 item 3: list subscriptions still query normally (no regression)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lane 19 item 5: GET /keys 200 shape preserved through the total arms": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test ledger append/get/list/latest hits Smalt.Security.ConfidentialLedger": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test ledger dedup 409 routes through dispatch as the typed conflict envelope": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lens-4 cycle-2 fresh shapes + mutation-court probes 5-segment slash-blob PUT with a parsed content-type stores raw bytes verbatim": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lens-4 cycle-2 fresh shapes + mutation-court probes HEAD 2-segment without restype answers RouteNotFound, not the splat BlobNotFound": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lens-4 cycle-2 fresh shapes + mutation-court probes slash-blob ERROR responses carry the F5 headers (error path through the splat)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lens7: cosmos db/container READ routes fail closed 503 on store_not_ready, never 404 NotFound": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lens7: key vault routes fail closed 503 on missing vault table, never 400/500": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test lens7: ledger/event/blob list surfaces fail closed 503 on missing tables, never raw 500": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test method mismatch: blob-shaped paths keep the guard envelope": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test method mismatch: wrong verb answers 404 RouteNotFound, never 5xx/405": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test pkranges feed: first fetch 200 + etag, matching If-None-Match 304": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test purview dispatch hits Smalt.DataPlane.Purview": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test raw blob PUT exemption: urlencoded content-type still stores raw bytes": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test raw_blob_put? whitelist redesign (lens-4 coordinator item 1) blob shapes (3/4/5 segments, non-listed namespace) stay parse-exempt": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test raw_blob_put? whitelist redesign (lens-4 coordinator item 1) cosmos doc replace PUT (3+-segment, dbs namespace) is parsed, never exempt": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test raw_blob_put? whitelist redesign (lens-4 coordinator item 1) whitelist extension law: non-listed service namespace stores verbatim, auth unaffected": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test resource graph dispatch hits Smalt.DataPlane.ResourceGraph": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test route precedence fuzz: x-ms-version must not pull literal prefixes onto blob catch-alls": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test route precedence: GET /keys stays on the Key Vault list route": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test route precedence: PUT under a service prefix without x-ms-version is guarded 400": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test route precedence: unclaimed single segment lands on blob guard / 404, never 500": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test sentinel ingest + query dispatch hits Smalt.DataPlane.Sentinel": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test slash-named blob (Azure virtual directory): PUT/GET/DELETE through the wire": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test slash-named blob PUT with a parsed content-type stores the raw bytes": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test splat precedence: deep unknown path is blob-guard, literal prefixes unchanged": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test splat traversal fuzz (lens-4) auth-exempt namespace never reaches the blob splat (fail-closed, no bearer)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test splat traversal fuzz (lens-4) encoded and raw dot-segment traversals refuse fail-closed BEFORE the version guard": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test splat traversal fuzz (lens-4) legal dotfile blob names still round-trip through the splat": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test splat traversal fuzz (lens-4) traversal refusals carry the F5 error headers (x-ms-request-id, x-ms-version)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test two-layer 413 boundary blob PUT 8MB boundary over real Bandit: boundary byte 413, exact-cap refused by engine per-PUT limit": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test two-layer 413 boundary blob PUT 8MB boundary: 8_000_001 -> 413 RequestBodyTooLarge": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test typed engine errors reach the wire at exact status (create + list)": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test unknown route -> 404 with error map shape": {
+      "tier": "default"
+    },
+    "Elixir.EgressDispatchTest.test wire-tier (Bandit): encoded traversal and exempt-prefix blob paths fail closed at the socket": {
       "tier": "default"
     },
     "Elixir.EgressKvAppconfigTest.test DELETE /kv/:key delete requires If-Match: missing header is 409; * is 204; repeat is idempotent 404": {
@@ -1057,8 +1387,7 @@
       "tier": "default"
     },
     "Elixir.EnclaveDoctorSeverityTest.test forced failure (real temp residue rows, no mocks) residue rows during doctor run -> store_invariants FAIL with ETS_IDENTITY_RESIDUE / BLOCKING_GATE + remediation": {
-      "max_ms": 15393,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.EnclaveDoctorSeverityTest.test remediation table totality all operator + gate codes are mapped; unmapped code raises fail-closed": {
       "tier": "default"
@@ -1088,6 +1417,18 @@
       "tier": "default"
     },
     "Elixir.EnclaveEngineTest.test unknown resource type -> typed refusal": {
+      "tier": "default"
+    },
+    "Elixir.EnclaveStateTest.test destroy: :smalt_operations is bounded across 10 create+destroy cycles (NFR-3)": {
+      "tier": "default"
+    },
+    "Elixir.EnclaveStateTest.test destroy: reverse-topological deletes, 200/202 per delete, all 404, residue zero": {
+      "tier": "default"
+    },
+    "Elixir.EnclaveStateTest.test plan: zero drift on the second apply; external mutation is reported": {
+      "tier": "default"
+    },
+    "Elixir.EnclaveStateTest.test synthesize: tfstate shape is an exact, deterministically-sorted read-projection": {
       "tier": "default"
     },
     "Elixir.Kd79BlobApiVersionWireTest.test azurerm-witnessed 2023-05-01 admitted on blobServices PUT (not InvalidApiVersionParameter)": {
@@ -1247,28 +1588,26 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test PUT creates queue: 201 + store record": {
-      "max_ms": 5120,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test PUT update 200; GET 200 entry or 404; DELETE 200 then 404; POST 405": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test http?/1 truth table": {
-      "max_ms": 12169,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test malformed content-length closes typed: no response, bounded wait, then end": {
-      "max_ms": 7340,
+      "max_ms": 7002,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test oversize request is refused or closed, never hangs": {
-      "max_ms": 6021,
+      "max_ms": 6001,
       "tier": "stress"
     },
-    "Elixir.Smalt.Amqp.BrokerFacadeTest.test Listener binds an ephemeral port and accepts TCP connections, surviving client churn": {
+    "Elixir.Smalt.Amqp.AttachTopLevelArityTest.test attach encodes as a top-level list of exactly 14 elements (extras dropped)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.BrokerFacadeTest.test Listener hands accepted sockets to Connection under ConnSup and survives connection kill": {
+    "Elixir.Smalt.Amqp.BrokerFacadeTest.test Listener binds an ephemeral port and accepts TCP connections, surviving client churn": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.BrokerFacadeTest.test Smalt.AmqpBroker child spec is a supervisor spec wrapping the pinned children": {
@@ -1317,51 +1656,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.CbsRouterTest.test valid put-token returns 200 and caches the claim": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test SASL ANONYMOUS handshake then open and begin": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test bad protocol header yields close with error then socket close": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test byte-chunked frame delivery survives reassembly": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test modified undeliverable-here defers; rejected deadletters": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test new-session sender works after an unsettled receiver delivery": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test non-ANONYMOUS SASL mechanism is refused with outcome code 1 and teardown": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test oversized frame is rejected": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test peer advertising >1MB max_frame_size still gets frames split at the decode cap": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test queue attach without CBS token is detached UNAUTHORIZED_ENTITY": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test receiver flow credit delivers transfer; accepted settles message": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test sender link transfer ingests message, accepted disposition returned": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test session :end retires outbound deliveries; stale delivery-id cannot settle the old message": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test session receiver: lock grant, second accept refused, renew still extends": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test stale-token disposition is refused (message untouched, lock-lost rejected echo)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ConnectionTest.test unencodable outbound app-props: typed close, no crash, lock released": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.DeliveryEncoderTest.test DLQ footer (application-properties) DeadLetterReason / DeadLetterErrorDescription only on DLQ delivery": {
@@ -1418,29 +1712,128 @@
     "Elixir.Smalt.Amqp.DeliveryEncoderTest.test properties properties omitted when empty": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test binary data, amqp-value string and amqp-value map bodies round-trip byte-exact over real sockets": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test frame header golden vector: minimal open frame bytes": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test drain=true is a no-op on the landed broker (no echo, delivery stops)": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test frame header sasl frame header uses type 0x01": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test flow credit 2 delivers at most 2 of 5 queued messages": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections body variants: sequence and amqp-value": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test outbound transfer larger than peer max_frame_size is split (more=true) and reassembles byte-exact": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections falsy section fields are preserved (cycle-13: falsy sweep, layer 3)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test sender attach receives broker flow grant and ingests transfers": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections full service-bus message round-trip through transfer frame": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test settlement plus credit replenish yields further deliveries": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections known section descriptor with non-list body is a tagged error, never raises (lens-2)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.FlowCreditTest.test zero credit delivers nothing": {
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections non-binary body_data / non-list body_sequence sections are tagged errors, never stored (lens-2 c3)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections outbound encode raises ArgumentError on unencodable values, pre-socket (lens-2 c6)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections payload bytes preserved exactly for raw transfer": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections performative must match the frame's layer (lens-2 c5)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections source with session-filter is Azure-identical on the wire (cycle-12 fence)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections symbol-descriptor section decodes to :unknown, never raises (lens-2)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test message sections undecodable section bytes surface the codec reason (cycle-10 fence)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames 1 MiB frame (max legal) decodes": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames bad header errors": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames declared size over 1 MiB + overhead errors": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames extended header (doff > 2): body starts at doff*4, padding skipped": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames extended header larger than the declared frame errors, never raises (cycle-7 fence)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames extended header under-filled: {:more, size} until all doff*4 + body bytes buffered": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames falsy fields never dropped (lane-107 fence): detach handle 0 / closed false": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames falsy flow/transfer fields round-trip (lane-107 fence)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test oversized frames frame-body codec error keeps its reason (reason-preserving errors)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips R16 tripwire: target composite carries exactly 7 fields (pyamqp Target arity), source keeps 8": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips attach receiver with session-filter source": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips attach sender with target": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips attach with source map: known keys become atoms, unknown wire keys stay binaries": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips begin": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips detach / end / close with error maps": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips detach without error": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips disposition accepted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips disposition rejected with error": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips disposition released and modified": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips flow": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips open": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips sasl mechanisms / init / outcome": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips sasl-outcome descriptor is 0x44 on the wire (golden bytes)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips source descriptor is 0x28 and target descriptor is 0x29, by role not filter presence": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test performative round-trips transfer with raw payload": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test split-frame reassembly :more until full frame buffered, then decode": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.FrameCodecTest.test split-frame reassembly byte-at-a-time reassembly across two frames": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test 5000 unique long symbol source/target keys mint no new atoms": {
-      "max_ms": 7491,
+      "max_ms": 7393,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test bare-array decode stays linear: 200k elements decode in bounded time (lens-2)": {
@@ -1602,6 +1995,33 @@
     "Elixir.Smalt.Amqp.LockManagerTest.test session locks sweep/1 reclaims expired session locks and orphaned tokens": {
       "tier": "default"
     },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test com.microsoft:batch-delete-messages (GAP-A2-07) deletes exactly the present sequence numbers from the DLQ": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test com.microsoft:get-message-sessions (GAP-A2-06) 400 QUEUE_REQUIRED on unknown entity, 400 SESSION_SKIP_BOUNDS on bad skip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test com.microsoft:get-message-sessions (GAP-A2-06) enumerates session ids; skip/top page the result": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test com.microsoft:set/get-session-state (GAP-A2-05) 400 SESSION_ID_REQUIRED / 400 SESSION_STATE_REQUIRED / 404 SESSION_NOT_FOUND": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test com.microsoft:set/get-session-state (GAP-A2-05) fail-closed: 404 NOT_FOUND when the session table is not materialized": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test com.microsoft:set/get-session-state (GAP-A2-05) set then get round-trips opaque state bytes (real session record)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test queue entity normalization (peek) peek with URI-form 'amqps://host/q/' resolves to bare entity 'q'": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test queue entity normalization (peek) peek with root queue '/' fails closed as entity-not-found": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Amqp.ManagementRpc.W3SessionOpsTest.test queue entity normalization (peek) peek with trailing-slash queue 'q/' resolves to the queue seeded under 'q'": {
+      "tier": "default"
+    },
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:peek-message 200 with messages wrapper": {
       "tier": "default"
     },
@@ -1620,9 +2040,6 @@
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:peek-message non-integer from-sequence-number is 400": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:peek-message store error surfaces as 404": {
-      "tier": "default"
-    },
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:receive-by-sequence-number (real collaborators) 200 re-locks a deferred message and it completes like a live delivery": {
       "tier": "default"
     },
@@ -1635,9 +2052,6 @@
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:receive-by-sequence-number (real collaborators) accepts symbol operation form and AMQP array-of-long body": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:renew-lock 200 with expirations timestamps": {
-      "tier": "default"
-    },
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:renew-lock 400 LOCK_TOKEN_REQUIRED on missing or empty lock-tokens": {
       "tier": "default"
     },
@@ -1645,9 +2059,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:renew-lock accepts symbol operation form": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:renew-session-lock 200 with expiration timestamp": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.ManagementRpcTest.test com.microsoft:renew-session-lock 400 SESSION_ID_REQUIRED on missing or empty session-id": {
@@ -1723,9 +2134,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.PrimitiveCodecTest.test described types nested described round-trip": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.PrimitiveCodecTest.test described types string-form described descriptor is refused, never mints a binary descriptor (lens-5)": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.PrimitiveCodecTest.test described types symbolic descriptor (open performative style)": {
@@ -1810,15 +2218,6 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.PrimitiveCodecTest.test uuid and timestamp uuid 0x98, 16 bytes": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.PyamqpParityTest.test SASL header form (AMQP\\x03) still negotiates ANONYMOUS then outcome 0": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.PyamqpParityTest.test no skip-acceptance branches in the wire tier (pyamqp TypeError fence)": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.PyamqpParityTest.test pyamqp opening bytes (header + pipelined open/begin/cbs attaches) reach the attach exchange": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.QueueStoreTest.test concurrency (ST4 court) 200-racer dequeue: 1000 messages -> exactly 1000 deliveries, no duplicates, no orphaned tokens": {
@@ -2088,30 +2487,6 @@
     "Elixir.Smalt.Amqp.SasVerifierTest.test wrong skn is rejected": {
       "tier": "default"
     },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-01 selector filter attach with offset filter delivers first event AFTER the offset": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-01 selector filter enqueued-time filter drops older events": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-01 selector filter inclusive >= selector (SDK startingPosition isInclusive) starts AT n": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-01 selector filter sequence-number filter starts at the given sequence": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-01 selector filter unsupported selector detaches typed instead of passing through": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-02 epoch exclusivity client detach of the epoch holder releases the registration": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-02 epoch exclusivity higher epoch evicts the older link with a typed detach": {
-      "tier": "default"
-    },
-    "Elixir.Smalt.Amqp.SelectorEpochTest.test GAP-A2-02 epoch exclusivity lower epoch is refused with a typed detach on the NEW handle": {
-      "tier": "default"
-    },
     "Elixir.Smalt.Amqp.SweeperTest.test message-lock tombstone grace (audit Finding 3) grace disabled (0 ms): swept token stays deleted, renew 404 (old behavior)": {
       "tier": "default"
     },
@@ -2223,6 +2598,27 @@
     "Elixir.Smalt.ArmGateway.DefaultsTest.test validator acceptance user override merged with defaults still validates": {
       "tier": "default"
     },
+    "Elixir.Smalt.ArmGateway.LRO.NotifierTest.test await times out typed on a not-yet-due op": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.ArmGateway.LRO.NotifierTest.test await wakes on the explicit terminal signal with zero polls and zero sweeps": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.ArmGateway.LRO.NotifierTest.test cross-subscription await is denied by default and registers no waiter": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.ArmGateway.LRO.NotifierTest.test notifier killed mid-await: typed fail-safe convergence, store converges": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.ArmGateway.LRO.SweeperBoundaryTest.test positive retention keeps records younger than the window": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.ArmGateway.LRO.SweeperBoundaryTest.test records without terminal endTime are never evicted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.ArmGateway.LRO.SweeperBoundaryTest.test retention 0 evicts terminal records inclusively; InProgress never evicts": {
+      "tier": "default"
+    },
     "Elixir.Smalt.ArmGateway.ProviderMatrixTest.test default_locations/0 non-empty sorted list": {
       "tier": "default"
     },
@@ -2274,6 +2670,426 @@
     "Elixir.Smalt.ArmSecretRotateTest.test rotate with no parent vault -> typed 404": {
       "tier": "default"
     },
+    "Elixir.Smalt.AshExtension.Lens7FieldPolicyTest.test a non-binary under a :string attribute projects nil, never raw": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test Store-backed read projection absent row keys project as nil, never raise": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test Store-backed read projection manual_read under concurrent Store churn: no crash, valid rows, consistent snapshot": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test Store-backed read projection projects a seeded Store row into the resource with matter-scope metadata": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test extension compiles into a test resource compiled extension state is present with the declared configuration": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test extension compiles into a test resource info getters return not_compiled for a resource without the extension": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test non-map Store row refuses the read typed, never crashes": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test vacuous primary key refuses the substrate read typed, never projects": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test verifier accepts the legal probe resource (no compile-time refusal)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test verifier refuses a matter_scope outside the vocabulary": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test verifier refuses a resource with a non-read action (matter-isolation read-only surface)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AshExtensionTest.test verifier refuses a store_table outside the smalt_ Store namespace": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: anonymous GET /subscriptions -> 401 + WWW-Authenticate: Bearer": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: cross-secret token -> 401 SignatureVerificationFailed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: egress Cosmos anonymous -> 401": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: exempt paths pass without a token": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: expired token -> 401 TokenExpired": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: malformed Authorization header -> 401": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: tampered signature -> 401 SignatureVerificationFailed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: valid STS-minted bearer -> 200": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: wrong-audience token -> 401 AudienceMismatch": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test A. challenge matrix + sub-code corpus enforce: wrong-issuer token -> 401 IssuerMismatch": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) anchored STS-exemption suffix stays 401 at the auth plug, router never sees it": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) control: non-exempt blob path still requires the bearer (pin is live)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) exempt-namespace blob paths refuse 404 BlobNotFound on the egress router, token or not": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) lens7 bodycache: raw slash-blob PUT bypasses parsing \u2014 body stored verbatim, smalt_raw_body never set on the egress surface": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) lens7 bodycache: slash-blob-shaped FORM VALUES through the STS BodyCache \u2014 cached byte-identical, no dup false-positive": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) lens7 fuzz: JWS header-injection claim corpus never 5xx and never false-accept": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) lens7 fuzz: adversarial claim TYPES never 5xx and never false-accept": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) lens7 fuzz: exempt-prefix x comp-query x traversal matrix never serves data anonymously": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) lens7: joint typ property \u2014 both mints emit typ JWT; variant typs refuse on both fences (RFC 8725 3.11)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) the seam is ONE predicate: bearer-side and router-side reads agree on a mixed corpus": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) traversal into the exempt namespace from a NON-exempt prefix refuses at the plug (anonymous) or the blob fence (bearer)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test E+I. egress-handoff joint court (exempt surface / BodyCache / fuzz rotation) traversal refusals precede the version guard on exempt-prefix paths too": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) header grammar table: Authorization value corpus \u2014 exact status list, one printable challenge per refusal": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 bodycache: re-invoked body reader after a completed read never double-accumulates": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 bodycache: two pipelined STS token requests on one connection \u2014 cache carries the SECOND body, no cross-request bleed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 fuzz: float and string exp/nbf refuse; duplicate-aud and bare-authority iss pinned": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 fuzz: form-encoding edges at the mint are typed, never 5xx": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 fuzz: malformed JWS structures never 5xx and never false-accept": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 mint: adversarial tid shapes mint \u2286 verify \u2014 every minted token verifies": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 mint: duplicate form keys still refused at the mint (round-trip boundary intact)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test H+L. STS mint/verify round-trip property (mint contract / fuzz registry) lens8 mint: server claim constants are immune to form injection": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape AAD shape on the cosmos egress plane is admitted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape AAD shape with empty sig is refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape AAD shape with wrong ver or missing type is refused (not silently Bearer-parsed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape cross-secret signed sig -> 401 (same HS256 fence as Bearer)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape expired sig -> 401 TokenExpired": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape garbage sig -> 401 SignatureVerificationFailed (fail-closed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test J. KD-94 cosmos AAD header shape real SDK-shaped AAD header is admitted (sig verified as the token)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test alg confusion: RS256-headered token refused against the HS256 signer": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test alg confusion: alg=none unsigned token refused (SignatureVerificationFailed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test alg confusion: jku/x5u remote key refs confer no acceptance and no fetch": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test anonymous mode: no token required (explicit opt-out honoured)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test audience cross-validation: discovery-advertised audience is byte-acceptable": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test claims fuzz: empty iss -> 401 IssuerMismatch": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test claims fuzz: non-binary aud -> 401 AudienceMismatch (catch-all)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test claims fuzz: non-binary iss -> 401 IssuerMismatch (catch-all clause)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test claims fuzz: non-integer exp -> 401 TokenExpired (catch-all, no crash)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test config fuzz: bare-binary :token_audiences does not 500 (normalized)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test config fuzz: nil :token_audiences falls back to the default audience": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test cross-port: tampered or foreign tokens still refused on the egress seat": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test cross-port: token minted at the ARM authority is accepted on the egress seat": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exempt matrix: exempt shapes pass the plug on BOTH routers (never 401-no-token)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exempt matrix: exempt-prefix traversal cannot reach a protected engine on egress": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exempt matrix: protected probes on BOTH routers are 401 anonymously (method classes)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exemption fuzz: 4-segment shapes against every egress literal prefix never serve data": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exemption is bounded: non-token oauth2 paths stay ENFORCED on both routers": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exp boundary: exp == now + 1 is accepted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test exp boundary: exp == now is refused (exp <= now)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract fuzz: tab separator is not a valid scheme delimiter (RFC 7235 1*SP)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract fuzz: token containing the word Bearer is passed to signature verification": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract fuzz: unicode look-alike scheme (Beta) refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: BEARER uppercase scheme accepted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: empty token (Bearer with no credentials) -> 401": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: lowercase bearer scheme accepted (RFC 7235 case-insensitive)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: multi-space padding between scheme and token tolerated": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: non-bearer custom scheme -> 401": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: scheme-only with no space -> 401": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test extract: whitespace-only token -> 401": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test fail-closed: spoofed forwarded host cannot redirect issuer acceptance for a direct token": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test fail-closed: x-forwarded-host from an untrusted direct peer is ignored": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test fuzz registry: class-partitioned JWS-sequence + byte-mutation corpus, all refused with a message in the six-class set": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test header fuzz: iss is validated against the x-forwarded-host authority": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test header fuzz: malformed x-forwarded-host port does not 500": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test header fuzz: non-numeric x-forwarded-host with garbage port still enforces iss": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2 fuzz: Authorization scheme corpus \u2014 malformed scheme forms all refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2 precedence: DEV secret pinned in persistent_term must NOT outrank the env secret": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2 rotation: 50 parallel verifies ACROSS a mid-flight rotation \u2014 no crash, deterministic post-rotation": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2 rotation: env secret DELETED between mint and verify -> refused (no silent dev-secret fallback)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2 rotation: env secret rotated between mint and verify -> old token refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2: 50 concurrent register_trusted_authority calls all land (no lost update)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens2: chunked form body \u2014 full raw body cached after the read loop": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 bodycache: JSON content-type caches the full raw body (pass: [\"*/*\"])": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 bodycache: read error passes through unchanged (no half-cache)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 bodycache: second (duplicate) read does not truncate the cached body": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 fence: 1200 distinct mint authorities leave at most 1024 persistent_term keys": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 fuzz: REMOVED claim corpus \u2014 deleting any load-bearing claim refuses": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 fuzz: single-claim mutation corpus \u2014 every claim is load-bearing": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 race: 50 concurrent registers x 10 resets \u2014 post-storm registers always land": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens3 race: reset erases a previously-registered authority (happens-before case)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 cap side: at the cap the mint still succeeds; cross-SEAT acceptance withheld": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 claim audit: iat absurd-future accepts (RFC informational, AAD parity)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 claim audit: informational registered claims accept under single-claim mutation": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 claim audit: real mint issues no jti and carries iat == nbf == now": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 fwd fuzz: forwarded header garbage never 5xx; degradation rows exact": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 header fence: crit/b64 header corpus all refused (RFC 7515 \u00a74.1.11)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 poison: scheme-less register is a no-op; scheme-less iss never rides the registry leg": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens4 time boundaries: exp/nbf inclusive-equality and precision corpus": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens5 corner: crit:[] combined with a bad typ still refuses (cond-order pin)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens5 headers: duplicate Authorization headers refuse in BOTH orders (RFC 7230 \u00a73.2.2)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens5 registry audit: malformed trusted_proxies entries stay fail-closed (no crash, no open)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens5 registry audit: scheme-less iss never rides the minted-authority leg": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens5 typ fence: present typ must be JWT case-insensitive, else refuse (RFC 8725 \u00a73.11)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens6 fuzz: encoded dot/traversal path fuzz never 5xx, never 200 anonymously": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens6 fuzz: header-shape fuzz never 5xx and never false-accept": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test lens6: STS mint pins typ JWT and the token verifies end-to-end (RFC 8725 3.11)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint claims: C6 rows 8-10 contract (registered + Azure claim set, DEV-MODE values)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint claims: tenant-scoped endpoint echoes the path tenant (C6 row 5)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint fuzz: duplicate grant_type is refused invalid_request (AAD-exact, fail-closed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint fuzz: duplicate grant_type where the LAST is valid still refused (invalid_request)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint fuzz: missing grant_type -> 400 invalid_request (not 500, not mint)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint fuzz: redirect_uri smuggling does not widen the grant (DEV-MODE: inert)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint fuzz: single grant_type with a substring-neighbor key still mints": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test mint fuzz: wrong content-type (JSON) still yields exact 400 error envelope": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test restart contract: cleared trusted-authority set refuses pre-restart minted authorities": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test roundtrip guard: %-encoded suffix fails the exemption anchor (fail-closed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test roundtrip guard: the tenant-scoped exemption cannot shadow an egress route": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test roundtrip property: never-minted authority is refused at every seat": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test roundtrip property: token minted at seat A verifies at seats B and C via the registry": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test trusted-proxy CIDR: /16 range member outside the octet-3 prefix is honored": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test trusted-proxy CIDR: /8 outside the /24 string prefix is honored (true CIDR math)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave2: forwarded-host byte-case must not broaden issuer acceptance": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave2: x-forwarded-proto HTTPS (uppercase) honored under trusted proxy": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave5: empty :token_audiences list refuses EVERYTHING (fail-closed config)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave5: empty grant_type value and empty body are invalid_request": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave5: grant_type case variants are unsupported_grant_type (AAD case-sensitive)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave5: large audiences list still admits members (membership not degraded)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test wave5: non-binary audience ENTRIES fail closed (AudienceMismatch, no crash)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.AuthEnforceTest.test www-authenticate fuzz: every refusal class emits a single printable-ASCII challenge": {
+      "tier": "default"
+    },
     "Elixir.Smalt.AzapiActionsTest.test 404 ActionNotFound precedence: unknown action fires BEFORE the api-version gate (no api-version still 404, not 400)": {
       "tier": "default"
     },
@@ -2323,6 +3139,156 @@
       "tier": "default"
     },
     "Elixir.Smalt.AzapiActionsTest.test role assignments at RG scope PUT roleAssignment at RG scope -> 201, then DELETE -> 200": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AdversarialJoeTest.test Vector 1: Mailbox overload and backpressure proves synchronous dispatch blocks or drops under flood without unbounded mailbox growth": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AdversarialJoeTest.test Vector 2: Poison pill crash storm & plane subtree isolation repeated crashes of a leaf worker do not kill sibling planes or root node": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AdversarialJoeTest.test Vector 3: Half-open TCP silent partition handling abrupt silent socket closure unlinks broker resources cleanly": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AdversarialJoeTest.test Vector 4: Malformed Wasm bytecode immunity malformed or truncated Wasm bytecode returns typed error, never crashes BEAM": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AzureCommonIssuesTest.test Vector 1: ETag race & atomic CAS contention concurrent updates against a single ETag yield exactly 1 winner and N 412 PreconditionFailed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AzureCommonIssuesTest.test Vector 2: Throttling stampede and Retry-After header contract Cosmos and ARM endpoints enforce RU/rate limits and emit parseable retry intervals": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AzureCommonIssuesTest.test Vector 3: Long-Running Operation (202) terminal settlement asynchronous operation transitions from InProgress to terminal state without hanging": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AzureCommonIssuesTest.test Vector 4: Service Bus AMQP lock expiry & zombie completion rejection attempting to complete an expired lock token fails with 410 :lock_lost": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AzureCommonIssuesTest.test Vector 5: Non-idempotent resource creation conflict handling creating an already-existing blob container returns 409 ContainerAlreadyExists": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.AzureCommonIssuesTest.test Vector 6: Event Grid / CloudEvents validation and fail-closed batch rejection malformed or incomplete CloudEvent is refused fail-closed with 400 InvalidCloudEvent": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test conditional HEAD/GET If-Modified-Since: unmodified -> 304, modified-after -> 200, engine shapes": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test conditional HEAD/GET If-None-Match match -> 304 over the wire; mismatch serves 200": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test if-match 6-way replace race 100 iterations of {200:1, 412:5}": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test profile read sites blob_storage sync_write gate: profile-gated, no mirror => :ok, no crash": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test profile read sites cosmos max_ru_limit: integer profile throttles, :unbounded does not": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test range GET (wire) mid-slice returns 206 + exact Content-Range": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test range GET (wire) suffix range bytes=-5 returns 206 + Content-Range": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.DataPlaneTest.test sync_interval_ms: 0 durability (SIGKILL) acknowledged write survives kill -9 of the writing VM": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.GracefulStopTest.test Bandit's upstream default is unbounded (fence stays meaningful)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.GracefulStopTest.test every Bandit listener child spec carries a bounded shutdown (10_000)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.GracefulStopTest.test stopping the Control subtree terminates the WasmEngine owner typed (not :killed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test abandon requeues; deadletter after max-delivery-count": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test event grid: event published while down is delivered after recovery (falsifier guard)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test event grid: non-at-least-once delivery_mode typed-refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test event grid: publish/ack round-trip + duplicate id deduped": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test event grid: subscriber crash => redelivery with same id (never loss)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test oversize frame closes with amqp:frame-size-too-small": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test partition detach sends amqp:link:detach-forced; relink delivers": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test profile excluding :anonymous refuses SASL with typed unauthorized-access": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.IntegrationPlaneTest.test send/receive/complete round-trip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.PlaneSupervisionTest.test terminating DataSupervisor leaves ControlSupervisor alive and serving requests": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.PlaneSupervisionTest.test which_children lists all four plane supervisors under :all": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 1: Identity & Cryptographic Bootstrap 1.1 Entra ID / STS: OpenID configuration discovery & token tamper rejection": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 1: Identity & Cryptographic Bootstrap 1.2 Key Vault Secrets & KD-15 Challenge Handshake": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 1: Identity & Cryptographic Bootstrap 1.3 Key Vault Crypto: wrapKey, unwrapKey, sign, verify & bit-flip corruption rejection": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 2: Sovereign Infrastructure Lockdown 2.1 APIM & ARM Rate Limiting: 429 TooManyRequests with parseable Retry-After": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 2: Sovereign Infrastructure Lockdown 2.2 ARM Optimistic Concurrency Control (ETag) Race on Network Security Groups": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 2: Sovereign Infrastructure Lockdown 2.3 Microsoft.Authorization: Sovereign Policy Enforcement (403 PolicyViolation)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 2: Sovereign Infrastructure Lockdown 2.4 Microsoft.Resources: Asynchronous LRO 202 Settlement & Sweeper Robustness": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 3: The High-Frequency Wire Storm 3.1 Service Bus: Lock Expiry Rejection (:lock_lost / 410 parity)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 3: The High-Frequency Wire Storm 3.2 Event Hubs: Partition streaming & Offset Checkpointing across [\"0\", \"1\"]": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 4: Multi-Store Atomic Settlement 4.1 App Configuration: Circuit-Breaker Conditional ETag Flip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 4: Multi-Store Atomic Settlement 4.2 Cosmos DB: ETag contention on Nostro liquidity balance": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 4: Multi-Store Atomic Settlement 4.3 Blob Storage: WORM Immutability Policy & Legal Hold Protection": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 4: Multi-Store Atomic Settlement 4.4 Event Grid: CloudEvents 1.0 schema poisoning rejection": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 5: Regulatory Forensics & Forensics Ring 5.1 Confidential Ledger: Append-only ledger transactions": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 5: Regulatory Forensics & Forensics Ring 5.2 Purview Catalog (Atlas v2): Entity registration and search": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 5: Regulatory Forensics & Forensics Ring 5.3 Azure Resource Graph: KQL asset inventory queries": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 5: Regulatory Forensics & Forensics Ring 5.4 Microsoft Sentinel: Log Analytics DCR ingestion & KQL query": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Azsim.SovereignMidnightTest.test Phase 5: Regulatory Forensics & Forensics Ring 5.5 MCP Tool Surface: Diagnostic tools inspection": {
       "tier": "default"
     },
     "Elixir.Smalt.CanonicalProjectionTest.test Ash read surface over the Registry read returns exactly one entry per admitted type with Registry attrs": {
@@ -2395,8 +3361,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test 429 + Retry-After when :smalt, :arm_rate_limit is configured; default emits none": {
-      "max_ms": 9834,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test GET validates api-version like PUT (row 6b fixed): future GET api-version -> 400": {
       "tier": "default"
@@ -2405,8 +3370,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test LIST paginates: 100 per page, nextLink absolute, follow yields remainder": {
-      "max_ms": 14138,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test LRO PUT returns 202 with async headers and InProgress body": {
       "tier": "default"
@@ -2448,8 +3412,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test nextLink composition fuzz: clamps hold for hostile maxitempages/$skip and stale replay": {
-      "max_ms": 13605,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.Compliance.C1ArmTest.test provider-type LIST returns the value envelope containing created resources": {
       "tier": "default"
@@ -2703,52 +3666,109 @@
     "Elixir.Smalt.Compliance.C4BlobTest.test slash-named blobs (virtual directories) round-trip at the wire": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test SB extensions delivery annotations carry x-opt-enqueued-time-utc as timestamp and session id as binary": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test C6 doc row 6 pin: /common/oauth2/v2.0/token issues a token with tid=common (DEV-MODE pin)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test SB extensions delivery-count present in broker flow grant (rhea sender-credit contract)": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test FORM-CHARSET: form with explicit charset still mints (permissive, pinned)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test SB extensions locked-until-utc filetime conversion (100ns ticks since 0001-01-01)": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test GAP C6-5 fixed: GET /:tid/discovery/v2.0/keys serves an empty JWKS (200)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test SB extensions session filter descriptor com.microsoft:session-filter inside source": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test GAP C6-8 fixed: token response carries Cache-Control: no-store (RFC 6749 5.1)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test begin/attach/flow field orders (OASIS 2.7.2-2.7.4) attach is a 14-field composite; bare-minimum attach trims to 5 fields": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test OIDC-Discovery: REQUIRED fields \u2014 response_types/subject_types present (was GAP C6-6/7)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test begin/attach/flow field orders (OASIS 2.7.2-2.7.4) begin field order: remote-channel, next-outgoing-id, incoming-window, outgoing-window, handle-max": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test OIDC-Discovery: tenant_discovery_endpoint wiring in /common/discovery/instance": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test begin/attach/flow field orders (OASIS 2.7.2-2.7.4) disposition: role, first, last, settled, state, batchable": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test OIDC-Discovery: token iss EXACTLY equals the discovery issuer (was GAP C6-4)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test begin/attach/flow field orders (OASIS 2.7.2-2.7.4) flow carries next-incoming-id..properties in order with drain/echo slots": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test OIDC-Discovery: well-known path forms (tenant + bare)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test live broker session open -> begin -> put-token -> send -> accepted -> receive -> accepted round-trip": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.1: POST form grant_type=client_credentials -> 200 success envelope": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test live broker session second acceptSession on a locked session gets com.microsoft:session-cannot-be-locked": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.2 / OAuth 2.1: duplicate grant_type -> 400 invalid_request (AAD parity)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test live broker session unauthorized entity attach gets detach with amqp:unauthorized-access": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.2: garbage body -> 400 invalid_request": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test map count = pairs (OASIS 1.6.9 map encoding) application-properties map8 writes count 2 x entries": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.2: invalid grant_type -> 400 unsupported_grant_type": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test map count = pairs (OASIS 1.6.9 map encoding) message_annotations with x-opt keys round-trips": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.2: missing client_id -> 400 invalid_client": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test open performative (OASIS 2.7.1) descriptor is ulong 0x10 and fields land in mandated order": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.2: missing client_secret -> 400 invalid_client": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test open performative (OASIS 2.7.1) trailing null fields are omitted (spec 1.4.3 list encoding)": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6749-5.2: tenant-scoped token path issues tokens (with valid form)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Compliance.C5ServicebusTest.test settlement outcomes (OASIS 2.7.6 delivery states) accepted 0x24 / released 0x26 empty bodies; rejected 0x25 carries error list; modified 0x27 field set": {
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC6750-3: 401 challenge carries Bearer error=invalid_token + error_description": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC7519: JOSE header typ/alg": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C6OauthTest.test RFC7519: JWT claims exp/iat/nbf/aud/iss/sub present + Azure tid/oid/appid/azp/roles": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [atlas] bulk <= 100; over-limit -> 400 with no partial insert": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [atlas] entity POST accepts the {referredEntities, entity} envelope; bare map also accepted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [atlas] lineage: relationship edge -> guidEntityMap + relations in lineage response": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [binding] REQUIRED attributes: id absent -> UUID stamped, event still admitted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [binding] REQUIRED attributes: missing specversion / source / type -> 400 InvalidCloudEvent, nothing stored": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [binding] batch mode: content-type application/cloudevents-batch+json": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [binding] binary mode: ce-* headers carry context attributes, body is data": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [binding] non-JSON content-type -> 415 UnsupportedMediaType": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [binding] structured mode: content-type application/cloudevents+json, single object": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [eh] partitions are free-form names \u2014 no 0..N fan-out structure is enforced (PARTIAL fence)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [eh] send/receive in sequence order; reconcile exposes broker truth vs checkpoint": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [eh] strictly monotonic per-partition sequence from 1 (module tier)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [la] DCR ingest api-version gate: 2023-01-01 accepted with 204 (real shape), other rejected 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [la] DCR ingest over the wire answers 204 with x-ms-request-id": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [la] query PrimaryResult envelope: projected column order + value-shaped types (CONFORMANT)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [rg] response contract: count/totalRecords/resultTruncated/$skipToken pagination": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Compliance.C7EventsTest.test [rg] skipToken scope binding + forged-token fallback (current bytes)": {
       "tier": "default"
     },
     "Elixir.Smalt.Corpus.ApiVersionAdmission.test api-version == latest admits (no api-version 400)": {
@@ -3576,174 +4596,379 @@
     "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 If-Match * proceeds": {
       "tier": "default"
     },
+    "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 If-Match exact match proceeds": {
+      "tier": "default"
+    },
     "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 If-Match mismatch halts 412": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 If-None-Match match halts 304": {
-      "max_ms": 6623,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 If-None-Match non-match proceeds": {
-      "max_ms": 6873,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 multi-candidate If-Match list: any match proceeds": {
-      "max_ms": 6346,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 no conditions proceeds": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test ConditionalHeaders.evaluate/2 unquoted etag candidate matches the stored quoted etag (strip tolerance)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations bare delete of a missing doc -> 404 NotFound": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations concurrent replace with exactly one winning If-Match": {
-      "max_ms": 7661,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations create of a > 2MB doc -> 413 RequestEntityTooLarge envelope": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations create returns 201 with _etag quoted sha256, _rid, _ts and request charge": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations create with matching pk header -> 201": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations create with mismatched pk header -> 400 BadRequest": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations create without pk header on pk container -> 400 BadRequest": {
-      "max_ms": 7893,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations delete after re-create with the old etag -> 412 PreconditionFailed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations delete: bare delete 204; conditional delete 204 on match / 412 on mismatch; 404 missing doc": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations every response carries x-ms-request-charge header": {
-      "max_ms": 23279,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations list by prefix returns only matching docs": {
-      "max_ms": 21439,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations read: 200, 404 NotFound, and 304 on If-None-Match match": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations replace without If-Match is an unconditional overwrite (last-writer-wins)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test Cosmos point operations replace: 200 with new etag; If-Match mismatch -> 412 PreconditionFailed": {
-      "max_ms": 14173,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test KQL fuzz fences (no-raise contract) KQL input rows of arbitrary shape run without raising (join-shaped inputs)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test KQL fuzz fences (no-raise contract) aggregate/join-shaped input parses to TYPED parse errors, never raises (grammar coverage)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test KQL fuzz fences (no-raise contract) deep nesting and length limits return errors, never raise": {
-      "max_ms": 6659,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test KQL fuzz fences (no-raise contract) invalid UTF-8 bytes return parse/limit errors, never raise": {
-      "max_ms": 5057,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test KQL fuzz fences (no-raise contract) malformed pipelines return parse errors, never raise": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test KQL fuzz fences (no-raise contract) unicode and random binaries terminate quickly (no hangs, no raises)": {
-      "max_ms": 5270,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix boolean pk end to end: write, scoped query, mismatch 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix enforce ok when container has no partition key": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix enforce: header matches doc pk value -> ok": {
-      "max_ms": 6389,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix enforce: header mismatch vs doc -> 400 BadRequest": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix enforce: header missing when pk defined -> 400 BadRequest": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix lens-8: enforce/3 nil-doc clause is pinned fail-open (wire-unreachable; API-surface only)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix numeric pk end to end: unwritable container becomes writable and query-scoped": {
-      "max_ms": 12699,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix parse accepts JSON array with exactly one non-empty string": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix parse accepts number and boolean pk values (type-aware, normalized like extract)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test PartitionKey matrix parse rejects empty array, multi-element, non-scalar, and malformed JSON": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions 8-way same-doc If-Match race: exactly one 200, seven 412, no lost update": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions create_collection stores durable pk meta; enforcement live across calls": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions create_db / list_dbs round-trip": {
-      "max_ms": 8316,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions list_collections returns the containers of one db": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions query_docs filters by pk header, caps at 100, never creates": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions stale If-Match after a winning CAS is refused with 412 (no read-check-write window)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test S8 regressions tables are store-owned: CosMOS module never creates them": {
-      "max_ms": 6599,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test SDK response headers (alt-content-path, session-token, lsn) create response carries alt-content-path, session-token and lsn": {
-      "max_ms": 5090,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test SDK response headers (alt-content-path, session-token, lsn) list_docs carries the SDK headers": {
-      "max_ms": 11226,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test SDK response headers (alt-content-path, session-token, lsn) reads report current lsn; 404/412 errors still carry the headers": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test SDK response headers (alt-content-path, session-token, lsn) session token is monotonic per collection, independent across collections": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test W-6 RFC 6902 patch (PATCH /dbs/:db/colls/:coll/docs/:id) add / replace / remove / test round-trip via the router": {
-      "max_ms": 8551,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test W-6 RFC 6902 patch (PATCH /dbs/:db/colls/:coll/docs/:id) etag precondition: If-Match mismatch is 412, match is 200 (CAS)": {
-      "max_ms": 12937,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test W-6 RFC 6902 patch (PATCH /dbs/:db/colls/:coll/docs/:id) malformed patch is typed 400 (engine + router)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test W-6 RFC 6902 patch (PATCH /dbs/:db/colls/:coll/docs/:id) missing doc is 404": {
-      "max_ms": 5642,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test W-6 RFC 6902 patch (PATCH /dbs/:db/colls/:coll/docs/:id) test-op failure is 400 with the stored doc untouched": {
-      "max_ms": 8190,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test W-6 change feed (A-IM: Incremental feed) A-IM via list_docs routes to the change feed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test W-6 change feed (A-IM: Incremental feed) full read delivers all docs and emits a continuation": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test W-6 change feed (A-IM: Incremental feed) incremental read returns only newer docs (cursor advances)": {
-      "max_ms": 7463,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test W-6 change feed (A-IM: Incremental feed) list_docs without A-IM is unchanged (no cursor side effects)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test _rid grammar composition end-to-end db/container/doc rids compose and ride the wire records": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test _rid grammar composition end-to-end query feed envelope _rid equals the container rid; deterministic across recreate": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test container throughput (C5 typed gap) PUT with throughput 800 -> readback 800 (router PUT route)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test container throughput (C5 typed gap) absent throughput stays absent on readback (not null)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test container throughput (C5 typed gap) create with throughput 400 -> read back 400 (data plane)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test container throughput (C5 typed gap) non-integer throughput is a typed 400 BadRequest, fail-closed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test container throughput (C5 typed gap) replace on a missing container is 404 NotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test feed continuation x-ms-continuation (row 18) 105-doc feed: page 1 emits token, resume completes the feed, last page tokenless": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test feed continuation x-ms-continuation (row 18) contract pin: token's last_id deleted mid-resume -> order-based resume, no skip/stall": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test feed continuation x-ms-continuation (row 18) forgery fuzz: 300 seeded random tokens never 5xx; well-formed -> 200/400, never raise": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test feed continuation x-ms-continuation (row 18) partition-scoped continuation: token resumes within one partition, never leaks the other": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test feed continuation x-ms-continuation (row 18) token forgery: malformed, wrong-version, ahead-of-ledger tokens -> typed 400": {
-      "max_ms": 19557,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test feed continuation x-ms-continuation (row 18) wire tier: query POST emits the token on truncated pages and honors it on resume": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: conditional delete is atomic (CAS-delete, S8 class) 8-way same-etag conditional delete race: exactly one 204, seven 412": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: conditional delete is atomic (CAS-delete, S8 class) conditional delete after an intervening replace -> 412 (no stale delete)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: conditional delete is atomic (CAS-delete, S8 class) mixed put/delete race on one etag: exactly one effect survives (cross-op isolation)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: cross-container ACID isolation concurrent CAS races on docs in different containers do not interfere": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) 8-way duplicate-create race on one id: exactly one 201, seven 409": {
-      "max_ms": 12013,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) KD-36: upsert on existing id -> 200 replace, not 409": {
-      "max_ms": 11285,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) KD-36: upsert on new id -> 201 create": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) R118: PUT omitting a field removes it from the stored doc (was: retained by merge)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) create on an existing id -> 409 Conflict, original doc untouched (real Cosmos parity)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) create with '/'-containing, empty, or 256-char id -> 400 BadRequest": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) create/delete churn on one id: terminal state is always consistent (exists-with-201-etag or absent)": {
-      "max_ms": 19502,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) non-string doc id (integer/nil-dotted forms) -> 400 BadRequest, nothing stored": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: doc-id grammar (real Cosmos id rules) replace with a grammar-violating path id -> 404 NotFound (such a doc cannot exist)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) GAP: no stored-procedure / trigger / UDF surface (wire 404s, typed GAP)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) KNOWN DIVERGENCE: a stale client x-ms-session-token is ignored": {
-      "max_ms": 8335,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) concurrent writes mint strictly monotonic, distinct session tokens": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) feed truncation emits x-ms-continuation (row 18 RAISE closed, lens-3)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) hostile headers through every point op: {:ok,..} | {:error,:store_not_ready} only, never a raise": {
-      "max_ms": 59401,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) malformed pk header on a partitioned query -> 400, never a cross-partition leak": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-2: session-token / continuation semantics (typed GAPs, pinned) query/list under concurrent doc churn: bounded, crash-free, no phantom completeness": {
-      "max_ms": 9667,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-7: token grammar conjunct isolation colon-bearing pk scope round-trips exactly (split-exactness claim)": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-7: token grammar conjunct isolation empty last_id tail is refused by the doc-id conjunct": {
-      "max_ms": 12450,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test lens-7: token grammar conjunct isolation lens-8: trailing-junk lsn is refused by the anchored lsn regex (never a to_integer raise)": {
-      "max_ms": 8358,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-7: token grammar conjunct isolation non-base64 middle segment is never admitted (both namespaces)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test lens-7: token grammar conjunct isolation valid-shape ahead-of-ledger token is refused by the lsn conjunct (both namespaces)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) churn contract: deleting the token's last_id doc mid-resume cannot skip or stall": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) container fence: a token minted on one container resumed on another is a typed 400 (lens-6 silent-drop regression)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) container+scope mutation matrix: every resume/filter combination is typed 400 or lawful 200 (lens-6 fuzz)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) cross-token: a v1 query token fed to list_docs is a typed 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) list forgery fuzz: 300 seeded/random tokens never 5xx, never raise": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) list forgery matrix: forged/malformed tokens are typed 400s": {
-      "max_ms": 14552,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) prefix-resume fence: a token minted under prefix A resumed under prefix B is a typed 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) query scope fence: a cross-partition token resumed under a pk header is a typed 400 (silent-drop regression)": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test list_docs continuation (version-2 token namespace) truncated list emits a v2 token, resume completes the feed, last page tokenless": {
       "tier": "default"
     },
+    "Elixir.Smalt.DataPlane.CosmosTest.test name-corpus precedence and charge pinning KNOWN DIVERGENCE: create on unknown container implicitly creates (201), real Cosmos 404s": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test name-corpus precedence and charge pinning delete precedence: nonexistent doc and unknown/invalid names -> 404 NotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test name-corpus precedence and charge pinning request charge is the documented constant 1.0 on every doc surface": {
+      "tier": "default"
+    },
     "Elixir.Smalt.DataPlane.CosmosTest.test name-path parity 255-char names accepted; 256-char and slash names -> 400 BadRequest": {
-      "max_ms": 11422,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test name-path parity names are case-sensitive: distinct records, rids, and doc lists": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test name-path parity unicode names accepted with valid rids": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test partition-key 400 messages (real Cosmos parity) missing / non-array / empty-array / malformed header all 400 BadRequest with the mismatch message": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test partition-key 400 messages (real Cosmos parity) put_doc and query on pk containers honor the same 400 contract": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test partition-key 400 messages (real Cosmos parity) query POST without a query document -> 400 BadRequest (row 8)": {
-      "max_ms": 16166,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test python-SDK wire tolerance (lane 91) GET / account carries the python-SDK-required DatabaseAccount fields": {
-      "max_ms": 7512,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test python-SDK wire tolerance (lane 91) GET /dbs/:db/colls/:coll/ (trailing slash) routes identically to non-slash form": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test python-SDK wire tolerance (lane 91) container records carry partitionKey.kind = Hash (SDK _ExtractPartitionKey)": {
-      "max_ms": 6358,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test uniqueKeyPolicy enforcement PATCH that moves the doc's pk value without the pk header is a typed 400": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test uniqueKeyPolicy enforcement PATCH that steals another doc's unique-key value is 409 Conflict": {
-      "max_ms": 7956,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test uniqueKeyPolicy enforcement PUT replace that steals another doc's unique-key value is 409; keeping own value is 200": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test uniqueKeyPolicy enforcement create reflects the policy in the container record": {
-      "max_ms": 7094,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test uniqueKeyPolicy enforcement duplicate unique-key value in the same partition is 409 Conflict": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test uniqueKeyPolicy enforcement same unique-key value in a DIFFERENT partition is admitted (partition-scoped)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test v261014-07: SQL whitelist honesty gate SELECT * FROM c -> 200 feed; WHERE / garbage -> 400 SyntaxError, never a silent scan": {
+      "tier": "default"
     },
     "Elixir.Smalt.DataPlane.CosmosTest.test v261014-07: list-feed auth gate (401 without auth) anonymous GET /dbs/:db/colls/:coll/docs -> 401 + WWW-Authenticate: Bearer": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.CosmosTest.test v261014-07: nil-prefix continuation round trip nil prefix mints a consumable token: resume with nil and with \"\" both complete the feed": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.KQLTest.test AST depth cap": {
@@ -3815,11 +5040,143 @@
     "Elixir.Smalt.DataPlane.KQLTest.test where startswith": {
       "tier": "default"
     },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics colon-in-name cannot collide with a version separator (R138/W5-6)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics empty allowed_operations is deny-all; camelCase honored in gate": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics oct versions derive distinct material; bare name keeps legacy derivation": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics recover restores live version rows: versioned fetch returns the material (R24/A3-D1)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics release-policy denial is 403 Forbidden (real Azure status)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics unknown version -> 404 KeyNotFound, never a bare-name fallback": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test R14 versioned-key semantics versioned crypto op does not surface a duplicate key in list_keys": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt A256GCM (oct) round-trip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt A256GCM (oct) same plaintext twice -> different ciphertexts, both decrypt": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt A256GCM (oct) tampered tag fails decrypt with 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt RSA-OAEP-256 keypair is deterministic per key name: cached in the Store row": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt RSA-OAEP-256 round-trip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt RSA-OAEP-256 same plaintext twice -> different ciphertexts, both decrypt": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test encrypt/decrypt RSA-OAEP-256 wrong-key ciphertext fails decrypt with 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test errors alg mismatched to key type -> 400 InvalidAlgorithm": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test errors invalid base64 value -> 400 InvalidValue": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test errors missing value -> 400 InvalidParameter": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test errors unknown alg -> 400 InvalidAlgorithm": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test errors unknown key -> 404 KeyNotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test listing list_keys returns all stored keys in key order, without key_material": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test listing list_versions returns the current version": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test release policy gate camelize allowedOperations is honored": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test release policy gate empty policy list falls back to defaults": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test release policy gate missing policy allows all default operations": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test release policy gate operation absent from allowed_operations -> 400 OperationNotAllowed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release HKDF-SHA256 derivation matches RFC 5869 test vectors": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release expired token never releases, even with a fresh jti": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release failed release (malformed recipient JWK) burns neither jti nor keyMaterialVersion": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release jti is single-use globally, not per key": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release jti replay race: concurrent releases of one token -> exactly one release": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release jti single-use: replayed attestation token -> 403 TokenReplay": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release key without release policy -> 400 KeyNotExportable; unknown -> 404": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release material is bound to the policy hash": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release recipient JWK in token claims releases RSA-OAEP-256-wrapped material": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release same key + policy releases deterministic (replayable) material": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release tampered token still refused with 403 UnauthorizedAttestation": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test secure key release two different keys release different material": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test sign/verify RS256 + PS256 PS256 round-trip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test sign/verify RS256 + PS256 PS256 signature does not verify as RS256": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test sign/verify RS256 + PS256 RS256 round-trip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test sign/verify RS256 + PS256 sign on oct key is 400 InvalidAlgorithm": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test sign/verify RS256 + PS256 tampered payload verifies invalid (200, valid: false)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test wrapKey/unwrapKey RSA wrap/unwrap round-trip": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test wrapKey/unwrapKey oct wrap/unwrap round-trip": {
+      "tier": "default"
+    },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test cas_policy_row: hold committed between read and write-back is preserved, not clobbered": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test concurrent metadata PUTs vs hold-sets: committed holds are never lost (W5-8 race)": {
-      "max_ms": 10576,
+      "max_ms": 10733,
       "tier": "stress"
     },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test metadata PUT still succeeds on a hold-free container (non-vacuity of the happy path)": {
@@ -4426,8 +5783,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpTest.test lens6 concurrent tools/call under descriptor module reload stays payload-faithful": {
-      "max_ms": 14813,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.McpTest.test lens6 generated descriptor agrees with the TTL capability source (data fidelity)": {
       "tier": "default"
@@ -4481,7 +5837,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test doctor.summary agrees with scripts/doctor.py --json on substrate health": {
-      "max_ms": 41179,
+      "max_ms": 31316,
       "tier": "stress"
     },
     "Elixir.Smalt.McpWireTest.test lens8 wire tools/list and mcp_tools are capability_id-sorted": {
@@ -4580,25 +5936,85 @@
     "Elixir.Smalt.McpWireTest.test wire tools/list notification (no id) -> 204, empty body, no envelope": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test GAP-A2-03/04 delivery annotations + x-opt stamps wire delivery carries last_enqueued_* delivery annotations and x-opt-* message annotations": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test GAP-A2-03/04 delivery annotations + x-opt stamps send_event captures partition_key/enqueued/offset; receive_events + last_enqueued surface them": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test KD-76 partition-key routing out-of-pin partition attach is refused: attach echo then typed detach": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test KD-53 multi-event batch split at ingest 4-event batch envelope is split into 4 events with inner payloads and monotonic seqs": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test KD-76 partition-key routing pk-routed hub send reaches exactly one partition + the hub receiver; x-opt-partition-key round-trips": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test KD-53 multi-event batch split at ingest single-event batch and ordinary message stay exactly ONE event (no false split)": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test KD-76 partition-key routing r200h: SDK capital-P partition receivers (.../ConsumerGroups/$Default/Partitions/{n}) get pk-routed events": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test KD-76 partition-key routing deterministic pk hash: same key routes to the same partition, distinct keys distribute": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test KD-76 partition-key routing r200h: capital-P direct-partition send meets capital-P receiver at the same storage partition": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test R185e real-SDK batch shape and duplicate-kind discriminator 1. real-SDK shape: 3 inners of [header, ma, props, app_props, body] -> 3 events": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test R166 wire-tier batch discriminator wire: 2-inner batch -> 2 events; truncated non-tail inner -> 1; valid single -> 1": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test R185e real-SDK batch shape and duplicate-kind discriminator 2. attack A (duplicate-kind): truncated header-only inner + complete inners -> ONE event": {
       "tier": "default"
     },
-    "Elixir.Smalt.Messaging.EventHubsTest.test V261014-04 F1 wire-level receiver delivery receiver link on /eventhubs/ path receives sent events in sequence order with x-opt-sequence-number": {
+    "Elixir.Smalt.Messaging.EventHubsTest.test R185e real-SDK batch shape and duplicate-kind discriminator 3. attack E (cannibalized groups): heterogeneous groups -> ONE event": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test R185e real-SDK batch shape and duplicate-kind discriminator 4. KD-53 minimal inners [body]/[header,body] still split": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test checkpoint compare_and_swap exactly one of two concurrent CAS callers with the same expect wins": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test checkpoint compare_and_swap second CAS against updated checkpoint conflicts": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test checkpoint compare_and_swap serialized-server CAS fallback: exactly-one-winner semantics": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-4 bump_sequence mirror-row consistency after 16x25 parallel sends the mirror row seq equals the atomic counter exactly": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-4 checkpoint seed window (F-2) 16 concurrent first-touch CAS on the same fresh key yield exactly one :ok": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-4 checkpoint seed window (F-2) CAS against an absent checkpoint takes zero-checkpoint semantics with no caller-side seed insert": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-4 checkpoint seed window (F-2) a CONFLICTING CAS against an absent checkpoint leaves no seed row behind (deterministic F-2 kill)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-4 checkpoint seed window (F-2) a live claim survives a concurrent CAS + reserve storm (no caller-side seed clobber)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-5 concurrent first-use (F-4) 32 concurrent ensure_tables after table deletion all survive": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-5 sweep serialization (F-3) a live lease is never lost under a concurrent sweep + reserve hammer": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-5 sweep serialization (F-3) sweep clears only expired claims and never touches live ones": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test lens-5 sweep serialization (F-3) sweep performs checkpoint writes only on the server, never the caller (F-3 shape)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test per-partition monotonic sequence parallel senders never observe duplicate or regressing sequences": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test per-partition monotonic sequence receiver gets events back in sequence order across parallel senders": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test per-partition monotonic sequence sequential sends are strictly monotonic from 1": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test reconcile events survive sender-process churn: fresh reader sees all events in seq order": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test reconcile live lease survives sweep; checkpoint CAS never moves broker-truth seq": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test reconcile reports broker-truth partition seq alongside stored checkpoint": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test reserve_processing lease one live owner excludes others; expired lease is reclaimable after sweep": {
       "tier": "default"
     },
     "Elixir.Smalt.Messaging.EventStreamTest.test default: same-id republish overwrites (LWW) and list shows v2": {
@@ -4785,8 +6201,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.OcelRevopsTest.test a conformance-false deviation appears as an evidence record through Ash": {
-      "max_ms": 6455,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.OcelTest.test a dangling reference from an EARLIER line is refused even when a later line exists": {
       "tier": "default"
@@ -5115,6 +6530,36 @@
     "Elixir.Smalt.Projection.Admission.Lens4IdentityTest.test whitespace-only deviation id refuses typed": {
       "tier": "default"
     },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) accepts ids with at least one visible codepoint": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) refuses blank and whitespace-only binaries": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) refuses invisible-format-only binaries (zero-width, BOM, soft hyphen)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) refuses non-binaries (2-tuple, list, integer, nil)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) semantic_epoch refuses a whitespace-only receipt id (typed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) semantic_epoch refuses an invisible-format-only receipt id (typed)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test Smalt.Projection.Identity.valid?/1 (the one fence) semantic_epoch still accepts twin ids that each carry visible bits (identity is byte identity, not rendering)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.IdentityTest.test non-map JSONL lines (lens-5 cycle 4) a valid-JSON non-map receipt line refuses typed, never crashes": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.SemanticEpoch.Lens6LockTest.test a well-formed lock still pins digests (fence does not over-refuse)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Projection.SemanticEpoch.Lens6LockTest.test malformed pack entries fold the lock to %{} and show :no_pack drift, never crash": {
+      "tier": "default"
+    },
     "Elixir.Smalt.Property.FrameCodecPropertyTest.property P1: encode_frame -> decode_frame round-trips generated performatives": {
       "tier": "default"
     },
@@ -5236,62 +6681,88 @@
       "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test EventHub eventhubs and consumergroups 404 when parent namespace is missing": {
-      "max_ms": 8990,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test EventHub eventhubs and consumergroups consumergroup LIST always carries $default; hub with 2 CGs lists 3": {
-      "max_ms": 9723,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test EventHub eventhubs and consumergroups consumergroup lifecycle under eventhub parent": {
-      "max_ms": 9853,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test EventHub eventhubs and consumergroups eventhub lifecycle: 201, GET, LIST, DELETE": {
-      "max_ms": 10988,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus queues 404 ResourceNotFound on PUT/GET/LIST/DELETE under a missing parent namespace": {
       "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus queues full lifecycle: 201 PUT, 200 re-PUT, GET, LIST, DELETE, GET 404": {
-      "max_ms": 10089,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus queues missing api-version -> 400 MissingApiVersionParameter": {
-      "max_ms": 9493,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus queues stale api-version admits monotonically; > latest -> 400 InvalidApiVersionParameter": {
-      "max_ms": 7065,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus topics and subscriptions 404 when parent topic is missing": {
-      "max_ms": 9652,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus topics and subscriptions subscription lifecycle under topic parent": {
-      "max_ms": 11704,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test ServiceBus topics and subscriptions topic lifecycle: 201, GET, LIST, DELETE": {
       "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test azapi lock If-Match precondition POST lock with If-Match -> 200 lock envelope": {
-      "max_ms": 10501,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test azapi lock If-Match precondition POST lock without If-Match -> 412 PreconditionFailed": {
-      "max_ms": 13624,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test nested-provider diagnosticSettings PUT/GET/DELETE at arbitrary depth under a storageAccount": {
-      "max_ms": 8683,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.Smalt.SbChildrenTest.test nested-provider diagnosticSettings non-diagnosticSettings glob falls through to RouteNotFound": {
-      "max_ms": 7969,
-      "tier": "stress"
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test SQL filter evaluation AND/OR and parentheses": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test SQL filter evaluation EXISTS": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test SQL filter evaluation correlation filter matches message_id and app properties": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test SQL filter evaluation equality on app property and sys.label; missing property is false": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test SQL filter evaluation fail-closed parse refusals on unsupported constructs": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test delivery fan-out matching message delivered to exactly the sql-filter subscription; action overrides label": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test delivery fan-out non-matching message skipped (not DLQ'd) by the sql-filter subscription": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test delivery fan-out subscription with no rules admits everything (default true-filter)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test rule CRUD over the ARM router LIST on a subscription with no user rules synthesizes $Default true-filter": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test rule CRUD over the ARM router PUT 201 -> GET carries filter, LIST shows it, DELETE -> GET 404": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test rule CRUD over the ARM router rules under a missing subscription -> 404 ResourceNotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test rule CRUD over the ARM router unsupported SQL filter construct -> typed 400 InvalidFilter at create": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SbRulesTest.test rule CRUD over the ARM router unsupported action (non-SET) -> typed 400 InvalidAction at create": {
+      "tier": "default"
     },
     "Elixir.Smalt.Security.Lens5CrashClassTest.test attest crash-class: hostile measurement_params refuses typed tuple key -> 400 attestationFailedVerdict, no raise": {
       "tier": "default"
@@ -5330,6 +6801,201 @@
       "tier": "default"
     },
     "Elixir.Smalt.Security.Lens6FuzzTest.test SKR.release wave 4: split flat/nested claim placement across enforcement sites": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test Attestation client_payload_hash is invariant under key-order permutation (nested maps)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test Attestation in-baseline measurement yields signed compliant token": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test Attestation malformed measurement (not hex64) fails": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test Attestation measurement in Store baseline table is attested": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test Attestation out-of-baseline measurement fails with 400 attestationFailedVerdict": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test Attestation verify_token rejects tampered attestation token": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger 32-writer race cannot fork the chain: full recompute shows one genesis chain": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger 64-writer fork fuzz: every prev_hash unique, every writer persisted exactly once": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger 64-writer race: single genesis chain, no fork, stored chain == returned chain": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger appends with monotonic tx ids and chained merkle roots": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger baseline tamper: flipping ONE measurement byte refuses attestation": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger chain recomputation: merkle_root == sha256(prev <> data_hash)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger duplicate contents are refused with 409 LedgerItemAlreadyExists": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger duplicate detection is per-ledger": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger get_transaction supports tx_id and latest; list_transactions is ordered": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger jti near-collision: same-jti releases within one clock tick, first-writer-wins": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger mixed workload: 64 appends + 40 readers + 5 duplicate writers concurrently": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger parallel appends keep seq strictly monotonic with no duplicate tx ids": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger receipt signature is a verifiable JWS bound to the exact receipt fields": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ConfidentialLedger receipts are signed and signature verifies": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner alg-swap RS256->HS256 with the public key as HMAC secret is refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner b64:false header (Bao token-attack form) is refused": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner crit-carrying header is not processable: signature over rewritten header fails": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner exp == now is accepted, exp == now - 1 refused (skew boundary pinned)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner kid-carrying forged header breaks the signing input -> bad_signature": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner nbf == now accepted, nbf == now + 1 refused (typed :token_not_yet_valid)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects HS256 alg confusion": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects alg none": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects foreign-key token signed with a DIFFERENT key size (1024-bit RSA)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects foreign-key-signed token (replayed/foreign MAA JWT)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects malformed tokens": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects missing-alg header": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects non-integer exp": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects non-map JSON payload": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner rejects tampered signature": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner sign/verify round-trips claims": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test ReceiptSigner verify_token enforces exp": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-10 boundary-totalization sweep empty ledger names (binary \"\" and atom :\"\") are refused \u2014 no anonymous ledger": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-10 boundary-totalization sweep hostile SKR key names are typed 400 refusals, never raises": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-10 boundary-totalization sweep hostile attestation type params are typed 400 refusals, never raises, never coerced": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-10 boundary-totalization sweep hostile tx_id shapes at get_transaction/2 are typed :error, never raises, never coerced": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 M7-class JWS payload-tamper court tampering the receipt payload's contents field breaks signature verification": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 SKR commit-point conservation failed releases burn neither jti nor keyMaterialVersion": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 cross-surface isolation (ledger/SKR vs TrustProfile) a TrustProfile envelope is refused by the ReceiptSigner token gate": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 cross-surface isolation (ledger/SKR vs TrustProfile) a ledger/MAA JWS is refused by TrustProfile.verify with :unknown_key_id": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 cross-surface isolation (ledger/SKR vs TrustProfile) non-interop is bidirectional at the full-gate layer": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 fence precedence + policy-hash binding HKDF binding: same key+policy releases identical material; per-key salt isolates keys": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 fence precedence + policy-hash binding existence fence fires BEFORE the dup check: no 409, no state leaked": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 fence precedence + policy-hash binding invalid contents arriving FIRST: typed refusal, writer survives, no state burned": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 fence precedence + policy-hash binding mixed valid/invalid fuzz under concurrency: chain coherent, failures burn nothing": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 fence precedence + policy-hash binding release policy change changes the released material and policyHash": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 fence precedence + policy-hash binding writer death mid-stream: lazy restart continues the chain without fork or seq reuse": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 implicit-create divergence fence default: append to never-created ledger implicitly creates it (documented divergence)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 implicit-create divergence fence enforced: a ledger with prior transaction state admits appends": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 implicit-create divergence fence enforced: append to never-created ledger is refused with the 404-class envelope": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 implicit-create divergence fence enforced: explicit creation marker admits the append (fix shape works)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 ledger read cursor under mixed write traffic get_latest cursor is monotone: never regresses under concurrent appends": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-2 ledger read cursor under mixed write traffic list_transactions snapshots are immutable, gap-free prefixes of the settled chain": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-3 ReceiptSigner envelope-typing fence (RFC 8725 SS3.11) duplicated JWT claims: FIRST-wins (Jason), the signed bytes bind": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-3 ReceiptSigner envelope-typing fence (RFC 8725 SS3.11) foreign envelope typ is refused structurally under a SHARED key": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-3 ReceiptSigner envelope-typing fence (RFC 8725 SS3.11) typ JWT and absent typ are admitted (no regression on native tokens)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-3 ReceiptSigner envelope-typing fence (RFC 8725 SS3.11) typ edge shapes: exact-match fence pins case/media/parameter variants": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-3 SKR release under concurrent policy rotation policy snapshot at admission binds: every release is coherent with exactly one rotated policy version": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-9 ledger-name crash class atom names remain admitted (documented @spec form), binary + atom name identity": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Security.SecurityHardeningTest.test lens-9 ledger-name crash class hostile ledger names are typed refusals, never raises, never coerced": {
       "tier": "default"
     },
     "Elixir.Smalt.SemConvTelemetryEmitTest.test metadata remains a subset of the module whitelist through the gate": {
@@ -5404,7 +7070,46 @@
     "Elixir.Smalt.Semantic.StoreRead.Lens7FieldPolicyTest.test non-binary ledger fields project nil; truthy non-binary Evidence status defaults": {
       "tier": "default"
     },
+    "Elixir.Smalt.SemanticEpochTest.test binary timestamps actually parse and drive the started_at sort (mutation-court kill)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test blank-string receipt id is refused as missing identity": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test non-binary timestamps do not crash the timeline": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files carries the real pack lock digest map": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files includes deviations admitted through the real admission path": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files marks digest drift against the locked pack digest": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files marks standing drift on build_broken receipts": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files mutation fences: a degraded ledger (stamped/unstamped/tampered) is caught": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files parser fuzz: malformed/truncated/duplicate ledgers refuse, never crash": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files projects one epoch row per receipt, ascending and stable": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticEpochTest.test timeline/0 over real receipt files scale fuzz: 10k-line ledger \u2014 determinism, dup pin at scale, perf budget": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission compiles all three resources into a mapping bundle": {
+      "tier": "default"
+    },
     "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission materializes a seeded resource into RDF triples": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticProjectionTest.test R2RML mapping compile + emission renders deterministic W3C R2RML TTL in the smalt vocabulary": {
       "tier": "default"
     },
     "Elixir.Smalt.SemanticProjectionTest.test R2RML render determinism under concurrent Store mutation render stays byte-identical while Store is concurrently mutated": {
@@ -5413,10 +7118,25 @@
     "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation non-map Store row refuses the semantic read typed, never crashes": {
       "tier": "default"
     },
+    "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation semantic Store-backed rows only project Registry-admitted types": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation vacuous ledger transactionId refuses the LedgerEntry read typed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticProjectionTest.test cross-surface read-path validation vacuous primary keys (nil and blank) refuse the semantic read typed": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticProjectionTest.test domain read path over Store reads a seeded ARM resource as an Ash record": {
+      "tier": "default"
+    },
     "Elixir.Smalt.SemanticProjectionTest.test domain read path over Store reads a seeded ledger receipt as a LedgerEntry": {
       "tier": "default"
     },
     "Elixir.Smalt.SemanticProjectionTest.test ex4pm evidence admission admits an OCEL deviation record and projects it as evidence": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.SemanticProjectionTest.test ex4pm evidence admission evidence surface is read-only: known != authorized": {
       "tier": "default"
     },
     "Elixir.Smalt.Spc.DriftTest.test 1-sigma drift emits a CloudEvents spc.drift row into :smalt_event_messages": {
@@ -5429,6 +7149,51 @@
       "tier": "default"
     },
     "Elixir.Smalt.Spc.DriftTest.test registry gate: spc.drift is a registered OCEL type (emitter reachable)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test CAS conflict returns typed {:error, :conflict}; win returns :ok": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test compare_and_swap/4: N racers, same expect \u2014 exactly one :ok, final value is the winner's": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test compare_and_swap_delete/3 unknown table fails closed in the caller": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test compare_and_swap_delete/3: N racers, same etag \u2014 exactly one :ok, rest conflict": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test insert_new/3 under 64 racers on one key: exactly one insert, winner's value wins": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test insert_new/3 unknown table fails closed in the caller": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test keys/1 under concurrent mid-walk deletes: no MatchError, sorted": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test list/1 under concurrent mid-walk deletes: no MatchError, no phantom values": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test list_prefix/2 under concurrent mid-walk deletes: no MatchError, all rows in prefix": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test unknown tables fail closed: get/put/delete/list never return a value": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test update_counter is atomic init-and-increment from 0": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test update_counter/3 negative result is allowed by the raw ETS contract (no clamp)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test update_counter/3: 32 racers on a fresh key \u2014 totals 1..N each exactly once, final N": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test update_counter/current_counter on unknown table fail closed in the caller": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.StoreChurnTest.test writer isolation: no direct ETS writer of :smalt_operations outside Smalt.Store": {
       "tier": "default"
     },
     "Elixir.Smalt.StoreDetsGrowthTest.test census: deleted keys leave the mirror (row count tracks live keys)": {
@@ -5468,7 +7233,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.TLSTest.test concurrency falsifier (TLS-261014-01) paired boots: regenerator racing a boot across N=20 paired seats, zero crashes": {
-      "max_ms": 50800,
+      "max_ms": 15978,
       "tier": "stress"
     },
     "Elixir.Smalt.TLSTest.test concurrency falsifier (TLS-261014-01) regenerate during active serving: no listener drop": {
@@ -5520,6 +7285,18 @@
       "tier": "default"
     },
     "Elixir.Smalt.Telemetry.AffidavitOcelEmitTest.test seal emits one affidavit.seal event passing the registry gate": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Telemetry.CourtOcelTest.test court_emit task judges a synthetic green receipt and emits court.run": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Telemetry.CourtOcelTest.test court_run emits one court.run event with stages, verdicts, run": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Telemetry.CourtOcelTest.test doctor_receipt emits one doctor.receipt event with enclave + document objects": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Telemetry.CourtOcelTest.test registry gate is non-vacuous: an unknown event type is dropped, not admitted": {
       "tier": "default"
     },
     "Elixir.Smalt.Telemetry.EnclaveOcelTest.test a real lifecycle run emits one stage event per stage with enclave/fixture/resource objects": {
@@ -5852,6 +7629,72 @@
     "Elixir.Smalt.Wire.ArmWireTest.test route-negative: unknown path returns ARM 404 error envelope over the wire": {
       "tier": "default"
     },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: GET comp=metadata echoes the x-ms-meta-* written by PUT comp=metadata": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: GET sharesnapshot=<ts> reads back the frozen bytes byte-exact; later base mutations stay invisible": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: PUT comp=snapshot answers 201 with x-ms-snapshot timestamp header": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: container GET comp=lease/acl answers 400 InvalidQueryParameterValue over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: container PUT comp=lease/acl answers 400 InvalidQueryParameterValue over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: overwrite in WORM-locked container returns 409 over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Blob: snapshot create under an active legal hold answers 409 ContainerLocked": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Cosmos: PATCH valid, pk-move 400, unique-key steal 409 over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Cosmos: change feed returns only-new docs with continuation header over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Cosmos: create document returns 201 with etag over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Cosmos: stale If-Match on PUT returns 412 over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test HEAD blob with comp=blocklist answers typed 400, not fake 200 metadata": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Key Vault: release with valid CVM attestation returns released key material over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Key Vault: release without valid CVM attestation returns 403 over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test R137: encoded reserved namespace PUT answers 404 and stores nothing; encoded dbs GET answers 400; plain splat stays 201": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test R185h: concurrent metadata PUTs vs hold toggles over the wire answer only 200/409 and leave the row coherent": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test R185h: metadata PUT under an active hold answers 409 ContainerLocked with stamped x-ms-error-code": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test case-variant reserved first segment /DBS/ fence-refuses identically to /dbs": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test container re-PUT under an active legal hold answers 409 ContainerLocked": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test container re-PUT with different metadata answers 409 ContainerAlreadyExists": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test container re-PUT with identical metadata answers 200 with standard headers": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test event ingest + query round-trip over the wire": {
+      "tier": "default"
+    },
     "Elixir.Smalt.WireTierRefusalSweepTest.test contrast row: ONE type with a conforming PUT is ADMITTED (2xx) \u2014 proves the sweep catches a validator that refuses everything": {
       "tier": "default"
     },
@@ -5928,8 +7771,7 @@
       "tier": "default"
     },
     "Elixir.SmaltArmGatewayTest.test generic LIST nextLink carries api-version; follow passes the gate": {
-      "max_ms": 26773,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.SmaltArmGatewayTest.test invalid api-version returns 400 InvalidApiVersionParameter": {
       "tier": "default"
@@ -5992,8 +7834,7 @@
       "tier": "default"
     },
     "Elixir.SmaltGraphlawMatrixTest.test Registry is the exact projection of the pack ontology (regeneration determinism)": {
-      "max_ms": 6350,
-      "tier": "stress"
+      "tier": "default"
     },
     "Elixir.SmaltGraphlawMatrixTest.test empty payload verdict matches the type's declared shape requirements": {
       "tier": "default"
@@ -6002,6 +7843,96 @@
       "tier": "default"
     },
     "Elixir.SmaltGraphlawMatrixTest.test unknown type is refused as :type_not_admitted": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test 24 concurrent polls of one elapsed op: all 200, one terminal body, store converges": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test DELETE of LRO-created storageAccount returns 200 and subsequent GET is 404": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test GET operations with unknown op id returns 404 ARM error envelope": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test LRO type PUT twice: create is 202, update is 200, both LRO responses with distinct operations": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test PUT resourceGroups is synchronous 201 with no async headers": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test PUT storageAccount returns 202 with Azure-AsyncOperation, Location, Retry-After and InProgress body": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test RG cascade DELETE mid-op: child op still terminates, cascade not undone": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test RG delete is an LRO: 202 + Location + Retry-After and the poll terminates": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test at-rest terminality with zero polls: never-polled op reads terminal at raw get": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test concurrent polls during flip all observe well-formed state and converge": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test deleted-parent op never surfaces in any LIST / nextLink surface (ops are not listable)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test foreign-subscription poll of an incomplete op is 404 but the record still converges terminal": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test hand-seeded InProgress record without scheduling fields flips to persisted Failed with error member": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test incomplete record missing name flips under the polled store key (no re-livelock, no :nil pollution)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test non-LRO resource type PUT twice: 201 then 200": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test non-integer :lro_delay_ms fails closed at mint (ArgumentError), never mints a doomed op": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test non-map record fails closed, store converges terminal, poll 404s (never 500)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test op flips when polled via ROUTER after request process gone": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test op records reach terminal at rest with zero polls; default retention keeps all 500": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test op survives parent resource DELETE while InProgress (generic DELETE mid-flight)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test polling another subscription's operation id returns 404 OperationNotFound": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test polling operations route reaches Succeeded within 2s and terminal body carries endTime": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test record missing id is never leaked to a foreign-subscription poll (deny-by-default)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test record with malformed scheduling fields flips to Failed instead of crashing the poll": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test same-parent ops get distinct op ids and distinct polling paths": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test seeded Cancelled terminal renders 200, not 202-forever (default-terminal wire)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test status-less record fails closed to persisted Failed terminal (missing-status face)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test sweep over empty store and all-terminal store is a no-op (0 writes)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test sweep racing a wire poll converges to one persisted terminal, byte-identical body": {
+      "tier": "default"
+    },
+    "Elixir.SmaltLroTest.test terminal status is sticky across repeated polls (no Succeeded -> InProgress revert)": {
       "tier": "default"
     },
     "Elixir.SmaltRouteNegativeTest.test PUT of an unadmitted type -> 400 GraphLaw refusal envelope": {
@@ -6088,6 +8019,148 @@
     "Elixir.SmaltServicesTest.test Registry contains all 15 consumed Project Smalt service types": {
       "tier": "default"
     },
+    "Elixir.SmaltTest.AshExtension.Lens4IdentityTest.test invisible-format-only (zero-width) primary key refuses the substrate read typed": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.AshExtension.Lens4IdentityTest.test whitespace-only primary key refuses the substrate read typed": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.AssertEventuallyTest.test eventually_stays/2: absence violated -> typed failure naming desc, window, LAST observation": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.AssertEventuallyTest.test eventually_stays/2: condition holding truthy for the window returns :ok": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.AssertEventuallyTest.test eventually_stays/2: exception inside fun is a false observation, rides the flunk": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.AssertEventuallyTest.test eventually_stays/2: observation flip false->true resets the stability clock": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test control plane profile file carries the AZB-05 spec keys": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test graph_law fail_closed engine down + NO profile: historical 400 face (default boot unchanged)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test graph_law fail_closed engine down + fail_closed: PUT is a typed 503 :engine_unavailable and NOTHING is admitted": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test graph_law fail_closed engine down + fail_open (anti-vacuity face): same state is the historical 400 InvalidResourceShape, NOT 503": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test graph_law fail_closed engine up (local validation) + fail_closed: PUT still admits normally": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test happy path: PUT storageAccounts admits with x-ms-request-id under the control profile": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test profile maps onto flat config keys (one source per port)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test strict_version_validation admitted type: beyond-latest api-version stays 400 InvalidApiVersionParameter (KD-78)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test strict_version_validation admitted type: stale api-version (1999-01-01) admits monotonically under strict \u2014 KD-78 operator ruling (ticket-vs-pin conflict disclosed in azb-05 receipt)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test strict_version_validation default mode (strict off) keeps the KD-78 permissive pass-through for unadmitted types": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test strict_version_validation missing api-version stays 400 MissingApiVersionParameter under strict": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.ControlPlaneTest.test strict_version_validation unadmitted provider type is refused 400 InvalidApiVersionParameter / NoRegisteredProviderFound": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test anti-vacuity: repair:false on the killed file refuses typed \u2014 the DETS_UNREPAIRED condition fires": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test corruption variant header-byte-flip: typed outcome only, never an untyped crash loop": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test corruption variant truncate-tail: typed outcome \u2014 repair with telemetry disjunct typed refusal; store keeps serving": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test graphlaw/WasmEngine killed mid-request: caller receives :engine_unavailable as HTTP 503 typed body, nothing admitted": {
+      "max_ms": 5009,
+      "tier": "stress"
+    },
+    "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test needs_repair path: repair:true boot repairs the killed file, dets_repaired telemetry fires, all acked writes present, zero phantoms": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DrScenariosTest.test scenario 1: data subtree kill mid-query stream \u2014 typed 503, retry succeeds, x10": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DrScenariosTest.test scenario 2: integration subtree kill \u2014 forced close, reconnect, no loss, x10": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DrScenariosTest.test scenario 3: identity subtree kill \u2014 cached tokens accepted, new mints 503, x10": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.DrScenariosTest.test scenario 4: control subtree kill \u2014 data plane unaffected, x10": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test KD-15 mode-blind challenge (AZB-08 falsifier face) authenticated KV call passes the guard (challenge-leg non-vacuity)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test KD-15 mode-blind challenge (AZB-08 falsifier face) challenge resource echoes the request origin; no authorization_uri": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test KD-15 mode-blind challenge (AZB-08 falsifier face) tokenless /keys challenge is byte-equal in :enforce and :anonymous": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test STS mint TTL (AZB-08 profile key) default TTL stays 3600 when the profile key is absent (pinion: exp-iat==3600)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test STS mint TTL (AZB-08 profile key) mint honors token_ttl_seconds in exp-iat and expires_in": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test api_version read site InvalidApiVersion message names the configured api_version": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test identity profile read sites (AZB-08) accessors read the profile keys with byte-identical defaults": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test identity profile read sites (AZB-08) challenge guard consults the challenge_mode profile key": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test identity profile read sites (AZB-08) profile file pins the AZB-08 spec values": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test injected-clock expiry expired token refused TokenExpired when the injected clock moves past exp": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test key rotation re-create issues a new version; old version still decrypts; GET returns latest": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.IdentityPlaneTest.test key rotation versions listing carries every issued version": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test ARM resource PUT emits ResourceWriteSuccess to integration plane": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test egress guard refusal counted and instrumented (R_missing_authority)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test egress guard: peer endpoint allowed; non-peer non-loopback refused": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test every plane profile pins :peers with loopback-only endpoints": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test foreign issuer claim refused 401 (anti-vacuity target)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test identity-plane STS token accepted by data plane over the wire": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test peer resolution is config-driven (no in-process shortcut)": {
+      "tier": "default"
+    },
+    "Elixir.SmaltTest.Azsim.TopologyTest.test token signed by foreign key refused 401 (signature)": {
+      "tier": "default"
+    },
     "Elixir.SmaltTest.doctest Smalt.hello/0 (1)": {
       "tier": "default"
     },
@@ -6122,7 +8195,7 @@
       "tier": "default"
     },
     "Elixir.StressTierCensusTest.test stress tier population >= 20 (tag loss fails loudly)": {
-      "max_ms": 14721,
+      "max_ms": 7066,
       "tier": "stress"
     },
     "Elixir.ZeroDriftSerializationTest.test cosmos PUT receives kind GlobalDocumentDB + databaseAccountOfferType Standard": {

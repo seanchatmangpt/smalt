@@ -1,7 +1,7 @@
 # Receipt: i29 fence-10/11/12 triple hammer ×10
 
 - Date: 2026-10-18
-- Context: slice(fence ×10)
+Context: slice(fence ×10)
 - Standing: PASS (10/10 identical green)
 - Subject: `/Users/sac/smalt` @ 6eec145 (working tree, shared machine)
 

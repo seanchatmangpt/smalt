@@ -1,7 +1,7 @@
 # AZB-23 Court Rehearsal (cold-start face, current non-quiet tree)
 
 - Date: 2026-10-18
-- Context: solo (rehearsal only; machine busy with concurrent lanes)
+Context: solo (rehearsal only; machine busy with concurrent lanes)
 - Machine: Apple M3 Max, 16 cores, 48 GB, Elixir 1.19.5 / OTP 28, Darwin 26.2
   (`just bench-machine` → `{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.19.5","otp":"28","darwin":"26.2"}`)
 - Standing: PASS (rehearsal) / quiet-check REFUSED as expected — see below

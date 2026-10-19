@@ -1,7 +1,7 @@
 # i29 — Pack-lock repin (`:lock_drift` resolved)
 
 - **Date**: 2026-10-18
-- **Context**: pair(i29-replay-fences.md, i29-sdk-census-fresh.md)
+Context: pair(i29-replay-fences.md, i29-sdk-census-fresh.md)
 - **Standing**: PASS — pack lock repinned to live pack identity; both replay fences 6/0 green; census drift face cleared.
 - **Subject**: smalt working tree; file changed: `ggen_igniter.pack.lock` (1 line, sha256 field only). No git commit (coordinator commits).
 

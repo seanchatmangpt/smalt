@@ -2,7 +2,7 @@
 
 - Date: 2026-10-18 22:23 PDT
 - Tree: `/Users/sac/smalt`, HEAD at run time `6eec145` (dispatch base; `git rev-parse` at receipt-write time reads `44b0859` — concurrent lanes committed during the run; no local edits made by this lane)
-- Context: solo
+Context: solo
 
 ## Standing: PARTIAL_ALIVE
 

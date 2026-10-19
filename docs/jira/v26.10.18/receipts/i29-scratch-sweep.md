@@ -1,5 +1,7 @@
 # i29 scratch sweep — edit_atom_bridge.py / edit_test.py
 
+Context: solo
+
 Date: 2026-10-18 · Context: solo · Standing: PASS (no-op disposition)
 
 ## Finding

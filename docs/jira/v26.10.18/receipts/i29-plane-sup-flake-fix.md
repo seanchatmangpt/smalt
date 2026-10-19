@@ -1,7 +1,7 @@
 # i29-plane-sup-flake-fix
 
 - **Date**: 2026-10-19
-- **Context**: slice(plane_supervision x10)
+Context: slice(plane_supervision x10)
 - **Standing**: ALIVE
 - **Lane file**: `test/azsim/plane_supervision_test.exs` (this lane's only edit)
 

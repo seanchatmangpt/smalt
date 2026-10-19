@@ -1,6 +1,7 @@
 # i29 — push-readiness audit (main vs origin/main), 2026-10-18
 
-Standing: ALIVE. Context: solo. Read-only audit; no mutations, no push.
+Standing: ALIVE.
+Context: solo. Read-only audit; no mutations, no push.
 
 ## Command
 

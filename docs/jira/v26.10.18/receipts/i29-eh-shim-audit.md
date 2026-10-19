@@ -1,5 +1,7 @@
 # Receipt — i29 EH shim-marker audit (event_hubs.ex SHIM-COURT markers)
 
+Context: solo(lib/smalt/messaging/event_hubs.ex marker audit, kd_flip dry-run, docs grep, host)
+
 - **Subject:** `/Users/sac/smalt` @ main, working tree; `lib/smalt/messaging/event_hubs.ex` (clean vs HEAD; last commit touching it: 9c74de3 2026-10-17 21:37 -0700)
 - **Standing:** PARTIAL_ALIVE (3 covered / 1 orphaned)
 - **Context:** solo(lib/smalt/messaging/event_hubs.ex marker audit, kd_flip dry-run, docs/jira grep, host)

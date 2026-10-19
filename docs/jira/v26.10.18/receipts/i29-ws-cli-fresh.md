@@ -1,5 +1,7 @@
 # i29 — ws-lint / ws-build / ws-court / cli-test fresh verification legs
 
+Context: solo (lane i29, exclusive use of workspace gates and cli-test venvs during run)
+
 - Date: 2026-10-18
 - Subject: /Users/sac/smalt, HEAD `d1298be` at run time (tree has advanced past `0009df3` since tasking; task said "post-0009df3 tree" — d1298be is a descendant on main).
 - Context: solo (lane i29, exclusive use of workspace gates and cli-test venvs during run)
