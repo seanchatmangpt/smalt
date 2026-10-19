@@ -49,20 +49,14 @@ apply_shim() {
 import sys
 path = sys.argv[1]
 src = open(path).read()
-old = """          live_keys = MapSet.new(rows, fn {key, _val} -> key end)
-
-          stale =
-            dets_file
-            |> :dets.match_object(:_)
-            |> Enum.map(fn {key, _val} -> key end)
-            |> Enum.reject(&MapSet.member?(live_keys, &1))
-
-          Enum.each(stale, &:dets.delete(dets_file, &1))
-          :dets.insert(dets_file, rows)
+# SHIM-COURT re-anchor 2026-10-18: sync_table evolved (8-space indent, new
+# bounded-growth comment block); anchor only the deletion call line.
+old = """        Enum.each(stale, &:dets.delete(dets_file, &1))
+        :dets.insert(dets_file, rows)
 """
-new = """          # SHIM-COURT: dets bound disabled — stale-key deletion removed;
-          # the mirror is now an upsert-union and deleted keys leak forever.
-          :dets.insert(dets_file, rows)
+new = """        # SHIM-COURT: dets bound disabled \u2014 stale-key deletion call removed;
+        # the mirror is now an upsert-union and deleted keys leak forever.
+        :dets.insert(dets_file, rows)
 """
 count = src.count(old)
 assert count == 1, f"expected exactly one sync_all stale-deletion block, got {count}"

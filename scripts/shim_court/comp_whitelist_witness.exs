@@ -35,7 +35,10 @@ CompWhitelistWitness.boot()
 {:ok, _} = BlobStorage.create_container("acc1", "cont1", %{"immutable" => false})
 {:ok, _} = BlobStorage.put_blob("acc1", "cont1", "victim.bin", "original-body")
 
-comps = ~w(appendblock snapshot page pagelist tags query tier expiry seal lease copy)
+# SHIM-COURT re-anchor 2026-10-18: blob snapshots (PUT ?comp=snapshot) are
+# IMPLEMENTED and whitelisted now (@blob_put_comps), so they left the
+# unimplemented-comp corruption list.
+comps = ~w(appendblock page pagelist tags query tier expiry seal lease copy)
 
 mode = System.argv() |> List.first()
 
@@ -108,10 +111,13 @@ case mode do
   "before" ->
     # Shimmed: the generic Put Blob fallback must absorb at least one
     # unimplemented comp and overwrite the body (the corruption class).
-    conn = route.("snapshot", :put)
+    # SHIM-COURT re-anchor 2026-10-18: comp=snapshot is implemented now
+    # (whitelisted in @blob_put_comps) — the corruption probe moved to
+    # comp=lease (unimplemented, observed corrupting under the shim).
+    conn = route.("lease", :put)
 
     if corrupt.() do
-      IO.puts("BEFORE PASS: corruption witnessed — comp=snapshot overwrote blob body (status #{conn.status})")
+      IO.puts("BEFORE PASS: corruption witnessed — comp=lease overwrote blob body (status #{conn.status})")
       System.stop(0)
     else
       IO.puts("BEFORE FAIL: no corruption observed under shim — gate would be vacuous")

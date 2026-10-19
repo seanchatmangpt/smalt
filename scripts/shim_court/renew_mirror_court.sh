@@ -33,7 +33,7 @@ source "$(dirname "$0")/lib.sh"
 SUBJECT=lib/smalt/messaging/amqp/lock_manager.ex
 CO_SUBJECT=lib/smalt/messaging/amqp/queue_store.ex
 export TESTFILE=test/amqp/queue_store_test.exs
-export R194_LINE=566
+export R194_LINE=590
 export MIX_BUILD_ROOT=_build-lane262
 export AFTER_LOG=/tmp/r194_renew_mirror_after.log
 

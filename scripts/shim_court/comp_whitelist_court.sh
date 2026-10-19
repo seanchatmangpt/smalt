@@ -78,7 +78,7 @@ if ! "${WITNESS[@]}" before >/dev/null 2>&1; then
   restore
   shim_court_fail BEFORE "corruption NOT witnessed under shim — gate would be vacuous"
 fi
-shim_court_log BEFORE "corruption witnessed: comp=snapshot overwrote the blob body via the generic Put Blob fallback"
+shim_court_log BEFORE "corruption witnessed: comp=lease overwrote the blob body via the generic Put Blob fallback"
 
 # --- Phase 4: RESTORE ---------------------------------------------------------
 restore

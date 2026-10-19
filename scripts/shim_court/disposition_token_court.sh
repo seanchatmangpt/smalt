@@ -35,7 +35,7 @@ source "$(dirname "$0")/lib.sh"
 
 SUBJECT=lib/smalt/messaging/amqp/connection.ex
 export TESTFILE=test/amqp/connection_test.exs
-export STALE_LINE=231
+export STALE_LINE=360
 export MIX_BUILD_ROOT="${MIX_BUILD_ROOT:-_build-lane273}"
 export AFTER_LOG=/tmp/r201_disposition_token_after.log
 

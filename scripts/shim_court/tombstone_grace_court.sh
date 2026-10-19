@@ -15,7 +15,7 @@
 #   SHIM      apply_shim neuters the call site of reinsert_message_tombstones/1
 #             in run_pass/0 (marker `# SHIM-COURT: R197 tombstone reinsert
 #             disabled`), leaving the rest of the module intact.
-#   AFTER     `mix test test/amqp/sweeper_test.exs:38` (the 410/lock_lost
+#   AFTER     `mix test test/amqp/sweeper_test.exs:50` (the 410/lock_lost
 #             test) FAILS, and the failure output NAMES that test (not a
 #             compile error): without the reinsert the swept token row is
 #             gone, so `LockManager.get` returns :error and the 410 assertion
@@ -76,7 +76,7 @@ BEFORE_CMD="cd $(pwd) && MIX_BUILD_ROOT=$MIX_BUILD_ROOT mix test $WITNESS 2>&1 |
 # AFTER: the renew-after-sweep 410 test by line anchor. Flip proof = the run
 # is red AND the failure names the 410/lock_lost test AND it is not a compile
 # error.
-AFTER_CMD="cd $(pwd) && LOG=\$(mktemp); MIX_BUILD_ROOT=$MIX_BUILD_ROOT mix test $WITNESS:38 >\"\$LOG\" 2>&1; ST=\$?; if grep -q '== Compilation' \"\$LOG\"; then echo '[AFTER] compile error — cannot count as the flip'; tail -15 \"\$LOG\"; exit 1; fi; if [ \$ST -ne 0 ] && grep -q '410 :lock_lost' \"\$LOG\"; then echo '[AFTER] flip proven: shimmed sweeper lost the tombstone grace; the renew-after-sweep 410 test failed as predicted'; grep -E 'test.*410 :lock_lost|assert' \"\$LOG\" | head -4; exit 0; else echo '[AFTER] flip NOT proven (exit '\$ST'):'; tail -12 \"\$LOG\"; exit 1; fi"
+AFTER_CMD="cd $(pwd) && LOG=\$(mktemp); MIX_BUILD_ROOT=$MIX_BUILD_ROOT mix test $WITNESS:50 >\"\$LOG\" 2>&1; ST=\$?; if grep -q '== Compilation' \"\$LOG\"; then echo '[AFTER] compile error — cannot count as the flip'; tail -15 \"\$LOG\"; exit 1; fi; if [ \$ST -ne 0 ] && grep -q '410 :lock_lost' \"\$LOG\"; then echo '[AFTER] flip proven: shimmed sweeper lost the tombstone grace; the renew-after-sweep 410 test failed as predicted'; grep -E 'test.*410 :lock_lost|assert' \"\$LOG\" | head -4; exit 0; else echo '[AFTER] flip NOT proven (exit '\$ST'):'; tail -12 \"\$LOG\"; exit 1; fi"
 
 # Serialize concurrent court instances: the sweeper subject is shared across
 # lanes; overlapping with_shim windows on the same file race

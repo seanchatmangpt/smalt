@@ -28,7 +28,7 @@ source "$(dirname "$0")/lib.sh"
 
 SUBJECT=lib/smalt/messaging/amqp/queue_store.ex
 export TESTFILE=test/amqp/queue_store_test.exs
-export R244_LINE=742
+export R244_LINE=777
 export MIX_BUILD_ROOT=_build-lane268
 export AFTER_LOG=/tmp/r196_settle_cas_after.log
 

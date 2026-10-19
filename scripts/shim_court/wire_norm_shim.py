@@ -16,9 +16,22 @@ without writing):
 import sys
 
 SHIMS = {
+    # KD-01 PUT arm only: the GET comp=metadata arm (KD-60) carries the same
+    # one-line shape, so anchor on the KD-01 comment block above the PUT arm
+    # (re-anchored 2026-10-18 after the KD-60 GET arm landed).
     "kd01": (
-        '      if conn.query_params["comp"] == "metadata" do',
-        '      if false and conn.query_params["comp"] == "metadata" do  # SHIM-COURT',
+        (
+            '          # KD-01 wire normalization (Azure Put Blob Metadata): comp=metadata is\n'
+            '          # answered BEFORE the body read \u2014 200 EMPTY with etag, never the old\n'
+            '          # 201 + JSON debug body (which also silently emptied the content).\n'
+            '          if conn.query_params["comp"] == "metadata" do'
+        ),
+        (
+            '          # KD-01 wire normalization (Azure Put Blob Metadata): comp=metadata is\n'
+            '          # answered BEFORE the body read \u2014 200 EMPTY with etag, never the old\n'
+            '          # 201 + JSON debug body (which also silently emptied the content).\n'
+            '          if false and conn.query_params["comp"] == "metadata" do  # SHIM-COURT'
+        ),
     ),
     "kd03": (
         '          "last-modified" => rfc1123(record["created"]),',

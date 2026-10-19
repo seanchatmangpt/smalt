@@ -26,7 +26,7 @@ source "$(dirname "$0")/lib.sh"
 
 SUBJECT=lib/smalt/messaging/amqp/lock_manager.ex
 export TESTFILE=test/amqp/lock_manager_test.exs
-export R178J_LINE=178
+export R178J_LINE=190
 export MIX_BUILD_ROOT=_build-lane229
 
 command -v mix >/dev/null 2>&1 || shim_court_skip "mix not on PATH"

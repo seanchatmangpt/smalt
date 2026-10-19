@@ -75,14 +75,19 @@ old2 = """          sections =
             ]
 
           {st, _id} =
-            send_message(st, link, %{
-              handle: link.handle,
-              delivery_tag: <<seq::unsigned-64>>,
-              # KD-COVERS: KD-18,KD-20 — format 0 = standard decoded-message
-              # path (SB path below). Keep consistent on EVERY EH arm; the
-              # credit bump below closes KD-20.
-              message_format: 0
-            }, sections)
+            send_message(
+              st,
+              link,
+              %{
+                handle: link.handle,
+                delivery_tag: <<seq::unsigned-64>>,
+                # KD-COVERS: KD-18,KD-20 — format 0 = standard decoded-message
+                # path (SB path below). Keep consistent on EVERY EH arm; the
+                # credit bump below closes KD-20.
+                message_format: 0
+              },
+              sections
+            )
 
           # SHIM-COURT R13/V261014-04-F1 fix: re-read the link refreshed by
           # bump_credit (deliver_to_link pattern) — the outer `link`'s credit
@@ -91,30 +96,37 @@ old2 = """          sections =
           st
           |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
           |> then(&bump_credit(&1, link.channel, link.handle, -1))
+          |> then(fn st2 ->
+            put_link(st2, %{st2.links[{link.channel, link.handle}] | eh_link_cursor: seq})
+          end)
 """
 new2 = """          # SHIM-COURT: KD-18 message_format stripped; KD-20 credit bump
           # stripped; eh_body_section -> raw body_data (defect shape).
           sections =
             [
-              # GAP-A2-04: x-opt-offset / x-opt-enqueued-time /
-              # x-opt-partition-key surface on every delivery; the SDK's
-              # fromRheaMessage maps them to event.offset / enqueuedTimeUtc /
-              # partitionKey. x-opt-sequence-number is pre-existing.
+              # SHIM-COURT: annotations pinned to pre-GAP-A2-04 shape for the probe
               {:message_annotations, eh_event_annotations(ev)}
               | eh_delivery_annotations(partition) ++ [{:body_data, body}]
             ]
 
           {st, _id} =
-            send_message(st, link, %{
-              handle: link.handle,
-              delivery_tag: <<seq::unsigned-64>>
-            }, sections)
+            send_message(
+              st,
+              link,
+              %{
+                handle: link.handle,
+                delivery_tag: <<seq::unsigned-64>>
+              },
+              sections
+            )
 
           st
           |> Map.update!(:eh_cursors, fn m -> Map.put(m || %{}, partition, seq) end)
           # SHIM-COURT: KD-20 credit bump stripped; the eh_link_cursor refresh
-          # (sibling-lane hunk below this point) is NOT part of the shim and
-          # is left verbatim.
+          # hunk is NOT part of the shim and is left verbatim.
+          |> then(fn st2 ->
+            put_link(st2, %{st2.links[{link.channel, link.handle}] | eh_link_cursor: seq})
+          end)
 """
 if old2 not in s:
     sys.exit("KD-18/20 delivery hunks not found (drifted)")
