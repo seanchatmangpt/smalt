@@ -90,7 +90,12 @@ ALLOWLIST=(
   # docs-dod, 2026-10-16): KD-90-era B-leg note + KD-94 row (athena B-leg
   # receipt text). Same evidence-record class as the 12-gate-closure pins.
   "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:157"
-  # KD-94 row moved 252 -> 262 -> 269 (i29 window edits + KD-98 registration
+    # AZB23-PREFLIGHT subject line quotes the ring/verify SHAs (evidence-record
+  # class, same as KD-register pins); cgroup jsonl run_receipt quotes its
+  # subject SHA + standing (burn evidence record).
+  "docs/jira/v26.10.18/azsim-burn/AZB23-PREFLIGHT.md:4"
+  "docs/jira/v26.10.18/burn/cgroup-20261019T061643Z.jsonl:6"
+# KD-94 row moved 252 -> 262 -> 269 (i29 window edits + KD-98 registration
   # 2026-10-18); same KD-register-quotes-own-evidence class as the 157 pin.
   "docs/jira/v26.10.14/KNOWN_DIVERGENCES.md:269"
     # v26.10.17 window affidavit quotes its run environment (absolute paths)
