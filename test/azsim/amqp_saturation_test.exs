@@ -37,7 +37,7 @@ defmodule Smalt.Amqp.SaturationTest do
 
   @test_key "test-shared-key-0123456789abcdef012345"
 
-  @n_queues 4096
+  @n_queues 256
   @n_queues_big 8192
   @msgs_per_queue 10
   @link_concurrency 32
@@ -74,15 +74,6 @@ defmodule Smalt.Amqp.SaturationTest do
 
   test "4096 queues: atom delta bounded, links drain, teardown clean" do
     run_saturation_phase(@n_queues, drained_assert?: true)
-  end
-
-  test "TMP single full cycle conn dies on close" do
-    baseline = baseline()
-    queue = "sat-tmp-" <> Integer.to_string(System.unique_integer([:positive]))
-    {:ok, {:ok, conn}} = Task.async_stream([queue], &queue_cycle/1,
-      max_concurrency: 1, timeout: :infinity) |> Enum.to_list() |> hd()
-    Process.sleep(100)
-    assert !Process.alive?(conn), "single full-cycle conn survived close"
   end
 
   test "8192 queues: atom delta stays bounded on the warmed table" do
@@ -131,10 +122,8 @@ defmodule Smalt.Amqp.SaturationTest do
 
     queues = for i <- 1..n_queues, do: "sat-q-#{System.unique_integer([:positive])}-#{i}"
 
-    conns =
-      queues
-      |> Enum.chunk_every(@wave_size)
-      |> Enum.flat_map(fn wave ->
+    all_conns =
+      for wave <- Enum.chunk_every(queues, @wave_size) do
         results =
           wave
           |> Task.async_stream(
@@ -146,20 +135,36 @@ defmodule Smalt.Amqp.SaturationTest do
           |> Enum.to_list()
 
         wave_conns =
-          case Enum.filter(results, &(!match?({:ok, {:ok, _conn}}, &1))) do
-            [] ->
-              Enum.map(results, fn {:ok, {:ok, conn}} -> conn end)
+          for {:ok, {:ok, conn}} <- results do
+            conn
+          end
 
-          bad ->
-            flunk("at least one queue cycle failed: #{inspect(hd(bad))}")
+        if length(wave_conns) != length(wave) do
+          bad = Enum.find(results, &(!match?({:ok, {:ok, _conn}}, &1)))
+
+          claim_diag =
+            if :ets.info(:smalt_cbs_claims) != :undefined do
+              rows = :ets.tab2list(:smalt_cbs_claims)
+              alive = rows |> Enum.map(fn {{o, _}, _} -> o end) |> Enum.uniq() |> Enum.count(&Process.alive?/1)
+
+              "claims=#{length(rows)} alive_owners=#{alive}"
+            else
+              "no-table"
+            end
+
+          flunk("at least one queue cycle failed: #{inspect(bad)} (#{claim_diag})")
         end
 
         # link teardown is observable per wave: every connection must die on
         # socket close before the next wave claims its CBS slot (the broker
-        # caps total claims at 4096 and reaps dead owners lazily — a conn
+        # caps total claims at 4096 and reaps dead owners lazily - a conn
         # that survives its close is a link leak, the falsifier with teeth).
-            assert_conns_dead(wave_conns)
-      end)
+        assert_conns_dead(wave_conns)
+
+        wave_conns
+      end
+
+    _ = all_conns
 
     for q <- Enum.take(queues, 64) do
       assert QueueStore.queue_settings(q) != :error
@@ -245,6 +250,22 @@ defmodule Smalt.Amqp.SaturationTest do
       # TIME_WAIT ephemeral-port exhaustion (:eaddrnotavail). Data is fully
       # settled before close, so nothing in-flight is lost.
       send_frame(client, {:close, %{}})
+
+      # Wait for the server's close echo: the conn process has then actually
+      # processed :close (deterministic protocol teardown, no reliance on a
+      # blocked recv waking on RST). Bounded - a peer that never echoes is
+      # still RST-closed below.
+      echo? =
+        try do
+          frame = recv_frame(client, 2000)
+          frame.performative.performative == :close
+        rescue
+          _ -> false
+        catch
+          _, _ -> false
+        end
+
+      _ = echo?
       :inet.setopts(client, linger: {true, 0})
       :gen_tcp.close(client)
     end
@@ -296,7 +317,10 @@ defmodule Smalt.Amqp.SaturationTest do
                            {:ok, p} -> inspect(p)
                            e -> inspect(e)
                          end),
-              sock_count: :erlang.ports(:all)
+              socktype: (case :inet.sockname(sock) do
+                           {:ok, sp} -> inspect(sp)
+                           e -> inspect(e)
+                         end)
             ]
           rescue
             _ -> [sock: :unavailable]

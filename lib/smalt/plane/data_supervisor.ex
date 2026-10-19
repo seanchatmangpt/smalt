@@ -14,7 +14,15 @@ defmodule Smalt.Plane.DataSupervisor do
   def init(_init_arg) do
     children = [
       Smalt.Store,
-      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: egress_port(), ip: bind_ip()}
+      # AZB-22b: bound graceful-stop. Bandit's own child_spec omits
+      # `shutdown`, so with type :supervisor it defaults to :infinity —
+      # a stuck ThousandIsland listener hung the whole tree's stop
+      # (>60s witnessed in the burn ring). 10s bounds the wait; the
+      # supervisor then brutal-kills and stop completes.
+      Supervisor.child_spec(
+        {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: egress_port(), ip: bind_ip()},
+        shutdown: 10_000
+      )
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)

@@ -15,8 +15,17 @@ defmodule Smalt.Plane.ControlSupervisor do
   @impl true
   def init(_init_arg) do
     children = [
-      {Bandit, plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port(), ip: bind_ip()},
-      {Bandit, arm_tls_opts() ++ [ip: bind_ip()]},
+      # AZB-22b: bound graceful-stop on every Bandit listener (default for
+      # a type :supervisor child is :infinity; a stuck ThousandIsland
+      # listener hung the tree's stop >60s in the burn ring).
+      Supervisor.child_spec(
+        {Bandit, plug: Smalt.ArmGateway.Router, scheme: :http, port: arm_port(), ip: bind_ip()},
+        shutdown: 10_000
+      ),
+      Supervisor.child_spec(
+        {Bandit, arm_tls_opts() ++ [ip: bind_ip()]},
+        shutdown: 10_000
+      ),
       Smalt.ArmGateway.LRO.Notifier,
       Smalt.ArmGateway.LRO.Sweeper,
       Smalt.Affidavit.WasmEngine.Supervisor

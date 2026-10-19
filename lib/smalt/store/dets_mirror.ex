@@ -69,17 +69,20 @@ defmodule Smalt.Store.DetsMirror do
 
     # Fail closed in the caller: validate every mirror file up front so a
     # corrupt :dets file raises a clear ArgumentError instead of taking the
-    # mirror (or silently repairing) at runtime.
+    # mirror (or silently repairing) at runtime. AZB-14: validation runs the
+    # SAME typed open (needs_repair probe -> repair + telemetry, or typed
+    # :store_corrupt / :corrupt_mirror refusal) as init, so a repaired file
+    # is witnessed exactly once and the probe order cannot mask a repair.
     Enum.each(tables, fn table ->
       path = Path.join(dir, "#{table}.dets")
 
-      case :dets.open_file(make_ref(), file: to_charlist(path), repair: repair) do
+      case open_typed(table, path, repair) do
         {:ok, dets} ->
           :dets.close(dets)
 
-        {:error, reason} ->
+        {:error, {tag, table, path, reason}} when tag in [:store_corrupt, :corrupt_mirror] ->
           raise ArgumentError,
-                "DetsMirror: cannot open mirror file for table #{inspect(table)} " <>
+                "DetsMirror: #{tag} for table #{inspect(table)} " <>
                   "at #{path}: #{inspect(reason)}"
       end
     end)

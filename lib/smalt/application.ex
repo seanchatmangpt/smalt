@@ -11,11 +11,16 @@ defmodule Smalt.Application do
       plane_children() ++
       [
         Smalt.Telemetry.RollingCounters,
-        {Bandit,
-         plug: {Smalt.Mcp.Router, []},
-         scheme: :http,
-         port: Application.get_env(:smalt, :mcp_port, 9545),
-         ip: bind_ip()}
+        # AZB-22b: bound graceful-stop (see plane supervisors; a stuck
+        # ThousandIsland listener hung tree stop >60s in the burn ring).
+        Supervisor.child_spec(
+          {Bandit,
+           plug: {Smalt.Mcp.Router, []},
+           scheme: :http,
+           port: Application.get_env(:smalt, :mcp_port, 9545),
+           ip: bind_ip()},
+          shutdown: 10_000
+        )
         | virtual_hw_child()
       ]
 
