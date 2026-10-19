@@ -88,3 +88,86 @@ git add docs/jira/v26.10.18/receipts/azb-18-cgroup-soak.md \
   exactly the (b)/(c) residue: 20 M + 4 ?? (incl. the 0-byte court-x2-final placeholder).
 - `just docs-dod-check` must stay green with this receipt on disk (every receipt path
   named here exists — verified by `wc -c` at census time).
+
+---
+
+# Addendum 2 — re-census at HEAD 73dc1a2 (2026-10-19 ~00:40-00:47 PDT; Context: solo)
+
+- Subject: /Users/sac/smalt @ `73dc1a2` (G1 queue storage landed mid-census). Prior
+  addendum's tree is stale: coordinator landed `3360a9b` (corpus re-soak),
+  `0ec0c50`/`5b23ad8` (settle lane), `73dc1a2` (G1) during the re-census window.
+- Method: two `git status --porcelain` + `stat` mtime samples ~180 s apart (lane-edit
+  movement check); `git log --oneline -5`; `git log -1 --name-only`; `git ls-files`;
+  `git diff` reads; head/full reads of new receipts.
+
+## Mid-census drift
+
+- `4d6d8af` landed prior addendum's group (a): `azb-18-cgroup-soak.md`,
+  `i29-stress-pregate.md`, `test_budgets.json` (tier-flip version), and this receipt.
+- `73dc1a2` landed G1: `lib/smalt/data_plane/queue_storage.ex`,
+  `test/data_plane/queue_storage_test.exs`, `egress_router.ex`, `store_tables.ex`,
+  `egress_wire_test.exs` + receipts `i29-g1-land.md` / `i29-g1-test-verify.md`.
+  `s2_run.patch.py` untracked scratch deleted by its lane.
+- Re-dirtied after landing: `test_budgets.json` (+80/-lines: new/raised `max_ms` for
+  EnclaveDoctor / WasmEngine fences / AtomBridge stress — budget-lane reseed shape,
+  same pattern as `i29-budget-reseed`), no NEW receipt names this reseed.
+
+## Fresh census: 16 M + 2 untracked, +741/-93
+
+### (a) COMMIT-READY — receipt-backed NOW (7 paths)
+
+| Path | Backing receipt |
+|---|---|
+| `docs/jira/v26.10.18/receipts/i29-e2e-fixes.md` (??, 7030 B) | self-backing, ALIVE: s2/s5/s9/s10 all exit 0 ×2, embedded run logs; 7 KV-corpus harness defects fixed test-side (KD-15 handshake, api-version pin, base64url), emulator untouched. |
+| `test/e2e/s2_byok/byok.test.mjs`, `test/e2e/s2_byok/run.sh` | i29-e2e-fixes.md (defect 1: MIX_ENV + KD-15 handshake + api-version 7.x + WORM-409 tolerance) |
+| `test/e2e/s5_sessions/sessions.test.cjs` | i29-e2e-fixes.md |
+| `test/e2e/s9_lro_chain/lro_chain.test.mjs` | i29-e2e-fixes.md (defect 2: 202 LRO assertion fix) |
+| `test/e2e/s10_attest_adversary/adversary.py`, `test/e2e/s10_attest_adversary/run.sh` | i29-e2e-fixes.md (defect 1 items 3-5: valid release policies, base64url) |
+| `docs/jira/v26.10.18/receipts/i29-checkpoint7.md` (this file, addendum) | self-census receipt |
+
+### (b) Lane-hot — EXCLUDE
+
+- **azb-20 lib residue (6 paths)**: `arm_gateway/router.ex`, `blob_storage.ex`,
+  `cosmos.ex`, `key_vault_actions.ex`, `connection.ex`, `queue_store.ex` +
+  `test/sdk-full/blob.probe.mjs` — landing receipt still ABSENT (`i29-azb20-verify.md`
+  verifies, does not land; checkpoint6 `azsim-sdk` witness law still binds blob.probe).
+  All mtimes >6 min old, zero movement in the 180 s observation window — stalled but
+  unlanded, stay with the azb-20 lane.
+- `docs/jira/v26.10.18/receipts/i29-colima-stop-runbook.md` (M, +73) — ACTIVELY EDITED
+  (mtime moved to 00:37:30, newest file on tree, mid-observation). AZB-23
+  quiet-machine transition doc, self-styled TYPED_RECOMMENDATION; wait for the lane to
+  declare it complete.
+- `test_budgets.json` re-dirty (+80 reseed) — budget-lane reseed shape but the naming
+  receipt has not landed; exclude until the budget lane receipts it.
+
+### (c) Unattributed — EXCLUDE
+
+- `docs/jira/v26.10.16/sdk-results/spc-bands.md` (M, mtime moved 00:34:08→00:34:44
+  DURING the observation window — only path with measured mtime movement) — prior-window
+  doc, still no v26.10.18 receipt names the edit; checkpoint5 finding unchanged.
+- `.ggen_igniter/manifest.json`, `.ggen_igniter/receipts/2026-10-19.jsonl` — ggen
+  runtime scratch, prior verdict unchanged.
+
+## Commit-ready `git add` for the coordinator
+
+```
+git add docs/jira/v26.10.18/receipts/i29-e2e-fixes.md \
+        docs/jira/v26.10.18/receipts/i29-checkpoint7.md \
+        test/e2e/s2_byok/byok.test.mjs \
+        test/e2e/s2_byok/run.sh \
+        test/e2e/s5_sessions/sessions.test.cjs \
+        test/e2e/s9_lro_chain/lro_chain.test.mjs \
+        test/e2e/s10_attest_adversary/adversary.py \
+        test/e2e/s10_attest_adversary/run.sh
+```
+
+(8 paths. Everything else stays on the tree for its owning lane: azb-20 lib residue,
+colima runbook lane, budget reseed, spc-bands editor, ggen scratch.)
+
+## Falsifiers
+
+- After coordinator `git add` of group (a) (8 paths incl. this receipt's addendum):
+  `git status --porcelain` residue must be exactly 11 M + 0 ?? — 6 azb-20 lib +
+  blob.probe.mjs + colima runbook + test_budgets.json + spc-bands.md + 2 ggen scratch.
+- `just docs-dod-check` must stay green with `i29-e2e-fixes.md` on disk (its run-log
+  paths point at /tmp, no repo-relative receipt deps).
