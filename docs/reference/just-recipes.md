@@ -31,7 +31,7 @@ modules, never edit the root.
 | `eh-smoke` | Event Hubs probe | 0 pass / 1 fail / 2 substrate down / 3 skip |
 | `census` | SB census replay (scripts/sb_census_replay.sh, 8 probes, real SDK) | 0/1/2/3 |
 | `mutation-court` | anti-vacuity mutation court | part of `court`; do not soften |
-| `invariant-gates` | 5 fail-closed gates | receipts `tmp/invariant-gates/<gate>-receipt.json` |
+| `invariant-gates` | 6 fail-closed gates (cosmos-etag-cas, blob-worm, ledger-chain, queue-capacity, lock-clamp, appconfig-etag-cas) | receipts `tmp/invariant-gates/<gate>-receipt.json` (6, written fresh) |
 | `naming-sweep` | naming/egress leak sweep | 0 clean / 1 violations printed |
 | `gen-error-codes` | regenerate docs/ERROR_CODES.md | drift-fenced `--check` |
 | `bench` | bench runner, writes tmp/bench-receipt.json | 0 all CTQs PASS / nonzero; `SMALT_BENCH_{ARM,DATA,AMQP}_PORT` for private ports |
@@ -55,14 +55,14 @@ modules, never edit the root.
 | 02-workspace | `ws-lint` | ESLint (raw-fetch ban, smaltFetch-only egress) |
 | 02-workspace | `ws-court` | workspace e2e court (workspace/scripts/e2e-court.mjs) |
 | 02-workspace | `ws-converge` | ws-court + converge, exports court exit code |
-| 03-cli-wiring | `cli-test` | smalt-cli pytest, two venvs (`.venv`, `.venv-cli`) |
+| 03-cli-wiring | `cli-test` | smalt-cli pytest over `.venv-cli` (the only real venv; `.venvs/<lane>` symlinks satisfy per-lane resolution — a bare `.venv` does not exist and is never created, ADR-PY-002) |
 | 03-cli-wiring | `cli-gates` | CLI invariant gates |
 | 03-cli-wiring | `cli-gate1`..`cli-gate4` | individual CLI gate tiers |
 | 03-cli-wiring | `cli-daemon` | CLI daemon mode |
 | 03-cli-wiring | `cli-smoke` | CLI smoke probe |
 | 04-sdk-recipes | `sdk-ts` / `sdk-py` / `sdk-census` / `sdk-all` | real-Azure-SDK probes; 0 pass / 1 fail / 2 substrate down / 3 SKIP |
 | 05-doctor-ext | `doctor-dod` | supplemental DoD doctor; FAIL on DoD violations |
-| 06-lane-cleanup | `lane-clean` / `lane-clean-dry` | delete orphaned `_build-lane*` roots (dry run lists + du -sh) |
+| 06-lane-cleanup | `lane-clean` / `lane-clean-dry` | delete every repo-root `_build*` dir except the canonical `_build`, skipping live-referenced roots (lsof/ps `MIX_BUILD_ROOT` harvest); dry run lists with `du -sh` |
 | 07-court-x2 | `court-x2` | two-green release gate, flake signature between runs; ~8 min |
 | 08-publish-dry | `publish-dry` | publish gates dry-run (tarball leak greps, ERROR_CODES identity) |
 | 09-verify-all | `verify-all` | offline stages only: doctor, test-offline, ws-court, cli pytest, naming-sweep, invariant-gates |
