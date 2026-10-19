@@ -6,5 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test test/sdk-smoke/"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.10.1",
+    "@azure/event-hubs": "^6.0.4",
+    "@azure/service-bus": "^7.10.0"
   }
 }

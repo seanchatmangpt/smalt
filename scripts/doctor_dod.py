@@ -12,13 +12,13 @@ Checks (each from a filed finding, docs/jira/v26.10.14):
      naming families -> WARN count + total bytes; remediation `just lane-clean`.
   3. workspace sanity — workspace/node_modules present, package.json parses,
      pin sanity: no "^21.x" @azure/arm-resources (nonexistent-pin class).
-  4. smalt-cli sanity — .venv exists, `python -m py_compile smalt_cli/*.py`
+  4. smalt-cli sanity — .venv-cli exists (ADR-PY-002), `python -m py_compile smalt_cli/*.py`
      exit 0 (per-file error report on failure).
   5. receipts freshness — every file in docs/jira/v26.10.14/receipts/ with an
      mtime inside the session window -> INFO; a receipts/<lane>.md referenced
      in _LANES.md but missing on disk -> FAIL.
   6. envelope/defect cross-check — GAP(...) tokens present in docs/WIRE_PARITY.md
-     (register sync with lane 13's census: 5 CLOSED + 9 UNSUPPORTED counts).
+     (register sync: live-open token census, 3 CLOSED stamps + 5 UNSUPPORTED).
 
 Usage: python3 scripts/doctor_dod.py [--json]
 """
@@ -50,21 +50,24 @@ LANE_ROOT_RE = re.compile(
 # smalt substrate listener ports (ARM :9443, wire/egress :8443)
 SMALT_PORTS = [9443, 8443]
 
-# envelope/defect cross-check tokens (lane 13 census)
+# envelope/defect cross-check tokens (live-open GAP register, v26.10.18 census)
+# NOTE: lane-13's 9-token census is retired — 5 of those tokens were
+# receipt-gated closures and are intentionally ABSENT from WIRE_PARITY.md:
+#   blob-error-envelope-json        (retired v26.10.14 lane 06)
+#   cosmos-sql-translator-absent    (superseded, r-lane523-cosmos-sql-flip)
+#   ledger-lazy-create-default      (token deleted; verify-ledger w0-b12/w1-b3)
+#   eventhubs-partition-metadata-absent          (RETIRED, C7_EVENT_PLANES)
+#   eventhubs-consumer-group-enumeration-absent  (RETIRED, cap-eh-consumergroups)
 EXPECTED_TOKENS = [
     "GAP(blob-comp-lease-absent)",
-    "GAP(blob-error-envelope-json)",
-    "GAP(cosmos-sql-translator-absent)",
-    "GAP(ledger-lazy-create-default)",
+    "GAP(blob-x-ms-date-unvalidated)",
     "GAP(eventgrid-eg1-schema-absent)",
-    "GAP(eventhubs-partition-metadata-absent)",
-    "GAP(eventhubs-consumer-group-enumeration-absent)",
     "GAP(atlas-search-relationship-get-absent)",
     "GAP(kql-datetime-dynamic-types-absent)",
 ]
-# lane 13 census: 5 CLOSED (strikethrough/retired) + 9 UNSUPPORTED tokens kept
-EXPECTED_CLOSED_COUNT = 5
-EXPECTED_UNSUPPORTED_COUNT = 9
+# live census: 3 'CLOSED 2026-10-15' stamps remain in the register text
+EXPECTED_CLOSED_COUNT = 3
+EXPECTED_UNSUPPORTED_COUNT = 5
 
 WARNINGS = []
 FAILURES = []
@@ -200,9 +203,11 @@ def check_workspace():
 
 # ---------------------------------------------------------------- check 4
 def check_cli():
-    venv = CLI_DIR / ".venv"
+    # ADR-PY-002: a bare .venv does not exist and is never created; the
+    # documented interpreter for all CLI lanes is .venv-cli.
+    venv = CLI_DIR / ".venv-cli"
     if not venv.is_dir():
-        fail("smalt-cli/.venv missing")
+        fail("smalt-cli/.venv-cli missing (ADR-PY-002 interpreter)")
         return
     py = venv / "bin/python"
     py_cmd = str(py) if py.exists() else shutil.which("python3")
