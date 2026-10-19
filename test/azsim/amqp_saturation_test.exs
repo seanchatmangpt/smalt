@@ -170,7 +170,7 @@ defmodule Smalt.Amqp.SaturationTest do
 
     try do
       :ok = handshake(client)
-      assert {:ok, {200, _}} = Smalt.Amqp.CbsRouter.put_token(Smalt.Amqp.CbsRouter, sas_request(queue))
+      assert {:ok, {200, _}} = Smalt.Amqp.CbsRouter.put_token(Smalt.Amqp.CbsRouter, sas_request(queue), conn)
 
       # --- sender link: 10 settled transfers, accepted echoes -------------
       :ok = send_frame(client, {:attach, %{name: "s-" <> queue, handle: 0, role: false, target: %{address: queue}}})

@@ -49,3 +49,25 @@ burn: burn-soak burn-matrix
 # ORPHAN_LISTENER / ZOMBIE_BEAM / UNHANDLED_EXIT row stops the line.
 @burn-boot *args:
     bash {{BURN_ROOT}}/docker/burn/boot-burn.sh {{args}}
+
+# ============================================================================
+# AZB-19 overlap schedule (pipeline lane) — docs/jira/v26.10.18/azsim-burn/TICKETS.md
+# Court stages declare resources (ports, build_root, dets_dir); the scheduler
+# runs disjoint-resource stages in parallel:
+#   p1 {t1-offline ∥ mutation-court ∥ tf-plan-smoke ∥ port-free statics}
+#   p2 {t2-wire}   p3 {t3-sdk-smoke}
+# Laws: never T1 ∥ T3 (load class); per-stage MIX_BUILD_ROOT; a shared
+# MIX_BUILD_ROOT between overlapped stages is refused (RESOURCE_CONFLICT);
+# serial-vs-overlapped verdict identity is checked by overlap-court-compare.
+# @overlap-court-anti-vacuity must exit 0 (injected conflicts refused) —
+# a pass from a vacuous scheduler is the failure.
+@overlap-court:
+    bash scripts/overlap_court.sh overlap
+@overlap-court-serial:
+    bash scripts/overlap_court.sh serial
+@overlap-court-check:
+    bash scripts/overlap_court.sh anti-vacuity
+@overlap-court-compare *args:
+    bash scripts/overlap_court.sh compare {{args}}
+@overlap-court-report *args:
+    bash scripts/overlap_court.sh report {{args}}

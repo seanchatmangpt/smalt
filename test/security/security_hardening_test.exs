@@ -1616,22 +1616,18 @@ defmodule Smalt.Security.SecurityHardeningTest do
       measurement = String.duplicate("ab", 32)
       SmaltTest.Env.put_restored(maa_measurement_baseline: [measurement])
 
-      try do
-        for type <- [{:t, 1}, [:l], 42, 3.14] do
-          assert {:error, 400, "attestationFailedVerdict"} =
-                   Attestation.attest_enclave(%{"measurement" => measurement}, type)
-        end
-
-        # nil/false keep the documented default; binary type passes through
-        # into the signed claims.
-        assert {:ok, _, %{"x-ms-attestation-type" => "sevsnpvm"}} =
-                 Attestation.attest_enclave(%{"measurement" => measurement}, nil)
-
-        assert {:ok, _, %{"x-ms-attestation-type" => "custom-tee"}} =
-                 Attestation.attest_enclave(%{"measurement" => measurement}, "custom-tee")
-      after
-        Application.delete_env(:smalt, :maa_measurement_baseline)
+      for type <- [{:t, 1}, [:l], 42, 3.14] do
+        assert {:error, 400, "attestationFailedVerdict"} =
+                 Attestation.attest_enclave(%{"measurement" => measurement}, type)
       end
+
+      # nil/false keep the documented default; binary type passes through
+      # into the signed claims.
+      assert {:ok, _, %{"x-ms-attestation-type" => "sevsnpvm"}} =
+               Attestation.attest_enclave(%{"measurement" => measurement}, nil)
+
+      assert {:ok, _, %{"x-ms-attestation-type" => "custom-tee"}} =
+               Attestation.attest_enclave(%{"measurement" => measurement}, "custom-tee")
     end
 
     test "hostile SKR key names are typed 400 refusals, never raises" do

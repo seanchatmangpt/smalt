@@ -53,7 +53,7 @@ while [ $# -gt 0 ]; do
     --hogs) HOGS="$2"; shift ;;
     --flood-seconds) FLOOD_SECONDS="$2"; shift ;;
     --amqp-port) AMQP_PORT="$2"; shift ;;
-    --jsonl) JSONL="$2" ;;
+    --jsonl) JSONL="$2"; shift ;;
     --deadline) DEADLINE_SECS="$2"; shift ;;
     *) usage ;;
   esac
@@ -251,7 +251,7 @@ for r in $(seq 1 "$ROUNDS"); do
   OFF_RC=$?
   set -e
   OFF_TESTS=$(grep -oE '[0-9]+ tests' "$LEG_LOG" | tail -1 | tr -dc '0-9'); OFF_TESTS=${OFF_TESTS:-0}
-  OFF_FAILS=$(grep -oE '[0-9]+ failures?($|,)' "$LEG_LOG" | tail -1 | tr -dc '0-9'); OFF_FAILS=${OFF_FAILS:-0}
+  OFF_FAILS=$(grep -oE '[0-9]+ failures' "$LEG_LOG" | tail -1 | tr -dc '0-9'); OFF_FAILS=${OFF_FAILS:-0}
   OFF_FACES="$(classify "$LEG_LOG")"
   emit "$r" offline "$OFF_RC" "$OFF_TESTS" "$OFF_FAILS" "$OFF_FACES" "hogs=$HOGS flood=${FLOOD_SECONDS}s"
   echo "[BURN-SOAK] round $r offline: exit=$OFF_RC tests=$OFF_TESTS failures=$OFF_FAILS faces=$OFF_FACES"
@@ -266,7 +266,7 @@ for r in $(seq 1 "$ROUNDS"); do
   WIRE_RC=$?
   set -e
   WIRE_TESTS=$(grep -oE '[0-9]+ tests' "$LEG_LOG" | tail -1 | tr -dc '0-9'); WIRE_TESTS=${WIRE_TESTS:-0}
-  WIRE_FAILS=$(grep -oE '[0-9]+ failures?($|,)' "$LEG_LOG" | tail -1 | tr -dc '0-9'); WIRE_FAILS=${WIRE_FAILS:-0}
+  WIRE_FAILS=$(grep -oE '[0-9]+ failures' "$LEG_LOG" | tail -1 | tr -dc '0-9'); WIRE_FAILS=${WIRE_FAILS:-0}
   WIRE_FACES="$(classify "$LEG_LOG")"
   emit "$r" wire "$WIRE_RC" "$WIRE_TESTS" "$WIRE_FAILS" "$WIRE_FACES" "hogs=$HOGS flood=${FLOOD_SECONDS}s"
   echo "[BURN-SOAK] round $r wire: exit=$WIRE_RC tests=$WIRE_TESTS failures=$WIRE_FAILS faces=$WIRE_FACES"
