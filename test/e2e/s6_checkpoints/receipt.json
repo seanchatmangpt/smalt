@@ -25,7 +25,7 @@
       "win_sequence": "1..100 complete+ordered"
     }
   ],
-  "producer_us": 8274,
+  "producer_us": 6638,
   "scenario": "s6_checkpoints",
   "verdict": "EXACTLY_ONCE_OK",
   "zero_double_processing": true
