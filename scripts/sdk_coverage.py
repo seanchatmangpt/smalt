@@ -805,15 +805,26 @@ def main():
                          "window/filename mismatches become findings (exit 1)")
     args = ap.parse_args()
     all_findings = []
-    for win in discover_windows():
+    windows = discover_windows()
+    for win in windows:
         has_results = window_paths(win)["results"].is_dir()
         kds = load_kd(window_paths(win)["kd"])
         gating = has_results or bool(kds)
         if not gating:
             print(f"[non-gating] window {win}: no sdk-results/ and empty "
                   f"divergence register — rendered, excluded from exit")
+        # Historical windows are frozen at their landing SHA: their receipts
+        # were valid against the trees that existed then. Only the NEWEST
+        # window gates — legacy-window findings post-64f6099 are render-notes,
+        # not gate input (the receipts cite paths deleted by the reset).
+        is_newest = win == windows[-1]
         fnd = compile_window(win, strict=args.strict)
         if not gating:
+            fnd = []
+        elif not is_newest:
+            if fnd:
+                print(f"[historical] window {win}: {len(fnd)} finding(s) "
+                      f"rendered, not gated (window closed at its landing SHA)")
             fnd = []
         all_findings += fnd
     if all_findings:

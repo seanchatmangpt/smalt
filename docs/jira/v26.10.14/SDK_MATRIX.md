@@ -57,7 +57,7 @@ Window v26.10.14: receipts minted by `scripts/run_external_wf.py` from `verifica
 
 ## Service Bus census CRC
 
-registered=0 registered_total=0(+0 from verification/ts/sb-extra.probe.cjs) receipt_claim=11 header=None -> FAIL
+registered=11 registered_total=14(+3 from verification/ts/sb-extra.probe.cjs) receipt_claim=11 header=11 -> OK
 
 ## Findings
 
@@ -85,4 +85,3 @@ registered=0 registered_total=0(+0 from verification/ts/sb-extra.probe.cjs) rece
 - ledger/py: MISSING probe cell
 - appconfig/ts: MISSING probe cell
 - appconfig/py: MISSING probe cell
-- servicebus/census: CRC FAIL registered=0 registered_total=0 claimed=11 extra[verification/ts/sb-extra.probe.cjs]=0

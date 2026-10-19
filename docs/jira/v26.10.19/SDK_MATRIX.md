@@ -6,18 +6,18 @@ Primary verification tier: the external workflows declared in `verification/work
 
 | surface | grounded | TS probe | TS receipt | TS status | PY probe | PY receipt | PY status |
 |---|---|---|---|---|---|---|---|
-| arm | ok | -<br>**MISSING (KD-30,KD-31,KD-32)** | ts-arm-resources.md | MISSING<br>**MISSING (KD-30,KD-31,KD-32)** | -<br>**MISSING (KD-24,KD-25,KD-26,KD-27,KD-35)** | py-arm-resources.md | MISSING<br>**MISSING (KD-24,KD-25,KD-26,KD-27,KD-35)** |
-| blob | ok | -<br>**MISSING (KD-01,KD-04,KD-05)** | ts-storage-blob.md | MISSING<br>**MISSING (KD-01,KD-04,KD-05)** | -<br>**MISSING (KD-01,KD-02,KD-03)** | py-storage-blob.md | MISSING<br>**MISSING (KD-01,KD-02,KD-03)** |
-| cosmos | ok | -<br>**MISSING (KD-36,KD-44)** | ts-cosmos.md | MISSING<br>**MISSING (KD-36,KD-44)** | -<br>**MISSING (KD-06,KD-07,KD-08,KD-09)** | py-cosmos.md | MISSING<br>**MISSING (KD-06,KD-07,KD-08,KD-09)** |
-| keyvault | ok | -<br>**MISSING (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | ts-keyvault.md | MISSING<br>**MISSING (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | -<br>**MISSING (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** | py-auth-keyvault.md | MISSING<br>**MISSING (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** |
-| skr | ok | -<br>**MISSING (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | ts-keyvault.md | MISSING<br>**MISSING (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | -<br>**MISSING (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** | py-auth-keyvault.md | MISSING<br>**MISSING (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** |
-| eventgrid | ok | -<br>pass=5 fail=0 div=10 blk=0<br>**MISSING (KD-39)** | docs/jira/v26.10.16/sdk-results/ts-eventgrid.md | MISSING<br>pass=5 fail=0 div=10 blk=0<br>**MISSING (KD-39)** | -<br>**MISSING (KD-21)** | py-eventhub-eventgrid.md | MISSING<br>**MISSING (KD-21)** |
-| eventhubs | ok | -<br>**MISSING (KD-18,KD-19,KD-20)** | ts-event-hubs.md | MISSING<br>**MISSING (KD-18,KD-19,KD-20)** | -<br>**MISSING (KD-21)** | py-eventhub-eventgrid.md | MISSING<br>**MISSING (KD-21)** |
-| sentinel | ok | -<br>pass=20 fail=1 div=2 blk=0<br>**MISSING (KD-37)** | docs/jira/v26.10.16/sdk-results/ts-sentinel.md | MISSING<br>pass=20 fail=1 div=2 blk=0<br>**MISSING (KD-37)** | -<br>**MISSING (KD-22,KD-23)** | py-resourcegraph-monitor.md | MISSING<br>**MISSING (KD-22,KD-23)** |
-| resource-graph | ok | -<br>pass=9 fail=0 div=5 blk=0<br>**MISSING (KD-38)** | docs/jira/v26.10.16/sdk-results/ts-resourcegraph.md | MISSING<br>pass=9 fail=0 div=5 blk=0<br>**MISSING (KD-38)** | -<br>**MISSING (KD-22,KD-23)** | py-resourcegraph-monitor.md | MISSING<br>**MISSING (KD-22,KD-23)** |
-| purview-atlas | ok | -<br>pass=22 fail=1 div=5 blk=0<br>**MISSING (KD-40)** | docs/jira/v26.10.16/sdk-results/ts-atlas.md | MISSING<br>pass=22 fail=1 div=5 blk=0<br>**MISSING (KD-40)** | -<br>pass=19 fail=0 div=0 blk=0<br>**MISSING (KD-41)** | docs/jira/v26.10.16/sdk-results/py-atlas.md | MISSING<br>pass=19 fail=0 div=0 blk=0<br>**MISSING (KD-41)** |
-| ledger | ok | -<br>pass=9 fail=0 div=1 blk=0<br>**MISSING (KD-42)** | docs/jira/v26.10.16/sdk-results/ts-ledger.md | MISSING<br>pass=9 fail=0 div=1 blk=0<br>**MISSING (KD-42)** | -<br>pass=11 fail=0 div=1 blk=0<br>**MISSING (KD-43)** | docs/jira/v26.10.16/sdk-results/py-ledger.md | MISSING<br>pass=11 fail=0 div=1 blk=0<br>**MISSING (KD-43)** |
-| appconfig | ok | -<br>pass=19 fail=0 div=1 blk=0<br>**MISSING** | docs/jira/v26.10.16/sdk-results/ts-appconfig.md | MISSING<br>pass=19 fail=0 div=1 blk=0<br>**MISSING** | -<br>pass=19 fail=0 div=1 blk=0<br>**MISSING** | docs/jira/v26.10.16/sdk-results/py-appconfig.md | MISSING<br>pass=19 fail=0 div=1 blk=0<br>**MISSING** |
+| arm | ok | -<br>wf:wf1-provisioning-governance<br>**PASS (KD-30,KD-31,KD-32)** | ts-arm-resources.md | PASS<br>**PASS (KD-30,KD-31,KD-32)** | -<br>wf:wf1-provisioning-governance<br>**PASS (KD-24,KD-25,KD-26,KD-27,KD-35)** | py-arm-resources.md | PASS<br>**PASS (KD-24,KD-25,KD-26,KD-27,KD-35)** |
+| blob | ok | -<br>wf:wf2-multistore-concurrency<br>**REGISTERED-DIVERGENCE (KD-01,KD-04,KD-05)** | ts-storage-blob.md | REGISTERED-DIVERGENCE<br>**REGISTERED-DIVERGENCE (KD-01,KD-04,KD-05)** | -<br>wf:wf2-multistore-concurrency<br>**PASS (KD-01,KD-02,KD-03)** | py-storage-blob.md | PASS<br>**PASS (KD-01,KD-02,KD-03)** |
+| cosmos | ok | -<br>wf:wf2-multistore-concurrency<br>**PASS (KD-36,KD-44)** | ts-cosmos.md | PASS<br>**PASS (KD-36,KD-44)** | -<br>wf:wf2-multistore-concurrency<br>**PASS (KD-06,KD-07,KD-08,KD-09)** | py-cosmos.md | PASS<br>**PASS (KD-06,KD-07,KD-08,KD-09)** |
+| keyvault | ok | -<br>wf:wf4-crypto-custody<br>**REGISTERED-DIVERGENCE (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | ts-keyvault.md | REGISTERED-DIVERGENCE<br>**REGISTERED-DIVERGENCE (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | -<br>wf:wf4-crypto-custody<br>**PASS (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** | py-auth-keyvault.md | PASS<br>**PASS (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** |
+| skr | ok | -<br>wf:wf4-crypto-custody<br>**PASS (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | ts-keyvault.md | PASS<br>**PASS (KD-10,KD-11,KD-12,KD-13,KD-14,KD-15,KD-33,KD-34)** | -<br>wf:wf4-crypto-custody<br>**PASS (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** | py-auth-keyvault.md | PASS<br>**PASS (KD-10,KD-13,KD-15,KD-16,KD-17,KD-35)** |
+| eventgrid | ok | -<br>wf:wf3-messaging-eventing<br>pass=5 fail=0 div=10 blk=0<br>**PASS (KD-39)** | docs/jira/v26.10.16/sdk-results/ts-eventgrid.md | PASS<br>pass=5 fail=0 div=10 blk=0<br>**PASS (KD-39)** | -<br>wf:wf3-messaging-eventing<br>**PASS (KD-21)** | py-eventhub-eventgrid.md | PASS<br>**PASS (KD-21)** |
+| eventhubs | ok | -<br>wf:wf3-messaging-eventing<br>**PASS (KD-18,KD-19,KD-20)** | ts-event-hubs.md | PASS<br>**PASS (KD-18,KD-19,KD-20)** | -<br>wf:wf3-messaging-eventing<br>**PASS (KD-21)** | py-eventhub-eventgrid.md | PASS<br>**PASS (KD-21)** |
+| sentinel | ok | -<br>wf:wf5-edge-resilience<br>pass=20 fail=1 div=2 blk=0<br>**PASS (KD-37)** | docs/jira/v26.10.16/sdk-results/ts-sentinel.md | PASS<br>pass=20 fail=1 div=2 blk=0<br>**PASS (KD-37)** | -<br>wf:wf5-edge-resilience<br>**PASS (KD-22,KD-23)** | py-resourcegraph-monitor.md | PASS<br>**PASS (KD-22,KD-23)** |
+| resource-graph | ok | -<br>wf:wf1-provisioning-governance<br>pass=9 fail=0 div=5 blk=0<br>**PASS (KD-38)** | docs/jira/v26.10.16/sdk-results/ts-resourcegraph.md | PASS<br>pass=9 fail=0 div=5 blk=0<br>**PASS (KD-38)** | -<br>wf:wf1-provisioning-governance<br>**PASS (KD-22,KD-23)** | py-resourcegraph-monitor.md | PASS<br>**PASS (KD-22,KD-23)** |
+| purview-atlas | ok | -<br>wf:wf1-provisioning-governance<br>pass=22 fail=1 div=5 blk=0<br>**PASS (KD-40)** | docs/jira/v26.10.16/sdk-results/ts-atlas.md | PASS<br>pass=22 fail=1 div=5 blk=0<br>**PASS (KD-40)** | -<br>wf:wf1-provisioning-governance<br>pass=19 fail=0 div=0 blk=0<br>**PASS (KD-41)** | docs/jira/v26.10.16/sdk-results/py-atlas.md | PASS<br>pass=19 fail=0 div=0 blk=0<br>**PASS (KD-41)** |
+| ledger | ok | -<br>wf:wf2-multistore-concurrency<br>pass=9 fail=0 div=1 blk=0<br>**PASS (KD-42)** | docs/jira/v26.10.16/sdk-results/ts-ledger.md | PASS<br>pass=9 fail=0 div=1 blk=0<br>**PASS (KD-42)** | -<br>wf:wf2-multistore-concurrency<br>pass=11 fail=0 div=1 blk=0<br>**PASS (KD-43)** | docs/jira/v26.10.16/sdk-results/py-ledger.md | PASS<br>pass=11 fail=0 div=1 blk=0<br>**PASS (KD-43)** |
+| appconfig | ok | -<br>wf:wf1-provisioning-governance<br>pass=19 fail=0 div=1 blk=0<br>**PASS** | docs/jira/v26.10.16/sdk-results/ts-appconfig.md | PASS<br>pass=19 fail=0 div=1 blk=0<br>**PASS** | -<br>wf:wf1-provisioning-governance<br>pass=19 fail=0 div=1 blk=0<br>**PASS** | docs/jira/v26.10.16/sdk-results/py-appconfig.md | PASS<br>pass=19 fail=0 div=1 blk=0<br>**PASS** |
 
 ## KD-annotation cells
 
@@ -53,37 +53,21 @@ Window v26.10.19: receipts minted by `scripts/run_external_wf.py` from `verifica
 
 | receipt | workflow | lang | SUBJECT_SHA | profile | cells |
 |---|---|---|---|---|---|
-| wf5-py-edge-resilience.md | wf5-edge-resilience | py | 64f6099663a4ec32fd9478c4c39fca49ab1961f8 | primary-tier external suite (official Azure SDKs; surfaces: sentinel, cap:monitor-metrics) | sentinel:BLOCKED |
-| wf5-ts-edge-resilience.md | wf5-edge-resilience | ts | 64f6099663a4ec32fd9478c4c39fca49ab1961f8 | primary-tier external suite (official Azure SDKs; surfaces: sentinel, cap:monitor-metrics) | sentinel:BLOCKED |
+| wf1-py-provisioning-governance.md | wf1-provisioning-governance | py | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: arm, resource-graph, purview-atlas, appconfig, cap:eventgrid-topics-arm, cap:appconfig-kv) | arm:PASS resource-graph:PASS purview-atlas:PASS appconfig:PASS |
+| wf1-ts-provisioning-governance.md | wf1-provisioning-governance | ts | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: arm, resource-graph, purview-atlas, appconfig, cap:eventgrid-topics-arm, cap:appconfig-kv) | resource-graph:PASS arm:PASS purview-atlas:PASS appconfig:PASS |
+| wf2-py-multistore-concurrency.md | wf2-multistore-concurrency | py | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: blob, cosmos, ledger, cap:blob-snapshot-metadata, cap:cosmos-throughput) | blob:PASS cosmos:PASS ledger:PASS |
+| wf2-ts-multistore-concurrency.md | wf2-multistore-concurrency | ts | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: blob, cosmos, ledger, cap:blob-snapshot-metadata, cap:cosmos-throughput) | cosmos:PASS blob:FAIL ledger:PASS |
+| wf3-py-messaging-eventing.md | wf3-messaging-eventing | py | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: eventgrid, eventhubs, servicebus, cap:eh-consumergroups, cap:sb-eh-2024-children) | eventgrid:PASS eventhubs:PASS servicebus:PASS |
+| wf3-ts-messaging-eventing.md | wf3-messaging-eventing | ts | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: eventgrid, eventhubs, servicebus, cap:eh-consumergroups, cap:sb-eh-2024-children) | servicebus:FAIL eventgrid:PASS eventhubs:PASS |
+| wf4-py-crypto-custody.md | wf4-crypto-custody | py | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: keyvault, skr) | keyvault:PASS skr:PASS |
+| wf4-ts-crypto-custody.md | wf4-crypto-custody | ts | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: keyvault, skr) | keyvault:FAIL skr:PASS |
+| wf5-py-edge-resilience.md | wf5-edge-resilience | py | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: sentinel, cap:monitor-metrics) | sentinel:PASS |
+| wf5-ts-edge-resilience.md | wf5-edge-resilience | ts | b847c020ee6b0a7ef426e27379f960228932feb0 | primary-tier external suite (official Azure SDKs; surfaces: sentinel, cap:monitor-metrics) | sentinel:PASS |
 
 ## Service Bus census CRC
 
-registered=0 registered_total=0(+0 from verification/ts/sb-extra.probe.cjs) receipt_claim=None header=None -> FAIL
+registered=11 registered_total=14(+3 from verification/ts/sb-extra.probe.cjs) receipt_claim=11 header=11 -> OK
 
 ## Findings
 
-- arm/ts: MISSING probe cell
-- arm/py: MISSING probe cell
-- blob/ts: MISSING probe cell
-- blob/py: MISSING probe cell
-- cosmos/ts: MISSING probe cell
-- cosmos/py: MISSING probe cell
-- keyvault/ts: MISSING probe cell
-- keyvault/py: MISSING probe cell
-- skr/ts: MISSING probe cell
-- skr/py: MISSING probe cell
-- eventgrid/ts: MISSING probe cell
-- eventgrid/py: MISSING probe cell
-- eventhubs/ts: MISSING probe cell
-- eventhubs/py: MISSING probe cell
-- sentinel/ts: MISSING probe cell
-- sentinel/py: MISSING probe cell
-- resource-graph/ts: MISSING probe cell
-- resource-graph/py: MISSING probe cell
-- purview-atlas/ts: MISSING probe cell
-- purview-atlas/py: MISSING probe cell
-- ledger/ts: MISSING probe cell
-- ledger/py: MISSING probe cell
-- appconfig/ts: MISSING probe cell
-- appconfig/py: MISSING probe cell
-- servicebus/census: CRC FAIL registered=0 registered_total=0 claimed=None extra[verification/ts/sb-extra.probe.cjs]=0
+- none

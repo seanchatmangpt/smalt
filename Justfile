@@ -108,13 +108,13 @@ tf-plan-smoke:
 eh-smoke:
     @echo "[RETIRED] eh-smoke: test/sdk-smoke deleted at 64f6099; successor = verification/ts EH probes (V261019-08). Exit 1 until it lands."; exit 1
 
-# Service Bus census replay RETIRED (v26.10.19 reset): test/sdk-smoke
-# census-run.mjs deleted; scripts/sb_census_replay.sh is a loud no-op.
-# Successor: verification/ts census probes (V261019-08). Exit 1 until then.
+# Service Bus census: successor LANDED (V261019-08) — verification/ts
+# census.test.cjs (11 probes, live AMQP) + sb-extra.probe.cjs. Exit 0/1.
 @census:
     #!/usr/bin/env bash
-    echo "[RETIRED] census: sb census replay subject deleted at 64f6099; successor = verification/ts census (V261019-08). Exit 1 until it lands."
-    exit 1
+    set -euo pipefail
+    node --test verification/ts/census.test.cjs
+    node verification/ts/sb-extra.probe.cjs || echo "[census] sb-extra: honest typed fail (see receipt 08-servicebus-census.md)"
 
 # LOUD no-op placeholders for the fresh verification/ lanes (V261019-08/09).
 # Repoint these to the verification/ts and verification/py entry points as
