@@ -426,6 +426,8 @@ count, or PASS/FAIL token) found in the file.
 | azb-11b-leak | [azb-11b-leak-remediation.md](../v26.10.18/receipts/azb-11b-leak-remediation.md) | PARTIAL_ALIVE | AZB-11b receipt — runtime-twin leak remediation slice (v26.10.18) |
 | azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-13-boot- | [azb-13-boot-burn.md](../v26.10.18/receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
+| azb-14-sigki | [azb-14-sigkill-storm.md](../v26.10.18/receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary **NO-CONTEXT** |
+| azb-19-overl | [azb-19-overlap.md](../v26.10.18/receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
 | azb-22-burn- | [azb-22-burn-ring.md](../v26.10.18/receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) **NO-CONTEXT** |
 | b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
@@ -446,11 +448,23 @@ count, or PASS/FAIL token) found in the file.
 | burn-scripts | [burn-scripts.md](../v26.10.18/receipts/burn-scripts.md) | PARTIAL_ALIVE | docker/burn boot-burn + chaos-kill scripts **NO-CONTEXT** |
 | burn-soak-li | [burn-soak-live.md](../v26.10.18/receipts/burn-soak-live.md) | PARTIAL_ALIVE | Burn-soak live host receipt (first live host burn-soak, v26.10.18) **NO-CONTEXT** |
 | burn-soak-sc | [burn-soak-scripts.md](../v26.10.18/receipts/burn-soak-scripts.md) | PARTIAL_ALIVE | burn lane — soak.sh + parallel-matrix.sh + 30-burn.just **NO-CONTEXT** |
+| docimpl-1 | [docimpl-1.md](../v26.10.18/receipts/docimpl-1.md) | PASS | docimpl-1 — docs-audit D1+D11 implementation (README/CLAUDE.md/dev-loop) |
+| docimpl-2 | [docimpl-2.md](../v26.10.18/receipts/docimpl-2.md) | PASS | docimpl-2 — docs-audit D3 reference-surface implementation receipt **NO-CONTEXT** |
+| docimpl-3 | [docimpl-3.md](../v26.10.18/receipts/docimpl-3.md) | PASS | docimpl-3 — D4 explanation-page implementation (anchors, stale mechanisms, missing clusters) **NO-CONTEXT** |
+| docimpl-4 | [docimpl-4.md](../v26.10.18/receipts/docimpl-4.md) | ALIVE | docimpl-4 — D12/D13/D14 docs-audit implementation receipt **NO-CONTEXT** |
+| docimpl-5 | [docimpl-5.md](../v26.10.18/receipts/docimpl-5.md) | ALIVE | docimpl-5: D15 Diataxis gap pages (7) **NO-CONTEXT** |
+| docimpl-6 | [docimpl-6.md](../v26.10.18/receipts/docimpl-6.md) | ALIVE | docimpl-6 — moduledoc audit (d8 re-run), 2026-10-18 **NO-CONTEXT** |
+| docimpl-7 | [docimpl-7.md](../v26.10.18/receipts/docimpl-7.md) | PARTIAL_ALIVE | docimpl-7 — docs-audit D5 (C1-C7) implementation receipt **NO-CONTEXT** |
+| docimpl-8 | [docimpl-8.md](../v26.10.18/receipts/docimpl-8.md) | PASS | docimpl-8 — TEST_ISOLATION.md ground-truth rewrite (d6 findings) **NO-CONTEXT** |
+| docimpl-9 | [docimpl-9.md](../v26.10.18/receipts/docimpl-9.md) | PASS | docimpl-9 — D10 group A mechanical crosslink rewrite **NO-CONTEXT** |
 | i23-fence11- | [i23-fence11-flip.md](../v26.10.18/receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
 | i23-standalo | [i23-standalone-noise.md](../v26.10.18/receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing |
 | i24-store-de | [i24-store-dets-torn.md](../v26.10.18/receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) |
+| i24-warnings | [i24-warnings.md](../v26.10.18/receipts/i24-warnings.md) | PASS | i24-warnings — compile warnings blocking `--warnings-as-errors` **NO-CONTEXT** |
 | i25-atom-bri | [i25-atom-bridge-noise.md](../v26.10.18/receipts/i25-atom-bridge-noise.md) | ALIVE | i25: atom_bridge test-harness teardown noise |
 | i25-c567 | [i25-c567.md](../v26.10.18/receipts/i25-c567.md) | PARTIAL_ALIVE | i25-c567 — c5/c6/c7 rewrite-draft landing (rewrite-drafts/c567.md) |
+| i25-churn-si | [i25-churn-sizing.md](../v26.10.18/receipts/i25-churn-sizing.md) | PARTIAL_ALIVE | i25 — store_dets churn court round-sizing (i24 leftover face) **NO-CONTEXT** |
+| i25-kill-sto | [i25-kill-storm-host.md](../v26.10.18/receipts/i25-kill-storm-host.md) | ALIVE | i25 — kill_storm.sh: AZB-14 HOST-FORM precursor (SIGKILL storm + DETS repair + typed vocabulary) **NO-CONTEXT** |
 | i25-lro-back | [i25-lro-backdate.md](../v26.10.18/receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite |
 | i25-sleeps-a | [i25-sleeps-a.md](../v26.10.18/receipts/i25-sleeps-a.md) | ALIVE | I25 — rewrite-drafts/sleeps.md §A: poll-replaceable sync-waits |
 | i25-sleeps-b | [i25-sleeps-b1.md](../v26.10.18/receipts/i25-sleeps-b1.md) | PARTIAL_ALIVE | i25-sleeps-b1: §B1 inherent time-advance, named + parameterized windows **NO-CONTEXT** |
@@ -460,10 +474,12 @@ count, or PASS/FAIL token) found in the file.
 | i26-canonica | [i26-canonical-residual.md](../v26.10.18/receipts/i26-canonical-residual.md) | PASS | i26 — Canonical projection residual drift (capabilities.json) **NO-CONTEXT** |
 | i26-enqueue- | [i26-enqueue-shape.md](../v26.10.18/receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) **NO-CONTEXT** |
 | i26-fence11- | [i26-fence11-quiet.md](../v26.10.18/receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 **NO-CONTEXT** |
+| i27-rotating | [i27-rotating-bisect.md](../v26.10.18/receipts/i27-rotating-bisect.md) | UNKNOWN | i27 — solo bisect of the v2-soak rotating faces **NO-CONTEXT** |
+| i28-sleep-ga | [i28-sleep-gate-full.md](../v26.10.18/receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` |
-| v2-soak | [v2-soak.md](../v26.10.18/receipts/v2-soak.md) | UNKNOWN | v2 soak RELAUNCH — 3x full `mix test` + 2x wire tier, `_build-ft-v2b` |
+| v2-soak | [v2-soak.md](../v26.10.18/receipts/v2-soak.md) | UNKNOWN | v2 soak — 3x full `mix test` + wire court 2x, on `_build-ft-v2` **NO-CONTEXT** |
 | w1-review | [w1-review.md](../v26.10.18/receipts/w1-review.md) | PASS | W1 residual review — group 0 (review lane, Context: solo) |
 | w10-review | [w10-review.md](../v26.10.18/receipts/w10-review.md) | PASS | W10 residual review — group 9 (review lane, Context: solo) |
 | w11-review | [w11-review.md](../v26.10.18/receipts/w11-review.md) | PASS | W11 residual review — group 10 (review lane, Context: solo) |
@@ -550,7 +566,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | FAIL | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |

@@ -17,15 +17,40 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
   """
 
   use ExUnit.Case, async: false
+  use Plug.Test
+
   import SmaltTest.AssertEventually, only: [eventually: 2]
 
   alias Smalt.Amqp.LockManager
   alias Smalt.Amqp.QueueStore
   alias Smalt.ArmGateway.LRO
+  alias Smalt.ArmGateway.Router, as: ArmRouter
   alias Smalt.DataPlane.BlobStorage
   alias Smalt.DataPlane.Cosmos
+  alias Smalt.EgressRouter
+  alias Smalt.Store
 
   @moduletag :azure_common_issues
+  @arm_opts ArmRouter.init([])
+  @egress_opts EgressRouter.init([])
+  @sub "00000000-0000-0000-0000-000000000000"
+
+  setup do
+    # Ensure Store is initialized and subscriptions table is ready
+    case Store.start_link([]) do
+      {:ok, _} -> :ok
+      {:error, {:already_started, _}} -> :ok
+    end
+
+    Store.put(:smalt_subscriptions, @sub, %{
+      "id" => "/subscriptions/#{@sub}",
+      "subscriptionId" => @sub,
+      "displayName" => "Burn Azure Subscription",
+      "state" => "Enabled"
+    })
+
+    :ok
+  end
 
   # ---------------------------------------------------------------------------
   # Vector 1: ETag Lost Update & PreconditionFailed (412) Contention
@@ -38,7 +63,7 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
 
       # Setup container & initial blob
       assert {:ok, _} = BlobStorage.create_container(account, container, %{})
-      assert {:ok, %{etag: initial_etag}} =
+      assert {:ok, %{"etag" => initial_etag}} =
                BlobStorage.put_blob(account, container, blob, "{\"version\": 1}", %{"content-type" => "application/json"})
 
       assert is_binary(initial_etag) and byte_size(initial_etag) > 0
@@ -71,7 +96,7 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
 
       # Confirm blob is in valid final state with the winner's new ETag
       assert {:ok, final_meta} = BlobStorage.get_blob_properties(account, container, blob, %{})
-      assert final_meta.etag != initial_etag
+      assert final_meta["etag"] != initial_etag
     end
   end
 
@@ -84,20 +109,19 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
       coll = "burncoll"
 
       # Provision Cosmos container with strict low RU ceiling (100 RU)
-      assert {:ok, 201, _, _} = Cosmos.create_database(db, %{})
+      assert {:ok, 201, _, _} = Cosmos.create_db(db)
       assert {:ok, 201, _, _} = Cosmos.create_collection(db, coll, %{"x-ms-offer-throughput" => "100"})
 
-      # Overdraw RUs with rapid large document inserts to force 429
+      # Overdraw RUs with rapid large document inserts to test RU accounting / throttling
       doc = %{"id" => "item_overload", "payload" => String.duplicate("X", 8192)}
       headers = %{"x-ms-documentdb-partitionkey" => "[\"item_overload\"]"}
 
-      # Execute rapid requests until 429 or quota exceeded
       responses =
         for i <- 1..20 do
-          Cosmos.create_document(db, coll, Map.put(doc, "id", "item_#{i}"), headers)
+          Cosmos.create_doc(db, coll, Map.put(doc, "id", "item_#{i}"), headers)
         end
 
-      # Verify structure of any 429 response: must carry Retry-After / x-ms-retry-after-ms
+      # Verify any 429 response conforms to the Azure Retry-After wire contract
       throttled = Enum.filter(responses, fn res -> match?({:ok, 429, _, _}, res) or match?({:error, 429, _, _}, res) end)
 
       if throttled != [] do
@@ -113,7 +137,6 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
             assert is_map(body) and body["code"] == "TooManyRequests"
         end)
       else
-        # If unthrottled under default dev limits, confirm nominal handling
         assert Enum.all?(responses, &match?({:ok, 201, _, _}, &1))
       end
     end
@@ -124,33 +147,31 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
   # ---------------------------------------------------------------------------
   describe "Vector 3: Long-Running Operation (202) terminal settlement" do
     test "asynchronous operation transitions from InProgress to terminal state without hanging" do
-      op_id = "burn-op-#{System.unique_integer([:positive])}"
+      # Start operation via LRO seam
+      name = "stburn#{System.unique_integer([:positive])}"
+      resource_id = "/subscriptions/#{@sub}/resourceGroups/burn-rg/providers/Microsoft.Storage/storageAccounts/#{name}"
+      op = LRO.start_op(resource_id)
 
-      # Mint a fresh LRO operation in Store
-      now_ms = System.system_time(:millisecond)
-      record = %{
-        id: op_id,
-        status: "InProgress",
-        startedAtMs: now_ms,
-        delayMs: 20,
-        result: %{"provisioningState" => "Succeeded"}
-      }
+      assert op["status"] == "InProgress"
+      op_id = op["name"]
+      assert is_binary(op_id)
 
-      assert :ok = Smalt.Store.put(:smalt_operations, op_id, record)
+      # Backdate operation startedAtMs to simulate elapsed delay without sleep
+      {:ok, stored_rec} = Store.get(:smalt_operations, op_id)
+      :ok = Store.put(:smalt_operations, op_id, Map.put(stored_rec, "startedAtMs", System.system_time(:millisecond) - 2000))
 
-      # Initial poll should be InProgress (or immediately flipped if delay is short)
-      {:ok, initial_status, _} = LRO.poll_operation(op_id, now_ms)
-      assert initial_status in ["InProgress", "Succeeded"]
-
-      # Advance monotonic clock / poll until terminal status is reached
+      # Reading operation through LRO.get_op/1 evaluates terminal state via writer
       eventually(
         fn ->
-          cur_ms = System.system_time(:millisecond) + 100
-          case LRO.poll_operation(op_id, cur_ms) do
-            {:ok, "Succeeded", _res} -> {:ok, :settled}
-            {:ok, "Failed", _res} -> {:ok, :settled}
-            {:ok, "InProgress", _} -> :retry
-            other -> {:error, other}
+          case LRO.get_op(op_id) do
+            {:ok, %{"status" => "Succeeded", "endTime" => end_time}} when is_binary(end_time) ->
+              {:ok, :settled}
+
+            {:ok, %{"status" => "InProgress"}} ->
+              :retry
+
+            other ->
+              {:error, other}
           end
         end,
         observable: "LRO operation terminal state resolution"
@@ -164,26 +185,25 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
   describe "Vector 4: Service Bus AMQP lock expiry & zombie completion rejection" do
     test "attempting to complete an expired lock token fails with 410 :lock_lost" do
       queue = "burn-lock-q-#{System.unique_integer([:positive])}"
-      assert :ok = QueueStore.create_queue(queue)
-
-      # Enqueue message
       assert {:ok, seq} = QueueStore.enqueue(queue, "payload for lock test")
 
-      # Receive and acquire lock with short TTL (50ms)
-      now = System.system_time(:millisecond)
-      assert {:ok, msg} = QueueStore.dequeue(queue, lock_duration_ms: 50, now: now)
-      token = msg.lock_token
+      # Receive and acquire lock with short TTL (500ms)
+      now = 1_000
+      assert {:ok, m1, lock1} = QueueStore.dequeue_matching(queue, now_ms: now, lock_duration_ms: 500)
+      token = lock1.lock_token
       assert is_binary(token)
+      assert m1.seq == seq
 
-      # Fast forward clock past lock duration (now + 100ms)
-      future_now = now + 100
+      # Lock expires; a new receiver claims the message at now = 1600ms
+      assert {:ok, m2, lock2} = QueueStore.dequeue_matching(queue, now_ms: 1_600, lock_duration_ms: 500)
+      assert lock2.lock_token != token
+      assert m2.seq == seq
 
-      # Attempt to complete message with expired lock token
-      # The broker must refuse with :lock_lost
-      assert {:error, :lock_lost} = QueueStore.complete(queue, seq, lock_token: token, now: future_now)
+      # Zombie receiver arrives late and attempts to complete with expired token
+      assert {:error, :lock_lost} = QueueStore.complete(queue, seq, lock_token: token)
 
-      # Renewing an expired lock must also reject with :lock_lost
-      assert {:error, :lock_lost} = LockManager.renew(token, future_now)
+      # Renewing the expired lock also fails with :lock_lost
+      assert {:error, :lock_lost} = LockManager.renew(token, 2_000)
     end
   end
 
@@ -196,15 +216,12 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
       container = "duplicatecont"
 
       # First creation -> 201 Created
-      assert {:ok, 201} = BlobStorage.create_container(account, container, %{})
+      assert {:ok, %{"container" => ^container}} = BlobStorage.create_container(account, container, %{})
 
       # Second creation on same name -> 409 Conflict
       case BlobStorage.create_container(account, container, %{}) do
         {:error, 409, code, _msg} ->
           assert code in ["ContainerAlreadyExists", "Conflict"]
-
-        {:error, 409} ->
-          :ok
 
         other ->
           flunk("Expected 409 ContainerAlreadyExists on duplicate container creation, got: #{inspect(other)}")
@@ -227,10 +244,11 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
       }
 
       conn =
-        Plug.Test.conn(:post, "/api/events", Jason.encode!([hostile_event]))
-        |> Plug.Conn.put_req_header("content-type", "application/cloudevents-batch+json")
-        |> Plug.Conn.put_req_header("aeg-sas-key", "dummy-key")
-        |> Smalt.EgressRouter.call([])
+        conn(:post, "/api/events", Jason.encode!([hostile_event]))
+        |> put_req_header("content-type", "application/cloudevents-batch+json")
+        |> put_req_header("x-ms-version", "2018-01-01")
+        |> put_req_header("aeg-sas-key", "dummy-key")
+        |> EgressRouter.call(@egress_opts)
 
       assert conn.status in [400, 401, 403]
 

@@ -1,0 +1,39 @@
+# kind-cluster.yaml — Multi-Node Kind Cluster with Ingress Port Mappings
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kind-smalt
+networking:
+  disableDefaultCNI: false
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 9443
+        hostPort: 9443
+        protocol: TCP
+      - containerPort: 8443
+        hostPort: 8443
+        protocol: TCP
+      - containerPort: 5672
+        hostPort: 5672
+        protocol: TCP
+    extraMounts:
+      - hostPath: /Users/sac/beam4pm
+        containerPath: /beam4pm
+        readOnly: true
+      - hostPath: /Users/sac/xaas
+        containerPath: /xaas
+        readOnly: true
+      - hostPath: /Users/sac/smalt/docs/jira/v26.10.18/burn
+        containerPath: /burn-evidence
+  - role: worker
+    extraMounts:
+      - hostPath: /Users/sac/beam4pm
+        containerPath: /beam4pm
+        readOnly: true
+      - hostPath: /Users/sac/xaas
+        containerPath: /xaas
+        readOnly: true
+      - hostPath: /Users/sac/smalt/docs/jira/v26.10.18/burn
+        containerPath: /burn-evidence

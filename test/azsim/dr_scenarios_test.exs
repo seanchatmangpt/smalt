@@ -43,6 +43,15 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
 
   setup do
     restore_planes!()
+
+    eventually(
+      fn ->
+        if :ets.info(:smalt_resources) == :undefined, do: :retry, else: {:ok, :store_up}
+      end,
+      deadline_ms: 10_000,
+      observable: "shared Store tables up"
+    )
+
     assert :ok = SmaltTest.Lifecycle.ensure_store_up()
 
     on_exit(fn ->
@@ -90,9 +99,16 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         stream =
           Task.async(fn ->
             Enum.reduce_while(1..200, :ok, fn _, acc ->
-              case query_feed(egress, db, coll) do
+              out =
+                try do
+                  query_feed(egress, db, coll)
+                rescue
+                  _ -> {:crashed, :transport}
+                end
+
+              case out do
                 %{status: s} when s in [200, 503] -> {:cont, acc}
-                other -> {:halt, {:unexpected, other}}
+                _ -> {:halt, {:halted, out}}
               end
             end)
           end)
@@ -440,12 +456,11 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
           :ok ->
             client
 
-          {:error, :retry} ->
+          {:error, _reason} ->
+            # Transient retry while the listener rebinds after subtree
+            # restart; deadline-bounded, never an infinite loop.
             :gen_tcp.close(client)
             do_connect_handshake(port, deadline)
-
-          {:error, other} ->
-            flunk("handshake failed: #{inspect(other)}")
         end
 
       {:error, _reason} ->
@@ -457,14 +472,9 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
     :ok = :gen_tcp.send(client, @sasl_header)
 
     case recv_exact(client, 8) do
-      {:ok, @sasl_header} -> :ok
+      {:ok, @sasl_header} -> handshake_open(client)
       {:ok, other} -> {:error, {:sasl_header, other}}
-      {:error, reason} -> {:error, reason}
     end
-    |> then(fn
-      :ok -> handshake_open(client)
-      err -> err
-    end)
   end
 
   defp handshake_open(client) do
@@ -482,7 +492,6 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         case recv_exact(client, 8) do
           {:ok, @header} -> open_begin(client)
           {:ok, other} -> {:error, {:header, other}}
-          {:error, reason} -> {:error, reason}
         end
       else
         {:error, {:expected_sasl_outcome, outcome.performative}}
