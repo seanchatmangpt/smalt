@@ -267,3 +267,76 @@ until: soak containers exit, ssh tunnel 61023 released, and the 7-file lib/ diff
 **Court-x2 verdicts: NOT RUN (precondition refusal — lawful, quiet-check path not reached).**
 
 Rollback runbook (i29-colima-stop-runbook.md) unchanged and still valid for the next window.
+
+## AZB-23 residue re-assessment — 2026-10-19 (Context: solo)
+
+**Docker surface has quiesced for burn/soak; port precondition still BLOCKED by the kind cluster.**
+
+Evidence (all commands run 2026-10-19, exit 0):
+
+- `docker ps` (exit 0): **zero** smalt-burn-* / smalt-cgroup-soak-* containers
+  (grep over full `docker ps -a` = no matches). No active docker builds.
+  Live set (5 running):
+  - `dbg-id`, `dbg-id2` — Up 2 h, image fc8742091371, disposable identity-probe
+    residue from a finished lane (runbook P0-acceptable; reaped via
+    `docker rm -f dbg-id dbg-id2` at operator discretion, not removed here).
+  - `kind-smalt-worker`, `kind-smalt-control-plane` — kindest/node:v1.34.0, Up 3 h.
+  - `act-sock-relay` — alpine/socat, Up 10 h (stateless relay, P0-acceptable).
+- **Port confirmation**: `docker port kind-smalt-control-plane` (exit 0) shows
+  `5672/tcp -> 0.0.0.0:5672`, `8443/tcp -> 0.0.0.0:8443`, `9443/tcp -> 0.0.0.0:9443`
+  — the kind control-plane node still forwards all three canonical ports.
+  Host-side holder is the colima ssh mux (pid 61023), LISTEN on 9443/8443/5672.
+
+**Exact removal set to free 9443/8443/5672** (NOT executed — report only):
+
+1. `kind-smalt-control-plane` — the only container with the published port
+   bindings; removing it releases the docker-proxy forwards behind ssh mux 61023
+   (the mux itself exits only with `colima stop`, which is out of scope here).
+2. `kind-smalt-worker` — no published ports (Up with empty Ports), but it is
+   part of the same kind cluster; leaving a lone worker would leave a half
+   cluster. Cluster-typical removal is `kind delete cluster --name smalt`
+   rather than per-container `docker rm`.
+3. `dbg-id`, `dbg-id2` — optional hygiene; they bind no host ports (all their
+   port entries are un-published `/tcp` exposures), so removing them frees
+   nothing port-wise.
+
+`act-sock-relay` publishes 127.0.0.1:2375->2375 only — irrelevant to the
+canonical ports, leave in place.
+
+**Standing: PARTIAL_ALIVE** — burn/soak quiescence confirmed live; port
+precondition blocked by kind cluster forwards (typed residue, not removed).
+`colima stop` and any container removal NOT executed.
+
+## Execution — P3/P4 runbook sequence (2026-10-19, Context: solo(agent-lane))
+
+**Step 1 — kind delete cluster --name smalt**: exit 0 ("Deleting cluster ..."),
+but `docker ps` still listed `kind-smalt-control-plane` (publishing 9443/8443/5672)
+and `kind-smalt-worker` after two `kind delete` attempts. Root cause: kind's
+teardown did not remove the node containers on the colima docker context.
+Completed removal with `docker rm -f kind-smalt-control-plane kind-smalt-worker`
+(exit 0). Verified: `docker ps -a | grep -i kind` → no matches (grep exit 1);
+`kind get clusters` → "No kind clusters found."
+
+**Step 2 — colima stop**: exit 0 ("The instance colima has shut down").
+Verified: `lsof -nP -iTCP:9443 -iTCP:8443 -iTCP:5672 -sTCP:LISTEN` → exit 1,
+zero holders. Ports 9443/8443/5672 are free.
+
+**Step 3 — bash scripts/court23.sh**: exit 1 — REFUSED by quiet-check
+(lawful veto, quiet window not open). Verbatim:
+
+```
+== AZB-23 gate @ 1792395430 ==
+QUIET-CHECK REFUSE (typed violations):
+  - concurrent suite/court processes: 58477 /Users/sac/.erlmcp/otp-28.3.1/lib/erlang/erts-16.2/bin/beam.smp -- -root /Users/sac/.erlmcp/otp-28.3.1/lib/erlang -bindir /Users/sac/.erlmcp/otp-28.3.1/lib/erlang/erts-16.2/bin -progname erl --
+  - load 12.0/19.3 > threshold (16 cpus)
+error: recipe `quiet-check` failed on line 8 with exit code 1
+REFUSED: quiet-check failed — quiet window not open (colima up?)
+```
+
+Two typed violations: (a) an erlmcp beam.smp (PID 58477, non-smalt,
+~/.erlmcp tree) counted as a concurrent court/suite process; (b) machine
+load 12.0 above the 16-cpu threshold. Per instruction, no `colima start`
+rollback — colima stays down; court-x2 was not executed (0 runs).
+
+Standing: BLOCKED (court-x2 pending a quiet window: erlmcp beam 58477
+gone + load below threshold).

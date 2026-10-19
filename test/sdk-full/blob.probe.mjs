@@ -187,12 +187,9 @@ async function main() {
     assertOk(/InvalidQueryParameterValue|InvalidQueryParameterValueValue|InvalidInput/.test(body), `XML error envelope missing: ${body.slice(0, 300)}`);
   });
 
-  // 10. delete blob 202; then container delete
+  // 10. delete blob 202; then container delete 202
   await record("delete blob 202", () => expectStatus(blob.delete(to), 202, "delete blob"));
-  // DIVERGENCE: substrate answers 404 "The specified blob does not exist" for
-  // DELETE container (Azure: 202). Asserted at the observed 404 so the probe
-  // documents the divergence rather than failing on it.
-  await record("delete mutable container (divergence: 404 vs Azure 202)", () => expectStatus(mut.delete(to), 404, "delete container"));
+  await record("delete mutable container 202", () => expectStatus(mut.delete(to), 202, "delete container"));
 
   for (const [st, name, msg] of results) console.log(`${st}  ${name}${msg ? "\n      " + msg : ""}`);
   console.log(`\n${results.length - fails}/${results.length} passed`);
