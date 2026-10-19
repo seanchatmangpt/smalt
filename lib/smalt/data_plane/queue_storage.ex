@@ -315,6 +315,70 @@ defmodule Smalt.DataPlane.QueueStorage do
     end
   end
 
+  @doc """
+  Peek Messages (`GET /{account}/{queue}/messages?peekonly=true&numofmessages=`).
+  Like Get Messages minus the mutation: returns only currently-visible,
+  unexpired messages (FIFO) WITHOUT rotating the PopReceipt, extending
+  `next_visible_on`, or incrementing DequeueCount. `peekonly` is the wire
+  disambiguator (WO-6); the engine itself is query-shape-agnostic. 404
+  QueueNotFound.
+  """
+  @spec peek_messages(String.t(), String.t(), map()) ::
+          resp() | {:error, 400 | 404, String.t(), String.t()} | not_ready()
+  def peek_messages(account, queue, opts \\ %{}) do
+    with :ok <- ready!(),
+         {:ok, _} <- Store.get(@queues_table, key(account, queue)),
+         {:ok, n} <- parse_numofmessages(opts["numofmessages"]) do
+      now = Map.get(opts, "now_ms") || System.os_time(:millisecond)
+      base = key(account, queue) <> "/"
+
+      visible =
+        @messages_table
+        |> Store.list_prefix(base)
+        |> Enum.filter(&(is_map(&1) and visible?(&1, now)))
+        |> Enum.take(n)
+
+      body =
+        "<QueueMessagesList>" <>
+          Enum.map_join(visible, "", &message_xml(&1, dequeue: false, text: true)) <>
+          "</QueueMessagesList>"
+
+      {:ok, 200, std_headers(), body}
+    else
+      :error ->
+        {:error, 404, "QueueNotFound", "The specified queue does not exist."}
+
+      {:error, _, _, _} = err ->
+        err
+    end
+  end
+
+  @doc """
+  Clear Messages (`DELETE /{account}/{queue}/messages`). Permanently removes
+  every message row under the queue prefix. 204 NoContent with std_headers;
+  404 QueueNotFound when absent.
+  """
+  @spec clear_messages(String.t(), String.t()) ::
+          {:ok, 204, map()} | {:error, 404 | 400, String.t(), String.t()} | not_ready()
+  def clear_messages(account, queue) do
+    with :ok <- ready!(),
+         {:ok, _} <- Store.get(@queues_table, key(account, queue)) do
+      base = key(account, queue) <> "/"
+
+      for k <- Store.prefix_keys(@messages_table, base) do
+        Store.delete(@messages_table, k)
+      end
+
+      {:ok, 204, std_headers()}
+    else
+      :error ->
+        {:error, 404, "QueueNotFound", "The specified queue does not exist."}
+
+      {:error, _, _, _} = err ->
+        err
+    end
+  end
+
   defp visible?(r, now),
     do: r["next_visible_on"] <= now and r["expires_at"] > now
 
