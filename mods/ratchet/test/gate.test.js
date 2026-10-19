@@ -33,7 +33,10 @@ test('ring RED holds court-x2 (real RED receipt copy as fixture)', () => {
   assert.ok(result && result.hold, 'court-x2 must be held while the ring is RED');
   assert.match(result.output, /RATCHET GATE/);
   assert.match(result.output, /RED/);
-  assert.equal(result.verdict, 'RED');
+  // the typed verdict lives on the pure decision, not the bus return shape
+  const ring = fs.readFileSync(path.join(FIXTURES, 'red/azb-22-burn-ring.md'), 'utf8');
+  const boot = fs.readFileSync(path.join(FIXTURES, 'red/azb-13-boot-burn.md'), 'utf8');
+  assert.equal(gate.decide({ ringText: ring, bootText: boot, fixText: null }).verdict, 'RED');
 });
 
 test('green azb-22b fix fixture lifts the hold — court-x2 passes through', () => {
@@ -62,7 +65,7 @@ test('missing ring receipt fails CLOSED, never passes', () => {
   const h2 = bus(empty);
   const result = h2['tool.call']({ tool: 'Bash', input: { command: 'just court-x2' } });
   assert.ok(result && result.hold);
-  assert.equal(result.verdict, 'MISSING');
+  assert.match(result.output, /MISSING/);
 });
 
 test('unrelated bash passes untouched even with the ring RED', () => {

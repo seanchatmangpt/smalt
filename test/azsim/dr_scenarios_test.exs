@@ -336,7 +336,24 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
   # Recovery metric (reported, never asserted absolutely)
   # ===========================================================================
 
-  defp report_recovery(_scenario, metrics), do: metrics
+  defp report_recovery(scenario, metrics) do
+    recovered = Enum.map(metrics, & &1.recovery_us)
+    reds = Enum.map(metrics, & &1.recovery_reductions)
+    statuses = Enum.map(metrics, &Map.get(&1, :kill_status, :n_a))
+
+    IO.puts(
+      "[AZB-15] #{scenario}: n=#{length(metrics)} " <>
+        "recovery_us(min/med/max)=#{Enum.min(recovered)}/#{median(recovered)}/#{Enum.max(recovered)} " <>
+        "recovery_reductions(med)=#{median(reds)} kill_statuses=#{inspect(Enum.frequencies(statuses))}"
+    )
+
+    metrics
+  end
+
+  defp median(list) do
+    sorted = Enum.sort(list)
+    Enum.at(sorted, div(length(sorted), 2))
+  end
 
   # ===========================================================================
   # Cross-plane blast radius (the falsifier: any unkilled-plane failure)

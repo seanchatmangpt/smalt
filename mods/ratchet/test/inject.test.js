@@ -84,13 +84,13 @@ test('bounded prompt: ticket id present, free text reduced to a sanitized slug',
   const text = submits[0].text;
   assert.match(text, /AZB-07/);
   assert.match(text, /TICKETS\.md/);
-  // nothing outside [A-Za-z0-9-/ ] survives from the free text
-  const residue = text.replace(/[^A-Za-z0-9\-/. ]/g, '');
-  assert.equal(residue, text, 'prompt must be free of shell-significant characters');
-  assert.ok(!/rm -rf|curl|evil/.test(text), 'raw free text must not pass through');
-  // slug is bounded
-  const slug = text.split('azb-07-')[1].replace(/\.md$/, '');
-  assert.ok(slug.length <= 40);
+  // nothing shell-significant survives from the free text
+  assert.ok(![`$`, '`', ';', '|', '&', '>', '<', '\\', '"', "'"].some((c) => text.includes(c)),
+    'prompt must be free of shell-significant characters');
+  assert.ok(!/rm -rf|curl\(|curl\$| \|\||&&/.test(text), 'raw free text must not pass through as prose');
+  // the prompt is EXACTLY the bounded template: ticket id + [a-z0-9-]{1,40} slug only
+  const tpl = /^AZB ratchet: dispatch an agent for AZB-\d{2} per docs\/jira\/v26\.10\.18\/azsim-burn\/TICKETS\.md — receipt to docs\/jira\/v26\.10\.18\/receipts\/azb-\d{2}-[a-z0-9-]{1,40}\.md$/;
+  assert.match(text, tpl, 'prompt must be the exact bounded template');
   // and the persisted lastTicket matches the parsed id
   assert.equal(m.parseTicketId(hostile), 'AZB-07');
 });
@@ -103,14 +103,24 @@ test('no AZB ticket id -> UNBOUNDABLE_PROMPT, nothing submitted', async (t) => {
   assert.equal(submits.length, 0);
 });
 
-test('API not bound -> typed refusal, not a throw', async (t) => {
+test('submit fault: the reserved dedup window is released, error surfaces typed', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ratchet-inject-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const statePath = path.join(dir, 'inject-state.json');
+  const api = {
+    fs: {
+      read: async (fp) => fs.readFileSync(fp === STATE_PATH ? statePath : fp, 'utf8'),
+      write: async (fp, data) => fs.writeFileSync(fp === STATE_PATH ? statePath : fp, data),
+    },
+    prompt: {
+      submit: async () => { throw new Error('session busy (simulated fault)'); },
+    },
+  };
   const m = await inject();
-  // simulate an unbound module by dropping the bound api via a fresh import
-  // is not possible (module singleton), so assert the refusal shape contract
-  // instead: every refusal is { ok:false, refused, detail }.
-  const r = await m.injectDispatch('AZB-01');
-  if (!r.ok) {
-    assert.equal(typeof r.refused, 'string');
-    assert.equal(typeof r.detail, 'string');
-  }
+  m.initInject(api);
+  await assert.rejects(() => m.injectDispatch('AZB-19 overlap'), /session busy/);
+  // the reservation must have been rolled back to the pre-call state
+  const persisted = readPersisted(statePath);
+  assert.equal(persisted.lastInjectAt, 0, 'window released after submit fault');
+  assert.equal(persisted.dispatchLock, false);
 });

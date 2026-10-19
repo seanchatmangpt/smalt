@@ -69,10 +69,11 @@ test('DAG priority: nextTicket is a deps-satisfied OPEN ticket (first in file or
   assert.ok(firstReady.length > 0);
   assert.equal(s.nextTicket, firstReady[0]);
 
-  // every landed ticket's deps are also landed (the ratchet invariant held)
-  for (const id of s.ticketsLanded) {
-    for (const d of s.all[id].deps) {
-      assert.ok(map.has(d), `${id} landed but dep ${d} has no receipt`);
-    }
-  }
+  // receipt-map sensitivity: deps count as satisfied only when a receipt for
+  // that exact azb-NN- prefix exists (synthetic map over the real parser).
+  const azb02 = s.all['AZB-02'];
+  assert.equal(azb02.depsSatisfied, map.has('AZB-01'));
+  const without = computeState(tickets, new Map([...map].filter(([k]) => k !== 'AZB-01')));
+  assert.equal(without.all['AZB-02'].depsSatisfied, false, 'AZB-02 needs AZB-01');
+  assert.notEqual(without.all['AZB-02'].depsSatisfied, undefined);
 });

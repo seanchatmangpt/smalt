@@ -178,3 +178,21 @@ window (37.1% clean; 40.5% on a verdict-diff pair; churn-degraded pairs
 above that but uncertifiable). Close condition: re-run
 `just overlap-court-serial` ×3 + `just overlap-court` ×3 on a quiesced tree
 with 9443 free (T3 live) and land a compare-identical ≥40% median.
+
+## Postscript — 2026-10-18 ~22:00 PDT, re-witness at HEAD 014bb7a→2eb5f89d
+
+- `bash scripts/overlap_court.sh anti-vacuity` re-run at HEAD `014bb7a`:
+  **exit 0**, both refusals (`RESOURCE_CONFLICT`, `LOAD_CONFLICT`) witnessed
+  again — the gate is still non-vacuous on the current tree.
+- One fresh overlapped run executed end-to-end
+  (`tmp/azb19/azb19-overlap-1792383172/result.jsonl`, HEAD pinned
+  `2eb5f89d`): scheduler completed all phases, exit 0. Per-stage exits
+  match the receipt's documented churn modes: bench-check 1 (known
+  shared-receipt flap), naming-sweep 1 (pre-existing tree-wide), t1 exit 2
+  (compile abort, cross-lane in-flight test edits),
+  t3 exit 3 (9443 still held by the shared substrate, pid 40499 — not
+  evicted per lane port law).
+- Walls NOT comparable to the campaign above: concurrent lane activity
+  inflates them (invariant-gates 198 s vs 16-46 s in the campaign;
+  total 718.6 s). No Accept number is claimed from this run. Close
+  condition unchanged: quiesced tree + 9443 free, serial ×3 ∥ overlap ×3.

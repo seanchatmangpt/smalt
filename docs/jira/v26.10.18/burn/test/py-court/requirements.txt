@@ -1,0 +1,7 @@
+azure-identity
+azure-cosmos
+azure-storage-blob
+azure-servicebus
+azure-eventhub
+azure-keyvault-keys
+requests

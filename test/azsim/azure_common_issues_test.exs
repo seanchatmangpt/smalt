@@ -1,3 +1,5 @@
+Code.require_file("test/support/assert_eventually.ex", "/burn-evidence")
+
 defmodule Smalt.Azsim.AzureCommonIssuesTest do
   @moduledoc """
   Azure Common Failure Modes Burn-In Suite.
@@ -89,7 +91,11 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
         |> Enum.map(fn {:ok, res} -> res end)
 
       winners = Enum.filter(results, &match?({:ok, _}, &1))
-      losers = Enum.filter(results, &match?({:error, 412, "PreconditionFailed", _}, &1))
+      losers =
+        Enum.filter(results, fn res ->
+          match?({:error, :precondition_failed, _}, res) or
+            match?({:error, 412, "PreconditionFailed", _}, res)
+        end)
 
       assert length(winners) == 1, "Expected exactly 1 winner, got #{length(winners)}"
       assert length(losers) == workers - 1, "Expected #{workers - 1} 412 PreconditionFailed, got #{length(losers)}"
@@ -244,7 +250,7 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
       }
 
       conn =
-        conn(:post, "/api/events", Jason.encode!([hostile_event]))
+        conn(:post, "/topics/burntopic/events", Jason.encode!([hostile_event]))
         |> put_req_header("content-type", "application/cloudevents-batch+json")
         |> put_req_header("x-ms-version", "2018-01-01")
         |> put_req_header("aeg-sas-key", "dummy-key")

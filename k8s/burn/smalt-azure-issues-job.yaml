@@ -21,7 +21,7 @@ spec:
       - name: test-runner
         image: smalt:local
         imagePullPolicy: Never
-        command: ["mix", "test", "test/azsim/azure_common_issues_test.exs"]
+        command: ["mix", "test", "/burn-evidence/azure_common_issues_test.exs"]
         env:
         - name: MIX_ENV
           value: "test"
