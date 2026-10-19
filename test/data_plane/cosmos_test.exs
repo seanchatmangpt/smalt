@@ -1081,9 +1081,29 @@ defmodule Smalt.DataPlane.CosmosTest do
       assert {:ok, [%{"col" => "héllo→日本語"}]} =
                Smalt.DataPlane.KQL.run([row], "| where col == 'héllo→日本語' | take 5")
 
+      # Deterministic-or-typed fuzz (i29): every generated input carries its
+      # EXPECTED outcome, derived from the input's properties, so the run is
+      # seed-independent. Classification (lib/smalt/data_plane/kql.ex):
+      #   - parse_stages/2 accepts a token stream ONLY when its first token is
+      #     {:word, "|"}; any other first token (word/string/paren/comma) is a
+      #     typed parse error.
+      #   - a whitespace-only binary lexes to zero tokens and zero stages,
+      #     which executes to the lawful {:ok, []} on empty rows.
+      # So a binary whose first byte is neither whitespace nor 0x7C ('|') is
+      # GUARANTEED {:error, _}. Binaries starting with '|' are UNCLASSIFIED
+      # (their parse depends on the whole stream) and are resampled — the
+      # generator emits classified inputs only.
       Enum.each(1..50, fn _ ->
-        q = :crypto.strong_rand_bytes(:rand.uniform(128))
-        assert match?({:error, _}, Smalt.DataPlane.KQL.run([], q))
+        q = classified_error_fuzz_input()
+        assert {:error, {:parse, _}} = Smalt.DataPlane.KQL.run([], q),
+               "expected typed parse error for #{inspect(q, limit: :infinity)}"
+      end)
+
+      # The classified {:ok, []} face: whitespace-only input lexes to zero
+      # tokens -> zero stages -> lawful empty result.
+      Enum.each([<<" ">>, <<"\t\r
+  ">>], fn q ->
+        assert {:ok, []} = Smalt.DataPlane.KQL.run([], q)
       end)
     end
 
@@ -3093,4 +3113,19 @@ defmodule Smalt.DataPlane.CosmosTest do
         Cosmos.replace_collection("tpdbx", "ghost", %{"throughput" => 400})
     end
   end
+
+  # See the classification comment inside "unicode and random binaries
+  # terminate quickly" — resamples any random binary whose first byte is
+  # whitespace (its token stream could be empty) or '|' (its parse is
+  # unclassified), so every emitted fuzz input is guaranteed
+  # {:error, {:parse, _}} regardless of ExUnit seed.
+  defp classified_error_fuzz_input do
+    q = :crypto.strong_rand_bytes(:rand.uniform(128))
+
+    case :binary.first(q) do
+      c when c in [?\s, ?\t, ?\r, ?\n, ?|] -> classified_error_fuzz_input()
+      _ -> q
+    end
+  end
+
 end
