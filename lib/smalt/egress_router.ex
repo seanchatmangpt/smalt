@@ -47,9 +47,12 @@ defmodule Smalt.EgressRouter do
   # ACL are UNIMPLEMENTED (KD/GAP(blob-comp-lease-absent)); previously an
   # unknown container comp fell through: PUT into the create-container branch
   # (silent 201 lie), GET into the plain-list fallback (wrong-body 200).
-  @container_put_comps ~w(legalhold immutabilityPolicy immutabilitypolicy metadata)
-  @container_get_comps ~w(legalhold immutabilityPolicy immutabilitypolicy metadata list)
+  @container_put_comps ~w(legalhold immutabilityPolicy immutabilitypolicy metadata lease acl)
+  @container_get_comps ~w(legalhold immutabilityPolicy immutabilitypolicy metadata list acl)
 
+  # Adaptive health probes (envelope Phase 4): zero-auth readiness/liveness.
+  # Readiness degrades only on structural failure, never on load.
+  plug(Smalt.HealthPlug)
   plug(Plug.Logger)
   # Lane 19 (v26.10.14) item 6: CORS origins are configurable at runtime via
   # `:smalt, :egress_cors_origins` (list of allowed origins). The default is
@@ -159,11 +162,16 @@ defmodule Smalt.EgressRouter do
   defp queue_plane_route("POST", [account, _queue, "messages"], _qp),
     do: {:put_messages, account}
 
-  defp queue_plane_route("GET", [account, _queue, "messages"], _qp),
-    do: {:get_messages, account}
+  defp queue_plane_route("GET", [account, _queue, "messages"], qp),
+    do: if(qp["peekonly"] == "true", do: {:peek_messages, account}, else: {:get_messages, account})
 
   defp queue_plane_route("PUT", [account, _queue, "messages", _id], _qp),
     do: {:update_message, account}
+
+  # Clear Messages must shadow the popreceipt-carrying delete-message match on
+  # path shape alone (3 elements vs 4) — the 3-element DELETE is the clear comp.
+  defp queue_plane_route("DELETE", [account, _queue, "messages"], _qp),
+    do: {:clear_messages, account}
 
   defp queue_plane_route("DELETE", [account, _queue, "messages", _id], _qp),
     do: {:delete_message, account}
@@ -245,6 +253,33 @@ defmodule Smalt.EgressRouter do
         |> put_resp_headers(headers)
         |> put_resp_content_type("application/xml")
         |> send_resp(status, resp_body)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp queue_dispatch(conn, {:peek_messages, account}, qp) do
+    [queue, _] = Enum.drop(conn.path_info, 1)
+
+    case QueueStorage.peek_messages(account, queue, qp) do
+      {:ok, status, headers, resp_body} ->
+        conn
+        |> put_resp_headers(headers)
+        |> put_resp_content_type("application/xml")
+        |> send_resp(status, resp_body)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp queue_dispatch(conn, {:clear_messages, account}, _qp) do
+    [queue, _] = Enum.drop(conn.path_info, 1)
+
+    case QueueStorage.clear_messages(account, queue) do
+      {:ok, status, headers} ->
+        send_headers(conn, status, headers)
 
       {:error, status, code, msg} ->
         blob_error(conn, status, not_found_error(code) |> put_message(msg))
@@ -1700,6 +1735,49 @@ defmodule Smalt.EgressRouter do
         unhandled_comp?(conn, @container_put_comps) ->
           unhandled_container_comp_error(conn, conn.query_params["comp"])
 
+        # KD-108: container lease surface (acquire/renew/release/break via
+        # x-ms-lease-action). Engine: BlobStorage.lease_container/5 — state
+        # rides the container row map; active lease refuses Delete Container
+        # 409 ContainerLeased in BlobStorage.delete_container/3.
+        conn.query_params["comp"] == "lease" ->
+          if not_ready?(conn, [BlobStorage]) do
+            route_not_ready(conn)
+          else
+            case BlobStorage.lease_container(
+                   account,
+                   container,
+                   header_map(conn)["x-ms-lease-action"],
+                   header_map(conn)
+                 ) do
+              {:ok, status, headers, _record} ->
+                conn
+                |> put_resp_headers(headers)
+                |> send_resp(status, "")
+
+              {:error, status, code, msg} ->
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
+            end
+          end
+
+        # KD-108: container ACL / signed identifiers. PUT -> 204 No Content;
+        # GET -> 200 SignedIdentifiers XML (BlobStorage.acl_xml/1).
+        conn.query_params["comp"] == "acl" ->
+          if not_ready?(conn, [BlobStorage]) do
+            route_not_ready(conn)
+          else
+            {:ok, body, conn} = read_body(conn)
+
+            case BlobStorage.set_container_acl(account, container, body, header_map(conn)) do
+              {:ok, status, headers, _record} ->
+                conn
+                |> put_resp_headers(headers)
+                |> send_resp(status, "")
+
+              {:error, status, code, msg} ->
+                blob_error(conn, status, not_found_error(code) |> put_message(msg))
+            end
+          end
+
         conn.query_params["comp"] == "legalhold" ->
           if not_ready?(conn, [BlobStorage]) do
             route_not_ready(conn)
@@ -1939,6 +2017,25 @@ defmodule Smalt.EgressRouter do
 
               _ ->
                 blob_error(conn, 404, not_found_error("LegalHoldNotFound"))
+            end
+          end
+
+        # KD-108: Get Container ACL — 200 SignedIdentifiers XML.
+        conn.query_params["comp"] == "acl" ->
+          if not_ready?(conn, [BlobStorage]) do
+            route_not_ready(conn)
+          else
+            case BlobStorage.get_acl(account, container) do
+              {:ok, identifiers} ->
+                conn
+                |> put_resp_header("x-ms-version", "2021-12-02")
+                |> put_resp_content_type("application/xml")
+                |> send_resp(200, BlobStorage.acl_xml(identifiers))
+
+              {:error, :container_not_found} ->
+                blob_error(conn, 404, %{
+                  "error" => %{"code" => "ContainerNotFound", "message" => "Container not found."}
+                })
             end
           end
 
