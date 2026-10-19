@@ -1593,15 +1593,21 @@
     "Elixir.Smalt.Amqp.AtomBridgeTest.test PUT update 200; GET 200 entry or 404; DELETE 200 then 404; POST 405": {
       "tier": "default"
     },
+    "Elixir.Smalt.Amqp.AtomBridgeTest.test flood of closed mid-request connections is silent (i22 restored)": {
+      "tier": "default"
+    },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test http?/1 truth table": {
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test malformed content-length closes typed: no response, bounded wait, then end": {
-      "max_ms": 7002,
+      "max_ms": 10532,
       "tier": "stress"
     },
+    "Elixir.Smalt.Amqp.AtomBridgeTest.test non-terminal read faults log once per window, repeats aggregated": {
+      "tier": "default"
+    },
     "Elixir.Smalt.Amqp.AtomBridgeTest.test oversize request is refused or closed, never hangs": {
-      "max_ms": 6001,
+      "max_ms": 9012,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.AttachTopLevelArityTest.test attach encodes as a top-level list of exactly 14 elements (extras dropped)": {
@@ -1833,7 +1839,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test 5000 unique long symbol source/target keys mint no new atoms": {
-      "max_ms": 7393,
+      "max_ms": 9932,
       "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test bare-array decode stays linear: 200k elements decode in bounded time (lens-2)": {
@@ -1864,7 +1870,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test encode-path differential: mutated structures raise ArgumentError or round-trip exactly (lens-6)": {
-      "tier": "default"
+      "max_ms": 7767,
+      "tier": "stress"
     },
     "Elixir.Smalt.Amqp.FuzzTest.test exhaustive constructor sweep: all 256 ctor bytes x 4 body shapes, never raises (lens-3)": {
       "tier": "default"
@@ -3202,7 +3209,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.Azsim.GracefulStopTest.test stopping the Control subtree terminates the WasmEngine owner typed (not :killed)": {
-      "tier": "default"
+      "max_ms": 15000,
+      "tier": "stress"
     },
     "Elixir.Smalt.Azsim.IntegrationPlaneTest.test abandon requeues; deadletter after max-delivery-count": {
       "tier": "default"
@@ -4168,6 +4176,27 @@
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.AuditPlanesTest.test lens-3 Store.next_seq serialized counter unknown table fails closed (raises, never silently creates)": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test ARM Gap Capabilities (Locations, List by RG, Tag PATCH) GET /subscriptions/:sub/locations returns default locations list": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test ARM Gap Capabilities (Locations, List by RG, Tag PATCH) GET /subscriptions/:sub/resourceGroups/:rg/resources filters to that RG": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test ARM Gap Capabilities (Locations, List by RG, Tag PATCH) PATCH /subscriptions/:sub/resourceGroups/:rg updates tags cleanly": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test Blob Storage Container Lifecycle (DELETE container) DELETE /:account/:container cascade deletes blobs and returns 202": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test Blob Storage Container Lifecycle (DELETE container) DELETE /:account/:container refuses deletion when locked by WORM legal hold": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test Cosmos DB Batch/Bulk Operations POST /dbs/:db/colls/:coll/docs with x-ms-cosmos-is-batch-request handles operations": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.AuditedCapabilitiesTest.test Key Vault Key Properties (updateKeyProperties) PATCH /keys/:name updates key attributes and tags": {
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.BlobHardeningTest.test GAP-AUD1-01 comp whitelist A14: duplicate comp (list-form decode) -> typed 400 on blob and container arms": {
@@ -5176,7 +5205,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test concurrent metadata PUTs vs hold-sets: committed holds are never lost (W5-8 race)": {
-      "max_ms": 10733,
+      "max_ms": 14922,
       "tier": "stress"
     },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test metadata PUT still succeeds on a hold-free container (non-vacuity of the happy path)": {
@@ -5783,7 +5812,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpTest.test lens6 concurrent tools/call under descriptor module reload stays payload-faithful": {
-      "tier": "default"
+      "max_ms": 7730,
+      "tier": "stress"
     },
     "Elixir.Smalt.McpTest.test lens6 generated descriptor agrees with the TTL capability source (data fidelity)": {
       "tier": "default"
@@ -5837,7 +5867,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.McpWireTest.test doctor.summary agrees with scripts/doctor.py --json on substrate health": {
-      "max_ms": 31316,
+      "max_ms": 49460,
       "tier": "stress"
     },
     "Elixir.Smalt.McpWireTest.test lens8 wire tools/list and mcp_tools are capability_id-sorted": {
@@ -5958,6 +5988,15 @@
       "tier": "default"
     },
     "Elixir.Smalt.Messaging.EventHubsTest.test R185e real-SDK batch shape and duplicate-kind discriminator 4. KD-53 minimal inners [body]/[header,body] still split": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test audit-A22-F1 multi-data-section split-when-all-inners-complete 2 complete inner data sections split into 2 events with monotonic seqs": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test audit-A22-F1 multi-data-section split-when-all-inners-complete 3 complete inner data sections split into 3 events": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Messaging.EventHubsTest.test audit-A22-F1 multi-data-section split-when-all-inners-complete any incomplete inner data section fail-closes the whole message to ONE event": {
       "tier": "default"
     },
     "Elixir.Smalt.Messaging.EventHubsTest.test checkpoint compare_and_swap exactly one of two concurrent CAS callers with the same expect wins": {
@@ -6195,7 +6234,8 @@
       "tier": "default"
     },
     "Elixir.Smalt.OcelRevopsTest.test FitnessVerdict: happy trace conforms at 1.0, broken trace does not": {
-      "tier": "default"
+      "max_ms": 8259,
+      "tier": "stress"
     },
     "Elixir.Smalt.OcelRevopsTest.test OcelTrace: two traces read back through Ash with real counts and windows": {
       "tier": "default"
@@ -7233,7 +7273,7 @@
       "tier": "default"
     },
     "Elixir.Smalt.TLSTest.test concurrency falsifier (TLS-261014-01) paired boots: regenerator racing a boot across N=20 paired seats, zero crashes": {
-      "max_ms": 15978,
+      "max_ms": 27246,
       "tier": "stress"
     },
     "Elixir.Smalt.TLSTest.test concurrency falsifier (TLS-261014-01) regenerate during active serving: no listener drop": {
@@ -7834,7 +7874,8 @@
       "tier": "default"
     },
     "Elixir.SmaltGraphlawMatrixTest.test Registry is the exact projection of the pack ontology (regeneration determinism)": {
-      "tier": "default"
+      "max_ms": 8691,
+      "tier": "stress"
     },
     "Elixir.SmaltGraphlawMatrixTest.test empty payload verdict matches the type's declared shape requirements": {
       "tier": "default"
@@ -8083,7 +8124,7 @@
       "tier": "default"
     },
     "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test graphlaw/WasmEngine killed mid-request: caller receives :engine_unavailable as HTTP 503 typed body, nothing admitted": {
-      "max_ms": 5009,
+      "max_ms": 7505,
       "tier": "stress"
     },
     "Elixir.SmaltTest.Azsim.DetsRecoveryTest.test needs_repair path: repair:true boot repairs the killed file, dets_repaired telemetry fires, all acked writes present, zero phantoms": {
@@ -8195,7 +8236,7 @@
       "tier": "default"
     },
     "Elixir.StressTierCensusTest.test stress tier population >= 20 (tag loss fails loudly)": {
-      "max_ms": 7066,
+      "max_ms": 16571,
       "tier": "stress"
     },
     "Elixir.ZeroDriftSerializationTest.test cosmos PUT receives kind GlobalDocumentDB + databaseAccountOfferType Standard": {
@@ -8218,5 +8259,5 @@
     }
   },
   "schema": "smalt-test-budget/v1",
-  "seeded": "2026-10-18"
+  "seeded": "2026-10-19"
 }
