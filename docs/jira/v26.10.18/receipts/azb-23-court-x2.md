@@ -5,7 +5,7 @@
   `docs/jira/v26.10.18/receipts/i29-court-x2-final.md`; per-attempt logs
   `tmp/court-x2-1792*.log`)
 - **Standing**: TYPED-RED (gate carried)
-- **Context**: solo(/Users/sac/smalt)
+Context: solo(/Users/sac/smalt)
 - **Date**: 2026-10-19
 
 ## Verdict

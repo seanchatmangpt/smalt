@@ -40,6 +40,7 @@ count, or PASS/FAIL token) found in the file.
 | azb-22-burn- | [azb-22-burn-ring.md](receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) |
 | azb-22b-zomb | [azb-22b-zombie-fix.md](receipts/azb-22b-zombie-fix.md) | PARTIAL_ALIVE | AZB-22b — ZOMBIE_BEAM repair: Owner EXIT face + Bandit shutdown bounds |
 | azb-22b-zomb | [azb-22b-zombie-verify.md](receipts/azb-22b-zombie-verify.md) | ALIVE | AZB-22b — Zombie-fix verify (boot-stage ZOMBIE_BEAM closed) |
+| azb-23-court | [azb-23-court-x2.md](receipts/azb-23-court-x2.md) | UNKNOWN | AZB-23 — court-x2 final close (typed-RED, gate carried) |
 | b-await-migr | [b-await-migration.md](receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
 | b-e2e-wire | [b-e2e-wire.md](receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) |
 | b-js-harness | [b-js-harness.md](receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) |
@@ -106,8 +107,10 @@ count, or PASS/FAIL token) found in the file.
 | i29-arg-rout | [i29-arg-route-family.md](receipts/i29-arg-route-family.md) | PASS | i29 — ARG route family: :sovereign_gap 5.3 un-tag (G6 close) |
 | i29-audited- | [i29-audited-caps-leakfix.md](receipts/i29-audited-caps-leakfix.md) | PASS | i29: audited_capabilities_test.exs leak-fix (9 ETS sites -> 0) |
 | i29-azb20-li | [i29-azb20-lib-land.md](receipts/i29-azb20-lib-land.md) | ALIVE | i29-azb20-lib-land — azb-20 lib lane adoption |
+| i29-azb20-po | [i29-azb20-postfix.md](receipts/i29-azb20-postfix.md) | UNKNOWN | i29 — azb-20 postfix re-test (GAP-AZB20-1/4) **NO-CONTEXT** |
 | i29-azb20-ve | [i29-azb20-verify.md](receipts/i29-azb20-verify.md) | PARTIAL_ALIVE | i29-azb20-verify — AZB-20 gap-fix lane verification |
 | i29-azb24-bu | [i29-azb24-bump.md](receipts/i29-azb24-bump.md) | UNKNOWN | i29 AZB-24 Version Bump (26.10.18) |
+| i29-azb24-re | [i29-azb24-release.md](receipts/i29-azb24-release.md) | PARTIAL_ALIVE | I29 — AZB-24 release mint (publish-dry green; court-x2 typed-RED carried) **NO-CONTEXT** |
 | i29-azsim-re | [i29-azsim-regression.md](receipts/i29-azsim-regression.md) | PARTIAL_ALIVE | i29 — azsim regression run |
 | i29-bench-ch | [i29-bench-check.md](receipts/i29-bench-check.md) | FAIL | i29 bench-lane smoke (post-0009df3) |
 | i29-budget-e | [i29-budget-export-fix.md](receipts/i29-budget-export-fix.md) | FAIL | i29 — budget export concurrent-lane isolation (justfile recipe fix) |
@@ -126,6 +129,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-checkpoi | [i29-checkpoint6.md](receipts/i29-checkpoint6.md) | UNKNOWN | i29 Checkpoint 6 — in-flight lane census at HEAD d577677 |
 | i29-checkpoi | [i29-checkpoint7.md](receipts/i29-checkpoint7.md) | UNKNOWN | i29 Checkpoint 7 — census at HEAD 2e0b9b2 |
 | i29-checkpoi | [i29-checkpoint8.md](receipts/i29-checkpoint8.md) | ALIVE | i29 Checkpoint 8 — Dirty-Tree Census (post azb24-bump) |
+| i29-checkpoi | [i29-checkpoint9.md](receipts/i29-checkpoint9.md) | UNKNOWN | Checkpoint 9 — typed-RED close-commit prep (census) |
 | i29-colima-s | [i29-colima-stop-runbook.md](receipts/i29-colima-stop-runbook.md) | PARTIAL_ALIVE | I29 — Colima-Stop Runbook (AZB-23 quiet-machine transition) |
 | i29-compile- | [i29-compile-clean.md](receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
 | i29-corpus-f | [i29-corpus-fresh.md](receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
@@ -143,6 +147,8 @@ count, or PASS/FAIL token) found in the file.
 | i29-court-su | [i29-court-surfaces.md](receipts/i29-court-surfaces.md) | FAIL | i29 — Court Surfaces Receipt |
 | i29-court-x2 | [i29-court-x2-final.md](receipts/i29-court-x2-final.md) | SUSPECT | **NO-CONTEXT** |
 | i29-court23- | [i29-court23-prep.md](receipts/i29-court23-prep.md) | PARTIAL_ALIVE | i29 — AZB-23 gate executor pre-positioned (court23.sh) |
+| i29-courtfac | [i29-courtface-harden.md](receipts/i29-courtface-harden.md) | PASS | i29-courtface-harden — cross-plane boot-premise faces hardened (GracefulStop pattern) **NO-CONTEXT** |
+| i29-courtfac | [i29-courtface-verify.md](receipts/i29-courtface-verify.md) | PASS | i29 — courtface-harden premise verification (solo-green ×3 ×2 files) **NO-CONTEXT** |
 | i29-dataplan | [i29-dataplane-soak.md](receipts/i29-dataplane-soak.md) | PASS | i29 Data-Plane Soak (fresh ×2) |
 | i29-docker-r | [i29-docker-reclaim.md](receipts/i29-docker-reclaim.md) | UNKNOWN | i29-docker-reclaim — AZB-18 cgroup soak disk reclaim attempt |
 | i29-docs-dia | [i29-docs-diaataxis.md](receipts/i29-docs-diaataxis.md) | PASS | I29 — Diátaxis structure audit, docs landed this window |
