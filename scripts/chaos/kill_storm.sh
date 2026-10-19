@@ -150,6 +150,14 @@ emit_row() { # <stage> <verdict> <exit> <recovery_ms> <detail>
   KS_RUN_ID=$RUN_ID KS_SHA=$SUBJECT_SHA KS_EVIDENCE="$REPO/$JSONL" KS_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
   python3 - <<'PY'
 import json, os
+# Typed broken_term mandatory on dirty rows (schema allOf), null iff CLEAN.
+BROKEN_TERM = {
+  "DETS_UNREPAIRED": "mu_unlawful",
+  "UNHANDLED_EXIT": "mu_on_O",
+  "TYPED_VOCAB_MISMATCH": "admission_vacuous",
+  "TIMEOUT_DEADLINE": "R_missing_consequence",
+}
+verdict = os.environ["KS_VERDICT"]
 row = {
   "schema": "smalt-burn/v2",
   "subject_sha": os.environ["KS_SHA"],
@@ -164,7 +172,7 @@ row = {
   "orphans": [],
   "crash_reports": 0,
   "evidence_path": os.environ["KS_EVIDENCE"],
-  "broken_term": None,
+  "broken_term": None if verdict == "CLEAN" else BROKEN_TERM.get(verdict, "mu_unlawful"),
   "lane": os.environ["KS_RUN_ID"],
   "detail": os.environ["KS_DETAIL"][:2000],
   "recovery_ms": int(os.environ["KS_RECOVERY_MS"]),

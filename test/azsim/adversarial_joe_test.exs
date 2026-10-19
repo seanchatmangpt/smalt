@@ -37,12 +37,12 @@ defmodule Smalt.Azsim.AdversarialJoeTest do
       initial_info = Process.info(store_pid, [:message_queue_len, :memory])
       assert initial_info[:message_queue_len] < 50
 
-      # Flood 100 concurrent async tasks attempting writes
+      # Flood 100 concurrent async tasks attempting writes to a valid Store table
       tasks =
         for i <- 1..100 do
           Task.async(fn ->
             key = "joe_mb_key_#{i}"
-            Smalt.Store.put(:default, key, %{seq: i, blob: String.duplicate("A", 1024)})
+            Smalt.Store.put(:smalt_appconfig, key, %{seq: i, blob: String.duplicate("A", 1024)})
           end)
         end
 
@@ -52,7 +52,7 @@ defmodule Smalt.Azsim.AdversarialJoeTest do
       # Verify mailbox promptly drains back down to nominal (zero unbounded leak)
       eventually(
         fn ->
-          %{message_queue_len: len} = Process.info(store_pid, [:message_queue_len])
+          [message_queue_len: len] = Process.info(store_pid, [:message_queue_len])
           if len == 0, do: {:ok, :drained}, else: :retry
         end,
         observable: "store mailbox drain"
@@ -135,8 +135,9 @@ defmodule Smalt.Azsim.AdversarialJoeTest do
 
       # Receive server's OPEN response
       assert {:ok, resp_data} = :gen_tcp.recv(client_sock, 0, 2000)
-      assert {:ok, {:open, server_open}, _rest} = FrameCodec.decode_frame(resp_data)
-      assert is_binary(server_open.container_id)
+      assert {:ok, frame} = FrameCodec.decode_frame(resp_data)
+      assert frame.performative.performative == :open
+      assert is_binary(frame.performative.container_id)
 
       # Simulate silent half-open partition / client freeze:
       # Close socket locally abruptly without sending AMQP CLOSE performative

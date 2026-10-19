@@ -53,6 +53,14 @@ defmodule Smalt.Amqp.SaturationTest do
       if :ets.info(table) != :undefined, do: :ets.delete_all_objects(table)
     end
 
+    # the CBS claim cache may persist across tests; same reset as
+    # test/amqp/connection_test.exs setup
+    if GenServer.whereis(Smalt.Amqp.CbsRouter) do
+      GenServer.stop(Smalt.Amqp.CbsRouter)
+    end
+
+    {:ok, _} = GenServer.start(Smalt.Amqp.CbsRouter, [], name: Smalt.Amqp.CbsRouter)
+
     install_closed_probe()
 
     {:ok, %{}}
@@ -162,7 +170,7 @@ defmodule Smalt.Amqp.SaturationTest do
 
     try do
       :ok = handshake(client)
-      assert {:ok, {200, _}} = Smalt.Amqp.CbsRouter.put_token(Smalt.Amqp.CbsRouter, sas_request(queue, conn))
+      assert {:ok, {200, _}} = Smalt.Amqp.CbsRouter.put_token(Smalt.Amqp.CbsRouter, sas_request(queue))
 
       # --- sender link: 10 settled transfers, accepted echoes -------------
       :ok = send_frame(client, {:attach, %{name: "s-" <> queue, handle: 0, role: false, target: %{address: queue}}})
@@ -224,7 +232,7 @@ defmodule Smalt.Amqp.SaturationTest do
     %{
       atoms: :erlang.system_info(:atom_count),
       processes: :erlang.system_info(:process_count),
-      memory: elem(:erlang.memory(:processes), 0)
+      memory: :erlang.memory(:processes)
     }
   end
 
@@ -238,7 +246,7 @@ defmodule Smalt.Amqp.SaturationTest do
            "PROCESS_LEAK[#{phase}]: process count #{baseline.processes} -> #{p_after} " <>
              "after #{n} queue cycles (±1% budget)"
 
-    mem_after = elem(:erlang.memory(:processes), 0)
+    mem_after = :erlang.memory(:processes)
     mem_pct = abs(mem_after - baseline.memory) / max(baseline.memory, 1) * 100
 
     assert mem_pct <= @mem_budget_pct,
@@ -283,7 +291,13 @@ defmodule Smalt.Amqp.SaturationTest do
 
     def init(config), do: config
 
-    def log(%{msg: {:text, text}}, _config), do: count(text)
+    def log(%{msg: {:text, text}}, _config) do
+      try do
+        count(IO.iodata_to_binary(text))
+      rescue
+        _ -> :ok
+      end
+    end
 
     def log(%{msg: {fmt, args}} = ev, config),
       do: log(%{ev | msg: {:text, IO.iodata_to_binary(:io_lib.format(fmt, args))}}, config)
@@ -307,7 +321,7 @@ defmodule Smalt.Amqp.SaturationTest do
       {:ok, _} ->
         :ok
 
-      {:error, :not_found} ->
+      {:error, {:not_found, :azb16_closed_probe}} ->
         :logger.add_handler(:azb16_closed_probe, ClosedProbe, %{config: %{}, level_config: %{level: :all}})
     end
 
@@ -339,7 +353,7 @@ defmodule Smalt.Amqp.SaturationTest do
     {client, conn}
   end
 
-  defp sas_request(queue, conn) do
+  defp sas_request(queue) do
     sr = "sb://127.0.0.1:5672/" <> queue
     se = System.system_time(:second) + 600
 
@@ -420,6 +434,7 @@ defmodule Smalt.Amqp.SaturationTest do
     end
   end
 
+  defp recv_exact(client, n, timeout \\ 5000)
   defp recv_exact(_client, 0, _timeout), do: {:ok, <<>>}
 
   defp recv_exact(client, n, timeout) do

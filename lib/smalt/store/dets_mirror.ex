@@ -29,6 +29,21 @@ defmodule Smalt.Store.DetsMirror do
       mirror rebooted after a `kill -9` (un-closed `:dets` files) must open
       with repair; a file synced by `sync_write/2` survives the repair
       byte-exact (AZB-06 durability leg).
+
+  AZB-14 recovery vocabulary (SIGKILL storm / DETS needs_repair):
+
+    * on boot each mirror file is probed with `repair: false` FIRST; a
+      `{:error, {:needs_repair, _}}` result is the un-clean-shutdown signal.
+      When `:repair` is requested the file is reopened `repair: true` and the
+      repair is witnessed by telemetry `[:smalt, :store, :dets_repaired]`
+      (one event per repaired table).
+    * corruption that repair cannot heal (flipped header, `:not_a_dets_file`)
+      is a TYPED refusal: `open_all/3` fails with
+      `{:error, {:store_corrupt, table, path, reason}}` — the mirror GenServer
+      stops with that reason; it is never an untyped crash loop.
+    * with `repair: false` a torn file stays a typed
+      `{:error, {:corrupt_mirror, table, path, reason}}` refusal (the
+      anti-vacuity surface: DETS_UNREPAIRED condition).
   """
 
   use GenServer
@@ -142,14 +157,62 @@ defmodule Smalt.Store.DetsMirror do
     Enum.reduce_while(tables, {:ok, %{}}, fn table, {:ok, acc} ->
       path = Path.join(dir, "#{table}.dets")
 
-      case :dets.open_file(table, file: to_charlist(path), repair: repair) do
+      case open_typed(table, path, repair) do
         {:ok, dets} ->
           {:cont, {:ok, Map.put(acc, table, dets)}}
 
-        {:error, reason} ->
-          {:halt, {:error, {:corrupt_mirror, table, path, reason}}}
+        {:error, _reason} = err ->
+          {:halt, err}
       end
     end)
+  end
+
+  # AZB-14 typed open: probe the file with `repair: false` first so a
+  # `:needs_repair` file (un-closed after kill -9) is detected explicitly,
+  # repaired when allowed (telemetry `[:smalt, :store, :dets_repaired]`
+  # witnesses the repair), or refused with a typed `:store_corrupt` /
+  # `:corrupt_mirror` outcome when it cannot be healed (or repair is not
+  # requested). Never an untyped crash loop.
+  @dets_repaired_event [:smalt, :store, :dets_repaired]
+  defp open_typed(table, path, repair) do
+    probe =
+      case :dets.open_file(make_ref(), file: to_charlist(path), repair: false) do
+        {:ok, d} ->
+          :dets.close(d)
+          :clean
+
+        {:error, {:needs_repair, _} = nr} ->
+          {:torn, nr}
+
+        {:error, other} ->
+          {:torn, other}
+      end
+
+    case probe do
+      :clean ->
+        case :dets.open_file(table, file: to_charlist(path), repair: false) do
+          {:ok, dets} -> {:ok, dets}
+          {:error, r} -> {:error, {:store_corrupt, table, path, r}}
+        end
+
+      {:torn, torn_reason} when repair ->
+        case :dets.open_file(table, file: to_charlist(path), repair: true) do
+          {:ok, dets} ->
+            :telemetry.execute(@dets_repaired_event, %{count: 1}, %{
+              table: table,
+              path: path,
+              torn_reason: torn_reason
+            })
+
+            {:ok, dets}
+
+          {:error, r} ->
+            {:error, {:store_corrupt, table, path, r}}
+        end
+
+      {:torn, torn_reason} ->
+        {:error, {:corrupt_mirror, table, path, torn_reason}}
+    end
   end
 
   @impl true

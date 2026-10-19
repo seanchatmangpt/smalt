@@ -281,16 +281,12 @@ defmodule Smalt.Security.SecurityHardeningTest do
       assert {:ok, verified} = Attestation.verify_token(token)
       assert verified["x-ms-compliance-status"] == "azure-compliant-cvm"
 
-      prev_maa = Application.get_env(:smalt, :maa_measurement_baseline)
+      # AZB-11b: capture-then-delete (was a hand-rolled nil->delete on_exit
+      # whose nil branch could amplify an absent entry into a permanent
+      # absence). Same canonical shape as the out-of-baseline test below.
+      SmaltTest.Env.put_restored(maa_measurement_baseline:
+                                   Application.get_env(:smalt, :maa_measurement_baseline))
       Application.delete_env(:smalt, :maa_measurement_baseline)
-
-      on_exit(fn ->
-        if prev_maa == nil do
-          Application.delete_env(:smalt, :maa_measurement_baseline)
-        else
-          Application.put_env(:smalt, :maa_measurement_baseline, prev_maa)
-        end
-      end)
     end
 
     test "client_payload_hash is invariant under key-order permutation (nested maps)" do
@@ -331,6 +327,12 @@ defmodule Smalt.Security.SecurityHardeningTest do
     end
 
     test "out-of-baseline measurement fails with 400 attestationFailedVerdict" do
+      # AZB-11b: capture-and-delete — the bare delete dropped the config-seeded
+      # `maa_measurement_baseline: []` entry for the rest of the suite (the
+      # deterministic twin leak class `maa -> []`). put_restored first pins the
+      # restore to the captured prev, then the body deletes test-scoped.
+      SmaltTest.Env.put_restored(maa_measurement_baseline:
+                                   Application.get_env(:smalt, :maa_measurement_baseline))
       Application.delete_env(:smalt, :maa_measurement_baseline)
 
       assert {:error, 400, "attestationFailedVerdict"} =
