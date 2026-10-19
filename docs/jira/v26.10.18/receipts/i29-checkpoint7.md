@@ -91,6 +91,135 @@ git add docs/jira/v26.10.18/receipts/azb-18-cgroup-soak.md \
 
 ---
 
+## Addendum 2026-10-19 00:40 PDT — census refresh at HEAD 5075e89
+
+- Subject: /Users/sac/smalt @ `5075e89` (parent `4d6d8af`, which landed group (a) of the
+  base census: azb-18-cgroup-soak.md, i29-stress-pregate.md, i29-checkpoint7.md,
+  test_budgets.json; 5075e89 regen'd the receipt index)
+- Context: solo(census; read-only git; no git mutations)
+- Commands: `git status --porcelain` (fresh), `git diff --stat` (+1199/-122, 25 files),
+  `git log -1 -- <paths>`, `stat -f '%Sm %z'` mtime sweep, `grep -l` attribution over
+  `docs/jira/v26.10.18/receipts/*.md`, `wc -c` on the court-x2-final placeholder,
+  fresh re-verification `MIX_BUILD_ROOT=_build-ft-g1c mix compile && mix test
+  test/data_plane/queue_storage_test.exs` on the current tree.
+
+### Mid-census landing (00:37, after the base census): `i29-g1-land.md`
+
+**Landed mid-census — absent at 00:36, on disk 00:37:00 (7051 B), ALIVE, Context: pair.**
+This resolves the base census's G1 blocker ("scoping receipt only, no landing receipt"):
+
+- Backs `lib/smalt/data_plane/queue_storage.ex` (577-line engine, tuple contract),
+  `test/data_plane/queue_storage_test.exs` (11 engine tests), `test/wire/
+  egress_wire_test.exs` (+159, 4 wire pins), `test/store_tables_replay_identity_test.exs`
+  (fence re-baseline 33→35 rows).
+- Names `lib/smalt/egress_router.ex` (queue plug arm BEFORE the blob splat, azb-20
+  hunks verified intact) and `lib/smalt/store_tables.ex` (+22 lines via `mix smalt.gen`
+  from 2 new StoreTable individuals in the ggen-marketplace pack — cross-repo edit
+  disclosed in the receipt).
+- Verification embedded: engine 11/0 x2, wire 26/0 x2, regression sweep 482/0 and
+  4/0. Independent re-witness this census (00:38, current tree incl. the 00:34 lib
+  edit that postdates i29-g1-test-verify.md): `mix compile` exit 0, `11 tests,
+  0 failures` on `_build-ft-g1c` (build root deleted after).
+- `i29-g1-test-verify.md` (00:30, untracked) is the earlier independent verify lane's
+  receipt; the 00:34 land-lane fix-forward edits postdate it, superseded by
+  i29-g1-land.md + the re-witness above. Include both receipts.
+
+### Commit-ready set for the next coordinator commit
+
+> **SUPERSEDED 2026-10-19 00:5x: the coordinator landed mid-census faster than this
+> census wrote.** G1 committed as `73dc1a2`, e2e harness fixes as `fafcbb7`, sweep as
+> `8b4f74f`, index regen as `5dbcb42` — every `git add` line below is already
+> committed; do not re-add. Current truth is the later addendum in this same file
+> (kept as a historical snapshot of the tree at 00:40) plus the correction below.
+
+**G1 group — INCLUDE (receipt i29-g1-land.md ALIVE; green x2 + re-witnessed).**
+
+```
+git add lib/smalt/data_plane/queue_storage.ex \
+        test/data_plane/queue_storage_test.exs \
+        test/wire/egress_wire_test.exs \
+        test/store_tables_replay_identity_test.exs \
+        lib/smalt/egress_router.ex \
+        lib/smalt/store_tables.ex \
+        docs/jira/v26.10.18/receipts/i29-g1-land.md \
+        docs/jira/v26.10.18/receipts/i29-g1-test-verify.md \
+        docs/jira/v26.10.18/receipts/i29-checkpoint7.md
+```
+
+**Seam disclosure (coordinator decision point):** `egress_router.ex` and
+`store_tables.ex` are dirty with BOTH lanes' hunks — G1's (receipted, ALIVE) and
+azb-20's (gap-fix receipt still absent per i29-azb20-verify.md). Committing the G1
+group necessarily lands the azb-20 hunks in those two files; i29-g1-land.md §2
+witnesses the azb-20 hunks intact. Excluding the two shared files instead would
+commit the fence re-baseline test against a 33-row `store_tables.ex` and break the
+replay-identity fence on the committed tree — the atomic G1 group above is the
+coherent unit. `lib/smalt/arm_gateway/router.ex`, `blob_storage.ex`, `cosmos.ex`,
+`key_vault_actions.ex`, `connection.ex`, `queue_store.ex`, `test/sdk-full/blob.probe.mjs`
+remain azb-20-lane-hot: EXCLUDE (checkpoint6 law: blob.probe.mjs commits only with an
+`azsim-sdk` witness; azb-20 gap-fix landing receipt still absent).
+
+**EXCLUDE — receipt absent (e2e lane):** `test/e2e/s2_byok/*` (incl. untracked
+`s2_run.patch.py`), `s5_sessions/sessions.test.cjs`, `s9_lro_chain/lro_chain.test.mjs`,
+`s10_attest_adversary/*`. `i29-e2e-fixes.md` still does not exist (checked twice:
+00:36, 00:40); `s10 run.sh` re-dirtied 00:34:19, after every receipt.
+
+**EXCLUDE — re-dirtied post-commit, unattributed:** `docs/jira/v26.10.18/test_budgets.json`
+(mtime 00:32:44; committed in 4d6d8af at 00:31, re-dirtied after; new diff adds max_ms
+entries + raises stress maxes — reseed-regen shaped, but no receipt after 00:31 names
+it; grep rc=1 over the newest receipts).
+
+**EXCLUDE — unattributed/scratch (unchanged from base census):**
+`docs/jira/v26.10.16/sdk-results/spc-bands.md` (mtime now 00:34:44, still newer than
+every receipt), `.ggen_igniter/manifest.json`, `.ggen_igniter/receipts/2026-10-19.jsonl`.
+
+**Receipt-backed but already committed (test-support lane):** `test/support/env.ex`,
+`test/support/isolation_formatter.ex`, `test/amqp/sas_verifier_test.exs`,
+`test/canonical_projection_test.exs` — now attributed to the LANDED
+`i29-true-leak-repair.md` (00:35, committed; measured 6→0 counted-leak repair naming
+all four files). The files remain dirty on the tree though the receipt is in: they
+belong in the commit-ready set.
+
+```
+git add test/support/env.ex \
+        test/support/isolation_formatter.ex \
+        test/amqp/sas_verifier_test.exs \
+        test/canonical_projection_test.exs
+```
+
+**Still broken:** `i29-court-x2-final.md` remains 0 bytes (checked 00:40). Fill from
+the court-x2 run or delete before wrap — a zero-byte receipt passes path-existence
+checks while carrying zero evidence.
+
+### Full addendum commit-ready block (one shot)
+
+```
+git add lib/smalt/data_plane/queue_storage.ex \
+        test/data_plane/queue_storage_test.exs \
+        test/wire/egress_wire_test.exs \
+        test/store_tables_replay_identity_test.exs \
+        lib/smalt/egress_router.ex \
+        lib/smalt/store_tables.ex \
+        test/support/env.ex \
+        test/support/isolation_formatter.ex \
+        test/amqp/sas_verifier_test.exs \
+        test/canonical_projection_test.exs \
+        docs/jira/v26.10.18/receipts/i29-g1-land.md \
+        docs/jira/v26.10.18/receipts/i29-g1-test-verify.md \
+        docs/jira/v26.10.18/receipts/i29-checkpoint7.md
+```
+
+### Falsifiers (addendum)
+
+- Post-add `git status --porcelain` residue must be exactly: the 6 azb-20 lib/probe
+  paths, the 7 e2e paths, `test_budgets.json`, `spc-bands.md`, 2 `.ggen_igniter`
+  paths, and the 0-byte `i29-court-x2-final.md` — 17 paths, nothing else.
+- `just docs-dod-check` green with this addendum on disk.
+- `just test-budget` is expected to REFUSE until the 00:32:44 `test_budgets.json`
+  re-dirty is either receipted and committed or reverted by its owner — that is the
+  gate working, not a regression.
+
+---
+
 # Addendum 2 — re-census at HEAD 73dc1a2 (2026-10-19 ~00:40-00:47 PDT; Context: solo)
 
 - Subject: /Users/sac/smalt @ `73dc1a2` (G1 queue storage landed mid-census). Prior
@@ -171,3 +300,64 @@ colima runbook lane, budget reseed, spc-bands editor, ggen scratch.)
   blob.probe.mjs + colima runbook + test_budgets.json + spc-bands.md + 2 ggen scratch.
 - `just docs-dod-check` must stay green with `i29-e2e-fixes.md` on disk (its run-log
   paths point at /tmp, no repo-relative receipt deps).
+
+---
+
+# Addendum 3 — re-census at HEAD 5dbcb42 (2026-10-19 ~00:45-00:55 PDT; Context: solo)
+
+- Subject: /Users/sac/smalt @ `5dbcb42` (coordinator landed `fafcbb7` e2e fixes incl.
+  this receipt + `5dbcb42` sweep: e2e-receipt clobber disclosure, spc-bands,
+  test_budgets.json reseed, and the receipt-index regen of all three windows'
+  RECEIPTS.md/INDEX.md — sanctioned regen, not hand-edited).
+- Method: `just receipt-index` (sanctioned regen, run 3x — receipts landed between
+  runs, final tally stable), `git status --porcelain` (3 samples), `git log -1 -- <path>`,
+  `git show --stat`, `git diff`, `stat -f '%Sm'` mtime sweep.
+
+## receipt-index regen + flag counts (final run)
+
+- Regenerated: `RECEIPTS.md` + `receipts/INDEX.md` for v26.10.14 / v26.10.16 /
+  v26.10.17 / v26.10.18 (coordinator committed them in `5dbcb42`).
+- **NO-CONTEXT: 0** in all four windows (per-window grep -c = 0; d8fd6c3's Context
+  normalization held).
+- **SUSPECT: 18** total — all in prior windows (v26.10.14: 15, v26.10.16: 1
+  `spc-bands.md`, v26.10.17: 2) plus none new in v26.10.18 beyond the two already
+  tracked (`i29-court-x2-final.md` 0-byte placeholder standing UNKNOWN,
+  `i29-docker-reclaim.md` standing UNKNOWN — both carried from prior checkpoints,
+  unchanged verdict). SUSPECT = no embedded command output; standing, not an insult.
+
+## Fresh census at 5dbcb42: 6 M + 0 untracked
+
+### (a) COMMIT-READY — receipt-backed NOW (nothing new; all of Addendum 2's group (a)
+landed via `fafcbb7`/`5dbcb42`)
+
+- No new commit-ready paths. The two e2e `receipt.json` churn files below are
+  run-artifact timestamp/latency refreshes, not work products.
+
+### (b) Lane-hot / unattributed — EXCLUDE (6 paths)
+
+| Path | Diff | Attribution |
+|---|---|---|
+| `lib/smalt/arm_gateway/router.ex` (+105) | NEW: RG PATCH (tags merge), RG resources list, locations list endpoints | azb-20 lane; landing receipt still ABSENT (`i29-azb20-verify.md` verifies, does not land). mtime Oct 18 23:35 — stalled. |
+| `lib/smalt/data_plane/blob_storage.ex` (+45) | `delete_container/3` | azb-20 lane, same status |
+| `lib/smalt/data_plane/cosmos.ex` (+101) | `bulk_operations/4`, `do_get_doc_direct/4` | azb-20 lane, same status |
+| `lib/smalt/data_plane/key_vault_actions.ex` (+53) | `update_key_properties/3` | azb-20 lane, same status |
+| `test/e2e/s4_oauth_negatives/receipt.json` | run-artifact refresh (finishedAt → 2026-10-19T07:40Z, exp 3600s→3599s note) | e2e lane run residue; commit with next e2e run receipt or revert |
+| `test/e2e/s6_checkpoints/receipt.json` | producer_us 8274→6638 | same class |
+
+## Commit-ready `git add` for the coordinator
+
+Nothing new to add from this sweep — Addendum 2's 8-path group (a) landed in
+`fafcbb7`+`5dbcb42`. This addendum itself joins the next receipts commit:
+
+```
+git add docs/jira/v26.10.18/receipts/i29-checkpoint7.md
+```
+
+Residue (6 paths) stays on the tree: 4 azb-20 lib + 2 e2e receipt.json churn.
+
+## Falsifiers
+
+- After the coordinator commits this addendum: `git status --porcelain` residue must
+  be exactly 5 M + 0 ?? (4 azb-20 lib + at most the e2e receipt.json files unless the
+  e2e lane commits or reverts them first).
+- `just docs-dod-check` must stay green with this addendum on disk.

@@ -729,7 +729,7 @@ No receipt file on disk: cli-02.
 | py-servicebu | [py-servicebus.md](../v26.10.16/sdk-results/py-servicebus.md) | UNKNOWN | PY-4 — real azure-servicebus (Python/pyamqp) against the smalt Service Bus plane **NO-CONTEXT** |
 | py-storage-b | [py-storage-blob.md](../v26.10.16/sdk-results/py-storage-blob.md) | PASS | PY-2: Real azure-storage-blob SDK vs smalt blob plane (v26.10.16 re-run) **NO-CONTEXT** |
 | shim-v2-veri | [shim-v2-verification.md](../v26.10.16/sdk-results/shim-v2-verification.md) | PASS | Shim v2 verification (independent audit lane, 2026-10-16) **NO-CONTEXT** |
-| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | SUSPECT | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
+| spc-bands | [spc-bands.md](../v26.10.16/sdk-results/spc-bands.md) | PASS | SPC rolling control bands receipt (scripts/spc_gate.py) **NO-CONTEXT** |
 | spc-gate-rec | [spc-gate-receipt.md](../v26.10.16/sdk-results/spc-gate-receipt.md) | FAIL | SPC Gate Tier-Escalation Validation Receipt (lane 507, Ring 3) **NO-CONTEXT** |
 | t5-cleanroom | [t5-cleanroom.md](../v26.10.16/sdk-results/t5-cleanroom.md) | FAIL | T5 — terraform clean-room ladder (sdk-results receipt skeleton) **NO-CONTEXT** |
 | tf-plan | [tf-plan.md](../v26.10.16/sdk-results/tf-plan.md) | PARTIAL_ALIVE | TF plan probe: azurerm per-resource-type vs smalt ARM plane **NO-CONTEXT** |
@@ -812,4 +812,3 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)
 - **SUSPECT**: `i29-court-x2-final.md` (standing UNKNOWN)
 - **SUSPECT**: `i29-docker-reclaim.md` (standing UNKNOWN)
-- **SUSPECT**: `spc-bands.md` (standing UNKNOWN)
