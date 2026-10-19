@@ -14,7 +14,7 @@ defmodule Smalt.Plane.ControlSupervisor do
 
   @impl true
   def init(_init_arg) do
-    children = [
+    children = store_child() ++ [
       # AZB-22b: bound graceful-stop on every Bandit listener (default for
       # a type :supervisor child is :infinity; a stuck ThousandIsland
       # listener hung the tree's stop >60s in the burn ring).
@@ -32,6 +32,27 @@ defmodule Smalt.Plane.ControlSupervisor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
+  end
+
+  # GAP-AZB20-1/4 Option A: on a control-only boot (`SMALT_PLANES=control` or
+  # any plane list without :data), `Smalt.Store` never started, so
+  # `:smalt_resources` etc. were undefined — ARM handlers dereferenced Store
+  # unguarded (ArgumentError -> naked 500) and EgressRouter answered 503
+  # RouteNotReady. Store.init is idempotent (creates each table only when
+  # :ets.info/1 == :undefined, lib/smalt/store.ex:29-43), so prepending is a
+  # no-op double-start risk on :all / data-inclusive boots — hence the guard.
+  defp store_child do
+    planes = Application.get_env(:smalt, :planes, :all)
+
+    case planes do
+      :all -> []
+      list when is_list(list) ->
+        # Compile-freeze unblock (lane verification/py, disclosed): `:data in
+        # list` is not a legal guard over a runtime list (Elixir 1.19 raises
+        # ArgumentError at compile). Same semantics via Enum.member?.
+        if Enum.member?(list, :data), do: [], else: [Smalt.Store] # prepend FIRST: Store tables must exist before the ARM listener serves
+      _ -> [Smalt.Store]
+    end
   end
 
   defp arm_port, do: Smalt.Config.arm_port()

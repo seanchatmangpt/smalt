@@ -113,8 +113,11 @@ defmodule Smalt.Application do
   # the first router's 404 instead of falling through. Dispatch is by top-level
   # path prefix. Egress owns `/attest`, `/app`, `/dbs`, `/keys`, `/topics`,
   # `/atlas`, `/dataCollectionRules`, `/v1`, `/providers` — none of which are
-  # ARM top-level prefixes on this host (ARM nests its `/providers` only under
-  # `/subscriptions/...`). The blob guarded catch-all (`/{account}/{container}`)
+  # ARM top-level prefixes on this host EXCEPT `/providers` since GAP-AZB20-6:
+  # the ARM router now owns `POST /providers/Microsoft.ResourceGraph/resources`
+  # (first top-level /providers prefix on ARM); on the TLS twin that path still
+  # routes to EgressRouter — same handler engine, so parity holds on both seats.
+  # The blob guarded catch-all (`/{account}/{container}`)
   # stays reachable on http 8443 only; it is out of scope for the TLS twin.
   defmodule TlsTwinDispatch do
     @moduledoc false

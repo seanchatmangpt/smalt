@@ -103,8 +103,8 @@ defmodule Smalt.Config do
         default: :infinity,
         secret: false,
         surface: "control_plane",
-        env_var: nil,
-        override: "none"
+        env_var: "SMALT_ARM_RATE_LIMIT",
+        override: "env-first-int"
       },
       %{
         name: :arm_tls_port,
@@ -184,8 +184,8 @@ defmodule Smalt.Config do
         default: :infinity,
         secret: false,
         surface: "data_plane",
-        env_var: nil,
-        override: "none"
+        env_var: "SMALT_COSMOS_RU_LIMIT",
+        override: "env-first-int"
       },
       %{
         name: :doctor_supervisor,
@@ -548,8 +548,11 @@ defmodule Smalt.Config do
   def arm_gateway, do: Application.get_env(:smalt, :arm_gateway, [])
   @doc "ARM-style control plane REST port."
   def arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
-  @doc "ARM gateway rate limit (:infinity disables the limiter)."
-  def arm_rate_limit, do: Application.get_env(:smalt, :arm_rate_limit, :infinity)
+
+  @doc "ARM gateway rate limit (:infinity disables the limiter); SMALT_ARM_RATE_LIMIT overrides the app env, parsed as an integer."
+  def arm_rate_limit,
+    do: int_env(System.get_env("SMALT_ARM_RATE_LIMIT"), :arm_rate_limit, :infinity)
+
   @doc "TLS twin port for SDK legs that refuse Bearer over http."
   def arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
   @doc "Bearer auth mode: :enforce default, :anonymous test only."
@@ -569,8 +572,11 @@ defmodule Smalt.Config do
   def cosmos, do: Application.get_env(:smalt, :cosmos, [])
   @doc "Cosmos emulator master key for enforce-mode authorization."
   def cosmos_master_key, do: Application.get_env(:smalt, :cosmos_master_key)
-  @doc "Cosmos request-unit budget per query (:infinity disables budgeting)."
-  def cosmos_ru_limit, do: Application.get_env(:smalt, :cosmos_ru_limit, :infinity)
+
+  @doc "Cosmos request-unit budget per query (:infinity disables budgeting); SMALT_COSMOS_RU_LIMIT overrides the app env, parsed as an integer."
+  def cosmos_ru_limit,
+    do: int_env(System.get_env("SMALT_COSMOS_RU_LIMIT"), :cosmos_ru_limit, :infinity)
+
   @doc "Supervisor module the MCP doctor surface boots into."
   def doctor_supervisor, do: Application.get_env(:smalt, :doctor_supervisor, Smalt.Supervisor)
   @doc "CORS allow-list for egress router responses."
@@ -654,4 +660,13 @@ defmodule Smalt.Config do
 
   @doc "Exact proxy IPs trusted for x-forwarded-for extraction."
   def trusted_proxies, do: Application.get_env(:smalt, :trusted_proxies, [])
+
+  defp int_env(nil, key, default), do: Application.get_env(:smalt, key, default)
+
+  defp int_env(raw, key, default) do
+    case Integer.parse(raw) do
+      {i, ""} -> i
+      _ -> Application.get_env(:smalt, key, default)
+    end
+  end
 end

@@ -63,6 +63,9 @@ defmodule Smalt.Mcp.Router do
   use Plug.ErrorHandler
 
   plug(Plug.RequestId)
+  # Adaptive health probes (envelope Phase 4): zero-auth readiness/liveness.
+  # Readiness degrades only on structural failure, never on load.
+  plug(Smalt.HealthPlug)
   plug(Plug.Logger)
   plug(:match)
   plug(:dispatch)
