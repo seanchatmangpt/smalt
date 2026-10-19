@@ -230,6 +230,75 @@ defmodule Smalt.Amqp.AtomBridgeTest do
              match?({:error, :timeout}, result)
   end
 
+  # i29: :closed must be silent (i22 clause restored). The silent clause had
+  # been dropped — every flood connection minted one "[amqp-atom] request
+  # read failed: :closed" debug line (azb-17 burn: atom_log_lines == flood_conns).
+  # Real sockets, real serve/2, captured log — Chicago, no mocks.
+  test "flood of closed mid-request connections is silent (i22 restored)" do
+    import ExUnit.CaptureLog, only: [capture_log: 1]
+
+    log =
+      capture_log(fn ->
+        for _ <- 1..30 do
+          {:ok, listener} =
+            :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true])
+
+          {:ok, port} = :inet.port(listener)
+
+          task =
+            Task.async(fn ->
+              {:ok, sock} = :gen_tcp.accept(listener, 5000)
+              AtomBridge.serve(sock, <<>>)
+              :gen_tcp.close(sock)
+            end)
+
+          {:ok, c} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+          :ok = :gen_tcp.send(c, "PUT /flood HTTP/1.1\r\n")
+          :ok = :gen_tcp.close(c)
+
+          # bounded: Task.await on the real serve/2 completion — no sleeps.
+          Task.await(task, 5000)
+
+          :gen_tcp.close(listener)
+          :gen_tcp.close(c)
+        end
+      end)
+
+    lines =
+      log |> String.split("\n") |> Enum.count(&String.contains?(&1, "request read failed"))
+
+    assert lines == 0, "expected silent :closed, no-log contract violated: #{lines} lines"
+  end
+
+  # i29: non-terminal read faults keep the typed debug line, rate-limited to
+  # one line per reason per window — repeated :too_large floods aggregate.
+  test "non-terminal read faults log once per window, repeats aggregated" do
+    import ExUnit.CaptureLog, only: [capture_log: 1]
+
+    {:ok, listener} =
+      :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true])
+
+    {:ok, port} = :inet.port(listener)
+
+    {:ok, c} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 5000)
+
+    # buf over @max_request_bytes (1 MiB) trips the :too_large path before
+    # any recv — the logged reason is deterministic.
+    huge = String.duplicate("y", 2 * 1024 * 1024)
+
+    log =
+      capture_log(fn ->
+        AtomBridge.serve(c, huge)
+        AtomBridge.serve(c, huge)
+      end)
+
+    :gen_tcp.close(c)
+    :gen_tcp.close(listener)
+
+    assert log =~ "request read failed: :too_large"
+    assert log =~ "(aggregated)"
+  end
+
   defp atom_queue_key(name) do
     String.downcase(
       "/subscriptions/emulator-atom/resourceGroups/emulator/providers/Microsoft.ServiceBus/namespaces/emulator/queues/#{name}"

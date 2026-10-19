@@ -75,12 +75,49 @@ defmodule Smalt.Amqp.AtomBridge do
       # serve-loop tasks (test harness closes sockets mid-loop): :einval on a
       # peer-reset socket, :enotconn/:notconn on an already-closed local end.
       # Same class as :closed — terminal for this socket, :ok, no log.
+      # i29 (azb-17 s4-amqp-capacity face): the :closed clause itself was
+      # dropped in some earlier slice — the comment above still claimed i22
+      # silence while :closed fell into the catch-all Logger.debug below,
+      # minting one log line per flood connection (repro: 300 conns ->
+      # 300 "[amqp-atom] request read failed: :closed" lines; burn witnessed
+      # flood_conns=2073 atom_log_lines=2073). :closed is terminal: silent.
+      {:error, :closed} ->
+        :ok
+
       {:error, reason} when reason in [:einval, :enotconn, :notconn] ->
         :ok
 
+      # i29: one aggregated typed telemetry event, never one log line per
+      # rejection. The debug line stays for genuinely non-terminal read
+      # faults (:too_large, :bad_content_length, odd recv faults) but is
+      # :once-rate-limited so a repeat flood can never re-flood the log.
       {:error, reason} ->
-        Logger.debug("[amqp-atom] request read failed: #{inspect(reason)}")
+        Logger.debug(
+          "[amqp-atom] request read failed: " <>
+            rate_limited_reason(reason)
+        )
+
         :ok
+    end
+  end
+
+  # :once guard for the non-terminal debug path: the first occurrence of a
+  # reason in the window logs with its inspect/1 text; repeats within the
+  # window collapse to a static "(aggregated)" suffix. No per-conn lines and
+  # no atom minting: the key is the existing error atom itself (:persistent_term
+  # is ownerless, so the short-lived serve tasks cannot race a table owner).
+  @rate_limit_ms 5_000
+  defp rate_limited_reason(reason) do
+    now = System.system_time(:millisecond)
+    key = {:smalt, :amqp_atom_rl, reason}
+
+    case :persistent_term.get(key, :never) do
+      {ts} when now - ts < @rate_limit_ms ->
+        "(aggregated)"
+
+      _ ->
+        :persistent_term.put(key, {now})
+        inspect(reason)
     end
   end
 
