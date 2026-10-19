@@ -1,83 +1,89 @@
-# AZB-22b — Zombie-face verify (post-repair)
+# AZB-22b — Zombie-fix verify (boot-stage ZOMBIE_BEAM closed)
 
-Standing: **PASS (zombie face clean post-cycle)** — with one disclosed
-UNKNOWN input: the repair lane's `burn-ring --stage boot` retry was still
-building its image at verify time (pid 94023, attempt 1, `mix deps.compile`),
-so the ring **boot** stage's own re-verification is in flight elsewhere; this
-receipt certifies the zombie face on the latest completed cycle (AZB-17
-8x4 parallel matrix) plus the host-side orphan sweep.
-Context: solo(port_sweep dry-run + docker/beam zombie scan after the in-flight
-`parallel-matrix.sh --replicas 8` (pid 71013) completed its teardown; no kills, no git)
+Standing: **ALIVE — the ZOMBIE_BEAM jidoka face is closed on a real cycle set** (12/12 cycles CLEAN incl. the cycle-10 kill -9 recover fence; `validate_burn.py --gate` exit 0; zero zombie rows). The full 50-cycle ring (AZB-22 close condition) is NOT re-claimed here — this receipt verifies the repair, not the ring.
+Context: solo(docker build smalt:local @f56ee6be + docker/burn/boot-burn.sh --planes all --cycles 12; no mix test, no git ops, no kills outside the harness)
 
-Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-22/22b.
-Prior RED: `azb-22-burn-ring.md` (typed ZOMBIE_BEAM at boot teardown,
-deterministic `BEAM_STILL_ALIVE_120s`). Subject: `/Users/sac/smalt`,
-HEAD `1339e05338986efa62d3ab6035d595ead40422fd`.
+Ticket: `docs/jira/v26.10.18/azsim-burn/TICKETS.md` AZB-22 (close condition) via the
+repair lane's fix; verify lane per coordinator directive (azb-22b probe).
+Prior typed RED: `docs/jira/v26.10.18/receipts/azb-22-burn-ring.md` (ZOMBIE_BEAM at
+boot cycle 1 teardown: `beam.smp/epmd/erl_child_setup remains after stop: 116`,
+jidoka line-stop).
 
-## Verification (real output, captured 2026-10-18 ~23:10 local)
+## The repair under verification
 
-1. **Waited for the in-flight cycle**: `parallel-matrix.sh --replicas 8`
-   (pid 71013) plus its teardown `docker compose -f docker/burn/compose.burn.yml
-   -p smalt-burn down -v --remove-orphans` (pid 78725) were running at lane
-   start; lane blocked on pid 71013 exit before scanning. Result file:
-   `docs/jira/v26.10.18/burn/parallel-matrix-8x4-1792389235.jsonl` — 64/64
-   rows CLEAN (32 probe + 32 chaos, subject
-   `d1298be513121ac1828b44b13eb77b8a084c7f75`, digest
-   `sha256:14bbd68d6b42…`), embedded run_receipt replay
-   `python3 scripts/validate_burn.py --gate …1792389235.jsonl` **exit 0**.
+`lib/smalt/affidavit/wasm_engine_supervisor.ex:204-211` — the Owner's old
+`handle_info(_msg, state)` catch-all swallowed the supervisor's shutdown
+`{:EXIT, sup, :shutdown}`; graceful stop never completed; beam survived >120 s.
+Fix (commit `825657f`, present in HEAD lineage): the EXIT clause
 
-2. **Dead smalt-burn containers**: `docker ps -a --filter name=smalt-burn`
-   → **0 containers** (before the scan, several had `Exited (0)` seconds
-   after stop and were removed by compose `--rm`-style teardown; nothing
-   lingers). `docker ps -a` full listing shows only non-burn containers
-   (dbg-id*, kind nodes, act-sock-relay).
+```elixir
+def handle_info({:EXIT, _sup, reason}, state) do
+  {:stop, {:shutdown, reason}, state}
+end
+```
 
-3. **Host orphan beam scan (tree-aware law)**: every live `beam.smp` with
-   cwd `/Users/sac/smalt` holds a LISTEN socket (private-port lanes = live,
-   not orphans). Explicit zombie scan — beam.smp with cwd ending `smalt`
-   AND no LISTEN socket — returned **zero candidates**
-   (`zombie_scan_done`, no ZOMBIE CANDIDATE lines). One transient beam
-   (pid 64570, cwd=/Users/sac/smalt) exited during the scan and was gone
-   when re-inspected (ps: no such pid). No `epmd` zombie faces.
+lets the owner terminate typed, so `bin/smalt stop` completes and teardown
+zombie assertion (`no beam.smp/epmd/erl_child_setup remains`) passes.
 
-4. **`scripts/port_sweep.sh` (dry-run) own verdict**:
-   - orphan candidates section: 13× `SKIP pid …: live LISTEN in tree
-     (private-port lane)` — all beams live in-tree;
-   - stale epmd: none;
-   - `nothing to kill`;
-   - disclosed, not a beam zombie: `STALE pid-file: owner 40499 dead`
-     (`/tmp/smalt.pid` legacy marker; substrate state is
-     `/tmp/smalt-substrate-state/` per CLAUDE.md, so this is a stale
-     scratch marker, not a live process). Canonical ports 9443/8443/5672
-     held by `ssh` pid 61023 = the colima VM mux (`/Users/sac/.colima/_lima/colima/ssh.sock`),
-     i.e. the docker transport itself, not an orphan beam.
+## Identity chain (verified, not asserted)
 
-## Why the zombie face is closed on this evidence
+- Fix commit `825657f` is ancestor of image subject `f56ee6be`
+  (`merge-base --is-ancestor`: FIX_IN_IMAGE_SHA), of row subject `1339e053`
+  (FIX_IN_ROW_SHA), and of live HEAD during this session.
+- Image rebuilt this session: `smalt:local` `sha256:7055be8939427ec165…`,
+  label `org.smalt.subject=f56ee6be53251c217fec5263b5e5c8c52f323a28`
+  (`--build-arg SUBJECT_SHA` pinned; deps layers cached, lib-only delta).
+- Head moved under the lane during the session (a8e8867 → c1ca250 → e916d767,
+  concurrent lanes) — disclosed; boot-burn host mode pins rows to HEAD at
+  run time, which is exactly the AZB-22 subject-moved law working as designed.
 
-AZB-22's defect was a deterministic graceful-stop hang (beam survived >120 s
-after `bin/smalt stop`, all listeners released but process remained). In this
-cycle every burn container exited **(0) within seconds of the stop signal**
-and compose removed all of them; the host carried zero smalt-cwd beams
-without LISTEN sockets, and the sweep harness itself concluded
-`nothing to kill`. The falsifier face ("beam survives stop") did not
-reproduce on the post-repair tree.
+## Verification (real output, run 1792390200)
 
-## Accept status
+Command: `docker/burn/boot-burn.sh --planes all --cycles 12` (image `smalt:local`,
+subject `f56ee6be`, digest `sha256:7055be8939…`). Exit **0**.
 
-- Ring completes a clean cycle without zombie beams: **met on the latest
-  completed cycle** (matrix 8x4, 64/64 CLEAN, gate exit 0, zero residue).
-- Zombie-face host scan: **met** (zero candidates; sweep `nothing to kill`).
-- Ring `boot` stage re-run (the stage that originally RED'd): **in flight by
-  the repair lane** (`/tmp/azb22b/ring-boot.log` pending; image build
-  attempt 1 at deps.compile at verify time). This receipt does not claim
-  that stage; if that run emits a non-CLEAN boot row, the zombie face
-  reopens and this receipt's PASS is superseded.
+```
+[boot-burn] === plane all: docker run (12 cycles) ===
+[boot-burn] PASS: 12 cycles green, receipt=/burn-results/boot-all.jsonl
+[boot-burn] host: gate-validating per-plane JSONL
+[VALIDATE-BURN] …/boot-all.jsonl: OK
+[boot-burn] PASS: planes=all cycles=12 tracked JSONL in docs/jira/v26.10.18/burn (run 1792390200)
+```
+
+Row census (`docs/jira/v26.10.18/burn/boot-all-1792390200.jsonl`, 39 lines =
+header + 37 body rows + run_receipt):
+
+```
+{('boot','CLEAN'): 12, ('probe','CLEAN'): 12, ('teardown','CLEAN'): 12, ('recover','CLEAN'): 1}
+teardown verdicts: 12 × CLEAN   (was: cycle 1 ZOMBIE_BEAM line-stop in azb-22)
+recover: cycle 10 kill -9 → CLEAN, recovery_ms=11   (AZB-14 fence)
+subject_sha in every row: 1339e05338986efa62d3ab6035d595ead40422fd (single)
+image_digest in every row: sha256:7055be8939427ec165…  (single)
+run_receipt identity.subject_sha: 1339e053…  standing: ALIVE (derived from replay)
+python3 scripts/validate_burn.py --gate docs/jira/v26.10.18/burn/boot-all-1792390200.jsonl
+→ OK, exit 0 (re-run by this lane, not just by the harness)
+```
+
+Every teardown row verdict CLEAN = "zero-listeners-no-zombies-no-crashlog":
+after `bin/smalt stop`, no listener on any of the 6 plane ports and **no
+beam.smp/epmd/erl_child_setup remains** — the exact assertion that typed
+ZOMBIE_BEAM in azb-22. The graceful stop now completes; no >120 s hang.
+
+## Accept status (honest)
+
+- Zombie face closed: **MET** (12/12 teardown CLEAN incl. SIGKILL fence).
+- Full ring all-green (AZB-22 close): **NOT claimed** — boot stage verified
+  here; chaos ×50 / matrix N=8 / soak remain for the ring lane to re-run
+  against the fixed image (chaos was already green in azb-22).
 
 ## Deviations / disclosures
 
-1. No kills performed; `port_sweep.sh` run dry-run only, per lane contract.
-2. No git operations; HEAD read-only `1339e053`.
-3. Concurrent-lane disclosure: the repair lane (build-loop pid 94023) was
-   actively rebuilding `smalt:local` during this verify; the matrix cycle
-   verified here ran on digest `14bbd68d6b42` at subject
-   `d1298be513`, not the in-progress build.
+1. Cycles=12 (not 50): bounded verify of the repaired face; full 50-cycle
+   boot is the ring lane's stage to re-run.
+2. Rows pinned to HEAD-at-run-time `1339e053` while the image subject is
+   `f56ee6be` (HEAD moved mid-session under concurrent lanes). Fix commit
+   `825657f` is ancestor of both — verified — so the image provably contains
+   the repair; disclosed rather than silently mixed.
+3. Concurrent `docker build` for `smalt-burn:latest` (another lane) ran
+   during this build; different tag, no interference witnessed.
+4. No git ops, no kills outside the harness, no _build deletion (lane law).
