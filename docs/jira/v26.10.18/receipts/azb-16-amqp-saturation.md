@@ -135,3 +135,41 @@ SMALT_SATURATION_ROUNDS=3 docker/burn/container-burn.sh --saturation
 # handle_attach (above `kind = route(address, state.mode)`), run the suite
 # (must go RED with atom delta == queue count), restore byte-exact.
 ```
+
+## Re-run probe — 2026-10-18 (post 2106032/25b844f)
+
+Context: solo(test/azsim/amqp_saturation_test.exs --include stress, x3, host)
+
+Trigger: the original receipt (mtime 21:53) predates 2106032 (store/stress
+faces, 22:30) and 25b844f (leak-court identity env, 22:31). A re-run was
+required. During the re-run the coordinator committed 84268de, which absorbed
+two sibling in-flight working-tree edits:
+- `lib/smalt/messaging/event_hubs.ex` held a SHIM-COURT (KD-53, batch-split
+  disabled) — NOT on this test's path (saturation uses pure SB queue wire
+  links; zero EH batch ingest; verified by grep). Disclosure per
+  compile-freeze law; no unblock applied, no file touched by this lane.
+- `lib/smalt/plane/integration_supervisor.ex` (integration-only-plane Store
+  child) — full-plane boot unchanged; test boots full app.
+
+Measured at HEAD `84268de84576381536136cc3501a0ff1f1471fab`
+(`MIX_BUILD_ROOT=_build-azb16-rerun`, ephemeral self-booted ports, no
+canonical ports touched):
+
+```
+$ for i in 1 2 3; do MIX_BUILD_ROOT=_build-azb16-rerun mix test \
+    test/azsim/amqp_saturation_test.exs --include stress; done
+# round 1: Finished in 17.0 seconds — 3 tests, 0 failures  (rc=0)
+# round 2: Finished in 23.6 seconds — 3 tests, 0 failures  (rc=0)
+# round 3: Finished in 16.3 seconds — 3 tests, 0 failures  (rc=0)
+```
+
+Test file sha256 `94bc825f5740d84f5442047277fe44e141466a0c5d19a4848cf1d84d67c2707a`
+(unchanged since the original certification). Ticket asserts (atom delta <64,
+process ±1%, zero untagged :closed, DLQ MaxDeliveryCountExceeded, memory
+within 10% post-GC) are asserted inside the suite and passed all 3 rounds.
+
+Standing: **ALIVE** (re-certified at 84268de, host ×3 green, 0 errors).
+Container acceptance leg from the original receipt (SMALT_SATURATION_ROUNDS=3,
+`--cpus 2`) was not re-run in this probe; host leg is the changed-surface
+coverage — the store fix (2106032) and identity-env commit (25b844f) affect
+host and container identically through the shared lib/ and test/ tree.

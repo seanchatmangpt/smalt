@@ -2,7 +2,7 @@
 
 - **Work order**: AZB-17 (parallel plane matrix)
 - **Standing**: `PARTIAL_ALIVE` — 3/4 planes green; the integration-plane cell fails reproducibly, so the merged gate is REFUSED. NOT green; AZB-18 staged leg stays blocked on the integration cell.
-- **Context**: solo
+Context: solo
 - **Subject SHA**: `21060325ec35e3940be5b9df023ecc7d00dd78b0` (fresh run) / prior artifacts at `dda0bf5c…` (21:58) and `0009df32…` (22:07, == HEAD at run time)
 - **Image digests**: `sha256:7edd4489…` (fresh run), `sha256:fc874209…` (prior artifacts — different image identity than the fresh run)
 - **Harness**: `docker/burn/parallel-matrix.sh` (per-replica netns isolation, per-plane chaos, tenant canary, `validate_burn.py --gate`)
