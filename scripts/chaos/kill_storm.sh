@@ -331,7 +331,7 @@ run_cycle() {
 # ---------------------------------------------------------------------------
 
 [ -f "$JSONL" ] || printf '{"type":"run_header","run_id":"%s","expected":{"containers":["kill-storm-host"],"cycles":[%s],"stages":["chaos"]}}\n' \
-  "$RUN_ID" "$(seq -s, 0 $((CYCLES-1)))" > "$JSONL"
+  "$RUN_ID" "$(printf '%s,' $(seq 0 $((CYCLES-1))) | sed 's/,$//')" > "$JSONL"
 
 echo "[KILL-STORM] run=$RUN_ID cycles=$CYCLES seed=$SEED ports=$ARM_PORT..$MCP_PORT jsonl=$JSONL"
 FAILED=0

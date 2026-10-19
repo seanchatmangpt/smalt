@@ -1125,20 +1125,19 @@ defmodule Smalt.Security.SecurityHardeningTest do
       # replaced the killed writer, instead of sleeping a fixed window.
       killed = pid
 
-      {:ok, new_pid} =
-        SmaltTest.AssertEventually.eventually(
-          fn ->
-            case GenServer.whereis(Smalt.Security.LedgerWriter) do
-              ^killed -> {:retry, :still_old_pid}
-              new when is_pid(new) -> {:ok, new}
-              other -> {:retry, other}
-            end
-          end,
-          deadline_ms: 5_000,
-          observable: "LedgerWriter restarted after kill"
-        )
-
-      _ = new_pid
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          case GenServer.whereis(Smalt.Security.LedgerWriter) do
+            ^killed -> {:retry, :still_old_pid}
+            # nil is ALSO the Down-propagated state: the writer restarts
+            # lazily on the next append, so a dead-whereis window is expected.
+            nil -> {:ok, :down_propagated}
+            new when is_pid(new) -> {:ok, new}
+          end
+        end,
+        deadline_ms: 5_000,
+        observable: "killed LedgerWriter no longer whereis-able (Down propagated)"
+      )
 
       assert {:ok, %{"transactionId" => "2.1", "prev_hash" => prev2, "merkle_root" => root2}} =
                ConfidentialLedger.append_transaction(ledger, %{"n" => 2})

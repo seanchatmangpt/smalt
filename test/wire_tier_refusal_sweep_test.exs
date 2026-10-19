@@ -78,6 +78,10 @@ defmodule Smalt.WireTierRefusalSweepTest do
     on_exit(fn ->
       stop_tree(sup)
 
+      # AZB-11b: restore_app/0 re-writes the shifted port envs — the saved
+      # prev snapshot must be applied AFTER it or it is clobbered.
+      SmaltTest.Lifecycle.restore_app()
+
       if prev.arm_port == nil,
         do: Application.delete_env(:smalt, :arm_port),
         else: Application.put_env(:smalt, :arm_port, prev.arm_port)
@@ -93,8 +97,6 @@ defmodule Smalt.WireTierRefusalSweepTest do
       if prev.event_hubs_port == nil,
         do: Application.delete_env(:smalt, :event_hubs_port),
         else: Application.put_env(:smalt, :event_hubs_port, prev.event_hubs_port)
-
-      SmaltTest.Lifecycle.restore_app()
     end)
 
     create_parented_chains(ports.arm)

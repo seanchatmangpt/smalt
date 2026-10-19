@@ -78,7 +78,7 @@ defmodule SmaltTest.AssertEventuallyTest do
         msg = Exception.message(e)
 
         assert msg =~ "eventually_stays(raises forever) never held stable for 20ms within 80ms"
-        assert msg =~ "last observation: {:raise, :exit"
+        assert msg =~ "last observation: {:raise, :error, %RuntimeError{message: \"still settling\"}}"
     end
   end
 end

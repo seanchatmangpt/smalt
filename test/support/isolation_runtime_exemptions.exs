@@ -17,6 +17,9 @@ name Smalt.AmqpBroker*  # reason: shared-tree lazy boot/teardown shift — harne
 name Smalt.Amqp.*  # reason: shared-tree lazy boot/teardown shift — harness-owned listener/queuestore/sweeper members (QueueStore, Listener.Eh/Sb, Sweeper, CbsRouter)
 name Smalt.ArmGateway.LRO.*  # reason: shared-tree lazy boot/teardown shift — harness-owned LRO notifier/sweeper members
 name Smalt.Telemetry.RollingCounters  # reason: shared-tree lazy boot/teardown shift — harness-owned telemetry member
+name Smalt.Plane.*  # reason: shared-tree lazy boot/teardown shift — azsim plane supervisors (Control/Data/Identity/Integration), harness-owned tree members
+name Smalt.Messaging.EventGrid  # reason: lib-owned lazy singleton (first event-grid path call boots it, stays for suite lifetime)
+name Smalt.PPlan.Task  # reason: node-lifetime singleton by contract — the DETS owner restart path re-creates it and pplan_test.exs assert_no_leaks explicitly excludes it as intentional out-of-test-lifetime infrastructure
 name :inet_gethost_native*  # reason: kernel-owned DNS worker processes, VM-lifetime after first resolver use
 name :dets  # reason: kernel dets owner process, VM-lifetime after first real DETS table
 name :dets_sup  # reason: kernel dets supervisor, VM-lifetime after first real DETS table
