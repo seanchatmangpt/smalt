@@ -8,6 +8,8 @@ x-burn-common: &burn-common
   volumes:
     - ../burn:/burn:ro
     - ./results:/burn-results
+    - /Users/sac/beam4pm:/beam4pm:ro
+    - /Users/sac/xaas:/xaas:ro
   tmpfs:
     - /tmp
   cap_drop: [ALL]

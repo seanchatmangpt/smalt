@@ -17,7 +17,6 @@ import os
 import sys
 
 REQUIRED_TOP_KEYS = [
-    "ocel:globalLog",
     "ocel:eventTypes",
     "ocel:objectTypes",
     "ocel:events",

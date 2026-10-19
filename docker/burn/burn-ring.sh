@@ -63,7 +63,10 @@ SOAK_ROUNDS="${SMALT_RING_SOAK_ROUNDS:-1}"
 BURN="docker/burn"
 
 if [ -n "$RUN_DIR" ]; then
-  RING_DIR="$RUN_DIR"
+  case "$RUN_DIR" in
+    /*) RING_DIR="$RUN_DIR" ;;
+    *) RING_DIR="$ROOT/$RUN_DIR" ;;
+  esac
 else
   RING_DIR="$ROOT/docs/jira/v26.10.18/burn/ring-$RUN_ID"
 fi
@@ -108,14 +111,18 @@ run_env() { # env contract shared by every container stage
 }
 
 # --- container exec helper ----------------------------------------------------
-in_image() { # in_image <container-name> <mount-dir> <script> [env k=v ...]
-  local cname="$1" mount="$2" script="$3"; shift 3
+in_image() { # in_image <container-name> <script> [env k=v ...]
+  # The ring dir mounts at a FIXED container path (/ring) so env-carried
+  # paths (SMALT_BURN_DIR) are container-side, never host paths.
+  local cname="$1" script="$2"; shift 2
   local -a envs=()
   local kv
   for kv in "$@"; do envs+=("-e" "$kv"); done
   docker run --rm --name "$cname" \
     -v "$ROOT/$BURN:/burn:ro" \
-    -v "$RING_DIR:$RING_DIR" \
+    -v "$RING_DIR:/ring" \
+    -v /Users/sac/beam4pm:/beam4pm:ro \
+    -v /Users/sac/xaas:/xaas:ro \
     -e SMALT_BURN_SUBJECT_SHA="$SUBJECT_SHA" \
     -e BURN_IMAGE_DIGEST="$IMAGE_ID" \
     -e SMALT_BURN_PLANE=all \
@@ -130,7 +137,7 @@ STAGES_ALL=(boot chaos matrix soak summary)
 stage_boot() {
   mkdir -p "$RING_DIR/boot"
   echo "[BURN-RING] stage boot: $BOOT_CYCLES cycles"
-  in_image ring-boot "$RING_DIR" "$BURN/boot-burn.sh" "SMALT_BURN_CYCLES=$BOOT_CYCLES" "SMALT_BURN_DIR=$RING_DIR/boot"
+  in_image ring-boot "$BURN/boot-burn.sh" "SMALT_BURN_CYCLES=$BOOT_CYCLES" "SMALT_BURN_DIR=/ring/boot"
   python3 scripts/validate_burn.py "$RING_DIR/boot/boot-burn.jsonl"
   echo "[BURN-RING] stage boot: GREEN"
 }
@@ -146,7 +153,7 @@ stage_chaos() {
       continue
     fi
     mkdir -p "$d"
-    in_image "ring-chaos-$i" "$RING_DIR" "$BURN/chaos-kill.sh" "SMALT_BURN_DIR=$d"
+    in_image "ring-chaos-$i" "$BURN/chaos-kill.sh" "SMALT_BURN_DIR=/ring/chaos/iter-$i"
     python3 scripts/validate_burn.py "$d/chaos-kill.jsonl"
     echo "[BURN-RING] chaos iter $i/$CHAOS_ITERS: GREEN"
   done

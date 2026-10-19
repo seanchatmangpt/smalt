@@ -44,6 +44,15 @@ burn: burn-soak burn-matrix
     python3 scripts/burn_to_ocel2.py docs/jira/v26.10.18/burn/chaos-kill.jsonl docs/jira/v26.10.18/burn/chaos-kill.ocel.json
     python3 scripts/validate_ocel2.py docs/jira/v26.10.18/burn/*.ocel.json
 
+# In-container validation using mounted ~/beam4pm and ~/xaas
+@burn-in-container-verify:
+    docker run --rm \
+      -v /Users/sac/beam4pm:/beam4pm:ro \
+      -v /Users/sac/xaas:/xaas:ro \
+      -v {{BURN_ROOT}}/docker/burn:/burn:ro \
+      -v {{BURN_ROOT}}/docs/jira/v26.10.18/burn:/burn-evidence:ro \
+      smalt:local elixir /burn/in_container_conformance.exs
+
 # AZB-13 boot burn: 50 boot/probe/teardown cycles per plane inside containers
 # (smalt:local), rows through validate_burn.py --gate. Jidoka: first
 # ORPHAN_LISTENER / ZOMBIE_BEAM / UNHANDLED_EXIT row stops the line.

@@ -121,15 +121,6 @@ def burn_to_ocel2(jsonl_path, out_path=None):
             })
 
     doc = {
-        "ocel:globalLog": {
-            "ocel:version": "2.0",
-            "ocel:ordering": "timestamp",
-            "ocel:attributeNames": [
-                "verdict", "exit_code", "detail", "recovery_ms",
-                "crash_reports", "orphans_count", "name", "plane",
-                "image_digest", "sha", "cycle", "container", "path"
-            ]
-        },
         "ocel:eventTypes": sorted(list(event_types)),
         "ocel:objectTypes": sorted(list(object_types)),
         "ocel:events": events,

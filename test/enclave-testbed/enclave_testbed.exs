@@ -35,6 +35,12 @@ if enclave_pins? do
   prev_arm_tls = Application.get_env(:smalt, :arm_tls_port)
   Process.put(:encl_prev_arm_tls_port, prev_arm_tls)
   Application.put_env(:smalt, :arm_tls_port, 29444)
+
+  # i25-sleeps-b1 unblock: the MCP surface port was missing from the private
+  # set — a concurrent default-port substrate (9545) collided (:eaddrinuse).
+  prev_mcp = Application.get_env(:smalt, :mcp_port)
+  Process.put(:encl_prev_mcp_port, prev_mcp)
+  Application.put_env(:smalt, :mcp_port, 29445)
 end
 
 try do
@@ -78,6 +84,11 @@ after
     case Process.get(:encl_prev_arm_tls_port) do
       nil -> Application.delete_env(:smalt, :arm_tls_port)
       v -> Application.put_env(:smalt, :arm_tls_port, v)
+    end
+
+    case Process.get(:encl_prev_mcp_port) do
+      nil -> Application.delete_env(:smalt, :mcp_port)
+      v -> Application.put_env(:smalt, :mcp_port, v)
     end
   end
 end
@@ -607,8 +618,8 @@ defmodule Enclave.Testbed do
       IO.puts("  started 50 LRO operations (delay 15ms)")
 
       # let the deadline pass, then drive the at-rest sweeper
-      # SLEEP-CLASS: TIME-ADVANCE — window: LRO deadline elapse before at-rest sweep (4x lro_delay_ms via SmaltTest.SleepWindows.lro_deadline_elapse_ms/0; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-      Process.sleep(SmaltTest.SleepWindows.lro_deadline_elapse_ms())
+      # SLEEP-CLASS: TIME-ADVANCE — window: LRO deadline elapse before at-rest sweep (4x lro_delay_ms, named per docs/NO_SLEEP_DOCTRINE.md Law 1 B1; support-module form lives in SmaltTest.SleepWindows for ExUnit suites)
+      Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 15) * 4)
 
       _ = Sweeper.sweep_now()
 
