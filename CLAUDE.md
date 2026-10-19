@@ -177,3 +177,7 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
 - **Ratchet mod**: `mods/ratchet` enforces the 20-agent invariant + ticket
   DAG (timer-dispatched prompts, court-gated DONE, PreToolUse deny gate);
   panel + `/ratchet` commands. See `mods/ratchet/README.md`.
+- **HAVE supervisory engine**: L1 fleet-saturation guard + state ledger
+  (`scripts/have/`); `just have:*` recipes (`justfile.d/31-have.just`),
+  telemetry catalog, and crontab templates in
+  `docs/reference/have-runbook.md`. Ledger: `tmp/have/` (gitignored).

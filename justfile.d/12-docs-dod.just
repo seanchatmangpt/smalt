@@ -68,6 +68,8 @@ DOCS_ROOT := parent_directory(justfile_directory())
     check docs/how-to/how-to-add-config-key.md
     check docs/reference/test-isolation-law.md
     check docs/reference/burn-receipt-schema.md
+    # v26.10.18 HAVE-10: supervisory-engine runbook.
+    check docs/reference/have-runbook.md
     check docs/explanation/no-sleep.md
     check docs/explanation/affidavit-evidentiary-design.md
     check docs/WIRE_PARITY.md

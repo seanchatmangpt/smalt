@@ -30,6 +30,7 @@ count, or PASS/FAIL token) found in the file.
 | azb-12-ratio | [azb-12-ratio.md](receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-13-boot- | [azb-13-boot-burn.md](receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
 | azb-14-sigki | [azb-14-sigkill-storm.md](receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary **NO-CONTEXT** |
+| azb-15-dr-su | [azb-15-dr-subtrees.md](receipts/azb-15-dr-subtrees.md) | ALIVE | AZB-15 Plane subtree DR kills (enterprise disaster scenarios) |
 | azb-16-amqp- | [azb-16-amqp-saturation.md](receipts/azb-16-amqp-saturation.md) | ALIVE | AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard **NO-CONTEXT** |
 | azb-19-overl | [azb-19-overlap.md](receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling **NO-CONTEXT** |
 | azb-20-sdk-i | [azb-20-sdk-interop.md](receipts/azb-20-sdk-interop.md) | PARTIAL_ALIVE | AZB-20 — Unmodified Microsoft SDK interop per plane **NO-CONTEXT** |
@@ -62,6 +63,12 @@ count, or PASS/FAIL token) found in the file.
 | docimpl-7 | [docimpl-7.md](receipts/docimpl-7.md) | PARTIAL_ALIVE | docimpl-7 — docs-audit D5 (C1-C7) implementation receipt **NO-CONTEXT** |
 | docimpl-8 | [docimpl-8.md](receipts/docimpl-8.md) | PASS | docimpl-8 — TEST_ISOLATION.md ground-truth rewrite (d6 findings) **NO-CONTEXT** |
 | docimpl-9 | [docimpl-9.md](receipts/docimpl-9.md) | PASS | docimpl-9 — D10 group A mechanical crosslink rewrite **NO-CONTEXT** |
+| have-1-ledge | [have-1-ledger.md](receipts/have-1-ledger.md) | PASS | HAVE-1: state_ledger.py — run_state.jsonl ledger **NO-CONTEXT** |
+| have-2-pool- | [have-2-pool-guard.md](receipts/have-2-pool-guard.md) | ALIVE | HAVE-2 pool saturation guard **NO-CONTEXT** |
+| have-3-watch | [have-3-watchdog.md](receipts/have-3-watchdog.md) | ALIVE | HAVE component 3 — scripts/have/meta_watchdog.py (Level-2 30m watchdog) **NO-CONTEXT** |
+| have-5-alert | [have-5-alerts.md](receipts/have-5-alerts.md) | PASS | HAVE-5: alert_policy.py — SEV matrix + jidoka engine **NO-CONTEXT** |
+| have-6-stora | [have-6-storage-probe.md](receipts/have-6-storage-probe.md) | ALIVE | HAVE-6 — RP-02 deterministic storage recovery probe **NO-CONTEXT** |
+| have-8-petri | [have-8-petri.md](receipts/have-8-petri.md) | ALIVE | HAVE component 8 — RP-04 Petri conformance over OCEL 2.0 **NO-CONTEXT** |
 | i23-fence11- | [i23-fence11-flip.md](receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
 | i23-standalo | [i23-standalone-noise.md](receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing |
 | i24-store-de | [i24-store-dets-torn.md](receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) |
@@ -80,6 +87,7 @@ count, or PASS/FAIL token) found in the file.
 | i26-enqueue- | [i26-enqueue-shape.md](receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) **NO-CONTEXT** |
 | i26-fence11- | [i26-fence11-quiet.md](receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 **NO-CONTEXT** |
 | i27-rotating | [i27-rotating-bisect.md](receipts/i27-rotating-bisect.md) | UNKNOWN | i27 — solo bisect of the v2-soak rotating faces **NO-CONTEXT** |
+| i28-azsim-re | [i28-azsim-regression.md](receipts/i28-azsim-regression.md) | UNKNOWN | i28 — azsim regression court (full set, current tree) **NO-CONTEXT** |
 | i28-budget-e | [i28-budget-e2e.md](receipts/i28-budget-e2e.md) | FAIL | i28 — Budget gate end-to-end verification (solo) **NO-CONTEXT** |
 | i28-pinion-r | [i28-pinion-reaudit.md](receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) **NO-CONTEXT** |
 | i28-sleep-ga | [i28-sleep-gate-full.md](receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) **NO-CONTEXT** |
@@ -91,6 +99,7 @@ count, or PASS/FAIL token) found in the file.
 | mod-r5-turn | [mod-r5-turn.md](receipts/mod-r5-turn.md) | PARTIAL_ALIVE | mod-r5: ratchet turn-complete enforcement hook **NO-CONTEXT** |
 | mod-r6-comma | [mod-r6-commands.md](receipts/mod-r6-commands.md) | ALIVE (SUSPECT) | mod-r6-commands — ratchet mod /ratchet* commands (R6) **NO-CONTEXT** |
 | mod-r7-gate | [mod-r7-gate.md](receipts/mod-r7-gate.md) | ALIVE | mod R7 — ratchet gate policy (`lib/gate.js`) **NO-CONTEXT** |
+| mod-r8-tests | [mod-r8-tests.md](receipts/mod-r8-tests.md) | ALIVE | MOD-R8 — ratchet mod automated test suite (lane R8, lease test/) **NO-CONTEXT** |
 | mod-r9-integ | [mod-r9-integration.md](receipts/mod-r9-integration.md) | ALIVE | mod-r9 — ratchet INTEGRATION lane: final hooks.json + register.js **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
@@ -165,6 +174,7 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-28 | (no receipt file — justfile module `justfile.d/28-test-budget.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-29 | (no receipt file — justfile module `justfile.d/29-sleep.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-30 | (no receipt file — justfile module `justfile.d/30-burn.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-31 | (no receipt file — justfile module `justfile.d/31-have.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

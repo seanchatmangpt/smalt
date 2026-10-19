@@ -252,3 +252,5 @@ import 'justfile.d/28-stress.just'
 import 'justfile.d/28-test-budget.just'
 import 'justfile.d/29-sleep.just'
 import 'justfile.d/30-burn.just'
+# 31-have — HAVE supervisory engine L1 operator recipes (HAVE-10)
+import 'justfile.d/31-have.just'

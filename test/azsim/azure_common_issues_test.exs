@@ -64,7 +64,7 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
       blob = "config.json"
 
       # Setup container & initial blob
-      assert {:ok, _} = BlobStorage.create_container(account, container, %{})
+      assert {:ok, _} = BlobStorage.create_container(account, container, %{"immutable" => false})
       assert {:ok, %{"etag" => initial_etag}} =
                BlobStorage.put_blob(account, container, blob, "{\"version\": 1}", %{"content-type" => "application/json"})
 
@@ -91,7 +91,6 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
         |> Enum.map(fn {:ok, res} -> res end)
 
       winners = Enum.filter(results, &match?({:ok, _}, &1))
-      IO.inspect(results, label: "VECTOR_1_RESULTS")
       losers =
         Enum.filter(results, fn res ->
           match?({:error, :precondition_failed, _}, res) or
@@ -102,7 +101,7 @@ defmodule Smalt.Azsim.AzureCommonIssuesTest do
       assert length(losers) == workers - 1, "Expected #{workers - 1} 412 PreconditionFailed, got #{length(losers)}"
 
       # Confirm blob is in valid final state with the winner's new ETag
-      assert {:ok, final_meta} = BlobStorage.get_blob_properties(account, container, blob, %{})
+      assert {:ok, final_meta} = BlobStorage.get_blob(account, container, blob)
       assert final_meta["etag"] != initial_etag
     end
   end

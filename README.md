@@ -213,6 +213,7 @@ Env template: `.env.example`; details: `docs/FIRST_RUN.md`.
 | — | `just court` | T0..T4 + bench gate in sequence; full court |
 | — | `just court-x2` | two-green release receipt gate (~8 min) |
 | — | `just verify-all` | offline stages only |
+| — | `just have-self-check` | HAVE L1 pool-saturation guard anti-vacuity (15 fixture courts; typed `have_worker_fleet_active_count` jidoka alerts) |
 
 All port-bound tiers boot their own substrate; run one at a time with the
 ports free. Current verdict for the heaviest gates is in the Standing block
@@ -293,6 +294,16 @@ regression above budget, deleted/renamed tests, and unbudgeted new tests
 `docs/jira/v26.10.18/rewrite-drafts/budget-gate.md`). Non-vacuity: mutated
 fixtures run through the same verdict — an ACCEPTED mutation is VACUOUS
 GATE, exit 1.
+
+### HAVE supervisory engine
+
+HAVE (L1) keeps the ~20-lane wave saturated: `pool_saturation_guard.py` counts
+`pgrep -f 'mix test|docker'` workers against the target pool (20) and emits
+typed `have_worker_fleet_active_count` jidoka alerts + dispatch requests on
+deficit (it requests, never spawns). Telemetry catalog (ledger row kinds,
+alert severity ladder) and crontab templates:
+`docs/reference/have-runbook.md`; recipes `just have-*`
+(`justfile.d/31-have.just`); ledger under `tmp/have/` (gitignored).
 
 ### Zero-sleep doctrine
 

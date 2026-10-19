@@ -76,6 +76,7 @@ Court-class surfaces that live outside `gates/` and `scripts/shim_court/`:
 | burn suite | `just burn` + `burn-soak/-chaos/-matrix/-ring/-boot/-clean/-ocel` (`justfile.d/30-burn.just`) | boot/chaos/matrix/soak/summary stages; `burn-boot` row stops the line on `ORPHAN_LISTENER` / `ZOMBIE_BEAM` / `UNHANDLED_EXIT` |
 | overlap court | `just overlap-court` (`justfile.d/30-burn.just`) | anti-vacuity court over scheduler overlap: a pass from a vacuous scheduler is the failure; serial/check/compare/report sub-recipes |
 | azsim SDK court | `just azsim-sdk` (`justfile.d/14-sdk-matrix.just`) | azb20 headers via the recording proxy (`test/sdk-full/azb20/`); exit 0 = all cells pass-or-typed |
+| HAVE self-check | `just have-self-check` + `just have-cycle` (`justfile.d/31-have.just`) | pool-saturation guard anti-vacuity: 15 fixture courts; a deficit without a typed `have_worker_fleet_active_count` alert row is the failure. Runbook: `docs/reference/have-runbook.md` |
 
 ## Config keys
 
@@ -104,4 +105,5 @@ row). The AMQP atom-flood fence (D63/R95) is witnessed by
 - `docs/reference/affidavit-wasm.md`
 - `docs/reference/test-isolation-law.md`
 - `docs/reference/burn-receipt-schema.md`
+- `docs/reference/have-runbook.md`
 - `docs/verification/` (verification receipts tree)
