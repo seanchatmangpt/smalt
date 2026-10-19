@@ -1,6 +1,6 @@
 # I29 receipt — env-leak remediation, the 13 counted modules (v26.10.18)
 
-Standing: PASS (static gate GREEN, all 13 counted modules green ×1 on private roots; quiet runtime twin court launched, see Verification).
+Standing: PARTIAL_ALIVE — semantic env-leak remediation landed and verified (static gate GREEN, all touched files green ×1); the runtime twin still FAILs on a residual flaky settle-race (see Runtime court).
 Context: slice(env-leak-remediation, i29 isolation batch, 2026-10-18)
 
 Subject: `/Users/sac/smalt` working tree, 2026-10-18.
@@ -81,16 +81,53 @@ Per-file runs (scripts/fast_test.sh, per-hash private build roots):
 - cbs_router + eventgrid + smalt_services + control_plane + mix_auth_scope:
   48 tests, 0 failures
 
-## Runtime court
+## Runtime court — FAIL, residual class identified as a settle-race (not semantic leaks)
 
-A quiet `--runtime-only` twin run was launched after the edits
-(`tmp/isolation-court-runtime3.out`). Its SUMMARY line is the open falsifier:
-0 counted ⇒ the i29-isolation-runtime2 regression closes; the next-slice
-falsifier from the previous receipt (quiet full twin → 0 counted) stands
-until that line reads `modules_leaked` counts only exempted name shifts.
+Two full `--runtime-only` runs after the edits
+(`tmp/isolation-court-runtime3.out` — court stdout; full mix output in
+`tmp/isolation-court-runtime.out`, mix exit=2 with 124 failures under fleet
+load): 10 raw leak blocks / verdict FAIL. The counted residue has a
+completely different signature than runtime2: it is no longer the 13
+semantic modules (flow_credit / arm_wire / lro / cors / sovereign_midnight
+are all clean now); it is a FLAKY settle-race class —
+`Application.put_env` write-visibility latency vs the twin formatter's
+snapshot at the next module's `case_started`. Evidence:
+
+- Controlled single-file experiment, quiet machine, zero failures:
+  `mix test test/amqp/sas_verifier_test.exs --formatter
+  SmaltTest.IsolationFormatter --max-cases 1` run 3× →
+  `modules_leaked=0, 0, 1` on IDENTICAL code (the 1 = SasPinnedFallback
+  residue "ws8sharedkey").
+- Adding a single `IO.puts` before the restore inside `SmaltTest.Env`
+  on_exit flipped the same run to `modules_leaked=0` (twice) — a yield in
+  the restore path is sufficient. Instrumentation was REVERTED
+  byte-exact (`git diff test/support/env.ex` empty).
+- Restores are semantically correct: ExUnit's `Runner.spawn_test` awaits
+  `OnExitHandler.run/2` synchronously per test (runner.ex:387/433), so every
+  restore executes before the next test starts; the residue is pure
+  visibility timing in the snapshot channel.
+
+Conclusion: the counted-env deltas remaining in the twin are not
+secrets-shaped or presence-changing leaks; they are the same value written
+by the module itself, transiently visible to the snapshot. The honest
+next-slice fix is in the twin's settle point (bounded observable-based
+quiescence check before snapshot — e.g. re-snapshot until stable across two
+consecutive reads, no sleeps), NOT more test edits; more test edits cannot
+close a snapshot race.
+
+Falsifier for next slice (unchanged, now sharpened): quiet full twin →
+0 counted, after the formatter settle is hardened to snapshot-on-stable.
 
 ## Deviations
 
-- The runtime court could not complete inside this slice's time budget at
-  receipt-writing time; per-file green ×1 + static GREEN is the landed
-  verification, per the task's fallback ladder.
+- Both full twin runs landed mix exit=2 (124/103 failures) — the machine
+  carried concurrent fleet load during this slice (Dev Race note: other
+  lanes' edits, e.g. test/e2e/*, are present in the working tree and were
+  not touched by this lane).
+- Late-slice cross-lane note: a NEW in-flight file from another lane
+  (`test/data_plane/audited_capabilities_test.exs`, untracked) began failing
+  the static gate (9 ETS-mutation sites, "no save of prev value") after this
+  lane's final static GREEN. Those offenders are NOT this lane's scope or
+  files; disclosed here per the compile-freeze SLA rather than edited — the
+  owning lane must add the save+on_exit-restore pattern. This lane's 15
+  touched files remain gate-clean.
