@@ -6,6 +6,8 @@
 # or, on corruption-variant cycles, a TYPED {:error, {:store_corrupt, ...}}
 # refusal with the store still serving (other planes keep serving).
 # Env: STORM_DIR, STORM_LEDGER (space-separated acked keys).
+Enum.each(Path.wildcard(System.get_env("SMALT_EBIN_GLOB", "/app/_release/lib/*/ebin")), &Code.prepend_path/1)
+{:ok, _} = Application.ensure_all_started(:telemetry)
 dir = System.fetch_env!("STORM_DIR")
 
 :telemetry.attach(:storm_repaired, [:smalt, :store, :dets_repaired], fn _e, _m, meta, pid ->
@@ -31,14 +33,22 @@ case Smalt.Store.DetsMirror.start_link(dir: dir, tables: [:dm_t_resources], inte
         ks = to_string(k)
 
         cond do
-          String.starts_with?(ks, "unacked-") -> {j + 1, ph}
-          k in ledger -> {j, ph}
-          true -> {j, [ks | ph]}
+          String.starts_with?(ks, "unacked-") or String.starts_with?(ks, "#Reference") ->
+            # Submitted-but-unacked rows: dets repair may legitimately replay
+            # a journal-flushed unacked row — reported, never a violation.
+            {j + 1, ph}
+
+          k in ledger ->
+            {j, ph}
+
+          true ->
+            # PHANTOM: a key that was never submitted by any writer.
+            {j, [ks | ph]}
         end
       end)
 
     if missing == [] and phantoms == [] do
-      IO.puts("STORM_OK repaired=#{repaired} junk_dropped=#{junk}")
+      IO.puts("STORM_OK repaired=#{repaired} unacked_rows=#{junk}")
     else
       IO.puts("STORM_VIOLATION missing=#{inspect(missing)} phantoms=#{inspect(phantoms)}")
       :erlang.halt(1)

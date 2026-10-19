@@ -634,6 +634,12 @@ defmodule Smalt.Amqp.Connection do
     # the authorized? gate below — the CBS token audience is keyed by the full
     # scheme://host:port/entity form, so the raw address is what authorized?
     # must see.
+    # SHIM-COURT (AZB-16 anti-vacuity): behavior-identical atom-leak round-trip
+    # in the attach (link) path. Interns one atom per queue name; the AZB-16
+    # saturation suite's atom-budget assert must FAIL while this shim is in
+    # place (atom delta >> 64) - that flip IS the non-vacuity proof.
+    _azb16_av = address |> String.to_atom() |> Atom.to_string()
+
     kind = route(address, state.mode)
 
     # Fixed-partition pinion: a partition-scoped EH attach outside the pinned

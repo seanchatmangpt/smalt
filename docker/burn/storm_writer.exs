@@ -6,6 +6,7 @@
 #
 # Durability contract under test: acked (fsynced) rows MUST survive the
 # SIGKILL; unacked rows MUST be gone after the repair reboot (zero phantoms).
+Enum.each(Path.wildcard(System.get_env("SMALT_EBIN_GLOB", "/app/_release/lib/*/ebin")), &Code.prepend_path/1)
 dir = System.fetch_env!("STORM_DIR")
 cycle = System.fetch_env!("STORM_CYCLE") |> String.to_integer()
 junk = System.fetch_env!("STORM_JUNK") |> String.to_integer()

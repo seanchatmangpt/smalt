@@ -20,7 +20,7 @@ defmodule Smalt.Amqp.SaturationTest do
       `:erlang.garbage_collect` sweep.
 
   Standing: stress tier (`@moduletag :stress`, excluded from plain `mix test`;
-  `mix test test/azsim/amqp_saturation_testexs --include stress`).
+  `mix test test/azsim/amqp_saturation_test.exs --include stress`).
   Container acceptance: `docker/burn/container-burn.sh --saturation` runs this
   suite x3 inside the smalt-burn test image under `--cpus 2`.
   """
@@ -73,15 +73,19 @@ defmodule Smalt.Amqp.SaturationTest do
   # ===========================================================================
 
   test "4096 queues: atom delta bounded, links drain, teardown clean" do
+    # one-time atom set of the phase machinery itself (308 measured) is
+    # minted here, unasserted, so the budget below measures queue scaling
+    run_saturation_phase(256, drained_assert?: false, bounds_assert?: false)
     run_saturation_phase(@n_queues, drained_assert?: true, bounds_assert?: true)
   end
 
-    test "8192 queues: atom delta stays bounded on the warmed table" do
+  test "8192 queues: atom delta stays bounded on the warmed table" do
+    run_saturation_phase(256, drained_assert?: false, bounds_assert?: false)
     run_saturation_phase(@n_queues_big, drained_assert?: false, bounds_assert?: true)
   end
 
   test "poisoned messages deadletter with typed reason at saturation scale" do
-    baseline = warm_baseline(256)
+    _baseline = warm_baseline(8)
 
     queues =
       for i <- 1..@poison_queues, do: "sat-poison-#{System.unique_integer([:positive])}-#{i}"
@@ -365,16 +369,12 @@ defmodule Smalt.Amqp.SaturationTest do
   # Bounds asserts (atom / process / memory)
   # ===========================================================================
 
-  # Baseline with the harness WARMED: a small pre-phase interns the one-time
-  # atoms of the code paths themselves (ExUnit/Logger/first-run branches) so
-  # the atom budget measures QUEUE-COUNT scaling, not harness warm-up. The
-  # anti-vacuity shim (one String.to_atom per queue name) still blows the
-  # budget by two orders of magnitude.
+  # Baseline after warm-up: force-loads the lazy OTP modules and warms the
+  # CbsRouter restart cycle, sweeps GC, and waits for a stable process count
+  # so the ±1% / ±10% / atom budgets measure the saturation phase, not
+  # harness warm-up. The anti-vacuity shim (one String.to_atom per queue
+  # name) still blows the atom budget by orders of magnitude.
   defp warm_baseline(n_warm \\ 64) do
-    # The phase machinery itself mints its one-time atom set (308 measured)
-    # on first execution per BEAM - run one unasserted 256-queue phase so
-    # the atom budget measures queue-count scaling only.
-    run_saturation_phase(256, drained_assert?: false, bounds_assert?: false)
     # lazy-loaded OTP modules (e.g. :sys, pulled in by the first
     # GenServer stop/restart at a wave boundary) mint their atom sets on
     # first load - force-load before the baseline so the atom budget

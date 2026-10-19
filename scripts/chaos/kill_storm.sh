@@ -121,8 +121,12 @@ Application.put_env(:smalt, :amqp_port, $AMQP_PORT)
 Application.put_env(:smalt, :event_hubs_port, $EH_PORT)
 Application.put_env(:smalt, :mcp_port, $MCP_PORT)
 Application.put_env(:smalt, :blob_storage, persistence: :dets_mirrored, sync_interval_ms: 0)
-{:ok, _} = Application.ensure_all_started(:smalt)
+# Mirror BEFORE the app: the listeners start inside ensure_all_started, and a
+# write acked before DetsMirror is running no-ops its sync_write (unmirrored
+# ack) — witnessed as first-acked-writes loss (blob-0..4) under the kill storm.
+# restore() runs AFTER the app so Store's ETS tables exist to hydrate.
 {:ok, _} = Smalt.Store.DetsMirror.start_link(dir: "$DATA_DIR", repair: true, interval: 5_000)
+{:ok, _} = Application.ensure_all_started(:smalt)
 {:ok, _} = Smalt.Store.DetsMirror.restore()
 EOF
 }

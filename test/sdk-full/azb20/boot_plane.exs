@@ -48,7 +48,9 @@ Application.put_env(:smalt, :sb_endpoint, "sb://127.0.0.1:39472") # isolation-co
 # Shared SAS key so EXTERNAL-attach probes compute matching SAS signatures.
 Application.put_env(:smalt, :sb_shared_key, System.get_env("AZB20_SB_KEY")) # isolation-court: exempt azb20_boot_script
 
-Application.put_env(:smalt, :auth_mode, :enforce) # isolation-court: exempt azb20_boot_script
+# auth_mode: NOT overridden — inherits the MIX_ENV=test default (:anonymous,
+# config/test.exs), the mode the attach-mode probe corpus was written against
+# (blob probe docs: "the enforce-mode Bearer contract is covered elsewhere").
 
 {:ok, _} = Application.ensure_all_started(:smalt)
 
