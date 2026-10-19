@@ -62,10 +62,9 @@ listed HTTP status on the listed surface. Meanings marked
 "[annotation]" are inferred from message templates plus Azure semantics, not
 literal source strings; everything else is derived mechanically.
 
-Codes returned through dynamic tuples ({:error, status, body} from data-plane
-modules, e.g. Sentinel/ResourceGraph/Purview/SKR envelopes) are out of scope
-here except where a compliance-corpus row pins a code literally (surface
-`compliance/...`).
+Codes returned through dynamic tuples (non-literal status/code expressions) are
+out of scope here: a status the scanner cannot witness is never guessed, and
+post-reset every row cites a literal lib/ source file:line.
 
 | Surface | HTTP | Code | Source | Meaning | Remediation (agent hint) |
 |---|---|---|---|---|---|
@@ -208,7 +207,7 @@ ANNOTATIONS = {
     ),
     "InvalidApiVersion": (
         "api-version query parameter missing or unsupported on this data-plane surface.",
-        "Send an api-version accepted by the cited handler (see compliance row).",
+        "Send an api-version accepted by the cited handler (see the cited source).",
     ),
     "PolicyViolation": (
         "Azure Policy enforcement denied the write (Smalt.Policy.enforce/4 deny effect).",
@@ -582,24 +581,94 @@ def extract_cli_gateway():
     return [("cli-gateway", 403, m.group(1), cite)]
 
 
-def extract_compliance():
+def strip_docs(src):
+    """Strip @doc/@moduledoc heredocs and comment lines so docstring error
+    mentions never mint rows (same discipline as extract_data_plane)."""
+    src = re.sub(r'@(?:doc|moduledoc)\s+""".*?"""', "", src, flags=re.S)
+    return "\n".join(l for l in src.split("\n") if not l.strip().startswith("#"))
+
+
+def extract_lib_tuples():
+    """Post-reset repoint (v26.10.19, test/compliance corpus deleted at 64f6099):
+    the compliance "?" rows are re-grounded in the lib/ surfaces that actually
+    emit them. Every row cites a literal status + literal code found in a lib
+    source; non-literal (variable status/code) sites are skipped, never
+    guessed. Families:
+      T1  {:error, NNN, "Code", msg}          - string-code typed tuples
+      T2  error_response(..., NNN, "Code",..) - cosmos literal call sites
+      T3  {:error, NNN, bad_request("Code",..}- KV literal call sites
+      T4  ledger_error(NNN, "Code", ...)      - ledger_writer literal sites
+      T5  {:error, NNN, helper()}             - helper-envelope call sites,
+            paired with the helper defp's first "code" literal within 400 chars
+      T6  {:ok, NNN, hdr, %{"code" => "X"}}   - ok-shaped error responses
+            (cosmos returns 4xx as {:ok, status, headers, body}); the "code"
+            literal must sit within 400 chars of the tuple opener
+    """
+    sources = sorted((ROOT / "lib/smalt/data_plane").glob("*.ex")) + [
+        ROOT / "lib/smalt/security/ledger_writer.ex"
+    ]
     rows = []
-    for f in sorted(COMPLIANCE.glob("*.exs")):
-        src = f.read_text()
+    for f in sources:
+        src = strip_docs(f.read_text())
+        slug = f.stem.replace("_", "-")
+        cite_file = str(f.relative_to(ROOT))
+        for m in re.finditer(r'\{:error,\s*(\d{3}),\s*"([A-Za-z][A-Za-z0-9]*)"', src):
+            rows.append(("data-plane/" + slug, int(m.group(1)), m.group(2),
+                         f"{cite_file}:{line_of(src, m.start())}"))
         for m in re.finditer(
-            r'\[\s*"(?:code|error)"\s*\]\s*==\s*"([A-Za-z0-9_-]+)"', src
+            r'error_response\([^)]*?,\s*(\d{3}),\s*"([A-Za-z][A-Za-z0-9]*)"', src, re.S
         ):
-            cite = f"{f.relative_to(ROOT)}:{line_of(src, m.start())}"
-            rows.append((f"compliance/{f.stem.replace('_', '-')}", None, m.group(1), cite))
+            rows.append(("data-plane/" + slug, int(m.group(1)), m.group(2),
+                         f"{cite_file}:{line_of(src, m.start())}"))
+        for m in re.finditer(
+            r'\{:error,\s*(\d{3}),\s*bad_request\("([A-Za-z][A-Za-z0-9]*)"', src, re.S
+        ):
+            rows.append(("data-plane/" + slug, int(m.group(1)), m.group(2),
+                         f"{cite_file}:{line_of(src, m.start())}"))
+        for m in re.finditer(r'ledger_error\((\d{3}),\s*"([A-Za-z][A-Za-z0-9]*)"', src):
+            rows.append(("data-plane/" + slug, int(m.group(1)), m.group(2),
+                         f"{cite_file}:{line_of(src, m.start())}"))
+        # T5: {:error, NNN, helper()} — resolve the helper's "code" literal.
+        for m in re.finditer(r'\{:error,\s*(\d{3}),\s*([a-z_]+)\(\)', src):
+            hm = re.search(
+                rf'defp\s+{m.group(2)}\b.*?"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"',
+                src[m.end():],
+                re.S,
+            )
+            if hm and (hm.end() - hm.start()) < 5000:
+                rows.append(("data-plane/" + slug, int(m.group(1)), hm.group(1),
+                             f"{cite_file}:{line_of(src, m.start())}"))
+        for m in re.finditer(r'\{:ok,\s*(\d{3}),', src):
+            window = src[m.start():m.start() + 400]
+            cm = re.search(r'"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"', window)
+            if cm:
+                rows.append(("data-plane/" + slug, int(m.group(1)), cm.group(1),
+                             f"{cite_file}:{line_of(src, m.start())}"))
     seen = {}
     for surface, status, code, cite in rows:
         seen.setdefault((surface, code), (status, cite))
-    return [(surface, status, code, cite) for (surface, code), (status, cite) in sorted(seen.items())]
+    return [(surface, s, c, cite) for (surface, c), (s, cite) in sorted(seen.items())]
+
+
+def extract_amqp_management():
+    """AMQP management-RPC error mappings: respond(NNN, "CODE", ...) literals in
+    lib/smalt/messaging/amqp/management_rpc.ex. Fixed by convention: a respond
+    site with a non-literal status/code is skipped (never guessed)."""
+    f = ROOT / "lib/smalt/messaging/amqp/management_rpc.ex"
+    src = strip_docs(f.read_text())
+    rows = []
+    for m in re.finditer(r'respond\(\s*(\d{3}),\s*"([A-Z][A-Z_0-9]*)"', src, re.S):
+        rows.append(("amqp-management", int(m.group(1)), m.group(2),
+                     f"{f.relative_to(ROOT)}:{line_of(src, m.start())}"))
+    seen = {}
+    for surface, status, code, cite in rows:
+        seen.setdefault((surface, code), (status, cite))
+    return [(surface, s, c, cite) for (surface, c), (s, cite) in sorted(seen.items())]
 
 
 def build_rows():
     bearer_rows, _subcodes = extract_bearer()
-    rows = extract_arm() + extract_lro() + extract_policy() + extract_egress() + bearer_rows + extract_data_plane() + extract_cli_gateway() + extract_compliance()
+    rows = extract_arm() + extract_lro() + extract_policy() + extract_egress() + bearer_rows + extract_data_plane() + extract_lib_tuples() + extract_amqp_management() + extract_cli_gateway()
     out = []
     for surface, status, code, cite in rows:
         meaning, remediation, marked = annotate(code)

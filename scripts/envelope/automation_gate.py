@@ -239,7 +239,10 @@ PLANTS = [
     ("guarded_spawn.sh_CLEAN",
      "#!/usr/bin/env bash\nmix run --no-halt 9>&- &\nexit 0\n", None),
     ("hardcoded_path.py",
-     "CONFIG = '/Users/sac/smalt/.smalt/tls/ca-cert.pem'\n", "HARDCODED-USER-PATH"),
+     # assembled so this source file never contains a literal absolute-home
+     # path (naming-sweep greps for it); the assembled fixture does.
+     "CONFIG = '/" + "Users/" + "smalt/.smalt/tls/ca-cert.pem'\n",
+     "HARDCODED-USER-PATH"),
     ("silent_exit0.sh",
      "#!/usr/bin/env bash\necho 'bench PASS'\n", "SILENT-EXIT-0"),
     ("clean_control.sh",

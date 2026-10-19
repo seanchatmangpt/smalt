@@ -6,10 +6,10 @@
 # SKIP (exit 3), never a silent pass.
 #
 # ROOT law (measured 2026-10-19): inside an IMPORTED module,
-# `justfile_directory()` returns the ROOT justfile's dir (/Users/sac/smalt),
+# `justfile_directory()` returns the ROOT justfile's dir (repo root),
 # NOT the module's own dir — so no parent_directory() needed here. (The
 # fanout rule-5 shebang caveat applies to standalone justfiles; `just -d`
-# style. Verified live: parent_directory() here resolves to /Users/sac.)
+# style. Verified live: parent_directory() here resolves to the repo root.)
 ENVELOPE_ROOT := justfile_directory()
 
 # Phase 0 gate 1/4 — Automation Boundary (LANDED: scripts/envelope/automation_gate.py)

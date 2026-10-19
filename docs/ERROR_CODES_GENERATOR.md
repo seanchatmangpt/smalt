@@ -8,7 +8,9 @@ the coordinator re-admits.
 ## The seam
 
 One generator, `scripts/gen_error_codes.py`, projects `docs/ERROR_CODES.md` from
-seven source families:
+eight lib/-only source families (post-reset v26.10.19: no test source family —
+the compliance corpus was deleted at 64f6099 and the generator no longer reads
+`test/`):
 
 1. `lib/smalt/arm_gateway/router.ex` (`send_arm_error` sites + pinned
    InvalidResourceShape + inline 412 envelope)
@@ -18,22 +20,40 @@ seven source families:
    makes any unpaired egress "code" literal exit 1 with a typed
    `UNRESOLVED_STATUS` message instead of emitting a silent `| egress | ? |`
    row.
-3. ~~`test/compliance/*.exs`~~ — RETIRED@64f6099 (compliance corpus deleted;
-   the generator no longer reads a test source family — the doc's "?" status
-   rows for retired compliance pins persist via the ANNOTATIONS table)
-4. `lib/smalt/arm_gateway/lro.ex` (`extract_lro`: LRO terminal-state envelopes)
-5. `lib/smalt/policy.ex` (`extract_policy`: PolicyViolation denial envelope)
-6. `lib/smalt/auth/bearer.ex` (`extract_bearer`: 401 refusal codes via
+3. `lib/smalt/arm_gateway/lro.ex` (`extract_lro`: LRO terminal-state envelopes)
+4. `lib/smalt/policy.ex` (`extract_policy`: PolicyViolation denial envelope)
+5. `lib/smalt/auth/bearer.ex` (`extract_bearer`: 401 refusal codes via
    `{:refuse, "Code", _}` tuples + the send_challenge literal)
-7. data-plane audit/audit-adjacent planes (`extract_data_plane`, added
+6. data-plane map-body planes (`extract_data_plane`, added
    2026-10-17): `lib/smalt/data_plane/{sentinel,resource_graph,purview_atlas,
    key_vault_actions,cosmos}.ex` + `lib/smalt/security/confidential_ledger.ex`
    — `{:error, <status>, body}` tuples with a literal `"code" => "..."` in the
    body; comment lines and `@doc` strings are stripped before scanning so
    docstring mentions never mint rows; only literal 3-digit statuses pair.
+7. typed-tuple data planes + ledger writer (`extract_lib_tuples`, post-reset
+   repoint 2026-10-19): all of `lib/smalt/data_plane/*.ex` +
+   `lib/smalt/security/ledger_writer.ex` — string-code tuples
+   `{:error, NNN, "Code", msg}`, cosmos `error_response` literals, KV
+   `bad_request` literals, ledger_writer `ledger_error` literals,
+   helper-envelope call sites `{:error, NNN, helper()}` (resolved against the
+   helper defp's first "code" literal), and ok-shaped cosmos errors
+   `{:ok, NNN, hdr, %{"code" => ...}}`. Non-literal status/code sites are
+   skipped, never guessed.
+8. `lib/smalt/messaging/amqp/management_rpc.ex` (`extract_amqp_management`,
+   post-reset): `respond(NNN, "CODE", ...)` literal error mappings, surface
+   `amqp-management`.
 
 The doc is a projection; edit the sources (or the ANNOTATIONS table), never the
 generated file.
+
+Post-reset row contract (2026-10-19): every emitted row cites a real lib/
+source file:line the scanner found — the retired `compliance/*` "?"-status rows
+are NOT carried over as annotation-only stubs; each former compliance pin was
+re-grounded in the lib/ surface that actually emits it (e.g. InvalidBody via
+`egress_router.ex`, KeyNotExportable/TokenReplay via `skr.ex`,
+TooManyRequests/Unauthorized via `cosmos.ex`, queue/blob typed tuples via
+`blob_storage.ex`/`queue_storage.ex`, SESSION_LOCK_LOST etc. via
+`management_rpc.ex`).
 
 Escape scheme (lens 5): the generator's `esc/1` escapes a literal backslash
 FIRST (`\\`), then pipes (`\|`), then flattens newlines. Both consumers —

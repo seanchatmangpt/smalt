@@ -9,6 +9,7 @@ count, or PASS/FAIL token) found in the file.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
+| V261019-08 | [08-servicebus-census.md](receipts/08-servicebus-census.md) | ALIVE | 08-servicebus-census (lane b11, Service Bus SDK census) **NO-CONTEXT** |
 
 ### Release-order sub-receipts
 
@@ -39,6 +40,7 @@ count, or PASS/FAIL token) found in the file.
 | v261019-13-i | [v261019-13-identity-rs256.md](receipts/v261019-13-identity-rs256.md) | PASS | V261019-13 (identity-rs256) — REAL WITNESS (kd-registrar lane) |
 | v261019-14-b | [v261019-14-boot-library.md](receipts/v261019-14-boot-library.md) | ALIVE | V261019-14 (boot-library) |
 | v261019-15-v | [v261019-15-verification-gates.md](receipts/v261019-15-verification-gates.md) | ALIVE | V261019-15 (verification-gates) |
+| v261019-clus | [v261019-cluster-dns.md](receipts/v261019-cluster-dns.md) | ALIVE | v261019-cluster-dns — Smalt.Cluster native DNS interconnect **NO-CONTEXT** |
 | v261019-cour | [v261019-court-census.md](receipts/v261019-court-census.md) | UNKNOWN | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-automation.md](receipts/v261019-envelope-automation.md) | UNKNOWN | v26.10.19 envelope lane — automation-boundary gate + aggregate wiring **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-container.md](receipts/v261019-envelope-container.md) | UNKNOWN | v26.10.19 envelope lane — container-boundary gate wiring skeleton **NO-CONTEXT** |
@@ -67,7 +69,15 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
-| wf5-py-edge- | [wf5-py-edge-resilience.md](sdk-results/wf5-py-edge-resilience.md) | SUSPECT | External workflow receipt: wf5-edge-resilience (py) **NO-CONTEXT** |
+| wf1-py-provi | [wf1-py-provisioning-governance.md](sdk-results/wf1-py-provisioning-governance.md) | UNKNOWN | External workflow receipt: wf1-provisioning-governance (py) **NO-CONTEXT** |
+| wf1-ts-provi | [wf1-ts-provisioning-governance.md](sdk-results/wf1-ts-provisioning-governance.md) | UNKNOWN | External workflow receipt: wf1-provisioning-governance (ts) **NO-CONTEXT** |
+| wf2-py-multi | [wf2-py-multistore-concurrency.md](sdk-results/wf2-py-multistore-concurrency.md) | UNKNOWN | External workflow receipt: wf2-multistore-concurrency (py) **NO-CONTEXT** |
+| wf2-ts-multi | [wf2-ts-multistore-concurrency.md](sdk-results/wf2-ts-multistore-concurrency.md) | FAIL | External workflow receipt: wf2-multistore-concurrency (ts) **NO-CONTEXT** |
+| wf3-py-messa | [wf3-py-messaging-eventing.md](sdk-results/wf3-py-messaging-eventing.md) | UNKNOWN | External workflow receipt: wf3-messaging-eventing (py) **NO-CONTEXT** |
+| wf3-ts-messa | [wf3-ts-messaging-eventing.md](sdk-results/wf3-ts-messaging-eventing.md) | UNKNOWN | External workflow receipt: wf3-messaging-eventing (ts) **NO-CONTEXT** |
+| wf4-py-crypt | [wf4-py-crypto-custody.md](sdk-results/wf4-py-crypto-custody.md) | UNKNOWN | External workflow receipt: wf4-crypto-custody (py) **NO-CONTEXT** |
+| wf4-ts-crypt | [wf4-ts-crypto-custody.md](sdk-results/wf4-ts-crypto-custody.md) | UNKNOWN | External workflow receipt: wf4-crypto-custody (ts) **NO-CONTEXT** |
+| wf5-py-edge- | [wf5-py-edge-resilience.md](sdk-results/wf5-py-edge-resilience.md) | UNKNOWN | External workflow receipt: wf5-edge-resilience (py) **NO-CONTEXT** |
 | wf5-ts-edge- | [wf5-ts-edge-resilience.md](sdk-results/wf5-ts-edge-resilience.md) | UNKNOWN | External workflow receipt: wf5-edge-resilience (ts) **NO-CONTEXT** |
 
 ## DoD lanes (dod-01..13)
@@ -118,4 +128,3 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `kd108-blob-lease-acl-tbd.md` (standing UNKNOWN)
 - **SUSPECT**: `kd112-arm-policy-initiatives-tbd.md` (standing UNKNOWN)
 - **SUSPECT**: `v261019-09-py-external-suite.md` (standing UNKNOWN)
-- **SUSPECT**: `wf5-py-edge-resilience.md` (standing UNKNOWN)

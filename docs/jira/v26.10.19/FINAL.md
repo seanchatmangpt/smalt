@@ -1,7 +1,7 @@
 # FINAL.md — v26.10.19 window wrap
 
 - **Date**: 2026-10-19
-- **Subject**: /Users/sac/smalt (branch main; version `<!-- mix.exs @version -->`)
+- **Subject**: smalt repo root (branch main; version `<!-- mix.exs @version -->`)
 - **Context**: solo(documentation wrap; no execution, no git state changes)
 - **Standing of this document**: CENSUS — every claim cites a receipt on disk.
   The court-x2 verdict is `<!-- TYPED-RED | TYPED-GREEN | PARTIAL_ALIVE -->`

@@ -677,6 +677,7 @@ count, or PASS/FAIL token) found in the file.
 | w7-review | [w7-review.md](../v26.10.18/receipts/w7-review.md) | PASS | W7 residual review — group 6 (review lane, Context: solo) |
 | w8-review | [w8-review.md](../v26.10.18/receipts/w8-review.md) | PASS | W8 residual review — workqueue group 7 |
 | w9-review | [w9-review.md](../v26.10.18/receipts/w9-review.md) | UNKNOWN | W9 residual review — group 8 (review lane, Context: solo) |
+| V261019-08 | [08-servicebus-census.md](../v26.10.19/receipts/08-servicebus-census.md) | ALIVE | 08-servicebus-census (lane b11, Service Bus SDK census) **NO-CONTEXT** |
 | kd100-instan | [kd100-instance-discovery-tbd.md](../v26.10.19/receipts/kd100-instance-discovery-tbd.md) | PASS | kd100-instance-discovery-tbd.md — KD-100 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
 | kd101-eg-web | [kd101-eg-webhook-tbd.md](../v26.10.19/receipts/kd101-eg-webhook-tbd.md) | SUSPECT | kd101-eg-webhook-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
 | kd102-kv-sec | [kd102-kv-secrets-softdelete-tbd.md](../v26.10.19/receipts/kd102-kv-secrets-softdelete-tbd.md) | PASS | kd102-kv-secrets-softdelete-tbd.md — KD-102 witness (lane, 2026-10-19) |
@@ -702,6 +703,7 @@ count, or PASS/FAIL token) found in the file.
 | v261019-13-i | [v261019-13-identity-rs256.md](../v26.10.19/receipts/v261019-13-identity-rs256.md) | PASS | V261019-13 (identity-rs256) — REAL WITNESS (kd-registrar lane) |
 | v261019-14-b | [v261019-14-boot-library.md](../v26.10.19/receipts/v261019-14-boot-library.md) | ALIVE | V261019-14 (boot-library) |
 | v261019-15-v | [v261019-15-verification-gates.md](../v26.10.19/receipts/v261019-15-verification-gates.md) | ALIVE | V261019-15 (verification-gates) |
+| v261019-clus | [v261019-cluster-dns.md](../v26.10.19/receipts/v261019-cluster-dns.md) | ALIVE | v261019-cluster-dns — Smalt.Cluster native DNS interconnect **NO-CONTEXT** |
 | v261019-cour | [v261019-court-census.md](../v26.10.19/receipts/v261019-court-census.md) | UNKNOWN | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-automation.md](../v26.10.19/receipts/v261019-envelope-automation.md) | UNKNOWN | v26.10.19 envelope lane — automation-boundary gate + aggregate wiring **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-container.md](../v26.10.19/receipts/v261019-envelope-container.md) | UNKNOWN | v26.10.19 envelope lane — container-boundary gate wiring skeleton **NO-CONTEXT** |
@@ -800,7 +802,15 @@ No receipt file on disk: cli-02.
 | ts-servicebu | [ts-servicebus-census.md](../v26.10.16/sdk-results/ts-servicebus-census.md) | PASS | TS-08 — Service Bus census (real @azure/service-bus) against the smalt substrate **NO-CONTEXT** |
 | ts-storage-b | [ts-storage-blob.md](../v26.10.16/sdk-results/ts-storage-blob.md) | PASS | TS-2 — real @azure/storage-blob (TypeScript) against the smalt blob plane **NO-CONTEXT** |
 | version-latt | [version-lattice-receipt.md](../v26.10.16/sdk-results/version-lattice-receipt.md) | PARTIAL_ALIVE | Version Lattice Receipt — KD-78 monotonic admission across ALL admitted types **NO-CONTEXT** |
-| wf5-py-edge- | [wf5-py-edge-resilience.md](../v26.10.19/sdk-results/wf5-py-edge-resilience.md) | SUSPECT | External workflow receipt: wf5-edge-resilience (py) **NO-CONTEXT** |
+| wf1-py-provi | [wf1-py-provisioning-governance.md](../v26.10.19/sdk-results/wf1-py-provisioning-governance.md) | UNKNOWN | External workflow receipt: wf1-provisioning-governance (py) **NO-CONTEXT** |
+| wf1-ts-provi | [wf1-ts-provisioning-governance.md](../v26.10.19/sdk-results/wf1-ts-provisioning-governance.md) | UNKNOWN | External workflow receipt: wf1-provisioning-governance (ts) **NO-CONTEXT** |
+| wf2-py-multi | [wf2-py-multistore-concurrency.md](../v26.10.19/sdk-results/wf2-py-multistore-concurrency.md) | UNKNOWN | External workflow receipt: wf2-multistore-concurrency (py) **NO-CONTEXT** |
+| wf2-ts-multi | [wf2-ts-multistore-concurrency.md](../v26.10.19/sdk-results/wf2-ts-multistore-concurrency.md) | FAIL | External workflow receipt: wf2-multistore-concurrency (ts) **NO-CONTEXT** |
+| wf3-py-messa | [wf3-py-messaging-eventing.md](../v26.10.19/sdk-results/wf3-py-messaging-eventing.md) | UNKNOWN | External workflow receipt: wf3-messaging-eventing (py) **NO-CONTEXT** |
+| wf3-ts-messa | [wf3-ts-messaging-eventing.md](../v26.10.19/sdk-results/wf3-ts-messaging-eventing.md) | UNKNOWN | External workflow receipt: wf3-messaging-eventing (ts) **NO-CONTEXT** |
+| wf4-py-crypt | [wf4-py-crypto-custody.md](../v26.10.19/sdk-results/wf4-py-crypto-custody.md) | UNKNOWN | External workflow receipt: wf4-crypto-custody (py) **NO-CONTEXT** |
+| wf4-ts-crypt | [wf4-ts-crypto-custody.md](../v26.10.19/sdk-results/wf4-ts-crypto-custody.md) | UNKNOWN | External workflow receipt: wf4-crypto-custody (ts) **NO-CONTEXT** |
+| wf5-py-edge- | [wf5-py-edge-resilience.md](../v26.10.19/sdk-results/wf5-py-edge-resilience.md) | UNKNOWN | External workflow receipt: wf5-edge-resilience (py) **NO-CONTEXT** |
 | wf5-ts-edge- | [wf5-ts-edge-resilience.md](../v26.10.19/sdk-results/wf5-ts-edge-resilience.md) | UNKNOWN | External workflow receipt: wf5-edge-resilience (ts) **NO-CONTEXT** |
 
 ## Enclave testbed
@@ -867,4 +877,3 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `kd108-blob-lease-acl-tbd.md` (standing UNKNOWN)
 - **SUSPECT**: `kd112-arm-policy-initiatives-tbd.md` (standing UNKNOWN)
 - **SUSPECT**: `v261019-09-py-external-suite.md` (standing UNKNOWN)
-- **SUSPECT**: `wf5-py-edge-resilience.md` (standing UNKNOWN)

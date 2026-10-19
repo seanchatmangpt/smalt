@@ -64,7 +64,7 @@ Any step failing stops the sequence — no doc is written past a red gate (the v
 
 ---
 
-Note on the third separator: a stray placeholder line appeared mid-output — the real file path for WO-15 is `/Users/sac/smalt/docs/jira/v26.10.19/15-verification-gates.md` (the placeholder block above it is void; ignore it).
+Note on the third separator: a stray placeholder line appeared mid-output — the real file path for WO-15 is `docs/jira/v26.10.19/15-verification-gates.md` (the placeholder block above it is void; ignore it).
 
 Key grounding facts used (all verified in-repo):
 - C6 rows 7/14/17 are the HS256 DEV-MODE pins at `docs/compliance/C6_OAUTH_OIDC.md:42,54,57`; JWKS route `{"keys":[]}` and `/common/discovery/instance` minimal form at `lib/smalt/arm_gateway/router.ex:2615-2645`; `openid_envelope/2` alg list at `router.ex:396`; `SmaltTokenCredential` at `workspace/lib/azure/credential.ts` (docblock names the missing-discovery root cause and the swap-to-ClientSecretCredential path).

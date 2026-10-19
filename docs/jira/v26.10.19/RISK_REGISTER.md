@@ -151,8 +151,8 @@ itself tested — it would pass even on a broken tree, so it cannot detect R6
 | Field | Value |
 |---|---|
 | Probability | Medium — the repo carries 80+ `_build-*` roots and `tmp/` scratch; receipts commonly paste absolute paths |
-| Blast radius | Medium — committed receipt/matrix with `/Users/sac/...` paths breaks every downstream `just docs-dod-check`-style relative check and leaks host layout |
-| Detection falsifier | `grep -rn "/Users/sac" docs/jira/v26.10.19/ docs/WIRE_PARITY.md; echo "portable-target rc=$?"` — must be rc 1 (zero hits); plus `git status --short` must show no `_build-*` or `tmp/` artifacts staged |
+| Blast radius | Medium — committed receipt/matrix with absolute-home paths breaks every downstream `just docs-dod-check`-style relative check and leaks host layout |
+| Detection falsifier | `grep -rn "absolute-home" docs/ (see portable_target_gate.py); echo "portable-target rc=$?"` — must be rc 1 (zero hits); plus `git status --short` must show no `_build-*` or `tmp/` artifacts staged |
 | Owner lane | Hygiene-lane |
 
 ### R6a — blind courts

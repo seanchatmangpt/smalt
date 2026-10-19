@@ -20,7 +20,7 @@ burn image on a local kind cluster (`k8s/kind/cluster.yaml`).
 # 1. Subject identity is REQUIRED — substitute from the image contract
 #    (org.smalt.subject label / SMALT_BURN_SUBJECT_SHA env; enforced by
 #    scripts/build_burn_image.sh). Never deploy the raw placeholder.
-SUBJECT_SHA=$(git -C /Users/sac/smalt rev-parse HEAD)
+SUBJECT_SHA=$(git rev-parse HEAD)
 sed "s/__SUBJECT_SHA__/${SUBJECT_SHA}/" k8s/burn/smalt-deployment.yaml \
   | kubectl apply -f -
 kubectl apply -f k8s/burn/smalt-services.yaml
