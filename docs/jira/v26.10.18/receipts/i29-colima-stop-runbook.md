@@ -340,3 +340,20 @@ rollback — colima stays down; court-x2 was not executed (0 runs).
 
 Standing: BLOCKED (court-x2 pending a quiet window: erlmcp beam 58477
 gone + load below threshold).
+
+## Hold-down decision — colima stays DOWN (2026-10-19, Context: solo(agent-lane, read-only census))
+
+Census of docker-dependent work at wrap:
+- **azb-18 final**: BLOCKED, carried to v26.10.19 (close condition: Docker VM
+  disk raise + image rebuild, missing `.venv-cosmos` layer —
+  `receipts/azb-18-cgroup-soak.md`). No docker run required this milestone.
+- **burn-ring re-judge**: carried (azb-22 lane receipt UNKNOWN, deps
+  disclosed); re-judge is a next-milestone lane, not pending here.
+- **G1**: landed (`receipts/i29-g1-land.md`, ALIVE).
+- **azb-20**: lib-only; only colima reference is observational.
+
+No pending docker work in v26.10.18 → colima NOT started. The quiet window
+stays open for court23 (blocked on quiet-check: erlmcp beam 58477 + load,
+not on docker). Holding colima down preserves the court23 precondition.
+
+**Standing: HOLD-DOWN (colima down, no rollback).**
