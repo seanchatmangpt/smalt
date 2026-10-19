@@ -84,6 +84,8 @@ produced it regardless.
 - GREEN 2/3 (load 1-min 59): `1 test, 0 failures (5 excluded)`
 - GREEN 3/3 (load 1-min 58): `1 test, 0 failures (5 excluded)`
 - Full file with stress included: `6 tests, 0 failures`
+- Post-`lane-clean` cold-root rerun (fresh `_build-ft-churn2` compile, no
+  hogs, ambient low): `1 test, 0 failures (5 excluded)`, `EXIT=0`
 
 ## Mechanism witness (calibration tracks machine speed)
 

@@ -14,6 +14,16 @@
 #      0 clean / 1 dirty (matrix driver asserts 4/4 clean).
 #
 # Env: BURN_SERVICE (service name), BURN_FLOOD_SECONDS (default 15).
+#
+# AZB-16 HOST mode (`--saturation`): the release image has no mix/test tree,
+# so the saturation suite runs in the smalt-burn TEST image (source at
+# /smalt, test target stage) under `--cpus 2`: repo test/ + lib/ are mounted
+# over the baked copies so the container compiles the CURRENT tree, and
+# `mix test test/azsim/amqp_saturation_test.exs --include stress` runs x3.
+# An atom-flood generator (connect -> partial HTTP request line ->
+# mid-request close) runs against the HOST substrate AMQP port for the
+# duration - the i22 :closed class under concurrent saturation. Exit 0 all
+# runs green / 1 any run red / 2 preflight refusal.
 set -u
 
 SERVICE="${BURN_SERVICE:-smalt-burn-unknown}"
@@ -48,6 +58,58 @@ emit() { # emit <clean 0/1> <detail>
     "$JSONL" "$_b" "$_clean" \
     "$(printf '%s' "$2" | tr -d '"' | cut -c1-200)" >> "$JSONL"
 }
+
+# ---------------------------------------------------------------------------
+# AZB-16 host mode: saturation suite x3 in the test image under cpus: 2
+# ---------------------------------------------------------------------------
+if [ "${1:-}" = "--saturation" ]; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  TEST_IMG=${SMALT_BURN_TEST_IMAGE:-smalt-burn:latest}
+  ROUNDS=${SMALT_SATURATION_ROUNDS:-3}
+  FLOOD_PORT=${SMALT_BURN_AMQP_PORT:-5672}
+
+  docker image inspect "$TEST_IMG" >/dev/null 2>&1 || {
+    echo "[BURN] test image $TEST_IMG missing - build per docker/BUILD_RECEIPT.md" >&2
+    exit 2
+  }
+
+  SUBJ_SHA=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unrecorded)
+  RUN_TAG=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT="$ROOT/docker/burn/results/saturation-$RUN_TAG"
+  mkdir -p "$OUT"
+
+  # atom-flood generator against the host substrate for the burn duration
+  # (i22 class: partial HTTP request line, mid-request close on :5672)
+  (
+    end=$((SECONDS + 600))
+    n=0
+    while [ "$SECONDS" -lt "$end" ]; do
+      if exec 3<>/dev/tcp/127.0.0.1/"$FLOOD_PORT" 2>/dev/null; then
+        printf 'PUT /flood HTTP/1.1\r\n' >&3 2>/dev/null || true
+        exec 3>&- 3<&- 2>/dev/null || true
+        n=$((n + 1))
+      fi
+      echo "$n" > "$OUT/flood-count"
+    done
+  ) &
+  FLOOD_PID=$!
+
+  RC=0
+  for i in $(seq 1 "$ROUNDS"); do
+    echo "[BURN] saturation round $i/$ROUNDS (cpus: 2)"
+    if ! docker run --rm --cpus 2 \
+        -e SMALT_SB_SHARED_KEY="$(head -c 24 /dev/urandom | base64)" \
+        -v "$ROOT/test:/smalt/test" -v "$ROOT/lib:/smalt/lib" \
+        "$TEST_IMG" mix test test/azsim/amqp_saturation_test.exs --include stress; then
+      RC=1
+    fi
+  done
+
+  kill "$FLOOD_PID" 2>/dev/null || true
+  wait "$FLOOD_PID" 2>/dev/null || true
+  echo "[BURN] saturation: rounds=$ROUNDS rc=$RC flood_conns=$(cat "$OUT/flood-count" 2>/dev/null || echo 0)"
+  exit "$RC"
+fi
 
 port_open() { exec 3<>/dev/tcp/127.0.0.1/"$1" 2>/dev/null || return 1; exec 3>&- 3<&-; return 0; }
 

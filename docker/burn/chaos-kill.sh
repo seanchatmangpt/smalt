@@ -33,12 +33,14 @@
 set -euo pipefail
 
 SMALT_BIN=${SMALT_BIN:-/app/_release/bin/smalt}
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
 PROBE_TIMEOUT=${SMALT_CHAOS_PROBE_TIMEOUT:-60}
 BURN_DIR=${SMALT_BURN_DIR:-/smalt/docs/jira/v26.10.18/burn}
 COMPOSE_IMG=${BURN_IMAGE:-smalt:local}
 GATES_HOST=${SMALT_GATES_HOST:-0}
 GATES_DIR=${SMALT_GATES_DIR:-}
-RECEIPT="$BURN_DIR/chaos-kill.jsonl"
+RECEIPT="$BURN_DIR/${SMALT_BURN_JSONL:-chaos-kill.jsonl}"
 
 # ===========================================================================
 # HOST mode: no release bin on the host -> drive one smalt:local container
@@ -108,7 +110,7 @@ if [ ! -x "$SMALT_BIN" ]; then
   exit 3
 fi
 mkdir -p "$BURN_DIR" 2>/dev/null || BURN_DIR=$(mktemp -d)
-RECEIPT="$BURN_DIR/chaos-kill.jsonl"
+RECEIPT="$BURN_DIR/${SMALT_BURN_JSONL:-chaos-kill.jsonl}"
 SUBJ_SHA=${SMALT_BURN_SUBJECT_SHA:-$(git -C /smalt rev-parse HEAD 2>/dev/null || echo unrecorded)}
 IMG_DIGEST=${BURN_IMAGE_DIGEST:-unrecorded}
 BURN_CONTAINER=${BURN_CONTAINER:-$(hostname 2>/dev/null || echo chaos-kill)}
@@ -273,17 +275,22 @@ for cycle in $(seq 1 "$STORM_CYCLES"); do
   f="$dir/dm_t_resources.dets"
   if [ "$variant" -eq 0 ]; then
     sz=$(wc -c < "$f")
-    head -c $((sz / 2)) "$f" > "$f.t" && mv "$f.t" "$f"
+    if ! head -c $((sz / 2)) "$f" > "$f.t"; then
+      storm_fail "$cycle" "truncate-tail corruption step failed"
+    fi
+    mv "$f.t" "$f"
     CORRUPT_TAG="truncate-tail"
   elif [ "$variant" -eq 1 ]; then
-    printf '\377' | dd of="$f" bs=1 count=1 conv=notrunc 2>/dev/null
+    if ! printf '\377' | dd of="$f" bs=1 count=1 conv=notrunc 2>/dev/null; then
+      storm_fail "$cycle" "header-flip corruption step failed"
+    fi
     CORRUPT_TAG="header-flip"
   fi
 
   # ---- reboot leg ----------------------------------------------------------
+  rc=0
   STORM_DIR="$dir" STORM_LEDGER="$(tr '\n' ' ' < "$ledger")" \
-    "$ELIXIR_BIN" /burn/storm_reboot.exs >"$dir/reboot.out" 2>&1
-  rc=$?
+    "$ELIXIR_BIN" /burn/storm_reboot.exs >"$dir/reboot.out" 2>&1 || rc=$?
 
   if grep -q 'STORM_OK_TYPOUTCOME' "$dir/reboot.out"; then
     [ -n "$CORRUPT_TAG" ] || storm_fail "$cycle" "store_corrupt outcome on an UNCORRUPTED cycle"
@@ -319,25 +326,28 @@ if [ "${SMALT_CHAOS_SABOTAGE:-}" = "dets-unrepaired" ]; then
     read -r -t 0.05 -u 0 _ 2>/dev/null || true
   done
   kill -9 "$av_wpid" 2>/dev/null || true
-  av_out=$("$ELIXIR_BIN" -e '
+  av_out=$(STORM_DIR="$av_dir" AV_DIR="$av_dir" "$ELIXIR_BIN" -e '
+    Enum.each(Path.wildcard("/app/_release/lib/*/ebin"), &Code.prepend_path/1)
+    {:ok, _} = Application.ensure_all_started(:telemetry)
     dir = System.fetch_env!("STORM_DIR")
     case Smalt.Store.DetsMirror.start_link(dir: dir, tables: [:dm_t_resources], interval: 3_600_000, repair: false) do
       {:ok, m} -> GenServer.stop(m); IO.puts("AV_OPENED_CLEAN")
       {:error, r} -> IO.puts("AV_REFUSED #{inspect(r)}")
-    end' 2>&1)
+    end' 2>&1) || true
   case "$av_out" in
     AV_OPENED_CLEAN*)
-      emit "probe" 0 0 "anti-vacuity FAILED: repair:false opened the killed file clean — fence vacuous"
+      emit "probe" 0 "anti-vacuity FAILED: repair:false opened the killed file clean — fence vacuous"
       echo "[chaos-kill] ANTI-VACUITY FAILED: repair:false opened the killed file clean" >&2
       exit 1
       ;;
-    *AV_REFUSED*)
-      emit "probe" 1 0 "DETS_UNREPAIRED anti-vacuity witnessed: repair:false refused typed $(echo "$av_out" | grep AV_REFUSED | cut -c1-120)"
-      echo "[chaos-kill] ANTI-VACUITY WITNESSED: repair:false refused the killed file typed (rc=1 = expected failure)"
+    *AV_REFUSED*|*needs_repair*|*corrupt_mirror*)
+      av_detail=$(echo "$av_out" | grep -o "corrupt_mirror[^\"]*" | head -1 | cut -c1-80)
+      emit "probe" 1 "DETS_UNREPAIRED anti-vacuity witnessed: repair:false refused typed needs_repair (${av_detail})"
+      echo "[chaos-kill] ANTI-VACUITY WITNESSED: repair:false refused the killed file typed needs_repair (rc=1 = expected failure)"
       exit 1
       ;;
     *)
-      emit "probe" 1 0 "DETS_UNREPAIRED untyped sabotage outcome: $(echo "$av_out" | tail -1 | cut -c1-120)"
+      emit "probe" 1 "DETS_UNREPAIRED untyped sabotage outcome: $(echo "$av_out" | tail -1 | cut -c1-120)"
       echo "[chaos-kill] ANTI-VACUITY: untyped outcome (treated as witnessed-typed-fence? NO — inspect)" >&2
       exit 1
       ;;
@@ -345,8 +355,7 @@ if [ "${SMALT_CHAOS_SABOTAGE:-}" = "dets-unrepaired" ]; then
 fi
 
 
-[ -z "$SABOTAGE_MODE" ] && { run_eval s1-store-kill "$s1" || exit 1; }
-true
+if [ -z "$SABOTAGE_MODE" ]; then run_eval s1-store-kill "$s1" || exit 1; fi
 
 # ==========================================================================
 # s2 — LRO sweeper killed mid-flip: one-terminal convergence
@@ -420,8 +429,7 @@ true = (et1 == et2)
 IO.puts("CHAOS_OK s2 lro-terminal=#{terminal_status} idempotent")
 '
 
-[ -z "$SABOTAGE_MODE" ] && { run_eval s2-lro-flip "$s2" || exit 1; }
-true
+if [ -z "$SABOTAGE_MODE" ]; then run_eval s2-lro-flip "$s2" || exit 1; fi
 
 # ==========================================================================
 # s3 — wasm engine killed mid-seal: typed vocabulary + supervised restart
@@ -505,8 +513,7 @@ true = sealed?
 IO.puts("CHAOS_OK s3 engine_unavailable-witnessed-then-seal-ok")
 '
 
-[ -z "$SABOTAGE_MODE" ] && { run_eval s3-wasm-seal "$s3" || exit 1; }
-true
+if [ -z "$SABOTAGE_MODE" ]; then run_eval s3-wasm-seal "$s3" || exit 1; fi
 
 # ==========================================================================
 # s4 — AMQP queue filled to 4096, #4097 refused
@@ -541,8 +548,7 @@ first =
 IO.puts("CHAOS_OK s4 capacity-4096-refused-4097-typed")
 '
 
-[ -z "$SABOTAGE_MODE" ] && { run_eval s4-amqp-capacity "$s4" || exit 1; }
-true
+if [ -z "$SABOTAGE_MODE" ]; then run_eval s4-amqp-capacity "$s4" || exit 1; fi
 
 # ==========================================================================
 # gates — the 6 invariant gates re-run green
