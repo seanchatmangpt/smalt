@@ -227,16 +227,33 @@ def mint_token(port=None):
     last = "no attempt"
     for attempt in range(5):
         conn = http.client.HTTPConnection(HOST, port, timeout=10)
-        conn.request("POST", "/oauth2/v2.0/token", body=conn_body, headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Content-Length": str(len(conn_body)),
-        })
-        resp = conn.getresponse()
-        payload = resp.read()
-        conn.close()
-        if resp.status == 200:
+        try:
+            conn.request("POST", "/oauth2/v2.0/token", body=conn_body, headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": str(len(conn_body)),
+            })
+            resp = conn.getresponse()
+            payload = resp.read()
+            status = resp.status
+        except OSError as e:
+            # A just-spawned full-app substrate binds its planes asynchronously:
+            # the data/amqp port can accept while the ARM listener is still
+            # coming up, so the first mint attempt can hit ConnectionRefused
+            # (witnessed 2026-10-19: cosmos leg mint raced the arm listener on
+            # the private-port block; the Oct 17 run won the same race). This
+            # is the same post-bind warmup class the status-retry already
+            # covers — never a verdict, always a retry.
+            last = f"STS token mint attempt {attempt + 1}/5 connection failed: {e!r}"
+            time.sleep(1.0 * (attempt + 1))
+            continue
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if status == 200:
             return json.loads(payload)["access_token"]
-        last = f"STS token mint attempt {attempt + 1}/5 returned {resp.status}: {payload[:200]!r}"
+        last = f"STS token mint attempt {attempt + 1}/5 returned {status}: {payload[:200]!r}"
         time.sleep(1.0 * (attempt + 1))
     fail_closed(last)
 
