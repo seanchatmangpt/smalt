@@ -185,3 +185,13 @@ the pair evidence behind the wire-tier classifications. (3) F44 (post-i23
 noproc witness) must be dispositioned against `receipts/i23-fence11-flip.md`'s
 hammer, not closed as a new mechanism. (4) All NEW-UNTRIAGED faces follow the
 solo-bisect-first protocol (r236 §6 / i27 method) before any fix lands.
+
+## i29 amqp-wire-fresh load-class faces (appended 2026-10-18)
+
+Solo ×3 classification per i29-eg-gracefulstop-classify (Context: slice).
+Both faces green solo under load — environmental, no `lib/` fix required.
+
+| # | Face | First witness | Mechanism hypothesis | Witness log | Classification |
+|---|---|---|---|---|---|
+| F58 | `test/eventgrid_conformance_test.exs:334` — binary-mode event (ce-* headers + JSON body) round-trip got 503, expected 200 | i29-amqp-wire-fresh (full-tree run, 2783 tests) | 503 = data-plane not yet ready under 11-beam concurrent-fleet load; solo ×3 12/0 green (runs 22:19–22:25 PDT, `_build-ft-4daffc65`) | `receipts/i29-eg-gracefulstop-classify.md` | LOAD-FLAKE (solo 3/3, NEW) |
+| F59 | `test/azsim/graceful_stop_test.exs:73` — WasmEngine owner must be running (app booted) assert fired | i29-amqp-wire-fresh (full-tree run) | Shared-tree boot race with concurrent fleet lanes: owner process not yet registered at test start under load; solo ×3 3/0 green (same build root) | `receipts/i29-eg-gracefulstop-classify.md` | LOAD-FLAKE (solo 3/3, NEW) |
