@@ -1,0 +1,29 @@
+{
+  "ocel:eventTypes": [
+    "arm.resource.transition",
+    "blob.custody.transition"
+  ],
+  "ocel:objectTypes": [
+    "subject",
+    "container",
+    "burn-cycle",
+    "receipt"
+  ],
+  "ocel:events": [
+    {
+      "id": "ev-1",
+      "type": "arm.resource.transition",
+      "time": "2026-10-18T00:00:01Z",
+      "attributes": {},
+      "relationships": []
+    },
+    {
+      "id": "ev-2",
+      "type": "blob.custody.transition",
+      "time": "2026-10-18T00:00:02Z",
+      "attributes": {},
+      "relationships": []
+    }
+  ],
+  "ocel:objects": []
+}

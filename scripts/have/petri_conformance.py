@@ -47,7 +47,7 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_NET = os.path.join(REPO_ROOT, "scripts", "have", "petri_net.json")
 DECISIONS_DIR = os.path.join(REPO_ROOT, "docs", "jira", "v26.10.18", "decisions")
-QUARANTINE_PATH = os.path.join("tmp", "have", "QUARANTINE")
+QUARANTINE_DIR = os.path.join(REPO_ROOT, "tmp", "have", "quarantine")
 ALERT_TYPE = "ALRT-SEV1-PETRI-TOKEN-IMBALANCE"
 
 
@@ -90,10 +90,8 @@ def replay(net: dict, doc: dict) -> dict:
     # PROTOCOL-UPDATE candidates: event types present in the log, absent from net.
     unknown = sorted(log_types - known_types)
 
-    marking: dict[str, int] = {p: 0 for p in net["places"]}
-    for p in net["places"]:
-        if p not in marking:
-            marking[p] = 0
+    initial = {p: int(net.get("initial_marking", {}).get(p, 0)) for p in net["places"]}
+    marking = dict(initial)
     produced: dict[str, int] = {p: 0 for p in net["places"]}
     consumed: dict[str, int] = {p: 0 for p in net["places"]}
     starved: list[dict] = []   # firing attempts blocked by an empty input place
@@ -127,7 +125,8 @@ def replay(net: dict, doc: dict) -> dict:
 
     imbalances = []
     for p in sorted(net["places"]):
-        drift = produced[p] - consumed[p] - final[p]
+        # drift = initial + produced - consumed - final; 0 means balanced.
+        drift = initial[p] + produced[p] - consumed[p] - final[p]
         if drift != 0:
             imbalances.append({
                 "place": p,
@@ -145,8 +144,9 @@ def replay(net: dict, doc: dict) -> dict:
         "starved": starved,
         "unknown_event_types": unknown,
         "token_balance": {
-            p: {"produced": produced[p], "consumed": consumed[p],
-                "final_declared": final[p], "drift": produced[p] - consumed[p] - final[p]}
+            p: {"initial": initial[p], "produced": produced[p], "consumed": consumed[p],
+                "final_declared": final[p],
+                "drift": initial[p] + produced[p] - consumed[p] - final[p]}
             for p in sorted(net["places"])
         },
         "imbalances": imbalances,
@@ -200,12 +200,16 @@ def _broken_link(net: dict, starved_ev: dict) -> str:
 
 # ---------------------------------------------------------------- actions
 
-def write_quarantine(report: dict, verdict: dict) -> str:
-    os.makedirs(os.path.dirname(QUARANTINE_PATH), exist_ok=True)
-    with open(QUARANTINE_PATH, "w", encoding="utf-8") as f:
+def write_quarantine(report: dict, verdict: dict, log_path: str) -> str:
+    import datetime
+    os.makedirs(QUARANTINE_DIR, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+    path = os.path.join(QUARANTINE_DIR, "petri_%s.json" % stamp)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump({"alert": ALERT_TYPE, "classification": verdict["class"],
-                   "reason": verdict["reason"], "report": report}, f, indent=2)
-    return QUARANTINE_PATH
+                   "reason": verdict["reason"], "log": log_path,
+                   "report": report}, f, indent=2)
+    return path
 
 
 def mint_adr(verdict: dict, log_path: str) -> str:
@@ -315,7 +319,7 @@ def main(argv: list | None = None) -> int:
         if not args.quiet:
             print("[PETRI] minted decision record: %s" % path)
     if verdict["class"] == "REGRESSION" and args.quarantine:
-        path = write_quarantine(report, verdict)
+        path = write_quarantine(report, verdict, args.log)
         if not args.quiet:
             print("[PETRI] quarantine written: %s" % path)
     return 1

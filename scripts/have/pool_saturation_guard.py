@@ -162,6 +162,29 @@ def run_cycle(
                 "requested_by": "pool_saturation_guard",
             },
         )
+        # Mirror into the run_state ledger so multiple ticks compose: each
+        # deficit tick leaves a kind=dispatch row in run_state.jsonl, and the
+        # actuator can read the accumulated request history across ticks.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import state_ledger
+        state_ledger.append_entry(
+            state_ledger.make_entry(
+                "dispatch",
+                "pool_saturation_guard",
+                json.dumps(
+                    {
+                        "deficit": deficit,
+                        "workers": n,
+                        "target_pool": target_pool,
+                        "severity": sev,
+                        "dispatch_ledger": str(state_dir / DISPATCH),
+                    },
+                    sort_keys=True,
+                ),
+                ts=now,
+            ),
+            path=str(state_dir / "run_state.jsonl"),
+        )
     else:
         cycle["status"] = "OK"
 
@@ -185,6 +208,9 @@ def write_heartbeat(state_dir: Path, cycle: dict[str, Any], now: float) -> None:
 # ---------------------------------------------------------------------------
 
 def self_check() -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import state_ledger
+
     failures: list[str] = []
 
     def check(name: str, cond: bool) -> None:
@@ -212,6 +238,16 @@ def self_check() -> int:
         check("alert-row-deficit", rows[-1]["deficit"] == 8)
         reqs = [json.loads(l) for l in (sd / DISPATCH).read_text().splitlines() if l.strip()]
         check("dispatch-request-deficit", reqs[-1]["kind"] == "dispatch_request" and reqs[-1]["deficit"] == 8)
+        # Mirror row: the deficit tick must leave a kind=dispatch entry in the
+        # run_state ledger (tmp/have/run_state.jsonl) so ticks compose.
+        state_rows = state_ledger.read_entries(str(sd / "run_state.jsonl"))
+        mirror = [r for r in state_rows if r["kind"] == "dispatch"]
+        check(
+            "dispatch-mirrored-to-state-ledger",
+            len(mirror) == 1
+            and json.loads(mirror[0]["detail"])["deficit"] == 8
+            and mirror[0]["subject"] == "pool_saturation_guard",
+        )
 
         # Fixture 3: sustained deficit (9 workers, previous heartbeat 12 < 15)
         # -> SEV2 with the last-2-heartbeat window satisfied.

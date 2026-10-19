@@ -1,0 +1,30 @@
+{
+  "name": "rp04-canonical-settlement-lifecycle",
+  "description": "RP-04 pinned settlement lifecycle: arm.resource.transition -> amqp.delivery.settled -> blob.custody.transition",
+  "places": [
+    "resources.unarmed",
+    "delivery.pending",
+    "delivery.settled",
+    "custody.transfered"
+  ],
+  "transitions": {
+    "arm.resource.transition": {
+      "input": ["resources.unarmed"],
+      "output": ["delivery.pending"]
+    },
+    "amqp.delivery.settled": {
+      "input": ["delivery.pending"],
+      "output": ["delivery.settled"]
+    },
+    "blob.custody.transition": {
+      "input": ["delivery.settled"],
+      "output": ["custody.transfered"]
+    }
+  },
+  "initial_marking": {
+    "resources.unarmed": 1
+  },
+  "final_marking": {
+    "custody.transfered": 1
+  }
+}
