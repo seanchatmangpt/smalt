@@ -43,8 +43,60 @@ RECEIPT_DIR = os.path.join(REPO, "tmp", "invariant-gates")
 TEST_DIR = os.path.join(REPO, "test")
 
 # Files whose restore discipline was hand-verified (see module docstring).
+# Each entry: scanner cannot express the restore form used; discipline
+# hand-verified on 2026-10-18 (receipt docs/jira/v26.10.18/receipts/
+# i29-leak-remediation.md). Whole-file exemption, named per file.
 ALLOWLIST = {
+    # ORIGINAL: saves the whole :smalt env as a map via a comprehension.
     "test/tls_test.exs",
+    # Variable-key save_restore/1 helper + on_exit restore-only shields
+    # (for key <- [:token_audiences, :trusted_proxies] on_exit with
+    # prev-keyed put/delete). Genuine nil-preserving restore; scanner
+    # cannot bind variable keys.
+    "test/auth_enforce_test.exs",
+    # for-loop variable-key port pins in setup, restored via
+    # SmaltTest.PortEnv.restore(prev_ports) + Lifecycle.restore_app/0 in
+    # on_exit. Genuine discipline; variable keys inexpressible.
+    "test/canonical_projection_test.exs",
+    # :persistent_term twin metadata under module-scoped keys
+    # {__MODULE__, :twin}/{__MODULE__, :twin_sup}; sup stopped in on_exit,
+    # keys read only by this module. Tuple keys inexpressible.
+    "test/kv_tls_test.exs",
+    # restore_env/2 nil-preserving variable-key restore helper, called
+    # from on_exit blocks; mutation keys themselves save + restore.
+    "test/lro_test.exs",
+    # ets.new with @table/module-attribute or per-test variable table
+    # names, every table created by the test is deleted in on_exit
+    # (:ets.delete(table)). Variable table names inexpressible.
+    "test/store_dets_test.exs",
+    "test/store_dets_growth_test.exs",
+    "test/azsim/dets_recovery_test.exs",
+    "test/data_plane/audit_planes_test.exs",
+    # pterm key variables (key_ref/tp_ref/rs_ref = {Module, :keypair}
+    # tuples) saved via :persistent_term.get and erased/restored in
+    # try/after; plus variable-key env restore loops in after blocks.
+    "test/trust_profile_test.exs",
+    # pterm receipt counters under {__MODULE__, key} via bump/count
+    # helpers -- intentionally suite-lifetime, module-scoped keys.
+    "test/amqp/fuzz_test.exs",
+    # pterm {__MODULE__, :port} pin for the court's own booted listener;
+    # module-scoped, read only by the same file's port/0.
+    "test/compliance/c3_cosmos.exs",
+    "test/compliance/c4_blob.exs",
+    # Module-body shifted-port boot config (test_helper-class, guarded by
+    # :ets.info(:smalt_blobs) so it is a no-op when the app is up);
+    # variable-key for-loop put.
+    "test/data_plane/blob_service_test.exs",
+    # pterm {Smalt.TrustProfile, :keypair} copy of the signer keypair,
+    # erased in try/after (lens-5); tuple key inexpressible.
+    "test/security/security_hardening_test.exs",
+    # azb20 boot SCRIPT (mix run, not a test module): sets lane-private
+    # port/planes/sb config before ensure_all_started in its own BEAM;
+    # no test process, nothing to restore into.
+    "test/sdk-full/azb20/boot_plane.exs",
+    # The flagged put_env is inside a heredoc SCRIPT executed by a
+    # subprocess BEAM (durability twin); zero leak into the test VM.
+    "test/azsim/data_plane_test.exs",
 }
 
 MUT_APPS = ("smalt", "logger")
