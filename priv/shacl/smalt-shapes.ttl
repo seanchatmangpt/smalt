@@ -19,11 +19,15 @@
 smalt:DefaultShape a sh:NodeShape ;
     sh:closed false ;
     sh:targetClass smalt:DefaultShapeClass ;
+    # Azure parity (v26.10.19): child resources (queues, containers, subnets,
+    # consumer groups, ...) inherit region from their parent — real ARM omits
+    # `location` on child PUTs, so the default shape no longer requires it.
+    # Top-level location is still type-constrained where a shape names it
+    # (ResourceGroupShape, VNetShape).
     sh:property [
         sh:path smalt:location ;
-        sh:minCount 1 ;
         sh:maxCount 1 ;
-        sh:message "A resource payload must carry exactly one location." ;
+        sh:message "A resource payload may carry at most one location." ;
     ] .
 
 smalt:ResourceGroupShape a sh:NodeShape ;

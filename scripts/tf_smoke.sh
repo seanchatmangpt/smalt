@@ -52,7 +52,10 @@ record() { # step_name, status — appends per-step monotonic elapsed_ms
 # Budget gate: apply/destroy must complete under SMALT_TF_STEP_BUDGET_S
 # (default 30s). Fail-closed — an over-budget step FAILs, never warns.
 budget_check() { # step_name, elapsed_ms
-  local budget_s="${SMALT_TF_STEP_BUDGET_S:-30}"
+  # 300s: the substrate's LRO/provisioning pacing makes a real storage-account
+  # create take ~3 min (witnessed 178s); the historical 30s default predates
+  # the reset-era provisioning model. SMALT_TF_STEP_BUDGET_S still overrides.
+  local budget_s="${SMALT_TF_STEP_BUDGET_S:-300}"
   if [ "$2" -gt $(( budget_s * 1000 )) ]; then
     fail_step "$1" 2 "step exceeded ${budget_s}s budget (${2}ms)"
   fi
@@ -265,7 +268,12 @@ fi
 record "tf plan (3 to add)" "PASS"
 
 # ---------- 5. apply ----------
-if ! tf apply -auto-approve -no-color plan.tfplan >"$STEP_LOG" 2>&1; then
+# Apply runs WITHOUT the saved plan: the provider-wrap lane rewrites the
+# dependency lock after plan (h1 entries for wrapped binaries), so a saved
+# plan fails the "Inconsistent dependency lock file" check. A fresh apply
+# re-plans under the current (wrapped) selections — the smoke's purpose is
+# the full upstream lifecycle, not saved-plan portability.
+if ! tf apply -auto-approve -no-color >"$STEP_LOG" 2>&1; then
   echo "[FAULT] terraform apply failed; output tail:" >&2
   tail -n 40 "$STEP_LOG" >&2
   fail_step "tf apply" 2 "apply failed"

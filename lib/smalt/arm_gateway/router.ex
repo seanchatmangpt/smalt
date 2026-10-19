@@ -3329,13 +3329,12 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Storage/storageAccounts/:parent/blobServices/default" do
-    handle_child_get(
-      conn,
-      "Microsoft.Storage/storageAccounts/blobServices",
-      sub_id,
-      rg_name,
-      "storageAccounts/#{parent}/blobServices/default"
-    )
+    # AZB-25 (KD-class divergence, witnessed by azurerm 4.54 apply): real ARM
+    # auto-provisions the blobServices/default singleton with every storage
+    # account; the azurerm storage create flow GETs it and 404-loops otherwise.
+    # Synthesize the real-ARM default shape when the account exists (same
+    # treatment as fileServices/default below).
+    storage_service_default_get(conn, "blobServices", sub_id, rg_name, parent)
   end
 
   delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Storage/storageAccounts/:parent/blobServices/default" do
@@ -4717,8 +4716,11 @@ defmodule Smalt.ArmGateway.Router do
           # "acct/..." keys) must not orphan on account teardown.
           BlobStorage.drop_account_data(resource_name)
 
-          op = LRO.start_op(res_id)
-          async_put_response(conn, 202, op)
+          # AZB-25b: real ARM storage-account DELETE is SYNCHRONOUS (200 OK)
+          # — azurerm 4.54's delete path does not poll a 202 (witnessed:
+          # "unexpected status 202 with response {operation record}").
+          # Only the PUT create flow is LRO-async for this type.
+          send_resp(conn, 200, "")
 
         _ ->
           send_arm_error(
