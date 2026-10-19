@@ -5,19 +5,17 @@ POINTER document. The canonical KD register is
 duplicates rows. Flips happen only via `scripts/kd_flip.py --apply`, gated on a
 PASS witness receipt newer than the shim's mtime.
 
-Counts as of 2026-10-16 (lane 9 refresh; counted from the on-disk table):
+Counts as of 2026-10-19 @ HEAD 6681746 (re-derived from the on-disk table;
+prior refresh 2026-10-16 carried 94/22/72 — predates the post-v26.10.16
+flips):
 
 | metric | count | how counted |
 |---|---|---|
-| register rows | 94 | `^\| KD-` table rows |
-| OPEN | 72 | status column not CLOSED-* (94 − 22 CLOSED-*) |
-| CLOSED-WITH-RECEIPT | 13 | status column literal |
-| CLOSED-SIMULATED | 9 | status column literal |
-| CLOSED total | 22 | CLOSED-WITH-RECEIPT + CLOSED-SIMULATED |
-
-(94 distinct KD ids are referenced across the file including prose/citation
-mentions; the table carries 94 rows as of this refresh — earlier counts of
-78/79 predate the KD-53..KD-94 batch landing.)
+| register rows | 95 | `grep -c '^| KD-'` over the canonical table |
+| OPEN | 63 | status column not CLOSED-* (95 − 32 CLOSED-*) |
+| CLOSED-WITH-RECEIPT | 14 | status column literal |
+| CLOSED-SIMULATED | 18 | status column literal |
+| CLOSED total | 32 | CLOSED-WITH-RECEIPT + CLOSED-SIMULATED |
 
 Related, non-canonical: `docs/WIRE_PARITY.md` GAP tokens (open gaps, receipt-
 gated flips, never minted unilaterally) and per-window

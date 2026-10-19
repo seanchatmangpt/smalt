@@ -4,11 +4,12 @@ Every recipe on the `just` CLI surface, by source module. Projected from
 `just --list` and the module files themselves; regenerate by re-reading the
 modules, do not hand-patch this table.
 
-Module inventory (as of 2026-10-16): 20 modules in `justfile.d/` (01-15, 18-22;
-slots 16-17 do not exist) plus the root `Justfile` for core substrate/court
-recipes. Naming convention: `NN-<concern>.just`, one import line each in the
-root `Justfile` (lines 217-241); concurrent lanes add modules, never edit the
-root.
+Module inventory (as of 2026-10-19 @ HEAD 6681746): 29 modules in
+`justfile.d/` (01-15, 18-30; slots 16-17 do not exist; 28 is shared by
+28-stress and 28-test-budget) plus the root `Justfile` for core
+substrate/court recipes. Naming convention: `NN-<concern>.just`, one import
+line each in the root `Justfile` (lines 221-254); concurrent lanes add
+modules, never edit the root.
 
 ## Root Justfile (core substrate + admission courts)
 

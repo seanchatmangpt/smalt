@@ -210,8 +210,9 @@ defmodule Smalt.Amqp.SaturationTest do
     # drop harness references before the bounds read: the residual must be
     # broker state, not the test process's retained phase data
     queues = :ok
-    _ = all_conns
+    _ = queues
     all_conns = :ok
+    _ = all_conns
 
     if ba do
       assert_saturation_bounds(baseline, n_queues, "saturation-#{n_queues}")
@@ -381,7 +382,7 @@ defmodule Smalt.Amqp.SaturationTest do
   # so the ±1% / ±10% / atom budgets measure the saturation phase, not
   # harness warm-up. The anti-vacuity shim (one String.to_atom per queue
   # name) still blows the atom budget by orders of magnitude.
-  defp warm_baseline(n_warm \\ 64) do
+  defp warm_baseline(n_warm) do
     # lazy-loaded OTP modules (e.g. :sys, pulled in by the first
     # GenServer stop/restart at a wave boundary) mint their atom sets on
     # first load - force-load before the baseline so the atom budget
@@ -659,11 +660,6 @@ defmodule Smalt.Amqp.SaturationTest do
   end
 
   defp send_frame(client, perf), do: :gen_tcp.send(client, FrameCodec.encode_frame(:amqp, 0, perf))
-
-  defp recv_until(client, name, timeout \\ 5000) do
-    frame = recv_frame(client, timeout)
-    if frame.performative.performative == name, do: frame, else: recv_until(client, name, timeout)
-  end
 
   defp recv_frame(client, timeout \\ 5000) do
     frame = do_recv_frame(client, timeout)
