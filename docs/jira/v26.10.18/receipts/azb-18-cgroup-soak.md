@@ -135,3 +135,65 @@ flip the standing.
 `kind-smalt-control-plane`, `kind-smalt-worker`, `act-sock-relay`). The 8
 `smalt-burn-smalt-burn-integration-*` containers seen in the disk-hold check are gone —
 **no soak residue**.
+
+## Cycle verdict: cgroup-20261019T065557Z (2026-10-19)
+
+Context: solo(cgroup-soak watch lane; watch started ~06:57Z, containers terminated 07:13–07:15Z before first 120s poll landed)
+
+Driver: watch-lane soak cycle (PID 58040 /tmp/azb18-diag.jsonl driver not running at watch time).
+Gate: `python3 scripts/validate_burn.py --gate docs/jira/v26.10.18/burn/cgroup-20261019T065557Z.jsonl` — **exit 1, STANDING_REFUSED** (derived standing PARTIAL_ALIVE; claimed ALIVE over dirty rows).
+
+Per-plane verdicts (subject_sha 2a9ccd4f, tier offline, all `UNHANDLED_EXIT` / `broken_term=mu_unlawful`):
+
+| plane | container | exit | tests | failures | note |
+|---|---|---|---|---|---|
+| control | smalt-soak-control | 137 (SIGKILL/OOM) | 0 | 0 | cpus=2.0 mem=2g |
+| data | smalt-soak-data | 2 | 2740 | 44 | cpus=1.5 mem=2g |
+| integration | smalt-soak-integration | 137 (SIGKILL/OOM) | 0 | 0 | cpus=2.0 mem=2g |
+| identity | smalt-soak-identity | 2 | 2740 | 45 | cpus=1.0 mem=2g |
+
+Reading: control and integration were OOM-killed (137) before running any tests; data and identity ran the offline tier but failed 44/2740 and 45/2740 respectively under tight cgroup ceilings. Zero orphans, zero crash reports, zero hogs on all four planes. Gate verdict: REFUSED — cycle NOT green.
+
+## Cycle 2 — mem 2g diag run — 2026-10-19 (Context: solo(...))
+
+Run: PID 58040, `bash docker/burn/cgroup-soak.sh --cycles 1 --jsonl /tmp/azb18-diag.jsonl`,
+`SMALT_SOAK_MEM_LIMIT=2g`, subject 2a9ccd4f, image `smalt-burn@sha256:238622b…`.
+Elapsed ~12m30s; harness verdict `FAIL — unledgered failure face(s)`, soak exit 1.
+
+Fixed validator (`scripts/validate_burn.py` as committed; standing derives from plane rows):
+
+```
+python3 scripts/validate_burn.py --gate /tmp/azb18-diag.jsonl   # exit 1
+[VALIDATE-BURN] ... derived_standing=PARTIAL_ALIVE failing_rows=[4 × UNHANDLED_EXIT mu_unlawful]
+[VALIDATE-BURN] ... STANDING_REFUSED: ALIVE claimed over dirty rows (derived standing PARTIAL_ALIVE)
+```
+
+Per-plane verdicts (cycle 1, stage=soak, cpus 2.0/1.5/2.0/1.0, mem 2g):
+
+| plane | container | exit | tests | failures | row verdict |
+|---|---|---|---|---|---|
+| control | smalt-soak-control | 137 (SIGKILL) | 0 | 0 | UNHANDLED_EXIT / mu_unlawful |
+| data | smalt-soak-data | 2 | 2740 | 44 | UNHANDLED_EXIT / mu_unlawful |
+| integration | smalt-soak-integration | 137 (SIGKILL) | 0 | 0 | UNHANDLED_EXIT / mu_unlawful |
+| identity | smalt-soak-identity | 2 | 2740 | 45 | UNHANDLED_EXIT / mu_unlawful |
+
+Reading (honest, W672-aware):
+
+- **2g is enough to run the suite on data and identity** — full 2740-test tier executed with
+  real failure counts (44 / 45). That is the mem raise doing its job; the failures themselves
+  are cgroup-environment failures to classify in the next cycle, not compile or OOM aborts.
+- **control and integration are still OOM-killed at 2g** (exit 137, tests=0 — a compile-abort/
+  kill, not a failure count). Their caps are the highest (2.0 CPUs), so this is not a CPU
+  artifact; 2g remains below the compile+run footprint for those planes. Next-cycle lever:
+  raise `SMALT_SOAK_MEM_LIMIT` toward 4g for the 2.0-CPU planes, or stagger compile.
+
+**Validator fix proven on a second subject**: the run_receipt still carries
+`standing: ALIVE (derived_from replay exit)`; the fixed validator refuses it
+(`STANDING_REFUSED`, derived PARTIAL_ALIVE, exit 1). Cycle-1's ALIVE-over-dirty row is
+superseded — that file also flips to PARTIAL_ALIVE under this validator
+(`receipts/i29-validator-standing-fix.md`).
+
+**Standing: PARTIAL_ALIVE** — harness + fixed gate proven end-to-end on a real container leg;
+2 of 4 planes now execute the full offline tier, 2 still OOM at 2g.
+
+Replay: `python3 scripts/validate_burn.py --gate /tmp/azb18-diag.jsonl` (exit 1, output above).
