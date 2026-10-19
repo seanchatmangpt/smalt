@@ -118,3 +118,6 @@ tmp/have/
 # npm-from-root byproduct (sdk probes resolve via test/sdk-smoke/node_modules; nothing committed uses root)
 /package.json
 /package-lock.json
+
+# npm-from-root byproduct (explicit anchor; node_modules/ above already matches)
+/node_modules/
