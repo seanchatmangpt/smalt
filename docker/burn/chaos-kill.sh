@@ -35,6 +35,7 @@ set -euo pipefail
 SMALT_BIN=${SMALT_BIN:-/app/_release/bin/smalt}
 PROBE_TIMEOUT=${SMALT_CHAOS_PROBE_TIMEOUT:-60}
 BURN_DIR=${SMALT_BURN_DIR:-/smalt/docs/jira/v26.10.18/burn}
+COMPOSE_IMG=${BURN_IMAGE:-smalt:local}
 GATES_HOST=${SMALT_GATES_HOST:-0}
 GATES_DIR=${SMALT_GATES_DIR:-}
 RECEIPT="$BURN_DIR/chaos-kill.jsonl"
