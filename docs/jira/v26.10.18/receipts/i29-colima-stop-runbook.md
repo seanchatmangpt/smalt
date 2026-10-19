@@ -244,3 +244,26 @@ Action: **HOLD** — `colima stop` NOT executed; `just quiet-check` NOT run
 (conjunction gate: (a) failed, so quiet-check under a live soak would itself
 be suspect). Rollback: none (P0: holding is the rollback). Re-evaluate after
 the cgroup-soak cycle reaches quiescence.
+
+## AZB-23 quiet-window evaluation — 2026-10-19 (Context: solo(blocked-evaluation))
+
+**Decision: BLOCKED — window not quiet. No colima stop, no court23 run.**
+
+Evidence (all commands run 2026-10-19, exit codes as shown):
+
+- `docker ps` (exit 0): 3x `smalt-burn:latest` cgroup soak containers UP 17 minutes
+  (`smalt-cgroup-soak-smalt-soak-{data,integration,identity}-1`), plus 2 dbg containers
+  (`dbg-id`, `dbg-id2`, up 2h), 2x kind node (`kind-smalt-worker`, `kind-smalt-control-plane`
+  publishing 9443/8443/5672), and `act-sock-relay`. Active soak + builds present — docker NOT quiesced.
+- `lsof -nP -iTCP:9443/8443/5672 -sTCP:LISTEN`: all three held by one `ssh` tunnel, PID 61023
+  (exit 0 on each port — sockets live, not free).
+- `git status --porcelain lib/ | wc -l` → **7** — azb-20 lib lane NOT clean (dirty: arm_gateway/router,
+  data_plane/{blob_storage,cosmos,key_vault_actions}, egress_router, messaging/amqp/{connection,queue_store}).
+
+Both quiet-window preconditions failed (docker active AND lib/ dirty). `colima stop` would have
+killed the live cgroup soak mid-run and the kind cluster. Per runbook law the stop is deferred
+until: soak containers exit, ssh tunnel 61023 released, and the 7-file lib/ diff lands.
+
+**Court-x2 verdicts: NOT RUN (precondition refusal — lawful, quiet-check path not reached).**
+
+Rollback runbook (i29-colima-stop-runbook.md) unchanged and still valid for the next window.
