@@ -19,6 +19,7 @@
     ]
   },
   "ocel:eventTypes": [
+    "burn.boot-burn.boot",
     "burn.boot-burn.probe",
     "burn.boot-burn.recover",
     "burn.boot-burn.teardown"
@@ -31,1249 +32,4225 @@
   ],
   "ocel:events": [
     {
-      "id": "ev-burn-1820063dca66-1-probe-1",
-      "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:00Z",
+      "id": "ev-burn-0c2ba37729fd-1-boot-1",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:16:50Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 4,
+        "recovery_ms": 13,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/1",
+          "objectId": "burn-cycle/0c2ba37729fd/1",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-1-recover-2",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:00Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/1",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-1-recover-3",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:00Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/1",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-1-teardown-4",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:03Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 7,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/1",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-2-probe-5",
+      "id": "ev-burn-0c2ba37729fd-1-probe-2",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:08Z",
+      "time": "2026-10-19T01:16:50Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/1",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-1-teardown-3",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:16:59Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/1",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-2-boot-4",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:17:20Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 5,
+        "recovery_ms": 21,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/2",
+          "objectId": "burn-cycle/0c2ba37729fd/2",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-2-recover-6",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:08Z",
+      "id": "ev-burn-0c2ba37729fd-2-probe-5",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:17:20Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "n/a-sigterm-path",
+        "detail": "canonical-probe-ok",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/2",
+          "objectId": "burn-cycle/0c2ba37729fd/2",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-2-recover-7",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:08Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/2",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-2-teardown-8",
+      "id": "ev-burn-0c2ba37729fd-2-teardown-6",
       "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:11Z",
+      "time": "2026-10-19T01:17:25Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "zero-listeners",
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/2",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-3-boot-7",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:17:50Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 25,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/3",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-3-probe-8",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:17:51Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/3",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-3-teardown-9",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:17:58Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/3",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-4-boot-10",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:18:22Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 24,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/4",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-4-probe-11",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:18:22Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/4",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-4-teardown-12",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:18:27Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/4",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-5-boot-13",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:18:50Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 23,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/5",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-5-probe-14",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:18:51Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/5",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-5-teardown-15",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:18:52Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/5",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-6-boot-16",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:19:11Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 19,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/6",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-6-probe-17",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:19:12Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/6",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-6-teardown-18",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:19:20Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/6",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-7-boot-19",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:19:35Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 15,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/7",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-7-probe-20",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:19:36Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/7",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-7-teardown-21",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:19:44Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/7",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-8-boot-22",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:20:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 26,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/8",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-8-probe-23",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:20:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/8",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-8-teardown-24",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:20:13Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/8",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-9-boot-25",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:20:34Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 21,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/9",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-9-probe-26",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:20:34Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/9",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-9-teardown-27",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:20:42Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/9",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-10-boot-28",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:21:02Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 20,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/10",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-10-probe-29",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:20:59Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/10",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-10-recover-30",
+      "type": "burn.boot-burn.recover",
+      "time": "2026-10-19T01:21:34Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "kill9-no-zombie-dets-recovered",
+        "recovery_ms": 30,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/10",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-10-teardown-31",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:21:41Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/10",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-11-boot-32",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:22:03Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 21,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/11",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-11-probe-33",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:22:03Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/11",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-11-teardown-34",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:22:07Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/11",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-12-boot-35",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:22:22Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 15,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/12",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-12-probe-36",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:22:23Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/12",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-12-teardown-37",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:22:30Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/12",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-13-boot-38",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:22:47Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 17,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/13",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-13-probe-39",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:22:47Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/13",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-13-teardown-40",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:22:55Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/13",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-14-boot-41",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:23:09Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 14,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/14",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-14-probe-42",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:23:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/14",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-14-teardown-43",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:23:21Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/14",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-15-boot-44",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:23:35Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 14,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/15",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-15-probe-45",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:23:35Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/15",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-15-teardown-46",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:23:43Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/15",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-16-boot-47",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:24:01Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 18,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/16",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-16-probe-48",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:24:01Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/16",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-16-teardown-49",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:24:09Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/16",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-17-boot-50",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:24:25Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 16,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/17",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-17-probe-51",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:24:26Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/17",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-17-teardown-52",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:24:33Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/17",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-18-boot-53",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:24:49Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 16,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/18",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-18-probe-54",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:24:50Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/18",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-18-teardown-55",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:24:57Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/18",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-19-boot-56",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:25:14Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 17,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/19",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-19-probe-57",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:25:15Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/19",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-19-teardown-58",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:25:22Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/19",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-20-boot-59",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:25:39Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 20,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/20",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-20-probe-60",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:25:39Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/20",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-20-recover-61",
+      "type": "burn.boot-burn.recover",
+      "time": "2026-10-19T01:26:15Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "kill9-no-zombie-dets-recovered",
+        "recovery_ms": 33,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/20",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-20-teardown-62",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:26:25Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/20",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-21-boot-63",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:26:43Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 18,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/21",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-21-probe-64",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:26:44Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/21",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-21-teardown-65",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:26:52Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/21",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-22-boot-66",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:27:12Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 20,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/22",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-22-probe-67",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:27:13Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/22",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-22-teardown-68",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:27:21Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/22",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-23-boot-69",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:27:39Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 18,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/23",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-23-probe-70",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:27:39Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/23",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-23-teardown-71",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:27:45Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/23",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-24-boot-72",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:27:53Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
         "recovery_ms": 8,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/2",
+          "objectId": "burn-cycle/0c2ba37729fd/24",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-3-probe-9",
+      "id": "ev-burn-0c2ba37729fd-24-probe-73",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:16Z",
+      "time": "2026-10-19T01:27:53Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/24",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-24-teardown-74",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:27:59Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/24",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-25-boot-75",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:28:08Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 5,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/3",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-3-recover-10",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:16Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/3",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-3-recover-11",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:16Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/3",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-3-teardown-12",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:19Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 8,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/3",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-4-probe-13",
-      "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:23Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "all-6-listening",
-        "recovery_ms": 4,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/4",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-4-recover-14",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:23Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/4",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-4-recover-15",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:23Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/4",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-4-teardown-16",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:27Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 8,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/4",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-5-probe-17",
-      "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:32Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "all-6-listening",
-        "recovery_ms": 5,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/5",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-5-recover-18",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:33Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/5",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-5-recover-19",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:33Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/5",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-5-teardown-20",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:36Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "zero-listeners",
         "recovery_ms": 9,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/5",
+          "objectId": "burn-cycle/0c2ba37729fd/25",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-6-probe-21",
+      "id": "ev-burn-0c2ba37729fd-25-probe-76",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:42Z",
+      "time": "2026-10-19T01:28:08Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/25",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-25-teardown-77",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:28:12Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/25",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-26-boot-78",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:28:21Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 6,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/6",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-6-recover-22",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:42Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/6",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-6-recover-23",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:42Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/6",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-6-teardown-24",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:45Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "zero-listeners",
         "recovery_ms": 9,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/6",
+          "objectId": "burn-cycle/0c2ba37729fd/26",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-7-probe-25",
+      "id": "ev-burn-0c2ba37729fd-26-probe-79",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:24:51Z",
+      "time": "2026-10-19T01:28:21Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/26",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-26-teardown-80",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:28:27Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/26",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-27-boot-81",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:28:36Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 6,
+        "recovery_ms": 9,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/7",
+          "objectId": "burn-cycle/0c2ba37729fd/27",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-7-recover-26",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:51Z",
+      "id": "ev-burn-0c2ba37729fd-27-probe-82",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:28:36Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "n/a-sigterm-path",
+        "detail": "canonical-probe-ok",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/7",
+          "objectId": "burn-cycle/0c2ba37729fd/27",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-7-recover-27",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:24:51Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/7",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-7-teardown-28",
+      "id": "ev-burn-0c2ba37729fd-27-teardown-83",
       "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:24:55Z",
+      "time": "2026-10-19T01:28:40Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "zero-listeners",
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/27",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-28-boot-84",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:28:51Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 11,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/28",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-28-probe-85",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:28:51Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/28",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-28-teardown-86",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:28:56Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/28",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-29-boot-87",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:29:05Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 9,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/29",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-29-probe-88",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:29:05Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/29",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-29-teardown-89",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:29:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/29",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-30-boot-90",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:29:19Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 9,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/30",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-30-probe-91",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:29:19Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/30",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-30-recover-92",
+      "type": "burn.boot-burn.recover",
+      "time": "2026-10-19T01:29:38Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "kill9-no-zombie-dets-recovered",
+        "recovery_ms": 16,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/30",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-30-teardown-93",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:29:42Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/30",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-31-boot-94",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:29:54Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 12,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/31",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-31-probe-95",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:29:54Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/31",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-31-teardown-96",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:29:59Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/31",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-32-boot-97",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:30:09Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 9,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/32",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-32-probe-98",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:30:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/32",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-32-teardown-99",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:30:12Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/32",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-33-boot-100",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:30:23Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 11,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/33",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-33-probe-101",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:30:23Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/33",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-33-teardown-102",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:30:31Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/33",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-34-boot-103",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:30:41Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
         "recovery_ms": 10,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/7",
+          "objectId": "burn-cycle/0c2ba37729fd/34",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-8-probe-29",
+      "id": "ev-burn-0c2ba37729fd-34-probe-104",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:25:00Z",
+      "time": "2026-10-19T01:30:42Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "all-6-listening",
-        "recovery_ms": 5,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/8",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-8-recover-30",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:00Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
+        "detail": "canonical-probe-ok",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/8",
+          "objectId": "burn-cycle/0c2ba37729fd/34",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-8-recover-31",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:00Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/8",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-8-teardown-32",
+      "id": "ev-burn-0c2ba37729fd-34-teardown-105",
       "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:25:04Z",
+      "time": "2026-10-19T01:30:43Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 9,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/8",
+          "objectId": "burn-cycle/0c2ba37729fd/34",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-9-probe-33",
-      "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:25:08Z",
+      "id": "ev-burn-0c2ba37729fd-35-boot-106",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:30:54Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 4,
+        "recovery_ms": 11,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/9",
+          "objectId": "burn-cycle/0c2ba37729fd/35",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-9-recover-34",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:08Z",
+      "id": "ev-burn-0c2ba37729fd-35-probe-107",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:30:54Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "n/a-sigterm-path",
+        "detail": "canonical-probe-ok",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/9",
+          "objectId": "burn-cycle/0c2ba37729fd/35",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-9-recover-35",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:08Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/9",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-9-teardown-36",
+      "id": "ev-burn-0c2ba37729fd-35-teardown-108",
       "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:25:11Z",
+      "time": "2026-10-19T01:31:02Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 7,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/9",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-10-probe-37",
-      "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:25:17Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "all-6-listening",
-        "recovery_ms": 6,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/10",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-10-recover-38",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:28Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "beam-sigkilled-no-zombie",
+        "detail": "zero-listeners-no-zombies-no-crashlog",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/10",
+          "objectId": "burn-cycle/0c2ba37729fd/35",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-10-recover-39",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:28Z",
+      "id": "ev-burn-0c2ba37729fd-36-boot-109",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:31:12Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "dets-integrity-putget-counters",
+        "detail": "all-6-listening",
+        "recovery_ms": 13,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/36",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-36-probe-110",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:31:12Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/36",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-36-teardown-111",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:31:14Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/36",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-37-boot-112",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:31:24Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
         "recovery_ms": 10,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/10",
+          "objectId": "burn-cycle/0c2ba37729fd/37",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-10-teardown-40",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:25:31Z",
+      "id": "ev-burn-0c2ba37729fd-37-probe-113",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:31:24Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "zero-listeners",
+        "detail": "canonical-probe-ok",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/10",
+          "objectId": "burn-cycle/0c2ba37729fd/37",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-11-probe-41",
+      "id": "ev-burn-0c2ba37729fd-37-teardown-114",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:31:30Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/37",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-38-boot-115",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:31:41Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 11,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/38",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-38-probe-116",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:25:40Z",
+      "time": "2026-10-19T01:31:41Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/38",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-38-teardown-117",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:31:46Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/38",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-39-boot-118",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:31:56Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 10,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/39",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-39-probe-119",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:31:59Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/39",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-39-teardown-120",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:32:00Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/39",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-40-boot-121",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:32:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 10,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/40",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-40-probe-122",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:32:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/40",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-40-recover-123",
+      "type": "burn.boot-burn.recover",
+      "time": "2026-10-19T01:32:28Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "kill9-no-zombie-dets-recovered",
+        "recovery_ms": 16,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/40",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-40-teardown-124",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:32:40Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/40",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-41-boot-125",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:32:43Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 2,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/41",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-41-probe-126",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:32:43Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/41",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-41-teardown-127",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:32:49Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/41",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-42-boot-128",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:33:01Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 12,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/42",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-42-probe-129",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:33:01Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/42",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-42-teardown-130",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:33:05Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/42",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-43-boot-131",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:33:13Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 8,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/43",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-43-probe-132",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:33:13Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/43",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-43-teardown-133",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:33:21Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/43",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-44-boot-134",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:33:31Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 10,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/44",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-44-probe-135",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:33:31Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/44",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-44-teardown-136",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:33:34Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/44",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-45-boot-137",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:33:43Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
@@ -1284,236 +4261,577 @@
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/11",
+          "objectId": "burn-cycle/0c2ba37729fd/45",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-11-recover-42",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:40Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/11",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-11-recover-43",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:40Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/11",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-11-teardown-44",
-      "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:25:40Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 9,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/11",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-12-probe-45",
+      "id": "ev-burn-0c2ba37729fd-45-probe-138",
       "type": "burn.boot-burn.probe",
-      "time": "2026-10-18T23:25:46Z",
+      "time": "2026-10-19T01:33:43Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/45",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-45-teardown-139",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:33:50Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/45",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-46-boot-140",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:34:01Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
         "detail": "all-6-listening",
-        "recovery_ms": 6,
+        "recovery_ms": 11,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/12",
+          "objectId": "burn-cycle/0c2ba37729fd/46",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-12-recover-46",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:46Z",
+      "id": "ev-burn-0c2ba37729fd-46-probe-141",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:34:01Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "n/a-sigterm-path",
+        "detail": "canonical-probe-ok",
         "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/12",
+          "objectId": "burn-cycle/0c2ba37729fd/46",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
     },
     {
-      "id": "ev-burn-1820063dca66-12-recover-47",
-      "type": "burn.boot-burn.recover",
-      "time": "2026-10-18T23:25:46Z",
-      "attributes": {
-        "verdict": "CLEAN",
-        "exit_code": 0,
-        "detail": "n/a-sigterm-path",
-        "recovery_ms": 0,
-        "crash_reports": 0,
-        "orphans_count": 0
-      },
-      "relationships": [
-        {
-          "objectId": "container/1820063dca66",
-          "qualifier": "executed_in"
-        },
-        {
-          "objectId": "burn-cycle/1820063dca66/12",
-          "qualifier": "belongs_to"
-        },
-        {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
-          "qualifier": "verifies"
-        },
-        {
-          "objectId": "receipt/boot-burn.jsonl",
-          "qualifier": "recorded_in"
-        }
-      ]
-    },
-    {
-      "id": "ev-burn-1820063dca66-12-teardown-48",
+      "id": "ev-burn-0c2ba37729fd-46-teardown-142",
       "type": "burn.boot-burn.teardown",
-      "time": "2026-10-18T23:25:49Z",
+      "time": "2026-10-19T01:34:07Z",
       "attributes": {
         "verdict": "CLEAN",
         "exit_code": 0,
-        "detail": "zero-listeners",
-        "recovery_ms": 9,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
         "crash_reports": 0,
         "orphans_count": 0
       },
       "relationships": [
         {
-          "objectId": "container/1820063dca66",
+          "objectId": "container/0c2ba37729fd",
           "qualifier": "executed_in"
         },
         {
-          "objectId": "burn-cycle/1820063dca66/12",
+          "objectId": "burn-cycle/0c2ba37729fd/46",
           "qualifier": "belongs_to"
         },
         {
-          "objectId": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
           "qualifier": "verifies"
         },
         {
-          "objectId": "receipt/boot-burn.jsonl",
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-47-boot-143",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:34:21Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 14,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/47",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-47-probe-144",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:34:22Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/47",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-47-teardown-145",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:34:24Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/47",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-48-boot-146",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:34:36Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 12,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/48",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-48-probe-147",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:34:40Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/48",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-48-teardown-148",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:34:41Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/48",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-49-boot-149",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:34:53Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 12,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/49",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-49-probe-150",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:34:53Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/49",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-49-teardown-151",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:35:02Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/49",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-50-boot-152",
+      "type": "burn.boot-burn.boot",
+      "time": "2026-10-19T01:35:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "all-6-listening",
+        "recovery_ms": 8,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/50",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-50-probe-153",
+      "type": "burn.boot-burn.probe",
+      "time": "2026-10-19T01:35:10Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "canonical-probe-ok",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/50",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-50-recover-154",
+      "type": "burn.boot-burn.recover",
+      "time": "2026-10-19T01:35:30Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "kill9-no-zombie-dets-recovered",
+        "recovery_ms": 16,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/50",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
+          "qualifier": "recorded_in"
+        }
+      ]
+    },
+    {
+      "id": "ev-burn-0c2ba37729fd-50-teardown-155",
+      "type": "burn.boot-burn.teardown",
+      "time": "2026-10-19T01:35:36Z",
+      "attributes": {
+        "verdict": "CLEAN",
+        "exit_code": 0,
+        "detail": "zero-listeners-no-zombies-no-crashlog",
+        "recovery_ms": 0,
+        "crash_reports": 0,
+        "orphans_count": 0
+      },
+      "relationships": [
+        {
+          "objectId": "container/0c2ba37729fd",
+          "qualifier": "executed_in"
+        },
+        {
+          "objectId": "burn-cycle/0c2ba37729fd/50",
+          "qualifier": "belongs_to"
+        },
+        {
+          "objectId": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
+          "qualifier": "verifies"
+        },
+        {
+          "objectId": "receipt/boot-all.jsonl",
           "qualifier": "recorded_in"
         }
       ]
@@ -1521,122 +4839,426 @@
   ],
   "ocel:objects": [
     {
-      "id": "subject/29bb0371426a270c9c9ac2dc483b7e2a9d226938",
+      "id": "subject/8703230d8d97214b52022d0e57eb65128b1d32d1",
       "type": "subject",
       "attributes": {
-        "sha": "29bb0371426a270c9c9ac2dc483b7e2a9d226938"
+        "sha": "8703230d8d97214b52022d0e57eb65128b1d32d1"
       }
     },
     {
-      "id": "container/1820063dca66",
+      "id": "container/0c2ba37729fd",
       "type": "container",
       "attributes": {
-        "name": "1820063dca66",
+        "name": "0c2ba37729fd",
         "plane": "all",
-        "image_digest": "unrecorded"
+        "image_digest": "sha256:941a40219f49297c9b28752c6d2aa16831d388464e0ecb8161c3aee432833681"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/1",
+      "id": "burn-cycle/0c2ba37729fd/1",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 1,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "receipt/boot-burn.jsonl",
+      "id": "receipt/boot-all.jsonl",
       "type": "receipt",
       "attributes": {
-        "path": "/smalt/docs/jira/v26.10.18/burn/boot-burn.jsonl"
+        "path": "/burn-results/boot-all.jsonl"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/2",
+      "id": "burn-cycle/0c2ba37729fd/2",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 2,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/3",
+      "id": "burn-cycle/0c2ba37729fd/3",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 3,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/4",
+      "id": "burn-cycle/0c2ba37729fd/4",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 4,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/5",
+      "id": "burn-cycle/0c2ba37729fd/5",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 5,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/6",
+      "id": "burn-cycle/0c2ba37729fd/6",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 6,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/7",
+      "id": "burn-cycle/0c2ba37729fd/7",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 7,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/8",
+      "id": "burn-cycle/0c2ba37729fd/8",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 8,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/9",
+      "id": "burn-cycle/0c2ba37729fd/9",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 9,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/10",
+      "id": "burn-cycle/0c2ba37729fd/10",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 10,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/11",
+      "id": "burn-cycle/0c2ba37729fd/11",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 11,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
       }
     },
     {
-      "id": "burn-cycle/1820063dca66/12",
+      "id": "burn-cycle/0c2ba37729fd/12",
       "type": "burn-cycle",
       "attributes": {
         "cycle": 12,
-        "container": "1820063dca66"
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/13",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 13,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/14",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 14,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/15",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 15,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/16",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 16,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/17",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 17,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/18",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 18,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/19",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 19,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/20",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 20,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/21",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 21,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/22",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 22,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/23",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 23,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/24",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 24,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/25",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 25,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/26",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 26,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/27",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 27,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/28",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 28,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/29",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 29,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/30",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 30,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/31",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 31,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/32",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 32,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/33",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 33,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/34",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 34,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/35",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 35,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/36",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 36,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/37",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 37,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/38",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 38,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/39",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 39,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/40",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 40,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/41",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 41,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/42",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 42,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/43",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 43,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/44",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 44,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/45",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 45,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/46",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 46,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/47",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 47,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/48",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 48,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/49",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 49,
+        "container": "0c2ba37729fd"
+      }
+    },
+    {
+      "id": "burn-cycle/0c2ba37729fd/50",
+      "type": "burn-cycle",
+      "attributes": {
+        "cycle": 50,
+        "container": "0c2ba37729fd"
       }
     }
   ]
