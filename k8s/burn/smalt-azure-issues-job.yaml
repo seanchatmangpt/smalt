@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smalt-azure-issues-burn
+  namespace: default
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        job: smalt-azure-issues-burn
+    spec:
+      restartPolicy: Never
+      volumes:
+      - name: burn-evidence-volume
+        hostPath:
+          path: /burn-evidence
+          type: Directory
+      containers:
+      - name: test-runner
+        image: smalt:local
+        imagePullPolicy: Never
+        command: ["mix", "test", "test/azsim/azure_common_issues_test.exs"]
+        env:
+        - name: MIX_ENV
+          value: "test"
+        volumeMounts:
+        - name: burn-evidence-volume
+          mountPath: /burn-evidence
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"

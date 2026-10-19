@@ -102,3 +102,13 @@ docker/burn/results/
 
 # burn run artifacts (receipts dir is tracked; raw run logs are not)
 docs/jira/v26.10.18/burn/*.log
+
+# azsim/burn ephemeral run artifacts (receipts + JSONL are tracked)
+test/azsim/tmp/
+docker/burn/tmp/
+tmp/burn-*.jsonl
+tmp/burn-flood-status-*
+tmp/burn-leg-*.log
+tmp/kill-storm/
+tmp/azb19/
+tmp/azb20/

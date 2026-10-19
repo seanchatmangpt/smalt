@@ -105,3 +105,83 @@ fix receipt's hammer; a face matching an OPEN-ROTATING row keeps its named
 mechanism (F6: measurement-fence jitter, fix shape pre-agreed in
 `receipts/i22-fuzz-atom-fix.md`; F7/F14/F17: contention, solo-bisect first per
 r236 §6 protocol) and gets a new recurrence count on this table.
+
+## v26.10.18 v2-soak wire/full faces (appended 2026-10-18)
+
+Witnesses (5 legs, fleet-load, 15:32–19:27 PDT): `/tmp/v2_soak_run1.log`,
+`/tmp/v2_soak_run2.log`, `/tmp/v2_soak_run3.log` (full suite) and
+`/tmp/v2_soak_wire1.log`, `/tmp/v2_soak_wire2.log` (wire tier). Run summaries:
+run1 2700 tests / 3 failures, run2 2674/17, run3 2026 tests / 17 failures, wire
+legs 2747/2755 tests / 11 failures each. Trees moved under the lanes
+(HEAD 014bb7a mid-window); every standing is per-run-tree, stale-by-default per
+the header law. Cross-ref: `receipts/i27-deterministic-pair.md` is NOT landed
+(no such file in `docs/jira/v26.10.18/receipts/`); the landed solo-bisect
+sibling `receipts/i27-rotating-bisect.md` (tree 014bb7a, ~20:55 PDT) is cited
+where its per-file verdicts cover a face's identity. Classification labels:
+DETERMINISTIC-PAIR-KNOWN = face recurred with the same signature on paired legs
+and the mechanism is registered (this ledger or i27); NEW-UNTRIAGED = no
+registered mechanism yet.
+
+### Proposed rows (F24–F57, 34 faces)
+
+| # | Face | First witness | Mechanism hypothesis | Witness log | Classification |
+|---|---|---|---|---|---|
+| F24 | `test/stress_tier_census_test.exs:13` — stress tier population >= 20 (tag loss fails loudly) | run1 | MIXED SIGNATURES: run1 `File.Error` could not read `test/tiny_iso_probe_test.exs` (probe file absent on the run tree — the census correctly refused a missing stress-tier probe); run2/run3 `ExUnit.TimeoutError 60000ms` under fleet load. Both faces sit inside the F23 stress-tier disposition question | /tmp/v2_soak_run1.log (+run2/run3) | NEW-UNTRIAGED (F23 class) |
+| F25 | `test/canonical_projection_test.exs:125/:134` — generated artifact drift fence docs/capabilities.json stale vs Registry truth | run1 (all 5 legs) | DETERMINISTIC doc drift: lanes moved Registry truth (lib/) without re-running `Smalt.Projection.Canonical.write()`; the fence correctly refuses the stale projection — same class as F15 cite-drift. Fix shape: regenerate, never hand-edit | /tmp/v2_soak_run1.log (+all legs) | DETERMINISTIC-PAIR-KNOWN |
+| F26 | `test/pplan_test.exs:2490` — lens5 interaction lattice under a live sweeper: open-world law, `Enum.count(results, &match?({:ok,_})) <= 2` got 9 | run1 | Post-destroy sweep did not reclaim interaction rows before the count assertion — sweep-timing vs assertion ordering under load; unrelated to lens7 (F27) despite same module | /tmp/v2_soak_run1.log | NEW-UNTRIAGED |
+| F27 | `test/pplan_test.exs:2875` — lens7 half-degraded window Store down, CAS paths exit `{:noproc, _}` typed (MatchError) | wire1 (wire tier, 2/2) | i27-rotating-bisect solo 2/2 DETERMINISTIC, new solo signature: `Supervisor.terminate_child(Smalt.Supervisor, Smalt.Store)` → `{:error, :not_found}` — `Smalt.Store` is not a live child of `Smalt.Supervisor` in the solo boot; supervision-tree shape drift | /tmp/v2_soak_wire1.log (+wire2) | DETERMINISTIC-PAIR-KNOWN (i27) |
+| F28 | `test/azsim/data_plane_test.exs:156` — conditional HEAD/GET If-Modified-Since: unmodified -> 304 (assert / `nil.datetime_to_gregorian_seconds/1` UndefinedFunctionError run3) | run2 (2/3 full legs) | Setup chain: prior step returns nil HTTP-time and the conditional helper dereferences it — the run2 assert-fail and run3 nil-deref are two symptoms of one nil-time setup face | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED (pair presence) |
+| F29 | `test/azsim/data_plane_test.exs:107` — range GET (wire) suffix range bytes=-5 returns 206 + Content-Range (MatchError) | run2 | Wire-tier range handler returned a shape the test's `=` did not admit; single witness | /tmp/v2_soak_run2.log | NEW-UNTRIAGED |
+| F30 | `test/azsim/integration_plane_test.exs:37` — send/receive/complete round-trip (run2 `:ok` vs `{:ok, 1}`; run3 `delivery_count == 0` got 1) | run2 (2/3) | Two signatures: run2 is API-drift-deterministic (QueueStore.enqueue returns `{:ok,1}`, test pins `:ok`); run3 saw delivery_count 1 — a redelivery-face sibling in the same test | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED (pair presence) |
+| F31 | `test/azsim/integration_plane_test.exs:261` — event grid: event published while down is delivered after recovery (falsifier guard) | run2 (2/3) | Recovery-delivery ordering under load; assert detail truncated in log capture — needs solo-bisect capture before mechanism call | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED |
+| F32 | `test/azsim/integration_plane_test.exs:48` — abandon requeues; deadletter after max-delivery-count (run2 enqueue `:ok` vs `{:ok,1}`; run3 `delivery_count == 0` got 1) | run2 (2/3) | Same enqueue-return drift family as F30 plus delivery-count face — one shared setup/assert drift across the IntegrationPlane enqueue-assert cluster (F30/F32/F34 share the signature) | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED (pair presence) |
+| F33 | `test/azsim/integration_plane_test.exs:212` — event grid: subscriber crash => redelivery with same id (never loss) | run2 (2/3) | Crash-redelivery timing under load; assert detail not captured — solo-bisect first | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED |
+| F34 | `test/azsim/integration_plane_test.exs:137` — partition detach sends amqp:link:detach-forced; relink delivers (CaseClauseError, 2/3) | run2 (2/3) | Identical CaseClauseError on both legs — relink receive admitted an unexpected shape; pair-signature deterministic pending identity of the unmatched clause | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED (pair presence) |
+| F35 | `test/azsim/control_plane_test.exs:110` — strict_version_validation unadmitted provider type refused 400 InvalidApiVersionParameter, got `InvalidResourceShape` | run2 | Route-order/shape-check fired before api-version validation on the run tree — deterministic-per-tree ordering face | /tmp/v2_soak_run2.log | NEW-UNTRIAGED |
+| F36 | `test/tls_test.exs:215` — concurrency falsifier TLS-261014-01 paired boots N=20 zero crashes (ExUnit.TimeoutError 60000ms, 2/3) | run2 (2/3) | F23 saturation-timeout class: 60 s budget under hog+flood load; the 20-paired-boot falsifier is the intended stress face | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED (F23 class) |
+| F37 | `test/azsim/identity_plane_test.exs:298` — key rotation re-create issues a new version; old still decrypts (failed at `v1 = create_key(name)`) | run2 | Setup call failed before any assertion — create_key transport/setup face, likely shared with F38 | /tmp/v2_soak_run2.log | NEW-UNTRIAGED |
+| F38 | `test/azsim/identity_plane_test.exs:343` — key rotation versions listing carries every issued version (failed at `v1 = create_key(name)`) | run2 | Same create_key setup face as F37 — one mechanism, two identities | /tmp/v2_soak_run2.log | NEW-UNTRIAGED |
+| F39 | `test/azsim/identity_plane_test.exs:195` — KD-15 mode-blind challenge (AZB-08) challenge echoes request origin; no authorization_uri | run2 | WWW-Authenticate echoed `http://vault.smalt.local:59338/...` — the inbound Host (ephemeral per-run-tree port, http scheme) instead of the canonical TLS-twin 8443 shape the test pins; deterministic-per-tree echo face | /tmp/v2_soak_run2.log | NEW-UNTRIAGED |
+| F40 | `test/data_plane/r133_policy_cas_test.exs:24` — concurrent metadata PUTs vs hold-sets, committed holds never lost (W5-8 race) (ExUnit.TimeoutError 60000ms) | run2 | F23 saturation-timeout class; race falsifier under hog load | /tmp/v2_soak_run2.log | NEW-UNTRIAGED (F23 class) |
+| F41 | `test/compliance/c1_arm.exs:386` — 429 + Retry-After when :smalt, :arm_rate_limit configured (statuses were all 200, 2/3) | run2 (2/3) | DETERMINISTIC pair: identical left/right both legs — the run tree had the rate limiter unconfigured (or config read drifted); the falsifier correctly refused the un-enforced contract | /tmp/v2_soak_run2.log (+run3) | DETERMINISTIC-PAIR-KNOWN |
+| F42 | `test/data_plane/blob_hardening_test.exs:1665` — ST6 D2 pagination perf contract: 10-page chain over 8000x2KiB under budget (2/3) | run2 (2/3) | Perf-budget face under fleet load; if solo re-run is green, load-class per F22/AZB-12 conversion (paired-ratio shape) | /tmp/v2_soak_run2.log (+run3) | NEW-UNTRIAGED (pair presence) |
+| F43 | `test/amqp/lock_manager_test.exs:211` — session locks renew by token updates BOTH :smalt_sb_locks and :smalt_sb_sessions (F2) | run3 | Lock renew returned non-`{:ok,_}`; sibling of the F2 lock mechanism family | /tmp/v2_soak_run3.log | NEW-UNTRIAGED |
+| F44 | `test/smalt_affidavit_wasm_test.exs:89` — mutated payload / garbage delta fail closed typed, no crash-loop (GenServer.stop EXIT noproc) | run3 | F21 family: `stop_engine/0` noproc tolerance was landed in `receipts/i23-fence11-flip.md` — this is a POST-fix noproc witness; per header protocol this is a fix-regression check citing i23, not a new defect, until i23's hammer is re-run | /tmp/v2_soak_run3.log | NEW-UNTRIAGED (F21/i23 re-open check) |
+| F45 | `test/amqp/sweeper_test.exs:77` — message-lock tombstone grace (audit Finding 3): past grace, renew is 404 :not_found | run3 | Assert on `LockManager.get` result did not match; tombstone-grace timing vs sweeper cadence under load | /tmp/v2_soak_run3.log | NEW-UNTRIAGED |
+| F46 | `test/mcp_test.exs:1247` — lens6 concurrent tools/call under descriptor module reload stays payload-faithful (Task.await_many 30000ms EXIT time out) | run3 | 30 s await budget exceeded under fleet load; hammer+reloader tasks starved — load-class candidate | /tmp/v2_soak_run3.log | NEW-UNTRIAGED |
+| F47 | `test/auth_enforce_test.exs:2165` — lens4 cap side: at the cap the mint still succeeds (ExUnit.TimeoutError 60000ms) | run3 | F23 saturation-timeout class | /tmp/v2_soak_run3.log | NEW-UNTRIAGED (F23 class) |
+| F48 | `test/apiversion_matrix_test.exs:278` — generic_provider_put PUT api-version 2099-12-31 -> 400 InvalidApiVersionParameter (ArgumentError) | run3 | ArgumentError raised inside the handler on the run tree — deterministic-per-tree shape face (sibling of F35's ordering class) | /tmp/v2_soak_run3.log | NEW-UNTRIAGED |
+| F49 | `test/error_codes_doc_test.exs:46` — docs/ERROR_CODES.md byte-identical projection of sources | wire1 (wire tier, 2/2) | DETERMINISTIC doc drift: error-code sources moved without `just gen-error-codes` regeneration; fence correct. Wire legs pair 2/2 with identical identity | /tmp/v2_soak_wire1.log (+wire2) | DETERMINISTIC-PAIR-KNOWN |
+| F50 | `test/enclave_ocel_test.exs:52` — a real lifecycle run emits one stage event per stage (assert {:ok, report} = Lifecycle.run) | wire1 (2/2) | i27-rotating-bisect solo 2/2 DETERMINISTIC: destroy stage leaves residue `:smalt_sb_queues: ["resourcewritesuccess"]` → `ORPHANED_DATA_PLANE_ROWS_DETECTED`, Lifecycle.run `{:error, {:stage_failed, :lifecycle, _}}` — one shared enclave-residue cause (F50/F51/F53/F54) | /tmp/v2_soak_wire1.log (+wire2) | DETERMINISTIC-PAIR-KNOWN (i27) |
+| F51 | `test/enclave_state_test.exs:173` — destroy: reverse-topological deletes, all 404, residue zero | wire1 (2/2) | Same i27 enclave-residue mechanism as F50 | /tmp/v2_soak_wire1.log (+wire2) | DETERMINISTIC-PAIR-KNOWN (i27) |
+| F52 | `test/mcp_test.exs:420` — doctor.summary reports real supervisor children, table readiness (`Smalt.Store` child missing) | wire1 (2/2; also hyphen-log runs 1–3) | Store child absent from doctor summary on the wire-tier boot — supervision-tree/doctor-agreement face; i27 did not cover McpTest solo, mechanism unregistered | /tmp/v2_soak_wire1.log (+wire2) | NEW-UNTRIAGED (pair evidence) |
+| F53 | `test/enclave_lifecycle_test.exs:106` — OCEL stage emission fail-safe, registry-gated, never lifecycle-failing | wire1 (2/2) | Same i27 enclave-residue mechanism as F50 | /tmp/v2_soak_wire1.log (+wire2) | DETERMINISTIC-PAIR-KNOWN (i27) |
+| F54 | `test/enclave_lifecycle_test.exs:56` — composite baseline fixture lifecycle green end to end | wire1 (2/2) | Same i27 enclave-residue mechanism as F50 | /tmp/v2_soak_wire1.log (+wire2) | DETERMINISTIC-PAIR-KNOWN (i27) |
+| F55 | `test/mcp_wire_test.exs:806` — doctor.summary agrees with scripts/doctor.py --json (`Smalt.Store` child missing) | wire1 (2/2; also hyphen-log runs 1–3) | Same doctor-summary face as F52 across both doctor identities | /tmp/v2_soak_wire1.log (+wire2) | NEW-UNTRIAGED (pair evidence) |
+| F56 | `test/azsim/adversarial_joe_test.exs:121` — Vector 3: half-open TCP silent partition unlinks broker resources cleanly (FrameCodec decode assert) | wire1 (2/2) | Identical decode-shape assert both legs — pair-deterministic; the relink frame arrived in a shape the codec assert refused | /tmp/v2_soak_wire1.log (+wire2) | NEW-UNTRIAGED (pair evidence) |
+| F57 | `test/azsim/adversarial_joe_test.exs:32` — Vector 1: mailbox overload/backpressure flood (ArgumentError from linked pid) | wire1 (2/2) | ArgumentError raised in a linked process under flood both legs; identical pair signature | /tmp/v2_soak_wire1.log (+wire2) | NEW-UNTRIAGED (pair evidence) |
+
+Derive commands (v2-soak wire/full rows; logs are ephemeral `/tmp` scratch —
+identities above were captured verbatim from the live logs at ledger time):
+
+```
+grep -E "^\s+[0-9]+\) test" /tmp/v2_soak_run1.log     # F24-F26
+grep -E "^\s+[0-9]+\) test" /tmp/v2_soak_run2.log     # F25, F28-F42
+grep -E "^\s+[0-9]+\) test" /tmp/v2_soak_run3.log     # F25, F28, F30, F43-F48
+grep -E "^\s+[0-9]+\) test" /tmp/v2_soak_wire1.log    # F25, F27, F49-F57
+grep -E "^\s+[0-9]+\) test" /tmp/v2_soak_wire2.log    # same 11 as wire1 (pair evidence)
+grep -F "resourcewritesuccess" docs/jira/v26.10.18/receipts/i27-rotating-bisect.md  # F50/F51/F53/F54
+```
+
+Ledger-integrity notes for this block: (1) the failure-count drift vs the
+`v2-soak.md` receipt's 9/9/8 full-leg counts is a filename disambiguation — the
+receipt counts the LATER hyphen-named logs `/tmp/v2-soak-run{1,2,3}.log`
+(20:11–20:52 PDT); this block ledgers the EARLIER underscore-named
+`/tmp/v2_soak_run{1,2,3}.log` + `/tmp/v2_soak_wire{1,2}.log` legs (15:32–19:27
+PDT) as directed, whose unique-face superset includes most hyphen-log
+identities (enclave cluster, doctor-summary pair, lens7). (2) The wire legs
+failed the identical 11 faces in the identical order — that identity is itself
+the pair evidence behind the wire-tier classifications. (3) F44 (post-i23
+noproc witness) must be dispositioned against `receipts/i23-fence11-flip.md`'s
+hammer, not closed as a new mechanism. (4) All NEW-UNTRIAGED faces follow the
+solo-bisect-first protocol (r236 §6 / i27 method) before any fix lands.

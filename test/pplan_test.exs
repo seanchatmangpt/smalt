@@ -2879,14 +2879,19 @@ defmodule Smalt.PPlanTest do
         cleanup([id])
         # Safety net: never leave the substrate Store down for the suite.
         if Process.whereis(Smalt.Store) == nil do
-          Supervisor.restart_child(Smalt.Supervisor, Smalt.Store)
+          Supervisor.restart_child(SmaltTest.Lifecycle.store_owner() || Smalt.Supervisor,
+            Smalt.Store
+          )
         end
       end)
 
       {:ok, t0} = Task.put(new_task(id))
 
       # Hold Store down deterministically (manual terminate, no intensity cost).
-      :ok = Supervisor.terminate_child(Smalt.Supervisor, Smalt.Store)
+      # AZB-09: Store lives under the Data plane supervisor now — target the
+      # owner resolved from the live tree, not the root (root terminate exits
+      # {:error, :not_found}).
+      :ok = Supervisor.terminate_child(SmaltTest.Lifecycle.store_owner(), Smalt.Store)
 
       try do
         assert Process.whereis(Smalt.Store) == nil
@@ -2929,7 +2934,7 @@ defmodule Smalt.PPlanTest do
         assert :ok = Task.ensure()
 
         # -- recovery: manual restart restores the CAS paths transparently --
-        {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, Smalt.Store)
+        {:ok, _} = Supervisor.restart_child(SmaltTest.Lifecycle.store_owner(), Smalt.Store)
         wait_until(fn -> Process.whereis(Smalt.Store) != nil end)
 
         # Table intact across the window (different owner — no wipe law here).

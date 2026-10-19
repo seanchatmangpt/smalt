@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smalt-burn
+  namespace: default
+  labels:
+    app: smalt-burn
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: smalt-burn
+  template:
+    metadata:
+      labels:
+        app: smalt-burn
+    spec:
+      containers:
+      - name: smalt
+        image: smalt:local
+        imagePullPolicy: Never
+        command: ["mix", "run", "--no-halt"]
+        env:
+        - name: MIX_ENV
+          value: "test"
+        - name: SMALT_BIND_ALL_INTERFACES
+          value: "true"
+        - name: SMALT_BIND_IP
+          value: "0.0.0.0"
+        - name: SMALT_TEST_ARM_PORT
+          value: "9443"
+        - name: SMALT_TEST_ARM_TLS_PORT
+          value: "9444"
+        - name: SMALT_TEST_EGRESS_PORT
+          value: "8443"
+        - name: SMALT_TEST_AMQP_PORT
+          value: "5672"
+        - name: SMALT_TEST_EVENT_HUBS_PORT
+          value: "5673"
+        - name: SMALT_TEST_MCP_PORT
+          value: "9545"
+        - name: SMALT_DATA_DIR
+          value: "/tmp/smalt-data"
+        ports:
+        - containerPort: 9443
+          name: arm-mgmt
+        - containerPort: 8443
+          name: data-egress
+        - containerPort: 5672
+          name: amqp-sb
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          tcpSocket:
+            port: 9443
+          initialDelaySeconds: 5
+          periodSeconds: 3
+          failureThreshold: 5
+        livenessProbe:
+          tcpSocket:
+            port: 9443
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-arm-service
+  namespace: default
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+  - port: 9443
+    targetPort: 9443
+    name: arm-mgmt
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-data-service
+  namespace: default
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+  - port: 8443
+    targetPort: 8443
+    name: data-egress
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-amqp-service
+  namespace: default
+spec:
+  selector:
+    app: smalt-burn
+  ports:
+  - port: 5672
+    targetPort: 5672
+    name: amqp-sb
+  type: ClusterIP

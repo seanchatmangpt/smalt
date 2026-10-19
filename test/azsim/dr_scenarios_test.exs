@@ -62,6 +62,22 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
     :ok
   end
 
+  # Port-rebind race: a killed listener's socket may still be closing when
+  # restart_child runs. Deadline-bounded retry; never an infinite loop.
+  defp restart_subtree!(plane) do
+    eventually(
+      fn ->
+        case Supervisor.restart_child(Smalt.Supervisor, plane) do
+          {:ok, _} -> {:ok, :restarted}
+          {:error, reason} -> {:retry, "restart #{inspect(plane)}: #{inspect(reason)}"}
+        end
+      end,
+      deadline_ms: 10_000,
+      backoff_ms: 25,
+      observable: "restart #{inspect(plane)}"
+    )
+  end
+
   # DR law: every kill is undone BEFORE the next test's setup reads the tree.
   # A crashed iteration must still restore — the on_exit path guarantees it.
   defp restore_planes! do
@@ -135,7 +151,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         t0 = System.monotonic_time()
         {red0, _} = :erlang.statistics(:reductions)
 
-        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, DataSupervisor)
+        restart_subtree!(DataSupervisor)
 
         eventually(
           fn ->
@@ -190,7 +206,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
                "client socket stayed open after integration subtree kill"
 
         # Restart: reconnect + handshake over a REAL socket.
-        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, IntegrationSupervisor)
+        restart_subtree!(IntegrationSupervisor)
         client2 = connect_handshake!(amqp_port, 10_000)
         :gen_tcp.close(client2)
 
@@ -245,7 +261,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         assert res2.status == 200,
                "cached-valid token rejected during identity outage (iteration #{i}): #{res2.status} #{res2.body}"
 
-        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, IdentitySupervisor)
+        restart_subtree!(IdentitySupervisor)
         wait_mint_ok(arm)
 
         %{iteration: i, recovery_us: 0, recovery_reductions: 0}
@@ -283,7 +299,7 @@ defmodule SmaltTest.Azsim.DrScenariosTest do
         assert res2.status == 200,
                "data plane degraded during control outage (iteration #{i}): #{res2.status}"
 
-        assert {:ok, _} = Supervisor.restart_child(Smalt.Supervisor, ControlSupervisor)
+        restart_subtree!(ControlSupervisor)
         t0 = System.monotonic_time()
         wait_tcp_up(arm)
         {red0, _} = :erlang.statistics(:reductions)

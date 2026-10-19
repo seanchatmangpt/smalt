@@ -174,6 +174,39 @@ defmodule SmaltTest.Lifecycle do
     end
   end
 
+  @doc """
+  Supervisor that directly owns the Smalt.Store child in the CURRENT tree.
+  AZB-09 moved Store under Smalt.Plane.DataSupervisor; before that it was a
+  direct child of the root Smalt.Supervisor. terminate_child/restart_child
+  must target the owner, or they exit {:error, :not_found}. Tree-aware:
+  probes the root, then the plane supervisors. Returns the supervisor module
+  (registered name) or nil when no candidate currently lists Store.
+  """
+  def store_owner do
+    candidates = [
+      Smalt.Supervisor,
+      Smalt.Plane.DataSupervisor,
+      Smalt.Plane.ControlSupervisor,
+      Smalt.Plane.IntegrationSupervisor,
+      Smalt.Plane.IdentitySupervisor
+    ]
+
+    Enum.find(candidates, fn sup ->
+      case Process.whereis(sup) do
+        nil ->
+          false
+
+        _pid ->
+          try do
+            Supervisor.which_children(sup)
+            |> Enum.any?(fn {id, _pid, _type, _mods} -> id == Smalt.Store end)
+          catch
+            _class, _reason -> false
+          end
+      end
+    end)
+  end
+
   # Restart is best-effort: {:error, :already_present} / {:error,
   # {:already_started, _}} are both success for our purposes; the table wait
   # below is the real gate.
@@ -188,7 +221,7 @@ defmodule SmaltTest.Lifecycle do
       _ = restore_app()
       :ok
     else
-      case Supervisor.restart_child(Smalt.Supervisor, Smalt.Store) do
+      case Supervisor.restart_child(store_owner() || Smalt.Supervisor, Smalt.Store) do
         {:error, _} = e -> e
         {:ok, _pid} -> :ok
         other -> {:error, other}

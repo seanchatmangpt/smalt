@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smalt-burn-conformance
+  namespace: default
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        job: smalt-burn-conformance
+    spec:
+      restartPolicy: Never
+      volumes:
+      - name: beam4pm-volume
+        hostPath:
+          path: /beam4pm
+          type: Directory
+      - name: xaas-volume
+        hostPath:
+          path: /xaas
+          type: Directory
+      - name: burn-evidence-volume
+        hostPath:
+          path: /burn-evidence
+          type: Directory
+      containers:
+      - name: conformance-runner
+        image: smalt:local
+        imagePullPolicy: Never
+        command: ["elixir", "/burn-evidence/in_container_conformance.exs"]
+        volumeMounts:
+        - name: beam4pm-volume
+          mountPath: /beam4pm
+          readOnly: true
+        - name: xaas-volume
+          mountPath: /xaas
+          readOnly: true
+        - name: burn-evidence-volume
+          mountPath: /burn-evidence
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"

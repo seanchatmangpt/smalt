@@ -174,3 +174,6 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   SCHEDULING (`send_after`) — readiness is monitors/GenServer/
   `handle_continue`. Enforced by `just sleep-gate` (fail-closed) +
   `just sleep-gate-court` (non-vacuity). See `docs/NO_SLEEP_DOCTRINE.md`.
+- **Ratchet mod**: `mods/ratchet` enforces the 20-agent invariant + ticket
+  DAG (timer-dispatched prompts, court-gated DONE, PreToolUse deny gate);
+  panel + `/ratchet` commands. See `mods/ratchet/README.md`.

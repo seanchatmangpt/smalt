@@ -427,7 +427,9 @@ count, or PASS/FAIL token) found in the file.
 | azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-13-boot- | [azb-13-boot-burn.md](../v26.10.18/receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
 | azb-14-sigki | [azb-14-sigkill-storm.md](../v26.10.18/receipts/azb-14-sigkill-storm.md) | ALIVE | AZB-14 — SIGKILL storm + DETS needs_repair + typed vocabulary **NO-CONTEXT** |
+| azb-16-amqp- | [azb-16-amqp-saturation.md](../v26.10.18/receipts/azb-16-amqp-saturation.md) | ALIVE | AZB-16 — AMQP saturation (≥4096 queues) + atom-flood guard **NO-CONTEXT** |
 | azb-19-overl | [azb-19-overlap.md](../v26.10.18/receipts/azb-19-overlap.md) | PARTIAL_ALIVE | AZB-19 Port-free stage overlap scheduling **NO-CONTEXT** |
+| azb-20-sdk-i | [azb-20-sdk-interop.md](../v26.10.18/receipts/azb-20-sdk-interop.md) | PARTIAL_ALIVE | AZB-20 — Unmodified Microsoft SDK interop per plane **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
 | azb-22-burn- | [azb-22-burn-ring.md](../v26.10.18/receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) **NO-CONTEXT** |
 | b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
@@ -475,7 +477,18 @@ count, or PASS/FAIL token) found in the file.
 | i26-enqueue- | [i26-enqueue-shape.md](../v26.10.18/receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) **NO-CONTEXT** |
 | i26-fence11- | [i26-fence11-quiet.md](../v26.10.18/receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 **NO-CONTEXT** |
 | i27-rotating | [i27-rotating-bisect.md](../v26.10.18/receipts/i27-rotating-bisect.md) | UNKNOWN | i27 — solo bisect of the v2-soak rotating faces **NO-CONTEXT** |
+| i28-budget-e | [i28-budget-e2e.md](../v26.10.18/receipts/i28-budget-e2e.md) | FAIL | i28 — Budget gate end-to-end verification (solo) **NO-CONTEXT** |
+| i28-pinion-r | [i28-pinion-reaudit.md](../v26.10.18/receipts/i28-pinion-reaudit.md) | PASS | i28 — pinion re-audit post-AZB/lib redesign (2026-10-18) **NO-CONTEXT** |
 | i28-sleep-ga | [i28-sleep-gate-full.md](../v26.10.18/receipts/i28-sleep-gate-full.md) | PASS | i28 — Sleep Gate Full Verification (Current Tree) **NO-CONTEXT** |
+| mod-r1-scaff | [mod-r1-scaffold.md](../v26.10.18/receipts/mod-r1-scaffold.md) | ALIVE | mod-r1-scaffold — ratchet mod scaffold **NO-CONTEXT** |
+| mod-r10-docs | [mod-r10-docs.md](../v26.10.18/receipts/mod-r10-docs.md) | PASS | mod-r10: ratchet mod DOCS + INSTALL lane **NO-CONTEXT** |
+| mod-r2-state | [mod-r2-state.md](../v26.10.18/receipts/mod-r2-state.md) | PASS | mod-r2-state (ratchet mod state module) **NO-CONTEXT** |
+| mod-r3-panel | [mod-r3-panel.md](../v26.10.18/receipts/mod-r3-panel.md) | ALIVE | mod-r3-panel — Ratchet mod status band renderer (R3) **NO-CONTEXT** |
+| mod-r4-injec | [mod-r4-inject.md](../v26.10.18/receipts/mod-r4-inject.md) | PARTIAL_ALIVE | mod-r4 — ratchet auto-execute inject module **NO-CONTEXT** |
+| mod-r5-turn | [mod-r5-turn.md](../v26.10.18/receipts/mod-r5-turn.md) | PARTIAL_ALIVE | mod-r5: ratchet turn-complete enforcement hook **NO-CONTEXT** |
+| mod-r6-comma | [mod-r6-commands.md](../v26.10.18/receipts/mod-r6-commands.md) | ALIVE (SUSPECT) | mod-r6-commands — ratchet mod /ratchet* commands (R6) **NO-CONTEXT** |
+| mod-r7-gate | [mod-r7-gate.md](../v26.10.18/receipts/mod-r7-gate.md) | ALIVE | mod R7 — ratchet gate policy (`lib/gate.js`) **NO-CONTEXT** |
+| mod-r9-integ | [mod-r9-integration.md](../v26.10.18/receipts/mod-r9-integration.md) | ALIVE | mod-r9 — ratchet INTEGRATION lane: final hooks.json + register.js **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` |
@@ -646,3 +659,4 @@ Receipts asserting results with no real output found in-file:
 - **SUSPECT**: `fin33-planning-summary.md` (standing PARTIAL_ALIVE)
 - **SUSPECT**: `lc1-8hop-tax-chain.md` (standing ALIVE)
 - **SUSPECT**: `lc2-tco-ledger.md` (standing UNKNOWN)
+- **SUSPECT**: `mod-r6-commands.md` (standing ALIVE)

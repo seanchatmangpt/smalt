@@ -1,0 +1,13 @@
+{
+  "name": "smalt-mods",
+  "owner": {
+    "name": "smalt"
+  },
+  "plugins": [
+    {
+      "name": "ratchet",
+      "source": "./ratchet",
+      "description": "20-agent ratchet: keeps N agents in flight ratcheting tickets to done"
+    }
+  ]
+}
