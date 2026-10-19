@@ -1,0 +1,105 @@
+{
+  "schema": "chatman/release-receipt/v1",
+  "release": "v26.10.18",
+  "name": "release-receipt",
+  "repo": "smalt",
+  "standing": "TYPED-RED CARRIED: 8 gate attempts 1792397604..1792402305, no two consecutive greens; gate carried to v26.10.19 (azb-23-court-x2.md)",
+  "type": "RELEASE_ADMISSION_COURT",
+  "subject": {
+    "repo": "smalt",
+    "sha": "0f1e954b6455b49b903c5f38435be5f6c18a43ec",
+    "ref": "main"
+  },
+  "court": {
+    "standing": "RED_COURT_X2",
+    "rules": [
+      "CHAIN_INTEGRITY",
+      "ZERO_UNRECEIPTED_ACTUATION",
+      "DO_REQUIRES_AUTHORITY",
+      "CONSTRUCT_REQUIRES_ADMISSION",
+      "RECEIPT_DIGEST_VALID",
+      "AT_MOST_ONCE_CONSEQUENCE",
+      "CRASH_WINDOW_RECONCILED",
+      "UNKNOWN_NOT_PROMOTED"
+    ],
+    "refusals": [
+      {
+        "type": "RED_COURT_X2",
+        "subject_sha": "67856850c7645599acb7e2ac852c8d7f76115ee3",
+        "release": "v26.10.18",
+        "standing": "TYPED-RED-CARRIED",
+        "note": "AZB-23 court-x2 closed typed-RED: 8 gate attempts (1792397604..1792402305), no two consecutive greens; bounded cross-plane boot-order race family (4-6 races); gate carried to v26.10.19 as first work order. Evidence: docs/jira/v26.10.18/receipts/azb-23-court-x2.md; terminal log tmp/court-x2-1792402305.log (gate FAILED, exit 1).",
+        "evidence": [
+          "docs/jira/v26.10.18/receipts/azb-23-court-x2.md",
+          "docs/jira/v26.10.18/receipts/i29-court-x2-final.md",
+          "tmp/court-x2-1792402305.log"
+        ]
+      }
+    ]
+  },
+  "execution": {
+    "command": "just court-x2",
+    "toolchain": "elixir/erlang via mise (see .tool-versions); mix test + court-x2",
+    "exit_code": 1,
+    "output_sha256": "104a2e5630f70763fc46042ac79b0ff0c3de7acf07895d74417fbced9f290090",
+    "court_log": "tmp/court-x2-1792402305.log"
+  },
+  "anti_vacuity": {
+    "mutants": [
+      {
+        "rule": "CHAIN_INTEGRITY",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "ZERO_UNRECEIPTED_ACTUATION",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "DO_REQUIRES_AUTHORITY",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "CONSTRUCT_REQUIRES_ADMISSION",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "RECEIPT_DIGEST_VALID",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "AT_MOST_ONCE_CONSEQUENCE",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "CRASH_WINDOW_RECONCILED",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      },
+      {
+        "rule": "UNKNOWN_NOT_PROMOTED",
+        "mutation": "pending real court run",
+        "standing": "PENDING",
+        "killed": null
+      }
+    ],
+    "killed": 0,
+    "total": 8,
+    "note": "populated at real wrap mint from the court's mutant-kill report"
+  },
+  "authority": "NONE (court is receipt-level evidence; Verification does not imply DO)",
+  "evidence_ceiling": "LOCAL_RUN",
+  "generated_at": "2026-10-19T09:44:48+00:00"
+}
