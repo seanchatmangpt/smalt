@@ -43,6 +43,25 @@ defmodule Smalt.Wire.ArmWireTest do
     {:ok, sup} =
       Supervisor.start_link(children, strategy: :one_for_one, name: Smalt.WireSup)
 
+    # Boot premise (court-x2 run-2 face): the STS faces POST /oauth2/... the
+    # instant the supervisor links — Bandit's listener may not be ANSWERING
+    # yet. Bounded poll on the real observable (the arm port accepting a real
+    # TCP connection), typed flunk on timeout. No sleeps.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        case :gen_tcp.connect(~c"127.0.0.1", ports.arm, [:binary, active: false], 1000) do
+          {:ok, sock} ->
+            :gen_tcp.close(sock)
+            {:ok, :listener_answering}
+
+          {:error, reason} ->
+            {:retry, {:connect, reason}}
+        end
+      end,
+      deadline_ms: 10_000,
+      observable: "arm wire listener answering on #{ports.arm}"
+    )
+
     on_exit(fn ->
       stop_tree(sup)
       SmaltTest.Lifecycle.restore_app()

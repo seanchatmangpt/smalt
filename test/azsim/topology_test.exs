@@ -182,7 +182,21 @@ defmodule SmaltTest.Azsim.TopologyTest do
     assert event.data["resourceUri"] == uri
 
     # Service Bus bridge: a QueueStore subscriber receives the same event.
-    assert {:ok, body} = bridge_dequeue()
+    # Boot premise (court-x2 run-2 face): the integration-plane event pipeline
+    # may not have drained the emit into the bridge queue yet — bounded poll
+    # until the event lands, typed flunk on timeout. No sleeps.
+    body =
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          case bridge_dequeue() do
+            {:ok, body} -> {:ok, body}
+            :empty -> {:retry, :bridge_queue_empty}
+          end
+        end,
+        deadline_ms: 10_000,
+        observable: "ResourceWriteSuccess event in Service Bus bridge queue"
+      )
+
     assert body["event_type"] == "Microsoft.Resources.ResourceWriteSuccess"
     assert body["data"]["resourceUri"] == uri
 
@@ -234,14 +248,42 @@ defmodule SmaltTest.Azsim.TopologyTest do
         "client_secret" => "azb10-secret"
       })
 
-    res =
-      http_request(arm_port, "POST", "/organizations/oauth2/v2.0/token", headers: [
-        {"content-type", "application/x-www-form-urlencoded"}
-      ],
-      body: form)
+    # Cross-plane boot premise (court-x2 run-2 face): the identity subtree's
+    # STS may still be warming when the mint fires. Bounded poll on the real
+    # observables — StsGate whereis + the wire mint answering 200 — never a
+    # sleep; on timeout the flunk is typed with the last observed status.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        sts_up? =
+          case GenServer.whereis(Smalt.Plane.Identity.StsGate) do
+            pid when is_pid(pid) -> true
+            _ -> false
+          end
 
-    assert res.status == 200, "wire mint failed: #{res.status} #{res.body}"
-    {:ok, Jason.decode!(res.body)["access_token"]}
+        if sts_up? do
+          try do
+            res =
+              http_request(arm_port, "POST", "/organizations/oauth2/v2.0/token", headers: [
+                {"content-type", "application/x-www-form-urlencoded"}
+              ],
+              body: form)
+
+            case res.status do
+              # eventually/2 unwraps {:ok, value}; wrap so callers still see
+              # the {:ok, token} shape they match on.
+              200 -> {:ok, {:ok, Jason.decode!(res.body)["access_token"]}}
+              other -> {:retry, {:wire_mint_status, other}}
+            end
+          rescue
+            e -> {:retry, {:connect, Exception.message(e)}}
+          end
+        else
+          {:retry, {:sts_gate_not_running, GenServer.whereis(Smalt.Plane.Identity.StsGate)}}
+        end
+      end,
+      deadline_ms: 10_000,
+      observable: "identity STS answering over the wire (mint 200)"
+    )
   end
 
   defp mint_local(claims_override \\ %{}, secret \\ @secret) do
