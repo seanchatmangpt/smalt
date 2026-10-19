@@ -607,8 +607,8 @@ defmodule Enclave.Testbed do
       IO.puts("  started 50 LRO operations (delay 15ms)")
 
       # let the deadline pass, then drive the at-rest sweeper
-      # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-      Process.sleep(60)
+      # SLEEP-CLASS: TIME-ADVANCE — window: LRO deadline elapse before at-rest sweep (4x lro_delay_ms via SmaltTest.SleepWindows.lro_deadline_elapse_ms/0; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+      Process.sleep(SmaltTest.SleepWindows.lro_deadline_elapse_ms())
 
       _ = Sweeper.sweep_now()
 

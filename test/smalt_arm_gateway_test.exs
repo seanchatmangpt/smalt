@@ -1284,8 +1284,8 @@ defmodule SmaltArmGatewayTest do
     rem = rem(ms, 1000)
 
     if rem > 800 do
-      # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-      Process.sleep(1000 - rem + 20)
+      # SLEEP-CLASS: TIME-ADVANCE — window: second-boundary alignment for 1 s fixed-window request counting (SmaltTest.SleepWindows.second_boundary_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+      Process.sleep(SmaltTest.SleepWindows.second_boundary_ms(20))
     end
 
     :ok

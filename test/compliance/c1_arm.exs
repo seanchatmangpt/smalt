@@ -407,9 +407,8 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     # Align to the next wall-clock second so all 10 requests land in ONE
     # fixed window — this makes the window's admit count exactly assertable.
-    ms = System.system_time(:millisecond)
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(1000 - rem(ms, 1000) + 5)
+    # SLEEP-CLASS: TIME-ADVANCE — window: rate-limit 1 s fixed-window alignment (SmaltTest.SleepWindows.second_boundary_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.second_boundary_ms(5))
 
     statuses_limited =
       for _ <- 1..10 do
@@ -432,8 +431,8 @@ defmodule Smalt.Compliance.C1ArmTest do
 
     # Window expiry: after the 1s window rolls over the counter is reset —
     # the next request is admitted again (fixed window, not a permanent ban).
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(1100)
+    # SLEEP-CLASS: TIME-ADVANCE — window: rate-limit 1 s fixed-window rollover / counter reset (SmaltTest.SleepWindows.fixed_window_rollover_ms/0; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.fixed_window_rollover_ms())
     {status_after, _h, _b} = put!(port, path, body: sa_body(name))
     assert status_after == 200
   end

@@ -48,11 +48,12 @@ defmodule Smalt.Compliance.C6OauthTest do
     part |> Base.url_decode64!(padding: false) |> Jason.decode!()
   end
 
+  @grant "grant_type=client_credentials&client_id=x&client_secret=y"
+
+  defp grant_conn(path \\ "/oauth2/v2.0/token"), do: req(:post, path, body: @grant)
+
   defp get_token do
-    conn =
-      req(:post, "/oauth2/v2.0/token",
-        body: "grant_type=client_credentials&client_id=x&client_secret=y"
-      )
+    conn = grant_conn()
 
     assert conn.status == 200, "STS must mint a token, got #{conn.status}"
 
@@ -66,10 +67,7 @@ defmodule Smalt.Compliance.C6OauthTest do
   # ===========================================================================
 
   test "RFC6749-5.1: POST form grant_type=client_credentials -> 200 success envelope" do
-    conn =
-      req(:post, "/oauth2/v2.0/token",
-        body: "grant_type=client_credentials&client_id=x&client_secret=y"
-      )
+    conn = grant_conn()
 
     assert conn.status == 200
     body = Jason.decode!(conn.resp_body)
@@ -78,10 +76,6 @@ defmodule Smalt.Compliance.C6OauthTest do
     assert is_integer(body["ext_expires_in"])
     assert is_binary(body["access_token"]) and byte_size(body["access_token"]) > 0
   end
-
-  # ===========================================================================
-  # RFC 6749 §5.2 — error responses (GAP: smalt never errors)
-  # ===========================================================================
 
   # ===========================================================================
   # RFC 6749 §5.2 — error responses (CONFORMANT: fixed this wave; was GAP C6-1/2/3)
@@ -133,20 +127,14 @@ defmodule Smalt.Compliance.C6OauthTest do
   end
 
   test "RFC6749-5.2: tenant-scoped token path issues tokens (with valid form)" do
-    conn =
-      req(:post, "/#{@tid}/oauth2/v2.0/token",
-        body: "grant_type=client_credentials&client_id=x&client_secret=y"
-      )
+    conn = grant_conn("/#{@tid}/oauth2/v2.0/token")
 
     assert conn.status == 200
     assert Jason.decode!(conn.resp_body)["token_type"] == "Bearer"
   end
 
   test "C6 doc row 6 pin: /common/oauth2/v2.0/token issues a token with tid=common (DEV-MODE pin)" do
-    conn =
-      req(:post, "/common/oauth2/v2.0/token",
-        body: "grant_type=client_credentials&client_id=x&client_secret=y"
-      )
+    conn = grant_conn("/common/oauth2/v2.0/token")
 
     assert conn.status == 200
 
@@ -289,10 +277,7 @@ defmodule Smalt.Compliance.C6OauthTest do
   # ===========================================================================
 
   test "FORM-CHARSET: form with explicit charset still mints (permissive, pinned)" do
-    conn =
-      req(:post, "/oauth2/v2.0/token",
-        body: "grant_type=client_credentials&client_id=x&client_secret=y"
-      )
+    conn = grant_conn()
 
     assert conn.status == 200
   end
@@ -309,10 +294,7 @@ defmodule Smalt.Compliance.C6OauthTest do
   end
 
   test "GAP C6-8 fixed: token response carries Cache-Control: no-store (RFC 6749 5.1)" do
-    conn =
-      req(:post, "/oauth2/v2.0/token",
-        body: "grant_type=client_credentials&client_id=x&client_secret=y"
-      )
+    conn = grant_conn()
 
     assert conn.status == 200
     assert get_resp_header(conn, "cache-control") == ["no-store"]

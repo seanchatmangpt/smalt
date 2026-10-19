@@ -953,8 +953,8 @@ defmodule Smalt.McpWireTest do
     assert {:ok, 200, _h1, b1} = keep_alive_response_full(sock, <<>>)
     assert Jason.decode!(b1)["result"]["structuredContent"]["status"] == "ok"
 
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(1_500)
+    # SLEEP-CLASS: TIME-ADVANCE — window: wire keep-alive idle gap (:mcp_idle_keep_alive_gap_ms, default 1500, via SmaltTest.SleepWindows.mcp_idle_gap_ms/0; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.mcp_idle_gap_ms())
 
     body2 = rpc_body("tools/call", %{"name" => "substrate.capabilities", "arguments" => %{}}, 2)
     :ok = :gen_tcp.send(sock, request_bytes_idle(port, body2))

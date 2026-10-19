@@ -18,6 +18,7 @@ defmodule Smalt.Amqp.R129SessionGateTest do
   use ExUnit.Case, async: false
 
   alias Smalt.Amqp.{Connection, FrameCodec}
+  alias SmaltTest.AssertEventually
 
   @header "AMQP\x00\x01\x00\x00"
   @sasl_header "AMQP\x03\x01\x00\x00"
@@ -160,10 +161,15 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     assert resp.performative.performative == :close,
            "expected error close, got: #{inspect(resp.performative.performative)}"
 
-    # nothing may land in the shadow namespace
-    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async close-cleanup propagation window before exact-count assert
-    assert 0 == count_state(queue <> "/", :any)
-    assert 0 == count_state(queue, :any)
+    # nothing may land in the shadow namespace. Absence cannot be proven by
+    # first-poll-true — hold "zero rows" continuously for a stability window.
+    :ok =
+      AssertEventually.eventually_stays(
+        fn -> 0 == count_state(queue <> "/", :any) and 0 == count_state(queue, :any) end,
+        within_ms: 5_000,
+        stability_ms: 50,
+        desc: "no shadow-namespace state lands after session-gate error close"
+      )
 
     # positive control: WITH a group-id the enqueue succeeds — and the
     # message must be keyed under the BARE entity (namespace collapse)
@@ -291,7 +297,18 @@ defmodule Smalt.Amqp.R129SessionGateTest do
     # must not match a registered link (a queue+session link release would
     # kill a legitimate receiver's session lock)
     :ok = send_bytes(client, enc_frame(:amqp, 0, {:detach, %{handle: 0, closed: true}}))
-    Process.sleep(50)  # SLEEP-CLASS: TIME-ADVANCE — async detach-cleanup propagation window before exact-count assert
+
+    # the cleanup detach must NOT acquire the session lock: hold "no lock row
+    # for {queue, sid}" continuously for a stability window.
+    :ok =
+      AssertEventually.eventually_stays(
+        fn ->
+          match?([], :ets.lookup(:smalt_sb_sessions, {queue, sid}))
+        end,
+        within_ms: 5_000,
+        stability_ms: 50,
+        desc: "cleanup detach leaves the session lock free for {#{queue}, #{sid}}"
+      )
 
     # lock must still be free: a sessioned receiver on the same sid attaches
     # and gets the lock grant right after

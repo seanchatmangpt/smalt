@@ -1120,8 +1120,25 @@ defmodule Smalt.Security.SecurityHardeningTest do
       pid = GenServer.whereis(Smalt.Security.LedgerWriter)
       assert is_pid(pid)
       Process.exit(pid, :kill)
-      # Let the monitor Down propagate before the next append.
-      Process.sleep(10)  # SLEEP-CLASS: TIME-ADVANCE — monitor DOWN propagation window before next append
+
+      # Poll-replaceable sync-wait (sleeps.md §A6): poll until the supervisor
+      # replaced the killed writer, instead of sleeping a fixed window.
+      killed = pid
+
+      {:ok, new_pid} =
+        SmaltTest.AssertEventually.eventually(
+          fn ->
+            case GenServer.whereis(Smalt.Security.LedgerWriter) do
+              ^killed -> {:retry, :still_old_pid}
+              new when is_pid(new) -> {:ok, new}
+              other -> {:retry, other}
+            end
+          end,
+          deadline_ms: 5_000,
+          observable: "LedgerWriter restarted after kill"
+        )
+
+      _ = new_pid
 
       assert {:ok, %{"transactionId" => "2.1", "prev_hash" => prev2, "merkle_root" => root2}} =
                ConfidentialLedger.append_transaction(ledger, %{"n" => 2})

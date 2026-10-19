@@ -150,8 +150,18 @@ defmodule SmaltLroTest do
     op = Jason.decode!(put_conn.resp_body)
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
-    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Process.sleep(delay + 10)  # SLEEP-CLASS: TIME-ADVANCE — crosses the server-side LRO delay window before first poll
+    # Poll-replaceable sync-wait (sleeps.md §A1): poll the RAW store read for
+    # terminality instead of gambling delay+epsilon on scheduler jitter.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        case Store.get(:smalt_operations, op["name"]) do
+          {:ok, %{"status" => "Succeeded"}} = ok -> ok
+          other -> {:retry, other}
+        end
+      end,
+      deadline_ms: 5_000,
+      observable: "LRO op #{op["name"]} terminal in store"
+    )
 
     poll = conn(:get, op_path) |> call()
 
@@ -345,9 +355,22 @@ defmodule SmaltLroTest do
     assert [loc] = get_resp_header(del, "location")
     assert ["1"] = get_resp_header(del, "retry-after")
 
-    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 40)  # SLEEP-CLASS: TIME-ADVANCE — crosses retry-after=1 LRO window before poll
+    # Poll-replaceable sync-wait (sleeps.md §A1): poll the wire GET until the
+    # delete-operation location renders a terminal body, then assert verbatim.
+    poll =
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          p = conn(:get, URI.parse(loc).path) |> call()
 
-    poll = conn(:get, URI.parse(loc).path) |> call()
+          case {p.status, Jason.decode!(p.resp_body)} do
+            {200, %{"status" => "Succeeded"}} -> {:ok, p}
+            {status, _} -> {:retry, status}
+          end
+        end,
+        deadline_ms: 5_000,
+        observable: "delete LRO terminal at #{loc}"
+      )
+
     assert poll.status == 200
     assert %{"status" => "Succeeded"} = Jason.decode!(poll.resp_body)
   end
@@ -408,8 +431,18 @@ defmodule SmaltLroTest do
     op = Jason.decode!(put_conn.resp_body)
     op_path = URI.parse(hd(get_resp_header(put_conn, "azure-asyncoperation"))).path
 
-    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    Process.sleep(delay + 5)  # SLEEP-CLASS: TIME-ADVANCE — crosses the server-side LRO delay window before racing reads
+    # Poll-replaceable sync-wait (sleeps.md §A1): store-level terminality poll
+    # before the 10-concurrent-poller fan-out.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        case Store.get(:smalt_operations, op["name"]) do
+          {:ok, %{"status" => "Succeeded"}} = ok -> ok
+          other -> {:retry, other}
+        end
+      end,
+      deadline_ms: 5_000,
+      observable: "LRO op #{op["name"]} terminal before concurrent-poll fan-out"
+    )
 
     results =
       1..10
@@ -660,8 +693,8 @@ defmodule SmaltLroTest do
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, fresh_id)
     # InProgress NEVER evicted (this one is genuinely in-window AND the sweep
     # must not touch it even after its delay elapses mid-sweep).
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
+    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before sweep (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10))
     :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
     assert {:ok, %{"status" => "Succeeded"}} = Store.get(:smalt_operations, ip_id)
 
@@ -683,9 +716,8 @@ defmodule SmaltLroTest do
     op = LRO.start_op(rid)
     id = op["name"]
 
-    delay = Application.get_env(:smalt, :lro_delay_ms, 0)
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(delay + 10)
+    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before at-rest raw get (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10, 0))
 
     # Pre-sweep raw read: still InProgress (no lazy path has ever touched it).
     assert {:ok, %{"status" => "InProgress"}} = Store.get(:smalt_operations, id)
@@ -716,8 +748,9 @@ defmodule SmaltLroTest do
       "/subscriptions/#{@sub}/resourceGroups/lro-rg/providers/Microsoft.Storage/storageAccounts/noop-probe"
 
     ids = for _ <- 1..5, do: LRO.start_op(rid)["name"]
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
+
+    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before sweep (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10))
     :ok = Smalt.ArmGateway.LRO.Sweeper.sweep_now(sweeper)
 
     before =
@@ -752,8 +785,9 @@ defmodule SmaltLroTest do
 
     op = LRO.start_op(rid)
     id = op["name"]
-    # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-    Process.sleep(Application.get_env(:smalt, :lro_delay_ms, 20) + 10)
+
+    # SLEEP-CLASS: TIME-ADVANCE — window: LRO delay elapse before sweep (lro_delay_ms + 10ms epsilon via SmaltTest.SleepWindows.lro_delay_elapse_ms/1; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+    Process.sleep(SmaltTest.SleepWindows.lro_delay_elapse_ms(10))
 
     parent = self()
 
@@ -1166,7 +1200,19 @@ defmodule SmaltLroTest do
       )
 
     id = op["name"]
-    Process.sleep(60)  # SLEEP-CLASS: TIME-ADVANCE — op-registration propagation window before racing writers
+
+    # Poll-replaceable sync-wait (sleeps.md §A1): poll the RAW store read to
+    # terminality before the 24-concurrent-poller fan-out.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        case Store.get(:smalt_operations, id) do
+          {:ok, %{"status" => "Succeeded"}} = ok -> ok
+          other -> {:retry, other}
+        end
+      end,
+      deadline_ms: 5_000,
+      observable: "LRO op #{id} terminal before 24-poller fan-out"
+    )
 
     parent = self()
 

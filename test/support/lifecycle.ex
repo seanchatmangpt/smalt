@@ -196,6 +196,64 @@ defmodule SmaltTest.Lifecycle do
     end
   end
 
+  @doc """
+  Save the given :smalt Application env keys, hand back an opaque token.
+  `restore_envs/1` in on_exit reverses exactly the saved state: keys that were
+  unset at save time are deleted, keys that were set are put back byte-exact.
+  Non-raising — safe from on_exit.
+  """
+  def save_envs(keys) do
+    saved = Map.new(keys, fn k -> {k, Application.get_env(:smalt, k)} end)
+    token = {__MODULE__, :env_guard, make_ref()}
+    true = Process.put(token, saved) == nil
+    token
+  end
+
+  def restore_envs(token) do
+    case Process.get(token) do
+      nil ->
+        :ok
+
+      saved when is_map(saved) ->
+        Enum.each(saved, fn
+          {k, nil} -> Application.delete_env(:smalt, k)
+          {k, v} -> Application.put_env(:smalt, k, v)
+        end)
+
+        Process.erase(token)
+        :ok
+    end
+  end
+
+  # Per-RUN seed for uid/1: differs per mix test process (each lane loads
+  # test_helper once), so ids are unique across runs/lanes.
+  @run_seed :erlang.phash2(:erlang.make_ref())
+
+  @doc """
+  Deterministic unique id: `uid(prefix)` -> "\#{prefix}-<run_seed>-<serial>".
+
+  - Deterministic within a run for a given call sequence: replaying the same
+    call sequence in the same run reproduces the same ids (failure replay).
+  - Unique across runs: the run_seed differs per `mix test` process.
+  - Unique across call sites within a run: monotonic per-process serial.
+  """
+  def uid(prefix) do
+    n = :atomics.add_get(uid_counter(), 1, 1)
+    "#{prefix}-#{@run_seed}-#{n}"
+  end
+
+  defp uid_counter do
+    case :persistent_term.get({__MODULE__, :uid_counter}, :missing) do
+      :missing ->
+        ctr = :atomics.new(1, signed: false)
+        :persistent_term.put({__MODULE__, :uid_counter}, ctr)
+        ctr
+
+      ctr ->
+        ctr
+    end
+  end
+
   defp wait_store_tables, do: wait_store_tables(300)
 
   defp wait_store_tables(0) do

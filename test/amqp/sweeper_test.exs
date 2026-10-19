@@ -83,9 +83,9 @@ defmodule Smalt.Amqp.SweeperTest do
         assert :ok = Sweeper.run_pass()
         assert {:ok, _} = LockManager.get(lock.lock_token)
 
-        # first_swept_at + 1ms grace elapses
-        # SLEEP-CLASS: TIME-ADVANCE — crosses a real time window (no pollable observable; see docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
-        Process.sleep(5)
+        # first_swept_at + grace elapses
+        # SLEEP-CLASS: TIME-ADVANCE — window: tombstone grace elapse (amqp_sweeper_lock_grace_ms + 4ms epsilon via SmaltTest.SleepWindows.sweeper_grace_elapse_ms/0; docs/NO_SLEEP_DOCTRINE.md Law 1 B1)
+        Process.sleep(SmaltTest.SleepWindows.sweeper_grace_elapse_ms())
         assert :ok = Sweeper.run_pass()
 
         assert :error = LockManager.get(lock.lock_token)

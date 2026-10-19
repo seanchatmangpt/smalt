@@ -155,6 +155,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       assert %{performative: %{performative: :attach}} = recv_frame(client)
 
       # Broker-forced partition detach: typed error, connection stays up.
+      IO.inspect(Map.new(:sys.get_state(conn).links, fn {k, v} -> {k, Map.take(v, [:kind, :role, :address])} end), label: "AZB07-DBG")
       :ok = Smalt.Amqp.Connection.force_partition_detach(conn, eh_address)
       det = recv_until(client, :detach)
       assert det.performative.handle == 0

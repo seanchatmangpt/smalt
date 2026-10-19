@@ -469,17 +469,23 @@ defmodule Smalt.TLSTest do
       end)
 
     result = Task.await(task, 60_000)
-    # trace events were all sent before the writer returned; allow in-flight
-    # delivery to the tracer mailbox to drain before requesting the log.
-    Process.sleep(200)
-    send(tracer, {:ops, parent})
 
-    ops =
-      receive do
-        {:ops, ops} -> ops
-      after
-        5_000 -> []
-      end
+    # trace events were all sent before the writer returned; poll the tracer
+    # round-trip until the publish-op log is non-empty (sleeps.md §A4).
+    {:ok, ops} =
+      SmaltTest.AssertEventually.eventually(
+        fn ->
+          send(tracer, {:ops, parent})
+
+          receive do
+            {:ops, ops} -> if ops == [], do: {:retry, :empty}, else: {:ok, ops}
+          after
+            0 -> {:retry, :no_reply}
+          end
+        end,
+        deadline_ms: 5_000,
+        observable: "tracer mailbox drained (non-empty publish-op log)"
+      )
 
     {result, ops}
   end

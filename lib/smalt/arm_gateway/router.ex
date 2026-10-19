@@ -836,6 +836,15 @@ defmodule Smalt.ArmGateway.Router do
             lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
           })
 
+          # AZB-10: cross-plane emission — every successful resource PUT emits
+          # the Event Grid Microsoft.Resources.ResourceWriteSuccess event to
+          # the integration plane (Event Grid topic fan-out + Service Bus
+          # bridge enqueue). Never alters the PUT response (fail-safe inside).
+          Smalt.EgressRouter.Peers.emit_resource_write_success(record, %{
+            subscription: sub_id,
+            resource_group: rg_name
+          })
+
           cond do
             lro_type?(full_type) and not existed? ->
               # ARM LRO convention: create -> 202 + async headers (poll to terminal).

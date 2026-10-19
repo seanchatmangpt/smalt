@@ -104,7 +104,22 @@ defmodule Smalt.EtsBaselineIdentityTest do
         else: Application.put_env(:smalt, :lro_retention_ms, prev_lro)
     end)
 
-    Process.sleep(10)  # SLEEP-CLASS: TIME-ADVANCE — crosses lro_retention_ms window before eviction_pass
+    # Poll-replaceable sync-wait (sleeps.md §A2): drive eviction passes until
+    # the snapshot converges to baseline instead of a fixed settle sleep.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
+
+        if snapshot() == baseline do
+          {:ok, :converged}
+        else
+          {:retry, :diverged}
+        end
+      end,
+      deadline_ms: 5_000,
+      observable: "post-eviction store snapshot converged to baseline"
+    )
+
     :ok = Smalt.ArmGateway.LRO.Sweeper.eviction_pass()
 
     # --- strict identity fence ---

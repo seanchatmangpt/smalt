@@ -31,8 +31,22 @@ defmodule Smalt.StoreDetsTest do
     :ets.insert(:dm_t_resources, {"/r/a", %{"name" => "a"}})
     :ets.insert(:dm_t_docs, {"docs/1", %{"id" => 1}})
 
-    # Wait past one full tick + epsilon
-    Process.sleep(150)  # SLEEP-CLASS: TIME-ADVANCE — crosses one full periodic dets sync tick + epsilon
+    # Poll-replaceable sync-wait (sleeps.md §A3): poll the closed dets read
+    # until both mirrored rows are on disk instead of sleeping past one tick.
+    SmaltTest.AssertEventually.eventually(
+      fn ->
+        rows_res = probe_rows(~c"#{dir}/dm_t_resources.dets")
+        rows_docs = probe_rows(~c"#{dir}/dm_t_docs.dets")
+
+        if {"/r/a", %{"name" => "a"}} in rows_res and {"docs/1", %{"id" => 1}} in rows_docs do
+          {:ok, :flushed}
+        else
+          {:retry, %{resources: length(rows_res), docs: length(rows_docs)}}
+        end
+      end,
+      deadline_ms: 5_000,
+      observable: "DetsMirror flushed /r/a and docs/1 to disk"
+    )
 
     # Read the dets files directly (closed read) to prove rows hit disk.
     # FLAKE_LEDGER F12 (receipts/i24-store-dets-torn.md): under full-suite

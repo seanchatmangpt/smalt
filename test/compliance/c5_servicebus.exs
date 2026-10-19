@@ -338,21 +338,23 @@ defmodule Smalt.Compliance.C5ServicebusTest do
 
       SmaltTest.Lifecycle.stop_shared_tree()
 
-      # save-prev (leak-court): carry across the on_exit seam via the process
-      # dictionary (try/on_exit bodies are separate scopes — i21-leak-batch2).
-      prev_arm = Application.get_env(:smalt, :arm_port)
-      prev_egress = Application.get_env(:smalt, :egress_port)
-      prev_amqp = Application.get_env(:smalt, :amqp_port)
-      prev_eh = Application.get_env(:smalt, :event_hubs_port)
-      Process.put({__MODULE__, :ports_prev}, {prev_arm, prev_egress, prev_amqp, prev_eh})
+      # save-prev (leak-court): save_envs/1 captures the pre-setup state of the
+      # port keys (+ :sb_shared_key, folded here — its standalone delete on_exit
+      # is subsumed by restore_envs/1).
+      token =
+        SmaltTest.Lifecycle.save_envs([
+          :arm_port,
+          :egress_port,
+          :amqp_port,
+          :event_hubs_port,
+          :sb_shared_key
+        ])
 
       Application.put_env(:smalt, :arm_port, get_free_port())
       Application.put_env(:smalt, :egress_port, get_free_port())
       Application.put_env(:smalt, :amqp_port, port)
       Application.put_env(:smalt, :event_hubs_port, get_free_port())
       Application.put_env(:smalt, :sb_shared_key, Base.encode64(:crypto.strong_rand_bytes(48)))
-
-      on_exit(fn -> Application.delete_env(:smalt, :sb_shared_key) end)
 
       {:ok, _sup} =
         Supervisor.start_link([Smalt.Store, {Smalt.AmqpBroker, []}],
@@ -377,27 +379,7 @@ defmodule Smalt.Compliance.C5ServicebusTest do
         end
 
         # conditional restore of the port-config keys saved in setup
-        case Process.get({__MODULE__, :ports_prev}) do
-          {arm, egress, amqp, eh} ->
-            if is_nil(arm),
-              do: Application.delete_env(:smalt, :arm_port),
-              else: Application.put_env(:smalt, :arm_port, arm)
-
-            if is_nil(egress),
-              do: Application.delete_env(:smalt, :egress_port),
-              else: Application.put_env(:smalt, :egress_port, egress)
-
-            if is_nil(amqp),
-              do: Application.delete_env(:smalt, :amqp_port),
-              else: Application.put_env(:smalt, :amqp_port, amqp)
-
-            if is_nil(eh),
-              do: Application.delete_env(:smalt, :event_hubs_port),
-              else: Application.put_env(:smalt, :event_hubs_port, eh)
-
-          _ ->
-            :ok
-        end
+        SmaltTest.Lifecycle.restore_envs(token)
 
         SmaltTest.Lifecycle.restore_app()
         SmaltTest.Lifecycle.ensure_store_up()

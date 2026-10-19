@@ -266,8 +266,8 @@ defmodule Smalt.Compliance.C7EventsTest do
     # Unique never-before-used partition ids: EH seq counters are per-partition
     # in the immortal Smalt.Messaging.EventHubs.Server GenServer and survive the
     # per-test Store restart, so freshness (s == 1) needs a fresh partition key.
-    p1 = "c7-ns/c7-hub/fresh-#{System.unique_integer([:positive])}"
-    p2 = "c7-ns/c7-hub/fresh-#{System.unique_integer([:positive])}"
+    p1 = SmaltTest.Lifecycle.uid("c7-ns/c7-hub/fresh")
+    p2 = SmaltTest.Lifecycle.uid("c7-ns/c7-hub/fresh")
 
     {:ok, s1, _} = Smalt.Messaging.EventHubs.send_event(p1, "a")
     {:ok, s2, _} = Smalt.Messaging.EventHubs.send_event(p2, "b")

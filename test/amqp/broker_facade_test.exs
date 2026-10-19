@@ -65,7 +65,16 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
       # proof (an accept) instead of after a blind wait.
       Enum.each(socks, &:gen_tcp.close/1)
       assert match?({:ok, _}, :gen_tcp.connect(~c"127.0.0.1", port, [:binary], 1_000))
-      assert Process.alive?(pid)
+
+      # Surviving one instant proves nothing about a delayed crash; hold the
+      # alive-check continuously for a stability window.
+      :ok =
+        AssertEventually.eventually_stays(
+          fn -> Process.alive?(pid) end,
+          within_ms: 5_000,
+          stability_ms: 50,
+          desc: "listener survives client churn (no delayed crash)"
+        )
 
       # Still accepting after churn
       assert match?({:ok, _}, :gen_tcp.connect(~c"127.0.0.1", port, [:binary], 1_000))
@@ -109,8 +118,19 @@ defmodule Smalt.Amqp.BrokerFacadeTest do
 
       assert_receive {:DOWN, ^ref, :process, ^conn_pid, _}, 1_000
 
-      assert Process.alive?(pid)
-      assert Process.alive?(Process.whereis(Smalt.AmqpBroker.ConnSup))
+      # Listener and ConnSup must not die from the connection kill — even with
+      # delay. Single-instant alive-checks can't prove that; hold both
+      # continuously for a stability window.
+      :ok =
+        AssertEventually.eventually_stays(
+          fn ->
+            Process.alive?(pid) and
+              Process.alive?(Process.whereis(Smalt.AmqpBroker.ConnSup))
+          end,
+          within_ms: 5_000,
+          stability_ms: 50,
+          desc: "listener and ConnSup survive a killed connection (no delayed crash)"
+        )
 
       # A new connection can still be accepted
       assert match?({:ok, _}, :gen_tcp.connect(~c"127.0.0.1", port, [:binary], 1_000))
