@@ -151,6 +151,7 @@ defmodule Smalt.Messaging.EventGrid do
         case prev.inflight do
           {id, ev, _attempts} ->
             prev
+            |> Map.put(:alive?, true)
             |> Map.put(:pid, pid)
             |> Map.put(:monitor, Process.monitor(pid))
             |> Map.put(:inflight, nil)

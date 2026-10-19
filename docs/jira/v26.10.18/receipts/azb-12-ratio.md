@@ -80,19 +80,29 @@ falsifier run also showed 8 other unrelated load flake faces (C4Blob wire
 tier etc.), classified by soak.sh against FLAKE_LEDGER — not this lane's
 diff.
 
-Post-fix burn-chaos rerun: see Validation.
+Post-fix burn-chaos rerun: `just burn-chaos` (8 hogs) offline tier completed
+2674 tests / 16 failures — **none of the three converted fences among them**
+(tmp/burn-leg-20261018T230530Z.log; the 16 faces are foreign: azsim plane
+suites, TLS paired-boot, stress census, canonical drift — other lanes'
+in-flight edits, incl. Spark DslError compile aborts mid-tree). The same
+run's wire tier leg aborted exit 2 on a foreign mid-run compile state
+("Compiling 5 files" / `cas_replace` unused from a concurrent lane's
+in-flight blob_storage.ex edit) — compile-abort, not a failure count; not
+this lane's diff.
 
 ## Validation
 
 - Solo combined (`pplan:986 + lro + semantic`, offline tier): 5/5 green in a
   quiet window (and 10/10 on the earlier single-shot form pre-retighten).
 - `just burn-chaos` (8 yes-hogs, atom-flood 20 s, 1 x offline + wire):
-  post-paired-fix rerun — all three converted fences green under load;
-  result recorded in tmp/burn-soak-<ts>.jsonl. Two earlier 1-failure
-  combined runs coincided with concurrent lanes' compile/test activity on
-  the shared checkout (lro_test.exs was edited by another lane mid-run);
-  could not be reproduced in the quiet-window 5/5 sweep, and no failure body
-  was captured — disclosed as UNKNOWN, not claimed clean.
+  offline leg 2674 tests / 16 failures, all foreign (see Falsifier);
+  all three converted fences GREEN under load. Wire tier leg aborted
+  exit 2 on a foreign mid-run compile state — compile-abort, not a
+  failure count, not this lane's diff. Two earlier 1-failure combined
+  runs coincided with concurrent lanes' compile/test activity on the
+  shared checkout (lro_test.exs was edited by another lane mid-run);
+  could not be reproduced in the quiet-window 5/5 sweep, and no failure
+  body was captured — disclosed as UNKNOWN, not claimed clean.
 - Probe restores: sha256 byte-exact ×3 files (fail-closed check ran green).
 
 ## Disclosures

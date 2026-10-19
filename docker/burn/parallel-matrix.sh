@@ -36,7 +36,8 @@ usage() {
   cat <<EOF
 usage: parallel-matrix.sh [--plane P] [--replicas N] [--dry-run] [--emit-compose [N]] [--deadline S]
   --plane P        run only plane P's replica row (default: run only 'all')
-  --replicas N     replica count for --emit-compose (default 4)
+  --replicas N     replica count for --emit-compose AND for the run row
+                   (default 4; AZB-17/22 run N=8 of plane 'all')
   --emit-compose   (re)generate docker/burn/compose.burn.yml from the matrix
                    spec and exit 0 (this file is generated, never hand-edited)
   --dry-run        print the resolved plan and exit 0
@@ -111,6 +112,8 @@ HDR
       BURN_SERVICE: $s
 $planes_line      BURN_EXPECT_PORT: "$exp"
       BURN_FLOOD_SECONDS: "15"
+      SMALT_BURN_SUBJECT_SHA: \${SMALT_BURN_SUBJECT_SHA:-}
+      BURN_IMAGE_DIGEST: \${BURN_IMAGE_DIGEST:-}
 
 SVC
     done
@@ -152,13 +155,13 @@ preflight() {
 # Services under test for this run: the plane's replica row.
 SERVICES=()
 i=1
-while [ $i -le 4 ]; do SERVICES+=("$(svc_name "$PLANE" "$i")"); i=$((i + 1)); done
+while [ $i -le "$REPLICAS" ]; do SERVICES+=("$(svc_name "$PLANE" "$i")"); i=$((i + 1)); done
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "[BURN-MATRIX][DRY-RUN] compose_file=$COMPOSE_FILE project=$PROJECT"
   echo "[BURN-MATRIX][DRY-RUN] services=${SERVICES[*]}"
   echo "[BURN-MATRIX][DRY-RUN] results_dir=$RESULTS_DIR deadline=${DEADLINE_SECS}s"
-  echo "[BURN-MATRIX][DRY-RUN] plan: preflight -> compose up -d -> deadline-poll burn-<svc>.jsonl x4 -> assert 4/4 clean -> host lsof assert -> compose down"
+  echo "[BURN-MATRIX][DRY-RUN] plan: preflight -> compose up -d -> deadline-poll burn-<svc>.jsonl x$REPLICAS -> assert $REPLICAS/$REPLICAS clean -> host lsof assert -> compose down"
   exit 0
 fi
 
@@ -185,7 +188,7 @@ collect() { # poll until every service has a JSONL row or the deadline hits
     fi
     read -t 2 -u 0 _ </dev/null 2>/dev/null || true
   done
-  echo "[BURN-MATRIX] deadline (${DEADLINE_SECS}s) before all rows landed (have=$have/4)" >&2
+  echo "[BURN-MATRIX] deadline (${DEADLINE_SECS}s) before all rows landed (have=$have/$REPLICAS)" >&2
   return 1
 }
 
@@ -232,6 +235,6 @@ for port in 9443 9444 8443 5672 5673 9545; do
 done
 [ "$HOST_HITS" -eq 0 ] || { echo "[BURN-MATRIX] VERDICT: FAIL — new host listeners on canonical ports" >&2; exit 1; }
 
-echo "[BURN-MATRIX] clean services: $CLEAN/4; new host canonical-port listeners: 0 (baseline preserved)"
-[ "$CLEAN" -eq 4 ] || { echo "[BURN-MATRIX] VERDICT: FAIL — not 4/4 clean" >&2; exit 1; }
+echo "[BURN-MATRIX] clean services: $CLEAN/$REPLICAS; new host canonical-port listeners: 0 (baseline preserved)"
+[ "$CLEAN" -eq "$REPLICAS" ] || { echo "[BURN-MATRIX] VERDICT: FAIL — not $REPLICAS/$REPLICAS clean" >&2; exit 1; }
 echo "[BURN-MATRIX] VERDICT: CLEAN — 4/4 containers green, netns-isolated, zero host publish"

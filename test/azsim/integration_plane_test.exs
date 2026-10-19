@@ -289,8 +289,9 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
     assert :fresh = EventGrid.publish(topic, %{id: "down-1"})
     assert {1, nil, false} = EventGrid.status(topic, :sub)
 
-    start_supervised!(%{
-      id: :azb07_sub4,
+    sub4_pid =
+      start_supervised!(%{
+        id: :azb07_sub4,
       start:
         {Task, :start_link,
          [
@@ -303,7 +304,7 @@ defmodule Smalt.Azsim.IntegrationPlaneTest do
       restart: :temporary
     })
 
-    EventGrid.subscribe(topic, :sub)
+    EventGrid.subscribe(topic, :sub, sub4_pid)
     assert_receive {:got3, ^topic, "down-1"}, 2000
   end
 

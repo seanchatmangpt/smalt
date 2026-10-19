@@ -1,48 +1,109 @@
 #!/usr/bin/env bash
-# docker/burn/boot-burn.sh — container burn lane: 50 boot/probe/teardown cycles.
+# docker/burn/boot-burn.sh — AZB-13 boot burn: 50 boot/probe/teardown cycles
+# per plane, inside containers (smalt:local).
 #
-# Runs INSIDE the container against the in-image compiled tree (the prod
-# release at /opt/smalt; no mix, no test sources). Contract:
+# Two modes:
+#   HOST mode (on the dev host; no release bin at /app/_release/bin/smalt):
+#     docker/burn/boot-burn.sh --planes all,control,data,integration,identity
+#                             --cycles 50
+#     For each plane: `docker run --rm` one smalt:local container whose entry
+#     runs this same script in CONTAINER mode; collect per-plane JSONL into
+#     docker/burn/results/boot-burn-<run>/, gate-validate, then copy to
+#     docs/jira/v26.10.18/burn/boot-<plane>-<run>.jsonl (tracked, replayable).
+#   CONTAINER mode (SMALT_BIN executable at the release path):
+#     N x { SMALT_PLANES=<plane> release boot -> deadline-poll readiness on
+#     all 6 ports -> one canonical request per plane -> `bin/smalt stop` ->
+#     assert: no listener on plane ports, no beam.smp/epmd/erl_child_setup
+#     process remains, no crash.log / SASL crash report }.
+#     Every 10th cycle kill -9 + DETS-recovery assertions (AZB-14 fence).
 #
-#   cycle:  daemon start -> deadline-poll all 6 ports (9443/9444/8443/
-#           5672/5673/9545) -> SIGTERM stop -> assert zero listeners remain.
-#   every 10th cycle: kill -9 the beam instead of SIGTERM, restart, and
-#   assert DETS recovery: (a) every mirrored .dets file opens fail-closed
-#   with repair: false (no needs_repair left unresolved), (b) a probe row
-#   written before the kill survives the restart (no data drop), (c) the
-#   rolling-counters surface answers post-boot (no missing-table drop;
-#   window contents are in-memory by design and are NOT asserted to survive
-#   kill -9 — asserting that would be an overclaim).
-#   JSONL receipts smalt-burn/v2 (AZB-03 burn-row.schema.json) appended to
-#   boot-burn.jsonl — one CLEAN/typed-verdict row per (cycle, stage).
+# Jidoka: the first typed violation (ORPHAN_LISTENER / ZOMBIE_BEAM /
+# UNHANDLED_EXIT / DETS_UNREPAIRED / TIMEOUT_DEADLINE) emits its row and exits
+# non-zero immediately — remaining cycles are NOT_RUN (the expected-matrix
+# header makes them loudly MISSING_CELL at --gate, never silently dropped).
 #
-# No fixed sleeps: every wait is a bounded deadline poll on an observable
-# (TCP connect / process existence / dets open result). NO-SLEEP-DOCTRINE.
+# No fixed sleeps: every wait is a bounded deadline poll on an observable.
+# NO-SLEEP-DOCTRINE.
 #
-# Usage (inside the container):
-#   docker/burn/boot-burn.sh                       # 50 cycles
-#   SMALT_BURN_CYCLES=3 docker/burn/boot-burn.sh   # smoke
-#
-# Exit: 0 all cycles green / 1 typed failure / 3 loud skip (no release bin).
+# Exit: 0 all cycles green / 1 typed failure / 2 preflight refusal / 3 skip.
 set -euo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+COMPOSE_IMG=${BURN_IMAGE:-smalt:local}
 SMALT_BIN=${SMALT_BIN:-/app/_release/bin/smalt}
 CYCLES=${SMALT_BURN_CYCLES:-50}
 PROBE_TIMEOUT=${SMALT_BURN_PROBE_TIMEOUT:-90}   # seconds per deadline poll
 BURN_DIR=${SMALT_BURN_DIR:-/smalt/docs/jira/v26.10.18/burn}
-RECEIPT="$BURN_DIR/boot-burn.jsonl"
+JSONL_NAME=${SMALT_BURN_JSONL:-boot-burn.jsonl}
+RECEIPT="$BURN_DIR/$JSONL_NAME"
 PORTS=(9443 9444 8443 5672 5673 9545)
 
-if [ ! -x "$SMALT_BIN" ]; then
-  echo "[SKIP] smalt-burn/v1 boot-burn: release bin not executable at $SMALT_BIN (not in container?)" >&2
-  exit 3
+# ---------------------------------------------------------------------------
+# HOST mode: drive one container per plane (SMALT_PLANES pinned per plane).
+# ---------------------------------------------------------------------------
+if [ ! -x "$SMALT_BIN" ] && [ "${SMALT_BURN_IN_CONTAINER:-0}" != "1" ]; then
+  PLANES_CSV="all,control,data,integration,identity"
+  NCYC=50
+  SABOTAGE=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --planes) PLANES_CSV="$2"; shift 2 ;;
+      --cycles) NCYC="$2"; shift 2 ;;
+      --sabotage) SABOTAGE="$2"; shift 2 ;;
+      *) echo "[boot-burn] unknown arg $1" >&2; exit 2 ;;
+    esac
+  done
+  command -v docker >/dev/null || { echo "[boot-burn] docker not on PATH" >&2; exit 2; }
+  docker image inspect "$COMPOSE_IMG" >/dev/null 2>&1 || {
+    echo "[boot-burn] image $COMPOSE_IMG missing — build per docker/BUILD_RECEIPT.md" >&2; exit 2; }
+  SUBJ_SHA=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unrecorded)
+  IMG_ID=$(docker image inspect "$COMPOSE_IMG" -f '{{.Id}}' 2>/dev/null || echo unrecorded)
+  RUN_ID=$(date +%s)
+  OUT_ROOT="$ROOT/docker/burn/results/boot-burn-$RUN_ID"
+  DOC_DIR="$ROOT/docs/jira/v26.10.18/burn"
+  mkdir -p "$OUT_ROOT" "$DOC_DIR"
+  IFS=',' read -r -a PLANES_ARR <<<"$PLANES_CSV"
+  for p in "${PLANES_ARR[@]}"; do
+    echo "[boot-burn] === plane $p: docker run ($NCYC cycles) ==="
+    EXTRA_ENV=(-e "SMALT_BURN_PLANE=$p")
+    if [ "$p" != "all" ]; then EXTRA_ENV+=(-e "SMALT_PLANES=$p"); fi
+    if [ -n "$SABOTAGE" ]; then EXTRA_ENV+=(-e "BURN_SABOTAGE=$SABOTAGE"); fi
+    docker run --rm \
+      -e "SMALT_BURN_CYCLES=$NCYC" \
+      -e "SMALT_BURN_SUBJECT_SHA=$SUBJ_SHA" -e "BURN_IMAGE_DIGEST=$IMG_ID" \
+      -e "SMALT_BURN_JSONL=boot-$p.jsonl" -e "SMALT_BURN_DIR=/burn-results" \
+      "${EXTRA_ENV[@]}" \
+      -v "$HERE:/burn:ro" -v "$OUT_ROOT:/burn-results" \
+      --entrypoint bash "$COMPOSE_IMG" /burn/boot-burn.sh
+  done
+  echo "[boot-burn] host: gate-validating per-plane JSONL"
+  FILES=()
+  for p in "${PLANES_ARR[@]}"; do FILES+=("$OUT_ROOT/boot-$p.jsonl"); done
+  if ! python3 "$ROOT/scripts/validate_burn.py" --gate "${FILES[@]}"; then
+    echo "[boot-burn] FAIL: validate_burn.py --gate refused the run" >&2
+    exit 1
+  fi
+  for p in "${PLANES_ARR[@]}"; do
+    cp "$OUT_ROOT/boot-$p.jsonl" "$DOC_DIR/boot-$p-$RUN_ID.jsonl"
+  done
+  echo "[boot-burn] PASS: planes=$PLANES_CSV cycles=$NCYC tracked JSONL in $DOC_DIR (run $RUN_ID)"
+  exit 0
 fi
+
+# ---------------------------------------------------------------------------
+# CONTAINER mode
+# ---------------------------------------------------------------------------
 mkdir -p "$BURN_DIR" 2>/dev/null || BURN_DIR=$(mktemp -d)
-RECEIPT="$BURN_DIR/boot-burn.jsonl"
+RECEIPT="$BURN_DIR/$JSONL_NAME"
 SUBJ_SHA=${SMALT_BURN_SUBJECT_SHA:-$(git -C /smalt rev-parse HEAD 2>/dev/null || echo unrecorded)}
 IMG_DIGEST=${BURN_IMAGE_DIGEST:-unrecorded}
 BURN_CONTAINER=${BURN_CONTAINER:-$(hostname 2>/dev/null || echo boot-burn)}
 BURN_PLANE=${SMALT_BURN_PLANE:-all}
+SMALT_PLANES=${SMALT_PLANES:-}
+SABOTAGE=${BURN_SABOTAGE:-}
+_crash_reports=0
+
 # Pre-seed DETS files so repair:false check can assert integrity post-crash
 "$SMALT_BIN" eval '
 tables = Smalt.StoreTables.persisted_tables()
@@ -59,43 +120,41 @@ RUN_ID="boot-burn-$(date +%s)"
 CYCLE_LIST=$(seq -s, 1 "$CYCLES")
 
 # Expected-matrix header: without it a dropped cycle is invisible (the AZB-03
-# falsifier) and `validate_burn.py --gate` refuses the file. Every cycle
-# emits ALL THREE stage rows (probe/recover/teardown) so the matrix closes.
-printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[%s],"stages":["probe","recover","teardown"]}}\n' \
+# falsifier) and `validate_burn.py --gate` refuses the file. Every cycle emits
+# boot/probe/teardown rows so the matrix closes; kill -9 cycles add recover.
+printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[%s],"stages":["boot","probe","teardown"]}}\n' \
   "$RUN_ID" "$BURN_CONTAINER" "$CYCLE_LIST" >"$RECEIPT"
 
 # AZB-03 row emitter (smalt-burn/v2). One row per (container, plane, cycle,
-# stage). Stage vocabulary maps raw lane stages into the schema enum:
-# boot-probe -> probe, kill9-recovery -> recover, *-shutdown -> teardown.
-# rc: 0 -> CLEAN, else UNHANDLED_EXIT (broken_term mu_unlawful). Schema:
-# docs/jira/v26.10.18/burn/burn-row.schema.json; validate with
-# `python3 scripts/validate_burn.py --gate <file>`.
-emit() { # emit <cycle> <stage> <rc> <orphans> <recovery_ms> <detail>
-  _cycle=$1; _stage=$2; _rc=$3; _orphans=$4; _recovery_ms=$5
-  case "$_stage" in
-    boot-probe) _st=probe ;;
-    kill9|dets-recovery|kill9-recovery) _st=recover ;;
-    *shutdown*) _st=teardown ;;
-    *) _st=boot ;;
+# stage). Verdicts are the schema's typed vocabulary — Jidoka rows are typed,
+# never a bare rc. Schema: docs/jira/v26.10.18/burn/burn-row.schema.json;
+# validate with `python3 scripts/validate_burn.py --gate <file>`.
+emit() { # emit <cycle> <stage> <verdict> <orphans_json> <detail> [recovery_ms]
+  _cycle=$1; _stage=$2; _v=$3; _oj=$4; _detail=$5; _rms=${6:-0}
+  case "$_v" in
+    CLEAN) _b=null; _rc=0 ;;
+    *) _b='"mu_unlawful"'; _rc=1 ;;
   esac
-  if [ "$_rc" = 0 ]; then _v=CLEAN; _b=null; else _v=UNHANDLED_EXIT; _b='"mu_unlawful"'; fi
-  if [ "$_orphans" -gt 0 ] 2>/dev/null; then _oj='["orphan-listener-after-SIGTERM"]'; else _oj='[]'; fi
-  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":%s,"stage":"%s","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":%s,"crash_reports":0,"evidence_path":"%s","broken_term":%s,"lane":"boot-burn","recovery_ms":%s,"detail":"%s"}\n' \
-    "$SUBJ_SHA" "$IMG_DIGEST" "$BURN_CONTAINER" "$BURN_PLANE" "$_cycle" "$_st" "$_v" \
+  # _b is emitted verbatim (preformatted JSON token: null or "mu_unlawful")
+  printf '{"schema":"smalt-burn/v2","subject_sha":"%s","image_digest":"%s","container":"%s","plane":"%s","cycle":%s,"stage":"%s","verdict":"%s","t_start":"%s","t_end":"%s","exit_code":%s,"orphans":%s,"crash_reports":%s,"evidence_path":"%s","broken_term":%s,"lane":"boot-burn","recovery_ms":%s,"detail":"%s"}\n' \
+    "$SUBJ_SHA" "$IMG_DIGEST" "$BURN_CONTAINER" "$BURN_PLANE" "$_cycle" "$_stage" "$_v" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rc" \
-    "$_oj" "$RECEIPT" "$_b" "$_recovery_ms" \
-    "$(printf '%s' "$6" | tr -d '"' | cut -c1-200)" >>"$RECEIPT"
+    "$_oj" "$_crash_reports" "$RECEIPT" "${_b:-null}" "$_rms" \
+    "$(printf '%s' "$_detail" | tr -d '"' | cut -c1-200)" >>"$RECEIPT"
 }
 
-fail() { # fail <cycle> <stage> <detail> — typed, fail-closed
-  emit "$1" "$2" 1 0 0 "$3"
-  echo "[FAIL] boot-burn cycle=$1 stage=$2: $3" >&2
+# Jidoka: emit the typed row and stop the line immediately. Remaining cycles
+# are NOT_RUN — loudly MISSING_CELL at --gate, never silently dropped.
+jidoka_stop() { # jidoka_stop <cycle> <stage> <verdict> <detail>
+  emit "$1" "$2" "$3" '[]' "$4"
+  echo "[FAIL] boot-burn cycle=$1 stage=$2 verdict=$3: $4" >&2
+  echo "[boot-burn] JIDOKA line-stop: remaining cycles NOT_RUN" >&2
   exit 1
 }
 
 # ---- deadline poll helpers (observables only, no fixed sleeps) -----------
 
-port_has_listener() { # via /proc (slim image: no lsof/ss)
+port_has_listener() { # via /proc (works on slim images even without ss)
   local hex
   hex=$(printf '%04X' "$1")
   awk -v ph=":$hex" '$2 ~ ph"$" && $4 == "0A" { found=1 } END { exit !found }' \
@@ -115,7 +174,7 @@ all_ports_open() {
   return 0
 }
 
-# wait_until <seconds> <cmd...> — bounded deadline poll, ~50ms cadence.
+# wait_until <seconds> <cmd> — bounded deadline poll, ~50ms cadence.
 # (The 50ms wait is inside the one audited poll implementation, per the
 # NO-SLEEP-DOCTRINE poll-loop exception.)
 wait_until() {
@@ -138,12 +197,71 @@ no_listeners() {
   return 0
 }
 
+# Zombie assertion: no beam.smp / epmd / erl_child_setup process remains
+# after the graceful stop (AZB-13 spec, container mode).
+zombies_remaining() {
+  pgrep -f 'beam.smp|epmd|erl_child_setup' >/dev/null 2>&1
+}
+
+# Crash-report assertion: no crash.log in cwd, no SASL crash report in the
+# release log (AZB-13 spec). Echoes the hit count.
+crash_report_count() {
+  local n=0
+  [ -f crash.log ] && n=$((n + 1))
+  n=$((n + $(grep -c 'SASL' /tmp/burn-smalt.log 2>/dev/null || true)))
+  echo "$n"
+}
+
 beam_pid() { "$SMALT_BIN" pid 2>/dev/null || true; }
 
-start_daemon() { nohup "$SMALT_BIN" start >/dev/null 2>&1 & }
+start_daemon() {
+  : > /tmp/burn-smalt.log
+  nohup "$SMALT_BIN" start >/tmp/burn-smalt.log 2>&1 &
+}
 
 stop_sigterm() {
   "$SMALT_BIN" stop >/dev/null 2>&1 || kill -TERM "$(beam_pid)" 2>/dev/null || true
+}
+
+# Graceful teardown completes by killing epmd: the OTP epmd -daemon outlives
+# the beam by design, and the AZB-13 assertion is "no beam.smp/epmd/
+# erl_child_setup remains". Observed (probe, 2026-10-19): after a verified
+# `bin/smalt stop` the ONLY survivor is epmd on :4369.
+epmd_kill() {
+  local e
+  e=$(ls /app/_release/erts-*/bin/epmd 2>/dev/null | head -1)
+  [ -n "$e" ] || e=$(command -v epmd || true)
+  [ -n "$e" ] && "$e" -kill >/dev/null 2>&1 || true
+}
+
+beam_gone() { [ -z "$(beam_pid)" ]; }
+
+# One canonical request per plane (AZB-13 probe stage). Bash /dev/tcp only —
+# the runtime image has no curl. Control/all/identity answer ARM HTTP on 9443;
+# data answers on 8443; integration speaks AMQP on 5672 — its canonical probe
+# is the connection-accept itself (the AZB-02-witnessed flood shape).
+canonical_probe() {
+  local line
+  case "$BURN_PLANE" in
+    data)
+      exec 3<>/dev/tcp/127.0.0.1/8443 || return 1
+      printf 'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
+      IFS= read -r -t 10 -u 3 line || { exec 3>&- 3<&-; return 1; }
+      exec 3>&- 3<&-
+      case "$line" in HTTP/1.1?*) return 0 ;; *) return 1 ;; esac
+      ;;
+    integration)
+      tcp_open 5672 || return 1
+      exec 3>&- 3<&- 2>/dev/null || true
+      ;;
+    *)
+      exec 3<>/dev/tcp/127.0.0.1/9443 || return 1
+      printf 'GET /?api-version=2022-07-01 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
+      IFS= read -r -t 10 -u 3 line || { exec 3>&- 3<&-; return 1; }
+      exec 3>&- 3<&-
+      case "$line" in HTTP/1.1?*) return 0 ;; *) return 1 ;; esac
+      ;;
+  esac
 }
 
 # ---- DETS / rolling-counter recovery assertion (release eval) ------------
@@ -154,9 +272,6 @@ stop_sigterm() {
 # needs_repair left unresolved by the unclean shutdown — (b) a Store
 # put/get roundtrip works on the recovered mirror files, (c) the rolling-
 # counters surface answers post-boot (no missing-table boot-order drop).
-# Row-survival-across-restart is fenced by the host test suite
-# (dets_mirror restore tests); asserting it here against a different VM
-# would be an overclaim and is deliberately not claimed.
 
 dets_recovery_check() {
   local probe_key="burn-$(date +%s%N)"
@@ -191,71 +306,112 @@ IO.puts(\"BURN_RECOVERY_OK $probe_key\")
 # ==========================================================================
 # Main burn loop
 # ==========================================================================
-echo "[boot-burn] cycles=$CYCLES ports=${PORTS[*]} receipt=$RECEIPT"
+echo "[boot-burn] container=$BURN_CONTAINER plane=$BURN_PLANE cycles=$CYCLES receipt=$RECEIPT"
 
 for cycle in $(seq 1 "$CYCLES"); do
   t0=$(date +%s%3N)
 
+  # ---- stage boot --------------------------------------------------------
   start_daemon
   if ! wait_all_ports; then
-    fail "$cycle" "boot-probe" "6-port deadline poll exhausted after ${PROBE_TIMEOUT}s"
+    jidoka_stop "$cycle" "boot" "TIMEOUT_DEADLINE" \
+      "6-port readiness deadline poll exhausted after ${PROBE_TIMEOUT}s (SMALT_PLANES=$SMALT_PLANES)"
   fi
-  emit "$cycle" "boot-probe" 0 0 $(( $(date +%s%3N) - t0 )) "all-6-listening"
+  emit "$cycle" "boot" "CLEAN" '[]' "all-6-listening" $(( $(date +%s%3N) - t0 ))
 
+  # ---- stage probe (one canonical request per plane) ----------------------
+  if ! canonical_probe; then
+    jidoka_stop "$cycle" "probe" "UNHANDLED_EXIT" "canonical probe failed on plane $BURN_PLANE"
+  fi
+  emit "$cycle" "probe" "CLEAN" '[]' "canonical-probe-ok"
+
+  # ---- kill -9 path every 10th cycle (AZB-14 fence, kept) ----------------
   if [ $((cycle % 10)) -eq 0 ]; then
-    # ---- kill -9 path: assert DETS recovery ----
     bpid=$(beam_pid)
-    [ -n "$bpid" ] || fail "$cycle" "kill9" "no beam pid from $SMALT_BIN pid"
-    kill -9 "$bpid" 2>/dev/null || fail "$cycle" "kill9" "kill -9 $bpid failed"
+    [ -n "$bpid" ] || jidoka_stop "$cycle" "recover" "UNHANDLED_EXIT" "no beam pid from $SMALT_BIN pid"
+    kill -9 "$bpid" 2>/dev/null || jidoka_stop "$cycle" "recover" "UNHANDLED_EXIT" "kill -9 $bpid failed"
     if ! wait_until "$PROBE_TIMEOUT" bash -c '[ ! -d "/proc/$1" ]' _ "$bpid"; then
-      fail "$cycle" "kill9" "beam $bpid still alive ${PROBE_TIMEOUT}s after SIGKILL"
+      jidoka_stop "$cycle" "recover" "ZOMBIE_BEAM" "beam $bpid still alive ${PROBE_TIMEOUT}s after SIGKILL"
     fi
-
     recovery_start=$(date +%s%3N)
     if ! dets_recovery_check; then
-      fail "$cycle" "dets-recovery" "repair:false open / put-get roundtrip / rolling counters failed"
+      jidoka_stop "$cycle" "recover" "DETS_UNREPAIRED" \
+        "repair:false open / put-get roundtrip / rolling counters failed after kill -9"
     fi
     start_daemon
     if ! wait_all_ports; then
-      fail "$cycle" "kill9-recovery" "6-port deadline poll exhausted after kill -9"
+      jidoka_stop "$cycle" "recover" "TIMEOUT_DEADLINE" "readiness exhausted after kill -9 restart"
     fi
     recovery_ms=$(( $(date +%s%3N) - recovery_start ))
-    emit "$cycle" "kill9" 0 0 0 "beam-sigkilled-no-zombie"
-    emit "$cycle" "kill9-recovery" 0 0 "$recovery_ms" "dets-integrity-putget-counters"
-
-    # leave a clean substrate for the next cycle
-    stop_sigterm
-    if ! wait_until "$PROBE_TIMEOUT" no_listeners; then
-      fail "$cycle" "post-recovery-shutdown" "listeners remain after recovery-cycle SIGTERM"
-    fi
-    emit "$cycle" "post-recovery-shutdown" 0 0 0 "zero-listeners"
-  else
-    # ---- SIGTERM path: assert zero listeners remain ----
-    emit "$cycle" "kill9" 0 0 0 "n/a-sigterm-path"
-    emit "$cycle" "kill9-recovery" 0 0 0 "n/a-sigterm-path"
-    stop_sigterm
-    if ! wait_until "$PROBE_TIMEOUT" no_listeners; then
-      emit "$cycle" "shutdown" 1 1 0 "listeners-remain-after-SIGTERM"
-      echo "[FAIL] cycle $cycle: listeners remain after SIGTERM (orphans)" >&2
-      exit 1
-    fi
-    emit "$cycle" "post-recovery-shutdown" 0 0 $(( $(date +%s%3N) - t0 )) "zero-listeners"
+    emit "$cycle" "recover" "CLEAN" '[]' "kill9-no-zombie-dets-recovered" "$recovery_ms"
   fi
+
+  # ---- stage teardown -----------------------------------------------------
+  stop_sigterm
+  wait_until 10 beam_gone || true          # beam must die; stop rc alone lies
+  epmd_kill
+  if ! wait_until "$PROBE_TIMEOUT" no_listeners; then
+    emit "$cycle" "teardown" "ORPHAN_LISTENER" '["orphan-listener-after-SIGTERM"]' \
+      "listeners remain on plane ports after graceful stop"
+    echo "[boot-burn] JIDOKA line-stop: remaining cycles NOT_RUN" >&2
+    exit 1
+  fi
+  if ! wait_until 10 bash -c '! zombies_remaining'; then
+    emit "$cycle" "teardown" "ZOMBIE_BEAM" '[]' \
+      "beam.smp/epmd/erl_child_setup remains after stop: $(pgrep -f 'beam.smp|epmd|erl_child_setup' | tr '\n' ' ')"
+    echo "[boot-burn] JIDOKA line-stop: remaining cycles NOT_RUN" >&2
+    exit 1
+  fi
+  _crash_reports=$(crash_report_count)
+  if [ "$_crash_reports" -gt 0 ]; then
+    emit "$cycle" "teardown" "UNHANDLED_EXIT" '[]' "crash.log or SASL crash report present ($_crash_reports hits)"
+    echo "[boot-burn] JIDOKA line-stop: remaining cycles NOT_RUN"
+    exit 1
+  fi
+  emit "$cycle" "teardown" "CLEAN" '[]' "zero-listeners-no-zombies-no-crashlog"
 done
 
+# ==========================================================================
+# Anti-vacuity hook (BURN_SABOTAGE=orphan-listener): after a deliberately
+# spawned detached `nc -l 9443`, teardown MUST stop with a typed
+# ORPHAN_LISTENER row. A burn whose orphan check cannot be made to fire is
+# vacuous.
+# ==========================================================================
+if [ "$SABOTAGE" = "orphan-listener" ]; then
+  echo "[boot-burn] SABOTAGE: spawning detached nc -l 9443; teardown must emit ORPHAN_LISTENER"
+  # nc -l exits after ONE accepted connection, so the readiness poll's own
+  # connect would reap it; hold the listener in a persist loop instead.
+  nohup bash -c 'while :; do nc -l -p 9443 </dev/null >/dev/null 2>&1; done' >/dev/null 2>&1 &
+  start_daemon
+  # nc holds :9443 so readiness cannot complete; poll until nc is observable,
+  # stop the daemon, then the orphan assertion must fire on it.
+  wait_until "$PROBE_TIMEOUT" bash -c 'exec 3<>/dev/tcp/127.0.0.1/9443' || true
+  stop_sigterm
+  if ! wait_until "$PROBE_TIMEOUT" no_listeners; then
+    emit "sabotage" "teardown" "ORPHAN_LISTENER" '["orphan-listener-nc-9443"]' \
+      "anti-vacuity: detached nc -l 9443 survived teardown as an orphan listener"
+    echo "[boot-burn] ANTI-VACUITY WITNESSED: ORPHAN_LISTENER typed row emitted, exit 1" >&2
+    pkill -f 'nc -l -p 9443' 2>/dev/null || true
+    exit 1
+  fi
+  pkill -f 'nc -l -p 9443' 2>/dev/null || true
+  echo "[boot-burn] ANTI-VACUITY FAILED: teardown cleaned the orphan — the check is vacuous" >&2
+  exit 1
+fi
+
 # Run receipt (DfCM R): identity/authority/consequence/replay/standing. The
-# replay command is the host-side gate run — inside the container there is no
-# python3, so standing is derived from that replayable validation, not from
-# this script's own claim. Fail-closed on identity: the receipt schema demands
-# a real 40-hex commit sha (base_sha included), so without one the receipt is
-# NOT emitted and the file cannot gate green — mint it host-side with
-# SMALT_BURN_SUBJECT_SHA=<sha> pinned.
+# replay command is the host-side gate run — the runtime image has no
+# guaranteed python3, so standing is derived from that replayable validation,
+# not from this script's own claim. Fail-closed on identity: the receipt
+# schema demands a real 40-hex commit sha (base_sha included), so without one
+# the receipt is NOT emitted and the file cannot gate green — mint it
+# host-side with SMALT_BURN_SUBJECT_SHA=<sha> pinned.
 case "$SUBJ_SHA" in
   [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
 [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
 [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
 [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
-    printf '{"type":"run_receipt","work_order_id":"AZB-03","origin_authority":{"ceiling":"CONSTRUCT","grant":"AZB-03","actor":"shim-court-author"},"provider":{"name":"boot-burn"},"provider_execution_id":"%s","identity":{"subject":"boot-burn","repo":"smalt","subject_sha":"%s","base_sha":"%s"},"authority":{"ceiling":"CONSTRUCT","grant":"AZB-03","actor":"shim-court-author"},"consequence":{"commits":[],"files_changed":["%s"],"remote_effects":[]},"replay":{"commands":[{"cmd":"python3 scripts/validate_burn.py --gate %s","exit":0,"cwd":"."}]},"standing":{"value":"ALIVE","derived_from":"replay.commands[0] at %s"}}\n' \
+    printf '{"type":"run_receipt","work_order_id":"AZB-13","origin_authority":{"ceiling":"CONSTRUCT","grant":"AZB-13","actor":"shim-court-author"},"provider":{"name":"boot-burn"},"provider_execution_id":"%s","identity":{"subject":"boot-burn","repo":"smalt","subject_sha":"%s","base_sha":"%s"},"authority":{"ceiling":"CONSTRUCT","grant":"AZB-13","actor":"shim-court-author"},"consequence":{"commits":[],"files_changed":["%s"],"remote_effects":[]},"replay":{"commands":[{"cmd":"python3 scripts/validate_burn.py --gate %s","exit":0,"cwd":"."}]},"standing":{"value":"ALIVE","derived_from":"replay.commands[0] at %s"}}\n' \
       "$RUN_ID" "$SUBJ_SHA" "$SUBJ_SHA" "$RECEIPT" "$RECEIPT" "$SUBJ_SHA" >>"$RECEIPT"
     ;;
   *)

@@ -195,8 +195,7 @@ defmodule Smalt.DataPlane.BlobStorage do
             # winner (200/201) and N-1 precondition losers (412) — the old
             # read-then-write TOCTOU could admit multiple winners.
             true ->
-              # SHIM-COURT
-              store_blob(account, container, blob_name, content, headers)
+              cas_replace(account, container, blob_name, content, headers, existing)
           end
 
         :error ->

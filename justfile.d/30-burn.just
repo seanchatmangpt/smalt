@@ -22,9 +22,16 @@ burn: burn-soak burn-matrix
 @burn-chaos *args:
     bash {{BURN_ROOT}}/docker/burn/soak.sh --hogs 8 --rounds 1 {{args}}
 
-# 4-container parallel burn matrix; asserts 4/4 clean.
+# 4-container parallel burn matrix; asserts N/N clean.
 @burn-matrix *args:
     bash {{BURN_ROOT}}/docker/burn/parallel-matrix.sh {{args}}
+
+# AZB-22 burn ring: boot burn x50 -> chaos x50 -> matrix (N=8) -> soak, one
+# image digest bound to one subject SHA, summary validated by the DfCM
+# receipt validator. Stage-runnable/resumable:
+#   just burn-ring --stage boot   (boot|chaos|matrix|soak|summary)
+@burn-ring *args:
+    bash {{BURN_ROOT}}/docker/burn/burn-ring.sh {{args}}
 
 # Reclaim lane build roots + docker burn volumes + burn results.
 @burn-clean:
@@ -36,3 +43,9 @@ burn: burn-soak burn-matrix
     python3 scripts/burn_to_ocel2.py docs/jira/v26.10.18/burn/boot-burn.jsonl docs/jira/v26.10.18/burn/boot-burn.ocel.json
     python3 scripts/burn_to_ocel2.py docs/jira/v26.10.18/burn/chaos-kill.jsonl docs/jira/v26.10.18/burn/chaos-kill.ocel.json
     python3 scripts/validate_ocel2.py docs/jira/v26.10.18/burn/*.ocel.json
+
+# AZB-13 boot burn: 50 boot/probe/teardown cycles per plane inside containers
+# (smalt:local), rows through validate_burn.py --gate. Jidoka: first
+# ORPHAN_LISTENER / ZOMBIE_BEAM / UNHANDLED_EXIT row stops the line.
+@burn-boot *args:
+    bash {{BURN_ROOT}}/docker/burn/boot-burn.sh {{args}}

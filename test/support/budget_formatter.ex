@@ -17,13 +17,15 @@ defmodule SmaltTest.BudgetFormatter do
 
   use GenServer
 
-  def init(config) do
+  @impl true
+  def init(_config) do
     path = System.get_env("SMALT_BUDGET_EXPORT") || "tmp/test-budget-export.tsv"
     File.mkdir_p!(Path.dirname(path))
     io = File.open!(path, [:write, :utf8])
     {:ok, %{io: io, path: path}}
   end
 
+  @impl true
   def handle_cast({:test_finished, %ExUnit.Test{} = test}, st) do
     # Excluded/skipped tests never ran: no timing line (a 0ms ghost line in
     # the export would corrupt the manifest's STALE bookkeeping).
@@ -35,6 +37,15 @@ defmodule SmaltTest.BudgetFormatter do
 
     {:noreply, st}
   end
+
+  @impl true
+  def handle_cast({:suite_finished, _times}, st) do
+    File.close(st.io)
+    IO.puts("== budget export written: #{st.path}")
+    {:noreply, st}
+  end
+
+  def handle_cast(_event, st), do: {:noreply, st}
 
   defp write_line(test, st) do
     ms = div(test.time || 0, 1000)
@@ -49,12 +60,4 @@ defmodule SmaltTest.BudgetFormatter do
     IO.write(st.io, "#{loc}\t#{ms}\t#{tid}\n")
     {:noreply, st}
   end
-
-  def handle_cast({:suite_finished, _times}, st) do
-    File.close(st.io)
-    IO.puts("== budget export written: #{st.path}")
-    {:noreply, st}
-  end
-
-  def handle_cast(_event, st), do: {:noreply, st}
 end
