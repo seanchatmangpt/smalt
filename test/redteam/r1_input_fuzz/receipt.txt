@@ -1,5 +1,0 @@
-R1 input fuzz receipt — 2026-10-15T02:51:24Z
-substrate: pid 55896, log /Users/sac/smalt/test/redteam/r1_input_fuzz/substrate.log
-node --test exit: 0
-checks + findings: see findings.md
-PASS (fail-closed receipt: tests green AND findings.md written)
