@@ -1,0 +1,22 @@
+{
+  "name": "smalt-verification-ts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "External TypeScript verification suite: official @azure/* SDKs over real wire against the smalt substrate.",
+  "scripts": {
+    "run-all": "node run-all.mjs"
+  },
+  "dependencies": {
+    "@azure/app-configuration": "^1.13.0",
+    "@azure/arm-resources": "^5.2.0",
+    "@azure/core-auth": "^1.11.0",
+    "@azure/core-rest-pipeline": "^1.25.0",
+    "@azure/cosmos": "^4.10.1",
+    "@azure/event-hubs": "^6.0.4",
+    "@azure/identity": "^4.14.0",
+    "@azure/keyvault-keys": "^4.10.2",
+    "@azure/service-bus": "^7.10.0",
+    "@azure/storage-blob": "^12.34.0"
+  }
+}
