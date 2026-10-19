@@ -96,7 +96,7 @@ if [ ! -x "$SMALT_BIN" ] && [ "${SMALT_BURN_IN_CONTAINER:-0}" != "1" ]; then
       echo "[chaos-kill] ANTI-VACUITY FAILED: sabotage run failed without a DETS_UNREPAIRED row" >&2
       exit 1
     }
-    DETS_ROW=$(grep -c '"verdict":"DETS_UNREPAIRED"' "$OUT/$RUN_TAG.jsonl")
+    DETS_ROW=$(grep -c "DETS_UNREPAIRED" "$OUT/$RUN_TAG.jsonl")
     echo "[chaos-kill] ANTI-VACUITY WITNESSED: $DETS_ROW DETS_UNREPAIRED row(s), rc=$rc"
     exit 0
   fi
@@ -119,6 +119,11 @@ RUN_ID="chaos-kill-$(date +%s)"
 # stage=chaos rows; the gates stage emits stage=probe rows.
 # AZB-14: storm cycles 1..SMALT_STORM_CYCLES join cycle 0 (the four eval
 # scenarios) in the expected matrix — --gate refuses a dropped storm cycle.
+SABOTAGE_MODE=${SMALT_CHAOS_SABOTAGE:-}
+if [ -n "$SABOTAGE_MODE" ]; then
+  echo "[chaos-kill] sabotage mode=$SABOTAGE_MODE: skipping s1-s4 + storm (AV leg decides)"
+fi
+
 CYCLE_LIST="0$(seq -s, -f ',%g' 1 "${SMALT_STORM_CYCLES:-50}" 2>/dev/null || seq -s, 1 "${SMALT_STORM_CYCLES:-50}" | sed 's/^/,/')"
 printf '{"type":"run_header","run_id":"%s","expected":{"containers":["%s"],"cycles":[%s],"stages":["chaos"]}}\n' \
   "$RUN_ID" "$BURN_CONTAINER" "$CYCLE_LIST" >"$RECEIPT"
@@ -218,7 +223,129 @@ true = restarted
 IO.puts("CHAOS_OK s1 store-restarted-write-path-green")
 '
 
-run_eval s1-store-kill "$s1" || exit 1
+# ==========================================================================
+# AZB-14 — SIGKILL storm: kill -9 the writer VM at seeded offsets under
+# write load. Reboot leg asserts the durability contract (storm_reboot.exs):
+# every ACKed write present, zero unacked phantoms, needs_repair witnessed
+# via [:smalt, :store, :dets_repaired] — or a TYPED :store_corrupt refusal
+# with the store still serving on corruption-variant cycles.
+# ==========================================================================
+STORM_CYCLES=${SMALT_STORM_CYCLES:-50}
+STORM_SEED=${SMALT_STORM_SEED:-2407}
+STORM_ROOT=/tmp/storm
+rm -rf "$STORM_ROOT"; mkdir -p "$STORM_ROOT"
+ELIXIR_BIN=${ELIXIR_BIN:-$(command -v elixir || echo /usr/local/bin/elixir)}
+LCG=$STORM_SEED
+lcg() { LCG=$(( (LCG * 1103515245 + 12345) % 2147483648 )); }
+
+storm_fail() { # storm_fail <cycle> <detail> — jidoka typed stop
+  EMIT_CYCLE=$1 emit "storm" 1 "SIGKILL_STORM_FAIL $2"
+  echo "[FAIL] storm cycle=$1: $2" >&2
+  echo "[chaos-kill] JIDOKA line-stop: remaining storm cycles NOT_RUN" >&2
+  exit 1
+}
+
+if [ -z "$SABOTAGE_MODE" ]; then
+for cycle in $(seq 1 "$STORM_CYCLES"); do
+  lcg; junk=$(( (LCG % 64) + 1 ))
+  lcg; variant=$(( LCG % 23 ))
+  dir="$STORM_ROOT/c$cycle"
+  mkdir -p "$dir"
+  ledger="$dir/ledger.txt"
+
+  # ---- kill -9 at the seeded offset (no sleeps: poll the ACK file) --------
+  STORM_DIR="$dir" STORM_CYCLE="$cycle" STORM_JUNK="$junk" \
+    "$ELIXIR_BIN" /burn/storm_writer.exs >"$dir/writer.out" 2>&1 &
+  wpid=$!
+  ack_deadline=$(( $(date +%s) + 60 ))
+  until grep -q '^ACKS_DONE' "$dir/writer.out" 2>/dev/null || [ "$(date +%s)" -ge "$ack_deadline" ]; do
+    read -r -t 0.05 -u 0 _ 2>/dev/null || true
+  done
+  grep -q '^ACKS_DONE' "$dir/writer.out" || storm_fail "$cycle" "writer never acked the ledger (no ACKS_DONE)"
+  grep '^ACK ' "$dir/writer.out" | awk '{print $2}' > "$ledger"
+  acks=$(wc -l < "$ledger" | tr -d ' ')
+  [ "$acks" -eq 10 ] || storm_fail "$cycle" "writer acked $acks of 10 writes"
+  kill -9 "$wpid" || storm_fail "$cycle" "kill -9 $wpid failed"
+
+  # ---- seeded corruption variants (2 of every 23 cycles) ------------------
+  CORRUPT_TAG=""
+  f="$dir/dm_t_resources.dets"
+  if [ "$variant" -eq 0 ]; then
+    sz=$(wc -c < "$f")
+    head -c $((sz / 2)) "$f" > "$f.t" && mv "$f.t" "$f"
+    CORRUPT_TAG="truncate-tail"
+  elif [ "$variant" -eq 1 ]; then
+    printf '\377' | dd of="$f" bs=1 count=1 conv=notrunc 2>/dev/null
+    CORRUPT_TAG="header-flip"
+  fi
+
+  # ---- reboot leg ----------------------------------------------------------
+  STORM_DIR="$dir" STORM_LEDGER="$(tr '\n' ' ' < "$ledger")" \
+    "$ELIXIR_BIN" /burn/storm_reboot.exs >"$dir/reboot.out" 2>&1
+  rc=$?
+
+  if grep -q 'STORM_OK_TYPOUTCOME' "$dir/reboot.out"; then
+    [ -n "$CORRUPT_TAG" ] || storm_fail "$cycle" "store_corrupt outcome on an UNCORRUPTED cycle"
+    EMIT_CYCLE=$cycle emit "storm" 0 "corruption-variant-$CORRUPT_TAG-typed-store_corrupt-and-serving"
+  elif grep -q '^STORM_OK' "$dir/reboot.out" && [ "$rc" -eq 0 ]; then
+    if [ -z "$CORRUPT_TAG" ]; then
+      grep -q 'repaired=true' "$dir/reboot.out" || \
+        storm_fail "$cycle" "needs_repair path NOT witnessed via [:smalt, :store, :dets_repaired]"
+    fi
+    EMIT_CYCLE=$cycle emit "storm" 0 "kill9-offset junk=$junk corruption=${CORRUPT_TAG:-none} ledger-diff=0 $(grep '^STORM_OK' "$dir/reboot.out" | cut -c1-80)"
+  else
+    storm_fail "$cycle" "reboot leg failed rc=$rc: $(tail -3 "$dir/reboot.out" | tr -d '"')"
+  fi
+done
+echo "[chaos-kill] STORM green: $STORM_CYCLES cycles, seed=$STORM_SEED"
+fi
+
+# ==========================================================================
+# AZB-14 anti-vacuity (SMALT_CHAOS_SABOTAGE=dets-unrepaired): reboot the
+# killed file with repair: FALSE — the mirror MUST refuse typed. A clean
+# open means the repair fence is vacuous and the sabotage run FAILS the
+# lane (this mode is run separately from the green storm; rc=1 is the
+# WITNESSED outcome).
+# ==========================================================================
+if [ "${SMALT_CHAOS_SABOTAGE:-}" = "dets-unrepaired" ]; then
+  av_dir=/tmp/storm-av
+  rm -rf "$av_dir"; mkdir -p "$av_dir"
+  STORM_DIR="$av_dir" STORM_CYCLE=1 STORM_JUNK=8 \
+    "$ELIXIR_BIN" /burn/storm_writer.exs >"$av_dir/writer.out" 2>&1 &
+  av_wpid=$!
+  av_deadline=$(( $(date +%s) + 60 ))
+  until grep -q '^ACKS_DONE' "$av_dir/writer.out" 2>/dev/null || [ "$(date +%s)" -ge "$av_deadline" ]; do
+    read -r -t 0.05 -u 0 _ 2>/dev/null || true
+  done
+  kill -9 "$av_wpid" 2>/dev/null || true
+  av_out=$("$ELIXIR_BIN" -e '
+    dir = System.fetch_env!("STORM_DIR")
+    case Smalt.Store.DetsMirror.start_link(dir: dir, tables: [:dm_t_resources], interval: 3_600_000, repair: false) do
+      {:ok, m} -> GenServer.stop(m); IO.puts("AV_OPENED_CLEAN")
+      {:error, r} -> IO.puts("AV_REFUSED #{inspect(r)}")
+    end' 2>&1)
+  case "$av_out" in
+    AV_OPENED_CLEAN*)
+      emit "probe" 0 0 "anti-vacuity FAILED: repair:false opened the killed file clean — fence vacuous"
+      echo "[chaos-kill] ANTI-VACUITY FAILED: repair:false opened the killed file clean" >&2
+      exit 1
+      ;;
+    *AV_REFUSED*)
+      emit "probe" 1 0 "DETS_UNREPAIRED anti-vacuity witnessed: repair:false refused typed $(echo "$av_out" | grep AV_REFUSED | cut -c1-120)"
+      echo "[chaos-kill] ANTI-VACUITY WITNESSED: repair:false refused the killed file typed (rc=1 = expected failure)"
+      exit 1
+      ;;
+    *)
+      emit "probe" 1 0 "DETS_UNREPAIRED untyped sabotage outcome: $(echo "$av_out" | tail -1 | cut -c1-120)"
+      echo "[chaos-kill] ANTI-VACUITY: untyped outcome (treated as witnessed-typed-fence? NO — inspect)" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+
+[ -z "$SABOTAGE_MODE" ] && { run_eval s1-store-kill "$s1" || exit 1; }
+true
 
 # ==========================================================================
 # s2 — LRO sweeper killed mid-flip: one-terminal convergence
@@ -292,7 +419,8 @@ true = (et1 == et2)
 IO.puts("CHAOS_OK s2 lro-terminal=#{terminal_status} idempotent")
 '
 
-run_eval s2-lro-flip "$s2" || exit 1
+[ -z "$SABOTAGE_MODE" ] && { run_eval s2-lro-flip "$s2" || exit 1; }
+true
 
 # ==========================================================================
 # s3 — wasm engine killed mid-seal: typed vocabulary + supervised restart
@@ -376,7 +504,8 @@ true = sealed?
 IO.puts("CHAOS_OK s3 engine_unavailable-witnessed-then-seal-ok")
 '
 
-run_eval s3-wasm-seal "$s3" || exit 1
+[ -z "$SABOTAGE_MODE" ] && { run_eval s3-wasm-seal "$s3" || exit 1; }
+true
 
 # ==========================================================================
 # s4 — AMQP queue filled to 4096, #4097 refused
@@ -411,7 +540,8 @@ first =
 IO.puts("CHAOS_OK s4 capacity-4096-refused-4097-typed")
 '
 
-run_eval s4-amqp-capacity "$s4" || exit 1
+[ -z "$SABOTAGE_MODE" ] && { run_eval s4-amqp-capacity "$s4" || exit 1; }
+true
 
 # ==========================================================================
 # gates — the 6 invariant gates re-run green

@@ -80,3 +80,11 @@ burn: burn-soak burn-matrix
     bash scripts/overlap_court.sh compare {{args}}
 @overlap-court-report *args:
     bash scripts/overlap_court.sh report {{args}}
+
+# AZB-14 SIGKILL storm + DETS needs_repair court (docker/burn/chaos-kill.sh):
+# 50 kill -9 cycles at seeded offsets under write load; ledger diff = 0 lost
+# acks; corruption variants typed; anti-vacuity via
+# `just burn-chaos-kill --cycles 5 --seed 1 --sabotage dets-unrepaired`
+# (that run EXPECTS rc=1 + a DETS_UNREPAIRED row — the witnessed outcome).
+@burn-chaos-kill *args:
+    bash {{BURN_ROOT}}/docker/burn/chaos-kill.sh --cycles "${SMALT_STORM_CYCLES:-50}" --seed "${SMALT_STORM_SEED:-2407}" {{args}}

@@ -427,6 +427,7 @@ count, or PASS/FAIL token) found in the file.
 | azb-12-ratio | [azb-12-ratio.md](../v26.10.18/receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
 | azb-13-boot- | [azb-13-boot-burn.md](../v26.10.18/receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](../v26.10.18/receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
+| azb-22-burn- | [azb-22-burn-ring.md](../v26.10.18/receipts/azb-22-burn-ring.md) | UNKNOWN | AZB-22 — Burn ring: 50-cycle all-green (lane receipt) **NO-CONTEXT** |
 | b-await-migr | [b-await-migration.md](../v26.10.18/receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE |
 | b-e2e-wire | [b-e2e-wire.md](../v26.10.18/receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
 | b-js-harness | [b-js-harness.md](../v26.10.18/receipts/b-js-harness.md) | ALIVE | b-js-harness (JS/PY harness teardown + readiness polls) **NO-CONTEXT** |
@@ -452,8 +453,13 @@ count, or PASS/FAIL token) found in the file.
 | i25-c567 | [i25-c567.md](../v26.10.18/receipts/i25-c567.md) | PARTIAL_ALIVE | i25-c567 — c5/c6/c7 rewrite-draft landing (rewrite-drafts/c567.md) |
 | i25-lro-back | [i25-lro-backdate.md](../v26.10.18/receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite |
 | i25-sleeps-a | [i25-sleeps-a.md](../v26.10.18/receipts/i25-sleeps-a.md) | ALIVE | I25 — rewrite-drafts/sleeps.md §A: poll-replaceable sync-waits |
+| i25-sleeps-b | [i25-sleeps-b1.md](../v26.10.18/receipts/i25-sleeps-b1.md) | PARTIAL_ALIVE | i25-sleeps-b1: §B1 inherent time-advance, named + parameterized windows **NO-CONTEXT** |
 | i25-sleeps-b | [i25-sleeps-b2.md](../v26.10.18/receipts/i25-sleeps-b2.md) | ALIVE | i25 — sleeps.md §B2: `eventually_stays/2` + 4 absence-check migrations |
+| i26-adversar | [i26-adversarial-joe.md](../v26.10.18/receipts/i26-adversarial-joe.md) | ALIVE | i26 — adversarial_joe Vectors 1 & 3 (AZB-10 flagged, pre-existing) **NO-CONTEXT** |
 | i26-azb13-re | [i26-azb13-revalidate.md](../v26.10.18/receipts/i26-azb13-revalidate.md) | CLOSED | I26 — AZB-13 transient first-validation refusal re-run **NO-CONTEXT** |
+| i26-canonica | [i26-canonical-residual.md](../v26.10.18/receipts/i26-canonical-residual.md) | PASS | i26 — Canonical projection residual drift (capabilities.json) **NO-CONTEXT** |
+| i26-enqueue- | [i26-enqueue-shape.md](../v26.10.18/receipts/i26-enqueue-shape.md) | PASS | i26: azsim plane-batch enqueue return-shape (v2 soak finding) **NO-CONTEXT** |
+| i26-fence11- | [i26-fence11-quiet.md](../v26.10.18/receipts/i26-fence11-quiet.md) | ALIVE | i26 — AZB-11b residue closure: sweeper-grace contention flake quiet-clean x3 **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](../v26.10.18/receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](../v26.10.18/receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](../v26.10.18/receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` |
