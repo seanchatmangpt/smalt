@@ -116,3 +116,28 @@ decides): `docs/jira/v26.10.18/receipts/i29-azb20-postfix.md` (4,255 bytes,
 GAP-AZB20-1/4 postfix re-test, standing per its header — all four cells
 still OPEN). Receipt-backed; include in the same or a follow-up add if
 wanted.
+
+## Addendum 3 — harden-lane dirty-set census, 2026-10-19 (Context: solo)
+
+Dirty set per `git status --porcelain` (2 modified + 1 untracked, all
+courtface-harden lane):
+
+- `M test/azsim/topology_test.exs` (+60/-9 approx: 70 insertions total across
+  both files, 9 deletions)
+- `M test/wire/arm_wire_test.exs` (+19)
+- `?? docs/jira/v26.10.18/receipts/i29-courtface-harden.md` (3.5+ KB, standing
+  PASS, real `fast_test.sh` output embedded — receipt-backed)
+
+Receipt backing: `i29-courtface-harden.md` names both test files as its exact
+subject (`GracefulStop` `eventually/2` pattern, zero `Process.sleep` added);
+the diff hunk contents (bounded polls on `StsGate` whereis, bridge dequeue
+`{:retry, :bridge_queue_empty}`, arm-port TCP readiness) match the receipt's
+fix section. Confirmed receipt-backed.
+
+Exact commit-ready line for the coordinator:
+
+```bash
+git add test/azsim/topology_test.exs \
+        test/wire/arm_wire_test.exs \
+        docs/jira/v26.10.18/receipts/i29-courtface-harden.md
+```
