@@ -888,6 +888,10 @@ defmodule Smalt.Amqp.QueueStore do
           true ->
             {:ok, dlq_seq} =
               do_enqueue_locked(dlq, m.body,
+                # DLQ copy preserves the message id (SB parity: the DLQ
+                # message is the same message — witnessed by the s5 e2e
+                # court, probe 5 messageId assert).
+                message_id: m.message_id,
                 session_id: m.session_id,
                 # SDK parity: deadLetterReason/deadLetterErrorDescription are read
                 # from the DLQ message's APPLICATION PROPERTIES

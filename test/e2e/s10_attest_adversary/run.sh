@@ -58,10 +58,19 @@ SUB_PID=$!
 echo "$SUB_PID" > "$PID_FILE"
 
 cleanup() {
+  # Disarm first: this trap fires on EXIT/INT/TERM — re-entry (a TERM riding
+  # the substrate teardown) must not restart teardown mid-way. set +e too:
+  # the main body re-enables set -e after the court (line ~93), and a kill
+  # on the already-dead substrate (control phase kills it first) would then
+  # abort the trap mid-way and override the PASS exit 0 with 1.
+  trap - EXIT INT TERM
+  set +e
   kill "$SUB_PID" 2>/dev/null
   for _ in $(seq 1 25); do kill -0 "$SUB_PID" 2>/dev/null || break; sleep 0.2; done
   kill -9 "$SUB_PID" 2>/dev/null
+  kill "$WATCHDOG_PID" 2>/dev/null
   rm -f "$PID_FILE"
+  return 0
 }
 trap cleanup EXIT
 
@@ -77,6 +86,7 @@ echo "[s10] substrate up (pid $SUB_PID)"
 
 # --- 5. watchdog --------------------------------------------------------------
 ( sleep "$WATCHDOG_SECS"; echo "[s10] WATCHDOG ${WATCHDOG_SECS}s expired"; kill -9 "$SUB_PID" 2>/dev/null; kill -9 $$ 2>/dev/null ) &
+WATCHDOG_PID=$!
 
 # --- 6. run the adversary court ------------------------------------------------
 export MAA_MEASUREMENT SB_SHARED_KEY EGRESS_PORT ARM_PORT
@@ -84,7 +94,7 @@ set +e
 python "$HERE/adversary.py"
 PY_RC=$?
 set -e
-kill %2 2>/dev/null || true
+kill "$WATCHDOG_PID" 2>/dev/null || true
 
 # --- 7. dead-substrate control: attest must now FAIL ----------------------------
 kill "$SUB_PID" 2>/dev/null

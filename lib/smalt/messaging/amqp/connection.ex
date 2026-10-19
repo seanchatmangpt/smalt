@@ -194,7 +194,11 @@ defmodule Smalt.Amqp.Connection do
     links
     |> Map.values()
     |> Enum.each(fn link ->
-      if is_map(link) and link[:kind] == :queue and link[:role] == :receiver and
+      # Role note: the lock-holding link is a client-RECEIVER session link,
+      # whose SERVER-side role is :sender (role is the server's AMQP role).
+      # The previous :receiver gate never matched, so a closed/crashed
+      # session receiver pinned the session lock until TTL (s5 probe 6).
+      if is_map(link) and link[:kind] == :queue and link[:role] == :sender and
            is_binary(link[:session_id]) and link[:session_id] != "" do
         try do
           Smalt.Amqp.LockManager.session_release(link[:address], link[:session_id])
@@ -500,7 +504,10 @@ defmodule Smalt.Amqp.Connection do
       link ->
         # Release a held session lock when its receiver link detaches, so a
         # subsequent acceptSession can acquire it (real Service Bus parity).
-        if link.kind == :queue and link.role == :receiver and is_binary(link.session_id) and
+        # Role note: the lock-holding link is a client-RECEIVER session link,
+        # whose SERVER-side role is :sender — the previous :receiver gate
+        # never matched and the lock waited out the TTL (s5 probe 6).
+        if link.kind == :queue and link.role == :sender and is_binary(link.session_id) and
              link.session_id != "" do
           Smalt.Amqp.LockManager.session_release(link.address, link.session_id)
         end

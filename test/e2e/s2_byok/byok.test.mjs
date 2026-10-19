@@ -37,6 +37,7 @@ const { BlobServiceClient, StorageSharedKeyCredential } = require_(
 );
 
 const BASE = process.env.SMALT_EGRESS_BASE || "http://127.0.0.1:8443";
+const ARM_BASE = process.env.SMALT_ARM_BASE || "http://127.0.0.1:9443";
 const ACCOUNT = "smaltacct";
 const KEY = "smaltacct-key";
 
@@ -74,6 +75,52 @@ async function rest(method, pathname, { headers = {}, body } = {}) {
   return { status: res.status, json, text };
 }
 
+// ---------------------------------------------------------------------------
+// KD-15 challenge handshake (corpus premise pin, r239/r240): KV corpus clients
+// send the first request TOKENLESS and only attach a bearer after the 401 +
+// WWW-Authenticate challenge. On the challenge we mint an STS bearer from the
+// ARM authority the challenge itself names, then resend. (The legacy-SKR
+// fallthrough — x-ms-compliance-status raw header — is used by STEP 4a, whose
+// contract IS the fallthrough verdict.)
+// ---------------------------------------------------------------------------
+
+let cachedBearer = null;
+
+async function mintBearer() {
+  const res = await fetch(`${ARM_BASE}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: "s2-byok",
+      client_secret: "dev",
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await res.text();
+  assert.equal(res.status, 200, `STS mint failed ${res.status}: ${body}`);
+  const token = JSON.parse(body).access_token;
+  assert.ok(token, "STS mint returned access_token");
+  return token;
+}
+
+async function kvRest(method, pathname, opts = {}) {
+  let res = await rest(method, pathname, opts);
+  const challenged =
+    res.status === 401 &&
+    res.json?.error?.code === "AuthenticationFailed" &&
+    (res.text.toLowerCase().includes("www-authenticate") ||
+      res.json?.error?.message === "MissingBearerToken");
+  if (challenged) {
+    cachedBearer ??= await mintBearer();
+    res = await rest(method, pathname, {
+      ...opts,
+      headers: { ...opts.headers, authorization: `Bearer ${cachedBearer}` },
+    });
+  }
+  return res;
+}
+
 function blobClient() {
   return new BlobServiceClient(
     `${BASE}/${ACCOUNT}`,
@@ -101,7 +148,7 @@ test("STEP 1 substrate boot: baseline measurement attests (sevsnpvm)", async () 
 // ---------------------------------------------------------------------------
 
 test("STEP 2 create CMK: /keys/:name/create with release policy", async () => {
-  const { status, json } = await rest("POST", `/keys/${CMK}/create`, {
+  const { status, json } = await kvRest("POST", `/keys/${CMK}/create`, {
     body: {
       kty: "oct-HSM",
       release_policy: {
@@ -142,14 +189,14 @@ test("STEP 3 negative: non-baseline measurement -> 400 attestationFailedVerdict"
 // ---------------------------------------------------------------------------
 
 test("STEP 4a negative: release WITHOUT token -> 403 UnauthorizedAttestation", async () => {
-  const { status, json } = await rest("POST", `/keys/${CMK}/release`, { body: {} });
+  const { status, json } = await kvRest("POST", `/keys/${CMK}/release?api-version=7.4`, { body: {} });
   assert.equal(status, 403, `expected 403, got ${status}: ${JSON.stringify(json)}`);
   assert.equal(json?.error?.code, "UnauthorizedAttestation");
   log("step 4a PASS: release without token refused 403");
 });
 
 test("STEP 4b negative: release with garbage token -> 403", async () => {
-  const { status, json } = await rest("POST", `/keys/${CMK}/release`, {
+  const { status, json } = await rest("POST", `/keys/${CMK}/release?api-version=7.4`, {
     headers: { authorization: "Bearer not-a-jwt" },
     body: {},
   });
@@ -166,7 +213,7 @@ test("STEP 4c attest -> SKR release with Bearer MAA token -> released material",
   const token = attest.json.token;
   assert.ok(token.split(".").length === 3, "token is a JWT-shaped RS256 token");
 
-  const rel = await rest("POST", `/keys/${CMK}/release`, {
+  const rel = await rest("POST", `/keys/${CMK}/release?api-version=7.4`, {
     headers: { authorization: `Bearer ${token}` },
     body: {},
   });
@@ -182,7 +229,7 @@ test("STEP 4c attest -> SKR release with Bearer MAA token -> released material",
 });
 
 test("STEP 4d negative: release of policy-less key -> 400 KeyNotExportable", async () => {
-  const created = await rest("POST", `/keys/${STATIC_KEY}/create`, {
+  const created = await kvRest("POST", `/keys/${STATIC_KEY}/create`, {
     body: { kty: "oct-HSM" },
   });
   assert.equal(created.status, 200, "create static key 200");
@@ -193,7 +240,7 @@ test("STEP 4d negative: release of policy-less key -> 400 KeyNotExportable", asy
   });
   assert.equal(ok.status, 200, "attest 200");
 
-  const rel = await rest("POST", `/keys/${STATIC_KEY}/release`, {
+  const rel = await rest("POST", `/keys/${STATIC_KEY}/release?api-version=7.4`, {
     headers: { authorization: `Bearer ${ok.json.token}` },
     body: {},
   });
@@ -211,7 +258,7 @@ test("STEP 5 custody use: encrypt envelope, upload via Blob SDK, read back, decr
 
   // 5.1 Data key: oct-HSM key in the vault; crypto goes through smalt's
   // KeyVaultActions (raw REST), AES-256-GCM.
-  const created = await rest("POST", `/keys/${ENVELOPE_KEY}/create`, {
+  const created = await kvRest("POST", `/keys/${ENVELOPE_KEY}/create`, {
     body: {
       kty: "oct-HSM",
       release_policy: {
@@ -317,12 +364,18 @@ test("STEP 6 cleanup: delete blob, best-effort container delete", async () => {
     log("blob delete refused (WORM ContainerLocked 409) — left in place");
   }
   // The egress router exposes no DELETE /:account/:container route; skip
-  // container deletion when the substrate answers RouteNotFound (404).
+  // container deletion when the substrate answers RouteNotFound (404) — or
+  // when the WORM-immutable container refuses deletion outright
+  // (ContainerLocked 409, custody-correct on this substrate).
   try {
     await container.delete({ abortSignal: AbortSignal.timeout(60_000) });
   } catch (err) {
-    if (err?.statusCode !== 404) throw err;
-    log("container delete unsupported (RouteNotFound) — blob deleted only");
+    if (err?.statusCode !== 404 && err?.statusCode !== 409) throw err;
+    log(
+      err?.statusCode === 409
+        ? "container delete refused (WORM ContainerLocked 409) — left in place"
+        : "container delete unsupported (RouteNotFound) — blob deleted only",
+    );
   }
   log("step 6 PASS: cleanup done");
 });

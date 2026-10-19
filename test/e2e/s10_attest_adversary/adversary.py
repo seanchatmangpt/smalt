@@ -22,6 +22,20 @@ EGRESS = f"http://127.0.0.1:{os.environ.get('EGRESS_PORT', '8443')}"
 M1 = os.environ.get("MAA_MEASUREMENT", "")  # baseline measurement (substrate env)
 SB_KEY = os.environ.get("SB_SHARED_KEY", "")
 
+# Valid Azure release-policy shapes (egress_router validate_release_policy).
+POLICY_A = {
+    "anyOf": [
+        {"authority": "attestation", "claim": "x-ms-compliance-status", "equals": "azure-compliant-cvm"}
+    ],
+    "allowed_operations": ["release"],
+}
+POLICY_B = {
+    "anyOf": [
+        {"authority": "attestation", "claim": "x-ms-attestation-type", "equals": "sevsnpvm"}
+    ],
+    "allowed_operations": ["release", "encrypt", "decrypt"],
+}
+
 RECEIPTS = []
 GAPS = []
 
@@ -49,6 +63,12 @@ def b64url(data: bytes) -> str:
 
 def b64url_decode(seg: str) -> bytes:
     return base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4))
+
+
+def b64_any(s: str) -> bytes:
+    """AKV wire contract: value fields are base64url WITHOUT padding
+    (key_vault_actions.ex b64url_encode); standard base64 accepted on input."""
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
 def jwt_payload(token: str) -> dict:
@@ -82,16 +102,71 @@ def attest(measurement, timeout=30):
     return res
 
 
+# R143 (GAP S8): real AKV requires ?api-version=7.x on every release request
+# (typed 400 InvalidApiVersion otherwise — egress_router.ex check_akv_api_version).
+AKV_API_VERSION = "7.4"
+
+
 def release(name, token=None, timeout=30):
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    return requests.post(f"{EGRESS}/keys/{name}/release", headers=headers, timeout=timeout)
+    return requests.post(
+        f"{EGRESS}/keys/{name}/release",
+        params={"api-version": AKV_API_VERSION},
+        headers=headers,
+        timeout=timeout,
+    )
+
+
+# ---------------------------------------------------------------------------
+# KD-15 challenge handshake (corpus premise pin, r239/r240): KV corpus clients
+# send the first request TOKENLESS; on the 401 + WWW-Authenticate challenge
+# they mint an STS bearer from the ARM authority and resend. The release()
+# calls keep the MAA token as their bearer (SKR's own admission surface).
+# ---------------------------------------------------------------------------
+_STS_BEARER = []
+
+
+def _mint_sts_bearer():
+    if _STS_BEARER:
+        return _STS_BEARER[0]
+    res = requests.post(
+        f"{ARM}/oauth2/v2.0/token",
+        data={"grant_type": "client_credentials", "client_id": "s10-adversary", "client_secret": "dev"},
+        timeout=30,
+    )
+    assert res.status_code == 200, f"STS mint failed {res.status_code}: {res.text[:300]}"
+    tok = res.json()["access_token"]
+    assert tok, "STS mint returned no access_token"
+    _STS_BEARER.append(tok)
+    return tok
+
+
+def kv(method, path, json_body=None, headers=None, timeout=30):
+    """KV request with the KD-15 challenge handshake: tokenless first; on the
+    401 MissingBearerToken challenge, mint an STS bearer and resend."""
+    res = requests.request(
+        method, f"{EGRESS}{path}", json=json_body, headers=headers, timeout=timeout
+    )
+    if (
+        res.status_code == 401
+        and (res.json() or {}).get("error", {}).get("message") == "MissingBearerToken"
+        and not headers
+    ):
+        res = requests.request(
+            method,
+            f"{EGRESS}{path}",
+            json=json_body,
+            headers={"Authorization": f"Bearer {_mint_sts_bearer()}"},
+            timeout=timeout,
+        )
+    return res
 
 
 def create_key(name, kty="RSA-HSM", policy=None):
     body = {"kty": kty}
     if policy is not None:
         body["release_policy"] = policy
-    res = requests.post(f"{EGRESS}/keys/{name}/create", json=body, timeout=30)
+    res = kv("POST", f"/keys/{name}/create", json_body=body)
     assert res.status_code == 200, f"key create {name} status {res.status_code}: {res.text[:300]}"
     return res.json()
 
@@ -145,7 +220,7 @@ def attack_3_tampered_payload_release_403():
     forged = b64url(json.dumps(claims).encode())
     tampered = f"{h}.{forged}.{s}"
     name = "s10-tamper-key"
-    create_key(name, policy={"any": "policy"})
+    create_key(name, policy=dict(POLICY_A))
     res = release(name, tampered)
     assert res.status_code == 403, f"tampered token accepted: {res.status_code}: {res.text[:200]}"
     code = (res.json().get("error") or {}).get("code", "")
@@ -169,8 +244,8 @@ def attack_3_tampered_payload_release_403():
 def attack_4_token_replay():
     tok = attest(M1).json()["token"]
     k1, k2 = "s10-replay-a", "s10-replay-b"
-    create_key(k1, policy={"any": "policy"})
-    create_key(k2, policy={"any": "policy"})
+    create_key(k1, policy=dict(POLICY_A))
+    create_key(k2, policy=dict(POLICY_A))
     r1 = release(k1, tok)
     assert r1.status_code == 200, f"first release with fresh token failed: {r1.status_code}: {r1.text[:200]}"
     # replay of the SAME token (same jti) must now be refused
@@ -204,7 +279,7 @@ def attack_5_expiry_surface_pin():
     j2 = (c2.get("x-ms-runtime") or {}).get("jti")
     assert j1 and j2 and j1 != j2, f"two attests produced identical/missing runtime jti: {j1}/{j2}"
     now = __import__("time").time()
-    create_key("s10-exp-key", policy={"any": "policy"})
+    create_key("s10-exp-key", policy=dict(POLICY_A))
     for t, c in ((t1, c1), (t2, c2)):
         res = release("s10-exp-key", t)
         assert res.status_code == 200, f"fresh token rejected: {res.status_code}: {res.text[:200]}"
@@ -246,23 +321,21 @@ def attack_6_no_policy_key():
 def attack_7_released_material_reality():
     # (a) prove the crypto engine + key custody path is real: oct key A256GCM round-trip
     kname = "s10-oct-key"
-    create_key(kname, kty="oct-HSM", policy={"any": "policy"})
+    # POLICY_B: the A256GCM round-trip needs encrypt/decrypt in the key's
+    # allowed_operations (policy-gated by the broker, not the emulator).
+    create_key(kname, kty="oct-HSM", policy=dict(POLICY_B))
     plaintext = base64.b64encode(b"s10-adversary-released-material-probe").decode()
-    enc = requests.post(
-        f"{EGRESS}/keys/{kname}/encrypt",
-        json={"alg": "A256GCM", "value": plaintext},
-        timeout=30,
-    )
+    enc = kv("POST", f"/keys/{kname}/encrypt", json_body={"alg": "A256GCM", "value": plaintext})
     assert enc.status_code == 200, f"encrypt status {enc.status_code}: {enc.text[:300]}"
     ebody = enc.json()
     assert ebody.get("value") and ebody.get("iv") and ebody.get("tag"), f"encrypt body: {ebody}"
-    dec = requests.post(
-        f"{EGRESS}/keys/{kname}/decrypt",
-        json={"alg": "A256GCM", "value": ebody["value"], "iv": ebody["iv"], "tag": ebody["tag"]},
-        timeout=30,
+    dec = kv(
+        "POST",
+        f"/keys/{kname}/decrypt",
+        json_body={"alg": "A256GCM", "value": ebody["value"], "iv": ebody["iv"], "tag": ebody["tag"]},
     )
     assert dec.status_code == 200, f"decrypt status {dec.status_code}: {dec.text[:300]}"
-    round_trip = base64.b64decode(dec.json()["value"])
+    round_trip = b64_any(dec.json()["value"])
     assert round_trip == b"s10-adversary-released-material-probe", f"round-trip mismatch: {round_trip!r}"
     receipt(
         attack="7a.a256gcm-roundtrip",
@@ -272,8 +345,8 @@ def attack_7_released_material_reality():
 
     # (b) adversary check on SKR /release 'value': per-key, attestation-bound derived material
     k1, k2 = "s10-skr-reality-1", "s10-skr-reality-2"
-    create_key(k1, policy={"any": "policy"})
-    create_key(k2, policy={"different": "policy"})
+    create_key(k1, policy=dict(POLICY_A))
+    create_key(k2, policy=dict(POLICY_B))
     v1 = release(k1, attest(M1).json()["token"]).json()
     v2 = release(k2, attest(M1).json()["token"]).json()
     assert v1.get("status") == "Released" and v2.get("status") == "Released", (
@@ -310,7 +383,7 @@ def attack_8_alg_confusion():
     tok = attest(M1).json()["token"]
     h, p, s = tok.split(".")
     name = "s10-confusion-key"
-    create_key(name, policy={"any": "policy"})
+    create_key(name, policy=dict(POLICY_A))
     variants = {
         "alg-swapped-HS256": f"{b64url(json.dumps({'alg': 'HS256', 'typ': 'JWT'}).encode())}.{p}.{s}",
         "two-segment": f"{h}.{p}",

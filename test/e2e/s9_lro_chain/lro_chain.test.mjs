@@ -176,7 +176,11 @@ test("s9 (2) azapi ladder: blobServices -> container -> policy -> lock -> setLeg
 
   {
     // lock action — If-Match enforced (presence): missing header -> 412.
-    const ifMatch = policyEtag ?? '"s9-placeholder-etag"';
+    // The child-put envelope carries no ETag header on this substrate, so the
+    // positive lock uses RFC 7232 always-match "*" (explicitly honored by
+    // check_lock_precondition: `*` means the resource exists). A wrong etag
+    // must still 412 — the no-If-Match negative probe below pins that gate.
+    const ifMatch = policyEtag ?? "*";
     const res = await req("POST", q(`${SA_PATH}/blobServices/default/containers/s9chain/immutabilityPolicies/default/lock`, V.policy), {
       headers: { "if-match": ifMatch },
     });
@@ -288,12 +292,32 @@ test("s9 (5) managedHSM PUT + GET", { timeout: TIMEOUT }, async () => {
 });
 
 // ---------------------------------------------------------------------------
-// (6) DELETE storageAccount -> 200, GET 404, operation record still queryable
+// (6) DELETE storageAccount -> 202 LRO (router pins storageAccounts DELETE as
+// an ARM LRO: 202 + async headers — lib/smalt/arm_gateway/router.ex
+// async_put_response(conn, 202, op); pinned by test/lro_test.exs
+// "storageAccounts DELETE is an ARM LRO — 202 + async headers"),
+// GET 404, operation record still queryable
 // ---------------------------------------------------------------------------
-test("s9 (6) DELETE storageAccount -> GET 404, operation record queryable", { timeout: TIMEOUT }, async () => {
+test("s9 (6) DELETE storageAccount -> 202 LRO, GET 404, operation record queryable", { timeout: TIMEOUT }, async () => {
   const del = await req("DELETE", q(SA_PATH, V.sa));
   row("storageAccount-delete", del.status, del.json ?? del.text);
-  assert.equal(del.status, 200, `storageAccount DELETE status ${del.status}`);
+  assert.equal(del.status, 202, `storageAccount DELETE status ${del.status}: ${del.text}`);
+  assert.ok(del.headers.get("azure-asyncoperation"), "DELETE carries Azure-AsyncOperation");
+  assert.ok(del.headers.get("location"), "DELETE carries Location");
+
+  // The delete's own LRO operation polls to terminal Succeeded (async header
+  // is a full URL; strip to its path for the same-authority request).
+  const origin = new URL(ARM).origin;
+  const delOpPath = new URL(del.headers.get("azure-asyncoperation")).pathname;
+  let delOp = await req("GET", delOpPath);
+  let polls = 1;
+  while (delOp.json?.status !== "Succeeded" && polls < POLL_BUDGET) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    delOp = await req("GET", delOpPath);
+    polls++;
+  }
+  row("delete-op-terminal", delOp.status, delOp.json, `polls=${polls}`);
+  assert.equal(delOp.json?.status, "Succeeded", "delete LRO terminal Succeeded");
 
   const get = await req("GET", q(SA_PATH, V.sa));
   row("storageAccount-get-after-delete", get.status, get.json);

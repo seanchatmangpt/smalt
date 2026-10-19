@@ -63,7 +63,10 @@ const AMQP_CONN =
   `SharedAccessKeyName=RootManageSharedAccessKey;` +
   `SharedAccessKey=${KEY};UseDevelopmentEmulator=true`;
 
-const QUEUE = "orders";
+// Unique per run: the Store persists across substrate restarts (DETS mirror),
+// so a fixed queue name inherits leftover session messages from earlier runs
+// (older sequence numbers claim first — witnessed m4-first on a fresh boot).
+const QUEUE = `orders-${Date.now()}`;
 const NS = "ns1";
 const SESSION_ID = "trial-A";
 const PROBE_BUDGET_MS = 15_000;
@@ -118,6 +121,10 @@ async function boundedClose(handle) {
 
 test.after(async () => {
   for (const h of state.handles) await boundedClose(h).catch(() => {});
+  // The receive-side client must be closed too: an open AMQP socket keeps
+  // the node event loop alive after after() completes, and node --test
+  // reports the FILE as failed ("Promise resolution is still pending").
+  if (state.rxClient) await boundedClose(state.rxClient).catch(() => {});
   if (state.client) await boundedClose(state.client).catch(() => {});
 });
 
@@ -234,27 +241,40 @@ test("probe 3: acceptSession trial-A — order, renew, abandon x3 deadletters", 
   // maxDeliveryCount must deadletter the message (it never comes back).
   let prevCount = 2;
   let deadlettered = false;
-  for (let attempt = 3; attempt <= 15; attempt++) {
+  // The abandon that hits maxDeliveryCount deadletters m3 (it never returns);
+  // the next loop receive then yields m4 — the queue still holds it. Only
+  // when m3 is the LAST message does the deadletter surface as an empty
+  // receive. Either face proves the deadletter; both are accepted.
+  let nextMsg = null;
+  for (let attempt = 3; attempt <= 15 && !deadlettered; attempt++) {
     const msgs = await session.receiveMessages(1, { maxWaitTimeInMs: 2500 });
     if (msgs.length === 0) {
       deadlettered = true; // m3 never returned: the last abandon deadlettered it
       break;
     }
-    m3 = msgs[0];
-    assert.equal(m3.messageId, "m3", "SESSION_ORDER_REQUIRED (m3 redelivery)");
+    const m = msgs[0];
+    if (m.messageId !== "m3") {
+      // m3 is gone (deadlettered at max delivery) — the next in-order
+      // message arrived; carry it into the m4/m5 completion below.
+      deadlettered = true;
+      nextMsg = m;
+      break;
+    }
+    assert.equal(m.messageId, "m3", "SESSION_ORDER_REQUIRED (m3 redelivery)");
     assert.equal(
-      m3.deliveryCount,
+      m.deliveryCount,
       prevCount + 1,
-      `abandon redelivery #${attempt - 2} incremented deliveryCount ${prevCount}->${m3.deliveryCount}`,
+      `abandon redelivery #${attempt - 2} incremented deliveryCount ${prevCount}->${m.deliveryCount}`,
     );
-    prevCount = m3.deliveryCount;
-    await session.abandonMessage(m3);
+    prevCount = m.deliveryCount;
+    await session.abandonMessage(m);
   }
   assert.ok(deadlettered, "m3 must deadletter after abandon hits maxDeliveryCount");
   assert.ok(prevCount >= 3, "deliveryCount reached at least 3");
 
-  // m4, m5 complete in order after the deadlettering of m3.
-  const m4 = await receiveOne(session);
+  // m4, m5 complete in order after the deadlettering of m3. When the loop
+  // already pulled m4, complete it directly instead of re-receiving.
+  const m4 = nextMsg ?? (await receiveOne(session));
   assert.equal(m4.messageId, "m4", "SESSION_ORDER_REQUIRED (m4 after m3 left)");
   await session.completeMessage(m4);
 

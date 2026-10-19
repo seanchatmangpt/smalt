@@ -10,6 +10,11 @@
 # failure (ports occupied, spawn error).
 set -u
 
+# Anonymous-mode substrate (config/test.exs) — matches s10/s5: the SKR release
+# path verifies the MAA token itself (RS256 via Attestation.verify_token); in
+# enforce mode the STS bearer guard refuses RS256 MAA tokens before SKR runs.
+export MIX_ENV=test
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 HERE="$REPO/test/e2e/s2_byok"
 LOG_DIR="$HERE/.logs"
@@ -80,6 +85,7 @@ log "substrate up on $ARM_PORT/$EGRESS_PORT"
 # 4. Run the custody chain.
 SMALT_SDK_ROOT="${SMALT_SDK_ROOT:-$REPO/test/sdk-full/node_modules}" \
   SMALT_EGRESS_BASE="http://127.0.0.1:$EGRESS_PORT" \
+  SMALT_ARM_BASE="http://127.0.0.1:$ARM_PORT" \
   node --test "$HERE/byok.test.mjs"
 CODE=$?
 
