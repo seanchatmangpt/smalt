@@ -4,7 +4,7 @@
 - **Subject**: /Users/sac/smalt (branch main; version bumped to 26.10.18)
 - **Context**: solo(documentation wrap; no execution, no git state changes)
 - **Standing of this document**: CENSUS — every claim cites a receipt on disk.
-  The court-x2 verdict is a PLACEHOLDER (see §3).
+  The court-x2 verdict is TYPED-RED (gate carried; see §3).
 
 ## 1. Window summary
 
@@ -47,7 +47,7 @@ Standing is each receipt's own verdict line; paths relative to
 | AZB-21 zero-sleep gate | ALIVE | azb-21-zero-sleep.md |
 | AZB-22 burn ring | typed-RED-carried | azb-22-burn-ring.md |
 | AZB-22b zombie fix | ALIVE (verify) | azb-22b-zombie-verify.md |
-| AZB-23 court-x2 | PENDING (placeholder) | i29-court-x2-final.md |
+| AZB-23 court-x2 | TYPED-RED-CARRIED | azb-23-court-x2.md |
 | AZB-24 version bump | PARTIAL_ALIVE | i29-azb24-bump.md |
 
 AZB-18 detail: harness + fail-closed `validate_burn.py` gate proven on a real
@@ -75,21 +75,44 @@ boot-burn 12/12 CLEAN); the full ring re-judge was deferred on un-leased
 concurrent image builds — 3 infrastructure strikes embedded in
 `azb-22b-zombie-fix.md` §"Ring boot re-judge retry — BLOCKED again".
 
-## 3. Court-x2 receipt (PLACEHOLDER — fill verdict at the gate)
+## 3. Court-x2 verdict — TYPED-RED (gate carried)
 
-- Receipt: `docs/jira/v26.10.18/receipts/i29-court-x2-final.md`
-  (currently empty; flagged SUSPECT / NO-CONTEXT by `receipt_index.py`,
-  `RECEIPTS.md` §Cross-check).
+- Verdict receipt: `docs/jira/v26.10.18/receipts/azb-23-court-x2.md`
+  (Standing: TYPED-RED, gate carried to v26.10.19).
+- Attempt ledger: `docs/jira/v26.10.18/receipts/i29-court-x2-final.md`
+  (8 gate entries, 1792397604 → 1792402305), per-attempt logs
+  `tmp/court-x2-1792*.log`. No two-consecutive-greens witnessed; every
+  green is single-run.
 - Precondition state at freeze (AZB23-PREFLIGHT.md): B2/B3 carried to
-  v26.10.19 as TYPED-OPEN, AZB-23 proceeds without them
+  v26.10.19 as TYPED-OPEN, AZB-23 proceeded without them
   (`azsim-burn/AZB23-PREFLIGHT.md` §Amendment 2026-10-19).
-- **VERDICT: PLACEHOLDER — run1 GREEN? run2 GREEN? at pinned SHA ______.
-  Fill run1/run2 exits + test counts + SHA at the gate; the receipt file is
-  the artifact of record, this section only points at it.**
-- Rehearsal evidence pending replacement: dry3 leg at `1eb89df` run1 GREEN
-  (2733 tests / 0 failures, 218.4s); runs 2–3 carried 3 / 2 LOAD-class
-  failures (F61 Topology `:econnrefused`,
-  `test/azsim/topology_test.exs:82/:141`) — `i29-court-dry3.md`.
+- **VERDICT: TYPED-RED — the gate never exited 0 twice consecutively.**
+  Attempt ledger with per-run verdicts (GREEN/NOT GREEN read verbatim from
+  the logs; the receipt ledger records UNPARSED due to a court23.sh
+  parser-pattern mismatch, documented in the verdict receipt):
+
+  | Attempt | run1 | run2 | Log |
+  |---|---|---|---|
+  | 1792397604 | NOT GREEN (5 fail) | UNPARSED/aborted | tmp/court-x2-1792397604.log |
+  | 1792398603 | NOT GREEN (6 fail) | GREEN (0 fail) | tmp/court-x2-1792398603.log |
+  | 1792399039 | NOT GREEN (1 fail) | NOT GREEN (4+1) | tmp/court-x2-1792399039.log |
+  | 1792399378 | NOT GREEN (1 fail, tf-smoke abort) | GREEN (0 fail) | tmp/court-x2-1792399378.log |
+  | 1792399870 | NOT GREEN (8+1) | NOT GREEN (5+1) | tmp/court-x2-1792399870.log |
+  | 1792400897 | GREEN (0 fail, 1 invalid) | NOT GREEN (2 fail) | tmp/court-x2-1792400897.log |
+  | 1792401910 | GREEN (0 fail) | NOT GREEN (2 fail) | tmp/court-x2-1792401910.log |
+  | 1792402305 | NOT GREEN (4 fail) | NOT GREEN (5 fail) | tmp/court-x2-1792402305.log |
+
+- Green witnesses (run-level, never two-consecutive): gate @1792400897
+  run1 GREEN 2755/0; gate @1792399378 run2 GREEN 0 failures;
+  gate @1792401910 run1 GREEN 0 failures; dry5 rehearsal both-green 2733/0
+  ×2 (`i29-court-dry5.md`); full-soak leg C 2728/0 (`i29-full-soak-d.md`).
+- Residual: a bounded family of 4-6 genuine cross-plane boot-order races
+  (DrScenarios 1-4 subtree-kill recovery, KV foreign-key 401s,
+  throttle `:cosmos`, identity STS-over-wire) — solo-green everywhere,
+  failing under fresh-boot ordering; `SMALT_MAX_CASES=4` does not clear
+  them (not pure load; probe dispatch-reported, receipt UNLOCATED —
+  flagged in the verdict receipt). Close condition = the race family fixed
+  at the structural level; first v26.10.19 work order alongside WO-1.
 
 ## 4. v26.10.19 handoff
 
@@ -162,10 +185,10 @@ the G-ladder residuals:
   (`i29-ws-cli-fresh.md` PASS); docs gates
   (`i29-docs-gates2.md`, `i29-docs-gates3.md` PASS); wrap items
   (`i29-wrap-items.md` PASS); final sweep (`i29-receipt-final.md` PASS).
-- **Known-open at wrap** (carried, not regressed): empty court-x2 receipt
-  (§3); publish-dry / docs-dod-check / invariant-gates flagged stale at
-  preflight, gates refresh at release SHA per
-  `AZB23-PREFLIGHT.md` table D + §Blocking chain step 5.
+- **Known-open at wrap** (carried, not regressed): court-x2 TYPED-RED,
+  gate carried to v26.10.19 (§3); publish-dry / docs-dod-check /
+  invariant-gates flagged stale at preflight, gates refresh at release SHA
+  per `AZB23-PREFLIGHT.md` table D + §Blocking chain step 5.
 
 ## 6. Handoff pointer
 

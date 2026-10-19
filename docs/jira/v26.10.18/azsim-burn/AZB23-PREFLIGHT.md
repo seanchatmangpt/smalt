@@ -70,6 +70,22 @@ typed-RED honest-close precedent:
   pattern as `scripts/substrate.sh`) so concurrent docker builds cannot
   strike a ring re-judge again.
 
+## Amendment 2, 2026-10-19 — AZB-23 closed TYPED-RED; AZB-24 proceeds on the documented evidence
+
+Context: solo(...). AZB-23 (court-x2) executed to completion this window:
+8 gate attempts (1792397604 → 1792402305, ledger
+`docs/jira/v26.10.18/receipts/i29-court-x2-final.md` + per-attempt logs
+`tmp/court-x2-1792*.log`), zero two-consecutive-greens. Closed **TYPED-RED,
+gate carried** per the v26.10.17 WO-2 honest-close precedent — verdict
+receipt `docs/jira/v26.10.18/receipts/azb-23-court-x2.md` (green-witness
+list, residual race-family classification, close condition). AZB-24
+(version bump / release receipt) proceeds on this documented evidence with
+the gate carried; the race-family structural fix is the first v26.10.19
+work order alongside the WO-1 burn-ring re-run, and the gate re-runs only
+after that fix lands. C1 remains PENDING → superseded by the typed-RED
+carry (two-green at a pinned SHA re-enters via the v26.10.19 close
+condition, not this window).
+
 ## Blocking chain (shortest path to gate)
 
 1. Lane C lands its `test(env)` commit (10 files) → B1 clears; gate order per `i29-checkpoint3.md`: mix test → test-budget (reseed owns the 4th dirty file) → sleep-gate → docs-dod-check.
