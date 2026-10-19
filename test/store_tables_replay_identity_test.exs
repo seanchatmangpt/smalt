@@ -50,7 +50,7 @@ defmodule Smalt.StoreTablesReplayIdentityTest do
     smalt_sb_rules smalt_eh_partitions smalt_eh_checkpoints
     smalt_sentinel_streams smalt_sentinel_rows smalt_purview_entities
     smalt_purview_edges smalt_resource_graph_tokens smalt_attestation_baseline
-    smalt_metrics
+    smalt_metrics smalt_q_queues smalt_q_messages
   )a
   @hand_written_metadata ~w(
     smalt_operations smalt_subscriptions smalt_cosmos_lsn smalt_ledger_meta
@@ -146,8 +146,8 @@ defmodule Smalt.StoreTablesReplayIdentityTest do
     """
 
     # The registry must not be trivially empty either (anti-vacuity on this
-    # test itself): the census is 53 atoms (33 owned + 20 shadow).
-    assert length(Smalt.StoreTables.table_names()) == 33
+    # test itself): the census is 55 atoms (35 owned + 20 shadow).
+    assert length(Smalt.StoreTables.table_names()) == 35
     assert length(Smalt.StoreTables.shadow_tables()) == 20
   end
 

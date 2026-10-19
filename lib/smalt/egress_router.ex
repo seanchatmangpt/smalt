@@ -26,6 +26,7 @@ defmodule Smalt.EgressRouter do
   alias Smalt.DataPlane.BlobStorage
   alias Smalt.DataPlane.KeyVaultActions
   alias Smalt.DataPlane.Cosmos
+  alias Smalt.DataPlane.QueueStorage
   alias Smalt.DataPlane.Purview
   alias Smalt.DataPlane.ResourceGraph
   alias Smalt.DataPlane.Sentinel
@@ -120,6 +121,183 @@ defmodule Smalt.EgressRouter do
   plug(:trim_dbs_trailing_slash)
 
   plug(:maybe_parse_body)
+
+  # ---------------------------------------------------------------------------
+  # G1 Azure Queue Storage plane (v26.10.19) — arm BEFORE the blob splat.
+  # Queue Storage's REST namespace (/{account}/{queue}/messages...) collides
+  # with the guarded blob catch-all at the same /{account}/... prefix; the
+  # disambiguation is query-shape detection (scoping doc section 1):
+  #   * PUT/DELETE /{account}/{queue}?restype=queue  -> queue lifecycle
+  #   * GET    /{account}?comp=list&restype=queue    -> List Queues
+  #   * /{account}/{queue}/messages[/{id}]           -> message surface
+  # Everything else (:pass) falls through to :match UNCHANGED — the blob
+  # splat, Cosmos, KV and every other arm see byte-identical requests.
+  # ---------------------------------------------------------------------------
+  plug(:queue_storage_plane)
+
+  defp queue_storage_plane(conn, _opts) do
+    qp = fetchd_query_params(conn)
+
+    case queue_plane_route(conn.method, conn.path_info, qp) do
+      nil -> conn
+      arm -> run_queue_arm(conn, arm, qp)
+    end
+  end
+
+  defp queue_plane_route("GET", [account], qp) do
+    if qp["comp"] == "list" and qp["restype"] == "queue", do: {:list_queues, account}
+  end
+
+  defp queue_plane_route("PUT", [account, queue], qp) do
+    if qp["restype"] == "queue", do: {:create_queue, account, queue}
+  end
+
+  defp queue_plane_route("DELETE", [account, queue], qp) do
+    if qp["restype"] == "queue", do: {:delete_queue, account, queue}
+  end
+
+  defp queue_plane_route("POST", [account, _queue, "messages"], _qp),
+    do: {:put_messages, account}
+
+  defp queue_plane_route("GET", [account, _queue, "messages"], _qp),
+    do: {:get_messages, account}
+
+  defp queue_plane_route("PUT", [account, _queue, "messages", _id], _qp),
+    do: {:update_message, account}
+
+  defp queue_plane_route("DELETE", [account, _queue, "messages", _id], _qp),
+    do: {:delete_message, account}
+
+  defp queue_plane_route(_, _, _), do: nil
+
+  defp run_queue_arm(conn, arm, qp) do
+    if not_ready?(conn, [QueueStorage]) do
+      route_not_ready(conn)
+    else
+      queue_dispatch(conn, arm, qp)
+    end
+  end
+
+  defp queue_dispatch(conn, {:list_queues, account}, qp) do
+    case QueueStorage.list_queues(account, qp) do
+      {:ok, status, headers, body} ->
+        conn
+        |> put_resp_headers(headers)
+        |> put_resp_content_type("application/xml")
+        |> send_resp(status, body)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp queue_dispatch(conn, {:create_queue, account, queue}, _qp) do
+    case QueueStorage.create_queue(account, queue) do
+      {:ok, status, headers} ->
+        send_headers(conn, status, headers)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp queue_dispatch(conn, {:delete_queue, account, queue}, _qp) do
+    case QueueStorage.delete_queue(account, queue) do
+      {:ok, status, headers} ->
+        send_headers(conn, status, headers)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  # Queue message bodies are XML — Plug.Parsers (json/urlencoded) leaves them
+  # unread; read the raw body here. A JSON content-type body would already be
+  # consumed by the parsers plug, which is acceptable (Azure clients send XML).
+  defp queue_dispatch(conn, {:put_messages, account}, _qp) do
+    [queue, _] = Enum.drop(conn.path_info, 1)
+
+    with {:ok, body, conn} <- read_queue_body(conn) do
+      case QueueStorage.put_message(account, queue, body) do
+        {:ok, status, headers, resp_body} ->
+          conn
+          |> put_resp_headers(headers)
+          |> put_resp_content_type("application/xml")
+          |> send_resp(status, resp_body)
+
+        {:error, status, code, msg} ->
+          blob_error(conn, status, not_found_error(code) |> put_message(msg))
+      end
+    else
+      {:error, reason} ->
+        blob_error(conn, 400, %{
+          "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
+        })
+    end
+  end
+
+  defp queue_dispatch(conn, {:get_messages, account}, qp) do
+    [queue, _] = Enum.drop(conn.path_info, 1)
+
+    case QueueStorage.get_messages(account, queue, qp) do
+      {:ok, status, headers, resp_body} ->
+        conn
+        |> put_resp_headers(headers)
+        |> put_resp_content_type("application/xml")
+        |> send_resp(status, resp_body)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp queue_dispatch(conn, {:update_message, account}, qp) do
+    [queue, _, msg_id] = Enum.drop(conn.path_info, 1)
+
+    with {:ok, body, conn} <- read_queue_body(conn) do
+      case QueueStorage.update_message(
+             account,
+             queue,
+             msg_id,
+             qp["popreceipt"] || "",
+             body,
+             qp
+           ) do
+        {:ok, status, headers, resp_body} ->
+          conn
+          |> put_resp_headers(headers)
+          |> put_resp_content_type("application/xml")
+          |> send_resp(status, resp_body)
+
+        {:error, status, code, msg} ->
+          blob_error(conn, status, not_found_error(code) |> put_message(msg))
+      end
+    else
+      {:error, reason} ->
+        blob_error(conn, 400, %{
+          "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
+        })
+    end
+  end
+
+  defp queue_dispatch(conn, {:delete_message, account}, qp) do
+    [queue, _, msg_id] = Enum.drop(conn.path_info, 1)
+
+    case QueueStorage.delete_message(account, queue, msg_id, qp["popreceipt"] || "", qp) do
+      {:ok, status, headers} ->
+        send_headers(conn, status, headers)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp read_queue_body(conn) do
+    case Plug.Conn.read_body(conn) do
+      {:ok, body, conn} -> {:ok, body, conn}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   plug(:match)
   plug(:dispatch)
@@ -385,12 +563,26 @@ defmodule Smalt.EgressRouter do
   # a document.
   post "/dbs/:db/colls/:coll/docs" do
     with_route(conn, Cosmos, fn conn ->
-      if query_post?(conn) do
-        query_post(conn, db, coll)
-      else
-        with_valid_body(conn, fn conn ->
-          cosmos_respond(conn, Cosmos.create_doc(db, coll, conn.body_params, header_map(conn)))
-        end)
+      cond do
+        query_post?(conn) ->
+          query_post(conn, db, coll)
+
+        get_req_header(conn, "x-ms-cosmos-is-batch-request") == ["true"] or is_list(conn.body_params) ->
+          with_valid_body(conn, fn conn ->
+            ops =
+              case conn.body_params do
+                %{"_json" => list} when is_list(list) -> list
+                list when is_list(list) -> list
+                other -> List.wrap(other)
+              end
+
+            cosmos_respond(conn, Cosmos.bulk_operations(db, coll, ops, header_map(conn)))
+          end)
+
+        true ->
+          with_valid_body(conn, fn conn ->
+            cosmos_respond(conn, Cosmos.create_doc(db, coll, conn.body_params, header_map(conn)))
+          end)
       end
     end)
   end
@@ -762,6 +954,18 @@ defmodule Smalt.EgressRouter do
   # form, resolving the named version (SDK CryptographyClient wire shape).
   post "/keys/:name/:version/:action" do
     kv_crypto_dispatch(conn, name, version, action)
+  end
+
+  patch "/keys/:name" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.update_key_properties(name, conn.body_params))
+    end)
+  end
+
+  patch "/keys/:name/:version" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.update_key_properties(name, conn.body_params, version))
+    end)
   end
 
   # KV soft-delete plane (wave I16/L1, 2026-10-17): key_vault_actions.ex has
@@ -2251,6 +2455,24 @@ defmodule Smalt.EgressRouter do
               :error ->
                 blob_error(conn, 404, not_found_error("BlobNotFound"))
             end
+        end
+      end
+    end)
+  end
+
+  delete "/:account/:container" do
+    blob_route(conn, fn conn ->
+      if unhandled_comp?(conn, []) do
+        unhandled_container_comp_error(conn, conn.query_params["comp"])
+      else
+        case BlobStorage.delete_container(account, container, header_map(conn)) do
+          {:ok, status, headers, _record} ->
+            conn
+            |> put_resp_headers(headers)
+            |> send_resp(status, "")
+
+          {:error, status, code, msg} ->
+            blob_error(conn, status, not_found_error(code) |> put_message(msg))
         end
       end
     end)

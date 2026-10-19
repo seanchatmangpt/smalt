@@ -1047,6 +1047,165 @@ defmodule Smalt.Wire.EgressWireTest do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # G1 Azure Queue Storage wire pins (v26.10.19)
+  # ---------------------------------------------------------------------------
+
+  @tag :wire
+  test "Queue Storage: create/list/delete queue lifecycle over the wire", %{egress: port} do
+    create =
+      http_request(port, "PUT", "/g1acct/queue-a1?restype=queue",
+        headers: [{"content-type", "application/xml"}]
+      )
+
+    assert create.status == 201
+
+    dup =
+      http_request(port, "PUT", "/g1acct/queue-a1?restype=queue",
+        headers: [{"content-type", "application/xml"}]
+      )
+
+    assert dup.status == 409
+    assert %{"error" => %{"code" => "QueueAlreadyExists"}} = Jason.decode!(dup.body)
+    assert String.contains?(dup.headers, "x-ms-error-code")
+
+    list =
+      http_request(port, "GET", "/g1acct?comp=list&restype=queue",
+        headers: [{"content-type", "application/xml"}]
+      )
+
+    assert list.status == 200
+    assert String.contains?(list.body, "<Name>queue-a1</Name>")
+
+    delete = http_request(port, "DELETE", "/g1acct/queue-a1?restype=queue")
+    assert delete.status == 204
+
+    missing = http_request(port, "DELETE", "/g1acct/queue-a1?restype=queue")
+    assert missing.status == 404
+    assert %{"error" => %{"code" => "QueueNotFound"}} = Jason.decode!(missing.body)
+  end
+
+  @tag :wire
+  test "Queue Storage: put/get messages with popreceipt + visibility over the wire", %{egress: port} do
+    assert http_request(port, "PUT", "/g1acct/queue-b1?restype=queue").status == 201
+
+    put =
+      http_request(port, "POST", "/g1acct/queue-b1/messages",
+        headers: [{"content-type", "application/xml"}],
+        body: "<QueueMessage><MessageText>wire-msg-1</MessageText></QueueMessage>"
+      )
+
+    assert put.status == 201
+    {:ok, mid, pr} = xml_field(put.body, "MessageId", "PopReceipt")
+
+    get =
+      http_request(port, "GET", "/g1acct/queue-b1/messages?visibilitytimeout=10&numofmessages=32")
+
+    assert get.status == 200
+    assert String.contains?(get.body, "wire-msg-1")
+    assert String.contains?(get.body, "<DequeueCount>1</DequeueCount>")
+    assert String.contains?(get.body, "<MessageId>#{mid}</MessageId>")
+
+    # the GET rotated the popreceipt; the PUT receipt is now stale
+    upd =
+      http_request(
+        port,
+        "PUT",
+        "/g1acct/queue-b1/messages/#{mid}?popreceipt=#{pr}&visibilitytimeout=10",
+        headers: [{"content-type", "application/xml"}],
+        body: ""
+      )
+
+    assert upd.status == 404
+    assert %{"error" => %{"code" => "PopReceiptMismatch"}} = Jason.decode!(upd.body)
+  end
+
+  @tag :wire
+  test "Queue Storage: stale popreceipt replay answers 404 PopReceiptMismatch over the wire", %{
+    egress: port
+  } do
+    assert http_request(port, "PUT", "/g1acct/queue-c1?restype=queue").status == 201
+
+    put =
+      http_request(port, "POST", "/g1acct/queue-c1/messages",
+        headers: [{"content-type", "application/xml"}],
+        body: "<QueueMessage><MessageText>stale-face</MessageText></QueueMessage>"
+      )
+
+    assert put.status == 201
+    {:ok, mid, pr} = xml_field(put.body, "MessageId", "PopReceipt")
+
+    # first update rotates the receipt
+    upd =
+      http_request(
+        port,
+        "PUT",
+        "/g1acct/queue-c1/messages/#{mid}?popreceipt=#{pr}&visibilitytimeout=10",
+        headers: [{"content-type", "application/xml"}],
+        body: ""
+      )
+
+    assert upd.status == 200
+
+    # STALE REPLAY of the superseded receipt -> 404 PopReceiptMismatch in the
+    # x-ms-error-code envelope
+    replay =
+      http_request(
+        port,
+        "DELETE",
+        "/g1acct/queue-c1/messages/#{mid}?popreceipt=#{pr}"
+      )
+
+    assert replay.status == 404
+    assert %{"error" => %{"code" => "PopReceiptMismatch"}} = Jason.decode!(replay.body)
+    assert String.contains?(replay.headers, "x-ms-error-code")
+
+    # missing message id -> MessageNotFound
+    notfound =
+      http_request(
+        port,
+        "DELETE",
+        "/g1acct/queue-c1/messages/no-such-id?popreceipt=#{pr}"
+      )
+
+    assert notfound.status == 404
+    assert %{"error" => %{"code" => "MessageNotFound"}} = Jason.decode!(notfound.body)
+  end
+
+  @tag :wire
+  test "Queue Storage: blob splat disambiguation — non-queue requests still reach blob arms", %{
+    egress: port
+  } do
+    # restype=queue claims only queue shapes; a plain container PUT passes through
+    cont =
+      http_request(port, "PUT", "/g1acct/blob-cont",
+        headers: [{"content-type", "application/json"}, {"x-ms-version", "2025-01-01"}],
+        body: "{}"
+      )
+
+    assert cont.status == 201
+
+    # blob comp=list (no restype=queue) still lists containers, not queues
+    list =
+      http_request(port, "GET", "/g1acct?comp=list",
+        headers: [{"x-ms-version", "2025-01-01"}]
+      )
+
+    assert list.status == 200
+    assert String.contains?(list.body, "<Name>blob-cont</Name>")
+    refute String.contains?(list.body, "queue-a1")
+  end
+
+  defp xml_field(body, tag1, tag2) do
+    [msg] =
+      Regex.scan(~r/<QueueMessage>(.*?)<\/QueueMessage>/s, body)
+      |> Enum.map(fn [_, m] -> m end)
+
+    [_, id] = Regex.run(~r/<#{tag1}>(.*?)<\/#{tag1}>/s, msg)
+    [_, pr] = Regex.run(~r/<#{tag2}>(.*?)<\/#{tag2}>/s, msg)
+    {:ok, id, pr}
+  end
+
   defp parse_response(raw) do
     raw = IO.iodata_to_binary(raw)
     [status_line, rest] = :binary.split(raw, "\r\n")

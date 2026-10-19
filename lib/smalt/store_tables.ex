@@ -91,6 +91,12 @@ defmodule Smalt.StoreTables do
     # binaryPrefix | Smalt.Store | sweep=retention
     :smalt_purview_entities,
 
+    # binaryPrefix | Smalt.DataPlane.QueueStorage | sweep=retention
+    :smalt_q_messages,
+
+    # binaryPrefix | Smalt.DataPlane.QueueStorage | sweep=retention
+    :smalt_q_queues,
+
     # binaryPrefix | Smalt.Store | sweep=metadata
     :smalt_resource_graph_tokens,
 
@@ -483,6 +489,22 @@ defmodule Smalt.StoreTables do
       :smalt_purview_entities => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
+        sweep_strategy: "retention",
+        metadata_only: false,
+        persisted: false,
+        ordered_set: true
+      },
+      :smalt_q_messages => %{
+        key_shape: "binaryPrefix",
+        owner_module: "Smalt.DataPlane.QueueStorage",
+        sweep_strategy: "retention",
+        metadata_only: false,
+        persisted: false,
+        ordered_set: true
+      },
+      :smalt_q_queues => %{
+        key_shape: "binaryPrefix",
+        owner_module: "Smalt.DataPlane.QueueStorage",
         sweep_strategy: "retention",
         metadata_only: false,
         persisted: false,
