@@ -144,7 +144,7 @@ def sanitize_truncated_lines(path: str = LEDGER_PATH) -> Tuple[int, int]:
 
 def heartbeat_touch(path: str = HEARTBEAT_PATH) -> float:
     full = _path(path)
-    os.makedirs(os.path.dirname(full), same := os.path.dirname(full) or ".") or os.makedirs(os.path.dirname(full), exist_ok=True)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
     now = time.time()
     fd, tmp = tempfile.mkstemp(prefix=".have_hb-", dir=os.path.dirname(full))
     with os.fdopen(fd, "w") as f:
