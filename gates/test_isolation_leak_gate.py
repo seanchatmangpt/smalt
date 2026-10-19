@@ -62,9 +62,8 @@ ALLOWLIST = {
     # {__MODULE__, :twin}/{__MODULE__, :twin_sup}; sup stopped in on_exit,
     # keys read only by this module. Tuple keys inexpressible.
     "test/kv_tls_test.exs",
-    # restore_env/2 nil-preserving variable-key restore helper, called
-    # from on_exit blocks; mutation keys themselves save + restore.
-    "test/lro_test.exs",
+    # (RETIRED 2026-10-18: file now uses SmaltTest.Env.put_restored, which
+    # the scanner recognizes directly -- no exemption needed.)
     # ets.new with @table/module-attribute or per-test variable table
     # names, every table created by the test is deleted in on_exit
     # (:ets.delete(table)). Variable table names inexpressible.
@@ -122,6 +121,11 @@ RE_PT_PUT = re.compile(r':persistent_term\.put\(\s*([^,()]+?)\s*,')
 RE_PT_GET = re.compile(r':persistent_term\.get\(\s*([^,()]+?)\s*[,)]')
 RE_ETSN = re.compile(r':ets\.new\(\s*([^,()\s]+?)\s*,([^)]*)\)')
 RE_ETSD = re.compile(r':ets\.delete(?:_all_objects)?\(\s*([^,()\s]+?)\s*[,)]')
+# Canonical helper recognition: `SmaltTest.Env.put_restored(kvs)` saves the
+# previous value for every key in `kvs` and registers a nil-preserving
+# on_exit restore (test/support/env.ex, receipted v26.10.18). A call site is
+# therefore a covered save+restore for each literal keyword key in its list.
+RE_PUT_RESTORED = re.compile(r'SmaltTest\.Env\.put_restored\s*\(')
 
 
 def _indent(line):
@@ -172,6 +176,23 @@ def scan_text(text, name="<text>"):
     lines = list(_code_lines(text))
     on_exit_rng, after_rng = _regions(lines)
     restore_region = on_exit_rng | after_rng
+
+    # put_restored call sites: covered save+restore per literal keyword key
+    pr_covered = set()
+    for m in RE_PUT_RESTORED.finditer(text):
+        depth, j = 1, m.end()
+        while j < len(text) and depth:
+            if text[j] == '(':
+                depth += 1
+            elif text[j] == ')':
+                depth -= 1
+            j += 1
+        args = text[m.end():j]
+        lineno = text.count('\n', 0, m.start()) + 1
+        for km in re.finditer(r'(\w+)\s*:', args):
+            key = ':' + km.group(1)
+            ksave = "env.smalt." + key
+            pr_covered.add(ksave)
 
     muts = {}        # (kind, key) -> first lineno
     saves = set()    # keys with an observed save of previous value
@@ -267,6 +288,8 @@ def scan_text(text, name="<text>"):
         covered = ksave in saves and ((kind, key) in restores or
                                       ("env", "@catchall-restore@")
                                       in restores)
+        if kind == "env" and ksave in pr_covered:
+            covered = True  # canonical helper: save+on_exit restore receipted
         # ets literal tables may be restored via :ets.delete(:tbl) even
         # without a "save" (creation is not destruction of prior state)
         if kind == "ets":
@@ -306,6 +329,22 @@ defmodule IsoProbeClean do
 
   test "clean discipline" do
     assert Application.get_env(:smalt, :probe_key) == :mutated
+  end
+end
+'''
+
+
+PUT_RESTORED_SNIPPET = '''\
+defmodule IsoProbeHelper do
+  use ExUnit.Case, async: false
+
+  setup do
+    SmaltTest.Env.put_restored(token_audiences: [:a], trusted_proxies: ["x"])
+    :ok
+  end
+
+  test "canonical helper discipline" do
+    assert Application.get_env(:smalt, :token_audiences) == [:a]
   end
 end
 '''
@@ -361,6 +400,17 @@ def run_fixtures():
     ok = True
     # positive: intact clean discipline must be found GREEN
     ok &= run("clean-intact-save-plus-on_exit", CLEAN_SNIPPET, expect=False)
+    # positive: canonical SmaltTest.Env.put_restored site is covered
+    # (save + nil-preserving on_exit restore inside the helper, per
+    # test/support/env.ex); scanner must recognize it, not flag it
+    ok &= run("put_restored-site-covered", PUT_RESTORED_SNIPPET, expect=False)
+    # negative: helper recognition must not launder OTHER mutations -- a raw
+    # put_env (save-less) in a file that also uses put_restored stays REFUSED
+    bypass = PUT_RESTORED_SNIPPET.replace(
+        "    :ok\n  end\n\n  test",
+        "    Application.put_env(:smalt, :probe_key, :mutated)\n"
+        "    :ok\n  end\n\n  test")
+    ok &= run("put_restored-does-not-launder-raw-put_env", bypass, expect=True)
     # negative: on_exit stripped -> leak must be REFUSED
     ok &= run("on_exit-stripped", _strip_on_exit(CLEAN_SNIPPET), expect=True)
     # negative: restore without save (hardcoded literal, mcp-style)
