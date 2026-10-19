@@ -1,8 +1,21 @@
 # WORK_ORDERS
 
-v26.10.19 open work orders — typed-open items carried from the v26.10.18 window
-(`docs/jira/v26.10.18/FINAL.md`). Each item: evidence receipt + close condition.
-Context: solo(...)
+v26.10.19 work orders — 6 typed-open items carried from the v26.10.18 window
+(`docs/jira/v26.10.18/FINAL.md`) plus the clean-room reset ladder WO-7..16
+(fresh verification/{ts,py} external suites, residual internal tier, deletion
+gate, identity RS256, boot library, gates, wrap). Each item: evidence receipt
++ close condition + priority. Context: solo(...)
+
+Base: pre-deletion HEAD `4fd2ff2`; deletion commit `64f6099` (V261019-11
+landed — legacy test/ tree deleted, `test/` = test_helper.exs only).
+
+## Execution order
+
+WO-7 -> WO-8 ∥ WO-9 -> WO-10 -> WO-11-gated -> WO-12/13 -> WO-14/15
+-> WO-16. WO-1..6 run on independent lanes and gate WO-12's court legs.
+Deletion (WO-11) executed early at `64f6099`; its parity backfill (WO-8/9/10
+receipts green at one pinned SHA) is a closing obligation of this window,
+not a precondition.
 
 ## WO-1 — Burn-ring re-run under flock image-build lease + SUBJECT_SHA build-arg fix
 
@@ -134,3 +147,191 @@ Context: solo(...)
 - Close condition: engine + wire tests for both comps green (follow the
   i29-g1-land.md engine 11/0 + wire 26/0 pattern); no GAP token until/unless a
   parity defect vs real Azure semantics is witnessed.
+
+---
+
+## WO-7 — Reset inventory + census (pre-deletion ground truth) — `07-clean-room-reset.md`
+
+- Standing: **DONE (lifts + manifest)** at the deletion window. Lifts landed
+  in `docs/jira/v26.10.19/lifts/` (`ts-run.mjs`, `conftest.py`,
+  `assert_eventually-reference.exs`) BEFORE deletion, per the blocking-first
+  law; the 303-path manifest is
+  `docs/jira/v26.10.19/receipts/reset-delete-manifest.txt` (303 lines).
+- Evidence: `receipts/reset-delete-manifest.txt`; lift provenance in
+  `07-clean-room-reset.md` §0 (ts-run.mjs boot/poll/teardown/exit-contract
+  machinery + conftest session protocol, R177b marker guard, loud-skip).
+- Close condition: MET — manifest exists at 303 rows; lifts precede the
+  deletion commit `64f6099`. Residual: the B8 sleep-census classification of
+  the deleted sites folds into WO-15's classes file.
+- Priority: **P0** — DONE; downstream denominator.
+
+## WO-8 — verification/ts: external official-SDK suite (5 workflows), TypeScript — `08-verification-ts.md`
+
+- Standing: **NEW — landing now** (sibling suites lane; `verification/` not
+  yet on disk at materialization).
+- Evidence: lifts (`lifts/ts-run.mjs`); design in `08-verification-ts.md`
+  (harness/{substrate,credential,poll,assert,enum}.ts, wf1–wf5, exit contract
+  0/1/2/3/124, no @azure/eventgrid — KD-101).
+- Close conditions (exact commands):
+  - `cd verification/ts && npm ci && node run.mjs` — exit contract 0/1/2/3/124
+    honored; green x2 at the same SHA;
+  - every WO-7 MOVES-TO-TS census row witnesses green in the new suite;
+  - non-duplication / portable-target / sleep-gate (TS scan root) all exit 0
+    (WO-15 gates);
+  - per-workflow receipts land in `docs/jira/v26.10.19/receipts/` with real
+    output tails.
+- Priority: **P0** — half of the WO-11 parity evidence.
+
+## WO-9 — verification/py: external official-SDK suite (5 workflows), Python mirror — `09-verification-py.md`
+
+- Standing: **NEW — landing now** (sibling suites lane).
+- Evidence: lifts (`lifts/conftest.py`); design in `09-verification-py.md`
+  (lifted conftest: lazy session fixtures, reuse-else-boot, R177b identity
+  guard; azure deps as pyproject optional-extra; native-exception table).
+- Close conditions (exact commands):
+  - `cd verification/py && ./run.sh` — exit contract 0/1/2/3 honored; green
+    x2 at the same SHA as the TS leg;
+  - every WO-7 MOVES-TO-PY census row witnesses green;
+  - non-duplication / portable-target / sleep-gate (PY scan root) all exit 0;
+  - per-workflow receipts with real output tails.
+- Priority: **P0** — other half of the WO-11 parity evidence.
+
+## WO-10 — Residual internal Elixir tier: fresh `test/internal/` (5 files + census guard) — `10-residual-internal-tier.md`
+
+- Standing: **IN FLIGHT** — `test/internal/` exists at materialization with
+  `plane_blast_radius_test.exs`, `vm_zero_growth_test.exs`,
+  `poll_helper.exs`; `wasm_nif_lifecycle_test.exs`,
+  `dets_mirror_recovery_test.exs`, `internal_tier_census_test.exs` pending.
+- Evidence: full design in `10-residual-internal-tier.md` (5 files
+  re-derived from lib ground truth with provenance comments, zero copied
+  text; census guard = the Non-Duplication ratchet).
+- Close conditions (exact commands):
+  - `mix test test/internal/` green x2, distinct seeds, same SHA;
+  - census guard gate exit 0 (exactly the 5 registered files, forbidden-token
+    scan clean, observables allowlist enforced);
+  - `python3 scripts/sleep_gate.py` exit 0 including `test/internal`.
+- Priority: **P1** — sequenced after WO-8/WO-9, before the WO-11 backfill.
+
+## WO-11 — Test-deletion gate (clean-room reset) — `11-test-deletion-gate.md`
+
+- Standing: **LANDED — commit `64f6099`** (V261019-11: 303 tracked files,
+  107k lines deleted; `git ls-files test/` == 1: `test/test_helper.exs`).
+  Executed ahead of the TS/PY parity preconditions — the parity backfill
+  (WO-8/9/10 receipts green at one pinned SHA) is a closing obligation of
+  this window. Revertible by design: `git revert 64f6099`.
+- Evidence: commit `64f6099`; manifest
+  `receipts/reset-delete-manifest.txt`; receipt
+  `receipts/v261019-11-test-deletion-gate.md` (skeleton — Standing UNKNOWN
+  until the parity backfill receipts land).
+- Close conditions (exact commands):
+  - `git ls-files test/` == exactly the residual set (test_helper + 5
+    internal files);
+  - WO-8 AND WO-9 AND WO-10 receipts green at the SAME `git rev-parse HEAD`,
+    echoed in `receipts/v261019-11-test-deletion-gate.md`;
+  - `find test -name .venv -o -name node_modules` empty;
+  - no live recipe references a deleted `test/` path (`just verify-all`
+    resolves no missing path).
+- Priority: **P0 (gated)** — keystone; backfill owes the evidence.
+
+## WO-12 — Court-x2 close: 11-stage court, two greens at a pinned SHA — `12-court-x2-close.md`
+
+- Standing: **TYPED-RED carried** from v26.10.18
+  (`docs/jira/v26.10.18/receipts/azb-23-court-x2.md` +
+  `i29-court-x2-final.md`); BLOCKED until the reset ladder integrates.
+- Evidence: 11-stage table in `12-court-x2-close.md` (doctor → residual mix
+  test → sdk-ts-court → sdk-py-court → tf-smoke → bench-check →
+  mutation-court → census → invariant-gates → naming-sweep → sleep-gate-sdk);
+  exit contracts preserved per stage.
+- Close conditions (exact commands):
+  - `just quiet-check` exit 0, then `just court-x2` exit 0 on BOTH legs at
+    the pinned SHA;
+  - `python3 scripts/isolation_court.py --runtime-only` counts 0;
+  - release receipt minted per `azsim-burn/TICKETS.md`.
+- Priority: **P1** — release gate; runs the post-reset tree.
+
+## WO-13 — Identity plane: RS256 signing key + real-AAD discovery surface — `13-identity-rs256.md`
+
+- Standing: **IN FLIGHT** — `lib/smalt/auth/sts_key.ex` on disk (untracked),
+  `lib/smalt/arm_gateway/router.ex` + `lib/smalt/auth/bearer.ex` modified.
+  Technical annex: wave-3 draft (verified anchors, StsKey API,
+  env-PEM-first, hs256_dev escape, cross-mode refuse, JWKS route,
+  `/common/discovery/instance` metadata-aliases form, workspace
+  SmaltTokenCredential deletion, C6 rows 7/14/17, KD-15/94 re-runs).
+- Evidence: `13-identity-rs256.md`; C6_OAUTH_OIDC.md rows 7/14/17 flips;
+  KD-99/KD-100 close via `scripts/kd_flip.py --apply` (receipt-gated).
+- Close conditions (exact commands):
+  - whole-WO acceptance: `ClientSecretCredential` + `@azure/arm-resources`
+    → 200 with ZERO custom code, both TS and PY suites;
+  - `Node crypto.verify('sha256', digest, pub, sig) == true` on the probe
+    flow; JWKS fetch → verify roundtrip green both languages, same SHA;
+  - KD-15/KD-94 fences re-run green (alg-agnostic);
+  - KD-99/KD-100 flipped CLOSED-SIMULATED, receipt mtime > shim mtime.
+- Priority: **P1** — unblocks the official-identity legs of WO-8/WO-9.
+
+## WO-14 — Substrate boot library: substrate_boot.sh + substrate-ctl — `14-substrate-boot-library.md`
+
+- Standing: **IN FLIGHT** — `scripts/lib/substrate_boot.sh` on disk
+  (untracked, sibling lane).
+- Evidence: `14-substrate-boot-library.md` (fd-9 law + `9>&-` spawn assert,
+  boot markers, formula blocks `vN = 39700+10N..+5`, tree-aware orphans,
+  250ms bounded poll; mjs/py wrappers; starvation shim court).
+- Close conditions (exact commands):
+  - `substrate-ctl up && substrate-ctl verify` → exit 0;
+  - `substrate-ctl down` leaves zero listeners and zero lock holders;
+  - starvation falsifier: 8-lane collision storm, `lsof` fd-9 leak proof,
+    >=1 held-port refusal witnessed;
+  - shim court `scripts/shim_court/boot_library_court.sh` AFTER-leg flips
+    (non-vacuity).
+- Priority: **P1** — consumed by WO-8/WO-9 harnesses.
+
+## WO-15 — Verification gates: non-duplication R1/R2/R3, portable-target whitelist, sleep-gate TS/PY — `15-verification-gates.md`
+
+- Standing: **IN FLIGHT** — `scripts/non_duplication_gate.py` +
+  `scripts/non_duplication_classes.json` + `scripts/portable_target_gate.py`
+  on disk (untracked, sibling gates lane); sleep_gate TS/PY extension and
+  the shim courts pending.
+- Evidence: `15-verification-gates.md` (R1 wrapper purity / R2 delegated-
+  primitive census / R3 receipt-evidence law; portable-target whitelist:
+  SMALT_AZURE_*/AZURE_* env only; sleep TS/PY scopes + 4 new shim-court
+  legs; `justfile.d/30-verification.just` — note: the wave-3 slot correction
+  puts the verification module at `32-verification.just` if slot 30 is taken
+  by burn).
+- Close conditions (exact commands):
+  - all three gates exit 0 clean and exit 1 on their shim fixtures;
+  - `just shim-court non_duplication` / `portable_target` AFTER-legs flip;
+  - sleep-gate-sdk leg green in the 11-stage court (WO-12 stage 11).
+- Priority: **P1** — the measuring stick; lands before court rewiring (WO-12).
+
+## WO-16 — Milestone wrap: generated docs, FINAL.md, wrap sequence — `16-milestone-wrap.md`
+
+- Standing: **NEW — terminal WO** (runs last; nothing lands after it).
+- Evidence: `16-milestone-wrap.md` (generated-docs regeneration law —
+  RECEIPTS/SDK_MATRIX/BENCH regenerated never hand-edited; KD/GAP settle;
+  post-commit re-witness discipline; publish-dry; FINAL.md with handoff
+  pointer).
+- Close conditions (exact commands):
+  - `just receipt-index && python3 scripts/sdk_coverage.py && just bench-report`
+    all exit 0, idempotent on second run;
+  - `just court-x2` two greens at the pinned SHA post-commit;
+  - `just publish-dry` pre+post-commit exit 0;
+  - `just docs-dod-check` exit 0 with FINAL.md on disk;
+  - FINAL.md census section: `(before-after)/before >= 0.80` from the
+    rewrite-census receipt arithmetic.
+- Priority: **P0 (terminal)**.
+
+---
+
+## Cross-cutting standing constraints (WO-7..16)
+
+- **Non-duplication**: every assertion surface is owned exactly once across
+  TS / PY / internal-elixir, per the WO-7 disposition; the
+  `scripts/non_duplication_gate.py` gate is fail-closed and runs in every
+  close condition that names it.
+- **Portable Azure Target**: official SDKs only; endpoints resolve from
+  `SMALT_AZURE_*`/`AZURE_*` env with repo-relative defaults;
+  `scripts/portable_target_gate.py` fails on absolute-home literals.
+- **Zero-sleep**: SDK pollers/bounded polls only; `scripts/sleep_gate.py`
+  scan roots cover `lib/`, `verification/{ts,py}`, and `test/internal`
+  (TS/PY extension = WO-15); honest red is the deliverable, silence is not.
+- **Volume ratchet**: >=80% test-volume reduction measured per tier against
+  the pre-reset SHA `4fd2ff2` (`receipts/v261019-rc-rewrite-census.md`).

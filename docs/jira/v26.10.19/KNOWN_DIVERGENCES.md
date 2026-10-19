@@ -1,0 +1,32 @@
+# Known Divergences — v26.10.19 (pointer)
+
+Canonical KD register: [`../v26.10.14/KNOWN_DIVERGENCES.md`](../v26.10.14/KNOWN_DIVERGENCES.md)
+(96 rows, KD-01..KD-98 as of 2026-10-18; open/closed status in that file's
+table — table is ground truth). Mint from KD-99: KD-97/KD-98 are taken
+(conditional/ranged HEAD; EH multi-data-section batch envelope).
+
+This doc REGISTERS; it does not close. Every row below is OPEN. Close condition
+is either a fix-shape landing (receipt + falsifier re-run) or a typed-UNSUPPORTED
+token minted in `docs/WIRE_PARITY.md`. Do not mint new GAP tokens unilaterally.
+
+## Rows minted this window (KD-99..KD-113)
+
+| id | surface | divergence | evidence receipt | close condition | status |
+|---|---|---|---|---|---|
+| KD-99 | STS token issuance | STS issues HS256 (symmetric) tokens only; real Azure AD issues RS256 and clients validate against JWKS — no JWKS endpoint is exposed | `receipts/kd99-sts-hs256-tbd.md` (TBD-receipt) | expose a JWKS endpoint and sign RS256; falsifier: SDK token validation against fetched JWKS passes | OPEN |
+| KD-100 | AAD instance discovery | instance discovery (`https://login.microsoftonline.com/common/discovery/instance`) absent — SDKs that perform discovery before token request get a connection failure / skip the metadata path | `receipts/kd100-instance-discovery-tbd.md` (TBD-receipt) | serve the instance-discovery document; falsifier: DefaultAzureCredential flow with discovery enabled completes | OPEN |
+| KD-101 | Event Grid delivery | no HTTP webhook delivery mode — events are consumable only via the emulator's own channel; real Event Grid pushes CloudEvents to subscriber webhooks | `receipts/kd101-eg-webhook-tbd.md` (TBD-receipt) | implement webhook push delivery incl. handshake validation; falsifier: subscriber endpoint receives delivered CloudEvent | OPEN |
+| KD-102 | KV secrets soft-delete | secret delete is hard — no soft-delete plane, no `deletedSecrets` listing, no purge/recover for secrets (keys have routes, secrets do not; cf. KD-13 keys) | `receipts/kd102-kv-secrets-softdelete-tbd.md` (TBD-receipt) | add secret soft-delete/recover/purge routes or typed UNSUPPORTED; falsifier: SDK delete → recoverable via getDeletedSecret/recoverDeletedSecret | OPEN |
+| KD-103 | KV secrets backup/restore | secret backup/restore operations refused — SDK `backupSecret`/`restoreSecret` get typed refusals instead of backup blobs | `receipts/kd103-kv-secrets-backup-restore-tbd.md` (TBD-receipt) | implement secret backup blob roundtrip or typed UNSUPPORTED; falsifier: backup → restore roundtrip succeeds | OPEN |
+| KD-104 | KV certificates | certificate plane absent — `certificates/*` routes unserved; SDK `CertificateClient` unusable against the lane | `receipts/kd104-kv-certificates-tbd.md` (TBD-receipt) | add certificate routes or typed UNSUPPORTED; falsifier: CertificateClient create/get succeeds | OPEN |
+| KD-105 | KV sign external verify | PS256 signatures not externally verifiable — Node/WebCrypto `crypto.verify` refuses the substrate signature (same signature-shape class as the KD-14 RS256 inversion, distinct algorithm) | `receipts/kd105-ps256-external-verify-tbd.md` (TBD-receipt) | PS256 signature verifies true against the public JWK in an external verifier; falsifier: Node crypto.verify('sha256', ...) = true on the probe flow | OPEN |
+| KD-106 | SKR release contract | secure key release (SKR) release-policy/release contract not honored end-to-end — release requests don't evaluate the released-key contract the SDK/attestation flow expects | `receipts/kd106-skr-release-contract-tbd.md` (TBD-receipt) | SKR release returns the release blob per contract; falsifier: SDK release flow receives well-formed release payload | OPEN |
+| KD-107 | blob snapshots | blob snapshot support partial — snapshot create works but snapshot listing/lease-on-snapshot semantics diverge from Azure | `receipts/kd107-blob-snapshots-tbd.md` (TBD-receipt) | full snapshot lifecycle (create/list/get-on-snapshot); falsifier: SDK snapshot probe list + read-back passes | OPEN |
+| KD-108 | blob container lease/ACL | container lease and container ACL/signed-identifier operations absent — SDK `BlobLeaseClient`/`getAccessPolicy` paths unserved | `receipts/kd108-blob-lease-acl-tbd.md` (TBD-receipt) | add lease + ACL routes or typed UNSUPPORTED; falsifier: acquire/renew/release lease + set/get ACL roundtrip passes | OPEN |
+| KD-109 | appconfig feature flags | feature-flag content passed through opaquely — no typed feature-flag shape/validation on the config plane (real App Configuration models feature flags as first-class records) | `receipts/kd109-appconfig-feature-flags-tbd.md` (TBD-receipt) | model feature flags as typed records or pin the passthrough contract; falsifier: SDK feature-flag get/set roundtrip with typed shape | OPEN |
+| KD-110 | throttling defaults | throttle limits default `:infinity` — no rate limiting applied by default where real Azure surfaces throttle (429 + Retry-After) | `receipts/kd110-throttling-infinity-tbd.md` (TBD-receipt) | bounded default throttle budget with 429 + Retry-After; falsifier: over-limit probe receives 429 with Retry-After | OPEN |
+| KD-111 | ARM LRO | ARM LRO coverage narrow — async-operation pattern exercised only on a narrow route set; other long-running PUTs answer synchronous where real ARM returns 202 + Location polling | `receipts/kd111-arm-lro-narrow-tbd.md` (TBD-receipt) | widen LRO to full long-running route set; falsifier: SDK poller completes 202 → terminal on each covered route | OPEN |
+| KD-112 | ARM policy | policy assignments work but policy initiatives (setDefinitions) and exemptions absent — SDK `PolicyClient` initiative/exemption surfaces 404 | `receipts/kd112-arm-policy-initiatives-tbd.md` (TBD-receipt) | add initiative + exemption routes or typed UNSUPPORTED; falsifier: SDK initiative create/list and exemption create succeed | OPEN |
+| KD-113 | ARM RBAC | RBAC surface storage-only — role assignments restricted to the storage scope; management locks are stubs; tag-at-scope operations absent | `receipts/kd113-arm-rbac-storage-only-tbd.md` (TBD-receipt) | generalize RBAC scopes, real lock records, tag-at-scope routes; falsifier: SDK role-assignment at arbitrary scope + lock + tag-at-scope roundtrip passes | OPEN |
+
+Register new rows in the canonical table, not here.
