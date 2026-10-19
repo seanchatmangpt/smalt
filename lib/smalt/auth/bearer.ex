@@ -7,12 +7,15 @@ defmodule Smalt.Auth.Bearer do
   `call/2` behaviour is driven by `Application.get_env(:smalt, :auth_mode)`:
 
   - `:enforce` (default) — every non-exempt route requires a valid Bearer
-    token: HS256 signature verified with `Application.get_env(:smalt,
-    :sts_signing_secret)` — the SAME secret the ARM STS signs with (when the
-    env is unset, the ARM gateway's generated dev secret cached in
-    `:persistent_term` is used, so dev mode stays self-consistent) — plus
+    token: the JWS `alg` selects the verifier, gated on the VM's STS key mode
+    (`Smalt.Auth.StsKey.mode/0`) — RS256 verifies against the STS RSA key
+    (kid match enforced when the header carries a kid); HS256 verifies with
+    `Application.get_env(:smalt, :sts_signing_secret)` — the SAME secret the
+    ARM STS signs with (when the env is unset, the generated dev secret cached
+    in `:persistent_term` is used, so dev mode stays self-consistent) — plus
     `exp > now`, `aud` in `:smalt, :token_audiences`, and `iss` prefix
-    `https://login.microsoftonline.com/`.
+    `https://login.microsoftonline.com/`. Any other alg (none, ES*, or a
+    cross-mode token) refuses `SignatureVerificationFailed` fail-closed.
   - `:anonymous` — explicit opt-out (config/test.exs sets it so the existing
     suite stays green); the plug passes through.
 
@@ -156,7 +159,7 @@ defmodule Smalt.Auth.Bearer do
   """
   def verify_bearer(conn) do
     with {:ok, token} <- extract_token(conn),
-         {:ok, signer} <- signer(),
+         {:ok, signer} <- signer_for_alg(token),
          {:ok, claims} <- verify_signature(token, signer),
          :ok <- validate_claims(claims, conn) do
       :ok
@@ -192,7 +195,14 @@ defmodule Smalt.Auth.Bearer do
     # and %-encoded suffixes fail the `$` anchor fail-closed.
     path in @exempt_exact or
       Enum.any?(@exempt_prefixes, fn prefix -> String.starts_with?(path, prefix) end) or
-      Regex.match?(~r{^/[^/]+/oauth2/v2\.0/token$}, path)
+      Regex.match?(~r{^/[^/]+/oauth2/v2\.0/token$}, path) or
+      # JWKS: msal/@azure/identity fetches the key set BEFORE any token exists
+      # (bootstrap class, like the tenant token endpoint). Bounded 4-segment
+      # form `/{tid}/discovery/v2.0/keys`, fail-closed on any suffix.
+      Regex.match?(~r{^/[^/]+/discovery/v2\.0/keys$}, path) or
+      # Tenant openid-configuration: same bootstrap class — msal fetches the
+      # tenant discovery doc BEFORE any token exists. Bounded, `$`-anchored.
+      Regex.match?(~r{^/[^/]+/v2\.0/\.well-known/openid-configuration$}, path)
   end
 
   # Public read of the exempt-path predicate (egress-dispatch lens-4 cross-lane
@@ -282,22 +292,42 @@ defmodule Smalt.Auth.Bearer do
 
   defp parse_cosmos_aad(_), do: :not_aad
 
-  # -- signing secret ------------------------------------------------------------
+  # -- signer selection (alg-aware, mode-gated) ---------------------------------
 
-  defp signer do
-    case Application.get_env(:smalt, :sts_signing_secret) do
-      secret when is_binary(secret) ->
-        {:ok, Joken.Signer.create("HS256", secret)}
+  # RS256 (Portable Azure Target Law): the token's JWS alg must match the VM's
+  # stamped STS key mode. RS256 accepts only under :rs256 (kid match enforced
+  # when the header carries one); HS256 accepts only under :hs256_dev (secret
+  # from :sts_signing_secret or the generated dev secret — the legacy path,
+  # moved into Smalt.Auth.StsKey). Anything else (missing alg, none, ES*, or a
+  # cross-mode token) refuses SignatureVerificationFailed fail-closed.
+  defp signer_for_alg(token) do
+    mode = Smalt.Auth.StsKey.mode()
+
+    case Joken.peek_header(token) do
+      {:ok, %{"alg" => "RS256"}} when mode == :rs256 ->
+        case Joken.peek_header(token) do
+          # A function call is not legal in a defp guard (same constraint as
+          # port_part/2): compare in the body.
+          {:ok, %{"kid" => kid}} when is_binary(kid) ->
+            if kid == Smalt.Auth.StsKey.kid() do
+              {:ok, Smalt.Auth.StsKey.signer()}
+            else
+              {:refuse, "InvalidAuthenticationToken", "SignatureVerificationFailed"}
+            end
+
+          _ ->
+            {:ok, Smalt.Auth.StsKey.signer()}
+        end
+
+      {:ok, %{"alg" => "HS256"}} when mode == :hs256_dev ->
+        if Smalt.Auth.StsKey.hs_secret_available?() do
+          {:ok, Smalt.Auth.StsKey.hs_signer()}
+        else
+          {:refuse, "AuthenticationFailed", "NoSigningSecretConfigured"}
+        end
 
       _ ->
-        # No env secret: fall back to the ARM gateway's generated dev secret
-        # (same :persistent_term key the gateway caches under) so that dev
-        # substrates that mint tokens without a configured secret can still
-        # verify them. Refuse if nothing has been generated yet.
-        case :persistent_term.get({Smalt.ArmGateway.Router, :sts_signing_secret}, :missing) do
-          :missing -> {:refuse, "AuthenticationFailed", "NoSigningSecretConfigured"}
-          secret -> {:ok, Joken.Signer.create("HS256", secret)}
-        end
+        {:refuse, "InvalidAuthenticationToken", "SignatureVerificationFailed"}
     end
   end
 
