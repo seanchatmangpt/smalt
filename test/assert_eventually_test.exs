@@ -38,7 +38,7 @@ defmodule SmaltTest.AssertEventuallyTest do
   end
 
   test "eventually_stays/2: observation flip false->true resets the stability clock" do
-    {:ok, pid} = Agent.start_link(fn -> false end)
+    pid = start_supervised!({Agent, fn -> false end})
 
     flip_at = System.monotonic_time(:millisecond) + 80
 
