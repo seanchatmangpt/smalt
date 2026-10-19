@@ -106,6 +106,11 @@ with the typed row (from the sabotage run's JSONL):
 teardown as an orphan listener"}
 ```
 
+Host-side sweep after the run: the listeners on canonical ports are a
+foreign lane's host substrate (`mix run --no-halt` beam started 19:07 by the
+workspace harness, not this lane's containers; all burn containers exited
+`--rm`-clean). Not a burn orphan; not evicted (lane port law).
+
 Two vacuous variants were caught and fixed during shakedown (each initially
 returned "ANTI-VACUITY FAILED", i.e. the check did not fire): (a) bare
 `nc -l 9443` (one-shot listener), (b) BusyBox `nc -l -p` flag syntax. The

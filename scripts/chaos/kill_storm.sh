@@ -137,6 +137,9 @@ mint_token() {
 }
 
 auth() { echo "Authorization: Bearer $TOKEN"; }
+# Blob arm gate: x-ms-version mandatory on the blob arms (MissingXMsVersion
+# typed 400 otherwise) — every data-plane call carries it.
+KS_DP_VER="x-ms-version: 2021-12-02"
 
 # ---------------------------------------------------------------------------
 # JSONL emission (burn-row.schema.json fields; never hand-edited downstream)
@@ -195,7 +198,7 @@ run_cycle() {
 
   # Container (idempotent; 201 create or 409 already-present both proceed)
   local cc
-  cc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "$(auth)" \
+  cc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "$(auth)" -H "x-ms-version: 2021-12-02" \
     "$HOST:$DATA_PORT/$ACCOUNT/$CONTAINER?restype=container") || cc=000
   case "$cc" in 201|202|409) : ;; *) DETAIL+="container-create=$cc; " ;; esac
 
@@ -205,7 +208,7 @@ run_cycle() {
     while :; do
       name="c$CYCLE-blob-$i"
       payload="ks-$RUN_ID-c$CYCLE-$i-$(printf 'x%.0s' $(seq 1 64))"
-      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X PUT -H "$(auth)" \
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X PUT -H "$(auth)" -H "x-ms-version: 2021-12-02" \
         -H "x-ms-blob-type: BlockBlob" --data-binary "$payload" \
         "$HOST:$DATA_PORT/$ACCOUNT/$CONTAINER/$name") || { break; }   # beam died mid-write
       [ "$code" = "201" ] || { echo "$name UNEXPECTED_$code" >> "$ledger"; break; }
@@ -246,7 +249,7 @@ run_cycle() {
   while IFS=$'\t' read -r name sha; do
     case "$name" in UNEXPECTED_*) untyped=$((untyped+1)); continue ;; esac
     bodyfile="$WORKDIR/get-body"
-    code=$(curl -s -o "$bodyfile" -w '%{http_code}' --max-time 5 -H "$(auth)" \
+    code=$(curl -s -o "$bodyfile" -w '%{http_code}' --max-time 5 -H "$(auth)" -H "x-ms-version: 2021-12-02" \
       "$HOST:$DATA_PORT/$ACCOUNT/$CONTAINER/$name") || code=000
     case "$code" in
       200) got=$(shasum -a 256 "$bodyfile" | cut -d" " -f1)
@@ -257,7 +260,7 @@ run_cycle() {
 
   # Missing blob must be a typed 404 BlobNotFound, never an untyped 500.
   local miss_body miss_code
-  miss_code=$(curl -s -o "$WORKDIR/miss-body" -w '%{http_code}' -H "$(auth)" \
+  miss_code=$(curl -s -o "$WORKDIR/miss-body" -w '%{http_code}' -H "$(auth)" -H "x-ms-version: 2021-12-02" \
     "$HOST:$DATA_PORT/$ACCOUNT/$CONTAINER/c$CYCLE-never-written") || miss_code=000
   miss_body=$(cat "$WORKDIR/miss-body" 2>/dev/null)
   case "$miss_code" in

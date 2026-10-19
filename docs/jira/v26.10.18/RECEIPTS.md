@@ -21,9 +21,13 @@ count, or PASS/FAIL token) found in the file.
 | azb-04-plane | [azb-04-plane-loader.md](receipts/azb-04-plane-loader.md) | PASS | AZB-04 — Plane profile loader (`SMALT_PLANES`) — RECEIPT **NO-CONTEXT** |
 | azb-05-contr | [azb-05-control-plane.md](receipts/azb-05-control-plane.md) | PASS | AZB-05 — Control plane profile (ARM) — RECEIPT **NO-CONTEXT** |
 | azb-06-data- | [azb-06-data-plane.md](receipts/azb-06-data-plane.md) | PASS | AZB-06 — Data plane profile (Cosmos SQL + Blob hot tier) — RECEIPT **NO-CONTEXT** |
+| azb-07-integ | [azb-07-integration-plane.md](receipts/azb-07-integration-plane.md) | ALIVE | AZB-07 — Integration plane profile (Service Bus AMQP + Event Grid) **NO-CONTEXT** |
+| azb-08-ident | [azb-08-identity-plane.md](receipts/azb-08-identity-plane.md) | PASS | AZB-08 — Identity plane profile (KeyVault + Entra STS) — RECEIPT **NO-CONTEXT** |
 | azb-09-plane | [azb-09-plane-subtrees.md](receipts/azb-09-plane-subtrees.md) | ALIVE | AZB-09 Plane-Scoped Supervision Subtrees **NO-CONTEXT** |
+| azb-10-cross | [azb-10-cross-plane.md](receipts/azb-10-cross-plane.md) | ALIVE | AZB-10 Cross-plane wiring (loopback, zero egress) **NO-CONTEXT** |
 | azb-11-isola | [azb-11-isolation-court.md](receipts/azb-11-isolation-court.md) | PARTIAL_ALIVE | AZB-11 receipt — isolation court (v26.10.18) **NO-CONTEXT** |
 | azb-12-ratio | [azb-12-ratio.md](receipts/azb-12-ratio.md) | ALIVE | AZB-12 — Absolute timing bounds → relative-ratio assertions (lane receipt) **NO-CONTEXT** |
+| azb-13-boot- | [azb-13-boot-burn.md](receipts/azb-13-boot-burn.md) | ALIVE | AZB-13 Boot burn ×50 per plane (Jidoka on orphan/zombie) **NO-CONTEXT** |
 | azb-21-zero- | [azb-21-zero-sleep.md](receipts/azb-21-zero-sleep.md) | ALIVE | AZB-21 — Zero-sleep gate (lib + test + burn scripts) **NO-CONTEXT** |
 | b-await-migr | [b-await-migration.md](receipts/b-await-migration.md) | PARTIAL_ALIVE | b-await-migration — PARTIAL_ALIVE **NO-CONTEXT** |
 | b-e2e-wire | [b-e2e-wire.md](receipts/b-e2e-wire.md) | ALIVE | b-e2e-wire — E2E/WIRE consolidation slice (v26.10.18) **NO-CONTEXT** |
@@ -45,7 +49,9 @@ count, or PASS/FAIL token) found in the file.
 | i23-fence11- | [i23-fence11-flip.md](receipts/i23-fence11-flip.md) | ALIVE | I23 — Fence-11 shake + FLAKE_LEDGER F6 flip (v26.10.18) |
 | i23-standalo | [i23-standalone-noise.md](receipts/i23-standalone-noise.md) | PASS | i23 — standalone corpus invocation + atom_bridge teardown-noise typing **NO-CONTEXT** |
 | i24-store-de | [i24-store-dets-torn.md](receipts/i24-store-dets-torn.md) | ALIVE | i24 — store_dets_test torn-DETS probe flake (F12 family) **NO-CONTEXT** |
+| i25-atom-bri | [i25-atom-bridge-noise.md](receipts/i25-atom-bridge-noise.md) | ALIVE | i25: atom_bridge test-harness teardown noise **NO-CONTEXT** |
 | i25-lro-back | [i25-lro-backdate.md](receipts/i25-lro-backdate.md) | ALIVE | i25 — lro_test elapsed-delay sleeps → BACKDATE rewrite **NO-CONTEXT** |
+| i25-sleeps-b | [i25-sleeps-b2.md](receipts/i25-sleeps-b2.md) | ALIVE | i25 — sleeps.md §B2: `eventually_stays/2` + 4 absence-check migrations **NO-CONTEXT** |
 | v-pinion-aud | [v-pinion-audit.md](receipts/v-pinion-audit.md) | PASS | v-pinion-audit — rewrite wave pinion integrity |
 | v0-interim | [v0-interim.md](receipts/v0-interim.md) | PARTIAL_ALIVE | v0 interim converged-suite signal — rewrite wave (v26.10.18) |
 | v1-soak | [v1-soak.md](receipts/v1-soak.md) | UNKNOWN | v1 soak — 3x full `mix test` on `_build-ft-v1` **NO-CONTEXT** |
