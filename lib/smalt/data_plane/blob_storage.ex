@@ -55,6 +55,51 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  @doc """
+  Deletes a blob container and all its contained blobs, blocks, and snapshots.
+  Respects WORM legal hold and immutability policy (409 ContainerLocked).
+  Returns `{:ok, 202, headers, nil}` on success, or `{:error, status, code, msg}`.
+  """
+  def delete_container(account, container, opts \\ []) do
+    container_key = "#{account}/#{container}"
+    now = now_ms(opts)
+
+    with {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
+         :ok <- check_worm(container_meta, now) do
+      base = "#{account}/#{container}/"
+
+      # Cascade deletion of blobs, policies, blocks, snapshots under container
+      tables = [
+        :smalt_blobs,
+        :smalt_blob_policy,
+        :smalt_blob_blocks,
+        :smalt_blob_snapshots
+      ]
+
+      for table <- tables,
+          :ets.info(table) != :undefined,
+          key <- Store.prefix_keys(table, base) do
+        Store.delete(table, key)
+      end
+
+      # Delete container policy if any
+      if :ets.info(:smalt_blob_policy) != :undefined do
+        Store.delete(:smalt_blob_policy, container_key)
+      end
+
+      # Delete container record
+      Store.delete(:smalt_blob_containers, container_key)
+
+      {:ok, 202, %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}, nil}
+    else
+      :error ->
+        {:error, 404, "ContainerNotFound", "The specified container does not exist."}
+
+      {:error, {:worm, reason}} ->
+        {:error, 409, "ContainerLocked", worm_message_reason(reason)}
+    end
+  end
+
   # Azure parity (cycle-25, Put Container): container names are 3-63 bytes,
   # lowercase letters/digits/dashes, starting and ending alphanumeric. Real
   # Azure answers 400 InvalidResourceName; smalt accepted anything and the

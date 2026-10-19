@@ -623,6 +623,91 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  defp handle_rg_patch(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, @rg_type) do
+      do_rg_patch(conn, sub_id, rg_name)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp do_rg_patch(conn, sub_id, rg_name) do
+    rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+    key = String.downcase(rg_id)
+
+    case Store.get(:smalt_resource_groups, key) do
+      {:ok, existing} when is_map(existing) ->
+        payload = conn.body_params
+        merged_tags =
+          case Map.fetch(payload, "tags") do
+            {:ok, %{} = new_tags} ->
+              # Merge with existing tags if present, or set
+              cur = Map.get(existing, "tags") || %{}
+              Map.merge(cur, new_tags)
+            _ ->
+              Map.get(existing, "tags")
+          end
+
+        updated =
+          existing
+          |> Map.put("tags", normalize_tags(merged_tags))
+
+        Store.put(:smalt_resource_groups, key, updated)
+        send_json(conn, 200, Jason.encode!(normalize_rg(updated)))
+
+      _ ->
+        send_arm_error(
+          conn,
+          404,
+          "ResourceGroupNotFound",
+          "Resource group '#{rg_name}' could not be found.",
+          rg_id
+        )
+    end
+  end
+
+  defp handle_rg_resources_list(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, nil) do
+      prefix = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
+
+      items =
+        Store.list_prefix(:smalt_resources, prefix)
+        |> Enum.filter(&renderable_record?/1)
+        |> Enum.filter(&subscription_resource_filter(conn, &1))
+
+      send_list(conn, items)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_locations_list(conn, sub_id) do
+    with :ok <- check_api_version(conn, nil) do
+      locations =
+        ProviderMatrix.default_locations()
+        |> Enum.map(fn loc ->
+          display_name =
+            case loc do
+              "eastus" -> "East US"
+              "westus2" -> "West US 2"
+              "local" -> "Local"
+              other -> other
+            end
+
+          %{
+            "id" => "/subscriptions/#{sub_id}/locations/#{loc}",
+            "name" => loc,
+            "displayName" => display_name,
+            "regionalDisplayName" => "(US) #{display_name}"
+          }
+        end)
+
+      send_json(conn, 200, Jason.encode!(%{"value" => locations}))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
   defp do_rg_put(conn, sub_id, rg_name) do
     rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
     payload = conn.body_params
@@ -2650,6 +2735,26 @@ defmodule Smalt.ArmGateway.Router do
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name" do
     handle_rg_get(conn, sub_id, rg_name)
+  end
+
+  patch "/subscriptions/:sub_id/resourcegroups/:rg_name" do
+    handle_rg_patch(conn, sub_id, rg_name)
+  end
+
+  patch "/subscriptions/:sub_id/resourceGroups/:rg_name" do
+    handle_rg_patch(conn, sub_id, rg_name)
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/resources" do
+    handle_rg_resources_list(conn, sub_id, rg_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/resources" do
+    handle_rg_resources_list(conn, sub_id, rg_name)
+  end
+
+  get "/subscriptions/:sub_id/locations" do
+    handle_locations_list(conn, sub_id)
   end
 
   delete "/subscriptions/:sub_id/resourcegroups/:rg_name" do

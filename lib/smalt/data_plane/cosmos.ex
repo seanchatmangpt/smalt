@@ -461,6 +461,107 @@ defmodule Smalt.DataPlane.Cosmos do
   # ---------------------------------------------------------------------------
 
   @doc """
+  POST /dbs/:db/colls/:coll/docs — bulk/batch operations.
+  Accepts a list of operation maps, e.g.:
+  `[%{"operationType" => "Upsert", "resourceBody" => %{...}, "partitionKey" => "[\"...\"]"}]`
+  Returns `{:ok, 200, headers, results}` where results is a list of per-item responses:
+  `[%{"statusCode" => 200, "resourceBody" => %{...}}]`.
+  """
+  def bulk_operations(db, coll, ops, headers) when is_list(ops) do
+    gate(:post, "docs", container_link(db, coll), headers, fn ->
+      if store_ready?() do
+        results =
+          Enum.map(ops, fn op ->
+            op_type = Map.get(op, "operationType")
+            resource = Map.get(op, "resourceBody") || %{}
+            pk = Map.get(op, "partitionKey")
+            op_headers =
+              if pk do
+                Map.put(headers, "x-ms-documentdb-partitionkey", pk)
+              else
+                headers
+              end
+
+            case op_type do
+              "Create" ->
+                case do_create_doc(db, coll, resource, op_headers) do
+                  {:ok, status, _h, body} ->
+                    %{"statusCode" => status, "resourceBody" => body}
+                end
+
+              "Upsert" ->
+                upsert_headers = Map.put(op_headers, "x-ms-documentdb-is-upsert", "true")
+
+                case do_create_doc(db, coll, resource, upsert_headers) do
+                  {:ok, status, _h, body} ->
+                    %{"statusCode" => status, "resourceBody" => body}
+                end
+
+              "Replace" ->
+                doc_id = Map.get(resource, "id") || Map.get(op, "id")
+
+                case do_put_doc(db, coll, doc_id, resource, op_headers) do
+                  {:ok, status, _h, body} ->
+                    %{"statusCode" => status, "resourceBody" => body}
+                end
+
+              "Delete" ->
+                doc_id = Map.get(op, "id") || Map.get(resource, "id")
+
+                case do_delete_doc(db, coll, doc_id, op_headers) do
+                  {:ok, status, _h, body} ->
+                    %{"statusCode" => status, "resourceBody" => body}
+                end
+
+              "Read" ->
+                doc_id = Map.get(op, "id") || Map.get(resource, "id")
+
+                case do_get_doc_direct(db, coll, doc_id, op_headers) do
+                  {:ok, status, _h, body} ->
+                    %{"statusCode" => status, "resourceBody" => body}
+                end
+
+              _ ->
+                %{"statusCode" => 400, "resourceBody" => %{"message" => "Unsupported operationType #{inspect(op_type)}"}}
+            end
+          end)
+
+        lsn = current_lsn(db, coll)
+        {:ok, 200, success_headers(db, coll, lsn, %{}), results}
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  defp do_get_doc_direct(db, coll, doc_id, headers) do
+    case Store.get(@docs_table, doc_key(db, coll, doc_id)) do
+      {:ok, doc} ->
+        case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
+          :proceed ->
+            lsn = current_lsn(db, coll)
+            {:ok, 200, success_headers(db, coll, lsn, %{"etag" => doc["_etag"]}), doc}
+
+          {:halt, 304} ->
+            lsn = current_lsn(db, coll)
+            {:ok, 304, success_headers(db, coll, lsn, %{"etag" => doc["_etag"]}), %{}}
+
+          {:halt, 412} ->
+            error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+        end
+
+      :error ->
+        error_response(
+          db,
+          coll,
+          404,
+          "NotFound",
+          "Entity with the specified id does not exist in the system."
+        )
+    end
+  end
+
+  @doc """
   POST /dbs/:db/colls/:coll/docs — create. Returns `{:ok, 201, headers, doc}`.
   """
   def create_doc(db, coll, body, headers) when is_map(body) do

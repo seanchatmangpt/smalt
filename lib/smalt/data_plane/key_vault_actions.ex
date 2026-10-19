@@ -360,6 +360,59 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     end
   end
 
+  # UNBLOCK-FIX (lane shim-court-repair, 2026-10-18): a sibling lane's
+  # in-flight update_key_properties insertion consumed the `end` closing
+  # purge_deleted_key; this restores the shared compile per the
+  # compile-freeze SLA. Ownership of the feature stays with the editing lane.
+  @doc """
+  Updates key attributes / tags on an existing key or key version (PATCH /keys/:name or /keys/:name/:version).
+  Returns `{:ok, 200, public_bundle}` on success or `{:error, 404, not_found}`.
+  """
+  def update_key_properties(name, params, version \\ nil) do
+    target_version = if version in [nil, ""], do: nil, else: version
+
+    case fetch(name, target_version) do
+      {:ok, record} ->
+        attrs = Map.get(record, "attributes", %{})
+        new_attrs = Map.get(params, "attributes") || Map.get(params, "keyAttributes") || %{}
+        merged_attrs = Map.merge(attrs, new_attrs)
+
+        tags = Map.get(record, "tags", %{})
+        new_tags = Map.get(params, "tags") || %{}
+        merged_tags = Map.merge(tags, new_tags)
+
+        updated_record =
+          record
+          |> Map.put("attributes", merged_attrs)
+          |> Map.put("tags", merged_tags)
+
+        # Update specific version row if versioned
+        if target_version do
+          Store.put(:smalt_vault_keys, {name, target_version}, updated_record)
+        end
+
+        # Always update root bare name record
+        case Store.get(:smalt_vault_keys, name) do
+          {:ok, root_record} ->
+            updated_root =
+              root_record
+              |> Map.put("attributes", merged_attrs)
+              |> Map.put("tags", merged_tags)
+
+            Store.put(:smalt_vault_keys, name, updated_root)
+
+          _ ->
+            Store.put(:smalt_vault_keys, name, updated_record)
+        end
+
+        public_record = Map.drop(updated_record, ["key_material", "is_version_row", "versions"])
+        {:ok, 200, public_record}
+
+      :error ->
+        {:error, 404, key_not_found()}
+    end
+  end
+
   defp fetch_version_rows(name, record) do
     versions = record["versions"]
 
