@@ -5227,6 +5227,39 @@
     "Elixir.Smalt.DataPlane.KeyVaultActionsTest.test wrapKey/unwrapKey oct wrap/unwrap round-trip": {
       "tier": "default"
     },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages delete message: valid receipt 204, message gone": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages get: FIFO order, default visibility hides, DequeueCount increments": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages get: numofmessages bounds and 400s": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages message text cap 64KiB 400": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages put 201 renders MessageId/PopReceipt XML; raw body accepted as text": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages put on missing queue 404 QueueNotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test messages update: rotates popreceipt, stale replay 404 PopReceiptMismatch, missing 404 MessageNotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test queue lifecycle create 201, duplicate 409 QueueAlreadyExists": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test queue lifecycle delete 204 cascades messages; missing 404 QueueNotFound": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test queue lifecycle invalid queue name 400 InvalidResourceName": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.DataPlane.QueueStorageTest.test queue lifecycle list_queues: prefix/marker/maxresults": {
+      "tier": "default"
+    },
     "Elixir.Smalt.DataPlane.R133PolicyCasTest.test cas_policy_row: hold committed between read and write-back is preserved, not clobbered": {
       "tier": "default"
     },
@@ -7742,6 +7775,18 @@
       "tier": "default"
     },
     "Elixir.Smalt.Wire.EgressWireTest.test Key Vault: release without valid CVM attestation returns 403 over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Queue Storage: blob splat disambiguation \u2014 non-queue requests still reach blob arms": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Queue Storage: create/list/delete queue lifecycle over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Queue Storage: put/get messages with popreceipt + visibility over the wire": {
+      "tier": "default"
+    },
+    "Elixir.Smalt.Wire.EgressWireTest.test Queue Storage: stale popreceipt replay answers 404 PopReceiptMismatch over the wire": {
       "tier": "default"
     },
     "Elixir.Smalt.Wire.EgressWireTest.test R137: encoded reserved namespace PUT answers 404 and stores nothing; encoded dbs GET answers 400; plain splat stays 201": {

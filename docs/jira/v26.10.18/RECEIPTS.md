@@ -105,6 +105,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-amqp-wir | [i29-amqp-wire-fresh.md](receipts/i29-amqp-wire-fresh.md) | PARTIAL_ALIVE | i29 — AMQP wire tier, fresh run (2026-10-18) |
 | i29-arg-rout | [i29-arg-route-family.md](receipts/i29-arg-route-family.md) | PASS | i29 — ARG route family: :sovereign_gap 5.3 un-tag (G6 close) |
 | i29-audited- | [i29-audited-caps-leakfix.md](receipts/i29-audited-caps-leakfix.md) | PASS | i29: audited_capabilities_test.exs leak-fix (9 ETS sites -> 0) |
+| i29-azb20-li | [i29-azb20-lib-land.md](receipts/i29-azb20-lib-land.md) | ALIVE | i29-azb20-lib-land — azb-20 lib lane adoption **NO-CONTEXT** |
 | i29-azb20-ve | [i29-azb20-verify.md](receipts/i29-azb20-verify.md) | PARTIAL_ALIVE | i29-azb20-verify — AZB-20 gap-fix lane verification **NO-CONTEXT** |
 | i29-azsim-re | [i29-azsim-regression.md](receipts/i29-azsim-regression.md) | PARTIAL_ALIVE | i29 — azsim regression run |
 | i29-bench-ch | [i29-bench-check.md](receipts/i29-bench-check.md) | FAIL | i29 bench-lane smoke (post-0009df3) |
@@ -122,7 +123,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-checkpoi | [i29-checkpoint4.md](receipts/i29-checkpoint4.md) | ALIVE | i29 Checkpoint 4 — in-flight lane census at HEAD 086c6aa |
 | i29-checkpoi | [i29-checkpoint5.md](receipts/i29-checkpoint5.md) | UNKNOWN | i29 Checkpoint 5 — in-flight lane census at HEAD 0351252 |
 | i29-checkpoi | [i29-checkpoint6.md](receipts/i29-checkpoint6.md) | UNKNOWN | i29 Checkpoint 6 — in-flight lane census at HEAD d577677 |
-| i29-checkpoi | [i29-checkpoint7.md](receipts/i29-checkpoint7.md) | ALIVE | i29 Checkpoint 7 — census at HEAD 2e0b9b2 **NO-CONTEXT** |
+| i29-checkpoi | [i29-checkpoint7.md](receipts/i29-checkpoint7.md) | UNKNOWN | i29 Checkpoint 7 — census at HEAD 2e0b9b2 **NO-CONTEXT** |
 | i29-colima-s | [i29-colima-stop-runbook.md](receipts/i29-colima-stop-runbook.md) | PARTIAL_ALIVE | I29 — Colima-Stop Runbook (AZB-23 quiet-machine transition) |
 | i29-compile- | [i29-compile-clean.md](receipts/i29-compile-clean.md) | ALIVE | i29 compile-clean sweep (warnings-as-errors) |
 | i29-corpus-f | [i29-corpus-fresh.md](receipts/i29-corpus-fresh.md) | PASS | i29 — fresh-build corpus soak (bench-runner, slice context) |
@@ -148,6 +149,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-docs-gat | [i29-docs-gates3.md](receipts/i29-docs-gates3.md) | PASS | i29 docs gates 3 — post-d1298be receipt-index / docs-dod-check / naming-sweep |
 | i29-docs-spo | [i29-docs-spot3.md](receipts/i29-docs-spot3.md) | PASS | i29 docs spot-audit 3 — azsim-burn + checkpoint5 conventions |
 | i29-doctor-d | [i29-doctor-dod-gapcensus.md](receipts/i29-doctor-dod-gapcensus.md) | ALIVE | i29-doctor-dod-gapcensus — doctor_dod.py GAP-census retirement |
+| i29-e2e-fina | [i29-e2e-final.md](receipts/i29-e2e-final.md) | PASS | i29 — E2E tier full re-verify post-fixes **NO-CONTEXT** |
 | i29-e2e-fixe | [i29-e2e-fixes.md](receipts/i29-e2e-fixes.md) | ALIVE | i29-e2e-fixes — the 4 e2e-tree defects from i29-e2e-fresh closed |
 | i29-e2e-fres | [i29-e2e-fresh.md](receipts/i29-e2e-fresh.md) | PARTIAL_ALIVE | i29-e2e-fresh — E2E tier fresh run on post-0009df3 (v26.10.18) |
 | i29-e2e-rech | [i29-e2e-recheck.md](receipts/i29-e2e-recheck.md) | UNKNOWN | i29 e2e recheck — s9 spot check (lane: e2e-fix recheck) |
@@ -161,6 +163,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-full-soa | [i29-full-soak-c.md](receipts/i29-full-soak-c.md) | PARTIAL_ALIVE | i29 Full Offline Suite — Receipt (full-soak-c) |
 | i29-full-soa | [i29-full-soak-d.md](receipts/i29-full-soak-d.md) | PASS | i29-d — Full soak leg D: `mix test` (stress excluded) |
 | i29-full-soa | [i29-full-soak-e.md](receipts/i29-full-soak-e.md) | UNKNOWN | i29 — Full-Suite Pre-Gate Leg E (full soak, lane build root) |
+| i29-full-soa | [i29-full-soak-f.md](receipts/i29-full-soak-f.md) | UNKNOWN | i29 leg F — full-suite pre-gate soak at HEAD **NO-CONTEXT** |
 | i29-full-soa | [i29-full-soak.md](receipts/i29-full-soak.md) | UNKNOWN | i29 — Full soak leg: `mix test` (stress excluded) |
 | i29-g1-land | [i29-g1-land.md](receipts/i29-g1-land.md) | ALIVE | G1 Queue Storage — Land Receipt (i29) **NO-CONTEXT** |
 | i29-g1-scopi | [i29-g1-scoping.md](receipts/i29-g1-scoping.md) | PASS | i29 — G1 Queue Storage Scoping Receipt |
@@ -193,6 +196,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-push-rea | [i29-push-readiness.md](receipts/i29-push-readiness.md) | ALIVE | i29 — push-readiness audit (main vs origin/main), 2026-10-18 |
 | i29-push-rea | [i29-push-readiness2.md](receipts/i29-push-readiness2.md) | UNKNOWN | i29-push-readiness2 — re-audit of the unpushed b9a6dc1 lineage |
 | i29-push-rea | [i29-push-readiness3.md](receipts/i29-push-readiness3.md) | UNKNOWN | i29 — Push-readiness audit #3 (origin/main..main) **NO-CONTEXT** |
+| i29-push-rea | [i29-push-readiness4.md](receipts/i29-push-readiness4.md) | PARTIAL_ALIVE | i29-push-readiness4 — Push-Readiness Audit (read-only) **NO-CONTEXT** |
 | i29-ratchet- | [i29-ratchet-regression.md](receipts/i29-ratchet-regression.md) | ALIVE | i29 — ratchet mod regression after naming-sweep repair lane |
 | i29-receipt- | [i29-receipt-final.md](receipts/i29-receipt-final.md) | PASS | i29-receipt-final — milestone-doc final sweep (v26.10.18) |
 | i29-replay-f | [i29-replay-fences.md](receipts/i29-replay-fences.md) | PARTIAL_ALIVE | i29 — Generated-Artifact Replay Fences (post-0009df3 tree) |
@@ -208,6 +212,7 @@ count, or PASS/FAIL token) found in the file.
 | i29-sleep-bu | [i29-sleep-budget-gates.md](receipts/i29-sleep-budget-gates.md) | FAIL | i29 — sleep-gate, sleep-gate-court, test-budget (post-6eec145) |
 | i29-soak-rec | [i29-soak-recheck.md](receipts/i29-soak-recheck.md) | UNKNOWN | i29 — soak recheck at HEAD 806d86e |
 | i29-sovereig | [i29-sovereign-gap-triage.md](receipts/i29-sovereign-gap-triage.md) | PASS | i29 — Sovereign Midnight :sovereign_gap triage (1.3 / 2.2 / 2.3 / 3.1 / 3.2 / 5.3) |
+| i29-spc-attr | [i29-spc-attrib.md](receipts/i29-spc-attrib.md) | ALIVE | i29 — spc-bands.md re-dirty attribution (wrap item 2) |
 | i29-static-g | [i29-static-gates-pregate.md](receipts/i29-static-gates-pregate.md) | ALIVE | i29 static gates pre-gate sweep — 2026-10-19 |
 | i29-static-g | [i29-static-gates-pregate2.md](receipts/i29-static-gates-pregate2.md) | PASS | i29 — Static gate quad re-run, pre-gate 2 (azb-20 landed, G1 queue_storage.ex present) |
 | i29-stress-f | [i29-stress-fresh.md](receipts/i29-stress-fresh.md) | UNKNOWN | i29 — fresh stress leg (churn court calibration + fence conversions) |

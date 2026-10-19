@@ -357,3 +357,29 @@ stays open for court23 (blocked on quiet-check: erlmcp beam 58477 + load,
 not on docker). Holding colima down preserves the court23 precondition.
 
 **Standing: HOLD-DOWN (colima down, no rollback).**
+
+## AZB-23 pre-window monitor — 2026-10-19 (Context: solo(monitor-4-polls-then-court23))
+
+Monitor loop (3-min cadence, poll 1..4), `uptime` + `ps -p 58477`:
+- P1: load1 9.10 (<16 OK), 58477 ALIVE
+- P2: load1 5.82, 58477 ALIVE
+- P3: load1 6.54, 58477 ALIVE
+- P4: load1 10.82, 58477 GONE — both vetoes cleared, court23 launched
+
+`bash scripts/court23.sh` (exit 1):
+```
+== AZB-23 gate @ 1792396050 ==
+QUIET-CHECK REFUSE (typed violations):
+  - concurrent suite/court processes: 36289 /Users/sac/.erlmcp/otp-28.3.1/lib/erlang/erts-16.2/bin/beam.smp ... mix test
+error: recipe `quiet-check` failed on line 8 with exit code 1
+REFUSED: quiet-check failed — quiet window not open (colima up?)
+```
+
+Outcome: REFUSED — quiet window not open. The poll-4 clearance was transient:
+PID 58477 was one beam of an active foreign fleet under ~/.erlmcp
+(36289 `mix test` elapsed 3m05s, 36373 `mix test --include amqp_wire`,
+83625 `test/sdk-full/azb20/boot_plane.exs` — all smalt-class suites,
+all running Application.put_env :smalt auth_mode :enforce / ephemeral ports).
+Per task contract these are outside the repo: not killed, reported to the
+coordinator. court-x2 two-run verdicts: NOT OBTAINED — run 1 never admitted.
+Standing: BLOCKED (foreign concurrent fleet holds the quiet window).
