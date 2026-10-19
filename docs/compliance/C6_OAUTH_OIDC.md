@@ -39,7 +39,7 @@ signing, real `Plug.Parsers` form decoding), per
 
 | # | Field | smalt observed (live-decoded) | AAD/RFC 7519 | Status |
 |---|-------|------------------------------|--------------|--------|
-| 7 | header `alg`/`typ` | `{"typ":"JWT","alg":"HS256"}` | AAD: `RS256` | DEV-MODE (router.ex:334,381 — HS256 signer; AAD never HS256 for v2.0 tokens) |
+| 7 | header `alg`/`typ` | `{"typ":"JWT","alg":"RS256","kid":"<RFC 7638 thumbprint>"}` | AAD: `RS256` | **PASS (FLIPPED from DEV-MODE 2026-10-19)** — mint rides `Smalt.Auth.StsKey.signer/0` (RSA 4096, env-PEM-first precedence, kid = thumbprint); legacy HS256 dev mode stays behind `config :smalt, :sts_key_mode, :hs256_dev` |
 | 8 | RFC 7519 registered claims | `exp`,`iat`,`nbf` (iat==nbf), `aud`=`https://management.azure.com`, `iss`, `sub` all present, ints in Unix s | §4.1 required-set parity | PASS (router.ex:291-304) |
 | 9 | Azure claims | `tid`,`oid`,`appid`,`azp`,`roles`=["Contributor","Owner"] present | AAD access-token contract | PASS (router.ex:299-304) |
 | 10 | claim values | ALL fixed: appid/azp zero-GUID, oid==sub fixed GUID, roles always Contributor+Owner regardless of client | AAD: derived from the authenticated service principal | DEV-MODE (router.ex:291-304) |
@@ -51,10 +51,10 @@ signing, real `Plug.Parsers` form decoding), per
 | 11 | **issuer** | `http://<client-authority>/{tid}/v2.0` — request-authority-derived | Stable per-tenant issuer | PASS as surfaced, see row 12 |
 | 12 | issuer == token `iss` (EXACT) | EXACTLY equal: token `iss` now derives from the SAME `request_authority/1` as the discovery doc (`#{authority}/{tid}/v2.0`) | OIDC §4.3 / AAD: EXACTLY equal | PASS (router.ex `issue_token/2` + `openid_envelope/2`) — fixed GAP C6-4 |
 | 13 | **token_endpoint** / **authorization_endpoint** | `{authority}/{tid}/oauth2/v2.0/{token,authorize}` | required | PASS (router.ex:390-400) |
-| 14 | **jwks_uri** | `{authority}/{tid}/discovery/v2.0/keys` → **served 200 `{"keys":[]}`** | required | PASS — fixed GAP C6-5: route serves an honestly-empty JWKS (HS256 dev-mode, secret never published) |
+| 14 | **jwks_uri** | `{authority}/{tid}/discovery/v2.0/keys` → **served 200 `{"keys":[{kty RSA, n, e AQAB, use sig, alg RS256, kid}]}`** | required | **PASS (FLIPPED from honestly-empty 2026-10-19)** — RS256 mode publishes `Smalt.Auth.StsKey.jwk_map/0`; `:hs256_dev` keeps the honestly-empty `{"keys":[]}` pin (secret never published) |
 | 15 | **response_types_supported** | `["token"]` | REQUIRED | PASS — fixed GAP C6-6 |
 | 16 | **spec-required `subject_types_supported`** | `["public"]` | REQUIRED | PASS — fixed GAP C6-7 |
-| 17 | **id_token_signing_alg_values_supported** | `["HS256"]` | AAD: `["RS256"]` | DEV-MODE row (pin): HS256 advertised and actually used — self-consistent with row 7 |
+| 17 | **id_token_signing_alg_values_supported** | `["RS256"]` | AAD: `["RS256"]` | **PASS (FLIPPED from DEV-MODE 2026-10-19)** — mode-conditional in `openid_envelope/2`: `["RS256"]` under the default RS256 STS key, `["HS256"]` under `:hs256_dev` (always self-consistent with row 7) |
 | 18 | well-known path forms | `/.well-known/openid-configuration` (issuer `.../organizations/v2.0`) AND `/{tid}/v2.0/..well-known/openid-configuration` both served | AAD v2.0 path forms `/common/v2.0/.well-known/openid-configuration` and `/{tid}/v2.0/...` | PASS as pin: tenant form matches AAD; bare form is the emulator's own (organizations ≠ common) — DEV-MODE |
 | 19 | tenant discovery wiring | `/common/discovery/instance` serves `tenant_discovery_endpoint` → `/{tid}/v2.0/.well-known/openid-configuration`, plus `authorization_endpoint`/`token_endpoint`/`issuer` consistent with the tenant doc | required for MSAL bootstrap | PASS (router.ex:2530-2545) |
 

@@ -3,6 +3,23 @@
 Admission courts: invariant gates and shim courts. Generated from the
 directory surfaces (`gates/`, `scripts/shim_court/`).
 
+## Verification tier registry (post-reset, v26.10.19 @ 64f6099)
+
+| tier | surface | runner | status |
+|---|---|---|---|
+| T1 | residual internal tier `test/internal/` (5 suites; VM-observable invariants only, fenced by `test/internal/internal_tier_census_test.exs`) | `mix test` (also `just test-offline`) | ACTIVE |
+| T2 | external TypeScript SDK suites (`verification/ts/`, official `@azure/*` over real wire; wf1-wf5) | entry points via `verification/README.md` how-to-run; recipes `just sdk-ts` / `just sdk-all` currently exit 1 loud placeholders (V261019-08) | LANDED-SUBJECT, RECIPE-PENDING |
+| T3 | external Python SDK suites (`verification/py/`, official `azure-*`, pytest per-lane venvs; wf1-wf4) | `just sdk-py` placeholder exit 1 (V261019-09) | LANDED-SUBJECT, RECIPE-PENDING |
+| gates | non-duplication + portable-target (`scripts/non_duplication_gate.py`, `scripts/portable_target_gate.py`) | `just verification-gates` (`justfile.d/32-verification.just`); shim courts `scripts/shim_court/{non_duplication_gate,portable_target_gate}_court.sh` via `just verification-courts` | ACTIVE |
+| invariant gates | 6 fail-closed gates over a real substrate | `python3 scripts/invariant_gates.py` (`just invariant-gates`); legacy runner `test/invariant_gates_test.py` deleted at 64f6099 | ACTIVE |
+| sleep gate | TS+PY+internal scopes (`scripts/sleep_gate.py`) | `just sleep-gate`; non-vacuity `just shim-court sleep_gate` | ACTIVE |
+| — | `just test-wire` (T2, `mix test test/wire`) | — | RETIRED@64f6099 — successor: `verification/ts` (V261019-08) |
+| — | `just test-sdk-smoke` / `eh-smoke` (T3, `test/sdk-smoke/`) | — | RETIRED@64f6099 — successor: `verification/{ts,py}` |
+| — | `just census` / `just sdk-census` (SB census replay) | — | RETIRED@64f6099 — successor: `verification/ts` census probes |
+| — | legacy corpus census (`test/` 303-file suite) | — | RETIRED@64f6099 — residual census: `test/internal/internal_tier_census_test.exs` + `scripts/non_duplication_gate.py` |
+
+## Invariant gates (`gates/`, exit 0 hold / 1 violated, fail-closed negative fixtures)
+
 ## Invariant gates (`gates/`, exit 0 hold / 1 violated, fail-closed negative fixtures)
 
 | gate | surface |
@@ -24,8 +41,8 @@ wire fixtures for the gate corpus. It has no independent exit contract.
 
 Non-vacuity law: every gate's verdict must REFUSE a mutated observation; a
 gate that cannot exit 1 is the failure. `just invariant-gates` runs the six
-fail-closed gates (receipts `tmp/invariant-gates/<gate>-receipt.json`, six
-written fresh).
+fail-closed gates via `scripts/invariant_gates.py` (receipts
+`tmp/invariant-gates/<gate>-receipt.json`, six written fresh).
 
 ## Shim courts (`scripts/shim_court/`, `just shim-court <name>` / `just shim-courts`)
 
@@ -58,7 +75,7 @@ surface has its own courts (`justfile.d/25-leak-court.just`):
 |---|---|
 | `just leak-court` | `gates/test_isolation_leak_gate.py` — static Application env / `:persistent_term` leak scan over `test/` |
 | `just isolation-court` | `scripts/isolation_court.py` — static start_supervised!/put_env-restore discipline, inline `# isolation-court: exempt <reason>` only |
-| `just isolation-court-runtime` | the same court with `--runtime-only`: boots the suite with `SmaltTest.IsolationFormatter` + `--max-cases 1` and diffs `Process.registered()` / `Application.get_all_env(:smalt)` per module; typed exemption registry `test/support/isolation_runtime_exemptions.exs` |
+| `just isolation-court-runtime` | the same court with `--runtime-only`: boots the suite with `SmaltTest.IsolationFormatter` + `--max-cases 1` and diffs `Process.registered()` / `Application.get_all_env(:smalt)` per module. POST-RESET NOTE: the formatter (`test/support/isolation_formatter.ex`) and the typed exemption registry (`test/support/isolation_runtime_exemptions.exs`) were deleted with the corpus at 64f6099 — `--runtime-only` cannot boot until a successor harness lands (see `scripts/isolation_court.py` header, which still references them) |
 
 Contract, exemption law, and the async topology:
 `docs/reference/test-isolation-law.md`. The sleep gate
@@ -75,7 +92,7 @@ Court-class surfaces that live outside `gates/` and `scripts/shim_court/`:
 | budget gate | `just test-budget` (`justfile.d/28-test-budget.just`, manifest `test_budgets.json`) | fail-closed duration budget over named test files; fresh export required (`test-budget-seed` is a reviewed diff), gate refuses drift from the seeded manifest |
 | burn suite | `just burn` + `burn-soak/-chaos/-matrix/-ring/-boot/-clean/-ocel` (`justfile.d/30-burn.just`) | boot/chaos/matrix/soak/summary stages; `burn-boot` row stops the line on `ORPHAN_LISTENER` / `ZOMBIE_BEAM` / `UNHANDLED_EXIT` |
 | overlap court | `just overlap-court` (`justfile.d/30-burn.just`) | anti-vacuity court over scheduler overlap: a pass from a vacuous scheduler is the failure; serial/check/compare/report sub-recipes |
-| azsim SDK court | `just azsim-sdk` (`justfile.d/14-sdk-matrix.just`) | azb20 headers via the recording proxy (`test/sdk-full/azb20/`); exit 0 = all cells pass-or-typed |
+| azsim SDK court | `just azsim-sdk` (`justfile.d/14-sdk-matrix.just`) | RETIRED@64f6099 (loud exit-1 placeholder): `test/sdk-full/azb20/` deleted; successor = `verification/ts` plane-profile interop (V261019-08) |
 | HAVE self-check | `just have-self-check` + `just have-cycle` (`justfile.d/31-have.just`) | pool-saturation guard anti-vacuity: 15 fixture courts; a deficit without a typed `have_worker_fleet_active_count` alert row is the failure. Runbook: `docs/reference/have-runbook.md` |
 
 ## Config keys

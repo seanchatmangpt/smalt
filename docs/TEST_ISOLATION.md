@@ -1,8 +1,26 @@
 # TEST_ISOLATION
 
-> The normative contract now lives at `docs/reference/test-isolation-law.md`
-> (adds the async topology, the isolation court, and the runtime exemption
-> registry). This file remains as the historical audit ledger.
+> **RETIRED DOCUMENT (v26.10.19 clean-room reset, commit 64f6099).**
+> The legacy `test/` corpus (303 files) this ledger audits was deleted at
+> 64f6099. Every file inventory, tag row, and line citation below refers to
+> the deleted corpus — history preserved verbatim; the referents live in git
+> history only. The isolation law is re-authored and enforced on the
+> post-reset tree by:
+> - `test/internal/internal_tier_census_test.exs` (residual-tier fence:
+>   forbidden tokens + observables allowlist),
+> - `scripts/non_duplication_gate.py` (`just non-duplication-gate`;
+>   R1/R2/R3 over `test/internal/`),
+> - the isolation formatter / court scripts in `scripts/`
+>   (`scripts/isolation_court.py`, `gates/test_isolation_leak_gate.py`,
+>   `just leak-court` / `just isolation-court`).
+> Normative statement: `docs/reference/test-isolation-law.md`.
+> The `test/support/` harness (`SmaltTest.*` helpers, isolation formatter,
+> runtime exemption registry) went with the corpus — runtime-twin entries
+> below have no current referent.
+>
+> (Earlier note, still true:) the normative contract lives at
+> `docs/reference/test-isolation-law.md`; this file remains the historical
+> audit ledger.
 
 ## Smalt Test Isolation Contract
 

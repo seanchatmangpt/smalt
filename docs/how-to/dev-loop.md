@@ -3,6 +3,12 @@
 How to iterate on smalt without paying full-suite cost on every save.
 Numbers measured 2026-10-14 on this checkout (Elixir 1.19.5 / OTP 28, warm shared `_build`);
 full-suite rows refreshed 2026-10-15/16 (the suite has grown since the 10-14 measurement).
+**Post-reset (v26.10.19, 64f6099)**: the legacy `test/` corpus (303 files) is
+deleted; the residual tier is `test/internal/` and the wire contract moved to
+`verification/ts/` + `verification/py/` (`verification/README.md` is the
+verification contract of record). Timing rows below are pre-reset history.
+`just sdk-ts` / `just sdk-py` are still LOUD no-op placeholders (exit 1,
+`justfile.d/04-sdk-recipes.just`) pending V261019-08/09 repoint.
 Diátaxis home: `docs/how-to/dev-loop.md` (moved from `docs/DEV_LOOP.md`;
 see `docs/jira/v26.10.16/docs-restructure-plan.md`).
 
@@ -13,14 +19,15 @@ are the same gates with their handles exposed.
 
 1. `just doctor` — preflight (deps/ports/certs/toolchain, ~2s). Run first;
    it is also the first stage of every court.
-2. Edit `lib/` or `test/`.
+2. Edit `lib/` or `test/internal/`.
 3. Focused gate:
    - Enclave work: `just test-native` (native lifecycle: HCL parse →
      engine apply → zero-drift plan → cascade destroy → residue audit,
      on private ports 29445-29450, dedicated beam, shared-checkout safe).
    - Other work: `scripts/fast_test.sh <file[:line]>` or a targeted
-     `mix test` (timing table below).
-4. `mix test` — full offline suite before you think you're done.
+     `mix test test/internal/<file>` (timing table below).
+4. `mix test` — full offline suite (residual tier `test/internal/` only
+   post-reset) before you think you're done.
 5. Enclave provisioning loop: `just apply` (fixture → state JSON) →
    `just verify` (read-your-write parity audit; SKIP-LOUD exit 3 without
    applied state) → `just destroy` (cascade + residue, fails on residue).
@@ -35,6 +42,10 @@ are the same gates with their handles exposed.
 - `scripts/dev_watch.sh [--once]`
 
 ## Timing receipts (real runs, 2026-10-14)
+
+Pre-reset history (the legacy 1500+-test suite was deleted at 64f6099;
+the residual `test/internal/` tier is 5 suites — count them with
+`mix test` on your own run). Kept for measurement method only.
 
 | surface | wall | result |
 |---|---|---|
@@ -114,19 +125,27 @@ a file on disk is known-O, not O*. Receipt paths follow the lane pattern
 `tmp/errc/<lane>/cycle-N.md`. Related: `docs/XAAS_PRIOR_ART.md` G4/G5
 (adopt-now docs discipline, from the xaas governance surveys).
 
-## Private port allocation
+## Private port allocation (v-law, post-reset)
 
-Local harnesses must not contend the front-door ports (5672/9443/8443/9444) or
-each other. The canonical private range is **39000-39999**. One allocation per
-harness; do not publish fixed private ports outside this table (published
-blocks get adopted by siblings and re-collide — witnessed 2026-10-15, the
-15672/19443 block).
+Local harnesses must not contend the front-door ports (5672/9443/8443/9444)
+or each other. Post-reset port law (`scripts/bench/REGISTRY.md` v-law,
+v26.10.19): verification-surface lanes take **vN blocks: `39700 + 10N .. +5`**
+(v1 39710..39715, v2 39720..39725, ...); spare block `39826..39839` is
+reserved for ad hoc probes. Lane blocks are leased through
+`scripts/substrate-ctl` (`up --block v<N>`) — `scripts/lib/substrate_boot_registry.md`
+documents the fd-9 lock law, marker/identity guard, and the exit contract
+(0 up / 1 refused / 2 died-or-timeout / 3 lock-or-occupied / 64 usage).
+The a/n bench lane families and b42 are RETIRED (v26.10.19); b2-b6 lanes
+are DORMANT pending V261019-08/09. Do not publish fixed private ports
+outside the formula blocks (published blocks get adopted by siblings and
+re-collide — witnessed 2026-10-15, the 15672/19443 block).
+
+Residual table (harnesses still on disk; each verified `ls`-present
+2026-10-19):
 
 | allocation | ports | harness | env overrides |
 |---|---|---|---|
 | mutation court ARM | 39443 | `scripts/mutation_court.py` | `SMALT_BENCH_ARM_PORT` |
-| eh-run SDK smoke | 39172, 39173, 39444-39446 | `test/sdk-smoke/eh-run.mjs` | `SMALT_EH_*_PORT` |
-| census private block | 39071, 39072 | `test/sdk-smoke/census-run.mjs` | `SMALT_TEST_AMQP_PORT` / `SMALT_TEST_ARM_PORT` |
 | bench / court auto-scope | ephemeral (OS-assigned) | `scripts/bench.py`, `scripts/mutation_court.py` | n/a — recorded in run receipt |
 | ARM-scale stress | 39453-39458 (six-listener block) | `scripts/stress/arm_scale.py` | `SMALT_ARMSCALE_*_PORT` |
 | TLS-churn client | attaches to 39453 (http) / 39454 (tls) | `scripts/stress/tls_churn.py` | `SMALT_TLS_PORT` / `SMALT_HTTP_PORT` |
@@ -147,23 +166,22 @@ with a typed remediation (wait, or take the documented private override);
 it never kills the holder. Auto-scoping harnesses pick ephemeral or
 table-listed private ports and record the chosen ports in their receipt.
 
-1. **Iterating on one test**: `scripts/fast_test.sh test/foo_test.exs:42 --watch`.
+1. **Iterating on one test**: `scripts/fast_test.sh
+   test/internal/vm_zero_growth_test.exs:42 --watch`.
    Re-runs the focused test whenever `lib/**/*.ex` or the test file changes (1s poll,
    clear screen + timestamp, ~1-2s per warm run). First run may pay the ~1min cold
    build-root compile.
-2. **Subsystem sweeps**: `scripts/dev_watch.sh` watches `lib/smalt/graphlaw/**` and re-runs
-   the graphlaw suites (`test/smalt_graphlaw_validator_test.exs`,
-   `test/smalt_services_test.exs`, `test/arm_error_corpus_test.exs` — 59 tests, <1s).
-   **Generalizing**: copy the script, set `WATCH_PATHS=(lib/smalt/<subsystem>)` and
-   `SUITES=(test/<subsystem>_test.exs ...)`; the mtime-snapshot/poll/re-run pattern is
-   identical to `fast_test --watch`, just over multiple paths and suites. `--once` runs
-   the subset a single time (used for all measurements above).
-3. **Before push**: full `mix test` (58s-class as of 2026-10-15, growing with suite; see
-   refresh rows above — cheap enough to run every time you
-   think you're done, not just before push).
-4. **Pre-PR**: `just court` (doctor + test-offline + test-wire + test-sdk-smoke +
-   tf-plan-smoke + bench-check + mutation-court + census + invariant-gates +
-   naming-sweep, per the root Justfile `court` recipe).
+2. **Subsystem sweeps**: `scripts/dev_watch.sh` still exists, but its default
+   watch targets are pre-reset suites — set `WATCH_PATHS`/`SUITES` explicitly
+   (e.g. `SUITES=(test/internal/<subsystem>_test.exs ...)`); the
+   mtime-snapshot/poll/re-run pattern is unchanged. `--once` runs the subset
+   a single time.
+3. **Before push**: full `mix test` (residual tier only post-reset; the
+   58s-class pre-reset figures above are history, not the current wall).
+4. **Pre-PR**: `just court` (doctor + test-offline + tf-plan-smoke + bench-check +
+   mutation-court + census + invariant-gates + naming-sweep + verification-gates,
+   per the root Justfile `court` recipe — note `census` is a RETIRED exit-1
+   placeholder until the verification/ts census lands).
 
 ## Workspace / SDK / release tooling recipes
 
@@ -175,8 +193,7 @@ surface):
 |---|---|---|
 | `just ws-install` / `ws-build` / `ws-lint` | `workspace/` Next.js console | scaffold + build + lint (`npm`) |
 | `just ws-court` / `ws-converge` | `workspace/scripts/e2e-court.mjs` | e2e court; `ws-converge` surfaces failing checks on FAIL |
-| `just test-sdk-smoke` | `test/sdk-smoke/run.mjs` | T3 SDK smoke tier (already in `just court`) |
-| `just census` | `scripts/sb_census_replay.sh` | SB census; SKIP-loud without `SMALT_SDK_ROOT` |
+| `just test-sdk-smoke` / `eh-smoke` / `census` | — | RETIRED (v26.10.19 reset, 64f6099): loud exit-1 placeholders; successors = `verification/ts` + `verification/py` (V261019-08/09) |
 | `bash test/enclave-testbed/run.sh` | enclave stress testbed | exclusive substrate lock; exit 0 = all phases PASS; just recipe pending |
 | `cd smalt-cli && .venv/bin/python run_gates.py` | smalt-cli 4-gate runner | LANDED: `just cli-gates` (`justfile.d/03-cli-wiring.just:34`) |
 | `just publish-dry` | hex publish dry-run gate | inner-tar leak grep + ERROR_CODES regen identity |
@@ -185,28 +202,24 @@ surface):
 
 ## Elixir 1.19 focus patterns
 
-`mix test test/foo_test.exs:42` runs the single test whose `test` block starts at line 42
+`mix test test/internal/vm_zero_growth_test.exs:42` runs the single test whose
+`test` block starts at line 42
 (works with `fast_test.sh` since the arg is passed straight through). Note `mix test
 file:line` reports excluded siblings as `(N excluded)` — that is the line filter, not a
-tag skip. `--only tag:value` / `--exclude` compose with file args for tier focus; the
-default-excluded tiers are named in `test/test_helper.exs` (re-enable per run with
-`--include <tag>`). The full suite is 40-60s-class and growing with the suite
+tag skip. The post-reset `test/test_helper.exs` configures no default excludes
+(legacy tag tiers went with the corpus); tier focus is by path now. The full suite is 40-60s-class and growing with the suite
 (see the refresh rows above — the ~8s figure was the 2026-10-14 three-file-era
 suite), so prefer full `mix test` over `--only` gymnastics unless a single tier
 needs a cold build.
 
 ## Known state (pre-existing, observed during measurement)
 
-- Full suite: latest counted state is the refresh-4 row above (8/1529, 2026-10-15,
-  still the latest counted as of 2026-10-18 — later rows are lane windows, not
-  full-suite runs);
-  the older "26 failures" figure (2026-10-15) predates the current suite (was 30-32 on
-  2026-10-14) — pre-existing on this checkout; not touched by this lane.
-- `test/smalt_services_test.exs:231` ETS-table failure also fires in the graphlaw subset.
-- During measurement a compile-abort in `test/error_codes_doc_test.exs` (invalid syntax
-  `test "..." well_formed: true do`) blocked the full suite; it was fixed on disk by
-  another lane mid-measurement (compile-freeze SLA) and the 3x baseline above was taken
-  after that fix. This lane made no edits outside its owned files.
+- Full suite: pre-reset figures only (refresh-4 row above, 8/1529,
+  2026-10-15). Post-reset the suite is the 5-suite `test/internal/` tier —
+  measure it on your own run; the counted rows above do not describe it.
+- The remaining pre-reset flakes (graphlaw ETS failure,
+  `error_codes_doc_test` compile-abort) named files deleted at 64f6099 —
+  history in git, no current referent.
 
 ## See Also
 

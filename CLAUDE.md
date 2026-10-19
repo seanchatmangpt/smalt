@@ -35,16 +35,16 @@ start it with the lock fd closed (`9>&-`) so beams don't inherit the flock.
 concurrent lanes always use `substrate-up/down` (state in
 `/tmp/smalt-substrate-state/`; `substrate.sh` never reads `/tmp/smalt.pid`).
 Never pattern-pkill beams — use `scripts/port_sweep.sh` (dry-run default,
-`-y` to kill). SDK smoke (`node test/sdk-smoke/run.mjs`) boots its own
-substrate: run with 9443/8443/5672 free. `just sdk-ts` KILLs whatever holds
-9443 first.
+`-y` to kill). SDK smoke: RETIRED with the v26.10.19 reset (test/sdk-smoke deleted at
+64f6099) — successor verification/ts SDK probes (V261019-08, not landed);
+`just sdk-ts` / `sdk-ts-court` exit 1 loudly until then.
 
 ### Test ladder
 
 ```bash
 mix test                        # offline suite: self-boots app on EPHEMERAL ports, no external substrate needed
 mix test --include amqp_wire    # wire tier is excluded by default (:amqp_wire tag)
-scripts/fast_test.sh test/foo_test.exs[:LINE] [--watch]   # per-hash private build root (_build-ft-<hash>)
+scripts/fast_test.sh test/internal/vm_zero_growth_test.exs[:LINE] [--watch]  # per-hash private build root (_build-ft-<hash>; suites live in test/internal/)
 just sdk-ts / sdk-census / sdk-py / sdk-all   # real-Azure-SDK probes; exit 0 pass / 1 fail / 2 substrate down / 3 SKIP
 just ws-lint / ws-build / ws-court / ws-converge   # Next.js workspace gates
 just cli-test                   # smalt-cli pytest (two venvs)
@@ -160,10 +160,10 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   boots a subset of `control,data,integration,identity` (`:all` default,
   byte-identical); unknown names refuse boot `{:invalid_plane, name}`
   (`lib/smalt/planes.ex`). Plane-profile SDK interop: `just azsim-sdk`
-  (`test/sdk-full/azb20/run.mjs`).
+  (RETIRED: test/sdk-full/azb20 deleted at 64f6099; verification/ts successor pending, V261019-08).
 - **Stress tier**: the `:stress` tag excludes expensive test bodies from
   plain `mix test`; `just test-stress` runs them, population-fenced by
-  `test/stress_tier_census_test.exs` (bounds table `docs/STRESS/BOUNDS.md`).
+  population fence RETIRED with the 64f6099 reset (test/stress_tier_census_test.exs deleted); `just test-stress` re-runs stress bodies only after the residual tier re-authors them (bounds table `docs/STRESS/BOUNDS.md`).
 - **Budget gate**: `just test-budget` fail-closed-checks per-test timings
   against the seeded manifest (`just test-budget-seed`; regressions,
   renamed/deleted tests, unbudgeted new tests all exit 1;

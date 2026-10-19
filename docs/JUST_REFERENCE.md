@@ -21,11 +21,12 @@ native test tier. The full admission gate is `just court`.
 | `down` | `kill $(cat /tmp/smalt.pid)`, removes pid file | 0 always (idempotent) | <1s |
 | `clean` | Kill stray smalt beams (beam.smp matching "smalt"), `rm -rf _build-lane*`, `rm erl_crash.dump tmp/*.log` | 0 always; never touches `_build/` or `deps/` | ~1s |
 | `gen` | `mix smalt.gen` | 0 on success | seconds |
-| `test-offline` | `mix test` (T1) | 0 pass / nonzero fail | 1-3m |
-| `test-wire` | `mix test test/wire` (T2) | 0 pass / nonzero fail | 1-3m |
-| `test-sdk-smoke` | `node test/sdk-smoke/run.mjs` (T3) | 0 pass / 1 probe fail / 2 substrate never up / 3 harness failure | ~1m |
-| `eh-smoke` | `node test/sdk-smoke/eh-run.mjs` (Event Hubs lane; boots own substrate) | 0 pass / 1 probe fail / 2 substrate never up / 3 harness failure | ~1m |
-| `census` | `bash scripts/sb_census_replay.sh` (Service Bus census, real SDK — probe set lives in `test/sdk-smoke/census.test.cjs`; table there is ground truth) | 0 all pass / 1 census fail / 2 substrate never up / 3 harness failure | ~1-2m |
+| `test-offline` | `mix test` (T1, residual tier `test/internal/` post-reset) | 0 pass / nonzero fail | 1-3m |
+| `test-wire` | RETIRED@64f6099 (loud exit-1 placeholder; `test/wire` deleted) | successor: `verification/ts` (V261019-08) | — |
+| `test-sdk-smoke` | RETIRED@64f6099 (loud exit-1 placeholder; `test/sdk-smoke/` deleted) | successor: `verification/{ts,py}` (V261019-08/09) | — |
+| `eh-smoke` | RETIRED@64f6099 (loud exit-1 placeholder) | successor: `verification/ts` EH probes | — |
+| `census` | RETIRED@64f6099 (loud exit-1 placeholder; `scripts/sb_census_replay.sh` is a loud no-op) | successor: `verification/ts` census probes | — |
+| `sdk-ts` / `sdk-census` / `sdk-py` / `sdk-all` | RETIRED@64f6099 loud exit-1 placeholders (`justfile.d/04-sdk-recipes.just`) | successors: `verification/ts` (V261019-08) / `verification/py` (V261019-09) | — |
 | `mutation-court` | `python3 scripts/mutation_court.py` (validator-gate non-vacuity proof) | 0 non-vacuous / 1 vacuous / 2 BLOCKED (compile broken) | ~3-5m |
 | `tf-plan-smoke` | `bash scripts/tf_smoke.sh` (T4, terraform fixture plan) | 0 pass / 1 preflight or substrate failure / 2 terraform step failure / 77 SKIPPED-NETWORK (registry unreachable; court fails — rerun online) | <1m |
 | `bench` | `python3 scripts/bench.py` (boots substrate; writes `tmp/bench-receipt.json`; fixed ports 9443/8443/5672 — if they are held, set `SMALT_BENCH_{ARM,DATA,AMQP}_PORT` to a port from the documented private range 39000-39999 (docs/how-to/dev-loop.md "Private port allocation") or let bench auto-pick an ephemeral block; same functions, same receipt schema, chosen ports recorded in the receipt. Exit contract: 0 only when all 5 CTQ verdicts PASS; any FAIL → typed `GATE: FAIL (…)` + exit 1) | 0 complete + 5/5 CTQs / nonzero fail | 2-5m |
@@ -33,7 +34,7 @@ native test tier. The full admission gate is `just court`.
 | `soak` | `python3 scripts/stress/soak.py` (25 min mixed traffic at 50 rps) | 0 pass / nonzero on any 5xx, RSS growth >20% after min 5, or error | ~25m |
 | `spike` | `python3 scripts/stress/spike.py` (500-concurrent spike, recovery, TLS herd) | 0 pass / nonzero fail | 5-10m |
 | `tls-churn` | `python3 scripts/stress/tls_churn.py` (handshake churn vs 9444 TLS twin) | 0 pass / nonzero if any scenario cannot complete | 2-5m |
-| `court` | `doctor test-offline test-wire test-sdk-smoke tf-plan-smoke bench-check mutation-court census invariant-gates naming-sweep` (10 members) | 0 only when every court passes | ~5-15m |
+| `court` | `doctor test-offline tf-plan-smoke bench-check mutation-court census invariant-gates naming-sweep verification-gates` (9 members; `census` is a RETIRED exit-1 placeholder until the verification/ts census lands) | 0 only when every court passes | ~5-15m |
 | `gate` | Alias for `court` (legacy name, kept for compat) | same as `court` | see `court` |
 
 ## Conventions
@@ -52,8 +53,8 @@ The root `justfile` is a thin aggregator: it defines `default`
 module. Lanes ADD
 modules (`justfile.d/NN-*.just` + one `import` line in the root); they never
 edit the root or each other's modules — concurrent lanes editing one file
-collide. Current: 20 modules, numbering 01..22 with 16 and 17 unoccupied.
-`just --list` (verified 2026-10-16) shows 59 recipes total.
+collide. Current: 31 modules, numbering 01..32 with 16 and 17 unoccupied
+(`ls justfile.d/*.just | wc -l`, 2026-10-19).
 
 - `01-substrate-lock.just` — `substrate-up/down/status`: per-window flock
   substrate manager; lock held only while spawning + verifying (the beam is
@@ -64,8 +65,13 @@ collide. Current: 20 modules, numbering 01..22 with 16 and 17 unoccupied.
 - `03-cli-wiring.just` — smalt-cli pytest lanes over two venvs (`.venv`,
   `.venv-cli`); cli-gate1 drives `run_gate1` directly with `.venvs/<lane>`
   symlinks (ADR-PY-002).
-- `04-sdk-recipes.just` — `sdk-ts/census/py/all`: real-Azure-SDK probes with
-  the honest per-lane exit contract (0 pass / 1 fail / 2 substrate / 3 SKIP).
+- `04-sdk-recipes.just` — `sdk-ts/census/py/all`: RETIRED@64f6099 loud
+  exit-1 placeholders (subjects deleted); successors `verification/ts`
+  (V261019-08) / `verification/py` (V261019-09). Exit contracts to restore
+  on repoint are documented in the module header.
+- `32-verification.just` — `non-duplication-gate` / `portable-target-gate`
+  / `verification-gates` / `verification-courts`: post-reset verification
+  governance gates over `test/internal/` + `verification/`.
 - `05-doctor-ext.just` — `doctor-dod`: supplemental DoD doctor pass
   (`DOD5_ROOT :=`); non-fatal INFO/WARN, hard FAIL on DoD violations.
 - `06-lane-cleanup.just` — `lane-clean[-dry]`: deletes orphaned `_build*`

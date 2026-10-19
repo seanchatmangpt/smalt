@@ -15,16 +15,17 @@ scripts/dev_env.sh --check     # validate + scripts/doctor.py quick pass
 
 | Variable | Derivation | Consumers |
 |---|---|---|
-| `SMALT_SB_SHARED_KEY` | base64(sha256(hostname + `"smalt-dev-sb"`)) — 44 bytes, stable per host | Substrate pins it into `:smalt, :sb_shared_key` via `lib/smalt/messaging/amqp/connection.ex` (`ensure_cbs_router/0`), and `SasVerifier` (`lib/smalt/messaging/amqp/sas_verifier.ex`) HMAC-verifies AMQP SAS tokens against it. External probes (`test/sdk-smoke/census-run.mjs`, `test/sdk-smoke/eh-run.mjs`, `test/sdk-smoke/eventhubs.test.cjs`) read it to sign SAS tokens. Deterministic derivation means census/SDK probes and the substrate agree without a shared-secret ceremony. Note: `eh-run.mjs`/`census-run.mjs` currently mint their own random key and pin it in-substrate; the deterministic key is the no-ceremony default for anything that consumes the env var directly. |
-| `SMALT_SDK_ROOT` | `<legacy-sdk-root>/playground/node_modules` if it exists, else error with install instruction | `test/data_plane/sdk_probe.mjs` (`createRequire` root for `@azure/cosmos`), `test/sdk-smoke/eh-run.mjs` (spawns `eventhubs.test.cjs` with it), `test/sdk-smoke/run.mjs`/`census-run.mjs` pass it through. |
-| `SMALT_REPO` | `$PWD` when it contains `mix.exs`, else error | Repo-root anchor for `test/sdk-smoke/run.mjs`, `eh-run.mjs`, `census-run.mjs` (spawn the substrate with `cwd: REPO`). |
+| `SMALT_SB_SHARED_KEY` | base64(sha256(hostname + `"smalt-dev-sb"`)) — 44 bytes, stable per host | Substrate pins it into `:smalt, :sb_shared_key` via `lib/smalt/messaging/amqp/connection.ex` (`ensure_cbs_router/0`), and `SasVerifier` (`lib/smalt/messaging/amqp/sas_verifier.ex`) HMAC-verifies AMQP SAS tokens against it. External SDK probes (post-reset: the `verification/ts` + `verification/py` suites; pre-reset `test/sdk-smoke/*` equivalents were deleted at 64f6099) read it to sign SAS tokens. Deterministic derivation means SDK probes and the substrate agree without a shared-secret ceremony. |
+| `SMALT_SDK_ROOT` | In-repo default `verification/ts/node_modules` when present (v26.10.19, per `scripts/dev_env.sh`); a user-provided `SMALT_SDK_ROOT` wins; left UNSET with a LOUD WARN when neither exists | TS SDK probes (post-reset home `verification/ts/`; the pre-reset `test/sdk-smoke/*` + `test/data_plane/sdk_probe.mjs` consumers were deleted at 64f6099). |
+| `SMALT_REPO` | `$PWD` when it contains `mix.exs`, else error | Repo-root anchor for external probe harnesses spawning the substrate (`cwd: REPO`). |
 | `SMALT_TLS_CERTFILE` / `SMALT_TLS_KEYFILE` | `.smalt/tls/dev-cert.pem` / `dev-key.pem` when minted (`scripts/gen_dev_cert.sh`) | TLS twin listener, `lib/smalt/application.ex` (`cert = System.get_env("SMALT_TLS_CERTFILE")`); also set by `tf_smoke.sh`. |
 | `SSL_CERT_FILE` | `.smalt/tls/ca-cert.pem` when minted | Go SDK probes — Apple Security.framework chain verification needs the CA anchor (`scripts/gen_dev_cert.sh` header explains the CA:TRUE/CA:FALSE chain rationale). |
 
 ## Failure modes
 
-- Missing SDK root: error names the expected vendored path and the npm
-  install / export fix.
+- Missing SDK root: LOUD WARN on stderr (not a hard error) naming
+  `verification/ts/node_modules` and the npm install / export fix;
+  `SMALT_SDK_ROOT` is left unset.
 - No `mix.exs` in cwd: error says run from repo root or set `SMALT_REPO`.
 - TLS material absent: exported block simply omits `SMALT_TLS_*` (mint with
   `scripts/gen_dev_cert.sh`).
