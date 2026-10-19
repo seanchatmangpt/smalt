@@ -76,6 +76,15 @@ defmodule Smalt.Amqp.SaturationTest do
     run_saturation_phase(@n_queues, drained_assert?: true)
   end
 
+  test "TMP single full cycle conn dies on close" do
+    baseline = baseline()
+    queue = "sat-tmp-" <> Integer.to_string(System.unique_integer([:positive]))
+    {:ok, {:ok, conn}} = Task.async_stream([queue], &queue_cycle/1,
+      max_concurrency: 1, timeout: :infinity) |> Enum.to_list() |> hd()
+    Process.sleep(100)
+    assert !Process.alive?(conn), "single full-cycle conn survived close"
+  end
+
   test "8192 queues: atom delta stays bounded on the warmed table" do
     run_saturation_phase(@n_queues_big, drained_assert?: false)
   end
@@ -277,10 +286,29 @@ defmodule Smalt.Amqp.SaturationTest do
 
         first = hd(alive)
 
+        sock_info =
+          try do
+            st = :sys.get_state(first)
+            sock = st[:sock]
+
+            [
+              peername: (case :inet.peername(sock) do
+                           {:ok, p} -> inspect(p)
+                           e -> inspect(e)
+                         end),
+              sock_count: :erlang.ports(:all)
+            ]
+          rescue
+            _ -> [sock: :unavailable]
+          catch
+            _, _ -> [sock: :unavailable]
+          end
+
         flunk(
           "LINK_LEAK: #{length(alive)}/#{length(conns)} connection processes still alive after socket close " <>
             "(kick result: #{inspect(kick_result)}; sample #{inspect(first)}: " <>
-            "#{inspect(:erlang.process_info(first, [:current_function, :message_queue_len, :messages]))})"
+            "#{inspect(:erlang.process_info(first, [:current_function, :message_queue_len]))} " <>
+            "sock=#{inspect(sock_info)})"
         )
     end
   end
