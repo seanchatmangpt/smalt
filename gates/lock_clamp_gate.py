@@ -16,6 +16,7 @@ crossed bounds) must each be refused.
 Usage: python3 gates/lock_clamp_gate.py   (exit 0 = hold, 1 = violated)
 """
 import os
+import time
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -38,7 +39,21 @@ def capture(ports, shared_key):
     ns_path = (f"/subscriptions/gates-sub/resourceGroups/gates-rg/providers/"
                f"Microsoft.ServiceBus/namespaces/{NS}?api-version={API_VERSION}")
     s_ns, _, ns_body = common.http(arm, "PUT", ns_path, {"location": "gates", "skuName": "Standard"})
-    assert s_ns in (200, 201), f"ARM namespace PUT returned {s_ns}: {ns_body}"
+    # KD-111 LRO widening: ServiceBus namespace PUT is now async (202 + poll to
+    # terminal) — Azure-parity. Poll the operation to terminal before proceeding.
+    if s_ns == 202:
+        op_path = ns_body.get("id") if isinstance(ns_body, dict) else None
+        assert op_path, f"ARM namespace PUT returned 202 without an operation id: {ns_body}"
+        for _ in range(60):
+            s_op, _, op_body = common.http(arm, "GET", op_path, None)
+            assert s_op == 200, f"LRO poll returned {s_op}: {op_body}"
+            if isinstance(op_body, dict) and op_body.get("status") == "Succeeded":
+                break
+            time.sleep(0.5)  # SLEEP-CLASS: POLL-STEP
+        else:
+            raise AssertionError(f"LRO did not reach Succeeded in budget: {op_body}")
+    else:
+        assert s_ns in (200, 201), f"ARM namespace PUT returned {s_ns}: {ns_body}"
     for duration, requested, expected in CASES:
         name = f"gate-lock-{expected}"
         path = (f"/subscriptions/gates-sub/resourceGroups/gates-rg/providers/"
