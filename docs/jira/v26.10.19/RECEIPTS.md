@@ -22,7 +22,7 @@ count, or PASS/FAIL token) found in the file.
 | kd101-eg-web | [kd101-eg-webhook-tbd.md](receipts/kd101-eg-webhook-tbd.md) | ALIVE | kd101-eg-webhook-tbd.md — evidence receipt (witness lane, 2026-10-20) **NO-CONTEXT** |
 | kd102-kv-sec | [kd102-kv-secrets-softdelete-tbd.md](receipts/kd102-kv-secrets-softdelete-tbd.md) | PASS | kd102-kv-secrets-softdelete-tbd.md — KD-102 witness (lane, 2026-10-19) |
 | kd103-kv-sec | [kd103-kv-secrets-backup-restore-tbd.md](receipts/kd103-kv-secrets-backup-restore-tbd.md) | PASS | kd103-kv-secrets-backup-restore-tbd.md — KD-103 witness (lane, 2026-10-19) |
-| kd104-certif | [kd104-certificates-witness.md](receipts/kd104-certificates-witness.md) | PASS | KD-104 witness — Certificates surface (lane c5) |
+| kd104-certif | [kd104-certificates-witness.md](receipts/kd104-certificates-witness.md) | ALIVE | KD-104 witness — Certificates surface (lane c5) |
 | kd104-kv-cer | [kd104-kv-certificates-tbd.md](receipts/kd104-kv-certificates-tbd.md) | PASS | kd104-kv-certificates-tbd.md — KD-104 witness (lane, 2026-10-19) |
 | kd105-ps256- | [kd105-ps256-external-verify-tbd.md](receipts/kd105-ps256-external-verify-tbd.md) | UNKNOWN | kd105-ps256-external-verify-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
 | kd106-skr-en | [kd106-skr-envelope-raise.md](receipts/kd106-skr-envelope-raise.md) | UNSUPPORTED | kd106-skr-envelope-raise.md — KD-106 RAISE lane (c14, 2026-10-19) |
@@ -53,7 +53,8 @@ count, or PASS/FAIL token) found in the file.
 | v261019-14-b | [v261019-14-boot-library.md](receipts/v261019-14-boot-library.md) | ALIVE | V261019-14 (boot-library) |
 | v261019-15-v | [v261019-15-verification-gates.md](receipts/v261019-15-verification-gates.md) | ALIVE | V261019-15 (verification-gates) |
 | v261019-c12- | [v261019-c12-eh-consumer-groups.md](receipts/v261019-c12-eh-consumer-groups.md) | ALIVE | v261019-C12 — Event Hubs consumer-group engine (lane C12) **NO-CONTEXT** |
-| v261019-capa | [v261019-capability-wave1.md](receipts/v261019-capability-wave1.md) | PASS | Capability wave 1 — close-out prep (v26.10.19) **NO-CONTEXT** |
+| v261019-capa | [v261019-capability-wave1.md](receipts/v261019-capability-wave1.md) | PARTIAL_ALIVE | Capability wave 1 — close-out prep (v26.10.19) **NO-CONTEXT** |
+| v261019-capa | [v261019-capability-wave2.md](receipts/v261019-capability-wave2.md) | PASS | Capability wave 2 — close-out prep (v26.10.19) **NO-CONTEXT** |
 | v261019-clus | [v261019-cluster-dns.md](receipts/v261019-cluster-dns.md) | ALIVE | v261019-cluster-dns — Smalt.Cluster native DNS interconnect **NO-CONTEXT** |
 | v261019-cour | [v261019-court-census.md](receipts/v261019-court-census.md) | UNKNOWN | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-automation.md](receipts/v261019-envelope-automation.md) | UNKNOWN | v26.10.19 envelope lane — automation-boundary gate + aggregate wiring **NO-CONTEXT** |
