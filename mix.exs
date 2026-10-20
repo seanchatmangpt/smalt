@@ -12,6 +12,8 @@ defmodule Smalt.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       description: description(),
       package: package(),
+      source_url: "https://github.com/seanchatmangpt/smalt",
+      homepage_url: "https://github.com/seanchatmangpt/smalt",
       aliases: aliases(),
       releases: releases(),
       deps: deps()
