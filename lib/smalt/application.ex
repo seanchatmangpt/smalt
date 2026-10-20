@@ -126,6 +126,7 @@ defmodule Smalt.Application do
   defmodule TlsTwinDispatch do
     @moduledoc false
 
+    # KD-COVERS: KD-117 (deleted-bundle recovery on the twin seat)
     @egress_prefixes [
       "/attest/",
       "/app/",
@@ -148,6 +149,7 @@ defmodule Smalt.Application do
 
     def call(%Plug.Conn{request_path: path} = conn, _opts) do
       router =
+        # KD-COVERS: KD-117 (deleted-bundle recovery on the twin seat)
         if Enum.any?(@egress_prefixes, &String.starts_with?(path, &1)),
           do: Smalt.EgressRouter,
           else: Smalt.ArmGateway.Router

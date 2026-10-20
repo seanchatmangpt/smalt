@@ -38,3 +38,15 @@ PASS witness receipt postdates the shim mtimes.
 
 Falsifier: official SDK delete → `getDeletedKey` 200 →
 `recoverDeletedKey` → get key 200 (tampered control: purge then get → 404).
+
+## Re-witness addendum (2026-10-20, post KD-COVERS token)
+
+The twin-sync carrier (`lib/smalt/application.ex` TlsTwinDispatch) received
+its `# KD-COVERS: KD-117` token (formatting corrected after a first sed
+placement broke the attribute list — root-caused and fixed, compile 0
+errors). Post-token witness: `mix test
+test/integration/deletedkeys_purge_route_test.exs` → **1 test, 0 failures**
+(real HTTPS through the TLS twin listener: create → delete → get-deleted →
+purge 204 → post-purge 404). The TS wf6 cell
+(`kv:delete-getdeleted-recover-get#KD-117`) also PASSed post-twin-sync in
+the wave-2 verification run. Flip-eligible: token mtime < witness runs.
