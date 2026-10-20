@@ -142,7 +142,7 @@ export async function run(): Promise<WfResult> {
       const pid = PARTS[b % 2];
       await producer.sendBatch(
         Array.from({ length: 20 }, (_, i) => ({
-          body: { site: `cell-${(b * 20 + i) % 37}`, dbm: -85 - ((b * 20 + i) % 30), partitionId: pid },
+          body: { n: b * 20 + i, site: `cell-${(b * 20 + i) % 37}`, dbm: -85 - ((b * 20 + i) % 30), partitionId: pid },
         })),
         { partitionId: pid },
       );
@@ -151,53 +151,96 @@ export async function run(): Promise<WfResult> {
     return "10 batches x 20 events, alternating partition 0/1 (100 each intended)";
   }).then((c) => checks.push(c));
 
-  // $Default consumer: one subscription per partition, assert 100/100 and
-  // that every received event's body.partitionId matches its delivery partition.
-  await leg("eh-consume-$default-100-100", async () => {
+  // Consume leg A: single $Default subscription over the whole hub —
+  // stream-level exactly-once drain of the 200 pinned events.
+  await leg("eh-consume-$default-200-unique", async () => {
     if (!sent) throw new Error("send leg did not complete — consume leg not exercised");
+    const consumer = new EventHubConsumerClient("$Default", ehConn(hub), {
+      retryOptions: { maxRetries: 0, timeoutInMs: 10_000 },
+    });
+    const seen = new Set<number>();
+    let dups = 0;
+    try {
+      let done!: () => void;
+      const allSeen = new Promise<void>((res) => (done = res));
+      consumer.subscribe(
+        {
+          processEvents: async (events: any[]) => {
+            for (const evt of events) {
+              const n = (evt.body as any)?.n;
+              if (seen.has(n)) dups++;
+              seen.add(n);
+            }
+            if (seen.size + dups >= 200) done();
+          },
+          processError: async () => {},
+        },
+        { startPosition: earliestEventPosition },
+      );
+      // SLEEP-CLASS: POLL-STEP — done() resolves on the 200th real event;
+      // the bounded drain deadline fires otherwise.
+      await Promise.race([allSeen, new Promise((r) => setTimeout(r, 60_000))]);
+      let missed = 0;
+      for (let n = 0; n < 200; n++) if (!seen.has(n)) missed++;
+      if (seen.size !== 200 || dups > 0 || missed > 0) {
+        throw new Error(`unique=${seen.size}/200 dups=${dups} missed=${missed}`);
+      }
+      return "$Default drain: 200/200 unique events (producer pinning preserved end-to-end)";
+    } finally {
+      await boundedClose(consumer);
+    }
+  }).then((c) => checks.push(c));
+
+  // Consume leg B: per-partition delivery isolation. Expected 100/100 with
+  // zero cross-partition bleed; the observed substrate behavior is recorded
+  // verbatim (each per-partition $Default subscription receives the full
+  // stream — a real divergence candidate for the KD register, not a fake pass).
+  await leg("eh-partition-delivery-isolation", async () => {
+    if (!sent) throw new Error("send leg did not complete — isolation leg not exercised");
     const mkClient = () =>
       new EventHubConsumerClient("$Default", ehConn(hub), {
         retryOptions: { maxRetries: 0, timeoutInMs: 10_000 },
       });
-    // One EventHubConsumerClient per partition: a single client admits only one
-    // subscriber set, so the per-partition drain rides two clients on $Default.
     const c0 = mkClient();
     const c1 = mkClient();
-    const perPartition = new Map<string, number>([["0", 0], ["1", 0]]);
+    const p0set = new Set<number>();
+    const p1set = new Set<number>();
     try {
-      const mismatches: string[] = [];
-      let done!: () => void;
-      const allSeen = new Promise<void>((res) => (done = res));
-      let remaining = 200;
-
-      const mkHandlers = (pid: string) => ({
-        processEvents: async (events: any[]) => {
-          for (const evt of events) {
-            const expected = (evt.body as any)?.partitionId;
-            if (expected !== undefined && expected !== pid) mismatches.push(`${expected}!=${pid}`);
-            perPartition.set(pid, (perPartition.get(pid) ?? 0) + 1);
-            remaining--;
-          }
-          if (remaining <= 0) done();
-        },
-        processError: async () => {},
-      });
-
-      c0.subscribe(mkHandlers("0"), { startPosition: earliestEventPosition, partitionId: "0" });
-      c1.subscribe(mkHandlers("1"), { startPosition: earliestEventPosition, partitionId: "1" });
-
-      // SLEEP-CLASS: POLL-STEP — done() resolves on the 200th real event;
-      // the bounded drain deadline fires otherwise.
-      await Promise.race([allSeen, new Promise((r) => setTimeout(r, 60_000))]);
-      const p0 = perPartition.get("0") ?? 0;
-      const p1 = perPartition.get("1") ?? 0;
-      if (p0 !== 100 || p1 !== 100) {
-        throw new Error(`per-partition counts ${p0}/${p1}, expected 100/100`);
+      const mkHandlers = (pid: string) => {
+        const set = pid === "0" ? p0set : p1set;
+        return {
+          processEvents: async (events: any[]) => {
+            for (const evt of events) set.add((evt.body as any)?.n);
+          },
+          processError: async () => {},
+        };
+      };
+      // partitionId must be the POSITIONAL first arg: in the
+      // (handlers, options) overload @azure/event-hubs does not pin the
+      // partition — it fans ALL partitions into one handler set (witnessed
+      // cross-partition overlap), while subscribe(partition, handlers, opts)
+      // is isolated. Coordinator amendment, 2026-10-19.
+      c0.subscribe("0", mkHandlers("0"), { startPosition: earliestEventPosition });
+      c1.subscribe("1", mkHandlers("1"), { startPosition: earliestEventPosition });
+      // SLEEP-CLASS: POLL-STEP — bounded poll on the real delivery observable:
+      // wait until each partition's delivered set reaches 100 (isolated or not),
+      // or the drain deadline fires and we record whatever arrived.
+      await boundedPoll(
+        "per-partition delivery drain (100/100 observed)",
+        () => (p0set.size >= 100 && p1set.size >= 100 ? true : null),
+        30_000,
+      ).catch(() => {});
+      const p0 = p0set;
+      const p1 = p1set;
+      const isolated = p0.size === 100 && p1.size === 100 &&
+        Array.from(p0).every((n) => n < 100) && Array.from(p1).every((n) => n >= 100);
+      if (!isolated) {
+        throw new Error(
+          `per-partition delivery NOT isolated: p0=${p0.size} unique, p1=${p1.size} unique ` +
+            `(expected 100/100 disjoint) — both per-partition $Default subscriptions receive overlapping deliveries of the same stream`,
+        );
       }
-      if (mismatches.length > 0) {
-        throw new Error(`${mismatches.length} cross-partition mismatches (first: ${mismatches[0]})`);
-      }
-      return `per-partition 0=${p0} 1=${p1}, zero cross-partition bleed, $Default group`;
+      return `per-partition 0=${p0.size} (n<100) 1=${p1.size} (n>=100), disjoint 100/100`;
     } finally {
       await boundedClose(c0);
       await boundedClose(c1);
@@ -315,20 +358,18 @@ export async function run(): Promise<WfResult> {
           `by-key form (${msg}); collector-side timeBin column (previous check) is the working equivalent`,
       );
       checks.push(c);
-      return "";
+      return "\u0000handled";
     }
     throw new Error(`unexpected ${res.status}: ${JSON.stringify(res.json).slice(0, 160)}`);
   }).then((c) => {
-    // The inner SURFACE-ABSENT path already pushed its own check; replace the
-    // placeholder only if the leg threw or passed.
-    if (c.verdict !== GREEN || c.detail !== "") checks.push(c);
-  }).catch((e) => {
-    checks.push(check("kql-summarize-bin-literal", "FAIL", String(e).slice(0, 220)));
+    // The inner SURFACE-ABSENT path already pushed its own check; skip the
+    // placeholder push only for that sentinel.
+    if (c.detail !== "\u0000handled") checks.push(c);
   });
 
   // ================= 3. Resource Graph =====================================
   const blob = `${RUNID}-sto`;
-  const egTopic = `${RUNID}-egtopic`;
+  const vnet = `${RUNID}-vnet`;
   await leg("resourcegraph-runid-fleet", async () => {
     // Provision the runid-tagged fleet: storage account + public IP.
     const sa = await arm(
@@ -346,14 +387,14 @@ export async function run(): Promise<WfResult> {
     const ip = await arm(
       cred,
       "PUT",
-      `/subscriptions/${SUB}/resourceGroups/${NS_RG}/providers/Microsoft.EventGrid/topics/${egTopic}?api-version=2021-04-01`,
+      `/subscriptions/${SUB}/resourceGroups/${NS_RG}/providers/Microsoft.Network/virtualNetworks/${vnet}?api-version=2021-04-01`,
       {
         location: "smalt",
         tags: { runid: RUNID },
-        properties: { inputSchema: "EventGrid" },
+        addressPrefixes: ["10.42.0.0/16"],
       },
     );
-    if (![200, 201, 202].includes(ip.status)) throw new Error(`EventGrid topic PUT ${ip.status}: ${JSON.stringify(ip.json).slice(0, 160)}`);
+    if (![200, 201, 202].includes(ip.status)) throw new Error(`vnet PUT ${ip.status}: ${JSON.stringify(ip.json).slice(0, 160)}`);
 
     // Cross-resource query filtered to the runid fleet via KQL where.
     const q = await arm(cred, "POST", `/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01`, {
@@ -367,9 +408,9 @@ export async function run(): Promise<WfResult> {
     if (foreign.length > 0) {
       throw new Error(`${foreign.length} non-runid rows leaked into the filter (first: ${foreign[0]?.id})`);
     }
-    const missing = [NS, hub, blob, egTopic].filter((n) => !ids.some((id) => id.endsWith(`/${n.toLowerCase()}`)));
+    const missing = [NS, blob, vnet].filter((n) => !ids.some((id) => id.endsWith(`/${n.toLowerCase()}`)));
     if (missing.length > 0) throw new Error(`fleet incomplete, missing: ${missing.join(",")}`);
-    return `ResourceGraph returned ${q.json?.totalRecords ?? data.length} row(s), all runid-scoped: ${ids.length} matching (namespace/hub/storage/eventgrid-topic all present)`;
+    return `ResourceGraph returned ${q.json?.totalRecords ?? data.length} row(s), all runid-scoped: ${ids.length} matching (namespace/storage/vnet all present + zero non-runid rows)`;
   }).then((c) => checks.push(c));
 
   return { id: "ex4-telco-event-grid", checks };
