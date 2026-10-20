@@ -121,3 +121,22 @@ COURT-B rc=0
 Either tail line reading anything but `rc=0`, or the run windows straddling a
 commit (they do not — both predate 05:40:51 UTC examples-wave commits),
 invalidates this section. Neither observed.
+
+
+## court-x2 #3 (capability wave-1 promotion re-run, 2026-10-20)
+
+Both runs of the full 11-stage court at the capability wave-1 HEAD
+(17fcbb6d52d02917f9a1ff02a4b3c8572911ebda): two consecutive greens, no
+shifted failures, run after the AZB-25c policy fix and the full capability
+wave-1 integration (KV deleted-keys, secrets backup/restore, certificates,
+PS256, scheduleMessages, EG webhook receiver, LRO widen, tags-at-scope,
+RBAC scopes + locks, EH consumer groups, cosmos cascade, Atlas/KQL/MCP
+raises, throttle profiles, blob snapshot/lease raises).
+
+```
+COURT-X1 rc=0 — [COURT] Full gate passed.
+COURT-X2 rc=0 — [COURT] Full gate passed.
+```
+
+Run 2 is the court-log input to the re-minted release receipt. Falsifier:
+re-run `MIX_BUILD_ROOT=_build-coord just court` twice at this HEAD.

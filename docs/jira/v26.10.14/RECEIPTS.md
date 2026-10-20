@@ -678,26 +678,32 @@ count, or PASS/FAIL token) found in the file.
 | w8-review | [w8-review.md](../v26.10.18/receipts/w8-review.md) | PASS | W8 residual review — workqueue group 7 |
 | w9-review | [w9-review.md](../v26.10.18/receipts/w9-review.md) | UNKNOWN | W9 residual review — group 8 (review lane, Context: solo) |
 | V261019-08 | [08-servicebus-census.md](../v26.10.19/receipts/08-servicebus-census.md) | ALIVE | 08-servicebus-census (lane b11, Service Bus SDK census) **NO-CONTEXT** |
+| c13-router-k | [c13-router-kd111-lro-kd113-tags-leg.md](../v26.10.19/receipts/c13-router-kd111-lro-kd113-tags-leg.md) | ALIVE | c13-router-kd111-lro-kd113-tags-leg.md — ERRC RAISE lane (2026-10-19) **NO-CONTEXT** |
+| c15-atlas-v2 | [c15-atlas-v2-fidelity.md](../v26.10.19/receipts/c15-atlas-v2-fidelity.md) | ALIVE | C15 — Atlas v2 fidelity raise (purview_atlas.ex) **NO-CONTEXT** |
 | kd100-instan | [kd100-instance-discovery-tbd.md](../v26.10.19/receipts/kd100-instance-discovery-tbd.md) | PASS | kd100-instance-discovery-tbd.md — KD-100 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
+| kd101-eg-web | [kd101-eg-webhook-receiver.md](../v26.10.19/receipts/kd101-eg-webhook-receiver.md) | ALIVE | kd101-eg-webhook-receiver.md — work-order receipt (ERRC lane C3, 2026-10-20) **NO-CONTEXT** |
 | kd101-eg-web | [kd101-eg-webhook-tbd.md](../v26.10.19/receipts/kd101-eg-webhook-tbd.md) | ALIVE | kd101-eg-webhook-tbd.md — evidence receipt (witness lane, 2026-10-20) **NO-CONTEXT** |
 | kd102-kv-sec | [kd102-kv-secrets-softdelete-tbd.md](../v26.10.19/receipts/kd102-kv-secrets-softdelete-tbd.md) | PASS | kd102-kv-secrets-softdelete-tbd.md — KD-102 witness (lane, 2026-10-19) |
 | kd103-kv-sec | [kd103-kv-secrets-backup-restore-tbd.md](../v26.10.19/receipts/kd103-kv-secrets-backup-restore-tbd.md) | PASS | kd103-kv-secrets-backup-restore-tbd.md — KD-103 witness (lane, 2026-10-19) |
+| kd104-certif | [kd104-certificates-witness.md](../v26.10.19/receipts/kd104-certificates-witness.md) | PASS | KD-104 witness — Certificates surface (lane c5) |
 | kd104-kv-cer | [kd104-kv-certificates-tbd.md](../v26.10.19/receipts/kd104-kv-certificates-tbd.md) | PASS | kd104-kv-certificates-tbd.md — KD-104 witness (lane, 2026-10-19) |
 | kd105-ps256- | [kd105-ps256-external-verify-tbd.md](../v26.10.19/receipts/kd105-ps256-external-verify-tbd.md) | UNKNOWN | kd105-ps256-external-verify-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd106-skr-en | [kd106-skr-envelope-raise.md](../v26.10.19/receipts/kd106-skr-envelope-raise.md) | UNSUPPORTED | kd106-skr-envelope-raise.md — KD-106 RAISE lane (c14, 2026-10-19) |
 | kd106-skr-re | [kd106-skr-release-contract-tbd.md](../v26.10.19/receipts/kd106-skr-release-contract-tbd.md) | PASS | kd106-skr-release-contract-tbd.md — KD-106 witness (lane, 2026-10-19) |
 | kd107-blob-s | [kd107-blob-snapshots-tbd.md](../v26.10.19/receipts/kd107-blob-snapshots-tbd.md) | ALIVE | kd107-blob-snapshots-tbd.md — evidence receipt (witness lane, 2026-10-20) **NO-CONTEXT** |
 | kd108-blob-l | [kd108-blob-lease-acl-tbd.md](../v26.10.19/receipts/kd108-blob-lease-acl-tbd.md) | PASS | kd108-blob-lease-acl-tbd.md — KD-108 witness (witness lane, 2026-10-19) |
 | kd109-appcon | [kd109-appconfig-feature-flags-tbd.md](../v26.10.19/receipts/kd109-appconfig-feature-flags-tbd.md) | PASS | kd109-appconfig-feature-flags-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
 | kd110-thrott | [kd110-throttling-infinity-tbd.md](../v26.10.19/receipts/kd110-throttling-infinity-tbd.md) | PASS | kd110-throttling-infinity-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
 | kd111-arm-lr | [kd111-arm-lro-narrow-tbd.md](../v26.10.19/receipts/kd111-arm-lro-narrow-tbd.md) | PASS | kd111-arm-lro-narrow-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
-| kd112-arm-po | [kd112-arm-policy-initiatives-tbd.md](../v26.10.19/receipts/kd112-arm-policy-initiatives-tbd.md) | PASS | kd112-arm-policy-initiatives-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd112-arm-po | [kd112-arm-policy-initiatives-tbd.md](../v26.10.19/receipts/kd112-arm-policy-initiatives-tbd.md) | UNKNOWN | kd112-arm-policy-initiatives-tbd.md — evidence receipt (witness lane, 2026-10-19) |
 | kd112-policy | [kd112-policy-exemptions-initiatives.md](../v26.10.19/receipts/kd112-policy-exemptions-initiatives.md) | PASS | lane-pol — KD-112 policy exemptions + initiatives (policySetDefinitions) |
 | kd113-arm-rb | [kd113-arm-rbac-storage-only-tbd.md](../v26.10.19/receipts/kd113-arm-rbac-storage-only-tbd.md) | PASS | kd113-arm-rbac-storage-only-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
+| kd113-legs-a | [kd113-legs-ab-policy-rbac-locks.md](../v26.10.19/receipts/kd113-legs-ab-policy-rbac-locks.md) | PASS | kd113-legs-ab-policy-rbac-locks.md — evidence receipt (ERRC lane c8, 2026-10-19) **NO-CONTEXT** |
 | kd114-blob-b | [kd114-blob-bearer-http-tbd.md](../v26.10.19/receipts/kd114-blob-bearer-http-tbd.md) | UNKNOWN | KD-114 blob data-plane auth channel (bearer-over-http refused) |
 | kd115-sb-rec | [kd115-sb-receiver-zero-delivery-tbd.md](../v26.10.19/receipts/kd115-sb-receiver-zero-delivery-tbd.md) | UNKNOWN | KD-115 SB plain-queue receiver zero-delivery on flow credit |
 | kd116-sb-ses | [kd116-sb-session-delivery-shape-tbd.md](../v26.10.19/receipts/kd116-sb-session-delivery-shape-tbd.md) | SUSPECT | KD-116 SB session deliveries lack settle methods |
 | kd117-kv-del | [kd117-kv-deletedkeys-plane-tbd.md](../v26.10.19/receipts/kd117-kv-deletedkeys-plane-tbd.md) | UNKNOWN | KD-117 KV deleted-keys plane 404 after soft-delete |
-| kd118-sb-sch | [kd118-sb-schedulemessage-501-tbd.md](../v26.10.19/receipts/kd118-sb-schedulemessage-501-tbd.md) | UNSUPPORTED | KD-118 scheduleMessage -> 501 UNSUPPORTED_OPERATION (typed) |
+| kd118-sb-sch | [kd118-sb-schedulemessage-501-tbd.md](../v26.10.19/receipts/kd118-sb-schedulemessage-501-tbd.md) | ALIVE | KD-118 scheduleMessage -> 501 UNSUPPORTED_OPERATION (typed) |
 | kd119-kv-rs2 | [kd119-kv-rs256-double-hash-tbd.md](../v26.10.19/receipts/kd119-kv-rs256-double-hash-tbd.md) | SUSPECT | KD-119 vault RS256 sign double-hash |
 | kd99-sts-hs2 | [kd99-sts-hs256-tbd.md](../v26.10.19/receipts/kd99-sts-hs256-tbd.md) | PASS | kd99-sts-hs256-tbd.md — KD-99 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
 | v261019-07-r | [v261019-07-reset-inventory.md](../v26.10.19/receipts/v261019-07-reset-inventory.md) | LANDED | V261019-07 (reset-inventory) |
@@ -709,6 +715,8 @@ count, or PASS/FAIL token) found in the file.
 | v261019-13-i | [v261019-13-identity-rs256.md](../v26.10.19/receipts/v261019-13-identity-rs256.md) | PASS | V261019-13 (identity-rs256) — REAL WITNESS (kd-registrar lane) |
 | v261019-14-b | [v261019-14-boot-library.md](../v26.10.19/receipts/v261019-14-boot-library.md) | ALIVE | V261019-14 (boot-library) |
 | v261019-15-v | [v261019-15-verification-gates.md](../v26.10.19/receipts/v261019-15-verification-gates.md) | ALIVE | V261019-15 (verification-gates) |
+| v261019-c12- | [v261019-c12-eh-consumer-groups.md](../v26.10.19/receipts/v261019-c12-eh-consumer-groups.md) | ALIVE | v261019-C12 — Event Hubs consumer-group engine (lane C12) **NO-CONTEXT** |
+| v261019-capa | [v261019-capability-wave1.md](../v26.10.19/receipts/v261019-capability-wave1.md) | PASS | Capability wave 1 — close-out prep (v26.10.19) **NO-CONTEXT** |
 | v261019-clus | [v261019-cluster-dns.md](../v26.10.19/receipts/v261019-cluster-dns.md) | ALIVE | v261019-cluster-dns — Smalt.Cluster native DNS interconnect **NO-CONTEXT** |
 | v261019-cour | [v261019-court-census.md](../v26.10.19/receipts/v261019-court-census.md) | UNKNOWN | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-automation.md](../v26.10.19/receipts/v261019-envelope-automation.md) | UNKNOWN | v26.10.19 envelope lane — automation-boundary gate + aggregate wiring **NO-CONTEXT** |
@@ -717,6 +725,7 @@ count, or PASS/FAIL token) found in the file.
 | v261019-enve | [v261019-envelope-leak-check.md](../v26.10.19/receipts/v261019-envelope-leak-check.md) | UNKNOWN | v26.10.19 envelope lane — leak-check wiring receipt **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-orchestration.md](../v26.10.19/receipts/v261019-envelope-orchestration.md) | UNKNOWN | v26.10.19 envelope lane — orchestration-boundary gate wiring skeleton **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-port-bands.md](../v26.10.19/receipts/v261019-envelope-port-bands.md) | FAIL | v26.10.19 Envelope: Non-Overlapping Port Reservation Bands |
+| v261019-phas | [v261019-phase56.md](../v26.10.19/receipts/v261019-phase56.md) | FAIL | Phase 5/6 checklist receipt — v26.10.19 **NO-CONTEXT** |
 | v261019-rc-r | [v261019-rc-rewrite-census.md](../v26.10.19/receipts/v261019-rc-rewrite-census.md) | ALIVE | V261019-RC (rewrite-census: test-volume before/after) |
 | v261019-vol- | [v261019-vol-census.md](../v26.10.19/receipts/v261019-vol-census.md) | UNKNOWN | V261019-FIN (test-volume census) |
 | v261019-wo1- | [v261019-wo1-subject-sha-lease.md](../v26.10.19/receipts/v261019-wo1-subject-sha-lease.md) | ALIVE | WO-1 lane receipt — SUBJECT_SHA required-arg + flock image-build lease |
