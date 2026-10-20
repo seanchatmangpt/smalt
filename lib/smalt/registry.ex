@@ -14,7 +14,8 @@ defmodule Smalt.Registry do
   # engine does not honor ORDER BY — see GgenIgniter.Query's moduledoc).
   # Replay identity is fenced by the Smalt.Registry.ReplayIdentity module
   # (SHIM-COURT-clean template; replay must be byte-identical).
-
+  
+  
   @admitted_resource_types [
     "Microsoft.App/containerApps",
     "Microsoft.Attestation/attestationProviders",
@@ -100,8 +101,7 @@ defmodule Smalt.Registry do
     "Microsoft.Storage/storageAccounts" => "StorageAccountShape",
     "Microsoft.Storage/storageAccounts/blobServices" => "DefaultShape",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "DefaultShape",
-    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
-      "DefaultShape"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" => "DefaultShape"
   }
 
   @api_versions %{
@@ -145,8 +145,7 @@ defmodule Smalt.Registry do
     "Microsoft.Storage/storageAccounts" => "2023-05-01",
     "Microsoft.Storage/storageAccounts/blobServices" => "2023-05-01",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "2023-05-01",
-    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
-      "2023-05-01"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" => "2023-05-01"
   }
 
   # KD-78 admission lattice: the per-type ordered api-version lattice lives in

@@ -32,6 +32,11 @@ defmodule Smalt.StoreTables do
   # Canonical ordering: rows are sorted by tableName at render time so the
   # artifact is independent of SPARQL engine row order. Replay identity is
   # fenced by the store-tables replay test.
+  
+  
+  
+  
+  
 
   @tables [
     # tuple | Smalt.Store | sweep=retention
@@ -138,6 +143,7 @@ defmodule Smalt.StoreTables do
 
     # tuple | Smalt.Store | sweep=cascade
     :smalt_vault_secrets
+
   ]
 
   @shadow_tables [
@@ -200,29 +206,47 @@ defmodule Smalt.StoreTables do
 
     # binaryPrefix | Smalt.DataPlane.KeyVaultActions | shadow (owner-managed, never swept)
     :smalt_vault_deleted_keys
+
   ]
 
   @metadata_tables [
     :smalt_attestation_baseline,
+
     :smalt_cosmos_lsn,
+
     :smalt_eh_checkpoints,
+
     :smalt_ledger_meta,
+
     :smalt_operations,
+
     :smalt_resource_graph_tokens,
+
     :smalt_sb_locks,
+
     :smalt_sb_sessions,
+
     :smalt_sb_tokens,
+
     :smalt_sentinel_streams,
+
     :smalt_subscriptions
+
   ]
 
   @persisted_tables [
     :smalt_blobs,
+
     :smalt_cosmos_docs,
+
     :smalt_event_messages,
+
     :smalt_ledger_meta,
+
     :smalt_ledger_transactions,
+
     :smalt_resources
+
   ]
 
   @doc """
@@ -254,6 +278,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_affidavit_witnesses => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.ArmGateway.Router",
@@ -262,6 +287,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_appconfig => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -270,6 +296,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_arm_rate => %{
         key_shape: "tuple",
         owner_module: "Smalt.ArmGateway.Router",
@@ -278,6 +305,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_attestation_baseline => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -286,6 +314,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_blob_blocks => %{
         key_shape: "tuple",
         owner_module: "Smalt.DataPlane.BlobStorage",
@@ -294,6 +323,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_blob_containers => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -302,6 +332,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_blob_policy => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -310,6 +341,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_blob_snapshots => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -318,6 +350,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_blobs => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -326,6 +359,7 @@ defmodule Smalt.StoreTables do
         persisted: true,
         ordered_set: true
       },
+
       :smalt_cbs_claims => %{
         key_shape: "tuple",
         owner_module: "Smalt.Messaging.AMQP.CBSRouter",
@@ -334,6 +368,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_compiled => %{
         key_shape: "atom",
         owner_module: "Smalt.AshExtension.GeneratedPersist",
@@ -342,6 +377,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_cosmos_docs => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -350,6 +386,7 @@ defmodule Smalt.StoreTables do
         persisted: true,
         ordered_set: true
       },
+
       :smalt_cosmos_lsn => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -358,6 +395,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_cosmos_pk_meta => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -366,6 +404,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_cosmos_ru => %{
         key_shape: "tuple",
         owner_module: "Smalt.DataPlane.Cosmos",
@@ -374,6 +413,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_eg_topics => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -382,6 +422,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_egress_guard => %{
         key_shape: "atom",
         owner_module: "Smalt.EgressRouter",
@@ -390,6 +431,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_eh_checkpoints => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -398,6 +440,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_eh_epochs => %{
         key_shape: "tuple",
         owner_module: "Smalt.Messaging.AMQP.Connection",
@@ -406,6 +449,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_eh_partitions => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -414,6 +458,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_event => %{
         key_shape: "atom",
         owner_module: "Smalt.Projection.Admission",
@@ -422,6 +467,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_event_messages => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -430,6 +476,7 @@ defmodule Smalt.StoreTables do
         persisted: true,
         ordered_set: true
       },
+
       :smalt_ledger_meta => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -438,6 +485,7 @@ defmodule Smalt.StoreTables do
         persisted: true,
         ordered_set: true
       },
+
       :smalt_ledger_transactions => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -446,6 +494,7 @@ defmodule Smalt.StoreTables do
         persisted: true,
         ordered_set: true
       },
+
       :smalt_metrics => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -454,6 +503,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_operations => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -462,6 +512,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_policy => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Policy",
@@ -470,6 +521,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_pplan_tasks => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Pplan.Task",
@@ -478,6 +530,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_purview_edges => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -486,6 +539,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_purview_entities => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -494,6 +548,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_q_messages => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.DataPlane.QueueStorage",
@@ -502,6 +557,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_q_queues => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.DataPlane.QueueStorage",
@@ -510,6 +566,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_raw_body => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.ArmGateway.Router",
@@ -518,6 +575,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_rbac => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Policy",
@@ -526,6 +584,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_resource_graph_tokens => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -534,6 +593,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_resource_groups => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -542,6 +602,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_resources => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -550,6 +611,7 @@ defmodule Smalt.StoreTables do
         persisted: true,
         ordered_set: true
       },
+
       :smalt_rolling_counters => %{
         key_shape: "tuple",
         owner_module: "Smalt.Telemetry",
@@ -558,6 +620,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_sas_permissions => %{
         key_shape: "tuple",
         owner_module: "Smalt.Auth.SAS",
@@ -566,6 +629,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_sb_locks => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -574,6 +638,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sb_messages => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -582,6 +647,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sb_queues => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -590,6 +656,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sb_rules => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -598,6 +665,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sb_sessions => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -606,6 +674,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sb_sweeper_lock_tombstones => %{
         key_shape: "tuple",
         owner_module: "Smalt.Messaging.AMQP.Sweeper",
@@ -614,6 +683,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sb_tokens => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -622,6 +692,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sentinel_forensic => %{
         key_shape: "integer",
         owner_module: "Smalt.Store",
@@ -630,6 +701,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_sentinel_rows => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.Store",
@@ -638,6 +710,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_sentinel_streams => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -646,6 +719,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_store_read => %{
         key_shape: "atom",
         owner_module: "Smalt.AshExtension.GeneratedPersist",
@@ -654,6 +728,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_subscriptions => %{
         key_shape: "armId",
         owner_module: "Smalt.Store",
@@ -662,6 +737,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_vault_deleted_keys => %{
         key_shape: "binaryPrefix",
         owner_module: "Smalt.DataPlane.KeyVaultActions",
@@ -670,6 +746,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: false
       },
+
       :smalt_vault_keys => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -678,6 +755,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       },
+
       :smalt_vault_secrets => %{
         key_shape: "tuple",
         owner_module: "Smalt.Store",
@@ -686,6 +764,7 @@ defmodule Smalt.StoreTables do
         persisted: false,
         ordered_set: true
       }
+
     }
   end
 end
