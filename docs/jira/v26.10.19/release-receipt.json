@@ -7,7 +7,7 @@
   "type": "release",
   "subject": {
     "repo": "smalt",
-    "sha": "5666ae283c4b203d27b1ec16aa33ea618eb727bb",
+    "sha": "60823edad83168b44d803fcb92f49f56bb98e4a7",
     "ref": "main"
   },
   "court": {
@@ -28,8 +28,8 @@
     "command": "just court-x2",
     "toolchain": "elixir/erlang via mise (see .tool-versions); mix test + court-x2",
     "exit_code": 0,
-    "output_sha256": "d7dbd8698d9a998599d1b3b2aee938a39fcddc3eb19f693db5ad52436bdb5e2f",
-    "court_log": "/tmp/courtZ2.out"
+    "output_sha256": "950dca00cce9028fb2604c7ff55634beed7d2996505cf4c4bb7451f388e763d7",
+    "court_log": "/tmp/courtV2.out"
   },
   "anti_vacuity": {
     "mutants": [
@@ -88,5 +88,5 @@
   },
   "authority": "NONE (court is receipt-level evidence; Verification does not imply DO)",
   "evidence_ceiling": "LOCAL_RUN",
-  "generated_at": "2026-10-20T11:54:06+00:00"
+  "generated_at": "2026-10-20T12:57:41+00:00"
 }

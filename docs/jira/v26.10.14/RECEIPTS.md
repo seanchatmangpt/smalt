@@ -718,9 +718,9 @@ count, or PASS/FAIL token) found in the file.
 | v261019-c12- | [v261019-c12-eh-consumer-groups.md](../v26.10.19/receipts/v261019-c12-eh-consumer-groups.md) | ALIVE | v261019-C12 — Event Hubs consumer-group engine (lane C12) **NO-CONTEXT** |
 | v261019-capa | [v261019-capability-wave1.md](../v26.10.19/receipts/v261019-capability-wave1.md) | PARTIAL_ALIVE | Capability wave 1 — close-out prep (v26.10.19) **NO-CONTEXT** |
 | v261019-capa | [v261019-capability-wave2.md](../v26.10.19/receipts/v261019-capability-wave2.md) | PARTIAL_ALIVE | Capability wave 2 — close-out prep (v26.10.19) **NO-CONTEXT** |
-| v261019-capa | [v261019-capability-wave3.md](../v26.10.19/receipts/v261019-capability-wave3.md) | UNKNOWN | Capability wave 3 — close-out prep (v26.10.19) **NO-CONTEXT** |
+| v261019-capa | [v261019-capability-wave3.md](../v26.10.19/receipts/v261019-capability-wave3.md) | FAIL | Capability wave 3 — close-out prep (v26.10.19) **NO-CONTEXT** |
 | v261019-clus | [v261019-cluster-dns.md](../v26.10.19/receipts/v261019-cluster-dns.md) | ALIVE | v261019-cluster-dns — Smalt.Cluster native DNS interconnect **NO-CONTEXT** |
-| v261019-cour | [v261019-court-census.md](../v26.10.19/receipts/v261019-court-census.md) | UNKNOWN | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
+| v261019-cour | [v261019-court-census.md](../v26.10.19/receipts/v261019-court-census.md) | PARTIAL_ALIVE | v26.10.19 Court-Standing Census (lane: cen) **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-automation.md](../v26.10.19/receipts/v261019-envelope-automation.md) | UNKNOWN | v26.10.19 envelope lane — automation-boundary gate + aggregate wiring **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-container.md](../v26.10.19/receipts/v261019-envelope-container.md) | UNKNOWN | v26.10.19 envelope lane — container-boundary gate wiring skeleton **NO-CONTEXT** |
 | v261019-enve | [v261019-envelope-iac-smoke.md](../v26.10.19/receipts/v261019-envelope-iac-smoke.md) | PARTIAL_ALIVE | v261019-envelope-iac-smoke — Phase 3 gate 3 upstream infrastructure smoke (IaC witness lane) |
@@ -730,6 +730,7 @@ count, or PASS/FAIL token) found in the file.
 | v261019-phas | [v261019-phase56.md](../v26.10.19/receipts/v261019-phase56.md) | FAIL | Phase 5/6 checklist receipt — v26.10.19 **NO-CONTEXT** |
 | v261019-rc-r | [v261019-rc-rewrite-census.md](../v26.10.19/receipts/v261019-rc-rewrite-census.md) | ALIVE | V261019-RC (rewrite-census: test-volume before/after) |
 | v261019-vol- | [v261019-vol-census.md](../v26.10.19/receipts/v261019-vol-census.md) | UNKNOWN | V261019-FIN (test-volume census) |
+| v261019-w4h- | [v261019-w4h-glossary-surface.md](../v26.10.19/receipts/v261019-w4h-glossary-surface.md) | PARTIAL_ALIVE | W4H — Purview Atlas glossary surface (ERRC CREATE lane) |
 | v261019-wo1- | [v261019-wo1-subject-sha-lease.md](../v26.10.19/receipts/v261019-wo1-subject-sha-lease.md) | ALIVE | WO-1 lane receipt — SUBJECT_SHA required-arg + flock image-build lease |
 | v261019-ws-c | [v261019-ws-court-live.md](../v26.10.19/receipts/v261019-ws-court-live.md) | FAIL | ws-court LIVE leg — substrate up, ARM probe PASS **NO-CONTEXT** |
 | w3a-egress-s | [w3a-egress-snapshots-routes.md](../v26.10.19/receipts/w3a-egress-snapshots-routes.md) | PARTIAL_ALIVE | W3A (ERRC wave-3, lane W3A): AppConfig snapshots egress routes (W2N fragment) **NO-CONTEXT** |
@@ -737,6 +738,7 @@ count, or PASS/FAIL token) found in the file.
 | w2f-kd108-ac | [w2f-kd108-acl-lease-wire.md](../v26.10.20/receipts/w2f-kd108-acl-lease-wire.md) | ALIVE | w2f — KD-108 remainder: container ACL wire persistence + blob snapshot lease wire arm **NO-CONTEXT** |
 | w2i-sb-topic | [w2i-sb-topics-arm.md](../v26.10.20/receipts/w2i-sb-topics-arm.md) | PARTIAL_ALIVE | w2i lane: ARM Service Bus topic/subscription face (b6 enforce witness) **NO-CONTEXT** |
 | w3e-kv-purge | [w3e-kv-purge-bare-delete.md](../v26.10.20/receipts/w3e-kv-purge-bare-delete.md) | PASS | w3e — KV purge bare-DELETE route on the TLS twin (TS wf6 finding) **NO-CONTEXT** |
+| w4e-sb-rules | [w4e-sb-rules-arm.md](../v26.10.20/receipts/w4e-sb-rules-arm.md) | PASS | w4e — SB rules ARM family witness (PUT/GET/DELETE/LIST) **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 

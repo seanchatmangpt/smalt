@@ -17,6 +17,7 @@ count, or PASS/FAIL token) found in the file.
 | w2f-kd108-ac | [w2f-kd108-acl-lease-wire.md](receipts/w2f-kd108-acl-lease-wire.md) | ALIVE | w2f — KD-108 remainder: container ACL wire persistence + blob snapshot lease wire arm **NO-CONTEXT** |
 | w2i-sb-topic | [w2i-sb-topics-arm.md](receipts/w2i-sb-topics-arm.md) | PARTIAL_ALIVE | w2i lane: ARM Service Bus topic/subscription face (b6 enforce witness) **NO-CONTEXT** |
 | w3e-kv-purge | [w3e-kv-purge-bare-delete.md](receipts/w3e-kv-purge-bare-delete.md) | PASS | w3e — KV purge bare-DELETE route on the TLS twin (TS wf6 finding) **NO-CONTEXT** |
+| w4e-sb-rules | [w4e-sb-rules-arm.md](receipts/w4e-sb-rules-arm.md) | PASS | w4e — SB rules ARM family witness (PUT/GET/DELETE/LIST) **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 

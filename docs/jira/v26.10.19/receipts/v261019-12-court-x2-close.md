@@ -175,3 +175,19 @@ COURT-Z2 rc=0 — [COURT] Full gate passed.
 ```
 
 Run 2 is the court-log input to the re-minted release receipt.
+
+## court-x2 #6 (capability wave-4 promotion re-run, 2026-10-20)
+
+Both runs of the full 11-stage court at the capability wave-4 HEAD
+(60823edad83168b44d803fcb92f49f56bb98e4a7): two consecutive greens, no shifted failures. Wave-4 surface
+under court: KV EC keys (ES256/384) + oct-HSM real material, deleted-
+certificates soft-delete/recover/purge, MCP 30-tool surface, KD-119
+single-hash close (PSS emsa fix), pkranges engine, blob list nil-clause
+fix, sleep-gate SCHEDULING class, registry 46-type sync.
+
+```
+COURT-V1 rc=0 — [COURT] Full gate passed.
+COURT-V2 rc=0 — [COURT] Full gate passed.
+```
+
+Run 2 is the court-log input to the re-minted release receipt.

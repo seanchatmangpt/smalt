@@ -1,7 +1,7 @@
 4e3ca14873b4f2ab69fcec2e1a5c293ac6998b2cca752de2b55f42bdc353c92d  docs/jira/v26.10.19/ACCEPTANCE.md
 f89bb21b9c9f9f552f23cb1432f306731cfe0dd9687e5fbc6a84f0bc0aa36b39  docs/jira/v26.10.19/FINAL.md
 1c57c71c4d17ed9cadbf46e9396d08ccb2069589b1da6f152ed2df962197528f  docs/jira/v26.10.19/RISK_REGISTER.md
-ba50188ff276947dddd79e5d3103d2f8545ebc639676e9b37e605aca41c07994  docs/jira/v26.10.19/release-receipt.json
+2fc464a9a45479034b954ec68262b7db94a4fb45a5e43978eb6a1741b218617f  docs/jira/v26.10.19/release-receipt.json
 89de861a66490c0574e92ebf661ed617143d1b6348ea71f4a0556b6682290c30  docs/jira/v26.10.19/sdk-results/wf1-py-provisioning-governance.md
 4bf39d776880c8c8c37aa26103f9e07cecad44b40522b938cf444a23706c9a78  docs/jira/v26.10.19/sdk-results/wf1-ts-provisioning-governance.md
 266a49922d73108efcb4a94b424976816e583286369ee83c3f3e6dbbebc81ee1  docs/jira/v26.10.19/sdk-results/wf2-py-multistore-concurrency.md
