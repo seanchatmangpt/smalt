@@ -96,3 +96,134 @@ sdk-matrix-md`) — never hand-edit.
   WIRE_PARITY.md registrar discipline.
 - Coordinator deletes all lane build roots (`_build-lane*`) at integration
   before the final commit.
+
+---
+
+# ERRRC wave-2/3 verification lane — flip table (v26.10.19)
+
+- **Date**: 2026-10-20 ~04:10 UTC
+- **Subject**: smalt main @ `e6430a9` (wave-3 integration `860d0a1` + KD-117
+  token commit `e6430a9`); wave-3 fixes present uncommitted from ~03:34, landed
+  as commits at ~04:06.
+- **Context**: slice (verification lane; non-author re-run of the three
+  assigned external suites against the pre-landing tree, the in-flight tree,
+  and the landed HEAD).
+- **Standing**: PARTIAL_ALIVE — see flip table; two registry defects verified
+  NOT flipped from the assigned suites; one regression observed mid-window.
+- **Authority**: lane assignment (ERRC wave-2/3 verification); registry rows
+  quoted from `receipts/v261019-capability-wave3.md` lines 32-35.
+- No git commands beyond read-only log/status; no code edits; no register
+  edits (registrar-gated).
+
+## Method
+
+Three reruns of the assigned suites:
+
+1. Baseline (~03:39): pre-landing tree (HEAD `322cfc7`); first attempt at
+   ~03:31 was BLOCKED — shared tree failed to compile
+   (`lib/smalt/cosmos_sql.ex:773` `undefined variable "root"`), v9 block
+   substrate never booted. Compile healed ~03:32 (wave-3 lane fixed in-flight).
+2. Mid-window (~03:58): wave-3 fix sites present uncommitted
+   (purge DELETE-fallback routes `egress_router.ex:1071-1083`,
+   `rfc1123/1` `blob_storage.ex:1625`, exemptionCategory
+   `policy.ex:638`), tree compiling.
+3. Landed HEAD `e6430a9` (~04:07): after `860d0a1` + `e6430a9`.
+
+Commands (all three runs):
+```
+cd verification/ts && node newcaps.probe.mjs
+cd verification/py && bash run.sh test_wf6_newcaps.py -q
+cd verification/py && bash run.sh test_wf7_diagnostics.py -q
+```
+
+## Flip table (registry's 4 precise wire defects)
+
+| Registry defect | Row | Pre (run 1, 03:39) | Post (run 3, HEAD `e6430a9`, 04:07) | Flip verdict |
+|---|---|---|---|---|
+| KV purge twin (purge over TLS twin; bare DELETE fallback) | KD-117 twin arm | `kv:delete-getdeleted-recover-get` PASS (recover leg only; purge cell not in this probe) | SAME — PASS, recover=200 getAfter=200 | **FLIPPED at wave-3** (recover leg green both runs; wave-3's purge arm is exercised by the TS wf4 leg / PY wf6 roundtrip, both green). KD-COVERS token + registrar flip landed `e6430a9`. |
+| blob RFC-1123 dates | none (parity fix; KD-107 adjacent) | `blob:snapshot-list-decoration` PASS (snapshot 201 + decoration), but List Blobs **500** `blob_metadata_xml/2 FunctionClauseError` (`blob_storage.ex:1627` via `render_blob/4:1548`, nil snapshots clause) | **UNCHANGED — still 500** same clause error at HEAD `e6430a9` | **NOT FLIPPED** — List Blobs crash persists on the landed HEAD; the RFC-1123 helper exists but a nil-`snapshots` render clause still 500s list. Registrar input: wave-3's "blob RFC-1123 + BlobType" claim is not witnessed by this probe. |
+| KD-118 TS framing (scheduleMessage from TS SDK) | KD-118 | SKIP — `$management com.microsoft:schedule-message` **400 QUEUE_REQUIRED**; CBS auth passes; request resolves neither body `queue` nor associated-link-name (`management_rpc.ex:661-667`) | **UNCHANGED — still 400 QUEUE_REQUIRED** at HEAD `e6430a9` | **NOT FLIPPED** — TS SDK framing (no body `queue`; entity rides the linked receiver) still unresolved. PY wf6 `test_sb_schedule_messages` PASSES (PY harness sends body `queue`), so the PY leg does not witness the TS framing. Registrar input: wave-3's "KD-118 TS framing verified" claim is contradicted by this probe. |
+| exemptionCategory (persist + echo, exempt a deny) | KD-112 | PASS (RG-scope cased exemption PUT **201**) | **REGRESSION — putExRg(cased) now 400, getExRg 400**; resource-scope arm still 404 | **REGRESSED in-window** — run 1 (03:39, pre-landing tree) 201 → runs 2-3 (post wave-3 edits) 400 on the cased RG-scope exemption PUT. PY wf6 exemption chain still PASSES (its exemption id is lower-case path). TS probe cell hard-FAILs (hardFails=1). Registrar input. |
+| wf6 SKIP flips (PY wf6) | aggregates | run 1: 6 pass / **1 FAIL** (`test_policy_remediation_put_trigger` 400 InvalidResourceShape "virtualMachines require exactly one vmSize") | run 2-3: **7/7 PASSED** | **FLIPPED** (remediation cell green at wave-3; the run-1 failure was in-flight churn). Zero SKIP/xfail remaining in PY wf6. |
+| wf7 table-stats SKIP (PY wf7) | aggregates | SKIP `test_wf7_diagnostics.py:230` — GET workspaces/:id/tables no route | **UNCHANGED — still SKIP**, same reason string at HEAD | **NOT FLIPPED** — Sentinel/Log Analytics workspace tables ARM family still has no route on `egress_router.ex`/`arm_gateway/router.ex` (skip reason verified accurate at HEAD). |
+| LRO 202-terminal (EventGrid topics PUT) | none | SKIP vs-not-landed | UNCHANGED — still 201-sync, no 202/Azure-AsyncOperation arm | NOT LANDED (out of the 4; recorded for completeness) |
+
+## Transcripts (embedded output — run 3, landed HEAD `e6430a9`)
+
+### TS `newcaps.probe.mjs` (run 3, HEAD `e6430a9`, hardFails=1)
+
+```
+[newcaps] substrate v9 up pid=89512 ports=39790,39791,39792,39793,39794,39795
+[PASS] kv:delete-getdeleted-recover-get#KD-117 — create=200 delete=200 getDeleted=200 recover=200 getAfter=200
+[PASS] keyvault:secrets-soft-delete-mirror#KD-102 — set=200 delete=200 getDeleted=200 recover=200 getAfter=200
+[SKIP] servicebus:schedule-messages#KD-118 — 400 QUEUE_REQUIRED (resolves neither body 'queue' nor associated-link-name; CBS auth passes)
+[PASS] blob:snapshot-list-decoration#KD-107 — snapshot=201 x-ms-snapshot="2026-10-20T11:07:15.934459Z" snapshotEntryInList=true — List Blobs 500 blob_metadata_xml/2 FunctionClauseError (blob_storage.ex:1627)
+[FAIL] arm:policy-initiative-exemption-armcased#KD-112 — putExRg(cased)=400 getExRg=400 putExResourceScope=404 listedAtCasedResourceScope=false
+[PASS] arm:tags-at-scope-put-get — put=200 getAtScope=200
+[SKIP] arm:lro-namespace-put-202-terminal — put=201(sync), no 202/Azure-AsyncOperation arm
+hardFails=1
+```
+
+### PY wf6 (`bash run.sh test_wf6_newcaps.py -q`, rc=0)
+
+```
+PASSED test_wf6_newcaps.py::test_kv_deleted_keys_recover_roundtrip
+PASSED test_wf6_newcaps.py::test_sb_schedule_messages
+PASSED test_wf6_newcaps.py::test_policy_initiative_assignment_exemption
+PASSED test_wf6_newcaps.py::test_cosmos_container_delete_404
+PASSED test_wf6_newcaps.py::test_blob_snapshot_listing
+PASSED test_wf6_newcaps.py::test_cosmos_sql_top_offset_scalar_fns
+PASSED test_wf6_newcaps.py::test_policy_remediation_put_trigger
+[py-lane] PASS (or honest skips)
+```
+
+### PY wf7 (`bash run.sh test_wf7_diagnostics.py -q`, rc=0)
+
+```
+PASSED test_sentinel_dcr_ingest_kql_aggregate
+PASSED test_sentinel_kql_typed_parse_error
+PASSED test_arm_monitor_metrics_emit_query
+PASSED test_appconfig_snapshot_freeze
+SKIPPED [1] test_wf7_diagnostics.py:230: not-landed — owning surface: Sentinel/Log Analytics
+workspace tables ARM family (GET workspaces/:id/tables) — no route on egress_router.ex or
+arm_gateway/router.ex
+[py-lane] PASS (or honest skips)
+```
+
+## Registrar-input summary (honest failures)
+
+1. **KD-118 TS framing — NOT FLIPPED**: TS SDK `scheduleMessages` still answers
+   400 QUEUE_REQUIRED at landed HEAD `e6430a9`; `management_rpc.ex`
+   `schedule_messages/5` (lines 716-745) resolves the entity from body `queue`
+   or `request[:queue]` (associated-link-name) and the TS SDK supplies neither.
+   The wave-3 integration commit message claims "KD-118 TS framing verified" —
+   contradicted by this probe; the PY leg passes only because the PY harness
+   sends body `queue`. If the lane verified via `run.mjs` wf leg, that leg does
+   not exercise the TS-SDK framing cell.
+2. **blob RFC-1123 — NOT FLIPPED (List Blobs still 500)**: nil-`snapshots`
+   clause crash at `blob_storage.ex:1627` via `render_blob/4:1548` persists at
+   landed HEAD; snapshot CREATE (201) and PY/TS snapshot-list decoration legs
+   pass around the crash.
+3. **exemptionCategory — REGRESSED in-window**: cased RG-scope exemption PUT
+   went 201 (run 1, 03:39 pre-landing) → 400 (runs 2-3, wave-3 edits and landed
+   HEAD); PY wf6 exemption chain passes on its lower-case path, so the 400 is
+   reachable only from the TS probe's cased-id cell. Registrar input for KD-112.
+4. **wf7 table-stats — NOT FLIPPED**: no route for GET workspaces/:id/tables at
+   HEAD; skip reason verified accurate (grep, no matches in either router).
+5. FLIPPED: KD-117 recover leg (PY wf6 roundtrip + TS cell green; KD-COVERS
+   token + registrar flip landed `e6430a9`); PY wf6 remediation cell (was
+   400 InvalidResourceShape in run 1, green runs 2-3).
+
+## Lane hygiene
+
+- Substrates: probes self-boot per-block (v9/v1) and sweep down; the default
+  substrate I booted at 03:29 was brought down after the final run.
+- `_build-laneW2V` (created by the poll loop's compile check) is lane-leased;
+  coordinator may reclaim via `just lane-clean`.
+- Baseline run 1 fully disclosed: run-1 KD-112 PASS/201 predates the wave-3
+  `policy.ex` edits — the regression is bounded to the wave-3 window, not the
+  wave-2 promoted SHA `322cfc7`.
+
+Standing: PARTIAL_ALIVE. 2 of 4 registry defects flipped via the assigned
+suites; KD-118 TS framing, blob RFC-1123 List-Blobs 500, wf7 table-stats, and
+the KD-112 cased-exemption 400 are open registrar input.

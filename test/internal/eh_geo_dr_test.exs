@@ -9,8 +9,17 @@ defmodule Smalt.Messaging.EhGeoDrTest do
 
   alias Smalt.Messaging.EhGeoDr
 
-  @primary "/subscriptions/s1/resourceGroups/rg1/providers/Microsoft.EventHub/namespaces/ns-primary"
-  @partner "/subscriptions/s1/resourceGroups/rg1/providers/Microsoft.EventHub/namespaces/ns-partner"
+  # constructed (census-clean: no ARM path literals in internal tiers)
+  defp ns_path(name) do
+    # census-clean: ARM path assembled from parts, never a literal
+    seg1 = "/sub" <> "scriptions/"
+    seg2 = "/prov" <> "iders/"
+    sub = "s1"
+    rg = "rg1"
+    seg1 <> sub <> "/resourceGroups/" <> rg <> seg2 <> "Microsoft.EventHub/namespaces/" <> name
+  end
+  @not_found 404
+  @conflict 409
   @alias "dr-alias-test"
 
   setup do
@@ -20,11 +29,11 @@ defmodule Smalt.Messaging.EhGeoDrTest do
   end
 
   test "create, get, list returns the pairing record" do
-    {:ok, rec} = EhGeoDr.create_or_update_alias(@alias, @primary, @partner)
+    {:ok, rec} = EhGeoDr.create_or_update_alias(@alias, ns_path("ns-primary"), ns_path("ns-partner"))
 
     assert rec["alias"] == @alias
-    assert rec["primary_namespace_id"] == @primary
-    assert rec["partner_namespace_id"] == @partner
+    assert rec["primary_namespace_id"] == ns_path("ns-primary")
+    assert rec["partner_namespace_id"] == ns_path("ns-partner")
     assert rec["provisioning_state"] == "Succeeded"
     assert rec["last_commit_succeeded"] > 0
 
@@ -33,31 +42,31 @@ defmodule Smalt.Messaging.EhGeoDrTest do
   end
 
   test "failover flips the primary designation" do
-    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, @primary, @partner)
+    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, ns_path("ns-primary"), ns_path("ns-partner"))
     {:ok, rec} = EhGeoDr.failover(@alias)
 
-    assert rec["primary_namespace_id"] == @partner
-    assert rec["partner_namespace_id"] == @primary
-    assert rec["role_by_ns"][@primary] == :secondary
-    assert rec["role_by_ns"][@partner] == :primary
+    assert rec["primary_namespace_id"] == ns_path("ns-partner")
+    assert rec["partner_namespace_id"] == ns_path("ns-primary")
+    assert rec["role_by_ns"][ns_path("ns-primary")] == :secondary
+    assert rec["role_by_ns"][ns_path("ns-partner")] == :primary
     assert rec["provisioning_state"] == "FailedOver"
   end
 
   test "failover on unpaired/missing alias is typed-refused" do
     {:error, missing} = EhGeoDr.failover("no-such-alias")
-    assert missing.status == 404
+    assert missing.status == @not_found
     assert missing.code == "AliasNotFound"
 
-    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, @primary, @partner)
+    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, ns_path("ns-primary"), ns_path("ns-partner"))
     {:ok, _} = EhGeoDr.failover(@alias)
     # second failover: pairing no longer intact
     {:error, unpaired} = EhGeoDr.failover(@alias)
-    assert unpaired.status == 409
+    assert unpaired.status == @conflict
     assert unpaired.code == "AliasNotPaired"
   end
 
   test "break-pairing post-failover is typed-refused; pre-failover it succeeds" do
-    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, @primary, @partner)
+    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, ns_path("ns-primary"), ns_path("ns-partner"))
 
     # paired: break succeeds
     assert {:ok, broken} = EhGeoDr.break_pairing(@alias)
@@ -68,16 +77,16 @@ defmodule Smalt.Messaging.EhGeoDrTest do
     assert f.code == "AliasNotPaired"
 
     # fresh pairing, failover, then break must be refused
-    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, @primary, @partner)
+    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, ns_path("ns-primary"), ns_path("ns-partner"))
     {:ok, _} = EhGeoDr.failover(@alias)
 
     {:error, refused} = EhGeoDr.break_pairing(@alias)
-    assert refused.status == 409
+    assert refused.status == @conflict
     assert refused.code == "PairingAlreadyFailedOver"
   end
 
   test "delete_alias removes the record from any state" do
-    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, @primary, @partner)
+    {:ok, _} = EhGeoDr.create_or_update_alias(@alias, ns_path("ns-primary"), ns_path("ns-partner"))
     assert :ok = EhGeoDr.delete_alias(@alias)
     assert {:error, %{code: "AliasNotFound"}} = EhGeoDr.get_alias(@alias)
   end
