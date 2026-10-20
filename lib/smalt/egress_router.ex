@@ -1267,9 +1267,11 @@ defmodule Smalt.EgressRouter do
   end
 
   get "/deletedcertificates" do
+    # list_deleted/0 always succeeds ({:ok, 200, map}); the dead {:error, ...}
+    # clause here failed `mix compile --warnings-as-errors`, which is the
+    # ggen_igniter.sync terminal verify gate (wave-4 MCP lane unblock, 2026-10-20).
     case Smalt.DataPlane.Certificates.list_deleted() do
       {:ok, status, body} -> send_json(conn, status, body)
-      {:error, status, body} -> send_json(conn, status, body)
     end
   end
 
