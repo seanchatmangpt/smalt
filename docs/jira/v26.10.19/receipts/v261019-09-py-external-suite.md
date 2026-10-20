@@ -74,3 +74,58 @@ the new suite's first executed run.
    reconciliation) — **BLOCKED during in-flight court**: the suite's conftest
    boots the substrate, forbidden while a court is in flight. Suite owner
    executes post-court and embeds the pytest tail here.
+
+## Phase-3 execution (suite owner, 2026-10-19, post-court)
+
+Standing: **ALIVE** (was PARTIAL/IN-FLIGHT — the pending `run.sh` execution
+recorded below closes it).
+
+Pinned SHA: `a45cf03bdb6d72ffcd970c8783f0163c96fe5950` (`git rev-parse HEAD`,
+matches expected a45cf03...).
+
+Command (×3 consecutive, back-to-back, zero manual retries):
+
+```
+cd /Users/sac/smalt/verification/py && bash run.sh
+```
+
+Run 1 tail:
+```
+XFAIL test_wf3_messaging.py::test_eventhub_checkpoint_roundtrip - SUBSTRATE_EH_PYAMQP_OPENFRAME_DIVERGENCE: EH Open frame omits locale fields required by azure-eventhub pyamqp — list index out of range
+XFAIL test_wf4_crypto.py::test_soft_delete_recover_purge - SUBSTRATE_VAULT_DELETED_STATE_LOST: :smalt_vault_deleted_keys ETS owned by per-request process, no heir — deleted-key bundle 404s across requests (witness GET -> 404, error ResourceNotFoundError)
+9 passed, 2 xfailed, 6 warnings in 28.84s
+[py-lane] PASS (or honest skips)
+```
+
+Run 2 tail:
+```
+9 passed, 2 xfailed, 6 warnings in 23.62s
+[py-lane] PASS (or honest skips)
+```
+
+Run 3 tail:
+```
+9 passed, 2 xfailed, 6 warnings in 23.19s
+[py-lane] PASS (or honest skips)
+```
+
+Assertions:
+
+- **Zero flakiness**: identical pass set ×3 (9 passed, 2 xfailed, rc=0
+  each run; same xfail IDs both runs, KD-cited:
+  `SUBSTRATE_EH_PYAMQP_OPENFRAME_DIVERGENCE`,
+  `SUBSTRATE_VAULT_DELETED_STATE_LOST`).
+- **Zero manual retries**: three invocations, no re-run between them.
+- **Retry activity**: the only retry traffic is SDK-internal 429 handling in
+  wf5 (`test_arm_rate_limit_429`) — LAWFUL by the lane contract. Observed:
+  run1 `19 x 200, 181 x 429 (retry-after=1)`, run2 `20 x 200, 180 x 429
+  (retry-after=1)`, run3 `19 x 200, 181 x 429 (retry-after=1)`. No
+  test-level retries; no retries outside wf5.
+
+Note (pre-existing, disclosed by the earlier section): the suite ran via
+`verification/py/.venv` created by `run.sh` (bare `.venv`, contra
+ADR-PY-002 as written) — the reconciliation item carries.
+
+Deviation 3 above (BLOCKED during in-flight court) is resolved: substrate
+booted via `scripts/substrate-ctl up --block v1 --auth enforce`, torn down
+by the run.sh trap after each run. Full logs: `/tmp/py-run-{1,2,3}.log`.
