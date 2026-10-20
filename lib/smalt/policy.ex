@@ -176,7 +176,7 @@ defmodule Smalt.Policy do
     do: "#{scope_prefix}/providers/Microsoft.Authorization/roleAssignments/#{name}"
 
   # ===========================================================================
-  # RBAC enforcement (KD-COVERS: KD-113 leg a)
+  # RBAC enforcement (KD-COVERS: KD-113) — leg a
   # ===========================================================================
 
   @doc """
@@ -269,7 +269,7 @@ defmodule Smalt.Policy do
   end
 
   # ===========================================================================
-  # Management locks (KD-COVERS: KD-113 leg b)
+  # Management locks (KD-COVERS: KD-113) — leg b
   # ===========================================================================
 
   @lock_levels ["CanNotDelete", "ReadOnly"]

@@ -100,3 +100,12 @@ coordinator's integration sweep owns the reconcile.
 KD-113 legs a+b closed at the module tier. Router wiring (locks routes +
 409 ScopeLocked mapping) and the KD register flip via kd_flip.py belong to
 the router lane / registrar.
+## Re-witness addendum (2026-10-20, post token-format fix)
+
+The KD-COVERS token format in `lib/smalt/policy.ex` was corrected
+(`KD-113 leg a/b` → `KD-113 — leg a/b`), refreshing the file mtime. The
+witness was re-run in full post-fix (`mix run --no-start
+/tmp/smalt-c8/kd113_witness.exs`): WITNESS-DONE, exit 0, all 18 probes as
+originally predicted (a1..a7 RBAC incl. readonly-enforce ScopeLocked face;
+b1..b11 locks incl. ReadOnly write-block). Semantics unchanged — the edit
+was comment-format only. This addendum postdates the refreshed shim mtime.
