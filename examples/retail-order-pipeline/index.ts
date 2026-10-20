@@ -174,13 +174,13 @@ export async function run(): Promise<WfResult> {
           messageId: `ord-${i}`,
         })),
       );
-      const receiver = c.createReceiver(queue, "peekLock");
+      const receiver = c.createReceiver(queue, { receiveMode: "peekLock" });
       const batch = await receiver.receiveMessages(10, { maxWaitTimeInMs: 15_000 });
       const ids = batch.map((m: any) => m.body?.orderId);
       const fifo = ids.every((v: string, i: number) =>
         v === `ORD-${ts}-${i}`,
       );
-      for (const m of batch) await m.complete();
+      for (const m of batch) await receiver.completeMessage(m);
       p("sb-send-receive-complete",
         batch.length === 10 && fifo ? GREEN
           : batch.length === 0
@@ -205,8 +205,8 @@ export async function run(): Promise<WfResult> {
       await armPutQueue(cred, queue, {});
       c = new ServiceBusClient(sbConn(queue), noRetry) as any;
       const sender = c.createSender(queue);
-      await sender.sendMessages({ body: { orderId: "ORD-DEF", hold: true } });
-      const receiver = c.createReceiver(queue, "peekLock");
+      await sender.sendMessages({ body: { orderId: "ORD-DEF", hold: true }, messageId: `ord-def-${ts}` });
+      const receiver = c.createReceiver(queue, { receiveMode: "peekLock" });
       const [msg] = await receiver.receiveMessages(1, { maxWaitTimeInMs: 10_000 });
       if (!msg) {
         p("sb-defer-receive-deferred", RD("KD-115"),
@@ -216,7 +216,7 @@ export async function run(): Promise<WfResult> {
         const deferred = await receiver.receiveDeferredMessages([msg.sequenceNumber]);
         const bodyOk = deferred.length === 1 &&
           deferred[0].body?.orderId === "ORD-DEF";
-        await deferred[0]?.complete();
+        await receiver.completeMessage(deferred[0]);
         p("sb-defer-receive-deferred", bodyOk ? GREEN : "FAIL",
           `deferred=${deferred.length} bodyOk=${bodyOk} deliveryCount=${deferred[0]?.deliveryCount}`);
       }
@@ -235,8 +235,8 @@ export async function run(): Promise<WfResult> {
     try {
       await armPutQueue(cred, queue, { lockDuration: "PT2S", maxDeliveryCount: 10 });
       c = new ServiceBusClient(sbConn(queue), noRetry);
-      await c.createSender(queue).sendMessages({ body: { orderId: "ORD-SLOW" } });
-      const r = c.createReceiver(queue, "peekLock");
+      await c.createSender(queue).sendMessages({ body: { orderId: "ORD-SLOW" }, messageId: `ord-slow-${ts}` });
+      const r = c.createReceiver(queue, { receiveMode: "peekLock", maxAutoLockRenewalDurationInMs: 0 });
       const [msg] = await r.receiveMessages(1, { maxWaitTimeInMs: 10_000 });
       if (!msg) {
         p("sb-lock-renewal", RD("KD-115"),
@@ -266,7 +266,7 @@ export async function run(): Promise<WfResult> {
         ).catch(() => {});
         let settleErr: any = null;
         try {
-          await msg.complete();
+          await r.completeMessage(msg);
         } catch (e) {
           settleErr = e;
         }
@@ -289,17 +289,16 @@ export async function run(): Promise<WfResult> {
     try {
       await armPutQueue(cred, queue, { maxDeliveryCount: 3 });
       c = new ServiceBusClient(sbConn(queue), noRetry);
-      await c.createSender(queue).sendMessages({ body: { orderId: "ORD-POISON" } });
-      const r = c.createReceiver(queue, "peekLock");
+      await c.createSender(queue).sendMessages({ body: { orderId: "ORD-POISON" }, messageId: `ord-poison-${ts}` });
+      const r = c.createReceiver(queue, { receiveMode: "peekLock", maxAutoLockRenewalDurationInMs: 0 });
       let mainReceived = 0;
       for (let i = 0; i < 3; i++) {
         const [msg] = await r.receiveMessages(1, { maxWaitTimeInMs: 8_000 });
         if (!msg) break;
         mainReceived++;
-        await msg.abandon();
+        await r.abandonMessage(msg);
       }
-      await boundedClose(r);
-      const dlqR = c.createReceiver(queue, "$DeadLetterQueue");
+      const dlqR = c.createReceiver(queue, { subQueueType: "deadLetter" });
       const dlq = await dlqR.receiveMessages(1, { maxWaitTimeInMs: 8_000 });
       const m = dlq[0] as any;
       const dcOk = typeof m?.deliveryCount === "number" && m.deliveryCount >= 3;
@@ -308,7 +307,7 @@ export async function run(): Promise<WfResult> {
         props: m?.applicationProperties,
       });
       const reasonOk = /MaxDeliveryCount|MaximumDeliveryCount/i.test(blob);
-      if (m) await m.complete();
+      if (m) await r.completeMessage(m);
       const mainGot = mainReceived >= 1; // any main-queue delivery proves KD-115 not blocking
       p("sb-dlq-maxdelivery",
         dlq.length === 1 && dcOk && reasonOk ? GREEN
