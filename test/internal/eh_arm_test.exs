@@ -43,12 +43,15 @@ defmodule InternalTier.EhArmTest do
 
   test "namespace_status/face: nil record faces nil / empty map" do
     assert EhArm.namespace_status(nil) == nil
-    assert EhArm.namespace_face(nil) == %{}
+    # key-level asserts (census R3: no whole-map shape equality)
+    assert map_size(EhArm.namespace_face(nil)) == 0
   end
 
   test "namespace_face: status face merged over defaults-shaped record" do
     rec = %{"properties" => %{"status" => "Active", "provisioningState" => "Succeeded"}}
-    assert EhArm.namespace_face(rec) == %{"status" => "Active"}
+    face = EhArm.namespace_face(rec)
+    assert face["status"] == "Active"
+    assert map_size(face) == 1
   end
 
   # -- enriched hub GET ----------------------------------------------------------
