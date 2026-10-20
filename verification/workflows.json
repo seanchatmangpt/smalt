@@ -1,10 +1,10 @@
 {
   "version": 1,
   "window": "v26.10.19",
-  "schema_note": "Workflow registry for the external verification tier. Surface ids are drawn mechanically from scripts/sdk_coverage.py: SURFACES (12), CENSUS_SURFACE (servicebus), CAP_CELLS (prefixed cap:, 7) \u2014 20 inventory ids. Every inventory id must appear in >=1 workflow's surfaces[] or be covered by a cited kd_rows entry; orphans are listed in coverage.orphans. Unrecognized surface ids are parser findings. 'landed' is a tree-reconciliation marker: true = both language trees named in entry[] exist on disk.",
+  "schema_note": "Workflow registry for the external verification tier. Surface ids are drawn mechanically from scripts/sdk_coverage.py: SURFACES (12), CENSUS_SURFACE (servicebus), CAP_CELLS (prefixed cap:, 7) — 20 inventory ids. Every inventory id must appear in >=1 workflow's surfaces[] or be covered by a cited kd_rows entry; orphans are listed in coverage.orphans. Unrecognized surface ids are parser findings. 'landed' is a tree-reconciliation marker: true = both language trees named in entry[] exist on disk.",
   "notes": [
     "All five workflows landed (verified on disk 2026-10-19): verification/ts/wf{1..5}/index.ts and verification/py/test_wf{1,2,3,4,5}_{governance,concurrency,messaging,crypto,throttling}.py.",
-    "scripts/sdk_coverage.py still probes the legacy filename patterns verification/ts/*.probe.mjs and verification/py/py_*.py; the landed suites use wfN/index.ts and test_wfN_*.py, so all 24 probe cells read MISSING in the coverage gate. This is a finder-script pattern skew, not absence of probes \u2014 reconciling the finder patterns is owned by the sdk_coverage WO, not this registry.",
+    "scripts/sdk_coverage.py still probes the legacy filename patterns verification/ts/*.probe.mjs and verification/py/py_*.py; the landed suites use wfN/index.ts and test_wfN_*.py, so all 24 probe cells read MISSING in the coverage gate. This is a finder-script pattern skew, not absence of probes — reconciling the finder patterns is owned by the sdk_coverage WO, not this registry.",
     "The Service Bus census files sdk_coverage.py CRCs (verification/ts/census.test.cjs, verification/ts/sb-extra.probe.cjs, verification/receipts/08-service-bus-census.md) do not exist on disk, so the servicebus/census cell reads CRC FAIL. Real open finding, owned by the Service Bus census work order; not fixable by registry edits.",
     "Entry points on disk: TS suite = node verification/ts/run-all.mjs (sequential wf1..wf4 on a shared v-block substrate, wf5 on a private throttle-profile substrate; exit 0/1/2/3/4/124); PY suite = bash verification/py/run.sh (substrate-ctl up --block v1 --auth enforce, venv ensure, pytest --timeout=180; exit 0/1/2/3/4).",
     "just sdk-ts / sdk-py / sdk-all (justfile.d/04-sdk-recipes.just) are still RETIRED exit-1 placeholders pending rewiring to the landed suites (V261019-08 / V261019-09); the direct node/run.sh entry points above are the working commands today."
@@ -184,7 +184,9 @@
         "cap:blob-snapshot-list",
         "cap:policy-exemption-armcase",
         "cap:tags-at-scope",
-        "cap:lro-namespace-put"
+        "cap:lro-namespace-put",
+        "sentinel",
+        "cap:monitor-metrics"
       ],
       "kd_rows": [
         "KD-117",
@@ -233,7 +235,7 @@
       "cosmos": "wf2",
       "keyvault": "wf4",
       "skr": "wf4 (shares keyvault probe/receipt files per SURFACES)",
-      "eventgrid": "wf3 (HTTP webhook delivery infeasible on HEAD \u2014 KD-101; no @azure/eventgrid dep in the TS suite)",
+      "eventgrid": "wf3 (HTTP webhook delivery infeasible on HEAD — KD-101; no @azure/eventgrid dep in the TS suite)",
       "eventhubs": "wf3",
       "servicebus": "wf3 (census cell)",
       "sentinel": "wf5",

@@ -53,3 +53,97 @@ signature to verify true externally with a tampered control false.
 
 - KD-14 (RS256 inversion) — same signature-shape class; wf4-py leg witnesses both.
 - kd109/kd110/kd111/kd112 evidence receipts in this directory.
+
+---
+
+## CLOSE WITNESS — 2026-10-20 (ERRC wave-2 lane w2e) — **PASS, falsifier met**
+
+Wiring landed: `Smalt.DataPlane.KvPss` (:prehashed EMSA-PSS over the wire's
+pre-hashed digest, MGF1-SHA256, saltlen 32, raw RSA op via :crypto.mod_pow —
+OTP 28 has no :none+PSS EVP mode and its legacy pkey_crypt wrappers refuse
+:public_key key tuples) dispatched from `key_vault_actions.ex` do_sign/do_verify
+PS256 branches; rotate_key JWK export rides `KvPss.jwk_public` (stamps
+`alg: "PS256"`). `# KD-COVERS: KD-105` shim (`lib/smalt/data_plane/kv_pss.ex`)
+predates this receipt — mtime gate satisfiable for kd_flip.
+
+### Witness flow (block b3, ports 39030-39035, auth enforce, MIX_ENV=test)
+
+Boot: `MIX_BUILD_ROOT=_build-lane-w2e scripts/substrate-ctl up --block b3 --auth enforce --fresh`
+→ `{"block":"b3","ports":[39030,...,39035],"pid":17068,"reused":false,"auth":"enforce"}` (exit 0)
+
+Token mint (enforce, client_credentials): `POST :39032/organizations/oauth2/v2.0/token`
+→ 200, access_token len 1291.
+
+### Leg 1 — key create (RSA-HSM), JWK n/e from the wire response
+
+```
+$ curl -s -X POST "http://127.0.0.1:39033/keys/w2eps256/create" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"kty":"RSA-HSM","release_policy":{"allowed_operations":["encrypt","decrypt","sign","verify","wrapKey","unwrapKey"]}}'
+{"key":{"e":"AQAB","key_ops":["encrypt","decrypt","sign","verify","wrapKey","unwrapKey"],
+ "kid":"https://127.0.0.1:8443/keys/w2eps256/7237","kty":"RSA-HSM","n":"y66r4LrJC6wh...RyebQ"},...}
+```
+
+### Leg 2 — sign PS256 (pre-hashed digest of msg.bin)
+
+```
+$ printf 'kd105 external verify witness message 2026-10-20' > msg.bin
+$ curl -s -X POST "http://127.0.0.1:39033/keys/w2eps256/sign" \
+    -H "Authorization: Bearer $TOKEN" -d '{"alg":"PS256","digest":"<b64url(sha256(msg.bin))>"}'
+{"alg":"PS256","kid":"https://127.0.0.1:8443/keys/w2eps256/7237","value":"J0uDZ11ePR4V...xXaWRo29wJY5pvteFXPTj-G2LQNncZWJdg1SH6cZZiZ2gj7UhghW80YPsRDlh6UULrgjiAISf6EBNAFK8VLoVkHBkx-2F2mabPqZO6ir-uCdSylCVQbfgARDK3gOj_Z9EaGUYHBbUcIo8vZX_2Z7kflnAyXaIoD2G1DGMRCTsdtirIxOUKMkjm-1D1k42NEhFdo02z4xDiNabRPIrg1o40vwmgiSrZEJsKR6zINYH5blYbUaPVlx1OW48Y3cvCbSOR_TQ"}
+sig_bytes=256
+```
+
+### Leg 3 — EXTERNAL verify (openssl subprocess over the wire signature)
+
+```
+$ openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:32 \
+    -verify pub.pem -signature sig.bin msg.bin
+Verified OK
+verify-exit=0
+```
+
+pub.pem reconstructed from the create response's JWK n/e (SPKI built by hand,
+no trusted third party — the external verifier sees only wire material).
+
+### Leg 4 — tampered control (external verifier must refuse)
+
+```
+$ openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:32 \
+    -verify pub.pem -signature sig.bin msg-tampered.bin
+Verification failure (rsa_pss.c:144 bad signature)
+tampered-exit=1
+```
+
+### Leg 5 — wire verify op (in-process, fail-closed both directions)
+
+```
+$ curl -s -X POST ".../keys/w2eps256/verify" -d '{"alg":"PS256","digest":"<same>","value":"<sig>"}'
+{"kid":"...","valid":true,"value":true}
+$ curl -s -X POST ".../keys/w2eps256/verify" -d '{"alg":"PS256","digest":"<tampered>","value":"<sig>"}'
+{"kid":"...","valid":false,"value":false}
+```
+
+### In-process unit ground (lane build root)
+
+```
+$ MIX_BUILD_ROOT=_build-lane-w2e mix run probe
+sig_bytes=256 inproc=true tampered=false jwk_alg=PS256
+$ MIX_BUILD_ROOT=_build-lane-w2e mix test test/internal/
+27 tests, 0 failures   (exit 0)
+```
+
+## Falsifier status
+
+Skeleton falsifier ("external Node/openssl verify = true against the public
+JWK, tampered control false") is MET: openssl PSS saltlen-32 verify = "Verified
+OK" (exit 0) on the wire signature; tampered control = Verification failure
+(exit 1). KD-105 is eligible to flip CLOSE (receipt postdates the KvPss shim);
+flip belongs to the kd-registrar via `scripts/kd_flip.py --apply`.
+
+## Standing
+
+- **KD-105**: PASS — externally verifiable as of this witness; OPEN→CLOSE
+  flips via kd-registrar.
+- Receipt artifacts: `/tmp/w2e-witness/` (transcript
+  /tmp/w2e-witness-transcript.txt; scratch, not indexed).

@@ -212,6 +212,149 @@ defmodule Smalt.DataPlane.Sentinel do
   def canonical_json(value), do: Jason.encode!(value)
 
   # ---------------------------------------------------------------------------
+  # Table administration (per-stream tables: stats + retention)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Configures the per-stream table retention for `dcr`/`stream` in days.
+
+  Stored on the stream meta row (`"retention_days"`) in `:smalt_sentinel_streams`.
+  Returns `{:ok, days}`; `{:error, 400, ...}` when `days` is not a positive
+  integer (real Log Analytics refuses non-positive retention with a typed 400).
+  """
+  def set_retention(dcr, stream, days) when is_binary(dcr) and is_binary(stream) do
+    if is_integer(days) and days > 0 do
+      meta =
+        case Store.get(:smalt_sentinel_streams, "#{dcr}/#{stream}") do
+          {:ok, meta} -> meta
+          :error -> %{"stream" => stream, "dcr" => dcr}
+        end
+
+      Store.put(:smalt_sentinel_streams, "#{dcr}/#{stream}", Map.put(meta, "retention_days", days))
+      {:ok, days}
+    else
+      {:error, 400,
+       %{
+         "error" => %{
+           "code" => "InvalidRetention",
+           "message" => "retentionDays must be a positive integer"
+         }
+       }}
+    end
+  end
+
+  @doc """
+  Per-table stats for every stream under `dcr`: row count plus oldest/newest
+  `TimeGenerated` (ISO8601 strings, `nil` when the table has no parseable
+  timestamps). Returns a map keyed `"{dcr}/{stream}"` -> `%{count, oldest,
+  newest}`.
+  """
+  def table_stats(dcr) when is_binary(dcr) do
+    for {stream, rows} <- stream_rows(dcr), into: %{} do
+      stamps = timestamps(rows)
+
+      {table_name(dcr, stream),
+       %{
+         count: length(rows),
+         oldest: Enum.min(stamps, &<=/2, fn -> nil end),
+         newest: Enum.max(stamps, &>=/2, fn -> nil end)
+       }}
+    end
+  end
+
+  @doc """
+  Retention sweep over every stream table under `dcr`: deletes rows whose
+  `TimeGenerated` is older than the table's configured `retention_days`
+  (unset retention -> table untouched). Rows with no parseable timestamp are
+  KEPT (fail-open). Emits typed telemetry
+  `[:smalt, :sentinel, :retention_sweep]` with per-stream dropped counts.
+  Returns a map keyed `"{dcr}/{stream}"` -> `%{dropped, kept}`.
+  """
+  def retention_sweep(dcr) when is_binary(dcr) do
+    results =
+      for {stream, rows} <- stream_rows(dcr), into: %{} do
+        days = retention_days(dcr, stream)
+        cutoff = cutoff_for(days)
+
+        {dropped_count, kept_count} =
+          if is_nil(cutoff) do
+            {0, length(rows)}
+          else
+            {dropped, kept} = Enum.split_with(rows, fn row -> aged?(row, cutoff) end)
+            {length(dropped), length(kept)}
+          end
+
+        drop_aged_rows(dcr, stream, cutoff)
+
+        :telemetry.execute(
+          [:smalt, :sentinel, :retention_sweep],
+          %{dropped: dropped_count, kept: kept_count},
+          %{dcr: dcr, stream: stream, retention_days: days || :unset}
+        )
+
+        {table_name(dcr, stream), %{dropped: dropped_count, kept: kept_count}}
+      end
+
+    results
+  end
+
+  defp stream_rows(dcr) do
+    :smalt_sentinel_streams
+    |> Store.list_prefix("#{dcr}/")
+    |> Enum.map(& &1["stream"])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(fn stream -> {stream, Store.list_prefix(:smalt_sentinel_rows, row_prefix(dcr, stream))} end)
+  end
+
+  defp retention_days(dcr, stream) do
+    case Store.get(:smalt_sentinel_streams, "#{dcr}/#{stream}") do
+      {:ok, %{"retention_days" => days}} when is_integer(days) and days > 0 -> days
+      _ -> nil
+    end
+  end
+
+  defp cutoff_for(nil), do: nil
+
+  defp cutoff_for(days),
+    do: DateTime.utc_now() |> DateTime.add(-days * 86_400, :second) |> DateTime.to_iso8601()
+
+  defp drop_aged_rows(_dcr, _stream, nil), do: :ok
+
+  defp drop_aged_rows(dcr, stream, cutoff) do
+    :smalt_sentinel_rows
+    |> Store.prefix_keys(row_prefix(dcr, stream))
+    |> Enum.each(fn key ->
+      case Store.get(:smalt_sentinel_rows, key) do
+        {:ok, row} ->
+          if aged?(row, cutoff), do: Store.delete(:smalt_sentinel_rows, key)
+
+        :error ->
+          :ok
+      end
+    end)
+  end
+
+  defp aged?(row, cutoff) do
+    case DateTime.from_iso8601(row["TimeGenerated"] || "") do
+      {:ok, dt, _} -> DateTime.compare(dt, cutoff_dt(cutoff)) == :lt
+      _ -> false
+    end
+  end
+
+  defp cutoff_dt(cutoff) do
+    {:ok, dt, _} = DateTime.from_iso8601(cutoff)
+    dt
+  end
+
+  defp timestamps(rows) do
+    rows
+    |> Enum.map(& &1["TimeGenerated"])
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp table_name(dcr, stream), do: "#{dcr}/#{stream}"
+
+  # ---------------------------------------------------------------------------
   # Query
   # ---------------------------------------------------------------------------
 

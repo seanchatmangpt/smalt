@@ -111,8 +111,12 @@ defmodule Smalt.Application do
   # egress paths to EgressRouter. Plug.Cascade is NOT usable here: both routers
   # define a catch-all `match _` that *sends* a 404, so cascade would stop at
   # the first router's 404 instead of falling through. Dispatch is by top-level
-  # path prefix. Egress owns `/attest`, `/app`, `/dbs`, `/keys`, `/topics`,
-  # `/atlas`, `/dataCollectionRules`, `/v1`, `/providers` — none of which are
+  # path prefix. Egress owns `/attest`, `/app`, `/dbs`, `/keys`, `/secrets`,
+  # `/kv`, `/topics`, `/atlas`, `/dataCollectionRules`, `/v1`, `/providers`,
+  # and the deleted-bundle recovery plane (`/deletedkeys`, `/deletedsecrets`,
+  # `/deletedcertificates` — PY wf6 xfail: real-SDK LRO recovery rides these
+  # on the twin) and the certificates plane (`/certificates` — KD-104: the
+  # TLS twin leg is the one real Azure SDK CertificateClient requires) — none of which are
   # ARM top-level prefixes on this host EXCEPT `/providers` since GAP-AZB20-6:
   # the ARM router now owns `POST /providers/Microsoft.ResourceGraph/resources`
   # (first top-level /providers prefix on ARM); on the TLS twin that path still
@@ -128,7 +132,11 @@ defmodule Smalt.Application do
       "/dbs/",
       "/keys",
       "/secrets",
+      "/certificates",
       "/kv",
+      "/deletedkeys",
+      "/deletedsecrets",
+      "/deletedcertificates",
       "/topics/",
       "/atlas/",
       "/dataCollectionRules",

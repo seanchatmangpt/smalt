@@ -1,4 +1,6 @@
 defmodule Smalt.DataPlane.Certificates do
+  # KD-COVERS: KD-104 (certificates plane: create/get/list/delete/purge;
+  # flip-gated on the CertificateClient-tier witness receipt)
   @moduledoc """
   Minimal Azure Key Vault Certificates data plane (KD-104) over a
   module-owned, heir'd ETS table `:smalt_vault_certificates`.
@@ -35,57 +37,49 @@ defmodule Smalt.DataPlane.Certificates do
   `recoveryLevel: "Purgeable"` (the deletion-is-terminal posture above).
   """
 
-  use GenServer
-
   alias Smalt.Store
 
   @table :smalt_vault_certificates
   @gregorian_offset 62_167_219_200
 
   # ---------------------------------------------------------------------------
-  # Table ownership (heir'd ETS)
+  # Table ownership (shadow-table law — same pattern as Smalt.Policy /
+  # cosmos.ex ru_table; NO request-linked owner GenServer)
   # ---------------------------------------------------------------------------
 
   @doc """
-  Ensures `#{@table}` exists, lazily starting this module's GenServer as
-  owner + heir so the table outlives whichever request process first
-  touches it. Idempotent; safe from any process.
+  Ensures `#{@table}` exists, creating it lazily from whichever process
+  first touches it with `heir: Process.whereis(:init)` so the table
+  outlives its creator.
+
+  Shadow-table law (KD-104 wire witness 2026-10-20): the first creator is
+  a Bandit request task — a request-linked GenServer owner (or a bare
+  creator with no heir) dies with the request process and every later
+  request sees a fresh store (witnessed: create 201 → get 404 on the same
+  beam, list empty, duplicate create 201 instead of 409). Heir to `:init`
+  (permanent, node-local) makes the table node-permanent; the
+  ArgumentError rescue keeps the multi-request create race fail-safe.
+  Idempotent; safe from any process.
   """
   @spec ensure_table :: :ok
   def ensure_table do
     if :ets.info(@table) == :undefined do
-      case start_link() do
-        {:ok, _pid} -> :ok
-        {:error, {:already_started, _pid}} -> :ok
+      try do
+        :ets.new(@table, [
+          :set,
+          :public,
+          :named_table,
+          {:heir, Process.whereis(:init), []},
+          read_concurrency: true,
+          write_concurrency: true
+        ])
+      rescue
+        ArgumentError -> :ok
       end
     end
 
     :ok
   end
-
-  @doc false
-  def start_link(_opts \\ []) do
-    GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
-  end
-
-  @impl true
-  def init(:ok) do
-    if :ets.info(@table) == :undefined do
-      :ets.new(@table, [
-        :set,
-        :public,
-        :named_table,
-        read_concurrency: true,
-        write_concurrency: true,
-        heir: self()
-      ])
-    end
-
-    {:ok, %{}}
-  end
-
-  @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
 
   # ---------------------------------------------------------------------------
   # Create
@@ -100,8 +94,8 @@ defmodule Smalt.DataPlane.Certificates do
 
   An existing name is refused atomically with typed
   `409 {"error":{"code":"CertificateNameAlreadyExists"}}` — the exists-check
-  AND the insert run as ONE GenServer `call`, so the create-on-existing
-  silent overwrite is structurally impossible.
+  AND the insert are ONE `:ets.insert_new/2` on the public table, so the
+  create-on-existing silent overwrite is structurally impossible.
   """
   @spec create(binary, Plug.Conn.t() | binary, map) :: {:ok, 201, map} | {:error, 409, map}
   def create(name, conn_or_host, body_params) do
@@ -158,14 +152,12 @@ defmodule Smalt.DataPlane.Certificates do
   end
 
   defp insert_new(name, record) do
-    GenServer.call(__MODULE__, {:insert_new, name, record})
-  end
-
-  @impl true
-  def handle_call({:insert_new, name, record}, _from, state) do
+    # The table is `:public` — insert_new is atomic from ANY process, so the
+    # exists-check + insert need no owner-GenServer serialization (the old
+    # GenServer.call hop was the request-linked lifetime defect, KD-104).
     case :ets.insert_new(@table, {name, record}) do
-      true -> {:reply, :ok, state}
-      false -> {:reply, {:error, :exists}, state}
+      true -> :ok
+      false -> {:error, :exists}
     end
   end
 
@@ -329,14 +321,24 @@ defmodule Smalt.DataPlane.Certificates do
     {{y, mo, d}, {h, mi, s}} =
       :calendar.gregorian_seconds_to_datetime(unix_seconds + @gregorian_offset)
 
-    list =
-      :io_lib.format(~c"~4.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0BZ", [y, mo, d, h, mi, s])
-      |> IO.iodata_to_binary()
-      |> String.to_charlist()
-
     if y >= 2050 do
+      list =
+        :io_lib.format(~c"~4.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0BZ", [y, mo, d, h, mi, s])
+        |> IO.iodata_to_binary()
+        |> String.to_charlist()
+
       {:generalizedTime, list}
     else
+      # RFC 5280: UTCTime carries a TWO-digit year ("YYMMDDHHMMSSZ"). Encoding
+      # the 4-digit year here made openssl answer "notBefore=Bad time value"
+      # (witnessed on the KD-104 wire-fix re-witness, 2026-10-20).
+      list =
+        :io_lib.format(~c"~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0BZ", [
+          rem(y, 100), mo, d, h, mi, s
+        ])
+        |> IO.iodata_to_binary()
+        |> String.to_charlist()
+
       {:utcTime, list}
     end
   end

@@ -14,9 +14,31 @@ defmodule Smalt.Mcp.Descriptor do
   """
 
   @capabilities %{
+    "appconfig.snapshots.list" => %{
+      name: "App Configuration snapshots list",
+      description:
+        "App Configuration snapshot settings (name, filters, status, itemCount, etag) — frozen KV bodies are never projected.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "arm.get" => %{
       name: "ARM resource get",
       description: "Read one ARM resource record from the substrate store by resource-id parts.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "atlas.lineage.get" => %{
+      name: "Atlas lineage get",
+      description:
+        "Purview Atlas v2 lineage slice for one guid (BFS over the lineage edge table; direction input/output/both, bounded depth).",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -56,6 +78,17 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "cosmos.stats" => %{
+      name: "Cosmos stats",
+      description:
+        "Content-free per-container document counts (databases, collections, documents) from the cosmos meta and doc tables.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "doctor.summary" => %{
       name: "Doctor summary",
       description:
@@ -82,6 +115,17 @@ defmodule Smalt.Mcp.Descriptor do
       name: "Health readiness",
       description:
         "Structural readiness verdict with scheduler/store/memory/cluster checks (degrades on structure, never load).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "kv.certificates.list" => %{
+      name: "Key Vault certificates list",
+      description:
+        "Certificate list envelope (id, name, attributes) from the certificates plane — never key or private-key material.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -133,9 +177,31 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "policy.remediations.list" => %{
+      name: "Policy remediations list",
+      description:
+        "Typed diagnostic remediation table (code to remediation command, closed severity vocabulary) from the substrate remediation registry.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "sb.peek" => %{
       name: "Service Bus peek",
       description: "Peek messages from a Service Bus queue without locking or completing them.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "sb.topics.list" => %{
+      name: "Service Bus topics list",
+      description:
+        "Service Bus topic resources (Microsoft.ServiceBus/namespaces/topics) from the substrate resource store, optional namespace filter.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,

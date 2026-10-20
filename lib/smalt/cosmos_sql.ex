@@ -9,10 +9,14 @@ defmodule Smalt.CosmosSql do
 
   Grammar (case-insensitive keywords, whitespace-insensitive):
 
-      SELECT <proj> FROM <alias> [WHERE <pred>] [ORDER BY <prop> [ASC|DESC]] [LIMIT <n>]
+      SELECT [TOP <n>] <proj> FROM <alias> [WHERE <pred>]
+             [ORDER BY <prop> [ASC|DESC]] [OFFSET <n> LIMIT <m>] [LIMIT <n>]
 
-      proj     ::= "*" | <path> ("," <path>)*
+      proj     ::= "*" | <item> ("," <item>)*
+      item     ::= <path> ["AS" <alias>]
+                | <scalar_fn> "(" <arg> ["," <arg>] ")" "AS" <alias>
       path     ::= <ident> ("." <ident>)*        -- e.g. c, c.a.b
+      scalar_fn ::= UPPER | LOWER | LENGTH | CONTAINS
       pred     ::= <or>
       or       ::= <and> ("OR" <and>)*
       and      ::= <unary> ("AND" <unary>)*
@@ -28,25 +32,43 @@ defmodule Smalt.CosmosSql do
       param    ::= "@" <ident>  -- bound from the query body's
                                 -- "parameters" array, by name
 
-  Anything outside the grammar (joins, UDFs, aggregates, TOP, OFFSET LIMIT,
-  subqueries, function calls other than the three named) is a typed
+  Anything outside the grammar (joins, UDFs, aggregates, subqueries, scalar
+  functions other than UPPER/LOWER/LENGTH/CONTAINS) is a typed
   `{:error, {:syntax, reason}}` -- the caller answers 400 SyntaxError,
   fail-closed. Aggregates (COUNT(1) et al.) are intentionally NOT admitted.
+
+  Cross-array iteration (`FROM t IN c.tags`) is parsed but deliberately typed
+  `{:error, {:unsupported, reason}}` (caller answers 400 InvalidQuery) -- the
+  per-document array fan-out would require alias-scope bindings the 80/20 AST
+  does not carry. Fail-closed, never a silent wrong answer.
   """
 
   @enforce_keys [:projection, :from]
-  defstruct [:projection, :from, where: nil, order_by: nil, limit: nil, params: %{}]
+  defstruct [
+    :projection,
+    :from,
+    where: nil,
+    order_by: nil,
+    top: nil,
+    limit: nil,
+    offset: nil,
+    params: %{}
+  ]
 
   @type t :: %__MODULE__{
-          projection: :star | {:props, [path()]},
+          projection: :star | {:props, [path() | proj_item()]},
           from: String.t(),
           where: expr() | nil,
           order_by: {path(), :asc | :desc} | nil,
+          top: pos_integer() | nil,
           limit: pos_integer() | nil,
+          offset: non_neg_integer() | nil,
           params: %{optional(String.t()) => term()}
         }
 
   @type path :: [String.t()]
+  @type proj_item :: {:fn, fn_name(), [path() | literal()], String.t()}
+  @type fn_name :: :upper | :lower | :length | :contains
 
   @type expr ::
           {:cmp, op(), expr(), expr()}
@@ -68,7 +90,7 @@ defmodule Smalt.CosmosSql do
 
   @doc "Parse `query` with bound `params` (map of @name => value)."
   @spec parse(String.t(), %{optional(String.t()) => term()}) ::
-          {:ok, t()} | {:error, {:syntax, String.t()}}
+          {:ok, t()} | {:error, {:syntax, String.t()}} | {:error, {:unsupported, String.t()}}
   def parse(query, params \\ %{}) when is_binary(query) and is_map(params) do
     with {:ok, tokens} <- tokenize(query),
          {:ok, %__MODULE__{} = ast} <- parse_tokens(tokens) do
@@ -100,6 +122,18 @@ defmodule Smalt.CosmosSql do
         nil -> matched
       end
 
+    matched =
+      case q.top do
+        nil -> matched
+        n -> Enum.take(matched, n)
+      end
+
+    matched =
+      case q.offset do
+        nil -> matched
+        n -> Enum.drop(matched, n)
+      end
+
     case q.limit do
       nil -> matched
       n when is_integer(n) and n > 0 -> Enum.take(matched, n)
@@ -108,11 +142,12 @@ defmodule Smalt.CosmosSql do
 
   @doc "One-shot: parse + evaluate, for the call site."
   @spec run(String.t(), [map()], %{optional(String.t()) => term()}) ::
-          {:ok, [map()]} | {:error, {:syntax, String.t()}}
+          {:ok, [map()]} | {:error, {:syntax, String.t()}} | {:error, {:unsupported, String.t()}}
   def run(query, docs, params \\ %{}) do
     case parse(query, params) do
       {:ok, q} -> {:ok, eval_docs(q, docs)}
       {:error, {:syntax, _}} = err -> err
+      {:error, {:unsupported, _}} = err -> err
     end
   end
 
@@ -126,15 +161,68 @@ defmodule Smalt.CosmosSql do
   defp project(%__MODULE__{projection: :star}, doc), do: doc
 
   # Subset projection: each projected path keys by its LAST segment (c.a.b ->
-  # "b"); a missing field is OMITTED (real Cosmos omits undefined, no null).
-  defp project(%__MODULE__{projection: {:props, paths}}, doc) do
-    Enum.reduce(paths, %{}, fn path, acc ->
-      case get_in_doc(doc, path) do
-        nil -> acc
-        value -> Map.put(acc, List.last(path), value)
-      end
+  # "b") unless an explicit AS alias renames it; a missing (undefined) field is
+  # OMITTED, never null (real Cosmos semantics). Function projections evaluate
+  # per-document; a non-applicable argument (e.g. UPPER over a number) yields
+  # undefined -> omitted.
+  defp project(%__MODULE__{projection: {:props, items}}, doc) do
+    Enum.reduce(items, %{}, fn
+      path, acc when is_list(path) ->
+        case get_in_doc(doc, path) do
+          nil -> acc
+          value -> Map.put(acc, List.last(path), value)
+        end
+
+      {path, alias}, acc ->
+        case get_in_doc(doc, path) do
+          nil -> acc
+          value -> Map.put(acc, alias, value)
+        end
+
+      {:fn, name, args, alias}, acc ->
+        case eval_fn(name, args, doc) do
+          nil -> acc
+          value -> Map.put(acc, alias, value)
+        end
     end)
   end
+
+  @doc false
+  def eval_fn(name, args, doc)
+
+  def eval_fn(:upper, [path], doc) do
+    case get_in_doc(doc, path) do
+      v when is_binary(v) -> String.upcase(v)
+      _ -> nil
+    end
+  end
+
+  def eval_fn(:lower, [path], doc) do
+    case get_in_doc(doc, path) do
+      v when is_binary(v) -> String.downcase(v)
+      _ -> nil
+    end
+  end
+
+  def eval_fn(:length, [path], doc) do
+    case get_in_doc(doc, path) do
+      v when is_binary(v) -> String.length(v)
+      v when is_list(v) -> length(v)
+      _ -> nil
+    end
+  end
+
+  def eval_fn(:contains, [a, b], doc) do
+    case {proj_arg(a, doc), proj_arg(b, doc)} do
+      {x, y} when is_binary(x) and is_binary(y) -> String.contains?(x, y)
+      _ -> nil
+    end
+  end
+
+  def eval_fn(_name, _args, _doc), do: nil
+
+  defp proj_arg(path, doc) when is_list(path), do: get_in_doc(doc, path)
+  defp proj_arg(lit, _doc), do: lit
 
   # Property access: missing field or non-map traversal step -> nil
   # (undefined in Cosmos SQL terms; comparisons against undefined are false).
@@ -285,6 +373,9 @@ defmodule Smalt.CosmosSql do
     :asc,
     :desc,
     :limit,
+    :offset,
+    :top,
+    :as,
     :and,
     :or,
     :not,
@@ -385,6 +476,9 @@ defmodule Smalt.CosmosSql do
       {:ok, _ast, _leftover} ->
         {:error, {:syntax, "Unexpected tokens after the query"}}
 
+      {:error, {:unsupported, _}} = err ->
+        err
+
       {:error, {:syntax, _}} = err ->
         err
     end
@@ -406,8 +500,8 @@ defmodule Smalt.CosmosSql do
 
     projection =
       case ast.projection do
-        {:props, paths} ->
-          {:props, Enum.map(paths, &strip_path_alias(&1, down))}
+        {:props, items} ->
+          {:props, Enum.map(items, &strip_item_alias(&1, down))}
 
         other ->
           other
@@ -420,6 +514,19 @@ defmodule Smalt.CosmosSql do
         :projection => projection
     }
   end
+
+  defp strip_item_alias({:fn, f, args, alias}, down) do
+    args =
+      Enum.map(args, fn
+        path when is_list(path) -> strip_path_alias(path, down)
+        lit -> lit
+      end)
+
+    {:fn, f, args, alias}
+  end
+
+  defp strip_item_alias({path, alias}, down), do: {strip_path_alias(path, down), alias}
+  defp strip_item_alias(path, down) when is_list(path), do: strip_path_alias(path, down)
 
   defp strip_path_alias([head | rest], down) do
     if String.downcase(head) == down and rest != [] do
@@ -449,17 +556,21 @@ defmodule Smalt.CosmosSql do
   end
 
   defp parse_select([{:kw, :select} | rest]) do
-    with {:ok, projection, rest} <- parse_projection_wrapped(rest),
+    with {:ok, top, rest} <- parse_top(rest),
+         {:ok, projection, rest} <- parse_projection_wrapped(rest),
          {:ok, from, rest} <- parse_from(rest),
          {:ok, where, rest} <- parse_where(rest),
          {:ok, order_by, rest} <- parse_order_by(rest),
-         {:ok, limit, rest} <- parse_limit(rest) do
+         {:ok, offset, limit, rest} <- parse_offset_limit(rest),
+         {:ok, limit, rest} <- parse_trailing_limit(limit, rest) do
       {:ok,
        %__MODULE__{
          projection: projection,
          from: from,
          where: where,
          order_by: order_by,
+         top: top,
+         offset: offset,
          limit: limit
        }, rest}
     end
@@ -467,28 +578,143 @@ defmodule Smalt.CosmosSql do
 
   defp parse_select(_), do: {:error, {:syntax, "Expected SELECT"}}
 
+  defp parse_top([{:kw, :top}, {:lit, n} | rest]) when is_integer(n) and n > 0,
+    do: {:ok, n, rest}
+
+  defp parse_top([{:kw, :top} | _]),
+    do: {:error, {:syntax, "TOP expects a positive integer"}}
+
+  defp parse_top(rest), do: {:ok, nil, rest}
+
+  # Real Cosmos pair form: OFFSET <n> LIMIT <m> (both required together,
+  # n >= 0, m >= 1). A bare OFFSET without LIMIT is a typed syntax error.
+  defp parse_offset_limit([{:kw, :offset}, {:lit, n}, {:kw, :limit}, {:lit, m} | rest])
+       when is_integer(n) and n >= 0 and is_integer(m) and m > 0,
+       do: {:ok, n, m, rest}
+
+  defp parse_offset_limit([{:kw, :offset} | _]),
+    do: {:error, {:syntax, "OFFSET requires a paired non-negative OFFSET <n> LIMIT <m>"}}
+
+  defp parse_offset_limit(rest), do: {:ok, nil, nil, rest}
+
+  # Legacy (pre-raise) bare LIMIT clause: still admitted after ORDER BY / the
+  # OFFSET LIMIT pair for back-compat with existing consumers.
+  defp parse_trailing_limit(nil, rest), do: parse_limit(rest)
+  defp parse_trailing_limit(limit, rest), do: {:ok, limit, rest}
+
   defp parse_projection([{:star, nil} | rest]), do: {:ok, :star, rest}
   defp parse_projection(tokens), do: parse_prop_list(tokens, [])
 
   defp parse_projection_wrapped(tokens) do
-    with {:ok, paths, rest} <- parse_projection(tokens) do
-      case paths do
+    with {:ok, items, rest} <- parse_projection(tokens) do
+      case items do
         :star -> {:ok, :star, rest}
-        paths -> {:ok, {:props, paths}, rest}
+        items -> {:ok, {:props, items}, rest}
       end
     end
   end
 
+  # Scalar function projection: UPPER(x) / LOWER(x) / LENGTH(x) / CONTAINS(a, b),
+  # alias mandatory (real Cosmos requires a target for a computed value).
+  defp parse_prop_list([{:ident, fname}, {:lparen, nil} | rest], acc) do
+    known = %{"UPPER" => :upper, "LOWER" => :lower, "LENGTH" => :length, "CONTAINS" => :contains}
+
+    case Map.fetch(known, String.upcase(fname)) do
+      {:ok, f} ->
+        with {:ok, args, rest2} <- parse_fn_args(rest, f, []) do
+          case rest2 do
+            [{:kw, :as}, {:ident, alias} | rest3] ->
+              parse_prop_list_tail(rest3, [{:fn, f, args, alias} | acc])
+
+            _ ->
+              {:error,
+               {:syntax,
+                "AS alias required after #{String.upcase(fname)}() projection (computed values need a target name)"}}
+          end
+        end
+
+      :error ->
+        {:error, {:syntax, "Unknown function in projection: #{fname}"}}
+    end
+  end
+
+  # CONTAINS is a lexer keyword, so its projection form rides a kw-token clause
+  # (same alias-mandatory contract as the ident-named scalar fns).
+  defp parse_prop_list([{:kw, :contains}, {:lparen, nil} | rest], acc) do
+    with {:ok, args, rest2} <- parse_fn_args(rest, :contains, []) do
+      case rest2 do
+        [{:kw, :as}, {:ident, alias} | rest3] ->
+          parse_prop_list_tail(rest3, [{:fn, :contains, args, alias} | acc])
+
+        _ ->
+          {:error, {:syntax, "AS alias required after CONTAINS() projection (computed values need a target name)"}}
+      end
+    end
+  end
+
+  # Plain (optionally AS-renamed) path item. Ordered AFTER the fn clause so
+  # `UPPER(` is claimed by the function arm, not consumed as a bare path.
   defp parse_prop_list([{:ident, name} | rest], acc) do
     path = String.split(name, ".")
 
     case rest do
       [{:comma, nil} | rest2] -> parse_prop_list(rest2, [path | acc])
+      [{:kw, :as}, {:ident, alias} | rest2] -> {:ok, Enum.reverse([{path, alias} | acc]), rest2}
       _ -> {:ok, Enum.reverse([path | acc]), rest}
     end
   end
 
   defp parse_prop_list(_, _acc), do: {:error, {:syntax, "Projection path expected"}}
+
+  # Continuation of a comma-separated projection list after a function item.
+  defp parse_prop_list_tail([{:comma, nil} | rest], acc), do: parse_prop_list(rest, acc)
+  defp parse_prop_list_tail(rest, acc), do: {:ok, Enum.reverse(acc), rest}
+
+  # Function arguments over tokens: scalar fns take 1 arg (UPPER/LOWER/LENGTH)
+  # or 2 (CONTAINS); each arg is a path (ident) or a literal.
+  defp parse_fn_args(rest, f, _acc) do
+    n = if f == :contains, do: 2, else: 1
+
+    with {:ok, args, rest2} <- parse_fn_arg_list(rest, n, []) do
+      case rest2 do
+        [{:rparen, nil} | rest3] -> {:ok, args, rest3}
+        _ -> {:error, {:syntax, "Expected ) after #{String.upcase(Atom.to_string(f))}() arguments"}}
+      end
+    end
+  end
+
+  defp parse_fn_arg_list(rest, 0, acc), do: {:ok, Enum.reverse(acc), rest}
+
+  defp parse_fn_arg_list(rest, n, acc) do
+    case rest do
+      [tok | rest2] when elem(tok, 0) in [:ident, :lit] ->
+        with {:ok, arg} <- parse_fn_arg(tok) do
+          if n == 1 do
+            parse_fn_arg_list(rest2, 0, [arg | acc])
+          else
+            case rest2 do
+              [{:comma, nil} | rest3] -> parse_fn_arg_list(rest3, 1, [arg | acc])
+              _ -> {:error, {:syntax, "Expected , between function arguments"}}
+            end
+          end
+        end
+
+      _ ->
+        {:error, {:syntax, "Malformed function arguments"}}
+    end
+  end
+
+  defp parse_fn_arg({:ident, name}), do: {:ok, String.split(name, ".")}
+  defp parse_fn_arg({:lit, v}), do: {:ok, v}
+  defp parse_fn_arg(_), do: {:error, {:syntax, "Function argument expected"}}
+
+  # Cross-array iteration (`FROM t IN c.tags`): parsed, then deliberately
+  # typed-UNSUPPORTED — see moduledoc.
+  defp parse_from([{:kw, :from}, {:ident, alias}, {:kw, :in}, {:ident, _src} | _rest]) do
+    {:error,
+     {:unsupported,
+      "FROM #{alias} IN ... (cross-array iteration) is not supported by this query surface"}}
+  end
 
   defp parse_from([{:kw, :from}, {:ident, name} | rest]), do: {:ok, name, rest}
   defp parse_from(_), do: {:error, {:syntax, "Expected FROM <alias>"}}

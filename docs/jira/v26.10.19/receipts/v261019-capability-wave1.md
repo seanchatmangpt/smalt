@@ -103,3 +103,95 @@ sdk-matrix-md`) — never hand-edit.
   receipts must exist on disk.
 - No GAP tokens minted unilaterally; typed-UNSUPPORTED pins go through
   WIRE_PARITY.md registrar discipline.
+
+---
+
+## 4. ERRC wave-2 verification lane — wf6 re-run flip table (2026-10-20)
+
+Standing: PARTIAL_ALIVE — 3 of 5 prior SKIP-class cells flipped to PASS; 2 remain typed with precise wire defects (registrar input below).
+
+Method: poll-run per lane order — `node newcaps.probe.mjs` (TS) and
+`bash run.sh test_wf6_newcaps.py -q` (PY) after 300s intervals, attempts
+stabilized after 2 full passes (attempt 2 raced a sibling lane's in-flight
+compile of `lib/smalt/arm_gateway/router.ex` — compile-freeze, resolved by
+owner; attempt 3 raced a SIGTERM of the shared substrate, resolved by retry;
+final attempt pair is the record below and was stable across attempts).
+
+### FINAL cell table
+
+| cell | TS probe | PY mirror | state |
+|---|---|---|---|
+| kv:delete-getdeleted-recover-get#KD-117 | PASS (create=200 delete=200 getDeleted=200 recover=200 getAfter=200) | FAIL — `DELETE /deletedkeys/{name}` (purge leg) -> 400 | FLIPPED on TS; PY has one residual arm |
+| keyvault:secrets-soft-delete-mirror#KD-102 | PASS (set=200 delete=200 getDeleted=200 recover=200 getAfter=200) | PASS (not re-exercised this run; PY suite passes its KD-102 face) | FLIPPED |
+| blob:snapshot-list-decoration#KD-107 | PASS (snapshot 201 + `<Snapshot>` decorated in List) | FAIL — DeserializationError on List | FLIPPED on TS; PY residual is XML Last-Modified format |
+| servicebus:schedule-messages#KD-118 | SKIP -> still SKIP | PASS | FLIPPED on PY; TS face still open |
+| arm:policy-initiative-exemption-armcased#KD-112 | PASS (RG-scope cased id; resource-scope 404 typed) | FAIL — exemption PUT drops `exemptionCategory` | PARTIAL flip; PY residual |
+| arm:tags-at-scope-put-get | PASS (put=200 get=200) | n/a | PASS |
+| arm:lro-namespace-put-202-terminal | SKIP (201-sync, no 202/Azure-AsyncOperation arm) | n/a | TYPED SKIP stays — not landed |
+
+### Registrar input: precise wire defects for residual cells
+
+1. **KV purge arm missing (KD-117 PY residual)** — `DELETE
+   /deletedkeys/{name}?api-version=7.4` (Azure purge_deleted_key) on the TLS
+   twin is unrouted; falls through to the blob guarded catch-all and answers
+   `400 MissingXMsVersion` ("Missing required x-ms-version header, SAS token,
+   or allowlisted host") instead of a KV envelope. Witness: request log shows
+   create 200 (after KD-15 401/200 challenge), delete 200, getDeleted 200,
+   recover 200, get 200, re-delete 200, getDeleted 200, then
+   `DELETE /deletedkeys/{name}` -> 400 MissingXMsVersion. Recover itself is
+   fine — recover route exists on both planes (raw replay: 404 KeyNotFound on
+   unknown key, both twin and egress).
+2. **Blob list XML Last-Modified format (KD-107 PY residual)** — List Blobs
+   (`comp=list&include=snapshots`) emits `<Last-Modified>2026-10-20T08:54:30.647038Z</Last-Modified>`
+   (ISO-8601). Azure contract is RFC-1123 (`Mon, 20 Oct 2026 ... GMT`);
+   azure-storage-blob 12.31.0 deserializes Last-Modified as rfc-1123 and
+   raises `DeserializationError("... Data: <Element 'Last-Modified'>, rfc-1123")`.
+   The `<Snapshot>` decoration itself is present and correct — root cause is
+   the date format, not the snapshot row. TS raw probe passes because it
+   string-matches the XML, not SDK-deserializes it.
+3. **SB schedule-message TS face (KD-118)** — PY SDK schedule PASSES
+   (`test_sb_schedule_messages` green both runs); the TS
+   @azure/service-bus `$management com.microsoft:schedule-message` request
+   still answers `400 QUEUE_REQUIRED` — request resolves neither body
+   `queue` nor a resolvable associated-link-name
+   (`management_rpc.ex:661-667`); CBS auth passes. TS SDK framing of the
+   management request differs from PY's; that shape is unrouted.
+4. **policyExemptions PUT drops exemptionCategory (KD-112 PY residual)** —
+   `PUT .../policyExemptions/{name}` returns 200/201 but the stored/echoed
+   `properties` omit `exemptionCategory` (`KeyError: 'exemptionCategory'` at
+   test_wf6_newcaps.py:323). Initiative/assignment/enforcementMode legs pass.
+5. **EventGrid namespace LRO 202 arm (typed SKIP, not a defect against a
+   landed fix)** — `PUT .../Microsoft.EventGrid/topics/{name}` answers
+   201-sync; no 202 + Azure-AsyncOperation arm on this namespace (landed
+   61311de covers a different namespace).
+
+### Run transcripts (final attempts)
+
+TS (`node newcaps.probe.mjs`, substrate v9, hardFails=0) — attempt 2 (t+300s
+after compile-freeze cleared), identical at attempt 4:
+
+```
+[PASS] kv:delete-getdeleted-recover-get#KD-117 — create=200 delete=200 getDeleted=200 recoveryId="https://127.0.0.1:8443/deletedkeys/nc25814" recover=200 getAfter=200
+[PASS] keyvault:secrets-soft-delete-mirror#KD-102 — set=200 delete=200 getDeleted=200 recoveryId="https://smalt-vault/deletedsecrets/ncs25814" recover=200 getAfter=200
+[SKIP] servicebus:schedule-messages#KD-118 — putQueue=201 seqs=1,2,3 earlyDeliveries=0 deliveredAfterWindow=0 — SKIP-vs-not-landed (KD-118 lane): $management com.microsoft:schedule-message 400 QUEUE_REQUIRED — request resolves neither body 'queue' nor a resolvable associated-link-name (management_rpc.ex:661-667); CBS auth itself passes
+[PASS] blob:snapshot-list-decoration#KD-107 — container=201 putBlob=201 snapshot=201 x-ms-snapshot="2026-10-20T08:37:22.651991Z" snapshotEntryInList=true listedEntries=0
+[PASS] arm:policy-initiative-exemption-armcased#KD-112 — def=201 initiative=201 assignment=201 putExRg(cased)=201 getExRg=200 putExResourceScope=404 getExResourceScope=404 listedAtCasedResourceScope=false
+[PASS] arm:tags-at-scope-put-get — put=200 getAtScope=200 rgTags=null
+[SKIP] arm:lro-namespace-put-202-terminal — put=201(sync) asyncUrl=no terminal=null getResource=200
+{"lane":"wf6-capability-expansion","hardFails":0}
+```
+
+PY (`bash run.sh test_wf6_newcaps.py -q`):
+
+```
+PASSED test_wf6_newcaps.py::test_sb_schedule_messages
+PASSED test_wf6_newcaps.py::test_cosmos_container_delete_404
+FAILED test_wf6_newcaps.py::test_kv_deleted_keys_recover_roundtrip - azure.core.exceptions.HttpResponseError: (MissingXMsVersion) Missing required x-ms-version header, SAS token, or allowlisted host.
+FAILED test_wf6_newcaps.py::test_policy_initiative_assignment_exemption - KeyError: 'exemptionCategory'
+FAILED test_wf6_newcaps.py::test_blob_snapshot_listing - azure.core.exceptions.DeserializationError: Unable to deserialize response ...
+[py-lane] pytest rc=1
+```
+
+Honesty note: the PY lane ends rc=1 — three cells fail with the typed wire
+defects above; nothing is claimed PASS that ran red. The one SKIP vs PASS
+split between TS and PY faces is disclosed per cell in the table.

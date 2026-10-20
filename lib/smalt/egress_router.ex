@@ -796,6 +796,17 @@ defmodule Smalt.EgressRouter do
     end)
   end
 
+  # Azure parity: POST /keys/{name}/rotate mints a new version from the SAME
+  # policy (kty/key_ops/release_policy carried; old versions retained). Literal
+  # route, NOT the kv_crypto_dispatch catch-all: the common rotate body is
+  # EMPTY and with_valid_body? refuses %{} — rotation must not demand a body.
+  # Defined before /keys/:name/:action so the literal wins.
+  post "/keys/:name/rotate" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.rotate_key(name, conn.body_params))
+    end)
+  end
+
   # Real JsonWebKey form: RSA carries n = base64url modulus, e = base64url
   # exponent ("AQAB" for 65537); oct carries k = base64url key material (the
   # derived AES key is deterministic per name — disclosed dev material).
@@ -1883,13 +1894,17 @@ defmodule Smalt.EgressRouter do
           if not_ready?(conn, [BlobStorage]) do
             route_not_ready(conn)
           else
-            {:ok, body, conn} = read_body(conn)
+            case acl_body(conn) do
+              {:ok, body, conn} ->
+                case BlobStorage.set_container_acl(account, container, body, header_map(conn)) do
+                  {:ok, status, headers, _record} ->
+                    conn
+                    |> put_resp_headers(headers)
+                    |> send_resp(status, "")
 
-            case BlobStorage.set_container_acl(account, container, body, header_map(conn)) do
-              {:ok, status, headers, _record} ->
-                conn
-                |> put_resp_headers(headers)
-                |> send_resp(status, "")
+                  {:error, status, code, msg} ->
+                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                end
 
               {:error, status, code, msg} ->
                 blob_error(conn, status, not_found_error(code) |> put_message(msg))
@@ -2241,6 +2256,36 @@ defmodule Smalt.EgressRouter do
     blob_name = Enum.join(blob_name, "/")
 
     blob_route(conn, fn conn ->
+      # KD-108 (blob lane remainder): snapshot lease wire arm —
+      # PUT ?comp=lease&sharesnapshot=<ts> with x-ms-lease-action rides the
+      # FROZEN snapshot record (BlobStorage.lease_blob_snapshot/6, per-snapshot
+      # lease id namespace). Runs BEFORE the fail-closed comp registration so
+      # the implemented pair (comp=lease AND sharesnapshot) is never eaten by
+      # the 400 default-deny; comp=lease WITHOUT sharesnapshot stays
+      # default-deny (400 GAP) until the base-blob lease surface registers.
+      if conn.query_params["comp"] == "lease" and
+           conn.query_params["sharesnapshot"] not in [nil, ""] do
+        if not_ready?(conn, [BlobStorage]) do
+          route_not_ready(conn)
+        else
+          case BlobStorage.lease_blob_snapshot(
+                 account,
+                 container,
+                 blob_name,
+                 conn.query_params["sharesnapshot"],
+                 header_map(conn)["x-ms-lease-action"],
+                 header_map(conn)
+               ) do
+            {:ok, status, headers, _record} ->
+              conn
+              |> put_resp_headers(headers)
+              |> send_resp(status, "")
+
+            {:error, status, code, msg} ->
+              blob_error(conn, status, not_found_error(code) |> put_message(msg))
+          end
+        end
+      else
       # GAP-AUD1-01 (v26.10.14, lane W-5): fail-closed comp registration on the
       # blob PUT arm. Any comp value with no implemented handler here (snapshot,
       # page, tags, query, tier, expiry, seal, lease, copy, ...) previously fell
@@ -2386,6 +2431,7 @@ defmodule Smalt.EgressRouter do
             end
           end
         end
+      end
       end
     end)
   end
@@ -2907,6 +2953,19 @@ defmodule Smalt.EgressRouter do
       params = fetchd_query_params(conn)
       Map.get(params, "comp") in [nil, ""]
     end
+  end
+
+  # KD-108 (ACL wire seam): Put Container ACL (PUT /:account/:container
+  # ?restype=container&comp=acl) carries a RAW SignedIdentifiers XML body.
+  # Without the exemption Plug.Parsers' :urlencoded parser consumes it (curl's
+  # default Content-Type for --data-binary is x-www-form-urlencoded; SDKs send
+  # text/xml variants that can match json/urlencoded decoders), the arm's
+  # read_body then returns "" and parse_signed_identifiers("") == {:ok, []}
+  # silently CLEARS the ACL — the witnessed PUT-204-then-empty-GET divergence.
+  # Reserved first segments (dbs, ...) still go through the parsers.
+  defp raw_blob_put?(%Plug.Conn{method: "PUT", path_info: [first, _container]} = conn) do
+    String.downcase(URI.decode(first)) not in @non_blob_put_namespaces and
+      fetchd_query_params(conn) |> Map.get("comp") == "acl"
   end
 
   defp raw_blob_put?(_conn), do: false
@@ -4128,6 +4187,25 @@ defmodule Smalt.EgressRouter do
 
       _other ->
         {:error, conn}
+    end
+  end
+
+  # KD-108 wire seam (ACL PUT): the raw SignedIdentifiers body may already
+  # have been consumed by Plug.Parsers (a urlencoded/json Content-Type — curl's
+  # default for --data-binary is x-www-form-urlencoded — matches :urlencoded
+  # and eats the XML). Read the raw cache first (Smalt.Auth.BodyCache stashes
+  # the complete raw body in :smalt_raw_body whenever a parser ran), fall back
+  # to the stream for parser-exempt requests (raw_blob_put? style paths).
+  # Without this, read_body/1 returns "" and the ACL arm silently CLEARS the
+  # signed identifiers (204 with parse_signed_identifiers("") == {:ok, []}).
+  defp acl_body(conn) do
+    case conn.private[:smalt_raw_body] do
+      raw when is_binary(raw) -> {:ok, raw, conn}
+      _ ->
+        case Plug.Conn.read_body(conn) do
+          {:ok, raw, conn} -> {:ok, raw, conn}
+          {:error, reason} -> {:error, 400, "InvalidRequestBody", inspect(reason)}
+        end
     end
   end
 

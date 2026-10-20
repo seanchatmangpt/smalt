@@ -1557,6 +1557,11 @@ defmodule Smalt.DataPlane.Cosmos do
         {:error, {:syntax, msg}} ->
           error_response(db, coll, 400, "SyntaxError", msg)
 
+        # Parsed-but-not-implemented surface (cross-array iteration): typed
+        # 400 InvalidQuery, fail-closed — never a silent wrong answer.
+        {:error, {:unsupported, msg}} ->
+          error_response(db, coll, 400, "InvalidQuery", msg)
+
         {:ok, ast} ->
           scan_query_docs(db, coll, headers, ast)
       end
@@ -1839,8 +1844,9 @@ defmodule Smalt.DataPlane.Cosmos do
   # Wraps a doc-surface handler: (1) master-key Authorization validation in
   # :enforce auth_mode only (Bearer/anonymous paths untouched); (2) in-memory
   # fixed-window RU throttle per partition-route (container), active only when
-  # Application.get_env(:smalt, :cosmos_ru_limit) is set (default :infinity —
-  # behavior unchanged unless configured); (3) x-ms-consistency-level echo.
+  # Smalt.Config.cosmos_ru_limit/0 resolves a positive integer (env-first-int
+  # SMALT_COSMOS_RU_LIMIT; default :infinity — behavior unchanged unless
+  # configured); (3) x-ms-consistency-level echo.
   defp gate(verb, resource_type, resource_link, headers, fun) do
     with :ok <- authorize(verb, resource_type, resource_link, headers),
          :ok <- throttle(resource_link) do
@@ -1924,20 +1930,25 @@ defmodule Smalt.DataPlane.Cosmos do
      }}
   end
 
-  # AZB-06 data-plane profile read site: the `:cosmos` profile's
-  # `max_ru_limit` (config/env/az_prod_data.exs) maps ONTO the existing flat
-  # key `:cosmos_ru_limit` — profile wins when present, flat key stays
-  # authoritative otherwise (single source; default boot unchanged).
-  # `:unbounded` is the profile's explicit no-throttle value.
+  # Single resolution chain for the RU throttle limit:
+  #   SMALT_COSMOS_RU_LIMIT (parsed int) > named throttle profile (:cosmos pk)
+  #   > `:cosmos` profile kw `max_ru_limit` (AZB-06; :unbounded = no throttle)
+  #   > flat app-env key :cosmos_ru_limit > :infinity.
+  # Smalt.Config.cosmos_ru_limit/0 implements the first, second and last
+  # layers; the former local Application.get_env reads here bypassed the env
+  # and throttle-profile layers entirely.
   defp ru_limit do
-    profile = Smalt.Config.cosmos()
+    case Smalt.Config.cosmos_ru_limit() do
+      :infinity ->
+        # No env override and :unbounded throttle profile — honor the
+        # `:cosmos` profile kw's explicit max_ru_limit (AZB-06) if present.
+        case Smalt.Config.cosmos() do
+          kw when is_list(kw) -> Keyword.get(kw, :max_ru_limit, :infinity)
+          _ -> :infinity
+        end
 
-    case profile do
-      kw when is_list(kw) ->
-        Keyword.get(kw, :max_ru_limit, Application.get_env(:smalt, :cosmos_ru_limit, :infinity))
-
-      _ ->
-        Application.get_env(:smalt, :cosmos_ru_limit, :infinity)
+      limit ->
+        limit
     end
   end
 
@@ -1966,7 +1977,19 @@ defmodule Smalt.DataPlane.Cosmos do
   defp ru_table do
     if :ets.info(:smalt_cosmos_ru) == :undefined do
       try do
-        :ets.new(:smalt_cosmos_ru, [:named_table, :public, :set, read_concurrency: true])
+        :ets.new(:smalt_cosmos_ru, [
+          :named_table,
+          :public,
+          :set,
+          {:read_concurrency, true},
+          # Shadow-table law (see Smalt.Policy): the first creator can be a
+          # Bandit request task — without an heir the table dies with that
+          # request process, silently DISARMING the throttle (counters reset
+          # to a fresh window every request). Heir to :init makes it
+          # node-permanent; the ArgumentError rescue keeps the create race
+          # fail-safe.
+          {:heir, Process.whereis(:init), []}
+        ])
       rescue
         ArgumentError -> :ok
       end

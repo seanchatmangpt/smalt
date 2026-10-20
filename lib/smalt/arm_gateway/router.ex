@@ -30,6 +30,7 @@ defmodule Smalt.ArmGateway.Router do
   alias Smalt.DataPlane.Cosmos
   alias Smalt.DataPlane.BlobStorage
   alias Smalt.DataPlane.VaultData
+  alias Smalt.Messaging.EventHubs
   alias Smalt.Policy
 
   plug(Plug.Logger)
@@ -1418,6 +1419,110 @@ defmodule Smalt.ArmGateway.Router do
     send_list(conn, items)
   end
 
+  # Wave-2 ARM↔engine bridge (w2j lane): EventHub consumer groups.
+  @cg_child_type "Microsoft.EventHub/namespaces/eventhubs/consumergroups"
+
+  # The ARM face of the wave-1 consumer-group engine. Engine is the source of
+  # truth for existence/created-ts/deletability; the ARM Store mirrors the
+  # rendered envelope so the store-driven $default LIST (handle_cg_list,
+  # shim-court cg-default) stays coherent with engine state.
+  defp handle_cg_engine(conn, verb, child_type, sub_id, rg_name, parent_rel, rel_path) do
+    hub = parent_rel |> String.split("/") |> List.last()
+    name = rel_path |> String.split("/") |> List.last()
+    base = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{parent_rel}/consumergroups"
+
+    case verb do
+      :put ->
+        with {:ok, _full_type, _merged} <- validate_child_put(conn, child_type),
+             {:ok, rec} <-
+               EventHubs.create_consumer_group(hub, name, user_metadata: cg_user_metadata(conn.body_params)) do
+          record = cg_envelope(child_type, "#{base}/#{name}", name, rec, conn.body_params)
+          key = String.downcase("#{base}/#{name}")
+
+          existed? = match?({:ok, _}, Store.get(:smalt_resources, key))
+          Store.put(:smalt_resources, key, record)
+
+          send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(record))
+        else
+          {:respond, conn} -> conn
+          {:error, face} -> cg_face_error(conn, face)
+        end
+
+      :get ->
+        with :ok <- check_api_version(conn, child_type) do
+          case EventHubs.get_consumer_group(hub, name) do
+            {:ok, rec} ->
+              record =
+                case Store.get(:smalt_resources, String.downcase("#{base}/#{name}")) do
+                  {:ok, stored} -> stored
+                  :error -> cg_envelope(child_type, "#{base}/#{name}", name, rec, nil)
+                end
+
+              send_json(conn, 200, Jason.encode!(record))
+
+            {:error, face} ->
+              cg_face_error(conn, face)
+          end
+        else
+          {:respond, conn} -> conn
+        end
+
+      :delete ->
+        with :ok <- check_api_version(conn, child_type) do
+          case EventHubs.delete_consumer_group(hub, name) do
+            :ok ->
+              Store.delete(:smalt_resources, String.downcase("#{base}/#{name}"))
+              send_json(conn, 200, "")
+
+            {:error, face} ->
+              cg_face_error(conn, face)
+          end
+        else
+          {:respond, conn} -> conn
+        end
+
+      :list_cg ->
+        # Store-driven list is kept verbatim (shim-court cg-default): PUT
+        # mirrors to the store, so enumeration stays $default-complete.
+        handle_cg_list(conn, child_type, sub_id, rg_name, parent_rel)
+    end
+  end
+
+  defp cg_user_metadata(payload) when is_map(payload) do
+    case payload |> Map.get("properties", %{}) |> Map.get("userMetadata") do
+      meta when is_binary(meta) -> meta
+      _ -> ""
+    end
+  end
+
+  defp cg_user_metadata(_payload), do: ""
+
+  defp cg_envelope(child_type, id, name, rec, nil) do
+    build_resource_record(child_type, id, name, %{
+      "properties" => %{
+        "userMetadata" => rec["user_metadata"],
+        "createdAt" => cg_iso8601(rec["created"])
+      }
+    })
+  end
+
+  defp cg_envelope(child_type, id, name, rec, payload) do
+    child_type
+    |> build_resource_record(id, name, payload)
+    |> put_in(["properties", "createdAt"], cg_iso8601(rec["created"]))
+    |> put_in(["properties", "userMetadata"], rec["user_metadata"])
+  end
+
+  defp cg_iso8601(ms) when is_integer(ms) do
+    DateTime.from_unix!(ms, :millisecond) |> DateTime.to_iso8601()
+  end
+
+  defp cg_iso8601(_), do: nil
+
+  defp cg_face_error(conn, %{status: status, code: code, description: description}) do
+    send_arm_error(conn, status, code, description)
+  end
+
   # Messaging children (ServiceBus queues/topics/subscriptions, EventHub
   # eventhubs/consumergroups) are ARM children of an existing parent namespace
   # (or topic/hub); PUT/GET/LIST/DELETE 404 ResourceNotFound when the parent
@@ -1451,6 +1556,14 @@ defmodule Smalt.ArmGateway.Router do
     case parent_key do
       {:ok, _} ->
         case verb do
+          # Wave-2 cg bridge: EventHub consumer-group children delegate to the
+          # wave-1 engine (Smalt.Messaging.EventHubs cg_* surface) — created ts
+          # preserved on re-PUT, `$default` undeletable (409), group-scoped
+          # checkpoints cascade. The ARM Store still mirrors the record so the
+          # shim-court-covered $default LIST keeps its store-driven shape.
+          _ when child_type == @cg_child_type ->
+            handle_cg_engine(conn, verb, child_type, sub_id, rg_name, parent_rel, rel_path)
+
           :put ->
             if String.starts_with?(child_type, "Microsoft.DocumentDB/databaseAccounts/sql") do
               handle_cosmos_child_put(conn, child_type, sub_id, rg_name, rel_path)
@@ -1498,6 +1611,189 @@ defmodule Smalt.ArmGateway.Router do
   defp parent_not_found(conn, parent) do
     send_arm_error(conn, 404, "ResourceNotFound", "The parent #{parent} could not be found.")
   end
+
+  # --- Service Bus topics/subscriptions (SB-TOPICS lane) -----------------------------
+  #
+  # SB-aware messaging-child handling for the topic + topic-subscription ARM
+  # faces, layered on the same gate chain / storage as handle_parented_child:
+  #
+  #   1. PUT hydration — real Azure Service Bus defaults each entity's unset
+  #      runtime properties; without hydration a bare PUT renders a resource
+  #      whose GET lacks maxSizeInMegabytes / lockDuration / maxDeliveryCount,
+  #      which real SDK models dereference.
+  #   2. AMQP entity materialization — an ARM-wired topic (and each of its
+  #      subscriptions) is provisioned into the queue store (`:smalt_sb_queues`)
+  #      at PUT time, so SDK senders/subscribers attach immediately without
+  #      waiting for the lazy ensure_queue on first link attach.
+  #
+  # KNOWN BRIDGE GAP (typed face, not a silent divergence): delivery is
+  # queue-backed — a sender to topic "t" lands in the "t" entity and a
+  # subscriber to "t/Subscriptions/s" claims from the "t/Subscriptions/s"
+  # entity; messages sent to the topic do NOT fan out into subscription
+  # entities. Fan-out belongs in the AMQP delivery engine (connection.ex /
+  # queue_store.ex, outside this lane's file ownership). Receivers on a
+  # subscription address attach cleanly (get 0 messages until fan-out lands).
+  #
+  # DELETE teardown removes the entity row from :smalt_sb_queues (and the
+  # topic's subscription entities for a topic delete); in-flight message rows
+  # keyed {queue, seq} in :smalt_sb_messages are left to the sweeper, matching
+  # the queue_store lazy-allocation contract.
+
+  @sb_topic_defaults %{
+    "properties" => %{
+      "maxSizeInMegabytes" => 1024,
+      "defaultMessageTimeToLive" => "P14D",
+      "status" => "Active",
+      "supportOrdering" => true,
+      "enableBatchedOperations" => true,
+      "enablePartitioning" => false,
+      "enableExpress" => false
+    }
+  }
+
+  @sb_subscription_defaults %{
+    "properties" => %{
+      "lockDuration" => "PT5M",
+      "maxDeliveryCount" => 10,
+      "defaultMessageTimeToLive" => "P14D",
+      "requiresSession" => false,
+      "deadLetteringOnMessageExpiration" => false,
+      "enableBatchedOperations" => true,
+      "status" => "Active"
+    }
+  }
+
+  defp handle_sb_child(conn, verb, child_type, sub_id, rg_name, parent_rel, rel_path) do
+    provider_ns = "Microsoft.ServiceBus"
+    base = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
+
+    parent_key =
+      with {:ok, _} <-
+             Store.get(
+               :smalt_resources,
+               String.downcase(base <> "providers/#{provider_ns}/#{parent_rel}")
+             ) do
+        {:ok, :prefixed}
+      else
+        _ ->
+          with {:ok, _} <- Store.get(:smalt_resources, String.downcase(base <> parent_rel)) do
+            {:ok, :unprefixed}
+          else
+            :error -> :error
+          end
+      end
+
+    case parent_key do
+      {:ok, _} ->
+        case verb do
+          :put -> sb_child_put(conn, child_type, sub_id, rg_name, rel_path)
+          :get -> handle_child_get(conn, child_type, sub_id, rg_name, rel_path)
+          :list -> handle_child_list(conn, child_type, sub_id, rg_name, parent_rel)
+          :delete -> sb_child_delete(conn, child_type, sub_id, rg_name, rel_path)
+        end
+
+      :error ->
+        parent = parent_rel |> String.split("/") |> List.last()
+
+        if verb == :put do
+          case validate_child_put(conn, child_type) do
+            {:respond, conn} -> conn
+            {:ok, _full_type, _merged} -> parent_not_found(conn, parent)
+          end
+        else
+          parent_not_found(conn, parent)
+        end
+    end
+  end
+
+  defp sb_child_put(conn, child_type, sub_id, rg_name, rel_path) do
+    with {:ok, full_type, _merged} <- validate_child_put(conn, child_type) do
+      id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{rel_path}"
+      key = String.downcase(id)
+      payload = conn.body_params
+      name = rel_path |> String.split("/") |> List.last()
+
+      merged =
+        child_type
+        |> sb_defaults()
+        |> sb_deep_merge(payload)
+
+      record = build_resource_record(full_type, id, name, merged)
+
+      existed? = match?({:ok, _}, Store.get(:smalt_resources, key))
+      Store.put(:smalt_resources, key, record)
+
+      sb_materialize_amqp(child_type, rel_path)
+
+      send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(record))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # Topic/subscription PUT provisions the AMQP face: topic "orders" ->
+  # entity "orders"; subscription "s1" on topic "orders" ->
+  # entity "orders/Subscriptions/s1" (the exact source address the Azure
+  # SDKs attach receiver links with). ARM casing is preserved verbatim.
+  defp sb_materialize_amqp("Microsoft.ServiceBus/namespaces/topics", rel_path) do
+    name = rel_path |> String.split("/") |> List.last()
+    Smalt.Amqp.QueueStore.ensure_queue(name)
+  end
+
+  defp sb_materialize_amqp("Microsoft.ServiceBus/namespaces/topics/subscriptions", rel_path) do
+    case sb_topic_sub(rel_path) do
+      {topic, sub} -> Smalt.Amqp.QueueStore.ensure_queue("#{topic}/Subscriptions/#{sub}")
+      :error -> :ok
+    end
+  end
+
+  defp sb_materialize_amqp(_type, _rel_path), do: :ok
+
+  defp sb_topic_sub(rel_path) do
+    case Regex.run(~r{^namespaces/([^/]+)/topics/([^/]+)/subscriptions/([^/]+)$}, rel_path) do
+      [_, _ns, topic, sub] -> {topic, sub}
+      _ -> :error
+    end
+  end
+
+  # Topic DELETE tears down the topic entity plus each of its
+  # subscription entities; subscription DELETE tears down only its own.
+  # In-flight :smalt_sb_messages rows are orphaned by design (the queue_store
+  # sweeper owns them; direct ETS message surgery here would race a concurrent
+  # claim). Subsequent attaches to the deleted address lazily re-provision
+  # (queue_store contract) — the ARM delete is authoritative for the ARM
+  # record only.
+  defp sb_child_delete(conn, child_type, sub_id, rg_name, rel_path) do
+    if child_type == "Microsoft.ServiceBus/namespaces/topics" do
+      name = rel_path |> String.split("/") |> List.last()
+      Smalt.Store.delete(:smalt_sb_queues, name)
+
+      for q <- Smalt.Store.keys(:smalt_sb_queues) do
+        if is_binary(q) and String.starts_with?(q, "#{name}/Subscriptions/") do
+          Smalt.Store.delete(:smalt_sb_queues, q)
+        end
+      end
+    else
+      case sb_topic_sub(rel_path) do
+        {topic, sub} -> Smalt.Store.delete(:smalt_sb_queues, "#{topic}/Subscriptions/#{sub}")
+        :error -> :ok
+      end
+    end
+
+    handle_child_delete(conn, child_type, sub_id, rg_name, rel_path)
+  end
+
+  defp sb_defaults("Microsoft.ServiceBus/namespaces/topics"), do: @sb_topic_defaults
+  defp sb_defaults("Microsoft.ServiceBus/namespaces/topics/subscriptions"), do: @sb_subscription_defaults
+  defp sb_defaults(_), do: %{}
+
+  # Defaults merge UNDER the user payload (user values win per key, nested
+  # `properties` deep-merge) — same contract as Defaults.apply/2.
+  defp sb_deep_merge(defaults, user) when is_map(defaults) and is_map(user) do
+    Map.merge(defaults, user, fn _k, d, u -> sb_deep_merge(d, u) end)
+  end
+
+  defp sb_deep_merge(_defaults, user), do: user
 
   # --- Service Bus subscription rules (SB-RULES lane) --------------------------------
 
@@ -3691,9 +3987,15 @@ defmodule Smalt.ArmGateway.Router do
     )
   end
 
-  # .../namespaces/:ns/topics
+  # .../namespaces/:ns/topics — SB-TOPICS lane: routes through the SB-aware
+  # handler (defaults hydration + AMQP entity materialization) instead of the
+  # generic messaging-child path. See handle_sb_child/8.
+  # .../namespaces/:ns/topics — SB-TOPICS lane: SB-aware child handling
+  # (defaults hydration + AMQP entity materialization on PUT, queue-store
+  # entity teardown on DELETE) instead of the generic messaging-child path.
+  # See handle_sb_child/7.
   put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:name" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :put,
       "Microsoft.ServiceBus/namespaces/topics",
@@ -3705,7 +4007,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:name" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :get,
       "Microsoft.ServiceBus/namespaces/topics",
@@ -3717,7 +4019,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :list,
       "Microsoft.ServiceBus/namespaces/topics",
@@ -3729,7 +4031,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:name" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :delete,
       "Microsoft.ServiceBus/namespaces/topics",
@@ -3740,9 +4042,9 @@ defmodule Smalt.ArmGateway.Router do
     )
   end
 
-  # .../namespaces/:ns/topics/:t/subscriptions
+  # .../namespaces/:ns/topics/:t/subscriptions — SB-TOPICS lane (see above).
   put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:topic/subscriptions/:name" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :put,
       "Microsoft.ServiceBus/namespaces/topics/subscriptions",
@@ -3754,7 +4056,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:topic/subscriptions/:name" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :get,
       "Microsoft.ServiceBus/namespaces/topics/subscriptions",
@@ -3766,7 +4068,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:topic/subscriptions" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :list,
       "Microsoft.ServiceBus/namespaces/topics/subscriptions",
@@ -3778,7 +4080,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.ServiceBus/namespaces/:parent/topics/:topic/subscriptions/:name" do
-    handle_parented_child(
+    handle_sb_child(
       conn,
       :delete,
       "Microsoft.ServiceBus/namespaces/topics/subscriptions",

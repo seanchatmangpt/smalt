@@ -12,7 +12,9 @@ defmodule Smalt.Mcp.Router do
   arm.get, cosmos.query, blob.list, sb.peek, kv.get, doctor.summary, and the
   v26.10.19 window-capability reads: kv.deletedkeys.list,
   policy.exemptions.list, eg.dlq.list, lro.operations.list, cluster.status,
-  health.readiness.
+  health.readiness, plus the v26.10.20 window reads: kv.certificates.list,
+  sb.topics.list, cosmos.stats, policy.remediations.list,
+  appconfig.snapshots.list, atlas.lineage.get.
 
   READ-ONLY BY LAW: this surface exposes NO actuation tools. The substrate
   refuses unreceipted DO; any tool call for a non-registered (actuation or
@@ -342,6 +344,42 @@ defmodule Smalt.Mcp.Router do
 
   defp input_schema("health.readiness"), do: %{"type" => "object", "properties" => %{}}
 
+  defp input_schema("kv.certificates.list"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("sb.topics.list") do
+    %{
+      "type" => "object",
+      "properties" => %{
+        "namespace" => %{
+          "type" => "string",
+          "description" => "optional Service Bus namespace name filter"
+        }
+      }
+    }
+  end
+
+  defp input_schema("cosmos.stats"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("policy.remediations.list"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("appconfig.snapshots.list"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("atlas.lineage.get") do
+    %{
+      "type" => "object",
+      "required" => ["guid"],
+      "properties" => %{
+        "guid" => %{"type" => "string"},
+        "direction" => %{
+          "type" => "string",
+          "enum" => ["input", "output", "both"],
+          "default" => "both"
+        },
+        "depth" => %{"type" => "integer", "minimum" => 1, "maximum" => 10, "default" => 1}
+      }
+    }
+  end
+
   # ---------------------------------------------------------------------------
   # Dispatch: real substrate modules, reads only
   # ---------------------------------------------------------------------------
@@ -595,6 +633,134 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("health.readiness", _args),
     do: {:ok, Smalt.Health.to_json_map(Smalt.Health.readiness())}
+
+  # -- v26.10.20 ERRC RAISE lane: window-capability read tools (15-20) --------
+
+  defp invoke("kv.certificates.list", _args) do
+    case Smalt.DataPlane.Certificates.list() do
+      {:ok, 200, %{"value" => certs}} ->
+        {:ok, %{"certificates" => certs, "count" => length(certs)}}
+
+      other ->
+        {:refusal, @internal_code, "kv.certificates.list unexpected: #{inspect(other)}"}
+    end
+  end
+
+  defp invoke("sb.topics.list", args) do
+    ns = args["namespace"]
+
+    if ns != nil and not is_binary(ns) do
+      {:refusal, @invalid_params_code, "refused: sb.topics.list namespace must be a string"}
+    else
+      topics =
+        :smalt_resources
+        |> Smalt.Store.list()
+        |> Enum.filter(&(&1["type"] == "Microsoft.ServiceBus/namespaces/topics"))
+        |> Enum.filter(fn rec ->
+          case ns do
+            nil -> true
+            ^ns -> true
+            _ -> String.contains?(rec["id"] || "", "/namespaces/#{ns}/topics/")
+          end
+        end)
+        |> Enum.sort_by(&String.downcase(&1["id"] || ""))
+        |> Enum.map(&%{"id" => &1["id"], "name" => &1["name"], "properties" => &1["properties"]})
+
+      {:ok, %{"topics" => topics, "count" => length(topics)}}
+    end
+  end
+
+  defp invoke("cosmos.stats", _args) do
+    if :ets.info(:smalt_cosmos_docs) == :undefined do
+      {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
+    else
+      # pk_meta keys are tuples ({0,db} / {1,db,coll}); term order puts tuples
+      # below binaries, so the binary-key Store scan (prefix_keys) cannot see
+      # them — enumerate the table directly, same discipline as cosmos'
+      # meta_records/1 (cosmos.ex:368).
+      containers =
+        :smalt_cosmos_pk_meta
+        |> :ets.tab2list()
+        |> Enum.filter(fn
+          {{1, _db, _coll}, _} -> true
+          _ -> false
+        end)
+        |> Enum.map(fn {{1, db, coll}, _} -> {db, coll} end)
+        |> Enum.map(fn {db, coll} ->
+          count =
+            :smalt_cosmos_docs
+            |> Smalt.Store.prefix_keys("#{db}/#{coll}/")
+            |> Enum.count()
+
+          %{"db" => db, "coll" => coll, "documents" => count}
+        end)
+        |> Enum.sort_by(&{&1["db"], &1["coll"]})
+
+      total = Enum.sum(Enum.map(containers, & &1["documents"]))
+
+      {:ok,
+       %{
+         "containers" => containers,
+         "container_count" => length(containers),
+         "document_count" => total
+       }}
+    end
+  end
+
+  defp invoke("policy.remediations.list", _args) do
+    remediations =
+      Smalt.Enclave.Remediations.table()
+      |> Enum.sort_by(fn {code, _} -> code end)
+      |> Enum.map(fn {code, command} ->
+        %{"code" => code, "command" => command}
+      end)
+
+    {:ok,
+     %{
+       "remediations" => remediations,
+       "count" => length(remediations),
+       "severities" => ["BLOCKING_GATE", "ADVISORY"]
+     }}
+  end
+
+  defp invoke("appconfig.snapshots.list", _args) do
+    snapshots = Smalt.DataPlane.AppConfigSnapshots.list()
+
+    {:ok, %{"snapshots" => snapshots, "count" => length(snapshots)}}
+  end
+
+  defp invoke("atlas.lineage.get", args) do
+    case args do
+      %{"guid" => guid} when is_binary(guid) ->
+        direction = args["direction"] || "both"
+        depth = args["depth"] || 1
+
+        cond do
+          direction not in ["input", "output", "both"] ->
+            {:refusal, @invalid_params_code,
+             "refused: atlas.lineage.get direction must be one of input, output, both"}
+
+          not is_integer(depth) or depth < 1 or depth > 10 ->
+            {:refusal, @invalid_params_code,
+             "refused: atlas.lineage.get depth must be an integer between 1 and 10"}
+
+          true ->
+            case Smalt.DataPlane.Purview.lineage(guid, direction, depth) do
+              {:ok, 200, body} ->
+                {:ok, body}
+
+              {:error, 400, %{"error" => %{"code" => code, "message" => message}}} ->
+                {:refusal, code, "atlas.lineage.get: #{message}"}
+
+              other ->
+                {:refusal, @internal_code, "atlas.lineage.get unexpected: #{inspect(other)}"}
+            end
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: atlas.lineage.get requires guid"}
+    end
+  end
 
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}

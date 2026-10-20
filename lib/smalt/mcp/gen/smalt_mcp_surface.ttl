@@ -148,3 +148,58 @@
     ema:requiresAuthority false ; ema:isReversible true ;
     ema:receiptSemantics "logged" ; ema:capabilityOrder 14 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.20 ERRC RAISE lane: window-capability read tools (15-20) ---------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "kv.certificates.list" ;
+    ema:capabilityName "Key Vault certificates list" ;
+    ema:capabilityDescription "Certificate list envelope (id, name, attributes) from the certificates plane — never key or private-key material." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 15 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "sb.topics.list" ;
+    ema:capabilityName "Service Bus topics list" ;
+    ema:capabilityDescription "Service Bus topic resources (Microsoft.ServiceBus/namespaces/topics) from the substrate resource store, optional namespace filter." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 16 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cosmos.stats" ;
+    ema:capabilityName "Cosmos stats" ;
+    ema:capabilityDescription "Content-free per-container document counts (databases, collections, documents) from the cosmos meta and doc tables." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 17 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "policy.remediations.list" ;
+    ema:capabilityName "Policy remediations list" ;
+    ema:capabilityDescription "Typed diagnostic remediation table (code to remediation command, closed severity vocabulary) from the substrate remediation registry." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 18 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "appconfig.snapshots.list" ;
+    ema:capabilityName "App Configuration snapshots list" ;
+    ema:capabilityDescription "App Configuration snapshot settings (name, filters, status, itemCount, etag) — frozen KV bodies are never projected." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 19 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "atlas.lineage.get" ;
+    ema:capabilityName "Atlas lineage get" ;
+    ema:capabilityDescription "Purview Atlas v2 lineage slice for one guid (BFS over the lineage edge table; direction input/output/both, bounded depth)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 20 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .

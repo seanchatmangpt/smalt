@@ -10,6 +10,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   - `POST /keys/:name/verify`    -> `verify/2`
   - `POST /keys/:name/wrapKey`   -> `wrap_key/2`
   - `POST /keys/:name/unwrapKey` -> `unwrap_key/2`
+  - `POST /keys/:name/rotate`    -> `rotate_key/2`  (new version, same policy)
   - `GET  /keys`                 -> `list_keys/0`
   - `GET  /keys/:name/versions`  -> `list_versions/1`
 
@@ -56,6 +57,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   `403 {"error":{"code":"OperationNotAllowed"}}` (real Azure KV status).
   """
 
+  alias Smalt.DataPlane.KvPss
   alias Smalt.Store
 
   @default_ops ["encrypt", "decrypt", "sign", "verify", "wrapKey", "unwrapKey"]
@@ -191,6 +193,108 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
       :error ->
         {:error, 404, key_not_found()}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Rotate
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  `POST /keys/:name/rotate` (Azure parity). Mints a NEW version of `name` from
+  the SAME policy — kty, key_ops and release_policy are carried from the
+  current record; the old version rows and their material are retained
+  untouched. Response is the new version's public key bundle (KeyBundle of the
+  latest version, `kid` carrying the new version suffix). Unknown key ->
+  404 KeyNotFound.
+
+  RSA: a fresh 2048-bit keypair is generated per rotation (DER on the new
+  version's row). oct: material is the deterministic per-version derivation
+  (`derive_oct_key/2`), so only the JWK `k` changes. Not gated on the release
+  policy `allowed_operations` — rotation is a management-plane lifecycle op in
+  the real contract, not a crypto op.
+  """
+  def rotate_key(name, _params \\ nil) do
+    case fetch(name) do
+      {:ok, record} ->
+        version = Integer.to_string(System.unique_integer([:positive]))
+        kid = "https://#{kid_authority(record)}/keys/#{name}/#{version}"
+
+        {jwk_fields, key_material} =
+          case kty(record) do
+            kty when kty in ["RSA", "RSA-HSM"] ->
+              key = :public_key.generate_key({:rsa, 2048, 65537})
+              der = :public_key.der_encode(:RSAPrivateKey, key)
+
+              # KD-105 close: JWK export rides KvPss.jwk_public — n/e plus the
+              # `alg: PS256` stamp so external verifiers pick PSS/saltlen 32.
+              case KvPss.jwk_public(der) do
+                {:ok, jwk} ->
+                  {Map.take(jwk, ["n", "e", "alg"]), der}
+
+                {:error, _} ->
+                  {:error, 400, bad_request("InvalidParameter", "bad key material")}
+              end
+
+            kty when kty in ["oct", "oct-HSM"] ->
+              {%{
+                 "k" =>
+                   Base.url_encode64(derive_oct_key(name, version), padding: false)
+               }, nil}
+
+            other ->
+              {:error, 400, bad_request("UnsupportedKeyType", "kty #{other} is not supported")}
+          end
+
+        case jwk_fields do
+          %{} = fields ->
+            now = System.system_time(:second)
+
+            new_key =
+              record["key"]
+              |> Map.take(["kty", "key_ops"])
+              |> Map.merge(fields)
+              |> Map.put("kid", kid)
+
+            new_record = %{
+              "kid" => kid,
+              # newest first (create's `&(&1 ++ prior_versions)` keeps the
+              # newest at the head — rotate prepends the same way).
+              "versions" => [version | Map.get(record, "versions", [])],
+              "key" => new_key,
+              "attributes" =>
+                record["attributes"]
+                |> Map.put("created", now)
+                |> Map.put("updated", now),
+              "release_policy" => record["release_policy"],
+              "key_material" => key_material
+            }
+
+            Store.put(:smalt_vault_keys, name, new_record)
+
+            Store.put(
+              :smalt_vault_keys,
+              {name, version},
+              Map.put(new_record, "is_version_row", true)
+            )
+
+            {:ok, 200, public_record(new_record)}
+
+          error ->
+            error
+        end
+
+      :error ->
+        {:error, 404, key_not_found()}
+    end
+  end
+
+  # The kid authority is reused verbatim (host AND port) so a rotated kid stays
+  # same-origin as its parent's.
+  defp kid_authority(record) do
+    case record["kid"] do
+      "https://" <> rest -> hd(String.split(rest, "/"))
+      _ -> "smalt-vault"
     end
   end
 
@@ -868,24 +972,25 @@ defmodule Smalt.DataPlane.KeyVaultActions do
         <<0x30, 0x31, 0x30, 0x0D, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02,
           0x01, 0x05, 0x00, 0x04, 0x20>>
 
-      sig =
-        case alg do
-          "RS256" ->
-            :public_key.sign(sha256_digestinfo <> digest, :none, key,
-              rsa_padding: :rsa_pkcs1_padding
-            )
+      with {:ok, sig} <-
+             (case alg do
+                "RS256" ->
+                  {:ok,
+                   :public_key.sign(sha256_digestinfo <> digest, :none, key,
+                     rsa_padding: :rsa_pkcs1_padding
+                   )}
 
-          # Erlang crypto has no PSS-over-prehashed mode (:none + PSS EXITs),
-          # so PS256 rides :sha256 — self-consistent server-side round-trip;
-          # documented divergence for external local-verify of PS256 sigs.
-          "PS256" ->
-            :public_key.sign(digest, :sha256, key,
-              rsa_padding: :rsa_pkcs1_pss_padding,
-              rsa_pss_saltlen: 32
-            )
-        end
-
-      {:ok, 200, %{"value" => b64url_encode(sig), "kid" => kid, "alg" => alg}}
+               # KD-105 close: PS256 is externally verifiable — the wire digest is
+               # PRE-HASHED, so the PSS encoding is built over the digest exactly
+               # once (KvPss :prehashed, EMSA-PSS MGF1-SHA256 saltlen 32) and the
+               # raw RSA op applied (OTP has no :none+PSS mode).
+               "PS256" ->
+                 KvPss.sign_pss(:public_key.der_encode(:RSAPrivateKey, key), digest,
+                   prehashed: true
+                 )
+              end) do
+        {:ok, 200, %{"value" => b64url_encode(sig), "kid" => kid, "alg" => alg}}
+      end
     end
   end
 
@@ -920,11 +1025,14 @@ defmodule Smalt.DataPlane.KeyVaultActions do
                   rsa_padding: :rsa_pkcs1_padding
                 )
 
-              # PS256 mirrors do_sign's :sha256 path (see the divergence note there).
+              # KD-105 close: mirrors do_sign's KvPss prehashed path — same
+              # EMSA-PSS encoding, fail-closed boolean.
               "PS256" ->
-                :public_key.verify(digest, :sha256, sig, rsa_public({:rsa, key}),
-                  rsa_padding: :rsa_pkcs1_pss_padding,
-                  rsa_pss_saltlen: 32
+                KvPss.verify_pss(
+                  :public_key.der_encode(:RSAPublicKey, rsa_public({:rsa, key})),
+                  digest,
+                  sig,
+                  prehashed: true
                 )
             end
 
