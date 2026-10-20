@@ -90,3 +90,17 @@ EXIT=3
   never evicted another lane).
 - Node v26.10.0, `--experimental-strip-types`, NODE_EXTRA_CA_CERTS at
   `.smalt/tls/ca-cert.pem`.
+
+---
+
+## Integration note (coordinator, 2026-10-19 post-landing flip attempt)
+
+Capability commit `8ca1b82` (KV deleted-keys/secrets planes, RBAC+locks)
+landed mid-wave; the harness's pre-coded flip assertions were re-run twice
+on freshly compiled canonical beams. Verdict: the plane is still not served
+(`/deletedkeys`/`deletedsecrets` 404; RG-scope locks 501
+LockSurfaceNotImplemented at arm_gateway/router.ex:982) — XFAIL stands,
+never faked. Full recover/purge/lock assertions are coded and activate on
+the first serving beam. Confounder: an outside actor cycled the shared
+substrate during the window (5 beam pids observed); verdicts are
+as-of-beam.
