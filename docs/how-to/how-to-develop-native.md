@@ -13,7 +13,7 @@ mix test             # offline suite (self-boots app on EPHEMERAL ports, no subs
 ```
 
 `just test-native` runs the full native lifecycle against
-`test/terraform_fixture/main.tf` on a dedicated beam, private ports
+`scripts/tf_fixtures/main.tf` on a dedicated beam, private ports
 29445-29450 (mcp included — the shared substrate holds 9545), under a private
 flock with the lock fd closed on spawn (`9>&-`, fan-out law 4). It boots the
 full `Smalt.Application` (Store, broker, endpoints) with `auth_mode
@@ -70,8 +70,8 @@ root on a shared checkout set `MIX_BUILD_ROOT=_build-lane<N>` (see
 ## Targeted runs
 
 ```bash
-scripts/fast_test.sh test/foo_test.exs[:LINE]     # per-hash private build root (_build-ft-<hash>)
-MIX_BUILD_ROOT=_build-lane7 mix test test/wire
+scripts/fast_test.sh test/internal/*_test.exs[:LINE]  # per-hash private build root (_build-ft-<hash>)
+MIX_BUILD_ROOT=_build-lane7 mix test test/internal/    # residual tier (post-reset; test/wire RETIRED@64f6099)
 ```
 
 See Also: [how-to-run-wire-parity.md](how-to-run-wire-parity.md) ·

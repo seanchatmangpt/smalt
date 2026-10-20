@@ -1,5 +1,14 @@
 # how to write tests (canonical foundations)
 
+> **RETIRED@64f6099 (pre-reset foundations).** The `SmaltTest.*` harness
+> (`test/support/case.ex`, `store_resilient.ex`, `singleton.ex`, `env.ex`,
+> `sleep_windows.ex`) was deleted with the legacy corpus in the clean-room reset.
+> The five-helper workflow below is preserved as the canonical pattern; on the
+> post-reset tree the successors are the residual tier (`test/internal/`, poll
+> helper `test/internal/poll_helper.exs`) and the fresh suites
+> (`verification/ts` harness in `verification/ts/harness/`, `verification/py`
+> harness in `verification/py/harness/`).
+
 The one-`use` template and the five canonical helpers. Write new suites on
 these, not on hand-rolled retries or process-dictionary saves.
 
@@ -26,7 +35,7 @@ Migration is per-file and optional — plain `use ExUnit.Case` keeps working.
 
 ## Foundation 1: `SmaltTest.AssertEventually` — the one bounded poll
 
-`test/support/assert_eventually.ex`. Contract: the polled `fun/0` returns
+`test/support/assert_eventually.ex` — RETIRED@64f6099; successor: `test/internal/poll_helper.exs`). Contract: the polled `fun/0` returns
 `{:ok, value}` (success, value returned), `:retry` / `{:retry, detail}`
 (poll again), anything else is an immediate typed failure naming the
 observable and the offending return. Options: `:deadline_ms` (default
@@ -103,7 +112,7 @@ on a pre-existing value destroys sibling-visible config). A bare
 
 ## Foundation 5: `SmaltTest.SleepWindows` — named time-advance (B1 only)
 
-`test/support/sleep_windows.ex`. Where the condition under test IS time
+`test/support/sleep_windows.ex` — RETIRED@64f6099; the fresh tiers carry no sleep-window helper; bounded polls only). Where the condition under test IS time
 (rate-limit window rollover, lock expiry, LRO retention), the sleep window
 is NAMED and derived from its configured constant, never a bare literal:
 

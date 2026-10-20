@@ -4,15 +4,15 @@ How to move local-development workloads from the official Azure emulator
 containers (Azurite, Cosmos DB Emulator, Service Bus emulator, Event Hubs
 emulator) to smalt. Ports and endpoints are read from
 `lib/smalt/application.ex`, `lib/smalt/registry.ex`, and
-`test/sdk-smoke/run.mjs`.
+`verification/ts/run-all.mjs` (the pre-reset `test/sdk-smoke/run.mjs` is RETIRED@64f6099).
 
 ## Port map
 
 | Emulator container | Default emulator port | Smalt port | Smalt endpoint | Connection equivalent |
 |---|---|---|---|---|
 | Azurite (Blob) | 10000 | `:8443` | `http://127.0.0.1:8443/{account}/{container}[/{blob}]` | `new BlobServiceClient("http://127.0.0.1:8443/{account}", new StorageSharedKeyCredential(account, anyKey))` — any account/key accepted (see deltas). No `UseDevelopmentEmulator` conn-str form exists for Blob. |
-| Cosmos DB Emulator | 8081 | `:8443` | `http://127.0.0.1:8443` | `new CosmosClient({ endpoint: "http://127.0.0.1:8443", key: <any 64-char hex string>, connectionPolicy: { enableEndpointsDiscovery: false } })` — any key accepted (see deltas); form pinned in `test/sdk-smoke/cosmos.test.cjs`. |
-| Service Bus emulator (+ MSSQL) | 5672 | `:5672` | `sb://127.0.0.1:5672` (AMQP 1.0) | `Endpoint=sb://127.0.0.1:5672;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=<any base64>;UseDevelopmentEmulator=true` — the exact form pinned in `test/sdk-smoke/amqp.test.cjs`. |
+| Cosmos DB Emulator | 8081 | `:8443` | `http://127.0.0.1:8443` | `new CosmosClient({ endpoint: "http://127.0.0.1:8443", key: <any 64-char hex string>, connectionPolicy: { enableEndpointsDiscovery: false } })` — any key accepted (see deltas); form pinned in `verification/ts/wf1` (pre-reset `test/sdk-smoke/cosmos.test.cjs`, RETIRED@64f6099). |
+| Service Bus emulator (+ MSSQL) | 5672 | `:5672` | `sb://127.0.0.1:5672` (AMQP 1.0) | `Endpoint=sb://127.0.0.1:5672;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=<any base64>;UseDevelopmentEmulator=true` — the exact form pinned in `verification/ts/wf3` (pre-reset `test/sdk-smoke/amqp.test.cjs`, RETIRED@64f6099). |
 | Event Hubs emulator (+ MSSQL) | 5671/5672 | `:5673` | `sb://127.0.0.1:5673` (AMQP 1.0, `:eh` lane) | Same conn-str form pointed at 5673: `Endpoint=sb://127.0.0.1:5673;SharedAccessKeyName=...;SharedAccessKey=<any>;UseDevelopmentEmulator=true`. Read the Event Hubs delta before relying on partition semantics. |
 | — ARM control plane (no emulator equivalent) | — | `:9443` | `http://127.0.0.1:9443` | Bootstrap via `GET /metadata/endpoints`, token via `POST /oauth2/v2.0/token`, then point azurerm/azapi/ARM SDKs at the endpoint document's resource-manager URL. |
 | — Egress data plane (no emulator equivalent) | — | `:8443` | `http://127.0.0.1:8443` | Sentinel DCR ingest + KQL, Resource Graph, Purview Atlas v2, Confidential Ledger, Attestation, Key Vault SKR, Event Grid CloudEvents ingest. |
@@ -64,7 +64,7 @@ Port overrides are application env only — `config/config.exs` keys
   reach `Smalt.Messaging.EventHubs`, and `x-opt-sequence-number` is not
   stamped from EH monotonic sequences on this lane. Module-level EH semantics
   (monotonic sequences, checkpoint CAS, leases) are real and tested
-  (`test/amqp/event_hubs_test.exs`) but are not reachable over the 5673 wire.
+  (`test/amqp/event_hubs_test.exs`, RETIRED@64f6099) but are not reachable over the 5673 wire.
   Do not migrate an `@azure/event-hubs` workload expecting partition-sequence
   parity.
 - **.NET filetime ticks are Service Bus-dialect only.** Delivery annotations
@@ -107,7 +107,7 @@ grep -n "arm_port\|egress_port\|amqp_port\|event_hubs_port" \
   lib/smalt/application.ex lib/smalt/registry.ex
 
 # Connection-string form pinned by the SDK smoke tier
-grep -n "UseDevelopmentEmulator\|Endpoint=sb://" test/sdk-smoke/amqp.test.cjs
+grep -rn "UseDevelopmentEmulator\|Endpoint=sb://" verification/ts/
 
 # Loopback-only, no TLS
 grep -n "scheme: :http" lib/smalt/application.ex

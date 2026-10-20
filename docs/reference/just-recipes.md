@@ -25,8 +25,8 @@ modules, never edit the root.
 | `clean` | remove tmp logs | never touches `_build/`/`deps/` |
 | `gen` | `mix smalt.gen` code projections | byte-identical replay test-fenced |
 | `test-offline` | T1 offline unit suite (`mix test`) | ~1-3m |
-| `test-wire` | T2 wire tier (`mix test test/wire`) | |
-| `test-sdk-smoke` | node test/sdk-smoke/run.mjs | boots own substrate; 0/1/2/3 exit contract |
+| `test-wire` | RETIRED@64f6099 loud exit-1 placeholder (`test/wire` deleted); successor: `verification/ts` | |
+| `test-sdk-smoke` | RETIRED@64f6099 loud exit-1 placeholder (`test/sdk-smoke/` deleted); successor: `verification/{ts,py}` (0/1/2/3 exit contract retained) | |
 | `tf-plan-smoke` | terraform plan-parse smoke over six fixtures | |
 | `eh-smoke` | Event Hubs probe | 0 pass / 1 fail / 2 substrate down / 3 skip |
 | `census` | SB census replay (scripts/sb_census_replay.sh, 8 probes, real SDK) | 0/1/2/3 |

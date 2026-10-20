@@ -1,5 +1,13 @@
 # test isolation law
 
+> **Post-reset note (64f6099).** The legacy `test/` corpus (303 files) was deleted in
+> the clean-room reset. The per-file and `file:line` citations below refer to the
+> deleted corpus unless they name `test/internal/` — RETIRED@64f6099, preserved as the
+> normative statement; enforcement on the post-reset tree is
+> `test/internal/internal_tier_census_test.exs`, `scripts/non_duplication_gate.py`,
+> `scripts/isolation_court.py`, `gates/test_isolation_leak_gate.py`
+> (`just leak-court` / `just isolation-court`), and the `verification/{ts,py}` suites.
+
 The normative contract every suite in `test/` is held to, plus the courts
 and registries that enforce it. Absorbs `docs/TEST_ISOLATION.md` (which
 remains as the historical audit ledger); adds the async topology, the

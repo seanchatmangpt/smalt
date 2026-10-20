@@ -1,12 +1,12 @@
 # FINAL.md — v26.10.19 window wrap
 
 - **Date**: 2026-10-19
-- **Subject**: smalt @ HEAD `cf8b1b8` (main, 21 commits ahead of origin/main; version 26.10.18)
+- **Subject**: smalt @ HEAD `81a7a29` (main, 22 commits ahead of origin/main; version 26.10.18)
 - **Context**: solo(documentation wrap; counts re-derived on this tree)
 - **Standing of this document**: CENSUS — every claim cites a receipt on disk.
-  The court-x2 verdict is **PARTIAL_ALIVE — run 1 executing at wrap time; this
-  document names the standing honestly rather than waiting out the run**
-  (see §2).
+  The court-x2 verdict is **ALIVE — two consecutive `just court` greens at
+  HEAD `81a7a29`** (see G5 receipt, §2). Remaining open: publish-dry and the
+  landing SHA.
 
 ## 1. Landing
 
@@ -19,20 +19,20 @@
 
 ## 2. Gate verdicts
 
-- **court-x2**: NOT COMPLETED AT WRAP — run 1 executing (relaunched on the
-  clean tree after the first attempt died on a coordinator mid-flight edit
-  and a transient 2-failure census flake that does not reproduce isolated:
-  `mix test` → 31 tests, 0 failures). G5 (dual-pass receipt) stays PENDING;
-  fill `receipts/v261019-12-court-x2-close.md` when both runs land.
+- **court-x2**: CLOSED — see G5 receipt
+  `receipts/v261019-12-court-x2-close.md` (Standing ALIVE): two consecutive
+  `just court` runs, both exit 0, HEAD `81a7a29` unchanged across both run
+  windows; invariant-gates 6/6 + naming-sweep 0/49 + non-duplication +
+  portable-target all PASS in both verdict tails.
 - **publish-dry**: NOT RUN this window (wrap-time item; regen-identity legs
   witnessed individually: receipt-index, sdk-matrix, gen-error-codes all
   green and idempotent).
 
-## 3. Post-commit gates (7-gate table, surface at HEAD `cf8b1b8`)
+## 3. Post-commit gates (7-gate table, surface at HEAD `81a7a29`)
 
 | # | Gate | Command | Verdict | Receipt |
 |---|---|---|---|---|
-| 1 | court-x2 | `just court-x2` | IN FLIGHT | `receipts/v261019-12-court-x2-close.md` |
+| 1 | court-x2 | `just court-x2` | PASS ×2 (see G5 receipt) | `receipts/v261019-12-court-x2-close.md` |
 | 2 | publish-dry | `just publish-dry` | NOT RUN | — |
 | 3 | docs-dod-check | `just docs-dod-check` | PASS | `receipts/v261019-envelope-automation.md` leg |
 | 4 | invariant-gates | `python3 scripts/invariant_gates.py` | PASS (6/6) | `receipts/v261019-court-census.md` post-fix |
@@ -43,7 +43,7 @@
 Plus the **5-gate acceptance machine** (`python3
 scripts/acceptance_gates.py`): G1 PASS, G3 PASS, G4 PASS; G2 (F1
 revert-the-diff) typed-DEFERRED pending TS-suite green (6 honest emulator
-divergences standing); G5 typed-PENDING on court-x2.
+divergences standing); G5 CLOSED on the court-x2 receipt (ALIVE).
 
 ## 4. Test-volume census (before → after; full receipt
 `receipts/v261019-vol-census.md`)
@@ -81,20 +81,32 @@ carried, not exercised this window).
 
 ## 7. Planning handoff to next window
 
-v26.10.20 NOT yet planned. Open items carried:
+v26.10.20 NOT yet planned. Open items carried (updated at wrap for the
+landed fixes c41e8ae / 1aca688 / 77a4041 / c9b0bf1 / 81a7a29):
 
 1. TS suite 6 honest FAILs → KD rows or fixes: blob bearer-only egress
    (no TLS blob channel), SB receiver zero-delivery on flow credit,
    session deliveries without settle methods, KV deleted-keys plane 404s
    (partially fixed: soft-delete witness landed), scheduleMessage 501
    UNSUPPORTED (typed; candidate KD row).
-2. KV deleted-keys request-transient ETS (heir class — the `:heir` pattern
-   from policy/arm-rate fixes applies; cosmos.ex:1841 accessor bypass is
-   the same family).
+2. KV deleted-keys request-transient ETS (heir class). Landed sibling:
+   the `:heir` pattern is now applied to ARM throttling (c41e8ae throttle
+   repair, WO-03/WO-15/KD-112); the KV deleted-keys case and the
+   cosmos.ex:1841 accessor bypass remain open.
 3. F1 coverage-falsifier court: BEFORE gate typed-SKIPs until the TS suite
    is green (the court is landed and fail-closed).
-4. court-x2 completion + publish-dry (the only G5 blockers).
+4. publish-dry is the only remaining G5 blocker (court-x2 CLOSED this
+   window: G5 receipt ALIVE). Census-court blockers cleared this window:
+   sb-extra hard top-level watchdog landed
+   (77a4041 — AMQP attach hang on draining broker, witnessed ×2), vm
+   census monitor scope fenced to the long-lived population (c9b0bf1 —
+   10x green), compiled trust-shim binary removed from tree (81a7a29).
 5. KD-114+ mint batch for the new wire divergences above (registrar-gated).
+   Note: KD-112 exemptions/initiatives routes landed (c41e8ae); the
+   corresponding `tbd` rows in the register need their witness receipts.
+6. AZB-25a/b azurerm parity landed (1aca688: blobServices/default
+   synthesis, sync storage DELETE, DefaultShape location relaxation,
+   tf smoke budget+fresh-apply) — verify leg closed; no open remainder.
 
 ## 8. Pointers
 

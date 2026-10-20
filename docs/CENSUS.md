@@ -2,9 +2,14 @@
 
 # Service Bus SDK Census
 
-One-command replay: `scripts/sb_census_replay.sh`. Boots the smalt substrate
+> **RETIRED@64f6099** — the pre-reset census machinery (`scripts/sb_census_replay.sh`,
+> `test/sdk-smoke/census.test.cjs`) was deleted in the clean-room reset. The run below
+> is a preserved witness record; the live census successor is `verification/ts/census.test.cjs`
+> (run via `verification/ts/run-all.mjs`), probe table moved with it.
+
+One-command replay (retired): `scripts/sb_census_replay.sh`. Boots the smalt substrate
 (`mix run --no-halt`, MIX_ENV=test) and runs the census probes
-(`test/sdk-smoke/census.test.cjs` — the probe table there is ground truth)
+(`test/sdk-smoke/census.test.cjs` — retired; live probe table now in `verification/ts/census.test.cjs`)
 against it with the real
 `@azure/service-bus` SDK over loopback AMQP (`127.0.0.1:5672`).
 

@@ -50,7 +50,7 @@ bash scripts/tf_trust_setup.sh trust                     # interactive: Security
 ### T2 mix wire tier
 
 ```bash
-just test-wire        # mix test test/wire
+just test-wire        # RETIRED@64f6099 loud exit-1 placeholder; successor: verification/ts (see docs/reference/courts.md)
 ```
 
 ### Per-resource terraform probe (six fixtures)
@@ -62,7 +62,7 @@ bash scripts/tf_plan_check.sh # add --write-receipt to land
 
 Runs terraform init + plan + apply + post-apply plan per fixture against a
 lane-private substrate (ARM 39330, TLS 39331, data 39332, amqp/ehub/mcp
-39333-39335). Fixtures: `test/terraform_fixture_per_resource/` — rg, storage,
+39333-39335). Fixtures: `test/terraform_fixture_per_resource/` — RETIRED@64f6099 (clean-room reset); successor: the tf smoke in the court pipeline. rg, storage,
 keyvault, servicebus, eventhub, cosmos (six `.tf` files, plus `versions.tf`
 which is skipped by name).
 

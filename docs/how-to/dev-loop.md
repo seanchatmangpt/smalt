@@ -159,7 +159,7 @@ Residual table (harnesses still on disk; each verified `ls`-present
 | bench-concurrent private overrides | 39540-39542 (tls/eh/mcp of the scoped branch; arm/egress/amqp via `SMALT_BENCH_{ARM,DATA,AMQP}_PORT`) | `scripts/bench_concurrent.py` | `SMALT_BENCH_*_PORT` |
 | lro storm | ephemeral (six-port `free_port()` re-pick per boot) | `scripts/stress/lro_storm.py` | n/a |
 | cosmos bulk | ephemeral (six-port re-pick per boot) | `scripts/stress/cosmos_bulk.py` | n/a |
-| bounds probe | ephemeral (`gates/common.pick_ports`) | `scripts/stress/bounds.py` | n/a |
+| bounds probe | ephemeral (`gates/common.py`) | `scripts/stress/bounds.py` | n/a |
 
 Rules: front door is fail-closed — a harness that finds its port held exits
 with a typed remediation (wait, or take the documented private override);

@@ -19,6 +19,25 @@ Owner lanes (standing lane map, `docs/jira/v26.10.19/WORK_ORDERS.md`):
 
 ---
 
+## Status refresh 2026-10-19 (lane: docs-status)
+
+| Risk | Status at window close | Evidence |
+|---|---|---|
+| R1 coverage regression | **MITIGATED** | `python3 scripts/sdk_coverage.py` rc 0 — every cell pass-or-registered (re-run this window, `GATE: OK`); census probe landed (`receipts/v261019-court-census.md`, post-fix `c9b0bf1`) |
+| R1a commit-entanglement | monitored, no findings | `git log --oneline -20` review: deletion commits single-purpose (F7 held; deletion manifest `receipts/reset-delete-manifest.txt`) |
+| R1b harness-first ordering | **MITIGATED** | deletion gated on receipts landing first (`receipts/v261019-11-test-deletion-gate.md`); `just docs-dod-check` rc 0 this window |
+| R2 identity wall | **CLOSED** | real credential path landed: RS256 + JWKS (`lib/smalt/auth/sts_key.ex`, `# KD-COVERS: KD-99,KD-100`); witness `receipts/v261019-13-identity-rs256.md` (PASS; JWKS kid byte-equal + RS256 verify, tampered control fails, instance-discovery 200); `scripts/kd_flip.py --apply` scan reports KD-99 + KD-100 CLOSED-SIMULATED (witness postdates shim 10:10 → receipts 10:33/10:34). Honest note: the register's prose rows at `KNOWN_DIVERGENCES.md:16-17` still read OPEN — registrar row-flip pending; the kd_flip scan is the ground truth |
+| R3 / R3a KD-without-evidence | no findings | `kd_flip.py --apply`: FLIP-ELIGIBLE 0, FLIP-PENDING-WITNESS 1 (KD-108, loudly named) — re-run this window |
+| R4 staleness cascade | **MITIGATED** | regen gates green this window: `just docs-dod-check` rc 0, `scripts/receipt_index.py` rc 0 (39 receipts indexed, FINAL.md §5); counts in FINAL.md re-derived, not re-cited |
+| R4a stale budgets | no findings | manifest reseed carried from `fee8afe`; no budget-gate failures in the court-x2 runs (`receipts/v261019-12-court-x2-close.md`) |
+| R5 lane hazards | **MITIGATED** (partial) | orphan lane build roots reclaimed (only the active `_build-lane-final1` remains on disk); stale epmd killed in-session (session action — no receipt; `scripts/port_sweep.sh` dry-run is the standing falsifier) |
+| R5a window interleaving | no findings | subject-SHA lease landed (`receipts/v261019-wo1-subject-sha-lease.md`); court-x2 SHA unchanged across both runs (`81a7a29`) |
+| R6 portable-target breach | no findings | `portable-target` gate PASS 22 files clean in both court runs (`receipts/v261019-12-court-x2-close.md` verdict tail) |
+| R6a blind courts | no findings | gates landed with non-vacuity contracts (`receipts/v261019-15-verification-gates.md`, ALIVE); invariant-gates 6/6 with negative fixtures refused (court-x2 verdict tail) |
+| R7 falsifier rot | live note | falsifier smoke-checks re-run this window: `sdk_coverage.py` rc 0, `docs-dod-check` rc 0, `kd_flip.py --apply` scan + FLIP-PENDING report all execute cleanly on HEAD `81a7a29` — the register's detection commands are runnable, not decorative |
+
+---
+
 ## R1 — Coverage regression (a test that used to exist/_pass_ no longer does)
 
 Sub-risks: **R1a** commit-entanglement (a behavior fix lands in the same commit

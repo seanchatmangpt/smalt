@@ -1,7 +1,10 @@
 # Wire Parity
 
 Status vocabulary: **ALIVE** = implemented in `lib/` and pinned by a real test
-(unit or wire tier); **PARTIAL** = implemented but with a named gap (gap named
+(unit or wire tier; the pin files named in the Evidence column predate the
+v26.10.19 clean-room reset — `test/` paths other than `test/internal/` are
+RETIRED@64f6099 and preserved as evidence-of-record, with live pinning on the
+post-reset tree carried by `test/internal/` + `verification/{ts,py}`); **PARTIAL** = implemented but with a named gap (gap named
 inline); **PLANNED** = documented intent only, no code. Rows carrying open gaps
 use the `GAP(name)` token convention (machine-greppable, same convention as
 `docs/compliance/C1_ARM_REST.md` §Typed-gap-register and `docs/TEST_ISOLATION.md`;

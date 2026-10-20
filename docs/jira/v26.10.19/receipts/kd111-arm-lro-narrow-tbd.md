@@ -57,3 +57,28 @@ Skeleton falsifier ("SDK poller completes 202 → terminal on each covered route
 run SDK-side; the curl-tier evidence witnesses the divergence shape (202+async headers vs
 sync 201) which is what KD-111 registers. Poller-terminal completion remains for a
 SDK-probe lane if the registrar wants the full skeleton falsifier.
+
+## NARROWED 2026-10-19: AZB-25b sync storage DELETE (commit 1aca688)
+
+Storage-account DELETE answered `202` + LRO operation record where real ARM is
+SYNCHRONOUS — azurerm 4.54's delete path does not poll a 202 (witnessed:
+"unexpected status 202 with response {operation record}", azurerm apply blocked at
+destroy). Fixed in `lib/smalt/arm_gateway/router.ex` (commit `1aca688`, AZB-25a/b
+azurerm parity): the storage-account DELETE arm no longer starts an LRO —
+
+```elixir
+# AZB-25b: real ARM storage-account DELETE is SYNCHRONOUS (200 OK)
+# — azurerm 4.54's delete path does not poll a 202 (witnessed:
+# "unexpected status 202 with response {operation record}").
+# Only the PUT create flow is LRO-async for this type.
+send_resp(conn, 200, "")
+```
+
+Effect on the row: the LRO route set narrowed further — the only remaining LRO-async
+arms for storage are the PUT create flows (`storageAccounts`, `virtualMachines` per
+`lro_type?/1` at `lib/smalt/arm_gateway/router.ex:2236`); DELETE answers sync 200.
+tf smoke re-ran green with the fix (budget + fresh-apply, same commit; envelope-iac
+receipt `v261019-envelope-iac-smoke.md` pins the pre-fix 202 destroy-block, then
+FINAL.md §7 records "AZB-25a/b azurerm parity landed (1aca688 …) — verify leg closed;
+no open remainder"). KD-111 stays OPEN (narrowness is the registered divergence) but
+the divergence surface shrank by one route family this window.

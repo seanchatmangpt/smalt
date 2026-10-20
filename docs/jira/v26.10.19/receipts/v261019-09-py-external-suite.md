@@ -69,3 +69,8 @@ the new suite's first executed run.
 2. Standing is PARTIAL/IN-FLIGHT: no executed pytest run exists on the tree
    this session; the v26.10.18 residual faces are unresolved, and a
    `verification/py/.venv` exists on disk contra ADR-PY-002 as written.
+3. Pending command (exact): `cd verification/py && ./run.sh` (pytest over
+   `test_wf1..test_wf5`, 38 censused items, via `.venv-cli` per ADR-PY-002
+   reconciliation) — **BLOCKED during in-flight court**: the suite's conftest
+   boots the substrate, forbidden while a court is in flight. Suite owner
+   executes post-court and embeds the pytest tail here.

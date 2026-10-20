@@ -26,7 +26,8 @@ In `test/`, `Process.sleep(N)` as a coordination step is banned. Lawful
 forms:
 
 1. **Bounded polls on observables** — `SmaltTest.AssertEventually.eventually/2`
-   (`test/support/assert_eventually.ex`) polls a real observable on a
+   (pre-reset `test/support/assert_eventually.ex`, RETIRED@64f6099; successors:
+   `test/internal/poll_helper.exs` + `verification/{ts,py}/harness/poll.*`) polls a real observable on a
    monotonic deadline with typed immediate-fail on unexpected shape.
 2. **Structural sync** — GenServer `call`, ETS owned by the tested process,
    `async: false` where a sibling must not race.
@@ -42,7 +43,7 @@ independent sleep-free baseline (paired rounds, min-of-N), never absolute
 ms bounds — an absolute bound hugging the leaked operation's own cost is
 load-bound (witnessed: fence-10 100ms → PERSISTENT-FLAKE; 250ms fixed it
 only by hugging `@start_retry_delay_ms`). In-repo precedent:
-`test/amqp/fuzz_test.exs` lens-2 (clean ~1.12-1.3, mutant 22.9-36.1,
+`test/amqp/fuzz_test.exs` (RETIRED@64f6099) lens-2 (clean ~1.12-1.3, mutant 22.9-36.1,
 bound 3.0).
 
 ### B1: inherent time-advance (annotated exception)
@@ -72,7 +73,7 @@ which the process has nothing to do until it elapses). Otherwise:
 files scanned, or out-of-repo path without `--as=`, exits 1).
 
 - `test/`: every `Process.sleep` fails unless (a) inside an audited poll
-  implementation (`test/support/assert_eventually.ex` or a function in
+  implementation (`test/internal/poll_helper.exs` or a function in
   `AUDITED_POLL_FNS` — growth is a reviewed diff), (b) a `:infinity` park
   (process fixture), or (c) annotated `# SLEEP-CLASS: TIME-ADVANCE`.
 - `lib/`: every `Process.sleep` fails unless annotated with a census class:
@@ -109,7 +110,7 @@ smalt_ets_composite_identity, support/sleep_windows.ex.
 
 ## Adoption order
 
-1. `AssertEventually` — landed (`test/support/assert_eventually.ex`).
+1. `AssertEventually` — landed (pre-reset `test/support/assert_eventually.ex`, RETIRED@64f6099; successor `test/internal/poll_helper.exs`).
 2. Sleep gate seeded with the census — landed.
 3. Fence-10 ratio conversion (see `rewrite-drafts/fence10-ratio.md`).
 4. Gate green + enforcement: `just sleep-gate` enforces (exit 0 on the

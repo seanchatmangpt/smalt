@@ -114,7 +114,7 @@ canonical table is `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` (see
 `docs/reference/kd-register.md` for counts and the flip path). The
 comp_whitelist court closes GAP-AUD1-01 (a WIRE_PARITY gap token, not a KD
 row). The AMQP atom-flood fence (D63/R95) is witnessed by
-`test/amqp/fuzz_test.exs` and carries no KD row of its own.
+`test/amqp/fuzz_test.exs` (RETIRED@64f6099; successor pin: `verification/ts` ARM/AMQP probes) and carries no KD row of its own.
 
 ## See Also
 

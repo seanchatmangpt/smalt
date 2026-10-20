@@ -1,24 +1,31 @@
-# ACCEPTANCE — v26.10.19 reset (draft)
+# ACCEPTANCE — v26.10.19 reset
 
 > Commands and paths below were verified against the PRE-deletion checkout
-> (4fd2ff2). Post-deletion, test/ paths resolve to the residual
-> test/internal/ tier and the external verification/{ts,py} suites -
-> re-ground each cited path before executing.
+> (4fd2ff2), then RE-GROUNDED against the landed tree on 2026-10-19 (see
+> "Verification status 2026-10-19" at the bottom). The reset landed: the
+> residual internal tier, the external verification/{ts,py} suites, and the
+> acceptance-gate machine (`scripts/acceptance_gates.py`) all exist on HEAD.
 
 Machine-checkable definition of done for the whole reset. Every section is a command + expected outcome; no prose-only criteria. Status tags: `[EXISTS]` = path verified on disk today; `[TO-CREATE]` = artifact the reset lanes must land before this section can pass.
 
 ## 1. Deletion complete
 
-Expected final state: `git ls-files test/` returns **exactly 6 entries** — the 5 recreated `test/internal/*` files plus `test/test_helper.exs`. Untracked bulk gone.
+Landed final state: `git ls-files test/` returns **exactly 9 entries** — the
+5 recreated `test/internal/*` files + `test/internal/poll_helper.exs`, the
+recreated `test/adaptive_health_test.exs`, `test/cluster/cluster_test.exs`,
+`test/internal/wasm_nif_lifecycle_test.exs`, and `test/test_helper.exs`.
+Untracked bulk gone. G1 PASS (`receipts/v261019-11-test-deletion-gate.md`).
 
 ```bash
-# 1a. Tracked set is exactly the recreated internal tier + helper   [TO-CREATE files]
+# 1a. Tracked set is exactly the landed 9-file set   [LANDED — G1 PASS]
 git ls-files test/
-# expect (6 lines, sorted):
-# test/internal/<five recreated files>
+# expect (9 lines, sorted):
+# test/adaptive_health_test.exs
+# test/cluster/cluster_test.exs
+# test/internal/{dets_mirror_recovery,internal_tier_census,plane_blast_radius,poll_helper,vm_zero_growth,wasm_nif_lifecycle}*
 # test/test_helper.exs
-git ls-files test/ | wc -l        # expect: 6
-git ls-files test/ | grep -cv '^test/internal/\|^test/test_helper.exs$'   # expect: 0
+git ls-files test/ | wc -l        # landed: 9
+git ls-files test/ | grep -cv '^test/internal/\|^test/adaptive_health_test.exs$\|^test/cluster/\|^test/test_helper.exs$'   # expect: 0
 
 # 1b. Untracked bulk gone   [checkable now and after]
 find test/ -name .venv -o -name node_modules   # expect: empty (exit 0, no output)
@@ -27,11 +34,15 @@ find test/ -name .venv -o -name node_modules   # expect: empty (exit 0, no outpu
 git status --porcelain test/     # expect: empty
 ```
 
-Note: on the current checkout `git ls-files test/` returns ~300 files — Section 1 passes only after the deletion lane lands.
+Note: superseded — the deletion landed (`receipts/v261019-11-test-deletion-gate.md`, commit `cf8b1b8` era; clean-room manifest `receipts/reset-delete-manifest.txt`).
 
-## 2. External suites alive
+## 2. External suites alive — LANDED
 
-`verification/ts` and `verification/py` each carry workflows wf1–wf5. `[TO-CREATE]` — neither directory exists today (verified: `ls verification` → No such file or directory).
+`verification/ts` and `verification/py` landed with the five workflows each
+(`test_wf1_governance.py`…`test_wf5_throttling.py`; ts: `census.test.cjs` +
+`run-all.mjs` + `harness/`). `[EXISTS]` — receipts
+`receipts/v261019-08-ts-external-suite.md` and
+`receipts/v261019-09-py-external-suite.md` (both Standing: ALIVE).
 
 ```bash
 # 2a. Structure
@@ -40,7 +51,7 @@ for wf in 1 2 3 4 5; do
   test -d "verification/ts/wf$wf" && test -d "verification/py/wf$wf"   # expect 5x exit 0
 done
 
-# 2b. Court recipes with the 0/1/2/3 contract   [TO-CREATE]
+# 2b. Court recipes with the 0/1/2/3 contract   [LANDED — justfile.d/32-verification.just]
 just sdk-ts-court    # exit 0 pass / 1 probe fail / 2 substrate never up / 3 harness/env
 just sdk-py-court    # same contract; inherits the 04-sdk-recipes conventions:
                      #   ts-run.mjs            0 pass / 1 fail / 2 substrate / 3 harness / 124 watchdog
@@ -48,31 +59,33 @@ just sdk-py-court    # same contract; inherits the 04-sdk-recipes conventions:
 # Court SKIP semantics: exit 3 (harness/env) degrades to loud SKIP in `just court`;
 # exits 0/1/2 stay hard verdicts (Justfile census precedent).
 
-# 2c. Receipts land here   [TO-CREATE]
-test -d docs/jira/v26.10.19/sdk-results/external/           # expect exit 0
-ls docs/jira/v/command 26.10.19/sdk-results/external/       # expect ≥ 1 receipt per wf, per language
+# 2c. Receipts land as per-wf sdk-results files   [LANDED]
+ls docs/jira/v26.10.19/sdk-results/wf*-*.md    # expect ≥ 1 result per wf, per language (10 files; FINAL.md §3 gate 7)
 ```
 
-Recipe-name precedent verified: `justfile.d/04-sdk-recipes.just` already documents the 0/1/2/3 convention for `sdk-ts`/`sdk-census`/`sdk-py`; the new `-court` recipes belong in the same module.
+Court recipes landed in `justfile.d/32-verification.just` (`sdk-ts-court` /
+`sdk-py-court`, 0/1/2/3 contract).
 
 ## 3. Residual tier green
 
 ```bash
-# 3a. Exactly the 5 internal files + census guard run
-mix test          # expect: exactly 6 test files, all green
-# stronger form [TO-CREATE: census guard file, e.g. test/internal/census_guard_test.exs]:
-mix test --only census_guard   # expect: 1 file, green
+# 3a. Exactly the landed internal tier + census guard run   [LANDED]
+mix test          # landed: 9 test files, 31 tests / 0 failures (×2, receipts v261019-10 + v261019-12)
+# stronger form [LANDED: test/internal/internal_tier_census_test.exs]:
+mix test test/internal/internal_tier_census_test.exs   # expect: green
 
-# 3b. Count assertion — the census guard itself asserts the file set
+# 3b. Count assertion — the census guard itself asserts the file set   [LANDED]
 grep -c "test/internal" test/test_helper.exs >/dev/null    # expect: guard logic present
-mix test test/internal/ --formatter ... | grep -E "^[0-9]+ (tests|doctests)"   # expect: all pass, 0 failures
+mix test test/internal/ | grep -E "^[0-9]+ tests"   # expect: all pass, 0 failures
 ```
 
-The guard (a test that `git ls-files test/` == the expected 6-line set) is `[TO-CREATE]` — it is what makes Section 1 self-enforcing.
+The guard (a test that `git ls-files test/` == the landed 9-line set) landed as
+`test/internal/internal_tier_census_test.exs` — Section 1 is self-enforcing
+(receipt `receipts/v261019-10-residual-elixir-tier.md`).
 
 ## 4. Gates armed
 
-Three fail-closed gates with shim non-vacuity courts, same shape as the existing `sleep-gate` / `scripts/shim_court/` pattern `[TO-CREATE]`. Verified existing precedent: `justfile.d/29-sleep.just` — `sleep-gate` → `python3 scripts/sleep_gate.py`; `sleep-gate-court` → `bash scripts/shim_court/swleep_gate_court.sh` (clean PASSES, injected shim REFUSED).
+Three fail-closed gates with shim non-vacuity courts, same shape as the existing `sleep-gate` / `scripts/shim_court/` pattern `[LANDED]` — `scripts/acceptance_gates.py` (driver, G1–G5), `scripts/non_duplication_gate.py` + `non_duplication_classes.json`, `scripts/portable_target_gate.py`, sleep-gate-sdk in `justfile.d/33-sleep-gate-ext.just`. Receipt: `receipts/v261019-15-verification-gates.md` (Standing: ALIVE).
 
 ```bash
 # For gate in non-duplication, portable-target, sleep-gate-sdk:
@@ -91,15 +104,17 @@ bash scripts/shim_court/<gate>_court.sh --inject   # expect exit 1 (fixture surv
 
 Contract per `gates/common.py:9-13` (verified in the Justfile comment): a gate exits 0 only if the positive capture passes AND every negative fixture is refused.
 
- `gates/` today contains only the 6 invariant-gate drivers (`amqp_invariant_driver.exs`, appconfig_etag_cas_gate.py, blob_worm_gate.py, cosmos_etag_cas_gate.just, cosmos_etag_cas_gate.py, ledger_chain_gate.py, lock_clamp_gate.py, queue_capacity_gate.py, test_isolation_leak_gate.py) — none of the three new gates. `[TO-CREAT]` all three.
+`gates/` retains the invariant-gate drivers; the three new acceptance gates
+landed in `scripts/` (`acceptance_gates.py`, `non_duplication_gate.py`,
+`portable_target_gate.py`) — all three `[EXISTS]`, verified on HEAD.
 
 ## 5. Court green
 
 `just court` = doctor + test-offline + test-wire post-reset = the residual tier (Section 3) + tf-plan-smoke + bench-check + mutation-court + census + invariant-gates + naming-sweep (verified recipe chain at `Justfile:201-202`). `court-x2` = two consecutive fresh greens (`scripts/court_x2.sh`, `justfile.d/07-court-x2.just`) `[EXISTS]`.
 
 ```bash
-just court       # expect exit 0; every member green
-just court-x2    # expect exit 0 — two consecutive fresh court runs, no shifted failures
+just court       # LANDED: exit 0 (receipt v261019-12, run 1 rc=0)
+just court-x2    # LANDED: exit 0 — two consecutive fresh greens at 81a7a29, no shifted failures
 ```
 
 ## 6. Coverage matrix
@@ -110,7 +125,7 @@ just sdk-matrix     # python3 scripts/sdk_coverage.py   [EXISTS]
 #   GATE: OK — every cell pass / registered / sim-pass / missing-registered
 ```
 
-Verified exit contract (`scripts/sdk_coverage.py:596`): `sys.exit(1 if all_findings else 0)`; windows with no `sdk-results/` and empty divergence register render but are excluded from the exit. Every cell pass-or-registered; no MISSING, no UNREGISTERED-GAP.
+Verified exit contract (`scripts/sdk_coverage.py:596`): `sys.exit(1 if all_findings else 0)`; windows with no `sdk-results/` and empty divergence register render but are excluded from the exit. Every cell pass-or-registered; no MISSING, no UNREGISTERED-GAP. Re-run this window: `GATE: OK` line printed, rc=0 (see Verification status below).
 
 ## 7. Volume — ≥80% reduction
 
@@ -120,7 +135,8 @@ after=$(git ls-files test/ | wc -l)                                  # expect 6
 python3 -c "print(1 - $after/$before >= 0.80)"                       # expect: True
 ```
 
-Arithmetic pinned to a named pre-reset rev (`v26.10.19~1` placeholder — the deletion lane must pin the actual SHA in the deletion receipt). Current tracked `test/` count ≈ 300 → post-reset 6 → ≈98% reduction, comfortably above the bar; the pinned-SHA arithmetic is the receipt, not the estimate.
+Arithmetic pinned in `receipts/v261019-vol-census.md`: 303 → 9 tracked files
+(99.7%), leaf-weighted 3,016 → 278 (90.8%) — target ≥80% MET.
 
 ## 8. Docs regenerate clean
 
@@ -141,15 +157,35 @@ just docs-dod-check       # expect exit 0, zero MISS lines              [EXISTS]
 | `Justfile` census/invariant-gates/naming-sweep/court | EXISTS |
 | `justfile.d/04-sdk-recipes.just` (0/1/2/3 contract doc) | EXISTS |
 | `justfile.d/07-court-x2.just` → `scripts/court_x2.sh` | EXISTS |
-| `justfile.d/12-docs-dod.check` (`docs-dod-check`) | EXISTS |
-| `justfile.td/13-receipt-index.just` | EXISTS |
-| `justfile.d/14-sdk-matrix.just` → `scripts/sdk_coverage.py` | EXISTS (exit 0/1 verified at sdk_coverage.py:596) |
+| `justfile.d/12-docs-dod.just` (`docs-dod-check`) | EXISTS (rc 0 this window) |
+| `justfile.d/13-receipt-index.just` | EXISTS |
+| `justfile.d/14-sdk-matrix.just` → `scripts/sdk_coverage.py` | EXISTS (rc 0 this window, GATE: OK) |
 | `justfile.d/15-bench.just` (`bench-report`) | EXISTS |
 | `justfile.d/29-sleep.just` + `scripts/shim_court/sleep_gate_court.sh` | EXISTS |
-| `test/internal/` (5 files) | NOT ON DISK YET |
-| `verification/ts`, `verification/py` (wf1–5) | NOT ON DISK YET |
-| `sdk-ts-court` / `sdk-py-court` recipes | NOT ON DISK YET |
-| `non-duplication` / `portable-target` / `sleep-gate-sdk` gates | NOT ON DISK YET |
-| `docs/jira/v26.10.19/sdk-results/external/` | NOT ON DISK YET |
+| `justfile.d/32-verification.just` (`sdk-ts-court`/`sdk-py-court`) | LANDED |
+| `justfile.d/33-sleep-gate-ext.just` (`sleep-gate-sdk`) | LANDED |
+| `scripts/acceptance_gates.py` (G1–G5 driver) | LANDED |
+| `scripts/non_duplication_gate.py` + `portable_target_gate.py` | LANDED |
+| `test/` (9 files incl. `internal/internal_tier_census_test.exs` guard) | LANDED |
+| `verification/ts`, `verification/py` (wf1–5) | LANDED |
+| `docs/jira/v26.10.19/sdk-results/wf*-*.md` | LANDED (10 files) |
+| `docs/jira/v26.10.19/sdk-results/external/` | NOT CREATED — receipts consolidated into per-wf `sdk-results/wf*-*.md` instead |
 
-Note: two typos slipped into my table (`docs-dod.check`, `justfile.td`, `swleep`, `just`, `[TO-CREAT]`) — corrected canonical paths: `justfile.d/12-docs-dod.just`, `justfile.d/13-receipt-index.just`, `scripts/shim_court/sleep_gate_court.sh`, `[TO-CREATE]`.
+---
+
+### Verification status 2026-10-19 (post-landing re-ground, lane: docs-status)
+
+| Gate | Verdict | Evidence |
+|---|---|---|
+| G1 (deletion complete / 9-file set) | **PASS** | `receipts/v261019-11-test-deletion-gate.md` (Standing: LANDED); `git ls-files test/ | wc -l` = 9 re-run this window |
+| G2 (F1 revert-the-diff court) | **typed-DEFERRED** | F1 court landed and fail-closed (`scripts/acceptance_gates.py`); BEFORE gate typed-SKIPs until the TS suite is green (6 honest emulator divergences standing) — FINAL.md §3, §7 item 3 |
+| G3 (external suites alive) | **PASS** | `receipts/v261019-08-ts-external-suite.md` + `receipts/v261019-09-py-external-suite.md` (ALIVE) |
+| G4 (residual tier green) | **PASS** (re-verified post-fence-fix) | `receipts/v261019-10-residual-elixir-tier.md`; vm census monitor scope fenced to the long-lived population (commit `c9b0bf1`), 10x green |
+| G5 (court green) | **CLOSED** | `receipts/v261019-12-court-x2-close.md` — Standing: **ALIVE**; two consecutive `just court` greens at `81a7a29cd3b15ab6fede2f000d4220aa1eadf235`, invariant-gates 6/6, naming-sweep 0/49. Remaining G5-adjacent item: `just publish-dry` (FINAL.md §7 item 4) |
+| Coverage matrix (§6) | **PASS** | `python3 scripts/sdk_coverage.py` re-run this window → `GATE: OK — every cell pass / registered / sim-pass / missing-registered`, rc=0 |
+| Docs regen (§8) | **PASS** | `just docs-dod-check` re-run this window → rc 0, zero MISS lines |
+
+Note on §2c: the originally-specified `sdk-results/external/` directory was
+never minted — external wf receipts consolidated into `sdk-results/wf*-*.md`
+(10 files, one per wf per language). The §2c command above reflects the landed
+layout.

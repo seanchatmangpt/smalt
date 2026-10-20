@@ -1,7 +1,7 @@
 defmodule Smalt.MixProject do
   use Mix.Project
 
-  @version "26.10.18"
+  @version "26.10.19"
 
   def project do
     [

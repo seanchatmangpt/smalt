@@ -38,8 +38,7 @@ Override for LAN SDK testing via `SMALT_BIND_IP` or
 Rules: a lane pre-flights its whole block with `lsof -iTCP:<port> -sTCP:LISTEN`
 and refuses to boot on any held port (fail-closed collision check).
 `scripts/bench.py` and `scripts/bench/lib.sh` are witnessing-equivalent spawn
-paths. `just sdk-ts` and `test/sdk-smoke/run.mjs` boot their own substrate and
-KILL whatever holds 9443 first — never run concurrently with lane substrates.
+paths. The pre-reset `just sdk-ts` / `test/sdk-smoke/run.mjs` probes booted their own substrate and KILLED whatever held 9443 — RETIRED@64f6099; successor: `verification/ts` probes (`verification/ts/run-all.mjs`).
 
 ## SMALT_PLANES
 

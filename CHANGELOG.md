@@ -8,6 +8,72 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [26.10.19] - 2026-10-19
+
+Verification-architecture reset window; landing commit `cf8b1b8`
+(303-file deletion anchor `64f6099`; parity anchor `1aca688`). Receipts:
+docs/jira/v26.10.19/RECEIPTS.md.
+
+### Added
+
+- External official-SDK verification suites: TypeScript
+  (`bc733fc`, 5 workflows; 33 green / 1 divergent / 6 failing honest
+  standing) and Python (`b004669`, 5 workflows, green x3), plus
+  workspace official-credential swap.
+- Residual internal tier: 5 census-fenced ExUnit files, cluster suite,
+  adaptive-health suite (`06dc6d4`).
+- RS256 identity: StsKey signing, JWKS discovery envelope (`093b571`).
+- Substrate-ctl boot library + control CLI (`3471326`).
+- Verification gates: non-duplication, portable-target, envelope gates;
+  acceptance machine + F1 revert-the-diff falsifier court (fail-closed,
+  BEFORE gate typed-SKIP until TS suite green) (`3471326`).
+- ARM policy exemptions + initiatives routes (KD-112), X-ARR mTLS plug,
+  crash envelope, ResourceGraph route (`c41e8ae`, `093b571`).
+- Blob container lease + ACL surface (KD-108) (`c31afd4`).
+- Queue storage peek/clear (WO-06) (`d941fbb`).
+- Event Grid DLQ blob spillover (KD-101/G3) (`c31afd4`).
+- Adaptive /healthz endpoint and HealthPlug wiring on MCP
+  (`093b571`, `c31afd4`, `30970c4`).
+- DNS cluster formation; env-first-int limit overrides; control-plane
+  Store mount (`093b571`, `30970c4`).
+- Hermetic image build (−94.3% size), density compose, k8s
+  zero-sidecar blueprint, just modules 32-35 (`2c2b544`).
+- SDK coverage active-window gating + 11-probe SB census probes and
+  receipt bridge (`bad3b6e`).
+
+### Changed
+
+- Verification architecture reset: 303 legacy test files deleted
+  (107,644 lines; `64f6099`); residual internal tier 5 census-fenced
+  files; leaf-weighted volume 3,016 → 278 (90.8% reduction; target
+  ≥80%). Receipt: `receipts/v261019-vol-census.md`.
+- Court ladder restructured to 11 stages (`bad3b6e`, `3471326`).
+- KD-99 and KD-100 flipped CLOSED-SIMULATED via official-SDK witness
+  (`scripts/kd_flip.py --apply`; KD register v26.10.14).
+
+### Fixed
+
+- ARM throttle silent disarm via `:heir` owner pattern (KD-112; WO-03/
+  WO-15) (`c41e8ae`).
+- Policy shadow-ETS same `:heir` class (`c41e8ae`).
+- Cosmos/blob child-resource location over-validation relaxed to
+  DefaultShape (`1aca688`).
+- blobServices/default synthesis and synchronous storage DELETE
+  (AZB-25a/b azurerm parity) (`1aca688`).
+- Bench `mint_token` retries connection-level transients (`5a2e1b0`).
+- VM census monitor double-count (ConnSup monitor-pair ±2/socket
+  churn); 10x green (`c9b0bf1`).
+- sb-extra hard top-level watchdog for AMQP attach hangs on draining
+  broker, witnessed x2 (`77a4041`).
+- Blob container_key and lease header stragglers (`5a95c2a`).
+
+### Status
+
+- court-x2 NOT-RUN at wrap (`receipts/v261019-12-court-x2-close.md`,
+  base pinned `64f6099`); publish-dry NOT RUN; docs-dod-check PASS;
+  invariant-gates 6/6 PASS; naming-sweep 0 violations; gen-error-codes
+  146 rows idempotent; sdk-matrix exit 0.
+
 ## [26.10.18] - 2026-10-19
 
 AZB burn wave over the v26.10.16 surface. Highlights (receipts:

@@ -19,6 +19,10 @@ not a precondition.
 
 ## WO-1 — Burn-ring re-run under flock image-build lease + SUBJECT_SHA build-arg fix
 
+- Status-2026-10-19: **ALIVE** — mechanical fixes landed
+  (`receipts/v261019-wo1-subject-sha-lease.md`: SUBJECT_SHA build-arg +
+  flock image-build lease); the `just burn-ring` re-run itself remains
+  open.
 - Standing: **BLOCKED[image-subject-mismatch loop + colima daemon EOF]** — 3rd
   strike on the `just burn-ring` re-judge. Evidence:
   `docs/jira/v26.10.18/receipts/azb-22b-zombie-fix.md`
@@ -46,6 +50,9 @@ not a precondition.
 
 ## WO-2 — SOVEREIGN_MIDNIGHT G-register: G2 X-ARR mTLS, G3 EG DLQ spillover, G4 split-brain failover
 
+- Status-2026-10-19: **G2 LANDED** (plug + witness receipt);
+  **G3 LANDED** (DLQ spillover, typed dead-letter face);
+  **G4 still OPEN** (split-brain failover plane unscheduled).
 - Standing per `docs/jira/v26.10.18/azsim-burn/SOVEREIGN_MIDNIGHT.md`
   §"Gap register (build order for v26.10.19)":
   - **G2 MISSING** — X-ARR-ClientCert mTLS gateway termination + spoof
@@ -74,6 +81,9 @@ not a precondition.
 
 ## WO-3 — GAP-AZB20-1/4 plane-mounting implementation (Option A)
 
+- Status-2026-10-19: **LANDED** — control-plane Store mount witness +
+  regression green (20/0) per the Option A plan; GAP-AZB20 rows flip
+  receipt-gated.
 - Standing: **OPEN — all 4 cells FAIL on HEAD `502c4ed`**. Evidence:
   `docs/jira/v26.10.18/receipts/i29-azb20-postfix.md` (postfix re-test, all
   four cells still open; root cause re-confirmed in code on HEAD).
@@ -100,6 +110,9 @@ not a precondition.
 
 ## WO-4 — azb-18 cgroup soak: mount gaps + memory ceiling + defaults
 
+- Status-2026-10-19: **fixes LANDED** — read-only `../ggen_igniter` mount +
+  `SMALT_SOAK_MEM_LIMIT=4g` + persisted env-overridable defaults; the soak
+  run itself (gate exit 0, derived ALIVE) remains open.
 - Standing: **PARTIAL_ALIVE / BLOCKED[unledgered-failure-faces +
   harness-mount-gap]**. Evidence:
   `docs/jira/v26.10.18/receipts/azb-18-cgroup-soak.md` — both soak cycles
@@ -122,6 +135,8 @@ not a precondition.
 
 ## WO-5 — Isolation runtime5 quiet-window rerun
 
+- Status-2026-10-19: **still OPEN** — quiet-window rerun
+  (`just quiet-check` precondition) pending; falsifier not yet landed.
 - Standing: **PARTIAL_ALIVE — quiet-run falsifier OPEN**. Evidence:
   `docs/jira/v26.10.18/receipts/i29-isolation-runtime5.md` — machine load
   22–28 during the run; residual is load-shaped, not behavior-shaped.
@@ -135,6 +150,8 @@ not a precondition.
 
 ## WO-6 — Queue Storage: peek/clear comps out-of-G1-face
 
+- Status-2026-10-19: **LANDED** — peek-messages + clear-messages comps
+  implemented with red-before/green-after witness (engine + wire green).
 - Standing: **OPEN (deliberately deferred, not a defect)**. Evidence:
   `docs/jira/v26.10.18/receipts/i29-g1-land.md` — "Peek/clear-message comps
   are NOT in the G1 face (scoping doc section 2 lists put/get/update/delete +
@@ -152,6 +169,9 @@ not a precondition.
 
 ## WO-7 — Reset inventory + census (pre-deletion ground truth) — `07-clean-room-reset.md`
 
+- Status-2026-10-19: **LANDED** — `receipts/v261019-07-reset-inventory.md`
+  on disk; manifest 303 rows; lifts precede `64f6099`. B8 classification
+  folded into WO-15's classes file.
 - Standing: **DONE (lifts + manifest)** at the deletion window. Lifts landed
   in `docs/jira/v26.10.19/lifts/` (`ts-run.mjs`, `conftest.py`,
   `assert_eventually-reference.exs`) BEFORE deletion, per the blocking-first
@@ -167,6 +187,10 @@ not a precondition.
 
 ## WO-8 — verification/ts: external official-SDK suite (5 workflows), TypeScript — `08-verification-ts.md`
 
+- Status-2026-10-19: **LANDED (PY-GREEN/TS-PARTIAL family per FINAL.md
+  §7)** — suite landed with per-workflow receipts
+  (`receipts/v261019-08-ts-external-suite.md`); 6 honest emulator
+  FAILs carried as KD candidates (FINAL.md §7 item 1).
 - Standing: **NEW — landing now** (sibling suites lane; `verification/` not
   yet on disk at materialization).
 - Evidence: lifts (`lifts/ts-run.mjs`); design in `08-verification-ts.md`
@@ -184,6 +208,8 @@ not a precondition.
 
 ## WO-9 — verification/py: external official-SDK suite (5 workflows), Python mirror — `09-verification-py.md`
 
+- Status-2026-10-19: **LANDED — PY-GREEN** —
+  `receipts/v261019-09-py-external-suite.md`; exit contract honored.
 - Standing: **NEW — landing now** (sibling suites lane).
 - Evidence: lifts (`lifts/conftest.py`); design in `09-verification-py.md`
   (lifted conftest: lazy session fixtures, reuse-else-boot, R177b identity
@@ -198,6 +224,9 @@ not a precondition.
 
 ## WO-10 — Residual internal Elixir tier: fresh `test/internal/` (5 files + census guard) — `10-residual-internal-tier.md`
 
+- Status-2026-10-19: **LANDED — residual tier ALIVE** —
+  `receipts/v261019-10-residual-elixir-tier.md`; 5-file tier + census
+  guard green x2 (31 tests, 0 failures ×2 per FINAL.md §4).
 - Standing: **IN FLIGHT** — `test/internal/` exists at materialization with
   `plane_blast_radius_test.exs`, `vm_zero_growth_test.exs`,
   `poll_helper.exs`; `wasm_nif_lifecycle_test.exs`,
@@ -214,6 +243,9 @@ not a precondition.
 
 ## WO-11 — Test-deletion gate (clean-room reset) — `11-test-deletion-gate.md`
 
+- Status-2026-10-19: **LANDED** — deletion commit `64f6099`
+  (`receipts/v261019-11-test-deletion-gate.md`); parity backfill
+  (WO-8/9/10 receipts at one pinned SHA) remains the closing obligation.
 - Standing: **LANDED — commit `64f6099`** (V261019-11: 303 tracked files,
   107k lines deleted; `git ls-files test/` == 1: `test/test_helper.exs`).
   Executed ahead of the TS/PY parity preconditions — the parity backfill
@@ -235,6 +267,10 @@ not a precondition.
 
 ## WO-12 — Court-x2 close: 11-stage court, two greens at a pinned SHA — `12-court-x2-close.md`
 
+- Status-2026-10-19: **court-x2 IN FLIGHT** —
+  `receipts/v261019-12-court-x2-close.md` records the court; census-court
+  blockers cleared (77a4041 watchdog, c9b0bf1 monitor scope, 81a7a29
+  binary removal per FINAL.md §7 item 4); landing pair pending.
 - Standing: **TYPED-RED carried** from v26.10.18
   (`docs/jira/v26.10.18/receipts/azb-23-court-x2.md` +
   `i29-court-x2-final.md`); BLOCKED until the reset ladder integrates.
@@ -251,6 +287,10 @@ not a precondition.
 
 ## WO-13 — Identity plane: RS256 signing key + real-AAD discovery surface — `13-identity-rs256.md`
 
+- Status-2026-10-19: **LANDED — identity ALIVE** —
+  `receipts/v261019-13-identity-rs256.md`; official-SDK witness landed;
+  KD-99 + KD-100 flipped CLOSED-SIMULATED via `scripts/kd_flip.py
+  --apply` (FINAL.md §5).
 - Standing: **IN FLIGHT** — `lib/smalt/auth/sts_key.ex` on disk (untracked),
   `lib/smalt/arm_gateway/router.ex` + `lib/smalt/auth/bearer.ex` modified.
   Technical annex: wave-3 draft (verified anchors, StsKey API,
@@ -270,6 +310,9 @@ not a precondition.
 
 ## WO-14 — Substrate boot library: substrate_boot.sh + substrate-ctl — `14-substrate-boot-library.md`
 
+- Status-2026-10-19: **LANDED — boot library ALIVE** —
+  `receipts/v261019-14-boot-library.md`; fd-9 law + wrappers +
+  starvation shim court consumed by the WO-8/WO-9 harnesses.
 - Standing: **IN FLIGHT** — `scripts/lib/substrate_boot.sh` on disk
   (untracked, sibling lane).
 - Evidence: `14-substrate-boot-library.md` (fd-9 law + `9>&-` spawn assert,
@@ -286,6 +329,10 @@ not a precondition.
 
 ## WO-15 — Verification gates: non-duplication R1/R2/R3, portable-target whitelist, sleep-gate TS/PY — `15-verification-gates.md`
 
+- Status-2026-10-19: **LANDED — gates ALIVE** —
+  `receipts/v261019-15-verification-gates.md`; non-duplication +
+  portable-target + sleep-gate TS/PY scopes green; acceptance machine
+  G1/G3/G4 PASS (FINAL.md §3).
 - Standing: **IN FLIGHT** — `scripts/non_duplication_gate.py` +
   `scripts/non_duplication_classes.json` + `scripts/portable_target_gate.py`
   on disk (untracked, sibling gates lane); sleep_gate TS/PY extension and
@@ -304,6 +351,9 @@ not a precondition.
 
 ## WO-16 — Milestone wrap: generated docs, FINAL.md, wrap sequence — `16-milestone-wrap.md`
 
+- Status-2026-10-19: **wrap IN FLIGHT** — FINAL.md on disk with census
+  arithmetic (leaf-weighted 90.8% ≥ 80%, `receipts/v261019-rc-rewrite-census.md`);
+  remaining: court-x2 landing pair + publish-dry (G5 blockers).
 - Standing: **NEW — terminal WO** (runs last; nothing lands after it).
 - Evidence: `16-milestone-wrap.md` (generated-docs regeneration law —
   RECEIPTS/SDK_MATRIX/BENCH regenerated never hand-edited; KD/GAP settle;

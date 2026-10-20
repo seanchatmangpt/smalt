@@ -368,7 +368,7 @@ New courts landed with the v26.10.14 wave (work order
 `docs/jira/v26.10.14/18-mutation-courts.md`):
 
 - **Wire-tier malformed-payload refusal sweep** —
-  `test/wire_tier_refusal_sweep_test.exs` iterates
+  `test/wire_tier_refusal_sweep_test.exs` (RETIRED@64f6099 — witness record preserved; successor: `verification/ts` ARM probes) iterates
   `Smalt.Registry.admitted_resource_types()` DYNAMICALLY (tripwire `>= 30`;
   38 at run time), resolves each type's ARM route from the type's segment
   shape (generic 3-segment route; child routes for nested Registry types;
@@ -379,7 +379,7 @@ New courts landed with the v26.10.14 wave (work order
   `Microsoft.Compute/disks` conforming PUT -> **201** + GET round-trip **200**
   (vacuity guard — the sweep distinguishes refusal from admission).
   Verdict: **NON-VACUOUS**; `mix test test/wire_tier_refusal_sweep_test.exs`
-  3/3, 0 failures (2026-10-15 15:28 PT).
+  3/3, 0 failures (2026-10-15 15:28 PT). Test RETIRED@64f6099 (clean-room reset). (Test RETIRED@64f6099.)
 
 | Sweep outcome (38 types) | n | Per-type wire answer to malformed PUT |
 |---|---|---|
@@ -473,7 +473,7 @@ just enclave-loop   # invokes scripts/tf_enclave_loop.sh
 
 ### Result
 
-One jsonl row set in `docs/jira/v26.10.14/bench/e1-enclave-loop.jsonl`
+One jsonl row set in `docs/jira/v26.10.16/bench/e1-enclave-loop.jsonl`
 (script underscore `tf_enclave_loop.sh`, result hyphen — standard
 convention), same row schema as the other lanes.
 

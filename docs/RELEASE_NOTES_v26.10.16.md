@@ -177,7 +177,7 @@ no on-disk referent and are named only as approved-plan scope.
   wired into the storefront PUT path with `maybe_put_sku` storage/cosmos
   sku+kind aliasing (`lib/smalt/arm_gateway/defaults.ex`,
   `lib/smalt/arm_gateway/router.ex:768-814`); pinned by
-  `test/defaults_test.exs` (9 tests) +
+  `test/defaults_test.exs` (9 tests; RETIRED@64f6099) +
   `test/zero_drift_serialization_test.exs` (honest caveat: 3 of its
   cases red at check time, 2026-10-16, mid-wave).
 - **Cascade teardown completion** — resource-group delete cascades
@@ -195,12 +195,12 @@ no on-disk referent and are named only as approved-plan scope.
   (`justfile.d/21-enclave.just`) drives `scripts/tf_enclave_loop.sh`
   (lane-private substrate, loud-skip exit 3); result jsonl at
   `docs/jira/v26.10.16/bench/e1-enclave-loop.jsonl`.
-- **NFR gates** — `gates/nfr3_rss_gate.py` + `scripts/stress/beam_rss.py`
+- **NFR gates** — `scripts/nfr3_rss_gate.py` + `scripts/stress/beam_rss.py`
   (delta-RSS) + `test/smalt_ets_baseline_identity_test.exs`.
 - **KD details[] corpus rows** — error-corpus fence rows pinning the ARM
   error envelope in `test/arm_error_corpus_test.exs` (21 tests).
 
-- **Terraform parity fixture** — `test/terraform_fixture/`:
+- **Terraform parity fixture** — `test/terraform_fixture/` (RETIRED@64f6099 — tf fixture tree deleted in the clean-room reset; successor: the tf smoke in the court pipeline):
   `versions.tf` pins `azurerm` to exactly `= 4.54.0` (`azapi = 2.4.0`),
   `main.tf` plans one resource group (`rg-smalt-fixture`), one key vault
   (`kv-smalt-fixture`), and one storage account (`smaltfixturestore`),
@@ -216,7 +216,7 @@ no on-disk referent and are named only as approved-plan scope.
   redirect) and `scripts/hosts_alias.sh` (hosts-file aliasing).
 - **Offline provider mirror (script + material)** —
   `scripts/tf_provider_mirror.sh` downloads the azurerm binaries into
-  `test/terraform_fixture/provider-mirror/` (gitignored) and writes
+  `test/terraform_fixture/provider-mirror/` (gitignored; tree RETIRED@64f6099) and writes
   `provider-mirror.rc` pointing `TF_CLI_CONFIG_FILE` at the filesystem
   mirror so `tf_smoke.sh`/`tf_plan_check.sh` run fully offline.
   Idempotent; the mirror material
@@ -259,7 +259,7 @@ SDK-vs-BEAM multiplier narrative lives in the per-lane receipts
   row).
 - **Census-flake notes** — timing-sensitive census/pagination flakes parked
   with close conditions: perf flake
-  `test/data_plane/blob_hardening_test.exs:~1523` (environment-sensitive,
+  `test/data_plane/blob_hardening_test.exs:~1523` (RETIRED@64f6099; environment-sensitive,
   not a product defect) and the census regression park
   ([r178e-census-regression-park.md](jira/v26.10.16/receipts/r178e-census-regression-park.md)).
 - **QueueDescription gaps** — remaining Service Bus administration-surface
