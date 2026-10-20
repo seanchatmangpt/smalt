@@ -95,6 +95,7 @@ async function bootPrivate(block) {
     if (Date.now() > deadline) {
       throw new Error("private substrate " + block + " not healthy in 90s (log: " + logPath + ")");
     }
+    // SLEEP-CLASS: POLL-STEP — substrate boot readiness poll
     await new Promise((r) => setTimeout(r, 250));
   }
   return { ports: ports, sharedKey: sharedKey, pid: child.pid };
@@ -141,6 +142,7 @@ async function main() {
     if (early.some((m) => m.messageId === "extra-sched-1")) {
       err = new Error("visible before ScheduledEnqueueTime");
     } else {
+      // SLEEP-CLASS: TIME-ADVANCE — PT2S lock-duration law under test (broker-side expiry, not coordination)
       await new Promise((r) => setTimeout(r, 2500));
       const late = await rx.receiveMessages(10, { maxWaitTimeInMs: 3000 });
       if (!late.some((m) => m.messageId === "extra-sched-1")) {
@@ -189,7 +191,7 @@ async function main() {
 // timeoutInMs against a draining broker (witnessed: two orphaned probe
 // processes idling against a swept substrate during the v26.10.19 court).
 const WATCHDOG_MS = parseInt(process.env.SMALT_SB_EXTRA_WATCHDOG_MS || "180000", 10);
-const watchdog = setTimeout(function () {
+const watchdog = setTimeout(function () { // SLEEP-CLASS: SCHEDULING (hard top-level watchdog, typed exit 3)
   console.error("[sb-extra] WATCHDOG: no verdict in " + WATCHDOG_MS + "ms — typed fail");
   downBlock("b11");
   process.exit(3);

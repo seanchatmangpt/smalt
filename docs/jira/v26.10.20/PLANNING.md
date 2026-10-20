@@ -1,6 +1,8 @@
 # PLANNING.md — v26.10.20 window seed
 
-- **Date**: 2026-10-19 (window open)
+- **Date**: 2026-10-19 (window open); **updated 2026-10-20, ERRC docs lane** —
+  post-wave-3 reality (capability waves 1-3 landed on the v26.10.19 base;
+  status column added to the WO table; see "Three-wave ledger" below)
 - **Source**: `docs/jira/v26.10.19/FINAL.md` §7 (planning handoff) + the
   KD-114..119 mint batch (registrar-gated; the register currently ends at
   KD-113, mint contiguous, never renumber — KD-113 registrar ruling).
@@ -22,15 +24,15 @@
 
 ## WO table
 
-| # | Name | Priority | Depends on | Close condition (receipt-gated) |
-|---|---|---|---|---|
-| WO-1 | **TS-suite green push** — 6 honest emulator divergences, each a sub-sketch with falsifier (see below) | **P0** | — | `cd verification/ts && node run.mjs` exit 0, green x2 at one pinned SHA; each fixed divergence witnesses green in the suite leg that was red |
-| WO-2 | F1 falsifier unblock (BEFORE gate currently typed-SKIP) | **P0** | WO-1 | F1 revert-the-diff court exits 1 on the reverted subject and 0 on the landed diff; G2 flips DEFERRED→PASS with receipt |
-| WO-3 | cosmos.ex accessor bypass fix (`cosmos_ru_limit`, `:heir`/accessor family — sibling of arm c41e8ae) | P1 | — | ru-limit transient state rides the `:heir`/accessor pattern; falsifier test kills the owner and observes the value survives (or the request retypes); `mix test` green at the pinned SHA |
-| WO-4 | Secrets-sweep + envelope courts | P1 | — | sweep + envelope courts exit 0 clean and exit 1 on their shim fixtures (AFTER-legs flip; non-vacuity per shim-court law) |
-| WO-5 | court-x2 completion → release receipt; then `just publish-dry` | **P0** (final gate) | WO-1, WO-3, WO-4 landed | `just quiet-check` exit 0 then `just court-x2` exit 0 on BOTH legs at one pinned SHA; release receipt minted; `just publish-dry` exit 0; G5 typed-PENDING→closed receipt-gated |
-| WO-6 | **Carried** v26.10.19 WO-2 — SOVEREIGN_MIDNIGHT G-register (G2 X-ARR mTLS, G3 EG DLQ spillover, G4 split-brain failover) | P1 | G4 behind G2/G3 | unchanged from `docs/jira/v26.10.19/WORK_ORDERS.md` (row flips receipt-gated in SOVEREIGN_MIDNIGHT.md) |
-| WO-7 | **Carried** v26.10.19 WO-5 — isolation runtime5 quiet-window rerun (`just quiesce` / `quiet-check` discipline) | P1 | quiet window | `python3 scripts/isolation_court.py --runtime-only` counts 0; register row flips with receipt |
+| # | Name | Priority | Depends on | Close condition (receipt-gated) | Status (2026-10-20) |
+|---|---|---|---|---|---|
+| WO-1 | **TS-suite green push** — 6 honest emulator divergences, each a sub-sketch with falsifier (see below) | **P0** | — | `cd verification/ts && node run.mjs` exit 0, green x2 at one pinned SHA; each fixed divergence witnesses green in the suite leg that was red | **PARTIAL** — KD-117 (deleted-keys TLS twin + purge arm) and KD-118 (scheduleMessages) flipped CLOSED-SIMULATED (witness receipts kd117-kv-deletedkeys-plane-tbd.md, kd118-sb-schedulemessage-501-tbd.md); **open: KD-114, KD-115, KD-116** |
+| WO-2 | F1 falsifier unblock (BEFORE gate currently typed-SKIP) | **P0** | WO-1 | F1 revert-the-diff court exits 1 on the reverted subject and 0 on the landed diff; G2 flips DEFERRED→PASS with receipt | OPEN (blocked on WO-1 remainder) |
+| WO-3 | cosmos.ex accessor bypass fix (`cosmos_ru_limit`, `:heir`/accessor family — sibling of arm c41e8ae) | P1 | — | ru-limit transient state rides the `:heir`/accessor pattern; falsifier test kills the owner and observes the value survives (or the request retypes); `mix test` green at the pinned SHA | **CLOSED wave-2** (cosmos accessor+heir, commit 2173530; widened wave-3: change-feed + cross-array IN + unique keys + OFFSET/TOP) |
+| WO-4 | Secrets-sweep + envelope courts | P1 | — | sweep + envelope courts exit 0 clean and exit 1 on their shim fixtures (AFTER-legs flip; non-vacuity per shim-court law) | OPEN (no wave receipt names this lane) |
+| WO-5 | court-x2 completion → release receipt; then `just publish-dry` | **P0** (final gate) | WO-1, WO-3, WO-4 landed | `just quiet-check` exit 0 then `just court-x2` exit 0 on BOTH legs at one pinned SHA; release receipt minted; `just publish-dry` exit 0; G5 typed-PENDING→closed receipt-gated | **PARTIAL** — court-x2 #3/#4/#5 green + release receipts re-minted per wave (see ledger); **publish-dry still NOT RUN** (carried wrap obligation) |
+| WO-6 | **Carried** v26.10.19 WO-2 — SOVEREIGN_MIDNIGHT G-register (G2 X-ARR mTLS, G3 EG DLQ spillover, G4 split-brain failover) | P1 | G4 behind G2/G3 | unchanged from `docs/jira/v26.10.19/WORK_ORDERS.md` (row flips receipt-gated in SOVEREIGN_MIDNIGHT.md) | OPEN (carried) |
+| WO-7 | **Carried** v26.10.19 WO-5 — isolation runtime5 quiet-window rerun (`just quiesce` / `quiet-check` discipline) | P1 | quiet window | `python3 scripts/isolation_court.py --runtime-only` counts 0; register row flips with receipt | OPEN (carried) |
 
 ## WO-1 sub-sketches — the 6 wire divergences (KD-114..119 mint batch)
 

@@ -582,32 +582,29 @@ defmodule Smalt.EgressRouter do
 
   # GET /dbs/:db/colls/:coll/pkranges — partition-key-range feed. The python
   # SDK's session-token/routing layer resolves the routing map through this
-  # feed before reads; a single full-hash-space range models the single-region
-  # account.
-  @pkranges_etag "\"smalt-pkranges-v1\""
+  # feed before reads; the range set is served by the Cosmos engine
+  # (Smalt.DataPlane.Cosmos.partition_key_ranges/2), deterministic per
+  # container and 404 on unknown containers.
 
   get "/dbs/:db/colls/:coll/pkranges" do
     with_route(conn, Cosmos, fn conn ->
       # The python SDK's routing-map drain terminates ONLY on a literal 304
       # (evaluate_drain_page): first fetch -> 200 + ETag, any further fetch
-      # carrying a matching If-None-Match -> 304, loop exits.
-      if get_req_header(conn, "if-none-match") == [@pkranges_etag] do
-        send_resp(conn, 304, "")
-      else
-        conn
-        |> put_resp_header("etag", @pkranges_etag)
-        |> send_json(200, %{
-          "PartitionKeyRanges" => [
-            %{
-              "id" => "0",
-              "minInclusive" => "",
-              "maxExclusive" => "FF",
-              "ridPrefix" => 0,
-              "throughputFraction" => 1.0
-            }
-          ],
-          "_count" => 1
-        })
+      # carrying a matching If-None-Match -> 304, loop exits. The ETag is now
+      # derived from the range set (deterministic per container), so a changed
+      # map flips the ETag and the drain re-fetches.
+      case Cosmos.partition_key_ranges(db, coll) do
+        {:ok, 200, headers, body} ->
+          etag = headers["etag"]
+
+          if get_req_header(conn, "if-none-match") == [etag] do
+            conn |> put_resp_header("etag", etag) |> send_resp(304, "")
+          else
+            conn |> put_resp_header("etag", etag) |> send_json(200, body)
+          end
+
+        other ->
+          cosmos_respond(conn, other)
       end
     end)
   end
@@ -1257,6 +1254,11 @@ defmodule Smalt.EgressRouter do
     end
   end
 
+  # Soft delete (deleted-certificates class, parity with /deletedkeys and
+  # /deletedsecrets): the live row moves to the {:deleted, name} tuple row in
+  # the same heir'd table and the response is the deletedCertificate bundle
+  # (recoveryId/deletedDate/scheduledPurgeDate). Live GET then 404s by
+  # construction; recover/purge ride /deletedcertificates below.
   delete "/certificates/:name" do
     case Smalt.DataPlane.Certificates.delete(name) do
       {:ok, status, body} -> send_json(conn, status, body)
@@ -1264,8 +1266,30 @@ defmodule Smalt.EgressRouter do
     end
   end
 
+  get "/deletedcertificates" do
+    case Smalt.DataPlane.Certificates.list_deleted() do
+      {:ok, status, body} -> send_json(conn, status, body)
+      {:error, status, body} -> send_json(conn, status, body)
+    end
+  end
+
+  get "/deletedcertificates/:name" do
+    case Smalt.DataPlane.Certificates.get_deleted(name) do
+      {:ok, status, body} -> send_json(conn, status, body)
+      {:error, status, body} -> send_json(conn, status, body)
+    end
+  end
+
+  post "/deletedcertificates/:name/recover" do
+    case Smalt.DataPlane.Certificates.recover(name) do
+      {:ok, status, body} -> send_json(conn, status, body)
+      {:error, status, body} -> send_json(conn, status, body)
+    end
+  end
+
   post "/deletedcertificates/:name/purge" do
     case Smalt.DataPlane.Certificates.purge(name) do
+      {:ok, status, body} -> send_json(conn, status, body)
       {:error, status, body} -> send_json(conn, status, body)
     end
   end

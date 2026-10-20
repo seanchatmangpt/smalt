@@ -171,3 +171,41 @@ receipt staleness; sdk-coverage red on 75 expected MISSING cells.
 
 Full raw logs retained: `/tmp/cen-ptg.log`, `/tmp/cen-sg.log`, `/tmp/cen-ig.log`,
 `/tmp/cen-sc.log`.
+
+## Final census 2026-10-20 (pre-wrap, HEAD 28ceff9)
+
+Full acceptance machine at final HEAD `28ceff9b17173494ded6074a5212acc8183dff7f`.
+Verdict per gate (rc | one-line evidence):
+
+| Gate | rc | Evidence |
+|---|---|---|
+| acceptance_gates.py (5-gate) | 1 (FAIL) | G3/G4/G5 PASS, G2 PENDING (typed SKIP, suites not green yet); **G1 FAIL** — 13 UNEXPECTED test paths (cosmos_sql_raise, kql, sentinel_multitable, arm_consumer_group_bridge, certificates_kd104_witness, deletedkeys_purge_route, event_grid_webhook, policy_enforcement_mode_witness, policy_remediation_witness, eh_arm, eh_geo_dr, event_hubs_consumer_groups, sb_topic_fanout) |
+| envelope/automation_gate.py | 1 (REFUSED) | 1 violation / 166 files: `scripts/gen_error_codes.py:592 DEPRECATED-TEST-PATH` — reference to retired test tree `test/compliance` |
+| envelope/container_gate.py | 0 (PASS) | static=0 runtime=0; hermetic Dockerfile green; 2 reference-only notes (no USER/HEALTHCHECK in reference image, non-gating) |
+| envelope/iac_gate.py | 0 (PASS) | scripts/tf_fixtures + tf_fixtures_per_resource clean |
+| envelope/orchestration_gate.py | 0 (PASS) | 9 manifests under k8s/ + docker/compose*, 0 violations |
+| scripts/leak_detector.sh | 1 (FAIL) | 1 orphan: epmd pid 8111 (zero registered nodes); canonical ports 9443/9444/8443/5672/5673 held by healthy substrate beam 1403; remediate `scripts/port_sweep.sh -y` |
+| scripts/non_duplication_gate.py | 0 (PASS) | 9 file(s) clean |
+| scripts/portable_target_gate.py | 0 (PASS) | 26 file(s) clean |
+| sleep gate (just sleep-gate) | 1 (REFUSED) | 6 violations / 216 files, all unclassified ts/js sleep primitives in verification/ts: census.test.cjs:104,135,483; sb-extra.probe.cjs:98,144,192 (need `# SLEEP-CLASS:`) |
+| just doctor | 0 (PASS) | 12 PASS + substrate booted, all 5 ports listening, 2 advisories only (dev CA untrusted in System keychain; 1/2 receipts stale >24h — test-budget-gate-receipt.json 28.2h) |
+| scripts/naming_sweep.sh | 0 (PASS) | 0 violations / 49 allowed |
+| gen_error_codes.py --check | 1 (FAIL) | `docs/ERROR_CODES.md is stale` — line-number drift in lib/smalt/arm_gateway/router.ex citations (router grew ~53-253 lines since last regen); regen required, no semantic code changes in diff |
+| scripts/sdk_coverage.py | 0 (OK) | window v26.10.19: cells PASS=22, MISSING=0, UNREGISTERED-GAP=0, REGISTERED-DIVERGENCE=2 (blob/ts KD-92, cosmos/ts KD-93 — both OPEN, receipted); wf-receipt FAILs surfaced honestly: wf2-ts cosmos=FAIL, wf3-ts servicebus=FAIL, wf4-ts keyvault=FAIL; servicebus census CRC OK (11/11/11) |
+
+**Tally: 8 green / 4 red** (acceptance G1, automation-gate, leak-detector,
+sleep-gate) plus gen_error_codes drift check = 5 red total across 13 checks.
+
+Red-cluster reading: 3 of the 4 gate reds are receipt-of-record hygiene
+(acceptance G1 unexpected test paths are the new capability-wave-3 suites not yet
+registered into the expected set; automation-gate's single violation is a
+DEPRECATED-TEST-PATH string inside the error-code generator itself;
+gen_error_codes --check is line-number drift from the same router growth), and the
+4th/5th (leak-detector epmd orphan; 6 unclassified sleeps in verification/ts) are
+environment/scanner-scope items, none a data-plane or wire regression. G2 remains
+typed-PENDING (mix suite green-ness not witnessed in this census — `mix test` was
+not run in this lane's scope). No code was edited; this lane appended only to this
+receipt.
+
+Standing: **PARTIAL_ALIVE** — machine runs end-to-end at 28ceff9; pre-wrap reds
+are honest and itemized above for the wrap sequence to consume.

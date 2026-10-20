@@ -16,7 +16,9 @@ defmodule Smalt.Mcp.Router do
   sb.topics.list, cosmos.stats, policy.remediations.list,
   appconfig.snapshots.list, atlas.lineage.get, plus the v26.10.21 window reads:
   policy.locks.list, appconfig.snapshots.kv, cosmos.changefeed.peek,
-  sb.topics.subscriptions, eh.consumergroups.list, certificates.get.
+  sb.topics.subscriptions, eh.consumergroups.list, certificates.get, and the
+  v26.10.22 wave-4 reads: kv.deletedsecrets.list, policy.setdefinitions.list,
+  sb.rules.list, cosmos.uniquekeys.get.
 
   READ-ONLY BY LAW: this surface exposes NO actuation tools. The substrate
   refuses unreceipted DO; any tool call for a non-registered (actuation or
@@ -447,6 +449,46 @@ defmodule Smalt.Mcp.Router do
           "default" => "both"
         },
         "depth" => %{"type" => "integer", "minimum" => 1, "maximum" => 10, "default" => 1}
+      }
+    }
+  end
+
+  # -- v26.10.22 ERRC RAISE lane: wave-4 read tools (27-30) -------------------
+
+  defp input_schema("kv.deletedsecrets.list"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("policy.setdefinitions.list") do
+    %{
+      "type" => "object",
+      "required" => ["subscription_id"],
+      "properties" => %{
+        "subscription_id" => %{"type" => "string"}
+      }
+    }
+  end
+
+  defp input_schema("sb.rules.list") do
+    %{
+      "type" => "object",
+      "required" => ["topic", "subscription"],
+      "properties" => %{
+        "topic" => %{"type" => "string", "description" => "topic name"},
+        "subscription" => %{"type" => "string", "description" => "subscription name"},
+        "namespace" => %{
+          "type" => "string",
+          "description" => "optional Service Bus namespace name filter"
+        }
+      }
+    }
+  end
+
+  defp input_schema("cosmos.uniquekeys.get") do
+    %{
+      "type" => "object",
+      "required" => ["db", "coll"],
+      "properties" => %{
+        "db" => %{"type" => "string"},
+        "coll" => %{"type" => "string"}
       }
     }
   end
@@ -973,6 +1015,120 @@ defmodule Smalt.Mcp.Router do
 
       _ ->
         {:refusal, @invalid_params_code, "refused: certificates.get requires name"}
+    end
+  end
+
+  # -- v26.10.22 ERRC RAISE lane: wave-4 read tools (27-30) -------------------
+
+  defp invoke("kv.deletedsecrets.list", _args) do
+    case Smalt.DataPlane.KeyVaultActions.list_deleted_secrets() do
+      {:ok, 200, %{"value" => secrets}} ->
+        {:ok, %{"deleted_secrets" => secrets, "count" => length(secrets)}}
+
+      {:ok, status, body} ->
+        {:refusal, "KV_ERROR", "kv.deletedsecrets.list returned #{status}: #{inspect(body)}"}
+
+      other ->
+        {:refusal, @internal_code, "kv.deletedsecrets.list unexpected: #{inspect(other)}"}
+    end
+  end
+
+  defp invoke("policy.setdefinitions.list", args) do
+    case args do
+      %{"subscription_id" => sub} when is_binary(sub) ->
+        defs = Smalt.Policy.list_policy_set_definitions(sub)
+
+        {:ok,
+         %{
+           "subscription_id" => sub,
+           "value" => defs,
+           "count" => length(defs)
+         }}
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: policy.setdefinitions.list requires subscription_id"}
+    end
+  end
+
+  defp invoke("sb.rules.list", args) do
+    case args do
+      %{"topic" => topic, "subscription" => sub} when is_binary(topic) and is_binary(sub) ->
+        ns = args["namespace"]
+
+        if ns != nil and not is_binary(ns) do
+          {:refusal, @invalid_params_code, "refused: sb.rules.list namespace must be a string"}
+        else
+          # Rules live in :smalt_sb_rules keyed by the downcased full ARM rule
+          # scope ("<base>/namespaces/<ns>/topics/<topic>/subscriptions/<sub>/rules/<rule>"),
+          # the same key contract Smalt.SbRules.fan_out/4 reads. Suffix
+          # contains-match, so any resource-group/subscription base works.
+          suffix = "/topics/#{topic}/subscriptions/#{sub}/rules/"
+
+          rules =
+            :smalt_sb_rules
+            |> Smalt.Store.list()
+            |> Enum.filter(fn key -> is_binary(key) end)
+            |> Enum.filter(fn key ->
+              String.contains?(key, String.downcase(suffix)) and
+                case ns do
+                  nil -> true
+                  _ -> String.contains?(key, "/namespaces/#{ns}/topics/")
+                end
+            end)
+            |> Enum.sort()
+            |> Enum.flat_map(fn key ->
+              case Smalt.Store.get(:smalt_sb_rules, key) do
+                {:ok, rec} -> [Map.put(rec, "name", key |> String.split("/") |> List.last())]
+                _ -> []
+              end
+            end)
+
+          {:ok,
+           %{
+             "topic" => topic,
+             "subscription" => sub,
+             "rules" => rules,
+             "count" => length(rules)
+           }}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: sb.rules.list requires topic and subscription"}
+    end
+  end
+
+  defp invoke("cosmos.uniquekeys.get", args) do
+    case args do
+      %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
+        if :ets.info(:smalt_cosmos_pk_meta) == :undefined do
+          {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
+        else
+          # The {1, db, coll} container record carries the uniqueKeyPolicy set
+          # at create (Cosmos.create_container). Direct ETS read — tuple key,
+          # invisible to the binary-key Store scan (same discipline as
+          # cosmos.stats). A missing container is typed 404, never an empty ok.
+          case :ets.lookup(:smalt_cosmos_pk_meta, {1, db, coll}) do
+            [{_, record}] ->
+              keys = record["uniqueKeyPolicy"] || []
+
+              {:ok,
+               %{
+                 "db" => db,
+                 "coll" => coll,
+                 "uniqueKeyPolicy" => %{"uniqueKeys" => keys}
+               }}
+
+            [] ->
+              {:refusal, @resource_not_found_code,
+               "refused: container #{inspect(db)}/#{inspect(coll)} not found"}
+
+            other ->
+              {:refusal, @internal_code, "cosmos.uniquekeys.get unexpected: #{inspect(other)}"}
+          end
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: cosmos.uniquekeys.get requires db and coll"}
     end
   end
 

@@ -19,8 +19,11 @@ defmodule Smalt.DataPlane.Certificates do
     - `GET  /certificates`              -> `list/0`
     - `GET  /certificates/:name`        -> `get/1` (200 cer + attributes)
     - `DELETE /certificates/:name`      -> `delete/1` (200 deletedCertificate
-      object, row hard-removed — minimal typed soft-delete: the deletion IS
-      terminal; `purge/1` answers typed `404 NotFound`)
+      bundle: recoveryId/deletedDate/scheduledPurgeDate)
+    - `GET  /deletedcertificates`       -> `list_deleted/0`
+    - `GET  /deletedcertificates/:name` -> `get_deleted/1` (200 bundle)
+    - `POST /deletedcertificates/:name/recover` -> `recover/1` (200 restore)
+    - `POST /deletedcertificates/:name/purge`   -> `purge/1` (204)
 
   ## Certificate material
 
@@ -34,7 +37,16 @@ defmodule Smalt.DataPlane.Certificates do
 
   `attributes` mirror the KV shape: `enabled`, `created`/`updated` (unix
   seconds), `nbf`/`exp` (unix seconds, derived from the policy validity),
-  `recoveryLevel: "Purgeable"` (the deletion-is-terminal posture above).
+  `recoveryLevel: "Purgeable"`.
+
+  ## Deleted-certificates class
+
+  Soft delete moves the row to the SAME heir'd table under the tuple key
+  `{:deleted, name}` (the secrets-mirror namespacing: binary keys stay live,
+  tuple keys are deleted bundles) with `recoveryId`, `deletedDate` and
+  `scheduledPurgeDate` (epoch seconds, 90-day retention). Live `get/1` /
+  `list/0` 404/omit soft-deleted rows by construction (`Store.list/1` walks
+  binary keys only); `recover/1` re-puts the live row and drops the bundle.
   """
 
   alias Smalt.Store
@@ -198,14 +210,18 @@ defmodule Smalt.DataPlane.Certificates do
   end
 
   # ---------------------------------------------------------------------------
-  # Delete / purge
+  # Soft delete / recover / purge (deleted-certificates class)
   # ---------------------------------------------------------------------------
 
+  @retention_seconds 90 * 24 * 3600
+
   @doc """
-  `DELETE /certificates/:name`. 200 with the deletedCertificate object
-  (`deletedDate` + `recoveryLevel: "Purgeable"`; the deletion is terminal).
-  Unknown name -> typed `404 CertificateNotFound`. Post-delete, `get/1`
-  answers the same typed 404 — nothing is stored.
+  `DELETE /certificates/:name` (soft delete). Removes the certificate from
+  the live surface (subsequent `get/1` 404s CertificateNotFound) and moves it
+  to the deleted-bundle tuple row `{:deleted, name}` in the SAME heir'd table,
+  with `recoveryId`, `deletedDate` and `scheduledPurgeDate` (epoch seconds,
+  90-day retention). Returns the deletedCertificate bundle (200).
+  Unknown name -> typed `404 CertificateNotFound`.
   """
   @spec delete(binary) :: {:ok, 200, map} | {:error, 404, map}
   def delete(name) do
@@ -213,12 +229,19 @@ defmodule Smalt.DataPlane.Certificates do
 
     case Store.get(@table, name) do
       {:ok, record} ->
-        Store.delete(@table, name)
+        now = System.system_time(:second)
 
-        {:ok, 200,
-         record
-         |> Map.put("deletedDate", System.system_time(:second))
-         |> Map.update!("attributes", fn a -> Map.put(a, "deleted", System.system_time(:second)) end)}
+        deleted =
+          record
+          |> Map.put("deletedDate", now)
+          |> Map.put("scheduledPurgeDate", now + @retention_seconds)
+          |> Map.put("recoveryId", "https://smalt-vault/deletedcertificates/#{name}")
+          |> Map.put("is_deleted_certificate", true)
+
+        Store.delete(@table, name)
+        Store.put(@table, {:deleted, name}, deleted)
+
+        {:ok, 200, deleted}
 
       :error ->
         {:error, 404, certificate_error("CertificateNotFound")}
@@ -226,14 +249,85 @@ defmodule Smalt.DataPlane.Certificates do
   end
 
   @doc """
-  `POST /deletedcertificates/:name/purge`. The deletion is terminal
-  (`recoveryLevel: "Purgeable"`), so purge is idempotent-by-404: always a
-  typed `404 {"error":{"code":"CertificateNotFound"}}` — no recovery ledger
-  exists to clear, nothing stored.
+  `GET /deletedcertificates/:name`. The deletedCertificate bundle
+  (`recoveryId`, `deletedDate`, `scheduledPurgeDate`). Unknown or purged
+  certificate -> 404 CertificateNotFound. The live path (`get/1`) 404s by
+  construction — the live row is gone.
   """
-  @spec purge(binary) :: {:error, 404, map}
-  def purge(_name) do
-    {:error, 404, certificate_error("CertificateNotFound")}
+  @spec get_deleted(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def get_deleted(name) do
+    ensure_table()
+
+    case Store.get(@table, {:deleted, name}) do
+      {:ok, deleted} -> {:ok, 200, deleted}
+      :error -> {:error, 404, certificate_error("CertificateNotFound")}
+    end
+  end
+
+  @doc """
+  `GET /deletedcertificates`. All deletedCertificate bundles, key order.
+  """
+  @spec list_deleted :: {:ok, 200, map}
+  def list_deleted do
+    ensure_table()
+
+    {:ok, 200,
+     %{
+       "value" =>
+         # list_all/1, not list/1: list/1 filters to the binary-key prefix
+         # contract and silently drops tuple-keyed rows — deleted certificates
+         # ride {:deleted, name} tuple keys (same defect class the secrets
+         # mirror hit: witnessed live 2026-10-20, deleted secret present,
+         # list []).
+         Enum.flat_map(Store.list_all(@table), fn
+           %{"is_deleted_certificate" => true} = record -> [record]
+           _ -> []
+         end)
+     }}
+  end
+
+  @doc """
+  `POST /deletedcertificates/:name/recover`. Restores the soft-deleted
+  certificate to the live surface (same record, deletion fields dropped); the
+  deleted bundle is removed. Unknown or purged certificate -> 404
+  CertificateNotFound.
+  """
+  @spec recover(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def recover(name) do
+    ensure_table()
+
+    case Store.get(@table, {:deleted, name}) do
+      {:ok, deleted} ->
+        restored =
+          deleted
+          |> Map.drop(["deletedDate", "scheduledPurgeDate", "recoveryId", "is_deleted_certificate"])
+
+        Store.put(@table, name, restored)
+        Store.delete(@table, {:deleted, name})
+        {:ok, 200, restored}
+
+      :error ->
+        {:error, 404, certificate_error("CertificateNotFound")}
+    end
+  end
+
+  @doc """
+  `POST /deletedcertificates/:name/purge`. Permanent removal — recover then
+  404s. Unknown or already-purged certificate -> typed 404
+  CertificateNotFound.
+  """
+  @spec purge(binary) :: {:ok, 204, map} | {:error, 404, map}
+  def purge(name) do
+    ensure_table()
+
+    case Store.get(@table, {:deleted, name}) do
+      {:ok, _deleted} ->
+        Store.delete(@table, {:deleted, name})
+        {:ok, 204, %{}}
+
+      :error ->
+        {:error, 404, certificate_error("CertificateNotFound")}
+    end
   end
 
   @doc """

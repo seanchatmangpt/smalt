@@ -101,6 +101,7 @@ async function bootPrivate(block) {
     if (Date.now() > deadline) {
       throw new Error(`private substrate ${block} not healthy in 90s (log: ${logPath})`);
     }
+    // SLEEP-CLASS: POLL-STEP — substrate readiness boot poll (250ms cadence, deadline-bounded)
     await new Promise((r) => setTimeout(r, 250));
   }
   return { ports, sharedKey, pid: child.pid };
@@ -131,7 +132,7 @@ const CONNECTION_STRING =
 const CLIENT_OPTIONS = { retryOptions: { maxRetries: 0, timeoutInMs: 8000 } };
 
 // --- helpers -------------------------------------------------------------------
-
+const wait = (ms) => new Promise((r) => setTimeout(r, ms)); // SLEEP-CLASS: POLL-STEP (audited wait helper, deadline applied by callers)
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const errText = (error) =>
@@ -480,7 +481,7 @@ test("service bus census: 11 probes, fail-closed, zero skips", async () => {
         await Promise.race([
           Promise.resolve(handle.close()).catch(() => {}),
           new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error("CLOSE_DEADLINE")), 1500);
+            timer = setTimeout(() => reject(new Error("CLOSE_DEADLINE")), 1500); // SLEEP-CLASS: SCHEDULING (bounded watchdog, typed CLOSE_DEADLINE failure)
           }),
         ]);
       } finally {

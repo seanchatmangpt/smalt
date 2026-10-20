@@ -1,12 +1,16 @@
 # FINAL.md — v26.10.19 window wrap
 
 - **Date**: 2026-10-19
-- **Subject**: smalt @ HEAD `81a7a29` (main, 22 commits ahead of origin/main; version 26.10.18)
+- **Subject**: smalt @ HEAD `28ceff9` (main; version 26.10.19; capability
+  wave-3 promoted)
 - **Context**: solo(documentation wrap; counts re-derived on this tree)
 - **Standing of this document**: CENSUS — every claim cites a receipt on disk.
-  The court-x2 verdict is **ALIVE — two consecutive `just court` greens at
-  HEAD `81a7a29`** (see G5 receipt, §2). **Published: pushed
-  `4fd2ff2..dc40e84 main` 2026-10-19; publish-dry 4/4 PASS (post-wrap).**
+  The court-x2 verdict is **ALIVE — three consecutive promotion pairs all
+  green: #3 (wave-1 @ `17fcbb6`), #4 (wave-2 @ `61e0543`), #5 (wave-3 @
+  `5666ae2`, latest, at the wave-3 HEAD; G5 receipt §"court-x2 #5" carries
+  all sections: COURT-Z1/Z2 rc=0)** — `receipts/v261019-12-court-x2-close.md`.
+  **Published: pushed `4fd2ff2..dc40e84 main` 2026-10-19; publish-dry 4/4
+  PASS (post-wrap; re-run owed at the wave-3 HEAD before the next publish).**
 
 ## 1. Landing
 
@@ -81,33 +85,66 @@ carried, not exercised this window).
 
 ## 7. Planning handoff to next window
 
-v26.10.20 NOT yet planned. Open items carried (updated at wrap for the
-landed fixes c41e8ae / 1aca688 / 77a4041 / c9b0bf1 / 81a7a29):
+v26.10.20 NOT yet planned. Open items carried, re-derived at the wave-3
+promotion HEAD `28ceff9` (2026-10-20):
 
-1. TS suite 6 honest FAILs → KD rows or fixes: blob bearer-only egress
-   (no TLS blob channel), SB receiver zero-delivery on flow credit,
-   session deliveries without settle methods, KV deleted-keys plane 404s
-   (partially fixed: soft-delete witness landed), scheduleMessage 501
-   UNSUPPORTED (typed; candidate KD row).
-2. KV deleted-keys request-transient ETS (heir class). Landed sibling:
-   the `:heir` pattern is now applied to ARM throttling (c41e8ae throttle
-   repair, WO-03/WO-15/KD-112); the KV deleted-keys case and the
-   cosmos.ex:1841 accessor bypass remain open.
-3. F1 coverage-falsifier court: BEFORE gate typed-SKIPs until the TS suite
-   is green (the court is landed and fail-closed).
-4. publish-dry 4/4 PASS and push executed this window (landing commit
-   `dc40e84`) — item CLOSED (was: publish-dry is the only remaining G5 blocker (court-x2 CLOSED this
-   window: G5 receipt ALIVE). Census-court blockers cleared this window:
-   sb-extra hard top-level watchdog landed
-   (77a4041 — AMQP attach hang on draining broker, witnessed ×2), vm
-   census monitor scope fenced to the long-lived population (c9b0bf1 —
-   10x green), compiled trust-shim binary removed from tree (81a7a29).
-5. KD-114+ mint batch for the new wire divergences above (registrar-gated).
-   Note: KD-112 exemptions/initiatives routes landed (c41e8ae); the
-   corresponding `tbd` rows in the register need their witness receipts.
-6. AZB-25a/b azurerm parity landed (1aca688: blobServices/default
-   synthesis, sync storage DELETE, DefaultShape location relaxation,
-   tf smoke budget+fresh-apply) — verify leg closed; no open remainder.
+**Three-wave receipt ledger**: 60 lanes across 3 capability waves; court-x2
+promotion pairs #3/#4/#5 all green (wave-1 `17fcbb6`, wave-2 `61e0543`,
+wave-3 `5666ae2` — G5 receipt sections "court-x2 #3/#4/#5",
+`receipts/v261019-12-court-x2-close.md`); 9 KD flips via
+`scripts/kd_flip.py --apply` (KD-99/KD-100 window flips; KD-104/105/108
+flipped at `8e7c3b9`; KD-117 flip landed `e6430a9`; remainder per wave
+receipts `receipts/v261019-capability-wave{1,2,3}.md`); capabilities 41 →
+46 types (46 verified on disk in `docs/capabilities.json` at `28ceff9`,
+`identity.semanticEpoch=26.10.19`).
+
+1. **KD-119 (vault RS256 double-hash) — single-hash fix; w4 lane in
+   flight.** Row OPEN (witnessed, no fix:
+   `receipts/kd119-kv-rs256-double-hash-tbd.md`, wf4-py falsifier: hazmat
+   verify digest=true message=false). Close = sign consumes the pre-hashed
+   digest as-is; witness must postdate the fix's KD-COVERS token.
+2. **KD-110 (throttle default `:infinity`) — profile-default decision
+   pending.** Limiter defect (boot-eval never bridging
+   `SMALT_ARM_RATE_LIMIT`) found + fixed this window
+   (`receipts/kd110-throttling-infinity-tbd.md`: burst witness 0/60
+   throttled on the broken path, green with lifted eval); the row itself
+   stays OPEN — next window decides the default profile vs `:infinity`.
+3. **Registry-surfacing gaps** (`/tmp/w3-registry/GAPS.md`, wave-1/2
+   audit): (a) 5 ARM-served types with zero `registry.ex` entries —
+   `Microsoft.Authorization/locks` (router 7 hits), `policyExemptions`
+   (9), `policySetDefinitions` (4), `policyRemediations` (13), SB
+   `topics/subscriptions/rules` (16) — a `Canonical.write()` regen adds
+   nothing until `registry.ex` gains them; (b) new `lib/` modules with no
+   inventory grounding: `data_plane/certificates.ex` (KD-104),
+   `appconfig_snapshots.ex`, `kv_pss.ex` (KD-105), `policy.ex`;
+   (c) `sdk_coverage.py` CAP_CELLS stale (7, actual 13) and wf6 has 6
+   dangling cap ids in `workflows.json`; wf7 has no workflows.json entry
+   and no sdk_coverage refs (probes on disk:
+   `verification/ts/diagnostics.probe.mjs`,
+   `verification/py/test_wf6_newcaps.py`, `test_wf7_diagnostics.py`);
+   (d) regen order is registry.ex → capabilities.json →
+   CAP_CELLS/workflows.json → `Canonical.write()`.
+4. **Wave-2 wire defects — verification status**
+   (`receipts/v261019-capability-wave2.md`, "Registrar-input summary",
+   re-read at `e6430a9`): (a) **KD-118 TS framing** — TS SDK
+   `scheduleMessages` still 400 QUEUE_REQUIRED (management_rpc.ex resolves
+   neither body `queue` nor associated-link-name); the wave-3 integration
+   commit claims "KD-118 TS framing verified" — contradicted by the probe;
+   PY leg passes only because the PY harness sends body `queue`.
+   (b) **blob RFC-1123** — NOT flipped: nil-`snapshots` clause crash,
+   List Blobs still 500 (`blob_storage.ex:1627` via `render_blob/4:1548`);
+   snapshot CREATE and PY/TS decoration legs pass around the crash.
+   (c) **KD-112 exemptionCategory** — REGRESSED in-window: cased RG-scope
+   PUT 201 (run 1, pre-wave-3) → 400 (runs 2-3 at wave-3 landed HEAD);
+   PY wf6 chain passes on the lower-case path only. (d) FLIPPED this
+   window: KD-117 recover leg; PY wf6 remediation cell. **wf7
+   table-stats**: honest skip — no route for `GET
+   workspaces/:id/tables` in `egress_router.ex` or
+   `arm_gateway/router.ex` (grep, no matches).
+5. **table-stats ARM family** — Sentinel/Log Analytics workspace-tables
+   GET family unrouted (`receipts/v261019-capability-wave2.md` wf7 leg,
+   SKIPPED [1] with owning-surface reason); open as surface growth for
+   the next window (registrar-gated mint if witnessed as a divergence).
 
 ## 8. Pointers
 

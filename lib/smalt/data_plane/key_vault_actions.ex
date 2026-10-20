@@ -36,8 +36,17 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     name at first crypto use (`:public_key.generate_key`), DER-encoded, and
     cached in the Store row under `"key_material"`. Subsequent operations
     reuse the cached pair — same key for the life of the row.
-  - oct kty (`oct`, `oct-HSM`): a 32-byte AES-256 key is derived deterministically
+  - oct kty (`oct`): a 32-byte AES-256 key is derived deterministically
     as SHA-256("smalt-vault-derived:" <> key name) — no stored secret bytes.
+  - oct-HSM kty (`oct-HSM`): REAL random material (`:crypto.strong_rand_bytes(32)`)
+    per version, stored on the version's Store row under `"key_material"` and
+    never exported in the JWK (HSM key material is non-exportable in the real
+    contract). Distinct versions hold distinct bytes.
+  - EC kty (`EC`, crv `P-256`/`P-384`): a real EC keypair is generated
+    (`:crypto.generate_key(:ecdh, {:named_curve, ...})`), the private key DER-
+    encoded and cached in the Store row under `"key_material"`. Sign/verify are
+    ECDSA (`ES256`/`ES384`) with raw JWS `r||s` signatures on the wire; JWK
+    export carries `crv`/`x`/`y`. EC keys refuse encrypt/wrap (real contract).
 
   AES-GCM (`A256GCM`) uses a random 12-byte IV per operation, so ciphertexts
   are non-deterministic by construction (same for RSA-OAEP-256).
@@ -209,8 +218,11 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   404 KeyNotFound.
 
   RSA: a fresh 2048-bit keypair is generated per rotation (DER on the new
-  version's row). oct: material is the deterministic per-version derivation
-  (`derive_oct_key/2`), so only the JWK `k` changes. Not gated on the release
+  version's row). oct (soft): material is the deterministic per-version
+  derivation (`derive_oct_key/2`), so only the JWK `k` changes. oct-HSM: FRESH
+  random material per version (`:crypto.strong_rand_bytes(32)`), stored on the
+  version row, no `k` in the JWK. EC: a fresh keypair with crv/x/y JWK and the
+  new private DER on the new version's row. Not gated on the release
   policy `allowed_operations` — rotation is a management-plane lifecycle op in
   the real contract, not a crypto op.
   """
@@ -236,11 +248,37 @@ defmodule Smalt.DataPlane.KeyVaultActions do
                   {:error, 400, bad_request("InvalidParameter", "bad key material")}
               end
 
-            kty when kty in ["oct", "oct-HSM"] ->
+            # oct (soft) keeps the disclosed derivation; only the JWK `k`
+            # changes per version (length-prefixed per-version derivation).
+            "oct" ->
               {%{
                  "k" =>
                    Base.url_encode64(derive_oct_key(name, version), padding: false)
                }, nil}
+
+            # oct-HSM rotates to FRESH random material per version (the raise:
+            # derivation is the `oct` soft-key path only). The JWK carries no
+            # "k" — HSM key material is non-exportable in the real contract.
+            "oct-HSM" ->
+              material = :crypto.strong_rand_bytes(32)
+              {%{}, material}
+
+            # EC rotates to a fresh keypair with a projected JWK (crv/x/y) and
+            # the new private DER cached on the new version's row.
+            "EC" ->
+              crv = ec_crv(record)
+              curve = Map.fetch!(@ec_curves, crv)
+              {pub_point, priv} = :crypto.generate_key(:ecdh, {:named_curve, curve.curve})
+              priv_rec = {:ECPrivateKey, 1, priv, {:namedCurve, curve.oid}, pub_point, <<>>}
+              der = :public_key.der_encode(:ECPrivateKey, priv_rec)
+
+              jwk =
+                Map.merge(
+                  %{"kty" => "EC", "crv" => crv},
+                  ec_point_jwk(crv, curve, pub_point)
+                )
+
+              {jwk, der}
 
             other ->
               {:error, 400, bad_request("UnsupportedKeyType", "kty #{other} is not supported")}
@@ -802,15 +840,109 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
     case kty(record) do
       kty when kty in ["RSA", "RSA-HSM"] -> ensure_rsa(store_key, record)
-      # SHIM-COURT: oct material is bound to name + version so distinct
-      # versions hold distinct key bytes (bare-name ops keep the legacy
-      # name-only derivation).
-      kty when kty in ["oct", "oct-HSM"] -> {:ok, {:oct, derive_oct_key(name, version)}}
+      # oct (soft) keeps the disclosed name-bound derivation; distinct versions
+      # still derive distinct bytes (length-prefixed derivation).
+      "oct" -> {:ok, {:oct, derive_oct_key(name, version)}}
+
+      # oct-HSM carries REAL random material per version, stored on the version
+      # row ("key_material"). Legacy rows (created before the raise, or via the
+      # create route that projects a derived `k`) are lazily materialized on
+      # first crypto use: fresh strong_rand_bytes, stored to the exact row.
+      "oct-HSM" -> ensure_oct_hsm(store_key, record)
+      "EC" -> ensure_ec(store_key, record)
+
       other -> {:error, 400, bad_request("UnsupportedKeyType", "kty #{other} is not supported")}
     end
   end
 
   defp kty(record), do: get_in(record, ["key", "kty"]) || "RSA-HSM"
+
+  # oct-HSM: stored random material wins; missing material is minted once and
+  # persisted so every later op (and every other version) sees stable bytes.
+  defp ensure_oct_hsm(store_key, record) do
+    case record["key_material"] do
+      k when is_binary(k) and k != <<>> ->
+        {:ok, {:oct, k}}
+
+      _ ->
+        k = :crypto.strong_rand_bytes(32)
+        persist_material(store_key, record, k)
+        {:ok, {:oct, k}}
+    end
+  end
+
+  # Mirrors ensure_rsa's version-row marking.
+  defp persist_material(store_key, record, material) do
+    record =
+      case store_key do
+        {_name, _version} ->
+          record |> Map.put("key_material", material) |> Map.put("is_version_row", true)
+
+        _name_only ->
+          Map.put(record, "key_material", material)
+      end
+
+    Store.put(:smalt_vault_keys, store_key, record)
+    :ok
+  end
+
+  @ec_curves %{
+    "P-256" => %{curve: :secp256r1, oid: {1, 2, 840, 10045, 3, 1, 7}, coord: 32, md: :sha256, alg: "ES256"},
+    "P-384" => %{curve: :secp384r1, oid: {1, 3, 132, 0, 34}, coord: 48, md: :sha384, alg: "ES384"}
+  }
+
+  defp ec_crv(record), do: get_in(record, ["key", "crv"]) || "P-256"
+
+  # EC: the private key is DER-cached on the row it belongs to (same law as
+  # ensure_rsa) so a versioned op never mutates a different version's material.
+  defp ensure_ec(store_key, record) do
+    crv = ec_crv(record)
+    curve = Map.get(@ec_curves, crv) || raise ArgumentError, "unsupported EC crv #{crv}"
+
+    case record["key_material"] do
+      der when is_binary(der) ->
+        {:ok, {:ec, curve, :public_key.der_decode(:ECPrivateKey, der)}}
+
+      _ ->
+        {pub_point, priv} = :crypto.generate_key(:ecdh, {:named_curve, curve.curve})
+        priv_rec = {:ECPrivateKey, 1, priv, {:namedCurve, curve.oid}, pub_point, <<>>}
+        der = :public_key.der_encode(:ECPrivateKey, priv_rec)
+        persist_material(store_key, record, der)
+        {:ok, {:ec, curve, priv_rec}}
+    end
+  end
+
+  @doc """
+  JWK public half for an EC key record: `crv`, `x`, `y` (base64url, fixed
+  width, unsigned). Consumed by the create seam and by `rotate_key/2` so the
+  wire shape matches the real JsonWebKey EC form.
+  """
+  def ec_jwk_public(%{} = record) do
+    crv = ec_crv(record)
+    curve = Map.fetch!(@ec_curves, crv)
+
+    with {:ok, der} <- stored_der(record) do
+      {:ECPrivateKey, _v, _priv, _params, pub_point, _attrs} =
+        :public_key.der_decode(:ECPrivateKey, der)
+
+      {:ok, Map.merge(%{"kty" => "EC", "crv" => crv}, ec_point_jwk(crv, curve, pub_point))}
+    end
+  end
+
+  # Uncompressed point (0x04 || X || Y, fixed width per curve) -> JWK x/y.
+  defp ec_point_jwk(crv, curve, pub_point) do
+    bits = curve.coord * 8
+
+    <<4, x::unsigned-big-size(bits), y::unsigned-big-size(bits)>> = pub_point
+
+    %{
+      "x" => Base.url_encode64(<<x::unsigned-big-size(bits)>>, padding: false),
+      "y" => Base.url_encode64(<<y::unsigned-big-size(bits)>>, padding: false)
+    }
+  end
+
+  defp stored_der(%{"key_material" => der}) when is_binary(der), do: {:ok, der}
+  defp stored_der(_), do: :error
 
   # Deterministic per store key at first use: generated once, DER cached in the
   # Store row under "key_material", reused for the life of the row.
@@ -963,7 +1095,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     kid = record["kid"]
 
     with {:ok, digest} <- sign_digest(params),
-         {:ok, alg} <- sign_alg(params) do
+         {:ok, alg} <- sign_alg(params),
+         :ok <- alg_for_key_type(alg, {:rsa, key}) do
       # SHIM-COURT (R32): `digest` arrives PRE-HASHED (RS256 contract).
       # A real digest-type re-hashes the input (double-hash defect); :none
       # alone omits the DigestInfo ASN.1 wrapper real RS256 requires — so the
@@ -996,6 +1129,26 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   defp do_sign(_record, _params, {:oct, _}), do: {:error, 400, unsupported_alg_for_key_type()}
 
+  # ECDSA: the wire digest is PRE-HASHED (same law as RS256) — ES256 signs the
+  # SHA-256 digest with :sha256, ES384 the SHA-384 digest with :sha384. The DER
+  # ECDSA-Sig-Value from :public_key.sign is flattened to the raw JWS `r||s`
+  # form real KV returns (fixed width per curve, unsigned).
+  defp do_sign(record, params, {:ec, curve, priv_rec}) do
+    kid = record["kid"]
+
+    with {:ok, digest} <- sign_digest(params),
+         {:ok, alg} <- sign_alg(params),
+         :ok <- ec_alg_check(alg, curve) do
+      der_sig = :public_key.sign(digest, curve.md, priv_rec)
+      {:ECDSA_Sig_Value, r, s} = :public_key.der_decode(:ECDSA_Sig_Value, der_sig)
+      bits = curve.coord * 8
+
+      sig = <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>>
+
+      {:ok, 200, %{"value" => b64url_encode(sig), "kid" => kid, "alg" => alg}}
+    end
+  end
+
   # Real contract: signature rides `value`; `signature` kept as compat alias.
   defp verify_signature(params) do
     case params["signature"] || params["value"] do
@@ -1009,7 +1162,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
     with {:ok, digest} <- sign_digest(params),
          {:ok, sig} <- verify_signature(params),
-         {:ok, alg} <- sign_alg(params) do
+         {:ok, alg} <- sign_alg(params),
+         :ok <- alg_for_key_type(alg, {:rsa, key}) do
       valid =
         try do
           result =
@@ -1047,6 +1201,44 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   defp do_verify(_record, _params, {:oct, _}), do: {:error, 400, unsupported_alg_for_key_type()}
+
+  # ECDSA verify: the wire signature is the raw JWS `r||s` form — re-assembled
+  # to DER ECDSA-Sig-Value for :public_key.verify. A malformed/short signature
+  # is a 200 with "value": false (KeyVerifyResult), never an error.
+  defp do_verify(record, params, {:ec, curve, _priv_rec}) do
+    kid = record["kid"]
+
+    with {:ok, digest} <- sign_digest(params),
+         {:ok, sig} <- verify_signature(params),
+         {:ok, alg} <- sign_alg(params),
+         :ok <- alg_for_key_type(alg, {:ec, curve, nil}) do
+      bits = curve.coord * 8
+
+      valid =
+        try do
+          <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>> = sig
+          der_sig = :public_key.der_encode(:ECDSA_Sig_Value, {:ECDSA_Sig_Value, r, s})
+          pub = {:ECPoint, ec_public_point(record, curve)}
+          :public_key.verify(digest, curve.md, der_sig, pub) == true
+        rescue
+          _ in [ErlangError, ArgumentError, MatchError] -> false
+        end
+
+      {:ok, 200, %{"value" => valid, "valid" => valid, "kid" => kid}}
+    end
+  end
+
+  # The public point rides the private key's DER on the row; a missing row
+  # (verify against a bare record without material) cannot verify.
+  defp ec_public_point(record, curve) do
+    {:ok, der} = stored_der(record)
+    {:ECPrivateKey, _v, _priv, _params, pub_point, _attrs} = :public_key.der_decode(:ECPrivateKey, der)
+
+    case pub_point do
+      <<4, _::unsigned-big-size(curve.coord * 16)>> -> pub_point
+      _ -> <<>>
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # AES-GCM (oct keys, A256GCM)

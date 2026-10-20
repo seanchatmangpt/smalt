@@ -258,3 +258,40 @@
     ema:requiresAuthority false ; ema:isReversible true ;
     ema:receiptSemantics "logged" ; ema:capabilityOrder 26 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.22 ERRC RAISE lane: wave-4 read tools (27-30) --------------------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "kv.deletedsecrets.list" ;
+    ema:capabilityName "Key Vault deleted secrets list" ;
+    ema:capabilityDescription "Soft-deleted vault secret bundles (recoveryId, deletedDate, scheduledPurgeDate) from the deleted-secrets table — never secret value material." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 27 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "policy.setdefinitions.list" ;
+    ema:capabilityName "Policy set definitions list" ;
+    ema:capabilityDescription "Policy set definitions (Microsoft.Authorization/policySetDefinitions) under one subscription, id-sorted." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 28 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "sb.rules.list" ;
+    ema:capabilityName "Service Bus rules list" ;
+    ema:capabilityDescription "Subscription rules (Microsoft.ServiceBus/namespaces/topics/subscriptions/rules) for one topic/subscription pair, optional namespace filter — filter and action definitions only." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 29 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cosmos.uniquekeys.get" ;
+    ema:capabilityName "Cosmos unique key policy get" ;
+    ema:capabilityDescription "The uniqueKeyPolicy recorded at container creation for one Cosmos container (uniqueKeys paths; empty list when none was declared)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 30 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .

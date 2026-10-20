@@ -841,59 +841,70 @@ defmodule Smalt.ArmGateway.Router do
       end
 
     if exists? do
-      # pending policy lane: when Smalt.Policy.lock_blocks?/2 lands, gate this
-      # delete — {:locked, _} -> 409 ScopeLocked, :ok -> fall through.
-      # case Policy.lock_blocks?(sub_id, rg_name) do ... end
-
-      # SHIM-COURT affidavit-seal (lane 611): capture-then-sweep — the RG
-      # record is sealed BEFORE deletion (state_delta = the deleted record's
-      # canonical bytes). Best-effort sideband: never affects the 202.
-      affidavit_seal(rg, %{
-        subject: String.downcase(rg_id),
-        lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
-      })
-
-      Store.delete(:smalt_resource_groups, String.downcase(rg_id))
-
-      # Cascade by STORE KEY, never by the record's own "id" member (lens-11,
-      # measured): list_prefix/2 returns records, and a malformed (non-map)
-      # child — only reachable via a direct external write — raised
-      # FunctionClauseError inside Access.get/3, 500-ing the whole delete and
-      # leaking every remaining child. Store keys ARE the lowercased full ids,
-      # so deleting by key is exact and needs no read of the record at all.
-      # Capture-then-sweep: extract the storageAccount names from the swept
-      # ARM keys BEFORE deleting them, so each account's data-plane rows
-      # (blob containers/blobs/policies, D127) are cascade-swept too.
-      swept_keys = Store.prefix_keys(:smalt_resources, base)
-
-      for key <- swept_keys do
-        Store.delete(:smalt_resources, key)
+      # Management-lock gate (KD-113 leg b, wave-4 lane w4d): a CanNotDelete or
+      # ReadOnly lock covering the RG refuses the delete with 409 ScopeLocked.
+      if Policy.lock_blocks?(rg_id, :delete) do
+        send_json(conn, 409, lock_scope_locked_body(rg_id))
+      else
+        do_rg_delete_confirmed(conn, sub_id, rg_name, rg_id, rg)
       end
-
-      for acct <- storage_account_names(swept_keys) do
-        BlobStorage.drop_account_data(acct)
-      end
-
-      # FR-6: the vault branch of the cascade. Keys in :smalt_vault_secrets are
-      # bare secret names, so capture them from the swept ARM keys BEFORE the
-      # rows are gone (capture-then-sweep, same shape as storage_account_names).
-      vault_secret_sweep(swept_keys)
-
-      # Cosmos pk_meta cascade (composite-identity lane): capture-then-sweep
-      # from the swept ARM keys BEFORE deletion — extract db/coll names from
-      # swept sqlDatabases/sqlContainers keys, then drop the pk_meta rows.
-      cosmos_sweep(swept_keys)
-
-      op = LRO.start_op(rg_id)
-      authority = request_authority(conn)
-
-      conn
-      |> put_resp_header("location", "#{authority}#{op["id"]}")
-      |> put_resp_header("retry-after", "1")
-      |> send_json(202, "")
     else
       send_rg_not_found(conn, rg_id, rg_name)
     end
+  end
+
+  # The lock-cleared delete body (wave-4 lane w4d): affidavit seal -> RG row
+  # delete -> keyed cascade -> LRO 202. Split from do_rg_delete/3 so the
+  # ScopeLocked refusal returns before any mutation.
+  defp do_rg_delete_confirmed(conn, sub_id, rg_name, rg_id, rg) do
+    base = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
+
+    # SHIM-COURT affidavit-seal (lane 611): capture-then-sweep — the RG
+    # record is sealed BEFORE deletion (state_delta = the deleted record's
+    # canonical bytes). Best-effort sideband: never affects the 202.
+    affidavit_seal(rg, %{
+      subject: String.downcase(rg_id),
+      lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+    })
+
+    Store.delete(:smalt_resource_groups, String.downcase(rg_id))
+
+    # Cascade by STORE KEY, never by the record's own "id" member (lens-11,
+    # measured): list_prefix/2 returns records, and a malformed (non-map)
+    # child — only reachable via a direct external write — raised
+    # FunctionClauseError inside Access.get/3, 500-ing the whole delete and
+    # leaking every remaining child. Store keys ARE the lowercased full ids,
+    # so deleting by key is exact and needs no read of the record at all.
+    # Capture-then-sweep: extract the storageAccount names from the swept
+    # ARM keys BEFORE deleting them, so each account's data-plane rows
+    # (blob containers/blobs/policies, D127) are cascade-swept too.
+    swept_keys = Store.prefix_keys(:smalt_resources, base)
+
+    for key <- swept_keys do
+      Store.delete(:smalt_resources, key)
+    end
+
+    for acct <- storage_account_names(swept_keys) do
+      BlobStorage.drop_account_data(acct)
+    end
+
+    # FR-6: the vault branch of the cascade. Keys in :smalt_vault_secrets are
+    # bare secret names, so capture them from the swept ARM keys BEFORE the
+    # rows are gone (capture-then-sweep, same shape as storage_account_names).
+    vault_secret_sweep(swept_keys)
+
+    # Cosmos pk_meta cascade (composite-identity lane): capture-then-sweep
+    # from the swept ARM keys BEFORE deletion — extract db/coll names from
+    # swept sqlDatabases/sqlContainers keys, then drop the pk_meta rows.
+    cosmos_sweep(swept_keys)
+
+    op = LRO.start_op(rg_id)
+    authority = request_authority(conn)
+
+    conn
+    |> put_resp_header("location", "#{authority}#{op["id"]}")
+    |> put_resp_header("retry-after", "1")
+    |> send_json(202, "")
   end
 
   defp send_rg_not_found(conn, rg_id, rg_name) do
@@ -964,30 +975,83 @@ defmodule Smalt.ArmGateway.Router do
     %{"name" => "default", "properties" => %{"tags" => normalize_tags(Map.get(rg, "tags"))}}
   end
 
-  # -- Management locks stubs (policy lane pending) ----------------------------
-  # Typed 501, NOT send_arm_error/5 — its (status, code) set is pinned by the
-  # arm_error_corpus meta-test. Envelope shape mirrors the Azure
-  # ErrorResponse schema the corpus pins anyway.
-  # pending policy lane: replace with Policy.lock_blocks?/2 wiring
-  # (delete-verb gate -> 409 ScopeLocked) once Smalt.Policy carries it.
-  defp handle_locks_stub(conn, sub_id, rg_name, verb) do
-    _ = {sub_id, rg_name}
-    scope = conn.request_path
+  # -- Management locks (KD-113 leg b): wired to Smalt.Policy (wave-4 lane w4d).
+  # PUT/GET/DELETE/LIST at RG and subscription scope, api-version 2016-09-01
+  # (monotonic-admission: <= the admitted 2020-05-01 latest). Inline envelopes,
+  # NOT send_arm_error/5 — its (status, code) set is pinned by the
+  # arm_error_corpus meta-test.
+  defp handle_lock_put(conn, scope_prefix, lock_name) do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/locks") do
+      case Policy.put_lock(scope_prefix, lock_name, conn.body_params) do
+        {:ok, record} -> send_json(conn, 201, Jason.encode!(record))
+        {:error, refusal} -> send_json(conn, 400, Jason.encode!(refusal))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
 
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(
-      501,
-      Jason.encode!(%{
-        "error" => %{
-          "code" => "LockSurfaceNotImplemented",
-          "message" =>
-            "Management locks at scope '#{scope}' are not implemented (#{verb}); " <>
-              "the policy lane owns the Smalt.Policy.lock_blocks?/2 wiring.",
-          "target" => scope
-        }
-      })
-    )
+  defp handle_lock_get(conn, scope_prefix, lock_name) do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/locks") do
+      case Policy.get_lock(scope_prefix, lock_name) do
+        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
+        :error -> send_json(conn, 404, lock_not_found_body(scope_prefix, lock_name))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_lock_delete(conn, scope_prefix, lock_name) do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/locks") do
+      case Policy.get_lock(scope_prefix, lock_name) do
+        {:ok, _record} ->
+          _ = Policy.delete_lock(scope_prefix, lock_name)
+          send_json(conn, 200, "")
+
+        :error ->
+          send_json(conn, 404, lock_not_found_body(scope_prefix, lock_name))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_locks_list(conn, scope_prefix) do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/locks") do
+      locks = Policy.list_locks(scope_prefix)
+      send_json(conn, 200, Jason.encode!(%{"value" => locks}))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp lock_not_found_body(scope_prefix, lock_name) do
+    id = "#{scope_prefix}/providers/Microsoft.Authorization/locks/#{lock_name}"
+
+    Jason.encode!(%{
+      "error" => %{
+        "code" => "LockNotFound",
+        "message" => "Management lock '#{lock_name}' was not found at scope '#{scope_prefix}'.",
+        "target" => id,
+        "innererror" => %{}
+      }
+    })
+  end
+
+  # ScopeLocked (KD-113 leg b): the ROUTER owns the 409 mapping — same
+  # inline-envelope law as Smalt.Policy.scope_locked_body (kept in sync).
+  defp lock_scope_locked_body(rg_id) do
+    Jason.encode!(%{
+      "error" => %{
+        "code" => "ScopeLocked",
+        "message" =>
+          "The scope '#{rg_id}' is locked at a level that blocks this operation. " <>
+            "Remove the lock (Microsoft.Authorization/locks) to proceed.",
+        "target" => rg_id,
+        "innererror" => %{}
+      }
+    })
   end
 
   defp handle_resource_put(conn, raw_type, sub_id, rg_name, resource_name) do
@@ -3265,32 +3329,48 @@ defmodule Smalt.ArmGateway.Router do
     handle_scope_tags_put(conn, sub_id, rg_name, :merge)
   end
 
-  # -- Management locks (KD-113 adjacent leg): policy lane has NOT landed —
-  # typed-501 stubs. When Smalt.Policy.lock_blocks?/2 lands, these routes
-  # wire to it (delete-verb gate -> 409 ScopeLocked). Pending-lane call
-  # sites are marked `# pending policy lane` below.
+  # -- Management locks (KD-113 leg b): wired to Smalt.Policy (wave-4 lane w4d).
+  # api-version 2016-09-01 is admitted monotonic (<= latest 2020-05-01).
+  # Subscription scope first (exact path prefix, no :ns shadow risk — the
+  # single-namespace route matches one segment only).
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/locks" do
+    handle_locks_list(conn, "/subscriptions/#{sub_id}")
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_get(conn, "/subscriptions/#{sub_id}", lock_name)
+  end
+
+  put "/subscriptions/:sub_id/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_put(conn, "/subscriptions/#{sub_id}", lock_name)
+  end
+
+  delete "/subscriptions/:sub_id/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_delete(conn, "/subscriptions/#{sub_id}", lock_name)
+  end
+
   get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks" do
-    handle_locks_stub(conn, sub_id, rg_name, "GET")
+    handle_locks_list(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}")
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks" do
-    handle_locks_stub(conn, sub_id, rg_name, "GET")
+    handle_locks_list(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}")
   end
 
   put "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
-    handle_locks_stub(conn, sub_id, rg_name, "PUT")
+    handle_lock_put(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
   end
 
   put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
-    handle_locks_stub(conn, sub_id, rg_name, "PUT")
+    handle_lock_put(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
   end
 
   delete "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
-    handle_locks_stub(conn, sub_id, rg_name, "DELETE")
+    handle_lock_delete(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
   end
 
   delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
-    handle_locks_stub(conn, sub_id, rg_name, "DELETE")
+    handle_lock_delete(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
   end
 
   # -- Subscription-level provider listing (ProviderMatrix projection) ----------
@@ -4466,6 +4546,166 @@ defmodule Smalt.ArmGateway.Router do
     eg_topic_delete(conn, sub_id, rg_name, name)
   end
 
+  # -- systemTopics/{name}/eventSubscriptions (KD-101 in-proc face) -------------
+  # Child routes for event subscriptions on a system topic. The in-proc face
+  # is real (records + delivery through the registered webhook-receiver
+  # subscribers); webhook PUSH to a remote endpoint is forbidden by the
+  # air-gap law and answers a typed 400 (KD-101 divergence stays registered).
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.EventGrid/systemTopics/:name/eventSubscriptions/:es_name" do
+    eg_es_put(conn, sub_id, rg_name, name, es_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.EventGrid/systemTopics/:name/eventSubscriptions/:es_name" do
+    eg_es_get(conn, sub_id, rg_name, name, es_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.EventGrid/systemTopics/:name/eventSubscriptions" do
+    eg_es_list(conn, sub_id, rg_name, name)
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.EventGrid/systemTopics/:name/eventSubscriptions/:es_name" do
+    eg_es_delete(conn, sub_id, rg_name, name, es_name)
+  end
+
+  @eg_es_table :smalt_eg_topics
+  @eg_es_prefix "eg es:"
+
+  defp eg_es_key(sub_id, rg_name, topic, es_name) do
+    String.downcase(
+      "#{@eg_es_prefix}/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/Microsoft.EventGrid/systemTopics/#{topic}/eventSubscriptions/#{es_name}"
+    )
+  end
+
+  defp eg_es_put(conn, sub_id, rg_name, topic, es_name) do
+    with :ok <- check_api_version(conn, "Microsoft.EventGrid/systemTopics"),
+         {:ok, _topic_record} <- eg_es_parent(conn, sub_id, rg_name, topic),
+         {:ok, destination} <- eg_es_destination(conn, es_name) do
+      topic_id =
+        eg_res_id(sub_id, rg_name, "systemTopics", topic)
+
+      es_id =
+        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/Microsoft.EventGrid/systemTopics/#{topic}/eventSubscriptions/#{es_name}"
+
+      key = eg_es_key(sub_id, rg_name, topic, es_name)
+      existed? = match?({:ok, _}, Store.get(@eg_es_table, key))
+
+      record = %{
+        "id" => es_id,
+        "name" => es_name,
+        "type" => "Microsoft.EventGrid/systemTopics/eventSubscriptions",
+        "properties" => %{
+          "topic" => topic_id,
+          "provisioningState" => "Succeeded",
+          "destination" => destination,
+          "eventDeliverySchema" => "CloudEventSchemaV1_0"
+        },
+        "tags" => normalize_tags(Map.get(conn.body_params, "tags")),
+        "systemData" => @system_data
+      }
+
+      Store.put(@eg_es_table, key, record)
+      send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(record))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # Destination gate: `destination.endpointType == "WebHook"` is the remote
+  # push face KD-101 registers as a permanent divergence — refuse typed, keep
+  # the in-proc face (no destination / any other endpointType) admitted.
+  defp eg_es_destination(conn, es_name) do
+    props = conn.body_params["properties"] || %{}
+
+    case props["destination"] do
+      %{"endpointType" => "WebHook"} = dest ->
+        {:respond,
+         send_arm_error(
+           conn,
+           400,
+           "EventGridWebhookPushUnsupported",
+           "Webhook push delivery to remote endpoints is not supported by the loopback emulator (KD-101); use the in-proc webhook receiver face (/eventgrid/hooks/:subscriber). Subscription '#{es_name}' was not created."
+         )}
+
+      %{"endpointType" => other} when is_binary(other) ->
+        {:ok, %{"endpointType" => other}}
+
+      %{} = dest ->
+        {:ok, dest}
+
+      nil ->
+        {:ok, %{"endpointType" => "InProc"}}
+
+      other ->
+        {:respond,
+         send_arm_error(
+           conn,
+           400,
+           "InvalidResourceShape",
+           "properties.destination must be an object when present."
+         )}
+    end
+  end
+
+  defp eg_es_parent(conn, sub_id, rg_name, topic) do
+    case Store.get(@eg_es_table, String.downcase(eg_res_id(sub_id, rg_name, "systemTopics", topic))) do
+      {:ok, record} -> {:ok, record}
+      :error -> {:respond, eg_topic_404(conn, topic)}
+    end
+  end
+
+  defp eg_es_get(conn, sub_id, rg_name, topic, es_name) do
+    with :ok <- check_api_version(conn, "Microsoft.EventGrid/systemTopics") do
+      key = eg_es_key(sub_id, rg_name, topic, es_name)
+
+      case Store.get(@eg_es_table, key) do
+        {:ok, record} -> send_json(conn, 200, Jason.encode!(record))
+        :error -> {:respond, eg_topic_404(conn, es_name)}
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp eg_es_list(conn, sub_id, rg_name, topic) do
+    with :ok <- check_api_version(conn, "Microsoft.EventGrid/systemTopics"),
+         {:ok, _} <- eg_es_parent(conn, sub_id, rg_name, topic) do
+      prefix =
+        String.downcase(
+          "#{@eg_es_prefix}#{eg_res_id(sub_id, rg_name, "systemTopics", topic)}/eventSubscriptions/"
+        )
+
+      send_list(conn, Store.list_prefix(@eg_es_table, prefix))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp eg_es_delete(conn, sub_id, rg_name, topic, es_name) do
+    with :ok <- check_api_version(conn, "Microsoft.EventGrid/systemTopics") do
+      key = eg_es_key(sub_id, rg_name, topic, es_name)
+
+      case Store.get(@eg_es_table, key) do
+        {:ok, _} ->
+          Store.delete(@eg_es_table, key)
+          send_json(conn, 200, "")
+
+        :error ->
+          {:respond, eg_topic_404(conn, es_name)}
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp eg_topic_404(conn, name) do
+    send_arm_error(
+      conn,
+      404,
+      "ResourceNotFound",
+      "The Resource '#{name}' was not found."
+    )
+  end
+
   @eg_schemas ~w(CloudEvents EventGrid)
 
   defp eg_topic_put(conn, kind, sub_id, rg_name, name) do
@@ -4484,17 +4724,35 @@ defmodule Smalt.ArmGateway.Router do
       key = String.downcase(res_id)
       existed? = match?({:ok, _}, Store.get(:smalt_eg_topics, key))
 
+      base_props = %{
+        "provisioningState" => "Succeeded",
+        "inputSchema" => schema,
+        "endpoint" =>
+          "http://localhost:#{Application.get_env(:smalt, :egress_port, 8443)}/topics/#{name}/events"
+      }
+
+      # systemTopics carry the ARM identity face real Event Grid echoes: the
+      # `source` (the ARM resource id events flow FROM) and the `topicType`
+      # (e.g. "Microsoft.EventGrid.Topics"). Both are pass-through echoes of
+      # the PUT body's properties (real ARM semantics), absent when the body
+      # omits them.
+      base_props =
+        if kind == "systemTopics" do
+          body_props = conn.body_params["properties"] || %{}
+
+          base_props
+          |> eg_put_if_present("source", body_props["source"])
+          |> eg_put_if_present("topicType", body_props["topicType"])
+        else
+          base_props
+        end
+
       record = %{
         "id" => res_id,
         "name" => name,
         "type" => "Microsoft.EventGrid/#{kind}",
         "location" => Map.get(conn.body_params, "location", "eastus"),
-        "properties" => %{
-          "provisioningState" => "Succeeded",
-          "inputSchema" => schema,
-          "endpoint" =>
-            "http://localhost:#{Application.get_env(:smalt, :egress_port, 8443)}/topics/#{name}/events"
-        },
+        "properties" => base_props,
         "tags" => normalize_tags(Map.get(conn.body_params, "tags")),
         "systemData" => @system_data
       }
@@ -4622,6 +4880,9 @@ defmodule Smalt.ArmGateway.Router do
         Store.delete(:smalt_eg_topics, "eg events:#{dn_name}:#{event["seq"]}")
       end)
 
+      # Cascade: sweep the topic's child event subscriptions ("eg es:" keys).
+      eg_es_cascade_delete(sub_id, rg_name, name)
+
       send_json(conn, 200, "")
     else
       {:respond, conn} -> conn
@@ -4630,6 +4891,26 @@ defmodule Smalt.ArmGateway.Router do
 
   defp eg_res_id(sub_id, rg_name, kind, name) do
     "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/providers/Microsoft.EventGrid/#{kind}/#{name}"
+  end
+
+  defp eg_put_if_present(props, _key, nil), do: props
+  defp eg_put_if_present(props, key, value), do: Map.put(props, key, value)
+
+  # Cascade: deleting a system topic sweeps its child event-subscription
+  # records ("eg es:" keys, lowercased ids), so no orphaned subscription
+  # survives its parent.
+  defp eg_es_cascade_delete(sub_id, rg_name, name) do
+    prefix =
+      String.downcase(
+        "#{@eg_es_prefix}#{eg_res_id(sub_id, rg_name, "systemTopics", name)}/eventSubscriptions/"
+      )
+
+    :smalt_eg_topics
+    |> Store.list_prefix(prefix)
+    |> Enum.each(fn es ->
+      key = "#{@eg_es_prefix}#{String.downcase(es["id"])}"
+      Store.delete(:smalt_eg_topics, key)
+    end)
   end
 
   # ---------------------------------------------------------------------------

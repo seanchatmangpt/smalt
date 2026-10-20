@@ -60,13 +60,31 @@ defmodule Smalt.Test.Internal.CertificatesKd104WitnessTest do
     {:ok, 200, %{"value" => items}} = Certificates.list()
     assert Enum.any?(items, &(&1["name"] == name))
 
-    # delete → typed 404s; purge idempotent-by-404
+    # delete → soft-delete bundle; recovery class; purge → 204 then 404
     assert {:ok, 200, deleted} = Certificates.delete(name)
     assert is_integer(deleted["deletedDate"])
+    assert is_integer(deleted["scheduledPurgeDate"])
+    assert deleted["recoveryId"] =~ "deletedcertificates/#{name}"
     assert {:error, 404, e1} = Certificates.get(name)
     assert get_in(e1, ["error", "code"]) == "CertificateNotFound"
-    assert {:error, 404, e2} = Certificates.purge(name)
+    assert {:ok, 200, got} = Certificates.get_deleted(name)
+    assert got["recoveryId"] == deleted["recoveryId"]
+    assert {:ok, 200, %{"value" => dl}} = Certificates.list_deleted()
+    assert Enum.any?(dl, &(&1["recoveryId"] == deleted["recoveryId"]))
+
+    # recover → live again; second recover/purge/get-deleted 404
+    assert {:ok, 200, restored} = Certificates.recover(name)
+    assert restored["cer"] == deleted["cer"]
+    assert {:ok, 200, live} = Certificates.get(name)
+    assert live == restored
+    assert {:error, 404, _} = Certificates.get_deleted(name)
+
+    # delete again → purge 204 → recover/get-deleted 404
+    assert {:ok, 200, _} = Certificates.delete(name)
+    assert {:ok, 204, _} = Certificates.purge(name)
+    assert {:error, 404, e2} = Certificates.get_deleted(name)
     assert get_in(e2, ["error", "code"]) == "CertificateNotFound"
+    assert {:error, 404, _} = Certificates.recover(name)
   end
 
   test "duplicate create is refused atomically while first row survives intact" do

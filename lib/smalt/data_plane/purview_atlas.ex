@@ -21,15 +21,37 @@ defmodule Smalt.DataPlane.Purview do
   - typedef/classDef registry: `register_typedef/2`, `register_classdef/2`,
     `registered_type?/1`, `list_typedefs/0`
 
+  Glossary surface (Atlas v2 glossary parity, lane W4H):
+
+  - `glossary/1`                -> GET /glossary            (glossary record + terms)
+  - `list_terms/1`              -> GET /glossary/terms      (all terms, full maps)
+  - `put_term/2`                -> PUT /glossary/term       (create 201 / update 200)
+  - `get_term/2`                -> GET /glossary/terms/:guid
+  - `delete_term/2`             -> DELETE /glossary/terms/:guid (204)
+
+  A term's `assignedEntities` attach the term to entities: each attachment
+  mints a real lineage edge (termGuid -> entityGuid, `AtlasGlossaryTerm`), so
+  GET /atlas/v2/lineage/{direction}/{guid} shows the term link. DELETE of the
+  term removes its edges (the link disappears from lineage).
+
   UNSUPPORTED (honest per-field): the substrate has no full Atlas type system
   — supertype/attributeDefs are stored but NOT enforced (only the type NAME is
-  validated); no glossary surface is named on this router.
+  validated); glossary categories/term templates are stored, not enforced.
   """
 
   alias Smalt.Store
 
   @max_bulk 100
   @directions ~w(input output both)
+
+  # Glossary storage: terms live under `GTERM:<guid>` keys and the glossary
+  # record under `GLOSSARY:` (both in :smalt_purview_entities; the binary
+  # prefix keeps them out of the guid-keyed entity namespace). Term->entity
+  # attachments ride :smalt_purview_edges as `AtlasGlossaryTerm` edges, so the
+  # existing lineage BFS sees them with zero lineage-code changes.
+  @term_prefix "GTERM:"
+  @glossary_key "GLOSSARY:"
+  @term_edge_type "AtlasGlossaryTerm"
 
   # Types always admitted without registration: Atlas structural base types
   # plus the emulator's own pinned surface types (runtime contract tests use
@@ -418,6 +440,202 @@ defmodule Smalt.DataPlane.Purview do
   end
 
   # ---------------------------------------------------------------------------
+  # Glossary (Atlas v2 glossary parity)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  GET /glossary — the glossary record with its term summary list
+  (`termGuid` + `displayText` per term). The glossary guid is minted once and
+  stored, so it is stable across calls.
+  """
+  def glossary(_opts \\ %{}) do
+    terms =
+      list_terms_raw()
+      |> Enum.sort_by(& &1["name"])
+
+    {:ok, 200,
+     %{
+       "guid" => glossary_guid(),
+       "name" => "Glossary",
+       "qualifiedName" => "Glossary",
+       "language" => "en",
+       "terms" => Enum.map(terms, &%{"termGuid" => &1["guid"], "displayText" => &1["name"]})
+     }}
+  end
+
+  @doc "GET /glossary/terms — every term as a full map, sorted by name."
+  def list_terms(_opts \\ %{}) do
+    {:ok, 200, list_terms_raw() |> Enum.sort_by(& &1["name"])}
+  end
+
+  @doc """
+  PUT /glossary/term — create (201) or update (200) a glossary term.
+  `%{"name" => ..., "definition" => ..., "abbreviation" => ...,
+     "seeAlso" => [termGuid...], "relatedTerms" => [termGuid...],
+     "assignedEntities" => [entityGuid | %{"guid" => ...}]}`.
+
+  Every `assignedEntities` guid is validated against the entity store BEFORE
+  any write (unknown guid -> 404 `ATLAS-404-00-005`, no partial attach).
+  Attachments mint real `AtlasGlossaryTerm` lineage edges; an update replaces
+  the term's attachment set.
+  """
+  def put_term(body, _opts \\ %{})
+
+  def put_term(%{"name" => name} = body, _opts) when is_binary(name) do
+    with {:ok, term, status} <- resolve_existing_term(body, name),
+         :ok <- validate_assignments(body) do
+      assigned =
+        body
+        |> Map.get("assignedEntities", [])
+        |> List.wrap()
+        |> Enum.map(&normalize_assigned/1)
+
+      term =
+        term
+        |> Map.merge(%{
+          "name" => name,
+          "definition" => body["definition"],
+          "abbreviation" => body["abbreviation"],
+          "status" => body["status"] || "Approved",
+          "seeAlso" => List.wrap(body["seeAlso"] || []),
+          "relatedTerms" => List.wrap(body["relatedTerms"] || []),
+          "assignedEntities" => assigned,
+          "qualifiedName" => name
+        })
+
+      replace_term_edges(term)
+      Store.put(:smalt_purview_entities, @term_prefix <> term["guid"], term)
+      {:ok, status, term}
+    end
+  end
+
+  def put_term(_body, _opts) do
+    {:error, 400,
+     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "glossary term requires a binary `name`"}}}
+  end
+
+  defp resolve_existing_term(body, _name) do
+    guid = body["guid"]
+
+    if is_binary(guid) and match?({:ok, _}, Store.get(:smalt_purview_entities, @term_prefix <> guid)) do
+      {:ok, 200, term} = get_term(guid)
+      {:ok, term, 200}
+    else
+      {:ok, %{"guid" => new_guid()}, 201}
+    end
+  end
+
+  defp validate_assignments(body) do
+    body
+    |> Map.get("assignedEntities", [])
+    |> List.wrap()
+    |> Enum.reduce_while(:ok, fn ref, :ok ->
+      g = guid_of(ref)
+
+      if is_binary(g) and match?({:ok, _}, Store.get(:smalt_purview_entities, g)) do
+        {:cont, :ok}
+      else
+        {:halt, {:error, 404, not_found(to_string(g || inspect(ref)))}}
+      end
+    end)
+  end
+
+  defp normalize_assigned(%{"guid" => g} = m), do: %{"guid" => g, "typeName" => m["typeName"] || entity_type_of(g)}
+  defp normalize_assigned(g) when is_binary(g), do: %{"guid" => g, "typeName" => entity_type_of(g)}
+  defp normalize_assigned(other), do: %{"guid" => to_string(other)}
+
+  defp entity_type_of(g) do
+    case Store.get(:smalt_purview_entities, g) do
+      {:ok, %{"typeName" => t}} -> t
+      _ -> "Unknown"
+    end
+  end
+
+  # Removes the term's previous AtlasGlossaryTerm edges, then mints one edge
+  # per assigned entity. Keyed "from/to/type" — idempotent overwrite.
+  defp replace_term_edges(term) do
+    guid = term["guid"]
+
+    Store.list(:smalt_purview_edges)
+    |> Enum.each(fn {k, edge} ->
+      if edge["typeName"] == @term_edge_type and (edge["fromEntityId"] == guid or edge["toEntityId"] == guid) do
+        Store.delete(:smalt_purview_edges, k)
+      end
+    end)
+
+    Enum.each(term["assignedEntities"], fn %{"guid" => g} ->
+      put_edge(guid, g, @term_edge_type, %{
+        "relationshipId" => "#{guid}->#{g}:#{@term_edge_type}"
+      })
+    end)
+  end
+
+  @doc "GET /glossary/terms/:guid — the term map, or 404 `ATLAS-404-GLOSSARY-TERM`."
+  def get_term(guid, _opts \\ %{}) do
+    case Store.get(:smalt_purview_entities, @term_prefix <> guid) do
+      {:ok, term} ->
+        {:ok, 200, term}
+
+      :error ->
+        {:error, 404,
+         %{
+           "error" => %{
+             "code" => "ATLAS-404-GLOSSARY-TERM",
+             "message" => "glossary term #{guid} not found"
+           }
+         }}
+    end
+  end
+
+  @doc """
+  DELETE /glossary/terms/:guid — removes the term AND its `AtlasGlossaryTerm`
+  lineage edges (the link disappears from lineage). 204.
+  """
+  def delete_term(guid, _opts \\ %{}) do
+    with {:ok, _term} <- fetch_term(guid) do
+      Store.delete(:smalt_purview_entities, @term_prefix <> guid)
+
+      Store.list(:smalt_purview_edges)
+      |> Enum.each(fn {k, edge} ->
+        if edge["typeName"] == @term_edge_type and edge["fromEntityId"] == guid do
+          Store.delete(:smalt_purview_edges, k)
+        end
+      end)
+
+      {:ok, 204, nil}
+    end
+  end
+
+  defp fetch_term(guid) do
+    case Store.get(:smalt_purview_entities, @term_prefix <> guid) do
+      {:ok, term} -> {:ok, term}
+      :error -> {:error, 404, term_not_found(guid)}
+    end
+  end
+
+  defp term_not_found(guid) do
+    %{"error" => %{"code" => "ATLAS-404-GLOSSARY-TERM", "message" => "glossary term #{guid} not found"}}
+  end
+
+  defp list_terms_raw do
+    Store.list(:smalt_purview_entities)
+    |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, @term_prefix) end)
+    |> Enum.map(fn {_k, v} -> v end)
+  end
+
+  defp glossary_guid do
+    case Store.get(:smalt_purview_entities, @glossary_key) do
+      {:ok, %{"guid" => g}} ->
+        g
+
+      :error ->
+        g = new_guid()
+        Store.put(:smalt_purview_entities, @glossary_key, %{"guid" => g, "name" => "Glossary"})
+        g
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Lineage
   # ---------------------------------------------------------------------------
 
@@ -442,8 +660,14 @@ defmodule Smalt.DataPlane.Purview do
     guid_entity_map =
       Map.new(visited, fn g ->
         case Store.get(:smalt_purview_entities, g) do
-          {:ok, entity} -> {g, entity}
-          :error -> {g, %{"guid" => g, "typeName" => "Unknown"}}
+          {:ok, entity} ->
+            {g, entity}
+
+          :error ->
+            case Store.get(:smalt_purview_entities, @term_prefix <> g) do
+              {:ok, term} -> {g, term}
+              :error -> {g, %{"guid" => g, "typeName" => "Unknown"}}
+            end
         end
       end)
 

@@ -31,7 +31,18 @@ EXPECTED_TEST_SET = {
     "test/cluster/cluster_test.exs",             # DNS-cluster lane (test/ seam per
                                                  #  _LANES.md WO-10 closure)
     "test/adaptive_health_test.exs",             # adaptive-probe lane (root: census-
-}                                                #  fenced test/internal is closed)
+                                                 #  fenced test/internal is closed)
+    # wave-3 additions (capability lanes, each census-registered):
+    "test/integration/event_grid_webhook_test.exs",   # EG webhook receiver
+    "test/integration/certificates_kd104_witness_test.exs",  # KD-104 witness
+    "test/integration/policy_enforcement_mode_witness_test.exs",  # KD-112
+    "test/integration/policy_remediation_witness_test.exs",  # remediations
+    "test/integration/arm_consumer_group_bridge_test.exs",  # EH ARM bridge
+    "test/integration/deletedkeys_purge_route_test.exs",  # KD-117 purge TLS
+    "test/internal/arm_consumer_group_bridge_test.exs",  # EH ARM engine tests
+    "test/internal/event_grid_webhook_test.exs",  # webhook registry tests
+    "test/sb_topic_fanout_test.exs",              # topic fan-out (root: fence)
+}
 
 def run(cmd, **kw):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True, **kw)

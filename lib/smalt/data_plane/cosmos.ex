@@ -406,6 +406,76 @@ defmodule Smalt.DataPlane.Cosmos do
     end)
   end
 
+  @doc """
+  GET /dbs/:db/colls/:coll/pkranges — the partition-key-range feed the SDK
+  routing layer drains before partitioned reads (`evaluate_drain_page`).
+
+  Sourced from the partition routing seam: the range set is derived
+  deterministically from the container's `_rid` (the same `coll_rid/2` the
+  container record carries), so every read of one container sees the identical
+  coherent split of the full hash space — `maxExclusive` of range N equals
+  `minInclusive` of N+1, the full space `"" .. "FF"` is covered, and an
+  unknown db/container is a 404 (the SDK aborts routing on anything but
+  200/304).
+  """
+  def partition_key_ranges(db, coll) do
+    if store_ready?() do
+      case container_record(db, coll) do
+        nil ->
+          error_response(
+            db,
+            coll,
+            404,
+            "NotFound",
+            "Entity with the specified id does not exist in the system."
+          )
+
+        record ->
+          ranges = pkr_ranges(record, db, coll)
+          lsn = current_lsn(db, coll)
+
+          {:ok, 200, success_headers(db, coll, lsn, %{"etag" => pkr_ranges_etag(ranges)}),
+           %{
+             "PartitionKeyRanges" => ranges,
+             "_count" => length(ranges)
+           }}
+      end
+    else
+      {:error, :store_not_ready}
+    end
+  end
+
+  # Deterministic range split: 1..3 ranges over the hex hash space, chosen by
+  # the container rid so the same container always yields the same map.
+  @pkr_split_points ["55", "AA"]
+
+  defp pkr_ranges(record, db, coll) do
+    rid = Map.get(record, "_rid") || coll_rid(db, coll)
+    n = 1 + rem(:erlang.phash2(rid), length(@pkr_split_points) + 1)
+    splits = Enum.take(@pkr_split_points, n - 1)
+
+    bounds = ["" | splits] ++ ["FF"]
+
+    bounds
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.with_index()
+    |> Enum.map(fn {[min, max], i} ->
+      %{
+        "id" => Integer.to_string(i),
+        "rid" => rid <> Integer.to_string(i),
+        "minInclusive" => min,
+        "maxExclusive" => max,
+        "ridPrefix" => i,
+        "throughputFraction" => 1.0 / n
+      }
+    end)
+  end
+
+  defp pkr_ranges_etag(ranges) do
+    "\"pkranges-" <>
+      Base.encode16(:erlang.md5(:erlang.term_to_binary(ranges)), case: :lower) <> "\""
+  end
+
   # ---------------------------------------------------------------------------
   # Container partition-key metadata
   # ---------------------------------------------------------------------------
