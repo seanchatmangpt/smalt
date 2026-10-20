@@ -27,7 +27,6 @@ defmodule InternalTier.CensusTest do
                  "wasm_nif_lifecycle_test.exs",
                  "dets_mirror_recovery_test.exs",
                  "event_hubs_consumer_groups_test.exs",
-                 "certificates_kd104_witness_test.exs",
                  "internal_tier_census_test.exs",
                  @helper
                ])
