@@ -140,3 +140,20 @@ COURT-X2 rc=0 — [COURT] Full gate passed.
 
 Run 2 is the court-log input to the re-minted release receipt. Falsifier:
 re-run `MIX_BUILD_ROOT=_build-coord just court` twice at this HEAD.
+
+## court-x2 #4 (capability wave-2 promotion re-run, 2026-10-20)
+
+Both runs of the full 11-stage court at the capability wave-2 HEAD
+(61e054389b1e5985a546d05938d55b24cf623fe4): two consecutive greens, no shifted failures. Wave-2 surface
+under court: KV deleted-keys TLS twin, enforcementMode, cosmos
+env-first+heir, PS256 dispatch, ACL body-seam + lease-on-snapshot,
+SB topics ARM, EH ARM consumer groups, cosmos SQL OFFSET/TOP, policy
+remediations, KV rotate, appconfig snapshots module, sentinel
+multi-table, MCP 20-tool surface, wf6/wf7 diagnostics.
+
+```
+COURT-Y1 rc=0 — [COURT] Full gate passed.
+COURT-Y2 rc=0 — [COURT] Full gate passed.
+```
+
+Run 2 is the court-log input to the re-minted release receipt.
