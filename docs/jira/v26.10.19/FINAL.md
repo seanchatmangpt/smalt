@@ -5,8 +5,8 @@
 - **Context**: solo(documentation wrap; counts re-derived on this tree)
 - **Standing of this document**: CENSUS — every claim cites a receipt on disk.
   The court-x2 verdict is **ALIVE — two consecutive `just court` greens at
-  HEAD `81a7a29`** (see G5 receipt, §2). Remaining open: publish-dry and the
-  landing SHA.
+  HEAD `81a7a29`** (see G5 receipt, §2). **Published: pushed
+  `4fd2ff2..dc40e84 main` 2026-10-19; publish-dry 4/4 PASS (post-wrap).**
 
 ## 1. Landing
 
@@ -24,16 +24,16 @@
   `just court` runs, both exit 0, HEAD `81a7a29` unchanged across both run
   windows; invariant-gates 6/6 + naming-sweep 0/49 + non-duplication +
   portable-target all PASS in both verdict tails.
-- **publish-dry**: NOT RUN this window (wrap-time item; regen-identity legs
-  witnessed individually: receipt-index, sdk-matrix, gen-error-codes all
-  green and idempotent).
+- **publish-dry**: **PASS 4/4** (hex.build tarball, inner-tar keys grep,
+  leak grep, ERROR_CODES identity) — run at the release commit; output
+  witnessed in session (rc=0).
 
 ## 3. Post-commit gates (7-gate table, surface at HEAD `81a7a29`)
 
 | # | Gate | Command | Verdict | Receipt |
 |---|---|---|---|---|
 | 1 | court-x2 | `just court-x2` | PASS ×2 (see G5 receipt) | `receipts/v261019-12-court-x2-close.md` |
-| 2 | publish-dry | `just publish-dry` | NOT RUN | — |
+| 2 | publish-dry | `just publish-dry` | PASS 4/4 | session rc=0 |
 | 3 | docs-dod-check | `just docs-dod-check` | PASS | `receipts/v261019-envelope-automation.md` leg |
 | 4 | invariant-gates | `python3 scripts/invariant_gates.py` | PASS (6/6) | `receipts/v261019-court-census.md` post-fix |
 | 5 | naming-sweep | `bash scripts/naming_sweep.sh` | PASS (0/49) | inline session output |
@@ -95,7 +95,8 @@ landed fixes c41e8ae / 1aca688 / 77a4041 / c9b0bf1 / 81a7a29):
    cosmos.ex:1841 accessor bypass remain open.
 3. F1 coverage-falsifier court: BEFORE gate typed-SKIPs until the TS suite
    is green (the court is landed and fail-closed).
-4. publish-dry is the only remaining G5 blocker (court-x2 CLOSED this
+4. publish-dry 4/4 PASS and push executed this window (landing commit
+   `dc40e84`) — item CLOSED (was: publish-dry is the only remaining G5 blocker (court-x2 CLOSED this
    window: G5 receipt ALIVE). Census-court blockers cleared this window:
    sb-extra hard top-level watchdog landed
    (77a4041 — AMQP attach hang on draining broker, witnessed ×2), vm
