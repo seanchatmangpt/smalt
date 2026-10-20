@@ -157,3 +157,21 @@ COURT-Y2 rc=0 — [COURT] Full gate passed.
 ```
 
 Run 2 is the court-log input to the re-minted release receipt.
+
+## court-x2 #5 (capability wave-3 promotion re-run, 2026-10-20)
+
+Both runs of the full 11-stage court at the capability wave-3 HEAD
+(5666ae283c4b203d27b1ec16aa33ea618eb727bb): two consecutive greens, no shifted failures. Wave-3 surface
+under court: SB topic fan-out engine, session-state ops, deferred
+session-id + peek DeliveryState, cosmos change-feed + cross-array IN +
+unique keys + OFFSET/TOP, per-blob immutability, EH geo-DR + ARM faces,
+appconfig snapshots wire, remediations ARM routes, exemptionCategory,
+KD-118 TS framing verified, blob RFC-1123 + BlobType, registry sync
+(46 types), MCP 26-tool surface, KD-117 purge arm on the twin.
+
+```
+COURT-Z1 rc=0 — [COURT] Full gate passed.
+COURT-Z2 rc=0 — [COURT] Full gate passed.
+```
+
+Run 2 is the court-log input to the re-minted release receipt.
