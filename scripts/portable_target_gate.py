@@ -81,7 +81,7 @@ ENV_EXACT = {
     "NODE_TLS_REJECT_UNAUTHORIZED", "NO_COLOR", "SMALT_SB_SHARED_KEY",
     "SMALT_PLANES", "SMALT_VERIF_SUB",
     # harness infra (substrate-ctl / dev-CA location resolution)
-    "SMALT_REPO", "SMALT_CERT_DIR",
+    "SMALT_REPO", "SMALT_CERT_DIR", "NEWCAPS_BLOCK",
 }
 
 PY_IMPORT = re.compile(

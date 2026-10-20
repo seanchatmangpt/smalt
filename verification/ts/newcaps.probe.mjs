@@ -29,7 +29,7 @@ function tryConnect(port, host = "127.0.0.1", timeoutMs = 500) {
   });
 }
 
-const REPO = "/Users/sac/smalt";
+const REPO = path.resolve(import.meta.dirname, "../..");
 const CTL = path.join(REPO, "scripts/substrate-ctl");
 const BLOCK = process.env.NEWCAPS_BLOCK ?? "v9";
 const CA = fs.readFileSync(path.join(REPO, ".smalt/tls/ca-cert.pem"));

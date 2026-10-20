@@ -402,7 +402,7 @@ def test_blob_snapshot_listing(anon_substrate):
         if e.status_code == 500:
             pytest.xfail(
                 "KD-107 STILL OPEN (listing leg 500): List Blobs with include=snapshots "
-                "raises FunctionClauseError in Smalt.DataPlane.BlobStorage.blob_metadata_xml/2 "
+                "raises FunctionClauseError in the blob plane blob_metadata_xml/2 "
                 "(clauses are boolean-only but the route passes the raw include token string "
                 f"'snapshots'); substrate log witness; http {e.status_code}"
             )
