@@ -129,5 +129,5 @@ ES404=$(curl -sS -o /dev/null -w '%{http_code}' \
   "$BASE/subscriptions/s10/resourceGroups/$RG/providers/Microsoft.EventGrid/systemTopics/$ST/eventSubscriptions/$ES?$API" -H "$AUTH")
 check "child eventSubscription cascade-deleted (GET 404)" 404 "$ES404"
 
-bench_emit "$RESULT_FILE" surface=arm_systemtopics op=crud_witness n=1 ops_per_sec=0 p50_ms=0 p95_ms=0 p99_ms=0 errors=0
+BENCH_LANE=b10 bench_emit "$RESULT_FILE" arm_systemtopics crud_witness 1 0 0 0 0 0
 echo "[b10] witness complete: $RESULT_FILE"

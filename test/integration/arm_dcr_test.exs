@@ -1,4 +1,4 @@
-# Internal-tier witness: ARM data collection rules family (v26.10.19 w4-lane).
+# Integration-tier witness: ARM data collection rules family (v26.10.19 w4-lane).
 #
 # Chicago discipline: real Store rows, real in-process dispatch through
 # Smalt.ArmGateway.Router, real ingest through the real EgressRouter ->
@@ -7,7 +7,7 @@
 # clears the exact `{:dcr_created, name}` marker + stream-meta prefix the
 # ingest fence (`:sentinel_dcr_strict`) reads.
 
-defmodule InternalTier.ArmDcrTest do
+defmodule Smalt.Internal.ArmDcrTest do
   use ExUnit.Case, async: false
 
   import Plug.Test
@@ -35,7 +35,7 @@ defmodule InternalTier.ArmDcrTest do
   # b11 enforce witness: PUT DCR 201 -> GET 200 echo -> sentinel ingest against
   # the DCR-id works (strict fence admits the ARM-created rule) -> DELETE ->
   # strict-mode ingest typed-refuses the unknown DCR (404 DCRNotFound).
-  # Context: solo (internal tier, in-process dispatch).
+  # Context: solo (integration tier, in-process dispatch).
   test "b11 enforce: PUT -> GET echo -> strict ingest admits -> DELETE -> strict ingest refuses" do
     Application.put_env(:smalt, :sentinel_dcr_strict, true)
     name = "dcr-witness-#{:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)}"

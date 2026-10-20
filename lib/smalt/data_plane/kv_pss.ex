@@ -131,10 +131,11 @@ defmodule Smalt.DataPlane.KvPss do
   # compared. Fail-closed.
   defp verify_prehashed({:RSAPublicKey, n, e}, digest, sig) do
     k = byte_size(:binary.encode_unsigned(n))
+    top_bits = k * 8 - modulus_bits(n)
 
     try do
       em = left_pad_k(:crypto.mod_pow(sig, e, n) |> :binary.decode_unsigned(), k)
-      emsa_pss_verify(digest, em)
+      emsa_pss_verify(digest, em, top_bits)
     rescue
       _ in [ErlangError, ArgumentError] -> false
     end
@@ -166,7 +167,7 @@ defmodule Smalt.DataPlane.KvPss do
     <<masked_db::binary, h::binary, 0xBC>>
   end
 
-  defp emsa_pss_verify(digest, em) do
+  defp emsa_pss_verify(digest, em, top_bits) do
     h_len = 32
     s_len = 32
     em_len = byte_size(em)
@@ -178,7 +179,17 @@ defmodule Smalt.DataPlane.KvPss do
     else
       <<masked_db::binary-size(db_len), h::binary-size(h_len), 0xBC>> = em
 
-      <<0::unit(8)-size(ps_len), 0x01, salt::binary-size(s_len)>> =
+      # RFC 8017 EMSA-PSS-VERIFY step 1c: the leftmost 8*emLen - emBits bits of
+      # maskedDB[0] are "cleared" (irrelevant bits) — the signer zeroed them
+      # (mask_for/top_bits in emsa_pss_encode), the verifier must zero them
+      # again before the xor or the recovered DB carries a phantom 0x80
+      # whenever MGF1's first byte has its high bit set (~1 in 2 signatures
+      # rejected though externally valid).
+      <<first, rest::binary>> = masked_db
+      masked_db = <<Bitwise.band(first, mask_for(top_bits)), rest::binary>>
+
+      <<_ignore::size(top_bits), 0::size(8 * ps_len - top_bits), 0x01,
+        salt::binary-size(s_len)>> =
         xor_bytes(masked_db, mgf1(h, db_len))
 
       :crypto.hash(:sha256, <<0::size(64), digest::binary, salt::binary>>) == h

@@ -84,7 +84,7 @@ defmodule DataPlane.CosmosPkrangesTest do
     conn = EgressRouter.call(conn, [])
 
     assert conn.status == 200
-    [etag] = get_resp_header(conn, "etag")
+    [etag] = Plug.Conn.get_resp_header(conn, "etag")
     assert String.starts_with?(etag, "\"pkranges-")
 
     %{"PartitionKeyRanges" => ranges, "_count" => count} = Jason.decode!(conn.resp_body)
