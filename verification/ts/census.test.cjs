@@ -133,6 +133,7 @@ const CLIENT_OPTIONS = { retryOptions: { maxRetries: 0, timeoutInMs: 8000 } };
 
 // --- helpers -------------------------------------------------------------------
 const wait = (ms) => new Promise((r) => setTimeout(r, ms)); // SLEEP-CLASS: POLL-STEP (audited wait helper, deadline applied by callers)
+    // SLEEP-CLASS: POLL-STEP (audited wait helper, deadline applied by callers)
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const errText = (error) =>

@@ -50,6 +50,56 @@ receipt-gated.
 | WO-1e | scheduleMessage 501 UNSUPPORTED (typed) | Either implement the op or mint the typed-UNSUPPORTED face with a KD row — never a bare 501 | SDK sees a typed UNSUPPORTED face (or a working schedule op); leg records the registered divergence, not a raw 501 |
 | WO-1f | Vault sign single-hash divergence | Fix the sign surface to the single-hash digest contract the SDK sends | `@azure/keyvault-keys` sign leg verifies a signature over the digest it submitted (Node `crypto.verify` roundtrip) |
 
+## Three-wave ledger (as of 2026-10-20, post court-x2 #5)
+
+Capability waves 1-3 landed on the v26.10.19 base (`81a7a29` at planning;
+promotions `17fcbb6` → `61e0543` → `5666ae2` → `28ceff9`).
+
+- **KD flips: 8 register rows flipped OPEN → CLOSED-SIMULATED** since window
+  base, verified by register diff `81a7a29..HEAD` on
+  `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` (the canonical register;
+  kd_flip.py is pinned there): **KD-104, 105, 106, 108, 111, 113, 117, 118**.
+  (Wave commit messages cite 9; the register diff is ground truth — 8 rows.)
+  Per wave: w1 flipped 106/111/113/118 (`1217df8`), w2 flipped 104/105/108
+  (`8e7c3b9`), w3 flipped 117 (`e6430a9`).
+- **court-x2: three green pairs** — #3 at `17fcbb6` (wave-1), #4 at `61e0543`
+  (wave-2), #5 at `5666ae2` (wave-3); all appended as sections to
+  `docs/jira/v26.10.19/receipts/v261019-12-court-x2-close.md` (COURT-X/Y/Z1
+  rc=0 ×2 each), each run 2 feeding the re-minted release receipt + BLAKE3
+  re-mint.
+- **Lanes: 60+** across waves (examples-wave lanes saas/telco/retail/media/
+  fintech + caps w1/w2/w3 lanes wNa..wNq; witness receipts at
+  `docs/jira/v26.10.19/sdk-results/` and `docs/jira/v26.10.20/receipts/`).
+- **Wave-4 (in flight)**: lane leases on disk `_build-lane-w4{a,d,e,f,g,h,i}`
+  (7 leases); git tree CLEAN at `28ceff9` — no landed w4 edits yet;
+  `/tmp/w4/` not yet created. Named w4 target: **KD-119 single-hash** fix
+  lane. Coordinator deletes all lane build roots at integration (`just
+  lane-clean`).
+
+## Remaining OPEN (post-wave-3)
+
+- **KD-119** vault RS256 single-hash — w4 fix lane in flight (register row
+  OPEN; flip receipt-gated via kd_flip.py once a PASS witness postdates the
+  shim mtime).
+- **KD-110** throttling profile default decision — profiles via
+  `SMALT_PROFILE` landed wave-1 (`220cdf1`), the *default* remains
+  `:infinity`; a default-change decision is a register-level choice, not
+  landed code.
+- **KD-114 / KD-115 / KD-116** — TS-suite wire divergences (blob channel,
+  SB receiver flow credit, session settle methods): register OPEN, no
+  witness flips.
+- **SB topic fan-out ARM wiring: DONE** — ARM topic/subscription face
+  landed wave-2 (w2i receipt, PARTIAL_ALIVE with the fan-out bridge as a
+  typed gap), fan-out engine landed wave-3 (`860d0a1`, F-w2i-1). Nothing
+  remaining in this family.
+- **Registry-sync surfaced items: both landed** — appconfig snapshots
+  (module wave-2 `2173530`, wire wave-3 `860d0a1`), certificates TLS
+  (KD-104 flip + wave-2 repair, `8e7c3b9`).
+- **Diagnostics table-stats ARM family**: sentinel multi-table landed
+  wave-2; the **ARM tables route is the remaining piece** (no route in
+  `lib/smalt/arm_gateway/router.ex` yet — candidate WO for wave-4+).
+- **publish-dry**: still NOT RUN in any wave; carried wrap obligation.
+
 ## Dependency order
 
 ```

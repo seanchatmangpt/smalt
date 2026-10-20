@@ -5581,6 +5581,110 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  # -- ARM data collection rules (Microsoft.Insights/dataCollectionRules) -------
+  # Sentinel DCR family at the RG provider scope: PUT/GET/DELETE/LIST.
+  # Declared BEFORE the generic provider routes below — Plug.Router matches in
+  # declaration order, and the generic PUT gates through check_admitted, which
+  # refuses types absent from the generated registry (`mix smalt.gen` —
+  # dataCollectionRules is not yet a registry individual; adding it is the
+  # registry lane's move, never hand-edit generated files).
+  #
+  # Sentinel coupling (store shape read-only over data_plane/sentinel.ex):
+  # PUT seeds the `{:dcr_created, name}` marker in `:smalt_sentinel_streams`
+  # (the row `Sentinel.dcr_exists?/1` consults) and DELETE clears the DCR's
+  # stream-meta prefix so the `:sentinel_dcr_strict` ingest fence refuses the
+  # deleted rule with the typed 404 DCRNotFound envelope. Row data under
+  # `:smalt_sentinel_rows` is preserved (real Azure keeps workspace data after
+  # a DCR delete).
+  @dcr_type "Microsoft.Insights/dataCollectionRules"
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Insights/dataCollectionRules/:name" do
+    with :ok <- check_api_version(conn, @dcr_type) do
+      res_id = resource_id(sub_id, rg_name, "Microsoft.Insights", "dataCollectionRules", name)
+      key = String.downcase(res_id)
+
+      existed? = match?({:ok, _}, Store.get(:smalt_resources, key))
+
+      record = build_resource_record(@dcr_type, res_id, name, conn.body_params)
+
+      Store.put(:smalt_resources, key, record)
+      Store.put(:smalt_sentinel_streams, {:dcr_created, name}, true)
+
+      send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(record))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Insights/dataCollectionRules/:name" do
+    with :ok <- check_api_version(conn, @dcr_type) do
+      res_id = resource_id(sub_id, rg_name, "Microsoft.Insights", "dataCollectionRules", name)
+
+      case Store.get(:smalt_resources, String.downcase(res_id)) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The data collection rule '#{name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Insights/dataCollectionRules" do
+    with :ok <- check_api_version(conn, @dcr_type) do
+      prefix = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
+
+      items =
+        Store.list_prefix(:smalt_resources, prefix)
+        |> Enum.filter(&(&1["type"] == @dcr_type))
+
+      send_list(conn, items)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Insights/dataCollectionRules/:name" do
+    with :ok <- check_api_version(conn, @dcr_type) do
+      res_id = resource_id(sub_id, rg_name, "Microsoft.Insights", "dataCollectionRules", name)
+      key = String.downcase(res_id)
+
+      case Store.get(:smalt_resources, key) do
+        {:ok, _record} ->
+          Store.delete(:smalt_resources, key)
+          # Sentinel lifecycle: drop the creation marker + stream-meta rows so
+          # the strict-mode ingest fence sees a genuinely absent DCR. Row data
+          # (:smalt_sentinel_rows) is preserved.
+          Store.delete(:smalt_sentinel_streams, {:dcr_created, name})
+
+          :smalt_sentinel_streams
+          |> Store.prefix_keys("#{name}/")
+          |> Enum.each(&Store.delete(:smalt_sentinel_streams, &1))
+
+          send_json(conn, 200, "")
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The data collection rule '#{name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
   # -- Generic ARM provider routes ----------------------------------------------
   # roleAssignments / diagnosticSettings / DevTestLab schedules ride these;
   # Registry.admitted?/1 (via find_admitted) gates them.

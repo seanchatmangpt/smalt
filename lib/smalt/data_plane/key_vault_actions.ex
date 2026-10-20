@@ -1039,6 +1039,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   defp check_encrypt_size(_plain, {:oct, _aes_key}), do: :ok
+  # EC already refuses at encrypt_alg/2; defensive clause keeps the with-chain total.
+  defp check_encrypt_size(_plain, {:ec, _, _}), do: :ok
 
   defp do_decrypt(record, params, material) do
     kid = record["kid"]
@@ -1138,7 +1140,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
     with {:ok, digest} <- sign_digest(params),
          {:ok, alg} <- sign_alg(params),
-         :ok <- ec_alg_check(alg, curve) do
+         :ok <- alg_for_key_type(alg, {:ec, curve, nil}) do
       der_sig = :public_key.sign(digest, curve.md, priv_rec)
       {:ECDSA_Sig_Value, r, s} = :public_key.der_decode(:ECDSA_Sig_Value, der_sig)
       bits = curve.coord * 8
@@ -1266,6 +1268,10 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   defp encrypt_alg({:rsa, _}, %{"alg" => "RSA-OAEP-256"}), do: {:ok, "RSA-OAEP-256"}
   defp encrypt_alg({:oct, _}, %{"alg" => "A256GCM"}), do: {:ok, "A256GCM"}
 
+  # EC keys cannot encrypt/wrap in the real contract (no EC encryption alg).
+  defp encrypt_alg({:ec, _, _}, %{"alg" => _}),
+    do: {:error, 400, unsupported_alg_for_key_type()}
+
   defp encrypt_alg({:oct, _}, %{"alg" => "RSA-OAEP-256"}),
     do: {:error, 400, unsupported_alg_for_key_type()}
 
@@ -1277,12 +1283,21 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   defp encrypt_alg(_, _), do: {:error, 400, bad_request("InvalidAlgorithm", "alg is required")}
 
-  defp sign_alg(%{"alg" => alg}) when alg in ["RS256", "PS256"], do: {:ok, alg}
+  defp sign_alg(%{"alg" => alg}) when alg in ["RS256", "PS256", "ES256", "ES384"],
+    do: {:ok, alg}
 
   defp sign_alg(%{"alg" => other}),
     do: {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg #{other}")}
 
   defp sign_alg(_), do: {:error, 400, bad_request("InvalidAlgorithm", "alg is required")}
+
+  # SHIM-COURT: alg/key-type compatibility is a typed 400 (real contract's
+  # "algorithm not supported for this key type"), never a silent false verify.
+  defp alg_for_key_type(_alg, {:rsa, _}), do: :ok
+
+  defp alg_for_key_type(alg, {:ec, curve, _}) when alg == curve.alg, do: :ok
+
+  defp alg_for_key_type(_alg, _material), do: {:error, 400, unsupported_alg_for_key_type()}
 
   defp unsupported_alg_for_key_type do
     bad_request("InvalidAlgorithm", "algorithm not supported for this key type")
