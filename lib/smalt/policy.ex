@@ -675,7 +675,12 @@ defmodule Smalt.Policy do
   # resource: the deny is skipped and an exemption receipt recorded.
   defp exemption_applies?(assignment, record) do
     assignment_id = assignment["id"]
-    resource_id = record["id"] || ""
+    # AZB-25c: real ARM ids are mixed-case (`resourceGroups`,
+    # `Microsoft.Network`, ...); the exemption scope is stored downcased, so
+    # the resource id must be downcased here or the exemption never applies
+    # (witnessed: identical sequence passes with a lowercase id, 400 with an
+    # ARM-cased one — kd112 differential probe, 2026-10-20).
+    resource_id = String.downcase(record["id"] || "")
 
     :smalt_policy
     |> :ets.tab2list()
