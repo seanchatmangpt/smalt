@@ -130,3 +130,91 @@ witnesses flip.
   WIRE_PARITY.md registrar discipline.
 - Coordinator deletes all lane build roots (`_build-lane*`) at integration
   before the final commit.
+
+## 5. Wave-3 registry-sync verification (ERRC wave-4 lane, 2026-10-20)
+
+- **Date**: 2026-10-20
+- **Subject**: smalt @ `6c49b67f442e23d518ad4eed1d8240f0bb4deec2` (main; final
+  wave-3 HEAD at verification time — HEAD advanced past the 28ceff9 promotion
+  commit during the session via other lanes' commits).
+- **Context**: pair (shared checkout, concurrent wave-4 lanes editing `lib/`
+  throughout; every compile-dependent gate below was polled to a clean
+  compile window and the transients disclosed in §6).
+- **Standing**: PASS — all five wave-3 registry-sync claims verified green at
+  final HEAD.
+
+### 5.1 Registry replay fence — HELD
+
+`MIX_BUILD_ROOT=_build-laneV3 mix smalt.gen` run twice consecutively (both
+exit 0 at final HEAD): the five generated files are byte-identical across
+runs (sha256):
+
+```
+5951017febb2e961f0ce6fb7a346b90d98791a07aa81c6941d2a2983b1833dec  lib/smalt/registry.ex
+bdcd4904e01b10e9e3d1a63f4b094948a8c81edbd5d9f42644e830df6a252fa7  lib/smalt/config.ex
+f7aeac8cc1c5cb36928436bc1af3aaffe04d372f7e27d939b1221e59eb30b5d0  lib/smalt/store_tables.ex
+b5a9f0693bf725c3653f10bf734333cf9126c8822e06a691cc7c809bd7bc77d3  lib/smalt/cascade_edges.ex
+de97b736e30e7ab51d879740ec0f8b05f6e29ce0c1355ea10206db0af22ba962  lib/smalt/telemetry/semconv/registry.ex
+```
+
+### 5.2 Registry content smoke — 46 types, all wave-3 ARM admits present
+
+`MIX_BUILD_ROOT=_build-laneV3 mix run --no-start -e '...'` (exit 0):
+
+```
+type_count=46
+Microsoft.Authorization/locks => admitted
+Microsoft.Authorization/policyExemptions => admitted
+Microsoft.Authorization/policyRemediations => admitted
+Microsoft.ServiceBus/namespaces/topics/subscriptions/rules => admitted
+Microsoft.EventGrid/topics => admitted
+sb_rules_latest_version: "2021-04-01"
+```
+
+### 5.3 capabilities.json projection — 46 types + semanticEpoch
+
+`docs/capabilities.json`: 46 capabilities; `semanticEpoch: "26.10.19"`;
+`Microsoft.Authorization/locks`, `Microsoft.Authorization/policyExemptions`,
+`Microsoft.Authorization/policyRemediations` all present (locks is the first
+Authorization family member beyond policyExemptions/policyRemediations).
+
+### 5.4 sdk_coverage — exit 0, 14 cap cells, zero gaps
+
+`python3 scripts/sdk_coverage.py` → `GATE: OK — every cell pass / registered /
+sim-pass / missing-registered`, exit 0. 14 CAP_CELLS: PASS=9, PASS-PARTIAL=3,
+REGISTERED-DIVERGENCE=2 (KD-117, KD-118 rows), UNREGISTERED-GAP=0, MISSING=0.
+Every cell has ground=ok; the wave-3 cell `appconfig-snapshots` cites this
+receipt itself and now reads standing PASS (this section is its witness).
+
+### 5.5 workflows.json — 7 workflows, orphans=[], 14 cells mapped
+
+`verification/workflows.json`: 7 workflows, `coverage.orphans: []`,
+`coverage.missing: []`, and all 14 CAP_CELLS present in
+`coverage.inventory_sources.CAP_CELLS` with wf-mappings
+(kv-deletedkeys-lifecycle/sb-schedule/blob-snapshot-list/
+policy-exemption-armcase/tags-at-scope/lro-namespace-put → wf6,
+appconfig-snapshots → wf7).
+
+## 6. Concurrent-lane transients (disclosed, resolved to green)
+
+During verification the shared checkout carried concurrent wave-4 lane edits;
+three compile-dependent commands failed transiently on other lanes' in-flight
+files and were retried to green under the compile-freeze SLA (no fixes applied
+by this lane — retried until the owning lane's edit landed):
+
+1. `mix smalt.gen` (attempts 1-4 of the first poll): verification compile
+   failed on `lib/smalt/arm_gateway/router.ex` — `undefined function
+   eg_put_if_present/3` (owning lane's mid-flight edit; function count at
+   HEAD: 0). Cleared on the owning lane's landing.
+2. `mix compile` / `mix smalt.gen`: `undefined function
+   ec_alg_check/2` / `alg_for_key_type/2` / `ec_sig_der_encode/2` in
+   `lib/smalt/data_plane/key_vault_actions.ex` (KD-119 lane mid-flight).
+   Cleared on landing.
+3. `mix smalt.gen` first-poll hash pair differed once on `lib/smalt/config.ex`
+   (09fb03df… vs bdcd4904…) — a concurrent edit landed between the two runs;
+   the two clean consecutive runs (§5.1) are byte-identical. Note: working-tree
+   `config.ex` (bdcd4904…) differs from HEAD (KD-COVERS: KD-110 token state) —
+   that delta is in-flight wave-4 churn owned by other lanes, not wave-3
+   drift; the §5.1 hashes are the current-tree generation, exit 0.
+4. `sdk_coverage` first exit-code capture was through a pipe (tail), so `$?`
+   read `tail`'s status; re-confirmed `GATE: OK` + exit 0 directly.

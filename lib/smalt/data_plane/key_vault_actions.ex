@@ -1225,7 +1225,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     with {:ok, digest} <- sign_digest(params),
          {:ok, alg} <- sign_alg(params),
          :ok <- alg_for_key_type(alg, {:ec, curve, nil}) do
-      der_sig = :public_key.sign(digest, curve.md, priv_rec)
+      der_sig = :crypto.sign(:ecdsa, curve.md, {:digest, digest}, [elem(priv_rec, 2), curve.curve])
       {r, s} = ec_sig_der_decode(der_sig)
       bits = curve.coord * 8
 
@@ -1304,8 +1304,10 @@ defmodule Smalt.DataPlane.KeyVaultActions do
         try do
           <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>> = sig
           der_sig = ec_sig_der_encode(r, s)
-          pub = {:ECPoint, ec_public_point(record, curve)}
-          :public_key.verify(digest, curve.md, der_sig, pub) == true
+          :crypto.verify(:ecdsa, curve.md, {:digest, digest}, der_sig, [
+            ec_public_point(record, curve),
+            curve.curve
+          ]) == true
         rescue
           _ in [ErlangError, ArgumentError, MatchError] -> false
         end
@@ -1402,7 +1404,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   # SHIM-COURT: alg/key-type compatibility is a typed 400 (real contract's
   # "algorithm not supported for this key type"), never a silent false verify.
-  defp alg_for_key_type(_alg, {:rsa, _}), do: :ok
+  defp alg_for_key_type(alg, {:rsa, _}) when alg in ["RS256", "PS256"], do: :ok
 
   defp alg_for_key_type(alg, {:ec, curve, _}) when alg == curve.alg, do: :ok
 

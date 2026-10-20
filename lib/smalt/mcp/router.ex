@@ -1066,7 +1066,7 @@ defmodule Smalt.Mcp.Router do
 
           rules =
             :smalt_sb_rules
-            |> Smalt.Store.list()
+            |> Smalt.Store.keys()
             |> Enum.filter(fn key -> is_binary(key) end)
             |> Enum.filter(fn key ->
               String.contains?(key, String.downcase(suffix)) and

@@ -147,3 +147,80 @@ flip belongs to the kd-registrar via `scripts/kd_flip.py --apply`.
   flips via kd-registrar.
 - Receipt artifacts: `/tmp/w2e-witness/` (transcript
   /tmp/w2e-witness-transcript.txt; scratch, not indexed).
+
+---
+
+## KD-119 RESOLUTION — 2026-10-20 (ERRC wave-4 lane w4a) — **PASS, falsifier met**
+
+Extends the KD-105 close to its sibling **KD-119** (vault RS256 sign double-hash:
+digest input treated as raw message). Context: solo. Build root `_build-lane-w4a`;
+block b5 enforce (`{"block":"b5","ports":[39050..39055],"pid":46123,"reused":false}`
+boot exit 0, restarted post-fix so the beam carried the repaired KvPss).
+
+### Code verification (question 1)
+
+`key_vault_actions.ex` do_sign/do_verify pass the wire's pre-hashed `digest`
+through `:prehashed` on both faces: PS256 → `KvPss.sign_pss(..., prehashed: true)`
+/ `KvPss.verify_pss(..., prehashed: true)` (EMSA-PSS over the digest exactly once,
+raw RSA op); RS256 → DigestInfo-prefix + `:none` raw (double-hash defect gone).
+The wire contract, now witnessed on both readings of `sign_digest/1`:
+`digest` field = PRE-HASHED digest (b64url), signed/verified as-is; `value` field
+= raw message hashed once server-side (or a 32-byte value passed through as a
+digest). Both readings externally verify.
+
+### Defect found and repaired this lane (in `kv_pss.ex`, exclusive ownership)
+
+The w2e `:prehashed` landing had a **flaky verifier defect**: `emsa_pss_verify/2`
+never cleared the leftmost `8·emLen − emBits` bits of `maskedDB[0]` before the
+xor, and matched the recovered DB's PS region bit-exactly — so ~50% of VALID
+signatures (whenever MGF1's first byte has its high bit set) failed in-process
+verify while openssl accepted them. Measured pre-fix: wire sign→verify 30 rounds
+= **15 ok / 15 bad**; in-process 40 rounds = 22 ok / 18 bad. Root cause per
+RFC 8017 §9.1.2 (step 1c clears the padding bits; step 3 does not inspect the
+leftmost bits of DB'): `emsa_pss_verify/3` now clears `maskedDB[0]` with
+`mask_for(top_bits)` pre-xor (`top_bits = 8k − (modBits−1)`) and ignores the top
+`top_bits` bits of the recovered DB. Post-fix: in-process 40 rounds = **40/40**,
+wire 30 rounds = **30/30 ok / 0 bad**.
+
+### Witness flow (block b5, enforce, post-fix beam)
+
+Token: `POST :39052/organizations/oauth2/v2.0/token` → 200, len 1291.
+Key create RSA-HSM → kid `.../keys/w4akd119/8770`; SPKI built from wire JWK n/e
+(no trusted third party).
+
+```
+$ openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:32 \
+    -verify pub.pem -signature ps_sig.bin msg.bin
+Verified OK          (ps-verify-exit=0)
+$ ... -signature ps_sig.bin msg-tampered.bin
+Verification failure  (tampered control detected)
+$ openssl dgst -sha256 -verify pub.pem -signature rs_sig.bin msg.bin
+Verified OK          (rs-verify-exit=0)
+$ ... -signature rs_sig.bin msg-tampered.bin
+Verification failure  (tampered control detected)
+```
+
+RS256 face: the original KD-119 defect (digest signed as raw message) is gone —
+external verify over THE DIGEST = "Verified OK" exit 0; tampered control exit 1.
+PS256 face: same. Raw-message `value` face: PS256 sign over `{"value": b64(msg)}`
+→ substrate hashes once server-side → openssl "Verified OK" (exit 0).
+
+Wire verify (in-process, fail-closed both directions, both algs):
+`v_ps_ok=true / v_ps_tam=false / v_rs_ok=true / v_rs_tam=false`.
+
+```
+$ MIX_BUILD_ROOT=_build-lane-w4a mix test test/internal/
+42 tests, 0 failures   (exit 0)
+```
+
+### KD-119 close-condition check (kd_flip re-check)
+
+`python3 scripts/kd_flip.py` (scan, no --apply): KD-105 already
+[CLOSED-SIMULATED] on `lib/smalt/data_plane/kv_pss.ex`; KD-119 previously
+absent from the covers-map (no token). This lane added `# KD-COVERS: KD-105,
+KD-119` to `kv_pss.ex` (post-repair, pre-dates this receipt text — mtime gate
+satisfiable). Close condition "sign consumes pre-hashed digest as-is;
+hazmat verify digest=true, message=false" is MET by the openssl analog above
+(digest=true Verified OK, message/tampered=false exit 1). **KD-119 is
+flip-eligible; flip belongs to the kd-registrar via `scripts/kd_flip.py
+--apply`** (w4a reports, does not flip).

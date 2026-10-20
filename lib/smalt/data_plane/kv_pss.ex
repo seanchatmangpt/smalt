@@ -2,7 +2,7 @@ defmodule Smalt.DataPlane.KvPss do
   @moduledoc """
   Externally verifiable RSA-PSS (PS256) signatures for the KV data plane.
 
-  # KD-COVERS: KD-105
+  # KD-COVERS: KD-105, KD-119
 
   Closes the KD-105/KD-119 family: the KV `PS256` path was internally
   self-consistent only — `key_vault_actions.ex` signs
@@ -131,7 +131,8 @@ defmodule Smalt.DataPlane.KvPss do
   # compared. Fail-closed.
   defp verify_prehashed({:RSAPublicKey, n, e}, digest, sig) do
     k = byte_size(:binary.encode_unsigned(n))
-    top_bits = k * 8 - modulus_bits(n)
+    # emBits = modBits - 1 (same as emsa_pss_encode); top_bits = 8*k - emBits.
+    top_bits = k * 8 - (modulus_bits(n) - 1)
 
     try do
       em = left_pad_k(:crypto.mod_pow(sig, e, n) |> :binary.decode_unsigned(), k)
