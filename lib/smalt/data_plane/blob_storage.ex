@@ -1665,6 +1665,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   # snapshot rows (KD-107 RAISE, snapshots_xml/3); versions/tags remain
   # admitted-but-undecorated.
   defp blob_metadata_xml(_b, false), do: ""
+  defp blob_metadata_xml(_b, nil), do: ""
 
   # include is the RAW comma-separated token string (passing a boolean here was
   # fine when render_blob only ever passed include_metadata?/1's result — the

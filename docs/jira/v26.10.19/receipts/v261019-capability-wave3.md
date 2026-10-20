@@ -218,3 +218,206 @@ by this lane — retried until the owning lane's edit landed):
    drift; the §5.1 hashes are the current-tree generation, exit 0.
 4. `sdk_coverage` first exit-code capture was through a pipe (tail), so `$?`
    read `tail`'s status; re-confirmed `GATE: OK` + exit 0 directly.
+
+---
+
+# ERRC wave-4 flip verification (appended 2026-10-20)
+
+- **Date**: 2026-10-20
+- **Subject**: smalt working tree at HEAD `28ceff9` (git status clean at lane
+  start, 05:00 PDT) + concurrent wave-4 in-flight edits disclosed below.
+- **Context**: solo (ERRC wave-4 verification lane; read-mostly + rerun, no
+  code edits, no git)
+- **Standing**: PARTIAL — 3 of 4 defects FLIPPED; blob list RFC-1123
+  NOT-FLIPPED (real SDK default path 500s at this HEAD; §B below).
+- **Substrates**: fresh boots only, never reused: b11 `--auth enforce --fresh`
+  (ports 39110-39115) for KV-purge + exemptionCategory; b12
+  `--auth anonymous --fresh` (ports 39120-39125) for the blob SharedKey leg
+  (master-key surfaces are an anonymous-mode surface per
+  `verification/py/conftest.py`; the enforce-b11 SharedKey attempt is
+  transcribed honestly in §A2). KD-118 rode `sb-extra.probe.cjs`, which boots
+  and sweeps its own fresh b11 internally.
+- **No lib/ edits were made by this lane.** Two compile-freeze SLA waits were
+  observed (no unblock fix applied): (1) a transient backtick syntax error in
+  `lib/smalt/arm_gateway/router.ex:4659` (owner repaired within ~6 min);
+  (2) `lib/smalt/data_plane/key_vault_actions.ex` mid-refactor snapshot
+  (caller `derive_oct_key/1` present, callee missing → runtime
+  UndefinedFunctionError on the first KV create; owner landed the callee;
+  re-boot picked it up).
+
+## Flip-verification table
+
+| # | Defect | Verdict | Evidence class | Transcript (this session, verbatim) |
+|---|--------|---------|----------------|--------------------------------------|
+| 1 | KV purge twin (bare `DELETE /deletedkeys/{n}` → 204) | **FLIPPED** | Raw wire over the TLS twin (curl --cacert dev-cert, KD-15 challenge dance), fresh b11 enforce | §A1, 6/6 PASS |
+| 2 | Blob list RFC-1123 (azure-storage-blob deserializes) | **NOT-FLIPPED** | Real azure-storage-blob 12.31.0 (py venv) against fresh substrate | §B — `include` leg deserializes RFC-1123 cleanly, but the SDK default `list_blobs()` 500s at this HEAD (`blob_metadata_xml/2` no `nil` clause). Close condition not met. |
+| 3 | KD-118 TS schedule-message | **FLIPPED** | `node sb-extra.probe.cjs` (real @azure/service-bus 7.10.0, AMQP) | §C, 3/3 PASS |
+| 4 | exemptionCategory roundtrip | **FLIPPED** | Raw ARM wire, fresh b11 enforce, bearer from emulator STS | §D, 3/3 PASS |
+
+## §A1 KV purge twin — 6/6 PASS (fresh b11 enforce, pid 39204, 05:16 PDT)
+
+```
+PASS kv-tokenless-challenge tokenless DELETE -> 401 (KD-15 challenge)
+PASS kv-create POST /keys/w4-purge-b0f323/create -> 200
+PASS kv-soft-delete DELETE /keys/w4-purge-b0f323 -> 200
+PASS kv-get-deleted GET /deletedkeys/w4-purge-b0f323 -> 200
+PASS kv-purge-twin-204 bare DELETE /deletedkeys/w4-purge-b0f323 -> 204
+PASS kv-post-purge-404 post-purge GET /deletedkeys/w4-purge-b0f323 -> 404
+```
+
+## §A2 Honest failures during verification (environment + auth-tier, not the defects)
+
+- First b11 boot refused at compile: `router.ex:4659` backtick SyntaxError
+  (concurrent lane mid-edit; SLA wait, owner fixed).
+- Second boot refused: `key_vault_actions.ex` mid-refactor (undefined
+  `ec_alg_check/2`, `alg_for_key_type/2`, then a caller/callee skew on
+  `derive_oct_key/1` that surfaced at runtime as 500→503 on the KV face).
+  The KV purge transcript in §A1 is from the first healthy boot.
+- enforce-mode blob leg attempt (b11): azure-storage-blob SharedKey →
+  `ClientAuthenticationError: MalformedBearerHeader` (enforce correctly
+  refuses SharedKey on the data plane); bearer leg refused client-side by the
+  SDK over http egress; `/smaltacct` is not in TlsTwinDispatch
+  `@egress_prefixes` → `RouteNotFound` over TLS. Hence the canonical
+  anonymous tier (b12) per the conftest docstring.
+- b11 contention: a concurrent lane's ServiceBus census occupied b11
+  (05:19-05:23); its exit sweep SIGTERMed my instance. Re-upped fresh; the
+  exemptionCategory leg ran on the post-contention boot (pid 49661).
+
+## §B Blob list RFC-1123 — NOT-FLIPPED (defect at HEAD `28ceff9`)
+
+`blob_storage.ex` carried NO in-flight diff during this session (verified via
+`git diff --stat`), so this is attributable to the pinned HEAD. Raw wire:
+
+```
+create-container:201 ; put-blob-0:201 ; put-blob-1:201
+list-no-include:500
+list-include-metadata:200   # Last-Modified: Tue, 20 Oct 2026 12:20:38 GMT (RFC-1123, parses)
+```
+
+Real SDK (azure-storage-blob 12.31.0, anon b12 egress 39123):
+
+```
+PASS blob-list-include-metadata-deserialized list_blobs(include=[metadata]) ->
+  3 blobs, names=['blob-0','blob-1','blob-2'],
+  last_modified=['2026-10-20 12:20:58+00:00', ...] (no DeserializationError)
+FAIL default-list-no-include azure HttpResponseError status=500
+```
+
+Root cause (read at HEAD + tree, clauses identical in both):
+`do_list_blobs_xml` does `include = Map.get(opts, "include")` → `nil` when
+the client omits the query param; `blob_metadata_xml(_b, false)` is the
+only no-include clause — no `nil` clause, so
+`blob_metadata_xml(record, nil)` FunctionClauseErrors → 500 on every default
+`list_blobs()`. The RFC-1123 rendering itself is correct and deserializes;
+the SDK's DEFAULT path is what 500s. Fix is one clause:
+`defp blob_metadata_xml(_b, nil), do: ""`. Registrar: do not flip the blob
+RFC-1123 cell on this receipt; owner lane should add the nil clause + a
+default-list SDK cell witness.
+
+## §B2 Side observation (needs owner triage, unregistered)
+
+`delete_container` on a freshly booted anon b12 (no immutability policy ever
+set by this lane) is refused with
+`409 ContainerLocked — "container policy enforces immutable WORM retention"`
+on containers `w4-rfc1123-*` / `w4-incl-*` / `w4-raw-*`. Real Azure deletes
+policy-less containers. Possible over-broad WORM arm from the wave-3
+per-blob immutability work. My lane could not clean up its probe containers
+(swept with the beam). Unregistered observation, not a KD mint.
+
+## §C KD-118 — 3/3 PASS
+
+`cd verification/ts && node sb-extra.probe.cjs` (boots own fresh b11,
+enforce):
+
+```
+PASS scheduleMessage
+PASS receiveAndDelete-delivery
+PASS acceptNextSession-no-session
+SUMMARY pass=3 fail=0
+[sb-extra] WATCHDOG: no verdict in 180000ms — typed fail (PROBE_EXIT=3)
+```
+
+(exit 3 is the pre-existing documented post-summary event-loop hang at
+sb-extra.probe.cjs:188; the verdict lines are the falsifier signal.)
+
+## §D exemptionCategory — 3/3 PASS (fresh b11 enforce, pid 49661)
+
+```
+PASS exemption-put PUT -> 201, exemptionCategory=Waiver
+PASS exemption-get-echo GET -> 200, exemptionCategory=Waiver
+PASS exemption-delete DELETE -> 200
+```
+
+(Probe: `PUT/GET/DELETE /subscriptions/w4-sub/providers/Microsoft.Authorization/policyExemptions/w4-ex-waiver?api-version=2022-07-01-preview`,
+bearer from emulator STS `POST /w4-tenant/oauth2/v2.0/token` on the TLS twin.)
+
+## Teardown
+
+```
+scripts/substrate-ctl down --block b11 --mode sweep → exit 0
+scripts/substrate-ctl down --block b12 --mode sweep → exit 0
+status: both blocks up=0, ports drained (39110-39115, 39120-39125)
+```
+
+---
+
+# ERRC wave-4 FULL battery rerun (appended 2026-10-20, second pass)
+
+- **Date**: 2026-10-20 05:00-06:10 PDT
+- **Subject**: smalt at HEAD `28ceff9` + concurrent wave-4 in-flight working-tree
+  edits (disclosed below; clean-HEAD isolation not possible for a read-only
+  lane — results are HEAD + in-flight tree).
+- **Context**: solo (ERRC wave-4 verification lane, rerun pass; no code edits,
+  no git)
+- **Method**: every harness boots and sweeps its OWN fresh substrate at the
+  current tree (no pre-existing beam reused): run-all → v13/v14 private boots
+  (enforce), newcaps → v9 (enforce), sb-extra/census → b11 (enforce), py
+  run.sh → v1 (enforce, `reused:false`). A lane spare block b4
+  (`--auth enforce --fresh`, ports 39040-39045) was booted per dispatch and
+  swept down unused — the harnesses self-boot. Logs: /tmp/wave3-verify/*.log.
+
+## Battery verdict table (fresh beams, HEAD 28ceff9 + in-flight tree)
+
+| Harness | Exit | Cells |
+|---|---|---|
+| `verification/ts` `node run-all.mjs` (wf1-wf5) | **1** | 39 GREEN, 1 REGISTERED-DIVERGENCE#KD-14/KD-105, 5 FAIL: wf2 blob-auth-channel (SharedKey vs enforce Bearer, bearer-over-http refused client-side — no usable official-SDK blob channel under enforce); wf3 sb-send20-receive-complete (received 0/20 — receiver-delivery gap on the shared v13 substrate); wf3 sb-message-lock-lost (no delivery — same gap); wf3 sb-dlq-maxdelivery (DLQ size=0); wf4 kv-recover (POST /deletedkeys/recover → 400) |
+| `node newcaps.probe.mjs` | **1** (hardFails=1) | PASS kv delete/getDeleted/recover/getAfter; PASS secrets soft-delete mirror; PASS tags-at-scope; **SKIP** sb schedule-message (KD-118 lane: $management 400 QUEUE_REQUIRED, request resolves neither body `queue` nor associated-link-name — management_rpc.ex:661-667); **SKIP** blob snapshot-list-decoration (snapshot 201 + x-ms-snapshot OK but List Blobs 500: blob_metadata_xml/2 FunctionClauseError, nil clause — §B root cause of the prior section confirmed); **FAIL** KD-112 resource-scope exemption arm (cased RG-scope 400, resource-scope 404 — not landed); SKIP LRO namespace-put 202 (not landed on this namespace) |
+| `node sb-extra.probe.cjs` | **3** (documented post-summary event-loop hang) | 3/3 PASS: scheduleMessage, receiveAndDelete-delivery, acceptNextSession-no-session |
+| `node --test census.test.cjs` | **0** | 12/12 pass, zero skips (all 11 SB probes incl. dead-letter, dlq-properties, deferred-receive + harness self-check) |
+| `verification/py` `bash run.sh` (wf1-wf7) | **1** | 18 passed, 1 failed, 3 errors, 1 skipped. The 3 setup errors + 1 failure are ONE cause: SB namespace PUT now answers **202 LRO body** (`/subscriptions/py-verify-sub/.../namespaces/pywf3-ns` → 202 with operations id) where the py fixture asserts 200/201 (test_wf3_messaging.py:38) — test-harness premise rot vs the in-flight wave-4 LRO-widen, not a substrate defect; SKIP wf7 sentinel tables (not-landed, unchanged) |
+
+Cross-run contrast recorded honestly: the wf3 SB receiver-delivery FAILs
+(run-all, v13) and kv-recover 400 (wf4) did NOT reproduce in the same session's
+census b11 boot (SB 11/11 green incl. delivery/settle probes) nor in py wf4
+(test_soft_delete_recover_purge PASSED) — same HEAD, different fresh beams.
+These are the two cells most likely to be in-flight-tree-sensitive; a clean
+28ceff9 isolation rerun is the close condition.
+
+## Reconciliation of the wf6/wf7 lane's 4 NOT-FLIPPED findings (fresh beam)
+
+| Finding | Prior verdict (§ table above) | This rerun | Verdict |
+|---|---|---|---|
+| KD-118 TS schedule-message framing | FLIPPED (§C 3/3) | sb-extra rerun 3/3 PASS on a fresh b11; newcaps AMQP-management cell still SKIP (400 QUEUE_REQUIRED on the $management link — the probe's own management-shape lane, distinct from sb-extra's CBS path) | **CONFIRMED FLIPPED with a fresh beam** — the wf6/wf7 lane's NOT-FLIPPED finding does not reproduce; earlier contradictions were stale-beam artifacts |
+| Blob list RFC-1123 | NOT-FLIPPED (§B) | Default-path List Blobs still 500s (blob_metadata_xml/2 nil clause); include-path deserializes RFC-1123 cleanly (py wf6 test_blob_snapshot_listing PASS) | **CONFIRMED NOT-FLIPPED** — close condition unchanged: add `defp blob_metadata_xml(_b, nil), do: ""` + default-list SDK witness |
+| exemptionCategory roundtrip | FLIPPED (§D 3/3) | Raw ARM exemption PUT/GET/DELETE shape lands (py test_policy_initiative_assignment_exemption PASS); newcaps KD-112 cell FAIL names a DIFFERENT, still-open gap: the resource-scope exemption arm (404) + cased RG-scope id (400) | **CONFIRMED FLIPPED at the claimed RG-scope**; resource-scope arm remains an open cell (register obligation, not a regression) |
+| Sentinel table-stats (wf7) | not-landed | wf7 tables test SKIPs loudly again ("no route on egress_router.ex or arm_gateway/router.ex") | **STILL NOT LANDED** — unchanged, honest skip |
+
+## Honest failures / SLA waits (this pass)
+
+- Two compile-freeze SLA waits at lane start (no fixes applied by this lane):
+  (1) `router.ex` mid-edit `eg_put_if_present/3` undefined (~2 min to land);
+  (2) `key_vault_actions.ex` mid-refactor `alg_for_key_type/2` undefined
+  (cleared within one 45 s poll). Tree then compiled clean in
+  `_build-laneV`.
+- First run-all attempt failed pre-suite: SUBSTRATE-BOOT-FAIL on v13 during
+  window (1); also a lane-side redirect bug (log dir missing) cost one
+  no-op attempt. Retried to completion after the tree compiled.
+- run-all exit 1 and py exit 1 are reported as-is; per-cell detail above.
+  One pre-existing, prior-section-documented event-loop hang (sb-extra exit 3
+  post-summary) is a harness artifact, verdicts unaffected.
+
+## Teardown
+
+```
+substrate-ctl down --block b4 --mode sweep → exit 0
+status b4/v1/v9/b11/v13/v14 → up=0 all, ports drained
