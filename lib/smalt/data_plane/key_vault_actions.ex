@@ -71,6 +71,13 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   @default_ops ["encrypt", "decrypt", "sign", "verify", "wrapKey", "unwrapKey"]
 
+  # EC named curves: OTP curve atom, DER OID, coordinate width (bytes), the
+  # digest paired with the JWS alg, and the wire alg itself.
+  @ec_curves %{
+    "P-256" => %{curve: :secp256r1, oid: {1, 2, 840, 10045, 3, 1, 7}, coord: 32, md: :sha256, alg: "ES256"},
+    "P-384" => %{curve: :secp384r1, oid: {1, 3, 132, 0, 34}, coord: 48, md: :sha384, alg: "ES384"}
+  }
+
   # ---------------------------------------------------------------------------
   # Identity-plane profile read sites (AZB-08)
   # ---------------------------------------------------------------------------
@@ -203,6 +210,88 @@ defmodule Smalt.DataPlane.KeyVaultActions do
       :error ->
         {:error, 404, key_not_found()}
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Create (module-level seam; the HTTP route lives in EgressRouter)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Mints a new key record over the `:smalt_vault_keys` table — the module-level
+  twin of the `POST /keys/:name/create` route (same record shape: bare-name row
+  + one `is_version_row` row, `key_material` private on the row, public bundle
+  returned). Supports the raised key types:
+
+  - `kty: "EC"` (default crv `P-256`; `P-384` via `"crv"`): real keypair, JWK
+    `crv`/`x`/`y` projected, private DER cached on the row.
+  - `kty: "oct-HSM"`: fresh `:crypto.strong_rand_bytes(32)` material stored on
+    the version row; NO `k` in the JWK (HSM material non-exportable).
+  - `kty: "oct"`: legacy deterministic derivation, `k` projected.
+  - `kty: "RSA"/"RSA-HSM"`: RSA row; material lazily generated at first use.
+
+  Note: the HTTP create route (`EgressRouter.jwk_for_kty/3`, shared file) does
+  not yet dispatch "EC" — it 400s UnsupportedKeyType until that seam adopts
+  this function.
+  """
+  def create_key(name, params \\ %{}) when is_binary(name) and is_map(params) do
+    kty = Map.get(params, "kty", "RSA-HSM")
+    release_policy = Map.get(params, "release_policy")
+    version = Integer.to_string(System.unique_integer([:positive]))
+    kid = "https://smalt-vault/keys/#{name}/#{version}"
+
+    with {:ok, jwk_fields, key_material} <- create_material(kty, name, version, params) do
+      now = System.system_time(:second)
+
+      key_record = %{
+        "kid" => kid,
+        "versions" => [version],
+        "key" => Map.merge(%{"kid" => kid, "kty" => kty}, jwk_fields),
+        "attributes" => %{
+          "enabled" => true,
+          "exportable" => not is_nil(release_policy),
+          "created" => now
+        },
+        "release_policy" => release_policy,
+        "key_material" => key_material
+      }
+
+      Store.put(:smalt_vault_keys, name, key_record)
+      Store.put(:smalt_vault_keys, {name, version}, Map.put(key_record, "is_version_row", true))
+
+      {:ok, 200, public_record(key_record)}
+    end
+  end
+
+  defp create_material("EC", _name, _version, params) do
+    crv = Map.get(params, "crv", "P-256")
+    curve = Map.get(@ec_curves, crv)
+
+    if curve do
+      {pub_point, priv} = :crypto.generate_key(:ecdh, {:named_curve, curve.curve})
+      priv_rec = {:ECPrivateKey, 1, priv, {:namedCurve, curve.oid}, pub_point, <<>>}
+      der = :public_key.der_encode(:ECPrivateKey, priv_rec)
+
+      {:ok,
+       Map.merge(%{"crv" => crv}, ec_point_jwk(crv, curve, pub_point)), der}
+    else
+      {:error, 400, bad_request("InvalidParameter", "unsupported EC crv #{crv}")}
+    end
+  end
+
+  defp create_material("oct-HSM", _name, _version, _params) do
+    {:ok, %{}, :crypto.strong_rand_bytes(32)}
+  end
+
+  defp create_material("oct", name, version, _params) do
+    {:ok, %{"k" => Base.url_encode64(derive_oct_key(name, version), padding: false)}, nil}
+  end
+
+  defp create_material(kty, _name, _version, _params) when kty in ["RSA", "RSA-HSM"] do
+    {:ok, %{}, nil}
+  end
+
+  defp create_material(kty, _name, _version, _params) do
+    {:error, 400, bad_request("UnsupportedKeyType", "kty #{kty} is not supported")}
   end
 
   # ---------------------------------------------------------------------------
@@ -885,11 +974,6 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     Store.put(:smalt_vault_keys, store_key, record)
     :ok
   end
-
-  @ec_curves %{
-    "P-256" => %{curve: :secp256r1, oid: {1, 2, 840, 10045, 3, 1, 7}, coord: 32, md: :sha256, alg: "ES256"},
-    "P-384" => %{curve: :secp384r1, oid: {1, 3, 132, 0, 34}, coord: 48, md: :sha384, alg: "ES384"}
-  }
 
   defp ec_crv(record), do: get_in(record, ["key", "crv"]) || "P-256"
 

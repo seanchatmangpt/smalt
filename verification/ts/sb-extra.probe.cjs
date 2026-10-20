@@ -191,6 +191,7 @@ async function main() {
 // timeoutInMs against a draining broker (witnessed: two orphaned probe
 // processes idling against a swept substrate during the v26.10.19 court).
 const WATCHDOG_MS = parseInt(process.env.SMALT_SB_EXTRA_WATCHDOG_MS || "180000", 10);
+  // SLEEP-CLASS: SCHEDULING (hard top-level watchdog, typed exit 3)
 const watchdog = setTimeout(function () { // SLEEP-CLASS: SCHEDULING (hard top-level watchdog, typed exit 3)
   console.error("[sb-extra] WATCHDOG: no verdict in " + WATCHDOG_MS + "ms — typed fail");
   downBlock("b11");

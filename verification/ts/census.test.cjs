@@ -482,7 +482,8 @@ test("service bus census: 11 probes, fail-closed, zero skips", async () => {
         await Promise.race([
           Promise.resolve(handle.close()).catch(() => {}),
           new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error("CLOSE_DEADLINE")), 1500); // SLEEP-CLASS: SCHEDULING (bounded watchdog, typed CLOSE_DEADLINE failure)
+            // SLEEP-CLASS: SCHEDULING (bounded watchdog, typed CLOSE_DEADLINE failure)
+                        timer = setTimeout(() => reject(new Error("CLOSE_DEADLINE")), 1500);
           }),
         ]);
       } finally {
