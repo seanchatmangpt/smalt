@@ -113,6 +113,19 @@ defmodule InternalTier.VmZeroGrowthTest do
   @tag :smalt_internal
   test "conn-sup churn: kill all children, supervisor restores count, VM census deltas zero" do
     conn_sup = Smalt.AmqpBroker.ConnSup
+
+    # Boot-race hardening: the integration plane may still be booting when the
+    # suite starts under load — bounded-poll for the plane instead of an
+    # immediate call (witnessed: ConnSup `no process` under post-wave court
+    # load, 2026-10-20).
+    assert {:ok, :conn_sup_alive} =
+             eventually(
+               fn ->
+                 if Process.whereis(conn_sup), do: {:ok, :conn_sup_alive}, else: {:booting, nil}
+               end,
+               timeout_ms: 15_000
+             )
+
     baseline_children = length(DynamicSupervisor.which_children(conn_sup))
     before = census()
 
