@@ -184,6 +184,18 @@ async function main() {
   if (booted) downBlock("b11");
 }
 
+
+// Hard top-level watchdog: the AMQP attach can hang past retryOptions
+// timeoutInMs against a draining broker (witnessed: two orphaned probe
+// processes idling against a swept substrate during the v26.10.19 court).
+const WATCHDOG_MS = parseInt(process.env.SMALT_SB_EXTRA_WATCHDOG_MS || "180000", 10);
+const watchdog = setTimeout(function () {
+  console.error("[sb-extra] WATCHDOG: no verdict in " + WATCHDOG_MS + "ms — typed fail");
+  downBlock("b11");
+  process.exit(3);
+}, WATCHDOG_MS);
+watchdog.unref();
+
 main().catch(function (e) {
   console.error("harness:", e);
   downBlock("b11");
