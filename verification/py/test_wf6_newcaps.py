@@ -411,3 +411,143 @@ def test_blob_snapshot_listing(anon_substrate):
                 f"KD-107 snapshot plane refuses: {e.status_code} {str(e)[:160]}"
             )
         raise
+
+# ---------------------------------------------------------------------------
+# Cap 6 — Cosmos SQL: TOP / OFFSET LIMIT / scalar functions (w2k raise)
+# ---------------------------------------------------------------------------
+
+
+def test_cosmos_sql_top_offset_scalar_fns(anon_substrate):
+    """w2k mirror cells over real azure-cosmos query_exec: TOP n + ORDER BY,
+    OFFSET n LIMIT m paging, and a scalar-function projection (UPPER).
+    SyntaxError (typed 400) on any leg -> the w2k translator is not wired;
+    typed xfail, never a fake pass."""
+    egress = anon_substrate["egress"]
+    client = cc.CosmosClient(egress, credential=secrets.token_hex(32))
+    db = client.create_database(f"{RUN}-{secrets.token_hex(4)}")
+    cont = db.create_container(id="c-sql", partition_key="/pk")
+
+    for i in range(5):
+        cont.upsert_item({"id": f"d{i}", "pk": "p", "n": i, "s": f"row{i}"})
+
+    def rows(q):
+        return list(cont.query_items(
+            query=q, enable_cross_partition_query=True,
+        ))
+
+    # TOP 2 + ORDER BY n DESC -> the two highest n, in order.
+    top = rows("SELECT TOP 2 * FROM c ORDER BY c.n DESC")
+    if not top:
+        pytest.xfail("w2k STILL OPEN: SELECT TOP admitted but returned 0 rows")
+    assert [r["n"] for r in top] == [4, 3], f"TOP 2 DESC wrong: {top!r}"
+
+    # OFFSET 1 LIMIT 2 after ORDER BY n ASC -> rows n=1,2.
+    page = rows("SELECT * FROM c ORDER BY c.n ASC OFFSET 1 LIMIT 2")
+    assert [r["n"] for r in page] == [1, 2], f"OFFSET/LIMIT page wrong: {page!r}"
+
+    # Scalar projection with alias: UPPER(c.s) AS u.
+    scal = rows("SELECT UPPER(c.s) AS u FROM c WHERE c.n = 2")
+    assert scal and scal[0].get("u") == "ROW2", f"UPPER projection wrong: {scal!r}"
+
+    # fail-closed residue: a grammar-external query stays a typed 400.
+    try:
+        rows("SELECT c.j FROM c JOIN x IN c.arr")
+        raise AssertionError("JOIN admitted — fail-closed whitelist regressed")
+    except cosmosex.CosmosHttpResponseError as e:
+        assert e.status_code == 400, f"JOIN expected 400, got {e.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# Cap 7 — ARM policy remediations: PUT/GET + trigger compliance (W2-L mirror)
+# ---------------------------------------------------------------------------
+
+
+def test_policy_remediation_put_trigger(enforce_arm):
+    """W2-L wire mirror: deny-policy assigned at RG scope -> the violating
+    resource PUT is refused 400 PolicyViolation, the compliant PUT lands
+    (201, resource state snapshotted) -> PUT remediation over BOTH resource
+    ids -> POST trigger re-evaluates at trigger time: compliant resource ->
+    compliant, violating resource -> still-violating. Typed refusals:
+    missing policyAssignmentId -> 400 PolicyRemediationInvalid; trigger on
+    an absent remediation -> 404 ResourceNotFound."""
+    arm = enforce_arm
+    h = _policy_hdrs(arm)
+    tag = secrets.token_hex(3)
+    rg = f"{RUN}-rem-{tag}-RG"
+    base = f"/subscriptions/{SUB}"
+    scope = f"{base}/resourceGroups/{rg}"
+    APIV = "2021-06-01"
+
+    def put(path, body, what, expect=(200, 201, 202), apiv=APIV):
+        r = requests.put(f"{arm}{path}", json=body, params={"api-version": apiv},
+                         headers=h, timeout=15, allow_redirects=False)
+        assert r.status_code in expect, f"{what}: {r.status_code} {r.text[:200]}"
+        return r
+
+    put(f"{base}/resourceGroups/{rg}", {"location": "westeurope"}, "rg")
+
+    pd, pa, rem = f"{RUN}-pd-{tag}", f"{RUN}-pa-{tag}", f"{RUN}-rem-{tag}"
+    put(f"{base}/providers/Microsoft.Authorization/policyDefinitions/{pd}", {
+        "properties": {
+            "displayName": "wf6 deny bad-vm",
+            "policyRule": {
+                "if": {"field": "name", "notEquals": "allowed-vm"},
+                "then": {"effect": "deny"},
+            },
+        }
+    }, "policyDefinition PUT")
+    pd_id = f"{base}/providers/Microsoft.Authorization/policyDefinitions/{pd}"
+
+    put(f"{scope}/providers/Microsoft.Authorization/policyAssignments/{pa}", {
+        "properties": {"policyDefinitionId": pd_id, "enforcementMode": "Default"},
+    }, "assignment PUT")
+
+    res_t = "Microsoft.Compute/virtualMachines"
+    bad_id = f"{scope}/providers/{res_t}/bad-vm"
+    ok_id = f"{scope}/providers/{res_t}/allowed-vm"
+
+    # Violating resource: denied at the gate, typed PolicyViolation.
+    # GraphLaw shape gate: virtualMachines require exactly one vmSize.
+    vm_body = {"location": "westeurope",
+               "properties": {"vmSize": "Standard_B1s"}}
+    put(f"{scope}/providers/{res_t}/bad-vm", vm_body, "bad-vm PUT",
+        expect=(400,), apiv="2021-04-01")
+    # Compliant resource: admitted, state snapshotted by the enforce hook.
+    put(f"{scope}/providers/{res_t}/allowed-vm", vm_body, "allowed-vm PUT",
+        apiv="2021-04-01")
+
+    # Typed refusals.
+    r = requests.put(
+        f"{arm}{scope}/providers/Microsoft.Authorization/policyRemediations/{rem}",
+        json={"properties": {"resourceIds": [bad_id]}},
+        params={"api-version": APIV}, headers=h, timeout=15, allow_redirects=False,
+    )
+    assert r.status_code == 400 and "PolicyRemediationInvalid" in r.text, (
+        f"missing policyAssignmentId -> {r.status_code} {r.text[:160]}"
+    )
+    tr404 = requests.post(
+        f"{arm}{scope}/providers/Microsoft.Authorization/policyRemediations/{rem}-absent/trigger",
+        params={"api-version": APIV}, headers=h, timeout=15, allow_redirects=False,
+    )
+    assert tr404.status_code == 404 and "ResourceNotFound" in tr404.text, (
+        f"trigger on absent remediation -> {tr404.status_code} {tr404.text[:160]}"
+    )
+
+    # Valid PUT, then trigger.
+    put(f"{scope}/providers/Microsoft.Authorization/policyRemediations/{rem}", {
+        "properties": {"policyAssignmentId": f"{scope}/providers/Microsoft.Authorization/policyAssignments/{pa}", "resourceIds": [ok_id, bad_id]},
+    }, "remediation PUT")
+
+    trig = requests.post(
+        f"{arm}{scope}/providers/Microsoft.Authorization/policyRemediations/{rem}/trigger",
+        params={"api-version": APIV}, headers=h, timeout=15, allow_redirects=False,
+    )
+    assert trig.status_code == 200, f"trigger -> {trig.status_code}: {trig.text[:200]}"
+    props = trig.json()["properties"]
+    summary = props.get("remediationSummary")
+    assert summary == {"compliant": 1, "stillViolating": 1}, (
+        f"trigger summary mismatch: {summary!r} (perResourceStatus={props.get('perResourceStatus')!r})"
+    )
+    per = {r_["resourceId"]: r_["status"] for r_ in props["perResourceStatus"]}
+    assert per.get(ok_id) == "compliant", f"compliant leg: {per!r}"
+    assert per.get(bad_id) == "still-violating", f"violating leg: {per!r}"

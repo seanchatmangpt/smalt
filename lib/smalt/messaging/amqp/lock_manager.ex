@@ -263,6 +263,10 @@ defmodule Smalt.Amqp.LockManager do
       # the first set; dies with the session lock record (disclosed emulator
       # divergence — see ManagementRpc.set_session_state).
       session_state: nil,
+      # W3L session-state lane: last mutation time of the session record
+      # (acquire or set-session-state) — the since-updated-time filter of
+      # com.microsoft:get-message-sessions reads it.
+      updated_at: now,
       locked_until: now + duration,
       duration_ms: duration
     }

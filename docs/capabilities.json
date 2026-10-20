@@ -11,6 +11,26 @@
       "type": "Microsoft.Attestation/attestationProviders"
     },
     {
+      "apiVersion": "2020-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Authorization/locks"
+    },
+    {
+      "apiVersion": "2022-07-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Authorization/policyExemptions"
+    },
+    {
+      "apiVersion": "2021-10-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Authorization/policyRemediations"
+    },
+    {
+      "apiVersion": "2023-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Authorization/policySetDefinitions"
+    },
+    {
       "apiVersion": "2022-04-01",
       "shape": "DefaultShape",
       "type": "Microsoft.Authorization/roleAssignments"
@@ -186,6 +206,11 @@
       "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions"
     },
     {
+      "apiVersion": "2021-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules"
+    },
+    {
       "apiVersion": "2023-05-01",
       "shape": "StorageAccountShape",
       "type": "Microsoft.Storage/storageAccounts"
@@ -213,7 +238,7 @@
     "eventHubs": 5673
   },
   "identity": {
-    "contentSha256": "7c009160215509f445c78874699b21e0a8e2f26658927bcfb3844ddfabefbf7c",
+    "contentSha256": "021653d69e9de4ae15d08441f43c1ddb9df99d1386fd84490c7f075425370ec5",
     "packLockSha256": "532b495a89f77535caa536b351131f1c09850016bc2710aa0b086b032fdd41fe",
     "semanticEpoch": "26.10.19"
   },

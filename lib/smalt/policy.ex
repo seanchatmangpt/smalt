@@ -603,14 +603,21 @@ defmodule Smalt.Policy do
 
   @doc """
   Puts a policy exemption at a scope (subscription or RG placement). Requires
-  `properties.policyAssignmentId`; honors `properties.expiresOn` (ISO-8601).
+  `properties.policyAssignmentId` (typed 400 refusal when missing/empty);
+  honors `properties.expiresOn` (ISO-8601). The submitted `properties` map is
+  persisted WHOLESALE (typed-validate the required fields, echo everything
+  else) so `exemptionCategory` (Waiver | Mitigated), `displayName`,
+  `description`, and `metadata` round-trip on GET — real ARM echoes every
+  submitted exemption property.
+
   Returns `{:ok, record}` or `{:error, refusal}` for a malformed body.
   """
   def put_policy_exemption(scope_prefix, name, body) do
     ensure_tables()
 
-    assignment_id = get_in(body, ["properties", "policyAssignmentId"])
-    expires_on = get_in(body, ["properties", "expiresOn"])
+    props = get_in(body, ["properties"]) || %{}
+    assignment_id = props["policyAssignmentId"]
+    expires_on = props["expiresOn"]
 
     cond do
       not is_binary(assignment_id) or assignment_id == "" ->
@@ -624,12 +631,11 @@ defmodule Smalt.Policy do
           "id" => "#{scope_prefix}/providers/Microsoft.Authorization/policyExemptions/#{name}",
           "name" => name,
           "type" => "Microsoft.Authorization/policyExemptions",
-          "properties" => %{
-            "policyAssignmentId" => assignment_id,
-            "scope" => get_in(body, ["properties", "scope"]) || scope_prefix,
-            "expiresOn" => expires_on,
-            "category" => get_in(body, ["properties", "category"]) || "Waiver"
-          }
+          "properties" =>
+            props
+            |> Map.put("policyAssignmentId", assignment_id)
+            |> Map.put("scope", props["scope"] || scope_prefix)
+            |> Map.put("exemptionCategory", props["exemptionCategory"] || "Waiver")
         }
 
         :ets.insert(:smalt_policy, {String.downcase(record["id"]), record})

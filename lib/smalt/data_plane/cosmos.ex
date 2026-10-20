@@ -164,23 +164,30 @@ defmodule Smalt.DataPlane.Cosmos do
         {:ok, status, %{"x-ms-request-charge" => @request_charge}, message}
 
       {:ok, throughput} ->
-        record =
-          %{
-            "id" => coll,
-            "_rid" => coll_rid(db, coll),
-            "_self" => "/dbs/#{db}/colls/#{coll}",
-            # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
-            # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
-            "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
-            "uniqueKeyPolicy" => unique_keys_from_body(body),
-            "_ts" => System.system_time(:second)
-          }
-          |> maybe_put_throughput(throughput)
+        case unique_keys_from_body(body) do
+          {:error, message} ->
+            {:ok, 400, %{"x-ms-request-charge" => @request_charge},
+             %{"code" => "BadRequest", "message" => message}}
 
-        :ets.insert(@pk_meta_table, {key, record})
-        define_container(db, coll, paths)
+          {:ok, unique_keys} ->
+            record =
+              %{
+                "id" => coll,
+                "_rid" => coll_rid(db, coll),
+                "_self" => "/dbs/#{db}/colls/#{coll}",
+                # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
+                # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
+                "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
+                "uniqueKeyPolicy" => unique_keys,
+                "_ts" => System.system_time(:second)
+              }
+              |> maybe_put_throughput(throughput)
 
-        {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+            :ets.insert(@pk_meta_table, {key, record})
+            define_container(db, coll, paths)
+
+            {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+        end
     end
   end
 
@@ -272,20 +279,37 @@ defmodule Smalt.DataPlane.Cosmos do
   # logical partition; a violating create/replace is a 409 Conflict).
   # ---------------------------------------------------------------------------
 
-  # Extracts a normalized uniqueKeyPolicy from a create-container body:
+  # Extracts + validates a uniqueKeyPolicy from a create-container body:
   # %{"uniqueKeyPolicy" => %{"uniqueKeys" => [%{"paths" => [p, ...]}, ...]}}
-  # -> [%{"paths" => [p, ...]}, ...]. Non-conforming entries are dropped.
+  # -> {:ok, [%{"paths" => [p, ...]}, ...]} | {:error, message}.
+  # Real Cosmos: a malformed policy is a 400 BadRequest at container create,
+  # never a silently-dropped policy.
   defp unique_keys_from_body(body) do
-    case body do
-      %{"uniqueKeyPolicy" => %{"uniqueKeys" => keys}} when is_list(keys) ->
-        for %{"paths" => ps} <- keys, ps = Enum.filter(ps, &is_binary/1), ps != [] do
-          %{"paths" => ps}
+    case Map.get(body, "uniqueKeyPolicy") do
+      nil ->
+        {:ok, []}
+
+      %{"uniqueKeys" => keys} when is_list(keys) ->
+        if Enum.all?(keys, &valid_unique_key?/1) do
+          {:ok, Enum.map(keys, fn %{"paths" => ps} -> %{"paths" => Enum.filter(ps, &is_binary/1)} end)}
+        else
+          {:error, unique_key_policy_message()}
         end
 
       _ ->
-        []
+        {:error, unique_key_policy_message()}
     end
   end
+
+  defp valid_unique_key?(%{"paths" => ps}) when is_list(ps) and ps != [],
+    do: Enum.all?(ps, &(is_binary(&1) and String.starts_with?(&1, "/")))
+
+  defp valid_unique_key?(_), do: false
+
+  defp unique_key_policy_message,
+    do:
+      "Invalid uniqueKeyPolicy: expected {\"uniqueKeys\": [{\"paths\": [\"/path\", ...]}, ...]} " <>
+        "with at least one JSON-pointer path per key."
 
   # The {1, db, coll} container record carries the uniqueKeyPolicy at create.
   defp container_record(db, coll) do
@@ -327,8 +351,11 @@ defmodule Smalt.DataPlane.Cosmos do
           Map.get(doc, "id") != exclude_id and same_partition?(doc, pk_paths, pk_val) and
             Enum.with_index(mine)
             |> Enum.any?(fn {vals, i} ->
+              # NULL/missing unique-key paths are exempt (real Cosmos: a doc
+              # missing the field is not constrained); only fully-present,
+              # fully-equal path values conflict.
               %{"paths" => ps} = Enum.at(defs, i)
-              values_at(doc, ps) == vals
+              not Enum.any?(vals, &is_nil/1) and values_at(doc, ps) == vals
             end)
         end)
 
@@ -351,7 +378,7 @@ defmodule Smalt.DataPlane.Cosmos do
     Enum.map(paths, fn path ->
       case pointer_get(doc, path) do
         {:ok, v} -> v
-        :error -> nil
+        {:error, :malformed} -> nil
       end
     end)
   end
@@ -1328,38 +1355,72 @@ defmodule Smalt.DataPlane.Cosmos do
   Feed. Returns only docs whose `_ts` is newer than the container's last-seen
   cursor (per-partition cursor persisted in the pk_meta table), then advances
   the cursor. Without the header, list_docs behavior is unchanged.
+
+  The feed also carries the REST continuation: a client MAY echo the response's
+  `x-ms-continuation` token (opaque `cf<ts>:<n>` base64url). A token that does
+  not decode to that grammar is an unknown continuation — typed 400 BadRequest,
+  and the cursor does NOT advance (cursor advancement is gated on a successful
+  feed read only).
   """
   def change_feed(db, coll, headers \\ %{}) do
     gate(:get, "docs", container_link(db, coll), headers, fn ->
       if store_ready?() do
-        do_change_feed(db, coll)
+        do_change_feed(db, coll, headers)
       else
         {:error, :store_not_ready}
       end
     end)
   end
 
-  defp do_change_feed(db, coll) do
+  defp do_change_feed(db, coll, headers) do
     cursor_key = {2, db, coll}
-    cursor = cf_cursor(cursor_key)
 
-    docs =
-      @docs_table
-      |> Store.list_prefix("#{db}/#{coll}/")
-      |> Enum.filter(fn d -> cf_is_new?(d, cursor) end)
-      |> Enum.sort_by(&{&1["_ts"] || 0, &1["id"]})
+    with :ok <- cf_check_continuation(db, coll, header(headers, @continuation_header)) do
+      cursor = cf_cursor(cursor_key)
 
-    new_cursor = cf_advance(cursor, docs)
-    :ets.insert(@pk_meta_table, {cursor_key, new_cursor})
+      docs =
+        @docs_table
+        |> Store.list_prefix("#{db}/#{coll}/")
+        |> Enum.filter(fn d -> cf_is_new?(d, cursor) end)
+        |> Enum.sort_by(&{&1["_ts"] || 0, &1["id"]})
 
-    lsn = current_lsn(db, coll)
+      # Cursor advances ONLY here, after a successful feed read; the 400 arm
+      # above returns before any cursor write.
+      new_cursor = cf_advance(cursor, docs)
+      :ets.insert(@pk_meta_table, {cursor_key, new_cursor})
 
-    {:ok, 200, success_headers(db, coll, lsn, %{@continuation_header => cf_token(new_cursor)}),
-     %{
-       "_rid" => coll_rid(db, coll),
-       "Documents" => docs,
-       "_count" => length(docs)
-     }}
+      lsn = current_lsn(db, coll)
+
+      {:ok, 200, success_headers(db, coll, lsn, %{@continuation_header => cf_token(new_cursor)}),
+       %{
+         "_rid" => coll_rid(db, coll),
+         "Documents" => docs,
+         "_count" => length(docs)
+       }}
+    end
+  end
+
+  # Unknown continuation → typed 400, cursor untouched. Absent or well-formed
+  # token passes. (The token is opaque session state; well-formedness is the
+  # only server-side check, exactly like the real service's 400 on a malformed
+  # continuation.)
+  defp cf_check_continuation(_db, _coll, nil), do: :ok
+
+  defp cf_check_continuation(db, coll, token) when is_binary(token) do
+    case cf_parse_token(token) do
+      {:ok, _ts, _n} -> :ok
+      :error -> cf_unknown_continuation(db, coll)
+    end
+  end
+
+  defp cf_unknown_continuation(db, coll) do
+    error_response(
+      db,
+      coll,
+      400,
+      "BadRequest",
+      "The continuation token is not valid for this change feed."
+    )
   end
 
   defp cf_cursor(cursor_key) do
@@ -1416,6 +1477,19 @@ defmodule Smalt.DataPlane.Cosmos do
     Base.url_encode64("cf#{ts}:#{map_size(seen)}", padding: false)
   end
 
+  # Inverse of cf_token/1: decode + validate the `cf<ts>:<n>` grammar.
+  defp cf_parse_token(token) when is_binary(token) do
+    with {:ok, raw} <- Base.url_decode64(token, padding: false),
+         ["", rest] <- String.split(raw, "cf", parts: 2),
+         [ts, n] <- String.split(rest, ":"),
+         {ts, ""} <- Integer.parse(ts),
+         {n, ""} <- Integer.parse(n) do
+      {:ok, ts, n}
+    else
+      _ -> :error
+    end
+  end
+
   @doc """
   Lists documents in a collection by id prefix. Returns `{:ok, 200, headers, docs}`.
 
@@ -1427,7 +1501,7 @@ defmodule Smalt.DataPlane.Cosmos do
     gate(:get, "docs", container_link(db, coll), headers, fn ->
       if store_ready?() do
         if cf_requested?(headers) do
-          do_change_feed(db, coll)
+          do_change_feed(db, coll, headers)
         else
           do_list_docs(db, coll, scope(prefix), headers)
         end

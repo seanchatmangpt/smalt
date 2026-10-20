@@ -57,7 +57,8 @@ EXTRA_PROBES = [
 # ---------------------------------------------------------------------------
 SURFACES: list[dict[str, Any]] = [
     dict(id="arm", ground={"arm_gateway/router.ex": ["resourceGroups"],
-                           "registry.ex": ["Microsoft.Resources/resourceGroups"]},
+                           "registry.ex": ["Microsoft.Resources/resourceGroups"],
+                           "policy.ex": ["policyRemediations"]},
          ts=["arm-resources"], py=["arm_resources"],
          receipts=["ts-arm-resources.md", "py-arm-resources.md"]),
     dict(id="blob", ground={"data_plane/blob_service.ex": ["defmodule Smalt.DataPlane.BlobService"],
@@ -70,7 +71,9 @@ SURFACES += [
          ts=["cosmos"], py=["cosmos"], receipts=["py-cosmos.md", "ts-cosmos.md"]),
          # cosmos/ts divergences registered as KD-36/KD-36b in KNOWN_DIVERGENCES.md
     dict(id="keyvault", ground={"data_plane/key_vault_actions.ex": ["defmodule"],
-                                "data_plane/skr.ex": ["defmodule Smalt.DataPlane.SKR"]},
+                                "data_plane/skr.ex": ["defmodule Smalt.DataPlane.SKR"],
+                                "data_plane/certificates.ex": ["defmodule Smalt.DataPlane.Certificates"],
+                                "data_plane/kv_pss.ex": ["defmodule"]},
          ts=["keyvault", "auth"], py=["auth_keyvault"],
          receipts=["ts-keyvault.md", "py-auth-keyvault.md"]),
     dict(id="skr", ground={"data_plane/skr.ex": ["defmodule Smalt.DataPlane.SKR"]},
@@ -150,6 +153,31 @@ CAP_CELLS: list[dict[str, Any]] = [
          ground={"registry.ex": ['"Microsoft.ServiceBus/namespaces" => "2024-01-01"',
                                  '"Microsoft.EventHub/namespaces" => "2024-01-01"']},
          receipts=["docs/jira/v26.10.16/receipts/cap-sb-eh-apiversion-2024.md"]),
+    # --- wave-3 registry-sync lane (W3 audit gaps 1+4): the six wf6 cap ids
+    # (were dangling in workflows.json wf6), plus grounding for the wave-2
+    # modules that had no inventory entry. ---
+    dict(id="kv-deletedkeys-lifecycle",
+         ground={"egress_router.ex": ["/deletedkeys"]},
+         receipts=["docs/jira/v26.10.19/receipts/kd117-kv-deletedkeys-plane-tbd.md"]),
+    dict(id="sb-schedule",
+         ground={"messaging/amqp/management_rpc.ex": ["schedule"]},
+         receipts=["docs/jira/v26.10.19/receipts/kd118-sb-schedulemessage-501-tbd.md"]),
+    dict(id="blob-snapshot-list",
+         ground={"data_plane/blob_storage.ex": ["snapshot_blob"]},
+         receipts=["docs/jira/v26.10.19/receipts/kd107-blob-snapshots-tbd.md"]),
+    dict(id="policy-exemption-armcase",
+         ground={"policy.ex": ["policyExemptions"]},
+         receipts=["docs/jira/v26.10.19/receipts/kd112-policy-exemptions-initiatives.md"]),
+    dict(id="tags-at-scope",
+         ground={"arm_gateway/router.ex": ["/tags"]},
+         receipts=["docs/jira/v26.10.19/receipts/c13-router-kd111-lro-kd113-tags-leg.md"]),
+    dict(id="lro-namespace-put",
+         ground={"arm_gateway/router.ex": ["lro"]},
+         receipts=["docs/jira/v26.10.19/receipts/kd111-arm-lro-narrow-tbd.md"]),
+    dict(id="appconfig-snapshots",
+         ground={"data_plane/appconfig_snapshots.ex": ["defmodule"],
+                 "egress_router.ex": ["/snapshots"]},
+         receipts=["docs/jira/v26.10.19/receipts/v261019-capability-wave3.md"]),
 ]
 
 STANDING_RE = re.compile(r"\bStanding\b.*?:\s*\**\s*([A-Z_]+)", re.I)

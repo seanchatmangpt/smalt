@@ -27,6 +27,8 @@ defmodule InternalTier.CensusTest do
                  "wasm_nif_lifecycle_test.exs",
                  "dets_mirror_recovery_test.exs",
                  "event_hubs_consumer_groups_test.exs",
+                 "eh_arm_test.exs",
+                 "eh_geo_dr_test.exs",
                  "internal_tier_census_test.exs",
                  @helper
                ])
@@ -50,6 +52,8 @@ defmodule InternalTier.CensusTest do
                  "Smalt.Amqp.CbsRouter",
                  "Smalt.Messaging.EventGrid",
                  "Smalt.Messaging.EventHubs",
+                 "Smalt.Messaging.EhGeoDr",
+                 "Smalt.Arm.EhArm",
                  "Smalt.DataPlane.Certificates",
                  "Smalt.Test.Internal.CertificatesKd104WitnessTest",
                  "Smalt.Internal.EventHubsConsumerGroupsTest",

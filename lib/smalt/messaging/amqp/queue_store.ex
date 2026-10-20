@@ -196,29 +196,74 @@ defmodule Smalt.Amqp.QueueStore do
   and no `:session_id` was given).
   """
   @spec enqueue(String.t(), binary() | {atom(), binary()}, keyword()) ::
-          {:ok, integer()} | {:error, :capacity | :too_large | :session_required}
+          {:ok, integer()}
+          | {:ok, {:fanout, pos_integer()}}
+          | {:error, :capacity | :too_large | :session_required}
   # body may be a plain binary (EventHubs/legacy callers) or a tagged AMQP
   # body section {:body_data | :body_amqp_value, value} stored as-is so the
   # delivery path can re-emit the section kind the client sent (as-sent body
   # preservation; disclosed cross-lane unblock from the connection lane).
   def enqueue(queue, body, opts \\ [])
       when is_binary(body) or (is_tuple(body) and tuple_size(body) == 2) do
-    {:ok, _} = ensure_queue(queue)
+    case subscription_queues(queue) do
+      [] ->
+        {:ok, _} = ensure_queue(queue)
 
-    settings = queue_settings(queue)
+        settings = queue_settings(queue)
 
-    cond do
-      settings.requires_session and is_nil(opts[:session_id]) ->
-        {:error, :session_required}
+        cond do
+          settings.requires_session and is_nil(opts[:session_id]) ->
+            {:error, :session_required}
 
-      body_size(body) > @max_body ->
-        {:error, :too_large}
+          body_size(body) > @max_body ->
+            {:error, :too_large}
 
-      true ->
-        # Capacity gate lives inside the serialized server (see do_enqueue):
-        # a client-side check-then-insert raced 32 concurrent enqueues past
-        # the 4096 cap (A5 F3 TOCTOU).
-        do_enqueue(queue, body, opts)
+          true ->
+            # Capacity gate lives inside the serialized server (see do_enqueue):
+            # a client-side check-then-insert raced 32 concurrent enqueues past
+            # the 4096 cap (A5 F3 TOCTOU).
+            do_enqueue(queue, body, opts)
+        end
+
+      # Topic fan-out (F-w2i-1): entity "t" has live subscription rows
+      # "<t>/Subscriptions/<sub>" in :smalt_sb_queues (ARM materialization or
+      # lazy ensure). A send to "t" delivers an independent COPY into every
+      # subscription queue — Azure semantics: each subscription is its own
+      # queue, and the topic entity itself holds nothing. Serialized as ONE
+      # claim inside the queue_store server (check-all-then-insert-all, so a
+      # capacity refusal never leaves a partial fan-out).
+      subs ->
+        fanout_enqueue(subs, body, opts)
+    end
+  end
+
+  @doc """
+  Live subscription entity rows under `"<topic>/Subscriptions/"` in
+  `:smalt_sb_queues` (exact ARM-materialized casing, matching the receiver
+  attach address). Empty list = `queue` is not currently acting as a topic.
+  """
+  @spec subscription_queues(String.t()) :: [String.t()]
+  def subscription_queues(topic) when is_binary(topic) do
+    if String.contains?(topic, "/") do
+      # A subscription address itself never fans out (no nested topics).
+      []
+    else
+      topic
+      |> then(&Smalt.Store.list_prefix(:smalt_sb_queues, &1 <> "/Subscriptions/"))
+      |> Enum.map(fn info -> info.name end)
+    end
+  end
+
+  # Zero-subscription typed face: the message is PARKED in the topic entity
+  # row (legacy queue-face behavior, disclosed) rather than dropped — nothing
+  # is lost, a direct receiver on the topic address can still claim it. The
+  # strict-Azure face (accept-then-drop) is a one-line flip here if the
+  # coordinator wants it.
+  defp fanout_enqueue(subs, body, opts) do
+    if body_size(body) > @max_body do
+      {:error, :too_large}
+    else
+      GenServer.call(server(), {:fanout_enqueue, subs, body, opts})
     end
   end
 
@@ -462,41 +507,85 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   @doc """
-  Enumerate session ids for `queue` (ordered_set key order = lexicographic by
-  session id). Opts: `:skip` (default 0), `:top` (default 100). Returns
-  `{:ok, ids}`.
+  Enumerate sessions for `queue` (ordered_set key order = lexicographic by
+  session id). Opts: `:skip` (default 0), `:top` (default 100), `:since`
+  (ms epoch — only sessions whose `:updated_at` is >= since; sessions whose
+  record predates the field default to 0 so they are never silently hidden).
+  Returns `{:ok, entries}` where each entry is
+  `%{session_id:, session_state_size:, message_count:, updated_at:}`.
+
+  * `session_state_size` — byte_size of the opaque state blob (0 when nil)
+  * `message_count` — active messages in `:smalt_sb_messages` carrying the
+    session_id (any state: available/locked/scheduled/deferred)
   """
-  @spec list_sessions(String.t(), keyword()) :: {:ok, [String.t()]}
+  @spec list_sessions(String.t(), keyword()) ::
+          {:ok, [%{session_id: String.t(), session_state_size: non_neg_integer(), message_count: non_neg_integer(), updated_at: integer()}]}
   def list_sessions(queue, opts \\ []) do
     skip = max(opts[:skip] || 0, 0)
     top = (opts[:top] || 100) |> max(1)
+    since = opts[:since]
 
-    ids =
-      (
-        locked =
-          :smalt_sb_sessions
-          |> :ets.match_object({{queue, :_}, :_})
-          |> Enum.map(fn {{_q, sid}, _lock} -> sid end)
+    locked =
+      :smalt_sb_sessions
+      |> :ets.match_object({{queue, :_}, :_})
+      |> Map.new(fn {{_q, sid}, lock} ->
+        {sid,
+         %{
+           session_state_size: session_state_size(lock),
+           updated_at: lock[:updated_at] || 0
+         }}
+      end)
 
-        # Real Azure enumerates sessions that have messages, not only ones
-        # with a live lock: a session receiver closed long ago leaves its
-        # messages (and session state) behind, and get-message-sessions must
-        # still list the session (repair lane R96).
-        with_messages =
-          :smalt_sb_messages
-          |> :ets.match_object({{queue, :_}, :_})
-          |> Enum.map(fn {{_q, _seq}, m} -> Map.get(m, :session_id) end)
-          |> Enum.reject(&is_nil/1)
+    # Real Azure enumerates sessions that have messages, not only ones
+    # with a live lock: a session receiver closed long ago leaves its
+    # messages (and session state) behind, and get-message-sessions must
+    # still list the session (repair lane R96).
+    {message_counts, message_only_sids} =
+      :smalt_sb_messages
+      |> :ets.match_object({{queue, :_}, :_})
+      |> Enum.map(fn {{_q, _seq}, m} -> m end)
+      |> Enum.reject(&is_nil(&1[:session_id]))
+      |> Enum.reduce({%{}, MapSet.new()}, fn m, {counts, only} ->
+        sid = m[:session_id]
 
-        (locked ++ with_messages)
-        |> Enum.uniq()
-        |> Enum.sort()
-      )
+        {
+          Map.update(counts, sid, 1, &(&1 + 1)),
+          if(MapSet.member?(only, sid), do: only, else: MapSet.put(only, sid))
+        }
+      end)
+
+    entries =
+      (MapSet.to_list(message_only_sids) ++ Map.keys(locked))
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map(fn sid ->
+        meta = locked[sid] || %{session_state_size: 0, updated_at: 0}
+
+        %{
+          session_id: sid,
+          session_state_size: meta.session_state_size,
+          message_count: Map.get(message_counts, sid, 0),
+          updated_at: meta.updated_at
+        }
+      end)
+      |> maybe_filter_since(since)
       |> Enum.drop(skip)
       |> Enum.take(top)
 
-    {:ok, ids}
+    {:ok, entries}
   end
+
+  defp session_state_size(%{session_state: state}) when is_binary(state),
+    do: byte_size(state)
+
+  defp session_state_size(_), do: 0
+
+  defp maybe_filter_since(entries, nil), do: entries
+
+  defp maybe_filter_since(entries, since) when is_integer(since),
+    do: Enum.filter(entries, &(&1.updated_at >= since))
+
+  defp maybe_filter_since(entries, _), do: entries
 
   @doc """
   Batch delete: remove every PRESENT `{queue, seq}` message row; absent
@@ -575,6 +664,31 @@ defmodule Smalt.Amqp.QueueStore do
       {:reply, {:error, :capacity}, state}
     else
       {:reply, do_enqueue_locked(queue, body, opts), state}
+    end
+  end
+
+  # Topic fan-out claim: check-all-then-insert-all so a capacity or
+  # session refusal is ATOMIC — no partial fan-out ever lands. Runs inside
+  # the serialized server.
+  def handle_call({:fanout_enqueue, subs, body, opts}, _from, state) do
+    cond do
+      Enum.any?(subs, &capacity_full?/1) ->
+        {:reply, {:error, :capacity}, state}
+
+      Enum.any?(subs, fn sub ->
+        # lane w3o minimal unblock (disclosed): queue_settings/1 arity fix
+        queue_settings(sub).requires_session and is_nil(opts[:session_id])
+      end) ->
+        {:reply, {:error, :session_required}, state}
+        {:reply, {:error, :session_required}, state}
+
+      true ->
+        for sub <- subs do
+          {:ok, _} = ensure_queue(sub)
+          do_enqueue_locked(sub, body, opts)
+        end
+
+        {:reply, {:ok, {:fanout, length(subs)}}, state}
     end
   end
 
@@ -956,13 +1070,17 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   # GAP-A2-05: state lives on the session lock record; requires the record.
+  # :updated_at is bumped on every state mutation (get-message-sessions'
+  # since-updated-time filter reads it).
   defp do_session_state_put(queue, session_id, state) do
     case Smalt.Store.get(:smalt_sb_sessions, {queue, session_id}) do
       {:ok, lock} ->
         Smalt.Store.put(
           :smalt_sb_sessions,
           {queue, session_id},
-          Map.put(lock, :session_state, state)
+          lock
+          |> Map.put(:session_state, state)
+          |> Map.put(:updated_at, System.system_time(:millisecond))
         )
 
         :ok

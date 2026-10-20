@@ -14,6 +14,17 @@ defmodule Smalt.Mcp.Descriptor do
   """
 
   @capabilities %{
+    "appconfig.snapshots.kv" => %{
+      name: "App Configuration snapshot KV view",
+      description:
+        "Frozen KV view of one App Configuration snapshot by name (records as stored at creation; archived snapshots refuse SnapshotArchived).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "appconfig.snapshots.list" => %{
       name: "App Configuration snapshots list",
       description:
@@ -56,10 +67,32 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "certificates.get" => %{
+      name: "Key Vault certificate get",
+      description:
+        "Certificate attributes for one certificate (id, name, attributes) — never key material, private key, or the DER body.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "cluster.status" => %{
       name: "Cluster status",
       description:
         "Cluster poller status: enabled, joined nodes, dns name/port, exhausted addresses.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "cosmos.changefeed.peek" => %{
+      name: "Cosmos change feed peek",
+      description:
+        "Pending change-feed rows for a container (docs newer than the persisted cursor), counted WITHOUT advancing the cursor — read-only unlike the wire change feed.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -104,6 +137,17 @@ defmodule Smalt.Mcp.Descriptor do
       name: "Event Grid dead-letter listing",
       description:
         "Content-free metadata of dead-lettered Event Grid event blobs per subscriber container.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "eh.consumergroups.list" => %{
+      name: "Event Hubs consumer groups list",
+      description:
+        "Consumer group records for one Event Hub ($default always present), from the Event Hubs server store.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -177,6 +221,17 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "policy.locks.list" => %{
+      name: "Policy locks list",
+      description:
+        "Management locks (Microsoft.Authorization/locks) under one scope prefix, level and notes projected, never lock-token material.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "policy.remediations.list" => %{
       name: "Policy remediations list",
       description:
@@ -202,6 +257,17 @@ defmodule Smalt.Mcp.Descriptor do
       name: "Service Bus topics list",
       description:
         "Service Bus topic resources (Microsoft.ServiceBus/namespaces/topics) from the substrate resource store, optional namespace filter.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "sb.topics.subscriptions" => %{
+      name: "Service Bus topic subscriptions",
+      description:
+        "Subscription resources (Microsoft.ServiceBus/namespaces/topics/subscriptions) under one Service Bus topic.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,

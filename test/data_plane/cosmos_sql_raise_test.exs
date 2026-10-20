@@ -1,7 +1,8 @@
 # C16 ERRC-RAISE lane (v26.10.19 window): Cosmos SQL subset raise — OFFSET/LIMIT
 # pagination, TOP N, scalar function projections (UPPER/LOWER/LENGTH/CONTAINS)
-# with mandatory AS alias, typed SYN errors, typed UNSUPPORTED for cross-array
-# iteration. Chicago-style: real docs, assert on final state; no mocks.
+# with mandatory AS alias, typed SYN errors, cross-array iteration fan-out
+# (w3k ERRC lane: replaces the typed-UNSUPPORTED deferral). Chicago-style:
+# real docs, assert on final state; no mocks.
 defmodule DataPlane.CosmosSqlRaiseTest do
   use ExUnit.Case, async: false
 
@@ -97,11 +98,69 @@ defmodule DataPlane.CosmosSqlRaiseTest do
              CosmosSql.run("SELECT FROBNICATE(c.level) AS x FROM c", docs())
   end
 
-  # -- cross-array iteration: typed UNSUPPORTED ---------------------------------
+  # -- cross-array iteration: fan-out semantics (w3k ERRC lane) -----------------
 
-  test "FROM t IN c.tags is typed-UNSUPPORTED, never a silent wrong answer" do
-    assert {:error, {:unsupported, "FROM t IN ... (cross-array iteration) is not supported" <> _}} =
-             CosmosSql.run("SELECT * FROM t IN c.tags", docs())
+  test "witness: FROM t IN c.tags fans out N docs x M elements, alias bound per element" do
+    assert {:ok, rows} = CosmosSql.run("SELECT c.id, t FROM t IN c.tags", docs())
+    assert length(rows) == 12
+
+    assert [%{"id" => "d1", "t" => "a"}, %{"id" => "d1", "t" => "b"}] =
+             Enum.filter(rows, &(&1["id"] == "d1"))
+
+    # The doc root stays addressable alongside the iteration alias.
+    assert Enum.all?(rows, &Map.has_key?(&1, "id"))
+  end
+
+  test "witness: WHERE on the iteration alias filters fanned rows" do
+    assert {:ok, rows} = CosmosSql.run("SELECT c.id, t FROM t IN c.tags WHERE t = 'a'", docs())
+    assert length(rows) == 6
+    assert Enum.all?(rows, &(&1["t"] == "a"))
+  end
+
+  test "witness: WHERE composes root and alias predicates (AND)" do
+    assert {:ok, rows} =
+             CosmosSql.run("SELECT c.id, t FROM t IN c.tags WHERE c.n > 4 AND t = 'b'", docs())
+
+    assert [%{"id" => "d5", "t" => "b"}, %{"id" => "d6", "t" => "b"}] = rows
+  end
+
+  test "witness: ORDER BY the iteration alias sorts across the fanned set" do
+    assert {:ok, rows} = CosmosSql.run("SELECT t FROM t IN c.tags ORDER BY t DESC", docs())
+    assert Enum.map(rows, & &1["t"]) == Enum.map(1..6, fn _ -> "b" end) ++ Enum.map(1..6, fn _ -> "a" end)
+  end
+
+  test "member access through the alias (t.something) reads element fields" do
+    tagged = [
+      %{"id" => "x1", "meta" => [%{"k" => "a", "v" => 1}, %{"k" => "b", "v" => 2}]},
+      %{"id" => "x2", "meta" => [%{"k" => "a", "v" => 9}]}
+    ]
+
+    assert {:ok, rows} = CosmosSql.run("SELECT c.id, m.v FROM m IN c.meta WHERE m.k = 'a'", tagged)
+    assert [%{"id" => "x1", "v" => 1}, %{"id" => "x2", "v" => 9}] = rows
+  end
+
+  test "non-array iteration target is a typed SYN, never a silent empty" do
+    scalar = [%{"id" => "s1", "tags" => "not-an-array"}]
+
+    assert {:error, {:syntax, "FROM t IN c.tags requires an array iteration target" <> _}} =
+             CosmosSql.run("SELECT c.id, t FROM t IN c.tags", scalar)
+  end
+
+  test "undefined iteration target is a typed SYN" do
+    bare = [%{"id" => "s1"}]
+
+    assert {:error, {:syntax, "FROM t IN c.tags requires an array iteration target" <> _}} =
+             CosmosSql.run("SELECT c.id, t FROM t IN c.tags", bare)
+  end
+
+  test "iteration over an empty array contributes zero rows (no error)" do
+    empty = [%{"id" => "e1", "tags" => []}]
+    assert {:ok, []} = CosmosSql.run("SELECT c.id, t FROM t IN c.tags", empty)
+  end
+
+  test "malformed iteration source (bare alias, no path) is a typed SYN" do
+    assert {:error, {:syntax, "FROM t IN expects a dotted property path" <> _}} =
+             CosmosSql.run("SELECT t FROM t IN c", docs())
   end
 
   # -- regression: pre-raise grammar still parses -------------------------------

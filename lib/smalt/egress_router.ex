@@ -30,6 +30,7 @@ defmodule Smalt.EgressRouter do
   alias Smalt.DataPlane.Purview
   alias Smalt.DataPlane.ResourceGraph
   alias Smalt.DataPlane.Sentinel
+  alias Smalt.DataPlane.AppConfigSnapshots
   alias Smalt.Messaging.EventStream
   alias Smalt.Security.Attestation
   alias Smalt.Security.ConfidentialLedger
@@ -1067,6 +1068,16 @@ defmodule Smalt.EgressRouter do
     end)
   end
 
+  # Real Azure Key Vault purge shape (TS wf6 finding): KeyClient.purgeDeletedKey
+  # sends bare `DELETE /deletedkeys/{name}` (204), NOT `POST .../purge`. The
+  # POST shape was unrouted on the twin and fell through to the blob guarded
+  # catch-all (`/{account}/{container}`), answering 400 MissingXMsVersion.
+  delete "/deletedkeys/:name" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.purge_deleted_key(name))
+    end)
+  end
+
   # KD-102: deleted-secrets plane — the secrets twin of /deletedkeys above.
   # Same bundle shape (recoveryId/deletedDate/scheduledPurgeDate), same
   # recover-200 / purge-204 / purge-protection-409 contracts. List/read are
@@ -1466,6 +1477,97 @@ defmodule Smalt.EgressRouter do
           end
       end
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Azure App Configuration snapshots (v26.10.19 capability wave-2, W2N
+  # fragment on the KD-53 plane). AppConfigSnapshots owns the typed state
+  # machine; this fragment is wire-only. ROUTE ORDER IS LOAD-BEARING: this
+  # block sits BEFORE the blob catch-all family — `/snapshots/:name` is
+  # shape-identical to the blob splat `/:account/:container`, and when the
+  # blob family claimed the path the PY wf7 lane witnessed MissingXMsVersion
+  # instead of the snapshot surface (v26.10.19 wave-2 dispatch note).
+  # ---------------------------------------------------------------------------
+  get "/snapshots" do
+    if :ets.info(:smalt_appconfig) == :undefined do
+      route_not_ready(conn)
+    else
+      send_json(conn, 200, %{"items" => AppConfigSnapshots.list()})
+    end
+  end
+
+  put "/snapshots/:name" do
+    if :ets.info(:smalt_appconfig) == :undefined do
+      route_not_ready(conn)
+    else
+      with_valid_body(conn, fn conn ->
+        live_records = Store.list_all(:smalt_appconfig)
+
+        case AppConfigSnapshots.create(name, conn.body_params, live_records) do
+          {:ok, record} -> send_json(conn, 201, record)
+          {:error, reason} -> snapshots_error(conn, reason)
+        end
+      end)
+    end
+  end
+
+  get "/snapshots/:name" do
+    if :ets.info(:smalt_appconfig) == :undefined do
+      route_not_ready(conn)
+    else
+      case AppConfigSnapshots.get(name) do
+        {:ok, record} -> send_json(conn, 200, record)
+        {:error, reason} -> snapshots_error(conn, reason)
+      end
+    end
+  end
+
+  get "/snapshots/:name/kv" do
+    if :ets.info(:smalt_appconfig) == :undefined do
+      route_not_ready(conn)
+    else
+      case AppConfigSnapshots.kv_view(name) do
+        {:ok, items} -> send_json(conn, 200, %{"items" => items})
+        {:error, reason} -> snapshots_error(conn, reason)
+      end
+    end
+  end
+
+  post "/snapshots/:name/archive" do
+    if :ets.info(:smalt_appconfig) == :undefined do
+      route_not_ready(conn)
+    else
+      case AppConfigSnapshots.archive(name) do
+        {:ok, record} -> send_json(conn, 200, record)
+        {:error, reason} -> snapshots_error(conn, reason)
+      end
+    end
+  end
+
+  delete "/snapshots/:name" do
+    if :ets.info(:smalt_appconfig_snapshots) == :undefined and
+         :ets.info(:smalt_appconfig) == :undefined do
+      route_not_ready(conn)
+    else
+      case AppConfigSnapshots.purge(name) do
+        :ok -> send_resp(conn, 204, "")
+        {:error, reason} -> snapshots_error(conn, reason)
+      end
+    end
+  end
+
+  # Typed snapshot error mapping: validation -> 400, absence -> 404,
+  # state-machine conflicts -> 409 (the module emits {code, message} tuples;
+  # the HTTP mapping is egress-owned by design, per the module's @moduledoc).
+  defp snapshots_error(conn, {code, message}) do
+    status =
+      case code do
+        c when c in ["InvalidFilter", "InvalidComposition"] -> 400
+        c when c in ["SnapshotNotFound"] -> 404
+        _ -> 409
+      end
+
+    send_json(conn, status, %{"error" => %{"code" => code, "message" => message}})
   end
 
   defp secret_subverb_refusal(conn, verb) do

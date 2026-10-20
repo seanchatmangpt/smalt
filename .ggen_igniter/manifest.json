@@ -21,11 +21,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex=>lib/smalt/config.ex": {
       "out_template": "lib/smalt/config.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:e047b3de411f985d4259eefc37d12ee053a3ba8136c74b4fe3913797a9aa0f31"
+        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:bdcd4904e01b10e9e3d1a63f4b094948a8c81edbd5d9f42644e830df6a252fa7"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex",
-      "updated_at": "2026-10-19T17:12:26.622900Z"
+      "updated_at": "2026-10-20T10:41:47.387573Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex=>tmp/defaults_projected.ex": {
       "out_template": "tmp/defaults_projected.ex",
@@ -48,11 +48,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex=>lib/smalt/registry.ex": {
       "out_template": "lib/smalt/registry.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:8e2135be8064c76efe410aa72d4a03ca18b085087948c2e237129e8407f4c073"
+        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:5951017febb2e961f0ce6fb7a346b90d98791a07aa81c6941d2a2983b1833dec"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex",
-      "updated_at": "2026-10-17T01:06:25.998895Z"
+      "updated_at": "2026-10-20T10:41:15.434226Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex=>lib/smalt/store_tables.ex": {
       "out_template": "lib/smalt/store_tables.ex",
@@ -111,11 +111,11 @@
     "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>lib/smalt/mcp/generated/mcp_descriptor.ex": {
       "out_template": "lib/smalt/mcp/generated/mcp_descriptor.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:0ed576cecf4cfc174c0eff320f4a3e482bff5be51dcec9d87acccc0764d536fa"
+        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:09382125b3a90ac3b793a68cc2dcc9abce5ea4194440b7f913fb0aa107d63420"
       },
       "pack_dir": null,
       "template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
-      "updated_at": "2026-10-20T09:10:33.562027Z"
+      "updated_at": "2026-10-20T10:40:58.513888Z"
     }
   },
   "schema_version": "1",

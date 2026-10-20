@@ -11,6 +11,7 @@ defmodule Smalt.CosmosSql do
 
       SELECT [TOP <n>] <proj> FROM <alias> [WHERE <pred>]
              [ORDER BY <prop> [ASC|DESC]] [OFFSET <n> LIMIT <m>] [LIMIT <n>]
+      FROM    <iter-alias> IN <src.path>  -- cross-array iteration (fan-out)
 
       proj     ::= "*" | <item> ("," <item>)*
       item     ::= <path> ["AS" <alias>]
@@ -32,21 +33,24 @@ defmodule Smalt.CosmosSql do
       param    ::= "@" <ident>  -- bound from the query body's
                                 -- "parameters" array, by name
 
-  Anything outside the grammar (joins, UDFs, aggregates, subqueries, scalar
-  functions other than UPPER/LOWER/LENGTH/CONTAINS) is a typed
-  `{:error, {:syntax, reason}}` -- the caller answers 400 SyntaxError,
-  fail-closed. Aggregates (COUNT(1) et al.) are intentionally NOT admitted.
+  Cross-array iteration (`FROM t IN c.tags`) binds `t` per array element
+  (fan-out: N docs x M elements = N x M result rows; each row sees the element
+  as `t` while the doc root stays addressable as `c.*`). Composes with WHERE /
+  SELECT / ORDER BY. A non-array iteration target (including undefined) is a
+  typed `{:error, {:syntax, reason}}` at evaluation time -- fail-closed, never
+  a silent wrong answer.
 
-  Cross-array iteration (`FROM t IN c.tags`) is parsed but deliberately typed
-  `{:error, {:unsupported, reason}}` (caller answers 400 InvalidQuery) -- the
-  per-document array fan-out would require alias-scope bindings the 80/20 AST
-  does not carry. Fail-closed, never a silent wrong answer.
+  Anything outside the grammar (joins of 2+ iterated sources, UDFs, aggregates,
+  subqueries, scalar functions other than UPPER/LOWER/LENGTH/CONTAINS) is a
+  typed `{:error, {:syntax, reason}}` -- the caller answers 400 SyntaxError,
+  fail-closed. Aggregates (COUNT(1) et al.) are intentionally NOT admitted.
   """
 
   @enforce_keys [:projection, :from]
   defstruct [
     :projection,
     :from,
+    iterate: nil,
     where: nil,
     order_by: nil,
     top: nil,
@@ -58,6 +62,7 @@ defmodule Smalt.CosmosSql do
   @type t :: %__MODULE__{
           projection: :star | {:props, [path() | proj_item()]},
           from: String.t(),
+          iterate: {String.t(), path()} | nil,
           where: expr() | nil,
           order_by: {path(), :asc | :desc} | nil,
           top: pos_integer() | nil,
@@ -90,7 +95,7 @@ defmodule Smalt.CosmosSql do
 
   @doc "Parse `query` with bound `params` (map of @name => value)."
   @spec parse(String.t(), %{optional(String.t()) => term()}) ::
-          {:ok, t()} | {:error, {:syntax, String.t()}} | {:error, {:unsupported, String.t()}}
+          {:ok, t()} | {:error, {:syntax, String.t()}}
   def parse(query, params \\ %{}) when is_binary(query) and is_map(params) do
     with {:ok, tokens} <- tokenize(query),
          {:ok, %__MODULE__{} = ast} <- parse_tokens(tokens) do
@@ -113,7 +118,33 @@ defmodule Smalt.CosmosSql do
 
   @doc "Filter + sort + limit a document list."
   @spec eval_docs(t(), [map()]) :: [map()]
-  def eval_docs(%__MODULE__{} = q, docs) when is_list(docs) do
+  def eval_docs(%__MODULE__{iterate: nil} = q, docs) when is_list(docs), do: pipeline(q, docs)
+
+  # Cross-array iteration: fan each doc into one synthetic row per array
+  # element, the iteration alias bound as a synthetic key on a copy of the doc
+  # (alias shadows any same-named field; the doc root stays addressable). The
+  # downstream WHERE / projection / ORDER BY / TOP / OFFSET / LIMIT pipeline is
+  # unchanged -- it just sees N x M pre-fanned rows.
+  def eval_docs(%__MODULE__{iterate: {alias, rel_path}} = q, docs) when is_list(docs) do
+    fanned =
+      for doc <- docs, elem <- iter_values(doc, rel_path) do
+        Map.put(doc, alias, elem)
+      end
+
+    pipeline(%__MODULE__{q | iterate: nil}, fanned)
+  end
+
+  # Undefined or non-array targets contribute no rows here; the typed-SYN
+  # contract lives in run/3 (which owns the error channel). Direct
+  # parse/1+eval_docs/2 consumers get fan-out-over-nothing = [] (documented).
+  defp iter_values(doc, rel_path) do
+    case get_in_doc(doc, rel_path) do
+      v when is_list(v) -> v
+      _ -> []
+    end
+  end
+
+  defp pipeline(q, docs) do
     matched = for doc <- docs, where_holds?(q, doc), do: project(q, doc)
 
     matched =
@@ -142,12 +173,33 @@ defmodule Smalt.CosmosSql do
 
   @doc "One-shot: parse + evaluate, for the call site."
   @spec run(String.t(), [map()], %{optional(String.t()) => term()}) ::
-          {:ok, [map()]} | {:error, {:syntax, String.t()}} | {:error, {:unsupported, String.t()}}
+          {:ok, [map()]} | {:error, {:syntax, String.t()}}
   def run(query, docs, params \\ %{}) do
     case parse(query, params) do
-      {:ok, q} -> {:ok, eval_docs(q, docs)}
-      {:error, {:syntax, _}} = err -> err
-      {:error, {:unsupported, _}} = err -> err
+      {:ok, q} ->
+        case iterate_targets_ok?(q, docs) do
+          :ok -> {:ok, eval_docs(q, docs)}
+          {:error, {:syntax, _}} = err -> err
+        end
+
+      {:error, {:syntax, _}} = err ->
+        err
+    end
+  end
+
+  # Typed SYN on a non-array (or undefined) iteration target. Evaluated over
+  # the scanned set before any fan-out; a single bad doc fails the query.
+  defp iterate_targets_ok?(%__MODULE__{iterate: nil}, _docs), do: :ok
+
+  defp iterate_targets_ok?(%__MODULE__{iterate: {alias, rel_path}, from: root}, docs) do
+    full = Enum.join([root | rel_path], ".")
+
+    if Enum.all?(docs, fn doc -> is_list(get_in_doc(doc, rel_path)) end) do
+      :ok
+    else
+      {:error,
+       {:syntax,
+        "FROM #{alias} IN #{full} requires an array iteration target; '#{full}' is not an array"}}
     end
   end
 
@@ -558,7 +610,7 @@ defmodule Smalt.CosmosSql do
   defp parse_select([{:kw, :select} | rest]) do
     with {:ok, top, rest} <- parse_top(rest),
          {:ok, projection, rest} <- parse_projection_wrapped(rest),
-         {:ok, from, rest} <- parse_from(rest),
+         {:ok, {from, iterate}, rest} <- parse_from(rest),
          {:ok, where, rest} <- parse_where(rest),
          {:ok, order_by, rest} <- parse_order_by(rest),
          {:ok, offset, limit, rest} <- parse_offset_limit(rest),
@@ -567,6 +619,7 @@ defmodule Smalt.CosmosSql do
        %__MODULE__{
          projection: projection,
          from: from,
+         iterate: iterate,
          where: where,
          order_by: order_by,
          top: top,
@@ -708,15 +761,20 @@ defmodule Smalt.CosmosSql do
   defp parse_fn_arg({:lit, v}), do: {:ok, v}
   defp parse_fn_arg(_), do: {:error, {:syntax, "Function argument expected"}}
 
-  # Cross-array iteration (`FROM t IN c.tags`): parsed, then deliberately
-  # typed-UNSUPPORTED — see moduledoc.
-  defp parse_from([{:kw, :from}, {:ident, alias}, {:kw, :in}, {:ident, _src} | _rest]) do
-    {:error,
-     {:unsupported,
-      "FROM #{alias} IN ... (cross-array iteration) is not supported by this query surface"}}
+  # Cross-array iteration (`FROM t IN c.tags`): the iteration alias is stored
+  # with its SOURCE path relative to the doc root (head segment = the root
+  # alias, stripped here); evaluation fans out per element -- see eval_docs/2.
+  defp parse_from([{:kw, :from}, {:ident, alias}, {:kw, :in}, {:ident, src} | rest]) do
+    case String.split(src, ".") do
+      [_root] ->
+        {:error, {:syntax, "FROM #{alias} IN expects a dotted property path (e.g. c.tags)"}}
+
+      [root | rel] ->
+        {:ok, {root, {alias, rel}}, rest}
+    end
   end
 
-  defp parse_from([{:kw, :from}, {:ident, name} | rest]), do: {:ok, name, rest}
+  defp parse_from([{:kw, :from}, {:ident, name} | rest]), do: {:ok, {name, nil}, rest}
   defp parse_from(_), do: {:error, {:syntax, "Expected FROM <alias>"}}
 
   defp parse_where([{:kw, :where} | rest]) do

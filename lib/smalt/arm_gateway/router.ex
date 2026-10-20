@@ -4380,6 +4380,36 @@ defmodule Smalt.ArmGateway.Router do
     handle_metrics_emit(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
   end
 
+  @pr_type "Microsoft.Authorization/policyRemediations"
+
+  # NOTE: the RG-scope trigger POST is declared early (before the azapi POST
+  # glob routes) — Plug builds route order from declaration order and the
+  # `post .../resourceGroups/:rg_name/providers/*glob` action route otherwise
+  # shadows it. See the policyRemediations block near the policyExemptions
+  # block for the rest of the family.
+  post "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyRemediations/:name/trigger" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Policy.trigger_policy_remediation(scope, name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy remediation '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+
+
   # -- azapi POST actions (.../lock, .../setLegalHold) at any depth -------------
   post "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/*glob" do
     handle_action(conn, glob)
@@ -5062,6 +5092,142 @@ defmodule Smalt.ArmGateway.Router do
       {:respond, conn} -> conn
     end
   end
+
+  # Policy remediations (subscription scope AND RG scope). put returns
+  # {:ok, record} | {:error, PolicyRemediationInvalid envelope} — the error is
+  # the typed-400 body, never a 201 admission. POST trigger re-runs the
+  # assignment evaluation per resourceId at trigger time (never PUT time) and
+  # answers 200 with the updated record carrying perResourceStatus.
+  put "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyRemediations/:name" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      case Policy.put_policy_remediation("/subscriptions/#{sub_id}", name, conn.body_params) do
+        {:ok, record} ->
+          send_json(conn, 201, Jason.encode!(record))
+
+        {:error, body} ->
+          send_json(conn, 400, Jason.encode!(body))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyRemediations/:name" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      case Policy.get_policy_remediation("/subscriptions/#{sub_id}", name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy remediation '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyRemediations" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      send_list(conn, Policy.list_policy_remediations("/subscriptions/#{sub_id}"))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyRemediations/:name" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      Policy.delete_policy_remediation("/subscriptions/#{sub_id}", name)
+      send_json(conn, 200, "")
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyRemediations/:name" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Policy.put_policy_remediation(scope, name, conn.body_params) do
+        {:ok, record} ->
+          send_json(conn, 201, Jason.encode!(record))
+
+        {:error, body} ->
+          send_json(conn, 400, Jason.encode!(body))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyRemediations/:name" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Policy.get_policy_remediation(scope, name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy remediation '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyRemediations" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      scope = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+      send_list(conn, Policy.list_policy_remediations(scope))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/policyRemediations/:name" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      Policy.delete_policy_remediation(
+        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}",
+        name
+      )
+
+      send_json(conn, 200, "")
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # Trigger: POST .../policyRemediations/:name/trigger — 200 with the updated
+  # record (perResourceStatus), 404 ResourceNotFound when absent.
+  post "/subscriptions/:sub_id/providers/Microsoft.Authorization/policyRemediations/:name/trigger" do
+    with :ok <- check_api_version(conn, @pr_type) do
+      case Policy.trigger_policy_remediation("/subscriptions/#{sub_id}", name) do
+        {:ok, record} ->
+          send_json(conn, 200, Jason.encode!(record))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The policy remediation '#{name}' was not found."
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
 
   # Policy set definitions (initiatives, subscription scope). Members are
   # policyDefinitions references; evaluate_assignment/2 resolves an

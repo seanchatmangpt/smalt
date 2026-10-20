@@ -39,13 +39,25 @@ defmodule Smalt.DataPlane.AppConfigSnapshots do
   @spec ensure_table() :: :ok
   def ensure_table do
     if :ets.info(@table) == :undefined do
-      :ets.new(@table, [
-        :set,
-        :public,
-        :named_table,
-        read_concurrency: true,
-        write_concurrency: true
-      ])
+      # KD-117 heir class (mirrors KeyVaultActions.ensure_deleted_table/0,
+      # fix disclosed by the W3A egress lane): the first creator is a Bandit
+      # request task — without an heir the table DIES with that request
+      # process and every later request sees a fresh empty table (witnessed:
+      # PUT /snapshots 201 then GET /snapshots/:name 404 on the same beam).
+      # Heir to :init (permanent, node-local) makes the table outlive its
+      # creator; the ArgumentError rescue keeps the create race fail-safe.
+      try do
+        :ets.new(@table, [
+          :set,
+          :public,
+          :named_table,
+          {:read_concurrency, true},
+          {:write_concurrency, true},
+          {:heir, Process.whereis(:init), []}
+        ])
+      rescue
+        ArgumentError -> :ok
+      end
     end
 
     :ok

@@ -203,3 +203,58 @@
     ema:requiresAuthority false ; ema:isReversible true ;
     ema:receiptSemantics "logged" ; ema:capabilityOrder 20 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.21 ERRC RAISE lane: window-capability read tools (21-26) ---------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "policy.locks.list" ;
+    ema:capabilityName "Policy locks list" ;
+    ema:capabilityDescription "Management locks (Microsoft.Authorization/locks) under one scope prefix, level and notes projected, never lock-token material." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 21 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "appconfig.snapshots.kv" ;
+    ema:capabilityName "App Configuration snapshot KV view" ;
+    ema:capabilityDescription "Frozen KV view of one App Configuration snapshot by name (records as stored at creation; archived snapshots refuse SnapshotArchived)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 22 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cosmos.changefeed.peek" ;
+    ema:capabilityName "Cosmos change feed peek" ;
+    ema:capabilityDescription "Pending change-feed rows for a container (docs newer than the persisted cursor), counted WITHOUT advancing the cursor — read-only unlike the wire change feed." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 23 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "sb.topics.subscriptions" ;
+    ema:capabilityName "Service Bus topic subscriptions" ;
+    ema:capabilityDescription "Subscription resources (Microsoft.ServiceBus/namespaces/topics/subscriptions) under one Service Bus topic." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 24 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eh.consumergroups.list" ;
+    ema:capabilityName "Event Hubs consumer groups list" ;
+    ema:capabilityDescription "Consumer group records for one Event Hub ($default always present), from the Event Hubs server store." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 25 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "certificates.get" ;
+    ema:capabilityName "Key Vault certificate get" ;
+    ema:capabilityDescription "Certificate attributes for one certificate (id, name, attributes) — never key material, private key, or the DER body." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 26 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .

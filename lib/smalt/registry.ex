@@ -14,11 +14,14 @@ defmodule Smalt.Registry do
   # engine does not honor ORDER BY — see GgenIgniter.Query's moduledoc).
   # Replay identity is fenced by the Smalt.Registry.ReplayIdentity module
   # (SHIM-COURT-clean template; replay must be byte-identical).
-  
-  
+
   @admitted_resource_types [
     "Microsoft.App/containerApps",
     "Microsoft.Attestation/attestationProviders",
+    "Microsoft.Authorization/locks",
+    "Microsoft.Authorization/policyExemptions",
+    "Microsoft.Authorization/policyRemediations",
+    "Microsoft.Authorization/policySetDefinitions",
     "Microsoft.Authorization/roleAssignments",
     "Microsoft.Compute/diskEncryptionSets",
     "Microsoft.Compute/disks",
@@ -54,6 +57,7 @@ defmodule Smalt.Registry do
     "Microsoft.ServiceBus/namespaces/queues",
     "Microsoft.ServiceBus/namespaces/topics",
     "Microsoft.ServiceBus/namespaces/topics/subscriptions",
+    "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules",
     "Microsoft.Storage/storageAccounts",
     "Microsoft.Storage/storageAccounts/blobServices",
     "Microsoft.Storage/storageAccounts/blobServices/containers",
@@ -63,6 +67,10 @@ defmodule Smalt.Registry do
   @type_shapes %{
     "Microsoft.App/containerApps" => "DefaultShape",
     "Microsoft.Attestation/attestationProviders" => "DefaultShape",
+    "Microsoft.Authorization/locks" => "DefaultShape",
+    "Microsoft.Authorization/policyExemptions" => "DefaultShape",
+    "Microsoft.Authorization/policyRemediations" => "DefaultShape",
+    "Microsoft.Authorization/policySetDefinitions" => "DefaultShape",
     "Microsoft.Authorization/roleAssignments" => "DefaultShape",
     "Microsoft.Compute/diskEncryptionSets" => "DefaultShape",
     "Microsoft.Compute/disks" => "DefaultShape",
@@ -98,15 +106,21 @@ defmodule Smalt.Registry do
     "Microsoft.ServiceBus/namespaces/queues" => "DefaultShape",
     "Microsoft.ServiceBus/namespaces/topics" => "DefaultShape",
     "Microsoft.ServiceBus/namespaces/topics/subscriptions" => "DefaultShape",
+    "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules" => "DefaultShape",
     "Microsoft.Storage/storageAccounts" => "StorageAccountShape",
     "Microsoft.Storage/storageAccounts/blobServices" => "DefaultShape",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "DefaultShape",
-    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" => "DefaultShape"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
+      "DefaultShape"
   }
 
   @api_versions %{
     "Microsoft.App/containerApps" => "2023-05-01",
     "Microsoft.Attestation/attestationProviders" => "2020-10-01",
+    "Microsoft.Authorization/locks" => "2020-05-01",
+    "Microsoft.Authorization/policyExemptions" => "2022-07-01",
+    "Microsoft.Authorization/policyRemediations" => "2021-10-01",
+    "Microsoft.Authorization/policySetDefinitions" => "2023-04-01",
     "Microsoft.Authorization/roleAssignments" => "2022-04-01",
     "Microsoft.Compute/diskEncryptionSets" => "2021-04-01",
     "Microsoft.Compute/disks" => "2021-04-01",
@@ -142,10 +156,12 @@ defmodule Smalt.Registry do
     "Microsoft.ServiceBus/namespaces/queues" => "2024-01-01",
     "Microsoft.ServiceBus/namespaces/topics" => "2021-04-01",
     "Microsoft.ServiceBus/namespaces/topics/subscriptions" => "2021-04-01",
+    "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules" => "2021-04-01",
     "Microsoft.Storage/storageAccounts" => "2023-05-01",
     "Microsoft.Storage/storageAccounts/blobServices" => "2023-05-01",
     "Microsoft.Storage/storageAccounts/blobServices/containers" => "2023-05-01",
-    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" => "2023-05-01"
+    "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies" =>
+      "2023-05-01"
   }
 
   # KD-78 admission lattice: the per-type ordered api-version lattice lives in

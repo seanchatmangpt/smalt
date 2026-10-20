@@ -1,13 +1,14 @@
 {
   "version": 1,
   "window": "v26.10.19",
-  "schema_note": "Workflow registry for the external verification tier. Surface ids are drawn mechanically from scripts/sdk_coverage.py: SURFACES (12), CENSUS_SURFACE (servicebus), CAP_CELLS (prefixed cap:, 7) — 20 inventory ids. Every inventory id must appear in >=1 workflow's surfaces[] or be covered by a cited kd_rows entry; orphans are listed in coverage.orphans. Unrecognized surface ids are parser findings. 'landed' is a tree-reconciliation marker: true = both language trees named in entry[] exist on disk.",
+  "schema_note": "Workflow registry for the external verification tier. Surface ids are drawn mechanically from scripts/sdk_coverage.py: SURFACES (12), CENSUS_SURFACE (servicebus), CAP_CELLS (prefixed cap:, 14) \u2014 27 inventory ids. Every inventory id must appear in >=1 workflow's surfaces[] or be covered by a cited kd_rows entry; orphans are listed in coverage.orphans. Unrecognized surface ids are parser findings. 'landed' is a tree-reconciliation marker: true = both language trees named in entry[] exist on disk.",
   "notes": [
     "All five workflows landed (verified on disk 2026-10-19): verification/ts/wf{1..5}/index.ts and verification/py/test_wf{1,2,3,4,5}_{governance,concurrency,messaging,crypto,throttling}.py.",
-    "scripts/sdk_coverage.py still probes the legacy filename patterns verification/ts/*.probe.mjs and verification/py/py_*.py; the landed suites use wfN/index.ts and test_wfN_*.py, so all 24 probe cells read MISSING in the coverage gate. This is a finder-script pattern skew, not absence of probes — reconciling the finder patterns is owned by the sdk_coverage WO, not this registry.",
+    "scripts/sdk_coverage.py still probes the legacy filename patterns verification/ts/*.probe.mjs and verification/py/py_*.py; the landed suites use wfN/index.ts and test_wfN_*.py, so all 24 probe cells read MISSING in the coverage gate. This is a finder-script pattern skew, not absence of probes \u2014 reconciling the finder patterns is owned by the sdk_coverage WO, not this registry.",
     "The Service Bus census files sdk_coverage.py CRCs (verification/ts/census.test.cjs, verification/ts/sb-extra.probe.cjs, verification/receipts/08-service-bus-census.md) do not exist on disk, so the servicebus/census cell reads CRC FAIL. Real open finding, owned by the Service Bus census work order; not fixable by registry edits.",
     "Entry points on disk: TS suite = node verification/ts/run-all.mjs (sequential wf1..wf4 on a shared v-block substrate, wf5 on a private throttle-profile substrate; exit 0/1/2/3/4/124); PY suite = bash verification/py/run.sh (substrate-ctl up --block v1 --auth enforce, venv ensure, pytest --timeout=180; exit 0/1/2/3/4).",
-    "just sdk-ts / sdk-py / sdk-all (justfile.d/04-sdk-recipes.just) are still RETIRED exit-1 placeholders pending rewiring to the landed suites (V261019-08 / V261019-09); the direct node/run.sh entry points above are the working commands today."
+    "just sdk-ts / sdk-py / sdk-all (justfile.d/04-sdk-recipes.just) are still RETIRED exit-1 placeholders pending rewiring to the landed suites (V261019-08 / V261019-09); the direct node/run.sh entry points above are the working commands today.",
+    "Wave-3 registry-sync (2026-10-20): the six former dangling wf6 cap ids are now registered CAP_CELLS in scripts/sdk_coverage.py; wf7-diagnostics registered (ts=diagnostics.probe.mjs, py=test_wf7_diagnostics.py); CAP_CELLS 7->14 (six wf6 ids + appconfig-snapshots)."
   ],
   "receipt_tag_grammar": "<surface>:<op>[@lang][#KD-xx[,KD-yy...]][=VERDICT]",
   "workflows": [
@@ -198,6 +199,27 @@
       "entry": {
         "ts": "verification/ts/newcaps.probe.mjs"
       }
+    },
+    {
+      "id": "wf7-diagnostics",
+      "landed": true,
+      "langs": [
+        "ts",
+        "py"
+      ],
+      "surfaces": [
+        "sentinel",
+        "cap:appconfig-snapshots",
+        "cap:monitor-metrics",
+        "cap:appconfig-kv"
+      ],
+      "kd_rows": [
+        "KD-78"
+      ],
+      "entry": {
+        "ts": "verification/ts/diagnostics.probe.mjs",
+        "py": "verification/py/test_wf7_diagnostics.py"
+      }
     }
   ],
   "coverage": {
@@ -226,7 +248,14 @@
         "cap:eventgrid-topics-arm",
         "cap:blob-snapshot-metadata",
         "cap:cosmos-throughput",
-        "cap:sb-eh-2024-children"
+        "cap:sb-eh-2024-children",
+        "cap:kv-deletedkeys-lifecycle",
+        "cap:sb-schedule",
+        "cap:blob-snapshot-list",
+        "cap:policy-exemption-armcase",
+        "cap:tags-at-scope",
+        "cap:lro-namespace-put",
+        "cap:appconfig-snapshots"
       ]
     },
     "cell_coverage_map": {
@@ -235,7 +264,7 @@
       "cosmos": "wf2",
       "keyvault": "wf4",
       "skr": "wf4 (shares keyvault probe/receipt files per SURFACES)",
-      "eventgrid": "wf3 (HTTP webhook delivery infeasible on HEAD — KD-101; no @azure/eventgrid dep in the TS suite)",
+      "eventgrid": "wf3 (HTTP webhook delivery infeasible on HEAD \u2014 KD-101; no @azure/eventgrid dep in the TS suite)",
       "eventhubs": "wf3",
       "servicebus": "wf3 (census cell)",
       "sentinel": "wf5",
@@ -249,7 +278,14 @@
       "cap:eventgrid-topics-arm": "wf1",
       "cap:blob-snapshot-metadata": "wf2",
       "cap:cosmos-throughput": "wf2",
-      "cap:sb-eh-2024-children": "wf3"
+      "cap:sb-eh-2024-children": "wf3",
+      "cap:kv-deletedkeys-lifecycle": "wf6",
+      "cap:sb-schedule": "wf6",
+      "cap:blob-snapshot-list": "wf6",
+      "cap:policy-exemption-armcase": "wf6",
+      "cap:tags-at-scope": "wf6",
+      "cap:lro-namespace-put": "wf6",
+      "cap:appconfig-snapshots": "wf7"
     },
     "orphans": [],
     "missing": []

@@ -13,6 +13,19 @@ defmodule Smalt.DataPlane.BlobStorage do
   delete clause. Metadata mutation rides the `overwrite` arm.
   Create-or-overwrite verbs (e.g. Put Block List) resolve the arm from
   blob existence — never hardcode the arm at the call site.
+
+  ## Per-blob immutability (Premium surface, honest 80/20)
+
+  `x-ms-immutability-until-date` (HTTP-date) + `x-ms-immutability-policy-mode`
+  (`Locked`/`Unlocked`) request headers on Put Blob store a per-blob policy
+  (`immutability_until` epoch-ms / `immutability_mode` on the blob record).
+  While `now <= until` the blob refuses overwrite and delete with 409
+  `ContainerLocked`; the stricter of container-level and blob-level policy
+  wins (both checks run). An **Unlocked** policy is cleared by an overwrite
+  PUT with cleared immutability headers; a **Locked** policy may only be
+  extended (request until-date >= stored until-date) and otherwise refuses
+  until the date passes. Mode-without-date is 400 `InvalidHeaders`; date
+  without mode defaults to `Unlocked` (Azure parity).
   """
   alias Smalt.DataPlane.BlobService
   alias Smalt.DataPlane.ConditionalHeaders
@@ -225,12 +238,16 @@ defmodule Smalt.DataPlane.BlobStorage do
          {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
          :ok <- check_content(content),
          :ok <- check_put_size(content),
-         :ok <- check_metadata_names(headers) do
+         :ok <- check_metadata_names(headers),
+         {:ok, imm} <- parse_blob_immutability(headers) do
       case Store.get(:smalt_blobs, blob_key) do
         {:ok, existing} ->
           cond do
             worm_blocked?(container_meta, "overwrite", now) ->
               {:error, :worm_locked, worm_message(container_meta, now)}
+
+            blob_immutability_refuses?(existing, imm, now) ->
+              {:error, :worm_locked, blob_worm_message(existing)}
 
             mismatched_if_match?(headers, existing["etag"]) ->
               {:error, :precondition_failed, precondition_message()}
@@ -243,16 +260,16 @@ defmodule Smalt.DataPlane.BlobStorage do
 
             # AZB-06: the If-Match replace runs as a Store CAS
             # (compare_and_swap/4 inside the Store GenServer), so N concurrent
-            # replaces carrying the same If-Match etag yield EXACTLY one
+            # replaces with the same If-Match etag yield EXACTLY one
             # winner (200/201) and N-1 precondition losers (412) — the old
             # read-then-write TOCTOU could admit multiple winners.
             true ->
-              cas_replace(account, container, blob_name, content, headers, existing)
+              cas_replace(account, container, blob_name, content, headers, existing, imm)
           end
 
         :error ->
           cond do
-            # Azure parity (R5: audit A1 defect, create-under-hold): a legal
+            # Azure parity (R5: audit A1 defect, create-with-hold): a legal
             # hold blocks NEW-blob creation with 409 ContainerLocked, same
             # as overwrite. Previously the create arm skipped the WORM check
             # entirely. Time-based immutability alone does not block create
@@ -269,7 +286,7 @@ defmodule Smalt.DataPlane.BlobStorage do
               {:error, :precondition_failed, precondition_message()}
 
             true ->
-              store_blob(account, container, blob_name, content, headers)
+              store_blob(account, container, blob_name, content, headers, imm)
           end
       end
     else
@@ -451,6 +468,7 @@ defmodule Smalt.DataPlane.BlobStorage do
 
     with :ok <- check_blob_name(blob_name),
          {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_k),
+         {:ok, imm} <- parse_blob_immutability(headers),
          {:ok, blocks} <- resolve_refs(refs, account, container, blob_name) do
       cond do
         # SHIM-COURT / KD-COVERS: KD-52 — existence-scoped WORM arm (parity
@@ -487,7 +505,7 @@ defmodule Smalt.DataPlane.BlobStorage do
               end
             )
 
-          {:ok, blob} = store_blob(account, container, blob_name, content, headers)
+          {:ok, blob} = store_blob(account, container, blob_name, content, headers, imm)
 
           blob =
             Map.put(
@@ -694,6 +712,7 @@ defmodule Smalt.DataPlane.BlobStorage do
     with {:ok, container_meta} <- Store.get(:smalt_blob_containers, container_key),
          {:ok, existing} <- blob_or_404(blob_key),
          :ok <- check_worm(container_meta, now),
+         :ok <- check_blob_worm(existing, now),
          :ok <- check_if_match(headers, existing["etag"]),
          :ok <- check_if_none_match(headers) do
       Store.delete(:smalt_blobs, blob_key)
@@ -703,6 +722,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, :not_found} -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
       {:error, {:worm, reason}} -> {:error, 409, "ContainerLocked", worm_message_reason(reason)}
+      {:error, {:blob_worm, msg}} -> {:error, 409, "ContainerLocked", msg}
       {:error, {:precondition}} -> {:error, 412, "PreconditionFailed", precondition_message()}
       {:error, {:precondition, _}} -> {:error, 412, "PreconditionFailed", precondition_message()}
     end
@@ -1559,7 +1579,8 @@ defmodule Smalt.DataPlane.BlobStorage do
           <Name>#{xml_escape(b["name"] || name)}</Name>#{blob_metadata_xml(b, include)}<Properties>
             <Content-Length>#{b["content_length"]}</Content-Length>
             <Etag>#{xml_escape(b["etag"])}</Etag>
-            <Last-Modified>#{xml_escape(b["last_modified"])}</Last-Modified>
+            <BlobType>BlockBlob</BlobType>
+            <Last-Modified>#{xml_escape(rfc1123(b["last_modified"]))}</Last-Modified>
           </Properties>
         </Blob>
         """ <> snapshots_xml(key, b, include)
@@ -1586,7 +1607,8 @@ defmodule Smalt.DataPlane.BlobStorage do
           <Properties>
             <Content-Length>#{snap["content_length"]}</Content-Length>
             <Etag>#{xml_escape(snap["etag"])}</Etag>
-            <Last-Modified>#{xml_escape(snap["last_modified"])}</Last-Modified>
+            <BlobType>BlockBlob</BlobType>
+            <Last-Modified>#{xml_escape(rfc1123(snap["last_modified"]))}</Last-Modified>
           </Properties>
         </Blob>
         """
@@ -1594,6 +1616,16 @@ defmodule Smalt.DataPlane.BlobStorage do
       |> Enum.join("")
     else
       ""
+    end
+  end
+
+  # KD-107 (wave-3): List Blobs <Last-Modified> is an RFC-1123 date on the
+  # Azure wire contract ("Mon, 20 Oct 2026 08:54:30 GMT"); stored records keep
+  # ISO-8601 internally (also the snapshot ETS key), so format at render.
+  defp rfc1123(iso) do
+    case DateTime.from_iso8601(iso || "") do
+      {:ok, dt, _} -> Calendar.strftime(dt, "%a, %d %b %Y %H:%M:%S GMT")
+      _ -> iso
     end
   end
 
@@ -1707,17 +1739,19 @@ defmodule Smalt.DataPlane.BlobStorage do
   # Internals
   # ---------------------------------------------------------------------------
 
-  defp store_blob(account, container, blob_name, content, headers) do
+  defp store_blob(account, container, blob_name, content, headers, imm) do
     etag = "\"#{:crypto.hash(:md5, content) |> Base.encode16(case: :lower)}\""
 
-    blob = %{
-      "name" => blob_name,
-      "content" => content,
-      "content_length" => byte_size(content),
-      "etag" => etag,
-      "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "headers" => headers
-    }
+    blob =
+      %{
+        "name" => blob_name,
+        "content" => content,
+        "content_length" => byte_size(content),
+        "etag" => etag,
+        "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "headers" => headers
+      }
+      |> with_immutability(imm)
 
     Store.put(:smalt_blobs, "#{account}/#{container}/#{blob_name}", blob)
 
@@ -1734,18 +1768,20 @@ defmodule Smalt.DataPlane.BlobStorage do
   # the caller's If-Match against the CURRENT etag — the first writer already
   # moved it, so the losers take the 412 path; if the current etag still
   # matches (e.g. a metadata mutation raced in between) we retry the CAS.
-  defp cas_replace(account, container, blob_name, content, headers, expected) do
+  defp cas_replace(account, container, blob_name, content, headers, expected, imm) do
     etag = "\"#{:crypto.hash(:md5, content) |> Base.encode16(case: :lower)}\""
     blob_key = "#{account}/#{container}/#{blob_name}"
 
-    blob = %{
-      "name" => blob_name,
-      "content" => content,
-      "content_length" => byte_size(content),
-      "etag" => etag,
-      "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "headers" => headers
-    }
+    blob =
+      %{
+        "name" => blob_name,
+        "content" => content,
+        "content_length" => byte_size(content),
+        "etag" => etag,
+        "last_modified" => DateTime.utc_now() |> DateTime.to_iso8601(),
+        "headers" => headers
+      }
+      |> with_immutability(imm)
 
     case Store.compare_and_swap(:smalt_blobs, blob_key, expected, blob) do
       :ok ->
@@ -1758,7 +1794,7 @@ defmodule Smalt.DataPlane.BlobStorage do
             if mismatched_if_match?(headers, current["etag"]) do
               {:error, :precondition_failed, precondition_message()}
             else
-              cas_replace(account, container, blob_name, content, headers, current)
+              cas_replace(account, container, blob_name, content, headers, current, imm)
             end
 
           # Deleted concurrently while we held a stale expect — an If-Match
@@ -1823,6 +1859,130 @@ defmodule Smalt.DataPlane.BlobStorage do
       :ok
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Per-blob immutability (Premium 80/20). Headers on Put Blob:
+  #   x-ms-immutability-until-date   (HTTP-date; absence = no/cleared policy)
+  #   x-ms-immutability-policy-mode  (Locked | Unlocked; default Unlocked)
+  # Stored on the blob record as immutability_until (epoch ms) + mode. While
+  # now <= until the blob refuses overwrite/delete (409 ContainerLocked),
+  # unless the request EXTENDS the policy (request until >= stored until) or
+  # CLEARS it (no immutability headers + stored mode Unlocked). The
+  # container-level WORM check runs independently — the stricter policy wins.
+  # ---------------------------------------------------------------------------
+
+  @immutability_modes ~w(Locked Unlocked)
+
+  # Parses request headers into `{:ok, imm | nil}` or
+  # `{:error, 400, "InvalidHeaders", msg}`. `nil` means the request carries no
+  # immutability headers (a clearing PUT on overwrite).
+  defp parse_blob_immutability(headers) do
+    headers = headers || %{}
+    until_raw = ConditionalHeaders.header(headers, "x-ms-immutability-until-date")
+    mode_raw = ConditionalHeaders.header(headers, "x-ms-immutability-policy-mode")
+
+    cond do
+      is_nil(until_raw) and is_nil(mode_raw) ->
+        {:ok, nil}
+
+      is_nil(until_raw) ->
+        {:error, 400, "InvalidHeaders",
+         "x-ms-immutability-policy-mode requires x-ms-immutability-until-date."}
+
+      true ->
+        with {:ok, mode} <- validate_immutability_mode(mode_raw) do
+          case parse_http_date_ms(until_raw) do
+            {:ok, until_ms} -> {:ok, %{"immutability_until" => until_ms, "immutability_mode" => mode}}
+            :error ->
+              {:error, 400, "InvalidHeaderValue",
+               "Value for x-ms-immutability-until-date is invalid (RFC 1123 HTTP-date expected)."}
+          end
+        end
+    end
+  end
+
+  defp validate_immutability_mode(nil), do: {:ok, "Unlocked"}
+
+  defp validate_immutability_mode(mode) when mode in @immutability_modes,
+    do: {:ok, mode}
+
+  defp validate_immutability_mode(mode),
+    do:
+      {:error, 400, "InvalidHeaderValue",
+       "Invalid x-ms-immutability-policy-mode: #{inspect(mode)}. Valid: Locked, Unlocked."}
+
+  # RFC 1123 HTTP-date -> epoch ms (:httpd_util parses RFC 1123/850/asctime).
+  defp parse_http_date_ms(raw) when is_binary(raw) do
+    case :httpd_util.convert_request_date(String.to_charlist(raw)) do
+      {{y, mo, d}, {h, mi, s}} ->
+        case DateTime.new(Date.new!(y, mo, d), Time.new!(h, mi, s), "Etc/UTC") do
+          {:ok, dt} -> {:ok, DateTime.to_unix(dt, :millisecond)}
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp parse_http_date_ms(_), do: :error
+
+  # Overwrite gate. Refuses while the stored policy is active, except:
+  #   * extension: the request carries an until-date >= the stored one
+  #     (Azure permits extending, never shortening, a Locked policy)
+  #   * clearing: the request carries NO immutability headers and the stored
+  #     mode is Unlocked (the replace then omits the fields)
+  defp blob_immutability_refuses?(existing, req_imm, now) do
+    case blob_immutability_active?(existing, now) do
+      false ->
+        false
+
+      true ->
+        cond do
+          is_map(req_imm) and req_imm["immutability_until"] >= existing["immutability_until"] ->
+            false
+
+          is_nil(req_imm) and existing["immutability_mode"] == "Unlocked" ->
+            false
+
+          true ->
+            true
+        end
+    end
+  end
+
+  defp blob_immutability_active?(%{"immutability_until" => until} = _blob, now)
+       when is_integer(until),
+       do: now <= until
+
+  defp blob_immutability_active?(_blob, _now), do: false
+
+  defp blob_worm_message(%{"immutability_until" => until} = _blob) when is_integer(until) do
+    until_iso =
+      DateTime.from_unix!(until, :millisecond)
+      |> Calendar.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    "Blob modification refused: per-blob immutability policy is in effect until #{until_iso} (ContainerLocked)."
+  end
+
+  defp blob_worm_message(_blob),
+    do: "Blob modification refused: per-blob immutability policy is in effect (ContainerLocked)."
+
+  # Delete arm — any active per-blob policy refuses (an Unlocked policy must
+  # first be cleared by an overwrite PUT with cleared headers).
+  defp check_blob_worm(existing, now) do
+    if blob_immutability_active?(existing, now) do
+      {:error, {:blob_worm, blob_worm_message(existing)}}
+    else
+      :ok
+    end
+  end
+
+  @doc false
+  def with_immutability(blob, nil), do: Map.delete(blob, "immutability_until") |> Map.delete("immutability_mode")
+
+  def with_immutability(blob, imm) when is_map(imm),
+    do: Map.merge(blob, imm)
 
   # WORM block when a legal hold is set (never expires), or the immutability
   # policy is locked / container is immutable while retention is still live.

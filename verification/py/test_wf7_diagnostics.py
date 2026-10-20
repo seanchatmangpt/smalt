@@ -259,9 +259,9 @@ def test_appconfig_snapshot_freeze():
     hdrs = bearer()
     name = f"{RUN}-snap-{secrets.token_hex(3)}"
     probe = requests.put(
-        f"{EGRESS}/snapshots/{name}",
+        f"{EGRESS}/snapshots/{name}-probe",  # separate name: PUT on an existing snapshot 409s
         params={"api-version": "2023-11-01"},
-        json={"filters": {"filters": [{"key": f"{RUN}/"}]}},
+        json={"filters": [{"key": f"{RUN}/"}]},  # W2N wire contract: filters is a top-level LIST
         headers=hdrs,
         timeout=15,
     )
@@ -280,18 +280,26 @@ def test_appconfig_snapshot_freeze():
     )
 
     # Landed branch: full freeze-semantics flow.
-    k1, k2 = f"{RUN}/freeze/a", f"{RUN}/freeze/b"
+    # AppConfig keys use ":" separators (real-Azure shape): /kv/:key is a
+    # single path segment — slash keys fall through to the blob splat catch-all
+    # and answer 400 MissingXMsVersion (witnessed this run).
+    tag = name.rsplit("-", 1)[-1]  # fresh per run: prior-run kv records would 409
+    k1, k2 = f"{RUN}-{tag}:freeze:a", f"{RUN}-{tag}:freeze:b"
     assert _kv_put(k1, "v1", "prod", hdrs).status_code in (200, 201)
     assert _kv_put(k2, "w1", "prod", hdrs).status_code in (200, 201)
     snap = requests.put(
         f"{EGRESS}/snapshots/{name}",
         params={"api-version": "2023-11-01"},
-        json={"filters": {"filters": [{"key": f"{RUN}/freeze/"}]}},
+        json={"filters": [{"key": f"{RUN}-{tag}:freeze:"}]},  # W2N top-level LIST
         headers=hdrs,
         timeout=15,
     )
     assert snap.status_code in (200, 201), f"snapshot PUT -> {snap.status_code}"
-    assert snap.json().get("properties", snap.json()).get("itemCount", 0) >= 2
+    props = snap.json().get("properties", snap.json())
+    # W2N divergence note: wire serializes snake_case item_count (real Azure
+    # AppConfig uses itemCount camelCase) — mirror accepts either.
+    count = props.get("itemCount", props.get("item_count", 0))
+    assert count >= 2, f"snapshot itemCount<2: {snap.text[:200]}"
 
     # Freeze: mutate BOTH live records after the snapshot; the frozen view
     # must keep the creation-time values.

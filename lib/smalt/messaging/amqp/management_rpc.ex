@@ -47,11 +47,15 @@ defmodule Smalt.Amqp.ManagementRpc do
       400 SEQUENCE_NUMBERS_REQUIRED / 410 MESSAGE_NOT_DEFERRED (batch-atomic:
       one bad sequence fails the whole batch) / 404 NOT_FOUND
     * set-session-state    — 200 nil / 400 SESSION_ID_REQUIRED /
-      400 SESSION_STATE_REQUIRED / 404 SESSION_NOT_FOUND
+      400 SESSION_STATE_REQUIRED / 400 SESSION_STATE_SIZE_EXCEEDED (state
+      > 256KB, Azure cap) / 404 SESSION_NOT_FOUND
     * get-session-state    — 200 {"session-state": binary} / 400 SESSION_ID_REQUIRED /
       404 SESSION_NOT_FOUND
-    * get-message-sessions — 200 {"sessions-ids": [..], "skip": next} /
-      400 QUEUE_REQUIRED (the entity rides associated-link-name)
+    * get-message-sessions — 200 {"sessions-ids": [..], "sessions": detail,
+      "skip": next} / 400 QUEUE_REQUIRED (the entity rides associated-link-name);
+      optional `since-updated-time` (timestamp ms) filter. Detail entries:
+      {"session-id", "session-state-size" (bytes), "message-count",
+      "updated-at" (timestamp)}
     * batch-delete-messages — 200 nil / 400 QUEUE_REQUIRED /
       400 SEQUENCE_NUMBERS_REQUIRED / 404 NOT_FOUND (fail-closed on missing tables)
     * schedule-message     — 200 {"sequence-numbers": [..]} / 400 QUEUE_REQUIRED /
@@ -289,6 +293,9 @@ defmodule Smalt.Amqp.ManagementRpc do
                 Enum.map(messages, fn m ->
                   %{"message" => message_body(m)}
                   |> maybe_put_seq(m)
+                  # Wave-1 seam finding: peek of a still-deferred row must
+                  # surface its state (Azure reply carries delivery-state).
+                  |> maybe_put_delivery_state(m)
                 end)
             }
 
@@ -474,10 +481,16 @@ defmodule Smalt.Amqp.ManagementRpc do
         respond(400, "SEQUENCE_NUMBERS_REQUIRED", nil, correlation_id)
 
       true ->
+        # Optional `session-id` (sessionful receive-by-sequence): threaded into
+        # QueueStore.receive_deferred opts, where a mismatch joins the atomic
+        # 410 refusal list (wave-1 seam finding: :477 dropped it).
+        session_id_field = body_field(body, "session-id")
+        session_id = if blank?(session_id_field), do: nil, else: session_id_field
+
         case invoke(context, :queue_store, @default_queue_store, :receive_deferred, [
                queue,
                seqs,
-               [now_ms: now]
+               [now_ms: now, session_id: session_id]
              ]) do
           {:ok, messages} when is_list(messages) ->
             payload = %{
@@ -530,6 +543,12 @@ defmodule Smalt.Amqp.ManagementRpc do
         # legal value; only a truly absent field is malformed.
         respond(400, "SESSION_STATE_REQUIRED", nil, correlation_id)
 
+      state_too_large?(state) ->
+        # Azure cap: session state is capped at 256KB
+        # (MessagingError "ArgumentOutOfRange"/size exceeded on the real
+        # service); emulator surfaces it typed as 400.
+        respond(400, "SESSION_STATE_SIZE_EXCEEDED", nil, correlation_id)
+
       true ->
         case store_call(context, :session_state_put, [queue, session_id, state]) do
           :ok -> respond(200, "OK", nil, correlation_id)
@@ -539,6 +558,16 @@ defmodule Smalt.Amqp.ManagementRpc do
         end
     end
   end
+
+  # 256KB Azure session-state cap; binary state only (non-binary non-nil
+  # state would crash byte_size, so it falls through to the store seam and
+  # fails there if truly malformed).
+  @session_state_max 256 * 1024
+
+  defp state_too_large?(state) when is_binary(state),
+    do: byte_size(state) > @session_state_max
+
+  defp state_too_large?(_), do: false
 
   defp get_session_state(body, queue_from_request, correlation_id, context, _now) do
     session_id = body_field(body, "session-id")
@@ -562,16 +591,24 @@ defmodule Smalt.Amqp.ManagementRpc do
   # com.microsoft:get-message-sessions (GAP-A2-06)
   # ===========================================================================
 
-  # Enumerates session ids recorded in `:smalt_sb_sessions` for the entity
+  # Enumerates sessions recorded in `:smalt_sb_sessions` for the entity
   # (resolved from associated-link-name, like renew-session-lock). Body fields
   # `skip`/`top` page the result (both optional, defaults 0/100); the py SDK's
   # browser stops paginating on a page shorter than its `top` (100), so the
   # handler returns the remaining sessions capped at `top` and reports
-  # `skip` = skip + returned.
+  # `skip` = skip + returned. Optional `since-updated-time` (AMQP timestamp ms
+  # or integer) filters to sessions whose record was touched at/after the
+  # instant. Each entry carries the session-state size (bytes), the active
+  # message count, and the last-updated timestamp; the SDK consumes
+  # `sessions-ids`, the detail map rides alongside (additive, wire-safe).
   defp get_message_sessions(body, queue_from_request, correlation_id, context, _now) do
-    queue = bare_entity(body_field(body, "queue") || queue_from_request)
+    queue =
+      bare_entity(
+        body_field(body, "queue") || Map.get(body, :queue) || queue_from_request
+      )
     skip = fetch_or(body, "skip", 0) |> coerce_long()
     top = fetch_or(body, "top", 100) |> coerce_long()
+    since = fetch_or(body, "since-updated-time", nil) |> coerce_since()
 
     cond do
       blank?(queue) ->
@@ -583,13 +620,31 @@ defmodule Smalt.Amqp.ManagementRpc do
       top == :error or not is_integer(top) or top < 1 ->
         respond(400, "SESSION_SKIP_BOUNDS", nil, correlation_id)
 
+      since == :error ->
+        respond(400, "SESSION_SKIP_BOUNDS", nil, correlation_id)
+
       true ->
-        case store_call(context, :list_sessions, [queue, [skip: skip, top: top]]) do
-          {:ok, ids} when is_list(ids) ->
+        case store_call(context, :list_sessions, [
+               queue,
+               [skip: skip, top: top, since: since]
+             ]) do
+          {:ok, entries} when is_list(entries) ->
+            ids = Enum.map(entries, & &1.session_id)
+
+            detail =
+              Enum.map(entries, fn e ->
+                %{
+                  "session-id" => e.session_id,
+                  "session-state-size" => e.session_state_size,
+                  "message-count" => e.message_count,
+                  "updated-at" => {:timestamp, e.updated_at}
+                }
+              end)
+
             respond(
               200,
               "OK",
-              %{"sessions-ids" => ids, "skip" => skip + length(ids)},
+              %{"sessions-ids" => ids, "sessions" => detail, "skip" => skip + length(ids)},
               correlation_id
             )
 
@@ -1074,6 +1129,13 @@ defmodule Smalt.Amqp.ManagementRpc do
 
   defp coerce_long(_), do: :error
 
+  # since-updated-time: AMQP timestamp section ({:timestamp, ms}) or raw
+  # integer ms; absent/nil -> nil (no filter). Anything else is :error (400).
+  defp coerce_since(nil), do: nil
+  defp coerce_since({:timestamp, ms}) when is_integer(ms), do: ms
+  defp coerce_since(ms) when is_integer(ms), do: ms
+  defp coerce_since(_), do: :error
+
   # R135 (W5-17): management ops that resolve an entity by name must accept
   # URI-form queue fields ("amqps://host:5671/q") the same way link attach
   # addresses already normalize via Connection.bare_entity/1 (R96/R129).
@@ -1140,6 +1202,17 @@ defmodule Smalt.Amqp.ManagementRpc do
     do: Map.put(map, "sequence-number", seq)
 
   defp maybe_put_seq(map, _), do: map
+
+  # Peek envelope surfaces the row's settlement state for non-live rows
+  # (still-deferred rows read `delivery-state: deferred`); live rows are
+  # stateless from the SDK's perspective and stay unlabeled.
+  defp maybe_put_delivery_state(map, %{state: :deferred}),
+    do: Map.put(map, "delivery-state", "deferred")
+
+  defp maybe_put_delivery_state(map, %{state: :dead}),
+    do: Map.put(map, "delivery-state", "suspended")
+
+  defp maybe_put_delivery_state(map, _), do: map
 
   # R178e: the receive-by-sequence reply must carry the message HEADER
   # delivery-count (the SDK reads deliveryCount from the decoded header, not

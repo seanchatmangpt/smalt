@@ -30,7 +30,6 @@ defmodule Smalt.CascadeEdges do
   # Canonical ordering: rows sorted by (parent_resource, table) at
   # render time so the artifact is independent of SPARQL engine row
   # order. Replay identity fenced by test/cascade_replay_identity_test.exs.
-  
 
   @cascade_edges [
     %{
@@ -41,7 +40,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.Cosmos"
     },
-
     %{
       parent_resource: "Microsoft.DocumentDb/sqlDatabases",
       table: :smalt_cosmos_pk_meta,
@@ -50,7 +48,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.Cosmos"
     },
-
     %{
       parent_resource: "Microsoft.KeyVault/vaults",
       table: :smalt_metrics,
@@ -59,7 +56,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.Metrics"
     },
-
     %{
       parent_resource: "Microsoft.KeyVault/vaults",
       table: :smalt_resources,
@@ -68,7 +64,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.ArmGateway.Router"
     },
-
     %{
       parent_resource: "Microsoft.KeyVault/vaults",
       table: :smalt_vault_secrets,
@@ -77,7 +72,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.VaultData"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_blob_blocks,
@@ -86,7 +80,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_blob_containers,
@@ -95,7 +88,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_blob_policy,
@@ -104,7 +96,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_blob_snapshots,
@@ -113,7 +104,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_blobs,
@@ -122,7 +112,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_cosmos_pk_meta,
@@ -131,7 +120,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.Cosmos"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_metrics,
@@ -140,7 +128,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.Metrics"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_resource_groups,
@@ -149,7 +136,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.ArmGateway.Router"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_resources,
@@ -158,7 +144,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.ArmGateway.Router"
     },
-
     %{
       parent_resource: "Microsoft.Network/resourceGroups",
       table: :smalt_vault_secrets,
@@ -167,7 +152,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.VaultData"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_blob_blocks,
@@ -176,7 +160,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_blob_containers,
@@ -185,7 +168,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_blob_policy,
@@ -194,7 +176,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_blob_snapshots,
@@ -203,7 +184,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_blobs,
@@ -212,7 +192,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.DataPlane.BlobStorage"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_metrics,
@@ -221,7 +200,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.Metrics"
     },
-
     %{
       parent_resource: "Microsoft.Storage/storageAccounts",
       table: :smalt_resources,
@@ -230,7 +208,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.ArmGateway.Router"
     },
-
     %{
       parent_resource: "smalt:enclave-destroy",
       table: :smalt_metrics,
@@ -239,7 +216,6 @@ defmodule Smalt.CascadeEdges do
       sweep_strategy: :cascade,
       owner_module: "Smalt.Enclave.State"
     }
-
   ]
 
   @doc "Every declared cascade edge, sorted by (parent_resource, table)."

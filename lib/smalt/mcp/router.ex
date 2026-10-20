@@ -14,7 +14,9 @@ defmodule Smalt.Mcp.Router do
   policy.exemptions.list, eg.dlq.list, lro.operations.list, cluster.status,
   health.readiness, plus the v26.10.20 window reads: kv.certificates.list,
   sb.topics.list, cosmos.stats, policy.remediations.list,
-  appconfig.snapshots.list, atlas.lineage.get.
+  appconfig.snapshots.list, atlas.lineage.get, plus the v26.10.21 window reads:
+  policy.locks.list, appconfig.snapshots.kv, cosmos.changefeed.peek,
+  sb.topics.subscriptions, eh.consumergroups.list, certificates.get.
 
   READ-ONLY BY LAW: this surface exposes NO actuation tools. The substrate
   refuses unreceipted DO; any tool call for a non-registered (actuation or
@@ -363,6 +365,75 @@ defmodule Smalt.Mcp.Router do
   defp input_schema("policy.remediations.list"), do: %{"type" => "object", "properties" => %{}}
 
   defp input_schema("appconfig.snapshots.list"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("policy.locks.list") do
+    %{
+      "type" => "object",
+      "required" => ["scope"],
+      "properties" => %{
+        "scope" => %{
+          "type" => "string",
+          "description" =>
+            "scope prefix, e.g. /subscriptions/<sub> or /subscriptions/<sub>/resourceGroups/<rg>"
+        }
+      }
+    }
+  end
+
+  defp input_schema("appconfig.snapshots.kv") do
+    %{
+      "type" => "object",
+      "required" => ["name"],
+      "properties" => %{
+        "name" => %{"type" => "string", "description" => "snapshot name"}
+      }
+    }
+  end
+
+  defp input_schema("cosmos.changefeed.peek") do
+    %{
+      "type" => "object",
+      "required" => ["db", "coll"],
+      "properties" => %{
+        "db" => %{"type" => "string"},
+        "coll" => %{"type" => "string"}
+      }
+    }
+  end
+
+  defp input_schema("sb.topics.subscriptions") do
+    %{
+      "type" => "object",
+      "required" => ["topic"],
+      "properties" => %{
+        "topic" => %{"type" => "string", "description" => "topic name"},
+        "namespace" => %{
+          "type" => "string",
+          "description" => "optional Service Bus namespace name filter"
+        }
+      }
+    }
+  end
+
+  defp input_schema("eh.consumergroups.list") do
+    %{
+      "type" => "object",
+      "required" => ["hub"],
+      "properties" => %{
+        "hub" => %{"type" => "string", "description" => "Event Hub name"}
+      }
+    }
+  end
+
+  defp input_schema("certificates.get") do
+    %{
+      "type" => "object",
+      "required" => ["name"],
+      "properties" => %{
+        "name" => %{"type" => "string"}
+      }
+    }
+  end
 
   defp input_schema("atlas.lineage.get") do
     %{
@@ -762,8 +833,172 @@ defmodule Smalt.Mcp.Router do
     end
   end
 
+  # -- v26.10.21 ERRC RAISE lane: window-capability read tools (21-26) --------
+  defp invoke("policy.locks.list", args) do
+    case args do
+      %{"scope" => scope} when is_binary(scope) ->
+        locks = Smalt.Policy.list_locks(scope)
+
+        {:ok, %{"scope" => scope, "value" => locks, "count" => length(locks)}}
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: policy.locks.list requires scope"}
+    end
+  end
+
+  defp invoke("appconfig.snapshots.kv", args) do
+    case args do
+      %{"name" => name} when is_binary(name) ->
+        case Smalt.DataPlane.AppConfigSnapshots.kv_view(name) do
+          {:ok, items} ->
+            {:ok, %{"name" => name, "items" => items, "count" => length(items)}}
+
+          {:error, {code, message}} ->
+            {:refusal, code, "appconfig.snapshots.kv: #{message}"}
+
+          other ->
+            {:refusal, @internal_code, "appconfig.snapshots.kv unexpected: #{inspect(other)}"}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: appconfig.snapshots.kv requires name"}
+    end
+  end
+
+  # Read-only PEEK over the Cosmos change feed: counts docs newer than the
+  # persisted per-container cursor ({2, db, coll} in :smalt_cosmos_pk_meta)
+  # WITHOUT advancing it — the wire `change_feed/3` advances the cursor as a
+  # side effect, so the MCP read surface cannot call it (read-only by law).
+  # Cursor semantics mirrored from Cosmos.do_change_feed/2 (ts boundary +
+  # seen-etag pins); see cf_is_new? there. Cursor-record absence = fresh feed
+  # (everything pending), same as Cosmos.cf_cursor/1.
+  @cf_cursor_key_index 2
+
+  defp invoke("cosmos.changefeed.peek", args) do
+    case args do
+      %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
+        if :ets.info(:smalt_cosmos_docs) == :undefined or
+             :ets.info(:smalt_cosmos_pk_meta) == :undefined do
+          {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
+        else
+          cursor_key = {@cf_cursor_key_index, db, coll}
+          cursor = cf_cursor_read(cursor_key)
+
+          pending =
+            :smalt_cosmos_docs
+            |> Smalt.Store.list_prefix("#{db}/#{coll}/")
+            |> Enum.filter(fn doc -> cf_doc_new?(doc, cursor) end)
+            |> Enum.sort_by(&{&1["_ts"] || 0, &1["id"]})
+
+          {:ok,
+           %{
+             "db" => db,
+             "coll" => coll,
+             "pending" => pending,
+             "count" => length(pending),
+             "cursor_advanced" => false
+           }}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: cosmos.changefeed.peek requires db and coll"}
+    end
+  end
+
+  defp invoke("sb.topics.subscriptions", args) do
+    case args do
+      %{"topic" => topic} when is_binary(topic) ->
+        ns = args["namespace"]
+
+        if ns != nil and not is_binary(ns) do
+          {:refusal, @invalid_params_code,
+           "refused: sb.topics.subscriptions namespace must be a string"}
+        else
+          subs =
+            :smalt_resources
+            |> Smalt.Store.list()
+            |> Enum.filter(&(&1["type"] == "Microsoft.ServiceBus/namespaces/topics/subscriptions"))
+            |> Enum.filter(fn rec ->
+              id = rec["id"] || ""
+
+              String.contains?(id, "/topics/#{topic}/subscriptions/") and
+                case ns do
+                  nil -> true
+                  _ -> String.contains?(id, "/namespaces/#{ns}/topics/")
+                end
+            end)
+            |> Enum.sort_by(&String.downcase(&1["id"] || ""))
+            |> Enum.map(&%{"id" => &1["id"], "name" => &1["name"], "properties" => &1["properties"]})
+
+          {:ok, %{"topic" => topic, "subscriptions" => subs, "count" => length(subs)}}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: sb.topics.subscriptions requires topic"}
+    end
+  end
+
+  defp invoke("eh.consumergroups.list", args) do
+    case args do
+      %{"hub" => hub} when is_binary(hub) ->
+        groups = Smalt.Messaging.EventHubs.list_consumer_groups(hub)
+
+        {:ok, %{"hub" => hub, "consumer_groups" => groups, "count" => length(groups)}}
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: eh.consumergroups.list requires hub"}
+    end
+  end
+
+  defp invoke("certificates.get", args) do
+    case args do
+      %{"name" => name} when is_binary(name) ->
+        case Smalt.DataPlane.Certificates.get(name) do
+          {:ok, 200, record} ->
+            # Attributes only, matching the list projection: never the base64
+            # DER body, private-key material, or stored request headers.
+            {:ok,
+             %{
+               "id" => record["id"],
+               "name" => record["name"],
+               "attributes" => record["attributes"]
+             }}
+
+          {:error, 404, %{"error" => %{"code" => code, "message" => message}}} ->
+            {:refusal, code, "certificates.get: #{message}"}
+
+          other ->
+            {:refusal, @internal_code, "certificates.get unexpected: #{inspect(other)}"}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: certificates.get requires name"}
+    end
+  end
+
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}
+
+  # Kept AFTER the invoke/2 clause group (contiguity — see message_count_arg
+  # note above). Read-only mirror of Cosmos.cf_cursor/1 + cf_is_new?/2 (same
+  # ts-boundary + seen-etag semantics, cursor record NEVER advanced here).
+  defp cf_cursor_read(cursor_key) do
+    case :ets.lookup(:smalt_cosmos_pk_meta, cursor_key) do
+      [{^cursor_key, %{"ts" => ts, "seen" => seen}}]
+      when is_integer(ts) and is_map(seen) ->
+        %{"ts" => ts, "seen" => seen}
+
+      _ ->
+        %{"ts" => 0, "seen" => %{}}
+    end
+  end
+
+  defp cf_doc_new?(doc, cursor) do
+    ts = doc["_ts"] || 0
+
+    ts > cursor["ts"] or
+      (ts == cursor["ts"] and cursor["seen"][doc["id"]] != doc["_etag"])
+  end
 
   # Kept AFTER the invoke/2 clause group (contiguity — see message_count_arg
   # note above). DLQ rows are CONTENT-FREE and header-free: the stored blob
