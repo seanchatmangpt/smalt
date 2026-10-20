@@ -9,7 +9,10 @@ defmodule Smalt.Mcp.Router do
   generated `Smalt.Mcp.Descriptor` (elixir-mcp-a2a-pack shape, adapted).
 
   Tools: substrate.status, substrate.capabilities (Registry-derived),
-  arm.get, cosmos.query, blob.list, sb.peek, kv.get, doctor.summary.
+  arm.get, cosmos.query, blob.list, sb.peek, kv.get, doctor.summary, and the
+  v26.10.19 window-capability reads: kv.deletedkeys.list,
+  policy.exemptions.list, eg.dlq.list, lro.operations.list, cluster.status,
+  health.readiness.
 
   READ-ONLY BY LAW: this surface exposes NO actuation tools. The substrate
   refuses unreceipted DO; any tool call for a non-registered (actuation or
@@ -294,6 +297,51 @@ defmodule Smalt.Mcp.Router do
 
   defp input_schema("doctor.summary"), do: %{"type" => "object", "properties" => %{}}
 
+  defp input_schema("kv.deletedkeys.list"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("policy.exemptions.list") do
+    %{
+      "type" => "object",
+      "required" => ["scope"],
+      "properties" => %{
+        "scope" => %{
+          "type" => "string",
+          "description" =>
+            "scope prefix, e.g. /subscriptions/<sub> or /subscriptions/<sub>/resourceGroups/<rg>"
+        }
+      }
+    }
+  end
+
+  defp input_schema("eg.dlq.list") do
+    %{
+      "type" => "object",
+      "properties" => %{
+        "account" => %{"type" => "string", "default" => "eg-dlq"},
+        "subscriber" => %{
+          "type" => "string",
+          "description" => "optional subscriber name; narrows to container eg-dlq-<subscriber>"
+        }
+      }
+    }
+  end
+
+  defp input_schema("lro.operations.list") do
+    %{
+      "type" => "object",
+      "properties" => %{
+        "subscription" => %{
+          "type" => "string",
+          "description" => "optional subscription id filter (Scopes to /subscriptions/<id>/operations)"
+        }
+      }
+    }
+  end
+
+  defp input_schema("cluster.status"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("health.readiness"), do: %{"type" => "object", "properties" => %{}}
+
   # ---------------------------------------------------------------------------
   # Dispatch: real substrate modules, reads only
   # ---------------------------------------------------------------------------
@@ -454,6 +502,102 @@ defmodule Smalt.Mcp.Router do
   end
 
   defp invoke("doctor.summary", _args), do: {:ok, doctor_summary()}
+
+  # -- v26.10.19 window-capability read tools (ERRC RAISE lane) --------------
+
+  defp invoke("kv.deletedkeys.list", _args) do
+    case Smalt.DataPlane.KeyVaultActions.list_deleted_keys() do
+      {:ok, 200, %{"value" => keys}} ->
+        {:ok, %{"deleted_keys" => keys, "count" => length(keys)}}
+
+      {:ok, status, body} ->
+        {:refusal, "KV_ERROR", "kv.deletedkeys.list returned #{status}: #{inspect(body)}"}
+
+      other ->
+        {:refusal, @internal_code, "kv.deletedkeys.list unexpected: #{inspect(other)}"}
+    end
+  end
+
+  defp invoke("policy.exemptions.list", args) do
+    case args do
+      %{"scope" => scope} when is_binary(scope) ->
+        exemptions = Smalt.Policy.list_policy_exemptions(scope)
+
+        {:ok, %{"scope" => scope, "value" => exemptions, "count" => length(exemptions)}}
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: policy.exemptions.list requires scope"}
+    end
+  end
+
+  defp invoke("eg.dlq.list", args) do
+    account = args["account"]
+
+    if account != nil and not is_binary(account) do
+      {:refusal, @invalid_params_code, "refused: eg.dlq.list account must be a string"}
+    else
+      account = account || "eg-dlq"
+
+      prefix =
+        case args["subscriber"] do
+          sub when is_binary(sub) -> "#{account}/eg-dlq-#{sub}/"
+          nil -> "#{account}/"
+          _ ->
+            {:refusal, @invalid_params_code,
+             "refused: eg.dlq.list subscriber must be a string"}
+        end
+
+      if is_binary(prefix) do
+        blobs =
+          :smalt_blobs
+          |> Smalt.Store.prefix_keys(prefix)
+          |> Enum.flat_map(fn key ->
+            case Smalt.Store.get(:smalt_blobs, key) do
+              {:ok, blob} -> [Smalt.DataPlane.BlobStorage.blob_metadata(blob)]
+              _ -> []
+            end
+          end)
+
+        {:ok, %{"prefix" => prefix, "dead_lettered" => blobs, "count" => length(blobs)}}
+      else
+        prefix
+      end
+    end
+  end
+
+  defp invoke("lro.operations.list", args) do
+    sub = args["subscription"]
+
+    if sub != nil and not is_binary(sub) do
+      {:refusal, @invalid_params_code, "refused: lro.operations.list subscription must be a string"}
+    else
+      ops =
+        :smalt_operations
+        |> Smalt.Store.list()
+        |> Enum.filter(fn
+          %{"id" => "/subscriptions/" <> rest} ->
+            case sub do
+              nil -> true
+              ^sub -> true
+              _ -> String.starts_with?(rest, "#{sub}/")
+            end
+
+          _ ->
+            false
+        end)
+        |> Enum.sort_by(& &1["id"])
+
+      {:ok, %{"operations" => ops, "count" => length(ops)}}
+    end
+  end
+
+  defp invoke("cluster.status", _args), do: {:ok, Smalt.Cluster.cluster_status()}
+
+  defp invoke("health.readiness", _args) do
+    {status, checks} = Smalt.Health.readiness()
+
+    {:ok, %{"status" => to_string(status), "checks" => Smalt.Health.to_json_map({status, checks})}}
+  end
 
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}

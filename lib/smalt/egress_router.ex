@@ -115,6 +115,8 @@ defmodule Smalt.EgressRouter do
     end
   end
 
+  # KD-101 narrowed: webhook receiver surface (zero-auth /eventgrid class)
+  plug(Smalt.EventGridWebhookPlug)
   plug(Smalt.Auth.Bearer)
   plug(:fetch_query_params)
   # Python SDK trailing-slash tolerance: GET /dbs/:db/colls/:coll/ must route
@@ -480,6 +482,22 @@ defmodule Smalt.EgressRouter do
             "message" => "Entity with id #{db} not found"
           })
       end
+    end)
+  end
+
+  # DELETE /dbs/:db — database delete with full cascade (docs, pk_meta, cf
+  # cursors, LSN/session-token namespace). 204 on success, 404 on miss.
+  delete "/dbs/:db" do
+    with_route(conn, Cosmos, fn conn ->
+      cosmos_respond(conn, Cosmos.delete_database(db, header_map(conn)))
+    end)
+  end
+
+  # DELETE /dbs/:db/colls/:coll — container delete with full cascade. 204 on
+  # success, 404 on miss (SDK raises CosmosResourceNotFoundError).
+  delete "/dbs/:db/colls/:coll" do
+    with_route(conn, Cosmos, fn conn ->
+      cosmos_respond(conn, Cosmos.delete_collection(db, coll, header_map(conn)))
     end)
   end
 
@@ -1038,6 +1056,35 @@ defmodule Smalt.EgressRouter do
     end)
   end
 
+  # KD-102: deleted-secrets plane — the secrets twin of /deletedkeys above.
+  # Same bundle shape (recoveryId/deletedDate/scheduledPurgeDate), same
+  # recover-200 / purge-204 / purge-protection-409 contracts. List/read are
+  # namespaced from deleted keys by {:secret, name} tuple keys in the shared
+  # deleted-bundle table (see KeyVaultActions).
+  get "/deletedsecrets" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.list_deleted_secrets())
+    end)
+  end
+
+  get "/deletedsecrets/:name" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.get_deleted_secret(name))
+    end)
+  end
+
+  post "/deletedsecrets/:name/recover" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.recover_deleted_secret(name))
+    end)
+  end
+
+  post "/deletedsecrets/:name/purge" do
+    with_route(conn, KeyVaultActions, fn conn ->
+      kv_respond(conn, KeyVaultActions.purge_deleted_secret(name))
+    end)
+  end
+
   defp kv_crypto_dispatch(conn, name, version, action) do
     with_route(conn, KeyVaultActions, fn conn ->
       with_valid_body(conn, fn conn ->
@@ -1141,22 +1188,16 @@ defmodule Smalt.EgressRouter do
     end
   end
 
+  # KD-102 (secrets soft-delete plane): DELETE is a soft delete — the live row
+  # moves to the deleted-bundle table and the response is the deleted-secret
+  # bundle (id/attributes + recoveryId/deletedDate/scheduledPurgeDate), exactly
+  # the real Azure SecretBundle delete contract. Live GET then 404s by
+  # construction; recover/purge ride /deletedsecrets below.
   delete "/secrets/:name" do
     if :ets.info(:smalt_vault_secrets) == :undefined do
       route_not_ready(conn)
     else
-      case Store.get(:smalt_vault_secrets, name) do
-        {:ok, record} ->
-          Store.delete(:smalt_vault_secrets, name)
-
-          send_json(conn, 200, %{
-            "id" => record["id"],
-            "attributes" => public_attributes(record)
-          })
-
-        :error ->
-          blob_error(conn, 404, not_found_error("SecretNotFound"))
-      end
+      kv_respond(conn, KeyVaultActions.delete_secret(name))
     end
   end
 
@@ -1169,12 +1210,91 @@ defmodule Smalt.EgressRouter do
     secret_subverb_refusal(conn, "list versions")
   end
 
+
+  # ---------------------------------------------------------------------------
+  # Key Vault Certificates (KD-104, Smalt.DataPlane.Certificates)
+  # ---------------------------------------------------------------------------
+  post "/certificates/:name/create" do
+    with_valid_body(conn, fn conn ->
+      case Smalt.DataPlane.Certificates.create(name, conn, conn.body_params) do
+        {:ok, status, body} -> send_json(conn, status, body)
+        {:error, status, body} -> send_json(conn, status, body)
+      end
+    end)
+  end
+
+  get "/certificates" do
+    {:ok, status, body} = Smalt.DataPlane.Certificates.list()
+    send_json(conn, status, body)
+  end
+
+  get "/certificates/:name" do
+    case Smalt.DataPlane.Certificates.get(name) do
+      {:ok, status, body} -> send_json(conn, status, body)
+      {:error, status, body} -> send_json(conn, status, body)
+    end
+  end
+
+  delete "/certificates/:name" do
+    case Smalt.DataPlane.Certificates.delete(name) do
+      {:ok, status, body} -> send_json(conn, status, body)
+      {:error, status, body} -> send_json(conn, status, body)
+    end
+  end
+
+  post "/deletedcertificates/:name/purge" do
+    case Smalt.DataPlane.Certificates.purge(name) do
+      {:error, status, body} -> send_json(conn, status, body)
+    end
+  end
+
+  # KD-103 (capability wave 1): backup/restore via VaultData — the refusal
+  # sites became real surfaces when backup_secret/restore_secret landed.
   post "/secrets/:name/backup" do
-    secret_subverb_refusal(conn, "backup")
+    if :ets.info(:smalt_vault_secrets) == :undefined do
+      route_not_ready(conn)
+    else
+      case Smalt.DataPlane.VaultData.backup_secret(name) do
+        {:ok, envelope} -> send_json(conn, 200, envelope)
+        :error -> blob_error(conn, 404, not_found_error("SecretNotFound"))
+      end
+    end
   end
 
   post "/secrets/:name/restore" do
-    secret_subverb_refusal(conn, "restore")
+    if :ets.info(:smalt_vault_secrets) == :undefined do
+      route_not_ready(conn)
+    else
+      with_valid_body(conn, fn conn ->
+        case conn.body_params do
+          %{"value" => blob} when is_binary(blob) ->
+            case Smalt.DataPlane.VaultData.restore_secret(blob, conn.host) do
+              {:ok, :created} ->
+                send_json(conn, 201, %{"status" => "restored"})
+
+              {:ok, :conflict} ->
+                blob_error(conn, 409, %{
+                  "error" => %{
+                    "code" => "Conflict",
+                    "message" =>
+                      "secret already exists and is live; delete (or purge) it before restore"
+                  }
+                })
+
+              {:error, code, msg} ->
+                blob_error(conn, 400, %{"error" => %{"code" => code, "message" => msg}})
+            end
+
+          _ ->
+            blob_error(conn, 400, %{
+              "error" => %{
+                "code" => "InvalidParameter",
+                "message" => "restore body requires a string \"value\" (the backup blob)"
+              }
+            })
+        end
+      end)
+    end
   end
 
   # Rotation-trigger cross-plane read-back (v26.10.16 ARM secret rotate lane):

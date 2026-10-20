@@ -288,7 +288,11 @@ sb_tls_gate() {
 sb_spawn_substrate() {
   local block="$1" auth="$2" amqp="$3" eh="$4" arm="$5" egress="$6" tls="$7" mcp="$8" log="$9"
   local shared_key
-  shared_key="$(head -c 48 /dev/urandom | base64)"
+  # Honor an operator-pinned shared key (examples/ harnesses pass it so SAS
+  # auth matches); else generate a per-boot random key (existing behavior).
+  shared_key="${SMALT_SB_SHARED_KEY:-$(head -c 48 /dev/urandom | base64)}"
+  # Persist per-block so the marker writer (caller scope) can publish it.
+  mkdir -p "$SB_STATE_DIR/keys"; ( umask 077; printf '%s' "$shared_key" >"$SB_STATE_DIR/keys/$block.sbkey" )
   # Bridge operator SMALT_* rate-limit knobs into app env before start.
   # Mechanism (KD-110 defect): the ARM throttle plug reads
   # Application.get_env(:smalt, :arm_rate_limit) directly (router.ex), NOT the
@@ -424,7 +428,8 @@ sb_up() {
     rm -f "$marker"
     return 2
   fi
-  sb_write_marker "$block" "${ports[*]}" "$pid" "$auth" "$log"
+  local sk=""; [ -r "$SB_STATE_DIR/keys/$block.sbkey" ] && sk="$(cat "$SB_STATE_DIR/keys/$block.sbkey")"
+  sb_write_marker "$block" "${ports[*]}" "$pid" "$auth" "$log" "$sk"
   sb_lock_release
   _sb_receipt "$block" "${ports[*]}" "$pid" false "$marker" "$auth"
   return 0
@@ -437,10 +442,12 @@ sb_ports_any_open() {
 }
 
 sb_write_marker() {
-  local block="$1" ports="$2" pid="$3" auth="$4" log="$5"
+  local block="$1" ports="$2" pid="$3" auth="$4" log="$5" shared_key="${6:-}"
   sb_now_epoch
-  printf '{"block": "%s", "ports": [%s], "pid": %s, "auth": "%s", "booted": %s, "log": "%s"}\n' \
-    "$block" "$(sb_ports_json_array "$ports")" "$pid" "$auth" "$_SB_NOW" "$log" >"$(sb_marker_path "$block")"
+  local sk_json=""
+  [ -n "$shared_key" ] && sk_json=$(printf ', "shared_key": "%s"' "$shared_key")
+  ( umask 077; printf '{"block": "%s", "ports": [%s], "pid": %s, "auth": "%s", "booted": %s, "log": "%s"%s}\n' \
+    "$block" "$(sb_ports_json_array "$ports")" "$pid" "$auth" "$_SB_NOW" "$log" "$sk_json" >"$(sb_marker_path "$block")" )
 }
 
 _sb_receipt() {

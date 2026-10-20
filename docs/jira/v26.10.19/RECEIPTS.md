@@ -16,14 +16,14 @@ count, or PASS/FAIL token) found in the file.
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
 | kd100-instan | [kd100-instance-discovery-tbd.md](receipts/kd100-instance-discovery-tbd.md) | PASS | kd100-instance-discovery-tbd.md — KD-100 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
-| kd101-eg-web | [kd101-eg-webhook-tbd.md](receipts/kd101-eg-webhook-tbd.md) | SUSPECT | kd101-eg-webhook-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd101-eg-web | [kd101-eg-webhook-tbd.md](receipts/kd101-eg-webhook-tbd.md) | ALIVE | kd101-eg-webhook-tbd.md — evidence receipt (witness lane, 2026-10-20) **NO-CONTEXT** |
 | kd102-kv-sec | [kd102-kv-secrets-softdelete-tbd.md](receipts/kd102-kv-secrets-softdelete-tbd.md) | PASS | kd102-kv-secrets-softdelete-tbd.md — KD-102 witness (lane, 2026-10-19) |
 | kd103-kv-sec | [kd103-kv-secrets-backup-restore-tbd.md](receipts/kd103-kv-secrets-backup-restore-tbd.md) | PASS | kd103-kv-secrets-backup-restore-tbd.md — KD-103 witness (lane, 2026-10-19) |
 | kd104-kv-cer | [kd104-kv-certificates-tbd.md](receipts/kd104-kv-certificates-tbd.md) | PASS | kd104-kv-certificates-tbd.md — KD-104 witness (lane, 2026-10-19) |
 | kd105-ps256- | [kd105-ps256-external-verify-tbd.md](receipts/kd105-ps256-external-verify-tbd.md) | UNKNOWN | kd105-ps256-external-verify-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
 | kd106-skr-re | [kd106-skr-release-contract-tbd.md](receipts/kd106-skr-release-contract-tbd.md) | PASS | kd106-skr-release-contract-tbd.md — KD-106 witness (lane, 2026-10-19) |
-| kd107-blob-s | [kd107-blob-snapshots-tbd.md](receipts/kd107-blob-snapshots-tbd.md) | UNKNOWN | kd107-blob-snapshots-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
-| kd108-blob-l | [kd108-blob-lease-acl-tbd.md](receipts/kd108-blob-lease-acl-tbd.md) | SUSPECT | kd108-blob-lease-acl-tbd.md — evidence skeleton (kd-registrar, 2026-10-19) |
+| kd107-blob-s | [kd107-blob-snapshots-tbd.md](receipts/kd107-blob-snapshots-tbd.md) | ALIVE | kd107-blob-snapshots-tbd.md — evidence receipt (witness lane, 2026-10-20) **NO-CONTEXT** |
+| kd108-blob-l | [kd108-blob-lease-acl-tbd.md](receipts/kd108-blob-lease-acl-tbd.md) | PASS | kd108-blob-lease-acl-tbd.md — KD-108 witness (witness lane, 2026-10-19) |
 | kd109-appcon | [kd109-appconfig-feature-flags-tbd.md](receipts/kd109-appconfig-feature-flags-tbd.md) | PASS | kd109-appconfig-feature-flags-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
 | kd110-thrott | [kd110-throttling-infinity-tbd.md](receipts/kd110-throttling-infinity-tbd.md) | PASS | kd110-throttling-infinity-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
 | kd111-arm-lr | [kd111-arm-lro-narrow-tbd.md](receipts/kd111-arm-lro-narrow-tbd.md) | PASS | kd111-arm-lro-narrow-tbd.md — evidence receipt (kd-lane, 2026-10-19) **NO-CONTEXT** |
@@ -38,8 +38,8 @@ count, or PASS/FAIL token) found in the file.
 | kd119-kv-rs2 | [kd119-kv-rs256-double-hash-tbd.md](receipts/kd119-kv-rs256-double-hash-tbd.md) | SUSPECT | KD-119 vault RS256 sign double-hash |
 | kd99-sts-hs2 | [kd99-sts-hs256-tbd.md](receipts/kd99-sts-hs256-tbd.md) | PASS | kd99-sts-hs256-tbd.md — KD-99 evidence receipt (kd-registrar witness lane, 2026-10-19) **NO-CONTEXT** |
 | v261019-07-r | [v261019-07-reset-inventory.md](receipts/v261019-07-reset-inventory.md) | LANDED | V261019-07 (reset-inventory) |
-| v261019-08-t | [v261019-08-ts-external-suite.md](receipts/v261019-08-ts-external-suite.md) | LANDED | V261019-08 (ts-external-suite) |
-| v261019-09-p | [v261019-09-py-external-suite.md](receipts/v261019-09-py-external-suite.md) | SUSPECT | V261019-09 (py-external-suite) |
+| v261019-08-t | [v261019-08-ts-external-suite.md](receipts/v261019-08-ts-external-suite.md) | PARTIAL_ALIVE | V261019-08 (ts-external-suite) |
+| v261019-09-p | [v261019-09-py-external-suite.md](receipts/v261019-09-py-external-suite.md) | ALIVE | V261019-09 (py-external-suite) |
 | v261019-10-r | [v261019-10-residual-elixir-tier.md](receipts/v261019-10-residual-elixir-tier.md) | ALIVE | V261019-10 (residual-elixir-tier) |
 | v261019-11-t | [v261019-11-test-deletion-gate.md](receipts/v261019-11-test-deletion-gate.md) | LANDED | V261019-11 (test-deletion-gate) |
 | v261019-12-c | [v261019-12-court-x2-close.md](receipts/v261019-12-court-x2-close.md) | ALIVE | v26.10.19 court-x2 close — two greens at one SHA |
@@ -129,8 +129,5 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 
 Receipts asserting results with no real output found in-file:
 
-- **SUSPECT**: `kd101-eg-webhook-tbd.md` (standing UNKNOWN)
-- **SUSPECT**: `kd108-blob-lease-acl-tbd.md` (standing UNKNOWN)
 - **SUSPECT**: `kd116-sb-session-delivery-shape-tbd.md` (standing UNKNOWN)
 - **SUSPECT**: `kd119-kv-rs256-double-hash-tbd.md` (standing UNKNOWN)
-- **SUSPECT**: `v261019-09-py-external-suite.md` (standing UNKNOWN)

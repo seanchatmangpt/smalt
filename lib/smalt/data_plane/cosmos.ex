@@ -450,6 +450,102 @@ defmodule Smalt.DataPlane.Cosmos do
     :ok
   end
 
+  @doc """
+  DELETE /dbs/:db — delete a database and its full cascade. Azure parity:
+  204 + system headers on success; 404 (wire code "NotFound", the
+  CosmosResourceNotFoundError the SDKs raise) on a missing database. Cascades
+  every container under the db: documents, pk_meta rows (`{1, db, coll}`,
+  `"db/coll"`), change-feed cursors (`{2, db, coll}`), and the per-container
+  LSN counters (the session-token namespace — `x-ms-session-token` is
+  "version#lsn", so dropping the counter resets the token namespace for the
+  container; on recreate the token stream restarts clean). No If-Match is
+  required — real Cosmos requires no etag for db/container delete.
+  """
+  def delete_database(db, headers) when is_binary(db) do
+    gate(:delete, "dbs", "dbs/#{db}", headers, fn ->
+      if store_ready?() do
+        case Store.get(@pk_meta_table, {0, db}) do
+          {:ok, _record} ->
+            for {key, _} <- :ets.tab2list(@pk_meta_table),
+                match?({1, ^db, _coll}, key) do
+              {1, ^db, coll} = key
+              sweep_container(db, coll)
+            end
+
+            drop_db(db)
+            {:ok, 204, success_headers(db, nil, 0, %{}), ""}
+
+          :error ->
+            error_response(
+              db,
+              nil,
+              404,
+              "NotFound",
+              "Entity with the specified id does not exist in the system."
+            )
+        end
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  @doc """
+  DELETE /dbs/:db/colls/:coll — delete a container and its full cascade.
+  Azure parity: 204 + system headers on success; 404 ("NotFound" → SDK
+  CosmosResourceNotFoundError) on a missing container. Cascades the
+  container's documents, its pk_meta rows, its change-feed cursor, and its
+  LSN counter (session-token namespace reset). No If-Match required.
+  """
+  def delete_collection(db, coll, headers) when is_binary(db) and is_binary(coll) do
+    gate(:delete, "colls", container_link(db, coll), headers, fn ->
+      if store_ready?() do
+        case container_record(db, coll) do
+          nil ->
+            error_response(
+              db,
+              coll,
+              404,
+              "NotFound",
+              "Entity with the specified id does not exist in the system."
+            )
+
+          _record ->
+            sweep_container(db, coll)
+            {:ok, 204, success_headers(db, coll, 0, %{}), ""}
+        end
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  # Full per-container cascade: docs (`"db/coll/<id>"` prefix), pk_meta rows
+  # (collection record + pk-paths via drop_container/2), change-feed cursor
+  # `{2, db, coll}`, and the LSN counter `"db/coll"` in @lsn_table (the
+  # session-token namespace for this container).
+  defp sweep_container(db, coll) do
+    if :ets.info(@docs_table) != :undefined do
+      prefix = "#{container_key(db, coll)}/"
+
+      for {key, _} <- :ets.tab2list(@docs_table),
+          is_binary(key) and String.starts_with?(key, prefix) do
+        Store.delete(@docs_table, key)
+      end
+    end
+
+    if :ets.info(@lsn_table) != :undefined do
+      Store.delete(@lsn_table, container_key(db, coll))
+    end
+
+    if :ets.info(@pk_meta_table) != :undefined do
+      Store.delete(@pk_meta_table, {2, db, coll})
+    end
+
+    drop_container(db, coll)
+    :ok
+  end
+
   # True when `key` is a pk_meta row belonging to `db`: a collection record
   # `{1, db, _}` or a pk-paths record `"db/coll"`.
   defp cosmos_child_of?({1, db, _coll}, db), do: true

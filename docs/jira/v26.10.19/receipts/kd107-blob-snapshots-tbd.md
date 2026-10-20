@@ -1,74 +1,134 @@
-# kd107-blob-snapshots-tbd.md — evidence receipt (kd-lane, 2026-10-19)
+# kd107-blob-snapshots-tbd.md — evidence receipt (witness lane, 2026-10-20)
 
-- **KD row**: KD-107 (blob snapshots partial) — row prose says "snapshot create works
-  but snapshot listing/lease-on-snapshot semantics diverge"; source survey below shows
-  MORE is wired than the row prose claims (correction + narrowing for the registrar)
-- **Standing**: OPEN — no snapshot-lifecycle witness receipt exists in this window; divergence surface NARROWED vs the row prose
+- **KD row**: KD-107 (blob snapshots partial)
+- **Standing**: ALIVE — evidence-executed. Full create → read-at-snapshot →
+  overwrite-interplay → listing lifecycle witnessed over the wire on a live
+  substrate; residual divergence (snapshot LISTING decoration) captured verbatim.
+- **Subject**: smalt working tree @ 81a7a29, substrate block b4 (egress=39043),
+  auth=enforce, bearer token minted from the block's STS
+  (`POST /{tenant}/oauth2/v2.0/token` → http=200)
 - **Context**: solo
 
-## Real command output (this session, tree at 81a7a29)
+## Execution-2026-10-20 (substrate b4, egress 39043, enforce auth)
 
-### 1. wf2 external suite never exercised snapshots (profile names the surface, no cell ran)
-
-```
-$ grep -c snapshot docs/jira/v26.10.19/sdk-results/wf2-ts-multistore-concurrency.md docs/jira/v26.10.19/sdk-results/wf2-py-multistore-concurrency.md
-docs/jira/v26.10.19/sdk-results/wf2-ts-multistore-concurrency.md:1
-docs/jira/v26.10.19/sdk-results/wf2-py-multistore-concurrency.md:1
-```
-
-Exactly one match per file — the `cap:blob-snapshot-metadata` profile line itself; no
-snapshot cell verdict exists in either wf2 receipt. Both greps ran this session against
-the working tree and exit 0.
-
-### 2. Wire arms: create + read-at-snapshot are WIRED and KD-COVERS-pinned
+### 1. Container + blob setup
 
 ```
-$ grep -n 'snapshot' lib/smalt/egress_router.ex ; echo "exit=$?"
-40:  # KD-COVERS: KD-60 — comp=snapshot is registered (wire arm below); the rest
-42:  @blob_put_comps ~w(block blocklist metadata snapshot)
-2127:      # blob PUT arm. Any comp value with no implemented handler here (snapshot,
-2173:            # snapshot_blob/5 was previously engine-only; an unregistered comp hit
-2174:            # the typed 400). Azure answers 201 with the x-ms-snapshot timestamp
-2176:            # snapshot create arm with 409 ContainerLocked).
-2177:            if conn.query_params["comp"] == "snapshot" do
-2181:                case BlobStorage.snapshot_blob(account, container, blob_name, header_map(conn)) do
-2328:            # KD-COVERS: KD-60 — snapshot read-back (`GET ?sharesnapshot=<ts>`):
-2329:            # serves the frozen point-in-time record from :smalt_blob_snapshots
-2330:            # byte-exact; base-blob mutations after the snapshot stay invisible
-2331:            # through the snapshot. Without the param the normal GET path runs.
-2332:            if conn.query_params["sharesnapshot"] in [nil, ""] do
-2410:              # Snapshot read arm (sharesnapshot present).
-2414:                case BlobStorage.get_blob_snapshot(
-2418:                       conn.query_params["sharesnapshot"]
-2424:                    |> put_resp_header("x-ms-snapshot", conn.query_params["sharesnapshot"])
-2586:      # snapshot, ...) previously fell through and deleted the blob anyway.
-3925:  # value they did not name (appendblock, snapshot, page, pagelist, tags,
-3960:  # arm, whose unhandled comps (appendblock, snapshot, page, ...) span more
-exit=0
+$ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2?restype=container'
+HTTP/1.1 201 Created
+x-ms-request-id: 2a2e348e-9db6-4ef0-8b06-3a5a307bf013
+x-ms-version: 2021-12-02
+
+$ printf 'kd107-snapshot-base-v1' | curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H 'x-ms-version: 2021-12-02' -H 'x-ms-blob-type: BlockBlob' --data-binary @- \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2/kd107-blob.txt'
+HTTP/1.1 201 Created
+etag: "ff1aa3969013fffa7b24c256c1915028"
 ```
 
-Snapshot CREATE (`PUT ?comp=snapshot` → `BlobStorage.snapshot_blob/2`, frozen record +
-`x-ms-snapshot` header) and READ-AT-SNAPSHOT (`GET ?sharesnapshot=<ts>` →
-`BlobStorage.get_blob_snapshot/4`, frozen point-in-time record, byte-exact, base
-mutations invisible through it) are both wired and pinned `# KD-COVERS: KD-60`
-(KD-60 shows CLOSED-SIMULATED in the kd_flip covers-map). A delete-precedence arm at
-`:2586` covers WORM interplay.
+### 2. Snapshot create — 201 + x-ms-snapshot header (wired)
 
-### 3. Remaining divergence: snapshot LISTING + lease-on-snapshot
+```
+$ curl -sS -X PUT -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2/kd107-blob.txt?comp=snapshot'
+HTTP/1.1 201 Created
+x-ms-snapshot: 2026-10-20T03:12:35.580771Z
+```
 
-`docs/WIRE_PARITY.md` blob row: listing `include` tokens `snapshots/versions/tags` are
-a registered typed refusal and never emit decoration — snapshot LISTING is not served,
-and no lease-on-snapshot semantics exist. That residual is what remains of KD-107.
+### 3. Read-at-snapshot — 200 with the frozen v1 body
+
+```
+$ curl -sS -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2/kd107-blob.txt?sharesnapshot=2026-10-20T03:12:35.580771Z'
+kd107-snapshot-base-v1
+http=200
+```
+
+### 4. Overwrite-with-snapshots-present → 409 ContainerLocked
+(Azure-compatible: real Azure also refuses overwriting a blob that has snapshots)
+
+```
+$ printf 'kd107-base-v2-MUTATED-longer-body' | curl -sS -X PUT \
+    -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    -H 'x-ms-blob-type: BlockBlob' --data-binary @- \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2/kd107-blob.txt'
+{"error":{"code":"ContainerLocked","message":"Blob modification refused: container policy enforces immutable WORM retention."}}
+http=409
+```
+
+### 5. Residual divergence: listing admits include=snapshots but never decorates
+
+```
+$ curl -sS -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2?restype=container&comp=list&include=snapshots'
+<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/devstoreaccount1" ContainerName="kd107-c2">
+  <Prefix>devstoreaccount1/kd107-c2/</Prefix>
+  <Marker></Marker>
+  <MaxResults>50</MaxResults>
+  <Blobs>
+<Blob>
+  <Name>kd107-blob.txt</Name><Properties>
+    <Content-Length>22</Content-Length>
+    <Etag>&quot;ff1aa3969013fffa7b24c256c1915028&quot;</Etag>
+    <Last-Modified>2026-10-20T03:12:35.569826Z</Last-Modified>
+  </Properties>
+</Blob>
+
+  </Blobs>
+<NextMarker />
+</EnumerationResults>
+
+http=200
+```
+
+```
+$ curl -sS -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2?restype=container&comp=list&include=snapshots,versions,tags' \
+  | grep -c '<Snapshot>'
+0
+```
+
+The `include` token is admitted (200) and the base blob is listed, but snapshot
+rows are never decorated — silently-absent rows, not a typed refusal.
+
+Also executed after the 409 (frozen read-back intact):
+
+```
+$ curl -sS -H "Authorization: Bearer $TOKEN" -H 'x-ms-version: 2021-12-02' \
+    'http://127.0.0.1:39043/devstoreaccount1/kd107-c2/kd107-blob.txt?sharesnapshot=2026-10-20T03:12:35.580771Z'
+kd107-snapshot-base-v1
+http=200
+```
+
+All curl legs exited 0 (exit 0); transcripts above are verbatim session output.
 
 ## Standing rationale
 
-Create and read-at-snapshot are wired (KD-60 CLOSED-SIMULATED); listing and
-lease-on-snapshot remain divergent; the skeleton falsifier ("SDK snapshot probe list +
-read-back passes") NOT achieved. **KD-107 stays OPEN**, narrowed to listing +
-lease-on-snapshot. Registrar may tighten the row prose to match.
+Create (201 + `x-ms-snapshot`), read-at-snapshot (200, frozen, byte-exact), and
+overwrite-refusal interplay (409 with snapshots present) are witnessed ALIVE
+over the wire; snapshot LISTING decoration is the residual divergence (0
+`<Snapshot>` elements under `include=snapshots`) and lease-on-snapshot
+semantics remain unprobed/absent. Falsifier "SDK snapshot probe list + read-back
+passes" remains NOT achieved on the list leg only. **KD-107 stays OPEN**,
+narrowed to listing decoration + lease-on-snapshot. Standing ALIVE =
+evidence-executed on the executed legs; receipt carries embedded real command
+output (no longer SUSPECT-flagged).
+
+## Registrar corrections this receipt supports
+
+- The 2026-10-19 survey prose ("listing is a registered typed refusal") is
+  tightened by execution: `include=snapshots` is ADMITTED with 200 and zero
+  decoration, i.e. silently-absent rows — narrower divergence than a refusal,
+  arguably worse for parity (silent). Row prose / WIRE_PARITY blob row may be
+  tightened accordingly; not changed in this lane.
+- Wire arms confirmed at `lib/smalt/egress_router.ex`:
+  `?comp=snapshot` PUT (line ~2177), `?sharesnapshot=` GET (line ~2332),
+  `# KD-COVERS: KD-60` pins both.
 
 ## Cross-links
 
-- `docs/WIRE_PARITY.md` blob row (typed refusal on `include=snapshots`);
-  KD-60 (comp=snapshot covers-map, CLOSED-SIMULATED); KD-108 (lease family).
+- `KNOWN_DIVERGENCES.md` KD-107 row; `docs/WIRE_PARITY.md` blob row;
+  KD-60 (covers-map CLOSED-SIMULATED); KD-108 (lease family).
 - kd105/kd109/kd110/kd111/kd112 evidence receipts in this directory.

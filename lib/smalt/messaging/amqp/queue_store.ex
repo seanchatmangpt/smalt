@@ -391,12 +391,16 @@ defmodule Smalt.Amqp.QueueStore do
 
   Returns `{:ok, [msg]}` in the order of the request. Duplicate sequence
   numbers are deduplicated (R160b) — one message, one lock, one delivery.
+
+  Opts: `:session_id` — when supplied (sessionful receive-by-sequence), every
+  requested row's `session_id` must match or the row joins the atomic refusal
+  list (same `{:error, {:not_deferred, refused}}` shape, no partial lock).
   """
   @spec receive_deferred(String.t(), [integer()], keyword()) ::
           {:ok, [map()]} | {:error, {:not_deferred, [integer()]}}
   def receive_deferred(queue, sequence_numbers, opts \\ []) when is_list(sequence_numbers) do
     now = opts[:now_ms] || System.system_time(:millisecond)
-    GenServer.call(server(), {:receive_deferred, queue, sequence_numbers, now})
+    GenServer.call(server(), {:receive_deferred, queue, sequence_numbers, now, opts[:session_id]})
   end
 
   @doc """
@@ -592,8 +596,8 @@ defmodule Smalt.Amqp.QueueStore do
     {:reply, do_release(queue, seq, opts), state}
   end
 
-  def handle_call({:receive_deferred, queue, sequence_numbers, now}, _from, state) do
-    {:reply, do_receive_deferred(queue, sequence_numbers, now), state}
+  def handle_call({:receive_deferred, queue, sequence_numbers, now, filter_session}, _from, state) do
+    {:reply, do_receive_deferred(queue, sequence_numbers, now, filter_session), state}
   end
 
   def handle_call({:deadletter, queue, seq, reason, description, opts}, _from, state) do
@@ -747,7 +751,7 @@ defmodule Smalt.Amqp.QueueStore do
   # Receive-by-sequence-number: two-pass so a bad sequence anywhere in the
   # batch fails the whole batch atomically (no partial lock), then each
   # qualifying message re-locks at the queue's configured duration.
-  defp do_receive_deferred(queue, sequence_numbers, now) do
+  defp do_receive_deferred(queue, sequence_numbers, now, filter_session) do
     duration = queue_settings(queue).lock_duration_ms
 
     # R160b / SHIM-COURT: a duplicate sequence number in the batch must not
@@ -773,6 +777,19 @@ defmodule Smalt.Amqp.QueueStore do
 
     refused = refused ++ for {seq, :error} <- loaded, do: seq
 
+    # Sessionful receive-by-sequence: a session filter refuses rows that
+    # belong to another session (atomic batch, no partial lock).
+    refused =
+      (refused ++
+         if filter_session do
+           for {seq, {:ok, m}} <- loaded,
+               m.state == :deferred and m.session_id != filter_session,
+               do: seq
+         else
+           []
+         end)
+      |> Enum.uniq()
+
     if refused == [] do
       # The unguarded {:ok, lock} match is safe: the two-pass precheck above
       # guarantees every sequence is present and lockable before we get here.
@@ -787,7 +804,11 @@ defmodule Smalt.Amqp.QueueStore do
            |> Map.merge(%{
              state: :locked,
              lock_token: lock.lock_token,
-             locked_until: lock.locked_until
+             locked_until: lock.locked_until,
+             # Deferred receipt marker: abandon/lock-expiry must return the
+             # row to :deferred (receivable only by sequence), never back to
+             # the normal :available rotation.
+             deferred_receipt: true
            })
 
          Smalt.Store.put(:smalt_sb_messages, {queue, m.seq}, msg)
@@ -844,9 +865,15 @@ defmodule Smalt.Amqp.QueueStore do
       else
         if m.lock_token, do: Smalt.Amqp.LockManager.release(m.lock_token)
 
+        # Deferred receipt (receive-by-sequence): abandon returns the row to
+        # :deferred — it stays receivable only by sequence number, never back
+        # in the normal :available rotation. A plain (non-deferred) abandon
+        # restores :available as before.
+        restored_state = if m[:deferred_receipt], do: :deferred, else: :available
+
         Smalt.Store.put(:smalt_sb_messages, {queue, seq}, %{
           m
-          | state: :available,
+          | state: restored_state,
             lock_token: nil,
             locked_until: nil
         })
@@ -1013,9 +1040,13 @@ defmodule Smalt.Amqp.QueueStore do
         else
           Smalt.Amqp.LockManager.release(m.lock_token)
 
+          # Deferred receipt: lock expiry returns the row to :deferred
+          # (sequence-only receivability), matching do_release's abandon path.
+          restored_state = if m[:deferred_receipt], do: :deferred, else: :available
+
           Smalt.Store.put(:smalt_sb_messages, {m.queue, m.seq}, %{
             m
-            | state: :available,
+            | state: restored_state,
               lock_token: nil,
               locked_until: nil
           })

@@ -21,7 +21,7 @@
     ema:agentName "smalt-substrate" ;
     ema:agentDescription "Read-only MCP tool surface over the smalt local substrate for coding agents." .
 
-# -- capabilities (8 read-only tools) ---------------------------------------
+# -- capabilities (14 read-only tools) --------------------------------------
 [] a ema:Capability ; ema:capabilityOf [] ;
     ema:capabilityId "substrate.status" ;
     ema:capabilityName "Substrate status" ;
@@ -92,4 +92,59 @@
     ema:observationScope "read_only" ; ema:mutationScope "none" ;
     ema:requiresAuthority false ; ema:isReversible true ;
     ema:receiptSemantics "logged" ; ema:capabilityOrder 8 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.19 ERRC RAISE lane: window-capability read tools (9-14) ----------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "kv.deletedkeys.list" ;
+    ema:capabilityName "Key Vault deleted keys list" ;
+    ema:capabilityDescription "Soft-deleted vault key bundles (recoveryId, deletedDate, scheduledPurgeDate) from the deleted-keys table." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 9 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "policy.exemptions.list" ;
+    ema:capabilityName "Policy exemptions list" ;
+    ema:capabilityDescription "Policy exemptions under one scope prefix (subscription or resource-group placement)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 10 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eg.dlq.list" ;
+    ema:capabilityName "Event Grid dead-letter listing" ;
+    ema:capabilityDescription "Content-free metadata of dead-lettered Event Grid event blobs per subscriber container." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 11 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "lro.operations.list" ;
+    ema:capabilityName "Long-running operations list" ;
+    ema:capabilityDescription "In-flight and terminal LRO operation records from the operations store, optional subscription filter." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 12 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cluster.status" ;
+    ema:capabilityName "Cluster status" ;
+    ema:capabilityDescription "Cluster poller status: enabled, joined nodes, dns name/port, exhausted addresses." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 13 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "health.readiness" ;
+    ema:capabilityName "Health readiness" ;
+    ema:capabilityDescription "Structural readiness verdict with scheduler/store/memory/cluster checks (degrades on structure, never load)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 14 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .

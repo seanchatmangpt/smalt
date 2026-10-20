@@ -9,6 +9,15 @@ defmodule Smalt.Policy do
     (`nc:<assignment id>:<resource id>`) in one :set table.
   - `:smalt_rbac` — role assignments (`ra:<lower id>`).
 
+  Management locks (`Microsoft.Authorization/locks`, KD-113 leg b) and policy
+  exemptions share the `:smalt_policy` table, discriminated by `type`.
+
+  RBAC enforcement: `authorize?/3` + `authorize?/4` resolve assignment scope
+  prefixes (subscription ⊃ RG ⊃ resource) with inheritance; built-in role
+  GUIDs map to verb sets via `role_verbs/1`. `lock_blocks?/2` gates verbs
+  against CanNotDelete/ReadOnly lock records; `enforce/3` checks locks before
+  policy deny evaluation and refuses with a 409-class ScopeLocked envelope.
+
   Role definitions are BUILT-IN (Owner / Contributor / Reader, well-known
   Azure GUIDs) and served deterministically — never stored, never fabricated
   per-caller.
@@ -165,6 +174,209 @@ defmodule Smalt.Policy do
 
   defp ra_id(scope_prefix, name),
     do: "#{scope_prefix}/providers/Microsoft.Authorization/roleAssignments/#{name}"
+
+  # ===========================================================================
+  # RBAC enforcement (KD-COVERS: KD-113 leg a)
+  # ===========================================================================
+
+  @doc """
+  Verb sets granted by each built-in role (KD-113 leg a generalization).
+  Owner = everything incl. authorize; Contributor = write/read/delete;
+  Reader = read.
+  """
+  def role_verbs("Owner"), do: [:read, :write, :delete, :authorize]
+  def role_verbs("Contributor"), do: [:read, :write, :delete]
+  def role_verbs("Reader"), do: [:read]
+  def role_verbs(_), do: []
+
+  defp role_name_for_guid(guid_low) do
+    case Enum.find(@builtin_roles, fn r -> String.downcase(r["guid"]) == guid_low end) do
+      nil -> nil
+      role -> role["role_name"]
+    end
+  end
+
+  @doc """
+  Whether `principal_id` holds `role_definition_id` at a scope covering
+  `resource_id` (KD-113 leg a). ARM scope-prefix inheritance: a subscription-
+  scope assignment covers every RG/resource under it, an RG-scope assignment
+  covers every resource in the RG, an exact resource-scope assignment covers
+  that resource. Case-insensitive (real ARM ids are mixed-case; records are
+  stored downcased — same law as the AZB-25c exemption fix).
+
+  `role_definition_id` may be the full definition id (…/roleDefinitions/<guid>)
+  or the bare GUID; the well-known GUIDs map to verb sets via `role_verbs/1`.
+  """
+  def authorize?(principal_id, role_definition_id, resource_id) do
+    matching_assignments(principal_id, role_definition_id, resource_id) != []
+  end
+
+  @doc """
+  `authorize?/3` plus a verb gate: true only when the covering assignment's
+  role grants `verb` (`:read` | `:write` | `:delete` | `:authorize`).
+  """
+  def authorize?(principal_id, role_definition_id, resource_id, verb)
+      when verb in [:read, :write, :delete, :authorize] do
+    matching_assignments(principal_id, role_definition_id, resource_id)
+    |> Enum.any?(fn ra ->
+      guid = ra_guid(ra)
+      verb in role_verbs(role_name_for_guid(guid) || "")
+    end)
+  end
+
+  defp ra_guid(ra) do
+    ra
+    |> get_in(["properties", "roleDefinitionId"])
+    |> to_string()
+    |> String.downcase()
+    |> String.split("roledefinitions/")
+    |> List.last()
+  end
+
+  defp matching_assignments(principal_id, role_definition_id, resource_id) do
+    ensure_tables()
+
+    resource_low = String.downcase(resource_id || "")
+    rd_guid = role_definition_id |> to_string() |> String.downcase()
+    rd_guid = rd_guid |> String.split("roledefinitions/") |> List.last()
+
+    :smalt_rbac
+    |> :ets.tab2list()
+    |> Enum.map(fn {_, r} -> r end)
+    |> Enum.filter(fn ra ->
+      props = ra["properties"] || %{}
+      ra_guid_low = String.downcase(get_in(props, ["roleDefinitionId"]) || "")
+
+      get_in(ra, ["properties", "principalId"]) == principal_id and
+        rd_guid != "" and String.ends_with?(ra_guid_low, "roledefinitions/" <> rd_guid) and
+        scope_covers?(get_in(props, ["scope"]) || ra_scope(ra), resource_low)
+    end)
+  end
+
+  # Assignment scope: fall back to the record's placement (id minus the
+  # providers/... tail) when the body omitted properties.scope.
+  defp ra_scope(ra) do
+    case String.split(ra["id"] || "", "/providers/microsoft.authorization/") do
+      [scope, _] -> scope
+      _ -> ra["id"] || ""
+    end
+    |> String.downcase()
+  end
+
+  defp scope_covers?(scope, resource_low) do
+    scope = String.downcase(scope || "")
+    resource_low == scope or String.starts_with?(resource_low, scope <> "/")
+  end
+
+  # ===========================================================================
+  # Management locks (KD-COVERS: KD-113 leg b)
+  # ===========================================================================
+
+  @lock_levels ["CanNotDelete", "ReadOnly"]
+
+  @doc """
+  Puts a management lock at a scope (subscription or RG placement). Requires
+  `properties.level` in ["CanNotDelete", "ReadOnly"]. Returns `{:ok, record}`
+  or `{:error, refusal}` for a malformed body.
+  """
+  def put_lock(scope_prefix, name, body) do
+    ensure_tables()
+
+    level = get_in(body, ["properties", "level"])
+    notes = get_in(body, ["properties", "notes"])
+
+    if level in @lock_levels do
+      record = %{
+        "id" => "#{scope_prefix}/providers/Microsoft.Authorization/locks/#{name}",
+        "name" => name,
+        "type" => "Microsoft.Authorization/locks",
+        "properties" => %{
+          "level" => level,
+          "notes" => notes,
+          "scope" => get_in(body, ["properties", "scope"]) || scope_prefix
+        }
+      }
+
+      :ets.insert(:smalt_policy, {String.downcase(record["id"]), record})
+      {:ok, record}
+    else
+      {:error, lock_refusal(scope_prefix, name, "level must be one of #{inspect(@lock_levels)}")}
+    end
+  end
+
+  def get_lock(scope_prefix, name) do
+    ensure_tables()
+
+    case :ets.lookup(:smalt_policy, String.downcase(lock_id(scope_prefix, name))) do
+      [{_, record}] -> {:ok, record}
+      [] -> :error
+    end
+  end
+
+  def delete_lock(scope_prefix, name) do
+    ensure_tables()
+    :ets.delete(:smalt_policy, String.downcase(lock_id(scope_prefix, name)))
+    :ok
+  end
+
+  def list_locks(scope_prefix) do
+    ensure_tables()
+
+    prefix =
+      String.downcase("#{scope_prefix}/providers/microsoft.authorization/locks/")
+
+    :smalt_policy
+    |> :ets.tab2list()
+    |> Enum.map(fn {_, r} -> r end)
+    |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/locks"))
+    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    |> Enum.sort_by(& &1["id"])
+  end
+
+  defp lock_id(scope_prefix, name),
+    do: "#{scope_prefix}/providers/Microsoft.Authorization/locks/#{name}"
+
+  defp lock_refusal(scope_prefix, name, reason),
+    do: %{
+      "error" => %{
+        "code" => "ManagementLockInvalid",
+        "message" => "Management lock '#{name}' at scope '#{scope_prefix}' is invalid. #{reason}.",
+        "target" => nil,
+        "innererror" => %{}
+      }
+    }
+
+  @doc """
+  Whether any lock covering `resource_id` blocks `verb` (KD-113 leg b).
+  Scope-prefix matching identical to `authorize?/3`: a lock at a scope that is
+  the resource id or a prefix of it applies.
+
+  - `:delete` blocked by CanNotDelete AND ReadOnly locks (real ARM: ReadOnly
+    blocks writes AND deletes).
+  - `:write` (PUT/PATCH) blocked by ReadOnly locks.
+  - `:read` never blocked (management locks do not gate the data plane).
+  """
+  def lock_blocks?(resource_id, verb)
+
+  def lock_blocks?(resource_id, verb) when verb in [:delete, :write] do
+    ensure_tables()
+
+    resource_low = String.downcase(resource_id || "")
+
+    :smalt_policy
+    |> :ets.tab2list()
+    |> Enum.map(fn {_, r} -> r end)
+    |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/locks"))
+    |> Enum.any?(fn lock ->
+      scope = get_in(lock, ["properties", "scope"]) |> to_string() |> String.downcase()
+      level = get_in(lock, ["properties", "level"])
+
+      scope_covers?(scope, resource_low) and
+        (level == "ReadOnly" or (verb == :delete and level == "CanNotDelete"))
+    end)
+  end
+
+  def lock_blocks?(_resource_id, :read), do: false
 
   # ===========================================================================
   # Policy definitions
@@ -509,11 +721,26 @@ defmodule Smalt.Policy do
   may proceed; `{:deny, json_body}` when a `deny`-effect assignment finds the
   resource non-compliant. Non-compliance receipts are written for deny AND
   audit effects; a compliant evaluation clears prior receipts.
+
+  Lock check runs BEFORE policy evaluation (KD-113 leg b): a ReadOnly lock
+  covering the resource refuses the PUT with a 409 ScopeLocked envelope —
+  real ARM returns 409 ScopeLocked on write/delete against a locked scope,
+  so the router must map the ScopeLocked code to 409 (not the 400 the
+  PolicyViolation deny class gets).
   """
   def enforce(sub_id, rg_name, record) do
     ensure_tables()
 
     resource_id = String.downcase(record["id"] || "")
+
+    if lock_blocks?(resource_id, :write) do
+      {:deny, scope_locked_body(record)}
+    else
+      enforce_policies(sub_id, rg_name, record, resource_id)
+    end
+  end
+
+  defp enforce_policies(sub_id, rg_name, record, resource_id) do
     rg_scope = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}")
     sub_scope = String.downcase("/subscriptions/#{sub_id}")
 
@@ -827,6 +1054,23 @@ defmodule Smalt.Policy do
         "message" =>
           "Resource '#{record["name"]}' was disallowed by policy. #{reason} (assignment '#{assignment["id"]}').",
         "target" => assignment["id"],
+        "innererror" => %{}
+      }
+    })
+  end
+
+  # ScopeLocked (KD-113 leg b): same inline-envelope law as violation_body —
+  # real ARM answers 409 ScopeLocked with ScopeLockedError code on a locked
+  # write/delete; the ROUTER owns the 409 mapping (patch line in the lane
+  # report), this module only emits the typed code.
+  defp scope_locked_body(record) do
+    Jason.encode!(%{
+      "error" => %{
+        "code" => "ScopeLocked",
+        "message" =>
+          "The scope '#{record["id"] || ""}' is locked at a level that blocks this operation. " <>
+            "Remove the lock (Microsoft.Authorization/locks) to proceed.",
+        "target" => record["id"] || "",
         "innererror" => %{}
       }
     })

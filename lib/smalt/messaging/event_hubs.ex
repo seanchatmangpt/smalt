@@ -26,12 +26,32 @@ defmodule Smalt.Messaging.EventHubs do
   Public contract (as required by the checkpoint-management surface):
   `next_sequence/1`, `send_event/3`, `receive_events/3`, `compare_and_swap/4`,
   `reserve_processing/4`, `reconcile/2`, `sweep/0`.
+
+  ## Consumer groups (engine, v2)
+
+  Consumer groups are first-class engine records keyed `{hub, group}` in the
+  `:smalt_eh_cgs` table (name, created-at ms, user metadata), alongside the
+  ARM-plane records. `$default` auto-exists on every hub (lazily seeded by the
+  serialized server — no caller-side `:ets` writes, same lens-5 discipline as
+  checkpoints). `reserve_processing/5` validates the group and returns a typed
+  `ConsumerGroupNotFound` face for an unknown group; `reserve_processing/4`
+  keeps its legacy claim-blind shape for existing callers. The wire-level
+  attach refusal rides `consumer_group_face/1` (echo-attach + typed detach,
+  the same shape as the partition-pin refusal in `connection.ex`).
   """
 
   require Logger
 
   @partitions :smalt_eh_partitions
   @checkpoints :smalt_eh_checkpoints
+
+  @typedoc "Typed consumer-group face (wire-visible 404-class surface)."
+  @type cg_face :: %{
+          required(:status) => 404,
+          required(:code) => String.t(),
+          required(:condition) => String.t(),
+          required(:description) => String.t()
+        }
 
   alias Smalt.Messaging.EventHubs.Server, as: EHServer
 
@@ -423,6 +443,104 @@ defmodule Smalt.Messaging.EventHubs do
      }}
   end
 
+  # -- Consumer groups (engine, first-class records) -------------------------------
+
+  @doc """
+  Create (idempotently) consumer group `name` on `hub`. Returns
+  `{:ok, record}` where record carries `"name"`, `"created"` (epoch ms),
+  `"user_metadata"`. A re-PUT preserves the original created ts (ARM PUT
+  semantics). `$default` cannot be created explicitly beyond its implicit
+  seed — re-creating it is a no-op refresh of user metadata only.
+  """
+  @spec create_consumer_group(String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, cg_face()}
+  def create_consumer_group(hub, name, opts \\ [])
+      when is_binary(hub) and is_binary(name) do
+    ensure_tables()
+    EHServer.transaction({:cg_create, hub, name, Keyword.get(opts, :user_metadata, "")})
+  end
+
+  @doc """
+  Delete consumer group `name` on `hub`. `$default` refuses with the typed
+  default-group face (real service semantics: the default group is
+  undeletable); an unknown group refuses `ConsumerGroupNotFound` (404).
+  Deleting a group also drops its `{group, partition}` checkpoint rows.
+  """
+  @spec delete_consumer_group(String.t(), String.t()) :: :ok | {:error, cg_face()}
+  def delete_consumer_group(hub, name) when is_binary(hub) and is_binary(name) do
+    ensure_tables()
+    EHServer.transaction({:cg_delete, hub, name})
+  end
+
+  @doc """
+  The group record for `{hub, name}`, with `$default` implicit. Unknown group
+  → `{:error, cg_face}` (`ConsumerGroupNotFound`, 404).
+  """
+  @spec get_consumer_group(String.t(), String.t()) :: {:ok, map()} | {:error, cg_face()}
+  def get_consumer_group(hub, name) when is_binary(hub) and is_binary(name) do
+    ensure_tables()
+    EHServer.transaction({:cg_get, hub, name})
+  end
+
+  @doc """
+  All group records for `hub`; `$default` always present (prepended when no
+  literal `$default` row exists — same synthesis rule as the ARM-plane
+  `handle_cg_list`).
+  """
+  @spec list_consumer_groups(String.t()) :: [map()]
+  def list_consumer_groups(hub) when is_binary(hub) do
+    ensure_tables()
+    EHServer.transaction({:cg_list, hub})
+  end
+
+  @doc "Whether consumer group `name` exists on `hub` (`$default` implicit)."
+  @spec consumer_group_exists?(String.t(), String.t()) :: boolean()
+  def consumer_group_exists?(hub, name) when is_binary(hub) and is_binary(name) do
+    ensure_tables()
+    EHServer.transaction({:cg_exists, hub, name})
+  end
+
+  @doc """
+  The typed wire face for an unknown consumer group. Where the AMQP surface
+  addresses a group-scoped link (`{hub}/ConsumerGroups/{cg}/Partitions/{n}`),
+  the attach path gates with `consumer_group_exists?/2` and, on miss, answers
+  the rhea contract (attach echo + typed detach) with this error:
+
+      %{condition: "amqp:not-allowed",
+        description: "The consumer group 'X' does not exist ...",
+        code: "ConsumerGroupNotFound", status: 404}
+  """
+  @spec consumer_group_face(String.t()) :: cg_face()
+  def consumer_group_face(name) when is_binary(name) do
+    %{
+      status: 404,
+      code: "ConsumerGroupNotFound",
+      condition: "amqp:not-allowed",
+      description:
+        "The consumer group '#{name}' does not exist on the Event Hub. " <>
+          "Create it (ARM: PUT .../consumergroups/#{name}) or use an existing group."
+    }
+  end
+
+  @doc """
+  `reserve_processing/4` gated on group existence: unknown group → the typed
+  `ConsumerGroupNotFound` face (no claim row is written); known group → the
+  same per-`{group, partition}` lease as the legacy `/4` (per-group ownership:
+  group A's claim never blocks group B on the same partition).
+  """
+  @spec reserve_processing(String.t(), String.t(), String.t(), term(), pos_integer()) ::
+          :ok | {:error, cg_face()} | {:error, :conflict}
+  def reserve_processing(hub, group, partition, owner, ttl_ms)
+      when is_binary(hub) and is_binary(group) and is_binary(partition) and
+             is_integer(ttl_ms) and ttl_ms > 0 do
+    ensure_tables()
+
+    case consumer_group_exists?(hub, group) do
+      true -> reserve_processing(group, partition, owner, ttl_ms)
+      false -> {:error, consumer_group_face(group)}
+    end
+  end
+
   @doc "GC expired processing claims. Returns the number of claims removed."
   @spec sweep() :: non_neg_integer()
   def sweep do
@@ -501,6 +619,10 @@ defmodule Smalt.Messaging.EventHubs do
     @name Smalt.Messaging.EventHubs.Server
     @partitions :smalt_eh_partitions
     @checkpoints :smalt_eh_checkpoints
+    @cgs :smalt_eh_cgs
+    # NB: module attributes do not leak into a nested defmodule (see
+    # do_ensure_tables below) — literal re-bindings, not parent reads.
+    @default_group "$default"
 
     def transaction(request) do
       ensure_started()
@@ -525,7 +647,7 @@ defmodule Smalt.Messaging.EventHubs do
     # server-owned and never die with a mortal caller. Serialized by the
     # server mailbox: no lookup-then-create race.
     defp do_ensure_tables do
-      Enum.each([@partitions, @checkpoints], fn table ->
+      Enum.each([@partitions, @checkpoints, @cgs], fn table ->
         if :ets.info(table) == :undefined do
           # NB: literal opts — module attributes do not leak into a nested
           # defmodule (the parent's @table_opts reads nil here).
@@ -540,6 +662,43 @@ defmodule Smalt.Messaging.EventHubs do
       end)
 
       :ok
+    end
+
+    # -- cg helpers (all defp, kept out of the handle_call clause run) -----------
+
+    defp cg_not_found(name), do: Smalt.Messaging.EventHubs.consumer_group_face(name)
+
+    # $default auto-exists: ensure its row before any read/write on the group.
+    defp cg_ensure_default(hub) do
+      unless :ets.member(@cgs, {hub, @default_group}) do
+        :ets.insert(@cgs, {{hub, @default_group}, cg_record(hub, @default_group, "")})
+      end
+    end
+
+    defp cg_record(hub, name, meta) do
+      %{
+        "name" => name,
+        "hub" => hub,
+        "created" => System.system_time(:millisecond),
+        "user_metadata" => meta
+      }
+    end
+
+    defp cg_upsert(hub, name, meta) do
+      key = {hub, name}
+
+      case :ets.lookup(@cgs, key) do
+        [{^key, rec}] ->
+          # Idempotent re-PUT: preserve the original created ts.
+          rec = Map.put(rec, "user_metadata", meta)
+          :ets.insert(@cgs, {key, rec})
+          rec
+
+        [] ->
+          rec = cg_record(hub, name, meta)
+          :ets.insert(@cgs, {key, rec})
+          rec
+      end
     end
 
     @impl true
@@ -597,6 +756,81 @@ defmodule Smalt.Messaging.EventHubs do
         end)
 
       {:reply, count, state}
+    end
+
+    # -- Consumer groups ---------------------------------------------------------
+    # All group mutations AND reads route through the serialized server so the
+    # `$default` lazy seed is race-free (same lens-5 discipline as checkpoints:
+    # no caller-side :ets writes on this table).
+
+    def handle_call({:cg_create, hub, name, meta}, _from, state) do
+      cg_ensure_default(hub)
+
+      {:reply, {:ok, cg_upsert(hub, name, meta)}, state}
+    end
+
+    def handle_call({:cg_delete, hub, name}, _from, state) do
+      cg_ensure_default(hub)
+
+      cond do
+        name == @default_group ->
+          {:reply,
+           {:error,
+            %{
+              status: 409,
+              code: "ConsumerGroupNotDeletable",
+              condition: "amqp:not-allowed",
+              description: "The default consumer group cannot be deleted."
+            }}, state}
+
+        :ets.member(@cgs, {hub, name}) ->
+          :ets.delete(@cgs, {hub, name})
+          # Cascade: the group's checkpoint namespace drops with the group.
+          # Checkpoint keys are {group, partition}; the partition component
+          # carries the hub in the storage form "hub/partitions/n", so only
+          # rows on the deleted group's hub are removed (legacy bare-partition
+          # keys are left to sweep/0 — never a cross-hub delete).
+          :ets.tab2list(@checkpoints)
+          |> Enum.each(fn
+            {{g, p} = cg_key, _cp} when g == name and is_binary(p) ->
+              if String.starts_with?(p, "#{hub}/"), do: :ets.delete(@checkpoints, cg_key)
+
+            _ ->
+              :ok
+          end)
+
+          {:reply, :ok, state}
+
+        true ->
+          {:reply, {:error, cg_not_found(name)}, state}
+      end
+    end
+
+    def handle_call({:cg_get, hub, name}, _from, state) do
+      cg_ensure_default(hub)
+
+      case :ets.lookup(@cgs, {hub, name}) do
+        [{{^hub, ^name}, rec}] -> {:reply, {:ok, rec}, state}
+        _ -> {:reply, {:error, cg_not_found(name)}, state}
+      end
+    end
+
+    def handle_call({:cg_list, hub}, _from, state) do
+      cg_ensure_default(hub)
+
+      items =
+        @cgs
+        |> :ets.tab2list()
+        |> Enum.filter(fn {{h, _g}, _rec} -> h == hub end)
+        |> Enum.map(fn {_k, rec} -> rec end)
+        |> Enum.sort_by(& &1["created"])
+
+      {:reply, items, state}
+    end
+
+    def handle_call({:cg_exists, hub, name}, _from, state) do
+      cg_ensure_default(hub)
+      {:reply, :ets.member(@cgs, {hub, name}), state}
     end
 
     def handle_call({:reserve, key, owner, ttl_ms}, _from, state) do

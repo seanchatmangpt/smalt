@@ -840,6 +840,10 @@ defmodule Smalt.ArmGateway.Router do
       end
 
     if exists? do
+      # pending policy lane: when Smalt.Policy.lock_blocks?/2 lands, gate this
+      # delete — {:locked, _} -> 409 ScopeLocked, :ok -> fall through.
+      # case Policy.lock_blocks?(sub_id, rg_name) do ... end
+
       # SHIM-COURT affidavit-seal (lane 611): capture-then-sweep — the RG
       # record is sealed BEFORE deletion (state_delta = the deleted record's
       # canonical bytes). Best-effort sideband: never affects the 202.
@@ -898,6 +902,90 @@ defmodule Smalt.ArmGateway.Router do
       "ResourceGroupNotFound",
       "Resource group '#{rg_name}' could not be found.",
       rg_id
+    )
+  end
+
+  # -- KD-113 tags leg: tags-at-scope handlers ---------------------------------
+
+  # api-version presence check mirrors the providers listing gate (the
+  # Microsoft.Resources/tags surface is not a Registry individual, so use the
+  # presence-only nil form).
+  defp handle_scope_tags_get(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, nil) do
+      rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Store.get(:smalt_resource_groups, String.downcase(rg_id)) do
+        {:ok, rg} ->
+          send_json(conn, 200, Jason.encode!(scope_tags_envelope(rg)))
+
+        :error ->
+          send_rg_not_found(conn, rg_id, rg_name)
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # PUT = FULL REPLACE (omitted/empty tags REMOVE the stored tags — same law
+  # as rg_tags/2), PATCH = MERGE. Tags land on the RG record's "tags" member:
+  # the RG GET path (normalize_tags/1) and the RG delete cascade see them
+  # with zero extra sweep code.
+  defp handle_scope_tags_put(conn, sub_id, rg_name, mode) do
+    with :ok <- check_api_version(conn, nil) do
+      rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+
+      case Store.get(:smalt_resource_groups, String.downcase(rg_id)) do
+        {:ok, rg} ->
+          incoming = scope_tags_incoming(conn.body_params)
+
+          merged =
+            case mode do
+              :replace -> incoming
+              :merge -> Map.merge(Map.get(rg, "tags") || %{}, incoming)
+            end
+
+          rg = Map.put(rg, "tags", normalize_tags(merged))
+          Store.put(:smalt_resource_groups, String.downcase(rg_id), rg)
+          send_json(conn, 200, Jason.encode!(scope_tags_envelope(rg)))
+
+        :error ->
+          send_rg_not_found(conn, rg_id, rg_name)
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp scope_tags_incoming(%{"tags" => %{} = tags}), do: tags
+  defp scope_tags_incoming(_), do: %{}
+
+  defp scope_tags_envelope(rg) do
+    %{"name" => "default", "properties" => %{"tags" => normalize_tags(Map.get(rg, "tags"))}}
+  end
+
+  # -- Management locks stubs (policy lane pending) ----------------------------
+  # Typed 501, NOT send_arm_error/5 — its (status, code) set is pinned by the
+  # arm_error_corpus meta-test. Envelope shape mirrors the Azure
+  # ErrorResponse schema the corpus pins anyway.
+  # pending policy lane: replace with Policy.lock_blocks?/2 wiring
+  # (delete-verb gate -> 409 ScopeLocked) once Smalt.Policy carries it.
+  defp handle_locks_stub(conn, sub_id, rg_name, verb) do
+    _ = {sub_id, rg_name}
+    scope = conn.request_path
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(
+      501,
+      Jason.encode!(%{
+        "error" => %{
+          "code" => "LockSurfaceNotImplemented",
+          "message" =>
+            "Management locks at scope '#{scope}' are not implemented (#{verb}); " <>
+              "the policy lane owns the Smalt.Policy.lock_blocks?/2 wiring.",
+          "target" => scope
+        }
+      })
     )
   end
 
@@ -963,8 +1051,10 @@ defmodule Smalt.ArmGateway.Router do
               op = LRO.start_op(res_id)
               async_put_response(conn, 202, op)
 
-            lro_type?(full_type) ->
+            lro_async_update_type?(full_type) ->
               # update -> 200 + async headers (ARM LRO PUT update convention).
+              # Only the original witness set (storage/compute) is async on
+              # update; the KD-111 widening keeps update SYNC per ARM/AZB-25b.
               op = LRO.start_op(res_id)
               async_put_response(conn, 200, op)
 
@@ -2246,7 +2336,29 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   # LRO-async types (azurerm polls these via Azure-AsyncOperation)
+  # KD-COVERS: KD-111 — widening to the full Azure async set. PUT create ->
+  # 202 async for every type below; PUT update stays SYNC 200 for the
+  # widened types (AZB-25b law: only create is async at ARM), while the
+  # original witness set keeps its 200-async update (lro_async_update_type?/1).
+  # DELETE for these types is already sync 200 (handle_child_delete /
+  # dedicated delete routes) — no change needed.
+  # The LRO Sweeper (Smalt.ArmGateway.LRO.Sweeper.flip_pass/0) is
+  # TYPE-BLIND: it drives every InProgress record in :smalt_operations by
+  # startedAtMs + delayMs, so new types need no sweeper change.
   defp lro_type?(type) do
+    type in [
+      "Microsoft.Storage/storageAccounts",
+      "Microsoft.Compute/virtualMachines",
+      "Microsoft.ServiceBus/namespaces",
+      "Microsoft.EventHub/namespaces",
+      "Microsoft.KeyVault/vaults",
+      "Microsoft.DocumentDB/databaseAccounts"
+    ]
+  end
+
+  # The subset whose PUT UPDATE is also async (original azurerm witness set
+  # only — the KD-111 widening deliberately keeps update sync per ARM).
+  defp lro_async_update_type?(type) do
     type in ["Microsoft.Storage/storageAccounts", "Microsoft.Compute/virtualMachines"]
   end
 
@@ -2801,6 +2913,88 @@ defmodule Smalt.ArmGateway.Router do
 
   delete "/subscriptions/:sub_id/resourceGroups/:rg_name" do
     handle_rg_delete(conn, sub_id, rg_name)
+  end
+
+  # -- KD-113 tags leg: tags AT SCOPE (Microsoft.Resources/tags) ---------------
+  # ARM shape: the tags API at any scope is /providers/Microsoft.Resources/tags
+  # (optionally /default). PUT replaces, PATCH merges; GET renders the tags
+  # API envelope. Tags at RG scope live on the RG record's "tags" member, so
+  # the RG delete cascade clears them for free and the RG GET/normalize path
+  # (normalize_tags/1 null-when-empty law) renders them identically.
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/tags" do
+    handle_scope_tags_get(conn, sub_id, rg_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/tags" do
+    handle_scope_tags_get(conn, sub_id, rg_name)
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/tags/default" do
+    handle_scope_tags_get(conn, sub_id, rg_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/tags/default" do
+    handle_scope_tags_get(conn, sub_id, rg_name)
+  end
+
+  put "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/tags" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :replace)
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/tags" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :replace)
+  end
+
+  put "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/tags/default" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :replace)
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/tags/default" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :replace)
+  end
+
+  patch "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/tags" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :merge)
+  end
+
+  patch "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/tags" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :merge)
+  end
+
+  patch "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/tags/default" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :merge)
+  end
+
+  patch "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/tags/default" do
+    handle_scope_tags_put(conn, sub_id, rg_name, :merge)
+  end
+
+  # -- Management locks (KD-113 adjacent leg): policy lane has NOT landed —
+  # typed-501 stubs. When Smalt.Policy.lock_blocks?/2 lands, these routes
+  # wire to it (delete-verb gate -> 409 ScopeLocked). Pending-lane call
+  # sites are marked `# pending policy lane` below.
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks" do
+    handle_locks_stub(conn, sub_id, rg_name, "GET")
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks" do
+    handle_locks_stub(conn, sub_id, rg_name, "GET")
+  end
+
+  put "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_locks_stub(conn, sub_id, rg_name, "PUT")
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_locks_stub(conn, sub_id, rg_name, "PUT")
+  end
+
+  delete "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_locks_stub(conn, sub_id, rg_name, "DELETE")
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_locks_stub(conn, sub_id, rg_name, "DELETE")
   end
 
   # -- Subscription-level provider listing (ProviderMatrix projection) ----------

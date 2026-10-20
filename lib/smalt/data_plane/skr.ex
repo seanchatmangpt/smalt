@@ -32,6 +32,17 @@ defmodule Smalt.DataPlane.SKR do
     encrypted to that recipient with RSA-OAEP-256. Otherwise the material is
     returned as plain base64 (documented dev mode for the emulator surface).
 
+  - **Release envelope (KD-106 raise).** The 200 body carries the real SKR
+    response members alongside the emulator's legacy fields: `release.key` is
+    the public JWK of the released key (`kid`/`kty`/`n`/`e` — parseable, the
+    released `value` remains HKDF-derived per policy), and
+    `release_policy_applied: true` records that the per-key release policy was
+    evaluated on this release. The `release.attestation_tokens.maa` member is
+    the typed-UNSUPPORTED face: the emulator serves the releaseable core but
+    cannot attest a *remote* enclave, so it does not mint MAA evidence —
+    honest partial per KD law (the presented MAA token itself is still fully
+    RS256-verified; only minting NEW evidence is unsupported).
+
   Errors: `404 KeyNotFound`, `400 KeyNotExportable`, `403 UnauthorizedAttestation`,
   `403 TokenReplay`, `400 InvalidParameter` (malformed recipient JWK).
   """
@@ -209,10 +220,11 @@ defmodule Smalt.DataPlane.SKR do
     policy_hash = :crypto.hash(:sha256, Jason.encode!(policy))
     material = hkdf_sha256(master_secret(), name, @release_info_prefix <> policy_hash, 32)
     kid = key_record["kid"]
+    jwk = key_record["key"]
 
     case wrap_to_recipient(claims, material) do
       {:ok, value, extra} ->
-        commit_release(name, kid, policy_hash, value, extra, claims)
+        commit_release(name, kid, jwk, policy_hash, value, extra, claims)
 
       {:error, status, body} ->
         {:error, status, body}
@@ -221,7 +233,12 @@ defmodule Smalt.DataPlane.SKR do
 
   # Commit point: jti first-writer-wins (403 TokenReplay under race), then the
   # per-key version counter. Both fire only after wrap has succeeded.
-  defp commit_release(name, kid, policy_hash, value, extra, claims) do
+  #
+  # KD-COVERS: KD-106 — release envelope carries the real SKR response
+  # members: release.key (public JWK), release.attestation_tokens.maa
+  # (typed-UNSUPPORTED: no remote-enclave evidence minting), and
+  # release_policy_applied: true.
+  defp commit_release(name, kid, jwk, policy_hash, value, extra, claims) do
     with :ok <- check_single_use(claims) do
       version = Store.update_counter(:smalt_vault_keys, @version_prefix <> name, 1)
 
@@ -232,12 +249,32 @@ defmodule Smalt.DataPlane.SKR do
            "kid" => kid,
            "keyMaterialVersion" => version,
            "policyHash" => Base.url_encode64(policy_hash, padding: false),
-           "status" => "Released"
+           "status" => "Released",
+           "release" => %{
+             "key" => release_jwk(kid, jwk),
+             "attestation_tokens" => %{
+               "maa" => %{
+                 "status" => "UNSUPPORTED",
+                 "error" => %{
+                   "code" => "AttestationEvidenceUnavailable",
+                   "message" =>
+                     "emulator cannot attest a remote enclave; MAA evidence minting is not supported"
+                 }
+               }
+             }
+           },
+           "release_policy_applied" => true
          },
          extra
        )}
     end
   end
+
+  # Public JWK of the released key: the create path stores the public JWK
+  # under "key" (kid/kty + n/e for RSA); a legacy row without it degrades to
+  # a kid-only reference rather than failing the release.
+  defp release_jwk(kid, jwk) when is_map(jwk), do: Map.put_new(jwk, "kid", kid)
+  defp release_jwk(kid, _), do: %{"kid" => kid}
 
   # HKDF (RFC 5869) extract + expand, SHA-256. Exposed (@doc false) so the
   # RFC 5869 test vectors can fence the primitive directly.

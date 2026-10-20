@@ -7,12 +7,99 @@ defmodule Smalt.DataPlane.Purview do
   - `POST /atlas/v2/entity/bulk`                  -> `bulk_entities/2`
   - `GET  /atlas/v2/entity/guid/:guid`            -> `get_entity/2`
   - `GET  /atlas/v2/lineage/:direction/:guid?depth=N` -> `lineage/3`
+
+  v26.10.19 ERRC-RAISE (lane C15) fidelity additions:
+
+  - type validation against registered typedefs (unknown `typeName` -> typed
+    `ATLAS-400-CLASS` 400, like real Atlas' `Invalid type name`)
+  - classification attachment (`add_classifications/3`, `bulk_classification/2`
+    — POST /entity/guid/classifications and POST /entity/bulk/classification
+    shapes), classDefs validated against the same registry
+  - Process entities: `relationshipAttributes` input/output lists mint
+    lineage edges (`Process.Input` / `Process.Output`) at create AND update
+  - `update_entities/2` (PUT /entity/bulk semantics: merge by guid)
+  - typedef/classDef registry: `register_typedef/2`, `register_classdef/2`,
+    `registered_type?/1`, `list_typedefs/0`
+
+  UNSUPPORTED (honest per-field): the substrate has no full Atlas type system
+  — supertype/attributeDefs are stored but NOT enforced (only the type NAME is
+  validated); no glossary surface is named on this router.
   """
 
   alias Smalt.Store
 
   @max_bulk 100
   @directions ~w(input output both)
+
+  # Types always admitted without registration: Atlas structural base types
+  # plus the emulator's own pinned surface types (runtime contract tests use
+  # `smalt_table`; lineage placeholders use `Unknown`).
+  @builtin_types ~w(
+    Referenceable Asset DataSet Process Deployment Database Table Column View
+    smalt_table Unknown
+  )
+
+  # ---------------------------------------------------------------------------
+  # Typedef / classDef registry (Store keyspace `TYPEDEF:` / `CLASSDEF:` under
+  # :smalt_purview_entities — guid keys never collide with those prefixes)
+  # ---------------------------------------------------------------------------
+
+  @doc "Registers an entity typedef `%{\"name\" => name, ...}`. Idempotent overwrite."
+  @spec register_typedef(map(), map()) :: {:ok, 201, map()}
+  def register_typedef(body, _opts \\ %{})
+
+  def register_typedef(%{"name" => name} = body, _opts) when is_binary(name) do
+    typedef = Map.merge(%{"category" => "ENTITY", "name" => name}, body)
+    Store.put(:smalt_purview_entities, "TYPEDEF:" <> name, typedef)
+    {:ok, 201, typedef}
+  end
+
+  def register_typedef(_body, _opts) do
+    {:error, 400, class_error("typedef requires a binary `name`")}
+  end
+
+  @doc "Registers a classification classDef `%{\"name\" => name, ...}`."
+  @spec register_classdef(map(), map()) :: {:ok, 201, map()}
+  def register_classdef(body, _opts \\ %{})
+
+  def register_classdef(%{"name" => name} = body, _opts) when is_binary(name) do
+    classdef = Map.merge(%{"category" => "CLASSIFICATION", "name" => name}, body)
+    Store.put(:smalt_purview_entities, "CLASSDEF:" <> name, classdef)
+    {:ok, 201, classdef}
+  end
+
+  def register_classdef(_body, _opts) do
+    {:error, 400, class_error("classDef requires a binary `name`")}
+  end
+
+  @doc "Lists all registered typedefs and classDefs (Atlas `GET /types/typedefs` face)."
+  def list_typedefs(opts \\ %{}) do
+    prefix = opts[:prefix]
+
+    defs =
+      Store.list(:smalt_purview_entities)
+      |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, "TYPEDEF:") end)
+      |> Enum.map(fn {_k, v} -> v end)
+
+    classdefs =
+      Store.list(:smalt_purview_entities)
+      |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, "CLASSDEF:") end)
+      |> Enum.map(fn {_k, v} -> v end)
+
+    defs =
+      if prefix,
+        do: Enum.filter(defs, &String.starts_with?(&1["name"] || "", prefix)),
+        else: defs
+
+    {:ok, 200, %{"entityDefs" => defs, "classificationDefs" => classdefs}}
+  end
+
+  @doc "True when `name` is a builtin or registered entity type."
+  def registered_type?(name) when is_binary(name) do
+    name in @builtin_types or match?({:ok, _}, Store.get(:smalt_purview_entities, "TYPEDEF:" <> name))
+  end
+
+  def registered_type?(_), do: false
 
   # ---------------------------------------------------------------------------
   # Entities
@@ -22,29 +109,51 @@ defmodule Smalt.DataPlane.Purview do
   def create_entity(body, opts \\ %{})
 
   # A non-map `entity` (or bare non-map body) is a 400, not a BadMapError 500.
-  # Note the envelope body itself is a map, so the bare-map clause must not
+  # Note the envelope body is a map, so the bare-map clause must not
   # catch `{"entity" => "x"}` — hence the explicit non-map-entity refusal here.
   def create_entity(%{"entity" => entity}, _opts) when not is_map(entity) do
-    {:error, 400,
-     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
+    {:error, 400, entity_body_error()}
   end
 
-  def create_entity(%{"entity" => entity}, opts) when is_map(entity), do: do_create(entity, opts)
+  def create_entity(%{"entity" => entity}, opts) when is_map(entity),
+    do: validate_and_create(entity, opts)
 
-  def create_entity(entity, opts) when is_map(entity), do: do_create(entity, opts)
+  def create_entity(entity, opts) when is_map(entity), do: validate_and_create(entity, opts)
 
   def create_entity(_body, _opts) do
-    {:error, 400,
-     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}}
+    {:error, 400, entity_body_error()}
+  end
+
+  defp entity_body_error do
+    %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entity body required"}}
+  end
+
+  defp validate_and_create(entity, opts) do
+    with :ok <- validate_type(entity) do
+      do_create(entity, opts)
+    end
+  end
+
+  # Unknown (or missing) typeName -> typed 400 ATLAS-400-CLASS, like real
+  # Atlas refusing to mint an entity of an unknown type.
+  defp validate_type(%{"typeName" => name}) when is_binary(name) do
+    if registered_type?(name), do: :ok, else: {:error, 400, class_error("typeName `#{name}` is not a registered typedef")}
+  end
+
+  defp validate_type(_entity) do
+    {:error, 400, class_error("entity requires a binary `typeName`")}
   end
 
   defp do_create(entity, _opts) do
     entity = Map.put_new(entity, "guid", new_guid())
-
     Store.put(:smalt_purview_entities, entity["guid"], entity)
-
+    mint_process_edges(entity)
     {:ok, 201, entity}
   end
+
+  # ---------------------------------------------------------------------------
+  # Bulk entities
+  # ---------------------------------------------------------------------------
 
   @doc """
   Creates up to #{@max_bulk} entities atomically. More than #{@max_bulk} ->
@@ -53,34 +162,64 @@ defmodule Smalt.DataPlane.Purview do
   def bulk_entities(body, opts \\ %{})
 
   def bulk_entities(%{"entities" => entities}, _opts) when is_list(entities) do
-    # Atomic: over-limit OR any non-map element -> 400 with no partial insert.
-    if length(entities) <= @max_bulk and Enum.all?(entities, &is_map/1) do
-      entities =
-        Enum.map(entities, fn e ->
-          e = Map.put_new(e, "guid", new_guid())
-          Store.put(:smalt_purview_entities, e["guid"], e)
-          e
-        end)
+    # Atomic: over-limit, non-map element, OR unknown typeName -> 400 with no
+    # partial insert. Validate the whole list before any Store.put.
+    cond do
+      length(entities) > @max_bulk ->
+        {:error, 400,
+         %{
+           "error" => %{
+             "code" => "ATLAS-400-00-001",
+             "message" => "bulk is limited to #{@max_bulk} entities, got #{length(entities)}"
+           }
+         }}
 
-      {:ok, 201,
-       %{
-         "guidAssignments" => Map.new(entities, fn e -> {e["guid"], e["guid"]} end),
-         "mutatedEntities" => %{"CREATE" => entities}
-       }}
-    else
-      {:error, 400,
-       %{
-         "error" => %{
-           "code" => "ATLAS-400-00-001",
-           "message" => "bulk is limited to #{@max_bulk} entities, got #{length(entities)}"
-         }
-       }}
+      not Enum.all?(entities, &is_map/1) ->
+        {:error, 400, entity_body_error()}
+
+      true ->
+        case validate_all_types(entities) do
+          {:error, _, _} = err ->
+            err
+
+          :ok ->
+            created =
+              Enum.map(entities, fn e ->
+                e = Map.put_new(e, "guid", new_guid())
+                Store.put(:smalt_purview_entities, e["guid"], e)
+                mint_process_edges(e)
+                e
+              end)
+
+            {:ok, 201,
+             %{
+               "guidAssignments" => Map.new(created, fn e -> {e["guid"], e["guid"]} end),
+               "mutatedEntities" => %{"CREATE" => created}
+             }}
+        end
     end
   end
 
   def bulk_entities(_body, _opts) do
     {:error, 400,
      %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entities array required"}}}
+  end
+
+  defp validate_all_types(entities) do
+    Enum.reduce_while(entities, :ok, fn e, :ok ->
+      case validate_type(e) do
+        :ok -> {:cont, :ok}
+        {:error, _, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  # PUT /entity/bulk semantics: only validate a typeName the patch actually
+  # carries; absence inherits the stored entity's registered type.
+  defp validate_patch_types(entities) do
+    entities
+    |> Enum.filter(&Map.has_key?(&1, "typeName"))
+    |> validate_all_types()
   end
 
   @doc "Fetches an entity by guid. `{:ok, 200, entity}` | `{:error, 404, body}`."
@@ -93,6 +232,169 @@ defmodule Smalt.DataPlane.Purview do
         {:error, 404,
          %{"error" => %{"code" => "ATLAS-404-00-005", "message" => "entity #{guid} not found"}}}
     end
+  end
+
+  @doc """
+  Attaches classifications (Atlas `POST /entity/guid/classifications` — the
+  body is a LIST of classification maps, each with a registered `typeName`).
+  Updates the stored entity's `classifications` list. `{:ok, 204, nil}`.
+  """
+  def add_classifications(guid, classifications, _opts \\ %{})
+
+  def add_classifications(guid, classifications, _opts) when is_list(classifications) do
+    with {:ok, entity} <- fetch_entity(guid),
+         :ok <- validate_classdefs(classifications) do
+      entity = attach_classifications(entity, classifications)
+      Store.put(:smalt_purview_entities, entity["guid"], entity)
+      {:ok, 204, nil}
+    end
+  end
+
+  def add_classifications(_guid, _classifications, _opts) do
+    {:error, 400, class_error("classifications body must be an array of classification maps")}
+  end
+
+  @doc """
+  Bulk classification (Atlas `POST /entity/bulk/classification`):
+  `%{"classification" => classification, "entityGuids" => [guid, ...]}` ->
+  `{:ok, 201, nil}` with no partial attach on any invalid guid/classDef.
+  """
+  def bulk_classification(body, _opts \\ %{})
+
+  def bulk_classification(
+        %{"classification" => classification, "entityGuids" => guids} = body,
+        _opts
+      )
+      when is_map(classification) and is_list(guids) do
+    if is_map_key(body, "entityGuids") and Enum.all?(guids, &is_binary/1) do
+      with {:ok, entities} <- fetch_entities(guids),
+           :ok <- validate_classdefs([classification]) do
+        Enum.each(entities, fn entity ->
+          entity = attach_classifications(entity, [classification])
+          Store.put(:smalt_purview_entities, entity["guid"], entity)
+        end)
+
+        {:ok, 201, nil}
+      end
+    else
+      {:error, 400, class_error("entityGuids must be an array of guid strings")}
+    end
+  end
+
+  def bulk_classification(_body, _opts) do
+    {:error, 400,
+     %{
+       "error" => %{
+         "code" => "ATLAS-400-00-001",
+         "message" => "bulk classification requires `classification` + `entityGuids`"
+       }
+     }}
+  end
+
+  @doc """
+  PUT /entity/bulk semantics: merge attributes into existing entities by guid,
+  re-validating typeName and re-minting Process lineage edges. Unknown guid ->
+  404 `ATLAS-404-00-005` with no partial update.
+  """
+  def update_entities(body, opts \\ %{})
+
+  def update_entities(%{"entities" => entities}, _opts) when is_list(entities) do
+    cond do
+      length(entities) > @max_bulk ->
+        {:error, 400,
+         %{
+           "error" => %{
+             "code" => "ATLAS-400-00-001",
+             "message" => "bulk is limited to #{@max_bulk} entities, got #{length(entities)}"
+           }
+         }}
+
+      not Enum.all?(entities, &is_map/1) ->
+        {:error, 400, entity_body_error()}
+
+      true ->
+        # PUT patches may omit `typeName` (inherits the stored entity's type);
+        # a patch that CARRIES one still gets it validated.
+        with :ok <- validate_patch_types(entities),
+             {:ok, existing} <- fetch_entities(Enum.map(entities, & &1["guid"])) do
+          updated =
+            Enum.zip(entities, existing)
+            |> Enum.map(fn {patch, entity} ->
+              merged = deep_merge(entity, patch)
+              Store.put(:smalt_purview_entities, merged["guid"], merged)
+              mint_process_edges(merged)
+              merged
+            end)
+
+          {:ok, 200,
+           %{
+             "guidAssignments" => Map.new(updated, fn e -> {e["guid"], e["guid"]} end),
+             "mutatedEntities" => %{"UPDATE" => updated}
+           }}
+        end
+    end
+  end
+
+  def update_entities(_body, _opts) do
+    {:error, 400,
+     %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "entities array required"}}}
+  end
+
+  defp deep_merge(a, b) when is_map(a) and is_map(b) do
+    Map.merge(a, b, fn _k, v1, v2 ->
+      if is_map(v1) and is_map(v2), do: deep_merge(v1, v2), else: v2
+    end)
+  end
+
+  defp fetch_entity(guid) do
+    case Store.get(:smalt_purview_entities, guid) do
+      {:ok, entity} -> {:ok, entity}
+      :error -> {:error, 404, not_found(guid)}
+    end
+  end
+
+  defp fetch_entities(guids) do
+    # Missing guid anywhere -> 404 with no partial attach/update.
+    {ok, missing} =
+      Enum.split_with(guids, fn g ->
+        match?({:ok, _}, Store.get(:smalt_purview_entities, g))
+      end)
+
+    if length(ok) == length(guids) do
+      {:ok, Enum.map(guids, fn g -> {:ok, e} = Store.get(:smalt_purview_entities, g); e end)}
+    else
+      {:error, 404, not_found(List.first(missing))}
+    end
+  end
+
+  defp not_found(guid) do
+    %{"error" => %{"code" => "ATLAS-404-00-005", "message" => "entity #{guid} not found"}}
+  end
+
+  defp validate_classdefs(classifications) do
+    Enum.reduce_while(classifications, :ok, fn c, :ok ->
+      name = if is_map(c), do: c["typeName"], else: nil
+
+      cond do
+        not is_map(c) ->
+          {:halt, {:error, 400, class_error("classification must be a map")}}
+
+        not is_binary(name) ->
+          {:halt, {:error, 400, class_error("classification requires a binary `typeName`")}}
+
+        match?({:ok, _}, Store.get(:smalt_purview_entities, "CLASSDEF:" <> name)) ->
+          {:cont, :ok}
+
+        true ->
+          {:halt, {:error, 400, class_error("classification `#{name}` is not a registered classDef")}}
+      end
+    end)
+  end
+
+  defp attach_classifications(entity, classifications) do
+    existing = List.wrap(entity["classifications"])
+    merged = existing ++ List.wrap(classifications)
+    Map.put(entity, "classifications", merged)
   end
 
   @doc """
@@ -250,6 +552,43 @@ defmodule Smalt.DataPlane.Purview do
   defp ordered(edge, _guid, _node, "output"), do: {edge["fromEntityId"], edge["toEntityId"]}
   defp ordered(_edge, guid, node, "input"), do: {node, guid}
   defp ordered(edge, _guid, _node, "both"), do: {edge["fromEntityId"], edge["toEntityId"]}
+
+  # ---------------------------------------------------------------------------
+  # Process entities -> lineage edges
+  # ---------------------------------------------------------------------------
+
+  # A Process entity's `relationshipAttributes` input/output lists (Atlas wire
+  # shape: %{"guid" => g} or bare guid strings) mint real lineage edges:
+  #   input  --Process.Input-->  process  --Process.Output-->  output
+  # so GET /atlas/v2/lineage/{direction}/{guid} sees both hops. Unknown guids
+  # in the lists are minted as edges anyway (Atlas allows dangling process
+  # endpoints at PUT time; lineage renders them as "Unknown" entities).
+  defp mint_process_edges(%{"typeName" => "Process", "guid" => guid} = entity) do
+    attrs = entity["relationshipAttributes"] || %{}
+
+    inputs = guid_list(attrs["input"])
+    outputs = guid_list(attrs["output"])
+
+    Enum.each(inputs, &put_edge(&1, guid, "Process.Input"))
+    Enum.each(outputs, &put_edge(guid, &1, "Process.Output"))
+  end
+
+  defp mint_process_edges(_entity), do: :ok
+
+  defp guid_list(list) when is_list(list) do
+    for item <- list, g = guid_of(item), is_binary(g), do: g
+  end
+
+  defp guid_list(_), do: []
+
+  defp guid_of(%{"guid" => g}) when is_binary(g), do: g
+  defp guid_of(%{"id" => g}) when is_binary(g), do: g
+  defp guid_of(g) when is_binary(g), do: g
+  defp guid_of(_), do: nil
+
+  defp class_error(message) do
+    %{"error" => %{"code" => "ATLAS-400-CLASS", "message" => message}}
+  end
 
   defp parse_depth(nil), do: 1
 

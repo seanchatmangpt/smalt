@@ -195,7 +195,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   # ---------------------------------------------------------------------------
-  # Soft delete / recover / purge
+  # Soft delete / recover / purge (keys)
   # ---------------------------------------------------------------------------
 
   @deleted_table :smalt_vault_deleted_keys
@@ -203,17 +203,30 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   # Lazy table creation (mirrors BlobStorage.ensure_policy_table): the table is
   # not in Store.@tables (shared file), so it is provisioned on first use. A
-  # Store restart recreates live tables only — deleted-key state is sim-state.
+  # Store restart recreates live tables only — deleted-bundle state is sim-state.
+  #
+  # KD-117 ROOT CAUSE (shadow-table heir class, mirrors Policy.ensure_tables/0):
+  # the first creator is a Bandit request task — without an heir the table DIES
+  # with that request process and every later request sees a fresh table
+  # (witnessed: DELETE /keys 200 then GET /deletedkeys 404 on the same beam).
+  # Heir to :init (permanent, node-local) makes the table outlive its creator;
+  # the ArgumentError rescue keeps the create race fail-safe when several
+  # requests race the first insert.
   @doc false
   def ensure_deleted_table do
     if :ets.info(@deleted_table) == :undefined do
-      :ets.new(@deleted_table, [
-        :ordered_set,
-        :public,
-        :named_table,
-        read_concurrency: true,
-        write_concurrency: true
-      ])
+      try do
+        :ets.new(@deleted_table, [
+          :ordered_set,
+          :public,
+          :named_table,
+          {:read_concurrency, true},
+          {:write_concurrency, true},
+          {:heir, Process.whereis(:init), []}
+        ])
+      rescue
+        ArgumentError -> :ok
+      end
     end
 
     :ok
@@ -445,6 +458,15 @@ defmodule Smalt.DataPlane.KeyVaultActions do
       get_in(record, ["attributes", "purgeProtection"]) == true
   end
 
+  # Retention is vault-level real-KV default (90d), already the keys constant.
+  defp real_purge_date(now), do: now + @retention_seconds
+
+  defp not_found(code), do: %{"error" => %{"code" => code}}
+
+  defp public_deleted_secret(deleted) do
+    Map.drop(deleted, ["is_deleted_secret"])
+  end
+
   defp public_deleted_record(deleted) do
     deleted |> Map.drop(["key_material", "version_rows"]) |> public_record()
   end
@@ -495,6 +517,135 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     case Store.get(:smalt_vault_keys, name) do
       {:ok, record} -> {:ok, record}
       :error -> :error
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Soft delete / recover / purge (secrets) — KD-102
+  # ---------------------------------------------------------------------------
+  #
+  # Deleted secrets share the `@deleted_table` with deleted keys, namespaced by
+  # tuple keys `{:secret, name}` (binary keys remain deleted KEYS). The table is
+  # a registry-declared shadow table owned by this module; reusing it avoids a
+  # second registry individual for a sim-state surface. All list/read paths
+  # filter on the tuple shape so the two planes never see each other's rows.
+
+  @doc """
+  `DELETE /secrets/:name` (soft delete, real Azure contract). Removes the
+  secret from the live surface (subsequent `GET /secrets/:name` 404s
+  SecretNotFound) and moves it to the deleted-bundle table with `recoveryId`,
+  `deletedDate` and `scheduledPurgeDate` (epoch seconds, 90-day retention).
+  Returns the deleted-secret bundle (real wire shape includes the value).
+  """
+  def delete_secret(name) do
+    ensure_deleted_table()
+
+    case Store.get(:smalt_vault_secrets, name) do
+      {:ok, record} ->
+        now = System.system_time(:second)
+
+        deleted =
+          record
+          |> Map.put("deletedDate", now)
+          |> Map.put("scheduledPurgeDate", real_purge_date(now))
+          |> Map.put("recoveryId", "https://smalt-vault/deletedsecrets/#{name}")
+          |> Map.put("is_deleted_secret", true)
+
+        Store.delete(:smalt_vault_secrets, name)
+        Store.put(@deleted_table, {:secret, name}, deleted)
+
+        {:ok, 200, public_deleted_secret(deleted)}
+
+      :error ->
+        {:error, 404, not_found("SecretNotFound")}
+    end
+  end
+
+  @doc """
+  `GET /deletedsecrets/:name`. The deleted-secret bundle (`recoveryId`,
+  `deletedDate`, `scheduledPurgeDate`). Unknown or purged secret -> 404
+  SecretNotFound. The live path (`GET /secrets/:name`) 404s by construction —
+  the live row is gone.
+  """
+  def get_deleted_secret(name) do
+    ensure_deleted_table()
+
+    case Store.get(@deleted_table, {:secret, name}) do
+      {:ok, deleted} -> {:ok, 200, public_deleted_secret(deleted)}
+      :error -> {:error, 404, not_found("SecretNotFound")}
+    end
+  end
+
+  @doc """
+  `GET /deletedsecrets`. All deleted-secret bundles, key order.
+  """
+  def list_deleted_secrets do
+    ensure_deleted_table()
+
+    {:ok, 200,
+     %{
+       "value" =>
+         # list_all/1, not list/1: list/1 filters to the binary-key prefix
+         # contract and silently drops tuple-keyed rows — deleted secrets ride
+         # {:secret, name} tuple keys, so list/1 would return an empty listing
+         # forever (witnessed live 2026-10-20: deleted secret present, list []).
+         Enum.flat_map(Store.list_all(@deleted_table), fn
+           %{"is_deleted_secret" => true} = record -> [public_deleted_secret(record)]
+           _ -> []
+         end)
+     }}
+  end
+
+  @doc """
+  `POST /deletedsecrets/:name/recover`. Restores the soft-deleted secret to the
+  live surface; the deleted entry is removed. Unknown or purged secret -> 404
+  SecretNotFound.
+  """
+  def recover_deleted_secret(name) do
+    ensure_deleted_table()
+
+    case Store.get(@deleted_table, {:secret, name}) do
+      {:ok, deleted} ->
+        restored =
+          deleted
+          |> Map.drop(["deletedDate", "scheduledPurgeDate", "recoveryId", "is_deleted_secret"])
+
+        Store.put(:smalt_vault_secrets, name, restored)
+        Store.delete(@deleted_table, {:secret, name})
+        {:ok, 200, restored}
+
+      :error ->
+        {:error, 404, not_found("SecretNotFound")}
+    end
+  end
+
+  @doc """
+  `POST /deletedsecrets/:name/purge`. Permanent removal — recover then 404s.
+  A secret flagged with purge protection (`"purge_protection": true` or
+  `attributes.purgeProtection`) refuses with `409 Conflict`, mirroring the
+  deleted-keys contract.
+  """
+  def purge_deleted_secret(name) do
+    ensure_deleted_table()
+
+    case Store.get(@deleted_table, {:secret, name}) do
+      {:ok, deleted} ->
+        if purge_protection?(deleted) do
+          {:error, 409,
+           %{
+             "error" => %{
+               "code" => "Conflict",
+               "message" =>
+                 "#{name} is protected against purge by a vault-level purge protection policy."
+             }
+           }}
+        else
+          Store.delete(@deleted_table, {:secret, name})
+          {:ok, 204, %{}}
+        end
+
+      :error ->
+        {:error, 404, not_found("SecretNotFound")}
     end
   end
 

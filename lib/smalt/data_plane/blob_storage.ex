@@ -848,6 +848,114 @@ defmodule Smalt.DataPlane.BlobStorage do
     {:ok, snapshots}
   end
 
+  # KD-107 RAISE (2026-10-20): lease-on-snapshot — `?comp=lease` addressed to a
+  # snapshot (`?sharesnapshot=<ts>` on the blob path). Each snapshot row is its
+  # own ETS record, so the lease id namespace is per-snapshot by construction.
+  # Same action set / Azure shapes as lease_container/5; state rides the frozen
+  # snapshot record (additive "lease" key). Wire arm lands in egress_router.ex
+  # (other lane's file); this is the engine leg.
+  @doc """
+  Blob snapshot lease operations (`PUT ?comp=lease&sharesnapshot=<ts>` on the
+  blob path, with `x-ms-lease-action`). State rides the frozen snapshot record
+  in `:smalt_blob_snapshots` — per-snapshot lease id namespace.
+
+  Returns `{:ok, status, headers, nil}` or `{:error, status, code, msg}`.
+  """
+  def lease_blob_snapshot(account, container, blob_name, ts, action, headers \\ %{}, opts \\ []) do
+    ensure_snapshot_table()
+    snap_key = {"#{account}/#{container}/#{blob_name}", ts}
+    now = now_ms(opts)
+    lease_id = header_value(headers, "x-ms-lease-id")
+
+    with [{{_k, _ts}, snap}] <- :ets.lookup(@snapshot_table, snap_key) do
+      case normalize_action(action) do
+        :acquire ->
+          with :ok <- validate_proposed_lease_id(headers),
+               {:ok, seconds} <- lease_duration(headers) do
+            if lease_active?(Map.get(snap, "lease"), now) do
+              {:error, 409, "LeaseAlreadyPresent",
+               "There is already a lease present on the snapshot."}
+            else
+              id = acquire_lease_id(headers)
+              expires = if seconds == :infinity, do: :infinity, else: now + seconds * 1000
+
+              new_lease = %{
+                "id" => id,
+                "state" => "leased",
+                "expires_at" => expires,
+                "duration" => seconds
+              }
+
+              put_snapshot_record(snap_key, Map.put(snap, "lease", new_lease))
+              {:ok, 201, snapshot_lease_headers(snap, id), nil}
+            end
+          end
+
+        :renew ->
+          with :ok <- require_lease(snap, lease_id, now),
+               {:ok, seconds} <- lease_duration(headers) do
+            lease = extend_lease(Map.get(snap, "lease"), now, seconds)
+            snap = Map.put(snap, "lease", lease)
+            put_snapshot_record(snap_key, snap)
+            {:ok, 200, snapshot_lease_headers(snap, Map.get(lease, "id")), nil}
+          end
+
+        :release ->
+          with :ok <- require_lease(snap, lease_id, now, :leased_or_broken) do
+            put_snapshot_record(snap_key, Map.delete(snap, "lease"))
+            {:ok, 200, snapshot_lease_headers(snap, nil), nil}
+          end
+
+        :break ->
+          with :ok <- require_lease(snap, lease_id, now, :leased_or_broken) do
+            lease = Map.get(snap, "lease")
+
+            remaining =
+              case Map.get(lease, "expires_at") do
+                :infinity -> 0
+                ms when is_integer(ms) -> max(0, div(ms - now, 1000))
+                _ -> 0
+              end
+
+            snap = Map.put(snap, "lease", Map.merge(lease, %{"state" => "broken", "expires_at" => nil}))
+            put_snapshot_record(snap_key, snap)
+
+            {:ok, 202,
+             Map.put(snapshot_lease_headers(snap, Map.get(lease, "id")), "x-ms-lease-time", Integer.to_string(remaining)),
+             nil}
+          end
+
+        other when other in [nil, :error] ->
+          {:error, 400, "InvalidQueryParameterValue",
+           "Invalid or missing x-ms-lease-action (expected acquire|renew|release|break)."}
+      end
+    else
+      [] ->
+        {:error, 404, "BlobNotFound", "The specified blob snapshot does not exist."}
+    end
+  end
+
+  defp put_snapshot_record(snap_key, snap) do
+    :ets.insert(@snapshot_table, {snap_key, snap})
+  end
+
+  # Snapshot lease success headers derive from the FROZEN blob record (quoted
+  # etag + RFC 1123 Last-Modified from "last_modified"), not the container
+  # record lease_success_headers/2 reads.
+  defp snapshot_lease_headers(snap, lease_id) do
+    {:ok, lm_dt, _} = DateTime.from_iso8601(snap["last_modified"])
+    lm = Calendar.strftime(lm_dt, "%a, %d %b %Y %H:%M:%S GMT")
+
+    base = %{
+      "etag" => snap["etag"],
+      "last-modified" => lm,
+      "x-ms-request-id" => request_id(),
+      "x-ms-version" => "2021-12-02"
+    }
+
+    if lease_id, do: Map.put(base, "x-ms-lease-id", lease_id), else: base
+  end
+
   @doc """
   PUT ?comp=immutabilityPolicy — sets or locks the container immutability policy.
   Locking requires `If-Match: "*"`. After lock, changing the policy → 409
@@ -1300,7 +1408,7 @@ defmodule Smalt.DataPlane.BlobStorage do
     marker = Map.get(opts, "marker") || ""
     prefix = Map.get(opts, "prefix") || ""
     delimiter = Map.get(opts, "delimiter") || ""
-    include_meta = include_metadata?(Map.get(opts, "include"))
+    include = Map.get(opts, "include")
     max_results = normalize_max(Map.get(opts, "maxresults"))
 
     if delimiter == "" and prefix == "" and marker == "" do
@@ -1326,7 +1434,7 @@ defmodule Smalt.DataPlane.BlobStorage do
           "",
           prefix,
           key_prefix,
-          include_meta
+          include
         )
 
       {xml, next_marker}
@@ -1374,7 +1482,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       blob_items =
         Enum.map_join(page, "\n", fn
           {:blob, name, key} ->
-            render_blob(name, key, key_prefix, include_meta)
+            render_blob(name, key, key_prefix, include)
 
           {:bp, bp_name, _} ->
             "\n  <BlobPrefix>\n    <Name>#{xml_escape(bp_name)}</Name>\n  </BlobPrefix>\n "
@@ -1411,11 +1519,11 @@ defmodule Smalt.DataPlane.BlobStorage do
          delimiter_xml,
          prefix,
          key_prefix,
-         include_meta
+         include
        ) do
     items =
       Enum.map_join(page_keys, "\n", fn key ->
-        render_blob(String.replace_prefix(key, key_prefix, ""), key, key_prefix, include_meta)
+        render_blob(String.replace_prefix(key, key_prefix, ""), key, key_prefix, include)
       end)
 
     """
@@ -1432,31 +1540,78 @@ defmodule Smalt.DataPlane.BlobStorage do
     """
   end
 
-  defp render_blob(name, key, _key_prefix, include_meta) do
+  defp render_blob(name, key, _key_prefix, include) do
     case Store.get(:smalt_blobs, key) do
       {:ok, b} ->
         """
         <Blob>
-          <Name>#{xml_escape(b["name"] || name)}</Name>#{blob_metadata_xml(b, include_meta)}<Properties>
+          <Name>#{xml_escape(b["name"] || name)}</Name>#{blob_metadata_xml(b, include)}<Properties>
             <Content-Length>#{b["content_length"]}</Content-Length>
             <Etag>#{xml_escape(b["etag"])}</Etag>
             <Last-Modified>#{xml_escape(b["last_modified"])}</Last-Modified>
           </Properties>
         </Blob>
-        """
+        """ <> snapshots_xml(key, b, include)
 
       _ ->
         ""
     end
   end
 
+  # KD-107 RAISE (2026-10-20): include=snapshots decorates — each snapshot of
+  # the base blob renders as its own <Blob> entry carrying a <Snapshot>
+  # timestamp element (Azure List Blobs shape), instead of the previously
+  # silently-absent rows. Snapshots sort ascending by timestamp, matching the
+  # base-blob entry order.
+  defp snapshots_xml(blob_key, _b, include) do
+    if include_snapshots?(include) do
+      blob_key
+      |> list_snapshots_by_key()
+      |> Enum.map(fn snap ->
+        """
+        <Blob>
+          <Name>#{xml_escape(snap["name"])}</Name>
+          <Snapshot>#{xml_escape(snap["snapshot"])}</Snapshot>
+          <Properties>
+            <Content-Length>#{snap["content_length"]}</Content-Length>
+            <Etag>#{xml_escape(snap["etag"])}</Etag>
+            <Last-Modified>#{xml_escape(snap["last_modified"])}</Last-Modified>
+          </Properties>
+        </Blob>
+        """
+      end)
+      |> Enum.join("")
+    else
+      ""
+    end
+  end
+
+  defp list_snapshots_by_key(blob_key) do
+    ensure_snapshot_table()
+
+    @snapshot_table
+    |> :ets.match_object({{blob_key, :_}, :_})
+    |> Enum.map(fn {_k, blob} -> blob end)
+    |> Enum.sort_by(fn blob -> blob["snapshot"] end, :asc)
+  end
+
+  defp include_snapshots?(include) when is_binary(include) do
+    include
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.member?("snapshots")
+  end
+
+  defp include_snapshots?(_), do: false
+
   # Azure parity (cycle-34, List Blobs include=metadata): user metadata rides
   # x-ms-meta-* on the stored headers; when the request includes metadata the
   # listing emits a <Metadata> element per blob. Values go through the same
   # xml_escape (hostile & < > " entity-escaped; control chars are refused at
   # PUT by the InvalidMetadata fence). Only the exact "metadata" include
-  # token enables it; unknown include values (snapshots/versions/tags) are
-  # typed UNSUPPORTED(feature-ban) and never emit decoration.
+  # token enables it; the exact "snapshots" token additionally decorates
+  # snapshot rows (KD-107 RAISE, snapshots_xml/3); versions/tags remain
+  # admitted-but-undecorated.
   # Azure parity (lens2 cycle-35): `include` is a COMMA-SEPARATED token list;
   # a token must match exactly. A plain substring match wrongly enables
   # metadata emission for hostile tokens like `metadatabase` or `metadatax`.
@@ -1893,30 +2048,31 @@ defmodule Smalt.DataPlane.BlobStorage do
     with {:ok, record} <- Store.get(:smalt_blob_containers, container_key) do
       case normalize_action(action) do
         :acquire ->
-          case lease_duration(headers) do
-            {:ok, seconds} ->
-              lease = Map.get(record, "lease")
+          # KD-108 RAISE: honor x-ms-proposed-lease-id on acquire (Azure parity —
+          # the kd108 witness showed a client-proposed id being ignored, minting
+          # a fresh UUID and breaking the caller's renew/break/release legs).
+          # Malformed GUID -> 400 InvalidHeaderValue.
+          with :ok <- validate_proposed_lease_id(headers),
+               {:ok, seconds} <- lease_duration(headers) do
+            lease = Map.get(record, "lease")
 
-              if lease_active?(lease, now) do
-                {:error, 409, "LeaseAlreadyPresent",
-                 "There is already a lease present on the container."}
-              else
-                id = request_id()
-                expires = if seconds == :infinity, do: :infinity, else: now + seconds * 1000
+            if lease_active?(lease, now) do
+              {:error, 409, "LeaseAlreadyPresent",
+               "There is already a lease present on the container."}
+            else
+              id = acquire_lease_id(headers)
+              expires = if seconds == :infinity, do: :infinity, else: now + seconds * 1000
 
-                new_lease = %{
-                  "id" => id,
-                  "state" => "leased",
-                  "expires_at" => expires,
-                  "duration" => seconds
-                }
+              new_lease = %{
+                "id" => id,
+                "state" => "leased",
+                "expires_at" => expires,
+                "duration" => seconds
+              }
 
-                put_lease(container_key, record, new_lease)
-                {:ok, 201, lease_success_headers(record, id), nil}
-              end
-
-            {:error, status, code, msg} ->
-              {:error, status, code, msg}
+              put_lease(container_key, record, new_lease)
+              {:ok, 201, lease_success_headers(record, id), nil}
+            end
           end
 
         :renew ->
@@ -2028,6 +2184,31 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  # x-ms-proposed-lease-id (KD-108 RAISE): when present on acquire it is the
+  # lease id Azure returns verbatim; a non-GUID value is 400 InvalidHeaderValue.
+  @lease_id_guid ~r/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+  defp validate_proposed_lease_id(headers) do
+    case header_value(headers, "x-ms-proposed-lease-id") do
+      nil ->
+        :ok
+
+      id ->
+        if Regex.match?(@lease_id_guid, id),
+          do: :ok,
+          else:
+            {:error, 400, "InvalidHeaderValue",
+             "x-ms-proposed-lease-id must be a valid GUID."}
+    end
+  end
+
+  defp acquire_lease_id(headers) do
+    case header_value(headers, "x-ms-proposed-lease-id") do
+      nil -> request_id()
+      id -> id
+    end
+  end
+
   defp extend_lease(lease, _now, :infinity), do: Map.put(lease, "expires_at", :infinity)
 
   defp extend_lease(lease, now, n) when is_integer(n),
@@ -2090,7 +2271,10 @@ defmodule Smalt.DataPlane.BlobStorage do
   # evaluates signed identifiers, it reads this row via get_acl/2.
   # ---------------------------------------------------------------------------
   @max_signed_identifiers 5
-  @acl_permissions ~w(r p w d l)
+  # KD-108 RAISE (2026-10-20): full Azure container permission set. Real Azure
+  # container ACLs accept r/a/c/w/d/l (the previous r/p/w/d/l set refused
+  # `racwdl` with 400 InvalidXmlDocument — kd108 witness divergence #2).
+  @acl_permissions ~w(r a c w d l)
 
   @doc "Signed identifiers for a container (stored additive in the container row)."
   def get_acl(account, container) do
@@ -2179,7 +2363,7 @@ defmodule Smalt.DataPlane.BlobStorage do
 
     if bad,
       do: {:error, 400, "InvalidXmlDocument",
-           "Invalid permission letter in SignedIdentifier AccessPolicy (allowed: r, p, w, d, l)."},
+           "Invalid permission letter in SignedIdentifier AccessPolicy (allowed: r, a, c, w, d, l)."},
       else: :ok
   end
 

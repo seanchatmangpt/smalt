@@ -1,0 +1,358 @@
+defmodule Smalt.DataPlane.Certificates do
+  @moduledoc """
+  Minimal Azure Key Vault Certificates data plane (KD-104) over a
+  module-owned, heir'd ETS table `:smalt_vault_certificates`.
+
+  Strictly the four verbs the KD-104 falsifier names (CertificateClient
+  create/get + list, plus delete): NO versions/latest surface, NO merge or
+  pending-Certificate operation resolver — Azure's create here is atomic,
+  never `pending`.
+
+  Wire surface (routes live in `EgressRouter`; wiring seam is the same
+  `{:ok, status, body}` tuple contract the `/keys` + `/secrets` siblings
+  use, so a handler is one `case`):
+
+    - `POST /certificates/:name/create` -> `create/3` (self-signed X.509
+      minted from the request policy)
+    - `GET  /certificates`              -> `list/0`
+    - `GET  /certificates/:name`        -> `get/1` (200 cer + attributes)
+    - `DELETE /certificates/:name`      -> `delete/1` (200 deletedCertificate
+      object, row hard-removed — minimal typed soft-delete: the deletion IS
+      terminal; `purge/1` answers typed `404 NotFound`)
+
+  ## Certificate material
+
+  A real RSA-2048 self-signed X.509 v3 certificate is minted per create via
+  OTP `:public_key` (hand-assembled `:OTPCertificate`, DER-encoded,
+  SHA256WithRSAEncryption-signed). The DER is stored under `"cer"` (base64
+  on the wire); the private key is NOT retained — the certificate is the
+  stored asset. `pem/1` exports the stored DER as PEM.
+
+  ## Attributes
+
+  `attributes` mirror the KV shape: `enabled`, `created`/`updated` (unix
+  seconds), `nbf`/`exp` (unix seconds, derived from the policy validity),
+  `recoveryLevel: "Purgeable"` (the deletion-is-terminal posture above).
+  """
+
+  use GenServer
+
+  alias Smalt.Store
+
+  @table :smalt_vault_certificates
+  @gregorian_offset 62_167_219_200
+
+  # ---------------------------------------------------------------------------
+  # Table ownership (heir'd ETS)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Ensures `#{@table}` exists, lazily starting this module's GenServer as
+  owner + heir so the table outlives whichever request process first
+  touches it. Idempotent; safe from any process.
+  """
+  @spec ensure_table :: :ok
+  def ensure_table do
+    if :ets.info(@table) == :undefined do
+      case start_link() do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _pid}} -> :ok
+      end
+    end
+
+    :ok
+  end
+
+  @doc false
+  def start_link(_opts \\ []) do
+    GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+  end
+
+  @impl true
+  def init(:ok) do
+    if :ets.info(@table) == :undefined do
+      :ets.new(@table, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true,
+        heir: self()
+      ])
+    end
+
+    {:ok, %{}}
+  end
+
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
+  # ---------------------------------------------------------------------------
+  # Create
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  `POST /certificates/:name/create`. Body `{"policy": {"x509_props":
+  {"subject": "CN=...", "validity_months": N}}}` (both optional; defaults
+  `CN=smalt-cert`, 12 months). Mints a real self-signed certificate, stores
+  DER + attributes, returns the full Certificate object (201, Azure shape:
+  `id`, `cer` base64 DER, `attributes`, `policy`).
+
+  An existing name is refused atomically with typed
+  `409 {"error":{"code":"CertificateNameAlreadyExists"}}` — the exists-check
+  AND the insert run as ONE GenServer `call`, so the create-on-existing
+  silent overwrite is structurally impossible.
+  """
+  @spec create(binary, Plug.Conn.t() | binary, map) :: {:ok, 201, map} | {:error, 409, map}
+  def create(name, conn_or_host, body_params) do
+    ensure_table()
+
+    host =
+      case conn_or_host do
+        %Plug.Conn{host: host} -> host
+        host when is_binary(host) -> host
+      end
+
+    policy = Map.get(body_params || %{}, "policy", %{})
+    x509 = Map.get(policy, "x509_props", %{})
+
+    subject = Map.get(x509, "subject", "CN=smalt-cert")
+    months = Map.get(x509, "validity_months", 12)
+
+    now = System.system_time(:second)
+    not_before = now
+    not_after = add_months(now, months)
+
+    {:ok, der} = mint_certificate(subject, subject, not_before, not_after)
+
+    record = %{
+      "id" => "https://#{host}:8443/certificates/#{name}",
+      "name" => name,
+      "cer" => Base.encode64(der),
+      "attributes" => %{
+        "enabled" => Map.get(x509, "enabled", true),
+        "created" => now,
+        "updated" => now,
+        "nbf" => not_before,
+        "exp" => not_after,
+        "recoveryLevel" => "Purgeable"
+      },
+      "policy" => %{
+        "id" => "https://#{host}:8443/certificates/#{name}/policy",
+        "x509_props" => %{
+          "subject" => subject,
+          "validity_months" => months
+        },
+        "attributes" => %{
+          "created" => now,
+          "updated" => now,
+          "recoveryLevel" => "Purgeable"
+        }
+      }
+    }
+
+    case insert_new(name, record) do
+      :ok -> {:ok, 201, record}
+      {:error, :exists} -> {:error, 409, certificate_error("CertificateNameAlreadyExists")}
+    end
+  end
+
+  defp insert_new(name, record) do
+    GenServer.call(__MODULE__, {:insert_new, name, record})
+  end
+
+  @impl true
+  def handle_call({:insert_new, name, record}, _from, state) do
+    case :ets.insert_new(@table, {name, record}) do
+      true -> {:reply, :ok, state}
+      false -> {:reply, {:error, :exists}, state}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Get / list
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  `GET /certificates/:name`. Returns the stored Certificate object (same
+  shape the create route returned; `cer` is base64 DER). Unknown name ->
+  typed `404 CertificateNotFound`.
+  """
+  @spec get(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def get(name) do
+    ensure_table()
+
+    case Store.get(@table, name) do
+      {:ok, record} -> {:ok, 200, record}
+      :error -> {:error, 404, certificate_error("CertificateNotFound")}
+    end
+  end
+
+  @doc """
+  `GET /certificates`. Certificate list envelope
+  `{"value": [CertificateItem...]}` (id + name + attributes per row).
+  """
+  @spec list :: {:ok, 200, map}
+  def list do
+    ensure_table()
+
+    {:ok, 200,
+     %{
+       "value" =>
+         Enum.map(Store.list(@table), fn record ->
+           %{"id" => record["id"], "name" => record["name"], "attributes" => record["attributes"]}
+         end)
+     }}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Delete / purge
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  `DELETE /certificates/:name`. 200 with the deletedCertificate object
+  (`deletedDate` + `recoveryLevel: "Purgeable"`; the deletion is terminal).
+  Unknown name -> typed `404 CertificateNotFound`. Post-delete, `get/1`
+  answers the same typed 404 — nothing is stored.
+  """
+  @spec delete(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def delete(name) do
+    ensure_table()
+
+    case Store.get(@table, name) do
+      {:ok, record} ->
+        Store.delete(@table, name)
+
+        {:ok, 200,
+         record
+         |> Map.put("deletedDate", System.system_time(:second))
+         |> Map.update!("attributes", fn a -> Map.put(a, "deleted", System.system_time(:second)) end)}
+
+      :error ->
+        {:error, 404, certificate_error("CertificateNotFound")}
+    end
+  end
+
+  @doc """
+  `POST /deletedcertificates/:name/purge`. The deletion is terminal
+  (`recoveryLevel: "Purgeable"`), so purge is idempotent-by-404: always a
+  typed `404 {"error":{"code":"CertificateNotFound"}}` — no recovery ledger
+  exists to clear, nothing stored.
+  """
+  @spec purge(binary) :: {:error, 404, map}
+  def purge(_name) do
+    {:error, 404, certificate_error("CertificateNotFound")}
+  end
+
+  @doc """
+  Exports the stored certificate as PEM (`-----BEGIN CERTIFICATE-----`).
+  The DER is re-encoded from the stored base64 — no cached side state.
+  """
+  @spec pem(binary) :: {:ok, binary} | {:error, 404, map}
+  def pem(name) do
+    case get(name) do
+      {:ok, 200, record} ->
+        {:ok, der} = Base.decode64(record["cer"])
+        {:ok, :public_key.pem_encode([{:Certificate, der, :not_encrypted}])}
+
+      error ->
+        error
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # X.509 minting (OTP :public_key)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Mints a self-signed X.509 v3 certificate: RSA-2048, SHA256WithRSAEncryption,
+  subject == issuer (CN extracted from the policy subject string, e.g.
+  `"CN=foo"`). Returns `{:ok, der_binary}`. `not_before`/`not_after` are
+  unix seconds.
+  """
+  @spec mint_certificate(binary, binary, integer, integer) :: {:ok, binary}
+  def mint_certificate(subject, issuer, not_before, not_after) do
+    rsa_key = :public_key.generate_key({:rsa, 2048, 65_537})
+    # {:RSAPrivateKey, version, n, e, d, ...}
+    n = elem(rsa_key, 2)
+    e = elem(rsa_key, 3)
+
+    spki = {
+      :"SubjectPublicKeyInfo",
+      {:"AlgorithmIdentifier", {1, 2, 840, 113_549, 1, 1, 1}, {:asn1_OPENTYPE, <<5, 0>>}},
+      :public_key.der_encode(:RSAPublicKey, {:"RSAPublicKey", e, n})
+    }
+
+    tbs = {
+      :"OTPTBSCertificate",
+      :v3,
+      serial_number(),
+      sig_alg(),
+      name_rdn(issuer),
+      {:"Validity", asn1_time(not_before), asn1_time(not_after)},
+      name_rdn(subject),
+      spki,
+      # issuerUniqueID / subjectUniqueID / extensions — all absent
+      :asn1_NOVALUE,
+      :asn1_NOVALUE,
+      :asn1_NOVALUE
+    }
+
+    tbs_der = :public_key.der_encode(:OTPTBSCertificate, tbs)
+    signature = :public_key.sign(tbs_der, :sha256, rsa_key)
+
+    cert = {:"OTPCertificate", tbs, sig_alg(), signature}
+
+    {:ok, :public_key.der_encode(:OTPCertificate, cert)}
+  end
+
+  defp sig_alg do
+    {:"SignatureAlgorithm", {1, 2, 840, 113_549, 1, 1, 11}, {:asn1_OPENTYPE, <<5, 0>>}}
+  end
+
+  defp serial_number do
+    # Positive, RFC 5280-conformant (≤ 20 octets): 16 random bytes decoded
+    # to a positive INTEGER (the ASN.1 encoder rejects raw binaries).
+    :crypto.strong_rand_bytes(16)
+    |> :binary.decode_unsigned()
+    |> max(1)
+  end
+
+  defp name_rdn(cn) do
+    cn_part = cn |> String.split("CN=", parts: 2) |> List.last() |> String.to_charlist()
+
+    {:rdnSequence,
+     [[{:"AttributeTypeAndValue", {2, 5, 4, 3}, {:printableString, cn_part}}]]}
+  end
+
+  defp asn1_time(unix_seconds) do
+    {{y, mo, d}, {h, mi, s}} =
+      :calendar.gregorian_seconds_to_datetime(unix_seconds + @gregorian_offset)
+
+    list =
+      :io_lib.format(~c"~4.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0B~2.10.0BZ", [y, mo, d, h, mi, s])
+      |> IO.iodata_to_binary()
+      |> String.to_charlist()
+
+    if y >= 2050 do
+      {:generalizedTime, list}
+    else
+      {:utcTime, list}
+    end
+  end
+
+  defp add_months(unix_seconds, months) do
+    {{y, m, d}, time} = :calendar.gregorian_seconds_to_datetime(unix_seconds + @gregorian_offset)
+
+    total = (y - 1) * 12 + (m - 1) + months
+    ny = div(total, 12) + 1
+    nm = rem(total, 12) + 1
+    nd = min(d, :calendar.last_day_of_the_month(ny, nm))
+
+    :calendar.datetime_to_gregorian_seconds({{ny, nm, nd}, time}) - @gregorian_offset
+  end
+
+  defp certificate_error(code) do
+    %{"error" => %{"code" => code, "message" => "#{code} on the certificates surface"}}
+  end
+end

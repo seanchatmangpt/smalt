@@ -136,7 +136,7 @@ defmodule Smalt.DataPlane.Sentinel do
       rows
       |> Enum.map(fn row ->
         seq = next_row_seq(dcr, stream)
-        row = augment(row)
+        row = augment(row, now)
         Store.put(:smalt_sentinel_rows, row_key(dcr, stream, seq), row)
         forensic_log({:put, dcr, stream, seq})
         {seq, row}
@@ -171,7 +171,11 @@ defmodule Smalt.DataPlane.Sentinel do
     seq
   end
 
-  defp augment(row) do
+  # TimeGenerated: every DCR-ingested row carries a queryable timestamp — the
+  # caller-supplied value wins; otherwise the ingest-time ISO8601 instant is
+  # stamped so the KQL time functions (ago/between/datetime) always resolve
+  # against real rows.
+  defp augment(row, now) do
     canonical = canonical_json(row)
     hash = Base.encode16(:crypto.hash(:sha256, canonical), case: :lower)
 
@@ -185,6 +189,7 @@ defmodule Smalt.DataPlane.Sentinel do
     |> Map.put_new("subjectSha256", sha256_hex(subject))
     |> Map.put("eventId", to_string(eventId))
     |> Map.put("sha256Hash", hash)
+    |> Map.put_new("TimeGenerated", now)
   end
 
   defp ledger_id(canonical), do: "2.#{binary_part(sha256_hex(canonical), 0, 8)}"
@@ -248,7 +253,7 @@ defmodule Smalt.DataPlane.Sentinel do
            "error" => %{
              "code" => "BadQuery",
              "message" =>
-               "query uses a pipeline operator (where/order by/project) without a leading pipe"
+               "query uses a pipeline operator (where/order by/project/summarize/extend/sort) without a leading pipe"
            }
          }}
 
@@ -305,11 +310,20 @@ defmodule Smalt.DataPlane.Sentinel do
       [_, cols] ->
         cols
         |> String.split(",")
-        |> Enum.map(&String.trim/1)
+        |> Enum.map(&project_out_name/1)
         |> Enum.reject(&(&1 == ""))
 
       _ ->
         nil
+    end
+  end
+
+  # `project Alias = Col` outputs the ALIAS column (real Kusto naming); a bare
+  # `project Col` outputs Col as-is.
+  defp project_out_name(col) do
+    case :binary.split(String.trim(col), "=") do
+      [name, _expr] -> String.trim(name)
+      [name] -> name
     end
   end
 
@@ -363,6 +377,9 @@ defmodule Smalt.DataPlane.Sentinel do
   # silently discarding the filter and returning ALL rows with 200. Bare
   # operator keywords (string literals stripped first) without a leading pipe
   # are a parse error -> typed 400 BadQuery envelope.
+  # The engine-routed operator set is (where|order by|project|summarize|extend|
+  # sort|take): bare operator keywords without a leading pipe are a typed 400.
+  # Plain `take N` strings keep legacy behavior (no pipe needed).
   defp kql_pipeline(kql) do
     # Scans (pipe/operator detection, split point) run on the literal-stripped
     # text so pipes/keywords inside literals are invisible (lane R126 exploit 2);
@@ -371,7 +388,10 @@ defmodule Smalt.DataPlane.Sentinel do
     stripped = strip_string_literals(kql)
 
     cond do
-      Regex.match?(~r/\|\s*(where|order\s+by|project)\b/i, stripped) ->
+      Regex.match?(
+        ~r/\|\s*(where|order\s+by|project|summarize|extend|sort|take)\b/i,
+        stripped
+      ) ->
         case :binary.match(stripped, "|") do
           {index, _length} ->
             # Slice from the ORIGINAL kql (execution must see real literals);
@@ -383,8 +403,12 @@ defmodule Smalt.DataPlane.Sentinel do
             String.trim(kql)
         end
 
-      # Bare operator, no leading pipe (quoting-aware scan).
-      Regex.match?(~r/(?:^|\s)(where|order\s+by|project)\b/i, stripped) ->
+      # Bare operator, no leading pipe (quoting-aware scan). `take` is
+      # deliberately excluded — a bare `take N` keeps legacy behavior above.
+      Regex.match?(
+        ~r/(?:^|\s)(where|order\s+by|project|summarize|extend|sort)\b/i,
+        stripped
+      ) ->
         :parse_error
 
       true ->

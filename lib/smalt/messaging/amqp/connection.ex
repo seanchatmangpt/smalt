@@ -1585,6 +1585,24 @@ defmodule Smalt.Amqp.Connection do
           nil
       end
 
+    # KD-118: the SDK opens the per-entity management node as
+    # "<entity>/$management" (managementClient.js), and sender.scheduleMessages
+    # may fire while the queue sender link is still attaching — the
+    # associated-link-name resolution above then finds no sender link and the
+    # op cannot resolve the entity. The mgmt node's own address names the
+    # entity: strip the "/$management" suffix from the receiving mgmt link.
+    entity_from_mgmt_node =
+      case find_mgmt_node_addr(state.links, perf, channel) do
+        addr when is_binary(addr) ->
+          case String.replace_suffix(addr, "/$management", "") do
+            "" -> nil
+            entity -> entity
+          end
+
+        _ ->
+          nil
+      end
+
     request = %{
       operation: props["operation"],
       # KD-COVERS: KD-19 — Event Hubs READ management ops carry type/name/partition as
@@ -1594,7 +1612,7 @@ defmodule Smalt.Amqp.Connection do
       name: props["name"],
       partition: props["partition"],
       body: message.body,
-      queue: associated_queue,
+      queue: associated_queue || entity_from_mgmt_node,
       correlation_id: correlation_id
     }
 
@@ -1694,6 +1712,19 @@ defmodule Smalt.Amqp.Connection do
         link.kind == kind and link.role == :sender and link.channel == req_channel
       end) ||
       Enum.find(links, fn link -> link.kind == kind and link.role == :sender end)
+  end
+
+  # KD-118: the receiving $management link for this transfer — matched on
+  # (channel, handle, role, kind) so a co-attached per-entity mgmt node for a
+  # DIFFERENT entity never answers. Address form "<entity>/$management"
+  # (bare "$management" returns itself; the strip-side nils it).
+  defp find_mgmt_node_addr(links, perf, channel) do
+    Enum.find_value(links, fn {_k, l} ->
+      if l[:kind] == :management and l[:role] == :receiver and l[:channel] == channel and
+           l[:handle] == perf.handle do
+        l[:address]
+      end
+    end)
   end
 
   # Stored bodies are tagged AMQP body sections ({:body_data, bin} /

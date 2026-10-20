@@ -26,6 +26,8 @@ defmodule InternalTier.CensusTest do
                  "vm_zero_growth_test.exs",
                  "wasm_nif_lifecycle_test.exs",
                  "dets_mirror_recovery_test.exs",
+                 "event_hubs_consumer_groups_test.exs",
+                 "certificates_kd104_witness_test.exs",
                  "internal_tier_census_test.exs",
                  @helper
                ])
@@ -48,6 +50,10 @@ defmodule InternalTier.CensusTest do
                  "Smalt.Amqp.QueueStore",
                  "Smalt.Amqp.CbsRouter",
                  "Smalt.Messaging.EventGrid",
+                 "Smalt.Messaging.EventHubs",
+                 "Smalt.DataPlane.Certificates",
+                 "Smalt.Test.Internal.CertificatesKd104WitnessTest",
+                 "Smalt.Internal.EventHubsConsumerGroupsTest",
                  "Smalt.Security.LedgerWriter",
                  "Smalt.Affidavit.WasmEngine",
                  "Smalt.Affidavit.WasmEngine.Supervisor",
