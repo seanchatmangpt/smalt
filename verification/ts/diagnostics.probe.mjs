@@ -41,7 +41,7 @@ const TENANT = "00000000-0000-0000-0000-000000000000";
 const SUB = "11111111-1111-1111-1111-111111111111";
 const APIV = "2021-04-01";
 const SENTINEL_APIV = "2023-01-01";
-const METRICS_APIV = "2024-02-01"; // Smalt.Metrics @latest_api_version
+const METRICS_APIV = "2024-02-01"; // metrics plane @latest_api_version
 
 const cells = [];
 function cell(tag, verdict, detail) {

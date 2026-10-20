@@ -43,7 +43,7 @@ pytestmark = pytest.mark.enforce
 
 RUN = "pywf7"
 SENTINEL_APIV = "2023-01-01"
-METRICS_APIV = "2024-02-01"  # Smalt.Metrics @latest_api_version
+METRICS_APIV = "2024-02-01"  # metrics plane @latest_api_version
 ARM_APIV = "2021-04-01"
 FUTURE_APIV = "2099-01-01"  # corpus law: FUTURE api-version pin, never a past one
 SUB = "py-verify-sub"
@@ -272,7 +272,7 @@ def test_appconfig_snapshot_freeze():
         pytest.skip(
             f"not-landed — appconfig snapshot wire route absent: PUT /snapshots/{name} "
             f"-> {probe.status_code}; owning surface: egress_router.ex appconfig "
-            "snapshot route fragment over Smalt.DataPlane.AppConfigSnapshots "
+            "snapshot route fragment over AppConfigSnapshots "
             "(module landed in lib/, wire not wired)"
         )
     assert probe.status_code in (200, 201), (
