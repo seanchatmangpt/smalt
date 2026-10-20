@@ -101,6 +101,7 @@ async function bootPrivate(block) {
     if (Date.now() > deadline) {
       throw new Error(`private substrate ${block} not healthy in 90s (log: ${logPath})`);
     }
+    // SLEEP-CLASS: POLL-STEP (substrate readiness boot poll, 250ms cadence)
     await new Promise((r) => setTimeout(r, 250));
   }
   return { ports, sharedKey, pid: child.pid };

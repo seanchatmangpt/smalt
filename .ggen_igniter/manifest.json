@@ -111,11 +111,11 @@
     "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>lib/smalt/mcp/generated/mcp_descriptor.ex": {
       "out_template": "lib/smalt/mcp/generated/mcp_descriptor.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:09382125b3a90ac3b793a68cc2dcc9abce5ea4194440b7f913fb0aa107d63420"
+        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:d08907d2636d02ca7543f1477504564e8a12a64892dde8ce3857b580dbd42793"
       },
       "pack_dir": null,
       "template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
-      "updated_at": "2026-10-20T10:40:58.513888Z"
+      "updated_at": "2026-10-20T12:12:32.005491Z"
     }
   },
   "schema_version": "1",

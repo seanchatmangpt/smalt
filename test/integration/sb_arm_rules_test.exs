@@ -1,4 +1,4 @@
-# Internal-tier witness: SB rules ARM family (wave-4 SB-RULES lane).
+# Integration-tier witness (ARM router dispatch, integration tier): SB rules ARM family (wave-4 SB-RULES lane).
 #
 # Chicago discipline: real Store rows, real ARM dispatch (Plug.Router.call
 # in-process, auth :anonymous in the test env), real rules store
@@ -10,15 +10,20 @@
 #   ARM DELETE -> 200 -> GET 404
 #   PUT rule with unsupported SQL -> 400 InvalidFilter (fail-closed)
 #
-# Context: solo (internal tier, in-process dispatch).
+# Context: solo (integration tier, in-process dispatch).
 
-defmodule InternalTier.SbArmRulesTest do
+defmodule Smalt.Internal.SbArmRulesTest do
   use ExUnit.Case, async: false
+
+  import Plug.Test
 
   alias Smalt.Store
 
   @created 201
   @ok 200
+  # Global ETS store persists across tests in this file: a topic/subscription
+  # PUT after the first is the idempotent 200, the very first is 201.
+  @create_face [200, 201]
   @bad_request 400
   @not_found 404
 
@@ -77,7 +82,7 @@ defmodule InternalTier.SbArmRulesTest do
     topic_conn =
       arm_req(:put, "#{@base}/topics/#{@topic}", %{"location" => "eastus", "properties" => %{}})
 
-    assert topic_conn.status == @created
+    assert topic_conn.status in @create_face
 
     sub_conn =
       arm_req(:put, "#{@base}/topics/#{@topic}/subscriptions/#{@sub}", %{
@@ -85,7 +90,7 @@ defmodule InternalTier.SbArmRulesTest do
         "properties" => %{}
       })
 
-    assert sub_conn.status == @created
+    assert sub_conn.status in @create_face
 
     rule_conn =
       put_rule(@rule, %{
@@ -100,7 +105,8 @@ defmodule InternalTier.SbArmRulesTest do
     # Key-level shape asserts (census: no whole-map equality).
     assert rule["name"] == @rule
     assert rule["type"] == "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules"
-    assert rule["id"] == "#{@base}/topics/#{@topic}/subscriptions/#{@sub}/rules/#{@rule}"
+    # Wire id omits the /providers/ segment (SB child record convention).
+    assert rule["id"] == "#{@rg}/namespaces/#{@ns}/topics/#{@topic}/subscriptions/#{@sub}/rules/#{@rule}"
     assert rule["properties"]["filter"]["sqlExpression"] == "priority = 1"
     assert rule["properties"]["action"]["sqlExpression"] == "SET priority = 2"
 
@@ -128,7 +134,7 @@ defmodule InternalTier.SbArmRulesTest do
   # -- $Default synthesis on ruleless subscription --------------------------------
 
   test "LIST on a subscription with no user rules synthesizes the $Default true-filter rule" do
-    assert arm_req(:put, "#{@base}/topics/#{@topic}", %{"location" => "eastus", "properties" => %{}}).status == @created
+    assert arm_req(:put, "#{@base}/topics/#{@topic}", %{"location" => "eastus", "properties" => %{}}).status in @create_face
 
     # A second subscription that never gets a user rule.
     bare = "#{@sub}-bare"
@@ -136,7 +142,7 @@ defmodule InternalTier.SbArmRulesTest do
     assert arm_req(:put, "#{@base}/topics/#{@topic}/subscriptions/#{bare}", %{
              "location" => "eastus",
              "properties" => %{}
-           }).status == @created
+           }).status in @create_face
 
     list_conn = arm_req(:get, "#{@base}/topics/#{@topic}/subscriptions/#{bare}/rules")
     assert list_conn.status == @ok
@@ -146,25 +152,29 @@ defmodule InternalTier.SbArmRulesTest do
     assert hd(rules)["properties"]["trueFilter"] == true
 
     # A subscription WITH a user rule does not synthesize $Default.
+    assert arm_req(:put, "#{@base}/topics/#{@topic}/subscriptions/#{@sub}", %{
+             "location" => "eastus",
+             "properties" => %{}
+           }).status in @create_face
+
     assert put_rule(@rule, %{"filter" => %{"sqlExpression" => "sys.label = 'w4e'"}}).status ==
              @created
 
-    %{"value" => rules2} =
-      list_conn2 = arm_req(:get, "#{@base}/topics/#{@topic}/subscriptions/#{@sub}/rules")
-
+    list_conn2 = arm_req(:get, "#{@base}/topics/#{@topic}/subscriptions/#{@sub}/rules")
     assert list_conn2.status == @ok
+    %{"value" => rules2} = Jason.decode!(list_conn2.resp_body)
     refute "$Default" in Enum.map(rules2, & &1["name"])
   end
 
   # -- typed validation ------------------------------------------------------------
 
   test "PUT rule with unsupported SQL filter construct refuses 400 InvalidFilter" do
-    assert arm_req(:put, "#{@base}/topics/#{@topic}", %{"location" => "eastus", "properties" => %{}}).status == @created
+    assert arm_req(:put, "#{@base}/topics/#{@topic}", %{"location" => "eastus", "properties" => %{}}).status in @create_face
 
     assert arm_req(:put, "#{@base}/topics/#{@topic}/subscriptions/#{@sub}", %{
              "location" => "eastus",
              "properties" => %{}
-           }).status == @created
+           }).status in @create_face
 
     conn = put_rule("bad-rule", %{"filter" => %{"sqlExpression" => "priority LIKE 'high'"}})
     assert conn.status == @bad_request

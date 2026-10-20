@@ -71,7 +71,7 @@ TS_ANN_RE = re.compile(r"//\s*SLEEP-CLASS:\s*([A-Za-z-]+)")
 PY_ANN_RE = re.compile(r"#\s*SLEEP-CLASS:\s*([A-Za-z-]+)")
 
 # Verification-side lawful classes: same census vocabulary as test-side.
-VERIF_CLASSES = {"TIME-ADVANCE", "POLL-STEP"}
+VERIF_CLASSES = {"TIME-ADVANCE", "POLL-STEP", "SCHEDULING"}
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

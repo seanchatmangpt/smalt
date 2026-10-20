@@ -828,7 +828,7 @@ defmodule Smalt.ArmGateway.Router do
 
   defp do_rg_delete(conn, sub_id, rg_name) do
     rg_id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
-    base = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
+    _base = String.downcase("/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/")
 
     # Real ARM returns 404 ResourceGroupNotFound for a delete of a nonexistent
     # RG, not 202 + a phantom LRO (R30). Same envelope shape as do_rg_get/3.
@@ -3357,6 +3357,14 @@ defmodule Smalt.ArmGateway.Router do
     handle_locks_list(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}")
   end
 
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_get(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_get(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
+  end
+
   put "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Authorization/locks/:lock_name" do
     handle_lock_put(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
   end
@@ -4617,7 +4625,7 @@ defmodule Smalt.ArmGateway.Router do
     props = conn.body_params["properties"] || %{}
 
     case props["destination"] do
-      %{"endpointType" => "WebHook"} = dest ->
+      %{"endpointType" => "WebHook"} = _dest ->
         {:respond,
          send_arm_error(
            conn,
@@ -4635,7 +4643,7 @@ defmodule Smalt.ArmGateway.Router do
       nil ->
         {:ok, %{"endpointType" => "InProc"}}
 
-      other ->
+      _other ->
         {:respond,
          send_arm_error(
            conn,

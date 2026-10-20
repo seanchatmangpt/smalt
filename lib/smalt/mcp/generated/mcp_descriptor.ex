@@ -122,6 +122,17 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "cosmos.uniquekeys.get" => %{
+      name: "Cosmos unique key policy get",
+      description:
+        "The uniqueKeyPolicy recorded at container creation for one Cosmos container (uniqueKeys paths; empty list when none was declared).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "doctor.summary" => %{
       name: "Doctor summary",
       description:
@@ -188,6 +199,17 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "kv.deletedsecrets.list" => %{
+      name: "Key Vault deleted secrets list",
+      description:
+        "Soft-deleted vault secret bundles (recoveryId, deletedDate, scheduledPurgeDate) from the deleted-secrets table — never secret value material.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "kv.get" => %{
       name: "Key Vault key get",
       description:
@@ -243,9 +265,31 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "policy.setdefinitions.list" => %{
+      name: "Policy set definitions list",
+      description:
+        "Policy set definitions (Microsoft.Authorization/policySetDefinitions) under one subscription, id-sorted.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "sb.peek" => %{
       name: "Service Bus peek",
       description: "Peek messages from a Service Bus queue without locking or completing them.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "sb.rules.list" => %{
+      name: "Service Bus rules list",
+      description:
+        "Subscription rules (Microsoft.ServiceBus/namespaces/topics/subscriptions/rules) for one topic/subscription pair, optional namespace filter — filter and action definitions only.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,

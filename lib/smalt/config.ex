@@ -644,7 +644,6 @@ defmodule Smalt.Config do
   def prod, do: Application.get_env(:smalt, :prod, false)
 
   @doc "Named throttle profile: :unbounded (default; both limits :infinity, byte-identical to the pre-KD-110 default), :azure_parity (ARM 20 req/s, cosmos 25 RU/s - the witnessed Azure-comparable budgets), :strict (ARM 5, cosmos 5). Resolved env-first: SMALT_PROFILE overrides app env :profile; unknown names refuse with ArgumentError. Explicit SMALT_ARM_RATE_LIMIT / SMALT_COSMOS_RU_LIMIT beat profile defaults."
-  # KD-COVERS: KD-110 (SMALT_PROFILE bounded profiles; explicit env wins)
   def profile, do: throttle_profile()
   @doc "PEM RSA key material for court receipt signing."
   def receipt_signing_key, do: Application.get_env(:smalt, :receipt_signing_key)

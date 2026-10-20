@@ -98,15 +98,9 @@ defmodule Smalt.DataPlane.Purview do
   def list_typedefs(opts \\ %{}) do
     prefix = opts[:prefix]
 
-    defs =
-      Store.list(:smalt_purview_entities)
-      |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, "TYPEDEF:") end)
-      |> Enum.map(fn {_k, v} -> v end)
+    defs = prefix_values(:smalt_purview_entities, "TYPEDEF:")
 
-    classdefs =
-      Store.list(:smalt_purview_entities)
-      |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, "CLASSDEF:") end)
-      |> Enum.map(fn {_k, v} -> v end)
+    classdefs = prefix_values(:smalt_purview_entities, "CLASSDEF:")
 
     defs =
       if prefix,
@@ -122,6 +116,41 @@ defmodule Smalt.DataPlane.Purview do
   end
 
   def registered_type?(_), do: false
+
+  # Store.list/1 returns VALUES only (the {k, v} shape would raise on maps);
+  # prefix-scoped enumeration goes through Store.keys/1 + Store.get/2.
+  defp prefix_values(table, prefix) do
+    table
+    |> Store.keys()
+    |> Enum.filter(&is_binary(&1) and String.starts_with?(&1, prefix))
+    |> Enum.map(fn k -> {:ok, v} = Store.get(table, k); v end)
+  end
+
+  # Term-edge cleanup: enumerate edge keys, delete only this term's
+  # AtlasGlossaryTerm edges. `side` is :from (edges minted FROM the term) or
+  # :any (both endpoints).
+  defp delete_term_edges(guid, side) do
+    :smalt_purview_edges
+    |> Store.keys()
+    |> Enum.each(fn k ->
+      case Store.get(:smalt_purview_edges, k) do
+        {:ok, %{"typeName" => t, "fromEntityId" => f, "toEntityId" => to}} ->
+          delete? =
+            t == @term_edge_type and
+              cond do
+                side == :from -> f == guid
+                side == :any -> f == guid or to == guid
+              end
+
+          if delete?, do: Store.delete(:smalt_purview_edges, k)
+
+        _ ->
+          :ok
+      end
+    end)
+
+    :ok
+  end
 
   # ---------------------------------------------------------------------------
   # Entities
@@ -555,13 +584,7 @@ defmodule Smalt.DataPlane.Purview do
   # per assigned entity. Keyed "from/to/type" — idempotent overwrite.
   defp replace_term_edges(term) do
     guid = term["guid"]
-
-    Store.list(:smalt_purview_edges)
-    |> Enum.each(fn {k, edge} ->
-      if edge["typeName"] == @term_edge_type and (edge["fromEntityId"] == guid or edge["toEntityId"] == guid) do
-        Store.delete(:smalt_purview_edges, k)
-      end
-    end)
+    delete_term_edges(guid, :any)
 
     Enum.each(term["assignedEntities"], fn %{"guid" => g} ->
       put_edge(guid, g, @term_edge_type, %{
@@ -594,14 +617,7 @@ defmodule Smalt.DataPlane.Purview do
   def delete_term(guid, _opts \\ %{}) do
     with {:ok, _term} <- fetch_term(guid) do
       Store.delete(:smalt_purview_entities, @term_prefix <> guid)
-
-      Store.list(:smalt_purview_edges)
-      |> Enum.each(fn {k, edge} ->
-        if edge["typeName"] == @term_edge_type and edge["fromEntityId"] == guid do
-          Store.delete(:smalt_purview_edges, k)
-        end
-      end)
-
+      delete_term_edges(guid, :from)
       {:ok, 204, nil}
     end
   end
@@ -618,9 +634,7 @@ defmodule Smalt.DataPlane.Purview do
   end
 
   defp list_terms_raw do
-    Store.list(:smalt_purview_entities)
-    |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, @term_prefix) end)
-    |> Enum.map(fn {_k, v} -> v end)
+    prefix_values(:smalt_purview_entities, @term_prefix)
   end
 
   defp glossary_guid do

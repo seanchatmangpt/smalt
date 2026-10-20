@@ -16,7 +16,7 @@ defmodule InternalTier.ArmDcrTest do
 
   @api_version "2021-05-01-preview"
   @rg "/subscriptions/sub-dcr/resourceGroups/rg-dcr"
-  @type "Microsoft.Insights/dataCollectionRules"
+  @dcr_type "Microsoft.Insights/dataCollectionRules"
 
   @created 201
   @ok 200
@@ -39,7 +39,7 @@ defmodule InternalTier.ArmDcrTest do
   test "b11 enforce: PUT -> GET echo -> strict ingest admits -> DELETE -> strict ingest refuses" do
     Application.put_env(:smalt, :sentinel_dcr_strict, true)
     name = "dcr-witness-#{:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)}"
-    path = "#{@rg}/providers/#{@type}/#{name}?api-version=#{@api_version}"
+    path = "#{@rg}/providers/#{@dcr_type}/#{name}?api-version=#{@api_version}"
 
     put_conn = dcr_req(:put, path, dcr_body())
 
@@ -47,7 +47,7 @@ defmodule InternalTier.ArmDcrTest do
 
     put_body = Jason.decode!(put_conn.resp_body)
     assert put_body["name"] == name
-    assert put_body["type"] == @type
+    assert put_body["type"] == @dcr_type
     assert put_body["properties"]["provisioningState"] == "Succeeded"
 
     get_conn = dcr_req(:get, path)
@@ -62,12 +62,16 @@ defmodule InternalTier.ArmDcrTest do
     # Sentinel ingest against the ARM-created DCR-id: the strict fence admits
     # via the {:dcr_created, name} marker the PUT seeded. Real ingest answers
     # 204 No Content — the router seam mirrors it (200-class success).
+    # Ingest rides the real data-plane surface (EgressRouter, 8443 twin
+    # prefix) — the ARM router does not mount the stream ingest route.
     ingest_conn =
-      dcr_req(:post, "/dataCollectionRules/#{name}/streams/Custom-Logs?api-version=2023-01-01", [
-        %{"msg" => "dcr-witness"}
-      ])
+      egress_req(:post,
+        "/dataCollectionRules/#{name}/streams/Custom-Logs?api-version=2023-01-01",
+        [%{"msg" => "dcr-witness"}]
+      )
 
-    assert ingest_conn.status == @ok
+    # Real Logs Ingestion answers 204 No Content.
+    assert ingest_conn.status == 204
 
     # DELETE removes the rule; strict-mode ingest then typed-refuses.
     del_conn = dcr_req(:delete, path)
@@ -80,9 +84,10 @@ defmodule InternalTier.ArmDcrTest do
     assert Jason.decode!(missing.resp_body)["error"]["code"] == "ResourceNotFound"
 
     refused =
-      dcr_req(:post, "/dataCollectionRules/#{name}/streams/Custom-Logs?api-version=2023-01-01", [
-        %{"msg" => "post-delete"}
-      ])
+      egress_req(:post,
+        "/dataCollectionRules/#{name}/streams/Custom-Logs?api-version=2023-01-01",
+        [%{"msg" => "post-delete"}]
+      )
 
     assert refused.status == @not_found
     assert Jason.decode!(refused.resp_body)["error"]["code"] == "DCRNotFound"
@@ -90,12 +95,12 @@ defmodule InternalTier.ArmDcrTest do
 
   test "PUT is idempotent (re-PUT 200) and LIST surfaces the rule" do
     name = "dcr-list-#{:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)}"
-    path = "#{@rg}/providers/#{@type}/#{name}?api-version=#{@api_version}"
+    path = "#{@rg}/providers/#{@dcr_type}/#{name}?api-version=#{@api_version}"
 
     assert dcr_req(:put, path, dcr_body()).status == @created
     assert dcr_req(:put, path, dcr_body()).status == @ok
 
-    list_conn = dcr_req(:get, "#{@rg}/providers/#{@type}?api-version=#{@api_version}")
+    list_conn = dcr_req(:get, "#{@rg}/providers/#{@dcr_type}?api-version=#{@api_version}")
 
     assert list_conn.status == @ok
 
@@ -109,7 +114,7 @@ defmodule InternalTier.ArmDcrTest do
   end
 
   test "missing api-version -> typed MissingApiVersionParameter" do
-    put_conn = dcr_req(:put, "#{@rg}/providers/#{@type}/dcr-noav", %{"location" => "eastus"})
+    put_conn = dcr_req(:put, "#{@rg}/providers/#{@dcr_type}/dcr-noav", %{"location" => "eastus"})
 
     assert put_conn.status == 400
 
@@ -120,6 +125,14 @@ defmodule InternalTier.ArmDcrTest do
   # -- helpers ------------------------------------------------------------------
 
   defp dcr_req(method, path, body \\ nil) do
+    dispatch(Router, method, path, body)
+  end
+
+  defp egress_req(method, path, body) do
+    dispatch(Smalt.EgressRouter, method, path, body)
+  end
+
+  defp dispatch(router, method, path, body) do
     conn =
       if body do
         conn(method, path, Jason.encode!(body))
@@ -128,7 +141,7 @@ defmodule InternalTier.ArmDcrTest do
         conn(method, path)
       end
 
-    Router.call(Plug.Conn.fetch_query_params(conn), [])
+    router.call(Plug.Conn.fetch_query_params(conn), [])
   end
 
   defp dcr_body do

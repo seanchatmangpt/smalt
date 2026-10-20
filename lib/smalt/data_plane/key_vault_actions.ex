@@ -267,7 +267,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     curve = Map.get(@ec_curves, crv)
 
     if curve do
-      {pub_point, priv} = :crypto.generate_key(:ecdh, {:named_curve, curve.curve})
+      {pub_point, priv} = :crypto.generate_key(:ecdh, curve.curve)
       priv_rec = {:ECPrivateKey, 1, priv, {:namedCurve, curve.oid}, pub_point, <<>>}
       der = :public_key.der_encode(:ECPrivateKey, priv_rec)
 
@@ -357,7 +357,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
             "EC" ->
               crv = ec_crv(record)
               curve = Map.fetch!(@ec_curves, crv)
-              {pub_point, priv} = :crypto.generate_key(:ecdh, {:named_curve, curve.curve})
+              {pub_point, priv} = :crypto.generate_key(:ecdh, curve.curve)
               priv_rec = {:ECPrivateKey, 1, priv, {:namedCurve, curve.oid}, pub_point, <<>>}
               der = :public_key.der_encode(:ECPrivateKey, priv_rec)
 
@@ -988,7 +988,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
         {:ok, {:ec, curve, :public_key.der_decode(:ECPrivateKey, der)}}
 
       _ ->
-        {pub_point, priv} = :crypto.generate_key(:ecdh, {:named_curve, curve.curve})
+        {pub_point, priv} = :crypto.generate_key(:ecdh, curve.curve)
         priv_rec = {:ECPrivateKey, 1, priv, {:namedCurve, curve.oid}, pub_point, <<>>}
         der = :public_key.der_encode(:ECPrivateKey, priv_rec)
         persist_material(store_key, record, der)
@@ -1014,7 +1014,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   # Uncompressed point (0x04 || X || Y, fixed width per curve) -> JWK x/y.
-  defp ec_point_jwk(crv, curve, pub_point) do
+  defp ec_point_jwk(_crv, curve, pub_point) do
     bits = curve.coord * 8
 
     <<4, x::unsigned-big-size(bits), y::unsigned-big-size(bits)>> = pub_point
@@ -1226,7 +1226,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
          {:ok, alg} <- sign_alg(params),
          :ok <- alg_for_key_type(alg, {:ec, curve, nil}) do
       der_sig = :public_key.sign(digest, curve.md, priv_rec)
-      {:ECDSA_Sig_Value, r, s} = :public_key.der_decode(:ECDSA_Sig_Value, der_sig)
+      {r, s} = ec_sig_der_decode(der_sig)
       bits = curve.coord * 8
 
       sig = <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>>
@@ -1303,7 +1303,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
       valid =
         try do
           <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>> = sig
-          der_sig = :public_key.der_encode(:ECDSA_Sig_Value, {:ECDSA_Sig_Value, r, s})
+          der_sig = ec_sig_der_encode(r, s)
           pub = {:ECPoint, ec_public_point(record, curve)}
           :public_key.verify(digest, curve.md, der_sig, pub) == true
         rescue
@@ -1317,14 +1317,39 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   # The public point rides the private key's DER on the row; a missing row
   # (verify against a bare record without material) cannot verify.
   defp ec_public_point(record, curve) do
-    {:ok, der} = stored_der(record)
-    {:ECPrivateKey, _v, _priv, _params, pub_point, _attrs} = :public_key.der_decode(:ECPrivateKey, der)
-
-    case pub_point do
-      <<4, _::unsigned-big-size(curve.coord * 16)>> -> pub_point
+    with {:ok, der} <- stored_der(record),
+         {:ECPrivateKey, _v, _priv, _params, pub_point, _attrs} <-
+           :public_key.der_decode(:ECPrivateKey, der),
+         <<4, _::unsigned-big-size(curve.coord * 16)>> <- pub_point do
+      pub_point
+    else
       _ -> <<>>
     end
   end
+
+  # Minimal DER SEQUENCE{r INTEGER, s INTEGER} codec for ECDSA signatures —
+  # :public_key.der_encode/decode does not carry :ECDSA_Sig_Value.
+  defp ec_sig_der_decode(<<0x30, _len, 0x02, rlen::unsigned-big-size(8), r::binary-size(rlen),
+                           0x02, slen::unsigned-big-size(8), s::binary-size(slen)>>) do
+    {:binary.decode_unsigned(r), :binary.decode_unsigned(s)}
+  end
+
+  defp ec_sig_der_encode(r, s) do
+    r_der = ec_integer_der(r)
+    s_der = ec_integer_der(s)
+    body = r_der <> s_der
+    <<0x30, byte_size(body), body::binary>>
+  end
+
+  defp ec_integer_der(v) do
+    raw = :binary.encode_unsigned(v)
+    # INTEGER is signed: a leading 0x00 pads a high bit set.
+    raw = if bit_size_head(raw) == 1, do: <<0, raw::binary>>, else: raw
+    <<0x02, byte_size(raw), raw::binary>>
+  end
+
+  defp bit_size_head(<<first::unsigned-big-size(8), _::binary>>), do: div(first, 128)
+  defp bit_size_head(<<>>), do: 0
 
   # ---------------------------------------------------------------------------
   # AES-GCM (oct keys, A256GCM)
