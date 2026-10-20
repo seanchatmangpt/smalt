@@ -1503,8 +1503,6 @@ defmodule Smalt.EgressRouter do
 
   defp list_secret_record(record), do: record |> public_secret_record() |> Map.drop(["value"])
 
-  defp public_attributes(record), do: record["attributes"] || %{}
-
   # --- /kv (App Configuration) helpers ------------------- (KD-COVERS: KD-53)
 
   defp if_match_value(conn) do

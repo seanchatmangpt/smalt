@@ -103,3 +103,9 @@ Context: solo (witness lane, block b5, auth=enforce)
 AZB-25c fix landed `deb0795` (fix(policy): exemption_applies? downcases the
 resource id) — fix witness pending the next wf/rerun; row stays OPEN until
 SDK-tier PASS.
+
+## AZB-25c note (2026-10-20, append)
+
+AZB-25c fix landed (commit `deb0795`, `exemption_applies?` downcases the
+resource id) — module-tier differential passed post-fix; SDK-tier witness rides
+the next wf rerun.

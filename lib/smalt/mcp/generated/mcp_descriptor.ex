@@ -34,6 +34,17 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "cluster.status" => %{
+      name: "Cluster status",
+      description:
+        "Cluster poller status: enabled, joined nodes, dns name/port, exhausted addresses.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "cosmos.query" => %{
       name: "Cosmos document query",
       description:
@@ -56,10 +67,65 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "eg.dlq.list" => %{
+      name: "Event Grid dead-letter listing",
+      description:
+        "Content-free metadata of dead-lettered Event Grid event blobs per subscriber container.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "health.readiness" => %{
+      name: "Health readiness",
+      description:
+        "Structural readiness verdict with scheduler/store/memory/cluster checks (degrades on structure, never load).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "kv.deletedkeys.list" => %{
+      name: "Key Vault deleted keys list",
+      description:
+        "Soft-deleted vault key bundles (recoveryId, deletedDate, scheduledPurgeDate) from the deleted-keys table.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "kv.get" => %{
       name: "Key Vault key get",
       description:
         "Public record of one vault key (never key material) from the vault key table.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "lro.operations.list" => %{
+      name: "Long-running operations list",
+      description:
+        "In-flight and terminal LRO operation records from the operations store, optional subscription filter.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "policy.exemptions.list" => %{
+      name: "Policy exemptions list",
+      description:
+        "Policy exemptions under one scope prefix (subscription or resource-group placement).",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,

@@ -64,3 +64,60 @@ COURT-RUN2B rc=0
 Either log line `COURT-RUN2 rc` / `COURT-RUN2B rc` reading anything but 0, or
 `git rev-parse HEAD` differing across the two run windows, invalidates this
 receipt. Neither observed.
+
+---
+
+# court-x2 #2 (post-AZB-25c promotion re-run) — 2026-10-20
+
+Standing: ALIVE
+Context: solo(just court ×2)
+
+Both runs executed at the AZB-25c-fixed tree (`deb0795` — exemption_applies?
+downcase), before the examples-wave docs commits. HEAD during BOTH run windows
+(correlated via log mtimes 03:32:08 / 03:42:33 UTC vs git log): `deb0795` —
+the pair's shas are identical by construction of the run windows.
+
+- Run A: `just court` → log `/tmp/courtA.out`, exit=0 (`COURT-A rc=0`)
+- Run B: `just court` → log `/tmp/courtB.out`, exit=0 (`COURT-B rc=0`)
+  (run B is the log fed to `mint_release_receipt.py` for the re-minted
+  `release-receipt.json`, `subject.sha = 2fcc4139fdfa853d52a9e26d78f47c2a740a08d8`)
+
+## Run A tail (/tmp/courtA.out, last 12 lines)
+
+```
+  blob-worm            PASS
+  cosmos-etag-cas      PASS
+  ledger-chain         PASS
+  lock-clamp           PASS
+  queue-capacity       PASS
+================================================================
+[INVARIANT-GATES] PASS: 6/6 gates (positive held + all negative fixtures refused).
+[NAMING-SWEEP] PASS: 0 violations / 49 allowed
+[PASS] non-duplication gate: 6 file(s) clean
+[PASS] portable-target gate: 22 file(s) clean
+[COURT] Full gate passed.
+COURT-A rc=0
+```
+
+## Run B tail (/tmp/courtB.out, last 12 lines)
+
+```
+  blob-worm            PASS
+  cosmos-etag-cas      PASS
+  ledger-chain         PASS
+  lock-clamp           PASS
+  queue-capacity       PASS
+================================================================
+[INVARIANT-GATES] PASS: 6/6 gates (positive held + all negative fixtures refused).
+[NAMING-SWEEP] PASS: 0 violations / 49 allowed
+[PASS] non-duplication gate: 6 file(s) clean
+[PASS] portable-target gate: 22 file(s) clean
+[COURT] Full gate passed.
+COURT-B rc=0
+```
+
+## Falsifier
+
+Either tail line reading anything but `rc=0`, or the run windows straddling a
+commit (they do not — both predate 05:40:51 UTC examples-wave commits),
+invalidates this section. Neither observed.

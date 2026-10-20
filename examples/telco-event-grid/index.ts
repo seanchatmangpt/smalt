@@ -215,6 +215,16 @@ export async function run(): Promise<WfResult> {
           processError: async () => {},
         };
       };
+      // Each event's body.partitionId records the partition it was SENT to;
+      // isolation = each per-partition receiver sees exactly its own send set.
+      const intended = { "0": new Set<number>(), "1": new Set<number>() };
+      // intended sets are derived from the send leg's per-batch alternation
+      // (batch b -> partition b%2, n = b*20+i): rebuild them here rather than
+      // trust an n<100/n>=100 split the send pattern no longer follows.
+      for (let b = 0; b < 10; b++) {
+        const pid = b % 2 === 0 ? "0" : "1";
+        for (let i = 0; i < 20; i++) intended[pid].add(b * 20 + i);
+      }
       // partitionId must be the POSITIONAL first arg: in the
       // (handlers, options) overload @azure/event-hubs does not pin the
       // partition — it fans ALL partitions into one handler set (witnessed
@@ -232,15 +242,16 @@ export async function run(): Promise<WfResult> {
       ).catch(() => {});
       const p0 = p0set;
       const p1 = p1set;
-      const isolated = p0.size === 100 && p1.size === 100 &&
-        Array.from(p0).every((n) => n < 100) && Array.from(p1).every((n) => n >= 100);
+      const setEq = (got: Set<number>, want: Set<number>) =>
+        got.size === want.size && [...want].every((n) => got.has(n));
+      const isolated = setEq(p0set, intended["0"]) && setEq(p1set, intended["1"]);
       if (!isolated) {
         throw new Error(
-          `per-partition delivery NOT isolated: p0=${p0.size} unique, p1=${p1.size} unique ` +
-            `(expected 100/100 disjoint) — both per-partition $Default subscriptions receive overlapping deliveries of the same stream`,
+          `per-partition delivery NOT isolated: p0=${p0set.size} unique (intended ${intended["0"].size}), ` +
+            `p1=${p1set.size} unique (intended ${intended["1"].size}) — cross-partition bleed`,
         );
       }
-      return `per-partition 0=${p0.size} (n<100) 1=${p1.size} (n>=100), disjoint 100/100`;
+      return `per-partition 0=${p0set.size} 1=${p1set.size}, exactly the send-set of each partition (disjoint 100/100)`;
     } finally {
       await boundedClose(c0);
       await boundedClose(c1);

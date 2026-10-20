@@ -13,6 +13,29 @@ loopback.
   examples at your own running substrate via `SMALT_ARM` /
   `SMALT_EGRESS` / `SMALT_MCP` env overrides.
 
+## Archetype examples (Fortune-500 wave, 2026-10-19)
+
+Eight runnable archetype harnesses, one per directory — each an official-
+SDK real-wire harness against a live substrate, Chicago-style (zero mocks,
+bounded polls, typed verdicts, exit contract 0/1/2/3):
+
+| Example | Archetype | Final verdict (2026-10-19) |
+|---|---|---|
+| bank-ledger-nightly | bank core-ledger nightly batch | 8/10 GREEN, 2 XFAIL (container LRO, blob bearer-over-http) |
+| retail-order-pipeline | retail order pipeline | 8/8 GREEN |
+| healthcare-archive | healthcare compliance archive | 15/17 GREEN, 2 XFAIL (KV deleted-secrets, KD-102) |
+| telco-event-grid | telco event-ingestion grid | 9/10 GREEN, 1 SKIP-SURFACE-ABSENT (KQL bin literal) |
+| insurance-governance | insurance policy governance | 15/19 GREEN, 4 SURFACE-ABSENT skips |
+| media-drm-custody | media DRM key custody | 5/8 GREEN, 1 RD#KD-119, 1 XFAIL, 1 SKIP |
+| fintech-throttle | fintech throttling resilience | 10/10 GREEN |
+| saas-provisioning | multi-tenant SaaS provisioning | 11/12 GREEN, 1 XFAIL (EH child LRO) |
+
+Substrate fixes landed via these harnesses (fix-forward, wire-verified):
+DLQ copies now preserve `delivery_count`; SB SAS shared key is
+operator-pinnable (`SMALT_SB_SHARED_KEY`) and persisted in the boot
+marker (0600). Compile repairs: purview_atlas head, kql `_` misuse,
+event_grid read_body import conflict.
+
 ## Examples
 
 ### quickstart.sh — tour all planes over real HTTP

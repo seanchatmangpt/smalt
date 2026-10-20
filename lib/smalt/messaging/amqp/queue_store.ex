@@ -254,7 +254,10 @@ defmodule Smalt.Amqp.QueueStore do
       app_props: opts[:app_props] || %{},
       session_id: opts[:session_id],
       annotations: opts[:annotations] || %{},
-      delivery_count: 0,
+      # SB parity: the DLQ copy is the SAME message — its delivery count must
+      # survive the move (real Azure keeps counting; a reset count hides how
+      # many deliveries preceded deadlettering).
+      delivery_count: opts[:delivery_count] || 0,
       enqueued: opts[:now_ms] || System.system_time(:millisecond),
       # SHIM-COURT lane M5: scheduled messages (Service Bus
       # scheduledEnqueueTimeUtc). A message enqueued with a future
@@ -938,6 +941,7 @@ defmodule Smalt.Amqp.QueueStore do
                     "DeadLetterReason" => reason,
                     "DeadLetterErrorDescription" => description
                   }),
+                delivery_count: m.delivery_count,
                 now_ms: opts[:now_ms]
               )
 

@@ -1223,11 +1223,22 @@ defmodule Smalt.DataPlane.BlobStorage do
   Content-free, wire-safe metadata projection of a stored blob: name, etag,
   content_length, last_modified, x-ms headers. Total over binary content —
   the raw `content` field is never included, so JSON encoding cannot raise.
+
+  Security (MCP-lane finding, 2026-10-20): the projection previously emitted
+  the FULL stored header map — including `authorization` (Bearer JWT) — into
+  any surface that renders blob_metadata/1. It now projects only x-ms-*
+  headers, so credential headers are structurally excluded.
   """
   def blob_metadata(blob) do
     blob
     |> Map.take(["name", "etag", "content_length", "last_modified", "headers"])
-    |> Map.update("headers", %{}, &(&1 || %{}))
+    |> Map.update("headers", %{}, fn
+      h when is_map(h) ->
+        Map.filter(h, fn {k, _} -> is_binary(k) and String.starts_with?(k, "x-ms-") end)
+
+      _ ->
+        %{}
+    end)
   end
 
   @doc """
@@ -1604,17 +1615,6 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp include_snapshots?(_), do: false
 
-  # Azure parity (cycle-34, List Blobs include=metadata): user metadata rides
-  # x-ms-meta-* on the stored headers; when the request includes metadata the
-  # listing emits a <Metadata> element per blob. Values go through the same
-  # xml_escape (hostile & < > " entity-escaped; control chars are refused at
-  # PUT by the InvalidMetadata fence). Only the exact "metadata" include
-  # token enables it; the exact "snapshots" token additionally decorates
-  # snapshot rows (KD-107 RAISE, snapshots_xml/3); versions/tags remain
-  # admitted-but-undecorated.
-  # Azure parity (lens2 cycle-35): `include` is a COMMA-SEPARATED token list;
-  # a token must match exactly. A plain substring match wrongly enables
-  # metadata emission for hostile tokens like `metadatabase` or `metadatax`.
   defp include_metadata?(include) when is_binary(include) do
     include
     |> String.split(",")
@@ -1624,7 +1624,22 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp include_metadata?(_), do: false
 
+  # Azure parity (cycle-34, List Blobs include=metadata): user metadata rides
+  # x-ms-meta-* on the stored headers; when the request includes metadata the
+  # listing emits a <Metadata> element per blob. Values go through the same
+  # xml_escape (hostile & < > " entity-escaped; control chars are refused at
+  # PUT by the InvalidMetadata fence). Only the exact "metadata" include
+  # token enables it; the exact "snapshots" token additionally decorates
+  # snapshot rows (KD-107 RAISE, snapshots_xml/3); versions/tags remain
+  # admitted-but-undecorated.
   defp blob_metadata_xml(_b, false), do: ""
+
+  # include is the RAW comma-separated token string (passing a boolean here was
+  # fine when render_blob only ever passed include_metadata?/1's result — the
+  # KD-107 RAISE threading now passes the raw token list through, so accept
+  # both; a raw string without the exact "metadata" token is also "").
+  defp blob_metadata_xml(b, include) when is_binary(include),
+    do: blob_metadata_xml(b, include_metadata?(include))
 
   defp blob_metadata_xml(b, true) do
     meta =
@@ -2186,7 +2201,9 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   # x-ms-proposed-lease-id (KD-108 RAISE): when present on acquire it is the
   # lease id Azure returns verbatim; a non-GUID value is 400 InvalidHeaderValue.
-  @lease_id_guid ~r/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+  # Azure Guid.TryParse accepts both dashed ("D") and 32-hex no-dash ("N")
+  # forms — the kd108 probe shape is N-format, so both are admitted.
+  @lease_id_guid ~r/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$|^[0-9a-fA-F]{32}$/
 
   defp validate_proposed_lease_id(headers) do
     case header_value(headers, "x-ms-proposed-lease-id") do

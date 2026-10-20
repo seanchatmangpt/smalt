@@ -1,9 +1,7 @@
-# manifest: b3sum, files=36, minted 2026-10-20, tree HEAD a45cf03bdb6d72ffcd970c8783f0163c96fe5950
-# first mint — no prior committed ledger exists; re-verify from repo root: grep -v '^#' docs/jira/v26.10.19/blake3-manifest.txt | b3sum -c  (b3sum -c does not skip comment lines)
 4e3ca14873b4f2ab69fcec2e1a5c293ac6998b2cca752de2b55f42bdc353c92d  docs/jira/v26.10.19/ACCEPTANCE.md
 f89bb21b9c9f9f552f23cb1432f306731cfe0dd9687e5fbc6a84f0bc0aa36b39  docs/jira/v26.10.19/FINAL.md
 1c57c71c4d17ed9cadbf46e9396d08ccb2069589b1da6f152ed2df962197528f  docs/jira/v26.10.19/RISK_REGISTER.md
-51a286bb4e80f0034965357fc5de4cadb7a76c88a9d1d85cadbf6217eea0f865  docs/jira/v26.10.19/release-receipt.json
+811e162842273122eff2d6f7de32809feeb82760a323d15dabc7b3b141d93d43  docs/jira/v26.10.19/release-receipt.json
 89de861a66490c0574e92ebf661ed617143d1b6348ea71f4a0556b6682290c30  docs/jira/v26.10.19/sdk-results/wf1-py-provisioning-governance.md
 4bf39d776880c8c8c37aa26103f9e07cecad44b40522b938cf444a23706c9a78  docs/jira/v26.10.19/sdk-results/wf1-ts-provisioning-governance.md
 266a49922d73108efcb4a94b424976816e583286369ee83c3f3e6dbbebc81ee1  docs/jira/v26.10.19/sdk-results/wf2-py-multistore-concurrency.md
@@ -17,7 +15,7 @@ e22c930935145a5da1bd3e4d74a0dbbef3bfae9ee6225cddc628c396cd7f347a  docs/jira/v26.
 66e64f612bf2307c5a5f475fd1c8dadf90068cd7521884e88b7c49b1cae72051  config/config.exs
 29281cf443f336a78c3b9930c2a99deffb55e6a4cd9911c7f6c51c31cfce03d2  mix.exs
 a843bf51c4c5a0f4d4f73b341bacac6972e0072d0f2fa79cbdd27154e68da1af  scripts/acceptance_gates.py
-d34575ab38990f1f5507b93c488097cbd6afa9865284562176e4a7d30dfec8bb  scripts/lib/substrate_boot.sh
+f013b1732abe5a0439e42c02534dca1ebd643abf2e8309cb73b9cff4ee8a134f  scripts/lib/substrate_boot.sh
 57582d494d4bbe3d8866e5cee5c3166043c025b9819621a14c3e5eb453e20d20  scripts/run_external_wf.py
 371559ab9797f8c3cc063d9e3836c0052d9ff78ec3723b7bf81a5619f1ff8300  scripts/sdk_coverage.py
 e47be89fbd43cc2d15213a7ca22f855610a83b6d307182f16d8ad7cdf880c66b  scripts/substrate-ctl

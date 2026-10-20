@@ -30,13 +30,6 @@ defmodule Smalt.DataPlane.VaultData do
     :ok
   end
 
-  @doc """
-  Capture-then-sweep: extracts bare secret names from swept ARM store keys.
-  Matches BOTH store-key conventions — prefixed
-  (`.../providers/microsoft.keyvault/vaults/<vault>/secrets/<name>/...`) and
-  the child-route unprefixed form
-  (`.../resourcegroups/<rg>/vaults/<vault>/secrets/<name>`).
-  """
   # ---------------------------------------------------------------------------
   # Secret backup/restore (KD-103) — Azure Key Vault shape:
   #   POST /secrets/{name}/backup -> 200 {"value": "<base64 blob>"}

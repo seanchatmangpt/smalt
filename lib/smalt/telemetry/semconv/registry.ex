@@ -53,12 +53,16 @@ defmodule Smalt.Telemetry.SemConv.Registry do
 
   @event_name_map %{
     [:smalt, :admit] => "smalt.arm.admit",
+
     [:smalt, :refuse] => "smalt.arm.refuse",
+
     [:smalt, :sb_delivery] => "smalt.amqp.delivery"
+
   }
 
   @span_name_map %{
     [:bandit, :request, :stop] => "smalt.cosmos.request"
+
   }
 
   # -- attribute allowlist (from model/smalt.yaml) ---------------------------------
@@ -69,30 +73,37 @@ defmodule Smalt.Telemetry.SemConv.Registry do
       %{key: "smalt.arm.verdict", type: :string, runtime: :event},
       %{key: "smalt.route", type: :string, runtime: :route}
     ],
+
     "smalt.arm.refuse" => [
       %{key: "smalt.arm.code", type: :string, runtime: :event},
       %{key: "smalt.arm.refusal_code", type: :string, runtime: :code},
       %{key: "smalt.route", type: :string, runtime: :route}
     ],
+
     "smalt.amqp.delivery" => [
       %{key: "smalt.amqp.delivery_event", type: :string, runtime: :event},
       %{key: "smalt.route", type: :string, runtime: :route}
     ],
+
     "smalt.cosmos.request" => [
       %{key: "smalt.route", type: :string, runtime: :route},
       %{key: "smalt.status", type: :int, runtime: :status},
       %{key: "smalt.duration_ms", type: :int, runtime: :duration},
       %{key: "smalt.cosmos.method", type: :string, runtime: :method}
     ],
+
     "smalt.blob.custody" => [
       %{key: "smalt.blob.event", type: :string, runtime: :event}
     ],
+
     "smalt.skr.release" => [
       %{key: "smalt.skr.event", type: :string, runtime: :event}
     ],
+
     "smalt.auth.challenge" => [
       %{key: "smalt.auth.event", type: :string, runtime: :event}
     ]
+
   }
 
   @doc """
@@ -174,16 +185,14 @@ defmodule Smalt.Telemetry.SemConv.Registry do
       identifier: "EventId",
       source_field: "OTLP span.trace_id + span.span_id",
       target_field: "OCEL event.id",
-      derivation:
-        "\"{trace_id}:{span_id}\"; smalt mints a UUIDv7 per event (bandit stops carry no OTLP trace/span ids)"
+      derivation: "\"{trace_id}:{span_id}\"; smalt mints a UUIDv7 per event (bandit stops carry no OTLP trace/span ids)"
     },
     %{
       order: 20,
       identifier: "EventType",
       source_field: "OTLP span.name",
       target_field: "OCEL event.type (activity label)",
-      derivation:
-        "pack requires a non-empty span.name; smalt maps [:bandit, :request, :stop] → \"cosmos.doc.crud\" via Smalt.Ocel.EventRegistry"
+      derivation: "pack requires a non-empty span.name; smalt maps [:bandit, :request, :stop] → \"cosmos.doc.crud\" via Smalt.Ocel.EventRegistry"
     },
     %{
       order: 30,
@@ -197,48 +206,42 @@ defmodule Smalt.Telemetry.SemConv.Registry do
       identifier: "EventAttributes",
       source_field: "OTLP span.attributes",
       target_field: "OCEL event.attributes",
-      derivation:
-        "pack redacts (key denylist + high-entropy + length cap); smalt drops nil values and gates keys through the semconv attribute allowlist"
+      derivation: "pack redacts (key denylist + high-entropy + length cap); smalt drops nil values and gates keys through the semconv attribute allowlist"
     },
     %{
       order: 45,
       identifier: "EventActivityCapability",
       source_field: "span.attributes[\"beam4pm.capability.id\"]",
       target_field: "OCEL event.type override",
-      derivation:
-        "pack prefers it over bare span.name; no smalt emitter currently sets it (reserved)"
+      derivation: "pack prefers it over bare span.name; no smalt emitter currently sets it (reserved)"
     },
     %{
       order: 50,
       identifier: "ObjectFromServiceName",
       source_field: "resource.attributes[\"service.name\"]",
       target_field: "OCEL object {id: \"service:<name>\", type: \"service\"}",
-      derivation:
-        "pack REFUSES without it; smalt derives the resource object from conn.request_path instead (documented deviation)"
+      derivation: "pack REFUSES without it; smalt derives the resource object from conn.request_path instead (documented deviation)"
     },
     %{
       order: 60,
       identifier: "ObjectFromTraceId",
       source_field: "OTLP span.trace_id",
       target_field: "OCEL object {id: \"trace:<id>\", type: \"trace\"}",
-      derivation:
-        "pack derives a trace object; smalt has no OTLP trace context (documented deviation)"
+      derivation: "pack derives a trace object; smalt has no OTLP trace context (documented deviation)"
     },
     %{
       order: 70,
       identifier: "RelationshipPerformedBy",
       source_field: "service object",
       target_field: "OCEL event.relationships (performed_by)",
-      derivation:
-        "smalt equivalent: relationships = objects mapped to {\"objectId\": id, \"qualifier\": object type}"
+      derivation: "smalt equivalent: relationships = objects mapped to {\"objectId\": id, \"qualifier\": object type}"
     },
     %{
       order: 80,
       identifier: "RelationshipPartOfTrace",
       source_field: "trace object",
       target_field: "OCEL event.relationships (part_of_trace)",
-      derivation:
-        "not emitted by smalt (no trace context); covered by the emitter's object relationships"
+      derivation: "not emitted by smalt (no trace context); covered by the emitter's object relationships"
     },
     %{
       order: 90,

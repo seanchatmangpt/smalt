@@ -553,7 +553,7 @@ defmodule Smalt.Mcp.Router do
           |> Smalt.Store.prefix_keys(prefix)
           |> Enum.flat_map(fn key ->
             case Smalt.Store.get(:smalt_blobs, key) do
-              {:ok, blob} -> [Smalt.DataPlane.BlobStorage.blob_metadata(blob)]
+              {:ok, blob} -> [dlq_blob_row(blob)]
               _ -> []
             end
           end)
@@ -593,14 +593,31 @@ defmodule Smalt.Mcp.Router do
 
   defp invoke("cluster.status", _args), do: {:ok, Smalt.Cluster.cluster_status()}
 
-  defp invoke("health.readiness", _args) do
-    {status, checks} = Smalt.Health.readiness()
-
-    {:ok, %{"status" => to_string(status), "checks" => Smalt.Health.to_json_map({status, checks})}}
-  end
+  defp invoke("health.readiness", _args),
+    do: {:ok, Smalt.Health.to_json_map(Smalt.Health.readiness())}
 
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}
+
+  # Kept AFTER the invoke/2 clause group (contiguity — see message_count_arg
+  # note above). DLQ rows are CONTENT-FREE and header-free: the stored blob
+  # record keeps the original PUT request headers, which carry the caller's
+  # Authorization bearer — a read-only surface must never project credential
+  # material across the wire. Only blob-identity + x-ms-meta-* ride the MCP
+  # response.
+  defp dlq_blob_row(blob) do
+    metadata = Smalt.DataPlane.BlobStorage.blob_metadata(blob)
+
+    meta =
+      metadata
+      |> Map.get("headers", %{})
+      |> Enum.filter(fn {k, _v} -> is_binary(k) and String.starts_with?(k, "x-ms-meta-") end)
+      |> Map.new()
+
+    metadata
+    |> Map.drop(["headers"])
+    |> Map.put("metadata", meta)
+  end
 
   # partition_key is optional (nil = no header) but MUST be binary when present:
   # the previous `_other -> %{}` silent-coercion treated integer/list/map keys

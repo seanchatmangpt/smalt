@@ -104,7 +104,7 @@ defmodule Smalt.Config do
         secret: false,
         surface: "control_plane",
         env_var: "SMALT_ARM_RATE_LIMIT",
-        override: "env-first-int"
+        override: "profile-throttled"
       },
       %{
         name: :arm_tls_port,
@@ -185,7 +185,7 @@ defmodule Smalt.Config do
         secret: false,
         surface: "data_plane",
         env_var: "SMALT_COSMOS_RU_LIMIT",
-        override: "env-first-int"
+        override: "profile-throttled"
       },
       %{
         name: :doctor_supervisor,
@@ -386,6 +386,15 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :profile,
+        type: "atom",
+        default: :unbounded,
+        secret: false,
+        surface: "profile",
+        env_var: "SMALT_PROFILE",
+        override: "profile-first"
+      },
+      %{
         name: :receipt_signing_key,
         type: "string",
         default: "nil",
@@ -549,9 +558,10 @@ defmodule Smalt.Config do
   @doc "ARM-style control plane REST port."
   def arm_port, do: Application.get_env(:smalt, :arm_port, 9443)
 
-  @doc "ARM gateway rate limit (:infinity disables the limiter); SMALT_ARM_RATE_LIMIT overrides the app env, parsed as an integer."
+  @doc "ARM gateway rate limit (:infinity disables the limiter). SMALT_ARM_RATE_LIMIT overrides BOTH the named throttle profile and the app env, parsed as an integer; otherwise profile defaults apply: :unbounded (default) :infinity, :azure_parity 20 req/s, :strict 5 req/s (SMALT_PROFILE)."
   def arm_rate_limit,
-    do: int_env(System.get_env("SMALT_ARM_RATE_LIMIT"), :arm_rate_limit, :infinity)
+    do:
+      profile_throttled(System.get_env("SMALT_ARM_RATE_LIMIT"), :arm_rate_limit, :arm, :infinity)
 
   @doc "TLS twin port for SDK legs that refuse Bearer over http."
   def arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
@@ -573,9 +583,15 @@ defmodule Smalt.Config do
   @doc "Cosmos emulator master key for enforce-mode authorization."
   def cosmos_master_key, do: Application.get_env(:smalt, :cosmos_master_key)
 
-  @doc "Cosmos request-unit budget per query (:infinity disables budgeting); SMALT_COSMOS_RU_LIMIT overrides the app env, parsed as an integer."
+  @doc "Cosmos request-unit budget per query (:infinity disables budgeting). SMALT_COSMOS_RU_LIMIT overrides BOTH the named throttle profile and the app env, parsed as an integer; otherwise profile defaults apply: :unbounded (default) :infinity, :azure_parity 25 RU/s, :strict 5 RU/s (SMALT_PROFILE)."
   def cosmos_ru_limit,
-    do: int_env(System.get_env("SMALT_COSMOS_RU_LIMIT"), :cosmos_ru_limit, :infinity)
+    do:
+      profile_throttled(
+        System.get_env("SMALT_COSMOS_RU_LIMIT"),
+        :cosmos_ru_limit,
+        :cosmos,
+        :infinity
+      )
 
   @doc "Supervisor module the MCP doctor surface boots into."
   def doctor_supervisor, do: Application.get_env(:smalt, :doctor_supervisor, Smalt.Supervisor)
@@ -626,6 +642,9 @@ defmodule Smalt.Config do
 
   @doc "Prod guard: refuse unconfigured :sts_signing_secret at boot."
   def prod, do: Application.get_env(:smalt, :prod, false)
+
+  @doc "Named throttle profile: :unbounded (default; both limits :infinity, byte-identical to the pre-KD-110 default), :azure_parity (ARM 20 req/s, cosmos 25 RU/s - the witnessed Azure-comparable budgets), :strict (ARM 5, cosmos 5). Resolved env-first: SMALT_PROFILE overrides app env :profile; unknown names refuse with ArgumentError. Explicit SMALT_ARM_RATE_LIMIT / SMALT_COSMOS_RU_LIMIT beat profile defaults."
+  def profile, do: throttle_profile()
   @doc "PEM RSA key material for court receipt signing."
   def receipt_signing_key, do: Application.get_env(:smalt, :receipt_signing_key)
   @doc "Preserve unknown expand options in resource-group tokens."
@@ -661,12 +680,55 @@ defmodule Smalt.Config do
   @doc "Exact proxy IPs trusted for x-forwarded-for extraction."
   def trusted_proxies, do: Application.get_env(:smalt, :trusted_proxies, [])
 
-  defp int_env(nil, key, default), do: Application.get_env(:smalt, key, default)
+  @doc """
+  Named throttle profiles (KD-110 closure). Default profile choice is
+  deployment policy; bounded profiles are first-class.
+  """
+  def throttle_profiles do
+    %{
+      unbounded: %{arm: :infinity, cosmos: :infinity},
+      azure_parity: %{arm: 20, cosmos: 25},
+      strict: %{arm: 5, cosmos: 5}
+    }
+  end
 
-  defp int_env(raw, key, default) do
-    case Integer.parse(raw) do
-      {i, ""} -> i
-      _ -> Application.get_env(:smalt, key, default)
+  @doc "Resolve the active throttle profile: SMALT_PROFILE env var > app env :profile > :unbounded. Unknown names REFUSE with ArgumentError naming the known set."
+  def throttle_profile do
+    case System.get_env("SMALT_PROFILE") || Application.get_env(:smalt, :profile) do
+      nil ->
+        :unbounded
+
+      "unbounded" ->
+        :unbounded
+
+      "azure_parity" ->
+        :azure_parity
+
+      "strict" ->
+        :strict
+
+      other ->
+        raise ArgumentError,
+              "unknown SMALT_PROFILE #{inspect(other)}; known profiles: unbounded | azure_parity | strict"
+    end
+  end
+
+  # Resolution order (KD-110): explicit env int > active profile default >
+  # app env > census default. Unparseable env values fall through the chain.
+  defp profile_throttled(raw, key, pk, default) do
+    case Integer.parse(raw || "") do
+      {i, ""} ->
+        i
+
+      _ ->
+        profile = throttle_profile()
+        limits = Map.fetch!(throttle_profiles(), profile)
+        limit = Map.fetch!(limits, pk)
+
+        case limit do
+          :infinity -> Application.get_env(:smalt, key, default)
+          limit when is_integer(limit) -> limit
+        end
     end
   end
 end
