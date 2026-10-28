@@ -82,3 +82,10 @@ instrument for any CLOSE work coming out of this map.
 Every CLOSE that has a wire-visible surface lands with a parity-harness leg
 or an SDK probe — a CLOSE without a receipt is not a CLOSE (the
 `verification/README.md` surface-enum law, applied to this map).
+
+## tickets
+
+Every roadmap row above (plus the two defects receipted by this window's
+parity lane) has a ticket with a developer-experience Definition of Done in
+[`tickets/`](tickets/README.md) — T-01…T-16 roadmap, T-17…T-18 defects,
+pick order included there.
