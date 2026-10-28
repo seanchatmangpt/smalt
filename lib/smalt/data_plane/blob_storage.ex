@@ -432,10 +432,19 @@ defmodule Smalt.DataPlane.BlobStorage do
   # valid base64 string. Fence the length (the common failure — an empty or
   # oversize id — with 400 InvalidQueryParameterValue, Azure's wire shape).
   defp check_block_id(block_id) when is_binary(block_id) do
-    if block_id == "" or byte_size(block_id) > 64 do
-      {:error, 400, "InvalidQueryParameterValue", "The blockid must be between 1 and 64 bytes."}
-    else
-      :ok
+    cond do
+      block_id == "" or byte_size(block_id) > 64 ->
+        {:error, 400, "InvalidQueryParameterValue", "The blockid must be between 1 and 64 bytes."}
+
+      # Azure parity (parity lane 2026-10-28): real storage requires the
+      # blockid to be valid base64 (Azurite receipts 400 on non-base64 ids;
+      # smalt previously accepted and staged them).
+      match?({:ok, _}, Base.decode64(block_id)) ->
+        :ok
+
+      true ->
+        {:error, 400, "InvalidQueryParameterValue",
+         "The blockid must be a valid base64-encoded string."}
     end
   end
 
@@ -714,7 +723,11 @@ defmodule Smalt.DataPlane.BlobStorage do
          :ok <- check_worm(container_meta, now),
          :ok <- check_blob_worm(existing, now),
          :ok <- check_if_match(headers, existing["etag"]),
-         :ok <- check_if_none_match(headers) do
+         :ok <- check_if_none_match(headers),
+         # Azure parity (parity lane 2026-10-28, receipted vs Azurite): a blob
+         # WITH snapshots refuses plain Delete (409 SnapshotsPresent) unless
+         # x-ms-delete-snapshots names an include/only option.
+         :ok <- check_snapshots_on_delete(blob_key, headers) do
       Store.delete(:smalt_blobs, blob_key)
 
       {:ok, 202, %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}, nil}
@@ -725,6 +738,36 @@ defmodule Smalt.DataPlane.BlobStorage do
       {:error, {:blob_worm, msg}} -> {:error, 409, "ContainerLocked", msg}
       {:error, {:precondition}} -> {:error, 412, "PreconditionFailed", precondition_message()}
       {:error, {:precondition, _}} -> {:error, 412, "PreconditionFailed", precondition_message()}
+      {:error, {:snapshots_present}} ->
+        {:error, 409, "SnapshotsPresent",
+         "This operation is not permitted while the blob has snapshots."}
+    end
+  end
+
+  # Delete Blob with snapshots present: Azure answers 409 SnapshotsPresent
+  # unless x-ms-delete-snapshots is "include" or "only" (then the snapshots go
+  # with the base blob). Table-absent-safe (no snapshots ever created).
+  defp check_snapshots_on_delete(blob_key, headers) do
+    if :ets.info(@snapshot_table) == :undefined do
+      :ok
+    else
+      case :ets.match(@snapshot_table, {{blob_key, :_}, :_}) do
+        [] ->
+          :ok
+
+        _snapshots ->
+          case header_value(headers, "x-ms-delete-snapshots") do
+            option when option in ["include", "only"] ->
+              for {{k, ts}, _snap} <- :ets.match_object(@snapshot_table, {{blob_key, :_}, :_}) do
+                :ets.delete(@snapshot_table, {k, ts})
+              end
+
+              :ok
+
+            _ ->
+              {:error, {:snapshots_present}}
+          end
+      end
     end
   end
 
@@ -1220,6 +1263,296 @@ defmodule Smalt.DataPlane.BlobStorage do
       :error -> {:error, 404, "BlobNotFound", "Blob not found."}
       {:error, 400, _code, _msg} = invalid -> invalid
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Parity lane 2026-10-28 (receipted against Azurite; see
+  # parity/COVERAGE_VS_TOPAZ.md): base-blob lease (comp=lease without
+  # sharesnapshot), Append Block, Put Page, and Set Blob HTTP Headers.
+  # Same state machines / envelope discipline as the snapshot lease and
+  # container lease arms above.
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Lease Blob (`PUT /{container}/{blob}?comp=lease` with `x-ms-lease-action`).
+  Acquire/renew/release/break on the BASE blob record — the snapshot variant
+  (`lease_blob_snapshot/6`) keeps its per-snapshot lease namespace.
+  """
+  @spec lease_blob(String.t(), String.t(), String.t(), String.t() | nil, map(), keyword()) ::
+          {:ok, non_neg_integer(), map(), nil}
+          | {:error, non_neg_integer() | :worm_locked, String.t() | nil, String.t() | nil}
+  def lease_blob(account, container, blob_name, action, headers \\ %{}, opts \\ []) do
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    now = now_ms(opts)
+    lease_id = header_value(headers, "x-ms-lease-id")
+
+    with {:ok, blob} <- Store.get(:smalt_blobs, blob_key) do
+      case normalize_action(action) do
+        :acquire ->
+          with :ok <- validate_proposed_lease_id(headers),
+               {:ok, seconds} <- lease_duration(headers) do
+            if lease_active?(Map.get(blob, "lease"), now) do
+              {:error, 409, "LeaseAlreadyPresent", "There is already a lease present on the blob."}
+            else
+              id = acquire_lease_id(headers)
+              expires = if seconds == :infinity, do: :infinity, else: now + seconds * 1000
+
+              new_lease = %{
+                "id" => id,
+                "state" => "leased",
+                "expires_at" => expires,
+                "duration" => seconds
+              }
+
+              put_blob_record(blob_key, Map.put(blob, "lease", new_lease))
+              {:ok, 201, blob_lease_headers(blob, id), nil}
+            end
+          end
+
+        :renew ->
+          with :ok <- require_lease(blob, lease_id, now),
+               {:ok, seconds} <- lease_duration(headers) do
+            lease = extend_lease(Map.get(blob, "lease"), now, seconds)
+            blob = Map.put(blob, "lease", lease)
+            put_blob_record(blob_key, blob)
+            {:ok, 200, blob_lease_headers(blob, Map.get(lease, "id")), nil}
+          end
+
+        :release ->
+          with :ok <- require_lease(blob, lease_id, now, :leased_or_broken) do
+            blob = Map.delete(blob, "lease")
+            put_blob_record(blob_key, blob)
+            {:ok, 200, blob_lease_headers(blob, nil), nil}
+          end
+
+        :break ->
+          with :ok <- require_lease(blob, lease_id, now, :leased_or_broken) do
+            lease = Map.get(blob, "lease")
+
+            remaining =
+              case Map.get(lease, "expires_at") do
+                :infinity -> 0
+                ms when is_integer(ms) -> max(0, div(ms - now, 1000))
+                _ -> 0
+              end
+
+            blob = Map.put(blob, "lease", Map.merge(lease, %{"state" => "broken", "expires_at" => nil}))
+            put_blob_record(blob_key, blob)
+
+            {:ok, 202,
+             Map.put(blob_lease_headers(blob, Map.get(lease, "id")), "x-ms-lease-time", Integer.to_string(remaining)),
+             nil}
+          end
+
+        other when other in [nil, :error] ->
+          {:error, 400, "InvalidQueryParameterValue",
+           "Invalid or missing x-ms-lease-action (expected acquire|renew|release|break)."}
+      end
+    else
+      :error -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+    end
+  end
+
+  @doc """
+  Append Block (`PUT /{container}/{blob}?comp=appendblock`). Appends the raw
+  request bytes to the blob content, rotating etag + last-modified. WORM
+  "overwrite"-class gate applies (hold/locked policy refuses).
+  """
+  @spec append_block(String.t(), String.t(), String.t(), binary(), map(), keyword()) ::
+          {:ok, 201, map(), nil} | {:error, term(), term(), term() | nil}
+  def append_block(account, container, blob_name, content, _headers \\ %{}, opts \\ []) do
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    now = now_ms(opts)
+
+    with {:ok, container_meta} <- Store.get(:smalt_blob_containers, "#{account}/#{container}"),
+         {:ok, blob} <- Store.get(:smalt_blobs, blob_key),
+         :ok <-
+           if(worm_blocked?(container_meta, "overwrite", now),
+             do: {:worm, container_meta},
+             else: :ok
+           ) do
+      prev = blob["content"] || ""
+      offset = byte_size(prev)
+      next_content = prev <> content
+
+      with :ok <- check_put_size(next_content) do
+        etag = "\"#{:crypto.hash(:md5, next_content) |> Base.encode16(case: :lower)}\""
+        now_iso = DateTime.utc_now() |> DateTime.to_iso8601()
+
+        updated =
+          %{blob | "content" => next_content}
+          |> Map.put("content_length", byte_size(next_content))
+          |> Map.put("etag", etag)
+          |> Map.put("last_modified", now_iso)
+
+        put_blob_record(blob_key, updated)
+
+        {:ok, 201,
+         %{
+           "etag" => etag,
+           "last-modified" => rfc1123(now_iso),
+           "x-ms-append-offset" => Integer.to_string(offset),
+           "x-ms-blob-committed-block-count" => "1",
+           "x-ms-request-id" => request_id(),
+           "x-ms-version" => "2021-12-02"
+         }, nil}
+      end
+    else
+      {:worm, container_meta} -> {:error, :worm_locked, nil, worm_message(container_meta, now)}
+      :error -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+      {:error, 413, code, msg} -> {:error, 413, code, msg}
+    end
+  end
+
+  @doc """
+  Put Page (`PUT /{container}/{blob}?comp=page&x-ms-range=bytes=a-b`). Writes
+  the request bytes into the 512-aligned range, zero-padding growth. Response
+  201 carries `x-ms-blob-sequence-number`.
+  """
+  @spec put_page(String.t(), String.t(), String.t(), binary(), map(), keyword()) ::
+          {:ok, 201, map(), nil} | {:error, term(), term(), term() | nil}
+  def put_page(account, container, blob_name, content, headers \\ %{}, opts \\ []) do
+    blob_key = "#{account}/#{container}/#{blob_name}"
+    now = now_ms(opts)
+    range = header_value(headers, "x-ms-range") || header_value(headers, "range") || ""
+
+    with {:ok, first, last} <- parse_page_range(range),
+         {:ok, container_meta} <- Store.get(:smalt_blob_containers, "#{account}/#{container}"),
+         {:ok, blob} <- Store.get(:smalt_blobs, blob_key),
+         :ok <- check_page_alignment(first, last, byte_size(content)),
+         :ok <-
+           if(worm_blocked?(container_meta, "overwrite", now),
+             do: {:worm, container_meta},
+             else: :ok
+           ) do
+      prev = blob["content"] || ""
+      total = max(byte_size(prev), last + 1)
+      padded = pad_zeros(prev, total)
+      next_content = overwrite_range(padded, first, content)
+      etag = "\"#{:crypto.hash(:md5, next_content) |> Base.encode16(case: :lower)}\""
+      now_iso = DateTime.utc_now() |> DateTime.to_iso8601()
+
+      updated =
+        %{blob | "content" => next_content}
+        |> Map.put("content_length", byte_size(next_content))
+        |> Map.put("etag", etag)
+        |> Map.put("last_modified", now_iso)
+
+      put_blob_record(blob_key, updated)
+
+      {:ok, 201,
+       %{
+         "etag" => etag,
+         "last-modified" => rfc1123(now_iso),
+         "x-ms-blob-sequence-number" => "1",
+         "x-ms-request-id" => request_id(),
+         "x-ms-version" => "2021-12-02"
+       }, nil}
+    else
+      {:worm, container_meta} -> {:error, :worm_locked, nil, worm_message(container_meta, now)}
+      {:error, 400, code, msg} -> {:error, 400, code, msg}
+      :error -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+    end
+  end
+
+  @doc """
+  Set Blob HTTP Headers (`PUT /{container}/{blob}?comp=properties`). Reads the
+  `x-ms-blob-content-*` request headers into the stored blob headers — a
+  header ABSENT from the request REMOVES the stored value (Azure semantics);
+  rotates etag + last-modified; answers 200 with the new etag.
+  """
+  @blob_content_header_keys ~w(x-ms-blob-content-cache-control x-ms-blob-content-disposition x-ms-blob-content-encoding x-ms-blob-content-language x-ms-blob-content-md5 x-ms-blob-content-type)
+
+  @spec set_blob_http_headers(String.t(), String.t(), String.t(), map(), keyword()) ::
+          {:ok, 200, map(), nil} | {:error, 404, String.t(), String.t()}
+  def set_blob_http_headers(account, container, blob_name, headers \\ %{}, _opts \\ []) do
+    blob_key = "#{account}/#{container}/#{blob_name}"
+
+    with {:ok, blob} <- Store.get(:smalt_blobs, blob_key) do
+      stored = blob["headers"] || %{}
+      cleaned = Map.drop(stored, @blob_content_header_keys)
+      incoming = Map.take(headers, @blob_content_header_keys)
+      now_iso = DateTime.utc_now() |> DateTime.to_iso8601()
+      new_etag = metadata_etag(blob["etag"], incoming, now_iso)
+
+      updated =
+        %{blob | "headers" => Map.merge(cleaned, incoming)}
+        |> Map.put("etag", new_etag)
+        |> Map.put("last_modified", now_iso)
+
+      put_blob_record(blob_key, updated)
+
+      {:ok, 200,
+       %{
+         "etag" => new_etag,
+         "last-modified" => rfc1123(now_iso),
+         "x-ms-request-id" => request_id(),
+         "x-ms-version" => "2021-12-02"
+       }, nil}
+    else
+      :error -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+    end
+  end
+
+  defp put_blob_record(blob_key, blob) do
+    Store.put(:smalt_blobs, blob_key, blob)
+    Smalt.Store.DetsMirror.sync_write(:smalt_blobs)
+  end
+
+  defp blob_lease_headers(blob, lease_id) do
+    base = %{
+      "etag" => blob["etag"],
+      "last-modified" => rfc1123(blob["last_modified"]),
+      "x-ms-request-id" => request_id(),
+      "x-ms-version" => "2021-12-02"
+    }
+
+    if is_binary(lease_id) and lease_id != "" do
+      Map.put(base, "x-ms-lease-id", lease_id)
+    else
+      base
+    end
+  end
+
+  # "bytes=first-last" (inclusive). Azure requires the range for Put Page.
+  defp parse_page_range("bytes=" <> spec) do
+    case String.split(spec, "-") do
+      [a, b] ->
+        with {first, ""} <- Integer.parse(a),
+             {last, ""} <- Integer.parse(b),
+             true <- first >= 0 and last >= first do
+          {:ok, first, last}
+        else
+          _ -> {:error, 400, "InvalidHeaderValue", "The x-ms-range value is invalid."}
+        end
+
+      _ ->
+        {:error, 400, "InvalidHeaderValue", "The x-ms-range value is invalid."}
+    end
+  end
+
+  defp parse_page_range(_),
+    do: {:error, 400, "MissingRequiredHeader", "x-ms-range is required for Put Page."}
+
+  defp check_page_alignment(first, last, size) do
+    if rem(first, 512) == 0 and rem(last + 1, 512) == 0 and size == last - first + 1 do
+      :ok
+    else
+      {:error, 400, "InvalidHeaderValue",
+       "The page range must be 512-byte aligned and match the content length."}
+    end
+  end
+
+  defp pad_zeros(bin, total) when byte_size(bin) >= total, do: bin
+
+  defp pad_zeros(bin, total),
+    do: bin <> :binary.copy(<<0>>, total - byte_size(bin))
+
+  defp overwrite_range(bin, at, replacement) do
+    <<head::binary-size(at), _::binary>> = bin
+    tail_skip = at + byte_size(replacement)
+    <<_::binary-size(tail_skip), tail::binary>> = bin
+    head <> replacement <> tail
   end
 
   # SHIM-COURT: metadata-set etag = MD5 of (stored etag, metadata, timestamp,
@@ -2003,7 +2336,14 @@ defmodule Smalt.DataPlane.BlobStorage do
       legal_hold?(policy) -> true
       expired?(container_meta, now) -> false
       locked_policy?(policy) -> true
-      Map.get(container_meta, "immutable") == true and not policy_present?(policy) -> true
+      # Azure parity (parity lane 2026-10-28, receipted against Azurite): a
+      # container with NO legal hold and NO immutability policy is MUTABLE.
+      # The removed legacy clause (`immutable == true and no policy`) locked
+      # every SDK-created container — setMetadata/blob-delete answered 409
+      # ContainerLocked with no hold set, where real Azure allows both.
+      # WORM blocks only on an active hold or a locked policy; the
+      # "immutable" container flag stays on the record but is inert for
+      # blocking.
       true -> false
     end
   end

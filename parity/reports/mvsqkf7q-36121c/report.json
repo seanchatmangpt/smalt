@@ -1,0 +1,338 @@
+{
+  "runid": "mvsqkf7q-36121c",
+  "at": "2026-10-28T23:18:58.449Z",
+  "env": {
+    "smalt": "http://127.0.0.1:9443 + http://127.0.0.1:8443",
+    "azurite": "http://127.0.0.1:10000",
+    "emulator": "https://127.0.0.1:8081"
+  },
+  "sdks": {
+    "storageBlob": "12.34.0",
+    "storageQueue": "12.32.0",
+    "dataTables": "13.3.2",
+    "cosmos": "4.10.1"
+  },
+  "suites": [
+    {
+      "suite": "blob",
+      "reference": "azurite",
+      "verdict": "DIVERGENT",
+      "rows": [
+        {
+          "op": "container-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-get-properties",
+          "smalt": "200 {\"hasMetadata\":true}",
+          "reference": "200 {\"hasMetadata\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-set-metadata",
+          "smalt": "200",
+          "reference": "200",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-get-metadata",
+          "smalt": "200 {\"parity\":\"mvsqkf7q-36121c\"}",
+          "reference": "200 {\"parity\":\"mvsqkf7q-36121c\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "service-properties-get",
+          "smalt": "200 {\"corsIsArray\":true,\"hasLogging\":false}",
+          "reference": "200 {\"corsIsArray\":true,\"hasLogging\":false}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "list-containers-prefix",
+          "smalt": "200 {\"count\":1,\"listed\":true}",
+          "reference": "200 {\"count\":1,\"listed\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-lease-acquire-release",
+          "smalt": "201 {\"hasLeaseId\":true,\"releaseStatus\":200}",
+          "reference": "201 {\"hasLeaseId\":true,\"releaseStatus\":200}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-set-access-policy",
+          "smalt": "ERR 0 ((containerAcl || []) is not iterable)",
+          "reference": "ERR 0 ((containerAcl || []) is not iterable)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-get-access-policy",
+          "smalt": "200 {\"signedIdentifiersCount\":0}",
+          "reference": "200 {\"signedIdentifiersCount\":0}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "block-upload",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-get-properties",
+          "smalt": "200 {\"contentLength\":30}",
+          "reference": "200 {\"contentLength\":30}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-set-metadata",
+          "smalt": "200",
+          "reference": "200",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-get-metadata",
+          "smalt": "200 {\"parity\":\"mvsqkf7q-36121c\"}",
+          "reference": "200 {\"parity\":\"mvsqkf7q-36121c\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-download",
+          "smalt": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "reference": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-conditional-read-304",
+          "smalt": "ERR 304",
+          "reference": "ERR 304",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-set-http-headers",
+          "smalt": "200",
+          "reference": "200",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-content-type-after-headers",
+          "smalt": "200 {\"contentType\":\"application/octet-stream; charset=utf-8\"}",
+          "reference": "200 {\"contentType\":\"text/plain\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-list-flat",
+          "smalt": "200 {\"count\":1,\"names\":[\"probe-mvsqkf7q-36121c\"],\"lengths\":[30]}",
+          "reference": "200 {\"count\":1,\"names\":[\"probe-mvsqkf7q-36121c\"],\"lengths\":[30]}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-snapshot",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "snapshot-list-includes",
+          "smalt": "200 {\"snapshotEntries\":1}",
+          "reference": "200 {\"snapshotEntries\":1}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-lease-acquire-release",
+          "smalt": "201 {\"hasLeaseId\":true,\"releaseStatus\":200}",
+          "reference": "201 {\"hasLeaseId\":true,\"releaseStatus\":200}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "append-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "append-appendBlock",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "append-download",
+          "smalt": "200 {\"roundTrip\":true}",
+          "reference": "200 {\"roundTrip\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "page-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "page-upload",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "page-download",
+          "smalt": "200 {\"contentLength\":512,\"allX\":true}",
+          "reference": "200 {\"contentLength\":512,\"allX\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "stage-block-uncommitted",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "stage-block-invalid-id",
+          "smalt": "ERR 400 InvalidQueryParameterValue",
+          "reference": "ERR 400 InvalidQueryParameterValue",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "get-blocklist-uncommitted",
+          "smalt": "200 {\"committedCount\":0,\"uncommittedCount\":1}",
+          "reference": "200 {\"committedCount\":0,\"uncommittedCount\":1}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "commit-blocklist",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "get-blocklist-committed",
+          "smalt": "200 {\"committedCount\":1,\"uncommittedCount\":0}",
+          "reference": "200 {\"committedCount\":1,\"uncommittedCount\":0}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-delete-under-immutable",
+          "smalt": "202 {\"unexpectedlyDeleted\":true}",
+          "reference": "ERR 409 SnapshotsPresent",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-delete",
+          "smalt": "ERR 404 BlobNotFound (The specified blob does not exist.)",
+          "reference": "ERR 409 SnapshotsPresent (This operation is not permitted while the blob has snapshots.\nRequestId:54d0cba7)",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-download-after-delete",
+          "smalt": "ERR 404 BlobNotFound",
+          "reference": "200 {\"unexpectedlyPresent\":true}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "container-delete",
+          "smalt": "202",
+          "reference": "202",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-list-gone",
+          "smalt": "200 {\"stillListed\":false}",
+          "reference": "200 {\"stillListed\":false}",
+          "verdict": "MATCH"
+        }
+      ]
+    },
+    {
+      "suite": "queue",
+      "reference": "azurite",
+      "verdict": "DIVERGENT",
+      "rows": [
+        {
+          "op": "queue-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-get-properties",
+          "smalt": "ERR 404 ContainerNotFound (Container not found.)",
+          "reference": "200 {\"hasMetadata\":false}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-set-metadata",
+          "smalt": "204",
+          "reference": "204",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-get-metadata",
+          "smalt": "ERR 404 ContainerNotFound (Container not found.)",
+          "reference": "200 {\"parity\":\"mvsqkf7q-36121c\"}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-send-message",
+          "smalt": "201 {\"hasMessageId\":true}",
+          "reference": "201 {\"hasMessageId\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-receive-messages",
+          "smalt": "200 {\"count\":1,\"bodies\":[\"parity-body-mvsqkf7q-36121c\"],\"dequeueCounts\":[1]}",
+          "reference": "200 {\"count\":1,\"bodies\":[\"parity-body-mvsqkf7q-36121c\"],\"dequeueCounts\":[1]}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-peek-empty-while-invisible",
+          "smalt": "200 {\"count\":0}",
+          "reference": "200 {\"count\":0}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-receive-empty",
+          "smalt": "200 {\"count\":0}",
+          "reference": "200 {\"count\":0}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-clear-messages",
+          "smalt": "204",
+          "reference": "204",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-send-update-delete",
+          "smalt": "200 {\"updateStatus\":204,\"deleteStatus\":204,\"updatedBody\":\"updated-mvsqkf7q-36121c\"}",
+          "reference": "200 {\"updateStatus\":204,\"deleteStatus\":204,\"updatedBody\":\"updated-mvsqkf7q-36121c\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-list-contains",
+          "smalt": "200 {\"listed\":false}",
+          "reference": "200 {\"listed\":true}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-delete",
+          "smalt": "204",
+          "reference": "204",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-send-after-delete",
+          "smalt": "ERR 404 QueueNotFound",
+          "reference": "ERR 404 QueueNotFound",
+          "verdict": "MATCH"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 50,
+    "match": 44,
+    "divergent": 6,
+    "skippedLegs": [],
+    "verdict": "DIVERGENCES FOUND"
+  }
+}

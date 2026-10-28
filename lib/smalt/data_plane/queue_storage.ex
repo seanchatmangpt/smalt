@@ -90,7 +90,8 @@ defmodule Smalt.DataPlane.QueueStorage do
       Store.put(@queues_table, key(account, queue), %{
         "account" => account,
         "queue" => queue,
-        "created_at" => System.os_time(:millisecond)
+        "created_at" => System.os_time(:millisecond),
+        "metadata" => %{}
       })
 
       {:ok, 201, std_headers()}
@@ -196,6 +197,60 @@ defmodule Smalt.DataPlane.QueueStorage do
 
   defp check_queue_name(_),
     do: {:error, 400, "InvalidResourceName", "The specified queue name is invalid."}
+
+  # ---------------------------------------------------------------------------
+  # Queue properties / metadata (parity lane 2026-10-28, receipted vs Azurite)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Get Queue Properties / Metadata (`GET /{account}/{queue}` — bare, the
+  @azure/storage-queue v12 SDK shape; no restype on the wire). 200 with
+  x-ms-meta-* response headers; 404 QueueNotFound when absent.
+  """
+  @spec get_queue_properties(String.t(), String.t()) ::
+          {:ok, 200, map()} | {:error, 404, String.t(), String.t()} | not_ready()
+  def get_queue_properties(account, queue) do
+    with :ok <- ready!(),
+         {:ok, record} <- Store.get(@queues_table, key(account, queue)) do
+      meta = record["metadata"] || %{}
+      {:ok, 200, Map.merge(std_headers(), meta_wire_headers(meta))}
+    else
+      :error ->
+        {:error, 404, "QueueNotFound", "The specified queue does not exist."}
+
+      {:error, _, _, _} = err ->
+        err
+    end
+  end
+
+  @doc """
+  Set Queue Metadata (`PUT /{account}/{queue}?comp=metadata`). Replaces the
+  stored x-ms-meta-* set (absent names are REMOVED — Azure semantics); 204.
+  """
+  @spec set_queue_metadata(String.t(), String.t(), map()) ::
+          {:ok, 204, map()} | {:error, 404 | 400, String.t(), String.t()} | not_ready()
+  def set_queue_metadata(account, queue, metadata) do
+    with :ok <- ready!(),
+         {:ok, record} <- Store.get(@queues_table, key(account, queue)) do
+      meta = metadata || %{}
+      Store.put(@queues_table, key(account, queue), Map.put(record, "metadata", meta))
+      {:ok, 204, std_headers()}
+    else
+      :error ->
+        {:error, 404, "QueueNotFound", "The specified queue does not exist."}
+
+      {:error, _, _, _} = err ->
+        err
+    end
+  end
+
+  # Metadata rides x-ms-meta-<Name> response headers (the wire form the
+  # storage SDKs parse into the metadata map).
+  defp meta_wire_headers(meta) when is_map(meta) do
+    Map.new(meta, fn {k, v} -> {"x-ms-meta-" <> k, v} end)
+  end
+
+  defp meta_wire_headers(_), do: %{}
 
   defp parse_maxresults(nil), do: {:ok, nil}
 

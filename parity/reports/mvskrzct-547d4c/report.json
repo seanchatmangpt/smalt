@@ -1,0 +1,109 @@
+{
+  "runid": "mvskrzct-547d4c",
+  "at": "2026-10-28T20:36:53.355Z",
+  "env": {
+    "smalt": "http://127.0.0.1:9443 + http://127.0.0.1:8443",
+    "azurite": "http://127.0.0.1:10000",
+    "emulator": "https://127.0.0.1:8081"
+  },
+  "sdks": {
+    "storageBlob": "12.34.0",
+    "cosmos": "4.10.1"
+  },
+  "suites": [
+    {
+      "suite": "blob",
+      "reference": "azurite",
+      "verdict": "SKIP",
+      "rows": [
+        {
+          "op": "container-create",
+          "smalt": "201",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "container-get-properties",
+          "smalt": "200 {\"hasMetadata\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "block-upload",
+          "smalt": "201",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-get-properties",
+          "smalt": "200 {\"contentLength\":30,\"contentType\":\"application/octet-stream; charset=utf-8\"}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-set-metadata",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-get-metadata",
+          "smalt": "200 {\"parity\":null}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-download",
+          "smalt": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-list-flat",
+          "smalt": "ERR 0 (container.list(...) is not a function or its return value is not async iterable)",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-snapshot",
+          "smalt": "201",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-delete",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "blob-download-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "container-delete",
+          "smalt": "ERR 409",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "container-list-gone",
+          "smalt": "200 {\"stillListed\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 13,
+    "match": 0,
+    "divergent": 0,
+    "skippedLegs": [
+      "blob/azurite"
+    ],
+    "verdict": "PARTIAL"
+  }
+}

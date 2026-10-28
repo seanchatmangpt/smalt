@@ -1,0 +1,153 @@
+{
+  "runid": "mvsnw546-c1878a",
+  "at": "2026-10-28T22:04:06.345Z",
+  "env": {
+    "smalt": "http://127.0.0.1:9443 + http://127.0.0.1:8443",
+    "azurite": "http://127.0.0.1:10000",
+    "emulator": "https://127.0.0.1:8081"
+  },
+  "sdks": {
+    "storageBlob": "12.34.0",
+    "storageQueue": "12.32.0",
+    "dataTables": "13.3.2",
+    "cosmos": "4.10.1"
+  },
+  "suites": [
+    {
+      "suite": "cosmos",
+      "reference": "emulator",
+      "verdict": "SKIP",
+      "rows": [
+        {
+          "op": "item-upsert-create",
+          "smalt": "201 {\"resource\":{\"id\":\"probe-mvsnw546-c1878a\",\"v\":0}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvsnw546-c1878a\",\"v\":0}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-missing",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-replace-fresh-etag",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvsnw546-c1878a\",\"v\":1}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-replace-stale-etag",
+          "smalt": "ERR 0 412",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item2-upsert-create",
+          "smalt": "201 {\"resource\":{\"id\":\"probe2-mvsnw546-c1878a\",\"v\":100}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-upsert-update",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvsnw546-c1878a\",\"v\":2}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-patch",
+          "smalt": "ERR 0 400 (The patch document must be a JSON array of RFC 6902 operations.)",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-delete-2",
+          "smalt": "204",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-after-delete-2",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "query-point",
+          "smalt": "200 {\"count\":1,\"resources\":[{\"id\":\"probe-mvsnw546-c1878a\",\"v\":2}]}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "query-cross-partition",
+          "smalt": "200 {\"count\":1,\"resources\":[{\"id\":\"probe-mvsnw546-c1878a\",\"v\":2}]}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "query-order-by",
+          "smalt": "200 {\"firstId\":\"probe-mvsnw546-c1878a\",\"order\":[2]}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "query-count",
+          "smalt": "ERR 0 400 (Expected FROM <alias>)",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-delete",
+          "smalt": "204",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "db-create",
+          "smalt": "201",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "db-read",
+          "smalt": "200",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "coll-create-ifnotexists",
+          "smalt": "201",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "db-delete",
+          "smalt": "204",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "match": 0,
+    "divergent": 0,
+    "skippedLegs": [
+      "cosmos/emulator"
+    ],
+    "verdict": "PARTIAL"
+  }
+}

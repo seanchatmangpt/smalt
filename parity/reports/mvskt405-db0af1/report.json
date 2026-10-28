@@ -1,0 +1,164 @@
+{
+  "runid": "mvskt405-db0af1",
+  "at": "2026-10-28T20:37:46.054Z",
+  "env": {
+    "smalt": "http://127.0.0.1:9443 + http://127.0.0.1:8443",
+    "azurite": "http://127.0.0.1:10000",
+    "emulator": "https://127.0.0.1:8081"
+  },
+  "sdks": {
+    "storageBlob": "12.34.0",
+    "cosmos": "4.10.1"
+  },
+  "suites": [
+    {
+      "suite": "blob",
+      "reference": "azurite",
+      "verdict": "DIVERGENT",
+      "rows": [
+        {
+          "op": "container-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-get-properties",
+          "smalt": "200 {\"hasMetadata\":true}",
+          "reference": "200 {\"hasMetadata\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "block-upload",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-get-properties",
+          "smalt": "200 {\"contentLength\":30,\"contentType\":\"application/octet-stream; charset=utf-8\"}",
+          "reference": "200 {\"contentLength\":30,\"contentType\":\"application/octet-stream\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-set-metadata",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "200",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-get-metadata",
+          "smalt": "200 {\"parity\":null}",
+          "reference": "200 {\"parity\":\"mvskt405-db0af1\"}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-download",
+          "smalt": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "reference": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-list-flat",
+          "smalt": "200 {\"count\":1,\"names\":[\"probe-mvskt405-db0af1\"],\"lengths\":[30]}",
+          "reference": "200 {\"count\":1,\"names\":[\"probe-mvskt405-db0af1\"],\"lengths\":[30]}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-snapshot",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-delete",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "ERR 409 SnapshotsPresent (This operation is not permitted while the blob has snapshots.\nRequestId:47fcfc5d)",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-download-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "200 {\"unexpectedlyPresent\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-delete",
+          "smalt": "ERR 409",
+          "reference": "202",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "container-list-gone",
+          "smalt": "200 {\"stillListed\":true}",
+          "reference": "200 {\"stillListed\":false}",
+          "verdict": "DIVERGENT"
+        }
+      ]
+    },
+    {
+      "suite": "cosmos",
+      "reference": "emulator",
+      "verdict": "SKIP",
+      "rows": [
+        {
+          "op": "item-upsert-create",
+          "smalt": "201 {\"resource\":{\"id\":\"probe-mvskt405-db0af1\",\"v\":0}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvskt405-db0af1\",\"v\":0}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-missing",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-replace-fresh-etag",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvskt405-db0af1\",\"v\":1}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-replace-stale-etag",
+          "smalt": "ERR 0 412",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-query",
+          "smalt": "200 {\"count\":1,\"resources\":[{\"id\":\"probe-mvskt405-db0af1\",\"v\":1}]}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-delete",
+          "smalt": "204",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 21,
+    "match": 8,
+    "divergent": 5,
+    "skippedLegs": [
+      "cosmos/emulator"
+    ],
+    "verdict": "PARTIAL"
+  }
+}

@@ -1,0 +1,544 @@
+{
+  "runid": "mvslg272-a32c3f",
+  "at": "2026-10-28T20:55:36.850Z",
+  "env": {
+    "smalt": "http://127.0.0.1:9443 + http://127.0.0.1:8443",
+    "azurite": "http://127.0.0.1:10000",
+    "emulator": "https://127.0.0.1:8081"
+  },
+  "sdks": {
+    "storageBlob": "12.34.0",
+    "storageQueue": "12.32.0",
+    "dataTables": "13.3.2",
+    "cosmos": "4.10.1"
+  },
+  "suites": [
+    {
+      "suite": "blob",
+      "reference": "azurite",
+      "verdict": "DIVERGENT",
+      "rows": [
+        {
+          "op": "container-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-get-properties",
+          "smalt": "200 {\"hasMetadata\":true}",
+          "reference": "200 {\"hasMetadata\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-set-metadata",
+          "smalt": "200",
+          "reference": "200",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-get-metadata",
+          "smalt": "200 {\"parity\":\"mvslg272-a32c3f\"}",
+          "reference": "200 {\"parity\":\"mvslg272-a32c3f\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "service-properties-get",
+          "smalt": "ERR 404 RouteNotFound (No route matches GET /smaltacct/)",
+          "reference": "200 {\"corsIsArray\":true,\"hasLogging\":false}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "list-containers-prefix",
+          "smalt": "200 {\"count\":1,\"listed\":true}",
+          "reference": "200 {\"count\":1,\"listed\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-lease-acquire",
+          "smalt": "ERR 0 (container.acquireLease is not a function)",
+          "reference": "ERR 0 (container.acquireLease is not a function)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-lease-release",
+          "smalt": "ERR 0 (container.acquireLease is not a function)",
+          "reference": "ERR 0 (container.acquireLease is not a function)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "block-upload",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-get-properties",
+          "smalt": "200 {\"contentLength\":30}",
+          "reference": "200 {\"contentLength\":30}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-set-metadata",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "200",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-get-metadata",
+          "smalt": "200 {\"parity\":null}",
+          "reference": "200 {\"parity\":\"mvslg272-a32c3f\"}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-download",
+          "smalt": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "reference": "200 {\"contentLength\":30,\"roundTrip\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-conditional-read-304",
+          "smalt": "ERR 304",
+          "reference": "ERR 304",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-set-http-headers",
+          "smalt": "ERR 400 InvalidQueryParameterValue (The comp value 'properties' is not supported.)",
+          "reference": "200",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-content-type-after-headers",
+          "smalt": "200 {\"contentType\":\"application/octet-stream; charset=utf-8\"}",
+          "reference": "200 {\"contentType\":\"text/plain\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-list-flat",
+          "smalt": "200 {\"count\":1,\"names\":[\"probe-mvslg272-a32c3f\"],\"lengths\":[30]}",
+          "reference": "200 {\"count\":1,\"names\":[\"probe-mvslg272-a32c3f\"],\"lengths\":[30]}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-snapshot",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "snapshot-list-includes",
+          "smalt": "200 {\"snapshotEntries\":1}",
+          "reference": "200 {\"snapshotEntries\":1}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-lease-acquire",
+          "smalt": "ERR 0 (blob.acquireLease is not a function)",
+          "reference": "ERR 0 (blob.acquireLease is not a function)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-lease-release",
+          "smalt": "ERR 0 (blob.acquireLease is not a function)",
+          "reference": "ERR 0 (blob.acquireLease is not a function)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "append-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "append-appendBlock",
+          "smalt": "ERR 400 InvalidQueryParameterValue (The comp value 'appendblock' is not supported.)",
+          "reference": "201",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "append-download",
+          "smalt": "200 {\"roundTrip\":false}",
+          "reference": "200 {\"roundTrip\":true}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "page-create",
+          "smalt": "201",
+          "reference": "201",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "page-upload",
+          "smalt": "ERR 400 InvalidQueryParameterValue (The comp value 'page' is not supported.)",
+          "reference": "201",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "page-download",
+          "smalt": "200 {\"contentLength\":0,\"allX\":false}",
+          "reference": "200 {\"contentLength\":512,\"allX\":true}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "stage-block-uncommitted",
+          "smalt": "201",
+          "reference": "ERR 400 InvalidQueryParameterValue (Value for one of the query parameters specified in the request URI is invalid.\nR)",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "get-blocklist-uncommitted",
+          "smalt": "200 {\"committedCount\":0,\"uncommittedCount\":1}",
+          "reference": "ERR 404 BlobNotFound (The specified blob does not exist.\nRequestId:c1294e98-4ef8-4e50-80b2-ce04b30cceb)",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "commit-blocklist",
+          "smalt": "ERR 0 (Error \"blocks.Latest with value \"[object Object]\" must be of type string.\" occur)",
+          "reference": "ERR 0 (Error \"blocks.Latest with value \"[object Object]\" must be of type string.\" occur)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "get-blocklist-committed",
+          "smalt": "200 {\"committedCount\":0,\"uncommittedCount\":1}",
+          "reference": "ERR 404 BlobNotFound (The specified blob does not exist.\nRequestId:39590bb8-5030-4793-b963-0298814a391)",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "legalhold-set",
+          "smalt": "ERR 0 (container.setLegalHold is not a function)",
+          "reference": "ERR 0 (container.setLegalHold is not a function)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-delete-under-hold",
+          "smalt": "ERR 409 ContainerLocked",
+          "reference": "ERR 409 SnapshotsPresent",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "legalhold-clear",
+          "smalt": "ERR 0 (container.setLegalHold is not a function)",
+          "reference": "ERR 0 (container.setLegalHold is not a function)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "blob-delete",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "ERR 409 SnapshotsPresent (This operation is not permitted while the blob has snapshots.\nRequestId:d6d6c063)",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "blob-download-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "200 {\"unexpectedlyPresent\":true}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "container-delete",
+          "smalt": "ERR 409",
+          "reference": "202",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "container-list-gone",
+          "smalt": "200 {\"stillListed\":true}",
+          "reference": "200 {\"stillListed\":false}",
+          "verdict": "DIVERGENT"
+        }
+      ]
+    },
+    {
+      "suite": "queue",
+      "reference": "azurite",
+      "verdict": "DIVERGENT",
+      "rows": [
+        {
+          "op": "queue-create",
+          "smalt": "ERR 409 ContainerAlreadyExists (The specified container already exists with different metadata.)",
+          "reference": "201",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-get-properties",
+          "smalt": "200 {\"hasMetadata\":true}",
+          "reference": "200 {\"hasMetadata\":false}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-set-metadata",
+          "smalt": "ERR 200 (Unexpected status code: 200)",
+          "reference": "204",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-get-metadata",
+          "smalt": "200 {\"parity\":\"mvslg272-a32c3f\"}",
+          "reference": "200 {\"parity\":\"mvslg272-a32c3f\"}",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "queue-send-message",
+          "smalt": "ERR 404 QueueNotFound (The specified queue does not exist.)",
+          "reference": "201 {\"hasMessageId\":true}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-receive-messages",
+          "smalt": "ERR 404 QueueNotFound (The specified queue does not exist.)",
+          "reference": "200 {\"count\":1,\"bodies\":[\"parity-body-mvslg272-a32c3f\"],\"dequeueCounts\":[1]}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-peek-empty-while-invisible",
+          "smalt": "ERR 404 QueueNotFound (The specified queue does not exist.)",
+          "reference": "200 {\"count\":0}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-receive-empty",
+          "smalt": "ERR 404 QueueNotFound (The specified queue does not exist.)",
+          "reference": "200 {\"count\":0}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-clear-messages",
+          "smalt": "ERR 404 QueueNotFound (The specified queue does not exist.)",
+          "reference": "204",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-send-update-delete",
+          "smalt": "ERR 404 QueueNotFound (The specified queue does not exist.)",
+          "reference": "200 {\"updateStatus\":204,\"deleteStatus\":204,\"updatedBody\":\"updated-mvslg272-a32c3f\"}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-list-contains",
+          "smalt": "200 {\"listed\":false}",
+          "reference": "200 {\"listed\":true}",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-delete",
+          "smalt": "ERR 409 ContainerLocked (Blob modification refused: container policy enforces immutable WORM retention.)",
+          "reference": "204",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "queue-send-after-delete",
+          "smalt": "ERR 404 QueueNotFound",
+          "reference": "ERR 404 QueueNotFound",
+          "verdict": "MATCH"
+        }
+      ]
+    },
+    {
+      "suite": "table",
+      "reference": "azurite",
+      "verdict": "MATCH",
+      "rows": [
+        {
+          "op": "service-list-tables-empty",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/Tables while allowInsecureConn)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/Tables while allowInse)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "table-create",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/Tables while allowInsecureConn)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/Tables while allowInse)",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-insert",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/paritymvslg272-a32c3f while al)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/paritymvslg272-a32c3f )",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-insert-duplicate",
+          "smalt": "ERR 0",
+          "reference": "ERR 0",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-get",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/paritymvslg272-a32c3f(Partitio)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/paritymvslg272-a32c3f()",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-upsert",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/paritymvslg272-a32c3f(Partitio)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/paritymvslg272-a32c3f()",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-get-after-upsert",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/paritymvslg272-a32c3f(Partitio)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/paritymvslg272-a32c3f()",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-query",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/paritymvslg272-a32c3f() while )",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/paritymvslg272-a32c3f()",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-get-missing",
+          "smalt": "ERR 0",
+          "reference": "ERR 0",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "entity-delete",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/paritymvslg272-a32c3f(Partitio)",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/paritymvslg272-a32c3f()",
+          "verdict": "MATCH"
+        },
+        {
+          "op": "table-delete",
+          "smalt": "ERR 0 (Cannot connect to http://127.0.0.1:8443/smaltacct/Tables('paritymvslg272-a32c3f')",
+          "reference": "ERR 0 (Cannot connect to http://127.0.0.1:10002/devstoreaccount1/Tables('paritymvslg272)",
+          "verdict": "MATCH"
+        }
+      ]
+    },
+    {
+      "suite": "cosmos",
+      "reference": "emulator",
+      "verdict": "DIVERGENT",
+      "rows": [
+        {
+          "op": "item-upsert-create",
+          "smalt": "201 {\"resource\":{\"id\":\"probe-mvslg272-a32c3f\",\"v\":0}}",
+          "reference": "TIMEOUT op deadline 30000ms",
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-read",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvslg272-a32c3f\",\"v\":0}}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-read-missing",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-replace-fresh-etag",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvslg272-a32c3f\",\"v\":1}}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-replace-stale-etag",
+          "smalt": "ERR 0 412",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item2-upsert-create",
+          "smalt": "201 {\"resource\":{\"id\":\"probe2-mvslg272-a32c3f\",\"v\":100}}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-upsert-update",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvslg272-a32c3f\",\"v\":2}}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-patch",
+          "smalt": "ERR 0 400 (The patch document must be a JSON array of RFC 6902 operations.)",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-delete-2",
+          "smalt": "204",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-read-after-delete-2",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "query-point",
+          "smalt": "200 {\"count\":1,\"resources\":[{\"id\":\"probe-mvslg272-a32c3f\",\"v\":2}]}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "query-cross-partition",
+          "smalt": "200 {\"count\":1,\"resources\":[{\"id\":\"probe-mvslg272-a32c3f\",\"v\":2}]}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "query-order-by",
+          "smalt": "200 {\"firstId\":\"probe-mvslg272-a32c3f\",\"order\":[2]}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "query-count",
+          "smalt": "ERR 0 400 (Expected FROM <alias>)",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-delete",
+          "smalt": "204",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "item-read-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "db-create",
+          "smalt": "201",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "db-read",
+          "smalt": "200",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "coll-create-ifnotexists",
+          "smalt": "201",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        },
+        {
+          "op": "db-delete",
+          "smalt": "204",
+          "reference": null,
+          "verdict": "DIVERGENT"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 82,
+    "match": 36,
+    "divergent": 46,
+    "skippedLegs": [],
+    "verdict": "DIVERGENCES FOUND"
+  }
+}

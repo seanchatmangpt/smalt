@@ -1,0 +1,92 @@
+{
+  "runid": "mvskq561-3df4af",
+  "at": "2026-10-28T20:35:27.916Z",
+  "env": {
+    "smalt": "http://127.0.0.1:9443 + http://127.0.0.1:8443",
+    "azurite": "http://127.0.0.1:10000",
+    "emulator": "https://127.0.0.1:8081"
+  },
+  "sdks": {
+    "storageBlob": "12.34.0",
+    "cosmos": "4.10.1"
+  },
+  "suites": [
+    {
+      "suite": "blob",
+      "reference": "azurite",
+      "verdict": "MATCH",
+      "rows": [
+        {
+          "op": "blob-suite",
+          "smalt": "CRASH suite crashed",
+          "reference": "CRASH suite crashed",
+          "verdict": "MATCH"
+        }
+      ]
+    },
+    {
+      "suite": "cosmos",
+      "reference": "emulator",
+      "verdict": "SKIP",
+      "rows": [
+        {
+          "op": "item-upsert-create",
+          "smalt": "201 {\"resource\":{\"id\":\"probe-mvskq561-3df4af\",\"v\":0}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvskq561-3df4af\",\"v\":0}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-missing",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-replace-fresh-etag",
+          "smalt": "200 {\"resource\":{\"id\":\"probe-mvskq561-3df4af\",\"v\":1}}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-replace-stale-etag",
+          "smalt": "ERR 0 412",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-query",
+          "smalt": "200 {\"count\":1,\"resources\":[{\"id\":\"probe-mvskq561-3df4af\",\"v\":1}]}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-delete",
+          "smalt": "204",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        },
+        {
+          "op": "item-read-after-delete",
+          "smalt": "200 {\"unexpectedlyPresent\":true}",
+          "reference": "SKIPPED (target down)",
+          "verdict": "SKIP"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 9,
+    "match": 1,
+    "divergent": 0,
+    "skippedLegs": [
+      "cosmos/emulator"
+    ],
+    "verdict": "PARTIAL"
+  }
+}

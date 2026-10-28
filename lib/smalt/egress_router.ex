@@ -38,11 +38,13 @@ defmodule Smalt.EgressRouter do
   # GAP-AUD1-01 (v26.10.14, lane W-5): blob comp whitelists — MUST be defined
   # textually BEFORE the route macros that expand them (module attributes are
   # expanded at their point of use, top-to-bottom).
-  # KD-COVERS: KD-60 — comp=snapshot is registered (wire arm below); the rest
-  # of the KD-60 class (page/tags/lease/...) stays default-deny refused.
-  @blob_put_comps ~w(block blocklist metadata snapshot)
+  # KD-COVERS: KD-60 — comp=snapshot is registered (wire arm below).
+  # Parity lane 2026-10-28: comp=lease (base blob, no sharesnapshot),
+  # appendblock, page and properties (Set Blob HTTP Headers) registered —
+  # receipted against Azurite (parity/COVERAGE_VS_TOPAZ.md gap list).
+  @blob_put_comps ~w(block blocklist metadata snapshot lease appendblock page properties)
   # KD-COVERS: KD-60 — comp=metadata GET registered (Azure Get Blob Metadata);
-  # the rest of the KD-60 GET class (pagelist/tags/...) stays default-deny.
+  # pagelist/tags stay default-deny.
   @blob_get_comps ~w(blocklist metadata)
   # R98 container comp whitelists — mirror of the blob arms above. Lease and
   # ACL are UNIMPLEMENTED (KD/GAP(blob-comp-lease-absent)); previously an
@@ -150,16 +152,59 @@ defmodule Smalt.EgressRouter do
     end
   end
 
+  # Parity lane 2026-10-28: reserved first segments that belong to OTHER
+  # planes on the shared egress port (cosmos /dbs, KV /keys /secrets /kv,
+  # eventgrid, ...) — the bare-2-segment queue arms below must never capture
+  # them. Defined BEFORE every queue_plane_route clause that reads it
+  # (module attributes resolve in file order).
+  @queue_reserved_first_segments ~w(dbs keys secrets kv eventgrid events attest)
+
   defp queue_plane_route("GET", [account], qp) do
     if qp["comp"] == "list" and qp["restype"] == "queue", do: {:list_queues, account}
   end
 
+  # Parity lane 2026-10-28: bare 2-segment GET (the v12 SDK's
+  # Get Queue Properties shape — no restype on the wire). The blob container
+  # GET always carries restype=container or comp, so a bare GET is a queue.
+  # The SDK's getProperties() actually sends restype=queue&comp=metadata
+  # (real Azure Get Queue Metadata) — same handler either way.
+  defp queue_plane_route("GET", [account, queue], qp) do
+    cond do
+      account in @queue_reserved_first_segments -> nil
+      qp["restype"] == "queue" -> {:get_queue_props, account, queue}
+      is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:get_queue_props, account, queue}
+      true -> nil
+    end
+  end
+
+  # Parity lane 2026-10-28: the @azure/storage-queue v12 SDK does NOT send
+  # restype=queue on queue create/delete — the service is implied by the
+  # endpoint host on real Azure ({account}.queue.core.windows.net). On smalt's
+  # single shared egress port the bare 2-segment PUT/DELETE (no comp, no
+  # restype) is unambiguous: the blob container arm ALWAYS carries
+  # restype=container (SDK-witnessed), so route it to the queue plane.
   defp queue_plane_route("PUT", [account, queue], qp) do
-    if qp["restype"] == "queue", do: {:create_queue, account, queue}
+    cond do
+      account in @queue_reserved_first_segments -> nil
+      qp["restype"] == "queue" -> {:create_queue, account, queue}
+      is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:create_queue, account, queue}
+      # Queue Set Metadata (comp=metadata, NO restype — the blob container
+      # metadata PUT carries restype=container and must NOT be hijacked).
+      qp["comp"] == "metadata" and is_nil(qp["restype"]) ->
+        {:set_queue_metadata, account, queue}
+
+      true ->
+        nil
+    end
   end
 
   defp queue_plane_route("DELETE", [account, queue], qp) do
-    if qp["restype"] == "queue", do: {:delete_queue, account, queue}
+    cond do
+      account in @queue_reserved_first_segments -> nil
+      qp["restype"] == "queue" -> {:delete_queue, account, queue}
+      is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:delete_queue, account, queue}
+      true -> nil
+    end
   end
 
   defp queue_plane_route("POST", [account, _queue, "messages"], _qp),
@@ -214,6 +259,28 @@ defmodule Smalt.EgressRouter do
 
   defp queue_dispatch(conn, {:delete_queue, account, queue}, _qp) do
     case QueueStorage.delete_queue(account, queue) do
+      {:ok, status, headers} ->
+        send_headers(conn, status, headers)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  # Parity lane 2026-10-28: Queue Set Metadata — persists x-ms-meta-* on the
+  # queue row (Get Queue Properties reads them back); 204 No Content.
+  defp queue_dispatch(conn, {:set_queue_metadata, account, queue}, _qp) do
+    case QueueStorage.set_queue_metadata(account, queue, meta_headers(conn)) do
+      {:ok, status, headers} ->
+        send_headers(conn, status, headers)
+
+      {:error, status, code, msg} ->
+        blob_error(conn, status, not_found_error(code) |> put_message(msg))
+    end
+  end
+
+  defp queue_dispatch(conn, {:get_queue_props, account, queue}, _qp) do
+    case QueueStorage.get_queue_properties(account, queue) do
       {:ok, status, headers} ->
         send_headers(conn, status, headers)
 
@@ -301,11 +368,11 @@ defmodule Smalt.EgressRouter do
              body,
              qp
            ) do
-        {:ok, status, headers, resp_body} ->
-          conn
-          |> put_resp_headers(headers)
-          |> put_resp_content_type("application/xml")
-          |> send_resp(status, resp_body)
+        {:ok, _status, headers, _resp_body} ->
+          # Azure parity (parity lane 2026-10-28, receipted vs Azurite):
+          # Update Message answers 204 No Content — the @azure SDK
+          # type-asserts 204 (RestError "Unexpected status code" otherwise).
+          send_headers(conn, 204, headers)
 
         {:error, status, code, msg} ->
           blob_error(conn, status, not_found_error(code) |> put_message(msg))
@@ -1950,37 +2017,60 @@ defmodule Smalt.EgressRouter do
   # must be defined BEFORE the generic /:account/:container catch-alls below.
   # ---------------------------------------------------------------------------
   get "/:account" do
-    if conn.query_params["comp"] == "list" do
-      blob_route(conn, fn conn ->
-        if not_ready?(conn, [BlobService]) do
-          route_not_ready(conn)
-        else
-          # Typed engine errors (container-list maxresults 400,
-          # v26.10.14 lane 06 defects 2+3) reach the wire as the Azure XML
-          # <Error> envelope on this comp=list route — never a MatchError 500
-          # or a JSON body where the real service emits XML.
-          case BlobService.list_containers_xml(account, %{
-                 "prefix" => conn.query_params["prefix"],
-                 "marker" => conn.query_params["marker"],
-                 "maxresults" => conn.query_params["maxresults"]
-               }) do
-            {xml, _next_marker} ->
-              conn
-              |> put_resp_content_type("application/xml")
-              |> send_resp(200, xml)
+    cond do
+      # Parity lane 2026-10-28 (receipted vs Azurite): Get Blob Service
+      # Properties (restype=service&comp=properties). Static defaults — the
+      # @azure/storage-blob SDK parses Logging/Cors out of this XML.
+      conn.query_params["restype"] == "service" and conn.query_params["comp"] == "properties" ->
+        conn
+        |> put_resp_header("x-ms-request-id", generate_request_id())
+        |> put_resp_header("x-ms-version", "2021-12-02")
+        |> put_resp_content_type("application/xml")
+        |> send_resp(
+          200,
+          "<?xml version=\"1.0\" encoding=\"utf-8\"?><StorageServiceProperties>" <>
+            "<Logging><Version>1.0</Version><Read>false</Read><Write>false</Write><Delete>false</Delete>" <>
+            "<RetentionPolicy><Enabled>false</Enabled></RetentionPolicy></Logging>" <>
+            "<HourMetrics><Version>1.0</Version><Enabled>false</Enabled>" <>
+            "<RetentionPolicy><Enabled>false</Enabled></RetentionPolicy></HourMetrics>" <>
+            "<MinuteMetrics><Version>1.0</Version><Enabled>false</Enabled>" <>
+            "<RetentionPolicy><Enabled>false</Enabled></RetentionPolicy></MinuteMetrics>" <>
+            "<Cors></Cors>" <>
+            "</StorageServiceProperties>"
+        )
 
-            {:error, status, code, msg} when is_integer(status) ->
-              blob_error_xml(conn, status, code, msg)
+      conn.query_params["comp"] == "list" ->
+        blob_route(conn, fn conn ->
+          if not_ready?(conn, [BlobService]) do
+            route_not_ready(conn)
+          else
+            # Typed engine errors (container-list maxresults 400,
+            # v26.10.14 lane 06 defects 2+3) reach the wire as the Azure XML
+            # <Error> envelope on this comp=list route — never a MatchError 500
+            # or a JSON body where the real service emits XML.
+            case BlobService.list_containers_xml(account, %{
+                   "prefix" => conn.query_params["prefix"],
+                   "marker" => conn.query_params["marker"],
+                   "maxresults" => conn.query_params["maxresults"]
+                 }) do
+              {xml, _next_marker} ->
+                conn
+                |> put_resp_content_type("application/xml")
+                |> send_resp(200, xml)
+
+              {:error, status, code, msg} when is_integer(status) ->
+                blob_error_xml(conn, status, code, msg)
+            end
           end
-        end
-      end)
-    else
-      blob_error(conn, 404, %{
-        "error" => %{
-          "code" => "RouteNotFound",
-          "message" => "No route matches #{conn.method} #{conn.request_path}"
-        }
-      })
+        end)
+
+      true ->
+        blob_error(conn, 404, %{
+          "error" => %{
+            "code" => "RouteNotFound",
+            "message" => "No route matches #{conn.method} #{conn.request_path}"
+          }
+        })
     end
   end
 
@@ -2485,6 +2575,100 @@ defmodule Smalt.EgressRouter do
                 end
               end
             else
+            # Parity lane 2026-10-28: base-blob lease (comp=lease WITHOUT
+            # sharesnapshot; the snapshot variant is handled above). Header-only
+            # request — no body read. x-ms-lease-action drives the state machine.
+            if conn.query_params["comp"] == "lease" do
+              if not_ready?(conn, [BlobStorage]) do
+                route_not_ready(conn)
+              else
+                case BlobStorage.lease_blob(
+                       account,
+                       container,
+                       blob_name,
+                       header_map(conn)["x-ms-lease-action"],
+                       header_map(conn)
+                     ) do
+                  {:ok, status, headers, _record} ->
+                    conn
+                    |> put_resp_headers(headers)
+                    |> send_resp(status, "")
+
+                  {:error, status, code, msg} ->
+                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                end
+              end
+            else
+            # Parity lane 2026-10-28: Set Blob HTTP Headers (comp=properties).
+            # Header-only request — no body read. 200 with the rotated etag.
+            if conn.query_params["comp"] == "properties" do
+              if not_ready?(conn, [BlobStorage]) do
+                route_not_ready(conn)
+              else
+                case BlobStorage.set_blob_http_headers(account, container, blob_name, header_map(conn)) do
+                  {:ok, status, headers, _record} ->
+                    conn
+                    |> put_resp_headers(headers)
+                    |> send_resp(status, "")
+
+                  {:error, status, code, msg} ->
+                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                end
+              end
+            else
+            # Parity lane 2026-10-28: Append Block (comp=appendblock) and Put
+            # Page (comp=page) — body-carrying writes through the same
+            # read_body discipline as the generic Put Blob fallback.
+            if conn.query_params["comp"] in ["appendblock", "page"] do
+              if not_ready?(conn, [BlobStorage]) do
+                route_not_ready(conn)
+              else
+                case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
+                  {:ok, body, _conn} ->
+                    if conn.query_params["comp"] == "appendblock" do
+                      case BlobStorage.append_block(account, container, blob_name, body, header_map(conn)) do
+                        {:ok, status, headers, _record} ->
+                          conn |> put_resp_headers(headers) |> send_resp(status, "")
+
+                        {:error, :worm_locked, _nil, msg} ->
+                          blob_error(conn, 409, %{
+                            "error" => %{"code" => "ContainerLocked", "message" => msg}
+                          })
+
+                        {:error, status, code, msg} ->
+                          blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                      end
+                    else
+                      case BlobStorage.put_page(account, container, blob_name, body, header_map(conn)) do
+                        {:ok, status, headers, _record} ->
+                          conn |> put_resp_headers(headers) |> send_resp(status, "")
+
+                        {:error, :worm_locked, _nil, msg} ->
+                          blob_error(conn, 409, %{
+                            "error" => %{"code" => "ContainerLocked", "message" => msg}
+                          })
+
+                        {:error, status, code, msg} ->
+                          blob_error(conn, status, not_found_error(code) |> put_message(msg))
+                      end
+                    end
+
+                  {:more, partial, _conn} ->
+                    blob_error(conn, 413, %{
+                      "error" => %{
+                        "code" => "RequestBodyTooLarge",
+                        "message" =>
+                          "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes)."
+                      }
+                    })
+
+                  {:error, reason} ->
+                    blob_error(conn, 400, %{
+                      "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
+                    })
+                end
+              end
+            else
               case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
                 {:ok, raw_body, conn} ->
                   case BlobStorage.put_blob(
@@ -2556,6 +2740,9 @@ defmodule Smalt.EgressRouter do
                     "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
                   })
               end
+            end
+            end
+            end
             end
           end
         end
