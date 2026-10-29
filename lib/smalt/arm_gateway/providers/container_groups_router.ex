@@ -90,7 +90,9 @@ defmodule Smalt.ArmGateway.Providers.ContainerGroupsRouter do
   defp dispatch(conn, {:rg, sub, rg, rest}) do
     conn = Plug.Conn.fetch_query_params(conn)
 
-    case Enum.map(rest, &String.downcase/1) do
+    # Names come from the ORIGINAL segments (wire ids keep the client's
+    # casing; only the structural segments match case-insensitively).
+    case rest do
       [] ->
         case conn.method do
           "GET" -> handle_list(conn, sub, rg)
@@ -105,10 +107,20 @@ defmodule Smalt.ArmGateway.Providers.ContainerGroupsRouter do
           _ -> method_not_allowed(conn)
         end
 
-      [name, "containers", container, "logs"] ->
-        case conn.method do
-          "GET" -> handle_logs(conn, sub, rg, name, container)
-          _ -> method_not_allowed(conn)
+      [name, seg, container, action] ->
+        if String.downcase(seg) == "containers" and String.downcase(action) == "logs" do
+          case conn.method do
+            "GET" -> handle_logs(conn, sub, rg, name, container)
+            _ -> method_not_allowed(conn)
+          end
+        else
+          arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The requested containerGroups resource shape is not served by this control plane.",
+            conn.request_path
+          )
         end
 
       _other ->

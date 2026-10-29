@@ -134,14 +134,13 @@ defmodule Smalt.Internal.AcrTest do
 
   defp registry_cleanup(reg) do
     on_exit(fn ->
-      Store.delete(:smalt_resources, registry_key(reg) <> "/runs")
-      Store.delete(:smalt_resources, registry_key(reg))
+      key = registry_key(reg)
 
-      # Children are downcased resource-id keys under the registry prefix.
-      registry_key(reg)
-      |> Store.prefix_keys(:smalt_resources, )
-      |> Enum.each(&Store.delete(:smalt_resources, &1))
+      Enum.each(Store.prefix_keys(:smalt_resources, key <> "/"), fn child_key ->
+        Store.delete(:smalt_resources, child_key)
+      end)
 
+      Store.delete(:smalt_resources, key)
       BlobStorage.drop_account_data(reg)
     end)
   end
@@ -307,7 +306,7 @@ defmodule Smalt.Internal.AcrTest do
     # Unknown task-file fields map verbatim into the recorded run body
     # (smalt-private _acr_task member, readable through the engine face).
     assert {:ok, row} = Acr.get_run(encoded["id"])
-    assert row["_acr_task"]["steps"]["steps"] |> is_list()
+    assert is_list(get_in(row, ["_acr_task", "steps", "steps"]))
     assert Enum.map(row["_acr_task"]["steps"]["steps"], & &1["id"]) == ["build", "push"]
 
     # Bad base64 -> typed 400 InvalidEncodedTaskContent.
@@ -420,8 +419,8 @@ defmodule Smalt.Internal.AcrTest do
     # No credentials -> docker Basic challenge (401 UNAUTHORIZED).
     anon = v2_req(:get, catalog_path)
     assert anon.status == @unauthorized
-    assert Jason.decode!(anon.resp_body)["errors"] |> hd() |> Map.get("code") == "UNAUTHORIZED"
-    assert Plug.Conn.get_req_header(anon, "www-authenticate") == [~s(Basic realm="#{reg}.registry.smalt.local")]
+    assert hd(Jason.decode!(anon.resp_body)["errors"])["code"] == "UNAUTHORIZED"
+    assert Plug.Conn.get_resp_header(anon, "www-authenticate") == [~s(Basic realm="#{reg}.registry.smalt.local")]
 
     # Wrong password -> still 401.
     assert v2_req(:get, catalog_path, "#{reg}:wrong").status == @unauthorized
@@ -440,7 +439,7 @@ defmodule Smalt.Internal.AcrTest do
     # Unknown registry seat -> docker 404 NAME_UNKNOWN.
     unknown = v2_req(:get, "/acr/reg-ghost-acr/v2/_catalog")
     assert unknown.status == @not_found
-    assert Jason.decode!(unknown.resp_body)["errors"] |> hd() |> Map.get("code") == "NAME_UNKNOWN"
+    assert hd(Jason.decode!(unknown.resp_body)["errors"])["code"] == "NAME_UNKNOWN"
   end
 
   # -- delete: typed 202 LRO that completes + cascade ---------------------------------
@@ -463,8 +462,8 @@ defmodule Smalt.Internal.AcrTest do
     assert del_conn.status == @accepted_lro
 
     # Typed LRO faces: Azure-AsyncOperation/Location headers + op record body.
-    assert Plug.Conn.get_req_header(del_conn, "azure-asyncoperation") != []
-    assert Plug.Conn.get_req_header(del_conn, "location") != []
+    assert Plug.Conn.get_resp_header(del_conn, "azure-asyncoperation") != []
+    assert Plug.Conn.get_resp_header(del_conn, "location") != []
 
     op = Jason.decode!(del_conn.resp_body)
     assert op["status"] == "InProgress"
@@ -484,8 +483,8 @@ defmodule Smalt.Internal.AcrTest do
              String.downcase(row["id"]) |> String.starts_with?(registry_key(reg) <> "/runs/")
            end)
 
-    %{"value" => runs_after} = Jason.decode!(acr_req(:get, "#{@base}/registries/#{reg}/runs").resp_body)
-    assert runs_after == []
+    # Runs LIST on the now-missing parent is typed 404 (registry-existence gate).
+    assert acr_req(:get, "#{@base}/registries/#{reg}/runs").status == @not_found
 
     # Unknown-registry delete -> typed 404 (no async face minted).
     assert acr_req(:delete, "#{@base}/registries/reg-ghost-acr").status == @not_found

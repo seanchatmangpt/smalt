@@ -288,7 +288,7 @@ defmodule Smalt.Amqp.Connection do
   # their epoch registrations, retire its outbound deliveries.
   def handle_info({:sb_chaos_session_timeout, ch, ref}, state) do
     if get_session(state, ch)[:chaos_ref] == ref do
-      Smalt.Messaging.Chaos.emit(:session_timeout, %{timeout_ms: Smalt.Messaging.Chaos.session_timeout()}, %{
+      Smalt.Messaging.Chaos.emit(:session_timeout, %{timeout_ms: Smalt.Messaging.Chaos.session_close_bound()}, %{
         channel: ch
       })
 
@@ -842,12 +842,12 @@ defmodule Smalt.Amqp.Connection do
   end
 
   # T-12 (c) arm: :sb_chaos_session_timeout_ms (with the :eh_ twin honored —
-  # the session layer is shared, so Chaos.session_timeout/0 returns the
+  # the session layer is shared, so Chaos.session_close_bound/0 returns the
   # shortest armed bound). Arms a deterministic close timer keyed by a
   # make_ref token so a stale timer can never close a NEWER session re-begun
   # on the same channel. Off (:infinity) = no timer, zero interference.
   defp chaos_arm_session_timeout(state, ch) do
-    case Smalt.Messaging.Chaos.session_timeout() do
+    case Smalt.Messaging.Chaos.session_close_bound() do
       ms when is_integer(ms) and ms > 0 ->
         ref = make_ref()
         Process.send_after(self(), {:sb_chaos_session_timeout, ch, ref}, ms)

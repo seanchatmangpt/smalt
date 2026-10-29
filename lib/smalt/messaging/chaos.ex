@@ -130,8 +130,8 @@ defmodule Smalt.Messaging.Chaos do
   both namespaces, so the SHORTEST armed timeout governs (`:infinity`
   when neither namespace arms a session timeout).
   """
-  @spec session_timeout :: bound()
-  def session_timeout do
+  @spec session_close_bound :: bound()
+  def session_close_bound do
     @namespaces
     |> Enum.map(&session_timeout/1)
     |> Enum.reject(&(&1 == :infinity))

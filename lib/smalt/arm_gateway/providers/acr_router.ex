@@ -257,7 +257,8 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp runs_list(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn),
+         {:ok, _reg} <- registry_row(sub, rg, name) do
       prefix = String.downcase(registry_id(sub, rg, name)) <> "/runs/"
 
       runs =
@@ -268,6 +269,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
       send_json(conn, 200, %{"value" => runs})
     else
       {:respond, conn} -> conn
+      :error -> send_arm_error(conn, 404, "ResourceNotFound", "The parent #{name} could not be found.")
     end
   end
 

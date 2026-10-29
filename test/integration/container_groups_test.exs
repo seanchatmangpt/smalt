@@ -55,6 +55,19 @@ defmodule Smalt.Internal.ContainerGroupsTest do
                 )
 
   setup do
+    # The ACR control-plane row the court's imageRegistryCredentials resolve
+    # against (T-01 seam: registries are generic admitted-type rows in
+    # :smalt_resources, keyed .../providers/Microsoft.ContainerRegistry/
+    # registries/<name>, downcased providers segment included).
+    Store.put(:smalt_resources, @registry_key, %{
+      "id" =>
+        "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.ContainerRegistry/registries/#{@registry}",
+      "name" => @registry,
+      "type" => "Microsoft.ContainerRegistry/registries",
+      "location" => "eastus",
+      "properties" => %{}
+    })
+
     on_exit(fn ->
       for name <- [@group, "group-list", "group-list2"] do
         Store.delete(:smalt_resources, String.downcase("#{@base}/#{name}"))

@@ -77,7 +77,7 @@ defmodule SmaltTest.Integration.IacExportTest do
   # --- bicep renderer -------------------------------------------------------------
 
   test "bicep export renders real resource type strings, symbolic names and the fixture name literals" do
-    {:ok, model} = IacExport.intermediate_model()
+    {:ok, model} = IacExport.intermediate_model(fenced_store_rows())
     bicep = Map.fetch!(IacExport.render_bicep(model), "main.bicep")
 
     assert bicep =~ "targetScope = 'subscription'"
@@ -114,7 +114,7 @@ defmodule SmaltTest.Integration.IacExportTest do
   # --- terraform renderer ----------------------------------------------------------
 
   test "terraform export renders matching azurerm blocks plus the terraform.tfvars stub" do
-    {:ok, model} = IacExport.intermediate_model()
+    {:ok, model} = IacExport.intermediate_model(fenced_store_rows())
     files = IacExport.render_terraform(model)
 
     assert MapSet.new(Map.keys(files)) == MapSet.new(["main.tf", "terraform.tfvars"])
@@ -149,11 +149,14 @@ defmodule SmaltTest.Integration.IacExportTest do
 
   # --- single-source witness -------------------------------------------------------
 
-  test "single-source witness: both renderers consume the ONE intermediate model" do
-    {:ok, store_model} = IacExport.intermediate_model()
-    {:ok, rows_model} = IacExport.intermediate_model(context_rows())
+  test "single-source witness: both renderers consume the ONE intermediate model", %{
+    resources: resources
+  } do
+    {:ok, store_model} = IacExport.intermediate_model(fenced_store_rows())
+    {:ok, rows_model} = IacExport.intermediate_model(resources)
 
     # one projection pass: the Store walk and the direct-rows walk agree
+    assert length(store_model.resources) == 3
     assert rows_model == store_model
     refute store_model.outputs == []
 
@@ -256,9 +259,10 @@ defmodule SmaltTest.Integration.IacExportTest do
     assert {:error, {:non_list_rows, :smalt_resources}} = IacExport.intermediate_model(:nope)
   end
 
-  # the same rows the setup seeded into the real Store (for the
-  # store-walk == rows-walk equality in the single-source witness)
-  defp context_rows do
+  # The Store is process-global and async tests from other modules share it,
+  # so every read in this court fences to this court's subscription segment
+  # — the real Store read path, scoped deterministically.
+  defp fenced_store_rows do
     Store.list(@table)
     |> Enum.filter(fn row -> String.contains?(row["id"], @sub) end)
   end
