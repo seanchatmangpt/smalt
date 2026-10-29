@@ -382,6 +382,18 @@ defmodule Smalt.Internal.ContainerGroupsTest do
 
   # -- helpers ---------------------------------------------------------------------------
 
+  # The mounted ARM pipeline (Smalt.ArmGateway.Router) runs Plug.Parsers with
+  # these same opts before any pass-through provider router sees the conn;
+  # standalone dispatch reproduces that state with the REAL Plug.Parsers —
+  # no mocks (same composition as acr_test.exs). Without it body_params stays
+  # %Plug.Conn.Unfetched{} and the router's is_map/1 guard hands the struct
+  # through to the engine, which refuses typed InvalidRequestContent.
+  @parsers_opts Plug.Parsers.init(
+                  parsers: [:json, :urlencoded],
+                  pass: ["*/*"],
+                  json_decoder: {Smalt.JsonCompat, :decode!, []}
+                )
+
   defp ci_req(method, path, body \\ nil) do
     url =
       if String.contains?(path, "?"),
@@ -396,7 +408,10 @@ defmodule Smalt.Internal.ContainerGroupsTest do
         conn(method, url)
       end
 
-    ContainerGroupsRouter.call(Plug.Conn.fetch_query_params(conn), [])
+    conn
+    |> Plug.Conn.fetch_query_params()
+    |> Plug.Parsers.call(@parsers_opts)
+    |> then(&ContainerGroupsRouter.call(&1, []))
   end
 
   defp group_body do
