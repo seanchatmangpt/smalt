@@ -1535,6 +1535,12 @@ defmodule Smalt.EgressRouter do
           true ->
             {:ok, record} = kv_write(conn, key, label, existing)
             status = if existing == :error, do: 201, else: 200
+
+            # T-04 (v26.10.28): kv create/modify publishes
+            # AppConfigurationKeyValueModified (fire-and-forget — an event
+            # failure never fails the kv write).
+            publish_kv_change("AppConfigurationKeyValueModified", record)
+
             send_json(conn, status, public_kv_record(record))
         end
       end)
@@ -1596,6 +1602,12 @@ defmodule Smalt.EgressRouter do
               })
             else
               Store.delete(:smalt_appconfig, {key, label})
+
+              # T-04 (v26.10.28): kv delete publishes
+              # AppConfigurationKeyValueDeleted (fire-and-forget — an event
+              # failure never fails the kv delete).
+              publish_kv_change("AppConfigurationKeyValueDeleted", record)
+
               send_resp(conn, 204, "")
             end
           end
@@ -1804,6 +1816,65 @@ defmodule Smalt.EgressRouter do
       |> Enum.max(fn -> 0 end)
 
     "smalt-#{max}"
+  end
+
+  # T-04 (v26.10.28): kv-plane change notifications. Every successful kv PUT
+  # (create or modify) publishes AppConfigurationKeyValueModified and every
+  # successful kv DELETE publishes AppConfigurationKeyValueDeleted into the
+  # Event Grid engine under topic "appconfig" (real App Configuration
+  # system-topic shape; webhook delivery rides the existing
+  # EventGridWebhookPlug surface). FIRE-AND-FORGET law: an event-engine
+  # failure must NEVER fail the kv write itself — the publish is
+  # try/rescue-wrapped and logged (require Logger at the module head).
+  # Precondition failures (412/409) and missing-kv deletes publish nothing.
+  defp publish_kv_change(event_type, record) do
+    event = kv_change_event(event_type, record["key"], record)
+
+    try do
+      Smalt.Messaging.EventGrid.publish("appconfig", event)
+    rescue
+      e ->
+        Logger.error(
+          "kv change event publish failed (kv write unaffected): " <>
+            "eventType=#{event_type} key=#{inspect(event[:data][:key])} error=#{inspect(e)}"
+        )
+    end
+
+    :ok
+  end
+
+  # Real Azure App Configuration system-topic event schema: id, eventType,
+  # subject, eventTime, data {key, label, etag}. Subject is the bare key,
+  # suffixed "|<label>" only when a non-empty label is set (real Azure omits
+  # the suffix for the no-label kv). id (uuid) is the Event Grid dedup key.
+  defp kv_change_event(event_type, key, record) do
+    label = record["label"]
+
+    subject =
+      if label in [nil, ""], do: key, else: "#{key}|#{label}"
+
+    %{
+      id: kv_event_uuid(),
+      eventType: event_type,
+      subject: subject,
+      eventTime: DateTime.utc_now() |> DateTime.to_iso8601(),
+      data: %{key: key, label: label, etag: record["etag"]}
+    }
+  end
+
+  # UUID v4 event id (Event Grid dedup key), same shape as
+  # Messaging.EventStream.uuid4/0.
+  defp kv_event_uuid do
+    <<a::32, b::16, c_lo::12, _::4, d_lo::14, _::2, e::48>> = :crypto.strong_rand_bytes(16)
+
+    <<a::32, b::16, 4::4, c_lo::12, 2::2, d_lo::14, e::48>>
+    |> Base.encode16(case: :lower)
+    |> then(fn hex ->
+      <<h1::binary-size(8), h2::binary-size(4), h3::binary-size(4), h4::binary-size(4),
+        h5::binary-size(12)>> = hex
+
+      Enum.join([h1, h2, h3, h4, h5], "-")
+    end)
   end
 
   # ---------------------------------------------------------------------------
