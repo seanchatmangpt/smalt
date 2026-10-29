@@ -339,7 +339,7 @@ defmodule Smalt.DataPlane.Functions do
   immutable through this surface). Persists; returns the new key value.
   """
   @spec renew_host_key(site(), String.t()) ::
-          {:ok, site(), %{"name" => String.t(), "value" => String.t()}} | {:error, arm_error()}
+          {:ok, site(), %{String.t() => String.t()}} | {:error, arm_error()}
   def renew_host_key(site, key_name) when is_binary(key_name) and key_name != "" do
     hk = engine_prop(site, "hostKeys") || %{}
     fks = Map.get(hk, "functionKeys") || %{}
@@ -508,7 +508,7 @@ defmodule Smalt.DataPlane.Functions do
 
   # The wire-visible property defaults (real site GET shape: state Running
   # is what az functionapp list/show surfaces).
-  defp base_props(name, host) do
+  defp base_props(_name, host) do
     %{
       "state" => "Running",
       "enabled" => true,

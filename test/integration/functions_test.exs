@@ -55,14 +55,22 @@ defmodule Smalt.Internal.FunctionsTest do
 
   # The admin surface lives on the site host: the Host header resolves the
   # site (<name>.azurewebsites.net) — exactly the Core Tools flow. No
-  # api-version (the real host admin API carries none).
+  # api-version (the real host admin API carries none). The Host header must
+  # land BEFORE dispatch: Router.call/2 sends the response, and mutating a
+  # sent conn raises AlreadySentError (r13 first integration run fix); Plug
+  # refuses put_req_header("host", ...) so the header rides req_headers
+  # directly (what the wire carries and what the router reads).
   defp admin_req(method, path, body \\ nil) do
-    json_conn(method, path, body)
-    |> Plug.Conn.put_req_header("host", @site_host)
+    built = build_conn(method, path, body)
+
+    built
+    |> Map.put(:host, @site_host)
+    |> Map.update!(:req_headers, &[{"host", @site_host} | &1])
+    |> Smalt.ArmGateway.Router.call([])
   end
 
-  defp json_conn(method, url, body) do
-    conn =
+  defp build_conn(method, url, body) do
+    built =
       if body do
         conn(method, url, Jason.encode!(body))
         |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -70,7 +78,13 @@ defmodule Smalt.Internal.FunctionsTest do
         conn(method, url)
       end
 
-    Smalt.ArmGateway.Router.call(Plug.Conn.fetch_query_params(conn), [])
+    Plug.Conn.fetch_query_params(built)
+  end
+
+  defp json_conn(method, url, body) do
+    method
+    |> build_conn(url, body)
+    |> Smalt.ArmGateway.Router.call([])
   end
 
   defp put_site do

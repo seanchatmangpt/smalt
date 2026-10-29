@@ -410,7 +410,7 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
   # suffix and a trailing dot are stripped first.
   defp host_site_name(host) do
     host = host |> String.split(":") |> hd() |> String.downcase() |> String.trim_trailing(".")
-    host = String.trim_prefix(host, "scm.")
+    host = String.replace_prefix(host, "scm.", "")
 
     if String.ends_with?(host, ".azurewebsites.net") do
       case String.replace_suffix(host, ".azurewebsites.net", "") do
