@@ -88,3 +88,51 @@ CLOSED: T-03, T-04, T-05, T-09 (impl), T-13, T-17, T-18.
 CODE-COMPLETE awaiting integration run: T-01, T-02, T-06, T-07, T-08,
 T-10, T-11, T-12, T-14, T-15. NOT STARTED: T-16 (blocked on T-08),
 T-07-adjacent APIM gateway wiring (r16 patch).
+
+## UNDOCKED — what is still undone (read this first on the other laptop)
+
+All ten agent lanes landed and are pushed, but the wave ended BEFORE the
+integration pass. Nothing below is optional:
+
+1. **Deps not promoted.** `{:cachex, "~> 4.0"}` missing (azure_cache.ex is
+   runtime-dead without it); `sweet_xml`/`finch`/`yaml_elixir` still
+   transitive — promote to direct deps (versions: match deps/ or mix.lock),
+   then `mix deps.get`.
+2. **Wiring patches not applied.** Four pass-through provider routers
+   (`AcrRouter`, `FunctionsRouter`, `ResourceHealthRouter`,
+   `ContainerGroupsRouter`) + the APIM gateway are unwired; the single
+   `plug(...)` lines are in receipts r12/r13/r14/r16/r17 (mount before
+   `:match` in `arm_gateway/router.ex`). RedisListener child-spec gate is
+   in r15 (config `:azure_cache_accounts`, default off — byte-identical).
+3. **No court has been executed.** New courts: acr (6), seed (7),
+   azure_cache (13+), apim (4+), sb_delivery (6), chaos_injectors,
+   service_health (7), container_groups (7), iac_export (6), plus the
+   existing 8-test parity_lane_wire + upstream AppConfigEvents court.
+   The whole integration tier has NOT been compiled since the wave.
+4. **Offline-suite baseline unverified** post-wave — must return to the
+   7-failure pre-existing set.
+5. **T-09 wire probe outstanding** (epoch = GAP-A2-02, shipped but not
+   live-probed with two `@azure/event-hubs` receivers).
+6. **T-16 not started** (chained DLQ; hard-blocked on T-08's court being
+   green first).
+7. **Known integration couplings**: T-12 flags → T-14
+   `ResourceHealth.set_unavailable/2` wiring; T-10 registry validation
+   expects T-01 ACR store rows (run ACR court first or seed a registry);
+   T-06 needs StoreTables/DetsMirror regen note in r15; T-08 needs NO
+   StoreTables change (verified).
+8. **Wiring-patch collisions**: several receipts mount routers at the same
+   seam (before `:match`); apply all four + APIM gateway + ResourceHealth
+   in one edit, ordering irrelevant (each halts or passes through).
+9. **Parity-map staleness**: upstream already shipped Table Storage, blob
+   CORS/soft-delete, EH checkpoint/capture/schema-registry, Kafka,
+   AMQP-WS, mHSM — refresh `COVERAGE_VS_TOPAZ.md` + the roadmap map before
+   citing gaps.
+10. **File-share.ex / SqlIngestRoutes / marketplace / sync routes** exist
+    upstream without v26.10.28 coverage rows — new-surface census is a
+    v26.10.29 task.
+
+The dev-box session ended mid-settle; every agent file that existed at
+undock IS committed and pushed (final tree was clean before this
+addendum). If the agent output files contain anything newer than the last
+sweep commit, they are lost — the receipts in this directory are the
+authoritative record of each lane's contract.

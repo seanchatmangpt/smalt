@@ -386,9 +386,9 @@ defmodule Smalt.DataPlane.Functions do
   """
   @spec list_functions(site()) :: [map()]
   def list_functions(site) when is_map(site) do
-    site
-    |> engine_prop("functions")
-    |> Kernel.||(%{})
+    functions = engine_prop(site, "functions") || %{}
+
+    functions
     |> Map.values()
     |> Enum.sort_by(fn %{"name" => n} -> n end)
   end

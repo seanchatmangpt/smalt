@@ -113,8 +113,17 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
 
     case require_api_version(conn) do
       :ok ->
-        sites = sub |> Functions.list_sites() |> Enum.map(&Functions.public_site/1)
-        send_json(conn, 200, %{"value" => sites})
+        if conn.method == "GET" do
+          sites = sub |> Functions.list_sites() |> Enum.map(&Functions.public_site/1)
+          send_json(conn, 200, %{"value" => sites})
+        else
+          arm_error(
+            conn,
+            405,
+            "MethodNotAllowed",
+            "'#{conn.method}' is not supported on the sites listing route"
+          )
+        end
 
       {:respond, conn} ->
         conn
