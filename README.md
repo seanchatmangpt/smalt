@@ -180,6 +180,15 @@ Entry: `Smalt.GraphLaw.Validator` (`lib/smalt/graphlaw/validator.ex:1`).
 Config key: `:graphlaw_engine`. Non-vacuity is court-proved, not asserted —
 see Mutation court in Part 2.
 
+GL28-2 (v26.10.28) adds a second, fail-closed gate in front of the ARM
+router: `Smalt.GraphlawEx.AdmissionGate`
+(`lib/smalt/graphlaw_ex/admission_gate.ex`) — enabled with
+`config :smalt, :graphlaw_ex_gate, enabled: true` (on in dev/test; default
+off in prod), it refuses with a typed refusal when the engine digest is nil.
+The gate rides `graphlaw_ex` as a path dependency
+(`mix.exs`: `{:graphlaw_ex, path: "../graphlaw/graphlaw_ex"}`) — a fresh
+clone needs the sibling `graphlaw` checkout to compile.
+
 ## Part 2 — Repository
 
 ### Bootstrap (fresh machine)
@@ -379,6 +388,7 @@ vendored `@azure/*`; relay-env exports it when present) and `SMALT_REPO`
 | Affidavit WASM | `lib/smalt/affidavit/wasm_engine.ex:159` | `call/2`; typed unavailable |
 | Trust profiles | `lib/smalt/trust_profile/trust_profile.ex:93` | `:pqc`/`:hybrid` typed refusals |
 | GraphLaw | `lib/smalt/graphlaw/validator.ex:1` | admission gate; mutation-courted |
+| GraphLawEx gate | `lib/smalt/graphlaw_ex/admission_gate.ex:1` | ARM-router fail-closed gate; `:graphlaw_ex_gate` config |
 | Policy | `lib/smalt/policy.ex:1` | deontic policy surface |
 | OCEL registry | `lib/smalt/ocel/event_registry.ex:6` | fitness `lib/smalt/ocel/conformance.ex:168` |
 | P-PLAN tasks | `lib/smalt/pplan/task.ex:1` | durable task transitions |

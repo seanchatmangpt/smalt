@@ -8,6 +8,41 @@ and this project adheres to
 
 ## [Unreleased]
 
+Azure-parity + KQL window (v26.10.28 lanes; receipts
+`docs/jira/v26.10.28/receipts/`).
+
+### Added
+
+- KQL engine (T-05, `5c30be06`/`33080213`/`688ece4c`): `summarize ... by
+  bin(Col, <timespan>|<number>)`, `| join [kind=inner|innerunique|left|
+  leftouter] <Table> on <Col>[ == <Col>]` (with `run/3` threading a named-table
+  map: pipeline rows are `$left`, `tables[table]` is `$right`),
+  `| mv-expand <Col> [, <Col>]*`, and leading cross-workspace sources
+  `workspace("<id>")[.Table]` (rows stamped with a `Workspace` column).
+- Blob lease surface (parity lane `8a6ce573`): full `comp=lease` on base blobs
+  (acquire/renew/change/release/break) and `lease_blob_snapshot`, plus
+  `<LeaseStatus>` in container/blob listings — closes
+  `GAP(blob-comp-lease-absent)`.
+- Wire surface (parity lanes `8a6ce573`/`474518c0`/`7a80c75a`): Append Block,
+  Put Page, Set Blob HTTP Headers; DELETE blob answers `409 SnapshotsPresent`
+  unless `x-ms-delete-snapshots: include|only`; Get Queue Properties /
+  Set Queue Metadata (`restype=queue&comp=properties`, `x-ms-meta-*`);
+  Get Account Info (`restype=service&comp=properties`).
+- GraphLawEx admission gate (GL28-2, `28f9dcbe`/`a33622d1`):
+  `Smalt.GraphlawEx.AdmissionGate` (fail-closed, typed refusal on nil
+  engine digest), opt-in via `config :smalt, :graphlaw_ex_gate, enabled: true`
+  (enabled in dev/test; default off in prod); ARM router admission seams.
+  New path dependency `{:graphlaw_ex, path: "../graphlaw/graphlaw_ex"}` — a
+  fresh clone now needs the sibling `graphlaw` checkout.
+
+### Changed
+
+- Blob-face typed errors now render the Azure XML
+  `<?xml?><Error><Code/><Message/></Error>` envelope
+  (`Content-Type: application/xml`) for the entire blob face, not only
+  `comp=list` arms — closes `GAP(blob-error-envelope-json)`; non-blob faces
+  keep byte-identical JSON (`7a80c75a`).
+
 ## [26.10.25] - 2026-10-25
 
 Azure-fidelity control-plane window; landing commit recorded in

@@ -8,12 +8,23 @@ defmodule Smalt.DataPlane.KQL do
       | where <pred> | take N | sort by <col> asc|desc [nulls first|last]
       | order by <col> asc|desc [nulls first|last]
       | summarize count() [, sum(C)|avg(C)|min(C)|max(C)]* [by K1, K2]
+      | summarize ... [by bin(Col, <timespan>|<number>), ...]
       | project Alias = Col, Total = <scalar-expr>, ...
       | extend Name = <scalar-expr>, ...
+      | join [kind=inner|innerunique|left|leftouter] <Table> on <Col>[ == <Col>]
+      | mv-expand <Col> [, <Col>]*
 
   into an AST (no eval, no injection surface) and executes it over a list of
   row maps with string column keys (e.g. the Sentinel base columns `ledgerId`,
   `tenantId`, `subjectSha256`, `eventId`, `sha256Hash`, `TimeGenerated`).
+
+  Queries may open with comma-separated cross-workspace sources before the
+  first pipe — `workspace("<id>")[.Table]` — resolved through `run/3`'s
+  named-table map; each workspace's rows are stamped with a `Workspace`
+  column (the workspace id, up to the first `.`). `join` resolves `<Table>`
+  from the same map (pipeline rows are `$left`, the named table `$right`);
+  `kind=innerunique` is treated as `inner`, `kind=left` and `kind=leftouter`
+  as the left join. `mv-expand` expands list-valued columns element-wise.
 
   Scalar expressions (comparison RHS, project/extend computed columns):
 
@@ -25,7 +36,9 @@ defmodule Smalt.DataPlane.KQL do
   as `%DateTime{}` OR as an ISO8601 string (DCR-ingested rows carry ISO
   strings; `to_datetime/1` normalizes both).
 
-  Pure: `run/2` returns `{:ok, rows'}` or `{:error, {:parse | :limit, msg}}`.
+  Pure: `run/2` returns `{:ok, rows'}` or `{:error, {:parse | :limit, msg}}`;
+  `run/3` additionally threads the named-table map (`join` `$right` tables,
+  `workspace(...)` sources).
   Parse errors are typed KQL-style `SYN-` codes with byte position:
 
       "SYN0002: unexpected token 'frobnicate' (position 14)"
