@@ -528,7 +528,7 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     {:ok, port} = :inet.port(lsock)
     {:ok, csock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
     {:ok, ssock} = :gen_tcp.accept(lsock)
-    {:ok, _conn} = Smalt.Amqp.Connection.start_link(Keyword.put(opts, :socket, ssock))
+    {:ok, conn} = Smalt.Amqp.Connection.start_link(Keyword.put(opts, :socket, ssock))
     :ok = :gen_tcp.controlling_process(ssock, conn)
 
     client = start_client(csock)
@@ -618,6 +618,15 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     name
   end
 
+  # Ordered, fire-and-forget send through the client process (the only
+  # holder of the client TCP socket). client_loop's {:send, _} branch
+  # performs the real :gen_tcp.send; sequencing across calls is the
+  # client's mailbox order.
+  defp csend(client, iodata) do
+    send(client, {:send, iodata})
+    :ok
+  end
+
   # Passive recv in 50ms observation slices (POLL-STEP, the broker pump's own
   # shape) — never a coordination sleep.
   defp client_loop(sock, rx, buf) do
@@ -659,7 +668,7 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     <<size::unsigned-integer-size(32), _rest::binary>> = buf
 
     if byte_size(buf) >= size do
-      <<frame_bytes::binary-size(size), tail::binary>> = buf
+      <<frame_bytes::binary-size(^size), tail::binary>> = buf
 
       case FrameCodec.decode_frame(frame_bytes) do
         {:ok, frame} -> absorb(tail, record(frame, rx))

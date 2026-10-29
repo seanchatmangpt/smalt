@@ -316,12 +316,25 @@ defmodule Smalt.Amqp.Connection do
            outbound_deliveries:
              Map.reject(state.outbound_deliveries, fn {_id, d} -> d[:channel] == ch end)
        }}
+      |> resume_pump()
     else
+      # Stale timer (client already re-began): keep pumping.
       {:noreply, state}
+      |> resume_pump()
     end
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # KD-COVERS: KD-69 — resume the short-recv pump after a requeued
+  # mailbox message was dispatched (same contract as the epoch-evict and
+  # AZB-07 handlers: the drain yielded so the latest state applies).
+  # Placement note (L9): kept AFTER the handle_info/2 clause group so the
+  # clauses stay grouped (same compiler grouping rule as handle_amqp/4).
+  defp resume_pump({:noreply, state}) do
+    send(self(), :recv)
+    {:noreply, state}
+  end
 
   @impl true
   # SHIM-COURT: best-effort release of session locks held by this
@@ -457,10 +470,10 @@ defmodule Smalt.Amqp.Connection do
   # up to 300s, until its client next sent bytes (face-2 falsifier FAIL:
   # the detach was delivered only after the client sent a flow frame).
   # Segment the wait: 100ms recv slices with a selective mailbox drain
-  # between slices, so typed detaches are applied while the connection
-  # idles. Non-matching mailbox messages are NEVER stolen: the receive has
-  # no catch-all clause, so only the two typed detach messages can be
-  # consumed here.
+  # between slices, so typed detaches and the T-12 (c) armed session-timeout
+  # close are applied while the connection idles. Non-matching mailbox
+  # messages are NEVER stolen: the receive has no catch-all clause, so only
+  # the typed messages matched below can be consumed here.
   @pump_wait_ms 100
 
   defp need_more(%{sock: sock, buffer: buf} = state, want) do
@@ -526,6 +539,15 @@ defmodule Smalt.Amqp.Connection do
         {:requeued, %{state | recv_deadline: nil}}
 
       {:azb07_force_partition_detach, _} = msg ->
+        send(self(), msg)
+        {:requeued, %{state | recv_deadline: nil}}
+
+      # T-12 (c): the armed session-timeout close must fire while the
+      # connection IDLES (the whole point of the injection — the client is
+      # quiescent and waits for the broker's typed :end). Without this
+      # requeue the timer message starves behind the recv pump and the
+      # session never closes until the peer speaks again.
+      {:sb_chaos_session_timeout, _, _} = msg ->
         send(self(), msg)
         {:requeued, %{state | recv_deadline: nil}}
     after
@@ -632,30 +654,6 @@ defmodule Smalt.Amqp.Connection do
         end
 
       deliver_available(state)
-    end
-  end
-
-  # T-12 (b) :sb_chaos_starve_credits / :eh_chaos_starve_credits — namespace
-  # resolved from the targeted link's kind (a session-level flow, handle
-  # nil, only ever grants queue links -> :sb). Emits typed telemetry per
-  # withheld grant. Flags off = the grant proceeds byte-identically.
-  defp chaos_starved?(state, ch, handle, credit) do
-    ns =
-      case handle && link_by_handle(state, ch, handle) do
-        %{kind: :eventhubs} -> :eh
-        _ -> :sb
-      end
-
-    if Smalt.Messaging.Chaos.starve?(ns) do
-      Smalt.Messaging.Chaos.emit(:credit_starved, %{withheld_credit: credit}, %{
-        namespace: ns,
-        channel: ch,
-        handle: handle
-      })
-
-      true
-    else
-      false
     end
   end
 
@@ -812,6 +810,32 @@ defmodule Smalt.Amqp.Connection do
 
   defp handle_amqp(name, _perf, _ch, state) do
     error_close(state, "amqp:not-implemented", "unexpected performative #{inspect(name)}")
+  end
+
+  # T-12 (b) :sb_chaos_starve_credits / :eh_chaos_starve_credits — namespace
+  # resolved from the targeted link's kind (a session-level flow, handle
+  # nil, only ever grants queue links -> :sb). Emits typed telemetry per
+  # withheld grant. Flags off = the grant proceeds byte-identically.
+  # Placement note (L9): kept AFTER the handle_amqp/4 clause group so the
+  # clauses stay grouped (compiler grouping warning, mission fix).
+  defp chaos_starved?(state, ch, handle, credit) do
+    ns =
+      case handle && link_by_handle(state, ch, handle) do
+        %{kind: :eventhubs} -> :eh
+        _ -> :sb
+      end
+
+    if Smalt.Messaging.Chaos.starve?(ns) do
+      Smalt.Messaging.Chaos.emit(:credit_starved, %{withheld_credit: credit}, %{
+        namespace: ns,
+        channel: ch,
+        handle: handle
+      })
+
+      true
+    else
+      false
+    end
   end
 
   defp do_begin(perf, ch, state) do
