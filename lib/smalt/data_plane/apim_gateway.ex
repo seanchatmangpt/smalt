@@ -128,7 +128,8 @@ defmodule Smalt.DataPlane.ApimGateway do
   defp gateway_family(info) do
     base = gateway_base_segments()
 
-    if Enum.take(info, length(base)) == base do
+    # The configured base matches case-insensitively, like the ARM family.
+    if info |> Enum.take(length(base)) |> Enum.map(&String.downcase/1) == base do
       case Enum.drop(info, length(base)) do
         [svc, api | rest] ->
           {:apim, nil, nil, svc, api, rest}

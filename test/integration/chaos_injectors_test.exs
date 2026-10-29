@@ -254,11 +254,18 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     assert "amqp:link:detach-forced" in conds
     assert Enum.any?(conds, &String.contains?(&1, "SMALT_CHAOS_DETACH_FORCED"))
 
-    # NEVER BEFORE: exactly N transfers preceded the first detach frame.
+    # NEVER BEFORE: exactly N transfers preceded the first detach frame, and
+    # the detach index sits after the SECOND transfer's index.
     chronological = frames(client, 1)
-    second_transfer_idx = Enum.find_index(chronological, &(&1.kind == :transfer)) |> then(fn i -> i + 1 end)
+
+    transfer_indices =
+      chronological
+      |> Enum.with_index()
+      |> Enum.filter(fn {f, _i} -> f.kind == :transfer end)
+      |> Enum.map(fn {_f, i} -> i end)
+
     first_detach_idx = Enum.find_index(chronological, &(&1.kind == :detach))
-    assert first_detach_idx > second_transfer_idx
+    assert first_detach_idx > Enum.at(transfer_indices, 1)
     assert Enum.count(chronological, &(&1.kind == :transfer)) == 2
 
     # Typed telemetry for the fired injection.
@@ -360,8 +367,13 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     {:ok, _} = QueueStore.ensure_queue(@q_eh)
     {:ok, _} = QueueStore.enqueue(@q_eh, "chaos-eh-q-payload", message_id: "chaos-eh-q-m1")
 
-    {client, csock} = start_connection(mode: :eh)
+    # NOTE: on a :sb-mode connection the /eventhubs/ address form routes the
+    # EH link (route/2) while the bare queue name routes :queue — both link
+    # kinds ride the SAME hook paths, so this leg proves the link-kind
+    # namespace resolution end to end.
+    {client, csock} = start_connection()
     begin_session(client, 1)
+    cbs_put_token(client, @q_eh)
     attach_receiver(client, 1, 0, "chaos-eh-q-rx", @q_eh)
 
     attach_receiver(
@@ -369,7 +381,7 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
       1,
       1,
       "chaos-eh-partition-rx",
-      "#{@eh_hub}/ConsumerGroups/$Default/Partitions/0"
+      "/eventhubs/#{@eh_hub}/ConsumerGroups/$Default/Partitions/0"
     )
 
     flow_credit(client, 1, 0, 5)
@@ -514,7 +526,7 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     {:ok, port} = :inet.port(lsock)
     {:ok, csock} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
     {:ok, ssock} = :gen_tcp.accept(lsock)
-    {:ok, conn} = Smalt.Amqp.Connection.start_link(Keyword.put(opts, :socket, ssock))
+    {:ok, _conn} = Smalt.Amqp.Connection.start_link(Keyword.put(opts, :socket, ssock))
     :ok = :gen_tcp.controlling_process(ssock, conn)
 
     client = start_client(csock)

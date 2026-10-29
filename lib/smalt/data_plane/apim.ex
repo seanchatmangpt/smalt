@@ -532,9 +532,12 @@ defmodule Smalt.DataPlane.Apim do
            )}
 
         true ->
+          # Per-value extraction: each <value> element is its own entry (a
+          # joined blob would corrupt match="any" value sets). The `ls`
+          # transform inside SweetXml converts each element's text nodes.
           values =
-            SweetXml.xpath(claim_el, ~x"./value/text()"l)
-            |> Enum.map(&to_string/1)
+            SweetXml.xpath(claim_el, ~x"./value"l)
+            |> Enum.map(fn value_el -> SweetXml.xpath(value_el, ~x"./text()"ls) end)
 
           {:cont, {:ok, acc ++ [%{"name" => name, "match" => match, "values" => values}]}}
       end
@@ -559,7 +562,13 @@ defmodule Smalt.DataPlane.Apim do
               end
           end
 
-        forward? = match?({_elem, _}, SweetXml.xpath(backend, ~x"./forward-request"o))
+        # An xmerl element is a wide record tuple; presence = the xpath
+        # returned one (nil when absent).
+        forward? =
+          case SweetXml.xpath(backend, ~x"./forward-request"o) do
+            nil -> false
+            element -> is_tuple(element) and elem(element, 0) == :xmlElement
+          end
 
         {:ok, %{"forward-request" => forward?, "timeout" => timeout}}
       end
