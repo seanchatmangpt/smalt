@@ -6,7 +6,22 @@ defmodule Smalt.Egress.KvRoutes do
   router's blob splat + 404 catch-all handle everything else, unchanged.
   """
   use Plug.Router
-  import Smalt.EgressRouter, except: [match: 2, match: 3, dispatch: 2]
+  # The KV/secret helper family comes from the AppConfigRoutes import below;
+  # excluded here so the two imports stay unambiguous (EgressRouter's copies
+  # went public alongside).
+  import Smalt.EgressRouter,
+    except: [
+      match: 2,
+      match: 3,
+      dispatch: 2,
+      public_secret_record: 1,
+      list_secret_record: 1,
+      secret_params: 1,
+      secret_expiry: 1,
+      maybe_put_content_type: 2,
+      policy_has_claim?: 1,
+      policy_has_ops_list?: 1
+    ]
   alias Smalt.Store
   alias Smalt.DataPlane.KeyVaultActions
   import Smalt.Egress.AppConfigRoutes, except: [match: 2, dispatch: 2]

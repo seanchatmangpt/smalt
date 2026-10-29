@@ -375,6 +375,13 @@ defmodule InternalTier.CensusTest do
                  "Smalt.Internal.KdS3S4SecretVersionHistoryTest",
                  "Smalt.DataPlane.KeyVaultActions",
                  "Smalt.Egress.KvRoutes",
+                 # L11 delegator courts (test/internal/*_court.exs): the
+                 # per-file w6r fallthrough chain modules the courts mount,
+                 # plus the delegator routers those chains dispatch through.
+                 "Smalt.Egress.W6rSqlIngestFallthrough",
+                 "Smalt.Egress.W6rSqlRowGateFallthrough",
+                 "Smalt.Egress.SqlIngestRoutes",
+                 "Smalt.Egress.GraphRoutes",
                  "Smalt.Internal.WsAmqpRelayTest",
                  "Smalt.Impl25.SelectiveDrainTest",
                  "Smalt.Impl6.ProcessLabelTest",

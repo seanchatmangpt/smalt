@@ -431,8 +431,9 @@ defmodule Smalt.DataPlane.ContainerGroups do
 
   # --- ports / environment / probes ------------------------------------------------------
 
-  defp valid_port?(port) when is_integer(port) and port >= 1 and port <= 65_535, do: true
-  defp valid_port?(_), do: false
+  # defguardp (not defp): used inside guard heads of the probe validators
+  # below; defguardp macros expand in guards and bodies alike.
+  defguardp valid_port?(port) when is_integer(port) and port >= 1 and port <= 65_535
 
   defp validate_ports(nil, _where), do: :ok
 
@@ -547,8 +548,9 @@ defmodule Smalt.DataPlane.ContainerGroups do
     end
   end
 
-  defp one_of(v, allowed, _target, _msg) when v in allowed, do: :ok
-  defp one_of(_v, _allowed, target, msg), do: {:error, "InvalidParameter", msg, target}
+  defp one_of(v, allowed, target, msg) do
+    if v in allowed, do: :ok, else: {:error, "InvalidParameter", msg, target}
+  end
 
   defp validate_ip_address(nil), do: :ok
 

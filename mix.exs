@@ -101,6 +101,13 @@ defmodule Smalt.MixProject do
       # control-plane state mutation (path dep on the sibling checkout).
       {:graphlaw_ex, path: "../graphlaw/graphlaw_ex"},
       {:bandit, "~> 1.6"},
+      # v26.10.29 T-02 lane: azure_cache.ex drives Azure Redis Enterprise via
+      # Cachex (in-process cache engine standing in for the redis wire face).
+      # Version per the T-06 receipt (WINDOW_HANDOFF.md:37,97).
+      {:cachex, "~> 4.0"},
+      # T-07 APIM gateway outbound (r16): promoted per the conditional gate in
+      # apim_gateway.ex — Code.ensure_loaded?(Finch) flips the fast path on.
+      {:finch, "~> 0.24"},
       {:plug, "~> 1.16"},
       {:cors_plug, "~> 3.0"},
       {:jason, "~> 1.4"},
@@ -137,6 +144,10 @@ defmodule Smalt.MixProject do
       # .8 automatically the moment the constraint allows.
       {:ex4pm, "~> 26.10.1"},
       {:ggen_igniter, path: "../ggen_igniter", only: :dev, optional: true},
+      # smalt.gen.ash: extraction rides ggen_igniter (dev); AST synthesis rides
+      # Igniter directly. Unconditional because lib/mix/tasks/*.ex compiles in
+      # every env (release.sh does MIX_ENV=prod mix release).
+      {:igniter, "~> 0.8"},
       # ERRC Raise lane 6: property-based testing with shrinking (test-only
       # usage; declared env-prod because `ash` requires stream_data
       # non-optionally — Mix surface-convergence constraint, never packaged:

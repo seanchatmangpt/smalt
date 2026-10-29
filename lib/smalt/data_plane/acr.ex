@@ -1,4 +1,9 @@
 defmodule Smalt.DataPlane.Acr do
+  # Defined before @moduledoc: attributes resolve top-to-bottom at compile
+  # time, and the moduledoc interpolates them.
+  @running_after_ms 300
+  @succeeded_after_ms 800
+
   @moduledoc """
   Azure Container Registry (ACR) plane engine (T-01, window v26.10.28).
 
@@ -49,9 +54,6 @@ defmodule Smalt.DataPlane.Acr do
     "createdByType" => "Application",
     "createdAt" => "2026-01-01T00:00:00.0000000+00:00"
   }
-
-  @running_after_ms 300
-  @succeeded_after_ms 800
 
   # ===========================================================================
   # Credentials

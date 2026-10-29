@@ -6,7 +6,19 @@ defmodule Smalt.Egress.AppConfigRoutes do
   router's blob splat + 404 catch-all handle everything else, unchanged.
   """
   use Plug.Router
-  import Smalt.EgressRouter, except: [match: 2, match: 3, dispatch: 2]
+  # public_secret_record/list_secret_record are local (they shadow the
+  # EgressRouter originals), so they are excluded from the import.
+  import Smalt.EgressRouter,
+    except: [
+      match: 2,
+      match: 3,
+      dispatch: 2,
+      public_secret_record: 1,
+      list_secret_record: 1,
+      secret_params: 1,
+      secret_expiry: 1,
+      maybe_put_content_type: 2
+    ]
   alias Smalt.Store
   alias Smalt.DataPlane.AppConfigSnapshots
   plug :match

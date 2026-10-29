@@ -65,8 +65,13 @@ defmodule Smalt.EgressRouter do
   plug(:egress_cors)
 
   defp egress_cors(conn, _opts) do
+    # Restored (:egress_cors_headers knob dropped in the v26.10.29 undock
+    # while cors_headers_knob_test retained it — historical shape 8261a435).
+    # The undock's queue/blob rule-CORS variants (queue_mcp_cors,
+    # w6ay_blob_cors) are NOT restored here — next-wave scope.
     origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
-    CORSPlug.call(conn, CORSPlug.init(origin: origins))
+    headers = Application.get_env(:smalt, :egress_cors_headers, ["*"])
+    CORSPlug.call(conn, CORSPlug.init(origin: origins, headers: headers))
   end
 
   # KD-COVERS: KD-15
@@ -986,16 +991,16 @@ defmodule Smalt.EgressRouter do
   defp validate_release_policy(_),
     do: {:policy_error, "release_policy must be a JSON object"}
 
-  defp policy_has_claim?(%{"claim" => _}), do: true
+  def policy_has_claim?(%{"claim" => _}), do: true
 
-  defp policy_has_claim?(policy) when is_map(policy) do
+  def policy_has_claim?(policy) when is_map(policy) do
     Enum.any?(policy, fn {_k, v} -> policy_has_claim?(v) end)
   end
 
-  defp policy_has_claim?(list) when is_list(list), do: Enum.any?(list, &policy_has_claim?/1)
-  defp policy_has_claim?(_), do: false
+  def policy_has_claim?(list) when is_list(list), do: Enum.any?(list, &policy_has_claim?/1)
+  def policy_has_claim?(_), do: false
 
-  defp policy_has_ops_list?(policy),
+  def policy_has_ops_list?(policy),
     do: is_list(policy["allowed_operations"] || policy["allowedOperations"])
 
   get "/keys/:name" do
@@ -1719,7 +1724,7 @@ defmodule Smalt.EgressRouter do
 
   # Accepts {value, attributes?} — attributes may carry enabled, expires|exp,
   # and contentType may ride top-level or inside attributes.
-  defp secret_params(%{"value" => value} = params) when is_binary(value) do
+  def secret_params(%{"value" => value} = params) when is_binary(value) do
     attrs =
       params["attributes"]
       |> coerce_secret_attrs()
@@ -1728,19 +1733,19 @@ defmodule Smalt.EgressRouter do
     {:ok, value, attrs}
   end
 
-  defp secret_params(_), do: :error
+  def secret_params(_), do: :error
 
   defp coerce_secret_attrs(%{} = attrs), do: attrs
   defp coerce_secret_attrs(_), do: %{}
 
-  defp secret_expiry(attrs_in) do
+  def secret_expiry(attrs_in) do
     case attrs_in["expires"] || attrs_in["exp"] do
       nil -> %{}
       exp -> %{"expires" => exp}
     end
   end
 
-  defp maybe_put_content_type(record, attrs_in) do
+  def maybe_put_content_type(record, attrs_in) do
     case attrs_in["contentType"] do
       nil -> record
       ct -> Map.put(record, "contentType", ct)
@@ -1748,9 +1753,9 @@ defmodule Smalt.EgressRouter do
   end
 
   # List renders omit the secret value (Azure contract); GET keeps it.
-  defp public_secret_record(record), do: Map.drop(record, ["version"])
+  def public_secret_record(record), do: Map.drop(record, ["version"])
 
-  defp list_secret_record(record), do: record |> public_secret_record() |> Map.drop(["value"])
+  def list_secret_record(record), do: record |> public_secret_record() |> Map.drop(["value"])
 
   # --- /kv (App Configuration) helpers ------------------- (KD-COVERS: KD-53)
 
@@ -3396,24 +3401,24 @@ defmodule Smalt.EgressRouter do
   # (_ExtractPartitionKey in _cosmos_client_connection.py); a container record
   # without "kind" KeyErrors inside the SDK. Additive: only fills the field
   # when the engine record omits it.
-  defp with_pk_kind(%{"partitionKey" => %{} = pk} = record) do
+  def with_pk_kind(%{"partitionKey" => %{} = pk} = record) do
     %{record | "partitionKey" => Map.put_new(pk, "kind", "Hash")}
   end
 
-  defp with_pk_kind(record), do: record
+  def with_pk_kind(record), do: record
 
   # The python azure-cosmos SDK sends the partition key as a bare JSON string
   # ("/pk") in the CreateContainer body; the JS SDK sends {"paths": [...]},
   # .NET the same. Normalize the string form to the paths form at the seam.
-  defp normalize_pk_body(%{"partitionKey" => pk} = body) when is_binary(pk) do
+  def normalize_pk_body(%{"partitionKey" => pk} = body) when is_binary(pk) do
     Map.put(body, "partitionKey", %{"paths" => [pk]})
   end
 
-  defp normalize_pk_body(body), do: body
+  def normalize_pk_body(body), do: body
 
   # Runs `fun` only when every module is loaded; fails closed with 503
   # RouteNotReady otherwise. This is the only seam that probes compile status.
-  defp with_route(conn, modules, fun) do
+  def with_route(conn, modules, fun) do
     if not_ready?(conn, List.wrap(modules)) do
       route_not_ready(conn)
     else
@@ -3423,7 +3428,7 @@ defmodule Smalt.EgressRouter do
 
   # Lens7 law: a missing coordinator-owned ETS table is server not-ready, not
   # a raw 500 from :ets raising ArgumentError inside a list walk.
-  defp tables_ready?(tables) do
+  def tables_ready?(tables) do
     Enum.all?(tables, fn t -> :ets.info(t) != :undefined end)
   end
 
@@ -3431,11 +3436,37 @@ defmodule Smalt.EgressRouter do
   # a raw 500 from :ets raising on a dead table. When the data subtree's
   # coordinator-owned tables are gone, every guarded surface answers the same
   # typed retryable 503 the module-load guard already yields.
-  defp not_ready?(_conn, modules) do
+  def not_ready?(_conn, modules) do
     (not Enum.all?(modules, &Code.ensure_loaded?/1)) or not tables_ready?(Smalt.Store.table_names())
   end
 
-  defp route_not_ready(conn) do
+  # Restored (was dropped from source post-c72e47c3 while callers in
+  # auth/shared_key.ex and mcp/router.ex remained — stale-beam masked until
+  # the v26.10.29 merge forced recompile). Historical body: 2958d200:863.
+  def account_key(account) do
+    case Application.get_env(:smalt, :blob_account_key) ||
+           System.get_env("SMALT_BLOB_ACCOUNT_KEY") do
+      key when is_binary(key) and key != "" ->
+        {:ok, key}
+
+      _ ->
+        {:ok, Base.encode64(:crypto.hash(:sha256, account <> "smalt-dev-sb"))}
+    end
+  end
+
+  # Restored from 8261a435:150 — see account_key/1 note above.
+  def loopback_origin?(origin) when is_binary(origin) do
+    case URI.parse(origin).host do
+      nil -> false
+      host -> String.downcase(host) in ["127.0.0.1", "localhost", "::1"] or String.ends_with?(host, ".localhost")
+    end
+  end
+
+  def loopback_origin?(_), do: false
+
+  # Public (def, not defp): the lib/smalt/egress/* delegator routers import
+  # this module and call these helpers — private helpers cannot be imported.
+  def route_not_ready(conn) do
     # R50 repair 1: the 503 answers with blob_error-style header discipline
     # (x-ms-request-id + x-ms-version) — real Azure stamps request-id on
     # error responses, not only on the blob_error-rendered ones.
@@ -3452,7 +3483,7 @@ defmodule Smalt.EgressRouter do
   # AZB-08 config read site: the pinned 7.x grammar stays (wire-compat), but
   # the example version in the refusal message is the configured
   # `:keyvault, api_version` (default "7.4") — single source, no dual truth.
-  defp check_akv_api_version(conn) do
+  def check_akv_api_version(conn) do
     version = Map.get(conn.query_params, "api-version", "")
     example = Smalt.DataPlane.KeyVaultActions.api_version()
 
@@ -3477,7 +3508,7 @@ defmodule Smalt.EgressRouter do
   # (typed 400 InvalidApiVersion), preserving the mutation-detection value of
   # the original gate. The DCR ingest route keeps its strict gate — the real
   # ingest API does carry api-version=2023-01-01.
-  defp check_sentinel_api_version(conn) do
+  def check_sentinel_api_version(conn) do
     case Map.get(conn.query_params, "api-version", "") do
       "" ->
         :ok
@@ -3987,14 +4018,14 @@ defmodule Smalt.EgressRouter do
     |> String.replace("\n", "\r\n")
   end
 
-  defp header_map(conn) do
+  def header_map(conn) do
     Map.new(conn.req_headers)
   end
 
   # Sentinel DCR ingest body handling: total — object wraps to a single-event
   # batch, list is the batch, anything else (nil/Unfetched/scalars) is an
   # InvalidBody refusal instead of a FunctionClauseError 500.
-  defp normalize_list_body(conn) do
+  def normalize_list_body(conn) do
     case conn.body_params do
       %Plug.Conn.Unfetched{} ->
         case read_raw_body(conn) do
@@ -4013,7 +4044,7 @@ defmodule Smalt.EgressRouter do
     end
   end
 
-  defp read_raw_body(conn) do
+  def read_raw_body(conn) do
     case Plug.Conn.read_body(conn) do
       {:ok, raw, _conn} -> {:ok, raw}
       _ -> :error
@@ -4031,18 +4062,19 @@ defmodule Smalt.EgressRouter do
   # Total batch normalization: a "_json"-enveloped map unwraps to its batch
   # (or wraps a single value); a plain JSON object wraps as a single-event
   # batch; a list is already a batch.
-  defp wrap_json_list(%{"_json" => list}) when is_list(list), do: list
-  defp wrap_json_list(%{"_json" => single}), do: List.wrap(single)
-  defp wrap_json_list(%{} = single), do: [single]
-  defp wrap_json_list(batch) when is_list(batch), do: batch
-  defp wrap_json_list(_other), do: {:error, :invalid_body}
+  def wrap_json_list(%{"_json" => list}) when is_list(list), do: list
+  def wrap_json_list(%{"_json" => single}), do: List.wrap(single)
+  def wrap_json_list(%{} = single), do: [single]
+  def wrap_json_list(batch) when is_list(batch), do: batch
+  def wrap_json_list(_other), do: {:error, :invalid_body}
 
   # Body-parameter seam guard: Plug.Parsers is configured with pass: ["*/*"],
   # so a non-JSON content-type (or an empty body) leaves body_params as
   # %Plug.Conn.Unfetched{} (or a scalar). Data-plane handlers that consume
   # body_params as JSON must never see that — refuse with a 400 envelope at
   # this seam instead of crashing with a 500 inside a callee.
-  defp with_valid_body(conn, fun) do
+  # Public for the egress delegator routers (see route_not_ready/1 note).
+  def with_valid_body(conn, fun) do
     if valid_json_body?(conn.body_params) do
       safe_dispatch(conn, fun)
     else
@@ -4075,7 +4107,8 @@ defmodule Smalt.EgressRouter do
   defp valid_json_body?(params) when is_map(params) or is_list(params), do: true
   defp valid_json_body?(_other), do: false
 
-  defp invalid_body_error do
+  # Public for the egress delegator routers (see route_not_ready/1 note).
+  def invalid_body_error do
     %{"error" => %{"code" => "InvalidBody"}}
   end
 
@@ -4117,14 +4150,14 @@ defmodule Smalt.EgressRouter do
   # CloudEvents 1.0 required context attributes BEFORE any store write; the
   # first invalid event fails the whole batch with
   # 400 {"error":{"code":"InvalidCloudEvent",...}} and nothing is stored.
-  defp events_content_type(conn) do
+  def events_content_type(conn) do
     case get_req_header(conn, "content-type") do
       [ct] -> if String.contains?(ct, "json"), do: :json, else: :unsupported
       _ -> :unsupported
     end
   end
 
-  defp events_post(conn, topic) do
+  def events_post(conn, topic) do
     # SHIM-COURT-adjacent per-topic schema gate (EG1 lane): a topic declared
     # inputSchema "EventGrid" in :smalt_eg_topics (via the ARM control plane,
     # Microsoft.EventGrid/topics PUT) admits the EG1 single-event envelope;
@@ -4349,14 +4382,14 @@ defmodule Smalt.EgressRouter do
   # Query POST: content-type application/query+json (the Cosmos SDK's query
   # wire form). Body is the query document; no SQL engine — the engine filters
   # by partition-key header when present and returns the honest result set.
-  defp query_post?(conn) do
+  def query_post?(conn) do
     case get_req_header(conn, "content-type") do
       [ct | _] -> String.contains?(ct, "query+json")
       _ -> false
     end
   end
 
-  defp query_post(conn, db, coll) do
+  def query_post(conn, db, coll) do
     case decoded_body(conn) do
       {:ok, body} ->
         cosmos_respond(conn, Cosmos.query_docs(db, coll, body, header_map(conn)))
@@ -4388,7 +4421,7 @@ defmodule Smalt.EgressRouter do
     end
   end
 
-  defp id_param(conn) do
+  def id_param(conn) do
     case Map.get(conn.body_params, "id") do
       name when is_binary(name) and name != "" -> {:ok, name}
       _ -> :error
@@ -4397,15 +4430,15 @@ defmodule Smalt.EgressRouter do
 
   # RFC 6902 patch body: a top-level JSON array of ops. Plug.Parsers wraps a
   # decoded top-level array as %{"_json" => list}; admit ONLY the list form.
-  defp unwrap_patch_ops(%{"_json" => ops}) when is_list(ops), do: {:ok, ops}
-  defp unwrap_patch_ops(ops) when is_list(ops), do: {:ok, ops}
-  defp unwrap_patch_ops(_other), do: :error
+  def unwrap_patch_ops(%{"_json" => ops}) when is_list(ops), do: {:ok, ops}
+  def unwrap_patch_ops(ops) when is_list(ops), do: {:ok, ops}
+  def unwrap_patch_ops(_other), do: :error
 
-  defp cosmos_respond(conn, {:error, :store_not_ready}) do
+  def cosmos_respond(conn, {:error, :store_not_ready}) do
     route_not_ready(conn)
   end
 
-  defp cosmos_respond(conn, {:ok, status, headers, body}) when is_map(headers) do
+  def cosmos_respond(conn, {:ok, status, headers, body}) when is_map(headers) do
     conn =
       conn
       |> ensure_request_charge(headers)
@@ -4436,7 +4469,8 @@ defmodule Smalt.EgressRouter do
   # Unified to the dashed-36 RFC 4122 v4 GUID form real Azure emits on BOTH
   # the LA and ARM surfaces (cross-court finding, compliance-corpus cycle 8);
   # previously a 32-hex dialect pin.
-  defp generate_request_id do
+  # Public for the egress delegator routers (see route_not_ready/1 note).
+  def generate_request_id do
     <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
     c4 = :erlang.band(c, 0x0FFF) + 0x4000
     d = :erlang.bor(:erlang.band(d, 0x3FFF), 0x8000)
@@ -4451,7 +4485,8 @@ defmodule Smalt.EgressRouter do
     |> IO.iodata_to_binary()
   end
 
-  defp send_json(conn, status, body) do
+  # Public for the egress delegator routers (see route_not_ready/1 note).
+  def send_json(conn, status, body) do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(status, Jason.encode!(body))
@@ -4471,7 +4506,7 @@ defmodule Smalt.EgressRouter do
   # Lane 06 (v26.10.14) defect 3, part 2: blob error responses now carry the
   # error code in the x-ms-error-code header, extracted from the JSON body's
   # code slot (either envelope shape). Additive — the JSON body is unchanged.
-  defp blob_error(conn, status, body) do
+  def blob_error(conn, status, body) do
     # Parity lane 2026-10-28 (wf8, python SDK receipt): the storage-plane
     # error body is the Azure XML <Error><Code/><Message/></Error> envelope
     # — the official python storage pipeline parses Message from XML and
@@ -4509,13 +4544,6 @@ defmodule Smalt.EgressRouter do
     |> String.replace(">", "&gt;")
   end
 
-  defp put_error_code_header(conn, body) do
-    case blob_error_code(body) do
-      nil -> conn
-      code -> put_resp_header(conn, "x-ms-error-code", code)
-    end
-  end
-
   defp blob_error_code(%{"error" => %{"code" => code}}) when is_binary(code), do: code
   defp blob_error_code(%{"code" => code}) when is_binary(code), do: code
   defp blob_error_code(_), do: nil
@@ -4538,7 +4566,7 @@ defmodule Smalt.EgressRouter do
     |> send_resp(status, xml)
   end
 
-  defp not_found_error(code) do
+  def not_found_error(code) do
     %{"error" => %{"code" => code}}
   end
 
@@ -4609,8 +4637,8 @@ defmodule Smalt.EgressRouter do
   end
 
   # Key Vault action tuple helper: {:ok, status, body} / {:error, status, body}.
-  defp kv_respond(conn, {:ok, status, body}), do: send_json(conn, status, body)
-  defp kv_respond(conn, {:error, status, body}), do: send_json(conn, status, body)
+  def kv_respond(conn, {:ok, status, body}), do: send_json(conn, status, body)
+  def kv_respond(conn, {:error, status, body}), do: send_json(conn, status, body)
 
   # x-ms-meta-* request headers -> %{"name" => "value"} map (BlobService
   # container metadata). Response direction: meta dict -> x-ms-meta-* headers.
