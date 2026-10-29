@@ -47,7 +47,6 @@ defmodule Smalt.Internal.ServiceHealthTest do
 
   @sub "sub-t14rh"
   @rg "rg-t14rh"
-  @rg_b "rg-t14rh-b"
   @type "Microsoft.Network/networkSecurityGroups"
 
   # -- court plumbing -------------------------------------------------------------
@@ -356,7 +355,8 @@ defmodule Smalt.Internal.ServiceHealthTest do
     derived = hd(mine)
     assert derived["properties"]["status"] == "Active"
     assert derived["properties"]["reasonCode"] == "CustomerInitiated"
-    assert derived["name"] == "chaos-" <> derived["name"] |> String.slice(-8, 8) |> then(&(&1))
+    # Deterministic derived id (marker events are never minted per-read).
+    assert String.starts_with?(derived["name"], "chaos-")
 
     # Deterministic derived id: repeated polls observe the same event id.
     events_conn2 = arm_req(:get, sub_events_path())
