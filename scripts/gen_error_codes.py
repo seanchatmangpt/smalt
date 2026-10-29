@@ -669,6 +669,13 @@ TWO_TUPLE_PINNED_STATUS = {
     "GroupNotFound": 404,
     "SchemaNotFound": 404,
     "InvalidSchema": 400,
+    # v26.10.29 cross-lane unblock (disclosed): the functions-plane landing
+    # (ba47220) added T7 two-tuple codes without the pinned status. Consumer:
+    # validate_host_json_typed/1 → sync/publish PUT face, validation class
+    # → 400 (functions.ex @doc + route handler mapping).
+    "InvalidHostJson": 400,
+    "InvalidHostJsonVersion": 400,
+    "UnknownHostJsonExtension": 400,
 }
 
 # T10 (w6bi, v26.10.20 wave-6): arm-module atom-tuple refusals
