@@ -186,7 +186,9 @@ defmodule Smalt.Integration.ApimTest do
     # update is 200, not a second 201
     {:ok, 200, _} = Apim.put_service(@sub, @rg, svc, %{"location" => "westus"})
 
-    assert {:ok, 200, got} = Apim.get_service(@sub, @rg, svc)
+    # getters answer {:ok, record} | {:error, 404, code, msg} (mutators carry
+    # the 200/201 face; getters are bare records).
+    assert {:ok, got} = Apim.get_service(@sub, @rg, svc)
     assert got["id"] == service["id"]
 
     {:ok, 201, api} =
@@ -203,7 +205,12 @@ defmodule Smalt.Integration.ApimTest do
       })
 
     assert op["type"] == "Microsoft.ApiManagement/service/apis/operations"
-    assert %{"name" => "name"} in op["properties"]["templateParameters"]
+
+    # `in` demands exact map equality (same key set); the parameter maps carry
+    # required/type too, so the assert is a subset-pattern match instead.
+    params = op["properties"]["templateParameters"]
+    assert Enum.any?(params, &match?(%{"name" => "name"}, &1))
+    assert Enum.any?(params, &match?(%{"name" => "rest"}, &1))
 
     # parent-missing refusals carry the ARM parent message
     assert {:error, 404, "ResourceNotFound", msg} =
@@ -211,7 +218,10 @@ defmodule Smalt.Integration.ApimTest do
 
     assert msg =~ "could not be found"
 
-    assert [%{"name" => ^svc}] = Apim.list_services(@sub, @rg)
+    # The Store is shared across the suite (isolation by NAME, not wiping):
+    # list asserts are membership, never an exact single-element list.
+    services = Apim.list_services(@sub, @rg)
+    assert Enum.any?(services, &match?(%{"name" => ^svc}, &1))
 
     # DELETE cascades the child tree
     assert {:ok, 200, _} = Apim.delete_service(@sub, @rg, svc)
@@ -242,7 +252,7 @@ defmodule Smalt.Integration.ApimTest do
                "properties" => %{"format" => "xml", "value" => xml}
              })
 
-    assert {:ok, _, record} = Apim.get_policy(@sub, @rg, svc, :operation, "echo", "greet", "policy")
+    assert {:ok, record} = Apim.get_policy(@sub, @rg, svc, :operation, "echo", "greet", "policy")
     assert record["properties"]["format"] == "xml"
     assert record["properties"]["value"] == xml
     assert record["type"] == "Microsoft.ApiManagement/service/apis/operations/policies"
@@ -256,6 +266,11 @@ defmodule Smalt.Integration.ApimTest do
     svc = "bad-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))
 
     assert {:ok, 201, _} = Apim.put_service(@sub, @rg, svc, %{})
+
+    # The policy scope parent must EXIST: the malformed refusals below then
+    # provably come from the XML parse (parse runs before the parent check),
+    # and the trailing valid-document PUT has a lawful parent to store under.
+    assert {:ok, 201, _} = Apim.put_api(@sub, @rg, svc, "echo", %{})
 
     malformed = [
       # xmerl fatal: unclosed element
@@ -530,7 +545,9 @@ defmodule Smalt.Integration.ApimTest do
   end
 
   test "no-backend operation answers typed 502 BackendUnavailable" do
-    svc = "nb-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))    assert {:ok, 201, _} = Apim.put_service(@sub, @rg, svc, %{})
+    svc = "nb-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))
+
+    assert {:ok, 201, _} = Apim.put_service(@sub, @rg, svc, %{})
 
     assert {:ok, 201, _} = Apim.put_api(@sub, @rg, svc, "orders", %{"properties" => %{"path" => "orders"}})
 

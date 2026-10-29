@@ -194,7 +194,6 @@ defmodule Smalt.DataPlane.Apim do
       {:ok, if(existed?, do: 200, else: 201), record}
     else
       {:error, _status, _code, _msg} = refusal -> refusal
-      :error -> service_missing(sub, rg, svc)
     end
   end
 
@@ -256,7 +255,6 @@ defmodule Smalt.DataPlane.Apim do
       {:ok, if(existed?, do: 200, else: 201), record}
     else
       {:error, _status, _code, _msg} = refusal -> refusal
-      :error -> api_missing(sub, rg, svc, api)
     end
   end
 
@@ -537,7 +535,15 @@ defmodule Smalt.DataPlane.Apim do
           # transform inside SweetXml converts each element's text nodes.
           values =
             SweetXml.xpath(claim_el, ~x"./value"l)
-            |> Enum.map(fn value_el -> SweetXml.xpath(value_el, ~x"./text()"ls) end)
+            |> Enum.map(fn value_el ->
+              el
+              = value_el
+
+              el
+              |> SweetXml.xpath(~x"./text()"ls)
+              |> Enum.join("")
+              |> String.trim()
+            end)
 
           {:cont, {:ok, acc ++ [%{"name" => name, "match" => match, "values" => values}]}}
       end
@@ -589,13 +595,14 @@ defmodule Smalt.DataPlane.Apim do
     end
   end
 
+  defp optional_int_attr(el, _policy_name, attr), do: optional_int_attr(el, attr)
   defp optional_int_attr(el, attr) do
-    case SweetXml.xpath(el, ~x"./@#{attr}"so) do
+    case attr_text(el, attr) do
       nil ->
         {:ok, nil}
 
       raw ->
-        case Integer.parse(String.trim(to_string(raw))) do
+        case Integer.parse(String.trim(raw)) do
           {n, ""} when n > 0 ->
             {:ok, n}
 
@@ -608,14 +615,19 @@ defmodule Smalt.DataPlane.Apim do
   defp required_string_attr(el, policy_name, attr) do
     case optional_string_attr(el, attr) do
       nil -> invalid_policy("<#{policy_name}> requires attribute '#{attr}'")
-      "" -> invalid_policy("<#{policy_name}> attribute '#{attr}' must not be empty")
       value -> {:ok, value}
     end
   end
 
-  defp optional_string_attr(el, attr) do
+  defp optional_string_attr(el, attr), do: attr_text(el, attr)
+
+  # xmerl's string() transform answers "" for an ABSENT attribute (string
+  # value of an empty node-set), not nil — an optional attribute must read
+  # both as absent and refuse an empty PRESENT value identically to nil.
+  defp attr_text(el, attr) do
     case SweetXml.xpath(el, ~x"./@#{attr}"so) do
       nil -> nil
+      "" -> nil
       raw -> to_string(raw)
     end
   end
@@ -640,7 +652,11 @@ defmodule Smalt.DataPlane.Apim do
   # decoded XML entities — &lt; &amp; ... — before this runs, so the result
   # is the real header value).
   defp text_content(el) do
-    SweetXml.xpath(el, ~x"./text()"ls)
+    # `ls` yields the list of text-node strings; join (not to_string — that
+    # only survives single-node lists by charlist accident) then trim.
+    el
+    |> SweetXml.xpath(~x"./text()"ls)
+    |> Enum.join("")
     |> String.trim()
   end
 
@@ -728,7 +744,7 @@ defmodule Smalt.DataPlane.Apim do
         # Wildcard tail: every literal prefix must match, the tail absorbs the rest.
         prefix = Enum.take(segments, literal_count)
 
-        Enum.length(segments) >= literal_count and
+        length(segments) >= literal_count and
           Enum.zip(literals, prefix) |> Enum.all?(fn {lit, seg} -> literal_matches?(lit, seg) end)
     end
   end
@@ -767,14 +783,6 @@ defmodule Smalt.DataPlane.Apim do
         {:error, 404, "ResourceNotFound", "The resource '#{name}' could not be found."}
     end
   end
-
-  defp service_missing(sub, rg, svc),
-    do:
-      {:error, 404, "ResourceNotFound",
-       "The parent #{service_id(sub, rg, svc)} could not be found."}
-
-  defp api_missing(sub, rg, svc, api),
-    do: {:error, 404, "ResourceNotFound", "The parent #{api_id(sub, rg, svc, api)} could not be found."}
 
   defp template_parameters(template) do
     Regex.scan(~r/\{([^}]+)\}/, template)

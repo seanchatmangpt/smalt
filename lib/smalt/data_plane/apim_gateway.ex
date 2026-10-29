@@ -55,7 +55,9 @@ defmodule Smalt.DataPlane.ApimGateway do
   alias Smalt.DataPlane.Apim
 
   @default_gateway_base "/api-gw"
-  @finch_name :smalt_apim_finch
+  # @finch_name is set inside the Finch-only conditional-compilation branch
+  # below: under a test env without :finch in the dep closure the attribute
+  # would otherwise warn "set but never used" at the fail-closed compile.
   @rate_table :smalt_apim_rate
   @default_backend_timeout_ms 30_000
 
@@ -116,9 +118,16 @@ defmodule Smalt.DataPlane.ApimGateway do
     lower = Enum.map(info, &String.downcase/1)
 
     case lower do
-      ["subscriptions", _sub, _rg, "providers", "microsoft.apimanagement", "service", _svc, "apis", _api | _rest] ->
-        [raw_sub, raw_rg, _p, _ns, raw_svc, _apis, raw_api] = Enum.take(info, 7)
-        {:apim, raw_sub, raw_rg, raw_svc, raw_api, Enum.drop(info, 9)}
+      ["subscriptions", _sub, "resourcegroups", _rg, "providers", "microsoft.apimanagement", "service", _svc, "apis", _api | _rest] ->
+        # Real ARM family is 10 fixed segments before the tail:
+        #   subscriptions/{sub}/resourceGroups/{rg}/providers/{ns}/service/{svc}/apis/{api}
+        # (the prior pattern omitted the "resourcegroups" literal, so every
+        # ARM-family path fell through to :pass). Names recover from the
+        # ORIGINAL path_info positions: {svc} at 8, {api} at 10.
+        [_subs_lit, raw_sub, _rg_lit, raw_rg, _prov_lit, _ns_lit, _svc_lit, raw_svc, _apis_lit, raw_api] =
+          Enum.take(info, 10)
+
+        {:apim, raw_sub, raw_rg, raw_svc, raw_api, Enum.drop(info, 10)}
 
       _ ->
         gateway_family(info)
@@ -391,6 +400,9 @@ defmodule Smalt.DataPlane.ApimGateway do
            401,
            failure_status,
            failure_message || "Invalid JWT: token is not present",
+           "MissingBearerToken",
+           # Body code parity with Smalt.Auth.Bearer's tokenless face
+           # (extract_token [] -> {"AuthenticationFailed", "MissingBearerToken"}).
            "AuthenticationFailed"
          )}
     end
@@ -402,11 +414,18 @@ defmodule Smalt.DataPlane.ApimGateway do
         value = String.trim(value)
 
         case String.split(value, " ", parts: 2) do
-          [scheme, token] when byte_size(String.trim(token)) > 0 ->
-            if String.downcase(scheme) == "bearer" do
-              {:ok, String.trim(token)}
-            else
-              {:error, "Invalid JWT: header scheme '#{scheme}' is not Bearer"}
+          [scheme, token] ->
+            trimmed = String.trim(token)
+
+            cond do
+              trimmed == "" ->
+                :missing
+
+              String.downcase(scheme) == "bearer" ->
+                {:ok, trimmed}
+
+              true ->
+                {:error, "Invalid JWT: header scheme '#{scheme}' is not Bearer"}
             end
 
           [raw_token] when byte_size(raw_token) > 0 ->
@@ -545,14 +564,12 @@ defmodule Smalt.DataPlane.ApimGateway do
 
   defp forward(conn, backend, rest) do
     with {:ok, body, conn} <- read_forward_body(conn),
-         {:ok, resp} <- finch_request(conn, backend, rest, body) do
+         {:ok, resp} <- backend_request(conn, backend, rest, body) do
       relay(conn, resp)
     else
-      {:error, reason} when is_binary(reason) ->
-        backend_down(conn, reason)
-
+      # backend_request/4 normalizes every failure to a binary reason.
       {:error, reason} ->
-        backend_down(conn, inspect(reason))
+        backend_down(conn, reason)
     end
   end
 
@@ -570,26 +587,101 @@ defmodule Smalt.DataPlane.ApimGateway do
     end
   end
 
-  defp finch_request(conn, backend, rest, body) do
+  defp backend_request(conn, backend, rest, body) do
     url = build_url(backend, rest, conn.query_string)
 
     headers =
       conn.req_headers
       |> Enum.reject(fn {name, _} -> name in @drop_req_headers end)
 
-    ensure_finch()
-
-    request = Finch.build(method_atom(conn.method), url, headers, body)
-
     timeout_ms = Application.get_env(:smalt, :apim_backend_timeout_ms, @default_backend_timeout_ms)
 
-    case Finch.request(request, @finch_name, receive_timeout: timeout_ms, pool_timeout: 5_000) do
-      {:ok, %Finch.Response{} = resp} ->
-        {:ok, resp}
+    do_backend_request(method_atom(conn.method), url, headers, body, timeout_ms)
+  end
 
-      {:error, exception} ->
-        {:error, Exception.message(exception)}
+  # The HTTP leg to the operation backend. Finch is the primary transport
+  # (T-07 receipt r16), but :finch is absent from the TEST-env dep closure
+  # (dev resolves it transitively via the dev-only req dep; test does not),
+  # and hard Finch references fail-closed the whole test-env compile. The
+  # conditional-compilation gate is the optional-dep idiom: Finch compiles
+  # wherever the module exists (dev today; every env once the integrator
+  # promotes {:finch, ...} in mix.exs per the receipt), and the fallback leg
+  # rides Erlang inets :httpc (real TCP, zero new deps) otherwise. Both legs
+  # normalize to %{status: integer, headers: [{downcased binary, binary}],
+  # body: binary} so relay/2 is transport-agnostic.
+  if Code.ensure_loaded?(Finch) do
+    @finch_name :smalt_apim_finch
+
+    # Finch lifecycle note: there is no supervised instance to borrow, so the
+    # first forwarded request starts one lazily, tolerating the already-started
+    # race. The started instance links to the requesting process — a keep-alive
+    # connection task death takes the pool with it and the NEXT request re-arms;
+    # rate windows are unaffected (they live in the ETS table, not Finch).
+    defp do_backend_request(method, url, headers, body, timeout_ms) do
+      ensure_finch()
+
+      request = Finch.build(method, url, headers, body)
+
+      case Finch.request(request, @finch_name, receive_timeout: timeout_ms, pool_timeout: 5_000) do
+        {:ok, resp} ->
+          {:ok, %{status: resp.status, headers: norm_headers(resp.headers), body: resp.body}}
+
+        {:error, exception} ->
+          {:error, Exception.message(exception)}
+      end
     end
+
+    defp ensure_finch do
+      if Process.whereis(@finch_name) == nil do
+        case Finch.start_link(name: @finch_name) do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, :already_started} -> :ok
+        end
+      else
+        :ok
+      end
+    end
+  else
+    defp do_backend_request(method, url, headers, body, timeout_ms) do
+      {:ok, _} = Application.ensure_all_started(:inets)
+      {:ok, _} = Application.ensure_all_started(:ssl)
+
+      cl_headers = Enum.map(headers, fn {n, v} -> {String.to_charlist(n), String.to_charlist(v)} end)
+
+      request =
+        if body in [nil, ""] do
+          {String.to_charlist(url), cl_headers}
+        else
+          {content_type, remaining} =
+            case List.keytake(headers, "content-type", 0) do
+              {{_name, value}, rest} ->
+                {String.to_charlist(value),
+                 Enum.map(rest, fn {n, v} -> {String.to_charlist(n), String.to_charlist(v)} end)}
+
+              nil ->
+                {~c"application/octet-stream", cl_headers}
+            end
+
+          {String.to_charlist(url), remaining, content_type, body}
+        end
+
+      http_options = [timeout: timeout_ms, connect_timeout: timeout_ms, autoredirect: false]
+
+      case :httpc.request(method, request, http_options, body_format: :binary) do
+        {:ok, {{_http_version, status, _reason_phrase}, resp_headers, resp_body}} ->
+          {:ok, %{status: status, headers: norm_headers(resp_headers), body: resp_body}}
+
+        {:error, reason} ->
+          {:error, "backend connection failed: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  defp norm_headers(headers) do
+    Enum.map(headers, fn {name, value} ->
+      {name |> to_string() |> String.downcase(), to_string(value)}
+    end)
   end
 
   # The rest of the gateway path is forwarded verbatim (percent-encoding as
@@ -619,26 +711,10 @@ defmodule Smalt.DataPlane.ApimGateway do
     end
   end
 
-  # Finch is a vendored transitive dep (no :finch entry in mix.exs yet — the
-  # integrator promotes it, see the receipt), so there is no supervised
-  # instance to borrow. Start lazily, tolerating the already-started race.
-  # Lifecycle note (disclosed): the started instance links to the first
-  # requesting process, so a keep-alive connection task death takes the pool
-  # with it and the NEXT request re-arms — rate windows are unaffected
-  # (they live in the ETS table, not Finch).
-  defp ensure_finch do
-    if Process.whereis(@finch_name) == nil do
-      case Finch.start_link(name: @finch_name) do
-        {:ok, _pid} -> :ok
-        {:error, {:already_started, _pid}} -> :ok
-        {:error, :already_started} -> :ok
-      end
-    else
-      :ok
-    end
-  end
-
-  defp relay(conn, %Finch.Response{status: status, headers: headers, body: body}) do
+  # LANE9 COMPILE-FREEZE UNBLOCK retained: plain map pattern instead of struct
+  # expansion; headers are normalized (downcased binaries) upstream in
+  # do_backend_request, so the hop-by-hop drops below compare like-for-like.
+  defp relay(conn, %{status: status, headers: headers, body: body}) do
     conn =
       headers
       |> Enum.reject(fn {name, _} -> name in @drop_resp_headers end)
