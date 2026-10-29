@@ -248,6 +248,22 @@ defmodule Smalt.ArmGateway.Providers.ResourceHealthRouter do
   defp face(front, kind) when length(front) >= 3, do: {kind, front}
   defp face(_front, _kind), do: :miss
 
+  # L10 seam (2026-10-29): the per-resource face's front retains the
+  # resource's own "providers" segment (split_resource_face/1 splits it off
+  # the ResourceHealth suffix), and resource_id/3 already interpolates the
+  # literal "providers/" — so the type must EXCLUDE it, else ids key as
+  # ".../providers/providers/..." and every current/list GET 404s.
+  defp type_and_name(["providers" | rest]) do
+    name = List.last(rest)
+
+    type =
+      rest
+      |> Enum.slice(0..-2//1)
+      |> Enum.join("/")
+
+    {type, name}
+  end
+
   defp type_and_name(front) do
     name = List.last(front)
 
@@ -272,7 +288,7 @@ defmodule Smalt.ArmGateway.Providers.ResourceHealthRouter do
     match?({:ok, _}, Store.get(:smalt_resource_groups, String.downcase(rg_id(sub, rg))))
   end
 
-  defp rg_not_found(conn, sub, rg) do
+  defp rg_not_found(conn, _sub, rg) do
     arm_error(conn, 404, "ResourceGroupNotFound", "Resource group '#{rg}' could not be found.")
   end
 end

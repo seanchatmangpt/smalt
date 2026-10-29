@@ -63,27 +63,12 @@ defmodule Smalt.DataPlane.ResourceHealth do
 
   @transition_event [:smalt, :resource_health, :availability]
 
-  @type availability_record :: %{
-          required("resource_id") => String.t(),
-          required("resource_id_display") => String.t(),
-          required("state") => String.t(),
-          required("reason_code") => String.t(),
-          required("summary") => String.t(),
-          required("occurred_time") => String.t(),
-          required("reported_time") => String.t()
-        }
+  # String-keyed record shapes; the exact keys are documented on the
+  # functions that produce them (typespec map keys must be types, and
+  # string literals are not types — hence the loose form).
+  @type availability_record :: %{String.t() => String.t()}
 
-  @type event_record :: %{
-          required("id") => String.t(),
-          required("resource_id") => String.t(),
-          required("resource_id_display") => String.t(),
-          required("level") => String.t(),
-          required("status") => String.t(),
-          required("event_timestamp") => String.t(),
-          required("title") => String.t(),
-          required("summary") => String.t(),
-          required("reason_code") => String.t()
-        }
+  @type event_record :: %{String.t() => String.t()}
 
   # -- explicit transitions (the primary chaos coupling) -----------------------
 
@@ -455,15 +440,18 @@ defmodule Smalt.DataPlane.ResourceHealth do
   defp derived_marker_event(resource_id) do
     {code, summary} = normalize_reason(marker_reason(resource_id))
     id = marker_event_id(resource_id)
+    # resource_id is the downcased marker key; the wire display restores the
+    # flag's original casing (config_marker_displays/0), else falls back.
+    display = Map.get(config_marker_displays(), resource_id, resource_id)
 
     %{
       "id" => id,
       "resource_id" => down(resource_id),
-      "resource_id_display" => resource_id,
+      "resource_id_display" => display,
       "level" => "Warning",
       "status" => "Active",
       "event_timestamp" => now_iso(),
-      "title" => "Resource unavailable: #{leaf(resource_id)}",
+      "title" => "Resource unavailable: #{leaf(display)}",
       "summary" => summary || "The resource is unavailable (:resource_health_unavailable chaos marker; reason: #{code}).",
       "reason_code" => code
     }
@@ -534,31 +522,45 @@ defmodule Smalt.DataPlane.ResourceHealth do
   crash on a malformed flag.
   """
   def config_markers do
+    {markers, _displays} = parse_markers()
+    markers
+  end
+
+  # Display-case restoration for derived marker events: config_markers/0
+  # keys are downcased for match law, but the wire resourceId must carry the
+  # flag's ORIGINAL casing (ARM ids are case-corrected on the wire, and the
+  # T-14 court asserts exact-case equality on properties.resourceId).
+  defp config_marker_displays do
+    {_markers, displays} = parse_markers()
+    displays
+  end
+
+  defp parse_markers do
     case Application.get_env(:smalt, :resource_health_unavailable, []) do
-      ids when is_list(ids) -> markers_from_list(ids, %{})
-      %{} = map -> markers_from_map(map, %{})
-      _ -> %{}
+      ids when is_list(ids) -> markers_from_list(ids, {%{}, %{}})
+      %{} = map -> markers_from_map(map, {%{}, %{}})
+      _ -> {%{}, %{}}
     end
   end
 
-  defp markers_from_list([id | rest], acc) when is_binary(id) do
-    markers_from_list(rest, Map.put(acc, down(id), @default_reason))
+  defp markers_from_list([id | rest], {m, d}) when is_binary(id) do
+    markers_from_list(rest, {Map.put(m, down(id), @default_reason), Map.put(d, down(id), id)})
   end
 
-  defp markers_from_list([{id, reason} | rest], acc)
+  defp markers_from_list([{id, reason} | rest], {m, d})
        when is_binary(id) and (is_binary(reason) or is_map(reason) or reason == nil) do
     {code, summary} = normalize_reason(reason)
-    markers_from_list(rest, Map.put(acc, down(id), {code, summary}))
+    markers_from_list(rest, {Map.put(m, down(id), {code, summary}), Map.put(d, down(id), id)})
   end
 
   defp markers_from_list([_other | rest], acc), do: markers_from_list(rest, acc)
   defp markers_from_list([], acc), do: acc
 
-  defp markers_from_map(map, acc) when is_map(map) do
-    Enum.reduce(map, acc, fn
-      {id, reason}, acc when is_binary(id) ->
+  defp markers_from_map(map, {m, d}) when is_map(map) do
+    Enum.reduce(map, {m, d}, fn
+      {id, reason}, {m, d} when is_binary(id) ->
         {code, summary} = normalize_reason(reason)
-        Map.put(acc, down(id), {code, summary})
+        {Map.put(m, down(id), {code, summary}), Map.put(d, down(id), id)}
 
       _other, acc ->
         acc
