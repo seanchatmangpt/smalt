@@ -223,6 +223,9 @@ defmodule Smalt.DataPlane.AzureCache do
     case Cachex.get(cache, k) do
       {:ok, nil} -> resp_bulk(nil)
       {:ok, {:string, v}} -> resp_bulk(v)
+      # Cachex.incr/4's native untagged integer (see incr_decr) renders as the
+      # decimal string — Redis GET-after-INCR semantics.
+      {:ok, n} when is_integer(n) -> resp_bulk(Integer.to_string(n))
       {:ok, _other} -> wrongtype()
       {:error, reason} -> resp_error("ERR get failed: #{inspect(reason)}")
     end
@@ -503,7 +506,9 @@ defmodule Smalt.DataPlane.AzureCache do
   """
   def endpoints(account) when is_binary(account) do
     %{
-      "moduleName" => Atom.to_string(__MODULE__),
+      # inspect/1 renders the module WITHOUT the "Elixir." atom prefix — the
+      # court pins the bare module name.
+      "moduleName" => inspect(__MODULE__),
       "account" => account,
       "cacheName" => Atom.to_string(cache_name(account)),
       "transport" => "beam-local"
@@ -524,6 +529,13 @@ defmodule Smalt.DataPlane.AzureCache do
           {:ok, _} -> do_incr(cache, k, dir)
           :error -> {:error, @not_integer}
         end
+
+      # SHIM-COURT-ADJACENT (L3, v26.10.29): Cachex.incr/4 stores the counter
+      # as a BARE untagged integer — a second INCR/DECR must see it as numeric,
+      # never as a structured (WRONGTYPE) entry. GET renders it too (Redis:
+      # GET after INCR answers the decimal string).
+      {:ok, n} when is_integer(n) ->
+        do_incr(cache, k, dir)
 
       {:ok, _structured} ->
         wrongtype()
@@ -718,7 +730,7 @@ defmodule Smalt.DataPlane.AzureCache do
       "run_id:#{run_id()}",
       "uptime_in_seconds:#{div(System.system_time(:millisecond) - boot_ms(), 1000)}",
       "azure_backing:cachex-#{cachex_version()}",
-      "azure_cache_module:#{Atom.to_string(__MODULE__)}",
+      "azure_cache_module:#{inspect(__MODULE__)}",
       "azure_account:#{account}",
       "azure_transport:beam-local",
       "azure_wire_listener:none"

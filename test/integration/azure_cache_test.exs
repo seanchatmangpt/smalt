@@ -96,6 +96,19 @@ defmodule Smalt.Integration.AzureCacheTest do
     assert msg =~ "value is not an integer"
   end
 
+  test "GET after INCR answers the decimal string (Cachex native counter face)", %{
+    account: account
+  } do
+    assert {:ok, ":1\r\n"} = AzureCache.handle(account, ["INCR", "c"])
+    assert {:ok, ":2\r\n"} = AzureCache.handle(account, ["INCR", "c"])
+
+    assert {:ok, wire} = AzureCache.handle(account, ["GET", "c"])
+    assert {:bulk, "2"} = dec(wire)
+
+    # and the counter keeps incrementing through the GET (same bare integer)
+    assert {:ok, ":3\r\n"} = AzureCache.handle(account, ["INCR", "c"])
+  end
+
   test "EXPIRE/TTL semantics ride the Cachex millisecond TTL", %{account: account} do
     assert {:ok, "+OK\r\n"} = AzureCache.handle(account, ["SET", "k", "v"])
     assert {:ok, ":1\r\n"} = AzureCache.handle(account, ["EXPIRE", "k", "5"])
