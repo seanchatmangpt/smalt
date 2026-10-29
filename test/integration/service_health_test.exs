@@ -47,14 +47,14 @@ defmodule Smalt.Internal.ServiceHealthTest do
 
   @sub "sub-t14rh"
   @rg "rg-t14rh"
-  @type "Microsoft.Network/networkSecurityGroups"
+  @resource_type "Microsoft.Network/networkSecurityGroups"
 
   # -- court plumbing -------------------------------------------------------------
 
   defp uid, do: Integer.to_string(System.unique_integer([:positive]))
 
   defp rid(rg, name),
-    do: "/subscriptions/#{@sub}/resourceGroups/#{rg}/providers/#{@type}/#{name}"
+    do: "/subscriptions/#{@sub}/resourceGroups/#{rg}/providers/#{@resource_type}/#{name}"
 
   defp seed_sub do
     Store.put(:smalt_subscriptions, @sub, %{
@@ -90,7 +90,7 @@ defmodule Smalt.Internal.ServiceHealthTest do
     Store.put(:smalt_resources, String.downcase(id), %{
       "id" => id,
       "name" => name,
-      "type" => @type,
+      "type" => @resource_type,
       "location" => "eastus",
       "properties" => %{}
     })
@@ -120,7 +120,7 @@ defmodule Smalt.Internal.ServiceHealthTest do
   defp arm_req(method, path), do: Router.call(conn(method, path), [])
 
   defp base(rg, name),
-    do: "/subscriptions/#{@sub}/resourceGroups/#{rg}/providers/#{@type}/#{name}"
+    do: "/subscriptions/#{@sub}/resourceGroups/#{rg}/providers/#{@resource_type}/#{name}"
 
   defp current_path(rg, name),
     do: "#{base(rg, name)}/providers/Microsoft.ResourceHealth/availabilityStatuses/current?api-version=#{@api_version}"
