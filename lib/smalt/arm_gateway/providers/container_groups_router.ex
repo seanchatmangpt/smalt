@@ -35,7 +35,9 @@ defmodule Smalt.ArmGateway.Providers.ContainerGroupsRouter do
 
   Any DEEPER unknown shape under the containerGroups subtree is owned too —
   a typed 404 ResourceNotFound, never a fall-through to the unadmitted-type
-  machinery of the main router.
+  machinery of the main router. Every answer HALTS (Plug.Builder skips
+  `:match` / `:dispatch` on a halted conn — no double dispatch); everything
+  unmatched returns the conn untouched, unhalted.
   """
 
   @behaviour Plug
@@ -402,5 +404,10 @@ defmodule Smalt.ArmGateway.Providers.ContainerGroupsRouter do
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(status, body)
+    # Pass-through protocol: a HALTED conn makes Plug.Builder skip the rest
+    # of the gateway chain (:match / :dispatch never run on an answered conn
+    # — dispatching again would be an AlreadySentError crash). Every answer
+    # this plug renders funnels through here, so every owned shape halts.
+    |> Plug.Conn.halt()
   end
 end

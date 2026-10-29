@@ -159,7 +159,13 @@ and this receipt + the ticket stamp say so.
   drift — a fabricated-but-stable substrate face, unlike logs which are
   never fabricated at all (that asymmetry is the design law, not an
   oversight).
-- Registry-credential validation reads only generic store rows — no T-01
-  module dependency; when T-01 lands registries/listKeys the same lookup
-  keeps working (key membership already enforced for rows that publish
-  keys).
+- Registry-credential validation reads only generic store rows — and T-01
+  is ALREADY landed (`arm_gateway/providers/acr_router.ex` +
+  `data_plane/acr.ex`): real ACR rows are keyed exactly
+  `.../providers/Microsoft.ContainerRegistry/registries/<name>` (downcased),
+  which is the suffix `ContainerGroups.registry_row/1` resolves, so the
+  validation works against real `az acr create` rows with zero T-01 module
+  coupling. Key-membership engages for rows that publish keys on the row
+  (real ACR never returns key VALUES on the row — only via the listKeys
+  POST — so against landed T-01 rows admission is existence-based, exactly
+  the fail-open-free law the ticket scope words as "registry must exist").

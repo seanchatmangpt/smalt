@@ -627,12 +627,11 @@ defmodule Smalt.DataPlane.Apim do
     end
   end
 
-  # All contiguous text children joined — xmerl already decoded XML entities
-  # (&lt; &amp; ...) before this runs, so the value is the real header value.
+  # All contiguous text children joined into one value (xmerl already
+  # decoded XML entities — &lt; &amp; ... — before this runs, so the result
+  # is the real header value).
   defp text_content(el) do
-    SweetXml.xpath(el, ~x"./text()"l)
-    |> Enum.map(&to_string/1)
-    |> Enum.join("")
+    SweetXml.xpath(el, ~x"./text()"ls)
     |> String.trim()
   end
 
