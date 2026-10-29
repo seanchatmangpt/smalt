@@ -1,5 +1,6 @@
 # T-09 — Event Hubs: consumer group epoch enforcement
 
+- status: IMPLEMENTED-unreceipted (2026-10-28): citation receipt receipts/r2-t09-epoch-citation.md; wire probe pending
 - window: v26.10.28 · maps-to: Topaz v1.12 "Event Hub — consumer group epoch tracking" · verdict-at-open: **PARTIAL** (store mechanics ahead)
 - size: **S/M** · depends-on: — · parity-leg: eh suite epoch races
 

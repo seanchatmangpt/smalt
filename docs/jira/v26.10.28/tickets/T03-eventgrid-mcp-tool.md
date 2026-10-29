@@ -1,5 +1,6 @@
 # T-03 — Event Grid: MCP tool surface
 
+- status: CLOSED (2026-10-28): tools live (33 total) - receipts: commit 474518c + wire calls verified
 - window: v26.10.28 · maps-to: Topaz v1.11 "Event Grid — … MCP tool" (the control-plane half is already ahead) · verdict-at-open: **PARTIAL**
 - size: **S** · depends-on: — · parity-leg: MCP probe (9545)
 

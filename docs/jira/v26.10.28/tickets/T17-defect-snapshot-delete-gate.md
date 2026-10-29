@@ -1,5 +1,6 @@
 # T-17 — DEFECT: delete-blob-with-snapshots gate compiled but not firing
 
+- status: CLOSED (2026-10-28): attribute-order root cause fixed, wire-receipted (409/202/include matrix), commit 474518c
 - window: v26.10.28 · origin: parity lane defect (commit `8a6ce57` known-issues) · verdict-at-open: **DEFECT**
 - size: **S** · depends-on: — · parity-leg: blob suite rows `blob-delete-under-immutable`, `blob-delete`, `blob-download-after-delete`
 

@@ -1,5 +1,6 @@
 # T-13 — OpenTofu: verified compatibility + dedicated suite
 
+- status: CLOSED at plan tier (2026-10-28): receipt receipts/r1-t13-opentofu-plan-parity.md (tofu 1.13.2 = terraform 1.17.0, 3 to add)
 - window: v26.10.28 · maps-to: Topaz v1.14 "OpenTofu — verified compatibility · dedicated test suite · integration guide" · verdict-at-open: **PARTIAL**
 - size: **S** · depends-on: — · parity-leg: tofu-plan-smoke recipe
 

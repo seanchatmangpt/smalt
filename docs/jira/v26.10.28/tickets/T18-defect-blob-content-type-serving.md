@@ -1,5 +1,6 @@
 # T-18 — DEFECT: content-type from Set Blob HTTP Headers not served back
 
+- status: CLOSED (2026-10-28): stored_content_type/1 serving, wire-receipted, commit 474518c
 - window: v26.10.28 · origin: parity lane defect (commit `8a6ce57` known-issues) · verdict-at-open: **DEFECT**
 - size: **S** · depends-on: — · parity-leg: blob suite rows `blob-set-http-headers`, `blob-content-type-after-headers`, `blob-get-properties`
 
