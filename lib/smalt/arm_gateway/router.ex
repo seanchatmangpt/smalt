@@ -74,6 +74,11 @@ defmodule Smalt.ArmGateway.Router do
   # AZURE-FIDELITY lane 18: control-plane throttling realism — DEFAULT-OFF
   # (rate/burst nil). Gate-off the plug passes the conn through untouched.
   plug(Smalt.Egress.ThrottlePlug)
+  # T-11 (r13): Microsoft.Web/sites (kind functionapp) ARM face + SCM-lite
+  # admin surface. Mounted BEFORE :match so the sites routes never reach the
+  # generic :provider_ns/:resource_type face; the router passes unmatched
+  # conns through untouched and HALTS only on routes it answered.
+  plug(Smalt.ArmGateway.Providers.FunctionsRouter)
   plug(:match)
   plug(:dispatch)
 
@@ -3594,7 +3599,14 @@ defmodule Smalt.ArmGateway.Router do
           :ok ->
             :ok
 
-          {:refused, code} ->
+          # Gate refusals are 3-tuples ({:refused, code, details},
+          # AdmissionGate.refused/0); the typed code is preserved in the
+          # refusal face, details ride the log line for diagnosis.
+          {:refused, code, details} ->
+            Logger.warning(
+              "admission gate refused: code=#{inspect(code)} details=#{inspect(details)}"
+            )
+
             {:respond, send_graphlaw_refusal(conn, to_string(code))}
 
           {:error, reason} ->
