@@ -65,6 +65,8 @@ defmodule Smalt.Internal.ServiceHealthTest do
       "location" => "eastus",
       "properties" => %{}
     })
+
+    on_exit(fn -> Store.delete(:smalt_subscriptions, @sub) end)
   end
 
   defp seed_rg(rg) do
@@ -77,6 +79,8 @@ defmodule Smalt.Internal.ServiceHealthTest do
       "location" => "eastus",
       "properties" => %{}
     })
+
+    on_exit(fn -> Store.delete(:smalt_resource_groups, String.downcase(rg_id)) end)
   end
 
   # Namespace-style resource row: downcased providers/-prefixed key (generic
@@ -92,6 +96,7 @@ defmodule Smalt.Internal.ServiceHealthTest do
       "properties" => %{}
     })
 
+    on_exit(fn -> Store.delete(:smalt_resources, String.downcase(id)) end)
     id
   end
 
@@ -237,20 +242,25 @@ defmodule Smalt.Internal.ServiceHealthTest do
 
   test "scope listing: RG-scoped availabilityStatuses + events filter, sub listing aggregates" do
     seed_sub()
-    seed_rg(@rg)
-    seed_rg(@rg_b)
+
+    # Own RGs (unique per run): ExUnit shuffles test order, so a scope-listing
+    # leg must never depend on other legs' seed rows being absent.
+    rg_a = "rg-t14-scope-a-#{uid()}"
+    rg_b = "rg-t14-scope-b-#{uid()}"
+    seed_rg(rg_a)
+    seed_rg(rg_b)
 
     name_a = "nsg-t14-rga-#{uid()}"
-    rid_a = seed_resource(@rg, name_a)
+    rid_a = seed_resource(rg_a, name_a)
     sweep_engine(rid_a)
 
     name_b = "nsg-t14-rgb-#{uid()}"
-    seed_resource(@rg_b, name_b)
+    seed_resource(rg_b, name_b)
 
     assert {:ok, _avail, _event} = Engine.set_unavailable(rid_a, "PlatformInitiated")
 
     # RG scope listing: exactly its own resource, chaos-flipped.
-    conn_a = arm_req(:get, rg_avail_path(@rg))
+    conn_a = arm_req(:get, rg_avail_path(rg_a))
     assert conn_a.status == @ok
 
     %{"value" => rows_a} = Jason.decode!(conn_a.resp_body)
@@ -258,7 +268,7 @@ defmodule Smalt.Internal.ServiceHealthTest do
     assert String.contains?(hd(rows_a)["id"], name_a)
 
     # Other RG scope: its own resource, derived-Available (Store presence).
-    conn_b = arm_req(:get, rg_avail_path(@rg_b))
+    conn_b = arm_req(:get, rg_avail_path(rg_b))
     assert conn_b.status == @ok
 
     %{"value" => rows_b} = Jason.decode!(conn_b.resp_body)
@@ -266,7 +276,7 @@ defmodule Smalt.Internal.ServiceHealthTest do
 
     # Events filter by scope: the RG face carries only the RG's incident,
     # the subscription face aggregates.
-    rg_events = arm_req(:get, rg_events_path(@rg))
+    rg_events = arm_req(:get, rg_events_path(rg_a))
     assert rg_events.status == @ok
 
     %{"value" => rg_rows} = Jason.decode!(rg_events.resp_body)

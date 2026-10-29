@@ -619,13 +619,44 @@ defmodule Smalt.Amqp.Connection do
     # Clamped so a single flow can't request 2^62.
     credit = (perf.link_credit && min(perf.link_credit, @max_link_credit)) || 0
 
-    state =
-      case perf.handle do
-        nil -> add_credit(state, credit, ch)
-        handle -> set_credit(state, ch, handle, credit)
+    if chaos_starved?(state, ch, perf.handle, credit) do
+      # T-12 (b): the credit grant is WITHHELD while the starve flag is
+      # armed — deliveries stall until the flag clears on a re-boot. Credit
+      # already outstanding still drains (the stall is on NEW grants).
+      deliver_available(state)
+    else
+      state =
+        case perf.handle do
+          nil -> add_credit(state, credit, ch)
+          handle -> set_credit(state, ch, handle, credit)
+        end
+
+      deliver_available(state)
+    end
+  end
+
+  # T-12 (b) :sb_chaos_starve_credits / :eh_chaos_starve_credits — namespace
+  # resolved from the targeted link's kind (a session-level flow, handle
+  # nil, only ever grants queue links -> :sb). Emits typed telemetry per
+  # withheld grant. Flags off = the grant proceeds byte-identically.
+  defp chaos_starved?(state, ch, handle, credit) do
+    ns =
+      case handle && link_by_handle(state, ch, handle) do
+        %{kind: :eventhubs} -> :eh
+        _ -> :sb
       end
 
-    deliver_available(state)
+    if Smalt.Messaging.Chaos.starve?(ns) do
+      Smalt.Messaging.Chaos.emit(:credit_starved, %{withheld_credit: credit}, %{
+        namespace: ns,
+        channel: ch,
+        handle: handle
+      })
+
+      true
+    else
+      false
+    end
   end
 
   defp handle_amqp(:open, perf, _ch, state) do
@@ -3282,14 +3313,58 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp bump_credit(state, ch, handle, delta) do
-    update_links(state, fn
-      {c, h}, link when h == handle and (ch == nil or c == ch) ->
-        %{link | credit: max(link.credit + delta, 0)}
+    state =
+      update_links(state, fn
+        {c, h}, link when h == handle and (ch == nil or c == ch) ->
+          %{link | credit: max(link.credit + delta, 0)}
 
-      _key, link ->
-        link
-    end)
+        _key, link ->
+          link
+      end)
+
+    # T-12 (a) chaos hook: bump_credit is called ONLY from the three delivery
+    # paths (queue claim + both EH paths), so the delivery decrement is the
+    # one counting point for every link kind.
+    chaos_after_delivery(state, ch, handle, delta)
   end
+
+  # T-12 (a) :sb_chaos_detach_after / :eh_chaos_detach_after — per-link
+  # delivery count; on the Nth delivery, requeue the SAME typed detach
+  # message the {:eh_epoch_evict, ...} cross-connection eviction handler
+  # consumes (retryable amqp:link:detach-forced; the connection stays up so
+  # the client relink is clean) and zero the link credit so the same-frame
+  # delivery recursion cannot outrun the detach. Flags off = passthrough
+  # (no counter writes, no state change).
+  defp chaos_after_delivery(state, ch, handle, delta) when delta < 0 do
+    case Map.get(state.links, {ch, handle}) do
+      %{} = link ->
+        ns = if link[:kind] == :eventhubs, do: :eh, else: :sb
+        count = Map.get(link, :chaos_deliveries, 0) + 1
+
+        if Smalt.Messaging.Chaos.should_detach?(count, ns) do
+          Smalt.Messaging.Chaos.emit(:link_detach, %{deliveries: count}, %{
+            namespace: ns,
+            channel: ch,
+            handle: handle,
+            address: link[:address]
+          })
+
+          send(self(), {:eh_epoch_evict, ch, handle, Smalt.Messaging.Chaos.detach_error(count)})
+          put_link(state, %{link | credit: 0})
+        else
+          if Smalt.Messaging.Chaos.detach_armed?(ns) do
+            put_link(state, Map.put(link, :chaos_deliveries, count))
+          else
+            state
+          end
+        end
+
+      _ ->
+        state
+    end
+  end
+
+  defp chaos_after_delivery(state, _ch, _handle, _delta), do: state
 
   # Absolute credit assignment for inbound :flow on a specific handle
   # (SHIM-COURT flip target: BEFORE = additive bump, AFTER = absolute set).
