@@ -1,0 +1,31 @@
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix smalt: <https://smalt.local/ontology/arm#> .
+
+smalt:Provider_Microsoft_Network a smalt:ProviderNamespace ;
+    rdfs:label "Microsoft.Network" ;
+    smalt:ashDomain "Smalt.Network" .
+
+smalt:Res_Microsoft_Network_virtualNetworks a smalt:ResourceType ;
+    smalt:provider smalt:Provider_Microsoft_Network ;
+    smalt:resourceType "Microsoft.Network/virtualNetworks" ;
+    smalt:ashResource "VirtualNetwork" ;
+    smalt:armUriTemplate "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/virtualNetworks/{virtualNetwork}" ;
+    smalt:hasBinding smalt:Binding_vnet_2026_03_01 .
+
+smalt:Binding_vnet_2026_03_01 a smalt:TypeBinding ;
+    smalt:bindsResource smalt:Res_Microsoft_Network_virtualNetworks ;
+    smalt:apiVersion "2026-03-01" ;
+    smalt:bicepRef "network/microsoft.network/2026-03-01/types.json#/3586" .
+
+smalt:Res_Microsoft_Network_virtualNetworks_subnets a smalt:ResourceType ;
+    smalt:provider smalt:Provider_Microsoft_Network ;
+    smalt:resourceType "Microsoft.Network/virtualNetworks/subnets" ;
+    smalt:ashResource "Subnet" ;
+    smalt:parent smalt:Res_Microsoft_Network_virtualNetworks ;
+    smalt:armUriTemplate "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Network/virtualNetworks/{virtualNetwork}/subnets/{subnet}" ;
+    smalt:hasBinding smalt:Binding_subnets_2026_03_01 .
+
+smalt:Binding_subnets_2026_03_01 a smalt:TypeBinding ;
+    smalt:bindsResource smalt:Res_Microsoft_Network_virtualNetworks_subnets ;
+    smalt:apiVersion "2026-03-01" ;
+    smalt:bicepRef "network/microsoft.network/2026-03-01/types.json#/27" .
