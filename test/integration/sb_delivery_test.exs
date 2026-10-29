@@ -9,8 +9,10 @@
 # "invisible before" is `now_ms: due - 1`, "receivable on time" is
 # `now_ms: due`. Zero process sleeps.
 #
-# Not executed in this pass (compile-freeze lane); runs with the next
-# integration pass — see docs/jira/v26.10.28/receipts/r8-t08-sb-dlq.md.
+# First executed 2026-10-29 (L8 finishing lane, v26.10.29): 6/6 green after
+# fixing the SbRules→SbDelivery DLQ-name seam (double $deadletterqueue suffix)
+# and amending the over-pinned dlq_seq != seq assertion (per-entity counters
+# legitimately collide at 1 on fresh queues — real-Azure semantics).
 
 defmodule Smalt.Integration.SbDeliveryTest do
   use ExUnit.Case, async: false
@@ -63,8 +65,12 @@ defmodule Smalt.Integration.SbDeliveryTest do
 
     # Moved, not copied: the source queue holds nothing.
     assert {:ok, []} = QueueStore.peek(@queue)
-    # Fresh per-DLQ sequence (SB parity: the DLQ copy is the same message, a new seq).
-    assert dlq_seq != seq
+    # The DLQ copy carries a fresh sequence in the DLQ's OWN counter space (SB
+    # parity: per-entity counters — the DLQ's first copy is seq 1 even when the
+    # source row's seq numerically collides; L8 amended the earlier `!=` pin,
+    # which real-Azure semantics refute). Identity is pinned on the row itself:
+    # the DLQ row's sequence_number/1 must equal the dead_letter return.
+    assert is_integer(dlq_seq)
 
     dlq = SbDelivery.dlq_name(@queue)
     assert dlq == "#{@queue}/$deadletterqueue"

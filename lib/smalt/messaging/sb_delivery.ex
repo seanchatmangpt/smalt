@@ -175,7 +175,13 @@ defmodule Smalt.Messaging.SbDelivery do
 
   def dead_letter(entity, msg, reason, description, opts)
       when is_binary(entity) and is_map(msg) and is_binary(reason) do
-    dlq = dlq_name(entity)
+    # Seam tolerance (L8, v26.10.29): the rule fan-out caller passes the FULL
+    # DLQ entity name (`subscription_dlq_name/2` output); this form resolves the
+    # target by appending @dlq_suffix. Idempotent for the suffix so both
+    # spellings (raw entity address and full DLQ name) name the same subqueue —
+    # the first no-match copy was landing in "<dlq>/$deadletterqueue".
+    dlq = if String.ends_with?(entity, @dlq_suffix), do: entity, else: dlq_name(entity)
+
     _ = QueueStore.ensure_queue(dlq)
 
     QueueStore.enqueue(dlq, msg[:body] || "",
