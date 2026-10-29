@@ -691,8 +691,7 @@ defmodule Smalt.DataPlane.IacExport do
 
     lines =
       [decl] ++
-        bicep_scope_line(entry) ++
-        bicep_parent_line(entry) ++
+        bicep_scope_parent_lines(entry) ++
         ["  name: " <> bicep_literal(entry.name, 0, :bicep)] ++
         bicep_location_line(entry) ++
         bicep_extras(entry) ++
@@ -702,11 +701,16 @@ defmodule Smalt.DataPlane.IacExport do
     Enum.join(lines, "\n")
   end
 
-  defp bicep_scope_line(%{scope: nil}), do: []
-  defp bicep_scope_line(%{scope: scope}), do: ["  scope: #{scope.symbolic_name}"]
+  # bicep forbids `scope` and `parent` on the same resource: a child's
+  # `parent` already determines its scope (the parent carries the RG scope),
+  # so parent wins and scope is emitted only for parentless entries.
+  defp bicep_scope_parent_lines(%{parent: parent}) when parent != nil,
+    do: ["  parent: #{parent.symbolic_name}"]
 
-  defp bicep_parent_line(%{parent: nil}), do: []
-  defp bicep_parent_line(%{parent: parent}), do: ["  parent: #{parent.symbolic_name}"]
+  defp bicep_scope_parent_lines(%{scope: scope}) when scope != nil,
+    do: ["  scope: #{scope.symbolic_name}"]
+
+  defp bicep_scope_parent_lines(_), do: []
 
   defp bicep_location_line(%{existing: true}), do: []
 

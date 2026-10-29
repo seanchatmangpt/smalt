@@ -162,9 +162,10 @@ defmodule Smalt.Internal.ContainerGroupsTest do
     # Nothing stored for the refused group (fail-closed validation).
     assert ci_req(:get, @group_path).status == @not_found
 
-    # Seed the real ACR control-plane row (T-01 seam, store-keyed
-    # .../providers/Microsoft.ContainerRegistry/registries/<name>) — the SAME
-    # body now admits, proving the validation reads the real store.
+    # A credential pointing at the SEEDED registry (the setup-planted ACR
+    # control-plane row keyed .../providers/Microsoft.ContainerRegistry/
+    # registries/reg-ci — re-planted here to keep the admit transition in one
+    # witness) admits the SAME shape of body.
     Store.put(:smalt_resources, @registry_key, %{
       "id" =>
         "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/Microsoft.ContainerRegistry/registries/#{@registry}",
@@ -174,7 +175,12 @@ defmodule Smalt.Internal.ContainerGroupsTest do
       "properties" => %{}
     })
 
-    assert ci_req(:put, @group_path, body).status == @created
+    admitting_body =
+      put_in(group_body(), ["properties", "imageRegistryCredentials"], [
+        %{"server" => @registry_server, "username" => "u", "password" => "p"}
+      ])
+
+    assert ci_req(:put, @group_path, admitting_body).status == @created
   end
 
   # -- LIST pagination ------------------------------------------------------------

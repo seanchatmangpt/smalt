@@ -504,9 +504,10 @@ defmodule Smalt.Integration.ApimTest do
   # gateway: path families + failure faces
   # ---------------------------------------------------------------------------
 
-  test "ARM data-plane family: .../providers/Microsoft.ApiManagement/service/{svc}/apis/{api}/... serves the gateway" do
-    %{backend_url: backend_url} = _ctx
-    svc = "arm-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))
+  test "ARM data-plane family: .../providers/Microsoft.ApiManagement/service/{svc}/apis/{api}/... serves the gateway", %{
+    svc: svc,
+    backend_url: backend_url
+  } do
     {api, op} = seed_api(svc, backend_url)
 
     path =
@@ -529,9 +530,7 @@ defmodule Smalt.Integration.ApimTest do
   end
 
   test "no-backend operation answers typed 502 BackendUnavailable" do
-    svc = "nb-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))
-
-    assert {:ok, 201, _} = Apim.put_service(@sub, @rg, svc, %{})
+    svc = "nb-" <> (:crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower))    assert {:ok, 201, _} = Apim.put_service(@sub, @rg, svc, %{})
 
     assert {:ok, 201, _} = Apim.put_api(@sub, @rg, svc, "orders", %{"properties" => %{"path" => "orders"}})
 
