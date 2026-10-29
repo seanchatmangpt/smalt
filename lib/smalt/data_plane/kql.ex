@@ -75,15 +75,39 @@ defmodule Smalt.DataPlane.KQL do
   @spec run([row], String.t(), %{String.t() => [row]}) :: {:ok, [row]} | run_err
   def run(rows, query, tables) when is_list(rows) and is_binary(query) and is_map(tables) do
     with :ok <- check_query_length(query),
-         {:ok, stages} <- parse(query) do
+         {:ok, stages, sources} <- parse(query),
+         {:ok, base_rows} <- resolve_sources(sources, rows, tables) do
       case max_stage_depth(stages) do
         depth when depth <= @max_ast_depth ->
-          execute(stages, rows, DateTime.utc_now(), tables)
+          execute(stages, base_rows, DateTime.utc_now(), tables)
 
         _ ->
           {:error, {:limit, "AST depth exceeds #{@max_ast_depth}"}}
       end
+    else
+      # parse/1 already formats its own errors; pass typed errors through.
+      {:error, {kind, _}} = err when kind in [:parse, :eval, :limit] -> err
+      {:error, msg} when is_binary(msg) -> {:error, msg}
     end
+  end
+
+  # Cross-workspace sources: each workspace's rows are stamped with the
+  # "Workspace" column (the workspace id — the key up to the first ".");
+  # missing keys are typed eval errors. No sources -> caller rows verbatim.
+  defp resolve_sources([], rows, _tables), do: {:ok, rows}
+
+  defp resolve_sources(sources, _rows, tables) do
+    Enum.reduce_while(sources, {:ok, []}, fn key, {:ok, acc} ->
+      case Map.get(tables, key) do
+        nil ->
+          {:halt, {:error, {:eval, "workspace #{inspect(key)} not provided to run/3"}}}
+
+        ws_rows ->
+          ws_id = key |> String.split(".") |> hd()
+          stamped = Enum.map(ws_rows, &Map.put(&1, "Workspace", ws_id))
+          {:cont, {:ok, acc ++ stamped}}
+      end
+    end)
   end
 
   def run(_rows, _query), do: {:error, "query must be a string, rows a list"}
@@ -140,6 +164,26 @@ defmodule Smalt.DataPlane.KQL do
       Map.new(Map.intersect(left, right), fn {k, _v} -> {"#{k}_left", Map.get(left, k)} end)
 
     left |> Map.merge(right) |> Map.merge(collisions)
+  end
+
+  # mv-expand: element-wise list expansion (see parse_stage clause for law).
+  defp apply_stage({:mv_expand, cols}, rows, _now, _tables) do
+    {:ok, Enum.flat_map(rows, fn row -> mv_expand_row(row, cols) end)}
+  end
+
+  defp mv_expand_row(row, cols) do
+    lists = Enum.map(cols, fn col -> List.wrap(Map.get(row, col)) end)
+    max_n = lists |> Enum.map(&length/1) |> Enum.max(fn -> 0 end)
+
+    for i <- 0..max(max_n - 1, 0) do
+      expanded =
+        Enum.zip_with(cols, lists, fn col, values ->
+          {col, Enum.at(values, i)}
+        end)
+        |> Map.new()
+
+      Map.merge(row, expanded)
+    end
   end
 
   defp apply_stage({:take, n}, rows, _now, _tables) do
@@ -543,15 +587,51 @@ defmodule Smalt.DataPlane.KQL do
 
     case lex(query, 0, []) do
       {:ok, tokens} ->
-        case parse_stages(tokens, []) do
-          {:ok, stages} -> {:ok, stages}
-          {:error, _} = err -> format.(err)
+        # T-05 increment 4: optional leading workspace("id")[.Table] sources
+        # (comma-separated) before the first pipe — cross-workspace queries.
+        case parse_workspace_sources(tokens, []) do
+          {:ok, sources, rest} ->
+            case parse_stages(rest, []) do
+              {:ok, stages} -> {:ok, stages, sources}
+              {:error, _} = err -> format.(err)
+            end
+
+          {:error, _} = err ->
+            format.(err)
         end
 
       {:error, _} = err ->
         format.(err)
     end
   end
+
+  # Grammar: workspace("<id>")[ .<Table> ] (, workspace(...))* followed by
+  # the pipeline's first '|'. No leading workspace() clause -> no sources
+  # (backward compatible). Lookup keys at eval: "id" or "id.Table".
+  defp parse_workspace_sources(
+         [{:word, "workspace", p}, {:lparen, "(", _}, {:string, id, _}, {:rparen, ")", _} | rest],
+         acc
+       ) do
+    {key, rest} =
+      case rest do
+        # the lexer folds '.' into the following word: ".Perf"
+        [{:word, "." <> table, _} | r] -> {"#{id}.#{table}", r}
+        _ -> {id, rest}
+      end
+
+    case rest do
+      [{:comma, ",", _} | r] ->
+        parse_workspace_sources(r, [key | acc])
+
+      _ ->
+        case rest do
+          [{:word, "|", _} | _] -> {:ok, Enum.reverse([key | acc]), rest}
+          _ -> syn(@syn_unexpected, "workspace(...) sources must be followed by '|'", p)
+        end
+    end
+  end
+
+  defp parse_workspace_sources(tokens, []) when is_list(tokens), do: {:ok, [], tokens}
 
   defp syn(code, msg, pos), do: {:error, {:syn, code, msg, pos}}
 
@@ -778,6 +858,38 @@ defmodule Smalt.DataPlane.KQL do
         syn(@syn_unexpected, "join expects: [kind=...] <Table> on <Col>[ == <Col>]", p)
     end
   end
+
+  # T-05 increment 3 (v26.10.28): mv-expand. The hyphenated operator name
+  # lexes as word "mv", op "-", word "expand". Grammar:
+  #   | mv-expand <Col> [, <Col>]*
+  # Element-wise expansion (Kusto semantics, not cartesian): each listed
+  # column's LIST value expands one row per element; non-list values are
+  # singletons. Shorter lists pad with nil.
+  defp parse_stage([{:word, "mv", _}, {:op, "-", _}, {:word, "expand", p} | rest], stages, _pipe_pos) do
+    case mv_cols_loop(rest, []) do
+      {:ok, cols, rest} ->
+        if cols == [] do
+          syn(@syn_operand, "mv-expand expects at least one column", p)
+        else
+          parse_stages(rest, [{:mv_expand, cols} | stages])
+        end
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp mv_cols_loop([{:word, col, _} | rest], acc) do
+    case rest do
+      [{:comma, ",", _} | r] -> mv_cols_loop(r, [col | acc])
+      _ -> {:ok, Enum.reverse([col | acc]), rest}
+    end
+  end
+
+  defp mv_cols_loop([{_tok, val, p} | _], _acc),
+    do: syn(@syn_unexpected, "expected a column in mv-expand list, got #{inspect(val)}", p)
+
+  defp mv_cols_loop([], _acc), do: {:ok, [], []}
 
   defp parse_stage([{:word, "project", _} | rest], stages, _pipe_pos) do
     with {:ok, items, rest} <- parse_items(rest, false) do
