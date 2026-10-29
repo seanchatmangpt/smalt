@@ -294,14 +294,18 @@ defmodule Smalt.DataPlane.Apim do
   stored (the real service's InvalidPolicyXml face).
   """
   def put_policy(sub, rg, svc, scope, api_name, op_name, name, xml)
-      when is_map_key(%{}, :service) == false and is_binary(xml) and scope in [:service, :api, :operation] do
-    with {:ok, parsed} <- parse_policy(xml) do
+      when is_binary(xml) and scope in [:service, :api, :operation] do
+    with {:ok, _parsed} <- parse_policy(xml) do
       case scope_target(sub, rg, svc, scope, api_name, op_name) do
         {:ok, _target} ->
           id = policy_id(sub, rg, svc, scope, api_name, op_name, name)
           type = policy_type(scope)
           existed? = match?({:ok, _}, Store.get(:smalt_resources, store_key(id)))
 
+          # Wire record stays ARM-exact (properties.format/value only). The
+          # parsed form is recomputed from properties.value on the gateway
+          # request path — a single source of truth in the Store, no derived
+          # state to invalidate.
           record = %{
             "id" => id,
             "name" => name,
@@ -310,7 +314,7 @@ defmodule Smalt.DataPlane.Apim do
           }
 
           Store.put(:smalt_resources, store_key(id), record)
-          {:ok, if(existed?, do: 200, else: 201), Map.put(record, "smaltParsedInbound", parsed["inbound"])}
+          {:ok, if(existed?, do: 200, else: 201), record}
 
         {:error, _status, _code, _msg} = refusal ->
           refusal
@@ -648,12 +652,9 @@ defmodule Smalt.DataPlane.Apim do
   match empty). First match in Store listing order wins.
   """
   def find_operation(sub, rg, svc, api, method, segments) do
-    template =
-      segments
-      |> Enum.map(&uri_decode_maybe/1)
-      |> then(&match_operations(list_operations(sub, rg, svc, api), method, &1))
+    decoded = Enum.map(segments, &uri_decode_maybe/1)
 
-    case template do
+    case match_operations(list_operations(sub, rg, svc, api), method, decoded) do
       nil ->
         {:error, 404, "ResourceNotFound",
          "No operation matches #{method} /#{Enum.join(segments, "/")} on api '#{api}'."}
@@ -703,23 +704,16 @@ defmodule Smalt.DataPlane.Apim do
   defp split_template([], literals), do: {Enum.reverse(literals), []}
 
   defp split_template([part | rest], literals) do
-    cond do
-      part == "*" or part == "{*path}" or part == "{**path}" ->
-        {Enum.reverse(literals), [part]}
-
-      String.starts_with?(part, "{*") or String.starts_with?(part, "{**") ->
-        {Enum.reverse(literals), [part]}
-
-      true ->
-        split_template(rest, [part | literals])
+    if part == "*" or String.starts_with?(part, "{*") do
+      {Enum.reverse(literals), [part]}
+    else
+      split_template(rest, [part | literals])
     end
   end
 
-  defp literal_matches?("{", _seg), do: false
-
   defp literal_matches?(part, seg) do
-    if String.starts_with?(part, "{") and String.ends_with?(part, "}") do
-      byte_size(part) > 2
+    if String.starts_with?(part, "{") and String.ends_with?(part, "}") and byte_size(part) > 2 do
+      true
     else
       String.downcase(part) == String.downcase(seg)
     end

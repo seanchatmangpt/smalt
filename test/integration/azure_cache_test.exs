@@ -59,7 +59,7 @@ defmodule Smalt.Integration.AzureCacheTest do
     {line, rest} = resp_line(rest)
     n = String.to_integer(line)
     {items, rest} = Enum.map_reduce(1..n//1, rest, fn _, acc -> parse_resp(acc) end)
-    {{:array, Enum.map(items, fn {t, _} -> t end)}, rest}
+    {{:array, items}, rest}
   end
 
   defp resp_line(bin) do
@@ -219,8 +219,10 @@ defmodule Smalt.Integration.AzureCacheTest do
   } do
     assert {:ok, wire} = AzureCache.handle(account, ["HELLO"])
     assert {:array, hello} = dec(wire)
-    assert hello == [{:bulk, "server"}, {:bulk, "redis"}, {:bulk, "version"} | _]
-    assert {:bulk, "2"} = Enum.at(hello, Enum.find_index(hello, &match?({:bulk, "2"}, &1)) - 1)
+    assert [{:bulk, "server"}, {:bulk, "redis"}, {:bulk, "version"} | _] = hello
+
+    proto_idx = Enum.find_index(hello, &match?({:bulk, "proto"}, &1))
+    assert {:bulk, "2"} = Enum.fetch!(hello, proto_idx + 1)
 
     assert {:error, wire} = AzureCache.handle(account, ["HELLO", "3"])
     assert {:error_reply, msg} = dec(wire)
