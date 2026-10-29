@@ -1,14 +1,45 @@
+defmodule Smalt.Egress.W6rSqlRowGateFallthrough do
+  # Test-local mount of the `w6r_fallthrough` chain (delegator first, then
+  # the main `Smalt.EgressRouter`) — same mount shape as
+  # `Smalt.Egress.W6rSqlIngestFallthrough` in the GLD-3 court; a separate
+  # locally-defined module per court keeps every file runnable standalone.
+  # Mounting inside `Smalt.EgressRouter` itself is the coordinator's one-line
+  # integration step (see `Smalt.Egress.GraphRoutes` moduledoc), outside this
+  # lane's lease. Runs the router's body-parse plug first (same
+  # `@parsers_opts` as `lib/smalt/egress_router.ex` `maybe_parse_body/2`):
+  # the delegator's `with_valid_body/2` consumes `conn.body_params`, which
+  # only Plug.Parsers fills.
+  @parsers_opts Plug.Parsers.init(parsers: [:json, :urlencoded], pass: ["*/*"], json_decoder: Jason)
+
+  def init(opts), do: opts
+
+  def call(conn, opts) do
+    conn
+    |> Plug.Parsers.call(@parsers_opts)
+    |> Smalt.Egress.SqlIngestRoutes.call(opts)
+    |> fallthrough()
+  end
+
+  defp fallthrough(%Plug.Conn{halted: true} = conn), do: conn
+
+  defp fallthrough(%Plug.Conn{state: state} = conn) when state in [:sent, :chunked], do: conn
+
+  defp fallthrough(conn), do: Smalt.EgressRouter.call(conn, [])
+end
+
 defmodule Smalt.Gld6SqlRowGateCourtTest do
   use ExUnit.Case, async: false
 
   # GLD-6 security court (v26.10.21): POST /sql-ingest — the SHACL gate
   # extended to the DATA itself. Base harness reuses the GLD-3 wire court — the SQL ingestion wire
   # face. Chicago discipline: real collaborators everywhere — the real
-  # `Smalt.EgressRouter` served over a real Bandit TCP listener, real HTTP
-  # POSTs via :httpc, real `Smalt.SqlIngest` COPY-block parse, real
-  # `Smalt.Powl2.AndonWire` 422 envelope, real `Smalt.Ocel` envelope
-  # validation. No mocks; assertions are on wire bytes (status, headers,
-  # JSON body).
+  # delegator `Smalt.Egress.SqlIngestRoutes` ahead of the real
+  # `Smalt.EgressRouter` (the w6r_fallthrough chain, see
+  # `Smalt.Egress.W6rSqlRowGateFallthrough` above) served over a real Bandit
+  # TCP listener, real HTTP POSTs via :httpc, real `Smalt.SqlIngest`
+  # COPY-block parse, real `Smalt.Powl2.AndonWire` 422 envelope, real
+  # `Smalt.Ocel` envelope validation. No mocks; assertions are on wire bytes
+  # (status, headers, JSON body).
   #
   # Context: solo (internal tier, in-process Bandit + :httpc loopback).
   # No mocks: real Bandit TCP, real :httpc, real SqlIngest parse, real
@@ -21,7 +52,7 @@ defmodule Smalt.Gld6SqlRowGateCourtTest do
     port = free_port()
 
     start_supervised!(
-      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
+      {Bandit, plug: Smalt.Egress.W6rSqlRowGateFallthrough, scheme: :http, port: port}
     )
 
     wait_listening(port, 20)

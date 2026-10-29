@@ -46,6 +46,15 @@ defmodule Smalt.Egress.SqlIngestRoutes do
     |> halt_if_sent()
   end
 
+  # Fallthrough catch-all — the moduledoc contract ("unmatched conns pass
+  # through un-halted") requires this arm: without it a fallthrough conn
+  # raises a FunctionClauseError in do_match/4 (witnessed by probe,
+  # 2026-10-29), which a mounted chain renders as a 500. Return the conn
+  # untouched so the main router's blob splat + 404 catch-all answer.
+  match _ do
+    conn
+  end
+
   # This delegator is LAST in the w6r_fallthrough chain: a sent response that
   # returns un-halted falls through to the main router's blob splat and
   # AlreadySentErrors there (kd07 class, witnessed). Halt the moment a

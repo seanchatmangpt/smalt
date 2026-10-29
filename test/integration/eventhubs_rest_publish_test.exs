@@ -1,7 +1,43 @@
+defmodule Smalt.Egress.W6rEventHubsRestFallthrough do
+  # Test-local mount of the `w6r_fallthrough` chain the delegator moduledocs
+  # describe: the EH-REST delegator router runs FIRST — it answers its face
+  # or passes the conn through un-halted — then the main `Smalt.EgressRouter`
+  # handles everything else. Mounting the chain inside `Smalt.EgressRouter`
+  # itself is the coordinator's one-line integration step (see
+  # `Smalt.Egress.GraphRoutes` moduledoc), deliberately outside the lane
+  # lease, so the court boots the chain locally. Delegator-first ordering is
+  # load-bearing here: POST /{hub}/messages shares its path shape with the
+  # main router's Queue Storage message surface (/{account}/{queue}/messages),
+  # so a bare-router boot lets the queue plane answer the EH face.
+  # lease, so the court boots the chain locally. The chain runs the router's
+  # body-parse plug first (same `@parsers_opts` as
+  # `lib/smalt/egress_router.ex` `maybe_parse_body/2`) — harmless for the
+  # EH face: application/octet-stream rides `pass: ["*/*"]` unconsumed, so
+  # the delegator's capped raw read_body still sees the full body.
+  @parsers_opts Plug.Parsers.init(parsers: [:json, :urlencoded], pass: ["*/*"], json_decoder: Jason)
+
+  def init(opts), do: opts
+
+  def call(conn, opts) do
+    conn
+    |> Plug.Parsers.call(@parsers_opts)
+    |> Smalt.Egress.EventHubsRestRoutes.call(opts)
+    |> fallthrough()
+  end
+
+  defp fallthrough(%Plug.Conn{halted: true} = conn), do: conn
+
+  defp fallthrough(%Plug.Conn{state: state} = conn) when state in [:sent, :chunked], do: conn
+
+  defp fallthrough(conn), do: Smalt.EgressRouter.call(conn, [])
+end
+
 defmodule Smalt.Integration.EventHubsRestPublishTest do
   # EH-REST lane court: the Microsoft-documented Event Hubs REST producer face
-  # (POST /{hub}/messages) over REAL TCP — Bandit + Smalt.EgressRouter + raw
-  # :httpc, no test-adapter conns, no mocks.
+  # (POST /{hub}/messages) over REAL TCP — Bandit + the real delegator
+  # `Smalt.Egress.EventHubsRestRoutes` ahead of the real `Smalt.EgressRouter`
+  # (the w6r_fallthrough chain, see `Smalt.Egress.W6rEventHubsRestFallthrough`
+  # above) + raw :httpc, no test-adapter conns, no mocks.
   #
   # Gates:
   #   1. happy path: raw HTTP publish with a real SharedAccessSignature header
@@ -30,7 +66,8 @@ defmodule Smalt.Integration.EventHubsRestPublishTest do
     {:ok, port} = :inet.port(sock)
     :gen_tcp.close(sock)
 
-    {:ok, _server} = Bandit.start_link(plug: Smalt.EgressRouter, scheme: :http, port: port)
+    {:ok, _server} =
+      Bandit.start_link(plug: Smalt.Egress.W6rEventHubsRestFallthrough, scheme: :http, port: port)
 
     %{port: port}
   end

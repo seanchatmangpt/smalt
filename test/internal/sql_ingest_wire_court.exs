@@ -1,13 +1,47 @@
+defmodule Smalt.Egress.W6rSqlIngestFallthrough do
+  # Test-local mount of the `w6r_fallthrough` chain the delegator moduledocs
+  # describe: the delegator router runs FIRST — it answers its face or passes
+  # the conn through un-halted — then the main `Smalt.EgressRouter` (blob
+  # splat + 404 catch-all) handles everything else. Mounting the chain inside
+  # `Smalt.EgressRouter` itself is the coordinator's one-line integration step
+  # (see `Smalt.Egress.GraphRoutes` moduledoc), deliberately outside the lane
+  # lease, so the court boots the chain locally. Any non-sql-ingest request
+  # passes through the delegator's catch-all and is answered by the REAL main
+  # router — the pass-through arm of the delegator is court-exercised, not
+  # dead code. The chain runs the router's body-parse plug first (same
+  # `@parsers_opts` as `lib/smalt/egress_router.ex` `maybe_parse_body/2`):
+  # the delegator's `with_valid_body/2` consumes `conn.body_params`, which
+  # only Plug.Parsers fills.
+  @parsers_opts Plug.Parsers.init(parsers: [:json, :urlencoded], pass: ["*/*"], json_decoder: Jason)
+
+  def init(opts), do: opts
+
+  def call(conn, opts) do
+    conn
+    |> Plug.Parsers.call(@parsers_opts)
+    |> Smalt.Egress.SqlIngestRoutes.call(opts)
+    |> fallthrough()
+  end
+
+  defp fallthrough(%Plug.Conn{halted: true} = conn), do: conn
+
+  defp fallthrough(%Plug.Conn{state: state} = conn) when state in [:sent, :chunked], do: conn
+
+  defp fallthrough(conn), do: Smalt.EgressRouter.call(conn, [])
+end
+
 defmodule Smalt.SqlIngestWireCourtTest do
   use ExUnit.Case, async: false
 
   # GLD-3 wire court (v26.10.21): POST /sql-ingest — the SQL ingestion wire
   # face. Chicago discipline: real collaborators everywhere — the real
-  # `Smalt.EgressRouter` served over a real Bandit TCP listener, real HTTP
-  # POSTs via :httpc, real `Smalt.SqlIngest` COPY-block parse, real
-  # `Smalt.Powl2.AndonWire` 422 envelope, real `Smalt.Ocel` envelope
-  # validation. No mocks; assertions are on wire bytes (status, headers,
-  # JSON body).
+  # delegator `Smalt.Egress.SqlIngestRoutes` ahead of the real
+  # `Smalt.EgressRouter` (the w6r_fallthrough chain, see
+  # `Smalt.Egress.W6rSqlIngestFallthrough` above) served over a real Bandit
+  # TCP listener, real HTTP POSTs via :httpc, real `Smalt.SqlIngest`
+  # COPY-block parse, real `Smalt.Powl2.AndonWire` 422 envelope, real
+  # `Smalt.Ocel` envelope validation. No mocks; assertions are on wire bytes
+  # (status, headers, JSON body).
   #
   # Context: solo (internal tier, in-process Bandit + :httpc loopback).
 
@@ -18,7 +52,7 @@ defmodule Smalt.SqlIngestWireCourtTest do
     port = free_port()
 
     start_supervised!(
-      {Bandit, plug: Smalt.EgressRouter, scheme: :http, port: port}
+      {Bandit, plug: Smalt.Egress.W6rSqlIngestFallthrough, scheme: :http, port: port}
     )
 
     wait_listening(port, 20)
@@ -177,6 +211,23 @@ defmodule Smalt.SqlIngestWireCourtTest do
     assert s5 == 400
     assert Jason.decode!(r5)["error"]["code"] == "UnsupportedSqlFormat"
     assert Jason.decode!(r5)["error"]["message"] =~ "sqlite"
+  end
+
+  test "fallthrough: a non-sql-ingest request passes the delegator un-halted to the main router",
+       ctx do
+    # The delegator's pass-through arm is real: an unmatched GET must NOT be
+    # swallowed at the delegator (500 FunctionClauseError class) — it falls
+    # through to the main router's 404 catch-all (Azure XML error envelope).
+    {:ok, {{_, status, _}, _headers, resp}} =
+      :httpc.request(
+        :get,
+        {~c"http://127.0.0.1:#{ctx.port}/no-such-plane", []},
+        [],
+        body_format: :binary
+      )
+
+    assert status == 404, "expected the main router's 404, got #{status}: #{inspect(resp)}"
+    assert resp =~ "RouteNotFound", "expected the catch-all envelope, got: #{inspect(resp)}"
   end
 
 end

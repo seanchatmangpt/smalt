@@ -38,6 +38,16 @@ defmodule Smalt.Egress.EventHubsRestRoutes do
   @pinned_partitions 2
 
   post "/:hub/messages" do
+    conn
+    |> eh_messages_arm(hub)
+    |> halt_if_sent()
+  end
+
+  # The POST /{hub}/messages wire arm, factored out so the route body can
+  # pass through the same sent-response guard the other delegators run
+  # (kd07 class: a sent response that returns un-halted falls through to the
+  # main router's blob splat and AlreadySentErrors there — witnessed).
+  defp eh_messages_arm(conn, hub) do
     if :ets.info(:smalt_eh_partitions) == :undefined do
       route_not_ready(conn)
     else
@@ -49,6 +59,17 @@ defmodule Smalt.Egress.EventHubsRestRoutes do
       else
         {:resp, status, code, message} -> send_error(conn, status, code, message)
       end
+    end
+  end
+
+  # Same guard as Smalt.Egress.SqlIngestRoutes.halt_if_sent/1: the moment a
+  # response is on the wire, halt — a mounted fallthrough chain must never
+  # hand a sent conn to the next router.
+  defp halt_if_sent(conn) do
+    if conn.state in [:sent, :chunked] or conn.halted do
+      Plug.Conn.halt(conn)
+    else
+      conn
     end
   end
 
