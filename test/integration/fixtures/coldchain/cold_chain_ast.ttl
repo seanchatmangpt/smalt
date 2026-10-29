@@ -1,0 +1,22 @@
+# RDF AST fixture — hand-compiled documentation artifact for the COLD-1 court.
+# Compilation provenance: COLDCHAIN-CASE-STUDY.md sec 3 (ex:ColdChainExcursionQuery).
+@prefix ex: <http://example.org/> .
+@prefix sql: <http://example.org/sql#> .
+@prefix bio: <http://example.org/bio#> .
+
+ex:ColdChainExcursionQuery a sql:SelectStatement ;
+  sql:tables [ a sql:Join ;
+    sql:left [ a sql:Join ;
+      sql:left [ a sql:Table ; sql:name "ocel_events" ; sql:alias "e" ] ;
+      sql:right [ a sql:Table ; sql:name "ocel_event_object_rel" ; sql:alias "r" ] ;
+      sql:on "e.event_id = r.event_id" ] ;
+    sql:right [ a sql:Table ; sql:name "ocel_objects" ; sql:alias "o" ] ;
+    sql:on "r.object_id = o.object_id" ] ;
+  sql:whereClause [ a sql:And ;
+    sql:left [ a sql:Compare ; sql:op ">" ; sql:operand "e.temp_celsius" ; sql:literal -20.0 ] ;
+    sql:right [ a sql:And ;
+      sql:left [ a sql:Compare ; sql:op "=" ; sql:operand "r.qualifier" ; sql:literal "contains_product" ] ;
+      sql:right [ a sql:Compare ; sql:op "=" ; sql:operand "o.object_type" ; sql:literal "bio:BiologicBatch" ] ] ] ;
+  sql:groupBy [ a sql:Var ; sql:name "o.object_id" ] ;
+  sql:select [ a sql:Max ; sql:operand "e.temp_celsius" ; sql:as "max_temp" ] ,
+              [ a sql:Sum ; sql:operand "e.duration_seconds" ; sql:as "duration" ] .

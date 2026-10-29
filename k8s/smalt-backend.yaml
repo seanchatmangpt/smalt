@@ -1,0 +1,220 @@
+# smalt backend — StatefulSet + headless Service for BEAM peer discovery.
+#
+# Swarm witness: pod 0 pings pod 1 over
+#   net_adm:ping(:'smalt-backend-1.smalt-backend-headless.default.svc.cluster.local')
+#
+# TLS decision (typed): SHARED Secret `smalt-tls`, not per-pod certs.
+#   One leaf cert minted host-side by scripts/gen_dev_cert.sh carrying SANs
+#   for both pod FQDNs + localhost + the NodePort host loopback; mounted
+#   read-only into every replica. Per-pod generation was rejected: the
+#   release image has no cert-minting step (no openssl invocation in
+#   docker/Dockerfile or rel/), readOnlyRootFilesystem leaves nowhere to
+#   write per-pod material at boot, and every SDK leg already trusts one
+#   dev CA. Close condition: a cert-mint initContainer lane when the image
+#   grows a real per-pod identity.
+#
+# Env contract matches the burn blueprint (k8s/burn/smalt-deployment.yaml)
+# and lib/smalt/config.ex (SMALT_* env vars). Probe path /metadata/endpoints
+# is the only auth-exempt HTTP surface (lib/smalt/auth/bearer.ex
+# @exempt_exact).
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smalt-release-cookie
+  namespace: default
+type: Opaque
+stringData:
+  # Overwrite host-side before apply:
+  #   kubectl create secret generic smalt-release-cookie \
+  #     --from-literal=cookie="$(openssl rand -hex 16)" --save-config
+  cookie: replace-me-before-apply
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smalt-backend-env
+  namespace: default
+data:
+  SMALT_ARM_PORT: "9443"
+  SMALT_ARM_TLS_PORT: "9444"
+  SMALT_EGRESS_PORT: "8443"
+  SMALT_AMQP_PORT: "5672"
+  SMALT_EVENT_HUBS_PORT: "5673"
+  SMALT_BIND_IP: "0.0.0.0"
+  SMALT_BIND_ALL_INTERFACES: "true"
+  SMALT_PLANES: "control,data,integration,identity"
+  SMALT_PROFILE: "unbounded"
+  SMALT_DATA_DIR: "/tmp/smalt-data"
+  SMALT_TLS_CERTFILE: "/etc/smalt/tls/cert.pem"
+  SMALT_TLS_KEYFILE: "/etc/smalt/tls/key.pem"
+  ERL_AFLAGS: "-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9009"
+  RELEASE_DISTRIBUTION: "name"
+---
+# Headless service: per-pod DNS for BEAM distribution.
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-backend-headless
+  namespace: default
+  labels:
+    app: smalt-backend
+spec:
+  clusterIP: None
+  selector:
+    app: smalt-backend
+  ports:
+    - { name: arm-mgmt, port: 9443, targetPort: arm-mgmt }
+    - { name: arm-tls, port: 9444, targetPort: arm-tls }
+    - { name: data-egress, port: 8443, targetPort: data-egress }
+    - { name: amqp-sb, port: 5672, targetPort: amqp-sb }
+    - { name: eh, port: 5673, targetPort: eh }
+    - { name: epmd, port: 4369, targetPort: epmd }
+    - { name: erl-dist, port: 9000, targetPort: erl-dist }
+---
+# Client-facing ClusterIP service (stable VIP over both replicas).
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-backend
+  namespace: default
+spec:
+  selector:
+    app: smalt-backend
+  ports:
+    - { name: arm-mgmt, port: 9443, targetPort: arm-mgmt }
+    - { name: arm-tls, port: 9444, targetPort: arm-tls }
+    - { name: data-egress, port: 8443, targetPort: data-egress }
+    - { name: amqp-sb, port: 5672, targetPort: amqp-sb }
+  type: ClusterIP
+---
+# Host-reachable NodePorts (wired to the laptop by kind-config.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-backend-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: smalt-backend
+  ports:
+    - { name: arm-mgmt, port: 9443, targetPort: arm-mgmt, nodePort: 30943 }
+    - { name: arm-tls, port: 9444, targetPort: arm-tls, nodePort: 30944 }
+    - { name: data-egress, port: 8443, targetPort: data-egress, nodePort: 30843 }
+    - { name: amqp-sb, port: 5672, targetPort: amqp-sb, nodePort: 30572 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: smalt-backend
+  namespace: default
+  labels:
+    app: smalt-backend
+spec:
+  serviceName: smalt-backend-headless
+  replicas: 2                     # scalable; pod N joins via headless DNS
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: smalt-backend
+  template:
+    metadata:
+      labels:
+        app: smalt-backend
+    spec:
+      # Spread the two replicas across the two kind workers.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: smalt-backend
+                topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: smalt
+          # Release-stage image (docker/Dockerfile `FROM deps AS release`,
+          # CMD /app/_release/bin/smalt start) — BEAM name distribution
+          # requires the release boot scripts, not `mix run`.
+          image: smalt:local
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: smalt-backend-env
+          env:
+            - name: RELEASE_NODE
+              value: smalt@$(POD_NAME).smalt-backend-headless.default.svc.cluster.local
+            # BK-CERTSAN (BK-TOPO): leaf cert SANs cover the headless pod FQDNs
+            # so in-cluster TLS clients verifying by hostname (9444 TLS twin)
+            # validate the shared cert. Honored by the image entrypoint mint
+            # (Dockerfile.smalt) and scripts/gen_dev_cert.sh host-side.
+            - name: SMALT_CERT_SAN_HOSTS
+              value: >-
+                smalt-backend-0.smalt-backend-headless.default.svc.cluster.local,
+                smalt-backend-1.smalt-backend-headless.default.svc.cluster.local
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RELEASE_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: smalt-release-cookie
+                  key: cookie
+          ports:
+            - { name: arm-mgmt, containerPort: 9443 }
+            - { name: arm-tls, containerPort: 9444 }
+            - { name: data-egress, containerPort: 8443 }
+            - { name: amqp-sb, containerPort: 5672 }
+            - { name: eh, containerPort: 5673 }
+            - { name: epmd, containerPort: 4369 }
+            - { name: erl-dist, containerPort: 9000 }
+          resources:
+            requests: { cpu: 500m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: tls, mountPath: /etc/smalt/tls, readOnly: true }
+          # BK-PROBE (BK-ARM1 F-1): probes point at the real kernel
+          # self-report (Smalt.Health) — readiness 200/503 on store
+          # integrity + memory bounds + cluster verdict; liveness is the
+          # process/scheduler-only face. /metadata/endpoints is a static
+          # always-200 metadata handler and could never signal degradation.
+          readinessProbe:
+            httpGet:
+              path: /.well-known/health/ready
+              port: arm-mgmt
+            initialDelaySeconds: 10
+            periodSeconds: 3
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /.well-known/health/live
+              port: arm-mgmt
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 3
+      volumes:
+        # tmpfs scratch for /tmp: the only writable path
+        # (readOnlyRootFilesystem requirement); DETS mirrors land under
+        # SMALT_DATA_DIR=/tmp/smalt-data.
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        # Shared TLS Secret (see header comment for the typed decision).
+        - name: tls
+          secret:
+            secretName: smalt-tls

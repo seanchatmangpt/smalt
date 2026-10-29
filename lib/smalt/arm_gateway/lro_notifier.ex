@@ -42,7 +42,10 @@ defmodule Smalt.ArmGateway.LRO.Notifier do
   end
 
   @impl true
-  def init(_opts), do: {:ok, %{waiters: %{}}}
+  def init(_opts) do
+    Process.set_label(%{service: :arm, role: :lro_notifier})
+    {:ok, %{waiters: %{}}}
+  end
 
   @doc """
   Registers a waiter for `op_id`. Replies:
@@ -141,6 +144,16 @@ defmodule Smalt.ArmGateway.LRO.Notifier do
 
   @impl true
   def handle_info({:due_check, op_id}, state) do
+    # IMPL-25 (Armstrong tenet 5, selective drain): every waiter registration
+    # schedules its own one-shot `{:due_check, op_id}` timer, so a burst of
+    # registrations on ONE op queues N duplicate checks. Each check is an
+    # idempotent store re-read whose result is monotone (InProgress -> terminal
+    # only), and the check we are already running executes at a time >= any
+    # drained duplicate would have — so latest-wins coalescing of same-op
+    # duplicates preserves semantics exactly. Different ops' checks are never
+    # touched (selective: only `^op_id` matches are drained).
+    state = drain_due_checks(op_id, state)
+
     case Store.get(:smalt_operations, op_id) do
       {:ok, %{"status" => "InProgress"} = record} ->
         if LRO.due?(record) do
@@ -171,6 +184,18 @@ defmodule Smalt.ArmGateway.LRO.Notifier do
   end
 
   # -- internals ----------------------------------------------------------------
+
+  # Drains every queued `{:due_check, ^op_id}` duplicate (receive + after 0,
+  # bounded by the mailbox contents — never a sleep; receive-after-0 is a
+  # mailbox observation, not time-based coordination). Unrelated messages
+  # (other ops' checks, :DOWN, casts, calls) pass through untouched.
+  defp drain_due_checks(op_id, state) do
+    receive do
+      {:due_check, ^op_id} -> drain_due_checks(op_id, state)
+    after
+      0 -> state
+    end
+  end
 
   # Schedules the one-shot due check at the record's remaining delay (>= 0).
   defp schedule_due_check(

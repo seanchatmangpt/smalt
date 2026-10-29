@@ -1,0 +1,1 @@
+{"machine":"darwin-aarch64-apple-darwin25.2.0","mode":"invm","op":"emit_collect","errors":255,"n":256,"lane":"apex4-telemetry","surface":"sb-queue-telemetry","events_per_sec":null,"publish_eps":2.56e5,"collect_lag_p50_ms":null,"collect_lag_p95_ms":null,"collect_lag_max_ms":null,"publish_ms":1,"drain_ms":0,"loss":255,"topic":"apex4-t-1792610635768-33094"}

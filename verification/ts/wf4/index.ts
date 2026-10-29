@@ -104,17 +104,17 @@ export async function run(ctx: Ctx): Promise<WfResult> {
   // never reaches terminality), so the lifecycle is asserted over bounded raw
   // wire calls (same bounded-poll law; every call has a wire-shaped verdict).
   const dk = `${vault}/keys/${keyName}?api-version=7.4`;
-  const dkd = `${vault}/deletedkeys/${keyName}?api-version=7.4`;
+  const dkd = `${vault}/deletedkeys/${keyName}`;
   const h = { authorization: `Bearer ${tok.token}` };
   const delRes = await fetch(dk, { method: "DELETE", headers: h });
   p("kv-soft-delete", delRes.status === 200 ? GREEN : "FAIL",
     `DELETE /keys -> ${delRes.status}${delRes.status === 200 ? " (deletedDate present)" : ""}`);
-  const getDel = await fetch(dkd, { headers: h });
+  const getDel = await fetch(`${dkd}?api-version=7.4`, { headers: h });
   p("kv-get-deleted", getDel.status === 200 ? GREEN : "FAIL",
     `GET /deletedkeys -> ${getDel.status} (recoverable-plane ${getDel.status === 200 ? "present" : "MISSING — recover/purge unexercisable"})`);
-  const rec = await fetch(`${dkd}/recover`, { method: "POST", headers: h });
+  const rec = await fetch(`${dkd}/recover?api-version=7.4`, { method: "POST", headers: h });
   p("kv-recover", rec.status === 200 ? GREEN : "FAIL", `POST /deletedkeys/recover -> ${rec.status}`);
-  const purge = await fetch(dkd, { method: "DELETE", headers: h });
+  const purge = await fetch(`${dkd}?api-version=7.4`, { method: "DELETE", headers: h });
   p("kv-purge", [200, 204, 404].includes(purge.status) ? GREEN : "FAIL",
     `DELETE /deletedkeys (purge) -> ${purge.status}; post-purge /keys/${keyName} -> ${(await fetch(dk, { headers: h })).status}`);
 

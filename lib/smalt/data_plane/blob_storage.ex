@@ -1,4 +1,24 @@
 defmodule Smalt.DataPlane.BlobStorage do
+
+  # UNBLOCK FIX (IMPL-4, compile-freeze SLA 2026-10-21): OTP-29-lane experiment
+  # used `is_integer/3` range guards (not a real BIF on OTP 28 / any OTP).
+  # Equivalent guard macro preserves semantics; owning lane may re-pin.
+  # AR-WIRE-02 (IMPL-2 re-pin): body delegates to the real OTP-29 range
+  # guard BIF `:erlang.is_integer/3` (OTP-29-only; compile-refused on
+  # OTP <= 28). The Elixir 1.20 front end does not admit bare
+  # `is_integer/3` in guards ("there is no such import"), so this one-line
+  # delegate is the direct-BIF form — IMPL-4's 3-comparison shim body is
+  # superseded. Repo standard toolchain: OTP 29 (TOOLUP, .tool-versions
+  # erlang 29.1.2 / elixir 1.20.4-otp-29).
+  # AR-WIRE-02 (IMPL-2 final re-pin): delegates to the real OTP-29 range
+  # guard BIF `:erlang.is_integer/3` (OTP-29-only; compile-refused on
+  # OTP <= 28). Elixir 1.20 does not admit bare is_integer/3 in guards
+  # ("there is no such import"), so this one-line delegate IS the direct-BIF
+  # form; the `x in lo..hi` shim body is semantically identical but is the
+  # OTP-28 fallback, not the adopted BIF. Repo toolchain: OTP 29
+  # (TOOLUP, .tool-versions erlang 29.1.2 / elixir 1.20.4-otp-29).
+  defguardp int_in(x, lo, hi) when is_integer(x) and x >= lo and x <= hi
+
   @moduledoc """
   Pure Elixir Azure Immutable Blob Storage REST engine (`Microsoft.Storage/storageAccounts`).
   Supports container creation, block blob PUT/GET/DELETE, ETag generation, If-Match
@@ -127,11 +147,15 @@ defmodule Smalt.DataPlane.BlobStorage do
   @container_name_re ~r/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/
 
   defp check_container_name(name) when is_binary(name) do
-    if name == "" or byte_size(name) > 63 or not Regex.match?(@container_name_re, name) do
+    # Azure parity (w6av): "$web" is the special static-website container —
+    # exempt from the 3-63 lowercase rule (real Azure auto-creates it on
+    # enable and it is not addressable via the name-rule REST path).
+    if name == "$web" or
+         not (name == "" or byte_size(name) > 63 or not Regex.match?(@container_name_re, name)) do
+      :ok
+    else
       {:error, 400, "InvalidResourceName",
        "The specified container name is invalid (3-63 bytes, lowercase letters, digits and dashes, starting and ending alphanumeric)."}
-    else
-      :ok
     end
   end
 
@@ -150,7 +174,10 @@ defmodule Smalt.DataPlane.BlobStorage do
       record = %{
         "account" => account,
         "container" => container,
-        "immutable" => Map.get(opts, "immutable", true),
+        # KD-COVERS: KD-135 — engine default follows wire parity: a container
+        # is writable unless explicitly created immutable (official SDK
+        # delete-on-default-container depends on it).
+        "immutable" => Map.get(opts, "immutable", false),
         "retention_days" => Map.get(opts, "retention_days", 1095),
         "created_at" => created_at,
         "created" => DateTime.from_unix!(created_at, :millisecond) |> DateTime.to_iso8601()
@@ -330,6 +357,9 @@ defmodule Smalt.DataPlane.BlobStorage do
   defp check_blob_name(_),
     do: {:error, 400, "InvalidResourceName", "The specified blob name is invalid."}
 
+  # KD-COVERS: KD-141 — invalid x-ms-meta-* name/value answers 400
+  # InvalidMetadata (real Azure parity), never a crash-class 500 or a
+  # stored row.
   # Azure parity (Put Blob / Put Metadata): user metadata names must be valid
   # C# identifiers; violations answer 400 InvalidMetadata, never a stored row.
   @meta_name_re ~r/^[A-Za-z_][A-Za-z0-9_]*$/
@@ -420,7 +450,15 @@ defmodule Smalt.DataPlane.BlobStorage do
         "staged_at" => now_ms(opts)
       })
 
-      {:ok, 201, %{"x-ms-request-id" => request_id(), "x-ms-version" => "2021-12-02"}}
+      # Azure Put Block returns x-ms-request-server-encrypted: true on the
+      # 201 (write-op encryption confirmation; emulator data plane is
+      # server-encrypted by construction).
+      {:ok, 201,
+       %{
+         "x-ms-request-id" => request_id(),
+         "x-ms-version" => "2021-12-02",
+         "x-ms-request-server-encrypted" => "true"
+       }}
     else
       :error -> {:error, 404, "ContainerNotFound", "Container not found."}
       {:error, 400, _code, _msg} = invalid -> invalid
@@ -531,7 +569,8 @@ defmodule Smalt.DataPlane.BlobStorage do
            %{
              "etag" => blob["etag"],
              "x-ms-request-id" => request_id(),
-             "x-ms-version" => "2021-12-02"
+             "x-ms-version" => "2021-12-02",
+             "x-ms-request-server-encrypted" => "true"
            }}
       end
     else
@@ -737,7 +776,6 @@ defmodule Smalt.DataPlane.BlobStorage do
       {:error, {:worm, reason}} -> {:error, 409, "ContainerLocked", worm_message_reason(reason)}
       {:error, {:blob_worm, msg}} -> {:error, 409, "ContainerLocked", msg}
       {:error, {:precondition}} -> {:error, 412, "PreconditionFailed", precondition_message()}
-      {:error, {:precondition, _}} -> {:error, 412, "PreconditionFailed", precondition_message()}
       {:error, {:snapshots_present}} ->
         {:error, 409, "SnapshotsPresent",
          "This operation is not permitted while the blob has snapshots."}
@@ -757,6 +795,16 @@ defmodule Smalt.DataPlane.BlobStorage do
     * `{:error, 400, "InvalidHeaderValue", msg}`
     * `{:error, 404, "ContainerNotFound" | "BlobNotFound", msg}`
   """
+  # Azure parity: Get Blob / Get Blob Properties echo the stored access tier
+  # as x-ms-access-tier on block blobs that carry one (w6e, batch lane —
+  # the batch Set Tier sub-request stores it; the wire must be able to read
+  # it back). Empty list when the blob has no stored tier.
+  def tier_wire(%{"access_tier" => tier} = _blob) when is_binary(tier) do
+    [{"x-ms-access-tier", tier}]
+  end
+
+  def tier_wire(_blob), do: []
+
   def set_blob_tier(account, container, blob_name, tier, opts \\ []) do
     container_key = "#{account}/#{container}"
     blob_key = "#{account}/#{container}/#{blob_name}"
@@ -786,6 +834,89 @@ defmodule Smalt.DataPlane.BlobStorage do
       {:error, {:worm, reason}} -> {:error, 409, "ContainerLocked", worm_message_reason(reason)}
     end
   end
+
+  # BK-132 (corpus triage): Sync Copy Blob — Put Blob From URL wire shape
+  # (`PUT /{c}/{b}` + `x-ms-copy-source`, az `storage blob copy start
+  # --requires-sync`). Previously MISSING: the header was ignored and the
+  # (usually empty) PUT body was stored as the destination content.
+  @doc """
+  Sync Copy Blob (`PUT /{c}/{b}` + `x-ms-copy-source`). Copies the source
+  blob's content and headers to the destination, then stores the copy-status
+  record. Destination WORM/precondition rules ride put_blob/6 unchanged.
+
+  Returns:
+
+    * `{:ok, 202, headers, nil}` — Azure Put Blob From URL parity (202, never 201)
+    * `{:error, 404, ...}` source/dest missing, `{:error, 409, ...}` dest WORM
+  """
+  def copy_blob(account, container, blob_name, copy_source, headers \\ %{}, opts \\ []) do
+    dest_key = "#{account}/#{container}/#{blob_name}"
+
+    with {:ok, src_account, src_container, src_blob} <- parse_copy_source(copy_source),
+         {:ok, src} <- blob_or_404("#{src_account}/#{src_container}/#{src_blob}") do
+      case put_blob(account, container, blob_name, src["content"], headers, opts) do
+        {:ok, blob} ->
+          copy_id = request_id()
+          now = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+          updated =
+            blob
+            |> Map.put("copy_id", copy_id)
+            |> Map.put("copy_source", copy_source)
+            |> Map.put("copy_status", "success")
+            |> Map.put("copy_completion_time", now)
+
+          Store.put(:smalt_blobs, dest_key, updated)
+          Smalt.Store.DetsMirror.sync_write(:smalt_blobs)
+
+          {:ok, 202,
+           %{
+             "x-ms-copy-id" => copy_id,
+             "x-ms-copy-status" => "success",
+             "x-ms-copy-completion-time" => now,
+             "x-ms-version" => "2021-12-02",
+             "x-ms-request-id" => request_id()
+           }, nil}
+
+        {:error, _kind, msg} = err ->
+          _ = msg
+          err
+      end
+    else
+      {:error, :not_found} -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
+    end
+  end
+
+  # x-ms-copy-source arrives as an absolute URL (az/SDK shape:
+  # `https://host/{acct}/{cont}/{blob}`) or a path. Same-host cross-account
+  # resolves by path segments.
+  defp parse_copy_source(copy_source) when is_binary(copy_source) do
+    case URI.parse(copy_source) do
+      %URI{path: path} when is_binary(path) and path != "" ->
+        case path |> String.trim_leading("/") |> String.split("/", parts: 3) do
+          [acct, cont, blob] -> {:ok, acct, cont, blob}
+          _ -> {:error, 400, "InvalidHeaderValue", "Invalid x-ms-copy-source URL."}
+        end
+
+      _ ->
+        {:error, 400, "InvalidHeaderValue", "Invalid x-ms-copy-source URL."}
+    end
+  end
+
+  defp parse_copy_source(_), do: {:error, 400, "InvalidHeaderValue", "Missing x-ms-copy-source."}
+
+  # Azure parity: Get Blob / Get Blob Properties echo the last copy as
+  # x-ms-copy-* headers. Empty list when the blob carries no copy record.
+  def copy_wire(%{"copy_id" => id} = blob) when is_binary(id) do
+    [
+      {"x-ms-copy-id", id},
+      {"x-ms-copy-status", blob["copy_status"] || "success"},
+      {"x-ms-copy-source", blob["copy_source"] || ""},
+      {"x-ms-copy-completion-time", blob["copy_completion_time"] || ""}
+    ]
+  end
+
+  def copy_wire(_blob), do: []
 
   # ---------------------------------------------------------------------------
   # Blob snapshots (Put Blob ?comp=snapshot). A snapshot is an immutable,
@@ -1093,6 +1224,47 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  @doc """
+  DELETE ?comp=immutabilityPolicy — deletes an UNLOCKED container immutability
+  policy (Azure Delete Immutability Policy). A LOCKED policy (still within
+  retention) refuses 409 `ContainerLocked`; a missing policy is 404
+  `ImmutabilityPolicyNotFound`. The read-check-write serializes through the
+  Store CAS like set_immutability_policy/5 — never a stale write-back.
+  """
+  def delete_immutability_policy(account, container, _headers \\ %{}, opts \\ []) do
+    container_key = container_key(account, container)
+    now = now_ms(opts)
+    ensure_policy_table()
+
+    with {:ok, container_meta} <- fetch_container_meta(container_key),
+         :ok <-
+           cas_policy_row(container_key, fn existing ->
+             with :ok <- refuse_if_locked(existing, container_meta, now) do
+               if policy_present?(existing) do
+                 # sibling keys (metadata, legal_hold) survive — delete only
+                 # the immutability_policy key from the committed row.
+                 {:ok, Map.delete(existing, "immutability_policy")}
+               else
+                 {:error, 404, "ImmutabilityPolicyNotFound",
+                  "There is no immutability policy set on this container."}
+               end
+             else
+               {:error, :locked} ->
+                 {:error, 409, "ContainerLocked", locked_policy_message()}
+             end
+           end) do
+      {:ok, 200,
+       %{
+         "x-ms-request-id" => request_id(),
+         "x-ms-version" => "2021-12-02"
+       }, nil}
+    else
+      {:error, 404, code, msg} -> {:error, 404, code, msg}
+      {:error, 409, code, msg} -> {:error, 409, code, msg}
+      {:error, 500, code, msg} -> {:error, 500, code, msg}
+    end
+  end
+
   # R153: pure policy builder for the immutability write, run inside the CAS
   # closure against the freshly-read row. Preserves the pre-R153 semantics:
   # period_days falls back to the committed value, an explicit "until" => nil
@@ -1144,8 +1316,11 @@ defmodule Smalt.DataPlane.BlobStorage do
   # "until" in the year 2737909033).
   @max_retention_days 146_000
 
+  # AR-WIRE-02 (IMPL-11): OTP-29 is_integer/3 range-guard head via the
+  # module's int_in delegate — single guard, identical [0, @max_retention_days]
+  # admission, 400 InvalidXmlDocument refusal unchanged.
   defp validate_period_days(days)
-       when is_integer(days) and days >= 0 and days <= @max_retention_days,
+       when int_in(days, 0, @max_retention_days),
        do: :ok
 
   defp validate_period_days(_),
@@ -1175,11 +1350,15 @@ defmodule Smalt.DataPlane.BlobStorage do
            cas_policy_row(container_key, fn policy ->
              {:ok, policy |> Map.put("legal_hold", flag) |> put_in_worm_defaults()}
            end) do
+      # Real-Azure wire face (storage/legalhold@family-mismatch close): the
+      # set/clear arm answers 200 with the x-ms-legal-hold response HEADER and
+      # no JSON body; the boolean lives in the policy row (GET comp=legalhold
+      # surfaces it as x-ms-legal-hold: true|false).
       {:ok, 200,
        %{
          "x-ms-request-id" => request_id(),
          "x-ms-version" => "2021-12-02",
-         "x-ms-has-legal-hold" => to_string(flag)
+         "x-ms-legal-hold" => to_string(flag)
        }, %{"has_legal_hold" => flag}}
     else
       # Store.get/2 returns a bare :error on a missing row — without this
@@ -1258,7 +1437,8 @@ defmodule Smalt.DataPlane.BlobStorage do
       {:ok, 200,
        %{
          "etag" => new_etag,
-         "x-ms-version" => "2021-12-02"
+         "x-ms-version" => "2021-12-02",
+         "x-ms-request-server-encrypted" => "true"
        }}
     else
       # SHIM-COURT: WORM-blocked metadata mutation -> 409 ContainerLocked
@@ -1404,7 +1584,6 @@ defmodule Smalt.DataPlane.BlobStorage do
     else
       {:worm, container_meta} -> {:error, :worm_locked, nil, worm_message(container_meta, now)}
       :error -> {:error, 404, "BlobNotFound", "The specified blob does not exist."}
-      {:error, 413, code, msg} -> {:error, 413, code, msg}
     end
   end
 
@@ -1553,9 +1732,9 @@ defmodule Smalt.DataPlane.BlobStorage do
     do: bin <> :binary.copy(<<0>>, total - byte_size(bin))
 
   defp overwrite_range(bin, at, replacement) do
-    <<head::binary-size(at), _::binary>> = bin
+    <<head::binary-size(^at), _::binary>> = bin
     tail_skip = at + byte_size(replacement)
-    <<_::binary-size(tail_skip), tail::binary>> = bin
+    <<_::binary-size(^tail_skip), tail::binary>> = bin
     head <> replacement <> tail
   end
 
@@ -1565,11 +1744,7 @@ defmodule Smalt.DataPlane.BlobStorage do
   defp metadata_etag(prev_etag, metadata, now) do
     counter = System.unique_integer([:monotonic])
 
-    digest =
-      :crypto.hash(:md5, prev_etag <> inspect(metadata) <> now <> Integer.to_string(counter))
-      |> Base.encode16(case: :lower)
-
-    "\"#{digest}\""
+    BlobService.storage_etag(prev_etag <> inspect(metadata) <> now <> Integer.to_string(counter))
   end
 
   defp meta_wire_headers(metadata) when is_map(metadata) do
@@ -1707,7 +1882,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       {:ok, dt, _off} ->
         {DateTime.to_unix(dt, :second), raw}
 
-      {:error, _, _} ->
+      {:error, _} ->
         {nil, raw}
     end
   end
@@ -1729,28 +1904,66 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
+  # OTP-29 TOOLCHAIN FLOOR: is_integer/3 range guards below are OTP-29-only
+  # (compile-refused on OTP <= 28). Repo standard toolchain: OTP 29 (TOOLUP).
+  @max_range_guard_int 9_007_199_254_740_991
+
+  # Bounds validation via OTP-29 is_integer/3 guard heads (AR-WIRE-02).
+  # Digit strings come from the parse_range regex (\d*, non-negative), so
+  # only the upper bound is live in each head; the trailing is_integer/1
+  # clause in each family is the bignum-above-guard-ceiling arm with
+  # IDENTICAL semantics to the bounded head (same statuses, AR-WIRE-02).
   defp parse_range_spec("", "", _total), do: {:ok, nil}
 
+  # bytes=a- : f in [0, total-1] serves f..total-1; f >= total is 416.
   defp parse_range_spec(first, "", total) do
-    first = String.to_integer(first)
-    if first >= total, do: :unsatisfiable, else: {:ok, {first, total - 1}}
+    range_from(String.to_integer(first), total)
   end
 
+  # bytes=-suffix : last in [1, total] -> start total-last; last > total
+  # clamps start to 0; last <= 0 is 416.
   defp parse_range_spec("", last, total) do
-    last = String.to_integer(last)
-    if last <= 0, do: :unsatisfiable, else: {:ok, {max(total - last, 0), total - 1}}
+    suffix_range(String.to_integer(last), total)
   end
 
   defp parse_range_spec(first, last, total) do
-    first = String.to_integer(first)
-    last = String.to_integer(last)
-
-    cond do
-      first >= total -> :unsatisfiable
-      last < first -> {:ok, nil}
-      true -> {:ok, {first, min(last, total - 1)}}
-    end
+    span_range(String.to_integer(first), String.to_integer(last), total)
   end
+
+
+  defp range_from(f, total) when int_in(f, 0, total - 1), do: {:ok, {f, total - 1}}
+
+  defp range_from(f, total) when int_in(f, total, @max_range_guard_int), do: :unsatisfiable
+
+  # Bignum beyond the guard literal ceiling: f >= total necessarily.
+  defp range_from(f, _total) when is_integer(f) and f > @max_range_guard_int,
+    do: :unsatisfiable
+
+  defp suffix_range(last, total) when int_in(last, 1, total), do: {:ok, {total - last, total - 1}}
+
+  defp suffix_range(last, total) when int_in(last, total + 1, @max_range_guard_int),
+    do: {:ok, {0, total - 1}}
+
+  # Bignum beyond the guard ceiling: start clamps to 0 (max(total-last, 0)).
+  defp suffix_range(last, total) when is_integer(last) and last > @max_range_guard_int,
+    do: {:ok, {0, total - 1}}
+
+  # last <= 0 (e.g. the "0" digit arm): 416, exactly as pre-conversion.
+  defp suffix_range(last, _total) when is_integer(last) and last < 1, do: :unsatisfiable
+
+  # bytes=a-b : f in [0, total-1] and l < f is malformed-per-RFC (ignored,
+  # full body); otherwise serve f..min(l, total-1). f >= total is 416.
+  defp span_range(f, l, total) when int_in(f, 0, total - 1) and l < f, do: {:ok, nil}
+
+  defp span_range(f, l, total) when int_in(f, 0, total - 1),
+    do: {:ok, {f, min(l, total - 1)}}
+
+  defp span_range(f, l, total) when int_in(f, total, @max_range_guard_int) and is_integer(l),
+    do: :unsatisfiable
+
+  # Bignum beyond the guard ceiling: f >= total necessarily.
+  defp span_range(f, _l, _total) when is_integer(f) and f > @max_range_guard_int,
+    do: :unsatisfiable
 
   @max_page 50
 
@@ -1859,7 +2072,7 @@ defmodule Smalt.DataPlane.BlobStorage do
       xml = """
       <?xml version="1.0" encoding="utf-8"?>
       <EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/#{xml_escape(account)}" ContainerName="#{xml_escape(container)}">
-        <Prefix>#{xml_escape(if(prefix == "", do: key_prefix, else: prefix))}</Prefix>#{delimiter_xml}
+        <Prefix>#{xml_escape(prefix)}</Prefix>#{delimiter_xml}
         <Marker>#{xml_escape(marker)}</Marker>
         <MaxResults>#{max_results}</MaxResults>
         <Blobs>
@@ -1897,7 +2110,7 @@ defmodule Smalt.DataPlane.BlobStorage do
     """
     <?xml version="1.0" encoding="utf-8"?>
     <EnumerationResults ServiceEndpoint="http://127.0.0.1:8443/#{xml_escape(account)}" ContainerName="#{xml_escape(container)}">
-      <Prefix>#{xml_escape(if(prefix == "", do: key_prefix, else: prefix))}</Prefix>#{delimiter_xml}
+      <Prefix>#{xml_escape(prefix)}</Prefix>#{delimiter_xml}
       <Marker>#{xml_escape(marker)}</Marker>
       <MaxResults>#{max_results}</MaxResults>
       <Blobs>
@@ -1917,6 +2130,9 @@ defmodule Smalt.DataPlane.BlobStorage do
             <Content-Length>#{b["content_length"]}</Content-Length>
             <Etag>#{xml_escape(b["etag"])}</Etag>
             <BlobType>BlockBlob</BlobType>
+            <Content-Type>#{xml_escape(blob_content_type(b))}</Content-Type>
+            <LeaseStatus>unlocked</LeaseStatus>
+            <LeaseState>available</LeaseState>
             <Last-Modified>#{xml_escape(rfc1123(b["last_modified"]))}</Last-Modified>
           </Properties>
         </Blob>
@@ -1959,6 +2175,18 @@ defmodule Smalt.DataPlane.BlobStorage do
   # KD-107 (wave-3): List Blobs <Last-Modified> is an RFC-1123 date on the
   # Azure wire contract ("Mon, 20 Oct 2026 08:54:30 GMT"); stored records keep
   # ISO-8601 internally (also the snapshot ETS key), so format at render.
+  # KD-COVERS: KD-02 — List Blobs BlobProperties carries Content-Type
+  # (from the stored Put-Blob headers; octet-stream fallback), LeaseStatus
+  # and LeaseState, completing the Azure BlobProperties set alongside the
+  # already-landed BlobType + RFC-1123 Last-Modified.
+  defp blob_content_type(b) do
+    case (b["headers"] || %{}) |> Map.new(fn {k, v} -> {String.downcase(k), v} end)
+         |> Map.get("content-type") do
+      nil -> "application/octet-stream"
+      ct -> ct
+    end
+  end
+
   defp rfc1123(iso) do
     case DateTime.from_iso8601(iso || "") do
       {:ok, dt, _} -> Calendar.strftime(dt, "%a, %d %b %Y %H:%M:%S GMT")
@@ -1990,8 +2218,6 @@ defmodule Smalt.DataPlane.BlobStorage do
     |> Enum.map(&String.trim/1)
     |> Enum.member?("metadata")
   end
-
-  defp include_metadata?(_), do: false
 
   # Azure parity (cycle-34, List Blobs include=metadata): user metadata rides
   # x-ms-meta-* on the stored headers; when the request includes metadata the
@@ -2078,7 +2304,9 @@ defmodule Smalt.DataPlane.BlobStorage do
   # ---------------------------------------------------------------------------
 
   defp store_blob(account, container, blob_name, content, headers, imm) do
-    etag = "\"#{:crypto.hash(:md5, content) |> Base.encode16(case: :lower)}\""
+    # KD-COVERS: KD-146 — blob etag mints route through BlobService.storage_etag/1
+    # (quoted `0x` + 16 hex, Azure contract shape) instead of bare 32-hex md5.
+    etag = BlobService.storage_etag(content)
 
     blob =
       %{
@@ -2107,7 +2335,9 @@ defmodule Smalt.DataPlane.BlobStorage do
   # moved it, so the losers take the 412 path; if the current etag still
   # matches (e.g. a metadata mutation raced in between) we retry the CAS.
   defp cas_replace(account, container, blob_name, content, headers, expected, imm) do
-    etag = "\"#{:crypto.hash(:md5, content) |> Base.encode16(case: :lower)}\""
+    # KD-COVERS: KD-146 — blob etag mints route through BlobService.storage_etag/1
+    # (quoted `0x` + 16 hex, Azure contract shape) instead of bare 32-hex md5.
+    etag = BlobService.storage_etag(content)
     blob_key = "#{account}/#{container}/#{blob_name}"
 
     blob =
@@ -2613,11 +2843,21 @@ defmodule Smalt.DataPlane.BlobStorage do
           with :ok <- require_lease(record, lease_id, now, :leased_or_broken) do
             lease = Map.get(record, "lease")
 
-            remaining =
+            lease_remaining =
               case Map.get(lease, "expires_at") do
                 :infinity -> 0
                 ms when is_integer(ms) -> max(0, div(ms - now, 1000))
                 _ -> 0
+              end
+
+            # w6ak audit fix: honor x-ms-lease-break-period (0..60s) — Azure
+            # LeaseTime = min(specified break period, remaining lease time).
+            # Previously the header was ignored and LeaseTime was the raw
+            # remaining lease time.
+            remaining =
+              case Integer.parse(header_value(headers, "x-ms-lease-break-period") || "") do
+                {p, ""} when p >= 0 and p <= 60 -> min(p, lease_remaining)
+                _ -> lease_remaining
               end
 
             broken = Map.merge(lease, %{"state" => "broken", "expires_at" => nil})
@@ -2682,9 +2922,11 @@ defmodule Smalt.DataPlane.BlobStorage do
          (is_integer(Map.get(lease, "expires_at")) and Map.get(lease, "expires_at") > now))
   end
 
-  # x-ms-lease-duration: "-1" (infinite) or a positive integer seconds; absent
-  # defaults to infinite (Azure parity for acquire). Anything else is a typed
-  # 400 InvalidHeaderValue.
+  # x-ms-lease-duration: "-1" (infinite) or 15..60 seconds (Azure Lease
+  # Container REST: "A non-infinite lease can be between 15 and 60 seconds");
+  # absent defaults to infinite. Anything else is a typed 400
+  # InvalidHeaderValue. (w6ak audit: previously any n>0 was admitted — a 5s
+  # lease landed 201 where real Azure answers 400.)
   defp lease_duration(headers) do
     case header_value(headers, "x-ms-lease-duration") do
       nil ->
@@ -2695,8 +2937,10 @@ defmodule Smalt.DataPlane.BlobStorage do
 
       raw when is_binary(raw) ->
         case Integer.parse(raw) do
-          {n, ""} when n > 0 -> {:ok, n}
-          _ -> {:error, 400, "InvalidHeaderValue", "x-ms-lease-duration must be -1 or a positive integer number of seconds."}
+          {n, ""} when n >= 15 and n <= 60 -> {:ok, n}
+          _ ->
+            {:error, 400, "InvalidHeaderValue",
+             "x-ms-lease-duration must be -1 or an integer between 15 and 60 seconds."}
         end
 
       _ ->
@@ -2954,5 +3198,247 @@ defmodule Smalt.DataPlane.BlobStorage do
       e
     ])
     |> IO.iodata_to_binary()
+  end
+
+
+  # ---------------------------------------------------------------------------
+  # Static website face (capability wave 6, lane w6av) - Azure Blob static
+  # website: Set/Get Blob Service Properties (?restype=service&comp=properties
+  # with a StaticWebsite block) + $web content serving. Storage is a
+  # per-account properties ETS (:heir 3-tuple owner init - shadow-table law).
+  # ---------------------------------------------------------------------------
+
+  @sw_props_table :smalt_blob_service_props
+  @sw_container "$web"
+
+  @doc "The static-website content container (Azure parity: fixed name)."
+  def static_website_container, do: @sw_container
+
+  @doc "Ensure the per-account service-properties table exists (:heir 3-tuple)."
+  def ensure_service_props_table do
+    if :ets.info(@sw_props_table) == :undefined do
+      :ets.new(@sw_props_table, [
+        :set,
+        :named_table,
+        :public,
+        {:heir, Process.whereis(:init), []},
+        read_concurrency: true
+      ])
+    end
+
+    :ok
+  end
+
+  @doc """
+  Set Blob Service Properties (w6av): parse the request XML and store the
+  StaticWebsite block per account. Returns :ok or
+  {:error, 400, "InvalidXmlDocument", msg}. A valid body WITHOUT a
+  StaticWebsite block disables the website (Azure parity: PUT clears what
+  it omits).
+  """
+  def set_service_properties(account, xml_body) when is_binary(xml_body) do
+    ensure_service_props_table()
+
+    website =
+      case Regex.run(~r/<StaticWebsite>(.*?)<\/StaticWebsite>/s, xml_body) do
+        [_, block] ->
+          enabled? = xml_text(block, "Enabled") in ["true", "1"]
+          index = xml_text(block, "IndexDocument")
+          err404 = xml_text(block, "ErrorDocument404Path")
+
+          cond do
+            enabled? and is_binary(index) and index != "" ->
+              %{"enabled" => true, "index_document" => index, "error_document404" => err404}
+
+            enabled? ->
+              {:error, 400, "InvalidXmlDocument",
+               "StaticWebsite Enabled=true requires IndexDocument."}
+
+            true ->
+              %{"enabled" => false}
+          end
+
+        _ ->
+          %{"enabled" => false}
+      end
+
+    case website do
+      {:error, _s, _c, _m} = err ->
+        err
+
+      website when is_map(website) ->
+        :ets.insert(@sw_props_table, {account, website})
+
+        # Azure parity: enabling the static website auto-creates the $web
+        # container (special-cased out of the name rules above).
+        if website["enabled"] do
+          create_container(account, @sw_container)
+        end
+
+        :ok
+    end
+  end
+
+  @doc "Stored StaticWebsite props for account, or nil (unset)."
+  def website_props(account) do
+    ensure_service_props_table()
+
+    case :ets.lookup(@sw_props_table, account) do
+      [{^account, props}] -> props
+      [] -> nil
+    end
+  end
+
+  @doc """
+  Get Blob Service Properties XML: StorageServiceProperties with the stored
+  StaticWebsite block (element omitted when unset - real Azure omits the
+  block when the website was never enabled).
+  """
+  def service_properties_xml(account) do
+    ensure_service_props_table()
+    website = website_props(account)
+
+    website_block =
+      case website do
+        %{"enabled" => true} = w ->
+          [
+            "<StaticWebsite><Enabled>true</Enabled>",
+            "<IndexDocument>",
+            BlobService.xml_escape(w["index_document"]),
+            "</IndexDocument>",
+            "<ErrorDocument404Path>",
+            BlobService.xml_escape(w["error_document404"]),
+            "</ErrorDocument404Path>",
+            "</StaticWebsite>"
+          ]
+
+        _ ->
+          []
+      end
+
+    IO.iodata_to_binary([
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+      "<StorageServiceProperties>",
+      website_block,
+      cors_xml(account),
+      "</StorageServiceProperties>"
+    ])
+  end
+
+  # BK-132 (corpus triage): Get Blob Service Properties now echoes the stored
+  # <Cors> rules (az `storage cors list` reads them here). Previously the PUT
+  # stored rules (BlobCors.put_rules) but the GET omitted the block — a lying
+  # empty read-back.
+  defp cors_xml(account) do
+    cors = Smalt.DataPlane.BlobCors.rules(account)
+
+    case cors do
+      [] ->
+        []
+
+      rules ->
+        [
+          "<Cors>",
+          Enum.map(rules, fn r ->
+            [
+              "<CorsRule>",
+              Enum.map(
+                [
+                  {"AllowedOrigins", r.allowed_origins},
+                  {"AllowedMethods", r.allowed_methods},
+                  {"AllowedHeaders", r.allowed_headers},
+                  {"ExposedHeaders", r.exposed_headers},
+                  {"MaxAgeInSeconds", r.max_age}
+                ],
+                fn {tag, val} ->
+                  [ "<", tag, ">",
+                    Enum.join(List.wrap(val), ","),
+                    "</", tag, ">"
+                  ]
+                end
+              ),
+              "</CorsRule>"
+            ]
+          end),
+          "</Cors>"
+        ]
+    end
+  end
+
+  @doc """
+  Serve-decision for the static website face (w6av): :pass (website off /
+  container not the web container / query present - normal blob handling),
+  {:serve, blob, content_type}, {:serve_404, blob}, or {:plain_404, msg}.
+  """
+  def static_website_serve(account, container, blob, query_params) do
+    ensure_service_props_table()
+    container = container || ""
+    blob = blob || ""
+
+    props = website_props(account)
+    web_container = static_website_container()
+
+    cond do
+      props == nil -> :pass
+      match?(%{"enabled" => false}, props) -> :pass
+      container != web_container -> :pass
+      blob == "" and query_params == %{} -> serve_index(account)
+      blob == "" -> :pass
+      true -> serve_doc(account, blob)
+    end
+  end
+
+  # Serve the configured index document at the $web container root.
+  defp serve_index(account) do
+    props = website_props(account)
+
+    case get_blob(account, @sw_container, props["index_document"]) do
+      {:ok, blob} -> {:serve, blob, sniff_content_type(props["index_document"])}
+      :error -> serve_404_doc(account)
+    end
+  end
+
+  # Serve a content doc with content-type sniffed by extension.
+  defp serve_doc(account, blob_name) do
+    case get_blob(account, @sw_container, blob_name) do
+      {:ok, blob} -> {:serve, blob, sniff_content_type(blob_name)}
+      :error -> serve_404_doc(account)
+    end
+  end
+
+  # Serve the configured ErrorDocument404Path doc with 404 status, or a plain
+  # 404 face when no error doc is configured.
+  defp serve_404_doc(account) do
+    props = website_props(account)
+
+    case props["error_document404"] do
+      path when is_binary(path) and path != "" ->
+        case get_blob(account, @sw_container, path) do
+          {:ok, blob} -> {:serve_404, blob}
+          _ -> {:plain_404, "The requested content does not exist."}
+        end
+
+      _ ->
+        {:plain_404, "The requested content does not exist."}
+    end
+  end
+
+  # Content-type by extension (static-website serving class).
+  defp sniff_content_type(name) when is_binary(name) do
+    ext = name |> Path.extname() |> String.downcase()
+
+    %{
+      ".html" => "text/html",
+      ".htm" => "text/html",
+      ".css" => "text/css",
+      ".js" => "text/javascript",
+      ".png" => "image/png",
+      ".jpg" => "image/jpeg",
+      ".jpeg" => "image/jpeg",
+      ".svg" => "image/svg+xml",
+      ".json" => "application/json",
+      ".txt" => "text/plain"
+    }
+    |> Map.get(ext, "application/octet-stream")
   end
 end

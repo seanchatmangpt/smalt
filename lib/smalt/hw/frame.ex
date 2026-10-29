@@ -131,7 +131,7 @@ defmodule Smalt.Hw.Frame do
   defp emit(%{buf: raw} = d) do
     payload =
       with <<len::little-integer-size(16), rest::binary>> <- raw,
-           <<body::binary-size(len), crc::little-integer-size(16), _::binary>> <- rest,
+           <<body::binary-size(^len), crc::little-integer-size(16), _::binary>> <- rest,
            true <- byte_size(rest) == len + 2,
            true <- crc16(<<len::little-integer-size(16), body::binary>>) == crc do
         body

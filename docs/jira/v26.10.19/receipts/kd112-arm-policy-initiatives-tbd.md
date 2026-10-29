@@ -189,3 +189,100 @@ may flip KD-112 only if it accepts that register — otherwise the row stays
 OPEN pending a local venv that actually ships `azure-mgmt-resource[policy]`.
 
 Context: solo (witness lane, block b6, auth=enforce)
+
+---
+
+## SDK-tier witness (PolicyClient, real azure package) — 2026-10-20
+
+Standing: **PASS-EVIDENCED** (all legs real-SDK, output below and in
+`/tmp/kd112_sdk_witness.log`). Context: solo (witness lane, block b7,
+auth=enforce).
+
+### Package resolution (typed, supersedes the run-3 residual)
+
+`pip install azure-mgmt-policy` **does not exist on PyPI** (`No matching
+distribution found` — there is no standalone policy package; witnessed this
+session). The real PolicyClient ships as the `policy` submodule of
+**azure-mgmt-resource**, which the 26.0.0 venv version dropped (26.0.0
+submodule inventory: `['resources']` only — confirms the earlier lane's
+module-level finding). Resolution: `pip install
+azure-mgmt-resource==23.4.0` into `verification/py/.venv` — submodule
+inventory becomes `[..., 'policy', ...]` and `PolicyClient` imports from
+`azure.mgmt.resource.policy`. pyproject leaves `azure-mgmt-resource`
+unpinned, so the downgrade is pin-compatible; disclosure: the shared venv's
+azure-mgmt-resource is now 23.4.0 (ResourceManagementClient still present;
+wf lanes unaffected at import level — resources submodule intact).
+
+### Environment
+
+Substrate: `substrate-ctl up --block b7 --auth enforce` → ports
+[39070..39075] = amqp/eh/**arm(39072)**/egress/**tls(39074)**/mcp
+(scripts/lib/substrate_boot.sh: bN = 39000+10N, order amqp eh arm egress tls
+mcp). PolicyClient rides the TLS twin (`base_url=https://127.0.0.1:39074`,
+`connection_verify=.smalt/tls/ca-cert.pem`), credential = emulator STS
+client_credentials mint per call. Environment finding (pre-existing, not
+policy-surface): boot attempts 1-2 hit shared-`_build` compile freezes from
+concurrent lanes' in-flight edits (cosmos.ex undefined-function, then
+event_grid.ex syntax error); boot succeeded ~90s later with no intervention —
+compile-freeze SLA healed itself, no stale-beam artifact this time.
+
+### Witness (`/tmp/kd112_sdk_witness.py`, exit 0, `WITNESS-PASS all legs`)
+
+`PolicyClient DEFAULT_API_VERSION=2023-04-01`:
+
+- **[1] Initiative via real SDK — PASS.** policy_definitions deny-westus /
+  deny-eastus PUT → 201 (SDK `models.PolicyDefinition`, snake_case kwargs
+  serialized to camelCase wire by msrest attribute_map); initiative PUT
+  `policySetDefinitions/kd112sdk-init` (2 member policyDefinitionId refs) →
+  201; GET → round-trip members=2; LIST → 200 with kd112sdk-init in value.
+- **[2] enforcementMode=Default — PASS.** Assignment GET echoes
+  `enforcement_mode=Default`, policySetDefinitions id; violating
+  `Microsoft.Network/virtualNetworks` PUT (location=westus) → **400
+  PolicyViolation**.
+- **[3] enforcementMode=DoNotEnforce — PASS.** Same assignment re-PUT via
+  `models.PolicyAssignment(enforcement_mode="DoNotEnforce")`; GET echoes
+  DoNotEnforce; same violating PUT → **200/201 upsert** (deny skipped).
+- **[4] Exemption — PASS.** `policy_exemptions.create_or_update` with
+  ARM-cased policyAssignmentId + `exemption_category="Waiver"` → 201; GET →
+  echo. Close-condition chain at Default enforcement: with the full-scope
+  exemption the violating PUT is **admitted (200)**; exemption DELETE →
+  next violating PUT → **400 PolicyViolation again** (waiver genuinely
+  removed, AZB-25c downcase fix holds at the true-SDK tier).
+- **[5] Remediation — PASS.** `Microsoft.Authorization/policyRemediations`
+  route (the PolicyInsights/remediations path is NOT an admitted ontology
+  individual — 400 InvalidResourceShape, typed; the emulator's remediation
+  surface is the Authorization policyRemediations family the raw-wire run
+  used): PUT (policyAssignmentId + resourceIds, ReEvaluateCompliance) →
+  201; POST `trigger` → 200 with `lastTriggeredOn` set; GET → 200.
+
+Probe-order corrections observed live (typed, per-type-latest pins):
+`vnets` → `virtualNetworks` route; network api-version 2024-01-01 refused
+with `InvalidApiVersionParameter` naming 2021-04-01 per-type latest; vnet
+body needs top-level `addressPrefixes` (GraphLaw shape). All corrections
+were falsified-then-fixed in-session against real 400s — none remain open.
+
+### Register impact
+
+KD-112's residual ("true PolicyClient not exercised, package absent") is
+closed: the real SDK client ran every shape leg against the live enforce
+substrate. Row close condition ("SDK initiative create/list and exemption
+create succeed") is now met at the genuine-SDK tier, not just the wire
+mirror. Registrar: flip KD-112 via `scripts/kd_flip.py --apply` gated on
+this receipt's mtime.
+
+## Post-token re-witness (2026-10-20, w6v2) — PASS
+
+`# KD-COVERS: KD-112` landed at lib/smalt/arm_gateway/router.ex:5579 (06:53).
+This re-witness postdates the token. Real output (`MIX_BUILD_ROOT=_build-lane-w6v2
+MIX_ENV=test mix run --no-start tmp/w6v_verify.exs`, exit 0):
+
+```
+PUT_INITIATIVE_OK id=/subscriptions/w6v-1792508891919/providers/Microsoft.Authorization/policySetDefinitions/w6v-init-1
+GET_ECHO_OK name=w6v-init-1
+LIST_COUNT=1
+```
+
+Probe-side correction: the earlier staged body used `policy_definitions`;
+the face requires `properties.policyDefinitions` (non-empty, each member with
+`policyDefinitionId`) — script fixed, surface unchanged. First full-compile
+window since the router split; module-direct real-Store, no mocks.

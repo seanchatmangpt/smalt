@@ -295,9 +295,165 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   # ---------------------------------------------------------------------------
-  # Rotate
+  # Rotation policy (Azure parity: GET/PUT /keys/{name}/rotationpolicy)
   # ---------------------------------------------------------------------------
 
+  @rotation_action_types ["Rotate", "Notify"]
+  @iso8601_duration_re ~r|^P(?!$)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$|
+
+  @doc """
+  `GET /keys/{name}/rotationpolicy` (Azure parity). Returns the stored policy
+  or the default (no-op) policy when never set — real Azure returns 200 with
+  an empty `lifetimeActions` default. Unknown key -> 404 KeyNotFound.
+  """
+  def get_rotation_policy(name) do
+    case fetch(name) do
+      {:ok, record} -> {:ok, 200, rotation_policy_view(record)}
+      :error -> {:error, 404, key_not_found()}
+    end
+  end
+
+  @doc """
+  `PUT /keys/{name}/rotationpolicy` (Azure parity). Validates the
+  KeyRotationPolicy body: `lifetimeActions` elements must be maps with
+  `action.type` in Rotate|Notify; triggers use `timeAfterCreate` or
+  `timeBeforeExpiry` holding ISO-8601 durations (P...T...); `attributes.
+  expiryTime` is an RFC3339 string or nil. Malformed input is a typed 400
+  BadRequest with no write. Unknown key -> 404 KeyNotFound.
+  """
+  def set_rotation_policy(name, params) when is_map(params) do
+    case fetch(name) do
+      {:ok, record} ->
+        with {:ok, policy} <- validate_rotation_policy(params) do
+          updated = Map.put(record, "rotation_policy", policy)
+          Store.put(:smalt_vault_keys, name, updated)
+
+          {:ok, 200, rotation_policy_view(updated)}
+        end
+
+      :error ->
+        {:error, 404, key_not_found()}
+    end
+  end
+
+  def set_rotation_policy(_name, _params),
+    do: {:error, 400, bad_request("InvalidParameter", "rotation policy body must be a JSON object")}
+
+  defp rotation_policy_view(record) do
+    policy = record["rotation_policy"]
+    base = key_base_url(record)
+    created = get_in(record, ["attributes", "created"])
+
+    if policy do
+      %{
+        "id" => "#{base}/keys/rotationPolicy?api-version=#{api_version()}",
+        "lifetimeActions" => policy["lifetimeActions"],
+        "attributes" => %{
+          "expiryTime" => get_in(policy, ["attributes", "expiryTime"]),
+          "created" => created,
+          "updated" => System.system_time(:second)
+        }
+      }
+    else
+      %{
+        "id" => nil,
+        "lifetimeActions" => [],
+        "policyVersion" => nil,
+        "attributes" => %{"expiryTime" => nil, "created" => created}
+      }
+    end
+  end
+
+  defp key_base_url(record) do
+    case record["kid"] do
+      "https://" <> rest -> "https://" <> hd(String.split(rest, "/"))
+      _ -> "https://smalt-vault"
+    end
+  end
+
+  defp validate_rotation_policy(%{"lifetimeActions" => actions} = params) when is_list(actions) do
+    with :ok <- validate_expiry(get_in(params, ["attributes", "expiryTime"])),
+         {:ok, validated} <- validate_lifetime_actions(actions) do
+      {:ok, %{"lifetimeActions" => validated, "attributes" => %{"expiryTime" => get_in(params, ["attributes", "expiryTime"])}}}
+    end
+  end
+
+  defp validate_rotation_policy(_other),
+    do: {:error, 400, bad_request("InvalidParameter", "rotation policy requires a lifetimeActions array")}
+
+  defp validate_expiry(nil), do: :ok
+
+  # KD-COVERS: KD-12 — real AKV KeyRotationPolicy attributes.expiryTime is an
+  # ISO-8601 DURATION ("P30D", per Azure key-rotation-policy grammar), not an
+  # RFC3339 timestamp; the RFC3339-only gate 400'd every SDK-shaped rotation
+  # policy body carrying an expiryTime. Duration shape reuses the trigger
+  # duration validator; RFC3339 stays admitted for backward wire-compat.
+  defp validate_expiry(e) when is_binary(e) do
+    cond do
+      Regex.match?(@iso8601_duration_re, e) -> :ok
+      match?({:ok, _, _}, DateTime.from_iso8601(e)) -> :ok
+      true -> {:error, 400, bad_request("InvalidParameter", "attributes.expiryTime must be an ISO-8601 duration (e.g. P30D) or an RFC3339 timestamp")}
+    end
+  end
+
+  defp validate_expiry(_),
+    do: {:error, 400, bad_request("InvalidParameter", "attributes.expiryTime must be an ISO-8601 duration (e.g. P30D) or an RFC3339 timestamp, or null")}
+
+  defp validate_lifetime_actions(actions) do
+    Enum.reduce_while(actions, {:ok, []}, fn
+      a, {:ok, acc} ->
+        case validate_lifetime_action(a) do
+          {:ok, v} -> {:cont, {:ok, acc ++ [v]}}
+          err -> {:halt, err}
+        end
+
+      _, err ->
+        {:halt, err}
+    end)
+  end
+
+  defp validate_lifetime_action(%{"action" => %{"type" => t}} = a) when t in @rotation_action_types do
+    case trigger_of(a) do
+      {:ok, trigger} -> {:ok, %{"trigger" => trigger, "action" => %{"type" => t}}}
+      err -> err
+    end
+  end
+
+  defp validate_lifetime_action(%{"action" => %{"type" => t}}),
+    do: {:error, 400, bad_request("InvalidParameter", "lifetimeActions action.type #{inspect(t)} is not in [Rotate, Notify]")}
+
+  defp validate_lifetime_action(_),
+    do: {:error, 400, bad_request("InvalidParameter", "each lifetimeActions element requires action.type in [Rotate, Notify]")}
+
+  defp trigger_of(%{"trigger" => %{} = t}) do
+    cond do
+      after_create = t["timeAfterCreate"] ->
+        valid_duration?(after_create)
+        |> result_of(%{"timeAfterCreate" => after_create})
+
+      before_expiry = t["timeBeforeExpiry"] ->
+        valid_duration?(before_expiry)
+        |> result_of(%{"timeBeforeExpiry" => before_expiry})
+
+      true ->
+        {:ok, %{}}
+    end
+  end
+
+  defp trigger_of(%{"trigger" => other}) when not is_map(other),
+    do: {:error, 400, bad_request("InvalidParameter", "trigger must be an object")}
+
+  defp trigger_of(_), do: {:ok, %{}}
+
+  defp valid_duration?(s) when is_binary(s), do: Regex.match?(@iso8601_duration_re, s)
+  defp valid_duration?(_), do: false
+
+  defp result_of(true, value), do: {:ok, value}
+  defp result_of(false, _), do: {:error, 400, bad_request("InvalidParameter", "trigger time must be an ISO-8601 duration (e.g. P30D)")}
+
+  # ---------------------------------------------------------------------------
+  # Rotate
+  # ---------------------------------------------------------------------------
   @doc """
   `POST /keys/:name/rotate` (Azure parity). Mints a NEW version of `name` from
   the SAME policy — kty, key_ops and release_policy are carried from the
@@ -657,6 +813,114 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     end
   end
 
+  # w6bn: secrets twin of update_key_properties — attributes-only update
+  # (enabled/exp/nbf) + tags merge, material untouched, `updated` re-stamped.
+  # The secrets store is keyed by bare name (one row per name, the row's
+  # "id" carries the version); a version argument must MATCH the stored
+  # version (a stale version is a 404, not a silent latest-hit).
+  @doc """
+  Updates secret attributes / tags on an existing secret (PATCH /secrets/:name
+  or /secrets/:name/:version). Attributes merge (enabled/exp/nbf), tags merge;
+  the secret's value never rotates. Version omitted -> latest; a version that
+  does not match the stored row is a 404 SecretNotFound.
+  Returns `{:ok, 200, public_record}` or `{:error, 404, not_found}`.
+  """
+  def update_secret_properties(name, params, version \\ nil) do
+    # KD-COVERS: KD-184 — a version segment resolves the RETAINED version row
+    # (any version in history), not just the latest; unknown version stays a
+    # typed 404 SecretNotFound.
+    version_row? =
+      version not in [nil, ""] and
+        match?({:ok, _}, Store.get(:smalt_vault_secrets, {name, version}))
+
+    cond do
+      version_row? ->
+        {:ok, record} = Store.get(:smalt_vault_secrets, {name, version})
+        patch_secret_record(name, record, params, store_key: {name, version})
+
+      true ->
+        case Store.get(:smalt_vault_secrets, name) do
+          {:ok, record} ->
+            stored_version = Map.get(record, "version")
+
+            if version in [nil, ""] or version == stored_version do
+              patch_secret_record(name, record, params, store_key: name)
+            else
+              {:error, 404, secret_not_found()}
+            end
+
+          :error ->
+            {:error, 404, secret_not_found()}
+        end
+    end
+  end
+
+  defp patch_secret_record(name, record, params, store_key: store_key) do
+    attrs = Map.get(record, "attributes", %{})
+
+    new_attrs =
+      Map.get(params, "attributes") || Map.get(params, "secretAttributes") || %{}
+
+    merged_attrs =
+      attrs
+      |> Map.merge(new_attrs)
+      |> Map.put("updated", System.system_time(:second))
+
+    tags = Map.get(record, "tags", %{})
+    new_tags = Map.get(params, "tags") || %{}
+    merged_tags = Map.merge(tags, new_tags)
+
+    updated_record =
+      record
+      |> Map.put("attributes", merged_attrs)
+      |> Map.put("tags", merged_tags)
+
+    Store.put(:smalt_vault_secrets, store_key, updated_record)
+
+    # Bare-name (latest) patch mirrors onto the latest version's retained row
+    # so the version-addressed read never drifts from the latest view.
+    case store_key do
+      ^name ->
+        case updated_record["version"] do
+          v when is_binary(v) ->
+            case Store.get(:smalt_vault_secrets, {name, v}) do
+              {:ok, _row} ->
+                Store.put(
+                  :smalt_vault_secrets,
+                  {name, v},
+                  Map.put(updated_record, "is_version_row", true)
+                )
+
+              :error ->
+                :ok
+            end
+
+          _ ->
+            :ok
+        end
+
+      _version_row ->
+        :ok
+    end
+
+    {:ok, 200, public_secret_record(updated_record)}
+  end
+
+  # w6bn: public-shape mirror of the router's public_secret_record — the
+  # engine returns the wire shape directly so the route arm is 3 lines.
+  defp public_secret_record(record) do
+    Map.drop(record, ["value", "is_version_row", "versions", "created_seq"])
+  end
+
+  defp secret_not_found do
+    %{
+      "error" => %{
+        "code" => "SecretNotFound",
+        "message" => "A secret with (name/id) was not found in this key vault."
+      }
+    }
+  end
+
   defp fetch_version_rows(name, record) do
     versions = record["versions"]
 
@@ -695,7 +959,9 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   defp not_found(code), do: %{"error" => %{"code" => code}}
 
   defp public_deleted_secret(deleted) do
-    Map.drop(deleted, ["is_deleted_secret"])
+    # KD-S3 bookkeeping (versions index, captured version rows) never leaves
+    # the vault on the deleted-secret bundle.
+    Map.drop(deleted, ["is_deleted_secret", "versions", "version_rows", "created_seq"])
   end
 
   defp public_deleted_record(deleted) do
@@ -717,7 +983,8 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   defp with_key(name, op, params, version, fun) when is_map(params) do
     case fetch(name, version) do
       {:ok, record} ->
-        with :ok <- check_allowed(record, op),
+        with :ok <- check_enabled(record, op),
+             :ok <- check_allowed(record, op),
              {:ok, material} <- key_material(name, version, record) do
           fun.(record, params, material)
         end
@@ -729,6 +996,175 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
   defp with_key(_name, _op, _params, _version, _fun) do
     {:error, 400, bad_request("InvalidParameter", "request body must be a JSON object")}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Backup / restore (wave-6 w6ab) — Azure KV shape over the SAME envelope
+  # contract as VaultData's secret backup (KD-103), extended with the
+  # versioned magic prefix + version-row capture:
+  #   blob = @backup_magic <> "." <> Base64(JSON{checksum, bundle})
+  #   bundle (key) = %{kind: "key", name, record, version_rows}
+  #   bundle (cert) = %{kind: "certificate", name, record}
+  # restore validates magic + checksum; garbage -> typed MalformedBackupBlob
+  # (the Azure 400 face); live name conflict -> NameConflict (the 409 face)
+  # unless force: true. Roundtrip law: backup(k) -> delete k -> restore ->
+  # k byte-equivalent (root row + version rows + key material).
+  # ---------------------------------------------------------------------------
+
+  @backup_magic "SMALT-KVB1"
+
+  @doc """
+  `POST /keys/{name}/backup` face. Returns `{"value" => blob}` where blob is
+  `SMALT-KVB1.<base64 JSON envelope>` carrying the root record, every version
+  row (with private `key_material`) and an inner SHA-256 checksum.
+  Unknown key -> `{:error, 404, KeyNotFound}`.
+  """
+  @spec backup_key(binary()) ::
+          {:ok, 200, %{binary() => binary()}} | {:error, 404, map()}
+  def backup_key(name) when is_binary(name) do
+    case fetch(name) do
+      {:ok, record} ->
+        version_rows =
+          record
+          |> Map.get("versions", [])
+          |> List.wrap()
+          |> Map.new(fn version ->
+            case Store.get(:smalt_vault_keys, {name, version}) do
+              {:ok, row} -> {version, row}
+              :error -> {version, record}
+            end
+          end)
+
+        bundle = %{
+          "kind" => "key",
+          "name" => name,
+          "record" => record,
+          "version_rows" => version_rows
+        }
+
+        {:ok, 200, %{"value" => encode_backup(bundle)}}
+
+      :error ->
+        {:error, 404, key_not_found()}
+    end
+  end
+
+  @doc """
+  `POST /keys/{name}/restore` face. `restore_key(blob)` / `restore_key(blob,
+  force: true)`. Restores the encapsulated key under its own name (root row +
+  every version row + private key material). Typed refusals: malformed or
+  tampered blob -> `{:error, 400, MalformedBackupBlob}`; live name present
+  -> `{:error, 409, NameConflict}` unless `force: true`. Fresh restore ->
+  `{:ok, 201, ...}`; force-overwrite -> `{:ok, 200, ...}`.
+  """
+  @spec restore_key(binary(), keyword()) ::
+          {:ok, 200 | 201, map()} | {:error, 400 | 409, map()}
+  def restore_key(blob, opts \\ []) when is_binary(blob) and is_list(opts) do
+    force = Keyword.get(opts, :force, false)
+
+    with {:ok, bundle} <- decode_backup(blob, "key"),
+         name when is_binary(name) and name != "" <- bundle["name"],
+         record when is_map(record) <- bundle["record"] do
+      case Store.get(:smalt_vault_keys, name) do
+        {:ok, _existing} ->
+          if force do
+            write_key_rows(name, record, bundle["version_rows"] || %{})
+            {:ok, 200, public_record(record)}
+          else
+            {:error, 409, bad_request("NameConflict", "key #{name} exists and is live; delete or purge it before restore")}
+          end
+
+        :error ->
+          write_key_rows(name, record, bundle["version_rows"] || %{})
+          {:ok, 201, public_record(record)}
+      end
+    else
+      {:error, _c, _m} = refusal -> refusal
+      nil -> {:error, 400, bad_request("MalformedBackupBlob", "backup bundle requires string \"name\" and map \"record\"")}
+      _ -> {:error, 400, bad_request("MalformedBackupBlob", "backup blob failed validation")}
+    end
+  end
+
+  # Byte-equivalence law: the restored rows are stored EXACTLY as backed up
+  # (no re-stamping) so backup(k) -> delete -> restore -> k is byte-equal.
+  defp write_key_rows(name, record, version_rows) do
+    Store.put(:smalt_vault_keys, name, record)
+
+    Enum.each(version_rows, fn {version, row} ->
+      Store.put(:smalt_vault_keys, {name, version}, Map.put(row, "is_version_row", true))
+    end)
+  end
+
+  # Shared envelope codec (kind-tagged so certificates ride the same shape).
+  # Public cross-module seam (@doc false): Certificates reuses this codec so
+  # there is ONE canonical SMALT-KVB1 envelope across keys/certificates.
+  @doc false
+  @spec kv_backup_encode(map()) :: binary()
+  def kv_backup_encode(bundle), do: encode_backup(bundle)
+
+  @doc false
+  @spec kv_backup_decode(binary(), binary()) :: {:ok, map()} | {:error, 400, map()}
+  def kv_backup_decode(blob, kind), do: decode_backup(blob, kind)
+
+  defp encode_backup(bundle) do
+    envelope = %{"checksum" => bundle_checksum(bundle), "bundle" => bundle}
+    @backup_magic <> "." <> Base.encode64(Jason.encode!(envelope))
+  end
+
+  defp decode_backup(blob, kind) do
+    with {:ok, _magic, json} <- split_magic(blob),
+         {:ok, envelope} <- Smalt.JsonCompat.decode(json) do
+      checksum = envelope["checksum"]
+      bundle = envelope["bundle"]
+
+      cond do
+        not is_map(bundle) or is_nil(checksum) ->
+          {:error, 400,
+           bad_request(
+             "MalformedBackupBlob",
+             "backup blob is missing checksum or bundle fields"
+           )}
+
+        bundle_checksum(bundle) != checksum ->
+          {:error, 400,
+           bad_request(
+             "MalformedBackupBlob",
+             "backup blob checksum mismatch (tampered or truncated)"
+           )}
+
+        bundle["kind"] != kind ->
+          {:error, 400,
+           bad_request("MalformedBackupBlob", "backup blob kind mismatch (got #{inspect(bundle["kind"])}, want #{kind})")}
+
+        true ->
+          {:ok, bundle}
+      end
+    else
+      {:error, :magic} ->
+        {:error, 400, bad_request("MalformedBackupBlob", "backup blob magic prefix mismatch (not a SMALT-KVB1 blob)")}
+
+      {:error, reason} ->
+        {:error, 400,
+         bad_request("MalformedBackupBlob", "backup blob is not base64-encoded JSON (#{inspect(reason)})")}
+    end
+  end
+
+  defp split_magic(blob) do
+    case :binary.split(blob, ".") do
+      [@backup_magic, b64] ->
+        case Base.decode64(b64) do
+          {:ok, json} -> {:ok, @backup_magic, json}
+          :error -> {:error, :base64}
+        end
+
+      _ ->
+        {:error, :magic}
+    end
+  end
+
+  defp bundle_checksum(bundle) do
+    :crypto.hash(:sha256, Jason.encode!(bundle))
+    |> Base.encode16(case: :lower)
   end
 
   defp fetch(name, nil), do: fetch(name)
@@ -775,12 +1211,33 @@ defmodule Smalt.DataPlane.KeyVaultActions do
       {:ok, record} ->
         now = System.system_time(:second)
 
+        # KD-COVERS: KD-185 — retained version history rides the soft delete.
+        # Version rows ({name, version}) are captured into the deleted bundle
+        # ("version_rows", mirrors the deleted-keys contract) so a recover
+        # restores the exact material each version had; purge drops them. The
+        # "versions" index stays on the record so the recovered row keeps its
+        # history ordering.
+        versions = record |> Map.get("versions", []) |> List.wrap()
+
+        version_rows =
+          Map.new(versions, fn v ->
+            case Store.get(:smalt_vault_secrets, {name, v}) do
+              {:ok, row} -> {v, row}
+              :error -> {v, record}
+            end
+          end)
+
         deleted =
           record
           |> Map.put("deletedDate", now)
           |> Map.put("scheduledPurgeDate", real_purge_date(now))
           |> Map.put("recoveryId", "https://smalt-vault/deletedsecrets/#{name}")
           |> Map.put("is_deleted_secret", true)
+          |> Map.put("version_rows", version_rows)
+
+        Enum.each(version_rows, fn {v, _row} ->
+          Store.delete(:smalt_vault_secrets, {name, v})
+        end)
 
         Store.delete(:smalt_vault_secrets, name)
         Store.put(@deleted_table, {:secret, name}, deleted)
@@ -837,11 +1294,20 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
     case Store.get(@deleted_table, {:secret, name}) do
       {:ok, deleted} ->
+        {version_rows, deleted} = Map.pop(deleted, "version_rows", %{})
+
         restored =
           deleted
           |> Map.drop(["deletedDate", "scheduledPurgeDate", "recoveryId", "is_deleted_secret"])
 
         Store.put(:smalt_vault_secrets, name, restored)
+
+        # KD-COVERS: KD-185 — recover re-puts the captured version rows so the
+        # retained history stays addressable after recovery.
+        Enum.each(version_rows || %{}, fn {v, row} ->
+          Store.put(:smalt_vault_secrets, {name, v}, Map.put(row, "is_version_row", true))
+        end)
+
         Store.delete(@deleted_table, {:secret, name})
         {:ok, 200, restored}
 
@@ -871,6 +1337,11 @@ defmodule Smalt.DataPlane.KeyVaultActions do
              }
            }}
         else
+          # KD-COVERS: KD-185 — purge drops the retained version rows for good.
+          Enum.each(Map.get(deleted, "version_rows", %{}) || %{}, fn {v, _row} ->
+            Store.delete(:smalt_vault_secrets, {name, v})
+          end)
+
           Store.delete(@deleted_table, {:secret, name})
           {:ok, 204, %{}}
         end
@@ -883,6 +1354,27 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   # ---------------------------------------------------------------------------
   # Release policy gate
   # ---------------------------------------------------------------------------
+
+  # w6bn: a disabled key answers data-plane crypto ops with 403 Forbidden
+  # (real Azure parity) while GET keeps answering 200 — the disabled
+  # attribute gates OPERATIONS, not reads.
+  defp check_enabled(record, op) when op in ["encrypt", "decrypt", "wrapKey", "unwrapKey", "sign", "verify"] do
+    if Map.get(record["attributes"] || %{}, "enabled", true) == false do
+      {:error, 403,
+       %{
+         "error" => %{
+           "code" => "Forbidden",
+           "message" =>
+             "Operation #{op} is not permitted because the key is disabled " <>
+               "(attributes.enabled == false)."
+         }
+       }}
+    else
+      :ok
+    end
+  end
+
+  defp check_enabled(_record, _op), do: :ok
 
   defp check_allowed(record, op) do
     allowed = allowed_operations(record)
@@ -1017,7 +1509,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   defp ec_point_jwk(_crv, curve, pub_point) do
     bits = curve.coord * 8
 
-    <<4, x::unsigned-big-size(bits), y::unsigned-big-size(bits)>> = pub_point
+    <<4, x::unsigned-big-size(^bits), y::unsigned-big-size(^bits)>> = pub_point
 
     %{
       "x" => Base.url_encode64(<<x::unsigned-big-size(bits)>>, padding: false),
@@ -1123,8 +1615,6 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   end
 
   defp check_encrypt_size(_plain, {:oct, _aes_key}), do: :ok
-  # EC already refuses at encrypt_alg/2; defensive clause keeps the with-chain total.
-  defp check_encrypt_size(_plain, {:ec, _, _}), do: :ok
 
   defp do_decrypt(record, params, material) do
     kid = record["kid"]
@@ -1177,6 +1667,9 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     end
   end
 
+  # KD-COVERS: KD-14 — RS256 signs EMSA-PKCS1-v1_5 over the SUBMITTED digest
+  # (DigestInfo prefix + :none, no re-hash); external verifiers confirm
+  # (hazmat Prehashed verify TRUE, tampered-sig control FALSE, bk26 receipt).
   defp do_sign(record, params, {:rsa, key}) do
     kid = record["kid"]
 
@@ -1225,13 +1718,25 @@ defmodule Smalt.DataPlane.KeyVaultActions do
     with {:ok, digest} <- sign_digest(params),
          {:ok, alg} <- sign_alg(params),
          :ok <- alg_for_key_type(alg, {:ec, curve, nil}) do
-      der_sig = :crypto.sign(:ecdsa, curve.md, {:digest, digest}, [elem(priv_rec, 2), curve.curve])
-      {r, s} = ec_sig_der_decode(der_sig)
-      bits = curve.coord * 8
+      # KD-126: :crypto raises {:badarg, _, "Bad binary size for the algorithm"}
+      # when the wire digest length does not match the curve's hash (ES384 over
+      # a 32-byte digest, ES256 over 48, ...). That is a client-fault-shaped
+      # request, not a server fault — answer the typed 400 face, never a 500.
+      try do
+        der_sig = :crypto.sign(:ecdsa, curve.md, {:digest, digest}, [elem(priv_rec, 2), curve.curve])
+        {r, s} = ec_sig_der_decode(der_sig)
+        bits = curve.coord * 8
 
-      sig = <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>>
+        sig = <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>>
 
-      {:ok, 200, %{"value" => b64url_encode(sig), "kid" => kid, "alg" => alg}}
+        {:ok, 200, %{"value" => b64url_encode(sig), "kid" => kid, "alg" => alg}}
+      rescue
+        _ in [ErlangError, ArgumentError] ->
+          {:error, 400,
+           bad_request("InvalidParameter",
+             "digest size #{byte_size(digest)} bytes does not match #{alg} over #{ec_crv(record)}"
+           )}
+      end
     end
   end
 
@@ -1302,7 +1807,7 @@ defmodule Smalt.DataPlane.KeyVaultActions do
 
       valid =
         try do
-          <<r::unsigned-big-size(bits), s::unsigned-big-size(bits)>> = sig
+          <<r::unsigned-big-size(^bits), s::unsigned-big-size(^bits)>> = sig
           der_sig = ec_sig_der_encode(r, s)
           :crypto.verify(:ecdsa, curve.md, {:digest, digest}, der_sig, [
             ec_public_point(record, curve),
@@ -1319,10 +1824,12 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   # The public point rides the private key's DER on the row; a missing row
   # (verify against a bare record without material) cannot verify.
   defp ec_public_point(record, curve) do
+    coord = curve.coord
+
     with {:ok, der} <- stored_der(record),
          {:ECPrivateKey, _v, _priv, _params, pub_point, _attrs} <-
            :public_key.der_decode(:ECPrivateKey, der),
-         <<4, _::unsigned-big-size(curve.coord * 16)>> <- pub_point do
+         <<4, _::unsigned-big-size(^coord * 16)>> <- pub_point do
       pub_point
     else
       _ -> <<>>
@@ -1479,5 +1986,240 @@ defmodule Smalt.DataPlane.KeyVaultActions do
   # clients read it to learn what the stored key may do. SHIM-COURT-KV86
   defp public_record(record) do
     Map.drop(record, ["key_material", "is_version_row", "versions"])
+  end
+
+  # ---------------------------------------------------------------------------
+  # w6bc: KV key parity gaps (additive; landed rotation/backup clauses untouched)
+  # ---------------------------------------------------------------------------
+
+  @doc "POST /keys/:name/randomnumbers (w6bc): length random bytes wrapped by the key per alg. oct keys get AES-KW; RSA faces typed-UNSUPPORTED (400 InvalidAlgorithm)."
+  def random_numbers(name, params) when is_map(params) do
+    with_key(name, "wrapKey", params, nil, fn record, _params, material ->
+      with {:ok, alg} <- randomnumbers_alg(material, params),
+           {:ok, len} <- randomnumbers_length(params["length"]),
+           {:ok, plain} <- kw_rand(material, alg, len) do
+        case do_kw(material, alg, plain, record["kid"]) do
+          {wrapped, kid} -> {:ok, 200, %{"value" => b64url_encode(wrapped), "kid" => kid}}
+        end
+      end
+    end)
+  end
+
+  def random_numbers(_name, _params) do
+    {:error, 400, bad_request("InvalidParameter", "request body must be a JSON object")}
+  end
+
+  defp kw_rand({:oct, _}, _alg, len), do: {:ok, :crypto.strong_rand_bytes(len)}
+
+  defp do_kw({:oct, key}, _alg, plain, kid), do: {kw_wrap(key, plain), kid}
+
+  defp randomnumbers_alg({:oct, key}, %{"alg" => "A256KW"}) when byte_size(key) == 32, do: {:ok, "A256KW"}
+  defp randomnumbers_alg({:oct, key}, %{"alg" => "A192KW"}) when byte_size(key) == 24, do: {:ok, "A192KW"}
+  defp randomnumbers_alg({:oct, _key}, %{"alg" => "A128KW"}), do: {:ok, "A128KW"}
+
+  defp randomnumbers_alg({:oct, _}, %{"alg" => kw}) when kw in ["A256KW", "A192KW", "A128KW"] do
+    {:error, 400, bad_request("InvalidAlgorithm", "oct key size does not match requested KW alg")}
+  end
+
+  defp randomnumbers_alg(_m, %{"alg" => "RSA-OAEP-256"}) do
+    {:error, 400, bad_request("InvalidAlgorithm", "randomnumbers RSA faces are typed-UNSUPPORTED at this tier")}
+  end
+
+  defp randomnumbers_alg(_m, %{"alg" => other}) do
+    {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg " <> other)}
+  end
+
+  defp randomnumbers_alg(_m, _params) do
+    {:error, 400, bad_request("InvalidAlgorithm", "alg is required")}
+  end
+
+  defp randomnumbers_length(len) when is_integer(len) and len in 16..128 and rem(len, 8) == 0, do: {:ok, len}
+
+  defp randomnumbers_length(_) do
+    {:error, 400, bad_request("InvalidParameter", "length must be an integer in 16..128 and a multiple of 8")}
+  end
+
+  @doc "AES Key Wrap dispatch for wrapKey/unwrapKey (w6bc): oct keys get RFC 3394/5649 AES-KW (A256KW/A192KW/A128KW); the landed A256GCM oct face is preserved; RSA keeps the landed RSA-OAEP-256 face. Additive."
+  def key_wrap(name, params, version \\ nil)
+
+  def key_wrap(name, params, version) do
+    with_key(name, "wrapKey", params, version, fn record, params, material ->
+      case material do
+        {:oct, key} ->
+          if kw_alg_request?(params) do
+            with {:ok, alg} <- kw_alg(params, key),
+                 {:ok, plain} <- b64_field(params, "value"),
+                 :ok <- kw_multiple?(plain) do
+              {:ok, 200, %{"value" => b64url_encode(kw_wrap(key, plain)), "kid" => record["kid"], "alg" => alg}}
+            end
+          else
+            do_encrypt(record, params, {:oct, key})
+          end
+
+        {:rsa, _} = rsa ->
+          do_encrypt(record, params, rsa)
+      end
+    end)
+  end
+
+  @doc "Public AES-KW seam (w6bc): RFC 3394 wrap/unwrap exposed for callers; asserted byte-exact against the RFC 3394 B.2 vector in the w6bc witness."
+  def aes_kw_wrap(kek, plain), do: kw_wrap(kek, plain)
+  def aes_kw_unwrap(kek, wrapped), do: kw_unwrap(kek, wrapped)
+
+  @doc "AES-KW unwrap side of key_wrap/3."
+  def key_unwrap(name, params, version \\ nil)
+
+  def key_unwrap(name, params, version) do
+    with_key(name, "unwrapKey", params, version, fn record, params, material ->
+      case material do
+        {:oct, key} ->
+          if kw_alg_request?(params) do
+            with {:ok, alg} <- kw_alg(params, key),
+                 {:ok, wrapped} <- b64_field(params, "value"),
+                 :ok <- kw_multiple?(wrapped) do
+              {:ok, 200, %{"value" => b64url_encode(kw_unwrap(key, wrapped)), "kid" => record["kid"], "alg" => alg}}
+            end
+          else
+            do_decrypt(record, params, {:oct, key})
+          end
+
+        {:rsa, _} = rsa ->
+          do_decrypt(record, params, rsa)
+      end
+    end)
+  end
+
+  defp kw_alg_request?(%{"alg" => alg}) when alg in ["A256KW", "A192KW", "A128KW"], do: true
+  defp kw_alg_request?(%{"alg" => _}), do: false
+  defp kw_alg_request?(_), do: false
+
+  defp kw_multiple?(bin) when rem(byte_size(bin), 8) == 0, do: :ok
+
+  defp kw_multiple?(_) do
+    {:error, 400, bad_request("InvalidValue", "AES-KW value must be a multiple of 8 bytes")}
+  end
+
+  defp kw_alg(%{"alg" => "A256KW"}, key) when byte_size(key) == 32, do: {:ok, "A256KW"}
+  defp kw_alg(%{"alg" => "A192KW"}, key) when byte_size(key) == 24, do: {:ok, "A192KW"}
+  defp kw_alg(%{"alg" => "A128KW"}, key) when byte_size(key) == 16, do: {:ok, "A128KW"}
+
+  defp kw_alg(%{"alg" => kw}, _key) when kw in ["A256KW", "A192KW", "A128KW"] do
+    {:error, 400, bad_request("InvalidAlgorithm", "oct key size does not match requested KW alg")}
+  end
+
+  defp kw_alg(%{"alg" => other}, _key) do
+    {:error, 400, bad_request("InvalidAlgorithm", "unsupported alg " <> other)}
+  end
+
+  defp kw_alg(_params, _key) do
+    {:error, 400, bad_request("InvalidAlgorithm", "alg is required")}
+  end
+
+  @doc "Versions listing with real pagination (w6bc): maxresults (1..25) + $skip. Landed list_versions/1 untouched."
+  def list_versions_paged(name, opts) when is_list(opts) do
+    maxresults = paging_int(opts[:maxresults], 25, 1, 25)
+    skip = paging_int(opts[:skip], 0, 0, nil)
+
+    case fetch(name) do
+      {:ok, %{"versions" => versions} = record} when is_list(versions) and versions != [] ->
+        items =
+          versions
+          |> Enum.drop(skip)
+          |> Enum.take(maxresults)
+          |> Enum.map(fn version ->
+            case Store.get(:smalt_vault_keys, {name, version}) do
+              {:ok, version_record} -> public_record(version_record)
+              :error -> public_record(record)
+            end
+          end)
+
+        {:ok, 200, %{"value" => items}}
+
+      {:ok, record} ->
+        {:ok, 200, %{"value" => [public_record(record)]}}
+
+      :error ->
+        {:error, 404, key_not_found()}
+    end
+  end
+
+  def list_versions_paged(name, params) when is_map(params) do
+    list_versions_paged(name,
+      maxresults: paging_int(params["maxresults"], 25, 1, 25),
+      skip: paging_int(params["$skip"], 0, 0, nil)
+    )
+  end
+
+  def list_versions_paged(name, _), do: list_versions(name)
+
+  defp paging_int(nil, default, _min, _max), do: default
+
+  defp paging_int(v, _default, min, nil) when is_integer(v) and v >= min, do: v
+
+  defp paging_int(v, _default, min, max) when is_integer(v) and v >= min and v <= max, do: v
+
+  defp paging_int(_, default, _min, _max), do: default
+
+  # ---------------------------------------------------------------------------
+  # w6bc: AES-KW core (RFC 3394). OTP 28 :crypto has no :aes_kw cipher, so the
+  # wrap/unwrap is the standard algorithm in pure Elixir (same approach as the
+  # landed hand-built EMSA-PSS in kv_pss.ex). RFC 3394 B.2 vector asserted
+  # byte-exact in the w6bc witness.
+  # ---------------------------------------------------------------------------
+
+  @kw_iv <<0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6>>
+
+  defp kw_wrap(kek, plain) do
+    n = div(byte_size(plain), 8)
+    rs = for i <- 1..n, do: binary_part(plain, (i - 1) * 8, 8)
+    [a | rest] = kw_loop(kek, @kw_iv, rs, n, 0)
+    a <> Enum.join(rest)
+  end
+
+  defp kw_loop(_kek, a, rs, _n, 6), do: [a | rs]
+
+  defp kw_loop(kek, a, rs, n, j) do
+    {a2, rs2} =
+      Enum.reduce(1..n, {a, rs}, fn i, {acc_a, acc_r} ->
+        b = aes_block(kek, acc_a <> Enum.at(acc_r, i - 1))
+        t = n * j + i
+        <<msb::binary-size(8), lsb::binary-size(8)>> = b
+        {kw_xor8(msb, t), List.replace_at(acc_r, i - 1, lsb)}
+      end)
+
+    kw_loop(kek, a2, rs2, n, j + 1)
+  end
+
+  defp kw_unwrap(kek, wrapped) do
+    n = div(byte_size(wrapped) - 8, 8)
+    <<a::binary-size(8), rest::binary>> = wrapped
+    rs = for <<r::binary-size(8) <- rest>>, do: r
+    [_a2 | rs2] = kw_unloop(kek, a, rs, n, 5)
+    IO.iodata_to_binary(rs2)
+  end
+
+  defp kw_unloop(_kek, a, rs, _n, j) when j < 0, do: [a | rs]
+
+  defp kw_unloop(kek, a, rs, n, j) do
+    {a2, rs2} =
+      Enum.reduce(n..1//-1, {a, rs}, fn i, {acc_a, acc_r} ->
+        t = n * j + i
+        xored = kw_xor8(acc_a, t)
+        b = aes_block(kek, xored <> Enum.at(acc_r, i - 1), false)
+        <<msb::binary-size(8), lsb::binary-size(8)>> = b
+        {msb, List.replace_at(acc_r, i - 1, lsb)}
+      end)
+
+    kw_unloop(kek, a2, rs2, n, j - 1)
+  end
+
+  defp aes_block(kek, block, encrypt? \\ true) do
+    cipher = :"aes_#{byte_size(kek) * 8}_ecb"
+    :crypto.crypto_one_time(cipher, kek, block, encrypt?)
+  end
+
+  defp kw_xor8(<<a::integer-size(64)>>, t) do
+    import Bitwise
+    <<bxor(a, t)::integer-size(64)>>
   end
 end

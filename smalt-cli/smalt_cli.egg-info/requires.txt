@@ -1,0 +1,11 @@
+typer>=0.12
+pyserial>=3.5
+
+[aio]
+aiohttp>=3.9
+
+[dev]
+pytest>=8.0
+
+[migrate]
+azure-servicebus>=7.12

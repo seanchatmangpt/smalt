@@ -68,7 +68,19 @@ defmodule Smalt.DataPlane.QueueStorage do
     %{"x-ms-request-id" => request_id(), "x-ms-version" => @version}
   end
 
-  defp request_id, do: Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+  # KD-COVERS: KD-152 — Azure Storage x-ms-request-id is a dashed-36 RFC 4122
+  # v4 GUID (the blob plane already emits this shape); a 16-hex token is a
+  # wire divergence. Version/variant bits set for byte-parity with blob.
+  defp request_id do
+    <<a::32, b::16, c_lo::12, _::4, d_lo::14, _::2, e::48>> = :crypto.strong_rand_bytes(16)
+
+    <<a::32, b::16, 4::4, c_lo::12, 2::2, d_lo::14, e::48>>
+    |> Base.encode16(case: :lower)
+    |> then(fn <<h1::binary-size(8), h2::binary-size(4), h3::binary-size(4),
+                 h4::binary-size(4), h5::binary-size(12)>> ->
+      "#{h1}-#{h2}-#{h3}-#{h4}-#{h5}"
+    end)
+  end
 
   defp key(account, queue), do: String.downcase("#{account}/#{queue}")
 
@@ -125,7 +137,7 @@ defmodule Smalt.DataPlane.QueueStorage do
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
 
-      {:error, _, _, _} = err ->
+      {:error, :store_not_ready} = err ->
         err
     end
   end
@@ -217,9 +229,6 @@ defmodule Smalt.DataPlane.QueueStorage do
     else
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
-
-      {:error, _, _, _} = err ->
-        err
     end
   end
 
@@ -238,9 +247,6 @@ defmodule Smalt.DataPlane.QueueStorage do
     else
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
-
-      {:error, _, _, _} = err ->
-        err
     end
   end
 
@@ -287,9 +293,9 @@ defmodule Smalt.DataPlane.QueueStorage do
     with :ok <- ready!(),
          {:ok, _} <- Store.get(@queues_table, key(account, queue)),
          {:ok, text} <- parse_message_text(body),
-         :ok <- check_message_size(text) do
+         :ok <- check_message_size(text),
+         {:ok, ttl_ms} <- parse_ttl(opts["messagettl"]) do
       now = Map.get(opts, "now_ms") || System.os_time(:millisecond)
-      ttl_ms = parse_ttl(opts["messagettl"]) || @default_ttl_ms
       qkey = key(account, queue)
       seq = next_seq(qkey)
       msg_id = uuid()
@@ -313,6 +319,9 @@ defmodule Smalt.DataPlane.QueueStorage do
     else
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
+
+      {:error, :store_not_ready} = err ->
+        err
 
       {:error, _, _, _} = err ->
         err
@@ -364,9 +373,6 @@ defmodule Smalt.DataPlane.QueueStorage do
     else
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
-
-      {:error, _, _, _} = err ->
-        err
     end
   end
 
@@ -402,9 +408,6 @@ defmodule Smalt.DataPlane.QueueStorage do
     else
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
-
-      {:error, _, _, _} = err ->
-        err
     end
   end
 
@@ -429,7 +432,7 @@ defmodule Smalt.DataPlane.QueueStorage do
       :error ->
         {:error, 404, "QueueNotFound", "The specified queue does not exist."}
 
-      {:error, _, _, _} = err ->
+      {:error, :store_not_ready} = err ->
         err
     end
   end
@@ -537,11 +540,28 @@ defmodule Smalt.DataPlane.QueueStorage do
     Store.update_counter(@messages_table, "#{qkey}/$seq", 1)
   end
 
-  defp check_popreceipt(pr) when is_binary(pr) and pr != "", do: :ok
+  defp check_popreceipt(pr) when is_binary(pr) and pr != "" do
+    if popreceipt_format?(pr) do
+      :ok
+    else
+      # Real Azure base64-decodes the receipt server-side; a syntactically
+      # invalid value is a query-parameter error, not a mismatch 404.
+      {:error, 400, "InvalidQueryParameterValue",
+       "Value for query parameter 'popreceipt' is invalid."}
+    end
+  end
 
   defp check_popreceipt(_),
     do: {:error, 400, "MissingRequiredQueryParameter",
          "A query parameter popreceipt is missing."}
+
+  # Receipts are minted via Base.encode64/1 (see popreceipt/1); a well-formed
+  # value is base64. Base-valid-but-unknown payloads still fall through to the
+  # stale-receipt 404 path (check_receipt/3), matching the wire contract.
+  defp popreceipt_format?(pr) do
+    byte_size(pr) > 0 and rem(byte_size(pr), 4) == 0 and
+      Regex.match?(~r/\A[A-Za-z0-9+\/]+={0,2}\z/, pr)
+  end
 
   defp parse_visibility_timeout(nil), do: {:ok, 30}
 
@@ -577,14 +597,28 @@ defmodule Smalt.DataPlane.QueueStorage do
     do: {:error, 400, "InvalidQueryParameterValue",
          "Value for query parameter 'numofmessages' is out of range."}
 
+  # EXPL-3-T2: aligned with the sibling parsers (parse_numofmessages,
+  # parse_visibility_timeout) — malformed/negative values are a typed 400
+  # InvalidHeaderValue, never a silent default-TTL substitution. The explicit
+  # legal never-expire form (`x-ms-ttl=-1`, real Azure parity) maps to the
+  # far-future absolute expiry (year 9999); absent header keeps the default.
+  @never_expires_ms 253_402_300_799_999
+
+  defp parse_ttl(nil), do: {:ok, @default_ttl_ms}
+
   defp parse_ttl(v) when is_binary(v) do
     case Integer.parse(v) do
-      {n, ""} when n > 0 -> n * 1000
-      _ -> @default_ttl_ms
+      {n, ""} when n > 0 -> {:ok, n * 1000}
+      {n, ""} when n == -1 -> {:ok, @never_expires_ms - System.os_time(:millisecond)}
+      _ ->
+        {:error, 400, "InvalidHeaderValue",
+         "Value for header 'x-ms-ttl' is invalid. Expected a positive integer of -1 (never expire)."}
     end
   end
 
-  defp parse_ttl(_), do: @default_ttl_ms
+  defp parse_ttl(_),
+    do: {:error, 400, "InvalidHeaderValue",
+         "Value for header 'x-ms-ttl' is invalid. Expected a positive integer of -1 (never expire)."}
 
   defp check_message_size(text) when byte_size(text) <= @max_message_bytes, do: :ok
 

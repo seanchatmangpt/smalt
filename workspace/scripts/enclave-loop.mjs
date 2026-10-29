@@ -62,7 +62,7 @@ if (tsc.status !== 0) {
   console.error(`[enclave-loop] FAIL lib/smalt.ts typecheck: ${tsc.stdout.trim()}`);
   process.exit(1);
 }
-const { SMALT_ARM, SMALT_EGRESS, smaltFetch, assertLocalUrl } = await import(
+const { smaltFetch } = await import(
   pathToFileURL(path.join(tmp, 'js', 'lib', 'smalt.js')).href
 );
 
@@ -133,7 +133,13 @@ async function hop(name, method, requestPath, { body, headers = {}, base = EGRES
   return { name, status: res.status, text, headers: res.headers };
 }
 
-const is5xxOrNetError = (e) => !['AbortError', 'TimeoutError'].includes(e?.name);
+// EXPLORE-1 W10: every hop below is POST-MINT — the STS mint above is a
+// liveness proof and pre-mint transport failure exits 3 before any hop runs.
+// A transport timeout on a substrate that already answered the mint means the
+// substrate is UP but HUNG: that is a FAIL, never a skip. (The old
+// is5xxOrNetError classified AbortError/TimeoutError as SKIP-LOUD, disclosing
+// a faulted leg as a skip.) ALL hop errors therefore FAIL.
+const hopVerdict = (_e) => 'FAIL';
 
 // ---------------------------------------------------------------------------
 // Hop 1: ARM read — the tf fixture resource group must be visible
@@ -151,7 +157,7 @@ const is5xxOrNetError = (e) => !['AbortError', 'TimeoutError'].includes(e?.name)
       record('arm: fixture rg read', 'FAIL', `GET ${requestPath} -> ${r.status}: ${r.text.slice(0, 160)}`);
     }
   } catch (e) {
-    record('arm: fixture rg read', is5xxOrNetError(e) ? 'FAIL' : 'SKIP-LOUD', String(e.message ?? e).slice(0, 160));
+    record('arm: fixture rg read', hopVerdict(e), String(e.message ?? e).slice(0, 160));
   }
 }
 
@@ -192,7 +198,7 @@ const XMSV = { 'x-ms-version': '2021-12-02' };
       }
     }
   } catch (e) {
-    record('blob: marker PUT+GET', is5xxOrNetError(e) ? 'FAIL' : 'SKIP-LOUD', String(e.message ?? e).slice(0, 160));
+    record('blob: marker PUT+GET', hopVerdict(e), String(e.message ?? e).slice(0, 160));
   }
 }
 
@@ -223,7 +229,7 @@ const SECRET_VALUE = `kv-open-${STAMP}`;
       }
     }
   } catch (e) {
-    record('vault: secret read-back', is5xxOrNetError(e) ? 'FAIL' : 'SKIP-LOUD', String(e.message ?? e).slice(0, 160));
+    record('vault: secret read-back', hopVerdict(e), String(e.message ?? e).slice(0, 160));
   }
 }
 
@@ -277,7 +283,7 @@ const SECRET_VALUE = `kv-open-${STAMP}`;
       }
     }
   } catch (e) {
-    record('cosmos: doc + query', is5xxOrNetError(e) ? 'FAIL' : 'SKIP-LOUD', String(e.message ?? e).slice(0, 160));
+    record('cosmos: doc + query', hopVerdict(e), String(e.message ?? e).slice(0, 160));
   }
 }
 
@@ -317,7 +323,7 @@ const SECRET_VALUE = `kv-open-${STAMP}`;
       }
     }
   } catch (e) {
-    record('eh: cloudevents ingest', is5xxOrNetError(e) ? 'FAIL' : 'SKIP-LOUD', String(e.message ?? e).slice(0, 160));
+    record('eh: cloudevents ingest', hopVerdict(e), String(e.message ?? e).slice(0, 160));
   }
 }
 

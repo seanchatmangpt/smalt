@@ -21,6 +21,60 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def resolve_toolchain_env():
+    """Return an env dict whose PATH resolves the repo-pinned toolchain.
+
+    BK-35 harness-gap fix: `mix` on ambient PATH resolves to Homebrew
+    Elixir 1.19.5 / OTP-28, not the repo-pinned asdf versions from
+    .tool-versions — every substrate boot died rc=1 pre-bind and the gate
+    verdict was void (all-6-FAIL that looked like defects). Read
+    .tool-versions (elixir/erlang lines), prepend the matching asdf install
+    bin dirs; fall back to ambient PATH with a LOUD warning if the asdf
+    dirs are absent. Prints "toolchain: elixir X / OTP Y (...)" either way.
+    """
+    env = dict(os.environ)
+    elixir_v, erlang_v = None, None
+    try:
+        with open(os.path.join(REPO, ".tool-versions")) as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    if parts[0] == "elixir" and elixir_v is None:
+                        elixir_v = parts[1]
+                    elif parts[0] == "erlang" and erlang_v is None:
+                        erlang_v = parts[1]
+    except OSError as e:
+        print(f"WARNING [gate] could not read .tool-versions: {e}")
+
+    asdf_dir = os.path.join(os.path.expanduser("~"), ".asdf", "installs")
+    prefix_dirs = []
+    if elixir_v:
+        d = os.path.join(asdf_dir, "elixir", elixir_v, "bin")
+        if os.path.isdir(d):
+            prefix_dirs.append(d)
+    if erlang_v:
+        d = os.path.join(asdf_dir, "erlang", erlang_v, "bin")
+        if os.path.isdir(d):
+            prefix_dirs.append(d)
+    if elixir_v and erlang_v and len(prefix_dirs) == 2:
+        env["PATH"] = os.pathsep.join(prefix_dirs + [env.get("PATH", "")])
+        print(f"toolchain: elixir {elixir_v} / OTP {erlang_v} "
+              f"(resolved from .tool-versions -> asdf installs)")
+    else:
+        # Fall back to ambient PATH, loudly: the spawned mix may not be the
+        # pinned one and the gate verdict must be read with that in mind.
+        print(f"WARNING [gate] asdf toolchain dirs not found for "
+              f"elixir {elixir_v} / erlang {erlang_v}; falling back to "
+              f"AMBIENT PATH — substrate-dependent verdict may be VOID "
+              f"(BK-35 class). Resolved dirs: {prefix_dirs or 'none'}")
+        print(f"toolchain: elixir {elixir_v} / OTP {erlang_v} "
+              f"(NOT resolved — ambient PATH fallback)")
+    return env
+
+
+TOOLCHAIN_ENV = resolve_toolchain_env()
+
 # Canonical substrate lifecycle helpers (DX lane cycle 11): gates previously
 # carried a third copy of the wait/kill/port-free triplet; thin delegation
 # preserves the exact gates semantics (poll 0.05, RuntimeErrors, sweep-all).
@@ -71,7 +125,7 @@ def spawn_substrate(ports, shared_key=None, tries=3):
     for attempt in range(1, tries + 1):
         if not wait_port_free(ports["arm"]):
             raise RuntimeError(f"arm port {ports['arm']} not free before boot")
-        env = dict(os.environ)
+        env = dict(TOOLCHAIN_ENV)
         env["MIX_ENV"] = "test"
         for key, var in ENV_NAMES.items():
             env[var] = str(ports[key])
@@ -272,7 +326,7 @@ def run_gate(name, capture, verdict, mutate_fixtures):
 
 def run_amqp_driver(mode, extra_env, timeout_s=300):
     """Run gates/amqp_invariant_driver.exs; parse its final GATE_JSON line."""
-    env = dict(os.environ)
+    env = dict(TOOLCHAIN_ENV)
     env["MIX_ENV"] = "test"
     env["SMALT_GATE_MODE"] = mode
     if "SMALT_SB_SHARED_KEY" not in env:

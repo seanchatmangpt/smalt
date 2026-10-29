@@ -316,6 +316,10 @@ defmodule Smalt.EventGridWebhookPlug do
               json_resp(conn, 200, %{"validationResponse" => code})
 
             {:ok, :delivered, _n} ->
+              # W1 (v26.10.22): push-style routing — the accepted CloudEvents
+              # batch also runs through the SHACL subscription sieve
+              # (KD-169). Typed no-op when the router is not started.
+              Smalt.EventGrid.PushRouter.ingest(events)
               json_resp(conn, 200, %{"received" => true})
 
             {:error, :unknown_subscriber} ->

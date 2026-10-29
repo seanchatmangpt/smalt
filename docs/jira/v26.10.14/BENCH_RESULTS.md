@@ -53,15 +53,15 @@ not rendered as op rows.
 | op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
 |---|---|---|---|---|---|---|
 | producer-send | 9693 | 323 | 3.06 | 5.01 | 6.38 | 0 |
-| producer-send | 9742 | 325 | 3.07 | 4.72 | 5.92 | 0 |
+| producer-send | 5625 | 188 | 5.34 | 7.79 | 8.71 | 0 |
 ## b4 — servicebus
 
 | op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
 |---|---|---|---|---|---|---|
 | send | 0 | 0 | 0.00 | 0.00 | 0.00 | 3 |
 | send+receive-complete-roundtrip | 4296 | 95 | 4207.92 | 5042.01 | 5682.55 | 2 |
-| send | 2000 | 51 | 0.23 | 0.29 | 0.42 | 4 |
-| send+receive-complete-roundtrip | 2000 | 51 | 265.68 | 741.33 | 745.37 | 3 |
+| send | 2000 | 51 | 0.25 | 0.30 | 0.37 | 4 |
+| send+receive-complete-roundtrip | 2000 | 50 | 370.98 | 569.32 | 577.04 | 3 |
 ## b5 — blob
 
 | op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |

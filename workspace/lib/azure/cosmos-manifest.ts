@@ -62,7 +62,7 @@ export async function createManifestStore(
     const code = (err as { code?: number }).code;
     if (code !== 400 && code !== 404) throw err;
   }
-  const { container } = await client
+  await client
     .database(dbId)
     .containers.createIfNotExists(
       { id: collId, partitionKey: { paths: ["/pk"] } },

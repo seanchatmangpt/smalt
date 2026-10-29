@@ -113,6 +113,43 @@ defmodule Smalt.ClusterTest do
     end
   end
 
+  describe "supervised start site (BK-110 / SPOF-A A-7)" do
+    test "supervised child restarts after a kill and keeps answering cluster_status" do
+      Application.put_env(:smalt, :cluster,
+        enabled: true,
+        dns_name: "localhost",
+        poll_ms: 100
+      )
+
+      on_exit(fn -> Application.delete_env(:smalt, :cluster) end)
+
+      spec = Supervisor.child_spec(Smalt.Cluster, restart: :permanent)
+      assert {:ok, sup} = Supervisor.start_link([spec], strategy: :one_for_one)
+      on_exit(fn -> Process.exit(sup, :kill) end)
+
+      first = Process.whereis(Smalt.Cluster)
+      assert is_pid(first)
+      assert %{enabled: true} = Smalt.Cluster.cluster_status()
+
+      # kill-test: the supervised child is killed; the supervisor must give a
+      # fresh pid, not a crashed start site.
+      Process.exit(first, :kill)
+
+      {:ok, _} =
+        SmaltTest.Internal.Poll.eventually(fn ->
+          case Process.whereis(Smalt.Cluster) do
+            ^first -> {:error, :still_dead}
+            pid when is_pid(pid) -> {:ok, pid}
+            nil -> {:error, :restarting}
+          end
+        end)
+
+      # the fresh generation answers; last_error may already carry a bounded
+      # connect failure (dns_name "localhost" lists our own unconnected name)
+      assert %{enabled: true} = Smalt.Cluster.cluster_status()
+    end
+  end
+
   defp assert_spawn_argument_error(fun) do
     {pid, ref} = spawn_monitor(fun)
 

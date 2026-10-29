@@ -57,8 +57,19 @@ def capture(ports, shared_key):
         egress, "PUT", blob_path + "?comp=snapshot", headers=hdrs())
     s_del_free, _, _ = common.http(egress, "DELETE", blob_path, headers=hdrs())
 
+    # B-KD disclosure (v26.10.20): the blob face now renders the real-Azure
+    # StorageError XML envelope (KD-142 / GAP(blob-error-envelope-json)), so
+    # the code extractor accepts both the legacy JSON envelope and XML
+    # <Code>. Statuses are unchanged.
+    import re
+
     def code(body):
-        return (body or {}).get("error", {}).get("code") if isinstance(body, dict) else None
+        if isinstance(body, dict):
+            return body.get("error", {}).get("code")
+        if isinstance(body, (bytes, str)):
+            m = re.search(rb"<Code>([^<]+)</Code>", body if isinstance(body, bytes) else body.encode())
+            return m.group(1).decode() if m else None
+        return None
 
     return {
         "container_create": s_create,

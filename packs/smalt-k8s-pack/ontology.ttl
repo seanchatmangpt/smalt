@@ -1,0 +1,71 @@
+@prefix k8s: <http://seanchatmangpt.github.io/packs/kubernetes#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# smalt-k8s-pack ontology — extends the kubernetes-workload-pack vocabulary
+# with the deployable shapes BK-MKTG typed as unmodelable (receipt
+# bkmktg-pack-render.md). Schema-only (dspy-pack contract): zero individuals
+# here; consumers admit their own facts. Prepared as the upstream v0.3.0
+# ontology patch (see receipts/bkmkt1-pack-facts.md).
+
+k8s:StatefulSet rdfs:subClassOf k8s:Workload ;
+  rdfs:comment "OrderedReady, per-pod-DNS workload kind. Plain-SPARQL consumers match the explicit type (no reasoning assumed), so gates and templates target k8s:StatefulSet directly." .
+
+k8s:Service rdfs:comment "ClusterIP / headless (clusterIP None) / NodePort Service individual." .
+
+# --- Workload-level shape properties -------------------------------------
+k8s:serviceName a owl:ObjectProperty ,
+    owl:DatatypeProperty ;
+  rdfs:comment "StatefulSet's spec.serviceName (the headless Service name)." .
+k8s:podManagementPolicy rdfs:comment "OrderedReady (default) / Parallel." .
+k8s:terminationGracePeriodSeconds rdfs:comment "Pod terminationGracePeriodSeconds." .
+k8s:podAntiAffinityBlock a owl:DatatypeProperty ;
+  rdfs:comment "Raw YAML block reindented into spec.template.spec.affinity.podAntiAffinity." .
+k8s:volumesBlock a owl:DatatypeProperty ;
+  rdfs:comment "Raw YAML block reindented into spec.template.spec.volumes." .
+
+# --- Container-level ------------------------------------------------------
+k8s:VolumeMount a rdfs:Class ;
+  rdfs:comment "One container volume mount: mountOfWorkload + mountName + mountPath (+ mountReadOnly true). Typed individuals, not a raw block: upstream gate 020's SCALAR_LINE_BREAK clause refuses any unknown multi-line literal on a k8s:Container." .
+k8s:mountOfWorkload a owl:ObjectProperty .
+k8s:mountName a owl:DatatypeProperty .
+k8s:mountPath a owl:DatatypeProperty .
+k8s:mountReadOnly a owl:DatatypeProperty .
+
+# --- Ports / env / services as individuals (multi-valued, ordered) --------
+k8s:ContainerPort a rdfs:Class ;
+  rdfs:comment "One container port: portOfWorkload + portName + portNumber." .
+k8s:portOfWorkload a owl:ObjectProperty .
+k8s:portName a owl:DatatypeProperty .
+k8s:portNumber a owl:DatatypeProperty .
+
+k8s:EnvVar a rdfs:Class ;
+  rdfs:comment "One env entry: envOfWorkload + envName + exactly one of envValue / envFieldRef / (envSecretName+envSecretKey). envOrder fixes render order -- $(VAR) references need the referenced var EARLIER in the list (BK-SWARM typed note)." .
+k8s:envOfWorkload a owl:ObjectProperty .
+k8s:envName a owl:DatatypeProperty .
+k8s:envValue a owl:DatatypeProperty .
+k8s:envFieldRef a owl:DatatypeProperty .
+k8s:envSecretName a owl:DatatypeProperty .
+k8s:envSecretKey a owl:DatatypeProperty .
+k8s:envOrder a owl:DatatypeProperty .
+
+k8s:ServicePort a rdfs:Class ;
+  rdfs:comment "One Service port: svcPortOf + svcPortName + svcPortNumber + svcTargetPortName (+ svcNodePort for NodePort services)." .
+k8s:svcPortOf a owl:ObjectProperty .
+k8s:svcPortName a owl:DatatypeProperty .
+k8s:svcPortNumber a owl:DatatypeProperty .
+k8s:svcTargetPortName a owl:DatatypeProperty .
+k8s:svcNodePort a owl:DatatypeProperty .
+
+k8s:serviceForWorkload a owl:ObjectProperty ;
+  rdfs:comment "Links a k8s:Service to the workload it selects." .
+
+k8s:Secret a rdfs:Class ;
+  rdfs:comment "Opaque Secret: secretName + secretStringDataBlock (raw block reindented)." .
+k8s:secretName a owl:DatatypeProperty .
+k8s:secretStringDataBlock a owl:DatatypeProperty .
+
+k8s:ConfigMap a rdfs:Class ;
+  rdfs:comment "ConfigMap: configMapName + configMapDataBlock (raw block reindented)." .
+k8s:configMapName a owl:DatatypeProperty .
+k8s:configMapDataBlock a owl:DatatypeProperty .

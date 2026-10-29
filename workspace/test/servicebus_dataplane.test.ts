@@ -17,7 +17,6 @@ import {
   ServiceBusDataplane,
   ServiceBusDataplaneError,
 } from "../lib/azure/servicebus.js";
-import type { ServiceBusReceivedMessage } from "@azure/service-bus";
 
 const ARM_PORT = Number(process.env.SMALT_WS9_ARM_PORT || 9443);
 const AMQP_PORT = Number(process.env.SMALT_WS9_AMQP_PORT || 5672);
@@ -255,8 +254,21 @@ test("07: typed error envelopes + witnessed AMQP auto-ensure", { timeout: 60_000
       return true;
     },
   );
-  // AMQP: send to a never-created queue auto-ensures it (emulator semantics;
-  // real SB rejects with MessagingEntityNotFound — recorded divergence).
-  await sb.amqp().createSender("lane522-auto-ensured").sendMessages({ body: "x", messageId: "ae-1" });
+  // KD-86: send to a never-created queue now answers the real-SB contract —
+  // the broker detaches the sender link amqp:not-found with a
+  // MessagingEntityNotFound description, surfacing as the SDK's typed error.
+  await assert.rejects(
+    () =>
+      sb.amqp().createSender("lane522-kd86-refused").sendMessages({ body: "x", messageId: "kd86-1" }),
+    (e: unknown) => {
+      const name = String((e as Error)?.name ?? "");
+      const msg = String((e as Error)?.message ?? "");
+      assert.ok(
+        /MessagingEntityNotFound|entity.?not.?found/i.test(name + " " + msg),
+        `typed entity-not-found, got: ${name}: ${msg}`,
+      );
+      return true;
+    },
+  );
   await sb.close();
 });

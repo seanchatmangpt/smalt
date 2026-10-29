@@ -28,6 +28,11 @@
 //   N6_OUT=docs/jira/v26.10.14/bench/n6-isr.jsonl
 //   N6_HERD=10000  N6_SOCKETS=1000
 //
+// SERVER ENV REQUIREMENT (EXPL7-R1 E7-3): the isr-stats POST face (reset /
+// stale witness) is gated — launch the server with SMALT_DEBUG_FACES=1 or the
+// lane exits 3 at preflight. This lane does NOT spawn the server (N6_URL is
+// external).
+//
 // Exit 0 iff F1..F3 all PASS.
 
 import { createRequire } from "node:module";
@@ -366,6 +371,27 @@ async function phaseDisk() {
 }
 
 // ---- main ----
+// Preflight (EXPL7-R1 E7-3): /api/bench/isr-stats POST (reset/stale) is a
+// gated debug face — it answers 404 unless the SERVER was started with
+// SMALT_DEBUG_FACES=1. This lane drives an externally-launched server
+// (N6_URL); fail loudly with the launch requirement instead of a confusing
+// mid-phase "stats reset 404".
+{
+  const probe = await fetch(statsPath(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reset: true }),
+  });
+  if (probe.status === 404) {
+    console.error(
+      "FATAL: /api/bench/isr-stats POST -> 404 (debug faces gated). " +
+        'Relaunch the workspace server with SMALT_DEBUG_FACES=1 ' +
+        "(EXPL7-R1 E7-3, docs/jira/v26.10.22/receipts/expl7r1-bff-repairs.md).",
+    );
+    process.exit(3);
+  }
+}
+
 await resetStats();
 const stats0 = await getStats();
 

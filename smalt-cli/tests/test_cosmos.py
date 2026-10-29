@@ -6,6 +6,7 @@ import secrets
 import pytest
 from azure.core import MatchConditions
 from azure.cosmos import exceptions
+from azure.cosmos.partition_key import PartitionKey
 
 pytestmark = [pytest.mark.anonymous, pytest.mark.usefixtures("anonymous_substrate")]
 
@@ -18,7 +19,7 @@ DB_ID = "cli4cosmos-" + secrets.token_hex(4)
 def container():
     client = cosmos_client()
     db = client.create_database(DB_ID)
-    cont = db.create_container(id="c1", partition_key="/pk")
+    cont = db.create_container(id="c1", partition_key=PartitionKey(path="/pk"))
     yield cont
     try:
         client.delete_database(DB_ID)
@@ -41,16 +42,33 @@ def test_whitelist_admits_root_alias(container):
 
 @pytest.mark.parametrize("sql", [
     "SELECT VALUE c.n FROM c",
-    " CosmosDB",
-    "SELECT * FROM c OFFSET 1 LIMIT 1",
+    "SELECT * FROM c WHERE BOGUS(",
+    "SELECT * FROM a JOIN b",
 ])
 def test_whitelist_refuses_grammar_external_queries_400(container, sql):
     # Only `SELECT * FROM <alias>` rides the fast path; other queries are
-    # parsed by Smalt.CosmosSql (cosmos.ex do_query_docs). Joins/UDFs/
-    # aggregates/TOP/OFFSET are outside its grammar -> typed 400 SyntaxError.
+    # parsed by Smalt.CosmosSql (cosmos.ex do_query_docs). PREMISE CORRECTED
+    # (BK-149C, live probe 2026-10-22): valid queries the parser now admits
+    # (VALUE/OFFSET-LIMIT/TOP/projections) answer 200 — see
+    # test_offset_limit_pair_admitted_200 and
+    # test_cosmos_sql_evaluates_non_star_queries_200. Only genuine grammar
+    # violations (VALUE projection, malformed WHERE/JOIN) still answer typed
+    # 400 SyntaxError. A prior param row (" CosmosDB") was a corrupted
+    # remnant, not a query.
     with pytest.raises(exceptions.CosmosHttpResponseError) as ei:
         list(container.query_items(sql))
     assert ei.value.status_code == 400, (sql, ei.value.status_code)
+
+
+def test_offset_limit_pair_admitted_200(container):
+    # Premise rot (KD-ROT class): Smalt.CosmosSql now admits the real-Cosmos
+    # pair form OFFSET <n> LIMIT <m> (cosmos_sql.ex:962), so a valid pair is
+    # 200 with paginated rows — not the typed 400 the old whitelist pinned.
+    container.create_item({"id": "off-1", "pk": "off", "n": 1})
+    container.create_item({"id": "off-2", "pk": "off", "n": 2})
+    rows = list(container.query_items(
+        "SELECT * FROM c OFFSET 1 LIMIT 1", partition_key="off"))
+    assert len(rows) == 1, rows
 
 
 def test_cosmos_sql_evaluates_non_star_queries_200(container):

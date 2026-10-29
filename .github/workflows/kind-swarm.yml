@@ -1,0 +1,163 @@
+# kind-swarm.yml — CI proof of the k8s/swarm path (lane BK-ACT).
+#
+# CI proves what the engineer runs — every subject is the artifact the laptop
+# path uses, no CI-only copies:
+#   - docker/Dockerfile + docker/Dockerfile.hermetic, same SUBJECT_SHA contract
+#     as scripts/build_burn_image.sh (40-hex, label org.smalt.subject).
+#   - k8s/kind/cluster.yaml canonical file, only host-local extraMounts
+#     stripped at run time via yq (they point at /Users/sac paths that cannot
+#     exist on CI; kind refuses a missing hostPath). Derived, not copied.
+#   - k8s/burn/smalt-deployment.yaml (documented __SUBJECT_SHA__ sed from
+#     k8s/README.md) + smalt-services.yaml, unmodified.
+#   - docker/compose.smalt.yml unmodified, run --no-build after smalt:local is
+#     built with the same docker build command as build-images.
+#
+# Local proof: act 0.2.89 (receipt docs/jira/v26.10.22/receipts/bkact-workflow.md).
+name: kind-swarm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - 'k8s/**'
+      - 'lib/**'
+      - 'config/**'
+      - 'mix.exs'
+      - 'mix.lock'
+      - '.github/workflows/kind-swarm.yml'
+  workflow_dispatch:
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: smalt-burn
+            dockerfile: docker/Dockerfile
+            tag: smalt-burn:ci
+          - name: smalt-hermetic
+            dockerfile: docker/Dockerfile.hermetic
+            tag: smalt-hermetic:ci
+    steps:
+      - name: "Materialize checkout (GH runner clones; act uses the mounted host tree)"
+        run: |
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -f docker/Dockerfile ] && [ -d .git ]; then
+            echo "workspace already materialized; using as-is"
+          elif [ -f docker/Dockerfile ]; then
+            echo "tree present without .git (act volume); initializing metadata only"
+            git init -q .
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git fetch -q --depth 1 origin "$GITHUB_SHA" 2>/dev/null || git fetch -q --depth 1 origin "${GITHUB_REF_NAME:-main}"
+            git checkout -q -f FETCH_HEAD -- . 2>/dev/null || true
+          else
+            git init -q .
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git fetch -q --depth 1 origin "$GITHUB_SHA" 2>/dev/null || git fetch -q --depth 1 origin "${GITHUB_REF_NAME:-main}"
+            git checkout -q -f FETCH_HEAD
+          fi
+      - name: Clone sibling path-deps
+        run: |
+          git clone --depth 1 https://github.com/seanchatmangpt/ash_r2rml "$GITHUB_WORKSPACE/.deps/ash_r2rml"
+          git clone --depth 1 https://github.com/seanchatmangpt/ash_graphlaw "$GITHUB_WORKSPACE/.deps/ash_graphlaw"
+          git clone --depth 1 https://github.com/seanchatmangpt/ggen_igniter "$GITHUB_WORKSPACE/.deps/ggen_igniter"
+      - name: Build image
+        run: |
+          SHA="$(git rev-parse HEAD 2>/dev/null || printf '%s' "${{ github.sha }}")"
+          echo "SUBJECT_SHA=$SHA"
+          docker build -f "${{ matrix.image.dockerfile }}" -t "${{ matrix.image.tag }}" \
+            --build-arg SUBJECT_SHA="$SHA" \
+            --build-context ash_r2rml="$GITHUB_WORKSPACE/.deps/ash_r2rml" \
+            --build-context ash_graphlaw="$GITHUB_WORKSPACE/.deps/ash_graphlaw" \
+            --build-context ggen_igniter="$GITHUB_WORKSPACE/.deps/ggen_igniter" \
+            .
+      - name: Verify subject label
+        run: |
+          got="$(docker inspect --format '{{ index .Config.Labels "org.smalt.subject" }}' "${{ matrix.image.tag }}")"
+          want="$(git rev-parse HEAD 2>/dev/null || printf '%s' "${{ github.sha }}")"
+          echo "org.smalt.subject=$got (want $want)"
+          [ "$got" = "$want" ] || { echo "FATAL: subject label mismatch" >&2; exit 1; }
+
+  kind-swarm:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [kind, host]
+    steps:
+      - name: "Materialize checkout (GH runner clones; act uses the mounted host tree)"
+        run: |
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -f docker/Dockerfile ] && [ -d .git ]; then
+            echo "workspace already materialized; using as-is"
+          elif [ -f docker/Dockerfile ]; then
+            echo "tree present without .git (act volume); initializing metadata only"
+            git init -q .
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git fetch -q --depth 1 origin "$GITHUB_SHA" 2>/dev/null || git fetch -q --depth 1 origin "${GITHUB_REF_NAME:-main}"
+            git checkout -q -f FETCH_HEAD -- . 2>/dev/null || true
+          else
+            git init -q .
+            git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+            git fetch -q --depth 1 origin "$GITHUB_SHA" 2>/dev/null || git fetch -q --depth 1 origin "${GITHUB_REF_NAME:-main}"
+            git checkout -q -f FETCH_HEAD
+          fi
+      - name: Build the burn image (same Dockerfile + contract as build-images)
+        run: |
+          git clone --depth 1 https://github.com/seanchatmangpt/ash_r2rml "$GITHUB_WORKSPACE/.deps/ash_r2rml"
+          git clone --depth 1 https://github.com/seanchatmangpt/ash_graphlaw "$GITHUB_WORKSPACE/.deps/ash_graphlaw"
+          git clone --depth 1 https://github.com/seanchatmangpt/ggen_igniter "$GITHUB_WORKSPACE/.deps/ggen_igniter"
+          SHA="$(git rev-parse HEAD 2>/dev/null || printf '%s' "${{ github.sha }}")"
+          docker build -f docker/Dockerfile -t smalt-burn:ci \
+            --build-arg SUBJECT_SHA="$SHA" \
+            --build-context ash_r2rml="$GITHUB_WORKSPACE/.deps/ash_r2rml" \
+            --build-context ash_graphlaw="$GITHUB_WORKSPACE/.deps/ash_graphlaw" \
+            --build-context ggen_igniter="$GITHUB_WORKSPACE/.deps/ggen_igniter" \
+            .
+      - name: backend=host — run the canonical compose file
+        if: matrix.backend == 'host'
+        run: |
+          docker tag smalt-burn:ci smalt:local
+          docker compose -f docker/compose.smalt.yml up -d --no-build
+          code=""
+          for i in $(seq 1 60); do
+            code="$(curl -ks -o /dev/null -w '%{http_code}' https://127.0.0.1:9443/metadata/endpoints || true)"
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          [ "$code" = "200" ] || { echo "FATAL: compose face never returned 200 (last=$code)" >&2; exit 1; }
+          docker compose -f docker/compose.smalt.yml down -v
+      - name: backend=kind — kind cluster from the canonical cluster.yaml
+        if: matrix.backend == 'kind'
+        run: |
+          set -euxo pipefail
+          # Tooling (idempotent, pinned)
+          [ -x /usr/local/bin/kind ] || { curl -fsSL -o /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-$(uname)-amd64 && chmod +x /usr/local/bin/kind; }
+          [ -x /usr/local/bin/kubectl ] || { curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x /usr/local/bin/kubectl; }
+          curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 && chmod +x /usr/local/bin/yq
+          # Derive the CI cluster config from the canonical file (strip ONLY
+          # host-local extraMounts; port mappings and networking stay).
+          yq 'del(.nodes[].extraMounts)' k8s/kind/cluster.yaml > /tmp/cluster-ci.yaml
+          cat /tmp/cluster-ci.yaml
+          kind create cluster --config /tmp/cluster-ci.yaml --wait 300s
+          kind load docker-image smalt-burn:ci --name kind-smalt
+          sed "s/__SUBJECT_SHA__/$SHA/g" k8s/burn/smalt-deployment.yaml > /tmp/smalt-deployment-ci.yaml
+          kubectl apply -f /tmp/smalt-deployment-ci.yaml
+          kubectl apply -f k8s/burn/smalt-services.yaml
+          kubectl -n default wait --for=condition=available deployment/smalt-burn --timeout=900s
+      - name: backend=kind — witnesses (cross-pod ping + port-mapped face)
+        if: matrix.backend == 'kind'
+        run: |
+          set -euxo pipefail
+          kubectl get pods -o wide
+          # Cross-pod ping: pod 0 -> pod 1 readiness surface over the headless
+          # service DNS zone / pod IP, on the auth-exempt /metadata/endpoints.
+          POD0="$(kubectl get pods -l app=smalt-burn -o jsonpath='{.items[0].metadata.name}')"
+          POD1_IP="$(kubectl get pods -l app=smalt-burn -o jsonpath='{.items[1].status.podIP}')"
+          code="$(kubectl exec "$POD0" -- curl -ks --max-time 10 -o /dev/null -w '%{http_code}' "https://${POD1_IP}:9443/metadata/endpoints")"
+          [ "$code" = "200" ] || { echo "FATAL: cross-pod ping failed (code=$code)" >&2; exit 1; }
+          # Port-mapped face: cluster.yaml maps 9443 to the host.
+          code="$(curl -ks --max-time 10 -o /dev/null -w '%{http_code}' https://127.0.0.1:9443/metadata/endpoints)"
+          [ "$code" = "200" ] || { echo "FATAL: port-mapped face failed (code=$code)" >&2; exit 1; }
+          kind delete cluster

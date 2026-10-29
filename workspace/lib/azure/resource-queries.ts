@@ -117,7 +117,7 @@ async function armGet(path: string): Promise<unknown> {
 
 /** READ: list subscriptions (GET /subscriptions). */
 export async function listSubscriptions(): Promise<SubscriptionRow[]> {
-  const c = ensureContext();
+  ensureContext();
   const json = (await armGet(`/subscriptions?api-version=${ARM_API_VERSION}`)) as {
     value?: Array<{ subscriptionId?: string; displayName?: string; state?: string }>;
   };

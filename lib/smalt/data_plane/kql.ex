@@ -45,6 +45,7 @@ defmodule Smalt.DataPlane.KQL do
   @nulls_pos %{"first" => :first, "last" => :last}
   @comparison_atoms %{
     "==" => :eq,
+    "=~" => :req,
     "!=" => :neq,
     "contains" => :contains,
     "startswith" => :startswith,
@@ -59,7 +60,7 @@ defmodule Smalt.DataPlane.KQL do
   @bp %{or: 1, and: 2}
   @bool_words Map.keys(@bool_ops)
 
-  @aggregates ~w(count sum avg min max)
+  @aggregates ~w(count sum avg min max dcount)
 
   # SYN- error codes (KQL-style typed parse errors; position = byte offset).
   @syn_unexpected "SYN0002"
@@ -69,6 +70,8 @@ defmodule Smalt.DataPlane.KQL do
 
   @spec run([row], String.t()) :: {:ok, [row]} | run_err
   def run(rows, query) when is_list(rows) and is_binary(query), do: run(rows, query, %{})
+
+  def run(_rows, _query), do: {:error, {:limit, "query must be a string, rows a list"}}
 
   # T-05 increment 2 (v26.10.28): run/3 threads a named-table map for
   # `| join ...` — the pipeline's own rows are $left, tables[name] is $right.
@@ -110,8 +113,6 @@ defmodule Smalt.DataPlane.KQL do
     end)
   end
 
-  def run(_rows, _query), do: {:error, "query must be a string, rows a list"}
-
   ## -- Pipeline execution ----------------------------------------------------
 
   defp execute(stages, rows, now, tables) do
@@ -150,40 +151,9 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
-  # Join keys normalize datetimes (ISO or DateTime) so temporal keys match
-  # across the two tables' storage shapes; everything else compares raw.
-  defp join_key(v) do
-    case to_datetime(v) do
-      {:ok, dt} -> {:dt, DateTime.to_unix(dt, :millisecond)}
-      _ -> {:raw, v}
-    end
-  end
-
-  defp join_merge(left, right) do
-    collisions =
-      Map.new(Map.intersect(left, right), fn {k, _v} -> {"#{k}_left", Map.get(left, k)} end)
-
-    left |> Map.merge(right) |> Map.merge(collisions)
-  end
-
   # mv-expand: element-wise list expansion (see parse_stage clause for law).
   defp apply_stage({:mv_expand, cols}, rows, _now, _tables) do
     {:ok, Enum.flat_map(rows, fn row -> mv_expand_row(row, cols) end)}
-  end
-
-  defp mv_expand_row(row, cols) do
-    lists = Enum.map(cols, fn col -> List.wrap(Map.get(row, col)) end)
-    max_n = lists |> Enum.map(&length/1) |> Enum.max(fn -> 0 end)
-
-    for i <- 0..max(max_n - 1, 0) do
-      expanded =
-        Enum.zip_with(cols, lists, fn col, values ->
-          {col, Enum.at(values, i)}
-        end)
-        |> Map.new()
-
-      Map.merge(row, expanded)
-    end
   end
 
   defp apply_stage({:take, n}, rows, _now, _tables) do
@@ -236,15 +206,15 @@ defmodule Smalt.DataPlane.KQL do
   # Kusto suffix naming (count_, sum_X, avg_X, min_X, max_X). `summarize by K`
   # with no aggregate yields distinct key rows. Empty input with no `by` gives
   # one zero/nil row (Kusto's empty-set aggregate semantics).
-  defp apply_stage({:summarize, aggs, []}, rows, _now, _tables) do
+  defp apply_stage({:summarize, aggs, []}, rows, now, _tables) do
     if rows == [] and aggs != [] do
       {:ok, [empty_agg_row(aggs)]}
     else
-      {:ok, [summarize_row(rows, aggs, %{})]}
+      {:ok, [summarize_row(rows, aggs, %{}, now)]}
     end
   end
 
-  defp apply_stage({:summarize, aggs, by_keys}, rows, _now, _tables) do
+  defp apply_stage({:summarize, aggs, by_keys}, rows, now, _tables) do
     groups = Enum.group_by(rows, fn row -> Enum.map(by_keys, &by_key_value(row, &1)) end)
 
     {:ok,
@@ -255,27 +225,77 @@ defmodule Smalt.DataPlane.KQL do
          |> Enum.zip(key_vals)
          |> Map.new()
 
-       summarize_row(group_rows, aggs, by_map)
+       summarize_row(group_rows, aggs, by_map, now)
      end)}
   end
 
-  defp summarize_row(group_rows, aggs, by_map) do
-    Map.merge(by_map, Map.new(aggs, &apply_agg(&1, group_rows)))
+  # Join keys normalize datetimes (ISO or DateTime) so temporal keys match
+  # across the two tables' storage shapes; everything else compares raw.
+  defp join_key(v) do
+    case to_datetime(v) do
+      {:ok, dt} -> {:dt, DateTime.to_unix(dt, :millisecond)}
+      _ -> {:raw, v}
+    end
+  end
+
+  defp join_merge(left, right) do
+    collisions =
+      Map.new(Map.intersect(left, right), fn {k, _v} -> {"#{k}_left", Map.get(left, k)} end)
+
+    left |> Map.merge(right) |> Map.merge(collisions)
+  end
+
+  defp mv_expand_row(row, cols) do
+    lists = Enum.map(cols, fn col -> List.wrap(Map.get(row, col)) end)
+    max_n = lists |> Enum.map(&length/1) |> Enum.max(fn -> 0 end)
+
+    for i <- 0..max(max_n - 1, 0) do
+      expanded =
+        Enum.zip_with(cols, lists, fn col, values ->
+          {col, Enum.at(values, i)}
+        end)
+        |> Map.new()
+
+      Map.merge(row, expanded)
+    end
+  end
+
+  defp summarize_row(group_rows, aggs, by_map, now) do
+    Map.merge(by_map, Map.new(aggs, &apply_agg(&1, group_rows, now)))
   end
 
   defp empty_agg_row(aggs),
     do:
       Map.new(aggs, fn
         {:count, "count_"} -> {"count_", 0}
+        {:countif, "countif_", _pred} -> {"countif_", 0}
+        {:sumif, "sumif_", _expr, _pred} -> {"sumif_", nil}
         {fun, out, _col} -> {out, agg_over(fun, [])}
       end)
 
-  defp apply_agg({:count, "count_"}, group_rows), do: {"count_", length(group_rows)}
+  defp apply_agg({:count, "count_"}, group_rows, _now), do: {"count_", length(group_rows)}
 
-  defp apply_agg({fun, out, col}, group_rows),
+  defp apply_agg({:countif, "countif_", pred}, group_rows, now),
+    do: {"countif_", Enum.count(group_rows, &eval(pred, &1, now))}
+
+  defp apply_agg({:sumif, "sumif_", expr, pred}, group_rows, now) do
+    values =
+      group_rows
+      |> Enum.filter(&eval(pred, &1, now))
+      |> Enum.map(&eval_scalar(expr, &1, now))
+      |> Enum.reject(&is_nil/1)
+
+    {"sumif_", agg_over(:sum, values)}
+  end
+
+  defp apply_agg({fun, out, col}, group_rows, _now),
     do: {out, agg_over(fun, Enum.reject(Enum.map(group_rows, &Map.get(&1, col)), &is_nil/1))}
 
   defp agg_over(_fun, []), do: nil
+
+  # dcount: distinct non-null values in the group (MapSet on the raw terms —
+  # Elixir term equality; DateTime struct == works structurally).
+  defp agg_over(:dcount, values), do: values |> MapSet.new() |> MapSet.size()
 
   defp agg_over(:sum, values) do
     case numeric_values(values) do
@@ -366,6 +386,12 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
+  # bin(Col, dur): floor to the bin. DateTime columns (or ISO8601 strings)
+  # floor to epoch-ms grid; numeric columns floor numerically; anything else
+  # is nil (Kusto null propagation).
+  defp eval_scalar({:f, "bin", [col, dur]}, row, _now),
+    do: bin_value(Map.get(row, col), dur)
+
   # Arithmetic is numeric-only; non-numeric operand -> nil (Kusto null
   # propagation: null op anything = null). Division by zero -> nil, not raise.
   defp eval_scalar({:arith, op, l, r}, row, now) do
@@ -393,6 +419,27 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
+  defp bin_value(nil, _dur), do: nil
+
+  defp bin_value(v, dur), do: do_bin_value(v, duration_ms(dur))
+
+  defp do_bin_value(v, ms) do
+    case to_datetime(v) do
+      {:ok, dt} ->
+        epoch = DateTime.to_unix(dt, :millisecond)
+        DateTime.from_unix!(div(epoch, ms) * ms, :millisecond)
+
+      :error ->
+        case number(v) do
+          {:ok, n} -> bin_number(n, ms)
+          :error -> nil
+        end
+    end
+  end
+
+  defp bin_number(n, ms) when is_integer(n), do: div(n, ms) * ms
+  defp bin_number(n, ms), do: floor(n / ms) * ms
+
   # Parse-time validated duration grammar; defensive default here is 0.
   defp duration_ms(dur) do
     [_, n, unit] = Regex.run(~r/^(\d+)(ms|s|m|h|d)$/, dur)
@@ -416,6 +463,15 @@ defmodule Smalt.DataPlane.KQL do
     case Map.get(row, col) do
       nil -> false
       v -> v == eval_scalar(rhs, row, now)
+    end
+  end
+
+  # KD-COVERS: KD-23 — "=~" is case-insensitive equality (real Kusto law:
+  # string-only, both sides lowercased, null never matches).
+  defp eval({:req, col, rhs}, row, now) do
+    case Map.get(row, col) do
+      nil -> false
+      v -> String.downcase(to_string(v)) == String.downcase(to_string(eval_scalar(rhs, row, now)))
     end
   end
 
@@ -466,6 +522,26 @@ defmodule Smalt.DataPlane.KQL do
         needle = String.downcase(to_str(eval_scalar(rhs, row, now)))
         terms = String.split(String.downcase(to_str(v)), ~r/[^a-z0-9]+/, trim: true)
         needle in terms
+    end
+  end
+
+  # `in` — exact set membership. Null never matches (Kusto null semantics).
+  defp eval({:in, col, values}, row, _now) do
+    case Map.get(row, col) do
+      nil -> false
+      v -> v in values
+    end
+  end
+
+  # `in~` — case-insensitive set membership (both sides folded; null never matches).
+  defp eval({:in_ci, col, values}, row, _now) do
+    case Map.get(row, col) do
+      nil ->
+        false
+
+      v ->
+        needle = String.downcase(to_str(v))
+        Enum.any?(values, &(String.downcase(to_str(&1)) == needle))
     end
   end
 
@@ -655,6 +731,17 @@ defmodule Smalt.DataPlane.KQL do
 
   # "==" stays a single word token (comparison operator); a lone '=' assigns.
   defp lex(<<?=, ?=, rest::binary>>, pos, acc), do: lex(rest, pos + 2, [{:word, "==", pos} | acc])
+  # AZURE-FIDELITY lane 3 (compile-freeze minimal unblock, disclosed): `>=`,
+  # `<=` and `!=` must lex as single comparison tokens — @comparison_atoms
+  # already maps them, but `>`/`<` were word bytes and `!`/`=` split, so
+  # `where x >= 3` / `where x != y` were typed parse errors (witnessed:
+  # test/integration/resource_graph_test.exs numeric/!= tests).
+  defp lex(<<?>, ?=, rest::binary>>, pos, acc), do: lex(rest, pos + 2, [{:word, ">=", pos} | acc])
+  defp lex(<<?<, ?=, rest::binary>>, pos, acc), do: lex(rest, pos + 2, [{:word, "<=", pos} | acc])
+  defp lex(<<?!, ?=, rest::binary>>, pos, acc), do: lex(rest, pos + 2, [{:word, "!=", pos} | acc])
+  # KD-COVERS: KD-23 — real-KQL case-insensitive equality "=~" (ResourceGraph
+  # falsifier shape `where type =~ "..."`); lexes as one word token.
+  defp lex(<<?=, ?~, rest::binary>>, pos, acc), do: lex(rest, pos + 2, [{:word, "=~", pos} | acc])
   defp lex(<<?=, rest::binary>>, pos, acc), do: lex(rest, pos + 1, [{:assign, "=", pos} | acc])
 
   defp lex(<<?+, rest::binary>>, pos, acc), do: lex(rest, pos + 1, [{:op, "+", pos} | acc])
@@ -879,18 +966,6 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
-  defp mv_cols_loop([{:word, col, _} | rest], acc) do
-    case rest do
-      [{:comma, ",", _} | r] -> mv_cols_loop(r, [col | acc])
-      _ -> {:ok, Enum.reverse([col | acc]), rest}
-    end
-  end
-
-  defp mv_cols_loop([{_tok, val, p} | _], _acc),
-    do: syn(@syn_unexpected, "expected a column in mv-expand list, got #{inspect(val)}", p)
-
-  defp mv_cols_loop([], _acc), do: {:ok, [], []}
-
   defp parse_stage([{:word, "project", _} | rest], stages, _pipe_pos) do
     with {:ok, items, rest} <- parse_items(rest, false) do
       parse_stages(rest, [{:project, items} | stages])
@@ -927,6 +1002,18 @@ defmodule Smalt.DataPlane.KQL do
   # parse error, never a FunctionClauseError crash (random-fuzz fence, cycle 9).
   defp parse_stage([_bad | _], _stages, pipe_pos),
     do: syn(@syn_unexpected, "unexpected token after '|'", pipe_pos)
+
+  defp mv_cols_loop([{:word, col, _} | rest], acc) do
+    case rest do
+      [{:comma, ",", _} | r] -> mv_cols_loop(r, [col | acc])
+      _ -> {:ok, Enum.reverse([col | acc]), rest}
+    end
+  end
+
+  defp mv_cols_loop([{_tok, val, p} | _], _acc),
+    do: syn(@syn_unexpected, "expected a column in mv-expand list, got #{inspect(val)}", p)
+
+  defp mv_cols_loop([], _acc), do: {:ok, [], []}
 
   # -- project/extend items: `Name = <scalar-expr>` or a bare column ------------
 
@@ -974,6 +1061,49 @@ defmodule Smalt.DataPlane.KQL do
 
   defp parse_aggs(tokens), do: aggs_loop(tokens, [])
 
+  # countif(pred) — a full where-clause predicate AST per group.
+  defp aggs_loop([{:word, "countif", p}, {:lparen, "(", _} | rest], acc) do
+    case parse_expr(rest, 0) do
+      {:ok, pred, [{:rparen, ")", _} | r]} ->
+        comma_or_done({:countif, "countif_", pred}, r, acc)
+
+      {:ok, _, [{_bad, _v, p2} | _]} ->
+        syn(@syn_unexpected, "expected ')' after countif predicate", p2 || p)
+
+      {:ok, _, []} ->
+        syn(@syn_unexpected, "expected ')' after countif predicate", p)
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  # sumif(expr, pred) — Kusto argument order (summed expression first).
+  defp aggs_loop([{:word, "sumif", p}, {:lparen, "(", _} | rest], acc) do
+    case parse_scalar(rest) do
+      {:ok, expr, [{:comma, ",", _} | r1]} ->
+        case parse_expr(r1, 0) do
+          {:ok, pred, [{:rparen, ")", _} | r]} ->
+            comma_or_done({:sumif, "sumif_", expr, pred}, r, acc)
+
+          {:ok, _, [{_bad, _v, p2} | _]} ->
+            syn(@syn_unexpected, "expected ')' after sumif predicate", p2)
+
+          {:ok, _, []} ->
+            syn(@syn_unexpected, "expected ')' after sumif predicate", p)
+
+          {:error, _} = err ->
+            err
+        end
+
+      {:ok, _, _} ->
+        syn(@syn_operand, "sumif expects (expression, predicate)", p)
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
   defp aggs_loop([{:word, fun, p}, {:lparen, "(", _} | rest], acc) when fun in @aggregates do
     case rest do
       # count() — no argument
@@ -996,7 +1126,7 @@ defmodule Smalt.DataPlane.KQL do
     do:
       syn(
         @syn_unknown,
-        "unknown aggregate function #{inspect(fun)} (supported: count, sum, avg, min, max)",
+        "unknown aggregate function #{inspect(fun)} (supported: count, sum, avg, min, max, dcount, countif, sumif)",
         p
       )
 
@@ -1060,13 +1190,13 @@ defmodule Smalt.DataPlane.KQL do
 
   defp key_cols_loop([{:word, col, _} | rest], acc), do: by_item_done(col, rest, acc)
 
-  defp by_item_done(item, [{:comma, ",", _} | r], acc), do: key_cols_loop(r, [item | acc])
-  defp by_item_done(item, rest, acc), do: {:ok, Enum.reverse([item | acc]), rest}
-
   defp key_cols_loop([{_tok, val, p} | _], _acc),
     do: syn(@syn_unexpected, "expected a column name in by-list, got #{inspect(val)}", p)
 
   defp key_cols_loop([], _acc), do: syn(@syn_operand, "by expects at least one column", 0)
+
+  defp by_item_done(item, [{:comma, ",", _} | r], acc), do: key_cols_loop(r, [item | acc])
+  defp by_item_done(item, rest, acc), do: {:ok, Enum.reverse([item | acc]), rest}
 
   # bin() step: a duration word ("5m") or a numeric word.
   defp bin_step(step) when is_binary(step) do
@@ -1239,6 +1369,19 @@ defmodule Smalt.DataPlane.KQL do
   defp parse_call("datetime", [{_tok, val, p} | _], _wp),
     do: syn(@syn_operand, "datetime() expects a quoted ISO8601 string, got #{inspect(val)}", p)
 
+  # bin(Col, dur) as a scalar (project/extend). Duration validated by the
+  # shared grammar; the column resolves per-row at eval time.
+  defp parse_call("bin", [{:word, col, _p}, {:word, dur, dp}, {:rparen, ")", _} | rest], _wp) do
+    if Regex.match?(~r/^\d+(ms|s|m|h|d)$/, dur) do
+      {:ok, {:f, "bin", [col, dur]}, rest}
+    else
+      syn(@syn_operand, "bin() expects a duration like 1h, 30m, 7d, 10s, 500ms", dp)
+    end
+  end
+
+  defp parse_call("bin", [{:word, _col, p} | _], _wp),
+    do: syn(@syn_operand, "bin() expects (column, duration like 1h)", p)
+
   # Fail-closed on unknown functions (real KQL: unknown function is a parse error).
   defp parse_call(other, _rest, p),
     do: syn(@syn_unknown, "unknown function #{inspect(other)}", p)
@@ -1291,6 +1434,29 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
+  # `in` / `in~` list membership: col in ("a", "b") | col in (1, 2, 3).
+  defp parse_comparison(col, [{:word, in_op, p} | rest], _cp) when in_op in ["in", "in~"] do
+    case rest do
+      [{:lparen, "(", _} | r1] ->
+        case parse_in_list(r1, []) do
+          {:ok, values, [{:rparen, ")", _} | r2]} ->
+            {:ok, {if(in_op == "in", do: :in, else: :in_ci), col, values}, r2}
+
+          {:ok, _, _} ->
+            syn(@syn_unexpected, "expected ')' after in-list", p)
+
+          {:error, _} = err ->
+            err
+        end
+
+      [{_tok, val, p2} | _] ->
+        syn(@syn_operand, "in expects '(', got #{inspect(val)}", p2)
+
+      [] ->
+        syn(@syn_operand, "in expects '('", p)
+    end
+  end
+
   defp parse_comparison(col, [{:word, op, p} | rest], _cp) do
     case Map.fetch(@comparison_atoms, op) do
       {:ok, op_atom} ->
@@ -1312,6 +1478,23 @@ defmodule Smalt.DataPlane.KQL do
   # error, never a FunctionClauseError crash (fuzz fence, cycle 10).
   defp parse_comparison(_col, [_bad | _], cp),
     do: syn(@syn_operand, "expected comparison operator after column", cp)
+
+  defp parse_in_list([{:string, s, _} | rest], acc), do: parse_in_list_item(s, rest, acc)
+
+  defp parse_in_list([{:word, w, p} | rest], acc) do
+    case number(w) do
+      {:ok, n} -> parse_in_list_item(n, rest, acc)
+      :error -> syn(@syn_operand, "in-list items must be literals, got #{inspect(w)}", p)
+    end
+  end
+
+  defp parse_in_list([{_tok, val, p} | _], _acc),
+    do: syn(@syn_operand, "in-list items must be literals, got #{inspect(val)}", p)
+
+  defp parse_in_list([], p), do: syn(@syn_operand, "in-list expects at least one item", p)
+
+  defp parse_in_list_item(item, [{:comma, ",", _} | rest], acc), do: parse_in_list(rest, [item | acc])
+  defp parse_in_list_item(item, rest, acc), do: {:ok, Enum.reverse([item | acc]), rest}
 
   defp expect_dotdot_then_scalar([{:word, "..", _} | rest]) do
     case parse_scalar(rest) do

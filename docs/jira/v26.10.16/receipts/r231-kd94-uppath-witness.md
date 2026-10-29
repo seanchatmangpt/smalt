@@ -3,14 +3,14 @@
 Standing: **ALIVE** (witnessed execution on the exact subjects; 5/5 subtests pass)
 
 - Date: 2026-10-17 ~03:52 PDT
-- Subject (consumer): `/Users/sac/cai/athena/playground/test/smalt-case-space.e2e.test.mjs` (two minimal test fixes this session — see "Test fixes" below)
+- Subject (consumer): `/Users/sac/cai/legacy-client/playground/test/smalt-case-space.e2e.test.mjs` (two minimal test fixes this session — see "Test fixes" below)
 - Subject (substrate): smalt @ main 7275032 + working tree; substrate booted with `SMALT_TLS_CERTFILE=/Users/sac/smalt/.smalt/tls/dev-cert.pem SMALT_TLS_KEYFILE=/Users/sac/smalt/.smalt/tls/dev-key.pem` (`scripts/substrate.sh up 9>&-`)
 - Runner (canonical per the test file's own header; the dispatched `ts-resolve-hook.mjs` is resolve-only and chokes on TS parameter properties in `matter-storage-contract.ts` — the test header documents `j13-ts-resolve.mjs`, which carries the TS transpile load hook):
 
 ```
-cd /Users/sac/cai/athena/playground && \
+cd /Users/sac/cai/legacy-client/playground && \
 NODE_EXTRA_CA_CERTS=/Users/sac/smalt/.smalt/tls/ca-cert.pem \
-node --import 'data:text/javascript,import {register} from "node:module"; register("file:///Users/sac/cai/athena/playground/test/j13-ts-resolve.mjs")' \
+node --import 'data:text/javascript,import {register} from "node:module"; register("file:///Users/sac/cai/legacy-client/playground/test/j13-ts-resolve.mjs")' \
 --test test/smalt-case-space.e2e.test.mjs
 ```
 
@@ -31,12 +31,12 @@ node --import 'data:text/javascript,import {register} from "node:module"; regist
    Killed pid 7846 directly (colima re-establishes forwards on demand; VM
    workloads unaffected). Recorded here as a port_sweep class gap.
 
-## Test fixes (athena side, minimal, disclosed)
+## Test fixes (legacy-client side, minimal, disclosed)
 
-- FLIP B-leg used doc id `athena-pleadings/pleading-001` (contains `/`): the
+- FLIP B-leg used doc id `legacy-client-pleadings/pleading-001` (contains `/`): the
   real @azure/cosmos SDK rejects it **client-side** (illegal Resource ID
   chars), so the down-substrate flip never reached the wire. Changed to a
-  legal id `athena-flip-probe` (transport-down maps to SMALT_UNREACHABLE
+  legal id `legacy-client-flip-probe` (transport-down maps to SMALT_UNREACHABLE
   regardless of doc existence).
 - B-leg now calls `ensureCaseSpace({db, coll})` first — the container does not
   survive every substrate reboot cycle (lane-keyed DETS), and the test
@@ -50,7 +50,7 @@ A1 PASS: put/get byte-exact, etag=66148472…, bytes=142
 A2 PASS: delete-while-held 412 LEGAL_HOLD_ACTIVE; release 403 HOLD_RELEASE_REFUSED; held doc intact
 A2 PASS: unheld doc deleted, post-delete get is 404
   ✔ A2: legal hold refuses delete and release; an unheld doc deletes and 404s after (78.746959ms)
-B PASS: caseDocPut/caseDocGet round-trip on smalt Cosmos db=athena-case-space-e2e, etag="55f359b…
+B PASS: caseDocPut/caseDocGet round-trip on smalt Cosmos db=legacy-client-case-space-e2e, etag="55f359b…
   ✔ B: J8 adapter puts/gets the same case doc on smalt Cosmos (28.897125ms)
 FLIP PASS: CaseSpace get with smalt down -> MatterStorageError 503 STORAGE_UNAVAILABLE_OR_OUTCOME_UNKNOWN
 FLIP PASS: J8 caseDocGet with smalt down -> SmaltSubstrateError SMALT_UNREACHABLE
@@ -70,7 +70,7 @@ policy — the SDK sends `Authorization: type=aad&ver=1.0&sig=<jwt>` natively
 `Smalt.Auth.Bearer` (`lib/smalt/auth/bearer.ex`, 2026-10-16 lane-659 fix)
 extracted the sig JWT and verified it via the standard HS256 path. PUT
 returned a real `_etag` + `_rid`/`_self`; GET round-tripped byte-exact
-(system fields excluded). Wire receipts: 32 `dbs/athena-case-space-e2e`
+(system fields excluded). Wire receipts: 32 `dbs/legacy-client-case-space-e2e`
 request lines in `/tmp/smalt-substrate-state/substrate.log` for the window.
 
 Non-vacuity: the FLIP subtest stopped the substrate mid-run and both legs

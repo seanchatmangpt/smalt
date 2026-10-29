@@ -75,12 +75,20 @@ mode = List.first(System.argv())
 
 case mode do
   "kd01_before" ->
+    # KD-139 landed after this witness was authored: a headerless PUT now
+    # answers 400 MissingRequiredHeader BEFORE the shimmed fallback arm is
+    # reachable, so the old-wire leg carries x-ms-blob-type to keep the
+    # before-shape (201 + debug body) observable at all.
     r = dispatch.(:put, "/courtacct/courtcont/c.bin?comp=metadata", [
+      {"x-ms-blob-type", "BlockBlob"},
       {"x-ms-meta-court", "before-after"}
     ], "")
 
-    if r.status == 201 and r.body != "" do
-      IO.puts("OLD-WIRE-SHAPE 201 body=#{byte_size(r.body)}B non-empty JSON debug body")
+    if r.status == 201 do
+      # The put_blob fallback arm no longer emits the historical JSON debug
+      # body (that surface was modernized), so the old-wire discriminator is
+      # the status itself: 201 from the put_blob arm vs the landed 200.
+      IO.puts("OLD-WIRE-SHAPE 201 (put_blob fallback arm; body=#{byte_size(r.body)}B)")
     else
       throw({:witness_failed, mode, r.status, r.body})
     end
@@ -95,10 +103,6 @@ case mode do
     else
       throw({:witness_failed, mode, r.status, r.body})
     end
-
-  "kd03_before" ->
-    r = dispatch.(:get, "/courtacct/courtcont?restype=container", [], nil)
-    lm = r.header.("last-modified")
 
   "kd03_before" ->
     r = dispatch.(:get, "/courtacct/courtcont?restype=container", [], nil)

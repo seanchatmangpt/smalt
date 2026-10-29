@@ -60,6 +60,18 @@ shim_court_skip_usage() { :; }
 # SKIP if the toolchain is absent (loud, never a faked pass).
 command -v mix >/dev/null 2>&1 || shim_court_skip "mix not on PATH"
 
+# LEG-RETIRED (2026-10-20, court-repair lane): the dead-citation fence this
+# court proves (test/corpus_test.exs, message "vanished from
+# Smalt.ArmGateway.Router") was deleted at 64f6099 together with the
+# compliance corpus tier; no successor corpus landed (see
+# justfile.d/23-compliance.just + justfile.d/27-scratch-soak.just, both
+# RETIRED for the same reason). The mutation machinery below is intact and
+# re-arms automatically if a successor corpus test re-introduces the fence.
+# Disposition: SKIP(leg-retired:test subject deleted at 64f6099, no successor).
+if [ ! -f "$ROOT/test/corpus_test.exs" ]; then
+  shim_court_skip "leg-retired: test/corpus_test.exs deleted at 64f6099 (compliance-corpus reset); dead-citation fence has no witness — no successor corpus landed"
+fi
+
 with_shim "$ROUTER" \
   'MIX_BUILD_ROOT=_build-lane425 mix test test/corpus_test.exs >/dev/null 2>&1' \
   'out="$(MIX_BUILD_ROOT=_build-lane425 mix test test/corpus_test.exs 2>&1)"; echo "$out" | grep -q "vanished from Elixir.Smalt.ArmGateway.Router"'

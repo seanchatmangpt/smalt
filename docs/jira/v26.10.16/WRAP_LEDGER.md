@@ -1333,7 +1333,7 @@ Per run:
 16. **run-16** (`court-x2-wrap-run16.log`): both runs exit 1 at the
     **doctor stage, zero tests** — `[FAULT] port-in-use`, port 5672
     held by **PID 45217**, an orphan beam parked under the
-    `athena-sb` process family (same orphan-hold class as run-11's
+    `legacy-client-sb` process family (same orphan-hold class as run-11's
     PID 17145; doctor correctly refused both runs and named the
     holder rather than killing it — fail-closed as designed, and
     consistent with the never-pattern-pkill law). Class:
@@ -1414,7 +1414,7 @@ the post-court run is adjudication-only:
   prediction, so the post-court publish-dry run's gate-1 red is
   adjudicated KNOWN-BLOCKER, not a new defect.
 - **Gates 2-4 predicted green**: gate 2 (inner-tar key grep) and
-  gate 3 (athena//Users/sac leak grep) have no known blockers on the
+  gate 3 (legacy-client//Users/sac leak grep) have no known blockers on the
   current packaged set; gate 4 (ERROR_CODES regen identity) verified
   green by this lane: `gen_error_codes.py --check` → exit 0 at this
   edit. Prediction, not receipt: the post-court `just publish-dry`

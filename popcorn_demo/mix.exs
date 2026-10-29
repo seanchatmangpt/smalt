@@ -20,6 +20,10 @@ defmodule PopcornDemo.MixProject do
       # it reports through Popcorn.JS, under plain mix test/host mix run it
       # just returns values.
       mod: {PopcornDemo.Application, []},
+      # NOTE: keep to [:logger] — adding :crypto/:ssl/:inets makes mix popcorn.cook
+      # refuse (core wasm runtime has no crypto; witnessed 2026-10-21). Host-side
+      # OTP-app loading is handled at runtime by Transport ensure_started/ebin repair
+      # and the test probe's path warm-up.
       extra_applications: [:logger]
     ]
   end

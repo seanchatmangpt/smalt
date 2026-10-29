@@ -8,6 +8,7 @@ import {
   resetEvents,
   EVENTS_PATH,
 } from "@/lib/bench/isr-counter";
+import { debugFacesEnabled, debugFaceDisabled } from "@/lib/debug-faces";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // Mutating face (reset / stale-report) — gated, EXPL7-R1 E7-3.
+  if (!debugFacesEnabled()) return debugFaceDisabled();
   const body = await req.json().catch(() => ({}));
   if (body.reset === true) {
     resetEvents();

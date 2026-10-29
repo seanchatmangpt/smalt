@@ -24,6 +24,8 @@ defmodule Smalt.Affidavit.Seal do
 
   @required_fields ~w(subject_sha authority consequence replay standing)a
 
+  require Logger
+
   # Engine API resolution: dynamic so this module compiles and stays
   # fail-closed before/without the WasmEngine lane's module on disk.
   @engine_module Smalt.Affidavit.WasmEngine
@@ -106,15 +108,29 @@ defmodule Smalt.Affidavit.Seal do
       function_exported?(@engine_module, @engine_export, 1)
   end
 
+  # JA-R1 (V3): the fail-closed envelope is unchanged, but the crash/exit/
+  # throw is no longer silent — every engine-down refusal that reaches the
+  # caller is operator-visible (the module-not-loaded case at call_engine/2
+  # stays quiet: it is steady state before the WasmEngine lane lands).
   defp call_export(canonical, opts) do
     canonical
     |> @engine_module.affi_admit_and_seal()
     |> seal_result(opts)
   rescue
-    _ -> {:error, :engine_unavailable}
+    e ->
+      Logger.error("affidavit seal: engine crash -> :engine_unavailable (#{Exception.message(e)})")
+
+      {:error, :engine_unavailable}
   catch
-    :exit, _ -> {:error, :engine_unavailable}
-    :throw, _ -> {:error, :engine_unavailable}
+    :exit, reason ->
+      Logger.error("affidavit seal: engine exit -> :engine_unavailable (#{inspect(reason)})")
+
+      {:error, :engine_unavailable}
+
+    :throw, reason ->
+      Logger.error("affidavit seal: engine throw -> :engine_unavailable (#{inspect(reason)})")
+
+      {:error, :engine_unavailable}
   end
 
   defp seal_result({:ok, sealed}, _opts) when is_binary(sealed), do: {:ok, sealed}
@@ -135,7 +151,6 @@ defmodule Smalt.Affidavit.Seal do
   # verbatim instead of re-wrapping it as a seal refusal.
   defp seal_result({:error, :engine_unavailable}, _opts), do: {:error, :engine_unavailable}
 
-  defp seal_result({:error, reason}, _opts), do: {:error, {:seal_refused, reason}}
 
   defp seal_result(other, _opts), do: {:error, {:seal_refused, {:malformed_engine_return, other}}}
 
@@ -149,5 +164,4 @@ defmodule Smalt.Affidavit.Seal do
     end
   end
 
-  defp validate(_), do: {:error, {:invalid_receipt, :receipt}}
 end

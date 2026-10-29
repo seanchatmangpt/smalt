@@ -85,6 +85,12 @@ compile() {
 
 SUB_PID=""; SUB_ARM=""; SUB_EGRESS=""; SUB_TLS=""
 
+# LEG-RETIRED (loud SKIP, exit 3): the witness (clean-room test reset, 64f6099)
+# was deleted with no verification/ successor yet (V261019-08 pending) — a
+# witness of "" would make node emit nothing (the silent no-witness failure
+# this skip replaces). Re-arms automatically when a successor witness lands.
+[ -n "$WITNESS" ] && [ -f "$WITNESS" ] || skip_loud "leg-retired: KD-15 node witness deleted at 64f6099 (no verification/ successor landed; V261019-08 pending)"
+
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
 substrate_start() {

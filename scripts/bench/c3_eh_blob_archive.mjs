@@ -593,11 +593,13 @@ async function main() {
   const failed = records.some((r) => r.errors > 0 || r.pass === false);
   console.log(`ordering=${records.find((r) => r.op === "ordering-verify")?.pass} worm409=${records.find((r) => r.op === "worm-overwrite-409")?.pass} catchup=${records.find((r) => r.op === "backpressure-catchup")?.pass} -> exit ${failed ? 1 : 0} (worm-create-refused finding included)`);
   downSubstrate();
+  agent.destroy(); // BK-N7 teardown: keep-alive sockets hold the event loop
   process.exitCode = failed ? 1 : 0;
 }
 
 main().catch(async (e) => {
   console.error(`[c3] harness error: ${e?.stack || e}`);
   downSubstrate();
+  agent.destroy(); // BK-N7 teardown
   process.exitCode = 3;
 });

@@ -1,0 +1,46 @@
+# the evidence law entailment layer (ATH-3) — graphlaw/eyeron N3.
+#
+# Facts expected in the same program (or law-op data graph + rules step):
+# documents (ev:Document, ev:bates, ev:matterId) and the presenting
+# credential (ev:Credential, ev:allowedMatter).
+#
+# Fail-closed design: `ev:Admissible` is derivable ONLY through the
+# credential-allowed-matter intersection. No intersection ⇒ no derivation ⇒
+# the substrate's closed-world reading is quarantine. There is no negation in
+# the rules: quarantine is "Admissible was never derived", witnessed per-run
+# by the fixed-point closure.
+
+@prefix ev: <https://smalt.local/ev#> .
+@prefix acp: <http://www.w3.org/ns/solid/acp#> .
+@prefix string: <http://www.w3.org/2000/10/swap/string#> .
+
+# B1 — bates well-formedness: the charter's bates pattern lives here because
+# sh:pattern is outside both engines' supported shape vocabulary.
+{ ?doc a ev:Document ; ev:bates ?b . ?b string:matches "^ATH-[0-9]{6}$" }
+  => { ?doc a ev:BatesWellFormed } .
+
+# B2 — ethical wall: document's matter belongs to the credential's allowed set.
+{ ?doc a ev:BatesWellFormed ; ev:matterId ?m . ?cred ev:allowedMatter ?m }
+  => { ?doc ev:admittedBy ?cred } .
+
+# B3 — admissible only via B2 (admissibility-by-derivation-only).
+{ ?doc ev:admittedBy ?cred }
+  => { ?doc a ev:Admissible } .
+#
+# Quarantine has NO rule. A document the closure leaves outside
+# ev:Admissible is quarantined by the substrate's closed-world reading of
+# the fixed point ("derive nothing ⇒ fail-closed quarantine"); the refusal
+# leaf is the POWL quarantine-branch step recorded in the sealed receipt.
+
+# C1 — conflicted-class derivation (the acp:noneOf class): a presenter whose
+# access request carries the wall registry's membership marker joins the
+# conflicted class. Derivation-only, matching the fail-closed design above.
+{ ?req a acp:AccessRequest ; ev:conflictedMatter ?m }
+  => { ?req a acp:ConflictedAgent } .
+
+# C2 — ACP deny leaf: membership in the conflicted class derives the typed
+# deny. This is the ANDON/refusal face's named reason; it never gates
+# ev:Admissible (admissibility stays derivation-only via B2/B3 — the sieve's
+# sh:not is what refuses at admission, C2 names the reason downstream).
+{ ?req a acp:ConflictedAgent }
+  => { ?req a acp:Deny } .

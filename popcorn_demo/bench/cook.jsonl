@@ -1,0 +1,6 @@
+{"lane": "cook", "phase": "cook", "median_ms": 2645, "runs": 2, "runs_ms": [2780, 2510], "ts": 1792544216, "errors": 0}
+{"lane": "cook", "phase": "boot", "median_ms": 904, "runs": 2, "runs_ms": [901, 906], "ts": 1792544216, "errors": 0}
+{"lane": "cook", "phase": "cook", "median_ms": 2716, "runs": 2, "runs_ms": [2595, 2837], "ts": 1792544236, "errors": 0}
+{"lane": "cook", "phase": "boot", "median_ms": 918, "runs": 2, "runs_ms": [916, 919], "ts": 1792544236, "errors": 0}
+{"lane": "cook", "phase": "cook", "median_ms": 3280, "runs": 2, "runs_ms": [3993, 2568], "ts": 1792545294, "errors": 0}
+{"lane": "cook", "phase": "boot", "median_ms": 892, "runs": 2, "runs_ms": [894, 889], "ts": 1792545294, "errors": 0}

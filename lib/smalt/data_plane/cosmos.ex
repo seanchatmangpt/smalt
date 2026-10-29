@@ -1,4 +1,28 @@
 defmodule Smalt.DataPlane.Cosmos do
+  # UNBLOCK FIX (IMPL-4, compile-freeze SLA 2026-10-21): OTP-29-lane experiment
+  # used `is_integer/3` range guards (not a real BIF on OTP 28 / any OTP).
+  # Equivalent guard macro preserves semantics; owning lane may re-pin.
+  # AR-WIRE-02 (IMPL-2 re-pin): body delegates to the real OTP-29 range
+  # guard BIF `:erlang.is_integer/3` (OTP-29-only; compile-refused on
+  # OTP <= 28). The Elixir 1.20 front end does not admit bare
+  # `is_integer/3` in guards ("there is no such import"), so this one-line
+  # delegate is the direct-BIF form — IMPL-4's 3-comparison shim body is
+  # superseded. Repo standard toolchain: OTP 29 (TOOLUP, .tool-versions
+  # erlang 29.1.2 / elixir 1.20.4-otp-29).
+  # AR-WIRE-02 (IMPL-2 final re-pin): delegates to the real OTP-29 range
+  # guard BIF `:erlang.is_integer/3` (OTP-29-only; compile-refused on
+  # OTP <= 28). Elixir 1.20 does not admit bare is_integer/3 in guards
+  # ("there is no such import"), so this one-line delegate IS the direct-BIF
+  # form; the `x in lo..hi` shim body is semantically identical but is the
+  # OTP-28 fallback, not the adopted BIF. Repo toolchain: OTP 29
+  # (TOOLUP, .tool-versions erlang 29.1.2 / elixir 1.20.4-otp-29).
+  defguardp int_in(x, lo, hi) when is_integer(x) and x >= lo and x <= hi
+
+  # OTP-29 TOOLCHAIN FLOOR: is_integer/3 range guards (RU throttle head)
+  # are OTP-29-only (compile-refused on OTP <= 28). Repo standard
+  # toolchain: OTP 29 (TOOLUP). AR-WIRE-02.
+  @max_cosmos_ru_guard 9_007_199_254_740_991
+
   @moduledoc """
   Cosmos DB NoSQL point-operation engine extracted from the egress router.
 
@@ -25,6 +49,8 @@ defmodule Smalt.DataPlane.Cosmos do
   alias Smalt.DataPlane.ConditionalHeaders
   alias Smalt.DataPlane.PartitionKey
   alias Smalt.Store
+
+  require Logger
 
   @request_charge "1.0"
   @docs_table :smalt_cosmos_docs
@@ -70,13 +96,13 @@ defmodule Smalt.DataPlane.Cosmos do
   under a `{0, db}` tuple key (term order keeps tuple keys out of every binary
   prefix scan).
   """
-  def create_db(db) do
+  def create_db(db, headers \\ %{}) do
     if store_ready?() do
       # Real Cosmos name rules (row 11 surface): names are case-sensitive and
       # capped at 255 chars; "/" is reserved for the path grammar.
       case valid_name?(db) do
         true ->
-          do_create_db(db)
+          do_create_db(db, headers)
 
         false ->
           {:ok, 400, %{"x-ms-request-charge" => @request_charge},
@@ -90,8 +116,10 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  defp do_create_db(db) do
-    key = {0, db}
+  defp do_create_db(db, headers) do
+    # D3 registry fence: the db-name component of every registry key is
+    # tenant_scoped_key'd; home stays byte-identical.
+    key = {0, reg_scoped(headers, db)}
 
     record = %{
       "id" => db,
@@ -111,12 +139,14 @@ defmodule Smalt.DataPlane.Cosmos do
 
   defp contains_slash?(name), do: String.contains?(name, "/")
 
-  @doc "GET /dbs — list database records."
-  def list_dbs do
+  @doc "GET /dbs — list database records, scoped to the caller's tenant namespace."
+  def list_dbs(headers \\ %{}) do
     if store_ready?() do
+      tenant = tenant_of(headers)
+
       dbs =
         meta_records(fn
-          {0, _db} -> true
+          {0, name} -> reg_visible?(tenant, name)
           _ -> false
         end)
 
@@ -132,11 +162,11 @@ defmodule Smalt.DataPlane.Cosmos do
   The pk definition is stored DURABLY (store-owned table) via `define_container/3`,
   which re-enables live pk enforcement (400 on mismatch).
   """
-  def create_collection(db, coll, body) when is_map(body) do
+  def create_collection(db, coll, body, headers \\ %{}) when is_map(body) do
     if store_ready?() do
       case valid_name?(db) and valid_name?(coll) do
         true ->
-          do_create_collection(db, coll, body)
+          do_create_collection(db, coll, body, headers)
 
         false ->
           {:ok, 400, %{"x-ms-request-charge" => @request_charge},
@@ -151,13 +181,13 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  defp do_create_collection(db, coll, body) do
+  defp do_create_collection(db, coll, body, headers) do
     paths =
       body
       |> Map.get("partitionKey")
       |> paths_from_body()
 
-    key = {1, db, coll}
+    key = reg_coll_key(headers, db, coll)
 
     case throughput_from_body(body) do
       {:error, status, message} ->
@@ -170,26 +200,60 @@ defmodule Smalt.DataPlane.Cosmos do
              %{"code" => "BadRequest", "message" => message}}
 
           {:ok, unique_keys} ->
-            record =
-              %{
-                "id" => coll,
-                "_rid" => coll_rid(db, coll),
-                "_self" => "/dbs/#{db}/colls/#{coll}",
-                # Engine-level: the python azure-cosmos SDK reads partitionKey["kind"]
-                # (_ExtractPartitionKey); a record without it KeyErrors in the SDK.
-                "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
-                "uniqueKeyPolicy" => unique_keys,
-                "_ts" => System.system_time(:second)
-              }
-              |> maybe_put_throughput(throughput)
+            case analytical_ttl_from_body(body) do
+              {:error, message} ->
+                {:ok, 400, %{"x-ms-request-charge" => @request_charge},
+                 %{"code" => "BadRequest", "message" => message}}
 
-            :ets.insert(@pk_meta_table, {key, record})
-            define_container(db, coll, paths)
+              {:ok, analytical_ttl} ->
+                record =
+                  %{
+                    "id" => coll,
+                    "_rid" => coll_rid(db, coll),
+                    "_self" => "/dbs/#{db}/colls/#{coll}",
+                    "partitionKey" => Map.put_new(%{"paths" => paths}, "kind", "Hash"),
+                    "uniqueKeyPolicy" => unique_keys,
+                    "_ts" => System.system_time(:second)
+                  }
+                  |> maybe_put_throughput(throughput)
+                  |> maybe_put_analytical_ttl(analytical_ttl)
 
-            {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+                :ets.insert(@pk_meta_table, {key, record})
+                define_container_scoped(headers, db, coll, paths)
+
+                {:ok, 201, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}),
+                 record}
+            end
         end
     end
   end
+
+  # analyticalStorageTtl (v26.10.19 wave-5 face): present non-negative integer
+  # is stored on the container record; absent is key-absent (never null); a
+  # negative or non-integer value is a typed 400 BadRequest (real Cosmos
+  # validates analyticalStorageTtl at container create/replace).
+  defp analytical_ttl_from_body(body) do
+    case Map.get(body, "analyticalStorageTtl") do
+      nil ->
+        {:ok, nil}
+
+      # AR-WIRE-02 (IMPL-11): OTP-29 is_integer/3 head via the module's
+      # int_in delegate; bignum arm keeps identical semantics above the
+      # guard ceiling (same {:ok, ttl} admission).
+      ttl when int_in(ttl, 0, @max_cosmos_ru_guard) ->
+        {:ok, ttl}
+
+      ttl when is_integer(ttl) and ttl >= 0 ->
+        {:ok, ttl}
+
+      other ->
+        {:error,
+         "Invalid analyticalStorageTtl: expected a non-negative integer (seconds; 0 = off), got: #{inspect(other)}"}
+    end
+  end
+
+  defp maybe_put_analytical_ttl(record, nil), do: record
+  defp maybe_put_analytical_ttl(record, ttl), do: Map.put(record, "analyticalStorageTtl", ttl)
 
   # 80/20 throughput surface (C5 typed gap): real Cosmos models throughput as
   # an offer; here the integer is stored on the container record and served on
@@ -199,9 +263,9 @@ defmodule Smalt.DataPlane.Cosmos do
   Absent `throughput` on the PUT body leaves the stored value unchanged;
   present non-integer (or non-positive) is a typed 400 BadRequest, never a 500.
   """
-  def replace_collection(db, coll, body) when is_map(body) do
+  def replace_collection(db, coll, body, headers \\ %{}) when is_map(body) do
     if store_ready?() do
-      case container_record(db, coll) do
+      case container_record(db, coll, headers) do
         nil ->
           {:ok, 404, %{"x-ms-request-charge" => @request_charge},
            %{"code" => "NotFound", "message" => "Entity with id #{coll} not found"}}
@@ -211,17 +275,28 @@ defmodule Smalt.DataPlane.Cosmos do
             {:error, status, message} ->
               {:ok, status, %{"x-ms-request-charge" => @request_charge}, message}
 
-            {:ok, nil} ->
-              {:ok, 200, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+            {:ok, t_or_nil} ->
+              case analytical_ttl_replace(body, record) do
+                {:error, message} ->
+                  {:ok, 400, %{"x-ms-request-charge" => @request_charge},
+                   %{"code" => "BadRequest", "message" => message}}
 
-            {:ok, t} ->
-              record =
-                record
-                |> Map.put("throughput", t)
-                |> Map.put("_ts", System.system_time(:second))
+                {:ok, nil} ->
+                  {:ok, 200, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}),
+                   record}
 
-              :ets.insert(@pk_meta_table, {{1, db, coll}, record})
-              {:ok, 200, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}), record}
+                {:ok, ttl} ->
+                  record =
+                    record
+                    |> maybe_put_throughput(t_or_nil)
+                    |> Map.put("analyticalStorageTtl", ttl)
+                    |> Map.put("_ts", System.system_time(:second))
+
+                  :ets.insert(@pk_meta_table, {reg_coll_key(headers, db, coll), record})
+
+                  {:ok, 200, success_headers(db, coll, 0, %{"etag" => quoted_sha256(record)}),
+                   record}
+              end
           end
       end
     else
@@ -231,6 +306,91 @@ defmodule Smalt.DataPlane.Cosmos do
 
   defp maybe_put_throughput(record, nil), do: record
   defp maybe_put_throughput(record, t), do: Map.put(record, "throughput", t)
+
+  @doc """
+  Effective analytical-store TTL for a container: the stored
+  `analyticalStorageTtl` (seconds), or `:off` when absent or 0.
+  Consumed by the MCP `cosmos.ttl.effective` tool (Smalt.Mcp.Router).
+  """
+  def effective_ttl(db, coll) when is_binary(db) and is_binary(coll) do
+    case container_record(db, coll) do
+      %{"analyticalStorageTtl" => ttl} when is_integer(ttl) and ttl > 0 -> ttl
+      _ -> :off
+    end
+  end
+
+  @doc """
+  Count-only analytical-store sweep (v26.10.19 wave-5 face): counts documents
+  whose `_ts` is older than the container's `analyticalStorageTtl` window and
+  emits typed telemetry `[:smalt, :cosmos, :analytical_sweep]` WITHOUT deleting
+  live data (the analytical view is a projection at emulator scale). Returns
+  {:ok, %{expired: n, kept: n, ttl: seconds}} — `kept` is omitted when the
+  container holds no documents, and ttl is :off (expired 0) when the TTL is
+  absent or 0.
+  """
+  def analytical_store_sweep(db, coll) when is_binary(db) and is_binary(coll) do
+    ttl = effective_ttl(db, coll)
+
+    docs =
+      @docs_table
+      |> Store.list_prefix("#{db}/#{coll}/")
+
+    now = System.system_time(:second)
+
+    {expired, kept} =
+      if ttl == :off do
+        {0, length(docs)}
+      else
+        Enum.split_with(docs, fn doc ->
+          ts = Map.get(doc, "_ts", now)
+          now - ts >= ttl
+        end)
+        |> then(fn {e, k} -> {length(e), length(k)} end)
+      end
+
+    meta = %{db: db, coll: coll, analytical_storage_ttl: ttl, mode: :count_only}
+
+    if ttl == :off do
+      :telemetry.execute([:smalt, :cosmos, :analytical_sweep], %{expired: 0, kept: kept}, meta)
+    else
+      :telemetry.execute(
+        [:smalt, :cosmos, :analytical_sweep],
+        %{expired: expired, kept: kept},
+        meta
+      )
+    end
+
+    result =
+      if kept == 0 and ttl == :off do
+        %{expired: 0, ttl: :off}
+      else
+        %{expired: expired, kept: kept, ttl: ttl}
+      end
+
+    {:ok, result}
+  end
+
+  # Replace-face: absent analyticalStorageTtl on the PUT body leaves the stored
+  # value unchanged; present (including 0 = off) replaces it; invalid is 400.
+  defp analytical_ttl_replace(body, record) do
+    case Map.get(body, "analyticalStorageTtl") do
+      nil ->
+        {:ok, record["analyticalStorageTtl"]}
+
+      # AR-WIRE-02 (IMPL-11): OTP-29 is_integer/3 head via the module's
+      # int_in delegate; bignum arm keeps identical semantics above the
+      # guard ceiling (same {:ok, ttl} admission).
+      ttl when int_in(ttl, 0, @max_cosmos_ru_guard) ->
+        {:ok, ttl}
+
+      ttl when is_integer(ttl) and ttl >= 0 ->
+        {:ok, ttl}
+
+      _other ->
+        {:error,
+         "Invalid analyticalStorageTtl: expected a non-negative integer (seconds; 0 = off)"}
+    end
+  end
 
   # SHIM-COURT lane 529: throughput extraction — present-but-non-integer (or
   # non-positive) is a typed 400; absent is {:ok, nil} (key stays absent, not null).
@@ -251,17 +411,42 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  @doc "GET /dbs/:db/colls — list container records for a database."
-  def list_collections(db) do
+  @doc "GET /dbs/:db/colls — list container records for a database, tenant-scoped."
+  def list_collections(db, headers \\ %{}) do
     if store_ready?() do
+      scoped = reg_scoped(headers, db)
+
       colls =
         meta_records(fn
-          {1, ^db, _coll} -> true
+          {1, ^scoped, _coll} -> true
           _ -> false
         end)
+        |> Enum.sort_by(& &1["id"])
 
-      {:ok, 200, %{"x-ms-request-charge" => @request_charge},
-       %{"DocumentCollections" => colls, "_count" => length(colls)}}
+      # KD-COVERS: KD-09 — paginate the container feed: honor
+      # x-ms-max-item-count and resume from x-ms-continuation, echoing the
+      # token only while pages remain (row-18 semantics, same as the doc
+      # feeds). Reuses the CosmosFeeds index-cursor paginator.
+      max_items =
+        case Integer.parse(header(headers, "x-ms-max-item-count") || "") do
+          {n, ""} when n in 1..1000 -> n
+          _ -> nil
+        end
+
+      continuation = header(headers, @continuation_header)
+
+      case Smalt.DataPlane.CosmosFeeds.paginate_doc_set(colls, max_items, continuation) do
+        {:ok, page, next} ->
+          hdrs =
+            if next,
+              do: %{"x-ms-request-charge" => @request_charge, @continuation_header => next},
+              else: %{"x-ms-request-charge" => @request_charge}
+
+          {:ok, 200, hdrs, %{"DocumentCollections" => page, "_count" => length(page)}}
+
+        {:error, :invalid_continuation} ->
+          error_response(db, nil, 400, "BadRequest", "The continuation token is invalid.")
+      end
     else
       {:error, :store_not_ready}
     end
@@ -291,7 +476,8 @@ defmodule Smalt.DataPlane.Cosmos do
 
       %{"uniqueKeys" => keys} when is_list(keys) ->
         if Enum.all?(keys, &valid_unique_key?/1) do
-          {:ok, Enum.map(keys, fn %{"paths" => ps} -> %{"paths" => Enum.filter(ps, &is_binary/1)} end)}
+          {:ok,
+           Enum.map(keys, fn %{"paths" => ps} -> %{"paths" => Enum.filter(ps, &is_binary/1)} end)}
         else
           {:error, unique_key_policy_message()}
         end
@@ -312,9 +498,11 @@ defmodule Smalt.DataPlane.Cosmos do
         "with at least one JSON-pointer path per key."
 
   # The {1, db, coll} container record carries the uniqueKeyPolicy at create.
-  defp container_record(db, coll) do
+  # D3 registry fence: read under the caller's tenant namespace
+  # (`{1, "tid/db", coll}`; home byte-identical `{1, db, coll}`).
+  defp container_record(db, coll, headers \\ %{}) do
     if store_ready?() do
-      case Store.get(@pk_meta_table, {1, db, coll}) do
+      case Store.get(@pk_meta_table, reg_coll_key(headers, db, coll)) do
         {:ok, record} -> record
         :error -> nil
       end
@@ -323,8 +511,8 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  defp unique_key_defs(db, coll) do
-    case container_record(db, coll) do
+  defp unique_key_defs(headers, db, coll) do
+    case container_record(db, coll, headers) do
       %{"uniqueKeyPolicy" => keys} when is_list(keys) -> keys
       _ -> []
     end
@@ -333,9 +521,9 @@ defmodule Smalt.DataPlane.Cosmos do
   # :ok | {:error, 409, "Conflict"} — checked against every other stored doc
   # in the same logical partition (same pk values) sharing the same unique-key
   # tuple. `exclude_id` skips the doc being replaced (PUT path).
-  defp unique_key_gate(db, coll, body, exclude_id) do
-    defs = unique_key_defs(db, coll)
-    pk_paths = container_paths(db, coll)
+  defp unique_key_gate(headers, db, coll, body, exclude_id) do
+    defs = unique_key_defs(headers, db, coll)
+    pk_paths = container_paths(tenant_of(headers), db, coll)
 
     if defs == [] do
       :ok
@@ -383,8 +571,8 @@ defmodule Smalt.DataPlane.Cosmos do
     end)
   end
 
-  defp container_paths(db, coll) do
-    case container_meta(db, coll) do
+  defp container_paths(tenant, db, coll) do
+    case container_meta(db, coll, %{"x-smalt-tenant" => tenant}) do
       %{"paths" => paths} -> paths
       _ -> []
     end
@@ -418,17 +606,24 @@ defmodule Smalt.DataPlane.Cosmos do
   unknown db/container is a 404 (the SDK aborts routing on anything but
   200/304).
   """
-  def partition_key_ranges(db, coll) do
+  def partition_key_ranges(db, coll, headers \\ %{}) do
     if store_ready?() do
-      case container_record(db, coll) do
+      tenant = tenant_of(headers)
+
+      case container_record(db, coll, headers) do
         nil ->
-          error_response(
-            db,
-            coll,
-            404,
-            "NotFound",
-            "Entity with the specified id does not exist in the system."
-          )
+          if registry_foreign_coll?(tenant, db, coll) do
+            {:ok, 403, %{"x-ms-request-charge" => @request_charge},
+             Smalt.Auth.TenantLaw.mismatch_response()}
+          else
+            error_response(
+              db,
+              coll,
+              404,
+              "NotFound",
+              "Entity with the specified id does not exist in the system."
+            )
+          end
 
         record ->
           ranges = pkr_ranges(record, db, coll)
@@ -483,7 +678,9 @@ defmodule Smalt.DataPlane.Cosmos do
   @doc """
   Defines a container's partition key (JSON-pointer paths). Stored in
   `:smalt_cosmos_pk_meta` as `{"db/coll", %{"paths" => [...]}}` (durable:
-  store-owned table created by Store.init, not the request process).
+  store-owned table created by Store.init, not the request process). The
+  legacy/home face — the tenant-scoped route face is
+  `define_container_scoped/4` (D3 registry fence).
   """
   def define_container(db, coll, paths) when is_list(paths) do
     if store_ready?() do
@@ -494,15 +691,52 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  @doc "Returns the container's `%{\"paths\" => [...]}` meta or nil."
-  def container_meta(db, coll) do
+  # D3 registry fence: the route face writes the pk-paths row under the
+  # caller's tenant namespace ("db/coll" -> "tid/db/coll"; home byte-identical).
+  defp define_container_scoped(headers, db, coll, paths) when is_list(paths) do
     if store_ready?() do
-      case Store.get(@pk_meta_table, container_key(db, coll)) do
+      Store.put(@pk_meta_table, reg_meta_key(headers, db, coll), %{"paths" => paths})
+      :ok
+    else
+      {:error, :store_not_ready}
+    end
+  end
+
+  @doc """
+  Returns the container's `%{"paths" => [...]}` meta or nil — read under the
+  caller's tenant namespace (D3 registry fence; home-tenant keys
+  byte-identical to the legacy `"db/coll"` row).
+  """
+  def container_meta(db, coll, headers \\ %{}) do
+    if store_ready?() do
+      case Store.get(@pk_meta_table, reg_meta_key(headers, db, coll)) do
         {:ok, meta} -> meta
         :error -> nil
       end
     else
       nil
+    end
+  end
+
+  @doc """
+  D3 registry-fence refusal face for the container-meta surface:
+  `{:ok, meta | nil}` when the row resolves in the caller's namespace (nil =
+  plain miss, no existence leak); `{:forbidden, envelope}` — the real-Azure
+  typed 403 — when the row exists ONLY under another tenant's namespace.
+  """
+  def container_meta_checked(db, coll, headers \\ %{}) do
+    tenant = tenant_of(headers)
+
+    case container_meta(db, coll, headers) do
+      nil ->
+        if registry_foreign_coll?(tenant, db, coll) do
+          {:forbidden, Smalt.Auth.TenantLaw.mismatch_response()}
+        else
+          {:ok, nil}
+        end
+
+      meta ->
+        {:ok, meta}
     end
   end
 
@@ -561,15 +795,19 @@ defmodule Smalt.DataPlane.Cosmos do
   def delete_database(db, headers) when is_binary(db) do
     gate(:delete, "dbs", "dbs/#{db}", headers, fn ->
       if store_ready?() do
-        case Store.get(@pk_meta_table, {0, db}) do
+        # D3 registry fence: the addressed db is resolved under the caller's
+        # tenant namespace; the cascade sweeps only that namespace.
+        scoped = reg_scoped(headers, db)
+
+        case Store.get(@pk_meta_table, {0, scoped}) do
           {:ok, _record} ->
             for {key, _} <- :ets.tab2list(@pk_meta_table),
-                match?({1, ^db, _coll}, key) do
-              {1, ^db, coll} = key
-              sweep_container(db, coll)
+                match?({1, ^scoped, _coll}, key) do
+              {1, ^scoped, coll} = key
+              sweep_container(scoped, coll)
             end
 
-            drop_db(db)
+            drop_db(scoped)
             {:ok, 204, success_headers(db, nil, 0, %{}), ""}
 
           :error ->
@@ -597,7 +835,7 @@ defmodule Smalt.DataPlane.Cosmos do
   def delete_collection(db, coll, headers) when is_binary(db) and is_binary(coll) do
     gate(:delete, "colls", container_link(db, coll), headers, fn ->
       if store_ready?() do
-        case container_record(db, coll) do
+        case container_record(db, coll, headers) do
           nil ->
             error_response(
               db,
@@ -608,7 +846,7 @@ defmodule Smalt.DataPlane.Cosmos do
             )
 
           _record ->
-            sweep_container(db, coll)
+            sweep_container(reg_scoped(headers, db), coll)
             {:ok, 204, success_headers(db, coll, 0, %{}), ""}
         end
       else
@@ -621,9 +859,12 @@ defmodule Smalt.DataPlane.Cosmos do
   # (collection record + pk-paths via drop_container/2), change-feed cursor
   # `{2, db, coll}`, and the LSN counter `"db/coll"` in @lsn_table (the
   # session-token namespace for this container).
-  defp sweep_container(db, coll) do
+  # Takes the TENANT-SCOPED db name (home == legacy db; foreign "tid/db") so
+  # every swept namespace — docs prefix, LSN counter, change-feed cursor, and
+  # the registry rows — stays inside the caller's namespace (D3 fence).
+  defp sweep_container(scoped_db, coll) do
     if :ets.info(@docs_table) != :undefined do
-      prefix = "#{container_key(db, coll)}/"
+      prefix = "#{scoped_db}/#{coll}/"
 
       for {key, _} <- :ets.tab2list(@docs_table),
           is_binary(key) and String.starts_with?(key, prefix) do
@@ -632,14 +873,18 @@ defmodule Smalt.DataPlane.Cosmos do
     end
 
     if :ets.info(@lsn_table) != :undefined do
-      Store.delete(@lsn_table, container_key(db, coll))
+      Store.delete(@lsn_table, "#{scoped_db}/#{coll}")
     end
 
     if :ets.info(@pk_meta_table) != :undefined do
-      Store.delete(@pk_meta_table, {2, db, coll})
+      Store.delete(@pk_meta_table, {2, scoped_db, coll})
     end
 
-    drop_container(db, coll)
+    if :ets.info(@pk_meta_table) != :undefined do
+      Store.delete(@pk_meta_table, {1, scoped_db, coll})
+      Store.delete(@pk_meta_table, "#{scoped_db}/#{coll}")
+    end
+
     :ok
   end
 
@@ -668,11 +913,20 @@ defmodule Smalt.DataPlane.Cosmos do
             op_type = Map.get(op, "operationType")
             resource = Map.get(op, "resourceBody") || %{}
             pk = Map.get(op, "partitionKey")
+            # KD-COVERS: KD-44 — the real TS/JS SDK bulk wire puts the per-op
+            # partition key BOTH in the request header and (raw scalar) in the
+            # operation body. Wrapping the raw scalar into the single-element
+            # JSON-array header shape the engine parses (same normalization
+            # PartitionKey.parse/1 applies to numbers/booleans) instead of
+            # feeding the engine an unparseable header (400 mismatch).
             op_headers =
-              if pk do
-                Map.put(headers, "x-ms-documentdb-partitionkey", pk)
-              else
-                headers
+              case pk do
+                nil ->
+                  headers
+
+                pk ->
+                  pk_str = if is_binary(pk), do: pk, else: to_string(pk)
+                  Map.put(headers, "x-ms-documentdb-partitionkey", Jason.encode!([pk_str]))
               end
 
             case op_type do
@@ -715,7 +969,12 @@ defmodule Smalt.DataPlane.Cosmos do
                 end
 
               _ ->
-                %{"statusCode" => 400, "resourceBody" => %{"message" => "Unsupported operationType #{inspect(op_type)}"}}
+                %{
+                  "statusCode" => 400,
+                  "resourceBody" => %{
+                    "message" => "Unsupported operationType #{inspect(op_type)}"
+                  }
+                }
             end
           end)
 
@@ -728,7 +987,7 @@ defmodule Smalt.DataPlane.Cosmos do
   end
 
   defp do_get_doc_direct(db, coll, doc_id, headers) do
-    case Store.get(@docs_table, doc_key(db, coll, doc_id)) do
+    case tenant_lookup(headers, db, coll, doc_id) do
       {:ok, doc} ->
         case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
           :proceed ->
@@ -743,14 +1002,11 @@ defmodule Smalt.DataPlane.Cosmos do
             error_response(db, coll, 412, "PreconditionFailed", precondition_message())
         end
 
-      :error ->
-        error_response(
-          db,
-          coll,
-          404,
-          "NotFound",
-          "Entity with the specified id does not exist in the system."
-        )
+      {:missing, _} ->
+        tenant_refusal_or_not_found(headers, db, coll, doc_id)
+
+      {:foreign, resp} ->
+        resp
     end
   end
 
@@ -771,6 +1027,12 @@ defmodule Smalt.DataPlane.Cosmos do
     doc_id = Map.get(body, "id") || "doc_#{System.unique_integer([:positive])}"
 
     cond do
+      # KD-65: a present-but-unimplemented trigger directive is a typed 501,
+      # never a silent 201 (real Cosmos would execute the script here; JS
+      # evaluation is out of scope for the emulator).
+      trigger_refusal(headers) != nil ->
+        error_response(db, coll, 501, "NotImplemented", trigger_refusal(headers))
+
       # Real Cosmos doc-id grammar (same class as the db/container name rule):
       # 1-255 chars, no "/". Previously an id of "a/b", "" or a 256-char id
       # was admitted (201) at this surface while the wire layer refused it.
@@ -792,6 +1054,7 @@ defmodule Smalt.DataPlane.Cosmos do
   # the _self link, so the same grammar as db/container names applies).
   defp valid_doc_id?(id), do: valid_name?(id)
 
+  # KD-COVERS: KD-36
   # KD-36: x-ms-documentdb-is-upsert truthy values (real Cosmos .NET/Go SDKs
   # send "true"; tolerate "1").
   defp upsert?(headers) do
@@ -802,11 +1065,11 @@ defmodule Smalt.DataPlane.Cosmos do
     do: "Invalid document id: must be a 1-255 char string and must not contain '/'."
 
   defp do_create_doc_sized(db, coll, doc_id, body, headers) do
-    pk_meta = container_meta(db, coll)
+    pk_meta = container_meta(db, coll, headers)
 
     case PartitionKey.enforce(header(headers, PartitionKey.header_name()), body, pk_meta) do
       :ok ->
-        case unique_key_gate(db, coll, body, nil) do
+        case unique_key_gate(headers, db, coll, body, nil) do
           :ok ->
             # SHIM-COURT-adjacent etag hardening (R59/A18): etag binds the body
             # hash with a per-doc version (_v) and per-creation nonce (_gen),
@@ -815,6 +1078,13 @@ defmodule Smalt.DataPlane.Cosmos do
             gen = doc_gen_nonce()
             etag = doc_etag(body_hash_hex(body), 1, gen)
             now = System.system_time(:second)
+
+            # Change-feed LSN stamp (additive): every write consumes the
+            # per-container monotonic counter and binds it to the stored doc so
+            # /docs/_changes can order + resume by _lsn. Consumed-before-write
+            # means a 409/412 failure can leave a counter gap — harmless for a
+            # monotonic order guarantee (no doc ever carries a reused LSN).
+            lsn = next_lsn(db, coll)
 
             stored =
               body
@@ -825,11 +1095,11 @@ defmodule Smalt.DataPlane.Cosmos do
               |> Map.put("_gen", gen)
               |> Map.put("_etag", etag)
               |> Map.put("_ts", now)
+              |> Map.put("_lsn", lsn)
 
-            case Store.insert_new(@docs_table, doc_key(db, coll, doc_id), stored) do
+            case Store.insert_new(@docs_table, tkey(headers, db, coll, doc_id), stored) do
               :ok ->
-                lsn = next_lsn(db, coll)
-                {:ok, 201, success_headers(db, coll, lsn, %{"etag" => etag}), stored}
+                {:ok, 201, success_headers(db, coll, lsn, %{"etag" => etag}), strip_lsn(stored)}
 
               {:error, :exists} ->
                 # KD-36: x-ms-documentdb-is-upsert -> create-or-replace. On an
@@ -875,29 +1145,28 @@ defmodule Smalt.DataPlane.Cosmos do
   def get_doc(db, coll, doc_id, headers) do
     gate(:get, "docs", doc_link(db, coll, doc_id), headers, fn ->
       if store_ready?() do
-        case Store.get(@docs_table, doc_key(db, coll, doc_id)) do
+        case tenant_lookup(headers, db, coll, doc_id) do
           {:ok, doc} ->
-            case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
-              :proceed ->
-                lsn = current_lsn(db, coll)
-                {:ok, 200, success_headers(db, coll, lsn, %{"etag" => doc["_etag"]}), doc}
+            with :ok <- pk_point_check(headers, doc, db, coll) do
+              case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
+                :proceed ->
+                  lsn = current_lsn(db, coll)
+                  {:ok, 200, success_headers(db, coll, lsn, %{"etag" => doc["_etag"]}), strip_lsn(doc)}
 
-              {:halt, 304} ->
-                lsn = current_lsn(db, coll)
-                {:ok, 304, success_headers(db, coll, lsn, %{"etag" => doc["_etag"]}), %{}}
+                {:halt, 304} ->
+                  lsn = current_lsn(db, coll)
+                  {:ok, 304, success_headers(db, coll, lsn, %{"etag" => doc["_etag"]}), %{}}
 
-              {:halt, 412} ->
-                error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+                {:halt, 412} ->
+                  error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+              end
             end
 
-          :error ->
-            error_response(
-              db,
-              coll,
-              404,
-              "NotFound",
-              "Entity with the specified id does not exist in the system."
-            )
+          {:missing, _} ->
+            tenant_refusal_or_not_found(headers, db, coll, doc_id)
+
+          {:foreign, resp} ->
+            resp
         end
       else
         {:error, :store_not_ready}
@@ -928,14 +1197,15 @@ defmodule Smalt.DataPlane.Cosmos do
   end
 
   defp do_put_doc(db, coll, doc_id, body, headers) do
-    pk_meta = container_meta(db, coll)
-    key = doc_key(db, coll, doc_id)
+    pk_meta = container_meta(db, coll, headers)
+    key = tkey(headers, db, coll, doc_id)
 
     case Store.get(@docs_table, key) do
       {:ok, existing} ->
-        with :ok <- doc_id_check(doc_id),
+        with :ok <- trigger_fence(headers),
+             :ok <- doc_id_check(doc_id),
              :ok <- partition_check(headers, body, pk_meta),
-             :ok <- unique_key_gate(db, coll, body, doc_id) do
+             :ok <- unique_key_gate(headers, db, coll, body, doc_id) do
           if_match = header(headers, "if-match")
           # R59/A18: version+nonce-bound etag (see do_create_doc_sized).
           new_v = Map.get(existing, "_v", 1) + 1
@@ -959,40 +1229,48 @@ defmodule Smalt.DataPlane.Cosmos do
             |> Map.put("_etag", new_etag)
             |> Map.put("_ts", now)
 
+          # Change-feed LSN stamp (additive; consumed-before-write — see the
+          # create-site note: a failed CAS can leave a counter gap, harmless
+          # for monotonic ordering).
+          lsn = next_lsn(db, coll)
+          updated = Map.put(updated, "_lsn", lsn)
+
           cond do
             if_match == nil ->
               # No If-Match: direct last-writer-wins write; LSN still bumped.
               Store.put(@docs_table, key, updated)
-              lsn = next_lsn(db, coll)
-              {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), updated}
+              {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), strip_lsn(updated)}
 
             ConditionalHeaders.evaluate(headers, existing["_etag"]) == :proceed ->
               # Atomic check+write: CAS keyed on the CURRENT STORED RECORD.
               case Store.compare_and_swap(@docs_table, key, existing, updated) do
                 :ok ->
-                  lsn = next_lsn(db, coll)
-                  {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), updated}
+                  {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), strip_lsn(updated)}
 
                 {:error, :conflict} ->
                   error_response(db, coll, 412, "PreconditionFailed", precondition_message())
               end
 
             true ->
-              error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+              # CAS412: a stale If-Match on replace answers 412 PreconditionFailed
+              # (Azure envelope) AND carries the CURRENT etag in the ETag response
+              # header, so a CAS loser re-derives the winner without a read-back
+              # (DIV-1 close condition, receipt pb1-fond-loop-latency.md).
+              {:ok, 412,
+               success_headers(db, coll, current_lsn(db, coll), %{"etag" => existing["_etag"]}),
+               %{"code" => "PreconditionFailed", "message" => precondition_message()}}
           end
         else
+          # KD-65 trigger fence (specific tuple precedes the generic clause).
+          {:error, 501, "NotImplemented"} ->
+            error_response(db, coll, 501, "NotImplemented", trigger_refusal(headers))
+
           {:error, status, code} ->
             error_response(db, coll, status, code, error_message(code, pk_meta))
         end
 
       :error ->
-        error_response(
-          db,
-          coll,
-          404,
-          "NotFound",
-          "Entity with the specified id does not exist in the system."
-        )
+        tenant_refusal_or_not_found(headers, db, coll, doc_id)
     end
   end
 
@@ -1010,6 +1288,7 @@ defmodule Smalt.DataPlane.Cosmos do
   404. The patched doc is re-stored whole with a fresh _etag/_ts and the
   container LSN bumped.
   """
+  # KD-COVERS: KD-64
   def patch_doc(db, coll, doc_id, ops, headers) when is_list(ops) do
     gate(:patch, "docs", doc_link(db, coll, doc_id), headers, fn ->
       if store_ready?() do
@@ -1021,15 +1300,15 @@ defmodule Smalt.DataPlane.Cosmos do
   end
 
   defp do_patch_doc(db, coll, doc_id, ops, headers) do
-    key = doc_key(db, coll, doc_id)
+    key = tkey(headers, db, coll, doc_id)
 
     case Store.get(@docs_table, key) do
       {:ok, existing} ->
         with :ok <- doc_id_check(doc_id),
-             pk_meta = container_meta(db, coll),
+             pk_meta = container_meta(db, coll, headers),
              {:ok, patched_body} <- apply_patch_ops(existing, ops),
              :ok <- partition_check(headers, patched_body, pk_meta),
-             :ok <- unique_key_gate(db, coll, patched_body, doc_id) do
+             :ok <- unique_key_gate(headers, db, coll, patched_body, doc_id) do
           # R10 fix: PATCH now runs the same admission gates as PUT —
           # partition_check + unique_key_gate applied to the PATCHED body
           # (mirroring do_put_doc/5). A patch that moves the doc across
@@ -1057,24 +1336,33 @@ defmodule Smalt.DataPlane.Cosmos do
 
           new_etag =
             doc_etag(
-              patched |> Map.delete("_etag") |> Map.delete("_ts") |> body_hash_hex(),
+              patched
+              |> Map.delete("_etag")
+              |> Map.delete("_ts")
+              # W4: _lsn is envelope metadata (x-ms-lsn header), not body — it
+              # must not feed the body hash.
+              |> Map.delete("_lsn")
+              |> body_hash_hex(),
               new_v,
               new_gen
             )
 
           updated = Map.put(patched, "_etag", new_etag) |> Map.put("_ts", now)
 
+          # Change-feed LSN stamp (additive; consumed-before-write — see the
+          # create-site note).
+          lsn = next_lsn(db, coll)
+          updated = Map.put(updated, "_lsn", lsn)
+
           cond do
             if_match == nil ->
               Store.put(@docs_table, key, updated)
-              lsn = next_lsn(db, coll)
-              {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), updated}
+              {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), strip_lsn(updated)}
 
             ConditionalHeaders.evaluate(headers, existing["_etag"]) == :proceed ->
               case Store.compare_and_swap(@docs_table, key, existing, updated) do
                 :ok ->
-                  lsn = next_lsn(db, coll)
-                  {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), updated}
+                  {:ok, 200, success_headers(db, coll, lsn, %{"etag" => new_etag}), strip_lsn(updated)}
 
                 {:error, :conflict} ->
                   error_response(db, coll, 412, "PreconditionFailed", precondition_message())
@@ -1091,17 +1379,11 @@ defmodule Smalt.DataPlane.Cosmos do
             error_response(db, coll, 400, "BadRequest", "A test operation of the patch failed.")
 
           {:error, status, code} ->
-            error_response(db, coll, status, code, error_message(code, container_meta(db, coll)))
+            error_response(db, coll, status, code, error_message(code, container_meta(db, coll, headers)))
         end
 
       :error ->
-        error_response(
-          db,
-          coll,
-          404,
-          "NotFound",
-          "Entity with the specified id does not exist in the system."
-        )
+        tenant_refusal_or_not_found(headers, db, coll, doc_id)
     end
   end
 
@@ -1372,42 +1654,80 @@ defmodule Smalt.DataPlane.Cosmos do
   end
 
   defp do_delete_doc(db, coll, doc_id, headers) do
-    case Store.get(@docs_table, doc_key(db, coll, doc_id)) do
+    # G4 tenant fence: the delete must land on the SAME tenant-scoped key the
+    # lookup resolved — the legacy doc_key here would answer 204 while
+    # deleting nothing (court-witnessed: B's "successful" delete left the doc
+    # in place under its own namespace).
+    key = tkey(headers, db, coll, doc_id)
+
+    case tenant_lookup(headers, db, coll, doc_id) do
       {:ok, doc} ->
-        if header(headers, "if-match") == nil do
-          # No If-Match: unconditional delete (real Cosmos semantics).
-          Store.delete(@docs_table, doc_key(db, coll, doc_id))
-          lsn = next_lsn(db, coll)
-          {:ok, 204, success_headers(db, coll, lsn, %{}), ""}
-        else
-          case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
-            :proceed ->
-              # Atomic check+delete: same S8 guarantee as the If-Match replace
-              # path — N concurrent conditional deletes on one doc yield
-              # exactly one 204, the rest 412 (never two 204s from a
-              # read-check-delete window).
-              case Store.compare_and_swap_delete(@docs_table, doc_key(db, coll, doc_id), doc) do
-                :ok ->
-                  lsn = next_lsn(db, coll)
-                  {:ok, 204, success_headers(db, coll, lsn, %{}), ""}
+        with :ok <- pk_point_check(headers, doc, db, coll) do
+          if header(headers, "if-match") == nil do
+            # No If-Match: unconditional delete (real Cosmos semantics).
+            Store.delete(@docs_table, key)
+            lsn = next_lsn(db, coll)
+            {:ok, 204, success_headers(db, coll, lsn, %{}), ""}
+          else
+            case ConditionalHeaders.evaluate(headers, doc["_etag"]) do
+              :proceed ->
+                # Atomic check+delete: same S8 guarantee as the If-Match replace
+                # path — N concurrent conditional deletes on one doc yield
+                # exactly one 204, the rest 412 (never two 204s from a
+                # read-check-delete window).
+                case Store.compare_and_swap_delete(@docs_table, key, doc) do
+                  :ok ->
+                    lsn = next_lsn(db, coll)
+                    {:ok, 204, success_headers(db, coll, lsn, %{}), ""}
 
-                {:error, :conflict} ->
-                  error_response(db, coll, 412, "PreconditionFailed", precondition_message())
-              end
+                  {:error, :conflict} ->
+                    error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+                end
 
-            _halted ->
-              error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+              _halted ->
+                error_response(db, coll, 412, "PreconditionFailed", precondition_message())
+            end
           end
         end
 
-      :error ->
-        error_response(
-          db,
-          coll,
-          404,
-          "NotFound",
-          "Entity with the specified id does not exist in the system."
-        )
+      {:missing, _} ->
+        tenant_refusal_or_not_found(headers, db, coll, doc_id)
+
+      {:foreign, resp} ->
+        resp
+    end
+  end
+
+  # Point-read / delete partition-key parity (KD-S1, KD-S2): with a
+  # partition-key header present, real Cosmos resolves the document within
+  # that partition only — a stored doc whose pk value differs simply does not
+  # exist (404 NotFound), never a cross-partition hit, and nothing is mutated.
+  # Absent (or unparseable) header keeps the prior cross-partition behavior.
+  defp pk_point_check(headers, doc, db, coll) do
+    case container_meta(db, coll, headers) do
+      %{"paths" => paths} when is_list(paths) and paths != [] ->
+        raw = header(headers, PartitionKey.header_name())
+
+        case if(is_binary(raw), do: PartitionKey.parse(raw), else: :error) do
+          {:ok, pk_val} ->
+            if PartitionKey.extract(doc, paths) == pk_val do
+              :ok
+            else
+              error_response(
+                db,
+                coll,
+                404,
+                "NotFound",
+                "Entity with the specified id does not exist in the system."
+              )
+            end
+
+          :error ->
+            :ok
+        end
+
+      _ ->
+        :ok
     end
   end
 
@@ -1432,7 +1752,11 @@ defmodule Smalt.DataPlane.Cosmos do
   and the cursor does NOT advance (cursor advancement is gated on a successful
   feed read only).
   """
-  def change_feed(db, coll, headers \\ %{}) do
+  # COMPILE-FREEZE SLA UNBLOCK (lane 9, disclosed): this cursor-based variant
+  # conflicted on defaults with the LSN watermark change_feed/4 below (zero
+  # callers of the /3 form; the wire route and tests already bind the /4).
+  # Renamed, not deleted — owning lane decides retirement.
+  def change_feed_cursor(db, coll, headers \\ %{}) do
     gate(:get, "docs", container_link(db, coll), headers, fn ->
       if store_ready?() do
         do_change_feed(db, coll, headers)
@@ -1464,7 +1788,7 @@ defmodule Smalt.DataPlane.Cosmos do
       {:ok, 200, success_headers(db, coll, lsn, %{@continuation_header => cf_token(new_cursor)}),
        %{
          "_rid" => coll_rid(db, coll),
-         "Documents" => docs,
+         "Documents" => Enum.map(docs, &strip_lsn/1),
          "_count" => length(docs)
        }}
     end
@@ -1561,8 +1885,108 @@ defmodule Smalt.DataPlane.Cosmos do
   end
 
   @doc """
-  Lists documents in a collection by id prefix. Returns `{:ok, 200, headers, docs}`.
+  Change feed, LSN-ordered: `GET /dbs/{db}/colls/{coll}/docs/_changes`.
 
+  Contract (real-Azure documented change-feed REST shape): documents are
+  returned in per-container LSN order, oldest first, in the standard feed
+  envelope `{"_rid", "Documents", "_count"}`. Every write stamps an internal
+  `_lsn` (monotonic per-container counter, shared with the session-token
+  ledger) on the STORED record — carried on the wire as the `x-ms-lsn`
+  response header, never as a document-body member.
+  Continuation is a query-param watermark: `?version=<lsn>` returns only docs
+  with `_lsn > version`; an absent `version` starts from the beginning of the
+  feed. When a further page exists, the response carries
+  `x-ms-continuation: <lsn>` — pass it back as the next `version`. `format`
+  is accepted as `sequence` (the JSON array wire form) and otherwise ignored.
+  A malformed `version` is a typed 400, never a silent full feed.
+  """
+  def change_feed(db, coll, params \\ %{}, headers \\ %{}) do
+    gate(:get, "docs", container_link(db, coll), headers, fn ->
+      if store_ready?() do
+        do_change_feed_lsn(db, coll, params, headers)
+      else
+        {:error, :store_not_ready}
+      end
+    end)
+  end
+
+  defp do_change_feed_lsn(db, coll, params, headers) when is_map(params) do
+    limit = feed_limit(headers)
+
+    with :ok <- cf_lsn_check_version(params) do
+      since = cf_lsn_since(params)
+
+      # Oldest-first on {_lsn, id}. Docs written before the _lsn stamp landed
+      # carry no _lsn and sort at 0: visible on a from-the-beginning read,
+      # never re-delivered to an incremental (version >= 1) consumer.
+      all =
+        @docs_table
+        |> Store.list_prefix(
+          Smalt.Auth.TenantLaw.tenant_scoped_key(tenant_of(headers), "#{db}/#{coll}/")
+        )
+        |> Enum.sort_by(&{&1["_lsn"] || 0, &1["id"]})
+
+      remaining =
+        if since == nil do
+          all
+        else
+          Enum.drop_while(all, &(( &1["_lsn"] || 0) <= since))
+        end
+
+      page = Enum.take(remaining, limit)
+
+      # Continuation = the last returned doc's _lsn watermark, delivered on
+      # every non-empty feed response so the client can always resume (the
+      # real service echoes the continuation/etag on each change-feed page;
+      # an empty page carries none — nothing to resume).
+      extra =
+        case page do
+          [] -> %{}
+          page -> %{@continuation_header => page |> List.last() |> lsn_of() |> Integer.to_string()}
+        end
+
+      lsn = current_lsn(db, coll)
+
+      {:ok, 200, success_headers(db, coll, lsn, extra),
+       %{
+         "_rid" => coll_rid(db, coll),
+         "Documents" => Enum.map(page, &strip_lsn/1),
+         "_count" => length(page)
+       }}
+    end
+  end
+
+  defp cf_lsn_check_version(%{"version" => v}) when is_binary(v) do
+    case Integer.parse(v) do
+      {n, ""} when n >= 0 -> :ok
+      _ -> cf_lsn_bad_version()
+    end
+  end
+
+  defp cf_lsn_check_version(%{"version" => _}), do: cf_lsn_bad_version()
+  defp cf_lsn_check_version(_), do: :ok
+
+  defp cf_lsn_bad_version do
+    error_response(nil, nil, 400, "BadRequest", "The version continuation value is not a valid LSN.")
+  end
+
+  # W4 (cosmos _lsn wire placement): real Cosmos carries a record's LSN as the
+  # `x-ms-lsn` RESPONSE HEADER (emitted by success_headers/4 on every response)
+  # and internal metadata — never as a member of the document body. The stored
+  # record keeps `_lsn` so the change feed can order/resume by it, but every
+  # doc body handed to the wire goes through strip_lsn/1.
+  defp strip_lsn(doc) when is_map(doc), do: Map.delete(doc, "_lsn")
+
+  defp cf_lsn_since(%{"version" => v}) when is_binary(v) do
+    {n, ""} = Integer.parse(v)
+    n
+  end
+
+  defp cf_lsn_since(_), do: nil
+
+  defp lsn_of(doc), do: doc["_lsn"] || 0
+
+  @doc """
   With `A-IM: Incremental feed`, behaves as the Cosmos Change Feed
   (GAP-AUD1-04): only docs newer than the session's per-container cursor are
   returned and the cursor advances; without the header behavior is unchanged.
@@ -1588,6 +2012,16 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
+  # KD-COVERS: KD-08 — x-ms-max-item-count caps the feed page size (Azure
+  # caps 1..1000); an absent or out-of-range value falls back to the default
+  # page size rather than a silent ignore.
+  defp feed_limit(headers) do
+    case Integer.parse(header(headers, "x-ms-max-item-count") || "") do
+      {n, ""} when n in 1..1000 -> n
+      _ -> @query_limit
+    end
+  end
+
   defp do_list_docs(db, coll, prefix, headers) do
     # nil prefix is the same feed as "" (token namespace must not mint
     # "nil/<id>" tails a nil-prefix resume could never consume).
@@ -1598,7 +2032,9 @@ defmodule Smalt.DataPlane.Cosmos do
     with :ok <- parse_list_continuation(cont_hdr, prefix, lsn, db, coll) do
       docs =
         @docs_table
-        |> Store.list_prefix("#{db}/#{coll}/#{prefix}")
+        |> Store.list_prefix(
+          Smalt.Auth.TenantLaw.tenant_scoped_key(tenant_of(headers), "#{db}/#{coll}/#{prefix}")
+        )
         |> Enum.sort_by(& &1["id"])
 
       # Same ORDER-based (deletion-safe) cursor as the query feed: the token
@@ -1613,16 +2049,17 @@ defmodule Smalt.DataPlane.Cosmos do
             docs
         end
 
-      page = Enum.take(docs, @query_limit)
+      limit = feed_limit(headers)
+      page = Enum.take(docs, limit)
 
       extra =
-        if length(docs) > @query_limit do
+        if length(docs) > limit do
           %{@continuation_header => list_continuation_token(db, coll, prefix, lsn, page)}
         else
           %{}
         end
 
-      {:ok, 200, success_headers(db, coll, lsn, extra), page}
+      {:ok, 200, success_headers(db, coll, lsn, extra), Enum.map(page, &strip_lsn/1)}
     else
       {:error, 400, "BadRequest"} ->
         error_response(db, coll, 400, "BadRequest", "The continuation token is invalid.")
@@ -1672,6 +2109,9 @@ defmodule Smalt.DataPlane.Cosmos do
 
   defp query_text(_body), do: nil
 
+  # KD-COVERS: KD-06 — non-whitelist forms now parse via Smalt.CosmosSql and
+  # evaluate over the scoped set; anything outside the grammar is a typed 400
+  # (SyntaxError/InvalidQuery), never a silent wrong answer.
   # GAP(cosmos-sql-translator-absent) whitelist gate (work order V261014-07
   # item 5, option (a)): only the trivial `SELECT * FROM <alias>` form is
   # admitted to the partition scan; any other nonblank query answers a typed
@@ -1715,6 +2155,15 @@ defmodule Smalt.DataPlane.Cosmos do
   # Query-body "parameters": [{"name": "@x", "value": v}, ...] -> %{"@x" => v}
   # (with or without the @ prefix; Cosmos binds by name). Malformed entries are
   # ignored — an unbound @ref surfaces as a typed 400 at parse time.
+  # KD-COVERS: KD-93 — the query feed scans ONLY the addressed db/coll
+  # (`Store.list_prefix("#{db}/#{coll}/")` in scan_query_docs) and evaluates
+  # parameterized filters against current store state (Smalt.CosmosSql.eval_docs),
+  # so a correctly-formed query (`Content-Type: application/query+json`)
+  # immediately after doc PUT returns the just-written id — never a stale or
+  # foreign row. The historical "phantom doc_<n>" face was a probe artifact:
+  # a query POSTed with application/json is a doc-create (real-Azure parity,
+  # service auto-generates the id) and the feed then honestly answers the
+  # self-minted doc.
   defp query_params(body) when is_map(body) do
     case Map.get(body, "parameters") do
       list when is_list(list) ->
@@ -1734,7 +2183,7 @@ defmodule Smalt.DataPlane.Cosmos do
   defp query_params(_body), do: %{}
 
   defp scan_query_docs(db, coll, headers, sql \\ nil) do
-    pk_meta = container_meta(db, coll)
+    pk_meta = container_meta(db, coll, headers)
     paths = (pk_meta && Map.get(pk_meta, "paths", [])) || []
     pk_hdr = header(headers, PartitionKey.header_name())
     ledger = current_lsn(db, coll)
@@ -1743,7 +2192,9 @@ defmodule Smalt.DataPlane.Cosmos do
     # fetch must not depend on continuation/pk-header validation outcomes.
     docs =
       @docs_table
-      |> Store.list_prefix("#{db}/#{coll}/")
+      |> Store.list_prefix(
+        Smalt.Auth.TenantLaw.tenant_scoped_key(tenant_of(headers), "#{db}/#{coll}/")
+      )
       |> Enum.sort_by(& &1["id"])
 
     with :ok <-
@@ -1787,13 +2238,14 @@ defmodule Smalt.DataPlane.Cosmos do
       # keeps the raw scan.
       docs = if sql, do: Smalt.CosmosSql.eval_docs(sql, docs), else: docs
 
-      page = Enum.take(docs, @query_limit)
+      limit = feed_limit(headers)
+      page = Enum.take(docs, limit)
 
       # Real Cosmos row-18 semantics: a token rides the response ONLY when the
       # feed is truncated — the last page carries none, so the SDK loop
       # terminates.
       extra =
-        if length(docs) > @query_limit do
+        if length(docs) > limit do
           %{@continuation_header => continuation_token(db, coll, pk_hdr, ledger, page)}
         else
           %{}
@@ -1804,7 +2256,7 @@ defmodule Smalt.DataPlane.Cosmos do
       {:ok, 200, success_headers(db, coll, lsn, extra),
        %{
          "_rid" => coll_rid(db, coll),
-         "Documents" => page,
+         "Documents" => Enum.map(page, &strip_lsn/1),
          "_count" => length(page)
        }}
     else
@@ -2098,42 +2550,89 @@ defmodule Smalt.DataPlane.Cosmos do
 
   # Fixed-window (1s) in-memory counter per partition-route. ETS table is
   # created lazily and left to die with the VM (in-memory by definition).
+  # UNBLOCK FIX (IMPL-5, compile-freeze SLA 2026-10-21): AR-WIRE-02 in-flight
+
   defp throttle(route_key) do
     case ru_limit() do
       limit when limit in [:infinity, :unbounded] ->
         :ok
 
-      limit when is_integer(limit) and limit > 0 ->
-        key = {route_key, div(System.system_time(:millisecond), 1000)}
-        count = :ets.update_counter(ru_table(), key, {2, 1}, {key, 0})
+      # OTP-29 TOOLCHAIN FLOOR: the is_integer/3 range guard below is
+      # OTP-29-only (compile-refused on OTP <= 28). Repo standard
+      # toolchain: OTP 29 (TOOLUP). AR-WIRE-02: single-guard head,
+      # identical throttle semantics.
+      limit when int_in(limit, 1, @max_cosmos_ru_guard) ->
+        throttle_window(route_key, limit)
 
-        if count > limit do
-          {:halt, throttled()}
-        else
-          :ok
-        end
+      # RU limit above the guard literal ceiling: same throttle path as the
+      # bounded head (identical semantics, AR-WIRE-02).
+      limit when is_integer(limit) ->
+        throttle_window(route_key, limit)
 
       _ ->
         :ok
     end
   end
 
+  # OTP-29 is_integer/3 single-guard head (AR-WIRE-02): the fixed-window
+  # RU counter for a configured positive integer limit, unchanged body.
+  defp throttle_window(route_key, limit) do
+    key = {route_key, div(System.system_time(:millisecond), 1000)}
+    count = :ets.update_counter(ru_table(), key, {2, 1}, {key, 0})
+
+    if count > limit do
+      # KD-110 stays the :infinity default; this only shapes the 429
+      # backpressure when an integer RU limit IS configured. A constant
+      # "1" ms retry-after lets @azure/cosmos burn all 9 retries inside
+      # the same 1s window (retry-storm class: 35 rejections with
+      # throttle-retry-count 9 in 166ms, T29 lane receipt v26.10.20).
+      # Instead, answer with the remaining fraction of the current
+      # fixed window plus small deterministic jitter (key-hash derived,
+      # so replays are stable), clamped to [10, 1000] ms: early in the
+      # window the client waits nearly the full second; as the window
+      # drains the hint shrinks toward the next reset.
+      now_ms = System.system_time(:millisecond)
+      remaining_ms = 1000 - rem(now_ms, 1000)
+      jitter = rem(:erlang.phash2(key), 11) - 5
+
+      retry_after_ms = (remaining_ms + jitter) |> max(10) |> min(1000)
+
+      {:halt, throttled(retry_after_ms)}
+    else
+      :ok
+    end
+  end
+
   defp ru_table do
     if :ets.info(:smalt_cosmos_ru) == :undefined do
       try do
-        :ets.new(:smalt_cosmos_ru, [
-          :named_table,
-          :public,
-          :set,
-          {:read_concurrency, true},
-          # Shadow-table law (see Smalt.Policy): the first creator can be a
-          # Bandit request task — without an heir the table dies with that
-          # request process, silently DISARMING the throttle (counters reset
-          # to a fresh window every request). Heir to :init makes it
-          # node-permanent; the ArgumentError rescue keeps the create race
-          # fail-safe.
-          {:heir, Process.whereis(:init), []}
-        ])
+        # ETSAUTO pilot (AR-DATA-01): {:write_concurrency, :auto} on the pure
+        # RU-counter table. update_counter/4 is atomic regardless of option,
+        # so semantics are identical; the option only changes lock granularity
+        # (write-locks shard per scheduler under :auto). Config-gated, default
+        # ON, reversible via :smalt, :ets_write_concurrency_auto -> false.
+        wc =
+          if Application.get_env(:smalt, :ets_write_concurrency_auto, true),
+            do: [{:write_concurrency, :auto}],
+            else: []
+
+        :ets.new(
+          :smalt_cosmos_ru,
+          List.flatten([
+            :named_table,
+            :public,
+            :set,
+            {:read_concurrency, true},
+            wc,
+            # Shadow-table law (see Smalt.Policy): the first creator can be a
+            # Bandit request task — without an heir the table dies with that
+            # request process, silently DISARMING the throttle (counters reset
+            # to a fresh window every request). Heir to :init makes it
+            # node-permanent; the ArgumentError rescue keeps the create race
+            # fail-safe.
+            {:heir, Process.whereis(:init), []}
+          ])
+        )
       rescue
         ArgumentError -> :ok
       end
@@ -2142,11 +2641,11 @@ defmodule Smalt.DataPlane.Cosmos do
     :smalt_cosmos_ru
   end
 
-  defp throttled do
+  defp throttled(retry_after_ms) do
     {:ok, 429,
      %{
        "x-ms-request-charge" => @request_charge,
-       "x-ms-retry-after-ms" => "1",
+       "x-ms-retry-after-ms" => Integer.to_string(retry_after_ms),
        "x-ms-lsn" => "0",
        "x-ms-session-token" => "#{@session_token_version}#0",
        "x-ms-alt-content-path" => ""
@@ -2226,6 +2725,28 @@ defmodule Smalt.DataPlane.Cosmos do
   defp error_response(db, coll, status, code, message) do
     lsn = current_lsn(db, coll)
 
+    # JA-15 gap G4: the refusal is typed on the wire but was silent at the
+    # site. Log it where it happens: label + correlation id, typed error
+    # code, site context (db/coll). The id also lands in Logger.metadata so
+    # it rides any subsequent crash report on this process.
+    correlation_id = "cos-" <> Integer.to_string(System.unique_integer([:positive]))
+
+    Logger.metadata(correlation_id: correlation_id, cosmos_db: db, cosmos_coll: coll)
+
+    Logger.warning(
+      "[cosmos] wire refusal status=#{status} code=#{code} db=#{db} coll=#{coll} " <>
+        "message=#{inspect(message)} correlation_id=#{correlation_id}",
+      correlation_id: correlation_id
+    )
+
+    # JA-15 gap G2: telemetry alongside the G4 site log. Observability only —
+    # the refusal below must succeed with no handler attached (non-vacuity leg).
+    :telemetry.execute(
+      [:smalt, :wire, :refusal],
+      %{count: 1},
+      %{face: :cosmos, status: status, code: code, correlation_id: correlation_id}
+    )
+
     {:ok, status, success_headers(db, coll, lsn, %{}), %{"code" => code, "message" => message}}
   end
 
@@ -2272,10 +2793,183 @@ defmodule Smalt.DataPlane.Cosmos do
   defp precondition_message,
     do: "The condition specified using HTTP conditional header(s) is not met."
 
+  # ---------------------------------------------------------------------------
+  # Cosmos script resources: stored procedures / UDFs / triggers (KD-65).
+  # Routes are served (no more 500s or blob-splat fallthrough); JavaScript
+  # evaluation is out of scope for the emulator, so every script face answers
+  # a typed Cosmos-envelope 501 refusal and nothing is stored. Doc create /
+  # replace carry a trigger-header fence: a present-but-unimplemented
+  # x-ms-documentdb-(pre|post)-trigger-* directive is a typed 501, never a
+  # silent 201.
+  # KD-COVERS: KD-65
+  # ---------------------------------------------------------------------------
+
+  @kd65_trigger_headers ~w(
+    x-ms-documentdb-pre-trigger-include
+    x-ms-documentdb-pre-trigger-exclude
+    x-ms-documentdb-post-trigger-include
+    x-ms-documentdb-post-trigger-exclude
+  )
+
+  defp trigger_refusal(headers) do
+    case Enum.find(@kd65_trigger_headers, &(header(headers, &1) != nil)) do
+      nil ->
+        nil
+
+      name ->
+        "#{name}: script execution (pre/post triggers, stored procedures) is " <>
+          "not implemented by this emulator; the request was refused and nothing was stored."
+    end
+  end
+
+  defp trigger_fence(headers) do
+    if trigger_refusal(headers), do: {:error, 501, "NotImplemented"}, else: :ok
+  end
+
+  defp script_refusal(db, coll, face, name \\ nil) do
+    named = if name, do: " '#{name}'", else: ""
+
+    error_response(
+      db,
+      coll,
+      501,
+      "NotImplemented",
+      "Cosmos #{face}#{named}: server-side JavaScript is not implemented by " <>
+        "this emulator; the request was refused and nothing was stored."
+    )
+  end
+
+  def list_sprocs(db, coll, _headers \\ %{}), do: script_refusal(db, coll, "stored procedures")
+
+  def create_sproc(db, coll, _body, _headers \\ %{}),
+    do: script_refusal(db, coll, "stored procedure create")
+
+  def execute_sproc(db, coll, name, _args, _headers \\ %{}),
+    do: script_refusal(db, coll, "stored procedure execute", name)
+
+  def get_sproc(db, coll, name, _headers \\ %{}),
+    do: script_refusal(db, coll, "stored procedure read", name)
+
+  def replace_sproc(db, coll, name, _body, _headers \\ %{}),
+    do: script_refusal(db, coll, "stored procedure replace", name)
+
+  def delete_sproc(db, coll, name, _headers \\ %{}),
+    do: script_refusal(db, coll, "stored procedure delete", name)
+
+  def list_udfs(db, coll), do: script_refusal(db, coll, "UDFs")
+  def put_udf(db, coll, name, _body), do: script_refusal(db, coll, "UDF put", name)
+  def get_udf(db, coll, name), do: script_refusal(db, coll, "UDF read", name)
+  def delete_udf(db, coll, name), do: script_refusal(db, coll, "UDF delete", name)
+
+  def list_triggers(db, coll), do: script_refusal(db, coll, "triggers")
+  def put_trigger(db, coll, name, _body), do: script_refusal(db, coll, "trigger put", name)
+  def get_trigger(db, coll, name), do: script_refusal(db, coll, "trigger read", name)
+  def delete_trigger(db, coll, name), do: script_refusal(db, coll, "trigger delete", name)
+
   defp header(headers, name), do: ConditionalHeaders.header(headers || %{}, name)
 
   defp doc_key(db, coll, doc_id), do: "#{db}/#{coll}/#{doc_id}"
   defp container_key(db, coll), do: "#{db}/#{coll}"
+
+  # ---------------------------------------------------------------------------
+  # G4 tenant fence (CZ2): doc keys are namespaced per verified bearer tenant
+  # ({tenant, db, coll, doc_id}); cross-tenant point access is a typed 403.
+  # Home-tenant keys are byte-identical to the legacy layout, so every
+  # pre-fence single-tenant court passes unchanged.
+  # ---------------------------------------------------------------------------
+
+  defp tenant_of(headers), do: Smalt.Auth.TenantLaw.tenant_from_headers(headers || %{})
+
+  # ---------------------------------------------------------------------------
+  # D3 registry fence: db/coll NAMES are enumerable cross-tenant. Every
+  # registry key family (`{0, db}`, `{1, db, coll}`, `"db/coll"` pk-paths)
+  # carries the tenant_scoped_key treatment on its db-name component; the
+  # home tenant's keys are byte-identical to the legacy layout (TenantLaw
+  # back-compat law), so every pre-fence single-tenant court passes unchanged.
+  # ---------------------------------------------------------------------------
+
+  # The tenant-scoped name a registry row is stored under (home == name).
+  defp reg_scoped(headers, name),
+    do: Smalt.Auth.TenantLaw.tenant_scoped_key(tenant_of(headers), name)
+
+  defp reg_coll_key(headers, db, coll), do: {1, reg_scoped(headers, db), coll}
+
+  defp reg_meta_key(headers, db, coll),
+    do: Smalt.Auth.TenantLaw.tenant_scoped_key(tenant_of(headers), container_key(db, coll))
+
+  # Registry-row visibility: home sees only legacy names (no "/" — legal by
+  # valid_name?/1, so any "/"-bearing name is a foreign tenant's row); a
+  # foreign tenant sees exactly its own "tid/" namespace.
+  defp reg_visible?(tenant, name) do
+    if tenant == Smalt.Auth.TenantLaw.home_tenant() do
+      not String.contains?(name, "/")
+    else
+      String.starts_with?(name, "#{tenant}/")
+    end
+  end
+
+  # True when the addressed container row exists ONLY under a namespace that
+  # is not the caller's — the typed-403 face (never a silent nil/404 that
+  # hides the fence).
+  defp registry_foreign_coll?(tenant, db, coll) do
+    scoped = Smalt.Auth.TenantLaw.tenant_scoped_key(tenant, db)
+
+    # Only rows that are scoped forms of THIS db ("tid/<db>") count — a
+    # same-named collection under a different db is a plain miss, not a fence.
+    meta_records(fn
+      {1, name, ^coll} -> name != scoped and String.ends_with?(name, "/#{db}")
+      _ -> false
+    end) != []
+  end
+
+  defp tkey(headers, db, coll, doc_id) do
+    Smalt.Auth.TenantLaw.tenant_scoped_key(tenant_of(headers), doc_key(db, coll, doc_id))
+  end
+
+  # Point-op lookup under the caller's tenant namespace. Own doc -> {:ok, doc};
+  # miss + the key exists ONLY under another tenant -> {:foreign, typed-403};
+  # plain miss -> {:missing, nil} (caller answers the legacy 404 face).
+  defp tenant_lookup(headers, db, coll, doc_id) do
+    tenant = tenant_of(headers)
+    legacy = doc_key(db, coll, doc_id)
+    own = Smalt.Auth.TenantLaw.tenant_scoped_key(tenant, legacy)
+
+    case Store.get(@docs_table, own) do
+      {:ok, doc} ->
+        {:ok, doc}
+
+      :error ->
+        if Smalt.Auth.TenantLaw.foreign_doc?(@docs_table, tenant, legacy) do
+          {:foreign,
+           error_response(
+             db,
+             coll,
+             403,
+             "Forbidden",
+             Smalt.Auth.TenantLaw.mismatch_message()
+           )}
+        else
+          {:missing, nil}
+        end
+    end
+  end
+
+  # Write-path miss face: 403 when the addressed key is another tenant's,
+  # else the legacy 404. Nothing is ever created or mutated under the
+  # foreign key.
+  defp tenant_refusal_or_not_found(headers, db, coll, doc_id) do
+    if Smalt.Auth.TenantLaw.foreign_doc?(@docs_table, tenant_of(headers), doc_key(db, coll, doc_id)) do
+      error_response(db, coll, 403, "Forbidden", Smalt.Auth.TenantLaw.mismatch_message())
+    else
+      error_response(
+        db,
+        coll,
+        404,
+        "NotFound",
+        "Entity with the specified id does not exist in the system."
+      )
+    end
+  end
 
   defp quoted_sha256(value) do
     "\"" <> (:crypto.hash(:sha256, Jason.encode!(value)) |> Base.encode16(case: :lower)) <> "\""
@@ -2288,5 +2982,21 @@ defmodule Smalt.DataPlane.Cosmos do
 
   defp doc_gen_nonce, do: Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
-  defp doc_etag(body_hash, v, gen), do: quoted_sha256(%{"h" => body_hash, "v" => v, "g" => gen})
+  # KD-COVERS: KD-148 — real Cosmos emits a quoted GUID etag
+  # ("00000000-0000-...-ffffffffffffffff"); 64-hex sha256 was a wire divergence.
+  # CAS still works: If-Match echoes the etag we render, and the stored value
+  # IS the rendered value (GUID) — no internal/external dual truth.
+  defp doc_etag(_body_hash, _v, _gen) do
+    <<a::32, b::16, c_lo::12, _::4, d_lo::14, _::2, e::48>> = :crypto.strong_rand_bytes(16)
+
+    etag =
+      <<a::32, b::16, 4::4, c_lo::12, 2::2, d_lo::14, e::48>>
+      |> Base.encode16(case: :lower)
+      |> then(fn <<h1::binary-size(8), h2::binary-size(4), h3::binary-size(4), h4::binary-size(4),
+                   h5::binary-size(12)>> ->
+        "\"#{h1}-#{h2}-#{h3}-#{h4}-#{h5}\""
+      end)
+
+    etag
+  end
 end

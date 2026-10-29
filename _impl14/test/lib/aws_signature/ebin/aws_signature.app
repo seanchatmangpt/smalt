@@ -1,0 +1,11 @@
+{application,aws_signature,
+             [{description,"Request signature implementation for authorizing AWS API calls"},
+              {vsn,"0.4.3"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {env,[]},
+              {modules,[aws_signature,aws_signature_utils,aws_sigv4_internal,
+                        aws_sigv4_utils,aws_sigv4a,aws_sigv4a_credentials]},
+              {licenses,["Apache-2.0"]},
+              {links,[{"GitHub","https://github.com/aws-beam/aws_signature"}]},
+              {doc,"doc"}]}.

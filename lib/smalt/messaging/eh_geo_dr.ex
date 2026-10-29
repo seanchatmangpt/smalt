@@ -126,11 +126,72 @@ defmodule Smalt.Messaging.EhGeoDr do
   end
 
   defp ensure_started do
+    case Process.whereis(@name) do
+      nil ->
+        # BK-104: the direct GenServer.start here raced the supervisor's own
+        # restart of the killed permanent child — when the caller's start won
+        # the name, the supervisor's restart attempt failed :already_started,
+        # its retry loop blew the restart intensity and the
+        # IntegrationSupervisor exited :shutdown (whole-plane bounce,
+        # witnessed mid-court). Route the lazy start through the supervisor;
+        # only when no IntegrationSupervisor is running (integration-only
+        # plane, bare test VM) do we fall back to an unlinked self-start,
+        # where no supervisor exists to race.
+        case supervised_start() do
+          :ok ->
+            :ok
+
+          {:error, :integration_supervisor_not_running} ->
+            unlinked_start(:eh_geo_dr_server_start_failed)
+
+          {:error, reason} ->
+            exit({:eh_geo_dr_server_start_failed, reason})
+        end
+
+      _pid ->
+        :ok
+    end
+  end
+
+  defp supervised_start do
+    sup = Process.whereis(Smalt.Plane.IntegrationSupervisor)
+
+    if is_nil(sup) do
+      {:error, :integration_supervisor_not_running}
+    else
+      case Supervisor.start_child(sup, child_spec([])) do
+        {:ok, _pid} -> :ok
+        # The supervisor owns the child spec and is (re)starting it — never
+        # start under our own process.
+        {:error, {:already_started, _pid}} -> :ok
+        {:error, {:already_present, _id}} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp unlinked_start(fail_tag) do
     case GenServer.start(__MODULE__, :ok, name: @name) do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
-      {:error, reason} -> exit({:eh_geo_dr_server_start_failed, reason})
+      {:error, reason} -> exit({fail_tag, reason})
     end
+  end
+
+  # SPOF-B / A-4: supervised-start contract (permanent child of
+  # IntegrationSupervisor). `use GenServer` child_spec would default to a
+  # start_link/1 that did not exist — disclosed explicit form here.
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, :ok, name: Keyword.get(opts, :name, @name))
+  end
+
+  def child_spec(opts) do
+    %{
+      id: {__MODULE__, Keyword.get(opts, :ref, :default)},
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :permanent,
+      type: :worker
+    }
   end
 
   @impl true
@@ -141,6 +202,8 @@ defmodule Smalt.Messaging.EhGeoDr do
 
   # Runs inside the named server process: the named table is server-owned and
   # never dies with a mortal caller. Serialized by the server mailbox.
+  # SPOF-B / A-4: heir 3-tuple (shadow-table law) — the alias metadata survives
+  # an owner crash even before supervision restarts it.
   defp do_ensure_table do
     if :ets.info(@table) == :undefined do
       :ets.new(@table, [
@@ -148,7 +211,8 @@ defmodule Smalt.Messaging.EhGeoDr do
         :public,
         :named_table,
         read_concurrency: true,
-        write_concurrency: true
+        write_concurrency: true,
+        heir: Process.whereis(:init) || self()
       ])
     end
 

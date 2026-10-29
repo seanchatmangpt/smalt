@@ -1,15 +1,18 @@
 defmodule Smalt.MixProject do
   use Mix.Project
 
-  @version "26.10.19"
+  @version "26.10.25"
 
   def project do
     [
       app: :smalt,
       version: @version,
-      elixir: "~> 1.18 or ~> 1.19 or ~> 1.20",
+      elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      # FONDRUNNER: parallel Erlang module family compiled in-repo (lib/smalt/pipeline)
+      # STORE-4: operator-mandated 16-partition Erlang store family (src/)
+      erlc_paths: ["lib/smalt/pipeline", "src"],
       description: description(),
       package: package(),
       source_url: "https://github.com/seanchatmangpt/smalt",
@@ -20,7 +23,7 @@ defmodule Smalt.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib"]
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp releases do
@@ -94,6 +97,9 @@ defmodule Smalt.MixProject do
 
   defp deps do
     [
+      # GL28-2: the deterministic turnstile — admission gate before any
+      # control-plane state mutation (path dep on the sibling checkout).
+      {:graphlaw_ex, path: "../graphlaw/graphlaw_ex"},
       {:bandit, "~> 1.6"},
       {:plug, "~> 1.16"},
       {:cors_plug, "~> 3.0"},
@@ -111,7 +117,7 @@ defmodule Smalt.MixProject do
       # v26.10.16): permanent RUNTIME dep — it is the OCEL event
       # sink / POWL discovery+conformance backend, not a manufacturing-time
       # tool. Elixir compat: ex4pm "~> 1.17" satisfies smalt's
-      # "~> 1.18 or ~> 1.19 or ~> 1.20".
+      # "~> 1.20".
       # B1 CLOSED (2026-10-17, operator ruling "hex.pm only"): the path dep
       # is retired — smalt resolves ex4pm from hex.pm like every other dep.
       # ex4pm 26.10.8 hex dry-build verified (PUBLISH_RECORD.md, lane G1):
@@ -139,10 +145,6 @@ defmodule Smalt.MixProject do
       # Static security analysis (ERRC lane 8 Raise). Non-blocking first pass;
       # recipe `just sobelow` records, does not gate.
       {:sobelow, "~> 0.13", only: :dev, runtime: false},
-      # Benchmarking (ERRC lane 2 Raise): benchee drives scripts/bench/benchee_runner.exs
-      # (b7b/b8b/b9b rows) as the statistical counterpart to the hand-rolled
-      # b7/b8/b9 timing loops (kept as falsifier records).
-      {:benchee, "~> 1.3", only: [:dev, :test], runtime: false},
       # B-11 recon soak (docs/jira/v26.10.14/receipts/errc7-recon.md): BEAM-level
       # leak evidence (processes/binaries/atoms/ETS) that RSS alone cannot give.
       {:recon, "~> 2.5", only: :test},

@@ -421,3 +421,230 @@ These are the two cells most likely to be in-flight-tree-sensitive; a clean
 ```
 substrate-ctl down --block b4 --mode sweep → exit 0
 status b4/v1/v9/b11/v13/v14 → up=0 all, ports drained
+
+## Error-code projection verification (wave-5 ERRC lane, 2026-10-20)
+
+Standing: **PASS (regen landed) / OPEN-FINDING (extractor coverage gap)** ·
+Context: solo
+
+Scope of this lane: verify `docs/ERROR_CODES.md` completeness at current HEAD.
+Read-only on code; the regen (`python3 scripts/gen_error_codes.py`) is the
+sanctioned generated-docs surface.
+
+### (1) Drift check and regen
+
+```
+$ python3 scripts/gen_error_codes.py --check
+docs/ERROR_CODES.md is stale. Run: python3 scripts/gen_error_codes.py
+exit=1
+
+$ python3 scripts/gen_error_codes.py
+wrote /Users/sac/smalt/docs/ERROR_CODES.md (155 rows)
+$ python3 scripts/gen_error_codes.py --check
+docs/ERROR_CODES.md up to date
+exit=0
+```
+
+Row delta: **0 rows added / 0 removed** (155 data rows before and after; 167
+lines matching `^| ` including table headers/separators). The staleness was
+**citation drift only** — `lib/` is dirty from concurrent wave lanes
+(`config.ex`, `queue_store.ex`, `management_rpc.ex`, `purview_atlas.ex` at
+time of check), so source line numbers in the Source column had moved. Note:
+two intermediate `--check` runs exited 1 mid-sequence on exactly this
+concurrent-edit race (line-number diffs in amqp-management and arm-gateway
+sections between regen and check); a tight regen → check → check with a quiet
+lib/ is stable.
+
+### (2) Extractor family coverage of new wave-2/3/4 surfaces — 4 of 5 MISSING
+
+```
+$ grep -E 'ScopeLocked|PolicyRemediationInvalid|SnapshotExists|SESSION_STATE_SIZE_EXCEEDED|CertificateNameAlreadyExists' docs/ERROR_CODES.md
+180:| amqp-management | 400 | SESSION_STATE_SIZE_EXCEEDED | lib/smalt/messaging/amqp/management_rpc.ex:392 | ...
+```
+
+`SESSION_STATE_SIZE_EXCEEDED` is projected. The other four exist as literals
+in `lib/` but no extractor family covers them:
+
+| Literal | lib site(s) | Why missed |
+|---|---|---|
+| `ScopeLocked` | policy.ex:1339, arm_gateway/router.ex:1047 | `extract_policy` takes only the FIRST `"code"` literal inside `violation_body/2` (→ PolicyViolation); the ScopeLocked inline envelopes are outside that function and outside the router-corpus scan |
+| `PolicyRemediationInvalid` | policy.ex:892 | same — inline envelope outside `violation_body/2` |
+| `SnapshotExists` | appconfig_snapshots.ex:91 | code-first tuple `{:error, {"SnapshotExists", ...}}` — no literal status in T1–T6 shapes |
+| `CertificateNameAlreadyExists` | certificates.ex:162 | `certificate_error("...")` helper call — T3 matches only `bad_request("...")` |
+
+Verdict: the regen is faithful to its extractor families, but the families
+predate the wave-2/3/4 surfaces. This is a **generator-coverage gap**, filed
+here as a finding — this lane is verification-only (no code edits; the
+extractor is an owned surface outside this lane's lease). Suggested close
+condition for the owning lane: add families for `certificate_error("...")`
+call sites, code-first error tuples, and the post-`violation_body` inline
+policy envelopes, then regen (expected +4 rows).
+
+### (3) Idempotency
+
+```
+$ python3 scripts/gen_error_codes.py && python3 scripts/gen_error_codes.py --check && python3 scripts/gen_error_codes.py --check
+wrote /Users/sac/smalt/docs/ERROR_CODES.md (155 rows)
+docs/ERROR_CODES.md up to date
+docs/ERROR_CODES.md up to date
+exit=0 (both checks)
+```
+
+Idempotent ×2 on a quiet tree. `docs/ERROR_CODES.md` regenerated this pass is
+committed as part of the wave integration; no hand edits were made to it or to
+`scripts/gen_error_codes.py`.
+
+---
+
+## Flip verification: wf7 `sentinel:table-stats` SKIP (ERRC wave-5 verification lane, 2026-10-20)
+
+Standing: **PARTIAL_ALIVE — residual confirmed, no flip.** The diagnostics
+table-stats SKIP did NOT flip: the wave-5 ARM tables family is not landed.
+
+### (1) Wave-5 ARM tables family status (grep of lib/)
+
+Typed finding — **NOT-LANDED**:
+- `lib/smalt/registry.ex:52` admits the parent
+  `Microsoft.OperationalInsights/workspaces` (DefaultShape, api-version
+  2020-08-01) — generic ARM route serves the workspace PUT (witnessed 201
+  below).
+- Child family `Microsoft.OperationalInsights/workspaces/tables` is NOT in
+  the registry and `grep OperationalInsights lib/smalt/arm_gateway/router.ex`
+  returns zero route fragments (only registry rows); no dedicated tables
+  route on `egress_router.ex` either.
+- A generic child GET on `.../workspaces/:ws/tables` answers **200 with
+  `{"value": []}`** — a stub, not the tables family: it never surfaces the
+  DCR-ingested streams regardless of ingest state.
+
+### (2) Live probe (substrate-ctl b12 --auth enforce, ports 39120-39125; ARM=39122, egress=39123)
+
+```
+rg PUT 201
+workspace PUT 201 {"id":"/subscriptions/.../providers/Microsoft.OperationalInsights/workspaces/b12-ws-...",...}
+ingest Custom-Logs -> 204          (4 rows)
+ingest Custom-Events -> 204        (7 rows)
+GET /subscriptions/.../workspaces/b12-ws-.../tables (api-version 2020-08-01) -> 200 {"value": []}
+GET /v1/workspaces/<dcr>/tables (egress) -> 400 MissingXMsVersion (egress hosts no such route)
+```
+
+**Per-stream counts via the ARM tables route do NOT match** — the route
+returns an empty list, no per-stream rows. Ground truth via the KQL plane
+does hold per-stream isolation, with one divergence found:
+
+```
+Custom-Logs | summarize count() by s        -> [['7','Custom-Events'], ['4','Custom-Logs']]   # correct, per-stream
+Custom-Logs | summarize count()             -> [['11']]   # BUG: workspace-global, ignores table source
+Custom-Events | summarize count()           -> [['11']]   # same 11 = 4+7, reproduced on 2 fresh DCRs
+```
+
+**Typed finding — KQL-ENGINE: bare `| summarize count()` (no `by`) is not
+table-scoped**; it aggregates across every stream in the workspace instead
+of the named source table. Scoped `by <col>` aggregation is correct. This
+is a new divergence, not previously registered.
+
+### (3) wf7 table-stats cell rerun
+
+```
+$ cd verification/py && .venv/bin/pytest test_wf7_diagnostics.py -k table_stats -rs -q
+SKIPPED [1] test_wf7_diagnostics.py:230: not-landed — owning surface: Sentinel/Log Analytics
+workspace tables ARM family (GET workspaces/:id/tables) — no route on egress_router.ex or
+arm_gateway/router.ex
+1 skipped, 4 deselected in 0.24s
+```
+
+The SKIP stands, typed and correctly citing the owning surface. **Residual,
+no flip.**
+
+### Lane notes
+
+- Boot was blocked ~4.5 min by a concurrent lane's in-flight edit
+  (`lib/smalt/data_plane/cosmos.ex:224` calling undefined
+  `analytical_ttl_replace/4` — compile error, SUBSTRATE_DIED x4); the owner
+  landed the missing function within the SLA and attempt 5 booted clean.
+  Disclosed per the compile-freeze disclosure law; no fix applied by this
+  lane.
+- Close conditions: (a) registry-admit `workspaces/tables` + dedicated
+  route family surfacing per-stream row counts from DCR streams; (b) KQL
+  bare-`summarize count()` table scoping fix; (c) flip the wf7 cell to a
+  real probe gated on (a).
+
+## Wave-5 ERRC verification: pkranges engine via real azure-cosmos (append)
+
+- **Date**: 2026-10-20
+- **Subject**: smalt @ `bab1949de31429544b596ba6abceb70f63a45d9e` (main;
+  wave-4 promotion commit) — pkranges engine
+  (`lib/smalt/data_plane/cosmos.ex` `partition_key_ranges/2`,
+  `pkr_ranges/3`, `pkr_ranges_etag/1`, landed wave-4) verified at this HEAD
+  with the in-flight wave-5 `cosmos.ex` diff present on disk (see lane notes).
+- **Context**: pair (concurrent ERRC wave-5 lanes on b2/b7; this lane b3)
+- **Standing**: PASS — all six cells green; the pkranges engine's
+  python-SDK drain contract is witnessed at SDK tier, not simulated.
+- **Harness**: `verification/py/.venv` (real `azure-cosmos`), probe
+  `/tmp/pkranges_b3_probe.py` + focused etag probe `/tmp/pkranges_b3_etag.py`;
+  substrate `scripts/substrate-ctl up --block b3 --auth anonymous --fresh`
+  (ports 39030..39035, egress/data 39033).
+- **Machine**: `{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.19.5","otp":"28","darwin":"26.2"}` (`just bench-machine`)
+
+### Cells
+
+```
+$ verification/py/.venv/bin/python /tmp/pkranges_b3_probe.py
+PASS pkranges.200.coherent - 2 ranges: [["", "55"], ["55", "FF"]]
+PASS pkranges.routing_drain.query - cross-partition query returned ['d1', 'd2'] (routing map drained from pkranges feed)
+PASS pkranges.unknown.404 - CosmosResourceNotFoundError status=404
+FAIL pkranges.inm.drain.wire - first=200 etag=None refetch-with-etag=200
+FAIL pkranges.inm.drain.sdk - SDK read with If-None-Match: wire status=200, items=2, resp etag=None
+PASS pkranges.deterministic - second read identical
+SUMMARY: 4/6 pass; fails=['pkranges.inm.drain.wire', 'pkranges.inm.drain.sdk']
+```
+
+The two FAIL rows are a probe bug, not an engine defect: the first run's
+header read was case-sensitive (`ETag`) while the wire emits `Etag`, so the
+etag was read as None and the "refetch with matching etag" leg never matched.
+Rerun with case-insensitive header lookup (fresh db/container, negative leg
+added):
+
+```
+$ verification/py/.venv/bin/python /tmp/pkranges_b3_etag.py
+WIRE: first=200 etag="pkranges-34a0f5ff08ec66bed91a88651d2234a0" refetch-with-etag=304
+SDK: status=304 items=0 etag="pkranges-34a0f5ff08ec66bed91a88651d2234a0"
+NEG: stale-etag refetch=200 (expect 200)
+SUMMARY: PASS 3/3
+rc=0
+```
+
+### Verified contract
+
+1. **200 coherent ranges** — `read_partition_key_ranges` (SDK-internal
+   `_ReadPartitionKeyRanges`, the actual drain surface — no public
+   `ContainerProxy` method in azure-cosmos) returns a non-empty coherent
+   split: `["","55"],["55","FF"]` — `maxExclusive` N == `minInclusive` N+1,
+   full `"".."FF"` coverage, deterministic across reads.
+2. **Routing drain end-to-end** — a cross-partition SDK query
+   (`enable_cross_partition_query`) drains the pkranges feed through
+   `_fetch_routing_map`/`evaluate_drain_page` and returns both seeded docs.
+3. **Unknown container -> 404** — surfaces as
+   `CosmosResourceNotFoundError` (status 404), the abort condition the SDK
+   routing layer requires.
+4. **If-None-Match drain** — first fetch 200 + `ETag: "pkranges-<md5>"`;
+   refetch with the matching etag -> 304 (0 items at SDK tier, matching the
+   engine's python-SDK drain contract); stale etag -> 200 (negative leg).
+
+### Lane notes
+
+- Boot was blocked ~4.5 min by a concurrent lane's in-flight edit
+  (`lib/smalt/data_plane/cosmos.ex:236` calling undefined
+  `analytical_ttl_from_body/1` — compile error); owner landed it within the
+  SLA and b3 booted clean. Disclosed per the compile-freeze disclosure law;
+  no fix applied by this lane.
+- Mid-run, another lane re-booted b3 in **enforce** mode (marker mtime
+  06:10, `auth: enforce`), evicting this lane's anonymous boot and causing
+  one connection-refused probe attempt. Re-asserted with `--fresh` per this
+  lane's dispatch (b3 anonymous); the witness run above is entirely on the
+  anonymous boot, pid 89830. Flagging the block-ownership collision for the
+  coordinator: b3 was double-dispatched this wave.
+- Probe-level (not engine) findings, for the record: `enable_cross_partition`
+  is not the azure-cosmos kwarg (`enable_cross_partition_query` is); the
+  pkranges surface is SDK-internal (`_ReadPartitionKeyRanges`), so
+  "public-API" probes must drive it via cross-partition queries or the
+  internal client.

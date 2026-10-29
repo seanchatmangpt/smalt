@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Invariant gate: App Configuration /kv ETag CAS — compare-and-swap writes.
 
-Positive: PUT a fresh {key,label} (201), then race TWO conditional PUTs
+Positive: PUT a fresh {key,label} (200; KD-149/T24WIRE 2026-10-21 — @azure/app-configuration hard-fails on 201, so create AND update return 200), then race TWO conditional PUTs
 carrying the SAME If-Match etag but different values. The ETS-backed router
 (lib/smalt/egress_router.ex put "/kv/:key") serializes them: exactly one wins
 (2xx) and the loser takes 412 PreconditionFailed. The stored etag must equal
@@ -69,7 +69,7 @@ def capture(ports, shared_key):
     auth = {"Authorization": f"Bearer {token}"}
     path = f"/kv/{KEY}?label={LABEL}"
 
-    # create (no If-Match, absent) -> 201 with the content-hash etag
+    # create (no If-Match, absent) -> 200 with the content-hash etag (KD-149/T24WIRE parity pin)
     s_create, h_create, body_create = common.http(
         egress, "PUT", path,
         body={"value": "v0", "contentType": "text/plain"}, headers=auth)
@@ -138,8 +138,8 @@ def verdict(obs):
         details.append(("PASS" if cond else "FAIL") + " " + msg)
         ok = ok and cond
 
-    check(obs.get("create_status") == 201,
-          f"create -> 201 (got {obs.get('create_status')})")
+    check(obs.get("create_status") == 200,
+          f"create -> 200 (KD-149/T24WIRE parity; got {obs.get('create_status')})")
     check(obs.get("create_etag") == expected_etag(KEY, LABEL, "v0", "text/plain"),
           f"create etag == quoted sha256({KEY},{LABEL},v0,text/plain) "
           f"(got {obs.get('create_etag')})")

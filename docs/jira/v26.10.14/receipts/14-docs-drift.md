@@ -31,7 +31,7 @@
    five candidate wins enumerated in a "Resolved this sweep" table. **Finding:
    only 1 of the 5 verifies** (docker/README.md:42 phrasing). The other four
    (eh-run.mjs:14,143; dev_env.sh:33; vs_azurite.py:330,369; .env.example:12)
-   are NOT LANDED in the working tree — still literal `/Users/sac/cai/athena/...`
+   are NOT LANDED in the working tree — still literal `/Users/sac/cai/legacy-client/...`
    defaults — and remain REPORTED-TO-LANE, allowlisted. WO explore facts were
    stale on these.
 4. **auth_regression_sweep.md:3** — scrubbed to `` `~/smalt` (canonical

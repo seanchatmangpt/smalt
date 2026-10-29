@@ -1,0 +1,30 @@
+# ggen.toml — smalt k8s manifest rendering (lane BK-MKTG, v26.10.22;
+# extended by BK-MKT1, v26.10.22).
+#
+# Admits priv/smalt-k8s.ttl (facts read from BK-K8SM's hand-written k8s/
+# manifests) through two packs:
+#   * ggen-marketplace kubernetes-workload-pack — console Deployment + Service,
+#     gates 010 (required facts) + 020 (SEC-PRIV-001 privilege refusal, covers
+#     every k8s:Container incl. the backend's);
+#   * smalt-local packs/smalt-k8s-pack — the backend's FULL deployable set
+#     (StatefulSet + headless/ClusterIP/NodePort Services + Secret + ConfigMap),
+#     gates 010 (extended required facts), 030 (podAntiAffinity required),
+#     040 (headless Service required), 050 (BEAM dist-port range pinned).
+# A gate row refuses the whole sync — fail-closed, no YAML.
+# k8s/smalt-backend.gen.yaml is now the deployable render (typed diff vs the
+# hand-written manifest: docs/jira/v26.10.22/receipts/bkmkt1-pack-facts.md).
+
+[project]
+name = "smalt"
+
+[ontology]
+source = "priv/smalt-k8s.ttl"
+
+# Templates ship inside the pack (templates/deployment_and_service.yaml.tmpl);
+# this dir is the example-pack convention (empty local dir, pack templates win).
+[templates]
+dir = "templates"
+
+[packs]
+"kubernetes-workload-pack" = { path = "/Users/sac/ggen-marketplace/packs/kubernetes-workload-pack" }
+"smalt-k8s-pack" = { path = "packs/smalt-k8s-pack" }

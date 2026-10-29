@@ -41,6 +41,24 @@ AZB-22 / v26.10.19 staleness-repair scope extensions:
     /* */) and // SLEEP-CLASS: annotation support (scan_ts_file).
   .py under verification/ and test/ — time/asyncio/anyio/trio .sleep(
     primitives with # SLEEP-CLASS: annotation support (scan_py_file).
+W5-G (v26.10.20 popcorn sweep) scope extension:
+  popcorn_demo/{lib,test,scripts} — the Chicago testbed is now IN
+    jurisdiction (was OUT: compliance sweep proved the scan roots missed
+    it while it carries real sleep primitives). Per-extension law:
+    .ex/.exs under popcorn_demo/{lib,test} — the same law as lib/ + test/
+      (classification + adjacency), via the lib/test role mapping; lib
+      sites additionally admit a FUNCTION-LEVEL annotation: a
+      `# SLEEP-CLASS:` in the doc-comment block directly above the
+      enclosing def (the poll_lro form: server-directed LRO poll).
+    popcorn_demo/scripts/*.sh — literal `sleep N` fails unless a
+      `# SLEEP-CLASS:` annotation (same line or contiguous block above)
+      names a lawful class (popcorn_suite.sh bounded-poll form).
+    popcorn_demo/scripts/*.mjs/.js — setTimeout(/setInterval(/await sleep(
+      fails unless annotated OR the site sits inside a bounded poll loop:
+      the nearest while(/for( above carries a time bound (Date.now()/
+      performance.now()/TIMEOUT/deadline) and the loop body inspects an
+      observable (if (/ ?. / comparison) — the no-sleep doctrine's lawful
+      poll form. A bare unconditional sleep-like await is a violation.
 
 Exit 0 = pass, 1 = violations (or fail-closed: no files scanned, unreadable
 file). Stdlib only. Companion docs/NO_SLEEP_DOCTRINE.md.
@@ -160,6 +178,23 @@ def annotate_class(lines, idx):
     return found
 
 
+def function_doc_class(lines, idx):
+    """W5-G: function-level annotation — a `# SLEEP-CLASS:` in the
+    contiguous comment block directly above the enclosing def admits the
+    sleep sites inside that function (the popcorn_demo poll_lro form:
+    annotation names the whole server-directed LRO poll)."""
+    for j in range(idx, -1, -1):
+        if DEF_RE.match(lines[j]):
+            k = j - 1
+            while k >= 0 and lines[k].lstrip().startswith("#"):
+                m = ANN_RE.search(lines[k])
+                if m:
+                    return m.group(1)
+                k -= 1
+            return None
+    return None
+
+
 def in_string_literal(line, start, end):
     """True if the span [start:end) lies inside a double-quoted string on
     this line (single-quote/double-quote toggle scan; only ever skips
@@ -207,8 +242,12 @@ def scan_file(path, rel):
             doc[i] = True
             in_doc = n % 2 == 1
 
-    is_lib = rel == "lib" or rel.startswith("lib/")
-    is_test = rel == "test" or rel.startswith("test/")
+    is_lib = rel == "lib" or rel.startswith("lib/") or \
+        rel == os.path.join("popcorn_demo", "lib") or \
+        rel.startswith(os.path.join("popcorn_demo", "lib") + os.sep)
+    is_test = rel == "test" or rel.startswith("test/") or \
+        rel == os.path.join("popcorn_demo", "test") or \
+        rel.startswith(os.path.join("popcorn_demo", "test") + os.sep)
 
     for i, line in enumerate(lines):
         if doc[i]:
@@ -252,7 +291,7 @@ def scan_file(path, rel):
                 )
             )
         elif is_lib:
-            cls = annotate_class(lines, i)
+            cls = annotate_class(lines, i) or function_doc_class(lines, i)
             if cls in LIB_CLASSES:
                 continue
             violations.append(
@@ -415,6 +454,103 @@ def scan_sh_file(path, rel):
     return violations
 
 
+def scan_popcorn_sh_file(path, rel):
+    """W5-G: popcorn_demo/scripts/*.sh — a literal `sleep N` fails unless
+    a `# SLEEP-CLASS:` annotation (same line or the contiguous comment
+    block above) names a lawful class (popcorn_suite.sh bounded-poll
+    form). Unlike docker/burn (no escape), annotation IS the lawful form
+    here. Fail-closed on unreadable files."""
+    violations = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    except OSError as exc:
+        return [(rel, 0, "FAIL-CLOSED: unreadable popcorn shell script: %s" % exc)]
+    for i, line in enumerate(lines):
+        raw = line.split("#", 1)[0]
+        if SH_SLEEP_RE.search(raw):
+            cls = annotate_py_class(lines, i)
+            if cls in VERIF_CLASSES:
+                continue
+            violations.append(
+                (rel, i + 1, "unclassified popcorn_demo shell `sleep N` "
+                 "(# SLEEP-CLASS: <TIME-ADVANCE|POLL-STEP> required): `%s`"
+                 % raw.strip())
+            )
+    return violations
+
+
+# A site is a lawful poll step only inside a bounded loop: the nearest
+# while(/for( above must carry a time bound and the loop body must inspect
+# an observable (approximate, but only ever ADMITS on real loop evidence;
+# the absence of both is what makes a bare sleep a violation).
+LOOP_OPEN_RE = re.compile(r"^\s*(?:while|for)\s*\(")
+TIME_BOUND_RE = re.compile(
+    r"\b(?:Date\.now|performance\.now)\s*\(|\b(?:TIMEOUT|DEADLINE|deadline)\b")
+OBSERVABLE_RE = re.compile(
+    r"\bif\s*\(|\?\.|includes\s*\(|[!=]==|[!=]=")
+
+
+def scan_mjs_file(path, rel):
+    """W5-G: popcorn_demo/scripts/*.mjs/.js — setTimeout(/setInterval(/
+    await sleep( fails unless annotated OR the site sits inside a bounded
+    poll loop (nearest while(/for( above carries a time bound; the body
+    between loop-open and the site inspects an observable). A bare,
+    unconditional sleep-like await is a violation. // comments and /*
+    */ blocks stripped (comment-stripping shared with scan_ts_file's
+    semantics; fail-closed on unreadable files)."""
+    violations = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+    except OSError as exc:
+        return [(rel, 0, "FAIL-CLOSED: unreadable mjs/js file: %s" % exc)]
+    lines = src.split("\n")
+    in_block = [False] * len(lines)
+    in_blk = False
+    for i, line in enumerate(lines):
+        opens = line.count("/*")
+        closes = line.count("*/")
+        if in_blk:
+            in_block[i] = True
+            if closes:
+                in_blk = False
+        elif opens > closes:
+            in_block[i] = True
+            in_blk = True
+    for i, line in enumerate(lines):
+        if in_block[i]:
+            continue
+        raw = line.split("//", 1)[0]
+        if not TS_SLEEP_RE.search(raw):
+            continue
+        cls = annotate_ts_class(lines, i)
+        if cls in VERIF_CLASSES:
+            continue
+        # Bounded-poll admission: nearest loop opener above (inclusive of
+        # its own line) must show a time bound, and the loop body up to
+        # the site must show an observable inspection. A bare closing
+        # `}` between the site and the opener fences the walk — the site
+        # sits outside that loop (post-loop tail), so no admission.
+        lawful = False
+        for j in range(i - 1, max(-1, i - 200), -1):
+            if lines[j].strip() == "}":
+                break
+            if LOOP_OPEN_RE.search(lines[j]):
+                span = "\n".join(lines[j:i + 1])
+                if TIME_BOUND_RE.search(span) and OBSERVABLE_RE.search(span):
+                    lawful = True
+                break
+        if lawful:
+            continue
+        violations.append(
+            (rel, i + 1, "unclassified mjs/js sleep primitive (// SLEEP-CLASS: "
+             "<TIME-ADVANCE|POLL-STEP> required, or the site must sit inside a "
+             "bounded poll loop with a time bound + observable check): `%s`"
+             % raw.strip()))
+    return violations
+
+
 def main(argv):
     force_as = None
     paths = []
@@ -437,6 +573,10 @@ def main(argv):
         os.path.join(REPO, "test"),
         os.path.join(REPO, "verification"),
         os.path.join(REPO, "docker", "burn"),
+        # W5-G (v26.10.20): popcorn_demo Chicago testbed is IN jurisdiction.
+        os.path.join(REPO, "popcorn_demo", "lib"),
+        os.path.join(REPO, "popcorn_demo", "test"),
+        os.path.join(REPO, "popcorn_demo", "scripts"),
     ]
     violations = []
     files_scanned = 0
@@ -472,6 +612,10 @@ def main(argv):
                 if rel.startswith("docker" + os.sep + "burn" + os.sep):
                     violations.extend(scan_sh_file(f, rel))
                     files_scanned += 1
+                elif rel.startswith(
+                        "popcorn_demo" + os.sep + "scripts" + os.sep):
+                    violations.extend(scan_popcorn_sh_file(f, rel))
+                    files_scanned += 1
                 continue
             if re.search(r"\.(mjs|cjs|js|ts|tsx)$", f):
                 rel = os.path.relpath(os.path.abspath(f), REPO)
@@ -479,11 +623,19 @@ def main(argv):
                    rel.startswith("test" + os.sep):
                     files_scanned += 1
                     violations.extend(scan_ts_file(f, rel))
+                elif rel.startswith(
+                        "popcorn_demo" + os.sep + "scripts" + os.sep):
+                    files_scanned += 1
+                    violations.extend(scan_mjs_file(f, rel))
                 continue
             if f.endswith(".py"):
                 rel = os.path.relpath(os.path.abspath(f), REPO)
                 if rel.startswith("verification" + os.sep) or \
                    rel.startswith("test" + os.sep):
+                    files_scanned += 1
+                    violations.extend(scan_py_file(f, rel))
+                elif rel.startswith(
+                        "popcorn_demo" + os.sep + "scripts" + os.sep):
                     files_scanned += 1
                     violations.extend(scan_py_file(f, rel))
                 continue

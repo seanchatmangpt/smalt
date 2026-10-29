@@ -24,13 +24,19 @@ defmodule Smalt.ArmGateway.Router do
   alias Smalt.ArmGateway.LRO
   alias Smalt.ArmGateway.Defaults
   alias Smalt.ArmGateway.ProviderMatrix
+  alias Smalt.ArmGateway.SkuQuota
+  alias Smalt.ArmGateway.ProviderState
+  alias Smalt.ArmGateway.TagsLocks
   alias Smalt.Store
   alias Smalt.GraphLaw.Validator
   alias Smalt.Registry
+  alias Smalt.DataPlane.Sentinel
   alias Smalt.DataPlane.Cosmos
   alias Smalt.DataPlane.BlobStorage
   alias Smalt.DataPlane.VaultData
-  alias Smalt.Messaging.EventHubs
+  alias Smalt.Arm.EhConsumerGroups
+  alias Smalt.ArmGateway.CostManagement
+  alias Smalt.ArmGateway.ResourceHealth
   alias Smalt.Policy
 
   plug(Plug.Logger)
@@ -47,13 +53,17 @@ defmodule Smalt.ArmGateway.Router do
   # per-request so a config flip does not need a recompile.
   defp arm_cors(conn, _opts) do
     origins = Smalt.Config.arm_cors_origins()
-    CORSPlug.call(conn, CORSPlug.init(origin: origins))
+    headers = Application.get_env(:smalt, :arm_cors_headers, ["*"])
+
+    CORSPlug.call(conn, CORSPlug.init(origin: origins, headers: headers))
   end
 
   plug(Plug.Parsers,
     parsers: [:json, :urlencoded],
     pass: ["*/*"],
-    json_decoder: Jason,
+    # AR-WIRE-01: JSON decode rides the JsonCompat engine seam (native :json when
+    # available, Jason fallback; null normalized to nil).
+    json_decoder: {Smalt.JsonCompat, :decode!, []},
     # Caches the raw body in conn.private so the STS token endpoint can
     # refuse duplicate form parameters (OAuth 2.1 draft / AAD parity).
     body_reader: {Smalt.Auth.BodyCache, :read_body, []}
@@ -61,6 +71,9 @@ defmodule Smalt.ArmGateway.Router do
 
   plug(:arm_request_id)
   plug(:arm_throttle)
+  # AZURE-FIDELITY lane 18: control-plane throttling realism — DEFAULT-OFF
+  # (rate/burst nil). Gate-off the plug passes the conn through untouched.
+  plug(Smalt.Egress.ThrottlePlug)
   plug(:match)
   plug(:dispatch)
 
@@ -132,20 +145,66 @@ defmodule Smalt.ArmGateway.Router do
   # else fresh). (No @impl: handle_errors is defp — Plug.ErrorHandler calls it
   # dynamically, and @impl on a private function is a compile warning.)
   defp handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
-    Logger.error("arm_gateway crash 500: #{Exception.format(kind, reason, stack)}")
-
-    # :unsent is not a real Plug conn.state — "nothing sent yet" is
-    # state in [:unset, :set].
-    if conn.state in [:unset, :set] do
-      rid = conn.private[:arm_request_id] || generate_uuid()
-
-      send_arm_error(
-        put_resp_header(conn, "x-ms-request-id", rid),
-        500,
-        "InternalServerError",
-        "Internal server error.",
-        conn.request_path
+    # BK-EGS1 (F-EGS1 repair, EXPL9-R2): a fault INSIDE handle_errors/2 itself
+    # (generate_uuid/0, send_arm_error/5 -> Jason.encode!, ...) used to escape
+    # Plug.ErrorHandler.__catch__ to Bandit as the NAKED adapter 500 (audit
+    # probe T6, docs/jira/v26.10.22/receipts/bkegskep-fence-audit.md). The
+    # rescue path renders a fault-free constant fallback envelope and logs the
+    # secondary fault loudly.
+    # BK-XPRIF: exceptions carrying a typed plug_status < 500 are NOT
+    # 500-class crashes — sending the 500 envelope here would swallow the
+    # typed status (BK-XPRI HIGH regression class). Skip the fence so
+    # Plug.ErrorHandler's re-raise reaches the adapter, which renders the
+    # exception's own typed status.
+    if kind == :error and Plug.Exception.status(reason) < 500 do
+      Logger.error(
+        "arm_gateway typed plug-status crash (fence skipped, adapter renders typed status): " <>
+          Exception.format(kind, reason, stack)
       )
+
+      :ok
+    else
+      try do
+        Logger.error("arm_gateway crash 500: #{Exception.format(kind, reason, stack)}")
+
+        # :unsent is not a real Plug conn.state — "nothing sent yet" is
+        # state in [:unset, :set].
+        if conn.state in [:unset, :set] do
+          rid = conn.private[:arm_request_id] || generate_uuid()
+
+          send_arm_error(
+            put_resp_header(conn, "x-ms-request-id", rid),
+            500,
+            "InternalServerError",
+            "Internal server error.",
+            conn.request_path
+          )
+        end
+
+        :ok
+      rescue
+        secondary ->
+          Logger.error(
+            "arm_gateway handle_errors itself FAULTED (F-EGS1 fallback engaged): " <>
+              Exception.format(:error, secondary, __STACKTRACE__)
+          )
+
+          fegs1_fallback_send(conn, secondary)
+      end
+    end
+  end
+
+  # BK-EGS1: constant, fault-free fallback render — compile-time attribute
+  # bytes, static v4-shaped request id, no fallible call on the rescue path.
+  @fegs1_fallback_request_id "00000000-0000-4000-8000-000000000000"
+  @fegs1_fallback_body "{\"error\":{\"code\":\"InternalServerError\",\"message\":\"Internal server error.\",\"innererror\":{}}}"
+
+  defp fegs1_fallback_send(conn, _secondary) do
+    if conn.state in [:unset, :set] do
+      conn
+      |> put_resp_header("x-ms-request-id", @fegs1_fallback_request_id)
+      |> put_resp_header("content-type", "application/json; charset=utf-8")
+      |> send_resp(500, @fegs1_fallback_body)
     end
 
     :ok
@@ -208,13 +267,28 @@ defmodule Smalt.ArmGateway.Router do
         # node-local) makes the table outlive its creator; the ArgumentError
         # rescue keeps the create race fail-safe. Mirrors policy.ex
         # ensure_tables/0 (PW lane, same defect class).
-        :ets.new(:smalt_arm_rate, [
-          :named_table,
-          :public,
-          :set,
-          {:read_concurrency, true},
-          {:heir, Process.whereis(:init), []}
-        ])
+        # ETSAUTO (AR-DATA-01 rollout, same flag as :smalt_cosmos_ru):
+        # {:write_concurrency, :auto} on the pure rate-counter table.
+        # update_counter/4 is atomic regardless of option, so semantics are
+        # identical; the option only changes write-lock granularity (per-
+        # scheduler sharding under :auto). Config-gated, default ON,
+        # reversible via :smalt, :ets_write_concurrency_auto -> false.
+        wc =
+          if Application.get_env(:smalt, :ets_write_concurrency_auto, true),
+            do: [{:write_concurrency, :auto}],
+            else: []
+
+        :ets.new(
+          :smalt_arm_rate,
+          List.flatten([
+            :named_table,
+            :public,
+            :set,
+            {:read_concurrency, true},
+            wc,
+            {:heir, Process.whereis(:init), []}
+          ])
+        )
       rescue
         ArgumentError -> :ok
       end
@@ -337,7 +411,7 @@ defmodule Smalt.ArmGateway.Router do
     # token is minted under so sibling seats (Cosmos :8443, blob, kv) accept
     # it. Server-side only — membership is added at mint time, never from
     # client-asserted claims, so the check stays tamper-resistant.
-    authority = request_authority(conn)
+    authority = mint_authority(conn)
     Smalt.Auth.Bearer.register_trusted_authority(authority)
 
     # OIDC Discovery: the token iss must EXACTLY equal the discovery issuer for
@@ -362,11 +436,16 @@ defmodule Smalt.ArmGateway.Router do
     # byte-identical to pre-StsKey.
     {:ok, token} = Smalt.Auth.StsKey.mint(claims)
 
+    # AF-L14-GAP-1 closure: every successful mint feeds the sign-in logs ring
+    # (GET /v1.0/auditLogs/signIns). Recording failure never fails the mint.
+    Smalt.Egress.SignIns.record_mint(tenant_id, claims["appid"], conn)
+
     body =
       Jason.encode!(%{
         "token_type" => "Bearer",
         "expires_in" => ttl,
         "ext_expires_in" => ttl,
+        "scope" => "https://management.azure.com/.default",
         "access_token" => token
       })
 
@@ -380,6 +459,48 @@ defmodule Smalt.ArmGateway.Router do
   # :global-locked once-per-VM generation, :persistent_term-cached with the
   # mode stamped). The legacy HS256 secret logic moved into
   # Smalt.Auth.StsKey.hs_signer/0 / generate_and_cache_dev_secret/0.
+
+  # Lane R9 (JWT issuer configurability): when `config :smalt, :issuer_host`
+  # is set, the STS mint + OIDC discovery authority is `https://<issuer_host>`
+  # instead of the request-derived loopback authority. Default (nil) is
+  # byte-identical to the legacy mint. The configured authority is registered
+  # as a trusted mint authority so tokens still verify on every seat via the
+  # existing cross-seat leg (JWKS/kid binding untouched).
+  defp mint_authority(conn) do
+    case Smalt.Config.issuer_host() do
+      nil ->
+        request_authority(conn)
+
+      host when is_binary(host) ->
+        authority = issuer_host_authority!(host)
+        Smalt.Auth.Bearer.register_trusted_authority(authority)
+        authority
+    end
+  end
+
+  # Fail-closed validation: bare host or full HTTPS URL with NO path. The
+  # issuer must stay a well-formed HTTPS-shape URL string; anything else
+  # (http scheme, embedded path, empty) refuses the mint with ArgumentError.
+  defp issuer_host_authority!(host) do
+    cond do
+      not String.contains?(host, "://") ->
+        case String.trim_trailing(host, "/") do
+          "" -> raise ArgumentError, "smalt :issuer_host must be a non-empty host or HTTPS URL"
+          trimmed -> "https://#{trimmed}"
+        end
+
+      true ->
+        case URI.parse(host) do
+          %URI{scheme: "https", host: h, path: p} when is_binary(h) and p in [nil, ""] ->
+            String.trim_trailing(host, "/")
+
+          _ ->
+            raise ArgumentError,
+                  "smalt :issuer_host must be a bare host or an HTTPS URL with no path " <>
+                    "(got #{inspect(host)})"
+        end
+    end
+  end
 
   # Request-derived authority: scheme://host[:port] as the CLIENT reached us
   # (lane 90 TS court: advertising login.smalt.local — an NXDOMAIN — made
@@ -398,7 +519,7 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp openid_envelope(conn, tenant_id) do
-    base = "#{request_authority(conn)}/#{tenant_id}"
+    base = "#{mint_authority(conn)}/#{tenant_id}"
 
     %{
       "issuer" => "#{base}/v2.0",
@@ -418,22 +539,40 @@ defmodule Smalt.ArmGateway.Router do
     }
   end
 
+  # C1-TENANT closure (divergence lane D2): the STS mints tokens for ARBITRARY
+  # tenants (/:tenant_id/oauth2/v2.0/token), so /tenants must reflect what the
+  # identity plane actually minted, not only the home tenant. Registry = the
+  # sign-ins mint ring (Smalt.Egress.SignIns): every successful token-endpoint
+  # mint already records its tenant there, so /tenants renders home + every
+  # distinct minted tenant. Documented ARM TenantListResult shape
+  # (learn.microsoft.com/rest/api/resources/tenants/list): id is the
+  # "/tenants/{tenantId}" URI, tenantCategory "Home" on the home row only.
+  @home_tenant_id "00000000-0000-0000-0000-000000000000"
+
   defp send_tenant_list(conn) do
-    tid = "00000000-0000-0000-0000-000000000000"
+    minted =
+      Smalt.Egress.SignIns.events()
+      |> Enum.map(& &1.tenant_id)
+      |> Enum.uniq()
+      |> Enum.reject(&(&1 == @home_tenant_id))
 
-    body =
-      Jason.encode!(%{
-        "value" => [
-          %{
-            "id" => "/tenants/#{tid}",
-            "tenantId" => tid,
-            "displayName" => "Sovereign",
-            "tenantCategory" => "Home"
-          }
-        ]
-      })
+    home_row = %{
+      "id" => "/tenants/#{@home_tenant_id}",
+      "tenantId" => @home_tenant_id,
+      "displayName" => "Sovereign",
+      "tenantCategory" => "Home"
+    }
 
-    send_json(conn, 200, body)
+    minted_rows =
+      for tid <- minted do
+        %{
+          "id" => "/tenants/#{tid}",
+          "tenantId" => tid,
+          "displayName" => tid
+        }
+      end
+
+    send_json(conn, 200, Jason.encode!(%{"value" => [home_row | minted_rows]}))
   end
 
   defp send_json(conn, status, body) do
@@ -573,6 +712,10 @@ defmodule Smalt.ArmGateway.Router do
     |> send_resp(status, body)
   end
 
+  # KD-COVERS: KD-28 — the NSG shape tightening lives in
+  # priv/shacl/smalt-shapes.ttl (NsgShape: closed true + location required),
+  # compiled into this router via GraphLaw.Validator's compile-time ttl parse;
+  # this refusal site is where the wire 400 surfaces.
   # GraphLaw refusal -> HTTP 400 (PINNED decision; ARM never returns 422).
   # Envelope code InvalidResourceShape, target AshGraphLaw.Enforcement.
   # Optional `details` carries per-issue SHACL detail rows (ARM error.details
@@ -623,7 +766,10 @@ defmodule Smalt.ArmGateway.Router do
 
   defp handle_rg_list(conn, sub_id) do
     with :ok <- check_api_version(conn, @rg_type) do
-      rgs = Store.list_prefix(:smalt_resource_groups, "/subscriptions/#{sub_id}/resourcegroups/")
+      rgs =
+        Store.list_prefix(:smalt_resource_groups, "/subscriptions/#{sub_id}/resourcegroups/")
+        |> apply_lifecycle_expand(conn)
+
       send_list(conn, rgs)
     else
       {:respond, conn} -> conn
@@ -653,12 +799,14 @@ defmodule Smalt.ArmGateway.Router do
     case Store.get(:smalt_resource_groups, key) do
       {:ok, existing} when is_map(existing) ->
         payload = conn.body_params
+
         merged_tags =
           case Map.fetch(payload, "tags") do
             {:ok, %{} = new_tags} ->
               # Merge with existing tags if present, or set
               cur = Map.get(existing, "tags") || %{}
               Map.merge(cur, new_tags)
+
             _ ->
               Map.get(existing, "tags")
           end
@@ -668,6 +816,7 @@ defmodule Smalt.ArmGateway.Router do
           |> Map.put("tags", normalize_tags(merged_tags))
 
         Store.put(:smalt_resource_groups, key, updated)
+        :ok = ProviderState.touch_lifecycle(rg_id)
         send_json(conn, 200, Jason.encode!(normalize_rg(updated)))
 
       _ ->
@@ -728,30 +877,46 @@ defmodule Smalt.ArmGateway.Router do
     payload = conn.body_params
     requested = Map.get(payload, "location", "eastus")
 
+    existing =
+      case Store.get(:smalt_resource_groups, String.downcase(rg_id)) do
+        {:ok, existing} when is_map(existing) -> existing
+        _ -> nil
+      end
+
+    # EXPL9-R2 F3: real Azure requires `location` on CREATE. A PUT with an
+    # empty/no-location body previously fell through to the "eastus" default
+    # and minted a silently wrong record (success-on-missing-field). Updates
+    # keep the R30 semantics: location immutable, defaulted value tolerated.
+    refused_create? =
+      is_nil(existing) and not Map.has_key?(payload, "location")
+
     # ARM treats a resource group's location as immutable on update (R30):
     # an update PUT that changes location is refused with a typed 400,
     # never a silent overwrite of the original.
-    refused? =
-      case Store.get(:smalt_resource_groups, String.downcase(rg_id)) do
-        {:ok, existing} when is_map(existing) ->
-          Map.get(existing, "location") != requested
+    refused_update? =
+      existing != nil and Map.get(existing, "location") != requested
 
-        _ ->
-          false
-      end
+    cond do
+      refused_create? ->
+        send_arm_error(
+          conn,
+          400,
+          "LocationRequired",
+          "The request body must specify a 'location' for resource group creation. Location: cannot be null or empty.",
+          rg_id
+        )
 
-    if refused? do
-      {:ok, existing} = Store.get(:smalt_resource_groups, String.downcase(rg_id))
+      refused_update? ->
+        send_arm_error(
+          conn,
+          400,
+          "LocationMismatch",
+          "Resource group location cannot be changed. Existing location '#{Map.get(existing, "location")}' does not match requested location '#{requested}'.",
+          rg_id
+        )
 
-      send_arm_error(
-        conn,
-        400,
-        "LocationMismatch",
-        "Resource group location cannot be changed. Existing location '#{Map.get(existing, "location")}' does not match requested location '#{requested}'.",
-        rg_id
-      )
-    else
-      build_and_put_rg(conn, rg_id, rg_name, payload)
+      true ->
+        build_and_put_rg(conn, rg_id, rg_name, payload)
     end
   end
 
@@ -771,6 +936,12 @@ defmodule Smalt.ArmGateway.Router do
     }
 
     Store.put(:smalt_resource_groups, String.downcase(rg_id), rg)
+    :ok = ProviderState.touch_lifecycle(rg_id)
+
+    # V7 lane: RG-level writes join the activity log (previously only generic
+    # resource PUT/PATCH/DELETE were hooked — an RG-put alone never appeared).
+    # Fail-safe post-store sideband, same law as the resource hooks.
+    Smalt.ArmGateway.ActivityLog.record(conn, :write, rg_id, rg_name)
 
     send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(rg))
   end
@@ -901,6 +1072,10 @@ defmodule Smalt.ArmGateway.Router do
     op = LRO.start_op(rg_id)
     authority = request_authority(conn)
 
+    # V7 lane: the RG delete (cascade complete, LRO minted) records one
+    # activity-log event — operationName Microsoft.Resources/resourceGroups/delete.
+    Smalt.ArmGateway.ActivityLog.record(conn, :delete, rg_id, rg_name)
+
     conn
     |> put_resp_header("location", "#{authority}#{op["id"]}")
     |> put_resp_header("retry-after", "1")
@@ -968,11 +1143,217 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  defp scope_tags_envelope(rg) do
+    %{"name" => "default", "properties" => %{"tags" => normalize_tags(Map.get(rg, "tags"))}}
+  end
+
+  # KD-COVERS: KD-58 — the tags/default PUT body at resource scope is
+  # {"properties":{"tags":{...}}} (2022-09-01 tags API), not just top-level
+  # {"tags":{...}}. Both shapes accepted; properties wins when both present.
+  defp scope_tags_incoming(%{"properties" => %{"tags" => %{} = tags}}), do: tags
   defp scope_tags_incoming(%{"tags" => %{} = tags}), do: tags
   defp scope_tags_incoming(_), do: %{}
 
-  defp scope_tags_envelope(rg) do
-    %{"name" => "default", "properties" => %{"tags" => normalize_tags(Map.get(rg, "tags"))}}
+  # -- KD-COVERS: KD-58 — tenant tagNames CRUD over the :smalt_policy table
+  # ("tagname:" prefix; discriminated-prefix law, KD-125 precedent).
+
+  defp tagname_key(name), do: "tagname:" <> String.downcase(name)
+
+  defp tagname_record(name, values) do
+    %{
+      "id" => "/tagNames/#{name}",
+      "name" => name,
+      "type" => "Microsoft.Resources/tags",
+      "properties" => %{
+        "tags" => Map.new(values, fn {v, _count} -> {v, "tagValue"} end)
+      }
+    }
+  end
+
+  defp handle_tenant_tags_list(conn) do
+    with :ok <- check_api_version(conn, nil) do
+      tags =
+        :smalt_policy
+        |> Store.list_prefix("tagname:")
+        |> Enum.filter(fn rec -> is_map(rec) and rec["type"] == "Microsoft.Resources/tags" end)
+
+      send_json(conn, 200, Jason.encode!(%{"value" => tags}))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_tenant_tags_get(conn, tag_name) do
+    with :ok <- check_api_version(conn, nil) do
+      case Store.get(:smalt_policy, tagname_key(tag_name)) do
+        {:ok, rec} -> send_json(conn, 200, Jason.encode!(rec))
+        :error -> send_json(conn, 404, tagname_not_found(tag_name))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_tenant_tags_delete(conn, tag_name) do
+    with :ok <- check_api_version(conn, nil) do
+      case Store.get(:smalt_policy, tagname_key(tag_name)) do
+        {:ok, rec} ->
+          for {value, _} <- Map.get(rec, "values", %{}) do
+            Store.delete(:smalt_policy, tagvalue_key(tag_name, value))
+          end
+
+          Store.delete(:smalt_policy, tagname_key(tag_name))
+          send_json(conn, 200, "")
+
+        :error ->
+          send_json(conn, 404, tagname_not_found(tag_name))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_tenant_tag_value_put(conn, tag_name, tag_value) do
+    with :ok <- check_api_version(conn, nil) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      rec =
+        case Store.get(:smalt_policy, tagname_key(tag_name)) do
+          {:ok, rec} -> rec
+          :error -> tagname_record(tag_name, %{})
+        end
+
+      values = Map.put(Map.get(rec, "values", %{}), tag_value, now)
+      rec = Map.put(rec, "values", values)
+      Store.put(:smalt_policy, tagname_key(tag_name), rec)
+
+      Store.put(
+        :smalt_policy,
+        tagvalue_key(tag_name, tag_value),
+        tagvalue_record(tag_name, tag_value)
+      )
+
+      send_json(conn, 201, Jason.encode!(tagvalue_record(tag_name, tag_value)))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_tenant_tag_value_get(conn, tag_name, tag_value) do
+    with :ok <- check_api_version(conn, nil) do
+      case Store.get(:smalt_policy, tagvalue_key(tag_name, tag_value)) do
+        {:ok, rec} -> send_json(conn, 200, tagvalue_json(rec))
+        :error -> send_json(conn, 404, tagvalue_not_found(tag_name, tag_value))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_tenant_tag_value_delete(conn, tag_name, tag_value) do
+    with :ok <- check_api_version(conn, nil) do
+      case Store.get(:smalt_policy, tagvalue_key(tag_name, tag_value)) do
+        {:ok, _rec} ->
+          Store.delete(:smalt_policy, tagvalue_key(tag_name, tag_value))
+
+          case Store.get(:smalt_policy, tagname_key(tag_name)) do
+            {:ok, rec} ->
+              values = Map.delete(Map.get(rec, "values", %{}), tag_value)
+
+              if values == %{} do
+                # last value gone: delete the tagName row itself (real ARM
+                # deletes a tag with no remaining values)
+                Store.delete(:smalt_policy, tagname_key(tag_name))
+              else
+                rec = Map.put(rec, "values", values)
+                Store.put(:smalt_policy, tagname_key(tag_name), rec)
+              end
+
+              send_json(conn, 200, "")
+
+            :error ->
+              Store.delete(:smalt_policy, tagname_key(tag_name))
+              send_json(conn, 200, "")
+          end
+
+        :error ->
+          send_json(conn, 404, tagvalue_not_found(tag_name, tag_value))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp tagvalue_key(name, value), do: tagname_key(name) <> "/tagValues/" <> String.downcase(value)
+
+  defp tagvalue_record(name, value) do
+    %{
+      "id" => "/tagNames/#{name}/tagValues/#{value}",
+      "name" => value,
+      "type" => "Microsoft.Resources/tagValues",
+      "properties" => %{"tagName" => name, "value" => value},
+      "count" => %{"type" => "Modified", "value" => 0}
+    }
+  end
+
+  defp tagvalue_json(rec), do: Jason.encode!(rec)
+
+  defp tagname_not_found(tag_name) do
+    Jason.encode!(%{
+      "error" => %{
+        "code" => "TagNotFound",
+        "message" => "Tag '#{tag_name}' was not found."
+      }
+    })
+  end
+
+  defp tagvalue_not_found(name, value) do
+    Jason.encode!(%{
+      "error" => %{
+        "code" => "TagValueNotFound",
+        "message" => "Tag value '#{value}' of tag '#{name}' was not found."
+      }
+    })
+  end
+
+  # -- KD-COVERS: KD-59 — exportTemplate delegates to the wave-6 export face
+  # (Smalt.Arm.ExportTemplate.export_rg/3), previously unrouted. Synchronous
+  # 200 (terminal for ARM LRO pollers — documented boundary); an RG with no
+  # exportable resources is a typed 404 (ResourceGroupResourceNotFound).
+  defp handle_export_template(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, nil) do
+      case Smalt.Arm.ExportTemplate.export_rg(sub_id, rg_name) do
+        {:ok, template} -> send_json(conn, 200, Jason.encode!(template))
+        {:error, status, body} -> send_json(conn, status, Jason.encode!(body))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # -- KD-COVERS: KD-59 — moveResources / validateMoveResources: TYPED
+  # UNSUPPORTED (row close condition: routes OR typed refusal; falsifier:
+  # "never 404"). Real Azure refuses moves of unsupported types with 400
+  # MoveUnsupportedResourceType; the emulator names the boundary directly.
+  defp handle_move_resources(conn, sub_id, rg_name) do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(
+        conn,
+        400,
+        Jason.encode!(%{
+          "error" => %{
+            "code" => "MoveUnsupportedResourceType",
+            "message" =>
+              "Resource move is not supported by this emulator for resources in " <>
+                "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}.",
+            "target" => "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}",
+            "innererror" => %{}
+          }
+        })
+      )
+    else
+      {:respond, conn} -> conn
+    end
   end
 
   # -- Management locks (KD-113 leg b): wired to Smalt.Policy (wave-4 lane w4d).
@@ -1054,9 +1435,210 @@ defmodule Smalt.ArmGateway.Router do
     })
   end
 
+  # -- AZURE-FIDELITY lane 4 handlers -------------------------------------------
+
+  # Write verb of the lock law: a covering ReadOnly lock answers 409
+  # ScopeLocked; :ok proceeds. In-with usable (with-else renders the
+  # response via the shared {:respond, conn} arm).
+  defp check_lock_write(conn, res_id) do
+    if TagsLocks.write_gate(res_id) == :locked do
+      # Immutable conn: rebind the send_json result (a discarded return here
+      # returns the UNSSENT conn and the 409 never reaches the client).
+      conn = send_json(conn, 409, lock_scope_locked_body(res_id))
+      {:respond, conn}
+    else
+      :ok
+    end
+  end
+
+  # Tags at SUBSCRIPTION scope: the tags API envelope rides the subscription
+  # record's "tags" member (null-when-empty render law).
+  defp handle_subscription_tags_get(conn, sub_id) do
+    with :ok <- check_api_version(conn, nil) do
+      case TagsLocks.subscription_record(sub_id) do
+        {:ok, sub} ->
+          send_json(
+            conn,
+            200,
+            Jason.encode!(tags_scope_envelope("/subscriptions/#{sub_id}", Map.get(sub, "tags")))
+          )
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "SubscriptionNotFound",
+            "The subscription '#{sub_id}' was not found.",
+            "/subscriptions/#{sub_id}"
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_subscription_tags_put(conn, sub_id, mode) do
+    with :ok <- check_api_version(conn, nil) do
+      case TagsLocks.put_subscription_tags(sub_id, conn.body_params, mode) do
+        {:ok, sub} ->
+          send_json(
+            conn,
+            200,
+            Jason.encode!(tags_scope_envelope("/subscriptions/#{sub_id}", Map.get(sub, "tags")))
+          )
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "SubscriptionNotFound",
+            "The subscription '#{sub_id}' was not found.",
+            "/subscriptions/#{sub_id}"
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp tags_scope_envelope(scope_id, tags) do
+    %{
+      "id" => scope_id,
+      "name" => "default",
+      "type" => "Microsoft.Resources/tags",
+      "properties" => %{"tags" => TagsLocks.normalize_tags(tags)}
+    }
+  end
+
+  # Tags at RESOURCE scope: envelope over the resource record's "tags"
+  # member. A covering ReadOnly lock refuses PUT/PATCH (409 ScopeLocked,
+  # pre-mutation); unknown resource -> 404 ResourceNotFound.
+  defp handle_resource_tags_get(conn, sub_id, rg_name, provider_ns, resource_type, resource_name) do
+    with :ok <- check_api_version(conn, nil) do
+      res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
+
+      case TagsLocks.resource_record(res_id) do
+        {:ok, rec} ->
+          send_json(conn, 200, Jason.encode!(tags_scope_envelope(res_id, Map.get(rec, "tags"))))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The Resource '#{resource_name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp handle_resource_tags_put(
+         conn,
+         sub_id,
+         rg_name,
+         provider_ns,
+         resource_type,
+         resource_name,
+         mode
+       ) do
+    with :ok <- check_api_version(conn, nil) do
+      res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
+
+      case TagsLocks.put_resource_tags(res_id, conn.body_params, mode) do
+        {:ok, rec} ->
+          send_json(conn, 200, Jason.encode!(tags_scope_envelope(res_id, Map.get(rec, "tags"))))
+
+        :locked ->
+          send_json(conn, 409, lock_scope_locked_body(res_id))
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The Resource '#{resource_name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # THE LAW (lane 4): a covering CanNotDelete or ReadOnly lock refuses the
+  # delete with the documented 409 ScopeLocked and the resource SURVIVES;
+  # an unlocked delete is an ARM LRO (202 + Location + Retry-After) that
+  # sweeps the record, its children (store-key prefix cascade), its metrics
+  # series and its lane-1 lifecycle row.
+  defp handle_resource_delete(conn, sub_id, rg_name, provider_ns, resource_type, resource_name) do
+    with :ok <- check_api_version(conn, "#{provider_ns}/#{resource_type}") do
+      res_id = resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
+      key = String.downcase(res_id)
+
+      case TagsLocks.resource_record(res_id) do
+        {:ok, rec} ->
+          if is_map(rec) and renderable_record?(rec) do
+            if TagsLocks.delete_gate(res_id) == :locked do
+              send_json(conn, 409, lock_scope_locked_body(res_id))
+            else
+              for child <- Store.prefix_keys(:smalt_resources, key <> "/") do
+                Store.delete(:smalt_resources, child)
+              end
+
+              Store.delete(:smalt_resources, key)
+              Smalt.Metrics.drop(res_id)
+              ProviderState.drop_lifecycle(res_id)
+
+              # AZURE-FIDELITY lane 5: activity-log event for the completed
+              # DELETE (fail-safe sideband — never alters the 202).
+              Smalt.ArmGateway.ActivityLog.record(conn, :delete, res_id, rg_name)
+
+              op = LRO.start_op(res_id)
+              authority = request_authority(conn)
+
+              conn
+              |> put_resp_header("location", "#{authority}#{op["id"]}")
+              |> put_resp_header("retry-after", "1")
+              |> send_json(202, "")
+            end
+          else
+            send_arm_error(
+              conn,
+              404,
+              "ResourceNotFound",
+              "The Resource '#{resource_name}' was not found.",
+              res_id
+            )
+          end
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The Resource '#{resource_name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
   defp handle_resource_put(conn, raw_type, sub_id, rg_name, resource_name) do
     with :ok <- check_api_version(conn, raw_type),
          {:ok, full_type} <- check_admitted(conn, raw_type),
+         # Management-lock write gate (AZURE-FIDELITY lane 4): a covering
+         # ReadOnly lock refuses the PUT with 409 ScopeLocked before any
+         # mutation (KD-113 leg b law via Smalt.Policy.lock_blocks?/2).
+         :ok <-
+           check_lock_write(
+             conn,
+             resource_id(sub_id, rg_name, ns_of(full_type), leaf_of(full_type), resource_name)
+           ),
          # Defaults hydrate BEFORE shape validation: every default is
          # validator-acceptable, so validating the merged body preserves
          # refusal semantics for genuinely invalid input while unblocking
@@ -1069,13 +1651,27 @@ defmodule Smalt.ArmGateway.Router do
          # (Defaults.enrich + Map.put on the properties member). A hostile
          # body must refuse typed (InvalidResourceShape), never crash the
          # record builder. (SHIM-COURT shacl-fuzz fence)
-         :ok <- check_properties_member(conn, merged) do
-      res_id = resource_id(sub_id, rg_name, ns_of(full_type), leaf_of(full_type), resource_name)
-      payload = conn.body_params
-
-      record =
-        build_resource_record(full_type, res_id, resource_name, payload, request_authority(conn))
-
+         :ok <- check_properties_member(conn, merged),
+         # AZURE-FIDELITY lane 7: create-blade enforcement — the built record
+         # is checked against SKU/region availability BEFORE any persistence
+         # or policy evaluation. A virtualMachines PUT whose vmSize is
+         # unavailable in the record's location answers the documented
+         # SKUNotAvailableAvailability 409 (see the else clause below) and
+         # never persists. check_put/1 is exported so lane 1/2 PUT surfaces
+         # can share the same law.
+         res_id =
+           resource_id(sub_id, rg_name, ns_of(full_type), leaf_of(full_type), resource_name),
+         payload = conn.body_params,
+         record =
+           build_resource_record(
+             full_type,
+             res_id,
+             resource_name,
+             payload,
+             request_authority(conn)
+           ),
+         record = SkuQuota.ensure_hardware_profile(record, payload),
+         :ok <- SkuQuota.check_put(record, payload) do
       # Policy enforcement hook (80/20 Azure Policy, v26.10.16 lane): assigned
       # policies at RG then subscription scope gate the generic resource PUT.
       # deny -> 400 PolicyViolation (typed envelope emitted by Smalt.Policy,
@@ -1083,51 +1679,114 @@ defmodule Smalt.ArmGateway.Router do
       # arm_error_corpus meta-test pins).
       case Policy.enforce(sub_id, rg_name, record) do
         :ok ->
-          existed? = match?({:ok, _}, Store.get(:smalt_resources, String.downcase(res_id)))
-          Store.put(:smalt_resources, String.downcase(res_id), record)
+          # GL28-2 admission gate (docs/jira/v26.10.28/GL28-2-SMALT-WIRE-SPEC.md
+          # §3/§8): a mutation commits only behind the graphlaw_ex admission
+          # turnstile — the proof of admission is the in-hand
+          # {:admitted_mutation, ...} envelope, not a boolean. This step sits
+          # AFTER the last refusal gate (Policy.enforce) and BEFORE the commit
+          # (Store.put(:smalt_resources, ...)), so a gate refusal leaves state
+          # byte-identical (spec §3.6: no write but the sanctioned OCEL refusal
+          # frame).
+          #
+          # The gate module belongs to the parallel GL28-2 build lane and may
+          # not be loaded yet: the call resolves at runtime behind a falsifiable
+          # Code.ensure_loaded? + function_exported? guard (see
+          # check_admission_gate/2), so this step is the sanctioned no-op stub
+          # today and activates the moment the module lands — no further router
+          # edit. (A literal Smalt.GraphlawEx.AdmissionGate.gate/3 dot-call
+          # would warn "module not available" and fail
+          # `mix compile --warnings-as-errors`.)
+          with :ok <- check_admission_gate(conn, admission_envelope(conn)) do
+            existed? = match?({:ok, _}, Store.get(:smalt_resources, String.downcase(res_id)))
+            Store.put(:smalt_resources, String.downcase(res_id), record)
 
-          # Lifecycle metric point (Azure Monitor parity): every resource PUT is a
-          # request datapoint on the resource's Requests series.
-          Smalt.Metrics.emit(res_id, "Requests", 1)
+            # AZURE-FIDELITY lane 5: activity-log event for the completed PUT
+            # (fail-safe sideband — never alters the response).
+            Smalt.ArmGateway.ActivityLog.record(conn, :write, res_id, rg_name)
 
-          # SHIM-COURT affidavit-seal (lane 611): on every successful resource
-          # PUT, ingest through the affidavit ingestion functor — tariff from
-          # Smalt.FinOps.Calculator (F lane) with a deterministic local proxy
-          # fallback, modality 0x01/0x02 by the $50M threshold, then the
-          # fail-safe admit-and-seal sideband. Admission semantics unchanged:
-          # a dead engine/refusal never alters the response below.
-          affidavit_seal(record, %{
-            subject: String.downcase(res_id),
-            lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
-          })
+            # AZURE-FIDELITY lane 1: lifecycle timestamps for the documented
+            # $expand=createdTime,changedTime list semantics — createdTime is
+            # frozen on first PUT, changedTime advances on every write.
+            :ok = ProviderState.touch_lifecycle(res_id)
 
-          # AZB-10: cross-plane emission — every successful resource PUT emits
-          # the Event Grid Microsoft.Resources.ResourceWriteSuccess event to
-          # the integration plane (Event Grid topic fan-out + Service Bus
-          # bridge enqueue). Never alters the PUT response (fail-safe inside).
-          Smalt.EgressRouter.Peers.emit_resource_write_success(record, %{
-            subscription: sub_id,
-            resource_group: rg_name
-          })
+            # Lifecycle metric point (Azure Monitor parity): every resource PUT is a
+            # request datapoint on the resource's Requests series.
+            Smalt.Metrics.emit(res_id, "Requests", 1)
 
-          cond do
-            lro_type?(full_type) and not existed? ->
-              # ARM LRO convention: create -> 202 + async headers (poll to terminal).
-              op = LRO.start_op(res_id)
-              async_put_response(conn, 202, op)
+            # SHIM-COURT affidavit-seal (lane 611): on every successful resource
+            # PUT, ingest through the affidavit ingestion functor — tariff from
+            # Smalt.FinOps.Calculator (F lane) with a deterministic local proxy
+            # fallback, modality 0x01/0x02 by the $50M threshold, then the
+            # fail-safe admit-and-seal sideband. Admission semantics unchanged:
+            # a dead engine/refusal never alters the response below.
+            affidavit_seal(record, %{
+              subject: String.downcase(res_id),
+              lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
+            })
 
-            lro_async_update_type?(full_type) ->
-              # update -> 200 + async headers (ARM LRO PUT update convention).
-              # Only the original witness set (storage/compute) is async on
-              # update; the KD-111 widening keeps update SYNC per ARM/AZB-25b.
-              op = LRO.start_op(res_id)
-              async_put_response(conn, 200, op)
+            # AZB-10: cross-plane emission — every successful resource PUT emits
+            # the Event Grid Microsoft.Resources.ResourceWriteSuccess event to
+            # the integration plane (Event Grid topic fan-out + Service Bus
+            # bridge enqueue). Never alters the PUT response (fail-safe inside).
+            #
+            # KD-COVERS: KD-124 — the emission is a POST-STORE SIDEBAND: it runs
+            # after Store.put, so any raise here turns a persisted resource into
+            # a 500 (KD-124 wire witness: UndefinedFunctionError —
+            # Smalt.EgressRouter.Peers not available on a stale substrate build —
+            # 500'd the first `PUT .../namespaces/:ns` with sku AFTER the record
+            # was stored; retry answered 200). Fail-safe: a raise/exit/throw from
+            # the emission is logged and dropped, never propagated into the PUT
+            # response.
+            try do
+              Smalt.EgressRouter.Peers.emit_resource_write_success(record, %{
+                subscription: sub_id,
+                resource_group: rg_name
+              })
+            rescue
+              e ->
+                Logger.warning(
+                  "AZB-10 ResourceWriteSuccess emission dropped (KD-124 fail-safe): " <>
+                    Exception.format(:error, e)
+                )
 
-            existed? ->
-              send_json(conn, 200, Jason.encode!(record))
+                :ok
+            catch
+              :exit, e ->
+                Logger.warning(
+                  "AZB-10 ResourceWriteSuccess emission dropped (KD-124 fail-safe, exit): " <>
+                    inspect(e)
+                )
 
-            true ->
-              send_json(conn, 201, Jason.encode!(record))
+                :ok
+            end
+
+            cond do
+              lro_type?(full_type) and not existed? ->
+                # ARM LRO convention: create -> 202 + async headers (poll to terminal).
+                op = LRO.start_op(res_id)
+                async_put_response(conn, 202, op)
+
+              lro_async_update_type?(full_type) ->
+                # update -> 200 + async headers (ARM LRO PUT update convention).
+                # Only the original witness set (storage/compute) is async on
+                # update; the KD-111 widening keeps update SYNC per ARM/AZB-25b.
+                op = LRO.start_op(res_id)
+                async_put_response(conn, 200, op)
+
+              existed? ->
+                send_json(conn, 200, Jason.encode!(record))
+
+              true ->
+                send_json(conn, 201, Jason.encode!(record))
+            end
+          else
+            # Typed gate refusal: rendered through the pinned GraphLaw refusal
+            # face (send_graphlaw_refusal/3 — 400 InvalidResourceShape, message
+            # names the SMALT-* code; router.ex:719 "ARM never returns 422"),
+            # state untouched. Posture gate: :fail_open admits (spec §8
+            # admit-and-seal sideband), so this clause only fires under
+            # :fail_closed with the GL28-2 module loaded.
+            {:respond, conn} -> conn
           end
 
         {:deny, body} ->
@@ -1136,7 +1795,27 @@ defmodule Smalt.ArmGateway.Router do
           |> send_resp(400, body)
       end
     else
-      {:respond, conn} -> conn
+      {:respond, conn} ->
+        conn
+
+      # AZURE-FIDELITY lane 7: SKU unavailable in the requested region —
+      # documented SKUNotAvailableAvailability 409 envelope, nothing persisted.
+      {:refuse, sku, location} ->
+        send_json(
+          conn,
+          409,
+          Jason.encode!(%{
+            "error" => %{
+              "code" => "SKUNotAvailableAvailability",
+              "message" =>
+                "Requested operation could not be completed because the SKU " <>
+                  "(#{sku}) is not available in location '#{location}'. " <>
+                  "Please try a different location or SKU.",
+              "target" => sku,
+              "innererror" => %{}
+            }
+          })
+        )
     end
   end
 
@@ -1175,6 +1854,74 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  # KD-57 handler: ARM PATCH merge semantics over the stored record.
+  # # KD-COVERS: KD-57
+  defp handle_resource_patch(conn, raw_type, sub_id, rg_name, resource_name) do
+    with :ok <- check_api_version(conn, raw_type),
+         {:ok, full_type} <- check_admitted(conn, raw_type),
+         # Management-lock write gate (AZURE-FIDELITY lane 4): a covering
+         # ReadOnly lock refuses the PATCH with 409 ScopeLocked before any
+         # mutation (KD-113 leg b law via Smalt.Policy.lock_blocks?/2).
+         :ok <-
+           check_lock_write(
+             conn,
+             resource_id(sub_id, rg_name, ns_of(full_type), leaf_of(full_type), resource_name)
+           ),
+         # Fail-closed fence parity with PUT (shacl-fuzz): a non-map
+         # "properties" member must refuse typed, never crash the merge.
+         :ok <- check_properties_member(conn, conn.body_params) do
+      res_id = resource_id(sub_id, rg_name, ns_of(full_type), leaf_of(full_type), resource_name)
+      key = String.downcase(res_id)
+
+      case Store.get(:smalt_resources, key) do
+        {:ok, existing} when is_map(existing) ->
+          patched = merge_patch_body(existing, conn.body_params)
+
+          case Policy.enforce(sub_id, rg_name, patched) do
+            :ok ->
+              Store.put(:smalt_resources, key, patched)
+
+              # AZURE-FIDELITY lane 5: activity-log event for the completed
+              # PATCH (fail-safe sideband — never alters the response).
+              Smalt.ArmGateway.ActivityLog.record(conn, :write, res_id, rg_name)
+              send_json(conn, 200, Jason.encode!(patched))
+
+            {:deny, body} ->
+              conn
+              |> put_resp_content_type("application/json")
+              |> send_resp(400, body)
+          end
+
+        _ ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The Resource '#{resource_name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # KD-57: partial-update merge — `properties` deep-ish merge (one level, the
+  # ARM PATCH surface azurerm exercises), `tags`/`sku` replace when present.
+  defp merge_patch_body(record, body) when is_map(body) do
+    record =
+      Map.update(record, "properties", %{}, fn props ->
+        Map.merge(props, Map.get(body, "properties", %{}))
+      end)
+
+    record =
+      if Map.has_key?(body, "tags"),
+        do: %{record | "tags" => normalize_tags(Map.get(body, "tags"))},
+        else: record
+
+    if Map.has_key?(body, "sku"), do: %{record | "sku" => Map.get(body, "sku")}, else: record
+  end
+
   # -- Azure Monitor metrics handlers -------------------------------------------
   # GET: bucketed timeseries for `metricnames` (default Requests); unknown
   # resource -> typed EMPTY value[] envelope (real Azure Monitor semantics —
@@ -1200,7 +1947,85 @@ defmodule Smalt.ArmGateway.Router do
           send_json(conn, 200, Jason.encode!(%{"value" => [series]}))
 
         _ ->
-          send_json(conn, 200, Jason.encode!(%{"value" => []}))
+          # Telemetry accumulator fallback (wave-6 w6q): resources with no
+          # lifecycle/custom metric points may still carry LIVE traffic
+          # metrics (Requests/RequestDuration) recorded by
+          # Smalt.Monitor.Metrics from real :telemetry events. Serve the
+          # accumulator's series when it has rows; else the real-Azure
+          # empty-value envelope.
+          metric = conn.query_params["metricnames"] || Smalt.Metrics.default_metric()
+
+          {start_ms, end_ms} = Smalt.Metrics.parse_timespan(conn.query_params["timespan"])
+
+          interval =
+            case Smalt.Metrics.parse_interval(conn.query_params["interval"]) do
+              {:ok, ms} -> ms
+              :error -> 60_000
+            end
+
+          acc_rows =
+            Smalt.Monitor.Metrics.raw_rows()
+            # raw_rows/0 is a MAP {%{key => value}}: Enum over it yields
+            # {key, value} 2-tuples ({ {r,m,b} => {c,s,mx} }). The old
+            # 3-tuple clause {r, m, _b} never matched -> FunctionClauseError
+            # -> 500 on every metrics query once platform rows exist
+            # (EXPL12-B monitor witness, 2026-10-22). The subsequent
+            # pipe-continuation predicate (starts_with? r, res_id <> "|")
+            # was likewise dead: record/4 keys rows {downcased resource,
+            # metric, bucket} with nothing after the resource — the "|"
+            # idiom belongs to Smalt.Metrics' string-keyed table, not this
+            # tuple-keyed ETS (BK-MON3-F1, bkmon3r-deadjoin-fix).
+            # Match the real shape: exact downcased resource equality.
+            |> Enum.count(fn {{r, m, _b}, _v} ->
+              r == String.downcase(res_id) and m == metric
+            end)
+
+          if acc_rows > 0 do
+            series = Smalt.Monitor.Metrics.series(res_id, metric, start_ms, end_ms, interval)
+            send_json(conn, 200, Jason.encode!(%{"value" => [series]}))
+          else
+            send_json(conn, 200, Jason.encode!(%{"value" => []}))
+          end
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # GET platform pseudo-resource metric face (BK-PLATFORM-ROUTE, v26.10.22).
+  # Serves the accumulator's platform rows through the SAME series/5 path the
+  # per-resource fallback uses — exact downcased-equality join on
+  # `Smalt.Monitor.Metrics.platform_resource()` (the platform key carries no
+  # leading slash by construction, unlike parsed ARM ids), else the
+  # real-Azure empty envelope. Store-miss semantics are platform-native: the
+  # platform pseudo-resource is never in :smalt_resources, so this handler
+  # goes straight to the accumulator (no Store probe).
+  defp handle_metrics_platform(conn) do
+    with :ok <- check_api_version(conn, nil),
+         :ok <- check_metrics_api_version(conn) do
+      metric = conn.query_params["metricnames"] || Smalt.Metrics.default_metric()
+
+      {start_ms, end_ms} = Smalt.Metrics.parse_timespan(conn.query_params["timespan"])
+
+      interval =
+        case Smalt.Metrics.parse_interval(conn.query_params["interval"]) do
+          {:ok, ms} -> ms
+          :error -> 60_000
+        end
+
+      res_id = Smalt.Monitor.Metrics.platform_resource()
+
+      acc_rows =
+        Smalt.Monitor.Metrics.raw_rows()
+        |> Enum.count(fn {{r, m, _b}, _v} ->
+          r == String.downcase(res_id) and m == metric
+        end)
+
+      if acc_rows > 0 do
+        series = Smalt.Monitor.Metrics.series(res_id, metric, start_ms, end_ms, interval)
+        send_json(conn, 200, Jason.encode!(%{"value" => [series]}))
+      else
+        send_json(conn, 200, Jason.encode!(%{"value" => []}))
       end
     else
       {:respond, conn} -> conn
@@ -1372,14 +2197,66 @@ defmodule Smalt.ArmGateway.Router do
          # (Defaults.enrich + Map.put on the properties member). A hostile
          # body must refuse typed (InvalidResourceShape), never crash the
          # record builder. (SHIM-COURT shacl-fuzz fence)
-         :ok <- check_properties_member(conn, merged) do
+         :ok <- check_properties_member(conn, merged),
+         # GL28-2 admission-gate tier (spec §8 mirror of handle_resource_put):
+         # the receipt gate rides the shared child-PUT chain so handle_child_put
+         # and handle_parented_child both commit only behind the turnstile —
+         # BEFORE the Store.put commit in handle_child_put and at the same
+         # refusal tier as the resource PUT. Same runtime-resolved stub until
+         # the GL28-2 module lands (see check_admission_gate/2).
+         :ok <- check_admission_gate(conn, admission_envelope(conn)) do
       {:ok, full_type, merged}
     else
       {:respond, conn} -> {:respond, conn}
     end
   end
 
-  defp handle_child_put(conn, child_type, sub_id, rg_name, rel_path) do
+  # KD-COVERS: KD-92 — blob container child PUT with a data-plane mirror.
+  # Identical admission to handle_child_put/5 (api-version, shape, record
+  # build, 200/201 semantics); on a successful PUT the container record is
+  # mirrored into `:smalt_blob_containers` so the blob data plane sees the
+  # ARM-created container (real-Azure parity). Mirrors only when absent;
+  # skips silently when the blob tables are absent (control plane stays
+  # independent of data-plane readiness — same contract as seed_cosmos_child).
+  defp handle_storage_container_child_put(conn, sub_id, rg_name, parent, name) do
+    handle_child_put(
+      conn,
+      "Microsoft.Storage/storageAccounts/blobServices/containers",
+      sub_id,
+      rg_name,
+      "storageAccounts/#{parent}/blobServices/default/containers/#{name}",
+      &seed_blob_container(parent, name, &1)
+    )
+  end
+
+  defp seed_blob_container(parent, name, _record) do
+    if :ets.info(:smalt_blob_containers) != :undefined do
+      key = "#{parent}/#{name}"
+
+      case Store.get(:smalt_blob_containers, key) do
+        {:ok, _existing} ->
+          # Data plane already has it (or an earlier mirror landed): never
+          # clobber live WORM/immutability/policy state from the control plane.
+          :ok
+
+        :error ->
+          now = System.os_time(:millisecond)
+
+          Store.put(:smalt_blob_containers, key, %{
+            "account" => parent,
+            "container" => name,
+            # KD-COVERS: KD-135 — engine default follows wire parity: writable
+            # unless explicitly created immutable.
+            "immutable" => false,
+            "retention_days" => 1095,
+            "created_at" => now,
+            "created" => DateTime.from_unix!(now, :millisecond) |> DateTime.to_iso8601()
+          })
+      end
+    end
+  end
+
+  defp handle_child_put(conn, child_type, sub_id, rg_name, rel_path, after_put \\ nil) do
     with {:ok, full_type, _merged} <- validate_child_put(conn, child_type) do
       id = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{rel_path}"
       key = String.downcase(id)
@@ -1390,6 +2267,20 @@ defmodule Smalt.ArmGateway.Router do
 
       existed? = match?({:ok, _}, Store.get(:smalt_resources, key))
       Store.put(:smalt_resources, key, record)
+
+      # KD-COVERS: KD-86 — mirror sb_child_put's AMQP materialization face:
+      # an ARM PUT of an AMQP-backed child (ServiceBus queues/topics/
+      # subscriptions) must materialize the entity row, never rely on
+      # auto-create-on-send. No-op for non-AMQP child types.
+      sb_materialize_amqp(child_type, rel_path)
+
+      # KD-COVERS: KD-92 — optional post-PUT data-plane mirror hook (blob
+      # containers). Runs only after the resource record landed, so the seed
+      # never fires on a refused PUT; seed failures must never fail the ARM
+      # PUT (control plane stays independent of data-plane readiness — same
+      # contract as seed_cosmos_child).
+      if is_function(after_put, 1),
+        do: after_put.(record)
 
       send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(record))
     else
@@ -1445,146 +2336,56 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
-  # SHIM-COURT cg-default (2026-10-16, lane 526): EventHub consumer-group
-  # enumeration — real Azure (@azure/event-hubs management plane) always lists
-  # $default. The synthesized record is built with the same envelope builder as
-  # a PUT-created group, so shape is identical; $default appears exactly once
-  # even if a client PUTs a literal "$default".
-  defp handle_cg_list(conn, child_type, sub_id, rg_name, parent_rel) do
-    prefix =
-      String.downcase(
-        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{parent_rel}/consumergroups/"
-      )
-
-    items = Store.list_prefix(:smalt_resources, prefix)
-
-    default? =
-      Enum.any?(items, fn record ->
-        is_map(record) and Map.get(record, "name") == "$default"
-      end)
-
-    items =
-      if default? do
-        items
-      else
-        base = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{parent_rel}/consumergroups"
-
-        [
-          build_resource_record(
-            child_type,
-            "#{base}/$default",
-            "$default",
-            %{"properties" => %{"userMetadata" => ""}}
-          )
-          | items
-        ]
-      end
-
-    send_list(conn, items)
-  end
-
-  # Wave-2 ARM↔engine bridge (w2j lane): EventHub consumer groups.
+  # Wave-2 ARM↔engine bridge (w2j) — verb bodies now owned by
+  # Smalt.Arm.EhConsumerGroups (wave-6 lane w6j: $default immutability 400s,
+  # duplicate-PUT 409, user-metadata echo). The router keeps the admission
+  # gates (api-version / shape / properties-member) and delegates.
+  # SHIM-COURT cg-default semantics preserved: $default appears in LIST
+  # exactly once even if a client PUTs a literal "$default" (synthesis now
+  # lives in EhConsumerGroups.list/2).
   @cg_child_type "Microsoft.EventHub/namespaces/eventhubs/consumergroups"
 
-  # The ARM face of the wave-1 consumer-group engine. Engine is the source of
-  # truth for existence/created-ts/deletability; the ARM Store mirrors the
-  # rendered envelope so the store-driven $default LIST (handle_cg_list,
-  # shim-court cg-default) stays coherent with engine state.
   defp handle_cg_engine(conn, verb, child_type, sub_id, rg_name, parent_rel, rel_path) do
     hub = parent_rel |> String.split("/") |> List.last()
     name = rel_path |> String.split("/") |> List.last()
+
     base = "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{parent_rel}/consumergroups"
+
+    ctx = %{
+      child_type: child_type,
+      base: base,
+      hub: hub,
+      name: name,
+      send_json: &send_json/3,
+      send_arm_error: &send_arm_error/4,
+      send_list: &send_list/2
+    }
 
     case verb do
       :put ->
-        with {:ok, _full_type, _merged} <- validate_child_put(conn, child_type),
-             {:ok, rec} <-
-               EventHubs.create_consumer_group(hub, name, user_metadata: cg_user_metadata(conn.body_params)) do
-          record = cg_envelope(child_type, "#{base}/#{name}", name, rec, conn.body_params)
-          key = String.downcase("#{base}/#{name}")
-
-          existed? = match?({:ok, _}, Store.get(:smalt_resources, key))
-          Store.put(:smalt_resources, key, record)
-
-          send_json(conn, if(existed?, do: 200, else: 201), Jason.encode!(record))
+        with {:ok, _full_type, _merged} <- validate_child_put(conn, child_type) do
+          EhConsumerGroups.put(conn, ctx)
         else
           {:respond, conn} -> conn
-          {:error, face} -> cg_face_error(conn, face)
         end
 
       :get ->
         with :ok <- check_api_version(conn, child_type) do
-          case EventHubs.get_consumer_group(hub, name) do
-            {:ok, rec} ->
-              record =
-                case Store.get(:smalt_resources, String.downcase("#{base}/#{name}")) do
-                  {:ok, stored} -> stored
-                  :error -> cg_envelope(child_type, "#{base}/#{name}", name, rec, nil)
-                end
-
-              send_json(conn, 200, Jason.encode!(record))
-
-            {:error, face} ->
-              cg_face_error(conn, face)
-          end
+          EhConsumerGroups.get(conn, ctx)
         else
           {:respond, conn} -> conn
         end
 
       :delete ->
         with :ok <- check_api_version(conn, child_type) do
-          case EventHubs.delete_consumer_group(hub, name) do
-            :ok ->
-              Store.delete(:smalt_resources, String.downcase("#{base}/#{name}"))
-              send_json(conn, 200, "")
-
-            {:error, face} ->
-              cg_face_error(conn, face)
-          end
+          EhConsumerGroups.delete(conn, ctx)
         else
           {:respond, conn} -> conn
         end
 
       :list_cg ->
-        # Store-driven list is kept verbatim (shim-court cg-default): PUT
-        # mirrors to the store, so enumeration stays $default-complete.
-        handle_cg_list(conn, child_type, sub_id, rg_name, parent_rel)
+        EhConsumerGroups.list(conn, ctx)
     end
-  end
-
-  defp cg_user_metadata(payload) when is_map(payload) do
-    case payload |> Map.get("properties", %{}) |> Map.get("userMetadata") do
-      meta when is_binary(meta) -> meta
-      _ -> ""
-    end
-  end
-
-  defp cg_user_metadata(_payload), do: ""
-
-  defp cg_envelope(child_type, id, name, rec, nil) do
-    build_resource_record(child_type, id, name, %{
-      "properties" => %{
-        "userMetadata" => rec["user_metadata"],
-        "createdAt" => cg_iso8601(rec["created"])
-      }
-    })
-  end
-
-  defp cg_envelope(child_type, id, name, rec, payload) do
-    child_type
-    |> build_resource_record(id, name, payload)
-    |> put_in(["properties", "createdAt"], cg_iso8601(rec["created"]))
-    |> put_in(["properties", "userMetadata"], rec["user_metadata"])
-  end
-
-  defp cg_iso8601(ms) when is_integer(ms) do
-    DateTime.from_unix!(ms, :millisecond) |> DateTime.to_iso8601()
-  end
-
-  defp cg_iso8601(_), do: nil
-
-  defp cg_face_error(conn, %{status: status, code: code, description: description}) do
-    send_arm_error(conn, status, code, description)
   end
 
   # Messaging children (ServiceBus queues/topics/subscriptions, EventHub
@@ -1647,7 +2448,18 @@ defmodule Smalt.ArmGateway.Router do
           # ahead of any stored records; a user-created "$default" record
           # renders verbatim exactly once.
           :list_cg ->
-            handle_cg_list(conn, child_type, sub_id, rg_name, parent_rel)
+            base =
+              "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}/#{parent_rel}/consumergroups"
+
+            EhConsumerGroups.list(conn, %{
+              child_type: child_type,
+              base: base,
+              hub: parent_rel |> String.split("/") |> List.last(),
+              name: "$default",
+              send_json: &send_json/3,
+              send_arm_error: &send_arm_error/4,
+              send_list: &send_list/2
+            })
 
           :delete ->
             handle_child_delete(conn, child_type, sub_id, rg_name, rel_path)
@@ -1799,6 +2611,14 @@ defmodule Smalt.ArmGateway.Router do
   # entity "orders"; subscription "s1" on topic "orders" ->
   # entity "orders/Subscriptions/s1" (the exact source address the Azure
   # SDKs attach receiver links with). ARM casing is preserved verbatim.
+  # KD-COVERS: KD-86 — an ARM queue PUT must materialize the AMQP entity
+  # (sb_management's materialize(:queues) contract); before the KD-86
+  # send-path gate this face silently relied on auto-create-on-send.
+  defp sb_materialize_amqp("Microsoft.ServiceBus/namespaces/queues", rel_path) do
+    name = rel_path |> String.split("/") |> List.last()
+    Smalt.Amqp.QueueStore.ensure_queue(name)
+  end
+
   defp sb_materialize_amqp("Microsoft.ServiceBus/namespaces/topics", rel_path) do
     name = rel_path |> String.split("/") |> List.last()
     Smalt.Amqp.QueueStore.ensure_queue(name)
@@ -1848,7 +2668,10 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp sb_defaults("Microsoft.ServiceBus/namespaces/topics"), do: @sb_topic_defaults
-  defp sb_defaults("Microsoft.ServiceBus/namespaces/topics/subscriptions"), do: @sb_subscription_defaults
+
+  defp sb_defaults("Microsoft.ServiceBus/namespaces/topics/subscriptions"),
+    do: @sb_subscription_defaults
+
   defp sb_defaults(_), do: %{}
 
   # Defaults merge UNDER the user payload (user values win per key, nested
@@ -1955,33 +2778,87 @@ defmodule Smalt.ArmGateway.Router do
     send_list(conn, items)
   end
 
+  # KD-COVERS: KD-143
+  # Azure-typed rule bodies carry the filter as a discriminator pair
+  # (filterType + sqlFilter/correlationFilter/trueFilter) rather than the
+  # legacy nested "filter" map. Normalize both shapes into the internal
+  # filter map (evaluation path: Smalt.SbRules.compile/unwrap_filter) and
+  # mirror the typed shape so GET echoes sqlFilter.sqlExpression.
   defp sb_rule_props(body) when is_map(body) do
     props = body["properties"] || %{}
-    filter = props["filter"] || %{}
+    filter_props = sb_rule_filter_props(props)
+    Map.put(filter_props, "action", sb_rule_action(props["action"]))
+  end
 
-    filter_props =
+  defp sb_rule_wire_props(body) when is_map(body) do
+    props = body["properties"] || %{}
+    filter = sb_rule_filter_props(props)
+
+    typed =
       cond do
         sql = filter["sqlExpression"] ->
-          %{"sqlExpression" => sql}
+          %{"filterType" => "SqlFilter", "sqlFilter" => %{"sqlExpression" => sql}}
 
-        filter["correlationId"] != nil || filter["properties"] != nil || filter["subject"] != nil ->
-          %{
+        filter["correlationId"] != nil or filter["properties"] != nil or filter["subject"] != nil ->
+          corr = %{
             "correlationId" => filter["correlationId"],
             "properties" => filter["properties"],
             "subject" => filter["subject"]
           }
 
+          %{"filterType" => "CorrelationFilter", "correlationFilter" => corr}
+
         true ->
-          %{"trueFilter" => true}
+          %{"filterType" => "TrueFilter", "trueFilter" => %{}}
       end
 
-    Map.put(filter_props, "action", props["action"])
+    Map.merge(%{"filter" => filter}, typed)
+    |> Map.put("action", sb_rule_action(props["action"]))
   end
 
-  defp sb_rule_wire_props(body) when is_map(body) do
-    props = body["properties"] || %{}
-    %{"filter" => props["filter"] || %{"trueFilter" => true}, "action" => props["action"]}
+  defp sb_rule_filter_props(props) do
+    legacy = props["filter"]
+
+    cond do
+      typed = props["sqlFilter"] ->
+        case typed["sqlExpression"] do
+          sql when is_binary(sql) -> %{"sqlExpression" => sql}
+          _ -> %{"trueFilter" => true}
+        end
+
+      typed = props["correlationFilter"] ->
+        %{
+          "correlationId" => typed["correlationId"],
+          "properties" => typed["properties"],
+          "subject" => typed["subject"]
+        }
+
+      is_map(legacy) and is_binary(legacy["sqlExpression"]) ->
+        %{"sqlExpression" => legacy["sqlExpression"]}
+
+      is_map(legacy) and
+          (legacy["correlationId"] != nil or legacy["properties"] != nil or
+             legacy["subject"] != nil) ->
+        %{
+          "correlationId" => legacy["correlationId"],
+          "properties" => legacy["properties"],
+          "subject" => legacy["subject"]
+        }
+
+      props["trueFilter"] != nil or (is_map(legacy) and legacy["trueFilter"] != nil) ->
+        %{"trueFilter" => true}
+
+      true ->
+        %{"trueFilter" => true}
+    end
   end
+
+  defp sb_rule_action(nil), do: nil
+
+  defp sb_rule_action(%{"sqlExpression" => sql} = act) when is_binary(sql),
+    do: act
+
+  defp sb_rule_action(other), do: other
 
   defp handle_child_delete(conn, child_type, sub_id, rg_name, rel_path) do
     with :ok <- check_api_version(conn, child_type) do
@@ -2021,6 +2898,17 @@ defmodule Smalt.ArmGateway.Router do
         |> String.split("/")
         |> List.last()
         |> then(&VaultData.drop_vault_secrets([&1]))
+
+      # BK-87 (BK-65 surfaced defect 2): ARM queue DELETE drops the entity's
+      # AMQP in-flight state with the entity — real Service Bus parity. Order:
+      # purge messages/locks/sessions FIRST (serialized through the
+      # claim/settle server; must observe the live entity), then drop the
+      # entity row so a same-name re-create starts fresh (KD-86's
+      # sb_materialize_amqp then re-provisions an EMPTY entity on re-PUT).
+      "Microsoft.ServiceBus/namespaces/queues" ->
+        name = rel_path |> String.split("/") |> List.last()
+        Smalt.Amqp.QueueStore.purge_queue(name)
+        Smalt.Store.delete(:smalt_sb_queues, name)
 
       _ ->
         :ok
@@ -2182,7 +3070,17 @@ defmodule Smalt.ArmGateway.Router do
     value = get_in(params, ["properties", "value"])
 
     if parent_exists? and is_binary(value) and :ets.info(:smalt_vault_secrets) != :undefined do
+      # KD-COVERS: KD-184/KD-185 — the cross-plane seed also retains the version
+      # it mints (version row + newest-first index + created_seq) and PRESERVES
+      # any prior version history instead of clobbering it.
       version = Integer.to_string(System.unique_integer([:positive]))
+
+      prior_versions =
+        case Store.get(:smalt_vault_secrets, name) do
+          {:ok, %{"versions" => vs}} when is_list(vs) -> vs
+          {:ok, %{"version" => v}} when is_binary(v) -> [v]
+          _ -> []
+        end
 
       record =
         %{
@@ -2194,11 +3092,14 @@ defmodule Smalt.ArmGateway.Router do
             "created" => System.system_time(:second),
             "updated" => System.system_time(:second)
           },
-          "version" => version
+          "version" => version,
+          "created_seq" => System.unique_integer([:positive, :monotonic]),
+          "versions" => [version | prior_versions]
         }
         |> maybe_seed_content_type(conn)
 
       Store.put(:smalt_vault_secrets, name, record)
+      Store.put(:smalt_vault_secrets, {name, version}, Map.put(record, "is_version_row", true))
     end
   end
 
@@ -2277,20 +3178,184 @@ defmodule Smalt.ArmGateway.Router do
       case Store.get(:smalt_vault_secrets, name) do
         {:ok, %{"value" => value, "version" => version} = rec}
         when is_binary(value) and is_binary(version) ->
+          # KD-COVERS: KD-184/KD-185 — rotation mints a RETAINED version: version
+          # row under {name, version}, newest-first index on the bare row,
+          # node-monotonic created_seq (last-write ordering).
           version = Integer.to_string(System.unique_integer([:positive]))
+          prior_versions = rec |> Map.get("versions", []) |> List.wrap()
 
           updated =
             rec
             |> Map.put("version", version)
             |> Map.put("id", "https://#{conn.host}:8443/secrets/#{name}/#{version}")
+            |> Map.put("versions", [version | prior_versions])
+            |> Map.put("created_seq", System.unique_integer([:positive, :monotonic]))
             |> Map.update("attributes", %{}, &Map.put(&1, "updated", System.system_time(:second)))
 
           Store.put(:smalt_vault_secrets, name, updated)
+
+          Store.put(
+            :smalt_vault_secrets,
+            {name, version},
+            Map.put(updated, "is_version_row", true)
+          )
+
           {:ok, version}
 
         _ ->
           :error
       end
+    end
+  end
+
+  # -- Azure DNS control plane (wave-6 lane w6y) ---------------------------------
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone" do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        body = if is_map(conn.body_params), do: conn.body_params, else: %{}
+
+        case Smalt.Arm.Dns.put_zone(
+               conn.path_params["sub_id"],
+               conn.path_params["rg_name"],
+               conn.path_params["zone"],
+               body
+             ) do
+          {:ok, st, m} -> send_json(conn, st, Jason.encode!(m))
+          {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+        end
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone" do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        case Smalt.Arm.Dns.get_zone(
+               conn.path_params["sub_id"],
+               conn.path_params["rg_name"],
+               conn.path_params["zone"]
+             ) do
+          {:ok, m} -> send_json(conn, 200, Jason.encode!(m))
+          {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+        end
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone" do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        case Smalt.Arm.Dns.delete_zone(
+               conn.path_params["sub_id"],
+               conn.path_params["rg_name"],
+               conn.path_params["zone"]
+             ) do
+          {:ok, :deleted} -> send_json(conn, 204, "")
+          {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+        end
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones" do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        {:ok, items} =
+          Smalt.Arm.Dns.list_zones(conn.path_params["sub_id"], conn.path_params["rg_name"])
+
+        send_json(conn, 200, Jason.encode!(%{value: items}))
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone/recordsets" do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        top = int_query_param(conn, "$top", 100)
+
+        {:ok, items} =
+          Smalt.Arm.Dns.list_recordsets(
+            conn.path_params["sub_id"],
+            conn.path_params["rg_name"],
+            conn.path_params["zone"],
+            top
+          )
+
+        send_json(conn, 200, Jason.encode!(%{value: items}))
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone/:rtype/:rname"
+      when rtype in ~w(A AAAA CNAME MX TXT SRV PTR SOA NS) do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        body = if is_map(conn.body_params), do: conn.body_params, else: %{}
+
+        case Smalt.Arm.Dns.put_recordset(
+               conn.path_params["sub_id"],
+               conn.path_params["rg_name"],
+               conn.path_params["zone"],
+               conn.path_params["rtype"],
+               conn.path_params["rname"],
+               body
+             ) do
+          {:ok, st, m} -> send_json(conn, st, Jason.encode!(m))
+          {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+        end
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone/:rtype/:rname"
+      when rtype in ~w(A AAAA CNAME MX TXT SRV PTR SOA NS) do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        case Smalt.Arm.Dns.get_recordset(
+               conn.path_params["sub_id"],
+               conn.path_params["rg_name"],
+               conn.path_params["zone"],
+               conn.path_params["rtype"],
+               conn.path_params["rname"]
+             ) do
+          {:ok, m} -> send_json(conn, 200, Jason.encode!(m))
+          {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+        end
+
+      {:respond, conn} ->
+        conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Network/dnsZones/:zone/:rtype/:rname"
+         when rtype in ~w(A AAAA CNAME MX TXT SRV PTR SOA NS) do
+    case check_api_version(conn, "Microsoft.Network/dnsZones") do
+      :ok ->
+        case Smalt.Arm.Dns.delete_recordset(
+               conn.path_params["sub_id"],
+               conn.path_params["rg_name"],
+               conn.path_params["zone"],
+               conn.path_params["rtype"],
+               conn.path_params["rname"]
+             ) do
+          {:ok, :deleted} -> send_json(conn, 204, "")
+          {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+        end
+
+      {:respond, conn} ->
+        conn
     end
   end
 
@@ -2500,6 +3565,77 @@ defmodule Smalt.ArmGateway.Router do
   # typed refusal (see do_check_shape), never an admission.
   defp graph_law_fail_closed? do
     Smalt.Config.graph_law()[:enforcement] == :fail_closed
+  end
+
+  # GL28-2 admission gate call site (spec §3/§8). Refusals render through the
+  # pinned GraphLaw refusal face (send_graphlaw_refusal/3: 400
+  # InvalidResourceShape envelope, message names the typed SMALT-* code) — the
+  # router pins "ARM never returns 422" on send_graphlaw_refusal; a 422 face is
+  # a coordinator flip if the GL28-2 court corpus wants one.
+  defp check_admission_gate(conn, envelope) do
+    gate_mod = Smalt.GraphlawEx.AdmissionGate
+
+    cond do
+      not (Code.ensure_loaded?(gate_mod) and function_exported?(gate_mod, :gate, 3)) ->
+        # GL28-2 build lane has not landed the module: the sanctioned
+        # falsifiable stub. NOT a silent pass — invert the guard (or land the
+        # module under :fail_closed with no receipt in hand) and the gate MUST
+        # refuse; a gate that cannot refuse is the failure.
+        :ok
+
+      not graph_law_fail_closed?() ->
+        # Spec §8 posture: :fail_open -> admit-and-seal (the seal sideband,
+        # affidavit_seal/2, already runs post-commit). The gate refusal face
+        # exists only under :fail_closed.
+        :ok
+
+      true ->
+        case apply(gate_mod, :gate, [conn.method, envelope, gate_opts(conn)]) do
+          :ok ->
+            :ok
+
+          {:refused, code} ->
+            {:respond, send_graphlaw_refusal(conn, to_string(code))}
+
+          {:error, reason} ->
+            {:respond, send_graphlaw_refusal(conn, to_string(reason))}
+
+          other ->
+            {:respond,
+             send_graphlaw_refusal(
+               conn,
+               "unexpected admission-gate verdict: " <> inspect(other)
+             )}
+        end
+    end
+  end
+
+  # Envelope the router HAS in hand (spec §2 5-tuple): the byte-exact raw
+  # request body (Smalt.Auth.BodyCache accumulates it into
+  # conn.private[:smalt_raw_body]) plus the receipt fields — which the router
+  # does not yet mint (receipt substrate is GL28-2 build-lane work: VcExport
+  # .to_vc/2, affidavit_seal/2, journal frames 0x0A01/0x0A02), so they present
+  # as nil and the gate answers in the typed SMALT-* vocabulary, never a
+  # boolean.
+  defp admission_envelope(conn) do
+    {:admitted_mutation, admission_raw_body(conn), nil, nil, nil}
+  end
+
+  defp admission_raw_body(conn) do
+    case conn.private[:smalt_raw_body] do
+      body when is_binary(body) -> body
+      _ -> Jason.encode!(conn.body_params)
+    end
+  end
+
+  # Gate options, spec-named keys (§3.3 engine-digest persistent_term key, §4
+  # packet-4 16 MiB cap). The GL28-2 gate module may extend this list; a
+  # Keyword-fetching gate ignores unknown keys.
+  defp gate_opts(_conn) do
+    [
+      engine_digest_key: :gl_engine_digest,
+      max_request_bytes: 16 * 1024 * 1024
+    ]
   end
 
   # KD-78: api-version admission is MONOTONIC (real ARM semantics): any version
@@ -2939,11 +4075,23 @@ defmodule Smalt.ArmGateway.Router do
         {:error, :engine_unavailable}
     end
   rescue
-    _ -> {:error, :engine_unavailable}
+    # JA-R1 (V3): fail-closed envelope unchanged; the crash is no longer
+    # silent — every engine-down refusal here is operator-visible.
+    e ->
+      Logger.error(
+        "arm_gateway affidavit seal: engine crash -> :engine_unavailable (#{Exception.message(e)})"
+      )
+
+      {:error, :engine_unavailable}
   catch
     # A WASM engine crash surfaces client-side as :exit (the GenServer dies
     # mid-call); the sideband must stay fail-safe through exits too.
-    :exit, _ -> {:error, :engine_unavailable}
+    :exit, reason ->
+      Logger.error(
+        "arm_gateway affidavit seal: engine exit -> :engine_unavailable (#{inspect(reason)})"
+      )
+
+      {:error, :engine_unavailable}
   end
 
   # {:ok, witness} — accept the D-lane structured map
@@ -3000,6 +4148,13 @@ defmodule Smalt.ArmGateway.Router do
 
   post "/:tenant_id/oauth2/v2.0/token" do
     handle_token(conn, tenant_id)
+  end
+
+  # -- IMDS / managed identity (w6r) -------------------------------------------
+  # Leaf route ahead of the bearer-guarded generic routes; Plug.Router matched
+  # the path only (query string excluded). Serves ARM 9443 and the TLS twin.
+  get "/metadata/identity/oauth2/token" do
+    Smalt.Auth.Imds.handle_token(conn)
   end
 
   # -- Bootstrap / discovery endpoints ----------------------------------------
@@ -3096,6 +4251,32 @@ defmodule Smalt.ArmGateway.Router do
       })
 
     send_json(conn, 200, body)
+  end
+
+  # -- Health probe faces (BK-PROBE, BK-ARM1 F-1) ------------------------------
+  # The kernel's self-report (Smalt.Health) rendered as typed HTTP: 200/503.
+  # kubelet's probes point here (k8s/smalt-backend.yaml) — previously both
+  # probes polled /metadata/endpoints, a static always-200 metadata handler,
+  # so kubelet could only ever detect a dead listener, never a degraded BEAM.
+  # Declared before the flat ATOM aliases and the /:entity_name catch-alls;
+  # the three-segment paths cannot collide with them regardless. Paths sit in
+  # the /.well-known/ bearer-exempt namespace (Smalt.Auth.Bearer
+  # @exempt_prefixes) — kubelet probes are tokenless bootstrap-class
+  # requests, same as /metadata/endpoints.
+  get "/.well-known/health/live" do
+    case Smalt.Health.liveness() do
+      :alive -> send_json(conn, 200, Jason.encode!(%{status: "alive"}))
+    end
+  end
+
+  get "/.well-known/health/ready" do
+    verdict = Smalt.Health.readiness()
+
+    send_json(
+      conn,
+      Smalt.Health.http_status(verdict),
+      Jason.encode!(Smalt.Health.to_json_map(verdict))
+    )
   end
 
   get "/common/discovery/instance" do
@@ -3267,6 +4448,51 @@ defmodule Smalt.ArmGateway.Router do
     handle_locations_list(conn, sub_id)
   end
 
+  # AZURE-FIDELITY lane 5: Activity Log — the documented eventtypes/management
+  # surface. Events are assembled from the generic-resource CRUD hook
+  # (Smalt.ArmGateway.ActivityLog.record/4, fail-safe post-store sideband in
+  # the PUT/PATCH/DELETE handlers). $filter subset: eventTimestamp ge/le,
+  # resourceId eq, operationName eq (and-combined).
+  get "/subscriptions/:sub_id/providers/microsoft.insights/eventtypes/management/values" do
+    case Smalt.ArmGateway.ActivityLog.handle_query(conn, sub_id) do
+      {:ok, status, body} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(status, body)
+    end
+  end
+
+  # AZURE-FIDELITY lane 7: create-blade validation surface. ResourceSkus
+  # list (documented shape incl. restrictions) + regional quota usage for
+  # Compute and Network (currentValue derived from real stored resources).
+  get "/subscriptions/:sub_id/providers/Microsoft.Compute/skus" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(
+        conn,
+        200,
+        Jason.encode!(SkuQuota.list_skus(sub_id, conn.query_params["$filter"]))
+      )
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Compute/locations/:location/usages" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(conn, 200, Jason.encode!(SkuQuota.usage("Microsoft.Compute", location, sub_id)))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Network/locations/:location/usages" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(conn, 200, Jason.encode!(SkuQuota.usage("Microsoft.Network", location, sub_id)))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
   delete "/subscriptions/:sub_id/resourcegroups/:rg_name" do
     handle_rg_delete(conn, sub_id, rg_name)
   end
@@ -3329,6 +4555,67 @@ defmodule Smalt.ArmGateway.Router do
     handle_scope_tags_put(conn, sub_id, rg_name, :merge)
   end
 
+  # -- KD-COVERS: KD-58 — tenant-level tagNames CRUD (Microsoft.Resources/tags).
+  # Real ARM: /tagNames (list), /tagNames/{name} (get/delete), /tagNames/{name}/
+  # tagValues/{value} (put/get/delete). Rows share the :smalt_policy table under
+  # a "tagname:" key prefix — same discriminated-prefix law as the KD-125
+  # rem:/rs: rows (Policy owns the table; tag rows never collide with
+  # lock:/definition:/rem:/rs: keys).
+  get "/tagNames" do
+    handle_tenant_tags_list(conn)
+  end
+
+  get "/tagNames/:tag_name" do
+    handle_tenant_tags_get(conn, tag_name)
+  end
+
+  delete "/tagNames/:tag_name" do
+    handle_tenant_tags_delete(conn, tag_name)
+  end
+
+  put "/tagNames/:tag_name/tagValues/:tag_value" do
+    handle_tenant_tag_value_put(conn, tag_name, tag_value)
+  end
+
+  get "/tagNames/:tag_name/tagValues/:tag_value" do
+    handle_tenant_tag_value_get(conn, tag_name, tag_value)
+  end
+
+  delete "/tagNames/:tag_name/tagValues/:tag_value" do
+    handle_tenant_tag_value_delete(conn, tag_name, tag_value)
+  end
+
+  # -- KD-COVERS: KD-59 — resource-group exportTemplate + moveResources.
+  # exportTemplate delegates to Smalt.Arm.ExportTemplate.export_rg/3 (the
+  # wave-6 export face, previously unrouted); an RG with no exportable
+  # resources is a typed 404 (ResourceGroupResourceNotFound). Responds 200
+  # synchronous (terminal for ARM LRO pollers) — documented boundary.
+  post "/subscriptions/:sub_id/resourcegroups/:rg_name/exportTemplate" do
+    handle_export_template(conn, sub_id, rg_name)
+  end
+
+  post "/subscriptions/:sub_id/resourceGroups/:rg_name/exportTemplate" do
+    handle_export_template(conn, sub_id, rg_name)
+  end
+
+  # moveResources / validateMoveResources: TYPED UNSUPPORTED (row KD-59 close
+  # condition admits routes OR typed refusal; falsifier: "never 404").
+  post "/subscriptions/:sub_id/resourcegroups/:rg_name/moveResources" do
+    handle_move_resources(conn, sub_id, rg_name)
+  end
+
+  post "/subscriptions/:sub_id/resourceGroups/:rg_name/moveResources" do
+    handle_move_resources(conn, sub_id, rg_name)
+  end
+
+  post "/subscriptions/:sub_id/resourcegroups/:rg_name/validateMoveResources" do
+    handle_move_resources(conn, sub_id, rg_name)
+  end
+
+  post "/subscriptions/:sub_id/resourceGroups/:rg_name/validateMoveResources" do
+    handle_move_resources(conn, sub_id, rg_name)
+  end
+
   # -- Management locks (KD-113 leg b): wired to Smalt.Policy (wave-4 lane w4d).
   # api-version 2016-09-01 is admitted monotonic (<= latest 2020-05-01).
   # Subscription scope first (exact path prefix, no :ns shadow risk — the
@@ -3381,6 +4668,144 @@ defmodule Smalt.ArmGateway.Router do
     handle_lock_delete(conn, "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}", lock_name)
   end
 
+  # -- Cost Management query + Consumption usageDetails (AZURE-FIDELITY lane 6).
+  # Both delegate to Smalt.ArmGateway.CostManagement over the seeded
+  # :smalt_cost_usage event store. api-version presence-checked only (neither
+  # namespace is an admitted Registry individual; default permissive gate).
+  post "/subscriptions/:sub_id/providers/Microsoft.CostManagement/query" do
+    with :ok <- check_api_version(conn, nil) do
+      CostManagement.seed_defaults(sub_id)
+
+      case CostManagement.query(sub_id, conn.body_params) do
+        {:ok, body} ->
+          send_json(conn, 200, Jason.encode!(body))
+
+        {:error, {:unsupported_type, t}} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "Unsupported query type '#{t}'. Only 'ActualCost' is served."
+          )
+
+        {:error, {:unsupported_timeframe, tf}} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "Unsupported timeframe '#{tf}'."
+          )
+
+        {:error, :missing_time_period} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "Either timeframe or timePeriod (from/to) is required."
+          )
+
+        {:error, :invalid_date} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "timePeriod from/to must be ISO-8601 dates."
+          )
+
+        {:error, :invalid_request} ->
+          send_arm_error(conn, 400, "InvalidRequest", "The query body is not a valid object.")
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  post "/subscriptions/:sub_id/providers/Microsoft.CostManagement/forecast" do
+    with :ok <- check_api_version(conn, nil) do
+      CostManagement.seed_defaults(sub_id)
+
+      case CostManagement.forecast(sub_id, conn.body_params) do
+        {:ok, body} ->
+          send_json(conn, 200, Jason.encode!(body))
+
+        {:error, {:unsupported_type, t}} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "Unsupported query type '#{t}'. Only 'ActualCost' is served."
+          )
+
+        {:error, {:unsupported_timeframe, tf}} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "Unsupported timeframe '#{tf}'."
+          )
+
+        {:error, :missing_time_period} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "Either timeframe or timePeriod (from/to) is required."
+          )
+
+        {:error, :invalid_date} ->
+          send_arm_error(
+            conn,
+            400,
+            "InvalidRequest",
+            "timePeriod from/to must be ISO-8601 dates."
+          )
+
+        {:error, :invalid_request} ->
+          send_arm_error(conn, 400, "InvalidRequest", "The query body is not a valid object.")
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Consumption/usageDetails" do
+    with :ok <- check_api_version(conn, nil) do
+      CostManagement.seed_defaults(sub_id)
+      send_json(conn, 200, Jason.encode!(CostManagement.usage_details(sub_id, conn.query_params)))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # -- AZURE-FIDELITY lane 4: tags at SUBSCRIPTION scope ------------------------
+  # Microsoft.Resources/tags at subscription scope rides the :smalt_subscriptions
+  # record's "tags" member (same null-when-empty render law as the RG-scope
+  # tags leg). Must precede the /providers/:ns catch-all shape-wise; declared
+  # here for cohesion with the lock routes it mirrors.
+  get "/subscriptions/:sub_id/providers/Microsoft.Resources/tags" do
+    handle_subscription_tags_get(conn, sub_id)
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Resources/tags/default" do
+    handle_subscription_tags_get(conn, sub_id)
+  end
+
+  put "/subscriptions/:sub_id/providers/Microsoft.Resources/tags" do
+    handle_subscription_tags_put(conn, sub_id, :replace)
+  end
+
+  put "/subscriptions/:sub_id/providers/Microsoft.Resources/tags/default" do
+    handle_subscription_tags_put(conn, sub_id, :replace)
+  end
+
+  patch "/subscriptions/:sub_id/providers/Microsoft.Resources/tags" do
+    handle_subscription_tags_put(conn, sub_id, :merge)
+  end
+
+  patch "/subscriptions/:sub_id/providers/Microsoft.Resources/tags/default" do
+    handle_subscription_tags_put(conn, sub_id, :merge)
+  end
+
   # -- Subscription-level provider listing (ProviderMatrix projection) ----------
   # api-version PRESENCE required (Microsoft.Resources/providers is not an
   # admitted Registry individual — no latest-version validation, mirroring the
@@ -3389,7 +4814,19 @@ defmodule Smalt.ArmGateway.Router do
   # top-level subscriptionId field) is gone; azurerm reads "value" rows.
   get "/subscriptions/:sub_id/providers" do
     with :ok <- check_api_version(conn, nil) do
-      send_json(conn, 200, Jason.encode!(ProviderMatrix.provider_listing()))
+      # AZURE-FIDELITY lane 1: the subscription-scope listing overlays the
+      # persisted registration state per namespace (register/unregister are
+      # stateful per subscription; the tenant listing keeps the constant).
+      listing =
+        ProviderMatrix.provider_listing()
+        |> Map.update!("value", fn providers ->
+          Enum.map(providers, fn p ->
+            stored = ProviderState.registration_state(sub_id, p["namespace"], p["registrationState"])
+            Map.put(p, "registrationState", stored)
+          end)
+        end)
+
+      send_json(conn, 200, Jason.encode!(listing))
     else
       {:respond, conn} -> conn
     end
@@ -3410,11 +4847,25 @@ defmodule Smalt.ArmGateway.Router do
           )
 
         provider ->
-          send_json(conn, 200, Jason.encode!(provider))
+          # AZURE-FIDELITY lane 1: registration lifecycle is STATEFUL per
+          # subscription — register/unregister persists a row and every later
+          # GET of the provider reflects the stored transition. Subscriptions
+          # with no transition keep the ProviderMatrix constant posture.
+          stored = ProviderState.registration_state(sub_id, ns, provider["registrationState"])
+          send_json(conn, 200, Jason.encode!(Map.put(provider, "registrationState", stored)))
       end
     else
       {:respond, conn} -> conn
     end
+  end
+
+  # AZURE-FIDELITY lane 1: per-provider operations index (documented ARM
+  # surface every RP serves: GET /subscriptions/{s}/providers/{ns}/operations).
+  # Derived from the same ProviderMatrix projection the provider object uses —
+  # read/write/delete per admitted resource type plus the operations/read
+  # self row. Unknown namespaces 404 ResourceNotFound (no fabricated provider).
+  get "/subscriptions/:sub_id/providers/:ns/operations" do
+    provider_operations(conn, ns, "/subscriptions/#{sub_id}/providers/#{ns}")
   end
 
   # Provider register/unregister (azurerm resource provider registration wire
@@ -3431,6 +4882,104 @@ defmodule Smalt.ArmGateway.Router do
     provider_registration(conn, sub_id, ns, "Unregistering")
   end
 
+  # KD-56: providerPermissions (azurerm/SDK probe surface). Read-only enclave
+  # truth: the envelope carries one Owner allow row — no RBAC store exists.
+  # # KD-COVERS: KD-56
+  get "/subscriptions/:sub_id/providers/:ns/providerPermissions" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(
+        conn,
+        200,
+        Jason.encode!(%{
+          "value" => [
+            %{
+              "actions" => ["*"],
+              "noActions" => [],
+              "dataActions" => [],
+              "noDataActions" => []
+            }
+          ]
+        })
+      )
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # KD-55: tenant-scope provider listing (`GET /providers`) and per-namespace
+  # (`GET /providers/:ns`) — the same ProviderMatrix projection the
+  # subscription-scope routes serve; unknown namespace 404s ResourceNotFound.
+  # # KD-COVERS: KD-55
+  get "/providers" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(conn, 200, Jason.encode!(ProviderMatrix.provider_listing()))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/providers/:ns" do
+    with :ok <- check_api_version(conn, nil) do
+      case ProviderMatrix.provider(ns) do
+        nil ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "Provider namespace '#{ns}' could not be found.",
+            "/providers/#{ns}"
+          )
+
+        provider ->
+          send_json(conn, 200, Jason.encode!(provider))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # AZURE-FIDELITY lane 1: tenant-scope per-provider operations index.
+  get "/providers/:ns/operations" do
+    provider_operations(conn, ns, "/providers/#{ns}")
+  end
+
+  # KD-55: Microsoft.Resources operations list (tenant + subscription scope).
+  # Static arm-operations envelope — SDKs probe it for the az/SDK operations
+  # index; the emulator exposes a minimal deterministic set.
+  # # KD-COVERS: KD-55
+  get "/providers/Microsoft.Resources/operations" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(conn, 200, Jason.encode!(arm_operations_listing()))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Resources/operations" do
+    with :ok <- check_api_version(conn, nil) do
+      send_json(conn, 200, Jason.encode!(arm_operations_listing()))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  defp arm_operations_listing do
+    %{
+      "value" => [
+        %{
+          "name" => "Microsoft.Resources/operations/read",
+          "display" => %{
+            "provider" => "Microsoft Resources",
+            "resource" => "Operations",
+            "operation" => "List Operations",
+            "description" => "List available operations"
+          },
+          "is_data_action" => false
+        }
+      ]
+    }
+  end
+
   defp provider_registration(conn, sub_id, ns, state) do
     with :ok <- check_api_version(conn, nil) do
       case ProviderMatrix.provider(ns) do
@@ -3444,7 +4993,64 @@ defmodule Smalt.ArmGateway.Router do
           )
 
         provider ->
+          # AZURE-FIDELITY lane 1: registration transitions PERSIST — a later
+          # GET of the provider (any request, any scope) reads the stored
+          # state back (registration lifecycle is stateful, not echoed).
+          :ok = ProviderState.set_registration(sub_id, ns, state)
           send_json(conn, 200, Jason.encode!(Map.put(provider, "registrationState", state)))
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # AZURE-FIDELITY lane 1: per-provider operations envelope derived from the
+  # ProviderMatrix resourceTypes (read/write/delete per type + operations/read).
+  # Unknown namespaces 404 ResourceNotFound — same fence as provider/1 GET.
+  defp provider_operations(conn, ns, target) do
+    with :ok <- check_api_version(conn, nil) do
+      case ProviderMatrix.provider(ns) do
+        nil ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "Provider namespace '#{ns}' could not be found.",
+            target
+          )
+
+        provider ->
+          ops =
+            [
+              %{
+                "name" => "#{ns}/operations/read",
+                "display" => %{
+                  "provider" => ns,
+                  "resource" => "Operations",
+                  "operation" => "Read Operations",
+                  "description" => "List available operations"
+                },
+                "is_data_action" => false
+              }
+            ] ++
+              Enum.flat_map(provider["resourceTypes"] || [], fn rt ->
+                type = "#{ns}/#{rt["resourceType"]}"
+
+                for action <- ["read", "write", "delete"] do
+                  %{
+                    "name" => "#{type}/#{action}",
+                    "display" => %{
+                      "provider" => ns,
+                      "resource" => rt["resourceType"],
+                      "operation" => String.capitalize(action) <> "s " <> rt["resourceType"],
+                      "description" => "#{String.capitalize(action)} #{type}"
+                    },
+                    "is_data_action" => false
+                  }
+                end
+              end)
+
+          send_json(conn, 200, Jason.encode!(%{"value" => ops}))
       end
     else
       {:respond, conn} -> conn
@@ -3461,6 +5067,7 @@ defmodule Smalt.ArmGateway.Router do
         Store.list_prefix(:smalt_resources, "/subscriptions/#{sub_id}/")
         |> Enum.filter(&renderable_record?/1)
         |> Enum.filter(&subscription_resource_filter(conn, &1))
+        |> apply_lifecycle_expand(conn)
 
       send_list(conn, items)
     else
@@ -3503,6 +5110,51 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   defp subscription_resource_filter(_conn, _record), do: false
+
+  # AZURE-FIDELITY lane 1: documented $expand semantics for list operations
+  # (Resources - List, ResourceGroups - List): `$expand=createdTime,changedTime`
+  # projects the resource lifecycle timestamps onto each item; the fields are
+  # ABSENT unless requested (real ARM omits them by default). Rows are read
+  # from ProviderState (frozen createdTime / advancing changedTime per write).
+  defp apply_lifecycle_expand(items, conn) when is_list(items) do
+    requested =
+      case conn.query_params["$expand"] do
+        value when is_binary(value) ->
+          value
+          |> String.split(",")
+          |> Enum.map(&String.trim(&1))
+          |> MapSet.new()
+
+        _ ->
+          MapSet.new()
+      end
+
+    want_created = MapSet.member?(requested, "createdTime")
+    want_changed = MapSet.member?(requested, "changedTime")
+
+    if want_created or want_changed do
+      Enum.map(items, fn item ->
+        if is_map(item) and is_binary(item["id"]) do
+          times = ProviderState.lifecycle(item["id"])
+
+          item =
+            if want_created and is_binary(times["createdTime"]),
+              do: Map.put(item, "createdTime", times["createdTime"]),
+              else: item
+
+          if want_changed and is_binary(times["changedTime"]),
+            do: Map.put(item, "changedTime", times["changedTime"]),
+            else: item
+        else
+          item
+        end
+      end)
+    else
+      items
+    end
+  end
+
+  defp apply_lifecycle_expand(items, _conn), do: items
 
   # Split `a eq 'x' and b eq 'y'` into [{a, x}, {y}...]. Not a full ARM filter
   # grammar — eq/and only, quoted single-word-or-quoted values.
@@ -3945,14 +5597,15 @@ defmodule Smalt.ArmGateway.Router do
   end
 
   # .../blobServices/default/containers
+  # KD-COVERS: KD-92 — an ARM-created container is immediately visible to the
+  # blob data plane in real Azure. The child PUT mirrors the container record
+  # into `:smalt_blob_containers` (same record shape do_create_container
+  # writes) on a successful PUT; a data-plane blob PUT then answers 201,
+  # never 404 ContainerNotFound. Mirror-only-when-absent keeps the ARM PUT
+  # idempotent (200) and never clobbers a data-plane-created container's
+  # WORM/immutability state; the data plane stays authoritative for policy.
   put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Storage/storageAccounts/:parent/blobServices/default/containers/:name" do
-    handle_child_put(
-      conn,
-      "Microsoft.Storage/storageAccounts/blobServices/containers",
-      sub_id,
-      rg_name,
-      "storageAccounts/#{parent}/blobServices/default/containers/#{name}"
-    )
+    handle_storage_container_child_put(conn, sub_id, rg_name, parent, name)
   end
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Storage/storageAccounts/:parent/blobServices/default/containers/:name" do
@@ -4468,6 +6121,20 @@ defmodule Smalt.ArmGateway.Router do
     handle_metrics_emit(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
   end
 
+  # Platform pseudo-resource metric face (BK-PLATFORM-ROUTE, v26.10.22 —
+  # BK-MON5 typed carry-forward PLATFORM-FACE-UNROUTED): the accumulator keys
+  # non-ARM traffic and platform events (EgressRefused, SentinelDropped/
+  # SentinelKept) under the 2-segment id `providers/Smalt.Monitor/platform`
+  # (no name segment), which the 3-segment metrics route family above cannot
+  # match — wire GETs answered 404 RouteNotFound while in-process series/5 on
+  # the platform key was coherent. Real Azure Monitor exposes platform
+  # metric faces (Microsoft.Monitor platform shape), so route it: the
+  # literal 2-segment face at the platform's own scope serves the SAME
+  # series/5 accumulator path (exact downcased-equality join, bkmon3r law).
+  get "/subscriptions/_smalt_monitor/resourceGroups/_smalt_monitor/providers/Smalt.Monitor/platform/providers/microsoft.insights/metrics" do
+    handle_metrics_platform(conn)
+  end
+
   @pr_type "Microsoft.Authorization/policyRemediations"
 
   # NOTE: the RG-scope trigger POST is declared early (before the azapi POST
@@ -4496,7 +6163,157 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  # -- ARM deployments routes (wave-6 lane w6i-2) ---------------------------------
 
+  put "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_put(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_put(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  put "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_put(conn, conn.path_params["sub_id"], nil, conn.path_params["dep_name"])
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_get(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_get(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_get(conn, conn.path_params["sub_id"], nil, conn.path_params["dep_name"])
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments" do
+    deployments_list(conn, conn.path_params["sub_id"], nil)
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments" do
+    deployments_list(conn, conn.path_params["sub_id"], conn.path_params["rg_name"])
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments" do
+    deployments_list(conn, conn.path_params["sub_id"], conn.path_params["rg_name"])
+  end
+
+  delete "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_delete(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_delete(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  delete "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments/:dep_name" do
+    deployments_delete(conn, conn.path_params["sub_id"], nil, conn.path_params["dep_name"])
+  end
+
+  post "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name/validate" do
+    deployments_validate(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  post "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name/validate" do
+    deployments_validate(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  post "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments/:dep_name/validate" do
+    deployments_validate(conn, conn.path_params["sub_id"], nil, conn.path_params["dep_name"])
+  end
+
+  # -- AZURE-FIDELITY gap closure (G1): deployment what-if ---------------------
+  # POST .../deployments/{name}/what-if: diff the body's template.resources
+  # against the LIVE :smalt_resources store (Smalt.Arm.Deployments.what_if/3,
+  # wave-6 lane w6aq logic) WITHOUT materializing anything. Wire shape per the
+  # documented contract: 200 {properties: {changes: [{resourceId, changeType,
+  # before, after, delta}], status}} + a Location header on the deployment.
+  post "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name/what-if" do
+    deployments_what_if(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  post "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name/what-if" do
+    deployments_what_if(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  post "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments/:dep_name/what-if" do
+    deployments_what_if(conn, conn.path_params["sub_id"], nil, conn.path_params["dep_name"])
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name/operations" do
+    deployments_ops(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Resources/deployments/:dep_name/operations" do
+    deployments_ops(
+      conn,
+      conn.path_params["sub_id"],
+      conn.path_params["rg_name"],
+      conn.path_params["dep_name"]
+    )
+  end
+
+  get "/subscriptions/:sub_id/providers/Microsoft.Resources/deployments/:dep_name/operations" do
+    deployments_ops(conn, conn.path_params["sub_id"], nil, conn.path_params["dep_name"])
+  end
 
   # -- azapi POST actions (.../lock, .../setLegalHold) at any depth -------------
   post "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/*glob" do
@@ -4618,21 +6435,45 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
-  # Destination gate: `destination.endpointType == "WebHook"` is the remote
-  # push face KD-101 registers as a permanent divergence — refuse typed, keep
-  # the in-proc face (no destination / any other endpointType) admitted.
+  # Destination gate: `destination.endpointType == "WebHook"` is admitted ONLY
+  # when the endpoint URL is loopback (air-gap law); a loopback webhook is a
+  # real deliverable push face (the delivery engine POSTs over real loopback
+  # HTTP). Remote endpoints remain the KD-101 registered divergence — refused
+  # typed. Non-WebHook/absent destinations keep the in-proc face admitted.
   defp eg_es_destination(conn, es_name) do
     props = conn.body_params["properties"] || %{}
 
     case props["destination"] do
-      %{"endpointType" => "WebHook"} = _dest ->
-        {:respond,
-         send_arm_error(
-           conn,
-           400,
-           "EventGridWebhookPushUnsupported",
-           "Webhook push delivery to remote endpoints is not supported by the loopback emulator (KD-101); use the in-proc webhook receiver face (/eventgrid/hooks/:subscriber). Subscription '#{es_name}' was not created."
-         )}
+      %{"endpointType" => "WebHook"} = dest ->
+        case eg_es_webhook_loopback?(dest) do
+          {:ok, url} ->
+            dest =
+              dest
+              |> Map.put_new("properties", %{})
+              |> put_in(["properties", "endpointUrl"], url)
+
+            {:ok, dest}
+
+          {:refuse, why} ->
+            {:respond,
+             send_arm_error(
+               conn,
+               400,
+               if(why == :remote,
+                 do: "EventGridWebhookPushUnsupported",
+                 else: "InvalidResourceShape"
+               ),
+               if(why == :remote,
+                 do:
+                   "Webhook push delivery to remote endpoints is not supported by the loopback emulator (KD-101); use the in-proc webhook receiver face (/eventgrid/hooks/:subscriber) or a loopback https endpoint. Subscription '#{es_name}' was not created.",
+                 else:
+                   "properties.destination.properties.endpointUrl must be an https loopback URL (https://127.0.0.1, https://localhost, https://[::1]). Subscription '#{es_name}' was not created."
+               )
+             )}
+        end
+
+      %{"endpointType" => other} when is_binary(other) ->
+        {:ok, %{"endpointType" => other}}
 
       %{"endpointType" => other} when is_binary(other) ->
         {:ok, %{"endpointType" => other}}
@@ -4654,8 +6495,32 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  @loopback_hosts MapSet.new(["127.0.0.1", "localhost", "::1", "[::1]"])
+
+  # A WebHook destination is admitted only for loopback endpoint URLs
+  # (https://127.0.0.1:..., https://localhost:..., https://[::1]:...).
+  # Returns {:ok, url} | {:refuse, :remote | :shape}.
+  defp eg_es_webhook_loopback?(%{"properties" => %{"endpointUrl" => url}} = _dest)
+       when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host}}
+      when scheme in ["https", "http"] and is_binary(host) ->
+        if MapSet.member?(@loopback_hosts, String.downcase(host)),
+          do: {:ok, url},
+          else: {:refuse, :remote}
+
+      _ ->
+        {:refuse, :shape}
+    end
+  end
+
+  defp eg_es_webhook_loopback?(_dest), do: {:refuse, :shape}
+
   defp eg_es_parent(conn, sub_id, rg_name, topic) do
-    case Store.get(@eg_es_table, String.downcase(eg_res_id(sub_id, rg_name, "systemTopics", topic))) do
+    case Store.get(
+           @eg_es_table,
+           String.downcase(eg_res_id(sub_id, rg_name, "systemTopics", topic))
+         ) do
       {:ok, record} -> {:ok, record}
       :error -> {:respond, eg_topic_404(conn, topic)}
     end
@@ -5517,7 +7382,7 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
-
+  # KD-COVERS: KD-112
   # Policy set definitions (initiatives, subscription scope). Members are
   # policyDefinitions references; evaluate_assignment/2 resolves an
   # assignment's policyDefinitionId through the set (worst-effect wins).
@@ -5557,6 +7422,66 @@ defmodule Smalt.ArmGateway.Router do
   get "/subscriptions/:sub_id/providers/Microsoft.Authorization/policySetDefinitions" do
     with :ok <- check_api_version(conn, @psd_type) do
       send_list(conn, Policy.list_policy_set_definitions(sub_id))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # -- Microsoft.ResourceHealth/availabilityStatuses faces (V9 lane) -----------
+  # Subscription-scope list + per-resource list/current faces. Backed by
+  # Smalt.Arm.ResourceHealth (synthetic-Available law: existing row ->
+  # Available, unknown -> 404); envelope built in the arm_gateway seam module
+  # (Smalt.ArmGateway.ResourceHealth), never inline in the router.
+  get "/subscriptions/:sub_id/providers/Microsoft.ResourceHealth/availabilityStatuses" do
+    with :ok <- check_api_version(conn, "Microsoft.ResourceHealth/availabilityStatuses") do
+      case ResourceHealth.list(sub_id) do
+        {:ok, 200, env} -> send_json(conn, 200, Jason.encode!(env))
+        {:error, 404, err} -> send_arm_error(conn, 404, err["error"]["code"], err["error"]["message"])
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.ResourceHealth/availabilityStatuses" do
+    with :ok <- check_api_version(conn, "Microsoft.ResourceHealth/availabilityStatuses") do
+      {:ok, 200, env} =
+        ResourceHealth.list_for_resource(sub_id, rg_name, "#{provider_ns}/#{resource_type}", resource_name)
+
+      send_json(conn, 200, Jason.encode!(env))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.ResourceHealth/availabilityStatuses" do
+    with :ok <- check_api_version(conn, "Microsoft.ResourceHealth/availabilityStatuses") do
+      {:ok, 200, env} =
+        ResourceHealth.list_for_resource(sub_id, rg_name, "#{provider_ns}/#{resource_type}", resource_name)
+
+      send_json(conn, 200, Jason.encode!(env))
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.ResourceHealth/availabilityStatuses/current" do
+    with :ok <- check_api_version(conn, "Microsoft.ResourceHealth/availabilityStatuses") do
+      case ResourceHealth.get_current(sub_id, rg_name, "#{provider_ns}/#{resource_type}", resource_name) do
+        {:ok, 200, env} -> send_json(conn, 200, Jason.encode!(env))
+        {:error, 404, err} -> send_arm_error(conn, 404, err["error"]["code"], err["error"]["message"])
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.ResourceHealth/availabilityStatuses/current" do
+    with :ok <- check_api_version(conn, "Microsoft.ResourceHealth/availabilityStatuses") do
+      case ResourceHealth.get_current(sub_id, rg_name, "#{provider_ns}/#{resource_type}", resource_name) do
+        {:ok, 200, env} -> send_json(conn, 200, Jason.encode!(env))
+        {:error, 404, err} -> send_arm_error(conn, 404, err["error"]["code"], err["error"]["message"])
+      end
     else
       {:respond, conn} -> conn
     end
@@ -5693,6 +7618,126 @@ defmodule Smalt.ArmGateway.Router do
     end
   end
 
+  # -- ARM Log Analytics workspace tables (Microsoft.OperationalInsights) -------
+  # GET tables family for a workspace: per-stream table rows wired to
+  # `Sentinel.table_stats/1` (count + oldest/newest TimeGenerated, landed
+  # wave-3). Workspace<->DCR binding: the workspace name IS the DCR name (the
+  # egress ingest path `POST /dataCollectionRules/:dcr/streams/:stream` keys
+  # stream state by DCR name), so tables of workspace `ws` = `table_stats(ws)`
+  # keyed "{ws}/{stream}".
+  @la_type "Microsoft.OperationalInsights/workspaces"
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.OperationalInsights/workspaces/:ws_name/tables" do
+    with :ok <- check_api_version(conn, @la_type) do
+      res_id =
+        resource_id(sub_id, rg_name, "Microsoft.OperationalInsights", "workspaces", ws_name)
+
+      case Store.get(:smalt_resources, String.downcase(res_id)) do
+        {:ok, _record} ->
+          prefix = "#{ws_name}/"
+
+          items =
+            for {key, %{count: count, oldest: oldest, newest: newest}} <-
+                  Sentinel.table_stats(ws_name) do
+              stream = String.slice(key, String.length(prefix)..-1//1)
+              retention = retention_days_for(ws_name, stream)
+
+              %{
+                "id" => "#{res_id}/tables/#{stream}",
+                "name" => stream,
+                "type" => "Microsoft.OperationalInsights/workspaces/tables",
+                "properties" => %{
+                  "retentionInDays" => retention,
+                  "totalRecords" => count,
+                  "oldestTimeGenerated" => oldest,
+                  "newestTimeGenerated" => newest
+                }
+              }
+            end
+
+          send_list(conn, items)
+
+        :error ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The workspace '#{ws_name}' was not found.",
+            res_id
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.OperationalInsights/workspaces/:ws_name/tables/:table_name" do
+    with :ok <- check_api_version(conn, @la_type) do
+      res_id =
+        resource_id(sub_id, rg_name, "Microsoft.OperationalInsights", "workspaces", ws_name)
+
+      workspace? = match?({:ok, _}, Store.get(:smalt_resources, String.downcase(res_id)))
+
+      stats =
+        if workspace? do
+          Map.get(Sentinel.table_stats(ws_name), "#{ws_name}/#{table_name}")
+        else
+          nil
+        end
+
+      cond do
+        not workspace? ->
+          send_arm_error(
+            conn,
+            404,
+            "ResourceNotFound",
+            "The workspace '#{ws_name}' was not found.",
+            res_id
+          )
+
+        is_nil(stats) ->
+          send_arm_error(
+            conn,
+            404,
+            "TableNotFound",
+            "The table '#{table_name}' was not found in workspace '#{ws_name}'.",
+            "#{res_id}/tables/#{table_name}"
+          )
+
+        true ->
+          retention = retention_days_for(ws_name, table_name)
+
+          send_json(
+            conn,
+            200,
+            Jason.encode!(%{
+              "id" => "#{res_id}/tables/#{table_name}",
+              "name" => table_name,
+              "type" => "Microsoft.OperationalInsights/workspaces/tables",
+              "properties" => %{
+                "retentionInDays" => retention,
+                "totalRecords" => stats.count,
+                "oldestTimeGenerated" => stats.oldest,
+                "newestTimeGenerated" => stats.newest
+              }
+            })
+          )
+      end
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  # Retention mirror of sentinel.ex retention_days/2 (private there): the
+  # stream-meta row carries "retention_days" only when `Sentinel.set_retention/3`
+  # configured it; unset -> real-LA default 730 days.
+  defp retention_days_for(dcr, stream) do
+    case Store.get(:smalt_sentinel_streams, "#{dcr}/#{stream}") do
+      {:ok, %{"retention_days" => days}} when is_integer(days) and days > 0 -> days
+      _ -> 730
+    end
+  end
+
   # -- Generic ARM provider routes ----------------------------------------------
   # roleAssignments / diagnosticSettings / DevTestLab schedules ride these;
   # Registry.admitted?/1 (via find_admitted) gates them.
@@ -5702,6 +7747,127 @@ defmodule Smalt.ArmGateway.Router do
 
   get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name" do
     handle_resource_get(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
+  end
+
+  # KD-57: generic ARM PATCH on the 3-segment provider route (updateByName).
+  # ARM PATCH is a partial update: `properties` merge key-wise into the stored
+  # record; `tags` and `sku` replace wholesale when present; location/id/name
+  # are immutable. Refusal tier mirrors the PUT (api-version -> admission ->
+  # properties-member fence -> existence) minus full-shape validation (a
+  # partial body legitimately omits required members). Policy gate rides the
+  # same enforce/2 the PUT uses.
+  patch "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name" do
+    handle_resource_patch(conn, "#{provider_ns}/#{resource_type}", sub_id, rg_name, resource_name)
+  end
+
+  # -- AZURE-FIDELITY lane 4: locks at RESOURCE scope, tags at RESOURCE scope,
+  # and the generic resource DELETE lock gate ----------------------------------
+  # Locks reuse the router's existing handle_lock_* handlers (Smalt.Policy owns
+  # the law; a resource-scoped lock's properties.scope IS the resource id, and
+  # lock_blocks?/2 prefix-covers children/parents identically to RBAC scope
+  # inheritance). Tags ride the :smalt_resources record's "tags" member. The
+  # generic DELETE consults the lock store FIRST: a covering CanNotDelete or
+  # ReadOnly lock answers the documented 409 ScopeLocked and the resource
+  # SURVIVES; unlocked deletes cascade children + metrics + lifecycle row.
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Authorization/locks" do
+    handle_locks_list(
+      conn,
+      resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name)
+    )
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_get(
+      conn,
+      resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name),
+      lock_name
+    )
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_put(
+      conn,
+      resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name),
+      lock_name
+    )
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Authorization/locks/:lock_name" do
+    handle_lock_delete(
+      conn,
+      resource_id(sub_id, rg_name, provider_ns, resource_type, resource_name),
+      lock_name
+    )
+  end
+
+  get "/subscriptions/:sub_id/resourcegroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags" do
+    handle_resource_tags_get(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags" do
+    handle_resource_tags_get(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags/default" do
+    handle_resource_tags_get(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags" do
+    handle_resource_tags_put(
+      conn,
+      sub_id,
+      rg_name,
+      provider_ns,
+      resource_type,
+      resource_name,
+      :replace
+    )
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags/default" do
+    handle_resource_tags_put(
+      conn,
+      sub_id,
+      rg_name,
+      provider_ns,
+      resource_type,
+      resource_name,
+      :replace
+    )
+  end
+
+  patch "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags" do
+    handle_resource_tags_put(
+      conn,
+      sub_id,
+      rg_name,
+      provider_ns,
+      resource_type,
+      resource_name,
+      :merge
+    )
+  end
+
+  patch "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name/providers/Microsoft.Resources/tags/default" do
+    handle_resource_tags_put(
+      conn,
+      sub_id,
+      rg_name,
+      provider_ns,
+      resource_type,
+      resource_name,
+      :merge
+    )
+  end
+
+  # Generic resource DELETE with the management-lock gate (lane 4 law): the
+  # lock consult happens BEFORE any mutation — a locked delete answers the
+  # documented 409 ScopeLocked envelope and the resource survives; an
+  # unlocked delete is an ARM LRO (202 + Location + Retry-After) that sweeps
+  # the record, its children (store-key prefix cascade), its metrics series
+  # and its lane-1 lifecycle row.
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/:provider_ns/:resource_type/:resource_name" do
+    handle_resource_delete(conn, sub_id, rg_name, provider_ns, resource_type, resource_name)
   end
 
   # LIST: per-RG provider-type listing, e.g. GET .../providers/Microsoft.Network/virtualNetworks
@@ -5944,6 +8110,10 @@ defmodule Smalt.ArmGateway.Router do
       Smalt.Metrics.drop(res_id)
       Store.delete(:smalt_resources, key)
 
+      # AZURE-FIDELITY lane 1: DELETE drops the lifecycle row with the
+      # resource (a deleted id never resurrects a stale createdTime).
+      :ok = ProviderState.drop_lifecycle(res_id)
+
       # Cosmos account cascade (composite-identity lane): capture-then-sweep
       # the pk_meta rows under a deleted databaseAccounts resource. Mirrors the
       # RG cascade's swept-keys shape; no-op for every other resource type.
@@ -6002,8 +8172,11 @@ defmodule Smalt.ArmGateway.Router do
     try do
       body = if is_map(conn.body_params), do: conn.body_params, else: %{}
 
-      case Smalt.DataPlane.ResourceGraph.query(
-             Map.get(body, "subscriptions"),
+      # Clause-gate adoption (lane F2): the arm_gateway seam
+      # (Smalt.ArmGateway.ResourceGraph.query/2 — body + api-version) fronts
+      # the one evaluator, refusing unsupported KQL clauses with a typed 400
+      # UnsupportedClause before evaluation.
+      case Smalt.ArmGateway.ResourceGraph.query(
              body,
              Map.get(conn.query_params || %{}, "api-version", "")
            ) do
@@ -6018,6 +8191,210 @@ defmodule Smalt.ArmGateway.Router do
           "InvalidBody",
           "The request body could not be processed: #{e.__struct__}"
         )
+    end
+  end
+
+  defp deployments_put(conn, sub, rg, name) do
+    with {:ok, raw} <- deployments_body(conn),
+         {:ok, m} <- Smalt.Arm.Deployments.put_deployment(sub, rg, name, raw) do
+      # V7 lane: deployment completions join the activity log. resourceId is
+      # the deployment's ARM id (RG-scoped or subscription-scoped); a
+      # subscription-level deployment has no resource group — empty string.
+      dep_id =
+        if rg do
+          "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.Resources/deployments/#{name}"
+        else
+          "/subscriptions/#{sub}/providers/Microsoft.Resources/deployments/#{name}"
+        end
+
+      Smalt.ArmGateway.ActivityLog.record(conn, :write, dep_id, rg || "")
+
+      send_json(conn, 200, Jason.encode!(m))
+    else
+      {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+    end
+  end
+
+  defp deployments_body(conn) do
+    if is_map(conn.body_params),
+      do: {:ok, conn.body_params},
+      else: {:error, 400, %{code: "InvalidBody", message: "request body must be a JSON object"}}
+  end
+
+  defp deployments_validate(conn, _sub, _rg, _name) do
+    with {:ok, raw} <- deployments_body(conn),
+         {:ok, :valid} <- Smalt.Arm.Deployments.validate_deployment(raw) do
+      # DIVERGENCE lane D4 (2026-10-25): documented success face is
+      # DeploymentValidateResult {properties: DeploymentPropertiesExtended}
+      # — no top-level status. provisioningState Succeeded is the documented
+      # success member (validate writes nothing, so no timestamps/correlation).
+      send_json(
+        conn,
+        200,
+        Jason.encode!(%{
+          properties: %{
+            provisioningState: "Succeeded",
+            mode: raw["properties"]["mode"] || "Incremental"
+          }
+        })
+      )
+    else
+      {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+    end
+  end
+
+  defp deployments_what_if(conn, sub, rg, name) do
+    with {:ok, raw} <- deployments_body(conn) do
+      props = raw["properties"] || %{}
+      template = props["template"] || %{}
+      mode = props["mode"] || "Incremental"
+
+      case Smalt.Arm.Deployments.what_if(template, props["parameters"] || %{},
+             sub: sub,
+             rg: rg,
+             mode: mode
+           ) do
+        {:ok, result} ->
+          wire =
+            {:ok, result}
+            |> Smalt.Arm.Deployments.what_if_wire()
+            |> Map.update!("properties", &Map.put(&1, "status", result["status"]))
+
+          dep_link =
+            if rg do
+              "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.Resources/deployments/#{name}"
+            else
+              "/subscriptions/#{sub}/providers/Microsoft.Resources/deployments/#{name}"
+            end
+
+          conn
+          |> put_resp_header("location", dep_link)
+          |> send_json(200, Jason.encode!(wire))
+
+        {:error, st, err} ->
+          send_json(conn, st, Jason.encode!(%{error: err}))
+      end
+    else
+      {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+    end
+  end
+
+  defp deployments_get(conn, sub, rg, name) do
+    case Smalt.Arm.Deployments.get_deployment(sub, rg, name) do
+      {:ok, m} -> send_json(conn, 200, Jason.encode!(m))
+      {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+    end
+  end
+
+  defp deployments_list(conn, sub, rg) do
+    {:ok, items} = Smalt.Arm.Deployments.list_deployments(sub, rg)
+    send_json(conn, 200, Jason.encode!(%{value: items}))
+  end
+
+  defp deployments_delete(conn, sub, rg, name) do
+    case Smalt.Arm.Deployments.delete_deployment(sub, rg, name) do
+      {:ok, :deleted} -> send_json(conn, 200, Jason.encode!(%{status: "Succeeded"}))
+      {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+    end
+  end
+
+  defp deployments_ops(conn, sub, rg, name) do
+    case Smalt.Arm.Deployments.list_operations(sub, rg, name) do
+      {:ok, items} -> send_json(conn, 200, Jason.encode!(%{value: items}))
+      {:error, st, err} -> send_json(conn, st, Jason.encode!(%{error: err}))
+    end
+  end
+
+  # KD-COVERS: KD-51 — flat Service Bus ATOM management URL space over HTTPS.
+  # azure-servicebus >= 7.x ServiceBusAdministrationClient hardcodes
+  # `https://` as the management endpoint scheme (_management_client.py:
+  # `self._endpoint = "https://" <> fully_qualified_namespace`), so the sb://
+  # -port ATOM plane (Smalt.Amqp.AtomBridge serve/2) is unreachable from the
+  # Python admin client: PUT /{queue} landed on this router's catch-all as
+  # 404 RouteNotFound (witness: docs/jira/v26.10.20/receipts/kd51-admin-urlspace-witness.md,
+  # captured `PUT https://localhost:9444/{queue}?api-version=2024-05`).
+  # These alias routes serve the SAME flat dispatcher (identical records in
+  # :smalt_resources, identical ATOM+XML rendering) on the control plane and
+  # its TLS twin. Declared last, before the catch-all: every earlier static
+  # route keeps precedence, so single-segment faces like /tenant, /tenants,
+  # /subscriptions and /healthz are unaffected.
+  # T27LQ-r (KD-158 candidate): the node ServiceBusAdministrationClient
+  # listQueues face sends GET /$Resources/Queues?api-version=...&$top=N&$skip=M
+  # — a TWO-segment path, which never matched the single-segment flat aliases
+  # below and fell through to the catch-all as 404 RouteNotFound (wire repro:
+  # docs/jira/v26.10.20/receipts/t27lqr-listqueues-paging-witness.md). The
+  # $Resources paged-list face forwards to the SAME flat dispatcher; declared
+  # before the catch-all like the other aliases.
+  get "/$Resources/:resource" do
+    sb_atom_alias(conn, "GET", conn.request_path)
+  end
+
+  put "/:entity_name" do
+    sb_atom_alias(conn, "PUT", conn.request_path)
+  end
+
+  get "/:entity_name" do
+    sb_atom_alias(conn, "GET", conn.request_path)
+  end
+
+  delete "/:entity_name" do
+    sb_atom_alias(conn, "DELETE", conn.request_path)
+  end
+
+  defp sb_atom_alias(conn, method, path) do
+    # EXPL9-R2 F1 (KD-COVERS: KD-175): the ATOM alias face previously matched
+    # read_body/1 unguarded, so an oversized body (>8MB) escaped as
+    # `{:more, _, _}` -> MatchError -> crash-path 500 InternalServerError
+    # envelope. Real Azure answers 413 RequestBodyTooLarge; the canonical
+    # guarded shape is egress_router.ex blob_block_arm. `{:error, reason}`
+    # (malformed chunked body, socket abort) is a typed 400, never a crash.
+    case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
+      {:ok, body, conn} ->
+        sb_atom_alias_dispatch(conn, method, path, body)
+
+      {:more, partial, _conn} ->
+        send_arm_error(
+          conn,
+          413,
+          "RequestBodyTooLarge",
+          "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes).",
+          path
+        )
+
+      {:error, reason} ->
+        send_arm_error(
+          conn,
+          400,
+          "InvalidRequestBody",
+          "The request body could not be read: #{inspect(reason)}.",
+          path
+        )
+    end
+  end
+
+  defp sb_atom_alias_dispatch(conn, method, path, body) do
+    # T27LQ-r: conn.request_path carries NO query string; the paged-list face
+    # needs $top/$skip, so reconstruct the full path from query_string.
+    path =
+      case conn.query_string do
+        nil -> path
+        "" -> path
+        qs -> path <> "?" <> qs
+      end
+
+    case Smalt.Amqp.AtomBridge.handle_request(method, path, body) do
+      # KD-COVERS: KD-155 — layer 2: the flat ATOM face answers DELETE with
+      # 204 No Content (real Azure ATOM "Delete Queue": 204, empty body).
+      # The ARM management alias face keeps Azure ARM semantics: "Queues -
+      # Delete" answers 200 OK with an empty body, and Plug 204 responses
+      # must not carry content-type/content-length headers.
+      {204, :no_content, <<>>} ->
+        send_resp(conn, 200, "")
+
+      {status, ctype, payload} ->
+        conn
+        |> put_resp_header("content-type", ctype)
+        |> send_resp(status, payload)
     end
   end
 

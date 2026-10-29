@@ -68,6 +68,23 @@ ALLOWLIST=(
   "docker/BUILD_RECEIPT.md:16"
   "docker/BUILD_RECEIPT.md:17"
   "docker/BUILD_RECEIPT.md:28"
+  # examples/ wave receipts (foreign examples workstream; evidence receipts
+  # quoting their own environment — same tolerated class as docs/jira/*/
+  # receipts; tree scheduled for removal at integration)
+  "examples/bank-ledger-nightly/receipt.md:5"
+  "examples/bank-ledger-nightly/receipt.md:6"
+  "examples/fintech-throttle/receipt.md:10"
+  "examples/fintech-throttle/receipt.md:11"
+  "examples/fintech-throttle/receipt.md:12"
+  "examples/healthcare-archive/receipt.md:7"
+  "examples/healthcare-archive/receipt.md:12"
+  "examples/healthcare-archive/receipt.md:48"
+  "examples/healthcare-archive/receipt.md:50"
+  "examples/insurance-governance/receipt.md:4"
+  "examples/insurance-governance/receipt.md:74"
+  "examples/media-drm-custody/receipt.md:5"
+  "examples/retail-order-pipeline/receipt.md:4"
+  "examples/saas-provisioning/receipt.md:4"
   "docker/BUILD_RECEIPT.md:55"
   # docs quoting the scan terms themselves (meta self-reference).
   # The docs/PUBLISH_CHECK.md:* entries were retired 2026-10-16 when the file
@@ -135,7 +152,7 @@ ALLOWLIST=(
 
 # 1. Sweep tracked files only, excluding machine/self-quote surfaces.
 hits="$(git ls-files -z \
-  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/[^/]+/verify-ledger/|docs/jira/v26\.10\.15/|docs/jira/v26\.10\.16/|scripts/naming_sweep\.sh$|scripts/publish_dry\.sh$)' \
+  | grep -zvE '^(deps/|_build/|\.git/|tmp/|\.elixir_ls/|[Jj]ustfile$|docs/archive/|docs/NAMING_SWEEP\.md$|\.ggen_igniter/|cli/\.ggen-v2/|docs/jira/[^/]+/receipts/|docs/jira/[^/]+/sdk-results/|docs/jira/[^/]+/bench/|docs/jira/[^/]+/verify-ledger/|docs/jira/v26\.10\.15/|docs/jira/v26\.10\.16/|scripts/naming_sweep\.sh$|popcorn_demo/receipts/|popcorn_demo/bench/|scripts/publish_dry\.sh$)' \
   | xargs -0 grep -niE "$PATTERN" 2>/dev/null || true)"
 
 allowed=0

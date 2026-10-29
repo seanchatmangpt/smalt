@@ -55,7 +55,7 @@ window (the ticket ladder remains reachable by re-emitting the compose with diff
    Docker VM disk (`Docker.raw`, 32G sparse) is at capacity. Cleanup performed (disclosed):
    `docker builder prune` (0B reclaimable — all layers active), removed unused pullable images
    (azurite, postgres:16, python:3.13-slim, nginx-unprivileged, ~1GB) and
-   `docker image prune -a` (athena family, ~1GB; the hexpm/elixir pinned base was untagged and
+   `docker image prune -a` (legacy-client family, ~1GB; the hexpm/elixir pinned base was untagged and
    will re-pull on next build). Host has 52Gi free; the cap is the Docker Desktop disk-image size —
    enlarging it requires a daemon restart, which would kill concurrent lanes' running containers
    (kind-smalt-control-plane/worker, act-sock-relay). **Refused the restart** (cross-lane

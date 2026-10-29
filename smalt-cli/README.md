@@ -92,3 +92,84 @@ probes its port block and reuses a healthy substrate read-only, else boots a
 private-port one under its own lock (`/tmp/smalt-substrate-cli4.lock` /
 `/tmp/smalt-substrate-cli5.lock`) pinned to the session's auth mode. No
 import-time boot — provisioning is lazy and fixture-scoped.
+
+## smalt-migrate (Terraform/Bicep -> smalt topology)
+
+`smalt_cli/migrate/` — offline, read-only migration surface (PRD Module 1).
+`scan`, `generate`, `inject`, `rollback` are registered Typer commands
+(cli.py mounts the sub-app at `app.add_typer(migrate_app, name="migrate")`).
+
+- **`smalt-cli migrate scan DIRECTORY [--output/-o TOPO.json]`** — extracts
+  `azurerm_*` blocks from Terraform (.tf, rglob-sorted) and Bicep templates,
+  maps them to the topology IR (`smalt-migrate/topology-v1`), and emits JSON
+  to stdout or `--output`. Fail-closed: parse failures and unsupported
+  resource types are reported, never dropped. Tests:
+  `tests/test_migrate_scan.py` (9, offline).
+- **`smalt-cli migrate generate --iac-path DIR --output-dir DIR`** — topology
+  IR -> `smalt.manifest.json` (seed fixtures per service, unresolved summary).
+  Byte-deterministic (NFR-3: sorted keys, trailing newline, no timestamps).
+  Tests: `tests/test_migrate_manifest.py` (9, offline, incl. byte-identity).
+- **`smalt-cli migrate inject [--topology topo.json] [--target .env.smalt] [--dry-run]`** —
+  renders loopback-only connection strings (cosmos/blob/servicebus/eventhubs/
+  keyvault, ports 8443/5672/5673/9443) into `.env.smalt`; backs up an existing
+  target to `.bak` first; `--dry-run` prints without writing. NFR-1: read-only
+  vs the cloud — no network calls anywhere in the module. Tests:
+  `tests/test_migrate_inject.py` (12, offline).
+- **`smalt-cli migrate rollback [--target .env.smalt]`** — restores `.bak`
+  over the injected env, or removes the injection when no `.bak` exists.
+- **Pipeline (library)** — `smalt_cli.migrate.pipeline.run_all(iac_dir, ...)`
+  chains scan -> generate -> inject with per-stage typed results; NFR-2
+  budget <=30s for 50 resources (tested on a generated 50-resource fixture).
+  NOTE: not yet registered as a Typer command (see wave-1 audit receipt,
+  Finding 1). Tests: `tests/test_migrate_pipeline.py` (8, offline).
+- **Verify (library)** — `smalt_cli.migrate.verify.run(...)` runs per-service
+  wire-fidelity gates against the LIVE loopback substrate (ARM :9443, egress
+  :8443) and asserts zero non-loopback egress (`NonLoopbackEgress` is typed).
+  Requires the Azure SDK — run under `.venv-cli`. No Typer command yet.
+  Tests: `tests/test_migrate_verify.py` (7; loud SKIP when substrate down,
+  loud typed skip on the AMQP leg when the boot key is undersized).
+
+    .venv-cli/bin/python -m pytest tests/test_migrate_scan.py \
+      tests/test_migrate_manifest.py tests/test_migrate_inject.py \
+      tests/test_migrate_verify.py tests/test_migrate_pipeline.py -q
+    # 37 passed (offline lanes) + 6 passed, 1 skipped (verify, substrate up)
+
+### Showcase fixture: `tests/fixtures/migrate-enterprise/`
+
+A realistic ~66-resource orders/payments/inventory estate across 12 files
+(8 Terraform + 4 Bicep), used as the README demo and as a parser regression
+corpus. Counts below are asserted by `tests/test_migrate_enterprise_fixture.py`
+(5 tests) — they are measured outputs of the real pipeline, not targets.
+
+- **Scan**: 12 files, 66 supported resource blocks, 0 scan errors.
+  By type: 1 cosmos account / 3 databases / 8 containers, 5 storage
+  containers, 2 key vaults + 6 secrets, 2+1 servicebus namespaces with
+  7 queues / 5 topics / 7 subscriptions, 3 eventhub namespaces with 6 hubs /
+  8 consumer groups, 3 APIM gateways.
+- **Typed-error paths (deliberate)**: 6 unsupported resource types counted,
+  never dropped (`azurerm_storage_account`, `azurerm_resource_group`,
+  `azurerm_application_insights`, `azurerm_log_analytics_workspace`,
+  `Microsoft.Insights/actionGroups`,
+  `Microsoft.OperationalInsights/workspaces`); `${var.environment}` /
+  `${envName}` interpolations surface typed `unresolved`, never guessed.
+- **Generate**: `smalt.manifest.json` with 8 seed fixtures;
+  unresolved summary: 2 orphan namespaces, 4 unresolved storage-account refs,
+  0 orphan containers/vaults/databases, 0 scan errors.
+- **Inject**: loopback-only `.env.smalt`, 9 lines, services
+  `blob, cosmos, eventhubs, keyvault, servicebus`.
+
+Demo replay (offline legs):
+
+    .venv-cli/bin/python - <<'PY'
+    from pathlib import Path
+    from smalt_cli.migrate.pipeline import run_all
+    r = run_all(Path("smalt-cli/tests/fixtures/migrate-enterprise"),
+                Path("out"), Path("out/.env.smalt"))
+    for s in r.stages:
+        print(s.name, s.status, s.detail)
+    PY
+
+Live verification (`smalt_cli.migrate.verify.run`, loud SKIP when the
+substrate is down): run against the generated manifest's services — measured
+2026-10-21 with the substrate up: PASS on blob/cosmos/kv/servicebus,
+`zero_egress: true`, hosts `["127.0.0.1"]`.

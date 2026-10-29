@@ -81,18 +81,6 @@ defmodule Smalt.Health do
           total_run_queue: run_queues,
           per_scheduler_avg: run_queues / max(schedulers, 1)
         }
-
-      t0 ->
-        t1 = sample_after_window(t0)
-
-        util = scheduler_utilization(t0, t1)
-
-        %{
-          schedulers_online: schedulers,
-          mode: :scheduler_wall_time,
-          total_utilization: total_utilization(util),
-          per_scheduler: util
-        }
     end
   end
 

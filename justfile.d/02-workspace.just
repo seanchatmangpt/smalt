@@ -19,6 +19,11 @@ ws := join(justfile_directory(), "workspace")
 @ws-court:
     cd {{ws}} && NODE_PATH="{{ws}}/node_modules" node scripts/e2e-court.mjs
 
+# BK-130 hooks court — RU-3 adoption #2–5 pattern-ports (node tier, fake
+# events, deterministic; compile gate over all four hook files).
+@hooks-court:
+    cd {{ws}} && node scripts/hooks-court.mjs
+
 # Converge: run the court; on FAIL, surface each failing check's one-line
 # summary (the court already prints `# FAIL: name: detail`) and exit with the
 # court's own exit code.

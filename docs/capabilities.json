@@ -86,6 +86,16 @@
       "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases"
     },
     {
+      "apiVersion": "2022-06-15",
+      "shape": "DefaultShape",
+      "type": "Microsoft.EventGrid/systemTopics"
+    },
+    {
+      "apiVersion": "2022-06-15",
+      "shape": "DefaultShape",
+      "type": "Microsoft.EventGrid/systemTopics/eventSubscriptions"
+    },
+    {
       "apiVersion": "2021-04-01",
       "shape": "DefaultShape",
       "type": "Microsoft.EventGrid/topics"
@@ -104,6 +114,11 @@
       "apiVersion": "2021-04-01",
       "shape": "DefaultShape",
       "type": "Microsoft.EventHub/namespaces/eventhubs/consumergroups"
+    },
+    {
+      "apiVersion": "2022-06-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Insights/dataCollectionRules"
     },
     {
       "apiVersion": "2021-05-01-preview",
@@ -238,9 +253,9 @@
     "eventHubs": 5673
   },
   "identity": {
-    "contentSha256": "021653d69e9de4ae15d08441f43c1ddb9df99d1386fd84490c7f075425370ec5",
+    "contentSha256": "0dbbd2db96194e891c8eda56b57f025b29f50f968dccab54110ebb42c0e7c0f2",
     "packLockSha256": "532b495a89f77535caa536b351131f1c09850016bc2710aa0b086b032fdd41fe",
-    "semanticEpoch": "26.10.19"
+    "semanticEpoch": "26.10.25"
   },
   "name": "smalt",
   "schemaVersion": "v1",
@@ -288,12 +303,6 @@
       "version": "1.13.1"
     },
     {
-      "license": "MIT",
-      "name": "benchee",
-      "origin": "hex.pm",
-      "version": "1.5.1"
-    },
-    {
       "license": "Apache-2.0",
       "name": "broadway",
       "origin": "hex.pm",
@@ -334,12 +343,6 @@
       "name": "decimal",
       "origin": "hex.pm",
       "version": "3.2.0"
-    },
-    {
-      "license": "MIT",
-      "name": "deep_merge",
-      "origin": "hex.pm",
-      "version": "1.0.2"
     },
     {
       "license": "Apache-2.0",
@@ -652,12 +655,6 @@
       "name": "splode",
       "origin": "hex.pm",
       "version": "0.3.2"
-    },
-    {
-      "license": "MIT",
-      "name": "statistex",
-      "origin": "hex.pm",
-      "version": "1.1.1"
     },
     {
       "license": "Apache-2.0",

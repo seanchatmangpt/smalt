@@ -1,0 +1,1 @@
+{"machine":{"cpu":"Apple M3 Max","darwin":"26.2","otp":"28","elixir":"1.19.5","cores":16,"ram_gb":48},"op":"admit_and_seal","errors":0,"n":100,"p50_ms":"11.265","p99_ms":"32.671","surface":"affidavit-seal","lane":"c10","ops_per_sec":77,"p95_ms":"26.491","p_max_ms":"35.248","engine_sha256":"9b2908e4578720c453e6ef65649588cd7a3a5c64e45be97be613b7c154811413"}

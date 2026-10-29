@@ -25,6 +25,8 @@
 //   N2_BASE (default http://127.0.0.1:4620)
 //   N2_VUS (default 2000)  N2_ITERS (default 25 per VU)
 //   N2_OUT (output JSONL path; empty => stdout only)
+//   N2_ACTION_ID (optional; unset => auto-scraped from /bench/action HTML
+//     `$ACTION_ID_<hex>`; explicit env wins; scrape failure => typed FATAL)
 //
 // Exit 0 iff F1/F2/F3 all pass.
 import fs from "node:fs";
@@ -37,7 +39,30 @@ const ITERS = parseInt(process.env.N2_ITERS || "25", 10);
 const OUT = process.env.N2_OUT || "";
 // Progressive-enhancement action routing: hidden form field
 // $ACTION_ID_<actionId> (what a no-JS browser form submit sends).
-const ACTION_FIELD = `$ACTION_ID_${process.env.N2_ACTION_ID || ""}`;
+// N2_ACTION_ID optional: unset => auto-scrape the id from the target page's
+// HTML (first `$ACTION_ID_<hex>` token); explicit env wins; scrape failure is
+// a typed FATAL (never a silent empty id => guaranteed 400
+// x-nextjs-action-not-found).
+async function scrapeActionId(base) {
+  const url = new URL("/bench/action", base).href;
+  let res;
+  try {
+    res = await fetch(url, { redirect: "manual" });
+  } catch (e) {
+    throw new Error(`N2_ACTION_ID_FATAL: scrape of ${url} failed: ${e.cause?.code || e.message} (set N2_ACTION_ID explicitly, or boot the workspace prod server: cd workspace && npm run build && next start -p <port>)`);
+  }
+  if (!res.ok) {
+    throw new Error(`N2_ACTION_ID_FATAL: scrape of ${url} returned HTTP ${res.status} (set N2_ACTION_ID explicitly, or boot the workspace prod server)`);
+  }
+  const html = await res.text();
+  const m = html.match(/\$ACTION_ID_([0-9a-f]+)/);
+  if (!m) {
+    throw new Error(`N2_ACTION_ID_FATAL: no $ACTION_ID_<hex> token found in ${url} HTML (is this the built prod page with a server action? otherwise set N2_ACTION_ID explicitly)`);
+  }
+  return m[1];
+}
+
+const ACTION_FIELD = `$ACTION_ID_${process.env.N2_ACTION_ID || (await scrapeActionId(BASE))}`;
 
 const { hostname, port } = new URL(BASE);
 

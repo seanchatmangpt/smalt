@@ -50,16 +50,43 @@ SUBSTRATE_PORTS = (9443, 9444, 5672, 5673)  # mirrors substrate.sh PORTS
 
 
 def substrate_pid():
-    """Live substrate PID from the same state file substrate.sh owns, else None."""
+    """Live substrate PID: substrate.sh's state dir, else the `just up` pid
+    file (/tmp/smalt.pid) lineage resolved to the LIVE beam port holder — the
+    justfile `up` recipe's pid file names the mix wrapper, whose beam child is
+    the actual port holder (witnessed: doctor saw only a dead wrapper while a
+    live beam held every port and was classified foreign)."""
     try:
         pid = int(SUBSTRATE_PID_FILE.read_text().strip())
     except (OSError, ValueError):
-        return None
+        pid = None
+    if pid is not None:
+        try:
+            os.kill(pid, 0)
+            return pid
+        except OSError:
+            pass
+    # No live substrate.sh substrate: accept a live beam.smp holding the ARM
+    # port whose command is the smalt `mix run` boot.
     try:
-        os.kill(pid, 0)
-    except OSError:
+        out = subprocess.run(
+            ["lsof", "-nP", "-tiTCP:9443", "-sTCP:LISTEN"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout
+    except Exception:
         return None
-    return pid
+    for h in out.split():
+        h = h.strip()
+        if not h:
+            continue
+        try:
+            cmd = subprocess.run(
+                ["ps", "-p", h, "-o", "command="], capture_output=True, text=True, timeout=10
+            ).stdout
+        except Exception:
+            continue
+        if "beam.smp" in cmd and "mix run" in cmd:
+            return int(h)
+    return None
 
 AMQP_PORT = _BENCH_AMQP
 AMQP_HEADER = b"AMQP\x00\x01\x00\x00"
@@ -226,11 +253,18 @@ def check_port(port, name):
     except OSError as e:
         pids = port_holder_pids(port)
         # A healthy substrate legitimately holds its own ports (same detection
-        # substrate.sh uses: live PID in /tmp/smalt-substrate-state/). Only the
-        # substrate PID itself counts — a foreign or co-held port still fails.
+        # substrate.sh uses: live PID in /tmp/smalt-substrate-state/). The
+        # substrate PID counts as healthy even with CO-LISTENERS on the same
+        # port (witnessed: an ssh -R relay bound *:9443/:5672 alongside the
+        # beam — a real relay topology, not a rogue holder). A co-listener is
+        # named, not treated as a fault: binding a SECOND substrate would
+        # still fail, but the substrate is up and serving, which is what the
+        # doctor's port check is about.
         sub_pid = substrate_pid()
-        if sub_pid is not None and pids and set(pids) == {str(sub_pid)}:
-            return f"ok (held by healthy substrate pid {sub_pid})"
+        if sub_pid is not None and pids and str(sub_pid) in pids:
+            others = [p for p in pids if p != str(sub_pid)]
+            note = f" (+ co-listener pid(s) {', '.join(others)})" if others else ""
+            return f"ok (held by healthy substrate pid {sub_pid}{note})"
         holder = f" held by PID(s) {', '.join(pids)}" if pids else ""
         raise DiagnosticFailure(
             "port-in-use",

@@ -208,8 +208,11 @@ const RECYCLE_EVERY = 400;
 const CLIENT_RECYCLE_SENDS = 3000;
 
 // ---- (a) SB send throughput ----
+const SEND_QUEUE = `b4-send-${Date.now()}`;
+const RT_QUEUE = `b4-rt-${Date.now()}`;
+
 async function benchSbSend() {
-  const queue = `b4-send-${Date.now()}`;
+  const queue = SEND_QUEUE;
   let client = new ServiceBusClient(SB_CS, CLI_OPTS);
   let sender = client.createSender(queue);
   const lat = [];
@@ -287,7 +290,7 @@ async function benchSbSend() {
 
 // ---- (b) SB send + receive-complete round-trip ----
 async function benchSbRoundTrip() {
-  const queue = `b4-rt-${Date.now()}`;
+  const queue = RT_QUEUE;
   // Sender and receiver live on SEPARATE clients: the sender side needs full
   // connection recycles on stall (witnessed), the receiver link must not die
   // with it.
@@ -520,6 +523,39 @@ async function benchEh() {
 
 // ---- main ----
 const substrate = await bootSubstrate();
+
+// BK-B4R fix (2026-10-22): since KD-86 (fe4a3d83, v26.10.21) the substrate
+// has real-SB entity semantics — a send to a never-created entity is refused
+// with MessagingEntityNotFound and the sender link is detached. The old
+// emulator auto-create-on-send convenience this harness relied on is gone,
+// so every send burned the 20s op timeout (BK-BQUIET's "0/2000 sends,
+// CBS-at-200" face = entity refusal churn, not link starvation). Provision
+// the queue entities over the ARM ATOM alias before measuring.
+async function provisionQueue(queue) {
+  const body = `<?xml version="1.0" encoding="utf-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"><updated>2026-10-22T00:00:00.000Z</updated><content type="application/xml">
+  <QueueDescription xmlns="http://schemas.microsoft.com/netservices/2010/01/servicebus"></QueueDescription></content></entry>`;
+  const res = await fetch(`http://127.0.0.1:${ARM}/${queue}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/atom+xml;type=entry;charset=utf-8" },
+    body,
+  });
+  if (res.status !== 200 && res.status !== 201) {
+    throw new Error(`queue PUT ${queue} -> ${res.status}`);
+  }
+  log(`provisioned queue ${queue} (${res.status})`);
+}
+
+try {
+  await provisionQueue(SEND_QUEUE);
+  await provisionQueue(RT_QUEUE);
+} catch (e) {
+  console.error("[b4] pre-provision failed", e);
+  flush();
+  killSubstrate(substrate);
+  process.exit(3);
+}
+
 try {
   emit({
     ts: new Date().toISOString(), event: "meta",

@@ -17,10 +17,9 @@
 
 import { smaltFetch } from "../smalt.js"; // SHIM-COURT: air-gap egress via smaltFetch
 import type {
-  ServiceBusClient,
+  ServiceBusReceivedMessage,
   ServiceBusSender,
   ServiceBusReceiver,
-  ServiceBusReceivedMessage,
 } from "@azure/service-bus";
 
 /** Mission telemetry event carried on the queue. */

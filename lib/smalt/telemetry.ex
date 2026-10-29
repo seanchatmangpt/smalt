@@ -263,8 +263,30 @@ defmodule Smalt.Telemetry.RollingCounters do
     # :named_table is required: bump/1 addresses the table by name from any
     # emitter process; without it the atom is a throwaway suggestion and every
     # named access raises ArgumentError (boot-order false positive).
+    # ETSAUTO (AR-DATA-01 rollout, same flag as :smalt_cosmos_ru): counters/
+    # keys only — never the Store CAS tables. update_counter semantics are
+    # identical under any write_concurrency option; :auto only changes write-
+    # lock granularity (per-scheduler sharding). Config-gated, default ON,
+    # reversible via :smalt, :ets_write_concurrency_auto -> false.
+    wc =
+      if Application.get_env(:smalt, :ets_write_concurrency_auto, true),
+        do: [write_concurrency: :auto],
+        else: []
+
+    # JA-6 / BK-28 heir parity with Monitor.Metrics (metrics.ex init/1): the
+    # 3-tuple :heir form (keyword form raises ArgumentError) hands ownership to
+    # init at the owner's death, so a mid-prune-gap RollingCounters crash no
+    # longer deletes :smalt_rolling_counters out from under parallel bump/1
+    # emitters. The stale-table delete mirrors metrics.ex BK-33: without it an
+    # heir'd table outliving its owner crashes the restarted owner with
+    # "table name already exists".
+    case :ets.info(:smalt_rolling_counters) do
+      :undefined -> :ok
+      _ -> :ets.delete(:smalt_rolling_counters)
+    end
+
     table =
-      :ets.new(:smalt_rolling_counters, [:set, :public, :named_table, write_concurrency: true])
+      :ets.new(:smalt_rolling_counters, List.flatten([:set, :public, :named_table, wc, {:heir, Process.whereis(:init), []}]))
 
     :persistent_term.put({__MODULE__, :booted}, true)
     schedule_prune()

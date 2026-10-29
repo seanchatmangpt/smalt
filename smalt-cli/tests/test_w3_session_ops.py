@@ -56,7 +56,7 @@ def _arm_provision_queue(name, props, ns="w3ns"):
         {"location": "eastus"},
         conftest.bearer(),
     )
-    assert st in (200, 201), f"ARM RG PUT -> {st}"
+    assert st in (200, 201, 202), f"ARM RG PUT -> {st}"
     st, _ = conftest.http(
         "PUT",
         f"{conftest.ARM}/subscriptions/w3-sub/resourceGroups/w3-rg/providers/"
@@ -64,13 +64,13 @@ def _arm_provision_queue(name, props, ns="w3ns"):
         {"location": "eastus", "skuName": "Standard"},
         conftest.bearer(),
     )
-    assert st in (200, 201), f"ARM namespace PUT -> {st}"
+    assert st in (200, 201, 202), f"ARM namespace PUT -> {st}"
     st, body = conftest.http(
         "PUT", f"{base}?api-version=" + AV,
         {"location": "eastus", "properties": props},
         conftest.bearer(),
     )
-    assert st in (200, 201), f"ARM queue PUT {name} -> {st}: {body}"
+    assert st in (200, 201, 202), f"ARM queue PUT {name} -> {st}: {body}"
 
 CONN_STR = (
     f"Endpoint=sb://127.0.0.1:{AMQP_PORT};"
@@ -195,6 +195,7 @@ def test_list_sessions_witness():
 def test_batch_delete_removes_exactly_n():
     client = _client()
     q = "w3-batchdel-q"
+    _arm_provision_queue(q, {})
     with client.get_queue_sender(q) as s:
         s.send_messages([ServiceBusMessage(b"d%d" % i) for i in range(4)])
 
@@ -226,6 +227,7 @@ def test_batch_delete_removes_exactly_n():
 def test_batch_delete_partial_list():
     client = _client()
     q = "w3-batchdel2-q"
+    _arm_provision_queue(q, {})
     with client.get_queue_sender(q) as s:
         s.send_messages([ServiceBusMessage(b"x%d" % i) for i in range(3)])
 

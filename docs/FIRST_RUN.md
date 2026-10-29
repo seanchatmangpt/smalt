@@ -3,7 +3,8 @@
 Zero-to-green on a fresh checkout in three commands:
 
 ```bash
-brew install elixir terraform just   # python3 ships with macOS / Xcode CLT
+brew install asdf just terraform     # python3 ships with macOS / Xcode CLT
+asdf plugin add elixir erlang && asdf install   # .tool-versions pins elixir 1.20.4-otp-29 / erlang 29.1.2 — Homebrew elixir (1.19.x) is refused by the pin
 bash scripts/bootstrap.sh            # staged [n/8]; green in ~2-5 min
 just up                              # substrate on http://localhost:9443
 ```

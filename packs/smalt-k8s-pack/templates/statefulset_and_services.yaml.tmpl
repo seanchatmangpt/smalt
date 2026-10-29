@@ -1,0 +1,294 @@
+---
+# Renders the FULL deployable k8s manifest set for one k8s:StatefulSet
+# individual: Secret(s), ConfigMap(s), headless + ClusterIP + NodePort
+# Services, and the StatefulSet itself -- from typed facts, not echoed
+# literals. Same self-contained to:/sparql:/for_each: format as
+# kubernetes-workload-pack's deployment_and_service.yaml.tmpl; same
+# raw-block reindent macro (loop split("\n"), not the `indent` filter --
+# same caution that pack documents from real gha:onBlock behavior).
+#
+# Ordering laws baked in:
+#   * env vars render in k8s:envOrder -- $(VAR) references need the
+#     referenced var EARLIER in the list (BK-SWARM typed note on the burn
+#     Deployment's env order).
+#   * Services render sorted by name; Secret/ConfigMap first (kubectl apply
+#     is order-insensitive, but consumers sourcing Secrets before the
+#     StatefulSet that mounts them is the safe fixed order).
+to: "k8s/{{ fileName }}"
+force: true
+for_each: sts
+sparql:
+  sts: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?wl ?workloadName ?fileName ?namespace ?replicas ?serviceName
+           ?podManagementPolicy ?terminationGracePeriodSeconds
+           ?podSecurityContextBlock ?podAntiAffinityBlock ?volumesBlock
+    WHERE {
+      ?wl a k8s:StatefulSet ; k8s:workloadName ?workloadName ; k8s:fileName ?fileName .
+      OPTIONAL { ?wl k8s:namespace ?namespace . }
+      OPTIONAL { ?wl k8s:replicas ?replicas . }
+      OPTIONAL { ?wl k8s:serviceName ?serviceName . }
+      OPTIONAL { ?wl k8s:podManagementPolicy ?podManagementPolicy . }
+      OPTIONAL { ?wl k8s:terminationGracePeriodSeconds ?terminationGracePeriodSeconds . }
+      OPTIONAL { ?wl k8s:podSecurityContextBlock ?podSecurityContextBlock . }
+      OPTIONAL { ?wl k8s:podAntiAffinityBlock ?podAntiAffinityBlock . }
+      OPTIONAL { ?wl k8s:volumesBlock ?volumesBlock . }
+    }
+    ORDER BY ?fileName
+  containers: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?wl ?containerName ?image ?imagePullPolicy
+           ?resourceRequestsBlock ?resourceLimitsBlock
+           ?readinessProbeBlock ?livenessProbeBlock
+           ?containerSecurityContextBlock
+           (GROUP_CONCAT(DISTINCT ?cm; separator=",") AS ?configMaps)
+    WHERE {
+      ?c a k8s:Container ; k8s:inWorkload ?wl ; k8s:containerName ?containerName .
+      OPTIONAL { ?c k8s:image ?image . }
+      OPTIONAL { ?c k8s:imagePullPolicy ?imagePullPolicy . }
+      OPTIONAL { ?c k8s:resourceRequestsBlock ?resourceRequestsBlock . }
+      OPTIONAL { ?c k8s:resourceLimitsBlock ?resourceLimitsBlock . }
+      OPTIONAL { ?c k8s:readinessProbeBlock ?readinessProbeBlock . }
+      OPTIONAL { ?c k8s:livenessProbeBlock ?livenessProbeBlock . }
+      OPTIONAL { ?c k8s:containerSecurityContextBlock ?containerSecurityContextBlock . }
+      OPTIONAL { ?c k8s:envFromConfigMap ?cm . }
+    }
+    GROUP BY ?wl ?containerName ?image ?imagePullPolicy
+             ?resourceRequestsBlock ?resourceLimitsBlock
+             ?readinessProbeBlock ?livenessProbeBlock
+             ?containerSecurityContextBlock ?volumeMountsBlock
+    ORDER BY ?wl ?containerName
+  ports: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?wl ?portName ?portNumber
+    WHERE {
+      ?p a k8s:ContainerPort ; k8s:portOfWorkload ?wl ;
+         k8s:portName ?portName ; k8s:portNumber ?portNumber .
+    }
+    ORDER BY ?wl ?portNumber
+  mounts: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?wl ?mountName ?mountPath ?mountReadOnly
+    WHERE {
+      ?m a k8s:VolumeMount ; k8s:mountOfWorkload ?wl ;
+         k8s:mountName ?mountName ; k8s:mountPath ?mountPath .
+      OPTIONAL { ?m k8s:mountReadOnly ?mountReadOnly . }
+    }
+    ORDER BY ?wl ?mountName
+  env: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?wl ?envName ?envValue ?envFieldRef ?envSecretName ?envSecretKey
+    WHERE {
+      ?e a k8s:EnvVar ; k8s:envOfWorkload ?wl ; k8s:envName ?envName ;
+         k8s:envOrder ?envOrder .
+      OPTIONAL { ?e k8s:envValue ?envValue . }
+      OPTIONAL { ?e k8s:envFieldRef ?envFieldRef . }
+      OPTIONAL { ?e k8s:envSecretName ?envSecretName . }
+      OPTIONAL { ?e k8s:envSecretKey ?envSecretKey . }
+    }
+    ORDER BY ?wl ?envOrder
+  services: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?wl ?serviceName ?serviceType ?serviceClusterIP
+    WHERE {
+      ?s a k8s:Service ; k8s:serviceForWorkload ?wl ;
+         k8s:serviceName ?serviceName ; k8s:serviceType ?serviceType .
+      OPTIONAL { ?s k8s:serviceClusterIP ?serviceClusterIP . }
+    }
+    ORDER BY ?wl ?serviceName
+  servicePorts: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?svc ?svcServiceName ?svcPortName ?svcPortNumber ?svcTargetPortName ?svcNodePort
+    WHERE {
+      ?sp a k8s:ServicePort ; k8s:svcPortOf ?svc .
+      ?svc k8s:serviceName ?svcServiceName .
+      ?sp k8s:svcPortName ?svcPortName ; k8s:svcPortNumber ?svcPortNumber ;
+          k8s:svcTargetPortName ?svcTargetPortName .
+      OPTIONAL { ?sp k8s:svcNodePort ?svcNodePort . }
+    }
+    ORDER BY ?svc ?svcPortNumber
+  secrets: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?secretName ?secretStringDataBlock
+    WHERE {
+      ?sec a k8s:Secret ; k8s:secretName ?secretName ;
+           k8s:secretStringDataBlock ?secretStringDataBlock .
+    }
+    ORDER BY ?secretName
+  configmaps: |
+    PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+    SELECT ?configMapName ?configMapDataBlock
+    WHERE {
+      ?cm a k8s:ConfigMap ; k8s:configMapName ?configMapName ;
+          k8s:configMapDataBlock ?configMapDataBlock .
+    }
+    ORDER BY ?configMapName
+---
+{%- macro reindent(text, spaces) -%}
+{%- for line in text | split(pat="\n") -%}
+{{ spaces }}{{ line }}
+{% endfor -%}
+{%- endmacro reindent -%}
+# GENERATED by ggen (smalt-k8s-pack/templates/statefulset_and_services.yaml.tmpl). Do not edit.
+# Source of truth: priv/smalt-k8s.ttl (admitted k8s:StatefulSet/Container/EnvVar/
+# ContainerPort/Service/ServicePort/Secret/ConfigMap facts). Regenerate: ggen sync run.
+{%- for sec in secrets %}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ sec.secretName }}
+  namespace: {{ namespace | default(value="default") }}
+type: Opaque
+stringData:
+{{ self::reindent(text=sec.secretStringDataBlock, spaces="  ") }}
+{%- endfor %}
+{%- for cm in configmaps %}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ cm.configMapName }}
+  namespace: {{ namespace | default(value="default") }}
+data:
+{{ self::reindent(text=cm.configMapDataBlock, spaces="  ") }}
+{%- endfor %}
+{%- for s in services | filter(attribute="wl", value=wl) %}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ s.serviceName }}
+  namespace: {{ namespace | default(value="default") }}
+{%- if s.serviceType == "ClusterIP" and s.serviceClusterIP | default(value="") == "None" %}
+  labels:
+    app: {{ workloadName }}
+{%- endif %}
+spec:
+{%- if s.serviceClusterIP | default(value="") %}
+  clusterIP: {{ s.serviceClusterIP }}
+{%- endif %}
+  selector:
+    app: {{ workloadName }}
+  ports:
+{%- for sp in servicePorts %}
+{%- if sp.svcServiceName == s.serviceName %}
+    - name: {{ sp.svcPortName }}
+      port: {{ sp.svcPortNumber }}
+      targetPort: {{ sp.svcTargetPortName }}
+{%- if sp.svcNodePort | default(value=0) %}
+      nodePort: {{ sp.svcNodePort }}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+  type: {{ s.serviceType }}
+{%- endfor %}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ workloadName }}
+  namespace: {{ namespace | default(value="default") }}
+  labels:
+    app: {{ workloadName }}
+spec:
+  serviceName: {{ serviceName }}
+  replicas: {{ replicas | default(value=1) }}
+  podManagementPolicy: {{ podManagementPolicy | default(value="OrderedReady") }}
+  selector:
+    matchLabels:
+      app: {{ workloadName }}
+  template:
+    metadata:
+      labels:
+        app: {{ workloadName }}
+    spec:
+{%- if podAntiAffinityBlock %}
+      affinity:
+        podAntiAffinity:
+{{ self::reindent(text=podAntiAffinityBlock, spaces="          ") }}
+{%- endif %}
+{%- if podSecurityContextBlock %}
+      securityContext:
+{{ self::reindent(text=podSecurityContextBlock, spaces="        ") }}
+{%- endif %}
+      terminationGracePeriodSeconds: {{ terminationGracePeriodSeconds | default(value=30) }}
+      containers:
+{%- for c in containers | filter(attribute="wl", value=wl) %}
+        - name: {{ c.containerName }}
+{%- if c.image %}
+          image: {{ c.image }}
+{%- endif %}
+{%- if c.imagePullPolicy %}
+          imagePullPolicy: {{ c.imagePullPolicy }}
+{%- endif %}
+{%- if c.containerSecurityContextBlock %}
+          securityContext:
+{{ self::reindent(text=c.containerSecurityContextBlock, spaces="            ") }}
+{%- endif %}
+{%- if ports | filter(attribute="wl", value=wl) %}
+          ports:
+{%- for p in ports | filter(attribute="wl", value=wl) %}
+            - name: {{ p.portName }}
+              containerPort: {{ p.portNumber }}
+{%- endfor %}
+{%- endif %}
+{%- if c.resourceRequestsBlock or c.resourceLimitsBlock %}
+          resources:
+{%- if c.resourceRequestsBlock %}
+            requests:
+{{ self::reindent(text=c.resourceRequestsBlock, spaces="              ") }}
+{%- endif %}
+{%- if c.resourceLimitsBlock %}
+            limits:
+{{ self::reindent(text=c.resourceLimitsBlock, spaces="              ") }}
+{%- endif %}
+{%- endif %}
+{%- if c.configMaps %}
+          envFrom:
+{%- for cmn in c.configMaps | split(pat=",") %}
+{%- if cmn %}
+            - configMapRef:
+                name: {{ cmn }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- if env | filter(attribute="wl", value=wl) %}
+          env:
+{%- for e in env | filter(attribute="wl", value=wl) %}
+            - name: {{ e.envName }}
+{%- if e.envValue | default(value="") %}
+              value: {{ e.envValue }}
+{%- elif e.envFieldRef | default(value="") %}
+              valueFrom:
+                fieldRef:
+                  fieldPath: {{ e.envFieldRef }}
+{%- elif e.envSecretName | default(value="") %}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ e.envSecretName }}
+                  key: {{ e.envSecretKey }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- if mounts | filter(attribute="wl", value=wl) %}
+          volumeMounts:
+{%- for m in mounts | filter(attribute="wl", value=wl) %}
+            - name: {{ m.mountName }}
+              mountPath: {{ m.mountPath }}
+{%- if m.mountReadOnly | default(value=false) %}
+              readOnly: true
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- if c.readinessProbeBlock %}
+          readinessProbe:
+{{ self::reindent(text=c.readinessProbeBlock, spaces="            ") }}
+{%- endif %}
+{%- if c.livenessProbeBlock %}
+          livenessProbe:
+{{ self::reindent(text=c.livenessProbeBlock, spaces="            ") }}
+{%- endif %}
+{%- endfor %}
+      volumes:
+{{ self::reindent(text=volumesBlock, spaces="        ") }}

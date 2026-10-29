@@ -1,0 +1,2 @@
+{"face":"cosmos-point-read","n":1000,"ok":1000,"errors":0,"wall_ms":640.5,"min_ms":0.489,"p50_ms":0.62,"p99_ms":1.035,"max_ms":1.621,"ops_per_sec":1561.2}
+{"face":"blob-put-1kib","n":1000,"ok":1000,"errors":0,"wall_ms":781,"min_ms":0.559,"p50_ms":0.765,"p99_ms":1.06,"max_ms":3.682,"ops_per_sec":1280.4}

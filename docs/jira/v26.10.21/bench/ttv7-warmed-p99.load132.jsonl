@@ -1,0 +1,2 @@
+{"machine":"otp29 Mac-M3-Max 16c 48GB","profile":"COLD","op":"graphlaw_guarded_cold","errors":0,"n":1000,"surface":"powl2-settlement-4step","lane":"ttv7","p50_us":7,"p95_us":42,"p99_us":137853,"max_us":584120,"reds_per_step":285.4965}
+{"machine":"otp29 Mac-M3-Max 16c 48GB","profile":"WARM","op":"graphlaw_guarded_warm","errors":0,"n":100000,"surface":"powl2-settlement-4step","lane":"ttv7","p50_us":6,"p95_us":42,"p99_us":197128,"max_us":3057891,"reds_per_step_mean":285.44926,"reds_per_step_first_half":285.345645,"reds_per_step_second_half":285.552875,"reds_drift_pct":0.073}

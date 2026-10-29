@@ -26,6 +26,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createHmac } from 'node:crypto';
+import { assertLocalUrl } from './lib/airgap.mjs'; // E7-4 dedupe (was two hand-copied functions)
 
 const WS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LIB = path.join(WS_ROOT, 'lib');
@@ -65,9 +67,13 @@ const tsconfigLib = {
     lib: ['es2022', 'dom'],
     typeRoots: [path.join(WS_ROOT, 'node_modules', '@types')],
     types: ['node'],
+    jsx: 'react-jsx',
     noEmitOnError: false,
   },
-  include: [path.join(LIB, '**', '*.ts')],
+  // COMPILE-FREEZE UNBLOCK (PAT-A lane): lib/engine now carries ambient-cord
+  // context components (useAndon.tsx); the lib leg compiles them too, so jsx
+  // must be set and *.tsx included.
+  include: [path.join(LIB, '**', '*.ts'), path.join(LIB, '**', '*.tsx')],
 };
 const libTsconfigPath = path.join(tmp, 'tsconfig.lib.json');
 fs.writeFileSync(libTsconfigPath, JSON.stringify(tsconfigLib, null, 2));
@@ -399,16 +405,7 @@ record('composition: panel rendering', 'SKIP',
 // ---------------------------------------------------------------------------
 
 {
-  // Air-gap host guard: mirrors lib/smalt.ts assertLocalUrl for this
-  // plain-node harness — only localhost smalt endpoints are reachable.
-  // Same pattern as scripts/azure-arm-probe.mjs (SHIM-COURT sibling).
-  function assertLocalUrl(url) {
-    const u = new URL(url);
-    if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname)) {
-      throw new Error(`Air-gap violation: refused non-local host "${u.hostname}"`);
-    }
-    return u;
-  }
+  // assertLocalUrl imported from scripts/lib/airgap.mjs (E7-4 dedupe).
   const armBase = process.env.SMALT_ARM_BASE || 'http://127.0.0.1:9443';
   const tenant = process.env.SMALT_TENANT || 'dev';
   const probeUrl = `${armBase}/subscriptions?api-version=2020-01-01`;
@@ -448,6 +445,118 @@ record('composition: panel rendering', 'SKIP',
 }
 
 // ---------------------------------------------------------------------------
+// Leg 4: popcorn wasm bundle — static presence + live serve check
+// ---------------------------------------------------------------------------
+
+{
+  const popcornDir = path.join(WS_ROOT, 'public', 'popcorn');
+  const needed = ['index.html', 'app.js', 'out/index.mjs', 'out/beam.wasm', 'out/otp/manifest.json'];
+  const missing = needed.filter((f) => !fs.existsSync(path.join(popcornDir, f)));
+  if (missing.length > 0) {
+    record('popcorn bundle presence', 'FAIL', `missing under public/popcorn/: ${missing.join(', ')}`);
+  } else {
+    const hostHtml = fs.readFileSync(path.join(popcornDir, 'index.html'), 'utf8');
+    const boots = hostHtml.includes('./out/index.mjs');
+    record('popcorn bundle presence', 'PASS',
+      `beam.wasm + otp manifest + host html present; host imports ./out/index.mjs: ${boots}`);
+  }
+
+  // Live leg: the iframe src must serve 200 + text/html from the running
+  // Next server (iframe boot is witnessed in-browser; here we witness the
+  // src contract the iframe depends on). SKIP when no server is listening.
+  // assertLocalUrl imported from scripts/lib/airgap.mjs (E7-4 dedupe); the
+  // air-gap rule requires fetch to take an identifier built from a localhost
+  // constant, never a string/template literal URL.
+  const port = process.env.WS_PORT || '3100';
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    await fetch(assertLocalUrl(base), { signal: AbortSignal.timeout(1500) });
+  } catch {
+    // fall through — the live fetch below carries the SKIP verdict
+  }
+  try {
+    const res = await fetch(assertLocalUrl(base + '/popcorn/index.html'), { signal: AbortSignal.timeout(3000) });
+    const ctype = res.headers.get('content-type') ?? '';
+    if (res.ok && ctype.includes('text/html')) {
+      record('live: popcorn iframe src', 'PASS', `GET ${base}/popcorn/index.html -> ${res.status} ${ctype}`);
+    } else {
+      record('live: popcorn iframe src', 'FAIL', `GET ${base}/popcorn/index.html -> ${res.status} ${ctype}`);
+    }
+  } catch (e) {
+    record('live: popcorn iframe src', 'SKIP', `no Next server on :${port} (${e.cause?.code ?? e.name}) — start one to run the live leg`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Leg 5: KD-173C ingest dev-plane gate — real server legs, both ways
+// ---------------------------------------------------------------------------
+
+{
+  const { nextDev } = await import('./lib/kd173c-harness.mjs');
+
+  const body = 'kd173c-court-payload';
+  const hmac = (key) => createHmac('sha256', key).update(body).digest('hex');
+
+  // (a) non-dev plane (SMALT_DEV_PLANE unset): default key -> typed 503.
+  const killA = await nextDev(WS_ROOT, 39751, {});
+  try {
+    const bad = await fetch(assertLocalUrl('http://127.0.0.1:39751/api/v1/ingest'), {
+      method: 'POST',
+      headers: { 'x-smalt-signature': hmac('n4-dev-key') },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+    const badBody = await bad.json().catch(() => ({}));
+    if (bad.status === 503 && badBody.error === 'dev_default_key_refused') {
+      record('live: ingest default key refused off dev plane', 'PASS', `POST /api/v1/ingest default-key sig -> ${bad.status} ${badBody.error}`);
+    } else {
+      record('live: ingest default key refused off dev plane', 'FAIL', `expected 503 dev_default_key_refused, got ${bad.status} ${JSON.stringify(badBody).slice(0, 160)}`);
+    }
+  } finally {
+    await killA();
+  }
+
+  // (b) dev plane (SMALT_DEV_PLANE=1): default key -> 202 (posture preserved).
+  const killB = await nextDev(WS_ROOT, 39752, { SMALT_DEV_PLANE: '1' });
+  try {
+    const dev = await fetch(assertLocalUrl('http://127.0.0.1:39752/api/v1/ingest'), {
+      method: 'POST',
+      headers: { 'x-smalt-signature': hmac('n4-dev-key') },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+    const devBody = await dev.json().catch(() => ({}));
+    if (dev.status === 202 && devBody.accepted === true) {
+      record('live: ingest default key admitted on dev plane', 'PASS', `POST /api/v1/ingest default-key sig (SMALT_DEV_PLANE=1) -> ${dev.status} accepted`);
+    } else {
+      record('live: ingest default key admitted on dev plane', 'FAIL', `expected 202 accepted, got ${dev.status} ${JSON.stringify(devBody).slice(0, 160)}`);
+    }
+  } finally {
+    await killB();
+  }
+
+  // (c) provisioned key (SMALT_INGEST_HMAC_KEY set, no dev plane): 202 —
+  //     the gate targets the dev-default key only, not provisioned secrets.
+  const killC = await nextDev(WS_ROOT, 39753, { SMALT_INGEST_HMAC_KEY: 'kd173c-provisioned-key' });
+  try {
+    const prov = await fetch(assertLocalUrl('http://127.0.0.1:39753/api/v1/ingest'), {
+      method: 'POST',
+      headers: { 'x-smalt-signature': hmac('kd173c-provisioned-key') },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+    const provBody = await prov.json().catch(() => ({}));
+    if (prov.status === 202 && provBody.accepted === true) {
+      record('live: ingest provisioned key admitted off dev plane', 'PASS', `POST /api/v1/ingest provisioned-key sig -> ${prov.status} accepted`);
+    } else {
+      record('live: ingest provisioned key admitted off dev plane', 'FAIL', `expected 202 accepted, got ${prov.status} ${JSON.stringify(provBody).slice(0, 160)}`);
+    }
+  } finally {
+    await killC();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 
@@ -458,5 +567,26 @@ console.log('\n# court verdict');
 console.log(`# PASS=${passes.length} FAIL=${fails.length} SKIP=${skips.length}`);
 for (const f of fails) console.log(`# FAIL: ${f.name}: ${f.detail}`);
 for (const s of skips) console.log(`# SKIP: ${s.name}: ${s.detail}`);
-fs.rmSync(tmp, { recursive: true, force: true });
+// BK-N7: the final tmp cleanup races lingering handles (just-killed next-dev
+// children can still hold fds inside the tmp symlink target walk). Retry once
+// after a bounded poll, then leave the dir loudly — never a silent leak.
+try {
+  fs.rmSync(tmp, { recursive: true, force: true });
+} catch (e) {
+  if (e.code !== 'ENOTEMPTY' && e.code !== 'EBUSY' && e.code !== 'EPERM') throw e;
+  const deadline = Date.now() + 10_000;
+  let cleaned = false;
+  while (Date.now() < deadline) {
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      cleaned = true;
+      break;
+    } catch {
+      await new Promise((r) => setImmediate(r));
+    }
+  }
+  if (!cleaned) {
+    console.error(`# CLEANUP-LEAK: ${tmp} not removable in 10s (${e.code}) — left on disk LOUD, inspect before deleting`);
+  }
+}
 process.exit(fails.length === 0 ? 0 : 1);

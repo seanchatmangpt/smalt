@@ -1,0 +1,35 @@
+# MESSAGE: smalt-k8s-pack BEAM distribution-port gate. The swarm's
+# inter-node distribution range is pinned by contract: container port
+# `erl-dist` = 9000, and ERL_AFLAGS carries
+# `-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9009`
+# (the range k8s/burn + kind NetworkPolicy/friendliness and the BK-SWARM
+# witness both rely on). A swarm StatefulSet whose facts drift the dist
+# port name/number or the aflags range renders a mesh that cannot form.
+# Any row = a refused StatefulSet.
+PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+SELECT ?s ?violation WHERE {
+  ?s a k8s:StatefulSet .
+  {
+    FILTER NOT EXISTS {
+      ?p a k8s:ContainerPort ; k8s:portOfWorkload ?s ;
+         k8s:portName "erl-dist" ; k8s:portNumber 9000 .
+    }
+    BIND("DIST_PORT_NOT_PINNED_9000" AS ?violation)
+  } UNION {
+    FILTER NOT EXISTS {
+      {
+        ?e a k8s:EnvVar ; k8s:envOfWorkload ?s ; k8s:envName "ERL_AFLAGS" ;
+           k8s:envValue ?v .
+        FILTER(REGEX(STR(?v), "inet_dist_listen_min\\s+9000") &&
+               REGEX(STR(?v), "inet_dist_listen_max\\s+9009"))
+      } UNION {
+        ?cm a k8s:ConfigMap ; k8s:configMapName "smalt-backend-env" ;
+            k8s:configMapDataBlock ?cv .
+        FILTER(REGEX(STR(?cv), "ERL_AFLAGS: .*inet_dist_listen_min 9000") &&
+               REGEX(STR(?cv), "ERL_AFLAGS: .*inet_dist_listen_max 9009"))
+      }
+    }
+    BIND("DIST_AFLAGS_RANGE_NOT_PINNED_9000_9009" AS ?violation)
+  }
+}
+ORDER BY ?s ?violation

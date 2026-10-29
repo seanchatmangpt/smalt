@@ -226,6 +226,20 @@ defmodule Smalt.Store.DetsMirror do
     {:noreply, state}
   end
 
+  # JA-11 (trap_exit risk class): if the mirror ever runs with trap_exit set
+  # (or a linked port/proc death is observed), an {:EXIT, ...} message must
+  # degrade to a logged no-op, not an unhandled-message crash — same idiom as
+  # wasm/pool.ex handle_info({:EXIT, worker, reason}, state).
+  def handle_info({:EXIT, _from, reason}, state) do
+    Logger.warning("DetsMirror: ignoring EXIT message (reason=#{inspect(reason)})")
+    {:noreply, state}
+  end
+
+  def handle_info(unexpected, state) do
+    Logger.warning("DetsMirror: unexpected message #{inspect(unexpected)}")
+    {:noreply, state}
+  end
+
   @impl true
   def handle_call(:sync, _from, state) do
     sync_all(state.dets)

@@ -98,6 +98,11 @@ defmodule Smalt.SbRules do
     end
   end
 
+  # KD-143 adversarial leg: a partially-persisted rule (properties key lost
+  # in a torn restore) is NOT a pass-through true filter — fail-closed skip,
+  # never a FunctionClauseError on the fan-out path.
+  def true_filter?(_props), do: false
+
   @doc """
   Subscription admits a message under 80/20 delivery semantics:
   - no rules (or all true-filters) -> admit;
@@ -137,6 +142,12 @@ defmodule Smalt.SbRules do
       {:ok, filter}
     end
   end
+
+  # KD-143 adversarial leg: a partially-persisted rule record (properties
+  # missing after a torn restore) must be a typed clean skip on the fan-out
+  # path, never a FunctionClauseError crash. Fail-closed per the module doc:
+  # malformed -> non-matching.
+  def compile(_props), do: {:error, :invalid_filter, "non-map rule properties"}
 
   defp unwrap_filter(%{"filter" => f} = props) when is_map(f),
     do: Map.merge(props, f)
@@ -558,6 +569,11 @@ defmodule Smalt.SbRules do
         msg2 = apply_first_action(rules, msg)
 
         queue = "#{topic}/subscriptions/#{sub_name}"
+
+        # KD-86: the subscription fan-out target is an internal emulator seam
+        # (ARM-materialized, possibly different casing) — materialize before
+        # enqueue so the KD-86 send-path gate doesn't drop rule deliveries.
+        Smalt.Amqp.QueueStore.ensure_queue(queue)
 
         {:ok, _seq} =
           Smalt.Amqp.QueueStore.enqueue(queue, msg[:body] || "",

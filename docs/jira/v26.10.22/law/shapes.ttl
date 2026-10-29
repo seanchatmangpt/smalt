@@ -1,0 +1,100 @@
+# evidentiary-document shapes (ATH-3).
+#
+# Vocabulary discipline (charter iron rule): this file is law, and it stays
+# strictly inside the constraint vocabulary BOTH law engines actually support:
+#
+#   * graphlaw (purrdf::shapes 2.0.2, via graphlaw.wasm op `shacl`):
+#       sh:minCount, sh:datatype, sh:class, sh:not, sh:in (the W3C-C probe
+#       witnessed real NotConstraintComponent / InConstraintComponent
+#       violations over the packet-4 `shacl` op)
+#   * smalt GL-2 LawCompiler (lib/smalt/powl2/law_compiler.ex):
+#       sh:minCount, sh:maxInclusive, powl:notEquals, sh:not, sh:in
+#       (sh:not / sh:in landed with W3C-C; see receipts/w3cc-acp-shapes.md)
+#
+# The intersection — and therefore this file — is sh:minCount (+ sh:targetClass,
+# sh:property, sh:path, sh:message). sh:closed and sh:pattern are NOT supported
+# by either engine's shape grammar; writing them here would be invented
+# constructs. Their SEMANTICS are enforced one layer up in rules.n3
+# (string:matches bates pattern; admissibility-by-derivation-only is the closed
+# world). Divergence registered in the ATH-3 receipt.
+#
+# Probe receipts for every claim in this file:
+#   docs/jira/v26.10.22/receipts/ath3-law-court.md
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix acp: <http://www.w3.org/ns/solid/acp#> .
+@prefix ev: <https://smalt.local/ev#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# -- Evidentiary document: four required fields (sh:minCount 1 each) --------
+
+ev:DocumentShape a sh:NodeShape ;
+  sh:targetClass ev:Document ;
+  sh:property
+    [ sh:path ev:batesId ;
+      sh:minCount 1 ;
+      sh:message "evidentiary document requires a bates identifier" ] ,
+    [ sh:path ev:sha256Digest ;
+      sh:minCount 1 ;
+      sh:message "document requires a sha256 digest" ] ,
+    [ sh:path ev:custodian ;
+      sh:minCount 1 ;
+      sh:message "document requires a custodian" ] ,
+    [ sh:path ev:matterId ;
+      sh:minCount 1 ;
+      sh:message "document requires a matterId (allowed-matter-set membership is the rules.n3 wall)" ] .
+
+# -- Matter: an admitted matter record requires a matter identifier ---------
+
+ev:MatterShape a sh:NodeShape ;
+  sh:targetClass ev:Matter ;
+  sh:property
+    [ sh:path ev:matterId ;
+      sh:minCount 1 ;
+      sh:message "matter requires a matterId" ] .
+
+# -- ACP (W3C Solid Access Control Policy) matcher shapes (W3C-C) -----------
+#
+# The ACP vocabulary is expressed with the constructs the sieve actually
+# evaluates (witnessed by probe against graphlaw.wasm purrdf::shapes 2.0.2,
+# receipts/w3cc-acp-shapes.md):
+#
+#   acp:allow      -> sh:in (acp:Read acp:Write) on the request-mode path
+#                     (InConstraintComponent, probed)
+#   acp:allOf      -> required presence: sh:minCount 1 on acp:agent and
+#                     acp:client (allOf holds iff every constraint holds;
+#                     under a sieve whose positive vocabulary is presence
+#                     constraints, allOf reduces to required presence)
+#   acp:noneOf     -> sh:not over the conflicted-class membership shape
+#                     (NotConstraintComponent, probed): the request node
+#                     must NOT carry the ev:conflictedMatter membership
+#                     marker (the ethical wall)
+#
+# ev:conflictedMatter is the conflicted-class membership marker: presence on
+# an acp:AccessRequest node = the presenter sits in the conflicted class for
+# that matter (the wall registry's derived class, rules.n3 C1).
+
+acp:PolicyShape a sh:NodeShape ;
+  sh:targetClass acp:Policy ;
+  sh:property
+    [ sh:path acp:allow ;
+      sh:minCount 1 ;
+      sh:message "ACP policy declares at least one acp:allow mode" ] .
+
+acp:AccessRequestShape a sh:NodeShape ;
+  sh:targetClass acp:AccessRequest ;
+  sh:property
+    [ sh:path acp:agent ;
+      sh:minCount 1 ;
+      sh:message "ACP allOf: presenting agent required" ] ,
+    [ sh:path acp:client ;
+      sh:minCount 1 ;
+      sh:message "ACP allOf: client required" ] ,
+    [ sh:path acp:mode ;
+      sh:in (acp:Read acp:Write) ;
+      sh:message "ACP allow: mode must be acp:Read or acp:Write" ] ;
+  sh:not
+    [ sh:property
+        [ sh:path ev:conflictedMatter ;
+          sh:minCount 1 ;
+          sh:message "ACP noneOf: presenter in the conflicted class (ethical wall)" ] ] .

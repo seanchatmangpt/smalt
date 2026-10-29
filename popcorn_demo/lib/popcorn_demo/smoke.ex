@@ -18,21 +18,24 @@ defmodule PopcornDemo.Smoke do
 
     browser? = Code.ensure_loaded?(Popcorn.JS) and function_exported?(Popcorn.JS, :run!, 2)
 
-    if browser? do
-      js =
-        """
-        () => {
-          const el = document.querySelector("#status");
-          if (el) el.textContent = #{Jason.encode!(message)};
-          return "done";
-        }
-        """
-        |> String.trim()
-
-      Popcorn.JS.run!(js)
-    end
+    if browser?, do: report(message)
 
     message
+  end
+
+  @doc "Writes a receipt string into the page's #status element (browser only)."
+  def report(message) do
+    js =
+      """
+      () => {
+        const el = document.querySelector("#status");
+        if (el) el.textContent = #{Jason.encode!(message)};
+        return "done";
+      }
+      """
+      |> String.trim()
+
+    Popcorn.JS.run!(js)
   end
 
   defp format(results) do
@@ -94,5 +97,5 @@ defmodule PopcornDemo.Smoke do
   end
 
   defp ok(label, detail), do: {:ok, label, detail}
-  defp fail(label, detail), do: {:error, label, detail}
+  defp fail(label, detail), do: {:error, label, PopcornDemo.Redact.fragment(detail)}
 end

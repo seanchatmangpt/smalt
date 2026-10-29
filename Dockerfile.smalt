@@ -1,0 +1,200 @@
+# ============================================================================
+# Dockerfile.smalt — production-honest substrate image (lane BK-IMG, v26.10.22)
+# ============================================================================
+# Multi-stage substrate image that boots the SAME boot path as `just up`
+# (`mix run --no-halt` in the project tree), with SMALT_* env configurable
+# and dev TLS material minted at ENTRYPOINT (generate-if-absent, dev cert
+# per pod; a shared secret can be mounted instead by presetting
+# SMALT_TLS_CERTFILE/KEYFILE — entrypoint then skips minting).
+#
+# Toolchain parity: laptop pins elixir 1.20.4-otp-29 / erlang 29.1.2
+# (.tool-versions); base is hexpm/elixir 1.20.4-erlang-29.1.2-alpine-3.21.9,
+# digest-pinned multi-arch index.
+#
+# Build (from repo root):
+#   docker build -f Dockerfile.smalt -t smalt-substrate \
+#     --build-arg SUBJECT_SHA=$(git rev-parse HEAD) \
+#     --build-context ash_r2rml=$HOME/ash_r2rml \
+#     --build-context ash_graphlaw=$HOME/ash_graphlaw \
+#     --build-context ggen_igniter=$HOME/ggen_igniter .
+#
+# The three sibling contexts are needed because mix deps.get validates the
+# declared path deps (ash_r2rml / ash_graphlaw / ggen_igniter — all
+# optional, dev/test-only) even in MIX_ENV=prod; they are symlinked at
+# their declared ../NAME locations and NOT compiled in prod scope.
+# ============================================================================
+
+# Multi-arch index digest for hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.21.9
+# (hub digest as of 2026-10-22).
+FROM hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.21.9@sha256:1e37e442ee792b583d37a16df4b0841296fe52539b182a5b8984dfe7368ab3d9 AS deps
+
+ARG SUBJECT_SHA
+# Same identity discipline as docker/Dockerfile(.hermetic): required 40-hex
+# subject, validated at build time, carried as a label + runtime env.
+RUN test -n "$SUBJECT_SHA" \
+      || { echo "FATAL: SUBJECT_SHA build-arg is required (pass --build-arg SUBJECT_SHA=\$(git rev-parse HEAD))" >&2; exit 1; } \
+ && echo "$SUBJECT_SHA" | grep -Eq '^[0-9a-f]{40}$'
+LABEL org.smalt.subject=${SUBJECT_SHA}
+
+# Builder-only native toolchain (discarded; never reaches runtime).
+RUN apk add --no-cache git bash make gcc musl-dev openssl
+
+ENV LANG=C.UTF-8 \
+    MIX_ENV=prod \
+    HEX_HTTP_CONCURRENCY=1 \
+    HEX_HTTP_TIMEOUT=120
+
+WORKDIR /smalt
+
+# Warm dependency layer — changes only when mix.lock moves.
+COPY mix.exs mix.lock ./
+
+# Sibling path deps as extra build contexts, symlinked where mix.exs
+# declares them (../ash_r2rml etc.). Prod scope never compiles them.
+COPY --from=ash_r2rml / /ctx/ash_r2rml
+COPY --from=ash_graphlaw / /ctx/ash_graphlaw
+COPY --from=ggen_igniter /mix.exs /mix.lock /lib /config /priv /native /ctx/ggen_igniter/
+RUN mkdir -p /sibs \
+ && ln -sfn /ctx/ash_r2rml /ash_r2rml \
+ && ln -sfn /ctx/ash_graphlaw /ash_graphlaw \
+ && ln -sfn /ctx/ggen_igniter /ggen_igniter
+
+RUN mix local.hex --force \
+ && mix local.rebar --force \
+ && mix deps.get \
+ && mix deps.compile
+
+# ---------------------------------------------------------------------------
+FROM deps AS build
+COPY lib ./lib
+COPY config ./config
+COPY priv ./priv
+COPY src ./src
+# Parity with docker/Dockerfile: --warnings-as-errors fails on pre-existing
+# warnings; plain compile is the honest current gate.
+RUN mix compile
+
+# ---------------------------------------------------------------------------
+# Runtime stage: same OTP/Elixir base so `mix run` can boot the project tree
+# (deps + _build shipped). Deliberately NOT the strip-beams prod release —
+# the mission pins the `just up` boot path (mix run --no-halt).
+# ---------------------------------------------------------------------------
+FROM hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.21.9@sha256:1e37e442ee792b583d37a16df4b0841296fe52539b182a5b8984dfe7368ab3d9 AS runtime
+
+ARG SUBJECT_SHA
+LABEL org.smalt.subject=${SUBJECT_SHA}
+
+# openssl CLI is a runtime requirement of the cert-materialization
+# entrypoint (dev cert per pod, generate-if-absent). Disclosed deviation from
+# the hermetic no-pkg-install rule — this image is the dev/buildable tier,
+# docker/Dockerfile.hermetic remains the hermetic release image.
+RUN apk add --no-cache openssl bash \
+ # Mix archives (hex.scm) live in MIX_HOME: without the hex archive the
+ # runtime `mix run` cannot resolve deps ("Could not find an SCM for
+ # dependency :bandit" — witnessed first smoke run, BK-IMG). Installed
+ # globally so the nonroot runtime user can read them.
+ && MIX_HOME=/opt/mix mix local.hex --force \
+ && MIX_HOME=/opt/mix mix local.rebar --force
+ENV MIX_HOME=/opt/mix
+
+# nonroot identity; all smalt ports are unprivileged.
+RUN addgroup -g 1000 nonroot \
+ && adduser -D -u 1000 -G nonroot -H -h /tmp nonroot
+
+# Ship the project tree the way `just up` sees it: sources + compiled deps.
+COPY --from=build --chown=1000:1000 /smalt/mix.exs /smalt/mix.lock /smalt/
+COPY --from=build --chown=1000:1000 /smalt/deps  /smalt/deps
+COPY --from=build --chown=1000:1000 /smalt/_build /smalt/_build
+COPY --from=build --chown=1000:1000 /smalt/lib /smalt/lib
+COPY --from=build --chown=1000:1000 /smalt/config /smalt/config
+COPY --from=build --chown=1000:1000 /smalt/priv /smalt/priv
+COPY --from=build --chown=1000:1000 /smalt/src /smalt/src
+
+COPY --chmod=0755 <<'ENTRYPOINT' /usr/local/bin/smalt-entrypoint
+#!/bin/bash
+# smalt substrate entrypoint: dev TLS materialization (generate-if-absent),
+# then the `just up` boot path. SMALT_* env pass through unchanged.
+set -eu
+
+CERT_DIR="${SMALT_CERT_DIR:-/smalt/.smalt/tls}"
+CA_CERT="$CERT_DIR/ca-cert.pem"
+CA_KEY="$CERT_DIR/ca-key.pem"
+LEAF="$CERT_DIR/dev-cert.pem"
+KEY="$CERT_DIR/dev-key.pem"
+mkdir -p "$CERT_DIR"
+
+# Generate-if-absent: honor mounted certs (shared-secret mode) first — if the
+# pod mounts SMALT_TLS_CERTFILE/KEYFILE, mint nothing.
+if [ -z "${SMALT_TLS_CERTFILE:-}" ] && [ ! -f "$LEAF" ] ; then
+  echo "[smalt-entrypoint] minting dev CA + leaf into $CERT_DIR"
+  openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+    -keyout "$CA_KEY" -out "$CA_CERT" \
+    -subj "/CN=smalt-dev-ca" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash" 2>/dev/null
+  openssl req -newkey rsa:2048 -sha256 -nodes \
+    -keyout "$KEY" -out "$CERT_DIR/dev-csr.pem" \
+    -subj "/CN=localhost" 2>/dev/null
+  # Temp extfile (NOT process substitution — /dev/fd process substitution
+  # fails inside the container and silently aborted the leaf mint; witnessed
+  # BK-IMG smoke 2026-10-22). OpenSSL 3.3 on alpine rejects the long-form
+  # `subjectAlternativeName` in an unsectioned extfile — use the short-form
+  # `subjectAltName` inside a named section + -extensions (also witnessed).
+  # BK-CERTSAN: SMALT_CERT_SAN_HOSTS (comma-separated) appends service-DNS
+  # SANs (headless pod FQDNs) alongside the loopback defaults; unset ->
+  # identical SAN line to pre-BK-CERTSAN.
+  SAN_EXTRA=""
+  if [ -n "${SMALT_CERT_SAN_HOSTS:-}" ]; then
+    IFS=',' read -r -a _SAN_HOSTS <<< "$SMALT_CERT_SAN_HOSTS"
+    for _h in "${_SAN_HOSTS[@]}"; do
+      _h="$(echo "$_h" | tr -d '[:space:]')"
+      [ -n "$_h" ] || continue
+      SAN_EXTRA="${SAN_EXTRA:+${SAN_EXTRA},}DNS:${_h}"
+    done
+  fi
+  SAN_LIST="DNS:localhost,IP:127.0.0.1,DNS:management.azure.com,DNS:login.microsoftonline.com${SAN_EXTRA:+,${SAN_EXTRA}}"
+  printf "[smalt_leaf]\nsubjectAltName=%s\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n" "$SAN_LIST" \
+    > "$CERT_DIR/dev-ext.cnf"
+  openssl x509 -req -sha256 -days 800 \
+    -in "$CERT_DIR/dev-csr.pem" \
+    -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial \
+    -out "$LEAF" \
+    -extfile "$CERT_DIR/dev-ext.cnf" -extensions smalt_leaf 2>/dev/null
+  rm -f "$CERT_DIR/dev-ext.cnf" "$CERT_DIR/dev-csr.pem"
+  chmod 600 "$KEY" "$CA_KEY"
+  # Fail loudly if the leaf did not materialize (never boot half-cert'd).
+  [ -f "$LEAF" ] || { echo "[smalt-entrypoint] FATAL: leaf mint failed" >&2; exit 1; }
+fi
+
+# Point smalt's env-cert source (lib/smalt/tls.ex reads these first, R90/D52)
+# at the entrypoint-minted material when not externally preset.
+export SMALT_TLS_CERTFILE="${SMALT_TLS_CERTFILE:-$LEAF}"
+export SMALT_TLS_KEYFILE="${SMALT_TLS_KEYFILE:-$KEY}"
+export SMALT_CERT_DIR="$CERT_DIR"
+export SSL_CERT_FILE="${SSL_CERT_FILE:-$CA_CERT}"
+export HOME=/tmp
+export MIX_ENV=prod
+
+# Same boot path as `just up` (justfile: `mix run --no-halt`).
+cd /smalt
+exec mix run --no-halt
+ENTRYPOINT
+
+ENV LANG=C.UTF-8 \
+    MIX_ENV=prod \
+    SMALT_BURN_SUBJECT_SHA=${SUBJECT_SHA} \
+    SMALT_CERT_DIR=/smalt/.smalt/tls \
+    SSL_CERT_FILE=/smalt/.smalt/tls/ca-cert.pem
+
+WORKDIR /smalt
+USER nonroot
+EXPOSE 9443 9444 8443 5672 5673 9545
+
+# Liveness observable: ARM control plane answers independently of data-plane
+# readiness (same contract as the hermetic image HEALTHCHECK).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -q --spider \
+        http://127.0.0.1:9443/metadata/endpoints || exit 1
+
+ENTRYPOINT ["/usr/local/bin/smalt-entrypoint"]

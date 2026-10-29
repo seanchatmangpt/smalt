@@ -296,14 +296,79 @@
     ema:receiptSemantics "logged" ; ema:capabilityOrder 30 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
 
-# -- v26.10.28 T-03 (parity lane): Event Grid read tools (31-33) -------------
+# -- v26.10.22 ERRC RAISE lane: wave-5 read tools (31-32) --------------------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cosmos.changefeed.cursor" ;
+    ema:capabilityName "Cosmos change feed cursor read" ;
+    ema:capabilityDescription "Current persisted per-container change-feed cursor (ts boundary + seen-etag pin count) — the cursor value only, NEVER advanced or written by this read." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 31 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eh.geo-dr.aliases" ;
+    ema:capabilityName "Event Hubs geo-DR aliases list" ;
+    ema:capabilityDescription "Disaster recovery alias records (alias name, primary/partner namespace ids, role_by_ns roles, provisioning state) from the Event Hubs geo-DR metadata plane." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 32 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.22 ERRC RAISE lane: wave-6 read tools (33-37) --------------------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "kv.rotationpolicy.get" ;
+    ema:capabilityName "Key Vault rotation policy get" ;
+    ema:capabilityDescription "The rotation policy recorded for one Key Vault key (lifetimeActions, attributes) — policy read only, never the key material." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 33 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "dns.zones.list" ;
+    ema:capabilityName "DNS zones list" ;
+    ema:capabilityDescription "DNS zones (Microsoft.Network/dnsZones) in one resource group — zone records and type only, never record-set data at this surface." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 34 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eg.schemaregistry.groups" ;
+    ema:capabilityName "Event Hubs schema registry groups list" ;
+    ema:capabilityDescription "Schema registry groups (group name, compatibility, schema type) from the Event Hubs schema registry plane." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 35 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "monitor.alerts.list" ;
+    ema:capabilityName "Metric alert rules list" ;
+    ema:capabilityDescription "Metric alert rules (Microsoft.Insights/metricAlerts) in one resource group — rule definitions and state, never the metric series." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 36 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "cosmos.ttl.effective" ;
+    ema:capabilityName "Cosmos effective TTL read" ;
+    ema:capabilityDescription "The effective defaultTtl (container override wins over database defaultTimeToLive; :off when neither set) for one Cosmos container — read only, never a sweep or deletion." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 37 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.28 T-03 (parity lane): Event Grid read tools (38-40) -------------
 [] a ema:Capability ; ema:capabilityOf [] ;
     ema:capabilityId "eventgrid.topics.list" ;
     ema:capabilityName "Event Grid topics list" ;
     ema:capabilityDescription "Event Grid topics and system topics registered in the substrate ARM store (id, name, properties) - bounded to 100 rows." ;
     ema:observationScope "read_only" ; ema:mutationScope "none" ;
     ema:requiresAuthority false ; ema:isReversible true ;
-    ema:receiptSemantics "logged" ; ema:capabilityOrder 31 ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 38 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
 
 [] a ema:Capability ; ema:capabilityOf [] ;
@@ -312,7 +377,7 @@
     ema:capabilityDescription "Event Grid event subscriptions (topic-scoped when a topic is named) registered in the substrate ARM store - bounded to 100 rows." ;
     ema:observationScope "read_only" ; ema:mutationScope "none" ;
     ema:requiresAuthority false ; ema:isReversible true ;
-    ema:receiptSemantics "logged" ; ema:capabilityOrder 32 ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 39 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
 
 [] a ema:Capability ; ema:capabilityOf [] ;
@@ -321,5 +386,5 @@
     ema:capabilityDescription "The most recent published Event Grid events from the substrate event store (defensive projection, bounded to 25)." ;
     ema:observationScope "read_only" ; ema:mutationScope "none" ;
     ema:requiresAuthority false ; ema:isReversible true ;
-    ema:receiptSemantics "logged" ; ema:capabilityOrder 33 ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 40 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .

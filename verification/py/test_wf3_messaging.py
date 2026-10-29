@@ -35,7 +35,7 @@ def _arm_put(arm, path, body):
     token = SmaltTokenCredential(arm).get_token().token
     r = requests.put(arm + path, json=body, params={"api-version": API},
                      headers={"Authorization": f"Bearer {token}"}, timeout=15)
-    assert r.status_code in (200, 201), f"ARM PUT {path}: {r.status_code} {r.text[:200]}"
+    assert r.status_code in (200, 201, 202), f"ARM PUT {path}: {r.status_code} {r.text[:200]}"  # 202 = LRO accepted (delayMs:0), substrate PUT-namespace semantics since the ARM LRO capability landed
 
 
 def _conn_str(amqp_port, entity=None, eh=False):

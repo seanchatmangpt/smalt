@@ -70,7 +70,6 @@ defmodule Smalt.Arm.EhArm do
 
   def namespace_face(record) when is_map(record) do
     case namespace_status(record) do
-      nil -> %{}
       status -> %{"status" => status}
     end
   end
@@ -175,8 +174,8 @@ defmodule Smalt.Arm.EhArm do
            %{
              "beginningSequenceNumber" => 0,
              "lastEnqueuedSequenceNumber" => Map.get(r, "seq", seq),
-             "lastEnqueuedOffset" => (last && last["offset"]) || nil,
-             "lastEnqueuedTimeUtc" => (last && last["enqueued"]) || nil
+             "lastEnqueuedOffset" => last["offset"] || nil,
+             "lastEnqueuedTimeUtc" => last["enqueued"] || nil
            }}
 
         nil ->

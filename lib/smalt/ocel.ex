@@ -122,7 +122,6 @@ defmodule Smalt.Ocel do
         {:ok, %{events: events, objects: objects}}
       else
         {:error, _} = err -> err
-        _ -> {:error, {:invalid_envelope, :missing_ocel_2_top_level_keys}}
       end
     else
       _ -> {:error, {:invalid_envelope, :missing_ocel_2_top_level_keys}}
@@ -135,7 +134,6 @@ defmodule Smalt.Ocel do
     for %{"name" => n} <- names, is_binary(n), do: n
   end
 
-  defp declared_names(_), do: []
 
   defp check_closure(records, declared, kind) do
     used = records |> Enum.map(& &1["type"]) |> Enum.uniq()

@@ -11,7 +11,7 @@ No lib/test edits made by this lane; git read-only (no add/commit — coordinato
 | file | owning lane / receipt |
 |---|---|
 | `scripts/naming_sweep.sh` | naming-sweep repair — allowlist pin moved 252→262 + new pins; receipts `i29-gates-postfix.md`, `i29-full-soak-b.md` (sweep rerun) |
-| `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` | KD-94 row prose edit (athena path shortened); `i29-kd-sync.md` (audit) + naming-sweep pin move above |
+| `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` | KD-94 row prose edit (legacy-client path shortened); `i29-kd-sync.md` (audit) + naming-sweep pin move above |
 | `lib/smalt/plane/integration_supervisor.ex` | AZB-17/20 plane-supervision fix (add `Smalt.Store` child); `i29-azsim-regression.md` (found the defect; fix disclosed by the owning lane) |
 | `test/azsim/plane_supervision_test.exs` | same AZB-17/20 lane; eaddrinuse flake fix paired with the supervisor fix |
 | `docs/jira/v26.10.16/sdk-results/spc-bands.md` | bench-runner lane; `i29-bench-check.md` |

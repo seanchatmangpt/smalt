@@ -48,20 +48,20 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex=>lib/smalt/registry.ex": {
       "out_template": "lib/smalt/registry.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:5951017febb2e961f0ce6fb7a346b90d98791a07aa81c6941d2a2983b1833dec"
+        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:0bc70207690d458ce72ea08c12ab26cf7d054b850a998c3f6295096986f02ea9"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex",
-      "updated_at": "2026-10-20T10:41:15.434226Z"
+      "updated_at": "2026-10-20T13:08:42.791230Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex=>lib/smalt/store_tables.ex": {
       "out_template": "lib/smalt/store_tables.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/store_tables.ex": "sha256:f7aeac8cc1c5cb36928436bc1af3aaffe04d372f7e27d939b1221e59eb30b5d0"
+        "/Users/sac/smalt/lib/smalt/store_tables.ex": "sha256:b76be04e19e006e00ec7a3d90de85e1eb8488574ec00cc1555804d32ec8605da"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex",
-      "updated_at": "2026-10-19T07:23:49.908150Z"
+      "updated_at": "2026-10-22T04:02:50.988873Z"
     },
     "/Users/sac/ggen-marketplace/packs/ash-extension-pack/templates/extension.ex.tmpl=>/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex": {
       "out_template": "/Users/sac/smalt/lib/smalt/ash_extension/generated_extension.ex",
@@ -111,11 +111,29 @@
     "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>lib/smalt/mcp/generated/mcp_descriptor.ex": {
       "out_template": "lib/smalt/mcp/generated/mcp_descriptor.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:d08907d2636d02ca7543f1477504564e8a12a64892dde8ce3857b580dbd42793"
+        "/Users/sac/smalt/lib/smalt/mcp/generated/mcp_descriptor.ex": "sha256:5c9446bdc675efa9eb602f846ce01bc2d7610244be567b2d265bff24b0457e38"
       },
       "pack_dir": null,
       "template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
-      "updated_at": "2026-10-20T12:12:32.005491Z"
+      "updated_at": "2026-10-22T12:01:15.417100Z"
+    },
+    "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>tmp/bkmcpsha_descriptor_check.ex": {
+      "out_template": "tmp/bkmcpsha_descriptor_check.ex",
+      "outputs": {
+        "/Users/sac/smalt/tmp/bkmcpsha_descriptor_check.ex": "sha256:5c9446bdc675efa9eb602f846ce01bc2d7610244be567b2d265bff24b0457e38"
+      },
+      "pack_dir": null,
+      "template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
+      "updated_at": "2026-10-22T12:30:06.818825Z"
+    },
+    "lib/smalt/mcp/gen/mcp_descriptor.ex.eex=>tmp/bkmcpskep_descriptor_check.ex": {
+      "out_template": "tmp/bkmcpskep_descriptor_check.ex",
+      "outputs": {
+        "/Users/sac/smalt/tmp/bkmcpskep_descriptor_check.ex": "sha256:5c9446bdc675efa9eb602f846ce01bc2d7610244be567b2d265bff24b0457e38"
+      },
+      "pack_dir": null,
+      "template": "lib/smalt/mcp/gen/mcp_descriptor.ex.eex",
+      "updated_at": "2026-10-22T12:24:33.840656Z"
     }
   },
   "schema_version": "1",

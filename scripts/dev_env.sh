@@ -20,15 +20,20 @@ die() { echo "[dev_env] ERROR: $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 1. SMALT_SB_SHARED_KEY — deterministic per-host dev key.
-# sha256(hostname + "smalt-dev-sb") base64-encoded (44 chars, >= 32 bytes).
+# sha256(short_hostname + "smalt-dev-sb") base64-encoded (44 chars, >= 32 bytes).
+# KD-S5/KD-W01: the host is normalized to its SHORT form (`hostname -s`,
+# domain stripped) to match the verifier's normalized derivation in
+# lib/smalt/messaging/amqp/sas_verifier.ex (dev_shared_key/0) — raw
+# `$(hostname)` on this box yields "Mac.lan" while the beam-side derivation
+# normalizes to "Mac", which is exactly the INVALID_LOCAL_SAS desync class.
 # Stable across runs so census/SDK probes and the substrate agree without a
 # shared-secret ceremony. Substrate contract (scripts/substrate.sh): it reads
-# SMALT_SB_SHARED_KEY from the environment, defaulting to the historical
-# pinned key "ws8sharedkey" when unset — source this file (or export the key
-# yourself) before `substrate.sh up` if your probes use the per-host key;
+# SMALT_SB_SHARED_KEY from the environment, defaulting to the same derivation
+# when unset — source this file (or export the key yourself) before
+# `substrate.sh up` if your probes use the per-host key;
 # see lib/smalt/messaging/amqp/connection.ex.
 # ---------------------------------------------------------------------------
-export SMALT_SB_SHARED_KEY="$(printf '%s' "$(hostname)smalt-dev-sb" | openssl dgst -sha256 -binary | base64)"
+export SMALT_SB_SHARED_KEY="$(printf '%s' "$(hostname -s)smalt-dev-sb" | openssl dgst -sha256 -binary | base64)"
 
 # ---------------------------------------------------------------------------
 # 2. SMALT_SDK_ROOT — vendored SDK node_modules convention.

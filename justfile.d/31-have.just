@@ -6,13 +6,13 @@
 # exits typed (UNSUPPORTED/typed SKIP), never a faked pass. have-install-
 # crontab PRINTS the two crontab lines — it never writes the crontab.
 
-root := justfile_directory()
-HAVE_DIR := root / "tmp" / "have"
+HAVE_ROOT := justfile_directory()
+HAVE_DIR := HAVE_ROOT / "tmp" / "have"
 
 # L1 pool saturation guard: one cycle (typed alert + dispatch request on
 # deficit, heartbeat touch). Exit 0 always — the JSON IS the verdict.
 @have-guard:
-    cd {{root}} && python3 scripts/have/pool_saturation_guard.py
+    cd {{HAVE_ROOT}} && python3 scripts/have/pool_saturation_guard.py
 
 # L2 meta watchdog (30m). Default dry-run (prints actions, executes nothing);
 # HAVE_ENFORCE=1 runs the real watchdog (RP-01 automation may sweep dead beams
@@ -20,7 +20,7 @@ HAVE_DIR := root / "tmp" / "have"
 @have-watchdog:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd "{{root}}"
+    cd "{{HAVE_ROOT}}"
     if [ "${HAVE_ENFORCE:-0}" = "1" ]; then
         echo "[HAVE-WATCHDOG] ENFORCE: live run (RP-01 automation armed)"
         exec python3 scripts/have/meta_watchdog.py
@@ -31,21 +31,21 @@ HAVE_DIR := root / "tmp" / "have"
 # Metric catalog emitter: one typed JSONL row per have_* metric (ABSENT is
 # typed, never a faked zero). Exit 0 rows emitted / 2 usage.
 @have-telemetry:
-    cd {{root}} && python3 scripts/have/telemetry.py --emit-all
+    cd {{HAVE_ROOT}} && python3 scripts/have/telemetry.py --emit-all
 
 # RP-01 — automated restart: enforced watchdog pass; its step-1 fires only on
 # a stale heartbeat (>600s) and never touches live lanes (cwd-prefix rule).
 @have-rp01:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd "{{root}}"
+    cd "{{HAVE_ROOT}}"
     echo "[HAVE-RP01] enforced meta-watchdog pass (RP-01 fires only on heartbeat deadlock)"
     exec python3 scripts/have/meta_watchdog.py
 
 # RP-02 — deterministic storage recovery probe (read-only, never repairs):
 # header inspect + strict fail-closed clean-open verify + ledger pointer.
 @have-rp02:
-    cd {{root}} && python3 scripts/have/storage_probe.py --inspect-headers --verify-clean-open --ledger-pointer
+    cd {{HAVE_ROOT}} && python3 scripts/have/storage_probe.py --inspect-headers --verify-clean-open --ledger-pointer
 
 # RP-03 — OCEL referential-integrity recovery audit: validate the newest
 # *.ocel.json burn projection (dangling relationship objectIds). Typed SKIP
@@ -54,7 +54,7 @@ HAVE_DIR := root / "tmp" / "have"
 @have-rp03:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd "{{root}}"
+    cd "{{HAVE_ROOT}}"
     log="$(ls -t docs/jira/*/burn/**/*.ocel.json docs/jira/*/burn/*.ocel.json tmp/ocel/*.ocel.json 2>/dev/null | head -1 || true)"
     if [ -z "${log:-}" ]; then
         echo "[HAVE-RP03] [SKIP] no *.ocel.json projection found (docs/jira/*/burn, tmp/ocel) — audit surface empty"
@@ -69,7 +69,7 @@ HAVE_DIR := root / "tmp" / "have"
 @have-rp04:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd "{{root}}"
+    cd "{{HAVE_ROOT}}"
     log="$(ls -t docs/jira/*/burn/**/*.ocel.json docs/jira/*/burn/*.ocel.json tmp/ocel/*.ocel.json 2>/dev/null | head -1 || true)"
     log2="${log:-}"
     if [ -z "${log2}" ]; then
@@ -84,7 +84,7 @@ HAVE_DIR := root / "tmp" / "have"
 @have-status:
     #!/usr/bin/env bash
     set -uo pipefail
-    cd "{{root}}"
+    cd "{{HAVE_ROOT}}"
     echo "== HAVE status @ $(date -u +%Y-%m-%dT%H:%M:%SZ) =="
     echo "-- telemetry snapshot --"
     python3 scripts/have/telemetry.py --emit-all || echo "[HAVE-STATUS] telemetry emitter failed (typed rows above)"
@@ -127,7 +127,7 @@ HAVE_DIR := root / "tmp" / "have"
 @have-install-crontab:
     #!/usr/bin/env bash
     set -euo pipefail
-    ROOT="{{root}}"
+    ROOT="{{HAVE_ROOT}}"
     cat <<EOF
     # HAVE loops — add with 'crontab -e'. Print-only recipe; nothing was installed.
     */5 * * * * cd $ROOT && python3 scripts/have/pool_saturation_guard.py >> $ROOT/tmp/have/cron.log 2>&1

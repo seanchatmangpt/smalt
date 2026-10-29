@@ -24,9 +24,24 @@ defmodule Smalt.Telemetry.OcelNdjson do
     * Object-reference closure: every relationship `objectId` must
       reference an object present in the SAME assembled document — a
       dangling reference is a typed refusal, never a silent admit.
+
+  ## PROV-O Agent chain (GAP-6a)
+
+  `append/3` accepts an `:agent` opt (a neutral, domain-blind agent id,
+  e.g. `urn:smalt:agent:<session>`): the agent rides as a first-class
+  OCEL object of type `eo:Agent` (PROV-O `prov:Agent` mapped onto OCEL
+  2.0's object-type vocabulary), and the event carries the association as
+  a relationship with qualifier `prov:wasAssociatedWith` (the existing
+  `objectId`/`qualifier` relationship shape). `agent_chain_violations/1`
+  adjudicates an assembled document: any `prov:wasAssociatedWith`
+  relationship whose target is absent or not an `eo:Agent` is a typed
+  violation — tampered lines fail downstream, never silently admit.
   """
 
   require Logger
+
+  @agent_object_type "eo:Agent"
+  @agent_qualifier "prov:wasAssociatedWith"
 
   @line_keys ~w(ocel:objectTypes ocel:eventTypes ocel:events ocel:objects)
   @default_dir Path.join("tmp", "ocel")
@@ -40,6 +55,12 @@ defmodule Smalt.Telemetry.OcelNdjson do
   complete OCEL 2.0 document line. Gates the event type through
   `Smalt.Ocel.EventRegistry` — unknown types are logged and dropped
   (`{:ok, :dropped}`), never raised. Returns `{:ok, path}` on append.
+
+  Opts:
+
+    * `:agent` — responsible-agent id for the event (GAP-6a chain). When
+      set, the agent is injected as an `eo:Agent` object and the event
+      gains a `prov:wasAssociatedWith` relationship to it.
   """
   @spec append(map(), [map()], keyword()) ::
           {:ok, String.t()} | {:ok, :dropped} | {:error, term()}
@@ -49,6 +70,8 @@ defmodule Smalt.Telemetry.OcelNdjson do
     if Smalt.Ocel.EventRegistry.event_type?(type) do
       dir = Keyword.get(opts, :dir) || Application.get_env(:smalt, :ocel_dir, @default_dir)
       path = Path.join(dir, Keyword.get(opts, :file, @default_file))
+
+      {event, objects} = apply_agent(event, objects, Keyword.get(opts, :agent))
 
       line =
         %{
@@ -70,6 +93,65 @@ defmodule Smalt.Telemetry.OcelNdjson do
     end
   rescue
     e -> {:error, {:append_failed, Exception.message(e)}}
+  end
+
+  @doc """
+  The `eo:Agent` object for an agent id (PROV-O `prov:Agent` mapped onto
+  OCEL 2.0's object-type vocabulary), per the sink's object conventions.
+  """
+  @spec agent_object(String.t()) :: map()
+  def agent_object(agent_id) when is_binary(agent_id) do
+    %{"id" => agent_id, "type" => @agent_object_type}
+  end
+
+  @doc """
+  The `prov:wasAssociatedWith` relationship (Activity→Agent) for an agent
+  id, per the sink's `objectId`/`qualifier` relationship shape.
+  """
+  @spec agent_relationship(String.t()) :: map()
+  def agent_relationship(agent_id) when is_binary(agent_id) do
+    %{"objectId" => agent_id, "qualifier" => @agent_qualifier}
+  end
+
+  # Agent injection: idempotent — an already-present agent object or
+  # association relationship is never duplicated.
+  defp apply_agent(event, objects, nil), do: {event, objects}
+
+  defp apply_agent(event, objects, agent_id) when is_binary(agent_id) do
+    agent_obj = agent_object(agent_id)
+
+    objects =
+      if Enum.any?(objects, &(&1["id"] == agent_id)),
+        do: objects,
+        else: objects ++ [agent_obj]
+
+    rel = agent_relationship(agent_id)
+
+    event =
+      Map.update(event, "relationships", [rel], fn rels ->
+        if Enum.any?(rels, &(&1 == rel)), do: rels, else: rels ++ [rel]
+      end)
+
+    {event, objects}
+  end
+
+  @doc """
+  Adjudicates an ASSEMBLED document's agent chains (GAP-6a): every
+  `prov:wasAssociatedWith` relationship must target a present object of
+  type `eo:Agent`. Returns one typed violation per breach; `[]` = clean.
+  """
+  @spec agent_chain_violations(map()) :: [map()]
+  def agent_chain_violations(%{"ocel:events" => events, "ocel:objects" => objects}) do
+    agent_ids = MapSet.new(for %{"id" => id, "type" => @agent_object_type} <- objects, do: id)
+
+    for event <- events,
+        %{"objectId" => oid, "qualifier" => @agent_qualifier} <- event["relationships"] || [],
+        oid not in agent_ids do
+      %{
+        path: "$.ocel:events[id:#{Map.get(event, "id")}].relationships",
+        reason: "association targets missing or non-eo:Agent object: #{inspect(oid)}"
+      }
+    end
   end
 
   @doc """

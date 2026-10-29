@@ -1,0 +1,22 @@
+# MESSAGE: smalt-k8s-pack swarm anti-affinity gate. A multi-replica
+# k8s:StatefulSet with NO podAntiAffinityBlock is the exact failure
+# BK-SWARM's burn-Deployment leg witnessed: required anti-affinity packed
+# both replicas onto the single burn node and the workload refused to
+# schedule. A replica>1 StatefulSet must bind k8s:podAntiAffinityBlock
+# whose content actually says podAntiAffinity scheduling (weight or
+# requiredDuringScheduling) -- a block that names neither is a dead fact,
+# not hardening. Any row = a refused StatefulSet.
+PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+SELECT ?s ?violation WHERE {
+  ?s a k8s:StatefulSet ; k8s:replicas ?r .
+  FILTER(?r > 1)
+  {
+    FILTER NOT EXISTS { ?s k8s:podAntiAffinityBlock ?b }
+    BIND("ANTIAFFINITY_MISSING" AS ?violation)
+  } UNION {
+    ?s k8s:podAntiAffinityBlock ?b .
+    FILTER(!REGEX(STR(?b), "podAntiAffinity|requiredDuringScheduling|preferredDuringScheduling"))
+    BIND("ANTIAFFINITY_BLOCK_INERT" AS ?violation)
+  }
+}
+ORDER BY ?s ?violation

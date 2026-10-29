@@ -266,4 +266,110 @@ rm -f "$TS_SUBJECT8" "$PY_SUBJECT8"
 # Explicit scratch sweep (EXIT trap is clobbered by with_shim's own traps).
 rm -f "$VERIF_TS"/.shim_court_subject* "$VERIF_PY"/.shim_court_subject*
 
-printf '[PASS] sleep_gate court: clean PASSES, injected sleep REFUSED (test + lib + burn + dual-naming + verification TS/PY + py-allowlist + dual-tree), restore byte-exact\n'
+# ---------------------------------------------------------------------------
+# W5-G legs 9-11: popcorn_demo roots are IN jurisdiction (were OUT: the
+# compliance sweep proved the scan roots missed the Chicago testbed while it
+# carries real sleep primitives). Subjects are dotfile scratch files in the
+# real roots, rm'd after every leg.
+# ---------------------------------------------------------------------------
+POPCORN_LIB="$(cd "$(dirname "$GATE")/.." && pwd)/popcorn_demo/lib"
+POPCORN_SCRIPTS="$(cd "$(dirname "$GATE")/.." && pwd)/popcorn_demo/scripts"
+[ -d "$POPCORN_LIB" ] || shim_court_skip "popcorn_demo/lib absent — popcorn legs unverifiable"
+[ -d "$POPCORN_SCRIPTS" ] || shim_court_skip "popcorn_demo/scripts absent — popcorn legs unverifiable"
+export POPCORN_LIB POPCORN_SCRIPTS GATE
+
+# --- Leg 9: popcorn lib routing + function-level annotation — a sleep under
+# an annotated defp (poll_lro form) PASSES via the popcorn_demo/lib mapping;
+# an unclassified injection is REFUSED and NAMED with its popcorn path.
+PC_LIB_SUBJECT="$POPCORN_LIB/.shim_court_subject_pc.exs"
+export PC_LIB_SUBJECT
+
+printf '# W5-G shim-court scratch popcorn lib subject (deleted by court)\n' > "$PC_LIB_SUBJECT"
+printf '# SLEEP-CLASS: POLL-STEP\ndefp poll_lro(x) do\n  Process.sleep(10)\nend\ndefp plain(x) do\n  x\nend\n' >> "$PC_LIB_SUBJECT"
+
+pc_lib_before() { python3 "$GATE" "$PC_LIB_SUBJECT" >/dev/null; }
+pc_lib_after() {
+    local out
+    if out="$(python3 "$GATE" "$PC_LIB_SUBJECT" 2>&1)"; then
+        echo "[FAIL] gate ACCEPTED unclassified popcorn lib sleep — VACUOUS GATE" >&2
+        return 1
+    fi
+    echo "$out" | grep -q "popcorn_demo/lib" || {
+        echo "[FAIL] verdict does not name the popcorn_demo/lib path" >&2
+        return 1
+    }
+    echo "$out" | grep -q "Process.sleep(20)" || {
+        echo "[FAIL] verdict does not name Process.sleep(20)" >&2
+        return 1
+    }
+    return 0
+}
+
+apply_shim() {
+    printf 'Process.sleep(20) # SHIM-COURT unclassified popcorn lib sleep\n' >> "$SHIM_FILE"
+}
+
+with_shim "$PC_LIB_SUBJECT" "$(declare -f pc_lib_before); pc_lib_before" "$(declare -f pc_lib_after); pc_lib_after"
+rm -f "$PC_LIB_SUBJECT"
+
+# --- Leg 10: popcorn shell classification — annotated `sleep 2` (popcorn_suite
+# bounded-poll form) PASSES; a bare injected `sleep 1` is REFUSED and NAMED.
+PC_SH_SUBJECT="$POPCORN_SCRIPTS/.shim_court_subject_pc.sh"
+export PC_SH_SUBJECT
+
+printf '#!/usr/bin/env bash\n# W5-G shim-court scratch popcorn shell subject (deleted by court)\n' > "$PC_SH_SUBJECT"
+
+pc_sh_before() { python3 "$GATE" "$PC_SH_SUBJECT" >/dev/null; }
+pc_sh_after() {
+    local out
+    if out="$(python3 "$GATE" "$PC_SH_SUBJECT" 2>&1)"; then
+        echo "[FAIL] gate ACCEPTED bare popcorn shell sleep 1 — VACUOUS GATE" >&2
+        return 1
+    fi
+    echo "$out" | grep -q "sleep 1" || {
+        echo "[FAIL] verdict does not name sleep 1" >&2
+        return 1
+    }
+    return 0
+}
+
+apply_shim() {
+    printf 'sleep 1 # SHIM-COURT bare popcorn shell sleep\n' >> "$SHIM_FILE"
+}
+
+with_shim "$PC_SH_SUBJECT" "$(declare -f pc_sh_before); pc_sh_before" "$(declare -f pc_sh_after); pc_sh_after"
+rm -f "$PC_SH_SUBJECT"
+
+# --- Leg 11: popcorn mjs poll-loop law — a setTimeout inside a bounded poll
+# loop (Date.now() deadline + observable check) PASSES; a bare top-level
+# setTimeout injected after the loop is REFUSED and NAMED.
+PC_MJS_SUBJECT="$POPCORN_SCRIPTS/.shim_court_subject_pc.mjs"
+export PC_MJS_SUBJECT
+
+printf '// W5-G shim-court scratch popcorn mjs subject (deleted by court)\n' > "$PC_MJS_SUBJECT"
+printf 'const start = Date.now();\nwhile (Date.now() - start < 90000) {\n  if (check()) break;\n  await new Promise((r) => setTimeout(r, 500));\n}\n' >> "$PC_MJS_SUBJECT"
+
+pc_mjs_before() { python3 "$GATE" "$PC_MJS_SUBJECT" >/dev/null; }
+pc_mjs_after() {
+    local out
+    if out="$(python3 "$GATE" "$PC_MJS_SUBJECT" 2>&1)"; then
+        echo "[FAIL] gate ACCEPTED bare mjs setTimeout — VACUOUS GATE" >&2
+        return 1
+    fi
+    echo "$out" | grep -q "setTimeout(100)" || {
+        echo "[FAIL] verdict does not name setTimeout(100)" >&2
+        return 1
+    }
+    return 0
+}
+
+apply_shim() {
+    printf 'setTimeout(100); // SHIM-COURT bare mjs sleep\n' >> "$SHIM_FILE"
+}
+
+with_shim "$PC_MJS_SUBJECT" "$(declare -f pc_mjs_before); pc_mjs_before" "$(declare -f pc_mjs_after); pc_mjs_after"
+rm -f "$PC_MJS_SUBJECT"
+
+rm -f "$POPCORN_LIB"/.shim_court_subject* "$POPCORN_SCRIPTS"/.shim_court_subject*
+
+printf '[PASS] sleep_gate court: clean PASSES, injected sleep REFUSED (test + lib + burn + dual-naming + verification TS/PY + py-allowlist + dual-tree + popcorn lib/sh/mjs), restore byte-exact\n'

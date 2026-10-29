@@ -320,7 +320,9 @@ defmodule Smalt.Enclave.Engine do
           {:error, apply_failure(label, type, status, conn)}
       end
     else
-      {:error, _} = err -> err
+      # arm_target/4 never returns an error tuple (unknown attrs raise
+      # KeyError); the only else value is :error from arm_type/1.
+      :error -> {:error, {:unknown_resource_type, type, label}}
     end
   end
 

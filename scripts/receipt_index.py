@@ -12,6 +12,7 @@ format and standing logic.
 
 Usage: python3 scripts/receipt_index.py
 """
+import datetime
 import os
 import re
 
@@ -39,8 +40,16 @@ STANDING_TOKENS = [
 EVIDENCE_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
+        # BK-SUSP2: true exit statuses recorded as EXIT=0 / RC=0 / rc=N were
+        # regex-invisible (the patterns required a space after "exit"), typing
+        # 31 real-evidence receipts SUSPECT-PERMANENT. Accept the real
+        # spellings; still NO bare numbers (no vacuous widening — a receipt
+        # with zero exit-status tokens anywhere stays SUSPECT).
         r"\bexit (code|status)?\s*[:=]?\s*\d",
         r"\bexit\b\s+\d",
+        r"\bEXIT\s*=\s*\d",
+        r"\bRC\s*=\s*\d",
+        r"\bexit\s+code\s+\d",
         r"\d+\s+(tests?|examples?|probes?|checks?)\b",
         r"\d+\s+passed",
         r"\d+\s+failures?",
@@ -55,12 +64,48 @@ EVIDENCE_PATTERNS = [
 ]
 
 STATUS_LINE = re.compile(r"(status|standing|verdict|result|outcome)", re.IGNORECASE)
-# Explicit standing line, the receipts' own convention: "**Standing:** TOKEN".
+# Explicit standing line — the ONE canonical contract (BK-WPARSE, one
+# definition shared with scripts/witness_all.py, which imports it).
+#
+# Accepted line shapes (label "Standing", case-insensitive; "Status"/"Verdict"/
+# "Result" prose lines are NOT the standing field and stay non-explicit):
+#
+#   [bullet or heading]?  **Standing**  [:|=]  **TOKEN**  prose...
+#
+#   - Standing: ALIVE
+#   - **Standing:** ALIVE — prose
+#   - **Standing**: ALIVE
+#   - ## Standing: PARTIAL_ALIVE
+#   - Standing: **PARTIAL_ALIVE** — prose
+#
+# The value's markdown emphasis (`*`/`_`/backticks) is stripped before token
+# lookup, so `**Standing:** **ALIVE**` yields ALIVE, never `*`. NO vacuous
+# widening: a line still must carry a STANDING_TOKEN, and the field label must
+# literally be "standing" — a prose sentence mentioning standing ("standing
+# remains PARTIAL_ALIVE") is not a field line.
+#
 # SHIM-COURT-free lane edit (R185k): an explicit Standing line outranks any
 # generic status-word match, so a later "verdict PASS." prose line cannot
 # degrade a PARTIAL_ALIVE receipt. Last explicit Standing wins (r133's
 # correction semantics: the resolution Standing line is authoritative).
-EXPLICIT_STANDING = re.compile(r"^\s*[-*]?\s*\**\s*standing\s*:\**", re.IGNORECASE)
+STANDING_LINE_RE = re.compile(
+    r"^\s*(?:[-*]\s+|#+\s+)*"          # optional bullet(s) / markdown heading
+    r"(?:\*\*)?\s*standing\s*(?:\*\*)?\s*[:=]\s*"   # label, bold optional, : or =
+    r"(.+)$",
+    re.IGNORECASE,
+)
+EMPHASIS_RE = re.compile(r"^[`\*_\s]+|[`\*_\s]+$")
+
+
+def strip_emphasis(s):
+    return EMPHASIS_RE.sub("", s.strip())
+
+
+def standing_field_value(line):
+    """The de-emphasized value of a canonical Standing field line, else None."""
+    m = STANDING_LINE_RE.match(line)
+    # interior emphasis pairs too: `**ALIVE** (prose)` -> `ALIVE (prose)`
+    return strip_emphasis(m.group(1).replace("**", "")) if m else None
 
 
 def extract_standing(text):
@@ -71,19 +116,33 @@ def extract_standing(text):
     # match only when no explicit Standing line exists.
     explicit = None
     generic = None
+    in_fence = False
     for line in text.splitlines():
+        # BK-EXART: fenced code blocks carry EMBEDDED EVIDENCE (verbatim tool
+        # output), never the receipt's own verdict. Skip fence contents when
+        # scanning for the standing line — otherwise a `key=value` tool-output
+        # line like `standing=ALIVE, cells=14 ... exit=0` over-matches
+        # (bk146r artifact, BK-STAND4 typed residue). Non-vacuous: a receipt
+        # whose ONLY standing-like token sits inside a fence still parses
+        # standing-less (the BK-WPARSE probe class is preserved).
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         if not any(t in line for t in STANDING_TOKENS):
             continue
-        if EXPLICIT_STANDING.match(line):
+        if standing_field_value(line) is not None:
             explicit = line
         elif STATUS_LINE.search(line):
             generic = line
     match = explicit if explicit is not None else generic
     if match is None:
         return "UNKNOWN", ""
+    clean = strip_emphasis(match.replace("**", ""))
     for tok in STANDING_TOKENS:
-        if tok in match:
-            return tok, match.strip()[:160]
+        if tok in clean:
+            return tok, clean[:160]
     return "UNKNOWN", ""
 
 
@@ -133,7 +192,16 @@ def scan(d, version, out_root):
         # RECEIPT_CONTEXT_LAW.md (v26.10.17): every receipt names its run context.
         # Context-less receipts flag **NO-CONTEXT** (advisory, not SUSPECT — the
         # law grandfathers pre-law receipts until next touch).
-        if re.search(r"^Context:\s*(solo|pair\(|slice\(|full)", text, re.M) is None:
+        # Context may be a standalone line, a markdown bullet ("- **Context**:
+        # solo"), or a mid-line field ("· Context: pair (GL-CONF lane …)") —
+        # the old ^Context: + pair\( pattern missed both forms (CTXFILL-2).
+        if (
+            re.search(
+                r"\bContext\*?\**\s*:\s*\**\s*(solo|pair|slice|full)\b",
+                text,
+            )
+            is None
+        ):
             context_flag = " **NO-CONTEXT**"
         else:
             context_flag = ""
@@ -312,7 +380,9 @@ def render_index_short(receipts, sdk, suspects, today):
 
 
 def main():
-    today = "2026-10-15"
+    # Dynamic date (CTXFILL-2): the old hardcoded "2026-10-15" leaked a stale
+    # generation date into every regenerated RECEIPTS.md/INDEX.md header.
+    today = datetime.date.today().isoformat()
 
     # Scan every window, rows tagged with their window.
     per_window = {}

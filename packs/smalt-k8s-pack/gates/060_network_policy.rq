@@ -1,0 +1,29 @@
+# MESSAGE: smalt-k8s-pack network-policy gate (NIST W1, SC-7). A workload with
+# no NetworkPolicy at all, or only default-deny policies with NO allow rule,
+# admits no traffic plan at all / a plan that cannot actually pass traffic.
+# Default-deny is the base posture; an allow rule (k8s:npRulesBlock non-empty
+# carrying a from:/to: source and a port face) is what admits traffic. Any
+# row = a refused workload.
+PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+SELECT ?wl ?violation WHERE {
+  { ?wl a k8s:StatefulSet } UNION { ?wl a k8s:Workload }
+  ?wl k8s:workloadName ?name .
+  {
+    FILTER NOT EXISTS { ?np a k8s:NetworkPolicy ; k8s:npForWorkload ?wl . }
+    BIND("NETPOL_MISSING" AS ?violation)
+  } UNION {
+    FILTER NOT EXISTS {
+      ?np2 a k8s:NetworkPolicy ; k8s:npForWorkload ?wl ;
+           k8s:npRulesBlock ?r .
+      FILTER(STRLEN(STR(?r)) > 0)
+    }
+    BIND("NETPOL_DENY_ONLY_NO_ALLOW_RULE" AS ?violation)
+  } UNION {
+    ?np3 a k8s:NetworkPolicy ; k8s:npForWorkload ?wl ;
+         k8s:npRulesBlock ?r3 .
+    FILTER(STRLEN(STR(?r3)) > 0)
+    FILTER(!REGEX(STR(?r3), "from:|to:"))
+    BIND("NETPOL_ALLOW_RULE_NO_PEER" AS ?violation)
+  }
+}
+ORDER BY ?wl ?violation

@@ -155,16 +155,25 @@ defmodule Smalt.Affidavit.WasmEngine do
   Returns `{:ok, response :: binary()}` or `{:error, :engine_unavailable}`
   when the engine is not running. Never raises.
   """
-  @spec call(pid() | nil, binary()) :: {:ok, binary()} | {:error, :engine_unavailable}
-  def call(pid \\ nil, request)
+  @spec call(pid() | nil, binary()) ::
+          {:ok, binary()} | {:error, :engine_unavailable} | {:error, :engine_busy}
+  def call(pid \\ nil, request, timeout_ms \\ 5_000)
 
-  def call(nil, _request), do: @engine_unavailable
+  def call(nil, _request, _timeout_ms), do: @engine_unavailable
 
-  def call(pid, request) when is_binary(request) do
+  # SPOF-3.2 fix (v26.10.22): a GenServer.call timeout exit is the BUSY class
+  # (engine live, serialized server occupied past the caller's timeout) —
+  # retryable — distinct from :engine_unavailable (engine down / wedged).
+  # Non-timeout exits (server death mid-call) stay :engine_unavailable.
+  # `timeout_ms` is the caller's own GenServer.call budget (default 5000,
+  # the pre-fix implicit value); it exists so courts and callers can take a
+  # tight busy-class budget without changing the default contract.
+  def call(pid, request, timeout_ms) when is_binary(request) and is_integer(timeout_ms) do
     if Process.whereis(__MODULE__) do
       try do
-        GenServer.call(__MODULE__, {:call, pid, request})
+        GenServer.call(__MODULE__, {:call, pid, request}, timeout_ms)
       catch
+        :exit, {:timeout, _} -> {:error, :engine_busy}
         :exit, _ -> @engine_unavailable
       end
     else
@@ -172,7 +181,7 @@ defmodule Smalt.Affidavit.WasmEngine do
     end
   end
 
-  def call(_pid, _request), do: @engine_unavailable
+  def call(_pid, _request, _timeout_ms), do: @engine_unavailable
 
   @doc """
   Admit a canonical-JSON receipt through the in-process C-ABI export
@@ -190,11 +199,13 @@ defmodule Smalt.Affidavit.WasmEngine do
           {:ok, binary()}
           | {:error, {:seal_refused, non_neg_integer()}}
           | {:error, :engine_unavailable}
+          | {:error, :engine_busy}
   def affi_admit_and_seal(canonical) when is_binary(canonical) do
     case call_admit_and_seal(canonical, 0, 1, %{}) do
       {:ok, %{ctrt_bytes: ctrt}} -> {:ok, ctrt}
       {:error, {:seal_refused, _}} = err -> err
       {:error, :invariant_violation} -> {:error, {:seal_refused, 0xE001}}
+      {:error, :engine_busy} -> {:error, :engine_busy}
       _ -> @engine_unavailable
     end
   end
@@ -245,6 +256,7 @@ defmodule Smalt.Affidavit.WasmEngine do
         try do
           GenServer.call(__MODULE__, {:seal, delta, tariff, modality, lease})
         catch
+          :exit, {:timeout, _} -> {:error, :engine_busy}
           :exit, _ -> @engine_unavailable
         end
       else
@@ -261,12 +273,13 @@ defmodule Smalt.Affidavit.WasmEngine do
   — the module answers, never traps). Used by W5's assemble/verify
   wrapper. `call/2` remains for positional-pid compatibility.
   """
-  @spec call_json(binary()) :: {:ok, binary()} | {:error, :engine_unavailable}
+  @spec call_json(binary()) :: {:ok, binary()} | {:error, :engine_unavailable} | {:error, :engine_busy}
   def call_json(request) when is_binary(request) do
     if Process.whereis(__MODULE__) do
       try do
         GenServer.call(__MODULE__, {:call, self(), request})
       catch
+        :exit, {:timeout, _} -> {:error, :engine_busy}
         :exit, _ -> @engine_unavailable
       end
     else
@@ -433,11 +446,30 @@ defmodule Smalt.Affidavit.WasmEngine do
     @engine_unavailable
   end
 
+  # SPOF-3.1 fix (v26.10.22): the input block from af_alloc(len) is leased for
+  # exactly one request and freed on EVERY path (success, af_call error/trap,
+  # write/read failure) via try/after. Pre-fix, the input ptr leaked on every
+  # call and delta_ptr leaked on every seal — after the guest's ~256MiB
+  # outstanding budget (GWS-11) every af_alloc returned 0 and the singleton
+  # engine wedged on :engine_unavailable until restart.
   defp run_request(request, %{instance: instance, store: store, memory: memory}) do
     len = byte_size(request)
 
-    with {:ok, [ptr]} when ptr != 0 <- Wasmex.call_function(instance, "af_alloc", [len]),
-         :ok <- write_mem(store, memory, ptr, request),
+    case Wasmex.call_function(instance, "af_alloc", [len]) do
+      {:ok, [ptr]} when ptr != 0 ->
+        try do
+          execute_request(instance, store, memory, ptr, len, request)
+        after
+          free_block(instance, ptr, len)
+        end
+
+      {:ok, [0]} -> @engine_unavailable
+      _ -> @engine_unavailable
+    end
+  end
+
+  defp execute_request(instance, store, memory, ptr, len, request) do
+    with :ok <- write_mem(store, memory, ptr, request),
          {:ok, [packed]} <- Wasmex.call_function(instance, "af_call", [ptr, len]),
          # SHIM-COURT unblock (lane605): packed = (out_ptr << 32) | out_len —
          # out_ptr IS the high word; re-shifting left after the right-shift
@@ -445,8 +477,8 @@ defmodule Smalt.Affidavit.WasmEngine do
          # "out of bounds memory access", out_ptr 4.78e15).
          out_ptr <- Bitwise.>>>(packed, 32),
          out_len <- Bitwise.band(packed, 0xFFFFFFFF),
-         response <- read_mem(store, memory, out_ptr, out_len),
-         :ok <- free_out(instance, out_ptr, out_len) do
+         response <- read_mem(store, memory, out_ptr, out_len) do
+      free_block(instance, out_ptr, out_len)
       {:ok, response}
     else
       {:ok, [0]} -> @engine_unavailable
@@ -474,17 +506,21 @@ defmodule Smalt.Affidavit.WasmEngine do
     end
   end
 
-  defp free_out(instance, out_ptr, out_len) do
-    case Wasmex.call_function(instance, "af_free", [out_ptr, out_len]) do
-      {:ok, _} -> :ok
-      _ -> :error
-    end
+  # af_free best-effort: a failed free (e.g. post-trap dead instance) is not
+  # signalable — the supervised restart owns the wedged-instance class.
+  defp free_block(instance, ptr, len) do
+    _ = Wasmex.call_function(instance, "af_free", [ptr, len])
+    :ok
   end
 
   @ctrt_bytes 352
 
   # affi_admit_and_seal(delta_ptr, delta_len, tariff_cents, modality,
   #   out_ctrt_ptr) -> u32 machine code; 0x0000 = sealed.
+  #
+  # SPOF-3.1 fix: BOTH guest blocks (delta and out_ctrt) are freed on every
+  # path — nested try/after so a mid-seal failure (nonzero machine code,
+  # invariant refusal, read failure, trap) still returns both blocks.
   defp run_seal(delta, tariff, modality, lease, %{
          instance: instance,
          store: store,
@@ -492,12 +528,47 @@ defmodule Smalt.Affidavit.WasmEngine do
        }) do
     len = byte_size(delta)
 
-    with {:ok, [delta_ptr]} when delta_ptr != 0 <-
-           Wasmex.call_function(instance, "af_alloc", [len]),
-         :ok <- write_mem(store, memory, delta_ptr, delta),
-         {:ok, [out_ptr]} when out_ptr != 0 <-
-           Wasmex.call_function(instance, "af_alloc", [@ctrt_bytes]),
-         {:ok, [0x0000]} <-
+    case Wasmex.call_function(instance, "af_alloc", [len]) do
+      {:ok, [delta_ptr]} when delta_ptr != 0 ->
+        try do
+          # BK-85 fix (v26.10.22): the delta bytes must be written into the
+          # guest block BEFORE the seal export runs. Pre-fix the block was
+          # allocated and left uninitialized — the guest hashed stale heap
+          # contents, so the host blake3(delta) invariant leg never bound and
+          # every seal refused :invariant_violation deterministically.
+          :ok = write_mem(store, memory, delta_ptr, delta)
+
+          seal_with_delta(instance, store, memory, delta_ptr, len, delta, tariff, modality, lease)
+        after
+          free_block(instance, delta_ptr, len)
+        end
+
+      {:ok, [0]} -> @engine_unavailable
+      _ -> @engine_unavailable
+    end
+  rescue
+    # write_mem failure (read-back verify refused) must not crash the
+    # singleton server — it is the engine-down class, not a caller fault.
+    _ ->
+      @engine_unavailable
+  end
+
+  defp seal_with_delta(instance, store, memory, delta_ptr, len, delta, tariff, modality, lease) do
+    case Wasmex.call_function(instance, "af_alloc", [@ctrt_bytes]) do
+      {:ok, [out_ptr]} when out_ptr != 0 ->
+        try do
+          do_seal(instance, store, memory, delta_ptr, len, delta, tariff, modality, lease, out_ptr)
+        after
+          free_block(instance, out_ptr, @ctrt_bytes)
+        end
+
+      {:ok, [0]} -> @engine_unavailable
+      _ -> @engine_unavailable
+    end
+  end
+
+  defp do_seal(instance, store, memory, delta_ptr, len, delta, tariff, modality, lease, out_ptr) do
+    with {:ok, [0x0000]} <-
            Wasmex.call_function(instance, "affi_admit_and_seal", [
              delta_ptr,
              len,
@@ -506,7 +577,6 @@ defmodule Smalt.Affidavit.WasmEngine do
              out_ptr
            ]),
          ctrt <- read_mem(store, memory, out_ptr, @ctrt_bytes),
-         :ok <- free_out(instance, out_ptr, @ctrt_bytes),
          :ok <- invariant_gate(ctrt, delta, tariff, modality, lease) do
       {:ok, %{ctrt_bytes: ctrt, pqc_receipt: pqc_receipt(ctrt)}}
     else

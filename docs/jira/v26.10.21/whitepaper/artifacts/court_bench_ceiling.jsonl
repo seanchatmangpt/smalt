@@ -1,0 +1,6 @@
+{"kind":"meta","module":"bench_concurrency_ceiling","n":null,"otp":"28","schedulers":16,"logical":16,"sweep_self_reds":19056823}
+{"kind":"row","n":1000,"rounds":50,"round_trips":50000,"wall_ms":45,"usec_per_roundtrip":0.9,"reds_per_roundtrip":17.65338,"ops_per_sec":1111111.111111111}
+{"kind":"row","n":4000,"rounds":50,"round_trips":200000,"wall_ms":207,"usec_per_roundtrip":1.035,"reds_per_roundtrip":18.4367,"ops_per_sec":966183.5748792271}
+{"kind":"row","n":8000,"rounds":50,"round_trips":400000,"wall_ms":435,"usec_per_roundtrip":1.0875,"reds_per_roundtrip":23.468355,"ops_per_sec":919540.2298850574}
+{"kind":"row","n":16000,"rounds":20,"round_trips":320000,"wall_ms":370,"usec_per_roundtrip":1.15625,"reds_per_roundtrip":44.104346875,"ops_per_sec":864864.8648648649}
+{"kind":"row","n":32000,"rounds":10,"round_trips":320000,"wall_ms":377,"usec_per_roundtrip":1.178125,"reds_per_roundtrip":60.12288125,"ops_per_sec":848806.3660477453}

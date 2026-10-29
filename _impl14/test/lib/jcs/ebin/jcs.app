@@ -1,0 +1,1 @@
+{application,jcs,[{modules,['Elixir.Jcs']},{optional_applications,[]},{applications,[kernel,stdlib,elixir,logger,jason]},{description,"A pure Elixir implementation of RFC 8785: JSON Canonicalization Scheme (JCS).\n"},{registered,[]},{vsn,"0.2.0"}]}.

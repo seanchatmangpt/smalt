@@ -19,7 +19,7 @@ Five gate-class checks exist but sit outside the gate:
 | 1 | `mutation-court` (graphlaw validator non-vacuity) not a court member | recipe exists at justfile:113; `scripts/mutation_court.py` |
 | 2 | Census + EH smokes not court members; aggregator `run-all.mjs` unused | standalone `census`/`eh-smoke` recipes exist; `test/sdk-smoke/run-all.mjs:29-31` chains run→census→eventhubs; `test-sdk-smoke` (justfile:89) runs only `run.mjs` |
 | 3 | Five `gates/*.py` invariant gates never run at gate time — `test/invariant_gates_test.py` not collected by `mix test`, no justfile target | GATES_UNDER_TEST at invariant_gates_test.py:19-25; fail-closed non-vacuity contract at `gates/common.py:9-13` |
-| 4 | Naming/leak grep is prose-only | `docs/PUBLISH_CHECK.md:69`, `docs/NAMING_SWEEP.md:3` (`grep -rniE 'athena|/Users/sac|courtroom|\bcai\b|morluto'`) |
+| 4 | Naming/leak grep is prose-only | `docs/PUBLISH_CHECK.md:69`, `docs/NAMING_SWEEP.md:3` (`grep -rniE 'legacy-client|/Users/sac|courtroom|\bcai\b|morluto'`) |
 | 5 | Bench not upstream of bench-check | `bench-check` reads `tmp/bench-receipt.json`, may be stale |
 
 ## 2. Goal state
@@ -80,7 +80,7 @@ No change to the runner's semantics; timeout/profile tweaks allowed, weakening i
 Executable, stdlib bash, exit 0 clean / 1 leak found:
 
 1. Sweep tracked files only (`git ls-files`), excluding `deps/`, `_build/`, `.git/`, `tmp/`, `.elixir_ls/`, `docs/NAMING_SWEEP.md` (self-quotes), `.ggen_igniter/` (machine receipts).
-2. Pattern: `grep -rniE 'athena|/Users/sac|courtroom|\bcai\b|morluto'`.
+2. Pattern: `grep -rniE 'legacy-client|/Users/sac|courtroom|\bcai\b|morluto'`.
 3. Allowlist (per `docs/NAMING_SWEEP.md` re-verification addendum 2026-10-15): line-precise `path:line` entries in an inline array — `.env.example` legacy defaults; `SMALT_SDK_ROOT` fallbacks at `scripts/sb_census_replay.sh:21`, `scripts/dev_env.sh:33`, `scripts/stress/vs_azurite.py:330,369`, `test/sdk-smoke/eh-run.mjs:143`. Any hit NOT covered → print and exit 1. Summary line: `N allowed / N violations`.
 4. Recipe `@naming-sweep: bash scripts/naming_sweep.sh`.
 

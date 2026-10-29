@@ -200,6 +200,10 @@ defmodule SmaltBench.B9 do
   # -- entry point ----------------------------------------------------------------
 
   def run do
+    Code.require_file("test_boot_ports.exs", Path.join(File.cwd!(), "scripts/lib"))
+    # BK-EPLAW2: fail-closed fence — abort unless the pinned-port contract holds.
+    SmaltTestBoot.pin!()
+    SmaltTestBoot.fence!("b9_eh_beam")
     {:ok, _} = Application.ensure_all_started(:smalt)
     EH.ensure_tables()
 

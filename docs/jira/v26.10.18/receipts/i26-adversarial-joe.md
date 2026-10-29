@@ -1,7 +1,8 @@
 # i26 — adversarial_joe Vectors 1 & 3 (AZB-10 flagged, pre-existing)
 Context: solo(adversarial_joe target tests — 4 tests, 10/10 solo runs green)
 
-Date: 2026-10-18 · Lane: `_build-ft-jo` (private build root) · Standing: **ALIVE**
+Date: 2026-10-18 · Lane: `_build-ft-jo` (private build root)
+**Standing:** **ALIVE**
 
 ## Subject
 

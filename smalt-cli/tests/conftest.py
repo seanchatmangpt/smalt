@@ -8,19 +8,22 @@ Endpoint/auth shapes mirror the repo's real-SDK probes:
   - test/sdk-python/py_storage_blob.py    (SharedKey conn string, account
     smaltacct, any non-empty key)
 
-Env: SMALT_ARM / SMALT_EGRESS override the defaults
-(http://127.0.0.1:39643 / http://127.0.0.1:39644 — this lane's private
-substrate, docs/how-to/dev-loop.md private range 39000-39999).
+Env: SMALT_ARM / SMALT_EGRESS override the derived endpoints. Port blocks are
+lane-private and deterministic (tests/_lane_ports.py): lane name =
+$SMALT_CLI_LANE-<profile> or cli-<profile>-<venv basename>, sha256-hashed
+into a free 10-wide slot in 39500..39990 (docs/how-to/dev-loop.md private
+range family; avoids bench b1..b12 = 39010..39125). SMALT_CLI_PORT_BASE pins
+the anonymous-profile base directly.
 
-SESSION PROTOCOL (X-6, F-14/DoD-3 fix): substrate provisioning is
-fixture-scoped and lazy — NO import-time boot. Two mutually exclusive auth
-profiles split the suite into two pytest sessions:
+SESSION PROTOCOL (X-6, F-14/DoD-3 fix; BK-CONF lane-private ports): substrate
+provisioning is fixture-scoped and lazy — NO import-time boot. Two mutually
+exclusive auth profiles split the suite into two pytest sessions:
 
-  pytest -m anonymous   blob/cosmos — anonymous substrate 39643/39644,
-                        lock /tmp/smalt-substrate-cli4.lock
+  pytest -m anonymous   blob/cosmos — anonymous substrate, lane-private
+                        anonymous block, lock /tmp/smalt-cli-sub-<lane>.lock
   pytest -m enforce     identity/resourcegraph/servicebus/eventhub/keyvault
-                        — enforce substrate 38654-38656/38672-38673,
-                        lock /tmp/smalt-substrate-cli5.lock
+                        — enforce substrate, lane-private enforce block,
+                        lock /tmp/smalt-cli-sub-<lane>.lock
 
 Each session fixture (a) probes its port block first and REUSES a healthy
 substrate read-only with lane-unique names, else (b) boots a private-port
@@ -54,8 +57,8 @@ import urllib.request
 
 import pytest
 
-ARM = os.environ.get("SMALT_ARM", "http://127.0.0.1:39643")
-EGRESS = os.environ.get("SMALT_EGRESS", "http://127.0.0.1:39644")
+ARM = os.environ.get("SMALT_ARM", "unset-replaced-by-lane-resolution")
+EGRESS = os.environ.get("SMALT_EGRESS", "unset-replaced-by-lane-resolution")
 AUD = "https://management.azure.com"
 SUB = "sub-cli4"
 TLS_CTX = ssl._create_unverified_context()
@@ -264,7 +267,8 @@ def _skip_substrate_unavailable(exc, lock_path, log_path):
 
 
 def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
-                      lock_timeout=15, timeout=180, marker_path=None):
+                      lock_timeout=15, timeout=180, marker_path=None,
+                      sweep_ports=None):
     """Probe-then-boot with identity guard. Returns (proc_or_None, reused_bool).
 
     Reuses the substrate on `ports` read-only ONLY when the boot marker
@@ -281,6 +285,10 @@ def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
     import subprocess
 
     marker_path = marker_path or log_path + ".boot.json"
+    # Sweep scope: only the plane ports this lane OWNS (derived private block).
+    # Pinned surface ports shared with out-of-scope clients are health-checked
+    # but never swept — a foreign squatter there fails our bind LOUDLY instead.
+    sweep_ports = sweep_ports or ports
 
     def healthy():
         return (all(_port_open(p) for p in ports)
@@ -307,8 +315,8 @@ def _ensure_substrate(lock_path, ports, boot_eval, log_path, ready=None,
         if healthy():
             return None, True
         # Ports open but identity unverifiable -> sweep before boot (R177b).
-        if any(_port_open(p) for p in ports):
-            _sweep_stale_listeners(ports)
+        if any(_port_open(p) for p in sweep_ports):
+            _sweep_stale_listeners(sweep_ports)
         env = dict(os.environ, MIX_ENV="test")
         log = open(log_path, "w")
         proc = subprocess.Popen(
@@ -371,15 +379,87 @@ def _kill_substrate(proc):
         pass
 
 
-_ANON_PORTS = (39643, 39644)
+import _lane_ports
+
+# --- BK-CONF: lane-private deterministic port blocks -----------------------
+# Law: test lanes must not share port blocks (scripts/bench/lib.sh bN law).
+# Lane name = $SMALT_CLI_LANE-<profile> or cli-<profile>-<venv>; block =
+# sha256(lane) -> 10-wide slot in 39500..39990; occupied foreign slots are
+# skipped (relocated), never swept. Legacy fixed blocks are gone.
+# Markers/locks/logs are per (lane, base): /tmp/smalt-cli-sub-<lane>-<base>
+# (boot.json) / ...-<lane>.log / ...-<lane>.lock.
+
+
+def _cli_artifacts(lane):
+    return (
+        f"/tmp/smalt-cli-sub-{lane}.lock",
+        f"/tmp/smalt-cli-sub-{lane}.log",
+        f"/tmp/smalt-cli-sub-{lane}-{{base}}.boot.json",
+    )
+
+
+def _resolve(profile):
+    lane = _lane_ports.lane_name(profile)
+    lock, log, marker_tpl = _cli_artifacts(lane)
+
+    def owns(base):
+        return _substrate_identity_ok(
+            marker_tpl.format(base=base), _lane_ports.block_ports(base)
+        )
+
+    pin = os.environ.get("SMALT_CLI_PORT_BASE")
+    if pin:
+        block = {"lane": lane, "base": int(pin),
+                 "ports": _lane_ports.block_ports(int(pin))}
+    else:
+        block = _lane_ports.resolve_lane_ports(profile, owns_block=owns)
+    return block, lock, log, marker_tpl.format(base=block["base"])
+
+
+_ANON_BLOCK, _ANON_LOCK, _ANON_LOG, _ANON_MARKER = _resolve("anonymous")
+_ENF_BLOCK, _ENF_LOCK, _ENF_LOG, _ENF_MARKER = _resolve("enforce")
+
+(_ANON_ARM_P, _ANON_EGRESS_P, _ANON_AMQP_P, _ANON_EH_P, _ANON_TLS_P) = \
+    _ANON_BLOCK["ports"]
+(_ENF_ARM_P, _ENF_EGRESS_P, _ENF_AMQP_P, _ENF_EH_P, _ENF_TLS_P) = \
+    _ENF_BLOCK["ports"]
+
+# Test modules read ports from env at collection time; conftest is imported
+# before collection, so seed the defaults here (setdefault — an explicit
+# override from the operator wins).
+os.environ.setdefault("CLI5_ARM_PORT", str(_ENF_ARM_P))
+os.environ.setdefault("CLI5_EGRESS_PORT", str(_ENF_EGRESS_P))
+
+# Enforce AMQP/EH ride the lane-private block too (+2/+3): the old 38672/38673
+# pin made two CONCURRENT enforce groups contend on a fixed port (loser boot
+# dies :eaddrinuse -> loud skips). BK-TYPORT closed this: amqp/eh now derive
+# from the same block as arm/egress/arm_tls; explicit CLI5_AMQP_PORT /
+# CLI5_EH_PORT overrides still win. Seeded into env before collection so
+# test_servicebus.py / test_eventhub.py module-level reads stay correct.
+os.environ.setdefault("CLI5_AMQP_PORT", str(_ENF_BLOCK["ports"][2]))
+os.environ.setdefault("CLI5_EH_PORT", str(_ENF_BLOCK["ports"][3]))
+_ENF_AMQP_P = int(os.environ["CLI5_AMQP_PORT"])
+_ENF_EH_P = int(os.environ["CLI5_EH_PORT"])
+os.environ.setdefault("W3_AMQP_PORT", str(_ENF_AMQP_P))
+
+# Legacy module attributes still imported by ty lanes (test_ty_storage.py etc.)
+ANON_ARM = "http://127.0.0.1:%d" % _ANON_ARM_P
+ANON_EGRESS = "http://127.0.0.1:%d" % _ANON_EGRESS_P
+
+if not os.environ.get("SMALT_ARM"):
+    ARM = "http://127.0.0.1:%d" % _ANON_ARM_P
+if not os.environ.get("SMALT_EGRESS"):
+    EGRESS = "http://127.0.0.1:%d" % _ANON_EGRESS_P
+
+_ANON_PORTS = (_ANON_ARM_P, _ANON_EGRESS_P)
 _ANON_BOOT = (
-    'Application.put_env(:smalt, :arm_port, 39643);'
-    'Application.put_env(:smalt, :egress_port, 39644);'
-    'Application.put_env(:smalt, :arm_tls_port, 39646);'
+    f'Application.put_env(:smalt, :arm_port, {_ANON_ARM_P});'
+    f'Application.put_env(:smalt, :egress_port, {_ANON_EGRESS_P});'
+    f'Application.put_env(:smalt, :arm_tls_port, {_ANON_TLS_P});'
     '{:ok, _} = Application.ensure_all_started(:smalt)'
 )
 
-_ENFORCE_PORTS = (38672, 38673, 38654, 38655)
+_ENFORCE_PORTS = (_ENF_AMQP_P, _ENF_EH_P, _ENF_ARM_P, _ENF_EGRESS_P, _ENF_TLS_P)
 _ENFORCE_BOOT_SEED = """
 for {q, props} <- [
   {"cli5-batch-q", %{}},
@@ -406,11 +486,11 @@ _ENFORCE_BOOT = (
     # This lane mints HS256 self-signed tokens — pin the legacy mode.
     "Application.put_env(:smalt, :sts_key_mode, :hs256_dev);"
     'Application.put_env(:smalt, :auth_mode, :enforce);'
-    'Application.put_env(:smalt, :amqp_port, 38672);'
-    'Application.put_env(:smalt, :event_hubs_port, 38673);'
-    'Application.put_env(:smalt, :arm_port, 38654);'
-    'Application.put_env(:smalt, :egress_port, 38655);'
-    'Application.put_env(:smalt, :arm_tls_port, 38656);'
+    f'Application.put_env(:smalt, :amqp_port, {_ENF_AMQP_P});'
+    f'Application.put_env(:smalt, :event_hubs_port, {_ENF_EH_P});'
+    f'Application.put_env(:smalt, :arm_port, {_ENF_ARM_P});'
+    f'Application.put_env(:smalt, :egress_port, {_ENF_EGRESS_P});'
+    f'Application.put_env(:smalt, :arm_tls_port, {_ENF_TLS_P});'
     '{:ok, _} = Application.ensure_all_started(:smalt);'
     + " ".join(_ENFORCE_BOOT_SEED.split())
 )
@@ -423,21 +503,20 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="session")
 def anonymous_substrate():
-    """Anonymous-mode substrate (blob/cosmos). Reuse-else-boot under
-    /tmp/smalt-substrate-cli4.lock; kills only what it booted."""
+    """Anonymous-mode substrate (blob/cosmos). Reuse-else-boot under the
+    lane-private lock; kills only what it booted."""
     proc = None  # SHIM-COURT: bound before try so post-yield use is total
     try:
         proc, _reused = _ensure_substrate(
-            "/tmp/smalt-substrate-cli4.lock", _ANON_PORTS, _ANON_BOOT,
-            "/tmp/cli4-substrate.log",
-            marker_path="/tmp/cli4-substrate.boot.json",
+            _ANON_LOCK, _ANON_PORTS, _ANON_BOOT, _ANON_LOG,
+            marker_path=_ANON_MARKER,
         )
     except RuntimeError as e:  # R186: loud skip, holder pid + log tail
-        _skip_substrate_unavailable(e, "/tmp/smalt-substrate-cli4.lock",
-                                    "/tmp/cli4-substrate.log")
+        _skip_substrate_unavailable(e, _ANON_LOCK, _ANON_LOG)
     global ARM, EGRESS
     _old = (ARM, EGRESS)
-    ARM, EGRESS = "http://127.0.0.1:39643", "http://127.0.0.1:39644"
+    ARM = f"http://127.0.0.1:{_ANON_ARM_P}"
+    EGRESS = f"http://127.0.0.1:{_ANON_EGRESS_P}"
     yield {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
     ARM, EGRESS = _old
     if proc is not None:  # SHIM-COURT: total path — skip branch never yields
@@ -447,21 +526,20 @@ def anonymous_substrate():
 @pytest.fixture(scope="session")
 def enforce_substrate():
     """:enforce substrate (identity/servicebus/eventhub/keyvault). Reuse-else-
-    boot under /tmp/smalt-substrate-cli5.lock — fixture-scoped and lazy, the
-    F-14 import-time boot is gone."""
+    boot under the lane-private lock — fixture-scoped and lazy."""
     proc = None  # SHIM-COURT: bound before try so post-yield use is total
     try:
         proc, _reused = _ensure_substrate(
-            "/tmp/smalt-substrate-cli5.lock", _ENFORCE_PORTS, _ENFORCE_BOOT,
-            "/tmp/cli5-substrate.log",
-            marker_path="/tmp/cli5-substrate.boot.json",
+            _ENF_LOCK, _ENFORCE_PORTS, _ENFORCE_BOOT, _ENF_LOG,
+            marker_path=_ENF_MARKER,
+            sweep_ports=(_ENF_ARM_P, _ENF_EGRESS_P, _ENF_TLS_P),
         )
     except RuntimeError as e:  # R186: loud skip, holder pid + log tail
-        _skip_substrate_unavailable(e, "/tmp/smalt-substrate-cli5.lock",
-                                    "/tmp/cli5-substrate.log")
+        _skip_substrate_unavailable(e, _ENF_LOCK, _ENF_LOG)
     global ARM, EGRESS
     _old = (ARM, EGRESS)
-    ARM, EGRESS = "http://127.0.0.1:38654", "http://127.0.0.1:38655"
+    ARM = f"http://127.0.0.1:{_ENF_ARM_P}"
+    EGRESS = f"http://127.0.0.1:{_ENF_EGRESS_P}"
     yield {"arm": ARM, "egress": EGRESS, "aud": AUD, "sub": SUB}
     ARM, EGRESS = _old
     if proc is not None:  # SHIM-COURT: total path — skip branch never yields

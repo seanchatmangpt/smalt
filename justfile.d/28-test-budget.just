@@ -1,29 +1,34 @@
 # 28-test-budget — per-test timing budget gate (docs/jira/v26.10.18/rewrite-drafts/budget-gate.md)
 #
-# RETIRED (v26.10.19 staleness-repair lane): the export producer
-# (SmaltTest.BudgetFormatter, test/support/budget_formatter.ex) was deleted
-# with test/ at 64f6099. Without a formatter there is no timing export, so
-# both recipes are LOUD no-ops: exit 1, message naming the deleted subject.
+# Seed once (first run records the manifest), then every run enforces:
+# regression above budget, deleted/renamed test (stale entry), new
+# unbudgeted test, or corrupted/missing export all exit 1 fail-closed.
+# Non-vacuity: two mutated fixtures (10x breach, unmanifested rename) run
+# through the same verdict; an ACCEPTED mutation = VACUOUS GATE, exit 1.
 #
-# RESEED PLAN (for the test/internal residual-tier owner):
-#   1. re-author a fresh timing formatter in test/internal (exports TSV rows
-#      `module\ttest\tms` — scripts/test_budget_gate.py is generic over any
-#      export and is UNCHANGED);
-#   2. `just test-budget-seed` to record the fresh manifest;
-#   3. restore the `mix test --formatter <Fresh>` recipe pair + non-vacuity
-#      fixtures, and re-add the (c3) stage in scripts/verify_all.sh.
-# scripts/test_budget_gate.py stays on disk (generic gate, no formatter
-# coupling).
+# Concurrent-lane isolation (i29): the export path defaults to a PID-suffixed
+# file so two simultaneous `just test-budget` runs never O_TRUNC each other's
+# export; an explicit SMALT_BUDGET_EXPORT override is honored verbatim.
+# Each recipe is a single shell — `just` runs recipes with `sh -cu`, so the
+# $$ is stable across formatter+gate and every command is `|| rc=$?`-guarded
+# (a bare failing line would trip `-e` and skip the gate). The recipe exits
+# with the gate's code, falling back to mix's when the gate passes.
 
 # Record the manifest from a fresh timing export (bootstrap / deliberate
 # budget refresh; the refresh itself is a reviewed diff, not silent).
 test-budget-seed:
-    #!/usr/bin/env bash
-    echo "[RETIRED] test-budget-seed: SmaltTest.BudgetFormatter deleted at 64f6099; reseed plan in this module header. Exit 1."
-    exit 1
+    export SMALT_BUDGET_EXPORT="${SMALT_BUDGET_EXPORT:-tmp/test-budget-export.$$.tsv}"; \
+      mixrc=0; grc=0; \
+      mix test --formatter SmaltTest.BudgetFormatter || mixrc=$?; \
+      python3 scripts/test_budget_gate.py --seed --export "$SMALT_BUDGET_EXPORT" || grc=$?; \
+      echo "== test-budget-seed: mix=$mixrc seed-gate=$grc"; \
+      if [ "$grc" -ne 0 ]; then exit "$grc"; fi; exit "$mixrc"
 
 # Enforce: fresh export + fail-closed gate against the seeded manifest.
 test-budget:
-    #!/usr/bin/env bash
-    echo "[RETIRED] test-budget: SmaltTest.BudgetFormatter deleted at 64f6099; reseed plan in this module header. Exit 1."
-    exit 1
+    export SMALT_BUDGET_EXPORT="${SMALT_BUDGET_EXPORT:-tmp/test-budget-export.$$.tsv}"; \
+      mixrc=0; grc=0; \
+      mix test --formatter SmaltTest.BudgetFormatter || mixrc=$?; \
+      python3 scripts/test_budget_gate.py --export "$SMALT_BUDGET_EXPORT" || grc=$?; \
+      echo "== test-budget: mix=$mixrc gate=$grc"; \
+      if [ "$grc" -ne 0 ]; then exit "$grc"; fi; exit "$mixrc"

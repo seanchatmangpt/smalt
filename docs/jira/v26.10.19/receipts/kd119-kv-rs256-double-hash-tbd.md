@@ -19,7 +19,7 @@ message it verifies — proving the extra hash.
 [wf4] KD-14/KD-105 DIVERGENCE SEEN: vault RS256 sign treats the 'digest'
 input as a RAW MESSAGE (double-hashes) — real AKV expects a pre-hashed
 digest; external cryptography.hazmat verification over the digest FAILED
-rc=1; over the raw message it verifies.
+rc=1 (exit 1); over the raw message it verifies.
 ```
 
 ## Close condition / falsifier

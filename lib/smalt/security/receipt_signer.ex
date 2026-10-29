@@ -120,7 +120,6 @@ defmodule Smalt.Security.ReceiptSigner do
     end
   end
 
-  defp check_exp(_), do: {:error, :invalid_claims}
 
   # nbf (not-before) is optional; when present it must not be in the future.
   # Same integer/other split as exp: a non-integer nbf is uninterpretable and
@@ -135,7 +134,6 @@ defmodule Smalt.Security.ReceiptSigner do
     end
   end
 
-  defp check_nbf(_), do: {:error, :invalid_claims}
 
   defp keypair do
     case :persistent_term.get(@key_ref, :missing) do

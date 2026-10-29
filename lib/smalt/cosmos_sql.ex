@@ -9,9 +9,13 @@ defmodule Smalt.CosmosSql do
 
   Grammar (case-insensitive keywords, whitespace-insensitive):
 
-      SELECT [TOP <n>] <proj> FROM <alias> [WHERE <pred>]
+      SELECT [DISTINCT] [TOP <n>] <proj> FROM <alias>
+             [JOIN <join-alias> IN <src.path>]
+             [WHERE <pred>]
              [ORDER BY <prop> [ASC|DESC]] [OFFSET <n> LIMIT <m>] [LIMIT <n>]
       FROM    <iter-alias> IN <src.path>  -- cross-array iteration (fan-out)
+      JOIN    <join-alias> IN <src.path>  -- sub-array join (same fan-out law;
+                                          -- ONE total iterated source per query)
 
       proj     ::= "*" | <item> ("," <item>)*
       item     ::= <path> ["AS" <alias>]
@@ -51,18 +55,23 @@ defmodule Smalt.CosmosSql do
     :projection,
     :from,
     iterate: nil,
+    joins: [],
+    distinct: false,
     where: nil,
     order_by: nil,
     top: nil,
     limit: nil,
     offset: nil,
-    params: %{}
+    params: %{},
+    udfs: %{}
   ]
 
   @type t :: %__MODULE__{
           projection: :star | {:props, [path() | proj_item()]},
           from: String.t(),
           iterate: {String.t(), path()} | nil,
+          joins: [{String.t(), path()}],
+          distinct: boolean(),
           where: expr() | nil,
           order_by: {path(), :asc | :desc} | nil,
           top: pos_integer() | nil,
@@ -134,6 +143,19 @@ defmodule Smalt.CosmosSql do
     pipeline(%__MODULE__{q | iterate: nil}, fanned)
   end
 
+  # JOIN-position fan-out: identical synthetic-row binding to the FROM IN
+  # clause (alias bound per array element on a doc copy; root stays
+  # addressable). Parse enforces at most ONE total iterated source, so this
+  # clause and the FROM IN clause are mutually exclusive.
+  def eval_docs(%__MODULE__{joins: [{alias, rel_path} | _]} = q, docs) when is_list(docs) do
+    fanned =
+      for doc <- docs, elem <- iter_values(doc, rel_path) do
+        Map.put(doc, alias, elem)
+      end
+
+    pipeline(%__MODULE__{q | joins: []}, fanned)
+  end
+
   # Undefined or non-array targets contribute no rows here; the typed-SYN
   # contract lives in run/3 (which owns the error channel). Direct
   # parse/1+eval_docs/2 consumers get fan-out-over-nothing = [] (documented).
@@ -146,6 +168,15 @@ defmodule Smalt.CosmosSql do
 
   defp pipeline(q, docs) do
     matched = for doc <- docs, where_holds?(q, doc), do: project(q, doc)
+
+    matched =
+      if q.distinct do
+        # DISTINCT: dedup on the serialized result value (first occurrence
+        # wins; order of first appearance preserved for the later ORDER BY).
+        Enum.uniq_by(matched, &:erlang.term_to_binary/1)
+      else
+        matched
+      end
 
     matched =
       case q.order_by do
@@ -177,9 +208,9 @@ defmodule Smalt.CosmosSql do
   def run(query, docs, params \\ %{}) do
     case parse(query, params) do
       {:ok, q} ->
-        case iterate_targets_ok?(q, docs) do
-          :ok -> {:ok, eval_docs(q, docs)}
-          {:error, {:syntax, _}} = err -> err
+        with :ok <- iterate_targets_ok?(q, docs),
+             :ok <- projection_fns_resolved?(q) do
+          {:ok, eval_docs(q, docs)}
         end
 
       {:error, {:syntax, _}} = err ->
@@ -187,9 +218,38 @@ defmodule Smalt.CosmosSql do
     end
   end
 
+  # Unknown-function projection guard: an unknown ident call parses as a UDF
+  # call; with no registered UDF of that name it must be a typed syntax error,
+  # never a silent all-undefined projection (witnessed tier breakage FIX-3).
+  defp projection_fns_resolved?(%__MODULE__{projection: {:props, items}, udfs: udfs}) do
+    Enum.find_value(items, :ok, fn
+      {:fn, {:udf, name}, _args, _alias} ->
+        if Map.has_key?(udfs, name),
+          do: nil,
+          else: {:error, {:syntax, "Unknown function in projection: #{name}"}}
+
+      _item ->
+        nil
+    end)
+  end
+
+  defp projection_fns_resolved?(%__MODULE__{}), do: :ok
+
   # Typed SYN on a non-array (or undefined) iteration target. Evaluated over
   # the scanned set before any fan-out; a single bad doc fails the query.
-  defp iterate_targets_ok?(%__MODULE__{iterate: nil}, _docs), do: :ok
+  defp iterate_targets_ok?(%__MODULE__{iterate: nil, joins: []}, _docs), do: :ok
+
+  defp iterate_targets_ok?(%__MODULE__{joins: [{alias, rel_path} | _], from: root}, docs) do
+    full = Enum.join([root | rel_path], ".")
+
+    if Enum.all?(docs, fn doc -> is_list(get_in_doc(doc, rel_path)) end) do
+      :ok
+    else
+      {:error,
+       {:syntax,
+        "JOIN #{alias} IN #{full} requires an array iteration target; '#{full}' is not an array"}}
+    end
+  end
 
   defp iterate_targets_ok?(%__MODULE__{iterate: {alias, rel_path}, from: root}, docs) do
     full = Enum.join([root | rel_path], ".")
@@ -217,7 +277,7 @@ defmodule Smalt.CosmosSql do
   # OMITTED, never null (real Cosmos semantics). Function projections evaluate
   # per-document; a non-applicable argument (e.g. UPPER over a number) yields
   # undefined -> omitted.
-  defp project(%__MODULE__{projection: {:props, items}}, doc) do
+  defp project(%__MODULE__{projection: {:props, items}, udfs: udfs}, doc) do
     Enum.reduce(items, %{}, fn
       path, acc when is_list(path) ->
         case get_in_doc(doc, path) do
@@ -227,6 +287,12 @@ defmodule Smalt.CosmosSql do
 
       {path, alias}, acc ->
         case get_in_doc(doc, path) do
+          nil -> acc
+          value -> Map.put(acc, alias, value)
+        end
+
+      {:fn, {:udf, name}, args, alias}, acc ->
+        case eval_udf(udfs, name, args, doc) do
           nil -> acc
           value -> Map.put(acc, alias, value)
         end
@@ -275,6 +341,206 @@ defmodule Smalt.CosmosSql do
 
   defp proj_arg(path, doc) when is_list(path), do: get_in_doc(doc, path)
   defp proj_arg(lit, _doc), do: lit
+
+  # -- User-defined function kernel (lane w6g) ---------------------------------
+  #
+  # Real Cosmos UDF bodies are JavaScript. The emulator executes the honest
+  # kernel: `function <name>(<param>) { return <expr>; }` where <expr> is a
+  # SINGLE expression over literals, the parameter (dotted paths allowed),
+  # `+ - * /`, unary minus, parentheses, `true/false/null`. Anything outside
+  # the kernel parses/registers fine but evaluates to undefined (omitted from
+  # the projection row) — fail-closed, never a silent wrong answer beyond the
+  # documented kernel bounds.
+
+  defp eval_udf(udfs, name, args, doc) do
+    case {Map.get(udfs, name), args} do
+      {body, [path]} when is_binary(body) and is_list(path) ->
+        arg = get_in_doc(doc, path)
+        udf_kernel_eval(body, arg)
+
+      _ ->
+        nil
+    end
+  end
+
+  # Kernel expression grammar: literals | param-rooted dotted path |
+  # + - * / | unary minus | parentheses | true/false/null.
+  defp udf_kernel_eval(body, arg) do
+    case kernel_function_extract(body) do
+      {param, expr_src} when is_binary(expr_src) ->
+        case kernel_tokens(expr_src) do
+          {:ok, toks} ->
+            case kernel_parse_expr(toks, param, arg) do
+              {:ok, v} -> v
+              _ -> nil
+            end
+
+          _ ->
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp kernel_function_extract(body) do
+    re = ~r/^\s*function\s+[A-Za-z_$][\w$]*\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\{\s*return\s+(.*);\s*\}\s*$/s
+
+    case Regex.run(re, body) do
+      [_, param, expr] -> {param, expr}
+      _ -> :error
+    end
+  end
+
+  defp kernel_tokens(src) do
+    toks =
+      Regex.scan(
+        ~r/\s*(\d+\.\d+|\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*|[-+*\/()])/,
+        src
+      )
+      |> Enum.map(fn [_, t] -> t end)
+
+    if Enum.join(toks, "") |> String.replace(~r/\s+/, "") == String.replace(src, ~r/\s+/, "") do
+      {:ok, toks}
+    else
+      :error
+    end
+  end
+
+  # Precedence climb: expr := addsub; addsub := muldiv (('+'|'-') muldiv)*;
+  # muldiv := unary (('*'|'/') unary)*; unary := '-' unary | primary.
+  defp kernel_parse_expr(toks, param, arg) do
+    case kernel_addsub(toks, param, arg) do
+      {:ok, v, []} -> {:ok, v}
+      _ -> :error
+    end
+  end
+
+  defp kernel_addsub([x | rest], param, arg) do
+    kernel_addsub_rest(rest, x, param, arg)
+  end
+
+  defp kernel_addsub([], _param, _arg), do: :error
+
+  defp kernel_addsub_rest([op | rest], l, param, arg) when op in ["+", "-"] do
+    case kernel_muldiv(rest, param, arg) do
+      {:ok, r, rest2} ->
+        v = if op == "+", do: kernel_add(l, r), else: kernel_sub(l, r)
+        kernel_addsub_rest(rest2, v, param, arg)
+
+      _ ->
+        :error
+    end
+  end
+
+  defp kernel_addsub_rest(rest, v, _param, _arg), do: {:ok, v, rest}
+
+  defp kernel_muldiv([x | rest], param, arg) do
+    kernel_muldiv_rest(rest, x, param, arg)
+  end
+
+  defp kernel_muldiv([], _param, _arg), do: :error
+
+  defp kernel_muldiv_rest([op | rest], l, param, arg) when op in ["*", "/"] do
+    case kernel_unary(rest, param, arg) do
+      {:ok, r, rest2} ->
+        v =
+          cond do
+            op == "*" -> kernel_mul(l, r)
+            op == "/" and r in [0, 0.0] -> nil
+            op == "/" -> kernel_div(l, r)
+          end
+
+        if is_nil(v) do
+          :error
+        else
+          kernel_muldiv_rest(rest2, v, param, arg)
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp kernel_muldiv_rest(rest, v, _param, _arg), do: {:ok, v, rest}
+
+  defp kernel_unary(["-" | rest], param, arg) do
+    case kernel_unary(rest, param, arg) do
+      {:ok, v, rest2} when is_number(v) -> {:ok, -v, rest2}
+      _ -> :error
+    end
+  end
+
+  defp kernel_unary(toks, param, arg), do: kernel_primary(toks, param, arg)
+
+  defp kernel_primary(["(" | rest], param, arg) do
+    case kernel_addsub(rest, param, arg) do
+      {:ok, v, [")" | rest2]} -> {:ok, v, rest2}
+      _ -> :error
+    end
+  end
+
+  defp kernel_primary([t | rest], _param, _arg) when t in ["true", "false", "null"] do
+    {:ok, kernel_literal(t), rest}
+  end
+
+  defp kernel_primary([t | rest], param, arg) when is_binary(t) do
+    cond do
+      t =~ ~r/^["']/ ->
+        inner = String.slice(t, 1..-2//1)
+
+        {:ok, String.replace(inner, ~r/\\(.)/, "\\1"), rest}
+
+      t =~ ~r/^\d/ ->
+        v =
+          if String.contains?(t, ".") do
+            String.to_float(t)
+          else
+            String.to_integer(t)
+          end
+
+        {:ok, v, rest}
+
+      String.contains?(t, ".") ->
+        segs = String.split(t, ".")
+        [root | path] = segs
+
+        if root == param do
+          {:ok, get_in_doc(arg_map(arg), path), rest}
+        else
+          :error
+        end
+
+      t == param ->
+        {:ok, arg, rest}
+
+      true ->
+        :error
+    end
+  end
+
+  defp kernel_primary(_, _param, _arg), do: :error
+
+  defp arg_map(v) when is_map(v), do: v
+  defp arg_map(_), do: %{}
+
+  defp kernel_literal("true"), do: true
+  defp kernel_literal("false"), do: false
+  defp kernel_literal("null"), do: nil
+
+  defp kernel_add(l, r) when is_number(l) and is_number(r), do: l + r
+  defp kernel_add(l, r) when is_binary(l) and is_binary(r), do: l <> r
+  defp kernel_add(_l, _r), do: nil
+
+  defp kernel_sub(l, r) when is_number(l) and is_number(r), do: l - r
+  defp kernel_sub(_l, _r), do: nil
+
+  defp kernel_mul(l, r) when is_number(l) and is_number(r), do: l * r
+  defp kernel_mul(_l, _r), do: nil
+
+  defp kernel_div(l, r) when is_number(l) and is_number(r) and r != 0, do: l / r
+  defp kernel_div(_l, _r), do: nil
 
   # Property access: missing field or non-map traversal step -> nil
   # (undefined in Cosmos SQL terms; comparisons against undefined are false).
@@ -435,10 +701,15 @@ defmodule Smalt.CosmosSql do
     :contains,
     :startswith,
     :array_contains,
+    :distinct,
+    :join,
     true,
     false,
     :null
   ]
+
+  # Binary forms of @keywords for non-minting keyword matching (JA16-D1).
+  @keyword_strings Enum.map(@keywords, &Atom.to_string/1)
 
   @ws [32, 9, 10, 13]
 
@@ -495,11 +766,17 @@ defmodule Smalt.CosmosSql do
   defp lex_word(rest, acc) do
     [w] = Regex.run(~r/^[A-Za-z_][A-Za-z0-9_.]*/, rest)
     rest2 = String.slice(rest, String.length(w)..-1//1)
-    lw = String.to_atom(String.downcase(w))
+
+    # JA16-D1: wire-sourced words are never minted into atoms (same law as
+    # amqp/frame_codec.ex:800). Keyword match is a binary comparison against
+    # the compile-time keyword strings; String.to_existing_atom is only
+    # reached for words that ARE keywords, whose atoms already exist in
+    # @keywords — the atom table never grows from query content.
+    lw = String.downcase(w)
 
     token =
-      if lw in @keywords do
-        {:kw, lw}
+      if lw in @keyword_strings do
+        {:kw, String.to_existing_atom(lw)}
       else
         {:ident, w}
       end
@@ -609,27 +886,70 @@ defmodule Smalt.CosmosSql do
 
   defp parse_select([{:kw, :select} | rest]) do
     with {:ok, top, rest} <- parse_top(rest),
+         {:ok, distinct, rest} <- parse_distinct(rest),
          {:ok, projection, rest} <- parse_projection_wrapped(rest),
          {:ok, {from, iterate}, rest} <- parse_from(rest),
+         {:ok, joins, rest} <- parse_joins(rest),
          {:ok, where, rest} <- parse_where(rest),
          {:ok, order_by, rest} <- parse_order_by(rest),
          {:ok, offset, limit, rest} <- parse_offset_limit(rest),
          {:ok, limit, rest} <- parse_trailing_limit(limit, rest) do
-      {:ok,
-       %__MODULE__{
-         projection: projection,
-         from: from,
-         iterate: iterate,
-         where: where,
-         order_by: order_by,
-         top: top,
-         offset: offset,
-         limit: limit
-       }, rest}
+      cond do
+        # 80/20 iterated-source cap (moduledoc: "joins of 2+ iterated
+        # sources" stay outside the grammar) — FROM IN plus any JOIN counts.
+        (iterate != nil and joins != []) or length(joins) > 1 ->
+          {:error,
+           {:syntax,
+            "Joins of 2+ iterated sources are not supported (one FROM IN or JOIN per query)"}}
+
+        distinct and match?([{:ident, g} | _] when g in ["group"], rest) ->
+          # Real Cosmos refuses DISTINCT with GROUP BY (aggregates are not
+          # in this grammar at all; give the specific refusal message).
+          {:error, {:syntax, "DISTINCT is not supported with GROUP BY"}}
+
+        true ->
+          {:ok,
+           %__MODULE__{
+             projection: projection,
+             from: from,
+             iterate: iterate,
+             joins: joins,
+             distinct: distinct,
+             where: where,
+             order_by: order_by,
+             top: top,
+             offset: offset,
+             limit: limit
+           }, rest}
+      end
     end
   end
 
   defp parse_select(_), do: {:error, {:syntax, "Expected SELECT"}}
+
+  defp parse_distinct([{:kw, :distinct} | rest]), do: {:ok, true, rest}
+  defp parse_distinct(rest), do: {:ok, false, rest}
+
+  # Zero-or-more `JOIN <alias> IN <dotted.path>` clauses (parse-time cap of
+  # one total iterated source is enforced in parse_select).
+  defp parse_joins([{:kw, :join} | _] = tokens), do: parse_join_list(tokens, [])
+
+  defp parse_joins(rest), do: {:ok, [], rest}
+
+  defp parse_join_list([{:kw, :join}, {:ident, alias}, {:kw, :in}, {:ident, src} | rest], acc) do
+    case String.split(src, ".") do
+      [_root] ->
+        {:error, {:syntax, "JOIN #{alias} IN expects a dotted property path (e.g. c.tags)"}}
+
+      [_root | rel] ->
+        parse_join_list(rest, [{alias, rel} | acc])
+    end
+  end
+
+  defp parse_join_list([{:kw, :join} | _], _acc),
+    do: {:error, {:syntax, "JOIN expects <alias> IN <dotted.path>"}}
+
+  defp parse_join_list(rest, acc), do: {:ok, Enum.reverse(acc), rest}
 
   defp parse_top([{:kw, :top}, {:lit, n} | rest]) when is_integer(n) and n > 0,
     do: {:ok, n, rest}
@@ -669,6 +989,10 @@ defmodule Smalt.CosmosSql do
 
   # Scalar function projection: UPPER(x) / LOWER(x) / LENGTH(x) / CONTAINS(a, b),
   # alias mandatory (real Cosmos requires a target for a computed value).
+  # An unknown ident call parses as a USER-DEFINED function call
+  # ({:fn, {:udf, name}, args, alias}) — resolution against the container's
+  # UDF registry happens at query time (Smalt.DataPlane.Cosmos.resolve_udfs);
+  # unknown UDFs are a typed 400 there, never a parse-time lie.
   defp parse_prop_list([{:ident, fname}, {:lparen, nil} | rest], acc) do
     known = %{"UPPER" => :upper, "LOWER" => :lower, "LENGTH" => :length, "CONTAINS" => :contains}
 
@@ -687,7 +1011,17 @@ defmodule Smalt.CosmosSql do
         end
 
       :error ->
-        {:error, {:syntax, "Unknown function in projection: #{fname}"}}
+        with {:ok, args, rest2} <- parse_fn_args(rest, :udf, []) do
+          case rest2 do
+            [{:kw, :as}, {:ident, alias} | rest3] ->
+              parse_prop_list_tail(rest3, [{:fn, {:udf, fname}, args, alias} | acc])
+
+            _ ->
+              {:error,
+               {:syntax,
+                "AS alias required after #{fname}() projection (computed values need a target name)"}}
+          end
+        end
     end
   end
 

@@ -64,3 +64,41 @@
 
 `bench_down` + kill of any 39020-39025 LISTEN holder; post-run check:
 `ALL_PORTS_FREE`. No lib edits, no commits made by this lane.
+
+---
+
+## RE-MEASURE addendum (2026-10-22, lane BK-BQUIET — quiesced-machine attempt)
+
+- **Standing**: PARTIAL_ALIVE (re-witnessed under residual load; see typing below)
+- **Context**: solo
+- Attempt context: `just quiesce` REFUSED (foreign substrate on court ports
+  9443/8443/5672/5673/9444; foreign beam cwd outside checkout; load
+  80.3/94.2 > 16-cpu threshold). A bounded 15-minute poll (1 Hz load + beam
+  census + 9443 check) never cleared — load ROSE 78 -> 110. Per dispatch the
+  pass proceeded on the residual load, typed here honestly: these numbers are
+  a RE-MEASURE under load ~100-113 (1-min), not a quiet-machine baseline.
+- Replay (real, exit-captured): private block 39020..39025,
+  `bench_boot b2` (MIX_ENV=test, anonymous) then
+  `node scripts/bench/b2_blob_ts.mjs` with `B2_EGRESS=http://127.0.0.1:39021`.
+  Substrate torn down; all 6 ports verified free after.
+
+```
+PRE-B2 load={ 101.49 97.62 95.04 } 2026-10-22T13:42:15Z
+SUMMARY 8k-put-block-blob 16863 562.10 0.983 2.924 11.405 0 | payload_bytes=8192 throughput_mbps=4.39
+SUMMARY 64k-put-block-blob 16444 548.13 1.153 2.891 12.555 0 | payload_bytes=65536 throughput_mbps=34.26
+SUMMARY download-byte-equality 40 279.72 2.228 7.024 29.631 0 | bytes=20971520 throughput_mbps=139.86 equality=verified
+SUMMARY list-blobs-flat-fullpage 50 50.92 17.987 30.897 35.329 0 | blobs=100 listed=144
+POST-B2 load={ 110.70 100.89 96.44 } 2026-10-22T13:43:17Z
+```
+
+(Trailing harness noise, after all 4 measurements completed: the script's
+`/tmp/bkbquiet/b2-list-lat.txt` write failed ENOENT — directory absent at
+run time; no measurement affected, all 4 SUMMARY lines emitted with errors=0.)
+
+- Verdict: **PASS (load-typed)**. All 4 surfaces re-measured, 0 errors, blob
+  download byte-equality verified on every blob. Absolute throughput is
+  ~4-8x below the 2026-10-15 quiet-machine baseline (562 vs 4351 ops/s on
+  8k puts) — consistent with the residual fleet load, not a surface
+  regression: latency p50s moved 0.218 -> 0.983 ms (same order). Full rows:
+  `tmp/bkbquiet/b2-blob-ts-remeasure.jsonl` (scratch copy embedded above via
+  SUMMARY lines).

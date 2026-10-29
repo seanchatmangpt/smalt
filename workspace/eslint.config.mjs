@@ -48,10 +48,18 @@ const eslintConfig = [
   ...nextFlat,
   ...typescript,
   {
-    rules: airGapRules,
+    rules: {
+      ...airGapRules,
+      // `_`-prefixed params/vars are deliberate interface-required or
+      // positional-unused (e.g. WASI shim, checkpoint collector, gap methods).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
+    },
   },
   {
-    ignores: ["node_modules/**", ".next/**", "out/**"],
+    ignores: ["node_modules/**", ".next/**", "out/**", "public/popcorn/**"], // public/popcorn = vendored popcorn_demo build artifacts (beam.wasm bundle), not workspace source
   },
 ];
 

@@ -153,7 +153,7 @@ defmodule Smalt.EventGridWebhookTest do
     assert Smalt.Messaging.EventGrid.publish("t-bridge", %{id: "br-1", specversion: "1.0"}) ==
              :fresh
 
-    assert_receive {:event_grid, "t-bridge", "sub_bridge", "br-1", _}
+    assert_receive {:event_grid, "t-bridge", "sub_bridge", "br-1", _envelope, _sys}
 
     # Webhook receiver channel: POST -> {:event_grid_webhook, ...} + record.
     conn = post_events("sub_bridge", Jason.encode!([ev("br-2")]))

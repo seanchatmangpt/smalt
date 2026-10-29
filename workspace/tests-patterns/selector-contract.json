@@ -1,0 +1,82 @@
+{
+  "comment": "PAT-C semantic selector contract (mirror of docs/jira/v26.10.22/patterns/PATTERN-LANGUAGE.md table). The DOM lint asserts page.tsx emits each attribute; the browser tier (typed SKIP until browsers + SYNC-1 server land) asserts them live.",
+  "page": "app/terminal/page.tsx",
+  "patterns": [
+    {
+      "id": "P1",
+      "name": "Ontological Airlock",
+      "tier": "dom-lint",
+      "require": ["data-action=\"admit\"", "data-status", "COMMITTED_LOCAL", "data-seq"]
+    },
+    {
+      "id": "P2",
+      "name": "Visible Andon Cord",
+      "tier": "dom-lint",
+      "require": ["role=\"alert\"", "data-andon-rule", "HALTED_BY_SIEVE"]
+    },
+    {
+      "id": "P3",
+      "name": "Monotonic Turnstile",
+      "tier": "dom-lint+logic",
+      "require": ["role=\"log\"", "data-frame-seq"],
+      "live": "live 50-burst needs server (SYNC-1)"
+    },
+    {
+      "id": "P4",
+      "name": "Local Hearth",
+      "pageAttr": "data-unsynced-count",
+      "tier": "browser",
+      "skipReason": "needs playwright browsers (absent under air-gap) + live server (SYNC-1)"
+    },
+    {
+      "id": "P5",
+      "name": "Cold Ash Rehydration",
+      "tier": "browser",
+      "skipReason": "needs playwright browsers (page.reload offline) — absent under air-gap"
+    },
+    {
+      "id": "P6",
+      "name": "Bounded Arena",
+      "tier": "dom-lint+logic",
+      "require": ["data-andon-rule=\"ALLOC_CAP_EXCEEDED\""],
+      "logic": "guard.ts exports ALLOC_CAP_BYTES == 16 MiB"
+    },
+    {
+      "id": "P7",
+      "name": "Sealed Convoy",
+      "tier": "logic",
+      "logic": "codec-court: magic 0x534D4C54 + 41-byte header round-trip"
+    },
+    {
+      "id": "P8",
+      "name": "Fast-Forward Sluice",
+      "tier": "dom-lint",
+      "require": ["SYNCED_AND_SEALED", "data-receipt"],
+      "live": "linear-history sync needs server (SYNC-1)"
+    },
+    {
+      "id": "P9",
+      "name": "Commutative Weave",
+      "tier": "browser",
+      "skipReason": "two-context commute needs live server (SYNC-1) + two browser contexts"
+    },
+    {
+      "id": "P10",
+      "name": "Elastic Snapback",
+      "tier": "dom-lint",
+      "require": ["data-status=\"SYNC_REFUSED_BY_SERVER\""]
+    },
+    {
+      "id": "P11",
+      "name": "Sabotage Trapdoor",
+      "tier": "logic",
+      "logic": "codec-court: corrupted payload -> typed bad_crc32"
+    },
+    {
+      "id": "P12",
+      "name": "Constant Seal",
+      "tier": "dom-lint",
+      "require": ["data-receipt-bytes=\"320\"", "data-receipt-verified"]
+    }
+  ]
+}

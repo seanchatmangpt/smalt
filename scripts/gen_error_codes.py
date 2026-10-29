@@ -246,6 +246,22 @@ ANNOTATIONS = {
         "OAuth token request was missing a required parameter or was otherwise malformed (RFC 6749 §5.2).",
         "Include grant_type, username, password, and client credentials in the application/x-www-form-urlencoded body.",
     ),
+    "ScopeLocked": (
+        "Write/delete refused: a Microsoft.Authorization/locks entry at (or above) the scope is ReadOnly/CanNotDelete (KD-113 leg b).",
+        "Remove the lock (or use a scope the lock does not cover); real ARM answers 409 ScopeLocked on locked scopes.",
+    ),
+    "PolicyRemediationInvalid": (
+        "Policy remediation PUT body invalid (missing policyAssignmentId, or resourceIds not a non-empty list of strings).",
+        "Send policyAssignmentId plus a non-empty resourceIds list; real ARM refuses malformed remediation bodies with 400.",
+    ),
+    "SnapshotExists": (
+        "App Configuration snapshot name already taken (snapshots are immutable once created).",
+        "Pick a new snapshot name; archive/purge the existing snapshot first if the name must be reused.",
+    ),
+    "CertificateNameAlreadyExists": (
+        "A certificate with that name exists in the vault (including soft-deleted, non-purged).",
+        "Use a new name, purge the deleted certificate, or recover it; real KV answers 409.",
+    ),
     "OperationRecordIncomplete": (
         "LRO poll returned a terminal Failed record: the stored operation record "
         "was missing or had malformed scheduling fields (startedAtMs/delayMs) — "
@@ -297,6 +313,26 @@ def extract_arm():
         codes = re.findall(r'"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"', window)
         if codes:
             rows.append((412, codes[-1], f"{ARM.relative_to(ROOT)}:{line_of(src, m.start())}"))
+    # C2) inline envelope via helper call: send_json(conn, NNN, helper(...)) —
+    # the helper's defp carries the "code" literal (witnessed: ScopeLocked 409
+    # via lock_scope_locked_body/1, v26.10.20 gap family). Resolve the helper's
+    # first "code" literal within 5000 chars of its defp; fail-closed if the
+    # helper drifted away.
+    for m in re.finditer(r'send_json\(\s*conn,\s*(\d{3}),\s*([a-z_]+)\(', src):
+        helper = m.group(2)
+        hm = re.search(
+            rf'defp\s+{helper}\b.*?"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"',
+            src[m.end():],
+            re.S,
+        )
+        if hm and (hm.end() - hm.start()) < 5000:
+            rows.append((int(m.group(1)), hm.group(1), f"{ARM.relative_to(ROOT)}:{line_of(src, m.start())}"))
+        elif re.search(rf'defp\s+{helper}\b', src[m.end():]):
+            sys.stderr.write(
+                f"gen_error_codes: send_json helper `{helper}` carries no literal "
+                "\"code\" member within reach — update the extraction pattern.\n"
+            )
+            sys.exit(1)
     # dedupe by (status, code), keep first source cite
     seen = {}
     for status, code, cite in rows:
@@ -365,7 +401,13 @@ def extract_egress():
         # error tuples consumed by the caller's send_json, so their "code"
         # literals get the helper's fixed status, not the caller's pending one.
         in_helper_def = any(
-            re.search(r'defp\s+\w*(error|api_version)', l) for l in lines[max(0, i - 14):i + 1]
+            # defp? (v26.10.20 w6bi): public `def` envelope helpers too —
+            # witnessed: check_akv_api_version/check_sentinel_api_version
+            # (def, return {:error, 400, ...} tuples; consumers send) and
+            # invalid_eg1_event_error/0 (def, envelope; consumers send 400).
+            # These codes ride the pinned helper list below, never pair with
+            # the surrounding send_json.
+            re.search(r'defp?\s+\w*(error|api_version)', l) for l in lines[max(0, i - 14):i + 1]
         )
         for cm in re.finditer(r'"code"\s*=>\s*"([A-Za-z][A-Za-z0-9-]*)"', line):
             cite = f"{EGRESS.relative_to(ROOT)}:{i + 1}"
@@ -450,6 +492,23 @@ def extract_policy():
         sys.exit(1)
     cite = f"{POLICY.relative_to(ROOT)}:{line_of(src, offset + m.start())}"
     seen = {(400, m.group(1)): cite}
+    # v26.10.20 gap families (close-out finding): remediation_refusal (router
+    # send site pins 400 at router.ex:5444) and scope_locked_body (router
+    # enforcement maps deny to 409; KD-113 leg b pins the 409).
+    for helper, status in [("remediation_refusal", 400), ("scope_locked_body", 409)]:
+        pm = re.search(
+            rf'defp\s+{helper}\b.*?"code"\s*=>\s*"([A-Za-z][A-Za-z0-9]*)"',
+            src,
+            re.S,
+        )
+        if not pm:
+            sys.stderr.write(
+                f"gen_error_codes: policy.ex defp {helper} no longer carries a "
+                "literal \"code\" member — update the policy extraction pattern.\n"
+            )
+            sys.exit(1)
+        cite = f"{POLICY.relative_to(ROOT)}:{line_of(src, pm.start())}"
+        seen[(status, pm.group(1))] = cite
     return [("arm-gateway", s, c, cite) for (s, c), cite in sorted(seen.items())]
 
 
@@ -588,6 +647,61 @@ def strip_docs(src):
     return "\n".join(l for l in src.split("\n") if not l.strip().startswith("#"))
 
 
+# T7 pinned statuses: two-tuple string-code refusals whose status is decided
+# at the egress consumer, not at this emission site. Backed by egress_router.ex
+# snapshots_error/2 (default arm → 409 for any code outside the 400/404 sets).
+TWO_TUPLE_PINNED_STATUS = {
+    "SnapshotExists": 409,
+    "SnapshotNotFound": 404,
+    "SnapshotArchived": 409,
+    "SnapshotNotArchived": 409,
+    "Conflict": 409,
+    "InvalidFilter": 400,
+    "InvalidComposition": 400,
+    # w6ax feature-flag module-direct contract (validation refusals,
+    # 400-class; no egress consumer — w6ax witness F2/F10 assert 400):
+    "InvalidFeatureFlag": 400,
+    "InvalidFeatureFlagName": 400,
+    # w6x schema registry module-direct contract (w6x witness: duplicate
+    # group register → 409; unknown group/id → 404; malformed Avro-shape
+    # JSON → 400 InvalidSchema):
+    "GroupExists": 409,
+    "GroupNotFound": 404,
+    "SchemaNotFound": 404,
+    "InvalidSchema": 400,
+}
+
+# T10 (w6bi, v26.10.20 wave-6): arm-module atom-tuple refusals
+# {:error, {:atom, "Code", msg}} — status pinned by the atom (real ARM
+# semantics: validation-class atoms are 400). Fail-closed like T7: an
+# unknown atom exits 1, never guessed.
+ARM_TUPLE_STATUS = {
+    ":bad_request": 400,
+    ":not_found": 404,
+    ":conflict": 409,
+    ":precondition_failed": 412,
+}
+
+# T11 (w6bi): pinned arm-module envelope helpers — codes emitted through a
+# named helper whose consumer pins the status (mirrors the egress pinned
+# list; cite = first literal occurrence). Never guess: entries here are
+# backed by the module's @doc + witness.
+ARM_PINNED_ENVELOPES = [
+    # resource_providers.ex invalid_namespace_error/1 — @doc: "400
+    # InvalidResourceNamespace"; witness unknown-namespace leg.
+    ("InvalidResourceNamespace", 400,
+     "lib/smalt/arm/resource_providers.ex"),
+    # rbac.ex assignment validation — consumer maps to 400 (witness:
+    # unknown roledef 400 leg).
+    ("RoleDefinitionDoesNotExist", 400,
+     "lib/smalt/arm/rbac.ex"),
+]
+
+# T9 scan dirs: arm modules + gateway (send_arm_error definition lives in
+# arm_gateway/router.ex; wave-6 modules call it directly or via ctx).
+ARM_DIRS = ["lib/smalt/arm", "lib/smalt/arm_gateway"]
+
+
 def extract_lib_tuples():
     """Post-reset repoint (v26.10.19, test/compliance corpus deleted at 64f6099):
     the compliance "?" rows are re-grounded in the lib/ surfaces that actually
@@ -605,7 +719,10 @@ def extract_lib_tuples():
             literal must sit within 400 chars of the tuple opener
     """
     sources = sorted((ROOT / "lib/smalt/data_plane").glob("*.ex")) + [
-        ROOT / "lib/smalt/security/ledger_writer.ex"
+        ROOT / "lib/smalt/security/ledger_writer.ex",
+        # w6x schema registry (messaging/, not data_plane) — T7 hit
+        # GroupExists 409 pin.
+        ROOT / "lib/smalt/messaging/eh_schema_registry.ex",
     ]
     rows = []
     for f in sources:
@@ -621,8 +738,12 @@ def extract_lib_tuples():
             rows.append(("data-plane/" + slug, int(m.group(1)), m.group(2),
                          f"{cite_file}:{line_of(src, m.start())}"))
         for m in re.finditer(
-            r'\{:error,\s*(\d{3}),\s*bad_request\("([A-Za-z][A-Za-z0-9]*)"', src, re.S
+            r'\{:error,\s*(\d{3}),\s*[a-z_]+\("([A-Za-z][A-Za-z0-9]*)"',
+            src, re.S
         ):
+            # v26.10.20 gap: generalized T3 — any helper("Code") form, not only
+            # bad_request/1 (witnessed: CertificateNameAlreadyExists via
+            # certificate_error/1 in certificates.ex).
             rows.append(("data-plane/" + slug, int(m.group(1)), m.group(2),
                          f"{cite_file}:{line_of(src, m.start())}"))
         for m in re.finditer(r'ledger_error\((\d{3}),\s*"([A-Za-z][A-Za-z0-9]*)"', src):
@@ -644,6 +765,75 @@ def extract_lib_tuples():
             if cm:
                 rows.append(("data-plane/" + slug, int(m.group(1)), cm.group(1),
                              f"{cite_file}:{line_of(src, m.start())}"))
+        # T7 (v26.10.20 gap): 2-tuple string-code refusals
+        # {:error, {"Code", msg}} — status pinned at the egress consumer, not
+        # literal at this emission site (witnessed: SnapshotExists, egress
+        # snapshots_error/2 egress_router.ex:583 default arm 409). Unknown code → fail-closed.
+        for m in re.finditer(r'\{:error,\s*\{\s*"([A-Za-z][A-Za-z0-9]*)"', src):
+            code = m.group(1)
+            pin = TWO_TUPLE_PINNED_STATUS.get(code)
+            if pin is None:
+                sys.stderr.write(
+                    f"gen_error_codes: T7 two-tuple code \"{code}\" in {cite_file} "
+                    "has no pinned status — extend TWO_TUPLE_PINNED_STATUS with "
+                    "the consumer's status mapping (never guess).\n"
+                )
+                sys.exit(1)
+            rows.append(("data-plane/" + slug, pin, code,
+                         f"{cite_file}:{line_of(src, m.start())}"))
+    seen = {}
+    for surface, status, code, cite in rows:
+        seen.setdefault((surface, code), (status, cite))
+    return [(surface, s, c, cite) for (surface, c), (s, cite) in sorted(seen.items())]
+
+
+def extract_arm_modules():
+    """w6bi (v26.10.20 wave-6): ARM-module error families. The wave-6 arm
+    modules (consumergroups, rbac, resource_providers, sb_management,
+    deployments, dns, name_availability) emit through shapes the older
+    families do not cover:
+      T9  (ctx.)send_arm_error(.)(conn, NNN, "CODE", ...) — direct ARM
+          error-envelope emission, status+code both literal.
+      T10 {:error, {:atom, "CODE", msg}} — atom-pinned validation tuples;
+          status from ARM_TUPLE_STATUS (fail-closed, never guessed).
+      T11 ARM_PINNED_ENVELOPES — named helpers whose consumer pins the
+          status; cite = first literal occurrence (mirrors the egress
+          pinned list).
+    """
+    rows = []
+    for d in ARM_DIRS:
+        for f in sorted((ROOT / d).glob("*.ex")):
+            src = strip_docs(f.read_text())
+            cite_file = str(f.relative_to(ROOT))
+            slug = "arm/" + f.stem.replace("_", "-")
+            # T9: plain + ctx-callback forms.
+            for m in re.finditer(
+                r'(?:ctx\.)?send_arm_error\.?\(\s*conn,\s*(\d{3}),\s*"([A-Za-z][A-Za-z0-9]*)"', src
+            ):
+                rows.append((slug, int(m.group(1)), m.group(2),
+                             f"{cite_file}:{line_of(src, m.start())}"))
+            # T10: atom-pinned tuples.
+            for m in re.finditer(
+                r'\{:error,\s*\{(:[a-z_]+),\s*"([A-Za-z][A-Za-z0-9]*)"', src
+            ):
+                key = m.group(1)
+                pin = ARM_TUPLE_STATUS.get(key)
+                if pin is None:
+                    sys.stderr.write(
+                        f"gen_error_codes: T10 arm atom-tuple {key} code "
+                        f"\"{m.group(2)}\" in {cite_file} has no pinned "
+                        "status — extend ARM_TUPLE_STATUS (never guess).\n"
+                    )
+                    sys.exit(1)
+                rows.append((slug, pin, m.group(2),
+                             f"{cite_file}:{line_of(src, m.start())}"))
+    # T11: pinned envelopes (cite = first occurrence of the code literal).
+    for code, status, rel in ARM_PINNED_ENVELOPES:
+        f = ROOT / rel
+        src = f.read_text()
+        idx = src.index(f'"{code}"')
+        rows.append(("arm/pinned", status, code,
+                     f"{rel}:{line_of(src, idx)}"))
     seen = {}
     for surface, status, code, cite in rows:
         seen.setdefault((surface, code), (status, cite))
@@ -668,7 +858,7 @@ def extract_amqp_management():
 
 def build_rows():
     bearer_rows, _subcodes = extract_bearer()
-    rows = extract_arm() + extract_lro() + extract_policy() + extract_egress() + bearer_rows + extract_data_plane() + extract_lib_tuples() + extract_amqp_management() + extract_cli_gateway()
+    rows = extract_arm() + extract_lro() + extract_policy() + extract_egress() + bearer_rows + extract_data_plane() + extract_lib_tuples() + extract_arm_modules() + extract_amqp_management() + extract_cli_gateway()
     out = []
     for surface, status, code, cite in rows:
         meaning, remediation, marked = annotate(code)

@@ -237,6 +237,7 @@ defmodule Smalt.ArmGateway.LRO.Sweeper do
 
   @impl true
   def init(opts) do
+    Process.set_label(%{service: :arm, role: :lro_sweeper})
     tick_ms =
       opts[:tick_ms] || Application.get_env(:smalt, :lro_sweep_interval_ms, @default_tick_ms)
 

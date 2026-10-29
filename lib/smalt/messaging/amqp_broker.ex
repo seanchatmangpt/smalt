@@ -17,7 +17,6 @@ defmodule Smalt.AmqpBroker do
   """
 
   use Supervisor
-  require Logger
 
   @doc "Starts the broker facade supervisor. Accepts `[]` (ports from app env) or a legacy integer SB port."
   def start_link(arg) do

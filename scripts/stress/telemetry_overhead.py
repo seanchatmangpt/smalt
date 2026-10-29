@@ -23,11 +23,13 @@ RESULT_RE = re.compile(r"^RESULT_JSON: (.*)$", re.M)
 
 
 def run_mode(repo: str, mode: str, puts: int, env_extra: dict) -> dict:
-    # PATH: prefer the pinned erlmcp OTP if present, else the ambient PATH
-    # (checkout-relative, no hardcoded user paths).
+    # PATH: prefer the pinned toolchain (asdf OTP 29.1.2), then the legacy
+    # erlmcp OTP 28.3.1 as fallback, else the ambient PATH.
+    asdf_bin = os.path.join(os.path.expanduser("~"), ".asdf/installs/erlang/29.1.2/bin")
     erlmcp_bin = os.path.join(os.path.expanduser("~"), ".erlmcp", "otp-28.3.1/bin")
-    path = (f"{erlmcp_bin}:{os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin')}"
-            if os.path.isdir(erlmcp_bin)
+    pinned = ":".join(b for b in (asdf_bin, erlmcp_bin) if os.path.isdir(b))
+    path = (f"{pinned}:{os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin')}"
+            if pinned
             else os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"))
     env = {"PATH": path, "HOME": __import__("os").environ.get("HOME", ""), "MIX_ENV": "dev", **env_extra}
     env.update({k: v for k, v in __import__("os").environ.items() if k in ("MIX_BUILD_ROOT",)})

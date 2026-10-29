@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: smalt-cli
+Version: 0.1.0
+Summary: Headless CLI companion to the smalt emulator: wire-parity Azure tooling against local loopback, zero-actuation enforced.
+Requires-Python: >=3.10
+Requires-Dist: typer>=0.12
+Requires-Dist: pyserial>=3.5
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Provides-Extra: migrate
+Requires-Dist: azure-servicebus>=7.12; extra == "migrate"
+Provides-Extra: aio
+Requires-Dist: aiohttp>=3.9; extra == "aio"

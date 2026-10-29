@@ -371,4 +371,12 @@ defmodule SmaltBench.Runner do
 end
 
 out_dir = System.get_env("BENCH_OUT_DIR") || "docs/jira/v26.10.14/bench"
+
+# BK-EPLAW2: fail-closed fence — this harness self-boots :smalt in-process
+# (run_b7b/run_b8b/run_b9b each call Application.ensure_all_started(:smalt)).
+# Pin every listener to a probed-free port and abort on contract violation.
+Code.require_file("test_boot_ports.exs", Path.join(File.cwd!(), "scripts/lib"))
+SmaltTestBoot.pin!()
+SmaltTestBoot.fence!("benchee_runner")
+
 SmaltBench.Runner.run(lane_arg, out_dir)

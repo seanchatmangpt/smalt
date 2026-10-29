@@ -1,0 +1,11 @@
+{"backend":"smalt-9444-enforce","case":"valid-bearer","status":201,"typed_verdict":"ADMITTED-BEARER","expect":"success","detail":"STS 200, container create 201"}
+{"backend":"smalt-9444-enforce","case":"valid-sharedkey","status":201,"typed_verdict":"ADMITTED-SHAREDKEY","expect":"success","detail":"SDK SharedKey container create 201"}
+{"backend":"smalt-9444-enforce","case":"none","status":401,"typed_verdict":"REFUSED-401-TYPED","expect":"refusal","detail":"{\"error\":{\"code\":\"AuthenticationFailed\",\"message\":\"MissingBearerToken\"}}"}
+{"backend":"smalt-9444-enforce","case":"tampered","status":401,"typed_verdict":"REFUSED-401-TYPED","expect":"refusal","detail":"{\"error\":{\"code\":\"AuthenticationFailed\",\"message\":\"The MAC signature found in the HTTP request is not the same as any computed signature.\"}}"}
+{"backend":"azurite-blob","case":"valid-sharedkey","status":201,"typed_verdict":"ADMITTED-SHAREDKEY-WELLKNOWN-KEY","expect":"success","detail":"SDK SharedKey create 201 — gate key is PUBLIC (well-known dev key)"}
+{"backend":"azurite-blob","case":"none","status":403,"typed_verdict":"REFUSED-403-ANON-WRITE","expect":"refusal","detail":"AuthorizationFailure — enforcement exists but the gate key is public"}
+{"backend":"azurite-blob","case":"tampered","status":403,"typed_verdict":"REFUSED-403-BAD-SIG","expect":"refusal","detail":"AuthorizationFailure — refuses, but gated on a public key and indistinguishable from the tokenless refusal"}
+{"backend":"cosmos-vnext","case":"valid-masterkey","status":200,"typed_verdict":"ADMITTED-MASTERKEY-SHAPE","expect":"success","detail":"GET /dbs 200 (gateway 8081)"}
+{"backend":"cosmos-vnext","case":"none","status":200,"typed_verdict":"ADMITTED-ANON (NO-ENFORCEMENT)","expect":"refusal-not-observed","detail":"tokenless GET /dbs 200 on gateway 8081"}
+{"backend":"cosmos-vnext","case":"tampered","status":200,"typed_verdict":"ADMITTED-BAD-SIG (NO-ENFORCEMENT)","expect":"refusal-not-observed","detail":"GET /dbs 200 with garbage-key signature — no signature verification exists"}
+{"backend":"cosmos-vnext","case":"probe-plane-anon","status":200,"typed_verdict":"ADMITTED-ANON (NO-AUTH-SURFACE)","expect":"refusal-not-observed","detail":"tokenless GET /alive 200 on 8080 — probe plane has no auth surface by design"}

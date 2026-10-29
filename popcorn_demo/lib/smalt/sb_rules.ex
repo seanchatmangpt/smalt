@@ -14,10 +14,7 @@ defmodule Smalt.SbRules do
     create-path edit is needed.
   - Delivery semantics (80/20): a subscription with at least one NON-default
     rule admits a message iff it matches ANY of its filters; non-matching
-    messages are skipped (not DLQ'd). `fan_out/2` implements the fan-out for
-    the AMQP ingest seam: for each subscription under the topic it evaluates
-    rules and enqueues matching messages into the subscription's queue
-    (`"<topic>/subscriptions/<sub>"` in `Smalt.Amqp.QueueStore`).
+    messages are skipped (not DLQ'd).
   - SQL filter grammar (fail-closed): equality on application properties and
     `sys.label`, `EXISTS(prop)`, `AND`, `OR`, parentheses, `'string'` /
     numeric literals. ANY other construct refuses at rule-create time with a
@@ -46,16 +43,6 @@ defmodule Smalt.SbRules do
   def rule_wire_id(sub_id, rg, ns, topic, sub, rule) do
     "/subscriptions/#{sub_id}/resourceGroups/#{rg}/namespaces/#{ns}/topics/#{topic}/subscriptions/#{sub}/rules/#{rule}"
   end
-
-  @doc "Stored rule record (or nil)."
-  def get_rule(store, key), do: Smalt.Store.get(store, key)
-
-  def put_rule(store, key, record), do: Smalt.Store.put(store, key, record)
-
-  def delete_rule(store, key), do: Smalt.Store.delete(store, key)
-
-  @doc "All stored rules under a subscription (list_prefix on the rules segment)."
-  def list_rules(store, prefix), do: Smalt.Store.list_prefix(store, prefix)
 
   # --- Default rule synthesis ---------------------------------------------------------
 
@@ -510,59 +497,4 @@ defmodule Smalt.SbRules do
     Map.update(msg, :app_props, %{path => v}, fn app -> Map.put(app, path, v) end)
   end
 
-  # --- Delivery fan-out ------------------------------------------------------------
-
-  @doc """
-  Fan a message out to a topic's subscriptions: for each subscription, apply
-  its rules; matching (or default) subscriptions get the message enqueued into
-  the subscription's queue in `Smalt.Amqp.QueueStore` under
-  `"<topic>/subscriptions/<sub>"`. Returns the list of subscription names the
-  message was delivered to.
-  """
-  def fan_out(sub_base, ns, topic, msg) do
-    subs_prefix =
-      String.downcase(
-        "#{sub_base}/namespaces/#{ns}/topics/#{topic}/subscriptions/"
-      )
-
-    # Subscriptions are ARM resources (:smalt_resources); rules live in
-    # :smalt_sb_rules — two different tables, never one `store` param.
-    subs = Smalt.Store.list_prefix(:smalt_resources, subs_prefix)
-
-    Enum.flat_map(subs, fn sub_record ->
-      sub_name = sub_record["name"]
-      rules_prefix = subs_prefix <> String.downcase(sub_name) <> "/rules/"
-
-      rules = Smalt.Store.list_prefix(:smalt_sb_rules, rules_prefix)
-
-      if subscription_admits?(rules, msg) do
-        msg2 = apply_first_action(rules, msg)
-
-        queue = "#{topic}/subscriptions/#{sub_name}"
-
-        {:ok, _seq} =
-          Smalt.Amqp.QueueStore.enqueue(queue, msg[:body] || "",
-            message_id: msg[:message_id],
-            app_props: msg2[:app_props] || %{}
-          )
-
-        [sub_name]
-      else
-        []
-      end
-    end)
-  end
-
-  defp apply_first_action(rules, msg) do
-    Enum.find_value(rules, msg, fn rule ->
-      props = rule["properties"]
-
-      if props && props["action"] &&
-           match?(%{"sqlExpression" => sql} when is_binary(sql) and sql != "", props["action"]) do
-        apply_action(props, msg)
-      else
-        nil
-      end
-    end)
-  end
 end

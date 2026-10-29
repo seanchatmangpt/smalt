@@ -382,15 +382,17 @@ defmodule Smalt.Amqp.FrameCodec do
   defp normalize_field({:map_rhea, _} = v), do: v
   defp normalize_field(%{__struct__: _} = v), do: v
 
-  # Error maps (detach/end/close/rejected) encode as the AMQP error list
-  # [condition(symbol), description, info].
+  # Error maps (detach/end/close/rejected) encode as the DESCRIBED AMQP error
+  # type (descriptor 0x1D) wrapping [condition(symbol), description, info] —
+  # a bare list is not an AMQP error and clients (rhea, Azure SDKs) cannot
+  # parse it (KD-86 wire witness: detach error legible only as described).
   defp normalize_field(%{} = error)
        when is_map_key(error, :condition) or is_map_key(error, "condition"),
-       do: [
+       do: {:described, 0x1D, [
          sym(Map.get(error, :condition) || Map.get(error, "condition")),
          Map.get(error, :description) || Map.get(error, "description"),
          Map.get(error, :info) || Map.get(error, "info")
-       ]
+       ]}
 
   defp normalize_field({:rejected, error}),
     do: {:described, state_desc(:rejected), encode_error_list(error)}
@@ -495,14 +497,33 @@ defmodule Smalt.Amqp.FrameCodec do
 
         true ->
           header_bytes = doff * 4
-          <<frame::binary-size(size), rest::binary>> = buffer
-          <<_::binary-size(header_bytes), body::binary>> = frame
-          decode_body(type_code, channel, body, rest)
+          <<frame::binary-size(^size), rest::binary>> = buffer
+          <<_::binary-size(^header_bytes), body::binary>> = frame
+          # KD-COVERS: KD-129 — an EMPTY frame body is a valid transport
+          # heartbeat (spec §2.3.1: "the body ... may be empty"). rhea's
+          # idle heartbeat (verification/ts/node_modules/rhea/lib/connection.js
+          # heartbeat_out -> _write_frame() with no frame) sends exactly
+          # <<size=8, doff=2, type, channel>> with no performative; decoding
+          # it through the performative path answered {:bad_frame_body,
+          # :truncated} and typed-closed live SDK connections mid-idle.
+          case {body, type_code} do
+            {<<>>, @type_code_amqp} -> {:ok, heartbeat(type_code, channel)}
+            _ -> decode_body(type_code, channel, body, rest)
+          end
       end
     end
   end
 
   def decode_frame(_), do: {:error, :bad_frame}
+
+  # A heartbeat carries no performative; the connection state machine must
+  # neither react nor close (handle_amqp(:heartbeat, ...) is a no-op).
+  defp heartbeat(type_code, channel) do
+    %{type: if(type_code == @type_code_amqp, do: :amqp, else: :sasl),
+      channel: channel,
+      performative: %{performative: :heartbeat},
+      payload: <<>>}
+  end
 
   defp decode_body(type_code, channel, body, rest) do
     case codec().decode(body) do

@@ -1,0 +1,30 @@
+{
+  "lane": "R3",
+  "date": "2026-10-20",
+  "binary": "/Users/sac/frozen-duckdb/crates/frozen-duckdb/src/duckdb/target-lane3/debug/frozen-duckdb-cli",
+  "cli_version": "frozen-duckdb 2.0.0-dev",
+  "engine": "DuckDB v2.0.0-dev88595 (libduckdb_arm64.dylib, ~/.frozen-duckdb/cache/v2.0.0-dev-arm64)",
+  "machine": "Apple M3 Max, 16 cores, 48 GB, macOS (darwin 25.2.0)",
+  "readonly_integrity": {
+    "cargo_lock_sha256_before": "03692d09619bb2a6c4dbe9c2a02a61fd63fb393b39dac4a0503656ce4f8909e4",
+    "cargo_lock_sha256_after": "03692d09619bb2a6c4dbe9c2a02a61fd63fb393b39dac4a0503656ce4f8909e4",
+    "note": "builds redirected via DOCTOR_TARGET_DIR=/tmp/fd-r3/doctor-target; zero writes into /Users/sac/frozen-duckdb; topology guard refused the /tmp repo copy (rsync), so the repo's own sanctioned DOCTOR_TARGET_DIR seam was used instead"
+  },
+  "corpus": {
+    "generator": "/Users/sac/smalt/popcorn_demo/bench/gen_corpus_r3.py",
+    "spec": "smalt telemetry-shaped OCEL NDJSON, seed 20261020 LCG, 15 fields/event incl nested attributes",
+    "note": "generator used for CLI-path derivation; the CLI parquet path was blocked (extension 404), so the passing derivations below ran the repo's own deterministic courts (seed 20261019, FDOCEL_EVENTS-scaled), which ingest a real JSONL corpus and measure on-disk bytes"
+  },
+  "measurements": {
+    "ocel_100k": {"raw_bytes": 20911389, "db_bytes": 1060864, "ratio": 0.05073, "compression_pct": 94.927, "pack_events_per_sec_debug": 30365, "wall_ms": 5746, "exit": 0},
+    "ocel_1m": {"raw_bytes": 211000389, "db_bytes": 6565888, "ratio": 0.03112, "compression_pct": 96.888, "pack_events_per_sec_debug": 31128, "wall_ms": 53159, "exit": 0},
+    "ingest_release_leg1_packed_3col": {"rows_per_sec": 12416257, "over_s": 5.01, "rows": 62200000},
+    "ingest_release_leg2_bp3_segments": {"rows_per_sec": 7259543, "over_s": 5.00, "rows": 36300000},
+    "latency_gate": {"claim_ms": 10.51, "budget_ms": 15, "runs": [{"median_p95_ms": null, "verdict": "PASS (quiet court run, exit 0, 35.51s)"}, {"rounds_p95": [11.7275, 22.6999, 24.3240], "median_p95_ms": 22.6999, "verdict": "FAIL"}, {"rounds_p95": [14.6628, 20.0305, 26.7177], "median_p95_ms": 20.0305, "verdict": "FAIL"}], "note": "round 1 alone reproduces 10.5-11.7ms; median-of-3 collapses under concurrent lane load"},
+    "fleet_d": {"receipt": "fleet004.json", "ratio": 0.9976, "arithmetic": "536576/221033690=0.0024276 -> 99.757%", "live_rederivation": "BLOCKED: missing /tmp/t2writer fixture binary (3 legs FAILED exit 101)"}
+  },
+  "cli_surface": {
+    "convert": "REFUSED at runtime: parquet/arrow extension download 404s at pinned dev commit b6013f7aa2 (extensions.duckdb.org has no osx_arm64 build for it); convert to parquet, arrow, and even `info` all exit 1",
+    "benchmark": "STUB: 'Performance benchmarking feature coming soon!' exit 0, zero output"
+  }
+}

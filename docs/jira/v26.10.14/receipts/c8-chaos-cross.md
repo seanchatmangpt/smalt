@@ -93,3 +93,34 @@ after kill and are honest about that.
 `docs/jira/v26.10.14/bench/c8-chaos-cross.jsonl` ·
 `docs/jira/v26.10.14/receipts/bench-11-chaos-tls.md` (single-surface baseline) ·
 `scripts/stress/chaos_kill.py`
+
+---
+
+## RE-MEASURE addendum (2026-10-22, lane BK-BQUIET — quiesced-machine attempt)
+
+- **Standing**: PARTIAL_ALIVE (re-witnessed under residual load; see typing below)
+- **Context**: solo
+- Attempt context: `just quiesce` REFUSED; bounded 15-min poll never cleared
+  (load 78 -> 96 across this lane's window). Pass proceeded under residual
+  load, typed honestly.
+- Replay (real, exit-captured): `scripts/bench/c8_chaos_overlay.sh` run
+  verbatim on block 39280..39285; 2 SIGKILL/reboot phases both landed.
+
+```
+PRE-C8 load={ 95.70 93.32 97.80 } 2026-10-22T14:13:02Z (run start)
+c8: [p1] kill, substrate listening again (+18085ms)
+c8: [p2] kill (cosmos-emphasized), listening again (+18045ms)
+per-surface: blob ok=7338 err=2 (100.0%), eh ok=3236 err=399 (89.0%),
+             cosmos ok=24615 err=6762 (78.4%)
+portsquat markers: 0
+POST-C8 load={ 95.70 93.32 97.80 } 2026-10-22T14:17:51Z; ports free after teardown
+```
+
+- Verdict: **PASS (load-typed)**. Chaos mechanism fully exercised: both kills
+  landed, reboot-to-LISTEN 18.05/18.05 s vs the 2026-10-16 baseline
+  2.7 s — the ~6.7x reboot inflation is consistent with residual load ~96
+  (compile warm but scheduler-starved), not a substrate change; 0 portsquat
+  markers (sampler live). Client-visible error windows during reboots are the
+  measured phenomenon itself. The canonical jsonl was snapshotted before the
+  run and restored byte-exact (sha256 338f5c86...); this run's 35,652 events
+  live in tmp/bkbquiet/c8-chaos-cross-remeasure.jsonl (scratch, not indexed).

@@ -174,7 +174,15 @@ defmodule Smalt.Policy do
     :smalt_rbac
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 
@@ -335,7 +343,15 @@ defmodule Smalt.Policy do
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
     |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/locks"))
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 
@@ -424,7 +440,15 @@ defmodule Smalt.Policy do
     :smalt_policy
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 
@@ -506,7 +530,15 @@ defmodule Smalt.Policy do
     :smalt_policy
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 
@@ -577,7 +609,15 @@ defmodule Smalt.Policy do
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
     |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/policySetDefinitions"))
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 
@@ -662,7 +702,15 @@ defmodule Smalt.Policy do
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
     |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/policyExemptions"))
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 
@@ -781,7 +829,15 @@ defmodule Smalt.Policy do
     |> :ets.tab2list()
     |> Enum.map(fn {_, r} -> r end)
     |> Enum.filter(&(is_map(&1) and &1["type"] == "Microsoft.Authorization/policyRemediations"))
-    |> Enum.filter(&(String.downcase(&1["id"]) |> String.starts_with?(prefix)))
+    # KD-COVERS: KD-125 — the shared :smalt_policy table also holds rem:/rs: rows
+    # with no "id" key — a nil there 500'd both list faces permanently
+    # (witnessed 2026-10-20, substrate.log 18:02/18:09). Nil-safe filter.
+    |> Enum.filter(fn r ->
+      case r["id"] do
+        nil -> false
+        id -> String.downcase(id) |> String.starts_with?(prefix)
+      end
+    end)
     |> Enum.sort_by(& &1["id"])
   end
 

@@ -94,7 +94,11 @@ defmodule Smalt.Amqp.DeliveryEncoder do
       "com.microsoft:locked-until-utc",
       filetime_opt(opts, :locked_until)
     )
+    # KD-COVERS: KD-85 — @azure/service-bus materializes `enqueuedTimeUtc`
+    # from the annotation `x-opt-enqueued-time` (no -utc suffix); stamp both
+    # keys additively so legacy `-utc` readers keep working.
     |> maybe_put("x-opt-enqueued-time-utc", timestamp_opt(opts, :enqueued_time))
+    |> maybe_put("x-opt-enqueued-time", timestamp_opt(opts, :enqueued_time))
     |> maybe_put("x-opt-session-id", Map.get(opts, :session_id))
     |> empty_map_to_nil()
   end

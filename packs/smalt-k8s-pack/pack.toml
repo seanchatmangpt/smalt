@@ -1,0 +1,23 @@
+# pack.toml — smalt-local k8s pack (lane BK-MKT1, v26.10.22).
+#
+# Extends ggen-marketplace's kubernetes-workload-pack v0.2.0 with the
+# deployable shapes its template cannot model (BK-MKTG's typed diff):
+# StatefulSet, headless/multi-port Services, env varieties (fieldRef,
+# secretKeyRef), volumes, affinity. The pack exists because hand-authored
+# manifests re-drift; per its own README philosophy the deployable set must
+# be a render output of admitted facts, not hand-edited YAML. This pack
+# renders k8s/smalt-backend.gen.yaml as the FULL deployable set (Secret,
+# ConfigMap, headless + ClusterIP + NodePort Services, StatefulSet) from
+# priv/smalt-k8s.ttl.
+#
+# Upstream path (typed, not executed): the template+gates here are the
+# prepared upstream contribution for kubernetes-workload-pack v0.3.0 --
+# see docs/jira/v26.10.22/receipts/bkmkt1-pack-facts.md.
+
+[pack]
+name = "smalt-k8s-pack"
+version = "0.1.0"
+description = "smalt-local extension of kubernetes-workload-pack: renders the full deployable k8s manifest set (StatefulSet + headless/ClusterIP/NodePort Services + Secret + ConfigMap) from admitted facts. Swarm hardening gates: 010 required-facts for the extended shapes, 030 podAntiAffinity required for multi-replica StatefulSets, 040 headless per-pod-DNS Service required, 050 BEAM dist-port range pinned (erl-dist 9000 + ERL_AFLAGS inet_dist_listen 9000..9009). Privilege refusal (SEC-PRIV-001) stays with the upstream pack's gate 020, which matches k8s:Container/k8s:inWorkload regardless of workload kind."
+
+[capabilities]
+provides = ["urn:ggen:pack:smalt-k8s-pack"]

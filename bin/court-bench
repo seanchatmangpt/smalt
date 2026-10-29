@@ -1,0 +1,125 @@
+#!/usr/bin/env escript
+%%! -mode compile
+%%
+%% bin/court-bench — BENCH-8 escript runner (v26.10.21).
+%%
+%% Compiles bench/*.erl via erlc into the lane-private build root
+%% _bench-escript/ebin (build roots are leases, not assets) and runs the
+%% bench court: exit 0 = PASS, 1 = FAIL (fail-closed).
+%%
+%% Interface: prefer smalt_bench_court:run_all/0 (the BENCH-2 lane contract).
+%% If the module compiles but run_all/0 is not exported, fall back to the
+%% documented interface run_all/1 over the three stub benches so this wiring
+%% is verifiable against stubs now and picks up real benches unchanged once
+%% BENCH-2 lands run_all/0.
+%%
+%% CI fence wiring note (BENCH-8 -> BENCH-1 typed note): the v26.10.21 fence
+%% "heap delta <= 32 words caller-local" is NOT enforceable via
+%% erlang:memory/1 — erlang:memory(total) is node-global (all processes plus
+%% system allocators), so a delta over it is neither caller-local nor stable
+%% under concurrent lanes. The lawful caller-local primitive is an isolated
+%% per-bench worker's process_info(Pid, total_heap_size) delta (words,
+%% caller-local by construction). Documented follow-up for the fence owner
+%% (BENCH-1); this escript is the runner only, it does not fence.
+%%
+%% Usage: bin/court-bench [benches_dir]   (default: <repo_root>/bench)
+
+main(Args) ->
+    Root = repo_root(),
+    Ebin = filename:join(Root, "_bench-escript/ebin"),
+    BenchesDir = case Args of
+                     [D | _] -> filename:absname(D);
+                     [] -> filename:join(Root, "bench")
+                 end,
+    io:format("[court-bench] root=~ts benches=~ts~n", [Root, BenchesDir]),
+    case compile_benches(BenchesDir, Ebin) of
+        {ok, Compiled} ->
+            Names = lists:join(", ", [atom_to_list(M) || M <- Compiled]),
+            io:format("[court-bench] compiled ~p module(s): ~ts~n",
+                      [length(Compiled), Names]),
+            run_court(Ebin);
+        {error, Reason} ->
+            io:format("[court-bench] FAIL compile: ~p~n", [Reason]),
+            halt(1)
+    end.
+
+repo_root() ->
+    Script = escript:script_name(),
+    filename:absname(filename:join(filename:dirname(Script), "..")).
+
+compile_benches(BenchesDir, Ebin) ->
+    Erls = case filelib:is_dir(BenchesDir) of
+               true -> lists:sort(filelib:wildcard(filename:join(BenchesDir, "*.erl")));
+               false -> []
+           end,
+    case Erls of
+        [] ->
+            {error, {no_sources, BenchesDir}};
+        _ ->
+            ok = filelib:ensure_dir(filename:join(Ebin, "x")),
+            EbinOpt = "-o " ++ Ebin,
+            Cmd = string:join([os:find_executable("erlc"), EbinOpt | Erls], " "),
+            P = open_port({spawn, Cmd}, [exit_status, stderr_to_stdout, in, eof]),
+            {Out, Code} = port_collect(P, []),
+            case Code of
+                0 -> {ok, [module_from_path(E) || E <- Erls]};
+                _ -> {error, {erlc_failed, Code, Out}}
+            end
+    end.
+
+port_collect(P, Acc) ->
+    receive
+        {P, {data, D}} -> port_collect(P, [D | Acc]);
+        {P, {exit_status, 0}} -> port_close(P), {lists:reverse(Acc), 0};
+        {P, {exit_status, N}} -> port_close(P), {lists:reverse(Acc), N}
+    end.
+
+module_from_path(ErlPath) ->
+    Base = filename:basename(ErlPath, ".erl"),
+    list_to_atom(Base).
+
+run_court(Ebin) ->
+    true = code:add_patha(Ebin),
+    Exports = smalt_bench_court:module_info(exports),
+    case lists:member({run_all, 0}, Exports) of
+        true ->
+            io:format("[court-bench] dispatch: smalt_bench_court:run_all/0~n"),
+            try smalt_bench_court:run_all() of
+                Result ->
+                    io:format("[court-bench] COURT PASS run_all/0 => ~p~n", [Result]),
+                    halt(0)
+            catch
+                C:R:ST ->
+                    io:format("[court-bench] COURT FAIL run_all/0 ~p:~p~n~p~n",
+                              [C, R, ST]),
+                    halt(1)
+            end;
+        false ->
+            io:format("[court-bench] run_all/0 absent — fallback: run_all/1 stub set~n"),
+            run_all_1_fallback()
+    end.
+
+%% Documented-interface fallback: run_all/1 over the stub set. Names are
+%% plain binaries — run_benchmark/3 -> to_bin/1 has no clause for tuples.
+run_all_1_fallback() ->
+    Benches = [{<<"stub-noop">>, fun() -> ok end, 1000},
+               {<<"stub-count">>, fun ets_stub/0, 500},
+               {<<"stub-arith">>, fun() -> erlang:phash2(lists:seq(1, 16)) end, 200}],
+    try smalt_bench_court:run_all(Benches) of
+        #{rows := Rows, receipt := File} ->
+            io:format("[court-bench] COURT PASS rows=~p receipt=~ts~n",
+                      [length(Rows), File]),
+            halt(0)
+    catch
+        C:R:ST ->
+            io:format("[court-bench] COURT FAIL ~p:~p~n~p~n", [C, R, ST]),
+            halt(1)
+    end.
+
+%% ETS touch, kept out of BENCH-2's module.
+ets_stub() ->
+    T = ets:new(stub, [public, set]),
+    true = ets:insert(T, {k, v}),
+    [_] = ets:lookup(T, k),
+    true = ets:delete(T),
+    ok.

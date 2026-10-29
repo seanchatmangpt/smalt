@@ -216,8 +216,26 @@ defmodule Smalt.Auth.StsKey do
                 "smalt :sts_signing_pem must be configured in prod (Application.get_env(:smalt, :sts_signing_pem))"
         end
 
+        if cluster_enabled?() do
+          raise ArgumentError,
+                "smalt :sts_signing_pem must be configured when :cluster is enabled — " <>
+                  "a per-VM generated RSA key lives in :persistent_term on ONE node, so a token " <>
+                  "minted by pod A fails verification on pod B (message-passing purity: no shared state). " <>
+                  "Set config :smalt, :sts_signing_pem (fail-closed, BK-ARM2)"
+        end
+
         JOSE.JWK.generate_key({:rsa, 4096})
     end
+  end
+
+  # Cluster mode is a per-pod distribution hazard for per-VM cached key material:
+  # :persistent_term is node-local, so lazily generated dev keys silently diverge
+  # across pods (the partitioned contract the swarm court pinned — each node's
+  # state invisible to its peers).
+  defp cluster_enabled? do
+    :smalt
+    |> Application.get_env(:cluster, [])
+    |> Keyword.get(:enabled, false)
   end
 
   # RFC 7638: canonical JSON over the REQUIRED RSA members (e, kty, n —

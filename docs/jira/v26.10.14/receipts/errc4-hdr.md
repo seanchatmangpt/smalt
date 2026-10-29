@@ -86,3 +86,14 @@ bash -c 'source scripts/bench/lib.sh; export B2B_MACHINE=$(bench_machine_spec); 
 Standing: ALIVE — both HDR lanes ran to completion with 0 op errors against the
 live substrate; hand-rolled lanes b2_blob_ts.mjs / b3_cosmos_ts.mjs remain in
 place as falsifiers, unchanged.
+
+## RE-WITNESS addendum — 2026-10-22 (lane BK-REWIT3): HEAVY — typed SUSPECT-PERMANENT-with-owner
+
+Replay requires the full bench-class rerun: `npm install --no-save
+hdr-histogram-js` into test/sdk-full (currently absent) + two private-port
+bench boots (39020-25 / 39030-35) with live op volume. NOT re-run here —
+bench-class replay on a shared, non-quiesced machine. Artifact existence
+re-verified: `docs/jira/v26.10.14/bench/b2b-blob-hdr.jsonl` (1 row) and
+`b3b-cosmos-hdr.jsonl` (2 rows) both on disk (exit=0).
+Typed: SUSPECT-PERMANENT-with-owner → **bench-runner** agent class on a
+quiesced machine, per the BK-SUSP3 bench-row disposition.

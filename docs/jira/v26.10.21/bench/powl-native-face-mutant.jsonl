@@ -1,0 +1,3 @@
+{"machine":"unspecified","op":"point_read_etag3","errors":0,"n":10000,"surface":"powl2-native","lane":"powlbench","min_us":1,"ops_per_sec":763358.8,"p50_ms":0.001,"p95_ms":0.002,"p99_ms":0.002,"max_us":75,"unit_note":"us_per_op"}
+{"machine":"unspecified","op":"cas_put_if_match_200","errors":0,"n":10000,"surface":"powl2-native","lane":"powlbench","min_us":2,"ops_per_sec":218995.7,"p50_ms":0.003,"p95_ms":0.01,"p99_ms":0.05,"max_us":201,"unit_note":"us_per_op"}
+{"machine":"unspecified","op":"executor_settlement_4step_MUTANT_x2steps","errors":0,"n":200,"surface":"powl2-native","lane":"powlbench","min_us":95,"ops_per_sec":7232.7,"p50_ms":0.113,"p95_ms":0.163,"p99_ms":0.234,"max_us":3611,"unit_note":"per-orchestration_us"}

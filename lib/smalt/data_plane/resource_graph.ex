@@ -23,7 +23,7 @@ defmodule Smalt.DataPlane.ResourceGraph do
   Runs a Resource Graph query over the resource inventory for `subscriptions`
   (list of subscription ids; `nil` = all).
 
-  Returns `{:ok, 200, body}`; body carries `count`, `data`, `totalRecords`,
+  Returns `{:ok, 200, body}`; body carries `count`, `data`,
   `resultTruncated: true` only when the filtered set exceeds the server record
   cap (results are then truncated to the cap), and `$skipToken` only when more
   pages remain (normal pagination does NOT truncate).
@@ -36,6 +36,22 @@ defmodule Smalt.DataPlane.ResourceGraph do
       catch
         {:bad_query, msg} ->
           {:error, 400, %{"error" => %{"code" => "BadQuery", "message" => msg}}}
+
+        {:bad_facet, msg} ->
+          {:error, 400,
+           %{"error" => %{"code" => "FacetRequestNotSupported", "message" => msg}}}
+
+        {:facet_nested, _} ->
+          {:error, 400,
+           %{
+             "error" => %{
+               "code" => "FacetRequestNotSupported",
+               "message" => "nested facets (facets-of-facets) are not supported"
+             }
+           }}
+
+        {:bad_result_format, msg} ->
+          {:error, 400, %{"error" => %{"code" => "InvalidParameter", "message" => msg}}}
       end
     end
   end
@@ -144,28 +160,44 @@ defmodule Smalt.DataPlane.ResourceGraph do
           {skip, subscriptions}
       end
 
+    source_rows = matching_resources(facets_subscriptions)
+
     all =
       facets_subscriptions
       |> matching_resources()
       |> apply_kql(Map.get(body, "query"))
+      # V20b: real ResourceGraph rows always carry the resource's ARM id; a
+      # `project` clause that omits it must not strip the row's identity (the
+      # id exists on the stored record). Rows the KQL transformed beyond
+      # recognition (e.g. `summarize count()` aggregates) match no source
+      # record and pass through unstamped.
+      |> ensure_ids(source_rows)
 
     truncated = length(all) > @server_cap
     all = if truncated, do: Enum.take(all, @server_cap), else: all
     total = length(all)
 
-    page = Enum.slice(all, offset, top)
-    remaining = total - (offset + length(page))
+    # Facets are computed over the full (post-KQL, pre-pagination) result set,
+    # per real Resource Graph facet semantics.
+    facets = facet_results(Map.get(body, "facets"), all)
+
+    page = format_rows(Enum.slice(all, offset, top), options)
 
     response =
       %{
         "count" => length(page),
         "data" => page,
-        "totalRecords" => total,
         "resultTruncated" => truncated
       }
 
     response =
-      if remaining > 0 do
+      case facets do
+        nil -> response
+        facets -> Map.put(response, "facets", facets)
+      end
+
+    response =
+      if total - (offset + length(page)) > 0 do
         token = new_token(offset + length(page), facets_subscriptions, %{"$top" => top})
         Map.put(response, "$skipToken", token)
       else
@@ -173,6 +205,138 @@ defmodule Smalt.DataPlane.ResourceGraph do
       end
 
     {:ok, 200, response}
+  end
+
+  # --- Facets (w6al) -----------------------------------------------------------
+
+  # Real Resource Graph facet shape: request
+  #   "facets": [%{"expression" => "tags.env", "options" => %{"top" => 3,
+  #               "sortOrder" => "desc"}}]
+  # → response
+  #   "facets": [%{"expression" => .., "totalRecords" => n_with_value,
+  #               "count" => returned, "data" => [%{"count" => n, "value" => v}]}]
+  # Bucketing is over the query's RESULT set (post-KQL, pre-pagination).
+  # Malformed facet envelopes are a typed 400 FacetRequestNotSupported-family
+  # error via `facets_error/0`; nested facets (expression rooted at "facets.")
+  # are not supported (real API: FacetRequestNotSupported).
+  defp facet_results(nil, _rows), do: nil
+  defp facet_results([], _rows), do: []
+
+  defp facet_results(facets, rows) when is_list(facets) do
+    Enum.map(facets, fn
+      %{"expression" => expr} = facet when is_binary(expr) ->
+        options = Map.get(facet, "options", %{})
+        top = options |> Map.get("top", 10) |> parse_int() |> Kernel.||(10) |> max(1)
+        sort = Map.get(options, "sortOrder", "desc")
+
+        values =
+          rows
+          |> Enum.flat_map(&facet_value(&1, expr))
+          |> Enum.frequencies()
+
+        ordered =
+          values
+          |> Enum.sort_by(fn {v, c} -> {facet_sort_key(sort, c, v), v} end)
+          |> Enum.take(top)
+
+        %{
+          "expression" => expr,
+          "totalRecords" => Enum.sum(Map.values(values)),
+          "count" => length(ordered),
+          "data" => Enum.map(ordered, fn {v, c} -> %{"count" => c, "value" => v} end)
+        }
+
+      _ ->
+        throw({:bad_facet, "each facet must be an object with a string \"expression\""})
+    end)
+  end
+
+  defp facet_results(_, _), do: throw({:bad_facet, "facets must be a list of facet objects"})
+
+  defp facet_value(_row, "facets." <> _) do
+    # Nested facets (facet-of-facet) are not supported by the real API.
+    throw({:facet_nested, nil})
+  end
+
+  defp facet_value(row, expr) do
+    case path_lookup(row, String.split(expr, ".")) do
+      nil -> []
+      v -> [normalize_facet_value(v)]
+    end
+  end
+
+  defp path_lookup(_row, []), do: nil
+
+  defp path_lookup(row, [seg]) when is_map(row) do
+    case row do
+      %{^seg => v} when is_binary(seg) -> v
+      _ -> Enum.find_value(row, fn {k, v} -> if to_string(k) == seg, do: v end)
+    end
+  end
+
+  defp path_lookup(row, [seg | rest]) when is_map(row) do
+    case path_lookup(row, [seg]) do
+      %{} = nested -> path_lookup(nested, rest)
+      _ -> nil
+    end
+  end
+
+  defp path_lookup(_, _), do: nil
+
+  # Facet values are stringified scalars (real API facets are string buckets).
+  defp normalize_facet_value(v) when is_binary(v), do: v
+  defp normalize_facet_value(v), do: to_string(v)
+
+  defp facet_sort_key("asc", count, _value), do: {count, :asc}
+  defp facet_sort_key("desc", count, _value), do: {-count, :asc}
+  defp facet_sort_key(_, count, _value), do: {-count, :asc}
+
+  # --- resultFormat (w6al) -----------------------------------------------------
+
+  # Real API accepts resultFormat "objectArray" (default) | "table". Rows here
+  # are already maps (objectArray is the landed behavior); "table" renders the
+  # Azure table envelope (columns + rows). Unknown formats are typed 400.
+  defp format_rows(rows, options) do
+    case Map.get(options, "resultFormat") do
+      nil -> rows
+      "objectArray" -> rows
+      "table" -> table_format(rows)
+      other -> throw({:bad_result_format, "resultFormat must be objectArray or table, got: #{inspect(other)}"})
+    end
+  end
+
+  # V20b: stamp the stored record's ARM id onto rows whose projection dropped
+  # it. Identity recovery is a subset join against the un-projected source
+  # rows; a row matching no source record (aggregate output like
+  # `summarize count()`) is left untouched — never a fabricated id.
+  defp ensure_ids(rows, source_rows) do
+    Enum.map(rows, fn row ->
+      case row do
+        %{"id" => _} ->
+          row
+
+        _ ->
+          case Enum.find(source_rows, fn src ->
+                 row != %{} and Enum.all?(row, fn {k, v} -> Map.get(src, k) == v end)
+               end) do
+            nil -> row
+            src -> Map.put(row, "id", src["id"])
+          end
+      end
+    end)
+  end
+
+  defp table_format(rows) do
+    columns =
+      rows
+      |> Enum.flat_map(&Map.keys/1)
+      |> Enum.uniq()
+      |> Enum.map(&%{"name" => &1, "type" => "string"})
+
+    %{
+      "columns" => columns,
+      "rows" => Enum.map(rows, fn r -> Enum.map(columns, fn c -> r[c["name"]] end) end)
+    }
   end
 
   # Real API carries the token in options.$skipToken; the flat "skiptoken"
@@ -201,20 +365,37 @@ defmodule Smalt.DataPlane.ResourceGraph do
   defp apply_kql(rows, _query), do: rows
 
   # A bare pipeline ("| where ...") is passed through; a bare query starting
-  # with a pipeline keyword is normalized ("where x" -> "| where x"); any
-  # other bare word is a table reference (e.g. "Resources") and filters
-  # nothing — previously it was force-prefixed with "|", making KQL reject it
-  # as an unknown pipeline keyword (400 BadQuery regression).
+  # with a pipeline keyword is normalized ("where x" -> "| where x"); a bare
+  # word with PIPED stages is a table reference ("Resources | where ...") —
+  # the table name is dropped and the remaining pipeline applied (real
+  # ResourceGraph answers table-led piped queries this way; previously the
+  # whole pipeline was silently discarded, answering an unfiltered scan).
   defp normalize_pipeline(query) do
-    if String.contains?(query, "|") do
+    trimmed = String.trim_leading(query)
+
+    if String.starts_with?(trimmed, "|") do
       query
     else
-      first = query |> String.split() |> List.first()
+      first = trimmed |> String.split() |> List.first()
 
-      if first in ["where", "order", "project", "take"] do
-        "| " <> query
-      else
-        nil
+      # KD-COVERS: KD-23 — a bare leading pipeline keyword before PIPED stages
+      # ("where x == y | project a, b") is normalized to "| where ... | ...",
+      # matching real ResourceGraph which accepts both the bare and pipe-led
+      # forms.
+      cond do
+        first in ["where", "order", "project", "take"] ->
+          "| " <> trimmed
+
+        String.contains?(trimmed, "|") ->
+          # Table-led piped query ("Resources | where ..."): the leading bare
+          # word is the table reference; drop it and run the remaining
+          # pipeline. (Previously the whole pipeline was silently discarded,
+          # answering an unfiltered scan.)
+          "| " <> (trimmed |> String.split("|", parts: 2) |> List.last() |> String.trim_leading())
+
+        true ->
+          # Bare table reference with no pipeline: unfiltered scan.
+          nil
       end
     end
   end

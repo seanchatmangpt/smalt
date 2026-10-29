@@ -2,7 +2,8 @@
 
 Context: solo
 
-Date: 2026-10-18 · Context: solo · Standing: PASS (no-op disposition)
+Date: 2026-10-18 · Context: solo
+**Standing:** PASS (no-op disposition)
 
 ## Finding
 

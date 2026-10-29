@@ -68,27 +68,41 @@ done_step
 
 # ---------------------------------------------------------------------------
 step "Boot smoke (substrate up -> GET /metadata/endpoints -> teardown)"
-# Port-bound stages need 9443 (ARM) and 9545 (MCP) free. Concurrent
-# substrate boots (other lanes, `just up`, other test tiers) hold them;
-# fail fast naming the holder instead of burning the 60s poll budget.
-for port in 9443 9545; do
-  for _ in $(seq 1 30); do
-    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || break
-    sleep 2 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x2s deadline)
+# If a substrate is ALREADY serving on 9443, reuse it for the smoke (idempotent
+# rerun while `just up` is active) — never tear down a substrate we didn't
+# start. Otherwise 9443/9545 must be free; a non-smalt holder fails fast with
+# the holder named instead of burning the poll budget.
+if curl -fsS -o /dev/null http://127.0.0.1:9443/metadata/endpoints 2>/dev/null; then
+  ALREADY_UP=1
+else
+  ALREADY_UP=0
+  for port in 9443 9545; do
+    for _ in $(seq 1 30); do
+      lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || break
+      # Holder may be a substrate still booting — once it serves, reuse it.
+      if [ "$port" = 9443 ] && \
+         curl -fsS -o /dev/null http://127.0.0.1:9443/metadata/endpoints 2>/dev/null; then
+        ALREADY_UP=1
+        break
+      fi
+      sleep 2 # SLEEP-CLASS: POLL-STEP (bounded port-free poll, 30x2s deadline)
+    done
+    if [ "$ALREADY_UP" -ne 1 ] && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "ERROR: port $port is held by a non-smalt-substrate process; smalt is single-substrate per host." >&2
+      lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2
+      echo "Stop the holder (just down / let the other tier finish) and rerun." >&2
+      exit 2 # typed precondition: port must be free
+    fi
+    [ "$ALREADY_UP" -eq 1 ] && break
   done
-  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "ERROR: port $port is held; smalt is single-substrate per host." >&2
-    lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2
-    echo "Stop the holder (just down / let the other tier finish) and rerun." >&2
-    exit 2 # typed precondition: port must be free
-  fi
-done
+fi
 LOG="$(mktemp /tmp/smalt-bootstrap.XXXXXX.log)"
 PID=""
 cleanup() {
   # Kill the whole process group: `mix run` spawns a child beam; killing
   # only the mix parent orphans the beam, which keeps MCP port 9545 and
   # breaks the next bootstrap run with :eaddrinuse.
+  # A reused (pre-existing) substrate is NEVER killed — we didn't start it.
   if [ -n "$PID" ]; then
     kill -- "-$PID" >/dev/null 2>&1 || kill "$PID" >/dev/null 2>&1 || true
     # Bounded reap poll on a real observable (kill -0); escalate to SIGKILL at
@@ -111,10 +125,12 @@ export SMALT_TLS_CERTFILE="$REPO/.smalt/tls/dev-cert.pem"
 export SMALT_TLS_KEYFILE="$REPO/.smalt/tls/dev-key.pem"
 export SSL_CERT_FILE="$REPO/.smalt/tls/ca-cert.pem"
 set -m
-# Spawn hygiene: stdin closed (substrate never reads it) + fd 9 closed so a
-# caller's flock is never inherited by the beam (lock-fd-inheritance law).
-mix run --no-halt >"$LOG" 2>&1 </dev/null 9>&- &
-PID=$!
+if [ "$ALREADY_UP" -eq 0 ]; then
+  # Spawn hygiene: stdin closed (substrate never reads it) + fd 9 closed so a
+  # caller's flock is never inherited by the beam (lock-fd-inheritance law).
+  mix run --no-halt >"$LOG" 2>&1 </dev/null 9>&- &
+  PID=$!
+fi
 set +m
 
 UP=0
@@ -130,6 +146,9 @@ if [ "$UP" -ne 1 ]; then
   echo "--- substrate log tail ($LOG) ---" >&2
   tail -30 "$LOG" >&2
   exit 124 # typed timeout (readiness poll exhausted)
+fi
+if [ "$ALREADY_UP" -eq 1 ]; then
+  echo "      substrate already running — reused for smoke (not torn down)"
 fi
 echo "      GET http://127.0.0.1:9443/metadata/endpoints -> 200"
 done_step

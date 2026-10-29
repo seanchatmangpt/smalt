@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+  Popcorn wasm BEAM host page.
+
+  Bundle copied from the demo tree with:
+    mkdir -p workspace/public/popcorn
+    cp -R popcorn_demo/public/out workspace/public/popcorn/out
+
+  The bundle (beam.wasm + otp/**) boots an OTP instance inside the iframe and
+  reaches the loopback smalt substrate directly (127.0.0.1:8443 / 9443);
+  the emulator's CORS-permissive posture allows those cross-origin fetches
+  from the workspace origin.
+-->
+<html>
+  <head><meta charset="utf-8" /></head>
+  <body>
+    <div id="legs"></div>
+    <p id="status">Starting Popcorn...</p>
+    <script src="./app.js"></script>
+    <script type="module">
+      // app.js is part of the demo bundle (copied below); when absent the
+      // status line stays visible so a failed boot is loud, never silent.
+      import { Popcorn } from "./out/index.mjs";
+      await Popcorn.init();
+    </script>
+  </body>
+</html>

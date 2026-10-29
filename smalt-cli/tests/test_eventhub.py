@@ -66,12 +66,17 @@ KD21 = (
 
 
 KD49_SKIP = (
-    "SKIP-KD49(CLOSED-SIMULATED, residual KD-77): KD-49 attach echo "
-    "(source/target mis-shape; pyamqp Target.__new__ 9-vs-8 TypeError) is "
-    "fixed — attach-echo shim landed in lib/, KD-49 CLOSED-SIMULATED. "
-    "Residual divergence docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-77: "
-    "delivery-tag UUID encoding on settle raises \"object of type 'UUID' "
-    "has no len()\". See KNOWN_DIVERGENCES.md KD-49/KD-77."
+    "SKIP-KD49(KD-49 CLOSED-with-receipt, KD-77 CLOSED-SIMULATED): both rows "
+    "are closed in docs/jira/v26.10.14/KNOWN_DIVERGENCES.md — KD-49 attach "
+    "echo (source/target mis-shape; pyamqp Target.__new__ 9-vs-8 TypeError) "
+    "shim landed in lib/, witness receipts/s1-amqp-shims.md (court "
+    "NON-VACUOUS 2026-10-15, real send/receive/complete roundtrip), and the "
+    "residual KD-77 delivery-tag UUID encoding on settle (\"object of type "
+    "'UUID' has no len()\") closed CLOSED-SIMULATED "
+    "(docs/jira/v26.10.16/receipts/lane9-reference-rewrite.md). This skip "
+    "is retained only as a loud regression tripwire: if it fires, either "
+    "signature has regressed and the KD rows must be reopened. "
+    "See KNOWN_DIVERGENCES.md KD-49/KD-77."
 )
 
 

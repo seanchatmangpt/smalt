@@ -1,6 +1,7 @@
 # i21 surfaces postfix — verification lane receipt
 
-Context: /Users/sac/smalt. Standing: PARTIAL_ALIVE (2 of 3 surfaces green; naming-sweep RED).
+Context: /Users/sac/smalt
+**Standing:** PARTIAL_ALIVE (2 of 3 surfaces green; naming-sweep RED).
 
 ## Dependency wait
 

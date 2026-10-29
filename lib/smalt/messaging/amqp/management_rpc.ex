@@ -1,5 +1,4 @@
 defmodule Smalt.Amqp.ManagementRpc do
-  require Logger
 
   @moduledoc """
   `$management` request/response handling (Service Bus emulator dialect).
@@ -54,8 +53,8 @@ defmodule Smalt.Amqp.ManagementRpc do
     * get-message-sessions — 200 {"sessions-ids": [..], "sessions": detail,
       "skip": next} / 400 QUEUE_REQUIRED (the entity rides associated-link-name);
       optional `since-updated-time` (timestamp ms) filter. Detail entries:
-      {"session-id", "session-state-size" (bytes), "message-count",
-      "updated-at" (timestamp)}
+      {"session-id", "session-state-size" (bytes), "session-state" (opaque bytes,
+      nil when unset), "message-count", "updated-at" (timestamp)}
     * batch-delete-messages — 200 nil / 400 QUEUE_REQUIRED /
       400 SEQUENCE_NUMBERS_REQUIRED / 404 NOT_FOUND (fail-closed on missing tables)
     * schedule-message     — 200 {"sequence-numbers": [..]} / 400 QUEUE_REQUIRED /
@@ -79,6 +78,7 @@ defmodule Smalt.Amqp.ManagementRpc do
   Timestamps are `{:timestamp, ms}` per `Smalt.Amqp.PrimitiveCodec`.
   """
 
+  alias Smalt.Amqp.RuleStore
   @default_lock_manager Smalt.Amqp.LockManager
   @default_queue_store Smalt.Amqp.QueueStore
 
@@ -100,7 +100,14 @@ defmodule Smalt.Amqp.ManagementRpc do
     # KD-118: scheduleMessage / cancelScheduledMessages ($management family,
     # core-amqp Constants.operations.scheduleMessage = "com.microsoft:schedule-message").
     "com.microsoft:schedule-message",
-    "com.microsoft:cancel-scheduled-message"
+    "com.microsoft:cancel-scheduled-message",
+    # w6n: namespace usage/quota face ($management family, SMALT extension op
+    # following the com.microsoft naming convention).
+    "com.microsoft:get-namespace-usage",
+    # w6m: topic-subscription RULES (SQL filter subset + correlation filter).
+    "com.microsoft:add-rule",
+    "com.microsoft:remove-rule",
+    "com.microsoft:enumerate-rules"
   ]
 
   # KD-19: hub topology shim — the probe's hub is created with two partitions.
@@ -171,6 +178,20 @@ defmodule Smalt.Amqp.ManagementRpc do
 
       :cancel_scheduled_messages ->
         cancel_scheduled_messages(body, request[:queue], correlation_id, context, now)
+
+      # w6n: namespace usage/quota face — live counts over the real stores.
+      :get_namespace_usage ->
+        get_namespace_usage(correlation_id, context)
+
+      # w6m: subscription rules
+      :add_rule ->
+        add_rule(body, request[:queue], correlation_id, context, now)
+
+      :remove_rule ->
+        remove_rule(body, request[:queue], correlation_id, context, now)
+
+      :enumerate_rules ->
+        enumerate_rules(body, request[:queue], correlation_id, context, now)
 
       :read_eventhub ->
         read_eventhub(request, correlation_id, now)
@@ -598,9 +619,28 @@ defmodule Smalt.Amqp.ManagementRpc do
   # handler returns the remaining sessions capped at `top` and reports
   # `skip` = skip + returned. Optional `since-updated-time` (AMQP timestamp ms
   # or integer) filters to sessions whose record was touched at/after the
-  # instant. Each entry carries the session-state size (bytes), the active
-  # message count, and the last-updated timestamp; the SDK consumes
+  # instant. Each entry carries the session-state size (bytes), the opaque
+  # session-state bytes themselves, the active message count, and the
+  # last-updated timestamp; the SDK consumes
   # `sessions-ids`, the detail map rides alongside (additive, wire-safe).
+  # w6n: namespace usage/quota face. Read-only over the real stores; typed
+  # 404 when the store tables are not materialized (same fail-closed gate
+  # shape as the session/batch ops).
+  defp get_namespace_usage(correlation_id, context) do
+    target = Map.get(context, :namespace_usage, Smalt.Amqp.NamespaceUsage)
+
+    case target.usage() do
+      {:ok, usage} ->
+        respond(200, "OK", %{"namespace-usage" => usage}, correlation_id)
+
+      {:error, :no_table} ->
+        respond(404, "NOT_FOUND", nil, correlation_id)
+
+      other ->
+        respond(500, "INTERNAL_ERROR", %{"error" => inspect(other)}, correlation_id)
+    end
+  end
+
   defp get_message_sessions(body, queue_from_request, correlation_id, context, _now) do
     queue =
       bare_entity(
@@ -608,7 +648,27 @@ defmodule Smalt.Amqp.ManagementRpc do
       )
     skip = fetch_or(body, "skip", 0) |> coerce_long()
     top = fetch_or(body, "top", 100) |> coerce_long()
-    since = fetch_or(body, "since-updated-time", nil) |> coerce_since()
+    # KD-COVERS: KD-120
+    # KD-120: the TS SDK (managementClient.js:884) sends `last-updated-time`
+    # for the since-filter on get-message-sessions; the server key was
+    # `since-updated-time` only, making the SDK-native filter dead code.
+    # Accept both (SDK key wins if both present) so the SDK-native filter
+    # actually filters.
+    since =
+      case fetch_or(body, "last-updated-time", nil) do
+        nil -> fetch_or(body, "since-updated-time", nil) |> coerce_since()
+        sdk_since -> coerce_since(sdk_since)
+      end
+
+    # KD-120: the SDKs' default listing mode sends last-updated-time =
+    # DateTime.MaxValue sentinel (253402300800000 ms, year 10000) — real
+    # Azure treats that sentinel as "no filter" (default listing mode), not
+    # as a since bound. Clamp it to nil before the store call.
+    since =
+      case since do
+        253_402_300_800_000 -> nil
+        other -> other
+      end
 
     cond do
       blank?(queue) ->
@@ -636,6 +696,7 @@ defmodule Smalt.Amqp.ManagementRpc do
                 %{
                   "session-id" => e.session_id,
                   "session-state-size" => e.session_state_size,
+                  "session-state" => e.session_state,
                   "message-count" => e.message_count,
                   "updated-at" => {:timestamp, e.updated_at}
                 }
@@ -911,7 +972,7 @@ defmodule Smalt.Amqp.ManagementRpc do
 
     if partition in @eh_partition_ids do
       Smalt.Messaging.EventHubs.ensure_tables()
-      row = eh_partition_row(partition)
+      row = eh_partition_row(eh_entity(request), partition)
       last = eh_last_seq(row)
 
       respond(
@@ -942,9 +1003,24 @@ defmodule Smalt.Amqp.ManagementRpc do
     end
   end
 
-  defp eh_partition_row(partition) do
-    case :ets.lookup(:smalt_eh_partitions, partition) do
-      [{^partition, row}] when is_map(row) -> row
+  # KD-COVERS: KD-128 — partition rows in :smalt_eh_partitions are keyed
+  # "<ns>/partitions/<hub>/partitions/<p>"-style composite keys (the store
+  # side writes "<hub>/partitions/<p>"; KD-68: identity is hub-scoped), so a
+  # bare-partition :ets.lookup always missed and every $management partition
+  # readout reported last_enqueued_sequence_number = 0. Match the real key by
+  # the "<hub>/partitions/<p>" suffix (exact-first), shortest key wins when
+  # several namespace spellings exist — same discipline as
+  # Smalt.ARM.EhArm.partition_metrics/2.
+  defp eh_partition_row(hub, partition) do
+    suffix = "/#{hub}/partitions/#{partition}"
+    exact = String.trim_leading(suffix, "/")
+
+    :smalt_eh_partitions
+    |> :ets.tab2list()
+    |> Enum.filter(fn {key, _} -> is_binary(key) and (key == exact or String.ends_with?(key, suffix)) end)
+    |> Enum.sort_by(fn {key, _} -> byte_size(key) end)
+    |> case do
+      [{_key, row} | _] when is_map(row) -> row
       _ -> %{}
     end
   end
@@ -956,7 +1032,132 @@ defmodule Smalt.Amqp.ManagementRpc do
     end
   end
 
-  defp eh_last_seq(_), do: 0
+
+  # ===========================================================================
+  # com.microsoft:add-rule / remove-rule / enumerate-rules (w6m)
+  # ===========================================================================
+
+  # The entity rides the $management node address: the SDK opens
+  # "<topic>/Subscriptions/<sub>/$management" (managementClient.js toPath) so
+  # request[:queue] arrives as the subscription path. addRule sends body
+  # {"rule-name": wrap_string, "rule-description": wrap_map} where the map is
+  # {"sql-filter": {"expression": s}} or {"correlation-filter": {..}}; the
+  # optional "sql-rule-action": {"expression": s} is stored and echoed on
+  # enumerate, never evaluated (documented subset).
+  defp add_rule(body, queue_from_request, correlation_id, _context, _now) do
+    entity = bare_entity(body_field(body, "queue") || queue_from_request)
+    name = body_field(body, "rule-name")
+    desc = body_field(body, "rule-description")
+
+    cond do
+      blank?(entity) or is_nil(RuleStore.split_sub_path(entity)) ->
+        respond(400, "SUBSCRIPTION_PATH_REQUIRED", nil, correlation_id)
+
+      blank?(name) ->
+        respond(400, "RULE_NAME_REQUIRED", nil, correlation_id)
+
+      not is_map(desc) ->
+        respond(400, "RULE_DESCRIPTION_REQUIRED", nil, correlation_id)
+
+      true ->
+        filter = parse_rule_filter(desc)
+
+        if filter == :error do
+          respond(400, "RULE_FILTER_INVALID", nil, correlation_id)
+        else
+          {topic, sub} = RuleStore.split_sub_path(entity)
+          action = rule_action(desc)
+
+          case RuleStore.add_rule(topic, sub, name, filter, action) do
+            {:ok, _rule} -> respond(200, "OK", nil, correlation_id)
+            {:error, :bad_filter} -> respond(400, "RULE_FILTER_INVALID", nil, correlation_id)
+            _other -> respond(409, "RULE_ALREADY_EXISTS", nil, correlation_id)
+          end
+        end
+    end
+  end
+
+  defp parse_rule_filter(%{"sql-filter" => %{"expression" => expr}}) when is_binary(expr) do
+    down = String.downcase(expr)
+
+    cond do
+      down == "1=1" -> :true
+      down == "1=0" -> :false
+      true -> {:sql, expr}
+    end
+  end
+
+  defp parse_rule_filter(%{"sql-filter" => %{expression: expr}}) when is_binary(expr),
+    do: parse_rule_filter(%{"sql-filter" => %{"expression" => expr}})
+
+  defp parse_rule_filter(%{"correlation-filter" => corr}) when is_map(corr),
+    do: {:correlation, corr}
+
+  defp parse_rule_filter(_), do: :error
+
+  defp rule_action(desc) do
+    case desc["sql-rule-action"] do
+      %{"expression" => expr} when is_binary(expr) -> expr
+      %{expression: expr} when is_binary(expr) -> expr
+      _ -> nil
+    end
+  end
+
+  defp remove_rule(body, queue_from_request, correlation_id, _context, _now) do
+    entity = bare_entity(body_field(body, "queue") || queue_from_request)
+    name = body_field(body, "rule-name")
+
+    cond do
+      blank?(entity) or is_nil(RuleStore.split_sub_path(entity)) ->
+        respond(400, "SUBSCRIPTION_PATH_REQUIRED", nil, correlation_id)
+
+      blank?(name) ->
+        respond(400, "RULE_NAME_REQUIRED", nil, correlation_id)
+
+      true ->
+        {topic, sub} = RuleStore.split_sub_path(entity)
+
+        case RuleStore.remove_rule(topic, sub, name) do
+          :ok -> respond(200, "OK", nil, correlation_id)
+          {:error, :not_found} -> respond(404, "RULE_NOT_FOUND", nil, correlation_id)
+          _other -> respond(404, "RULE_NOT_FOUND", nil, correlation_id)
+        end
+    end
+  end
+
+  # enumerate-rules body: {top, skip} wrapped ints; reply {"rules": [...]}.
+  # Each entry is {"rule-name": str, "rule-description": described}; the SDK
+  # skips any entry whose rule-description lacks the expected descriptor, so
+  # the described wire form is load-bearing (RuleStore.wire_description/1).
+  defp enumerate_rules(body, queue_from_request, correlation_id, _context, _now) do
+    entity = bare_entity(body_field(body, "queue") || queue_from_request)
+
+    skip = coerce_long(fetch_or(body, "skip", 0))
+    top = coerce_long(fetch_or(body, "top", 100))
+
+    cond do
+      blank?(entity) or is_nil(RuleStore.split_sub_path(entity)) ->
+        respond(400, "SUBSCRIPTION_PATH_REQUIRED", nil, correlation_id)
+
+      skip == :error or not is_integer(skip) or skip < 0 ->
+        respond(400, "RULE_PAGING_BOUNDS", nil, correlation_id)
+
+      top == :error or not is_integer(top) or top < 1 ->
+        respond(400, "RULE_PAGING_BOUNDS", nil, correlation_id)
+
+      true ->
+        {topic, sub} = RuleStore.split_sub_path(entity)
+        {:ok, rules} = RuleStore.list_rules(topic, sub)
+
+        entries =
+          rules
+          |> Enum.drop(skip)
+          |> Enum.take(top)
+          |> Enum.map(&RuleStore.wire_description/1)
+
+        respond(200, "OK", %{"rules" => entries}, correlation_id)
+    end
+  end
 
   # ===========================================================================
   # Internals
@@ -979,6 +1180,11 @@ defmodule Smalt.Amqp.ManagementRpc do
       "com.microsoft:batch-delete-messages" -> :batch_delete_messages
       "com.microsoft:schedule-message" -> :schedule_messages
       "com.microsoft:cancel-scheduled-message" -> :cancel_scheduled_messages
+      # w6n: namespace usage/quota face.
+      "com.microsoft:get-namespace-usage" -> :get_namespace_usage
+      "com.microsoft:add-rule" -> :add_rule
+      "com.microsoft:remove-rule" -> :remove_rule
+      "com.microsoft:enumerate-rules" -> :enumerate_rules
       _ -> :unknown
     end
   end
@@ -996,6 +1202,11 @@ defmodule Smalt.Amqp.ManagementRpc do
       "com.microsoft:batch-delete-messages" -> :batch_delete_messages
       "com.microsoft:schedule-message" -> :schedule_messages
       "com.microsoft:cancel-scheduled-message" -> :cancel_scheduled_messages
+      # w6n: namespace usage/quota face.
+      "com.microsoft:get-namespace-usage" -> :get_namespace_usage
+      "com.microsoft:add-rule" -> :add_rule
+      "com.microsoft:remove-rule" -> :remove_rule
+      "com.microsoft:enumerate-rules" -> :enumerate_rules
       _ -> normalize_read(op, type)
     end
   end
@@ -1008,6 +1219,11 @@ defmodule Smalt.Amqp.ManagementRpc do
       "com.microsoft:batch-delete-messages" -> :batch_delete_messages
       "com.microsoft:schedule-message" -> :schedule_messages
       "com.microsoft:cancel-scheduled-message" -> :cancel_scheduled_messages
+      # w6n: namespace usage/quota face.
+      "com.microsoft:get-namespace-usage" -> :get_namespace_usage
+      "com.microsoft:add-rule" -> :add_rule
+      "com.microsoft:remove-rule" -> :remove_rule
+      "com.microsoft:enumerate-rules" -> :enumerate_rules
       _ -> normalize_read(op, type)
     end
   end

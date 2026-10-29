@@ -1,7 +1,8 @@
 defmodule Smalt.Mcp.Router do
   # Runtime single source for the wire protocol version. The authored source
-  # stays the TTL (ema:mcpProtocolVersion); test/mcp_test.exs cross-checks the
-  # two so a spec bump cannot drift one side silently.
+  # stays the TTL (ema:mcpProtocolVersion); the internal court
+  # (test/internal/expl8r_court_test.exs) cross-checks the two so a spec bump
+  # cannot drift one side silently.
   @protocol_version "2024-11-05"
   @moduledoc """
   Read-only MCP (JSON-RPC 2.0) tool surface over the smalt substrate for
@@ -18,7 +19,12 @@ defmodule Smalt.Mcp.Router do
   policy.locks.list, appconfig.snapshots.kv, cosmos.changefeed.peek,
   sb.topics.subscriptions, eh.consumergroups.list, certificates.get, and the
   v26.10.22 wave-4 reads: kv.deletedsecrets.list, policy.setdefinitions.list,
-  sb.rules.list, cosmos.uniquekeys.get.
+  sb.rules.list, cosmos.uniquekeys.get, the v26.10.22 wave-5 reads:
+  cosmos.changefeed.cursor, eh.geo-dr.aliases, and the v26.10.22 wave-6 reads:
+  kv.rotationpolicy.get, dns.zones.list, eg.schemaregistry.groups,
+  monitor.alerts.list, cosmos.ttl.effective (37 tools total; the
+  TTL-vs-descriptor drift fence and the per-tool dispatchability court live in
+  test/internal/expl8r_court_test.exs).
 
   READ-ONLY BY LAW: this surface exposes NO actuation tools. The substrate
   refuses unreceipted DO; any tool call for a non-registered (actuation or
@@ -39,7 +45,11 @@ defmodule Smalt.Mcp.Router do
        port: Application.get_env(:smalt, :mcp_port, 9545)}
 
   Tests exercise this module over `Plug.Test` with real substrate modules
-  (no mocks) — see test/mcp_test.exs.
+  (no mocks) — see test/internal/expl8r_court_test.exs (the
+  test/mcp_test.exs cited here previously was deleted in the 64f6099
+  clean-room reset and never re-authored; its claimed fences — hostile
+  supervisor, actuation-verb gate, TTL-vs-descriptor cross-check — are
+  re-authored there).
 
   ## Test seam: `:doctor_supervisor`
 
@@ -53,7 +63,8 @@ defmodule Smalt.Mcp.Router do
       no mock). The ONLY observable change is the child-id list; nothing else
       in the doctor summary or any other tool reads this env.
 
-  Anti-vacuity: the hostile-supervisor fence (test/mcp_test.exs) seeds a
+  Anti-vacuity: the hostile-supervisor fence (expl8r_court_test.exs,
+  "hostile :doctor_supervisor seam is read over the wire") seeds a
   sentinel child id unique to that fence and asserts it appears verbatim in
   the response, proving the substitution was actually observed (a seam that
   silently stopped being read would make the fence test the real supervisor
@@ -75,11 +86,122 @@ defmodule Smalt.Mcp.Router do
   # Adaptive health probes (envelope Phase 4): zero-auth readiness/liveness.
   # Readiness degrades only on structural failure, never on load.
   plug(Smalt.HealthPlug)
+  # BK-21 (v26.10.21): the MCP plane previously served no CORS face at all
+  # (OPTIONS / → 404, no allow headers) — the KD-15 mcp leg's transport gap.
+  # Same static CORSPlug face as the 8443 KV precedent, gated on loopback
+  # origin (Smalt.EgressRouter.loopback_origin?/1 — one law, two mounts).
+  # Preflights (Origin + Access-Control-Request-Method) are answered and
+  # halted; actual requests with an allowed Origin get the allow headers
+  # registered on the response. Non-loopback Origin → 403, no allow headers.
+  plug(:mcp_cors)
   plug(Plug.Logger)
   plug(:match)
   plug(:dispatch)
 
+  def mcp_cors(conn, _opts) do
+    case get_req_header(conn, "origin") do
+      [] ->
+        # No Origin → no CORS face (browser-irrelevant request).
+        conn
+
+      [origin | _] ->
+        if Smalt.EgressRouter.loopback_origin?(origin) do
+          origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
+          headers = Application.get_env(:smalt, :egress_cors_headers, ["*"])
+          CORSPlug.call(conn, CORSPlug.init(origin: origins, headers: headers))
+        else
+          conn |> send_resp(403, "") |> halt()
+        end
+    end
+  end
+
+  # BK-EGS1 (F-EGS1 repair, EXPL9-R2): the MCP surface declared
+  # `use Plug.ErrorHandler` but never defined handle_errors/2 — the default
+  # handler is a no-op and Plug.ErrorHandler ALWAYS re-raises, so any unhandled
+  # crash escaped to Bandit as the NAKED adapter 500 (empty body, no envelope,
+  # no request id; audit probe T6 class,
+  # docs/jira/v26.10.22/receipts/bkegskep-fence-audit.md). Renders the JSON-RPC
+  # error envelope + x-ms-request-id, with the same fault-guard as the egress
+  # and ARM routers: a fault INSIDE this handler hits the rescue path, which
+  # renders a fault-free constant fallback (module-attribute bytes + static
+  # request id) and logs the secondary fault loudly.
+  defp handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
+    require Logger
+
+    # BK-XPRIF: exceptions carrying a typed plug_status < 500 are NOT
+    # 500-class crashes — sending the 500 envelope here would swallow the
+    # typed status (BK-XPRI HIGH regression class). Skip the fence so
+    # Plug.ErrorHandler's re-raise reaches the adapter, which renders the
+    # exception's own typed status.
+    if kind == :error and Plug.Exception.status(reason) < 500 do
+      Logger.error(
+        "mcp_router typed plug-status crash (fence skipped, adapter renders typed status): " <>
+          Exception.format(kind, reason, stack)
+      )
+
+      :ok
+    else
+      try do
+        Logger.error("mcp_router crash 500: #{Exception.format(kind, reason, stack)}")
+
+        # :unsent is not a real Plug conn.state — "nothing sent yet" is
+        # state in [:unset, :set].
+        if conn.state in [:unset, :set] do
+          conn
+          |> put_resp_header("x-ms-request-id", generate_uuid())
+          |> put_resp_content_type("application/json")
+          |> send_resp(
+            500,
+            Jason.encode!(%{
+              "jsonrpc" => "2.0",
+              "error" => %{"code" => -32_603, "message" => "Internal server error."},
+              "id" => nil
+            })
+          )
+        end
+
+        :ok
+      rescue
+        secondary ->
+          Logger.error(
+            "mcp_router handle_errors itself FAULTED (F-EGS1 fallback engaged): " <>
+              Exception.format(:error, secondary, __STACKTRACE__)
+          )
+
+          fegs1_fallback_send(conn, secondary)
+      end
+    end
+  end
+
+  @fegs1_fallback_request_id "00000000-0000-4000-8000-000000000000"
+  @fegs1_fallback_body "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Internal server error.\"},\"id\":null}"
+
+  defp fegs1_fallback_send(conn, _secondary) do
+    if conn.state in [:unset, :set] do
+      conn
+      |> put_resp_header("x-ms-request-id", @fegs1_fallback_request_id)
+      |> put_resp_header("content-type", "application/json; charset=utf-8")
+      |> send_resp(500, @fegs1_fallback_body)
+    end
+
+    :ok
+  end
+
+  defp generate_uuid do
+    <<a::32, b::16, c::16, d::16, e::48>> = :crypto.strong_rand_bytes(16)
+
+    :io_lib.format("~8.16.0b-~4.16.0b-~4.16.0b-~4.16.0b-~12.16.0b", [
+      a,
+      b,
+      :erlang.band(c, 0x0FFF) + 0x4000,
+      :erlang.band(d, 0x3FFF) + 0x8000,
+      e
+    ])
+    |> IO.iodata_to_binary()
+  end
+
   @json_rpc_parse_error -32_700
+  @json_rpc_invalid_request -32_600
   @json_rpc_method_not_found -32_601
   @json_rpc_invalid_params -32_602
   @tool_not_found_code "TOOL_NOT_FOUND"
@@ -196,7 +318,7 @@ defmodule Smalt.Mcp.Router do
           conn,
           400,
           nil,
-          @json_rpc_invalid_params,
+          @json_rpc_invalid_request,
           "INVALID_REQUEST",
           "request is not a JSON-RPC 2.0 object"
         )
@@ -363,7 +485,8 @@ defmodule Smalt.Mcp.Router do
       "properties" => %{
         "subscription" => %{
           "type" => "string",
-          "description" => "optional subscription id filter (Scopes to /subscriptions/<id>/operations)"
+          "description" =>
+            "optional subscription id filter (Scopes to /subscriptions/<id>/operations)"
         }
       }
     }
@@ -518,6 +641,61 @@ defmodule Smalt.Mcp.Router do
     }
   end
 
+  defp input_schema("cosmos.changefeed.cursor") do
+    %{
+      "type" => "object",
+      "required" => ["db", "coll"],
+      "properties" => %{
+        "db" => %{"type" => "string"},
+        "coll" => %{"type" => "string"}
+      }
+    }
+  end
+
+  defp input_schema("eh.geo-dr.aliases"), do: %{"type" => "object", "properties" => %{}}
+
+  # -- v26.10.22 wave-6 read tools (33-37) ------------------------------------
+
+  defp input_schema("kv.rotationpolicy.get") do
+    %{
+      "type" => "object",
+      "required" => ["name"],
+      "properties" => %{"name" => %{"type" => "string"}}
+    }
+  end
+
+  defp input_schema("dns.zones.list") do
+    %{
+      "type" => "object",
+      "required" => ["rg"],
+      "properties" => %{"rg" => %{"type" => "string"}}
+    }
+  end
+
+  defp input_schema("eg.schemaregistry.groups"), do: %{"type" => "object", "properties" => %{}}
+
+  defp input_schema("monitor.alerts.list") do
+    %{
+      "type" => "object",
+      "required" => ["sub", "rg"],
+      "properties" => %{
+        "sub" => %{"type" => "string"},
+        "rg" => %{"type" => "string"}
+      }
+    }
+  end
+
+  defp input_schema("cosmos.ttl.effective") do
+    %{
+      "type" => "object",
+      "required" => ["db", "coll"],
+      "properties" => %{
+        "db" => %{"type" => "string"},
+        "coll" => %{"type" => "string"}
+      }
+    }
+  end
+
   # ---------------------------------------------------------------------------
   # Dispatch: real substrate modules, reads only
   # ---------------------------------------------------------------------------
@@ -550,8 +728,6 @@ defmodule Smalt.Mcp.Router do
     normalized = String.downcase(name)
     Enum.any?(@actuation_fragments, &String.contains?(normalized, &1))
   end
-
-  defp actuation_verb?(_), do: false
 
   defp registered?(name), do: match?({:ok, _}, Smalt.Mcp.Descriptor.describe(name))
 
@@ -647,9 +823,6 @@ defmodule Smalt.Mcp.Router do
           :error ->
             {:refusal, @invalid_params_code,
              "refused: sb.peek message_count must be an integer between 1 and 100"}
-
-          other ->
-            {:refusal, "SB_ERROR", "sb.peek unexpected: #{inspect(other)}"}
         end
 
       _ ->
@@ -667,9 +840,6 @@ defmodule Smalt.Mcp.Router do
           :error ->
             {:refusal, @resource_not_found_code,
              "refused: key #{inspect(name)} not found in vault key table"}
-
-          other ->
-            {:refusal, @internal_code, "kv.get unexpected: #{inspect(other)}"}
         end
 
       _ ->
@@ -688,9 +858,6 @@ defmodule Smalt.Mcp.Router do
 
       {:ok, status, body} ->
         {:refusal, "KV_ERROR", "kv.deletedkeys.list returned #{status}: #{inspect(body)}"}
-
-      other ->
-        {:refusal, @internal_code, "kv.deletedkeys.list unexpected: #{inspect(other)}"}
     end
   end
 
@@ -716,11 +883,14 @@ defmodule Smalt.Mcp.Router do
 
       prefix =
         case args["subscriber"] do
-          sub when is_binary(sub) -> "#{account}/eg-dlq-#{sub}/"
-          nil -> "#{account}/"
+          sub when is_binary(sub) ->
+            "#{account}/eg-dlq-#{sub}/"
+
+          nil ->
+            "#{account}/"
+
           _ ->
-            {:refusal, @invalid_params_code,
-             "refused: eg.dlq.list subscriber must be a string"}
+            {:refusal, @invalid_params_code, "refused: eg.dlq.list subscriber must be a string"}
         end
 
       if is_binary(prefix) do
@@ -745,7 +915,8 @@ defmodule Smalt.Mcp.Router do
     sub = args["subscription"]
 
     if sub != nil and not is_binary(sub) do
-      {:refusal, @invalid_params_code, "refused: lro.operations.list subscription must be a string"}
+      {:refusal, @invalid_params_code,
+       "refused: lro.operations.list subscription must be a string"}
     else
       ops =
         :smalt_operations
@@ -912,32 +1083,11 @@ defmodule Smalt.Mcp.Router do
       |> Enum.map(fn r ->
         r
         |> Map.take(["id", "eventType", "eventTime", "subject", "topic", "type", "data"])
-        |> Map.put_new("raw_kind", if(is_map(r), do: "map", else: "other"))
+        |> Map.put_new("raw_kind", "map")
       end)
 
     {:ok, %{"events" => rows, "count" => length(rows)}}
   end
-
-  defp eg_scan(sub_prefix, resource_group) do
-    prefix =
-      case resource_group do
-        rg when is_binary(rg) and rg != "" ->
-          sub_prefix <> "resourcegroups/#{String.downcase(rg)}/"
-
-        _ ->
-          sub_prefix
-      end
-
-    case :ets.info(:smalt_resources) do
-      :undefined -> []
-      _ -> Smalt.Store.list_prefix(:smalt_resources, prefix) |> Enum.filter(&is_map/1)
-    end
-  end
-
-  defp eg_id(row), do: String.downcase(to_string(Map.get(row, "id", "")))
-
-  defp eg_id_matches?(row, markers),
-    do: Enum.any?(markers, &String.contains?(eg_id(row), &1))
 
   defp invoke("atlas.lineage.get", args) do
     case args do
@@ -994,9 +1144,6 @@ defmodule Smalt.Mcp.Router do
 
           {:error, {code, message}} ->
             {:refusal, code, "appconfig.snapshots.kv: #{message}"}
-
-          other ->
-            {:refusal, @internal_code, "appconfig.snapshots.kv unexpected: #{inspect(other)}"}
         end
 
       _ ->
@@ -1056,7 +1203,9 @@ defmodule Smalt.Mcp.Router do
           subs =
             :smalt_resources
             |> Smalt.Store.list()
-            |> Enum.filter(&(&1["type"] == "Microsoft.ServiceBus/namespaces/topics/subscriptions"))
+            |> Enum.filter(
+              &(&1["type"] == "Microsoft.ServiceBus/namespaces/topics/subscriptions")
+            )
             |> Enum.filter(fn rec ->
               id = rec["id"] || ""
 
@@ -1067,7 +1216,9 @@ defmodule Smalt.Mcp.Router do
                 end
             end)
             |> Enum.sort_by(&String.downcase(&1["id"] || ""))
-            |> Enum.map(&%{"id" => &1["id"], "name" => &1["name"], "properties" => &1["properties"]})
+            |> Enum.map(
+              &%{"id" => &1["id"], "name" => &1["name"], "properties" => &1["properties"]}
+            )
 
           {:ok, %{"topic" => topic, "subscriptions" => subs, "count" => length(subs)}}
         end
@@ -1124,9 +1275,6 @@ defmodule Smalt.Mcp.Router do
 
       {:ok, status, body} ->
         {:refusal, "KV_ERROR", "kv.deletedsecrets.list returned #{status}: #{inspect(body)}"}
-
-      other ->
-        {:refusal, @internal_code, "kv.deletedsecrets.list unexpected: #{inspect(other)}"}
     end
   end
 
@@ -1143,7 +1291,8 @@ defmodule Smalt.Mcp.Router do
          }}
 
       _ ->
-        {:refusal, @invalid_params_code, "refused: policy.setdefinitions.list requires subscription_id"}
+        {:refusal, @invalid_params_code,
+         "refused: policy.setdefinitions.list requires subscription_id"}
     end
   end
 
@@ -1229,8 +1378,156 @@ defmodule Smalt.Mcp.Router do
     end
   end
 
+  # Read-only CURSOR VALUE read: projects the persisted per-container
+  # change-feed cursor ({2, db, coll} in :smalt_cosmos_pk_meta, same key the
+  # wire change_feed/3 advances) — the value only, never written. Same
+  # freshness semantics as cf_cursor_read/1 below (absence = fresh feed,
+  # ts 0, empty seen map).
+  defp invoke("cosmos.changefeed.cursor", args) do
+    case args do
+      %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
+        if :ets.info(:smalt_cosmos_pk_meta) == :undefined do
+          {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
+        else
+          cursor = cf_cursor_read({@cf_cursor_key_index, db, coll})
+
+          {:ok,
+           %{
+             "db" => db,
+             "coll" => coll,
+             "cursor" => %{
+               "ts" => cursor["ts"],
+               "seen_count" => map_size(cursor["seen"])
+             },
+             "cursor_advanced" => false
+           }}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: cosmos.changefeed.cursor requires db and coll"}
+    end
+  end
+
+  # Read-only geo-DR ALIAS list: metadata-plane records only (alias name,
+  # primary/partner namespace ids, role_by_ns roles, provisioning state,
+  # commit timestamps). The geo-DR module's mutations (failover, break-pairing)
+  # stay off the MCP surface — this reads the same table they actuate on.
+  defp invoke("eh.geo-dr.aliases", _args) do
+    case Smalt.Messaging.EhGeoDr.list_aliases() do
+      recs when is_list(recs) ->
+        {:ok, %{"aliases" => recs, "count" => length(recs)}}
+
+      other ->
+        {:refusal, @internal_code, "eh.geo-dr.aliases unexpected: #{inspect(other)}"}
+    end
+  end
+
+  # -- v26.10.22 wave-6 read tools (33-37) ------------------------------------
+  # Each reads its landed wave-6 module directly; the owning modules' mutations
+  # (rotation-policy PUT, zone PUT/DELETE, schema register, alert CRUD,
+  # ttl_sweep) stay OFF the MCP surface.
+
+  defp invoke("kv.rotationpolicy.get", args) do
+    case args do
+      %{"name" => name} when is_binary(name) ->
+        case Smalt.DataPlane.KeyVaultActions.get_rotation_policy(name) do
+          {:ok, 200, policy} when is_map(policy) ->
+            {:ok, %{"name" => name, "rotation_policy" => policy}}
+
+          {:error, 404, _detail} ->
+            {:refusal, @invalid_params_code, "refused: key #{inspect(name)} not found"}
+
+          other ->
+            {:refusal, @internal_code, "kv.rotationpolicy.get unexpected: #{inspect(other)}"}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: kv.rotationpolicy.get requires name"}
+    end
+  end
+
+  defp invoke("dns.zones.list", args) do
+    case args do
+      %{"rg" => rg} when is_binary(rg) ->
+        case Smalt.Arm.Dns.list_zones("sub", rg) do
+          {:ok, zones} when is_list(zones) ->
+            {:ok, %{"rg" => rg, "zones" => zones, "count" => length(zones)}}
+
+          other ->
+            {:refusal, @internal_code, "dns.zones.list unexpected: #{inspect(other)}"}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: dns.zones.list requires rg"}
+    end
+  end
+
+  defp invoke("eg.schemaregistry.groups", _args) do
+    case Smalt.Messaging.EhSchemaRegistry.list_groups() do
+      groups when is_list(groups) ->
+        {:ok, %{"groups" => groups, "count" => length(groups)}}
+
+      other ->
+        {:refusal, @internal_code, "eg.schemaregistry.groups unexpected: #{inspect(other)}"}
+    end
+  end
+
+  defp invoke("monitor.alerts.list", args) do
+    case args do
+      %{"sub" => sub, "rg" => rg} when is_binary(sub) and is_binary(rg) ->
+        case Smalt.Monitor.MetricAlerts.list_alerts(sub, rg) do
+          alerts when is_list(alerts) ->
+            {:ok, %{"sub" => sub, "rg" => rg, "alerts" => alerts, "count" => length(alerts)}}
+
+          other ->
+            {:refusal, @internal_code, "monitor.alerts.list unexpected: #{inspect(other)}"}
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: monitor.alerts.list requires sub and rg"}
+    end
+  end
+
+  defp invoke("cosmos.ttl.effective", args) do
+    case args do
+      %{"db" => db, "coll" => coll} when is_binary(db) and is_binary(coll) ->
+        if :ets.info(:smalt_cosmos_pk_meta) == :undefined do
+          {:refusal, "STORE_NOT_READY", "refused: cosmos store tables not initialized"}
+        else
+          case Smalt.DataPlane.Cosmos.effective_ttl(db, coll) do
+            ttl when ttl == :off or is_integer(ttl) ->
+              {:ok, %{"db" => db, "coll" => coll, "effective_ttl" => ttl}}
+          end
+        end
+
+      _ ->
+        {:refusal, @invalid_params_code, "refused: cosmos.ttl.effective requires db and coll"}
+    end
+  end
+
   defp invoke(name, _args),
     do: {:refusal, @tool_not_found_code, "refused: unknown tool #{inspect(name)}"}
+
+  defp eg_scan(sub_prefix, resource_group) do
+    prefix =
+      case resource_group do
+        rg when is_binary(rg) and rg != "" ->
+          sub_prefix <> "resourcegroups/#{String.downcase(rg)}/"
+
+        _ ->
+          sub_prefix
+      end
+
+    case :ets.info(:smalt_resources) do
+      :undefined -> []
+      _ -> Smalt.Store.list_prefix(:smalt_resources, prefix) |> Enum.filter(&is_map/1)
+    end
+  end
+
+  defp eg_id(row), do: String.downcase(to_string(Map.get(row, "id", "")))
+
+  defp eg_id_matches?(row, markers),
+    do: Enum.any?(markers, &String.contains?(eg_id(row), &1))
 
   # Kept AFTER the invoke/2 clause group (contiguity — see message_count_arg
   # note above). Read-only mirror of Cosmos.cf_cursor/1 + cf_is_new?/2 (same
@@ -1400,7 +1697,7 @@ defmodule Smalt.Mcp.Router do
       row = child_row({id, pid, type, nil}, nil)
 
       nested =
-        if type == :supervisor and is_pid(pid) and pid != :undefined and Process.alive?(pid) do
+        if type == :supervisor and is_pid(pid) and Process.alive?(pid) do
           try do
             plane = sanitize_child_id(id)
             flatten_children(pid, depth + 1) |> Enum.map(&put_plane(&1, plane))

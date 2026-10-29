@@ -1,0 +1,63 @@
+# MESSAGE: smalt-k8s-pack required-facts gate (extends kubernetes-workload-pack
+# MESSAGE: gate 010 to the extended deployable shapes). Every k8s:StatefulSet
+# MESSAGE: must declare workloadName, fileName, replicas, serviceName
+# MESSAGE: (per-pod DNS depends on it), and podSecurityContextBlock. Every
+# MESSAGE: k8s:ContainerPort must bind portOfWorkload + portName + portNumber
+# MESSAGE: (unnamed ports cannot be targeted by Service targetPort). Every
+# MESSAGE: k8s:EnvVar must bind envName + envOrder ($(VAR) references need
+# MESSAGE: deterministic ordering) and exactly one value source. Every
+# MESSAGE: k8s:Service must bind serviceName + serviceType + serviceForWorkload,
+# MESSAGE: and a NodePort Service's ports must carry svcNodePort. Any row =
+# MESSAGE: a refused subject.
+PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+SELECT ?s ?missing WHERE {
+  {
+    ?s a k8s:StatefulSet . BIND(k8s:workloadName AS ?missing)
+  } UNION {
+    ?s a k8s:StatefulSet . BIND(k8s:fileName AS ?missing)
+  } UNION {
+    ?s a k8s:StatefulSet . BIND(k8s:replicas AS ?missing)
+  } UNION {
+    ?s a k8s:StatefulSet . BIND(k8s:serviceName AS ?missing)
+  } UNION {
+    ?s a k8s:StatefulSet . BIND(k8s:podSecurityContextBlock AS ?missing)
+  } UNION {
+    ?s a k8s:ContainerPort . BIND(k8s:portOfWorkload AS ?missing)
+  } UNION {
+    ?s a k8s:ContainerPort . BIND(k8s:portName AS ?missing)
+  } UNION {
+    ?s a k8s:ContainerPort . BIND(k8s:portNumber AS ?missing)
+  } UNION {
+    ?s a k8s:EnvVar . BIND(k8s:envName AS ?missing)
+  } UNION {
+    ?s a k8s:EnvVar . BIND(k8s:envOrder AS ?missing)
+  } UNION {
+    ?s a k8s:Service . BIND(k8s:serviceName AS ?missing)
+  } UNION {
+    ?s a k8s:Service . BIND(k8s:serviceType AS ?missing)
+  } UNION {
+    ?s a k8s:Service . BIND(k8s:serviceForWorkload AS ?missing)
+  } UNION {
+    ?s a k8s:ServicePort . BIND(k8s:svcPortOf AS ?missing)
+  } UNION {
+    ?s a k8s:ServicePort . BIND(k8s:svcPortName AS ?missing)
+  } UNION {
+    ?s a k8s:ServicePort . BIND(k8s:svcPortNumber AS ?missing)
+  } UNION {
+    ?s a k8s:ServicePort . BIND(k8s:svcTargetPortName AS ?missing)
+  } UNION {
+    ?s a k8s:VolumeMount . BIND(k8s:mountName AS ?missing)
+  } UNION {
+    ?s a k8s:VolumeMount . BIND(k8s:mountPath AS ?missing)
+  } UNION {
+    ?s a k8s:Secret ; k8s:secretName ?n .
+    FILTER NOT EXISTS { ?s k8s:secretStringDataBlock ?b }
+    BIND(k8s:secretStringDataBlock AS ?missing)
+  } UNION {
+    ?s a k8s:ConfigMap .
+    FILTER NOT EXISTS { ?s k8s:configMapDataBlock ?b }
+    BIND(k8s:configMapDataBlock AS ?missing)
+  }
+  FILTER NOT EXISTS { ?s ?missing ?any }
+}
+ORDER BY ?s ?missing

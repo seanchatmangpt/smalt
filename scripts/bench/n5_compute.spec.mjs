@@ -56,6 +56,9 @@ async function main() {
     server = spawn("npx", ["next", "start", "-p", String(PORT)], {
       cwd: ROOT,
       stdio: ["ignore", "pipe", "pipe"],
+      // No SMALT_DEBUG_FACES here (EXPL7-R1 E7-3): N-5 drives /bench/compute
+      // only — it calls no gated debug face, so the gate stays OFF.
+      env: process.env,
     });
     const fwd = (d) => process.env.N5_VERBOSE && process.stdout.write(`[srv] ${d}`);
     server.stdout.on("data", fwd);

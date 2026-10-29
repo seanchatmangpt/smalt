@@ -449,12 +449,24 @@ def test_cosmos_sql_top_offset_scalar_fns(anon_substrate):
     scal = rows("SELECT UPPER(c.s) AS u FROM c WHERE c.n = 2")
     assert scal and scal[0].get("u") == "ROW2", f"UPPER projection wrong: {scal!r}"
 
-    # fail-closed residue: a grammar-external query stays a typed 400.
+    # JOIN IN is grammar (premise refresh, BK-ENG0): cosmos_sql.ex implements
+    # JOIN <alias> IN <path> fan-out — the old "JOIN must 400" whitelist
+    # assertion predates the capability. Assert real fan-out semantics: for
+    # d0 with arr=[a,b], JOIN yields one row per element.
+    seeded = next((d for d in rows("SELECT * FROM c") if isinstance(d.get("arr"), list) and d["arr"]), None)
+    if seeded is None:
+        cont.upsert_item({"id": "joinfix", "pk": "p", "arr": ["x", "y"]})
+        seeded = {"id": "joinfix", "arr": ["x", "y"]}
+    joined = rows(f"SELECT c.id, j FROM c JOIN j IN c.arr")
+    ids = [r.get("c") and r["c"].get("id") or r.get("id") for r in joined]
+    assert seeded["id"] in ids, f"JOIN fan-out missing seeded doc: {joined!r} seeded={seeded!r}"
+    assert len(joined) >= 2, f"JOIN fan-out produced {len(joined)} rows"
+    # fail-closed residue: grammar-external stays typed 400.
     try:
-        rows("SELECT c.j FROM c JOIN x IN c.arr")
-        raise AssertionError("JOIN admitted — fail-closed whitelist regressed")
+        rows("SELECT TRANSFORM c FROM c")
+        raise AssertionError("grammar-external query admitted — fail-closed regressed")
     except cosmosex.CosmosHttpResponseError as e:
-        assert e.status_code == 400, f"JOIN expected 400, got {e.status_code}"
+        assert e.status_code == 400, f"expected 400, got {e.status_code}"
 
 
 # ---------------------------------------------------------------------------

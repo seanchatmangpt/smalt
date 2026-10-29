@@ -1,6 +1,6 @@
 {
   "name": "smalt-workspace",
-  "version": "26.10.19",
+  "version": "26.10.25",
   "private": true,
   "description": "Smalt Sovereign Next.js Workspace — air-gapped Fortune-5 evaluation console. Zero egress except localhost smalt emulator.",
   "scripts": {

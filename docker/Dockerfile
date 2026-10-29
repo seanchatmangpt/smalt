@@ -5,7 +5,8 @@
 # lib/ config/ priv/ -> compile --warnings-as-errors; label
 # org.smalt.subject=<git sha>.
 #
-# Pin: hexpm/elixir 1.19.5 / OTP 28.5.0.2 / alpine 3.20.9, multi-arch index
+# Pin: hexpm/elixir 1.20.4 / OTP 29.1.2 / alpine 3.21.9, multi-arch index
+# (bumped 2026-10-24: mix.exs requires ~> 1.20; old 1.19.5 pin failed release-stage mix compile)
 # digest sha256:29c51579d430b307d4f6182775373bb18c90173d382ba23011d81808b0fab8cd
 # (resolved via `docker buildx imagetools inspect` 2026-10-18; the
 # coordinator-specified tag `1.19.5-erlang-28-alpine-3.20` does not exist on
@@ -18,7 +19,7 @@
 # added — wasmex (rustler) and ex4pm's explorer both compile native crates;
 # rustler_precompiled has no musl triplet for this OTP/ABI combination, so
 # the NIFs build from source and need a rust toolchain.
-FROM hexpm/elixir:1.19.5-erlang-28.5.0.2-alpine-3.20.9@sha256:29c51579d430b307d4f6182775373bb18c90173d382ba23011d81808b0fab8cd AS base
+FROM hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.21.9@sha256:1e37e442ee792b583d37a16df4b0841296fe52539b182a5b8984dfe7368ab3d9 AS base
 
 # Subject identity: REQUIRED build-arg, no baked default. WO-1 root cause 1:
 # the previous stale default (`29bb0371…`) baked a label stale on arrival

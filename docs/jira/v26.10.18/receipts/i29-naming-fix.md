@@ -32,7 +32,7 @@ docs/jira/v26.10.14/KNOWN_DIVERGENCES.md, scripts/naming_sweep.sh (allowlist onl
    - `rewrite-drafts/*.md` (26 hits), `docker/{Dockerfile,BUILD_RECEIPT.md}` sibling build-context
      doc lines (→ `~/ash_r2rml` etc.), `docs/reference/have-runbook.md` cron examples (→ `~/smalt`),
      `mods/ratchet/README.md` + `test/fixtures/*.md`, KD-94 row in
-     `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` (→ `~/cai/athena`).
+     `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` (→ `~/cai/legacy-client`).
 
 3. **Minimal scoped allowlist entries** (mechanism unchanged; check not weakened)
    - `k8s/kind/cluster.yaml:22,25,28,32,35,38` — kind CRD `hostPath` requires literal absolute

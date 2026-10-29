@@ -166,7 +166,8 @@ defmodule Smalt.RuntimeContracts.AmqpDialect do
     ms = 1_700_000_000_000
     ticks = DeliveryEncoder.filetime_from_ms(ms)
 
-    Support.assert(is_integer(ticks) and ticks > 0, "filetime ticks positive integer")
+    # filetime_from_ms/1 is typed integer() — assert only the value, not the type.
+    Support.assert(ticks > 0, "filetime ticks positive integer")
 
     # filetime = (ms + 62_135_596_800_000) * 10_000
     Support.assert_equal(ticks, (ms + 62_135_596_800_000) * 10_000, "filetime conversion formula")

@@ -69,3 +69,35 @@ by single Put Blob.
 - teardown: substrate killed (bench_down on pid 72356) after final run.
 - no commits, no lib.sh/SDK edits (lib.sh log-dir bug worked around by
   pre-creating `docs/tmp/` — cd-before-mkdir ordering in `bench_boot`).
+
+---
+
+## RE-MEASURE addendum (2026-10-22, lane BK-BQUIET — quiesced-machine attempt)
+
+- **Standing**: PARTIAL_ALIVE (re-witnessed under residual load; see typing below)
+- **Context**: solo
+- Attempt context: `just quiesce` REFUSED (foreign substrate on court ports,
+  foreign beam outside checkout, load > threshold); bounded 15-min poll never
+  cleared (load 78 -> 103 in this lane's window). Pass proceeded under
+  residual load, typed honestly. Environment note: the receipt's venvs
+  (.venv-blob/.venv-cosmos under test/sdk-python) no longer exist; the SDK
+  (azure-storage-blob 12.31.0, system Python 3.14) is importable system-wide
+  and the driver ran under it directly — same real SDK, not a substitute.
+- Replay (real, exit-captured): private block 39050..39055 substrate, then
+  `python3 scripts/bench/b5_python_mirror.py {blob,cosmos}` against egress
+  127.0.0.1:39051. Original 4 jsonl rows snapshotted and restored byte-exact
+  (sha256 c6a97aca...) — re-measure rows live in tmp/bkbquiet only.
+
+```
+PRE-B5 load={ 97.39 85.99 97.61 } 2026-10-22T14:11:46Z
+BLOB DONE: put 3279 ops, download 234.4 MiB/s
+{"lane": "b5", "surface": "blob", "op": "put_block_blob_8k", "n": 3279, "ops_per_sec": 327.9, "p50_ms": 2.255, "p95_ms": 3.726, "p99_ms": 20.651, "errors": 0, ...}
+{"lane": "b5", "surface": "blob", "op": "download_1mib", "n": 20, "ops_per_sec": 234.39, "p50_ms": 3.36, "p95_ms": 12.145, "p99_ms": 12.318, "errors": 0, ...}
+{"lane": "b5", "surface": "cosmos", "op": "point_read", "n": 500, "ops_per_sec": 103.16, "p50_ms": 7.135, "p95_ms": 20.993, "p99_ms": 57.841, "errors": 0, ...}
+{"lane": "b5", "surface": "cosmos", "op": "query_select_all_1000docs", "n": 1000, "ops_per_sec": 15797.67, "p50_ms": 63.3, "errors": 0, ...}
+POST-B5 load={ 103.51 88.13 98.03 } 2026-10-22T14:12:10Z
+```
+
+- Verdict: **PASS (load-typed)**. 4/4 measures, 0 errors; rates ~3-8x below
+  the 2026-10-15 baseline (328 vs 917 ops/s blob puts), consistent with
+  residual load. Full rows: tmp/bkbquiet/b5-python-mirror-remeasure.jsonl.
