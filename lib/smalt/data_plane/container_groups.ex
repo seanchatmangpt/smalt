@@ -27,7 +27,9 @@ defmodule Smalt.DataPlane.ContainerGroups do
     `provisioningState: Succeeded` + `instanceView.state: Running` with every
     container's `containerStatus.currentState.state: Running` from the
     recorded start time. That is the honest face of a control-plane-only
-    group: the record exists and is provisioned; nothing executes.
+    group: the record exists and is provisioned; nothing executes. The
+    render strips credential secrets (`password` never echoes — real ACI
+    returns server + username only on GET).
   - `imageRegistryCredentials` are validated at PUT time against the real
     ACR control-plane rows (T-01): each credential's server must resolve to a
     registry row keyed `.../providers/Microsoft.ContainerRegistry/registries/<name>`
@@ -260,11 +262,24 @@ defmodule Smalt.DataPlane.ContainerGroups do
       |> Map.put("provisioningState", "Succeeded")
       |> Map.put("instanceView", instance_view(props, started))
       |> maybe_assign_ip(name)
+      |> strip_credential_passwords()
 
     Map.put(base, "properties", properties)
   end
 
   def view(_record), do: %{}
+
+  # Real ACI never echoes the registry credential secret on GET — the wire
+  # view carries server + username only.
+  defp strip_credential_passwords(%{"imageRegistryCredentials" => creds} = props)
+       when is_list(creds) do
+    Map.put(props, "imageRegistryCredentials", Enum.map(creds, &strip_password/1))
+  end
+
+  defp strip_credential_passwords(props), do: props
+
+  defp strip_password(c) when is_map(c), do: Map.delete(c, "password")
+  defp strip_password(c), do: c
 
   defp instance_view(props, started) do
     containers = props["containers"] || []

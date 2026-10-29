@@ -101,7 +101,11 @@ defmodule Smalt.DataPlane.IacExport do
 
   @namespace_kinds [:servicebus_namespace, :eventhub_namespace]
 
-  @typedoc "One model entry: an exported row (existing: false) or a synthesized parent reference (existing: true)."
+  @typedoc """
+  One model entry: an exported row (`existing: false`) or a synthesized
+  parent reference (`existing: true` — bicep `existing` block / terraform
+  data source).
+  """
   @type entry :: %{
           id: String.t() | nil,
           name: String.t(),
@@ -145,26 +149,16 @@ defmodule Smalt.DataPlane.IacExport do
   """
   @spec intermediate_model([term()]) :: {:ok, model()} | {:error, term()}
   def intermediate_model(rows) when is_list(rows) do
-    with :ok <- refuse_non_map_rows(rows) do
-      case Enum.find(rows, fn row -> not Identity.valid?(row["id"]) end) do
-        nil ->
-          case Enum.find(rows, fn row -> not (is_binary(row["type"]) and row["type"] != "") end) do
-            nil ->
-              {:ok, build_model(Enum.sort_by(rows, & &1["id"]))}
-
-            bad ->
-              {:error, {:missing_type, bad["id"]}}
-          end
-
-        bad ->
-          {:error, {:vacuous_identity, @table, bad["id"]}}
-      end
+    with :ok <- refuse_non_map_rows(rows),
+         :ok <- refuse_vacuous_identity(rows),
+         :ok <- refuse_missing_type(rows) do
+      {:ok, build_model(Enum.sort_by(rows, & &1["id"]))}
     end
   end
 
   def intermediate_model(_other), do: {:error, {:non_list_rows, @table}}
 
-  # --- the one walk -------------------------------------------------------------
+  # --- typed refusals (row STRUCTURE, never lenient) ------------------------------
 
   defp refuse_non_map_rows(rows) do
     case Enum.find(rows, &(!is_map(&1))) do
@@ -172,6 +166,22 @@ defmodule Smalt.DataPlane.IacExport do
       bad -> {:error, {:non_map_row, inspect(bad, limit: 10)}}
     end
   end
+
+  defp refuse_vacuous_identity(rows) do
+    case Enum.find(rows, fn row -> not Identity.valid?(row["id"]) end) do
+      nil -> :ok
+      bad -> {:error, {:vacuous_identity, @table, bad["id"]}}
+    end
+  end
+
+  defp refuse_missing_type(rows) do
+    case Enum.find(rows, fn row -> not (is_binary(row["type"]) and row["type"] != "") end) do
+      nil -> :ok
+      bad -> {:error, {:missing_type, bad["id"]}}
+    end
+  end
+
+  # --- the one walk ---------------------------------------------------------------
 
   defp build_model(sorted_rows) do
     {entries, _taken} =
@@ -181,15 +191,13 @@ defmodule Smalt.DataPlane.IacExport do
         {build_entry(row, name, symbolic), MapSet.put(taken, symbolic)}
       end)
 
-    {wired_entries, synthetic, _taken} = attach_parents(entries)
-
-    outputs = Enum.flat_map(wired_entries, & &1.outputs)
+    {wired_entries, synthetic} = attach_parents(entries)
 
     %{
       source_table: @table,
       resources: wired_entries,
-      synthetic: Enum.sort_by(synthetic, & &1.symbolic_name),
-      outputs: outputs
+      synthetic: Enum.sort_by(synthetic, &{&1.kind, &1.symbolic_name}),
+      outputs: Enum.flat_map(wired_entries, & &1.outputs)
     }
   end
 
@@ -208,6 +216,7 @@ defmodule Smalt.DataPlane.IacExport do
     stored_type = row["type"]
     kind = kind_for(stored_type)
     type = canonical_type(stored_type, kind)
+    properties = declarative_properties(row)
 
     %{
       id: row["id"],
@@ -217,13 +226,13 @@ defmodule Smalt.DataPlane.IacExport do
       kind: kind,
       arm_kind: bin_or_nil(row["kind"]),
       location: bin_or_nil(row["location"]),
-      properties: declarative_properties(row),
+      properties: properties,
       sku: sku_of(row),
       scope: nil,
       parent: nil,
       symbolic_name: symbolic,
       existing: false,
-      outputs: outputs_for(type, kind, symbolic, declarative_properties(row))
+      outputs: outputs_for(type, kind, symbolic, properties)
     }
   end
 
@@ -270,7 +279,7 @@ defmodule Smalt.DataPlane.IacExport do
     end
   end
 
-  # --- parent references (resource groups, namespaces) --------------------------
+  # --- parent references (resource groups, namespaces) ------------------------------
 
   # Top-level entries scope to the resource group named by their ARM id; the
   # queue child additionally parents to its namespace. When the referenced
@@ -291,91 +300,133 @@ defmodule Smalt.DataPlane.IacExport do
 
     taken = MapSet.new(Enum.map(entries, & &1.symbolic_name))
 
-    Enum.map_reduce(entries, [], fn entry, acc ->
-      parsed = parse_id(entry.id)
-      {scope, acc} = resolve_rg(parsed.rg, rg_index, taken, acc)
-      {parent, acc} = resolve_namespace(entry.kind, parsed, ns_index, scope, taken, acc)
+    {entries, %{taken: taken, synthetic: synthetic}} =
+      Enum.map_reduce(entries, %{taken: taken, synthetic: []}, fn entry, state ->
+        parsed = parse_id(entry.id)
 
-      entry =
-        entry
-        |> Map.put(:scope, if(entry.kind == :resource_group, do: nil, else: scope))
-        |> Map.put(:parent, parent)
+        {scope, state} = resolve_rg(parsed.rg, rg_index, state)
 
-      {entry, acc}
-    end)
-    |> then(fn {entries, synthetic} ->
-      {entries, Enum.sort_by(Enum.reverse(synthetic), &{&1.kind, &1.symbolic_name}), MapSet.new()}
-    end)
+        {parent, state} = resolve_namespace(entry.kind, parsed, ns_index, scope, state)
+
+        entry =
+          entry
+          |> Map.put(:scope, if(entry.kind == :resource_group, do: nil, else: scope))
+          |> Map.put(:parent, parent)
+
+        {entry, state}
+      end)
+
+    {entries, Enum.reverse(synthetic)}
   end
 
-  defp resolve_rg(nil, _rg_index, _taken, acc), do: {nil, acc}
+  defp resolve_rg(nil, _rg_index, state), do: {nil, state}
 
-  defp resolve_rg(rg_segment, rg_index, _taken, acc) do
+  defp resolve_rg(rg_segment, rg_index, state) do
     key = String.downcase(rg_segment)
 
     case Map.get(rg_index, key) do
       %{symbolic_name: sym} ->
-        {%{kind: :resource_group, name: rg_segment, symbolic_name: sym, existing: false}, acc}
+        {%{kind: :resource_group, name: rg_segment, symbolic_name: sym, existing: false}, state}
 
       nil ->
-        # Synthetic existing RG: one per referenced-but-unexported RG name.
-        case Enum.find(acc, &(&1.kind == :resource_group and String.downcase(&1.name) == key)) do
+        synthetic = state.synthetic
+
+        case Enum.find(synthetic, &(&1.kind == :resource_group and String.downcase(&1.name) == key)) do
           %{symbolic_name: sym} ->
-            {%{kind: :resource_group, name: rg_segment, symbolic_name: sym, existing: true}, acc}
+            {%{kind: :resource_group, name: rg_segment, symbolic_name: sym, existing: true}, state}
 
           nil ->
-            ref = %{
-              kind: :resource_group,
-              name: rg_segment,
-              symbolic_name: symbolic_name(rg_segment, MapSet.new(Enum.map(acc, & &1.symbolic_name))),
-              existing: true
-            }
-
-            {ref, [ref | acc]}
+            {ref, state} = put_synthetic_resource_group(rg_segment, state)
+            {%{kind: :resource_group, name: rg_segment, symbolic_name: ref.symbolic_name, existing: true}, state}
         end
     end
   end
 
-  defp resolve_namespace(:servicebus_queue, parsed, ns_index, scope, taken, acc) do
-    ns_name = namespace_name(parsed)
+  defp put_synthetic_resource_group(rg_segment, state) do
+    {symbolic, state} = mint_symbolic(rg_segment, state)
 
-    if ns_name do
-      key = String.downcase(ns_name)
+    ref = %{
+      id: nil,
+      name: rg_segment,
+      type: "Microsoft.Resources/resourceGroups",
+      api_version: @known_api_versions["Microsoft.Resources/resourceGroups"],
+      kind: :resource_group,
+      arm_kind: nil,
+      location: nil,
+      properties: %{},
+      sku: nil,
+      scope: nil,
+      parent: nil,
+      symbolic_name: symbolic,
+      existing: true,
+      outputs: []
+    }
 
-      case Map.get(ns_index, key) do
-        %{symbolic_name: sym} ->
-          {%{kind: :servicebus_namespace, name: ns_name, symbolic_name: sym, existing: false, scope: scope}, acc}
+    {ref, put_synthetic(ref, state)}
+  end
 
-        nil ->
-          case Enum.find(acc, &(&1.kind == :servicebus_namespace and String.downcase(&1.name) == key)) do
-            %{symbolic_name: sym} ->
-              {%{kind: :servicebus_namespace, name: ns_name, symbolic_name: sym, existing: true, scope: scope}, acc}
+  defp resolve_namespace(:servicebus_queue, parsed, ns_index, scope, state) do
+    case namespace_name(parsed) do
+      nil ->
+        # A queue row whose id lost its namespace segment cannot name its
+        # parent — it renders RG-scoped instead of a fabricated parent.
+        {nil, state}
 
-            nil ->
-              parent = %{
-                kind: :servicebus_namespace,
-                name: ns_name,
-                type: "Microsoft.ServiceBus/namespaces",
-                api_version: @known_api_versions["Microsoft.ServiceBus/namespaces"],
-                symbolic_name: symbolic_name(ns_name, MapSet.new(Enum.map(acc, & &1.symbolic_name))),
-                existing: true,
-                scope: scope,
-                location: nil,
-                outputs: []
-              }
+      ns_name ->
+        key = String.downcase(ns_name)
 
-              {parent, [parent | acc]}
-          end
-      end
-    else
-      # A queue row whose id lost its namespace segment cannot name its
-      # parent — it renders RG-scoped as a generic block instead of a
-      # fabricated parent.
-      {nil, acc}
+        case Map.get(ns_index, key) do
+          %{symbolic_name: sym} ->
+            {%{kind: :servicebus_namespace, name: ns_name, symbolic_name: sym, existing: false, scope: scope}, state}
+
+          nil ->
+            synthetic = state.synthetic
+
+            case Enum.find(synthetic, &(&1.kind == :servicebus_namespace and String.downcase(&1.name) == key)) do
+              %{symbolic_name: sym} ->
+                {%{kind: :servicebus_namespace, name: ns_name, symbolic_name: sym, existing: true, scope: scope}, state}
+
+              nil ->
+                {ref, state} = put_synthetic_namespace(ns_name, scope, state)
+                {%{kind: :servicebus_namespace, name: ns_name, symbolic_name: ref.symbolic_name, existing: true, scope: scope}, state}
+            end
+        end
     end
   end
 
-  defp resolve_namespace(_kind, _parsed, _ns_index, _scope, _taken, acc), do: {nil, acc}
+  defp resolve_namespace(_kind, _parsed, _ns_index, _scope, state), do: {nil, state}
+
+  defp put_synthetic_namespace(ns_name, scope, state) do
+    {symbolic, state} = mint_symbolic(ns_name, state)
+
+    ref = %{
+      id: nil,
+      name: ns_name,
+      type: "Microsoft.ServiceBus/namespaces",
+      api_version: @known_api_versions["Microsoft.ServiceBus/namespaces"],
+      kind: :servicebus_namespace,
+      arm_kind: nil,
+      location: nil,
+      properties: %{},
+      sku: nil,
+      scope: scope,
+      parent: nil,
+      symbolic_name: symbolic,
+      existing: true,
+      outputs: []
+    }
+
+    {ref, put_synthetic(ref, state)}
+  end
+
+  defp put_synthetic(ref, %{taken: taken, synthetic: synthetic}) do
+    %{taken: MapSet.put(taken, ref.symbolic_name), synthetic: [ref | synthetic]}
+  end
+
+  defp mint_symbolic(raw, %{taken: taken} = state) do
+    symbolic = symbolic_name(raw, taken)
+    {symbolic, %{state | taken: MapSet.put(taken, symbolic)}}
+  end
 
   defp namespace_name(parsed) do
     case parsed do
@@ -391,8 +442,8 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   # /subscriptions/<sub>/resourcegroups/<rg>/providers/<provider>/...
-  # (stored keys are lowercased full ARM ids; parse case-sensitively against
-  # that convention, tolerating ids without a resourcegroup segment).
+  # (stored keys are lowercased full ARM ids; parse against that convention,
+  # tolerating ids without a resourcegroup segment).
   defp parse_id(id) when is_binary(id) do
     case String.split(id, "/", trim: true) do
       ["subscriptions", _sub | rest] ->
@@ -408,7 +459,7 @@ defmodule Smalt.DataPlane.IacExport do
 
   defp parse_id(_), do: %{rg: nil, tail: nil}
 
-  # --- symbolic names -------------------------------------------------------------
+  # --- symbolic names ---------------------------------------------------------------
 
   # Symbolic names derive from the resource NAME (sanitized to an
   # identifier: lowercase, non-identifier runs -> "_", trimmed, digit-led
@@ -416,8 +467,7 @@ defmodule Smalt.DataPlane.IacExport do
   # carries two blocks with the same symbolic name.
   @spec symbolic_name(String.t(), MapSet.t(String.t())) :: String.t()
   def symbolic_name(raw, taken) do
-    base = sanitize_symbolic(raw)
-    unique_symbolic(base, taken)
+    unique_symbolic(sanitize_symbolic(raw), taken)
   end
 
   defp sanitize_symbolic(raw) do
@@ -449,7 +499,7 @@ defmodule Smalt.DataPlane.IacExport do
     end
   end
 
-  # --- outputs (keys/endpoints, where the real export tool does) -------------------
+  # --- outputs (keys/endpoints, where the real export tool does) ----------------------
 
   # Computed ONCE, here — both renderers print these expressions verbatim.
   # Key outputs are emitted for the key-bearing types unconditionally (the
@@ -462,14 +512,16 @@ defmodule Smalt.DataPlane.IacExport do
        do: []
 
   defp outputs_for(type, :storage_account, sym, props) do
+    tf_type = Map.fetch!(@tf_type_by_kind, kind_ref(type))
+
     endpoint =
       case props["primaryEndpoints"] do
-        %{"blob" => _blob} = _pe ->
+        %{"blob" => _} ->
           [
             %{
               name: sym <> "_primary_blob_endpoint",
               bicep: "#{sym}.properties.primaryEndpoints.blob",
-              tf: "#{Map.fetch!(@tf_type_by_kind, kind_ref(type))}.#{sym}.primary_blob_endpoint",
+              tf: "#{tf_type}.#{sym}.primary_blob_endpoint",
               sensitive: false
             }
           ]
@@ -483,13 +535,15 @@ defmodule Smalt.DataPlane.IacExport do
         %{
           name: sym <> "_primary_access_key",
           bicep: "#{sym}.listKeys().keys[0].value",
-          tf: "#{Map.fetch!(@tf_type_by_kind, kind_ref(type))}.#{sym}.primary_access_key",
+          tf: "#{tf_type}.#{sym}.primary_access_key",
           sensitive: true
         }
       ]
   end
 
   defp outputs_for(type, :key_vault, sym, props) do
+    tf_type = Map.fetch!(@tf_type_by_kind, kind_ref(type))
+
     case bin_or_nil(props["vaultUri"]) do
       nil ->
         []
@@ -499,7 +553,7 @@ defmodule Smalt.DataPlane.IacExport do
           %{
             name: sym <> "_vault_uri",
             bicep: "#{sym}.properties.vaultUri",
-            tf: "#{Map.fetch!(@tf_type_by_kind, kind_ref(type))}.#{sym}.vault_uri",
+            tf: "#{tf_type}.#{sym}.vault_uri",
             sensitive: false
           }
         ]
@@ -507,6 +561,8 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   defp outputs_for(type, ns_kind, sym, props) when ns_kind in @namespace_kinds do
+    tf_type = Map.fetch!(@tf_type_by_kind, kind_ref(type))
+
     case bin_or_nil(props["serviceBusEndpoint"]) do
       nil ->
         []
@@ -516,7 +572,7 @@ defmodule Smalt.DataPlane.IacExport do
           %{
             name: sym <> "_servicebus_endpoint",
             bicep: "#{sym}.properties.serviceBusEndpoint",
-            tf: "#{Map.fetch!(@tf_type_by_kind, kind_ref(type))}.#{sym}.hostname",
+            tf: "#{tf_type}.#{sym}.hostname",
             sensitive: false
           }
         ]
@@ -524,6 +580,8 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   defp outputs_for(type, :cosmos_account, sym, props) do
+    tf_type = Map.fetch!(@tf_type_by_kind, kind_ref(type))
+
     endpoint =
       case bin_or_nil(props["documentEndpoint"]) do
         nil ->
@@ -534,7 +592,7 @@ defmodule Smalt.DataPlane.IacExport do
             %{
               name: sym <> "_document_endpoint",
               bicep: "#{sym}.properties.documentEndpoint",
-              tf: "#{Map.fetch!(@tf_type_by_kind, kind_ref(type))}.#{sym}.endpoint",
+              tf: "#{tf_type}.#{sym}.endpoint",
               sensitive: false
             }
           ]
@@ -545,7 +603,7 @@ defmodule Smalt.DataPlane.IacExport do
         %{
           name: sym <> "_primary_master_key",
           bicep: "#{sym}.listKeys().primaryMasterKey",
-          tf: "#{Map.fetch!(@tf_type_by_kind, kind_ref(type))}.#{sym}.primary_master_key",
+          tf: "#{tf_type}.#{sym}.primary_master_key",
           sensitive: true
         }
       ]
@@ -567,6 +625,12 @@ defmodule Smalt.DataPlane.IacExport do
   """
   @spec render_bicep(model()) :: %{String.t() => String.t()}
   def render_bicep(model) do
+    others =
+      Enum.filter(
+        model.resources,
+        &(&1.kind not in [:resource_group | @namespace_kinds] and &1.kind != :servicebus_queue)
+      )
+
     body =
       [
         "targetScope = 'subscription'",
@@ -576,23 +640,17 @@ defmodule Smalt.DataPlane.IacExport do
         bicep_section("// --- resource groups ---", bicep_of_kind(model.resources, :resource_group)),
         bicep_section(
           "// --- referenced (existing) resource groups ---",
-          Enum.map(model.synthetic, &bicep_resource/1)
+          model.synthetic |> Enum.filter(&(&1.kind == :resource_group)) |> Enum.map(&bicep_resource/1)
         ),
         bicep_section("// --- namespaces ---", bicep_of_kinds(model.resources, @namespace_kinds)),
         bicep_section(
           "// --- referenced (existing) namespaces ---",
-          Enum.map(model.synthetic, &bicep_resource/1)
+          model.synthetic |> Enum.filter(&(&1.kind in @namespace_kinds)) |> Enum.map(&bicep_resource/1)
         ),
-        bicep_section(
-          "// --- other top-level resources ---",
-          model.resources
-          |> Enum.reject(&(&1.kind in [:resource_group | @namespace_kinds] or &1.kind == :servicebus_queue))
-          |> Enum.map(&bicep_resource/1)
-        ),
+        bicep_section("// --- other top-level resources ---", Enum.map(others, &bicep_resource/1)),
         bicep_section(
           "// --- child resources ---",
-          Enum.map(model.resources, &(&1.kind == :servicebus_queue && bicep_resource(&1)))
-          |> Enum.reject(&is_nil/1)
+          model.resources |> Enum.filter(&(&1.kind == :servicebus_queue)) |> Enum.map(&bicep_resource/1)
         ),
         bicep_outputs_section(model.outputs)
       ]
@@ -603,16 +661,15 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   defp bicep_header_comment do
-    """
-    # Generated by `mix smalt.export --format bicep` from the :smalt_resources projection \
-    (Smalt.DataPlane.IacExport.intermediate_model/1) — the ONE walk both export formats render. \
-    provisioningState is runtime state and is deliberately not re-declared.\
-    """
-    |> String.trim_trailing()
+    "# Generated by `mix smalt.export --format bicep` from the :smalt_resources projection\n" <>
+      "# (Smalt.DataPlane.IacExport.intermediate_model/1) — the ONE walk both export formats render.\n" <>
+      "# provisioningState is runtime state and is deliberately not re-declared."
   end
 
   defp bicep_of_kind(entries, kind), do: entries |> Enum.filter(&(&1.kind == kind)) |> Enum.map(&bicep_resource/1)
-  defp bicep_of_kinds(entries, kinds), do: entries |> Enum.filter(&(&1.kind in kinds)) |> Enum.map(&bicep_resource/1)
+
+  defp bicep_of_kinds(entries, kinds),
+    do: entries |> Enum.filter(&(&1.kind in kinds)) |> Enum.map(&bicep_resource/1)
 
   defp bicep_section(_header, []), do: nil
   defp bicep_section(header, blocks), do: [header, Enum.join(blocks, "\n\n")] |> Enum.join("\n")
@@ -620,11 +677,7 @@ defmodule Smalt.DataPlane.IacExport do
   defp bicep_outputs_section([]), do: nil
 
   defp bicep_outputs_section(outputs) do
-    lines =
-      Enum.map(outputs, fn out ->
-        "output #{out.name} string = #{out.bicep}"
-      end)
-
+    lines = Enum.map(outputs, fn out -> "output #{out.name} string = #{out.bicep}" end)
     bicep_section("// --- outputs ---", [Enum.join(lines, "\n")])
   end
 
@@ -640,7 +693,7 @@ defmodule Smalt.DataPlane.IacExport do
       [decl] ++
         bicep_scope_line(entry) ++
         bicep_parent_line(entry) ++
-        ["  name: #{bicep_literal(entry.name, 0, :bicep)}"] ++
+        ["  name: " <> bicep_literal(entry.name, 0, :bicep)] ++
         bicep_location_line(entry) ++
         bicep_extras(entry) ++
         bicep_properties_lines(entry) ++
@@ -650,9 +703,7 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   defp bicep_scope_line(%{scope: nil}), do: []
-
-  defp bicep_scope_line(%{scope: scope}),
-    do: ["  scope: #{scope.symbolic_name}"]
+  defp bicep_scope_line(%{scope: scope}), do: ["  scope: #{scope.symbolic_name}"]
 
   defp bicep_parent_line(%{parent: nil}), do: []
   defp bicep_parent_line(%{parent: parent}), do: ["  parent: #{parent.symbolic_name}"]
@@ -660,7 +711,7 @@ defmodule Smalt.DataPlane.IacExport do
   defp bicep_location_line(%{existing: true}), do: []
 
   defp bicep_location_line(%{location: loc}) when is_binary(loc),
-    do: ["  location: #{bicep_literal(loc, 0, :bicep)}"]
+    do: ["  location: " <> bicep_literal(loc, 0, :bicep)]
 
   defp bicep_location_line(_), do: []
 
@@ -669,26 +720,31 @@ defmodule Smalt.DataPlane.IacExport do
   # row carried none — a stub tier default is a disclosed default, never a
   # fabricated claim about the live resource.
   defp bicep_extras(%{existing: true}), do: []
-
   defp bicep_extras(%{kind: :resource_group}), do: []
 
   defp bicep_extras(%{kind: :storage_account} = entry) do
     kind = if is_binary(entry.arm_kind), do: entry.arm_kind, else: "StorageV2"
-    sku_name = sku_name(entry, "Standard_LRS")
 
-    ["  kind: #{bicep_literal(kind, 0, :bicep)}"] ++
-      ["  sku: { name: #{bicep_literal(sku_name, 0, :bicep)} }"]
+    [
+      "  kind: " <> bicep_literal(kind, 0, :bicep),
+      "  sku: { name: " <> bicep_literal(sku_name(entry, "Standard_LRS"), 0, :bicep) <> " }"
+    ]
   end
 
   defp bicep_extras(%{kind: :key_vault} = entry) do
-    family = if is_binary(entry.sku["family"]), do: entry.sku["family"], else: "A"
-    name = sku_name(entry, "standard")
+    family =
+      if is_map(entry.sku) and is_binary(entry.sku["family"]) and entry.sku["family"] != "",
+        do: entry.sku["family"],
+        else: "A"
 
-    ["  sku: { family: #{bicep_literal(family, 0, :bicep)}, name: #{bicep_literal(name, 0, :bicep)} }"]
+    [
+      "  sku: { family: " <> bicep_literal(family, 0, :bicep) <>
+        ", name: " <> bicep_literal(sku_name(entry, "standard"), 0, :bicep) <> " }"
+    ]
   end
 
   defp bicep_extras(%{kind: ns_kind} = entry) when ns_kind in @namespace_kinds do
-    ["  sku: { name: #{bicep_literal(sku_name(entry, "Standard"), 0, :bicep)} }"]
+    ["  sku: { name: " <> bicep_literal(sku_name(entry, "Standard"), 0, :bicep) <> " }"]
   end
 
   defp bicep_extras(%{kind: :cosmos_account}), do: []
@@ -708,11 +764,11 @@ defmodule Smalt.DataPlane.IacExport do
 
   defp bicep_properties_lines(%{kind: :cosmos_account} = entry) do
     props = cosmos_properties(entry)
-    if map_size(props) == 0, do: [], else: ["  properties: #{bicep_literal(props, 1, :bicep)}"]
+    if map_size(props) == 0, do: [], else: ["  properties: " <> bicep_literal(props, 1, :bicep)]
   end
 
   defp bicep_properties_lines(%{properties: props}) do
-    if map_size(props) == 0, do: [], else: ["  properties: #{bicep_literal(props, 1, :bicep)}"]
+    if map_size(props) == 0, do: [], else: ["  properties: " <> bicep_literal(props, 1, :bicep)]
   end
 
   # Cosmos requires databaseAccountOfferType + locations; the stub tier
@@ -747,7 +803,7 @@ defmodule Smalt.DataPlane.IacExport do
   defp literal(v, i, s) when is_list(v),
     do: "[" <> Enum.map_join(v, ", ", &literal(&1, i, s)) <> "]"
 
-  defp literal(v, i, s) when is_map(v) and map_size(v) == 0, do: "{}"
+  defp literal(v, _i, _s) when is_map(v) and map_size(v) == 0, do: "{}"
 
   defp literal(v, i, s) when is_map(v) do
     pad_in = String.duplicate("  ", i + 1)
@@ -757,16 +813,16 @@ defmodule Smalt.DataPlane.IacExport do
       v
       |> Enum.sort_by(fn {k, _} -> to_string(k) end)
       |> Enum.map_join("\n", fn {k, val} ->
-        pad_in <> literal_key(k, s) <> literal_sep(s) <> literal(val, i + 1, s)
+        pad_in <> literal_key(k) <> literal_sep(s) <> literal(val, i + 1, s)
       end)
 
     "{\n" <> inner <> "\n" <> pad_out <> "}"
   end
 
-  defp literal_key(k, _s) when is_binary(k),
+  defp literal_key(k) when is_binary(k),
     do: k |> String.replace("\"", "") |> String.replace("'", "")
 
-  defp literal_key(k, s), do: literal_key(to_string(k), s)
+  defp literal_key(k), do: literal_key(to_string(k))
 
   defp literal_sep(:bicep), do: ": "
   defp literal_sep(:hcl), do: " = "
@@ -803,7 +859,9 @@ defmodule Smalt.DataPlane.IacExport do
         tf_section(
           "# --- other top-level resources ---",
           rendered
-          |> Enum.reject(&(&1.kind in [:resource_group | @namespace_kinds] or &1.kind == :servicebus_queue))
+          |> Enum.filter(
+            &(&1.kind not in [:resource_group | @namespace_kinds] and &1.kind != :servicebus_queue)
+          )
           |> Enum.map(&tf_block/1)
         ),
         tf_section(
@@ -826,7 +884,7 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   defp tf_providers(has_generic?) do
-    azurerm = [
+    azurerm_lines = [
       "terraform {",
       "  required_providers {",
       "    azurerm = {",
@@ -835,9 +893,9 @@ defmodule Smalt.DataPlane.IacExport do
       "    }"
     ]
 
-    azurerm =
+    azurerm_lines =
       if has_generic? do
-        azurerm ++
+        azurerm_lines ++
           [
             "    azapi = {",
             "      source  = \"Azure/azapi\"",
@@ -845,10 +903,10 @@ defmodule Smalt.DataPlane.IacExport do
             "    }"
           ]
       else
-        azurerm
+        azurerm_lines
       end
 
-    Enum.join(azurerm ++ ["  }", "}", "", "provider \"azurerm\" {", "  features {}", "}"], "\n")
+    Enum.join(azurerm_lines ++ ["  }", "}", "", "provider \"azurerm\" {", "  features {}", "}"], "\n")
   end
 
   defp tf_variables([], _has_kv?), do: nil
@@ -862,9 +920,7 @@ defmodule Smalt.DataPlane.IacExport do
       end)
       |> Enum.sort()
       |> maybe_prepend_tenant(has_kv?)
-      |> Enum.map(fn var ->
-        "variable \"#{var}\" {\n  type = string\n}"
-      end)
+      |> Enum.map(fn var -> "variable \"#{var}\" {\n  type = string\n}" end)
 
     tf_section("# --- variables ---", [Enum.join(vars, "\n\n")])
   end
@@ -873,6 +929,7 @@ defmodule Smalt.DataPlane.IacExport do
   defp maybe_prepend_tenant(vars, false), do: vars
 
   defp tf_of_kind(rendered, kind), do: rendered |> Enum.filter(&(&1.kind == kind)) |> Enum.map(&tf_block/1)
+
   defp tf_of_kinds(rendered, kinds), do: rendered |> Enum.filter(&(&1.kind in kinds)) |> Enum.map(&tf_block/1)
 
   defp tf_section(_header, []), do: nil
@@ -938,11 +995,10 @@ defmodule Smalt.DataPlane.IacExport do
   defp tf_ns_id_expr(%{existing: false, symbolic_name: sym}),
     do: "azurerm_servicebus_namespace.#{sym}.id"
 
+  defp assignments([]), do: []
+
   defp assignments(pairs) do
-    width =
-      pairs
-      |> Enum.map(fn {k, _} -> String.length(k) end)
-      |> Enum.max()
+    width = pairs |> Enum.map(fn {k, _} -> String.length(k) end) |> Enum.max()
 
     Enum.map(pairs, fn {k, v} -> "  " <> String.pad_trailing(k, width) <> " = " <> v end)
   end
@@ -964,22 +1020,27 @@ defmodule Smalt.DataPlane.IacExport do
 
   defp tf_data_namespace(entry) do
     rg_expr =
-      if entry.scope, do: tf_rg_name_expr(entry.scope), else: "var.#{entry.symbolic_name}_name"
+      if entry.scope,
+        do: tf_rg_name_expr(entry.scope),
+        else: "var.#{entry.symbolic_name}_name"
 
-    block("data \"azurerm_servicebus_namespace\" \"#{entry.symbolic_name}\"", [
-      {"name", "var.#{entry.symbolic_name}_name"},
-      {"resource_group_name", rg_expr}
-    ])
+    block(
+      "data \"azurerm_servicebus_namespace\" \"#{entry.symbolic_name}\"",
+      assignments([
+        {"name", "var.#{entry.symbolic_name}_name"},
+        {"resource_group_name", rg_expr}
+      ])
+    )
   end
 
   defp tf_namespace(entry, tf_type) do
     pairs =
       [
         {"name", "var.#{entry.symbolic_name}_name"},
-        {"resource_group_name", tf_rg_name_expr(entry.scope)},
-        {"location", "var.#{entry.symbolic_name}_location"},
-        {"sku", tf_string(sku_name(entry, "Standard"))}
-      ]
+        {"resource_group_name", tf_rg_name_expr(entry.scope)}
+      ] ++
+        location_pairs(entry) ++
+        [{"sku", tf_string(sku_name(entry, "Standard"))}]
 
     block("resource \"#{tf_type}\" \"#{entry.symbolic_name}\"", assignments(pairs))
   end
@@ -987,14 +1048,17 @@ defmodule Smalt.DataPlane.IacExport do
   defp tf_storage(entry) do
     {tier, replication} = storage_tier_replication(entry)
 
-    pairs = [
-      {"name", "var.#{entry.symbolic_name}_name"},
-      {"resource_group_name", tf_rg_name_expr(entry.scope)},
-      {"location", "var.#{entry.symbolic_name}_location"},
-      {"account_tier", tf_string(tier)},
-      {"account_replication_type", tf_string(replication)},
-      {"account_kind", tf_string(if is_binary(entry.arm_kind), do: entry.arm_kind, else: "StorageV2")}
-    ]
+    pairs =
+      [
+        {"name", "var.#{entry.symbolic_name}_name"},
+        {"resource_group_name", tf_rg_name_expr(entry.scope)}
+      ] ++
+        location_pairs(entry) ++
+        [
+          {"account_tier", tf_string(tier)},
+          {"account_replication_type", tf_string(replication)},
+          {"account_kind", tf_string(if is_binary(entry.arm_kind), do: entry.arm_kind, else: "StorageV2")}
+        ]
 
     block("resource \"azurerm_storage_account\" \"#{entry.symbolic_name}\"", assignments(pairs))
   end
@@ -1017,20 +1081,25 @@ defmodule Smalt.DataPlane.IacExport do
   end
 
   defp tf_key_vault(entry) do
-    pairs = [
-      {"name", "var.#{entry.symbolic_name}_name"},
-      {"location", "var.#{entry.symbolic_name}_location"},
-      {"resource_group_name", tf_rg_name_expr(entry.scope)},
-      {"sku_name", tf_string(sku_name(entry, "standard"))},
-      {"tenant_id", "var.tenant_id"}
-    ]
+    pairs =
+      [
+        {"name", "var.#{entry.symbolic_name}_name"},
+        {"resource_group_name", tf_rg_name_expr(entry.scope)}
+      ] ++
+        location_pairs(entry) ++
+        [
+          {"sku_name", tf_string(sku_name(entry, "standard"))},
+          {"tenant_id", "var.tenant_id"}
+        ]
 
     block("resource \"azurerm_key_vault\" \"#{entry.symbolic_name}\"", assignments(pairs))
   end
 
   defp tf_cosmos(entry) do
     props = entry.properties
-    offer = if is_binary(props["databaseAccountOfferType"]), do: props["databaseAccountOfferType"], else: "Standard"
+
+    offer =
+      if is_binary(props["databaseAccountOfferType"]), do: props["databaseAccountOfferType"], else: "Standard"
 
     consistency =
       case props["consistencyPolicy"] do
@@ -1039,72 +1108,68 @@ defmodule Smalt.DataPlane.IacExport do
       end
 
     head =
-      assignments([
-        {"name", "var.#{entry.symbolic_name}_name"},
-        {"location", "var.#{entry.symbolic_name}_location"},
-        {"resource_group_name", tf_rg_name_expr(entry.scope)},
-        {"offer_type", tf_string(offer)},
-        {"kind", tf_string("GlobalDocumentDB")}
-      ])
+      assignments(
+        [
+          {"name", "var.#{entry.symbolic_name}_name"},
+          {"resource_group_name", tf_rg_name_expr(entry.scope)}
+        ] ++
+          location_pairs(entry) ++
+          [
+            {"offer_type", tf_string(offer)},
+            {"kind", tf_string("GlobalDocumentDB")}
+          ]
+      )
 
     nested =
       [
         "",
         "  consistency_policy {",
-        "    consistency_level = #{tf_string(consistency)}",
+        "    consistency_level = " <> tf_string(consistency),
         "  }"
-      ] ++
-        geo_location(entry.location)
+      ] ++ geo_location_lines(entry)
 
-    block("resource \"azurerm_cosmosdb_account\" \"#{entry.symbolic_name}\"", head) <>
-      Enum.join(nested, "\n")
+    block("resource \"azurerm_cosmosdb_account\" \"#{entry.symbolic_name}\"", head ++ nested)
   end
 
-  defp geo_location(loc) when is_binary(loc) do
+  defp geo_location_lines(%{location: loc, symbolic_name: sym}) when is_binary(loc) do
     [
       "",
       "  geo_location {",
-      "    location          = var.#{entry_location_var(loc)}",
+      "    location          = var.#{sym}_location",
       "    failover_priority = 0",
       "  }"
     ]
   end
 
-  # geo_location re-uses the account's own location variable; resolve it via
-  # the entry at call time instead (see tf_cosmos/1 — kept as a helper for
-  # the consistent 2-space indent rendering).
-  defp entry_location_var(_loc), do: "location"
+  defp geo_location_lines(_), do: []
 
   defp tf_queue(entry) do
-    pairs = [
-      {"name", "var.#{entry.symbolic_name}_name"},
-      {"namespace_id", tf_ns_id_expr(entry.parent)}
-    ]
-
-    block("resource \"azurerm_servicebus_queue\" \"#{entry.symbolic_name}\"", assignments(pairs))
+    block(
+      "resource \"azurerm_servicebus_queue\" \"#{entry.symbolic_name}\"",
+      assignments([
+        {"name", "var.#{entry.symbolic_name}_name"},
+        {"namespace_id", tf_ns_id_expr(entry.parent)}
+      ])
+    )
   end
 
   defp tf_generic(entry) do
-    head =
-      assignments(
-        [
-          {"type", tf_string("#{entry.type}@#{entry.api_version}")},
-          {"name", "var.#{entry.symbolic_name}_name"}
-        ] ++
-          (if entry.scope, do: [{"parent_id", tf_rg_id_expr(entry.scope)}], else: []) ++
-          (if entry.location, do: [{"location", "var.#{entry.symbolic_name}_location"}], else: [])
-      )
+    pairs =
+      [
+        {"type", tf_string("#{entry.type}@#{entry.api_version}")},
+        {"name", "var.#{entry.symbolic_name}_name"}
+      ] ++
+        (if entry.scope, do: [{"parent_id", tf_rg_id_expr(entry.scope)}], else: []) ++
+        (if entry.location, do: [{"location", "var.#{entry.symbolic_name}_location"}], else: [])
 
     body =
       if map_size(entry.properties) == 0 do
         "  body = jsonencode({})"
       else
-        "  body = jsonencode({\n    properties = " <>
-          literal(entry.properties, 2, :hcl) <> "\n  })"
+        "  body = jsonencode({\n    properties = " <> literal(entry.properties, 2, :hcl) <> "\n  })"
       end
 
-    block("resource \"azapi_resource\" \"#{entry.symbolic_name}\"", head) <>
-      (if head != [], do: "\n", else: "") <> body
+    block("resource \"azapi_resource\" \"#{entry.symbolic_name}\"", assignments(pairs) ++ [body])
   end
 
   defp location_pairs(%{location: loc, symbolic_name: sym}) when is_binary(loc),
@@ -1130,15 +1195,16 @@ defmodule Smalt.DataPlane.IacExport do
       |> Enum.sort_by(& &1.symbolic_name)
       |> Enum.flat_map(fn entry ->
         base = [tfvars_line("#{entry.symbolic_name}_name", entry.name)]
-        if entry.location, do: base ++ [tfvars_line("#{entry.symbolic_name}_location", entry.location)], else: base
+
+        if entry.location,
+          do: base ++ [tfvars_line("#{entry.symbolic_name}_location", entry.location)],
+          else: base
       end)
 
     rows =
-      if has_kv? do
-        rows ++ [tfvars_line("tenant_id", "00000000-0000-0000-0000-000000000000")]
-      else
-        rows
-      end
+      if has_kv?,
+        do: rows ++ [tfvars_line("tenant_id", "00000000-0000-0000-0000-000000000000")],
+        else: rows
 
     header <> "\n\n" <> Enum.join(rows, "\n") <> "\n"
   end

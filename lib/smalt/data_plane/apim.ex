@@ -289,12 +289,36 @@ defmodule Smalt.DataPlane.Apim do
   # ---------------------------------------------------------------------------
 
   @doc """
-  PUTs a policy document at the named scope. `xml` is parsed EAGERLY here —
-  malformed XML refuses the PUT with the typed 400 before anything is
-  stored (the real service's InvalidPolicyXml face).
+  PUTs a policy document at the named scope. Accepts BOTH wire forms real
+  clients use: the ARM JSON body (`%{"properties" => %{"format" => "xml",
+  "value" => xml}}`, what az CLI / portal PUTs) and the raw XML document
+  itself (what `format=raw` PUTs and tests send). Either way `xml` is
+  parsed EAGERLY here — malformed XML refuses the PUT with the typed 400
+  before anything is stored (the real service's InvalidPolicyXml face).
   """
-  def put_policy(sub, rg, svc, scope, api_name, op_name, name, xml)
-      when is_binary(xml) and scope in [:service, :api, :operation] do
+  def put_policy(sub, rg, svc, scope, api_name, op_name, name, xml_or_body)
+      when scope in [:service, :api, :operation] do
+    case policy_xml(xml_or_body) do
+      {:ok, xml} ->
+        put_policy_xml(sub, rg, svc, scope, api_name, op_name, name, xml)
+
+      {:error, _status, _code, _msg} = refusal ->
+        refusal
+    end
+  end
+
+  defp policy_xml(%{"properties" => %{"value" => xml}}) when is_binary(xml) do
+    {:ok, xml}
+  end
+
+  defp policy_xml(%{"properties" => props}) when is_map(props) do
+    {:error, 400, "InvalidPolicyXml",
+     "policy body properties must carry a binary 'value' (the policy XML document)"}
+  end
+
+  defp policy_xml(xml) when is_binary(xml), do: {:ok, xml}
+
+  defp put_policy_xml(sub, rg, svc, scope, api_name, op_name, name, xml) do
     with {:ok, _parsed} <- parse_policy(xml) do
       case scope_target(sub, rg, svc, scope, api_name, op_name) do
         {:ok, _target} ->

@@ -90,7 +90,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   # ARM surface
   # ===========================================================================
 
-  defp handle_arm(conn, method, sub, rg_seg, rg, rest) do
+  defp handle_arm(conn, method, sub, rg, rest) do
     conn = Plug.Conn.fetch_query_params(conn)
 
     case {method, rest} do
