@@ -39,7 +39,7 @@ defmodule Smalt.DataPlane.KQL do
   @max_take 1_000
 
   @type row :: %{optional(String.t()) => term()}
-  @type run_err :: {:error, {:parse | :limit, String.t()}}
+  @type run_err :: {:error, {:parse | :limit | :eval, String.t()}}
 
   @order_dirs %{"asc" => :asc, "desc" => :desc}
   @nulls_pos %{"first" => :first, "last" => :last}
@@ -68,12 +68,20 @@ defmodule Smalt.DataPlane.KQL do
   @syn_string "SYN0005"
 
   @spec run([row], String.t()) :: {:ok, [row]} | run_err
-  def run(rows, query) when is_list(rows) and is_binary(query) do
+  def run(rows, query) when is_list(rows) and is_binary(query), do: run(rows, query, %{})
+
+  # T-05 increment 2 (v26.10.28): run/3 threads a named-table map for
+  # `| join ...` — the pipeline's own rows are $left, tables[name] is $right.
+  @spec run([row], String.t(), %{String.t() => [row]}) :: {:ok, [row]} | run_err
+  def run(rows, query, tables) when is_list(rows) and is_binary(query) and is_map(tables) do
     with :ok <- check_query_length(query),
          {:ok, stages} <- parse(query) do
       case max_stage_depth(stages) do
-        depth when depth <= @max_ast_depth -> execute(stages, rows, DateTime.utc_now())
-        _ -> {:error, {:limit, "AST depth exceeds #{@max_ast_depth}"}}
+        depth when depth <= @max_ast_depth ->
+          execute(stages, rows, DateTime.utc_now(), tables)
+
+        _ ->
+          {:error, {:limit, "AST depth exceeds #{@max_ast_depth}"}}
       end
     end
   end
@@ -82,14 +90,59 @@ defmodule Smalt.DataPlane.KQL do
 
   ## -- Pipeline execution ----------------------------------------------------
 
-  defp execute(stages, rows, now) do
+  defp execute(stages, rows, now, tables) do
     Enum.reduce_while(stages, {:ok, rows}, fn
-      stage, {:ok, acc} -> {:cont, apply_stage(stage, acc, now)}
+      stage, {:ok, acc} -> {:cont, apply_stage(stage, acc, now, tables)}
       _stage, {:error, _} = err -> {:halt, err}
     end)
   end
 
-  defp apply_stage({:take, n}, rows, _now) do
+  # T-05 increment 2 (v26.10.28): join. Pipeline rows are $left; the named
+  # table from run/3's tables map is $right. Kinds: inner (and innerunique,
+  # treated as inner — documented), left (leftouter). Collision policy:
+  # right wins under the bare column name, left survives under "<Col>_left"
+  # (Kusto keeps right-side values in merged columns; the _left alias is
+  # this engine's explicit, lossless rendering).
+  defp apply_stage({:join, kind, table, lcol, rcol}, rows, _now, tables) do
+    case Map.get(tables, table) do
+      nil ->
+        {:error, {:eval, "join: table #{inspect(table)} not provided to run/3"}}
+
+      right_rows ->
+        right_by_key = Enum.group_by(right_rows, &join_key(Map.get(&1, rcol)))
+
+        {joined, unmatched_left} =
+          Enum.flat_map_reduce(rows, [], fn left, acc ->
+            case Map.get(right_by_key, join_key(Map.get(left, lcol))) do
+              nil -> {[], [left | acc]}
+              matches -> {Enum.map(matches, &join_merge(left, &1)), acc}
+            end
+          end)
+
+        case kind do
+          :inner -> {:ok, joined}
+          :left -> {:ok, joined ++ Enum.reverse(unmatched_left)}
+        end
+    end
+  end
+
+  # Join keys normalize datetimes (ISO or DateTime) so temporal keys match
+  # across the two tables' storage shapes; everything else compares raw.
+  defp join_key(v) do
+    case to_datetime(v) do
+      {:ok, dt} -> {:dt, DateTime.to_unix(dt, :millisecond)}
+      _ -> {:raw, v}
+    end
+  end
+
+  defp join_merge(left, right) do
+    collisions =
+      Map.new(Map.intersect(left, right), fn {k, _v} -> {"#{k}_left", Map.get(left, k)} end)
+
+    left |> Map.merge(right) |> Map.merge(collisions)
+  end
+
+  defp apply_stage({:take, n}, rows, _now, _tables) do
     if n <= @max_take do
       {:ok, Enum.take(rows, n)}
     else
@@ -97,18 +150,18 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
-  defp apply_stage({:where, pred}, rows, now),
+  defp apply_stage({:where, pred}, rows, now, _tables),
     do: {:ok, Enum.filter(rows, &eval(pred, &1, now))}
 
   # order by / sort by: direction + optional explicit nulls placement.
   # Default (no explicit `nulls` clause) preserves the historical engine rule:
   # missing columns sort first regardless of direction; Erlang's sort is
   # stable, so equal keys keep input order — deterministic output.
-  defp apply_stage({:order, col, dir, nil}, rows, _now) do
+  defp apply_stage({:order, col, dir, nil}, rows, _now, _tables) do
     {:ok, Enum.sort_by(rows, &sort_key(&1, col, numeric_column?(rows, col)), dir)}
   end
 
-  defp apply_stage({:order, col, dir, nulls}, rows, _now) do
+  defp apply_stage({:order, col, dir, nulls}, rows, _now, _tables) do
     {nils, rest} = Enum.split_with(rows, &is_nil(Map.get(&1, col)))
     sorted = Enum.sort_by(rest, &sort_key(&1, col, numeric_column?(rest, col)), dir)
 
@@ -118,14 +171,14 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
-  defp apply_stage({:project, items}, rows, now) do
+  defp apply_stage({:project, items}, rows, now, _tables) do
     {:ok,
      Enum.map(rows, fn row ->
        Map.new(items, fn {name, expr} -> {name, eval_scalar(expr, row, now)} end)
      end)}
   end
 
-  defp apply_stage({:extend, items}, rows, now) do
+  defp apply_stage({:extend, items}, rows, now, _tables) do
     {:ok,
      Enum.map(rows, fn row ->
        Enum.reduce(items, row, fn {name, expr}, acc ->
@@ -139,7 +192,7 @@ defmodule Smalt.DataPlane.KQL do
   # Kusto suffix naming (count_, sum_X, avg_X, min_X, max_X). `summarize by K`
   # with no aggregate yields distinct key rows. Empty input with no `by` gives
   # one zero/nil row (Kusto's empty-set aggregate semantics).
-  defp apply_stage({:summarize, aggs, []}, rows, _now) do
+  defp apply_stage({:summarize, aggs, []}, rows, _now, _tables) do
     if rows == [] and aggs != [] do
       {:ok, [empty_agg_row(aggs)]}
     else
@@ -147,7 +200,7 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
-  defp apply_stage({:summarize, aggs, by_keys}, rows, _now) do
+  defp apply_stage({:summarize, aggs, by_keys}, rows, _now, _tables) do
     groups = Enum.group_by(rows, fn row -> Enum.map(by_keys, &by_key_value(row, &1)) end)
 
     {:ok,
@@ -684,11 +737,52 @@ defmodule Smalt.DataPlane.KQL do
     end
   end
 
+  # T-05 increment 2 (v26.10.28): join stage grammar:
+  #   | join [kind=inner|innerunique|left|leftouter] <Table> on <Col>
+  #   | join ... on <LeftCol> == <RightCol>
+  # The kind word is optional (inner). <Table> resolves against run/3's
+  # tables map at eval time; a missing table is a typed eval error.
+  @join_kinds %{
+    "inner" => :inner,
+    "innerunique" => :inner,
+    "left" => :left,
+    "leftouter" => :left
+  }
+
+  defp parse_stage([{:word, "join", p} | rest0], stages, _pipe_pos) do
+    {kind, rest1} =
+      case rest0 do
+        [{:word, "kind", _}, {:assign, "=", _}, {:word, k, _} | r] ->
+          {@join_kinds[k] || :inner, r}
+
+        _ ->
+          {:inner, rest0}
+      end
+
+    case rest1 do
+      [{:word, table, _}, {:word, "on", _}, {:word, lcol, _} | rest2] ->
+        if table in ["kind", "on"] do
+          syn(@syn_unexpected, "join expects a table name", p)
+        else
+          {rcol, rest3} =
+            case rest2 do
+              # the lexer emits == as a single word token (line ~577)
+              [{:word, "==", _}, {:word, r, _} | r3] -> {r, r3}
+              _ -> {lcol, rest2}
+            end
+
+          parse_stages(rest3, [{:join, kind, table, lcol, rcol} | stages])
+        end
+
+      _ ->
+        syn(@syn_unexpected, "join expects: [kind=...] <Table> on <Col>[ == <Col>]", p)
+    end
+  end
+
   defp parse_stage([{:word, "project", _} | rest], stages, _pipe_pos) do
     with {:ok, items, rest} <- parse_items(rest, false) do
       parse_stages(rest, [{:project, items} | stages])
-    end
-  end
+    end  end
 
   defp parse_stage([{:word, "extend", _} | rest], stages, _pipe_pos) do
     with {:ok, items, rest} <- parse_items(rest, true) do
