@@ -446,9 +446,6 @@ defmodule Smalt.DataPlane.ContainerGroups do
               _ -> {:halt, {:error, "InvalidParameter", "Container port protocol must be TCP or UDP.", target}}
             end
         end
-
-      _other, _acc ->
-        {:halt, :ok}
     end)
   end
 

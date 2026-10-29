@@ -219,7 +219,7 @@ defmodule Smalt.DataPlane.ResourceHealth do
   end
 
   @doc """
-    Chaos-owned read: `{:ok, rec}` iff an explicit transition record OR the
+  Chaos-owned read: `{:ok, rec}` iff an explicit transition record OR the
   `:resource_health_unavailable` marker covers `resource_id`, else `:error`.
   The ARM pass-through router uses this probe so chaos-free resources keep
   the pre-existing computed-health law (recorded `:smalt_arm_health`
@@ -392,7 +392,9 @@ defmodule Smalt.DataPlane.ResourceHealth do
     end
   end
 
-  defp active_event_id(resource_id) do
+  # Deterministic id for the derived marker event: repeated polls observe
+  # the SAME event id while the flag is up (no id churn on read paths).
+  defp marker_event_id(resource_id) do
     "chaos-" <> Base.encode16(binary_part(:crypto.hash(:sha256, down(resource_id)), 0, 8), case: :lower)
   end
 
@@ -452,7 +454,7 @@ defmodule Smalt.DataPlane.ResourceHealth do
 
   defp derived_marker_event(resource_id) do
     {code, summary} = normalize_reason(marker_reason(resource_id))
-    id = active_event_id(resource_id)
+    id = marker_event_id(resource_id)
 
     %{
       "id" => id,
