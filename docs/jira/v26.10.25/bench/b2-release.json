@@ -1,0 +1,63 @@
+{
+  "schema": "smalt-bench/v1",
+  "date": "2026-10-25T18:08:48-0700",
+  "host": "darwin/arm64 local",
+  "ports": {
+    "arm": 9443,
+    "data": 8443,
+    "amqp": 5672
+  },
+  "doctor": {
+    "elapsed_s": 0.831,
+    "target_s": 3.0,
+    "verdict": "PASS"
+  },
+  "boot": {
+    "runs": [
+      2.301,
+      1.607,
+      1.65,
+      1.579,
+      1.575
+    ],
+    "n": 5,
+    "min_s": 1.575,
+    "median_s": 1.607,
+    "p95_s": 2.301,
+    "target_s": 5.0,
+    "verdict": "PASS"
+  },
+  "arm_put": {
+    "n": 200,
+    "min": 0.479,
+    "median": 0.538,
+    "p95": 0.741,
+    "p99": 0.996,
+    "max": 9.109,
+    "unit": "ms",
+    "target": 50.0,
+    "verdict": "PASS"
+  },
+  "cosmos_roundtrip": {
+    "n": 400,
+    "min": 0.458,
+    "median": 0.674,
+    "p95": 0.951,
+    "p99": 1.047,
+    "max": 23.266,
+    "unit": "ms",
+    "target": 20.0,
+    "verdict": "PASS"
+  },
+  "amqp_first_frame": {
+    "n": 50,
+    "min": 0.635,
+    "median": 0.994,
+    "p95": 1.24,
+    "p99": 5.463,
+    "max": 5.463,
+    "unit": "ms",
+    "target": 100.0,
+    "verdict": "PASS"
+  }
+}
