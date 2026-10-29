@@ -1,5 +1,6 @@
 # T-15 — IaC state export: bicep first, terraform stub second
 
+- status: CODE-COMPLETE (2026-10-29): r9, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.14 "IaC state export — `export --format bicep` · `--format terraform` (HCL + tfvars stub)" · verdict-at-open: **GAP** (foundation exists)
 - size: **M** · depends-on: — · parity-leg: export round-trip (what-if/plan diff)
 

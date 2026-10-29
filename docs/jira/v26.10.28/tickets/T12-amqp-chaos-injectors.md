@@ -1,5 +1,6 @@
 # T-12 — Chaos engineering: AMQP link/credit/session injectors
 
+- status: CODE-COMPLETE (2026-10-29): r11, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.13 "Chaos — AMQP link detach injection · credit starvation · session timeout injection" · verdict-at-open: **PARTIAL**
 - size: **M** · depends-on: — · parity-leg: chaos-tier extension (feeds T-14)
 

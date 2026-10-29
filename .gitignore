@@ -152,3 +152,6 @@ vendors/
 # >100MB blobs (GitHub hard limit) — kept local only
 _impl14/test/lib/explorer/priv/native/*.so
 popcorn_demo/bench/corpus/*.ndjson
+
+tmp/export/
+*.seed-corpus.json

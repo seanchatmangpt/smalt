@@ -279,6 +279,48 @@ defmodule Smalt.Amqp.Connection do
     end
   end
 
+  # T-12 (c) :sb_chaos_session_timeout_ms — the armed close timer FIRED
+  # (Process.send_after scheduling per the no-sleep law, never a sleep).
+  # Close the session with a typed error so the client's session/connection
+  # recreation path is exercised deterministically. A stale timer (the client
+  # already ended / re-began this channel) no-ops via the chaos_ref match;
+  # cleanup mirrors handle_amqp(:end): drop the channel's links, release
+  # their epoch registrations, retire its outbound deliveries.
+  def handle_info({:sb_chaos_session_timeout, ch, ref}, state) do
+    if get_session(state, ch)[:chaos_ref] == ref do
+      Smalt.Messaging.Chaos.emit(:session_timeout, %{timeout_ms: Smalt.Messaging.Chaos.session_close_bound()}, %{
+        channel: ch
+      })
+
+      send_frame(state, ch, {
+        :end,
+        %{error: %{condition: "amqp:internal-error", description: "SMALT_CHAOS_SESSION_TIMEOUT"}}
+      })
+
+      state.links
+      |> Map.filter(fn {_h, l} -> l.channel == ch end)
+      |> Enum.each(fn {_h, l} -> eh_epoch_release(l) end)
+
+      session =
+        case state.session do
+          %{channel: ^ch} -> nil
+          _ -> state.session
+        end
+
+      {:noreply,
+       %{
+         state
+         | session: session,
+           links: Map.reject(state.links, fn {_h, l} -> l.channel == ch end),
+           sessions: Map.delete(state.sessions || %{}, ch),
+           outbound_deliveries:
+             Map.reject(state.outbound_deliveries, fn {_id, d} -> d[:channel] == ch end)
+       }}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -577,13 +619,44 @@ defmodule Smalt.Amqp.Connection do
     # Clamped so a single flow can't request 2^62.
     credit = (perf.link_credit && min(perf.link_credit, @max_link_credit)) || 0
 
-    state =
-      case perf.handle do
-        nil -> add_credit(state, credit, ch)
-        handle -> set_credit(state, ch, handle, credit)
+    if chaos_starved?(state, ch, perf.handle, credit) do
+      # T-12 (b): the credit grant is WITHHELD while the starve flag is
+      # armed — deliveries stall until the flag clears on a re-boot. Credit
+      # already outstanding still drains (the stall is on NEW grants).
+      deliver_available(state)
+    else
+      state =
+        case perf.handle do
+          nil -> add_credit(state, credit, ch)
+          handle -> set_credit(state, ch, handle, credit)
+        end
+
+      deliver_available(state)
+    end
+  end
+
+  # T-12 (b) :sb_chaos_starve_credits / :eh_chaos_starve_credits — namespace
+  # resolved from the targeted link's kind (a session-level flow, handle
+  # nil, only ever grants queue links -> :sb). Emits typed telemetry per
+  # withheld grant. Flags off = the grant proceeds byte-identically.
+  defp chaos_starved?(state, ch, handle, credit) do
+    ns =
+      case handle && link_by_handle(state, ch, handle) do
+        %{kind: :eventhubs} -> :eh
+        _ -> :sb
       end
 
-    deliver_available(state)
+    if Smalt.Messaging.Chaos.starve?(ns) do
+      Smalt.Messaging.Chaos.emit(:credit_starved, %{withheld_credit: credit}, %{
+        namespace: ns,
+        channel: ch,
+        handle: handle
+      })
+
+      true
+    else
+      false
+    end
   end
 
   defp handle_amqp(:open, perf, _ch, state) do
@@ -765,6 +838,24 @@ defmodule Smalt.Amqp.Connection do
     state
     |> Map.put(:session, session)
     |> put_session(ch, %{next_out: next_out, next_in: perf[:next_outgoing_id] || 0})
+    |> chaos_arm_session_timeout(ch)
+  end
+
+  # T-12 (c) arm: :sb_chaos_session_timeout_ms (with the :eh_ twin honored —
+  # the session layer is shared, so Chaos.session_close_bound/0 returns the
+  # shortest armed bound). Arms a deterministic close timer keyed by a
+  # make_ref token so a stale timer can never close a NEWER session re-begun
+  # on the same channel. Off (:infinity) = no timer, zero interference.
+  defp chaos_arm_session_timeout(state, ch) do
+    case Smalt.Messaging.Chaos.session_close_bound() do
+      ms when is_integer(ms) and ms > 0 ->
+        ref = make_ref()
+        Process.send_after(self(), {:sb_chaos_session_timeout, ch, ref}, ms)
+        put_session(state, ch, Map.put(get_session(state, ch), :chaos_ref, ref))
+
+      _ ->
+        state
+    end
   end
 
   defp send_flow(state, channel, extra) do
@@ -3222,14 +3313,58 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp bump_credit(state, ch, handle, delta) do
-    update_links(state, fn
-      {c, h}, link when h == handle and (ch == nil or c == ch) ->
-        %{link | credit: max(link.credit + delta, 0)}
+    state =
+      update_links(state, fn
+        {c, h}, link when h == handle and (ch == nil or c == ch) ->
+          %{link | credit: max(link.credit + delta, 0)}
 
-      _key, link ->
-        link
-    end)
+        _key, link ->
+          link
+      end)
+
+    # T-12 (a) chaos hook: bump_credit is called ONLY from the three delivery
+    # paths (queue claim + both EH paths), so the delivery decrement is the
+    # one counting point for every link kind.
+    chaos_after_delivery(state, ch, handle, delta)
   end
+
+  # T-12 (a) :sb_chaos_detach_after / :eh_chaos_detach_after — per-link
+  # delivery count; on the Nth delivery, requeue the SAME typed detach
+  # message the {:eh_epoch_evict, ...} cross-connection eviction handler
+  # consumes (retryable amqp:link:detach-forced; the connection stays up so
+  # the client relink is clean) and zero the link credit so the same-frame
+  # delivery recursion cannot outrun the detach. Flags off = passthrough
+  # (no counter writes, no state change).
+  defp chaos_after_delivery(state, ch, handle, delta) when delta < 0 do
+    case Map.get(state.links, {ch, handle}) do
+      %{} = link ->
+        ns = if link[:kind] == :eventhubs, do: :eh, else: :sb
+        count = Map.get(link, :chaos_deliveries, 0) + 1
+
+        if Smalt.Messaging.Chaos.should_detach?(count, ns) do
+          Smalt.Messaging.Chaos.emit(:link_detach, %{deliveries: count}, %{
+            namespace: ns,
+            channel: ch,
+            handle: handle,
+            address: link[:address]
+          })
+
+          send(self(), {:eh_epoch_evict, ch, handle, Smalt.Messaging.Chaos.detach_error(count)})
+          put_link(state, %{link | credit: 0})
+        else
+          if Smalt.Messaging.Chaos.detach_armed?(ns) do
+            put_link(state, Map.put(link, :chaos_deliveries, count))
+          else
+            state
+          end
+        end
+
+      _ ->
+        state
+    end
+  end
+
+  defp chaos_after_delivery(state, _ch, _handle, _delta), do: state
 
   # Absolute credit assignment for inbound :flow on a specific handle
   # (SHIM-COURT flip target: BEFORE = additive bump, AFTER = absolute set).

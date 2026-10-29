@@ -13,8 +13,12 @@ defmodule Smalt.SbRules do
     EventHub consumer-group `$default`) rather than written on create, so no
     create-path edit is needed.
   - Delivery semantics (80/20): a subscription with at least one NON-default
-    rule admits a message iff it matches ANY of its filters; non-matching
-    messages are skipped (not DLQ'd). `fan_out/2` implements the fan-out for
+    rule admits a message iff it matches ANY of its filters; a no-match copy
+    is skipped by default (real-Azure face). `config :smalt,
+    :sb_dlq_on_filter_no_match, true` (T-08) dead-letters the no-match copy
+    into the subscription's DLQ subqueue
+    `"<topic>/Subscriptions/<sub>/$deadletterqueue"` instead. `fan_out/2`
+    implements the fan-out for
     the AMQP ingest seam: for each subscription under the topic it evaluates
     rules and enqueues matching messages into the subscription's queue
     (`"<topic>/subscriptions/<sub>"` in `Smalt.Amqp.QueueStore`).
@@ -106,7 +110,11 @@ defmodule Smalt.SbRules do
   @doc """
   Subscription admits a message under 80/20 delivery semantics:
   - no rules (or all true-filters) -> admit;
-  - any filter matches -> admit; otherwise skip (never DLQ here).
+  - any filter matches -> admit;
+  - otherwise -> NOT admitted; the delivery decision is the caller's —
+    default skip (real Azure), or dead-letter into the subscription's DLQ
+    under `config :smalt, :sb_dlq_on_filter_no_match, true` (implemented in
+    `fan_out/4`, T-08).
   `rules` is a list of stored rule records.
   """
   def subscription_admits?([], _msg), do: true
@@ -550,6 +558,13 @@ defmodule Smalt.SbRules do
   the subscription's queue in `Smalt.Amqp.QueueStore` under
   `"<topic>/subscriptions/<sub>"`. Returns the list of subscription names the
   message was delivered to.
+
+  A subscription whose rules match nothing receives nothing. Under
+  `config :smalt, :sb_dlq_on_filter_no_match, true` (default false —
+  real-Azure face) the no-match copy is dead-lettered into the subscription's
+  DLQ subqueue `"<topic>/Subscriptions/<sub>/$deadletterqueue"` with
+  `DeadLetterReason: "NoFilterMatch"` and the original application properties
+  intact (T-08).
   """
   def fan_out(sub_base, ns, topic, msg) do
     subs_prefix =
@@ -583,9 +598,32 @@ defmodule Smalt.SbRules do
 
         [sub_name]
       else
+        # T-08 scope 1: filter no-match delivery decision, config-keyed.
+        # Default (false) is the real-Azure face — the copy is skipped, NOT
+        # dead-lettered. Opt-in parks the no-match copy in the subscription's
+        # DLQ subqueue via `Smalt.Messaging.SbDelivery.dead_letter/5`.
+        maybe_dlq_no_match(topic, sub_name, msg)
         []
       end
     end)
+  end
+
+  defp maybe_dlq_no_match(topic, sub_name, msg) do
+    if Application.get_env(:smalt, :sb_dlq_on_filter_no_match, false) do
+      _ =
+        Smalt.Messaging.SbDelivery.dead_letter(
+          Smalt.Messaging.SbDelivery.subscription_dlq_name(topic, sub_name),
+          %{
+            body: msg[:body] || "",
+            message_id: msg[:message_id],
+            app_props: msg[:app_props] || %{}
+          },
+          "NoFilterMatch",
+          "no subscription rule matched the message"
+        )
+
+      :ok
+    end
   end
 
   defp apply_first_action(rules, msg) do

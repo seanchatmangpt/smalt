@@ -1,5 +1,6 @@
 # T-14 — Azure Service Health: availability statuses, events, chaos-coupled incidents
 
+- status: CODE-COMPLETE (2026-10-29): r12, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.14 "Azure Service Health — Resource Health statuses · Service Health events · chaos-injectable incidents" · verdict-at-open: **GAP**
 - size: **M** · depends-on: T-12 (chaos flags are the incident source)
 

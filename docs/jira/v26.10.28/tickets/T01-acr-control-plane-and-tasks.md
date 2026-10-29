@@ -1,5 +1,6 @@
 # T-01 — Azure Container Registry: control plane + Tasks (FileTaskRunRequest / EncodedTaskRunRequest)
 
+- status: CODE-COMPLETE (2026-10-29): r14, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.11 "Container Registry — ACR Tasks multi-step execution" · verdict-at-open: **GAP** (entire plane)
 - size: **XL** · depends-on: — · parity-leg: new `acr` suite (ARM SDK probes)
 

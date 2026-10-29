@@ -1,5 +1,6 @@
 # T-07 — API Management: service resource + policy execution model
 
+- status: CODE-COMPLETE (2026-10-29): r16, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.12 "API Management — rate-limit · set-header/body · validate-jwt · backend forwarding" · verdict-at-open: **PARTIAL** (adjacent primitives shipped)
 - size: **L** · depends-on: — · parity-leg: apim gateway suite
 

@@ -1,5 +1,6 @@
 # T-08 — Service Bus: native dead-letter queue, scheduled messages, deferral
 
+- status: CODE-COMPLETE (2026-10-29): r8, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.12 "Service Bus — DLQ · scheduled messages · message deferral" · verdict-at-open: **PARTIAL**
 - size: **L** · depends-on: — · parity-leg: sb suite (unblocks T-16)
 - unblocks: T-16 (chained DLQ forwarding)

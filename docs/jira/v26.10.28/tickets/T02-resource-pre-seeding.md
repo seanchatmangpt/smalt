@@ -1,5 +1,6 @@
 # T-02 — Resource pre-seeding: import existing Azure resources into local state
 
+- status: CODE-COMPLETE (2026-10-29): r10, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.11 "Resource pre-seeding — `topaz seed`" · verdict-at-open: **GAP**
 - size: **M** · depends-on: — · parity-leg: read-back probes (ARM GET parity)
 

@@ -1,5 +1,6 @@
 # T-11 — Azure Functions: resource type + admin management API + host.json validation
 
+- status: CODE-COMPLETE (2026-10-29): r13, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.13 "Azure Functions — Function App resource · admin API · host.json" · verdict-at-open: **GAP**
 - size: **M** · depends-on: — (T-01 integration optional)
 
