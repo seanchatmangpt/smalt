@@ -12,9 +12,9 @@ defmodule Smalt.DataPlane.ContainerGroups do
       PUT    .../providers/Microsoft.ContainerInstance/containerGroups/<name>
       GET    .../providers/Microsoft.ContainerInstance/containerGroups/<name>
       DELETE .../providers/Microsoft.ContainerInstance/containerGroups/<name>
-      GET    .../providers/Microsoft.ContainerInstance/containerGroups            (RG LIST)
+      GET    .../providers/Microsoft.ContainerInstance/containerGroups                  (RG LIST)
       GET    /subscriptions/<sub>/providers/Microsoft.ContainerInstance/containerGroups (sub LIST)
-      GET    .../containerGroups/<name>/containers/<container>/logs               (typed refusal)
+      GET    .../containerGroups/<name>/containers/<container>/logs                     (typed refusal)
 
   Laws:
 
@@ -31,10 +31,11 @@ defmodule Smalt.DataPlane.ContainerGroups do
   - `imageRegistryCredentials` are validated at PUT time against the real
     ACR control-plane rows (T-01): each credential's server must resolve to a
     registry row keyed `.../providers/Microsoft.ContainerRegistry/registries/<name>`
-    in `Smalt.Store` (:smalt_resources), else the PUT refuses typed
-    (`InaccessibleImageRegistry`) exactly as pointing `az container create`
-    at a nonexistent registry fails. When the registry row publishes keys and
-    the credential carries a password, the key must be one of its keys.
+    in `Smalt.Store` (`:smalt_resources`), else the PUT refuses typed
+    (`InaccessibleImageRegistry`) — pointing `az container create` at a
+    nonexistent registry fails, exactly as Azure refuses the deployment. When
+    the registry row publishes keys and the credential carries a password,
+    the key must be one of its keys.
   - The `logs` action is a TYPED refusal: `logs_refusal/2` answers the
     `NotSupportedOnSubstrate`-class constant — execution is not emulated, so
     there are no logs to read and none are ever fabricated. Fail-closed, not
@@ -70,8 +71,8 @@ defmodule Smalt.DataPlane.ContainerGroups do
   @protocols ["TCP", "UDP"]
   @acr_registry_suffix "/providers/microsoft.containerregistry/registries/"
 
-  # The typed refusal constant (never fake logs). Rendered by the router on
-  # the containers/<name>/logs action; asserted verbatim by the court.
+  # The typed logs-refusal constant (never fake logs). Rendered by the router
+  # on the containers/<name>/logs action; asserted verbatim by the court.
   @logs_refusal_code "NotSupportedOnSubstrate"
 
   def full_type, do: @full_type
@@ -109,9 +110,9 @@ defmodule Smalt.DataPlane.ContainerGroups do
          {:ok, props} <- properties_map(body),
          :ok <- validate_containers(props, name),
          :ok <- validate_registry_credentials(props, name),
-         props <- hydrate_defaults(props),
+         props = hydrate_defaults(props),
          :ok <- validate_scalars(props),
-         record <- build_record(sub_id, rg, name, body, props) do
+         record = build_record(sub_id, rg, name, body, props) do
       existed? = match?({:ok, _}, Store.get(:smalt_resources, key))
       :ok = Store.put(:smalt_resources, key, record)
       {:ok, view(record), not existed?}
@@ -157,8 +158,9 @@ defmodule Smalt.DataPlane.ContainerGroups do
   # --- DELETE ------------------------------------------------------------------------
 
   @doc """
-  Deletes the group and any child rows (store-key prefix cascade). `:ok` or
-  `:error` (the router renders the 404 and the LRO 202 faces).
+  Deletes the group and any child rows (store-key prefix cascade, the
+  handle_resource_delete law). `:ok` or `:error` (the router renders the 404
+  and the LRO-202 faces).
   """
   def delete_group(sub_id, rg, name) do
     key = group_key(sub_id, rg, name)
@@ -180,9 +182,10 @@ defmodule Smalt.DataPlane.ContainerGroups do
   # --- logs refusal (never fake logs) -------------------------------------------------
 
   @doc """
-  The typed logs refusal for a container's logs action. `NotSupportedOnSubstrate`:
-  the substrate does not emulate execution, so there is no log stream to
-  return — and none is ever fabricated (design law, permanent non-goal).
+  The typed logs refusal for the containers/<name>/logs action.
+  `NotSupportedOnSubstrate`: the substrate does not emulate execution, so
+  there is no log stream to return — and none is ever fabricated (design
+  law, permanent non-goal).
   """
   def logs_refusal(group_name, container_name) do
     %{
@@ -226,6 +229,8 @@ defmodule Smalt.DataPlane.ContainerGroups do
       nil -> server
     end
   end
+
+  def registry_name_of(_other), do: nil
 
   # --- simulated lifecycle view --------------------------------------------------------
 
@@ -303,12 +308,16 @@ defmodule Smalt.DataPlane.ContainerGroups do
   defp body_map(%{} = body), do: {:ok, body}
 
   defp body_map(_),
-    do: {:error, "InvalidRequestContent", "The request content was invalid and could not be deserialized.", nil}
+    do:
+      {:error, "InvalidRequestContent",
+       "The request content was invalid and could not be deserialized.", nil}
 
   defp properties_map(%{"properties" => %{} = props}), do: {:ok, props}
 
   defp properties_map(_),
-    do: {:error, "InvalidRequestContent", "The request content was invalid and could not be deserialized.", "properties"}
+    do:
+      {:error, "InvalidRequestContent",
+       "The request content was invalid and could not be deserialized.", "properties"}
 
   defp hydrate_defaults(props) do
     props
@@ -316,40 +325,52 @@ defmodule Smalt.DataPlane.ContainerGroups do
     |> Map.put_new("restartPolicy", "Always")
   end
 
-  # containers array + per-container schema
-  defp validate_containers(props, group_name) do
-    where = "properties.containers"
+  # --- containers array + per-container schema -----------------------------------------
 
+  defp validate_containers(props, group_name) do
     case props["containers"] do
       containers when is_list(containers) and containers != [] ->
-        Enum.reduce_while(Enum.with_index(containers), :ok, fn
-          {container, i}, :ok -> {validate_container(container, group_name, i), :cont}
-          _, acc -> {acc, :cont}
+        containers
+        |> Enum.with_index()
+        |> Enum.reduce_while(:ok, fn {container, i}, _acc ->
+          case validate_container(container, group_name, i) do
+            :ok -> {:cont, :ok}
+            error -> {:halt, error}
+          end
         end)
 
       _ ->
-        {:error, "InvalidParameter", "Container group '#{group_name}' must specify at least one container.",
-         where}
+        {:error, "InvalidParameter",
+         "Container group '#{group_name}' must specify at least one container.",
+         "properties.containers"}
     end
   end
 
-  defp validate_container(%{"properties" => cp} = container, group_name, i)
-       when is_map(cp) and not is_map_key(container, "name") do
-    {:error, "InvalidParameter", "Container #{i} of container group '#{group_name}' must specify a name.",
-     "properties.containers[#{i}].name"}
-  end
+  defp validate_container(container, group_name, i) when is_map(container) do
+    name = container["name"]
+    cp = container["properties"]
+    base = "properties.containers[#{i}]"
 
-  defp validate_container(%{"name" => name, "properties" => cp} = _container, group_name, i)
-       when is_map(cp) and is_binary(name) and name != "" do
-    where = "properties.containers[#{i}].properties"
+    cond do
+      not (is_binary(name) and name != "") ->
+        {:error, "InvalidParameter",
+         "Container #{i} of container group '#{group_name}' must specify a name.", base <> ".name"}
 
-    with :ok <- require_image(cp, name, where),
-         :ok <- require_resources(cp, name, where),
-         :ok <- validate_ports(cp["ports"], where),
-         :ok <- validate_environment(cp["environmentVariables"], where),
-         :ok <- validate_probe(cp["livenessProbe"], where, name),
-         :ok <- validate_probe(cp["readinessProbe"], where, name) do
-      :ok
+      not is_map(cp) ->
+        {:error, "InvalidParameter", "Container '#{name}' must carry a properties object.",
+         base <> ".properties"}
+
+      true ->
+        where = base <> ".properties"
+
+        with :ok <- require_image(cp, name, where),
+             :ok <- require_resources(cp, name, where),
+             :ok <- validate_ports(cp["ports"], where),
+             :ok <- validate_environment(cp["environmentVariables"], where),
+             :ok <- validate_probe(cp["livenessProbe"], "livenessProbe", where, name),
+             :ok <- validate_probe(cp["readinessProbe"], "readinessProbe", where, name) do
+          :ok
+        end
     end
   end
 
@@ -361,8 +382,11 @@ defmodule Smalt.DataPlane.ContainerGroups do
 
   defp require_image(cp, name, where) do
     case cp["image"] do
-      image when is_binary(image) and image != "" -> :ok
-      _ -> {:error, "InvalidParameter", "Container '#{name}' must specify an image.", "#{where}.image"}
+      image when is_binary(image) and image != "" ->
+        :ok
+
+      _ ->
+        {:error, "InvalidParameter", "Container '#{name}' must specify an image.", "#{where}.image"}
     end
   end
 
@@ -385,42 +409,51 @@ defmodule Smalt.DataPlane.ContainerGroups do
 
   defp require_number(v, _name, _target, _field) when is_number(v) and v > 0, do: :ok
 
-  defp require_number(v, name, target, field),
-    do: {:error, "InvalidParameter", "Container '#{name}' must specify a positive number for #{field}.", target}
+  defp require_number(_v, name, target, field),
+    do:
+      {:error, "InvalidParameter", "Container '#{name}' must specify a positive number for #{field}.",
+       target}
+
+  # --- ports / environment / probes ------------------------------------------------------
+
+  defp valid_port?(port) when is_integer(port) and port >= 1 and port <= 65_535, do: true
+  defp valid_port?(_), do: false
 
   defp validate_ports(nil, _where), do: :ok
 
   defp validate_ports(ports, where) when is_list(ports) do
-    Enum.reduce_while(Enum.with_index(ports), :ok, fn
-      {port, i}, :ok ->
+    ports
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn
+      {port, i}, _acc ->
         target = "#{where}.ports[#{i}]"
 
         cond do
           not is_map(port) ->
-            {:halt, {:error, "InvalidParameter", "Container port must be an object with a port member.", target}}
+            {:halt,
+             {:error, "InvalidParameter", "Container port must be an object with a port member.",
+              target}}
 
-          valid_port?(port["port"]) ->
+          not valid_port?(port["port"]) ->
+            {:halt,
+             {:error, "InvalidParameter", "Container port must be an integer between 1 and 65535.",
+              target}}
+
+          true ->
             case port["protocol"] do
               nil -> {:cont, :ok}
               p when p in @protocols -> {:cont, :ok}
               _ -> {:halt, {:error, "InvalidParameter", "Container port protocol must be TCP or UDP.", target}}
             end
-
-          true ->
-            {:halt,
-             {:error, "InvalidParameter", "Container port must be an integer between 1 and 65535.", target}}
         end
 
-      _, acc ->
-        {:halt, acc}
+      _other, _acc ->
+        {:halt, :ok}
     end)
   end
 
   defp validate_ports(_other, where),
     do: {:error, "InvalidParameter", "Container ports must be an array of port objects.", where}
-
-  defp valid_port?(port) when is_integer(port) and port >= 1 and port <= 65_535, do: true
-  defp valid_port?(_), do: false
 
   defp validate_environment(nil, _where), do: :ok
 
@@ -431,33 +464,31 @@ defmodule Smalt.DataPlane.ContainerGroups do
       end)
 
     if bad do
-      {:error, "InvalidParameter", "Every environment variable must carry a name.", "#{where}.environmentVariables[#{bad}]"}
+      {:error, "InvalidParameter", "Every environment variable must carry a name.",
+       "#{where}.environmentVariables[#{bad}]"}
     else
       :ok
     end
   end
 
   defp validate_environment(_other, where),
-    do: {:error, "InvalidParameter", "environmentVariables must be an array.", "#{where}.environmentVariables"}
+    do:
+      {:error, "InvalidParameter", "environmentVariables must be an array.",
+       "#{where}.environmentVariables"}
 
   # Probes: 80/20 of the real probe schema — a handler (exec | httpGet |
-  # tcpSocket) plus non-negative integer timings; anything else refuses.
-  defp validate_probe(nil, _where, _name), do: :ok
+  # tcpSocket) plus non-negative integer timings; anything else refuses
+  # typed instead of lazily crashing the lifecycle renderer.
+  defp validate_probe(nil, _field, _where, _name), do: :ok
 
-  defp validate_probe(probe, where, name) when is_map(probe) do
-    target = "#{where}.probe"
+  defp validate_probe(probe, field, where, name) when is_map(probe) do
+    target = "#{where}.#{field}"
 
     cond do
       not probe_timings_ok?(probe) ->
         {:error, "InvalidParameter", "Probe timings must be non-negative integers.", target}
 
-      is_list(probe["exec"]) and Enum.all?(probe["exec"], &is_binary/1) ->
-        :ok
-
-      http_get?(probe["httpGet"]) ->
-        :ok
-
-      tcp_socket?(probe["tcpSocket"]) ->
+      valid_exec?(probe) or valid_http_get?(probe) or valid_tcp_socket?(probe) ->
         :ok
 
       true ->
@@ -466,20 +497,22 @@ defmodule Smalt.DataPlane.ContainerGroups do
     end
   end
 
-  defp validate_probe(_other, where, name),
-    do: {:error, "InvalidParameter", "Probe of container '#{name}' must be an object.", "#{where}.probe"}
+  defp validate_probe(_other, field, where, name),
+    do:
+      {:error, "InvalidParameter", "Probe of container '#{name}' must be an object.",
+       "#{where}.#{field}"}
 
-  defp http_get?(%{"path" => path, "port" => port}) when is_binary(path) and valid_port?(port),
-    do: :ok
+  defp valid_exec?(%{"exec" => exec}) when is_list(exec), do: Enum.all?(exec, &is_binary/1)
+  defp valid_exec?(_), do: false
 
-  defp http_get?(%{"path" => _path, "port" => _port}),
-    do: {:error, "httpGet"}
+  defp valid_http_get?(%{"httpGet" => %{"path" => path, "port" => port}})
+       when is_binary(path) and valid_port?(port),
+       do: true
 
-  defp http_get?(_), do: nil
+  defp valid_http_get?(_), do: false
 
-  defp tcp_socket?(%{"port" => port}) when valid_port?(port), do: :ok
-  defp tcp_socket?(%{"port" => _}), do: {:error, "tcpSocket"}
-  defp tcp_socket?(_), do: nil
+  defp valid_tcp_socket?(%{"tcpSocket" => %{"port" => port}}) when valid_port?(port), do: true
+  defp valid_tcp_socket?(_), do: false
 
   defp probe_timings_ok?(probe) do
     ~w(initialDelaySeconds periodSeconds timeoutSeconds failureThreshold successThreshold)
@@ -492,18 +525,144 @@ defmodule Smalt.DataPlane.ContainerGroups do
     end)
   end
 
-  # Probe handler legs are `:ok | {:error, handler}` | nil — fold them into
-  # the typed refusal shape.
-  defp validate_probe_handler(:ok), do: :ok
-  defp validate_probe_handler({:error, handler}) do
-    {:error, "InvalidParameter", "Probe #{handler} requires a valid handler shape (path + port).", "probe"}
+  # --- scalars: osType / restartPolicy / ipAddress ---------------------------------------
+
+  defp validate_scalars(props) do
+    with :ok <- one_of(props["osType"], @os_types, "properties.osType", "osType must be Linux or Windows."),
+         :ok <- one_of(props["restartPolicy"], @restart_policies, "properties.restartPolicy",
+                 "restartPolicy must be Always, OnFailure or Never.") do
+      validate_ip_address(props["ipAddress"])
+    end
   end
 
-  # imageRegistryCredentials: format + registry existence at PUT time
-  defp validate_registry_credentials(_props, _group_name) when true do
-    # head placeholder — see real clause below
-    :ok
+  defp one_of(v, allowed, _target, _msg) when v in allowed, do: :ok
+  defp one_of(_v, _allowed, target, msg), do: {:error, "InvalidParameter", msg, target}
+
+  defp validate_ip_address(nil), do: :ok
+
+  defp validate_ip_address(ip) when is_map(ip) do
+    cond do
+      ip["type"] not in ["Public", "Private"] ->
+        {:error, "InvalidParameter", "ipAddress.type must be Public or Private.",
+         "properties.ipAddress.type"}
+
+      not (is_list(ip["ports"]) and ip["ports"] != []) ->
+        {:error, "InvalidParameter", "ipAddress must expose at least one port.",
+         "properties.ipAddress.ports"}
+
+      true ->
+        validate_ports(ip["ports"], "properties.ipAddress")
+    end
   end
+
+  defp validate_ip_address(_other),
+    do: {:error, "InvalidParameter", "ipAddress must be an object.", "properties.ipAddress"}
+
+  # --- imageRegistryCredentials: format + registry existence at PUT time -----------------
+
+  defp validate_registry_credentials(props, group_name) do
+    case props["imageRegistryCredentials"] do
+      nil ->
+        :ok
+
+      creds when is_list(creds) ->
+        creds
+        |> Enum.with_index()
+        |> Enum.reduce_while(:ok, fn {cred, i}, _acc ->
+          case validate_credential(cred, group_name, i) do
+            :ok -> {:cont, :ok}
+            error -> {:halt, error}
+          end
+        end)
+
+      _ ->
+        {:error, "InvalidImageRegistryCredentialFormat",
+         "The image registry credential format of container group '#{group_name}' is not valid.",
+         "properties.imageRegistryCredentials"}
+    end
+  end
+
+  defp validate_credential(cred, group_name, i) when is_map(cred) do
+    target = "properties.imageRegistryCredentials[#{i}]"
+
+    cond do
+      not (is_binary(cred["server"]) and cred["server"] != "") ->
+        {:error, "InvalidImageRegistryCredentialFormat",
+         "The image registry credential format of container group '#{group_name}' is not valid: a server is required.",
+         target}
+
+      not (is_binary(cred["username"]) and cred["username"] != "") ->
+        {:error, "InvalidImageRegistryCredentialFormat",
+         "The image registry credential format of container group '#{group_name}' is not valid: a username is required.",
+         target}
+
+      true ->
+        validate_credential_registry(cred["server"], cred["password"], target)
+    end
+  end
+
+  defp validate_credential(_cred, group_name, i) do
+    {:error, "InvalidImageRegistryCredentialFormat",
+     "The image registry credential format of container group '#{group_name}' is not valid.",
+     "properties.imageRegistryCredentials[#{i}]"}
+  end
+
+  defp validate_credential_registry(server, password, target) do
+    name = registry_name_of(server)
+
+    case registry_row(server) do
+      {:ok, row} when is_map(row) ->
+        if key_admitted?(row, password) do
+          :ok
+        else
+          {:error, "InvalidImageRegistryCredential",
+           "The image registry credential for server '#{server}' is not valid: the supplied key " <>
+             "is not one of the registry's listed keys.",
+           target}
+        end
+
+      _ ->
+        {:error, "InaccessibleImageRegistry",
+         "The image registry '#{server}' could not be accessed: no registry '#{name}' exists " <>
+           "in this substrate (expected a store row keyed .../providers/" <>
+           "Microsoft.ContainerRegistry/registries/#{name}).",
+         target}
+    end
+  end
+
+  # No published keys on the registry row -> existence is the law (T-01 rows
+  # need not carry admin keys). Keys published AND a password supplied -> the
+  # key must be one of them (ticket scope: "key must be one of its keys").
+  # No password supplied -> nothing to check.
+  defp key_admitted?(_row, nil), do: true
+
+  defp key_admitted?(row, password) do
+    case registry_keys(row) do
+      nil -> true
+      keys -> password in keys
+    end
+  end
+
+  defp registry_keys(%{"properties" => props}) when is_map(props) do
+    cond do
+      keys = props["keys"] -> normalize_keys(keys)
+      passwords = props["passwords"] -> normalize_keys(passwords)
+      true -> nil
+    end
+  end
+
+  defp registry_keys(_row), do: nil
+
+  defp normalize_keys(keys) when is_list(keys),
+    do: for(k <- keys, v = key_value(k), is_binary(v), do: v)
+
+  defp normalize_keys(_), do: nil
+
+  defp key_value(k) when is_binary(k), do: k
+  defp key_value(%{"value" => v}), do: v
+  defp key_value(_), do: nil
+
+  # --- record -----------------------------------------------------------------------------
 
   defp build_record(sub_id, rg, name, body, props) do
     %{

@@ -1,5 +1,6 @@
 # T-06 — Azure Cache for Redis: RESP2 data plane
 
+- status: CODE-COMPLETE (2026-10-29): r15, awaiting integration run (revised: Elixir-ecosystem Cachex backing; RESP wire listener dropped per user direction)
 - window: v26.10.28 · maps-to: Topaz v1.11 "Redis Cache — RESP2 data plane · TLS listener · GetConnectionStrings" · verdict-at-open: **GAP**
 - size: **XL** · depends-on: — · parity-leg: redis suite (node-redis / redis-cli probes)
 

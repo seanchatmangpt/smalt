@@ -115,17 +115,20 @@ defmodule Smalt.DataPlane.ResourceHealth do
       "reported_time" => now
     }
 
-    event_id = active_event_id(resource_id)
-
     event =
-      case lookup_event(event_id) do
+      case lookup_event_pointer(resource_id) do
         {:ok, existing} ->
           # Repeat injections of the same incident refresh the Active row —
-          # one incident, one event, latest evidence timestamped.
-          %{existing | "reason_code" => code, "summary" => rec["summary"], "event_timestamp" => now}
+          # one incident, one event, latest evidence timestamped. History
+          # rows keep the same event id.
+          refreshed =
+            %{existing | "reason_code" => code, "summary" => rec["summary"], "event_timestamp" => now}
+
+          :ets.insert(@table, {{:event, existing["id"]}, refreshed})
+          refreshed
 
         :error ->
-          %{
+          fresh = %{
             "id" => mint_event_id(),
             "resource_id" => down(resource_id),
             "resource_id_display" => resource_id,
@@ -136,11 +139,18 @@ defmodule Smalt.DataPlane.ResourceHealth do
             "summary" => rec["summary"],
             "reason_code" => code
           }
+
+          # {:event, id} rows are the permanent event history; the
+          # {:event_active, rid} pointer names the CURRENT Active incident
+          # (one per resource) so a later resolve never has to guess which
+          # history row to close.
+          :ets.insert(@table, {{:event, fresh["id"]}, fresh})
+          :ets.insert(@table, {{:event_active, down(resource_id)}, fresh})
+          fresh
       end
 
     ensure_table()
     :ets.insert(@table, {{:availability, down(resource_id)}, rec, resource_id})
-    :ets.insert(@table, {{:event, event_id}, event, resource_id})
 
     emit_transition(rec)
     {:ok, rec, event}
@@ -170,7 +180,7 @@ defmodule Smalt.DataPlane.ResourceHealth do
     :ets.insert(@table, {{:availability, down(resource_id)}, rec, resource_id})
 
     event =
-      case lookup_event(active_event_id(resource_id)) do
+      case lookup_event_pointer(resource_id) do
         {:ok, active} ->
           resolved = %{
             active
@@ -180,7 +190,10 @@ defmodule Smalt.DataPlane.ResourceHealth do
               "event_timestamp" => now
           }
 
-          :ets.insert(@table, {{:event, active["id"]}, resolved, resource_id})
+          # History row updated in place, pointer dropped: the incident is
+          # closed, a later re-injection mints a NEW Active event.
+          :ets.insert(@table, {{:event, active["id"]}, resolved})
+          :ets.delete(@table, {:event_active, down(resource_id)})
           resolved
 
         :error ->
@@ -220,7 +233,7 @@ defmodule Smalt.DataPlane.ResourceHealth do
 
       :error ->
         case Map.fetch(config_markers(), down(resource_id)) do
-          {:ok, reason} -> {:ok, derived_unavailable(resource_id, reason)}
+          {:ok, raw_reason} -> {:ok, derived_unavailable(resource_id, raw_reason)}
           :error -> :error
         end
     end
@@ -265,10 +278,10 @@ defmodule Smalt.DataPlane.ResourceHealth do
       @table
       |> table_rows()
       |> Enum.filter(fn
-        {{:event, _}, _rec, _rid} -> true
+        {{:event, _}, _rec} -> true
         _ -> false
       end)
-      |> Enum.map(fn {_k, rec, _rid} -> rec end)
+      |> Enum.map(fn {_k, rec} -> rec end)
       |> Enum.filter(fn rec -> String.starts_with?(rec["resource_id"], prefix) end)
 
     derived =
@@ -369,11 +382,12 @@ defmodule Smalt.DataPlane.ResourceHealth do
     end
   end
 
-  defp lookup_event(event_id) do
+  # The CURRENT Active incident pointer for a resource (one per resource).
+  defp lookup_event_pointer(resource_id) do
     ensure_table()
 
-    case :ets.lookup(@table, {:event, event_id}) do
-      [{_k, rec, _rid}] when is_map(rec) -> {:ok, rec}
+    case :ets.lookup(@table, {:event_active, down(resource_id)}) do
+      [{_k, rec}] when is_map(rec) -> {:ok, rec}
       _ -> :error
     end
   end
@@ -383,8 +397,8 @@ defmodule Smalt.DataPlane.ResourceHealth do
   end
 
   defp mint_event_id do
-    @event_bytes = :crypto.strong_rand_bytes(16)
-    Base.encode16(@event_bytes, case: :lower)
+    bytes = :crypto.strong_rand_bytes(16)
+    Base.encode16(bytes, case: :lower)
   end
 
   # -- internals: read-law derivation -------------------------------------------
@@ -421,7 +435,8 @@ defmodule Smalt.DataPlane.ResourceHealth do
     }
   end
 
-  defp derived_unavailable(resource_id, {code, summary}) do
+  defp derived_unavailable(resource_id, raw_reason) do
+    {code, summary} = normalize_reason(raw_reason)
     now = now_iso()
 
     %{
@@ -550,45 +565,38 @@ defmodule Smalt.DataPlane.ResourceHealth do
 
   # -- internals: reason + time helpers -------------------------------------------
 
+  defp normalize_reason({code, summary}) when is_binary(code) do
+    {code, if(is_binary(summary), do: summary, else: nil)}
+  end
+
   defp normalize_reason(nil), do: {@default_reason, nil}
 
   defp normalize_reason(reason) when is_binary(reason) do
     {reason, "The resource is unavailable (chaos injection; reason: #{reason})."}
   end
 
-  defp normalize_reason(reason) when is_map(reason) or is_list(reason) do
+  defp normalize_reason(reason) when is_map(reason) do
     code =
-      get_reason_key(reason, "reasonCode") || get_reason_key(reason, :reason_code) ||
-        get_reason_key(reason, "reason") || get_reason_key(reason, :reason) ||
+      reason["reasonCode"] || reason["reason"] || reason[:reason_code] || reason[:reason] ||
         @default_reason
 
     code = if is_binary(code), do: code, else: @default_reason
-    summary = get_reason_key(reason, "summary") || get_reason_key(reason, :summary)
+    summary = reason["summary"] || reason[:summary]
     {code, if(is_binary(summary), do: summary, else: nil)}
   end
 
+  defp normalize_reason(reason) when is_list(reason) do
+    case Keyword.get(reason, :reason_code) || Keyword.get(reason, :reason) do
+      code when is_binary(code) ->
+        summary = Keyword.get(reason, :summary)
+        {code, if(is_binary(summary), do: summary, else: nil)}
+
+      _ ->
+        {@default_reason, nil}
+    end
+  end
+
   defp normalize_reason(_other), do: {@default_reason, nil}
-
-  defp get_reason_key(map, key) when is_map(map) and (is_atom(key) or is_binary(key)) do
-    if is_atom(key) and not is_binary(key) do
-      Map.get(map, key) || Map.get(map, Atom.to_string(key))
-    else
-      Map.get(map, key) || Map.get(map, safe_atom(key))
-    end
-  end
-
-  defp get_reason_key(list, key) when is_list(list) do
-    case List.keyfind(list, key, 0) do
-      {_k, v} -> v
-      nil -> nil
-    end
-  end
-
-  defp safe_atom(key) when is_binary(key) do
-    String.to_existing_atom(key)
-  rescue
-    ArgumentError -> key
-  end
 
   defp emit_transition(rec) do
     # Codes only — never the resource id (matter-isolation law). Raw
