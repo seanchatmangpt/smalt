@@ -50,6 +50,7 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
   import Plug.Conn, only: [
     fetch_query_params: 1,
     get_req_header: 2,
+    halt: 1,
     put_resp_content_type: 2,
     read_body: 1,
     send_resp: 3
@@ -160,9 +161,19 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
   defp site_route(conn, method, sub, rg, [name, "config", seg]) do
     if String.downcase(seg) == "appsettings" do
       case method do
-        m when m in ["PUT", "POST"] -> app_settings_put(conn, sub, rg, name)
-        "GET" -> app_settings_get(conn, sub, rg, name)
-        _ -> arm_error(conn, 405, "MethodNotAllowed", "'#{method}' is not supported on config/appSettings")
+        m when m in ["PUT", "POST"] ->
+          app_settings_put(conn, sub, rg, name)
+
+        "GET" ->
+          app_settings_get(conn, sub, rg, name)
+
+        _ ->
+          arm_error(
+            conn,
+            405,
+            "MethodNotAllowed",
+            "'#{method}' is not supported on config/appSettings"
+          )
       end
     else
       arm_error(conn, 404, "NotFound", "unknown Microsoft.Web/sites config child '#{seg}'")
@@ -217,9 +228,20 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
   defp app_settings_put(conn, sub, rg, name) do
     case Functions.get_site(sub, rg, name) do
       {:ok, site} ->
-        case Functions.set_app_settings(site, app_settings_body(conn)) do
-          {:ok, updated} -> send_json(conn, 200, Functions.app_settings(updated))
-          {:error, {:arm_error, status, code, msg}} -> arm_error(conn, status, code, msg)
+        case app_settings_body(conn) do
+          :invalid ->
+            arm_error(
+              conn,
+              400,
+              "InvalidResourceShape",
+              "app settings body must be a StringDictionary: {\"properties\": {\"NAME\": \"value\"}}"
+            )
+
+          settings ->
+            case Functions.set_app_settings(site, settings) do
+              {:ok, updated} -> send_json(conn, 200, Functions.app_settings(updated))
+              {:error, {:arm_error, status, code, msg}} -> arm_error(conn, status, code, msg)
+            end
         end
 
       :error ->
@@ -400,7 +422,12 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
     case conn.query_params["api-version"] do
       nil ->
         {:respond,
-         arm_error(conn, 400, "MissingApiVersionParameter", "The api-version query parameter is required.")}
+         arm_error(
+           conn,
+           400,
+           "MissingApiVersionParameter",
+           "The api-version query parameter is required."
+         )}
 
       _version ->
         :ok
@@ -449,6 +476,10 @@ defmodule Smalt.ArmGateway.Providers.FunctionsRouter do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(status, Jason.encode!(body))
+    # Pass-through protocol: a HALTED conn makes Plug.Builder skip the rest
+    # of the gateway chain (:match / :dispatch never run on an answered
+    # conn — dispatching again would be an AlreadySentError crash).
+    |> halt()
   end
 
   # The gateway's ARM error envelope shape (code / message / innererror,

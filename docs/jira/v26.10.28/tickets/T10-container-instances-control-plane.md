@@ -1,5 +1,6 @@
 # T-10 — Container Instances: control plane only (execution out-of-scope)
 
+- status: CODE-COMPLETE (2026-10-29): r17, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.13 "Container Instances — Docker-backed execution · log streaming · local ACR integration" · verdict-at-open: **GAP** (control plane) / **OUT-OF-SCOPE** (execution)
 - size: **M** · depends-on: T-01 (ACR integration touches registries)
 
