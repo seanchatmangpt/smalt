@@ -331,13 +331,15 @@ defmodule Smalt.Integration.ChaosInjectorsTest do
     assert Enum.any?(events, fn {ev, _, _} -> ev == :session_timeout end)
 
     # Client resiliency path: re-begin on the same channel recreates the
-    # session (fresh begin reply), and the injector re-arms deterministically.
+    # session (fresh begin reply — counted, so the first begin's echo cannot
+    # satisfy this), and the injector re-arms deterministically.
     begin_session(client, 1)
 
     assert {:ok, _} =
              eventually(
                fn ->
-                 if Enum.any?(frames(client, 1), &(&1.kind == :begin)), do: {:ok, :rebegun}
+                 if Enum.count(frames(client, 1), &(&1.kind == :begin)) >= 2,
+                   do: {:ok, :rebegun}
                end,
                timeout_ms: 5_000
              )
