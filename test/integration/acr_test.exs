@@ -19,8 +19,12 @@
 #
 # Context: solo (integration tier, in-process dispatch).
 
+Code.require_file(Path.expand("../internal/poll_helper.exs", __DIR__))
+
 defmodule Smalt.Internal.AcrTest do
   use ExUnit.Case, async: false
+
+  import SmaltTest.Internal.Poll
 
   import Plug.Test
 
@@ -61,6 +65,12 @@ defmodule Smalt.Internal.AcrTest do
 
   # -- harness -------------------------------------------------------------------
 
+  @parsers_opts Plug.Parsers.init(
+                  parsers: [:json, :urlencoded],
+                  pass: ["*/*"],
+                  json_decoder: {Smalt.JsonCompat, :decode!, []}
+                )
+
   defp acr_req(method, path, body \\ nil) do
     url = "#{path}?api-version=#{@api_version}"
 
@@ -72,7 +82,15 @@ defmodule Smalt.Internal.AcrTest do
         conn(method, url)
       end
 
-    Smalt.ArmGateway.Providers.AcrRouter.call(Plug.Conn.fetch_query_params(conn), [])
+    # The mounted ARM pipeline (Smalt.ArmGateway.Router) runs Plug.Parsers with
+    # these same opts before any pass-through provider router sees the conn;
+    # standalone dispatch reproduces that state with the REAL Plug.Parsers —
+    # no mocks. Without it body_params stays %Plug.Conn.Unfetched{} and the
+    # router's is_map/1 guard hands the struct through to the engine.
+    conn
+    |> Plug.Conn.fetch_query_params()
+    |> Plug.Parsers.call(@parsers_opts)
+    |> then(&Smalt.ArmGateway.Providers.AcrRouter.call(&1, []))
   end
 
   defp v2_req(method, path, basic_pair \\ nil) do
@@ -107,25 +125,20 @@ defmodule Smalt.Internal.AcrTest do
   end
 
   # The simulated state machine runs on wall-clock thresholds; poll the wire
-  # poll face until the run walks through the expected statuses in order.
+  # status face through the single audited poll implementation (no-sleep
+  # doctrine) until it reaches the target — bounded, fail-closed timeout.
   defp wait_for_run_status(run_id, target, deadline_ms \\ 8_000) do
-    deadline = System.monotonic_time(:millisecond) + deadline_ms
-    do_wait(run_id, target, deadline)
-  end
+    case eventually(
+           fn ->
+             if run_status(run_id) == target, do: {:ok, target}, else: :pending
+           end,
+           timeout_ms: deadline_ms
+         ) do
+      {:ok, target} ->
+        target
 
-  defp do_wait(run_id, target, deadline) do
-    status = run_status(run_id)
-
-    cond do
-      status == target ->
-        status
-
-      System.monotonic_time(:millisecond) >= deadline ->
-        flunk("run never reached #{inspect(target)}; last status #{inspect(status)}")
-
-      true ->
-        Process.sleep(50)
-        do_wait(run_id, target, deadline)
+      {:timeout, last} ->
+        flunk("run never reached #{inspect(target)}; last status #{inspect(last)}")
     end
   end
 
