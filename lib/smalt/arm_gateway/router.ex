@@ -79,6 +79,11 @@ defmodule Smalt.ArmGateway.Router do
   # generic :provider_ns/:resource_type face; the router passes unmatched
   # conns through untouched and HALTS only on routes it answered.
   plug(Smalt.ArmGateway.Providers.FunctionsRouter)
+  # v26.10.29 W2: Ash-dispatched deep child face — DEFAULT-INERT
+  # (config :smalt, :ash_gateway, false). Passes through unless the flag is
+  # on AND the deep shape resolves via Smalt.AshGen.Registry and is not
+  # owned by an existing route family (see CanonicalRouter claim law).
+  plug(Smalt.ArmGateway.CanonicalRouter)
   plug(:match)
   plug(:dispatch)
 

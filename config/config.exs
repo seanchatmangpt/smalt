@@ -4,6 +4,11 @@ import Config
 # compile failure blocked all tests; codepoints matches Elixir-side validation).
 config :ash, default_string_length_count: :codepoints
 
+# v26.10.29 W5: Ash-dispatched ARM child face (Smalt.ArmGateway.CanonicalRouter).
+# DEFAULT OFF — the mount is inert until parity courts pass. Flag-on is the
+# KD-189 prerequisite (Ash policies mapping onto the Bearer/STS fence).
+config :smalt, :ash_gateway, false
+
 # Lane defaults (egress router lane).
 config :smalt,
   blob_catch_all_hosts: [],
