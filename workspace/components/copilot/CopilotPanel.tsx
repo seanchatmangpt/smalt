@@ -83,7 +83,7 @@ export default function CopilotPanel({ node }: { node: CopilotNodePayload }) {
 
   const suggestions = useMemo(() => advise(node), [node]);
 
-  const attempt = useCallback(async (op: SuggestionOp, label: string) => {
+  const attempt = useCallback(async (op: SuggestionOp, _label: string) => {
     const gate = checkSuggestion(op);
     if (gate !== null) {
       // UI-suggestion-layer refusal: deterministic, ledger-free (not a fetch).

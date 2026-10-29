@@ -78,3 +78,25 @@
 ```
 1792402305 court-x2: run1=UNPARSED run2=UNPARSED run1!=run2 flake signature: 1,4c1,21; < test scenario 1: data subtree kill mid-query stream — typed 503, retry succeeds, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:104); < test scenario 2: integration subtree kill — forced close, reconnect, no loss, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:187); < test scenario 3: identity subtree kill — cached tokens accepted, new mints 503, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:232); < test scenario 4: control subtree kill — data plane unaffected, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:279); ---; > ---; > !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!; > [COURT-X2] *** SHIFTING-FAILURE / FLAKE SIGNATURE DETECTED ***; > [COURT-X2] Failure-set diff (run1 vs run2):; > [COURT-X2] flake class this session spent a wave killing. Investigate.; > [COURT-X2] Run 1 and run 2 failed on DIFFERENT tests. This is the; > < test scenario 1: data subtree kill mid-query stream — typed 503, retry succeeds, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:104); > < test scenario 2: integration subtree kill — forced close, reconnect, no loss, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:187); > < test scenario 3: identity subtree kill — cached tokens accepted, new mints 503, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:232); > < test scenario 4: control subtree kill — data plane unaffected, x10 (SmaltTest.Azsim.DrScenariosTest) (test/azsim/dr_scenarios_test.exs:279); > > test ARM resource PUT emits ResourceWriteSuccess to integration plane (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:141); > > test foreign issuer claim refused 401 (anti-vacuity target) (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:121); > > test identity-plane STS token accepted by data plane over the wire (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:82); > > test throttle: :cosmos_ru_limit set -> 429 + x-ms-retry-after-ms after the limit (row 13) (Smalt.Compliance.C3CosmosTest) (test/compliance/c3_cosmos.exs:746); > > test token signed by foreign key refused 401 (signature) (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:103); > 1,4c1,5; > test ARM resource PUT emits ResourceWriteSuccess to integration plane (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:141); > test foreign issuer claim refused 401 (anti-vacuity target) (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:121); > test identity-plane STS token accepted by data plane over the wire (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:82); > test throttle: :cosmos_ru_limit set -> 429 + x-ms-retry-after-ms after the limit (row 13) (Smalt.Compliance.C3CosmosTest) (test/compliance/c3_cosmos.exs:746); > test token signed by foreign key refused 401 (signature) (SmaltTest.Azsim.TopologyTest) (test/azsim/topology_test.exs:103)
 ```
+
+---
+
+## SUPERSEDED-BY addendum (2026-10-22, lane BK-SUSP3)
+
+The UNPARSED court-x2 attempt log above was the terminal state of the i29
+window's court-x2 harness; the harness was subsequently repaired and produced
+repeated parsed two-green runs. Original evidence untouched above.
+
+SUPERSEDED-BY: `docs/jira/v26.10.19/receipts/v261019-12-court-x2-close.md`
+(six parsed court-x2 pairs, runs 1-6, each with exit-captured `rc=0` verdict
+tails and pinned HEAD shas — e.g. COURT-RUN2/COURT-RUN2B rc=0 at
+81a7a29c, COURT-Z1/Z2 rc=0 at 5666ae28); later seals
+(`docs/jira/v26.10.22/receipts/bkseal-full-green.md`,
+`bkseal3-quiesced-rerun.md`) carry the current-window court posture.
+
+On-disk successor verification (this addendum, real):
+
+```
+$ ls docs/jira/v26.10.19/receipts/v261019-12-court-x2-close.md  -> present, exit=0
+$ grep -c "rc=0" docs/jira/v26.10.19/receipts/v261019-12-court-x2-close.md -> 18, exit=0
+```

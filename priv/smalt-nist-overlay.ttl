@@ -1,0 +1,47 @@
+@prefix cr: <https://seanchatmangpt.github.io/ggen-marketplace/nist-cyber-resiliency-generational#> .
+@prefix k8s: <http://seanchatmangpt.github.io/packs/kubernetes#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix smalt: <https://seanchatman.github.io/smalt/k8s#> .
+
+# BK-MKT2 NIST overlay facts — technique assertions for the smalt k8s fact
+# graph (priv/smalt-k8s.ttl), each bound to the smalt receipt that witnessed
+# it. Asserted ONLY where a real mechanism was witnessed, never as compliance
+# theater: Privilege Restriction and Segmentation hold by construction
+# (kubernetes-workload-pack gate 020 refuses any regression of the
+# securityContext blocks; see bkmktg-pack-render.md). Every other SP 800-160
+# Vol.2 technique is deliberately NOT asserted here — absence stays typed as
+# absence until a real mechanism lands (bkmkt2-nist-overlay.md maps each).
+
+smalt:backend cr:usesTechnique cr:PrivilegeRestriction ,
+                                cr:Segmentation ;
+    rdfs:seeAlso <file:docs/jira/v26.10.22/receipts/bkmktg-pack-render.md> .
+
+smalt:console cr:usesTechnique cr:PrivilegeRestriction ;
+    rdfs:seeAlso <file:docs/jira/v26.10.22/receipts/bkmktg-pack-render.md> .
+
+# Privilege restriction is mechanical: the pack's gate 020
+# (020_privilege_refusal.rq) refuses any container fact whose
+# k8s:containerSecurityContextBlock waives allowPrivilegeEscalation. The
+# witness is the BK-MKTG negative control (real mutation → real refusal,
+# FM-PACK-013, sync exit nonzero). Receipt: bkmktg-pack-render.md.
+smalt:backend cr:hasPolicy [
+    a cr:PrivilegePolicy ;
+    cr:leastPrivilege true ;
+    prov:wasGeneratedBy "BK-MKTG gate 020 negative control (FM-PACK-013 refusal witnessed)" ;
+] .
+
+smalt:console cr:hasPolicy [
+    a cr:PrivilegePolicy ;
+    cr:leastPrivilege true ;
+    prov:wasGeneratedBy "BK-MKTG gate 020 negative control (FM-PACK-013 refusal witnessed)" ;
+] .
+
+# Segmentation (partial): pod-level nonroot/fsGroup + drop-ALL is the
+# boundary smalt actually carries. No NetworkPolicy facts exist in the
+# graph — SC-7-class segmentation is typed ABSENT in the receipt, not
+# asserted here.
+smalt:backend cr:hasPolicy [
+    a cr:SegmentationPolicy ;
+    prov:wasGeneratedBy "hand-written k8s/smalt-backend.yaml pod securityContext (BK-K8SM, kind-validated)" ;
+] .

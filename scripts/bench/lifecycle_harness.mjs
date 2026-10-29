@@ -8,7 +8,7 @@
 //   1 Entra      -> smalt STS   POST /oauth2/v2.0/token                 [REAL]
 //   2 APIM       -> workspace Next /api/v1/ingest handler, token-bucket
 //                  rate limiter = nearest-analog gateway policy [NEAREST_ANALOG]
-//   3 Cosmos CAS -> @azure/cosmos etag (ifMatchEtag) replace             [REAL]
+//   3 Cosmos CAS -> @azure/cosmos etag (accessCondition IfMatch) replace   [REAL]
 //   4 KV/HSM sign-> KV crypto sign POST /keys/:name/sign RS256           [REAL]
 //   5 EH ingress -> @azure/event-hubs producer (AMQP), 1 event/send,
 //                  paced — the directive's REST /messages does NOT exist   [SDK]
@@ -322,7 +322,7 @@ for (let c = 0; c < N_CYCLES + WARM; c++) {
     const etag = created.resource._etag;
     const replaced = await container.item(txId, pk).replace(
       { id: txId, pk, txId, stage: "assessed", etagStamper: "lc1", record },
-      { ifMatchEtag: etag });
+      { accessCondition: { type: "IfMatch", condition: etag } });
     if (!replaced.resource?._etag) throw new Error("no etag on replace");
   } catch (e) { noteErr("3-cosmos", e); }
   ms = performance.now() - t;

@@ -1,0 +1,80 @@
+# smalt console (Next.js Sovereign Console, workspace/) — Deployment + NodePort.
+#
+# Console image: smalt-console:local, built from workspace/ (no Dockerfile
+# exists yet — minimal build recipe in k8s/README.md; typed seam, not this
+# lane's deliverable).
+#
+# Air-gap allowlist (BK-TOPO WI-1, landed): SMALT_ALLOWED_HOSTS names the
+# hosts the console's guard admits alongside loopback. The console pod dials
+# its backend over service DNS, so the manifest names the backend service DNS
+# (smalt-backend.default.svc.cluster.local — the ClusterIP the ARM/egress
+# env values below point at). Unset/empty = loopback-only (byte-identical
+# legacy posture); no wildcards — named hosts only. Court:
+# workspace/test/smalt_allowlist.test.ts; receipt:
+# docs/jira/v26.10.22/receipts/bkassertg-allowlist.md
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smalt-console
+  namespace: default
+  labels:
+    app: smalt-console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smalt-console
+  template:
+    metadata:
+      labels:
+        app: smalt-console
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: console
+          image: smalt-console:local
+          imagePullPolicy: Never
+          env:
+            - name: NEXT_PUBLIC_SMALT_ARM
+              value: http://smalt-backend.default.svc.cluster.local:9443
+            - name: NEXT_PUBLIC_SMALT_EGRESS
+              value: http://smalt-backend.default.svc.cluster.local:8443
+            - name: SMALT_ALLOWED_HOSTS
+              value: smalt-backend.default.svc.cluster.local
+          ports:
+            - { name: http, containerPort: 3000 }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smalt-console
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: smalt-console
+  ports:
+    - { name: http, port: 3000, targetPort: http, nodePort: 30080 }

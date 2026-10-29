@@ -64,10 +64,30 @@ smalt:SubnetShape a sh:NodeShape ;
         sh:message "subnets require addressPrefix." ;
     ] .
 
+# KD-COVERS: KD-28 (2026-10-20, K5): NSG PUT shape tightened — location
+# required, tags and properties.securityRules declared so sh:closed true
+# refuses unknown top-level keys (witnessed: {"zzz":1} PUT -> 400) while
+# conforming azurerm/SDK bodies pass. Boundary (documented, not fixable in
+# this engine): securityRules ARRAY ITEMS are not descended by the evaluator;
+# malformed rule objects inside the array are not reachable by minCount/closed.
 smalt:NsgShape a sh:NodeShape ;
-    sh:closed false ;
+    sh:closed true ;
     sh:targetClass smalt:Nsg ;
-    sh:description "No structural constraints beyond registry admission." .
+    sh:property [
+        sh:path smalt:location ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "networkSecurityGroups require location." ;
+    ] , [
+        sh:path smalt:tags ;
+        sh:minCount 0 ;
+        sh:message "NSG tags map." ;
+    ] , [
+        sh:path smalt:securityRules ;
+        sh:minCount 0 ;
+        sh:message "NSG properties.securityRules array (items not shape-descended)." ;
+    ] ;
+    sh:description "location required; closed to {location, tags, properties.securityRules}." .
 
 smalt:VirtualMachineShape a sh:NodeShape ;
     sh:closed false ;

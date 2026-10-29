@@ -8,6 +8,24 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [26.10.25] - 2026-10-25
+
+Azure-fidelity control-plane window; landing commit recorded in
+`docs/jira/v26.10.25/FINAL.md`. Receipts:
+docs/jira/v26.10.25/RECEIPTS.md. Highlights: 14 new ARM gateway faces
+(activity log, cost management, deployments lifecycle/what-if, diagnostic
+settings, policy assignments, provider state, resource graph, resource
+health, sku/quota, tags/locks), the Graph stub face + sign-in logs,
+EventHubs/Service Bus REST data-plane faces, WS→AMQP bridge, partition-key
+fences (Cosmos point-read/delete), Key Vault secrets version history
+(latest-by-last-write, retained superseded versions — KD-182…186 closed),
+tenant law + G5 fences, additive TLS-everywhere gate (default off),
+latency/throttle realism plugs (default off), marketplace SaaS fulfillment
+face, popcorn actor extraction, sovereign-image recipe, acceptance probe;
+court premise repairs (trace-session arming, atom-fence warm-up,
+graphlaw-run-eh repoint after the wasmi retirement, hang_reap sleep-free
+verify).
+
 ## [26.10.19] - 2026-10-19
 
 Verification-architecture reset window; landing commit `cf8b1b8`

@@ -1,0 +1,79 @@
+# ============================================================================
+# Dockerfile.console — Sovereign Console (workspace/) production image
+# (lanes BK-IMG + BK-STANDALONE, v26.10.22)
+# ============================================================================
+# Multi-stage node build (npm ci -> next build) -> runtime on the Next.js
+# STANDALONE output (next.config.mjs `output: "standalone"`, WI-3 of the
+# BK-TOPO matrix). The console is DYNAMIC (BFF faces) — static export is
+# falsified per BK-P20; standalone is the middle path: still a real Node
+# server (server.js), force-dynamic route handlers intact, with a traced
+# node_modules subset instead of the full tree. Backend
+# endpoints are env-configurable at build time via NEXT_PUBLIC_SMALT_* (the
+# console's declared env contract, workspace/lib/smalt.ts:3-8):
+#
+#   docker build -f Dockerfile.console -t smalt-console \
+#     --build-arg NEXT_PUBLIC_SMALT_ARM=http://smalt-substrate:9443 \
+#     --build-arg NEXT_PUBLIC_SMALT_EGRESS=http://smalt-substrate:8443 \
+#     --build-arg NEXT_PUBLIC_SMALT_EH_PORT=5673 \
+#     .
+#
+# Wiring-honesty note (typed, see receipt bkimg-images.md): the console's
+# air-gap guard (workspace/lib/smalt.ts assertLocalUrl) and the AMQP/EH
+# connection strings (workspace/lib/azure/servicebus.ts sb://127.0.0.1:*)
+# are LOOPBACK-PINNED in code. In-cluster the backend must therefore be
+# reached via localhost (sidecar / hostNetwork) or the BK-TOPO wiring
+# contract must extend the guard allowlist — image-side env alone cannot
+# retarget those two code paths.
+# ============================================================================
+
+# node:22-alpine digest (multi-arch index, hub as of 2026-10-22).
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
+WORKDIR /app
+
+# Dependency layer — changes only when the lockfile moves.
+COPY workspace/package.json workspace/package-lock.json ./
+RUN npm ci
+
+# Build with env-configurable backend endpoints. NEXT_PUBLIC_* vars are
+# inlined into the client bundle at build time; the same ARGs also stay
+# readable server-side at `next start` via ENV defaults below.
+ARG NEXT_PUBLIC_SMALT_ARM
+ARG NEXT_PUBLIC_SMALT_EGRESS
+ARG NEXT_PUBLIC_SMALT_EH_PORT
+ENV NEXT_PUBLIC_SMALT_ARM=${NEXT_PUBLIC_SMALT_ARM} \
+    NEXT_PUBLIC_SMALT_EGRESS=${NEXT_PUBLIC_SMALT_EGRESS} \
+    NEXT_PUBLIC_SMALT_EH_PORT=${NEXT_PUBLIC_SMALT_EH_PORT} \
+    NEXT_TELEMETRY_DISABLED=1
+COPY workspace/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runtime
+ARG NEXT_PUBLIC_SMALT_ARM
+ARG NEXT_PUBLIC_SMALT_EGRESS
+ARG NEXT_PUBLIC_SMALT_EH_PORT
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_SMALT_ARM=${NEXT_PUBLIC_SMALT_ARM} \
+    NEXT_PUBLIC_SMALT_EGRESS=${NEXT_PUBLIC_SMALT_EGRESS} \
+    NEXT_PUBLIC_SMALT_EH_PORT=${NEXT_PUBLIC_SMALT_EH_PORT} \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+# node:22-alpine already carries a uid/gid-1000 `node` user — reuse it
+# (addgroup would collide: "gid 1000 in use").
+RUN apk add --no-cache curl
+WORKDIR /app
+# Standalone runtime: the traced server + minimal node_modules subset,
+# plus the static assets Next excludes from the standalone bundle by
+# design. In-container the tracing root is /app (single package), so the
+# standalone output is /app/.next/standalone directly (no subdir nesting —
+# on the laptop the repo-root lockfile makes Next nest under workspace/).
+COPY --from=build --chown=1000:1000 /app/.next/standalone ./
+COPY --from=build --chown=1000:1000 /app/.next/static ./.next/static
+COPY --from=build --chown=1000:1000 /app/public ./public
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:3000/ >/dev/null || exit 1
+# Standalone server binds PORT/HOSTNAME from ENV above.
+CMD ["node", "server.js"]

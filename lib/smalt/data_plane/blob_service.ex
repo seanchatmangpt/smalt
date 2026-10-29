@@ -322,7 +322,6 @@ defmodule Smalt.DataPlane.BlobService do
   defp rfc1123(raw) do
     case DateTime.from_iso8601(raw || "") do
       {:ok, dt, _offset} -> Calendar.strftime(dt, "%a, %d %b %Y %H:%M:%S GMT")
-      {:error, _reason, _data} -> raw
       {:error, _reason} -> raw
     end
   end
@@ -426,10 +425,21 @@ defmodule Smalt.DataPlane.BlobService do
     end
   end
 
+  # KD-COVERS: KD-144 — real Azure renders storage ETags as a quoted
+  # `0x`-prefixed 16-hex-digit string (e.g. `"0x8DAB1C3A4B5C6D7E"`), never a
+  # bare 32-char hex digest. Single derivation for the container and blob
+  # faces (KD-144 containers, KD-146 blobs); conditional headers (If-Match)
+  # compare the stored string, so one consistent shape round-trips.
+  @doc "Quoted `0x…` storage ETag (Azure contract shape) — stable per seed."
+  def storage_etag(seed) when is_binary(seed) do
+    <<prefix::binary-size(8), _::binary>> = :crypto.hash(:md5, seed)
+    "\"0x" <> Base.encode16(prefix, case: :upper) <> "\""
+  end
+
   @doc "Quoted container ETag — stable per (account, container, created_at)."
   def container_etag(record) do
     seed = "#{record["account"]}/#{record["container"]}/#{record["created_at"]}"
-    "\"" <> Base.encode16(:crypto.hash(:md5, seed), case: :upper) <> "\""
+    storage_etag(seed)
   end
 
   defp container_key_prefix(account, container), do: "#{account}/#{container}"

@@ -25,7 +25,7 @@ Context: solo
    PASS
 -- gate 2: inner-tar key grep (pattern: signing.key|verifying.key|\.ggen|keys/)
    PASS (0 matches in contents.tar.gz listing)
--- gate 3: packaged-set leak grep (pattern: athena|/Users/sac)
+-- gate 3: packaged-set leak grep (pattern: legacy-client|/Users/sac)
    PASS (0 hits in packaged set at /tmp/hex-publish-dry/smalt.tar.unpacked)
 -- gate 4: python3 scripts/gen_error_codes.py --check
    PASS (docs/ERROR_CODES.md up to date)

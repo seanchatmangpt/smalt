@@ -110,7 +110,7 @@ async def test_appconfig_race_and_write_conflict(anon_substrate):
     )
 
     created = _kv_put(egress, key, "v0", if_none_match="*", extra=TOK)
-    assert created.status_code == 201, created.text[:200]
+    assert created.status_code in (200, 201), created.text[:200]  # real Azure appconfig PUT is create-or-update 200
     etag = created.json()["etag"]
 
     loop = asyncio.get_running_loop()

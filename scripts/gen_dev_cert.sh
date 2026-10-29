@@ -74,11 +74,25 @@ openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
 openssl req -newkey rsa:2048 -sha256 -nodes \
   -keyout "$KEY" -out "$CERT_DIR/dev-csr.pem" \
   -subj "/CN=localhost" >/dev/null 2>&1
+# BK-CERTSAN (BK-TOPO): SMALT_CERT_SAN_HOSTS (comma-separated) adds service-DNS
+# SAN entries alongside CN=localhost's DNS:localhost/IP:127.0.0.1 defaults, so
+# k8s-hosted TLS twins validate from in-cluster clients (headless pod FQDNs).
+# Unset -> identical SAN line to pre-BK-CERTSAN (byte-identical behavior).
+SAN_EXTRA=""
+if [ -n "${SMALT_CERT_SAN_HOSTS:-}" ]; then
+  IFS=',' read -r -a _SAN_HOSTS <<< "$SMALT_CERT_SAN_HOSTS"
+  for _h in "${_SAN_HOSTS[@]}"; do
+    _h="$(echo "$_h" | tr -d '[:space:]')"
+    [ -n "$_h" ] || continue
+    SAN_EXTRA="${SAN_EXTRA:+${SAN_EXTRA},}DNS:${_h}"
+  done
+fi
+SAN_LIST="DNS:localhost,IP:127.0.0.1,DNS:management.azure.com,DNS:login.microsoftonline.com${SAN_EXTRA:+,${SAN_EXTRA}}"
 openssl x509 -req -sha256 -days 800 \
   -in "$CERT_DIR/dev-csr.pem" \
   -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial \
   -out "$CERT" \
-  -extfile <(printf "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:management.azure.com,DNS:login.microsoftonline.com\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n") >/dev/null 2>&1
+  -extfile <(printf "subjectAltName=%s\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n" "$SAN_LIST") >/dev/null 2>&1
 
 chmod 600 "$KEY" "$CA_KEY"
 echo "[gen_dev_cert] minted $CERT (+ CA at $CA_CERT)"

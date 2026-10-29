@@ -1,0 +1,23 @@
+# MESSAGE: smalt-k8s-pack headless-service gate. A StatefulSet's per-pod DNS
+# (smalt-backend-N.<serviceName>.<ns>.svc.cluster.local) -- the whole
+# mechanism BEAM net_adm:ping peer discovery rides -- exists only through a
+# headless Service (clusterIP: None) whose name is the StatefulSet's
+# spec.serviceName. A StatefulSet with no bound k8s:serviceName, or whose
+# serviceName names no admitted headless Service, would render a swarm that
+# cannot discover its peers. Any row = a refused StatefulSet.
+PREFIX k8s: <http://seanchatmangpt.github.io/packs/kubernetes#>
+SELECT ?s ?violation WHERE {
+  ?s a k8s:StatefulSet ; k8s:workloadName ?name .
+  {
+    FILTER NOT EXISTS { ?s k8s:serviceName ?sn }
+    BIND("HEADLESS_SERVICENAME_MISSING" AS ?violation)
+  } UNION {
+    ?s k8s:serviceName ?sn .
+    FILTER NOT EXISTS {
+      ?svc a k8s:Service ; k8s:serviceName ?sn ;
+           k8s:serviceClusterIP "None" .
+    }
+    BIND("HEADLESS_SERVICE_NOT_ADMITTED" AS ?violation)
+  }
+}
+ORDER BY ?s ?violation

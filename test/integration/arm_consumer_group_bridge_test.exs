@@ -9,7 +9,8 @@ defmodule Smalt.Internal.ArmConsumerGroupBridgeTest do
   #   ARM GET  -> 200 (engine-backed envelope with engine created-ts)
   #   ARM re-PUT preserves the engine created-ts (ARM PUT idempotency law)
   #   ARM DELETE -> 200 -> engine consumer_group_exists? false
-  #   ARM DELETE $default -> 409 ConsumerGroupNotDeletable (engine face)
+  #   ARM PUT/DELETE $default -> 400 (w6j immutability pin)
+  #   ARM re-PUT changed userMetadata -> 409 ConsumerGroupConflict (w6j)
   #
   # Context: solo (internal tier, in-process dispatch).
 
@@ -20,7 +21,8 @@ defmodule Smalt.Internal.ArmConsumerGroupBridgeTest do
   alias Smalt.Store
 
   @not_found 404
-  @not_deletable 409
+  @not_deletable 400
+  @conflict 409
 
   @api_version "2021-04-01"
   @rg "/subscriptions/sub-w2j/resourceGroups/rg-w2j"
@@ -90,10 +92,20 @@ defmodule Smalt.Internal.ArmConsumerGroupBridgeTest do
 
     # Engine created-ts preserved across ARM re-PUT (engine idempotency law).
     {:ok, rec1} = EventHubs.get_consumer_group(@hub, "cg-w2j")
-    reput_conn = arm_req(:put, cg_url(), %{"location" => "eastus", "properties" => %{"userMetadata" => "v2"}})
-    assert reput_conn.status in [200, 201]
+
+    # Same userMetadata re-PUT -> 200 idempotent; changed userMetadata -> 409
+    # ConsumerGroupConflict (w6j: consumer groups do not support in-place
+    # update).
+    reput_conn = arm_req(:put, cg_url(), %{"location" => "eastus", "properties" => %{"userMetadata" => "w2j"}})
+    assert reput_conn.status == 200
     {:ok, rec2} = EventHubs.get_consumer_group(@hub, "cg-w2j")
     assert rec2["created"] == rec1["created"]
+
+    conflict_conn =
+      arm_req(:put, cg_url(), %{"location" => "eastus", "properties" => %{"userMetadata" => "v2"}})
+
+    assert conflict_conn.status == @conflict
+    assert Jason.decode!(conflict_conn.resp_body)["error"]["code"] == "ConsumerGroupConflict"
 
     del_conn = arm_req(:delete, cg_url())
     assert del_conn.status == 200
@@ -105,7 +117,13 @@ defmodule Smalt.Internal.ArmConsumerGroupBridgeTest do
     assert Jason.decode!(missing.resp_body)["error"]["code"] == "ConsumerGroupNotFound"
   end
 
-  test "$default cannot be deleted over ARM (engine 409 face)" do
+  test "$default is immutable over ARM (PUT/DELETE -> 400, w6j pin)" do
+    default_put =
+      arm_req(:put, cg_url("$default"), %{"location" => "eastus", "properties" => %{"userMetadata" => "x"}})
+
+    assert default_put.status == @not_deletable
+    assert Jason.decode!(default_put.resp_body)["error"]["code"] == "ConsumerGroupNotCreatable"
+
     default_del = arm_req(:delete, cg_url("$default"))
 
     assert default_del.status == @not_deletable

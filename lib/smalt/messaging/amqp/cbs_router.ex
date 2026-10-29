@@ -71,6 +71,14 @@ defmodule Smalt.Amqp.CbsRouter do
     GenServer.call(server, {:authorized?, owner_ref, audience})
   end
 
+  # w6am: rights-aware gate. Legacy claims (namespace key, no rights) keep
+  # full access; rule-key claims carry the rule's rights.
+  @doc "Whether a live claim exists for `{owner_ref, audience}` AND its rights authorize `action` (:send | :listen | :manage)."
+  @spec authorized_action?(GenServer.server(), term(), term(), :send | :listen | :manage) :: boolean()
+  def authorized_action?(server \\ __MODULE__, owner_ref, audience, action) do
+    GenServer.call(server, {:authorized_action?, owner_ref, audience, action})
+  end
+
   @doc "Reaps expired claims. Returns the number removed."
   @spec gc(GenServer.server()) :: non_neg_integer()
   def gc(server \\ __MODULE__), do: GenServer.call(server, :gc)
@@ -79,6 +87,7 @@ defmodule Smalt.Amqp.CbsRouter do
 
   @impl true
   def init(opts) do
+    Process.set_label(%{service: :amqp, role: :cbs_router})
     table =
       case opts[:table] do
         nil -> :ets.new(:smalt_cbs_claims, [:set, :private, keypos: 1])
@@ -100,12 +109,20 @@ defmodule Smalt.Amqp.CbsRouter do
   end
 
   def handle_call({:authorized?, owner_ref, audience}, _from, state) do
-    now = System.system_time(:second)
+    {:reply, live_claim?(state.table, {owner_ref, audience}), state}
+  end
 
+  # w6am: rights-aware lookup — nil rights (namespace key) = full access;
+  # rule-key claims gate per direction via SbAuthRules.right_authorizes?/2.
+  def handle_call({:authorized_action?, owner_ref, audience, action}, _from, state) do
     found =
       case :ets.lookup(state.table, {owner_ref, audience}) do
-        [{{_owner, _aud}, %{expires: expires}}] -> expires > now
-        _ -> false
+        [{{_owner, _aud}, %{expires: expires} = claim}] ->
+          expires > System.system_time(:second) and
+            Smalt.Amqp.SbAuthRules.right_authorizes?(Map.get(claim, :rights), action)
+
+        _ ->
+          false
       end
 
     {:reply, found, state}
@@ -113,6 +130,13 @@ defmodule Smalt.Amqp.CbsRouter do
 
   def handle_call(:gc, _from, state) do
     {:reply, gc_claims(state.table, System.system_time(:second)), state}
+  end
+
+  defp live_claim?(table, key) do
+    case :ets.lookup(table, key) do
+      [{{_owner, _aud}, %{expires: expires}}] -> expires > System.system_time(:second)
+      _ -> false
+    end
   end
 
   defp gc_claims(table, now) do
@@ -157,7 +181,7 @@ defmodule Smalt.Amqp.CbsRouter do
          {:ok, claims} <- SasVerifier.verify(token, audience_for(name, state)) do
       if :ets.member(state.table, {owner_ref, claims.audience}) do
         # refresh in place — always fits the cap
-        insert_claim(state, owner_ref, claims.audience, expires_for(request, claims))
+        insert_claim(state, owner_ref, claims.audience, expires_for(request, claims), claims.rights)
       else
         owner_count =
           :ets.select_count(state.table, [{{{owner_ref, :_}, :_}, [], [true]}])
@@ -175,10 +199,10 @@ defmodule Smalt.Amqp.CbsRouter do
 
             if :ets.info(state.table, :size) >= @max_total_claims,
               do: {{:error, {429, "CLAIM_CAPACITY"}}, state},
-              else: insert_claim(state, owner_ref, claims.audience, expires_for(request, claims))
+              else: insert_claim(state, owner_ref, claims.audience, expires_for(request, claims), claims.rights)
 
           true ->
-            insert_claim(state, owner_ref, claims.audience, expires_for(request, claims))
+            insert_claim(state, owner_ref, claims.audience, expires_for(request, claims), claims.rights)
         end
       end
     else
@@ -246,8 +270,8 @@ defmodule Smalt.Amqp.CbsRouter do
   # Bus endpoint (`:smalt, :sb_endpoint`) scopes the token audience.
   defp audience_for(_name, state), do: state.audience_config || SasVerifier.endpoint()
 
-  defp insert_claim(state, owner_ref, audience, expires) do
-    :ets.insert(state.table, {{owner_ref, audience}, %{expires: expires}})
+  defp insert_claim(state, owner_ref, audience, expires, rights) do
+    :ets.insert(state.table, {{owner_ref, audience}, %{expires: expires, rights: rights}})
     {{:ok, {200, "LOCAL_SIGNATURE_VERIFIED_NOT_AZURE_AUTHORITY"}}, state}
   end
 end

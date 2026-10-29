@@ -70,7 +70,7 @@ lane families must stay disjoint from that band:
 - Dual-instrument sub-lanes b2b/b3b share their parent lane's block
   (b2 39020..39025, b3 39030..39035) by design and write their own result
   files (b2b-blob-hdr.jsonl, b3b-cosmos-hdr.jsonl).
-- c10 affidavit seal bench (scripts/bench/c10_affidavit_seal.exs) — admit_and_seal latency, in-BEAM Wasmex engine; ports 39250..39255; result affidavit-seal.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/affidavit-seal.jsonl — canonical name, no c10- prefix).
+- c10 affidavit seal bench (scripts/bench/c10_affidavit_seal.exs) — admit_and_seal latency, in-BEAM Wasmex engine; ports 39250..39255; result affidavit-seal.jsonl (canonical: docs/jira/v26.10.16/bench/affidavit-seal.jsonl; the tmp/bench/ copy named at registration is no longer on disk — re-verified 2026-10-22, BK-BENCHREG).
 - b42 dataplane saturation lane (`docs/jira/v26.10.16/bench/b42-dataplane-saturation.jsonl`)
   — ports UNAUDITED: no port block registered for it in this file; register or
   retire before its next run.
@@ -82,7 +82,7 @@ lane families must stay disjoint from that band:
   file beyond a9 39490 (a-family) and n5 39555 (n-family). Any re-activated
   a/n lane must register its block here or be retired; result files without an
   active registered lane are historical artifacts (same rule as b10/b11).
-- c11 terraform lifecycle lane (scripts/bench/c11_tf_loop.sh) — tf init/plan/apply -> read-your-write (blob/secret/cosmos) -> destroy against a lane-private substrate; ports 39310..39315; result c11-tf-loop.jsonl (tmp/bench/; mirrored to docs/jira/v26.10.16/bench/c11-tf-loop.jsonl).
+- c11 terraform lifecycle lane (scripts/bench/c11_tf_loop.sh) — tf init/plan/apply -> read-your-write (blob/secret/cosmos) -> destroy against a lane-private substrate; ports 39310..39315; result c11-tf-loop.jsonl (canonical: docs/jira/v26.10.16/bench/c11-tf-loop.jsonl; the tmp/bench/ copy named at registration is no longer on disk — re-verified 2026-10-22, BK-BENCHREG).
 
 ## Container burn lanes (v26.10.18, lane B-1 burn section)
 
@@ -121,9 +121,87 @@ registry of record.
   or any lane's `bench_boot` pre-flight fails spuriously (witness: hold port
   39711 and boot v1 -> `bench_boot` must REFUSE with the held-port row; a
   boot that succeeds over a held port = registry is vacuous).
+- **n-family disposition (v26.10.22, lane BK-NREG)**: typed per-lane
+  dispositions for n1-n8 (receipt:
+  `docs/jira/v26.10.22/receipts/bknreg-nfamily-disposition.md`; arming:
+  `docs/jira/v26.10.22/receipts/bknenv-debug-faces.md`). All eight subject
+  surfaces exist on HEAD (`workspace/app/bench/*`, `/api/v1/ingest`,
+  `/api/v1/stream`); retirement is of the *lane registration*, not the
+  surface.
+  - n1 PERMANENT-RETIRED — Playwright+CDP grid-lifecycle harness; subject
+    `app/bench/grid` alive; not cheaply runnable in registrar scope. Revival =
+    port-block registration + successor receipt.
+  - n2 **ACTIVE-WITH-WITNESS** — server-action storm (spec: `next start`
+    prod). Rebuilt workspace prod build (fresh BUILD_ID
+    `3_pHdj3l7hYLMBVFcJWgz`) and re-witnessed on a fresh prod server
+    (port 39851): F1/F2/F3 all PASS, exit 0 (accepted=3 rejected=1/1
+    rejection_rate=1.0, unexpected_status=0, p99=7.1ms) — witness:
+    `docs/jira/v26.10.22/receipts/bkbld-buildid.md`. Prior typed-FAIL
+    (`unexpected_status=4`) was a probe artifact, not surface staleness: the
+    harness posts `$ACTION_ID_` with `N2_ACTION_ID` unset →
+    `x-nextjs-action-not-found` 400. Fixed (BK-N2B): `N2_ACTION_ID` is now
+    optional — when unset the harness auto-scrapes the
+    `$ACTION_ID_<hex>` id from the target page's HTML; explicit env still
+    wins; scrape failure is a typed `N2_ACTION_ID_FATAL` (fail-closed) —
+    witness: `docs/jira/v26.10.22/receipts/bkn2b-autoscrape.md`. Re-activation
+    still requires port-block registration per the a/n rule.
+  - n3 PERMANENT-RETIRED — Playwright RSC-race; subject `/bench` streaming
+    faces alive.
+  - n4 **ACTIVE-WITH-WITNESS** — real leg on HEAD sources via gate-ON dev
+    server (port 39826, v-law ad hoc band): 1x3s @ 50 rps target,
+    202=121 / 401=30, p50=4.45ms p99=7.47ms, exit 0. Re-activation still
+    requires port-block registration per the a/n rule above.
+  - n5 PERMANENT-RETIRED — spawns own `next start` + Playwright; workspace
+    prod build stale vs `app/` (sources newer than `.next/BUILD_ID`), not
+    runnable in-spec without a rebuild. Gate-off comment armed per BK-NENV.
+  - n6 PERMANENT-RETIRED — external prod ISR surface (`/api/bench/isr-stats`
+    alive, preflight armed per BK-NENV); requires `next start` + rebuild.
+  - n7 **ACTIVE-WITH-WITNESS** — real leg: target 1, gate-ON dev server,
+    verdict divergence=0.0000% permanent=0 attachErr=0 overflows=0, jsonl
+    `tmp/nreg-n7-witness.jsonl`. Known defect (unfixed, noted in receipt):
+    harness does not exit after the verdict (open SSE sockets hold the event
+    loop); lanes must wrap it with a timeout until fixed.
+  - n8 PERMANENT-RETIRED — 500-cycle Playwright soak; subjects `/console`,
+    `/bench/audit` alive.
+  No n-row is silent: every lane is either PERMANENT-RETIRED (reason +
+  receipt) or ACTIVE-WITH-WITNESS (embedded output).
 - SDK-dependent host lanes b2/b2b/b3/b3b/b4/b5/b6 are DORMANT pending
   V261019-08/09: their SDK resolution paths (test/sdk-full/node_modules,
   test/sdk-python) were deleted at 64f6099 and verification/ts+py are not
   landed. They have no scripts on disk until repointed to verification/ —
   running one before the repoint fails loudly at SDK import, which is the
   honest verdict; do not fake a SKIP.
+
+## SUSPECT-PERMANENT reconciliation (v26.10.22, lane BK-BENCHREG)
+
+Reconciles the 5 bench SUSPECT-PERMANENT rows (typed by BK-REWIT wave 1,
+receipt `docs/jira/v26.10.22/receipts/bkrewit-wave1.md`) with the lane
+registrations above. No new runs, no refresh dates: last-witnessed = the
+original receipt's own run date, unchanged.
+
+| lane | receipt (v26.10.14/receipts/) | last-witnessed run | standing | re-run prescription |
+|---|---|---|---|---|
+| b2 (blob SDK, TS) | `bench-02-blob-ts.md` | 2026-10-22 (RE-MEASURE, load-typed) | PARTIAL_ALIVE — re-measured 2026-10-22 under residual load (4/4, 0 errors); quiet-machine refresh still open (BK-BQUIET) | bench-runner, quiesced machine, block 39020..39025 |
+| b3 (cosmos SDK, TS) | `bench-03-cosmos-ts.md` | 2026-10-22 (RE-MEASURE, load-typed) | PARTIAL_ALIVE — re-measured 2026-10-22 under residual load (4/4, 0 errors); quiet-machine refresh still open (BK-BQUIET) | bench-runner, quiesced machine, block 39030..39035 |
+| b4 (messaging SDK, TS) | `bench-04-messaging-ts.md` | 2026-10-22 (BK-B4R root-caused + FIXED, sends deliver) | ALIVE — BK-B4R 2026-10-22: root cause = KD-86 gate never consulted the ARM management-plane record (`:smalt_resources`), so ARM/ATOM-created queues were refused MessagingEntityNotFound on send (lib fix `queue_store.ex ensure_entity/1`); harness now provisions entities pre-measure. Rerun: (a) 2000/2000 sends, (b) 2000/2000 round-trips, (c) 5625 EH events 0 errs, CBS healthy. Residual 4+3 fast `AggregateError` aborts (0.2%) typed as client-recycle artifacts. | bench-runner, load-tolerant now that the entity gate is fixed, block 39040..39045 |
+| b5 (python mirror) | `bench-05-python-mirror.md` | 2026-10-22 (RE-MEASURE, load-typed) | PARTIAL_ALIVE — re-measured 2026-10-22 under residual load (4/4, 0 errors); quiet-machine refresh still open (BK-BQUIET) | bench-runner, quiesced machine, block 39050..39055 |
+| c8 (chaos cross overlay) | `c8-chaos-cross.jsonl` receipt `c8-chaos-cross.md` | 2026-10-22 (RE-MEASURE, load-typed) | PARTIAL_ALIVE — chaos re-witnessed 2026-10-22 under residual load (2 kills, 0 portsquat; reboot 18s vs 2.7s baseline = load) | bench-runner, quiesced machine, block 39280..39285 |
+
+Notes (all verified on disk 2026-10-22):
+- Scripts exist for all five (`scripts/bench/b2_blob_ts.mjs`, `b3_cosmos_ts.mjs`,
+  `b4_messaging_ts.mjs`, `b5_python_mirror.py`, `c8_chaos_cross.mjs`). The
+  2026-10-22 BK-BQUIET re-measure corrected the earlier DORMANT note: the
+  SDK deps now live at `verification/ts/node_modules` (all four node lanes)
+  and the python SDK is importable system-wide (azure-storage-blob 12.31.0,
+  Python 3.14) — the five lanes are runnable; test/sdk-* venvs are gone but
+  were never the current SDK path. Known harness race: `bench_boot` gates on
+  ARM-port LISTEN only; egress binds seconds later — drivers must poll both.
+- Result files confirmed on disk: `docs/jira/v26.10.14/bench/b2-blob-ts.jsonl`,
+  `b3-cosmos-ts.jsonl`, `b4-messaging-ts.jsonl` (+`-run2.jsonl`),
+  `b5-python-mirror.jsonl`, `c8-chaos-cross.jsonl`.
+- The SUSPECT typing lives in the receipts/RECEIPTS.md index (v26.10.14 rows
+  typed NO-CONTEXT SUSPECT; triaged r214/i21b/i29/bksusp/bkrewit); this
+  registry previously carried no standing for these lanes — now it does.
+- Falsifier: a "refreshed" date or PASS standing appearing here for any of the
+  five without a new embedded-output receipt postdating this section refutes
+  this reconciliation.

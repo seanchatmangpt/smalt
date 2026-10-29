@@ -38,8 +38,10 @@ defmodule Smalt.Auth.Sas do
     * `{:error, :bad_signature}`
     * `{:error, :expired}` — signed window refusal: expiry `se` in the past
       or start `st` in the future (both bounds of the signed validity window)
-    * `{:error, :bad_signature}` — signature mismatch, or the signed IP
-      constraint (`sip`) does not cover the request's remote IP
+    * `{:error, :ip_mismatch}` — the signed IP constraint (`sip`) does not
+      cover the request's source address (403 AuthorizationSourceIPMismatch)
+    * `{:error, :protocol_mismatch}` — the signed protocol constraint (`spr`)
+      does not admit the request scheme (403 AuthorizationProtocolMismatch)
     * `{:error, :malformed}` — missing required params / bad base64 / bad sp
       / unparsable `st` or `sip`
   """
@@ -47,10 +49,26 @@ defmodule Smalt.Auth.Sas do
           {:ok, String.t()}
           | {:error, :not_sas | :no_key | :bad_signature | :expired | :malformed}
   def verify(%Plug.Conn{} = conn) do
+    verify(conn, [])
+  end
+
+  @doc """
+  Verify with options. `:peer_ip` (a `{a, b, c, d}` IPv4 tuple) overrides
+  `conn.remote_ip` as the effective source address — the synthetic-peer seam
+  for courts: on the real wire the caller omits it and `conn.remote_ip`
+  (Populated by Plug from `:peer_data`) is the real origin. Every other
+  check is unchanged.
+  """
+  @spec verify(Plug.Conn.t(), keyword()) ::
+          {:ok, String.t()}
+          | {:error,
+             :not_sas | :no_key | :bad_signature | :expired | :malformed | :ip_mismatch | :protocol_mismatch}
+  def verify(%Plug.Conn{} = conn, opts) when is_list(opts) do
     params = conn.query_params
 
     if is_binary(params["sig"]) and params["sig"] != "" do
-      verify_token(params, conn)
+      peer_ip = Keyword.get(opts, :peer_ip, conn.remote_ip)
+      verify_token(params, conn, peer_ip)
     else
       {:error, :not_sas}
     end
@@ -93,7 +111,7 @@ defmodule Smalt.Auth.Sas do
     st = Map.get(params, "st", "")
     se = Map.get(params, "se") || raise ArgumentError, "params must include se"
     sv = Map.get(params, "sv", "2021-12-02")
-    spr = Map.get(params, "spr", "https")
+    spr = Map.get(params, "spr", "")
     sr = Map.get(params, "sr", if(container == "", do: "account", else: "c"))
     # sip (signed IP range) — signed, same slot the verifier reads
     sip = Map.get(params, "sip", "")
@@ -128,7 +146,7 @@ defmodule Smalt.Auth.Sas do
   # Signature verification happens FIRST (audit A13 #3): window/IP checks only
   # run after a valid HMAC, so timing/error channels never leak window state
   # for an unsigned token.
-  defp verify_token(params, conn) do
+  defp verify_token(params, conn, peer_ip) do
     with {:ok, key} <- account_key(),
          {:ok, sig} <- decode_sig(params["sig"]),
          :ok <- required_params(params) do
@@ -160,7 +178,8 @@ defmodule Smalt.Auth.Sas do
 
       if Plug.Crypto.secure_compare(expected, sig) do
         with :ok <- check_window(params),
-             :ok <- check_signed_ip(params, conn) do
+             :ok <- check_signed_ip(params, peer_ip),
+             :ok <- check_protocol(params, conn.scheme) do
           validate_permissions(params)
         end
       else
@@ -242,15 +261,44 @@ defmodule Smalt.Auth.Sas do
   # string in, so a token minted with an IPv6 range still fails here on
   # comparison rather than being accepted — limitation documented, no
   # dependencies added.
-  defp check_signed_ip(params, conn) do
+  # Enforces the signed IP constraint `sip` AFTER signature verification.
+  # Out-of-range → typed `:ip_mismatch` (surfaced as 403
+  # AuthorizationSourceIPMismatch by the egress mapping — real Azure parity,
+  # distinct from the signature face). Supported syntax: comma-separated
+  # single IPv4 addresses or IPv4 CIDR ranges (a.b.c.d/nn).
+  defp check_signed_ip(params, peer_ip) do
     case params["sip"] do
       sip when is_binary(sip) and sip != "" ->
-        remote = conn.remote_ip
-
-        if Enum.any?(String.split(sip, ","), &ip_in_range?(remote, &1)) do
+        if Enum.any?(String.split(sip, ","), &ip_in_range?(peer_ip, &1)) do
           :ok
         else
-          {:error, :bad_signature}
+          {:error, :ip_mismatch}
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  # Enforces the signed protocol constraint `spr` AFTER signature
+  # verification. Token values are comma-separated subsets of
+  # {"https", "http"} (Azure canonical order "https,https,http" tolerated by
+  # set semantics). Request scheme :https is admitted by any token listing
+  # "https"; scheme :http requires an explicit "http" entry. A malformed
+  # token (any element not http/https) is fail-closed :malformed.
+  defp check_protocol(params, scheme) do
+    case params["spr"] do
+      spr when is_binary(spr) and spr != "" ->
+        entries = spr |> String.split(",") |> Enum.map(&String.trim/1)
+
+        if Enum.all?(entries, &(&1 in ["https", "http"])) do
+          cond do
+            scheme == :https and "https" in entries -> :ok
+            scheme == :http and "http" in entries -> :ok
+            true -> {:error, :protocol_mismatch}
+          end
+        else
+          {:error, :malformed}
         end
 
       _ ->

@@ -58,6 +58,16 @@ lock_holders() {
   lsof -t "$LOCK" 2>/dev/null | sort -u
 }
 
+# Liveness-recheck filter: drop pids that are already dead at listing time.
+# BK-PORTS F3: transient flock waiters can die between lsof and print; without
+# this recheck substrate-status lists them as ORPHAN false positives.
+live_lock_holders() {
+  local o
+  for o in $(lock_holders); do
+    kill -0 "$o" 2>/dev/null && echo "$o"
+  done
+}
+
 # True if pid or any of its descendants (2 levels: flock -> mix -> beam)
 # holds any TCP LISTEN socket.
 # Iterate pids ONE at a time: `pgrep -P $(echo $pids)` passes each pid as a
@@ -85,7 +95,7 @@ tree_listening() {
 # Orphan = lock holder whose whole tree has NO listening socket anywhere.
 orphan_holders() {
   local o
-  for o in $(lock_holders); do
+  for o in $(live_lock_holders); do
     tree_listening "$o" || echo "$o"
   done
 }
@@ -115,7 +125,7 @@ cmd_status() {
   if [ "$lockfree" -eq 1 ]; then
     echo "[STATUS] lock FREE (flock -n succeeds)"
   else
-    echo "[STATUS] lock HELD by: $(lsof "$LOCK" 2>/dev/null | awk 'NR>1{print $1" pid "$2" fd "$4}' | sort -u | tr '\n' ';')"
+    echo "[STATUS] lock HELD by: $(lsof "$LOCK" 2>/dev/null | awk 'NR>1{print $1" pid "$2" fd "$4}' | sort -u | while read -r l; do p=${l#*pid }; p=${p%% *}; kill -0 "$p" 2>/dev/null && echo "$l"; done | tr '\n' ';')"
     orphans=$(orphan_holders)
     if [ -n "$orphans" ]; then
       for o in $orphans; do
@@ -192,15 +202,24 @@ cmd_up() {
   export SSL_CERT_FILE="$tls/ca-cert.pem"
   set -m
   # SMALT_SB_SHARED_KEY honored so dev_env.sh's per-host key and the substrate
-  # agree; default preserves the historical pinned key. SHIM-COURT: R17/A11 #5.
+  # agree. Default (KD-131 fix): derive the per-host dev key EXACTLY as
+  # scripts/dev_env.sh does — base64(sha256(short_hostname+"smalt-dev-sb")),
+  # 44 chars
+  # >= the SasVerifier 32-byte floor — so per-host clients can mint valid SAS
+  # on the shared plane without exporting anything. Env override preserved.
+  # SHIM-COURT: R17/A11 #5.
   if [ -z "${SMALT_SB_SHARED_KEY:-}" ]; then
-    echo "[substrate] WARNING: SMALT_SB_SHARED_KEY unset — using the pinned dev default key. Set SMALT_SB_SHARED_KEY (scripts/dev_env.sh) for anything beyond loopback dev." >&2
+    echo "[substrate] WARNING: SMALT_SB_SHARED_KEY unset — deriving the per-host dev key (dev_env.sh derivation). Set SMALT_SB_SHARED_KEY (scripts/dev_env.sh) for anything beyond loopback dev." >&2
     if [ "${SMALT_FAIL_ON_DEFAULT_SB_KEY:-0}" = "1" ]; then
       echo "[substrate] REFUSED: SMALT_FAIL_ON_DEFAULT_SB_KEY=1 and no SMALT_SB_SHARED_KEY set." >&2
       return 1 2>/dev/null || exit 1
     fi
   fi
-  SB_KEY="${SMALT_SB_SHARED_KEY:-ws8sharedkey}"
+  # KD-COVERS: KD-131 — per-host dev key derivation (dev_env.sh-identical),
+  # 44 bytes >= SasVerifier 32-byte floor; witness: fix4-amqp-witness.md.
+  # KD-S5/KD-W01: short hostname (`hostname -s`), matching the normalized
+  # beam-side derivation in SasVerifier.dev_shared_key/0.
+  SB_KEY="${SMALT_SB_SHARED_KEY:-$(printf '%s' "$(hostname -s)smalt-dev-sb" | openssl dgst -sha256 -binary | base64)}"
   mix run --no-start --no-halt -e 'Application.put_env(:smalt, :auth_mode, :enforce); Application.put_env(:smalt, :sb_shared_key, "'"${SB_KEY}"'"); Application.put_env(:smalt, :sb_endpoint, "sb://127.0.0.1:5672"); Application.put_env(:smalt, :amqp_port, 5672); Application.put_env(:smalt, :event_hubs_port, 5673); Application.put_env(:smalt, :arm_port, 9443); Application.put_env(:smalt, :egress_port, 8443); Application.put_env(:smalt, :arm_tls_port, 9444); {:ok, _} = Application.ensure_all_started(:smalt)' \
     9>&- </dev/null >>"$LOG" 2>&1 &
   local spawn_pid=$!

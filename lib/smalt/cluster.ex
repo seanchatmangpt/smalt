@@ -29,6 +29,7 @@ defmodule Smalt.Cluster do
   use GenServer
 
   @poll_msg :cluster_poll
+  @poll_done_msg :cluster_poll_done
 
   ## Public API
 
@@ -97,7 +98,7 @@ defmodule Smalt.Cluster do
     end
 
     Process.send_after(self(), @poll_msg, 0)
-    {:ok, %{cfg: cfg, attempts: %{}, last_error: nil}}
+    {:ok, %{cfg: cfg, attempts: %{}, last_error: nil, in_flight: false}}
   end
 
   @impl true
@@ -107,12 +108,26 @@ defmodule Smalt.Cluster do
 
   @impl true
   def handle_cast(@poll_msg, state) do
-    {:noreply, run_poll(state)}
+    {:noreply, maybe_spawn_poll(state)}
   end
 
   @impl true
   def handle_info(@poll_msg, state) do
-    {:noreply, run_poll(state)}
+    {:noreply, maybe_spawn_poll(state)}
+  end
+
+  @impl true
+  def handle_info({@poll_done_msg, attempts, last_error}, state) do
+    # Worker result: fold the fresh attempt budget back into the state.
+    {:noreply, %{state | attempts: attempts, last_error: last_error, in_flight: false}}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    # The worker crashed: the budget snapshot is lost, the next poll simply
+    # retries with a clean budget (crash-first; the poller is restartable by
+    # construction — attempts are advisory, not authoritative).
+    {:noreply, %{state | in_flight: false}}
   end
 
   @impl true
@@ -152,11 +167,33 @@ defmodule Smalt.Cluster do
     }
   end
 
-  defp run_poll(%{cfg: cfg} = state) do
+  # Spawn the blocking poll (DNS resolve + Node.connect) off the server
+  # process: Node.connect can block for net_ticktime on an unreachable
+  # host, and the server must keep answering cluster_status/0 (the
+  # readiness face) while a connect is in flight. Armstrong: the error
+  # kernel (this server) never performs the blocking work itself.
+  defp maybe_spawn_poll(%{in_flight: true} = state), do: state
+
+  defp maybe_spawn_poll(state) do
+    %{cfg: cfg, attempts: attempts, last_error: last_error} = state
+    parent = self()
+
+    {:ok, pid} =
+      Task.start(fn ->
+        {attempts, last_error} = run_poll(cfg, attempts, last_error)
+        schedule_next(parent, cfg.poll_ms)
+        send(parent, {@poll_done_msg, attempts, last_error})
+      end)
+
+    Process.monitor(pid)
+    %{state | in_flight: true}
+  end
+
+  defp run_poll(cfg, attempts, prev_last_error) do
     {addrs, dns_error} = resolve(cfg.dns_name)
 
-    {attempts, last_error} =
-      Enum.reduce(addrs, {state.attempts, state.last_error}, fn addr, {att, err} ->
+    {attempts, connect_last_error} =
+      Enum.reduce(addrs, {attempts, nil}, fn addr, {att, err} ->
         target = target_node(cfg.node_prefix, addr)
 
         cond do
@@ -170,7 +207,7 @@ defmodule Smalt.Cluster do
 
           true ->
             case Node.connect(target) do
-              true -> {Map.delete(att, addr), nil}
+              true -> {Map.delete(att, addr), err}
               false -> {Map.put(att, addr, Map.get(att, addr, 0) + 1), {:connect_failed, target}}
               :ignored -> {Map.put(att, addr, Map.get(att, addr, 0) + 1), {:connect_ignored, target}}
             end
@@ -179,17 +216,17 @@ defmodule Smalt.Cluster do
 
     # drop budgets for addresses that left the DNS answer set (reset on reappear)
     addr_set = MapSet.new(addrs)
-    attempts = attempts |> Enum.filter(fn {a, _} -> MapSet.member?(addr_set, a) end) |> Map.new()
 
-    schedule_next(cfg.poll_ms)
+    attempts =
+      attempts |> Enum.filter(fn {a, _} -> MapSet.member?(addr_set, a) end) |> Map.new()
 
     last_error =
       case dns_error do
-        nil -> last_error
+        nil -> connect_last_error || prev_last_error
         err -> err
       end
 
-    %{state | attempts: attempts, last_error: last_error}
+    {attempts, last_error}
   end
 
   defp target_node(prefix, addr) do
@@ -206,7 +243,7 @@ defmodule Smalt.Cluster do
     end
   end
 
-  defp schedule_next(poll_ms) do
-    Process.send_after(self(), @poll_msg, poll_ms)
+  defp schedule_next(parent, poll_ms) do
+    Process.send_after(parent, @poll_msg, poll_ms)
   end
 end

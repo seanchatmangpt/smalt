@@ -49,13 +49,36 @@ receipts:
 
 # Start the sovereign Azure drop-in substrate on BEAM (pid in /tmp/smalt.pid).
 # Ctrl-C to stop. Exit 0 while running.
+# BK-ENG0: source the dev env (per-host SB shared key, TLS cert/key paths,
+# SSL_CERT_FILE) so the TLS twin serves the dev CA-signed leaf — a bare
+# `mix run --no-halt` boot serves a SELF-SIGNED cert the official Azure SDKs
+# reject (DEPTH_ZERO_SELF_SIGNED_CERT, witnessed by this lane) and the SB SAS
+# key would be nil. If the dev certs are missing, mint them first.
 up:
     @echo "[SMALT] Starting sovereign Azure drop-in substrate on BEAM..."
-    @bash -c 'trap "kill $$ 2>/dev/null; [ -f {{PID_FILE}} ] && kill $(cat {{PID_FILE}}) 2>/dev/null || true" EXIT; echo $$ > {{PID_FILE}}; mix run --no-halt'
+    @bash -c 'if [ ! -f .smalt/tls/dev-cert.pem ]; then bash scripts/gen_dev_cert.sh || exit 1; fi; \
+      eval "$(bash scripts/dev_env.sh)"; \
+      export SMALT_TLS_CERTFILE="$PWD/.smalt/tls/dev-cert.pem" SMALT_TLS_KEYFILE="$PWD/.smalt/tls/dev-key.pem" SSL_CERT_FILE="$PWD/.smalt/tls/ca-cert.pem"; \
+      trap "kill $$ 2>/dev/null; [ -f {{PID_FILE}} ] && kill $(cat {{PID_FILE}}) 2>/dev/null || true" EXIT; echo $$ > {{PID_FILE}}; \
+      exec mix run --no-halt'
 
-# Stop the substrate via the pid file. Idempotent; exit 0 either way. ~0s.
+# Stop the substrate. Idempotent; exit 0 either way. ~0s.
+# BK-ENG0: the pid file names the `mix run` wrapper, not the beam — killing
+# only it orphaned the beam child, which KEPT the ports while the recipe
+# reported "Substrate stopped" (witnessed by this lane). `just down` now also
+# kills the live port holders on the substrate's own ports, and verifies they
+# are actually free (bounded poll) before reporting success.
 down:
-    @bash -c 'if [ -f {{PID_FILE}} ]; then kill $(cat {{PID_FILE}}) 2>/dev/null || true; rm -f {{PID_FILE}}; echo "[SMALT] Substrate stopped."; else echo "[SMALT] No pid file at {{PID_FILE}}."; fi'
+    @bash -c 'if [ -f {{PID_FILE}} ]; then kill $(cat {{PID_FILE}}) 2>/dev/null || true; rm -f {{PID_FILE}}; fi; \
+      for p in 9443 9444 8443 5672 5673; do \
+        for b in $(lsof -nP -tiTCP:$p -sTCP:LISTEN 2>/dev/null); do kill -TERM "$b" 2>/dev/null || true; done; \
+      done; \
+      for i in $(seq 1 20); do \
+        lsof -nP -iTCP:9443 -sTCP:LISTEN >/dev/null 2>&1 || break; \
+        sleep 0.5; \
+      done; \
+      if lsof -nP -iTCP:9443 -sTCP:LISTEN >/dev/null 2>&1; then echo "[SMALT] DOWN FAILED: port 9443 still held"; exit 1; fi; \
+      echo "[SMALT] Substrate stopped."'
 
 # Kill stray smalt beams, remove _build-lane* build roots, erl_crash.dump, tmp
 # logs. Never touches _build/ or deps/. Exit 0 always. ~1s.
@@ -257,3 +280,37 @@ import 'justfile.d/33-sleep-gate-ext.just'
 import 'justfile.d/34-nightly.just'
 # 35-envelope — Phase 2 envelope gates (automation + container)
 import 'justfile.d/35-envelope.just'
+# 40-popcorn — popcorn_demo Chicago testbed (in-browser WASM BEAM + live legs)
+import 'justfile.d/40-popcorn.just'
+# 41-popcorn-errc — popcorn_demo ERRC operator tooling (status / lane-clean / receipts)
+import 'justfile.d/41-popcorn-errc.just'
+# 42-popcorn-bench — popcorn_demo bench lanes (legs / cook / fence-check)
+import 'justfile.d/42-popcorn-bench.just'
+# 43-scvd — SCVD tier runner (SCVD-T9)
+import 'justfile.d/43-scvd.just'
+# 44-obsfence — AR-OBS-03 tprof memory-ceiling fence (gate + court)
+import 'justfile.d/44-obsfence.just'
+# 45-impl24 — IMPL-24 reductions ceiling fence (gate + court)
+import 'justfile.d/45-impl24.just'
+# 46-bench — BENCH-8 pure-Erlang bench court escript runner
+import 'justfile.d/46-bench.just'
+# 47-bench-framework — BENCH-14 prospective zero-framework bench gate
+import 'justfile.d/47-bench-framework.just'
+# 44-witness — BK-8/BK-44 witness-all fail-closed receipt re-witness gate
+import 'justfile.d/44-witness.just'
+# 48-private-trip — COURT-PRIVATE-TRIP private-token gate (NFR-SEC-004)
+import 'justfile.d/48-private-trip.just'
+# 49-heir-guard — BK-57 heir-table init-guard gate (BK-33 warm-restart class)
+import 'justfile.d/49-heir-guard.just'
+import 'justfile.d/50-pattern-court.just'
+# 51-bkvc — BK-VCOURTS consolidated validation-board courts (v26.10.22)
+import 'justfile.d/51-bkvc.just'
+import 'justfile.d/52-kind.just'
+# 53-trivy — NIST W3 / RA-5 trivy image-scan receipts (v26.10.22, BK-NISTW3)
+import 'justfile.d/53-trivy.just'
+
+# 54-checkpoint — SHIM-COURT checkpoint gate (BK-SHIMGATE, v26.10.22)
+import 'justfile.d/54-checkpoint.just'
+
+# 55-sovereign-image — neutral-tag sovereign image build (R10, v26.10.25)
+import 'justfile.d/55-sovereign-image.just'

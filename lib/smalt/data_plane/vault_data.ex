@@ -83,7 +83,6 @@ defmodule Smalt.DataPlane.VaultData do
       {:ok, conflict}
     else
       {:error, _code, _msg} = refusal -> refusal
-      :error -> {:error, "VaultNotReady", "secret store is not booted"}
     end
   end
 
@@ -126,7 +125,7 @@ defmodule Smalt.DataPlane.VaultData do
 
   defp decode64_json(b64) do
     case Base.decode64(b64) do
-      {:ok, json} -> Jason.decode(json)
+      {:ok, json} -> Smalt.JsonCompat.decode(json)
       :error -> {:error, "not base64"}
     end
   end

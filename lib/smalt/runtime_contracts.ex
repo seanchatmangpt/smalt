@@ -262,7 +262,10 @@ defmodule Smalt.RuntimeContracts do
       contract_name_guess(entry)
     end
   rescue
-    _ -> contract_name_guess(entry)
+    # Typed entry boundary (ARMSTRONG fix 1): a crashing name/0 surfaces as
+    # {:error, :bad_name} (drives contract_malformed_name), never a guessed
+    # atom that would mask the crash the registry exists to report.
+    _ -> {:error, :bad_name}
   end
 
   defp name_of(entry), do: contract_name_guess(entry, entry)
@@ -277,17 +280,24 @@ defmodule Smalt.RuntimeContracts do
     |> Macro.underscore()
     |> String.to_atom()
   rescue
-    _ -> String.to_atom(inspect(entry))
+    _ -> {:error, :bad_name}
   end
 
-  defp contract_name_guess(entry, _bad_name), do: String.to_atom(inspect(entry))
+  defp contract_name_guess(_entry, bad_name) do
+    # Armstrong atom-table law: never mint an atom from an arbitrary term's
+    # inspect/0. Reuse an existing atom if one matches; anything else is a
+    # typed {:error, :bad_name} (contract_malformed_name), never table growth.
+    String.to_existing_atom(inspect(bad_name))
+  rescue
+    ArgumentError -> {:error, :bad_name}
+  end
 
   # Mirrors plane_of/2: resolve the contract's declared name/0 and report a
   # typed error when it violates its atom() type. Missing name/0, a raising
-  # name/0, or a non-module entry resolve via the guess (unchanged behavior —
-  # those are already typed by name_of/1's fallback, not silent type breaks).
+  # name/0, or a non-module entry resolve as {:error, :bad_name} — the typed
+  # contract_malformed_name marker, not a silent {:ok, name} pass-through.
   defp typed_name(contracts, name) do
-    case Enum.find(contracts, &(is_atom(&1) and name_of(&1) == name)) do
+    case Enum.find(contracts, &(name_of(&1) == name)) do
       nil ->
         {:ok, name}
 
@@ -298,7 +308,7 @@ defmodule Smalt.RuntimeContracts do
         end
     end
   rescue
-    _ -> {:ok, name}
+    _ -> {:error, :bad_name}
   end
 
   # Resolve by the SAME guessed key name_of/1 keys the registry with — a
@@ -318,7 +328,9 @@ defmodule Smalt.RuntimeContracts do
         end
     end
   rescue
-    _ -> {:ok, :unknown}
+    # Typed boundary (ARMSTRONG fix 1): a crashing plane/0 is the typed
+    # contract_malformed_plane marker, never a silent :unknown shadow.
+    _ -> {:error, :bad_name}
   end
 
   defp group_planes(pairs) do

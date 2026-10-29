@@ -16,7 +16,7 @@
     cd "$REPO"
     echo "# --- smalt relay env (loopback-only, in-repo) ---"
     echo 'export SMALT_ARM="https://127.0.0.1:9443"'
-    echo 'export SMALT_EGRESS="https://127.0.0.1:8443"'
+    echo 'export SMALT_EGRESS="http://127.0.0.1:8443"'
     echo 'export SMALT_AMQP="127.0.0.1:5672"'
     # SHIM-COURT: SMALT_SB_SHARED_KEY deliberately NOT emitted here — the single
     # key policy is dev_env.sh's deterministic per-host sha256 key (eval'd below).
@@ -39,8 +39,8 @@
     echo 'export AZURE_ARM_ENDPOINT="https://127.0.0.1:9443"'
     echo 'export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=smalt;AccountKey=$(openssl rand -base64 32);EndpointSuffix=smtt.local"'
     echo "# --- endpoint-args cheat sheet (SDKs needing constructor args, not env) ---"
-    echo '#   Python:  CosmosClient("https://127.0.0.1:8443", credential=<key>)'
-    echo '#   Node:    new CosmosClient({ endpoint: "https://127.0.0.1:8443", key: <key> })'
+    echo '#   Python:  CosmosClient("http://127.0.0.1:8443", credential=<key>)'
+    echo '#   Node:    new CosmosClient({ endpoint: "http://127.0.0.1:8443", key: <key> })'
     echo '#   Node:    new ServiceBusClient("sb://127.0.0.1:5672", cred)'
     echo '#   Node:    new EventHubProducerClient("sb://127.0.0.1:5672", hub, cred)'
     echo '#   smalt-cli reads SMALT_ARM / SMALT_EGRESS / SMALT_AMQP from the environment (no endpoint flags);'

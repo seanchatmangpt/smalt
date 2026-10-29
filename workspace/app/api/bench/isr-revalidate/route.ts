@@ -1,10 +1,13 @@
 // N-6 lane: on-demand revalidation trigger (revalidatePath) for bench slugs.
+// Gated debug face (EXPL7-R1 E7-3): 404 unless SMALT_DEBUG_FACES=1.
 
 import { revalidatePath } from "next/cache";
+import { debugFacesEnabled, debugFaceDisabled } from "../../../../lib/debug-faces.ts";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  if (!debugFacesEnabled()) return debugFaceDisabled();
   const body = await req.json().catch(() => ({}));
   const slugs: string[] = Array.isArray(body.slugs) ? body.slugs : [];
   if (slugs.length === 0) {

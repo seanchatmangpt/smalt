@@ -2,9 +2,9 @@ defmodule Smalt.Security.LedgerWriter do
   @moduledoc """
   Single serialized writer for the Confidential Ledger Merkle chain.
 
-  The append path (duplicate check -> prev-root read -> seq increment ->
-  receipt build + sign -> transaction/meta insert) must be one critical
-  section: previously `latest_root/1` was read outside the seq increment, so
+  The append path (prev-root read -> seq increment -> receipt build + sign ->
+  transaction/meta insert) must be one critical section: previously
+  `latest_root/1` was read outside the seq increment, so
   two concurrent appends could both chain off the same `prev_hash` and fork
   the ledger. A single named GenServer makes the whole append atomic per
   ledger (in fact globally serialized).
@@ -15,6 +15,8 @@ defmodule Smalt.Security.LedgerWriter do
   """
 
   use GenServer
+
+  require Logger
 
   alias Smalt.Security.ReceiptSigner
   alias Smalt.Store
@@ -127,59 +129,64 @@ defmodule Smalt.Security.LedgerWriter do
   end
 
   defp do_append_valid(ledger, contents, data_hash) do
-    # Atomic duplicate detection: first append leaves the counter at 1; any
-    # later append of identical contents increments past it and is refused.
-    if Store.update_counter(:smalt_ledger_meta, {:dup, ledger, data_hash}, 1) > 1 do
-      ledger_error(409, "LedgerItemAlreadyExists", "Ledger item already exists.")
-    else
-      prev_hash = latest_root(ledger)
-      seq = Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, 1)
+    # Real-Azure law: every append commits. Identical contents are NOT deduped
+    # (Azure Confidential Ledger returns a NEW transactionId per append); the
+    # ledger is append-only history, so a replay append gets a fresh tx id.
+    # (The former {:dup, ledger, data_hash} counter refused replays with 409
+    # LedgerItemAlreadyExists — removed; warm-replay appends now commit.)
+    prev_hash = latest_root(ledger)
+    seq = Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, 1)
       # Identity law (i29-ledger-txid-qualify): tx_id is a PER-LEDGER display
       # id ("N.1"). It is UNIQUE only within `ledger`; the store key below is
       # the ledger-qualified identity ("#{ledger}/#{tx_id}"). The wire form is
       # pinned (strata_compat/security_hardening/ledger.probe round-trip it),
       # so it is deliberately NOT minted qualified — any cross-ledger consumer
       # (semantic projection, tests) must match on {subLedgerId, transactionId}.
-      tx_id = "#{seq}.1"
-      merkle_root = hash(prev_hash <> data_hash)
+    tx_id = "#{seq}.1"
+    merkle_root = hash(prev_hash <> data_hash)
 
-      receipt = %{
-        "transactionId" => tx_id,
-        "subLedgerId" => ledger,
-        "data_hash" => data_hash,
-        "prev_hash" => prev_hash,
-        "merkle_root" => merkle_root,
-        "contents" => contents,
-        "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
-      }
+    receipt = %{
+      "transactionId" => tx_id,
+      "subLedgerId" => ledger,
+      "data_hash" => data_hash,
+      "prev_hash" => prev_hash,
+      "merkle_root" => merkle_root,
+      "contents" => contents,
+      "timestamp" => DateTime.utc_now() |> DateTime.to_iso8601()
+    }
 
-      # Sign is the last step that can fail on caller-supplied data (the
-      # receipt embeds the raw `contents` and the raw `ledger` name, either of
-      # which may be non-UTF8 even when the canonical encode in
-      # encode_contents/1 succeeded — lens-4 commit-point law). A sign failure
-      # must be a typed refusal that compensates the minted counters, never an
-      # exception escaping the serialized writer (writer death + burned dup
-      # counter = permanent 409 for the contents). SHIM-COURT-eligible seam.
-      signature =
-        try do
-          receipt |> Map.delete("signature") |> ReceiptSigner.sign()
-        rescue
-          _ ->
-            # Compensate: the append never committed, so the dup and seq
-            # counters return to their pre-call values and a later VALID
-            # append is admitted with tx id 1.1 (no burned 409, no seq gap).
-            Store.update_counter(:smalt_ledger_meta, {:dup, ledger, data_hash}, -1)
-            Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, -1)
-            throw({:ledger_sign_refused, ledger})
-        end
+    # Sign is the last step that can fail on caller-supplied data (the
+    # receipt embeds the raw `contents` and the raw `ledger` name, either of
+    # which may be non-UTF8 even when the canonical encode in
+    # encode_contents/1 succeeded — lens-4 commit-point law). A sign failure
+    # must be a typed refusal that compensates the minted counter, never an
+    # exception escaping the serialized writer (writer death = broken chain
+    # for subsequent appends). SHIM-COURT-eligible seam.
+    signature =
+      try do
+        receipt |> Map.delete("signature") |> ReceiptSigner.sign()
+      rescue
+        e ->
+          # JA-R1 (V4): the typed {:ledger_sign_refused, ledger} refusal is
+          # unchanged (compensation below still runs); the swallow is no
+          # longer silent — the caller-side refusal is now operator-visible.
+          Logger.error(
+            "ledger_writer: sign failed for #{ledger}, refusing {:ledger_sign_refused, #{inspect(ledger)}}: #{Exception.message(e)}"
+          )
 
-      receipt = Map.put(receipt, "signature", signature)
+          # Compensate: the append never committed, so the seq counter
+          # returns to its pre-call value and a later VALID append is
+          # admitted with the same tx id (no burned id, no seq gap).
+          Store.update_counter(:smalt_ledger_meta, {:seq, ledger}, -1)
+          throw({:ledger_sign_refused, ledger})
+      end
 
-      Store.put(:smalt_ledger_transactions, "#{ledger}/#{tx_id}", receipt)
-      Store.put(:smalt_ledger_meta, {:latest, ledger}, receipt)
+    receipt = Map.put(receipt, "signature", signature)
 
-      {:ok, receipt}
-    end
+    Store.put(:smalt_ledger_transactions, "#{ledger}/#{tx_id}", receipt)
+    Store.put(:smalt_ledger_meta, {:latest, ledger}, receipt)
+
+    {:ok, receipt}
   end
 
   defp latest_root(ledger) do

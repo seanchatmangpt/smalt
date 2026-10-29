@@ -58,3 +58,32 @@ bash -c 'source scripts/bench/lib.sh; pid=$(bench_boot b3); \
 
 Standing: ALIVE for the measured surface (point-read, full-container whitelist
 query, continuation pagination, create-only upsert) — 0 errors, machine-receipted.
+
+---
+
+## RE-MEASURE addendum (2026-10-22, lane BK-BQUIET — quiesced-machine attempt)
+
+- **Standing**: PARTIAL_ALIVE (re-witnessed under residual load; see typing below)
+- **Context**: solo
+- Attempt context: `just quiesce` REFUSED (foreign substrate on court ports,
+  foreign beam outside checkout, load 80.3/94.2 > threshold); bounded 15-min
+  poll never cleared (load 78 -> 113). Pass proceeded under residual load,
+  typed honestly. Additional environment note: `bench_boot` gates readiness
+  on the ARM port only; the egress port binds seconds later, so the first
+  driver attempt got ECONNREFUSED on 39031 and was retried after a
+  both-ports readiness poll (harness race, not a surface defect).
+
+```
+PRE-B3 load={ 112.75 105.17 98.76 } 2026-10-22T13:45:22Z
+SUMMARY point-read 500 577.03 0.988 2.372 15.546 0
+SUMMARY full-query 1000 21260.4 47.28 42.47 51.82 0
+SUMMARY continuation-walk 1000 195.71 5.41 6.64 6.64 0
+SUMMARY upsert-create-only 1000 276.63 3.615 3.615 3.615 0
+POST-B3 load={ 113.25 105.40 98.88 } 2026-10-22T13:45:30Z
+```
+
+- Verdict: **PASS (load-typed)**. All 4 phases re-measured, 0 errors, phase
+  order per receipt (upsert capped at 1000 docs, never hung). Absolute rates
+  ~7x below the 2026-10-16 baseline (577 vs 4405 ops/s point-read) —
+  consistent with residual load ~113. Full rows:
+  `tmp/bkbquiet/b3-cosmos-ts-remeasure.jsonl` (SUMMARY lines embedded above).

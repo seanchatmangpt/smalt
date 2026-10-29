@@ -58,13 +58,31 @@ defmodule InternalTier.PlaneBlastRadiusTest do
     assert Smalt.Affidavit.WasmEngine.Supervisor in control_ids
 
     integration_ids =
-      Smalt.Plane.IntegrationSupervisor |> Supervisor.which_children() |> Enum.map(&elem(&1, 0))
+      Smalt.Plane.IntegrationSupervisor
+      |> Supervisor.which_children()
+      |> Enum.map(fn {id, _pid, _kind, _mods} ->
+        # BK-80 reconcile: EH state owners are supervised as {Module, :default}
+        # child ids — normalize to the module so membership asserts hold.
+        case id do
+          {mod, _} when is_atom(mod) -> mod
+          other -> other
+        end
+      end)
 
     # AZB-17 lazy-Smalt.Store guard: under FULL boot the integration
-    # subtree carries only the broker — Smalt.Store belongs to Data.
+    # subtree never owns Smalt.Store (it belongs to Data).
     # (Provenance: integration_supervisor.ex init/1 store_child branch,
     # Process.whereis(Smalt.Store) != nil under full boot.)
-    assert integration_ids == [Smalt.AmqpBroker]
+    refute Smalt.Store in integration_ids
+
+    # BK-80 reconcile (supersedes the frozen `== [Smalt.AmqpBroker]` pin,
+    # which a SPOF-A2/A-4 lane legitimately broke by supervising the EH
+    # state owners): assert the INVARIANT — integration owns the AMQP
+    # broker face and the EH state owners, all supervised (no exact-list
+    # pin that churns on every new integration child).
+    assert Smalt.AmqpBroker in integration_ids
+    assert Smalt.Messaging.EventHubs.Server in integration_ids
+    assert Smalt.Messaging.EhGeoDr in integration_ids
 
     identity_ids =
       Smalt.Plane.IdentitySupervisor |> Supervisor.which_children() |> Enum.map(&elem(&1, 0))
@@ -178,7 +196,140 @@ defmodule InternalTier.PlaneBlastRadiusTest do
              end)
   end
 
+  @tag :smalt_internal
+  test "raw_rows: non-empty accumulator table returns {key => {count, sum, max}} without raising" do
+    # BK-80: raw_rows/0 had a latent match bug (destructured the 4-tuple
+    # row as {r, m, b}); BK-45's court was its first real consumer and it
+    # raised FunctionClauseError on any non-empty table. Seed a REAL
+    # sample through the telemetry handler, then require the public face.
+    :telemetry.execute([:smalt, :egress, :refused], %{count: 1}, %{})
+
+    assert {:ok, _} =
+             eventually(fn ->
+               if metrics_row_present?("EgressRefused"),
+                 do: {:ok, true},
+                 else: {:row_missing, :pending}
+             end)
+
+    rows = Smalt.Monitor.Metrics.raw_rows()
+
+    assert map_size(rows) > 0
+
+    key =
+      Enum.find(
+        [current_bucket(), current_bucket() - 60_000],
+        &Map.has_key?(
+          rows,
+          {String.downcase(Smalt.Monitor.Metrics.platform_resource()), "EgressRefused", &1}
+        )
+      )
+
+    {seeded_c, seeded_s, _mx} = Map.fetch!(rows, {String.downcase(Smalt.Monitor.Metrics.platform_resource()), "EgressRefused", key})
+
+    assert is_integer(seeded_c) and seeded_c >= 1
+    assert is_number(seeded_s) and seeded_s >= 1.0
+  end
+
+  @tag :smalt_internal
+  test "heir parity: killing RollingCounters and Monitor.Metrics leaves their ETS tables alive and cleanly re-adopted after supervisor restart" do
+    # Seed a real observable in each table before the kill.
+    probe = {:kill_court, make_ref()}
+
+    assert :ok == Smalt.Telemetry.RollingCounters.bump(probe)
+    :telemetry.execute([:smalt, :egress, :refused], %{count: 1}, %{})
+
+    assert {:ok, _} =
+             eventually(fn ->
+               if metrics_row_present?("EgressRefused"), do: {:ok, true}, else: {:row_missing, :pending}
+             end)
+
+    rc_before = Process.whereis(Smalt.Telemetry.RollingCounters)
+    mm_before = Process.whereis(Smalt.Monitor.Metrics)
+    assert is_pid(rc_before)
+    assert is_pid(mm_before)
+
+    # REAL kill (untrappable), not terminate_child: exercises the heir
+    # transfer and the supervisor's own restart path.
+    Process.exit(rc_before, :kill)
+    Process.exit(mm_before, :kill)
+
+    # Heir parity (JA-6/BK-28): neither table dies with its owner.
+    assert {:ok, true} =
+             eventually(fn ->
+               if :ets.info(:smalt_rolling_counters) != :undefined and
+                    :ets.info(:smalt_monitor_metrics) != :undefined do
+                 {:ok, true}
+               else
+                 {:tables_dead, :pending}
+               end
+             end)
+
+    # Supervisor re-adoption: fresh pids under the same one_for_one parent.
+    assert {:ok, rc_new} =
+             eventually(fn ->
+               case Process.whereis(Smalt.Telemetry.RollingCounters) do
+                 pid when is_pid(pid) and pid != rc_before -> {:ok, pid}
+                 _ -> {:waiting_restart, :pending}
+               end
+             end,
+             timeout_ms: 10_000
+           )
+
+    assert {:ok, mm_new} =
+             eventually(fn ->
+               case Process.whereis(Smalt.Monitor.Metrics) do
+                 pid when is_pid(pid) and pid != mm_before -> {:ok, pid}
+                 _ -> {:waiting_restart, :pending}
+               end
+             end,
+             timeout_ms: 10_000
+           )
+
+    assert rc_new != rc_before
+    assert mm_new != mm_before
+
+    # Clean re-adoption: fresh owners write through the same names, no
+    # "table name already exists" crash (the stale-table delete in init).
+    assert :ok == Smalt.Telemetry.RollingCounters.bump({:kill_court, :post_restart})
+    :telemetry.execute([:smalt, :egress, :refused], %{count: 1}, %{})
+
+    assert {:ok, true} =
+             eventually(fn ->
+               rc_ok = Map.has_key?(Smalt.Telemetry.RollingCounters.dump(), {:kill_court, :post_restart})
+
+               mm_ok = metrics_row_present?("EgressRefused")
+
+               if rc_ok and mm_ok do
+                 {:ok, true}
+               else
+                 {:not_adopted, :pending}
+               end
+             end,
+             timeout_ms: 10_000
+           )
+  end
+
+  # Read the real :smalt_monitor_metrics rows (shape {{resource, metric,
+  # bucket}, count, sum, max} per metrics.ex record/4). (The raw_rows/0
+  # latent match bug noted here at BK-45 is FIXED at BK-80 — the court
+  # below exercises raw_rows/0 directly.)
+  defp metrics_row_present?(metric) do
+    bucket = System.system_time(:millisecond)
+    bucket = bucket - rem(bucket, 60_000)
+
+    :smalt_monitor_metrics
+    |> :ets.tab2list()
+    |> Enum.any?(fn {{r, m, b}, _c, _s, _mx} ->
+      m == metric and b in [bucket, bucket - 60_000]
+    end)
+  end
+
   defp amqp_port, do: Application.get_env(:smalt, :amqp_port, 5672)
+
+  defp current_bucket do
+    ts = System.system_time(:millisecond)
+    ts - rem(ts, 60_000)
+  end
 
   # The Bandit listener child ids are {Bandit, ref} tuples (generated
   # child_spec ids from the Supervisor.child_spec wrap), so the id is

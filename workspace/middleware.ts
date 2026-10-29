@@ -70,9 +70,28 @@ export function middleware(request: NextRequest) {
       );
     }
   }
+  // Popcorn wasm BEAM host: the /popcorn page embeds /popcorn/index.html in a
+  // same-origin iframe. The global X-Frame-Options: DENY (next.config.mjs)
+  // would make the browser refuse to frame it, so rewrite to SAMEORIGIN here
+  // (middleware headers run after config headers). Anti-clickjacking posture
+  // is preserved: only this workspace origin may frame the bundle host.
+  if (
+    request.nextUrl.pathname === "/popcorn" ||
+    request.nextUrl.pathname.startsWith("/popcorn/")
+  ) {
+    const res = NextResponse.next();
+    res.headers.set("x-frame-options", "SAMEORIGIN");
+    // The wasm BEAM boots threads on SharedArrayBuffer, which requires a
+    // cross-origin-isolated document (COOP + COEP). Scoped to /popcorn/ only:
+    // the iframe document's subresources are all same-origin vendored files,
+    // so require-corp is satisfied without affecting console routes.
+    res.headers.set("cross-origin-opener-policy", "same-origin");
+    res.headers.set("cross-origin-embedder-policy", "require-corp");
+    return res;
+  }
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/api/:path*", "/popcorn/:path*"],
 };

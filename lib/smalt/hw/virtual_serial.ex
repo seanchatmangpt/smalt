@@ -160,6 +160,7 @@ defmodule Smalt.Hw.VirtualSerial do
   # and streams them to the GenServer; replies go out via stdout.
   defp start_stdio_reader(pid) do
     Task.start(fn ->
+      Process.set_label(%{service: :hw, role: :serial_reader, id: :stdio})
       case IO.binread(:stdio, 1) do
         :eof ->
           send(pid, {:hw_eof, nil})
@@ -187,6 +188,7 @@ defmodule Smalt.Hw.VirtualSerial do
   # GenServer-owned write fd.
   defp start_reader(path, pid) do
     Task.start(fn ->
+      Process.set_label(%{service: :hw, role: :serial_reader, id: path})
       case :file.open(path, [:raw, :binary]) do
         {:ok, rd} -> reader_loop(rd, pid)
         {:error, reason} -> send(pid, {:hw_eof, {:error, reason}})

@@ -20,9 +20,10 @@ defmodule Mix.Tasks.Smalt.CourtEmit do
 
     receipt_path = Keyword.get(parsed, :receipt, "")
 
-    with {:ok, body} <- read_receipt(receipt_path),
-         {:ok, _} <-
-           Smalt.Telemetry.CourtOcel.court_run(
+    with {:ok, body} <- read_receipt(receipt_path) do
+      # court_run/2 returns {:ok, _} — where _ may be :dropped (registry
+      # gate) — or {:error, reason}; it never raises (rescues internally).
+      case Smalt.Telemetry.CourtOcel.court_run(
              [
                run: Keyword.get(parsed, :run, 0),
                verdict: verdict_of(parsed, body),
@@ -30,13 +31,15 @@ defmodule Mix.Tasks.Smalt.CourtEmit do
              ],
              receipt_path
            ) do
-      :ok
-    else
-      {:ok, :dropped} ->
-        Mix.shell().info("[court-emit] event dropped (registry gate)")
+        {:ok, :dropped} ->
+          Mix.shell().info("[court-emit] event dropped (registry gate)")
 
-      {:error, reason} ->
-        Mix.shell().info("[court-emit] emission failed, dropped (fail-safe): #{inspect(reason)}")
+        {:ok, _} ->
+          :ok
+
+        {:error, reason} ->
+          Mix.shell().info("[court-emit] emission failed, dropped (fail-safe): #{inspect(reason)}")
+      end
     end
 
     :ok

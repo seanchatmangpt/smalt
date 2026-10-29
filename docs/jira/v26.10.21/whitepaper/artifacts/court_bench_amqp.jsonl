@@ -1,0 +1,1 @@
+{"lane":"bench4-amqp-frame","surface":"amqp_frame_decode","op":"decode_frame","n":100000,"frame_bytes":1582,"ops_per_sec":952381,"p50_ms":105,"p95_ms":105,"p99_ms":105,"best_reductions":25450055,"reds_per_frame":254.5,"us_per_frame":1.05,"errors":0,"machine":"Apple M3 Max/otp-29.1.2"}

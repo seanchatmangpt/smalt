@@ -5,17 +5,22 @@ defmodule Smalt.DataPlane.Certificates do
   Minimal Azure Key Vault Certificates data plane (KD-104) over a
   module-owned, heir'd ETS table `:smalt_vault_certificates`.
 
-  Strictly the four verbs the KD-104 falsifier names (CertificateClient
-  create/get + list, plus delete): NO versions/latest surface, NO merge or
-  pending-Certificate operation resolver — Azure's create here is atomic,
-  never `pending`.
+  Strictly the verbs the KD-104 falsifier names (CertificateClient
+  create/get + list, plus delete) plus the create-LRO operation face:
+  NO versions/latest surface, NO merge — Azure's create here completes
+  synchronously, but the operation record EXISTS and completes so the
+  SDK poller terminates.
 
   Wire surface (routes live in `EgressRouter`; wiring seam is the same
   `{:ok, status, body}` tuple contract the `/keys` + `/secrets` siblings
   use, so a handler is one `case`):
 
     - `POST /certificates/:name/create` -> `create/3` (self-signed X.509
-      minted from the request policy)
+      minted from the request policy; ALSO plants the CertificateOperation
+      record under `{:pending, name}`)
+    - `GET  /certificates/:name/pending` -> `get_pending/1` (200
+      CertificateOperation; the synchronous mint completes on first
+      observation — `status` flips `in-progress` -> `completed`)
     - `GET  /certificates`              -> `list/0`
     - `GET  /certificates/:name`        -> `get/1` (200 cer + attributes)
     - `DELETE /certificates/:name`      -> `delete/1` (200 deletedCertificate
@@ -158,8 +163,74 @@ defmodule Smalt.DataPlane.Certificates do
     }
 
     case insert_new(name, record) do
-      :ok -> {:ok, 201, record}
-      {:error, :exists} -> {:error, 409, certificate_error("CertificateNameAlreadyExists")}
+      :ok ->
+        # LRO operation face (wf4 finding: the SDK poller hangs on a missing
+        # pending face — GET .../pending answered 400 MissingXMsVersion as a
+        # blob splat fallthrough, KD-104 witness step 2). The operation record
+        # is planted ATOMICALLY with the certificate insert (same process,
+        # after insert_new wins) and completes on first observation.
+        Store.put(@table, {:pending, name}, pending_operation(host, name, now))
+
+        {:ok, 201, record}
+
+      {:error, :exists} ->
+        {:error, 409, certificate_error("CertificateNameAlreadyExists")}
+    end
+  end
+
+  defp pending_operation(host, name, now) do
+    %{
+      "id" => "https://#{host}:8443/certificates/#{name}/pending",
+      "name" => name,
+      "status" => "in-progress",
+      "status_details" => [],
+      "cancellation_requested" => false,
+      "target" => "https://#{host}:8443/certificates/#{name}",
+      "request_id" => Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
+      "attributes" => %{
+        "created" => now,
+        "updated" => now,
+        "recoveryLevel" => "Purgeable"
+      }
+    }
+  end
+
+  # ---------------------------------------------------------------------------
+  # Pending operation (create LRO)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  `GET /certificates/:name/pending`. The CertificateOperation for the create
+  LRO. The mint here is synchronous, so the operation record exists (planted
+  by `create/3`) and completes on first observation: the returned status is
+  `"completed"` and the stored record is updated so later polls stay
+  `"completed"` (the SDK poller needs the 200 + `status: "completed"` to
+  terminate).
+
+  Unknown or purged certificate -> typed
+  `404 PendingCertificateNotFound`.
+  """
+  @spec get_pending(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def get_pending(name) do
+    ensure_table()
+
+    case Store.get(@table, {:pending, name}) do
+      {:ok, op} ->
+        completed =
+          case op["status"] do
+            "completed" ->
+              op
+
+            _ ->
+              completed = Map.put(op, "status", "completed")
+              Store.put(@table, {:pending, name}, completed)
+              completed
+          end
+
+        {:ok, 200, completed}
+
+      :error ->
+        {:error, 404, certificate_error("PendingCertificateNotFound")}
     end
   end
 
@@ -239,6 +310,8 @@ defmodule Smalt.DataPlane.Certificates do
           |> Map.put("is_deleted_certificate", true)
 
         Store.delete(@table, name)
+        # The soft-deleted surface has no outstanding create operation.
+        Store.delete(@table, {:pending, name})
         Store.put(@table, {:deleted, name}, deleted)
 
         {:ok, 200, deleted}
@@ -330,6 +403,286 @@ defmodule Smalt.DataPlane.Certificates do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Issuers + contacts (wave-6 lane w6c) — Azure KV REST parity
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # Backup / restore (wave-6 lane w6ab) — Azure KV shape over the SAME
+  # SMALT-KVB1 envelope contract as the keys backup (same magic + checksum);
+  # kind-tagged "certificate" so a wrong-kind blob is a typed 400.
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  `POST /certificates/{name}/backup` face. Returns `{"value" => blob}`
+  (`SMALT-KVB1.<base64 JSON envelope>`, kind "certificate") carrying the live
+  certificate row (cer DER, policy, attributes). Unknown certificate ->
+  `{:error, 404, CertificateNotFound}`.
+  """
+  @spec backup(binary) :: {:ok, 200, %{binary() => binary()}} | {:error, 404, map()}
+  def backup(name) when is_binary(name) do
+    ensure_table()
+
+    case Store.get(@table, name) do
+      {:ok, record} ->
+        bundle = %{"kind" => "certificate", "name" => name, "record" => record}
+        {:ok, 200, %{"value" => backup_codec().kv_backup_encode(bundle)}}
+
+      :error ->
+        {:error, 404, certificate_error("CertificateNotFound")}
+    end
+  end
+
+  @doc """
+  `POST /certificates/{name}/restore` face. `restore(blob)` /
+  `restore(blob, force: true)`. Restores the encapsulated certificate under
+  its own name. Typed refusals: malformed/tampered/wrong-kind blob ->
+  `{:error, 400, MalformedBackupBlob}`; live name -> `{:error, 409,
+  NameConflict}` unless `force: true`. Fresh restore -> 201; force
+  overwrite -> 200.
+  """
+  @spec restore(binary, keyword) :: {:ok, 200 | 201, map()} | {:error, 400 | 409, map()}
+  def restore(blob, opts \\ []) when is_binary(blob) and is_list(opts) do
+    ensure_table()
+    force = Keyword.get(opts, :force, false)
+
+    case backup_codec().kv_backup_decode(blob, "certificate") do
+      {:ok, bundle} ->
+        name = bundle["name"]
+        record = bundle["record"]
+
+        case Store.get(@table, name) do
+          {:ok, _existing} ->
+            if force do
+              Store.put(@table, name, record)
+              {:ok, 200, record}
+            else
+              {:error, 409,
+               %{
+                 "error" => %{
+                   "code" => "NameConflict",
+                   "message" => "certificate #{name} exists and is live; delete (or purge) it before restore"
+                 }
+               }}
+            end
+
+          :error ->
+            Store.put(@table, name, record)
+            {:ok, 201, record}
+        end
+
+      {:error, 400, refusal} = refusal_tuple ->
+        _ = refusal
+        refusal_tuple
+    end
+  end
+
+  # The keys module (KeyVaultActions) owns the envelope codec; reusing it
+  # keeps ONE canonical SMALT-KVB1 envelope across keys/certificates/secrets
+  # (same-checkout capital reuse — never re-implement the checksum).
+  defp backup_codec, do: Smalt.DataPlane.KeyVaultActions
+
+  @doc """
+  `PUT /certificates/issuers/:name`. Create-or-replace issuer. `provider`
+  required on every PUT (typed 400 BadRequest when absent/empty). Full-replace
+  semantics; `created` preserved on replace, `updated` re-stamped. The issuer
+  password (`pwd`) is stored but never echoed (real-service parity:
+  write-only). GET/DELETE unknown -> typed `404 IssuerNotFound`.
+  """
+  @spec put_issuer(binary, Plug.Conn.t() | binary, map) ::
+          {:ok, 200, map} | {:error, 400, map}
+  def put_issuer(name, conn_or_host, body_params) do
+    ensure_table()
+
+    host =
+      case conn_or_host do
+        %Plug.Conn{host: host} -> host
+        host when is_binary(host) -> host
+      end
+
+    body = body_params || %{}
+    provider = body["provider"]
+
+    if is_binary(provider) and provider != "" do
+      now = System.system_time(:second)
+
+      created =
+        case Store.get(@table, {:issuer, name}) do
+          {:ok, prev} -> get_in(prev, ["attributes", "created"]) || now
+          :error -> now
+        end
+
+      creds_in = body["credentials"]
+      creds_in = if is_map(creds_in), do: creds_in, else: %{}
+
+      organization_details =
+        if is_map(body["organization_details"]), do: body["organization_details"], else: %{}
+
+      attrs_in = body["attributes"]
+      attrs_in = if is_map(attrs_in), do: attrs_in, else: %{}
+
+      record = %{
+        "id" => "https://#{host}:8443/certificates/issuers/#{name}",
+        "issuer" => name,
+        "provider" => provider,
+        "credentials" => %{
+          "account_id" => creds_in["account_id"],
+          "pwd" => creds_in["pwd"]
+        },
+        "organization_details" => organization_details,
+        "attributes" => %{
+          "enabled" => if(is_nil(attrs_in["enabled"]), do: true, else: attrs_in["enabled"]),
+          "created" => created,
+          "updated" => now
+        },
+        "is_issuer" => true
+      }
+
+      Store.put(@table, {:issuer, name}, record)
+      {:ok, 200, issuer_wire(record)}
+    else
+      # provider-less PUT -> typed 400 BadRequest
+      {:error, 400, certificate_error("BadRequest")}
+    end
+  end
+
+  defp issuer_wire(record) do
+    # pwd is write-only: the response never carries it (real-service parity).
+    record
+    |> Map.delete("is_issuer")
+    |> Map.update!("credentials", &Map.delete(&1, "pwd"))
+  end
+
+  @doc """
+  `GET /certificates/issuers/:name`. Unknown -> typed `404 IssuerNotFound`.
+  """
+  @spec get_issuer(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def get_issuer(name) do
+    ensure_table()
+
+    case Store.get(@table, {:issuer, name}) do
+      {:ok, record} -> {:ok, 200, issuer_wire(record)}
+      :error -> {:error, 404, certificate_error("IssuerNotFound")}
+    end
+  end
+
+  @doc """
+  `DELETE /certificates/issuers/:name`. Returns the issuer (200), then gone
+  (next GET 404s). Unknown -> typed `404 IssuerNotFound`.
+  """
+  @spec delete_issuer(binary) :: {:ok, 200, map} | {:error, 404, map}
+  def delete_issuer(name) do
+    ensure_table()
+
+    case Store.get(@table, {:issuer, name}) do
+      {:ok, record} ->
+        Store.delete(@table, {:issuer, name})
+        {:ok, 200, issuer_wire(record)}
+
+      :error ->
+        {:error, 404, certificate_error("IssuerNotFound")}
+    end
+  end
+
+  @doc """
+  `GET /certificates/issuers` ->
+  `{"value": [{"id", "provider"}]}` (CertificateIssuerItem envelope). Walks
+  list_all/1 (tuple-keyed rows) filtering the `is_issuer` flag — the
+  binary-key `Store.list/1` contract would silently drop tuple rows
+  (same class as the deleted-certificates list fix).
+  """
+  @spec list_issuers :: {:ok, 200, map}
+  def list_issuers do
+    ensure_table()
+
+    {:ok, 200,
+     %{
+       "value" =>
+         Enum.flat_map(Store.list_all(@table), fn
+           %{"is_issuer" => true} = r -> [%{"id" => r["id"], "provider" => r["provider"]}]
+           _ -> []
+         end)
+     }}
+  end
+
+  @doc """
+  `GET /certificates/contacts`. Never-set -> typed `404 ContactNotFound`.
+  """
+  @spec get_contacts :: {:ok, 200, map} | {:error, 404, map}
+  def get_contacts do
+    ensure_table()
+
+    case Store.get(@table, {:contacts, :vault}) do
+      {:ok, record} -> {:ok, 200, Map.delete(record, "is_contacts")}
+      :error -> {:error, 404, certificate_error("ContactNotFound")}
+    end
+  end
+
+  @doc """
+  `PUT /certificates/contacts` (put_contacts/2). Full-replace of the
+  vault-wide contacts resource; `contacts` must be a non-empty list of maps
+  each carrying binary `email_address`; malformed -> typed 400 BadRequest.
+  """
+  @spec put_contacts(binary, map) :: {:ok, 200, map} | {:error, 400, map}
+  def put_contacts(conn_or_host, body_params) do
+    ensure_table()
+
+    host =
+      case conn_or_host do
+        %Plug.Conn{host: host} -> host
+        host when is_binary(host) -> host
+      end
+
+    body = body_params || %{}
+    contacts = body["contacts"]
+
+    valid =
+      is_list(contacts) and contacts != [] and
+        Enum.all?(contacts, fn c -> is_map(c) and is_binary(c["email_address"]) end)
+
+    if valid do
+      record = %{
+        "id" => "https://#{host}:8443/certificates/contacts",
+        "contacts" =>
+          Enum.map(contacts, fn c ->
+            %{
+              "email_address" => c["email_address"],
+              "name" => c["name"],
+              "phone" => c["phone"]
+            }
+          end),
+        "is_contacts" => true
+      }
+
+      Store.put(@table, {:contacts, :vault}, record)
+      {:ok, 200, Map.delete(record, "is_contacts")}
+    else
+      # malformed -> typed 400 BadRequest
+      {:error, 400, certificate_error("BadRequest")}
+    end
+  end
+
+  @doc """
+  `DELETE /certificates/contacts` → 204 when set; never-set -> typed 404
+  ContactNotFound.
+  """
+  @spec delete_contacts :: {:ok, 204, map} | {:error, 404, map}
+  def delete_contacts do
+    ensure_table()
+
+    case Store.get(@table, {:contacts, :vault}) do
+      {:ok, _record} ->
+        Store.delete(@table, {:contacts, :vault})
+        {:ok, 204, %{}}
+
+      :error ->
+        {:error, 404, certificate_error("ContactNotFound")}
+    end
+  end
+
+  @doc """
+  Exports the stored certificate as PEM (`-----BEGIN CERTIFICATE-----`).
+
   @doc """
   Exports the stored certificate as PEM (`-----BEGIN CERTIFICATE-----`).
   The DER is re-encoded from the stored base64 — no cached side state.
@@ -366,7 +719,13 @@ defmodule Smalt.DataPlane.Certificates do
     spki = {
       :"SubjectPublicKeyInfo",
       {:"AlgorithmIdentifier", {1, 2, 840, 113_549, 1, 1, 1}, {:asn1_OPENTYPE, <<5, 0>>}},
-      :public_key.der_encode(:RSAPublicKey, {:"RSAPublicKey", e, n})
+      # JA-R3-order fix (BK-VCOURTS): :RSAPublicKey is SEQUENCE { modulus,
+      # publicExponent } — n first, e second. The previous {e, n} order
+      # minted certs whose embedded key swapped modulus/exponent; OTP
+      # pkix_path_validation refuses them {:bad_cert, :invalid_signature}
+      # (openssl -CAfile verify is vacuous for self-anchors and did not
+      # catch it). Witness: receipts/bkvc-consolidated-courts.md.
+      :public_key.der_encode(:RSAPublicKey, {:"RSAPublicKey", n, e})
     }
 
     tbs = {

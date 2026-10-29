@@ -57,10 +57,8 @@ async function main() {
   console.log(`[probe] tenant:   ${TENANT}`);
 
   // Reachability gate.
-  let up = false;
   try {
     await fetch(assertLocalUrl(`${ARM_BASE}/subscriptions?api-version=${APIV}`));
-    up = true;
   } catch {
     console.error(`[probe] substrate unreachable at ${ARM_BASE} (exit 2)`);
     process.exit(2);

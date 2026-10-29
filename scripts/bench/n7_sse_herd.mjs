@@ -10,6 +10,11 @@
 //     --url http://127.0.0.1:3100/api/v1/stream \
 //     --target 5000 \
 //     --jsonl docs/jira/v26.10.14/bench/n7-sse-herd.jsonl
+//
+// SERVER ENV REQUIREMENT (EXPL7-R1 E7-3): the ?stats=1 face and the storm
+// POST are gated — launch the server with SMALT_DEBUG_FACES=1 or the lane
+// exits 3 at preflight. This lane does NOT spawn the server (--url is
+// external).
 
 import { connect } from "node:net";
 import { execFileSync } from "node:child_process";
@@ -166,6 +171,23 @@ async function main() {
   const t0 = Date.now();
   log(`ulimit -n = ${ULIMIT_N}, target = ${TARGET}`);
 
+  // Preflight (EXPL7-R1 E7-3): ?stats=1 and the storm POST are gated debug
+  // faces — 404 unless the SERVER was started with SMALT_DEBUG_FACES=1. This
+  // lane drives an externally-launched server (--url); fail loudly at boot
+  // instead of racing a verdict against permanently -1 stats.
+  {
+    const probe = await fetch(origin + streamPath + "?stats=1");
+    if (probe.status === 404) {
+      emit({ phase: "fatal", error: "gated_debug_faces_404" });
+      log(
+        "FATAL: /api/v1/stream?stats=1 -> 404 (debug faces gated). " +
+          'Relaunch the workspace server with SMALT_DEBUG_FACES=1 ' +
+          "(EXPL7-R1 E7-3, docs/jira/v26.10.22/receipts/expl7r1-bff-repairs.md).",
+      );
+      process.exit(3);
+    }
+  }
+
   const clients = [];
   let stormArmed = false;
   let attachErrors = 0;
@@ -297,6 +319,16 @@ async function main() {
       `permanent=${permanentDrops} attachErr=${attachErrors} ` +
       `overflows=${overflowTotal} handles=[${handleMin}..${handleMax}]`,
   );
+
+  // Teardown (BK-N7): open SSE sockets hold the event loop — without an
+  // explicit destroy the process hangs at exit after the verdict. Destroy
+  // every client socket, clear pending reconnect timers, then exit on the
+  // summary path. Verdict numbers are unchanged.
+  for (const c of clients) {
+    if (c._pendingTimer) { clearTimeout(c._pendingTimer); c._pendingTimer = null; }
+    c.destroy();
+  }
+  process.exit(0);
 }
 
 main().catch((e) => {

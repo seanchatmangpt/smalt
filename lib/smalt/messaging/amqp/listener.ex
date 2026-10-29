@@ -13,7 +13,12 @@ defmodule Smalt.Amqp.Listener do
     listener never crashes the supervisor;
   - a failed `Smalt.Amqp.Connection` start (module absent, supervisor down, child
     crash-on-start) closes the socket, logs once, and keeps accepting;
-  - `port 0` binds an ephemeral port; the bound port is read via `port/1`.
+  - `port 0` binds an ephemeral port; the bound port is read via `port/1`;
+  - the connection fan-in is CAPPED (`Smalt.Amqp.Listener.max_connections/0`,
+    `config :smalt, :amqp_max_connections`, default 10_000 per lane): an
+    accepted socket beyond the cap is closed (typed refusal) and a
+    `[:smalt, :amqp, :connection_refused]` telemetry counter event is emitted;
+    the listener keeps accepting and never crashes (SCVD backpressure MED-4).
 
   Start signatures:
   - `start_link({name, port})`
@@ -29,6 +34,17 @@ defmodule Smalt.Amqp.Listener do
   @accept_timeout_ms 200
   @base_backoff_ms 50
   @max_backoff_ms 5_000
+
+  # SCVD backpressure audit MED-4: the DynamicSupervisor connection fan-in was
+  # uncapped. Cap the number of live connections per lane; an accepted socket
+  # beyond the cap is closed with a typed refusal + telemetry event. Config
+  # override: `config :smalt, :amqp_max_connections, n` (tests use a small cap).
+  @default_max_connections 10_000
+
+  @doc "Configured live-connection ceiling per listener lane."
+  @spec max_connections() :: pos_integer()
+  def max_connections,
+    do: Application.get_env(:smalt, :amqp_max_connections, @default_max_connections)
 
   # -- Public API ---------------------------------------------------------------
 
@@ -53,6 +69,7 @@ defmodule Smalt.Amqp.Listener do
 
   @impl true
   def init({name, port, opts}) do
+    Process.set_label(%{service: :amqp, role: :listener, correlation_id: name})
     case :gen_tcp.listen(port, [
            :binary,
            packet: :raw,
@@ -130,7 +147,7 @@ defmodule Smalt.Amqp.Listener do
   defp start_connection(socket, state) do
     sup = state.conn_sup
 
-    if conn_sup_alive?(sup) do
+    if conn_sup_alive?(sup) and not cap_reached?(sup, state.lane) do
       child = %{
         id: {:connection, make_ref()},
         # Minimal cross-lane unblock (disclosed by the wire-test lane):
@@ -165,6 +182,27 @@ defmodule Smalt.Amqp.Listener do
     end
 
     :ok
+  end
+
+  # MED-4 cap: count live DynamicSupervisor children; beyond the ceiling the
+  # socket is closed (typed refusal) and a counter event is emitted — the
+  # listener itself keeps accepting, never crashes.
+  @spec cap_reached?(DynamicSupervisor.supervisor(), atom()) :: boolean()
+  defp cap_reached?(sup, lane) do
+    cap = max_connections()
+    active = DynamicSupervisor.count_children(sup)[:active] || 0
+
+    if active >= cap do
+      :telemetry.execute([:smalt, :amqp, :connection_refused], %{count: 1}, %{lane: lane})
+
+      Logger.warning(
+        "[amqp] #{lane} connection cap reached (#{active}/#{cap}); refusing new connection"
+      )
+
+      true
+    else
+      false
+    end
   end
 
   defp conn_sup_alive?(sup) when is_pid(sup), do: Process.alive?(sup)

@@ -1,3 +1,5 @@
 deps/
 _build/
 public/out/
+erl_crash.dump
+popcorn_demo/_build-final/

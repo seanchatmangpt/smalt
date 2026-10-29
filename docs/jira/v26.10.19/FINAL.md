@@ -1,16 +1,20 @@
 # FINAL.md — v26.10.19 window wrap
 
-- **Date**: 2026-10-19
-- **Subject**: smalt @ HEAD `28ceff9` (main; version 26.10.19; capability
-  wave-3 promoted)
+- **Date**: 2026-10-19 (refreshed 2026-10-20, ERRC docs lane)
+- **Subject**: smalt @ HEAD `bab1949` (main; version 26.10.19; capability
+  wave-4 promoted)
 - **Context**: solo(documentation wrap; counts re-derived on this tree)
 - **Standing of this document**: CENSUS — every claim cites a receipt on disk.
-  The court-x2 verdict is **ALIVE — three consecutive promotion pairs all
-  green: #3 (wave-1 @ `17fcbb6`), #4 (wave-2 @ `61e0543`), #5 (wave-3 @
-  `5666ae2`, latest, at the wave-3 HEAD; G5 receipt §"court-x2 #5" carries
-  all sections: COURT-Z1/Z2 rc=0)** — `receipts/v261019-12-court-x2-close.md`.
-  **Published: pushed `4fd2ff2..dc40e84 main` 2026-10-19; publish-dry 4/4
-  PASS (post-wrap; re-run owed at the wave-3 HEAD before the next publish).**
+  The court-x2 verdict is **ALIVE — four consecutive promotion pairs all
+  green: #3 (wave-1 @ `17fcbb6`), #4 (wave-2 @ `61e0543`; COURT-Y1/Y2 rc=0),
+  #5 (wave-3 @ `5666ae2`; COURT-Z1/Z2 rc=0), #6 (wave-4 @ `60823ed`;
+  COURT-V1/V2 rc=0, latest — G5 receipt §"court-x2 #6" carries the section:
+  `COURT-V1 rc=0 — [COURT] Full gate passed.` / `COURT-V2 rc=0 — [COURT]
+  Full gate passed.`)** — `receipts/v261019-12-court-x2-close.md`. Promotion
+  commit `bab1949` carries the release receipt + BLAKE3 re-mint #6.
+  **publish-dry: PASS 4/4 witnessed at an earlier release commit (session
+  rc=0); re-run owed at `bab1949` before the next publish** (carried wrap
+  obligation, `../v26.10.20/PLANNING.md` WO-5).
 
 ## 1. Landing
 
@@ -24,10 +28,11 @@
 ## 2. Gate verdicts
 
 - **court-x2**: CLOSED — see G5 receipt
-  `receipts/v261019-12-court-x2-close.md` (Standing ALIVE): two consecutive
-  `just court` runs, both exit 0, HEAD `81a7a29` unchanged across both run
-  windows; invariant-gates 6/6 + naming-sweep 0/49 + non-duplication +
-  portable-target all PASS in both verdict tails.
+  `receipts/v261019-12-court-x2-close.md` (Standing ALIVE): six pairs run
+  this window, the latest four are the promotion pairs #3/#4/#5/#6, all
+  two-green at a single unchanged SHA each (pair #6 at wave-4 HEAD
+  `60823ed`: invariant-gates 6/6 + naming-sweep 0/49 + non-duplication +
+  portable-target PASS in both verdict tails).
 - **publish-dry**: **PASS 4/4** (hex.build tarball, inner-tar keys grep,
   leak grep, ERROR_CODES identity) — run at the release commit; output
   witnessed in session (rc=0).
@@ -85,66 +90,73 @@ carried, not exercised this window).
 
 ## 7. Planning handoff to next window
 
-v26.10.20 NOT yet planned. Open items carried, re-derived at the wave-3
-promotion HEAD `28ceff9` (2026-10-20):
+**Four-wave receipt ledger** (re-derived 2026-10-20 at `bab1949`):
 
-**Three-wave receipt ledger**: 60 lanes across 3 capability waves; court-x2
-promotion pairs #3/#4/#5 all green (wave-1 `17fcbb6`, wave-2 `61e0543`,
-wave-3 `5666ae2` — G5 receipt sections "court-x2 #3/#4/#5",
-`receipts/v261019-12-court-x2-close.md`); 9 KD flips via
-`scripts/kd_flip.py --apply` (KD-99/KD-100 window flips; KD-104/105/108
-flipped at `8e7c3b9`; KD-117 flip landed `e6430a9`; remainder per wave
-receipts `receipts/v261019-capability-wave{1,2,3}.md`); capabilities 41 →
-46 types (46 verified on disk in `docs/capabilities.json` at `28ceff9`,
-`identity.semanticEpoch=26.10.19`).
+- **Waves 1-4 all promoted.** Integration SHAs: wave-1 `17fcbb6`,
+  wave-2 `61e0543`, wave-3 `5666ae2`, wave-4 `60823ed`; promotion commits
+  with re-minted release receipts + BLAKE3 re-mints; court-x2 promotion
+  pairs **#3/#4/#5/#6 all green** at their pinned SHAs (sections
+  "court-x2 #3..#6" with embedded COURT-X/Y/Z/V rc=0 tails,
+  `receipts/v261019-12-court-x2-close.md`; wave receipts
+  `receipts/v261019-capability-wave{1,2,3}.md` + the wave-4 lane receipts
+  `receipts/v261019-w4h-glossary-surface.md` and
+  `../v26.10.20/receipts/w4e-sb-rules-arm.md`).
+- **Lane census**: 60+ named lanes across waves 1-3
+  (`../v26.10.20/PLANNING.md` "Lanes: 60+ … caps w1/w2/w3 lanes
+  wNa..wNq") + 7 wave-4 lane leases on disk (`_build-lane-w4{a,d,e,f,g,h,i}`,
+  same PLANNING.md) — 67+ lanes across 4 waves. (An "80 lanes" figure is
+  NOT receipt-backed on disk; 67+ is the defensible count.)
+- **KD flips this window: 11 rows** flipped CLOSED(-SIMULATED) with
+  witness receipts under `docs/jira/v26.10.19/` — **KD-99, KD-100,
+  KD-104, KD-105, KD-106, KD-108, KD-111, KD-113, KD-117, KD-118,
+  KD-119** (canonical register
+  `../v26.10.14/KNOWN_DIVERGENCES.md`, table = ground truth; register
+  now carries 117 rows, **55 OPEN**). `scripts/kd_flip.py --apply` at
+  wrap: FLIP-ELIGIBLE 0 (nothing pending except KD-110, see below).
+- **Capabilities 41 → 46 types** — 46 entries on disk in
+  `docs/capabilities.json`, `identity.semanticEpoch=26.10.19` (regen via
+  `Canonical.write()` riders).
+- **publish-dry: owed at `bab1949`** before the next publish (carried
+  wrap obligation, `../v26.10.20/PLANNING.md` WO-5).
 
-1. **KD-119 (vault RS256 double-hash) — single-hash fix; w4 lane in
-   flight.** Row OPEN (witnessed, no fix:
-   `receipts/kd119-kv-rs256-double-hash-tbd.md`, wf4-py falsifier: hazmat
-   verify digest=true message=false). Close = sign consumes the pre-hashed
-   digest as-is; witness must postdate the fix's KD-COVERS token.
-2. **KD-110 (throttle default `:infinity`) — profile-default decision
-   pending.** Limiter defect (boot-eval never bridging
-   `SMALT_ARM_RATE_LIMIT`) found + fixed this window
-   (`receipts/kd110-throttling-infinity-tbd.md`: burst witness 0/60
-   throttled on the broken path, green with lifted eval); the row itself
-   stays OPEN — next window decides the default profile vs `:infinity`.
-3. **Registry-surfacing gaps** (`/tmp/w3-registry/GAPS.md`, wave-1/2
-   audit): (a) 5 ARM-served types with zero `registry.ex` entries —
-   `Microsoft.Authorization/locks` (router 7 hits), `policyExemptions`
-   (9), `policySetDefinitions` (4), `policyRemediations` (13), SB
-   `topics/subscriptions/rules` (16) — a `Canonical.write()` regen adds
-   nothing until `registry.ex` gains them; (b) new `lib/` modules with no
-   inventory grounding: `data_plane/certificates.ex` (KD-104),
-   `appconfig_snapshots.ex`, `kv_pss.ex` (KD-105), `policy.ex`;
-   (c) `sdk_coverage.py` CAP_CELLS stale (7, actual 13) and wf6 has 6
-   dangling cap ids in `workflows.json`; wf7 has no workflows.json entry
-   and no sdk_coverage refs (probes on disk:
-   `verification/ts/diagnostics.probe.mjs`,
-   `verification/py/test_wf6_newcaps.py`, `test_wf7_diagnostics.py`);
-   (d) regen order is registry.ex → capabilities.json →
+**Genuinely open, re-derived on this tree:**
+
+1. **KD-114 / KD-115 / KD-116** — TS-suite divergence remainder (blob
+   bearer-over-http channel; SB plain-queue receiver zero-delivery; SB
+   session settle-shape). Rows OPEN with witnessed FAIL cells
+   (`receipts/kd114-blob-bearer-http-tbd.md`,
+   `receipts/kd115-sb-receiver-zero-delivery-tbd.md`,
+   `receipts/kd116-sb-session-delivery-shape-tbd.md`); = v26.10.20
+   WO-1 P0 (status PARTIAL in `../v26.10.20/PLANNING.md`).
+2. **KD-110 (throttle default `:infinity`)** — row OPEN; shim landed
+   (`SMALT_ARM_RATE_LIMIT` config token) but **FLIP-PENDING-WITNESS**:
+   `scripts/kd_flip.py --apply` at wrap reports "no post-shim receipt
+   newer than shim mtime (2026-10-20T06:00:20)". Needs a post-shim
+   witness receipt (bounded default vs `:infinity` decision + falsifier:
+   over-limit 429 + Retry-After, under-limit 2xx).
+3. **KD-112 (policy initiatives/exemptions 404s)** — row OPEN
+   (`receipts/kd112-arm-policy-initiatives-tbd.md`); the in-window
+   exemptionCategory persistence work (wave-3) narrowed it but the
+   initiative/exemption SDK surfaces remain open.
+4. **Registry-surfacing gaps** — partially closed this window (registry
+   46-type sync landed wave-3/4); residual: wf6 dangling cap ids in
+   `workflows.json`, wf7 missing from `workflows.json`/sdk_coverage refs
+   (probes on disk: `verification/ts/diagnostics.probe.mjs`,
+   `verification/py/test_wf6_newcaps.py`, `test_wf7_diagnostics.py`).
+   Regen order unchanged: registry.ex → capabilities.json →
    CAP_CELLS/workflows.json → `Canonical.write()`.
-4. **Wave-2 wire defects — verification status**
-   (`receipts/v261019-capability-wave2.md`, "Registrar-input summary",
-   re-read at `e6430a9`): (a) **KD-118 TS framing** — TS SDK
-   `scheduleMessages` still 400 QUEUE_REQUIRED (management_rpc.ex resolves
-   neither body `queue` nor associated-link-name); the wave-3 integration
-   commit claims "KD-118 TS framing verified" — contradicted by the probe;
-   PY leg passes only because the PY harness sends body `queue`.
-   (b) **blob RFC-1123** — NOT flipped: nil-`snapshots` clause crash,
-   List Blobs still 500 (`blob_storage.ex:1627` via `render_blob/4:1548`);
-   snapshot CREATE and PY/TS decoration legs pass around the crash.
-   (c) **KD-112 exemptionCategory** — REGRESSED in-window: cased RG-scope
-   PUT 201 (run 1, pre-wave-3) → 400 (runs 2-3 at wave-3 landed HEAD);
-   PY wf6 chain passes on the lower-case path only. (d) FLIPPED this
-   window: KD-117 recover leg; PY wf6 remediation cell. **wf7
-   table-stats**: honest skip — no route for `GET
-   workspaces/:id/tables` in `egress_router.ex` or
-   `arm_gateway/router.ex` (grep, no matches).
-5. **table-stats ARM family** — Sentinel/Log Analytics workspace-tables
-   GET family unrouted (`receipts/v261019-capability-wave2.md` wf7 leg,
-   SKIPPED [1] with owning-surface reason); open as surface growth for
-   the next window (registrar-gated mint if witnessed as a divergence).
+5. **Carried from v26.10.19 WOs, still OPEN in
+   `../v26.10.20/PLANNING.md`**: WO-2 (F1 falsifier unblock, G2
+   DEFERRED), WO-4 (secrets-sweep + envelope courts), WO-6
+   (SOVEREIGN_MIDNIGHT G-register: G2 X-ARR mTLS, G3 EG DLQ spillover,
+   G4 split-brain failover), WO-7 (isolation runtime5 quiet-window).
+6. **publish-dry re-run at `bab1949`** (WO-5 tail; also gates G5
+   typed-PENDING → closed receipt-gated).
+
+**Handoff**: v26.10.20 window is OPEN and seeded —
+`../v26.10.20/PLANNING.md` (WO table + sub-sketches KD-114..119) already
+consumes this window's ledger; its court-x2/publish-dry close conditions
+gate the next release receipt.
 
 ## 8. Pointers
 

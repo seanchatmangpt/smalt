@@ -30,7 +30,35 @@ defmodule InternalTier.VmZeroGrowthTest do
   # -- census ---------------------------------------------------------------
 
   defp census do
-    pids = :erlang.processes()
+    # IMPL-18: the whole-VM census rides Smalt.ProcessIter.reduce (OTP 29
+    # processes_iterator BIFs), so the traversal never materializes the full
+    # pid list on the caller heap. Census semantics are identical: same
+    # process count, same monitor sum, same ConnSup-subtree exclusion, and
+    # the only per-visit state is two small integers in the accumulator
+    # (off-heap ETS census for :ets/:atoms is unchanged).
+    conn_sup = Process.whereis(Smalt.AmqpBroker.ConnSup)
+
+    conn_sup_children =
+      if conn_sup,
+        do: MapSet.new(DynamicSupervisor.which_children(conn_sup) |> Enum.map(&elem(&1, 1))),
+        else: MapSet.new()
+
+    {processes, monitors} =
+      Smalt.ProcessIter.reduce({0, 0}, fn pid, {p_count, m_sum} ->
+        m_sum =
+          cond do
+            MapSet.member?(conn_sup_children, pid) ->
+              m_sum
+
+            true ->
+              case :erlang.process_info(pid, [:monitors, :monitored_by]) do
+                :undefined -> m_sum
+                info -> m_sum + length(Keyword.get(info, :monitors, []))
+              end
+          end
+
+        {p_count + 1, m_sum}
+      end)
 
     # The zero-growth law's subject is the LONG-LIVED population. ConnSup's
     # connection children are the documented unstable population (each socket
@@ -40,34 +68,11 @@ defmodule InternalTier.VmZeroGrowthTest do
     # deterministic `monitors: -2` drift under concurrent census runs).
     # Exclude that subtree from the monitor sum; the process count still
     # includes them and the conn-sup churn test asserts restoration separately.
-    conn_sup = Process.whereis(Smalt.AmqpBroker.ConnSup)
-
-    conn_sup_children =
-      if conn_sup,
-        do: MapSet.new(DynamicSupervisor.which_children(conn_sup) |> Enum.map(&elem(&1, 1))),
-        else: MapSet.new()
-
-    monitors =
-      Enum.reduce(pids, 0, fn pid, acc ->
-        cond do
-          MapSet.member?(conn_sup_children, pid) ->
-            acc
-
-          true ->
-            case :erlang.process_info(pid, [:monitors, :monitored_by]) do
-              :undefined ->
-                acc
-
-              info ->
-                # count the supervisor->child monitor exactly once (via the
-                # supervisor side); skip the child's mirrored :monitored_by
-                acc + length(Keyword.get(info, :monitors, []))
-            end
-        end
-      end)
+    # Monitor accounting is unchanged: the supervisor->child monitor is
+    # counted exactly once, via the supervisor side.
 
     %{
-      processes: length(pids),
+      processes: processes,
       ets: length(:ets.all()),
       atoms: :erlang.system_info(:atom_count),
       monitors: monitors

@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+migrate = ["azure-servicebus>=7.12"]
 aio = ["aiohttp>=3.9"]
 
 [project.scripts]

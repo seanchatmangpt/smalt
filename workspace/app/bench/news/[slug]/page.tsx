@@ -8,12 +8,7 @@
 // runtime regeneration for the slug.
 
 import { notFound } from "next/navigation";
-import {
-  ALL_SLUGS,
-  articleFor,
-  recordRegeneration,
-  REVALIDATE_SECONDS,
-} from "@/lib/bench/isr-counter";
+import { ALL_SLUGS, articleFor, recordRegeneration } from "@/lib/bench/isr-counter";
 
 // N-3 unblock fix: segment config exports must be literals — Next rejects a
 // non-literal `revalidate`. Value kept in lockstep with REVALIDATE_SECONDS (10).

@@ -1,0 +1,2 @@
+{"lane":"pb5","surface":"erlang_runner","op":"settlement_orchestration","n":200,"ops_per_sec":1788.8,"p50_ms":0.528,"p95_ms":0.725,"p99_ms":0.831,"errors":0,"machine":{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.20.4","otp":"29","darwin":"26.2"}}
+{"lane":"pb5","surface":"powl2_executor","op":"settlement_orchestration","n":200,"ops_per_sec":8410.8,"p50_ms":0.103,"p95_ms":0.155,"p99_ms":0.198,"errors":0,"machine":{"cpu":"Apple M3 Max","cores":16,"ram_gb":48,"elixir":"1.20.4","otp":"29","darwin":"26.2"}}

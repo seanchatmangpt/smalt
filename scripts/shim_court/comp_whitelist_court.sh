@@ -54,9 +54,11 @@ s = open(p).read()
 # helper (called from every blob/container arm). Anchor on the helper head —
 # unique, stable — and prepend a catch-all clause that always reports
 # "unhandled", bypassing every whitelist call site at once.
-anchor = '  defp unhandled_comp?(conn, allowed) do'
+# Re-anchored 2026-10-20: R124 made the helper public (defp -> def); the arm
+# bodies moved to lib/smalt/egress/*.ex but the whitelist helper stayed here.
+anchor = '  def unhandled_comp?(conn, allowed) do'
 assert s.count(anchor) == 1, "comp-whitelist anchor not found: " + anchor
-shim = ('  defp unhandled_comp?(_conn, _allowed), do: false '
+shim = ('  def unhandled_comp?(_conn, _allowed), do: false '
         '# SHIM-COURT: whitelist disabled (corruption class re-introduced)\n')
 s = s.replace(anchor, shim + anchor)
 open(p, "w").write(s)

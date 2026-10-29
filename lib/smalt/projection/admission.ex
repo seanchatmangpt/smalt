@@ -60,7 +60,7 @@ defmodule Smalt.Projection.Admission do
   @type verdict :: :admit | :refuse | :deviation
 
   @typedoc "One typed matrix record (who/what = family+subject, verdict+standing)."
-  @type record :: %__MODULE__{
+  @type t :: %__MODULE__{
           id: String.t(),
           family: family(),
           subject: String.t(),
@@ -128,7 +128,7 @@ defmodule Smalt.Projection.Admission do
 
   Returns the inserted `t:record/0`.
   """
-  @spec seed(family(), String.t(), term()) :: record()
+  @spec seed(family(), String.t(), term()) :: t()
   def seed(family, subject, raw_verdict)
       when family in @families and is_binary(subject) and family != :smalt_event do
     ensure_table()
@@ -159,7 +159,7 @@ defmodule Smalt.Projection.Admission do
   a typed ArgumentError naming the path — never the raw Jason.DecodeError
   escape.
   """
-  @spec from_store(String.t()) :: [record()]
+  @spec from_store(String.t()) :: [t()]
   def from_store(path \\ DeviationAdmission.default_path()) do
     ensure_table()
 
@@ -260,7 +260,7 @@ defmodule Smalt.Projection.Admission do
   end
 
   @doc "All matrix rows in insertion (key) order."
-  @spec matrix() :: [record()]
+  @spec matrix() :: [t()]
   def matrix do
     ensure_table()
 

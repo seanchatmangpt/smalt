@@ -28,8 +28,41 @@ defmodule Smalt.Plane.IntegrationSupervisor do
         []
       end
 
-    children = store_child ++ [{Smalt.AmqpBroker, []}]
+    children = store_child ++ eh_state_children() ++ broker_children()
 
-    Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
+    spec =
+      Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
+
+    spec
+  end
+
+  # BOOTPROF cut #2: deferred AMQP-broker (5672/5673) start, invoked by
+  # Smalt.Application.ListenerDeferral on the tick after the front door is
+  # already bound and accepting.
+  @doc false
+  def start_deferred_listener do
+    Supervisor.start_child(__MODULE__, {Smalt.AmqpBroker, []})
+  end
+
+  # BOOTPROF cut #2 (RELCUT, NFR-FOOTPRINT): AMQP (5672/5673) listeners are
+  # deferred under :deferred_listeners - the broker starts on a 0 ms tick
+  # after the front-door listeners accept. Default mode is byte-identical.
+  defp broker_children do
+    if Smalt.Application.deferred_listeners?() do
+      []
+    else
+      [{Smalt.AmqpBroker, []}]
+    end
+  end
+
+  # SPOF-B / A-2 + A-4: EH state owners as supervised children (was: lazy
+  # first-caller start with heir-less tables — owner death silently wiped seq/
+  # checkpoint/cg state). Tables are heir'd to :init inside each init, so an
+  # owner crash no longer drops data; supervision adds the missing restart.
+  defp eh_state_children do
+    [
+      {Smalt.Messaging.EventHubs.Server, []},
+      {Smalt.Messaging.EhGeoDr, []}
+    ]
   end
 end

@@ -1,0 +1,39 @@
+# kind cluster for the smalt swarm + console (BK-K8SM).
+#
+# Distinct from the coordinator-owned k8s/kind/cluster.yaml (burn blueprint).
+# 1 control-plane + 2 workers so the StatefulSet's 2 backend replicas spread
+# across nodes. All host reachability rides extraPortMappings on the
+# control-plane node onto fixed NodePorts (see k8s/smalt-backend.yaml /
+# k8s/smalt-console.yaml):
+#
+#   host 9443 -> node 30943  backend ARM (plain HTTP control plane)
+#   host 9444 -> node 30944  backend ARM TLS twin
+#   host 5672 -> node 30572  backend AMQP / Service Bus
+#   host 9080 -> node 30080  console (Next.js Sovereign Console)
+#
+# TLS trust on the laptop side: NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem
+# (CA minted by scripts/gen_dev_cert.sh, loaded as the smalt-tls Secret —
+# see k8s/README.md).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kind-smalt
+networking:
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30943
+        hostPort: 9443
+        protocol: TCP
+      - containerPort: 30944
+        hostPort: 9444
+        protocol: TCP
+      - containerPort: 30572
+        hostPort: 5672
+        protocol: TCP
+      - containerPort: 30080
+        hostPort: 9080
+        protocol: TCP
+  - role: worker
+  - role: worker

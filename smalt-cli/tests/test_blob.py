@@ -38,13 +38,22 @@ def make_mutable_container(name):
     return service().get_container_client(name)
 
 
+def make_immutable_container(name):
+    st = raw_put_container(name, {"x-ms-version": "2021-04-01",
+                                  "x-ms-immutable-policy": "true"})
+    assert st == 201, f"immutable container create expected 201, got {st}"
+    return service().get_container_client(name)
+
+
 UNIQ = int(time.time() * 1000)
 
 
-def test_container_create_default_immutable():
-    # Default (no opt-out header) containers are WORM/immutable: admission is
-    # proven by the subsequent upload succeeding and overwrite 409-ing (see
-    # test_immutable_overwrite_409_container_locked). Get Container Properties
+def test_container_create_default_writable():
+    # PREMISE CORRECTED (KD-135, CLOSED-WITH-RECEIPT 2026-10-21): a default
+    # (no x-ms-immutable-policy header) container is WRITABLE — real-Azure
+    # parity, immutability is opted IN via the x-ms-immutable-policy header
+    # (see make_immutable_container). Admission is proven by the upload
+    # AND the overwrite both succeeding. Get Container Properties
     # is deliberately NOT probed here: the substrate emits ISO-8601
     # Last-Modified where azure-storage-blob 12.31.0 requires RFC-1123 — a
     # documented divergence (test/sdk-python/py_storage_blob.py p10).
@@ -52,7 +61,8 @@ def test_container_create_default_immutable():
     c.create_container()
     blob = c.get_blob_client("admit.bin")
     blob.upload_blob(b"ok", overwrite=True)
-    assert blob.download_blob().readall() == b"ok"
+    blob.upload_blob(b"ok2", overwrite=True)  # writable default: overwrite too
+    assert blob.download_blob().readall() == b"ok2"
 
 
 def test_container_create_mutable_optout():
@@ -71,15 +81,15 @@ def test_upload_download_roundtrip():
 
 
 def test_immutable_overwrite_409_container_locked():
-    c = service().get_container_client(f"cli4-worm-{UNIQ}")
-    c.create_container()  # default = immutable (WORM)
+    c = make_immutable_container(f"cli4-worm-{UNIQ}")
     blob = c.get_blob_client("locked.bin")
     blob.upload_blob(b"first", overwrite=True)
     with pytest.raises(HttpResponseError) as ei:
         blob.upload_blob(b"second", overwrite=True)
     e = ei.value
     code = getattr(e, "error_code", None) or (
-        e.response.headers.get("x-ms-error-code") if e.response is not None else None)
+        getattr(e.response, "headers", {}).get("x-ms-error-code")
+        if e.response is not None else None)
     assert e.status_code == 409, e.status_code
     assert code == "ContainerLocked", code
 

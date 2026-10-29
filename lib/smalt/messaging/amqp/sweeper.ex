@@ -182,6 +182,7 @@ defmodule Smalt.Amqp.Sweeper do
     # tree. Better to refuse boot with a typed error than to run mis-throttled.
     # W1a exemplar (opts-fallback class): opts win, ontology default behind
     # the Smalt.Config projection (smalt:ck-amqp-sweeper-tick-ms).
+    Process.set_label(%{service: :amqp, role: :sweeper})
     tick_ms = opts[:tick_ms] || Smalt.Config.amqp_sweeper_tick_ms()
 
     unless is_integer(tick_ms) and tick_ms > 0 do

@@ -1,0 +1,34 @@
+# .dockerignore — lane BK-IMG (v26.10.22). Applies to the repo-root build
+# context shared by Dockerfile.smalt and Dockerfile.console.
+# Image hygiene: never ship local build scratch, deps (rebuilt in-container),
+# run artifacts, receipts, or TLS material.
+
+# Local build roots + artifacts (rebuilt in-container)
+_build/
+_build-*/
+deps/
+/.elixir_ls/
+/.elixir-tools/
+
+# Run artifacts + logs
+tmp/
+*.log
+erl_crash.dump
+
+# Receipts / milestone docs (image hygiene)
+docs/jira/
+
+# Secrets / local TLS material — never baked into any image
+.smalt/
+.env*
+*.pem
+*.key
+
+# Node scratch (console rebuilt in-container)
+workspace/node_modules/
+workspace/.next/
+workspace/tsconfig.tsbuildinfo
+workspace/coverage/
+
+# OS / editor scratch
+.DS_Store

@@ -1,3 +1,98 @@
+# smalt k8s
+
+## Swarm + console (BK-K8SM): kind → kubectl → witness
+
+Engineer path for `k8s/kind-config.yaml`, `k8s/smalt-backend.yaml`,
+`k8s/smalt-console.yaml`. The burn blueprint below is unchanged.
+
+### 1. Cluster
+
+```bash
+kind create cluster --config k8s/kind-config.yaml   # 1 CP + 2 workers
+kubectl get nodes -o wide                           # expect 3 Ready
+```
+
+Host mappings (kind-config): 9443→30943 (ARM), 9444→30944 (TLS twin),
+5672→30572 (AMQP), 9080→30080 (console).
+
+### 2. Secrets (before apply)
+
+```bash
+kubectl create secret generic smalt-release-cookie \
+  --from-literal=cookie="$(openssl rand -hex 16)" --save-config
+# Shared TLS Secret (typed decision: shared cert, not per-pod — see
+# smalt-backend.yaml header). SANs cover both pod FQDNs + loopback.
+.smalt/tls exists? skip; else: scripts/gen_dev_cert.sh
+# Extend SANs to the pod FQDNs before minting, or mint a k8s-scoped pair:
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 -CA .smalt/tls/ca-cert.pem \
+  -CAkey .smalt/tls/ca-key.pem \
+  -subj "/CN=smalt-backend-0.smalt-backend-headless.default.svc.cluster.local" \
+  -addext "subjectAltName=DNS:localhost,DNS:smalt-backend-0.smalt-backend-headless.default.svc.cluster.local,DNS:smalt-backend-1.smalt-backend-headless.default.svc.cluster.local,DNS:smalt-backend.default.svc.cluster.local,IP:127.0.0.1" \
+  -keyout /tmp/smalt-k8s-key.pem -out /tmp/smalt-k8s-cert.pem
+kubectl create secret tls smalt-tls --cert=/tmp/smalt-k8s-cert.pem --key=/tmp/smalt-k8s-key.pem --save-config
+```
+
+### 3. Images into kind
+
+```bash
+docker build --target release -t smalt:local .          # docker/Dockerfile
+kind load docker-image smalt:local --name kind-smalt
+# Console (no Dockerfile in workspace/ yet — typed seam; minimal recipe):
+#   FROM node:20-alpine → corepack enable → workspace/ `npm ci && npm run build`
+#   → CMD ["npm","start"] (next start, port 3000)
+docker build -t smalt-console:local workspace/
+kind load docker-image smalt-console:local --name kind-smalt
+```
+
+### 4. Apply
+
+```bash
+kubectl apply -f k8s/smalt-backend.yaml
+kubectl apply -f k8s/smalt-console.yaml
+kubectl get pods -l app=smalt-backend -o wide   # 2/2 Running, spread over workers
+```
+
+### 5. Witness
+
+**Swarm witness** (BEAM distribution over headless DNS):
+
+```bash
+kubectl exec smalt-backend-0 -- \
+  /app/_release/bin/smalt eval \
+  'net_adm:ping(:'"'"'smalt-backend-1.smalt-backend-headless.default.svc.cluster.local'"'"')'
+# expect: pong
+```
+
+**Console from the laptop**:
+
+```bash
+kubectl port-forward svc/smalt-console 3000:3000   # or http://localhost:9080 via NodePort
+open http://localhost:9080
+```
+
+**Real SDK traffic laptop→pod** (9444 TLS twin, dev CA trust):
+
+```bash
+NODE_EXTRA_CA_CERTS="$PWD/.smalt/tls/ca-cert.pem" \
+  node -e 'const https=require("https");https.get("https://localhost:9444/metadata/endpoints",r=>{console.log(r.statusCode);process.exit(0)}).on("error",e=>{console.error(e);process.exit(1)})'
+# expect: 200 (auth-exempt surface), or 401 on non-exempt paths with a
+# tokenless→STS-mint→bearer-retry handshake per the KD-15 premise.
+```
+
+### Known seams (typed, successor lanes)
+
+- **Console air-gap guard**: `workspace/lib/smalt.ts` `assertLocalUrl`
+  refuses non-loopback hosts, so the in-cluster console's
+  `NEXT_PUBLIC_SMALT_ARM=http://smalt-backend.default.svc.cluster.local:9443`
+  is refused until the guard learns an in-cluster allowlist. Console pages
+  render; API calls through smaltFetch will 500 with the air-gap error.
+- **Console image**: no `workspace/Dockerfile` committed; the README recipe
+  above is the interim contract.
+- **TLS Secret** `smalt-tls` must exist before the StatefulSet rolls
+  (volume mount), and the cookie Secret before the pod starts (env).
+
+---
+
 # smalt k8s — Burn Cluster Blueprint
 
 Phase 4 (Compact Cluster Orchestration) deployment blueprint for the smalt

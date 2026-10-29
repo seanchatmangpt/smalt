@@ -29,11 +29,25 @@ class Settings:
     @classmethod
     def from_env(cls, env: dict | None = None) -> "Settings":
         e = env if env is not None else os.environ
+        # EXPL12-B: `login`-persisted profile fills any endpoint the
+        # environment does not pin (env > profile > defaults).
+        prof = _profile_endpoints()
         return cls(
-            arm=e.get("SMALT_ARM", _default(DEFAULT_ARM_PORT)),
-            egress=e.get("SMALT_EGRESS", _default(DEFAULT_EGRESS_PORT)),
-            amqp=e.get("SMALT_AMQP", f"127.0.0.1:{DEFAULT_AMQP_PORT}"),
+            arm=e.get("SMALT_ARM") or prof.get("arm") or _default(DEFAULT_ARM_PORT),
+            egress=e.get("SMALT_EGRESS") or prof.get("egress") or _default(DEFAULT_EGRESS_PORT),
+            amqp=e.get("SMALT_AMQP") or prof.get("amqp") or f"127.0.0.1:{DEFAULT_AMQP_PORT}",
         )
+
+
+def _profile_endpoints() -> dict:
+    """Login-profile endpoint overrides. Imported lazily to avoid a config ->
+    profile -> config import cycle (profile.py reads nothing from config)."""
+    try:
+        from .profile import endpoint_overrides
+
+        return endpoint_overrides()
+    except Exception:
+        return {}
 
 
 def enforce_loopback(url: str) -> str:

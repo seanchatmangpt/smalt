@@ -13,6 +13,17 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+// Debug-face gate (EXPL7-R1 E7-3): the GET debug surface answers 404 unless
+// the server was started with SMALT_DEBUG_FACES=1 (bench lanes set it).
+// Dev-plane gate (KD-173C): the dev-default HMAC key is refused with 503
+// unless the server was started with SMALT_DEV_PLANE=1.
+import {
+  debugFacesEnabled,
+  debugFaceDisabled,
+  devPlaneEnabled,
+  devDefaultKeyRefused,
+} from "../../../../lib/debug-faces.ts";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -51,6 +62,14 @@ function takeToken(): boolean {
 export async function POST(req: Request): Promise<Response> {
   const key = process.env.SMALT_INGEST_HMAC_KEY ?? "n4-dev-key";
   const sig = req.headers.get("x-smalt-signature") ?? "";
+
+  // KD-173C dev-plane gate: refuse the public-source dev-default key on any
+  // non-dev plane (typed 503) BEFORE signature verification. A provisioned
+  // SMALT_INGEST_HMAC_KEY is admitted on every plane; with SMALT_DEV_PLANE=1
+  // the dev posture is preserved end to end.
+  if (key === "n4-dev-key" && !devPlaneEnabled()) {
+    return devDefaultKeyRefused();
+  }
 
   // Stream the raw body chunk-by-chunk; HMAC over the raw bytes.
   const chunks: Uint8Array[] = [];
@@ -112,8 +131,9 @@ function concatenate(chunks: Uint8Array[], total: number): Buffer {
   return out;
 }
 
-// ---- GET: debug court surface ----
+// ---- GET: debug court surface (gated, E7-3) ----
 export async function GET(): Promise<Response> {
+  if (!debugFacesEnabled()) return debugFaceDisabled();
   refill();
   return Response.json(
     {

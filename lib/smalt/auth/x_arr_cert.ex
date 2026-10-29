@@ -55,6 +55,8 @@ defmodule Smalt.Auth.XArrCert do
   @behaviour Plug
   import Plug.Conn
 
+  require Logger
+
   @header "x-arr-clientcert"
 
   @impl Plug
@@ -64,9 +66,6 @@ defmodule Smalt.Auth.XArrCert do
   def call(conn, _opts) do
     if enabled?() and not Smalt.Auth.Bearer.auth_exempt_path?(conn.request_path) do
       case verify_client_cert(conn) do
-        :ok ->
-          conn
-
         {:ok, conn} ->
           conn
 
@@ -138,10 +137,20 @@ defmodule Smalt.Auth.XArrCert do
             end
 
           _ ->
+            Logger.error(
+              "x_arr_cert: CA certfile stat failed (missing or unreadable): #{inspect(f)} — " <>
+                "every client certificate will refuse ClientCertUntrustedRoot while require: true"
+            )
+
             []
         end
 
       _ ->
+        Logger.error(
+          "x_arr_cert: no :ca_certfile configured under config :smalt, :x_arr_cert — " <>
+            "every client certificate will refuse ClientCertUntrustedRoot while require: true"
+        )
+
         []
     end
   end
@@ -158,14 +167,21 @@ defmodule Smalt.Auth.XArrCert do
               _ = :public_key.pkix_decode_cert(pem, :otp)
               [pem]
             rescue
-              _ -> []
+              e ->
+                Logger.error(
+                  "x_arr_cert: CA file #{inspect(f)} is neither PEM nor a decodable DER cert: " <>
+                    Exception.format(:error, e)
+                )
+
+                []
             end
 
           entries ->
             for {:Certificate, der, :not_encrypted} <- entries, do: der
         end
 
-      _ ->
+      {:error, reason} ->
+        Logger.error("x_arr_cert: CA file read failed for #{inspect(f)}: #{inspect(reason)}")
         []
     end
   end
@@ -261,13 +277,6 @@ defmodule Smalt.Auth.XArrCert do
     end
   end
 
-  # ASN.1 UTCTime/GeneralizedTime charlists ("YYMMDDHHMMSSZ" / "YYYYMMDDHHMMSSZ")
-  # are NOT term-order comparable to calendar tuples — normalize both sides.
-  defp clock_compare({:utcTime, cs}, now), do: clock_compare(asn1_time_to_dt(cs), now)
-  defp clock_compare({:generalizedTime, cs}, now), do: clock_compare(asn1_time_to_dt(cs), now)
-  defp clock_compare(a, {:utcTime, cs}), do: clock_compare(a, asn1_time_to_dt(cs))
-  defp clock_compare(a, {:generalizedTime, cs}), do: clock_compare(a, asn1_time_to_dt(cs))
-
   # Unparseable cert time refuses fail-closed (never accept on parse failure).
   defp clock_compare(bad, _), do: raise(ArgumentError, "uncomparable cert time: #{inspect(bad)}")
 
@@ -332,7 +341,10 @@ defmodule Smalt.Auth.XArrCert do
         |> Enum.find_value(fn
           # DirectoryString: CN arrives tagged ({:utf8String, cn} for modern
           # issuers, {:printableString, cn} for legacy) — unwrap the tag.
+          # OTP ASN.1 decodes printableString to a charlist; normalize it.
           {:AttributeTypeAndValue, {2, 5, 4, 3}, {_tag, cn}} when is_binary(cn) -> cn
+          {:AttributeTypeAndValue, {2, 5, 4, 3}, {:printableString, cn}} when is_list(cn) ->
+            List.to_string(cn)
           _ -> nil
         end)
 

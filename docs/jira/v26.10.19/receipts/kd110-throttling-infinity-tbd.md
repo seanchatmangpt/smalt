@@ -156,3 +156,68 @@ grep -c "Sent 429" → 0 ; grep -c "crash 500" → 0
 `MIX_BUILD_ROOT=_build-lane-th1 mix test test/internal/` → **20 tests, 0 failures**
 (ran green twice: pre-witness and post-witness). No cluster-lane census contention
 encountered; all four internal files ran.
+
+## DECISION RECORD — profile-default call (ERRC wave-5 lane, 2026-10-20, HEAD bab1949)
+
+**Decision: KD-110 narrows.** The register row's divergence "throttle limits default
+`:infinity`" is resolved as **default = deployment policy**: `:unbounded` (both limits
+`:infinity`, byte-identical to pre-KD-110 behavior) remains the out-of-box default — a
+deliberate, documented choice, not a silent gap — and **`azure_parity` is a first-class
+bounded profile** (ARM 20 req/s, cosmos 25 RU/s) an operator selects via `SMALT_PROFILE`
+(app env `:profile`; explicit `SMALT_ARM_RATE_LIMIT`/`SMALT_COSMOS_RU_LIMIT` ints still
+beat profile defaults; unknown names refuse boot with ArgumentError naming the known set).
+No default behavior change was made or needed.
+
+**Falsifier re-run end-to-end at HEAD bab1949 (post-wave-4), Context: pair** (concurrent
+lanes on the shared tree; one compile-freeze wait for other lanes' in-flight
+queue_store.ex / cosmos.ex / event_grid.ex edits, disclosed — no edits to their files):
+
+### Witness C: SMALT_PROFILE=azure_parity, block b2, fresh boot, auth enforce
+
+Boot: `SMALT_PROFILE=azure_parity scripts/substrate-ctl up --block b2 --auth enforce --fresh`
+→ exit 0, ports 39020-39025. Token mint on the ARM port 39022 (b2's STS): 200,
+access_token len 1291. Three immediate 60-way bursts
+(`seq 60 | xargs -P 60 curl`):
+
+```
+burst1:  19 200
+         41 429
+burst2:  60 429
+burst3:  60 429
+grep -c "Sent 429" /tmp/smalt-substrate-state/logs/b2.log → 161
+grep -c "crash 500" /tmp/smalt-substrate-state/logs/b2.log → 0
+```
+
+Raw 429 transcript: `HTTP/1.1 429 Too Many Requests` with `retry-after: 1`,
+`content-type: application/json; charset=utf-8`, `x-ms-request-id` present (full headers
+captured 2026-10-20 13:10:01 GMT). Under-limit leg: 10 sequential requests at ~16 req/s →
+`429 429 429 429 200 200 200 200 200 200` — the first four hit the draining tail of the
+burst's fixed window, then enforcement correctly admits under-budget traffic. No disarm
+across bursts (the 2026-10-19 defect stays fixed).
+
+### Witness D: default-off byte-identical at the SAME HEAD, block b3, fresh boot
+
+`scripts/substrate-ctl up --block b3 --auth enforce --fresh` (no SMALT_PROFILE) → exit 0,
+ports 39030-39035. b3-local token mint on 39032: 200, len 1291. Three 60-way bursts:
+
+```
+burst1:  60 200
+burst2:  60 200
+burst3:  60 200
+429=0  500=0
+```
+
+Same HEAD, one env var of difference: `SMALT_PROFILE=azure_parity` → 429 + Retry-After
+over-limit, 2xx under-limit; unset → byte-identical `:unbounded` passthrough. The
+falsifier closes: over-limit probes receive 429 with Retry-After while under-limit traffic
+stays 2xx, and the unbounded default is unchanged.
+
+**Verdict: PASS.** KD-110 flips via kd_flip (registrar grant scoped to this row).
+
+### Regression note
+
+No code behavior changed in this lane (one comment-line KD-COVERS token added to
+`lib/smalt/config.ex`, disclosed; the token was applied twice — an intervening concurrent
+lane edit to config.ex removed the first application, re-applied at 2026-10-20). The
+profile machinery itself (throttle_profiles/0, throttle_profile/0, profile_throttled/3)
+landed pre-existing at HEAD bab1949.

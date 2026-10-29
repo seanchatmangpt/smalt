@@ -1,7 +1,8 @@
 # i28 — Budget gate end-to-end verification (solo)
 Context: solo(test/smalt_test.exs via SMALT_BUDGET_EXPORT budget formatter)
 
-Date: 2026-10-18. Standing: PASS (with one operator-contract finding, below).
+Date: 2026-10-18
+**Standing:** PASS (with one operator-contract finding, below).
 
 ## Scope
 

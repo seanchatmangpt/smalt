@@ -50,6 +50,44 @@ defmodule Smalt.Amqp.QueueStore do
   @spec queue_info(String.t()) :: {:ok, map()} | :error
   def queue_info(name), do: Smalt.Store.get(:smalt_sb_queues, name)
 
+  # KD-COVERS: KD-86 — real Service Bus refuses a send to a never-created
+  # entity with MessagingEntityNotFound; the legacy emulator auto-created the
+  # entity on send. `config :smalt, :sb_auto_ensure` (default false = real-SB
+  # refusal semantics) restores the emulator convenience when true.
+  #
+  # BK-B4R fix (2026-10-22): the KD-86 gate consults ONLY :smalt_sb_queues
+  # (emulator-lazy rows). An entity created through the MANAGEMENT plane
+  # (ARM gateway PUT or the ATOM alias bridge) lives in :smalt_resources and
+  # had no :smalt_sb_queues row, so every send to it was refused
+  # MessagingEntityNotFound — sender link detached, the b4 bench face
+  # ("0/2000 sends, CBS-at-200"). Real Azure: a management-plane-created
+  # entity is sendable. Admit it: if an ARM resource record exists, the
+  # entity exists — materialize the :smalt_sb_queues row and enqueue.
+  @spec ensure_entity(String.t()) :: {:ok, map()} | {:error, :messaging_entity_not_found}
+  defp ensure_entity(name) when is_binary(name) do
+    cond do
+      Application.get_env(:smalt, :sb_auto_ensure, false) ->
+        ensure_queue(name)
+
+      match?({:ok, _}, queue_info(name)) ->
+        queue_info(name)
+
+      arm_entity?(name) ->
+        ensure_queue(name)
+
+      true ->
+        {:error, :messaging_entity_not_found}
+    end
+  end
+
+  # True when a management-plane (ARM/ATOM) resource record exists for the
+  # queue entity. Reuses arm_queue_properties/1's downcased-suffix scan over
+  # :smalt_resources (the same scan queue_settings/1 already runs on the
+  # success path, so no new table or coupling).
+  defp arm_entity?(name) when is_binary(name) do
+    arm_queue_properties(name) != %{}
+  end
+
   # -- Queue settings (ARM-created properties) ----------------------------------
 
   @default_max_delivery_count 10
@@ -198,7 +236,7 @@ defmodule Smalt.Amqp.QueueStore do
   @spec enqueue(String.t(), binary() | {atom(), binary()}, keyword()) ::
           {:ok, integer()}
           | {:ok, {:fanout, pos_integer()}}
-          | {:error, :capacity | :too_large | :session_required}
+          | {:error, :capacity | :too_large | :session_required | :messaging_entity_not_found}
   # body may be a plain binary (EventHubs/legacy callers) or a tagged AMQP
   # body section {:body_data | :body_amqp_value, value} stored as-is so the
   # delivery path can re-emit the section kind the client sent (as-sent body
@@ -207,33 +245,49 @@ defmodule Smalt.Amqp.QueueStore do
       when is_binary(body) or (is_tuple(body) and tuple_size(body) == 2) do
     case subscription_queues(queue) do
       [] ->
-        {:ok, _} = ensure_queue(queue)
+        # KD-COVERS: KD-86 — real Service Bus refuses a send to a never-created
+        # entity with MessagingEntityNotFound; the legacy emulator auto-created
+        # it on send. Gated here (default OFF = real-SB refusal semantics;
+        # `config :smalt, :sb_auto_ensure, true` restores the emulator
+        # convenience). The error must be returned, never swallowed: the earlier
+        # in-flight form computed {:error, :entity_not_found} and fell through
+        # to do_enqueue anyway.
+        case ensure_entity(queue) do
+          {:ok, _} ->
+            settings = queue_settings(queue)
 
-        settings = queue_settings(queue)
+            cond do
+              settings.requires_session and is_nil(opts[:session_id]) ->
+                {:error, :session_required}
 
-        cond do
-          settings.requires_session and is_nil(opts[:session_id]) ->
-            {:error, :session_required}
+              body_size(body) > @max_body ->
+                {:error, :too_large}
 
-          body_size(body) > @max_body ->
-            {:error, :too_large}
+              true ->
+                # Capacity gate lives inside the serialized server (see do_enqueue):
+                # a client-side check-then-insert raced 32 concurrent enqueues past
+                # the 4096 cap (A5 F3 TOCTOU).
+                do_enqueue(queue, body, opts)
+            end
 
-          true ->
-            # Capacity gate lives inside the serialized server (see do_enqueue):
-            # a client-side check-then-insert raced 32 concurrent enqueues past
-            # the 4096 cap (A5 F3 TOCTOU).
-            do_enqueue(queue, body, opts)
+          {:error, :messaging_entity_not_found} ->
+            {:error, :messaging_entity_not_found}
         end
 
       # Topic fan-out (F-w2i-1): entity "t" has live subscription rows
       # "<t>/Subscriptions/<sub>" in :smalt_sb_queues (ARM materialization or
-      # lazy ensure). A send to "t" delivers an independent COPY into every
+      # a lazy ensure). A send to "t" delivers an independent COPY into every
       # subscription queue — Azure semantics: each subscription is its own
       # queue, and the topic entity itself holds nothing. Serialized as ONE
       # claim inside the queue_store server (check-all-then-insert-all, so a
       # capacity refusal never leaves a partial fan-out).
+      # w6m: subscription RULES gate the fan-out — a message is copied only
+      # into subscriptions whose rule set (implicit $Default when empty)
+      # matches it (Smalt.Amqp.RuleStore.rules_match?/2).
       subs ->
-        fanout_enqueue(subs, body, opts)
+        subs
+        |> Enum.filter(&Smalt.Amqp.RuleStore.rules_match?(&1, opts))
+        |> fanout_enqueue(body, opts)
     end
   end
 
@@ -265,6 +319,145 @@ defmodule Smalt.Amqp.QueueStore do
     else
       GenServer.call(server(), {:fanout_enqueue, subs, body, opts})
     end
+  end
+
+  # -- Auto-forwarding (w6ae) ----------------------------------------------------
+
+  @doc """
+  The queue's (or subscription's) `ForwardTo` target, read from the ARM
+  resource record properties (`"forwardTo"`, case-sensitive). `nil` when
+  unset/empty. Additive w6ae surface; the ARM PUT-side validation wiring is a
+  post-router-split staged patch (disclosed).
+  """
+  @spec forward_to(String.t()) :: String.t() | nil
+  def forward_to(entity) when is_binary(entity) do
+    case arm_queue_properties(entity) do
+      %{"forwardTo" => t} when is_binary(t) and t != "" ->
+        t
+
+      _ ->
+        subscription_forward_to(entity)
+    end
+  end
+
+  # Subscription rows are "<Topic>/Subscriptions/<sub>" in :smalt_sb_queues;
+  # their ARM record lives at .../topics/<t>/subscriptions/<s>.
+  defp subscription_forward_to(entity) do
+    case String.split(entity, "/Subscriptions/", parts: 2) do
+      [topic, sub] when topic != "" and sub != "" ->
+        suffix = "/topics/#{String.downcase(topic)}/subscriptions/#{String.downcase(sub)}"
+
+        case :ets.match(:smalt_resources, {:"$1", :"$2"}) do
+          [] ->
+            nil
+
+          matches ->
+            case Enum.find(matches, fn [key, _record] ->
+                   is_binary(key) and String.ends_with?(key, suffix)
+                 end) do
+              [_key, %{"properties" => %{"forwardTo" => t}}] when is_binary(t) and t != "" -> t
+              _ -> nil
+            end
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @max_forward_depth 5
+
+  @doc """
+  Typed validation for a `ForwardTo` target: `:ok` | `{:error, :self_forward}`
+  | `{:error, {:target_missing, name}}`. Target existence is case-sensitive in
+  `:smalt_sb_queues` (queue, topic, or subscription address). Module-level
+  face; ARM PUT wiring is a staged post-split patch (disclosed).
+  """
+  @spec validate_forward_to(String.t(), term()) :: :ok | {:error, term()}
+  def validate_forward_to(source, target)
+
+  def validate_forward_to(source, target) when is_binary(target) and target != "" do
+    cond do
+      target == source -> {:error, :self_forward}
+      match?({:ok, _}, Smalt.Store.get(:smalt_sb_queues, target)) -> :ok
+      true -> {:error, {:target_missing, target}}
+    end
+  end
+
+  def validate_forward_to(_source, _target), do: {:error, {:target_missing, nil}}
+
+  # Runs inside the serialized server: a just-inserted message on an entity
+  # with ForwardTo set is immediately moved to the target (Azure auto-forward
+  # semantics: the source holds nothing). Chain depth rides annotations
+  # ("x-opt-forward-depth"); depth >= @max_forward_depth at the target
+  # dead-letters instead of forwarding (ForwardChainLimit).
+  defp maybe_forward(queue, msg, seq) do
+    depth = msg.annotations["x-opt-forward-depth"] || 0
+
+    case forward_to(queue) do
+      nil ->
+        {:ok, seq}
+
+      _target when depth >= @max_forward_depth ->
+        # Chain too long: dead-letter on the CURRENT entity (the 5th hop
+        # target), preserving delivery count (SB keeps counting).
+        dead_letter_current(queue, msg, seq, "ForwardChainLimit")
+
+      target ->
+        # KD-COVERS: KD-86 — auto-forward into a never-created target is a
+        # silent auto-creation on the delivery path. Real-SB semantics: the
+        # target must exist (validate_forward_to/2 already gates ARM-side);
+        # a missing target dead-letters on the CURRENT entity instead of
+        # creating it.
+        case ensure_entity(target) do
+          {:ok, _} ->
+            :ets.delete(:smalt_sb_messages, {queue, seq})
+            do_forward(target, msg, seq)
+
+          {:error, :messaging_entity_not_found} ->
+            dead_letter_current(queue, msg, seq, "ForwardTargetMissing")
+        end
+    end
+  end
+
+  # KD-86 dead-letter-on-current-entity helper (ForwardChainLimit and the
+  # KD-86 ForwardTargetMissing refusal share the shape). The DLQ entity row
+  # is NOT auto-created here (real-SB DLQs are implicit); the message row
+  # and seq counter work on any entity name.
+  defp dead_letter_current(queue, msg, _seq, reason) do
+    dlq = deadletter_queue(queue)
+    _ = ensure_entity(dlq)
+    dl_seq = Smalt.Store.update_counter(:smalt_sb_queues, {dlq, :seq}, 1)
+
+    dl_msg = %{
+      msg
+      | queue: dlq,
+        seq: dl_seq,
+        annotations: Map.put(msg.annotations, "x-opt-deadletter-reason", reason),
+        state: :available,
+        lock_token: nil,
+        locked_until: nil
+    }
+
+    Smalt.Store.put(:smalt_sb_messages, {dlq, dl_seq}, dl_msg)
+    {:ok, dl_seq}
+  end
+
+  defp do_forward(target, msg, _seq) do
+    depth = msg.annotations["x-opt-forward-depth"] || 0
+    annotations = Map.put(msg.annotations, "x-opt-forward-depth", depth + 1)
+
+    opts = [
+      {:message_id, msg.message_id},
+      {:app_props, msg.app_props},
+      {:session_id, msg.session_id},
+      {:annotations, annotations},
+      {:delivery_count, msg.delivery_count},
+      {:now_ms, System.system_time(:millisecond)},
+      {:scheduled_enqueue_time, msg.scheduled_enqueue_time}
+    ]
+
+    do_enqueue_locked(target, msg.body, opts)
   end
 
   defp body_size(binary) when is_binary(binary), do: byte_size(binary)
@@ -328,7 +521,7 @@ defmodule Smalt.Amqp.QueueStore do
     }
 
     Smalt.Store.put(:smalt_sb_messages, {queue, seq}, msg)
-    {:ok, seq}
+    maybe_forward(queue, msg, seq)
   end
 
   # -- Dequeue -----------------------------------------------------------------
@@ -469,6 +662,28 @@ defmodule Smalt.Amqp.QueueStore do
   @spec deadletter_queue(String.t()) :: String.t()
   def deadletter_queue(queue), do: queue <> "/$deadletterqueue"
 
+  # BK-87 (BK-65 surfaced defect 2): ARM queue DELETE must drop the entity's
+  # messages with it (real Service Bus parity — a deleted entity's messages are
+  # gone; before this, a re-created queue of the same name drained 1-2 stale
+  # deliveries from deleted generations).
+  @doc """
+  Purge every trace of `queue`'s in-flight traffic: all message rows
+  (`:smalt_sb_messages` keys `{queue, seq}`), all message locks owned by the
+  queue (`:smalt_sb_locks` rows with `:queue == queue`), and all session
+  records (`:smalt_sb_sessions` keys `{queue, session_id}`). Serialized through
+  the claim/settle server so a purge can never interleave a concurrent claim.
+  Returns `{:ok, deleted_message_count}`. No-op (`{:ok, 0}`) when the tables
+  are not yet materialized (control plane independent of data-plane readiness).
+  """
+  @spec purge_queue(String.t()) :: {:ok, non_neg_integer()}
+  def purge_queue(queue) when is_binary(queue) do
+    if tables_ready?() do
+      GenServer.call(server(), {:purge_queue, queue})
+    else
+      {:ok, 0}
+    end
+  end
+
   # -- Session state / session enumeration / batch delete (GAP-A2-05/06/07) -----
 
   @doc """
@@ -517,9 +732,17 @@ defmodule Smalt.Amqp.QueueStore do
   * `session_state_size` — byte_size of the opaque state blob (0 when nil)
   * `message_count` — active messages in `:smalt_sb_messages` carrying the
     session_id (any state: available/locked/scheduled/deferred)
+  * `session_state` — the opaque state bytes themselves (nil when unset)
   """
   @spec list_sessions(String.t(), keyword()) ::
-          {:ok, [%{session_id: String.t(), session_state_size: non_neg_integer(), message_count: non_neg_integer(), updated_at: integer()}]}
+          {:ok,
+           [%{
+             session_id: String.t(),
+             session_state_size: non_neg_integer(),
+             session_state: binary() | nil,
+             message_count: non_neg_integer(),
+             updated_at: integer()
+           }]}
   def list_sessions(queue, opts \\ []) do
     skip = max(opts[:skip] || 0, 0)
     top = (opts[:top] || 100) |> max(1)
@@ -532,6 +755,7 @@ defmodule Smalt.Amqp.QueueStore do
         {sid,
          %{
            session_state_size: session_state_size(lock),
+           session_state: session_state_bytes(lock),
            updated_at: lock[:updated_at] || 0
          }}
       end)
@@ -559,11 +783,12 @@ defmodule Smalt.Amqp.QueueStore do
       |> Enum.uniq()
       |> Enum.sort()
       |> Enum.map(fn sid ->
-        meta = locked[sid] || %{session_state_size: 0, updated_at: 0}
+        meta = locked[sid] || %{session_state_size: 0, session_state: nil, updated_at: 0}
 
         %{
           session_id: sid,
           session_state_size: meta.session_state_size,
+          session_state: meta.session_state,
           message_count: Map.get(message_counts, sid, 0),
           updated_at: meta.updated_at
         }
@@ -579,6 +804,9 @@ defmodule Smalt.Amqp.QueueStore do
     do: byte_size(state)
 
   defp session_state_size(_), do: 0
+
+  defp session_state_bytes(%{session_state: state}) when is_binary(state), do: state
+  defp session_state_bytes(_), do: nil
 
   defp maybe_filter_since(entries, nil), do: entries
 
@@ -613,6 +841,24 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   # -- Internals ---------------------------------------------------------------
+
+  # BK-87: entity-scoped purge (messages + locks + sessions), run inside the
+  # serialized claim/settle server — never interleaves a concurrent claim.
+  defp do_purge_queue(queue) do
+    msgs = :ets.match_object(:smalt_sb_messages, {{queue, :_}, :_})
+    :ets.match_delete(:smalt_sb_messages, {{queue, :_}, :_})
+
+    # Lock rows key on the token; filter on the record's :queue field.
+    if :ets.info(:smalt_sb_locks) != :undefined do
+      :ets.match_object(:smalt_sb_locks, {:_, :_})
+      |> Enum.each(fn {token, lock} ->
+        if is_map(lock) and lock[:queue] == queue, do: Smalt.Store.delete(:smalt_sb_locks, token)
+      end)
+    end
+
+    :ets.match_delete(:smalt_sb_sessions, {{queue, :_}, :_})
+    {:ok, length(msgs)}
+  end
 
   defp messages(queue) do
     # Keys are {queue, seq} tuples. Store.keys/list_prefix cannot be used here:
@@ -760,6 +1006,10 @@ defmodule Smalt.Amqp.QueueStore do
 
   def handle_call({:delete_by_sequence, queue, seqs}, _from, state_store) do
     {:reply, do_delete_by_sequence(queue, seqs), state_store}
+  end
+
+  def handle_call({:purge_queue, queue}, _from, state_store) do
+    {:reply, do_purge_queue(queue), state_store}
   end
 
   def handle_call({:cancel_scheduled, queue, seq}, _from, state_store) do
@@ -1005,6 +1255,7 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   defp do_deadletter(queue, seq, reason, description, opts) do
+
     dlq = queue <> "/$deadletterqueue"
 
     case Smalt.Store.get(:smalt_sb_messages, {queue, seq}) do

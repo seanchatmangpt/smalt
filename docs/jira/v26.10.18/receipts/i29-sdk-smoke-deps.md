@@ -2,7 +2,8 @@
 
 Context: solo(checkpoint2 census follow-up)
 
-Date: 2026-10-18 · Context: solo(checkpoint2 census follow-up) · Standing: PARTIAL_ALIVE
+Date: 2026-10-18 · Context: solo(checkpoint2 census follow-up)
+**Standing:** PARTIAL_ALIVE
 
 ## Diff audited
 

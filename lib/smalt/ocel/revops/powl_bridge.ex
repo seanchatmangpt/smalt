@@ -295,9 +295,27 @@ defmodule Smalt.Ocel.Revops.PowlBridge do
        out_path
        |> File.read!()
        |> Jason.decode!()
-       |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)}
+       |> Map.new(fn {k, v} -> {conform_key(k), v} end)}
     end
   end
+
+  # SPOF-B / A-6 (atom law, frame_codec class): the ex4pm conform script's
+  # JSON keys are EXTERNAL script output — never mint atoms from unverified
+  # input. The previous raw per-key conversion is replaced by this bounded,
+  # compile-time allowlist: known keys convert to atoms (byte-identical for
+  # consumers — the mix task and the in-process path already read atom keys);
+  # any unknown/future script key stays a binary, so a script-side key addition
+  # can no longer grow the atom table.
+  defp conform_key("fitness"), do: :fitness
+  defp conform_key("standing"), do: :standing
+  defp conform_key("subject_hash"), do: :subject_hash
+  defp conform_key("receipt_hash"), do: :receipt_hash
+  defp conform_key("observed_edge_count"), do: :observed_edge_count
+  defp conform_key("deviation_count"), do: :deviation_count
+  defp conform_key("deviations"), do: :deviations
+  defp conform_key("mean_case_fitness_score"), do: :mean_case_fitness_score
+  defp conform_key("object_type"), do: :object_type
+  defp conform_key(other) when is_binary(other), do: other
 
   defp run_script(args) do
     dir = ex4pm_dir()

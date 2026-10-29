@@ -1,51 +1,187 @@
 {
   "_comment": "AZB-21 typed classification file for scripts/sleep_gate.py. The ONLY allowlist for the sleep gate: files whose sleep lives inside one audited bounded poll loop, and function names whose sleep is a bounded poll/retry STEP (class C retry-loop idiom, v26.10.18 census rewrite-drafts/sleeps.md). Growth of this file is a reviewed diff; every entry carries a reason. Inline per-site escapes use `# SLEEP-CLASS: TIME-ADVANCE` (real time window) or `# SLEEP-CLASS: POLL-STEP` (bounded poll step) adjacent to the sleep.",
   "files": [
-    {"path": "test/support/assert_eventually.ex", "reason": "audited bounded-poll implementation; sleep is the poll step inside loop/3 with a monotonic deadline"},
-    {"path": "test/internal/poll_helper.exs", "reason": "audited bounded-poll implementation (residual internal tier); pace/4 sleep is the bounded poll step min(poll_ms, remaining) under a monotonic deadline; the inline POLL-STEP comment sits on the defp pace header, not adjacent to the sleep line, so the file-tier entry is the typed fix"},
-    {"path": "verification/py/harness/poll.py", "reason": "audited bounded-poll implementation: poll_until() deadline-checked (time.monotonic deadline, typed TimeoutError); the sleep is the poll step"},
-    {"path": "verification/ts/harness/poll.ts", "reason": "audited bounded-poll implementation: boundedPoll() deadline-checked with 10ms-200ms backoff cap and typed PollTimeout; sleep() at line 37 is the poll-step primitive consumed by boundedPoll"},
-    {"path": "verification/ts/harness/substrate.ts", "reason": "audited bounded boot-health poll: 250ms step inside a 90s deadline-checked loop polling tryConnect + /metadata/endpoints; typed SubstrateBootError + SIGKILL at deadline"},
-    {"path": "verification/py/conftest.py", "reason": "audited bounded poll steps only: _sweep 10s deadline port-drain poll (line 132), flock LOCK_EX retry under 20s deadline (line 172), substrate boot readiness poll under 180s deadline polling proc.poll()+port_open (line 196), _kill 5s bounded exit-await before SIGKILL escalation (line 214)"}
+    {
+      "path": "test/support/assert_eventually.ex",
+      "reason": "audited bounded-poll implementation; sleep is the poll step inside loop/3 with a monotonic deadline"
+    },
+    {
+      "path": "test/internal/poll_helper.exs",
+      "reason": "audited bounded-poll implementation (residual internal tier); pace/4 sleep is the bounded poll step min(poll_ms, remaining) under a monotonic deadline; the inline POLL-STEP comment sits on the defp pace header, not adjacent to the sleep line, so the file-tier entry is the typed fix"
+    },
+    {
+      "path": "verification/py/harness/poll.py",
+      "reason": "audited bounded-poll implementation: poll_until() deadline-checked (time.monotonic deadline, typed TimeoutError); the sleep is the poll step"
+    },
+    {
+      "path": "verification/ts/harness/poll.ts",
+      "reason": "audited bounded-poll implementation: boundedPoll() deadline-checked with 10ms-200ms backoff cap and typed PollTimeout; sleep() at line 37 is the poll-step primitive consumed by boundedPoll"
+    },
+    {
+      "path": "verification/ts/harness/substrate.ts",
+      "reason": "audited bounded boot-health poll: 250ms step inside a 90s deadline-checked loop polling tryConnect + /metadata/endpoints; typed SubstrateBootError + SIGKILL at deadline"
+    },
+    {
+      "path": "verification/py/conftest.py",
+      "reason": "audited bounded poll steps only: _sweep 10s deadline port-drain poll (line 132), flock LOCK_EX retry under 20s deadline (line 172), substrate boot readiness poll under 180s deadline polling proc.poll()+port_open (line 196), _kill 5s bounded exit-await before SIGKILL escalation (line 214)"
+    },
+    {
+      "path": "test/integration/ja12_hot_reload_court.exs",
+      "reason": "hits are `after 5000 ->` bounded receive timeouts inside embedded Erlang source strings (~c sigils) — structural sync (receive with timeout), not sleep primitives; the scanner's string-literal exemption covers only double-quoted strings, not sigil heredocs"
+    }
   ],
   "functions": [
-    {"name": "sweep_until_terminal", "reason": "bounded poll/retry step"},
-    {"name": "poll_until_succeeded", "reason": "bounded poll/retry step"},
-    {"name": "poll_until_terminal", "reason": "bounded poll/retry step"},
-    {"name": "poll_until", "reason": "bounded poll/retry step"},
-    {"name": "poll_loop", "reason": "bounded poll/retry step"},
-    {"name": "do_poll", "reason": "bounded poll/retry step"},
-    {"name": "resilient_clear", "reason": "bounded retry helper"},
-    {"name": "resilient_delete", "reason": "bounded retry helper"},
-    {"name": "wait_until", "reason": "bounded poll helper"},
-    {"name": "wait_gone", "reason": "bounded poll helper"},
-    {"name": "wait_for_gone", "reason": "bounded poll helper"},
-    {"name": "wait_for_fresh_window", "reason": "bounded poll helper"},
-    {"name": "wait_listener", "reason": "bounded poll helper"},
-    {"name": "wait_for_ephemeral_port", "reason": "bounded poll helper"},
-    {"name": "connect_with_heal", "reason": "bounded retry helper"},
-    {"name": "retry_5xx", "reason": "bounded retry helper"},
-    {"name": "boot_with_retry", "reason": "bounded retry helper"},
-    {"name": "typed_start", "reason": "bounded retry helper"},
-    {"name": "await_dead", "reason": "bounded poll helper"},
-    {"name": "consume", "reason": "bounded poll helper"},
-    {"name": "port_verdict_agrees?", "reason": "bounded poll helper"},
-    {"name": "evict_until", "reason": "bounded poll helper"},
-    {"name": "sweep_until", "reason": "bounded poll helper"},
-    {"name": "wait_until_gone", "reason": "bounded poll helper"},
-    {"name": "wait_twin", "reason": "bounded poll helper"},
-    {"name": "wait_terminal", "reason": "bounded poll helper"},
-    {"name": "wait_store_tables", "reason": "bounded poll helper"},
-    {"name": "do_ensure_store_up", "reason": "bounded retry helper"},
-    {"name": "ensure_store_up", "reason": "bounded retry helper"},
-    {"name": "collect_traced_calls", "reason": "bounded poll helper"},
-    {"name": "collect_publish_ops", "reason": "bounded poll helper"},
-    {"name": "do_snapshot", "reason": "bounded poll helper"},
-    {"name": "do_resilient_clear", "reason": "bounded retry helper"},
-    {"name": "do_clear", "reason": "bounded retry helper"},
-    {"name": "wait_connect", "reason": "bounded poll helper"},
-    {"name": "wait_for_new_store", "reason": "bounded poll helper"},
-    {"name": "await_gone", "reason": "bounded poll helper (test_helper.exs registered-name teardown await; bounded by n)"},
-    {"name": "do_quiescent_read", "reason": "bounded quiescent read with backoff (test/corpus/helper.exs; bounded by remaining attempts, dead-table retry included)"}
+    {
+      "name": "sweep_until_terminal",
+      "reason": "bounded poll/retry step"
+    },
+    {
+      "name": "poll_until_succeeded",
+      "reason": "bounded poll/retry step"
+    },
+    {
+      "name": "poll_until_terminal",
+      "reason": "bounded poll/retry step"
+    },
+    {
+      "name": "poll_until",
+      "reason": "bounded poll/retry step"
+    },
+    {
+      "name": "poll_loop",
+      "reason": "bounded poll/retry step"
+    },
+    {
+      "name": "do_poll",
+      "reason": "bounded poll/retry step"
+    },
+    {
+      "name": "resilient_clear",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "resilient_delete",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "wait_until",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_gone",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_for_gone",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_for_fresh_window",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_listener",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_for_ephemeral_port",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "connect_with_heal",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "retry_5xx",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "boot_with_retry",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "typed_start",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "await_dead",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "consume",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "port_verdict_agrees?",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "evict_until",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "sweep_until",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_until_gone",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_twin",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_terminal",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_store_tables",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "do_ensure_store_up",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "ensure_store_up",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "collect_traced_calls",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "collect_publish_ops",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "do_snapshot",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "do_resilient_clear",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "do_clear",
+      "reason": "bounded retry helper"
+    },
+    {
+      "name": "wait_connect",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "wait_for_new_store",
+      "reason": "bounded poll helper"
+    },
+    {
+      "name": "await_gone",
+      "reason": "bounded poll helper (test_helper.exs registered-name teardown await; bounded by n)"
+    },
+    {
+      "name": "do_quiescent_read",
+      "reason": "bounded quiescent read with backoff (test/corpus/helper.exs; bounded by remaining attempts, dead-table retry included)"
+    }
   ]
 }

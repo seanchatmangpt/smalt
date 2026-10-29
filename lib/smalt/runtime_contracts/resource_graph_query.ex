@@ -6,7 +6,7 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
   Fences, in-process, the wire invariants of
   `POST /providers/Microsoft.ResourceGraph/resources`:
 
-    * success envelope: `count` / `data` / `totalRecords` / `resultTruncated`
+    * success envelope: `count` / `data` / `resultTruncated`
     * `$skipToken` pagination: token returned while pages remain, second page
       continues without overlap or gap; no token on the final page
     * `$top` page size honored
@@ -64,9 +64,11 @@ defmodule Smalt.RuntimeContracts.ResourceGraphQuery do
 
     Support.assert(is_list(body["data"]), "data array")
 
+    # 2022-10-01 documented envelope: count/data/facets/$skipToken — no
+    # totalRecords key on the query response.
     Support.assert(
-      is_integer(body["totalRecords"]) and body["totalRecords"] >= body["count"],
-      "totalRecords >= count"
+      Map.has_key?(body, "totalRecords") == false,
+      "totalRecords is not part of the 2022-10-01 query response envelope"
     )
 
     Support.assert(is_boolean(body["resultTruncated"]), "resultTruncated boolean")

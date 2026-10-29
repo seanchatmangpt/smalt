@@ -1,0 +1,3 @@
+{"name":"stub-noop","n":1000,"wall_ms":0.003,"ops_sec":300030003,"ns_per_op":3.333,"reds_per_op":0,"heap_delta":0}
+{"name":"stub-count","n":500,"wall_ms":0.053,"ops_sec":9493610.8,"ns_per_op":105.334,"reds_per_op":8.002,"heap_delta":4888}
+{"name":"stub-arith","n":200,"wall_ms":0.023,"ops_sec":8571551.022,"ns_per_op":116.665,"reds_per_op":20,"heap_delta":0}

@@ -1,0 +1,74 @@
+{
+  "run": "",
+  "tag": 1792600874770,
+  "results": {
+    "smalt": [
+      {
+        "op": "container-create",
+        "ok": true,
+        "status": 201
+      },
+      {
+        "op": "blob-put",
+        "ok": true,
+        "status": 201
+      },
+      {
+        "op": "list",
+        "ok": true,
+        "status": 200
+      },
+      {
+        "op": "get-byte-equal",
+        "ok": true,
+        "status": 206
+      },
+      {
+        "op": "blob-delete",
+        "ok": false,
+        "status": 409,
+        "err": "Blob modification refused: container policy enforces immutable WORM retention.",
+        "body": "{\"error\":{\"code\":\"ContainerLocked\",\"message\":\"Blob modification refused: container policy enforces immutable WORM retention.\"}}"
+      },
+      {
+        "op": "container-delete",
+        "ok": false,
+        "status": 409,
+        "err": "Blob modification refused: container policy enforces immutable WORM retention.",
+        "body": "{\"error\":{\"code\":\"ContainerLocked\",\"message\":\"Blob modification refused: container policy enforces immutable WORM retention.\"}}"
+      }
+    ],
+    "azurite": [
+      {
+        "op": "container-create",
+        "ok": true,
+        "status": 201
+      },
+      {
+        "op": "blob-put",
+        "ok": true,
+        "status": 201
+      },
+      {
+        "op": "list",
+        "ok": true,
+        "status": 200
+      },
+      {
+        "op": "get-byte-equal",
+        "ok": true,
+        "status": 206
+      },
+      {
+        "op": "blob-delete",
+        "ok": true,
+        "status": 202
+      },
+      {
+        "op": "container-delete",
+        "ok": true,
+        "status": 202
+      }
+    ]
+  }
+}

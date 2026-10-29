@@ -146,10 +146,75 @@ defmodule Smalt.Auth.Bearer do
     if anonymous_mode?() or exempt?(conn.request_path) do
       conn
     else
-      case verify_bearer(conn) do
+      case admission(conn) do
         :ok -> conn
         {:refuse, code, reason} -> refuse(conn, code, reason)
+        # POP500: not-ready answers the router's typed 503 face (same shape as
+        # EgressRouter.route_not_ready/1 incl. Retry-After), never a 500.
+        {:not_ready, code, reason} -> not_ready(conn, code, reason)
       end
+    end
+  end
+
+  # w6h (lane disclosure: additive seam in the shared auth plug). A Cosmos
+  # resource-token Authorization (`type=resource&ver=1.0&sig=<token>`) is NOT
+  # a bearer token — routing it through the JWT path would refuse it 401 even
+  # when the token is live and in-scope. When the header carries the
+  # type=resource form on a /dbs path, admission delegates to
+  # Smalt.DataPlane.CosmosAuthz.verify_resource/1 (scope+mode checked there,
+  # fail-closed); everything else takes the unchanged bearer path.
+  defp admission(conn) do
+    header = authorization_value(conn)
+
+    cond do
+      resource_token_header?(header) and String.starts_with?(conn.request_path, "/dbs") ->
+        Smalt.DataPlane.CosmosAuthz.verify_resource(conn)
+
+      # KD-COVERS: KD-114
+      # KD-114: blob SharedKey admit — `Authorization: SharedKey <acct>:<sig>`
+      # is a storage-client scheme, never a bearer token; the previous
+      # extractor refused it 401 MalformedBearerHeader (the original KD-114
+      # divergence). Verification (fail-closed, constant-time compare) lives
+      # in Smalt.Auth.SharedKey; every non-SharedKey shape takes the
+      # unchanged bearer path.
+      shared_key_header?(header) ->
+        # POP500 (Lens7 law parity): a SharedKey-authenticated request when the
+        # SharedKey module is not loadable is server not-ready — the same
+        # typed 503 class the router's with_route/not_ready? seam mandates —
+        # never a raw UndefinedFunctionError 500 (witnessed live on the 9444
+        # TLS twin: stale build root left the beam absent; every
+        # SharedKey request FATALed the SDK harness with RestError 500).
+        if Code.ensure_loaded?(Smalt.Auth.SharedKey) do
+          Smalt.Auth.SharedKey.verify(conn)
+        else
+          {:not_ready, "RouteNotReady", "SharedKey verifier unavailable"}
+        end
+
+      true ->
+        verify_bearer(conn)
+    end
+  end
+
+  # `SharedKey <account>:<sig>` — scheme matched case-insensitively.
+  defp shared_key_header?(nil), do: false
+
+  defp shared_key_header?(header) when is_binary(header) do
+    case String.split(header, " ", parts: 2) do
+      [scheme, rest] ->
+        String.downcase(scheme) == "sharedkey" and byte_size(String.trim(rest)) > 0
+
+      _ ->
+        false
+    end
+  end
+
+  defp resource_token_header?("type=resource&" <> _rest), do: true
+  defp resource_token_header?(_), do: false
+
+  defp authorization_value(conn) do
+    case get_req_header(conn, "authorization") do
+      [v | _] -> v
+      [] -> nil
     end
   end
 
@@ -202,7 +267,11 @@ defmodule Smalt.Auth.Bearer do
       Regex.match?(~r{^/[^/]+/discovery/v2\.0/keys$}, path) or
       # Tenant openid-configuration: same bootstrap class — msal fetches the
       # tenant discovery doc BEFORE any token exists. Bounded, `$`-anchored.
-      Regex.match?(~r{^/[^/]+/v2\.0/\.well-known/openid-configuration$}, path)
+      Regex.match?(~r{^/[^/]+/v2\.0/\.well-known/openid-configuration$}, path) or
+      # IMDS managed-identity token face (w6r): bootstrap class like the tenant
+      # token endpoint — ManagedIdentityCredential has no bearer yet. Exact,
+      # `$`-anchored (a longer path is NOT the endpoint).
+      Regex.match?(~r{^/metadata/identity/oauth2/token$}, path)
   end
 
   # Public read of the exempt-path predicate (egress-dispatch lens-4 cross-lane
@@ -592,11 +661,27 @@ defmodule Smalt.Auth.Bearer do
 
   # -- refusal -------------------------------------------------------------------
 
+  # POP500: typed server-not-ready face at the auth seam — mirrors
+  # EgressRouter.route_not_ready/1 (x-ms-request-id + x-ms-version +
+  # Retry-After + RouteNotReady envelope) so a missing verifier module is a
+  # retryable 503, never a raw 500.
+  defp not_ready(conn, code, reason) do
+    body = Jason.encode!(%{"error" => %{"code" => code, "message" => reason}})
+
+    conn
+    |> put_resp_header("x-ms-request-id", Smalt.EgressRouter.generate_request_id())
+    |> put_resp_header("retry-after", "1")
+    |> put_resp_content_type("application/json")
+    |> send_resp(503, body)
+    |> halt()
+  end
+
   defp refuse(conn, code, reason) do
     body = Jason.encode!(%{"error" => %{"code" => code, "message" => reason}})
 
     conn
     |> put_resp_header("www-authenticate", challenge_value(conn, reason))
+    |> put_resp_header("access-control-expose-headers", "www-authenticate")
     |> put_resp_content_type("application/json")
     |> send_resp(401, body)
     |> halt()
@@ -655,6 +740,7 @@ defmodule Smalt.Auth.Bearer do
 
     conn
     |> put_resp_header("www-authenticate", challenge_value(conn, reason))
+    |> put_resp_header("access-control-expose-headers", "www-authenticate")
     |> put_resp_content_type("application/json")
     |> send_resp(401, body)
     |> halt()

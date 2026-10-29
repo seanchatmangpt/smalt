@@ -41,7 +41,15 @@ defmodule Smalt.Planes do
   def resolve do
     case raw() do
       :all -> :all
-      names when is_list(names) -> Enum.map(names, &validate/1)
+      names when is_list(names) ->
+        # EXPL-11 F4: an empty selection boots zero plane surfaces — a
+        # "successful" emulator with no planes. Refuse typed, like an
+        # unknown name.
+        case names do
+          [] -> raise InvalidPlane, plane: []
+          _ -> Enum.map(names, &validate/1)
+        end
+
       csv when is_binary(csv) -> parse_csv(csv)
       other -> raise InvalidPlane, plane: other
     end
@@ -58,14 +66,17 @@ defmodule Smalt.Planes do
   defp parse_csv(csv) do
     csv
     |> String.split(",", trim: true)
-    |> Enum.map(&validate(atomize(String.trim(&1))))
+    |> Enum.map(&validate_name(String.trim(&1)))
   end
 
-  defp atomize(name) do
-    String.to_existing_atom(name)
-  rescue
-    ArgumentError -> String.to_atom(name)
-  end
+  # JA-R1 (V1): validate against the known plane set BEFORE any atomize —
+  # malformed SMALT_PLANES input must refuse with {:invalid_plane, name}
+  # without minting an arbitrary atom at boot.
+  @known_strings Enum.map(@known, &Atom.to_string/1)
+
+  defp validate_name(name) when name in @known_strings, do: String.to_existing_atom(name)
+
+  defp validate_name(name), do: raise(InvalidPlane, plane: name)
 
   defp validate(name) when name in @known, do: name
 

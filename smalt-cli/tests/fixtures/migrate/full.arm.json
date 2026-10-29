@@ -1,0 +1,166 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "type": "string", "defaultValue": "eastus" }
+  },
+  "variables": {
+    "cosmosName": "smalt-cosmos",
+    "sbName": "smalt-sb"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2023-04-15",
+      "name": "[variables('cosmosName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "consistencyPolicy": { "defaultConsistencyLevel": "Session" }
+      },
+      "resources": [
+        {
+          "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+          "apiVersion": "2023-04-15",
+          "name": "orders",
+          "properties": { "options": { "throughput": 400 } },
+          "resources": [
+            {
+              "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+              "apiVersion": "2023-04-15",
+              "name": "orderItems",
+              "properties": {
+                "partitionKey": { "paths": ["/customerId", "/region"] }
+              }
+            }
+          ]
+        },
+        {
+          "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+          "apiVersion": "2023-04-15",
+          "name": "catalog",
+          "properties": {}
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2023-04-15",
+      "name": "[variables('cosmosName')]/legacy/legacyItems",
+      "dependsOn": ["[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('cosmosName'), 'legacy')]"],
+      "properties": {
+        "partitionKey": { "paths": ["/pk"] }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-01-01",
+      "name": "smaltstore",
+      "sku": { "name": "Standard_LRS" },
+      "kind": "StorageV2",
+      "location": "[parameters('location')]",
+      "resources": [
+        {
+          "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+          "apiVersion": "2023-01-01",
+          "name": "default/artifacts",
+          "properties": { "publicAccess": "None" }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-01-01",
+      "name": "smaltstore/default/archives"
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[variables('sbName')]",
+      "sku": { "name": "Standard" },
+      "location": "[parameters('location')]",
+      "resources": [
+        {
+          "type": "Microsoft.ServiceBus/namespaces/queues",
+          "apiVersion": "2022-10-01-preview",
+          "name": "jobs",
+          "properties": {
+            "maxDeliveryCount": 5,
+            "lockDuration": "PT1M"
+          }
+        },
+        {
+          "type": "Microsoft.ServiceBus/namespaces/topics",
+          "apiVersion": "2022-10-01-preview",
+          "name": "events",
+          "resources": [
+            {
+              "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions",
+              "apiVersion": "2022-10-01-preview",
+              "name": "workers",
+              "properties": { "maxDeliveryCount": 3 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces",
+      "apiVersion": "2022-10-01-preview",
+      "name": "smalt-eh",
+      "sku": { "name": "Standard", "capacity": 2 },
+      "location": "[parameters('location')]",
+      "resources": [
+        {
+          "type": "Microsoft.EventHub/namespaces/eventhubs",
+          "apiVersion": "2022-10-01-preview",
+          "name": "telemetry",
+          "properties": {
+            "partitionCount": 4,
+            "messageRetentionInDays": 1
+          },
+          "resources": [
+            {
+              "type": "Microsoft.EventHub/namespaces/eventhubs/consumerGroups",
+              "apiVersion": "2022-10-01-preview",
+              "name": "ingest"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "smalt-vault",
+      "location": "[parameters('location')]",
+      "properties": { "enableSoftDelete": true },
+      "resources": [
+        {
+          "type": "Microsoft.KeyVault/vaults/secrets",
+          "apiVersion": "2023-07-01",
+          "name": "conn-string",
+          "properties": { "value": "[parameters('secretValue')]" }
+        }
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "2023-05-01-preview",
+      "name": "smalt-apim",
+      "sku": { "name": "Developer", "capacity": 1 },
+      "location": "[parameters('location')]",
+      "properties": {
+        "publisherEmail": "ops@smalt.local",
+        "publisherName": "Smalt Ops"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "smalt-appinsights",
+      "location": "[parameters('location')]",
+      "kind": "web"
+    }
+  ]
+}

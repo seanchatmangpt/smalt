@@ -1,0 +1,59 @@
+# the evidence law production workflow net (ATH-3).
+#
+# SESE workflow net: intake -> review -> production, quarantine branch.
+# Vocabulary: this Turtle file is the declarative carrier of the net smalt's
+# POWL2 executor runs; the vocabulary below is exactly what
+# lib/smalt/powl2/reticle.ex admits and lib/smalt/powl2/executor.ex executes
+# (Reticle.AST.ChoiceGraph: integer node ids, plain {from,to} edge pairs,
+# guards keyed by the edge's TO node and matched against the review step's
+# last_outcome). The ATH-3 court parses THIS file's bytes into the Reticle AST
+# — the Elixir side is never consulted as the net's source of truth.
+#
+#   node 0  start delimiter (tau)      — SESE entry
+#   node 1  intake transition
+#   node 2  review transition (law step: shapes.ttl guard + wall verdict)
+#   node 3  production transition (CAS commit + settle)
+#   node 4  quarantine transition (0-byte refusal: no Store/feed mutation)
+#   node 5  end delimiter (tau)        — SESE exit
+#
+# Edges: 0->1, 1->2, then review's last_outcome picks 2->3 (:compliant) or
+# 2->4 (:wall_breach); 3->5 and 4->5 are fallback (:always) exits. SESE: no
+# edge into node 0, no edge out of node 5, every child on a 0->5 path.
+
+@prefix powl: <https://smalt.local/powl#> .
+@prefix ev: <https://smalt.local/ev#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ev:the evidence lawNet a powl:ChoiceGraph ;
+  powl:start "0"^^xsd:integer ;
+  powl:end "5"^^xsd:integer ;
+  powl:children
+    "1"^^xsd:integer ,
+    "2"^^xsd:integer ,
+    "3"^^xsd:integer ,
+    "4"^^xsd:integer ;
+  powl:childLabel
+    [ powl:node "1"^^xsd:integer ; powl:label "intake" ] ,
+    [ powl:node "2"^^xsd:integer ;
+      powl:label "review" ] ,
+    [ powl:node "3"^^xsd:integer ;
+      powl:label "production" ] ,
+    [ powl:node "4"^^xsd:integer ;
+      powl:label "quarantine" ] ;
+  powl:edge
+    [ powl:from "0"^^xsd:integer ; powl:to "1"^^xsd:integer ] ,
+    [ powl:from "1"^^xsd:integer ; powl:to "2"^^xsd:integer ] ,
+    [ powl:from "2"^^xsd:integer ; powl:to "3"^^xsd:integer ;
+      powl:guard "compliant" ] ,
+    [ powl:from "2"^^xsd:integer ; powl:to "4"^^xsd:integer ;
+      powl:guard "wall_breach" ] ,
+    [ powl:from "3"^^xsd:integer ; powl:to "5"^^xsd:integer ;
+      powl:guard "always" ] ,
+    [ powl:from "4"^^xsd:integer ; powl:to "5"^^xsd:integer ;
+      powl:guard "always" ] ;
+  powl:op
+    [ powl:node "1"^^xsd:integer ; powl:opName "intake" ] ,
+    [ powl:node "2"^^xsd:integer ; powl:opName "review" ] ,
+    [ powl:node "3"^^xsd:integer ; powl:opName "production" ] ,
+    [ powl:node "4"^^xsd:integer ; powl:opName "quarantine" ] ;
+  powl:tau "0"^^xsd:integer , "5"^^xsd:integer .

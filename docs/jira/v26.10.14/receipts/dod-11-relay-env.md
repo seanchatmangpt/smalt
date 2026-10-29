@@ -7,7 +7,7 @@ Lane: DoD-11 · Repo: /Users/sac/smalt · Date: 2026-10-15 · No commits (per di
 - `justfile.d/11-relay-env.just` — new `relay-env` recipe (shebang recipe; emits an
   eval-able env block + AZURE_* mapping + endpoint-args cheat sheet).
 - `scripts/dev_env.sh` — `DEFAULT_SDK_ROOT` moved from
-  `/Users/sac/cai/athena/playground/node_modules` (out-of-repo) to the in-repo harness
+  `/Users/sac/cai/legacy-client/playground/node_modules` (out-of-repo) to the in-repo harness
   `$SMALT_REPO_ROOT/test/sdk-smoke/node_modules`; user override preserved (explicit
   `SMALT_SDK_ROOT` still wins and is still validated).
 - `scripts/naming_sweep.sh` — UNCHANGED. My edit shifted no line numbers

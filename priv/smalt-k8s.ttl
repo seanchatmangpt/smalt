@@ -1,0 +1,310 @@
+@prefix k8s: <http://seanchatmangpt.github.io/packs/kubernetes#> .
+@prefix smalt: <https://seanchatman.github.io/smalt/k8s#> .
+
+# smalt k8s facts — admitted from BK-K8SM's hand-written k8s/smalt-backend.yaml
+# and k8s/smalt-console.yaml (validation reference). Every value below is read
+# from those manifests, not invented.
+#
+# Render path (BK-MKT1): the backend is typed k8s:StatefulSet and renders the
+# FULL deployable set through the smalt-local packs/smalt-k8s-pack
+# (StatefulSet + headless/ClusterIP/NodePort Services + Secret + ConfigMap),
+# with swarm hardening gates 010/030/040/050; privilege refusal (SEC-PRIV-001)
+# stays with kubernetes-workload-pack's gate 020. The console stays a
+# k8s:Workload rendered by the upstream pack (Deployment + Service).
+# BK-MKTG's single-Deployment limitation is closed: k8s/smalt-backend.gen.yaml
+# is now the deployable render, not just a reference. Receipt:
+# docs/jira/v26.10.22/receipts/bkmkt1-pack-facts.md
+
+# ---------------------------------------------------------------------------
+# smalt-backend — BEAM swarm backend. Typed as k8s:StatefulSet (the deployable
+# kind); rendered by the smalt-local packs/smalt-k8s-pack into the FULL
+# deployable set (Secret, ConfigMap, headless/ClusterIP/NodePort Services,
+# StatefulSet) — BK-MKT1. Values read from BK-K8SM's k8s/smalt-backend.yaml.
+# Privilege refusal for backendContainer stays enforced by the upstream pack's
+# gate 020 (matches k8s:Container/k8s:inWorkload regardless of workload kind).
+# ---------------------------------------------------------------------------
+smalt:backend a k8s:StatefulSet ;
+  k8s:workloadName "smalt-backend" ;
+  k8s:namespace "default" ;
+  k8s:fileName "smalt-backend.gen.yaml" ;
+  k8s:replicas 2 ;
+  k8s:serviceName "smalt-backend-headless" ;
+  k8s:podManagementPolicy "OrderedReady" ;
+  k8s:terminationGracePeriodSeconds 30 ;
+  k8s:podSecurityContextBlock """runAsNonRoot: true
+runAsUser: 65534
+runAsGroup: 65534
+fsGroup: 65534""" ;
+  # BK-SWARM witness: replicas must spread across nodes or the mesh cannot form.
+  k8s:podAntiAffinityBlock """preferredDuringSchedulingIgnoredDuringExecution:
+  - weight: 100
+    podAffinityTerm:
+      labelSelector:
+        matchLabels:
+          app: smalt-backend
+      topologyKey: kubernetes.io/hostname""" ;
+  # tmpfs /tmp (readOnlyRootFilesystem leaves no other writable path; DETS
+  # mirrors land under SMALT_DATA_DIR=/tmp/smalt-data) + shared TLS Secret
+  # (typed decision in the hand-written manifest header).
+  k8s:volumesBlock """- name: tmp
+  emptyDir:
+    medium: Memory
+- name: tls
+  secret:
+    secretName: smalt-tls""" .
+
+# Container ports (7) — named so Service targetPort and the dist gate can pin them.
+smalt:portArmMgmt a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "arm-mgmt" ; k8s:portNumber 9443 .
+smalt:portArmTls a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "arm-tls" ; k8s:portNumber 9444 .
+smalt:portDataEgress a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "data-egress" ; k8s:portNumber 8443 .
+smalt:portAmqpSb a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "amqp-sb" ; k8s:portNumber 5672 .
+smalt:portEh a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "eh" ; k8s:portNumber 5673 .
+smalt:portEpmd a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "epmd" ; k8s:portNumber 4369 .
+smalt:portErlDist a k8s:ContainerPort ; k8s:portOfWorkload smalt:backend ; k8s:portName "erl-dist" ; k8s:portNumber 9000 .
+
+# Volume mounts as typed individuals (NOT a multi-line block on the Container:
+# upstream gate 020's SCALAR_LINE_BREAK clause refuses any unknown multi-line
+# literal on a k8s:Container — the typed upstream-patch finding; block form is
+# the prepared upstream v0.3.0 change, individuals are the local lawful form).
+smalt:vmTmp a k8s:VolumeMount ; k8s:mountOfWorkload smalt:backend ;
+  k8s:mountName "tmp" ; k8s:mountPath "/tmp" .
+smalt:vmTls a k8s:VolumeMount ; k8s:mountOfWorkload smalt:backend ;
+  k8s:mountName "tls" ; k8s:mountPath "/etc/smalt/tls" ; k8s:mountReadOnly true .
+
+# Env vars — envOrder fixed: POD_NAME BEFORE RELEASE_NODE, because $(POD_NAME)
+# expands only when defined earlier (BK-SWARM typed note; the hand-written
+# manifest carries the old order and is the successor hazard this fixes).
+smalt:envPodName a k8s:EnvVar ; k8s:envOfWorkload smalt:backend ; k8s:envOrder 1 ;
+  k8s:envName "POD_NAME" ; k8s:envFieldRef "metadata.name" .
+smalt:envCookie a k8s:EnvVar ; k8s:envOfWorkload smalt:backend ; k8s:envOrder 2 ;
+  k8s:envName "RELEASE_COOKIE" ; k8s:envSecretName "smalt-release-cookie" ; k8s:envSecretKey "cookie" .
+smalt:envReleaseNode a k8s:EnvVar ; k8s:envOfWorkload smalt:backend ; k8s:envOrder 3 ;
+  k8s:envName "RELEASE_NODE" ;
+  k8s:envValue "smalt@$(POD_NAME).smalt-backend-headless.default.svc.cluster.local" .
+
+# Services: headless (per-pod DNS), client-facing ClusterIP, host NodePorts.
+smalt:svcHeadless a k8s:Service ;
+  k8s:serviceForWorkload smalt:backend ;
+  k8s:serviceName "smalt-backend-headless" ;
+  k8s:serviceType "ClusterIP" ;
+  k8s:serviceClusterIP "None" .
+smalt:svcClusterIp a k8s:Service ;
+  k8s:serviceForWorkload smalt:backend ;
+  k8s:serviceName "smalt-backend" ;
+  k8s:serviceType "ClusterIP" .
+smalt:svcNodePort a k8s:Service ;
+  k8s:serviceForWorkload smalt:backend ;
+  k8s:serviceName "smalt-backend-nodeport" ;
+  k8s:serviceType "NodePort" .
+
+smalt:svcPortHArmMgmt a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "arm-mgmt" ; k8s:svcPortNumber 9443 ; k8s:svcTargetPortName "arm-mgmt" .
+smalt:svcPortHArmTls a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "arm-tls" ; k8s:svcPortNumber 9444 ; k8s:svcTargetPortName "arm-tls" .
+smalt:svcPortHData a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "data-egress" ; k8s:svcPortNumber 8443 ; k8s:svcTargetPortName "data-egress" .
+smalt:svcPortHAmqp a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "amqp-sb" ; k8s:svcPortNumber 5672 ; k8s:svcTargetPortName "amqp-sb" .
+smalt:svcPortHEh a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "eh" ; k8s:svcPortNumber 5673 ; k8s:svcTargetPortName "eh" .
+smalt:svcPortHEpmd a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "epmd" ; k8s:svcPortNumber 4369 ; k8s:svcTargetPortName "epmd" .
+smalt:svcPortHErl a k8s:ServicePort ; k8s:svcPortOf smalt:svcHeadless ; k8s:svcPortName "erl-dist" ; k8s:svcPortNumber 9000 ; k8s:svcTargetPortName "erl-dist" .
+
+smalt:svcPortCArmMgmt a k8s:ServicePort ; k8s:svcPortOf smalt:svcClusterIp ; k8s:svcPortName "arm-mgmt" ; k8s:svcPortNumber 9443 ; k8s:svcTargetPortName "arm-mgmt" .
+smalt:svcPortCArmTls a k8s:ServicePort ; k8s:svcPortOf smalt:svcClusterIp ; k8s:svcPortName "arm-tls" ; k8s:svcPortNumber 9444 ; k8s:svcTargetPortName "arm-tls" .
+smalt:svcPortCData a k8s:ServicePort ; k8s:svcPortOf smalt:svcClusterIp ; k8s:svcPortName "data-egress" ; k8s:svcPortNumber 8443 ; k8s:svcTargetPortName "data-egress" .
+smalt:svcPortCAmqp a k8s:ServicePort ; k8s:svcPortOf smalt:svcClusterIp ; k8s:svcPortName "amqp-sb" ; k8s:svcPortNumber 5672 ; k8s:svcTargetPortName "amqp-sb" .
+
+smalt:svcPortNArmMgmt a k8s:ServicePort ; k8s:svcPortOf smalt:svcNodePort ; k8s:svcPortName "arm-mgmt" ; k8s:svcPortNumber 9443 ; k8s:svcTargetPortName "arm-mgmt" ; k8s:svcNodePort 30943 .
+smalt:svcPortNArmTls a k8s:ServicePort ; k8s:svcPortOf smalt:svcNodePort ; k8s:svcPortName "arm-tls" ; k8s:svcPortNumber 9444 ; k8s:svcTargetPortName "arm-tls" ; k8s:svcNodePort 30944 .
+smalt:svcPortNData a k8s:ServicePort ; k8s:svcPortOf smalt:svcNodePort ; k8s:svcPortName "data-egress" ; k8s:svcPortNumber 8443 ; k8s:svcTargetPortName "data-egress" ; k8s:svcNodePort 30843 .
+smalt:svcPortNAmqp a k8s:ServicePort ; k8s:svcPortOf smalt:svcNodePort ; k8s:svcPortName "amqp-sb" ; k8s:svcPortNumber 5672 ; k8s:svcTargetPortName "amqp-sb" ; k8s:svcNodePort 30572 .
+
+# W2 (IA-5(1), lane BK-NISTW2): the placeholder is gone. The dev value is
+# DERIVED, not random: hex(sha256("smalt-release-cookie"))[0..32] -- same
+# shape as scripts/dev_env.sh's per-host SAS derivation
+# (base64(sha256(host + "smalt-dev-sb"))). Deterministic, reproducible,
+# dev-only (the swarm runs on loopback; production overwrites host-side:
+#   kubectl create secret generic smalt-release-cookie \
+#     --from-literal=cookie="$(openssl rand -hex 16)" --save-config
+# ). Gate 070_cookie_secret.rq refuses any "replace-me" placeholder and any
+# RELEASE_COOKIE env var not sourced from a Secret.
+smalt:releaseCookie a k8s:Secret ;
+  k8s:secretName "smalt-release-cookie" ;
+  k8s:secretStringDataBlock """# Dev value derived: hex(sha256("smalt-release-cookie"))[0..32].
+# Production overwrites host-side before apply:
+#   kubectl create secret generic smalt-release-cookie \\
+#     --from-literal=cookie="$(openssl rand -hex 16)" --save-config
+cookie: 371ec51a45c65415ff0dafcd39e1d5ce""" .
+
+smalt:backendEnv a k8s:ConfigMap ;
+  k8s:configMapName "smalt-backend-env" ;
+  k8s:configMapDataBlock """SMALT_ARM_PORT: "9443"
+SMALT_ARM_TLS_PORT: "9444"
+SMALT_EGRESS_PORT: "8443"
+SMALT_AMQP_PORT: "5672"
+SMALT_EVENT_HUBS_PORT: "5673"
+SMALT_BIND_IP: "0.0.0.0"
+SMALT_BIND_ALL_INTERFACES: "true"
+SMALT_PLANES: "all"
+SMALT_PROFILE: "unbounded"
+SMALT_DATA_DIR: "/tmp/smalt-data"
+SMALT_TLS_CERTFILE: "/etc/smalt/tls/cert.pem"
+SMALT_TLS_KEYFILE: "/etc/smalt/tls/key.pem"
+ERL_AFLAGS: "-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9009"
+RELEASE_DISTRIBUTION: "name"
+""" .
+
+smalt:backendContainer a k8s:Container ;
+  k8s:inWorkload smalt:backend ;
+  k8s:containerName "smalt" ;
+  k8s:image "smalt:local" ;
+  k8s:imagePullPolicy "Never" ;
+  k8s:resourceRequestsBlock """cpu: 500m
+memory: 512Mi""" ;
+  k8s:resourceLimitsBlock """cpu: "2"
+memory: 2Gi""" ;
+  k8s:containerSecurityContextBlock """allowPrivilegeEscalation: false
+readOnlyRootFilesystem: true
+capabilities:
+  drop: ["ALL"]""" ;
+  k8s:envFromConfigMap "smalt-backend-env" ;
+  # Presence shim (see console): strict Tera refuses a missing GROUP_CONCAT
+  # c.secrets key; empty string renders nothing.
+  k8s:envFromSecret "" ;
+  # BK-PROBE (BK-ARM1 F-1): probes point at the real Smalt.Health faces.
+  k8s:readinessProbeBlock """httpGet:
+  path: /.well-known/health/ready
+  port: arm-mgmt
+initialDelaySeconds: 10
+periodSeconds: 3
+failureThreshold: 5""" ;
+  k8s:livenessProbeBlock """httpGet:
+  path: /.well-known/health/live
+  port: arm-mgmt
+initialDelaySeconds: 20
+periodSeconds: 5
+failureThreshold: 3""" .
+
+# ---------------------------------------------------------------------------
+# smalt-console — Next.js Sovereign Console (Deployment — fully pack-shape)
+# ---------------------------------------------------------------------------
+smalt:console a k8s:Workload ;
+  k8s:workloadName "smalt-console" ;
+  k8s:namespace "default" ;
+  k8s:fileName "smalt-console.gen.yaml" ;
+  k8s:replicas 1 ;
+  k8s:podSecurityContextBlock """runAsNonRoot: true
+runAsUser: 65534
+runAsGroup: 65534""" ;
+  # Hand-written Service is NodePort with nodePort 30080; the template cannot
+  # express a fixed nodePort — rendered Service keeps type NodePort but gets
+  # an allocated nodePort instead of 30080 (typed diff in receipt).
+  k8s:servicePort 3000 ;
+  k8s:serviceTargetPort 3000 ;
+  k8s:serviceType "NodePort" .
+
+smalt:consoleContainer a k8s:Container ;
+  k8s:inWorkload smalt:console ;
+  k8s:containerName "console" ;
+  k8s:image "smalt-console:local" ;
+  k8s:imagePullPolicy "Never" ;
+  k8s:containerPort 3000 ;
+  k8s:resourceRequestsBlock """cpu: 100m
+memory: 256Mi""" ;
+  k8s:resourceLimitsBlock """cpu: 500m
+memory: 512Mi""" ;
+  k8s:containerSecurityContextBlock """allowPrivilegeEscalation: false
+capabilities:
+  drop: ["ALL"]""" ;
+  # Presence shim (see backend container): template reads c.secrets strictly.
+  k8s:envFromSecret "" ;
+  k8s:readinessProbeBlock """httpGet:
+  path: /
+  port: 3000
+initialDelaySeconds: 10
+periodSeconds: 5""" ;
+  k8s:livenessProbeBlock """httpGet:
+  path: /
+  port: 3000
+initialDelaySeconds: 20
+periodSeconds: 10""" .
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy facts — NIST W1 (SC-7 boundary protection, closes the ABSENT
+# row in docs/jira/v26.10.22/receipts/bkmkt2-nist-overlay.md). Pattern:
+# default-deny per workload + narrow allow policies (the standard k8s
+# deny-then-allow composition). Rendered by the smalt-k8s-pack template
+# network_policies.yaml.tmpl into k8s/smalt-netpol.gen.yaml; gate 060
+# refuses any Workload/StatefulSet with no NetworkPolicy admitting its
+# traffic. Receipt: docs/jira/v26.10.22/receipts/bknistw1-netpol.md
+#
+# k8s:npRulesBlock empty literal = the deny-all face (policyTypes covers the
+# direction; no rules = all traffic in that direction dropped). An ALLOW
+# policy carries the rule list; named ports resolve against the selected
+# pods' containerPorts (arm-mgmt/amqp-sb/data-egress are typed individuals
+# above).
+# ---------------------------------------------------------------------------
+smalt:npBackendDenyIngress a k8s:NetworkPolicy ;
+  k8s:npForWorkload smalt:backend ;
+  k8s:npName "smalt-backend-default-deny-ingress" ;
+  k8s:npDirection "Ingress" ;
+  k8s:npPodSelectorBlock """matchLabels:
+  app: smalt-backend""" ;
+  k8s:npRulesBlock "" .
+
+smalt:npBackendAllowConsole a k8s:NetworkPolicy ;
+  k8s:npForWorkload smalt:backend ;
+  k8s:npName "smalt-backend-allow-from-console" ;
+  k8s:npDirection "Ingress" ;
+  k8s:npPodSelectorBlock """matchLabels:
+  app: smalt-backend""" ;
+  k8s:npRulesBlock """- from:
+  - podSelector:
+      matchLabels:
+        app: smalt-console
+  ports:
+  - port: arm-mgmt
+    protocol: TCP
+  - port: amqp-sb
+    protocol: TCP
+  - port: data-egress
+    protocol: TCP""" .
+
+# Kubelet probes originate on the node, not from a pod; namespaceSelector: {}
+# (all namespaces) is the standard NetworkPolicy stand-in for node-originated
+# traffic, scoped to the health face only (arm-mgmt /.well-known/health/*).
+smalt:npBackendAllowProbes a k8s:NetworkPolicy ;
+  k8s:npForWorkload smalt:backend ;
+  k8s:npName "smalt-backend-allow-kubelet-probes" ;
+  k8s:npDirection "Ingress" ;
+  k8s:npPodSelectorBlock """matchLabels:
+  app: smalt-backend""" ;
+  k8s:npRulesBlock """- from:
+  - namespaceSelector: {}
+  ports:
+  - port: arm-mgmt
+    protocol: TCP""" .
+
+smalt:npConsoleDenyEgress a k8s:NetworkPolicy ;
+  k8s:npForWorkload smalt:console ;
+  k8s:npName "smalt-console-default-deny-egress" ;
+  k8s:npDirection "Egress" ;
+  k8s:npPodSelectorBlock """matchLabels:
+  app: smalt-console""" ;
+  k8s:npRulesBlock "" .
+
+# Console egress is limited to the backend service: ARM mgmt, AMQP Service
+# Bus, egress-router data plane — the three faces smaltFetch rides.
+smalt:npConsoleAllowBackend a k8s:NetworkPolicy ;
+  k8s:npForWorkload smalt:console ;
+  k8s:npName "smalt-console-allow-to-backend" ;
+  k8s:npDirection "Egress" ;
+  k8s:npPodSelectorBlock """matchLabels:
+  app: smalt-console""" ;
+  k8s:npRulesBlock """- to:
+  - podSelector:
+      matchLabels:
+        app: smalt-backend
+  ports:
+  - port: arm-mgmt
+    protocol: TCP
+  - port: amqp-sb
+    protocol: TCP
+  - port: data-egress
+    protocol: TCP""" .

@@ -2,7 +2,8 @@
 
 Context: pair(test/enclave_doctor_severity_test.exs, test/lro_test.exs)
 
-Date: 2026-10-18 · Lane: B8 · Standing: **PARTIAL_ALIVE** (gate ALIVE + non-vacuous; test-side honest red = deliverable)
+Date: 2026-10-18 · Lane: B8
+**Standing:** **PARTIAL_ALIVE** (gate ALIVE + non-vacuous; test-side honest red = deliverable)
 
 Subject (absolute): /Users/sac/smalt — scripts/sleep_gate.py (new),
 scripts/shim_court/sleep_gate_court.sh (new), justfile.d/29-sleep.just (new,

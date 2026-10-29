@@ -4,7 +4,7 @@
 - **Repo**: `/Users/sac/smalt` (canonical checkout)
 - **Script (owned)**: `scripts/bench/c4_kv_cosmos_crypto.mjs`
 - **Result file (owned)**: `docs/jira/v26.10.14/bench/c4-kv-cosmos.jsonl` (9 rows: 8 measured + 1 meta summary)
-- **Run**: 2026-10-16T03:53:39Z, sequential, warmup-excluded (20/phase), rc=0, 0 errors
+- **Run**: 2026-10-16T03:53:39Z, sequential, warmup-excluded (20/phase), rc=0 (exit 0), 0 errors
 - **Standing**: ALIVE — all phases executed against a live lane-private substrate
 
 ## Subject

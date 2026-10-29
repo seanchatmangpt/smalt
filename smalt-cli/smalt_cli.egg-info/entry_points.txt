@@ -1,0 +1,2 @@
+[console_scripts]
+smalt-cli = smalt_cli.cli:main

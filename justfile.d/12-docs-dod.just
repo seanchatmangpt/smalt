@@ -102,6 +102,18 @@ DOCS_ROOT := parent_directory(justfile_directory())
     # FINAL.md/WRAP_LEDGER.md yet — version stays 26.10.16; receipts ledger exists).
     check docs/jira/v26.10.17/receipts/r241-court-x2-attempt3-typed-red.md
     check docs/jira/v26.10.17/RECEIPTS.md
+    # v26.10.25 wrap artifacts (FINAL.md cites only receipts/ paths that exist).
+    check docs/jira/v26.10.25/FINAL.md
+    check docs/jira/v26.10.25/RECEIPTS.md
+    check docs/jira/v26.10.25/KNOWN_DIVERGENCES.md
+    check docs/jira/v26.10.25/receipts/census.md
+    check docs/jira/v26.10.25/receipts/court-x2-2026-10-25.md
+    check docs/jira/v26.10.25/receipts/release-receipt.json
     # Front door.
     check README.md
+    # KD register receipt-cite fence (v26.10.22, KD-DOD): receipt paths cited
+    # inside KD table cells must exist (KD-MIRROR phantom-cite finding).
+    if ! python3 "$root/scripts/kd_receipt_fence.py"; then
+        rc=1
+    fi
     exit $rc

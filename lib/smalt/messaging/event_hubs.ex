@@ -40,7 +40,6 @@ defmodule Smalt.Messaging.EventHubs do
   the same shape as the partition-pin refusal in `connection.ex`).
   """
 
-  require Logger
 
   @partitions :smalt_eh_partitions
   @checkpoints :smalt_eh_checkpoints
@@ -54,6 +53,7 @@ defmodule Smalt.Messaging.EventHubs do
         }
 
   alias Smalt.Messaging.EventHubs.Server, as: EHServer
+  alias Smalt.Messaging.EhThrottle
 
   # -- Tables -------------------------------------------------------------------
 
@@ -91,7 +91,8 @@ defmodule Smalt.Messaging.EventHubs do
   `"enqueued"` (storage write time, epoch ms) and `"partition_key"` (when the
   sender set one). Receiver links replay these in sequence order.
   """
-  @spec send_event(String.t(), term(), keyword()) :: {:ok, pos_integer(), map()}
+  @spec send_event(String.t(), term(), keyword()) ::
+          {:ok, pos_integer(), map()} | {:error, {:throttled, map()}}
   def send_event(partition, body, opts \\ []) when is_binary(partition) do
     ensure_tables()
 
@@ -99,6 +100,50 @@ defmodule Smalt.Messaging.EventHubs do
     pk = Keyword.get(opts, :partition_key)
     enqueued_ms = Keyword.get(opts, :enqueued_ms) || now_ms()
 
+    # T30-F1 wiring (retry-after-audit F1): EhThrottle was a dead engine with
+    # zero callers. Gate EVERY publish (batch counted as N events) through
+    # EhThrottle.admit/2. Default-off by construction: with no quota set —
+    # no `set_quota/3`, no hub-record "quota" field, and no
+    # `config :smalt, :eh_ingress_quota` — admit/2 returns {:ok, :admitted}
+    # without touching any state, so witnessed behavior is byte-identical.
+    # Typed choice disclosed: default quota stays OFF (a hard-coded
+    # events/second limit would trip soak/stress populations); operators opt
+    # in via config :smalt, :eh_ingress_quota, {limit, window_ms}.
+    n =
+      case batch_inner_messages(body) do
+        [_ | _] = inners -> length(inners)
+        _ -> 1
+      end
+
+    case eh_admit_publish(hub_of(partition), n) do
+      {:ok, :admitted} ->
+        eh_store_events(partition, body, props, pk, enqueued_ms)
+
+      {:throttled, face} ->
+        {:error, {:throttled, face}}
+    end
+  end
+
+  # First path segment of the storage partition key is the hub name
+  # ("hub/partitions/0", "ns/hub/partition" and bare "hub" all reduce to
+  # "hub"). Quotas key on this.
+  defp hub_of(partition) when is_binary(partition) do
+    partition |> String.split("/") |> hd()
+  end
+
+  defp eh_admit_publish(hub, n) do
+    case Application.get_env(:smalt, :eh_ingress_quota, nil) do
+      {limit, window_ms} when is_integer(limit) and limit > 0 and is_integer(window_ms) and window_ms > 0 ->
+        EhThrottle.ensure_table()
+        EhThrottle.set_quota(hub, limit, window_ms)
+        EhThrottle.admit(hub, n)
+
+      _ ->
+        EhThrottle.admit(hub, n)
+    end
+  end
+
+  defp eh_store_events(partition, body, props, pk, enqueued_ms) do
     case batch_inner_messages(body) do
       [_ | _] = inners ->
         # KD-COVERS: KD-53 — split at ingest. A producer `createBatch` envelope
@@ -623,17 +668,175 @@ defmodule Smalt.Messaging.EventHubs do
     # NB: module attributes do not leak into a nested defmodule (see
     # do_ensure_tables below) — literal re-bindings, not parent reads.
     @default_group "$default"
+    # SCVD backpressure audit MED-3: typed call timeout (same value as the
+    # implicit GenServer.call default; semantics unchanged).
+    @call_timeout 5_000
 
     def transaction(request) do
       ensure_started()
-      GenServer.call(@name, request)
+      GenServer.call(@name, request, @call_timeout)
+    end
+
+    # SPOF-B / A-2: supervised-start contract. The server is a permanent child
+    # of IntegrationSupervisor; this child_spec is the lawful start path. The
+    # lazy fallback below remains only as a degraded ordering shim (e.g.
+    # integration-only plane boots or early test callers before the broker
+    # subtree starts) and never mints an unsupervised owner again: the tables
+    # are heir'd to :init either way, so an owner crash no longer wipes EH
+    # state.
+    def child_spec(opts) do
+      %{
+        id: {__MODULE__, Keyword.get(opts, :ref, :default)},
+        start: {__MODULE__, :start_link, [opts]},
+        restart: :permanent,
+        type: :worker
+      }
+    end
+
+    def start_link(opts \\ []) do
+      name = Keyword.get(opts, :name, @name)
+
+      case GenServer.start_link(__MODULE__, :ok, name: name) do
+        {:error, {:already_started, pid}} when name == @name and is_pid(pid) ->
+          # BK-70r orphan-reclaim: the degraded lazy shim (`unlinked_start/1`)
+          # can mint an owner OUTSIDE the IntegrationSupervisor (app-down
+          # window). Such a holder blocks every supervised boot of this
+          # permanent child with :already_started — IntegrationSupervisor
+          # exits, the whole plane bounces (witnessed: 4x "Application smalt
+          # exited ... already started" + 25-test store_not_ready smear in
+          # one full-suite run). SPOF-B contract: the supervisor owns the
+          # name; any holder NOT minted by the current IntegrationSupervisor
+          # (its pid absent from the holder's proc_lib $ancestors) is a
+          # rogue — kill it and retry. Checked from the starting context
+          # only (never Supervisor.which_children, which would deadlock:
+          # the supervisor is mid-start_child here). Bounded retry loop
+          # beats a re-mint race from concurrent lazy callers.
+          reap_or_take(name, pid, 5)
+
+        other ->
+          other
+      end
+    end
+
+    defp reap_or_take(_name, _holder, 0), do: {:error, {:eh_name_reclaim_failed, @name}}
+
+    defp reap_or_take(name, holder, attempts) do
+      if rogue_holder?(holder) do
+        Process.exit(holder, :kill)
+        :ok = await_name_released(holder)
+        # Small post-kill settle: a concurrent lazy caller may re-mint in
+        # the registration gap; re-check and re-reap (bounded).
+        # SLEEP-CLASS: POLL-STEP — bounded settle between reclaim attempts.
+        Process.sleep(5)
+
+        case GenServer.start_link(__MODULE__, :ok, name: name) do
+          {:error, {:already_started, next}} when is_pid(next) ->
+            reap_or_take(name, next, attempts - 1)
+
+          other ->
+            other
+        end
+      else
+        {:error, {:already_started, holder}}
+      end
+    end
+
+    defp await_name_released(dead_pid) do
+      deadline = System.monotonic_time(:millisecond) + 1_000
+
+      retry = fn
+        retry ->
+          if Process.whereis(@name) in [nil, dead_pid] do
+            :ok
+          else
+            if System.monotonic_time(:millisecond) < deadline do
+              # SLEEP-CLASS: POLL-STEP — bounded poll awaiting name release
+              # after the rogue-holder kill (1 s deadline).
+              Process.sleep(5)
+              retry.(retry)
+            else
+              :timeout
+            end
+          end
+      end
+
+      retry.(retry)
+    end
+
+    # True when the holder was NOT minted by the current IntegrationSupervisor.
+    defp rogue_holder?(holder) do
+      sup = Process.whereis(Smalt.Plane.IntegrationSupervisor)
+
+      if is_nil(sup) do
+        false
+      else
+        {:dictionary, dict} = :erlang.process_info(holder, :dictionary)
+
+        ancestors =
+          case List.keyfind(dict, :"$ancestors", 0) do
+            {:"$ancestors", anc} -> anc
+            nil -> []
+          end
+
+        sup not in ancestors
+      end
     end
 
     defp ensure_started do
-      case GenServer.start(__MODULE__, :ok, name: @name) do
+      case Process.whereis(@name) do
+        nil ->
+          # BK-104 (SPOF-B / A-2 residual): the direct GenServer.start here
+          # races the supervisor's own restart of the killed permanent child.
+          # When the caller's start wins the name, the supervisor's restart
+          # attempt fails :already_started, its retry loop blows the restart
+          # intensity, and the IntegrationSupervisor exits :shutdown — the
+          # whole plane bounces (witnessed: app-exit :shutdown mid-court).
+          # Route the lazy start through the supervisor; only when no
+          # IntegrationSupervisor is running (integration-only plane, bare
+          # test VM) do we fall back to an unlinked self-start, where no
+          # supervisor exists to race.
+          case supervised_start() do
+            :ok ->
+              :ok
+
+            {:error, :integration_supervisor_not_running} ->
+              unlinked_start({:eh_server_start_failed})
+
+            {:error, reason} ->
+              exit({:eh_server_start_failed, reason})
+          end
+
+        _pid ->
+          :ok
+      end
+    end
+
+    defp supervised_start do
+      sup = Process.whereis(Smalt.Plane.IntegrationSupervisor)
+
+      if is_nil(sup) do
+        {:error, :integration_supervisor_not_running}
+      else
+        case Supervisor.start_child(sup, child_spec([])) do
+          {:ok, _pid} -> :ok
+          # The supervisor owns the child spec and is (re)starting it — never
+          # start under our own process.
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, {:already_present, _id}} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    end
+
+    defp unlinked_start(fail_tag) do
+      # BK-70r: start_link, not start — the shim owner is now MORTAL (linked
+      # to its caller). An unlinked mint was immortal and, surviving an app
+      # stop/start cycle while holding @name, blocked every supervised boot
+      # of this permanent child forever (the run-1 app-exit cascade root).
+      case GenServer.start_link(__MODULE__, :ok, name: @name) do
         {:ok, _pid} -> :ok
         {:error, {:already_started, _pid}} -> :ok
-        {:error, reason} -> exit({:eh_server_start_failed, reason})
+        {:error, reason} -> exit({fail_tag, reason})
       end
     end
 
@@ -651,12 +854,16 @@ defmodule Smalt.Messaging.EventHubs do
         if :ets.info(table) == :undefined do
           # NB: literal opts — module attributes do not leak into a nested
           # defmodule (the parent's @table_opts reads nil here).
+          # SPOF-B / A-2: heir 3-tuple (shadow-table law, EhThrottle idiom) —
+          # even if the owner dies before supervision restarts it, the tables
+          # are re-parented to :init and seq/checkpoint/cg state survives.
           :ets.new(table, [
             :set,
             :public,
             :named_table,
             read_concurrency: true,
-            write_concurrency: true
+            write_concurrency: true,
+            heir: Process.whereis(:init) || self()
           ])
         end
       end)

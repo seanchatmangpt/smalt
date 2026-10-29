@@ -222,7 +222,8 @@ defmodule Smalt.StoreTables do
     :smalt_event_messages,
     :smalt_ledger_meta,
     :smalt_ledger_transactions,
-    :smalt_resources
+    :smalt_resources,
+    :smalt_sb_rules
   ]
 
   @doc """
@@ -595,7 +596,7 @@ defmodule Smalt.StoreTables do
         owner_module: "Smalt.Store",
         sweep_strategy: "retention",
         metadata_only: false,
-        persisted: false,
+        persisted: true,
         ordered_set: true
       },
       :smalt_sb_sessions => %{

@@ -81,11 +81,16 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# (c3) test-budget — RETIRED stage (v26.10.19 reset): BudgetFormatter deleted
-#      with test/; justfile.d/28-test-budget.just is a loud no-op until the
-#      residual tier re-authors a formatter + reseed. Removed from the ladder
-#      (not softened): re-add when `just test-budget-seed` is runnable again.
+# (c3) test-budget — restored (BK-SEED, v26.10.22): BudgetFormatter re-authored
+#      per the reseed plan in justfile.d/28-test-budget.just; recipes restored
+#      from 64f6099^ verbatim. Gate is fail-closed with built-in non-vacuity
+#      fixtures (10x breach, unmanifested rename).
 # -----------------------------------------------------------------------------
+if recipe_visible "test-budget"; then
+  stage "test-budget" just test-budget
+else
+  skip_stage "test-budget" "recipe 'test-budget' not in Justfile (justfile.d/28-test-budget.just missing)"
+fi
 
 # -----------------------------------------------------------------------------
 # (c4) verification-gates — verification governance (justfile.d/32): the

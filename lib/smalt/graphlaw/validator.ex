@@ -229,6 +229,12 @@ defmodule Smalt.GraphLaw.Validator.ShapeFile do
         # and everything else under "properties.<local>"
         path = local_name(prop.path)
 
+        # KD-156: sh:minCount absent means NO minimum (SHACL semantics) — a
+        # maxCount-only block (DefaultShape location) must not be coerced into
+        # a required property, else child PUTs omitting location (Azure parity:
+        # children inherit region from the parent) are refused with the
+        # misleading maxCount message. Default 0 = optional.
+        # KD-COVERS: KD-156
         %{
           shape
           | required:
@@ -236,7 +242,7 @@ defmodule Smalt.GraphLaw.Validator.ShapeFile do
                 [
                   %{
                     path: path,
-                    min_count: prop.min_count || 1,
+                    min_count: prop.min_count || 0,
                     max_count: prop.max_count,
                     datatype: prop.datatype,
                     message: prop.message
@@ -635,7 +641,6 @@ defmodule Smalt.GraphLaw.Validator do
 
   defp shape_name(type) do
     case Smalt.Registry.shape_for(type) do
-      {:ok, name} -> name
       name when is_binary(name) -> name
       _ -> nil
     end

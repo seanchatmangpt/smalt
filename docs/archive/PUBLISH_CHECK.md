@@ -70,7 +70,7 @@ Checks:
 - No `deps/`, `_build/`, `test/`, `test/sdk-smoke/`, `.logs` in the list.
   (`test/sdk-smoke/` exists in the repo with 7 files but is not packaged.)
 - Leak grep over the exact packaged set (lib/, priv/, .formatter.exs,
-  mix.exs, README.md, CHANGELOG.md, LICENSE) for `athena` and absolute
+  mix.exs, README.md, CHANGELOG.md, LICENSE) for `legacy-client` and absolute
   checkout paths (the naming-sweep pattern, `scripts/naming_sweep.sh`):
   **zero hits** (grep exit 1, no matches).
 - No absolute paths in the packaged set.
@@ -180,7 +180,7 @@ packages can be dependencies): ash_graphlaw, ggen_igniter`. Exit 0 now.
   **CLEARED (docs-corpus-lens6 cycle 5)**: the comment now uses the
   `caps=<ggen-marketplace checkout>/...` placeholder form; tree-wide
   `grep -n "Users/sac"` over the ttl = no match.
-- `athena`: 0 hits. Absolute paths elsewhere: 0 hits.
+- `legacy-client`: 0 hits. Absolute paths elsewhere: 0 hits.
 - Old hardcoded secret literal (`smalt-sovereign-azure-secret-key-32b!`):
   0 hits in the package. Packaged `lib/smalt/arm_gateway/router.ex:124-137`
   uses `:persistent_term` STS secret, generated on first use.
@@ -285,7 +285,7 @@ v2 blocker 1 (signing.key) — **NOT FIXED.** v2 blockers 2-4 — FIXED/OK
    comment. Rewritten to
    `--query caps=<ggen-marketplace checkout>/packs/elixir-mcp-a2a-pack/queries/mcp_capabilities.rq`.
    Rebuild `/tmp/hex-v3b.tar` after the edit: `grep -rl '/Users/sac'` over
-   the unpacked contents = **0 hits**; `athena` = **0 hits**.
+   the unpacked contents = **0 hits**; `legacy-client` = **0 hits**.
 3. **CHEAT_SCAN stale blocker — FIXED.** `docs/archive/CHEAT_SCAN.md` "Release
    blockers" section updated: the pass-1 "BLOCKER — still present" heading
    now reads "RESOLVED (second pass, see top of this file)" with the

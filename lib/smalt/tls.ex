@@ -7,8 +7,18 @@ defmodule Smalt.TLS do
 
       config :smalt, :tls, :auto           # default: self-signed dev cert generated into tmp/
       config :smalt, :tls, false           # plaintext HTTP
-      config :smalt, :tls_certfile, "..."  # explicit certs, used as-is when both files exist
+      config :smalt, :tls_certfile, "..."  # explicit certs, used as-is when both exist
       config :smalt, :tls_keyfile, "..."
+
+  TLS version pin (`config :smalt, :tls_versions`) — default
+  `[:"tlsv1.3", :"tlsv1.2"]` (the IMPL-14F flip; evidence pack: the TLS13 trial
+  receipt's 4 PASS wire legs, the non-reproducing R90/D52 shape, and the
+  captured server-side ML-KEM witness `selected_group: :x25519mlkem768`; the
+  real-Go-client residual stays typed-open via the GOLEG lane). Set
+  `[:"tlsv1.2"]` to restore the conservative R90/D52 1.2-only pin. 1.3 rides
+  OTP default ciphers per the trial receipt
+  (`docs/jira/v26.10.21/receipts/tls13-unpin-trial.md`). Dual-cert
+  (`:tls_certs_keys`) augments the 1.2 pin with ECDSA suites.
 
   `ensure_dev_cert/0` generates an RSA 2048 self-signed certificate with
   CN=127.0.0.1 and SAN IP:127.0.0.1 + DNS:localhost into a seat-local path
@@ -35,6 +45,8 @@ defmodule Smalt.TLS do
 
   @sha256_rsa_oid {1, 2, 840, 113_549, 1, 1, 11}
   @rsa_enc_oid {1, 2, 840, 113_549, 1, 1, 1}
+  # id-ecPublicKey — AR-SEC-02 dual-cert plane (SMALT_TLS_ECDSA=1 opt-in).
+  @ec_pubkey_oid {1, 2, 840, 10045, 2, 1}
 
   defp alg, do: {:AlgorithmIdentifier, @sha256_rsa_oid, :asn1_NOVALUE}
 
@@ -152,33 +164,49 @@ defmodule Smalt.TLS do
 
     case ensure_dev_cert(port) do
       {:ok, cert, key} ->
-        # R90/D52: TLS 1.2-only + 2-cipher pin applied unconditionally on
+        # R90/D52: TLS 1.2-only + cipher pin applied unconditionally on
         # every https path (SHIM-COURT subject: the pin must hold for dev
         # certs too, not just the env-cert branch). Recent Go clients
         # (azurerm/azidentity) offer X25519MLKEM768 key shares that the OTP
         # 28 ssl app rejects, killing the handshake before the cert is even
         # evaluated. Go falls back to TLS 1.2 + ECDHE-RSA happily.
-        tls_pin = [
-          thousand_island_options: [
-            transport_options: [
-              versions: [:"tlsv1.2"],
-              ciphers: [
-                ~c"ECDHE-RSA-AES256-GCM-SHA384",
-                ~c"ECDHE-RSA-AES128-GCM-SHA256"
-              ]
-            ]
-          ]
-        ]
+        #
+        # AR-SEC-02 (v26.10.21): when SMALT_TLS_ECDSA=1 (or
+        # config :smalt, :tls_certs_keys, true) and a valid ECDSA pair is
+        # present (SMALT_TLS_ECDSA_CERTFILE/KEYFILE, else .smalt/tls/ecdsa-*),
+        # the listener binds BOTH pairs via ssl :certs_keys — modern clients
+        # negotiating an ECDSA sigalg get the P-256 leaf, RSA-only legacy
+        # clients still get the RSA leaf. Default (flag unset) is byte-for-byte
+        # the old single-certfile behavior: the ECDSA branch is unreachable.
+        # AR-SEC-01 (v26.10.21) + IMPL-14F flip: the version pin lives behind
+        # the `config :smalt, :tls_versions` seam, DEFAULT
+        # `[:"tlsv1.3", :"tlsv1.2"]` (evidence pack: tls13-unpin-trial.md — 4
+        # wire legs PASS, R90/D52 MLKEM shape non-reproducing on this host,
+        # server-side witness `selected_group: :x25519mlkem768`; real-Go-client
+        # residual typed-open via the GOLEG lane). Config-revert escape:
+        # `config :smalt, :tls_versions, [:"tlsv1.2"]` restores the R90/D52
+        # 1.2-only pin + 2-cipher pin byte-for-byte. When 1.3 is enabled the
+        # 1.2-only cipher pin is dropped for OTP default ciphers — the exact
+        # shape the trial legs ran with.
+        {_dual?, tls_opts, cert_material} =
+          case certs_keys_material(cert, key) do
+            # Bandit (pinned ~> 1.6) rejects :certs_keys as a top-level option
+            # ("Unsupported key(s) in top level config: [:certs_keys]",
+            # witnessed first boot of this lane); ThousandIsland's SSL
+            # transport accepts it inside transport_options and forwards it
+            # straight to :ssl.listen.
+            {true, cks} ->
+              {true, [certs_keys: cks] ++ transport_tls_opts(true), []}
 
-        [
-          scheme: :https,
-          certfile: to_charlist(Path.expand(cert)),
-          keyfile: to_charlist(Path.expand(key))
-        ] ++ tls_pin ++ base
+            {false, :no_pair} ->
+              {false, transport_tls_opts(false), single_cert_opts(cert, key)}
+          end
+
+        [scheme: :https] ++ cert_material ++ [thousand_island_options: [transport_options: tls_opts]] ++ h2_parity() ++ base
 
       # Explicit plaintext opt-out is a typed configuration, not a failure.
       {:error, :tls_disabled} ->
-        [scheme: :http] ++ base
+        [scheme: :http] ++ h2_parity() ++ base
 
       # TLS was requested (:auto) and cert setup failed — fail closed at boot
       # instead of silently serving plaintext where https was expected.
@@ -186,6 +214,120 @@ defmodule Smalt.TLS do
         raise ArgumentError,
               "Smalt.TLS: :tls is :auto but dev-cert setup failed: #{inspect(reason)}"
     end
+  end
+
+  # KD-COVERS: KD-157 — Bandit's default h2 stream-reset rate limit
+  # ({500, 10_000} RSTs per 10s) GOAWAYs (ENHANCE_YOUR_CALM) in-flight streams
+  # when a concurrent client cancels response bodies in bursts (witnessed:
+  # 128-wide ARM ramp, ~18% of requests transport-retried with
+  # ERR_HTTP2_SESSION_ERROR; substrate.log
+  # "Stream resets rate exceeded 500 resets in 10000ms"). Real front doors do
+  # not reset in-flight legitimate streams over client cancels; the emulator
+  # (loopback-only) raises the ceiling 100x — still a bounded, fail-closed
+  # anti-DoS backstop, not a disable.
+  defp h2_parity do
+    [http_2_options: [max_reset_stream_rate: {50_000, 10_000}]]
+  end
+
+  # -- TLS-everywhere opt-in (P14) ---------------------------------------------
+
+  # Real Azure is https-only on every plane; locally only the 9444 twin speaks
+  # TLS by default. SMALT_TLS_ALL_PLANES=1 (or config :smalt, :tls_all_planes,
+  # true) mounts an ADDITIONAL https listener on the data-plane surface (same
+  # plug as the 9444 twin, port :egress_tls_port, default 8445) alongside the
+  # plaintext 8443 listener. Additive: flag unset leaves the default boot
+  # byte-for-byte unchanged (no extra child, no cert work, no port bind).
+  @doc """
+  TLS-everywhere gate: `SMALT_TLS_ALL_PLANES=1` (or
+  `config :smalt, :tls_all_planes, true`) enables the additive data-plane
+  https listener. Default (flag unset / app env nil) is false — default boot
+  is byte-for-byte unchanged.
+  """
+  def all_planes? do
+    System.get_env("SMALT_TLS_ALL_PLANES") in ["1", "true"] or
+      Application.get_env(:smalt, :tls_all_planes) == true
+  end
+
+  @doc """
+  Port for the additive data-plane https listener (`:egress_tls_port`,
+  default 8445 — adjacent to plaintext 8443, disjoint from the 9444 twin).
+  """
+  def egress_tls_port, do: Application.get_env(:smalt, :egress_tls_port, 8445)
+
+  # -- AR-SEC-02 dual-cert (RSA + ECDSA) opt-in --------------------------------
+
+  defp rsa_ciphers do
+    # APIMWIRE compile-freeze SLA unblock (disclosed): HEAD pinned these as
+    # CHARLISTS (~c"..."); the atom form (~w(...)a) is rejected by OTP ssl
+    # ({:options, {:ciphers, [:"ECDHE-RSA-..."]}}) and broke every bandit
+    # listener boot on this machine (all lanes). Charlists restore the
+    # default-path semantics of HEAD; the ECDSA opt-in branch is the owner
+    # lane's to qualify.
+    [
+      ~c"ECDHE-RSA-AES256-GCM-SHA384",
+      ~c"ECDHE-RSA-AES128-GCM-SHA256"
+    ]
+  end
+
+  # Version pin seam. Default is TLS 1.3 + 1.2 fallback (IMPL-14F flip,
+  # evidence: tls13-unpin-trial.md); `config :smalt, :tls_versions,
+  # [:"tlsv1.2"]` restores the R90/D52 1.2-only pin. Dual-cert mode augments
+  # the 1.2 pin with the ECDSA suites.
+  defp transport_tls_opts(dual?) do
+    versions = Application.get_env(:smalt, :tls_versions, [:"tlsv1.3", :"tlsv1.2"])
+
+    if :"tlsv1.3" in versions do
+      # IMPL-14 flip: prefer the x25519mlkem768 hybrid KEM on TLS 1.3 legs.
+      # `supported_groups` is a preference list, not a restriction, for the
+      # server; OTP < 29 ssl refuses the mlkem atom, so the preference rides
+      # the same tlsv1.3 branch as the version flip (IMPL-14F) — the 1.2-only
+      # escape hatch below restores the pre-mlkem shape byte-for-byte.
+      [versions: versions, supported_groups: [:x25519mlkem768, :x25519, :secp256r1]]
+    else
+      ciphers = if dual?, do: ecdsa_ciphers() ++ rsa_ciphers(), else: rsa_ciphers()
+      [versions: versions, ciphers: ciphers]
+    end
+  end
+
+  defp single_cert_opts(cert, key) do
+    [certfile: to_charlist(Path.expand(cert)), keyfile: to_charlist(Path.expand(key))]
+  end
+
+  defp ecdsa_ciphers do
+    [
+      ~c"ECDHE-ECDSA-AES256-GCM-SHA384",
+      ~c"ECDHE-ECDSA-AES128-GCM-SHA256"
+    ]
+  end
+
+  # Opt-in gate: env flag SMALT_TLS_ECDSA=1 (or config :smalt, :tls_certs_keys,
+  # true). Anything else leaves the single-RSA-cert path untouched.
+  defp certs_keys_material(rsa_cert, rsa_key) do
+    ecdsa_on? =
+      System.get_env("SMALT_TLS_ECDSA") in ["1", "true"] or
+        Application.get_env(:smalt, :tls_certs_keys) == true
+
+    with true <- ecdsa_on?,
+         {ec_cert, ec_key} when is_binary(ec_cert) and is_binary(ec_key) <- ecdsa_pair(),
+         :ok <- validate_certfile_pair(ec_cert, ec_key) do
+      # Plug.SSL's certs_keys normalizer (Bandit runs Plug.SSL.configure) does
+      # Map.to_list/1 on each entry — entries must be MAPS, not keyword lists
+      # (witnessed: erl_stdlib_errors at maps.erl:1303 on first boot).
+      {true,
+       [
+         %{certfile: to_charlist(Path.expand(ec_cert)), keyfile: to_charlist(Path.expand(ec_key))},
+         %{certfile: to_charlist(Path.expand(rsa_cert)), keyfile: to_charlist(Path.expand(rsa_key))}
+       ]}
+    else
+      _ -> {false, :no_pair}
+    end
+  end
+
+  defp ecdsa_pair do
+    cert = System.get_env("SMALT_TLS_ECDSA_CERTFILE") || Path.expand(".smalt/tls/ecdsa-cert.pem")
+    key = System.get_env("SMALT_TLS_ECDSA_KEYFILE") || Path.expand(".smalt/tls/ecdsa-key.pem")
+
+    if File.regular?(cert) and File.regular?(key), do: {cert, key}, else: :no_ecdsa_pair
   end
 
   # -- dev cert generation ----------------------------------------------------
@@ -239,10 +381,33 @@ defmodule Smalt.TLS do
          [{:Certificate, der, :not_encrypted} | _] <- :public_key.pem_decode(pem),
          {:ok, kpem} <- File.read(key),
          [key_entry | _] <- :public_key.pem_decode(kpem),
-         {:ok, priv} <- rsa_key_der(key_entry) do
+         :ok <- pair_check(der, key_entry) do
+      :ok
+    else
+      _ -> {:error, :unparseable_key}
+    end
+  end
+
+  # RSA leg — byte-identical semantics to the pre-AR-SEC-02 path.
+  defp pair_check(cert_der, {key_type, _der, :not_encrypted} = key_entry)
+       when key_type in [:RSAPrivateKey, :PrivateKeyInfo] do
+    with {:ok, priv} <- rsa_key_der(key_entry) do
       key_pub = rsa_pub_from_priv(priv)
 
-      if safe_spki_match(der, key_pub) do
+      if safe_spki_match(cert_der, key_pub) do
+        :ok
+      else
+        {:error, :cert_key_mismatch}
+      end
+    end
+  end
+
+  # EC leg — SPKI identity check: the cert's subjectPublicKey (raw EC point)
+  # must equal the key's embedded public point, on the same named curve.
+  defp pair_check(cert_der, {:ECPrivateKey, key_der, :not_encrypted}) do
+    with {:ok, ec_priv} <- safe_ec_decode(key_der),
+         {:ok, spki} <- safe_cert_spki(cert_der) do
+      if ec_spki_match(spki, ec_priv) do
         :ok
       else
         {:error, :cert_key_mismatch}
@@ -250,6 +415,34 @@ defmodule Smalt.TLS do
     else
       _ -> {:error, :unparseable_key}
     end
+  end
+
+  defp pair_check(_cert_der, _other), do: {:error, :unparseable_key}
+
+  defp safe_ec_decode(der) do
+    {:ok, :public_key.der_decode(:ECPrivateKey, der)}
+  rescue
+    _ -> :error
+  end
+
+  defp safe_cert_spki(cert_der) do
+    otp = :public_key.pkix_decode_cert(cert_der, :otp)
+    {:ok, elem(elem(otp, 1), 7)}
+  rescue
+    _ -> :error
+  end
+
+  # OTP :otp-decode shape for an EC SPKI (witnessed by the first boot of this
+  # lane — a badmatch on the assumed SubjectPublicKeyInfo shape):
+  #   {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, id-ecPublicKey, {:namedCurve, curve}},
+  #    {:ECPoint, point}}
+  # The ECPrivateKey record carries the same curve in parameters (elem 3) and
+  # the same raw point in publicKey (elem 4). Both must match.
+  defp ec_spki_match(spki, ec_priv) do
+    {:OTPSubjectPublicKeyInfo, {:PublicKeyAlgorithm, @ec_pubkey_oid, {:namedCurve, curve}},
+     {:ECPoint, point}} = spki
+
+    elem(ec_priv, 3) == {:namedCurve, curve} and point == elem(ec_priv, 4)
   end
 
   # asn1 decoding can exit (NIF decode failure on a structurally broken cert)
@@ -266,7 +459,7 @@ defmodule Smalt.TLS do
   end
 
   # Accept both traditional RSA ("RSA PRIVATE KEY") and PKCS#8 ("PRIVATE
-  # KEY") PEM encodings — OpenSSL >= 3 mints PKCS#8 from -newkey -nodes.S#8 from -newkey -nodes.
+  # KEY") PEM encodings — OpenSSL >= 3 mints PKCS#8 from -newkey -nodes.
   # Returns the decoded 'RSAPrivateKey' record either way.
   defp rsa_key_der({:RSAPrivateKey, der, :not_encrypted}) do
     {:ok, :public_key.der_decode(:RSAPrivateKey, der)}
@@ -277,8 +470,6 @@ defmodule Smalt.TLS do
     # result is already the 'RSAPrivateKey' record.
     {:ok, :public_key.der_decode(:PrivateKeyInfo, der)}
   end
-
-  defp rsa_key_der(_), do: :error
 
   defp regenerate(cert, key, _prior) do
     # TLS-261014-01: serialize regenerates on the same lane key so two

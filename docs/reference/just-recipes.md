@@ -106,6 +106,26 @@ modules, never edit the root.
 | 30-burn | `burn` (+ `burn-soak`/`-chaos`/`-matrix`/`-ring`/`-boot`/`-clean`/`-ocel`/`-in-container-verify`/`-chaos-kill`) | full burn: host soak + container matrix; boot rows stop the line on ORPHAN_LISTENER/ZOMBIE_BEAM/UNHANDLED_EXIT |
 | 30-burn | `overlap-court` (+ `-serial`/`-check`/`-compare`/`-report`) | scheduler-overlap anti-vacuity court — a pass from a vacuous scheduler is the failure |
 
+## Substrate-up operational notes
+
+- **Boot timeout on loaded hosts**: `substrate-up` waits up to
+  `SMALT_UP_TIMEOUT` seconds (default 90, `scripts/substrate.sh:21`) for the
+  listener to come up. On loaded multi-lane hosts a cold dep compile can blow
+  past 90s and surface as a boot fail (exit 2). Either export
+  `SMALT_UP_TIMEOUT=240` or pre-warm with `mix compile` before
+  `substrate-up`; the 90s default is tuned for quiet machines.
+  (Learned in BK-76, v26.10.22.)
+- **Toolchain PATH pin**: `substrate-up` requires the pinned toolchain on
+  PATH — asdf `1.20.4-otp-29`. A homebrew-managed `1.19.5` is refused
+  (BK-72-adjacent lesson): run under the asdf shims or `just doctor` will
+  flag the drift before the boot attempt.
+
+- **Env setup — ensure `$TMPDIR` exists**: some gate/receipt runs write
+  under `$TMPDIR`; if the lane shell's `$TMPDIR` (e.g. `/Users/sac/.cache/tmp`)
+  does not exist, gates like `docs-dod-check` fail on environment, not logic.
+  `mkdir -p "$TMPDIR"` before court/gate runs. (Learned in BK-90/BK-96,
+  v26.10.22.)
+
 ## See Also
 
 - `docs/JUST_REFERENCE.md` — per-recipe exit contracts and durations

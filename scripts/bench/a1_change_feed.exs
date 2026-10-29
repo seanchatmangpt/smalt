@@ -409,6 +409,10 @@ defmodule SmaltBench.A1 do
   end
 
   def run do
+    Code.require_file("test_boot_ports.exs", Path.join(File.cwd!(), "scripts/lib"))
+    SmaltTestBoot.pin!()
+    # BK-EPLAW2: fail-closed fence — abort unless the pinned-port contract holds.
+    SmaltTestBoot.fence!("a1_change_feed")
     {:ok, _} = Application.ensure_all_started(:smalt)
     EH.ensure_tables()
     BlobStorage.ensure_block_table()

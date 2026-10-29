@@ -227,3 +227,117 @@ arm_gateway/router.ex
 Standing: PARTIAL_ALIVE. 2 of 4 registry defects flipped via the assigned
 suites; KD-118 TS framing, blob RFC-1123 List-Blobs 500, wf7 table-stats, and
 the KD-112 cased-exemption 400 are open registrar input.
+
+---
+
+## Wave-5 ERRC verification — wave-3 SB deferred/session-state raises at HEAD (2026-10-20)
+
+- **Subject**: smalt @ `bab1949de31429544b596ba6abceb70f63a45d9e` (main;
+  `lib/smalt/messaging/amqp/management_rpc.ex`, `queue_store.ex`,
+  `lock_manager.ex` carried in-flight wave-5 edits — disclosed, not authored
+  by this lane).
+- **Context**: solo (verification lane, exclusive append to this receipt only).
+- **Authority**: wave-3 close-out table rows "deferred session-id + peek
+  DeliveryState" and "SB session-state ops" (owner: sb-sessions).
+- **Method**: real `@azure/service-bus` 7.10.0 (`verification/ts/node_modules`)
+  against substrate-ctl block **b4** (`scripts/substrate-ctl up --block b4
+  --auth enforce --fresh`; ports 39040-39045; boot rc=0 after waiting out a
+  compile freeze from another lane's in-flight `cosmos.ex` edit — poll loop,
+  no eviction). Probe: `/tmp/w5b4_sb_session_probe.cjs`. Transcript below is
+  the final green run (pass=7 fail=2, exit 1 — both fails are typed findings,
+  see F1/F2).
+
+### Legs
+
+| Leg | Verdict | Evidence |
+|---|---|---|
+| 1. defer-by-seq → receive_deferred_messages w/ session → complete | **PASS** | SDK `deferMessage` on session receiver → close → re-accept → `receiveDeferredMessages([seq])` body-exact, deliveryCount 1→2 → `completeMessage` → gone from peek |
+| 2. peek envelope delivery-state | **PASS** | raw `$management` `com.microsoft:peek-message` reply entry carries sibling `"delivery-state": "deferred"` beside `message` + `sequence-number` |
+| 3a. session-state roundtrip | **PASS** | 26-byte JSON set/get byte-exact |
+| 3b. oversized | **PASS** | 256KB+1 → `InvalidOperationError: SESSION_STATE_SIZE_EXCEEDED` (HTTP 400 class) |
+| 3c. exact boundary | **PASS** | 262144 bytes admitted + roundtrip, then cleared with `""` |
+| 4a. get-message-sessions paging | **PASS\*** | 4 pages × top=2, 6 session ids; \*rides F1 (the SDK default 3-day since filter is silently dropped by the server) |
+| 4b. since-filter (server key `since-updated-time`) | **PASS** | future-dated marker → `[]`; fresh marker → live session listed |
+| F1. since-filter (SDK key `last-updated-time`) | **FAIL — divergence** | future-dated marker returned all 6 sessions: server reads ONLY `since-updated-time`; the SDK's `last-updated-time` is silently ignored |
+| F2. `acceptNextSession` on a session queue | **FAIL — divergence candidate** | attach with null-selector session-filter falls through to the catch-all clause; echo lacks `properties`; SDK crashes `TypeError: Cannot read properties of undefined (reading 'com.microsoft:locked-until-utc')` at messageSession.js:424 |
+
+### Leg 1-3 transcripts (final run, verbatim)
+
+```
+TRACE leg1.delivered {"seq":"1","deliveryCount":1}
+TRACE leg1.deferredReceive {"seq":"1","deliveryCount":2}
+PASS leg1.defer-session-complete | seq=1 body-exact, deliveryCount 1->2, completed
+TRACE leg2.rawPeekEnvelope {"statusCode":200,"entries":[{"sequenceNumber":2,"envelopeKeys":["delivery-state","message","sequence-number"],"deliveryState":"deferred"}]}
+PASS leg2.peek-delivery-state-deferred | envelope delivery-state=deferred (raw $management reply, sibling key)
+TRACE leg3.roundtrip {"bytes":26,"value":"{\"pos\":3,\"seen\":[\"a\",\"b\"]}"}
+PASS leg3a.session-state-roundtrip | 26 bytes byte-exact
+TRACE leg3.oversized {"name":"ServiceBusError","code":"GeneralError","message":"InvalidOperationError: SESSION_STATE_SIZE_EXCEEDED"}
+PASS leg3b.oversized-256KB-refused | checked against @session_state_max 256*1024 (management_rpc.ex:565)
+PASS leg3c.exact-256KB-admitted | 262144 bytes admitted, then cleared
+```
+
+### Leg 4 transcripts
+
+```
+TRACE leg4.paging {"pages":4,"ids":["p1","p2","p3","p4","sB","sM-9083"]}
+PASS leg4a.get-message-sessions-paging | 4 pages, 6 sessions
+TRACE leg4.sinceFilter.sdkKey {"stale":["p1","p2","p3","p4","sB","sM-9083"],"future":["p1","p2","p3","p4","sB","sM-9083"]}
+TRACE leg4.sinceFilter.serverKey {"statusCode":200,"futureMarkerIds":[]}
+TRACE leg4.sinceFilter.serverKeyInclusion {"pastMarkerIds":["sM-9083"]}
+PASS leg4b.get-message-sessions-since | server-key future-marker -> 0 (correctly empty); past-marker -> 1
+FAIL leg4b-since-enforced: future-dated filter returned sessions (filter not applied)   <- F1
+```
+
+### Findings (registrar input, no register edits by this lane)
+
+1. **F1 — since-filter key divergence** (`get-message-sessions`): the TS SDK
+   sends `last-updated-time` (managementClient.js:884, SDK 7.10.0); the server
+   reads only `since-updated-time`
+   (`lib/smalt/messaging/amqp/management_rpc.ex:612`). A future-dated SDK-key
+   marker returned all 6 sessions (filter dropped); the same request re-keyed
+   `since-updated-time` filtered correctly (`futureMarkerIds: []`). The
+   wave-3 "get-message-sessions since-filter" raise is therefore verified at
+   the wire key it implemented, NOT at the key the real SDK sends — SDK-tier
+   since-filtering is dead code on the happy path. Typed-fail leg above;
+   registrar decides KD mint.
+2. **F2 — `acceptNextSession` null-selector session-filter**: smalt's
+   `extract_session_filter/1` (connection.ex:981) matches
+   `{:session_filter, selector}` / atom-key forms; the accept-next attach
+   (selector = null) falls through to the catch-all clause, the attach echo
+   carries no `properties`, and the SDK 7.10.0 crashes reading
+   `link.properties["com.microsoft:locked-until-unc"]` (messageSession.js:424).
+   Explicit `acceptSession(sid)` works end-to-end (all legs above), and the
+   census "acceptNextSession-no-session" cell passed only because the
+   empty-queue refusal path happens to echo-then-detach via the
+   is_nil-or-empty clause. Close condition: accept-next attach with an
+   available session picks the next session, echoes `properties` with
+   `com.microsoft:locked-until-utc` filetime, and the SDK crash shape is gone.
+3. **F2 witness** (run `w5_min.cjs`, verbatim):
+```
+ERR TypeError: Cannot read properties of undefined (reading 'com.microsoft:locked-until-utc')
+    at MessageSession._init (.../dist/commonjs/session/messageSession.js:424:29)
+    at ServiceBusClient.acceptNextSession (.../serviceBusClient.js:190:28)
+```
+4. **Consequence of the disclosed session-state-dies-with-lock divergence**:
+   `session_release` (lock_manager.ex:391, fired on receiver detach) deletes
+   the `:smalt_sb_sessions` record, so a session closed after
+   `setSessionState` loses both state and `updated_at`; such sessions re-enter
+   listings as message-only with `updated_at: 0` and are DROPPED by any
+   since-filtered enumeration (leg-4 transcript: only the still-open marker
+   session survived a 1-hour-past marker). Wave-3's since-filter raise is
+   capped by this: it filters correctly only over live-locked records. This
+   is a cap on the disclosed divergence, not a new KD.
+
+### Boot + teardown
+
+```
+$ scripts/substrate-ctl up --block b4 --auth enforce --fresh
+{"block": "b4", "ports": [39040, 39041, 39042, 39043, 39044, 39045], "pid": 90360, "reused": false, "marker": "/tmp/smalt-substrate-state/markers/b4.boot.json", "auth": "enforce"}
+$ scripts/substrate-ctl status --block b4   (pre-teardown)
+block=b4 ports=39040 39041 39042 39043 39044 39045 up=1 identity_verified=1 pid=90360 health=200
+```
+
+Standing: **PARTIAL_ALIVE** — legs 1-3 PASS end-to-end with the real SDK at
+HEAD; the wave-3 raises hold at the wire keys implemented, with F1 (SDK
+since-key dropped) and F2 (acceptNextSession crash shape) as open registrar
+input. No code edits, no register edits, no git actions by this lane.

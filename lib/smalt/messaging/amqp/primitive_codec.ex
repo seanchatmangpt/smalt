@@ -409,7 +409,7 @@ defmodule Smalt.Amqp.PrimitiveCodec do
 
   defp take_var(rest, len, ctor) do
     case rest do
-      <<body::binary-size(len), rest::binary>> ->
+      <<body::binary-size(^len), rest::binary>> ->
         {:ok, var_value(ctor, body), rest}
 
       _ ->
@@ -425,7 +425,7 @@ defmodule Smalt.Amqp.PrimitiveCodec do
 
   defp take_compound(rest, size, ctor) do
     case rest do
-      <<body::binary-size(size), rest::binary>> ->
+      <<body::binary-size(^size), rest::binary>> ->
         case compound_value(ctor, body) do
           # thread the unconsumed tail to the caller (connection-lane fix:
           # dropping `_rest` broke decoding any compound followed by more bytes)

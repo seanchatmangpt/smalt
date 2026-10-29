@@ -55,7 +55,7 @@ defmodule Gates.AmqpInvariantDriver do
     # the 4097th: unsettled so the broker must rule on it explicitly
     :ok = :gen_tcp.send(c.sock, transfer_frame(4097, payload, false))
 
-    result = read_until_close(c, 60_000)
+    result = read_until_ruling(c, 60_000)
     json_line(%{mode: "capacity", queue: queue, result: result})
   end
 
@@ -68,32 +68,73 @@ defmodule Gates.AmqpInvariantDriver do
     })
   end
 
-  defp read_until_close(c, deadline) do
-    if System.monotonic_time(:millisecond) > deadline, do: raise("no broker close arrived")
+  # BK-78: the Azure-exact capacity face is a LINK DETACH with
+  # amqp:link:message-size-exceeded (spec §2.8.15) and the CONNECTION
+  # SURVIVES — a close-with-error, or a silent socket drop, is a divergence.
+  # Returns {"condition", "description", "survived"}.
+  defp read_until_ruling(c, deadline) do
+    if System.monotonic_time(:millisecond) > deadline, do: raise("no broker ruling arrived")
 
     case pop(c.buf) do
       {:ok, %{performative: %{performative: :close} = perf}, _rest} ->
+        {cond, desc} = close_error_fields(perf)
+        Map.merge(%{"condition" => plain(cond), "description" => plain(desc)},
+                  %{"survived" => false})
+
+      {:ok, %{performative: %{performative: :detach} = perf}, rest} ->
         err = perf[:error] || %{}
 
-        {cond, desc} =
-          case err do
-            %{condition: c} -> {c, Map.get(err, :description)}
-            %{} = m -> {Map.get(m, "condition"), Map.get(m, "description")}
-            [c, d, _info] -> {c, d}
-            _ -> {nil, nil}
-          end
+        errcond = err_condition(err)
 
-        %{"condition" => plain(cond), "description" => plain(desc)}
+        if is_binary(errcond) do
+          # detached WITH error = the ruling. Prove the connection survives:
+          # a short recv must time out (broker still streaming), not close.
+          survived =
+            case :gen_tcp.recv(c.sock, 0, 2_000) do
+              {:error, :timeout} -> true
+              {:error, :closed} -> false
+              {:ok, _more} -> true
+            end
+
+          %{"condition" => errcond,
+            "description" => plain(detach_desc(err)),
+            "survived" => survived}
+        else
+          read_until_ruling(%{c | buf: rest}, deadline)
+        end
 
       {:ok, _other, rest} ->
-        read_until_close(%{c | buf: rest}, deadline)
+        read_until_ruling(%{c | buf: rest}, deadline)
 
       :incomplete ->
         case :gen_tcp.recv(c.sock, 0, 5_000) do
-          {:ok, data} -> read_until_close(%{c | buf: <<c.buf::binary, data::binary>>}, deadline)
-          {:error, _} -> %{"condition" => "socket-closed", "description" => "no close frame"}
+          {:ok, data} -> read_until_ruling(%{c | buf: <<c.buf::binary, data::binary>>}, deadline)
+          {:error, _} ->
+            %{"condition" => "socket-closed", "description" => "no close frame",
+              "survived" => false}
         end
     end
+  end
+
+  defp detach_desc(err), do: err_description(err)
+
+  # AMQP error fields decode as {:described, 0x1D, [condition-symbol,
+  # description, info]} (FrameCodec described-type decode), or a plain map /
+  # list depending on producer. Handle every shape the wire can deliver.
+  defp err_condition({:described, _, [c | _]}) when tuple_size(c) == 2, do: elem(c, 1)
+  defp err_condition({:described, _, [c | _]}) when is_binary(c), do: c
+  defp err_condition([c | _]) when is_binary(c), do: c
+  defp err_condition(%{} = m), do: plain(m[:condition] || Map.get(m, "condition"))
+  defp err_condition(_), do: nil
+
+  defp err_description({:described, _, [_, d | _]}) when is_binary(d), do: d
+  defp err_description([_, d | _]) when is_binary(d), do: d
+  defp err_description(%{} = m), do: plain(m[:description] || Map.get(m, "description"))
+  defp err_description(_), do: nil
+
+  defp close_error_fields(perf) do
+    err = perf[:error] || %{}
+    {err_condition(err), err_description(err)}
   end
 
   # -- lock clamp ----------------------------------------------------------------

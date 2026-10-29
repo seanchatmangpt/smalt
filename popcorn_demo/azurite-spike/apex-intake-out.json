@@ -1,0 +1,76 @@
+{
+  "lane": "apex-2",
+  "scenario": "scvd-apex-intake-3leg",
+  "n": 500,
+  "results": [
+    {
+      "backend": "smalt",
+      "url": "http://127.0.0.1:8443/popcorn",
+      "submissions": 500,
+      "concurrency": 32,
+      "ok": 500,
+      "failures": 0,
+      "wall_ms": 600.74,
+      "prd_target_ms": 500,
+      "prd_pass": false,
+      "ops_per_sec": 832.3,
+      "blob_leg_ms": {
+        "p50": 37.312,
+        "p95": 46.348,
+        "p99": 50.998
+      },
+      "policy_leg_ms": {
+        "p50": 0.0074,
+        "p99": 0.0219
+      },
+      "flag_leg_ms": {
+        "p50": 0.0001,
+        "p99": 0.0003,
+        "under_1ms": true
+      },
+      "egress_violations": 0,
+      "cors_headers": 0,
+      "cors_preflights": 0,
+      "blobs_cleaned": true,
+      "cleanup_ok": true,
+      "fail_samples": [],
+      "machine": "darwin arm64 node v26.10.0",
+      "at": "2026-10-21T17:26:37.984Z"
+    },
+    {
+      "backend": "azurite",
+      "url": "http://127.0.0.1:10100/devstoreaccount1",
+      "submissions": 500,
+      "concurrency": 32,
+      "ok": 500,
+      "failures": 0,
+      "wall_ms": 4726.02,
+      "prd_target_ms": 500,
+      "prd_pass": false,
+      "ops_per_sec": 105.8,
+      "blob_leg_ms": {
+        "p50": 300.708,
+        "p95": 363.222,
+        "p99": 377.98
+      },
+      "policy_leg_ms": {
+        "p50": 0.0058,
+        "p99": 0.0204
+      },
+      "flag_leg_ms": {
+        "p50": 0.0001,
+        "p99": 0.0003,
+        "under_1ms": true
+      },
+      "egress_violations": 0,
+      "cors_headers": 0,
+      "cors_preflights": 0,
+      "blobs_cleaned": true,
+      "cleanup_ok": true,
+      "fail_samples": [],
+      "machine": "darwin arm64 node v26.10.0",
+      "at": "2026-10-21T17:26:42.767Z"
+    }
+  ],
+  "standing": "FAIL"
+}

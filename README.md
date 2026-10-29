@@ -187,7 +187,9 @@ see Mutation court in Part 2.
 ```sh
 git clone <this-repo>
 cd smalt
-bash scripts/bootstrap.sh   # 8 idempotent stages; exit 1 names the failed [n/8] stage
+brew install asdf just terraform     # python3 ships with macOS / Xcode CLT
+asdf plugin add elixir erlang && asdf install   # .tool-versions pins elixir 1.20.4-otp-29 / erlang 29.1.2 — Homebrew elixir (1.19.x) is refused (mix.exs: elixir "~> 1.20")
+bash scripts/bootstrap.sh            # 8 idempotent stages; exit 1 names the failed [n/8] stage
 ```
 
 Stages: prerequisites (elixir/mix/terraform/just/python3) → hex deps →
@@ -203,17 +205,17 @@ Env template: `.env.example`; details: `docs/FIRST_RUN.md`.
 |---|---|---|
 | T0 | `just doctor` | environment and ports are sane before anything runs |
 | T1 | `just test-offline` (`mix test`) | unit suite, no sockets |
-| T2 | `just test-wire` (`mix test test/wire`) | wire-tier protocol behavior over real listeners |
-| T3 | `just test-sdk-smoke` | real Azure SDK clients vs harness-spawned substrate (`SMALT_SDK_ROOT` required) |
-| T4 | `just tf-plan-smoke` | terraform fixture plans against the substrate |
-| T5 | `node test/sdk-smoke/census-run.mjs` | Service Bus SDK census probes vs the AMQP surface |
-| T6 | `mix test test/chaos` | crash isolation: kill the Store mid-run, listeners survive |
+| T2 | `just test-wire` | RETIRED (v26.10.19 reset 64f6099): exits 1 loudly; successor = verification/ suites (V261019-08/09) |
+| T3 | `just test-sdk-smoke` | RETIRED (64f6099): exits 1 loudly; successor = verification/ts (V261019-08) |
+| T4 | `just tf-plan-smoke` | terraform fixture plans against the substrate (exit 77 = SKIPPED-NETWORK, rerun online) |
+| T5 | `just census` | Service Bus SDK census probes (`verification/ts/census.test.cjs`, live AMQP; exit 0/1) |
+| T6 | `just test-stress` (`mix test --include stress`) | crash isolation + expensive bodies (excluded from plain `mix test`) |
 | — | `mix test test/compliance/c1_arm.exs` (+ c2..c7) | per-service wire-contract courts |
 | — | `python3 scripts/mutation_court.py` | GraphLaw admission gate non-vacuous (exit 0/1/2; `--self-check` for restore-failure detection) |
 | — | `just court` | T0..T4 + bench gate in sequence; full court |
 | — | `just court-x2` | two-green release receipt gate (~8 min) |
 | — | `just verify-all` | offline stages only |
-| — | `just have-self-check` | HAVE L1 pool-saturation guard anti-vacuity (15 fixture courts; typed `have_worker_fleet_active_count` jidoka alerts) |
+| — | `just have-watchdog` | HAVE L1 pool-saturation guard (exit 0 quiet / 1 alerts fired / 2 config) |
 
 All port-bound tiers boot their own substrate; run one at a time with the
 ports free. Current verdict for the heaviest gates is in the Standing block
@@ -256,15 +258,17 @@ subset of the planes `control,data,integration,identity` (`:all` default,
 byte-identical boot). Unknown names refuse boot with
 `{:invalid_plane, name}` (`lib/smalt/planes.ex:38`; loader receipt
 `docs/jira/v26.10.18/receipts/azb-04-plane-loader.md`). Plane-profile SDK
-interop: `just azsim-sdk` (`test/sdk-full/azb20/run.mjs`).
+interop: `just azsim-sdk` is RETIRED (test/sdk-full/azb20 deleted at 64f6099;
+exits 1 loudly until the verification/ts successor lands, V261019-08).
 
 ### azsim tier
 
-`test/azsim/` — 10-file adversarial suite over the plane topology
-(saturation, graceful stop, DETS recovery, identity/integration planes,
-supervision). Runs with the offline suite; chaos legs (e.g. the AZB-14
-SIGKILL storm in `test/azsim/amqp_saturation_test.exs`) are receipted under
-`docs/jira/v26.10.18/receipts/azb-14-sigkill-storm.md`.
+RETIRED: `test/azsim/` was deleted in the v26.10.19 reset (64f6099). The
+10-file adversarial plane-topology suite (saturation, graceful stop, DETS
+recovery, identity/integration planes, supervision) and its chaos legs
+(AZB-14 SIGKILL storm,
+`docs/jira/v26.10.18/receipts/azb-14-sigkill-storm.md`) are historical
+receipts only — no successor lane has landed.
 
 ### Burn suite
 
@@ -350,26 +354,12 @@ exist on disk).
 
 ### SDK probe harness environment
 
-No `npm install` in this repo: the Azure SDKs are consumed from an existing
-`node_modules` tree via environment variables.
-
-- `SMALT_SDK_ROOT` — required by every `test/sdk-smoke` harness: a
-  `node_modules` directory containing the vendored `@azure/*` packages.
-  Unset, the harness exits 3 immediately.
-- `SMALT_REPO` — repo root for `run.mjs`, `census-run.mjs`, and
-  `scripts/mutation_court.py`; defaults to the current directory.
-
-```sh
-SMALT_SDK_ROOT=/path/to/node_modules SMALT_REPO=/path/to/smalt \
-  node test/sdk-smoke/run.mjs
-```
-
-The Event Hubs leg (`node test/sdk-smoke/eh-run.mjs`) and the Service Bus
-census (`node test/sdk-smoke/census-run.mjs`) boot their own substrate;
-`eh-run.mjs` defaults to private-range ports (AMQP 39172, EH 39173, ARM
-39444, egress 39445, ARM-TLS 39446 — override with `SMALT_EH_AMQP_PORT`/
-`SMALT_EH_PORT`/`SMALT_EH_ARM_PORT`/`SMALT_EH_EGRESS_PORT`/
-`SMALT_EH_ARM_TLS_PORT`).
+RETIRED with the v26.10.19 reset (64f6099): the `test/sdk-smoke/` harnesses
+were deleted. Successor: `verification/ts` (V261019-08) — the landed Service
+Bus census probes run via `just census`. Environment contract to restore
+when the full successor harness lands: `SMALT_SDK_ROOT` (node_modules with
+vendored `@azure/*`; relay-env exports it when present) and `SMALT_REPO`
+(repo root; defaults to cwd).
 
 ## Capability map (entry points, cited)
 

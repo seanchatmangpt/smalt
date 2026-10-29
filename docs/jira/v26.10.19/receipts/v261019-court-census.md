@@ -209,3 +209,28 @@ receipt.
 
 Standing: **PARTIAL_ALIVE** — machine runs end-to-end at 28ceff9; pre-wrap reds
 are honest and itemized above for the wrap sequence to consume.
+
+## Wave-5 pre-census (2026-10-20, lane: bench-visual, HEAD bab1949)
+
+Read-mostly census at current HEAD. Honest reds are the deliverable.
+
+| Gate | rc | Evidence |
+|---|---|---|
+| `scripts/acceptance_gates.py` (5-gate) | FAIL (script rc 1; harness echo 0) | G1 FAIL: 10 UNEXPECTED test paths (cosmos_pkranges, kql, purview_glossary, sentinel_multitable, arm_dcr, sb_arm_rules, eh_arm, eh_geo_dr, eh_consumer_groups…); G2/G3 PENDING/FAIL; G4 PASS; G5 PASS |
+| `scripts/envelope/automation_gate.py` | FAIL (1 violation) | `scripts/gen_error_codes.py:592 DEPRECATED-TEST-PATH` — reference to retired `test/compliance` tree (owning surface: scripts/gen_error_codes.py) |
+| `scripts/envelope/container_gate.py` | PASS | static=0 runtime=0; 2 reference notes on docker/Dockerfile (no USER/HEALTHCHECK, non-gating); runtime mode loud-skip (no hermetic image) |
+| `scripts/envelope/iac_gate.py` | PASS | scripts/tf_fixtures + tf_fixtures_per_resource clean |
+| `scripts/envelope/orchestration_gate.py` | PASS | 9 manifests scanned under k8s/ + docker/compose*, 0 violations |
+| `scripts/leak_detector.sh` | FAIL | 1 orphan detected (beam/epmd=1, node=0): beam.smp pid 67268 still holds 9443/9444/8443/5672/5673 post-sweep — same pid doctor reports as the healthy substrate; remediation pointer scripts/port_sweep.sh -y (owning surface: substrate lifecycle / scripts/leak_detector.sh orphan heuristic) |
+| `scripts/non_duplication_gate.py` | PASS | 9 files clean |
+| `scripts/portable_target_gate.py` | PASS | 26 files clean |
+| `scripts/sleep_gate.py` | PASS | 220 files, 0 unclassified sleep primitives |
+| `python3 scripts/doctor.py` | PASS (1 advisory) | substrate booted pid 67268 all 5 ports listening; advisory keychain-untrusted (dev CA, known dev-env) |
+| `scripts/naming_sweep.sh` | PASS | 0 violations / 49 allowed |
+| `scripts/gen_error_codes.py --check` | FAIL | `docs/ERROR_CODES.md is stale` — 40-line diff (arm-gateway 404/409 rows: RuleNotFound, SubscriptionNotFound, TableNotFound, SecretVersionNotFound from router.ex); owning surface: docs/ERROR_CODES.md regeneration |
+| `scripts/sdk_coverage.py` | FAIL (1 finding) | UNREGISTERED-GAP cap-cell `appconfig-snapshots` (standing PREP, receipt v261019-capability-wave3.md); other cells: PASS / PASS-PARTIAL / REGISTERED-DIVERGENCE (kd117, kd118) as expected |
+
+Reds summary (3): acceptance G1 unexpected-path drift (owning surface: caps-w4 test landing vs G1 manifest),
+ERROR_CODES.md staleness (owning surface: docs regeneration after wave-4 router additions),
+sdk_coverage UNREGISTERED-GAP appconfig-snapshots (owning surface: KD register row missing for wave-3 cell).
+Leak-detector FAIL is the live healthy substrate flagged as orphan (pid 67268, substrate booted=True) — classifier conflict, not a real leak.

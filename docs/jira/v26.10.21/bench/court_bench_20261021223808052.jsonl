@@ -1,0 +1,3 @@
+{"name":"stub-noop","n":20000,"wall_ms":0.447417,"ops_sec":44701028.347157,"ns_per_op":22.37085,"reds_per_op":21.0021,"heap_delta_kb":0.00,"machine":"unix-aarch64-apple-darwin25.2.0","otp_release":"28","timestamp":"2026-10-21T22:38:08.046Z","context":"solo"}
+{"name":"stub-ets","n":10000,"wall_ms":4.408208,"ops_sec":2268495.49749,"ns_per_op":440.8208,"reds_per_op":194.015,"heap_delta_kb":0.00,"machine":"unix-aarch64-apple-darwin25.2.0","otp_release":"28","timestamp":"2026-10-21T22:38:08.051Z","context":"solo"}
+{"name":"stub-arith","n":5000,"wall_ms":1.039083,"ops_sec":4811935.138964,"ns_per_op":207.8166,"reds_per_op":92.0048,"heap_delta_kb":0.00,"machine":"unix-aarch64-apple-darwin25.2.0","otp_release":"28","timestamp":"2026-10-21T22:38:08.052Z","context":"solo"}

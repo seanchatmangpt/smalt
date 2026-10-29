@@ -124,3 +124,13 @@ cycles 200/200, sentinel RYW verified 200/200, 0 errors, cost ledger $41.65/1M c
 Shared infra untouched: no edits to scripts/bench/lib.sh, REGISTRY.md, 15-bench.just, or
 the harness itself. Lane build root `_build-lane322` left in place for the coordinator
 (`just lane-clean` reclaims).
+
+## RE-WITNESS addendum — 2026-10-22 (lane BK-REWIT3): HEAVY — typed SUSPECT-PERMANENT-with-owner
+
+Replay = full 200-cycle lifecycle harness (self-boots a private substrate
+39640-39650 + built `next start` server). NOT re-run here — bench-class on a
+shared machine. Artifact existence re-verified:
+`docs/jira/v26.10.14/bench/lifecycle-8hop.jsonl` (11 rows) and the
+v26.10.16 mirror both on disk (exit=0). Typed: SUSPECT-PERMANENT-with-owner
+→ **bench-runner** agent class on a quiesced machine (the 2026-10-16
+re-witness addendum remains the most recent executed replay).

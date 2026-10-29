@@ -1,0 +1,29 @@
+# SQLD-4 mapping fixture — 3-table relational → OCEL projection
+# (orders → events, customers → objects, order_items → rels).
+# Consumed by test/integration/sql_ingest_mapping_court.exs.
+# Turtle subset per lib/smalt/sql_ingest/mapping.ex.
+@prefix ex:  <http://example.org/> .
+@prefix sql: <http://example.org/sql#> .
+
+ex:CustomersMapping a sql:TableMapping ;
+  sql:sourceTable "customers" ;
+  sql:role "object" ;
+  sql:keyColumn "customer_id" ;
+  sql:objectType "Customer" .
+
+ex:OrdersMapping a sql:TableMapping ;
+  sql:sourceTable "orders" ;
+  sql:role "event" ;
+  sql:eventKeyColumn "order_id" ;
+  sql:eventTypeColumn "status" ;
+  sql:timestampColumn "created_at" ;
+  sql:objectColumns "customer_id" ;
+  sql:qualifier "placed_by" .
+
+ex:OrderItemsMapping a sql:TableMapping ;
+  sql:sourceTable "order_items" ;
+  sql:role "rel" ;
+  sql:eventKeyColumn "order_id" ;
+  sql:objectKeyColumn "item_id" ;
+  sql:objectType "OrderItem" ;
+  sql:qualifier "contains_product" .

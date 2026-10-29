@@ -14,7 +14,7 @@ defmodule Smalt.Amqp.AtomBridge do
 
     - `PUT /{queue}?api-version=...` -> create/update queue (201 new / 200 update)
     - `GET /{queue}`                 -> 200 ATOM entry or 404
-    - `DELETE /{queue}`              -> 200 or 404
+    - `DELETE /{queue}`              -> 204 (no content) or 404
     - anything else                  -> 405
 
   Queue properties (`LockDuration`, `RequiresSession`, `MaxDeliveryCount`) are
@@ -35,15 +35,23 @@ defmodule Smalt.Amqp.AtomBridge do
 
   # -- HTTP detection -----------------------------------------------------------
 
+  # KD-COVERS: KD-155 — the fixed 3/4-byte prefix clauses dropped the 6-byte
+  # methods: a "DELETE " / "OPTIONS " / "PATCH " request line fell through to
+  # the AMQP header negotiation and the client read an AMQP error frame
+  # (node: HPE_INVALID_CONSTANT). Match the whole method word before the first
+  # space against the known HTTP method list. Clause order stays safe for the
+  # AMQP path: an AMQP/SASL header starts with "AMQP" (0x41 0x4D...) which is
+  # not in @http_methods, so it still falls through to AMQP dispatch.
+  @http_methods ~w(GET PUT POST DELETE HEAD PATCH OPTIONS MERGE)
+
   @doc "True when the first bytes of a stream are an HTTP/1.x request line."
   @spec http?(binary()) :: boolean()
-  def http?(<<method::binary-size(3), " ", _::binary>>)
-      when method in ["GET", "PUT"],
-      do: true
-
-  def http?(<<method::binary-size(4), " ", _::binary>>)
-      when method in ["POST", "DELE", "HEAD", "PATC", "OPTI"],
-      do: true
+  def http?(buf) when is_binary(buf) do
+    case :binary.split(buf, " ") do
+      [method, _rest] -> method in @http_methods
+      _ -> false
+    end
+  end
 
   def http?(_), do: false
 
@@ -104,20 +112,50 @@ defmodule Smalt.Amqp.AtomBridge do
   # :once guard for the non-terminal debug path: the first occurrence of a
   # reason in the window logs with its inspect/1 text; repeats within the
   # window collapse to a static "(aggregated)" suffix. No per-conn lines and
-  # no atom minting: the key is the existing error atom itself (:persistent_term
-  # is ownerless, so the short-lived serve tasks cannot race a table owner).
+  # no atom minting: the key is the existing error atom itself. JA-8/JA-4 fix
+  # (2026-10-21): the window ledger is an ETS table with write_concurrency
+  # (no global scheduler sync per write, unlike :persistent_term). Creator is
+  # any short-lived serve task, so the table carries an heir to :init — same
+  # law as policy.ex's shadow tables: without it the table dies with the
+  # creating task and every window resets. The ETS key is {reason} (a tuple,
+  # never a new atom), preserving the existing-atom law.
+  @rate_limit_table :smalt_amqp_atom_rl
   @rate_limit_ms 5_000
+
   defp rate_limited_reason(reason) do
     now = System.system_time(:millisecond)
-    key = {:smalt, :amqp_atom_rl, reason}
+    ensure_rate_table()
 
-    case :persistent_term.get(key, :never) do
-      {ts} when now - ts < @rate_limit_ms ->
+    case :ets.lookup(@rate_limit_table, reason) do
+      [{_, ts}] when now - ts < @rate_limit_ms ->
         "(aggregated)"
 
       _ ->
-        :persistent_term.put(key, {now})
+        :ets.insert(@rate_limit_table, {reason, now})
         inspect(reason)
+    end
+  end
+
+  defp ensure_rate_table do
+    case :ets.whereis(@rate_limit_table) do
+      :undefined ->
+        try do
+          :ets.new(@rate_limit_table, [
+            :named_table,
+            :set,
+            :public,
+            {:read_concurrency, true},
+            {:write_concurrency, true},
+            {:heir, Process.whereis(:init), []}
+          ])
+        rescue
+          ArgumentError -> :ok
+        end
+
+        :ok
+
+      _tid ->
+        :ok
     end
   end
 
@@ -156,7 +194,7 @@ defmodule Smalt.Amqp.AtomBridge do
              {method, path} <- parse_request_line(req_line),
              {:ok, clen} <- content_length(header_lines) do
           if byte_size(rest) >= clen do
-            <<body::binary-size(clen), _::binary>> = rest
+            <<body::binary-size(^clen), _::binary>> = rest
             {:ok, method, path, body}
           else
             :more
@@ -202,6 +240,19 @@ defmodule Smalt.Amqp.AtomBridge do
     end
   end
 
+  # KD-COVERS: KD-51 — public face of the flat ATOM management dispatcher for
+  # the HTTPS surfaces (ArmGateway.Router on the control plane and its TLS
+  # twin). azure-servicebus >= 7.x hardcodes `https://` as the management
+  # endpoint scheme (_management_client.py: `self._endpoint = "https://" <>
+  # fully_qualified_namespace`), so the sb://-port ATOM plane below is
+  # unreachable from current Python clients; the same dispatcher served over
+  # the TLS twin closes the row's falsifier (admin client create_queue
+  # succeeds). Returns {status, content_type, payload} — the exact tuple the
+  # raw-socket serve/2 path writes; the router maps it onto Plug semantics.
+  def handle_request(method, path, body) do
+    dispatch(method, path, body)
+  end
+
   # -- Dispatch -----------------------------------------------------------------
 
   defp dispatch("PUT", path, body) do
@@ -216,29 +267,134 @@ defmodule Smalt.Amqp.AtomBridge do
     end
   end
 
-  defp dispatch("GET", path, _body) do
+  # KD-COVERS: KD-155 — layer 2: real Azure answers DELETE queue with 204 No
+  # Content and an empty body (Service Bus REST "Delete Queue"); a 200 +
+  # content-length + ATOM entry body is body-on-delete framing the node admin
+  # client's response path mishandles. RFC 9110 §8.6: 204 MUST NOT carry
+  # Content-Length.
+  defp dispatch("DELETE", path, _body) do
     with {:ok, name} <- queue_name(path),
-         {:ok, record} <- Store.get(:smalt_resources, resource_key(name)) do
-      {200, atom_content_type(), queue_entry_xml(name, lock_duration_of(record))}
+         {:ok, _record} <- Store.get(:smalt_resources, resource_key(name)) do
+      Store.delete(:smalt_resources, resource_key(name))
+      {204, :no_content, <<>>}
     else
       _ ->
         {404, atom_content_type(), error_xml(404, "ResourceNotFound")}
     end
   end
 
-  defp dispatch("DELETE", path, _body) do
-    with {:ok, name} <- queue_name(path),
-         {:ok, _record} <- Store.get(:smalt_resources, resource_key(name)) do
-      Store.delete(:smalt_resources, resource_key(name))
-      {200, atom_content_type(), queue_entry_xml(name, "PT30S")}
-    else
-      _ ->
-        {404, atom_content_type(), error_xml(404, "ResourceNotFound")}
+  defp dispatch("GET", path, _body) do
+    case list_queues_path?(path) do
+      {true, top, skip} ->
+        list_queues_feed(top, skip)
+
+      false ->
+        with {:ok, name} <- queue_name(path),
+             {:ok, record} <- Store.get(:smalt_resources, resource_key(name)) do
+          {200, atom_content_type(), queue_entry_xml(name, lock_duration_of(record))}
+        else
+          _ ->
+            {404, atom_content_type(), error_xml(404, "ResourceNotFound")}
+        end
     end
   end
 
   defp dispatch(_method, _path, _body),
     do: {405, atom_content_type(), error_xml(405, "MethodNotAllowed")}
+
+  # T27LQ (KD-155SDK out-of-scope note): GET $Resources/Queues is the ATOM
+  # paged-list face of the admin client (listQueues/byPage). Real Azure answers
+  # a 200 ATOM FEED (never a flat 404); continuation is a <link rel="next">
+  # whose href carries $skip, which the SDK 7.10.0 extracts as the next marker
+  # (getMarkerFromNextLinkUrl: XML_METADATA_MARKER "$" + "skip").
+  defp list_queues_path?(path) do
+    with [p, query] <- String.split(path, "?", parts: 2),
+         true <- path_segments(p) == ["$Resources", "Queues"] do
+      # The node SDK percent-encodes the query (URL.searchParams): it sends
+      # `%24top=2`, not `$top=2` — decode before matching so both shapes hit.
+      q = URI.decode(query)
+      {true, query_int(q, "$top", 100), query_int(q, "$skip", 0)}
+    else
+      _ -> false
+    end
+  end
+
+  defp path_segments(p), do: p |> String.split("/") |> Enum.reject(&(&1 == ""))
+
+  defp query_int(query, key, default) do
+    case Regex.run(~r{(?:^|&)#{Regex.escape(key)}=(\d+)}, query) do
+      [_, v] -> String.to_integer(v)
+      _ -> default
+    end
+  end
+
+  defp list_queues_feed(top, skip) when top >= 0 and skip >= 0 do
+    names =
+      :smalt_resources
+      |> Store.list_prefix(queues_prefix())
+      |> Enum.map(fn %{"name" => n} -> n end)
+      |> Enum.sort()
+
+    page = Enum.slice(names, skip, top)
+    next_skip = skip + top
+
+    # Real-Azure OData feed shape: when a next page exists the feed carries
+    # BOTH rel="self" and rel="next" links — two <link> elements make the
+    # SDK's xml2js parse feed.link an ARRAY, which parseLinkInfo requires
+    # (a single link parses as a bare object and the continuation is
+    # silently dropped). Last page: self link only, no next -> SDK stops.
+    # The SDK extracts the next marker with getMarkerFromNextLinkUrl, which
+    # parses the href as a URL: the href must be ABSOLUTE (a relative href
+    # throws into the client's PARSE_ERROR branch). Host is irrelevant to the
+    # marker extraction; we keep the entry-id authority for consistency.
+    base = "sb://emulator/$Resources/Queues?api-version=2024-05&$top=#{top}&$skip="
+
+    self_link =
+      ~s{  <link rel="self" href="#{base}#{skip}"/>}
+
+    links =
+      if next_skip < length(names) and page != [] do
+        [
+          self_link,
+          ~s{\n  <link rel="next" href="#{base}#{next_skip}"/>}
+        ]
+      else
+        [self_link]
+      end
+
+    feed =
+      [feed_head(), for(n <- page, do: feed_entry(n)), links, feed_tail()]
+      |> :erlang.iolist_to_binary()
+
+    {200, "application/atom+xml;type=feed;charset=utf-8", feed}
+  end
+
+  defp list_queues_feed(_top, _skip) do
+    {400, atom_content_type(), error_xml(400, "BadRequest")}
+  end
+
+  defp queues_prefix do
+    String.downcase(
+      "/subscriptions/emulator-atom/resourceGroups/emulator/providers/Microsoft.ServiceBus/namespaces/emulator/queues/"
+    )
+  end
+
+  defp feed_head do
+    """
+    <?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="#{@atom_xmlns}">
+      <id>sb://emulator/$Resources/Queues</id>
+      <title type="text">Queues</title>
+      <updated>#{DateTime.utc_now() |> DateTime.to_iso8601()}</updated>
+    """
+    |> String.replace_trailing("\n", "")
+  end
+
+  defp feed_entry(name) do
+    ["\n  ", entry_body(name, created_lock_duration(name))]
+  end
+
+  defp feed_tail, do: "\n</feed>"
 
   # -- Queue records ------------------------------------------------------------
 
@@ -289,6 +445,7 @@ defmodule Smalt.Amqp.AtomBridge do
       "lockDuration" => xml_tag(body, "LockDuration") || "PT30S",
       "requiresSession" => xml_tag(body, "RequiresSession") == "true",
       "maxDeliveryCount" => int_or(xml_tag(body, "MaxDeliveryCount"), 10),
+      "forwardTo" => xml_tag(body, "ForwardTo"),
       "provisioningState" => "Succeeded"
     }
   end
@@ -312,6 +469,12 @@ defmodule Smalt.Amqp.AtomBridge do
   defp int_or(nil, default), do: default
 
   # -- Response rendering -------------------------------------------------------
+
+  defp respond(sock, _status, :no_content = _ctype, <<>> = _payload) do
+    :gen_tcp.send(sock, ["HTTP/1.1 204 No Content\r\n", "connection: close\r\n\r\n"])
+
+    :ok
+  end
 
   defp respond(sock, status, ctype, payload) do
     reason = reason_phrase(status)
@@ -348,11 +511,29 @@ defmodule Smalt.Amqp.AtomBridge do
   # EnableBatchedOperations, DefaultMessageTimeToLive,
   # RequiresDuplicateDetection, DuplicateDetectionHistoryTimeWindow,
   # DeadLetteringOnMessageExpiration, EnableExpress. Emit the full shape.
+  # w6ae: the queue's ForwardTo target (case-sensitive, "" when unset) read
+  # back from the stored ARM record so the admin GET echoes it.
+  defp forward_to_xml(name) do
+    case Store.get(:smalt_resources, resource_key(name)) do
+      {:ok, %{"properties" => %{"forwardTo" => t}}} when is_binary(t) -> t
+      _ -> ""
+    end
+  end
+
   defp queue_entry_xml(name, lock_duration) do
+    IO.iodata_to_binary(["<?xml version=\"1.0\" encoding=\"utf-8\"?>\n", entry_body(name, lock_duration)])
+  end
+
+  # Feed entries carry no XML declaration (one declaration per document only,
+  # in feed_head/0) — the node SDK parseXML chokes on a repeated declaration.
+  # T27LQ-r: the SDK's setName derives the resource name from the entry-id
+  # URL PATHNAME (atomXmlHelper.setName: pathname.substring(firstIndexOfDelimiter+1)),
+  # so the id must be a SINGLE path segment — `sb://emulator/<name>`. The old
+  # `/queues/<name>` id made listQueues report every queue as "queues/<name>".
+  defp entry_body(name, lock_duration) do
     """
-    <?xml version="1.0" encoding="utf-8"?>
     <entry xmlns="#{@atom_xmlns}">
-      <id>sb://emulator/queues/#{name}</id>
+      <id>sb://emulator/#{name}</id>
       <title>#{name}</title>
       <updated>#{DateTime.utc_now() |> DateTime.to_iso8601()}</updated>
       <content type="application/xml">
@@ -368,6 +549,7 @@ defmodule Smalt.Amqp.AtomBridge do
           <RequiresDuplicateDetection>false</RequiresDuplicateDetection>
           <DuplicateDetectionHistoryTimeWindow>PT10M</DuplicateDetectionHistoryTimeWindow>
           <DeadLetteringOnMessageExpiration>false</DeadLetteringOnMessageExpiration>
+          <ForwardTo>#{forward_to_xml(name)}</ForwardTo>
           <EnableExpress>false</EnableExpress>
         </QueueDescription>
       </content>

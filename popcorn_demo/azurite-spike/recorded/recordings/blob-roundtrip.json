@@ -1,0 +1,179 @@
+{
+  "schema": "recorded-test/v1",
+  "endpoint": "http://127.0.0.1:8443",
+  "account": "devstoreaccount1",
+  "apiVersion": "2021-12-02",
+  "recordedAt": "2026-10-21T16:46:22.512Z",
+  "transactions": [
+    {
+      "name": "create-container",
+      "request": {
+        "method": "PUT",
+        "url": "http://127.0.0.1:8443/devstoreaccount1/rec-pattern-1792601182466-62727?restype=container",
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "cache-control": "max-age=0, private, must-revalidate",
+          "content-length": "0",
+          "date": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "etag": "\"AAC24284357BF3D1FB25EA0A1BDD8288\"",
+          "last-modified": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "vary": "accept-encoding",
+          "x-ms-request-id": "121f4ad9-4a28-4d6e-8a31-f8ce66659e7d",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      }
+    },
+    {
+      "name": "put-blob",
+      "request": {
+        "method": "PUT",
+        "url": "http://127.0.0.1:8443/devstoreaccount1/rec-pattern-1792601182466-62727/roundtrip.txt",
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "x-ms-version": "2021-12-02",
+          "x-ms-blob-type": "BlockBlob"
+        },
+        "body": "hello-recorded-pattern"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "cache-control": "max-age=0, private, must-revalidate",
+          "content-length": "205",
+          "content-type": "application/json; charset=utf-8",
+          "date": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "etag": "\"813af128e7f079c37e4b37a405b7c162\"",
+          "vary": "accept-encoding",
+          "x-ms-request-id": "84b89d45-9d9d-4f58-9244-0e9d2dbdc6c1",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": "{\"content_length\":22,\"etag\":\"\\\"813af128e7f079c37e4b37a405b7c162\\\"\",\"headers\":{\"x-ms-blob-type\":\"BlockBlob\",\"x-ms-version\":\"2021-12-02\"},\"last_modified\":\"2026-10-21T16:46:22.506383Z\",\"name\":\"roundtrip.txt\"}"
+      }
+    },
+    {
+      "name": "get-blob",
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8443/devstoreaccount1/rec-pattern-1792601182466-62727/roundtrip.txt",
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "accept-language": "*",
+          "authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "cache-control": "max-age=0, private, must-revalidate",
+          "connection": "keep-alive",
+          "content-length": "22",
+          "content-type": "application/octet-stream; charset=utf-8",
+          "date": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "etag": "\"813af128e7f079c37e4b37a405b7c162\"",
+          "host": "127.0.0.1:8443",
+          "sec-fetch-mode": "cors",
+          "user-agent": "node",
+          "vary": "accept-encoding",
+          "x-ms-blob-type": "BlockBlob",
+          "x-ms-request-id": "eae6ecb2-0b8c-4d19-8d6a-b5f1f21e4ade",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": "hello-recorded-pattern"
+      }
+    },
+    {
+      "name": "get-container-properties",
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8443/devstoreaccount1/rec-pattern-1792601182466-62727?restype=container",
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "max-age=0, private, must-revalidate",
+          "content-length": "0",
+          "date": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "etag": "\"AAC24284357BF3D1FB25EA0A1BDD8288\"",
+          "last-modified": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "vary": "accept-encoding",
+          "x-ms-has-immutability-policy": "false",
+          "x-ms-has-legal-hold": "false",
+          "x-ms-request-id": "6015e7b5-3568-4d95-8c36-80ceb8eef146",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      }
+    },
+    {
+      "name": "delete-blob",
+      "request": {
+        "method": "DELETE",
+        "url": "http://127.0.0.1:8443/devstoreaccount1/rec-pattern-1792601182466-62727/roundtrip.txt",
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      },
+      "response": {
+        "status": 409,
+        "headers": {
+          "cache-control": "max-age=0, private, must-revalidate",
+          "content-encoding": "gzip",
+          "content-length": "125",
+          "content-type": "application/json; charset=utf-8",
+          "date": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "vary": "accept-encoding",
+          "x-ms-error-code": "ContainerLocked",
+          "x-ms-request-id": "97792366-17cf-49fa-ab13-0a93ba4cfafa",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": "{\"error\":{\"code\":\"ContainerLocked\",\"message\":\"Blob modification refused: container policy enforces immutable WORM retention.\"}}"
+      }
+    },
+    {
+      "name": "delete-container",
+      "request": {
+        "method": "DELETE",
+        "url": "http://127.0.0.1:8443/devstoreaccount1/rec-pattern-1792601182466-62727",
+        "headers": {
+          "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IlFiaE5DeEh6akpoanlNUGVVZjZMNmUwUXdtQUZzVlhmMHVkUENiMEl2aUUiLCJ0eXAiOiJKV1QifQ.eyJhcHBpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImF1ZCI6Imh0dHBzOi8vbWFuYWdlbWVudC5henVyZS5jb20iLCJhenAiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJleHAiOjE3OTI2MDQ3ODIsImlhdCI6MTc5MjYwMTE4MiwiaXNzIjoiaHR0cDovLzEyNy4wLjAuMTo5NDQzL29yZ2FuaXphdGlvbnMvdjIuMCIsIm5iZiI6MTc5MjYwMTE4Miwib2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZXMiOlsiQ29udHJpYnV0b3IiLCJPd25lciJdLCJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0aWQiOiJvcmdhbml6YXRpb25zIn0.eDM0GGcPykzccL2gfS7F53WCvEEvvtlWKBEVyRGzEzwqYzp2EQZmDvLaeTxqwD4qeJHNsmGcMcNTvcZgNWkDmMaIiXB5B-oS_8lAOmqeaPSGvSDr0dlq3pv-XnS5dFLmymNqNVzHQK4Xkx-1hcnUdzT9bqlO1lvCNlYnnqKj55GPYamiblmi7CoBq-uZjzGHhPJ1XS9uAXyf0qhVFMOu25jk-PZBVzEdibmb7jtFA8HKxEoobmamjrVY6-bjlBE5dekTMVdA5cYIN4wkXiQO6dVCoq-QFAktnM1yxX9CLxZ3o4U8OEMLVXPFL6Mxou8JA-fsoMEE2X2J7uXuw7Sqj-MMzvj1ZY9hSNJAr-N5tnWwaVctj4ddli_ey6O97w2I_t2pc1ae3rQbutj_3Lmnei0g9zdT-ihA7GQQf1bxqgeHW7sbkqyRLYn3nlNHsliKBbZcsT9crD8eCcETsdV8LiKQXsVcarWsEy08-UJy-PZm3RN7r9pUoU6BhfZlsTo1XSG0kmCwL68j_H5sDmnudhn72MyfMufRe_O_YFM1pt813NBnz7GHLhfucisfIhiCqPaie8VCG3BEwWOtW2Vc-zYdvfW0W7kh7lyhMtaRBzqPSPYniZdTWKh7r0IvSjIlJaPXyBKvs5USKfggo4hS7kzcUk-2ByayxiVFquN96kE",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": ""
+      },
+      "response": {
+        "status": 409,
+        "headers": {
+          "cache-control": "max-age=0, private, must-revalidate",
+          "content-encoding": "gzip",
+          "content-length": "125",
+          "content-type": "application/json; charset=utf-8",
+          "date": "Wed, 21 Oct 2026 16:46:22 GMT",
+          "vary": "accept-encoding",
+          "x-ms-error-code": "ContainerLocked",
+          "x-ms-request-id": "b5567e49-6155-46f8-9d16-966d70fc2411",
+          "x-ms-version": "2021-12-02"
+        },
+        "body": "{\"error\":{\"code\":\"ContainerLocked\",\"message\":\"Blob modification refused: container policy enforces immutable WORM retention.\"}}"
+      }
+    }
+  ]
+}

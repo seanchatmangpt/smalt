@@ -11,12 +11,10 @@
 import {
   MsgType,
   type Capabilities,
-  type Enroll,
   type GatewayEnvelope,
   type ProtocolError,
   type RequestMessage,
   type ResponseMessage,
-  type SignChallenge,
   type SignedReceipt,
 } from './protocol';
 import type { GatewayEvents } from './gateway-events';
@@ -362,7 +360,6 @@ function unwrapAs<T extends ResponseMessage>(env: GatewayEnvelope<ResponseMessag
 
 // -- message <-> bytes -------------------------------------------------------
 
-const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 function hexToBytes(hex: string): Uint8Array {

@@ -22,6 +22,10 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Debug-face gate (EXPL7-R1 E7-3): the stats/drift/storm faces answer 404
+// unless the server was started with SMALT_DEBUG_FACES=1 (bench lanes set it).
+import { debugFacesEnabled, debugFaceDisabled } from "../../../../lib/debug-faces.ts";
+
 interface Delta {
   seq: number;
   ts: number;
@@ -91,8 +95,12 @@ function replayFrom(lastEventId: number): Delta[] {
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
 
-  if (url.searchParams.get("stats") !== null) {return stats();}
+  if (url.searchParams.get("stats") !== null) {
+    if (!debugFacesEnabled()) return debugFaceDisabled();
+    return stats();
+  }
   if (url.searchParams.get("drift") !== null) {
+    if (!debugFacesEnabled()) return debugFaceDisabled();
     return Response.json({ seq, ring_len: ring.length, ts: Date.now() });
   }
 
@@ -176,6 +184,7 @@ function stats(): Response {
 // down mid-flight; clients observe a hard connection reset while the
 // process (and the ring) survive — a genuine server-side abort.
 export async function POST(req: Request): Promise<Response> {
+  if (!debugFacesEnabled()) return debugFaceDisabled();
   if (req.headers.get("x-smalt-storm") !== "abort") {
     return new Response("bad storm header\n", { status: 400 });
   }

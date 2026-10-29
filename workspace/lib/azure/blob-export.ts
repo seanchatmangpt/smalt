@@ -111,7 +111,6 @@ export async function exportReceiptBundle(
   await manifestBlob.upload(manifest, manifest.length, { abortSignal: T(timeoutMs) });
 
   // The air-gap export simulation: the second write MUST be rejected.
-  let overwriteStatus: number | undefined;
   try {
     await blob.upload(Buffer.from("tamper", "utf8"), 6, { abortSignal: T(timeoutMs) });
   } catch (err: unknown) {

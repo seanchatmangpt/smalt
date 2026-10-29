@@ -16,7 +16,7 @@
    grep -cE "signing.key|verifying.key|\.ggen|keys/"` must be 0; on failure the
    offending paths are listed.
 3. Packaged-set leak grep over the unpacked contents with the PUBLISH_CHECK
-   3a / naming-sweep pattern class: `athena|/Users/sac` — zero hits required.
+   3a / naming-sweep pattern class: `legacy-client|/Users/sac` — zero hits required.
 4. `python3 scripts/gen_error_codes.py --check` — docs/ERROR_CODES.md regen
    identity.
 
@@ -41,7 +41,7 @@ this lane's file) is fixed.
    PASS (tarball: 301056 bytes; log: /tmp/hex-publish-dry/smalt.tar.build.log)
 -- gate 2: inner-tar key grep (pattern: signing.key|verifying.key|\.ggen|keys/)
    PASS (0 matches in contents.tar.gz listing)
--- gate 3: packaged-set leak grep (pattern: athena|/Users/sac)
+-- gate 3: packaged-set leak grep (pattern: legacy-client|/Users/sac)
    PASS (0 hits in packaged set at /tmp/hex-publish-dry/smalt.tar.unpacked)
 -- gate 4: python3 scripts/gen_error_codes.py --check
    PASS (docs/ERROR_CODES.md up to date)

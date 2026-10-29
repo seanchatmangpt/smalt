@@ -1,0 +1,119 @@
+{
+  "services": [
+    {
+      "service": "blob",
+      "checks": [
+        {
+          "name": "container_create",
+          "ok": true,
+          "detail": "None",
+          "ms": 2.21
+        },
+        {
+          "name": "block_put",
+          "ok": true,
+          "detail": "None",
+          "ms": 2.25
+        },
+        {
+          "name": "get_byte_equal",
+          "ok": true,
+          "detail": "byte-equal ok",
+          "ms": 1.96
+        },
+        {
+          "name": "delete",
+          "ok": true,
+          "detail": "cleaned",
+          "ms": 4.22
+        }
+      ],
+      "skipped": [],
+      "ok": true,
+      "all_checks_passed": true
+    },
+    {
+      "service": "cosmos",
+      "checks": [
+        {
+          "name": "create_doc_mints_etag",
+          "ok": true,
+          "detail": "etag minted \"56a1ac54-d7e6-4cb9-8af4-3c2db47e8410\"",
+          "ms": 5.43
+        },
+        {
+          "name": "cas_put_etag_match_200",
+          "ok": true,
+          "detail": "etag-match 200, etag rotated",
+          "ms": 4.49
+        },
+        {
+          "name": "cas_put_stale_etag_412",
+          "ok": true,
+          "detail": "stale etag 412",
+          "ms": 2.27
+        },
+        {
+          "name": "cleanup",
+          "ok": true,
+          "detail": "cleaned",
+          "ms": 4.0
+        }
+      ],
+      "skipped": [],
+      "ok": true,
+      "all_checks_passed": true
+    },
+    {
+      "service": "kv",
+      "checks": [
+        {
+          "name": "secret_set",
+          "ok": true,
+          "detail": "None",
+          "ms": 1.75
+        },
+        {
+          "name": "secret_get_byte_equal",
+          "ok": true,
+          "detail": "byte-equal ok",
+          "ms": 1.47
+        },
+        {
+          "name": "secret_delete",
+          "ok": true,
+          "detail": "cleaned",
+          "ms": 1.65
+        }
+      ],
+      "skipped": [],
+      "ok": true,
+      "all_checks_passed": true
+    },
+    {
+      "service": "servicebus",
+      "checks": [
+        {
+          "name": "arm_queue_ensure",
+          "ok": true,
+          "detail": "None",
+          "ms": 36.29
+        },
+        {
+          "name": "send_receive_one",
+          "ok": true,
+          "detail": "send/receive/complete ok",
+          "ms": 3210.84
+        }
+      ],
+      "skipped": [],
+      "ok": true,
+      "all_checks_passed": true
+    }
+  ],
+  "zero_egress": true,
+  "hosts": [
+    "127.0.0.1"
+  ],
+  "ts": 1792608508.895814
+}

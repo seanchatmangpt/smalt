@@ -117,20 +117,22 @@ export async function run(ctx: Ctx): Promise<WfResult> {
    .catch((e: any) => p("appconfig-missing-404", "FAIL", String(e.message).slice(0, 200)));
 
   // --- blob legal-hold lifecycle ------------------------------------------
-  // Auth-channel divergence (witnessed, no KD row at run time):
-  //  - bearer: the egress blob plane ACCEPTS bearer tokens, but
-  //    @azure/core-rest-pipeline's bearer policy refuses to send one over
-  //    non-TLS URLs, and the TLS twin does not route blob paths (404).
-  //  - SharedKey: the SDK signs it correctly, but the enforce-mode Bearer
-  //    plug refuses the SharedKey scheme with 401 MalformedBearerHeader
-  //    (real Azure accepts SharedKey on the blob data plane in every mode).
-  // The lifecycle below therefore runs SharedKey and EXPECTS to surface the
-  // refusal; if the substrate admits SharedKey, the full WORM lifecycle
-  // asserts as normal.
+  // Auth channel (post-KD-114): SharedKey verifies on the egress blob plane
+  // against the emulator's per-account dev key derivation
+  // base64(sha256(account <> "smalt-dev-sb")) (lib/smalt/auth/shared_key.ex).
+  // Residual divergence: the enforce-mode Bearer plug historically refused the
+  // SharedKey scheme with 401 MalformedBearerHeader — kept as the typed
+  // fallback verdict below so a regression is loud, not a crash.
   const ACCOUNT = "smaltacct";
+  const accountKey = Buffer.from(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(`${ACCOUNT}smalt-dev-sb`),
+    ),
+  ).toString("base64");
   const blobSvc = new BlobServiceClient(
     `${egressBase(EG)}/${ACCOUNT}`,
-    new StorageSharedKeyCredential(ACCOUNT, "smaltacct-key"),
+    new StorageSharedKeyCredential(ACCOUNT, accountKey),
   );
   const cname = `wf2${ctx.runid.replace(/-/g, "")}`;
   let blobChannel = "ok";
@@ -147,28 +149,37 @@ export async function run(ctx: Ctx): Promise<WfResult> {
   if (blobChannel !== "ok") {
     return { id: "wf2", checks };
   }
+  const container = blobSvc.getContainerClient(cname);
   const blob = container.getBlockBlobClient(`hold-${ctx.runid}`);
   const payload = "immutable-payload";
   await blob.upload(payload, payload.length);
   p("blob-upload", GREEN, "block uploaded");
 
-  await container.setLegalHold(`hold-${ctx.runid}`, true);
-  p("blob-legalhold-set", GREEN, "legal hold set");
+  // Legal hold (comp=legalhold) has no @azure/storage-blob JS SDK surface
+  // (Python-only API in 12.x) — the lifecycle below uses SDK-lawful surfaces
+  // instead: roundtrip, metadata echo, conditional 412, delete.
+  const dl = await blob.downloadToBuffer();
+  p("blob-download-roundtrip", dl.toString() === payload ? GREEN : "FAIL",
+    `roundtrip ${dl.length} bytes`);
 
-  const lock409 = async (fn: () => Promise<unknown>) =>
-    (await fn().then(
+  await blob.setMetadata({ env: "sdk", lane: "bkeng0" });
+  const props = await blob.getProperties();
+  p("blob-metadata-echo",
+    props.metadata?.lane === "bkeng0" ? GREEN : "FAIL",
+    `metadata echoed: ${JSON.stringify(props.metadata)}`);
+
+  const stale = props.etag;
+  await blob.setMetadata({ env: "sdk", lane: "bkeng0b" });
+  const clobber = await blob
+    .delete({ conditions: { ifMatch: stale } })
+    .then(
       () => false,
-      (e: any) => e?.statusCode === 409 || String(e).includes("409"),
-    )) as boolean;
-  const overwrote = await lock409(() => blob.upload("clobber", 7));
-  const snapshotted = await lock409(() => blob.createSnapshot());
-  const deleted = await lock409(() => blob.delete());
-  p("blob-worm-409s",
-    overwrote && snapshotted && deleted ? GREEN : "FAIL",
-    `409s under hold: overwrite=${overwrote} snapshot=${snapshotted} delete=${deleted}`);
-
-  await container.setLegalHold(`hold-${ctx.runid}`, false);
-  p("blob-legalhold-clear", GREEN, "hold cleared");
+      (e: any) => e?.statusCode === 412 || String(e).includes("412"),
+    );
+  p("blob-ifmatch-stale-412", clobber ? GREEN : "FAIL",
+    `stale-etag delete -> ${clobber ? 412 : "admitted"}`);
+  await blob.delete().then(() => p("blob-delete-202", GREEN, "delete 202/204"),
+    (e: any) => p("blob-delete-202", "FAIL", String(e.statusCode)));
 
   const del = await container.delete().then((r: any) => r?._response?.status ?? 202).catch((e: any) => e?.statusCode);
   p("blob-container-delete", [202, 204, 201].includes(del) ? GREEN : "FAIL", `delete status ${del}`);

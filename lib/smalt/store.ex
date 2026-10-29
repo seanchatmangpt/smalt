@@ -5,8 +5,34 @@ defmodule Smalt.Store do
 
   All tables are `:ordered_set` with lowercased full ARM id strings as keys, so
   `list_prefix/2` scans are deterministic and TF-stable.
+
+  ## TTV-5 reference architecture (partitioned error kernel)
+
+  `Smalt.Store` is the FACADE of a supervised ensemble; the process named
+  `Smalt.Store` is the ensemble SUPERVISOR (`whereis(Smalt.Store)` stays
+  meaningful — killing it IS the full-node crash):
+
+    * `Smalt.Store.Heir` — quiet heir, boots first, holds tables whose
+      owning partition died and gives them back via `reclaim_table/2`;
+    * `Smalt.Store.Boot` — runs the TTV-4 sealed-journal replay LAST
+      (adopt-then-replay: partitions create/adopt the tables first, the
+      sealed journal is applied before the ensemble finishes starting —
+      no request is served until all 18 children are up); a typed reader
+      refusal is a boot refusal (TTV-4 law unchanged);
+    * `Smalt.Store.Partition` × 16 — permanent workers, one per
+      `:erlang.phash2(table, 16)` stripe; serialized writes (CAS, CAS-delete,
+      insert_new, next_seq) route through the owning worker.
+
+  Reads bypass the processes entirely (public tables). The canonical table
+  names are UNCHANGED — the stripe is per TABLE, not per key (coordinator-
+  approved deviation: key-striping would rename the canonical namespace and
+  break ~15 cross-lease modules doing direct ETS/readiness checks), so
+  per-table CAS/next_seq serialization is identical to the pre-partition
+  single-GenServer guarantee.
   """
-  use GenServer
+  use Supervisor, restart: :permanent
+
+  require Logger
 
   # W1b projection: the table list is the generated registry
   # (lib/smalt/store_tables.ex — smalt:StoreTable ontology rows), replacing
@@ -15,8 +41,83 @@ defmodule Smalt.Store do
   # list — regenerate with `mix smalt.gen`.
   @tables Smalt.StoreTables.table_names()
 
+  # SCVD backpressure audit MED-3: the data-plane call funnel (CAS / cas_delete
+  # / insert_new / next_seq) previously relied on the implicit GenServer.call
+  # 5_000ms default. Typed now; same value, semantics unchanged.
+  @call_timeout 5_000
+
+  # TTV-4: journal frame event types owned by the Store (u16 wire codes).
+  # Disjoint from the OcelEmitter codes (0x0001..0x0004) so a shared journal
+  # directory carries both and replay filters by event type, never guessing.
+  @journal_evt_put 0x0A01
+  @journal_evt_delete 0x0A02
+
+  # TTV-4: table identity on the wire is the table's index in the generated
+  # registry (store_tables.ex). Frames carry the u16 index; replay maps back.
+  @table_id_by_name @tables |> Enum.with_index() |> Map.new(fn {t, i} -> {t, i} end)
+  @table_name_by_id @tables |> Enum.with_index() |> Map.new(fn {t, i} -> {i, t} end)
+
+  # TTV-5: the 16-way stripe (table-level — see moduledoc).
+  @partitions 16
+
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    # TTV-4: an explicit :name opt lets a court boot a second, non-default
+    # ensemble against a scratch journal dir. Default is unchanged. The
+    # ensemble supervisor carries the name; every child name derives from it.
+    base = Keyword.get(opts, :name, __MODULE__)
+
+    children =
+      [
+        # Heir FIRST: the give-away anchor is alive before any worker binds.
+        {Smalt.Store.Heir, opts}
+      ] ++
+        Enum.map(0..(@partitions - 1), fn i ->
+          # Partitions SECOND. Cold boot: the OWNING partition CREATEs its
+          # assigned tables with {:heir, heir_pid, []} (reference contract —
+          # a later partition crash hands tables to the Heir for the
+          # respawn to reclaim; :ets.give_away does NOT reset the heir
+          # option, so creation heir must be the Heir, never :init).
+          # BK-65 unblock: {Mod, arg} children all default to id `Mod` — 16x
+          # duplicate (witnessed SUBSTRATE_DIED). Unique map-form ids.
+          %{id: {Smalt.Store.Partition, i}, start: {Smalt.Store.Partition, :start_link, [{base, i}]}}
+        end) ++
+        [
+          # Boot LAST: adopt-then-replay. The sealed journal is applied
+          # AFTER the partitions have created/adopted the tables (a cold VM
+          # has no tables until the partitions make them; a full-node kill
+          # deletes them via the dead-heir chain), and BEFORE the ensemble
+          # finishes starting — no request is served until all 18 children
+          # are up, so this is serving-equivalent to replay-then-adopt. A
+          # typed reader refusal is a boot refusal (TTV-4 law unchanged).
+          {Smalt.Store.Boot, opts}
+        ]
+
+    case Supervisor.start_link(children,
+           strategy: :one_for_one,
+           max_restarts: 200,
+           max_seconds: 5,
+           name: base
+         ) do
+      {:ok, pid} ->
+        # Boot seeding (regression fix, BK-70rr): the TTV-5 ensemble rewrite
+        # dropped the init-time default-subscription seed (it survived only in
+        # clear/0), so a fresh boot served 404 SubscriptionNotFound on the
+        # fixed dev subscription. Idempotent, key-only overwrite — same
+        # :ets.insert semantics as clear/0's reseed.
+        seed_default_subscription()
+        {:ok, pid}
+
+      error ->
+        error
+    end
+  end
+
+  @impl true
+  def init(children) do
+    # Satisfies the Supervisor behaviour for `use Supervisor`; the ensemble
+    # is actually booted via start_link/1 above (children built there, since
+    # they depend on the `base` name).
+    Supervisor.init(children, strategy: :one_for_one, max_restarts: 200, max_seconds: 5)
   end
 
   @doc """
@@ -25,22 +126,103 @@ defmodule Smalt.Store do
   """
   def table_names, do: @tables
 
-  @impl true
-  def init(_opts) do
-    Enum.each(@tables, fn table ->
-      if :ets.info(table) == :undefined do
-        :ets.new(table, [
-          :ordered_set,
-          :public,
-          :named_table,
-          read_concurrency: true,
-          write_concurrency: true
-        ])
+  @doc "TTV-5: number of partition workers (16)."
+  def partition_count, do: @partitions
+
+  @doc "TTV-5: the partition worker owning `table`'s stripe."
+  def partition_of(table), do: Smalt.Store.Partition.owner_of(table)
+
+  @doc """
+  TTV-4 boot replay: applies every frame of every SEALED segment under the
+  configured `:journal_sink_dir` to the Store ETS tables, in segment then
+  SeqID order.
+
+  Fail-closed contract: `{:error, {seg_path, reason}}` on the first typed
+  reader refusal (manifest mismatch, CRC, truncation, seq regression) or the
+  first uninterpretable Store frame (`{:unknown_table_id, id}`,
+  `{:bad_payload, ...}`) — nothing past the refusing segment is applied and
+  nothing is skipped silently. `{:ok, applied}` counts applied Store frames.
+  Non-Store frames (e.g. OcelEmitter event codes 0x0001..0x0004) are skipped
+  by event type — they are another writer's records, not corruption.
+  """
+  def replay_sealed(dir) when is_binary(dir) do
+    with {:ok, segs} <- Smalt.Storage.JournalReader.discover_sealed_segments(dir) do
+      Enum.reduce_while(segs, {:ok, 0}, fn seg, {:ok, n} ->
+        case Smalt.Storage.JournalReader.read_sealed_segment(seg) do
+          {:ok, frames} ->
+            case apply_frames(frames) do
+              :ok -> {:cont, {:ok, n + length(frames)}}
+              {:error, _} = err -> {:halt, err}
+            end
+
+          {:error, reason} ->
+            {:halt, {:error, {seg, reason}}}
+        end
+      end)
+    end
+  end
+
+  @doc false
+  # Called by the Smalt.Store.Boot ensemble child (adopt-then-replay).
+  def boot_replay_for_boot(opts) do
+    dir =
+      Keyword.get(opts, :journal_sink_dir) || Application.get_env(:smalt, :journal_sink_dir)
+
+    case dir do
+      nil ->
+        :ok
+
+      dir ->
+        case replay_sealed(Path.expand(dir)) do
+          {:ok, applied} ->
+            if applied > 0 do
+              Logger.info("Smalt.Store: journal replay restored #{applied} frame(s) from #{dir}")
+            end
+
+            :ok
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  defp apply_frames(frames) do
+    Enum.reduce_while(frames, :ok, fn f, :ok ->
+      case apply_frame(f) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
       end
     end)
+  end
 
-    seed_default_subscription()
-    {:ok, %{}}
+  defp apply_frame(%{event_type: evt, table_id: tid, key: key, payload: payload}) do
+    case Map.fetch(@table_name_by_id, tid) do
+      :error ->
+        {:error, {:unknown_table_id, tid}}
+
+      {:ok, table} ->
+        case evt do
+          @journal_evt_put ->
+            apply_put(table, key, payload)
+
+          @journal_evt_delete ->
+            :ets.delete(table, key)
+            :ok
+
+          _ ->
+            # another writer's frame (OcelEmitter codes etc.) — skip, not corruption
+            :ok
+        end
+    end
+  end
+
+  defp apply_put(table, key, payload) do
+    value = :erlang.binary_to_term(payload)
+    :ets.insert(table, {key, value})
+    :ok
+  rescue
+    ArgumentError -> {:error, {:bad_payload, table: table, key: key}}
   end
 
   @doc """
@@ -55,10 +237,15 @@ defmodule Smalt.Store do
       raise ArgumentError, "Smalt.Store.insert_new/3: unknown table #{inspect(table)}"
     end
 
-    GenServer.call(__MODULE__, {:insert_new, table, key, value})
+    GenServer.call(
+      Smalt.Store.Partition.whereis_owner(__MODULE__, table),
+      {:insert_new, table, key, value},
+      @call_timeout
+    )
   end
 
   def put(table, key, value) do
+    journal_mutation(@journal_evt_put, table, key, :erlang.term_to_binary(value))
     :ets.insert(table, {key, value})
     :ok
   end
@@ -71,8 +258,60 @@ defmodule Smalt.Store do
   end
 
   def delete(table, key) do
+    journal_mutation(@journal_evt_delete, table, key, <<>>)
     :ets.delete(table, key)
     :ok
+  end
+
+  # TTV-4: journal-then-apply (WAL order). Best-effort at the caller: if the
+  # sink is down or the config is unset the mutation still applies (same
+  # fail-safe log-drop law as the SJ-4 OcelEmitter journal path — never a
+  # crash of the data plane); the crash court exercises the sink-up face
+  # where every committed key must survive. Unknown tables carry no wire
+  # identity, so they are never journaled (the caller's :ets op raises, as
+  # before).
+  @doc false
+  def journal_evt_put, do: @journal_evt_put
+
+  @doc false
+  def journal_evt_delete, do: @journal_evt_delete
+
+  @doc false
+  # TTV-5: PUBLIC — the partition workers call this from their handle_calls
+  # (one journal law for the ensemble).
+  def journal_mutation(event_type, table, key, payload) do
+    case Application.get_env(:smalt, :journal_sink_dir) do
+      nil ->
+        :ok
+
+      _dir ->
+        case Map.fetch(@table_id_by_name, table) do
+          :error ->
+            :ok
+
+          {:ok, table_id} ->
+            try do
+              {:ok, _seq} =
+                Smalt.Storage.JournalSink.append(
+                  Smalt.Storage.JournalSink,
+                  event_type,
+                  table_id,
+                  key,
+                  payload
+                )
+
+              :ok
+            rescue
+              e ->
+                Logger.warning("Smalt.Store: journal append dropped: #{Exception.message(e)}")
+                :ok
+            catch
+              :exit, _ ->
+                Logger.warning("Smalt.Store: journal append dropped (sink down)")
+                :ok
+            end
+        end
+    end
   end
 
   @doc """
@@ -206,18 +445,27 @@ defmodule Smalt.Store do
   end
 
   @doc """
-  Serialized compare-and-swap: lookup+insert runs inside the Store GenServer
-  so exactly one concurrent caller wins. Returns :ok | {:error, :conflict}.
+  Serialized compare-and-swap: lookup+insert runs inside the table's OWNING
+  PARTITION worker so exactly one concurrent caller wins. Returns :ok |
+  {:error, :conflict}.
   """
   def compare_and_swap(table, key, expect, new) do
     # Fail closed in the CALLER: an unknown table must raise here, not inside
-    # handle_call — an :ets.lookup on a missing table would crash the shared
-    # Store GenServer (named ETS tables die with it; a restart loses data).
+    # the partition's handle_call — an :ets.lookup on a missing table would
+    # crash the shared partition worker. (TTV-5: the pre-partition "a restart
+    # loses data" clause is SUPERSEDED — tables are heir-held by
+    # Smalt.Store.Heir and partition-scoped, so neither a partition crash nor
+    # a full-node crash deletes data tables; the unknown-table raise is kept
+    # purely as the fail-closed caller-side contract.)
     if :ets.info(table) == :undefined do
       raise ArgumentError, "Smalt.Store.compare_and_swap/4: unknown table #{inspect(table)}"
     end
 
-    GenServer.call(__MODULE__, {:cas, table, key, expect, new})
+    GenServer.call(
+      Smalt.Store.Partition.whereis_owner(__MODULE__, table),
+      {:cas, table, key, expect, new},
+      @call_timeout
+    )
   end
 
   @doc """
@@ -235,7 +483,11 @@ defmodule Smalt.Store do
             "Smalt.Store.compare_and_swap_delete/3: unknown table #{inspect(table)}"
     end
 
-    GenServer.call(__MODULE__, {:cas_delete, table, key, expect})
+    GenServer.call(
+      Smalt.Store.Partition.whereis_owner(__MODULE__, table),
+      {:cas_delete, table, key, expect},
+      @call_timeout
+    )
   end
 
   @doc """
@@ -292,85 +544,37 @@ defmodule Smalt.Store do
       raise ArgumentError, "Smalt.Store.next_seq/3: unknown table #{inspect(table)}"
     end
 
-    GenServer.call(__MODULE__, {:next_seq, table, key, seed_fun})
+    GenServer.call(
+      Smalt.Store.Partition.whereis_owner(__MODULE__, table),
+      {:next_seq, table, key, seed_fun},
+      @call_timeout
+    )
+  end
+end
+defmodule Smalt.Store.Boot do
+  @moduledoc """
+  TTV-5 ensemble child #2: runs the TTV-4 sealed-journal replay during init,
+  BEFORE the 16 partitions start (Supervisor starts children in order, so
+  replay-then-partition-adopt is structural, not best-effort). A typed
+  reader refusal is a boot refusal for the whole ensemble — never a silent
+  skip (TTV-4 law, unchanged). With `:journal_sink_dir` unset this is a
+  no-op — byte-identical default boot.
+  """
+
+  use GenServer
+
+  require Logger
+
+  def start_link(opts) do
+    base = Keyword.get(opts, :name, Smalt.Store)
+    GenServer.start_link(__MODULE__, opts, name: Module.concat(base, Boot))
   end
 
   @impl true
-  def handle_call({:next_seq, table, key, seed_fun}, _from, state) do
-    {:reply, bump_seq(table, key, seed_fun), state}
-  end
-
-  @impl true
-  def handle_call({:cas, table, key, expect, new}, _from, state) do
-    look = :ets.lookup(table, key)
-
-    if Application.get_env(:smalt, :sentinel_forensic, false) do
-      case :ets.info(:smalt_sentinel_forensic) do
-        :undefined ->
-          :ok
-
-        _ ->
-          :ets.insert(
-            :smalt_sentinel_forensic,
-            {System.unique_integer([:monotonic, :positive]),
-             {:cas, table, key, expect, new, look}, self()}
-          )
-      end
-    end
-
-    reply =
-      case look do
-        [{^key, ^expect}] ->
-          :ets.insert(table, {key, new})
-          :ok
-
-        _ ->
-          {:error, :conflict}
-      end
-
-    {:reply, reply, state}
-  end
-
-  def handle_call({:insert_new, table, key, value}, _from, state) do
-    reply =
-      case :ets.lookup(table, key) do
-        [] ->
-          :ets.insert(table, {key, value})
-          :ok
-
-        _ ->
-          {:error, :exists}
-      end
-
-    {:reply, reply, state}
-  end
-
-  def handle_call({:cas_delete, table, check_key, expect}, _from, state) do
-    reply =
-      :ets.lookup(table, check_key)
-      |> case do
-        [{^check_key, ^expect}] ->
-          :ets.delete(table, check_key)
-          :ok
-
-        _ ->
-          {:error, :conflict}
-      end
-
-    {:reply, reply, state}
-  end
-
-  defp bump_seq(table, key, seed_fun) do
-    case :ets.lookup(table, key) do
-      [{^key, n}] when is_integer(n) ->
-        seq = n + 1
-        :ets.insert(table, {key, seq})
-        seq
-
-      _ ->
-        seq = seed_fun.() + 1
-        :ets.insert(table, {key, seq})
-        seq
+  def init(opts) do
+    case Smalt.Store.boot_replay_for_boot(opts) do
+      :ok -> {:ok, %{}}
+      {:error, reason} -> {:stop, {:journal_replay_failed, reason}}
     end
   end
 end

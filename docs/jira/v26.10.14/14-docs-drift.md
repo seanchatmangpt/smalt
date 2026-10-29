@@ -38,7 +38,7 @@ Restamp as a **historical lane receipt**: dated header stating the mix.exs `rele
    - `scripts/dev_env.sh:33` — `DEFAULT_SDK_ROOT` interpolation
    - `scripts/stress/vs_azurite.py:330,369` — cleaned
    - `.env.example:12` — `SMALT_SDK_ROOT` placeholder form
-   - `docker/README.md:42` — "Athena data-plane egress router" phrasing, no `/Users/sac`
+   - `docker/README.md:42` — "legacy-client data-plane egress router" phrasing, no `/Users/sac`
 2. Replace the unowned "NOT READY" verdict at :83/:191 with a gated status: residual lines are **not lane-fixable here** — gated behind **lane 12's naming-sweep allowlist**, referenced by name. Do not restate counts in prose beyond the existing table (count-restatement is the drift class).
 3. Claim "READY-MODULO-LANE-12-ALLOWLIST" — do not claim READY.
 

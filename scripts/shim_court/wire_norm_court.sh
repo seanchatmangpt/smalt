@@ -8,6 +8,9 @@ source "$(dirname "$0")/lib.sh"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 ROUTER="lib/smalt/egress_router.ex"
+# KD-07 wire arm moved out of egress_router.ex in the caps-wave rewrite
+# (2026-10-20): the cosmos list_docs respond now lives in the route module.
+COSMOS_ROUTES="lib/smalt/egress/CosmosRoutes.ex"
 BLOB_SERVICE="lib/smalt/data_plane/blob_service.ex"
 WITNESS="mix run --no-start scripts/shim_court/wire_norm_witness.exs"
 SHIMPY="scripts/shim_court/wire_norm_shim.py"
@@ -82,10 +85,10 @@ run_court() {
 case "${1:-all}" in
   kd01) run_court kd01 "$ROUTER" ;;
   kd03) run_court kd03 "$BLOB_SERVICE" ;;
-  kd07) run_court kd07 "$ROUTER" ;;
+  kd07) run_court kd07 "$COSMOS_ROUTES" ;;
   all)
     run_court kd01 "$ROUTER"
-    run_court kd07 "$ROUTER"
+    run_court kd07 "$COSMOS_ROUTES"
     run_court kd03 "$BLOB_SERVICE"
     ;;
   *)

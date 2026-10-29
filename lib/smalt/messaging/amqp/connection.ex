@@ -1,6 +1,10 @@
 defmodule Smalt.Amqp.Connection do
+  @redelivery_tick_idle_ms 1_000
+  @redelivery_tick_floor_ms 250
+  @redelivery_tick_cap_ms 20_000
+
   @moduledoc """
-  One AMQP 1.0 connection per accepted `:gen_tcp` socket (active: false, binary).
+  One AMQP 1.0 connection per accepted `:gen_tcp` socket (passive, binary) with a short-recv mailbox-servicing pump.
 
   Wire state machine:
 
@@ -37,6 +41,7 @@ defmodule Smalt.Amqp.Connection do
 
   alias Smalt.Amqp.{CbsRouter, DeliveryEncoder, FrameCodec, ManagementRpc, QueueStore}
   alias Smalt.Messaging.EventHubs
+  alias Smalt.Messaging.EhThrottle
 
   @max_frame_size 1_048_576
   @protocol_header "AMQP\x00\x01\x00\x00"
@@ -77,6 +82,7 @@ defmodule Smalt.Amqp.Connection do
   def init(opts) do
     sock = Keyword.fetch!(opts, :socket)
     mode = Keyword.get(opts, :mode, :sb)
+    Process.set_label(%{service: :amqp, role: :connection, correlation_id: mode})
     :ok = :inet.setopts(sock, active: false, mode: :binary)
     send(self(), :recv)
 
@@ -86,6 +92,7 @@ defmodule Smalt.Amqp.Connection do
        mode: mode,
        buffer: <<>>,
        halted: false,
+       recv_deadline: nil,
        peer_max_frame_size: nil,
        phase: :sasl_header,
        session: nil,
@@ -93,12 +100,81 @@ defmodule Smalt.Amqp.Connection do
        sessions: %{},
        next_delivery_id: 0,
        outbound_deliveries: %{},
-       eh_cursors: %{}
+       eh_cursors: %{},
+       # KD-COVERS: KD-127 — next in-pump redelivery-sweep deadline (ms).
+       next_redeliver_at: 0,
+       # KD-COVERS: KD-134 — requester-preference memory: {queue, seq} ->
+       # MapSet of {channel, handle} links that delivered the message and
+       # have not settled it yet. Pruned on settlement (handle_disposition).
+       redelivery_holders: %{}
      }}
+  end
+
+  # -- KD-127 in-pump redelivery sweep ------------------------------------------
+  #
+  # The broker-side Sweeper (Smalt.Amqp.Sweeper) re-avails expired message
+  # locks in the store, but deliver_available/1 runs only on inbound :flow and
+  # on the enqueue path. A receiver whose client holds link credit open
+  # (rhea/SDK receivers keep a credit window outstanding) never sees the
+  # re-availed message: no :flow arrives, so no claim is attempted. This
+  # bounded sweep re-runs deliver_available/1 so expired-lock redelivery
+  # reaches attached receivers WITHOUT dropping the link. Interval law: when
+  # queue links are open, the sweep rides the SHORTEST lock-duration expiry of
+  # the queues involved (read from the ARM queue record), so an expired lock
+  # is noticed within ~one lock window of the Sweeper's re-avail; with no
+  # eligible links the deadline idles at a slow heartbeat.
+  defp redelivery_sweep(state) do
+    now = :os.system_time(:millisecond)
+
+    if state.phase == :amqp_frames and now >= state.next_redeliver_at do
+      state2 = deliver_available(state)
+      %{state2 | next_redeliver_at: now + redelivery_tick_interval(state2)}
+    else
+      sweep_skipped(state)
+      state
+    end
+  end
+
+  # Typed skip marker keeps the skip branch honest (no silent fall-through).
+  defp sweep_skipped(%{phase: :amqp_frames}), do: :deadline_not_reached
+  defp sweep_skipped(_), do: :connection_not_open
+
+  defp redelivery_tick_interval(state) do
+    case queue_link_addresses(state) do
+      [] ->
+        @redelivery_tick_idle_ms
+
+      addrs ->
+        addrs
+        |> Enum.map(fn addr ->
+          case Smalt.Amqp.QueueStore.queue_settings(addr) do
+            %{lock_duration_ms: d} when is_integer(d) and d > 0 -> d
+            _ -> @redelivery_tick_cap_ms
+          end
+        end)
+        |> Enum.min()
+        |> max(@redelivery_tick_floor_ms)
+        |> min(@redelivery_tick_cap_ms)
+    end
+  end
+
+  # Distinct queue addresses of open sender-role queue links with credit.
+  defp queue_link_addresses(state) do
+    state.links
+    |> Map.values()
+    |> Enum.filter(fn link ->
+      link.role == :sender and link.kind == :queue and Map.get(link, :credit, 0) > 0
+    end)
+    |> Enum.map(& &1.address)
+    |> Enum.uniq()
   end
 
   @impl true
   def handle_info(:recv, state) do
+    # KD-COVERS: KD-69 — fresh await deadline per pump iteration (set in
+    # need_more/2 when the wait begins, cleared on arrival / requeue).
+    state = %{state | recv_deadline: nil}
+
     event =
       try do
         next_input(state)
@@ -121,6 +197,13 @@ defmodule Smalt.Amqp.Connection do
             send(self(), :recv)
             {:noreply, state}
         end
+
+      # KD-COVERS: KD-69 — the short-recv drain requeued a typed detach
+      # message (evict / AZB-07) to the mailbox tail; stop pumping and let
+      # the GenServer dispatch it against the latest state. The clause that
+      # handles it resumes the pump via send(self(), :recv).
+      {:requeued, state} ->
+        {:noreply, state}
 
       {:closed, state} ->
         {:stop, :normal, state}
@@ -149,15 +232,20 @@ defmodule Smalt.Amqp.Connection do
   # Cross-connection epoch eviction: the NEW attach's connection asked THIS
   # connection to detach the incumbent epoch-holding link (GAP-A2-02).
   def handle_info({:eh_epoch_evict, channel, handle, error}, state) do
-    case link_by_handle(state, channel, handle) do
-      nil ->
-        {:noreply, state}
+    state =
+      case link_by_handle(state, channel, handle) do
+        nil -> state
+        link ->
+          send_frame(state, link.channel, {:detach, %{handle: handle, closed: true, error: error}})
+          eh_epoch_release(link)
+          %{state | links: Map.delete(state.links, {channel, handle})}
+      end
 
-      link ->
-        send_frame(state, link.channel, {:detach, %{handle: handle, closed: true, error: error}})
-        eh_epoch_release(link)
-        {:noreply, %{state | links: Map.delete(state.links, {channel, handle})}}
-    end
+    # KD-COVERS: KD-69 — resume the short-recv pump after applying the
+    # detach (the drain requeued this message so the latest state applies;
+    # the buffer may still hold bytes to parse).
+    send(self(), :recv)
+    {:noreply, state}
   end
 
   def handle_info({:azb07_force_partition_detach, address}, state) do
@@ -181,7 +269,14 @@ defmodule Smalt.Amqp.Connection do
         end
       end)
 
-    if detached == [], do: {:noreply, state}, else: {:noreply, %{state | links: links}}
+    # KD-COVERS: KD-69 — resume the short-recv pump after the detach.
+    if detached == [] do
+      send(self(), :recv)
+      {:noreply, state}
+    else
+      send(self(), :recv)
+      {:noreply, %{state | links: links}}
+    end
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
@@ -313,23 +408,86 @@ defmodule Smalt.Amqp.Connection do
     end
   end
 
+  # KD-COVERS: KD-69 — short-recv mailbox-servicing pump. The old
+  # need_more/2 blocked in :gen_tcp.recv for the FULL pre-open / idle
+  # connection timeout, so a cross-connection {:eh_epoch_evict, ...} typed
+  # detach (eh_epoch_admit/3) sat unprocessed in an idle incumbent's mailbox
+  # up to 300s, until its client next sent bytes (face-2 falsifier FAIL:
+  # the detach was delivered only after the client sent a flow frame).
+  # Segment the wait: 100ms recv slices with a selective mailbox drain
+  # between slices, so typed detaches are applied while the connection
+  # idles. Non-matching mailbox messages are NEVER stolen: the receive has
+  # no catch-all clause, so only the two typed detach messages can be
+  # consumed here.
+  @pump_wait_ms 100
+
   defp need_more(%{sock: sock, buffer: buf} = state, want) do
     want = max(want, 1)
 
-    # Idle-time-out enforcement: after open the negotiated clamp applies;
-    # before open (SASL/header phase) a short cap closes truncated-frame and
-    # slow-start slowloris attacks instead of holding the socket 300s
-    # (R3 F1/H4 findings).
+    # R3 clamp table, unchanged: pre-open (SASL/header phase) a short cap
+    # closes truncated-frame / slow-start slowloris attacks; post-open the
+    # negotiated idle-time-out governs (floor 60s, ceiling @recv_timeout).
     idle_timeout =
       if state[:conn_opened] == true,
         do: state[:idle_time_out] || @recv_timeout,
         else: @pre_open_timeout
 
-    case :gen_tcp.recv(sock, want, idle_timeout) do
-      {:ok, data} -> next_input(%{state | buffer: <<buf::binary, data::binary>>})
+    # One deadline per await: set when the wait begins, cleared on data
+    # arrival and at pump entry.
+    now = :os.system_time(:millisecond)
+    deadline = state[:recv_deadline] || now + idle_timeout
+
+    case :gen_tcp.recv(sock, want, min(@pump_wait_ms, max(deadline - now, 1))) do
+      {:ok, data} ->
+        next_input(%{state | buffer: <<buf::binary, data::binary>>, recv_deadline: nil})
+
+      {:error, :timeout} ->
+        if now >= deadline do
+          # Clamp expiry: identical to the old single-recv :timeout handling
+          # upstream ({:closed, state} → typed stop, no close frame).
+          {:closed, state}
+        else
+          # KD-COVERS: KD-127 — bounded in-pump redelivery sweep. When the
+          # global Sweeper re-avails an expired message lock, open
+          # connections are not otherwise notified, so a receiver holding
+          # outstanding link credit never sees the redelivery until it sends
+          # a new :flow or re-attaches (K6 falsifier: no redelivery at
+          # 2.6s/31.5s with the first receiver attached; only link close
+          # restored re-claimability). The recv timeout slice is the one point
+          # where an idle connection already wakes with current state, so the
+          # sweep rides it (deadline-checked, never sleep-coordinated).
+          # SLEEP-CLASS: POLL-STEP — the recv slice is the pump's existing
+          # observation point; the sweep adds a real store check per interval.
+          state = redelivery_sweep(%{state | recv_deadline: deadline})
+
+          case pump_drain(state) do
+            # Requeued typed detach: yield so the GenServer dispatches it
+            # against the latest state; the clause resumes the pump.
+            {:requeued, state2} -> {:requeued, state2}
+            state2 -> need_more(state2, want)
+          end
+        end
+
       {:error, :closed} -> {:closed, state}
-      {:error, :timeout} -> {:closed, state}
       {:error, reason} -> {:error, reason, state}
+    end
+  end
+
+  # Selective mailbox drain between recv slices. Matches ONLY the two typed
+  # detach messages: on a match the message is requeued to the mailbox tail
+  # and the wait returns {:requeued, state} so the pump yields and the
+  # GenServer dispatches it against the LATEST state (no forked state).
+  defp pump_drain(state) do
+    receive do
+      {:eh_epoch_evict, _, _, _} = msg ->
+        send(self(), msg)
+        {:requeued, %{state | recv_deadline: nil}}
+
+      {:azb07_force_partition_detach, _} = msg ->
+        send(self(), msg)
+        {:requeued, %{state | recv_deadline: nil}}
+    after
+      0 -> state
     end
   end
 
@@ -403,6 +561,11 @@ defmodule Smalt.Amqp.Connection do
 
   defp handle_amqp(:attach, perf, channel, state), do: handle_attach(perf, channel, state)
 
+  # KD-COVERS: KD-133 — this handler treats flow fields as a DECODED MAP
+  # (order-independent), and FrameCodec's flow field list is AMQP-spec-ordered
+  # on emit; spec-ordered client flows witnessed granting credit
+  # (verification/ts/fix4-raw-wire.exs + fix4.probe.cjs L3, receipt
+  # docs/jira/v26.10.20/receipts/fix4-amqp-witness.md).
   defp handle_amqp(:flow, perf, ch, state) do
     # AMQP 1.0 §2.7.4: an inbound :flow carries an ABSOLUTE link-credit
     # snapshot, not a delta. rhea (link.js on_flow) computes
@@ -568,6 +731,11 @@ defmodule Smalt.Amqp.Connection do
     send_frame(state, ch, {:close, %{error: nil}})
     %{state | halted: true}
   end
+
+  # KD-COVERS: KD-129 — transport heartbeat (empty body frame, spec §2.3.1)
+  # decodes to performative :heartbeat; it must be consumed silently, never
+  # answered with amqp:not-implemented (which closed live idle connections).
+  defp handle_amqp(:heartbeat, _perf, _ch, state), do: state
 
   defp handle_amqp(name, _perf, _ch, state) do
     error_close(state, "amqp:not-implemented", "unexpected performative #{inspect(name)}")
@@ -821,24 +989,83 @@ defmodule Smalt.Amqp.Connection do
             # the default clause unchanged.
             {:queue, :sender, sid}
             when is_nil(sid) or sid == "" ->
-              if QueueStore.queue_settings(address).requires_session do
-                send_frame(state, channel, {:attach, base_attach})
+              cond do
+                # KD-COVERS: KD-121
+                # KD-121: acceptNextSession sends a session-filter attach with
+                # a NULL selector. extract_session_filter reads it as nil, so
+                # this attach used to fall through to the unfiltered passthrough
+                # (no session-filter echo, no locked-until-utc properties) and
+                # the SDK's messageSession.js threw TypeError on the missing
+                # lock fields. Real broker behavior: pick the next unlocked
+                # session, lock it, and echo the attach with the chosen sid +
+                # lock fields; none available -> echo + typed detach (the SDK
+                # surfaces the detach error as a clean translated failure).
+                nil_session_filter?(perf.source) ->
+                  case next_unlocked_session(address) do
+                    {sid2, slock} ->
+                      fields =
+                        Map.merge(base_attach, %{
+                          source: %{
+                            address: address,
+                            filter:
+                              {:map_rhea, %{{:symbol, "com.microsoft:session-filter"} => sid2}}
+                          },
+                          properties: %{
+                            "com.microsoft:locked-until-utc" =>
+                              DeliveryEncoder.filetime_from_ms(slock.locked_until)
+                          }
+                        })
 
-                send_frame(state, channel, {
-                  :detach,
-                  %{
-                    handle: perf.handle,
-                    closed: true,
-                    error: %{
-                      condition: "com.microsoft:session-cannot-be-locked",
-                      description: "SESSION_CANNOT_BE_LOCKED"
+                      {fields, state, link}
+
+                    :none ->
+                      send_frame(state, channel, {:attach, base_attach})
+
+                      send_frame(state, channel, {
+                        :detach,
+                        %{
+                          handle: perf.handle,
+                          closed: true,
+                          error: %{
+                            condition: "com.microsoft:session-cannot-be-locked",
+                            description: "NO_UNLOCKED_SESSIONS_AVAILABLE"
+                          }
+                        }
+                        })
+
+                      {nil, state, link}
+                  end
+
+                # R129 exploit 2 (W5-17): an UNFILTERED receiver (no
+                # com.microsoft:session-filter) on a requiresSession queue
+                # falls to the catch-all clause and registered with
+                # session_id: nil — claim_candidates' nil filter then matched
+                # ALL messages, draining other sessions' locked messages. Real
+                # Azure refuses this attach: echo the attach, then detach typed
+                # (session-cannot-be-locked class). Same echo-then-detach
+                # ordering as the acceptNextSession refusal above (rhea needs
+                # the broker echo before any detach). A queue that does NOT
+                # require sessions (including unknown queues -> default
+                # settings) passes through to the default clause unchanged.
+                QueueStore.queue_settings(address).requires_session ->
+                  send_frame(state, channel, {:attach, base_attach})
+
+                  send_frame(state, channel, {
+                    :detach,
+                    %{
+                      handle: perf.handle,
+                      closed: true,
+                      error: %{
+                        condition: "com.microsoft:session-cannot-be-locked",
+                        description: "SESSION_CANNOT_BE_LOCKED"
+                      }
                     }
-                  }
-                })
+                  })
 
-                {nil, state, link}
-              else
-                {base_attach, state, link}
+                  {nil, state, link}
+
+                true ->
+                  {base_attach, state, link}
               end
 
             # GAP-A2-01/02 (KD-68/KD-69): EH receiver attach — read the
@@ -985,6 +1212,42 @@ defmodule Smalt.Amqp.Connection do
 
   defp extract_session_filter(%{filter: %{session_filter: selector}}), do: selector
   defp extract_session_filter(_), do: nil
+
+  # KD-121: acceptNextSession attaches with the session-filter symbol PRESENT
+  # but a NULL selector. extract_session_filter/1 reads that as nil — same as
+  # "no filter" — so the attach used to be indistinguishable from an
+  # unfiltered attach. Predicate: symbol present AND selector reads nil.
+  defp nil_session_filter?(%{filter: f}) when is_map(f) do
+    symbol_present? =
+      Enum.any?(f, fn {k, _} ->
+        key = if is_atom(k), do: Atom.to_string(k), else: k
+        key == "com.microsoft:session-filter"
+      end)
+
+    symbol_present? and extract_session_filter(%{filter: f}) == nil
+  end
+
+  defp nil_session_filter?(_), do: false
+
+  # KD-121: pick the next unlocked session for acceptNextSession. Enumerates
+  # the queue's real session records (skip:0, top:100) and acquires the lock
+  # on the first that yields; all locked/none -> :none.
+  defp next_unlocked_session(address) do
+    case QueueStore.list_sessions(address, skip: 0, top: 100, since: nil) do
+      {:ok, entries} when is_list(entries) ->
+        Enum.find_value(entries, :none, fn e ->
+          case Smalt.Amqp.LockManager.session_acquire(address, e.session_id,
+                 duration_ms: QueueStore.queue_settings(address).lock_duration_ms
+               ) do
+            {:ok, slock} -> {e.session_id, slock}
+            {:error, _} -> nil
+          end
+        end)
+
+      _ ->
+        :none
+    end
+  end
 
   # --- GAP-A2-01/02 (KD-68/KD-69): EH selector filter + epoch exclusivity ----
 
@@ -1273,18 +1536,45 @@ defmodule Smalt.Amqp.Connection do
         # set ["0","1"]) instead of being parked under the bare hub key, so
         # partition-scoped receivers actually deliver it.
         storage_partition = eh_storage_partition(partition, pk, link.address)
-        # send_event returns {:ok, seq, event_map} — bind the full tuple; the
-        # match still fails closed if the :ok tag ever regresses.
-        {:ok, _seq, _event} = EventHubs.send_event(storage_partition, payload, partition_key: pk)
 
-        delivery_id = perf[:delivery_id] || 0
+        # T30-F1 wiring: an over-quota publish comes back as a typed throttle
+        # face and settles REJECTED with the server-busy class condition
+        # (EhThrottle.amqp_refusal mapping) — the link stays alive, the sender
+        # sees the retry hint in the rejected error description.
+        case EventHubs.send_event(storage_partition, payload, partition_key: pk) do
+          {:ok, _seq, _event} ->
+            delivery_id = perf[:delivery_id] || 0
 
-        send_frame(state, link.channel, {
-          :disposition,
-          %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}
-        })
+            send_frame(state, link.channel, {
+              :disposition,
+              %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}
+            })
 
-        state
+            state
+
+          {:error, {:throttled, face}} ->
+            {:error, {:resource_limit_exceeded, desc}} = EhThrottle.amqp_refusal(face)
+            delivery_id = perf[:delivery_id] || 0
+
+            send_frame(state, link.channel, {
+              :disposition,
+              %{
+                role: true,
+                first: delivery_id,
+                last: delivery_id,
+                settled: true,
+                state:
+                  {:rejected,
+                   %{
+                     condition: "amqp:resource-limit-exceeded",
+                     description: desc,
+                     info: %{"retry-after": face.retry_after_s}
+                   }}
+              }
+            })
+
+            state
+        end
 
       _ ->
         error_close(
@@ -1341,10 +1631,112 @@ defmodule Smalt.Amqp.Connection do
           %{role: true, first: delivery_id, last: delivery_id, settled: true, state: :accepted}
         })
 
+        # KD-COVERS: KD-115 — deliver_available/1 runs only on the :flow path
+        # (handle_amqp(:flow,...)), so a receiver whose credit flow precedes
+        # the message — streaming/credit-first receivers, a session receiver
+        # parked on acceptSession/acceptNextSession — starves forever: the
+        # enqueue never re-runs the dispatch. Re-run it on every successful
+        # queue enqueue so credited links claim the message immediately.
+        state = deliver_available(state)
+
         state
 
+      {:error, :entity_not_found} ->
+        # KD-COVERS: KD-86 — real-SB send-to-missing-entity face: settle the
+        # transfer REJECTED with the com.microsoft:entity-not-found condition
+        # (link stays alive); never a silent auto-create with the flag off.
+        delivery_id = perf[:delivery_id] || 0
+
+        send_frame(state, link.channel, {
+          :disposition,
+          %{
+            role: true,
+            first: delivery_id,
+            last: delivery_id,
+            settled: true,
+            state:
+              {:rejected,
+               %{
+                 condition: "com.microsoft:entity-not-found",
+                 description: "The messaging entity '#{link.address}' could not be found."
+               }}
+          }
+        })
+
+        state
+
+      {:error, :messaging_entity_not_found} ->
+        # KD-COVERS: KD-86 — real Service Bus detaches the SENDER LINK with
+        # amqp:not-found and a MessagingEntityNotFound description (the
+        # connection stays up, unlike the generic error_close path).
+        # BK-65 witness fix: the link must ALSO leave state.links here, or the
+        # client's echoing detach finds it still registered and the server
+        # re-echoes a second detach — rhea logs ERR_STREAM_WRITE_AFTER_END and
+        # the connection dies (witnessed: q2 refusal then same-connection send
+        # timed out on put-token; bk65.probe.cjs leg neg-conn-survives).
+        send_frame(state, link.channel, {
+          :detach,
+          %{
+            handle: link.handle,
+            closed: true,
+            error: %{
+              condition: "amqp:not-found",
+              description:
+                "MessagingEntityNotFound: The messaging entity " <>
+                  "#{inspect(link.address)} could not be found. Create the entity " <>
+                  "before sending, or enable config :smalt, :sb_auto_ensure."
+            }
+          }
+        })
+
+        %{state | links: Map.delete(state.links, {link.channel, link.handle})}
+
+      {:error, :capacity} ->
+        # BK-78 / AMQP-spec §2.8.15 — a capacity refusal detaches the SENDER
+        # LINK with amqp:link:message-size-exceeded and the CONNECTION
+        # SURVIVES (real Service Bus quota/oversize face, same family as the
+        # KD-86 amqp:not-found link detach above). The old error_close path
+        # killed the whole connection — every later frame on it hit
+        # "transfer on unknown handle" -> amqp:internal-error socket close.
+        # The link must ALSO leave state.links or the client's echoing detach
+        # re-echoes a second detach (BK-65 witness, KD-86).
+        send_frame(state, link.channel, {
+          :detach,
+          %{
+            handle: link.handle,
+            closed: true,
+            error: %{
+              condition: "amqp:link:message-size-exceeded",
+              description:
+                "The entity '#{link.address}' is at capacity (4096 messages); " <>
+                  "the sender link was detached (:capacity). The connection remains open."
+            }
+          }
+        })
+
+        %{state | links: Map.delete(state.links, {link.channel, link.handle})}
+
+      {:error, :too_large} ->
+        # Same link-detach face as :capacity — an oversized body is the
+        # literal amqp:link:message-size-exceeded case (spec §2.8.15).
+        send_frame(state, link.channel, {
+          :detach,
+          %{
+            handle: link.handle,
+            closed: true,
+            error: %{
+              condition: "amqp:link:message-size-exceeded",
+              description:
+                "The message on '#{link.address}' exceeds the maximum body size " <>
+                  "(:too_large); the sender link was detached. The connection remains open."
+            }
+          }
+        })
+
+        %{state | links: Map.delete(state.links, {link.channel, link.handle})}
+
       {:error, reason} ->
-        error_close(state, "amqp:link-message-size-exceeded", inspect(reason))
+        error_close(state, "amqp:internal-error", inspect(reason))
     end
   end
 
@@ -1407,7 +1799,16 @@ defmodule Smalt.Amqp.Connection do
   # --- $cbs / $management RPC ------------------------------------------------------
 
   defp handle_cbs(perf, state) do
-    message = decode_message_sections(perf.__payload__)
+    # KD-COVERS: KD-132 — a malformed message body (e.g. a map32/map8
+    # application-properties section that fails decode) must never raise out of
+    # the broker connection process: decode_message_sections/1 answers %{} on a
+    # decode failure, so every field access below is normalized against the
+    # defaulted section shape and the request falls through to the typed
+    # 400 UNSUPPORTED_CBS_REQUEST refusal — the connection survives.
+    message =
+      %{application_properties: nil, body: nil, properties: %{}}
+      |> Map.merge(decode_message_sections(perf.__payload__))
+
     props = message.application_properties || %{}
     # SDK CBS messages carry the operation in properties.subject
     op = props["operation"] || message.properties[:subject] || message.properties["subject"]
@@ -1483,6 +1884,9 @@ defmodule Smalt.Amqp.Connection do
   defp ensure_cbs_router do
     # census-run passes the broker key via SMALT_SB_SHARED_KEY; nothing else
     # maps it to the app env, so pin it here before SasVerifier reads it
+    # KD-COVERS: KD-131 — this >=32-byte admission guard is the runtime half
+    # of the key-floor policy; boot half pinned in scripts/substrate.sh
+    # (per-host dev_env derivation), witness fix4-amqp-witness.md
     case Application.get_env(:smalt, :sb_shared_key) do
       nil ->
         case System.get_env("SMALT_SB_SHARED_KEY") do
@@ -1695,7 +2099,10 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp find_reply_link(state, perf, kind, req_channel) do
-    payload_props = decode_message_sections(perf.__payload__).application_properties || %{}
+    # KD-COVERS: KD-132 — same normalization as handle_cbs: a decode failure
+    # answers %{} (no :application_properties key), and Map.get/3 keeps the
+    # reply-link lookup from raising on a malformed request body.
+    payload_props = Map.get(decode_message_sections(perf.__payload__), :application_properties, nil) || %{}
     reply_to = normalize_keys(payload_props)["reply-to"]
 
     links = Map.values(state.links)
@@ -2128,7 +2535,6 @@ defmodule Smalt.Amqp.Connection do
       r
     else
       pk when pk != nil -> pk
-      _ -> nil
     end
   end
 
@@ -2201,7 +2607,38 @@ defmodule Smalt.Amqp.Connection do
   defp deliver_to_link(state, link) do
     case QueueStore.dequeue_matching(link.address, session_id: link.session_id) do
       {:ok, msg, lock} ->
-        sections = delivery_sections(msg)
+        # KD-COVERS: KD-134 — requester-preference on redelivery: if THIS
+        # link already holds an unsettled delivery of the dequeued message
+        # and another credited non-holder link for the same queue+session
+        # exists, yield: release the just-acquired lock so the requesting
+        # receiver takes the re-availed message instead of the idle first
+        # holder (W21-B: rx2 starved while idle rx1 re-took the transfer).
+        # The release is a real settlement transition (delivery_count
+        # increments once per yielded claim — real Service Bus also counts
+        # each attempted delivery). No recursion after a yield.
+        if kd134_yield_to_requester?(state, link, msg) do
+          QueueStore.release(msg.queue, msg.seq, lock_token: lock.lock_token)
+
+          Logger.debug(
+            "[amqp-conn] KD-134 yield: " <>
+              "seq=#{msg.seq} held by ch=#{link.channel} h=#{link.handle}, credited requester exists"
+          )
+
+          state
+        else
+          deliver_to_link_claimed(state, link, msg, lock)
+        end
+
+      :empty ->
+        state
+
+      {:error, _} ->
+        state
+    end
+  end
+
+  defp deliver_to_link_claimed(state, link, msg, lock) do
+    sections = delivery_sections(msg)
 
         delivery_result =
           try do
@@ -2264,7 +2701,17 @@ defmodule Smalt.Amqp.Connection do
                     seq: msg.seq,
                     lock_token: lock.lock_token,
                     channel: link.channel
-                  })
+                  }),
+                # KD-COVERS: KD-134 — remember the delivering link so a
+                # re-availed (expired/released) lock prefers a DIFFERENT
+                # credited requester over the idle first holder.
+                redelivery_holders:
+                  Map.update(
+                    Map.get(state, :redelivery_holders) || %{},
+                    {msg.queue, msg.seq},
+                    MapSet.new([{link.channel, link.handle}]),
+                    &MapSet.put(&1, {link.channel, link.handle})
+                  )
             }
 
             state = bump_credit(state, link.channel, link.handle, -1)
@@ -2275,12 +2722,29 @@ defmodule Smalt.Amqp.Connection do
               state
             end
         end
+  end
 
-      :empty ->
-        state
+  # KD-COVERS: KD-134 — requester-preference predicate: the dequeued
+  # message is a REDelivery this link already holds unsettled AND a credited
+  # non-holder link exists on the same queue + session filter. Fall back to
+  # any credited link when this holder is the only credited receiver (the
+  # fallback half of the law: single-receiver redelivery is unaffected).
+  defp kd134_yield_to_requester?(state, link, msg) do
+    holders = Map.get(state, :redelivery_holders) || %{}
+    key = {link.channel, link.handle}
 
-      {:error, _} ->
-        state
+    case Map.get(holders, {msg.queue, msg.seq}) do
+      nil ->
+        false
+
+      seen ->
+        MapSet.member?(seen, key) and
+          Enum.any?(state.links, fn {_k, l} ->
+            l.role == :sender and l[:kind] == :queue and l.address == link.address and
+              l[:session_id] == link.session_id and
+              Map.get(l, :credit, 0) > 0 and {l.channel, l.handle} != key and
+              not MapSet.member?(seen, {l.channel, l.handle})
+          end)
     end
   end
 
@@ -2368,10 +2832,11 @@ defmodule Smalt.Amqp.Connection do
               # message is left untouched for its new owner.
               case settle(action, dlv, perf[:state]) do
                 :ok ->
-                  {Map.put(
-                     st,
-                     :outbound_deliveries,
-                     Map.delete(st.outbound_deliveries, delivery_id)
+                  {st
+                   |> Map.put(:outbound_deliveries, Map.delete(st.outbound_deliveries, delivery_id))
+                   |> Map.put(
+                     :redelivery_holders,
+                     Map.delete(Map.get(st, :redelivery_holders) || %{}, {dlv.queue, dlv.seq})
                    ), true, lost}
 
                 :lock_lost ->
@@ -2699,7 +3164,7 @@ defmodule Smalt.Amqp.Connection do
   end
 
   defp chunk_binary(bin, size, acc) when byte_size(bin) > size do
-    <<chunk::binary-size(size), rest::binary>> = bin
+    <<chunk::binary-size(^size), rest::binary>> = bin
     chunk_binary(rest, size, [{:body_data, chunk} | acc])
   end
 

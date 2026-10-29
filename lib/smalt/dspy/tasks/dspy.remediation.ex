@@ -34,16 +34,15 @@ defmodule Mix.Tasks.Smalt.Dspy.Remediation do
     doc_path = Keyword.get(opts, :doc, "docs/ERROR_CODES.md")
     out_path = Keyword.get(opts, :out, Remediation.review_path())
 
-    case Remediation.run(doc_path, out_path) do
-      {:ok, path, summary} ->
-        Mix.shell().info(
-          "[dspy] wrote #{path} — #{summary.total} rows " <>
-            "(#{summary.adopted} adopted, #{summary.needs_review} needs_review). " <>
-            "Offline/deterministic; review file is a proposal, not an admitted artifact."
-        )
+    # Remediation.run/2 either returns this exact shape or raises
+    # (File.read!/write! failures) — an error tuple is not a possible value,
+    # so a case with a catch-all here is unreachable per the dialyzer-era types.
+    {:ok, path, summary} = Remediation.run(doc_path, out_path)
 
-      other ->
-        Mix.raise("smalt.dspy.remediation failed: #{inspect(other)}")
-    end
+    Mix.shell().info(
+      "[dspy] wrote #{path} — #{summary.total} rows " <>
+        "(#{summary.adopted} adopted, #{summary.needs_review} needs_review). " <>
+        "Offline/deterministic; review file is a proposal, not an admitted artifact."
+    )
   end
 end

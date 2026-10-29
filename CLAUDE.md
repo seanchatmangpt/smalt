@@ -45,7 +45,7 @@ Never pattern-pkill beams — use `scripts/port_sweep.sh` (dry-run default,
 mix test                        # offline suite: self-boots app on EPHEMERAL ports, no external substrate needed
 mix test --include amqp_wire    # wire tier is excluded by default (:amqp_wire tag)
 scripts/fast_test.sh test/internal/vm_zero_growth_test.exs[:LINE] [--watch]  # per-hash private build root (_build-ft-<hash>; suites live in test/internal/)
-just sdk-ts / sdk-census / sdk-py / sdk-all   # real-Azure-SDK probes; exit 0 pass / 1 fail / 2 substrate down / 3 SKIP
+just sdk-ts / sdk-census / sdk-py / sdk-all   # RETIRED (test/sdk-* deleted at 64f6099); exit 1 loudly until verification/ts+py land (V261019-08/09)
 just ws-lint / ws-build / ws-court / ws-converge   # Next.js workspace gates
 just cli-test                   # smalt-cli pytest (two venvs)
 just test-stress                # :stress tier (expensive bodies, excluded from plain mix test; mix test --include stress)
@@ -65,6 +65,16 @@ eval "$(scripts/dev_env.sh)" # per-host SAS key (base64(sha256(host+"smalt-dev-s
 scripts/gen_dev_cert.sh      # .smalt/tls/ CA + leaf (Apple needs CA:TRUE anchor + CA:FALSE leaf)
 bash scripts/bootstrap.sh    # fresh machine: 8 idempotent stages, exit 2 prints brew installs
 ```
+
+Toolchain pin: `.tool-versions` requires elixir 1.20.4-otp-29 / erlang 29.1.2
+via asdf — Homebrew elixir (1.19.x) is refused by the pin. `just` recipes
+assume the asdf shims are on PATH.
+
+CLI profile: `~/.smalt-cli/config.json` persists endpoints (env > profile >
+defaults); `SMALT_CLI_CONFIG` overrides the path. Parallel CLI lanes set
+`SMALT_CLI_LANE=<name>` to namespace per-lane state. The KV corpus
+KD-15 challenge handshake (tokenless 401 -> resend bearer) is performed
+automatically by the Azure SDKs' ChallengeAuthPolicy — no manual step.
 
 Auth modes: `:enforce` (default; HS256 Bearer from emulator STS
 `POST /{tenant}/oauth2/v2.0/token`, any client_id/secret accepted) vs

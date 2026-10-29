@@ -1,7 +1,9 @@
 # Lane B-42: data-plane saturation pipeline — 10,000 requests over the
-# canonical planes on a lane-private substrate (ports 39420-39425, lane law
-# 39000+10N). Wire-level HTTP (cosmos / blob block streaming / KV secrets) via
-# :httpc against the substrate's egress listener (39421); the AMQP leg rides
+# canonical planes (BK-EPLAW: self-pins EPHEMERAL ports via
+# scripts/lib/test_boot_ports.exs unless SMALT_TEST_*_PORT env pins a lane
+# block explicitly). Wire-level HTTP (cosmos / blob block streaming / KV
+# secrets) via :httpc against the substrate's egress listener (base/0 reads
+# the pinned :egress_port); the AMQP leg rides
 # the substrate's QueueStore (BEAM-tier; smalt ships no Elixir AMQP 1.0 client
 # — disclosed; the AMQP wire tier is covered by the ts-servicebus SDK probes).
 #
@@ -20,7 +22,7 @@
 
 defmodule Bench.B42 do
   @lane "b42"
-  @base "http://127.0.0.1:39421"
+  defp base, do: "http://127.0.0.1:#{Application.get_env(:smalt, :egress_port)}"
   @db "b42db"
   @coll "b42coll"
   @acct "b42acct"
@@ -33,6 +35,8 @@ defmodule Bench.B42 do
   @aggregate "docs/jira/v26.10.16/sdk-results/dataplane-throughput.json"
 
   def run do
+    Code.require_file("test_boot_ports.exs", Path.join(File.cwd!(), "scripts/lib"))
+    SmaltTestBoot.pin!()
     t0 = :erlang.monotonic_time(:millisecond)
     {:ok, _} = Application.ensure_all_started(:smalt)
     {:ok, _} = Application.ensure_all_started(:inets)
@@ -103,14 +107,14 @@ defmodule Bench.B42 do
   # -- setup -------------------------------------------------------------------
 
   defp setup do
-    {s1, _} = req(:post, "#{@base}/dbs", [], ~c"application/json", Jason.encode!(%{"id" => @db}))
+    {s1, _} = req(:post, "#{base()}/dbs", [], ~c"application/json", Jason.encode!(%{"id" => @db}))
 
     {s2, _} =
-      req(:post, "#{@base}/dbs/#{@db}/colls", [], ~c"application/json",
+      req(:post, "#{base()}/dbs/#{@db}/colls", [], ~c"application/json",
         Jason.encode!(%{"id" => @coll, "partitionKey" => %{"paths" => ["/pk"]}})
       )
 
-    {s3, _} = req(:put, "#{@base}/#{@acct}/#{@cont}", [], ~c"application/json", "")
+    {s3, _} = req(:put, "#{base()}/#{@acct}/#{@cont}", [], ~c"application/json", "")
     q = Smalt.Amqp.QueueStore.ensure_queue(@queue)
 
     IO.puts("[b42] setup: db=#{s1} coll=#{s2} container=#{s3} queue=#{inspect(q)}")
@@ -123,13 +127,13 @@ defmodule Bench.B42 do
 
   defp warmup do
     {s, _} =
-      req(:post, "#{@base}/dbs/#{@db}/colls/#{@coll}/docs",
+      req(:post, "#{base()}/dbs/#{@db}/colls/#{@coll}/docs",
         [{"x-ms-documentdb-partitionkey", ~s(["warm"])}],
         ~c"application/json",
         Jason.encode!(%{"id" => "warm-doc", "pk" => "warm", "v" => 0})
       )
 
-    {sk, _} = req(:put, "#{@base}/secrets/b42-warm", [], ~c"application/json", Jason.encode!(%{"value" => "warm"}))
+    {sk, _} = req(:put, "#{base()}/secrets/b42-warm", [], ~c"application/json", Jason.encode!(%{"value" => "warm"}))
     IO.puts("[b42] warmup: cosmos=#{s} kv=#{sk}")
     Process.sleep(200)
   end
@@ -149,7 +153,7 @@ defmodule Bench.B42 do
 
     measure(:cosmos_put, fn ->
       {status, _} =
-        req(:post, "#{@base}/dbs/#{@db}/colls/#{@coll}/docs",
+        req(:post, "#{base()}/dbs/#{@db}/colls/#{@coll}/docs",
           [{"x-ms-documentdb-partitionkey", ~s(["p#{i}"])}],
           ~c"application/json",
           body
@@ -166,7 +170,7 @@ defmodule Bench.B42 do
 
     measure(:cosmos_query, fn ->
       {status, body} =
-        req(:post, "#{@base}/dbs/#{@db}/colls/#{@coll}/docs",
+        req(:post, "#{base()}/dbs/#{@db}/colls/#{@coll}/docs",
           [{"x-ms-documentdb-partitionkey", ~s(["p#{i}"])}],
           ~c"application/query+json",
           Jason.encode!(%{"query" => "SELECT * FROM c"})
@@ -205,7 +209,7 @@ defmodule Bench.B42 do
     ok_block =
       measure(:blob_stage_block, fn ->
         {status, _} =
-          req(:put, "#{@base}/#{@acct}/#{@cont}/#{name}?comp=block&blockid=#{block_id}", [],
+          req(:put, "#{base()}/#{@acct}/#{@cont}/#{name}?comp=block&blockid=#{block_id}", [],
             ~c"application/octet-stream", content
           )
 
@@ -215,7 +219,7 @@ defmodule Bench.B42 do
     ok_commit =
       measure(:blob_commit_block_list, fn ->
         {status, _} =
-          req(:put, "#{@base}/#{@acct}/#{@cont}/#{name}?comp=blocklist", [],
+          req(:put, "#{base()}/#{@acct}/#{@cont}/#{name}?comp=blocklist", [],
             ~c"application/xml", xml
           )
 
@@ -224,7 +228,7 @@ defmodule Bench.B42 do
 
     ok_get =
       measure(:blob_get, fn ->
-        {status, body} = req(:get, "#{@base}/#{@acct}/#{@cont}/#{name}", [], "", "")
+        {status, body} = req(:get, "#{base()}/#{@acct}/#{@cont}/#{name}", [], "", "")
         status == 200 and body == content
       end)
 
@@ -237,13 +241,13 @@ defmodule Bench.B42 do
 
     ok_put =
       measure(:kv_put, fn ->
-        {status, _} = req(:put, "#{@base}/secrets/#{name}", [], ~c"application/json", Jason.encode!(%{"value" => value}))
+        {status, _} = req(:put, "#{base()}/secrets/#{name}", [], ~c"application/json", Jason.encode!(%{"value" => value}))
         status in [200, 201]
       end)
 
     ok_get =
       measure(:kv_get, fn ->
-        {status, body} = req(:get, "#{@base}/secrets/#{name}", [], "", "")
+        {status, body} = req(:get, "#{base()}/secrets/#{name}", [], "", "")
 
         case status == 200 && Jason.decode(body) do
           {:ok, %{"value" => ^value}} -> true

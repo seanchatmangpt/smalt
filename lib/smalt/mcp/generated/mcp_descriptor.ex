@@ -89,6 +89,17 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "cosmos.changefeed.cursor" => %{
+      name: "Cosmos change feed cursor read",
+      description:
+        "Current persisted per-container change-feed cursor (ts boundary + seen-etag pin count) — the cursor value only, NEVER advanced or written by this read.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "cosmos.changefeed.peek" => %{
       name: "Cosmos change feed peek",
       description:
@@ -122,10 +133,32 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "cosmos.ttl.effective" => %{
+      name: "Cosmos effective TTL read",
+      description:
+        "The effective defaultTtl (container override wins over database defaultTimeToLive; :off when neither set) for one Cosmos container — read only, never a sweep or deletion.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "cosmos.uniquekeys.get" => %{
       name: "Cosmos unique key policy get",
       description:
         "The uniqueKeyPolicy recorded at container creation for one Cosmos container (uniqueKeys paths; empty list when none was declared).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "dns.zones.list" => %{
+      name: "DNS zones list",
+      description:
+        "DNS zones (Microsoft.Network/dnsZones) in one resource group — zone records and type only, never record-set data at this surface.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -155,10 +188,32 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "eg.schemaregistry.groups" => %{
+      name: "Event Hubs schema registry groups list",
+      description:
+        "Schema registry groups (group name, compatibility, schema type) from the Event Hubs schema registry plane.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "eh.consumergroups.list" => %{
       name: "Event Hubs consumer groups list",
       description:
         "Consumer group records for one Event Hub ($default always present), from the Event Hubs server store.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "eh.geo-dr.aliases" => %{
+      name: "Event Hubs geo-DR aliases list",
+      description:
+        "Disaster recovery alias records (alias name, primary/partner namespace ids, role_by_ns roles, provisioning state) from the Event Hubs geo-DR metadata plane.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,
@@ -221,10 +276,32 @@ defmodule Smalt.Mcp.Descriptor do
       consequence: :observe,
       receipt_semantics: :logged
     },
+    "kv.rotationpolicy.get" => %{
+      name: "Key Vault rotation policy get",
+      description:
+        "The rotation policy recorded for one Key Vault key (lifetimeActions, attributes) — policy read only, never the key material.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
     "lro.operations.list" => %{
       name: "Long-running operations list",
       description:
         "In-flight and terminal LRO operation records from the operations store, optional subscription filter.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "monitor.alerts.list" => %{
+      name: "Metric alert rules list",
+      description:
+        "Metric alert rules (Microsoft.Insights/metricAlerts) in one resource group — rule definitions and state, never the metric series.",
       observation_scope: :read_only,
       mutation_scope: :none,
       requires_authority: false,

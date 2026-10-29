@@ -20,7 +20,7 @@ Five new why-docs, each receipt-anchored:
    r216-court-x2-run12-red.md (shifting-failure diff = flake detector),
    r35-court-x2-judge-log.md, FINAL.md standing line.
 3. `docs/explanation/ggen-projection-law.md` — replay-identity
-   admissibility, single pack identity, athena-matter-pack precedent.
+   admissibility, single pack identity, legacy-client-matter-pack precedent.
    Anchors: semantic-kernel-roadmap.md, canonical-projection.md,
    r08 drift gate, r36 bench fail-closed, pack paths (external,
    verified on disk).

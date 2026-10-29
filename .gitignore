@@ -125,6 +125,30 @@ tmp/have/
 # v26.10.19: tf fixture moved to scripts/tf_fixtures (test/terraform_fixture deleted 64f6099)
 scripts/tf_fixtures/.terraform*/
 trust_shim_probe/
-  
-# vendored third-party emulators (embedded repos; never stage)  
-vendors/  
+
+
+# Lane build roots (leases, never assets — same-checkout-fanout cleanup law).
+# Any-depth form covers popcorn_demo/_build-* and nested per-lane roots.
+/_bench-*/
+/_bench_*
+/_build*
+**/_build-*/
+**/_build_*
+**/_build/
+/1
+
+# azurite-spike runtime database (never committed)
+popcorn_demo/azurite-spike/azdata/
+
+# scratch court fixture dirs (SPOF-4 temp copies)
+workspace/.spof4-court-*/
+
+# popcorn_actors WASM build output (lith 15; generated, never committed)
+popcorn_actors/public/out/
+
+# vendored third-party emulators (embedded repos; never stage)
+vendors/
+
+# >100MB blobs (GitHub hard limit) — kept local only
+_impl14/test/lib/explorer/priv/native/*.so
+popcorn_demo/bench/corpus/*.ndjson

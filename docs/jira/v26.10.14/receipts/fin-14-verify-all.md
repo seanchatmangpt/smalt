@@ -39,7 +39,7 @@ Lane: fin-14 (DoD-only finish lane, no commits) · Checkout: /Users/sac/smalt ·
 
 ### naming-sweep — MIXED: 1 mechanical (FIXED), 160 coordinator-integration churn
 - Fixed (this lane): `test/sdk-smoke/eh-run.mjs` had `REPO = "/Users/sac/smalt"` and
-  `SMALT_SDK_ROOT` fallback literal `/Users/sac/cai/athena/...`. Replaced REPO with
+  `SMALT_SDK_ROOT` fallback literal `/Users/sac/cai/legacy-client/...`. Replaced REPO with
   `path.resolve(HERE, "../..")`, fallback with `path.join(os.homedir(), ...)`;
   `node --check` clean. Retired stale allowlist pins `eh-run.mjs:143`/`:14`, added `:145`
   (homedir fallback still contains literal `cai`, allowlisted) in scripts/naming_sweep.sh.

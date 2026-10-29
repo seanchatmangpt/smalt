@@ -5,8 +5,9 @@ defmodule Smalt.Security.ConfidentialLedger do
 
   Per-ledger monotonic transaction ids (`"<seq>.1"`) are minted through
   `Smalt.Store.update_counter/3` (GenServer-free ETS atomic increment), the
-  Merkle root is `sha256(prev_root <> data_hash)`, duplicate contents are
-  rejected per ledger with HTTP 409, and every entry carries a signed receipt.
+  Merkle root is `sha256(prev_root <> data_hash)`, and every entry carries a
+  signed receipt. Every append commits (real-Azure law): identical contents
+  get a NEW transactionId per append — no 409 dedupe.
   """
 
   alias Smalt.Security.LedgerWriter
@@ -53,7 +54,7 @@ defmodule Smalt.Security.ConfidentialLedger do
       LedgerWriter.append(ledger, contents, enforce_existence: true)
     else
       # The full append is one critical section inside the serialized
-      # LedgerWriter: prev-root read, seq increment, dup check, insert and meta
+      # LedgerWriter: prev-root read, seq increment, insert and meta
       # update can never interleave, so the chain cannot fork under a race.
       LedgerWriter.append(ledger, contents)
     end
@@ -132,7 +133,10 @@ defmodule Smalt.Security.ConfidentialLedger do
   # passed the slash-only fence, reached ReceiptSigner.sign, and Jason.encode!
   # raised inside the serialized LedgerWriter GenServer — writer death with the
   # {:dup, ledger, hash} counter already incremented, so every retry 409s
-  # LedgerItemAlreadyExists for never-stored content (commit-point law violated).
+  # LedgerItemAlreadyExists for never-stored content (commit-point law
+  # violated). [2026-10-25: the dup counter is retired entirely — real-Azure
+  # law, every append commits; a sign failure now compensates only the seq
+  # counter.]
   # String.valid?/1 is guard-safe alongside the slash check, same typed refusal
   # (:error envelope), same hook point, covering append/get/list/latest uniformly.
   defp ledger_name(name) when is_binary(name) and name != "" do

@@ -48,6 +48,7 @@ defmodule Smalt.DataPlane.SKR do
   """
 
   alias Smalt.Security.Attestation
+  alias Smalt.DataPlane.MHSM
   alias Smalt.Store
 
   @compliance_status "azure-compliant-cvm"
@@ -65,7 +66,8 @@ defmodule Smalt.DataPlane.SKR do
   @spec release(String.t(), Plug.Conn.t()) :: {:ok, 200, map()} | {:error, pos_integer(), map()}
   def release(name, conn) when is_binary(name) do
     with {:ok, key_record, policy} <- fetch_exportable(name),
-         {:ok, claims} <- authorized?(conn) do
+         {:ok, claims} <- authorized?(conn),
+         :ok <- policy_admits(policy, claims) do
       release_material(name, key_record, policy, claims)
     end
   end
@@ -78,6 +80,18 @@ defmodule Smalt.DataPlane.SKR do
   # succeeds for any Store key term), escaping a public API whose contract is
   # {:ok,200,_} | {:error,status,map}.
   def release(_name, _conn), do: {:error, 400, invalid_key_name()}
+
+  # KD-COVERS: KD-167 — AZ-4 (MHSM release-policy face): the stored release policy's assertions
+  # are evaluated against the VERIFIED attestation token claims before any
+  # material is derived or any counter/nonce burns. A violation is the typed
+  # MHSM 403 KeyReleasePolicyViolation; the key row is untouched (fail-closed
+  # before the commit point, same discipline as wrap_to_recipient).
+  defp policy_admits(policy, claims) do
+    case MHSM.evaluate_policy(policy, claims) do
+      :ok -> :ok
+      {:error, status, body} -> {:error, status, body}
+    end
+  end
 
   defp invalid_key_name do
     %{

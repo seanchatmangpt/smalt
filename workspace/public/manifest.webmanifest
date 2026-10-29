@@ -1,0 +1,10 @@
+{
+  "name": "Smalt Sovereign Console",
+  "short_name": "smalt",
+  "description": "Air-gapped Fortune-5 evaluation console for the smalt emulator. Zero external egress.",
+  "start_url": "/console",
+  "display": "standalone",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "icons": []
+}

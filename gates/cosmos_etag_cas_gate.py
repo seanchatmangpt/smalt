@@ -5,7 +5,8 @@ Positive: against a live substrate, create a doc, then fire N concurrent
 conditional PUTs (If-Match: <etag>) at it. The CAS is serialized inside the
 Store GenServer (lib/smalt/data_plane/cosmos.ex: put_doc), so exactly one
 request gets 200 and the rest get 412 PreconditionFailed. Also verifies the
-etag contract: quoted 64-hex, stable across reads, refreshed on write.
+etag contract: quoted RFC-4122 v4 GUID (KD-148 SDK alignment; the gate
+follows the SDK, never the reverse), stable across reads, refreshed on write.
 
 Negative fixtures (pack harness shape): mutated copies of the captured
 observations — two 200s (lost update), zero 200s, missing 412s, stale etag
@@ -24,7 +25,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
 
 DB, COLL, DOC = "gatedb", "gatecoll", "gatedoc"
-ETAG_RE = re.compile(r"^\"[0-9a-f]{64}\"$")
+# KD-148: quoted RFC-4122 v4 GUID — version nibble '4', variant nibble 8/9/a/b.
+# KD-COVERS: KD-148 (gate-side mirror of the lib/smalt/data_plane/cosmos.ex fix)
+ETAG_RE = re.compile(
+    r"^\"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\"$")
 
 
 def capture(ports, shared_key):
@@ -89,7 +93,7 @@ def verdict(obs):
         ok = ok and cond
 
     check(ETAG_RE.match(obs.get("etag_create", "")) is not None,
-          "create etag is quoted 64-hex")
+          "create etag is quoted RFC-4122 v4 GUID (KD-148 SDK shape)")
     check(obs.get("etag_create") == obs.get("etag_reread"),
           "etag stable across read")
     check(obs.get("race") == [200] + [412] * 5,
@@ -127,9 +131,26 @@ def mutate_fixtures(obs):
 
     def etag_unstable_reread(o):
         # SHIM-COURT-style negative fixture: mutating only etag_reread must
-        # trip the stable-across-read check.
+        # trip the stable-across-read check. (Also wrong shape: 64-hex, not GUID.)
         o = dict(o)
         o["etag_reread"] = "\"" + ("e" * 64) + "\""
+        return o
+
+    def legacy_64hex_etag(o):
+        # SHIM-COURT-style negative fixture: the pre-KD-148 quoted 64-hex
+        # sha256 etag shape must be REFUSED — the SDK-aligned contract is a
+        # quoted GUID only.
+        o = dict(o)
+        o["etag_create"] = "\"" + ("a" * 64) + "\""
+        o["etag_reread"] = o["etag_create"]
+        return o
+
+    def unquoted_guid(o):
+        # SHIM-COURT-style negative fixture: same GUID, quotes stripped.
+        o = dict(o)
+        guid = obs.get("etag_create", "").strip("\"")
+        o["etag_create"] = guid
+        o["etag_reread"] = guid
         return o
 
     def all_empty_race_codes(o):
@@ -149,6 +170,8 @@ def mutate_fixtures(obs):
              ("etag-not-refreshed", etag_not_refreshed),
              ("stale-write-accepted", stale_write_accepted),
              ("etag-unstable-reread", etag_unstable_reread),
+             ("legacy-64hex-etag", legacy_64hex_etag),
+             ("unquoted-guid", unquoted_guid),
              ("all-empty-race-codes", all_empty_race_codes),
              ("bad-etag-format", bad_etag_format)]]
 

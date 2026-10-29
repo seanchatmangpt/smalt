@@ -23,7 +23,6 @@ projection).
 | ash_state_machine | 0.2.13 | MIT | hex.pm |
 | aws_signature | 0.4.3 | Apache-2.0 | hex.pm |
 | bandit | 1.13.1 | MIT | hex.pm |
-| benchee | 1.5.1 | MIT | hex.pm |
 | broadway | 1.3.0 | Apache-2.0 | hex.pm |
 | cinder | 0.17.0 | MIT | hex.pm |
 | content_type | 0.1.0 | Apache-2.0 | hex.pm |
@@ -31,7 +30,6 @@ projection).
 | crux | 0.1.4 | MIT | hex.pm |
 | db_connection | 2.10.2 | Apache-2.0 | hex.pm |
 | decimal | 3.2.0 | Apache-2.0 | hex.pm |
-| deep_merge | 1.0.2 | MIT | hex.pm |
 | ecto | 3.14.2 | Apache-2.0 | hex.pm |
 | ets | 0.9.0 | MIT | hex.pm |
 | ex4pm | 26.10.1 | MIT | hex.pm |
@@ -84,7 +82,6 @@ projection).
 | sparql_client | 0.5.1 | MIT | hex.pm |
 | spitfire | 0.4.3 | MIT | hex.pm |
 | splode | 0.3.2 | MIT | hex.pm |
-| statistex | 1.1.1 | MIT | hex.pm |
 | stream_data | 1.4.0 | Apache-2.0 | hex.pm |
 | sweet_xml | 0.7.5 | MIT | hex.pm |
 | table | 0.1.2 | Apache-2.0 | hex.pm |
@@ -104,7 +101,7 @@ projection).
 | yaml_elixir | 2.12.2 | MIT | hex.pm |
 | ymlr | 5.1.6 | MIT | hex.pm |
 
-87 packages total. License tally: MIT x49, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
+84 packages total. License tally: MIT x46, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
 
 ## Apache-2.0 NOTICE compatibility
 

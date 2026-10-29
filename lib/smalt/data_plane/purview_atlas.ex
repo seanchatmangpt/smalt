@@ -29,6 +29,18 @@ defmodule Smalt.DataPlane.Purview do
   - `get_term/2`                -> GET /glossary/terms/:guid
   - `delete_term/2`             -> DELETE /glossary/terms/:guid (204)
 
+  Term templates (Atlas v2 glossary `termTemplate`, lane W5I):
+
+  - `set_term_template/2`    -> PUT /glossary/term-template (validated defs, 201)
+  - `term_template/0`        -> GET /glossary/term-template (defs or [])
+
+  The glossary carries `termTemplate` — an array of attribute defs
+  `%{"name" => ..., "type" => "string"|"integer"|"boolean", "isOptional" => bool}`.
+  Created/updated terms are validated against it: a missing required attribute
+  (or one of the wrong type) is a typed 400 `ATLAS-400-GLOSSARY-TEMPLATE`;
+  optional attributes may be omitted. Provided template attributes are carried
+  on the stored term, so GET /glossary/terms/:guid echoes them.
+
   A term's `assignedEntities` attach the term to entities: each attachment
   mints a real lineage edge (termGuid -> entityGuid, `AtlasGlossaryTerm`), so
   GET /atlas/v2/lineage/{direction}/{guid} shows the term link. DELETE of the
@@ -36,7 +48,8 @@ defmodule Smalt.DataPlane.Purview do
 
   UNSUPPORTED (honest per-field): the substrate has no full Atlas type system
   — supertype/attributeDefs are stored but NOT enforced (only the type NAME is
-  validated); glossary categories/term templates are stored, not enforced.
+  validated); glossary categories are stored, not enforced. Term templates ARE
+  enforced (see above).
   """
 
   alias Smalt.Store
@@ -512,12 +525,19 @@ defmodule Smalt.DataPlane.Purview do
 
   def put_term(%{"name" => name} = body, _opts) when is_binary(name) do
     with {:ok, term, status} <- resolve_existing_term(body, name),
+         :ok <- validate_template_attrs(body),
          :ok <- validate_assignments(body) do
       assigned =
         body
         |> Map.get("assignedEntities", [])
         |> List.wrap()
         |> Enum.map(&normalize_assigned/1)
+
+      template_attrs =
+        case term_template() do
+          {:ok, 200, defs} -> Map.take(body, Enum.map(defs, & &1["name"]))
+          _ -> %{}
+        end
 
       term =
         term
@@ -531,6 +551,7 @@ defmodule Smalt.DataPlane.Purview do
           "assignedEntities" => assigned,
           "qualifiedName" => name
         })
+        |> Map.merge(template_attrs)
 
       replace_term_edges(term)
       Store.put(:smalt_purview_entities, @term_prefix <> term["guid"], term)
@@ -541,6 +562,112 @@ defmodule Smalt.DataPlane.Purview do
   def put_term(_body, _opts) do
     {:error, 400,
      %{"error" => %{"code" => "ATLAS-400-00-001", "message" => "glossary term requires a binary `name`"}}}
+  end
+
+  @template_types ~w(string integer boolean)
+
+  @doc """
+  PUT /glossary/term-template — stores the glossary `termTemplate` (an array of
+  attribute defs `%{"name" => ..., "type" => "string"|"integer"|"boolean",
+  "isOptional" => bool}`). Malformed defs (non-list, non-map element, missing
+  binary `name`, unknown `type`, non-boolean `isOptional`) are a typed 400
+  `ATLAS-400-GLOSSARY-TEMPLATE` with no write. `{:ok, 201, glossary}`.
+  """
+  def set_term_template(defs, _opts \\ %{})
+
+  def set_term_template(defs, _opts) do
+    case validate_template_defs(defs) do
+      :ok ->
+        Store.put(:smalt_purview_entities, @glossary_key, %{
+          "guid" => glossary_guid(),
+          "name" => "Glossary",
+          "termTemplate" => defs
+        })
+
+        {:ok, 201, %{"termTemplate" => defs}}
+
+      {:error, _, _} = err ->
+        err
+    end
+  end
+
+  @doc "GET /glossary/term-template — the stored defs, or `[]` when unset."
+  def term_template(_opts \\ %{}) do
+    case Store.get(:smalt_purview_entities, @glossary_key) do
+      {:ok, %{"termTemplate" => defs}} -> {:ok, 200, defs}
+      _ -> {:ok, 200, []}
+    end
+  end
+
+  defp validate_template_defs(defs) when is_list(defs) do
+    if Enum.all?(defs, &valid_template_def?/1) do
+      :ok
+    else
+      {:error, 400, template_error("termTemplate must be an array of defs with binary `name`, type in #{inspect(@template_types)} and boolean `isOptional`")}
+    end
+  end
+
+  defp validate_template_defs(_defs) do
+    {:error, 400, template_error("termTemplate must be an array of attribute defs")}
+  end
+
+  defp valid_template_def?(%{"name" => name, "type" => type} = def)
+       when is_binary(name) and type in @template_types do
+    case def["isOptional"] do
+      b when is_boolean(b) -> true
+      nil -> true
+      _ -> false
+    end
+  end
+
+  defp valid_template_def?(_), do: false
+
+  # Terms are validated against the glossary termTemplate: every required
+  # (isOptional != true) def must be present in the PUT body with the declared
+  # type; optional attrs may be omitted. Provided template attrs are carried
+  # onto the stored term so GET echoes them.
+  defp validate_template_attrs(body) do
+    case term_template() do
+      {:ok, 200, []} ->
+        :ok
+
+      {:ok, 200, defs} ->
+        defs
+        |> Enum.reject(& &1["isOptional"])
+        |> Enum.reduce_while(:ok, fn def, :ok ->
+          name = def["name"]
+
+          cond do
+            not Map.has_key?(body, name) ->
+              {:halt,
+               {:error, 400,
+                template_error("term missing required template attribute `#{name}`")}}
+
+            template_type_ok?(def["type"], body[name]) ->
+              {:cont, :ok}
+
+            true ->
+              {:halt,
+               {:error, 400,
+                template_error(
+                  "template attribute `#{name}` must be of type #{def["type"]}"
+                )}}
+          end
+        end)
+    end
+  end
+
+  defp template_type_ok?("string", v), do: is_binary(v)
+  defp template_type_ok?("integer", v), do: is_integer(v)
+  defp template_type_ok?("boolean", v), do: is_boolean(v)
+
+  defp template_error(message) do
+    %{
+      "error" => %{
+        "code" => "ATLAS-400-GLOSSARY-TEMPLATE",
+        "message" => message
+      }
+    }
   end
 
   defp resolve_existing_term(body, _name) do

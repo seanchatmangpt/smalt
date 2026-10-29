@@ -20,7 +20,7 @@ function fmtTime(ts: number): string {
 }
 
 export function ReceiptLedger({ snapshot }: ReceiptLedgerProps) {
-  const { entries, tailHash, length, intact } = snapshot;
+  const { entries, length, intact } = snapshot;
 
   return (
     <section aria-labelledby="receipt-ledger-heading" data-intact={String(intact)}>
