@@ -295,3 +295,31 @@
     ema:requiresAuthority false ; ema:isReversible true ;
     ema:receiptSemantics "logged" ; ema:capabilityOrder 30 ;
     ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+# -- v26.10.28 T-03 (parity lane): Event Grid read tools (31-33) -------------
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eventgrid.topics.list" ;
+    ema:capabilityName "Event Grid topics list" ;
+    ema:capabilityDescription "Event Grid topics and system topics registered in the substrate ARM store (id, name, properties) - bounded to 100 rows." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 31 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eventgrid.subscriptions.list" ;
+    ema:capabilityName "Event Grid event subscriptions list" ;
+    ema:capabilityDescription "Event Grid event subscriptions (topic-scoped when a topic is named) registered in the substrate ARM store - bounded to 100 rows." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 32 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .
+
+[] a ema:Capability ; ema:capabilityOf [] ;
+    ema:capabilityId "eventgrid.events.recent" ;
+    ema:capabilityName "Event Grid recent events" ;
+    ema:capabilityDescription "The most recent published Event Grid events from the substrate event store (defensive projection, bounded to 25)." ;
+    ema:observationScope "read_only" ; ema:mutationScope "none" ;
+    ema:requiresAuthority false ; ema:isReversible true ;
+    ema:receiptSemantics "logged" ; ema:capabilityOrder 33 ;
+    ema:exposedVia "mcp" ; ema:consequence "observe" .

@@ -744,33 +744,6 @@ defmodule Smalt.DataPlane.BlobStorage do
     end
   end
 
-  # Delete Blob with snapshots present: Azure answers 409 SnapshotsPresent
-  # unless x-ms-delete-snapshots is "include" or "only" (then the snapshots go
-  # with the base blob). Table-absent-safe (no snapshots ever created).
-  defp check_snapshots_on_delete(blob_key, headers) do
-    if :ets.info(@snapshot_table) == :undefined do
-      :ok
-    else
-      case :ets.match(@snapshot_table, {{blob_key, :_}, :_}) do
-        [] ->
-          :ok
-
-        _snapshots ->
-          case header_value(headers, "x-ms-delete-snapshots") do
-            option when option in ["include", "only"] ->
-              for {{k, ts}, _snap} <- :ets.match_object(@snapshot_table, {{blob_key, :_}, :_}) do
-                :ets.delete(@snapshot_table, {k, ts})
-              end
-
-              :ok
-
-            _ ->
-              {:error, {:snapshots_present}}
-          end
-      end
-    end
-  end
-
   @valid_access_tiers ~w(Hot Cool Cold Archive)
 
   @doc """
@@ -1000,6 +973,37 @@ defmodule Smalt.DataPlane.BlobStorage do
 
   defp put_snapshot_record(snap_key, snap) do
     :ets.insert(@snapshot_table, {snap_key, snap})
+  end
+
+  # Delete Blob with snapshots present: Azure answers 409 SnapshotsPresent
+  # unless x-ms-delete-snapshots is "include" or "only" (then the snapshots go
+  # with the base blob). Table-absent-safe (no snapshots ever created).
+  # NOTE: this helper MUST live below the `@snapshot_table` attribute
+  # definition — module attributes resolve in file order, and an earlier
+  # placement silently expands to nil (the T-17 defect: `:ets.info(nil)`
+  # answers :undefined, so the gate short-circuited to :ok).
+  defp check_snapshots_on_delete(blob_key, headers) do
+    if :ets.info(@snapshot_table) == :undefined do
+      :ok
+    else
+      case :ets.match(@snapshot_table, {{blob_key, :_}, :_}) do
+        [] ->
+          :ok
+
+        _snapshots ->
+          case header_value(headers, "x-ms-delete-snapshots") do
+            option when option in ["include", "only"] ->
+              for {{k, ts}, _snap} <- :ets.match_object(@snapshot_table, {{blob_key, :_}, :_}) do
+                :ets.delete(@snapshot_table, {k, ts})
+              end
+
+              :ok
+
+            _ ->
+              {:error, {:snapshots_present}}
+          end
+      end
+    end
   end
 
   # Snapshot lease success headers derive from the FROZEN blob record (quoted

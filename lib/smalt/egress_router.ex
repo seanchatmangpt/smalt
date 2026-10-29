@@ -146,7 +146,18 @@ defmodule Smalt.EgressRouter do
   defp queue_storage_plane(conn, _opts) do
     qp = fetchd_query_params(conn)
 
-    case queue_plane_route(conn.method, conn.path_info, qp) do
+    # Parity lane 2026-10-28: the v12 storage-queue SDK sends
+    # `GET /{account}?comp=list` with NO restype (real Azure implies the
+    # service by endpoint host) — byte-identical to blob List Containers.
+    # On this shared egress port the only deterministic discriminator is
+    # the SDK User-Agent (azsdk-js-azure-storage-queue vs -blob); an
+    # explicit restype, when present, always wins.
+    queue_ua? =
+      conn
+      |> get_req_header("user-agent")
+      |> Enum.any?(&String.contains?(&1, "storage-queue"))
+
+    case queue_plane_route(conn.method, conn.path_info, qp, queue_ua?) do
       nil -> conn
       arm -> run_queue_arm(conn, arm, qp)
     end
@@ -159,21 +170,34 @@ defmodule Smalt.EgressRouter do
   # (module attributes resolve in file order).
   @queue_reserved_first_segments ~w(dbs keys secrets kv eventgrid events attest)
 
-  defp queue_plane_route("GET", [account], qp) do
-    if qp["comp"] == "list" and qp["restype"] == "queue", do: {:list_queues, account}
+  defp queue_plane_route("GET", [account], qp, queue_ua?) do
+    cond do
+      qp["comp"] == "list" and qp["restype"] == "queue" ->
+        {:list_queues, account}
+
+      qp["comp"] == "list" and is_nil(qp["restype"]) and queue_ua? ->
+        {:list_queues, account}
+
+      true ->
+        nil
+    end
   end
 
   # Parity lane 2026-10-28: bare 2-segment GET (the v12 SDK's
-  # Get Queue Properties shape — no restype on the wire). The blob container
-  # GET always carries restype=container or comp, so a bare GET is a queue.
-  # The SDK's getProperties() actually sends restype=queue&comp=metadata
-  # (real Azure Get Queue Metadata) — same handler either way.
-  defp queue_plane_route("GET", [account, queue], qp) do
+  # Get Queue Properties shape — no restype on the wire), and the SDK's
+  # getProperties()/getMetadata() shape `?comp=metadata` without restype
+  # (real Azure Get Queue Metadata; the blob container GET always carries
+  # restype=container, so the no-restype form is unambiguously queue).
+  defp queue_plane_route("GET", [account, queue], qp, _queue_ua?) do
     cond do
       account in @queue_reserved_first_segments -> nil
       qp["restype"] == "queue" -> {:get_queue_props, account, queue}
       is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:get_queue_props, account, queue}
-      true -> nil
+      qp["comp"] == "metadata" and is_nil(qp["restype"]) ->
+        {:get_queue_props, account, queue}
+
+      true ->
+        nil
     end
   end
 
@@ -183,7 +207,7 @@ defmodule Smalt.EgressRouter do
   # single shared egress port the bare 2-segment PUT/DELETE (no comp, no
   # restype) is unambiguous: the blob container arm ALWAYS carries
   # restype=container (SDK-witnessed), so route it to the queue plane.
-  defp queue_plane_route("PUT", [account, queue], qp) do
+  defp queue_plane_route("PUT", [account, queue], qp, _queue_ua?) do
     cond do
       account in @queue_reserved_first_segments -> nil
       qp["restype"] == "queue" -> {:create_queue, account, queue}
@@ -198,7 +222,7 @@ defmodule Smalt.EgressRouter do
     end
   end
 
-  defp queue_plane_route("DELETE", [account, queue], qp) do
+  defp queue_plane_route("DELETE", [account, queue], qp, _queue_ua?) do
     cond do
       account in @queue_reserved_first_segments -> nil
       qp["restype"] == "queue" -> {:delete_queue, account, queue}
@@ -207,24 +231,24 @@ defmodule Smalt.EgressRouter do
     end
   end
 
-  defp queue_plane_route("POST", [account, _queue, "messages"], _qp),
+  defp queue_plane_route("POST", [account, _queue, "messages"], _qp, _ua),
     do: {:put_messages, account}
 
-  defp queue_plane_route("GET", [account, _queue, "messages"], qp),
+  defp queue_plane_route("GET", [account, _queue, "messages"], qp, _ua),
     do: if(qp["peekonly"] == "true", do: {:peek_messages, account}, else: {:get_messages, account})
 
-  defp queue_plane_route("PUT", [account, _queue, "messages", _id], _qp),
+  defp queue_plane_route("PUT", [account, _queue, "messages", _id], _qp, _ua),
     do: {:update_message, account}
 
   # Clear Messages must shadow the popreceipt-carrying delete-message match on
   # path shape alone (3 elements vs 4) — the 3-element DELETE is the clear comp.
-  defp queue_plane_route("DELETE", [account, _queue, "messages"], _qp),
+  defp queue_plane_route("DELETE", [account, _queue, "messages"], _qp, _ua),
     do: {:clear_messages, account}
 
-  defp queue_plane_route("DELETE", [account, _queue, "messages", _id], _qp),
+  defp queue_plane_route("DELETE", [account, _queue, "messages", _id], _qp, _ua),
     do: {:delete_message, account}
 
-  defp queue_plane_route(_, _, _), do: nil
+  defp queue_plane_route(_, _, _, _), do: nil
 
   defp run_queue_arm(conn, arm, qp) do
     if not_ready?(conn, [QueueStorage]) do
@@ -2846,7 +2870,7 @@ defmodule Smalt.EgressRouter do
                         "content-length",
                         blob["content"] |> byte_size() |> Integer.to_string()
                       )
-                      |> put_resp_content_type("application/octet-stream")
+                      |> put_resp_content_type(stored_content_type(blob))
                       |> send_resp(200, blob["content"])
 
                     {:ok, blob, {first, last}} ->
@@ -2863,7 +2887,7 @@ defmodule Smalt.EgressRouter do
                         "content-length",
                         (last - first + 1) |> Integer.to_string()
                       )
-                      |> put_resp_content_type("application/octet-stream")
+                      |> put_resp_content_type(stored_content_type(blob))
                       |> send_resp(206, body)
 
                     {:error, :range_not_satisfiable, total} ->
@@ -2900,13 +2924,13 @@ defmodule Smalt.EgressRouter do
                     conn
                     |> put_resp_headers(stored_meta_wire(blob))
                     |> put_resp_header("etag", blob["etag"])
-                    |> put_resp_header("x-ms-snapshot", conn.query_params["sharesnapshot"])
-                    |> put_resp_header(
-                      "content-length",
-                      blob["content"] |> byte_size() |> Integer.to_string()
-                    )
-                    |> put_resp_content_type("application/octet-stream")
-                    |> send_resp(200, blob["content"])
+                     |> put_resp_header("x-ms-snapshot", conn.query_params["sharesnapshot"])
+                     |> put_resp_header(
+                       "content-length",
+                       blob["content"] |> byte_size() |> Integer.to_string()
+                     )
+                     |> put_resp_content_type(stored_content_type(blob))
+                     |> send_resp(200, blob["content"])
 
                   {:error, _status, _code, _msg} ->
                     blob_error(conn, 404, not_found_error("BlobNotFound"))
@@ -2995,7 +3019,7 @@ defmodule Smalt.EgressRouter do
                   "content-length",
                   blob["content"] |> byte_size() |> Integer.to_string()
                 )
-                |> put_resp_content_type("application/octet-stream")
+                |> put_resp_content_type(stored_content_type(blob))
                 |> send_resp(200, "")
 
               {:ok, blob, {first, last}} ->
@@ -3011,7 +3035,7 @@ defmodule Smalt.EgressRouter do
                   "content-length",
                   (last - first + 1) |> Integer.to_string()
                 )
-                |> put_resp_content_type("application/octet-stream")
+                |> put_resp_content_type(stored_content_type(blob))
                 |> send_resp(206, "")
 
               {:error, :range_not_satisfiable, total} ->
@@ -4576,6 +4600,16 @@ defmodule Smalt.EgressRouter do
     |> Map.get("headers", %{}) ||
       %{}
       |> Enum.filter(fn {k, _v} -> String.starts_with?(k, "x-ms-meta-") end)
+  end
+
+  # T-18 (v26.10.28): the content type a blob GET/HEAD serves is the one Set
+  # Blob HTTP Headers stored (x-ms-blob-content-type on the record's header
+  # map) — falling back to the service default when never set.
+  defp stored_content_type(blob) do
+    case get_in(blob, ["headers", "x-ms-blob-content-type"]) do
+      ct when is_binary(ct) and ct != "" -> ct
+      _ -> "application/octet-stream"
+    end
   end
 
   defp put_resp_headers(conn, headers) do

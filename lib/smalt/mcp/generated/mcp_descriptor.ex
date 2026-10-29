@@ -340,6 +340,44 @@ defmodule Smalt.Mcp.Descriptor do
       reversible: true,
       consequence: :observe,
       receipt_semantics: :logged
+    },
+    # v26.10.28 T-03: Event Grid read tools (source of record:
+    # lib/smalt/mcp/gen/smalt_mcp_surface.ttl, capabilityOrder 31-33; the
+    # in-tree generator is absent, so this generated file is kept in the
+    # shape the template produces — regenerate on top of the TTL when the
+    # elixir-mcp-a2a-pack is available).
+    "eventgrid.topics.list" => %{
+      name: "Event Grid topics list",
+      description:
+        "Event Grid topics and system topics registered in the substrate ARM store (id, name, properties) - bounded to 100 rows.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "eventgrid.subscriptions.list" => %{
+      name: "Event Grid event subscriptions list",
+      description:
+        "Event Grid event subscriptions (topic-scoped when a topic is named) registered in the substrate ARM store - bounded to 100 rows.",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
+    },
+    "eventgrid.events.recent" => %{
+      name: "Event Grid recent events",
+      description:
+        "The most recent published Event Grid events from the substrate event store (defensive projection, bounded to 25).",
+      observation_scope: :read_only,
+      mutation_scope: :none,
+      requires_authority: false,
+      reversible: true,
+      consequence: :observe,
+      receipt_semantics: :logged
     }
   }
 
