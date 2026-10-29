@@ -2,6 +2,11 @@ import Config
 
 config :smalt, skr_allow_legacy_header: true
 
+# GL28-2: local runs opt in to the GraphLaw admission gate. With the base
+# engine_digest: nil + fail_closed: true unchanged, the enabled gate's
+# fail-closed refusal is the default path exercised under `mix test`.
+config :smalt, :graphlaw_ex_gate, enabled: true
+
 # Existing test suite exercises routers without tokens: opt out of bearer
 # enforcement here; enforce-mode behaviour is covered by test/auth_enforce_test.exs.
 config :smalt, :auth_mode, :anonymous

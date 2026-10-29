@@ -1679,87 +1679,114 @@ defmodule Smalt.ArmGateway.Router do
       # arm_error_corpus meta-test pins).
       case Policy.enforce(sub_id, rg_name, record) do
         :ok ->
-          existed? = match?({:ok, _}, Store.get(:smalt_resources, String.downcase(res_id)))
-          Store.put(:smalt_resources, String.downcase(res_id), record)
-
-          # AZURE-FIDELITY lane 5: activity-log event for the completed PUT
-          # (fail-safe sideband — never alters the response).
-          Smalt.ArmGateway.ActivityLog.record(conn, :write, res_id, rg_name)
-
-          # AZURE-FIDELITY lane 1: lifecycle timestamps for the documented
-          # $expand=createdTime,changedTime list semantics — createdTime is
-          # frozen on first PUT, changedTime advances on every write.
-          :ok = ProviderState.touch_lifecycle(res_id)
-
-          # Lifecycle metric point (Azure Monitor parity): every resource PUT is a
-          # request datapoint on the resource's Requests series.
-          Smalt.Metrics.emit(res_id, "Requests", 1)
-
-          # SHIM-COURT affidavit-seal (lane 611): on every successful resource
-          # PUT, ingest through the affidavit ingestion functor — tariff from
-          # Smalt.FinOps.Calculator (F lane) with a deterministic local proxy
-          # fallback, modality 0x01/0x02 by the $50M threshold, then the
-          # fail-safe admit-and-seal sideband. Admission semantics unchanged:
-          # a dead engine/refusal never alters the response below.
-          affidavit_seal(record, %{
-            subject: String.downcase(res_id),
-            lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
-          })
-
-          # AZB-10: cross-plane emission — every successful resource PUT emits
-          # the Event Grid Microsoft.Resources.ResourceWriteSuccess event to
-          # the integration plane (Event Grid topic fan-out + Service Bus
-          # bridge enqueue). Never alters the PUT response (fail-safe inside).
+          # GL28-2 admission gate (docs/jira/v26.10.28/GL28-2-SMALT-WIRE-SPEC.md
+          # §3/§8): a mutation commits only behind the graphlaw_ex admission
+          # turnstile — the proof of admission is the in-hand
+          # {:admitted_mutation, ...} envelope, not a boolean. This step sits
+          # AFTER the last refusal gate (Policy.enforce) and BEFORE the commit
+          # (Store.put(:smalt_resources, ...)), so a gate refusal leaves state
+          # byte-identical (spec §3.6: no write but the sanctioned OCEL refusal
+          # frame).
           #
-          # KD-COVERS: KD-124 — the emission is a POST-STORE SIDEBAND: it runs
-          # after Store.put, so any raise here turns a persisted resource into
-          # a 500 (KD-124 wire witness: UndefinedFunctionError —
-          # Smalt.EgressRouter.Peers not available on a stale substrate build —
-          # 500'd the first `PUT .../namespaces/:ns` with sku AFTER the record
-          # was stored; retry answered 200). Fail-safe: a raise/exit/throw from
-          # the emission is logged and dropped, never propagated into the PUT
-          # response.
-          try do
-            Smalt.EgressRouter.Peers.emit_resource_write_success(record, %{
-              subscription: sub_id,
-              resource_group: rg_name
+          # The gate module belongs to the parallel GL28-2 build lane and may
+          # not be loaded yet: the call resolves at runtime behind a falsifiable
+          # Code.ensure_loaded? + function_exported? guard (see
+          # check_admission_gate/2), so this step is the sanctioned no-op stub
+          # today and activates the moment the module lands — no further router
+          # edit. (A literal Smalt.GraphlawEx.AdmissionGate.gate/3 dot-call
+          # would warn "module not available" and fail
+          # `mix compile --warnings-as-errors`.)
+          with :ok <- check_admission_gate(conn, admission_envelope(conn)) do
+            existed? = match?({:ok, _}, Store.get(:smalt_resources, String.downcase(res_id)))
+            Store.put(:smalt_resources, String.downcase(res_id), record)
+
+            # AZURE-FIDELITY lane 5: activity-log event for the completed PUT
+            # (fail-safe sideband — never alters the response).
+            Smalt.ArmGateway.ActivityLog.record(conn, :write, res_id, rg_name)
+
+            # AZURE-FIDELITY lane 1: lifecycle timestamps for the documented
+            # $expand=createdTime,changedTime list semantics — createdTime is
+            # frozen on first PUT, changedTime advances on every write.
+            :ok = ProviderState.touch_lifecycle(res_id)
+
+            # Lifecycle metric point (Azure Monitor parity): every resource PUT is a
+            # request datapoint on the resource's Requests series.
+            Smalt.Metrics.emit(res_id, "Requests", 1)
+
+            # SHIM-COURT affidavit-seal (lane 611): on every successful resource
+            # PUT, ingest through the affidavit ingestion functor — tariff from
+            # Smalt.FinOps.Calculator (F lane) with a deterministic local proxy
+            # fallback, modality 0x01/0x02 by the $50M threshold, then the
+            # fail-safe admit-and-seal sideband. Admission semantics unchanged:
+            # a dead engine/refusal never alters the response below.
+            affidavit_seal(record, %{
+              subject: String.downcase(res_id),
+              lease_context: "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}"
             })
-          rescue
-            e ->
-              Logger.warning(
-                "AZB-10 ResourceWriteSuccess emission dropped (KD-124 fail-safe): " <>
-                  Exception.format(:error, e)
-              )
 
-              :ok
-          catch
-            :exit, e ->
-              Logger.warning(
-                "AZB-10 ResourceWriteSuccess emission dropped (KD-124 fail-safe, exit): " <>
-                  inspect(e)
-              )
+            # AZB-10: cross-plane emission — every successful resource PUT emits
+            # the Event Grid Microsoft.Resources.ResourceWriteSuccess event to
+            # the integration plane (Event Grid topic fan-out + Service Bus
+            # bridge enqueue). Never alters the PUT response (fail-safe inside).
+            #
+            # KD-COVERS: KD-124 — the emission is a POST-STORE SIDEBAND: it runs
+            # after Store.put, so any raise here turns a persisted resource into
+            # a 500 (KD-124 wire witness: UndefinedFunctionError —
+            # Smalt.EgressRouter.Peers not available on a stale substrate build —
+            # 500'd the first `PUT .../namespaces/:ns` with sku AFTER the record
+            # was stored; retry answered 200). Fail-safe: a raise/exit/throw from
+            # the emission is logged and dropped, never propagated into the PUT
+            # response.
+            try do
+              Smalt.EgressRouter.Peers.emit_resource_write_success(record, %{
+                subscription: sub_id,
+                resource_group: rg_name
+              })
+            rescue
+              e ->
+                Logger.warning(
+                  "AZB-10 ResourceWriteSuccess emission dropped (KD-124 fail-safe): " <>
+                    Exception.format(:error, e)
+                )
 
-              :ok
-          end
+                :ok
+            catch
+              :exit, e ->
+                Logger.warning(
+                  "AZB-10 ResourceWriteSuccess emission dropped (KD-124 fail-safe, exit): " <>
+                    inspect(e)
+                )
 
-          cond do
-            lro_type?(full_type) and not existed? ->
-              # ARM LRO convention: create -> 202 + async headers (poll to terminal).
-              op = LRO.start_op(res_id)
-              async_put_response(conn, 202, op)
+                :ok
+            end
 
-            lro_async_update_type?(full_type) ->
-              # update -> 200 + async headers (ARM LRO PUT update convention).
-              # Only the original witness set (storage/compute) is async on
-              # update; the KD-111 widening keeps update SYNC per ARM/AZB-25b.
-              op = LRO.start_op(res_id)
-              async_put_response(conn, 200, op)
+            cond do
+              lro_type?(full_type) and not existed? ->
+                # ARM LRO convention: create -> 202 + async headers (poll to terminal).
+                op = LRO.start_op(res_id)
+                async_put_response(conn, 202, op)
 
-            existed? ->
-              send_json(conn, 200, Jason.encode!(record))
+              lro_async_update_type?(full_type) ->
+                # update -> 200 + async headers (ARM LRO PUT update convention).
+                # Only the original witness set (storage/compute) is async on
+                # update; the KD-111 widening keeps update SYNC per ARM/AZB-25b.
+                op = LRO.start_op(res_id)
+                async_put_response(conn, 200, op)
 
-            true ->
-              send_json(conn, 201, Jason.encode!(record))
+              existed? ->
+                send_json(conn, 200, Jason.encode!(record))
+
+              true ->
+                send_json(conn, 201, Jason.encode!(record))
+            end
+          else
+            # Typed gate refusal: rendered through the pinned GraphLaw refusal
+            # face (send_graphlaw_refusal/3 — 400 InvalidResourceShape, message
+            # names the SMALT-* code; router.ex:719 "ARM never returns 422"),
+            # state untouched. Posture gate: :fail_open admits (spec §8
+            # admit-and-seal sideband), so this clause only fires under
+            # :fail_closed with the GL28-2 module loaded.
+            {:respond, conn} -> conn
           end
 
         {:deny, body} ->
@@ -2170,7 +2197,14 @@ defmodule Smalt.ArmGateway.Router do
          # (Defaults.enrich + Map.put on the properties member). A hostile
          # body must refuse typed (InvalidResourceShape), never crash the
          # record builder. (SHIM-COURT shacl-fuzz fence)
-         :ok <- check_properties_member(conn, merged) do
+         :ok <- check_properties_member(conn, merged),
+         # GL28-2 admission-gate tier (spec §8 mirror of handle_resource_put):
+         # the receipt gate rides the shared child-PUT chain so handle_child_put
+         # and handle_parented_child both commit only behind the turnstile —
+         # BEFORE the Store.put commit in handle_child_put and at the same
+         # refusal tier as the resource PUT. Same runtime-resolved stub until
+         # the GL28-2 module lands (see check_admission_gate/2).
+         :ok <- check_admission_gate(conn, admission_envelope(conn)) do
       {:ok, full_type, merged}
     else
       {:respond, conn} -> {:respond, conn}
@@ -3531,6 +3565,77 @@ defmodule Smalt.ArmGateway.Router do
   # typed refusal (see do_check_shape), never an admission.
   defp graph_law_fail_closed? do
     Smalt.Config.graph_law()[:enforcement] == :fail_closed
+  end
+
+  # GL28-2 admission gate call site (spec §3/§8). Refusals render through the
+  # pinned GraphLaw refusal face (send_graphlaw_refusal/3: 400
+  # InvalidResourceShape envelope, message names the typed SMALT-* code) — the
+  # router pins "ARM never returns 422" on send_graphlaw_refusal; a 422 face is
+  # a coordinator flip if the GL28-2 court corpus wants one.
+  defp check_admission_gate(conn, envelope) do
+    gate_mod = Smalt.GraphlawEx.AdmissionGate
+
+    cond do
+      not (Code.ensure_loaded?(gate_mod) and function_exported?(gate_mod, :gate, 3)) ->
+        # GL28-2 build lane has not landed the module: the sanctioned
+        # falsifiable stub. NOT a silent pass — invert the guard (or land the
+        # module under :fail_closed with no receipt in hand) and the gate MUST
+        # refuse; a gate that cannot refuse is the failure.
+        :ok
+
+      not graph_law_fail_closed?() ->
+        # Spec §8 posture: :fail_open -> admit-and-seal (the seal sideband,
+        # affidavit_seal/2, already runs post-commit). The gate refusal face
+        # exists only under :fail_closed.
+        :ok
+
+      true ->
+        case apply(gate_mod, :gate, [conn.method, envelope, gate_opts(conn)]) do
+          :ok ->
+            :ok
+
+          {:refused, code} ->
+            {:respond, send_graphlaw_refusal(conn, to_string(code))}
+
+          {:error, reason} ->
+            {:respond, send_graphlaw_refusal(conn, to_string(reason))}
+
+          other ->
+            {:respond,
+             send_graphlaw_refusal(
+               conn,
+               "unexpected admission-gate verdict: " <> inspect(other)
+             )}
+        end
+    end
+  end
+
+  # Envelope the router HAS in hand (spec §2 5-tuple): the byte-exact raw
+  # request body (Smalt.Auth.BodyCache accumulates it into
+  # conn.private[:smalt_raw_body]) plus the receipt fields — which the router
+  # does not yet mint (receipt substrate is GL28-2 build-lane work: VcExport
+  # .to_vc/2, affidavit_seal/2, journal frames 0x0A01/0x0A02), so they present
+  # as nil and the gate answers in the typed SMALT-* vocabulary, never a
+  # boolean.
+  defp admission_envelope(conn) do
+    {:admitted_mutation, admission_raw_body(conn), nil, nil, nil}
+  end
+
+  defp admission_raw_body(conn) do
+    case conn.private[:smalt_raw_body] do
+      body when is_binary(body) -> body
+      _ -> Jason.encode!(conn.body_params)
+    end
+  end
+
+  # Gate options, spec-named keys (§3.3 engine-digest persistent_term key, §4
+  # packet-4 16 MiB cap). The GL28-2 gate module may extend this list; a
+  # Keyword-fetching gate ignores unknown keys.
+  defp gate_opts(_conn) do
+    [
+      engine_digest_key: :gl_engine_digest,
+      max_request_bytes: 16 * 1024 * 1024
+    ]
   end
 
   # KD-78: api-version admission is MONOTONIC (real ARM semantics): any version

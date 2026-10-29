@@ -160,14 +160,20 @@ def render_window(results_dir, out, version):
                 "|---|---|---|---|---|---|---|",
             ]
             for r in orows:
+                # None-safe coercion: historical lane rows carry explicit
+                # nulls for fields that don't apply (e.g. memory probes with
+                # no ops/sec) — a bare float(None) crashes the whole report.
+                def num(v):
+                    return float(v) if isinstance(v, (int, float)) else 0.0
+
                 lines.append(
                     "| {op} | {n} | {ops_per_sec:.0f} | {p50_ms:.2f} | {p95_ms:.2f} | {p99_ms:.2f} | {errors} |".format(
                         op=r.get("op", "?"),
                         n=r.get("n", 0),
-                        ops_per_sec=float(r.get("ops_per_sec", 0)),
-                        p50_ms=float(r.get("p50_ms", 0)),
-                        p95_ms=float(r.get("p95_ms", 0)),
-                        p99_ms=float(r.get("p99_ms", 0)),
+                        ops_per_sec=num(r.get("ops_per_sec")),
+                        p50_ms=num(r.get("p50_ms")),
+                        p95_ms=num(r.get("p95_ms")),
+                        p99_ms=num(r.get("p99_ms")),
                         errors=r.get("errors", 0),
                     )
                 )

@@ -97,6 +97,9 @@ defmodule Smalt.MixProject do
 
   defp deps do
     [
+      # GL28-2: the deterministic turnstile — admission gate before any
+      # control-plane state mutation (path dep on the sibling checkout).
+      {:graphlaw_ex, path: "../graphlaw/graphlaw_ex"},
       {:bandit, "~> 1.6"},
       {:plug, "~> 1.16"},
       {:cors_plug, "~> 3.0"},

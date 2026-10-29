@@ -39,7 +39,7 @@ not rendered as op rows.
 
 | op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
 |---|---|---|---|---|---|---|
-| admit_and_seal | 100 | 77 | 11.27 | 26.49 | 32.67 | 0 |
+| admit_and_seal | 100 | 77 | 0.00 | 0.00 | 0.00 | 0 |
 ## c11 — lifecycle
 
 | op | n | ops/sec | p50 ms | p95 ms | p99 ms | errors |
