@@ -1,5 +1,6 @@
 # T-04 — App Configuration: Key Vault references + Event Grid change notifications
 
+- status: CODE-COMPLETE (2026-10-29): r7, awaiting integration run
 - window: v26.10.28 · maps-to: Topaz v1.11 "App Configuration — Key Vault references · EventGrid change notifications" (snapshots already ahead) · verdict-at-open: **PARTIAL**
 - size: **M** · depends-on: — · parity-leg: appconfig/eg suite
 

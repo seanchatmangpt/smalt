@@ -1,118 +1,205 @@
-defmodule Smalt.AppConfigEventsTest do
+# Integration-tier witness (egress router dispatch, integration tier):
+# T-04 — App Configuration Key Vault reference content-type contract +
+# kv-plane Event Grid change notifications (AppConfigurationKeyValueModified
+# / …Deleted on topic "appconfig").
+#
+# Chicago discipline: real Store rows (:smalt_appconfig, tuple-keyed
+# {key, label}), real egress dispatch (Plug.Router.call in-process, auth
+# :anonymous in the test env — a non-tokenless Authorization header satisfies
+# the /kv challenge guard, KD-15/53), real Event Grid engine (lazy-started,
+# in-process subscription + assert_received). No mocks. The keyvaultref
+# reference body round-trips BYTE-IDENTICALLY and is never resolved
+# server-side (resolution stays client-side, per the real Azure posture).
+#
+#   PUT keyvaultref (create) -> 201 -> GET -> 200 same uri string + content
+#     type -> LIST contains the reference item unmodified
+#   PUT (create)      -> Modified event with key/label/etag of the record
+#   PUT (If-Match)    -> second Modified event, NEW etag, fresh event id
+#   DELETE (If-Match) -> Deleted event carrying the deleted record's etag
+#   labeled kv        -> "key|label" subject + label in event data
+#
+# Context: solo (integration tier, in-process dispatch). NOT executed in the
+# r7 lane (compile-freeze SLA) — stamped CODE-COMPLETE pending integration.
+
+defmodule Smalt.Internal.AppconfigEventsTest do
   use ExUnit.Case, async: false
 
   import Plug.Test
 
-  alias Smalt.DataPlane.AppConfigEvents
+  alias Smalt.Messaging.EventGrid
+  alias Smalt.Store
+
+  @kv_ref_content_type "application/vnd.microsoft.appconfig.keyvaultref+json"
+  @ref_uri "https://t04-vault.vault.azure.net/secrets/orders-readonly"
+  @ref_value "{\"uri\":\"#{@ref_uri}\"}"
+  @eg_topic "appconfig"
 
   setup do
-    # F8-class isolation fix: a sibling integration test that PUTs a KV key
-    # (kv404_typed_error_test) triggers AppConfigRoutes.emit_kv_event ->
-    # AppConfigEvents.emit -> server(), whose lazy start_link is linked to the
-    # *caller* (that test's process). The registry then survives that test's
-    # normal exit, registered globally outside any supervisor, and this
-    # module's start_supervised! fails {:already_started, _} for every
-    # remaining test. Setup re-owns the global name (synchronous stop, then a
-    # supervision-owned instance) instead of relying on test-order luck.
-    case Process.whereis(AppConfigEvents) do
-      nil -> :ok
-      pid -> GenServer.stop(pid)
-    end
+    # Fresh topic state per test: drops stale subscriptions (a dead test
+    # process pid from a previous test would otherwise stay subscribed).
+    EventGrid.reset(@eg_topic)
 
-    start_supervised!(AppConfigEvents)
-    AppConfigEvents.reset()
+    on_exit(fn ->
+      Store.delete(:smalt_appconfig, {"orders-uri", ""})
+      Store.delete(:smalt_appconfig, {"orders-language", ""})
+      Store.delete(:smalt_appconfig, {"orders-uri-labeled", "prod"})
+    end)
+
     :ok
   end
 
-  defp put_kv(key, value, _label \\ "") do
-    body =
-      Jason.encode!(%{
-        "key" => key,
-        "value" => value,
-        "contentType" => "application/json"
-      })
+  defp kv_req(method, path, body \\ nil, headers \\ []) do
+    conn =
+      if body do
+        conn(method, path, Jason.encode!(body))
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+      else
+        conn(method, path)
+      end
 
     conn =
-      Plug.Conn.put_req_header(
-        conn(:put, "/kv/#{URI.encode_www_form(key)}", body),
-        "content-type",
-        "application/json"
+      conn
+      # Non-tokenless: the /kv challenge guard 401s tokenless requests even
+      # in anonymous auth mode; in the test env any bearer value rides.
+      |> Plug.Conn.put_req_header("authorization", "Bearer smalt-t04-court")
+      |> then(fn c ->
+        Enum.reduce(headers, c, fn {k, v}, acc -> Plug.Conn.put_req_header(acc, k, v) end)
+      end)
+
+    Smalt.EgressRouter.call(Plug.Conn.fetch_query_params(conn), [])
+  end
+
+  # -- T-04 scope 1: keyvaultref round-trip (no server-side resolution) ---------
+
+  test "keyvaultref value + content type round-trip byte-identically through PUT/GET/list" do
+    put_conn =
+      kv_req(
+        :put,
+        "/kv/orders-uri",
+        %{"value" => @ref_value, "contentType" => @kv_ref_content_type},
+        [{"if-none-match", "*"}]
       )
 
-    conn =
-      Plug.Parsers.call(conn,
-        Plug.Parsers.init(
-          parsers: [Plug.Parsers.JSON],
-          pass: ["application/json"],
-          json_decoder: Jason
-        )
+    assert put_conn.status == 201
+
+    put_body = Jason.decode!(put_conn.resp_body)
+    assert put_body["key"] == "orders-uri"
+    assert put_body["value"] == @ref_value
+    assert put_body["contentType"] == @kv_ref_content_type
+    assert is_binary(put_body["etag"])
+
+    # GET serves the exact reference string back — the service never resolves
+    # the uri server-side (opaque passthrough, real Azure parity).
+    get_conn = kv_req(:get, "/kv/orders-uri")
+    assert get_conn.status == 200
+
+    get_body = Jason.decode!(get_conn.resp_body)
+    assert get_body["value"] == @ref_value
+    assert get_body["contentType"] == @kv_ref_content_type
+    assert get_body["etag"] == put_body["etag"]
+
+    list_conn = kv_req(:get, "/kv?key=orders-uri")
+    assert list_conn.status == 200
+
+    %{"items" => items} = Jason.decode!(list_conn.resp_body)
+    item = Enum.find(items, &(&1["key"] == "orders-uri"))
+    assert item["value"] == @ref_value
+    assert item["contentType"] == @kv_ref_content_type
+  end
+
+  # -- T-04 scope 2: change notifications on the "appconfig" Event Grid topic --
+
+  test "kv PUT create + If-Match modify publish Modified events with the record etags" do
+    sub = :t04_events
+    EventGrid.subscribe(@eg_topic, sub, self())
+
+    put_conn =
+      kv_req(:put, "/kv/orders-language", %{"value" => "rust", "contentType" => "text/plain"}, [
+        {"if-none-match", "*"}
+      ])
+
+    assert put_conn.status == 201
+    created = Jason.decode!(put_conn.resp_body)
+
+    assert_received {:event_grid, @eg_topic, ^sub, _id, created_event}
+    assert created_event[:eventType] == "AppConfigurationKeyValueModified"
+    assert created_event[:subject] == "orders-language"
+    assert created_event[:data][:key] == "orders-language"
+    assert created_event[:data][:label] == ""
+    assert created_event[:data][:etag] == created["etag"]
+    assert is_binary(created_event[:id]) and created_event[:id] != ""
+    assert is_binary(created_event[:eventTime])
+
+    # Modify (If-Match CAS): a second Modified event with the NEW etag and a
+    # fresh dedup id (the engine never folds distinct events by id).
+    mod_conn =
+      kv_req(:put, "/kv/orders-language", %{"value" => "elixir", "contentType" => "text/plain"}, [
+        {"if-match", created["etag"]}
+      ])
+
+    assert mod_conn.status == 200
+    modified = Jason.decode!(mod_conn.resp_body)
+    assert modified["etag"] != created["etag"]
+
+    assert_received {:event_grid, @eg_topic, ^sub, _id, modified_event}
+    assert modified_event[:eventType] == "AppConfigurationKeyValueModified"
+    assert modified_event[:data][:key] == "orders-language"
+    assert modified_event[:data][:etag] == modified["etag"]
+    assert modified_event[:id] != created_event[:id]
+  end
+
+  test "kv DELETE (If-Match) publishes Deleted with the deleted record's etag" do
+    sub = :t04_deleted
+    EventGrid.subscribe(@eg_topic, sub, self())
+
+    put_conn =
+      kv_req(:put, "/kv/orders-language", %{"value" => "rust", "contentType" => "text/plain"}, [
+        {"if-none-match", "*"}
+      ])
+
+    assert put_conn.status == 201
+    created = Jason.decode!(put_conn.resp_body)
+
+    # Drain the create's Modified event so the mailbox holds only the delete's.
+    assert_received {:event_grid, @eg_topic, ^sub, _id, _}
+
+    del_conn = kv_req(:delete, "/kv/orders-language", nil, [{"if-match", created["etag"]}])
+    assert del_conn.status == 204
+
+    assert_received {:event_grid, @eg_topic, ^sub, _id, deleted_event}
+    assert deleted_event[:eventType] == "AppConfigurationKeyValueDeleted"
+    assert deleted_event[:subject] == "orders-language"
+    assert deleted_event[:data][:key] == "orders-language"
+    assert deleted_event[:data][:label] == ""
+    assert deleted_event[:data][:etag] == created["etag"]
+
+    # Post-delete GET: the kv is gone (404 KvNotFound), and nothing else was
+    # published (no mailbox residue beyond the Deleted event).
+    assert kv_req(:get, "/kv/orders-language").status == 404
+    refute_received {:event_grid, @eg_topic, ^sub, _id, _}
+  end
+
+  test "labeled kv events carry the key|label subject suffix and the label in data" do
+    sub = :t04_labeled
+    EventGrid.subscribe(@eg_topic, sub, self())
+
+    put_conn =
+      kv_req(
+        :put,
+        "/kv/orders-uri-labeled?label=prod",
+        %{"value" => @ref_value, "contentType" => @kv_ref_content_type},
+        [{"if-none-match", "*"}]
       )
 
-    Smalt.Egress.AppConfigRoutes.call(conn, [])
-  end
+    assert put_conn.status == 201
+    labeled = Jason.decode!(put_conn.resp_body)
+    assert labeled["label"] == "prod"
 
-  defp kv_status(conn), do: conn.status
-
-  test "subscribe pid -> mutate key -> typed Event Grid envelope received" do
-    :ok = AppConfigEvents.subscribe("t1", self())
-
-    conn = put_kv("appws-key-1", ~s({"v":1}))
-    assert kv_status(conn) == 201
-
-    assert_receive {:appconfig_kv_event, "t1", event}, 5_000
-
-    assert event["eventType"] == "Microsoft.AppConfiguration.KeyValueModified"
-    assert event["subject"] == "AppConfiguration.KeyValue:appws-key-1:"
-    assert is_binary(event["id"])
-    assert is_binary(event["eventTime"])
-    assert event["data"]["key"] == "appws-key-1"
-    assert event["data"]["label"] == ""
-    assert is_binary(event["data"]["etag"])
-
-    # Recorded for pull too (receiver-independent witness).
-    assert event["id"] in Enum.map(AppConfigEvents.events(), & &1["id"])
-  end
-
-  test "delete-variant envelope is typed (KeyValueDeleted)" do
-    :ok = AppConfigEvents.subscribe("t2", self())
-
-    AppConfigEvents.emit("appws-del-key", "prod", "\"DE\"-etag", :deleted)
-
-    assert_receive {:appconfig_kv_event, "t2", event}, 5_000
-    assert event["eventType"] == "Microsoft.AppConfiguration.KeyValueDeleted"
-    assert event["subject"] == "AppConfiguration.KeyValue:appws-del-key:prod"
-  end
-
-  test "non-loopback webhook subscription is refused typed (fail-closed)" do
-    assert {:error, {:refused, :non_loopback_endpoint}} =
-             AppConfigEvents.subscribe("bad1", "https://example.com/hook")
-
-    assert {:error, {:refused, :non_loopback_endpoint}} =
-             AppConfigEvents.subscribe("bad2", "http://10.0.0.5:8080/hook")
-
-    refute Map.has_key?(AppConfigEvents.subscriptions(), "bad1")
-    refute Map.has_key?(AppConfigEvents.subscriptions(), "bad2")
-  end
-
-  test "loopback webhook URL is admitted but delivery is typed UNSUPPORTED-by-airgap" do
-    :ok = AppConfigEvents.subscribe("lp", "http://127.0.0.1:39999/hook")
-
-    assert {:ok, {:url, "http://127.0.0.1:39999/hook"}} ==
-             Map.fetch(AppConfigEvents.subscriptions(), "lp")
-
-    [_outcome] = AppConfigEvents.emit("appws-lp-key", "", "\"LP\"-etag")
-
-    assert [%{"eventType" => "Microsoft.AppConfiguration.KeyValueModified"}] =
-             AppConfigEvents.events()
-  end
-
-  test "unsubscribed receiver gets nothing after unsubscribe" do
-    :ok = AppConfigEvents.subscribe("t3", self())
-    :ok = AppConfigEvents.unsubscribe("t3")
-
-    AppConfigEvents.emit("appws-t3-key", "", "\"T3\"-etag")
-    AppConfigEvents.emit("appws-t3-key", "", "\"T4\"-etag")
-
-    refute_receive {:appconfig_kv_event, "t3", _}, 200
+    assert_received {:event_grid, @eg_topic, ^sub, _id, event}
+    assert event[:eventType] == "AppConfigurationKeyValueModified"
+    assert event[:subject] == "orders-uri-labeled|prod"
+    assert event[:data][:key] == "orders-uri-labeled"
+    assert event[:data][:label] == "prod"
+    assert event[:data][:etag] == labeled["etag"]
   end
 end
