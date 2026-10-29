@@ -1,5 +1,6 @@
 # T-05 — KQL: bin(), join, mv-expand, cross-workspace
 
+- status: IN-PROGRESS 1/4 (2026-10-28): bin() CLOSED - beam court 7/7 (receipts/r4-t05-kql-bin.md); join/mv-expand/cross-workspace remain. Rider: latent parse_by crash fixed.
 - window: v26.10.28 · maps-to: Topaz v1.11 "App Insights / Log Analytics — extended KQL" · verdict-at-open: **PARTIAL**
 - size: **L** · depends-on: — · parity-leg: KQL/Sentinel court extensions
 

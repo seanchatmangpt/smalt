@@ -148,11 +148,16 @@ defmodule Smalt.DataPlane.KQL do
   end
 
   defp apply_stage({:summarize, aggs, by_keys}, rows, _now) do
-    groups = Enum.group_by(rows, fn row -> Enum.map(by_keys, &Map.get(row, &1)) end)
+    groups = Enum.group_by(rows, fn row -> Enum.map(by_keys, &by_key_value(row, &1)) end)
 
     {:ok,
      Enum.map(groups, fn {key_vals, group_rows} ->
-       by_map = Map.new(Enum.zip(by_keys, key_vals))
+       by_map =
+         by_keys
+         |> Enum.map(&by_key_name/1)
+         |> Enum.zip(key_vals)
+         |> Map.new()
+
        summarize_row(group_rows, aggs, by_map)
      end)}
   end
@@ -693,7 +698,7 @@ defmodule Smalt.DataPlane.KQL do
 
   defp parse_stage([{:word, "summarize", _} | rest], stages, _pipe_pos) do
     with {:ok, aggs, rest} <- parse_aggs(rest),
-         {by_keys, rest} <- parse_by(rest) do
+          {:ok, by_keys, rest} <- parse_by(rest) do
       case rest do
         # any leftover word that is not the stage-terminating pipe belongs to
         # no clause — fail-closed
@@ -807,26 +812,97 @@ defmodule Smalt.DataPlane.KQL do
 
   defp comma_or_done(item, rest, acc), do: {:ok, Enum.reverse([item | acc]), rest}
 
+  # T-05 rider (v26.10.28): parse_by returns {:ok, keys, rest} | {:error,_} —
+  # the old bare {cols, rest} tuple let a key_cols_loop error destructure AS
+  # the by-list ({:error, _} matches {by_keys, rest}), crashing parse_stages
+  # with FunctionClauseError instead of the typed SYN- error (latent hole,
+  # exposed by bin()'s malformed-shape courts).
   defp parse_by([{:word, "by", _} | rest]) do
     case key_cols_loop(rest, []) do
-      {:ok, cols, rest} -> {cols, rest}
+      {:ok, cols, rest} -> {:ok, cols, rest}
       {:error, _} = err -> err
     end
   end
 
-  defp parse_by(rest), do: {[], rest}
+  defp parse_by(rest), do: {:ok, [], rest}
 
-  defp key_cols_loop([{:word, col, _} | rest], acc) do
+  # T-05 increment 1 (v26.10.28): `by bin(Col, <timespan>|<number>)` —
+  # bucket the group key. Step validates at parse time (typed SYN- error,
+  # same fail-closed law as every other construct).
+  defp key_cols_loop(
+         [{:word, "bin", bp}, {:lparen, "(", _}, {:word, col, _}, {:comma, ",", _},
+          {:word, step, sp} | rest],
+         acc
+       ) do
     case rest do
-      [{:comma, ",", _} | r] -> key_cols_loop(r, [col | acc])
-      _ -> {:ok, Enum.reverse([col | acc]), rest}
+      [{:rparen, ")", _} | r] ->
+        case bin_step(step) do
+          {:ok, step_value} ->
+            by_item_done({:bin, col, step_value}, r, acc)
+
+          :error ->
+            syn(@syn_unexpected,
+              "invalid bin() step #{inspect(step)} (expected a timespan like 5m or a number)",
+              sp
+            )
+        end
+
+      _ ->
+        syn(@syn_unexpected, "expected ')' to close bin(...)", bp)
     end
   end
+
+  defp key_cols_loop([{:word, col, _} | rest], acc), do: by_item_done(col, rest, acc)
+
+  defp by_item_done(item, [{:comma, ",", _} | r], acc), do: key_cols_loop(r, [item | acc])
+  defp by_item_done(item, rest, acc), do: {:ok, Enum.reverse([item | acc]), rest}
 
   defp key_cols_loop([{_tok, val, p} | _], _acc),
     do: syn(@syn_unexpected, "expected a column name in by-list, got #{inspect(val)}", p)
 
   defp key_cols_loop([], _acc), do: syn(@syn_operand, "by expects at least one column", 0)
+
+  # bin() step: a duration word ("5m") or a numeric word.
+  defp bin_step(step) when is_binary(step) do
+    case Integer.parse(step) do
+      {n, ""} -> {:ok, {:num, n}}
+      _ ->
+        case Float.parse(step) do
+          {f, ""} -> {:ok, {:num, f}}
+          _ ->
+            if Regex.match?(~r/^\d+(ms|s|m|h|d)$/, step) do
+              {:ok, {:dur, duration_ms(step)}}
+            else
+              :error
+            end
+        end
+    end
+  end
+
+  # Group-key value for one by-item; output column name for one by-item
+  # (Kusto renders `by bin(TimeGenerated, 5m)` with the bare column name).
+  defp by_key_value(row, {:bin, col, step}), do: bucket_value(Map.get(row, col), step)
+  defp by_key_value(row, col) when is_binary(col), do: Map.get(row, col)
+
+  defp by_key_name({:bin, col, _step}), do: col
+  defp by_key_name(col) when is_binary(col), do: col
+
+  # Datetimes (DateTime or ISO string, via to_datetime/1) bucket to the
+  # bucket-START DateTime; numbers floor to the step multiple. Values that
+  # are neither stay nil (grouped as nil, like a missing plain column).
+  defp bucket_value(v, {:dur, step_ms}) do
+    case to_datetime(v) do
+      {:ok, dt} ->
+        ms = DateTime.to_unix(dt, :millisecond)
+        DateTime.from_unix!(div(ms, step_ms) * step_ms, :millisecond)
+
+      :error ->
+        nil
+    end
+  end
+
+  defp bucket_value(v, {:num, step}) when is_number(v), do: Float.floor(v / step) * step
+  defp bucket_value(_v, {:num, _step}), do: nil
 
   ## -- Scalar expression grammar ---------------------------------------------------
 
