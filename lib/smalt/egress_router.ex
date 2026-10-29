@@ -256,6 +256,13 @@ defmodule Smalt.EgressRouter do
     else
       queue_dispatch(conn, arm, qp)
     end
+    # The queue arms send their responses inside queue_dispatch; without an
+    # explicit halt the plug pipeline CONTINUES into :match and the blob
+    # splat re-dispatches the same request (in-process callers crash with
+    # AlreadySentError; live Bandit traffic masked it because the response
+    # was already on the socket). Halt is the correct terminal behavior for
+    # a handled arm. Found by test/integration/parity_lane_wire_test.exs.
+    |> Plug.Conn.halt()
   end
 
   defp queue_dispatch(conn, {:list_queues, account}, qp) do
@@ -4394,11 +4401,41 @@ defmodule Smalt.EgressRouter do
   # error code in the x-ms-error-code header, extracted from the JSON body's
   # code slot (either envelope shape). Additive — the JSON body is unchanged.
   defp blob_error(conn, status, body) do
+    # Parity lane 2026-10-28 (wf8, python SDK receipt): the storage-plane
+    # error body is the Azure XML <Error><Code/><Message/></Error> envelope
+    # — the official python storage pipeline parses Message from XML and
+    # gets None for JSON bodies (error_message += None TypeError). The
+    # Message element must never be EMPTY either (python's error formatter
+    # += None chain); default it to the code text, as real Azure always
+    # carries message text. Scoped to the blob error renderer only —
+    # send_json is untouched, so ARM/cosmos/KV/ledger envelopes keep their
+    # pinned JSON.
+    code = blob_error_code(body) || "InternalError"
+    message = blob_error_message(body)
+    message = if is_binary(message) and message != "", do: message, else: code
+
+    xml =
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>" <>
+        "<Error><Code>#{code}</Code>" <>
+        "<Message>#{xml_escape_error(message)}</Message></Error>"
+
     conn
     |> put_resp_header("x-ms-request-id", generate_request_id())
     |> put_resp_header("x-ms-version", "2021-12-02")
-    |> put_error_code_header(body)
-    |> send_json(status, body)
+    |> put_resp_header("x-ms-error-code", code)
+    |> put_resp_content_type("application/xml")
+    |> send_resp(status, xml)
+  end
+
+  defp blob_error_message(%{"error" => %{"message" => msg}}) when is_binary(msg), do: msg
+  defp blob_error_message(%{"message" => msg}) when is_binary(msg), do: msg
+  defp blob_error_message(_), do: nil
+
+  defp xml_escape_error(s) do
+    s
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
   end
 
   defp put_error_code_header(conn, body) do

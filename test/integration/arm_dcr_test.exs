@@ -90,7 +90,11 @@ defmodule Smalt.Internal.ArmDcrTest do
       )
 
     assert refused.status == @not_found
-    assert Jason.decode!(refused.resp_body)["error"]["code"] == "DCRNotFound"
+    # v26.10.28 wf8 receipt (docs/jira/v26.10.28/receipts/r3-integration-lane.md):
+    # the storage-plane error renderer emits the Azure XML <Error><Code/>
+    # envelope (the official python storage pipeline cannot parse the old
+    # JSON body). The DCR ingest refusal rides that renderer.
+    assert refused.resp_body =~ "<Code>DCRNotFound</Code>"
   end
 
   test "PUT is idempotent (re-PUT 200) and LIST surfaces the rule" do
