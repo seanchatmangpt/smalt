@@ -25,7 +25,8 @@ defmodule Smalt.Application do
           Smalt.Apim,
           Smalt.Telemetry.RollingCounters,
           Smalt.Monitor.Metrics
-        ] ++ mcp_tail ++ virtual_hw_child() ++ journal_sink_child() ++ cluster_child()
+        ] ++ mcp_tail ++ virtual_hw_child() ++ journal_sink_child() ++ cluster_child() ++
+             posh_child()
 
     # SBKEY: a configured :sb_shared_key below SasVerifier's 32-byte floor is a
     # boot-config defect (M4: 12-byte key made CBS SAS signing impossible, real
@@ -69,6 +70,24 @@ defmodule Smalt.Application do
       [Smalt.Cluster]
     else
       []
+    end
+  end
+
+  # POSH-002 coordinator wiring: config-gated POSH engine (default OFF —
+  # byte-identical boot). Under `config :smalt, :posh, dir: <path>` the
+  # asymmetric ingress/egress supervisor joins the app tree; the turnstile
+  # fence admits only receipt-backed deltas (lib/smalt/posh/turnstile.ex).
+  defp posh_child do
+    case Application.get_env(:smalt, :posh) do
+      nil ->
+        []
+
+      opts when is_list(opts) ->
+        [
+          Supervisor.child_spec({Smalt.Posh.Supervisor, opts},
+            restart: :permanent
+          )
+        ]
     end
   end
 

@@ -74,7 +74,16 @@ defmodule Smalt.Projection.Canonical do
         # document is the env-independent substrate contract (drift fence
         # renders in test env where ports are dynamic).
         "amqp" => Smalt.Registry.amqp_port_default(),
-        "eventHubs" => Smalt.Registry.event_hubs_port_default()
+        "eventHubs" => Smalt.Registry.event_hubs_port_default(),
+        # GGEN-CACHE lane r11: the AzureCache RESP2/RESP3 wire face
+        # (Smalt.DataPlane.RedisWire). Default port from the projected
+        # Registry (mirrors RedisWire.configured_port/0 law); wireListener
+        # names the runtime honesty-row accessor — the canonical document is
+        # env-independent (R83), the live values ride honesty_rows/0.
+        "redisWire" => %{
+          "port" => Smalt.Registry.redis_port_default(),
+          "wireListener" => "RESP2 on :#{Smalt.Registry.redis_port_default()}"
+        }
       },
       "identity" => identity_block(),
       "third_party" => third_party_packages()

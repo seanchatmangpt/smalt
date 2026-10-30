@@ -185,17 +185,27 @@ defmodule Smalt.DataPlane.AzureCache do
   defp dispatch(_account, _cache, "SELECT", [_db]), do: resp_simple("OK")
   defp dispatch(_account, _cache, "QUIT", []), do: resp_simple("OK")
 
-  # HELLO: RESP2 only (the ticket's Azure-parity law: HELLO 3 answers -ERR
-  # like real Azure's RESP2-only offering; retained even without a wire).
+  # HELLO: the wire-consumer law (receipt-gated pinion flip, 2026-10-29):
+  # HELLO 3 is answered with the successful hello map, "proto" honest as "2" —
+  # the wire emits RESP2 only and RESP3-speaking clients parse RESP2 fine.
+  # This SUPERSEDES the v26.10.28 RESP2-only-refusal pinion; evidence:
+  # consumer leg 3 log `redis_client_error: ERR protocol error` + byte-captured
+  # first bytes `HELLO 3` (docs/jira/v26.10.29/receipts/r1-t01-redis-wire.md).
   defp dispatch(_account, _cache, "HELLO", []), do: hello_reply()
   defp dispatch(_account, _cache, "HELLO", ["2"]), do: hello_reply()
-
-  defp dispatch(_account, _cache, "HELLO", ["3"]),
-    do: resp_error("NOPROTO unsupported protocol version (RESP3 refused; RESP2-only)")
+  defp dispatch(_account, _cache, "HELLO", ["3"]), do: hello_reply()
 
   defp dispatch(_account, _cache, "CLIENT", ["SETNAME" | _]), do: resp_simple("OK")
   defp dispatch(_account, _cache, "CLIENT", ["SETINFO" | _]), do: resp_simple("OK")
   defp dispatch(_account, _cache, "CLIENT", ["GETNAME"]), do: resp_bulk("")
+
+  # node-redis 6.x sends `CLIENT MAINT_NOTIFICATIONS ON ...` as its final
+  # connect-time command (witnessed byte-capture, v26.10.29 consumer court
+  # r3): refusing it (-ERR) makes the client stall its handshake with no
+  # fallback. Accept the negotiation; honest divergence: the notifications
+  # are never emitted. KD-COVERS: see r1/r3 receipts.
+  defp dispatch(_account, _cache, "CLIENT", ["MAINT_NOTIFICATIONS" | _]),
+    do: resp_simple("OK")
   defp dispatch(_account, _cache, "CONFIG", ["GET" | _params]), do: resp_array([])
   defp dispatch(_account, _cache, "CONFIG", ["SET" | _]), do: resp_simple("OK")
 
@@ -216,6 +226,52 @@ defmodule Smalt.DataPlane.AzureCache do
       {:error, reason} -> resp_error("ERR set failed: #{inspect(reason)}")
     end
   end
+
+  # SET with options — the consumer shapes seen on the wire (r3 court):
+  #   * connect-redis session writes: `SET <sid> <sess> EX <secs>`
+  #   * RedisKeyValueStore setIfAbsent: `SET <key> <val> NX PX <ms>`
+  # Parses a bounded option tail (NX / XX / EX n / PX n) over the base put;
+  # NX with an existing key answers the faithful RESP2 nil bulk. EX/PX
+  # semantics match EXPIRE: wire seconds/millis -> Cachex milliseconds.
+  defp dispatch(_account, cache, "SET", [k, v | opts]) when opts != [] do
+    case parse_set_opts(opts, false, nil) do
+      {:ok, nx?, millis} ->
+        cond do
+          nx? and Cachex.exists?(cache, k) == {:ok, true} ->
+            resp_bulk(nil)
+
+          true ->
+            case Cachex.put(cache, k, {:string, v}, expire: millis) do
+              {:ok, true} -> resp_simple("OK")
+              {:error, reason} -> resp_error("ERR set failed: #{inspect(reason)}")
+            end
+        end
+
+      :error ->
+        {:error, @not_integer}
+    end
+  end
+
+  # Bounded SET option-tail parser: NX | XX | EX <n> | PX <n>; last EX/PX wins.
+  defp parse_set_opts([], nx, millis), do: {:ok, nx, millis}
+  defp parse_set_opts(["NX" | rest], _nx, millis), do: parse_set_opts(rest, true, millis)
+  defp parse_set_opts(["XX" | rest], nx, millis), do: parse_set_opts(rest, nx, millis)
+
+  defp parse_set_opts(["EX", n | rest], nx, _millis) do
+    case parse_int(n) do
+      {:ok, s} -> parse_set_opts(rest, nx, s * 1000)
+      :error -> :error
+    end
+  end
+
+  defp parse_set_opts(["PX", n | rest], nx, _millis) do
+    case parse_int(n) do
+      {:ok, ms} -> parse_set_opts(rest, nx, ms)
+      :error -> :error
+    end
+  end
+
+  defp parse_set_opts(_, _, _), do: :error
 
   defp dispatch(_account, _cache, "SET", _), do: wrong_arity("set")
 

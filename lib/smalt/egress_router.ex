@@ -20,13 +20,17 @@ defmodule Smalt.EgressRouter do
   """
 
   use Plug.Router
+  # EXPL-9 F2b (KD-COVERS: KD-175): crash-path fence, re-landed from the
+  # pre-undock source (95d4243d) — the v26.10.29 undock dropped it while the
+  # expl9r1_egress_guard_court_test source-assert kept pinning it. Before this
+  # fence, any unhandled crash escaped to Bandit and rendered a NAKED adapter
+  # 500 — empty body, no envelope, no x-ms-request-id — bypassing every
+  # register_before_send callback.
+  use Plug.ErrorHandler
   require Logger
   alias Smalt.Store
-  alias Smalt.DataPlane.BlobService
-  alias Smalt.DataPlane.BlobStorage
   alias Smalt.DataPlane.KeyVaultActions
   alias Smalt.DataPlane.Cosmos
-  alias Smalt.DataPlane.QueueStorage
   alias Smalt.DataPlane.Purview
   alias Smalt.DataPlane.ResourceGraph
   alias Smalt.DataPlane.Sentinel
@@ -35,23 +39,6 @@ defmodule Smalt.EgressRouter do
   alias Smalt.Security.Attestation
   alias Smalt.Security.ConfidentialLedger
 
-  # GAP-AUD1-01 (v26.10.14, lane W-5): blob comp whitelists — MUST be defined
-  # textually BEFORE the route macros that expand them (module attributes are
-  # expanded at their point of use, top-to-bottom).
-  # KD-COVERS: KD-60 — comp=snapshot is registered (wire arm below).
-  # Parity lane 2026-10-28: comp=lease (base blob, no sharesnapshot),
-  # appendblock, page and properties (Set Blob HTTP Headers) registered —
-  # receipted against Azurite (parity/COVERAGE_VS_TOPAZ.md gap list).
-  @blob_put_comps ~w(block blocklist metadata snapshot lease appendblock page properties)
-  # KD-COVERS: KD-60 — comp=metadata GET registered (Azure Get Blob Metadata);
-  # pagelist/tags stay default-deny.
-  @blob_get_comps ~w(blocklist metadata)
-  # R98 container comp whitelists — mirror of the blob arms above. Lease and
-  # ACL are UNIMPLEMENTED (KD/GAP(blob-comp-lease-absent)); previously an
-  # unknown container comp fell through: PUT into the create-container branch
-  # (silent 201 lie), GET into the plain-list fallback (wrong-body 200).
-  @container_put_comps ~w(legalhold immutabilityPolicy immutabilitypolicy metadata lease acl)
-  @container_get_comps ~w(legalhold immutabilityPolicy immutabilitypolicy metadata list acl)
 
   # Adaptive health probes (envelope Phase 4): zero-auth readiness/liveness.
   # Readiness degrades only on structural failure, never on load.
@@ -127,6 +114,18 @@ defmodule Smalt.EgressRouter do
   plug(Smalt.EventGridWebhookPlug)
   plug(Smalt.Auth.Bearer)
   plug(:fetch_query_params)
+
+  # ---------------------------------------------------------------------------
+  # G5 tenant fence (T-R1/L07 restore from the pre-undock source 95d4243d;
+  # coordinator scope addendum): foreign-`tid` bearers on the blob/queue planes
+  # get their account segment namespaced (tenant_scoped_key) so cross-tenant
+  # data is structurally unreachable, and point access at another tenant's key
+  # answers the typed 403 (never a first-party-shaped 404 lie). Home/no-tid
+  # bearers pass through byte-identical (legacy law). Mounted downstream of
+  # Smalt.Auth.Bearer so resolve_tenant/1 reads the verified bearer. Body in
+  # Smalt.Egress.StorageCatchAll (T07 split).
+  # ---------------------------------------------------------------------------
+  plug(:tenant_namespace)
   # Python SDK trailing-slash tolerance: GET /dbs/:db/colls/:coll/ must route
   # identically to the non-slash form. Plug treats the trailing slash as an
   # empty final segment, which falls through to the 404 catch-all — strip it
@@ -136,313 +135,188 @@ defmodule Smalt.EgressRouter do
   plug(:maybe_parse_body)
 
   # ---------------------------------------------------------------------------
-  # G1 Azure Queue Storage plane (v26.10.19) — arm BEFORE the blob splat.
-  # Queue Storage's REST namespace (/{account}/{queue}/messages...) collides
-  # with the guarded blob catch-all at the same /{account}/... prefix; the
-  # disambiguation is query-shape detection (scoping doc section 1):
-  #   * PUT/DELETE /{account}/{queue}?restype=queue  -> queue lifecycle
-  #   * GET    /{account}?comp=list&restype=queue    -> List Queues
-  #   * /{account}/{queue}/messages[/{id}]           -> message surface
-  # Everything else (:pass) falls through to :match UNCHANGED — the blob
-  # splat, Cosmos, KV and every other arm see byte-identical requests.
+  # SB-REST lane (re-landed from the pre-undock source 95d4243d): Microsoft
+  # Service Bus REST data-plane surface. Same path shape as the Queue Storage
+  # plane below (/{account}/{queue}/messages...); the disambiguator is the
+  # auth face — a `SharedAccessSignature` / `ServiceBusAuthorization` header
+  # claims the request for Service Bus, a `SharedKey` face (or absence) falls
+  # through UNCHANGED.
   # ---------------------------------------------------------------------------
+  plug(Smalt.Egress.ServiceBusRestRoutes)
+
   plug(:queue_storage_plane)
 
-  defp queue_storage_plane(conn, _opts) do
-    qp = fetchd_query_params(conn)
+  plug(:file_share_plane)
 
-    # Parity lane 2026-10-28: the v12 storage-queue SDK sends
-    # `GET /{account}?comp=list` with NO restype (real Azure implies the
-    # service by endpoint host) — byte-identical to blob List Containers.
-    # On this shared egress port the only deterministic discriminator is
-    # the SDK User-Agent (azsdk-js-azure-storage-queue vs -blob); an
-    # explicit restype, when present, always wins.
-    queue_ua? =
-      conn
-      |> get_req_header("user-agent")
-      |> Enum.any?(&String.contains?(&1, "storage-queue"))
 
-    case queue_plane_route(conn.method, conn.path_info, qp, queue_ua?) do
-      nil -> conn
-      arm -> run_queue_arm(conn, arm, qp)
-    end
-  end
 
-  # Parity lane 2026-10-28: reserved first segments that belong to OTHER
-  # planes on the shared egress port (cosmos /dbs, KV /keys /secrets /kv,
-  # eventgrid, ...) — the bare-2-segment queue arms below must never capture
-  # them. Defined BEFORE every queue_plane_route clause that reads it
-  # (module attributes resolve in file order).
-  @queue_reserved_first_segments ~w(dbs keys secrets kv eventgrid events attest)
+  # T07 split: the file-plane banner + body moved to
+  # Smalt.Egress.StorageCatchAll. This SECOND mount is preserved verbatim —
+  # the pre-split front mounted :file_share_plane twice (L02 restore
+  # artifact), and byte-parity law keeps both mounts (see r7 receipt).
+  plug(:file_share_plane)
 
-  defp queue_plane_route("GET", [account], qp, queue_ua?) do
-    cond do
-      qp["comp"] == "list" and qp["restype"] == "queue" ->
-        {:list_queues, account}
 
-      qp["comp"] == "list" and is_nil(qp["restype"]) and queue_ua? ->
-        {:list_queues, account}
-
-      true ->
-        nil
-    end
-  end
-
-  # Parity lane 2026-10-28: bare 2-segment GET (the v12 SDK's
-  # Get Queue Properties shape — no restype on the wire), and the SDK's
-  # getProperties()/getMetadata() shape `?comp=metadata` without restype
-  # (real Azure Get Queue Metadata; the blob container GET always carries
-  # restype=container, so the no-restype form is unambiguously queue).
-  defp queue_plane_route("GET", [account, queue], qp, _queue_ua?) do
-    cond do
-      account in @queue_reserved_first_segments -> nil
-      qp["restype"] == "queue" -> {:get_queue_props, account, queue}
-      is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:get_queue_props, account, queue}
-      qp["comp"] == "metadata" and is_nil(qp["restype"]) ->
-        {:get_queue_props, account, queue}
-
-      true ->
-        nil
-    end
-  end
-
-  # Parity lane 2026-10-28: the @azure/storage-queue v12 SDK does NOT send
-  # restype=queue on queue create/delete — the service is implied by the
-  # endpoint host on real Azure ({account}.queue.core.windows.net). On smalt's
-  # single shared egress port the bare 2-segment PUT/DELETE (no comp, no
-  # restype) is unambiguous: the blob container arm ALWAYS carries
-  # restype=container (SDK-witnessed), so route it to the queue plane.
-  defp queue_plane_route("PUT", [account, queue], qp, _queue_ua?) do
-    cond do
-      account in @queue_reserved_first_segments -> nil
-      qp["restype"] == "queue" -> {:create_queue, account, queue}
-      is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:create_queue, account, queue}
-      # Queue Set Metadata (comp=metadata, NO restype — the blob container
-      # metadata PUT carries restype=container and must NOT be hijacked).
-      qp["comp"] == "metadata" and is_nil(qp["restype"]) ->
-        {:set_queue_metadata, account, queue}
-
-      true ->
-        nil
-    end
-  end
-
-  defp queue_plane_route("DELETE", [account, queue], qp, _queue_ua?) do
-    cond do
-      account in @queue_reserved_first_segments -> nil
-      qp["restype"] == "queue" -> {:delete_queue, account, queue}
-      is_nil(qp["restype"]) and is_nil(qp["comp"]) -> {:delete_queue, account, queue}
-      true -> nil
-    end
-  end
-
-  defp queue_plane_route("POST", [account, _queue, "messages"], _qp, _ua),
-    do: {:put_messages, account}
-
-  defp queue_plane_route("GET", [account, _queue, "messages"], qp, _ua),
-    do: if(qp["peekonly"] == "true", do: {:peek_messages, account}, else: {:get_messages, account})
-
-  defp queue_plane_route("PUT", [account, _queue, "messages", _id], _qp, _ua),
-    do: {:update_message, account}
-
-  # Clear Messages must shadow the popreceipt-carrying delete-message match on
-  # path shape alone (3 elements vs 4) — the 3-element DELETE is the clear comp.
-  defp queue_plane_route("DELETE", [account, _queue, "messages"], _qp, _ua),
-    do: {:clear_messages, account}
-
-  defp queue_plane_route("DELETE", [account, _queue, "messages", _id], _qp, _ua),
-    do: {:delete_message, account}
-
-  defp queue_plane_route(_, _, _, _), do: nil
-
-  defp run_queue_arm(conn, arm, qp) do
-    if not_ready?(conn, [QueueStorage]) do
-      route_not_ready(conn)
-    else
-      queue_dispatch(conn, arm, qp)
-    end
-    # The queue arms send their responses inside queue_dispatch; without an
-    # explicit halt the plug pipeline CONTINUES into :match and the blob
-    # splat re-dispatches the same request (in-process callers crash with
-    # AlreadySentError; live Bandit traffic masked it because the response
-    # was already on the socket). Halt is the correct terminal behavior for
-    # a handled arm. Found by test/integration/parity_lane_wire_test.exs.
-    |> Plug.Conn.halt()
-  end
-
-  defp queue_dispatch(conn, {:list_queues, account}, qp) do
-    case QueueStorage.list_queues(account, qp) do
-      {:ok, status, headers, body} ->
-        conn
-        |> put_resp_headers(headers)
-        |> put_resp_content_type("application/xml")
-        |> send_resp(status, body)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp queue_dispatch(conn, {:create_queue, account, queue}, _qp) do
-    case QueueStorage.create_queue(account, queue) do
-      {:ok, status, headers} ->
-        send_headers(conn, status, headers)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp queue_dispatch(conn, {:delete_queue, account, queue}, _qp) do
-    case QueueStorage.delete_queue(account, queue) do
-      {:ok, status, headers} ->
-        send_headers(conn, status, headers)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  # Parity lane 2026-10-28: Queue Set Metadata — persists x-ms-meta-* on the
-  # queue row (Get Queue Properties reads them back); 204 No Content.
-  defp queue_dispatch(conn, {:set_queue_metadata, account, queue}, _qp) do
-    case QueueStorage.set_queue_metadata(account, queue, meta_headers(conn)) do
-      {:ok, status, headers} ->
-        send_headers(conn, status, headers)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp queue_dispatch(conn, {:get_queue_props, account, queue}, _qp) do
-    case QueueStorage.get_queue_properties(account, queue) do
-      {:ok, status, headers} ->
-        send_headers(conn, status, headers)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  # Queue message bodies are XML — Plug.Parsers (json/urlencoded) leaves them
-  # unread; read the raw body here. A JSON content-type body would already be
-  # consumed by the parsers plug, which is acceptable (Azure clients send XML).
-  defp queue_dispatch(conn, {:put_messages, account}, _qp) do
-    [queue, _] = Enum.drop(conn.path_info, 1)
-
-    with {:ok, body, conn} <- read_queue_body(conn) do
-      case QueueStorage.put_message(account, queue, body) do
-        {:ok, status, headers, resp_body} ->
-          conn
-          |> put_resp_headers(headers)
-          |> put_resp_content_type("application/xml")
-          |> send_resp(status, resp_body)
-
-        {:error, status, code, msg} ->
-          blob_error(conn, status, not_found_error(code) |> put_message(msg))
-      end
-    else
-      {:error, reason} ->
-        blob_error(conn, 400, %{
-          "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
-        })
-    end
-  end
-
-  defp queue_dispatch(conn, {:get_messages, account}, qp) do
-    [queue, _] = Enum.drop(conn.path_info, 1)
-
-    case QueueStorage.get_messages(account, queue, qp) do
-      {:ok, status, headers, resp_body} ->
-        conn
-        |> put_resp_headers(headers)
-        |> put_resp_content_type("application/xml")
-        |> send_resp(status, resp_body)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp queue_dispatch(conn, {:peek_messages, account}, qp) do
-    [queue, _] = Enum.drop(conn.path_info, 1)
-
-    case QueueStorage.peek_messages(account, queue, qp) do
-      {:ok, status, headers, resp_body} ->
-        conn
-        |> put_resp_headers(headers)
-        |> put_resp_content_type("application/xml")
-        |> send_resp(status, resp_body)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp queue_dispatch(conn, {:clear_messages, account}, _qp) do
-    [queue, _] = Enum.drop(conn.path_info, 1)
-
-    case QueueStorage.clear_messages(account, queue) do
-      {:ok, status, headers} ->
-        send_headers(conn, status, headers)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp queue_dispatch(conn, {:update_message, account}, qp) do
-    [queue, _, msg_id] = Enum.drop(conn.path_info, 1)
-
-    with {:ok, body, conn} <- read_queue_body(conn) do
-      case QueueStorage.update_message(
-             account,
-             queue,
-             msg_id,
-             qp["popreceipt"] || "",
-             body,
-             qp
-           ) do
-        {:ok, _status, headers, _resp_body} ->
-          # Azure parity (parity lane 2026-10-28, receipted vs Azurite):
-          # Update Message answers 204 No Content — the @azure SDK
-          # type-asserts 204 (RestError "Unexpected status code" otherwise).
-          send_headers(conn, 204, headers)
-
-        {:error, status, code, msg} ->
-          blob_error(conn, status, not_found_error(code) |> put_message(msg))
-      end
-    else
-      {:error, reason} ->
-        blob_error(conn, 400, %{
-          "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
-        })
-    end
-  end
-
-  defp queue_dispatch(conn, {:delete_message, account}, qp) do
-    [queue, _, msg_id] = Enum.drop(conn.path_info, 1)
-
-    case QueueStorage.delete_message(account, queue, msg_id, qp["popreceipt"] || "", qp) do
-      {:ok, status, headers} ->
-        send_headers(conn, status, headers)
-
-      {:error, status, code, msg} ->
-        blob_error(conn, status, not_found_error(code) |> put_message(msg))
-    end
-  end
-
-  defp read_queue_body(conn) do
-    case Plug.Conn.read_body(conn) do
-      {:ok, body, conn} -> {:ok, body, conn}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
+  # w6R structural split (re-landed from the pre-undock source 95d4243d): the
+  # delegator sub-routers under lib/smalt/egress/ (SyncRoutes /sync/journal/batch,
+  # MarketplaceRoutes /saas/*, GraphRoutes /v1.0/*, ...) receive every conn
+  # BEFORE :match/:dispatch; each passes unmatched conns through un-halted.
+  # plug(Mod) resolves at COMPILE time, so referencing the w6R sub-routers
+  # (which `import Smalt.EgressRouter`) deadlocks against them — resolved at
+  # RUNTIME only, via the atom plug below.
+  # PRD-APIM wire plane (ApimWireTest): /apim-gw/{api}/... — policies (jwt,
+  # rate-limit 429) and the default-off typed 404 must answer BEFORE the blob
+  # catch-all's MissingXMsVersion guard, whose blanket 400 previously shadowed
+  # the whole family. Runtime atom plug (same idiom as :w6r_fallthrough) so
+  # the reference never resolves at compile time; claims only /apim-gw/* and
+  # passes everything else through un-halted.
+  plug(:apim_gateway_plane)
+  plug(:w6r_fallthrough)
   plug(:match)
   plug(:dispatch)
+  plug(:storage_dispatch)
 
+  # JA-R1 (V2): the ONLY expected failure class here is an unmatched route
+  # clause (FunctionClauseError) — benign fallthrough to the next sub-router.
+  # The fallthrough is logged, not silent; every other exception class
+  # propagates untouched (never swallowed into a benign miss on the wire).
+  defp safe_subrouter_call(m, conn) do
+    try do
+      m.call(conn, m.init([]))
+    rescue
+      FunctionClauseError ->
+        Logger.warning("egress subrouter #{inspect(m)} unmatched route — falling through")
+
+        conn
+    end
+  end
+
+  defp apim_gateway_plane(conn, _opts) do
+    Smalt.Apim.gateway(conn, [])
+  end
+
+  defp w6r_fallthrough(conn, _opts) do
+    mods = [
+      Smalt.Egress.AttestRoutes,
+      Smalt.Egress.CosmosRoutes,
+      Smalt.Egress.KvRoutes,
+      Smalt.Egress.AppConfigRoutes,
+      Smalt.Egress.ObservabilityRoutes,
+      Smalt.Egress.SchemaRegistryRoutes,
+      # EH-REST lane: POST /{hub}/messages — the Microsoft-documented Event
+      # Hubs REST producer (SAS 401 law, x-ms-partition-key -> KD-76 pk
+      # partition rule, 1 MiB 413 cap, 201 empty-body success).
+      Smalt.Egress.EventHubsRestRoutes,
+      # GLD-3 (v26.10.21): POST /sql-ingest — SQL ingestion wire face
+      # (SqlIngest pipeline -> OCEL projection -> andon 422 refusals).
+      Smalt.Egress.SqlIngestRoutes,
+      # ATH-1 (v26.10.22): POST /sync/journal/batch — domain-blind binary
+      # sync ingress (frame integrity -> guard seam -> CAS/ANDON + receipt).
+      Smalt.Egress.SyncRoutes,
+      # AZURE-FIDELITY lane 8: /saas/* — the Microsoft-documented Marketplace
+      # SaaS fulfillment face (resolve/activate/operations/usageEvent).
+      # Default OFF: with `config :smalt, :marketplace_saas, enabled: false`
+      # (the default) every conn falls through un-halted and un-sent.
+      Smalt.Egress.MarketplaceRoutes,
+      # AZURE-FIDELITY lane 13: /v1.0/* — the Microsoft-documented Graph stub
+      # face (servicePrincipals/applications/oauth2PermissionGrants; odata
+      # envelopes; STS bearer auth).
+      Smalt.Egress.GraphRoutes
+    ]
+
+    Enum.reduce(mods, conn, fn m, conn ->
+      cond do
+        # A sub-router that SENT a response must end the chain: its send paths
+        # (send_resp/json_response) set state :sent without halting, so the
+        # conn previously fell through to the blob splat and blob_route's
+        # put_resp_header raised AlreadySentError (witnessed: wire_norm kd07
+        # court, lane E1 2026-10-20; same class as S1's double-send finding).
+        # halt() also stops the plug pipeline itself (match/dispatch follow).
+        conn.halted ->
+          conn
+
+        conn.state in [:sent, :chunked] ->
+          Plug.Conn.halt(conn)
+
+        Code.ensure_loaded?(m) ->
+          safe_subrouter_call(m, conn)
+
+        true ->
+          conn
+      end
+    end)
+  end
+
+  # ---------------------------------------------------------------------------
+  # T07 split (v26.10.29, L07): storage-family delegation + the post-dispatch
+  # typed-404 fallback. The queue/file planes and the tenant fence run at their
+  # pre-split pipeline positions as one-line delegates into
+  # Smalt.Egress.StorageCatchAll; the guarded blob splat runs from
+  # :storage_dispatch AFTER the front's literal-prefix families (the pre-split
+  # route order) and BEFORE this fallback.
+  # ---------------------------------------------------------------------------
+  defp queue_storage_plane(conn, _opts),
+    do: Smalt.Egress.StorageCatchAll.queue_storage_plane(conn)
+
+  defp file_share_plane(conn, _opts),
+    do: Smalt.Egress.StorageCatchAll.file_share_plane(conn)
+
+  defp tenant_namespace(conn, _opts),
+    do: Smalt.Egress.StorageCatchAll.tenant_namespace(conn, [])
+
+  # 2026-10-30 r18/S5 compile-freeze unblock (DISCLOSED): at 00:27 the helper
+  # in storage_catch_all.ex moved to the plug arity-2 form (def
+  # tenant_namespace(conn, _opts)) while this arity-1 call remained, so EVERY
+  # egress route 500'd (UndefinedFunctionError at plug_builder_call —
+  # witnessed: /v2/track and /v1/workspaces/:id/query both crashed in the r18
+  # court substrate log /tmp/r18-court-substrate.log). This one-line arity
+  # alignment is behavior-preserving (the opts arg is the plug's []); the
+  # owner (L02/T07 split lane) owns the final shape.
+
+  # T07 split: Plug.Router raises FunctionClauseError on no-match and the
+  # front's route list no longer ends in `match _` (the blob splat + the typed
+  # 404 moved to the post-dispatch storage plane). Rescue the front no-match
+  # and fall through to :storage_dispatch. Route BODIES run in dispatch — a
+  # raise from a matched body is NOT rescued here (unchanged crash-fence
+  # semantics). The stale :plug_route clear is defensive: w6r sub-routers set
+  # their own :plug_route on the conn they return.
+  def match(conn, _opts) do
+    conn = %{conn | private: Map.delete(conn.private, :plug_route)}
+    try do
+      super(conn, _opts)
+    rescue
+      FunctionClauseError -> conn
+    end
+  end
+
+  def dispatch(conn, _opts) do
+    case conn.private do
+      %{plug_route: _} -> super(conn, _opts)
+      _ -> conn
+    end
+  end
+
+  defp storage_dispatch(conn, _opts) do
+    conn =
+      cond do
+        conn.halted or conn.state in [:sent, :chunked] -> conn
+        true -> Smalt.Egress.StorageCatchAll.call(conn, [])
+      end
+
+    if conn.halted or conn.state in [:sent, :chunked] do
+      conn
+    else
+      # The pre-split `match _` catch-all 404 (front router, byte-identical
+      # envelope; the face is unstamped here so the envelope is JSON).
+      blob_error(conn, 404, %{
+        "error" => %{
+          "code" => "RouteNotFound",
+          "message" => "No route matches #{conn.method} #{conn.request_path}"
+        }
+      })
+      |> Plug.Conn.halt()
+    end
+  end
   # ---------------------------------------------------------------------------
   # Microsoft Azure Attestation (MAA) (/attest/:type)
   # ---------------------------------------------------------------------------
@@ -2117,1209 +1991,9 @@ defmodule Smalt.EgressRouter do
       })
     )
   end
-
-  # ---------------------------------------------------------------------------
-  # Immutable Blob Storage REST API — guarded catch-all
-  # NOTE route ordering: GET /{account}?comp=list is a single-segment route and
-  # must be defined BEFORE the generic /:account/:container catch-alls below.
-  # ---------------------------------------------------------------------------
-  get "/:account" do
-    cond do
-      # Parity lane 2026-10-28 (receipted vs Azurite): Get Blob Service
-      # Properties (restype=service&comp=properties). Static defaults — the
-      # @azure/storage-blob SDK parses Logging/Cors out of this XML.
-      conn.query_params["restype"] == "service" and conn.query_params["comp"] == "properties" ->
-        conn
-        |> put_resp_header("x-ms-request-id", generate_request_id())
-        |> put_resp_header("x-ms-version", "2021-12-02")
-        |> put_resp_content_type("application/xml")
-        |> send_resp(
-          200,
-          "<?xml version=\"1.0\" encoding=\"utf-8\"?><StorageServiceProperties>" <>
-            "<Logging><Version>1.0</Version><Read>false</Read><Write>false</Write><Delete>false</Delete>" <>
-            "<RetentionPolicy><Enabled>false</Enabled></RetentionPolicy></Logging>" <>
-            "<HourMetrics><Version>1.0</Version><Enabled>false</Enabled>" <>
-            "<RetentionPolicy><Enabled>false</Enabled></RetentionPolicy></HourMetrics>" <>
-            "<MinuteMetrics><Version>1.0</Version><Enabled>false</Enabled>" <>
-            "<RetentionPolicy><Enabled>false</Enabled></RetentionPolicy></MinuteMetrics>" <>
-            "<Cors></Cors>" <>
-            "</StorageServiceProperties>"
-        )
-
-      conn.query_params["comp"] == "list" ->
-        blob_route(conn, fn conn ->
-          if not_ready?(conn, [BlobService]) do
-            route_not_ready(conn)
-          else
-            # Typed engine errors (container-list maxresults 400,
-            # v26.10.14 lane 06 defects 2+3) reach the wire as the Azure XML
-            # <Error> envelope on this comp=list route — never a MatchError 500
-            # or a JSON body where the real service emits XML.
-            case BlobService.list_containers_xml(account, %{
-                   "prefix" => conn.query_params["prefix"],
-                   "marker" => conn.query_params["marker"],
-                   "maxresults" => conn.query_params["maxresults"]
-                 }) do
-              {xml, _next_marker} ->
-                conn
-                |> put_resp_content_type("application/xml")
-                |> send_resp(200, xml)
-
-              {:error, status, code, msg} when is_integer(status) ->
-                blob_error_xml(conn, status, code, msg)
-            end
-          end
-        end)
-
-      true ->
-        blob_error(conn, 404, %{
-          "error" => %{
-            "code" => "RouteNotFound",
-            "message" => "No route matches #{conn.method} #{conn.request_path}"
-          }
-        })
-    end
-  end
-
-  put "/:account/:container" do
-    blob_route(conn, fn conn ->
-      cond do
-        # R98 fail-closed container comp registration: an unknown comp on the
-        # container PUT arm is a typed 400, never a silent 201 create.
-        unhandled_comp?(conn, @container_put_comps) ->
-          unhandled_container_comp_error(conn, conn.query_params["comp"])
-
-        # KD-108: container lease surface (acquire/renew/release/break via
-        # x-ms-lease-action). Engine: BlobStorage.lease_container/5 — state
-        # rides the container row map; active lease refuses Delete Container
-        # 409 ContainerLeased in BlobStorage.delete_container/3.
-        conn.query_params["comp"] == "lease" ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case BlobStorage.lease_container(
-                   account,
-                   container,
-                   header_map(conn)["x-ms-lease-action"],
-                   header_map(conn)
-                 ) do
-              {:ok, status, headers, _record} ->
-                conn
-                |> put_resp_headers(headers)
-                |> send_resp(status, "")
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          end
-
-        # KD-108: container ACL / signed identifiers. PUT -> 204 No Content;
-        # GET -> 200 SignedIdentifiers XML (BlobStorage.acl_xml/1).
-        conn.query_params["comp"] == "acl" ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case acl_body(conn) do
-              {:ok, body, conn} ->
-                case BlobStorage.set_container_acl(account, container, body, header_map(conn)) do
-                  {:ok, status, headers, _record} ->
-                    conn
-                    |> put_resp_headers(headers)
-                    |> send_resp(status, "")
-
-                  {:error, status, code, msg} ->
-                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                end
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          end
-
-        conn.query_params["comp"] == "legalhold" ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            flag = header_map(conn)["x-ms-legal-hold"] == "true"
-
-            case BlobStorage.set_legal_hold(account, container, flag, header_map(conn)) do
-              {:ok, status, headers, record} ->
-                conn
-                |> put_resp_headers(headers)
-                |> put_resp_content_type("application/json")
-                |> send_resp(status, Jason.encode!(record))
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          end
-
-        conn.query_params["comp"] in ["immutabilityPolicy", "immutabilitypolicy"] ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case immutability_policy_from_wire(conn) do
-              {:ok, policy, conn} ->
-                case BlobStorage.set_immutability_policy(
-                       account,
-                       container,
-                       policy,
-                       header_map(conn)
-                     ) do
-                  {:ok, status, headers, record} ->
-                    conn
-                    |> put_resp_headers(headers)
-                    |> put_resp_content_type("application/json")
-                    |> send_resp(status, Jason.encode!(record))
-
-                  {:error, status, code, msg} ->
-                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                end
-
-              {:error, conn} ->
-                blob_error(conn, 400, %{
-                  "error" => %{
-                    "code" => "InvalidXmlOrJson",
-                    "message" => "The immutability policy body is not valid XML or JSON."
-                  }
-                })
-            end
-          end
-
-        conn.query_params["comp"] == "metadata" ->
-          if not_ready?(conn, [BlobService]) do
-            route_not_ready(conn)
-          else
-            case BlobService.set_container_metadata(account, container, meta_headers(conn)) do
-              {:ok, status, headers} ->
-                send_headers(conn, status, headers)
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          end
-
-        true ->
-          opts = %{"immutable" => get_req_header(conn, "x-ms-immutable-policy") != ["false"]}
-
-          # Azure parity: x-ms-meta-* on Put Container SETS metadata at
-          # create. Validated BEFORE the create — a refused create must not
-          # leave the container behind.
-          with :ok <- BlobService.check_metadata(meta_headers(conn)) do
-            case BlobStorage.create_container(account, container, opts) do
-              {:ok, record} ->
-                # R77: propagate the create-time seeding result. The container
-                # stands either way (Azure parity: create is not rolled back),
-                # but a refused/failed seeding is logged loudly, never silently
-                # dropped — a fresh no-policy container must seed (R62's gate
-                # does not block it); only hold/locked refusals may skip it.
-                case BlobService.set_container_metadata(account, container, meta_headers(conn)) do
-                  {:ok, 200, _} ->
-                    :ok
-
-                  {:error, _status, _code, _msg} = seeding ->
-                    require Logger
-
-                    Logger.warning(
-                      "container created but x-ms-meta-* seeding did not land: #{inspect(seeding)} (SHIM-COURT R77)"
-                    )
-                end
-
-                # Real Azure (lens-5 work order, cycle-33): 201 create carries
-                # a quoted ETag, RFC 1123 Last-Modified, x-ms-request-id +
-                # x-ms-version, and an EMPTY body. GET properties is
-                # untouched (courts pin its exact bytes).
-                {:ok, created_dt, _} = DateTime.from_iso8601(record["created"])
-
-                conn
-                |> put_resp_header("etag", container_put_etag(record))
-                |> put_resp_header(
-                  "last-modified",
-                  Calendar.strftime(created_dt, "%a, %d %b %Y %H:%M:%S GMT")
-                )
-                |> put_resp_header("x-ms-request-id", generate_request_id())
-                |> put_resp_header("x-ms-version", "2021-12-02")
-                |> send_resp(201, "")
-
-              # Idempotent Put Container (real Azure semantics): re-PUT on an
-              # EXISTING container is 200 with the standard headers when the
-              # x-ms-meta-* set is IDENTICAL, 409 ContainerAlreadyExists when
-              # it differs. The WORM/lease gates stay AHEAD of the comparison
-              # (container_reput_arm) — a hold/locked re-PUT still refuses
-              # 409 ContainerLocked per the WORM arms.
-              {:error, 409, "ContainerAlreadyExists", _msg} ->
-                container_reput_arm(conn, account, container)
-
-              # Cross-lane repair (blob lane cycle-15 §3): typed engine error
-              # tuples `{:error, status, code, msg}` from create_container
-              # reach the wire at their exact Azure status instead of a
-              # blanket 500 — this un-deads blob's container-name-grammar and
-              # duplicate-create-409 fences. Non-tuple shapes keep the
-              # runtime safety net below.
-              {:error, status, code, msg} when is_integer(status) ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-
-              # mechanical warning fix (store+graphlaw lane): the compiler types
-              # create_container/3 as {:ok, map()} only (no error clauses in the
-              # data plane), so the shape is not statically indexable; the dead
-              # branch stays as a runtime safety net without elem/2 indexing.
-              other ->
-                blob_error(conn, 500, %{"error" => inspect(other)})
-            end
-          else
-            {:error, status, code, msg} ->
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
-          end
-      end
-    end)
-  end
-
-  # Idempotent Put Container arm (see the 409 ContainerAlreadyExists clause
-  # in the create route): WORM/lease gate FIRST (hold or locked-while-retention-
-  # live → 409 ContainerLocked, mirroring BlobService.check_metadata_worm
-  # semantics via BlobStorage.policy_state/3), then metadata comparison —
-  # IDENTICAL x-ms-meta-* → 200 with the standard headers; DIFFERENT →
-  # 409 ContainerAlreadyExists.
-  defp container_reput_arm(conn, account, container) do
-    requested = meta_headers(conn)
-
-    case BlobStorage.policy_state(account, container) do
-      {:ok, %{"legal_hold" => true}} ->
-        blob_error(conn, 409, %{
-          "error" => %{
-            "code" => "ContainerLocked",
-            "message" =>
-              "Blob modification refused: container has an active legal hold (ContainerLocked)."
-          }
-        })
-
-      {:ok, %{"locked" => true, "expired" => false}} ->
-        blob_error(conn, 409, %{
-          "error" => %{
-            "code" => "ContainerLocked",
-            "message" =>
-              "Blob modification refused: container has a locked immutability policy (ContainerLocked)."
-          }
-        })
-
-      {:ok, _state} ->
-        existing =
-          case BlobStorage.get_policy(account, container) do
-            nil -> %{}
-            policy -> Map.get(policy, "metadata") || %{}
-          end
-
-        if existing == requested do
-          {:ok, record} = Store.get(:smalt_blob_containers, "#{account}/#{container}")
-          {:ok, created_dt, _} = DateTime.from_iso8601(record["created"])
-
-          conn
-          |> put_resp_header("etag", container_put_etag(record))
-          |> put_resp_header(
-            "last-modified",
-            Calendar.strftime(created_dt, "%a, %d %b %Y %H:%M:%S GMT")
-          )
-          |> put_resp_header("x-ms-request-id", generate_request_id())
-          |> put_resp_header("x-ms-version", "2021-12-02")
-          |> send_resp(200, "")
-        else
-          blob_error(conn, 409, %{
-            "error" => %{
-              "code" => "ContainerAlreadyExists",
-              "message" => "The specified container already exists with different metadata."
-            }
-          })
-        end
-
-      {:error, :container_not_found} ->
-        blob_error(conn, 404, %{
-          "error" => %{"code" => "ContainerNotFound", "message" => "Container not found."}
-        })
-    end
-  end
-
-  get "/:account/:container" do
-    blob_route(conn, fn conn ->
-      cond do
-        # R98 fail-closed container comp registration: an unknown comp on the
-        # container GET arm is a typed 400, never a wrong-body 200.
-        unhandled_comp?(conn, @container_get_comps) ->
-          unhandled_container_comp_error(conn, conn.query_params["comp"])
-
-        conn.query_params["comp"] in ["immutabilityPolicy", "immutabilitypolicy"] ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case BlobStorage.get_policy(account, container) do
-              %{"immutability_policy" => policy} ->
-                conn
-                |> put_resp_header("x-ms-version", "2021-12-02")
-                |> put_resp_content_type("application/json")
-                |> send_resp(200, Jason.encode!(policy))
-
-              _ ->
-                blob_error(conn, 404, not_found_error("ImmutabilityPolicyNotFound"))
-            end
-          end
-
-        conn.query_params["comp"] == "legalhold" ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case BlobStorage.get_policy(account, container) do
-              %{"legal_hold" => flag} ->
-                conn
-                |> put_resp_header("x-ms-version", "2021-12-02")
-                |> put_resp_header("x-ms-legal-hold", to_string(flag))
-                |> send_resp(200, "")
-
-              _ ->
-                blob_error(conn, 404, not_found_error("LegalHoldNotFound"))
-            end
-          end
-
-        # KD-108: Get Container ACL — 200 SignedIdentifiers XML.
-        conn.query_params["comp"] == "acl" ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case BlobStorage.get_acl(account, container) do
-              {:ok, identifiers} ->
-                conn
-                |> put_resp_header("x-ms-version", "2021-12-02")
-                |> put_resp_content_type("application/xml")
-                |> send_resp(200, BlobStorage.acl_xml(identifiers))
-
-              {:error, :container_not_found} ->
-                blob_error(conn, 404, %{
-                  "error" => %{"code" => "ContainerNotFound", "message" => "Container not found."}
-                })
-            end
-          end
-
-        conn.query_params["comp"] == "metadata" ->
-          if not_ready?(conn, [BlobService]) do
-            route_not_ready(conn)
-          else
-            case BlobService.get_container_metadata(account, container) do
-              {:ok, meta} ->
-                conn
-                |> put_resp_header("x-ms-version", "2021-12-02")
-                |> put_resp_headers(meta_headers(meta))
-                |> send_resp(200, "")
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          end
-
-        conn.query_params["comp"] == "list" ->
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            # Typed engine errors (e.g. blob lane's pending maxresults 400)
-            # must reach the wire at their exact status — a bare
-            # {xml, _} destructure here would MatchError into a blanket 500.
-            case BlobStorage.list_blobs_xml(account, container, %{
-                   "prefix" => conn.query_params["prefix"],
-                   "delimiter" => conn.query_params["delimiter"],
-                   "include" => conn.query_params["include"],
-                   "marker" => conn.query_params["marker"],
-                   "maxresults" => conn.query_params["maxresults"]
-                 }) do
-              {xml, _next_marker} ->
-                conn
-                |> put_resp_content_type("application/xml")
-                |> send_resp(200, xml)
-
-              # comp=list errors emit the Azure XML <Error> envelope on the
-              # blob list route (real-service shape; lane 06 defect 3).
-              {:error, status, code, msg} when is_integer(status) ->
-                blob_error_xml(conn, status, code, msg)
-            end
-          end
-
-        conn.query_params["restype"] == "container" ->
-          if not_ready?(conn, [BlobService]) do
-            route_not_ready(conn)
-          else
-            case BlobService.get_container_properties(account, container) do
-              {:ok, status, headers} ->
-                send_headers(conn, status, headers)
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          end
-
-        true ->
-          case BlobStorage.list_blobs_xml(account, container, %{
-                 "prefix" => conn.query_params["prefix"],
-                 "delimiter" => conn.query_params["delimiter"],
-                 "include" => conn.query_params["include"],
-                 "marker" => conn.query_params["marker"],
-                 "maxresults" => conn.query_params["maxresults"]
-               }) do
-            {xml, _next_marker} ->
-              conn
-              |> put_resp_content_type("application/xml")
-              |> send_resp(200, xml)
-
-            # comp=list-class errors emit the Azure XML envelope here too
-            # (lane 06 defect 3; the plain-GET container fallback is the same
-            # list operation as the comp=list arm).
-            {:error, status, code, msg} when is_integer(status) ->
-              blob_error_xml(conn, status, code, msg)
-          end
-      end
-    end)
-  end
-
-  put "/:account/:container/*blob_name" do
-    # Azure virtual directories: the tail may carry `/` (blob lane cycles
-    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
-    blob_name = Enum.join(blob_name, "/")
-
-    blob_route(conn, fn conn ->
-      # KD-108 (blob lane remainder): snapshot lease wire arm —
-      # PUT ?comp=lease&sharesnapshot=<ts> with x-ms-lease-action rides the
-      # FROZEN snapshot record (BlobStorage.lease_blob_snapshot/6, per-snapshot
-      # lease id namespace). Runs BEFORE the fail-closed comp registration so
-      # the implemented pair (comp=lease AND sharesnapshot) is never eaten by
-      # the 400 default-deny; comp=lease WITHOUT sharesnapshot stays
-      # default-deny (400 GAP) until the base-blob lease surface registers.
-      if conn.query_params["comp"] == "lease" and
-           conn.query_params["sharesnapshot"] not in [nil, ""] do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
-        else
-          case BlobStorage.lease_blob_snapshot(
-                 account,
-                 container,
-                 blob_name,
-                 conn.query_params["sharesnapshot"],
-                 header_map(conn)["x-ms-lease-action"],
-                 header_map(conn)
-               ) do
-            {:ok, status, headers, _record} ->
-              conn
-              |> put_resp_headers(headers)
-              |> send_resp(status, "")
-
-            {:error, status, code, msg} ->
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
-          end
-        end
-      else
-      # GAP-AUD1-01 (v26.10.14, lane W-5): fail-closed comp registration on the
-      # blob PUT arm. Any comp value with no implemented handler here (snapshot,
-      # page, tags, query, tier, expiry, seal, lease, copy, ...) previously fell
-      # into the generic Put Blob fallback and stored the request's (usually
-      # empty) body AS THE BLOB BODY — the audit's headline corruption class.
-      # Known comps route to their handlers; every OTHER comp answers a typed
-      # 400 and never reaches read_body/put_blob.
-      if unhandled_comp?(conn, @blob_put_comps) do
-        unhandled_blob_comp_error(conn, conn.query_params["comp"])
-      else
-        # X-1 (v26.10.14): Put Block / Put Block List get dedicated arms BEFORE
-        # the generic Put Blob fallback — previously comp=blocklist fell into
-        # put_blob and stored the request XML as the blob body (P0 data
-        # corruption found by bench B-5).
-        if conn.query_params["comp"] in ["block", "blocklist"] do
-          blob_block_arm(conn, account, container, blob_name)
-        else
-          # KD-01 wire normalization (Azure Put Blob Metadata): comp=metadata is
-          # answered BEFORE the body read — 200 EMPTY with etag, never the old
-          # 201 + JSON debug body (which also silently emptied the content).
-          if conn.query_params["comp"] == "metadata" do
-            if not_ready?(conn, [BlobStorage]) do
-              route_not_ready(conn)
-            else
-              case BlobStorage.set_blob_metadata(
-                     account,
-                     container,
-                     blob_name,
-                     meta_headers(conn)
-                   ) do
-                {:ok, status, headers} ->
-                  send_headers(conn, status, headers)
-
-                # SHIM-COURT: metadata PUT under WORM hold/locked policy -> 409
-                # ContainerLocked (R183 finding 2; keep in lockstep with the
-                # put_blob / commit_block_list arms above).
-                {:error, :worm_locked, msg} ->
-                  blob_error(conn, 409, %{
-                    "error" => %{"code" => "ContainerLocked", "message" => msg}
-                  })
-
-                {:error, status, code, msg} ->
-                  blob_error(conn, status, not_found_error(code) |> put_message(msg))
-              end
-            end
-          else
-            # KD-COVERS: KD-60 — Snapshot Blob wire arm (KD-52's engine
-            # snapshot_blob/5 was previously engine-only; an unregistered comp hit
-            # the typed 400). Azure answers 201 with the x-ms-snapshot timestamp
-            # header; the engine handles existence + WORM (legal hold blocks the
-            # snapshot create arm with 409 ContainerLocked).
-            if conn.query_params["comp"] == "snapshot" do
-              if not_ready?(conn, [BlobStorage]) do
-                route_not_ready(conn)
-              else
-                case BlobStorage.snapshot_blob(account, container, blob_name, header_map(conn)) do
-                  {:ok, 201, headers, nil} ->
-                    send_headers(conn, 201, headers)
-
-                  # WORM create arm: legal hold (or locked policy) -> 409
-                  # ContainerLocked, same shape as the metadata/put_blob arms.
-                  {:error, 409, "ContainerLocked", msg} ->
-                    blob_error(conn, 409, %{
-                      "error" => %{"code" => "ContainerLocked", "message" => msg}
-                    })
-
-                  {:error, status, code, msg} when is_integer(status) ->
-                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                end
-              end
-            else
-            # Parity lane 2026-10-28: base-blob lease (comp=lease WITHOUT
-            # sharesnapshot; the snapshot variant is handled above). Header-only
-            # request — no body read. x-ms-lease-action drives the state machine.
-            if conn.query_params["comp"] == "lease" do
-              if not_ready?(conn, [BlobStorage]) do
-                route_not_ready(conn)
-              else
-                case BlobStorage.lease_blob(
-                       account,
-                       container,
-                       blob_name,
-                       header_map(conn)["x-ms-lease-action"],
-                       header_map(conn)
-                     ) do
-                  {:ok, status, headers, _record} ->
-                    conn
-                    |> put_resp_headers(headers)
-                    |> send_resp(status, "")
-
-                  {:error, status, code, msg} ->
-                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                end
-              end
-            else
-            # Parity lane 2026-10-28: Set Blob HTTP Headers (comp=properties).
-            # Header-only request — no body read. 200 with the rotated etag.
-            if conn.query_params["comp"] == "properties" do
-              if not_ready?(conn, [BlobStorage]) do
-                route_not_ready(conn)
-              else
-                case BlobStorage.set_blob_http_headers(account, container, blob_name, header_map(conn)) do
-                  {:ok, status, headers, _record} ->
-                    conn
-                    |> put_resp_headers(headers)
-                    |> send_resp(status, "")
-
-                  {:error, status, code, msg} ->
-                    blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                end
-              end
-            else
-            # Parity lane 2026-10-28: Append Block (comp=appendblock) and Put
-            # Page (comp=page) — body-carrying writes through the same
-            # read_body discipline as the generic Put Blob fallback.
-            if conn.query_params["comp"] in ["appendblock", "page"] do
-              if not_ready?(conn, [BlobStorage]) do
-                route_not_ready(conn)
-              else
-                case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
-                  {:ok, body, _conn} ->
-                    if conn.query_params["comp"] == "appendblock" do
-                      case BlobStorage.append_block(account, container, blob_name, body, header_map(conn)) do
-                        {:ok, status, headers, _record} ->
-                          conn |> put_resp_headers(headers) |> send_resp(status, "")
-
-                        {:error, :worm_locked, _nil, msg} ->
-                          blob_error(conn, 409, %{
-                            "error" => %{"code" => "ContainerLocked", "message" => msg}
-                          })
-
-                        {:error, status, code, msg} ->
-                          blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                      end
-                    else
-                      case BlobStorage.put_page(account, container, blob_name, body, header_map(conn)) do
-                        {:ok, status, headers, _record} ->
-                          conn |> put_resp_headers(headers) |> send_resp(status, "")
-
-                        {:error, :worm_locked, _nil, msg} ->
-                          blob_error(conn, 409, %{
-                            "error" => %{"code" => "ContainerLocked", "message" => msg}
-                          })
-
-                        {:error, status, code, msg} ->
-                          blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                      end
-                    end
-
-                  {:more, partial, _conn} ->
-                    blob_error(conn, 413, %{
-                      "error" => %{
-                        "code" => "RequestBodyTooLarge",
-                        "message" =>
-                          "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes)."
-                      }
-                    })
-
-                  {:error, reason} ->
-                    blob_error(conn, 400, %{
-                      "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
-                    })
-                end
-              end
-            else
-              case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
-                {:ok, raw_body, conn} ->
-                  case BlobStorage.put_blob(
-                         account,
-                         container,
-                         blob_name,
-                         raw_body,
-                         header_map(conn)
-                       ) do
-                    {:ok, blob} ->
-                      # Metadata-only body: raw "content" (arbitrary bytes, frequently
-                      # invalid UTF-8) must never reach Jason — a metadata projection
-                      # is total over binary content.
-                      conn
-                      |> put_resp_header("etag", blob["etag"])
-                      |> put_resp_content_type("application/json")
-                      |> send_resp(201, Jason.encode!(BlobStorage.blob_metadata(blob)))
-
-                    {:error, :worm_locked, msg} ->
-                      blob_error(conn, 409, %{
-                        "error" => %{"code" => "ContainerLocked", "message" => msg}
-                      })
-
-                    {:error, :precondition_failed, msg} ->
-                      blob_error(conn, 412, %{
-                        "error" => %{"code" => "PreconditionFailed", "message" => msg}
-                      })
-
-                    {:error, :too_large, msg} ->
-                      blob_error(conn, 413, %{
-                        "error" => %{"code" => "RequestBodyTooLarge", "message" => msg}
-                      })
-
-                    {:error, :container_not_found} ->
-                      blob_error(conn, 404, not_found_error("ContainerNotFound"))
-
-                    {:error, status, code, msg} when is_integer(status) ->
-                      # engine-emitted typed HTTP errors (e.g. 400 InvalidMetadata)
-                      blob_error(conn, status, not_found_error(code) |> put_message(msg))
-                  end
-
-                # A partial read is oversize only when it fills the cap; a small
-                # partial means the body was truncated mid-flight (transport stopped
-                # early) — Plug.Conn.read_body is single-shot, so {:more, small, _}
-                # is a truncation, not a size refusal. Measured with a real
-                # partial-then-error adapter (egress cycle-8).
-                {:more, partial, _conn} when byte_size(partial) >= 8_000_000 ->
-                  blob_error(conn, 413, %{
-                    "error" => %{
-                      "code" => "RequestBodyTooLarge",
-                      "message" => "Blob exceeds the 8,000,000-byte request body limit."
-                    }
-                  })
-
-                {:more, partial, _conn} ->
-                  blob_error(conn, 400, %{
-                    "error" => %{
-                      "code" => "InvalidRequestBody",
-                      "message" =>
-                        "The request body was truncated mid-flight " <>
-                          "(read #{byte_size(partial)} of the declared bytes)."
-                    }
-                  })
-
-                # Plug >= 1.14 read_body returns {:error, reason} without the conn; the
-                # historical {:error, term, _conn} clause here was typed-unreachable.
-                {:error, reason} ->
-                  blob_error(conn, 400, %{
-                    "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
-                  })
-              end
-            end
-            end
-            end
-            end
-          end
-        end
-      end
-      end
-    end)
-  end
-
-  get "/:account/:container/*blob_name" do
-    # Azure virtual directories: the tail may carry `/` (blob lane cycles
-    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
-    blob_name = Enum.join(blob_name, "/")
-
-    blob_route(conn, fn conn ->
-      # GAP-AUD1-01 (v26.10.14, lane W-5): same fail-closed comp registration
-      # on the GET arm — comp=pagelist/tags previously fell past the blocklist
-      # branch and served blob CONTENT with a 200 (SDK XML decode error /
-      # silent wrong semantics).
-      if unhandled_comp?(conn, @blob_get_comps) do
-        unhandled_blob_comp_error(conn, conn.query_params["comp"])
-      else
-        # KD-COVERS: KD-60 — Get Blob Metadata (`GET ?comp=metadata`): 200 EMPTY
-        # with the stored x-ms-meta-* headers echoed back, mirroring the PUT
-        # comp=metadata arm's meta_headers/stored_meta_wire read path.
-        if conn.query_params["comp"] == "metadata" do
-          if not_ready?(conn, [BlobStorage]) do
-            route_not_ready(conn)
-          else
-            case BlobStorage.get_blob(account, container, blob_name) do
-              {:ok, blob} ->
-                conn
-                |> put_resp_headers(stored_meta_wire(blob))
-                |> put_resp_header("etag", blob["etag"])
-                |> put_resp_header("x-ms-request-id", generate_request_id())
-                |> put_resp_header("x-ms-version", "2021-12-02")
-                |> send_resp(200, "")
-
-              :error ->
-                blob_error(conn, 404, not_found_error("BlobNotFound"))
-            end
-          end
-        else
-          # X-1 (v26.10.14): Get Block List — Azure answers application/xml; the
-          # old fallback served the blob body as octet-stream (SDK DecodeError).
-          if conn.query_params["comp"] == "blocklist" do
-            if not_ready?(conn, [BlobStorage]) do
-              route_not_ready(conn)
-            else
-              case BlobStorage.get_block_list(account, container, blob_name) do
-                {:ok, committed, uncommitted} ->
-                  conn
-                  |> put_resp_header("x-ms-request-id", generate_request_id())
-                  |> put_resp_header("x-ms-version", "2021-12-02")
-                  |> put_resp_content_type("application/xml")
-                  |> send_resp(200, BlobStorage.block_list_xml(committed, uncommitted))
-
-                :error ->
-                  blob_error(conn, 404, not_found_error("BlobNotFound"))
-              end
-            end
-          else
-            # KD-COVERS: KD-60 — snapshot read-back (`GET ?sharesnapshot=<ts>`):
-            # serves the frozen point-in-time record from :smalt_blob_snapshots
-            # byte-exact; base-blob mutations after the snapshot stay invisible
-            # through the snapshot. Without the param the normal GET path runs.
-            if conn.query_params["sharesnapshot"] in [nil, ""] do
-              # Azure storage semantics: the range rides `x-ms-range` (python/JS SDKs)
-              # or the standard `Range` header; honor both. x-ms-range WINS when both
-              # are present (Azure parity + C4 fence): the engine takes List.first.
-              range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
-
-              # Conditional read (Azure parity, cycle-30): If-Match / If-None-Match
-              # evaluated before the range branch; RFC 7232 precedence (If-Match
-              # first, 412; then If-None-Match, 304).
-              case BlobStorage.get_blob_conditional(
-                     account,
-                     container,
-                     blob_name,
-                     header_map(conn)
-                   ) do
-                {:error, 412, code, msg} ->
-                  blob_error(conn, 412, not_found_error(code) |> put_message(msg))
-
-                {:not_modified, etag} ->
-                  conn
-                  |> put_resp_header("etag", etag)
-                  |> put_resp_header("x-ms-request-id", generate_request_id())
-                  |> put_resp_header("x-ms-version", "2021-12-02")
-                  |> send_resp(304, "")
-
-                :error ->
-                  blob_error(conn, 404, not_found_error("BlobNotFound"))
-
-                {:ok, _blob} ->
-                  case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
-                    {:ok, blob, nil} ->
-                      conn
-                      |> put_resp_headers(stored_meta_wire(blob))
-                      |> put_resp_header("etag", blob["etag"])
-                      |> put_resp_header(
-                        "content-length",
-                        blob["content"] |> byte_size() |> Integer.to_string()
-                      )
-                      |> put_resp_content_type(stored_content_type(blob))
-                      |> send_resp(200, blob["content"])
-
-                    {:ok, blob, {first, last}} ->
-                      body = binary_part(blob["content"], first, last - first + 1)
-
-                      conn
-                      |> put_resp_headers(stored_meta_wire(blob))
-                      |> put_resp_header("etag", blob["etag"])
-                      |> put_resp_header(
-                        "content-range",
-                        "bytes #{first}-#{last}/#{byte_size(blob["content"])}"
-                      )
-                      |> put_resp_header(
-                        "content-length",
-                        (last - first + 1) |> Integer.to_string()
-                      )
-                      |> put_resp_content_type(stored_content_type(blob))
-                      |> send_resp(206, body)
-
-                    {:error, :range_not_satisfiable, total} ->
-                      conn
-                      |> put_resp_header("content-range", "bytes */#{total}")
-                      |> put_resp_content_type("application/json")
-                      |> send_resp(
-                        416,
-                        Jason.encode!(%{
-                          "error" => %{
-                            "code" => "InvalidRange",
-                            "message" =>
-                              "The range specified is invalid for a blob of #{total} bytes."
-                          }
-                        })
-                      )
-
-                    :error ->
-                      blob_error(conn, 404, not_found_error("BlobNotFound"))
-                  end
-              end
-            else
-              # Snapshot read arm (sharesnapshot present).
-              if not_ready?(conn, [BlobStorage]) do
-                route_not_ready(conn)
-              else
-                case BlobStorage.get_blob_snapshot(
-                       account,
-                       container,
-                       blob_name,
-                       conn.query_params["sharesnapshot"]
-                     ) do
-                  {:ok, blob} ->
-                    conn
-                    |> put_resp_headers(stored_meta_wire(blob))
-                    |> put_resp_header("etag", blob["etag"])
-                     |> put_resp_header("x-ms-snapshot", conn.query_params["sharesnapshot"])
-                     |> put_resp_header(
-                       "content-length",
-                       blob["content"] |> byte_size() |> Integer.to_string()
-                     )
-                     |> put_resp_content_type(stored_content_type(blob))
-                     |> send_resp(200, blob["content"])
-
-                  {:error, _status, _code, _msg} ->
-                    blob_error(conn, 404, not_found_error("BlobNotFound"))
-                end
-              end
-            end
-          end
-        end
-      end
-    end)
-  end
-
-  # HEAD container: header-only container properties (restype=container),
-  # mirroring the GET container-properties branch.
-  head "/:account/:container" do
-    blob_route(conn, fn conn ->
-      if conn.query_params["restype"] == "container" do
-        if not_ready?(conn, [BlobService]) do
-          route_not_ready(conn)
-        else
-          case BlobService.get_container_properties(account, container) do
-            {:ok, status, headers} ->
-              send_headers(conn, status, headers)
-
-            {:error, status, code, msg} ->
-              blob_error(conn, status, not_found_error(code) |> put_message(msg))
-          end
-        end
-      else
-        blob_error(
-          conn,
-          404,
-          not_found_error("RouteNotFound")
-          |> put_message("No route matches #{conn.method} #{conn.request_path}")
-        )
-      end
-    end)
-  end
-
-  # HEAD blob: same engine as GET, empty body, content-length set. This is what
-  # @azure/storage-blob downloadToBuffer probes before it issues the GET.
-  head "/:account/:container/*blob_name" do
-    # Azure virtual directories: the tail may carry `/` (blob lane cycles
-    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
-    blob_name = Enum.join(blob_name, "/")
-
-    blob_route(conn, fn conn ->
-      # D14 (R122, KD-60): HEAD splat arm default-deny — comp=appendblock (and
-      # any other unimplemented comp) previously served 200 header metadata as
-      # if the operation had happened. SHIM-COURT: no HEAD blocklist handler
-      # exists downstream, so unlike GET the whitelist must be EMPTY — a
-      # comp=blocklist HEAD fell through to get_blob and served fake 200
-      # header metadata. Same shape as the DELETE arm below.
-      if unhandled_comp?(conn, []) do
-        unhandled_blob_comp_error(conn, conn.query_params["comp"])
-      else
-        # KD-COVERS: KD-97 — conditional/ranged HEAD parity (v26.10.17): the HEAD
-        # arm previously dispatched to unconditional get_blob and answered 200 to
-        # every conditional probe. Mirror the GET arm's engine (If-Match 412,
-        # If-None-Match 304, Range 206/416) with empty bodies; content-length
-        # still reflects the effective (range) size, as Azure parity requires.
-        range_header = get_req_header(conn, "x-ms-range") ++ get_req_header(conn, "range")
-
-        case BlobStorage.get_blob_conditional(account, container, blob_name, header_map(conn)) do
-          {:error, 412, code, msg} ->
-            blob_error(conn, 412, not_found_error(code) |> put_message(msg))
-
-          {:not_modified, etag} ->
-            conn
-            |> put_resp_header("etag", etag)
-            |> put_resp_header("x-ms-request-id", generate_request_id())
-            |> put_resp_header("x-ms-version", "2021-12-02")
-            |> send_resp(304, "")
-
-          :error ->
-            blob_error(conn, 404, not_found_error("BlobNotFound"))
-
-          {:ok, _blob} ->
-            case BlobStorage.get_blob_range(account, container, blob_name, range_header) do
-              {:ok, blob, nil} ->
-                conn
-                |> put_resp_headers(stored_meta_wire(blob))
-                |> put_resp_header("etag", blob["etag"])
-                |> put_resp_header("x-ms-request-id", generate_request_id())
-                |> put_resp_header(
-                  "content-length",
-                  blob["content"] |> byte_size() |> Integer.to_string()
-                )
-                |> put_resp_content_type(stored_content_type(blob))
-                |> send_resp(200, "")
-
-              {:ok, blob, {first, last}} ->
-                conn
-                |> put_resp_headers(stored_meta_wire(blob))
-                |> put_resp_header("etag", blob["etag"])
-                |> put_resp_header(
-                  "content-range",
-                  "bytes #{first}-#{last}/#{byte_size(blob["content"])}"
-                )
-                |> put_resp_header("x-ms-request-id", generate_request_id())
-                |> put_resp_header(
-                  "content-length",
-                  (last - first + 1) |> Integer.to_string()
-                )
-                |> put_resp_content_type(stored_content_type(blob))
-                |> send_resp(206, "")
-
-              {:error, :range_not_satisfiable, total} ->
-                conn
-                |> put_resp_header("content-range", "bytes */#{total}")
-                |> put_resp_content_type("application/json")
-                |> send_resp(
-                  416,
-                  Jason.encode!(%{
-                    "error" => %{
-                      "code" => "InvalidRange",
-                      "message" => "The range specified is invalid for a blob of #{total} bytes."
-                    }
-                  })
-                )
-
-              :error ->
-                blob_error(conn, 404, not_found_error("BlobNotFound"))
-            end
-        end
-      end
-    end)
-  end
-
-  delete "/:account/:container" do
-    blob_route(conn, fn conn ->
-      if unhandled_comp?(conn, []) do
-        unhandled_container_comp_error(conn, conn.query_params["comp"])
-      else
-        case BlobStorage.delete_container(account, container, header_map(conn)) do
-          {:ok, status, headers, _record} ->
-            conn
-            |> put_resp_headers(headers)
-            |> send_resp(status, "")
-
-          {:error, status, code, msg} ->
-            blob_error(conn, status, not_found_error(code) |> put_message(msg))
-        end
-      end
-    end)
-  end
-
-  delete "/:account/:container/*blob_name" do
-    # Azure virtual directories: the tail may carry `/` (blob lane cycles
-    # 21/28 engine-verified). Splat binds a segment list; rejoin to the wire name.
-    blob_name = Enum.join(blob_name, "/")
-
-    blob_route(conn, fn conn ->
-      # D14 (R122, KD-60): DELETE splat arm default-deny — no blob-level comp
-      # has an implemented DELETE handler, so ANY comp (lease, appendblock,
-      # snapshot, ...) previously fell through and deleted the blob anyway.
-      # comp must be absent/empty; everything else is a typed 400.
-      if unhandled_comp?(conn, []) do
-        unhandled_blob_comp_error(conn, conn.query_params["comp"])
-      else
-        case BlobStorage.delete_blob(account, container, blob_name, header_map(conn)) do
-          {:ok, status, headers, _record} ->
-            conn
-            |> put_resp_headers(headers)
-            |> send_resp(status, "")
-
-          {:error, status, code, msg} ->
-            blob_error(conn, status, not_found_error(code) |> put_message(msg))
-        end
-      end
-    end)
-  end
-
-  # ---------------------------------------------------------------------------
-  # Blob Batch (GAP-AUD1-02): POST /{account}/{container}?comp=batch (container
-  # level) and POST /{account}?comp=batch&restype=account (account level).
-  # Multipart/mixed request body; each part's body is a full HTTP sub-request
-  # (request line + headers [+ body]); each sub-request is dispatched to the
-  # same BlobStorage engine as its individual route arm (delete / set tier).
-  # Bounded at 256 sub-requests (real Azure's cap); over → 400.
-  # ---------------------------------------------------------------------------
-  post "/:account/:container" do
-    blob_route(conn, fn conn ->
-      if conn.query_params["comp"] == "batch" do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
-        else
-          blob_batch_arm(conn, account)
-        end
-      else
-        blob_error(
-          conn,
-          404,
-          not_found_error("RouteNotFound")
-          |> put_message("No route matches #{conn.method} #{conn.request_path}")
-        )
-      end
-    end)
-  end
-
-  post "/:account" do
-    blob_route(conn, fn conn ->
-      if conn.query_params["comp"] == "batch" do
-        if not_ready?(conn, [BlobStorage]) do
-          route_not_ready(conn)
-        else
-          blob_batch_arm(conn, account)
-        end
-      else
-        blob_error(
-          conn,
-          404,
-          not_found_error("RouteNotFound")
-          |> put_message("No route matches #{conn.method} #{conn.request_path}")
-        )
-      end
-    end)
-  end
-
-  # ---------------------------------------------------------------------------
-  # Catch-all 404
-  # ---------------------------------------------------------------------------
-  match _ do
-    blob_error(conn, 404, %{
-      "error" => %{
-        "code" => "RouteNotFound",
-        "message" => "No route matches #{conn.method} #{conn.request_path}"
-      }
-    })
-  end
-
   # ---------------------------------------------------------------------------
   # Internals
   # ---------------------------------------------------------------------------
-
-  # X-1 (v26.10.14): Put Block / Put Block List wire arms. Put Block stages
-  # raw block content (keyed account/container/blob/block-id); Put Block List
-  # parses the request XML and commits the concatenation as the blob body.
-  defp blob_block_arm(conn, account, container, blob_name) do
-    if not_ready?(conn, [BlobStorage]) do
-      route_not_ready(conn)
-    else
-      case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
-        {:ok, body, _conn} ->
-          if conn.query_params["comp"] == "block" do
-            case BlobStorage.stage_block(
-                   account,
-                   container,
-                   blob_name,
-                   conn.query_params["blockid"] || "",
-                   body,
-                   header_map(conn)
-                 ) do
-              {:ok, status, headers} ->
-                send_headers(conn, status, headers)
-
-              {:error, status, code, msg} ->
-                blob_error(conn, status, not_found_error(code) |> put_message(msg))
-            end
-          else
-            with {:ok, refs} <- BlobStorage.parse_block_list_xml(body),
-                 {:ok, status, headers} <-
-                   commit_response(account, container, blob_name, refs, header_map(conn)) do
-              send_headers(conn, status, headers)
-            else
-              {:error, 400, code, msg} ->
-                blob_error(conn, 400, not_found_error(code) |> put_message(msg))
-
-              {:error, :worm_locked, msg} ->
-                blob_error(conn, 409, %{
-                  "error" => %{"code" => "ContainerLocked", "message" => msg}
-                })
-
-              {:error, :precondition_failed, msg} ->
-                blob_error(conn, 412, %{
-                  "error" => %{"code" => "PreconditionFailed", "message" => msg}
-                })
-            end
-          end
-
-        {:more, partial, _conn} ->
-          blob_error(conn, 413, %{
-            "error" => %{
-              "code" => "RequestBodyTooLarge",
-              "message" =>
-                "The request body exceeds the 8,000,000-byte transport cap (read #{byte_size(partial)}+ bytes)."
-            }
-          })
-
-        {:error, reason} ->
-          blob_error(conn, 400, %{
-            "error" => %{"code" => "InvalidRequestBody", "message" => inspect(reason)}
-          })
-      end
-    end
-  end
-
-  # Map engine commit outcomes onto wire status/header tuples.
-  defp commit_response(account, container, blob_name, refs, headers) do
-    case BlobStorage.commit_block_list(account, container, blob_name, refs, headers) do
-      {:ok, status, headers} -> {:ok, status, headers}
-      {:error, :worm_locked, msg} -> {:error, :worm_locked, msg}
-      {:error, :precondition_failed, msg} -> {:error, :precondition_failed, msg}
-      {:error, status, code, msg} when is_integer(status) -> {:error, status, code, msg}
-    end
-  end
 
   # Trailing-slash tolerance for the Cosmos surface only (blob catch-all
   # depends on exact path shape; other services unchanged).
@@ -3390,12 +2064,54 @@ defmodule Smalt.EgressRouter do
       fetchd_query_params(conn) |> Map.get("comp") == "acl"
   end
 
-  defp raw_blob_put?(_conn), do: false
+  # KD-COVERS: KD-122 — Set Blob Service Properties
+  # (PUT /:account?restype=service&comp=properties) carries a RAW
+  # StorageServiceProperties XML body; without this exemption Plug.Parsers'
+  # :urlencoded parser consumes it (curl's default --data-binary Content-Type)
+  # and the route stores empty <Cors> rules / StaticWebsite props under a
+  # lying 202 (witnessed 2026-10-20: PUT=202 then preflight 403-empty;
+  # root cause proven by lane B1 on a private beam — ETS held {"popcorn", []}).
+  # (re-landed from the pre-undock source 95d4243d)
+  defp raw_blob_put?(%Plug.Conn{method: "PUT", path_info: [_account]} = conn) do
+    params = fetchd_query_params(conn)
+    params["restype"] == "service" and params["comp"] == "properties"
+  end
 
-  defp fetchd_query_params(%Plug.Conn{query_params: %Plug.Conn.Unfetched{}} = conn),
+  # KD-COVERS: KD-123 — Put Message (POST /:account/:queue/messages)
+  # carries a raw QueueMessage XML body. Without this exemption Plug.Parsers'
+  # :urlencoded parser consumes the body (curl's default --data Content-Type
+  # is x-www-form-urlencoded), read_queue_body then sees "" and put_message
+  # stores an EMPTY MessageText under a lying 201 (witnessed 2026-10-20,
+  # lane ERRC-R4: urlencoded POST -> empty payload on dequeue;
+  # application/xml round-trips correctly). Same parser-consumed-body class
+  # as KD-108 / KD-122; the path shape mirrors queue_plane_route/3's
+  # put_messages clause exactly.
+  # (re-landed from the pre-undock source 95d4243d)
+  defp raw_blob_put?(%Plug.Conn{method: "POST", path_info: [_account, _queue, "messages"]}),
+    do: true
+
+  # D9 lane (athena differential, 2026-10-25): the marketplace SaaS face
+  # (/saas/* — Smalt.Egress.MarketplaceRoutes) reads its JSON bodies with its
+  # own Plug.Conn.read_body inside the sub-router. Plug.Parsers consumes any
+  # application/json body BEFORE the sub-router chain runs, so every real-wire
+  # activate/patch/usageEvent carrying `content-type: application/json`
+  # reached the handler with an empty raw stream and answered a lying
+  # 400 "invalid JSON body" (witnessed on the live 8443 wire: resolve 200,
+  # activate 400). The in-process court missed it because its raw-socket
+  # helper sends NO content-type, so the parsers never matched. The /saas
+  # prefix is marketplace-owned (no other plane serves it), so exempt the
+  # whole family and let the handler read raw — the exact shape its own
+  # integration court exercises.
+  # (re-landed from the pre-undock source 95d4243d)
+  defp raw_blob_put?(%Plug.Conn{method: m, path_info: ["saas" | _]})
+       when m in ["POST", "PATCH"],
+    do: true
+
+  defp raw_blob_put?(_conn), do: false
+  def fetchd_query_params(%Plug.Conn{query_params: %Plug.Conn.Unfetched{}} = conn),
     do: fetch_query_params(conn).query_params
 
-  defp fetchd_query_params(%Plug.Conn{query_params: params}), do: params
+  def fetchd_query_params(%Plug.Conn{query_params: params}), do: params
 
   # The python azure-cosmos SDK reads partitionKeyDefinition["kind"]
   # (_ExtractPartitionKey in _cosmos_client_connection.py); a container record
@@ -3499,7 +2215,6 @@ defmodule Smalt.EgressRouter do
        }}
     end
   end
-
   # R143 (GAP D8, repaired R173): the real azure-monitor-query client sends
   # KQL queries to /v1/workspaces/:id/query with NO api-version query param
   # (live wire capture) — the `v1` path segment IS the version discriminator.
@@ -3526,498 +2241,6 @@ defmodule Smalt.EgressRouter do
          }}
     end
   end
-
-  # R99: known other-plane namespaces that must never reach the blob splat
-  # arms (see reserved_fence_then below). Derived from
-  # the router's documented route families (moduledoc).
-  @reserved_first_segments ~w(dbs secrets certificates keys topics subscriptions attest app atlas dataCollectionRules v1 providers)
-
-  # Blob catch-all guard: require x-ms-version header, or the host must be
-  # configured in :smalt, :blob_catch_all_hosts.
-  defp blob_route(conn, fun) do
-    # Auth-lens-5 disclosed unblock (test-freeze SLA): the slash-blob glob
-    # `/:account/:container/*blob_name` widened the catch-all to 3+ segments,
-    # so exempt-prefix traversals (…/oauth2/../../acct/cont/blob) now match
-    # the blob routes and reach the 400 x-ms-version guard instead of the
-    # 404/401 the auth traversal court pins. A decoded "."/".." SEGMENT is a
-    # path-traversal shape, never a legal storage name; refuse 404
-    # fail-closed before the version guard.
-    # Decoded segments are split on "/" so %-encoded traversals
-    # (%2f%2e%2e -> "/..") are caught component-wise; a slash-containing
-    # blob name without "." / ".." components stays legal (slash-blob).
-    if Enum.any?(conn.path_info, fn seg ->
-         String.split(URI.decode(seg), "/") |> Enum.any?(&(&1 in [".", ".."]))
-       end) do
-      blob_error(conn, 404, not_found_error("BlobNotFound"))
-    else
-      # KD-97 rider (v26.10.17, C4 fence): stamp x-ms-request-id + x-ms-version
-      # at blob-route entry so EVERY blob arm (success, XML, comp arms) carries
-      # them — real Azure stamps request-id on all storage responses; the
-      # success/XML arms previously shipped without either. Error arms
-      # (blob_error/3) restamp their own; put_resp_header replaces, so the
-      # values stay single-valued.
-      conn =
-        conn
-        |> put_resp_header("x-ms-request-id", generate_request_id())
-        |> put_resp_header("x-ms-version", "2021-12-02")
-
-      # Auth-lens interplay (egress lens-4 cycle 1, measured): the auth-exempt
-      # namespace (/.well-known/, /oauth2/, /attest/, /metadata/endpoints,
-      # /{tid}/oauth2/v2.0/token) composes with the blob splat — account=
-      # ".well-known"/"oauth2"/"attest"/"metadata" — and x-ms-version is
-      # client-supplied, not authentication, so an UNAUTHENTICATED blob
-      # CRUD surface was reachable inside the exempt namespace (measured at
-      # this seam). Blob-reachable exempt paths are refused fail-closed here;
-      # real discovery endpoints are served before the router ever sees a
-      # blob route. Canonical predicate from Smalt.Auth.Bearer — never a
-      # copied prefix list.
-      auth_exempt_blob =
-        Code.ensure_loaded?(Smalt.Auth.Bearer) and
-          Smalt.Auth.Bearer.auth_exempt_path?(conn.request_path)
-
-      if auth_exempt_blob do
-        blob_error(conn, 404, not_found_error("BlobNotFound"))
-      else
-        blob_route_guarded(conn, fun)
-      end
-    end
-  end
-
-  defp blob_route_guarded(conn, fun) do
-    allowed_hosts = Application.get_env(:smalt, :blob_catch_all_hosts, [])
-
-    # GAP-AUD1-03 (v26.10.15, W-7): SAS query-token auth. A `sig=` query token
-    # is admission evidence in its own right — a SAS-only URI (sig present, no
-    # x-ms-version header) previously 400'd MissingXMsVersion and the SAS
-    # flow was dead. Fail-closed: bad signature / no configured account key /
-    # malformed token → 401 with the KD-15-enriched WWW-Authenticate challenge
-    # class; live signature without the method's required permission → 403
-    # AuthorizationPermissionMismatch; valid token → admitted with the SIGNED
-    # permissions only.
-    case Smalt.Auth.Sas.verify(conn) do
-      {:ok, permissions} ->
-        required = Smalt.Auth.Sas.required_permission(conn.method)
-
-        if Smalt.Auth.Sas.authorized?(permissions, required) do
-          # Tokened path: x-ms-version not required (GAP-AUD1-03 spec).
-          run_guarded(conn, :sas_admitted, fun, allowed_hosts)
-        else
-          conn
-          |> put_resp_header("x-ms-version", "2021-12-02")
-          |> put_resp_header("x-ms-request-id", generate_request_id())
-          |> put_resp_header("x-ms-error-code", "AuthorizationPermissionMismatch")
-          |> send_json(403, %{
-            "error" => %{
-              "code" => "AuthorizationPermissionMismatch",
-              "message" =>
-                "This request is not authorized to perform this operation using this permission."
-            }
-          })
-          |> halt()
-        end
-
-      {:error, :not_sas} ->
-        run_guarded(conn, :not_sas, fun, allowed_hosts)
-
-      {:error, reason} when reason in [:bad_signature, :no_key, :malformed] ->
-        # KD-15 challenge class: enriched WWW-Authenticate, mode-blind.
-        Smalt.Auth.Bearer.send_challenge(
-          conn,
-          "The SAS signature is invalid or the account key is not configured."
-        )
-
-      {:error, :expired} ->
-        conn
-        |> put_resp_header("x-ms-version", "2021-12-02")
-        |> put_resp_header("x-ms-request-id", generate_request_id())
-        |> put_resp_header("x-ms-error-code", "AuthorizationFailure")
-        |> send_json(403, %{
-          "error" => %{
-            "code" => "AuthorizationFailure",
-            "message" => "The SAS token supplied with the request has expired."
-          }
-        })
-        |> halt()
-    end
-  rescue
-    e in [Jason.EncodeError, Protocol.UndefinedError] ->
-      Logger.error("blob response encode failure on #{conn.request_path}: #{inspect(e)}")
-
-      send_json(conn, 500, %{
-        "error" => %{"code" => "BlobResponseEncodeFailure", "message" => Exception.message(e)}
-      })
-  end
-
-  # R136: presence-only check let `x-ms-version: ""` (empty value), duplicate
-  # headers (valid + junk), and whitespace-only values through to 201-stored.
-  # Real Azure answers 400 MissingRequiredHeader. Validate as a SINGLE
-  # non-empty, non-blank plausible version value; fail closed with the same
-  # typed MissingXMsVersion envelope. SHIM-COURT: this predicate is the
-  # mutation surface for the egress-version shim court.
-  defp plausible_x_ms_version?(conn) do
-    case get_req_header(conn, "x-ms-version") do
-      [value] when is_binary(value) -> String.trim(value) != ""
-      _ -> false
-    end
-  end
-
-  defp run_guarded(conn, fun, allowed_hosts) do
-    if plausible_x_ms_version?(conn) or conn.host in allowed_hosts do
-      if not_ready?(conn, [BlobStorage]) or
-           not tables_ready?([:smalt_blobs, :smalt_blob_containers, :smalt_blob_policy]) do
-        route_not_ready(conn)
-      else
-        # D1 belt-and-braces: an encode failure in ANY blob response path
-        # degrades to a clean JSON 500 envelope — never an empty response.
-        reserved_fence_then(conn, fun)
-      end
-    else
-      # AUD6-R1: a request that is neither SAS-admitted nor x-ms-version'ed on
-      # a non-allowlisted host previously fell through with conn unsent
-      # (Plug.NotSentError). Fail closed with the typed 400 envelope.
-      blob_error(conn, 400, %{
-        "error" => %{
-          "code" => "MissingXMsVersion",
-          "message" => "Missing required x-ms-version header, SAS token, or allowlisted host."
-        }
-      })
-      |> halt()
-    end
-  end
-
-  defp run_guarded(conn, :sas_admitted, fun, _allowed_hosts) do
-    if not_ready?(conn, [BlobStorage]) or
-         not tables_ready?([:smalt_blobs, :smalt_blob_containers, :smalt_blob_policy]) do
-      route_not_ready(conn)
-    else
-      reserved_fence_then(conn, fun)
-    end
-  end
-
-  # R124: catch-all tag arm kept adjacent to the :sas_admitted clause so
-  # run_guarded/4 stays clause-cohesive (kills the compiler's clause-grouping warning).
-  defp run_guarded(conn, _tag, fun, allowed_hosts) do
-    run_guarded(conn, fun, allowed_hosts)
-  end
-
-  # R99 reserved-namespace fence (D70 worst class). Runs AFTER the SAS /
-  # x-ms-version admission guards (the guard 400 envelope keeps precedence
-  # for unversioned service-prefix PUTs) and immediately before any splat
-  # handler: a splat first segment in @reserved_first_segments is a known
-  # OTHER-plane namespace that fell through to the blob catch-alls — cosmos
-  # triggers/udfs/sprocs answered 201 with the request body stored as a
-  # blob, /secrets/* answered empty blob-list XML, PUT /keys/:name created
-  # a blob. Fail closed with a typed refusal in the OWNING plane's JSON
-  # error convention (never a blob envelope), naming the unimplemented
-  # verb; nothing is stored. Reserved set = the router's own known-plane
-  # first segments (moduledoc route families) plus the KV collection roots
-  # (secrets, certificates) that appear as splat account names in D70. A
-  # literal blob account named exactly one of these is shadowed — accepted
-  # cost, impossible to distinguish at this seam.
-  defp reserved_fence_then(conn, fun) do
-    case conn.path_info do
-      # R137 (W5-15 measured): Plug path_info segments are RAW (undecoded);
-      # route matching happens on decoded segments, so `PUT /%6beys/vltkey`
-      # (encoded "keys") reached the blob splat and stored under the decoded
-      # reserved name. Decode+downcase before comparing — mirrors the
-      # traversal fence's decode-aware pattern above.
-      [first | _rest] ->
-        decoded = String.downcase(URI.decode(first))
-
-        if decoded in @reserved_first_segments do
-          reserved_namespace_refusal(conn, decoded)
-        else
-          fun.(conn)
-        end
-
-      _ ->
-        fun.(conn)
-    end
-  end
-
-  # KV namespaces answer the KV envelope ({"error":{...}}) 404; every other
-  # reserved namespace answers its plane's flat JSON {"code","message"} 400.
-  defp reserved_namespace_refusal(conn, ns) when ns in ~w(secrets certificates keys) do
-    send_json(conn, 404, %{
-      "error" => %{
-        "code" => "NotFound",
-        "message" =>
-          "#{conn.method} #{conn.request_path} is not implemented on this plane " <>
-            "(reserved namespace '#{ns}'); nothing was stored."
-      }
-    })
-  end
-
-  defp reserved_namespace_refusal(conn, ns) do
-    send_json(conn, 400, %{
-      "code" => "NotImplemented",
-      "message" =>
-        "#{conn.method} #{conn.request_path} is not implemented on this plane " <>
-          "(reserved namespace '#{ns}'); nothing was stored."
-    })
-  end
-
-  # ---------------------------------------------------------------------------
-  # Blob Batch (GAP-AUD1-02): multipart/mixed parse → per-sub-request dispatch
-  # → multipart/mixed response. Only Delete Blob and Set Blob Tier are
-  # dispatched (the two operations real Azure's batch plane accepts); any
-  # other sub-request → per-sub-request 400, never a silent skip. Bounded at
-  # 256 sub-requests (real Azure's cap).
-  # ---------------------------------------------------------------------------
-
-  @batch_max_subrequests 256
-
-  defp blob_batch_arm(conn, account) do
-    case Plug.Conn.read_body(conn, length: 8_000_000, read_length: 1_000_000) do
-      {:ok, body, conn} ->
-        case batch_boundary(conn) do
-          {:ok, boundary} ->
-            case parse_batch_parts(body, boundary) do
-              {:ok, parts} when length(parts) > @batch_max_subrequests ->
-                send_json(conn, 400, %{
-                  "error" => %{
-                    "code" => "SubRequestCountExceedsLimit",
-                    "message" =>
-                      "The batch request exceeds the limit of #{@batch_max_subrequests} sub-requests."
-                  }
-                })
-
-              {:ok, []} ->
-                send_json(conn, 400, %{
-                  "error" => %{
-                    "code" => "InvalidInput",
-                    "message" => "The batch request contains no sub-requests."
-                  }
-                })
-
-              {:ok, parts} ->
-                send_batch_response(conn, account, parts)
-            end
-
-          :error ->
-            send_json(conn, 400, %{
-              "error" => %{
-                "code" => "InvalidInput",
-                "message" =>
-                  "The batch request requires a multipart/mixed content-type with a boundary."
-              }
-            })
-        end
-
-      {:more, _, _} ->
-        send_json(conn, 413, %{
-          "error" => %{
-            "code" => "RequestBodyTooLarge",
-            "message" => "Batch body exceeds the 8 MB cap."
-          }
-        })
-    end
-  end
-
-  defp batch_boundary(conn) do
-    with [ct] <- get_req_header(conn, "content-type"),
-         segments = Enum.map(String.split(ct, ";"), &String.trim/1),
-         true <- hd(segments) |> String.downcase() == "multipart/mixed",
-         boundary when is_binary(boundary) <- find_boundary(segments) do
-      {:ok, String.trim(boundary, "\"")}
-    else
-      _ -> :error
-    end
-  end
-
-  defp find_boundary(segments) do
-    Enum.find_value(segments, fn segment ->
-      case String.split(segment, "boundary=", parts: 2) do
-        [_, b] -> String.trim(b)
-        [_] -> nil
-      end
-    end)
-  end
-
-  # Splits the multipart body on the boundary and returns each part's
-  # sub-request text (part headers stripped; the sub-request begins at the
-  # first blank line inside the part). The closing "--boundary--" tail is
-  # rejected.
-  defp parse_batch_parts(body, boundary) do
-    marker = "--" <> boundary
-
-    parts =
-      body
-      |> String.split(marker)
-      |> Enum.reject(fn chunk ->
-        # SHIM-COURT-adjacent repair (R33): reject only the exact closing-boundary
-        # tail ("--<boundary>--", i.e. a chunk that is just "--" plus whitespace),
-        # not any chunk whose body merely starts with "--".
-        trimmed = String.trim(chunk)
-        trimmed in ["", "--"]
-      end)
-      |> Enum.map(fn chunk ->
-        chunk
-        |> String.trim_leading("\r\n")
-        |> String.trim_trailing("\r\n")
-        |> strip_part_headers()
-      end)
-
-    {:ok, parts}
-  end
-
-  # R67: hand-rolled curl batches may use LF-only line endings. Normalize lone
-  # \n to \r\n so the header-block split below does not swallow the part head
-  # into the sub-request line (which yielded a typed 400 per sub-request).
-  defp strip_part_headers(chunk) do
-    case :binary.split(normalize_crlf(chunk), "\r\n\r\n") do
-      [_, sub_request] -> String.trim_leading(sub_request, "\r\n")
-      [_] -> chunk
-    end
-  end
-
-  defp send_batch_response(conn, _account, parts) do
-    boundary = "batchresponse_" <> generate_request_id()
-
-    chunks =
-      parts
-      |> Enum.with_index()
-      |> Enum.map(fn {sub_request, idx} ->
-        {status, headers, body} = dispatch_batch_subrequest(sub_request, idx)
-        render_batch_part(idx, status, headers, body, boundary)
-      end)
-
-    response_body = IO.iodata_to_binary([chunks, "\r\n--", boundary, "--\r\n"])
-
-    conn
-    |> put_resp_header("x-ms-version", "2021-12-02")
-    |> put_resp_header("x-ms-request-id", generate_request_id())
-    |> put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
-    |> send_resp(202, response_body)
-  end
-
-  defp render_batch_part(idx, status, headers, body, boundary) do
-    header_lines = Enum.map_join(headers, "\r\n", fn {k, v} -> "#{k}: #{v}" end)
-
-    body_block =
-      if body in [nil, ""] do
-        ""
-      else
-        body
-      end
-
-    IO.iodata_to_binary([
-      "\r\n--",
-      boundary,
-      "\r\nContent-Type: application/http\r\nContent-ID: ",
-      Integer.to_string(idx),
-      "\r\n\r\nHTTP/1.1 ",
-      Integer.to_string(status),
-      " ",
-      plug_status_reason(status),
-      "\r\n",
-      header_lines,
-      "\r\n\r\n",
-      body_block,
-      "\r\n"
-    ])
-  end
-
-  defp plug_status_reason(status) do
-    Plug.Conn.Status.reason_phrase(status)
-  end
-
-  # Dispatches one sub-request. Supported: Delete Blob, Set Blob Tier.
-  # Returns {status, headers_list, body_string_or_empty}.
-  defp dispatch_batch_subrequest(sub_request, _idx) do
-    case parse_sub_request(sub_request) do
-      {method, target, headers, _body} ->
-        uri = URI.parse(target)
-        query = URI.decode_query(uri.query || "")
-        segments = Enum.reject(String.split(uri.path || "", "/"), &(&1 == ""))
-
-        batch_dispatch_op(method, segments, query, headers)
-
-      :error ->
-        {400, [{"x-ms-error-code", "InvalidInput"}],
-         batch_error_body("InvalidInput", "Malformed sub-request.")}
-    end
-  end
-
-  defp batch_dispatch_op("DELETE", [account, container | blob_segments], _query, headers) do
-    blob_name = Enum.join(blob_segments, "/")
-
-    case BlobStorage.delete_blob(account, container, blob_name, headers) do
-      {:ok, status, headers, _record} ->
-        {status, Map.to_list(headers), ""}
-
-      {:error, status, code, msg} ->
-        {status, [{"x-ms-error-code", code}], batch_error_body(code, msg)}
-    end
-  end
-
-  defp batch_dispatch_op(
-         "PUT",
-         [account, container | blob_segments],
-         %{"comp" => "tier"},
-         headers
-       ) do
-    blob_name = Enum.join(blob_segments, "/")
-
-    case BlobStorage.set_blob_tier(account, container, blob_name, headers["x-ms-access-tier"]) do
-      {:ok, status, headers, _} ->
-        {status, Map.to_list(headers), ""}
-
-      {:error, status, code, msg} ->
-        {status, [{"x-ms-error-code", code}], batch_error_body(code, msg)}
-    end
-  end
-
-  defp batch_dispatch_op(_method, _segments, _query, _headers) do
-    {400, [{"x-ms-error-code", "InvalidOperation"}],
-     batch_error_body("InvalidOperation", "Unsupported batch sub-request operation.")}
-  end
-
-  defp batch_error_body(code, msg) do
-    Jason.encode!(%{"error" => %{"code" => code, "message" => msg}})
-  end
-
-  # Parses an HTTP sub-request: "METHOD /path?query HTTP/1.1" + headers
-  # [+ body]. Returns {method, target, headers_map, body} or :error.
-  defp parse_sub_request(sub) do
-    case :binary.split(sub, "\r\n\r\n") do
-      [head, body] -> parse_sub_head(head, body)
-      [_] -> parse_sub_head(sub, "")
-    end
-  end
-
-  # R67: same LF normalization for the sub-request head itself (request line +
-  # header lines), so an LF-only sub-request inside an otherwise-CRLF part parses.
-  defp parse_sub_head(head, body) do
-    [req_line | header_lines] = String.split(normalize_crlf(head), "\r\n")
-    segments = String.split(String.trim(req_line), " ")
-
-    with [method, target, _version] <- segments do
-      headers =
-        header_lines
-        |> Enum.reject(&(&1 == ""))
-        |> Enum.map(fn line ->
-          case :binary.split(line, ":") do
-            [k, v] -> {String.downcase(String.trim(k)), String.trim(v)}
-            [k] -> {String.downcase(String.trim(k)), ""}
-          end
-        end)
-        |> Map.new()
-
-      {method, target, headers, body}
-    else
-      _ -> :error
-    end
-  end
-
-  # R67: replace "\r\n" with "\n" first, then "\n" with "\r\n" — normalizes
-  # lone LF to CRLF without doubling existing CRLF.
-  defp normalize_crlf(bin) do
-    bin
-    |> String.replace("\r\n", "\n")
-    |> String.replace("\n", "\r\n")
-  end
-
   def header_map(conn) do
     Map.new(conn.req_headers)
   end
@@ -4115,7 +2338,10 @@ defmodule Smalt.EgressRouter do
   # Belt-and-braces: even with the seam guard, a malformed parameter that
   # slips through to a callee (ConfidentialLedger.canonical/1,
   # Cosmos.quoted_sha256/1, ...) must degrade to a 400 envelope, never a 500.
-  defp safe_dispatch(conn, fun) do
+  # Public (def, not defp): re-landed from the pre-undock source (95d4243d) —
+  # the bk101 G3 seam probe calls Smalt.EgressRouter.safe_dispatch/2 directly
+  # and the undock demoted it to private.
+  def safe_dispatch(conn, fun) do
     fun.(conn)
   rescue
     # R50 repair 3: CaseClauseError admitted (measured through the ledger
@@ -4491,46 +2717,139 @@ defmodule Smalt.EgressRouter do
     |> put_resp_content_type("application/json")
     |> send_resp(status, Jason.encode!(body))
   end
+  # EXPL-9 F2b (KD-COVERS: KD-175): crash-path fence handler, re-landed from
+  # the pre-undock source (95d4243d). Renders the Storage <Error> envelope +
+  # x-ms-request-id on any unhandled crash — never a naked adapter 500.
+  # (No @impl: handle_errors is defp called dynamically by Plug.ErrorHandler;
+  # @impl on a defp is a compile warning.)
+  defp handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
+    # BK-EGS1 (F-EGS1 repair, EXPL9-R2): a fault INSIDE handle_errors/2 itself
+    # (error_xml/2, generate_request_id/0, put_resp_content_type/2 ...) used to
+    # propagate out of Plug.ErrorHandler.__catch__ to Bandit and render the
+    # NAKED adapter 500 — empty body, no envelope, no x-ms-request-id (audit
+    # probe T6). The rescue path renders a fault-free constant fallback
+    # envelope and logs the secondary fault loudly.
+    # BK-XPRIF: exceptions carrying a typed plug_status < 500 (e.g.
+    # Plug.Parsers.ParseError -> 400) are NOT 500-class crashes — sending the
+    # 500 envelope here would swallow the typed status (BK-XPRI HIGH
+    # regression). Skip the fence so Plug.ErrorHandler's re-raise reaches the
+    # adapter, which renders the exception's own typed status.
+    if kind == :error and Plug.Exception.status(reason) < 500 do
+      Logger.error(
+        "egress_router typed plug-status crash (fence skipped, adapter renders typed status): " <>
+          Exception.format(kind, reason, stack)
+      )
 
-  # F5 (compliance-corpus lens-4 work order): real Azure emits
-  # x-ms-request-id + x-ms-version on ERROR responses too. Blob-plane-scoped
-  # renderer — shared send_json is untouched (ARM/LA/Cosmos/KV envelope pins
-  # must not see blob headers). v4 GUID from generate_request_id/0.
-  # Quoted opaque container ETag for the Put Container 201 render — delegates
-  # to the single derivation in BlobService.container_etag/1 (R62 repair 1),
-  # stable per (account, container, created_at).
-  defp container_put_etag(record) do
-    BlobService.container_etag(record)
+      :ok
+    else
+      try do
+        Logger.error("egress_router crash 500: #{Exception.format(kind, reason, stack)}")
+
+        # :unsent is not a real Plug conn.state — "nothing sent yet" is
+        # state in [:unset, :set].
+        if conn.state in [:unset, :set] do
+          conn
+          |> put_resp_header("x-ms-request-id", generate_request_id())
+          |> put_resp_content_type("application/xml")
+          |> send_resp(500, error_xml("InternalServerError", "Internal server error."))
+        end
+
+        :ok
+      rescue
+        secondary ->
+          Logger.error(
+            "egress_router handle_errors itself FAULTED (F-EGS1 fallback engaged): " <>
+              Exception.format(:error, secondary, __STACKTRACE__)
+          )
+
+          fegs1_fallback_send(conn, secondary)
+      end
+    end
+  end
+
+  # BK-EGS1: constant, fault-free fallback render. Module attributes are
+  # compile-time literals; put_resp_header/send_resp/state check cannot raise
+  # on a well-formed conn. Static request id (v4-shaped nil GUID) marks the
+  # fallback face on the wire.
+  @fegs1_fallback_request_id "00000000-0000-4000-8000-000000000000"
+  @fegs1_fallback_body "<?xml version=\"1.0\" encoding=\"utf-8\"?><Error><Code>InternalServerError</Code><Message>Internal server error.</Message></Error>"
+
+  defp fegs1_fallback_send(conn, _secondary) do
+    if conn.state in [:unset, :set] do
+      conn
+      |> put_resp_header("x-ms-request-id", @fegs1_fallback_request_id)
+      |> put_resp_header("content-type", "application/xml; charset=utf-8")
+      |> send_resp(500, @fegs1_fallback_body)
+    end
+
+    :ok
+  end
+
+  # Re-landed from the pre-undock source (95d4243d) — shared <Error> envelope
+  # renderer needed by handle_errors/2 above.
+  def error_xml(code, msg) do
+    ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>) <>
+      Smalt.DataPlane.BlobService.xml_escape(code) <>
+      "</Code><Message>" <> Smalt.DataPlane.BlobService.xml_escape(msg) <> "</Message></Error>"
   end
 
   # Lane 06 (v26.10.14) defect 3, part 2: blob error responses now carry the
   # error code in the x-ms-error-code header, extracted from the JSON body's
   # code slot (either envelope shape). Additive — the JSON body is unchanged.
   def blob_error(conn, status, body) do
-    # Parity lane 2026-10-28 (wf8, python SDK receipt): the storage-plane
-    # error body is the Azure XML <Error><Code/><Message/></Error> envelope
-    # — the official python storage pipeline parses Message from XML and
-    # gets None for JSON bodies (error_message += None TypeError). The
-    # Message element must never be EMPTY either (python's error formatter
-    # += None chain); default it to the code text, as real Azure always
-    # carries message text. Scoped to the blob error renderer only —
-    # send_json is untouched, so ARM/cosmos/KV/ledger envelopes keep their
-    # pinned JSON.
-    code = blob_error_code(body) || "InternalError"
-    message = blob_error_message(body)
-    message = if is_binary(message) and message != "", do: message, else: code
+    code = blob_error_code(body)
 
-    xml =
-      "<?xml version=\"1.0\" encoding=\"utf-8\"?>" <>
-        "<Error><Code>#{code}</Code>" <>
-        "<Message>#{xml_escape_error(message)}</Message></Error>"
+    # B-XML opt-in law (re-landed from the pre-undock source 95d4243d): the
+    # XML envelope renders ONLY on the stamped blob face — blob_route/2 stamps
+    # :smalt_blob_face at route entry, and every other consumer (ARM / Cosmos /
+    # KV / AppConfig / Ledger / delegator sub-routers) keeps its JSON envelope
+    # byte-identical (BlobError moduledoc law). The undock dropped both the
+    # stamp and this consult, so EVERY blob_error call site rendered XML and
+    # the KV wire answered blob-XML where the KV courts pin typed JSON
+    # (kds3_s4 + kv_ec_create live regressions, coordinator/L11 probe r9c).
+    if conn.private[:smalt_blob_face] && is_binary(code) do
+      # Parity lane 2026-10-28 (wf8, python SDK receipt): the storage-plane
+      # error body is the Azure XML <Error><Code/><Message/></Error> envelope
+      # — the official python storage pipeline parses Message from XML and
+      # gets None for JSON bodies (error_message += None TypeError). The
+      # Message element must never be EMPTY either (python's error formatter
+      # += None chain); default it to the code text, as real Azure always
+      # carries message text. Scoped to the stamped blob face only —
+      # send_json is untouched, so ARM/cosmos/KV/ledger envelopes keep their
+      # pinned JSON.
+      code = code || "InternalError"
+      message = blob_error_message(body)
+      message = if is_binary(message) and message != "", do: message, else: code
 
-    conn
-    |> put_resp_header("x-ms-request-id", generate_request_id())
-    |> put_resp_header("x-ms-version", "2021-12-02")
-    |> put_resp_header("x-ms-error-code", code)
-    |> put_resp_content_type("application/xml")
-    |> send_resp(status, xml)
+      xml =
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>" <>
+          "<Error><Code>#{code}</Code>" <>
+          "<Message>#{xml_escape_error(message)}</Message></Error>"
+
+      conn
+      |> put_resp_header("x-ms-request-id", generate_request_id())
+      |> put_resp_header("x-ms-version", "2021-12-02")
+      |> put_resp_header("x-ms-error-code", code)
+      |> put_resp_content_type("application/xml")
+      |> send_resp(status, xml)
+    else
+      conn
+      |> put_resp_header("x-ms-request-id", generate_request_id())
+      |> put_resp_header("x-ms-version", "2021-12-02")
+      |> put_error_code_header(body)
+      |> send_json(status, body)
+    end
+  end
+
+  # Restored alongside the B-XML consult (re-landed from the pre-undock source
+  # 95d4243d): the undock deleted this helper as "unused" precisely because the
+  # consult branch that called it was gone; the JSON branch needs it to keep
+  # the typed x-ms-error-code header on non-blob faces.
+  def put_error_code_header(conn, body) do
+    case blob_error_code(body) do
+      nil -> conn
+      code -> put_resp_header(conn, "x-ms-error-code", code)
+    end
   end
 
   defp blob_error_message(%{"error" => %{"message" => msg}}) when is_binary(msg), do: msg
@@ -4547,399 +2866,10 @@ defmodule Smalt.EgressRouter do
   defp blob_error_code(%{"error" => %{"code" => code}}) when is_binary(code), do: code
   defp blob_error_code(%{"code" => code}) when is_binary(code), do: code
   defp blob_error_code(_), do: nil
-
-  # Lane 06 (v26.10.14) defect 3, part 1: on the blob comp=list routes the
-  # real Azure Blob service answers typed errors with an XML
-  # <?xml?><Error><Code/><Message/></Error> envelope (Content-Type
-  # application/xml), not JSON. Scoped to the comp=list arms only — every
-  # other blob_error/3 consumer (ledger, cosmos, KV, attestation, sentinel)
-  # keeps byte-identical JSON output.
-  defp blob_error_xml(conn, status, code, message) do
-    xml =
-      ~s(<?xml version="1.0" encoding="utf-8"?><Error><Code>#{BlobService.xml_escape(code)}</Code><Message>#{BlobService.xml_escape(message)}</Message></Error>)
-
-    conn
-    |> put_resp_header("x-ms-request-id", generate_request_id())
-    |> put_resp_header("x-ms-version", "2021-12-02")
-    |> put_resp_header("x-ms-error-code", code)
-    |> put_resp_content_type("application/xml")
-    |> send_resp(status, xml)
-  end
-
   def not_found_error(code) do
     %{"error" => %{"code" => code}}
   end
-
-  # ---------------------------------------------------------------------------
-  # GAP-AUD1-01 (v26.10.14, lane W-5): blob comp whitelist.
-  #
-  # The generic Put/Get Blob fallback arms previously absorbed every `comp`
-  # value they did not name (appendblock, snapshot, page, pagelist, tags,
-  # query, tier, expiry, seal, lease, copy) and silently overwrote / served
-  # the blob body — the AUD-1 headline corruption class. Whitelist = exactly
-  # the comps with implemented handlers on each arm. Container-level comps
-  # (list, acl, legalhold, immutabilityPolicy) are routed on the container
-  # routes and never reach these arms. Unimplemented features stay KD rows;
-  # the class is dead because an unlisted comp can no longer touch the body.
-  # ---------------------------------------------------------------------------
-
-  # R124: the blob and container `?/2` predicates were byte-identical —
-  # collapsed into one helper. The two error envelopes stay separate
-  # functions (their messages genuinely differ; see each below).
-  defp unhandled_comp?(conn, allowed) do
-    case conn.query_params["comp"] do
-      v when is_binary(v) and v != "" -> v not in allowed
-      # A14 (D14/KD-60): Plug decodes duplicate query keys into a LIST, so
-      # ?comp=metadata&comp=lease yields %{"comp" => ["metadata", "lease"]} —
-      # the is_binary/1 clause above admitted it, skipping every whitelist and
-      # falling into the true -> catch-all (201-lie class reopened on both
-      # blob and container arms). Default-deny: any list-form comp refuses.
-      v when is_list(v) -> true
-      _ -> false
-    end
-  end
-
-  # A14: error-envelope rendering for the list-form comp — "a, b", not the
-  # Elixir inspect of a list.
-  defp comp_str(v) when is_list(v), do: Enum.join(v, ", ")
-  defp comp_str(v), do: v
-
-  # R124 message convention (both comp-error envelopes): the wire-visible
-  # prefix `The comp value '<v>' is not supported` is byte-identical and
-  # test-pinned (blob_hardening_test.exs). The GAP clause
-  # `(GAP(blob-comp-lease-absent)): ...` is appended ONLY where a registered
-  # GAP row names the comp family — container lease/ACL — never on the blob
-  # arm, whose unhandled comps (appendblock, snapshot, page, ...) span more
-  # than the lease GAP and would overclaim.
-  defp unhandled_blob_comp_error(conn, v) do
-    blob_error(conn, 400, %{
-      "error" => %{
-        "code" => "InvalidQueryParameterValue",
-        "message" => "The comp value '#{comp_str(v)}' is not supported."
-      }
-    })
-  end
-
-  # R98 container comp whitelist (mirror of the blob-arm whitelist above).
-  # restype=container carries no comp and comp=nil is admitted; any other
-  # comp value with no implemented container handler answers the same typed
-  # InvalidQueryParameterValue envelope as the blob arms, naming the registered
-  # GAP so the wire no longer lies via fallthrough (PUT 201 / GET 200).
-  defp unhandled_container_comp_error(conn, v) do
-    blob_error(conn, 400, %{
-      "error" => %{
-        "code" => "InvalidQueryParameterValue",
-        "message" =>
-          "The comp value '#{comp_str(v)}' is not supported (GAP(blob-comp-lease-absent)): " <>
-            "container leases and ACLs are not implemented."
-      }
-    })
-  end
-
   # Key Vault action tuple helper: {:ok, status, body} / {:error, status, body}.
   def kv_respond(conn, {:ok, status, body}), do: send_json(conn, status, body)
   def kv_respond(conn, {:error, status, body}), do: send_json(conn, status, body)
-
-  # x-ms-meta-* request headers -> %{"name" => "value"} map (BlobService
-  # container metadata). Response direction: meta dict -> x-ms-meta-* headers.
-  # Wire body (Azure shape) -> BlobStorage.set_immutability_policy/5 policy map.
-  #
-  # Body seam: Plug.Parsers may already have consumed and decoded the JSON
-  # body (body_params is a map) — re-reading the stream would return "" and
-  # lose the policy. Read body_params first; read_body is only the fallback
-  # for unparsed content-types. A non-empty body that fails to decode is a
-  # 400 InvalidXmlOrJson, never a nil-expires 500 downstream.
-  defp immutability_policy_from_wire(conn) do
-    case conn.body_params do
-      %Plug.Conn.Unfetched{} ->
-        case Plug.Conn.read_body(conn) do
-          {:ok, raw, conn} -> decode_policy_body(raw, conn)
-          {:error, _reason} -> {:error, conn}
-        end
-
-      params when is_map(params) ->
-        {:ok, policy_from_params(params), conn}
-
-      _other ->
-        {:error, conn}
-    end
-  end
-
-  # KD-108 wire seam (ACL PUT): the raw SignedIdentifiers body may already
-  # have been consumed by Plug.Parsers (a urlencoded/json Content-Type — curl's
-  # default for --data-binary is x-www-form-urlencoded — matches :urlencoded
-  # and eats the XML). Read the raw cache first (Smalt.Auth.BodyCache stashes
-  # the complete raw body in :smalt_raw_body whenever a parser ran), fall back
-  # to the stream for parser-exempt requests (raw_blob_put? style paths).
-  # Without this, read_body/1 returns "" and the ACL arm silently CLEARS the
-  # signed identifiers (204 with parse_signed_identifiers("") == {:ok, []}).
-  defp acl_body(conn) do
-    case conn.private[:smalt_raw_body] do
-      raw when is_binary(raw) -> {:ok, raw, conn}
-      _ ->
-        case Plug.Conn.read_body(conn) do
-          {:ok, raw, conn} -> {:ok, raw, conn}
-          {:error, reason} -> {:error, 400, "InvalidRequestBody", inspect(reason)}
-        end
-    end
-  end
-
-  defp decode_policy_body("", conn), do: {:ok, %{}, conn}
-
-  defp decode_policy_body(raw, conn) do
-    case Jason.decode(raw) do
-      {:ok, %{} = body} -> {:ok, policy_from_params(body), conn}
-      _ -> {:error, conn}
-    end
-  end
-
-  defp policy_from_params(body) do
-    %{
-      "locked" => Map.get(body, "locked", false) == true,
-      "period_days" => period_days(Map.get(body, "immutabilityPeriodSinceCreationInDays", 0)),
-      "until" => Map.get(body, "expiresOn")
-    }
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Map.new()
-  end
-
-  defp period_days(days) when is_integer(days), do: days
-
-  defp period_days(days) when is_binary(days) do
-    case Integer.parse(days) do
-      {n, ""} -> n
-      _ -> days
-    end
-  end
-
-  defp period_days(other), do: other
-
-  defp meta_headers(%Plug.Conn{} = conn) do
-    Enum.reduce(conn.req_headers, %{}, fn {name, value}, acc ->
-      case name do
-        "x-ms-meta-" <> meta_name -> Map.put(acc, meta_name, value)
-        _ -> acc
-      end
-    end)
-  end
-
-  defp meta_headers(meta) when is_map(meta) do
-    Map.new(meta, fn {name, value} -> {"x-ms-meta-#{name}", to_string(value)} end)
-  end
-
-  # KD-01 echo: stored x-ms-meta-* ride GET/HEAD blob responses (Azure Get
-  # Blob metadata). Scoped to the x-ms-meta-* subset — the stored header map
-  # carries the full PUT request headers (auth, x-ms-version) and only user
-  # metadata is wire-safe to emit.
-  defp stored_meta_wire(blob) do
-    blob
-    |> Map.get("headers", %{}) ||
-      %{}
-      |> Enum.filter(fn {k, _v} -> String.starts_with?(k, "x-ms-meta-") end)
-  end
-
-  # T-18 (v26.10.28): the content type a blob GET/HEAD serves is the one Set
-  # Blob HTTP Headers stored (x-ms-blob-content-type on the record's header
-  # map) — falling back to the service default when never set.
-  defp stored_content_type(blob) do
-    case get_in(blob, ["headers", "x-ms-blob-content-type"]) do
-      ct when is_binary(ct) and ct != "" -> ct
-      _ -> "application/octet-stream"
-    end
-  end
-
-  defp put_resp_headers(conn, headers) do
-    Enum.reduce(headers, conn, fn
-      # Engine header maps may carry nil values (measured: BlobService
-      # get_container_properties emits "last-modified" => nil on a fresh
-      # container — HEAD container crashed with FunctionClauseError inside
-      # put_resp_header). nil means "header absent" at this seam; skip it.
-      {_name, nil}, conn -> conn
-      {name, value}, conn -> Plug.Conn.put_resp_header(conn, name, value)
-    end)
-  end
-
-  # BlobService header-only responses (container metadata PUT / properties).
-  defp send_headers(conn, status, headers) do
-    put_resp_headers(conn, headers)
-    |> send_resp(status, "")
-  end
-
-  defp put_message(body, msg), do: put_in(body, ["error", "message"], msg)
-
-  # ===========================================================================
-  # AZB-10 — Cross-plane wiring: peer resolution + egress guard (nested module;
-  # ticket scope names this file for peer resolution ONLY — the router's own
-  # dispatch behavior is untouched).
-  # ===========================================================================
-  defmodule Peers do
-    @moduledoc """
-    AZB-10 cross-plane wiring primitives (loopback-only, zero egress):
-
-    - `resolve/1` — config-driven peer endpoints (`config :smalt, :peers`,
-      sourced from `config/env/az_prod_*.exs`). No in-process short-circuit:
-      callers always reach peers over the wire at the resolved endpoint.
-    - `guard/1` — egress guard: any non-loopback / non-peer outbound endpoint
-      is refused typed with `R_missing_authority`, counted, and instrumented
-      (`[:smalt, :egress, :refused]` telemetry, metadata carries the reason).
-    - `refused_connects/0` — suite-level counter of refused non-loopback
-      connects (the Accept gate reads a delta of 0 over the cross-plane wire
-      legs).
-    - `emit_resource_write_success/2` — control-plane resource PUT emits the
-      Event Grid `Microsoft.Resources.ResourceWriteSuccess` event to the
-      integration plane (Event Grid topic fan-out + Service Bus bridge
-      enqueue). Never raises into the PUT response path.
-
-    Same-node peers are reached over real sockets (wire fidelity, AZB-10
-    falsifier: an in-process resolution is a defect). Emission helpers live
-    here so the control-plane router carries a single call site.
-    """
-
-    @loopback_hosts ~w(127.0.0.1 localhost ::1)
-    @counter_table :smalt_egress_guard
-    @sb_bridge_queue "resourcewritesuccess"
-
-    # -- peer resolution ---------------------------------------------------------
-
-    @doc "Config-driven peer endpoint for `plane` (nil when unconfigured)."
-    @spec resolve(atom()) :: String.t() | nil
-    def resolve(plane) when is_atom(plane) do
-      case Application.get_env(:smalt, :peers) do
-        kw when is_list(kw) -> Keyword.get(kw, plane)
-        _other -> nil
-      end
-    end
-
-    # -- egress guard ------------------------------------------------------------
-
-    @doc """
-    Egress guard for an outbound endpoint URL. Loopback hosts and endpoints
-    matching a configured peer prefix are allowed (:ok); any other host is
-    refused typed (`{:refused, :R_missing_authority}`), counted, and
-    instrumented. Fail-closed: an unparseable URL refuses.
-    """
-    @spec guard(String.t()) :: :ok | {:refused, :R_missing_authority}
-    def guard(url) when is_binary(url) do
-      host = URI.parse(url).host
-
-      cond do
-        is_nil(host) ->
-          refuse(url, nil)
-
-        loopback?(host) or peer_endpoint?(url) ->
-          :ok
-
-        true ->
-          refuse(url, host)
-      end
-    end
-
-    @doc "Count of refused non-loopback outbound connects (monotone)."
-    @spec refused_connects :: non_neg_integer()
-    def refused_connects do
-      ensure_table()
-      :ets.lookup_element(@counter_table, :refused, 2)
-    end
-
-    defp refuse(url, host) do
-      ensure_table()
-      :ets.update_counter(@counter_table, :refused, {2, 1})
-
-      :telemetry.execute(
-        [:smalt, :egress, :refused],
-        %{count: 1},
-        %{host: host, url: url, reason: :R_missing_authority}
-      )
-
-      {:refused, :R_missing_authority}
-    end
-
-    defp loopback?(host), do: host in @loopback_hosts
-
-    defp peer_endpoint?(url) do
-      case Application.get_env(:smalt, :peers) do
-        kw when is_list(kw) ->
-          Enum.any?(kw, fn
-            {plane, ep} when plane != :self and is_binary(ep) ->
-              String.starts_with?(url, ep)
-
-            _ ->
-              false
-          end)
-
-        _ ->
-          false
-      end
-    end
-
-    defp ensure_table do
-      if :ets.info(@counter_table) == :undefined do
-        # Named public table; races on first-touch are benign (both arms
-        # create the same shape; loser's :error is ignored).
-        try do
-          :ets.new(@counter_table, [:named_table, :public, :set, write_concurrency: true])
-          :ets.insert(@counter_table, {:refused, 0})
-        catch
-          _, _ -> :ok
-        end
-      end
-    end
-
-    # -- control-plane resource-write emission ----------------------------------
-
-    @doc """
-    Emits the Event Grid `Microsoft.Resources.ResourceWriteSuccess` event for a
-    successful control-plane resource PUT: fan-out on the Event Grid topic
-    `resources` to every subscriber (integration-plane bridge), plus a Service
-    Bus bridge enqueue on queue `#{@sb_bridge_queue}` (the integration plane's
-    AMQP surface). Never raises into the PUT response path.
-    """
-    @spec emit_resource_write_success(map(), map()) :: :ok
-    def emit_resource_write_success(record, meta) when is_map(record) and is_map(meta) do
-      event = build_event(record, meta)
-
-      # Event Grid fan-out (integration plane subscribers get redelivery
-      # semantics from the engine itself).
-      try do
-        Smalt.Messaging.EventGrid.publish("resources", event)
-      catch
-        _, _ -> :ok
-      end
-
-      # Service Bus bridge: the event body enqueued on the integration plane's
-      # queue so an AMQP/QueueStore subscriber receives ResourceWriteSuccess.
-      try do
-        Smalt.Amqp.QueueStore.enqueue(@sb_bridge_queue, Jason.encode!(event))
-      catch
-        _, _ -> :ok
-      end
-
-      :ok
-    end
-
-    defp build_event(record, meta) do
-      res_id = Map.get(record, "id")
-
-      %{
-        id: "rgw-" <> resource_uri_digest(res_id),
-        event_type: "Microsoft.Resources.ResourceWriteSuccess",
-        subject: res_id,
-        topic: "resources",
-        event_time: DateTime.utc_now() |> DateTime.to_iso8601(),
-        data: %{
-          "resourceUri" => res_id,
-          "operationName" =>
-            "#{Map.get(record, "type", "Microsoft.Resources")}/write",
-          "correlationId" => Map.get(meta, :correlation_id, "azb10-" <> resource_uri_digest(res_id)),
-          "subscription" => Map.get(meta, :subscription)
-        }
-      }
-    end
-
-    defp resource_uri_digest(res_id) do
-      res_id
-      |> :erlang.phash2()
-      |> Integer.to_string()
-    end
-  end
 end

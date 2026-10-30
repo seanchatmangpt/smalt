@@ -13,30 +13,6 @@ defmodule Smalt.Config do
   sites keep their existing case/wrap form.
   """
 
-  # Neutral-first env alias law (R8, mirrors preflight-court env.ts / sovereign-backend
-  # ConfigMap): every SMALT_* env read resolves its AZURE_* alias FIRST,
-  # legacy SMALT_* fallback second, identical defaults when neither is set.
-  # Additive: legacy-only deployments and existing courts are byte-identical.
-  @neutral_aliases %{
-    "SMALT_ARM_RATE_LIMIT" => "AZURE_ARM_RATE_LIMIT",
-    "SMALT_BIND_IP" => "AZURE_BIND_IP",
-    "SMALT_BLOB_ACCOUNT_KEY" => "AZURE_BLOB_ACCOUNT_KEY",
-    "SMALT_COSMOS_RU_LIMIT" => "AZURE_COSMOS_RU_LIMIT",
-    "SMALT_PLANES" => "AZURE_PLANES",
-    "SMALT_PROFILE" => "AZURE_PROFILE",
-    "SMALT_SB_SHARED_KEY" => "AZURE_SB_SHARED_KEY",
-    "SMALT_TLS_CERTFILE" => "AZURE_TLS_CERTFILE",
-    "SMALT_TLS_KEYFILE" => "AZURE_TLS_KEYFILE"
-  }
-
-  @doc "Neutral-first alias table: legacy SMALT_* name => primary AZURE_* name."
-  def neutral_aliases, do: @neutral_aliases
-
-  @doc "Resolve an env var neutral-first: AZURE_* alias wins, legacy SMALT_* fallback, nil when neither set."
-  def neutral_env(legacy) when is_binary(legacy) do
-    System.get_env(Map.fetch!(@neutral_aliases, legacy)) || System.get_env(legacy)
-  end
-
   @doc "ConfigKey census rows (name/type/default/secret/surface/envVarName)."
   def census do
     [
@@ -437,11 +413,29 @@ defmodule Smalt.Config do
         override: "none"
       },
       %{
+        name: :redis_port,
+        type: "integer",
+        default: 6380,
+        secret: false,
+        surface: "data_plane",
+        env_var: nil,
+        override: "none"
+      },
+      %{
         name: :rg_token_preserve_options,
         type: "boolean",
         default: false,
         secret: false,
         surface: "control_plane",
+        env_var: nil,
+        override: "none"
+      },
+      %{
+        name: :saml_idp_port,
+        type: "integer",
+        default: 9445,
+        secret: false,
+        surface: "identity_plane",
         env_var: nil,
         override: "none"
       },
@@ -565,6 +559,30 @@ defmodule Smalt.Config do
     ]
   end
 
+  # Neutral-first env alias law (R8, mirrors preflight-court env.ts / sovereign-backend
+  # ConfigMap): every SMALT_* env read resolves its AZURE_* alias FIRST,
+  # legacy SMALT_* fallback second, identical defaults when neither is set.
+  # Additive: legacy-only deployments and existing courts are byte-identical.
+  @neutral_aliases %{
+    "SMALT_ARM_RATE_LIMIT" => "AZURE_ARM_RATE_LIMIT",
+    "SMALT_BIND_IP" => "AZURE_BIND_IP",
+    "SMALT_BLOB_ACCOUNT_KEY" => "AZURE_BLOB_ACCOUNT_KEY",
+    "SMALT_COSMOS_RU_LIMIT" => "AZURE_COSMOS_RU_LIMIT",
+    "SMALT_PLANES" => "AZURE_PLANES",
+    "SMALT_PROFILE" => "AZURE_PROFILE",
+    "SMALT_SB_SHARED_KEY" => "AZURE_SB_SHARED_KEY",
+    "SMALT_TLS_CERTFILE" => "AZURE_TLS_CERTFILE",
+    "SMALT_TLS_KEYFILE" => "AZURE_TLS_KEYFILE"
+  }
+
+  @doc "Neutral-first alias table: legacy SMALT_* name => primary AZURE_* name."
+  def neutral_aliases, do: @neutral_aliases
+
+  @doc "Resolve an env var neutral-first: AZURE_* alias wins, legacy SMALT_* fallback, nil when neither set."
+  def neutral_env(legacy) when is_binary(legacy) do
+    System.get_env(Map.fetch!(@neutral_aliases, legacy)) || System.get_env(legacy)
+  end
+
   @doc "Affidavit WASM module path served to enclave doctors."
   def affidavit_wasm_path,
     do: Application.get_env(:smalt, :affidavit_wasm_path, "priv/wasm/affidavit_wasm.wasm")
@@ -593,8 +611,7 @@ defmodule Smalt.Config do
 
   @doc "ARM gateway rate limit (:infinity disables the limiter). SMALT_ARM_RATE_LIMIT overrides BOTH the named throttle profile and the app env, parsed as an integer; otherwise profile defaults apply: :unbounded (default) :infinity, :azure_parity 20 req/s, :strict 5 req/s (SMALT_PROFILE)."
   def arm_rate_limit,
-    do:
-      profile_throttled(neutral_env("SMALT_ARM_RATE_LIMIT"), :arm_rate_limit, :arm, :infinity)
+    do: profile_throttled(neutral_env("SMALT_ARM_RATE_LIMIT"), :arm_rate_limit, :arm, :infinity)
 
   @doc "TLS twin port for SDK legs that refuse Bearer over http."
   def arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
@@ -648,6 +665,9 @@ defmodule Smalt.Config do
   def graph_law, do: Application.get_env(:smalt, :graph_law, [])
   @doc "WASM fast-path selector; :ash_graphlaw enables the ash_graphlaw validator."
   def graphlaw_engine, do: Application.get_env(:smalt, :graphlaw_engine)
+
+  @doc "Configurable issuer HOST/authority for STS-minted tokens (lane R9). When set, the tenant-token iss (and the OIDC discovery issuer) use https://<issuer_host> as the authority instead of the request-derived loopback authority. nil (default) = request-derived authority, byte-identical to the legacy mint."
+  def issuer_host, do: Application.get_env(:smalt, :issuer_host)
   @doc "Identity-plane KeyVault profile keyword list (api_version:, challenge_mode:)."
   def keyvault, do: Application.get_env(:smalt, :keyvault, [])
   @doc "KeyVault emulator master secret."
@@ -680,10 +700,14 @@ defmodule Smalt.Config do
   def profile, do: throttle_profile()
   @doc "PEM RSA key material for court receipt signing."
   def receipt_signing_key, do: Application.get_env(:smalt, :receipt_signing_key)
+  @doc "Redis RESP2/RESP3 wire listener port (AzureCache wire facade, Smalt.DataPlane.RedisWire)."
+  def redis_port, do: Application.get_env(:smalt, :redis_port, 6380)
   @doc "Preserve unknown expand options in resource-group tokens."
   def rg_token_preserve_options,
     do: Application.get_env(:smalt, :rg_token_preserve_options, false)
 
+  @doc "Identity plane SAML IdP listener port (T02). Mirrors Smalt.Identity.SamlIdp call site: Application.get_env(:smalt, :saml_idp_port, 9445)."
+  def saml_idp_port, do: Application.get_env(:smalt, :saml_idp_port, 9445)
   @doc "Service Bus endpoint scheme://host:port used by SAS verification."
   def sb_endpoint, do: Application.get_env(:smalt, :sb_endpoint, "sb://127.0.0.1:5672")
   @doc "Broker SAS shared key; SMALT_SB_SHARED_KEY pins it via the CBS router."
@@ -700,16 +724,6 @@ defmodule Smalt.Config do
   def sts_authority_url, do: Application.get_env(:smalt, :sts_authority_url)
   @doc "HS256 STS signing secret; mandatory when :prod is set."
   def sts_signing_secret, do: Application.get_env(:smalt, :sts_signing_secret)
-  @doc """
-  Configurable issuer HOST/authority for STS-minted tokens (lane R9). When set,
-  the tenant-token `iss` (and the OIDC discovery `issuer`) use
-  `https://<issuer_host>` as the authority instead of the request-derived
-  loopback authority, so an enterprise deployment can present
-  `issuer: https://<their-host>/<tenant>/v2.0`. Accepts a bare host
-  (`"sts.corp.example"`) or a full HTTPS URL without path (`"https://sts.corp.example"`).
-  nil (default) = request-derived authority, byte-identical to the legacy mint.
-  """
-  def issuer_host, do: Application.get_env(:smalt, :issuer_host)
   @doc "TLS mode: :auto derives from certs presence; :on or :off force it."
   def tls, do: Application.get_env(:smalt, :tls, :auto)
   @doc "TLS leaf certificate PEM path; env read stays call-site residue."

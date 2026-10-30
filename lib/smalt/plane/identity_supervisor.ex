@@ -15,7 +15,14 @@ defmodule Smalt.Plane.IdentitySupervisor do
   @impl true
   def init(_init_arg) do
     children = [
-      Smalt.Plane.Identity.StsGate
+      Smalt.Plane.Identity.StsGate,
+      # T02: SAML 2.0 IdP face (Bandit plug, :saml_idp_port default 9445).
+      # one_for_one: a bind failure stops only this child; the identity
+      # plane (StsGate) and the app survive.
+      Smalt.Identity.SamlIdp,
+      # T05 (lane L17): OIDC IdP face (Bandit plug, :oidc_port default 9446,
+      # :oidc_scheme :http|:https with the dev cert). Same one_for_one law.
+      Smalt.Identity.OidcIdp
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)

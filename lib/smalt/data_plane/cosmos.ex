@@ -2452,78 +2452,12 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
-  # Real Cosmos string-to-sign: verb, resource type, resource link, date, then
-  # two empty members. Sig is Base64(HMAC-SHA256(master_key, string-to-sign)).
-  # Only consulted when auth_mode == :enforce AND :cosmos_master_key is set;
-  # non-master Authorization schemes (Bearer) pass through untouched.
+  # T09 split (lane L10): master-key string-to-sign moved verbatim to
+  # `Smalt.DataPlane.Cosmos.Auth` (lib/smalt/data_plane/cosmos/auth.ex);
+  # the gate consults it through `Cosmos.Auth.authorize/4`. Wire behavior
+  # byte-identical (same auth_mode gate, same sig validation, same 401 body).
   defp authorize(verb, resource_type, resource_link, headers) do
-    if Application.get_env(:smalt, :auth_mode) == :enforce do
-      case master_key() do
-        nil ->
-          :ok
-
-        key ->
-          case header(headers, "authorization") do
-            nil ->
-              :ok
-
-            raw ->
-              case master_sig(raw) do
-                nil ->
-                  :ok
-
-                sig ->
-                  if valid_master_sig?(verb, resource_type, resource_link, headers, sig, key),
-                    do: :ok,
-                    else: {:halt, unauthorized()}
-              end
-          end
-      end
-    else
-      :ok
-    end
-  end
-
-  defp master_key do
-    case Application.get_env(:smalt, :cosmos_master_key) do
-      key when is_binary(key) and key != "" -> key
-      _ -> nil
-    end
-  end
-
-  # Authorization header wire form is URL-encoded:
-  # "type%3dmaster%26ver%3d1.0%26sig%3d<base64>". Returns the sig or nil when
-  # the header is not the master-key scheme.
-  defp master_sig(raw) do
-    case URI.decode_query(URI.decode(raw)) do
-      %{"type" => "master", "sig" => sig} when is_binary(sig) and sig != "" -> sig
-      _ -> nil
-    end
-  end
-
-  defp valid_master_sig?(verb, resource_type, resource_link, headers, sig, key) do
-    date = header(headers, "x-ms-date") || ""
-
-    string_to_sign =
-      "#{Atom.to_string(verb)}\n#{resource_type}\n#{resource_link}\n#{String.downcase(date)}\n\n"
-
-    case Base.decode64(sig) do
-      {:ok, provided} ->
-        expected = :crypto.mac(:hmac, :sha256, key, string_to_sign)
-        Plug.Crypto.secure_compare(provided, expected)
-
-      :error ->
-        false
-    end
-  end
-
-  defp unauthorized do
-    {:ok, 401, %{"x-ms-request-charge" => @request_charge},
-     %{
-       "code" => "Unauthorized",
-       "message" =>
-         "The input authorization token can't serve the request. Please check that the expected payload is built as per the documentation."
-     }}
+    Smalt.DataPlane.Cosmos.Auth.authorize(verb, resource_type, resource_link, headers)
   end
 
   # Single resolution chain for the RU throttle limit:

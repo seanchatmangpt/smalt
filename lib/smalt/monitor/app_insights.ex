@@ -1,4 +1,5 @@
 defmodule Smalt.Monitor.AppInsights do
+  require Logger
   @moduledoc """
   Azure Application Insights Breeze ingest emulation (v26.10.20 wave-6, lane w6s).
 
@@ -24,6 +25,19 @@ defmodule Smalt.Monitor.AppInsights do
   Storage: a private ETS capped ring (cap 10k) with a 3-tuple `:heir` so the
   lazily-created table survives its creating request process (the shadow-table
   silent-disarm class witnessed in v26.10.19).
+
+  r18 (lane S5) additions:
+  - `parse_connection_string/1` — the real AI connection-string grammar
+    (`InstrumentationKey=...;IngestionEndpoint=https://...;...`) with the
+    derived `/v2/track` URL, so a client can wire end-to-end exactly like an
+    AI SDK: parse -> POST {IngestionEndpoint}/v2/track.
+  - every ACCEPTED item additionally lands in the Log Analytics workspace
+    store via `Smalt.Monitor.AppInsightsLa.land/2` (real Sentinel ingest
+    face), making Breeze telemetry KQL-queryable at
+    `POST /v1/workspaces/:iKey/query`. The landing is a POST-ACK sideband:
+    a landing failure logs loudly and leaves the Breeze ack byte-identical
+    (real Breeze acks at ingest; the workspace pipeline is async) — absence
+    is wire-visible as a KQL query answering zero rows, never a fake ack.
   """
 
   @table :smalt_ai_items
@@ -58,6 +72,7 @@ defmodule Smalt.Monitor.AppInsights do
         true ->
           now = System.system_time(:millisecond)
           Enum.each(valid, &insert(&1, now))
+          land_sideband(valid, ikey_envelope)
           {:ok, 200, ack(length(items), length(valid), length(rejected))}
       end
     else
@@ -66,6 +81,79 @@ defmodule Smalt.Monitor.AppInsights do
   end
 
   def track(_body), do: {:error, 400, bad_request("items array required")}
+
+  # Accepts the track call once the ring insert is done: accepted items land
+  # in the Log Analytics workspace store (KQL-queryable). POST-ACK sideband —
+  # a failure is logged loudly and NEVER alters the Breeze ack (real Breeze
+  # acks at ingest; the workspace pipeline is async). Absence stays
+  # wire-visible: the KQL face answers zero rows for the failed landing.
+  defp land_sideband(valid, ikey_envelope) do
+    case Smalt.Monitor.AppInsightsLa.land(valid, ikey_envelope) do
+      {:ok, _stats} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("AppInsights->LA landing failed (ack unaffected): #{inspect(reason)}")
+
+        :ok
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "AppInsights->LA landing crashed (ack unaffected): " <> Exception.format(:error, e)
+      )
+
+      :ok
+  end
+
+  # ---------------------------------------------------------------------------
+  # Connection string (real AI SDK grammar)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Parses the real Application Insights connection string:
+  `InstrumentationKey=<guid>;IngestionEndpoint=https://...;LiveEndpoint=...;...`
+  Semicolon-separated `Key=Value` pairs; `InstrumentationKey` is REQUIRED
+  (real SDKs refuse a connection string without it — there is no telemetry
+  identity); `IngestionEndpoint` optional (defaults to the public Breeze
+  endpoint). Returns `{:ok, %{instrumentation_key, ingestion_endpoint,
+  track_url, location}}` or `{:error, message}`.
+
+  `track_url` is the derived POST target `{IngestionEndpoint}v2/track` —
+  the exact derivation the real SDKs perform before POSTing Breeze items.
+  """
+  @spec parse_connection_string(String.t()) :: {:ok, map()} | {:error, String.t()}
+  def parse_connection_string(cs) when is_binary(cs) do
+    pairs =
+      cs
+      |> String.split(";", trim: true)
+      |> Enum.reduce_while(%{}, fn pair, acc ->
+        case :binary.split(pair, "=") do
+          [k, v] -> {:cont, Map.put(acc, k, v)}
+          _ -> {:halt, :bad_pair}
+        end
+      end)
+
+    with %{} = pairs <- pairs,
+         ikey when is_binary(ikey) and ikey != "" <- pairs["InstrumentationKey"] do
+      ingestion = pairs["IngestionEndpoint"] || "https://dc.applicationinsights.microsoft.com/"
+      ingestion = if String.ends_with?(ingestion, "/"), do: ingestion, else: ingestion <> "/"
+
+      {:ok,
+       %{
+         instrumentation_key: ikey,
+         ingestion_endpoint: ingestion,
+         track_url: ingestion <> "v2/track",
+         location: pairs["Location"]
+       }}
+    else
+      :bad_pair -> {:error, "connection string pair without '=': " <> inspect(cs)}
+      nil -> {:error, "connection string missing InstrumentationKey"}
+      _ -> {:error, "connection string missing InstrumentationKey"}
+    end
+  end
+
+  def parse_connection_string(_other), do: {:error, "connection string must be a string"}
 
   @doc "Emulator query face: total + counts of recently ingested items by baseType."
   @spec summary() :: {:ok, map()}

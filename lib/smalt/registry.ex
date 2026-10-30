@@ -28,6 +28,8 @@ defmodule Smalt.Registry do
     "Microsoft.Compute/virtualMachines",
     "Microsoft.ConfidentialLedger/ledgers",
     "Microsoft.ConfidentialLedger/managedCCFs",
+    "Microsoft.ContainerRegistry/registries",
+    "Microsoft.ContainerRegistry/registries/webhooks",
     "Microsoft.ContainerService/managedClusters",
     "Microsoft.DevTestLab/schedules",
     "Microsoft.DocumentDB/databaseAccounts",
@@ -45,6 +47,9 @@ defmodule Smalt.Registry do
     "Microsoft.KeyVault/vaults",
     "Microsoft.KeyVault/vaults/keys",
     "Microsoft.KeyVault/vaults/secrets",
+    "Microsoft.ManagedIdentity/federatedIdentityCredentials",
+    "Microsoft.ManagedIdentity/userAssignedIdentities",
+    "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
     "Microsoft.Network/networkInterfaces",
     "Microsoft.Network/networkSecurityGroups",
     "Microsoft.Network/privateDnsZones",
@@ -80,6 +85,8 @@ defmodule Smalt.Registry do
     "Microsoft.Compute/virtualMachines" => "VirtualMachineShape",
     "Microsoft.ConfidentialLedger/ledgers" => "DefaultShape",
     "Microsoft.ConfidentialLedger/managedCCFs" => "DefaultShape",
+    "Microsoft.ContainerRegistry/registries" => "DefaultShape",
+    "Microsoft.ContainerRegistry/registries/webhooks" => "DefaultShape",
     "Microsoft.ContainerService/managedClusters" => "DefaultShape",
     "Microsoft.DevTestLab/schedules" => "DefaultShape",
     "Microsoft.DocumentDB/databaseAccounts" => "CosmosAccountShape",
@@ -97,6 +104,10 @@ defmodule Smalt.Registry do
     "Microsoft.KeyVault/vaults" => "KeyVaultShape",
     "Microsoft.KeyVault/vaults/keys" => "DefaultShape",
     "Microsoft.KeyVault/vaults/secrets" => "KeyVaultSecretShape",
+    "Microsoft.ManagedIdentity/federatedIdentityCredentials" => "DefaultShape",
+    "Microsoft.ManagedIdentity/userAssignedIdentities" => "DefaultShape",
+    "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials" =>
+      "DefaultShape",
     "Microsoft.Network/networkInterfaces" => "DefaultShape",
     "Microsoft.Network/networkSecurityGroups" => "NsgShape",
     "Microsoft.Network/privateDnsZones" => "DefaultShape",
@@ -133,6 +144,8 @@ defmodule Smalt.Registry do
     "Microsoft.Compute/virtualMachines" => "2021-04-01",
     "Microsoft.ConfidentialLedger/ledgers" => "2020-12-01-preview",
     "Microsoft.ConfidentialLedger/managedCCFs" => "2023-06-27-preview",
+    "Microsoft.ContainerRegistry/registries" => "2023-06-01",
+    "Microsoft.ContainerRegistry/registries/webhooks" => "2023-06-01",
     "Microsoft.ContainerService/managedClusters" => "2023-02-01",
     "Microsoft.DevTestLab/schedules" => "2018-09-15",
     "Microsoft.DocumentDB/databaseAccounts" => "2024-08-15",
@@ -150,6 +163,10 @@ defmodule Smalt.Registry do
     "Microsoft.KeyVault/vaults" => "2023-02-01",
     "Microsoft.KeyVault/vaults/keys" => "2023-07-01",
     "Microsoft.KeyVault/vaults/secrets" => "2023-07-01",
+    "Microsoft.ManagedIdentity/federatedIdentityCredentials" => "2023-01-31",
+    "Microsoft.ManagedIdentity/userAssignedIdentities" => "2023-04-01",
+    "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials" =>
+      "2023-01-31",
     "Microsoft.Network/networkInterfaces" => "2021-04-01",
     "Microsoft.Network/networkSecurityGroups" => "2021-04-01",
     "Microsoft.Network/privateDnsZones" => "2018-09-01",
@@ -211,8 +228,14 @@ defmodule Smalt.Registry do
   def data_plane_port, do: 8443
   def amqp_port, do: Application.get_env(:smalt, :amqp_port, 5672)
   def event_hubs_port, do: Application.get_env(:smalt, :event_hubs_port, 5673)
+  # GGEN-CACHE lane r11: Redis RESP2/RESP3 wire listener (AzureCache wire
+  # facade, Smalt.DataPlane.RedisWire). Runtime accessor mirrors
+  # RedisWire.configured_port/0; the default feeds the env-independent
+  # canonical capability document (R83 disclosure).
+  def redis_port, do: Application.get_env(:smalt, :redis_port, 6380)
   # Canonical defaults for env-independent documents (docs/capabilities.json):
   # the capability surface is the substrate contract, not the runtime override.
   def amqp_port_default, do: 5672
   def event_hubs_port_default, do: 5673
+  def redis_port_default, do: 6380
 end

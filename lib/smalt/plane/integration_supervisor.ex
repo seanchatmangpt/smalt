@@ -28,7 +28,7 @@ defmodule Smalt.Plane.IntegrationSupervisor do
         []
       end
 
-    children = store_child ++ eh_state_children() ++ broker_children()
+    children = store_child ++ eh_state_children() ++ broker_children() ++ redis_wire_children()
 
     spec =
       Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
@@ -64,5 +64,12 @@ defmodule Smalt.Plane.IntegrationSupervisor do
       {Smalt.Messaging.EventHubs.Server, []},
       {Smalt.Messaging.EhGeoDr, []}
     ]
+  end
+
+  # T01 (v26.10.29): RESP2 wire listener facade over AzureCache — non-deferred
+  # (the broker_children/0 precedent). Bind failure is contained INSIDE the
+  # facade init (the listener child is skipped; the app boots).
+  defp redis_wire_children do
+    [{Smalt.DataPlane.RedisWire, []}]
   end
 end

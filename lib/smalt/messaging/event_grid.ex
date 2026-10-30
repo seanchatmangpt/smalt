@@ -367,107 +367,12 @@ defmodule Smalt.Messaging.EventGrid do
       last_error: nil
     }
 
-  # -- retryPolicy (w6be) ----------------------------------------------------------
-  # Subscription-scoped retryPolicy: {max_delivery_attempts, event_time_to_live_s}.
-  # Defaults mirror real Event Grid: 30 attempts, 1 day TTL.
+  # -- retryPolicy (w6be) — T10 tail split: extracted verbatim to
+  # Smalt.Messaging.EventGrid.RetryPolicy; call sites unchanged via shims.
 
-  @retry_policy_defaults {30, 86_400}
+  defp validate_retry_policy!(policy), do: Smalt.Messaging.EventGrid.RetryPolicy.validate!(policy)
 
-  defp validate_retry_policy!(nil), do: @retry_policy_defaults
-
-  defp validate_retry_policy!({max, ttl}) when is_integer(max) and is_integer(ttl) do
-    unless max >= 1 and max <= 30 do
-      raise ArgumentError,
-            "EventGrid.subscribe/4 :retry_policy max_delivery_attempts must be 1..30, got #{max}"
-    end
-
-    unless ttl >= 1 do
-      raise ArgumentError,
-            "EventGrid.subscribe/4 :retry_policy event_time_to_live must be >= 1s, got #{ttl}"
-    end
-
-    {max, ttl}
-  end
-
-  # `{:hours, n}` and ISO-8601 "PTnH" / "PTnM" / "PTnS" duration forms.
-  defp validate_retry_policy!({:hours, n}) when is_integer(n) and n >= 1,
-    do: {30, n * 3_600}
-
-  defp validate_retry_policy!(ttl) when is_binary(ttl) do
-    case Regex.run(~r/^PT(\d+)([HMS])$/i, ttl) do
-      [_, n, unit] ->
-        secs =
-          case String.upcase(unit) do
-            "H" -> String.to_integer(n) * 3_600
-            "M" -> String.to_integer(n) * 60
-            "S" -> String.to_integer(n)
-          end
-
-        if secs < 1,
-          do:
-            raise(
-              ArgumentError,
-              "EventGrid.subscribe/4 :retry_policy event_time_to_live must be >= 1s"
-            )
-
-        {30, secs}
-
-      nil ->
-        raise ArgumentError,
-              "EventGrid.subscribe/4 :retry_policy event_time_to_live must be seconds integer, " <>
-                "{:hours, n}, or ISO-8601 PTnH/PTnM/PTnS, got #{inspect(ttl)}"
-    end
-  end
-
-  defp validate_retry_policy!(other),
-    do:
-      raise(ArgumentError,
-        message:
-          "EventGrid.subscribe/4 :retry_policy must be {max_delivery_attempts, " <>
-            "event_time_to_live_seconds}, got #{inspect(other)}"
-      )
-
-  # True when the queue entry's publish-time stamp is past the subscription's
-  # event_time_to_live. Expired events are DROPPED at dispatch (never delivered,
-  # typed telemetry) — the real Event Grid event-TTL law.
-  defp entry_expired?(sub, {_id, _ev, ts, _attempts}) do
-    ttl_s = sub[:event_time_to_live_s] || 86_400
-    System.system_time(:millisecond) - ts > ttl_s * 1_000
-  end
-
-  # Drops every TTL-expired queued event for the subscription. Returns the
-  # updated topic state. Each drop emits `[:smalt, :event_grid, :ttl_expired]`
-  # (never delivered, never loss-silent — the drop is observed).
-  defp drop_expired(t, topic, name) do
-    case t.subscribers[name] do
-      nil ->
-        t
-
-      sub ->
-        {kept, dropped} =
-          :queue.fold(
-            fn entry, {kept, dropped} ->
-              if entry_expired?(sub, entry) do
-                {kept, [entry | dropped]}
-              else
-                {:queue.in(entry, kept), dropped}
-              end
-            end,
-            {:queue.new(), []},
-            sub.queue
-          )
-
-        Enum.each(dropped, fn {id, _ev, _ts, _attempts} ->
-          :telemetry.execute(
-            [:smalt, :event_grid, :ttl_expired],
-            %{count: 1},
-            %{topic: topic, subscriber: name, id: id}
-          )
-        end)
-
-        put_in(t.subscribers[name], %{sub | queue: kept})
-    end
-  end
+  defp drop_expired(t, topic, name), do: Smalt.Messaging.EventGrid.RetryPolicy.drop_expired(t, topic, name)
 
   defp topic_state(state, topic) do
     Map.get(state.topics, topic) ||

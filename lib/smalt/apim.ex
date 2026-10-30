@@ -107,6 +107,104 @@ defmodule Smalt.Apim do
     end)
   end
 
+  # -- gateway wire plane (PRD-APIM wire court, ApimWireTest) ---------------------
+  #
+  # Config-driven route family served from the LIVE router: paths under
+  # /apim-gw/{api}/... dispatch through the policy chain named by
+  # `config :smalt, :apim_gateways` (map of api NAME -> %{policies: [...]};
+  # keys are BINARIES — never String.to_atom on anything request-shaped).
+  #
+  # Ordering law (r4-baseline-triage, all 12 ApimWire failures `left: 400`):
+  # this plane must run BEFORE the router's blob catch-all, whose
+  # MissingXMsVersion guard blanket-400s every unversioned 3-segment path —
+  # the gateway policies (jwt / rate-limit 429) and the default-off typed
+  # 404 must answer before that guard is ever reached.
+
+  @gateway_first_segment "apim-gw"
+
+  @doc """
+  Plug entry wired into `Smalt.EgressRouter` (before `:match`). Claims
+  `/apim-gw/{api}/{rest...}` paths only; everything else passes through
+  untouched. A configured api runs its `:policies` chain (`Smalt.Apim.run/2`
+  — first refusal halts with the typed envelope), then answers 200 with the
+  built-in echo face (`{"api","method","path","headers"}`). An UNCONFIGURED
+  api answers the typed 404 face. Never raises on request-shaped input.
+  """
+  def gateway(conn, _opts) do
+    case conn.path_info do
+      [@gateway_first_segment, api | _rest] ->
+        dispatch_gateway(conn, api)
+
+      _ ->
+        conn
+    end
+  end
+
+  defp dispatch_gateway(conn, api) do
+    conf = gateway_config(api)
+
+    if conf do
+      conn
+      |> run(conf_policies(conf))
+      |> then(fn
+        %Plug.Conn{state: :sent} = conn -> conn
+        conn -> echo_response(conn, api)
+      end)
+    else
+      gateway_not_found(conn, api)
+    end
+  end
+
+  defp gateway_config(api) do
+    :smalt
+    |> Application.get_env(:apim_gateways, %{})
+    |> Map.get(api)
+  end
+
+  # The gateway config entry is a MAP (`%{policies: [...]}` — the wire
+  # contract's shape); a keyword list is tolerated for symmetry with the
+  # `run/2` policy-list idiom.
+  defp conf_policies(%{} = conf), do: Map.get(conf, :policies, [])
+  defp conf_policies(conf) when is_list(conf), do: Keyword.get(conf, :policies, [])
+  defp conf_policies(_), do: []
+
+  # Default OFF posture: an unconfigured api is a typed 404 (the same face
+  # class the blob catch-all serves), never a silent pass into the blob
+  # MissingXMsVersion blanket 400.
+  defp gateway_not_found(conn, api) do
+    body =
+      Jason.encode!(%{
+        "error" => %{
+          "code" => "ApiNotFound",
+          "message" => "The api '#{api}' is not configured on this gateway."
+        }
+      })
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(404, body)
+    |> halt()
+  end
+
+  # Built-in echo backend (the wire court's witness): a fully-admitted
+  # request answers 200 with the post-transform request echo. The header
+  # map carries any :header_transform writes so the court can pin the
+  # transform actually ran on the wire.
+  defp echo_response(conn, api) do
+    body =
+      Jason.encode!(%{
+        "api" => api,
+        "method" => conn.method,
+        "path" => conn.request_path,
+        "headers" => Map.new(conn.req_headers)
+      })
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, body)
+    |> halt()
+  end
+
   # -- policy dispatch -----------------------------------------------------------
 
   defp check({:rate_limit, opts}, conn), do: rate_limit(conn, opts)

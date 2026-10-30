@@ -35,6 +35,30 @@ defmodule Smalt.GraphlawEx.AdmissionGate do
 
   Refusal codes are append-only (spec §5). `SMALT-METHOD-NA` is deliberately
   absent: the GET-class is ungated, not refused.
+
+  ## Config interaction (GL28-2): `config :smalt, :graphlaw_ex_gate`
+
+  The gate reads `Application.get_env(:smalt, :graphlaw_ex_gate, [])` on every
+  gated call. Two flags, both honored HERE (the router's
+  `Smalt.Config.graph_law()[:enforcement] == :fail_closed` pre-check at
+  arm_gateway/router.ex check_admission_gate/2 is upstream of this module and
+  is lane E1's surface — do not change it here):
+
+    - `enabled:` — when explicitly `false` (prod default in config.exs), the
+      gate short-circuits to `:ok` (passthrough) BEFORE any validation, so a
+      call that slips past the router's enforcement pre-check still honors the
+      opt-out. Default when the env key is entirely absent: `true`, so the
+      gate stays a usable pure function when nothing is configured (the
+      router still decides whether to call at all).
+    - `fail_closed:` — `true` (default) is the strict chain below. `false`
+      selects the spec §8 fail-open posture (admit-and-seal): a MISSING
+      engine digest (no `:engine_digest` opt and no value at
+      `opts[:engine_digest_key]` in `:persistent_term`) admits instead of
+      refusing. A PRESENT-but-mismatched digest always refuses regardless of
+      the flag — fail-open covers unavailability, never drift.
+
+  `max_queue:` is backpressure state for a future queued gate process; the
+  pure gate reads it for completeness but it does not affect the decision.
   """
 
   @envelope_keys ~w(admitted_mutation payload_bytes receipt_blake3 engine_digest ocel_frame)a
@@ -81,6 +105,14 @@ defmodule Smalt.GraphlawEx.AdmissionGate do
     - `:seen_receipts` — the replay ledger, a MapSet of receipt hashes. The
       gate READS it, never writes it; the caller records post-commit. Absent
       ledger skips the replay check.
+    - `:max_request_bytes` — the packet-4 cap (spec §4). Defaults to
+      `max_payload/0` (16 MiB, matching `GraphlawEx.ABI.max_request_bytes/0`;
+      the constant is mirrored locally rather than called to keep this module
+      decidable without the graphlaw_ex dep loaded — the gate must refuse
+      even when the engine is down). Oversize answers `:smalt_oversize`.
+    - `:engine_digest_key` — the `:persistent_term` key holding the engine
+      digest (router passes `:gl_engine_digest`). Consulted only when
+      `opts[:engine_digest]` is absent, so an explicit digest always wins.
 
   Methods match exactly (uppercase `"PUT"`, per spec §3.1).
   """
@@ -90,22 +122,37 @@ defmodule Smalt.GraphlawEx.AdmissionGate do
   def gate(method, _envelope, _opts) when method in @ungated_methods, do: :ok
 
   def gate(method, envelope, opts) when method in @gated_methods,
-    do: validate(envelope, opts)
+    do: gate_config(fn cfg -> validate(envelope, opts, cfg) end)
 
   # Fail-closed: any method outside the two pinned classes is treated as a
   # mutation and must present an admitted envelope (SMALT-METHOD-NA is never
   # emitted, spec §5).
-  def gate(_method, envelope, opts), do: validate(envelope, opts)
+  def gate(_method, envelope, opts), do: gate_config(fn cfg -> validate(envelope, opts, cfg) end)
+
+  # Config read (GL28-2): `config :smalt, :graphlaw_ex_gate` is now live.
+  # `enabled: false` is a passthrough decided BEFORE any validation. The
+  # default when the env key is absent is enabled — the pure-function courts
+  # exercise the chain without config, and prod's opt-out is explicit in
+  # config.exs, never silent.
+  defp gate_config(cont) do
+    cfg = Application.get_env(:smalt, :graphlaw_ex_gate, [])
+
+    if Keyword.get(cfg, :enabled, true) do
+      cont.(cfg)
+    else
+      :ok
+    end
+  end
 
   ## ── validation chain (first failure wins) ──────────────────────────────
 
   # Order pinned by the shared contract: envelope keys -> payload ->
   # engine_digest -> receipt_blake3 well-formedness -> replay.
-  @spec validate(envelope() | nil, opts()) :: :ok | refused()
-  defp validate(envelope, opts) do
+  @spec validate(envelope() | nil, opts(), keyword()) :: :ok | refused()
+  defp validate(envelope, opts, cfg) do
     with :ok <- envelope_check(envelope),
          :ok <- payload_check(envelope, opts),
-         :ok <- engine_check(envelope, opts),
+         :ok <- engine_check(envelope, opts, cfg),
          :ok <- receipt_check(envelope),
          :ok <- replay_check(envelope, opts) do
       :ok
@@ -146,26 +193,62 @@ defmodule Smalt.GraphlawEx.AdmissionGate do
         {:refused, :smalt_payload_mismatch,
          %{payload_bytes: byte_size(payload), body: byte_size(opts[:body])}}
 
-      byte_size(payload) > @max_payload ->
+      byte_size(payload) > max_request_bytes(opts) ->
         {:refused, :smalt_oversize,
-         %{payload_bytes: byte_size(payload), max_payload: @max_payload}}
+         %{payload_bytes: byte_size(payload), max_payload: max_request_bytes(opts)}}
 
       true ->
         :ok
     end
   end
 
-  # Step 4 — engine identity. A nil `opts[:engine_digest]` (digest not yet
-  # wired) fails closed: a receipt minted by an unknown engine never commits.
-  @spec engine_check(envelope(), opts()) :: :ok | refused()
-  defp engine_check(envelope, opts) do
-    expected = opts[:engine_digest]
+  # Step 4 — engine identity. Resolution order: explicit `opts[:engine_digest]`
+  # wins; else `:persistent_term.get(opts[:engine_digest_key], nil)`. A nil
+  # resolved digest fails closed (default) or admits (fail-open posture,
+  # `fail_closed: false` in config — unavailability only, never drift).
+  @spec engine_check(envelope(), opts(), keyword()) :: :ok | refused()
+  defp engine_check(envelope, opts, cfg) do
+    expected =
+      case opts[:engine_digest] do
+        nil -> persistent_digest(opts[:engine_digest_key])
+        digest -> digest
+      end
+
     actual = Map.fetch!(envelope, :engine_digest)
 
-    if expected == actual do
-      :ok
-    else
-      {:refused, :smalt_engine_drift, %{expected: expected, actual: actual}}
+    cond do
+      expected == actual ->
+        :ok
+
+      is_nil(expected) and fail_closed?(cfg) ->
+        {:refused, :smalt_engine_drift, %{expected: expected, actual: actual}}
+
+      is_nil(expected) ->
+        # Fail-open posture (spec §8 admit-and-seal): digest unavailable,
+        # not drifted. A mismatched PRESENT digest never reaches this arm.
+        :ok
+
+      true ->
+        {:refused, :smalt_engine_drift, %{expected: expected, actual: actual}}
+    end
+  end
+
+  defp persistent_digest(nil), do: nil
+
+  defp persistent_digest(key) do
+    :persistent_term.get(key, nil)
+  rescue
+    _ -> nil
+  end
+
+  defp fail_closed?(cfg), do: Keyword.get(cfg, :fail_closed, true)
+
+  # `max_request_bytes` opt (router gate_opts/1) overrides the module default;
+  # a non-positive-integer opt falls back to the 16 MiB packet-4 cap.
+  defp max_request_bytes(opts) do
+    case opts[:max_request_bytes] do
+      n when is_integer(n) and n > 0 -> n
+      _ -> @max_payload
     end
   end
 
