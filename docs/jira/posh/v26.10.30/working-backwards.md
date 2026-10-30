@@ -8,6 +8,19 @@ Distribution Date: October 30, 2026
 (Operator-supplied, authoritative. Full text preserved verbatim in this file
 as the synthesis contract for POSH implementation.)
 
+> **DIALECT-SCOPED** — this file's press-release claims are dialect-scoped
+> (see note below). **Dialect scoping note (v26.10.31)** — added by GAP-15 wave-2 doc migration
+> (lane 15). Decision record:
+> [`../v26.10.31/00-unification-dialect-decision.md`](../v26.10.31/00-unification-dialect-decision.md).
+> The press-release claims below are **dialect-#1-scoped** (the azurerm swap:
+> "wire-accurate Azure ARM emulation", unmodified azurerm Terraform stacks,
+> terraform apply < 2s) and **dialect-#0-scoped** (the Entra STS face:
+> "mirroring Azure AD v2.0 endpoints"). They are not smalt-core claims:
+> smalt-core is a vendor-neutral public-cloud ontology; vendor dialects live
+> in posh. Core-level equivalents are v26.10.31 charter items
+> (`../../v26.10.31/00-charter.md`, when landed) — the operator-supplied text
+> below stays verbatim, never edited.
+
 ## Canonical code layout (from Internal FAQ Q1)
 
 ~/smalt/
@@ -44,12 +57,18 @@ as the synthesis contract for POSH implementation.)
   (POST /{tenant}/oauth2/v2.0/token, client_credentials -> valid mock bearer).
 - Receipt: R_turnstile = BLAKE3(InboundDelta || NodeID || Timestamp_ns ||
   StateRoot), emitted as X-Smalt-Receipt-Turnstile header + append-only event
-  log.
+  log. HONEST CAVEAT (2026-10-30, G26, see
+  gaps/26-turnstile-live-path.md): today the receipt is a live STAMP only
+  (X-Smalt-Receipt-Turnstile header on every gateway response); the receipt
+  FENCE — refusing an unreceipted delta and settling into the event log — is
+  enforced nowhere live until lane 39 lands. Statement 6's "no unreceipted
+  delta admitted" is a design requirement, not a current guarantee.
 - Turtle over YAML: SPARQL invariant queries in CI prove every route terminates
   in an authorized turnstile; ggen SPARQL CONSTRUCT compiles graphs to Elixir
   GenStage pipelines + Go structs (0 DPMO by construction).
 - Verification ladder via just posh-court: cluster boot (colima, 3-node kind,
-  NodePort 30943 -> localhost:9443); health assert /healthz 200; provider build
+  NodePort 30943 -> localhost:9443); health assert /metadata/endpoints 200
+  (readiness anchor; /healthz is bearer-gated 401); provider build
   (transient TF_CLI_CONFIG_FILE dev_overrides hashicorp/azurerm); terraform
   apply of real platform HCL (courtroom-platform-az/infra/); Falsifier 1
   (STS-bearer wire inspection + destroy + zero residue); Falsifier 2

@@ -91,29 +91,36 @@ Suites (`test/posh/integration/`):
 
 ## 3. Cleanroom Execution on kind: `just posh-court`
 
-Provider court: `terraform-provider-smalt/scripts/provider_court.sh` —
-8-stage fail-closed ladder against the kind substrate at
-`http://127.0.0.1:9443`. Any stage failure halts the ladder; the
-composite Andon signal is MAX(stage signals) per charter §6.
+> SUPERSEDED 2026-10-30 by `justfile.d/58-posh.just` (`posh-court`): the
+> original stage table (substrate/binary/fmt/plan/apply/residue/drift/
+> receipt, spec'd against `terraform-provider-smalt/scripts/provider_court.sh`,
+> the archived Elixir spike) drifted from what was implemented. Original
+> intent — an 8-stage fail-closed cleanroom ladder on the kind substrate at
+> `http://127.0.0.1:9443`, any stage failure halting the ladder, composite
+> Andon signal = MAX(stage signals) per charter §6 — is preserved below.
 
-Stage table:
+The IMPLEMENTED ladder (`just posh-court`, justfile.d/58-posh.just; GAP9
+G4 close) is 8 counted stages plus an uncounted load-bearing pre-stage,
+exit contract 0 green / 1 FAIL / 3 SKIP with typed `[POSH-*]` lines:
 
-| Stage | Runs | GREEN | YELLOW | RED |
+| Stage | Runs | GREEN | SKIP (exit 3) | RED (exit 1) |
 |---|---|---|---|---|
-| 1 substrate | kind API poll @ 9443 | 200 in budget | slow (warn) | unreachable |
-| 2 binary | fresh provider build, sha256 pinned | 0, no warns | warns | compile error/>60s |
-| 3 fmt/validate | `terraform fmt -check` + validate | exit 0 | fmt-only drift | schema error |
-| 4 plan | `terraform plan` on cleanroom kind | exit 0, diff=spec | — | plan error |
-| 5 apply | `terraform apply -auto-approve` | exit 0, live | — | apply error |
-| 6 residue | STS-minted GET after destroy | empty | — | residue found |
-| 7 drift | `plan -detailed-exitcode` | exit 0 | — | exit 2 (drift) |
-| 8 receipt | receipt written + validated | 5 fields ok | — | missing field |
+| pre (uncounted) | kind boot (`kind-up`/`kind-images`/`kind-deploy`), bounded 60x1s poll on the metadata anchor (9443), `posh-build` + `posh-install` (transient dev_overrides rc) | all green | — | any pre-stage leg fails |
+| 1 vet | `golangci-lint run ./...` over posh/ + provider dir | 0 findings | golangci-lint or a `.golangci.yml` missing | findings |
+| 2 alloc-test | `go test -race ./...` over posh/ | 0 | — | test failure |
+| 3 static | `go vet ./...` over provider dir | 0 | — | vet failure |
+| 4 fence | `go test -race ./internal/egress/... ./internal/config/...` | 0 | — | test failure |
+| 5 smalt-wire | STS bearer mint + resourcegroup/containerApps wire asserts + `X-Smalt-Receipt-Turnstile` header assert | all asserts pass | substrate not answering | assert fails |
+| 6 tf apply | `terraform init && apply -auto-approve` on the byte-identical example root | exit 0 | example root not landed (stage 7 co-skips) | apply failure |
+| 7 zero-drift | `plan -detailed-exitcode` (0 required pre-destroy) → `destroy` → STS-minted residue GETs (resourcegroups + containerApps must be empty) | plan 0, zero residue | — | drift (exit 2), destroy failure, or any residue |
+| 8 mutation non-vacuity | `go test -race -run 'TestHTTPEnvelopeOverTCPListener\|TestVerifyTurnstile' ./internal/server/ ./internal/receipt/` | tamper-reject legs green | — | receipt verification regressed |
 
-Andon mapping (charter §6): stage RED maps to its owning gate — stages
-1–2 → BUILD gate, 3 → LINT gate, 4–7 → INVARIANT gate, 8 → receipt
-validation (a court output missing identity/authority/consequence/
-replay/standing is not a receipt and is RED). All GREEN → PROCEED.
-Any RED → HALT the pipeline instantly.
+Andon mapping: the original per-stage gate mapping (stages → BUILD/
+LINT/INVARIANT/receipt gates) is superseded with the table; the
+implemented ladder reports typed `[POSH-COURT-N] PASS/SKIP/FAIL` lines
+and tallies `$pass/8 PASS, $skip SKIP, $fail FAIL`. The Andon driver
+(`posh/internal/andon`) is implemented but not yet wired as a court
+stage — see `gaps/09-courts-matrix.md` G3.
 
 ## 4. Zero-Drift Verification + Residue Falsifier
 

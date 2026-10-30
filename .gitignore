@@ -161,6 +161,9 @@ tmp/posh/
 # POSH wave (v26.10.30): Go membrane + provider build artifacts
 posh/bin/
 posh/run/
+posh/tmp/
+*.test
+generated/
 adapters/terraform-provider-smalt/terraform-provider-azurerm
 adapters/terraform-provider-smalt/*.tfrc
 adapters/terraform-provider-smalt/.terraform/

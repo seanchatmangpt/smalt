@@ -73,7 +73,6 @@ defmodule Smalt.Internal.AcrTest do
 
   defp acr_req(method, path, body \\ nil) do
     url = "#{path}?api-version=#{@api_version}"
-
     conn =
       if body do
         conn(method, url, Jason.encode!(body))
@@ -501,5 +500,82 @@ defmodule Smalt.Internal.AcrTest do
 
     # Unknown-registry delete -> typed 404 (no async face minted).
     assert acr_req(:delete, "#{@base}/registries/reg-ghost-acr").status == @not_found
+  end
+
+  # -- KD-78 api-version gate (H6 fix): monotonic admission against the Registry top --
+
+  defp acr_req_v(method, path, version, body \\ nil) do
+    url = "#{path}?api-version=#{version}"
+
+    conn =
+      if body do
+        conn(method, url, Jason.encode!(body))
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+      else
+        conn(method, url)
+      end
+
+    conn
+    |> Plug.Conn.fetch_query_params()
+    |> Plug.Parsers.call(@parsers_opts)
+    |> then(&Smalt.ArmGateway.Providers.AcrRouter.call(&1, []))
+  end
+
+  defp registry_body,
+    do: %{"location" => "eastus", "sku" => %{"name" => "Basic"}, "properties" => %{}}
+
+  test "api-version gate: PUT above the family top (2023-07-01) -> typed 400 InvalidApiVersionParameter" do
+    reg = "regacr07"
+
+    conn = acr_req_v(:put, "#{@base}/registries/#{reg}", "2023-07-01", registry_body())
+
+    assert conn.status == @bad_request
+
+    body = Jason.decode!(conn.resp_body)
+    assert body["error"]["code"] == "InvalidApiVersionParameter"
+    assert body["error"]["message"] =~ "2023-06-01"
+    refute Map.has_key?(body["error"], "target")
+
+    # The refusal precedes mutation: nothing was written at the refused version.
+    assert Store.get(:smalt_resources, registry_key(reg)) == :error
+  end
+
+  test "api-version gate: PUT at the top (2023-06-01) and preview-normalized (2023-06-preview) admitted" do
+    reg = "regacr08"
+    registry_cleanup(reg)
+
+    at_top = acr_req_v(:put, "#{@base}/registries/#{reg}", "2023-06-01", registry_body())
+    assert at_top.status == @created
+    assert Jason.decode!(at_top.resp_body)["name"] == reg
+
+    # 2023-06-preview normalizes via version_base to the day-prefixed ISO base.
+    preview = acr_req_v(:put, "#{@base}/registries/#{reg}", "2023-06-preview", registry_body())
+    assert preview.status == @ok
+
+    # GET roundtrip at the admitted version.
+    get_conn = acr_req_v(:get, "#{@base}/registries/#{reg}", "2023-06-01")
+    assert get_conn.status == @ok
+    assert Jason.decode!(get_conn.resp_body)["sku"]["name"] == "Basic"
+
+    # DELETE at the admitted version: typed 202 LRO face.
+    assert acr_req_v(:delete, "#{@base}/registries/#{reg}", "2023-06-01").status == @accepted_lro
+  end
+
+  test "api-version gate: missing api-version -> 400 MissingApiVersionParameter; malformed -> InvalidApiVersionParameter" do
+    reg = "regacr09"
+
+    missing =
+      conn(:put, "#{@base}/registries/#{reg}", Jason.encode!(registry_body()))
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.fetch_query_params()
+      |> Plug.Parsers.call(@parsers_opts)
+      |> then(&Smalt.ArmGateway.Providers.AcrRouter.call(&1, []))
+
+    assert missing.status == @bad_request
+    assert Jason.decode!(missing.resp_body)["error"]["code"] == "MissingApiVersionParameter"
+
+    malformed = acr_req_v(:put, "#{@base}/registries/#{reg}", "not-a-date", registry_body())
+    assert malformed.status == @bad_request
+    assert Jason.decode!(malformed.resp_body)["error"]["code"] == "InvalidApiVersionParameter"
   end
 end

@@ -1,0 +1,78 @@
+# compat-pin.ttl — azurerm-wire dialect compat pin (DIALECT half of the
+# G33/G45 pin, split per docs/jira/posh/v26.10.31/gaps/12-compat-pin-split.md).
+# Lives with the artifact it pins: the terraform-provider-smalt package.
+#
+# DIALECT split law: a row goes DIALECT iff it pins the azurerm-wire shape of
+# a specific adapter package. This file carries:
+#   - 17 smalt:registryTop rows (per-type api-version ceilings, post-C4)
+#   - 14 smalt:providerConstant rows (provider Go APIVersion consts)
+#   - 1 registeredDivergence (ficAPIVersion, KD-45-1)
+#   - testCensusCount 37 (counts `func Test` in internal/provider/*_test.go —
+#     the dialect package's own test population)
+#   - 2 dialectBehavior rows (PROPOSED, REGISTERED-DIVERGENCE class:
+#     documented, NOT gate-checked until a checker exists — an unchecked row
+#     must not read as PASS)
+# Machine-checked by scripts/compat_pin_check.py --dialect-pin
+# (exit 0 clean / 1 COMPAT-PIN-FAIL / 3 COMPAT-PIN-SKIP) and
+# non-vacuity-flipped by `just compat-court` (dialect leg: ACR api-version
+# mutation must exit 1).
+#
+# DO NOT hand-edit values without re-deriving from:
+#   lib/smalt/registry.ex (@api_versions tops)
+#   adapters/terraform-provider-smalt/internal/provider/*.go (APIVersion consts)
+#   grep -c 'func Test' adapters/terraform-provider-smalt/internal/provider/*_test.go
+@prefix smalt: <https://smalt.dev/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<https://smalt.dev/compat-pin-dialect>
+    a smalt:CompatPin ;
+    smalt:testCensusCount 37 ;
+
+    # PROPOSED, unchecked (REGISTERED-DIVERGENCE class until a checker lands):
+    smalt:dialectBehavior "preview-normalization" ;      # preview-field normalization in the dialect shim
+    smalt:dialectBehavior "status-201-200-conventions" ; # 201-on-create / 200-on-update ARM conventions
+
+    # -- registry.ex tops (post-C4), one row per type ----------------------
+    smalt:registryTop
+        [ smalt:resourceType "Microsoft.App/containerApps" ;                        smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.App/managedEnvironments" ;                 smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.ContainerService/managedClusters" ;        smalt:version "2024-02-01" ] ,
+        [ smalt:resourceType "Microsoft.ManagedIdentity/federatedIdentityCredentials" ; smalt:version "2023-08-01" ] ,
+        [ smalt:resourceType "Microsoft.KeyVault/vaults" ;                         smalt:version "2023-07-01" ] ,
+        [ smalt:resourceType "Microsoft.Network/networkInterfaces" ;               smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.Network/networkSecurityGroups" ;           smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.Network/publicIPAddresses" ;               smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.Network/virtualNetworks" ;                 smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.Network/subnets" ;                         smalt:version "2023-05-01" ] ,
+        [ smalt:resourceType "Microsoft.ContainerRegistry/registries" ;            smalt:version "2023-06-01" ] ,
+        [ smalt:resourceType "Microsoft.OperationalInsights/workspaces" ;          smalt:version "2022-10-01" ] ,
+        [ smalt:resourceType "Microsoft.Resources/resourceGroups" ;                smalt:version "2023-07-01" ] ,
+        [ smalt:resourceType "Microsoft.ManagedIdentity/userAssignedIdentities" ;  smalt:version "2023-04-01" ] ,
+        [ smalt:resourceType "Microsoft.Authorization/roleDefinitions" ;           smalt:version "2022-04-01" ] ,
+        [ smalt:resourceType "Microsoft.Authorization/roleAssignments" ;           smalt:version "2022-04-01" ] ,
+        [ smalt:resourceType "Microsoft.KeyVault/vaults/secrets" ;                 smalt:version "2023-07-01" ] ;
+
+    # -- provider ARM constants (grep of internal/provider, non-test) ------
+    smalt:providerConstant
+        [ smalt:symbol "rgAPIVersion" ;                     smalt:version "2023-07-01" ] ,
+        [ smalt:symbol "keyVaultSecretAPIVersion" ;         smalt:version "2023-07-01" ] ,
+        [ smalt:symbol "containerAppAPIVersion" ;           smalt:version "2024-03-01" ] ,
+        [ smalt:symbol "containerAppFallbackAPIVersion" ;   smalt:version "2023-05-01" ] ,
+        [ smalt:symbol "keyVaultAPIVersion" ;               smalt:version "2023-07-01" ] ,
+        [ smalt:symbol "keyVaultFallbackAPIVersion" ;       smalt:version "2023-02-01" ] ,
+        [ smalt:symbol "uaiAPIVersion" ;                    smalt:version "2023-04-01" ] ,
+        [ smalt:symbol "roleDefAPIVersion" ;                smalt:version "2022-04-01" ] ,
+        [ smalt:symbol "roleAssignAPIVersion" ;             smalt:version "2022-04-01" ] ,
+        [ smalt:symbol "acrAPIVersion" ;                    smalt:version "2023-06-01" ] ,
+        [ smalt:symbol "lawAPIVersion" ;                    smalt:version "2022-10-01" ] ,
+        [ smalt:symbol "storageAPIVersion" ;                smalt:version "2023-01-01" ] ,
+        [ smalt:symbol "caeAPIVersion" ;                    smalt:version "2024-03-01" ] ,
+        [ smalt:symbol "caeFallbackAPIVersion" ;            smalt:version "2023-05-01" ] ;
+
+    # -- registered divergences (surface present, values disagree) ---------
+    smalt:registeredDivergence
+        [ smalt:symbol "ficAPIVersion" ; smalt:providerVersion "2023-01-31" ;
+          smalt:registryTopVersion "2023-08-01" ;
+          rdfs:comment "FIC provider constant predates the registry top; KD-45-1 registered divergence — provider must either adopt the top or keep this row." ] .
+
+# end compat-pin.ttl

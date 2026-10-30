@@ -52,6 +52,7 @@ func (m *Machine) Apply(gate string, outcome Outcome, subjectSHA, reason string)
 		// skip/blocked: hold current signal, still receipted.
 		tr.Signal = prev
 		tr.Hysteresis = 0
+		notifyTransition(tr)
 		return tr, nil
 	}
 
@@ -87,7 +88,19 @@ func (m *Machine) Apply(gate string, outcome Outcome, subjectSHA, reason string)
 		tr.Signal = target
 		tr.Hysteresis = 0
 	}
+	notifyTransition(tr)
 	return tr, nil
+}
+
+// notifyTransition fires the OnTransition counter hook (if wired) for a
+// receipted transition, holds included. Panics in the hook are recovered —
+// a metrics fault must never take the state machine down.
+func notifyTransition(tr GateTransition) {
+	if OnTransition == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	OnTransition(tr.Gate, tr.Prev, tr.Signal)
 }
 
 // changedFromLastRed reports whether sha differs from the subject SHA

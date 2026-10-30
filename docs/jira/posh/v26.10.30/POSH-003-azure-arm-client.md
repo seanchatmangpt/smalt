@@ -1,5 +1,10 @@
 # POSH-003: posh Azure ARM face via official SDKs
 
+**DIALECT-SCOPED: dialect #1 (Azure ARM), consumes dialect #0 STS** — stamp
+added by GAP-15 wave-2 doc migration (lane 15). Decision record:
+[`../v26.10.31/00-unification-dialect-decision.md`](../v26.10.31/00-unification-dialect-decision.md).
+Acceptance criteria below are unchanged.
+
 ## Task
 posh exposes ARM operations backed by azidentity + ARM SDK (or raw azcore):
 token mint (client_credentials vs smalt STS at {arm_endpoint}/{tenant}/oauth2/

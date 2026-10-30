@@ -1,0 +1,178 @@
+# routes.ttl — POSH 12 ARM Resource Ingress Routes (Phase 3 Synthesis).
+#
+# Adheres strictly to shapes/ingress.ttl and shapes/egress.ttl:
+#   * IngressRoute -> admittedBy exactly 1 Turnstile
+#   * IngressRoute -> shape exactly 1 sh:NodeShape
+#   * IngressRoute -> membraneOp exactly 1 xsd:string
+#   * IngressRoute -> sink at most 1 Sink
+#   * Turnstile    -> emits exactly 1 Receipt
+#   * sh:closed true: NO rdfs:label on routes, turnstiles, or receipts.
+
+@prefix posh: <https://smalt.dev/posh/ns#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ---- Resource Frame Shapes ----
+
+posh:ResourceGroupShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:ContainerAppEnvironmentShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:ContainerAppShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:KeyVaultShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:KeyVaultSecretShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:UserAssignedIdentityShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:FederatedIdentityCredentialShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:RoleDefinitionShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:RoleAssignmentShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:ContainerRegistryShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:LogAnalyticsWorkspaceShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:StorageAccountShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+# ---- 12 ARM Resource Ingress Routes ----
+
+posh:routeResourceGroup a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileResourceGroup ;
+  posh:membraneOp "arm.resource_group" ;
+  posh:shape posh:ResourceGroupShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeContainerAppEnvironment a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileContainerAppEnvironment ;
+  posh:membraneOp "arm.container_app_environment" ;
+  posh:shape posh:ContainerAppEnvironmentShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeContainerApp a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileContainerApp ;
+  posh:membraneOp "arm.container_app" ;
+  posh:shape posh:ContainerAppShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeKeyVault a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileKeyVault ;
+  posh:membraneOp "arm.key_vault" ;
+  posh:shape posh:KeyVaultShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeKeyVaultSecret a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileKeyVaultSecret ;
+  posh:membraneOp "arm.key_vault_secret" ;
+  posh:shape posh:KeyVaultSecretShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeUserAssignedIdentity a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileUserAssignedIdentity ;
+  posh:membraneOp "arm.user_assigned_identity" ;
+  posh:shape posh:UserAssignedIdentityShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeFederatedIdentityCredential a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileFederatedIdentityCredential ;
+  posh:membraneOp "arm.federated_identity_credential" ;
+  posh:shape posh:FederatedIdentityCredentialShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeRoleDefinition a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileRoleDefinition ;
+  posh:membraneOp "arm.role_definition" ;
+  posh:shape posh:RoleDefinitionShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeRoleAssignment a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileRoleAssignment ;
+  posh:membraneOp "arm.role_assignment" ;
+  posh:shape posh:RoleAssignmentShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeContainerRegistry a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileContainerRegistry ;
+  posh:membraneOp "arm.container_registry" ;
+  posh:shape posh:ContainerRegistryShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeLogAnalyticsWorkspace a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileLogAnalyticsWorkspace ;
+  posh:membraneOp "arm.log_analytics_workspace" ;
+  posh:shape posh:LogAnalyticsWorkspaceShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeStorageAccount a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileStorageAccount ;
+  posh:membraneOp "arm.storage_account" ;
+  posh:shape posh:StorageAccountShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+# ---- Turnstiles ----
+
+posh:turnstileResourceGroup a posh:Turnstile ;
+  posh:emits posh:receiptResourceGroup .
+
+posh:turnstileContainerAppEnvironment a posh:Turnstile ;
+  posh:emits posh:receiptContainerAppEnvironment .
+
+posh:turnstileContainerApp a posh:Turnstile ;
+  posh:emits posh:receiptContainerApp .
+
+posh:turnstileKeyVault a posh:Turnstile ;
+  posh:emits posh:receiptKeyVault .
+
+posh:turnstileKeyVaultSecret a posh:Turnstile ;
+  posh:emits posh:receiptKeyVaultSecret .
+
+posh:turnstileUserAssignedIdentity a posh:Turnstile ;
+  posh:emits posh:receiptUserAssignedIdentity .
+
+posh:turnstileFederatedIdentityCredential a posh:Turnstile ;
+  posh:emits posh:receiptFederatedIdentityCredential .
+
+posh:turnstileRoleDefinition a posh:Turnstile ;
+  posh:emits posh:receiptRoleDefinition .
+
+posh:turnstileRoleAssignment a posh:Turnstile ;
+  posh:emits posh:receiptRoleAssignment .
+
+posh:turnstileContainerRegistry a posh:Turnstile ;
+  posh:emits posh:receiptContainerRegistry .
+
+posh:turnstileLogAnalyticsWorkspace a posh:Turnstile ;
+  posh:emits posh:receiptLogAnalyticsWorkspace .
+
+posh:turnstileStorageAccount a posh:Turnstile ;
+  posh:emits posh:receiptStorageAccount .
+
+# ---- Receipts ----
+
+posh:receiptResourceGroup a posh:Receipt .
+posh:receiptContainerAppEnvironment a posh:Receipt .
+posh:receiptContainerApp a posh:Receipt .
+posh:receiptKeyVault a posh:Receipt .
+posh:receiptKeyVaultSecret a posh:Receipt .
+posh:receiptUserAssignedIdentity a posh:Receipt .
+posh:receiptFederatedIdentityCredential a posh:Receipt .
+posh:receiptRoleDefinition a posh:Receipt .
+posh:receiptRoleAssignment a posh:Receipt .
+posh:receiptContainerRegistry a posh:Receipt .
+posh:receiptLogAnalyticsWorkspace a posh:Receipt .
+posh:receiptStorageAccount a posh:Receipt .

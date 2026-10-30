@@ -336,6 +336,9 @@ func (r *keyVaultSecretResource) Delete(ctx context.Context, req resource.Delete
 
 func (r *keyVaultSecretResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
+	if !requireImportSegment(&resp.Diagnostics, id, "/secrets/", "azurerm_key_vault_secret") {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 	parts := strings.Split(strings.TrimPrefix(id, "/"), "/")
 	if len(parts) >= 2 {

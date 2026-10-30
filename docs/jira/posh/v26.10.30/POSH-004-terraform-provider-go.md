@@ -1,5 +1,11 @@
 # POSH-004: Go Terraform provider (protocol 6, dev_overrides swap)
 
+**DIALECT-SCOPED: dialect #1 (Azure ARM/azurerm)** — stamp added by GAP-15
+wave-2 doc migration (lane 15). Decision record:
+[`../v26.10.31/00-unification-dialect-decision.md`](../v26.10.31/00-unification-dialect-decision.md).
+Task and acceptance criteria below are byte-identical in meaning — additive
+stamp only.
+
 ## Task
 Build the Terraform provider as part of posh: cmd/terraform-provider-azurerm using
 terraform-plugin-framework (protocol 6). Resource set + schema parity exactly the

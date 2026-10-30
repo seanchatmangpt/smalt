@@ -3,12 +3,17 @@
 Pure-Elixir, BEAM-native local cloud-edge emulator: ARM-style control plane
 on 9443, TLS twin 9444, data plane 8443, AMQP Service Bus 5672, Event Hubs
 5673, MCP tool surface 9545. Point SDKs/CLIs at loopback, no cloud needed.
+v26.10.31 in transition: the smalt core is becoming a closed-world standards
+engine (public-cloud ontology, SHACL sh:closed admission, BLAKE3 turnstile);
+the Azure/ARM face is reclassifying as Dialect #1 in the posh Go membrane
+(`docs/jira/v26.10.31/00-charter.md` is the decision record).
 
 ## Agents
 
 Never dispatch the built-in generic agents (`general-purpose`, `claude`).
 Only use agents defined in `.claude/agents/` (bench-runner, kd-registrar,
-milestone-doc, shim-court-author, substrate-op) plus read-only Explore.
+milestone-doc, shim-court-author, substrate-op, dialect-op, pinion-keeper,
+charter-scribe) plus read-only Explore.
 Subagent prompts always carry the absolute repo path (this repo's root).
 
 ## Commands
@@ -25,7 +30,7 @@ just publish-dry   # publish gates dry-run (tarball leak greps, ERROR_CODES iden
 just receipts      # recent court/bench receipts
 just shim-courts   # shim-court anti-vacuity mutations
 just invariant-gates  # 6 fail-closed gates (cosmos-etag-cas, appconfig-etag-cas, blob-worm, ledger-chain, queue-capacity, lock-clamp)
-just logs          # tail newest tmp/*.log
+just logs          # tail newest tmp/*.log (can FOLLOW/hang — prefer bounded: `tail -n 40 tmp/$(ls -t tmp | grep '\.log$' | head -1)`)
 just bootstrap     # zero-to-green first-run (deps, certs, doctor, boot smoke)
 ```
 
@@ -91,6 +96,11 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   `workspace/scripts/e2e-court.mjs`
   (`just ws-court`), no jest/vitest.
 - `smalt-cli/` — Python CLI + probe tests (two venvs: `.venv`, `.venv-cli`)
+- `posh/` — Go membrane (stateless, disposable): `posh/internal/dialect/azure`
+  is the dialect engine hosting Dialect #1 (Azure/ARM), with sub-dialects
+  `armkv` (ARM KV face) and `kv7` (8443 KV REST 7.4 data plane — a distinct
+  sub-dialect, never deleted with an ARM strip). Import-cycle law:
+  `internal/api` never imports `internal/egress`.
 - `gates/` — invariant gates with negative-fixture non-vacuity contracts
   (verdict must REFUSE mutated observations; a gate that can't exit 1 is the failure)
 - `docs/jira/v26.10.14/` — closed milestone (the pattern exemplar);
@@ -127,7 +137,9 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   (`docs/jira/v26.10.17/RECEIPT_CONTEXT_LAW.md`; `receipt_index.py`
   flags **NO-CONTEXT**). Court precondition: `just quiet-check` before any
   court; `just quiesce` when the machine was busy (both court-x2 attempts
-  failed cold run 1, passed warm run 2). Helpers: `just leak-court`,
+  failed cold run 1, passed warm run 2). Gate receipts in
+  `tmp/invariant-gates/` are point-in-time: re-check the receipt timestamp
+  before citing gate standing; a stale RED blocks `just court`. Helpers: `just leak-court`,
   `just rewitness <KD-nn>`, `just kd-stale`, `just wt-scratch <sha>`,
   `just corpus-soak <n>`.
 - **KD register**: divergences get a `KD-nn` row in `KNOWN_DIVERGENCES.md`
@@ -135,6 +147,10 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   in `lib/` carries `# KD-COVERS: KD-nn`. Flip rows only via
   `scripts/kd_flip.py --apply`, gated on witness receipt mtime > shim mtime.
   The census prose count can lag the table — the table is ground truth.
+  Canonical register: `docs/jira/v26.10.14/KNOWN_DIVERGENCES.md` (provider
+  face has its own register at `posh/KNOWN_DIVERGENCES.md`). Mint the next
+  id from the newest wave's pointer file (e.g. `docs/jira/v26.10.25/…:4`);
+  DRAFT rows never reserve an id — first minted wins.
 - **Shim courts**: `scripts/shim_court/<name>_court.sh` — BASELINE →
   BEFORE → SHIM (marker `SHIM-COURT` mandatory) → AFTER (the flip IS the
   non-vacuity proof) → RESTORE (sha256 byte-exact, fail-closed). `just
@@ -162,6 +178,21 @@ ride the 9444 TLS twin with `NODE_EXTRA_CA_CERTS=.smalt/tls/ca-cert.pem`.
   omitted (source=8/target=7 composite arity tripwires);
   .NET-GUID lock-token byte reordering; EH fixed partitions `["0","1"]`.
   Each was pinned by a real-SDK census — changes regress real handshakes.
+  These are load-bearing byte-laws; relocation into the posh dialect layer
+  must be byte-identical and proved by `test/courts/court_wire.erl` ported
+  as a dialect wire court (SHIM-COURT R51: a "cleaner" lock-token layout
+  caused 410 MESSAGE_LOCK_LOST).
+- **Dialect law (v26.10.31 in transition)**: smalt core stays
+  proprietary-free — zero-proprietary court
+  `scripts/verify_public_cloud_ontology.py`, canonical ontology
+  `priv/ontologies/public-cloud-core.ttl` (standards namespaces tosca:/cimi:/
+  rbac:/kmip:/sec:/acl:/org: only). The posh ggen pack namespace
+  `smalt.dev/posh/ns#` is proprietary — inadmissible in the standards graph.
+  Dialects live and die in posh (`posh/internal/dialect/azure`, Dialect #1;
+  armkv + kv7 sub-dialects); the core never grows a per-vendor face.
+  9443 ownership cutover: cordon the BEAM arm_port BEFORE the posh bind
+  (port collision ambiguity BEAM router vs posh). KD register gains a
+  dialect column: CORE | AZURE-#1 | AZURE-#0 | POSH-MEMBRANE | CROSS.
 - **Docs**: milestone artifacts live under `docs/jira/v<version>/`; final
   wrap sequence is WOs → receipts → GAP → court-x2 → commits → publish-dry
   → FINAL.md/RECEIPTS.md. Docs DoD gate: `just docs-dod-check` (every

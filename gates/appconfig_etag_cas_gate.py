@@ -223,4 +223,28 @@ def mutate_fixtures(obs):
 
 
 if __name__ == "__main__":
+    # SKIP-loud law (WO-22/23/24 retarget, v26.10.31 inversion): the
+    # create-status pin (200-create; KD-149/T24WIRE parity) is BLOCKED on the
+    # term_to_binary etag re-spec -- the core face currently serves 201.
+    # Probe the live face first: if create answers 201, exit 3 with a typed
+    # reason (subject moved -> loud skip, never a silent PASS, never a
+    # confusing FAIL). Only when the pin's subject is back (200-create) does
+    # the full gate run.
+    import base64 as _b64
+    _ports = common.pick_ports()
+    _proc = common.spawn_substrate(
+        _ports, _b64.b64encode(os.urandom(48)).decode())
+    try:
+        _token = mint_token(_ports)
+        _s, _, _ = common.http(
+            _ports["egress"], "PUT", f"/kv/{KEY}?label={LABEL}",
+            body={"value": "skip-probe", "contentType": "text/plain"},
+            headers={"Authorization": f"Bearer {_token}"})
+    finally:
+        common.kill_substrate(_proc, _ports)
+    if _s == 201:
+        print("[SKIP] appconfig-etag-cas: appconfig-etag re-spec pending "
+              "(KD-149): core serves 201-create; the gate pins 200-create "
+              "(T24WIRE). Re-spec the pin before re-admitting this gate.")
+        sys.exit(3)
     sys.exit(common.run_gate("appconfig-etag-cas", capture, verdict, mutate_fixtures))

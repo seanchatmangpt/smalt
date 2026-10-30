@@ -251,9 +251,16 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, conte
 		return resp, b, readErr
 	}
 
-	status, _, respBody, err := doWithRetry(rctx, method+" "+path, send)
+	status, hdr, respBody, err := doWithRetry(rctx, method+" "+path, send)
 	if err != nil {
 		return nil, status, err
+	}
+	// Turnstile verification (gaps/26 close, Gate-4 consumer): every non-GET
+	// response must carry a verifiable X-Smalt-Receipt-Turnstile pair; absent
+	// headers are a fail-closed refusal, not a bypass. Additive — request
+	// bytes on the wire are unchanged.
+	if verr := verifyTurnstileResponse(method, hdr, body); verr != nil {
+		return nil, status, verr
 	}
 	if retryable(status) {
 		// exhausted the retry budget on 429/5xx
@@ -325,6 +332,13 @@ func (c *Client) doWithHeaders(ctx context.Context, method, path string, reqHead
 	status, hdr, respBody, err := doWithRetry(rctx, method+" "+path, send)
 	if err != nil {
 		return nil, hdr, status, err
+	}
+	// Turnstile verification (gaps/26 close, Gate-4 consumer): every non-GET
+	// response must carry a verifiable X-Smalt-Receipt-Turnstile pair; absent
+	// headers are a fail-closed refusal, not a bypass. Additive — request
+	// bytes on the wire are unchanged.
+	if verr := verifyTurnstileResponse(method, hdr, body); verr != nil {
+		return respBody, hdr, status, verr
 	}
 	if retryable(status) {
 		return respBody, hdr, status, &ApiError{Status: status, Body: truncate(respBody), Method: method, Path: path}

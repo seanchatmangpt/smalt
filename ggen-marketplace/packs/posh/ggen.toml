@@ -11,7 +11,7 @@ source = "ontology/posh.ttl"
 # F12 lane (v26.10.30): the instance A-box lives here, separate from the
 # T-box, so the merged graph conforms to the pack's closed SHACL shapes
 # (shapes/ingress.ttl, shapes/egress.ttl). ggen renders from the merge.
-imports = ["examples/posh_instance.ttl"]
+imports = ["ontology/routes.ttl", "examples/posh_instance.ttl"]
 
 [templates]
 dir = "templates"

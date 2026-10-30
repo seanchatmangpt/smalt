@@ -106,10 +106,19 @@ defmodule Smalt.DataPlane.KeyVault.Secrets do
     {:ok, 200, public_secret_record(updated_record)}
   end
 
-  # w6bn: public-shape mirror of the router's public_secret_record — the
-  # engine returns the wire shape directly so the route arm is 3 lines.
+  # KD-03 split-brain fix (v26.10.31): this engine face serves the 8443
+  # point PATCH (update_secret_properties) — a POINT operation, so the value
+  # ECHOES, matching the router's point face (AppConfigRoutes.public_secret_record/1
+  # keeps "value") and real Azure's SecretBundle-on-update contract. Per-face
+  # value-echo polarity law (posh KD-03):
+  #   8443 point GET/PATCH  -> value ECHOES   (this face, drop-list below)
+  #   8443 list faces       -> value NEVER    (list_secret_record/1, KvRoutes)
+  #   engine soft-delete    -> value NEVER    (public_deleted_secret/1 below)
+  #   ARM face              -> value echoes VERBATIM (posh KD-03 law)
+  # Internal bookkeeping (version/versions/created_seq/is_version_row) never
+  # leaves the vault on any face.
   defp public_secret_record(record) do
-    Map.drop(record, ["value", "is_version_row", "versions", "created_seq"])
+    Map.drop(record, ["version", "versions", "created_seq", "is_version_row"])
   end
 
   defp secret_not_found do
@@ -125,8 +134,10 @@ defmodule Smalt.DataPlane.KeyVault.Secrets do
 
   defp public_deleted_secret(deleted) do
     # KD-S3 bookkeeping (versions index, captured version rows) never leaves
-    # the vault on the deleted-secret bundle.
-    Map.drop(deleted, ["is_deleted_secret", "versions", "version_rows", "created_seq"])
+    # the vault on the deleted-secret bundle, and neither does the value —
+    # engine soft-delete NEVER echoes (posh KD-03 polarity law, v26.10.31;
+    # the value stays in the store row for recover to restore).
+    Map.drop(deleted, ["value", "is_deleted_secret", "versions", "version_rows", "created_seq"])
   end
 
   # ---------------------------------------------------------------------------

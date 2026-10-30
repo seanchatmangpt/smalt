@@ -1,0 +1,98 @@
+# DRAFT SHARD — Gap 13 phase-1 core-class layer (lane M13)
+# NOT the canonical ttl: lane 8 owns priv/ontologies/public-cloud-core.ttl.
+# Status: DRAFT, v26.10.31 in transition. The admission-corpus close
+# condition is BLOCKED-on-merge: the phase-1 court runs post-merge only.
+#
+# SPLIT LAW (gap-13 H1/H2): this shard carries ONLY layer-1 neutral core
+# classes — capability-existence facts. Wire strings (Microsoft.* resource
+# type strings) and api-version lattices are DIALECT DATA and are EXCLUDED
+# from this file by design; they belong to the layer-2 dialect mapping
+# (smalt-dialect-arm.ttl, phase 2 of the gap-13 split).
+#
+# Namespace law (gap-02 shard): standards namespaces only —
+# tosca:/cimi:/kmip:/sec: + rdf/rdfs/owl/sh/xsd. Zero proprietary IRIs.
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix tosca: <http://docs.oasis-open.org/ns/tosca/1.1#> .
+@prefix cimi: <http://schemas.dmtf.org/cimi/1#> .
+@prefix kmip: <http://docs.oasis-open.org/kmip/ns/1.4#> .
+@prefix sec:  <http://docs.oasis-open.org/ns/sec/1.0#> .
+
+# ------------------------------------------------------------------
+# 1. Core capability classes (gap-13 H4 derivation, layer 1).
+# Coverage counts cited from the projection table in
+# 13-phase1-core-classes-notes.md (58-accounting: 57 disk + 1 correction).
+# ------------------------------------------------------------------
+
+tosca:CoreCapability a owl:Class , sh:NodeShape ;
+  rdfs:label "Core capability root class (layer-1 admission authority)." .
+
+tosca:ObjectRegistry a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Named object registries: container registries, blob/storage-account families, resource-group scoping containers. Coverage: 7 admitted types." .
+
+tosca:ComputeEnvironment a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Compute capacity with attached durable volumes and volume-encryption sets. Coverage: 3 admitted types." .
+
+tosca:SecretStore a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Key/secret custody: vaults, keys, secrets, managed HSM. Coverage: 4 admitted types." .
+
+tosca:MessageHub a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Queuing, streaming, and pub/sub topics/subscriptions/rules and their scoping namespaces. Coverage: 11 admitted types." .
+
+tosca:DataStore a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Document databases and log-analytics workspaces. Coverage: 4 admitted types." .
+
+tosca:IdentityPrincipal a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Federated identities and role assignments/definitions. Coverage: 5 admitted types." .
+
+tosca:NetworkFabric a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "vnets, subnets, NSGs, NICs, private endpoints/DNS zones/links, public IPs. Coverage: 8 admitted types." .
+
+tosca:ContainerWorkload a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Container apps, managed environments, managed clusters, lab schedules. Coverage: 4 admitted types." .
+
+tosca:TrustAnchor a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Attestation providers, confidential ledgers, managed CCFs. Coverage: 3 admitted types." .
+
+tosca:GovernanceSurface a owl:Class ; rdfs:subClassOf tosca:CoreCapability ;
+  rdfs:comment "Resource locks, policy exemptions/remediations/set-definitions, diagnostic settings, data-collection rules, security onboarding, purview accounts. Coverage: 8 admitted types." .
+
+# ------------------------------------------------------------------
+# 2. Capability-level shape laws (layer-1 facts only; no dialect data).
+# These reference the gap-02 shard classes so the class list stays
+# consistent with M2's shape requirements S1-S7.
+# ------------------------------------------------------------------
+
+tosca:CoreCapability sh:property [
+  sh:path cimi:resource.location ; sh:datatype xsd:string ;
+  sh:minCount 1 ; sh:maxCount 1 ;
+  rdfs:seeAlso tosca:ResourceEnvelope ] .
+
+tosca:CoreCapability sh:property [
+  sh:path cimi:resource.etag ; sh:datatype xsd:string ;
+  sh:minCount 1 ;
+  rdfs:seeAlso cimi:ConcurrencyLaw ] .
+
+tosca:CoreCapability sh:property [
+  sh:path cimi:entry.creationStatus ; sh:in ( 200 201 ) ;
+  sh:minCount 1 ;
+  rdfs:seeAlso cimi:EntryStatusLaw ] .
+
+tosca:CoreCapability sh:property [
+  sh:path cimi:operation.status ;
+  sh:in ( "InProgress" "Succeeded" "Failed" ) ; sh:minCount 1 ;
+  rdfs:seeAlso cimi:OperationLifecycle ] .
+
+# ------------------------------------------------------------------
+# 3. Explicit exclusions (the split itself, as data).
+# ------------------------------------------------------------------
+
+# EXCLUDED as dialect data per gap-13: wire resource-type strings,
+# api-version lattices, version-syntax normalization (-preview / day-prefix),
+# and per-type shape bindings. These live in the layer-2 dialect mapping
+# ttl (smalt-dialect-arm.ttl, gap-13 phase 2), never in layer 1.
+# Adding a second dialect must not touch this file (gap-13 H5 falsifier).

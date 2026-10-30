@@ -36,12 +36,12 @@ kubectl create secret tls smalt-tls --cert=/tmp/smalt-k8s-cert.pem --key=/tmp/sm
 
 ```bash
 docker build --target release -t smalt:local .          # docker/Dockerfile
-kind load docker-image smalt:local --name kind-smalt
+kind load docker-image smalt:local --name smalt
 # Console (no Dockerfile in workspace/ yet — typed seam; minimal recipe):
 #   FROM node:20-alpine → corepack enable → workspace/ `npm ci && npm run build`
 #   → CMD ["npm","start"] (next start, port 3000)
 docker build -t smalt-console:local workspace/
-kind load docker-image smalt-console:local --name kind-smalt
+kind load docker-image smalt-console:local --name smalt
 ```
 
 ### 4. Apply

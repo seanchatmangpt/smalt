@@ -68,6 +68,16 @@ defmodule Smalt.ArmGateway.Router do
     body_reader: {Smalt.Auth.BodyCache, :read_body, []}
   )
 
+  # G26 turnstile FENCE (option (a), lane 39): mutating /subscriptions/*
+  # deltas are admitted through the generated pipeline
+  # (Smalt.Posh.Pipeline.Arm_request -> Smalt.Posh.Turnstile.admit/5) BEFORE
+  # dispatch; a typed refusal halts with a 400 AdmissionRefused ARM envelope
+  # (still stamped — the stamp mount above registered before_send). Mounted
+  # AFTER Plug.Parsers so the fence admits the parsed body. Config-gated
+  # `config :smalt, :turnstile_fence` (enabled defaults TRUE per charter —
+  # disclosed choice); a disabled fence passes the conn through untouched.
+  plug(Smalt.ArmGateway.Plug.ReceiptTurnstile, :fence)
+
   plug(:arm_request_id)
   plug(:arm_throttle)
   # AZURE-FIDELITY lane 18: control-plane throttling realism — DEFAULT-OFF

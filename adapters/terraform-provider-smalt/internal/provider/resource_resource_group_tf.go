@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -16,7 +18,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
-var _ resource.Resource = (*resourceGroupResource)(nil)
+var (
+	_ resource.Resource                = (*resourceGroupResource)(nil)
+	_ resource.ResourceWithImportState = (*resourceGroupResource)(nil)
+)
 
 func NewResourceGroupResource() resource.Resource {
 	return &resourceGroupResource{}
@@ -217,6 +222,43 @@ func (r *resourceGroupResource) Delete(ctx context.Context, req resource.DeleteR
 	if err := r.client.DeleteResourceGroup(ctx, state.Name.ValueString()); err != nil {
 		resp.Diagnostics.AddError("delete resource group", err.Error())
 		return
+	}
+}
+
+// ImportState (GAP22-1) accepts either a bare resource group name or a full
+// ARM id /subscriptions/{sub}/resourceGroups/{name} (NormalizeARMID-tolerant
+// for casing). RG ids never carry a "providers/" segment — a resource-in-group
+// id is refused with a typed error (GAP22-3), never silently adopted.
+func (r *resourceGroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	id := NormalizeARMID(req.ID)
+	if !strings.HasPrefix(id, "/") {
+		// Bare resource group name: build the canonical id from the
+		// configured subscription.
+		sub := ""
+		if r.client != nil {
+			sub = r.client.subscriptionID
+		}
+		if sub == "" {
+			resp.Diagnostics.AddError(
+				"Invalid Resource Import ID",
+				fmt.Sprintf("Import ID %q is a bare resource group name; the provider "+
+					"subscription is not configured, so the full ARM id cannot be built. "+
+					"Import with the full /subscriptions/{sub}/resourceGroups/{name} id instead.", req.ID),
+			)
+			return
+		}
+		id = rgID(sub, id)
+	}
+	if !forbidImportSegment(&resp.Diagnostics, id, "/providers/", "azurerm_resource_group") {
+		return
+	}
+	if !requireImportSegment(&resp.Diagnostics, id, "/resourceGroups/", "azurerm_resource_group") {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
+	parts := strings.Split(id, "/")
+	if len(parts) > 0 {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
 	}
 }
 

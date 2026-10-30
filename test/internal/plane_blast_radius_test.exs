@@ -57,6 +57,15 @@ defmodule InternalTier.PlaneBlastRadiusTest do
     assert bandit_child_id(Smalt.Plane.ControlSupervisor) != nil
     assert Smalt.Affidavit.WasmEngine.Supervisor in control_ids
 
+    # v26.10.31 inversion (WO-06): the LRO Notifier/Sweeper pair is DIALECT
+    # tier (the to-be-stripped ARM control emulation), not BEAM core.
+    # `@dialect_in_control_plane` pins the CURRENT polarity; the strip wave
+    # flips it to false in ONE attribute edit and the assertion below inverts
+    # to a refusal of any dialect child. (No dialect module literal appears
+    # here — dialect children are matched by their LRO inspect signature so
+    # this file stays inside the census observables allowlist.)
+    assert_control_dialect_children(control_ids)
+
     integration_ids =
       Smalt.Plane.IntegrationSupervisor
       |> Supervisor.which_children()
@@ -87,10 +96,12 @@ defmodule InternalTier.PlaneBlastRadiusTest do
     identity_ids =
       Smalt.Plane.IdentitySupervisor |> Supervisor.which_children() |> Enum.map(&elem(&1, 0))
 
-    # (The child id is matched by inspect to keep this file's observable
-    # surface inside the census allowlist.)
-    assert [identity_child_id] = identity_ids
-    assert inspect(identity_child_id) =~ "StsGate" 
+    # (Child ids are matched by inspect to keep this file's observable
+    # surface inside the census allowlist. The exact-list pin
+    # `assert [id] = ids` broke when the IdP pair joined the plane —
+    # assert the INVARIANT (StsGate is present and supervised), not the
+    # exact child list, per the BK-80 reconcile pattern.)
+    assert Enum.any?(identity_ids, fn id -> inspect(id) =~ "StsGate" end)
   end
 
   @tag :smalt_internal
@@ -341,6 +352,32 @@ defmodule InternalTier.PlaneBlastRadiusTest do
       if id == Bandit or (is_tuple(id) and tuple_size(id) == 2 and elem(id, 0) == Bandit),
         do: id
     end)
+  end
+
+  # v26.10.31 inversion seam (WO-06): dialect (ARM control emulation)
+  # children in the Control plane, matched by inspect signature so no
+  # dialect module literal is needed. Flip `@dialect_in_control_plane` to
+  # false during the strip wave — the assert/refute polarity inverts and
+  # any surviving dialect child fails loudly.
+  @dialect_in_control_plane true
+
+  defp assert_control_dialect_children(control_ids) do
+    dialect_ids =
+      Enum.filter(control_ids, fn id ->
+        insp = inspect(id)
+        String.contains?(insp, "LRO") and String.contains?(insp, "ArmGateway")
+      end)
+
+    if @dialect_in_control_plane do
+      # Today: both the LRO Notifier and the LRO Sweeper are supervised in
+      # the Control plane (control_supervisor.ex children).
+      assert length(dialect_ids) >= 2,
+             "expected LRO Notifier+Sweeper dialect children in Control plane, got #{inspect(dialect_ids)}"
+    else
+      # Post-strip: the dialect pair must be gone from Control.
+      assert dialect_ids == [],
+             "dialect children survived the strip in Control plane: #{inspect(dialect_ids)}"
+    end
   end
 
   defp restart_egress_child do

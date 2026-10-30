@@ -61,3 +61,16 @@ posh:NoBypassShape a sh:NodeShape ;
     sh:maxCount 0 ;
     sh:message "No route may bypass its turnstile: IngressRoute MUST NOT carry posh:emits — receipts come only from the Turnstile."@en ;
   ] .
+
+# G26 lane 39 (v26.10.30): delta-payload shape for the arm.request gateway
+# face. The route's posh:shape IRI resolves to THIS shape, not to the graph
+# node shapes: a raw ARM delta is any JSON object (open shape, zero
+# constraints), while the fence (ReceiptTurnstile :fence mount) still
+# refuses non-object payloads via the Admission map policy and binds the
+# raw bytes into the receipt digest. Without it the ghost shape IRI fell
+# back to the closed IngressRouteShape and refused every legitimate ARM
+# write (witnessed: arm_receipt_turnstile_test "receipt binds the raw body
+# on a POST" 400'd).
+posh:ArmRequestShape a sh:NodeShape ;
+  sh:targetClass posh:Delta ;
+  sh:closed false .

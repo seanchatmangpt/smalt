@@ -1,0 +1,481 @@
+@prefix tosca:   <http://docs.oasis-open.org/tosca/ns/simple/yaml/1.3/> .
+@prefix cimi:    <http://schemas.dmtf.org/cimi/2/> .
+@prefix rbac:    <http://csrc.nist.gov/ns/rbac#> .
+@prefix kmip:    <http://docs.oasis-open.org/kmip/ns/v1.4#> .
+@prefix acl:     <http://www.w3.org/ns/auth/acl#> .
+@prefix sec:     <https://w3id.org/security#> .
+@prefix org:     <http://www.w3.org/ns/org#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh:      <http://www.w3.org/ns/shacl#> .
+
+# =============================================================================
+# NORMATIVE SHACL ADMISSION SHAPES (CLOSED-WORLD ENFORCEMENT)
+# =============================================================================
+
+# 1. Containerized Workload Admission Gate
+# Grounded in OASIS TOSCA Container.Application & W3ID Security Receipts
+tosca:ContainerApplicationShape
+    a sh:NodeShape ;
+    sh:targetClass tosca:tosca.nodes.Container.Application ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path org:organizationalUnit ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^[a-z0-9\\-]+$" ;
+    ] ;
+    sh:property [
+        sh:path tosca:artifacts ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path tosca:requirements ;
+        sh:class tosca:tosca.nodes.Root ;
+    ] ;
+    sh:property [
+        sh:path sec:digest ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minLength 64 ;
+        sh:maxLength 64 ;
+    ] .
+
+# 2. Object Storage Container / Bucket Admission Gate
+# Grounded in TOSCA Storage.ObjectStorage, CIMI Volumes, and Dublin Core
+tosca:ObjectStorageShape
+    a sh:NodeShape ;
+    sh:targetClass tosca:tosca.nodes.Storage.ObjectStorage ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path org:organizationalUnit ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path dcterms:temporal ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 3650 ;
+    ] ;
+    sh:property [
+        sh:path sec:digest ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minLength 64 ;
+        sh:maxLength 64 ;
+    ] .
+
+# 3. Cryptographic Key & Secret Boundary Gate
+# Grounded in OASIS KMIP ManagedObject & SecretData
+kmip:ManagedSecretShape
+    a sh:NodeShape ;
+    sh:targetClass kmip:SecretData ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path org:organizationalUnit ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path kmip:state ;
+        sh:datatype xsd:string ;
+        sh:in ( "Active" "PreActive" "Deactivated" "Destroyed" ) ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path sec:digest ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minLength 64 ;
+        sh:maxLength 64 ;
+    ] .
+
+# 4. Access Authorization & Role Binding Gate
+# Grounded in W3C WebAccessControl and NIST RBAC
+acl:AuthorizationShape
+    a sh:NodeShape ;
+    sh:targetClass acl:Authorization ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path acl:agent ;
+        sh:class rbac:Subject ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path rbac:role ;
+        sh:class rbac:Role ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path acl:accessTo ;
+        sh:class tosca:tosca.nodes.Root ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path acl:mode ;
+        sh:class acl:Mode ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path sec:digest ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minLength 64 ;
+        sh:maxLength 64 ;
+    ] .
+
+# =============================================================================
+# WAVE v26.10.31 / WO-08 — SURFACE-GROUNDED SHAPE EXTENSIONS
+# =============================================================================
+#
+# LOCAL-EXTENSION DISCLOSURE (normative):
+# The following terms are used under ratified namespaces but are not, at this
+# revision, traceable to a published term of the source standard. They are
+# LOCAL EXTENSIONS, not claims of standard provenance:
+#   - sec:digest (https://w3id.org/security#digest) — used as a 64-char hex
+#     content digest. DELIBERATE CHOICE: retained over migration to
+#     sec:digestMultibase because existing admission law pins fixed 64-char
+#     hex (sh:minLength/sh:maxLength 64); multibase encoding would change the
+#     admitted alphabet and every pinned digest corpus.
+#   - acl:Mode (http://www.w3.org/ns/auth/acl#Mode) — W3C WebAccessControl
+#     class, used with sh:class on acl:mode.
+#   - tosca:artifacts, tosca:requirements, tosca:capabilities and the
+#     tosca:tosca.nodes.* / tosca:tosca.capabilities.* qualified names —
+#     TOSCA 1.3 simple-yaml namespaces carrying datatype properties.
+#
+# ARM-ID GEOMETRY NOTE: Azure Resource Manager resource-id geometry
+# (/subscriptions/{sub}/resourceGroups/{rg}/providers/...) has no ratified
+# public standard namespace. It is expressed WITHOUT minting proprietary IRIs
+# as sh:pattern constraints on dcterms:identifier (Dublin Core) inside the
+# shapes below, and as a dedicated geometry shape
+# (tosca:ArmResourceIdentifierShape) targeting cimi:Resource. Zero
+# proprietary IRIs are introduced.
+
+# 5. Resource Group Admission Gate
+# Grounded in W3C Org (grouping construct) + Dublin Core identifiers.
+# ARM surface: adapters/terraform-provider-smalt/internal/provider/resource_resource_group.go
+#   (name, location, tags; wire path /subscriptions/{sub}/resourcegroups/{name})
+tosca:ResourceGroupShape
+    a sh:NodeShape ;
+    sh:targetClass org:OrganizationalUnit ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^/subscriptions/[^/]+/resourceGroups/[^/]+$" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        # ENGINE-LAW (v26.10.31 lane-9 finding): the graphlaw shapes
+        # meta-validator refuses >1 distinct sh:pattern per property shape,
+        # so the "starts alnum / does not end with dot" ARM RG-name law is
+        # collapsed into ONE pattern with identical refusal semantics
+        # (first char alphanumeric; optional tail whose final char is not a
+        # dot; single-char names admitted).
+        sh:pattern "^[a-zA-Z0-9]([a-zA-Z0-9_.()\\-]*[a-zA-Z0-9_()\\-])?$" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:spatial ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^[a-z]+$" ;
+    ] .
+
+# 6. Container Environment Admission Gate
+# Grounded in TOSCA Container.Runtime (environment hosts applications).
+# ARM surface: adapters/terraform-provider-smalt/internal/provider/resource_container_app_environment.go
+#   (name, resource_group_name, location; managedEnvironmentId dual-key: the
+#    environment is addressable both as name+resource_group and as its full
+#    ARM managedEnvironmentId — the identifier below IS that canonical key)
+tosca:ContainerEnvironmentShape
+    a sh:NodeShape ;
+    sh:targetClass tosca:tosca.nodes.Container.Runtime ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.App/managedEnvironments/[^/]+$" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^[a-z0-9][a-z0-9\\-]*$" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:spatial ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^[a-z]+$" ;
+    ] .
+
+# 7. Managed Key Admission Gate
+# Grounded in OASIS KMIP Key object (ManagedObject family).
+# ARM surface: adapters/terraform-provider-smalt/internal/provider/resource_key_vault.go
+#   (vaults + keys: name, location, sku, soft_delete/purge_protection, key state)
+kmip:ManagedKeyShape
+    a sh:NodeShape ;
+    sh:targetClass kmip:Key ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path org:organizationalUnit ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path kmip:state ;
+        sh:datatype xsd:string ;
+        sh:in ( "Active" "PreActive" "Deactivated" "Destroyed" ) ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path kmip:CryptographicLength ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+    ] .
+
+# 8. Role Definition Admission Gate
+# Grounded in NIST RBAC Role + W3C WebAccessControl accessTo (assignable scopes).
+# ARM surface: adapters/terraform-provider-smalt/internal/provider/resource_remaining_v1.go
+#   (roleDefinitions: role_definition_id GUID, name, assignable_scopes, permissions)
+rbac:RoleDefinitionShape
+    a sh:NodeShape ;
+    sh:targetClass rbac:Role ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path acl:accessTo ;
+        sh:class tosca:tosca.nodes.Root ;
+        sh:minCount 1 ;
+    ] .
+
+# 9. ARM Resource Identifier Geometry Gate
+# Standards-only expression of ARM resource-id syntax (see geometry note above).
+# A resource admitted under cimi:Resource MUST carry a well-formed ARM ID.
+tosca:ArmResourceIdentifierShape
+    a sh:NodeShape ;
+    sh:targetClass cimi:Resource ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^/subscriptions/[^/]+/.+" ;
+    ] .
+
+# =============================================================================
+# LAYER-1 ADMISSION CLASS TAXONOMY (v26.10.31 gap-13 phase-1 merge)
+# =============================================================================
+#
+# SPLIT LAW (gap-13 H1/H2): these classes carry ONLY layer-1 neutral
+# capability-existence facts. Wire resource-type strings (Microsoft.*),
+# api-version lattices, and version-syntax normalization are DIALECT DATA
+# and are EXCLUDED from this file; they belong to the layer-2 dialect
+# mapping ttl (smalt-dialect-arm.ttl, gap-13 phase 2). Adding a second
+# dialect must not touch this file (gap-13 H5 falsifier).
+#
+# Source: docs/jira/v26.10.31/gaps/13-phase1-core-classes.ttl (lane M13
+# DRAFT shard), ported to THIS file's canonical namespaces.
+#
+# NAMESPACE PORT TABLE (draft shard -> canonical, this file):
+#   tosca:  http://docs.oasis-open.org/ns/tosca/1.1#
+#        -> http://docs.oasis-open.org/tosca/ns/simple/yaml/1.3/
+#   cimi:   http://schemas.dmtf.org/cimi/1#
+#        -> http://schemas.dmtf.org/cimi/2/
+#   kmip:   http://docs.oasis-open.org/kmip/ns/1.4#
+#        -> http://docs.oasis-open.org/kmip/ns/v1.4#  (already declared, line 4)
+#   sec:    http://docs.oasis-open.org/ns/sec/1.0#
+#        -> https://w3id.org/security#  (already declared, line 6)
+# Zero class IRIs overlap the nine shapes above (draft used a disjoint
+# local-name space; re-checked at merge time).
+#
+# DECISION RECORD — role assignments under IdentityPrincipal (open question
+# from the M13 notes): RULING — IdentityPrincipal. The M13 projection table
+# assigns Microsoft.Authorization/roleAssignments and roleDefinitions to
+# tosca:IdentityPrincipal under its disjoint-prefix law (Authorization is
+# SPLIT: locks/policy* -> GovernanceSurface; roleAssignments/roleDefinitions
+# -> IdentityPrincipal). The notes' own argument controls: role assignments
+# and definitions state WHO holds WHAT over which scope — identity-fabric
+# facts about principals — whereas GovernanceSurface carries control-plane
+# guardrails exerted OVER resources (locks, policy exemptions/remediations/
+# set-definitions, diagnostic settings, data-collection rules, security
+# onboarding, purview accounts). A role definition does not guardrail a
+# resource; it defines the permission vocabulary of an identity. Ruling is
+# recorded here and binds the layer-2 dialect mapping.
+#
+# Coverage citations (per-class admitted-type counts) are from the M13
+# projection table notes: 57/57 mapped, mechanically count-verified against
+# lib/smalt/registry.ex @admitted_resource_types (57 disk entries; the
+# gap-13 H4 "58" figure is a stale receipt-cited count, corrected in the
+# notes file). Per-class coverage is restated in each rdfs:comment and
+# mechanically re-verified post-merge by the falsifier suite.
+
+tosca:CoreCapability
+    a owl:Class ;
+    rdfs:label "Core capability root class (layer-1 admission authority)." ;
+    # Capability-level shape laws (layer-1 facts only; no dialect data).
+    # seeAlso targets bind to the M2 shard vocabulary (gap-02 shard,
+    # requirements S1/S5/S7/S4): tosca:ResourceEnvelope (S1),
+    # cimi:ConcurrencyLaw (S5), cimi:EntryStatusLaw (S7 201/200 law),
+    # cimi:OperationLifecycle (S4). Those classes land with the M2 shard
+    # merge; they are forward references here, not yet defined in this file.
+    sh:property [
+        sh:path cimi:resource.location ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        rdfs:seeAlso tosca:ResourceEnvelope ;
+    ] ;
+    sh:property [
+        sh:path cimi:resource.etag ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        rdfs:seeAlso cimi:ConcurrencyLaw ;
+    ] ;
+    sh:property [
+        sh:path cimi:entry.creationStatus ;
+        sh:in ( 200 201 ) ;
+        sh:minCount 1 ;
+        rdfs:seeAlso cimi:EntryStatusLaw ;
+    ] ;
+    sh:property [
+        sh:path cimi:operation.status ;
+        sh:in ( "InProgress" "Succeeded" "Failed" ) ;
+        sh:minCount 1 ;
+        rdfs:seeAlso cimi:OperationLifecycle ;
+    ] ;
+    # Cross-link: every capability instance is a cimi:Resource and therefore
+    # carries a well-formed ARM resource identifier (shape 9 above).
+    rdfs:seeAlso tosca:ArmResourceIdentifierShape .
+
+tosca:ObjectRegistry
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Named object registries: container registries, blob/storage-account families, resource-group scoping containers. Coverage: 7 admitted types." ;
+    rdfs:seeAlso tosca:ObjectStorageShape , tosca:ResourceGroupShape .
+
+tosca:ComputeEnvironment
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Compute capacity with attached durable volumes and volume-encryption sets. Coverage: 3 admitted types." .
+
+tosca:SecretStore
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Key/secret custody: vaults, keys, secrets, managed HSM. Coverage: 4 admitted types." ;
+    rdfs:seeAlso kmip:ManagedSecretShape , kmip:ManagedKeyShape .
+
+tosca:MessageHub
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Queuing, streaming, and pub/sub topics/subscriptions/rules and their scoping namespaces. Coverage: 11 admitted types." .
+
+tosca:DataStore
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Document databases and log-analytics workspaces. Coverage: 4 admitted types." .
+
+tosca:IdentityPrincipal
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Federated identities and role assignments/definitions. Coverage: 5 admitted types. Role assignments/definitions are ruled HERE per the decision record above (identity fabric, not governance guardrails)." ;
+    rdfs:seeAlso acl:AuthorizationShape , rbac:RoleDefinitionShape .
+
+tosca:NetworkFabric
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "vnets, subnets, NSGs, NICs, private endpoints/DNS zones/links, public IPs. Coverage: 8 admitted types." .
+
+tosca:ContainerWorkload
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Container apps, managed environments, managed clusters, lab schedules. Coverage: 4 admitted types." ;
+    rdfs:seeAlso tosca:ContainerApplicationShape , tosca:ContainerEnvironmentShape .
+
+tosca:TrustAnchor
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Attestation providers, confidential ledgers, managed CCFs. Coverage: 3 admitted types." .
+
+tosca:GovernanceSurface
+    a owl:Class ;
+    rdfs:subClassOf tosca:CoreCapability ;
+    rdfs:comment "Resource locks, policy exemptions/remediations/set-definitions, diagnostic settings, data-collection rules, security onboarding, purview accounts. Coverage: 8 admitted types." .

@@ -1,0 +1,141 @@
+{
+  "create": {
+    "body": "{\"delayMs\":0,\"endTime\":null,\"id\":\"/subscriptions/00000000-0000-0000-0000-000000000000/operations/046093e6821d112c0bfec6e8\",\"name\":\"046093e6821d112c0bfec6e8\",\"resourceId\":\"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/parity-rg/providers/Microsoft.Storage/storageAccounts/paritysa\",\"startTime\":\"2026-10-30T22:59:46Z\",\"startedAtMs\":1793401186732,\"status\":\"InProgress\"}",
+    "headers": {
+      "azure-asyncoperation": "http://www.example.com/subscriptions/00000000-0000-0000-0000-000000000000/operations/046093e6821d112c0bfec6e8",
+      "location": "http://www.example.com/subscriptions/00000000-0000-0000-0000-000000000000/operations/046093e6821d112c0bfec6e8",
+      "retry-after": "1"
+    },
+    "status": 202
+  },
+  "delete": {
+    "body": "",
+    "headers": {
+      "location": "http://www.example.com/subscriptions/00000000-0000-0000-0000-000000000000/operations/93d6473b96a8dafa373c5b91",
+      "retry-after": "1"
+    },
+    "status": 202
+  },
+  "doctor": [
+    {
+      "admitted": true,
+      "latest": "2023-05-01",
+      "type": "Microsoft.Storage/storageAccounts",
+      "version": "2023-05-01"
+    },
+    {
+      "admitted": true,
+      "latest": "2023-05-01",
+      "type": "Microsoft.Storage/storageAccounts",
+      "version": "2019-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": "2023-05-01",
+      "type": "Microsoft.Storage/storageAccounts",
+      "version": "2099-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": "2023-05-01",
+      "type": "Microsoft.Storage/storageAccounts",
+      "version": "ABSENT"
+    },
+    {
+      "admitted": false,
+      "latest": "2023-05-01",
+      "type": "Microsoft.Storage/storageAccounts",
+      "version": "abc"
+    },
+    {
+      "admitted": false,
+      "latest": "2021-04-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "version": "2023-05-01"
+    },
+    {
+      "admitted": true,
+      "latest": "2021-04-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "version": "2019-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": "2021-04-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "version": "2099-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": "2021-04-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "version": "ABSENT"
+    },
+    {
+      "admitted": false,
+      "latest": "2021-04-01",
+      "type": "Microsoft.Compute/virtualMachines",
+      "version": "abc"
+    },
+    {
+      "admitted": true,
+      "latest": "2023-07-01",
+      "type": "Microsoft.KeyVault/vaults",
+      "version": "2023-05-01"
+    },
+    {
+      "admitted": true,
+      "latest": "2023-07-01",
+      "type": "Microsoft.KeyVault/vaults",
+      "version": "2019-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": "2023-07-01",
+      "type": "Microsoft.KeyVault/vaults",
+      "version": "2099-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": "2023-07-01",
+      "type": "Microsoft.KeyVault/vaults",
+      "version": "ABSENT"
+    },
+    {
+      "admitted": false,
+      "latest": "2023-07-01",
+      "type": "Microsoft.KeyVault/vaults",
+      "version": "abc"
+    },
+    {
+      "admitted": false,
+      "latest": null,
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "version": "2023-05-01"
+    },
+    {
+      "admitted": false,
+      "latest": null,
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "version": "2019-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": null,
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "version": "2099-01-01"
+    },
+    {
+      "admitted": false,
+      "latest": null,
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "version": "ABSENT"
+    },
+    {
+      "admitted": false,
+      "latest": null,
+      "type": "Microsoft.ContainerInstance/containerGroups",
+      "version": "abc"
+    }
+  ]
+}

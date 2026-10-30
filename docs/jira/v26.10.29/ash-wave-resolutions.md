@@ -77,9 +77,16 @@ Canonical KD register: ../v26.10.14/KNOWN_DIVERGENCES.md (183 rows; 5 OPEN: KD-1
   needed before slice 1 (current full-set overwrite would point at unlanded
   modules). First slice: --provider Microsoft.Network = 181 files.
 - **L7 register drafts** (mint via kd-registrar; flips only via
-  scripts/kd_flip.py --apply on PASS witness): KD-187 (Ash-ETS volatile vs
-  Store durability), KD-188 (shape-shallow synthesis; bicepRef dropped on the
-  floor), KD-189 (no Ash policies yet; must map onto Bearer/STS fence per
+  scripts/kd_flip.py --apply on PASS witness. RENUMBERED 2026-10-30 by the
+  v26.10.31 wave-2 kd-registrar lane: these DRAFT ids were never minted in
+  the canonical register, but the canonical ids KD-187/KD-188 have since
+  been minted there (container-namespace disconnect CLOSED-OBSOLETE;
+  managementPolicies route OPEN) — draft ids moved to KD-190/191/192 to
+  keep the canonical register monotonic; original draft ids preserved in
+  git history):
+  scripts/kd_flip.py --apply on PASS witness): KD-190 (Ash-ETS volatile vs
+  Store durability), KD-191 (shape-shallow synthesis; bicepRef dropped on the
+  floor), KD-192 (no Ash policies yet; must map onto Bearer/STS fence per
   v26.10.16/ash-kudzu-integration.md:27), GAP(canonicalrouter-mount-absent)
   (PLANNED status). Hygiene: GAP(blob-comp-lease-absent) token closed-but-
   present at WIRE_PARITY.md:135 (machine grep over-counts by one); stale
@@ -110,7 +117,7 @@ Hazards (serialize, do not fan out):
 
 | id | surface | divergence | close condition / falsifier |
 |---|---|---|---|
-| KD-187 | ash_gen ETS datalayer | Ash tables lack WAL/Heir/CAS/DETS | custom Ash.DataLayer wrapping Smalt.Store + restart falsifier |
-| KD-188 | shape-shallow synthesis | arm_put admits payloads the ARM wire face refuses (GraphLaw 400 InvalidResourceShape) | bicepRef property-lift; same-payload two-faces probe |
-| KD-189 | authz | no Ash policies; Bearer/STS fence only | policy lands mapping onto fence + non-vacuity court |
+| KD-190 | ash_gen ETS datalayer | Ash tables lack WAL/Heir/CAS/DETS | custom Ash.DataLayer wrapping Smalt.Store + restart falsifier |
+| KD-191 | shape-shallow synthesis | arm_put admits payloads the ARM wire face refuses (GraphLaw 400 InvalidResourceShape) | bicepRef property-lift; same-payload two-faces probe |
+| KD-192 | authz | no Ash policies; Bearer/STS fence only | policy lands mapping onto fence + non-vacuity court |
 | GAP(canonicalrouter-mount-absent) | ARM dispatch | registry has no consumer; plugs unmounted (3 of 4) | mount + wire test byte-matching Ash face vs Store face |

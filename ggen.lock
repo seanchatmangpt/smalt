@@ -4,6 +4,10 @@
 source = "path:/Users/sac/ggen-marketplace/packs/kubernetes-workload-pack"
 content_hash = "blake3:38993abe9e039f9769ffc2c638ea3b4b0212f5b2419a92e056da69c906d7794c"
 
+[packs.posh-pack]
+source = "path:ggen-marketplace/packs/posh"
+content_hash = "blake3:1b5975271cbc8c8e3c7a2de48af9cb84a582f860c18d2d0a5fcc366ee4603ff9"
+
 [packs.smalt-k8s-pack]
 source = "path:packs/smalt-k8s-pack"
 content_hash = "blake3:6f61e3ee8cd7ce5bd49261ef563d5f5bf4acff9bd11149acc4d7a980e261e45b"

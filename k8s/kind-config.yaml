@@ -16,7 +16,7 @@
 # see k8s/README.md).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: kind-smalt
+name: smalt
 networking:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"

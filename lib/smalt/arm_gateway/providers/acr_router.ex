@@ -30,15 +30,21 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
     envelopes).
 
   api-version: the ACR plane requires the parameter's PRESENCE (typed 400
-  MissingApiVersionParameter — the same face as the main router's gate) and
-  is value-permissive on this first cut (the plane is not yet registered in
-  `Smalt.Registry`); /acr/v2 is the docker data plane and carries no
-  api-version.
+  MissingApiVersionParameter) AND monotonic admission against the registered
+  family top (KD-78, via `Smalt.ArmGateway.Plug.Common.check_api_version/2`):
+  `Microsoft.ContainerRegistry/registries` and `…/webhooks` are Registry
+  individuals with latest 2023-06-01, so any version whose date base is <=
+  2023-06-01 is admitted (including `YYYY-MM` bases like "2023-06-preview",
+  normalized via version_base) and anything above is refused with the SAME
+  typed 400 InvalidApiVersionParameter envelope the generic face emits
+  (message names the latest supported version). /acr/v2 is the docker data
+  plane and carries no api-version.
   """
 
   import Plug.Conn
 
   alias Smalt.ArmGateway.LRO
+  alias Smalt.ArmGateway.Plug.Common
   alias Smalt.DataPlane.Acr
   alias Smalt.Store
 
@@ -147,7 +153,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   # -- registries CRUD ---------------------------------------------------------
 
   defp registry_put(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @registry_type),
          {:ok, body} <- body_params(conn) do
       reg_id = registry_id(sub, rg, name)
       attrs = Map.merge(body, %{"id" => reg_id, "name" => String.downcase(name)})
@@ -162,7 +168,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp registry_get(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn, @registry_type) do
       reg_id = registry_id(sub, rg, name)
 
       case Store.get(:smalt_resources, String.downcase(reg_id)) do
@@ -178,7 +184,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp registry_delete(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn, @registry_type) do
       reg_id = registry_id(sub, rg, name)
 
       case Acr.delete_registry(String.downcase(reg_id)) do
@@ -197,7 +203,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp registries_list(conn, sub, rg) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn, @registry_type) do
       prefix =
         String.downcase(
           "/subscriptions/#{sub}/resourceGroups/#{rg}/providers/Microsoft.ContainerRegistry/registries/"
@@ -214,7 +220,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp registry_list_keys(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn, @registry_type) do
       reg_id = registry_id(sub, rg, name)
 
       case Acr.list_keys(String.downcase(reg_id)) do
@@ -229,7 +235,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   # -- ACR Tasks runs -----------------------------------------------------------
 
   defp schedule_run(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @registry_type),
          {:ok, request} <- body_params(conn) do
       reg_id = registry_id(sub, rg, name)
       run_id = "#{reg_id}/runs/#{mint_run_name()}"
@@ -244,7 +250,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp run_show(conn, sub, rg, name, run) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn, @registry_type) do
       run_id = "#{registry_id(sub, rg, name)}/runs/#{run}"
 
       case Acr.get_run(run_id) do
@@ -257,7 +263,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp runs_list(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @registry_type),
          {:ok, _reg} <- registry_row(sub, rg, name) do
       prefix = String.downcase(registry_id(sub, rg, name)) <> "/runs/"
 
@@ -276,7 +282,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   # The logLink target face: the run's recorded synthetic log output as a
   # text stream (real ACR streams logs out-of-band as plain text).
   defp run_logs(conn, sub, rg, name, run) do
-    with :ok <- require_api_version(conn) do
+    with :ok <- require_api_version(conn, @registry_type) do
       run_id = "#{registry_id(sub, rg, name)}/runs/#{run}"
 
       case Acr.get_run(run_id) do
@@ -299,7 +305,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   # -- webhooks -----------------------------------------------------------------
 
   defp webhook_put(conn, sub, rg, name, hook) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @webhook_type),
          {:ok, body} <- body_params(conn),
          {:ok, reg} <- registry_row(sub, rg, name) do
       reg_id = registry_id(sub, rg, name)
@@ -331,7 +337,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp webhook_get(conn, sub, rg, name, hook) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @webhook_type),
          {:ok, _reg} <- registry_row(sub, rg, name) do
       hook_key = String.downcase("#{registry_id(sub, rg, name)}/webhooks/#{hook}")
 
@@ -349,7 +355,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp webhook_delete(conn, sub, rg, name, hook) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @webhook_type),
          {:ok, _reg} <- registry_row(sub, rg, name) do
       hook_key = String.downcase("#{registry_id(sub, rg, name)}/webhooks/#{hook}")
 
@@ -368,7 +374,7 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   end
 
   defp webhooks_list(conn, sub, rg, name) do
-    with :ok <- require_api_version(conn),
+    with :ok <- require_api_version(conn, @webhook_type),
          {:ok, _reg} <- registry_row(sub, rg, name) do
       prefix = String.downcase(registry_id(sub, rg, name)) <> "/webhooks/"
 
@@ -516,15 +522,11 @@ defmodule Smalt.ArmGateway.Providers.AcrRouter do
   # Shared helpers
   # ===========================================================================
 
-  defp require_api_version(conn) do
-    case conn.query_params["api-version"] do
-      nil ->
-        {:respond,
-         send_arm_error(conn, 400, "MissingApiVersionParameter", "The api-version query parameter is required.")}
-
-      _version ->
-        :ok
-    end
+  # KD-78 monotonic gate, delegated to the shared family seam: presence
+  # (MissingApiVersionParameter) + value admission against the Registry top
+  # (InvalidApiVersionParameter, identical envelope to the generic face).
+  defp require_api_version(conn, type) do
+    Common.check_api_version(conn, type)
   end
 
   # In the mounted pipeline Plug.Parsers already decoded the body into

@@ -1,5 +1,12 @@
 # Final Wave Receipt — posh window v26.10.30 (lane F17)
 
+> **AS-OF NOTE (2026-10-30, added by lane 52):** this receipt predates the Go
+> court scripts landing and the C1/C8/C4 changes. Gate verdicts below reflect
+> the tree as of ~12:10 local 2026-10-30; later lanes (C1 role_definition close,
+> C8 import-formats assertions, C4 changes, Go court scripts under `scripts/`)
+> supersede the corresponding failures. Re-read `posh/KNOWN_DIVERGENCES.md` §6
+> and `receipts/posh-court/` for current standing.
+
 - **Date**: 2026-10-30 (written ~12:10 local)
 - **Lane**: F17 (aggregation receipt, write-only)
 - **Subject**: `/Users/sac/smalt` — POSH window v26.10.30 final wave

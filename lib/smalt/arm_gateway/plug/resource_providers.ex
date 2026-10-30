@@ -10,6 +10,7 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
   import Smalt.ArmGateway.Plug.Common
   import Smalt.ArmGateway.Engine.Policy
   import Smalt.ArmGateway.Engine.Lro
+  import Smalt.ArmGateway.Engine.LroEnvelope
 
   alias Smalt.ArmGateway.LRO
   alias Smalt.ArmGateway.Defaults
@@ -17,6 +18,7 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
   alias Smalt.ArmGateway.SkuQuota
   alias Smalt.ArmGateway.ProviderState
   alias Smalt.ArmGateway.TagsLocks
+  alias Smalt.Arm.Rbac
   alias Smalt.Store
   alias Smalt.Registry
   alias Smalt.DataPlane.Sentinel
@@ -4491,22 +4493,117 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
     end
   end
 
-  # Built-in role definitions (Owner / Contributor / Reader) — served
-  # deterministically by Smalt.Policy, never stored.
+  # Role definitions — built-ins (Owner / Contributor / Reader) served
+  # deterministically by Smalt.Policy, never stored; custom definitions are
+  # backed by Smalt.Arm.Rbac's ETS table (PUT/GET/DELETE, subscription and
+  # resource-group scopes). GET consults built-ins first, then the custom
+  # table. api-version is required but not validated (type is not
+  # Registry-admitted; check_version admits unknown types).
+  defp get_role_definition_response(conn, scope_prefix, name) do
+    case Policy.role_definition(scope_prefix, name) do
+      {:ok, record} ->
+        send_json(conn, 200, Jason.encode!(record))
+
+      :error ->
+        case Rbac.get_role_definition(scope_prefix, name) do
+          {:ok, record} ->
+            send_json(conn, 200, Jason.encode!(record))
+
+          :error ->
+            send_arm_error(
+              conn,
+              404,
+              "ResourceNotFound",
+              "The role definition '#{name}' was not found."
+            )
+        end
+    end
+  end
+
+  defp put_role_definition_response(conn, scope_prefix, name, body) do
+    case Rbac.put_role_definition(scope_prefix, name, body) do
+      {:ok, record} ->
+        send_json(conn, 201, Jason.encode!(record))
+
+      {:error, {:bad_request, code, message}} ->
+        send_arm_error(conn, 400, code, message)
+    end
+  end
+
+  defp delete_role_definition_response(conn, scope_prefix, name) do
+    case Rbac.delete_role_definition(scope_prefix, name) do
+      :ok ->
+        send_json(conn, 200, "")
+
+      :error ->
+        send_arm_error(
+          conn,
+          404,
+          "ResourceNotFound",
+          "The role definition '#{name}' was not found."
+        )
+
+      {:error, {:bad_request, code, message}} ->
+        send_arm_error(conn, 400, code, message)
+    end
+  end
+
   get "/subscriptions/:sub_id/providers/Microsoft.Authorization/roleDefinitions/:name" do
     with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
-      case Policy.role_definition("/subscriptions/#{sub_id}", name) do
-        {:ok, record} ->
-          send_json(conn, 200, Jason.encode!(record))
+      get_role_definition_response(conn, "/subscriptions/#{sub_id}", name)
+    else
+      {:respond, conn} -> conn
+    end
+  end
 
-        :error ->
-          send_arm_error(
-            conn,
-            404,
-            "ResourceNotFound",
-            "The role definition '#{name}' was not found."
-          )
-      end
+  put "/subscriptions/:sub_id/providers/Microsoft.Authorization/roleDefinitions/:name" do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
+      put_role_definition_response(conn, "/subscriptions/#{sub_id}", name, conn.body_params)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/providers/Microsoft.Authorization/roleDefinitions/:name" do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
+      delete_role_definition_response(conn, "/subscriptions/#{sub_id}", name)
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  get "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/roleDefinitions/:name" do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
+      get_role_definition_response(
+        conn,
+        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}",
+        name
+      )
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  put "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/roleDefinitions/:name" do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
+      put_role_definition_response(
+        conn,
+        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}",
+        name,
+        conn.body_params
+      )
+    else
+      {:respond, conn} -> conn
+    end
+  end
+
+  delete "/subscriptions/:sub_id/resourceGroups/:rg_name/providers/Microsoft.Authorization/roleDefinitions/:name" do
+    with :ok <- check_api_version(conn, "Microsoft.Authorization/roleDefinitions") do
+      delete_role_definition_response(
+        conn,
+        "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}",
+        name
+      )
     else
       {:respond, conn} -> conn
     end

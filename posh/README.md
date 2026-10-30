@@ -16,6 +16,16 @@ Protocol translation only — zero domain state (charter law 2).
   missing file (POSH-008).
 - `posh.yaml` — runtime config (see below).
 
+## Prerequisites
+
+- colima running (`colima start`); kind + kubectl on PATH (kind cluster
+  canonical name: `smalt` — `just kind-up` creates it)
+- Go 1.23+ (this module); Terraform >= 1.14, < 2 (provider dev_overrides)
+- asdf Elixir 1.20.4 only for BEAM-side tests — system mix (Elixir 1.19.5) fails
+- `ggen` optional (only for `posh-generate`)
+- Ordering contract: `just kind-up` → `just kind-images` → `just kind-deploy`
+  → `just posh-court`
+
 ## Build & test
 
     make build   # CGO_ENABLED=0 static binary -> bin/posh
@@ -23,6 +33,9 @@ Protocol translation only — zero domain state (charter law 2).
     make vet
 
 ## Quickstart: boot + echo (one terminal, three commands)
+
+> Canonical onboarding path: smalt `README.md` §POSH (`just posh-court`).
+> This section is the membrane-only echo walk, not the full operator path.
 
 ```bash
 make -C posh build

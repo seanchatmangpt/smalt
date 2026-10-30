@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Mint a chatman/release-receipt/v1 JSON receipt (no deps, stdlib only).
+"""Mint a v2-conformant (chatman receipt.schema v2) JSON receipt (stdlib only).
 
-Shape canonicalized from affidavit release v26.9.25 receipts/brce-ledger.json.
-Executed for real at wrap, post court-x2. A DRAFT mint (placeholder SHA or
-DRAFT-STANDING) is clearly marked and must never be cited as court evidence.
+WO-25..28 (v26.10.31 inversion): the former chatman/release-receipt/v1 shape is
+absorbed/retired — this script now emits receipts validating against
+~/.claude/dfcm/receipt.schema.json v2. Field mapping from the retired v1:
+
+  v1 schema:"chatman/release-receipt/v1"      -> dropped ($id of the schema is the version)
+  v1 subject.{repo,sha}                       -> identity.{repo,subject_sha}
+  v1 subject.ref                              -> identity.subject (with --name)
+  v1 execution.{command,exit_code,output_sha256} -> replay.commands[0].{cmd,exit,output_sha256}
+  v1 court.{standing,rules,refusals}          -> standing.{value,derived_from} + provider_ext.release_court
+  v1 anti_vacuity / supersedes / evidence_ceiling -> provider_ext.release_court / replay_binding / provider_ext
+  v1 "DRAFT-STANDING: PENDING-COURT"          -> standing.value UNKNOWN (DRAFT is not a v2 standing)
+
+A DRAFT mint (placeholder SHA or UNKNOWN via --draft) is clearly marked via
+provider_ext.release_court.draft and must never be cited as court evidence.
 
 Usage:
   scripts/mint_release_receipt.py \
@@ -11,9 +22,10 @@ Usage:
     --rules CHAIN_INTEGRITY,ZERO_UNRECEIPTED_ACTUATION,... \
     --refusals <path to refusals json, [] or list of refusal records> \
     --court-log <path to court x2 log> \
-    [--release v26.10.16] [--repo smalt] [--ref main] \
+    --base-sha <base git sha> \
+    [--release v26.10.31] [--repo /Users/sac/smalt] [--ref main] \
     [--supersedes-sha <sha>] [--supersedes-standing BLOCKED] \
-    [--supersedes-note <text>] [--standing DRAFT-STANDING: PENDING-COURT] \
+    [--supersedes-note <text>] [--draft] \
     [-o <output path>]   # default: stdout
 """
 
@@ -24,7 +36,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA = "chatman/release-receipt/v1"
+SCHEMA_V2_ID = "https://chatmangpt.com/schema/receipt/v2"
 
 DEFAULT_RULES = [
     "CHAIN_INTEGRITY",
@@ -65,79 +77,125 @@ def build(args) -> dict:
     if not court_log.exists():
         sys.exit(f"court-log path not found: {court_log}")
 
-    is_draft = args.sha.startswith("PLACEHOLDER") or args.standing.startswith("DRAFT")
+    is_draft = args.sha.startswith("PLACEHOLDER") or args.draft
+    log_sha = sha256_file(court_log)
 
     receipt = {
-        "schema": SCHEMA,
-        "release": args.release,
-        "name": args.name,
-        "repo": args.repo,
-        "standing": args.standing,
-        "type": args.type,
-        "subject": {
+        "work_order_id": f"RELEASE:{args.release}",
+        "origin_authority": {
+            "grant": "NONE",
+            "actor": args.actor,
+            "ceiling": "SELECT",
+            "lease": {
+                "id": f"release-lease:{args.release}",
+                "epoch": args.generated_at,
+            },
+        },
+        "provider": {
+            "name": "smalt-release-court",
+            "transport": "local",
+            "receipt_protocol": "court-x2",
+            "authority_ceiling": "SELECT",
+        },
+        "provider_execution_id": log_sha[:16],
+        "identity": {
+            "subject": args.name,
             "repo": args.repo,
-            "sha": args.sha,
-            "ref": args.ref,
+            "subject_sha": args.sha,
+            "base_sha": args.base_sha,
         },
-        "court": {
-            "standing": args.court_standing,
-            "rules": rules,
-            "refusals": refusals,
+        "authority": {
+            "ceiling": "SELECT",
+            "grant": "NONE (court is receipt-level evidence; Verification does not imply DO)",
+            "actor": args.actor,
+            "lease": {
+                "id": f"release-lease:{args.release}",
+                "epoch": args.generated_at,
+            },
         },
-        "execution": {
-            "command": args.command,
-            "toolchain": args.toolchain,
-            "exit_code": args.exit_code,
-            "output_sha256": sha256_file(court_log),
-            "court_log": str(court_log),
+        "consequence": {
+            "commits": [args.sha] if not args.sha.startswith("PLACEHOLDER") else [],
+            "files_changed": [],
+            "remote_effects": [],
         },
-        "anti_vacuity": {
-            "mutants": [
-                {"rule": r, "mutation": args.mutant_note, "standing": "PENDING", "killed": None}
-                for r in rules
+        "replay": {
+            "commands": [
+                {
+                    "cmd": args.command,
+                    "cwd": args.repo,
+                    "exit": args.exit_code,
+                    "summary": f"court rules: {','.join(rules)}",
+                    "output_sha256": log_sha,
+                }
             ],
-            "killed": 0,
-            "total": len(rules),
-            "note": "populated at real wrap mint from the court's mutant-kill report",
+            "durable_location": str(court_log),
         },
-        "authority": "NONE (court is receipt-level evidence; Verification does not imply DO)",
-        "evidence_ceiling": "LOCAL_RUN",
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        "standing": {
+            "value": "UNKNOWN" if is_draft else args.standing,
+            "derived_from": (
+                f"DRAFT: placeholder/pending-court mint from {log_sha[:16]}"
+                if is_draft
+                else f"replay.commands[0] at {args.sha} (court rules: {','.join(rules)})"
+            ),
+        },
+        "provider_ext.release_court": {
+                "court_standing": args.court_standing,
+                "rules": rules,
+                "refusals": refusals,
+                "court_log": str(court_log),
+                "evidence_ceiling": "LOCAL_RUN",
+                "anti_vacuity": {
+                    "mutants": [
+                        {"rule": r, "mutation": args.mutant_note, "standing": "PENDING", "killed": None}
+                        for r in rules
+                    ],
+                    "killed": 0,
+                    "total": len(rules),
+                    "note": "populated at real wrap mint from the court's mutant-kill report",
+                },
+                "draft": {
+                    "is_draft": is_draft,
+                    "reason": "placeholder/UNKNOWN mint, not court evidence",
+                }
+                if is_draft
+                else None,
+                "supersedes": {
+                    "standing": args.supersedes_standing,
+                    "type": args.supersedes_type,
+                    "subject_sha": args.supersedes_sha,
+                    "note": args.supersedes_note,
+                }
+                if (args.supersedes_sha or args.supersedes_note)
+                else None,
+                "generated_at": args.generated_at,
+            }
     }
-
-    if args.supersedes_sha or args.supersedes_note:
-        receipt["supersedes"] = {
-            "standing": args.supersedes_standing,
-            "type": args.supersedes_type,
-            "subject_sha": args.supersedes_sha,
-            "note": args.supersedes_note,
-        }
-
-    if is_draft:
-        receipt["draft"] = {
-            "is_draft": True,
-            "reason": "DRAFT-STANDING: PENDING-COURT; placeholder mint, not court evidence",
-        }
     return receipt
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Mint a chatman/release-receipt/v1 JSON receipt")
+    ap = argparse.ArgumentParser(description="Mint a v2-conformant release receipt")
     ap.add_argument("--sha", required=True)
+    ap.add_argument("--base-sha", required=True)
     ap.add_argument("--rules", default=",".join(DEFAULT_RULES))
     ap.add_argument("--refusals", required=True)
     ap.add_argument("--court-log", required=True)
-    ap.add_argument("--release", default="v26.10.16")
-    ap.add_argument("--repo", default="smalt")
+    ap.add_argument("--release", default="v26.10.31")
+    ap.add_argument("--repo", default="/Users/sac/smalt")
     ap.add_argument("--ref", default="main")
     ap.add_argument("--name", default="release-receipt")
-    ap.add_argument("--type", default="RELEASE_ADMISSION_COURT")
-    ap.add_argument("--standing", default="DRAFT-STANDING: PENDING-COURT")
+    ap.add_argument("--actor", default="release-court")
+    ap.add_argument(
+        "--standing",
+        default="PARTIAL_ALIVE",
+        help="final standing when NOT a draft (default PARTIAL_ALIVE)",
+    )
+    ap.add_argument("--draft", action="store_true", help="mint as UNKNOWN standing (draft)")
     ap.add_argument("--court-standing", default="PENDING")
     ap.add_argument("--command", default="just court-x2")
     ap.add_argument(
-        "--toolchain",
-        default="elixir/erlang via mise (see .tool-versions); mix test + court-x2",
+        "--toolchain-note",
+        default="elixir/erlang via asdf (see .tool-versions); mix test + court-x2",
     )
     ap.add_argument("--exit-code", type=int, default=-1)
     ap.add_argument("--mutant-note", default="pending real court run")
@@ -147,6 +205,7 @@ def main() -> None:
     ap.add_argument("--supersedes-note", default="")
     ap.add_argument("-o", "--out", default="-")
     args = ap.parse_args()
+    args.generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
     receipt = build(args)
     text = json.dumps(receipt, indent=2) + "\n"

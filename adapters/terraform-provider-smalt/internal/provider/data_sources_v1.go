@@ -466,11 +466,14 @@ func (d *userAssignedIdentityDataSource) Read(ctx context.Context, req datasourc
 	props, _ := out["properties"].(map[string]any)
 	clientID := mapStringField(props, "clientId")
 	if clientID == "" {
-		clientID = mintDeterministicGUID("uai-client:" + armPath)
+		// Honesty law: the smalt face carries no clientId; a minted GUID here
+		// would not be the Entra object id. Refused by default; loud warning +
+		// mint under TFPOSH_ALLOW_FABRICATED_IDS=1.
+		clientID = carryOrMintIdentityAttr(&resp.Diagnostics, "", "uai-client:"+armPath, "client_id")
 	}
 	principalID := mapStringField(props, "principalId")
 	if principalID == "" {
-		principalID = mintDeterministicGUID("uai-principal:" + armPath)
+		principalID = carryOrMintIdentityAttr(&resp.Diagnostics, "", "uai-principal:"+armPath, "principal_id")
 	}
 	tenantID := mapStringField(props, "tenantId")
 	if tenantID == "" {

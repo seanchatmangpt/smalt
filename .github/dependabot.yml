@@ -8,3 +8,11 @@ updates:
     directory: "/adapters/terraform-provider-smalt"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "mix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"

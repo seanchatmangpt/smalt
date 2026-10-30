@@ -118,10 +118,11 @@ test-wire:
 test-sdk-smoke:
     @echo "[RETIRED] test-sdk-smoke: test/sdk-smoke deleted at 64f6099; successor = verification/ts (V261019-08). Exit 1 until it lands."; exit 1
 
-# T4: terraform fixture plan smoke (scripts/tf_smoke.sh).
-# Exit 0 pass / 1 preflight or substrate failure / 2 terraform step failure /
-# 77 SKIPPED-NETWORK (registry.terraform.io unreachable — the court WILL fail
-# on an offline network; rerun when online).
+# T4: terraform fixture plan smoke (scripts/tf_smoke.sh). Exit 0 pass /
+# 1 preflight or substrate failure / 2 terraform step failure / 77
+# SKIPPED-NETWORK (registry.terraform.io unreachable — rerun when online).
+
+# tf-plan-smoke — terraform fixture plan smoke (77 = skipped-network).
 tf-plan-smoke:
     @echo "[COURT] T4: terraform fixture plan smoke..."
     @bash scripts/tf_smoke.sh
@@ -322,3 +323,5 @@ import 'justfile.d/57-tf-provider.just'
 import 'justfile.d/58-posh.just'
 # 59-posh-ops — POSH membrane process ops: posh-up/posh-down (v26.10.30 P1)
 import 'justfile.d/59-posh-ops.just'
+# 60-dod — DoD single-source reader: just dod / dod-section (v26.10.30 lane 1)
+import 'justfile.d/60-dod.just'

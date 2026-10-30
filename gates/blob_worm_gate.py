@@ -34,7 +34,13 @@ def capture(ports, shared_key):
             h.update(extra)
         return h
 
-    s_create, _, _ = common.http(egress, "PUT", cont_path, headers=hdrs())
+    # WO-01 (v26.10.31): the create MUST carry restype=container. The bare
+    # 2-segment PUT (no restype/comp) now routes to the queue plane's
+    # create_queue arm (StorageCatchAll queue_plane_route, parity lane
+    # 2026-10-28), so the blob container was never created and every blob
+    # op 404'd ContainerNotFound (2026-10-29 red receipt).
+    s_create, _, _ = common.http(egress, "PUT", cont_path + "?restype=container",
+                                 headers=hdrs())
     s_put, _, _ = common.http(egress, "PUT", blob_path, body=b"first",
                               headers=hdrs({"Content-Type": "application/octet-stream",
                                             "x-ms-blob-type": "BlockBlob"}))
@@ -55,7 +61,13 @@ def capture(ports, shared_key):
     # must be taken while the blob still exists (post-delete it is 404).
     s_snap_free, _, _ = common.http(
         egress, "PUT", blob_path + "?comp=snapshot", headers=hdrs())
-    s_del_free, _, _ = common.http(egress, "DELETE", blob_path, headers=hdrs())
+    # WO-01 (v26.10.31): the snapshot above leaves a snapshot record, so the
+    # base-blob DELETE without x-ms-delete-snapshots:include answers 409
+    # SnapshotsPresent (correct Azure semantics). "Lock was real" is still
+    # the claim under test: with the hold released, the include-delete
+    # succeeds (202).
+    s_del_free, _, _ = common.http(egress, "DELETE", blob_path,
+                                   headers=hdrs({"x-ms-delete-snapshots": "include"}))
 
     # B-KD disclosure (v26.10.20): the blob face now renders the real-Azure
     # StorageError XML envelope (KD-142 / GAP(blob-error-envelope-json)), so

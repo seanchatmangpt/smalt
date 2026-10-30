@@ -152,10 +152,14 @@ defmodule Smalt.Arm.Rbac do
 
     case :ets.lookup(@table_defs, key) do
       [{_, _}] ->
-        # Refuse when assignments reference it (real ARM parity).
+        # Refuse when assignments reference it (real ARM parity). Both
+        # assignment stores are consulted: this module's own table AND
+        # Smalt.Policy's :smalt_rbac (the wire face's roleAssignments store
+        # via Smalt.Policy.put_role_assignment).
         refs =
-          @table_ra
-          |> :ets.tab2list()
+          [@table_ra, :smalt_rbac]
+          |> Enum.filter(&(:ets.info(&1) != :undefined))
+          |> Enum.flat_map(&:ets.tab2list/1)
           |> Enum.any?(fn {_, ra} ->
             rd = get_in(ra, ["properties", "roleDefinitionId"]) || ""
             String.downcase(rd) == key or String.ends_with?(String.downcase(rd), "/" <> name)
@@ -364,7 +368,7 @@ defmodule Smalt.Arm.Rbac do
     prefix_low = String.downcase(scope_prefix)
 
     Enum.any?(scopes, fn scope ->
-      scope_covers?(scope, prefix_low)
+      scope_covers?(String.downcase(scope), prefix_low)
     end)
   end
 

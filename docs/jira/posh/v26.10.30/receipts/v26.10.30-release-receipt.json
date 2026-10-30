@@ -1,0 +1,130 @@
+{
+  "work_order_id": "SPEC-2610-PISO-RELEASE",
+  "origin_authority": {
+    "ceiling": "DO",
+    "grant": "SPEC-2610-PISO",
+    "actor": "Sean"
+  },
+  "provider": {
+    "name": "antigravity",
+    "transport": "local",
+    "authority_ceiling": "DO"
+  },
+  "provider_execution_id": "exec-20261030-posh-v261030-release",
+  "identity": {
+    "subject": "v26.10.30 Release Ledger Closure",
+    "repo": "/Users/sac/smalt",
+    "subject_sha": "f0e0a12575c38f07e37a40ed58f4e448086c97b3",
+    "base_sha": "845c131854d5c5c327bce2b90c6cb8d286584af5"
+  },
+  "authority": {
+    "ceiling": "DO",
+    "grant": "SPEC-2610-PISO",
+    "actor": "Sean"
+  },
+  "consequence": {
+    "commits": [
+      "f0e0a12575c38f07e37a40ed58f4e448086c97b3"
+    ],
+    "files_changed": [
+      "posh/internal/replay/replay.go",
+      "posh/internal/replay/replay_test.go",
+      "posh/internal/mock/mock.go",
+      "posh/internal/mock/mock_test.go",
+      "posh/internal/doctor/predictive.go",
+      "posh/internal/doctor/predictive_test.go",
+      "posh/internal/doctor/kube_healer.go",
+      "posh/internal/doctor/kube_healer_test.go",
+      "posh/internal/telemetry/diffpprof/diff.go",
+      "posh/internal/telemetry/diffpprof/diff_test.go",
+      "posh/internal/telemetry/otlp/exporter.go",
+      "posh/internal/telemetry/otlp/exporter_test.go",
+      "posh/internal/mutation/mutator.go",
+      "posh/internal/mutation/mutator_test.go",
+      "posh/internal/chaos/netem.go",
+      "posh/internal/chaos/netem_test.go",
+      "posh/internal/poshvet/budget.go",
+      "posh/internal/poshvet/budget_test.go",
+      "posh/internal/pgo/collector.go",
+      "posh/internal/pgo/collector_test.go",
+      "posh/internal/receipt/simd_research.go",
+      "posh/internal/receipt/simd_research_test.go",
+      "posh/cmd/posh/main.go",
+      "posh/cmd/pgo-merge/main.go",
+      "posh/Makefile"
+    ],
+    "remote_effects": []
+  },
+  "replay": {
+    "commands": [
+      {
+        "cmd": "make build",
+        "cwd": "/Users/sac/smalt/posh",
+        "exit": 0,
+        "summary": "PGO-optimized static compilation on scratch"
+      },
+      {
+        "cmd": "make test",
+        "cwd": "/Users/sac/smalt/posh",
+        "exit": 0,
+        "summary": "100% test passage across all 30+ packages"
+      },
+      {
+        "cmd": "make poshvet-budget",
+        "cwd": "/Users/sac/smalt/posh",
+        "exit": 0,
+        "summary": "Static escape budget zero-alloc enforcement on //posh:zeroalloc paths"
+      },
+      {
+        "cmd": "make pgo-merge",
+        "cwd": "/Users/sac/smalt/posh",
+        "exit": 0,
+        "summary": "Production PGO multi-profile merge pipeline"
+      },
+      {
+        "cmd": "./bin/posh doctor -config posh.yaml",
+        "cwd": "/Users/sac/smalt/posh",
+        "exit": 0,
+        "summary": "12 vital probes pass in 5.36ms with composite Andon [GREEN]"
+      }
+    ]
+  },
+  "standing": {
+    "value": "ALIVE",
+    "derived_from": "make build, make test, make poshvet-budget, make pgo-merge, posh doctor 12-probe audit"
+  },
+  "provider_ext.posh": {
+    "release": "v26.10.30",
+    "status": "GREEN",
+    "dpmo": 0.0,
+    "domains": {
+      "dx_terminal_ux": {
+        "time_travel_replay": ">45,000 receipts/s",
+        "mock_arm_throughput": ">2,700 round-trips/s",
+        "anti_vacuity_rejection": "single bit-flip rejects"
+      },
+      "doctor_cluster_resilience": {
+        "probe_count": 12,
+        "total_duration_ms": 5.36,
+        "predictive_exhaustion_tau": "15s",
+        "auto_healed": "Kind NodePort & dev_overrides"
+      },
+      "observability_metrology": {
+        "otlp_trace_allocs": 0.0,
+        "otlp_trace_bytes": 0,
+        "diff_pprof_time_us": 3.03
+      },
+      "ci_chaos_hardening": {
+        "ast_mutation_kill_rate": "93.75%",
+        "wan_netem_jitter_ns": 188.5,
+        "supply_chain": "SLSA 3 / Cosign / govulncheck"
+      },
+      "compiler_safety_frontiers": {
+        "poshvet_budget_allocs": 0.0,
+        "arm_id_intern_ns": 0.36,
+        "swisstable_rcu_lookup_ns": 4.06,
+        "pgo_merge_atomic": true
+      }
+    }
+  }
+}

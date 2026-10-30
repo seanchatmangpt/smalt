@@ -29,6 +29,15 @@ on:
       - 'mix.exs'
       - 'mix.lock'
       - '.github/workflows/kind-swarm.yml'
+  pull_request:
+    paths:
+      - 'docker/**'
+      - 'k8s/**'
+      - 'lib/smalt/**'
+      - 'config/**'
+      - 'mix.exs'
+      - 'mix.lock'
+      - '.github/workflows/kind-swarm.yml'
   workflow_dispatch:
 
 jobs:
@@ -144,7 +153,7 @@ jobs:
           yq 'del(.nodes[].extraMounts)' k8s/kind/cluster.yaml > /tmp/cluster-ci.yaml
           cat /tmp/cluster-ci.yaml
           kind create cluster --config /tmp/cluster-ci.yaml --wait 300s
-          kind load docker-image smalt-burn:ci --name kind-smalt
+          kind load docker-image smalt-burn:ci --name smalt
           # Recompute SHA inside this step — the earlier step's $SHA is not
           # in scope here (env does not cross step boundaries).
           SHA="$(git rev-parse HEAD 2>/dev/null || printf '%s' '${{ github.sha }}')"

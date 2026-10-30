@@ -446,12 +446,26 @@ provider under `adapters/terraform-provider-smalt`.
                                          +----------------------+
 ```
 
-Quickstart:
+Quickstart (canonical — copy-paste-tested; the single onboarding path. All
+other POSH docs point here):
 
 ```sh
-make -C posh build     # build the posh Go module
-just posh-court        # 7-stage DoD verification ladder (exit 0 green / 1 FAIL / 3 SKIP)
+colima start           # docker daemon for kind (idempotent)
+just posh-doctor       # prereq + substrate physician; builds posh/bin if absent
+just posh-court        # 7-stage DoD ladder; embeds kind-up/images/deploy + build + install
+just posh-status       # report-only witness (exit 0 always)
 ```
+
+Prerequisites: just, colima, kind, kubectl, Go 1.23+, Terraform >= 1.14 < 2.
+asdf Elixir 1.20.4 only for BEAM-side tests (system mix 1.19.5 fails); `ggen`
+optional (`posh-generate` only). Run everything from the repo root.
+
+Landmines (details in `adapters/terraform-provider-smalt/README.md`
+troubleshooting table): `/healthz` is bearer-gated — readiness anchor is
+`/metadata/endpoints` (always-200); dev_overrides needs the TF >= 1.14
+unlabeled attribute form (posh-install writes it); kind cluster name is
+pinned `smalt` (config + `--name` agree); node disk fence 20000MB —
+`just kind-prune` when `kind-images` refuses.
 
 Design, orders, and receipts: `docs/jira/posh/v26.10.30/` (start at its
 `README.md`).

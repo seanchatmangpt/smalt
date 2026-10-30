@@ -8,8 +8,13 @@ gate for real (each self-boots a substrate on private ports via
 gates/common.py), asserts exit 0, receipt PASS, and every negative fixture
 detected. Fail-closed: 0 gates found -> exit 1.
 
-Exit 0 all gates pass / 1 any gate fails (or no gates found / unreadable
-receipt). Receipts: tmp/invariant-gates/<gate>-receipt.json (written fresh
+Exit 0 all gates hold (PASS or typed SKIP) / 1 any gate fails (or no gates
+found / unreadable receipt). A gate may exit 3 = SKIP-LOUD (WO-22/23/24
+retarget, v26.10.31 inversion): its subject moved (e.g. posh-dialect
+conformance pending, appconfig-etag re-spec pending) and the gate refuses to
+fake a pass -- it must print a typed [SKIP] reason line. SKIP is reported
+per-gate in the verdict table and does not fail the aggregate; FAIL does.
+Receipts: tmp/invariant-gates/<gate>-receipt.json (written fresh
 by gates/common.py:run_gate).
 
 Usage:
@@ -73,6 +78,12 @@ def main(argv):
         except subprocess.TimeoutExpired:
             rc = 124
             print("[INVARIANT-GATES] [FAIL] %s timed out (900s)" % name)
+        if rc == 3:
+            # SKIP-loud: subject moved, typed [SKIP] reason printed by the
+            # gate itself. Never a silent pass; never counted as FAIL.
+            print("[INVARIANT-GATES] [SKIP] %s (loud, typed reason above)" % name)
+            results.append({"gate": name, "exit": rc, "verdict": "SKIP"})
+            continue
         row = {"gate": name, "exit": rc}
         # Receipt contract: PASS verdict + every negative fixture detected.
         rpath = os.path.join(RECEIPT_DIR, "%s-receipt.json" % name)

@@ -1,0 +1,36 @@
+# compat-pin-core.ttl — smalt substrate compat pin (CORE half of the G33/G45
+# pin, split per docs/jira/posh/v26.10.31/gaps/12-compat-pin-split.md).
+#
+# CORE split law: a row goes CORE iff it is dialect-independent and owned by
+# the smalt substrate. This file carries only substrate-owned facts:
+#   - cluster naming law (justfile.d/52-kind.just default)
+#   - TF deployment floor (provider README TF note, dialect-independent)
+#   - surface inventory 12/7 (server_test.go inventory is the measurement;
+#     the counts are substrate contract)
+#   - payload laws (A8/A9-class: substrate renders azurerm-compatible wire)
+# Machine-checked by scripts/compat_pin_check.py --core-pin
+# (exit 0 clean / 1 COMPAT-PIN-FAIL / 3 COMPAT-PIN-SKIP) and
+# non-vacuity-flipped by `just compat-court` (core leg: surfaceCount
+# 12 -> 13 mutation must exit 1).
+#
+# DO NOT hand-edit values without re-deriving from:
+#   justfile.d/52-kind.just (SMALT_KIND_CLUSTER default)
+#   adapters/terraform-provider-smalt/README.md (TF >= 1.14 note)
+#   adapters/terraform-provider-smalt/internal/provider/server_test.go
+@prefix smalt: <https://smalt.dev/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<https://smalt.dev/compat-pin-core>
+    a smalt:CompatPin ;
+    smalt:aksClusterName "smalt" ;
+    smalt:tfVersionFloor ">=1.14, <2.0" ;
+    smalt:tfFloorEvidence "adapters/terraform-provider-smalt/README.md:74 (Terraform >= 1.14 dev_overrides syntax)" ;
+    smalt:resourceSurfaceCount 12 ;
+    smalt:dataSourceSurfaceCount 7 ;
+    smalt:payloadLaw "managedEnvironmentId-dual-key" ;
+    smalt:payloadLaw "memory-numeric-wire" ;
+    smalt:payloadLaw "location-always-set" ;
+    smalt:payloadLaw "tf-floor-gte-1.14" ;
+    smalt:payloadLaw "aks-cluster-name-smalt" .
+
+# end compat-pin-core.ttl

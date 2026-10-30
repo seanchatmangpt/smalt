@@ -103,7 +103,7 @@ defmodule Smalt.Config do
         default: :infinity,
         secret: false,
         surface: "control_plane",
-        env_var: "SMALT_ARM_RATE_LIMIT",
+        env_var: "AZURE_ARM_RATE_LIMIT",
         override: "profile-throttled"
       },
       %{
@@ -130,7 +130,7 @@ defmodule Smalt.Config do
         default: "nil",
         secret: false,
         surface: "control_plane",
-        env_var: "SMALT_BIND_IP",
+        env_var: "AZURE_BIND_IP",
         override: "env-first"
       },
       %{
@@ -139,7 +139,7 @@ defmodule Smalt.Config do
         default: "nil",
         secret: true,
         surface: "data_plane",
-        env_var: "SMALT_BLOB_ACCOUNT_KEY",
+        env_var: "AZURE_BLOB_ACCOUNT_KEY",
         override: "app-env-first"
       },
       %{
@@ -184,7 +184,7 @@ defmodule Smalt.Config do
         default: :infinity,
         secret: false,
         surface: "data_plane",
-        env_var: "SMALT_COSMOS_RU_LIMIT",
+        env_var: "AZURE_COSMOS_RU_LIMIT",
         override: "profile-throttled"
       },
       %{
@@ -373,7 +373,7 @@ defmodule Smalt.Config do
         default: :all,
         secret: false,
         surface: "planes",
-        env_var: "SMALT_PLANES",
+        env_var: "AZURE_PLANES",
         override: "none"
       },
       %{
@@ -400,7 +400,7 @@ defmodule Smalt.Config do
         default: :unbounded,
         secret: false,
         surface: "profile",
-        env_var: "SMALT_PROFILE",
+        env_var: "AZURE_PROFILE",
         override: "profile-first"
       },
       %{
@@ -454,7 +454,7 @@ defmodule Smalt.Config do
         default: "nil",
         secret: true,
         surface: "messaging",
-        env_var: "SMALT_SB_SHARED_KEY",
+        env_var: "AZURE_SB_SHARED_KEY",
         override: "none"
       },
       %{
@@ -526,7 +526,7 @@ defmodule Smalt.Config do
         default: "nil",
         secret: false,
         surface: "tls",
-        env_var: "SMALT_TLS_CERTFILE",
+        env_var: "AZURE_TLS_CERTFILE",
         override: "none"
       },
       %{
@@ -535,7 +535,7 @@ defmodule Smalt.Config do
         default: "nil",
         secret: false,
         surface: "tls",
-        env_var: "SMALT_TLS_KEYFILE",
+        env_var: "AZURE_TLS_KEYFILE",
         override: "none"
       },
       %{
@@ -559,28 +559,29 @@ defmodule Smalt.Config do
     ]
   end
 
-  # Neutral-first env alias law (R8, mirrors preflight-court env.ts / sovereign-backend
-  # ConfigMap): every SMALT_* env read resolves its AZURE_* alias FIRST,
-  # legacy SMALT_* fallback second, identical defaults when neither is set.
-  # Additive: legacy-only deployments and existing courts are byte-identical.
+  # Env alias law, INVERTED (v26.10.31 WO-06: SMALT_* is the PRIMARY prefix;
+  # AZURE_* is the dialect-provided alias — mirrors preflight-court env.ts /
+  # sovereign-backend ConfigMap): every AZURE_* alias read resolves the
+  # primary SMALT_* name FIRST, dialect fallback second, identical defaults
+  # when neither is set. Keys carry the DIALECT prefix, values the PRIMARY.
   @neutral_aliases %{
-    "SMALT_ARM_RATE_LIMIT" => "AZURE_ARM_RATE_LIMIT",
-    "SMALT_BIND_IP" => "AZURE_BIND_IP",
-    "SMALT_BLOB_ACCOUNT_KEY" => "AZURE_BLOB_ACCOUNT_KEY",
-    "SMALT_COSMOS_RU_LIMIT" => "AZURE_COSMOS_RU_LIMIT",
-    "SMALT_PLANES" => "AZURE_PLANES",
-    "SMALT_PROFILE" => "AZURE_PROFILE",
-    "SMALT_SB_SHARED_KEY" => "AZURE_SB_SHARED_KEY",
-    "SMALT_TLS_CERTFILE" => "AZURE_TLS_CERTFILE",
-    "SMALT_TLS_KEYFILE" => "AZURE_TLS_KEYFILE"
+    "AZURE_ARM_RATE_LIMIT" => "SMALT_ARM_RATE_LIMIT",
+    "AZURE_BIND_IP" => "SMALT_BIND_IP",
+    "AZURE_BLOB_ACCOUNT_KEY" => "SMALT_BLOB_ACCOUNT_KEY",
+    "AZURE_COSMOS_RU_LIMIT" => "SMALT_COSMOS_RU_LIMIT",
+    "AZURE_PLANES" => "SMALT_PLANES",
+    "AZURE_PROFILE" => "SMALT_PROFILE",
+    "AZURE_SB_SHARED_KEY" => "SMALT_SB_SHARED_KEY",
+    "AZURE_TLS_CERTFILE" => "SMALT_TLS_CERTFILE",
+    "AZURE_TLS_KEYFILE" => "SMALT_TLS_KEYFILE"
   }
 
-  @doc "Neutral-first alias table: legacy SMALT_* name => primary AZURE_* name."
+  @doc "Primary-first alias table: dialect AZURE_* alias => primary SMALT_* name."
   def neutral_aliases, do: @neutral_aliases
 
-  @doc "Resolve an env var neutral-first: AZURE_* alias wins, legacy SMALT_* fallback, nil when neither set."
-  def neutral_env(legacy) when is_binary(legacy) do
-    System.get_env(Map.fetch!(@neutral_aliases, legacy)) || System.get_env(legacy)
+  @doc "Resolve an env var primary-first: SMALT_* wins, dialect AZURE_* fallback, nil when neither set."
+  def neutral_env(dialect_alias) when is_binary(dialect_alias) do
+    System.get_env(Map.fetch!(@neutral_aliases, dialect_alias)) || System.get_env(dialect_alias)
   end
 
   @doc "Affidavit WASM module path served to enclave doctors."
@@ -611,17 +612,17 @@ defmodule Smalt.Config do
 
   @doc "ARM gateway rate limit (:infinity disables the limiter). SMALT_ARM_RATE_LIMIT overrides BOTH the named throttle profile and the app env, parsed as an integer; otherwise profile defaults apply: :unbounded (default) :infinity, :azure_parity 20 req/s, :strict 5 req/s (SMALT_PROFILE)."
   def arm_rate_limit,
-    do: profile_throttled(neutral_env("SMALT_ARM_RATE_LIMIT"), :arm_rate_limit, :arm, :infinity)
+    do: profile_throttled(neutral_env("AZURE_ARM_RATE_LIMIT"), :arm_rate_limit, :arm, :infinity)
 
   @doc "TLS twin port for SDK legs that refuse Bearer over http."
   def arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
   @doc "Bearer auth mode: :enforce default, :anonymous test only."
   def auth_mode, do: Application.get_env(:smalt, :auth_mode, :enforce)
   @doc "Listener bind IP; SMALT_BIND_IP overrides the app env."
-  def bind_ip, do: neutral_env("SMALT_BIND_IP") || Application.get_env(:smalt, :bind_ip)
+  def bind_ip, do: neutral_env("AZURE_BIND_IP") || Application.get_env(:smalt, :bind_ip)
   @doc "Blob SAS verification key; app env wins over SMALT_BLOB_ACCOUNT_KEY."
   def blob_account_key,
-    do: Application.get_env(:smalt, :blob_account_key) || neutral_env("SMALT_BLOB_ACCOUNT_KEY")
+    do: Application.get_env(:smalt, :blob_account_key) || neutral_env("AZURE_BLOB_ACCOUNT_KEY")
 
   @doc "Extra hosts routed to the blob catch-all egress rule."
   def blob_catch_all_hosts, do: Application.get_env(:smalt, :blob_catch_all_hosts, [])
@@ -637,7 +638,7 @@ defmodule Smalt.Config do
   def cosmos_ru_limit,
     do:
       profile_throttled(
-        neutral_env("SMALT_COSMOS_RU_LIMIT"),
+        neutral_env("AZURE_COSMOS_RU_LIMIT"),
         :cosmos_ru_limit,
         :cosmos,
         :infinity
@@ -751,7 +752,7 @@ defmodule Smalt.Config do
 
   @doc "Resolve the active throttle profile: SMALT_PROFILE env var > app env :profile > :unbounded. Unknown names REFUSE with ArgumentError naming the known set."
   def throttle_profile do
-    case neutral_env("SMALT_PROFILE") || Application.get_env(:smalt, :profile) do
+    case neutral_env("AZURE_PROFILE") || Application.get_env(:smalt, :profile) do
       nil ->
         :unbounded
 

@@ -22,8 +22,12 @@ import (
 	"syscall"
 	"time"
 
+	"smalt.dev/posh/internal/adapter"
 	"smalt.dev/posh/internal/api"
+	"smalt.dev/posh/internal/config"
+	"smalt.dev/posh/internal/dialect"
 	"smalt.dev/posh/internal/logging"
+	"smalt.dev/posh/internal/metrics"
 	"smalt.dev/posh/internal/receipt"
 )
 
@@ -90,12 +94,22 @@ type Server struct {
 	handler  Handler
 	mux      *http.ServeMux
 
+	// dialect wiring (WO-12 v26.10.31 inversion): when both are set,
+	// dispatch consults the graph-projected dialect registry for ops the
+	// local handler does not admit and routes them through the generated
+	// membrane adapter. Nil (the zero wiring) preserves the prior
+	// behavior exactly.
+	dialectReg dialect.Registry
+	cfg        *config.Config
+
 	lnUds net.Listener
 	lnTcp net.Listener
 
 	srvTcp *http.Server
 
 	logger *slog.Logger
+
+	metrics *metrics.Registry
 
 	baseCtx context.Context
 
@@ -104,8 +118,9 @@ type Server struct {
 
 	wg sync.WaitGroup // in-flight connection goroutines (drain set)
 
-	mu     sync.Mutex
-	closed bool
+	mu           sync.Mutex
+	closed       bool
+	inheritedUds bool
 }
 
 // New builds a Server binding sockPath (unix) and tcpAddr (optional, "" to
@@ -122,8 +137,50 @@ func New(sockPath, tcpAddr string, handler Handler) *Server {
 	return s
 }
 
+// WithInheritedListener attaches a pre-bound UDS listener (e.g. passed from
+// the dev supervisor). Server will not re-bind or unlink the socket file.
+func (s *Server) WithInheritedListener(ln net.Listener) *Server {
+	s.lnUds = ln
+	s.inheritedUds = true
+	return s
+}
+
 // WithLogger attaches a slog logger used for request lifecycle logs.
 // It must be called before Listen.
+// WithMetrics attaches a metrics registry: every completed request (both
+// transports, errors included) increments posh_requests_total by
+// {op, transport, code}. Nil registry (default) disables counting.
+func (s *Server) WithMetrics(r *metrics.Registry) *Server {
+	s.metrics = r
+	return s
+}
+
+// countRequest increments posh_requests_total when a registry is attached.
+// code is "OK" on success, the typed wire code otherwise.
+func (s *Server) countRequest(op, transport string, resp *api.Response) {
+	if s.metrics == nil {
+		return
+	}
+	code := "OK"
+	if resp != nil && resp.Error != nil {
+		code = string(resp.Error.Code)
+	}
+	s.metrics.Inc("posh_requests_total", map[string]string{
+		"op":        op,
+		"transport": transport,
+		"code":      code,
+	})
+}
+
+// opOf reports the request op for counting; a request that failed to
+// decode has no op, counted as "unknown".
+func opOf(req *api.Request, derr error) string {
+	if derr != nil || req == nil {
+		return "unknown"
+	}
+	return req.Op
+}
+
 func (s *Server) WithLogger(l *slog.Logger) *Server {
 	if l != nil {
 		s.logger = l
@@ -131,30 +188,53 @@ func (s *Server) WithLogger(l *slog.Logger) *Server {
 	return s
 }
 
+// WithRegistry attaches the graph-projected dialect registry (WO-12
+// v26.10.31 inversion): dispatch consults it for membrane ops the local
+// handler does not admit. Pass adapter.DialectRegistry.
+func (s *Server) WithRegistry(d dialect.Registry) *Server {
+	if d != nil {
+		s.dialectReg = d
+	}
+	return s
+}
+
+// WithConfig attaches the membrane config (egress fence endpoints) used
+// by the generated adapter when dispatch routes through the dialect
+// path. Required together with WithRegistry to activate the path.
+func (s *Server) WithConfig(c *config.Config) *Server {
+	if c != nil {
+		s.cfg = c
+	}
+	return s
+}
+
 // Listen binds the unix socket (and TCP if configured). The socket directory
-// is created and any stale socket file removed.
+// is created and any stale socket file removed. If an inherited listener was
+// already attached via WithInheritedListener, it is retained.
 func (s *Server) Listen() error {
-	if err := os.MkdirAll(filepath.Dir(s.sockPath), 0o755); err != nil {
-		return fmt.Errorf("create socket dir: %w", err)
-	}
-	if _, err := os.Stat(s.sockPath); err == nil {
-		// Stale socket from a previous run: only remove if nothing is listening.
-		if c, err := net.Dial("unix", s.sockPath); err == nil {
-			c.Close()
-			return fmt.Errorf("socket %s already served by a live process", s.sockPath)
+	if s.lnUds == nil {
+		if err := os.MkdirAll(filepath.Dir(s.sockPath), 0o755); err != nil {
+			return fmt.Errorf("create socket dir: %w", err)
 		}
-		os.Remove(s.sockPath)
+		if _, err := os.Stat(s.sockPath); err == nil {
+			// Stale socket from a previous run: only remove if nothing is listening.
+			if c, err := net.Dial("unix", s.sockPath); err == nil {
+				c.Close()
+				return fmt.Errorf("socket %s already served by a live process", s.sockPath)
+			}
+			os.Remove(s.sockPath)
+		}
+		ln, err := net.Listen("unix", s.sockPath)
+		if err != nil {
+			return fmt.Errorf("listen unix %s: %w", s.sockPath, err)
+		}
+		s.lnUds = ln
 	}
-	ln, err := net.Listen("unix", s.sockPath)
-	if err != nil {
-		return fmt.Errorf("listen unix %s: %w", s.sockPath, err)
-	}
-	s.lnUds = ln
 
 	if s.tcpAddr != "" {
 		tl, err := net.Listen("tcp", s.tcpAddr)
 		if err != nil {
-			ln.Close()
+			s.lnUds.Close()
 			return fmt.Errorf("listen tcp %s: %w", s.tcpAddr, err)
 		}
 		s.lnTcp = tl
@@ -245,7 +325,9 @@ func (s *Server) shutdown() {
 			cancel()
 		}
 	}
-	os.Remove(s.sockPath)
+	if !s.inheritedUds {
+		os.Remove(s.sockPath)
+	}
 }
 
 func (s *Server) isClosed() bool {
@@ -261,6 +343,10 @@ func (s *Server) SocketPath() string { return s.sockPath }
 // (membrane framing, v1). HTTP upgrades arrive via the TCP listener only.
 func (s *Server) serveConn(ctx context.Context, c net.Conn) {
 	defer c.Close()
+	if s.metrics != nil {
+		s.metrics.IncConn()
+		defer s.metrics.DecConn()
+	}
 	if err := verifyPeerCred(c); err != nil {
 		return
 	}
@@ -316,7 +402,12 @@ func (s *Server) serveConn(ctx context.Context, c net.Conn) {
 			return
 		}
 		c.SetWriteDeadline(time.Time{})
-		s.logRequest(reqID, "uds", reqBytes, resp, time.Since(start))
+		dur := time.Since(start)
+		s.countRequest(opOf(req, derr), "uds", resp)
+		if s.metrics != nil {
+			s.metrics.RecordDuration(dur)
+		}
+		s.logRequest(reqID, "uds", reqBytes, resp, dur)
 	}
 }
 
@@ -336,6 +427,30 @@ func (s *Server) dispatch(ctx context.Context, req *api.Request, payloadBody []b
 	resp := s.handler(logging.WithRequestID(ctx, req.ID), req)
 	if resp == nil {
 		resp = api.NewErrorResponse(req.ID, api.NewUpstream("dispatch", nil, "handler returned no response"))
+	}
+	// Dialect path (WO-12 inversion): when the local handler does not
+	// admit the op (typed UPSTREAM refusal) and the graph-projected
+	// dialect registry does, route the RAW undecoded frame payload
+	// through the generated membrane adapter. The receipt is stamped
+	// below over the same raw payloadBody — Lower()/translation happen
+	// inside the adapter AFTER stamping scope, and never alter the
+	// receipted bytes. Adapter output is a re-encoded envelope; only
+	// resp is replaced, never the turnstile input.
+	if s.dialectReg != nil && s.cfg != nil &&
+		resp.Error != nil && resp.Error.Code == api.CodeUpstream {
+		if spec, ok := s.dialectReg.LookupOp(strings.ToLower(req.Op)); ok {
+			if out, derr := adapter.Dispatch(s.cfg, spec.Op, payloadBody); derr == nil {
+				if mresp, perr := api.DecodeResponse(out); perr == nil {
+					resp = mresp
+				} else {
+					resp = api.NewErrorResponse(req.ID, api.NewUpstream("dialect", perr, "membrane adapter returned undecodable envelope"))
+				}
+			} else if merr, isMem := derr.(*api.MembraneError); isMem {
+				resp = api.NewErrorResponse(req.ID, merr)
+			} else {
+				resp = api.NewErrorResponse(req.ID, api.NewUpstream("dialect", derr, "membrane dispatch failed"))
+			}
+		}
 	}
 	resp.ID = req.ID
 	tsNs := uint64(time.Now().UnixNano())
@@ -407,7 +522,12 @@ func (s *Server) handleHTTPEnvelope(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}
 	json.NewEncoder(w).Encode(resp)
-	s.logRequest(req.ID, "http", len(body), resp, time.Since(start))
+	dur := time.Since(start)
+	s.countRequest(req.Op, "http", resp)
+	if s.metrics != nil {
+		s.metrics.RecordDuration(dur)
+	}
+	s.logRequest(req.ID, "http", len(body), resp, dur)
 }
 
 func readFramePooled(cs *connState) ([]byte, *frameBuf, error) {

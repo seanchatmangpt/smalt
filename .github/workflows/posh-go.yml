@@ -6,8 +6,10 @@
 #   - provider: gofmt, vet, tests, then `go build` the provider binary and
 #     upload it as a 7-day artifact.
 #
-# Live tests stay skipped: TFPOSHT_LIVE is never set here, so
-# adapters/terraform-provider-smalt/internal/provider/live_test.go gates off.
+# Live tier (job `live`): boots the smalt substrate with the ci.yml pattern
+# (setup-beam, mix deps.get, mix run --no-halt) and runs the provider's live
+# tests with TFPOSHT_LIVE=1 against it. Fail-closed: if the substrate does not
+# bind 9443 within 120s the job fails loudly (no silent skip).
 name: posh-go
 
 on:
@@ -102,3 +104,49 @@ jobs:
           name: terraform-provider-smalt
           path: adapters/terraform-provider-smalt/terraform-provider-smalt
           retention-days: 7
+
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Elixir (substrate, ci.yml pattern)
+        uses: erlef/setup-beam@988e02bfe678367a02564f65ca2e37726dc0268f # v1.9.0
+        with:
+          elixir-version: "1.20.4"
+          otp-version: "29.1.2"
+
+      - name: Setup Go (from adapters/terraform-provider-smalt/go.mod)
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.5.0
+        with:
+          go-version-file: adapters/terraform-provider-smalt/go.mod
+          cache-dependency-path: adapters/terraform-provider-smalt/go.sum
+
+      - name: Install substrate dependencies
+        run: mix deps.get
+
+      - name: Boot substrate (background) and wait for the ARM face
+        run: |
+          mix run --no-halt > /tmp/smalt-substrate.log 2>&1 &
+          SMALT_PID=$!
+          echo "SMALT_PID=$SMALT_PID" >> "$GITHUB_ENV"
+          code=""
+          for _ in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9443/metadata/endpoints || true)"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          if [ "$code" != "200" ]; then
+            echo "--- substrate log (tail) ---" >&2
+            tail -100 /tmp/smalt-substrate.log >&2
+            echo "FATAL: smalt substrate never returned 200 on :9443/metadata/endpoints within 120s (last=$code)" >&2
+            kill "$SMALT_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Live provider tests (TFPOSHT_LIVE=1)
+        working-directory: adapters/terraform-provider-smalt
+        env:
+          TFPOSHT_LIVE: "1"
+        run: go test -count=1 ./...

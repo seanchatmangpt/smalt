@@ -56,10 +56,11 @@ level; there is no env var for the yaml fields themselves. Existing variables
 | `POSH_LOG_LEVEL` | `internal/logging` | `info` | `debug\|info\|warn\|error`, case-insensitive; unknown values fall back to `info`. Request-lifecycle logs are `debug`, so `warn+` removes all per-request log work from the hot path. |
 | `POSH_DRAIN_TIMEOUT` | `internal/server` (`DrainTimeout`) | `5s` | Go duration (`"2s"`) or plain seconds (`"10"`). Unparseable values fall back to the default (fail-closed to the known-good window, never a zero drain). |
 | `POSH_DEBUG` | `cmd/posh` | unset (off) | Exactly `1` starts a **dev-only** pprof HTTP endpoint on `http://127.0.0.1:6060/debug/pprof/`. Loopback-only by construction; never default-on. A failed bind logs to stderr and does not take the membrane down. Not for production. |
+| `POSH_METRICS_ADDR` | `cmd/posh` | unset (off) | Gates the Prometheus-text `/metrics` endpoint (never default-on). Unset/empty = off. `1` = loopback default `127.0.0.1:9091`; any other non-empty value is used as the bind `host:port` verbatim. Serves `posh_requests_total{op, transport, code}` (all requests, both transports, errors included) and `posh_andon_transitions_total{gate, from, to}` (every receipted signal transition, holds included). Private mux (same discipline as the pprof surface — it can never leak into a serving path); a failed bind logs to stderr and does not take the membrane down. |
 
 ### Proposed (TODO — not implemented)
 
-No further env var names are proposed; the three above cover the current
+No further env var names are proposed; the four above cover the current
 operational surface. If a future ticket adds, e.g., a pprof port override,
 name it `POSH_DEBUG_ADDR` and document it in this table.
 

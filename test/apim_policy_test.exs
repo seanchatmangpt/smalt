@@ -3,7 +3,15 @@ defmodule Smalt.ApimTest do
   import Plug.Test
   import Plug.Conn, only: [get_req_header: 2]
 
-  alias Smalt.Apim
+  # v26.10.31 inversion (WO-06): Smalt.Apim is the dialect-tier (Azure API
+  # Management emulation) policy engine. This court pins the POLICY CHAIN
+  # SEMANTICS (transform, rate-limit, jwt refusal order + shapes), not the
+  # module's tier location. `@policy_engine` is the seam — the strip wave
+  # re-points or deletes this file with its subject; no core-tier assertion
+  # lives here.
+  @policy_engine Smalt.Apim
+
+  @aud "https://management.azure.com"
 
   @aud "https://management.azure.com"
 
@@ -38,7 +46,7 @@ defmodule Smalt.ApimTest do
       conn =
         conn_get("/anything")
         |> with_bearer(mint_valid_token())
-        |> Apim.run([
+        |> @policy_engine.run([
           {:header_transform, set: [{"x-apim-slice", "on"}]},
           {:rate_limit, limit: 5, scope: "chain-admit"},
           {:jwt, []}
@@ -52,10 +60,10 @@ defmodule Smalt.ApimTest do
       scope = "rl-#{System.unique_integer([:positive])}"
       conn = conn_get("/rl")
 
-      assert %Plug.Conn{halted: false} = Apim.run(conn, [{:rate_limit, limit: 2, scope: scope}])
-      assert %Plug.Conn{halted: false} = Apim.run(conn, [{:rate_limit, limit: 2, scope: scope}])
+      assert %Plug.Conn{halted: false} = @policy_engine.run(conn, [{:rate_limit, limit: 2, scope: scope}])
+      assert %Plug.Conn{halted: false} = @policy_engine.run(conn, [{:rate_limit, limit: 2, scope: scope}])
 
-      refused = Apim.run(conn, [{:rate_limit, limit: 2, scope: scope}])
+      refused = @policy_engine.run(conn, [{:rate_limit, limit: 2, scope: scope}])
 
       assert refused.halted
       assert refused.status == 429
@@ -68,7 +76,7 @@ defmodule Smalt.ApimTest do
         conn_get("/jwt")
         |> with_bearer("not.a.jwt")
 
-      refused = Apim.run(conn, [{:jwt, []}])
+      refused = @policy_engine.run(conn, [{:jwt, []}])
 
       assert refused.halted
       assert refused.status == 401
@@ -78,7 +86,7 @@ defmodule Smalt.ApimTest do
     end
 
     test "jwt-missing refuses typed 401 MissingBearerToken" do
-      refused = Apim.run(conn_get("/jwt"), [{:jwt, []}])
+      refused = @policy_engine.run(conn_get("/jwt"), [{:jwt, []}])
 
       assert refused.halted
       assert refused.status == 401

@@ -10,7 +10,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -884,14 +883,10 @@ func (r *containerAppResource) Delete(ctx context.Context, req resource.DeleteRe
 
 func (r *containerAppResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.App/containerApps/", "azurerm_container_app") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
-	}
+	setImportIDRGName(ctx, resp, id)
 }
 
 func (r *containerAppResource) applyDefaults(ctx context.Context, m *containerAppModel) {
@@ -1344,6 +1339,76 @@ func (r *containerAppResource) applyResponseToModel(
 	m.Secret = reconcileContainerAppSecrets(priorSecrets, cfg)
 
 	m.Tags = tagsValue(ctx, diags, tags)
+
+	// Import roundtrip (GAP22-3 close, lane 48): applyResponseToModel used to
+	// leave m.Template null after a Read with no prior template state (the
+	// import case), so the follow-on plan always showed the template block as
+	// "1 to change" — perpetual drift. Restore the template from the wire
+	// response when the model carries none (import); when prior state already
+	// holds a template, keep it (create/update path owns it).
+	if len(m.Template) == 0 {
+		if tmpl, ok := props["template"].(map[string]any); ok {
+			if restored, ok := templateModelFromWire(tmpl, m.Name.ValueString()); ok {
+				m.Template = restored
+			}
+		}
+	}
+}
+
+// templateModelFromWire maps an ARM response properties.template map back into
+// the schema's template block. Fails soft (ok=false) on a shape it cannot
+// represent rather than fabricating values.
+func templateModelFromWire(tmpl map[string]any, appName string) ([]containerAppTemplateModel, bool) {
+	rawContainers, _ := tmpl["containers"].([]any)
+	if len(rawContainers) == 0 {
+		return nil, false
+	}
+	out := containerAppTemplateModel{
+		MinReplicas:    types.Int64Value(0),
+		MaxReplicas:    types.Int64Value(10),
+		RevisionSuffix: types.StringNull(),
+	}
+	if scale, ok := tmpl["scale"].(map[string]any); ok {
+		if v, ok := scale["minReplicas"].(float64); ok {
+			out.MinReplicas = types.Int64Value(int64(v))
+		}
+		if v, ok := scale["maxReplicas"].(float64); ok {
+			out.MaxReplicas = types.Int64Value(int64(v))
+		}
+	}
+	out.Container = make([]containerAppContainerModel, 0, len(rawContainers))
+	for _, rc := range rawContainers {
+		cm, ok := rc.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cc := containerAppContainerModel{
+			Name:   types.StringValue(mapStringField(cm, "name")),
+			Image:  types.StringValue(mapStringField(cm, "image")),
+			Memory: types.StringValue("1Gi"),
+		}
+		if res, ok := cm["resources"].(map[string]any); ok {
+			if cpu, ok := res["cpu"].(float64); ok {
+				cc.CPU = types.Float64Value(cpu)
+			} else {
+				cc.CPU = types.Float64Value(0.5)
+			}
+			if mem, ok := res["memory"].(string); ok && mem != "" {
+				cc.Memory = types.StringValue(mem)
+			}
+		} else {
+			cc.CPU = types.Float64Value(0.5)
+		}
+		cc.Args = types.ListNull(types.StringType)
+		cc.Command = types.ListNull(types.StringType)
+		cc.EphemeralStorage = types.StringNull()
+		cc.Env = nil
+		cc.LivenessProbe = nil
+		cc.ReadinessProbe = nil
+		cc.StartupProbe = nil
+		out.Container = append(out.Container, cc)
+	}
+	return []containerAppTemplateModel{out}, true
 }
 
 func reconcileContainerAppSecrets(priorSecrets []containerAppSecretModel, cfg map[string]any) []containerAppSecretModel {

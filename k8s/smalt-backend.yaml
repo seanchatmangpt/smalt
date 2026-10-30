@@ -213,20 +213,17 @@ spec:
         # POSH membrane sidecar (POSH-005 phase change: latent → gas): the
         # real posh binary runs as a long-lived process beside the BEAM,
         # serving the 4-byte length-prefixed JSON membrane over a UDS in a
-        # shared emptyDir. Same image (the binary rides the release
-        # image); default-deny egress (egress_allowlist: []).
+        # shared emptyDir. Dedicated posh image (posh/Dockerfile ->
+        # posh:sidecar, kind load docker-image, imagePullPolicy Never);
+        # default-deny egress (egress_allowlist: []).
         - name: posh-membrane
-          image: smalt:local
+          image: posh:sidecar
           imagePullPolicy: Never
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              cat > /run-posh/posh.yaml <<EOF
-              socket: /run-posh/posh.sock
-              tcp_addr: ""
-              egress_allowlist: []
-              EOF
-              exec /posh/bin/posh -config /run-posh/posh.yaml
+          # Pure distroless: no shell — exec posh directly, config from the
+          # posh-config ConfigMap (socket path /run-posh/posh.sock, empty
+          # egress allowlist), version-flag exec probe instead of a shell
+          # socket test.
+          command: ["/bin/posh", "-config", "/etc/posh/posh.yaml"]
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: 250m, memory: 128Mi }
@@ -237,11 +234,12 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - { name: posh-run, mountPath: /run-posh }
-          # healthz: the membrane is alive iff its UDS exists (exec probe,
-          # no HTTP surface added).
+            - { name: posh-config, mountPath: /etc/posh }
+          # healthz: the membrane binary execs cleanly (shell-free probe;
+          # distroless image carries no /bin/sh).
           livenessProbe:
             exec:
-              command: ["/bin/sh", "-c", "test -S /run-posh/posh.sock"]
+              command: ["/bin/posh", "-version"]
             initialDelaySeconds: 5
             periodSeconds: 5
             failureThreshold: 3
@@ -265,3 +263,19 @@ spec:
         - name: posh-run
           emptyDir:
             medium: Memory
+        # posh config (socket /run-posh/posh.sock, empty egress allowlist)
+        # for the distroless posh-membrane sidecar.
+        - name: posh-config
+          configMap:
+            name: posh-config-backend
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: posh-config-backend
+  namespace: default
+data:
+  posh.yaml: |
+    socket: /run-posh/posh.sock
+    tcp_addr: ""
+    egress_allowlist: []

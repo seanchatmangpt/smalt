@@ -270,7 +270,10 @@ posh/
 smalt (BEAM):
   lib/smalt/posh/client.ex    # typed membrane client (POSH-002)
   lib/smalt/posh/pipeline/    # generated pipelines (one per op)
-terraform-provider-smalt/     # provider (POSH-004, dev_overrides)
+adapters/terraform-provider-smalt/  # provider (POSH-004, dev_overrides);
+                              # the top-level terraform-provider-smalt spike
+                              # was archived 2026-10-30 to
+                              # tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz
 ```
 
 `ingress/` and `egress/` are physically separated engines: no shared
@@ -353,23 +356,28 @@ synthesis time, never nursed at runtime by defensive guards (the
 runtime fallback is Principle 22 "let it crash" on an isolated actor,
 never a guard ladder).
 
-Existing capital: `/Users/sac/smalt/terraform-provider-smalt/scripts/
-schema_inventory_gate.py`. It (1) parses all consumer `.tf` under
-`/Users/sac/cai/courtroom-platform-az/infra` with a minimal HCL parser,
-(2) runs `terraform providers schema -json` under `TF_CLI_CONFIG_FILE`
-dev_overrides when available, else (3) statically parses the provider
-schema sources, then diffs used-attr vs implemented-attr per type.
-Exit 1 loudly on any gap — an undeclared HCL attribute halts the build
-before `terraform plan` can panic (FMEA row 2, target RPN 16).
+Existing capital (updated 2026-10-30, G13 close): the original spike
+`terraform-provider-smalt/scripts/schema_inventory_gate.py` was archived with
+the Elixir spike tree. The live coverage compiler is
+`/Users/sac/smalt/scripts/posh_coverage.py` (`just posh-coverage`), with the
+provider at `/Users/sac/smalt/adapters/terraform-provider-smalt`
+(`internal/provider/`, GA court `just posh-court`). It compiles the
+surface inventory mechanically from the provider's implemented types
+(`internal/provider`) and asserts every cell is pass /
+registered-divergence (`posh/KNOWN_DIVERGENCES.md`) / loudly-missing;
+exit 1 loudly on any silent gap (FMEA row 2, target RPN 16).
 
-Non-vacuity: `--self-test` injects `bogus_attr_lx16` into a
-implemented type's used set and asserts the gate flips to FAIL; a gate
-that accepts the mutation exits non-zero as vacuous.
+Non-vacuity: as designed (2026-10-26 draft) `--self-test` would inject
+`bogus_attr_lx16` into an implemented type's used set and assert the gate
+flips to FAIL; as of 2026-10-30 the live compiler's flip proof is the
+coverage compiler's own exit-1 on a deliberately undocumented cell —
+a gate that accepts a silent gap exits non-zero as vacuous.
 
-For the Go provider (POSH-004), the gate's third leg gains a Go
-schema leg: the generated `provider_schema.go` is diffed against the
-HCL inventory the same way, so schema drift between consumer configs
-and the Go provider is caught at build, not at plan.
+Design target, not yet live (2026-10-30): for the Go provider
+(POSH-004), a Go schema leg diffing a generated `provider_schema.go`
+against the HCL inventory, so schema drift between consumer configs
+and the Go provider is caught at build, not at plan. No
+`provider_schema.go` exists in `internal/provider/` today.
 
 ### 6.2 Other controls
 

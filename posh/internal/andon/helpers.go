@@ -7,6 +7,9 @@ import (
 	"os"
 )
 
+// DefaultReceiptsPath is the default location for the andon receipt chain.
+const DefaultReceiptsPath = "posh/var/andon.jsonl"
+
 // CorruptSignalError is returned when the receipt chain carries an
 // unknown signal name for a gate.
 type CorruptSignalError struct {

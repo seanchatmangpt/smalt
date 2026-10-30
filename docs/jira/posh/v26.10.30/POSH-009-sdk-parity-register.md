@@ -1,5 +1,10 @@
 # POSH-009: SDK-parity register for posh faces
 
+**DIALECT-SCOPED: dialect #1 (Azure ARM/azurerm)** — the parity target "the
+real Azure surface smalt emulates" reads as the **dialect-#1 surface**; gate
+semantics unchanged. Stamp added by GAP-15 wave-2 doc migration (lane 15);
+decision record: `../v26.10.31/00-unification-dialect-decision.md`.
+
 ## Task
 Per the smalt SDK-parity discipline (KNOWN_DIVERGENCES.md + coverage compiler):
 derive the posh surface inventory mechanically (from posh's exposed RPC/CLI

@@ -28,9 +28,10 @@ SMALT_POSH_BIN    := env_var_or_default("SMALT_POSH_BIN", "posh/bin/posh")
 SMALT_POSH_OPS_SOCK := env_var_or_default("SMALT_POSH_OPS_SOCK", "tmp/posh/ops.sock")
 SMALT_POSH_OPS_STATE := env_var_or_default("SMALT_POSH_OPS_STATE", "tmp/posh/ops")
 
-# ---------------------------------------------------------------------------
-# posh-up — build if needed, boot the membrane, bounded-poll socket up.
-# ---------------------------------------------------------------------------
+# Usage: just posh-up — build if needed; boot the posh binary as an OS
+# process; bounded poll for the UDS socket (SKIP 3 when go is missing).
+
+# posh-up — boot the posh membrane process, bounded-poll socket up.
 [no-cd]
 posh-up:
     #!/usr/bin/env bash
@@ -115,9 +116,10 @@ posh-up:
     echo "[POSH-OPS-UP-FAIL] socket $SOCK did not appear within 10s — log: $STATE/posh.log" >&2
     exit 1
 
-# ---------------------------------------------------------------------------
-# posh-down — SIGTERM by pid file, bounded poll, then SIGKILL (C9 fix).
-# ---------------------------------------------------------------------------
+# Usage: just posh-down — SIGTERM by pid file, bounded poll, then SIGKILL
+# (C9 fix). Safe to run when nothing is up.
+
+# posh-down — stop the posh membrane process by pid file.
 [no-cd]
 posh-down:
     #!/usr/bin/env bash

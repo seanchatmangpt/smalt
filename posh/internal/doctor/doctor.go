@@ -44,24 +44,31 @@ const minDiskHeadroomBytes = 1 << 30
 
 // Options configures a Doctor diagnostic run.
 type Options struct {
-	ConfigPath string
-	RepoRoot   string
-	Fix        bool
-	ARMURL     string
+	ConfigPath       string
+	RepoRoot         string
+	Fix              bool
+	DryRunFix        bool
+	ARMURL           string
+	WorkOrderID      string
+	SubjectSHA       string
+	PredictiveEngine *PredictiveEngine
+	KubeHealerOpts   *KubeHealerOptions
 }
 
 // ProbeResult captures the outcome and 5-Whys telemetry of a single check.
 type ProbeResult struct {
-	ID              string  `json:"id"`
-	Status          string  `json:"status"`
-	DurationMs      float64 `json:"duration_ms"`
-	Summary         string  `json:"summary"`
-	WhatBroke       string  `json:"what_broke,omitempty"`
-	Invariant       string  `json:"invariant"`
-	RootCause5Whys  string  `json:"root_cause_5_whys,omitempty"`
-	PrescriptionCmd string  `json:"prescription_cmd,omitempty"`
-	Fixed           bool    `json:"fixed,omitempty"`
-	FixAction       string  `json:"fix_action,omitempty"`
+	ID              string   `json:"id"`
+	Status          string   `json:"status"`
+	DurationMs      float64  `json:"duration_ms"`
+	Summary         string   `json:"summary"`
+	WhatBroke       string   `json:"what_broke,omitempty"`
+	Invariant       string   `json:"invariant"`
+	RootCause5Whys  string   `json:"root_cause_5_whys,omitempty"`
+	PrescriptionCmd string   `json:"prescription_cmd,omitempty"`
+	Fixed           bool     `json:"fixed,omitempty"`
+	FixAction       string   `json:"fix_action,omitempty"`
+	Telemetry       any      `json:"telemetry,omitempty"`
+	CausalChain     []string `json:"causal_chain,omitempty"`
 }
 
 // Report aggregates all probe results and overall Andon status.
@@ -70,6 +77,8 @@ type Report struct {
 	TotalDurationMs float64       `json:"total_duration_ms"`
 	FixedCount      int           `json:"fixed_count"`
 	Timestamp       string        `json:"timestamp"`
+	WorkOrderID     string        `json:"work_order_id,omitempty"`
+	SubjectSHA      string        `json:"subject_sha,omitempty"`
 	Probes          []ProbeResult `json:"probes"`
 }
 
@@ -126,6 +135,26 @@ func Run(ctx context.Context, opts Options) Report {
 	p7 := probeToolchain()
 	probes = append(probes, p7)
 
+	// Probe 8: Kernel Socket Buffer & Queue Bloat Telemetry
+	p8 := probeSocketBufferBacklog(opts, cfg)
+	probes = append(probes, p8)
+
+	// Probe 9: OS File Descriptor Table & Leakage Telemetry
+	p9 := probeFileDescriptorPressure()
+	probes = append(probes, p9)
+
+	// Probe 10: Container CGroup v2 Telemetry (Memory & CPU Throttling)
+	p10 := probeCGroupThrottling(opts)
+	probes = append(probes, p10)
+
+	// Probe 11: Predictive Resource Exhaustion & Trend Engine (EWMA Derivatives)
+	p11 := probePredictiveExhaustion(opts, cfg)
+	probes = append(probes, p11)
+
+	// Probe 12: Automated Cluster Port-Forwarding & NodePort Healer (Port 30943 / 9443)
+	p12 := probeClusterNodePort(ctx, opts)
+	probes = append(probes, p12)
+
 	overall := StatusGreen
 	fixedCount := 0
 	for _, p := range probes {
@@ -147,6 +176,8 @@ func Run(ctx context.Context, opts Options) Report {
 		TotalDurationMs: msSince(start),
 		FixedCount:      fixedCount,
 		Timestamp:       time.Now().UTC().Format(time.RFC3339),
+		WorkOrderID:     opts.WorkOrderID,
+		SubjectSHA:      opts.SubjectSHA,
 		Probes:          probes,
 	}
 }
@@ -221,10 +252,10 @@ func probeUDSSocket(opts Options, cfg *config.Config) ProbeResult {
 
 	// Socket file exists on disk, but connect(2) failed -> stale socket file.
 	if opts.Fix {
-		if rmErr := os.Remove(sockPath); rmErr == nil {
+		if healed, action, _ := HealStaleUDSSocket(sockPath, opts.DryRunFix); healed {
 			res.Status = StatusGreen
 			res.Fixed = true
-			res.FixAction = "atomically unlinked stale socket " + sockPath
+			res.FixAction = action
 			res.Summary = "healed stale UDS socket at " + sockPath
 			res.DurationMs = msSince(t0)
 			return res
@@ -380,16 +411,29 @@ func probeARMGateway(ctx context.Context, opts Options) ProbeResult {
 
 	beamAlive := isProcessAlive("beam.smp")
 	kindAlive := isProcessAlive("kind")
-	procNote := "neither beam.smp nor kind is active"
 	if beamAlive || kindAlive {
-		procNote = fmt.Sprintf("beam.smp=%v, kind=%v (port forward or listener on 9443 not bound)", beamAlive, kindAlive)
+		if opts.Fix {
+			if freed, act, _ := FreePortCollision(9443, nil, opts.DryRunFix); freed {
+				res.Status = StatusGreen
+				res.Fixed = true
+				res.FixAction = act
+				res.Summary = "healed port 9443 collision: " + act
+				res.DurationMs = msSince(t0)
+				return res
+			}
+		}
+		res.Status = StatusYellow
+		procNote := fmt.Sprintf("beam.smp=%v, kind=%v (port forward or listener on 9443 not bound)", beamAlive, kindAlive)
+		res.Summary = fmt.Sprintf("ARM gateway unreachable at %s (%s)", opts.ARMURL, procNote)
+		res.WhatBroke = fmt.Sprintf("GET %s timed out or refused connection (%s)", opts.ARMURL, procNote)
+		res.RootCause5Whys = "Substrate processes are alive, but port 9443 is unreachable because the gateway listener is not bound or port-forwarding dropped."
+		res.PrescriptionCmd = "just down && just up  # or: kubectl port-forward"
+		res.DurationMs = msSince(t0)
+		return res
 	}
 
-	res.Status = StatusYellow
-	res.Summary = fmt.Sprintf("ARM gateway unreachable at %s (%s)", opts.ARMURL, procNote)
-	res.WhatBroke = fmt.Sprintf("GET %s timed out or refused connection (%s)", opts.ARMURL, procNote)
-	res.RootCause5Whys = "Port 9443 is unreachable because the Smalt BEAM substrate is not running. Run 'just up' (native) or 'just kind-up kind-deploy' (cluster) to start it."
-	res.PrescriptionCmd = "just up  # or: just kind-up kind-deploy"
+	res.Status = StatusGreen
+	res.Summary = "ARM gateway idle / port 9443 clean (pre-boot)"
 	res.DurationMs = msSince(t0)
 	return res
 }
@@ -425,24 +469,13 @@ func probeDevOverrides(opts Options) ProbeResult {
 	}
 
 	if opts.Fix {
-		if mkErr := os.MkdirAll(filepath.Dir(tfrcPath), 0o755); mkErr == nil {
-			content := fmt.Sprintf(`provider_installation {
-  dev_overrides {
-    "hashicorp/azurerm" = %q
-  }
-  direct {
-    exclude = ["hashicorp/azurerm"]
-  }
-}
-`, expectedProviderDir)
-			if wErr := os.WriteFile(tfrcPath, []byte(content), 0o644); wErr == nil {
-				res.Status = StatusGreen
-				res.Fixed = true
-				res.FixAction = "wrote transient dev_overrides rc at " + tfrcPath
-				res.Summary = "created transient Terraform dev_overrides at " + tfrcPath
-				res.DurationMs = msSince(t0)
-				return res
-			}
+		if healed, action, _ := HealDevOverrides(opts.RepoRoot, opts.DryRunFix); healed {
+			res.Status = StatusGreen
+			res.Fixed = true
+			res.FixAction = action
+			res.Summary = "created transient Terraform dev_overrides at " + tfrcPath
+			res.DurationMs = msSince(t0)
+			return res
 		}
 	}
 
@@ -527,6 +560,62 @@ func probeToolchain() ProbeResult {
 	res.Status = StatusGreen
 	res.Summary = fmt.Sprintf("go and terraform present on PATH (%d/2)", len(found))
 	res.DurationMs = msSince(t0)
+	return res
+}
+
+// Probe 11: predictive-exhaustion
+func probePredictiveExhaustion(opts Options, cfg *config.Config) ProbeResult {
+	t0 := time.Now()
+	res := ProbeResult{
+		ID:        "predictive-exhaustion",
+		Invariant: "TPS-JIDOKA-PREDICTIVE Resource Exhaustion Forecast",
+	}
+
+	engine := opts.PredictiveEngine
+	if engine == nil {
+		engine = DefaultPredictiveEngine
+	}
+
+	// Ingest live host readings if running default ambient engine or if custom engine is empty
+	if opts.PredictiveEngine == nil || engine.SampleCount() == 0 {
+		if fdTel, err := InspectFileDescriptors(); err == nil {
+			engine.RecordFDSample(float64(fdTel.OpenFDs), float64(fdTel.SoftLimit), t0)
+		}
+
+		sockPath := filepath.Join(opts.RepoRoot, "posh", "run", "posh.sock")
+		if cfg != nil && cfg.Socket != "" {
+			sockPath = cfg.Socket
+		}
+		if conn, err := net.DialTimeout("unix", sockPath, 50*time.Millisecond); err == nil {
+			if sTel, sErr := InspectSocketBuffers(conn); sErr == nil {
+				engine.RecordSocketBufferSample(float64(sTel.RcvQueueDepth), float64(sTel.RcvBufBytes), t0)
+			}
+			_ = conn.Close()
+		}
+	}
+
+	telemetry := engine.Evaluate(t0)
+	res.DurationMs = msSince(t0)
+	res.Status = telemetry.OverallStatus
+	res.Summary = telemetry.Summary
+	res.WhatBroke = telemetry.WhatBroke
+	res.RootCause5Whys = telemetry.RootCause5Whys
+	res.PrescriptionCmd = telemetry.Prescription
+	res.Telemetry = telemetry
+
+	return res
+}
+
+// Probe 12: kube-nodeport-healer
+func probeClusterNodePort(ctx context.Context, opts Options) ProbeResult {
+	var kOpts KubeHealerOptions
+	if opts.KubeHealerOpts != nil {
+		kOpts = *opts.KubeHealerOpts
+	} else {
+		kOpts = DefaultKubeHealerOptions(opts)
+	}
+
+	res, _ := CheckAndHealClusterEndpoint(ctx, kOpts)
 	return res
 }
 

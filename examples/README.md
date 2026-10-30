@@ -7,6 +7,10 @@ loopback.
 
 ## Prerequisites
 
+> POSH / kind-plane onboarding: canonical path is smalt `README.md` §POSH
+> (`just posh-court`). The prerequisites below are for the BEAM-side
+> example harnesses only.
+
 - smalt repo built at least once (`mix compile` has run, or run
   `bash scripts/bootstrap.sh` once).
 - Free loopback ports 9443/9444/8443/5672/5673/9545, or point the

@@ -9,6 +9,7 @@ defmodule Smalt.ArmGateway.Plug.SubscriptionRouter do
   """
   import Smalt.ArmGateway.Plug.Common
   import Smalt.ArmGateway.Engine.Lro
+  import Smalt.ArmGateway.Engine.LroEnvelope
 
   alias Smalt.ArmGateway.LRO
   alias Smalt.ArmGateway.ProviderMatrix
@@ -609,56 +610,6 @@ defmodule Smalt.ArmGateway.Plug.SubscriptionRouter do
     })
   end
 
-  # -- KD-COVERS: KD-59 — exportTemplate delegates to the wave-6 export face
-  # (Smalt.Arm.ExportTemplate.export_rg/3), previously unrouted. Synchronous
-  # 200 (terminal for ARM LRO pollers — documented boundary); an RG with no
-  # exportable resources is a typed 404 (ResourceGroupResourceNotFound).
-
-  # -- KD-COVERS: KD-59 — exportTemplate delegates to the wave-6 export face
-  # (Smalt.Arm.ExportTemplate.export_rg/3), previously unrouted. Synchronous
-  # 200 (terminal for ARM LRO pollers — documented boundary); an RG with no
-  # exportable resources is a typed 404 (ResourceGroupResourceNotFound).
-  defp handle_export_template(conn, sub_id, rg_name) do
-    with :ok <- check_api_version(conn, nil) do
-      case Smalt.Arm.ExportTemplate.export_rg(sub_id, rg_name) do
-        {:ok, template} -> send_json(conn, 200, Jason.encode!(template))
-        {:error, status, body} -> send_json(conn, status, Jason.encode!(body))
-      end
-    else
-      {:respond, conn} -> conn
-    end
-  end
-
-  # -- KD-COVERS: KD-59 — moveResources / validateMoveResources: TYPED
-  # UNSUPPORTED (row close condition: routes OR typed refusal; falsifier:
-  # "never 404"). Real Azure refuses moves of unsupported types with 400
-  # MoveUnsupportedResourceType; the emulator names the boundary directly.
-
-  # -- KD-COVERS: KD-59 — moveResources / validateMoveResources: TYPED
-  # UNSUPPORTED (row close condition: routes OR typed refusal; falsifier:
-  # "never 404"). Real Azure refuses moves of unsupported types with 400
-  # MoveUnsupportedResourceType; the emulator names the boundary directly.
-  defp handle_move_resources(conn, sub_id, rg_name) do
-    with :ok <- check_api_version(conn, nil) do
-      send_json(
-        conn,
-        400,
-        Jason.encode!(%{
-          "error" => %{
-            "code" => "MoveUnsupportedResourceType",
-            "message" =>
-              "Resource move is not supported by this emulator for resources in " <>
-                "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}.",
-            "target" => "/subscriptions/#{sub_id}/resourceGroups/#{rg_name}",
-            "innererror" => %{}
-          }
-        })
-      )
-    else
-      {:respond, conn} -> conn
-    end
-  end
-
   # -- Management locks (KD-113 leg b): wired to Smalt.Policy (wave-4 lane w4d).
   # PUT/GET/DELETE/LIST at RG and subscription scope, api-version 2016-09-01
   # (monotonic-admission: <= the admitted 2020-05-01 latest). Inline envelopes,
@@ -911,37 +862,6 @@ defmodule Smalt.ArmGateway.Plug.SubscriptionRouter do
 
   delete "/tagNames/:tag_name/tagValues/:tag_value" do
     handle_tenant_tag_value_delete(conn, tag_name, tag_value)
-  end
-
-  # -- KD-COVERS: KD-59 — resource-group exportTemplate + moveResources.
-  # exportTemplate delegates to Smalt.Arm.ExportTemplate.export_rg/3 (the
-  # wave-6 export face, previously unrouted); an RG with no exportable
-  # resources is a typed 404 (ResourceGroupResourceNotFound). Responds 200
-  # synchronous (terminal for ARM LRO pollers) — documented boundary.
-  post "/subscriptions/:sub_id/resourcegroups/:rg_name/exportTemplate" do
-    handle_export_template(conn, sub_id, rg_name)
-  end
-
-  post "/subscriptions/:sub_id/resourceGroups/:rg_name/exportTemplate" do
-    handle_export_template(conn, sub_id, rg_name)
-  end
-
-  # moveResources / validateMoveResources: TYPED UNSUPPORTED (row KD-59 close
-  # condition admits routes OR typed refusal; falsifier: "never 404").
-  post "/subscriptions/:sub_id/resourcegroups/:rg_name/moveResources" do
-    handle_move_resources(conn, sub_id, rg_name)
-  end
-
-  post "/subscriptions/:sub_id/resourceGroups/:rg_name/moveResources" do
-    handle_move_resources(conn, sub_id, rg_name)
-  end
-
-  post "/subscriptions/:sub_id/resourcegroups/:rg_name/validateMoveResources" do
-    handle_move_resources(conn, sub_id, rg_name)
-  end
-
-  post "/subscriptions/:sub_id/resourceGroups/:rg_name/validateMoveResources" do
-    handle_move_resources(conn, sub_id, rg_name)
   end
 
   # -- Management locks (KD-113 leg b): wired to Smalt.Policy (wave-4 lane w4d).

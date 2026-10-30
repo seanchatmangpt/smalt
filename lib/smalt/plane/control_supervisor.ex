@@ -1,10 +1,17 @@
 defmodule Smalt.Plane.ControlSupervisor do
   @moduledoc """
   Supervision subtree for the Control Plane:
-  - ARM Gateway HTTP router (9443) — front door (starts first)
-  - ARM Gateway TLS twin (9444) — deferred listener under :deferred_listeners
-  - LRO Notifier and Sweeper
+  - Standards admission engine (Smalt.Posh.*) — the control-plane face
+  - LRO Notifier and Sweeper (serve the CORE vendor-neutral LRO state
+    machine, lib/smalt/lro.ex — wave-1 L3 ruling: they stay with core)
   - WasmEngine Supervisor
+
+  v26.10.31 cordon (WO-32): the BEAM no longer binds 9443/9444. The ARM
+  gateway listener (Bandit front door on 9443) and the ARM TLS twin (9444)
+  are REMOVED — posh (Go membrane) owns the 9443 wire; the ARM router module
+  remains callable in-process for dialect-conformance courts. LRO Notifier/Sweeper REMAIN (ruling documented: LRO record store
+  + Sweeper/Notifier serve the vendor-neutral LRO state machine; only the
+  ARM wire spelling leaves with the dialect).
   """
   use Supervisor
 
@@ -17,48 +24,36 @@ defmodule Smalt.Plane.ControlSupervisor do
     children =
       store_child() ++
         [
-          # AZB-22b: bound graceful-stop on every Bandit listener (default for
-          # a type :supervisor child is :infinity; a stuck ThousandIsland
-          # listener hung the tree's stop >60s in the burn ring).
-          Supervisor.child_spec(
-            # AZURE-FIDELITY lane 18: latency realism on the ARM control plane.
-            # Gate-off cost is ONE Application.get_env, then straight to the
-            # router (same posture as the egress listener in DataSupervisor).
-            {Bandit,
-             plug: {Smalt.Egress.LatencyPlug, [router: Smalt.ArmGateway.Router]},
-             scheme: :http,
-             port: arm_port(),
-             ip: bind_ip()},
-            shutdown: 10_000
-          ),
+          # v26.10.31 WO-32: the standards admission engine IS the control
+          # plane now. Mounted with plane-namespaced names so a config-gated
+          # standalone Smalt.Posh.Supervisor (application.ex posh_child) can
+          # never collide on registered names.
+          {Smalt.Posh.Supervisor,
+           [
+             name: __MODULE__.PoshEngine,
+             ingress_name: __MODULE__.PoshIngress,
+             egress_name: __MODULE__.PoshEgress,
+             ring_name: __MODULE__.PoshRing,
+             log_name: __MODULE__.PoshEventLog
+           ]},
           Smalt.ArmGateway.LRO.Notifier,
           Smalt.ArmGateway.LRO.Sweeper,
           Smalt.Affidavit.WasmEngine.Supervisor
         ] ++ wasm_pool_child()
 
-    children =
-      if Smalt.Application.deferred_listeners?() do
-        # BOOTPROF cut #2 (RELCUT, NFR-FOOTPRINT): the TLS twin (9444) is a
-        # deferred listener - it starts on the next scheduler tick (see
-        # handle_info) so the ARM front door (9443) binds and accepts first.
-        children
-      else
-        children ++ [tls_twin_child()]
-      end
-
-    spec =
-      Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
-
-    spec
+    # BOOTPROF cut #2 (RELCUT, NFR-FOOTPRINT): with the ARM listeners gone
+    # there is no front door left to defer — the control plane has no
+    # listener to start on a later tick. The seam is preserved as a typed
+    # no-op so ListenerDeferral (application.ex) and the config gate
+    # (:deferred_listeners) stay byte-identical in behavior.
+    Supervisor.init(children, strategy: :one_for_one, max_restarts: 5, max_seconds: 5)
   end
 
-  # BOOTPROF cut #2: deferred TLS-twin start, invoked by
-  # Smalt.Application.ListenerDeferral on the tick after the front door
-  # (ARM 9443) is already bound and accepting.
+  # BOOTPROF cut #2 seam (kept for ListenerDeferral compatibility): the ARM
+  # front door (9443) and TLS twin (9444) are cordoned; there is no deferred
+  # listener left in the control plane. Returns a typed no-op.
   @doc false
-  def start_deferred_listener do
-    Supervisor.start_child(__MODULE__, tls_twin_child())
-  end
+  def start_deferred_listener, do: {:ok, :none}
 
   # BK-110 / SPOF-A A-7: Smalt.Wasm.Pool has a real production consumer
   # (EgressRouter -> SyncRoutes -> Sync.Guard -> Wasm.Bridge -> Pool.checkout)
@@ -91,33 +86,11 @@ defmodule Smalt.Plane.ControlSupervisor do
         # Compile-freeze unblock (lane verification/py, disclosed): `:data in
         # list` is not a legal guard over a runtime list (Elixir 1.19 raises
         # ArgumentError at compile). Same semantics via Enum.member?.
-        # prepend FIRST: Store tables must exist before the ARM listener serves
+        # prepend FIRST: Store tables must exist before the control plane serves
         if Enum.member?(list, :data), do: [], else: [Smalt.Store]
 
       _ ->
         [Smalt.Store]
-    end
-  end
-
-  defp arm_port, do: Smalt.Config.arm_port()
-  defp arm_tls_port, do: Application.get_env(:smalt, :arm_tls_port, 9444)
-
-  defp arm_tls_opts do
-    Smalt.TLS.bandit_opts(Smalt.Application.TlsTwinDispatch, arm_tls_port())
-  end
-
-  defp tls_twin_child do
-    # AZB-22b: bound graceful-stop on every Bandit listener.
-    Supervisor.child_spec(
-      {Bandit, arm_tls_opts() ++ [ip: bind_ip()]},
-      shutdown: 10_000
-    )
-  end
-
-  defp bind_ip do
-    case Application.get_env(:smalt, :bind_all_interfaces, false) do
-      true -> {0, 0, 0, 0}
-      _ -> {127, 0, 0, 1}
     end
   end
 end

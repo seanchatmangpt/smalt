@@ -1,5 +1,5 @@
 # Multi-stage static build for POSH Go membrane (SPAF Tier 2, POSH-005)
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
 
@@ -8,14 +8,20 @@ COPY posh/ ./posh/
 
 # Build static binary
 WORKDIR /build/posh
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /posh ./cmd/posh
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /bin/posh ./cmd/posh
+RUN mkdir -p /posh/run /etc/posh /var/run/smalt
 
 # Final minimal scratch stage
 FROM scratch
 
+COPY --from=builder /bin/posh /bin/posh
 COPY --from=builder /posh /posh
-COPY posh/posh.yaml /posh.yaml
+COPY --from=builder /etc/posh /etc/posh
+COPY --from=builder /var/run/smalt /var/run/smalt
+COPY posh/posh.yaml /etc/posh/posh.yaml
+
+USER 65532:65532
 
 EXPOSE 9443 6060
 
-ENTRYPOINT ["/posh", "-config", "/posh.yaml"]
+ENTRYPOINT ["/bin/posh", "-config", "/etc/posh/posh.yaml"]

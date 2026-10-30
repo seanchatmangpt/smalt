@@ -136,7 +136,10 @@ defmodule Smalt.Posh.Port do
     # Terminate path only: bounded exit wait + SIGKILL escalation. Init
     # {:stop, ...} paths (boot timeout / early exit) skip the wait — the
     # boot_wait loop already owns their exit observables.
-    graceful_kill(state.port, :await_exit)
+    # A port that already delivered {:exit_status, _} is closed by the VM;
+    # Port.close on it raises ArgumentError. Only the still-open path needs
+    # the graceful SIGTERM teardown.
+    unless state.exit, do: graceful_kill(state.port, :await_exit)
     File.rm(state.cfg_path)
     :ok
   end

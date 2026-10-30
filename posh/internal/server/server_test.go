@@ -6,14 +6,17 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"smalt.dev/posh/internal/api"
+	"smalt.dev/posh/internal/metrics"
 	"smalt.dev/posh/internal/receipt"
 )
 
@@ -284,7 +287,6 @@ func TestWriteFrameRoundTripOnRealBuffer(t *testing.T) {
 // json.Marshal, which allocates for the envelope map + output buffer; the
 // budget below is the measured floor, not an aspiration.
 func TestWriteFrameAllocBudget(t *testing.T) {
-	t.Parallel()
 	resp := api.NewOK("alloc-1", map[string]string{"k": "v"})
 	body, err := api.Encode(resp)
 	if err != nil {
@@ -588,5 +590,90 @@ func TestF_GO_02_VectoredWritevSingleSyscall(t *testing.T) {
 	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("server writeFrameWithHdr failed: %v", err)
+	}
+}
+
+// TestMetricsScrapeAfterRealRequests (GAP10(c) court): real requests over
+// the REAL UDS and TCP transports, then a real HTTP scrape of /metrics.
+// Asserts final rendered state - counters by op/transport/error-code -
+// never call counts.
+func TestMetricsScrapeAfterRealRequests(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+	s := New(tempSockPath(t), "127.0.0.1:0", echoHandler).WithMetrics(reg)
+	if err := s.Listen(); err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	go func() { _ = s.Serve(context.Background()) }()
+	t.Cleanup(s.shutdown)
+	waitForSocket(t, s.SocketPath())
+	tcpAddr := s.lnTcp.Addr().String()
+
+	// Two OK requests over the REAL UDS transport.
+	c := dialFrame(t, s.SocketPath())
+	c.sendFrame([]byte(`{"id":"m1","op":"echo","params":{}}`))
+	if _, ok := c.readFrame(); !ok {
+		t.Fatal("uds frame 1: connection closed")
+	}
+	c.sendFrame([]byte(`{"id":"m2","op":"echo","params":{}}`))
+	if _, ok := c.readFrame(); !ok {
+		t.Fatal("uds frame 2: connection closed")
+	}
+
+	// One OK and one UPSTREAM (unknown op) request over the REAL HTTP/TCP
+	// transport.
+	post := func(body string) {
+		t.Helper()
+		r, err := http.Post("http://"+tcpAddr+"/", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("http post: %v", err)
+		}
+		r.Body.Close()
+	}
+	post(`{"id":"h1","op":"echo","params":{}}`)
+	post(`{"id":"h2","op":"nope","params":{}}`)
+
+	// Real HTTP scrape of the metrics registry, served by a real
+	// net/http server on the loopback (the same Render cmd/posh serves
+	// behind POSH_METRICS_ADDR).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("scrape listen: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", reg)
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { srv.Close() })
+
+	// Bounded poll on a real observable: the scrape body must eventually
+	// contain all four counter samples.
+	deadline := time.Now().Add(5 * time.Second)
+	var body string
+	want := []string{
+		`posh_requests_total{code="OK",op="echo",transport="uds"} 2`,
+		`posh_requests_total{code="OK",op="echo",transport="http"} 1`,
+		`posh_requests_total{code="UPSTREAM",op="nope",transport="http"} 1`,
+	}
+	for {
+		r, err := http.Get("http://" + ln.Addr().String() + "/metrics")
+		if err == nil {
+			b, _ := io.ReadAll(r.Body)
+			r.Body.Close()
+			body = string(b)
+			ok := true
+			for _, w := range want {
+				if !strings.Contains(body, w) {
+					ok = false
+				}
+			}
+			if ok {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("scrape never matched; last body:\n%s", body)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

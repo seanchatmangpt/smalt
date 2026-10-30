@@ -1,0 +1,3 @@
+# MOVED: canonical ontology is priv/ontologies/public-cloud-core.ttl (v26.10.31 WO-05
+# TTL canonicalization). This docs/ path was a byte-identical duplicate; the court
+# (scripts/verify_public_cloud_ontology.py) now parses the canonical path by default.

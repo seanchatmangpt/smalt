@@ -73,23 +73,16 @@ defmodule Smalt.Application do
     end
   end
 
-  # POSH-002 coordinator wiring: config-gated POSH engine (default OFF —
-  # byte-identical boot). Under `config :smalt, :posh, dir: <path>` the
-  # asymmetric ingress/egress supervisor joins the app tree; the turnstile
-  # fence admits only receipt-backed deltas (lib/smalt/posh/turnstile.ex).
-  defp posh_child do
-    case Application.get_env(:smalt, :posh) do
-      nil ->
-        []
-
-      opts when is_list(opts) ->
-        [
-          Supervisor.child_spec({Smalt.Posh.Supervisor, opts},
-            restart: :permanent
-          )
-        ]
-    end
-  end
+  # POSH-002 wiring, v26.10.31 WO-32: the POSH standards admission engine is
+  # now OWNED BY THE CONTROL PLANE (Smalt.Plane.ControlSupervisor mounts
+  # Smalt.Posh.Supervisor with plane-namespaced names). The former
+  # config-gated app-level posh_child/0 is retired so the engine has exactly
+  # one start site — a config :smalt, :posh value is no longer read here and
+  # cannot double-start the ingress/egress subtrees (their shared hardcoded
+  # child name Smalt.Posh.Ingress.TaskSupervisor would collide across two
+  # instances).
+  @doc false
+  def posh_child, do: []
 
   # BOOTPROF cut #2: config gate for phased listener start.
   @doc false

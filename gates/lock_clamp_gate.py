@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Invariant gate: lock duration clamp 100..30000 ms.
 
+WO-22/23/24 retarget note (v26.10.31 inversion): lock-clamp stays CORE
+per the L8 ruling ("mostly core") — clamp law rides the AMQP surface,
+not the ARM dialect. The ARM PUT prologue is DIALECT-PENDING under the
+same split as queue-capacity (see that gate's header).
+
 Positive: for three ARM-configured lock durations ("PT1H" -> 30000 clamp-high,
 "PT0S" -> 100 clamp-low, "PT5S" -> 5000 unclamped middle), the gate PUTs a
 Service Bus queue with that lockDuration through the ARM gateway on a live

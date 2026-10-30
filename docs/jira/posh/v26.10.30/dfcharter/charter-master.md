@@ -147,3 +147,28 @@ Project Sponsor / Executive Leadership — Date: October 30, 2026
 Lead Systems Architect — Date: October 30, 2026
 Lead Quality Engineer (Master Black Belt) — Date: October 30, 2026
 Principal Compliance Officer — Date: October 30, 2026
+
+## Neutral core (v26.10.31)
+
+Added by GAP-15 wave-2 doc migration (lane 15). Decision record:
+`../../v26.10.31/00-unification-dialect-decision.md` (DECIDED, 2026-10-30).
+
+Core law: smalt-core is a vendor-neutral public-cloud ontology (TOSCA/CIMI
+prior art first); vendor dialects live in posh. Neutral definitions of the
+charter terms, previously defined only against the smalt-as-Azure-emulator
+substrate:
+
+- **Port In** — the dialect-facing ingress of the membrane: admission of
+  dialect-encoded requests into smalt-core, independent of any vendor wire.
+- **Starboard** — the smalt-core-facing egress: settlement of admitted work
+  back out, independent of any vendor wire.
+- **Turnstile** — the mutation-receipt fence: no mutation crosses without a
+  receipt; vendor-independent by construction.
+- **Dialect** — a vendor translation layer living in posh (e.g. Azure ARM,
+  Entra STS), never in smalt-core. Dialect #0 = identity (Entra STS wire
+  face); dialect #1 = Azure ARM.
+
+These terms receive core IRIs in `smalt-core.ttl` when it lands
+(v26.10.31 lanes 9/13 feed). Charter sections above retain their original
+Azure-emulation-era phrasing as dialect-#1-facing documentation; this section
+is the neutral reading.

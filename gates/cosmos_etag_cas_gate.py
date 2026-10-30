@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Invariant gate: Cosmos ETag compare-and-swap — exactly one winner.
 
+WO-22/23/24 retarget note (v26.10.31 inversion): the CAS invariant is
+re-homed as posh-dialect conformance (AZURE-#1); posh/internal/dialect/
+does not exist yet, so this gate keeps running against the core face and
+is marked DIALECT-PENDING — when the dialect package lands, the
+expectation set re-points as Go table tests under
+posh/internal/dialect/azure/ and this gate is retired or re-scoped.
+
 Positive: against a live substrate, create a doc, then fire N concurrent
 conditional PUTs (If-Match: <etag>) at it. The CAS is serialized inside the
 Store GenServer (lib/smalt/data_plane/cosmos.ex: put_doc), so exactly one

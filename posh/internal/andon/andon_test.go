@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -265,5 +266,122 @@ func TestAppenderCreatesDirsAndSyncs(t *testing.T) {
 	}
 	if _, ok, _ := app.LastGate("nope"); ok {
 		t.Error("LastGate for unknown gate must report not-found")
+	}
+}
+
+// TestDeleteThenReplayPrevFromNewChain (GAP10(e) court): a receipt chain
+// wiped from disk and re-seeded MUST be the register of truth — Machine
+// reads prev_signal from the NEW chain, never from any in-memory or stale
+// on-disk state. Deletes are real os.Remove calls; the replay is real
+// Machine.Run appends over the SAME path.
+func TestDeleteThenReplayPrevFromNewChain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "posh", "var", "andon.jsonl")
+	newAppenderAt := func() *Appender {
+		t.Helper()
+		app, err := NewAppender(path)
+		if err != nil {
+			t.Fatalf("NewAppender: %v", err)
+		}
+		return app
+	}
+	m1 := &Machine{App: newAppenderAt()}
+
+	// Seed the first chain: RED latch on gate "build" for subject S1.
+	runOne(t, m1, "build", OutcomeFail, "S1", "boom")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("seeded chain missing: %v", err)
+	}
+
+	// WIPE: the file is gone from disk.
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	// Post-wipe, prev must default to GREEN (no chain on disk), proving
+	// the machine truly reads the file and not memory.
+	m2 := &Machine{App: newAppenderAt()}
+	rec := runOne(t, m2, "build", OutcomePass, "S2", "clean run post-wipe")
+	if rec.PrevSignal != "GREEN" {
+		t.Fatalf("post-wipe prev = %s, want GREEN (chain deleted; prev must come from the file)", rec.PrevSignal)
+	}
+
+	// Replay the seeded chain at the SAME path: a fresh RED for S1.
+	m3 := &Machine{App: newAppenderAt()}
+	rec = runOne(t, m3, "build", OutcomeFail, "S1", "boom again")
+	if rec.PrevSignal != "GREEN" {
+		t.Fatalf("replay seed prev = %s, want GREEN", rec.PrevSignal)
+	}
+	if rec.Signal != "RED" {
+		t.Fatalf("replay seed signal = %s, want RED", rec.Signal)
+	}
+
+	// The new chain now governs: same-SHA rerun stays latched RED with
+	// prev read from the REPLAYED chain, not the wiped one.
+	rec = runOne(t, m3, "build", OutcomePass, "S1", "same subject, still latched")
+	if rec.PrevSignal != "RED" || rec.Signal != "RED" {
+		t.Fatalf("prev=%s signal=%s, want RED/RED read from the new chain", rec.PrevSignal, rec.Signal)
+	}
+
+	// And a new subject's full GREEN clears — reading the NEW chain.
+	rec = runOne(t, m3, "build", OutcomePass, "S9", "new subject")
+	if rec.PrevSignal != "RED" {
+		t.Fatalf("prev = %s, want RED from replayed chain", rec.PrevSignal)
+	}
+	if rec.Signal != "GREEN" {
+		t.Fatalf("signal = %s, want GREEN (changed subject + pass clears latch)", rec.Signal)
+	}
+
+	// Final on-disk state: exactly 4 receipts, in order.
+	lines := readLines(t, path)
+	if len(lines) != 4 {
+		t.Fatalf("chain has %d receipts, want 4", len(lines))
+	}
+	want := []struct{ prev, sig string }{{"GREEN", "GREEN"}, {"GREEN", "RED"}, {"RED", "RED"}, {"RED", "GREEN"}}
+	for i, w := range want {
+		if lines[i].PrevSignal != w.prev || lines[i].Signal != w.sig {
+			t.Fatalf("receipt %d = %s->%s, want %s->%s", i, lines[i].PrevSignal, lines[i].Signal, w.prev, w.sig)
+		}
+	}
+}
+
+// TestTransitionHookFiresOnTransitionsAndHolds proves the OnTransition
+// counter hook (GAP10(c) surface) fires on every receipted transition —
+// changes and holds (from == to) alike — with real Machine.Run runs.
+func TestTransitionHookFiresOnTransitionsAndHolds(t *testing.T) {
+	app := newAppender(t)
+	m := &Machine{App: app}
+
+	type ev struct {
+		gate string
+		from State
+		to   State
+	}
+	var mu sync.Mutex
+	var got []ev
+	prev := OnTransition
+	OnTransition = func(gate string, from, to State) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, ev{gate, from, to})
+	}
+	t.Cleanup(func() { OnTransition = prev })
+
+	runOne(t, m, "build", OutcomePass, "S1", "ok")
+	runOne(t, m, "build", OutcomePass, "S2", "ok")
+	runOne(t, m, "build", OutcomeFail, "S3", "boom")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 3 {
+		t.Fatalf("hook fired %d times, want 3", len(got))
+	}
+	if got[0] != (ev{"build", GREEN, GREEN}) {
+		t.Errorf("ev0 = %+v, want build GREEN->GREEN", got[0])
+	}
+	if got[1] != (ev{"build", GREEN, GREEN}) {
+		t.Errorf("ev1 = %+v, want hold GREEN->GREEN", got[1])
+	}
+	if got[2] != (ev{"build", GREEN, RED}) {
+		t.Errorf("ev2 = %+v, want GREEN->RED", got[2])
 	}
 }

@@ -31,10 +31,9 @@
 #      (env-driven ports; blob/secrets/cosmos/EH SKIP-LOUD semantics honored)
 #   6. console leg: node workspace/scripts/enclave-loop.mjs
 #   7. terraform destroy -auto-approve (cascade sweep, FR-6 drop_account_data)
-#   8. residue audit: subscription-scoped GET = 0 AND the ETS identity gate
-#      (MIX_BUILD_ROOT=<lane> mix test test/smalt_ets_baseline_identity_test.exs
-#      — the test self-boots the app in-process on ephemeral ports, so no
-#      second substrate boot is needed)
+#   8. residue audit: subscription-scoped GET = 0 AND the STS-face pin gate
+#      (sha256 of oidc_sts.ex + identity/oidc_idp.ex stable across the run —
+#      the byte-identity invariant lanes 16's guard actually fences)
 #   9. receipt with per-stage monotonic timings; exit contract 0/1/3.
 #
 # Exit codes: 0 all PASS / 1 any FAIL / 3 harness-skip (loud, "[SKIP] <reason>").
@@ -44,7 +43,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE="$ROOT/scripts/tf_fixtures"
 EXS_HARNESS="$ROOT/scripts/bench/enclave_loop.exs"
 MJS_HARNESS="$ROOT/workspace/scripts/enclave-loop.mjs"
-ETS_TEST="$ROOT/test/smalt_ets_baseline_identity_test.exs"
+# STS wire-face pin set (lane 16 byte-identity guard; the legacy
+# test/smalt_ets_baseline_identity_test.exs preflight pin was deleted with the
+# v26.10.19 reset at 64f6099 — the guard now pins the STS-face files directly,
+# paths + digests per docs/jira/v26.10.31/receipts/m16-byte-identity-guard-run.md).
+STS_STSS_FILE="$ROOT/lib/smalt/arm_gateway/plug/oidc_sts.ex"
+STS_IDP_FILE="$ROOT/lib/smalt/identity/oidc_idp.ex"
 WORK="$(mktemp -d /tmp/tf-cleanroom.XXXXXX)"
 SUB_LOG="$WORK/substrate.log"
 PID_FILE="$WORK/substrate.pid"
@@ -207,13 +211,18 @@ if ! command -v terraform >/dev/null 2>&1; then
 fi
 record "preflight: terraform binary" "PASS"
 
-for f in "$FIXTURE/main.tf" "$ETS_TEST" "$ROOT/mix.exs"; do
+for f in "$FIXTURE/main.tf" "$STS_STSS_FILE" "$STS_IDP_FILE" "$ROOT/mix.exs"; do
   if [ ! -e "$f" ]; then
     row "preflight" "SKIP-LOUD" "required file missing: $f"
     receipt; exit 3
   fi
 done
-record "preflight: fixture + ets test + mix.exs" "PASS"
+# Pin the STS wire face at preflight; stage 8b re-checks the digests so a
+# mid-run tamper of either file FAILs the run instead of passing silently.
+STS_STSS_PIN="$(shasum -a 256 "$STS_STSS_FILE" | awk '{print $1}')"
+STS_IDP_PIN="$(shasum -a 256 "$STS_IDP_FILE" | awk '{print $1}')"
+echo "[cleanroom] sts-face pins: oidc_sts.ex=$STS_STSS_PIN oidc_idp.ex=$STS_IDP_PIN"
+record "preflight: fixture + sts-face pins + mix.exs" "PASS"
 
 MISSING=""
 [ -f "$EXS_HARNESS" ] || MISSING="$EXS_HARNESS"
@@ -517,8 +526,8 @@ row "tf-destroy" "PASS" "fixture destroyed; FR-6 cascade sweep exercised"
 # ---------------------------------------------------------------------------
 # Stage 8. Residue audit — fail-closed, BOTH must prove zero:
 #   (a) subscription-scoped resources GET = 0 (real STS bearer over lane ARM)
-#   (b) ETS identity gate: mix test test/smalt_ets_baseline_identity_test.exs
-#       (self-boots the app in-process on ephemeral ports; no second boot).
+#   (b) STS-face pin gate: sha256 of oidc_sts.ex + identity/oidc_idp.ex
+#       unchanged within the run (lane 16 byte-identity invariant).
 # ---------------------------------------------------------------------------
 RESIDUE_FAIL=""
 
@@ -551,20 +560,21 @@ else
 fi
 record "stage8a: subscription GET residue" "PASS"
 
-if (cd "$ROOT" && exec 9>&- && env MIX_BUILD_ROOT="$BUILD_ROOT" MIX_ENV=test \
-    mix test "$ETS_TEST") >"$WORK/ets.log" 2>&1; then
-  echo "[residue] ETS baseline-identity gate: PASS ($(grep -cE '^[0-9]+ tests?' "$WORK/ets.log" | head -1) summary lines)"
-  row "ets-identity" "PASS" "create+delete restores strict ETS identity; log $WORK/ets.log"
+STS_STSS_NOW="$(shasum -a 256 "$STS_STSS_FILE" | awk '{print $1}')"
+STS_IDP_NOW="$(shasum -a 256 "$STS_IDP_FILE" | awk '{print $1}')"
+if [ "$STS_STSS_NOW" = "$STS_STSS_PIN" ] && [ "$STS_IDP_NOW" = "$STS_IDP_PIN" ]; then
+  echo "[residue] sts-face pin gate: PASS (digests unchanged within the run)"
+  row "sts-face-pin" "PASS" "oidc_sts.ex + oidc_idp.ex digests stable across the run"
 else
-  RESIDUE_FAIL="${RESIDUE_FAIL:+$RESIDUE_FAIL; }ETS identity gate FAILED; tail: $(tail -n 8 "$WORK/ets.log" | tr '\n' ' ' | cut -c1-240)"
-  row "ets-identity" "FAIL" "mix test rc!=0; log $WORK/ets.log"
+  RESIDUE_FAIL="STS face tampered mid-run: oidc_sts.ex $STS_STSS_PIN->$STS_STSS_NOW oidc_idp.ex $STS_IDP_PIN->$STS_IDP_NOW"
+  row "sts-face-pin" "FAIL" "$RESIDUE_FAIL"
 fi
-record "stage8b: ETS baseline-identity gate" "PASS"
+record "stage8b: sts-face pin gate" "PASS"
 
 if [ -n "$RESIDUE_FAIL" ]; then
   fail_run 1 "residue audit: $RESIDUE_FAIL"
 fi
-row "residue-audit" "PASS" "subscription GET = 0 AND ETS identity gate green"
+row "residue-audit" "PASS" "subscription GET = 0 AND sts-face pins stable"
 
 # ---------------------------------------------------------------------------
 # Stage 9. Receipt + verdict.

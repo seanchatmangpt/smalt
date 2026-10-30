@@ -42,17 +42,28 @@ _check_provider_tools:
 provider-build: _check_provider_tools
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ ! -f "{{TFROOT}}/{{SMALT_TF_DIR}}/mix.exs" ]; then
+      echo "[TF-ARCHIVED] {{SMALT_TF_DIR}}/mix.exs absent — Elixir spike tree archived to tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz; active implementation: adapters/terraform-provider-smalt (GA court: just posh-court, 58-posh.just)" >&2
+      exit 4
+    fi
     cd {{TFROOT}}/{{SMALT_TF_DIR}}
     mix escript.build \
-      || { echo "[TF-BUILD-FAIL] mix escript.build exited nonzero in {{SMALT_TF_DIR}}" >&2; exit 1; }
+      || { echo "[TF-BUILD-FAIL] mix escript.build exited nonzero in {{SMALT_TF_DIR}} — fix the escript source in {{SMALT_TF_DIR}}, never the built artifact" >&2; exit 1; }
     echo "[TF-BUILD] escript built ({{SMALT_TF_DIR}})"
 
-# Build, then run build_install.sh + tfrc.sh and print the TF_CLI_CONFIG_FILE
-# export line the shell needs to pin terraform at the local provider.
+# Usage: just provider-install — build, then run build_install.sh + tfrc.sh
+# and print the TF_CLI_CONFIG_FILE export line the shell needs to pin
+# terraform at the local provider.
+
+# provider-install — build + install provider; prints TF_CLI_CONFIG_FILE export.
 [no-cd]
 provider-install: provider-build
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ ! -f "{{TFROOT}}/{{SMALT_TF_DIR}}/mix.exs" ]; then
+      echo "[TF-ARCHIVED] {{SMALT_TF_DIR}}/mix.exs absent — Elixir spike tree archived to tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz; active implementation: adapters/terraform-provider-smalt (GA court: just posh-court, 58-posh.just)" >&2
+      exit 4
+    fi
     cd {{TFROOT}}/{{SMALT_TF_DIR}}
     for s in scripts/build_install.sh scripts/tfrc.sh; do
       [ -f "$s" ] || { echo "[TF-INSTALL-FAIL] $s missing in {{SMALT_TF_DIR}} — land it first" >&2; exit 1; }
@@ -60,15 +71,21 @@ provider-install: provider-build
     done
     echo "export TF_CLI_CONFIG_FILE=\"$PWD/.terraformrc\""
 
-# Full admission ladder (Elixir spike): kind prereq -> kind-up -> kind-images
-# -> kind-deploy -> healthz bounded poll (60x1s) -> provider-build ->
-# provider-install -> scripts/provider_court.sh. Reuses _check_kind_tools
-# from 52-kind.just (imports share the root namespace).
-# NOTE: spike path — the GA admission court is `just posh-court` (58-posh.just).
+# Usage: just provider-court-elixir — full admission ladder (Elixir spike):
+# kind prereq -> kind-up -> kind-images -> kind-deploy -> healthz bounded
+# poll (60x1s) -> provider-build -> provider-install ->
+# scripts/provider_court.sh. NOTE: spike path — the GA admission court is
+# `just posh-court` (58-posh.just).
+
+# provider-court-elixir — Elixir-spike admission ladder (GA path: posh-court).
 [no-cd]
 provider-court-elixir: _check_kind_tools _check_provider_tools
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ ! -f "{{TFROOT}}/{{SMALT_TF_DIR}}/mix.exs" ]; then
+      echo "[TF-ARCHIVED] {{SMALT_TF_DIR}}/mix.exs absent — Elixir spike tree archived to tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz; active implementation: adapters/terraform-provider-smalt (GA court: just posh-court, 58-posh.just)" >&2
+      exit 4
+    fi
     cd {{TFROOT}}
     just kind-up
     just kind-images
@@ -90,17 +107,25 @@ provider-court-elixir: _check_kind_tools _check_provider_tools
       || { echo "[TF-COURT-FAIL] provider_court.sh exited nonzero" >&2; exit 1; }
     echo "[TF-COURT] ALIVE — full ladder passed"
 
-# DEPRECATED alias: the Elixir spike court. GA path is `just posh-court`
-# (58-posh.just). Prints a loud deprecation line, then delegates unchanged.
+# Usage: just provider-court — DEPRECATED alias (Elixir spike court); GA path
+# is `just posh-court` (58-posh.just). Delegates to provider-court-elixir.
+
+# provider-court — deprecated alias delegating to provider-court-elixir.
 [no-cd]
 provider-court:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ ! -f "{{TFROOT}}/{{SMALT_TF_DIR}}/mix.exs" ]; then
+      echo "[TF-ARCHIVED] {{SMALT_TF_DIR}}/mix.exs absent — Elixir spike tree archived to tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz; active implementation: adapters/terraform-provider-smalt (GA court: just posh-court, 58-posh.just)" >&2
+      exit 4
+    fi
     echo "[TF-COURT-DEPRECATED] 'just provider-court' is deprecated — the Elixir court is now 'just provider-court-elixir'; the GA admission path is 'just posh-court' (58-posh.just). Delegating to provider-court-elixir." >&2
     exec just provider-court-elixir
 
-# Witness the provider surface: escript present, k8s surface, healthz (report
-# only, exit 0 always).
+# Usage: just provider-status — witness the provider surface (escript
+# present, k8s surface, healthz). Report only, exit 0 always.
+
+# provider-status — report-only provider surface witness (exit 0 always).
 [no-cd]
 provider-status:
     #!/usr/bin/env bash

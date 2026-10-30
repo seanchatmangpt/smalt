@@ -506,6 +506,68 @@ defmodule InternalTier.CensusTest do
                  "Smalt.Test.Internal.TlsAllPlanesCourtTest"
                ])
 
+  # -- v26.10.31 inversion (WO-06): dialect-tier classification ------------------
+  #
+  # POST-inversion expectation, encoded green against TODAY'S tree: the
+  # ARM-facing module surface is a DIALECT tier (the to-be-stripped Azure
+  # emulation set), not BEAM core. The census does not yet refuse it —
+  # `@dialect_in_core` pins the CURRENT polarity; the strip wave flips it to
+  # false AND deletes the dialect allowlist entries (one attribute edit +
+  # one literal edit in this file), at which point the dialect polarity
+  # fence below REFUSES any residual dialect-tier module reference.
+  @dialect_in_core true
+
+  # The to-be-stripped module set (dialect tier): ARM control-plane emulation
+  # surface. Everything here is currently allowlisted as observable; the
+  # strip wave removes the entries from @observables and flips the flag.
+  @dialect_observables MapSet.new([
+                         "Smalt.Arm.EhArm",
+                         "Smalt.Arm.Deployments",
+                         "Smalt.ArmGateway.LRO.Notifier",
+                         "Smalt.ArmGateway.LRO.Sweeper",
+                         "Smalt.ArmGateway.Router",
+                         "Smalt.Apim"
+                       ])
+
+  # Dialect-class registered files: internal-tier courts whose SUBJECT is the
+  # ARM-facing dialect surface. Post-strip these files are deleted with their
+  # subjects; the dialect file fence below refuses their presence once
+  # @dialect_in_core is false.
+  @dialect_files MapSet.new([
+                   "armstrong_idiom_court_test.exs",
+                   "expl9r2_arm_guard_court_test.exs",
+                   "rg404_concurrent_lifecycle_court.exs",
+                   "bkmon3r_deadjoin_court_test.exs",
+                   "bkplat_platform_route_court_test.exs",
+                   "eh_arm_test.exs"
+                 ])
+
+  test "dialect polarity fence: the ARM-facing to-be-stripped set is classified, not core" do
+    assert MapSet.subset?(@dialect_observables, @observables) or not @dialect_in_core
+
+    if @dialect_in_core do
+      # Today: dialect modules still observable (not yet stripped).
+      for m <- @dialect_observables, do: assert MapSet.member?(@observables, m)
+    else
+      # Post-strip: no dialect module survives in the allowlist.
+      for m <- @dialect_observables, do: refute MapSet.member?(@observables, m)
+    end
+  end
+
+  test "dialect file fence: dialect-class courts are registered; post-strip they are gone" do
+    assert MapSet.subset?(@dialect_files, MapSet.new(Map.keys(@registered)))
+
+    on_disk = MapSet.new(File.ls!(@dir))
+
+    if @dialect_in_core do
+      # Today: dialect courts still on disk.
+      for f <- @dialect_files, do: assert MapSet.member?(on_disk, f)
+    else
+      # Post-strip: dialect courts stripped with their subjects.
+      for f <- @dialect_files, do: refute MapSet.member?(on_disk, f)
+    end
+  end
+
   # -- (a) population fence ---------------------------------------------------
 
   test "population fence: test/internal contains exactly the registered files" do

@@ -98,6 +98,12 @@ COPY config ./config
 COPY test ./test
 COPY scripts ./scripts
 COPY priv ./priv
+# F1 unblock (2026-10-30): lib/smalt/posh/ingress/shape_validator.ex reads
+# pack SHACL/A-box TTLs at COMPILE time (repo-root-relative); they must be
+# in-context before `mix compile` (witnessed: :enoent build break 2026-10-30).
+COPY ggen-marketplace/packs/posh/shapes ./ggen-marketplace/packs/posh/shapes
+COPY ggen-marketplace/packs/posh/ontology ./ggen-marketplace/packs/posh/ontology
+COPY ggen-marketplace/packs/posh/examples ./ggen-marketplace/packs/posh/examples
 COPY docker/gen_dev_cert_linux.sh /usr/local/bin/gen_dev_cert_linux.sh
 
 # Dev TLS material minted IN-IMAGE (same .smalt/tls layout as
@@ -118,10 +124,12 @@ EXPOSE 9443 9444 8443 5672 5673 9545
 CMD ["mix", "run", "-e", "IO.puts(:smalt)"]
 
 # --- posh membrane build stage (POSH-005) -----------------------------------
-# Pinned golang toolchain matching posh/go.mod (go 1.23). Index digest resolved
-# via `docker buildx imagetools inspect golang:1.23-alpine` 2026-10-30.
+# Pinned golang toolchain matching posh/go.mod (go 1.26; bumped 2026-10-30,
+# posh lane). Index digest resolved via `docker buildx imagetools inspect
+# golang:1.26-alpine` 2026-10-30 (lane G38: prior 1.23 pin failed
+# `go.mod requires go >= 1.26.0 (running go 1.23.12; GOTOOLCHAIN=local)`).
 # CGO_ENABLED=0 static build, same contract as posh/Makefile build target.
-FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS posh-build
+FROM golang:1.26-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS posh-build
 # alpine golang image ships neither make nor git; the Makefile needs make,
 # and git describe (absent .git in the COPY) falls back to VERSION=dev.
 RUN apk add --no-cache make git
@@ -135,6 +143,13 @@ ENV MIX_ENV=prod
 COPY lib ./lib
 COPY config ./config
 COPY priv ./priv
+# F1 unblock parity (lane G38, 2026-10-30): the test stage carries the
+# compile-time pack shapes (lines 101-106); the release stage compiles the
+# same shape_validator.ex and hit the identical :enoent (witnessed:
+# posh-court attempt 4 log 20261030-l38d). Same contract as test stage.
+COPY ggen-marketplace/packs/posh/shapes ./ggen-marketplace/packs/posh/shapes
+COPY ggen-marketplace/packs/posh/ontology ./ggen-marketplace/packs/posh/ontology
+COPY ggen-marketplace/packs/posh/examples ./ggen-marketplace/packs/posh/examples
 RUN mix compile
 RUN mix release smalt --path /app/_release
 # AZB-02: single-plane burn services boot via SMALT_PLANES=<plane>; runtime.exs

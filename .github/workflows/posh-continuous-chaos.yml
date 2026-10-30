@@ -1,0 +1,285 @@
+# posh-continuous-chaos.yml — High-Reliability CI/CD, Chaos Fuzzing & SLSA Attestation
+# Focus: Sub-30s CI takt time via aggressive caching, continuous fuzzing, and SLSA Level 3 provenance.
+name: posh-continuous-chaos
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'posh/**'
+      - '.github/workflows/posh-continuous-chaos.yml'
+  pull_request:
+    paths:
+      - 'posh/**'
+      - '.github/workflows/posh-continuous-chaos.yml'
+  schedule:
+    # Continuous night fuzzing: 30 minutes continuous fuzzing every night at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      fuzz_duration:
+        description: 'Duration for fuzz targets (e.g. 10s, 60s, 5m)'
+        required: false
+        default: '15s'
+
+permissions:
+  contents: read
+  id-token: write      # Required for Sigstore keyless OIDC Cosign signing
+  packages: write      # Required for publishing distroless container images
+  attestations: write  # Required for GitHub Artifact Attestations / SLSA provenance
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.23'
+  CGO_ENABLED: '0'
+
+jobs:
+  # =========================================================================
+  # 1. HERMETIC FAST LINT & FORMAT CHECK (< 10s)
+  # =========================================================================
+  lint-and-sanity:
+    name: Lint & Sanity Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: posh
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false # Handled via granular actions/cache below
+
+      - name: Restore Go Caches (Content-Addressed)
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7b30a57 # v4.2.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-
+            go-cache-${{ runner.os }}-
+
+      - name: Verify Formatting (gofmt -l)
+        run: |
+          diffs=$(gofmt -l .)
+          if [ -n "$diffs" ]; then
+            echo "Unformatted Go files detected:" >&2
+            echo "$diffs" >&2
+            exit 1
+          fi
+
+      - name: Go Vet
+        run: go vet ./internal/api ./internal/server ./internal/chaos ./internal/mutation
+
+      - name: Run govulncheck (CVE & Supply-Chain Scan)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # =========================================================================
+  # 2. PARALLEL UNIT & RACE DETECTION (< 20s)
+  # =========================================================================
+  unit-race:
+    name: Unit & Race Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: posh
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Restore Go Caches
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7b30a57
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-
+            go-cache-${{ runner.os }}-
+
+      - name: Run Tests with Race Detector
+        run: |
+          go test -race -v -count=1 ./internal/api ./internal/server ./internal/receipt ./internal/egress ./internal/metrics
+
+  # =========================================================================
+  # 3. CONTINUOUS NATIVE GO FUZZING MATRIX (< 25s takt on PR, extended on schedule)
+  # =========================================================================
+  continuous-fuzz:
+    name: Native Go Fuzzing Matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { pkg: './internal/server', fuzz: 'FuzzFrameParser' }
+          - { pkg: './internal/server', fuzz: 'FuzzSlowlorisChunking' }
+          - { pkg: './internal/server', fuzz: 'FuzzFrameBoundaryInjection' }
+          - { pkg: './internal/api',    fuzz: 'FuzzDecodeRequest' }
+          - { pkg: './internal/api',    fuzz: 'FuzzDecodeResponse' }
+    defaults:
+      run:
+        working-directory: posh
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Restore Go Caches
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7b30a57
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-
+            go-cache-${{ runner.os }}-
+
+      - name: Execute Fuzz Target (${{ matrix.target.fuzz }})
+        run: |
+          DURATION="${{ github.event.inputs.fuzz_duration || (github.event_name == 'schedule' && '5m' || '12s') }}"
+          echo "Fuzzing target ${{ matrix.target.fuzz }} in ${{ matrix.target.pkg }} for $DURATION..."
+          go test ${{ matrix.target.pkg }} -fuzz=^${{ matrix.target.fuzz }}$ -fuzztime="$DURATION"
+
+  # =========================================================================
+  # 4. ADVERSARIAL CHAOS INJECTION HARNESS (< 15s)
+  # =========================================================================
+  adversarial-chaos:
+    name: Adversarial Chaos Injection
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: posh
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Restore Go Caches
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7b30a57
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-
+            go-cache-${{ runner.os }}-
+
+      - name: Run Chaos & Micro-WAN Test Suite (-race)
+        run: |
+          go test -race -v -count=1 ./internal/chaos/...
+
+      - name: Run In-Process AST Mutation Testing Court (-race)
+        run: |
+          go test -race -v -count=1 ./internal/mutation/...
+
+  # =========================================================================
+  # 5. HERMETIC STATIC BUILD, SBOM & SLSA PROVENANCE (< 25s)
+  # =========================================================================
+  build-and-attest:
+    name: Hermetic Build, SBOM & SLSA Level 3
+    needs: [lint-and-sanity, unit-race, continuous-fuzz, adversarial-chaos]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: posh
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Restore Go Caches
+        uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7b30a57
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-
+            go-cache-${{ runner.os }}-
+
+      - name: Install SBOM Tools & Sigstore Cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.8.1
+
+      - name: Install CycloneDX Generator
+        run: |
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.7.0
+
+      - name: Hermetic Reproducible Static Compilation
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -buildid= -X main.version=${{ github.sha }}" \
+            -o bin/posh ./cmd/posh
+          file bin/posh | grep -i 'statically linked'
+
+      - name: Generate CycloneDX SBOM (JSON)
+        run: |
+          cyclonedx-gomod app -json -output posh-sbom.cdx.json ./cmd/posh
+          test -s posh-sbom.cdx.json
+
+      - name: Compute Binary SHA256
+        id: digest
+        run: |
+          DIGEST=$(sha256sum bin/posh | awk '{print $1}')
+          echo "sha256=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Binary Digest: $DIGEST"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: posh-static-binary
+          path: |
+            posh/bin/posh
+            posh/posh-sbom.cdx.json
+          retention-days: 7
+
+      - name: Attest Build Provenance (SLSA Level 3 via GitHub Attestations)
+        uses: actions/attest-build-provenance@v2
+        if: github.event_name != 'pull_request'
+        with:
+          subject-path: posh/bin/posh
+          sbom-path: posh/posh-sbom.cdx.json
+
+      - name: Save Updated Go Caches
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7b30a57
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-cache-${{ runner.os }}-${{ hashFiles('posh/go.sum') }}-${{ github.sha }}

@@ -1,6 +1,12 @@
 defmodule Smalt.CanonicalRouterCourtTest do
   use ExUnit.Case, async: false
 
+  # v26.10.31 inversion (WO-06): the court pins ROUTING SEMANTICS (the
+  # ash_gateway flag contract), not the gateway module location.
+  # `@router_module` is the dialect gateway seam — one attribute edit
+  # re-points it if the ARM gateway relocates at strip time.
+  @router_module Smalt.ArmGateway.Router
+
   @deep "/subscriptions/s1/resourceGroups/rg1/providers/Microsoft.Network/dnsResolverPolicies/drp1/dnssecurityrules/rule1?api-version=2025-05-01"
   @collection "/subscriptions/s1/resourceGroups/rg1/providers/Microsoft.Network/dnsResolverPolicies/drp1/dnssecurityrules?api-version=2025-05-01"
   @existing_face "/subscriptions/s1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vnet1?api-version=2021-04-01"
@@ -12,7 +18,7 @@ defmodule Smalt.CanonicalRouterCourtTest do
       Plug.Test.conn(method, path, body_binary)
       |> Plug.Conn.put_req_header("content-type", "application/json")
 
-    %Plug.Conn{} = conn1 = Smalt.ArmGateway.Router.call(conn, [])
+    %Plug.Conn{} = conn1 = @router_module.call(conn, [])
     {conn1.status, conn1.resp_body}
   end
 

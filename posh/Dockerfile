@@ -1,29 +1,30 @@
 # posh sidecar image — POSH-005 sidecar mode (lane F14).
 # UDS-only: no EXPOSE, socket shared with the app container via an emptyDir
-# at /posh/run. Distroless static base, non-root, read-only rootfs.
+# at /posh/run. Pure distroless: NO shell — every exec path (container
+# command, k8s probes) must invoke /bin/posh directly; config comes from a
+# ConfigMap mounted at /etc/posh (distroless has no sh to write one).
 #
 # Build:  docker build -t posh:sidecar posh/
 # Load:   kind load docker-image posh:sidecar --name smalt
 # See:    k8s/posh-sidecar.yaml
 
-# --- builder: static linux binary, CGO off ---------------------------------
-FROM golang:1.23-alpine AS build
+# --- builder: static linux binary, CGO off, BuildKit cache mounts ---------
+FROM golang:1.26-alpine AS build
+ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X main.version=sidecar-$(date -u +%Y%m%d)" \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -buildid= -X main.version=sidecar-$(date -u +%Y%m%d)" \
     -o /out/posh ./cmd/posh
-
-# --- tiny static shell for HEALTHCHECK (distroless has none) ---------------
-FROM busybox:1.36 AS shell
 
 # --- runtime ---------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/posh /bin/posh
-COPY --from=shell /bin/busybox /bin/sh
-# UDS-only membrane: no ports. Health = socket exists.
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD ["/bin/sh", "-c", "[ -S /posh/run/posh.sock ]"]
+# UDS-only membrane: no ports, no HEALTHCHECK (no shell in distroless;
+# k8s exec probes own health: /bin/posh -version, or a socket test).
 ENTRYPOINT ["/bin/posh", "-config", "/etc/posh/posh.yaml"]

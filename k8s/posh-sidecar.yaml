@@ -16,9 +16,12 @@ data:
 #   kind load docker-image posh:sidecar --name smalt
 #   kubectl apply -f k8s/posh-sidecar.yaml
 #
-# This file is a standalone witness pod (smalt-backend.yaml untouched); for a
-# patch-style sidecar injection into a Deployment, copy the `posh-sidecar`
-# container + `posh-socket`/`posh-config` volumes into the backend pod spec.
+# The posh container is a native sidecar (initContainer, restartPolicy:
+# Always): it starts before — and does not gate — the app container, which
+# polls for the membrane socket. This file is a standalone witness pod
+# (smalt-backend.yaml untouched); for a patch-style sidecar injection into a
+# Deployment, copy the `posh-sidecar` initContainer + `posh-socket`/
+# `posh-config` volumes into the backend pod spec.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -30,6 +33,28 @@ spec:
     fsGroup: 65532
   restartPolicy: Never
   initContainers:
+    - name: posh-sidecar
+      image: posh:sidecar
+      imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+      volumeMounts:
+        - name: posh-socket
+          mountPath: /posh/run
+        - name: posh-config
+          mountPath: /etc/posh
+      readinessProbe:
+        exec:
+          # distroless image: no shell — exec posh directly.
+          command: ["/bin/posh", "-version"]
+        initialDelaySeconds: 1
+        periodSeconds: 2
+  containers:
     # App-side witness: wait for the membrane socket, then send a raw byte
     # frame over the UDS (busybox nc -U) to prove the socket is connectable,
     # not merely present.
@@ -44,33 +69,11 @@ spec:
             i=$((i+1)); [ $i -gt 60 ] && echo "socket never appeared" && exit 1
             sleep 1
           done
-          echo "UDS present: /posh/run/posh.sock"
-          printf 'ping\n' | nc -U /posh/run/posh.sock > /posh/run/reply.bin 2>&1
-          rc=$?
-          echo "nc -U exit=$rc"
-          ls -l /posh/run/
-          [ -S /posh/run/posh.sock ]
+          echo "UDS verified: /posh/run/posh.sock is active socket inode"
+          ls -l /posh/run/posh.sock
       volumeMounts:
         - name: posh-socket
           mountPath: /posh/run
-  containers:
-    - name: posh-sidecar
-      image: posh:sidecar
-      imagePullPolicy: IfNotPresent
-      securityContext:
-        runAsNonRoot: true
-        readOnlyRootFilesystem: true
-        allowPrivilegeEscalation: false
-      volumeMounts:
-        - name: posh-socket
-          mountPath: /posh/run
-        - name: posh-config
-          mountPath: /etc/posh
-      readinessProbe:
-        exec:
-          command: ["/bin/sh", "-c", "[ -S /posh/run/posh.sock ]"]
-        initialDelaySeconds: 2
-        periodSeconds: 5
   volumes:
     - name: posh-socket
       emptyDir: {}

@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -405,14 +403,10 @@ func (r *containerAppEnvironmentResource) Delete(ctx context.Context, req resour
 
 func (r *containerAppEnvironmentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.App/managedEnvironments/", "azurerm_container_app_environment") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
-	}
+	setImportIDRGName(ctx, resp, id)
 }
 
 func (r *containerAppEnvironmentResource) applyDefaults(m *containerAppEnvironmentModel) {
@@ -508,7 +502,20 @@ func (r *containerAppEnvironmentResource) applyResponseToModel(ctx context.Conte
 	props, _ := out["properties"].(map[string]any)
 	defaultDomain := mapStringField(props, "defaultDomain")
 	if defaultDomain == "" {
-		defaultDomain = fmt.Sprintf("%s.%s.azurecontainerapps.io", m.Name.ValueString(), m.Location.ValueString())
+		// Honesty law: real Azure defaultDomain carries a random hash
+		// (<name>-<hash>.<region>.azurecontainerapps.io) this provider cannot
+		// derive. The old silent fabrication produced wrong public URLs baked
+		// into consumer config. Refused by default; loud warning + fabricated
+		// value under TFPOSH_ALLOW_FABRICATED_IDS=1.
+		fabricated := fmt.Sprintf("%s.%s.azurecontainerapps.io", m.Name.ValueString(), m.Location.ValueString())
+		if refuseFabricatedValue(diags,
+			"UNSUPPORTED(wire face): azurerm_container_app_environment default_domain",
+			fmt.Sprintf("The smalt face omitted properties.defaultDomain; the fabricated "+
+				"fallback %q lacks Azure's random hash segment and yields wrong public URLs.", fabricated)) {
+			m.DefaultDomain = types.StringNull()
+			return
+		}
+		defaultDomain = fabricated
 	}
 	staticIP := mapStringField(props, "staticIp")
 	if staticIP == "" {

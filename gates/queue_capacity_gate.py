@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Invariant gate: queue capacity 4096 — the 4097th message is refused.
 
+WO-22/23/24 retarget note (v26.10.31 inversion, L8 split): the AMQP
+link-detach refusal (amqp:link:message-size-exceeded, connection
+survives) is the CORE half and stays here. The ARM LRO
+entity-materialization prologue below (namespace/queue PUT + poll) is
+the DIALECT half — DIALECT-PENDING until posh/internal/dialect/azure/
+exists; it currently runs against the core ARM face and must migrate
+to a dialect contract fixture when the dialect package lands.
+
 Positive: boot the substrate on private ports, PUT the queue through the ARM
 gateway (KD-86: auto-ensure is OFF by default — a send to a never-created
 entity is refused, so the gate must materialize the entity like a real

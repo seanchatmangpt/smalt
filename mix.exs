@@ -1,7 +1,7 @@
 defmodule Smalt.MixProject do
   use Mix.Project
 
-  @version "26.10.25"
+  @version "26.10.31"
 
   def project do
     [
@@ -118,7 +118,11 @@ defmodule Smalt.MixProject do
       {:jason, "~> 1.4"},
       {:joken, "~> 2.6"},
       {:ash, "~> 3.33", optional: true},
-      {:ash_graphlaw, path: "../ash_graphlaw", only: :dev, optional: true},
+      # WO-09 (v26.10.31): widened from only: :dev so the SHACL admission
+      # integration court (test/integration/graphlaw_shacl_admission_test.exs)
+      # can run it in the test env. Prod promotion is still open (WO-10
+      # residual: hex publish / vendoring).
+      {:ash_graphlaw, path: "../ash_graphlaw", only: [:dev, :test], optional: true},
       # Semantic projection (lane: semantic projection). Path deps per house
       # pattern; `only:` widened from the spec's :dev to [:dev, :test] so the
       # gate (`mix test test/semantic_projection_test.exs`, MIX_ENV=test) can

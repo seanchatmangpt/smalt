@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -379,14 +378,10 @@ func (r *keyVaultResource) Delete(ctx context.Context, req resource.DeleteReques
 
 func (r *keyVaultResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.KeyVault/vaults/", "azurerm_key_vault") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
-	}
+	setImportIDRGName(ctx, resp, id)
 }
 
 func (r *keyVaultResource) applyDefaults(m *keyVaultModel) {

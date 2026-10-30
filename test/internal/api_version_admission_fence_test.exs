@@ -1,0 +1,163 @@
+defmodule Smalt.Internal.ApiVersionAdmissionFenceTest do
+  @moduledoc """
+  KD-78 monotonic api-version admission fence — canonical promotion of
+  docs/jira/v26.10.18/burn/test/api_version_admission_test.exs.
+
+  For 4 baseline admitted types (sorted prefix of
+  `Registry.admitted_resource_types/0`):
+
+    1. version == latest -> admitted (no api-version 400)
+    2. version 2019-01-01 (older) -> ADMITTED (monotonic law; 2xx or a typed
+       non-api-version 4xx downstream are both acceptable)
+    3. version 2099-01-01 (newer) -> 400 InvalidApiVersionParameter
+    4. api-version absent -> 400 MissingApiVersionParameter
+    5. malformed "abc" -> 400 InvalidApiVersionParameter
+
+  Also pins the stale-beam diagnostic: the InvalidApiVersionParameter refusal
+  message names `Registry.latest_version/1` for the type.
+  """
+
+  use ExUnit.Case, async: false
+  use Plug.Test
+
+  alias Smalt.ArmGateway.Router
+  alias Smalt.Registry
+
+  @opts Router.init([])
+  @sub "00000000-0000-0000-0000-000000000000"
+  @rg "admission-rg"
+  @dead_table_msg "table identifier does not refer to an existing ETS table"
+
+  # KD-78 fence baselines: first 4 sorted admitted types.
+  @baseline_types Enum.sort(Registry.admitted_resource_types()) |> Enum.take(4)
+
+  setup do
+    # Resilient shared-Store clear: bounded retry on the dead-table
+    # ArgumentError (the burn suite's SmaltTest.Store.resilient_setup helper
+    # is burn-tree-local, so the retry is inlined here — same audited law,
+    # immediate bounded retry, never a sleep).
+    clear_resilient()
+    :ok
+  end
+
+  defp clear_resilient(retries \\ 5)
+
+  defp clear_resilient(0) do
+    flunk("shared Store never became clearable (dead-table loop)")
+  end
+
+  defp clear_resilient(retries) do
+    Smalt.Store.clear()
+  rescue
+    ArgumentError -> clear_resilient(retries - 1)
+  end
+
+  for type <- @baseline_types do
+    describe "#{type} (KD-78 monotonic admission)" do
+      test "version == latest -> admitted" do
+        latest = Registry.latest_version(unquote(type))
+        conn = put(unquote(type), latest)
+
+        refute api_version_error?(conn),
+               "expected latest #{latest} to be admitted, got " <>
+                 inspect(%{status: conn.status, code: error_code(conn), body: conn.resp_body})
+      end
+
+      test "version OLDER than latest (2019-01-01) -> admitted (monotonic law)" do
+        latest = Registry.latest_version(unquote(type))
+        conn = put(unquote(type), "2019-01-01")
+
+        # The behavior change under KD-78: an older version must NOT hit the
+        # api-version gate. Accept 2xx (created) or a typed non-api-version
+        # 4xx (GraphLaw shape / 404-parent) — never an api-version rejection.
+        assert conn.status in [200, 201, 202, 400, 404]
+
+        # REGISTERED per-family divergence (L2 wave-1 digest): the
+        # container-apps ladder pins a per-family floor that refuses versions
+        # older than the floor with the real per-family spelling — the
+        # monotonic KD-78 lattice itself still admits <= latest. The fence
+        # accepts EITHER outcome (disjunctive law, named exception), and pins
+        # the ladder spelling byte-exactly when it fires.
+        ladder_types = [
+          "Microsoft.App/containerApps",
+          "Microsoft.App/managedEnvironments"
+        ]
+
+        ladder_fired? = api_version_error?(conn)
+
+        if unquote(type) in ladder_types and ladder_fired? do
+          assert error_code(conn) == "InvalidApiVersionParameter"
+
+          assert conn.resp_body =~
+                   "The api-version '2019-01-01' is invalid. The latest supported api-version for 'Microsoft.App/containerApps' is '2023-05-01'.",
+                 "ladder refusal must carry the exact registered spelling, got: " <> conn.resp_body
+        else
+          refute ladder_fired?,
+                 "expected monotonic admission of 2019-01-01 (<= latest #{latest}) but got " <>
+                   inspect(%{status: conn.status, code: error_code(conn), body: conn.resp_body})
+        end
+      end
+
+      test "version NEWER than latest (2099-01-01) -> 400 InvalidApiVersionParameter naming Registry.latest_version" do
+        latest = Registry.latest_version(unquote(type))
+        conn = put(unquote(type), "2099-01-01")
+
+        assert conn.status == 400
+        assert error_code(conn) == "InvalidApiVersionParameter"
+
+        # Stale-beam diagnostic: the refusal names the registry latest.
+        assert conn.resp_body =~ to_string(latest),
+               "expected refusal message to name Registry.latest_version #{latest}, got " <>
+                 conn.resp_body
+      end
+
+      test "api-version absent -> 400 MissingApiVersionParameter" do
+        conn = put(unquote(type), :omit)
+
+        assert conn.status == 400
+        assert error_code(conn) == "MissingApiVersionParameter"
+      end
+
+      test "malformed api-version 'abc' -> 400 InvalidApiVersionParameter" do
+        conn = put(unquote(type), "abc")
+
+        assert conn.status == 400
+        assert error_code(conn) == "InvalidApiVersionParameter"
+      end
+    end
+  end
+
+  test "baseline inventory is non-empty" do
+    assert length(@baseline_types) == 4
+  end
+
+  # -- helpers ---------------------------------------------------------------
+
+  defp put(type, version, payload \\ %{"location" => "eastus", "properties" => %{}}) do
+    [ns | rest] = String.split(type, "/", parts: 2)
+    path = "/subscriptions/#{@sub}/resourceGroups/#{@rg}/providers/#{ns}/#{rest}/admission-res"
+
+    uri =
+      case version do
+        :omit -> path
+        v -> path <> "?api-version=" <> to_string(v)
+      end
+
+    :put
+    |> conn(uri, Jason.encode!(payload))
+    |> put_req_header("content-type", "application/json")
+    |> Router.call(@opts)
+  end
+
+  defp error_code(conn) do
+    case Jason.decode(conn.resp_body) do
+      {:ok, %{"error" => %{"code" => code}}} -> code
+      _ -> nil
+    end
+  end
+
+  defp api_version_error?(conn) do
+    conn.status == 400 and
+      error_code(conn) in ["InvalidApiVersionParameter", "MissingApiVersionParameter"]
+  end
+end

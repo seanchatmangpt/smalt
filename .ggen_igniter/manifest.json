@@ -21,11 +21,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex=>lib/smalt/config.ex": {
       "out_template": "lib/smalt/config.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:aa0575b98cef2104bc346f80b3c6181c4a25132103d14fb1db66d5b841a778e0"
+        "/Users/sac/smalt/lib/smalt/config.ex": "sha256:0380b0b17fd44e7715ac39e52c3a8a925aeadfb9ac96fcae5b11d4c16b276058"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/config.ex.eex",
-      "updated_at": "2026-10-30T17:14:56.044024Z"
+      "updated_at": "2026-10-30T23:27:50.877890Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/defaults.ex.eex=>tmp/defaults_projected.ex": {
       "out_template": "tmp/defaults_projected.ex",
@@ -48,11 +48,11 @@
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex=>lib/smalt/registry.ex": {
       "out_template": "lib/smalt/registry.ex",
       "outputs": {
-        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:173b5dceade9402df6fd4781c24cc2f0a18935300af3f641a67e6149a798da12"
+        "/Users/sac/smalt/lib/smalt/registry.ex": "sha256:7d40bf3828b76465edd0f42192711d0cd58aaf17ff1c549633abf32b33780a9c"
       },
       "pack_dir": "../ggen-marketplace/packs/smalt-substrate-pack",
       "template": "../ggen-marketplace/packs/smalt-substrate-pack/templates/registry.ex.eex",
-      "updated_at": "2026-10-30T17:23:08.123165Z"
+      "updated_at": "2026-10-30T19:38:51.483042Z"
     },
     "../ggen-marketplace/packs/smalt-substrate-pack/templates/store_tables.ex.eex=>lib/smalt/store_tables.ex": {
       "out_template": "lib/smalt/store_tables.ex",

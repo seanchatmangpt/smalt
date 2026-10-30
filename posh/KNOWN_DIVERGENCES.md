@@ -63,18 +63,37 @@ a KD row is loudly MISSING.
 | PASS | datasource:azurerm_container_registry | §3 wire parity; provider unit tests |
 | PASS | datasource:azurerm_storage_account | §3 wire parity; provider unit tests |
 | PASS | datasource:azurerm_smalt_health | §3 wire parity; provider unit tests |
+| PASS | resource:azurerm_role_definition | CLOSED KD-01 (2026-10-30 lane C1): face mounts roleDefinitions GET/PUT/DELETE (`resource_providers.ex:4550-4566`); provider performs real PUT/GET/DELETE (`resource_remaining_v1.go:1043-1260`); `go test ./...` green |
 | PASS | op:echo | first admitted op; posh server tests |
 
 ## 5. Known Divergence Register (KD-nn)
 
 A gate-auditable register: surface, divergence, evidence receipt, close condition. Cells
 covered by a KD row render REGISTERED; all other cells must PASS or the gate exits 1.
+Covers-cell law (2026-10-30, wave-2 lane 4): the Covers column holds fnmatch cell globs
+only — whitespace-free, no bare `*`, and each row must cover >= 1 inventory cell. The gate
+(`posh/scripts/coverage.py`) exits 2 on prose globs, bare `*` (which would register the
+`--self-test` bogus-op injection — vacuous flip), and any row covering zero cells;
+previously these were silent-skipped (KD-06's `* (all cells)` prose matched 0 cells while
+claiming all of them).
 
 | ID | Covers (cell globs) | Divergence | Evidence receipt | Close condition |
 | :--- | :--- | :--- | :--- | :--- |
-| KD-01 | resource:azurerm_role_definition | role_definition is create-local (law: definitions are minted, not fetched); GET of a foreign definition is refused. Read returns the locally-minted definition only. | receipts/posh009-role-definition-create-local.md | GET of a foreign role definition succeeds identically to local — until then create-local is the law. |
-| KD-02 | resource:azurerm_user_assigned_identity, datasource:azurerm_user_assigned_identity | UAI `client_id`/`principal_id` are not returned by the face on read; they are minted deterministically at create and preserved in state. | receipts/posh009-uai-ids-face.md | Face returns both IDs on read without state preservation. |
-| KD-03 | resource:azurerm_key_vault_secret, datasource:azurerm_key_vault_secret, resource:azurerm_container_app | Secrets are not echoed on read (write-only `value`); read returns metadata only, write-only values preserved in state to prevent spurious drift. | receipts/posh009-secrets-not-echoed.md | Data plane returns secret values on read without drift. |
+| KD-02 | resource:azurerm_user_assigned_identity, datasource:azurerm_user_assigned_identity | UAI `client_id`/`principal_id` are not returned by the face on read. Honesty law (2026-10-30, lane C2): absent prior state, a deterministic mint is REFUSED with a typed error; `TFPOSH_ALLOW_FABRICATED_IDS=1` downgrades to a loud warning + mint. Data source was silent-mint; now error-by-default. | `TFPOSHT_LIVE=1` roundtrips green; carryOrMintIdentityAttr (resource_remaining_v1.go), data_sources_v1.go UAI Read | Face returns both IDs on read without state preservation. |
+| KD-03 | resource:azurerm_key_vault_secret, datasource:azurerm_key_vault_secret, resource:azurerm_container_app | Divergence polarity UPDATED 2026-10-30 (gap lane 23; live wire probe receipt `docs/jira/posh/v26.10.30/gaps/23-secret-echo-staleness.md`): the smalt ARM control-plane face (`vaults/:v/secrets/:s` GET) now ECHOES `properties.value` exactly (rendered verbatim from the stored record, `resource_providers.ex` `handle_child_get`) — opposite polarity to the previously registered "never echoed"; real Azure ARM omits the value. The 8443 data-plane face and deleted-secret bundles still never echo (`secrets.ex` public record drops `value`). Provider Read is disjunctive (adopts an exact echo, else preserves prior state — `resource_key_vault_secret.go:365-368`, `live_f4_test.go:323-333`); container-app wire secrets remain never-echoed (distinct face). | gaps/23-secret-echo-staleness.md (live probe: vault PUT 202, secret PUT 201, secret GET 200 with `properties.value` echoed) | ARM face omits `properties.value` on GET (real-Azure parity) — or the echo is accepted-and-registered as the standing disjunctive law; silent re-flip in either direction is the failure class. |
 | KD-04 | resource:azurerm_container_app | containerApps traffic weights are applied on update only — create carries no traffic split; traffic diverges from AzureRM's create-time traffic block. | receipts/posh009-traffic-update-only.md | Create accepts and persists a traffic split. |
 | KD-05 | resource:azurerm_container_app, resource:azurerm_container_app_environment | Memory is numeric (bare integer MiB) rather than AzureRM's quantity string (`1.0Gi`); no unit-suffix parsing. | receipts/posh009-numeric-memory.md | Quantity-string memory accepted with unit conversion. |
-| KD-06 | * (all cells) | api-version ceilings per KD-78: each ARM face pins a maximum api-version; requests above the ceiling are refused, not downgraded. | receipts/posh009-api-version-ceilings.md | api-version negotiation replaces fixed ceilings. |
+| KD-06 | resource:azurerm_*, datasource:azurerm_* | api-version ceilings per KD-78: each ARM face pins a maximum api-version; requests above the ceiling are refused, not downgraded. Applies to every resource/data-source cell (all ride an ARM face); `op:*` cells are excluded so the coverage-gate `--self-test` bogus-op injection stays MISSING (non-vacuous flip). Globs are fnmatch-scoped per type — a bare `*` is refused by the gate (exit 2). | receipts/posh009-api-version-ceilings.md | api-version negotiation replaces fixed ceilings. |
+| KD-07 | resource:azurerm_container_app_environment | `default_domain` fabricated as `<name>.<location>.azurecontainerapps.io` when the face omits `properties.defaultDomain` (real Azure carries a random hash segment). Honesty law (2026-10-30, lane C2): REFUSED with a typed error by default (attr reads null); loud warning + fabricated value under `TFPOSH_ALLOW_FABRICATED_IDS=1`. | resource_container_app_environment.go applyResponseToModel; `go test ./... -race` green | Face returns real `defaultDomain`. |
+| KD-08 | resource:azurerm_federated_identity_credential, resource:azurerm_role_assignment | Unsupported-route errors (404/405/501/400) on FIC create/update/delete/read and role_assignment create/read/delete were swallowed and reported as success with fabricated/stale state. Honesty law (2026-10-30, lane C2): propagated as typed error diagnostics by default; `TFPOSH_ALLOW_FABRICATED_IDS=1` downgrades to a loud warning + create-local/stale-state semantics. | resource_remaining_v1.go FIC + role_assignment CRUD; `go test ./... -race` green; `TFPOSHT_LIVE=1` roundtrips green | Face mounts the roleAssignments/federatedIdentityCredentials write routes. |
+| KD-09 | resource:azurerm_role_assignment | Bare `role_definition_name` ("Contributor") resolves via deterministic uuid5(name\|scope) mint — a LOCAL GUID, not the Azure built-in role definition GUID. Loud: warning diag on every resolution + schema Description carries the fabrication notice. Real built-in GUID mapping table is the close, not a fabricated mapping. | resolveRoleDefinitionInput (resource_remaining_v1.go); live test log witness 2026-10-30 (Reader → 081cfaa7…); `TFPOSHT_LIVE=1` green | smalt Policy face resolves built-in role names to real definition GUIDs (lane C1). |
+
+## 6. Closed rows (no longer active divergences)
+
+- KD-01 CLOSED 2026-10-30 (v26.10.30 lane C1): the smalt ARM face mounts
+  roleDefinitions GET/PUT/DELETE (`lib/smalt/arm_gateway/plug/resource_providers.ex:4550-4566`,
+  `lib/smalt/arm/rbac.ex`) and the provider performs real PUT/GET/DELETE
+  (`resource_remaining_v1.go` Create/Read/Update/Delete) — the row's close condition
+  ("roleDefinitions PUT/DELETE land on the smalt ARM face") is met. The
+  `resource:azurerm_role_definition` cell moved to the §4.1 PASS ledger. Registration pin
+  12/7 unchanged (C1 flipped the resource in place, no type added).

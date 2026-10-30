@@ -83,6 +83,12 @@ FROM deps AS build
 COPY lib ./lib
 COPY config ./config
 COPY priv ./priv
+# F1 unblock (2026-10-30): lib/smalt/posh/ingress/shape_validator.ex reads
+# pack SHACL/A-box TTLs at COMPILE time (repo-root-relative); they must be
+# in-context before `mix compile` (witnessed: :enoent build break 2026-10-30).
+COPY ggen-marketplace/packs/posh/shapes ./ggen-marketplace/packs/posh/shapes
+COPY ggen-marketplace/packs/posh/ontology ./ggen-marketplace/packs/posh/ontology
+COPY ggen-marketplace/packs/posh/examples ./ggen-marketplace/packs/posh/examples
 # Plain compile: --warnings-as-errors currently fails on 12 PRE-EXISTING
 # warnings (see docker/Dockerfile comment, 2026-10-18) — parity with the
 # burn image until those land.

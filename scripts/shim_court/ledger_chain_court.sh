@@ -4,7 +4,11 @@
 # Proves the ledger-chain invariant gate's Merkle link detection is
 # NON-VACUOUS, without booting a substrate:
 #
-#   1. Build a REAL 3-link ledger chain fixture in a temp dir, using the
+# WO-22/23/24 retarget (v26.10.31 inversion): fixture follows the retargeted
+# gate — real-Azure no-dedupe law (duplicate contents -> 201 with a NEW
+# transactionId as link #4), per-tx chain walk, /latest = the duplicate.
+#
+#   1. Build a REAL 4-link ledger chain fixture in a temp dir, using the
 #      gate's own data_hash + merkle law (imported from
 #      gates/ledger_chain_gate.py — real collaborator, no mocks).
 #   2. BASELINE   sha256 of the fixture.
@@ -49,7 +53,8 @@ spec.loader.exec_module(gate)
 import hashlib
 prev = gate.ZERO_HASH
 receipts = []
-for i, entry in enumerate([{"k": "court-a"}, {"k": "court-b"}, {"k": "court-c"}], 1):
+entries = [{"k": "court-a"}, {"k": "court-b"}, {"k": "court-c"}]
+for i, entry in enumerate(entries, 1):
     dh = gate.data_hash(entry)
     root = hashlib.sha256((prev + dh).encode()).hexdigest()
     receipts.append({
@@ -61,19 +66,33 @@ for i, entry in enumerate([{"k": "court-a"}, {"k": "court-b"}, {"k": "court-c"}]
     })
     prev = root
 
+# Real-Azure no-dedupe law: the duplicate appends link #4 with a NEW txid.
+dh = gate.data_hash(entries[0])
+root = hashlib.sha256((prev + dh).encode()).hexdigest()
+dup_receipt = {
+    "transactionId": "4.1",
+    "contents": entries[0],
+    "data_hash": dh,
+    "prev_hash": prev,
+    "merkle_root": root,
+}
+
 obs = {
     "appends": [201, 201, 201],
     "receipts": receipts,
-    "dup_status": 409,
-    "list_status": 200,
-    "listed": receipts,
+    "dup_status": 201,
+    "dup_receipt": dup_receipt,
+    "fetch_statuses": [200, 200, 200, 200],
+    "listed": receipts + [dup_receipt],
+    "latest_status": 200,
+    "latest": {"transactionId": "4.1"},
 }
 with open(os.environ["SHIM_FIXTURE"], "w") as f:
     json.dump(obs, f, indent=2, sort_keys=True)
 PYEOF
 [ -f "$FIXTURE" ] || shim_court_fail BASELINE "fixture builder produced no fixture"
 
-shim_court_log COURT "subject: real 3-link Merkle chain fixture @ $FIXTURE (law from gates/ledger_chain_gate.py)"
+shim_court_log COURT "subject: real 4-link Merkle chain fixture (no-dedupe law) @ $FIXTURE (law from gates/ledger_chain_gate.py)"
 
 # --- Witness helper (real collaborator: the gate module itself) ---------------
 WITNESS="$WORK/witness.py"

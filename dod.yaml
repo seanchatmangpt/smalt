@@ -1,0 +1,220 @@
+# dod.yaml — POSH v26.10.30 wave: machine-readable Definition of Done (single source).
+#
+# Every ALIVE claim of the wave as a requirement row: id, claim, gate command,
+# expected exit, receipt path. Status vocabulary:
+#   alive   — a gate command exists and is claimed to run green; the reader
+#             runs it and records the real result.
+#   planned — declared but not yet gated (DPMO campaign, MSA, SPC, sidecar
+#             healthz falsifier, tollgates T2-T5). Never a claim of ALIVE;
+#             the reader reports these SKIP (loud, with reason "planned").
+#
+# Seeded from: POSH-001..010 tickets, gaps/INDEX.md status lines, tollgates
+# T1-T5 (dfcharter/define.md §5), and the landed lanes' receipts
+# (docs/jira/posh/v26.10.30/receipts/).
+version: 1
+project: smalt-posh-v26.10.30
+requirements:
+  # --- Landed lanes: ALIVE claims with real gates -------------------------
+  - id: POSH-009-COVERAGE
+    section: coverage
+    claim: >-
+      SDK-parity coverage gate is green: every surface cell from the mechanical
+      lib/ inventory is pass or registered-divergence; zero silent gaps (KD
+      register, POSH-009).
+    gate: python3 scripts/posh_coverage.py
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/receipts/parity/posh009-coverage-gate-green.json
+    status: alive
+  - id: POSH-004-IMPORT
+    section: import
+    claim: >-
+      ImportState implemented and asserted on the Go provider for all consumer
+      import shapes (12 import {} blocks; per-type segment assertions,
+      wrong-shape and fabricated-attr refusals) — POSH-004 / gap-01 G7 (closed
+      by C8).
+    gate: cd adapters/terraform-provider-smalt && go test ./internal/provider/ -run 'TestImport' -count=1
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/gaps/01-provider-azurerm-parity.md
+    status: alive
+  - id: POSH-008-turnstile-flip
+    section: turnstile
+    claim: >-
+      Turnstile receipt stamping reaches the live TF apply path and the
+      turnstile mutation court witnesses non-vacuity (tampered receipt
+      refused) — POSH-006/POSH-008.
+    gate: python3 scripts/posh_mutation_court.py
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/receipts/mutation/turnstile-flip.json
+    status: alive
+  - id: POSH-006-compat-court
+    section: compat
+    claim: >-
+      Compatibility pin gate (compat-pin.ttl, consumer-vs-substrate pin) is
+      non-vacuous: a wrong ACR api-version pin flips the gate to exit 1 while
+      the real pin stays byte-identical (shim-court protocol) — gaps/33.
+    gate: just compat-court
+    needs: [compat-check]
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/gaps/33-compat-pin.md
+    status: alive
+  - id: POSH-006-sla-fixture
+    section: sla
+    claim: >-
+      SLA clock runner is fail-closed and non-vacuous: empty-SLA gate refuses
+      with exit 2, control leg passes under a 5s clock, mutation leg (sleep
+      999) is killed RED with outcome:"timeout" andon receipt — gaps/31 §5-6.
+    gate: just posh-court-sla-test
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/gaps/31-sla-clocks.md
+    status: alive
+  - id: POSH-006-invariant-court
+    section: invariant
+    claim: >-
+      Invariant court: every queries/invariant_*.rq is empty over the merged
+      ontology+instance graph (gate scripts/posh_invariant_gate.py, recipe
+      posh-invariant-court with sha256 restore) — gaps/27.
+    gate: just posh-invariant-court
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/gaps/27-invariant-gate-design.md
+    status: alive
+  - id: POSH-006-andon-driver
+    section: andon
+    claim: >-
+      Andon driver is ALIVE standalone (unit-tested, runs); court-pipeline
+      wiring remains specified-not-implemented (gaps/28) — the gate proves the
+      driver builds and runs, not the wiring.
+    gate: cd posh && go test ./cmd/andon/... -count=1
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/gaps/28-andon-court-wiring.md
+    status: alive
+  - id: POSH-006-posh-court
+    section: posh-court
+    claim: >-
+      posh-court 7-stage DoD ladder green (exit 0) — POSH-006 / working-backwards
+      verification ladder. HONEST BASELINE NOTE: last standing receipt is FAIL
+      0/8 (kind node disk preflight, receipts/posh-court/posh-court-green.json);
+      this row is expected to FAIL until the disk residue is cleared.
+    gate: just posh-court
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/receipts/posh-court/posh-court-green.json
+    status: alive
+  - id: POSH-002-live-wire
+    section: live-wire
+    claim: >-
+      Live-wire membrane witness: STS mint + wire round-trip + turnstile
+      asserts on the substrate face at 127.0.0.1:9443 (stage-5 class) —
+      receipts/posh-court/live-wire-witness-f2.json standing ALIVE.
+    gate: just posh-smalt-wire
+    needs_substrate: http://127.0.0.1:9443
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/receipts/posh-court/live-wire-witness-f2.json
+    status: alive
+  - id: POSH-001-go-gates
+    section: go-gates
+    claim: >-
+      POSH Go gates witness (lane F11): go vet/gofmt/build over posh/ and the
+      provider dir run clean — receipts/posh-court/go-gates-witness-f11.json.
+    gate: just posh-build && just posh-vet
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/receipts/posh-court/go-gates-witness-f11.json
+    status: alive
+  - id: T1-define-gate
+    section: tollgate
+    claim: >-
+      Tollgate T1 DEFINE exit criteria met: charter/define.md approved with CTQ
+      definitions + boundary rules; POSH-001..010 ticket set written.
+    gate: test -f docs/jira/posh/v26.10.30/dfcharter/define.md && test -f docs/jira/posh/v26.10.30/POSH-010-lanes-and-wave-plan.md
+    expected_exit: 0
+    receipt: docs/jira/posh/v26.10.30/dfcharter/define.md
+    status: alive
+  - id: GAPS-INDEX-consistent
+    section: docs
+    claim: >-
+      Gap register index is consistent with the per-report status lines it
+      quotes (gaps/INDEX.md rows re-read on disk 2026-10-30, lane 52/D1).
+    gate: test -s docs/jira/posh/v26.10.30/gaps/INDEX.md
+    expected_exit: 0
+    status: alive
+    receipt: docs/jira/posh/v26.10.30/gaps/INDEX.md
+  # --- Declared but NOT yet gated: planned rows (never claim ALIVE) -------
+  - id: T2-measure
+    section: tollgate
+    claim: >-
+      Tollgate T2 MEASURE exit: baseline receipts for CTQ-B/D/J/K, MSA on
+      monotonic timers, defect opportunity map N=4/route, baseline DPMO
+      recorded (dfcharter/define.md §5 T2). NOT RUN — measure phase on paper
+      (gaps/10 row d: one receipt exists).
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/receipts/measure/posh002-latency.json
+    status: planned
+  - id: T3-analyze
+    section: tollgate
+    claim: >-
+      Tollgate T3 ANALYZE exit: Ishikawa, FMEA RPNs, category-theoretic
+      composition proof, schema-v1 face set frozen, types.go seam locked.
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/dfcharter/define.md
+    status: planned
+  - id: T4-design
+    section: tollgate
+    claim: >-
+      Tollgate T4 DESIGN exit: ingress/egress TTL specs, ggen synthesis packs
+      compile BEAM pipelines + Go adapters, BLAKE3 no_std kernel, HCL AST diff
+      poka-yoke, POSH-003/004/005/008/009 acceptance green, migration ledger
+      complete.
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/dfcharter/define.md
+    status: planned
+  - id: T5-verify
+    section: tollgate
+    claim: >-
+      Tollgate T5 VERIFY exit: cleanroom kind run via just posh-court exit 0;
+      zero-drift -detailed-exitcode 0; mutation shim flips the court; DPMO
+      calculated; control plan handed off.
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/dfcharter/define.md
+    status: planned
+  - id: DPMO-campaign
+    section: measure
+    claim: >-
+      500-run DPMO campaign (verify.md §6) executed and denominator-integrated
+      — gaps/30: R definition + runner + non-vacuity court ran; integration
+      into the charter denominator remains.
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/gaps/30-dpmo-r-computation.md
+    status: planned
+  - id: MSA-timers
+    section: measure
+    claim: >-
+      MSA on monotonic timers (T2 exit criterion, define.md §5) — declared,
+      no instrument run recorded.
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/receipts/measure/posh002-latency.json
+    status: planned
+  - id: SPC-control-plan
+    section: measure
+    claim: >-
+      SPC control plan (verify.md §7) running — declared tollgate, PLANNED
+      (gaps/INDEX cross-cutting note; GAP9 R4: declared tollgate, not defect).
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/gaps/09-courts-matrix.md
+    status: planned
+  - id: POSH-005-sidecar-healthz
+    section: sidecar
+    claim: >-
+      Sidecar healthz falsifier: "fails healthz must fail pod readiness"
+      (POSH-005 VOC) exercised on kind — NOT RUN; gap-11 records the sidecar
+      image lacking /posh/bin/posh (G11-1 HIGH).
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/gaps/11-kind-ops.md
+    status: planned
+  - id: POSH-003-arm-face
+    section: arm-face
+    claim: >-
+      Azure ARM face serves the consumer surface via official SDK face routing
+      (POSH-003) — PARTIAL per gaps/02 row A1 (api-version ceilings below
+      azurerm-5.x pins for several families; monotonic gate refuses newer
+      pins). Gate to flip this row alive is the provider court; NOT gated yet.
+    gate: ""
+    receipt: docs/jira/posh/v26.10.30/receipts/provider-court-20261030.md
+    status: planned

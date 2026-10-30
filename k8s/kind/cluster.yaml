@@ -1,7 +1,7 @@
 # kind-cluster.yaml — Multi-Node Kind Cluster with Ingress Port Mappings
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: kind-smalt
+name: smalt
 networking:
   disableDefaultCNI: false
   podSubnet: "10.244.0.0/16"

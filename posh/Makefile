@@ -10,7 +10,7 @@ BINARY := bin/posh
 PKG := ./...
 SOCK := run/posh.sock
 
-.PHONY: help build test vet lint fmt check cover bench run clean pgo pgo-bench
+.PHONY: help build test vet lint fmt check cover bench run clean pgo pgo-bench poshvet poshvet-budget pgo-merge
 
 help: ## List available targets
 	@awk 'BEGIN { FS = ":.*##"; printf "Targets:\n" } \
@@ -30,8 +30,31 @@ build: ## CGO_ENABLED=0 static binary -> bin/posh (version-stamped, PGO if defau
 test: ## Run the test suite
 	$(GO) test $(GOFLAGS) $(PKG)
 
+chaos: ## Run adversarial chaos fault injection suite with race detector
+	$(GO) test -race -v -count=1 ./internal/chaos
+
+fuzz-smoke: ## Fast 10s smoke fuzzing across all native Go fuzz targets
+	$(GO) test ./internal/server -fuzz=^FuzzFrameParser$$ -fuzztime=5s
+	$(GO) test ./internal/server -fuzz=^FuzzSlowlorisChunking$$ -fuzztime=5s
+	$(GO) test ./internal/server -fuzz=^FuzzFrameBoundaryInjection$$ -fuzztime=5s
+	$(GO) test ./internal/api -fuzz=^FuzzDecodeRequest$$ -fuzztime=5s
+	$(GO) test ./internal/api -fuzz=^FuzzDecodeResponse$$ -fuzztime=5s
+
+sbom: ## Generate CycloneDX JSON SBOM using cyclonedx-gomod
+	@which cyclonedx-gomod >/dev/null 2>&1 || (echo "installing cyclonedx-gomod..." && go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.7.0)
+	cyclonedx-gomod app -json -output posh-sbom.cdx.json ./cmd/posh
+	@echo "SBOM generated at posh/posh-sbom.cdx.json"
+
 vet: ## go vet
 	$(GO) vet $(PKG)
+
+poshvet: ## Build and run custom poshvet static safety analyzers
+	$(GO) build -o bin/poshvet ./cmd/poshvet
+	$(GO) vet -vettool=./bin/poshvet ./cmd/posh ./internal/server ./internal/egress ./internal/receipt
+
+poshvet-budget: ## Run poshvet with escape budget pass (-budget) for zero-allocation invariants
+	$(GO) build -o bin/poshvet ./cmd/poshvet
+	$(GO) vet -vettool=./bin/poshvet -budget ./cmd/posh ./internal/server ./internal/egress ./internal/receipt
 
 lint: vet ## Lint (currently aliased to vet)
 
@@ -54,6 +77,9 @@ run: build ## Build then boot the membrane; clean up socket on exit
 clean: ## Remove build artifacts
 	rm -f $(BINARY) coverage.out
 	rm -rf run
+	# posh/var/ (andon receipt chain, default posh/var/andon.jsonl) is NOT
+	# swept here — it is durable state, deliberately outside posh-clean's
+	# rm -rf tmp/posh as well.
 
 # --- PGO (profile-guided optimization) ---
 # Capture protocol + embedded capture bench: pgo/README.md. `make pgo`
@@ -67,6 +93,9 @@ pgo: ## Recapture PGO profile + rebuild: real-UDS load bench -> default.pgo -> P
 	@rm -f internal/server/pgo_load_tmp_test.go
 	mv $(PGO_PROFILE).tmp $(PGO_PROFILE)
 	$(MAKE) build
+
+pgo-merge: ## Safely collect and merge .pgo profiles into canonical default.pgo
+	$(GO) run ./cmd/pgo-merge -out $(PGO_PROFILE) -dir pgo
 
 pgo-bench: ## A/B PGO vs non-PGO: min-of-3 BenchmarkMembraneLoad + BenchmarkWriteFrame
 	@echo "== non-PGO baseline =="

@@ -6,9 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -41,6 +44,45 @@ func mintDeterministicGUID(input string) string {
 	digest[8] = (digest[8] & 0x3f) | 0x80
 	hx := hex.EncodeToString(digest[:16])
 	return fmt.Sprintf("%s-%s-%s-%s-%s", hx[0:8], hx[8:12], hx[12:16], hx[16:20], hx[20:32])
+}
+
+// allowFabricatedIDs reports whether the operator explicitly opted into
+// fabricated-value toleration. Default is OFF (honesty law): a value the wire
+// did not provide is either absent or a LOUD error — never silently invented.
+// TFPOSH_ALLOW_FABRICATED_IDS=1 downgrades the refusal to a loud warning and
+// proceeds with the fabricated value (create-local semantics).
+func allowFabricatedIDs() bool {
+	return os.Getenv("TFPOSH_ALLOW_FABRICATED_IDS") == "1"
+}
+
+// refuseFabricatedValue emits the honesty-law diagnostic for a fabricated
+// value. Returns true when fabrication is REFUSED (default: an error diag is
+// recorded and the caller must not proceed with the fabricated value); returns
+// false under the TFPOSH_ALLOW_FABRICATED_IDS=1 opt-in, after recording a loud
+// warning diag naming the fabrication.
+func refuseFabricatedValue(diags *diag.Diagnostics, title, detail string) bool {
+	if allowFabricatedIDs() {
+		diags.AddWarning(
+			title+" (FABRICATED, opt-in)",
+			detail+" TFPOSH_ALLOW_FABRICATED_IDS=1 is set: proceeding with the "+
+				"fabricated value — this is a LOUD opt-in, not a silent default.",
+		)
+		return false
+	}
+	diags.AddError(
+		title+" (FABRICATED value refused)",
+		detail+" The smalt face did not return this value; fabricating it silently "+
+			"bakes a lie into state. Set TFPOSH_ALLOW_FABRICATED_IDS=1 to opt into a "+
+			"loud warning + fabricated value (create-local semantics).",
+	)
+	return true
+}
+
+// fabricatedValueWarning emits a loud (non-fatal) warning for create-local
+// semantics that are genuinely intended (e.g. role_definition until C1 lands,
+// bare role_definition_name resolution) on every CRUD.
+func fabricatedValueWarning(diags *diag.Diagnostics, title, detail string) {
+	diags.AddWarning("FABRICATED (create-local): "+title, detail)
 }
 
 func isUnsupportedARMRouteError(err error) bool {
@@ -106,7 +148,7 @@ func mapTagsField(m map[string]any) map[string]string {
 // 1. azurerm_user_assigned_identity
 // ============================================================================
 
-const uaiAPIVersion = "2023-01-31"
+const uaiAPIVersion = "2023-04-01"
 
 var (
 	_ resource.Resource                = (*userAssignedIdentityResource)(nil)
@@ -291,18 +333,13 @@ func (r *userAssignedIdentityResource) Read(ctx context.Context, req resource.Re
 	props, _ := out["properties"].(map[string]any)
 	clientID := mapStringField(props, "clientId")
 	if clientID == "" {
-		clientID = state.ClientID.ValueString()
-	}
-	if clientID == "" {
-		clientID = mintDeterministicGUID("uai-client:" + armPath)
+		clientID = carryOrMintIdentityAttr(&resp.Diagnostics, state.ClientID.ValueString(), "uai-client:"+armPath, "client_id")
 	}
 	principalID := mapStringField(props, "principalId")
 	if principalID == "" {
-		principalID = state.PrincipalID.ValueString()
+		principalID = carryOrMintIdentityAttr(&resp.Diagnostics, state.PrincipalID.ValueString(), "uai-principal:"+armPath, "principal_id")
 	}
-	if principalID == "" {
-		principalID = mintDeterministicGUID("uai-principal:" + armPath)
-	}
+
 	tenantID := mapStringField(props, "tenantId")
 	if tenantID == "" {
 		tenantID = state.TenantID.ValueString()
@@ -364,18 +401,13 @@ func (r *userAssignedIdentityResource) Update(ctx context.Context, req resource.
 	props, _ := out["properties"].(map[string]any)
 	clientID := mapStringField(props, "clientId")
 	if clientID == "" {
-		clientID = plan.ClientID.ValueString()
-	}
-	if clientID == "" {
-		clientID = mintDeterministicGUID("uai-client:" + armPath)
+		clientID = carryOrMintIdentityAttr(&resp.Diagnostics, plan.ClientID.ValueString(), "uai-client:"+armPath, "client_id")
 	}
 	principalID := mapStringField(props, "principalId")
 	if principalID == "" {
-		principalID = plan.PrincipalID.ValueString()
+		principalID = carryOrMintIdentityAttr(&resp.Diagnostics, plan.PrincipalID.ValueString(), "uai-principal:"+armPath, "principal_id")
 	}
-	if principalID == "" {
-		principalID = mintDeterministicGUID("uai-principal:" + armPath)
-	}
+
 	tenantID := mapStringField(props, "tenantId")
 	if tenantID == "" {
 		tenantID = plan.TenantID.ValueString()
@@ -411,25 +443,59 @@ func (r *userAssignedIdentityResource) Delete(ctx context.Context, req resource.
 
 func (r *userAssignedIdentityResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/", "azurerm_user_assigned_identity") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
+	setImportIDRGName(ctx, resp, id)
+	// GAP22-2 close: seed the computed identity attrs through the same honest
+	// carry-or-mint path Read/Update use — REFUSED by default with the typed
+	// honesty-law diagnostic, TFPOSH_ALLOW_FABRICATED_IDS=1 downgrades to a
+	// loud warning + deterministic mint. Import never writes silent nulls that
+	// blow up on first refresh.
+	clientID := carryOrMintIdentityAttr(&resp.Diagnostics, "", "uai-client:"+id, "client_id")
+	if clientID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("client_id"), clientID)...)
 	}
+	principalID := carryOrMintIdentityAttr(&resp.Diagnostics, "", "uai-principal:"+id, "principal_id")
+	if principalID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("principal_id"), principalID)...)
+	}
+	if r.client != nil && r.client.tenantID != "" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("tenant_id"), r.client.tenantID)...)
+	}
+}
+
+// carryOrMintIdentityAttr resolves a computed identity attr (clientId /
+// principalId) per the honesty law: the smalt ARM face record carries no
+// properties.clientId/principalId, so the attrs are state-carried (prior
+// state wins); when no prior state exists, a deterministic GUID would be
+// fabricated — REFUSED by default with a typed error naming the missing attr
+// and the smalt face limitation. TFPOSH_ALLOW_FABRICATED_IDS=1 downgrades to
+// a loud warning + minted GUID.
+func carryOrMintIdentityAttr(diags *diag.Diagnostics, prior, deterministicInput string, attr string) string {
+	if prior != "" {
+		return prior
+	}
+	slog.Warn("UNSUPPORTED(attr roundtrip): azurerm_user_assigned_identity computed attr state-carried",
+		"attr", attr, "input", deterministicInput)
+	detail := fmt.Sprintf("The smalt ARM face record has no properties.%s; computed "+
+		"attr %q cannot roundtrip from the wire.", attr, attr)
+	if refuseFabricatedValue(diags,
+		"UNSUPPORTED(attr roundtrip): azurerm_user_assigned_identity "+attr, detail) {
+		return ""
+	}
+	return mintDeterministicGUID(deterministicInput)
 }
 
 func (r *userAssignedIdentityResource) populateUAIModel(ctx context.Context, m *userAssignedIdentityModel, out map[string]any, armPath, loc string, tags map[string]string, resp *resource.CreateResponse) {
 	props, _ := out["properties"].(map[string]any)
 	clientID := mapStringField(props, "clientId")
 	if clientID == "" {
-		clientID = mintDeterministicGUID("uai-client:" + armPath)
+		clientID = carryOrMintIdentityAttr(&resp.Diagnostics, m.ClientID.ValueString(), "uai-client:"+armPath, "client_id")
 	}
 	principalID := mapStringField(props, "principalId")
 	if principalID == "" {
-		principalID = mintDeterministicGUID("uai-principal:" + armPath)
+		principalID = carryOrMintIdentityAttr(&resp.Diagnostics, m.PrincipalID.ValueString(), "uai-principal:"+armPath, "principal_id")
 	}
 	tenantID := mapStringField(props, "tenantId")
 	if tenantID == "" {
@@ -591,9 +657,19 @@ func (r *federatedIdentityCredentialResource) Create(ctx context.Context, req re
 
 	var out map[string]any
 	raw, etag, _, err := r.client.PutWithETag(ctx, armPath, ficAPIVersion, "", body, &out)
-	if err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("create federated_identity_credential", err.Error())
-		return
+	if err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("create federated_identity_credential", err.Error())
+			return
+		}
+		// Honesty law: an unsupported route means the write never landed.
+		// Reporting success would fabricate state — refused by default; loud
+		// warning + create-local semantics under TFPOSH_ALLOW_FABRICATED_IDS=1.
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_federated_identity_credential create",
+			"The smalt ARM face refused the federatedIdentityCredentials PUT ("+err.Error()+").") {
+			return
+		}
 	}
 	SavePrivateARMState(ctx, resp.Private, raw, etag)
 
@@ -628,11 +704,22 @@ func (r *federatedIdentityCredentialResource) Read(ctx context.Context, req reso
 	var out map[string]any
 	raw, etag, _, err := r.client.GetRaw(ctx, armPath, ficAPIVersion, &out)
 	if err != nil {
-		if IsNotFound(err) || isUnsupportedARMRouteError(err) {
-			// If the substrate does not mount federatedIdentityCredentials on the wire face,
-			// preserve prior state unless the resource has no prior state fields.
+		if IsNotFound(err) && !isUnsupportedARMRouteError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		if isUnsupportedARMRouteError(err) {
+			// The substrate does not mount federatedIdentityCredentials on the
+			// wire face; preserving prior state would read as a confirmed pass.
+			// Refused by default; loud warning + stale-state keep under the opt-in.
 			if state.Issuer.ValueString() == "" && state.Subject.ValueString() == "" {
 				resp.State.RemoveResource(ctx)
+				return
+			}
+			if refuseFabricatedValue(&resp.Diagnostics,
+				"UNSUPPORTED(wire face): azurerm_federated_identity_credential read",
+				"The smalt ARM face refused the federatedIdentityCredentials GET ("+err.Error()+"). "+
+					"The state below was NOT confirmed against the wire.") {
 				return
 			}
 			state.ID = types.StringValue(armPath)
@@ -705,9 +792,16 @@ func (r *federatedIdentityCredentialResource) Update(ctx context.Context, req re
 	armPath := ficARMPath(parentID, plan.Name.ValueString())
 	var out map[string]any
 	raw, newETag, _, err := r.client.PutWithETag(ctx, armPath, ficAPIVersion, etag, rawBody, &out)
-	if err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("update federated_identity_credential", err.Error())
-		return
+	if err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("update federated_identity_credential", err.Error())
+			return
+		}
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_federated_identity_credential update",
+			"The smalt ARM face refused the federatedIdentityCredentials PUT ("+err.Error()+").") {
+			return
+		}
 	}
 	SavePrivateARMState(ctx, resp.Private, raw, newETag)
 
@@ -733,13 +827,25 @@ func (r *federatedIdentityCredentialResource) Delete(ctx context.Context, req re
 	if armPath == "" {
 		armPath = ficARMPath(resolveFICParentID(&state), state.Name.ValueString())
 	}
-	if _, err := r.client.DeleteRaw(ctx, NormalizeARMID(armPath), ficAPIVersion); err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("delete federated_identity_credential", err.Error())
+	if _, err := r.client.DeleteRaw(ctx, NormalizeARMID(armPath), ficAPIVersion); err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("delete federated_identity_credential", err.Error())
+			return
+		}
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_federated_identity_credential delete",
+			"The smalt ARM face refused the federatedIdentityCredentials DELETE ("+err.Error()+"). "+
+				"The credential may still exist on the wire.") {
+			return
+		}
 	}
 }
 
 func (r *federatedIdentityCredentialResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
+	if !requireImportSegment(&resp.Diagnostics, id, "/federatedIdentityCredentials/", "azurerm_federated_identity_credential") {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 	if idx := strings.Index(strings.ToLower(id), "/federatedidentitycredentials/"); idx > 0 {
 		parent := id[:idx]
@@ -830,6 +936,7 @@ func (r *roleDefinitionResource) Schema(ctx context.Context, req resource.Schema
 			"assignable_scopes": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
+				Computed:    true,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -875,6 +982,54 @@ func roleDefARMPath(scope, roleDefID string) string {
 	return NormalizeARMID(fmt.Sprintf("%s/providers/Microsoft.Authorization/roleDefinitions/%s", strings.TrimSuffix(scope, "/"), roleDefID))
 }
 
+// roleDefPermWire converts a model permissions row to wire shape. Empty
+// lists are omitted from the wire map so absent keys roundtrip cleanly.
+func roleDefPermWire(p roleDefinitionPermissionModel) map[string]any {
+	m := map[string]any{}
+	if acts := stringListOf(context.Background(), p.Actions); len(acts) > 0 {
+		m["actions"] = acts
+	}
+	if na := stringListOf(context.Background(), p.NotActions); len(na) > 0 {
+		m["notActions"] = na
+	}
+	if da := stringListOf(context.Background(), p.DataActions); len(da) > 0 {
+		m["dataActions"] = da
+	}
+	if nda := stringListOf(context.Background(), p.NotDataActions); len(nda) > 0 {
+		m["notDataActions"] = nda
+	}
+	return m
+}
+
+// stringListOf extracts []string from an optional list attr.
+func stringListOf(ctx context.Context, l types.List) []string {
+	if l.IsNull() || l.IsUnknown() {
+		return nil
+	}
+	var out []string
+	l.ElementsAs(ctx, &out, false)
+	return out
+}
+
+// stringListValue builds an optional string list attr from a wire value.
+func stringListValue(ctx context.Context, v any) types.List {
+	arr, ok := v.([]any)
+	if !ok {
+		return types.ListNull(types.StringType)
+	}
+	strs := make([]string, 0, len(arr))
+	for _, s := range arr {
+		if str, ok := s.(string); ok {
+			strs = append(strs, str)
+		}
+	}
+	lst, diags := types.ListValueFrom(ctx, types.StringType, strs)
+	if diags.HasError() {
+		return types.ListNull(types.StringType)
+	}
+	return lst
+}
+
 func (r *roleDefinitionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan roleDefinitionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -883,70 +1038,68 @@ func (r *roleDefinitionResource) Create(ctx context.Context, req resource.Create
 	}
 
 	scope := NormalizeARMID(strings.TrimSuffix(plan.Scope.ValueString(), "/"))
-	rdGUID := plan.RoleDefinitionID.ValueString()
-	if rdGUID == "" {
-		rdGUID = mintDeterministicGUID(plan.Name.ValueString() + "|" + scope)
-	}
-	armPath := roleDefARMPath(scope, rdGUID)
-
-	var assignableScopes []string
-	if !plan.AssignableScopes.IsNull() && !plan.AssignableScopes.IsUnknown() {
-		resp.Diagnostics.Append(plan.AssignableScopes.ElementsAs(ctx, &assignableScopes, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-	} else {
-		assignableScopes = []string{scope}
+	name := plan.Name.ValueString()
+	if name == "" {
+		resp.Diagnostics.AddError("create role_definition", "name is required")
+		return
 	}
 
-	permsWire := make([]map[string]any, 0, len(plan.Permissions))
+	permRows := make([]map[string]any, 0, len(plan.Permissions))
 	for _, p := range plan.Permissions {
-		pm := map[string]any{}
-		if !p.Actions.IsNull() && !p.Actions.IsUnknown() {
-			var list []string
-			_ = p.Actions.ElementsAs(ctx, &list, false)
-			pm["actions"] = list
-		}
-		if !p.NotActions.IsNull() && !p.NotActions.IsUnknown() {
-			var list []string
-			_ = p.NotActions.ElementsAs(ctx, &list, false)
-			pm["notActions"] = list
-		}
-		if !p.DataActions.IsNull() && !p.DataActions.IsUnknown() {
-			var list []string
-			_ = p.DataActions.ElementsAs(ctx, &list, false)
-			pm["dataActions"] = list
-		}
-		if !p.NotDataActions.IsNull() && !p.NotDataActions.IsUnknown() {
-			var list []string
-			_ = p.NotDataActions.ElementsAs(ctx, &list, false)
-			pm["notDataActions"] = list
-		}
-		permsWire = append(permsWire, pm)
+		permRows = append(permRows, roleDefPermWire(p))
+	}
+	if len(permRows) == 0 {
+		resp.Diagnostics.AddError("create role_definition",
+			"at least one permissions block with a nonempty actions list is required (EmptyPermissions law)")
+		return
+	}
+	assignable := stringListOf(ctx, plan.AssignableScopes)
+	if len(assignable) == 0 {
+		assignable = []string{scope}
 	}
 
-	body := map[string]any{
-		"properties": map[string]any{
-			"roleName":         plan.Name.ValueString(),
-			"description":      plan.Description.ValueString(),
-			"assignableScopes": assignableScopes,
-			"permissions":      permsWire,
-		},
+	props := map[string]any{
+		"roleName":         name,
+		"type":             "CustomRole",
+		"permissions":      permRows,
+		"assignableScopes": assignable,
 	}
+	if d := plan.Description.ValueString(); d != "" {
+		props["description"] = d
+	}
+	body := map[string]any{"properties": props}
 
+	armPath := roleDefARMPath(scope, name)
 	var out map[string]any
 	raw, etag, _, err := r.client.PutWithETag(ctx, armPath, roleDefAPIVersion, "", body, &out)
-	if err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("create role_definition", err.Error())
-		return
+	if err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("create role_definition", err.Error())
+			return
+		}
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_role_definition create",
+			"The smalt ARM face refused the roleDefinitions PUT ("+err.Error()+").") {
+			return
+		}
 	}
 	SavePrivateARMState(ctx, resp.Private, raw, etag)
 
-	plan.ID = types.StringValue(armPath)
+	id := armPath
+	if v := mapStringField(out, "id"); v != "" {
+		id = NormalizeARMID(v)
+	}
+	plan.ID = types.StringValue(id)
+	plan.Name = types.StringValue(name)
 	plan.Scope = types.StringValue(scope)
-	plan.RoleDefinitionID = types.StringValue(rdGUID)
-	plan.RoleDefinitionResourceID = types.StringValue(armPath)
-
+	plan.RoleDefinitionID = types.StringValue(name)
+	plan.RoleDefinitionResourceID = types.StringValue(id)
+	// assignable_scopes is Optional+Computed (upstream-azurerm parity): with no
+	// config value the create-time default [scope] is authoritative and must be
+	// written back, or apply ends "unknown value after apply".
+	if scopesList, d := types.ListValueFrom(ctx, types.StringType, assignable); !d.HasError() {
+		plan.AssignableScopes = scopesList
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -957,25 +1110,29 @@ func (r *roleDefinitionResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	scope := NormalizeARMID(strings.TrimSuffix(state.Scope.ValueString(), "/"))
-	rdGUID := state.RoleDefinitionID.ValueString()
 	armPath := state.ID.ValueString()
-	if armPath == "" && scope != "" && rdGUID != "" {
-		armPath = roleDefARMPath(scope, rdGUID)
-	} else {
-		armPath = NormalizeARMID(armPath)
+	if armPath == "" {
+		scope := NormalizeARMID(strings.TrimSuffix(state.Scope.ValueString(), "/"))
+		if name := state.Name.ValueString(); name != "" && scope != "" {
+			armPath = roleDefARMPath(scope, name)
+		}
 	}
+	armPath = NormalizeARMID(armPath)
 
 	var out map[string]any
 	raw, etag, _, err := r.client.GetRaw(ctx, armPath, roleDefAPIVersion, &out)
 	if err != nil {
-		if IsNotFound(err) || isUnsupportedARMRouteError(err) {
-			if state.Name.ValueString() == "" {
-				resp.State.RemoveResource(ctx)
+		if IsNotFound(err) && !isUnsupportedARMRouteError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		if isUnsupportedARMRouteError(err) {
+			if refuseFabricatedValue(&resp.Diagnostics,
+				"UNSUPPORTED(wire face): azurerm_role_definition read",
+				"The smalt ARM face refused the roleDefinitions GET ("+err.Error()+"). "+
+					"The state below was NOT confirmed against the wire.") {
 				return
 			}
-			state.ID = types.StringValue(armPath)
-			state.RoleDefinitionResourceID = types.StringValue(armPath)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 			return
 		}
@@ -983,23 +1140,56 @@ func (r *roleDefinitionResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 	SavePrivateARMState(ctx, resp.Private, raw, etag)
-
-	props, _ := out["properties"].(map[string]any)
-	if rn := mapStringField(props, "roleName"); rn != "" {
-		state.Name = types.StringValue(rn)
-	}
-	if desc := mapStringField(props, "description"); desc != "" {
-		state.Description = types.StringValue(desc)
-	}
-	state.ID = types.StringValue(armPath)
-	state.RoleDefinitionResourceID = types.StringValue(armPath)
-	if rdGUID != "" {
-		state.RoleDefinitionID = types.StringValue(rdGUID)
-	}
-
+	applyRoleDefinitionWire(ctx, &state, out, armPath)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
+// applyRoleDefinitionWire maps a roleDefinitions GET response onto state.
+func applyRoleDefinitionWire(ctx context.Context, state *roleDefinitionModel, out map[string]any, armPath string) {
+	props, _ := out["properties"].(map[string]any)
+	if props == nil {
+		props = map[string]any{}
+	}
+	if rn, ok := props["roleName"].(string); ok && rn != "" {
+		state.Name = types.StringValue(rn)
+	}
+	if d, ok := props["description"].(string); ok && d != "" {
+		state.Description = types.StringValue(d)
+	}
+	if scopes, ok := props["assignableScopes"].([]any); ok {
+		strs := make([]string, 0, len(scopes))
+		for _, s := range scopes {
+			if str, ok := s.(string); ok {
+				strs = append(strs, str)
+			}
+		}
+		lst, diags := types.ListValueFrom(ctx, types.StringType, strs)
+		if !diags.HasError() {
+			state.AssignableScopes = lst
+		}
+	}
+	if perms, ok := props["permissions"].([]any); ok {
+		rows := make([]roleDefinitionPermissionModel, 0, len(perms))
+		for _, p := range perms {
+			m, _ := p.(map[string]any)
+			rows = append(rows, roleDefinitionPermissionModel{
+				Actions:        stringListValue(ctx, m["actions"]),
+				NotActions:     stringListValue(ctx, m["notActions"]),
+				DataActions:    stringListValue(ctx, m["dataActions"]),
+				NotDataActions: stringListValue(ctx, m["notDataActions"]),
+			})
+		}
+		state.Permissions = rows
+	}
+	state.ID = types.StringValue(armPath)
+	if state.RoleDefinitionID.ValueString() == "" {
+		state.RoleDefinitionID = types.StringValue(state.Name.ValueString())
+	}
+	state.RoleDefinitionResourceID = types.StringValue(armPath)
+}
+
+// Update: roleDefinitions PUT is idempotent full-replace on the smalt plane;
+// the same body goes back up and the response re-applies to state.
 func (r *roleDefinitionResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan roleDefinitionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -1007,39 +1197,44 @@ func (r *roleDefinitionResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	rawBody, etag := LoadPrivateARMState(ctx, req.Private)
-	if rawBody == nil {
-		rawBody = map[string]any{}
-	}
-
 	scope := NormalizeARMID(strings.TrimSuffix(plan.Scope.ValueString(), "/"))
-	rdGUID := plan.RoleDefinitionID.ValueString()
-	if rdGUID == "" {
-		rdGUID = mintDeterministicGUID(plan.Name.ValueString() + "|" + scope)
+	name := plan.Name.ValueString()
+	permRows := make([]map[string]any, 0, len(plan.Permissions))
+	for _, p := range plan.Permissions {
+		permRows = append(permRows, roleDefPermWire(p))
 	}
-	armPath := roleDefARMPath(scope, rdGUID)
-
-	props, _ := rawBody["properties"].(map[string]any)
-	if props == nil {
-		props = map[string]any{}
+	assignable := stringListOf(ctx, plan.AssignableScopes)
+	if len(assignable) == 0 {
+		assignable = []string{scope}
 	}
-	props["roleName"] = plan.Name.ValueString()
-	props["description"] = plan.Description.ValueString()
-	rawBody["properties"] = props
 
+	props := map[string]any{
+		"roleName":         name,
+		"type":             "CustomRole",
+		"permissions":      permRows,
+		"assignableScopes": assignable,
+	}
+	if d := plan.Description.ValueString(); d != "" {
+		props["description"] = d
+	}
+	body := map[string]any{"properties": props}
+
+	armPath := roleDefARMPath(scope, name)
 	var out map[string]any
-	raw, newETag, _, err := r.client.PutWithETag(ctx, armPath, roleDefAPIVersion, etag, rawBody, &out)
-	if err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("update role_definition", err.Error())
-		return
+	raw, etag, _, err := r.client.PutWithETag(ctx, armPath, roleDefAPIVersion, "", body, &out)
+	if err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("update role_definition", err.Error())
+			return
+		}
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_role_definition update",
+			"The smalt ARM face refused the roleDefinitions PUT ("+err.Error()+").") {
+			return
+		}
 	}
-	SavePrivateARMState(ctx, resp.Private, raw, newETag)
-
-	plan.ID = types.StringValue(armPath)
-	plan.Scope = types.StringValue(scope)
-	plan.RoleDefinitionID = types.StringValue(rdGUID)
-	plan.RoleDefinitionResourceID = types.StringValue(armPath)
-
+	SavePrivateARMState(ctx, resp.Private, raw, etag)
+	applyRoleDefinitionWire(ctx, &plan, out, armPath)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -1049,14 +1244,31 @@ func (r *roleDefinitionResource) Delete(ctx context.Context, req resource.Delete
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	armPath := NormalizeARMID(state.ID.ValueString())
-	if _, err := r.client.DeleteRaw(ctx, armPath, roleDefAPIVersion); err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("delete role_definition", err.Error())
+
+	armPath := state.ID.ValueString()
+	if armPath == "" {
+		scope := NormalizeARMID(strings.TrimSuffix(state.Scope.ValueString(), "/"))
+		armPath = roleDefARMPath(scope, state.Name.ValueString())
+	}
+	if _, err := r.client.DeleteRaw(ctx, NormalizeARMID(armPath), roleDefAPIVersion); err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("delete role_definition", err.Error())
+			return
+		}
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_role_definition delete",
+			"The smalt ARM face refused the roleDefinitions DELETE ("+err.Error()+"). "+
+				"The definition may still exist on the wire.") {
+			return
+		}
 	}
 }
 
 func (r *roleDefinitionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.Authorization/roleDefinitions/", "azurerm_role_definition") {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("role_definition_resource_id"), id)...)
 	marker := "/providers/Microsoft.Authorization/roleDefinitions/"
@@ -1065,6 +1277,23 @@ func (r *roleDefinitionResource) ImportState(ctx context.Context, req resource.I
 		guid := id[idx+len(marker):]
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("scope"), scope)...)
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("role_definition_id"), guid)...)
+		// Import roundtrip close (lane 48): ImportState used to leave
+		// assignable_scopes and permissions null, so the post-import plan
+		// always drifted ("assignable_scopes -> null"). Seed both from a real
+		// wire GET — honest values, no fabrication; a failed GET leaves the
+		// drift visible rather than inventing values.
+		if r.client != nil {
+			var out map[string]any
+			_, _, _, err := r.client.GetRaw(ctx, id, roleDefAPIVersion, &out)
+			if err == nil && out != nil {
+				var m roleDefinitionModel
+				m.Name = types.StringValue(guid)
+				applyRoleDefinitionWire(ctx, &m, out, id)
+				resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), m.Name)...)
+				resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("assignable_scopes"), m.AssignableScopes)...)
+				resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("permissions"), m.Permissions)...)
+			}
+		}
 	}
 }
 
@@ -1088,14 +1317,14 @@ type roleAssignmentResource struct {
 }
 
 type roleAssignmentModel struct {
-	ID                            types.String `tfsdk:"id"`
-	Name                          types.String `tfsdk:"name"`
-	Scope                         types.String `tfsdk:"scope"`
-	RoleDefinitionID              types.String `tfsdk:"role_definition_id"`
-	RoleDefinitionName            types.String `tfsdk:"role_definition_name"`
-	PrincipalID                   types.String `tfsdk:"principal_id"`
-	PrincipalType                 types.String `tfsdk:"principal_type"`
-	SkipServicePrincipalAADCheck  types.Bool   `tfsdk:"skip_service_principal_aad_check"`
+	ID                           types.String `tfsdk:"id"`
+	Name                         types.String `tfsdk:"name"`
+	Scope                        types.String `tfsdk:"scope"`
+	RoleDefinitionID             types.String `tfsdk:"role_definition_id"`
+	RoleDefinitionName           types.String `tfsdk:"role_definition_name"`
+	PrincipalID                  types.String `tfsdk:"principal_id"`
+	PrincipalType                types.String `tfsdk:"principal_type"`
+	SkipServicePrincipalAADCheck types.Bool   `tfsdk:"skip_service_principal_aad_check"`
 }
 
 func (r *roleAssignmentResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -1135,6 +1364,12 @@ func (r *roleAssignmentResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"role_definition_name": schema.StringAttribute{
 				Optional: true,
+				Description: "The built-in role display name (e.g. \"Contributor\"). " +
+					"FABRICATION NOTICE: the smalt plane has no built-in role-name → GUID mapping " +
+					"(KD-09), so a bare name resolves to a deterministic LOCAL uuid5(name|scope) " +
+					"GUID — NOT the Azure built-in role definition GUID. A loud warning diag is " +
+					"emitted on every such resolution. Pass role_definition_id with the real " +
+					"Azure GUID to avoid the mint entirely.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -1175,9 +1410,42 @@ func roleAssignmentARMPath(scope, name string) string {
 	return NormalizeARMID(fmt.Sprintf("%s/providers/Microsoft.Authorization/roleAssignments/%s", strings.TrimSuffix(scope, "/"), name))
 }
 
-func resolveRoleDefinitionARMID(scope, roleDefID, roleDefName string) string {
+// resolveRoleDefinitionInput resolves role_definition_id / role_definition_name
+// per the Elixir spike's resolve_role_definition_id/3 law (ARCHIVE
+// terraform-provider-smalt-elixir-spike-20261030, resources/role_assignment.ex):
+// full ARM path passes through; a bare UUID is joined to the scope; a bare
+// NAME resolves via RoleDefinition.mint_definition_guid/2 (deterministic
+// uuid5-style mint from name|scope — the Go port is mintDeterministicGUID with
+// the identical @type_uuid_ns namespace bytes). The id field may itself arrive
+// as a bare name; it goes through the same funnel as role_definition_name.
+//
+// Honesty law: a bare-name mint produces a LOCAL GUID, not the Azure built-in
+// role definition GUID (KD-09). It is create-local-by-design (warning on every
+// resolution), pending the real built-in GUID mapping (lane C1). A diags
+// collector may be nil (resolution used without a CRUD surface, e.g. tests).
+func resolveRoleDefinitionInput(scope, roleDefID, roleDefName string, diags *diag.Diagnostics) string {
+	mint := func(source, value string) string {
+		guid := mintDeterministicGUID(value + "|" + scope)
+		slog.Warn("FABRICATED(create-local): role definition name resolved via deterministic mint, not the Azure built-in GUID",
+			"source", source, "value", value, "scope", scope, "minted_guid", guid)
+		if diags != nil {
+			fabricatedValueWarning(diags,
+				fmt.Sprintf("azurerm_role_assignment %s %q", source, value),
+				"The smalt plane has no built-in role-name → GUID mapping yet (KD-09); "+
+					"this resolved to a deterministic LOCAL GUID via uuid5(name|scope), NOT the "+
+					"Azure built-in role definition GUID. Correct on the smalt plane only; "+
+					"wrong against real Azure RBAC.")
+		}
+		return guid
+	}
 	if roleDefID != "" {
-		return NormalizeARMID(roleDefID)
+		if strings.Contains(strings.ToLower(roleDefID), "/providers/microsoft.authorization/roledefinitions/") {
+			return NormalizeARMID(roleDefID)
+		}
+		if uuidRegexp.MatchString(roleDefID) {
+			return roleDefARMPath(scope, roleDefID)
+		}
+		return roleDefARMPath(scope, mint("role_definition_id", roleDefID))
 	}
 	if roleDefName != "" {
 		if strings.Contains(strings.ToLower(roleDefName), "/providers/microsoft.authorization/roledefinitions/") {
@@ -1186,8 +1454,7 @@ func resolveRoleDefinitionARMID(scope, roleDefID, roleDefName string) string {
 		if uuidRegexp.MatchString(roleDefName) {
 			return roleDefARMPath(scope, roleDefName)
 		}
-		guid := mintDeterministicGUID(roleDefName + "|" + scope)
-		return roleDefARMPath(scope, guid)
+		return roleDefARMPath(scope, mint("role_definition_name", roleDefName))
 	}
 	return ""
 }
@@ -1200,7 +1467,7 @@ func (r *roleAssignmentResource) Create(ctx context.Context, req resource.Create
 	}
 
 	scope := NormalizeARMID(strings.TrimSuffix(plan.Scope.ValueString(), "/"))
-	rdID := resolveRoleDefinitionARMID(scope, plan.RoleDefinitionID.ValueString(), plan.RoleDefinitionName.ValueString())
+	rdID := resolveRoleDefinitionInput(scope, plan.RoleDefinitionID.ValueString(), plan.RoleDefinitionName.ValueString(), &resp.Diagnostics)
 	if rdID == "" {
 		resp.Diagnostics.AddError("create role_assignment", "either role_definition_id or role_definition_name is required")
 		return
@@ -1227,9 +1494,17 @@ func (r *roleAssignmentResource) Create(ctx context.Context, req resource.Create
 
 	var out map[string]any
 	raw, etag, _, err := r.client.PutWithETag(ctx, armPath, roleAssignAPIVersion, "", body, &out)
-	if err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("create role_assignment", err.Error())
-		return
+	if err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("create role_assignment", err.Error())
+			return
+		}
+		// Honesty law: an unsupported route means the write never landed.
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_role_assignment create",
+			"The smalt ARM face refused the roleAssignments PUT ("+err.Error()+").") {
+			return
+		}
 	}
 	SavePrivateARMState(ctx, resp.Private, raw, etag)
 
@@ -1261,16 +1536,19 @@ func (r *roleAssignmentResource) Read(ctx context.Context, req resource.ReadRequ
 	var out map[string]any
 	raw, etag, _, err := r.client.GetRaw(ctx, armPath, roleAssignAPIVersion, &out)
 	if err != nil {
-		if IsNotFound(err) {
-			if isUnsupportedARMRouteError(err) && state.PrincipalID.ValueString() != "" && !strings.HasPrefix(strings.ToLower(scope), "/subscriptions/") {
-				state.ID = types.StringValue(armPath)
-				resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-				return
-			}
+		if IsNotFound(err) && !isUnsupportedARMRouteError(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
 		if isUnsupportedARMRouteError(err) {
+			// Honesty law: an unsupported route means the read is stale/fabricated.
+			// Refused by default; loud warning + stale-state keep under the opt-in.
+			if refuseFabricatedValue(&resp.Diagnostics,
+				"UNSUPPORTED(wire face): azurerm_role_assignment read",
+				"The smalt ARM face refused the roleAssignments GET ("+err.Error()+"). "+
+					"The state below was NOT confirmed against the wire.") {
+				return
+			}
 			state.ID = types.StringValue(armPath)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 			return
@@ -1319,13 +1597,25 @@ func (r *roleAssignmentResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 	armPath := NormalizeARMID(state.ID.ValueString())
-	if _, err := r.client.DeleteRaw(ctx, armPath, roleAssignAPIVersion); err != nil && !isUnsupportedARMRouteError(err) {
-		resp.Diagnostics.AddError("delete role_assignment", err.Error())
+	if _, err := r.client.DeleteRaw(ctx, armPath, roleAssignAPIVersion); err != nil {
+		if !isUnsupportedARMRouteError(err) {
+			resp.Diagnostics.AddError("delete role_assignment", err.Error())
+			return
+		}
+		if refuseFabricatedValue(&resp.Diagnostics,
+			"UNSUPPORTED(wire face): azurerm_role_assignment delete",
+			"The smalt ARM face refused the roleAssignments DELETE ("+err.Error()+"). "+
+				"The assignment may still exist on the wire.") {
+			return
+		}
 	}
 }
 
 func (r *roleAssignmentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.Authorization/roleAssignments/", "azurerm_role_assignment") {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 	marker := "/providers/Microsoft.Authorization/roleAssignments/"
 	if idx := strings.Index(id, marker); idx > 0 {
@@ -1340,7 +1630,10 @@ func (r *roleAssignmentResource) ImportState(ctx context.Context, req resource.I
 // 5. azurerm_container_registry
 // ============================================================================
 
-const acrAPIVersion = "2023-07-01"
+// smalt registry top for Microsoft.ContainerRegistry/registries is 2023-06-01
+// (ISO-base law; "2023-06-preview" normalizes to 2023-06-01 via version_base).
+// 2023-07-01 exceeds the top and is refused InvalidApiVersionParameter (G24 S1).
+const acrAPIVersion = "2023-06-01"
 
 var (
 	_ resource.Resource                = (*containerRegistryResource)(nil)
@@ -1631,14 +1924,10 @@ func (r *containerRegistryResource) Delete(ctx context.Context, req resource.Del
 
 func (r *containerRegistryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.ContainerRegistry/registries/", "azurerm_container_registry") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
-	}
+	setImportIDRGName(ctx, resp, id)
 }
 
 func (r *containerRegistryResource) applyACRState(ctx context.Context, m *containerRegistryModel, out map[string]any, armPath, loc string, adminFallback, pubNetFallback bool, tags map[string]string) {
@@ -1995,14 +2284,10 @@ func (r *logAnalyticsWorkspaceResource) Delete(ctx context.Context, req resource
 
 func (r *logAnalyticsWorkspaceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.OperationalInsights/workspaces/", "azurerm_log_analytics_workspace") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
-	}
+	setImportIDRGName(ctx, resp, id)
 }
 
 func (r *logAnalyticsWorkspaceResource) applyLAWState(ctx context.Context, m *logAnalyticsWorkspaceModel, out map[string]any, armPath, loc, skuFallback string, retentionFallback int64, quotaFallback float64, tags map[string]string) {
@@ -2067,21 +2352,21 @@ type storageAccountResource struct {
 }
 
 type storageAccountModel struct {
-	ID                          types.String `tfsdk:"id"`
-	Name                        types.String `tfsdk:"name"`
-	ResourceGroupName           types.String `tfsdk:"resource_group_name"`
-	Location                    types.String `tfsdk:"location"`
-	AccountTier                 types.String `tfsdk:"account_tier"`
-	AccountReplicationType      types.String `tfsdk:"account_replication_type"`
-	AccountKind                 types.String `tfsdk:"account_kind"`
-	MinTLSVersion               types.String `tfsdk:"min_tls_version"`
-	HttpsTrafficOnlyEnabled     types.Bool   `tfsdk:"https_traffic_only_enabled"`
-	AllowNestedItemsToBePublic  types.Bool   `tfsdk:"allow_nested_items_to_be_public"`
-	SharedAccessKeyEnabled      types.Bool   `tfsdk:"shared_access_key_enabled"`
-	PublicNetworkAccessEnabled  types.Bool   `tfsdk:"public_network_access_enabled"`
-	Tags                        types.Map    `tfsdk:"tags"`
-	PrimaryBlobEndpoint         types.String `tfsdk:"primary_blob_endpoint"`
-	PrimaryAccessKey            types.String `tfsdk:"primary_access_key"`
+	ID                         types.String `tfsdk:"id"`
+	Name                       types.String `tfsdk:"name"`
+	ResourceGroupName          types.String `tfsdk:"resource_group_name"`
+	Location                   types.String `tfsdk:"location"`
+	AccountTier                types.String `tfsdk:"account_tier"`
+	AccountReplicationType     types.String `tfsdk:"account_replication_type"`
+	AccountKind                types.String `tfsdk:"account_kind"`
+	MinTLSVersion              types.String `tfsdk:"min_tls_version"`
+	HttpsTrafficOnlyEnabled    types.Bool   `tfsdk:"https_traffic_only_enabled"`
+	AllowNestedItemsToBePublic types.Bool   `tfsdk:"allow_nested_items_to_be_public"`
+	SharedAccessKeyEnabled     types.Bool   `tfsdk:"shared_access_key_enabled"`
+	PublicNetworkAccessEnabled types.Bool   `tfsdk:"public_network_access_enabled"`
+	Tags                       types.Map    `tfsdk:"tags"`
+	PrimaryBlobEndpoint        types.String `tfsdk:"primary_blob_endpoint"`
+	PrimaryAccessKey           types.String `tfsdk:"primary_access_key"`
 }
 
 func (r *storageAccountResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -2348,14 +2633,10 @@ func (r *storageAccountResource) Delete(ctx context.Context, req resource.Delete
 
 func (r *storageAccountResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id := NormalizeARMID(req.ID)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
-	if rg := extractResourceGroupFromID(id); rg != "" {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("resource_group_name"), rg)...)
+	if !requireImportSegment(&resp.Diagnostics, id, "/providers/Microsoft.Storage/storageAccounts/", "azurerm_storage_account") {
+		return
 	}
-	parts := strings.Split(id, "/")
-	if len(parts) > 0 {
-		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[len(parts)-1])...)
-	}
+	setImportIDRGName(ctx, resp, id)
 }
 
 func (r *storageAccountResource) applyStorageDefaults(m *storageAccountModel) {

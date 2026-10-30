@@ -101,11 +101,33 @@ defmodule Smalt.Test.Internal.Expl9r2ArmGuardCourtTest do
     # private path is not possible — so pin the arm's existence by code
     # fence (non-vacuity for the 400 arm is the source-level fence below)
     # plus a wire leg proving the arm does not shadow well-formed bodies.
-    src = File.read!("lib/smalt/arm_gateway/router.ex")
+    #
+    # v26.10.31 inversion (WO-06): this fence pins the guard SEMANTICS, not
+    # the module location. `router_source/0` resolves the dialect gateway
+    # module among candidate locations; the strip wave may move the file
+    # without touching this court (the whole file is census-classified
+    # dialect-tier and is deleted with its subject at strip time).
+    src = router_source()
 
     assert src =~
              ~s({:error, reason} ->) and
              src =~ "InvalidRequestBody"
+  end
+
+  # v26.10.31 inversion seam (WO-06): candidate source locations for the ARM
+  # gateway router, first-existing wins. Today only the canonical lib/ path
+  # exists. Post-strip the dialect module is expected to be GONE — the
+  # resolver then fails closed with a typed message (this file is deleted at
+  # strip time, so a failure here is a migration bug, not a stale pin).
+  @router_source_candidates [
+    "lib/smalt/arm_gateway/router.ex"
+  ]
+
+  defp router_source do
+    case Enum.find(@router_source_candidates, &File.exists?/1) do
+      nil -> flunk("router source not found in any candidate location: #{inspect(@router_source_candidates)}")
+      path -> File.read!(path)
+    end
   end
 
   # -- F3: create-without-location -> 400 LocationRequired --------------------

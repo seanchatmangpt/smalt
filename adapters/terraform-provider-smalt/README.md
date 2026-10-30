@@ -34,11 +34,17 @@ nothing else.
 
 ## Quickstart (smalt-on-kind)
 
-1. Boot the plane (see `k8s/README.md` for the full burn):
+> Canonical onboarding path: smalt `README.md` §POSH (`just posh-court` —
+> its pre-stage embeds the kind ladder and dev_overrides install below).
+> The manual walk here is for debugging the pieces individually.
+
+1. Boot the plane — canonical: `just kind-up && just kind-images && just
+   kind-deploy` (creates/uses cluster `smalt`; see `k8s/README.md` for the
+   full manual burn):
 
 ```bash
 kind create cluster --config k8s/kind-config.yaml
-docker build --target release -t smalt:local . && kind load docker-image smalt:local --name kind-smalt
+docker build --target release -t smalt:local . && kind load docker-image smalt:local --name smalt
 kubectl create secret generic smalt-release-cookie \
   --from-literal=cookie="$(openssl rand -hex 16)" --save-config
 kubectl apply -f k8s/smalt-backend.yaml

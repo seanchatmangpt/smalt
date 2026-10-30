@@ -6,7 +6,7 @@ Exercises **every resource type** the Go provider registers (12 types) plus the
 ## Prerequisites (kind wiring)
 
 ```sh
-just kind-up        # create the kind-smalt cluster (k8s/kind-config.yaml; host 9443 -> NodePort 30943)
+just kind-up        # create the kind cluster `smalt` (k8s/kind-config.yaml; host 9443 -> NodePort 30943)
 just kind-images    # build smalt:local and load it into the kind node
 just kind-deploy    # apply the canonical deployables (smalt-backend + console)
 ```
