@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: r30-driver
+  namespace: smalt
+spec:
+  containers:
+    - name: driver
+      image: courtroom-driver:kind
+      env:
+        - name: NODE_EXTRA_CA_CERTS
+          value: /usr/local/share/ca-certificates/smalt-ca.crt
+      volumeMounts:
+        - name: scenario
+          mountPath: /court
+      command: ["sh", "-c", "NODE_PATH=/usr/lib/node_modules node /court/pipe.mjs & sleep infinity"]
+  volumes:
+    - name: scenario
+      configMap:
+        name: r30-p01

@@ -1,0 +1,210 @@
+# P09 lane (v26.10.30) — identity faces under stable in-cluster names.
+#
+#   idp.smalt.svc.cluster.local:9445  HTTPS (TLS terminated at the r30 edge)
+#     -> 127.0.0.1:29445  SAML IdP face (Bandit, HTTP-only in lib/ — read-only
+#        for this lane; the terminator is the r30 ingress layer, task item 3).
+#   oidc.smalt.svc.cluster.local:9446  HTTPS served natively by the face
+#     (:oidc_scheme https + the r30 leaf minted from .smalt/tls CA — task item 3).
+#
+# Trust chain: everything is issued by the substrate's own CA
+# (.smalt/tls/ca-cert.pem); consumers get the CA the lawful way
+# (NODE_EXTRA_CA_CERTS on node validators, --cacert on curl probes).
+# Self-fence: zero ignoreHTTPSErrors / rejectUnauthorized in this tree
+# (witnessed by scripts/r30-court.sh s11).
+#
+# The smalt boot eval pins ports/env via the application-env config surface —
+# the SMALT_BIND_IP raw-string law is documented in
+# docs/jira/v26.10.29/receipts/r13-kind-e2e.md (put_env tuple, not env string).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r30-tls-term
+  namespace: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+data:
+  r30-tls-term.mjs: |
+    // r30 TLS edge: terminates HTTPS for the SAML face with the substrate-CA
+    // leaf and proxies to the pod-internal HTTP face. Server side only — no
+    // client-cert verification exists to disable, and no trust flags are set.
+    import https from 'node:https';
+    import http from 'node:http';
+    import { readFileSync } from 'node:fs';
+
+    const cert = readFileSync('/smalt/tls-r30/r30-idp-leaf-cert.pem');
+    const key = readFileSync('/smalt/tls-r30/r30-idp-leaf-key.pem');
+
+    const upstream = { host: '127.0.0.1', port: 29445 };
+
+    const server = https.createServer({ cert, key }, (req, res) => {
+      const up = http.request(
+        {
+          host: upstream.host,
+          port: upstream.port,
+          path: req.url,
+          method: req.method,
+          headers: req.headers,
+        },
+        (r) => {
+          res.writeHead(r.statusCode, r.headers);
+          r.pipe(res);
+        }
+      );
+      up.on('error', (e) => {
+        res.writeHead(502, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ event: 'r30_edge_upstream_error', reason: String(e) }));
+      });
+      req.pipe(up);
+    });
+    server.on('tlsClientError', (_err, socket) => {
+      if (socket && !socket.destroyed) socket.end();
+    });
+    server.listen(9445, '0.0.0.0', () => {
+      console.log('r30 edge: HTTPS :9445 -> 127.0.0.1:29445');
+    });
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r30-identity
+  namespace: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: r30-identity
+  template:
+    metadata:
+      labels:
+        app: r30-identity
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: smalt
+          image: courtroom-smalt:kind
+          imagePullPolicy: Never
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -eu
+              export HOME=/tmp
+              export MIX_ENV=prod
+              export SSL_CERT_FILE=/smalt/.smalt/tls-ca/ca-cert.pem
+              echo "[r30-identity] booting identity faces: saml :29445 (pod-internal), oidc :9446 (native HTTPS)"
+              cd /smalt
+              exec mix run --no-start --no-halt -e 'Application.put_env(:smalt, :redis_port, 26380); Application.put_env(:smalt, :saml_idp_port, 29445); Application.put_env(:smalt, :saml_idp, base_url: "https://idp.smalt.svc.cluster.local:9445", allowed_acs: ["https://courtroom-api.default.svc.cluster.local:8080/saml/acs"]); Application.put_env(:smalt, :oidc_port, 9446); Application.put_env(:smalt, :oidc_scheme, :https); Application.put_env(:smalt, :oidc_base_url, "https://oidc.smalt.svc.cluster.local:9446"); Application.put_env(:smalt, :oidc_cert_path, "/smalt/.smalt/tls-ca/r30-idp-leaf-cert.pem"); Application.put_env(:smalt, :oidc_key_path, "/smalt/.smalt/tls-ca/r30-idp-leaf-key.pem"); Application.put_env(:smalt, :bind_ip, {0, 0, 0, 0}); {:ok, _} = Application.ensure_all_started(:smalt)'
+          env:
+            # SMALT_BIND_IP env string is deliberately NOT set: the raw-string
+            # bind law defect (r13-kind-e2e.md, finding 2) feeds a string into
+            # Bandit -> :badarg on non-loopback binds. The tuple is pinned via
+            # the application-env surface above instead.
+            - name: SMALT_DATA_DIR
+              value: /tmp/smalt-data
+          ports:
+            - { name: redis, containerPort: 26380 }
+            - { name: saml-internal, containerPort: 29445 }
+            - { name: oidc-https, containerPort: 9446 }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            # Real face observable: SAML entity metadata (pod-internal hop).
+            httpGet:
+              path: /metadata
+              port: saml-internal
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            # The wire face the app plane depends on.
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: tls-material, mountPath: /smalt/.smalt/tls-ca, readOnly: true }
+        - name: tls-edge
+          image: node:22-alpine
+          imagePullPolicy: Never
+          command: ["node", "/term/r30-tls-term.mjs"]
+          ports:
+            - { name: tls-saml, containerPort: 9445 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            tcpSocket:
+              port: tls-saml
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 36
+          volumeMounts:
+            - { name: tls-material, mountPath: /smalt/tls-r30, readOnly: true }
+            - { name: tls-term, mountPath: /term, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: tls-material
+          secret:
+            secretName: r30-ca
+        - name: tls-term
+          configMap:
+            name: r30-tls-term
+---
+# Fixed in-cluster name for the SAML IdP face (claim-mandated service name;
+# new resource, namespace smalt — no collision with the KIND-E2E lane).
+apiVersion: v1
+kind: Service
+metadata:
+  name: idp
+  namespace: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+spec:
+  selector:
+    app: r30-identity
+  ports:
+    - { name: tls-saml, port: 9445, targetPort: tls-saml }
+  type: ClusterIP
+---
+# Fixed in-cluster name for the OIDC face (claim-mandated service name).
+# The selector matches the pod label; both containers share the pod network
+# namespace, and 9446 is bound only by the smalt container.
+apiVersion: v1
+kind: Service
+metadata:
+  name: oidc
+  namespace: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+spec:
+  selector:
+    app: r30-identity
+  ports:
+    - { name: oidc-https, port: 9446, targetPort: oidc-https }
+  type: ClusterIP

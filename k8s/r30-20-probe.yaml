@@ -1,0 +1,468 @@
+# P09 lane (v26.10.30) — in-cluster multi-redirect identity resolution probe.
+#
+# Real sequence over the stable names, run by a real node validator inside the
+# cluster (no host shortcuts, no mocks):
+#
+#   s01  DNS stability      - 5 rounds over identity + app-origin hosts;
+#                             per-host IP equality across rounds. courtroom-*
+#                             hosts report typed NOT-UP (SP torn down by the
+#                             KIND-E2E lane, r13 s15) - never a silent pass.
+#   s02/s03 TLS trust       - node tls.connect with NODE_EXTRA_CA_CERTS
+#                             (lawful distribution), authorized === true and
+#                             anchor CN=smalt-dev-ca on both faces.
+#   s04  anti-vacuity       - a child validator WITHOUT the CA env MUST fail
+#                             the handshake; a trust check that cannot fail
+#                             is not a check.
+#   s05  SAML metadata      - entityID + entryPoint Location; the metadata
+#                             signing cert is verified with node
+#                             X509Certificate.verify against the substrate CA
+#                             public key (the TLS leaf chain is proven by the
+#                             authorized result in s02/s03).
+#   s06  SAML entryPoint    - real AuthnRequest -> auto-POST form, action ===
+#                             allowlisted production ACS URL.
+#   s07  SAML ACS validator - non-allowlisted non-loopback ACS refused typed.
+#   s08  ACS host chain     - typed NOT-UP while the SP is down (disclosed).
+#   s09  OIDC discovery     - issuer + every advertised endpoint on the
+#                             stable host; hosts resolve to the same IP.
+#   s10  OIDC authorize     - consent form -> 302 code+state to redirect_uri.
+#   s11  OIDC token + sig   - code+verifier -> id_token, RS256 verified with
+#                             node crypto against the CA-fetched JWKS.
+#   s12  OIDC PKCE validator- wrong verifier refused typed 400.
+#
+# Trust arrives ONLY via NODE_EXTRA_CA_CERTS / the `ca` option - the strings
+# ignoreHTTPSErrors / rejectUnauthorized are fenced by scripts/r30-court.sh.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r30-probe-script
+  namespace: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+data:
+  r30-probe.mjs: |
+    #!/usr/bin/env node
+    // P09 in-cluster identity-resolution probe. Fail-closed: any FAIL exits 1;
+    // NOT-UP is permitted only for the stages listed in NON_FATAL_NOT_UP.
+    import https from 'node:https';
+    import tls from 'node:tls';
+    import dns from 'node:dns';
+    import crypto from 'node:crypto';
+    import zlib from 'node:zlib';
+    import { readFileSync } from 'node:fs';
+    import { promisify } from 'node:util';
+
+    const lookup = promisify(dns.lookup);
+    const caPem = readFileSync('/smalt/.smalt/tls/ca-cert.pem');
+    const IDP_HOST = 'idp.smalt.svc.cluster.local';
+    const OIDC_HOST = 'oidc.smalt.svc.cluster.local';
+    const IDP = `https://${IDP_HOST}:9445`;
+    const OIDC = `https://${OIDC_HOST}:9446`;
+    const TENANT = 'organizations';
+    const CLIENT_ID = 'r30-probe';
+    const REDIRECT_URI = 'https://127.0.0.1:3000/r30-cb';
+    const PROD_ACS = 'https://courtroom-api.default.svc.cluster.local:8080/saml/acs';
+    const ROUNDS = 5;
+    const NON_FATAL_NOT_UP = new Set(['s08']);
+
+    const results = [];
+    let idpFpr = null;
+
+    function record(stage, verdict, detail) {
+      results.push({ stage, verdict, detail });
+      console.log(`STAGE ${stage.padEnd(22)} :: ${verdict.padEnd(7)} ${detail}`);
+    }
+    function req(urlString, { method = 'GET', body = null, headers = {} } = {}) {
+      return new Promise((resolve, reject) => {
+        const u = new URL(urlString);
+        const r = https.request(
+          {
+            hostname: u.hostname,
+            port: u.port,
+            path: u.pathname + u.search,
+            method,
+            headers,
+            timeout: 10000,
+          },
+          (res) => {
+            const chunks = [];
+            res.on('data', (c) => chunks.push(c));
+            res.on('end', () =>
+              resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') })
+            );
+          }
+        );
+        r.on('timeout', () => r.destroy(new Error('request timeout (10s bound)')));
+        r.on('error', reject);
+        if (body) r.write(body);
+        r.end();
+      });
+    }
+
+    function tlsProbe(host, port) {
+      return new Promise((resolve, reject) => {
+        const s = tls.connect(
+          { host, port, servername: host, timeout: 10000 },
+          () => {
+            const cert = s.getPeerCertificate();
+            const out = {
+              authorized: s.authorized,
+              authorizationError: s.authorizationError,
+              fpr: cert.fingerprint256,
+              issuer: cert.issuer && cert.issuer.CN,
+              subject: cert.subject && cert.subject.CN,
+            };
+            s.end();
+            resolve(out);
+          }
+        );
+        s.on('error', reject);
+      });
+    }
+    function mintAuthnRequest(acs) {
+      const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+      const id = '_r30' + crypto.randomBytes(12).toString('hex');
+      const xml =
+        '<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ' +
+        'xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="' + id + '" ' +
+        'Version="2.0" IssueInstant="' + now + '" ' +
+        'AssertionConsumerServiceURL="' + acs + '">' +
+        '<saml:Issuer>' + CLIENT_ID + '</saml:Issuer></samlp:AuthnRequest>';
+      return zlib.deflateRawSync(xml).toString('base64');
+    }
+
+    function formEncode(obj) {
+      return Object.entries(obj)
+        .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+        .join('&');
+    }
+
+    async function dnsStable(host) {
+      const seen = new Set();
+      for (let i = 0; i < ROUNDS; i++) {
+        try {
+          const a = await lookup(host, { family: 4 });
+          seen.add(a.address);
+        } catch (e) {
+          seen.add('NXDOMAIN');
+        }
+      }
+      return [...seen];
+    }
+
+    // ------------------------------------------------------------------
+    // s01 DNS stability
+    // ------------------------------------------------------------------
+    {
+      const hosts = [
+        IDP_HOST,
+        OIDC_HOST,
+        'idp.smalt.svc',
+        'oidc.smalt.svc',
+        'courtroom-api.default.svc.cluster.local',
+        'courtroom-web.default.svc.cluster.local',
+      ];
+      let pass = true;
+      const lines = [];
+      for (const h of hosts) {
+        const out = await dnsStable(h);
+        if (out.length === 1 && out[0] === 'NXDOMAIN') {
+          lines.push(`${h}=NOT-UP`);
+        } else if (out.length === 1) {
+          lines.push(`${h}=${out[0]}x${ROUNDS}`);
+        } else {
+          pass = false;
+          lines.push(`${h}=FLAP[${out.join(',')}]`);
+        }
+      }
+      record('s01 dns-stability', pass ? 'PASS' : 'FAIL', lines.join(' '));
+    }
+    // ------------------------------------------------------------------
+    // s02/s03 TLS trust on both faces (NODE_EXTRA_CA_CERTS, no flags)
+    // ------------------------------------------------------------------
+    for (const [stage, host, port] of [
+      ['s02 tls-trust-idp', IDP_HOST, 9445],
+      ['s03 tls-trust-oidc', OIDC_HOST, 9446],
+    ]) {
+      const t = await tlsProbe(host, port);
+      if (t.authorized && t.issuer === 'smalt-dev-ca') {
+        record(stage, 'PASS', `authorized anchor=${t.issuer} leafCN=${t.subject} fpr=${t.fpr}`);
+        if (host === IDP_HOST) idpFpr = t.fpr;
+      } else {
+        record(stage, 'FAIL', `authorized=${t.authorized} err=${t.authorizationError}`);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // s04 anti-vacuity: the validator MUST reject without the CA env
+    // ------------------------------------------------------------------
+    {
+      const child = `
+        const tls = require('node:tls');
+        const s = tls.connect({ host: '${OIDC_HOST}', port: 9446, servername: '${OIDC_HOST}', timeout: 10000 }, () => {
+          console.log('AUTHORIZED'); s.end();
+        });
+        s.on('error', (e) => console.log('REJECTED:' + (e.code || e.message)));
+      `;
+      const { execFileSync } = await import('node:child_process');
+      const envClean = { ...process.env };
+      delete envClean.NODE_EXTRA_CA_CERTS;
+      let out = '';
+      try {
+        out = execFileSync(process.execPath, ['-e', child], {
+          env: envClean,
+          timeout: 15000,
+          encoding: 'utf8',
+        });
+      } catch {
+        out = 'CHILD_ERR';
+      }
+      if (out.includes('AUTHORIZED')) {
+        record('s04 anti-vacuity', 'FAIL', 'validator accepted an unknown CA without the substrate anchor');
+      } else if (out.includes('REJECTED:') || out === 'CHILD_ERR') {
+        record('s04 anti-vacuity', 'PASS', `no-anchor validator rejected (${out.trim().split('\n')[0]})`);
+      } else {
+        record('s04 anti-vacuity', 'FAIL', `unexpected child output ${JSON.stringify(out)}`);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // s05 SAML metadata: entityID, entryPoint, CA-issued signing cert
+    // ------------------------------------------------------------------
+    {
+      const r = await req(`${IDP}/metadata`);
+      const m = r.body;
+      const entity = (m.match(/entityID="([^"]+)"/) || [])[1];
+      const sso = (m.match(/SingleSignOnService[^>]*Location="([^"]+)"/) || [])[1];
+      const certB64 = (m.match(/<ds:X509Certificate>([^<]+)<\/ds:X509Certificate>/) || [])[1];
+      let metaOk = false;
+      let metaDetail = 'no cert parsed';
+      try {
+        const metaPem =
+          '-----BEGIN CERTIFICATE-----\n' + certB64.replace(/(.{64})/g, '$1\n').trim() + '\n-----END CERTIFICATE-----\n';
+        const metaCert = new crypto.X509Certificate(metaPem);
+        const caCert = new crypto.X509Certificate(caPem);
+        metaOk = metaCert.verify(caCert.publicKey);
+        metaDetail = `subject=${metaCert.subject.replace(/\s+/g, ' ')} issuedBySubstrateCA=${metaOk}`;
+      } catch (e) {
+        metaDetail = `x509 error: ${e.message}`;
+      }
+      if (r.status === 200 && entity === 'urn:smalt:identity:saml' && sso === `${IDP}/sso` && metaOk) {
+        record('s05 saml-metadata', 'PASS', `entityID=${entity} entryPoint=${sso} ${metaDetail}`);
+      } else {
+        record('s05 saml-metadata', 'FAIL', `status=${r.status} entity=${entity} sso=${sso} ${metaDetail}`);
+      }
+    }
+    // ------------------------------------------------------------------
+    // s06 SAML entryPoint chain: real AuthnRequest -> auto-POST form
+    // ------------------------------------------------------------------
+    {
+      const samlRequest = mintAuthnRequest(PROD_ACS);
+      const r = await req(`${IDP}/sso?SAMLRequest=${encodeURIComponent(samlRequest)}&RelayState=R30PROBE`);
+      const action = (r.body.match(/action="([^"]+)"/) || [])[1];
+      const hasResp = /name="SAMLResponse"/.test(r.body);
+      const hasState = /name="RelayState"\s+value="R30PROBE"/.test(r.body);
+      if (r.status === 200 && action === PROD_ACS && hasResp && hasState) {
+        record('s06 saml-entrypoint', 'PASS', `status=200 action=${action} SAMLResponse+RelayState present`);
+      } else {
+        record('s06 saml-entrypoint', 'FAIL', `status=${r.status} action=${action} resp=${hasResp} state=${hasState}`);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // s07 negative: the ACS validator must refuse a foreign destination
+    // ------------------------------------------------------------------
+    {
+      const samlRequest = mintAuthnRequest('http://evil.example.com/saml/acs');
+      const r = await req(`${IDP}/sso?SAMLRequest=${encodeURIComponent(samlRequest)}`);
+      if (r.status === 400 && r.body.includes('ACS_NOT_LOOPBACK')) {
+        record('s07 saml-acs-validator', 'PASS', 'foreign ACS refused typed 400 ACS_NOT_LOOPBACK');
+      } else {
+        record('s07 saml-acs-validator', 'FAIL', `status=${r.status} body=${r.body.slice(0, 120)}`);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // s08 ACS host chain (typed NOT-UP: SP torn down by KIND-E2E, r13 s15)
+    // ------------------------------------------------------------------
+    {
+      try {
+        const a = await lookup('courtroom-api.default.svc.cluster.local', { family: 4 });
+        record('s08 acs-host-chain', 'PASS', `ACS host resolved ${a.address} (SP redeployed)`);
+      } catch (e) {
+        record('s08 acs-host-chain', 'NOT-UP', `${e.code || e.message} - SP surface owned by KIND-E2E lane (r13 s15 teardown); names typed, hop not flaked`);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // s09 OIDC discovery: issuer + endpoint hosts all on the stable name
+    // ------------------------------------------------------------------
+    let disc = null;
+    {
+      const r = await req(`${OIDC}/${TENANT}/.well-known/openid-configuration`);
+      disc = (() => {
+        try { return JSON.parse(r.body); } catch { return null; }
+      })();
+      const wantIssuer = `${OIDC}/${TENANT}/v2.0`;
+      const endpoints = disc ? [disc.authorization_endpoint, disc.token_endpoint, disc.jwks_uri].filter(Boolean) : [];
+      let hostsOk = endpoints.length > 0;
+      for (const ep of endpoints) {
+        const h = new URL(ep).host;
+        if (h !== `${OIDC_HOST}:9446`) hostsOk = false;
+      }
+      if (r.status === 200 && disc && disc.issuer === wantIssuer && hostsOk) {
+        const eps = await Promise.all(endpoints.map((ep) => dnsStable(new URL(ep).hostname)));
+        const flat = [...new Set(eps.flat())];
+        const stable = flat.length === 1;
+        record('s09 oidc-discovery', stable ? 'PASS' : 'FAIL', `issuer=${disc.issuer} endpoints=${endpoints.length} host=${flat[0]}`);
+      } else {
+        record('s09 oidc-discovery', 'FAIL', `status=${r.status} issuer=${disc && disc.issuer}`);
+      }
+    }
+    // ------------------------------------------------------------------
+    // s10 OIDC authorize chain: consent -> 302 code+state
+    // ------------------------------------------------------------------
+    let code = null;
+    {
+      const verifier = crypto.randomBytes(32).toString('base64url');
+      const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+      const nonce = 'r30-' + crypto.randomBytes(8).toString('hex');
+      const state = 's-' + crypto.randomBytes(8).toString('hex');
+      const params = {
+        response_type: 'code',
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        scope: 'openid',
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        nonce,
+        state,
+      };
+      const g = await req(`${OIDC}/${TENANT}/authorize?${formEncode(params)}`);
+      const p = await req(`${OIDC}/${TENANT}/authorize`, {
+        method: 'POST',
+        body: formEncode(params),
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      });
+      const loc = p.headers.location || '';
+      code = (loc.match(/[?&]code=([^&]+)/) || [])[1];
+      const stateOk = loc.includes('state=' + state);
+      if (g.status === 200 && p.status === 302 && code && stateOk && loc.startsWith(REDIRECT_URI)) {
+        record('s10 oidc-authorize', 'PASS', `consent=200 -> 302 code+state -> ${REDIRECT_URI}`);
+      } else {
+        record('s10 oidc-authorize', 'FAIL', `consent=${g.status} post=${p.status} loc=${loc.slice(0, 100)}`);
+      }
+
+      // --------------------------------------------------------------
+      // s11 token leg + production signature check (RS256 vs JWKS)
+      // --------------------------------------------------------------
+      if (code) {
+        const t = await req(disc.token_endpoint, {
+          method: 'POST',
+          body: formEncode({
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: REDIRECT_URI,
+            client_id: CLIENT_ID,
+            code_verifier: verifier,
+          }),
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        });
+        let tok = null;
+        try { tok = JSON.parse(t.body); } catch {}
+        if (t.status === 200 && tok && tok.id_token) {
+          const parts = tok.id_token.split('.');
+          const hdr = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+          const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          const jwks = await req(disc.jwks_uri);
+          const jwk = JSON.parse(jwks.body).keys.find((k) => k.kid === hdr.kid) || JSON.parse(jwks.body).keys[0];
+          const keyObj = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+          const ok = crypto.verify('RSA-SHA256', Buffer.from(`${parts[0]}.${parts[1]}`), keyObj, Buffer.from(parts[2], 'base64url'));
+          const claimsOk = claims.iss === disc.issuer && claims.aud === CLIENT_ID;
+          record('s11 oidc-token-signature', ok && claimsOk ? 'PASS' : 'FAIL',
+            `alg=${hdr.alg} kid=${hdr.kid} rs256Verified=${ok} iss/audOk=${claimsOk} iss=${claims.iss}`);
+
+          // ------------------------------------------------------------
+          // s12 negative: the PKCE validator must refuse a wrong verifier
+          // ------------------------------------------------------------
+          const bad = await req(disc.token_endpoint, {
+            method: 'POST',
+            body: formEncode({
+              grant_type: 'authorization_code',
+              code,
+              redirect_uri: REDIRECT_URI,
+              client_id: CLIENT_ID,
+              code_verifier: 'wrong-verifier-' + 'x'.repeat(32),
+            }),
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          });
+          if (bad.status === 400) {
+            let errCode = 'typed';
+            try { errCode = JSON.parse(bad.body).error || errCode; } catch {}
+            record('s12 oidc-pkce-validator', 'PASS', `wrong-verifier code refused 400 (${errCode})`);
+          } else {
+            record('s12 oidc-pkce-validator', 'FAIL', `status=${bad.status} body=${bad.body.slice(0, 120)}`);
+          }
+        } else {
+          record('s11 oidc-token-signature', 'FAIL', `status=${t.status} body=${t.body.slice(0, 120)}`);
+          record('s12 oidc-pkce-validator', 'FAIL', 'not reached (no token)');
+        }
+      } else {
+        record('s11 oidc-token-signature', 'FAIL', 'not reached (no code)');
+        record('s12 oidc-pkce-validator', 'FAIL', 'not reached (no code)');
+      }
+    }
+    // ------------------------------------------------------------------
+    // Verdict (fail-closed)
+    // ------------------------------------------------------------------
+    const fatal = results.filter((r) => r.verdict === 'FAIL' || (r.verdict === 'NOT-UP' && !NON_FATAL_NOT_UP.has(r.stage)));
+    const notUp = results.filter((r) => r.verdict === 'NOT-UP');
+    console.log('');
+    for (const f of fatal) console.log(`FATAL ${f.stage}: ${f.detail}`);
+    console.log(`R30-PROBE VERDICT :: ${fatal.length === 0 ? 'PASS' : 'FAIL'} (${results.length} stages, ${notUp.length} typed NOT-UP)`);
+    process.exit(fatal.length === 0 ? 0 : 1);
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: r30-probe
+  namespace: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 420
+  template:
+    metadata:
+      labels:
+        app: r30-probe
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: probe
+          image: node:22-alpine
+          imagePullPolicy: Never
+          command: ["node", "/probe/r30-probe.mjs"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          env:
+            # Lawful CA distribution: the validator appends the substrate CA
+            # to its trust store; no verification flags are touched.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /smalt/.smalt/tls/ca-cert.pem
+          volumeMounts:
+            - { name: probe-script, mountPath: /probe, readOnly: true }
+            - { name: tls-material, mountPath: /smalt/.smalt/tls, readOnly: true }
+      volumes:
+        - name: probe-script
+          configMap:
+            name: r30-probe-script
+        - name: tls-material
+          secret:
+            secretName: r30-ca

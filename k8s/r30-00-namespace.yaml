@@ -1,0 +1,15 @@
+# P09 lane (v26.10.30) — identity-topology namespace.
+#
+# The claim's fixed in-cluster names (idp.smalt.svc.cluster.local,
+# oidc.smalt.svc.cluster.local) require namespace `smalt`. New namespace,
+# zero overlap with the KIND-E2E lane's surfaces (courtroom-*/smalt-backend
+# live in `default` and are NOT touched by this lane). Disclosed in
+# docs/jira/v26.10.30/receipts/r-p09-notes.md.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smalt
+  labels:
+    app.kubernetes.io/part-of: smalt-identity-topology
+    smalt.io/lane: P09
+    smalt.io/window: v26.10.30

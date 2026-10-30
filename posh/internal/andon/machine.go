@@ -91,9 +91,10 @@ func (m *Machine) Apply(gate string, outcome Outcome, subjectSHA, reason string)
 }
 
 // changedFromLastRed reports whether sha differs from the subject SHA
-// bound to the latch: the most recent RED receipt for gate. Rerunning
-// the same subject that went RED cannot clear it (spec §1 anti-vacuity
-// law); held-RED reruns must not move the latch's reference subject.
+// bound to the latch: the most recent RED-causing receipt (outcome
+// fail/timeout) for gate. Rerunning the same subject that went RED
+// cannot clear it (spec §1 anti-vacuity law); held-RED runs over other
+// subjects must not move the latch's reference subject.
 func changedFromLastRed(a *Appender, gate, sha string) bool {
 	if sha == "" {
 		return false
@@ -110,7 +111,8 @@ func changedFromLastRed(a *Appender, gate, sha string) bool {
 		if err := jsonUnmarshal(sc.Bytes(), &r); err != nil {
 			return true
 		}
-		if r.Gate == gate && r.Signal == "RED" && r.SubjectSHA256 != "" {
+		if r.Gate == gate && r.SubjectSHA256 != "" &&
+			(r.Outcome == string(OutcomeFail) || r.Outcome == string(OutcomeTimeout)) {
 			redSHA = r.SubjectSHA256
 		}
 	}

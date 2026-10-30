@@ -1,0 +1,83 @@
+# r30 TLS front — terminates HTTPS for the courtroom in-cluster names with
+# the smalt-CA-signed r30 leaf (P09 trust chain). The driver pod's browser
+# trusts the smalt CA baked into the courtroom-driver image; production
+# validators only, zero TLS bypass anywhere.
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: r30-identity-tls
+  namespace: smalt
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUVCekNDQXUrZ0F3SUJBZ0lVWEdLTGRRdm4zYjY5TXZoTHRhTzhWT1dKMThNd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0Z6RVZNQk1HQTFVRUF3d01jMjFoYkhRdFpHVjJMV05oTUI0WERUSTJNVEF6TURBNU1qVXhNbG9YRFRJNQpNREl3TVRBNU1qVXhNbG93SFRFYk1Ca0dBMVVFQXd3U1kyOTFjblJ5YjI5dExXbGtaVzUwYVhSNU1JSUJJakFOCkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQXBVWGJGWDQyQUh3MitEV0gzTTVPSk04MVZKeDIKRVFVUEFqdmMzSTI4WmxpY2I3OEY0R2VGc2NWSTJpdWtpd2d0d1EyQ2hYR2xTSXN5b2VucXJGdGV6UzVCLzBqVgpIOG04bTI3NjVUL0w4UGw0dHJiRENnR3EwY1lMRi9NN2FPUnN4b1IvMng4aTB5ajFjdm9wdTNSVjZNRjdiUVM0CkhxUUJzWnNtSy9sWVR1SEk2WG02ajJIa3h1TFdja2xERHVxWWJlbUsvRnJmU2gyOGpzcCsvU21UaERSNHNOUEwKL3hKM1A1UnBMYS9wL3VJVEpINHlOYXJ1Z2NKaHYyTUVTUlk2bHBUYWU2dE55bWRnbHpJUWY5MFd1dnZNRTNzbgpWQmZSSlZPajNlVDkvYXNqbGtjV2xCNWdpaUdpRlQwYkNxNGtrODFFbjlBemw0V3hTU2NOUzVzKzdRSURBUUFCCm80SUJRekNDQVQ4d0NRWURWUjBUQkFJd0FEQUxCZ05WSFE4RUJBTUNCYUF3RXdZRFZSMGxCQXd3Q2dZSUt3WUIKQlFVSEF3RXdnZ0VPQmdOVkhSRUVnZ0VGTUlJQkFZSW5ZMjkxY25SeWIyOXRMWGRsWWk1a1pXWmhkV3gwTG5OMgpZeTVqYkhWemRHVnlMbXh2WTJGc2dpbGpiM1Z5ZEhKdmIyMHRjMjFoYkhRdVpHVm1ZWFZzZEM1emRtTXVZMngxCmMzUmxjaTVzYjJOaGJJSW5ZMjkxY25SeWIyOXRMV0Z3YVM1a1pXWmhkV3gwTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc2dodHBaSEF1YzIxaGJIUXVjM1pqTG1Oc2RYTjBaWEl1Ykc5allXeUNIRzlwWkdNdWMyMWhiSFF1YzNaagpMbU5zZFhOMFpYSXViRzlqWVd5Q0d5b3VaR1ZtWVhWc2RDNXpkbU11WTJ4MWMzUmxjaTVzYjJOaGJJSVpLaTV6CmJXRnNkQzV6ZG1NdVkyeDFjM1JsY2k1c2IyTmhiSUlKYkc5allXeG9iM04waHdSL0FBQUJNQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFDY1VFdllBTmJNTi80T0pKRnJmN1RTcFVhem02bENWZlZmNGh2VFprbkk4bXA4dHluSgowK0lmdTE3NWtyMVMrd0dPOGxzZm5GemVOVnYwUFNrSEVwUUY2bGpsVVZUOUVYbklxUEVTbzJTN1FkbVl5MmFBClN2Zm5TT3VqT1NXS2xaWUU4TUlDUTdUVWVhTHV5NC9lV3gwSkNmWUhOSjBLVkp0MmYxZ2xxS2swWENlODVSUlIKc29Rdkw2aWUxNC9BcU9mNFVRUEhZYVNDOThOR0ZzdFJwVEE3WkgwdSttTzFMYXBXYUZNbFAxMXRMRG5rV213cwpUUUk3d01MRk5sNEYyNGNYQ2d3VW8zUTBsdzdYeGM2bE5SelpLeG1aV0JGRTd5OGtrT0lPNzhUWVhudFFIUGpWCnJUQ2VNNW5BaW0rN3lzVncwenJuZHhLWFBpSkgwQ3BzNi9BWQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRQ2t1QTA2N0o5Ly9kNDUKbDFINGVtMjRiQnhrR2RBMkJtRDNFdUh2Z0ZOOEJGNEJBV0JrSU9kaklRME5qSzJXMDFIM1RGcnAydGEyL2tDSQpjRGltczVZeVY3ZDNuSng0U2Q5Q3dHcEJkUDhMVEFMR2xSWGhYUUFrb3luTi8vUWdxL0pNZmlJVy91b0R1ekVUCmNyRXIxbWVnL3FPQnNCTmVmcXdGUG95N2xTQUNjL01OU1I5ZTlrU3kwdWZLQjlIa3Brd0dmN3gzTjNOSnF6MVgKbDJ2bktRTzd5MWt1RmRCcm5TTElWclB2M3J4M1NBbjRRdEowZi9WL0RmbEVlZElpODlWMG5LYnF5dDFCMSttWQpKelI4YWdGbHdHeVhSNXFaMmxhK29ZNXZUNEZqMXJreUYzbXZsTGttUW5lRjcreUNMZEFFeDBsZGxKeEpTbEgyCkI5YVV4aCtEQWdNQkFBRUNnZ0VBRzVvVDdYblZTSGRjRTc1OXArdXNFeWxhb0pPS3htTFBRTmZUTUhVS2lFK2IKQ1FRWUNPOVNsdFBsQWc0KzBIVmMyTm5jcWk5WHA1WjNiZVdRT0s4RFRqQlF1Q1J3TzkvMUg1UnF1Y2xISzdkegpCNS9YNk1uU3lsRGxJblh2ak1JRGVqbndzSFhLOVJFYktpMGY3ejZnWXVRSXRpU3hPalp6MFBVb1ZBNnJMSDNJClBNYmgvZHc4eGU1Z3U1SEtmZGtxeWJaL05oaHRmblA0c2F2OEgvKzBqU0pySWN3QzRoNnM5NUdvMHB6Unl5eVUKZUlScmdwL3M0UWl6dXQ0cnpWRC90d1RlcVU0WjBiTllmZjY1OG9UVXlVbkVFWlZzOW9aOGY2Mmt6Z1pHQkNSTwp2R2E4WHg4ejh3UTZTV1JUQnBITXFSd2xnbm9yNC9hU3pCVkdBL2ZYUVFLQmdRRG5tNTdyWWtMb2dOWFE1OHh2Cjd0QzB1ZG51TXZ4eWVBOU03YldGN2RNbEVnT0R6MTFEYlpXektVdVM4UWszZjJHSUlTdFhoTVU4VkszK2U5M0UKRlFGRzQva1pZSlEyY2V6RUlEbUlDUU0wK0d4REhwK2pSVkxqYTJnSzdVcDZwMmcyY0lmZTQzWldhQWNWR2dyLwpESkQ4Y1U1dC9lNmw0NEpCeU9HOTYyYmxNd0tCZ1FDMkVRbmFYT0E5K3Y2b3Q3OVNIZ2U5dmVpWDJGc3VpTUIyCnZUbnN4L2VLaWJxV01VamdOWVRxbW8yZE1INmJaTURrUjUyb0xvckMxeW8wK2tPWkM3elRHVG9hR2JLTHhyVDMKcDVnVDFDdU8raEVpaWpLYlFONFlzRWRCZjgyamcrc29KMDFLWU00cjNUczIxc2llVWt6N090ODVUVWxvNWI5VAp3emo1ME5FOGNRS0JnUUN2MlRGVktIc0NpdWRNd09Jd3psTDZGTzRKYy83R2JxKzNTZmg3NG5GaEFRZFlLYloyCi9wb2R1S25mdkZDeUtXNEU3S0k2eGR6M0RKZzYweE15MEh2eXRoNm9qUEtiVCs1ampzLy9vRkFtQk1RMlJlY1IKRVE1NUMxQ29remZzWG5TNmVNQkFrOVdDajJOcE95ZkVOR2RVdERiSFBuald6U0ZXRDA2T1kwL3hqd0tCZ0hXLwpwVUN0U25XcmE2R1FYTkx1Q3hHaXpkZk9uSUlHL1hxTnZQV3ZDaUIySE05Z0JvTEMramlFUmt3Ly9kSGdJb1JBCjhPekJWUXJYL3pzT0ZFUFovSUFHVTdabm9qcVdBNW9ic05ZNkpRV3VJd0RVb2hBWXJzc0d6cjdFdWlramV5V1gKN1h2S0NlMENnblpnQ0pXa0lwZGtwdE8zY1YrL0hyTThrZyszQm10eEFvR0JBSm1IQncvSERKdDRETUtHSnRDVApEOU9WZDY2TkdGZjBCVGZnOC9sUWQxUjhKOUZnSk82WWMrQzdVRi9GMjVNZlg5SmUwOGpzQWdrOStOYTl5ejFICkFwbHZ4UlU0T1NVd0pRWGFRc1dTMnE5SFNFNGdVRWQ3YmJqVGM2OUU2MFFRMTgxNUVUblJNcjJUakREL2V6VjkKaks4T3FQS1hhZWlBNHJLNVFscXlEbGRGCi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r30-tls-front
+  namespace: smalt
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: r30-tls-front }
+  template:
+    metadata:
+      labels: { app: r30-tls-front }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - { containerPort: 443, name: https }
+          volumeMounts:
+            - { name: certs, mountPath: /etc/nginx/certs, readOnly: true }
+            - { name: conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+      volumes:
+        - name: certs
+          secret:
+            secretName: r30-identity-tls
+        - name: conf
+          configMap:
+            name: r30-nginx-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: r30-front
+  namespace: smalt
+spec:
+  selector: { app: r30-tls-front }
+  ports:
+    - { name: https, port: 443, targetPort: 443 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r30-nginx-conf
+  namespace: smalt
+data:
+  default.conf: |
+    # TLS termination for the courtroom identity topology (P09).
+    server {
+      listen 443 ssl;
+      ssl_certificate     /etc/nginx/certs/tls.crt;
+      ssl_certificate_key /etc/nginx/certs/tls.key;
+      # courtroom-web origin (P01/P04/P05/P06 surface)
+      location /web/ {
+        proxy_pass http://courtroom-web.default.svc.cluster.local:3000/;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+      }
+      # SAML IdP face (P01/P02 sign-in + SLO)
+      location /idp/ {
+        proxy_pass http://courtroom-smalt.default.svc.cluster.local:19445/;
+        proxy_set_header X-Forwarded-Proto https;
+      }
+      # OIDC face (P03)
+      location /oidc/ {
+        proxy_pass http://courtroom-smalt.default.svc.cluster.local:9446/;
+        proxy_set_header X-Forwarded-Proto https;
+      }
+    }

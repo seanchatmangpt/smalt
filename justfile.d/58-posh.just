@@ -491,3 +491,11 @@ posh-clean:
     cd {{POSHROOT}}
     rm -rf tmp/posh posh/bin "{{SMALT_POSH_PROVIDER}}/terraform-provider-azurerm"
     echo "[POSH-CLEAN] removed tmp/posh, posh/bin, {{SMALT_POSH_PROVIDER}}/terraform-provider-azurerm"
+
+# posh-andon — run the POSH andon driver help (F8 lane addition).
+[no-cd]
+posh-andon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{POSHROOT}}/posh
+    go run ./cmd/andon -help
