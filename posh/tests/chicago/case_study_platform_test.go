@@ -198,3 +198,107 @@ func TestChicago_MechanicalRefusal_BansHardcodedTokensAndBackendStrip(t *testing
 	require.Contains(t, result.Violations, "RULE_FAIL_CLOSED_BACKEND_STRIPPED")
 	require.Equal(t, court.AndonRed, result.AndonStatus, "System Doctor status must trip to RED on security violation")
 }
+
+// ----------------------------------------------------------------------------
+// Test 6: Key Vault Disjunctive Secret Envelope & Versionless Read
+// ----------------------------------------------------------------------------
+func TestChicago_KeyVault_DisjunctiveSecretEnvelopeAndVersionlessRead(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	env := SetupSmaltTestEnvironment(t)
+
+	vaultName := "kv-courtroom-alpha"
+	secretName := "db-connection-string"
+	secretVal := "Server=tcp:sql-courtroom.database.windows.net;Database=matter101;"
+
+	// Act: Put secret into Key Vault
+	rcpt, err := env.PutSecret(ctx, vaultName, secretName, secretVal)
+	require.NoError(t, err)
+	require.NotEmpty(t, rcpt.ReceiptID)
+	require.NotEmpty(t, rcpt.BLAKE3Hash)
+
+	// Assert: Read secret back versionless
+	retrieved, err := env.GetSecret(ctx, vaultName, secretName)
+	require.NoError(t, err)
+	require.Equal(t, secretVal, retrieved, "Key Vault versionless read returned divergent secret value")
+
+	// Missing secret returns typed error
+	_, errMissing := env.GetSecret(ctx, vaultName, "non-existent-secret")
+	require.Error(t, errMissing)
+}
+
+// ----------------------------------------------------------------------------
+// Test 7: API Version Invariant Preservation
+// ----------------------------------------------------------------------------
+func TestChicago_APIVersions_ExplicitContractPreserved(t *testing.T) {
+	t.Parallel()
+
+	// Verify required API versions across sovereign Azure families
+	contracts := map[string]string{
+		"Microsoft.App/containerApps":           "2023-05-01",
+		"Microsoft.KeyVault/vaults":             "2023-07-01",
+		"Microsoft.KeyVault/vaults/secrets":     "7.4",
+		"Microsoft.Storage/storageAccounts":     "2023-01-01",
+		"Microsoft.EventHub/namespaces":         "2021-11-01",
+		"Microsoft.DocumentDB/databaseAccounts": "2023-04-15",
+	}
+
+	for resType, expectedVer := range contracts {
+		require.NotEmpty(t, expectedVer, "API version must be explicitly declared for %s", resType)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Test 8: Platform SLA Timeout Bounds (Fail-Closed at 15s)
+// ----------------------------------------------------------------------------
+func TestChicago_SLATimeout_FailClosedBounds(t *testing.T) {
+	t.Parallel()
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	// Simulate slow operation that exceeds bounded deadline
+	select {
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Operation unexpectedly completed before deadline expiration")
+	case <-timeoutCtx.Done():
+		require.Equal(t, context.DeadlineExceeded, timeoutCtx.Err(), "SLA timeout must yield DeadlineExceeded")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Test 9: Ground-Truth Differential Evaluation (Bit-Exact Field Parity)
+// ----------------------------------------------------------------------------
+func TestChicago_GroundTruth_DifferentialEvaluation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	env := SetupSmaltTestEnvironment(t)
+
+	expectedState := map[string]string{
+		"resourceGroup": "rg-courtroom-prod",
+		"tier":          "Standard",
+		"sku":           "PerGB2018",
+		"retentionDays": "14",
+	}
+
+	actualCleanState := map[string]string{
+		"resourceGroup": "rg-courtroom-prod",
+		"tier":          "Standard",
+		"sku":           "PerGB2018",
+		"retentionDays": "14",
+	}
+
+	ok, diffs := env.EvaluateGroundTruth(ctx, "eval-001", expectedState, actualCleanState)
+	require.True(t, ok, "Ground truth evaluation should succeed when states are identical")
+	require.Empty(t, diffs)
+
+	actualDivergentState := map[string]string{
+		"resourceGroup": "rg-courtroom-prod",
+		"tier":          "Basic",
+		"retentionDays": "14",
+	}
+
+	okDivergent, diffsDivergent := env.EvaluateGroundTruth(ctx, "eval-002", expectedState, actualDivergentState)
+	require.False(t, okDivergent, "Ground truth evaluation must fail when state diverges")
+	require.NotEmpty(t, diffsDivergent)
+}

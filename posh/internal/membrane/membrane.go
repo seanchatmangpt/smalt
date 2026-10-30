@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ type SmaltTestEnvironment struct {
 	containerApps  map[string]ContainerAppState
 	vnetTenants    map[string]string
 	storageStore   *storage.Store
+	keyVaultSecrets map[string]string
 }
 
 // NewSmaltTestEnvironment initializes a clean Chicago-style test harness.
@@ -75,6 +77,7 @@ func NewSmaltTestEnvironment() *SmaltTestEnvironment {
 		containerApps:  make(map[string]ContainerAppState),
 		vnetTenants:    make(map[string]string),
 		storageStore:   storage.NewStore(),
+		keyVaultSecrets: make(map[string]string),
 	}
 }
 
@@ -223,4 +226,55 @@ func (e *SmaltTestEnvironment) DrainEventHubPartition(ctx context.Context, rgNam
 // RunGuardFence evaluates raw configurations against the mechanical guard refusal rules.
 func (e *SmaltTestEnvironment) RunGuardFence(ctx context.Context, dirtyConfig []byte) (*court.GuardResult, error) {
 	return court.EvaluateGuard(ctx, dirtyConfig)
+}
+
+// PutSecret stores a secret in Key Vault data plane and returns a bit-exact receipt.
+func (e *SmaltTestEnvironment) PutSecret(ctx context.Context, vaultName, secretName, value string) (*Receipt, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	key := fmt.Sprintf("%s/%s", strings.ToLower(vaultName), secretName)
+	e.keyVaultSecrets[key] = value
+
+	now := uint64(time.Now().UnixNano())
+	payloadBytes := []byte(fmt.Sprintf("%s:%s", key, value))
+	h := receipt.TurnstileReceipt("kv7.put.secret", now, payloadBytes)
+	hashHex := receipt.Hex(h)
+
+	return &Receipt{
+		ReceiptID:  fmt.Sprintf("kv-rcpt-%s-%s", secretName, hashHex[:12]),
+		BLAKE3Hash: hashHex,
+		Timestamp:  now,
+	}, nil
+}
+
+// GetSecret reads a secret from Key Vault data plane.
+func (e *SmaltTestEnvironment) GetSecret(ctx context.Context, vaultName, secretName string) (string, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	key := fmt.Sprintf("%s/%s", strings.ToLower(vaultName), secretName)
+	val, ok := e.keyVaultSecrets[key]
+	if !ok {
+		return "", fmt.Errorf("secret %s not found in vault %s", secretName, vaultName)
+	}
+	return val, nil
+}
+
+// EvaluateGroundTruth runs a bit-exact ground-truth comparison against expected state.
+func (e *SmaltTestEnvironment) EvaluateGroundTruth(ctx context.Context, runID string, expected, actual map[string]string) (bool, []string) {
+	var divergences []string
+	for k, expVal := range expected {
+		if actVal, ok := actual[k]; !ok {
+			divergences = append(divergences, fmt.Sprintf("missing key: %s (expected %s)", k, expVal))
+		} else if actVal != expVal {
+			divergences = append(divergences, fmt.Sprintf("value mismatch for %s: got %s, want %s", k, actVal, expVal))
+		}
+	}
+	for k, actVal := range actual {
+		if _, ok := expected[k]; !ok {
+			divergences = append(divergences, fmt.Sprintf("unexpected key: %s = %s", k, actVal))
+		}
+	}
+	return len(divergences) == 0, divergences
 }
