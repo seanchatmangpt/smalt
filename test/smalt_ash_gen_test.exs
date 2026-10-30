@@ -131,7 +131,7 @@ defmodule Smalt.AshGenTest do
 
       arm_id = "/subscriptions/s/resourcegroups/rg/providers/microsoft.network/virtualnetworks/vnet1"
 
-      assert {:ok, rec} =
+      assert {:ok, _rec} =
                Ash.create(Smalt.Network.VirtualNetwork, %{arm_id: arm_id, name: "vnet1", location: "westus"},
                  action: :arm_put
                )
