@@ -1,5 +1,5 @@
 # Multi-stage static build for POSH Go membrane (SPAF Tier 2, POSH-005)
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /build
 

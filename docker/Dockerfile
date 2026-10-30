@@ -129,7 +129,7 @@ CMD ["mix", "run", "-e", "IO.puts(:smalt)"]
 # golang:1.26-alpine` 2026-10-30 (lane G38: prior 1.23 pin failed
 # `go.mod requires go >= 1.26.0 (running go 1.23.12; GOTOOLCHAIN=local)`).
 # CGO_ENABLED=0 static build, same contract as posh/Makefile build target.
-FROM golang:1.26-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS posh-build
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS posh-build
 # alpine golang image ships neither make nor git; the Makefile needs make,
 # and git describe (absent .git in the COPY) falls back to VERSION=dev.
 RUN apk add --no-cache make git
