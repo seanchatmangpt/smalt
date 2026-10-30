@@ -84,7 +84,7 @@ defmodule Smalt.Egress.EventHubsRestRoutes do
   # signed for another namespace host is a typed 401.
   defp verify_sas(conn) do
     # W-close (divergence-elimination): real EH REST clients carry the SAS in
-    # `Authorization`, but the athena differential runner must dual-face it on
+    # `Authorization`, but the preflight-court differential runner must dual-face it on
     # `ServiceBusAuthorization` exactly like the SB REST lane — the egress
     # bearer plug owns `authorization` (enforce mode). Same token, same
     # verifier; only the header face widens.

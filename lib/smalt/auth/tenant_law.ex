@@ -48,7 +48,7 @@ defmodule Smalt.Auth.TenantLaw do
 
   # The LEGACY mint tenants of this substrate: every pre-fence dev identity
   # must resolve HOME (byte-identical legacy keys), never into the fence.
-  # "smalt-tenant" — the substrate's own token endpoint and the athena
+  # "smalt-tenant" — the substrate's own token endpoint and the preflight-court
   # StsClient/SmaltCosmosClient default (/smalt-tenant/oauth2/v2.0/token);
   # "common" — the substrate.ts @azure/cosmos SDK credential default
   # (DEFAULT_TENANT, /common/oauth2/v2.0/token). The court witness: S7.1

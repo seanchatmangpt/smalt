@@ -49,7 +49,7 @@ defmodule Smalt.Egress.CosmosRoutes do
                 # contents, subLedgerId, timestamp}. The substrate chain
                 # members (data_hash/prev_hash/merkle_root/signature) stay in
                 # the store/audit path — they remain on the GET list/get faces
-                # (the audit path the athena s17 append-only court reads) and
+                # (the audit path the preflight-court s17 append-only court reads) and
                 # in the sealed receipt, never on the append wire body.
                 send_json(conn, 201, %{
                   "transactionId" => receipt["transactionId"],

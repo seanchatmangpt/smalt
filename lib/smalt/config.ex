@@ -13,7 +13,7 @@ defmodule Smalt.Config do
   sites keep their existing case/wrap form.
   """
 
-  # Neutral-first env alias law (R8, mirrors athena env.ts / sovereign-backend
+  # Neutral-first env alias law (R8, mirrors preflight-court env.ts / sovereign-backend
   # ConfigMap): every SMALT_* env read resolves its AZURE_* alias FIRST,
   # legacy SMALT_* fallback second, identical defaults when neither is set.
   # Additive: legacy-only deployments and existing courts are byte-identical.

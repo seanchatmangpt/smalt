@@ -99,7 +99,12 @@ defmodule Smalt.MixProject do
     [
       # GL28-2: the deterministic turnstile — admission gate before any
       # control-plane state mutation (path dep on the sibling checkout).
-      {:graphlaw_ex, path: "../graphlaw/graphlaw_ex"},
+      # dev/test-gated: zero live code references to GraphlawEx.* modules
+      # exist in lib/ (the admission gate was inlined into
+      # Smalt.GraphlawEx.AdmissionGate; only doc strings mention the dep).
+      # Required for `mix hex.build` — path deps outside dev/test are fatal
+      # to packaging (publish-dry gate 1, r03; same pattern as ggen_igniter).
+      {:graphlaw_ex, path: "../graphlaw/graphlaw_ex", only: [:dev, :test]},
       {:bandit, "~> 1.6"},
       # v26.10.29 T-02 lane: azure_cache.ex drives Azure Redis Enterprise via
       # Cachex (in-process cache engine standing in for the redis wire face).

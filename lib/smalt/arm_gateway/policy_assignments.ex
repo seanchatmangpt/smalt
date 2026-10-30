@@ -11,21 +11,21 @@ defmodule Smalt.ArmGateway.PolicyAssignments do
   `{policyDefinitionId, enforcementMode, scope}` — the exact projection
   `Smalt.Policy.put_policy_assignment/3` persists.
 
-  ## Seeded classes (mirrors athena's encoded preflight courts)
+  ## Seeded classes (mirrors the preflight-courts' encoded preflight courts)
 
-  The two classes the athena preflight
+  The two classes the preflight-court preflight
   (`infra/terraform/sovereign-policy-map.json` `requiredTags` /
   `locationAllowlist`, exercised by `playground/test/az-policy-preflight.gates.spec.ts`
   courts 2a/2b) encode as deployment-map facts are seeded here as real ARM
   assignments, so the E2 preflight map validates against a live read surface:
 
     * `required-tags` — enforcementMode `Default` (the audit-deny law: an
-      untagged resource is denied at request time, athena court 2a),
+      untagged resource is denied at request time, preflight-court court 2a),
       policyDefinitionId pinned to the required-tags definition, parameters
-      carrying the athena required tag keys (`managed-by`, `sovereign`).
-    * `location-allowlist` — enforcementMode `Default` (athena court 2b:
+      carrying the preflight-court required tag keys (`managed-by`, `sovereign`).
+    * `location-allowlist` — enforcementMode `Default` (preflight-court court 2b:
       a location outside the allowlist is denied), policyDefinitionId pinned
-      to the location-allowlist definition, parameters carrying the athena
+      to the location-allowlist definition, parameters carrying the preflight-court
       allowlist (the 8-US-region set in the sovereign map).
 
   Both classes are seeded at BOTH scopes (subscription scope and the
@@ -45,7 +45,7 @@ defmodule Smalt.ArmGateway.PolicyAssignments do
 
   @seed_rg "rg-seed"
 
-  # The two athena-encoded classes, as ARM assignment seed laws. `parameters`
+  # The two preflight-court-encoded classes, as ARM assignment seed laws. `parameters`
   # mirror the sovereign-policy-map facts; `put_policy_assignment/3` persists
   # policyDefinitionId + enforcementMode + scope (the documented read shape),
   # so the parameters travel in the seed body and the class NAME travels on
@@ -87,7 +87,7 @@ defmodule Smalt.ArmGateway.PolicyAssignments do
   def seed_rg, do: @seed_rg
 
   @doc """
-  Deterministic seed: places the two athena-encoded classes at subscription
+  Deterministic seed: places the two preflight-court-encoded classes at subscription
   scope AND at the `rg-seed` resource-group scope of `sub_id`. Idempotent —
   a re-seed overwrites the same assignment ids with identical content.
   Returns the count of assignment rows written (2 classes x 2 scopes = 4).

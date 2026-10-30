@@ -147,7 +147,7 @@ defmodule Smalt.ConfidentialLedger.Router do
         # D7 ledger/append envelope parity: the documented Confidential Ledger
         # append response carries {transactionId, contents, subLedgerId,
         # timestamp}; the 201 previously echoed only transactionId (recorded
-        # athena divergence ledger/append@key-missing:contents/subLedgerId/
+        # preflight-court divergence ledger/append@key-missing:contents/subLedgerId/
         # timestamp).
         json(conn, 201, %{
           "transactionId" => tx_id,

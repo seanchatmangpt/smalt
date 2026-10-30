@@ -417,12 +417,12 @@ defmodule Smalt.Egress.MarketplaceRoutes do
     end
   end
 
-  # D1 lane (athena differential D1, disclosed minimal fix): the egress
+  # D1 lane (preflight-court differential D1, disclosed minimal fix): the egress
   # pipeline's route-conditional `maybe_parse_body/2` (Plug.Parsers
   # [:json, :urlencoded]) CONSUMES the raw body for JSON content-types into
   # `conn.body_params` (string keys), so a raw `Plug.Conn.read_body/1` here
   # sees "" and every content-type: application/json request answered
-  # 400 "invalid JSON body" (reproduced over real TCP by the athena wire
+  # 400 "invalid JSON body" (reproduced over real TCP by the preflight-court wire
   # runner; the in-process court missed it because its raw gen_tcp helper
   # sends no content-type). Prefer the parsed body; fall back to the raw
   # stream for clients that send no parseable content-type (court helper).

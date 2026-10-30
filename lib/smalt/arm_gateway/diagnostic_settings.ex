@@ -8,7 +8,7 @@ defmodule Smalt.ArmGateway.DiagnosticSettings do
 
   - `workspaceId` — the Log Analytics workspace target (the portal's
     "export to Log Analytics" flow lands here; same shape the MTTW
-    heartbeat consumes, per athena's customer1 monitoring receipt).
+    heartbeat consumes, per the preflight-courts' customer1 monitoring receipt).
   - `storageAccountId` — archive target.
   - `eventHubAuthorizationRuleId` + `eventHubName` — stream target.
   - `logs` / `metrics` — per-category `{category, enabled}` lists.
