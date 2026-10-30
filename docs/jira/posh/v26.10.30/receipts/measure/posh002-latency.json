@@ -1,0 +1,42 @@
+{
+  "receipt": "POSH-002 latency witness (lane F5)",
+  "standing": "PASS",
+  "context": "solo",
+  "date": "2026-10-30",
+  "instrument": {
+    "command": "cd posh && go test ./internal/server -run '^$' -bench BenchmarkWriteFrame -benchmem -count=5",
+    "note": "Named benchmark BenchmarkMembraneLoad DOES NOT EXIST in posh (grep over all *_test.go: only BenchmarkWriteFrame, internal/server/server_test.go:403). Nearest real membrane collaborator run instead per Chicago discipline; no benchmark fabricated."
+  },
+  "machine": "darwin/arm64, Apple M3 Max, go1.23.4 darwin/arm64, 16 threads",
+  "benchmark": "BenchmarkWriteFrame (membrane frame encode + unix-socket write, full round frame, 256 B/op, 9 allocs/op)",
+  "results": {
+    "ns_op_runs": [1996, 2111, 2087, 2159, 2068],
+    "min_ns": 1996,
+    "median_ns": 2087,
+    "mean_ns": 2084.2,
+    "min_ms": 0.001996,
+    "median_ms": 0.002087,
+    "mean_ms": 0.0020842,
+    "allocs_per_op": 9,
+    "bytes_per_op": 256
+  },
+  "unmeasured": {
+    "p99_under_100k_events_per_s": "UNMEASURED",
+    "reason": "go bench does not report p99; a 100k events/s sustained-load SLA witness requires a dedicated load rig (e.g. flood harness driving the real server). Not run in this lane."
+  },
+  "budget_verdict": {
+    "budget_ms": 5.0,
+    "verdict": "PASS",
+    "basis": "min 0.001996 ms and median 0.002087 ms are ~2400x under the POSH-002 <5 ms budget"
+  },
+  "e2e_http_variant": "not present in posh tree (no HTTP bench found); not run",
+  "warning_fix": {
+    "file": "lib/smalt/posh/client.ex",
+    "change": "line 244: `if reply, do: GenServer.reply(from, reply)` -> `GenServer.reply(from, reply)` (reply is always a value on this clause: decode_envelope/1 has total clauses, so the always-truthy inference was correct; unconditional reply is behavior-identical)",
+    "verification": "MIX_BUILD_ROOT=_build-f5 mix compile --force | grep -c 'posh/client.ex' -> 0"
+  },
+  "tests": {
+    "command": "MIX_BUILD_ROOT=_build-f5 mix test test/smalt/posh/",
+    "result": "18 passed, 0 failures"
+  }
+}

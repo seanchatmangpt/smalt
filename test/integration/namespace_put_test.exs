@@ -126,4 +126,40 @@ defmodule Smalt.Internal.NamespacePutTest do
   test "store hygiene: witness keys are unique-per-run, no cross-test coupling" do
     assert Store.get(:smalt_resources, ns_key("never-created")) == :error
   end
+
+  # GL28-2 gate-verdict shape court (lane E1): the gate returns refusals as
+  # 3-tuples ({:refused, code, details}); the router's gate-verdict match must
+  # render the typed SMALT-* code through the pinned GraphLaw refusal face
+  # (400 InvalidResourceShape), never the "unexpected admission-gate verdict"
+  # catch-all. Real AdmissionGate collaborator, real in-process dispatch —
+  # no mocks. Wave-1 lane-12 finding.
+  describe "admission gate 3-tuple refusals" do
+    @tag :admission_gate_shape
+    test "fail-closed PUT renders the typed gate code, not the catch-all" do
+      prev = Application.get_env(:smalt, :graph_law)
+
+      Application.put_env(:smalt, :graph_law, enforcement: :fail_closed)
+
+      try do
+        conn =
+          put_ns("kd124-gate-shape-#{System.unique_integer([:positive])}")
+
+        assert conn.status == 400,
+               "expected 400 InvalidResourceShape, got #{conn.status}: " <>
+                 inspect(conn.resp_body)
+
+        body = Jason.decode!(conn.resp_body)
+
+        assert body["error"]["code"] == "InvalidResourceShape"
+
+        assert body["error"]["message"] =~ "smalt_no_receipt",
+               "typed gate code must surface in the refusal message, got: " <>
+                 inspect(body["error"]["message"])
+
+        refute body["error"]["message"] =~ "unexpected admission-gate verdict"
+      after
+        if prev, do: Application.put_env(:smalt, :graph_law, prev), else: Application.delete_env(:smalt, :graph_law)
+      end
+    end
+  end
 end

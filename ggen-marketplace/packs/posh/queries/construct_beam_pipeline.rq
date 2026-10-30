@@ -1,0 +1,28 @@
+# construct_beam_pipeline.rq — ggen CONSTRUCT projection (lane L3, v26.10.30).
+#
+# Compiles admitted posh:IngressRoute topology into the BEAM pipeline
+# solution rows that templates/beam_pipeline.ex.tmpl renders to
+# lib/smalt/posh/pipeline/<op>.ex — one GenStage supervisor child per
+# route: SHACL shape validation clause, turnstile call, sink writer.
+# (TRIZ Principle 28; dfcharter/design.md §3.1 adapted to the L3 class
+# vocabulary: IngressRoute/admittedBy/Turnstile/emits/Receipt + sink.)
+PREFIX posh: <https://smalt.dev/posh/ns#>
+
+CONSTRUCT {
+  ?route a posh:GeneratedPipeline ;
+    posh:module     ?module ;
+    posh:turnstileModule ?turnstileModule ;
+    posh:clientCall ?op ;
+    posh:shape      ?shape ;
+    posh:turnstile  ?turnstile ;
+    posh:receipt    ?receipt ;
+    posh:sink       ?sinkHost .
+} WHERE {
+  ?route a posh:IngressRoute ;
+    posh:admittedBy ?turnstile ;
+    posh:shape      ?shape ;
+    posh:membraneOp ?op .
+  ?turnstile posh:emits ?receipt .
+  OPTIONAL { ?route posh:sink ?sink . ?sink posh:deliverTo ?sinkHost . }
+  BIND(CONCAT("Smalt.Posh.Pipeline.", UCASE(SUBSTR(REPLACE(?op, "[.-]", "_"), 1, 1)), SUBSTR(REPLACE(?op, "[.-]", "_"), 2)) AS ?module)
+}

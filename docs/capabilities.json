@@ -250,11 +250,15 @@
     "amqp": 5672,
     "controlPlane": 9443,
     "dataPlane": 8443,
-    "eventHubs": 5673
+    "eventHubs": 5673,
+    "redisWire": {
+      "port": 6380,
+      "wireListener": "RESP2 on :6380"
+    }
   },
   "identity": {
-    "contentSha256": "0dbbd2db96194e891c8eda56b57f025b29f50f968dccab54110ebb42c0e7c0f2",
-    "packLockSha256": "532b495a89f77535caa536b351131f1c09850016bc2710aa0b086b032fdd41fe",
+    "contentSha256": "47cd0585b9274e62a8744b590d5c50c1acef6bd3f9a93fe46c921100904bd96c",
+    "packLockSha256": "b2f483993c393b80e84ea0125a9c15f4166d0ba365d87044cd9f61fe2d19e86c",
     "semanticEpoch": "26.10.25"
   },
   "name": "smalt",
@@ -310,6 +314,12 @@
     },
     {
       "license": "MIT",
+      "name": "cachex",
+      "origin": "hex.pm",
+      "version": "4.1.1"
+    },
+    {
+      "license": "MIT",
       "name": "cinder",
       "origin": "hex.pm",
       "version": "0.17.0"
@@ -352,6 +362,12 @@
     },
     {
       "license": "MIT",
+      "name": "eternal",
+      "origin": "hex.pm",
+      "version": "1.2.2"
+    },
+    {
+      "license": "MIT",
       "name": "ets",
       "origin": "hex.pm",
       "version": "0.9.0"
@@ -367,6 +383,12 @@
       "name": "ex_ast",
       "origin": "hex.pm",
       "version": "0.16.0"
+    },
+    {
+      "license": "MIT",
+      "name": "ex_hash_ring",
+      "origin": "hex.pm",
+      "version": "6.0.4"
     },
     {
       "license": "MIT",
@@ -457,6 +479,12 @@
       "name": "json_ld",
       "origin": "hex.pm",
       "version": "1.0.1"
+    },
+    {
+      "license": "MIT",
+      "name": "jumper",
+      "origin": "hex.pm",
+      "version": "1.0.2"
     },
     {
       "license": "Apache-2.0",
@@ -615,6 +643,12 @@
       "version": "1.6.1"
     },
     {
+      "license": "MIT",
+      "name": "sleeplocks",
+      "origin": "hex.pm",
+      "version": "1.1.4"
+    },
+    {
       "license": "Apache-2.0",
       "name": "sobelow",
       "origin": "hex.pm",
@@ -727,6 +761,12 @@
       "name": "uniq",
       "origin": "hex.pm",
       "version": "0.6.3"
+    },
+    {
+      "license": "MIT",
+      "name": "unsafe",
+      "origin": "hex.pm",
+      "version": "1.0.2"
     },
     {
       "license": "MIT",

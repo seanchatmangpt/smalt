@@ -1,0 +1,63 @@
+# ingress.ttl — Port In SHACL shapes (lane L3, v26.10.30).
+#
+# Law 1: every posh:IngressRoute MUST have exactly one posh:admittedBy
+# Turnstile (sh:closed, sh:minCount 1, sh:maxCount 1). THIS is the
+# no-bypass law: a route with no admitting turnstile is a refused subject
+# (query twin: queries/invariant_orphan_route.rq).
+# Law 2: a route never emits receipts itself — posh:emits lives only on
+# a Turnstile; its presence on a route is a closed-shape violation.
+#
+# TRIZ Principle 10: validated by ggen prior to execution, not at runtime.
+
+@prefix posh: <https://smalt.dev/posh/ns#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+posh:IngressRouteShape a sh:NodeShape ;
+  sh:closed true ;
+  sh:ignoredProperties (rdf:type) ;
+  sh:targetClass posh:IngressRoute ;
+  rdfs:seeAlso posh:NoBypassShape ;
+  sh:property [
+    sh:path posh:admittedBy ;
+    sh:class posh:Turnstile ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:message "Every IngressRoute MUST be admitted by exactly one Turnstile; a route with zero or multiple turnstiles is a refused subject."@en ;
+  ] ;
+  sh:property [
+    sh:path posh:shape ;
+    sh:node sh:NodeShape ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:message "Every IngressRoute MUST pin exactly one SHACL NodeShape its frames are validated against before admission."@en ;
+  ] ;
+  sh:property [
+    sh:path posh:membraneOp ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:message "Every IngressRoute MUST declare exactly one membraneOp for the BEAM<->Go projection (construct_beam_pipeline.rq / construct_go_adapter.rq)."@en ;
+  ] ;
+  sh:property [
+    sh:path posh:sink ;
+    sh:class posh:Sink ;
+    sh:minCount 0 ;
+    sh:maxCount 1 ;
+    sh:message "An IngressRoute may carry at most one declared Sink — delivery endpoints are graph-projected, never free-form (construct_go_adapter.rq allowlist)."@en ;
+  ] .
+
+# No-bypass companion: a route never mints receipts itself. posh:emits
+# lives only on a Turnstile; its presence on a route is a structural
+# bypass and fails the closed shape.
+posh:NoBypassShape a sh:NodeShape ;
+  # Open shape on purpose: closed-ness is owned by IngressRouteShape.
+  # This shape contributes ONLY the banned-path constraint.
+  sh:targetClass posh:IngressRoute ;
+  sh:property [
+    sh:path posh:emits ;
+    sh:maxCount 0 ;
+    sh:message "No route may bypass its turnstile: IngressRoute MUST NOT carry posh:emits — receipts come only from the Turnstile."@en ;
+  ] .

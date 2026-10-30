@@ -28,3 +28,4 @@ dir = "templates"
 [packs]
 "kubernetes-workload-pack" = { path = "/Users/sac/ggen-marketplace/packs/kubernetes-workload-pack" }
 "smalt-k8s-pack" = { path = "packs/smalt-k8s-pack" }
+"posh-pack" = { path = "ggen-marketplace/packs/posh" }

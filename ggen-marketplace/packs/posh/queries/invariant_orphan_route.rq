@@ -1,0 +1,13 @@
+# invariant_orphan_route.rq — POSH invariant gate (lane L3, v26.10.30).
+#
+# Any row = a posh:IngressRoute with NO posh:admittedBy turnstile (orphan).
+# This query MUST be empty on an admitted graph. Runs in CI prior to
+# execution (TRIZ Principle 10): orphan routes never compile to code.
+# Paired with shapes/ingress.ttl's sh:minCount 1 on posh:admittedBy.
+PREFIX posh: <https://smalt.dev/posh/ns#>
+
+SELECT ?route WHERE {
+  ?route a posh:IngressRoute .
+  FILTER NOT EXISTS { ?route posh:admittedBy ?turnstile . }
+}
+ORDER BY ?route

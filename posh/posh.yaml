@@ -1,0 +1,18 @@
+# posh.yaml — the posh membrane's only config file (fail-closed, POSH-008).
+# A missing or empty file is a boot refusal, never an open floodgate.
+# Full annotated reference: docs/configuration.md
+
+# socket: unix socket path the membrane listener binds. Relative paths
+# resolve against the process working directory. Omitted -> run/posh.sock.
+socket: run/posh.sock
+
+# tcp_addr: optional extra TCP listener "host:port" (e.g. "127.0.0.1:7443").
+# Empty/omitted disables the TCP listener. Always name an explicit host —
+# an empty host is rejected by validation.
+tcp_addr: ""
+
+# egress_allowlist: the ONLY admitted egress hostnames (default-deny). An
+# empty/omitted list refuses all egress; the process still boots and serves
+# local membrane traffic. Entries are bare hostnames — no scheme, port,
+# path, or spaces (validation rejects them).
+egress_allowlist: []

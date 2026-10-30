@@ -1,0 +1,49 @@
+# golangci-lint config for posh (v2 format).
+# Enabled: errcheck, govet, staticcheck, revive, misspell, unconvert, unparam.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck    # unchecked errors are real bugs; no known noise in this tree
+    - govet
+    - staticcheck
+    - revive      # exported symbols need docs; kept at default rules
+    - misspell
+    - unconvert   # flags redundant conversions
+    - unparam     # unused/always-same params
+
+  settings:
+    revive:
+      rules:
+        # Sensible subset: skip style-noise rules (add-constant, line-length-limit,
+        # cognitive-complexity) which drown signal in a small CLI tree.
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-strings
+        - name: receiver-naming
+        - name: blank-imports
+        - name: context-as-argument
+
+  exclusions:
+    rules:
+      # Tests commonly ignore errors from fmt/cleanup helpers by design.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+      # Generated or vendored code is out of scope.
+      - path: (.*_gen\.go)|(bin/)
+        linters:
+          - errcheck
+          - govet
+          - staticcheck
+          - revive
+          - misspell
+          - unconvert
+          - unparam

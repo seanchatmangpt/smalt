@@ -3,10 +3,11 @@
 #
 # Engineer path:  just kind-up -> kind-images -> kind-deploy -> swarm-status
 #
-# BK-JUSTK2 repair (BK-MKTG garbled-recipe finding + manifest reconciliation,
-# receipt docs/jira/v26.10.22/receipts/bkjustk2-recipes-fix.md): recipes now
-# target the canonical deployable set — HAND-WRITTEN k8s/smalt-backend.yaml
-# (StatefulSet smalt-backend, ns default) and k8s/smalt-console.yaml.
+# BK-JUSTK2 repair (BK-MKTG garbled-recipe dependency fix + manifest
+# reconciliation, receipt docs/jira/v26.10.22/receipts/bkjustk2-recipes-fix.md):
+# recipes now target the canonical deployable set — HAND-WRITTEN
+# k8s/smalt-backend.yaml (StatefulSet smalt-backend, ns default) and
+# k8s/smalt-console.yaml.
 # The k8s/*.gen.yaml renders are gate-checked REFERENCE only (BK-MKTG typed
 # diff: no StatefulSet/multi-port/env) — never applied by these recipes.
 # Console-in-cluster is UNBLOCKED (Dockerfile.console landed, BK-IMG).
@@ -15,6 +16,12 @@
 # root (imports merge into the root namespace); parent_directory would
 # resolve to /Users/sac (witnessed: kind-images run 1 cd'd there and
 # `git rev-parse` died with exit 128).
+#
+# W-D (kind node containerd disk-full incident): kind-images pre-flights the
+# node's /var/lib/containerd free space and prunes unused images
+# (crictl rmi --prune) before the build loop — fail-closed below 20000MB
+# even after prune ([KIND-IMAGES-FAIL] node disk low). just kind-prune
+# exposes the prune standalone.
 # ============================================================================
 
 KROOT := justfile_directory()
@@ -44,26 +51,19 @@ _check_kind_tools:
           exit 3; }; \
       done; echo "[KIND-PREREQ] kind/kubectl/docker present"
 
-# Create the kind cluster (k8s/kind-config.yaml when present, else generated).
-# Idempotent: existing cluster is a no-op success.
+# Create the kind cluster from the canonical k8s/kind-config.yaml (REQUIRED —
+# the generated single-node fallback heredoc was removed fail-closed, W-D:
+# a silently-generated config diverges from the canonical topology and masks
+# config drift). Idempotent: existing cluster is a no-op success.
 [no-cd]
 kind-up: _check_kind_tools
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{KROOT}}
-    mkdir -p {{KIND_GEN}}
     cfg="k8s/kind-config.yaml"
     if [ ! -f "$cfg" ]; then
-      cfg="{{KIND_GEN}}/kind-config.yaml"
-      if [ ! -f "$cfg" ]; then
-        cat > "$cfg" <<'YAML'
-    kind: Cluster
-    apiVersion: kind.x-k8s.io/v1alpha4
-    name: {{SMALT_KIND_CLUSTER}}
-    nodes:
-    - role: control-plane
-    YAML
-      fi
+      echo "[KIND-UP-FAIL] $cfg missing — canonical kind config is required (generated fallback removed, W-D); restore k8s/kind-config.yaml or derive one from k8s/kind/cluster.yaml" >&2
+      exit 1
     fi
     if kind get clusters | grep -qx "{{SMALT_KIND_CLUSTER}}"; then
       echo "[KIND-UP] cluster {{SMALT_KIND_CLUSTER}} already exists — idempotent no-op"
@@ -102,6 +102,53 @@ kind-status:
     kubectl -n {{SMALT_KIND_MANIFEST_NS}} get statefulset,deploy,pods,svc -o wide 2>/dev/null \
       || echo "  (namespace surface not deployed — run: just kind-deploy)"
 
+# Standalone node-image prune (W-D disk-full incident). Deletes unused images
+# inside the kind node's containerd to reclaim /var/lib/containerd space.
+# Fail-closed (exit 1) when the cluster is not up.
+[no-cd]
+kind-prune:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    node="{{SMALT_KIND_CLUSTER}}-control-plane"
+    command -v docker >/dev/null 2>&1 || { echo "[KIND-PREREQ-FAIL] docker — install: brew install docker" >&2; exit 3; }
+    docker inspect "$node" >/dev/null 2>&1 \
+      || { echo "[KIND-PRUNE-FAIL] node container $node not found — run: just kind-up first" >&2; exit 1; }
+    echo "[KIND-PRUNE] pruning unused images in $node (/var/lib/containerd)"
+    docker exec "$node" crictl -r unix:///run/containerd/containerd.sock rmi --prune
+    echo "[KIND-PRUNE] done; witness: docker exec $node df -m /var/lib/containerd"
+
+# Containerd disk preflight (W-D): free MB on /var/lib/containerd in the kind
+# node, one crictl-prune retry, fail-closed below 20000MB after prune.
+[no-cd]
+_kind_node_disk_preflight:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    node="{{SMALT_KIND_CLUSTER}}-control-plane"
+    docker inspect "$node" >/dev/null 2>&1 \
+      || { echo "[KIND-IMAGES-FAIL] node container $node not found — run: just kind-up first" >&2; exit 1; }
+    free_mb() {
+      docker exec "$node" env LC_ALL=C df -k -P /var/lib/containerd 2>/dev/null \
+        | awk 'NR==2 {print int($4/1024)}'
+    }
+    avail="$(free_mb)"
+    # Threshold default 20000MB; SMALT_KIND_MIN_DISK_MB overrides explicitly
+    # (witnessed 2026-10-30: the shared colima VM volume also hosts a second
+    # live kind cluster whose volumes hold ~27GB, so the default cannot be
+    # met on this host — the override is the disclosed, typed way past it).
+    threshold="${SMALT_KIND_MIN_DISK_MB:-20000}"
+    echo "[KIND-IMAGES] node $node /var/lib/containerd avail: ${avail:-?}MB (threshold ${threshold}MB)"
+    if [ "${avail:-0}" -lt "$threshold" ]; then
+      echo "[KIND-IMAGES] below threshold — crictl rmi --prune"
+      docker exec "$node" crictl -r unix:///run/containerd/containerd.sock rmi --prune || true
+      avail="$(free_mb)"
+      echo "[KIND-IMAGES] after prune avail: ${avail:-?}MB"
+    fi
+    if [ "${avail:-0}" -lt "$threshold" ]; then
+      echo "[KIND-IMAGES-FAIL] node disk low: ${avail:-0}MB avail on $node:/var/lib/containerd (< ${threshold}MB after prune) — run: just kind-prune, or kind-down + kind-up to recreate" >&2
+      exit 1
+    fi
+    echo "[KIND-IMAGES] node disk preflight OK"
+
 # Docker build the three images and `kind load docker-image` all into the
 # cluster: hermetic runtime (docker/Dockerfile.hermetic ->
 # SMALT_KIND_HERMETIC_IMG), backend release (docker/Dockerfile ->
@@ -111,7 +158,7 @@ kind-status:
 # is a REQUIRED build-arg for both backend builds (org.smalt.subject label
 # discipline). The console build has no sibling build contexts.
 [no-cd]
-kind-images: _check_kind_tools
+kind-images: _check_kind_tools _kind_node_disk_preflight
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{KROOT}}
@@ -119,7 +166,8 @@ kind-images: _check_kind_tools
     ctx=(--build-arg SUBJECT_SHA="$SHA"
          --build-context ash_graphlaw="$PWD/../ash_graphlaw"
          --build-context ggen_igniter="$PWD/../ggen_igniter"
-         --build-context ash_r2rml="$PWD/../ash_r2rml")
+         --build-context ash_r2rml="$PWD/../ash_r2rml"
+         --build-context graphlaw_ex="$PWD/../graphlaw/graphlaw_ex")
     for spec in \
       "docker/Dockerfile.hermetic|{{SMALT_KIND_HERMETIC_IMG}}|yes" \
       "docker/Dockerfile|{{SMALT_KIND_BACKEND_IMG}}|yes" \
@@ -131,8 +179,7 @@ kind-images: _check_kind_tools
           || { echo "[KIND-IMAGES-FAIL] docker build failed: $df -> $img" >&2; exit 1; }
       else
         docker build -f "$df" -t "$img" . \
-          || { echo "[KIND-IMAGES-FAIL] docker build failed: $df -> $img" >&2; exit 1;
-             }
+          || { echo "[KIND-IMAGES-FAIL] docker build failed: $df -> $img" >&2; exit 1; }
       fi
       kind load docker-image "$img" --name {{SMALT_KIND_CLUSTER}} \
         || { echo "[KIND-IMAGES-FAIL] kind load failed: $img" >&2; exit 1; }

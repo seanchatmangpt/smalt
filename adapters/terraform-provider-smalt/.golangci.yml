@@ -1,0 +1,52 @@
+# golangci-lint config for terraform-provider-smalt (v2 format).
+# Enabled: errcheck, govet, staticcheck, revive, misspell, unconvert, unparam.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck    # unchecked errors break provider diagnostics
+    - govet
+    - staticcheck
+    - revive
+    - misspell
+    - unconvert
+    - unparam     # NOTE: disabled for schema-funcs if noisy; see exclusions below
+
+  settings:
+    revive:
+      rules:
+        # Sensible subset; provider SDK patterns make some style rules pure noise.
+        - name: exported
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-strings
+        - name: receiver-naming
+        - name: blank-imports
+        - name: context-as-argument
+
+  exclusions:
+    rules:
+      # Tests commonly ignore errors from fmt/cleanup helpers by design.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+      # Provider metadata funcs (main.go, provider schema) accept (ctx, req, resp)
+      # per framework contract even when some fields go unused.
+      - path: main\.go
+        linters:
+          - unparam
+      # Vendored azurerm reference tree is not ours to lint.
+      - path: terraform-provider-azurerm/
+        linters:
+          - errcheck
+          - govet
+          - staticcheck
+          - revive
+          - misspell
+          - unconvert
+          - unparam

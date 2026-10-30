@@ -1,0 +1,85 @@
+# posh_instance.ttl - POSH pack instance graph (lane F12, v26.10.30).
+#
+# The concrete A-box the pack's CONSTRUCT projections bind against. All
+# individuals here conform to the pack's closed SHACL shapes
+# (shapes/ingress.ttl + shapes/egress.ttl; sh:closed means NO rdfs:label
+# on route/turnstile/sink/rule individuals). The pack manifest imports
+# this graph via [ontology] imports, and ggen sync run renders from the
+# merged T-box + A-box.
+#
+# Topology:
+#   * IngressRoute arm.request route --admittedBy--> Turnstile arm
+#   * IngressRoute arm-get route     --admittedBy--> Turnstile armget
+#   * IngressRoute telemetry route   --admittedBy--> Turnstile telemetry
+#   * one EgressRoute terminating in Sink http://127.0.0.1:9443
+#   * one fail-closed ReceiptRule (tokenSize 32, onMissing REFUSE)
+
+@prefix posh: <https://smalt.dev/posh/ns#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ---- Shapes: frame shapes pinned by routes (individuals, not the
+# ---- validation shapes; those live in shapes/).
+
+posh:ArmRequestShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:ArmGetShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+posh:TelemetryShape a sh:NodeShape ;
+  sh:targetClass posh:IngressRoute .
+
+# ---- Routes
+
+posh:routeArmRequest a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileArm ;
+  posh:membraneOp "arm.request" ;
+  posh:shape posh:ArmRequestShape ;
+  posh:sink posh:sinkStarboardLocal .
+
+posh:routeArmGet a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileArmGet ;
+  posh:membraneOp "arm-get" ;
+  posh:shape posh:ArmGetShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:routeTelemetry a posh:IngressRoute ;
+  posh:admittedBy posh:turnstileTelemetry ;
+  posh:membraneOp "echo" ;
+  posh:shape posh:TelemetryShape ;
+  posh:sink posh:sinkStarboard9443 .
+
+# ---- Turnstiles
+
+posh:turnstileArm a posh:Turnstile ;
+  posh:emits posh:receiptArm .
+
+posh:turnstileArmGet a posh:Turnstile ;
+  posh:emits posh:receiptArmGet .
+
+posh:turnstileTelemetry a posh:Turnstile ;
+  posh:emits posh:receiptTelemetry .
+
+# ---- Receipts
+
+posh:receiptArm a posh:Receipt .
+posh:receiptArmGet a posh:Receipt .
+posh:receiptTelemetry a posh:Receipt .
+
+# ---- Egress
+
+posh:egressStarboard a posh:EgressRoute ;
+  posh:sink posh:sinkStarboard9443 .
+
+posh:sinkStarboardLocal a posh:Sink ;
+  posh:deliverTo "http://127.0.0.1:7443" ;
+  posh:receiptRule posh:ruleRefuseOnMissing .
+
+posh:sinkStarboard9443 a posh:Sink ;
+  posh:deliverTo "http://127.0.0.1:9443" ;
+  posh:receiptRule posh:ruleRefuseOnMissing .
+
+posh:ruleRefuseOnMissing a posh:ReceiptRule ;
+  posh:onMissing "REFUSE" ;
+  posh:tokenSize "32"^^xsd:integer .

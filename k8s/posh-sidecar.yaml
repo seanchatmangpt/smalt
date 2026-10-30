@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: posh-config
+  namespace: default
+data:
+  posh.yaml: |
+    socket: /posh/run/posh.sock
+    tcp_addr: ""
+    egress_allowlist: []
+---
+# POSH-005 sidecar mode (lane F14): posh runs as a UDS-only sidecar next to
+# the app container. Socket shared via emptyDir at /posh/run. No ports.
+#
+# Load + apply:
+#   kind load docker-image posh:sidecar --name smalt
+#   kubectl apply -f k8s/posh-sidecar.yaml
+#
+# This file is a standalone witness pod (smalt-backend.yaml untouched); for a
+# patch-style sidecar injection into a Deployment, copy the `posh-sidecar`
+# container + `posh-socket`/`posh-config` volumes into the backend pod spec.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: posh-sidecar-witness
+  labels:
+    app.kubernetes.io/name: posh-sidecar-witness
+spec:
+  securityContext:
+    fsGroup: 65532
+  restartPolicy: Never
+  initContainers:
+    # App-side witness: wait for the membrane socket, then send a raw byte
+    # frame over the UDS (busybox nc -U) to prove the socket is connectable,
+    # not merely present.
+    - name: app
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          i=0
+          until [ -S /posh/run/posh.sock ]; do
+            i=$((i+1)); [ $i -gt 60 ] && echo "socket never appeared" && exit 1
+            sleep 1
+          done
+          echo "UDS present: /posh/run/posh.sock"
+          printf 'ping\n' | nc -U /posh/run/posh.sock > /posh/run/reply.bin 2>&1
+          rc=$?
+          echo "nc -U exit=$rc"
+          ls -l /posh/run/
+          [ -S /posh/run/posh.sock ]
+      volumeMounts:
+        - name: posh-socket
+          mountPath: /posh/run
+  containers:
+    - name: posh-sidecar
+      image: posh:sidecar
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+      volumeMounts:
+        - name: posh-socket
+          mountPath: /posh/run
+        - name: posh-config
+          mountPath: /etc/posh
+      readinessProbe:
+        exec:
+          command: ["/bin/sh", "-c", "[ -S /posh/run/posh.sock ]"]
+        initialDelaySeconds: 2
+        periodSeconds: 5
+  volumes:
+    - name: posh-socket
+      emptyDir: {}
+    - name: posh-config
+      configMap:
+        name: posh-config

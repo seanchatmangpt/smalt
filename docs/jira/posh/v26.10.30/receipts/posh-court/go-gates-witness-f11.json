@@ -1,0 +1,24 @@
+{
+  "receipt": "smalt.posh.go-gates-witness/1",
+  "lane": "F11 (confirming C1)",
+  "date": "2026-10-30",
+  "standing": "ALIVE",
+  "Context": "solo",
+  "subject": "/Users/sac/smalt/posh, go1.23.4 darwin/arm64",
+  "instrument": "gofmt -l / go vet ./... / go test -race -count=1 ./...",
+  "gates": [
+    {"name": "gofmt -l .", "exit": 0, "result": "empty (no unformatted files)"},
+    {"name": "go vet ./...", "exit": 0, "result": "no diagnostics"},
+    {"name": "go test -race -count=1 ./...", "exit": 0, "per_package": {
+      "api": "ok 1.325s",
+      "armclient": "ok 1.520s",
+      "config": "ok 1.857s",
+      "doctor": "ok 2.206s",
+      "egress": "ok 2.746s",
+      "receipt": "ok 2.459s",
+      "server": "ok 3.162s"
+    }},
+    {"name": "NAT64 e2e", "exit": 0, "result": "TestControlHookRefusesNAT64SynthesizedIMDS PASS on [64:ff9b::169.254.169.254]:80 and [64:ff9b:1::169.254.169.254]:80"}
+  ],
+  "verdict": "GREEN — compilation_gate + allocation_gate + egress_fence_gate (race detector clean, zero failures)"
+}

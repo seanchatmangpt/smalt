@@ -424,6 +424,38 @@ or endorsed by any cloud provider. Product and company names appearing in
 protocol strings are trademarks of their owners, used solely for protocol
 compatibility. See `NOTICE.md`.
 
+## POSH — Go adapter membrane
+
+POSH is the Go-side hyperscaler adapter membrane for smalt: a Go module
+(`posh/`) that faces Azure ARM (and other hyperscaler SDKs) and talks to the
+Elixir core over a BEAM↔posh membrane (UDS JSON framing today, gRPC later).
+It replaces the archived Elixir Terraform provider spike
+(`terraform-provider-smalt`, archived per POSH-007) with a Go Terraform
+provider under `adapters/terraform-provider-smalt`.
+
+```
++----------------+   UDS JSON membrane   +----------------------+
+|  smalt (BEAM)  | <-------------------> |  posh (Go module)    |
+|  lib/smalt/    |                       |  Azure ARM face      |
++----------------+                       +----------+-----------+
+                                                    |
+                                         +----------v-----------+
+                                         | adapters/            |
+                                         | terraform-provider-  |
+                                         | smalt (protocol 6)   |
+                                         +----------------------+
+```
+
+Quickstart:
+
+```sh
+make -C posh build     # build the posh Go module
+just posh-court        # 7-stage DoD verification ladder (exit 0 green / 1 FAIL / 3 SKIP)
+```
+
+Design, orders, and receipts: `docs/jira/posh/v26.10.30/` (start at its
+`README.md`).
+
 ## See Also
 
 - `docs/tutorials/enclave-lifecycle.md` — first-run lifecycle walkthrough

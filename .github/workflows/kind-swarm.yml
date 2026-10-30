@@ -15,6 +15,9 @@
 # Local proof: act 0.2.89 (receipt docs/jira/v26.10.22/receipts/bkact-workflow.md).
 name: kind-swarm
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -142,9 +145,19 @@ jobs:
           cat /tmp/cluster-ci.yaml
           kind create cluster --config /tmp/cluster-ci.yaml --wait 300s
           kind load docker-image smalt-burn:ci --name kind-smalt
+          # Recompute SHA inside this step — the earlier step's $SHA is not
+          # in scope here (env does not cross step boundaries).
+          SHA="$(git rev-parse HEAD 2>/dev/null || printf '%s' '${{ github.sha }}')"
+          echo "SUBJECT_SHA=$SHA"
+          echo "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "FATAL: SUBJECT_SHA not 40-hex: '$SHA'" >&2; exit 1; }
+          [ -n "$SHA" ] || { echo "FATAL: SUBJECT_SHA empty" >&2; exit 1; }
           sed "s/__SUBJECT_SHA__/$SHA/g" k8s/burn/smalt-deployment.yaml > /tmp/smalt-deployment-ci.yaml
           kubectl apply -f /tmp/smalt-deployment-ci.yaml
           kubectl apply -f k8s/burn/smalt-services.yaml
+          # CI-only scale-down: the deployment wants 3 replicas with required
+          # anti-affinity but the CI kind cluster has only 2 schedulable
+          # nodes; 3 would sit Pending forever. (k8s/ manifests stay at 3.)
+          kubectl scale deploy/smalt-burn --replicas=2
           kubectl -n default wait --for=condition=available deployment/smalt-burn --timeout=900s
       - name: backend=kind — witnesses (cross-pod ping + port-mapped face)
         if: matrix.backend == 'kind'

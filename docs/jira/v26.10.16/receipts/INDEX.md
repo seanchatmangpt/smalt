@@ -1,6 +1,6 @@
 # Receipt Index (short)
 
-Full tables: [../RECEIPTS.md](../RECEIPTS.md). Generated 2026-10-22 by `scripts/receipt_index.py` (`just receipt-index`).
+Full tables: [../RECEIPTS.md](../RECEIPTS.md). Generated 2026-10-29 by `scripts/receipt_index.py` (`just receipt-index`).
 
 - Receipts: 180 files in `receipts/`
 - SDK results: 36 files in `sdk-results/`

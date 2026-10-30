@@ -1,0 +1,17 @@
+# ggen.toml — POSH pack sync manifest (coordinator integration, v26.10.30).
+# pack.toml carries descriptive metadata; this ggen.toml is the executable
+# manifest ggen sync run consumes (FM-CONFIG-001). Sources stay in the pack:
+# ontology/posh.ttl + templates/*.tmpl; SPARQL front-matter drives projection.
+
+[project]
+name = "posh"
+
+[ontology]
+source = "ontology/posh.ttl"
+# F12 lane (v26.10.30): the instance A-box lives here, separate from the
+# T-box, so the merged graph conforms to the pack's closed SHACL shapes
+# (shapes/ingress.ttl, shapes/egress.ttl). ggen renders from the merge.
+imports = ["examples/posh_instance.ttl"]
+
+[templates]
+dir = "templates"

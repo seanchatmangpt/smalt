@@ -1,0 +1,23 @@
+{
+  "receipt": "posh009-coverage-gate-flip",
+  "standing": "ALIVE",
+  "date": "2026-10-30",
+  "context": "solo",
+  "purpose": "non-vacuity: the coverage gate must exit 1 loudly when a source face vanishes; a gate that cannot flip is FAIL",
+  "flip_subject": "posh/cmd/posh/main.go ops registry: removed face wire_op:echo (var ops map entry \"echo\": echoOp)",
+  "command": "python3 scripts/posh_coverage.py",
+  "flip_exit_code": 1,
+  "expected_flip_exit": 1,
+  "flip_verdict": "FAIL \u2014 1 loud gap(s): MISSING wire_op:echo: register cell names a face not present in source (stale/ghost row)",
+  "command_output": "POSH COVERAGE GATE (mechanical inventory vs register)\n  source faces parsed : 14 across 5 families\n    cli_verb     2\n    egress_face  5\n    error_code   4\n    http_route   2\n    pack         1\n  pack ontology individuals (a posh:IngressRoute): 1\n  register cells      : 15\n  register rows       : 6\n  MISSING wire_op:echo: register cell names a face not present in source (stale/ghost row)\nVERDICT: FAIL \u2014 1 loud gap(s)\n",
+  "sha256": {
+    "before": "62b90bd902df4675a7ee164733c1d6afd8ed9542f934dffdb101878228a572fc",
+    "flipped_observed": "d08ae7f140a61294b5ce6fadff5de6d5cc310a3ced3b1a0bf6f417136d6d1015",
+    "after_restore": "62b90bd902df4675a7ee164733c1d6afd8ed9542f934dffdb101878228a572fc",
+    "byte_exact_restore": true,
+    "restore_check_command": "shasum -a 256 -c /tmp/posh_flip_before.sha",
+    "restore_check_output": "posh/cmd/posh/main.go: OK"
+  },
+  "post_restore_gate_exit": 0,
+  "post_restore_verdict": "PASS \u2014 every cell pass or registered-divergence; zero silent gaps"
+}

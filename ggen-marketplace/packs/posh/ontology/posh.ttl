@@ -1,0 +1,128 @@
+# posh.ttl — POSH core ontology (lane L3, v26.10.30).
+#
+# Canonical namespace: https://smalt.dev/posh/ns#  (matches dfcharter/design.md
+# §2/§3). Classes model the asymmetric highway: IngressRoute (Port In),
+# EgressRoute (Starboard Out), Turnstile (admission gate emitting receipts),
+# MembraneOp (the operation crossing the membrane), Receipt (32-byte BLAKE3
+# Merkle token per working-backwards.md).
+#
+# TRIZ Principle 10 (prior action): the topology lives here, not in code.
+# TRIZ Principle 28: ggen CONSTRUCT queries (queries/) project this graph to
+# Elixir GenStage pipelines and Go membrane adapters; nothing in ingress/ or
+# egress/ is hand-wired.
+
+@prefix posh:  <https://smalt.dev/posh/ns#> .
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://smalt.dev/posh/ns> a owl:Ontology ;
+  rdfs:label "POSH core ontology"@en ;
+  rdfs:comment "Port In / Starboard Out asymmetric highway: routes, turnstiles, membrane ops, receipts. Invariants satisfied by compilation, not runtime boilerplate."@en .
+
+# ---------------------------------------------------------------- Classes
+
+posh:IngressRoute a rdfs:Class ;
+  rdfs:label "IngressRoute"@en ;
+  rdfs:comment "A Port In route. MUST be admitted by exactly one Turnstile; no route may bypass its turnstile."@en .
+
+posh:EgressRoute a rdfs:Class ;
+  rdfs:label "EgressRoute"@en ;
+  rdfs:comment "A Starboard Out route carrying frames from a turnstile to a declared sink."@en .
+
+posh:Turnstile a rdfs:Class ;
+  rdfs:label "Turnstile"@en ;
+  rdfs:comment "Cryptographic admission gate. Emits exactly one 32-byte BLAKE3 receipt per admitted frame (R_turnstile = BLAKE3(InboundDelta || NodeID || Timestamp_ns || StateRoot))."@en .
+
+posh:MembraneOp a rdfs:Class ;
+  rdfs:label "MembraneOp"@en ;
+  rdfs:comment "The operation crossing the BEAM<->Go peripheral membrane (e.g. \"arm.request\")."@en .
+
+posh:Receipt a rdfs:Class ;
+  rdfs:label "Receipt"@en ;
+  rdfs:comment "32-byte BLAKE3 Merkle receipt token emitted by a Turnstile."@en .
+
+posh:Sink a rdfs:Class ;
+  rdfs:label "Sink"@en ;
+  rdfs:comment "Starboard Out delivery target (design.md §2.2)."@en .
+
+posh:ReceiptRule a rdfs:Class ;
+  rdfs:label "ReceiptRule"@en ;
+  rdfs:comment "Egress receipt policy (kernel, tokenSize, onMissing=REFUSE)."@en .
+
+# ---------------------------------------------------------------- Properties
+
+posh:admittedBy a rdf:Property ;
+  rdfs:domain posh:IngressRoute ;
+  rdfs:range posh:Turnstile ;
+  rdfs:label "admittedBy"@en ;
+  rdfs:comment "Route -> Turnstile. Exactly one per IngressRoute (shapes/ingress.ttl)."@en .
+
+posh:emits a rdf:Property ;
+  rdfs:domain posh:Turnstile ;
+  rdfs:range posh:Receipt ;
+  rdfs:label "emits"@en ;
+  rdfs:comment "Turnstile -> Receipt. Exactly one Receipt per Turnstile (shapes/egress.ttl)."@en .
+
+posh:sink a rdf:Property ;
+  rdfs:range posh:Sink ;
+  rdfs:label "sink"@en ;
+  rdfs:comment "EgressRoute -> Sink. Every frame leaves through a declared sink, never an undeclared host (POSH-008 fence)."@en .
+
+posh:shape a rdf:Property ;
+  rdfs:domain posh:IngressRoute ;
+  rdfs:range sh:NodeShape ;
+  rdfs:label "shape"@en ;
+  rdfs:comment "Link from a route to the SHACL NodeShape its frames must conform to before admission."@en .
+
+# Auxiliary properties (design.md §2 examples; kept for CONSTRUCT parity)
+
+posh:membraneOp a rdf:Property ;
+  rdfs:domain posh:IngressRoute ;
+  rdfs:range xsd:string ;
+  rdfs:label "membraneOp"@en ;
+  rdfs:comment "Membrane operation name crossing the membrane for this route (e.g. \"arm.request\")."@en .
+
+posh:deliverTo a rdf:Property ;
+  rdfs:domain posh:Sink ;
+  rdfs:range xsd:string ;
+  rdfs:label "deliverTo"@en ;
+  rdfs:comment "Sink delivery target host (allowlist-admitted only, POSH-008)."@en .
+
+posh:receiptRule a rdf:Property ;
+  rdfs:domain posh:Sink ;
+  rdfs:range posh:ReceiptRule ;
+  rdfs:label "receiptRule"@en ;
+  rdfs:comment "Receipt policy governing the sink's emitted tokens."@en .
+
+posh:transport a rdf:Property ;
+  rdfs:domain posh:Sink ;
+  rdfs:range xsd:string ;
+  rdfs:label "transport"@en ;
+  rdfs:comment "Sink transport (e.g. uds-json-v1)."@en .
+
+posh:ingressPort a rdf:Property ;
+  rdfs:domain posh:IngressRoute ;
+  rdfs:range xsd:string ;
+  rdfs:label "ingressPort"@en ;
+  rdfs:comment "Port In listener (e.g. uds / tcp:9443)."@en .
+
+posh:onMissing a rdf:Property ;
+  rdfs:domain posh:ReceiptRule ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Fail-closed action when a receipt is missing: REFUSE."@en .
+
+posh:tokenSize a rdf:Property ;
+  rdfs:domain posh:ReceiptRule ;
+  rdfs:range xsd:integer ;
+  rdfs:label "tokenSize"@en ;
+  rdfs:comment "Receipt token size in bytes (32 = BLAKE3 Merkle)."@en .
+
+# ---------------------------------------------------------------- A-box
+# Instance individuals live in examples/posh_instance.ttl (the pack
+# manifest imports it: [ontology] imports). They were moved out of the
+# T-box file so the merged graph passes the pack's own closed SHACL
+# shapes (sh:closed would flag rdfs:label / ingressPort / transport on
+# route/turnstile/sink individuals). F12 lane, v26.10.30.

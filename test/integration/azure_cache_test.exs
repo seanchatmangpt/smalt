@@ -83,6 +83,31 @@ defmodule Smalt.Integration.AzureCacheTest do
     assert {:ok, ":0\r\n"} = AzureCache.handle(account, ["EXISTS", "k"])
   end
 
+  test "SET k v EX/PX (connect-redis session-write shape) sets a real TTL", %{
+    account: account
+  } do
+    assert {:ok, "+OK\r\n"} = AzureCache.handle(account, ["SET", "sess:a", "payload", "EX", "100"])
+    assert {:ok, ":1\r\n"} = AzureCache.handle(account, ["EXISTS", "sess:a"])
+    assert {:ok, wire} = AzureCache.handle(account, ["TTL", "sess:a"])
+    assert {:integer, ttl} = dec(wire)
+    assert ttl in 1..100
+
+    assert {:ok, "+OK\r\n"} = AzureCache.handle(account, ["SET", "sess:b", "payload", "PX", "250"])
+    assert {:ok, wire} = AzureCache.handle(account, ["TTL", "sess:b"])
+    assert {:integer, ttl2} = dec(wire)
+    # 250ms rounds down to 0 seconds (faithful Redis TTL-in-seconds rounding).
+    assert ttl2 in 0..1
+
+    assert {:error, wire} = AzureCache.handle(account, ["SET", "k", "v", "EX", "abc"])
+    assert {:error_reply, msg} = dec(wire)
+    assert msg =~ "not an integer"
+
+    # setIfAbsent shape: NX + PX; absent key -> OK, present key -> nil bulk.
+    assert {:ok, "+OK\r\n"} = AzureCache.handle(account, ["SET", "nx1", "v", "NX", "PX", "5000"])
+    assert {:ok, wire} = AzureCache.handle(account, ["SET", "nx1", "v2", "NX", "PX", "5000"])
+    assert {:bulk, nil} = dec(wire)
+  end
+
   test "INCR/DECR are atomic via Cachex.incr/decr; non-integer strings refuse", %{
     account: account
   } do
@@ -227,7 +252,11 @@ defmodule Smalt.Integration.AzureCacheTest do
     assert info =~ "azure_backing:cachex-"
   end
 
-  test "HELLO serves proto 2 and REFUSES HELLO 3 (RESP2-only law retained)", %{
+  # HELLO 3 pinion flip: HELLO 3 now answers the successful hello map with
+  # "proto" honest as "2" (RESP3-speaking clients parse RESP2; the wire emits
+  # RESP2 only). Receipt-gated:
+  # docs/jira/v26.10.29/receipts/r1-t01-redis-wire.md (HELLO flip addendum).
+  test "HELLO serves proto 2; HELLO 3 answers the same map with proto=2 (wire-consumer flip)", %{
     account: account
   } do
     assert {:ok, wire} = AzureCache.handle(account, ["HELLO"])
@@ -237,9 +266,11 @@ defmodule Smalt.Integration.AzureCacheTest do
     proto_idx = Enum.find_index(hello, &match?({:bulk, "proto"}, &1))
     assert {:bulk, "2"} = Enum.fetch!(hello, proto_idx + 1)
 
-    assert {:error, wire} = AzureCache.handle(account, ["HELLO", "3"])
-    assert {:error_reply, msg} = dec(wire)
-    assert msg =~ "NOPROTO"
+    assert {:ok, wire3} = AzureCache.handle(account, ["HELLO", "3"])
+    assert {:array, hello3} = dec(wire3)
+
+    proto3_idx = Enum.find_index(hello3, &match?({:bulk, "proto"}, &1))
+    assert {:bulk, "2"} = Enum.fetch!(hello3, proto3_idx + 1)
   end
 
   test "AUTH accepts any password (keys are advisory — documented divergence)", %{

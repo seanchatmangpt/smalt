@@ -10,9 +10,13 @@
 # carried as org.smalt.subject=${SUBJECT_SHA} (same contract as the burn
 # image, docker/Dockerfile — preserve that discipline).
 #
-# Pin: same builder base as docker/Dockerfile (hexpm/elixir 1.19.5 / OTP
-# 28.5.0.2 / alpine 3.20.9, digest-pinned multi-arch index) so the ERTS/NIF
-# ABI matches the tree's development base. wasmex (rustler) and ex4pm's
+# Pin: same builder base as docker/Dockerfile (hexpm/elixir 1.20.4 / OTP
+# 29.1.2 / alpine 3.21.9, digest-pinned multi-arch index) so the ERTS/NIF
+# ABI matches the tree's development base. The RUNTIME stage is alpine
+# 3.20.9, also digest-pinned (multi-arch index
+# sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805,
+# docker buildx imagetools inspect alpine:3.20.9) so the musl runtime base
+# cannot drift under a tag move. wasmex (rustler) and ex4pm's
 # explorer ship NIFs that compile from source on musl — the builder needs
 # the rust toolchain; the runtime stage needs none of it.
 #
@@ -27,7 +31,7 @@
 # ============================================================================
 # Stage 1 — builder (discarded; nothing but /app/_release survives)
 # ============================================================================
-FROM hexpm/elixir:1.19.5-erlang-28.5.0.2-alpine-3.20.9@sha256:29c51579d430b307d4f6182775373bb18c90173d382ba23011d81808b0fab8cd AS builder
+FROM hexpm/elixir:1.20.4-erlang-29.1.2-alpine-3.21.9@sha256:1e37e442ee792b583d37a16df4b0841296fe52539b182a5b8984dfe7368ab3d9 AS builder
 
 ARG SUBJECT_SHA
 # Build-time validation: refuse the build if SUBJECT_SHA is unset/empty or
@@ -102,7 +106,7 @@ RUN for d in /app/_release/releases/*/; do mkdir -p "$d/env" \
 #   ncurses-libs               ERTS link dep
 #   libstdc++ / libgcc         rust NIF (wasmex, explorer) link deps
 #   zlib                       compression NIF link deps
-FROM alpine:3.20.9 AS runtime
+FROM alpine:3.20.9@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805 AS runtime
 
 # Re-declare in this stage: build-args do not cross FROM boundaries, so the
 # subject label + receipt env here would otherwise be an UndefinedVar (the

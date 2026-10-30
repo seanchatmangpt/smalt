@@ -55,19 +55,27 @@ COPY mix.exs mix.lock ./
 
 # Sibling path deps. ash_r2rml is in scope for MIX_ENV=test
 # (only: [:dev, :test]); ash_graphlaw / ggen_igniter are :dev-only but Mix
-# still validates their declared paths at `mix deps.get`, so all three
+# still validates their declared paths at `mix deps.get`, so all
 # siblings are injected as extra build contexts and symlinked:
 #   docker build -f docker/Dockerfile ... \
 #     --build-context ash_r2rml=~/ash_r2rml \
 #     --build-context ash_graphlaw=~/ash_graphlaw \
-#     --build-context ggen_igniter=~/ggen_igniter
+#     --build-context ggen_igniter=~/ggen_igniter \
+#     --build-context graphlaw_ex=~/graphlaw/graphlaw_ex
+# graphlaw carries the :graphlaw_ex path dep (mix.exs ../graphlaw/graphlaw_ex,
+# added 2026-10-29 publish-packaging; Dockerfile wiring caught up here).
+# Context is scoped to the graphlaw_ex subproject only (273M) — the whole
+# graphlaw checkout is ~7.7GB of Rust target dirs the BEAM build never reads
+# (witnessed: ENOSPC in the colima 60GiB VM on the full context).
 COPY --from=ash_r2rml / /ctx/ash_r2rml
 COPY --from=ash_graphlaw / /ctx/ash_graphlaw
 COPY --from=ggen_igniter / /ctx/ggen_igniter
-RUN mkdir -p /sibs \
+COPY --from=graphlaw_ex / /ctx/graphlaw_ex
+RUN mkdir -p /sibs /graphlaw \
  && ln -sfn /ctx/ash_r2rml /ash_r2rml \
  && ln -sfn /ctx/ash_graphlaw /ash_graphlaw \
- && ln -sfn /ctx/ggen_igniter /ggen_igniter
+ && ln -sfn /ctx/ggen_igniter /ggen_igniter \
+ && ln -sfn /ctx/graphlaw_ex /graphlaw/graphlaw_ex
 
 RUN mix local.hex --force && mix local.rebar --force
 # HEX_HTTP_CONCURRENCY=1 + long timeout: the colima VM's NAT has shown TLS
@@ -109,6 +117,18 @@ EXPOSE 9443 9444 8443 5672 5673 9545
 # docker/compose.yaml services (burn-a..d) which override `command`.
 CMD ["mix", "run", "-e", "IO.puts(:smalt)"]
 
+# --- posh membrane build stage (POSH-005) -----------------------------------
+# Pinned golang toolchain matching posh/go.mod (go 1.23). Index digest resolved
+# via `docker buildx imagetools inspect golang:1.23-alpine` 2026-10-30.
+# CGO_ENABLED=0 static build, same contract as posh/Makefile build target.
+FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS posh-build
+# alpine golang image ships neither make nor git; the Makefile needs make,
+# and git describe (absent .git in the COPY) falls back to VERSION=dev.
+RUN apk add --no-cache make git
+COPY posh /posh-src
+WORKDIR /posh-src
+RUN CGO_ENABLED=0 make build
+
 # --- release target (prod) --------------------------------------------------
 FROM deps AS release
 ENV MIX_ENV=prod
@@ -126,3 +146,5 @@ RUN for d in /app/_release/releases/*/; do mkdir -p "$d/env" \
       && cp /tmp/burn-env/*.exs "$d/env/" ; done && rm -rf /tmp/burn-env
 EXPOSE 9443 9444 8443 5672 5673 9545
 CMD ["/app/_release/bin/smalt", "start"]
+# POSH membrane binary (POSH-005 sidecar) rides the release image.
+COPY --from=posh-build /posh-src/bin/posh /posh/bin/posh

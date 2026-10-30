@@ -1,0 +1,71 @@
+{
+  "schema": "smalt.posh.dflss-audit-receipt/1",
+  "window": "v26.10.30",
+  "timestamp_iso": "2026-10-30T12:05:00-07:00",
+  "git_sha": "35bd36d021928f083f42d484ffdd2676adb89e82",
+  "lane": "F7",
+  "cgo_enabled": 0,
+  "static_binary_verified": true,
+  "static_binary_note": "CI platform note: static binary verification asserted for the CI linux/amd64 CGO_ENABLED=0 build target; local darwin runtime is not the verification surface.",
+  "dpmo": 0.0,
+  "dpmo_note": "0.0 defects per million opportunities within the MEASURED gate set (egress_fence_gate, mutation/turnstile F4, parity coverage); pending gates are excluded from the denominator until their receipts land.",
+  "andon_signals": {
+    "compilation_gate": {
+      "verdict": "UNKNOWN",
+      "note": "F11 compilation-gate receipt not on disk at audit time (receipts/ measured/, posh-court/ empty; no f11 file under the window).",
+      "evidence": [],
+      "missing_receipt": "receipts/posh-court/ — F11 compilation gate receipt",
+      "pending": true
+    },
+    "allocation_gate": {
+      "verdict": "UNKNOWN",
+      "note": "C1/F11 allocation-gate receipts not on disk at audit time.",
+      "evidence": [],
+      "missing_receipt": "receipts/ — C1 allocation gate receipt",
+      "pending": true
+    },
+    "egress_fence_gate": {
+      "verdict": "GREEN",
+      "note": "NAT64 (KD-POSH-6) CLOSED in the register with an on-disk go-test close witness; parity coverage gate exit 0 with all egress_face cells pass or registered-divergence.",
+      "evidence": [
+        "posh/KNOWN_DIVERGENCES.md",
+        "docs/jira/posh/v26.10.30/receipts/parity/posh009-coverage-gate-green.json",
+        "docs/jira/posh/v26.10.30/receipts/parity/posh009-coverage-gate-flip.json"
+      ]
+    },
+    "smalt_court_gate": {
+      "verdict": "UNKNOWN",
+      "note": "No F2 '4/4 MATCH' witness receipt on disk. The only court log on disk (tmp/posh/posh-court-20261030-f3.log) is a FAIL: 0/8 PASS, exit 1 (kind node-disk preflight), posh-court-20261030-f3.exit = 1. Not guessing GREEN from a failed run.",
+      "evidence": [
+        "tmp/posh/posh-court-20261030-f3.log",
+        "tmp/posh/posh-court-20261030-f3.exit"
+      ],
+      "pending": true
+    },
+    "zero_drift_gate": {
+      "verdict": "UNKNOWN",
+      "note": "PENDING-F3: marked UNKNOWN until F3's receipt lands; the f3 court attempt on disk failed (exit 1) and produced no green receipt.",
+      "evidence": [
+        "tmp/posh/posh-court-20261030-f3.log"
+      ],
+      "missing_receipt": "receipts/ — F3 zero-drift green-run receipt",
+      "pending": true
+    }
+  },
+  "mutation_receipt": {
+    "lane": "F4",
+    "verdict": "PASS",
+    "evidence": [
+      "docs/jira/posh/v26.10.30/receipts/mutation/turnstile-flip.json"
+    ]
+  },
+  "composite_signal": "PENDING",
+  "pending": [
+    "zero_drift_gate (F3 receipt; f3 court run on disk is FAIL 0/8, exit 1)",
+    "compilation_gate receipt (F11)",
+    "allocation_gate receipt (C1/F11)",
+    "smalt_court_gate F2 4/4 MATCH witness receipt",
+    "measure_receipt (F5)"
+  ],
+  "notes": "Note on the F4 turnstile mutation receipt: it exists on disk with verdict PASS (lane F4, context solo, byte-exact restore), so it is recorded as evidence rather than a pending item. Every evidence path in this receipt was verified to exist on disk at audit time; gates whose dispatcher-assigned receipts are absent carry verdict UNKNOWN and an explicit pending entry, never a guessed GREEN."
+}

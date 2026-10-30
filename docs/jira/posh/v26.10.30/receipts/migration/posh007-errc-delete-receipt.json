@@ -1,0 +1,79 @@
+{
+  "schema": "smalt.posh.errc-delete-receipt/1",
+  "status": "APPLIED",
+  "standing": "ALIVE",
+  "Context": "solo",
+  "applied": true,
+  "ticket": "POSH-007",
+  "window": "v26.10.30",
+  "subject": "adapters/terraform-provider-smalt/",
+  "action": "ERRC-delete (archive or remove) after posh provider merge",
+  "authority": "coordinator-owned transition; lane W-F produced this draft only",
+  "generated": "2026-10-30",
+  "ledger": "receipts/migration/terraform-provider-smalt-ledger.md",
+  "summary": {
+    "files_enumerated": 31,
+    "ported": 27,
+    "discarded": 2,
+    "keep_as_reference": 2,
+    "build_trees_present": 0
+  },
+  "preconditions": [
+    "posh provider merge complete (per POSH-007 acceptance)",
+    "ledger row exists for every file in the tree at deletion time (re-enumerate; current count 31)",
+    "examples/ and README.md protocol facts confirmed carried into posh docs"
+  ],
+  "deletion_set": {
+    "delete": [
+      "main.go",
+      "go.mod",
+      "go.sum",
+      "internal/provider/ (17 .go files, see ledger rows 4-20)",
+      "Makefile",
+      "scripts/dev_overrides.sh",
+      "dev.tfrc",
+      "terraform-provider-azurerm",
+      ".editorconfig",
+      ".gitignore",
+      ".golangci.yml",
+      "tools.go"
+    ],
+    "archive_before_delete": [
+      "README.md",
+      "examples/basic/main.tf",
+      "examples/kind/main.tf"
+    ]
+  },
+  "falsifier": "posh provider merged while terraform-provider-smalt compiles in-tree with no ledger row = FAIL (POSH-007)",
+  "notes": "APPLIED 2026-10-30 (lane R7): applies to the repo-ROOT terraform-provider-smalt/ Elixir spike (65 files + _build-lane{2..11,K}/ + deps/ aggregate; distinct from the adapters/ Go port covered by the 31-row ledger above, which stays).",
+  "archive": {
+    "path": "tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz",
+    "sha256": "f0fe321b6db94a4ab686a6226bef72412518cccc3ffacd78c3e01a0ddab6a16d",
+    "size_bytes": 78080628,
+    "tarball_entries": 11957,
+    "created": "2026-10-30",
+    "covers": "full root terraform-provider-smalt/ tree including _build-lane* and deps/",
+    "round_trip_samples": [
+      {
+        "file": "terraform-provider-smalt/mix.exs",
+        "cmp": "IDENTICAL"
+      },
+      {
+        "file": "terraform-provider-smalt/docs/schema_parity.md",
+        "cmp": "IDENTICAL"
+      },
+      {
+        "file": "terraform-provider-smalt/lib/tfprovider_smalt/main.ex",
+        "cmp": "IDENTICAL"
+      }
+    ]
+  },
+  "root_spike_disposition": {
+    "ledger_rows_added": 67,
+    "discarded": 64,
+    "keep_as_reference_archive_before_delete": 3,
+    "ledger_section": "Root-level Elixir spike (pre-Go-port) — disposition"
+  },
+  "applied_at": "2026-10-30",
+  "falsifier_check": "test ! -d /Users/sac/smalt/terraform-provider-smalt && test -s tmp/posh/archive/terraform-provider-smalt-elixir-spike-20261030.tar.gz — verified post-delete"
+}

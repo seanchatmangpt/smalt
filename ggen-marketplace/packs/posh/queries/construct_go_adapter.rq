@@ -1,0 +1,26 @@
+# construct_go_adapter.rq — ggen CONSTRUCT projection (lane L3, v26.10.30).
+#
+# Compiles admitted route/sink topology into the Go adapter solution rows
+# that templates/go_membrane_op.go.tmpl renders to
+# posh/internal/api/generated_adapters.go — one dispatch method per
+# posh:membraneOp, allowlist entry per sink host, receipt rule wired to
+# the kernel ABI call. (TRIZ Principle 28; design.md §3.2 adapted to the
+# L3 vocabulary.) Allowlist in binary and posh.yaml cannot drift: both
+# are projections of this graph.
+PREFIX posh: <https://smalt.dev/posh/ns#>
+
+CONSTRUCT {
+  ?route a posh:GeneratedAdapter ;
+    posh:goMethod  ?method ;
+    posh:clientCall ?op ;
+    posh:allowHost ?host ;
+    posh:receipt   ?receipt .
+} WHERE {
+  ?route a posh:IngressRoute ;
+    posh:admittedBy ?turnstile ;
+    posh:membraneOp ?op .
+  ?turnstile posh:emits ?receipt .
+  ?route posh:sink ?sink .
+  ?sink posh:deliverTo ?host .
+  BIND(REPLACE(?op, "[.-]", "_") AS ?method)
+}

@@ -1,0 +1,69 @@
+# egress.ttl — Starboard Out SHACL shapes (lane L3, v26.10.30).
+#
+# Law: every posh:Turnstile MUST emit exactly one posh:Receipt. No frame
+# leaves Starboard Out without its 32-byte BLAKE3 Merkle receipt token
+# (working-backwards.md receipt equation; charter CTQ 100% transitions).
+# EgressRoutes must terminate in a declared sink carrying a receipt rule.
+
+@prefix posh: <https://smalt.dev/posh/ns#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+posh:TurnstileShape a sh:NodeShape ;
+  sh:closed true ;
+  sh:ignoredProperties (rdf:type) ;
+  sh:targetClass posh:Turnstile ;
+  sh:property [
+    sh:path posh:emits ;
+    sh:class posh:Receipt ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:message "Every Turnstile MUST emit exactly one Receipt; a turnstile without a receipt edge is a refused subject."@en ;
+  ] .
+
+posh:EgressRouteShape a sh:NodeShape ;
+  sh:closed true ;
+  sh:ignoredProperties (rdf:type) ;
+  sh:targetClass posh:EgressRoute ;
+  sh:property [
+    sh:path posh:sink ;
+    sh:class posh:Sink ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:message "Every EgressRoute MUST terminate in exactly one declared Sink — frames never leave through an undeclared host (POSH-008 fail-closed fence)."@en ;
+  ] .
+
+posh:SinkShape a sh:NodeShape ;
+  sh:closed true ;
+  sh:ignoredProperties (rdf:type) ;
+  sh:targetClass posh:Sink ;
+  sh:property [
+    sh:path posh:deliverTo ;
+    sh:datatype xsd:string ;
+    sh:minCount 1 ;
+    sh:message "Every Sink MUST declare its deliverTo host (the graph IS the egress allowlist)."@en ;
+  ] ;
+  sh:property [
+    sh:path posh:receiptRule ;
+    sh:class posh:ReceiptRule ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:message "Every Sink MUST bind exactly one ReceiptRule (onMissing=REFUSE, fail-closed)."@en ;
+  ] .
+
+posh:ReceiptRuleShape a sh:NodeShape ;
+  sh:closed true ;
+  sh:ignoredProperties (rdf:type) ;
+  sh:targetClass posh:ReceiptRule ;
+  sh:property [
+    sh:path posh:onMissing ;
+    sh:hasValue "REFUSE" ;
+    sh:message "Receipt rules are fail-closed: onMissing MUST be REFUSE."@en ;
+  ] ;
+  sh:property [
+    sh:path posh:tokenSize ;
+    sh:datatype xsd:integer ;
+    sh:hasValue 32 ;
+    sh:message "Receipt tokens are exactly 32 bytes (BLAKE3 Merkle)."@en ;
+  ] .

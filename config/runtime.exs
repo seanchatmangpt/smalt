@@ -29,3 +29,13 @@ case planes do
       end
     end)
 end
+
+# KIND-E2E unblock (2026-10-30, lane verification fix, disclosed): the plane
+# supervisors read the APP env :bind_all_interfaces (default false -> loopback
+# bind) but nothing mapped the SMALT_BIND_ALL_INTERFACES env contract to it —
+# in kind the ARM front door (9443) bound 127.0.0.1, kubelet probes failed,
+# and the pod SIGTERMed ~31s after a clean boot (witnessed smalt-backend-0).
+# Runtime mapping: env set -> flag on; unset -> nil (default boot unchanged).
+if System.get_env("SMALT_BIND_ALL_INTERFACES") in ["1", "true"] do
+  config :smalt, :bind_all_interfaces, true
+end

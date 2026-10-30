@@ -46,8 +46,8 @@ data:
   SMALT_PLANES: "control,data,integration,identity"
   SMALT_PROFILE: "unbounded"
   SMALT_DATA_DIR: "/tmp/smalt-data"
-  SMALT_TLS_CERTFILE: "/etc/smalt/tls/cert.pem"
-  SMALT_TLS_KEYFILE: "/etc/smalt/tls/key.pem"
+  SMALT_TLS_CERTFILE: "/etc/smalt/tls/tls.crt"
+  SMALT_TLS_KEYFILE: "/etc/smalt/tls/tls.key"
   ERL_AFLAGS: "-kernel inet_dist_listen_min 9000 -kernel inet_dist_listen_max 9009"
   RELEASE_DISTRIBUTION: "name"
 ---
@@ -188,6 +188,9 @@ spec:
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
             - { name: tls, mountPath: /etc/smalt/tls, readOnly: true }
+            # POSH-005: the BEAM container reaches the membrane over the
+            # shared posh-run UDS emptyDir (same volume the sidecar mounts).
+            - { name: posh-run, mountPath: /run-posh }
           # BK-PROBE (BK-ARM1 F-1): probes point at the real kernel
           # self-report (Smalt.Health) — readiness 200/503 on store
           # integrity + memory bounds + cluster verdict; liveness is the
@@ -207,6 +210,41 @@ spec:
             initialDelaySeconds: 20
             periodSeconds: 5
             failureThreshold: 3
+        # POSH membrane sidecar (POSH-005 phase change: latent → gas): the
+        # real posh binary runs as a long-lived process beside the BEAM,
+        # serving the 4-byte length-prefixed JSON membrane over a UDS in a
+        # shared emptyDir. Same image (the binary rides the release
+        # image); default-deny egress (egress_allowlist: []).
+        - name: posh-membrane
+          image: smalt:local
+          imagePullPolicy: Never
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cat > /run-posh/posh.yaml <<EOF
+              socket: /run-posh/posh.sock
+              tcp_addr: ""
+              egress_allowlist: []
+              EOF
+              exec /posh/bin/posh -config /run-posh/posh.yaml
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: posh-run, mountPath: /run-posh }
+          # healthz: the membrane is alive iff its UDS exists (exec probe,
+          # no HTTP surface added).
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "test -S /run-posh/posh.sock"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
       volumes:
         # tmpfs scratch for /tmp: the only writable path
         # (readOnlyRootFilesystem requirement); DETS mirrors land under
@@ -218,3 +256,12 @@ spec:
         - name: tls
           secret:
             secretName: smalt-tls
+            # Env contract (SMALT_TLS_CERTFILE/KEYFILE in the ConfigMap) names
+            # tls.crt/tls.key — the Secret's native kubernetes.io/tls keys.
+            # Paths must stay in sync with the ConfigMap: a missing file makes
+            # the TLS twin fall back to :auto dev-cert minting, which crashes
+            # (:erofs) on the readOnlyRootFilesystem (witnessed 2026-10-30).
+        # Shared UDS volume for the posh membrane sidecar (POSH-005).
+        - name: posh-run
+          emptyDir:
+            medium: Memory

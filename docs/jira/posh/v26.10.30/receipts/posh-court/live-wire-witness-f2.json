@@ -1,0 +1,42 @@
+{
+  "receipt": "smalt.posh.live-wire-witness/1",
+  "lane": "F2",
+  "date": "2026-10-30",
+  "standing": "ALIVE",
+  "Context": "full",
+  "subject": "smalt substrate beam pid 47052, ARM plane http://127.0.0.1:9443",
+  "instrument": "curl + python3 blake3 (independent oracle)",
+  "checks": [
+    {
+      "name": "sts_mint",
+      "command": "curl -fsS -X POST http://127.0.0.1:9443/smalt/oauth2/v2.0/token (client_credentials, client_id=smalt-sovereign)",
+      "exit": 0,
+      "result": "Bearer JWT minted, expires_in=3600"
+    },
+    {
+      "name": "GET resourcegroups turnstile",
+      "exit": 0,
+      "x_smalt_receipt_timestamp": "1793385294412592468",
+      "x_smalt_receipt_turnstile": "3d0e2d02813de3373cb2b88216fbbf5dfcef15946321570864a1f84e3c95dddb",
+      "recomputed_blake3": "3d0e2d02813de3373cb2b88216fbbf5dfcef15946321570864a1f84e3c95dddb",
+      "match": true
+    },
+    {
+      "name": "PUT rg-wit-f2 turnstile (body-dependent)",
+      "exit": 0,
+      "x_smalt_receipt_timestamp": "1793385294438150242",
+      "x_smalt_receipt_turnstile": "ba5bc515a4a2740a3be0a4eb1b6830aebc977bdd67cc035fac4c39115ab6376c",
+      "recomputed_blake3": "ba5bc515a4a2740a3be0a4eb1b6830aebc977bdd67cc035fac4c39115ab6376c",
+      "match": true
+    },
+    {
+      "name": "pre-membrane 401 carries receipt (plug mounted above Bearer)",
+      "exit": 0,
+      "status": 401,
+      "x_smalt_receipt_turnstile": "bba2f851...",
+      "recomputed": "match",
+      "match": true
+    }
+  ],
+  "verdict": "GREEN — 4/4 MATCH; Gate 4 live end-to-end (Elixir emitter, Go-contract byte layout, independent python-blake3 oracle)"
+}

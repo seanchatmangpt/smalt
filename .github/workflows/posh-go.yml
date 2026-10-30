@@ -1,0 +1,104 @@
+# posh-go.yml — Go CI for posh/ and the terraform provider adapter (lane 10).
+#
+# Two independent jobs over real artifacts, no secrets:
+#   - posh: gofmt cleanliness, go vet, -race tests, and a static build whose
+#     `file` output proves CGO_ENABLED=0 static linkage.
+#   - provider: gofmt, vet, tests, then `go build` the provider binary and
+#     upload it as a 7-day artifact.
+#
+# Live tests stay skipped: TFPOSHT_LIVE is never set here, so
+# adapters/terraform-provider-smalt/internal/provider/live_test.go gates off.
+name: posh-go
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'posh/**'
+      - 'adapters/terraform-provider-smalt/**'
+      - '.github/workflows/posh-go.yml'
+  pull_request:
+    paths:
+      - 'posh/**'
+      - 'adapters/terraform-provider-smalt/**'
+      - '.github/workflows/posh-go.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  posh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: posh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Go (from posh/go.mod)
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.5.0
+        with:
+          go-version-file: posh/go.mod
+          cache-dependency-path: posh/go.sum
+
+      - name: gofmt clean
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt -l flagged:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+      - name: Static build + file check
+        run: |
+          make build
+          file bin/posh | grep -i 'statically linked'
+
+  provider:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adapters/terraform-provider-smalt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Go (from adapters/terraform-provider-smalt/go.mod)
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.5.0
+        with:
+          go-version-file: adapters/terraform-provider-smalt/go.mod
+          cache-dependency-path: adapters/terraform-provider-smalt/go.sum
+
+      - name: gofmt clean
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt -l flagged:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test (TFPOSHT_LIVE unset; live tier skipped)
+        run: go test ./...
+
+      - name: Build provider binary
+        run: go build -trimpath -o terraform-provider-smalt .
+
+      - name: Upload provider binary (7 days)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: terraform-provider-smalt
+          path: adapters/terraform-provider-smalt/terraform-provider-smalt
+          retention-days: 7

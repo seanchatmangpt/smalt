@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/posh"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "gomod"
+    directory: "/adapters/terraform-provider-smalt"
+    schedule:
+      interval: "weekly"

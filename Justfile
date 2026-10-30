@@ -314,3 +314,11 @@ import 'justfile.d/54-checkpoint.just'
 
 # 55-sovereign-image — neutral-tag sovereign image build (R10, v26.10.25)
 import 'justfile.d/55-sovereign-image.just'
+
+# 56-courtroom — T03 consumer court: courtroom-platform-az on smalt (v26.10.29)
+import 'justfile.d/56-courtroom.just'
+import 'justfile.d/57-tf-provider.just'
+# 58-posh — POSH orchestration: generate/build/install/court (v26.10.30 L5)
+import 'justfile.d/58-posh.just'
+# 59-posh-ops — POSH membrane process ops: posh-up/posh-down (v26.10.30 P1)
+import 'justfile.d/59-posh-ops.just'

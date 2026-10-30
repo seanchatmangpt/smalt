@@ -1,0 +1,128 @@
+# courtroom-api.yaml — lane KIND-E2E (v26.10.29): @courtroom/api in-cluster,
+# wired to the smalt faces (redis wire session/assertion KV + SAML IdP).
+#
+# Image: courtroom-api:kind — built by scripts/courtroom_kind_court.sh from a
+# git-archive materialization of the consumer repo at HEAD (repo untouched).
+#
+# Env contract (apps/api/src/config.ts + T03 host court):
+#   - SAML_IDP_CERT_PATH (file form of the task's SAML_IDP_CERT): the IdP
+#     signing cert PEM, Secret-mounted read-only. Same PEM as the smalt pod's
+#     signing material — one cert, two mounts, zero baked secrets.
+#   - NODE_ENV=development: loadConfig refuses http APP_ORIGIN in production
+#     ("APP_ORIGIN: HTTPS is required in production") and forces secure
+#     cookies; the in-cluster flow origin is http service DNS. Typed
+#     accommodation, disclosed in the receipt (ACA prod = https ingress).
+#   - APP_ORIGIN = the web origin (the public browser origin in ACA
+#     topology); the api derives its ACS URL and logout same-origin law from
+#     it, and the web proxies /api/* + /saml/* to this api with the original
+#     Host/Origin/cookies forwarded.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: courtroom-api
+  namespace: default
+  labels:
+    app: courtroom-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: courtroom-api
+  template:
+    metadata:
+      labels:
+        app: courtroom-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: api
+          image: courtroom-api:kind
+          imagePullPolicy: Never
+          env:
+            - name: NODE_ENV
+              value: development
+            - name: PORT
+              value: "8080"
+            - name: REDIS_URL
+              value: redis://courtroom-smalt.default.svc.cluster.local:16380
+            - name: APP_ORIGIN
+              value: http://localhost:3000
+            # P02: IdP SLO face for end-to-end logout.
+            - name: SAML_IDP_LOGOUT_URL
+              value: http://courtroom-smalt.default.svc.cluster.local:19445/slo
+            # P01 claim shape: Entra tenant + authz aligned with the IdP claims.
+            - name: ENTRA_TENANT_ID
+              value: "11111111-1111-4111-8111-111111111111"
+            - name: AUTH_ALLOWED_GROUP_IDS
+              value: "33333333-3333-4333-8333-333333333331,33333333-3333-4333-8333-333333333332"
+            - name: AUTH_ALLOWED_ROLES
+              value: Admin
+            - name: AUTH_GROUP_LABELS
+              value: "33333333-3333-4333-8333-333333333331=Courtroom-Admins"
+            - name: SAML_ENTRY_POINT
+              value: http://courtroom-smalt.default.svc.cluster.local:19445/sso
+            - name: SAML_IDP_ISSUER
+              value: urn:smalt:identity:saml
+            - name: SAML_ISSUER
+              value: http://courtroom-web.default.svc.cluster.local:3000
+            - name: SAML_IDP_CERT_PATH
+              value: /etc/courtroom/idp/dev-cert.pem
+            - name: AUTH_ALLOW_ALL_ASSIGNED_USERS
+              value: "true"
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: courtroom-session-secret
+                  key: secret
+          ports:
+            - { name: http, containerPort: 8080 }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            timeoutSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - { name: idp-cert, mountPath: /etc/courtroom/idp, readOnly: true }
+      volumes:
+        - name: idp-cert
+          secret:
+            secretName: courtroom-idp-cert
+# Secret courtroom-idp-cert is populated host-side by
+# scripts/courtroom_kind_court.sh from the smalt dev cert
+# (kubectl create secret ... --from-file=... --dry-run=client | apply).
+# Never baked into any image (.dockerignore excludes *.pem).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: courtroom-api
+  namespace: default
+spec:
+  selector:
+    app: courtroom-api
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+  type: ClusterIP

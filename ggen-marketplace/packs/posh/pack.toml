@@ -1,0 +1,29 @@
+# pack.toml — ggen POSH pack (lane L3, v26.10.30).
+#
+# Turtle domain design for the POSH asymmetric highway (Port In / Starboard
+# Out). Format mirrors packs/smalt-k8s-pack/pack.toml. The pack ships the
+# core ontology (ontology/posh.ttl), the SHACL admission/egress shapes
+# (shapes/), the SPARQL invariant gates + CONSTRUCT projections (queries/),
+# and the Elixir/Go render templates (templates/). Rendered output is
+# never committed by hand: ggen regeneration must be byte-identical
+# (Invariant Gate, dfcharter/design.md §3.3).
+
+[pack]
+name = "posh"
+version = "0.1.0"
+description = "POSH (Port In, Starboard Out) asymmetric-highway pack: IngressRoute/EgressRoute/Turnstile/MembraneOp/Receipt ontology; SHACL shapes enforcing exactly-one admittedBy Turnstile per route, exactly-one emitted Receipt per turnstile, and no route bypassing its turnstile; SPARQL invariant gates (orphan route, turnstile receipt — must be empty) and CONSTRUCT projections to Elixir GenStage pipelines and Go membrane adapters. Fail-closed egress: the graph IS the allowlist (POSH-008)."
+
+[ontology]
+source = "ontology/posh.ttl"
+
+[shapes]
+dir = "shapes"
+
+[queries]
+dir = "queries"
+
+[templates]
+dir = "templates"
+
+[capabilities]
+provides = ["urn:ggen:pack:posh"]

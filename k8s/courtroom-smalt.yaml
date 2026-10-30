@@ -1,0 +1,135 @@
+# courtroom-smalt.yaml — lane KIND-E2E (v26.10.29): smalt substrate faces
+# (redis RESP2/3 wire + SAML 2.0 IdP) in-cluster for the courtroom-platform-az
+# kind end-to-end proof.
+#
+# Modeled on the hand-written canonical k8s/smalt-backend.yaml conventions
+# (ns default, nonroot securityContext, real-observable probes), with these
+# typed deviations, each load-bearing for THIS proof:
+#   1. Deployment (not StatefulSet): a single replica carries both consumer
+#      faces; BEAM distribution/headless DNS is not part of this proof.
+#   2. Image courtroom-smalt:kind — Dockerfile.smalt substrate (mix run boot
+#      path, same as `just up`) built from the smalt WORKING TREE so the
+#      v26.10.29 faces (RedisWire HELLO 3 / SAML IdP) are present. The
+#      canonical smalt:local release image predates today's lanes.
+#   3. Face ports are pinned via the substrate boot eval
+#      (Application.put_env — the r3/T03-lawful pattern; config/config.exs
+#      wires zero System.get_env): redis 16380, saml idp 19445. No smalt
+#      config file is created or edited.
+#   4. TLS material mounts from Secret courtroom-smalt-tls (created host-side
+#      from the dev CA material by scripts/courtroom_kind_court.sh — never
+#      baked into the image; .dockerignore already excludes *.pem). The same
+#      cert PEM is separately mounted into the api pod (SAML_IDP_CERT_PATH)
+#      so the SP pins exactly the IdP's signing cert.
+#   5. The IdP :allowed_acs is pinned to the web origin's ACS
+#      (non-loopback ACS requires an exact allowlist match — saml_idp.ex
+#      ACS_NOT_LOOPBACK law) at the same boot eval.
+#
+# Consumers:
+#   - courtroom-api: REDIS_URL=redis://courtroom-smalt.default.svc.cluster.local:16380
+#   - courtroom-api: SAML_ENTRY_POINT=http://courtroom-smalt.default.svc.cluster.local:19445/sso
+# Court: scripts/courtroom_kind_court.sh; receipt:
+#   docs/jira/v26.10.29/receipts/r13-kind-e2e.md
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: courtroom-smalt
+  namespace: default
+  labels:
+    app: courtroom-smalt
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: courtroom-smalt
+  template:
+    metadata:
+      labels:
+        app: courtroom-smalt
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: smalt
+          image: courtroom-smalt:kind
+          imagePullPolicy: Never
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -eu
+              export HOME=/tmp
+              export MIX_ENV=prod
+              export SMALT_TLS_CERTFILE=/smalt/.smalt/tls/dev-cert.pem
+              export SMALT_TLS_KEYFILE=/smalt/.smalt/tls/dev-key.pem
+              export SSL_CERT_FILE=/smalt/.smalt/tls/ca-cert.pem
+              echo "[courtroom-smalt] booting v26.10.29 faces: redis wire :16380, saml idp :19445 (mix run --no-start eval boot)"
+              cd /smalt
+              find lib/smalt/identity -name "*.ex" -exec touch {} +
+              exec mix run --no-start --no-halt -e 'Application.put_env(:smalt, :redis_port, 16380); Application.put_env(:smalt, :saml_idp_port, 19445); Application.put_env(:smalt, :saml_idp, allowed_acs: ["http://courtroom-web.default.svc.cluster.local:3000/saml/acs", "http://localhost:3000/saml/acs"]); Application.put_env(:smalt, :bind_ip, {0, 0, 0, 0}); Application.put_env(:smalt, :oidc_scheme, :http); Application.put_env(:smalt, :oidc_base_url, "http://localhost:9446"); Application.put_env(:smalt, :oidc_cert_path, "/etc/r30-tls/tls.crt"); Application.put_env(:smalt, :oidc_key_path, "/etc/r30-tls/tls.key"); {:ok, _} = Application.ensure_all_started(:smalt)'
+          env:
+            # NOTE: SMALT_BIND_IP is deliberately NOT set. The env path feeds a
+            # raw STRING into Smalt.Config.bind_ip(); the redis wire's wrapper
+            # parses it, but the SAML IdP child_spec (saml_idp.ex:106) passes
+            # Smalt.Config.bind_ip() RAW into Bandit -> :badarg on non-loopback
+            # binds (witnessed in-cluster 2026-10-29, receipt r13-kind-e2e.md).
+            # Until that parse law lands in saml_idp.ex, the tuple is pinned
+            # here via the application-env config surface instead.
+            - name: SMALT_DATA_DIR
+              value: /tmp/smalt-data
+          ports:
+            - { name: redis, containerPort: 16380 }
+            - { name: saml-idp, containerPort: 19445 }
+            - { name: arm-mgmt, containerPort: 9443 }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            # Real IdP face observable: the SAML entity metadata endpoint.
+            httpGet:
+              path: /metadata
+              port: saml-idp
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            # Redis wire accepts TCP (the face the api depends on).
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: tls, mountPath: /smalt/.smalt/tls, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: tls
+          secret:
+            secretName: courtroom-smalt-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: courtroom-smalt
+  namespace: default
+spec:
+  selector:
+    app: courtroom-smalt
+  ports:
+    - { name: redis, port: 16380, targetPort: redis }
+    - { name: saml-idp, port: 19445, targetPort: saml-idp }
+  type: ClusterIP

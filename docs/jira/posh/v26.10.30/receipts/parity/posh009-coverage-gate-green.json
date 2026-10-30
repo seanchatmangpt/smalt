@@ -1,0 +1,40 @@
+{
+  "receipt": "posh009-coverage-gate-green",
+  "standing": "ALIVE",
+  "date": "2026-10-30",
+  "context": "solo",
+  "command": "python3 scripts/posh_coverage.py",
+  "exit_code": 0,
+  "expected_exit": 0,
+  "command_output": "POSH COVERAGE GATE (mechanical inventory vs register)\n  source faces parsed : 15 across 6 families\n    cli_verb     2\n    egress_face  5\n    error_code   4\n    http_route   2\n    pack         1\n    wire_op      1\n  pack ontology individuals (a posh:IngressRoute): 1\n  register cells      : 15\n  register rows       : 6\nVERDICT: PASS \u2014 every cell pass or registered-divergence; zero silent gaps\n",
+  "cell_counts": {
+    "source_faces": 15,
+    "families": {
+      "cli_verb": 2,
+      "wire_op": 1,
+      "error_code": 4,
+      "http_route": 2,
+      "egress_face": 5,
+      "pack": 1
+    },
+    "pack_ontology_individuals": 1,
+    "register_cells": 15,
+    "register_rows": 6,
+    "pass": 9,
+    "registered_divergence": 6
+  },
+  "verdict": "PASS \u2014 zero silent gaps",
+  "changes_this_run": [
+    "KD-POSH-1 line ref server.go:396 -> server.go:399-400",
+    "KD-POSH-5 (pack:ggen-posh-projection) row + coverage cell added",
+    "KD-POSH-6 (egress_face:nat64) row + registered-only coverage cell added",
+    "cli_verb:arm cell added (pre-existing source face previously silently uncovered)",
+    "posh_coverage.py: pack family parsed from ggen.toml [project] name + ontology individual count; egress_face:nat64 explicit registered-only declaration citing KD-POSH-6"
+  ],
+  "evidence_files": [
+    "posh/KNOWN_DIVERGENCES.md",
+    "scripts/posh_coverage.py",
+    "ggen-marketplace/packs/posh/ontology/posh.ttl",
+    "ggen-marketplace/packs/posh/ggen.toml"
+  ]
+}

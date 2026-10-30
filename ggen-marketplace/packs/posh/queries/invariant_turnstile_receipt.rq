@@ -1,0 +1,16 @@
+# invariant_turnstile_receipt.rq — POSH invariant gate (lane L3, v26.10.30).
+#
+# Any row = a posh:Turnstile that does NOT posh:emits exactly one
+# posh:Receipt (missing receipt edge). MUST be empty on an admitted graph:
+# no frame leaves Starboard Out without its 32-byte BLAKE3 Merkle receipt.
+# Paired with shapes/egress.ttl's TurnstileShape (minCount 1, maxCount 1).
+PREFIX posh: <https://smalt.dev/posh/ns#>
+
+SELECT ?turnstile WHERE {
+  ?turnstile a posh:Turnstile .
+  FILTER NOT EXISTS {
+    ?turnstile posh:emits ?receipt .
+    ?receipt a posh:Receipt .
+  }
+}
+ORDER BY ?turnstile

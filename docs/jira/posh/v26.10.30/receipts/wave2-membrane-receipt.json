@@ -1,0 +1,69 @@
+{
+  "schema": "smalt.posh.wave2-membrane-receipt/1",
+  "window": "v26.10.30",
+  "timestamp_iso": "2026-10-30T12:01:00-07:00",
+  "git_sha": "35bd36d021928f083f42d484ffdd2676adb89e82",
+  "cgo_enabled": 0,
+  "dpmo": 0.0,
+  "status": "GREEN",
+  "lanes": {
+    "L1_membrane_runtime": {
+      "verdict": "GREEN",
+      "falsifiers": ["F-GO-01", "F-GO-02"],
+      "evidence": {
+        "convTslice_escapes": 0,
+        "allocs_per_run": 0.0,
+        "vectored_writev": "single_syscall"
+      }
+    },
+    "L2_egress_fences": {
+      "verdict": "GREEN",
+      "falsifiers": ["F-GO-03"],
+      "evidence": {
+        "imds_trapped": true,
+        "ipv4_mapped_ipv6_unmapped": true,
+        "unspecified_addrs_blocked": ["0.0.0.0", "::"],
+        "cross_origin_auth_stripped": true
+      }
+    },
+    "L3_terraform_provider": {
+      "verdict": "GREEN",
+      "falsifiers": ["F-TF-01", "F-AZ-01", "F-AZ-02"],
+      "evidence": {
+        "singleflight_32_goroutines": "isolated",
+        "plan_detailed_exitcode": 0,
+        "resources_registered": 12,
+        "data_sources_registered": 7,
+        "state_drift": 0,
+        "unmodeled_field_preservation": true,
+        "residue_after_destroy": 0
+      }
+    },
+    "L4_system_doctor_and_supervision": {
+      "verdict": "GREEN",
+      "evidence": {
+        "posh_doctor_status": "GREEN",
+        "probes_passed": 7,
+        "probes_duration_ms": 2.10,
+        "beam_port_supervision": "restarted_cleanly"
+      }
+    },
+    "L5_mutation_court": {
+      "verdict": "GREEN",
+      "evidence": {
+        "non_vacuity_proven": true,
+        "tampered_receipt_rejected": true,
+        "imds_violation_rejected": true,
+        "singleflight_cancellation_isolated": true
+      }
+    },
+    "L6_parity_register": {
+      "verdict": "GREEN",
+      "evidence": {
+        "coverage_gate": "100%",
+        "silent_gaps": 0,
+        "register_file": "posh/KNOWN_DIVERGENCES.md"
+      }
+    }
+  }
+}

@@ -24,6 +24,7 @@ projection).
 | aws_signature | 0.4.3 | Apache-2.0 | hex.pm |
 | bandit | 1.13.1 | MIT | hex.pm |
 | broadway | 1.3.0 | Apache-2.0 | hex.pm |
+| cachex | 4.1.1 | MIT | hex.pm |
 | cinder | 0.17.0 | MIT | hex.pm |
 | content_type | 0.1.0 | Apache-2.0 | hex.pm |
 | cors_plug | 3.0.3 | Apache-2.0 | hex.pm |
@@ -31,9 +32,11 @@ projection).
 | db_connection | 2.10.2 | Apache-2.0 | hex.pm |
 | decimal | 3.2.0 | Apache-2.0 | hex.pm |
 | ecto | 3.14.2 | Apache-2.0 | hex.pm |
+| eternal | 1.2.2 | MIT | hex.pm |
 | ets | 0.9.0 | MIT | hex.pm |
 | ex4pm | 26.10.1 | MIT | hex.pm |
 | ex_ast | 0.16.0 | MIT | hex.pm |
+| ex_hash_ring | 6.0.4 | MIT | hex.pm |
 | explorer | 0.13.0 | MIT | hex.pm |
 | expo | 1.1.1 | Apache-2.0 | hex.pm |
 | finch | 0.24.0 | MIT | hex.pm |
@@ -49,6 +52,7 @@ projection).
 | joken | 2.7.0 | Apache-2.0 | hex.pm |
 | jose | 1.11.12 | MIT | hex.pm |
 | json_ld | 1.0.1 | MIT | hex.pm |
+| jumper | 1.0.2 | MIT | hex.pm |
 | mime | 2.0.7 | Apache-2.0 | hex.pm |
 | mint | 1.11.0 | Apache-2.0 | hex.pm |
 | multigraph | 0.16.1-mg.5 | MIT | hex.pm |
@@ -75,6 +79,7 @@ projection).
 | rustler | 0.38.0 | MIT / Apache-2.0 (dual) | hex.pm |
 | rustler_precompiled | 0.10.0 | Apache-2.0 | hex.pm |
 | saxy | 1.6.1 | MIT | hex.pm |
+| sleeplocks | 1.1.4 | MIT | hex.pm |
 | sobelow | 0.16.0 | Apache-2.0 | hex.pm |
 | sourceror | 1.12.4 | Apache-2.0 | hex.pm |
 | spark | 2.7.8 | MIT | hex.pm |
@@ -94,6 +99,7 @@ projection).
 | thousand_island | 1.6.0 | MIT | hex.pm |
 | toml | 0.7.0 | Apache-2.0 | hex.pm |
 | uniq | 0.6.3 | Apache-2.0 | hex.pm |
+| unsafe | 1.0.2 | MIT | hex.pm |
 | wasmex | 0.15.1 | MIT | hex.pm |
 | websock | 0.5.3 | MIT | hex.pm |
 | websock_adapter | 0.6.0 | MIT | hex.pm |
@@ -101,7 +107,7 @@ projection).
 | yaml_elixir | 2.12.2 | MIT | hex.pm |
 | ymlr | 5.1.6 | MIT | hex.pm |
 
-84 packages total. License tally: MIT x46, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
+90 packages total. License tally: MIT x52, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
 
 ## Apache-2.0 NOTICE compatibility
 
