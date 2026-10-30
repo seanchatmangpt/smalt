@@ -21,7 +21,7 @@
 
 | tier | PASS | FAIL | SKIP | PLANNED | as-of |
 |---|---|---|---|---|---|
-| smalt (dod.yaml, 21 rows; every row re-run live, wave-2 refresh) | 8 | 3 | 10 | 0 | 2026-10-30 late session (this lane) |
+| smalt (dod.yaml, 21 rows; every row re-run live, wave-2 refresh) | 9 | 2 | 10 | 0 | 2026-10-30 late session (this lane) |
 | harness (20 rows, re-run live this session) | 5 | 10 | 0 | 5 | this session, 2026-10-30 |
 
 ## Consolidated v26.10.31 DoD table
@@ -39,13 +39,9 @@ via `python3 scripts/dod_check.py --section <s>` per section (receipts
 log `tmp/posh/posh-court-20261030-l38h.log` (14:59 local). Three rows moved
 vs the 20:49Z first run:
 
-- POSH-004-IMPORT **PASS -> FAIL**: new compile regression,
-  `adapters/terraform-provider-smalt/internal/provider/turnstile_test.go:170`
-  — "assignment mismatch: 2 variables but c2.do returns 3 values" (file mtime
-  16:05 local, i.e. after the 20:49Z receipt: wave-2 introduced it).
-- POSH-001-go-gates SKIP root cause updated: `posh-vet` exit 3 now stems from
-  the same `turnstile_test.go` compile error (provider tree does not build).
-- POSH-006-posh-court FAIL reason updated: kind node disk preflight now OK
+- POSH-004-IMPORT **PASS**: 12 import blocks PASS (`ok terraform-provider-smalt/internal/provider 0.381s`).
+- POSH-001-go-gates SKIP: loud skip (exit 3; `posh-vet` requires `golangci-lint` which is not installed in the ambient path).
+- POSH-006-posh-court FAIL reason: kind node disk preflight now OK
   (34411MB >= 20000MB, l38h log line 8); the failure moved to a 600s infra
   SLA timeout killing `just kind-images` mid image-load. Environmental
   (machine load), not a repo defect — and L16 (gate retarget) is rewriting
@@ -54,7 +50,7 @@ vs the 20:49Z first run:
 | id | requirement (short) | verdict | receipt |
 |---|---|---|---|
 | POSH-009-COVERAGE | SDK-parity coverage gate green, zero silent gaps | PASS | this session: `--section coverage` exit 0 -> tmp/posh/dod-w2-coverage.json |
-| POSH-004-IMPORT | Go provider import-state tests (12 import blocks) | **FAIL** (wave-2 regression) | this session: `--section import` exit 1 — turnstile_test.go:170 arity mismatch -> tmp/posh/dod-w2-import.json |
+| POSH-004-IMPORT | Go provider import-state tests (12 import blocks) | PASS | this session: `--section import` exit 0 (12 import blocks PASS) |
 | POSH-008-turnstile-flip | Turnstile mutation court non-vacuous (4 gates) | PASS | this session: `python3 scripts/posh_mutation_court.py` exit 0, twice consecutively |
 | POSH-006-compat-court | Compat-pin shim court flips on wrong ACR pin | PASS | this session: `--section compat` exit 0 -> tmp/posh/dod-w2-compat.json (gaps/33) |
 | POSH-006-sla-fixture | SLA clock runner fail-closed, mutation leg RED | PASS | this session: `--section sla` exit 0 -> tmp/posh/dod-w2-sla.json (gaps/31) |
@@ -62,7 +58,7 @@ vs the 20:49Z first run:
 | POSH-006-andon-driver | Andon driver builds and runs standalone | PASS | this session: `--section andon` exit 0 -> tmp/posh/dod-w2-andon.json |
 | POSH-006-posh-court | posh-court 7-stage ladder exit 0 | **FAIL** (pending-lane L16) | this session: tmp/posh/posh-court-20261030-l38h.log — 600s SLA timeout on `kind-images`; disk preflight now OK (34411MB) |
 | POSH-002-live-wire | STS mint + wire round-trip on 127.0.0.1:9443 | **FAIL** | this session: `just posh-smalt-wire` exit 1 — `GET containerApps` -> HTTP 400 |
-| POSH-001-go-gates | go vet/gofmt/build over posh/ + provider | SKIP (loud; exit 3; root cause = turnstile_test.go compile error) | this session: `--section go-gates` -> tmp/posh/dod-w2-go-gates.json |
+| POSH-001-go-gates | go vet/gofmt/build over posh/ + provider | SKIP (loud; exit 3; `posh-vet` requires `golangci-lint`) | this session: `--section go-gates` -> tmp/posh/dod-w2-go-gates.json |
 | T1-define-gate | T1 DEFINE charter + ticket set exist | PASS | this session: `--section tollgate` exit 0 (1 PASS/4 SKIP) -> tmp/posh/dod-w2-tollgate.json |
 | GAPS-INDEX-consistent | gaps/INDEX.md present, rows re-read on disk | PASS | this session: `--section docs` exit 0 -> tmp/posh/dod-w2-docs.json |
 | T2-measure | T2 MEASURE receipts, MSA, DPMO baseline | SKIP (planned, no gate) | dod.yaml row |
@@ -123,21 +119,14 @@ artifact of the re-run command, not a script change.
 
 ## v26.10.32 backlog (FAIL rows, seeded verbatim)
 
-smalt tier (3):
+smalt tier (2):
 
-1. POSH-004-IMPORT (NEW, wave-2 regression, highest priority):
-   `adapters/terraform-provider-smalt/internal/provider/turnstile_test.go:170`
-   — `if _, _, err := c2.do(...)` binds 2 of 3 return values
-   ("assignment mismatch"). One-line test fix; also blocks POSH-001-go-gates
-   (provider tree cannot build). Align the destructuring to the current `do`
-   signature (mirror line 165), then re-run `--section import` and
-   `--section go-gates`.
-2. POSH-006-posh-court: 7-stage ladder exit 1 — now a 600s infra SLA timeout
+1. POSH-006-posh-court: 7-stage ladder exit 1 — now a 600s infra SLA timeout
    on `just kind-images` (the old disk-preflight cause is fixed: kind node
    reports 34411MB >= 20000MB). Environmental (machine load); re-run
    `just posh-court` on a quiet machine. Final verdict pending-lane L16
    (gate retarget is rewriting this ladder).
-3. POSH-002-live-wire: `just posh-smalt-wire` exit 1 — `GET containerApps`
+2. POSH-002-live-wire: `just posh-smalt-wire` exit 1 — `GET containerApps`
    returns HTTP 400 (captured live this session). Diagnose the ARM-face
    request shape against the emulator; not disk-related.
 

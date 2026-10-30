@@ -55,9 +55,9 @@ for ad in tmp/posh/andon.jsonl posh/var/andon.jsonl; do
   [ -f "$ad" ] || continue
   d=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$ad")
   tail -5 "$ad" | while IFS= read -r line; do
-    ts=$(printf '%s' "$line" | grep -oE '"(ts|timestamp|time)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*: *"//;s/"$//')
-    sha=$(printf '%s' "$line" | grep -oE "\"[0-9a-fA-F]{40}\"" | head -1 | tr -d '"')
-    verdict=$(printf '%s' "$line" | grep -oE '"(status|verdict|level)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*: *"//;s/"$//')
+    ts=$(printf '%s' "$line" | grep -oE '"(ts|timestamp|time)"[[:space:]]*:[[:space:]]*"[^"]+"' 2>/dev/null | head -1 | sed 's/.*: *"//;s/"$//' || true)
+    sha=$(printf '%s' "$line" | grep -oE "\"[0-9a-fA-F]{40}\"" 2>/dev/null | head -1 | tr -d '"' || true)
+    verdict=$(printf '%s' "$line" | grep -oE '"(status|verdict|level)"[[:space:]]*:[[:space:]]*"[^"]+"' 2>/dev/null | head -1 | sed 's/.*: *"//;s/"$//' || true)
     [ -z "$verdict" ] && verdict=-
     add_row "${ts:-$d}" "${sha:-$(basename "$ad")}" "$verdict" "$ad (tail)"
   done
@@ -68,7 +68,7 @@ for f in tmp/posh/r-receipt.json tmp/posh/*court*.json tmp/posh/*receipt*; do
   case "$f" in *.jsonl) continue;; esac
   d=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$f")
   sha=$(grep -oE "$HEX" "$f" 2>/dev/null | head -1 || true)
-  verdict=$(grep -oE '"(verdict|status)"[[:space:]]*:[[:space:]]*"[^"]+"' "$f" 2>/dev/null | head -1 | sed 's/.*: *"//;s/"$//')
+  verdict=$(grep -oE '"(verdict|status)"[[:space:]]*:[[:space:]]*"[^"]+"' "$f" 2>/dev/null | head -1 | sed 's/.*: *"//;s/"$//' || true)
   [ -z "$verdict" ] && verdict=-
   add_row "$d" "${sha:-$(basename "$f")}" "$verdict" "$f"
 done 2>/dev/null
@@ -77,9 +77,9 @@ done 2>/dev/null
 if [ -f .ggen-v2/receipt-log.jsonl ]; then
   d=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' .ggen-v2/receipt-log.jsonl)
   tail -5 .ggen-v2/receipt-log.jsonl | while IFS= read -r line; do
-    ts=$(printf '%s' "$line" | grep -oE '"(ts|timestamp)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*: *"//;s/"$//')
-    sha=$(printf '%s' "$line" | grep -oE '"[0-9a-fA-F]{40}"' | head -1 | tr -d '"')
-    verdict=$(printf '%s' "$line" | grep -oE '"(status|verdict)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*: *"//;s/"$//')
+    ts=$(printf '%s' "$line" | grep -oE '"(ts|timestamp)"[[:space:]]*:[[:space:]]*"[^"]+"' 2>/dev/null | head -1 | sed 's/.*: *"//;s/"$//' || true)
+    sha=$(printf '%s' "$line" | grep -oE '"[0-9a-fA-F]{40}"' 2>/dev/null | head -1 | tr -d '"' || true)
+    verdict=$(printf '%s' "$line" | grep -oE '"(status|verdict)"[[:space:]]*:[[:space:]]*"[^"]+"' 2>/dev/null | head -1 | sed 's/.*: *"//;s/"$//' || true)
     [ -z "$verdict" ] && verdict=-
     add_row "${ts:-$d}" "${sha:-receipt-log}" "$verdict" ".ggen-v2/receipt-log.jsonl (tail)"
   done

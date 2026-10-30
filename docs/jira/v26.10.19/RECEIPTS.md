@@ -161,6 +161,7 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-58 | (no receipt file — justfile module `justfile.d/58-posh.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-59 | (no receipt file — justfile module `justfile.d/59-posh-ops.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-60 | (no receipt file — justfile module `justfile.d/60-dod.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-61 | (no receipt file — justfile module `justfile.d/61-tripwire.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 
