@@ -124,7 +124,7 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	resD := datasource.MetadataResponse{}
 
 	dataSources := p.DataSources(ctx)
-	const expectedDataSources = 7
+	const expectedDataSources = 8
 	if len(dataSources) != expectedDataSources {
 		t.Fatalf("expected %d registered data sources, got %d", expectedDataSources, len(dataSources))
 	}
@@ -135,6 +135,7 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 		"azurerm_smalt_health":           false,
 		"azurerm_container_registry":     false,
 		"azurerm_key_vault":              false,
+		"azurerm_key_vault_secret":       false,
 		"azurerm_user_assigned_identity": false,
 		"azurerm_storage_account":        false,
 	}

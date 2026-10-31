@@ -13,6 +13,7 @@ import (
 func init() {
 	RegisterDataSource(NewResourceGroupDataSource)
 	RegisterDataSource(NewKeyVaultDataSource)
+	RegisterDataSource(NewKeyVaultSecretDataSource)
 	RegisterDataSource(NewContainerRegistryDataSource)
 	RegisterDataSource(NewStorageAccountDataSource)
 	RegisterDataSource(NewUserAssignedIdentityDataSource)
@@ -577,4 +578,145 @@ func (d *smaltHealthDataSource) Read(ctx context.Context, req datasource.ReadReq
 	state.OK = types.BoolValue(ok)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// ============================================================================
+// 7. data "azurerm_key_vault_secret"
+// ============================================================================
+
+var _ datasource.DataSource = (*keyVaultSecretDataSource)(nil)
+
+func NewKeyVaultSecretDataSource() datasource.DataSource {
+	return &keyVaultSecretDataSource{}
+}
+
+type keyVaultSecretDataSource struct {
+	client *Client
+}
+
+type keyVaultSecretDataSourceModel struct {
+	ID                    types.String `tfsdk:"id"`
+	Name                  types.String `tfsdk:"name"`
+	KeyVaultID            types.String `tfsdk:"key_vault_id"`
+	Value                 types.String `tfsdk:"value"`
+	Version               types.String `tfsdk:"version"`
+	VersionlessID         types.String `tfsdk:"versionless_id"`
+	ResourceID            types.String `tfsdk:"resource_id"`
+	ResourceVersionlessID types.String `tfsdk:"resource_versionless_id"`
+	Tags                  types.Map    `tfsdk:"tags"`
+}
+
+func (d *keyVaultSecretDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_key_vault_secret"
+}
+
+func (d *keyVaultSecretDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Reads an existing Key Vault Secret from the smalt ARM plane.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed: true,
+			},
+			"name": schema.StringAttribute{
+				Required: true,
+			},
+			"key_vault_id": schema.StringAttribute{
+				Required: true,
+			},
+			"value": schema.StringAttribute{
+				Computed:  true,
+				Sensitive: true,
+			},
+			"version": schema.StringAttribute{
+				Computed: true,
+			},
+			"versionless_id": schema.StringAttribute{
+				Computed: true,
+			},
+			"resource_id": schema.StringAttribute{
+				Computed: true,
+			},
+			"resource_versionless_id": schema.StringAttribute{
+				Computed: true,
+			},
+			"tags": schema.MapAttribute{
+				ElementType: types.StringType,
+				Computed:    true,
+			},
+		},
+	}
+}
+
+func (d *keyVaultSecretDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	c, ok := req.ProviderData.(*Client)
+	if !ok {
+		resp.Diagnostics.AddError("unexpected provider data type", fmt.Sprintf("expected *Client, got %T", req.ProviderData))
+		return
+	}
+	d.client = c
+}
+
+func (d *keyVaultSecretDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var config keyVaultSecretDataSourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	normKVID := NormalizeARMID(config.KeyVaultID.ValueString())
+	sub, rg, vaultName, _, err := parseKeyVaultID(normKVID, d.client.subscriptionID)
+	if err != nil {
+		resp.Diagnostics.AddError("invalid key_vault_id", err.Error())
+		return
+	}
+	armPath := keyVaultSecretARMPath(sub, rg, vaultName, config.Name.ValueString())
+
+	var body map[string]any
+	_, _, status, err := d.client.GetRaw(ctx, armPath, "2023-07-01", &body)
+	if err != nil {
+		resp.Diagnostics.AddError("read azurerm_key_vault_secret", err.Error())
+		return
+	}
+
+	if status == 404 {
+		resp.Diagnostics.AddError("secret not found", fmt.Sprintf("secret %s not found in vault %s", config.Name.ValueString(), config.KeyVaultID.ValueString()))
+		return
+	}
+
+	secretName := config.Name.ValueString()
+
+	val := ""
+	if props, ok := body["properties"].(map[string]any); ok {
+		if v, ok := props["value"].(string); ok {
+			val = v
+		}
+	}
+
+	ver := deterministicSecretVersion(vaultName, secretName, val)
+	versionlessID := fmt.Sprintf("https://%s.vault.azure.net/secrets/%s", strings.ToLower(vaultName), secretName)
+	fullID := versionlessID + "/" + ver
+	resourceVersionlessID := NormalizeARMID(normKVID + "/secrets/" + secretName)
+	resourceID := resourceVersionlessID + "/versions/" + ver
+
+	config.ID = types.StringValue(fullID)
+	config.Value = types.StringValue(val)
+	config.Version = types.StringValue(ver)
+	config.VersionlessID = types.StringValue(versionlessID)
+	config.ResourceID = types.StringValue(resourceID)
+	config.ResourceVersionlessID = types.StringValue(resourceVersionlessID)
+
+	tagMap := make(map[string]string)
+	if rawTags, ok := body["tags"].(map[string]any); ok {
+		for k, v := range rawTags {
+			tagMap[k] = fmt.Sprintf("%v", v)
+		}
+	}
+	tagsVal, dVal := types.MapValueFrom(ctx, types.StringType, tagMap)
+	resp.Diagnostics.Append(dVal...)
+	config.Tags = tagsVal
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
