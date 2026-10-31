@@ -170,3 +170,6 @@ adapters/terraform-provider-smalt/.terraform/
 *.tfstate*
 .terraform/
 coverage.out
+
+# LaTeX thesis compilation intermediates & residual artifacts
+thesis/
