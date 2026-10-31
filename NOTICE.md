@@ -25,8 +25,8 @@ loopback substrate without contacting any cloud service.
 Smalt's runtime and test dependencies are Hex packages fetched at build time
 via `mix deps.get`; they are not distributed with smalt. All are permissively
 licensed (MIT, Apache-2.0, BSD-2-Clause, or dual MIT/Apache-2.0) and
-compatible with smalt's Apache-2.0 license. The full table of packages,
-versions, and licenses is in `docs/THIRD_PARTY.md`.
+compatible with smalt's governing license (see `LICENSE.md`). The full
+table of packages, versions, and licenses is in `docs/THIRD_PARTY.md`.
 
 CI test-time note: the `sdk-smoke` tier exercises smalt against vendored
 `@azure` SDK packages (`@azure/cosmos`, `@azure/event-hubs`,
@@ -47,4 +47,8 @@ the WASM source and its build pipeline live in the affidavit repository.
 
 ## License
 
-Smalt is licensed under the Apache License, Version 2.0. See `LICENSE`.
+Smalt is governed solely by the P28 Sovereign Invariant License
+(P28-SIL v2.1.0, `urn:smalt:license:p28-sil:v2.1.0-sovereign`). No SPDX
+expression — the instrument is identified by URN (§9 of the instrument).
+See `LICENSE.md` and `LICENSE-P28-SIL.md`. The retired Apache-2.0 text
+is preserved at `LICENSE-APACHE-2.0.md`.

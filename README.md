@@ -8,7 +8,7 @@ Bus on **5672**, Event Hubs on **5673**, read-only MCP tool surface on
 connection, no host configuration for the native tier.
 
 See `NOTICE.md` for the clean-room interoperability and trademark statement,
-and `LICENSE` (Apache-2.0) for terms.
+and `LICENSE.md` (P28-SIL v2.1.0) for terms.
 
 ## Standing (honest, as of 2026-10-18)
 
@@ -36,7 +36,8 @@ and `LICENSE` (Apache-2.0) for terms.
 ## Part 1 — Hex package (`lib/` + `priv/`)
 
 The hex package ships the runtime surface only: `lib/` and `priv/` (plus
-`mix.exs`, `README.md`, `LICENSE`, `CHANGELOG.md`, `NOTICE.md`).
+`mix.exs`, `README.md`, `LICENSE.md`, `LICENSE-P28-SIL.md`, `CHANGELOG.md`,
+`NOTICE.md`).
 Repository tooling — `scripts/`, `docs/`, `test/`, `justfile.d/`, the
 Justfile — does not ship; clone the repository for it.
 
@@ -423,6 +424,16 @@ wire protocols for local testing. It is not affiliated with, sponsored by,
 or endorsed by any cloud provider. Product and company names appearing in
 protocol strings are trademarks of their owners, used solely for protocol
 compatibility. See `NOTICE.md`.
+
+## License
+
+Governed by the P28 Sovereign Invariant License (P28-SIL v2.1.0,
+`urn:smalt:license:p28-sil:v2.1.0-sovereign`): universal safe harbor,
+covenant not to sue upon commercial regularization, ASC 450 / SOX
+302/404 evidentiary enforcement. No SPDX expression — the instrument is
+identified by URN. See [LICENSE.md](LICENSE.md) and
+[LICENSE-P28-SIL.md](LICENSE-P28-SIL.md). The retired Apache-2.0 text is
+preserved at [LICENSE-APACHE-2.0.md](LICENSE-APACHE-2.0.md).
 
 ## POSH — Go adapter membrane
 

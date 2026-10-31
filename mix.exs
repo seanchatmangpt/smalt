@@ -80,7 +80,12 @@ defmodule Smalt.MixProject do
 
   defp package do
     [
-      licenses: ["Apache-2.0"],
+      # License: P28-SIL v2.1.0 is the sole governor — see LICENSE-P28-SIL.md
+      # and LICENSE.md. It is not an SPDX expression; the instrument is
+      # identified by URN (urn:smalt:license:p28-sil:v2.1.0-sovereign, §9),
+      # so no SPDX `licenses:` entry is declared and hex publishing is
+      # blocked — intended under the sovereign license. The retired
+      # Apache-2.0 text is preserved at LICENSE-APACHE-2.0.md.
       links: %{"GitHub" => "https://github.com/seanchatmangpt/smalt"},
       # B6: key material must never ship. The gate is the physical tree, not
       # these patterns: hex applies exclude_patterns per-`files:`-entry,
@@ -90,7 +95,7 @@ defmodule Smalt.MixProject do
       # removed from lib/ (receipt chain relocated to test/fixtures/); the
       # acceptance gate is the inner contents.tar.gz grep == 0 in
       # docs/archive/PUBLISH_CHECK.md, not glob semantics.
-      files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE CHANGELOG.md NOTICE.md),
+      files: ~w(lib priv .formatter.exs mix.exs README.md LICENSE.md LICENSE-P28-SIL.md CHANGELOG.md NOTICE.md),
       exclude_patterns: ["**/.ggen/**", "**/keys/**", "**/*key*.pem"]
     ]
   end
