@@ -11,8 +11,10 @@ defmodule Smalt.Posh.IngressSupervisor do
 
   @impl true
   def init(opts) do
+    task_sup = Keyword.get(opts, :task_supervisor_name, Smalt.Posh.Ingress.TaskSupervisor)
+
     children = [
-      {Task.Supervisor, name: Smalt.Posh.Ingress.TaskSupervisor},
+      {Task.Supervisor, name: task_sup},
       {Smalt.Posh.Ingress.RingBuffer,
        capacity: Keyword.get(opts, :capacity, 64),
        name: Keyword.get(opts, :ring_name, Smalt.Posh.Ingress.RingBuffer)}

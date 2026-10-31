@@ -17,6 +17,8 @@ defmodule Smalt.Posh.PoshEngineTest do
 
     log = :"event_log_#{:erlang.unique_integer([:positive])}"
     ring = :"ring_#{:erlang.unique_integer([:positive])}"
+    task_sup = :"task_sup_#{:erlang.unique_integer([:positive])}"
+    ingress_name = :"ingress_sup_#{:erlang.unique_integer([:positive])}"
 
     {:ok, sup} =
       Supervisor.start_link(
@@ -24,7 +26,9 @@ defmodule Smalt.Posh.PoshEngineTest do
         capacity: 4,
         name: :"posh_sup_#{:erlang.unique_integer([:positive])}",
         log_name: log,
-        ring_name: ring
+        ring_name: ring,
+        ingress_name: ingress_name,
+        task_supervisor_name: task_sup
       )
 
     {:ok, sup: sup, dir: dir, log: log, ring: ring}

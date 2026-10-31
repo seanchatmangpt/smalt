@@ -12,16 +12,21 @@ defmodule Smalt.Posh.PortSupervisionTest do
       File.rm(sock_path)
     end)
 
-    %{sock_path: sock_path}
+    %{sock_path: sock_path, unique: unique}
   end
 
-  test "supervises posh port and restarts on abnormal exit", %{sock_path: sock_path} do
+  test "supervises posh port and restarts on abnormal exit", %{sock_path: sock_path, unique: unique} do
     if File.exists?(@bin_path) do
       {:ok, sup} =
         Smalt.Posh.Supervisor.start_link(
           bin_path: @bin_path,
           socket_path: sock_path,
-          name: :test_posh_sup
+          name: :"test_posh_sup_#{unique}",
+          ingress_name: :"ingress_sup_#{unique}",
+          egress_name: :"egress_sup_#{unique}",
+          task_supervisor_name: :"task_sup_#{unique}",
+          ring_name: :"ring_#{unique}",
+          log_name: :"log_#{unique}"
         )
 
       # Give port time to boot
