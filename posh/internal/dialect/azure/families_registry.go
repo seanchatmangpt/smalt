@@ -8,7 +8,7 @@ import "smalt.dev/posh/internal/dialect"
 // the registry, keyed by the rows' RouteOp names. POS-008: every op
 // carries a non-empty turnstile receipt and shape.
 func RegisterFirstFamilies(reg *MemRegistry) {
-	for _, r := range firstFamilyRoutes() {
+	for _, r := range FirstFamilyRoutes() {
 		reg.Register(specFor(r))
 	}
 }

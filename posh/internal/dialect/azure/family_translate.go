@@ -8,9 +8,11 @@
 package azure
 
 import (
+	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -290,3 +292,74 @@ func mapCanonSegment(s string) string {
 }
 
 func lowNs(s string) string { return strings.ToLower(s) }
+
+// ---------------------------------------------------------------------------
+// Egress & Data-Plane Wire Framing Transforms
+// ---------------------------------------------------------------------------
+
+// BrokerProperties models the standard JSON header passed by Service Bus REST clients.
+type BrokerProperties struct {
+	MessageID               string `json:"MessageId,omitempty"`
+	SessionID               string `json:"SessionId,omitempty"`
+	PartitionKey            string `json:"PartitionKey,omitempty"`
+	ViaPartitionKey         string `json:"ViaPartitionKey,omitempty"`
+	Label                   string `json:"Label,omitempty"`
+	CorrelationID           string `json:"CorrelationId,omitempty"`
+	ScheduledEnqueueTimeUtc string `json:"ScheduledEnqueueTimeUtc,omitempty"`
+}
+
+// ParseBrokerProperties decodes the BrokerProperties JSON string from the HTTP header.
+func ParseBrokerProperties(raw string) (BrokerProperties, error) {
+	if strings.TrimSpace(raw) == "" {
+		return BrokerProperties{}, nil
+	}
+	var bp BrokerProperties
+	if err := json.Unmarshal([]byte(raw), &bp); err != nil {
+		return BrokerProperties{}, fmt.Errorf("invalid BrokerProperties JSON: %w", err)
+	}
+	return bp, nil
+}
+
+// ValidateBrokeredEncoding checks if the x-ms-brokered-encoding header matches
+// the accepted AtomPub or XML shapes.
+func ValidateBrokeredEncoding(enc string) bool {
+	s := strings.ToLower(strings.TrimSpace(enc))
+	return s == "" || s == "application/atom+xml" || s == "application/xml"
+}
+
+// EventHubsPartitionKeyPinion hashes the partition key using MD5 and computes
+// the partition id ("0" or "1") over the pinned 2-partition set (KD-76).
+func EventHubsPartitionKeyPinion(pk string) string {
+	sum := md5.Sum([]byte(pk))
+	partitionIdx := int(sum[0]) % 2
+	return strconv.Itoa(partitionIdx)
+}
+
+// ParseCosmosPartitionKey parses the x-ms-documentdb-partitionkey header.
+// Real Azure SDKs send a JSON array (e.g. `["my-pk"]`).
+func ParseCosmosPartitionKey(headerVal string) ([]string, error) {
+	trimmed := strings.TrimSpace(headerVal)
+	if trimmed == "" {
+		return nil, nil
+	}
+	var arr []any
+	if err := json.Unmarshal([]byte(trimmed), &arr); err != nil {
+		return nil, fmt.Errorf("invalid cosmos partition key header: %w", err)
+	}
+	res := make([]string, len(arr))
+	for i, v := range arr {
+		res[i] = fmt.Sprintf("%v", v)
+	}
+	return res, nil
+}
+
+// RefuseACILogs returns a typed refusal for Container Instance log streaming
+// (ACI execution is not emulated per design law).
+func RefuseACILogs() (int, map[string]any) {
+	return 400, map[string]any{
+		"error": map[string]any{
+			"code":    "NotSupportedOnSubstrate",
+			"message": "Container execution and log streaming is not emulated on this substrate",
+		},
+	}
+}

@@ -30,7 +30,7 @@ func dialectOpSpecCatchall() dialect.OpSpec {
 // family; a reordered table (catch-all promoted first) must FAIL
 // CONSTRUCTION — the fail-closed precedence law.
 func TestPrecedenceCourtReorderedCatchAllFails(t *testing.T) {
-	rows := firstFamilyRoutes()
+	rows := FirstFamilyRoutes()
 	table, err := NewFamilies(newTestOps(t), rows)
 	if err != nil {
 		t.Fatalf("real table refused: %v", err)
@@ -54,11 +54,11 @@ func TestPrecedenceCourtReorderedCatchAllFails(t *testing.T) {
 // unknown op must refuse; a route whose op is missing from the registry
 // fails closed at Resolve.
 func TestFamiliesRegistryClosed(t *testing.T) {
-	table, err := NewFamilies(newTestOps(t), firstFamilyRoutes())
+	table, err := NewFamilies(newTestOps(t), FirstFamilyRoutes())
 	if err != nil {
 		t.Fatalf("table refused: %v", err)
 	}
-	for _, r := range firstFamilyRoutes() {
+	for _, r := range FirstFamilyRoutes() {
 		probe := r.Method
 		if probe == "*" {
 			probe = "GET"
