@@ -95,7 +95,7 @@ var stsMigrationTable = []stsMigrationRow{
 		// the clients speak the Azure token-endpoint wire against a
 		// byte-identical smalt STS face. Nothing to migrate.
 		item:           "Client-side minting",
-		location:       "courtroom-platform-az harness + scripts/tf_cleanroom.sh + vendored azurerm provider",
+		location:       "consumer harness + scripts/tf_cleanroom.sh + vendored azurerm provider",
 		classification: "azure-dialect",
 		migration:      "already-posh-court-side",
 	},

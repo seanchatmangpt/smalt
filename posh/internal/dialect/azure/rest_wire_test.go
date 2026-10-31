@@ -55,9 +55,9 @@ func TestDialect_CosmosPartitionKeyHeader(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"tenant-123"}, pks)
 
-	pksCompound, err := azure.ParseCosmosPartitionKey(`["tenant-123", "matter-456"]`)
+	pksCompound, err := azure.ParseCosmosPartitionKey(`["tenant-123", "workspace-456"]`)
 	require.NoError(t, err)
-	require.Equal(t, []string{"tenant-123", "matter-456"}, pksCompound)
+	require.Equal(t, []string{"tenant-123", "workspace-456"}, pksCompound)
 
 	_, errInvalid := azure.ParseCosmosPartitionKey(`not-an-array`)
 	require.Error(t, errInvalid)
@@ -93,7 +93,7 @@ func TestDialect_ExtendedRouteResolution(t *testing.T) {
 	require.Equal(t, "ehdata", ehRoute.Family)
 	require.Equal(t, "azure.ehdata.send", ehRoute.RouteOp)
 
-	cosmosRoute, ok := fam.ResolveRoute("GET", "/dbs/courtroom/colls/matters/docs")
+	cosmosRoute, ok := fam.ResolveRoute("GET", "/dbs/enterprise/colls/workspaces/docs")
 	require.True(t, ok)
 	require.Equal(t, "cosmosdata", cosmosRoute.Family)
 	require.Equal(t, "azure.cosmosdata.docs.list", cosmosRoute.RouteOp)

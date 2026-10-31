@@ -11,16 +11,16 @@ import (
 	"smalt.dev/posh/tests/chicago"
 )
 
-// TestChicago_KirklandCompliance_OCELv2_Emission emits an uncompromising IEEE OCEL 2.0
-// log covering all 7 structural, mathematical, and compliance gaps.
-func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
+// TestChicago_EnterpriseCompliance_OCELv2_Emission emits an uncompromising IEEE OCEL 2.0
+// log covering all 7 structural, mathematical, and compliance invariants.
+func TestChicago_EnterpriseCompliance_OCELv2_Emission(t *testing.T) {
 	ctx := context.Background()
 	env := SetupSmaltTestEnvironment(t)
 
 	// 1. Live state execution over loopback
-	const vault = "kv-courtroom-dev"
-	const secret = "kirkland-session-key"
-	const secretVal = "KIRKLAND-ENTERPRISE-TOKEN-2026"
+	const vault = "kv-enterprise-dev"
+	const secret = "enterprise-session-key"
+	const secretVal = "ENTERPRISE-TENANT-TOKEN-2026"
 
 	t0 := time.Now().UTC()
 
@@ -44,10 +44,10 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 	// 2. Declare Object Types & Attributes (Schema-aligned)
 	objectTypes := []chicago.OCELTypeDefinition{
 		{Name: "Tenant", Attributes: []chicago.OCELAttribute{{Name: "slug", Type: "string"}}},
-		{Name: "Matter", Attributes: []chicago.OCELAttribute{{Name: "matter_id", Type: "string"}}},
+		{Name: "Workspace", Attributes: []chicago.OCELAttribute{{Name: "workspace_id", Type: "string"}}},
 		{Name: "ContainerApp", Attributes: []chicago.OCELAttribute{{Name: "architecture", Type: "string"}, {Name: "eval_score", Type: "integer"}}},
-		{Name: "CRMHStorage", Attributes: []chicago.OCELAttribute{{Name: "retention_days", Type: "integer"}, {Name: "naming_regex", Type: "string"}}},
-		{Name: "SIEMStream", Attributes: []chicago.OCELAttribute{{Name: "environment", Type: "string"}, {Name: "cribl_ready", Type: "boolean"}}},
+		{Name: "ArchiveStorage", Attributes: []chicago.OCELAttribute{{Name: "retention_days", Type: "integer"}, {Name: "naming_regex", Type: "string"}}},
+		{Name: "SIEMStream", Attributes: []chicago.OCELAttribute{{Name: "environment", Type: "string"}, {Name: "stream_ready", Type: "boolean"}}},
 		{Name: "TurnstileDigest", Attributes: []chicago.OCELAttribute{{Name: "turnstile_blake3", Type: "string"}}},
 	}
 
@@ -55,41 +55,41 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 	eventTypes := []chicago.OCELTypeDefinition{
 		{Name: "tf.resource.provisioned", Attributes: []chicago.OCELAttribute{{Name: "stage", Type: "string"}}},
 		{Name: "posh.turnstile.verified", Attributes: []chicago.OCELAttribute{{Name: "turnstile_blake3", Type: "string"}}},
-		{Name: "crmh.export.completed", Attributes: []chicago.OCELAttribute{{Name: "blob_name", Type: "string"}, {Name: "retention_days", Type: "integer"}}},
-		{Name: "siem.audit.delivered", Attributes: []chicago.OCELAttribute{{Name: "matter_id", Type: "string"}, {Name: "environment", Type: "string"}}},
+		{Name: "archive.export.completed", Attributes: []chicago.OCELAttribute{{Name: "blob_name", Type: "string"}, {Name: "retention_days", Type: "integer"}}},
+		{Name: "siem.audit.delivered", Attributes: []chicago.OCELAttribute{{Name: "workspace_id", Type: "string"}, {Name: "environment", Type: "string"}}},
 		{Name: "egress.imds.refused", Attributes: []chicago.OCELAttribute{{Name: "egress_destination", Type: "string"}, {Name: "status", Type: "integer"}}},
-		{Name: "crmh.retention.refused", Attributes: []chicago.OCELAttribute{{Name: "attempted_days", Type: "integer"}, {Name: "status", Type: "integer"}}},
+		{Name: "archive.retention.refused", Attributes: []chicago.OCELAttribute{{Name: "attempted_days", Type: "integer"}, {Name: "status", Type: "integer"}}},
 		{Name: "siem.attribution.refused", Attributes: []chicago.OCELAttribute{{Name: "reason", Type: "string"}}},
 		{Name: "posh.turnstile.tampered", Attributes: []chicago.OCELAttribute{{Name: "reason", Type: "string"}, {Name: "status", Type: "integer"}}},
-		{Name: "tenant.cross_matter.blocked", Attributes: []chicago.OCELAttribute{{Name: "foreign_tenant", Type: "string"}, {Name: "status", Type: "integer"}}},
+		{Name: "tenant.cross_workspace.blocked", Attributes: []chicago.OCELAttribute{{Name: "foreign_tenant", Type: "string"}, {Name: "status", Type: "integer"}}},
 	}
 
 	// 4. Declare Connected Objects (O2O Topology)
 	objects := []chicago.OCELObject{
 		{
-			ID:   "tenant/kirkland",
+			ID:   "tenant/enterprise",
 			Type: "Tenant",
 			Attributes: []chicago.OCELAttrValue{
-				{Name: "slug", Value: "kirkland"},
+				{Name: "slug", Value: "enterprise"},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "matter/matter-9042", Qualifier: "owns"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "owns"},
 			},
 		},
 		{
-			ID:   "matter/matter-9042",
-			Type: "Matter",
+			ID:   "workspace/ws-9042",
+			Type: "Workspace",
 			Attributes: []chicago.OCELAttrValue{
-				{Name: "matter_id", Value: "KIRK-2026-9042"},
+				{Name: "workspace_id", Value: "ENT-2026-9042"},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "app/ca-kirkland-consolidated", Qualifier: "runs_on"},
-				{ObjectID: "storage/crmh-kirkland", Qualifier: "exports_to"},
-				{ObjectID: "stream/siem-kirkland", Qualifier: "streams_to"},
+				{ObjectID: "app/ca-enterprise-consolidated", Qualifier: "runs_on"},
+				{ObjectID: "storage/archive-enterprise", Qualifier: "exports_to"},
+				{ObjectID: "stream/siem-enterprise", Qualifier: "streams_to"},
 			},
 		},
 		{
-			ID:   "app/ca-kirkland-consolidated",
+			ID:   "app/ca-enterprise-consolidated",
 			Type: "ContainerApp",
 			Attributes: []chicago.OCELAttrValue{
 				{Name: "architecture", Value: "consolidated-single-instance"},
@@ -97,19 +97,19 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 			},
 		},
 		{
-			ID:   "storage/crmh-kirkland",
-			Type: "CRMHStorage",
+			ID:   "storage/archive-enterprise",
+			Type: "ArchiveStorage",
 			Attributes: []chicago.OCELAttrValue{
 				{Name: "retention_days", Value: 14},
-				{Name: "naming_regex", Value: "^crmh_kirkland_.*\\.parquet$"},
+				{Name: "naming_regex", Value: "^archive_enterprise_.*\\.parquet$"},
 			},
 		},
 		{
-			ID:   "stream/siem-kirkland",
+			ID:   "stream/siem-enterprise",
 			Type: "SIEMStream",
 			Attributes: []chicago.OCELAttrValue{
 				{Name: "environment", Value: "dev01"},
-				{Name: "cribl_ready", Value: true},
+				{Name: "stream_ready", Value: true},
 			},
 		},
 		{
@@ -132,9 +132,9 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 				{Name: "stage", Value: "applied"},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "tenant/kirkland", Qualifier: "targets"},
-				{ObjectID: "matter/matter-9042", Qualifier: "binds"},
-				{ObjectID: "app/ca-kirkland-consolidated", Qualifier: "provisions"},
+				{ObjectID: "tenant/enterprise", Qualifier: "targets"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "binds"},
+				{ObjectID: "app/ca-enterprise-consolidated", Qualifier: "provisions"},
 			},
 		},
 		{
@@ -145,21 +145,21 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 				{Name: "turnstile_blake3", Value: rcpt.BLAKE3Hash},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "matter/matter-9042", Qualifier: "authenticates"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "authenticates"},
 				{ObjectID: "turnstile/turnstile-blake3", Qualifier: "validates"},
 			},
 		},
 		{
 			ID:   "evt-003",
-			Type: "crmh.export.completed",
+			Type: "archive.export.completed",
 			Time: t2.Format(timeFmt), // Delta t2 - t0 = 25ms << 500ms SLA!
 			Attributes: []chicago.OCELAttrValue{
-				{Name: "blob_name", Value: "crmh_kirkland_KIRK-2026-9042_20261031.parquet"},
+				{Name: "blob_name", Value: "archive_enterprise_ENT-2026-9042_20261031.parquet"},
 				{Name: "retention_days", Value: 14},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "matter/matter-9042", Qualifier: "source"},
-				{ObjectID: "storage/crmh-kirkland", Qualifier: "stored_in"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "source"},
+				{ObjectID: "storage/archive-enterprise", Qualifier: "stored_in"},
 			},
 		},
 		{
@@ -167,12 +167,12 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 			Type: "siem.audit.delivered",
 			Time: t3.Format(timeFmt),
 			Attributes: []chicago.OCELAttrValue{
-				{Name: "matter_id", Value: "KIRK-2026-9042"},
+				{Name: "workspace_id", Value: "ENT-2026-9042"},
 				{Name: "environment", Value: "dev01"},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "matter/matter-9042", Qualifier: "emitted_from"},
-				{ObjectID: "stream/siem-kirkland", Qualifier: "delivered_to"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "emitted_from"},
+				{ObjectID: "stream/siem-enterprise", Qualifier: "delivered_to"},
 			},
 		},
 
@@ -186,21 +186,21 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 				{Name: "status", Value: 403},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "tenant/kirkland", Qualifier: "intercepted"},
-				{ObjectID: "app/ca-kirkland-consolidated", Qualifier: "source"},
+				{ObjectID: "tenant/enterprise", Qualifier: "intercepted"},
+				{ObjectID: "app/ca-enterprise-consolidated", Qualifier: "source"},
 			},
 		},
 		{
 			ID:   "evt-006",
-			Type: "crmh.retention.refused",
+			Type: "archive.retention.refused",
 			Time: t5.Format(timeFmt),
 			Attributes: []chicago.OCELAttrValue{
 				{Name: "attempted_days", Value: 7},
 				{Name: "status", Value: 422},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "matter/matter-9042", Qualifier: "target"},
-				{ObjectID: "storage/crmh-kirkland", Qualifier: "refused_by"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "target"},
+				{ObjectID: "storage/archive-enterprise", Qualifier: "refused_by"},
 			},
 		},
 		{
@@ -211,8 +211,8 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 				{Name: "reason", Value: "missing_environment_attribution"},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "matter/matter-9042", Qualifier: "payload_matter"},
-				{ObjectID: "stream/siem-kirkland", Qualifier: "gate"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "payload_workspace"},
+				{ObjectID: "stream/siem-enterprise", Qualifier: "gate"},
 			},
 		},
 		{
@@ -225,20 +225,20 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 			},
 			Relationships: []chicago.OCELRelationship{
 				{ObjectID: "turnstile/turnstile-blake3", Qualifier: "tampered_token"},
-				{ObjectID: "app/ca-kirkland-consolidated", Qualifier: "refused_client"},
+				{ObjectID: "app/ca-enterprise-consolidated", Qualifier: "refused_client"},
 			},
 		},
 		{
 			ID:   "evt-009",
-			Type: "tenant.cross_matter.blocked",
+			Type: "tenant.cross_workspace.blocked",
 			Time: t8.Format(timeFmt),
 			Attributes: []chicago.OCELAttrValue{
 				{Name: "foreign_tenant", Value: "tenant/demo"},
 				{Name: "status", Value: 403},
 			},
 			Relationships: []chicago.OCELRelationship{
-				{ObjectID: "tenant/kirkland", Qualifier: "protected_tenant"},
-				{ObjectID: "matter/matter-9042", Qualifier: "isolated_matter"},
+				{ObjectID: "tenant/enterprise", Qualifier: "protected_tenant"},
+				{ObjectID: "workspace/ws-9042", Qualifier: "isolated_workspace"},
 			},
 		},
 	}
@@ -256,7 +256,7 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 	doc := chicago.OCEL2Log{
 		GlobalLog: map[string]any{
 			"ocel:version": "2.0",
-			"ocel:author":  "KirklandInfosecAuditCourt",
+			"ocel:author":  "EnterpriseInfosecAuditCourt",
 		},
 		ObjectTypes:       objectTypes,
 		EventTypes:        eventTypes,
@@ -268,7 +268,7 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 		LegacyEvents:      events,
 	}
 
-	const ocelPath = "/tmp/kirkland_compliance_audit.ocel.json"
+	const ocelPath = "/tmp/enterprise_compliance_audit.ocel.json"
 	f, err := os.Create(ocelPath)
 	require.NoError(t, err)
 	defer f.Close()
@@ -278,5 +278,5 @@ func TestChicago_KirklandCompliance_OCELv2_Emission(t *testing.T) {
 	err = enc.Encode(doc)
 	require.NoError(t, err)
 
-	t.Logf("[KIRKLAND-OCEL] Wrote fully compliant log to %s (len events: %d, len objects: %d)", ocelPath, len(events), len(objects))
+	t.Logf("[ENTERPRISE-OCEL] Wrote fully compliant log to %s (len events: %d, len objects: %d)", ocelPath, len(events), len(objects))
 }

@@ -6,19 +6,19 @@ import (
 	"smalt.dev/posh/internal/storage"
 )
 
-func TestStorage_CRMHPolicy(t *testing.T) {
+func TestStorage_RetentionPolicy(t *testing.T) {
 	s := storage.NewStore()
-	err := s.ProvisionCRMHAccount("rg-test", "stcrmhtest")
+	err := s.ProvisionRetentionAccount("rg-test", "starchivetest")
 	if err != nil {
 		t.Fatalf("provision failed: %v", err)
 	}
 
-	p, err := s.GetManagementPolicy("rg-test", "stcrmhtest")
+	p, err := s.GetManagementPolicy("rg-test", "starchivetest")
 	if err != nil {
 		t.Fatalf("get policy failed: %v", err)
 	}
 
-	if len(p.Rules) != 1 || p.Rules[0].Name != "CRMH-14Day-Retention" {
+	if len(p.Rules) != 1 || p.Rules[0].Name != "Archive-14Day-Retention" {
 		t.Fatalf("unexpected rules: %+v", p.Rules)
 	}
 
@@ -33,7 +33,7 @@ func TestStorage_EventHubDrain(t *testing.T) {
 	msg := storage.EventHubMessage{
 		Body: []byte("payload"),
 		Properties: map[string]string{
-			"MatterID": "matter-1",
+			"WorkspaceID": "workspace-1",
 		},
 	}
 
@@ -47,7 +47,7 @@ func TestStorage_EventHubDrain(t *testing.T) {
 		t.Fatalf("drain failed: %v", err)
 	}
 
-	if len(msgs) != 1 || msgs[0].Properties["MatterID"] != "matter-1" {
+	if len(msgs) != 1 || msgs[0].Properties["WorkspaceID"] != "workspace-1" {
 		t.Fatalf("unexpected messages: %+v", msgs)
 	}
 }

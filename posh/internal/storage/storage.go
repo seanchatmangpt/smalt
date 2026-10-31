@@ -49,7 +49,7 @@ type EventHubMessage struct {
 	Properties map[string]string `json:"properties"`
 }
 
-// Store maintains in-memory state for CRMH storage accounts and Event Hub partitions.
+// Store maintains in-memory state for archive storage accounts and Event Hub partitions.
 type Store struct {
 	mu            sync.RWMutex
 	policies      map[string]*BlobManagementPolicy
@@ -64,8 +64,8 @@ func NewStore() *Store {
 	}
 }
 
-// ProvisionCRMHAccount configures the 14-day retention lifecycle policy on an account.
-func (s *Store) ProvisionCRMHAccount(resourceGroup, accountName string) error {
+// ProvisionRetentionAccount configures the 14-day retention lifecycle policy on an account.
+func (s *Store) ProvisionRetentionAccount(resourceGroup, accountName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -73,7 +73,7 @@ func (s *Store) ProvisionCRMHAccount(resourceGroup, accountName string) error {
 	policy := &BlobManagementPolicy{
 		Rules: []ManagementPolicyRule{
 			{
-				Name: "CRMH-14Day-Retention",
+				Name: "Archive-14Day-Retention",
 				Definition: ManagementPolicyDefinition{
 					Actions: ManagementPolicyActions{
 						BaseBlob: BaseBlobActions{
@@ -84,7 +84,7 @@ func (s *Store) ProvisionCRMHAccount(resourceGroup, accountName string) error {
 					},
 					Filters: ManagementPolicyFilters{
 						BlobTypes:   []string{"blockBlob"},
-						PrefixMatch: []string{"crmh/daily-exports/"},
+						PrefixMatch: []string{"archive/daily-exports/"},
 					},
 				},
 			},

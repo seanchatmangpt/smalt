@@ -41,10 +41,10 @@ def generate_multilayer_ocel() -> Path:
     ]
 
     objects = [
-        {"id": "case/kirkland-dev", "type": "Case", "attributes": [{"name": "slug", "value": "kirkland"}, {"name": "env", "value": "dev"}]},
+        {"id": "workspace/enterprise-dev", "type": "Case", "attributes": [{"name": "slug", "value": "enterprise"}, {"name": "env", "value": "dev"}]},
         {"id": "tf/key_vault_secret", "type": "TerraformResource", "attributes": [{"name": "provider", "value": "azurerm"}]},
         {"id": "turnstile/blake3-digest", "type": "TurnstileToken", "attributes": [{"name": "alg", "value": "blake3"}]},
-        {"id": "secret/session-key", "type": "VaultSecret", "attributes": [{"name": "vault", "value": "kv-courtroom"}]},
+        {"id": "secret/session-key", "type": "VaultSecret", "attributes": [{"name": "vault", "value": "kv-enterprise"}]},
     ]
 
     events = [
@@ -53,7 +53,7 @@ def generate_multilayer_ocel() -> Path:
             "type": "nextjs.case.create_requested",
             "time": now,
             "attributes": [{"name": "layer", "value": "NextJS"}, {"name": "caller", "value": "web-admin"}],
-            "relationships": [{"objectId": "case/kirkland-dev", "qualifier": "originates"}]
+            "relationships": [{"objectId": "workspace/enterprise-dev", "qualifier": "originates"}]
         },
         {
             "id": "evt-002",
@@ -61,7 +61,7 @@ def generate_multilayer_ocel() -> Path:
             "time": now,
             "attributes": [{"name": "layer", "value": "Terraform"}, {"name": "status", "value": "planned"}],
             "relationships": [
-                {"objectId": "case/kirkland-dev", "qualifier": "targets"},
+                {"objectId": "workspace/enterprise-dev", "qualifier": "targets"},
                 {"objectId": "tf/key_vault_secret", "qualifier": "declares"}
             ]
         },
@@ -91,7 +91,7 @@ def generate_multilayer_ocel() -> Path:
             "time": now,
             "attributes": [{"name": "layer", "value": "NextJS"}, {"name": "status", "value": "complete"}],
             "relationships": [
-                {"objectId": "case/kirkland-dev", "qualifier": "displays"},
+                {"objectId": "workspace/enterprise-dev", "qualifier": "displays"},
                 {"objectId": "secret/session-key", "qualifier": "verified"}
             ]
         }

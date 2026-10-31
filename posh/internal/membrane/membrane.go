@@ -14,10 +14,10 @@ import (
 	"smalt.dev/posh/internal/storage"
 )
 
-// TenantStateFixture defines the inputs for provisioning tenant and matter infrastructure.
+// TenantStateFixture defines the inputs for provisioning tenant and workspace infrastructure.
 type TenantStateFixture struct {
 	TenantID      string `json:"tenant_id"`
-	MatterID      string `json:"matter_id"`
+	WorkspaceID   string `json:"workspace_id"`
 	ResourceGroup string `json:"resource_group"`
 	VNetID        string `json:"vnet_id"`
 	AppID         string `json:"app_id,omitempty"`
@@ -81,7 +81,7 @@ func NewSmaltTestEnvironment() *SmaltTestEnvironment {
 	}
 }
 
-// ApplyTenantConfig applies the tenant matter configuration, enforcing dedicated boundaries
+// ApplyTenantConfig applies the tenant workspace configuration, enforcing dedicated boundaries
 // and issuing a mathematical BLAKE3 turnstile settlement receipt.
 func (e *SmaltTestEnvironment) ApplyTenantConfig(ctx context.Context, fixture TenantStateFixture) (*Receipt, error) {
 	e.mu.Lock()
@@ -93,8 +93,8 @@ func (e *SmaltTestEnvironment) ApplyTenantConfig(ctx context.Context, fixture Te
 		ID:   rgID,
 		Name: fixture.ResourceGroup,
 		Tags: map[string]string{
-			"TenantID": fixture.TenantID,
-			"MatterID": fixture.MatterID,
+			"TenantID":    fixture.TenantID,
+			"WorkspaceID": fixture.WorkspaceID,
 		},
 	}
 	e.resourceGroups[fixture.ResourceGroup] = rgState
@@ -111,8 +111,8 @@ func (e *SmaltTestEnvironment) ApplyTenantConfig(ctx context.Context, fixture Te
 			InstanceCount: 1,
 			Template: ContainerAppTemplate{
 				Containers: []ContainerSpec{
-					{Name: "courtroom-frontend", Image: "smalt/courtroom-frontend:v26.10.30"},
-					{Name: "courtroom-backend", Image: "smalt/courtroom-backend:v26.10.30"},
+					{Name: "enterprise-frontend", Image: "smalt/enterprise-frontend:v26.10.30"},
+					{Name: "enterprise-backend", Image: "smalt/enterprise-backend:v26.10.30"},
 				},
 				SharingSettings: ContainerSharingSettings{
 					LocalhostNetworking: true,
@@ -128,7 +128,7 @@ func (e *SmaltTestEnvironment) ApplyTenantConfig(ctx context.Context, fixture Te
 	hashHex := receipt.Hex(h)
 
 	r := &Receipt{
-		ReceiptID:  fmt.Sprintf("rcpt-%s-%s", fixture.MatterID, hashHex[:12]),
+		ReceiptID:  fmt.Sprintf("rcpt-%s-%s", fixture.WorkspaceID, hashHex[:12]),
 		BLAKE3Hash: hashHex,
 		Timestamp:  now,
 	}
@@ -177,18 +177,18 @@ func (e *SmaltTestEnvironment) GetContainerAppState(ctx context.Context, rgName,
 	return &ca, nil
 }
 
-// ProvisionBlobAccountWithCRMH configures the CRMH 14-day retention policy.
-func (e *SmaltTestEnvironment) ProvisionBlobAccountWithCRMH(ctx context.Context, rgName, accountName string) error {
-	return e.storageStore.ProvisionCRMHAccount(rgName, accountName)
+// ProvisionBlobAccountWithRetention configures the 14-day retention policy.
+func (e *SmaltTestEnvironment) ProvisionBlobAccountWithRetention(ctx context.Context, rgName, accountName string) error {
+	return e.storageStore.ProvisionRetentionAccount(rgName, accountName)
 }
 
-// GetBlobManagementPolicy retrieves the CRMH management policy.
+// GetBlobManagementPolicy retrieves the blob management policy.
 func (e *SmaltTestEnvironment) GetBlobManagementPolicy(ctx context.Context, rgName, accountName string) (*storage.BlobManagementPolicy, error) {
 	return e.storageStore.GetManagementPolicy(rgName, accountName)
 }
 
 // PublishAuditedSIEMEvent stamps an event with a BLAKE3 turnstile hash and routes to Event Hub partition.
-func (e *SmaltTestEnvironment) PublishAuditedSIEMEvent(ctx context.Context, rgName, namespaceName, matterID string, securityEvent any) (*Receipt, error) {
+func (e *SmaltTestEnvironment) PublishAuditedSIEMEvent(ctx context.Context, rgName, namespaceName, workspaceID string, securityEvent any) (*Receipt, error) {
 	now := uint64(time.Now().UnixNano())
 	eventBytes, err := json.Marshal(securityEvent)
 	if err != nil {
@@ -201,7 +201,7 @@ func (e *SmaltTestEnvironment) PublishAuditedSIEMEvent(ctx context.Context, rgNa
 	msg := storage.EventHubMessage{
 		Body: eventBytes,
 		Properties: map[string]string{
-			"MatterID":         matterID,
+			"WorkspaceID":      workspaceID,
 			"TurnstileReceipt": hashHex,
 			"Timestamp":        fmt.Sprintf("%d", now),
 		},
@@ -212,7 +212,7 @@ func (e *SmaltTestEnvironment) PublishAuditedSIEMEvent(ctx context.Context, rgNa
 	}
 
 	return &Receipt{
-		ReceiptID:  fmt.Sprintf("siem-%s-%s", matterID, hashHex[:12]),
+		ReceiptID:  fmt.Sprintf("siem-%s-%s", workspaceID, hashHex[:12]),
 		BLAKE3Hash: hashHex,
 		Timestamp:  now,
 	}, nil

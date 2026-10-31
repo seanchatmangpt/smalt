@@ -30,48 +30,48 @@ func SetupSmaltTestEnvironment(t *testing.T) *membrane.SmaltTestEnvironment {
 }
 
 // ----------------------------------------------------------------------------
-// Test 1: Tenant & Case Isolation (Dedicated Resource Groups & VNet Boundaries)
+// Test 1: Tenant & Workspace Isolation (Dedicated Resource Groups & VNet Boundaries)
 // ----------------------------------------------------------------------------
-func TestChicago_TenantCaseIsolation_DedicatedStateBoundaries(t *testing.T) {
+func TestChicago_TenantWorkspaceIsolation_DedicatedStateBoundaries(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	env := SetupSmaltTestEnvironment(t)
 
-	// Arrange: Define two isolated client matters (Alpha & Beta)
-	matterAlpha := TenantStateFixture{
+	// Arrange: Define two isolated client workspaces (Alpha & Beta)
+	workspaceAlpha := TenantStateFixture{
 		TenantID:      "tenant-alpha-uuid",
-		MatterID:      "matter-101",
-		ResourceGroup: "rg-courtroom-alpha-101",
-		VNetID:        "vnet-courtroom-alpha-101",
+		WorkspaceID:   "workspace-101",
+		ResourceGroup: "rg-enterprise-alpha-101",
+		VNetID:        "vnet-enterprise-alpha-101",
 	}
-	matterBeta := TenantStateFixture{
+	workspaceBeta := TenantStateFixture{
 		TenantID:      "tenant-beta-uuid",
-		MatterID:      "matter-202",
-		ResourceGroup: "rg-courtroom-beta-202",
-		VNetID:        "vnet-courtroom-beta-202",
+		WorkspaceID:   "workspace-202",
+		ResourceGroup: "rg-enterprise-beta-202",
+		VNetID:        "vnet-enterprise-beta-202",
 	}
 
-	// Act: Apply platform state for Matter Alpha
-	receiptAlpha, err := env.ApplyTenantConfig(ctx, matterAlpha)
-	require.NoError(t, err, "Matter Alpha provisioning must succeed")
+	// Act: Apply platform state for Workspace Alpha
+	receiptAlpha, err := env.ApplyTenantConfig(ctx, workspaceAlpha)
+	require.NoError(t, err, "Workspace Alpha provisioning must succeed")
 	require.NotEmpty(t, receiptAlpha.ReceiptID)
 
-	// Act: Apply platform state for Matter Beta
-	receiptBeta, err := env.ApplyTenantConfig(ctx, matterBeta)
-	require.NoError(t, err, "Matter Beta provisioning must succeed")
+	// Act: Apply platform state for Workspace Beta
+	receiptBeta, err := env.ApplyTenantConfig(ctx, workspaceBeta)
+	require.NoError(t, err, "Workspace Beta provisioning must succeed")
 	require.NotEmpty(t, receiptBeta.ReceiptID)
 
 	// Assert: Real wire verification that Resource Groups and VNets are strictly non-overlapping
-	rgAlphaState := env.GetResourceGroupState(ctx, matterAlpha.ResourceGroup)
-	rgBetaState := env.GetResourceGroupState(ctx, matterBeta.ResourceGroup)
+	rgAlphaState := env.GetResourceGroupState(ctx, workspaceAlpha.ResourceGroup)
+	rgBetaState := env.GetResourceGroupState(ctx, workspaceBeta.ResourceGroup)
 
 	require.NotEqual(t, rgAlphaState.ID, rgBetaState.ID, "State boundary violation: Tenants share Resource Group")
-	require.Equal(t, matterAlpha.TenantID, rgAlphaState.Tags["TenantID"])
-	require.Equal(t, matterBeta.TenantID, rgBetaState.Tags["TenantID"])
+	require.Equal(t, workspaceAlpha.TenantID, rgAlphaState.Tags["TenantID"])
+	require.Equal(t, workspaceBeta.TenantID, rgBetaState.Tags["TenantID"])
 
 	// Assert: Routing membrane rejects cross-tenant routing (Anti-spillover invariant)
-	crossTenantAccess := env.SimulatePacket(ctx, matterAlpha.VNetID, matterBeta.VNetID)
-	require.Equal(t, http.StatusForbidden, crossTenantAccess.StatusCode, "VNet packet spillover detected across matter isolation boundary")
+	crossTenantAccess := env.SimulatePacket(ctx, workspaceAlpha.VNetID, workspaceBeta.VNetID)
+	require.Equal(t, http.StatusForbidden, crossTenantAccess.StatusCode, "VNet packet spillover detected across workspace isolation boundary")
 }
 
 // ----------------------------------------------------------------------------
@@ -82,20 +82,20 @@ func TestChicago_ContainerConsolidation_SingleContainerAppInstance(t *testing.T)
 	ctx := context.Background()
 	env := SetupSmaltTestEnvironment(t)
 
-	matter := TenantStateFixture{
+	workspace := TenantStateFixture{
 		TenantID:      "tenant-consolidated-uuid",
-		MatterID:      "matter-303",
-		ResourceGroup: "rg-courtroom-single-cae",
-		AppID:         "ca-courtroom-consolidated",
+		WorkspaceID:   "workspace-303",
+		ResourceGroup: "rg-enterprise-single-cae",
+		AppID:         "ca-enterprise-consolidated",
 	}
 
 	// Act: Deploy consolidated container app specification
-	_, err := env.ApplyTenantConfig(ctx, matter)
+	_, err := env.ApplyTenantConfig(ctx, workspace)
 	require.NoError(t, err)
 
 	// Assert: Verify state on ARM face contains EXACTLY ONE ContainerApp resource
 	// with two co-located container definitions (frontend & backend)
-	caeResource, err := env.GetContainerAppState(ctx, matter.ResourceGroup, matter.AppID)
+	caeResource, err := env.GetContainerAppState(ctx, workspace.ResourceGroup, workspace.AppID)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, caeResource.InstanceCount, "Expected exactly 1 ContainerApp instance deployed")
@@ -105,26 +105,26 @@ func TestChicago_ContainerConsolidation_SingleContainerAppInstance(t *testing.T)
 		caeResource.Template.Containers[0].Name,
 		caeResource.Template.Containers[1].Name,
 	}
-	require.Contains(t, containerNames, "courtroom-frontend")
-	require.Contains(t, containerNames, "courtroom-backend")
+	require.Contains(t, containerNames, "enterprise-frontend")
+	require.Contains(t, containerNames, "enterprise-backend")
 
 	// Verify localhost loopback network sharing between co-located containers
 	require.True(t, caeResource.Template.SharingSettings.LocalhostNetworking, "Containers must share pod loopback")
 }
 
 // ----------------------------------------------------------------------------
-// Test 3: CRMH Blob Storage Compliance (14-Day Lifecycle Retention & Schema)
+// Test 3: Archive Blob Storage Compliance (14-Day Lifecycle Retention & Schema)
 // ----------------------------------------------------------------------------
-func TestChicago_CRMHStorage_RetentionPolicyAndNamingCompliance(t *testing.T) {
+func TestChicago_ArchiveStorage_RetentionPolicyAndNamingCompliance(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	env := SetupSmaltTestEnvironment(t)
 
-	accountName := "stcrmhalpha101"
-	rgName := "rg-courtroom-alpha-101"
+	accountName := "starchivealpha101"
+	rgName := "rg-enterprise-alpha-101"
 
-	// Act: Provision Storage with CRMH Policy
-	err := env.ProvisionBlobAccountWithCRMH(ctx, rgName, accountName)
+	// Act: Provision Storage with 14-day Retention Policy
+	err := env.ProvisionBlobAccountWithRetention(ctx, rgName, accountName)
 	require.NoError(t, err)
 
 	// Assert: Check actual wire representation of Blob Service Management Policies
@@ -134,37 +134,37 @@ func TestChicago_CRMHStorage_RetentionPolicyAndNamingCompliance(t *testing.T) {
 	// Validate rule: DaysAfterModificationGreaterThan == 14
 	var foundRule bool
 	for _, rule := range policy.Rules {
-		if rule.Name == "CRMH-14Day-Retention" {
+		if rule.Name == "Archive-14Day-Retention" {
 			foundRule = true
 			require.Equal(t, 14, rule.Definition.Actions.BaseBlob.Delete.DaysAfterModificationGreaterThan)
 			require.Contains(t, rule.Definition.Filters.BlobTypes, "blockBlob")
-			require.Contains(t, rule.Definition.Filters.PrefixMatch, "crmh/daily-exports/")
+			require.Contains(t, rule.Definition.Filters.PrefixMatch, "archive/daily-exports/")
 		}
 	}
-	require.True(t, foundRule, "CRMH mandatory 14-day retention rule not found in active policy state")
+	require.True(t, foundRule, "Mandatory 14-day retention rule not found in active policy state")
 }
 
 // ----------------------------------------------------------------------------
-// Test 4: SIEM Event Hub Ingress with Matter-Tagged Attribution
+// Test 4: SIEM Event Hub Ingress with Workspace-Tagged Attribution
 // ----------------------------------------------------------------------------
-func TestChicago_SIEMEventHub_MatterAttributionPreserved(t *testing.T) {
+func TestChicago_SIEMEventHub_WorkspaceAttributionPreserved(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	env := SetupSmaltTestEnvironment(t)
 
-	rgName := "rg-courtroom-siem"
-	namespaceName := "ehn-courtroom-audit"
-	matterID := "matter-enterprise-999"
+	rgName := "rg-enterprise-siem"
+	namespaceName := "ehn-enterprise-audit"
+	workspaceID := "workspace-enterprise-999"
 
 	// Act: Dispatch audited security payload through the turnstile
 	securityEvent := map[string]interface{}{
 		"eventType": "UserAccessEvaluation",
-		"subject":   "juror_match_evaluator",
+		"subject":   "policy_evaluator",
 		"action":    "ScoreModelRun",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	ingressReceipt, err := env.PublishAuditedSIEMEvent(ctx, rgName, namespaceName, matterID, securityEvent)
+	ingressReceipt, err := env.PublishAuditedSIEMEvent(ctx, rgName, namespaceName, workspaceID, securityEvent)
 	require.NoError(t, err)
 	require.NotEmpty(t, ingressReceipt.BLAKE3Hash)
 
@@ -174,7 +174,7 @@ func TestChicago_SIEMEventHub_MatterAttributionPreserved(t *testing.T) {
 	require.NotEmpty(t, messages)
 
 	targetMsg := messages[len(messages)-1]
-	require.Equal(t, matterID, targetMsg.Properties["MatterID"], "SIEM audit record stripped Matter attribution")
+	require.Equal(t, workspaceID, targetMsg.Properties["WorkspaceID"], "SIEM audit record stripped Workspace attribution")
 	require.Equal(t, ingressReceipt.BLAKE3Hash, targetMsg.Properties["TurnstileReceipt"], "Event Hub record missing cryptographic receipt")
 }
 
@@ -212,9 +212,9 @@ func TestChicago_KeyVault_DisjunctiveSecretEnvelopeAndVersionlessRead(t *testing
 	ctx := context.Background()
 	env := SetupSmaltTestEnvironment(t)
 
-	vaultName := "kv-courtroom-alpha"
+	vaultName := "kv-enterprise-alpha"
 	secretName := "db-connection-string"
-	secretVal := "Server=tcp:sql-courtroom.database.windows.net;Database=matter101;"
+	secretVal := "Server=tcp:sql-enterprise.database.windows.net;Database=workspace101;"
 
 	// Act: Put secret into Key Vault
 	rcpt, err := env.PutSecret(ctx, vaultName, secretName, secretVal)
@@ -280,14 +280,14 @@ func TestChicago_GroundTruth_DifferentialEvaluation(t *testing.T) {
 	env := SetupSmaltTestEnvironment(t)
 
 	expectedState := map[string]string{
-		"resourceGroup": "rg-courtroom-prod",
+		"resourceGroup": "rg-enterprise-prod",
 		"tier":          "Standard",
 		"sku":           "PerGB2018",
 		"retentionDays": "14",
 	}
 
 	actualCleanState := map[string]string{
-		"resourceGroup": "rg-courtroom-prod",
+		"resourceGroup": "rg-enterprise-prod",
 		"tier":          "Standard",
 		"sku":           "PerGB2018",
 		"retentionDays": "14",
@@ -298,7 +298,7 @@ func TestChicago_GroundTruth_DifferentialEvaluation(t *testing.T) {
 	require.Empty(t, diffs)
 
 	actualDivergentState := map[string]string{
-		"resourceGroup": "rg-courtroom-prod",
+		"resourceGroup": "rg-enterprise-prod",
 		"tier":          "Basic",
 		"retentionDays": "14",
 	}
@@ -344,13 +344,13 @@ func TestChicago_ConcurrentStateCollisions_ZeroDataRaces(t *testing.T) {
 		go func(idx int) {
 			rg := "rg-concurrent-siem"
 			ns := "eh-concurrent"
-			matter := "matter-concurrent"
+			workspace := "workspace-concurrent"
 			payload := map[string]any{
 				"idx": idx,
 				"ts":  time.Now().UnixNano(),
 			}
 
-			rcpt, err := env.PublishAuditedSIEMEvent(ctx, rg, ns, matter, payload)
+			rcpt, err := env.PublishAuditedSIEMEvent(ctx, rg, ns, workspace, payload)
 			if err != nil {
 				errCh <- err
 				return
@@ -473,8 +473,8 @@ func TestChicago_KeyVaultSecret_VersionlessRead_StateAssertion(t *testing.T) {
 	env := SetupSmaltTestEnvironment(t)
 
 	// Populate real secret in membrane
-	const vault = "courtroom-dev-kv"
-	const secretName = "courtroom-session-secret"
+	const vault = "enterprise-dev-kv"
+	const secretName = "enterprise-session-secret"
 	const secretVal = "550e8400-e29b-41d4-a716-446655440000"
 
 	rcpt, err := env.PutSecret(ctx, vault, secretName, secretVal)
@@ -501,7 +501,7 @@ func TestChicago_KeyVaultSecret_VersionlessRead_StateAssertion(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		respBody := fmt.Sprintf(`{
-			"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-courtroom/providers/Microsoft.KeyVault/vaults/%s/secrets/%s",
+			"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-enterprise/providers/Microsoft.KeyVault/vaults/%s/secrets/%s",
 			"name": "%s",
 			"type": "Microsoft.KeyVault/vaults/secrets",
 			"properties": {
@@ -515,7 +515,7 @@ func TestChicago_KeyVaultSecret_VersionlessRead_StateAssertion(t *testing.T) {
 	defer srv.Close()
 
 	// Perform real HTTP GET request against the loopback collaborator
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-courtroom/providers/Microsoft.KeyVault/vaults/"+vault+"/secrets/"+secretName, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-enterprise/providers/Microsoft.KeyVault/vaults/"+vault+"/secrets/"+secretName, nil)
 	require.NoError(t, err)
 
 	resp, err := srv.Client().Do(req)

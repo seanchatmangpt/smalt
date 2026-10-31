@@ -12,13 +12,13 @@ func TestSmaltTestEnvironment_FullLifecycle(t *testing.T) {
 	ctx := context.Background()
 	env := membrane.NewSmaltTestEnvironment()
 
-	// 1. Provision Matter
+	// 1. Provision Workspace
 	fixture := membrane.TenantStateFixture{
 		TenantID:      "tenant-alpha",
-		MatterID:      "matter-001",
+		WorkspaceID:   "workspace-001",
 		ResourceGroup: "rg-alpha",
 		VNetID:        "vnet-alpha",
-		AppID:         "ca-courtroom",
+		AppID:         "ca-enterprise",
 	}
 
 	rcpt, err := env.ApplyTenantConfig(ctx, fixture)
@@ -36,7 +36,7 @@ func TestSmaltTestEnvironment_FullLifecycle(t *testing.T) {
 	}
 
 	// 3. ContainerApp State
-	ca, err := env.GetContainerAppState(ctx, "rg-alpha", "ca-courtroom")
+	ca, err := env.GetContainerAppState(ctx, "rg-alpha", "ca-enterprise")
 	if err != nil {
 		t.Fatalf("get ca failed: %v", err)
 	}

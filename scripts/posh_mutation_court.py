@@ -69,14 +69,14 @@ def run_chicago_tamper_falsifiers():
     print("[MUTATION-COURT] Chicago adversarial falsifiers: NON-VACUOUS (tampered & omitted tokens hard refused)")
     return True
 
-def run_mutation_kirkland_compliance_court():
-    print("[MUTATION-COURT] Stage 6: Proving Kirkland & Ellis 7-gap OCEL 2.0 & pm4pytest compliance court...")
-    cmd = ["bash", "scripts/kirkland_compliance_court.sh"]
+def run_mutation_enterprise_compliance_court():
+    print("[MUTATION-COURT] Stage 6: Proving Enterprise 7-gap OCEL 2.0 & pm4pytest compliance court...")
+    cmd = ["bash", "scripts/enterprise_compliance_court.sh"]
     res = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
     if res.returncode != 0 or "VERDICT: ALIVE [GREEN]" not in res.stdout:
-        print(f"[MUTATION-COURT-FAIL] Kirkland compliance court failed:\n{res.stderr}\n{res.stdout}")
+        print(f"[MUTATION-COURT-FAIL] Enterprise compliance court failed:\n{res.stderr}\n{res.stdout}")
         return False
-    print("[MUTATION-COURT] Kirkland compliance court: PASS (All 7 Invariants Satisfied)")
+    print("[MUTATION-COURT] Enterprise compliance court: PASS (All 7 Invariants Satisfied)")
     return True
 
 def run_mutation_ocel_pm4pytest_anti_vacuity():
@@ -90,8 +90,8 @@ def run_mutation_ocel_pm4pytest_anti_vacuity():
 
     cmd_sla_mutant = [
         python313, "-m", "pm4pytest.cli", "check-sla",
-        "--log", "/tmp/kirkland_compliance_audit.ocel.json",
-        "--sla", "tf.resource.provisioned:crmh.export.completed:0.010", # Enforce tight 10ms SLA (actual is 25ms)
+        "--log", "/tmp/enterprise_compliance_audit.ocel.json",
+        "--sla", "tf.resource.provisioned:archive.export.completed:0.010", # Enforce tight 10ms SLA (actual is 25ms)
         "--format", "tap"
     ]
     res_sla = subprocess.run(cmd_sla_mutant, env=env, capture_output=True, text=True)
@@ -100,11 +100,11 @@ def run_mutation_ocel_pm4pytest_anti_vacuity():
         return False
     print("[MUTATION-COURT] Mutant M1 (Temporal SLA exceeded): KILLED (Correctly Refused)")
 
-    # Inject Mutant 2: FSM Sequence inversion (crmh.export before tf.resource.provisioned)
+    # Inject Mutant 2: FSM Sequence inversion (archive.export before tf.resource.provisioned)
     cmd_fsm_mutant = [
         python313, "-m", "pm4pytest.cli", "check-conformance",
-        "--log", "/tmp/kirkland_compliance_audit.ocel.json",
-        "--fsm", "crmh.export.completed,tf.resource.provisioned,siem.audit.delivered",
+        "--log", "/tmp/enterprise_compliance_audit.ocel.json",
+        "--fsm", "archive.export.completed,tf.resource.provisioned,siem.audit.delivered",
         "--min-fitness", "1.0",
         "--format", "tap"
     ]
@@ -117,8 +117,8 @@ def run_mutation_ocel_pm4pytest_anti_vacuity():
     # Inject Mutant 3: Traversal over unlinked object types
     cmd_ocpq_mutant = [
         python313, "-m", "pm4pytest.cli", "check-ocpq",
-        "--log", "/tmp/kirkland_compliance_audit.ocel.json",
-        "--traverse", "Tenant,NonExistentType,Matter",
+        "--log", "/tmp/enterprise_compliance_audit.ocel.json",
+        "--traverse", "Tenant,NonExistentType,Workspace",
         "--format", "tap"
     ]
     res_ocpq = subprocess.run(cmd_ocpq_mutant, env=env, capture_output=True, text=True)
@@ -151,7 +151,7 @@ def main():
         sys.exit(1)
     if not run_chicago_tamper_falsifiers():
         sys.exit(1)
-    if not run_mutation_kirkland_compliance_court():
+    if not run_mutation_enterprise_compliance_court():
         sys.exit(1)
     if not run_mutation_ocel_pm4pytest_anti_vacuity():
         sys.exit(1)
