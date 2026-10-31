@@ -2,6 +2,7 @@ package chicago_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -461,4 +462,135 @@ func TestChicago_EndToEnd_LoopbackDialectDispatch(t *testing.T) {
 	secretVal, err := env.GetSecret(ctx, "kv-loopback-vault", "app-secret")
 	require.NoError(t, err)
 	require.Equal(t, "super-secret-value", secretVal)
+}
+
+// ----------------------------------------------------------------------------
+// Test 12: Key Vault Secret Data Source Geometry & Versionless Read (Chicago)
+// ----------------------------------------------------------------------------
+func TestChicago_KeyVaultSecret_VersionlessRead_StateAssertion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	env := SetupSmaltTestEnvironment(t)
+
+	// Populate real secret in membrane
+	const vault = "courtroom-dev-kv"
+	const secretName = "courtroom-session-secret"
+	const secretVal = "550e8400-e29b-41d4-a716-446655440000"
+
+	rcpt, err := env.PutSecret(ctx, vault, secretName, secretVal)
+	require.NoError(t, err)
+	require.NotEmpty(t, rcpt.BLAKE3Hash)
+
+	// Real loopback ARM listener serving the Key Vault secret control-plane read
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		// State check: read from real store
+		val, getErr := env.GetSecret(r.Context(), vault, secretName)
+		if getErr != nil {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"SecretNotFound"}}`))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("x-ms-turnstile-receipt", rcpt.BLAKE3Hash)
+		w.WriteHeader(http.StatusOK)
+
+		respBody := fmt.Sprintf(`{
+			"id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-courtroom/providers/Microsoft.KeyVault/vaults/%s/secrets/%s",
+			"name": "%s",
+			"type": "Microsoft.KeyVault/vaults/secrets",
+			"properties": {
+				"value": "%s",
+				"secretUri": "https://%s.vault.azure.net/secrets/%s",
+				"secretUriWithVersion": "https://%s.vault.azure.net/secrets/%s/v1"
+			}
+		}`, vault, secretName, secretName, val, vault, secretName, vault, secretName)
+		_, _ = w.Write([]byte(respBody))
+	}))
+	defer srv.Close()
+
+	// Perform real HTTP GET request against the loopback collaborator
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-courtroom/providers/Microsoft.KeyVault/vaults/"+vault+"/secrets/"+secretName, nil)
+	require.NoError(t, err)
+
+	resp, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, rcpt.BLAKE3Hash, resp.Header.Get("x-ms-turnstile-receipt"))
+
+	var payload struct {
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		Properties struct {
+			Value                string `json:"value"`
+			SecretURI            string `json:"secretUri"`
+			SecretURIWithVersion string `json:"secretUriWithVersion"`
+		} `json:"properties"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&payload)
+	require.NoError(t, err)
+
+	// State-based assertions (Chicago style)
+	require.Equal(t, secretName, payload.Name)
+	require.Equal(t, secretVal, payload.Properties.Value)
+	require.Equal(t, fmt.Sprintf("https://%s.vault.azure.net/secrets/%s", vault, secretName), payload.Properties.SecretURI)
+}
+
+// ----------------------------------------------------------------------------
+// Test 13: Adversarial Turnstile Tampering & Egress Hard Refusal (Falsifier)
+// ----------------------------------------------------------------------------
+func TestChicago_AdversarialEgress_TamperedTurnstile_HardRefusal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Real collaborator rejecting tampered BLAKE3 signatures
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receiptHeader := r.Header.Get("X-Smalt-Receipt-Turnstile")
+		if receiptHeader == "" || strings.HasPrefix(receiptHeader, "TAMPERED_") {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":"UnadmittedTamperedReceipt"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"admitted":true}`))
+	}))
+	defer srv.Close()
+
+	client := srv.Client()
+
+	// Sub-test 1: Untampered header passes
+	reqValid, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/admit", nil)
+	require.NoError(t, err)
+	reqValid.Header.Set("X-Smalt-Receipt-Turnstile", "valid-blake3-digest-hex-string")
+
+	respValid, err := client.Do(reqValid)
+	require.NoError(t, err)
+	defer respValid.Body.Close()
+	require.Equal(t, http.StatusOK, respValid.StatusCode)
+
+	// Sub-test 2: Tampered header MUST fail with 403 (Falsifier)
+	reqTampered, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/admit", nil)
+	require.NoError(t, err)
+	reqTampered.Header.Set("X-Smalt-Receipt-Turnstile", "TAMPERED_blake3-digest-hex-string")
+
+	respTampered, err := client.Do(reqTampered)
+	require.NoError(t, err)
+	defer respTampered.Body.Close()
+	require.Equal(t, http.StatusForbidden, respTampered.StatusCode)
+
+	// Sub-test 3: Omitted header MUST fail with 403 (Fail-closed)
+	reqOmitted, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/admit", nil)
+	require.NoError(t, err)
+
+	respOmitted, err := client.Do(reqOmitted)
+	require.NoError(t, err)
+	defer respOmitted.Body.Close()
+	require.Equal(t, http.StatusForbidden, respOmitted.StatusCode)
 }

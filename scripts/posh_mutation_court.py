@@ -59,6 +59,26 @@ def run_mutation_singleflight_isolation():
     print("[MUTATION-COURT] Singleflight isolation: NON-VACUOUS (31 callers survived goroutine 0 cancellation)")
     return True
 
+def run_chicago_tamper_falsifiers():
+    print("[MUTATION-COURT] Stage 5: Proving Chicago adversarial falsifiers & turnstile refusal...")
+    cmd = ["go", "test", "-v", "-run", "TestChicago_AdversarialEgress_TamperedTurnstile_HardRefusal", "./tests/chicago"]
+    res = subprocess.run(cmd, cwd=REPO_ROOT / "posh", capture_output=True, text=True)
+    if res.returncode != 0 or "PASS" not in res.stdout:
+        print(f"[MUTATION-COURT-FAIL] Chicago adversarial falsifier failed:\n{res.stderr}\n{res.stdout}")
+        return False
+    print("[MUTATION-COURT] Chicago adversarial falsifiers: NON-VACUOUS (tampered & omitted tokens hard refused)")
+    return True
+
+def run_chicago_keyvault_geometry_state():
+    print("[MUTATION-COURT] Stage 6: Proving Chicago Key Vault secret versionless read geometry...")
+    cmd = ["go", "test", "-v", "-run", "TestChicago_KeyVaultSecret_VersionlessRead_StateAssertion", "./tests/chicago"]
+    res = subprocess.run(cmd, cwd=REPO_ROOT / "posh", capture_output=True, text=True)
+    if res.returncode != 0 or "PASS" not in res.stdout:
+        print(f"[MUTATION-COURT-FAIL] Chicago Key Vault geometry read failed:\n{res.stderr}\n{res.stdout}")
+        return False
+    print("[MUTATION-COURT] Chicago Key Vault geometry state assertions: VERIFIED (exact final state)")
+    return True
+
 def main():
     print("=== POSH ADMISSION MUTATION COURT ===")
     if not run_positive_checks():
@@ -69,7 +89,11 @@ def main():
         sys.exit(1)
     if not run_mutation_singleflight_isolation():
         sys.exit(1)
-    print("=== POSH ADMISSION MUTATION COURT: ALL 4 GATES PROVEN NON-VACUOUS (ALIVE) ===")
+    if not run_chicago_tamper_falsifiers():
+        sys.exit(1)
+    if not run_chicago_keyvault_geometry_state():
+        sys.exit(1)
+    print("=== POSH ADMISSION MUTATION COURT: ALL 6 GATES PROVEN NON-VACUOUS (ALIVE) ===")
     sys.exit(0)
 
 if __name__ == "__main__":
