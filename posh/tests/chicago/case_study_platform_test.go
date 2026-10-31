@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"smalt.dev/posh/internal/court"
+	"smalt.dev/posh/internal/dialect/azure"
 	"smalt.dev/posh/internal/membrane"
 )
 
@@ -368,4 +371,94 @@ func TestChicago_ConcurrentStateCollisions_ZeroDataRaces(t *testing.T) {
 	msgs, err := env.DrainEventHubPartition(ctx, "rg-concurrent-siem", "eh-concurrent", "audit-events")
 	require.NoError(t, err)
 	require.Len(t, msgs, concurrency, "Expected all concurrent SIEM audit messages persisted")
+}
+
+// ----------------------------------------------------------------------------
+// Test 11: End-to-End Loopback Socket Chicago Court (Dialect to Membrane)
+// ----------------------------------------------------------------------------
+func TestChicago_EndToEnd_LoopbackDialectDispatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	env := SetupSmaltTestEnvironment(t)
+
+	// Build the live Azure dialect route table
+	reg := azure.NewRegistry()
+	azure.RegisterFirstFamilies(reg)
+	fam, err := azure.NewFamilies(reg, azure.FirstFamilyRoutes())
+	require.NoError(t, err)
+
+	// Spin up real loopback HTTP collaborator serving the dialect router
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route, spec, ok := fam.Resolve(r.Method, r.URL.Path)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"ResourceNotFound"}}`))
+			return
+		}
+
+		// State transition through membrane
+		switch route.Family {
+		case "armkv":
+			// Extract vault and execute turnstile-backed operation
+			rcpt, err := env.PutSecret(r.Context(), "kv-loopback-vault", "app-secret", "super-secret-value")
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("x-ms-turnstile-receipt", rcpt.BLAKE3Hash)
+			w.Header().Set("x-ms-turnstile-shape", spec.Shape)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"value":"super-secret-value","id":"https://kv-loopback-vault.vault.azure.net/secrets/app-secret"}`)))
+
+		case "sbdata":
+			// Parse broker properties and admit message
+			bpHeader := r.Header.Get("BrokerProperties")
+			bp, _ := azure.ParseBrokerProperties(bpHeader)
+			msgID := bp.MessageID
+			if msgID == "" {
+				msgID = "msg-auto-assigned"
+			}
+			w.Header().Set("x-ms-turnstile-receipt", spec.TurnstileReceipt)
+			w.Header().Set("x-ms-message-id", msgID)
+			w.WriteHeader(http.StatusCreated)
+
+		default:
+			w.Header().Set("x-ms-turnstile-receipt", spec.TurnstileReceipt)
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	client := srv.Client()
+
+	// 1. Send Service Bus message over loopback with BrokerProperties
+	sbURL := srv.URL + "/my-namespace/incoming-orders/messages"
+	sbReq, err := http.NewRequestWithContext(ctx, http.MethodPost, sbURL, strings.NewReader("payload-bytes"))
+	require.NoError(t, err)
+	sbReq.Header.Set("BrokerProperties", `{"MessageId":"ord-888","PartitionKey":"pk-888"}`)
+	sbReq.Header.Set("x-ms-brokered-encoding", "application/atom+xml")
+
+	sbResp, err := client.Do(sbReq)
+	require.NoError(t, err)
+	defer sbResp.Body.Close()
+	require.Equal(t, http.StatusCreated, sbResp.StatusCode)
+	require.Equal(t, "ord-888", sbResp.Header.Get("x-ms-message-id"))
+	require.NotEmpty(t, sbResp.Header.Get("x-ms-turnstile-receipt"))
+
+	// 2. Put and retrieve Key Vault secret over loopback
+	kvURL := srv.URL + "/subscriptions/sub-001/resourcegroups/rg-001/providers/Microsoft.KeyVault/vaults/kv-loopback-vault"
+	kvReq, err := http.NewRequestWithContext(ctx, http.MethodPut, kvURL, strings.NewReader(`{"properties":{"sku":{"family":"A","name":"standard"}}}`))
+	require.NoError(t, err)
+
+	kvResp, err := client.Do(kvReq)
+	require.NoError(t, err)
+	defer kvResp.Body.Close()
+	require.Equal(t, http.StatusOK, kvResp.StatusCode)
+	require.NotEmpty(t, kvResp.Header.Get("x-ms-turnstile-receipt"))
+	require.Equal(t, "armkv.v1", kvResp.Header.Get("x-ms-turnstile-shape"))
+
+	// Assert final state in membrane store
+	secretVal, err := env.GetSecret(ctx, "kv-loopback-vault", "app-secret")
+	require.NoError(t, err)
+	require.Equal(t, "super-secret-value", secretVal)
 }
