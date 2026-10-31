@@ -8,13 +8,13 @@ echo "========================================================================"
 echo "  MASTER COURT RUNNER: VALIDATING PLAYWRIGHT VIDEO & ALL 4 PLANES"
 echo "========================================================================"
 
-echo "[STAGE 1/5] Verifying Generated Playwright E2E Video Artifact..."
-VIDEO_PATH="/Users/sac/.gemini/antigravity-cli/brain/c4ea1bd1-2336-4778-8eea-e426e9f0a240/courtroom_walkthrough.mp4"
+echo "[STAGE 1/5] Verifying Generated Playwright E2E Video Artifacts..."
+VIDEO_PATH="/Users/sac/.gemini/antigravity-cli/brain/c4ea1bd1-2336-4778-8eea-e426e9f0a240/full_process_styled_ocel_verified.mp4"
 if [[ ! -f "${VIDEO_PATH}" ]]; then
   echo "[MASTER-FAIL] Video artifact missing at ${VIDEO_PATH}"
   exit 1
 fi
-echo "[STAGE 1/5] PASS: Video artifact exists ($(du -h "${VIDEO_PATH}" | awk '{print $1}'))"
+echo "[STAGE 1/5] PASS: Full process styled OCEL video artifact exists ($(du -h "${VIDEO_PATH}" | awk '{print $1}'))"
 
 echo "[STAGE 2/5] Running Chicago Cross-Plane Court (Next.js <-> Terraform <-> Go <-> Elixir)..."
 bash "${REPO_ROOT}/scripts/cross_plane_court.sh"
