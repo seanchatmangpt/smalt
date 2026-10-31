@@ -2,6 +2,7 @@ package chicago_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -301,4 +302,70 @@ func TestChicago_GroundTruth_DifferentialEvaluation(t *testing.T) {
 	okDivergent, diffsDivergent := env.EvaluateGroundTruth(ctx, "eval-002", expectedState, actualDivergentState)
 	require.False(t, okDivergent, "Ground truth evaluation must fail when state diverges")
 	require.NotEmpty(t, diffsDivergent)
+}
+
+// ----------------------------------------------------------------------------
+// Test 10: High-Concurrency State Collisions & Thread-Safety (Zero Data Races)
+// ----------------------------------------------------------------------------
+func TestChicago_ConcurrentStateCollisions_ZeroDataRaces(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	env := SetupSmaltTestEnvironment(t)
+
+	const concurrency = 50
+	errCh := make(chan error, concurrency*2)
+
+	// Concurrently write to Key Vault and SIEM Event Hub
+	for i := 0; i < concurrency; i++ {
+		go func(idx int) {
+			vault := "kv-concurrent-test"
+			secretName := "conn-str"
+			val := "val-" + time.Now().UTC().Format(time.RFC3339Nano)
+
+			rcpt, err := env.PutSecret(ctx, vault, secretName, val)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if rcpt.ReceiptID == "" || rcpt.BLAKE3Hash == "" {
+				errCh <- fmt.Errorf("empty receipt ID or hash")
+				return
+			}
+
+			// Concurrently read back
+			_, errGet := env.GetSecret(ctx, vault, secretName)
+			errCh <- errGet
+		}(i)
+
+		go func(idx int) {
+			rg := "rg-concurrent-siem"
+			ns := "eh-concurrent"
+			matter := "matter-concurrent"
+			payload := map[string]any{
+				"idx": idx,
+				"ts":  time.Now().UnixNano(),
+			}
+
+			rcpt, err := env.PublishAuditedSIEMEvent(ctx, rg, ns, matter, payload)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if rcpt.BLAKE3Hash == "" {
+				errCh <- fmt.Errorf("empty receipt hash")
+				return
+			}
+			errCh <- nil
+		}(i)
+	}
+
+	for i := 0; i < concurrency*2; i++ {
+		err := <-errCh
+		require.NoError(t, err, "Concurrent state transaction encountered error or race")
+	}
+
+	// Verify messages were all drained from event hub partition
+	msgs, err := env.DrainEventHubPartition(ctx, "rg-concurrent-siem", "eh-concurrent", "audit-events")
+	require.NoError(t, err)
+	require.Len(t, msgs, concurrency, "Expected all concurrent SIEM audit messages persisted")
 }
