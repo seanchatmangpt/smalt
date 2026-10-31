@@ -1,0 +1,73 @@
+\contentsline {chapter}{Abstract}{ii}{chapter*.1}%
+\contentsline {chapter}{\numberline {1}Category-Theoretic Epistemology \& The Algebra of the Chatman Equation}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}The Epistemic Crisis of Distributed Cloud Verification}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Sheaf-Theoretic Formulation of Observations $\mathcal {O}$ and Admission $\mathcal {O}^*$}{2}{section.1.2}%
+\contentsline {section}{\numberline {1.3}The Kleisli Monad of Lawful Manufacture $\mu $ and Receipt $\mathcal {R}$}{3}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Homological Algebra of the Failure Taxonomy}{3}{section.1.4}%
+\contentsline {chapter}{\numberline {2}Differential Geometry, Fiber Bundles, \& Symplectic Mechanics of the Multi-Plane State Space}{5}{chapter.2}%
+\contentsline {section}{\numberline {2.1}The Sovereign State Manifold $\mathcal {M}_{\mathrm {state}}$}{5}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Principal Fiber Bundle of Cryptographic Turnstiles}{5}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Riemannian Metric Tensor $g_{ij}$ and Geodesic Singleflight Routing}{6}{section.2.3}%
+\contentsline {section}{\numberline {2.4}Symplectic Geometry \& Hamiltonian Conservation Laws}{6}{section.2.4}%
+\contentsline {section}{\numberline {2.5}Projective Geometry $\mathbb {RP}^n$ of Key Vault Versionless Secret Reads}{7}{section.2.5}%
+\contentsline {chapter}{\numberline {3}Stochastic Calculus, Queueing Theory, \& Real Analysis of the POSH Membrane}{8}{chapter.3}%
+\contentsline {section}{\numberline {3.1}It\^o-L\'evy Stochastic Differential Equations for Loopback Latency}{8}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Fokker-Planck-Kolmogorov PDE and Tail SLA Bounds}{9}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Measure-Theoretic Proof of Singleflight Cancellation Isolation}{9}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Lyapunov Stability Calculus of Autonomic Admission}{10}{section.3.4}%
+\contentsline {chapter}{\numberline {4}Linear Algebra, Petri Net Incidence Matrices, Spectral Graph Theory, \& BLAKE3 Algebra}{11}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Matrix Formulation of Object-Centric Petri Nets (OCPN)}{11}{section.4.1}%
+\contentsline {subsection}{\numberline {4.1.1}Explicit Pre-Incidence, Post-Incidence, and Token Transition Matrices}{11}{subsection.4.1.1}%
+\contentsline {subsection}{\numberline {4.1.2}Place Invariants (P-Invariants) via Left Nullspace of $\mathbf {C}$}{12}{subsection.4.1.2}%
+\contentsline {section}{\numberline {4.2}Spectral Graph Theory of the IEEE OCEL 2.0 Topology}{12}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Cryptographic Algebra of BLAKE3 Turnstile Sealing}{13}{section.4.3}%
+\contentsline {chapter}{\numberline {5}Comprehensive C4 Architectural Decomposition (Levels 0 through 4)}{14}{chapter.5}%
+\contentsline {section}{\numberline {5.1}C4 Level 0: Enterprise System Landscape}{14}{section.5.1}%
+\contentsline {section}{\numberline {5.2}C4 Level 1: Courtroom AI Platform System Context}{14}{section.5.2}%
+\contentsline {section}{\numberline {5.3}C4 Level 2: Multi-Plane Container Topology}{15}{section.5.3}%
+\contentsline {section}{\numberline {5.4}C4 Level 3: Plane 1 Component Architecture (\texttt {@courtroom/web})}{15}{section.5.4}%
+\contentsline {section}{\numberline {5.5}C4 Level 3: Plane 2 Component Architecture (\texttt {terraform-provider-smalt})}{16}{section.5.5}%
+\contentsline {section}{\numberline {5.6}C4 Level 3: Plane 3 Component Architecture (Go POSH Membrane)}{16}{section.5.6}%
+\contentsline {section}{\numberline {5.7}C4 Level 3: Plane 4 Component Architecture (Elixir BEAM Core)}{17}{section.5.7}%
+\contentsline {section}{\numberline {5.8}C4 Deployment Topology}{17}{section.5.8}%
+\contentsline {section}{\numberline {5.9}IEEE OCEL 2.0 Hypergraph \& Petri Net Topology}{18}{section.5.9}%
+\contentsline {section}{\numberline {5.10}8-Stage Adversarial Mutation Pipeline \& Zero-Mock Sequence}{18}{section.5.10}%
+\contentsline {chapter}{\numberline {6}Boolean Lattice Theory, Galois Connections, \& The 8-Stage Adversarial Mutation Court}{20}{chapter.6}%
+\contentsline {section}{\numberline {6.1}The DfCM Combinatorial State Lattice $\mathcal {L}_{\mathrm {DfCM}}$}{20}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Information-Theoretic Proof of the Zero-Information Check Law}{21}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Galois Connection of the Sovereign Invariant Gate}{21}{section.6.3}%
+\contentsline {chapter}{\numberline {7}Empirical Realization, Telemetry Matrices, \& Zero-Mock Playwright Instrumentation}{22}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Complete Empirical Verification Matrix Across All 20 Vitest Suites \& 14 Go Chicago Suites}{22}{section.7.1}%
+\contentsline {section}{\numberline {7.2}High-Precision Percentile Distribution of Smalt Loopback Transport}{23}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Resolution of Next.js 16 Standalone Asset Isolation}{23}{section.7.3}%
+\contentsline {chapter}{\numberline {8}Information Geometry, Ergodic Dynamical Systems, \& Homotopy Type Theory of Univalent Infrastructure}{24}{chapter.8}%
+\contentsline {section}{\numberline {8.1}Fisher-Rao Information Manifold of Telemetry Distributions}{24}{section.8.1}%
+\contentsline {section}{\numberline {8.2}Dual $\alpha $-Connections \& Amari Dually Flat Geometry of OCEL 2.0 Event Distributions}{25}{section.8.2}%
+\contentsline {section}{\numberline {8.3}Birkhoff Ergodic Theorem \& Spectral Gap of the Autonomic Recursion}{25}{section.8.3}%
+\contentsline {section}{\numberline {8.4}Martin-Löf Dependent Type Theory \& Voevodsky's Univalence Axiom for Infrastructure Equivalence}{25}{section.8.4}%
+\contentsline {chapter}{\numberline {A}Verbatim Source Code: Go POSH Chicago Courts \& IEEE OCEL 2.0 Emitter}{27}{appendix.A}%
+\contentsline {section}{\numberline {A.1}Kirkland \& Ellis 7-Gap OCEL 2.0 Emission Test (\texttt {kirkland\_ocel\_test.go})}{27}{section.A.1}%
+\contentsline {section}{\numberline {A.2}Four-Plane Full-Stack Chicago Court (\texttt {cross\_plane\_court\_test.go})}{31}{section.A.2}%
+\contentsline {section}{\numberline {A.3}Dual-Compatible IEEE OCEL 2.0 Serializer (\texttt {ocel\_emitter.go})}{32}{section.A.3}%
+\contentsline {chapter}{\numberline {B}Verbatim Source Code: Go POSH Membrane \& Terraform Provider}{33}{appendix.B}%
+\contentsline {section}{\numberline {B.1}POSH Zero-Allocation Framing \& Listener (\texttt {posh/internal/server/server.go} Excerpt)}{33}{section.B.1}%
+\contentsline {section}{\numberline {B.2}Terraform Provider Key Vault Data Source (\texttt {data\_sources\_v1.go})}{40}{section.B.2}%
+\contentsline {section}{\numberline {B.3}Kirkland \& Ellis Client Terraform Variables (\texttt {kirkland.tfvars})}{50}{section.B.3}%
+\contentsline {chapter}{\numberline {C}Verbatim Source Code: Adversarial Mutation, PM4Py, \& Sovereign Gates}{51}{appendix.C}%
+\contentsline {section}{\numberline {C.1}8-Stage POSH Admission \& Anti-Vacuity Mutation Court (\texttt {posh\_mutation\_court.py})}{51}{section.C.1}%
+\contentsline {section}{\numberline {C.2}Unified Cross-Plane OCEL 2.0 \& \texttt {pm4pytest} Court (\texttt {ocel\_pm4pytest\_court.py})}{53}{section.C.2}%
+\contentsline {section}{\numberline {C.3}Must-Not-Migrate Sovereign Invariant Gate (\texttt {must\_not\_migrate\_gate.py} Excerpt)}{56}{section.C.3}%
+\contentsline {section}{\numberline {C.4}Kirkland Compliance Master Shell Court (\texttt {kirkland\_compliance\_court.sh})}{60}{section.C.4}%
+\contentsline {section}{\numberline {C.5}Master All-Courts Validation Runner (\texttt {validate\_all\_courts.sh})}{61}{section.C.5}%
+\contentsline {chapter}{\numberline {D}Verbatim Source Code: Next.js Harness \& Zero-Mock Playwright Video Engines}{63}{appendix.D}%
+\contentsline {section}{\numberline {D.1}Zero-Mock Live Grounded Playwright Engine (\texttt {run\_zero\_mock\_playwright.mjs})}{63}{section.D.1}%
+\contentsline {section}{\numberline {D.2}Full-Process Styled OCEL v2 Playwright Engine (\texttt {run\_full\_process\_playwright.mjs})}{65}{section.D.2}%
+\contentsline {section}{\numberline {D.3}Next.js Cross-Plane Vitest Suite (\texttt {crossplane.test.ts})}{70}{section.D.3}%
+\contentsline {section}{\numberline {D.4}Grounded Smalt Wire Client (\texttt {smalt-client.ts})}{71}{section.D.4}%
+\contentsline {section}{\numberline {D.5}Conservation Residue Sweeper (\texttt {residue.ts})}{72}{section.D.5}%
+\contentsline {section}{\numberline {D.6}Key Vault Secret \& Turnstile Receipt Court (\texttt {vault.test.ts})}{75}{section.D.6}%
+\contentsline {section}{\numberline {D.7}CRMH 14-Day Retention \& Parquet Naming Court (\texttt {crmh.test.ts})}{75}{section.D.7}%
+\contentsline {section}{\numberline {D.8}EventHub SIEM Wire Attribution Court (\texttt {siem-wire.test.ts})}{77}{section.D.8}%
+\contentsline {section}{\numberline {D.9}200-Roundtrip Latency Percentile Court (\texttt {perf.test.ts})}{77}{section.D.9}%
+\contentsline {section}{\numberline {D.10}Hermetic Network Isolation Court (\texttt {hermetic.test.ts})}{79}{section.D.10}%
+\contentsline {section}{\numberline {D.11}SAML 2.0 Certificate, Audience, \& Replay Gate (\texttt {sso.test.ts})}{81}{section.D.11}%
