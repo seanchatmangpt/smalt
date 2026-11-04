@@ -27,7 +27,8 @@ forms:
 
 1. **Bounded polls on observables** — `SmaltTest.AssertEventually.eventually/2`
    (pre-reset `test/support/assert_eventually.ex`, RETIRED@64f6099; successors:
-   `test/internal/poll_helper.exs` + `verification/{ts,py}/harness/poll.*`) polls a real observable on a
+   `test/internal/poll_helper.exs` +
+   `verification/{ts,py}/harness/poll.*`) polls a real observable on a
    monotonic deadline with typed immediate-fail on unexpected shape.
 2. **Structural sync** — GenServer `call`, ETS owned by the tested process,
    `async: false` where a sibling must not race.
@@ -85,32 +86,34 @@ an unclassified sleep (marker `SHIM-COURT`) → AFTER the gate REFUSES →
 RESTORE byte-exact (sha256 fail-closed). A gate that accepts the shim exits
 as `VACUOUS GATE`.
 
-## Current classification (census refreshed 2026-10-19 @ 6681746)
+## Current classification (census = command, not a number)
 
-lib/ (three sites):
+A hardcoded census count is stale at birth; the census is re-derived from
+the tree. Refreshed 2026-11-04:
 
-| Site | Class | Note |
-|---|---|---|
-| `lib/smalt/enclave/doctor.ex:186` (eviction settle delay) | SIGNALABLE-PENDING-REDESIGN | settle-delay removal WO |
-| `lib/smalt/enclave/doctor.ex:265` (`do_poll` step) | SIGNALABLE-PENDING-REDESIGN → POLL-STEP candidate | fold into LRO.await shared poll primitive |
-| `lib/smalt/enclave/state.ex:169` (`poll_loop`) | SIGNALABLE-PENDING-REDESIGN | **inverted predicate fixed 2026-10-18** (slept after terminal, polled hot on 202) |
+```bash
+# test/ TIME-ADVANCE annotated sites
+grep -rn "SLEEP-CLASS: TIME-ADVANCE" test/
+# lib/ census-class annotated sites
+grep -rn "SLEEP-CLASS:" lib/
+# burn-script literal sleeps (AZB-21 scope)
+grep -rnE "sleep [0-9]" docker/burn/
+```
 
-The `arm_gateway/router.ex` `poll_finops`, `affidavit/wasm_engine.ex`
-`start_with_retry`, and `pplan/task.ex` `wait_table` rows are gone: the lib
-redesign (`docs/jira/v26.10.18/rewrite-drafts/lib-redesign-wasm-lro.md`)
-removed those sleeps (router poll went signal-driven via `LRO.Notifier`,
-the wasm start retry moved out of the module).
-
-test/ B1 TIME-ADVANCE annotated sites (20): amqp/connection_test.exs x5,
-enclave-testbed/enclave_testbed.exs x2, compliance/c1_arm.exs x2, and one
-each in affidavit_wasm_failclosed, amqp/sweeper_test, arm_error_corpus,
-data_plane/audit_planes, lro_test, mcp_wire, pplan_test,
-smalt_arm_gateway_test, smalt_ets_baseline_identity,
-smalt_ets_composite_identity, support/sleep_windows.ex.
+Snapshot at refresh (2026-11-04): test/ — 2 TIME-ADVANCE sites, 1 file
+(`test/integration/ja13_supervisor_intensity_court.exs`). lib/ — 12
+`SLEEP-CLASS:` sites across 10 files: `health.ex`, `cluster.ex`,
+`application.ex`, `monitor/metrics.ex`, `enclave/doctor.ex` x2,
+`enclave/state.ex`, `egress/latency_plug.ex`, `messaging/event_hubs.ex` x2,
+`messaging/eh_capture.ex`, `messaging/amqp/connection.ex`. Classes seen:
+SCHEDULING, POLL-STEP, SIGNALABLE-PENDING-REDESIGN. docker/burn/ — 0
+literal sleeps. The authoritative per-site verdict is always
+`just sleep-gate` (fail-closed); this snapshot is orientation only.
 
 ## Adoption order
 
-1. `AssertEventually` — landed (pre-reset `test/support/assert_eventually.ex`, RETIRED@64f6099; successor `test/internal/poll_helper.exs`).
+1. `AssertEventually` — landed (pre-reset `test/support/assert_eventually.ex`,
+   RETIRED@64f6099; successor `test/internal/poll_helper.exs`).
 2. Sleep gate seeded with the census — landed.
 3. Fence-10 ratio conversion (see `rewrite-drafts/fence10-ratio.md`).
 4. Gate green + enforcement: `just sleep-gate` enforces (exit 0 on the
@@ -119,8 +122,9 @@ smalt_ets_composite_identity, support/sleep_windows.ex.
    the live violation count unless `SLEEP_GATE_ENFORCE=1` — pending a
    default-flip of that var; `just sleep-gate` is the enforcement surface
    today.
-5. Repair WOs: drained — 0 unclassified test/ sites remain; the 3 lib
-   SIGNALABLE-PENDING-REDESIGN redesigns (above) are the only open items.
+5. Repair WOs: drained — 0 unclassified test/ sites remain; the lib
+   SIGNALABLE-PENDING-REDESIGN sites (see census command above) are the
+   only open redesign items.
 6. Promote to `~/.claude/rules/no-sleep-doctrine.md` only after the gate
    enforces green (gate landed + non-vacuous + violations repaired); the
    C22 harness-edit OOD-split court applies.

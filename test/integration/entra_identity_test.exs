@@ -319,6 +319,9 @@ defmodule Smalt.Identity.EntraIdentityTest do
       {:ok, {{_, 400, _}, _, _}} -> :ok
       {:ok, {{_, _, _}, _, _}} -> :ok
       {:error, _} ->
+        # SLEEP-CLASS: POLL-STEP — bounded retry backoff step inside the
+        # wait_until_token poll loop; the observable is the HTTP request
+        # outcome itself, re-probed each iteration with a 500-try bound.
         Process.sleep(10)
         wait_until_token(base, tries - 1)
     end

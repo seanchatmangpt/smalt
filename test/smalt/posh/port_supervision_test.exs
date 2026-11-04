@@ -29,36 +29,32 @@ defmodule Smalt.Posh.PortSupervisionTest do
           log_name: :"log_#{unique}"
         )
 
-      # Give port time to boot
-      Process.sleep(200)
-
-      # Verify socket was created by the port
-      assert File.exists?(sock_path)
+      # Bounded poll on the real boot observable (the socket file), mirroring
+      # the boot_wait pattern in lib/smalt/posh/port.ex — never a fixed sleep.
+      SmaltTest.AssertEventually.assert_eventually(
+        fn -> File.exists?(sock_path) end,
+        timeout: 5_000
+      )
 
       # Get the port pid
-      children = Supervisor.which_children(sup)
-      {_id, port_pid, _type, _modules} =
-        Enum.find(children, fn
-          {{Smalt.Posh.Port, _}, _pid, _, _} -> true
-          {Smalt.Posh.Port, _pid, _, _} -> true
-          _ -> false
-        end)
+      port_pid = find_port_pid(Supervisor.which_children(sup))
 
       assert is_pid(port_pid)
 
       # Kill the port process abnormally
       Process.exit(port_pid, :kill)
-      Process.sleep(300)
+
+      # Bounded poll on the restart observable: a NEW port pid under the
+      # supervisor, instead of a fixed sleep hoping the restart has landed.
+      new_port_pid =
+        SmaltTest.AssertEventually.assert_eventually(
+          fn ->
+            find_port_pid(Supervisor.which_children(sup))
+          end,
+          timeout: 5_000
+        )
 
       # Verify supervisor restarted it
-      new_children = Supervisor.which_children(sup)
-      {_id, new_port_pid, _type, _modules} =
-        Enum.find(new_children, fn
-          {{Smalt.Posh.Port, _}, _pid, _, _} -> true
-          {Smalt.Posh.Port, _pid, _, _} -> true
-          _ -> false
-        end)
-
       assert is_pid(new_port_pid)
       assert new_port_pid != port_pid
 
@@ -67,6 +63,17 @@ defmodule Smalt.Posh.PortSupervisionTest do
       # If binary not built yet, ensure typed error returned
       res = Smalt.Posh.Port.start_link(bin_path: "/nonexistent/posh", socket_path: sock_path)
       assert {:error, {:port, {:enoent, "/nonexistent/posh"}}} = res
+    end
+  end
+
+  defp find_port_pid(children) do
+    case Enum.find(children, fn
+           {{Smalt.Posh.Port, _}, _pid, _, _} -> true
+           {Smalt.Posh.Port, _pid, _, _} -> true
+           _ -> false
+         end) do
+      {_id, pid, _type, _modules} when is_pid(pid) -> pid
+      nil -> false
     end
   end
 end
