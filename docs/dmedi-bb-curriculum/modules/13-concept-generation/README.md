@@ -159,6 +159,7 @@ cost study against CTQ-3 (unit cost ceiling $28.50).
   re-derives from the dataset.
 - `datasets/concept-portfolio.csv` — the 8 concepts with scores' inputs.
 - `scripts/score_concepts.py` — the only lawful way to produce the ranking.
+- `court.py` — executable court: wraps `score_concepts.py` (rc 0), re-derives the ranking independently from `datasets/concept-portfolio.csv`; `python3 court.py` exit 0, `--mutate` exit 1.
 
 ## See Also
 

@@ -3,8 +3,13 @@
 **Verdict command** (exit 0 = PASS, exit 1 = FAIL):
 
 ```bash
-python3 modules/04-voice-of-customer/data/compute.py
+python3 modules/04-voice-of-customer/court.py          # exit 0 = PASS
+python3 modules/04-voice-of-customer/court.py --mutate # must exit 1
 ```
+
+The executable court re-derives the same pins independently (its own embedded
+Kano table, weight table, gap math) from `data/kano-responses.csv`; the
+deriving script below remains the key-side derivation.
 
 from the repo root `/Users/sac/smalt/docs/dmedi-bb-curriculum`. The court is the
 same script that derives the solution key, so the key cannot drift from the data.

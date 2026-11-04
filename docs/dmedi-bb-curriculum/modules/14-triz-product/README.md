@@ -207,6 +207,7 @@ lean on claims processing, onboarding, procurement (Module 15's surface).
 - `solution-key.md` — numbered case-study steps with the python receipts.
 - `datasets/tool-wear.csv` — synthetic wear study, seed 1419.
 - `scripts/derive_keys.py` — re-derives every numeric key from the CSV.
+- `court.py` — executable court: independent least-squares re-derivation of the wear-law pins (slope 0.0079 um/part, intercept 0.3155 um, s_res 0.56 um) from `datasets/tool-wear.csv`; `python3 court.py` exit 0, `--mutate` exit 1.
 
 ## See Also
 

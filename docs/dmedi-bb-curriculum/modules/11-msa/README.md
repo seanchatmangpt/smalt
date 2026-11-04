@@ -65,7 +65,7 @@ treat *Cpk = 0.72, sigma = 7.407 um* as the coherent pair.
 
 - Crossed Gage R&R lab (`labs/gage-rr-anova.md`, Steps 0-6) (90 min)
 - Attribute agreement lab (`labs/attribute-agreement.md`) (45 min)
-- Key runs + court exits: `keys/gage_rr_key.py`, `keys/attribute_key.py` (10 min)
+- Key runs + court exits: `court.py` (independent %GRR/ndc re-derivation + `keys/gage_rr_key.py` agreement), `keys/gage_rr_key.py`, `keys/attribute_key.py` (10 min)
 - Acceptance-table drill + verdict writing (25 min)
 - Cross-module coherence discussion (spine sigma adjudication) (10 min)
 

@@ -113,6 +113,7 @@ discarded per the Part B rule.
 
 ---
 
-Court: `python3 data/compute.py && echo COURT-PASS` (exit 0 required; the script
-re-derives respondent/attribute counts, all 10 majorities, the weight table, and the
-spine Cpk flag).
+Court: `python3 court.py` (exit 0 required; re-derives respondent/attribute
+counts, all 10 majorities, the K-05 tally, the weight table, and the lead-time
+gap from the raw CSV; `python3 court.py --mutate` must exit 1). The key-side
+derivation remains `python3 data/compute.py && echo COURT-PASS`.
