@@ -108,7 +108,8 @@ defmodule Smalt.Mcp.Router do
         if Smalt.EgressRouter.loopback_origin?(origin) do
           origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
           headers = Application.get_env(:smalt, :egress_cors_headers, ["*"])
-          CORSPlug.call(conn, CORSPlug.init(origin: origins, headers: headers))
+          # Vendor-inline CORS face (cors_plug dep removed at 9a3d0a79).
+          Smalt.HTTP.CORS.call(conn, Smalt.HTTP.CORS.init(origin: origins, headers: headers))
         else
           conn |> send_resp(403, "") |> halt()
         end

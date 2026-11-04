@@ -58,7 +58,9 @@ defmodule Smalt.EgressRouter do
     # w6ay_blob_cors) are NOT restored here — next-wave scope.
     origins = Application.get_env(:smalt, :egress_cors_origins, ["*"])
     headers = Application.get_env(:smalt, :egress_cors_headers, ["*"])
-    CORSPlug.call(conn, CORSPlug.init(origin: origins, headers: headers))
+    # Vendor-inline CORS face (cors_plug dep removed at 9a3d0a79 — the hex
+    # module's pinned wire law now lives in Smalt.HTTP.CORS).
+    Smalt.HTTP.CORS.call(conn, Smalt.HTTP.CORS.init(origin: origins, headers: headers))
   end
 
   # KD-COVERS: KD-15

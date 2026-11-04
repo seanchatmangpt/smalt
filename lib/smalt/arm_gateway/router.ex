@@ -54,7 +54,8 @@ defmodule Smalt.ArmGateway.Router do
     origins = Smalt.Config.arm_cors_origins()
     headers = Application.get_env(:smalt, :arm_cors_headers, ["*"])
 
-    CORSPlug.call(conn, CORSPlug.init(origin: origins, headers: headers))
+    # Vendor-inline CORS face (cors_plug dep removed at 9a3d0a79).
+    Smalt.HTTP.CORS.call(conn, Smalt.HTTP.CORS.init(origin: origins, headers: headers))
   end
 
   plug(Plug.Parsers,
