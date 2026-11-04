@@ -11,7 +11,7 @@ values match exactly (a mismatch is a DRIFT FINDING), proves the documented-
 value comparison non-vacuous by mutation, and loudly fails on any unframed
 stale 4.17 um spine mention in the worked example.
 
-Run from the curriculum root:
+Run from anywhere:
     python3 modules/45-capstone-brief/court.py
 """
 import csv
@@ -20,12 +20,12 @@ import re
 import subprocess
 import sys
 
-if not os.path.isdir("modules/45-capstone-brief"):
-    os.chdir("docs/dmedi-bb-curriculum")
-
-WE = "modules/45-capstone-brief/worked-example-measure.md"
-GAGE = "data/gage-rr-bore.csv"
-CPK = "data/cpk072-bore-subgroups.csv"
+# House pattern: derive the curriculum root from this file, never from cwd.
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+WE = os.path.join(ROOT, "modules/45-capstone-brief/worked-example-measure.md")
+GAGE = os.path.join(ROOT, "data/gage-rr-bore.csv")
+CPK = os.path.join(ROOT, "data/cpk072-bore-subgroups.csv")
+KEY = os.path.join(ROOT, "modules/11-msa/keys/gage_rr_key.py")
 
 checks = 0
 
@@ -117,7 +117,7 @@ check(ndc >= 5, f"ndc {ndc} >= 5 (gage distinguishes enough groups for the basel
 check(pctPV > pctGRR, "part-to-part variation dominates (%PV > %GRR)")
 
 # module-11 key replay (real collaborator, same method, must exit 0)
-rc = subprocess.run([sys.executable, "modules/11-msa/keys/gage_rr_key.py"],
+rc = subprocess.run([sys.executable, KEY],
                     capture_output=True, text=True)
 check(rc.returncode == 0, "module-11 gage_rr_key.py replay exits 0")
 check("pctGRR = 13.97" in rc.stdout and "ndc = 9" in rc.stdout,
