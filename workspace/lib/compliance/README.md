@@ -23,9 +23,6 @@ WS-4 hash-chained session ledger.
   (no handlers/state/callbacks; structurally lacks any mutation
   affordance), WAI-ARIA table semantics (`scope`d headers, caption,
   `aria-describedby`).
-- `../components/compliance/NonRepudiationBadge.tsx` — AU-10 status badge;
-  refused renders red, unsigned amber, green only for
-  `signed-hardware-verified`.
 
 ## Verify
 

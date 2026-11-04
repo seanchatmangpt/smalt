@@ -29,6 +29,7 @@ import type {
 } from "@azure/event-hubs";
 import { earliestEventPosition, EventHubProducerClient } from "@azure/event-hubs";
 import { ContainerClient, StorageSharedKeyCredential } from "@azure/storage-blob";
+import { assertLocalUrl } from "../smalt.js"; // .js specifier: resolves cleanly without allowImportingTsExtensions
 import { createHash } from "node:crypto";
 
 // The connection-string shape is composed from ./eh-stream's builder (same
@@ -234,8 +235,9 @@ export class SmaltBlobCheckpointStore implements CheckpointStore {
     if (!this.ensureContainer) {
       const url = new URL(this.container.url);
       url.searchParams.set("restype", "container");
-      this.ensureContainer = fetch(url, {
+      this.ensureContainer = fetch(assertLocalUrl(url.toString()), {
         method: "PUT",
+        redirect: "error", // same posture as smaltFetch — a 30x Location must not carry the PUT off-host
         headers: { "x-ms-version": "2021-04-10", "x-ms-immutable-policy": "false" },
       }).then((res) => {
         // 201 created / 200 or 409 already-exists are all success

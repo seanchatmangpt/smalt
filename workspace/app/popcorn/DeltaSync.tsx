@@ -54,6 +54,7 @@ export default function DeltaSync() {
         assertLocalUrl(new URL("/api/sync/state", window.location.origin).toString()),
         {
           method: "POST",
+          redirect: "error",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ delta: parsed.delta, sig }),
         },

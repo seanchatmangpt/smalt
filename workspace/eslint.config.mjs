@@ -44,6 +44,24 @@ const airGapRules = {
   ],
 };
 
+// Air-gap: in production runtime source (lib/, app/, components/), a raw
+// fetch() with a computed URL is only lawful when it carries the full guarded
+// posture — assertLocalUrl around the URL argument AND redirect:"error" (the
+// smaltFetch shape). Anything else is banned. Same-origin asset fetches in
+// workers/sw and loopback probe harnesses in scripts/test are out of scope
+// for this posture rule (the literal-URL rules above still apply everywhere).
+const fetchPostureRule = {
+  "no-restricted-syntax": [
+    "error",
+    {
+      selector:
+        "CallExpression[callee.name='fetch']:not(:has(Argument > Identifier[name='assertLocalUrl'])):not(:has(Argument > CallExpression[callee.name='assertLocalUrl'])):not(:has(ObjectExpression > Property[key.name='redirect'][value.value='error']))",
+      message:
+        "Air-gap invariant: raw fetch() must be smaltFetch (lib/smalt.ts) or carry the full guarded posture — assertLocalUrl(...) around the URL AND redirect:'error'.",
+    },
+  ],
+};
+
 const eslintConfig = [
   ...nextFlat,
   ...typescript,
@@ -60,6 +78,13 @@ const eslintConfig = [
   },
   {
     ignores: ["node_modules/**", ".next/**", "out/**", "public/popcorn/**"], // public/popcorn = vendored popcorn_demo build artifacts (beam.wasm bundle), not workspace source
+  },
+  {
+    files: ["lib/**/*.ts", "app/**/*.ts", "app/**/*.tsx", "components/**/*.ts", "components/**/*.tsx", "middleware.ts", "src/**/*.ts", "src/**/*.tsx"],
+    // *.test.ts legs already assertLocalUrl-guard their URLs; the posture rule
+    // targets the production runtime egress surface, not the test harness.
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: fetchPostureRule,
   },
 ];
 
