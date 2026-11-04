@@ -23,8 +23,8 @@ nightly:
     }
     overall=0
     run_stage court        just court
-    run_stage sdk-ts-court just sdk-ts-court || true
-    run_stage sdk-py-court just sdk-py-court || true
+    run_stage sdk-ts just sdk-ts
+    run_stage sdk-py just sdk-py
     run_stage soak         bash docker/burn/cgroup-soak.sh --cycles 1 || true
     echo "== [nightly] summary =="
     i=0

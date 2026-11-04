@@ -140,15 +140,6 @@ eh-smoke:
     node --test verification/ts/census.test.cjs
     node verification/ts/sb-extra.probe.cjs || echo "[census] sb-extra: honest typed fail (see receipt 08-servicebus-census.md)"
 
-# LOUD no-op placeholders for the fresh verification/ lanes (V261019-08/09).
-# Repoint these to the verification/ts and verification/py entry points as
-# soon as those land; until then they exit 1 loudly — never a silent pass.
-sdk-ts-court:
-    @echo "[RETIRED] sdk-ts-court: awaiting verification/ts entry point (V261019-08); this placeholder exits 1."; exit 1
-
-sdk-py-court:
-    @echo "[RETIRED] sdk-py-court: awaiting verification/py entry point (V261019-09); this placeholder exits 1."; exit 1
-
 # Mutation court: prove the 422/400 validator gate is non-vacuous
 # (scripts/mutation_court.py). Exit 0 non-vacuous / 1 vacuous / 2 BLOCKED.
 # Court note: exit 2 (shared compile broken after 3 retries) is a HARD FAIL
