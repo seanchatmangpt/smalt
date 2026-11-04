@@ -158,7 +158,7 @@ from the curriculum root — zero mismatches = exit 0):
 f524c87b1d052fb8662e72a621afbdbcf8054e5e57bde6b11e556c1ee57b518c  data/xbar-r-subgroups.csv
 d703ba61a8a67e8a6278893534c0a39f622b6e34a87a71f4a9dcc8941e2ff245  data/lead-defectives.csv
 8888e52fb8a3fc3a4199275bc9cc60c066c50d10f58fea94ef0660db8cc7c210  modules/16-concept-selection-pugh-ahp/data/concept_trials.csv
-601e769c07fa6c54726c4182395a245b03cd7b0356a2adf9d6aa447def22f048  modules/25-multi-vari/data/multivari-bore.csv
+85cfa663d9c67f7183f3ddd82766c138aa1b7cae1a93c02ac28e44934a78e396  modules/25-multi-vari/data/multivari-bore.csv
 b1f826f95ccb7888d36508aad735cf8e2a3cb8a40f75ff77d98ec22c44953132  modules/28-2way-anova/data/anova-2way.csv
 adf2fbb03c57f2cb207347cdf8fc1cc40f8ed43f6db2f186b3700b8b720f6ccf  modules/30-full-factorial-doe/data/doe-2k-full.csv
 a86ea8c30adeda11e218acc71aee6f3067b5ac882d398db7d8913fb81e7dc8fd  modules/13-concept-generation/datasets/concept-portfolio.csv
@@ -178,9 +178,9 @@ e9d042e4e582193fad4897483f3937f310e37bc5bc26dd9147b1e54dfee99275  data/attribute
 b032ea6583b8b2617166584ea8ab2a21aeca88c7021b53fe0c6a52f8f4d2ed29  data/cpk072-bore-subgroups.csv
 448ce4b8d3a4b6a73a78ce04b0231ce8c20df1e504a947ccb59798b8099faca5  data/flatness-lognormal.csv
 e304f8b6c0a3461ed0c706933af1e2743677be454d1a94c7328846437cda4dce  data/gage-rr-bore.csv
-601e769c07fa6c54726c4182395a245b03cd7b0356a2adf9d6aa447def22f048  data/multivari-bore.csv
+85cfa663d9c67f7183f3ddd82766c138aa1b7cae1a93c02ac28e44934a78e396  data/multivari-bore.csv
 02e88fe173b40502388cac4aa7145835e7c6615ef630370dde8f6a3197896b49  data/regression-multi.csv
-be7fa18ccdecd51fcd12d652e1a05a23bc4790d0d790c9b6381217cec6fc1829  data/regression-simple.csv
+47291427b086d219fabe808bf40b39118d7f15ade2473cfe04120ef98f7e6a2e  data/regression-simple.csv
 1728c0ee84b97434de42b25d8051f66a53977ca9ba64a8a99b086ff155fdb3bc  modules/01-intro-dmedi/data/baseline-bore-diameter.csv
 6ca9b1de3b8707b53b047ee44a3913b1d464ffdc395527f6bf6ebb0c710a0e2f  modules/02-define-overview/data/bore-inspection-dpmo.csv
 1b560fd88291069c7b4eec319e64a42c1bb066828088c6a73fc604b4a8a14ad9  modules/02-define-overview/data/order-lead-time.csv
@@ -195,7 +195,7 @@ e6448d2c8e12de4b4d33fede60e508318e96bf402e9541b42423f152a44f80d4  modules/21-tes
 52e815f9d523693b35d0e720093391a32b1d5aebf864b381b95aec779a4b99c7  modules/22-proportion-chi-square/data/cnc-ab.csv
 d48c6aebe84d362c5c33f84bbb041675974fc2f382b88ba2227c16adf06d3aa0  modules/22-proportion-chi-square/data/defect-machine.csv
 b2ca7d369605d986bcc8c6323ca00cef1f8702f339dc01a458d82cab3700f169  modules/22-proportion-chi-square/data/scrap-shifts.csv
-be7fa18ccdecd51fcd12d652e1a05a23bc4790d0d790c9b6381217cec6fc1829  modules/23-simple-regression/data/regression-simple.csv
+47291427b086d219fabe808bf40b39118d7f15ade2473cfe04120ef98f7e6a2e  modules/23-simple-regression/data/regression-simple.csv
 02e88fe173b40502388cac4aa7145835e7c6615ef630370dde8f6a3197896b49  modules/24-multiple-regression/data/regression-multi.csv
 6ffde1dbd4475b357a4966d9055aacacbea0b00d5a5279e8b1202622e774d2ee  modules/26-design-fmea/data/dfmea-worksheet.csv
 2e0fe09509013eeea85ce6a526fa86bd887020a5efed5a2f46221db8c6b6ab30  modules/27-detailed-design/data/design-control-checklist.csv
@@ -243,9 +243,9 @@ the named owner then supplied the generator/seed or declared the file authored
 | `data/cpk072-bore-subgroups.csv` | `b032ea6583b8` | 26 | 512 (Lane 05 receipt, module 12) |
 | `data/flatness-lognormal.csv` | `448ce4b8d3a4` | 61 | 1203 (Lane 05 receipt, module 12 non-normal court) |
 | `data/gage-rr-bore.csv` | `e304f8b6c0a3` | 91 | 411 (Lane 05 receipt, module 11) |
-| `data/multivari-bore.csv` | `601e769c07fa` | 46 | 42501 (M25 key); BYTE-IDENTICAL to modules/25-multi-vari/data/multivari-bore.csv (which is registered) |
+| `data/multivari-bore.csv` | `85cfa663d9c6` | 46 | 42501 (M25 key); BYTE-IDENTICAL to modules/25-multi-vari/data/multivari-bore.csv (which is registered) |
 | `data/regression-multi.csv` | `02e88fe173b4` | 37 | 42401 (M24 key); BYTE-IDENTICAL to modules/24-multiple-regression/data/regression-multi.csv |
-| `data/regression-simple.csv` | `be7fa18ccdec` | 31 | 42301 (M23 key); BYTE-IDENTICAL to modules/23-simple-regression/data/regression-simple.csv |
+| `data/regression-simple.csv` | `47291427b086` | 31 | 42301 (M23 key); BYTE-IDENTICAL to modules/23-simple-regression/data/regression-simple.csv |
 | `modules/01-intro-dmedi/data/baseline-bore-diameter.csv` | `1728c0ee84b9` | 51 | authored deterministic (dated weekly run log with operator rotation, no RNG; a bounded 300k-seed sweep of gauss(12.009, 0.007407) found no byte-exact generator, so no synthetic provenance is claimed); M01 court re-derives all keys from raw CSV (modules/01-intro-dmedi/courts/court.py, exit 0 = 17 checks) |
 | `modules/02-define-overview/data/bore-inspection-dpmo.csv` | `6ca9b1de3b87` | 21 | authored deterministic (daily defect count table, no RNG); M02 court re-derives the DPMO ladder from raw CSV (modules/02-define-overview/courts/court.py, exit 0 = 20 checks) |
 | `modules/02-define-overview/data/order-lead-time.csv` | `1b560fd88291` | 41 | authored deterministic (dated order ledger, dates -> lead_time_days deterministically, no RNG); M02 court re-derives mean/median/sd/P90 from raw CSV (modules/02-define-overview/courts/court.py, exit 0 = 20 checks) |
@@ -260,7 +260,7 @@ the named owner then supplied the generator/seed or declared the file authored
 | `modules/22-proportion-chi-square/data/cnc-ab.csv` | `52e815f9d523` | 3 | 42195 (M22 key.md) |
 | `modules/22-proportion-chi-square/data/defect-machine.csv` | `d48c6aebe84d` | 5 | 42196 (M22 key.md) |
 | `modules/22-proportion-chi-square/data/scrap-shifts.csv` | `b2ca7d369605` | 11 | 42194 (M22 key.md) |
-| `modules/23-simple-regression/data/regression-simple.csv` | `be7fa18ccdec` | 31 | 42301 (scripts/gen_regression_simple.py); byte-identical twin registered at data/regression-simple.csv |
+| `modules/23-simple-regression/data/regression-simple.csv` | `47291427b086` | 31 | 42301 (scripts/gen_regression_simple.py); byte-identical twin registered at data/regression-simple.csv |
 | `modules/24-multiple-regression/data/regression-multi.csv` | `02e88fe173b4` | 37 | 42401 (scripts/gen_regression_multi.py); byte-identical twin registered at data/regression-multi.csv |
 | `modules/26-design-fmea/data/dfmea-worksheet.csv` | `6ffde1dbd447` | 13 | authored deterministic (scripts/gen_dfmea.py, no RNG) |
 | `modules/27-detailed-design/data/design-control-checklist.csv` | `2e0fe0950901` | 19 | authored deterministic (design-control checklist mapping, no RNG); M27 derive_keys.py re-derives tolerance math + DFMEA linkage from raw CSV (exit 0 = 18 checks) |

@@ -7,7 +7,7 @@ python3 modules/25-multi-vari/scripts/gen_multivari_bore.py   # seed 42501
 python3 modules/25-multi-vari/scripts/derive_keys.py          # court, exit 0
 ```
 
-Dataset: `data/multivari-bore.csv` — `obs, pc, spindle, time_block, bore_dev_um`.
+Dataset: `data/multivari-bore.csv` — `obs, pc, spindle, time_block, bore_deviation_um`.
 
 ## Part 1 — Totals
 1. n = 45; grand mean = 8.6198 um; SST = 2518.5487 (CENTERED); total s = 7.5657 um.

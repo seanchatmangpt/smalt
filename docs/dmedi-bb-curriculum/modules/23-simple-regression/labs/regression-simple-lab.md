@@ -7,7 +7,7 @@ python3 modules/23-simple-regression/scripts/gen_regression_simple.py   # seed 4
 python3 modules/23-simple-regression/scripts/derive_keys.py             # court, exit 0
 ```
 
-Dataset: `data/regression-simple.csv` — columns `run, tool_life_min, bore_dev_um`.
+Dataset: `data/regression-simple.csv` — columns `run, tool_life_min, bore_deviation_um`.
 
 ## Part 1 — Sums (compute by hand or spreadsheet, then check)
 1. n, xbar, ybar. Expected: 30, 45.2800, 20.7700.

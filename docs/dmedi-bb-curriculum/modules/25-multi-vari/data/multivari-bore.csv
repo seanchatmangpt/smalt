@@ -1,4 +1,4 @@
-obs,pc,spindle,time_block,bore_dev_um
+obs,pc,spindle,time_block,bore_deviation_um
 1,PC1,S1,T1,-0.72
 2,PC2,S1,T1,4.75
 3,PC3,S1,T1,5.97

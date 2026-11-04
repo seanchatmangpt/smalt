@@ -16,7 +16,7 @@ from collections import defaultdict
 rows = []
 with open("data/multivari-bore.csv") as f:
     for r in csv.DictReader(f):
-        rows.append((r["pc"], r["spindle"], r["time_block"], float(r["bore_dev_um"])))
+        rows.append((r["pc"], r["spindle"], r["time_block"], float(r["bore_deviation_um"])))
 n = len(rows)
 vals = [r[3] for r in rows]
 gm = sum(vals) / n

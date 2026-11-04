@@ -25,7 +25,7 @@ EXPECTED_CHECKS = 1           # pinned marker count: COURT PASS line
 CHECK_PATTERN = re.compile(r"^COURT PASS", re.M)
 STALE_SIGMA = "4.17"          # pre-adjudication regime; loud-fail if in data
 MUTATE_FILE = "data/regression-simple.csv"
-MUTATE_FIND = "11.44"         # run 1 bore_dev_um (unique)
+MUTATE_FIND = "11.44"         # run 1 bore_deviation_um (unique)
 MUTATE_REPL = "114.4"
 
 

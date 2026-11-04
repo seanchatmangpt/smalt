@@ -19,6 +19,6 @@ for i in range(30):
 
 with open("data/regression-simple.csv", "w", newline="") as f:
     w = csv.writer(f)
-    w.writerow(["run", "tool_life_min", "bore_dev_um"])
+    w.writerow(["run", "tool_life_min", "bore_deviation_um"])
     w.writerows(rows)
 print(f"wrote {len(rows)} rows")

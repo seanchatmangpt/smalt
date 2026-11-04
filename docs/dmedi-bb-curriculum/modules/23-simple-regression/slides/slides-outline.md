@@ -10,7 +10,7 @@ Data: `data/regression-simple.csv`, n=30, seed 42301.
 - Deliverable of the module: fitted line + ANOVA table + intervals, all by hand.
 
 ## S2. Scatter first, always
-- Plot bore_dev_um vs tool_life_min; look for linearity, outliers, spread drift.
+- Plot bore_deviation_um vs tool_life_min; look for linearity, outliers, spread drift.
 - Vocabulary: response y, predictor x, fitted value yhat, residual e = y - yhat.
 
 ## S3. Least squares by hand

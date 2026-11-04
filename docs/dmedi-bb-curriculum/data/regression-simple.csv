@@ -1,4 +1,4 @@
-run,tool_life_min,bore_dev_um
+run,tool_life_min,bore_deviation_um
 1,15.6,11.44
 2,14.3,7.01
 3,15.7,7.58

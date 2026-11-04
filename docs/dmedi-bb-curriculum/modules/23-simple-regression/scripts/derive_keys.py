@@ -13,7 +13,7 @@ N = float
 rows = []
 with open("data/regression-simple.csv") as f:
     for r in csv.DictReader(f):
-        rows.append((float(r["tool_life_min"]), float(r["bore_dev_um"])))
+        rows.append((float(r["tool_life_min"]), float(r["bore_deviation_um"])))
 n = len(rows)
 xs = [r[0] for r in rows]
 ys = [r[1] for r in rows]

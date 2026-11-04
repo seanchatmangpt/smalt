@@ -28,6 +28,6 @@ for t_i, t in enumerate(["T1", "T2", "T3"]):
 
 with open("data/multivari-bore.csv", "w", newline="") as f:
     w = css = csv.writer(f)
-    w.writerow(["obs", "pc", "spindle", "time_block", "bore_dev_um"])
+    w.writerow(["obs", "pc", "spindle", "time_block", "bore_deviation_um"])
     w.writerows(rows)
 print(f"wrote {len(rows)} rows")
