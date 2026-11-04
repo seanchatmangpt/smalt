@@ -9,6 +9,8 @@ if not os.path.exists(SRC):
     sys.exit("VACUOUS COURT: Module 30 dataset missing — regenerate first")
 
 fail = []
+MUT = len(sys.argv) > 1 and sys.argv[1] == "--mutate"
+DELTA = 1.0 if MUT else 0.0   # --mutate corrupts the AB pin; court must exit 1
 def check(name, got, want, tol=0.0):
     ok = abs(got - want) <= tol if tol else got == want
     if not ok: fail.append(f"{name}: got {got}, want {want}")
@@ -29,7 +31,7 @@ E = {n: effect(l) for l, n in [([1], "A"), ([2], "B"), ([3], "C"),
 check("effect_A", round(E["A"], 2), 11.81)
 check("effect_B", round(E["B"], 2), 9.07)
 check("effect_C", round(E["C"], 2), -0.28)
-check("effect_AB", round(E["AB"], 2), -6.69)
+check("effect_AB", round(E["AB"], 2), -6.69 + DELTA)
 check("effect_AC", round(E["AC"], 2), 1.60)
 check("effect_BC", round(E["BC"], 2), -0.40)
 check("effect_ABC", round(E["ABC"], 2), 1.03)
@@ -104,3 +106,11 @@ if fail:
 print("Module 30 court: ALL CHECKS PASS (7 effects, SSE/MSE/sigma/SE, t classification, "
       "prediction equation, holdout PIs, conditional-effect interaction identity, "
       "wrong-constant mutation, stale-4.17 sweep)")
+
+# ---------- mutation test (module 28 pattern) ----------
+if MUT:
+    if round(E["AB"], 2) == round(-6.69 + DELTA, 2):
+        print("VACUOUS COURT: corrupted AB pin still passes"); sys.exit(2)
+    print("MUTATION DETECTED: effect_AB pinned at %.2f vs derived %.4f -> nonzero" % (-6.69 + DELTA, E["AB"]))
+    sys.exit(1)
+sys.exit(0)

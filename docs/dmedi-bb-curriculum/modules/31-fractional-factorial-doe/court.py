@@ -9,6 +9,8 @@ if not os.path.exists(SRC):
     sys.exit("VACUOUS COURT: Module 31 dataset missing — regenerate first")
 
 fail = []
+MUT = len(sys.argv) > 1 and sys.argv[1] == "--mutate"
+DELTA = 1.0 if MUT else 0.0   # --mutate corrupts the A-chain pin; court must exit 1
 def check(name, got, want, tol=0.0):
     ok = abs(got - want) <= tol if tol else got == want
     if not ok: fail.append(f"{name}: got {got}, want {want}")
@@ -52,7 +54,7 @@ cols = {"A": "A_speed", "B": "B_feed", "C": "C_coolant",
 def eff(name):
     return sum(math.prod(int(r[cols[c]]) for c in name) * float(r["dev_um"])
                for r in rows) / len(rows)
-check("eff_A_chain", round(eff("A"), 3), -7.948)
+check("eff_A_chain", round(eff("A"), 3), -7.948 + DELTA)
 check("eff_B_chain", round(eff("B"), 3), 6.231)
 check("eff_C_chain", round(eff("C"), 3), -4.159)
 check("eff_D_chain", round(eff("D"), 3), 2.846)
@@ -117,3 +119,11 @@ if fail:
 print("Module 31 court: ALL CHECKS PASS (defining-group closure, 8x4 chains vs README §3, "
       "7 chain effects + pure error from CSV, alias contrast identity, fold-over parity + "
       "res-IV cosets, wrong-generator mutation, stale-4.17 sweep)")
+
+# ---------- mutation test (module 28 pattern) ----------
+if MUT:
+    if round(eff("A"), 3) == round(-7.948 + DELTA, 3):
+        print("VACUOUS COURT: corrupted A-chain pin still passes"); sys.exit(2)
+    print("MUTATION DETECTED: eff_A_chain pinned at %.3f vs derived %.4f -> nonzero" % (-7.948 + DELTA, eff("A")))
+    sys.exit(1)
+sys.exit(0)

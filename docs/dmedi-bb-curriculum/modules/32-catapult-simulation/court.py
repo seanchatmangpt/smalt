@@ -10,6 +10,8 @@ if not os.path.exists(SRC):
     sys.exit("VACUOUS COURT: module 32 dataset missing — run data/simulator.py first")
 
 fail = []
+MUT = len(sys.argv) > 1 and sys.argv[1] == "--mutate"
+DELTA = 0.5 if MUT else 0.0   # --mutate corrupts the A-effect pin; court must exit 1
 def check(name, got, want, tol=0.0):
     ok = abs(got - want) <= tol if tol else got == want
     if not ok:
@@ -34,7 +36,7 @@ def effect(names):
 
 E = {n: effect(n) for n in ("A", "B", "C", "D", "AB", "AC", "AD", "BC", "BD", "CD",
                             "ABC", "ABD", "ACD", "BCD", "ABCD")}
-check("A", round(E["A"], 4), 0.5090)
+check("A", round(E["A"], 4), 0.5090 + DELTA)
 check("B", round(E["B"], 4), 0.5021)
 check("C", round(E["C"], 4), -0.4342)
 check("D", round(E["D"], 4), 0.0044)
@@ -73,3 +75,11 @@ check("mutation_detected", round(-E["A"], 4) != round(E["A"], 4) and abs(E["A"])
 if fail:
     print("COURT FAIL"); [print(" -", f) for f in fail]; sys.exit(1)
 print("Module 32 court: ALL CHECKS PASS (16+4 split, 15 contrast means, curvature t=-9.86, sha256 pinned)")
+
+# ---------- mutation test (module 28 pattern) ----------
+if MUT:
+    if round(E["A"], 4) == round(0.5090 + DELTA, 4):
+        print("VACUOUS COURT: corrupted A pin still passes"); sys.exit(2)
+    print("MUTATION DETECTED: effect A pinned at %.4f vs derived %.4f -> nonzero" % (0.5090 + DELTA, E["A"]))
+    sys.exit(1)
+sys.exit(0)
