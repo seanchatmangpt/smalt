@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Invariant gate: App Configuration /kv ETag CAS — compare-and-swap writes.
 
-Positive: PUT a fresh {key,label} (200; KD-149/T24WIRE 2026-10-21 — @azure/app-configuration hard-fails on 201, so create AND update return 200), then race TWO conditional PUTs
+Positive: PUT a fresh {key,label} (201; KD-149 parity flip 2026-10-30 — real Azure answers 201 on first create, 200 on update; receipt tmp/invariant-gates/appconfig-etag-cas-receipt.json), then race TWO conditional PUTs
 carrying the SAME If-Match etag but different values. The ETS-backed router
 (lib/smalt/egress_router.ex put "/kv/:key") serializes them: exactly one wins
 (2xx) and the loser takes 412 PreconditionFailed. The stored etag must equal
@@ -69,7 +69,9 @@ def capture(ports, shared_key):
     auth = {"Authorization": f"Bearer {token}"}
     path = f"/kv/{KEY}?label={LABEL}"
 
-    # create (no If-Match, absent) -> 200 with the content-hash etag (KD-149/T24WIRE parity pin)
+    # create (no If-Match, absent) -> 201 with the content-hash etag
+    # (KD-149 parity flip 2026-10-30: first-create answers 201 per the real
+    # Azure KV 7.4 contract; 200 remains the update-path status)
     s_create, h_create, body_create = common.http(
         egress, "PUT", path,
         body={"value": "v0", "contentType": "text/plain"}, headers=auth)
@@ -138,8 +140,8 @@ def verdict(obs):
         details.append(("PASS" if cond else "FAIL") + " " + msg)
         ok = ok and cond
 
-    check(obs.get("create_status") == 200,
-          f"create -> 200 (KD-149/T24WIRE parity; got {obs.get('create_status')})")
+    check(obs.get("create_status") == 201,
+          f"create -> 201 (KD-149 parity flip 2026-10-30; got {obs.get('create_status')})")
     check(obs.get("create_etag") == expected_etag(KEY, LABEL, "v0", "text/plain"),
           f"create etag == quoted sha256({KEY},{LABEL},v0,text/plain) "
           f"(got {obs.get('create_etag')})")
@@ -223,12 +225,12 @@ def mutate_fixtures(obs):
 
 
 if __name__ == "__main__":
-    # SKIP-loud law (WO-22/23/24 retarget, v26.10.31 inversion): the
-    # create-status pin (200-create; KD-149/T24WIRE parity) is BLOCKED on the
-    # term_to_binary etag re-spec -- the core face currently serves 201.
-    # Probe the live face first: if create answers 201, exit 3 with a typed
+    # SKIP-loud law: the gate's create-status pin is 201 (KD-149 parity flip
+    # 2026-10-30; receipt tmp/invariant-gates/appconfig-etag-cas-receipt.json).
+    # Probe the live face first: if create answers 200 (the pre-flip status),
+    # the substrate has moved back under the pin -> exit 3 with a typed
     # reason (subject moved -> loud skip, never a silent PASS, never a
-    # confusing FAIL). Only when the pin's subject is back (200-create) does
+    # confusing FAIL). Only when the pinned subject (201-create) is live does
     # the full gate run.
     import base64 as _b64
     _ports = common.pick_ports()
@@ -242,9 +244,9 @@ if __name__ == "__main__":
             headers={"Authorization": f"Bearer {_token}"})
     finally:
         common.kill_substrate(_proc, _ports)
-    if _s == 201:
-        print("[SKIP] appconfig-etag-cas: appconfig-etag re-spec pending "
-              "(KD-149): core serves 201-create; the gate pins 200-create "
-              "(T24WIRE). Re-spec the pin before re-admitting this gate.")
+    if _s == 200:
+        print("[SKIP] appconfig-etag-cas: substrate moved back to 200-create; "
+              "the gate pins 201-create (KD-149 parity flip 2026-10-30). "
+              "Re-pin before re-admitting this gate.")
         sys.exit(3)
     sys.exit(common.run_gate("appconfig-etag-cas", capture, verdict, mutate_fixtures))
