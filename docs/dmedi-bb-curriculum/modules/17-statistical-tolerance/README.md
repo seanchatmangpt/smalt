@@ -27,7 +27,7 @@ By the end of this module you can:
 - Side-by-side comparison discussion (10 min)
 - Tolerance-allocation exercise + script re-derivation (25 min)
 - Court:
-  `python3 modules/18-monte-carlo/scripts/mc_bore_stack.py` (5 min)
+  `python3 modules/17-statistical-tolerance/court.py` (5 min)
 
 Total ~90 min.
 
@@ -116,7 +116,7 @@ the cheaper engineering plan for nearly the same RSS σ (4.11 vs 4.14).
 ## Court (re-derive, never trust)
 
 ```
-python3 modules/18-monte-carlo/scripts/mc_bore_stack.py   # exit 0 required
+python3 modules/17-statistical-tolerance/court.py   # exit 0 required
 ```
 Every number in this module re-derives from that single exit-checked run:
 WC band, RSS σ = 5.00, Cpk 1.60, allocation table. If your hand arithmetic
