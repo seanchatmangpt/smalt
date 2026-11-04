@@ -36,9 +36,6 @@ defmodule Mix.Tasks.Smalt.Gen do
       {"#{@common} --query store_tables=#{@pack}/queries/store_tables.rq " <>
          "--template #{@pack}/templates/store_tables.ex.eex --out lib/smalt/store_tables.ex",
        "lib/smalt/store_tables.ex"},
-      {"#{@common} --query cascade_edges=#{@pack}/queries/cascade_edges.rq " <>
-         "--template #{@pack}/templates/cascade_edges.ex.eex --out lib/smalt/cascade_edges.ex",
-       "lib/smalt/cascade_edges.ex"},
       {"#{@common} --query config_keys=#{@pack}/queries/config_keys.rq " <>
          "--template #{@pack}/templates/config.ex.eex --out lib/smalt/config.ex",
        "lib/smalt/config.ex"},

@@ -6,6 +6,11 @@
       "type": "Microsoft.App/containerApps"
     },
     {
+      "apiVersion": "2023-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.App/managedEnvironments"
+    },
+    {
       "apiVersion": "2020-10-01",
       "shape": "DefaultShape",
       "type": "Microsoft.Attestation/attestationProviders"
@@ -61,7 +66,17 @@
       "type": "Microsoft.ConfidentialLedger/managedCCFs"
     },
     {
-      "apiVersion": "2023-02-01",
+      "apiVersion": "2023-06-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ContainerRegistry/registries"
+    },
+    {
+      "apiVersion": "2023-06-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ContainerRegistry/registries/webhooks"
+    },
+    {
+      "apiVersion": "2024-02-01",
       "shape": "DefaultShape",
       "type": "Microsoft.ContainerService/managedClusters"
     },
@@ -131,7 +146,7 @@
       "type": "Microsoft.KeyVault/managedHSMs"
     },
     {
-      "apiVersion": "2023-02-01",
+      "apiVersion": "2023-07-01",
       "shape": "KeyVaultShape",
       "type": "Microsoft.KeyVault/vaults"
     },
@@ -146,12 +161,27 @@
       "type": "Microsoft.KeyVault/vaults/secrets"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-08-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ManagedIdentity/federatedIdentityCredentials"
+    },
+    {
+      "apiVersion": "2023-04-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities"
+    },
+    {
+      "apiVersion": "2023-08-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials"
+    },
+    {
+      "apiVersion": "2023-05-01",
       "shape": "DefaultShape",
       "type": "Microsoft.Network/networkInterfaces"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-05-01",
       "shape": "NsgShape",
       "type": "Microsoft.Network/networkSecurityGroups"
     },
@@ -171,17 +201,22 @@
       "type": "Microsoft.Network/privateEndpoints"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-05-01",
+      "shape": "DefaultShape",
+      "type": "Microsoft.Network/publicIPAddresses"
+    },
+    {
+      "apiVersion": "2023-05-01",
       "shape": "SubnetShape",
       "type": "Microsoft.Network/subnets"
     },
     {
-      "apiVersion": "2021-04-01",
+      "apiVersion": "2023-05-01",
       "shape": "VNetShape",
       "type": "Microsoft.Network/virtualNetworks"
     },
     {
-      "apiVersion": "2020-08-01",
+      "apiVersion": "2022-10-01",
       "shape": "DefaultShape",
       "type": "Microsoft.OperationalInsights/workspaces"
     },
@@ -257,9 +292,9 @@
     }
   },
   "identity": {
-    "contentSha256": "47cd0585b9274e62a8744b590d5c50c1acef6bd3f9a93fe46c921100904bd96c",
-    "packLockSha256": "b2f483993c393b80e84ea0125a9c15f4166d0ba365d87044cd9f61fe2d19e86c",
-    "semanticEpoch": "26.10.25"
+    "contentSha256": "6643865f8d5ea99599233daa9149e96d7afa90caf3683d192f5d7aaa3bcbeec7",
+    "packLockSha256": "0259bb9d13fe45f59b15cb289e471ab24e988f20b45ef8dbd4f5c8154fad1a26",
+    "semanticEpoch": "26.10.31"
   },
   "name": "smalt",
   "schemaVersion": "v1",
@@ -268,7 +303,7 @@
       "license": "MIT",
       "name": "ash",
       "origin": "hex.pm",
-      "version": "3.36.1"
+      "version": "3.37.2"
     },
     {
       "license": "MIT",
@@ -304,7 +339,7 @@
       "license": "MIT",
       "name": "bandit",
       "origin": "hex.pm",
-      "version": "1.13.1"
+      "version": "1.14.1"
     },
     {
       "license": "Apache-2.0",
@@ -331,16 +366,10 @@
       "version": "0.1.0"
     },
     {
-      "license": "Apache-2.0",
-      "name": "cors_plug",
-      "origin": "hex.pm",
-      "version": "3.0.3"
-    },
-    {
       "license": "MIT",
       "name": "crux",
       "origin": "hex.pm",
-      "version": "0.1.4"
+      "version": "0.1.5"
     },
     {
       "license": "Apache-2.0",
@@ -358,7 +387,7 @@
       "license": "Apache-2.0",
       "name": "ecto",
       "origin": "hex.pm",
-      "version": "3.14.2"
+      "version": "3.14.3"
     },
     {
       "license": "MIT",
@@ -442,7 +471,7 @@
       "license": "MIT",
       "name": "igniter",
       "origin": "hex.pm",
-      "version": "0.8.4"
+      "version": "0.8.5"
     },
     {
       "license": "MIT",
@@ -472,7 +501,7 @@
       "license": "MIT",
       "name": "jose",
       "origin": "hex.pm",
-      "version": "1.11.12"
+      "version": "1.11.13"
     },
     {
       "license": "MIT",
@@ -514,7 +543,7 @@
       "license": "Apache-2.0",
       "name": "nimble_options",
       "origin": "hex.pm",
-      "version": "1.1.1"
+      "version": "1.2.0"
     },
     {
       "license": "Apache-2.0",
@@ -538,7 +567,7 @@
       "license": "MIT",
       "name": "phoenix_html",
       "origin": "hex.pm",
-      "version": "4.3.0"
+      "version": "4.4.0"
     },
     {
       "license": "MIT",
@@ -574,7 +603,7 @@
       "license": "Apache-2.0",
       "name": "plug_crypto",
       "origin": "hex.pm",
-      "version": "2.2.0"
+      "version": "2.2.1"
     },
     {
       "license": "Apache-2.0",
@@ -658,13 +687,13 @@
       "license": "Apache-2.0",
       "name": "sourceror",
       "origin": "hex.pm",
-      "version": "1.12.4"
+      "version": "1.13.0"
     },
     {
       "license": "MIT",
       "name": "spark",
       "origin": "hex.pm",
-      "version": "2.7.8"
+      "version": "2.7.9"
     },
     {
       "license": "MIT",
@@ -688,7 +717,7 @@
       "license": "MIT",
       "name": "splode",
       "origin": "hex.pm",
-      "version": "0.3.2"
+      "version": "0.3.3"
     },
     {
       "license": "Apache-2.0",

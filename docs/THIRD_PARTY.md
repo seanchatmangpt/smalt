@@ -16,22 +16,21 @@ projection).
 
 | Package | Version | License | Origin |
 |---|---|---|---|
-| ash | 3.36.1 | MIT | hex.pm |
+| ash | 3.37.2 | MIT | hex.pm |
 | ash_admin | 1.3.2 | MIT | hex.pm |
 | ash_ex4pm | 26.10.4 | MIT | hex.pm |
 | ash_phoenix | 2.3.25 | MIT | hex.pm |
 | ash_state_machine | 0.2.13 | MIT | hex.pm |
 | aws_signature | 0.4.3 | Apache-2.0 | hex.pm |
-| bandit | 1.13.1 | MIT | hex.pm |
+| bandit | 1.14.1 | MIT | hex.pm |
 | broadway | 1.3.0 | Apache-2.0 | hex.pm |
 | cachex | 4.1.1 | MIT | hex.pm |
 | cinder | 0.17.0 | MIT | hex.pm |
 | content_type | 0.1.0 | Apache-2.0 | hex.pm |
-| cors_plug | 3.0.3 | Apache-2.0 | hex.pm |
-| crux | 0.1.4 | MIT | hex.pm |
+| crux | 0.1.5 | MIT | hex.pm |
 | db_connection | 2.10.2 | Apache-2.0 | hex.pm |
 | decimal | 3.2.0 | Apache-2.0 | hex.pm |
-| ecto | 3.14.2 | Apache-2.0 | hex.pm |
+| ecto | 3.14.3 | Apache-2.0 | hex.pm |
 | eternal | 1.2.2 | MIT | hex.pm |
 | ets | 0.9.0 | MIT | hex.pm |
 | ex4pm | 26.10.1 | MIT | hex.pm |
@@ -45,29 +44,29 @@ projection).
 | gettext | 1.0.2 | Apache-2.0 | hex.pm |
 | glob_ex | 0.1.12 | MIT | hex.pm |
 | hpax | 1.1.0 | Apache-2.0 | hex.pm |
-| igniter | 0.8.4 | MIT | hex.pm |
+| igniter | 0.8.5 | MIT | hex.pm |
 | iterex | 0.1.2 | MIT | hex.pm |
 | jason | 1.4.5 | Apache-2.0 | hex.pm |
 | jcs | 0.2.0 | Apache-2.0 | hex.pm |
 | joken | 2.7.0 | Apache-2.0 | hex.pm |
-| jose | 1.11.12 | MIT | hex.pm |
+| jose | 1.11.13 | MIT | hex.pm |
 | json_ld | 1.0.1 | MIT | hex.pm |
 | jumper | 1.0.2 | MIT | hex.pm |
 | mime | 2.0.7 | Apache-2.0 | hex.pm |
 | mint | 1.11.0 | Apache-2.0 | hex.pm |
 | multigraph | 0.16.1-mg.5 | MIT | hex.pm |
 | nimble_csv | 1.3.0 | Apache-2.0 | hex.pm |
-| nimble_options | 1.1.1 | Apache-2.0 | hex.pm |
+| nimble_options | 1.2.0 | Apache-2.0 | hex.pm |
 | nimble_pool | 1.1.0 | Apache-2.0 | hex.pm |
 | owl | 0.13.1 | Apache-2.0 | hex.pm |
 | phoenix | 1.8.15 | MIT | hex.pm |
-| phoenix_html | 4.3.0 | MIT | hex.pm |
+| phoenix_html | 4.4.0 | MIT | hex.pm |
 | phoenix_live_view | 1.2.12 | MIT | hex.pm |
 | phoenix_pubsub | 2.4.1 | MIT | hex.pm |
 | phoenix_template | 1.1.0 | MIT | hex.pm |
 | phoenix_view | 2.0.4 | MIT | hex.pm |
 | plug | 1.20.3 | Apache-2.0 | hex.pm |
-| plug_crypto | 2.2.0 | Apache-2.0 | hex.pm |
+| plug_crypto | 2.2.1 | Apache-2.0 | hex.pm |
 | postgrex | 0.22.4 | Apache-2.0 | hex.pm |
 | protocol_ex | 0.5.1 | MIT | hex.pm |
 | rdf | 3.0.1 | MIT | hex.pm |
@@ -81,12 +80,12 @@ projection).
 | saxy | 1.6.1 | MIT | hex.pm |
 | sleeplocks | 1.1.4 | MIT | hex.pm |
 | sobelow | 0.16.0 | Apache-2.0 | hex.pm |
-| sourceror | 1.12.4 | Apache-2.0 | hex.pm |
-| spark | 2.7.8 | MIT | hex.pm |
+| sourceror | 1.13.0 | Apache-2.0 | hex.pm |
+| spark | 2.7.9 | MIT | hex.pm |
 | sparql | 0.3.12 | MIT | hex.pm |
 | sparql_client | 0.5.1 | MIT | hex.pm |
 | spitfire | 0.4.3 | MIT | hex.pm |
-| splode | 0.3.2 | MIT | hex.pm |
+| splode | 0.3.3 | MIT | hex.pm |
 | stream_data | 1.4.0 | Apache-2.0 | hex.pm |
 | sweet_xml | 0.7.5 | MIT | hex.pm |
 | table | 0.1.2 | Apache-2.0 | hex.pm |
@@ -107,7 +106,7 @@ projection).
 | yaml_elixir | 2.12.2 | MIT | hex.pm |
 | ymlr | 5.1.6 | MIT | hex.pm |
 
-90 packages total. License tally: MIT x52, Apache-2.0 x35, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
+89 packages total. License tally: MIT x52, Apache-2.0 x34, BSD-2-Clause x1, BSD-3-Clause x1, MIT / Apache-2.0 (dual) x1.
 
 ## Apache-2.0 NOTICE compatibility
 

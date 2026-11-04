@@ -119,7 +119,6 @@ defmodule Smalt.MixProject do
       # apim_gateway.ex — Code.ensure_loaded?(Finch) flips the fast path on.
       {:finch, "~> 0.24"},
       {:plug, "~> 1.16"},
-      {:cors_plug, "~> 3.0"},
       {:jason, "~> 1.4"},
       {:joken, "~> 2.6"},
       {:ash, "~> 3.33", optional: true},
