@@ -220,6 +220,12 @@ any F ratio is computed.
   `datasets/MANIFEST.md`
 - `lab-interaction-plot.md` — mandatory lab worksheet
 
+## Units
+
+This module's dataset is expressed in mm (`deviation_mm`, SS in mm^2) while
+sibling DOE modules (30/31/37/40) use µm — the F-statistics are unit-invariant
+(court check), so conclusions are unaffected; conversion 1 µm = 0.001 mm.
+
 ## See also
 
 Module 21 §6 (one-way ANOVA), Module 29 (DOE terminology), Module 30 (factorial DOE
