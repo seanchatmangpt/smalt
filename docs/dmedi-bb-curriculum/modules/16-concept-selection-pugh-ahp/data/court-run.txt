@@ -1,0 +1,97 @@
+== 1. Pilot statistics (re-derived from CSV) ==
+concept                                     n        mu     s(mm)    Cpk     Ra
+A-citizen-regrind                          30   12.0087   0.00751   0.72   1.57
+B-peck-deep-drill-then-bore                30   12.0033   0.00465   1.55   1.33
+C-helical-interpolation                    30   12.0042   0.00667   1.04   2.09
+D-combined-rough-plus-finish-boring-bar    30   12.0024   0.00409   1.84   0.94
+[PASS] A pilot Cpk within 0.10 of pinned 0.72 -- A Cpk = 0.72
+[PASS] A pilot s within 15% of adjudicated 7.407 um -- A s = 7.51 um
+
+== 2. Pugh (iteration 1, datum = A) ==
+criterion        A     B     C     D
+C1               0     +     +     +
+C2               0     +     -     +
+C3               0     +     +     +
+C4               0     -     +     -
+C5               0     +     -     -
+
+  A: +0 -0 0:5  net +0
+  B: +4 -1 0:0  net +3
+  C: +3 -2 0:0  net +1
+  D: +3 -2 0:0  net +1
+  Pugh ranking: B > C > D > A
+[PASS] Pugh datum row is all 0
+[PASS] Pugh iteration-1 net leader is B (the designed divergence) -- leader B
+
+== 2b. Pugh consolidation iteration 2 ==
+  D2-consolidated: +3 -0  net +3 (D alone was +1)
+[PASS] Consolidation strictly improves net over D -- +3 vs above
+[PASS] D2 ties iteration-1 leader B on net (tie must be escalated, not voted) -- D2 +3 vs B +3
+[PASS] D2 beats B on the CTQ-1 pilot data (Cpk and Ra) -- D Cpk 1.84 vs B 1.55; D Ra 0.94 vs B 1.33
+
+== 3. AHP criteria weights ==
+  C1-capability  eigenvector 0.3750   geometric-mean 0.3765
+  C2-finish      eigenvector 0.1912   geometric-mean 0.1907
+  C3-cycletime   eigenvector 0.1250   geometric-mean 0.1258
+  C4-cost        eigenvector 0.2534   geometric-mean 0.2516
+  C5-flex        eigenvector 0.0554   geometric-mean 0.0555
+  lambda_max = 5.1100  CI = 0.0275  CR = 0.0246
+[PASS] Criteria matrix CR < 0.10 -- CR = 0.0246
+[PASS] Criteria weights sum to 1
+
+== 3b. Deliberately inconsistent criteria matrix (teaching) ==
+  weights: C1-capability=0.5202, C2-finish=0.1857, C3-cycletime=0.1096, C4-cost=0.1289, C5-flex=0.0555
+  lambda_max = 7.6162  CI = 0.6540  CR = 0.5840
+[PASS] Inconsistent matrix CR >= 0.10 (fails, as designed) -- CR = 0.5840
+[PASS] Inconsistent lambda_max appreciably > n=5 -- lambda_max - n = 2.616
+
+== 4. AHP concept priorities per criterion ==
+  C1-capability (criterion weight 0.375, CR 0.0170):
+    A 0.1243
+    B 0.3257
+    C 0.1936
+    D 0.3564
+[PASS] C1-capability matrix CR < 0.10 -- CR = 0.0170
+  C2-finish (criterion weight 0.191, CR 0.0225):
+    A 0.1976
+    B 0.2390
+    C 0.1682
+    D 0.3952
+[PASS] C2-finish matrix CR < 0.10 -- CR = 0.0225
+  C3-cycletime (criterion weight 0.125, CR 0.0225):
+    A 0.1692
+    B 0.2879
+    C 0.3383
+    D 0.2046
+[PASS] C3-cycletime matrix CR < 0.10 -- CR = 0.0225
+  C4-cost (criterion weight 0.253, CR 0.0115):
+    A 0.4039
+    B 0.1391
+    C 0.3404
+    D 0.1166
+[PASS] C4-cost matrix CR < 0.10 -- CR = 0.0115
+  C5-flex (criterion weight 0.055, CR 0.0000):
+    A 0.3333
+    B 0.3333
+    C 0.1667
+    D 0.1667
+[PASS] C5-flex matrix CR < 0.10 -- CR = 0.0000
+
+  Global AHP scores:
+    A 0.2263
+    B 0.2575
+    C 0.2425
+    D 0.2736
+  AHP ranking: D > B > C > A
+[PASS] AHP winner is D -- winner D
+
+== 5. Agreement / divergence ==
+  Pugh iteration 1 (unweighted): B > C > D > A
+  AHP  (weighted):               D > B > C > A
+  Designed divergence: unweighted Pugh counts each criterion once, so B's lone cost minus is outweighed by four pluses; AHP weights capability (0.375) and cost (0.253) explicitly, and D leads on capability + finish, so D wins. Consolidation (D2) TIES B on net (+3 vs +3); the tie is broken by the CTQ-1 pilot data and AHP weights in favor of the D lineage, not by trading Pugh marks.
+[PASS] Post-consolidation Pugh selection == AHP winner (D lineage)
+[PASS] AHP runner-up is the iteration-1 Pugh leader B -- runner-up B
+[PASS] Iteration-1 winner differs from AHP winner (divergence witnessed)
+
+== COURT SUMMARY ==
+ALL CHECKS PASSED

@@ -1,0 +1,7 @@
+cr_id,cr_name,rating_1to10,weight_pct
+C1,fast-claim-decision,9,22
+C2,payment-accuracy,8,20
+C3,status-transparency,3,7
+C4,digital-submission,6,15
+C5,plain-language-comms,5,13
+C6,data-security,9,23

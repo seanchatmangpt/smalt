@@ -1,0 +1,8 @@
+stream_step,description,wait_days,process_min,shifts_covered
+order-entry,order review and CNC schedule release,2.2,0,1
+op10-saw,7075 billet saw to blank,2.1,4.5,1
+op20-mill,3-axis mill bore and profile (CPPC CTQ-1 bore),2.6,6.8,1
+op30-deburr,manual deburr and edge break,1.2,2.2,1
+op40-anodize,vendor anodize lot processing,4.6,660.0,0
+op50-cmm,bore CMM inspection (CTQ-1 verification),1.8,2.5,1
+op60-pack,final pack and transit,3.1,1.5,1

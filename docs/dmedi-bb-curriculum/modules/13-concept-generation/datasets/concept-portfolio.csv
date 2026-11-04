@@ -1,0 +1,9 @@
+concept_id,concept,novelty_1to5,feasibility_1to5
+C1,Compensated in-process gauge (TRIZ 24 intermediary),3,5
+C2,Adaptive feed control (TRIZ 25 self-service/feedback),4,3
+C3,Segmented rough/finish toolpath (TRIZ 3 local quality),2,5
+C4,Cryogenic spindle cooling (TRIZ 39 inert atmosphere),4,2
+C5,Multi-axis re-grip elimination (TRIZ 17 another dimension),3,4
+C6,Acoustic-emission tool monitor (TRIZ 23 feedback),4,3
+C7,Thermal-error model + offset (TRIZ 35 parameter change),4,4
+C8,Gradient-index boring bar (TRIZ 40 composite material),5,1

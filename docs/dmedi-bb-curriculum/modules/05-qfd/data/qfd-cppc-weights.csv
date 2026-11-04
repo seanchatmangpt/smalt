@@ -1,0 +1,10 @@
+cr_id,cr_name,kano_id,spine_ctq,kano_class,rank,weight,points100
+CR1,bore-diameter-in-spec,K-01,CTQ-1,M,2,0.178,18
+CR2,no-leaking-hydraulic-ports,K-02,,M,1,0.2,20
+CR3,certification-paperwork,K-03,,M,6,0.089,9
+CR4,bore-surface-finish-low-Ra,K-04,,O,3,0.156,16
+CR5,order-to-ship-lead-time,K-05,CTQ-2,O,4,0.133,13
+CR6,competitive-unit-cost,K-06,CTQ-3,O,5,0.111,11
+CR7,laser-etched-serialization,K-07,,A,7,0.067,7
+CR8,live-production-dashboard,K-08,,A,8,0.044,4
+CR9,weekly-quality-trend-report,K-10,,I,9,0.022,2

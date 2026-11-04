@@ -1,0 +1,6 @@
+phase,calendar_days,work_days,internal_wait_days,gate_wait_days
+Define,25,18,4,3
+Measure,20,14,3,3
+Explore,30,22,5,3
+Develop,30,21,6,3
+Implement,25,17,5,3

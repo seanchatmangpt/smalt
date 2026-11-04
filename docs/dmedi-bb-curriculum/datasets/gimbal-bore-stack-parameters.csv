@@ -1,0 +1,5 @@
+contributor,mean_um,tol_um,cost_weight,description
+bore_diameter,0.000,10.0,1.0,Bore machining diameter contribution to stack (CNC bore op)
+spindle_thermal,2.000,8.0,4.0,Spindle thermal growth bias along bore axis (warm-up drift)
+fixture_loc,0.000,6.0,2.0,Fixture locating tolerance transferred into bore position
+tool_deflection,-1.000,5.0,1.5,Cutting-force tool deflection bias at bore exit

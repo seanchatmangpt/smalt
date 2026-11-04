@@ -1,0 +1,7 @@
+ec_id,ec_name,unit,baseline,target
+EC1,bore-diameter-tolerance-mm,,spec +/- 0.025; Cpk 0.72 pinned,12.000 +/- 0.008 (internal guard-band)
+EC2,surface-finish-Ra-um,,1.6,<= 0.8
+EC3,leak-test-fail-ppm,,1200,0
+EC4,order-to-ship-lead-time-d,,18.4,<= 7
+EC5,unit-cost-usd,,41.80,<= 28.50
+EC6,etch-first-pass-readable-pct,,85,>= 95

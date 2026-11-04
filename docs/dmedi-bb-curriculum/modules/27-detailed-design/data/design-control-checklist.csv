@@ -1,0 +1,19 @@
+action_id,design_control,control_type,dfx_class,verification_method,acceptance_criterion,plan_row
+DC-01,AE tool monitor + compensated in-process gauge with auto offset,process control,meas,AE threshold trip test with seeded-wear insert on real cuts,trip within 3 parts of seeded-wear onset; gauge offset applied same part,CP-1
+DC-02,Adaptive feed control + Ra on production gauge 100%,process control,DFT,chatter trip test with forced instability cuts on real spindles,zero undamped chatter in 30-part run at DOE-optimal settings,CP-2
+DC-02b,Gauge R&R study on production bore gauge,measurement,meas,AIAG MSA method on production parts,RR below 10 pct of tolerance; else gauge upgrade,CP-3
+DC-03,Segmented rough/finish toolpath + 3-depth gauge traverse,process control,DFM,taper artifact cut + gauge traverse across 3 depths,max taper <= 2 um across 12 mm bore depth,CP-4
+DC-04,Offset verify step + compensated gauge 100%,error-proofing,meas,deliberately wrong cutter comp entered; interlock must refuse cycle start,interlock refuses 10/10 seeded wrong-entry trials,CP-5
+DC-04b,First-article layout retained per shift,process control,meas,layout audit vs first-article report,first-article within guard-band limits 12.000 +/- 0.008,CP-6
+DC-05,AE monitor + scheduled insert changes,process control,DFM,insert-life tracking vs AE signal correlation study,insert changes fire before AE-signal degradation threshold,CP-7
+DC-06,Poka-yoke fixture + seating sensor interlock,error-proofing,poka,seeded misload trials on production fixture,misload refused 30/30 trials; cycle start blocked without seating signal,CP-8
+DC-07,Fixture PM plan + seating sensor (shared with DC-06),maintenance,DFM,PM verification with datum-insert wear gauge,datum insert wear <= 2 um at PM interval,CP-9
+DC-07b,Bore entrance chamfer 1.0 mm x 45 deg on drawing,design change,DFA,assembly trial: bearing insertion force measurement,insertion force < 12 N without guide fixture; no skew in 20 trials,CP-10
+DC-08,Ra on production gauge 100%,process control,meas,Ra gauge correlation vs lab profilometer,Ra correlation r >= 0.9 vs lab method,CP-11
+DC-09,Edge break on drawing + feed-exit geometry change,design change,DFM,drawing revision + exit-burr height study across feed DOE run,exit burr <= 50 um across all DOE feed levels,CP-12
+DC-10,Warmup protocol + thermal error model + offset,process control,DFT,warmup cut study comparing first-piece deviation with/without model,first-piece deviation <= 3 um with model active,CP-13
+DC-10b,Gauge access: 3-depth traverse reach check on bore gauge,measurement,DFT,depth-reach check of gauge train on tallest part in family,gauge contacts all 3 depths on 100% of part family,CP-14
+DC-11,Inline refractometer daily check,process control,meas,refractometer calibration + concentration step-response test,concentration alarm within 15 min of seeded drift,CP-15
+DC-12,Program-match interlock (machine lockout),error-proofing,poka,seeded wrong-program trials with lockout active,wrong program refused 10/10 trials; no forced cycle start,CP-16
+DC-13,Bore gauge guard-band limits 12.000 +/- 0.008 mm,measurement,meas,gauge calibration against grade-AA ring gauge,calibration uncertainty <= 10 pct of 0.008 mm tolerance,CP-17
+DC-13b,Guard-band rationale doc: internal 0.008 vs customer spec 0.025,documentation,meas,coherence review vs module 26 DFMEA + module 12 capability,doc cites derivation emitted by scripts/derive_keys.py,CP-18
