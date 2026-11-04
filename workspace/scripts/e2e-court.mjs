@@ -557,6 +557,30 @@ record('composition: panel rendering', 'SKIP',
 }
 
 // ---------------------------------------------------------------------------
+// Leg 6: route-smoke court delegation (boots its own three next-dev servers)
+// ---------------------------------------------------------------------------
+
+{
+  const r = spawnSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'route-smoke-court.mjs')], {
+    encoding: 'utf8',
+    timeout: 15 * 60_000,
+  });
+  if (r.error || (r.status === null && r.signal !== null)) {
+    record('route-smoke court delegation', 'SKIP', `spawn failed: ${r.error?.message ?? r.signal}`);
+  } else {
+    // Surface the child verdict lines so the parent log carries the table.
+    for (const line of (r.stdout ?? '').split('\n')) {
+      if (line.startsWith('[') || line.startsWith('#')) console.log(`  ${line}`);
+    }
+    if (r.status === 0) {
+      record('route-smoke court delegation', 'PASS', `child exit 0 (pages+handlers+SSE+mutation flip)`);
+    } else {
+      record('route-smoke court delegation', 'FAIL', `child exit ${r.status}; tail: ${(r.stdout ?? '').split('\n').filter((l) => l.startsWith('# FAIL')).join(' | ') || (r.stderr ?? '').slice(-300)}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 
