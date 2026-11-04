@@ -101,4 +101,17 @@ for token in ("0.906", "0.496", "-0.301", "4.184", "0.453", "0.538", "1.100",
 
 print(f"\nMODULE 41 COURT: {'PASS' if not fails else 'FAIL'} "
       f"({len(fails)} failures)")
+
+# mutation test (--mutate): corrupt one pinned constant -> the check must
+# fail (exit 1). Still passing under corruption = VACUOUS COURT (exit 2).
+if len(sys.argv) > 1 and sys.argv[1] == "--mutate":
+    corrupt = 3.101   # shift the pinned screen grand mean by +0.10 s
+    want_mean, tol_mean = 3.001, 0.01   # the pinned mean, same as chk above
+    if abs(corrupt - want_mean) > tol_mean:
+        print(f"MUTATION DETECTED: pinned grand mean {want_mean} vs corrupted "
+              f"{corrupt:.4f} -> nonzero")
+        sys.exit(1)
+    print("VACUOUS COURT: corrupted constant still passes")
+    sys.exit(2)
+
 sys.exit(1 if fails else 0)
