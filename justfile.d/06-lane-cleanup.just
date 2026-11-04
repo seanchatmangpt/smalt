@@ -80,3 +80,16 @@ lane-clean:
       fi
     done
     printf 'DELETED %d dirs, FREED: %d KB (%.2f GiB)\n' "$n" "$freed" "$(echo "scale=4; $freed/1048576" | bc)"
+
+# ----------------------------------------------------------- tmp-gc / U7 ----
+# Reclaim tmp/ entries older than 30 days. Scope is deliberately narrow:
+# maxdepth 1, never descends, NEVER touches tmp/dev-certs (CA + leaves).
+tmp-gc-dry:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    find "{{justfile_directory()}}/tmp" -maxdepth 1 -mtime +30 -not -name dev-certs
+
+tmp-gc:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    find "{{justfile_directory()}}/tmp" -maxdepth 1 -mtime +30 -not -name dev-certs -exec rm -rf {} +

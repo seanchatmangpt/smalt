@@ -4,9 +4,14 @@
 # Absolute workspace root (justfile lives at repo root, so anchor to it).
 ws := join(justfile_directory(), "workspace")
 
-# npm ci when a lockfile exists (reproducible), npm install otherwise.
+# Reproducible install: requires package-lock.json, exits 3 (SKIP convention)
+# when absent — never falls back to npm install (unreproducible).
 @ws-install:
-    cd {{ws}} && npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ws}}
+    [ -f package-lock.json ] || { echo "[ws-install] package-lock.json missing (exit 3 = SKIP-loud)" >&2; exit 3; }
+    npm ci --no-audit --no-fund
 
 @ws-build:
     cd {{ws}} && npm run build
