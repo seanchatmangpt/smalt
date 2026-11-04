@@ -117,6 +117,11 @@ method note — the v1 on disk is the post-hoc landed copy).
 6. **Untracked evidence** — the whole curriculum tree is untracked in smalt
    except `teachability-scorecard-v2.md` (tracked, modified). Owner:
    coordinator. Present-locally-but-untracked fails every fresh checkout.
+7. **Module 45 (b) worked-derivation divergence** — ~~OPEN~~ **CLOSED
+   (2026-11-04, module-45 lane)**: `modules/45-capstone-brief/worked-example-measure.md`
+   landed with executed derivations (%GRR 13.97/ndc 9; Cpk 0.72 at sigma_within
+   7.407 um); registered divergence cleared; 45/45 with zero registered
+   divergences. Appended here per closure law — history kept, not rewritten.
 
 ## 6. 429-casualty history
 

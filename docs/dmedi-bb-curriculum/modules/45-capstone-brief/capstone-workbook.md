@@ -207,3 +207,30 @@ Acceptance: every number in the receipt replays from the listed scripts.
 - [ ] Five gate-minute records exist, one per gate, each with reviewer verdicts.
 - [ ] The helicopter lab was actually run, with data.
 - [ ] Final receipt present with all five fields.
+
+---
+
+## Phase 2 worked-example cross-reference (instructor derivation)
+
+`worked-example-measure.md` demonstrates Phase 2 (Measure) end-to-end with the instructor's
+derivation VISIBLE: study plan, %GRR = 13.97% (ndc 9) re-derived from
+`data/gage-rr-bore.csv`, Cpk = 0.72 re-derived from `data/cpk072-bore-subgroups.csv`
+(σ_within = 7.407 µm, μ = 12.009 mm — the adjudicated pair, re-derived not inherited), the
+gate question answered, and the verdict vs target 1.33 stated as NO with the honesty-law
+consequences. Study it BEFORE filling §2.1–2.5; your own derivation must stand on raw CSVs
+the same way — copy the method, not the numbers.
+
+### Fill-in: my Phase 2 derivation receipt
+
+- MSA %GRR (from `data/gage-rr-bore.csv`, replay command): `____________________`
+  %GRR = ______ %  → band verdict (circle one): <10% / 10–30% / >30%  ndc = ______
+  If >30%: corrective action + provisional flag: ____________________
+- Baseline Cpk (from `data/cpk072-bore-subgroups.csv`, replay command): `____________________`
+  μ = ______ mm  R̄ = ______ mm  σ_within = ______ µm  Cp = ______  Cpk = ______
+- Adjudication statement (§2.1 of the brief): working pair = σ = ______ µm, because:
+  __________________________________________________________________
+- Stability verdict (X̄/R limits, out-of-control subgroups): ____________________
+- Gate question answered in one sentence (can I trust the numbers; are they the numbers):
+  __________________________________________________________________
+- Verdict vs Cpk target 1.33 (PASS / NO): ______  If NO: lawful continuation statement
+  (program proceeds to Develop with baseline certified): ____________________
