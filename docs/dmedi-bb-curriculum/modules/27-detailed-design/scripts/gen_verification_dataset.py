@@ -27,7 +27,7 @@ with_m = [round(random.gauss(WITH_MEAN, WITH_SD), 1) for _ in range(N)]
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w", newline="") as f:
     w = csv.writer(f)
-    w.writerow(["trial", "deviation_um_no_model", "deviation_um_with_model"])
+    w.writerow(["trial", "bore_deviation_um_no_model", "bore_deviation_um_with_model"])
     for i in range(N):
         w.writerow([i + 1, without[i], with_m[i]])
 print(f"wrote {OUT}: {N} paired trials, seed {SEED}")

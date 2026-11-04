@@ -1,4 +1,4 @@
-inner_run,speed,feed,coating,hardness,coolant_temp,bore_dev_um,tool_life_min
+inner_run,speed,feed,coating,hardness,coolant_temp,bore_deviation_um,tool_life_min
 1,V6000,F220,uncoated,soft,cool,7.42,33.1
 1,V6000,F220,uncoated,soft,warm,6.63,31.9
 1,V6000,F220,uncoated,hard,cool,5.34,31.1

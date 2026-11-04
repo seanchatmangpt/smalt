@@ -27,8 +27,8 @@ COURT PASS: tolerance math + linkage courts green
 ```python
 import csv, statistics as st, math
 rows = list(csv.DictReader(open('data/thermal-warmup-study.csv')))
-a = [float(r['deviation_um_no_model']) for r in rows]
-b = [float(r['deviation_um_with_model']) for r in rows]
+a = [float(r['bore_deviation_um_no_model']) for r in rows]
+b = [float(r['bore_deviation_um_with_model']) for r in rows]
 print('n', len(rows))
 print('no-model mean', round(st.mean(a), 2), 'sd', round(st.stdev(a), 2),
       'min', min(a), 'max', max(a))

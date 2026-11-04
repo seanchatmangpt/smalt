@@ -35,18 +35,18 @@ def generate():
     with open(CSV, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["std", "A_speed_coded", "B_feed_coded", "C_coolant_coded",
-                    "center", "rep", "y_um"])
+                    "center", "rep", "bore_deviation_um"])
         w.writerows(rows)
 
 # ---------------------------------------------------------------- analysis
 generate()  # seed-stated, deterministic; overwrites identical file
 rows = list(csv.DictReader(open(CSV)))
 fac = sorted([r for r in rows if r["center"] == "0"], key=lambda r: int(r["std"]))
-y_fac = [float(r["y_um"]) for r in fac]
-y_ctr = [float(r["y_um"]) for r in rows if r["center"] == "1"]
+y_fac = [float(r["bore_deviation_um"]) for r in fac]
+y_ctr = [float(r["bore_deviation_um"]) for r in rows if r["center"] == "1"]
 X = [(-1, -1, -1), (+1, -1, -1), (-1, +1, -1), (+1, +1, -1),
      (-1, -1, +1), (+1, -1, +1), (-1, +1, +1), (+1, +1, +1)]
-y = [st.mean([float(r["y_um"]) for r in fac
+y = [st.mean([float(r["bore_deviation_um"]) for r in fac
               if (int(r["A_speed_coded"]), int(r["B_feed_coded"]),
                   int(r["C_coolant_coded"])) == x]) for x in X]
 
@@ -87,7 +87,7 @@ print(f"E(AB)         = {EAB:+.3f} um")
 # pure-error SD from corner replicates
 res = []
 for x in X:
-    obs = [float(r["y_um"]) for r in fac
+    obs = [float(r["bore_deviation_um"]) for r in fac
            if (int(r["A_speed_coded"]), int(r["B_feed_coded"]),
                int(r["C_coolant_coded"])) == x]
     res.append(st.stdev(obs))

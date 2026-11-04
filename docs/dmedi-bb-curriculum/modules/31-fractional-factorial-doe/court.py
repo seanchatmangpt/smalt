@@ -52,7 +52,7 @@ check("chains_match_readme", got == want, True)
 cols = {"A": "A_speed", "B": "B_feed", "C": "C_coolant",
         "D": "D_coating", "E": "E_toolholder"}
 def eff(name):
-    return sum(math.prod(int(r[cols[c]]) for c in name) * float(r["dev_um"])
+    return sum(math.prod(int(r[cols[c]]) for c in name) * float(r["bore_deviation_um"])
                for r in rows) / len(rows)
 check("eff_A_chain", round(eff("A"), 3), -7.948 + DELTA)
 check("eff_B_chain", round(eff("B"), 3), 6.231)
@@ -61,7 +61,7 @@ check("eff_D_chain", round(eff("D"), 3), 2.846)
 check("eff_BC_chain", round(eff("BC"), 3), 2.240)
 check("eff_E_chain", round(eff("E"), 3), -0.645)
 check("eff_BE_chain", round(eff("BE"), 3), 0.159)
-ybar = sum(float(r["dev_um"]) for r in rows) / len(rows)
+ybar = sum(float(r["bore_deviation_um"]) for r in rows) / len(rows)
 check("grand_mean", round(ybar, 3), 9.751)
 
 # alias contrasts are bit-identical within a chain (the mechanical alias proof)
@@ -74,7 +74,7 @@ check("D_chain_is_AB_wearing_label", abs(eff("D") - 3.0) < 1.0, True)
 
 # pure error from replicate pairs (key §4)
 byo = {}
-for r in rows: byo.setdefault(int(r["std_order"]), []).append(float(r["dev_um"]))
+for r in rows: byo.setdefault(int(r["std_order"]), []).append(float(r["bore_deviation_um"]))
 pe_sd = math.sqrt(sum((v[0] - v[1]) ** 2 for v in byo.values()) / (2 * 8))
 check("pure_error_sd", round(pe_sd, 3), 1.734)
 check("noise_chains_below_pure_error", abs(eff("E")) < pe_sd and abs(eff("BE")) < pe_sd, True)

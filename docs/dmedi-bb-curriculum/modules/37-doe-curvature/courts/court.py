@@ -17,8 +17,8 @@ def check(nm, got, exp, tol=0.01):
 rows = list(csv.DictReader(open(CSV)))
 fac = [r for r in rows if r["center"] == "0"]
 ctr = [r for r in rows if r["center"] == "1"]
-y_fac = [float(r["y_um"]) for r in fac]
-y_ctr = [float(r["y_um"]) for r in ctr]
+y_fac = [float(r["bore_deviation_um"]) for r in fac]
+y_ctr = [float(r["bore_deviation_um"]) for r in ctr]
 
 yF, yC = st.mean(y_fac), st.mean(y_ctr)
 diff = yF - yC
@@ -44,7 +44,7 @@ yc = {}
 for r in fac:
     key = (int(r["A_speed_coded"]), int(r["B_feed_coded"]),
            int(r["C_coolant_coded"]))
-    yc[key] = st.mean([float(x["y_um"]) for x in fac
+    yc[key] = st.mean([float(x["bore_deviation_um"]) for x in fac
                        if (int(x["A_speed_coded"]), int(x["B_feed_coded"]),
                            int(x["C_coolant_coded"])) == key])
 for k, (nm, coef) in enumerate({

@@ -199,18 +199,18 @@ b2ca7d369605d986bcc8c6323ca00cef1f8702f339dc01a458d82cab3700f169  modules/22-pro
 02e88fe173b40502388cac4aa7145835e7c6615ef630370dde8f6a3197896b49  modules/24-multiple-regression/data/regression-multi.csv
 6ffde1dbd4475b357a4966d9055aacacbea0b00d5a5279e8b1202622e774d2ee  modules/26-design-fmea/data/dfmea-worksheet.csv
 2e0fe09509013eeea85ce6a526fa86bd887020a5efed5a2f46221db8c6b6ab30  modules/27-detailed-design/data/design-control-checklist.csv
-72e8b2612fe1c91dcefabfdc0773e0a2e39cd479ed45fed46936df5ff11a42bf  modules/27-detailed-design/data/thermal-warmup-study.csv
-bb8a317b4c72294f1c1f594215937064fedf9bdab2e08e255d86a093ba115f22  modules/31-fractional-factorial-doe/data/fractional-2k5-2.csv
+810610266e692653137f17908645b8a3573c2b2cc17058cafe66534b76a2b7ff  modules/27-detailed-design/data/thermal-warmup-study.csv
+506775fdf0e20803b09613126dcc088a8a2c711dc7a64122aa99064b1ba8c4a0  modules/31-fractional-factorial-doe/data/fractional-2k5-2.csv
 a63fd2395b14291224d38d683624b99c528aeebe77e944f7dc7ba2f25c4a6517  modules/32-catapult-simulation/data/catapult-results.csv
 27e8b8ebffc4c64d9ed9f0bcf1014ea4eef4d753b11205fae08bb8b5ffa9b041  modules/33-key-lean-concepts/data/vsm-baseline.csv
 509217b6321f9ce08867496d9158c4249bd7c6284e422d50d0c4cd3fd5b3c7f3  modules/34-lean-design/data/gate-review-waits.csv
 1b36fdf07e0806b9631de2f9c30660b007a0e686cda395b8621edba6c06615fb  modules/35-dfma/data/gimbal-teardown.csv
 30bcced6e143abb86340a93fe9d7c4f44249613ac85c2dcb03015aff5defd918  modules/36-intro-reliability/data/weibull-failure-times.csv
-9e81e142d1ae2157cd8371a7edb534df58bee02108f6ca4ef53ea56e85b77e56  modules/37-doe-curvature/data/bore-curvature.csv
+87affa7b6ec3a77ddd4499a0469247c7ee6500ebc272c5c1de65b97e9ea28117  modules/37-doe-curvature/data/bore-curvature.csv
 2eb238a284c674c352e9b25d5401d0b3d32832b5316f8ba324fff0f0ce8807b7  modules/38-conjoint/data/conjoint-cards.csv
 e91e311853e0b5b2ab97b5a9209613c73f67502c5929fcd4b17f49c2f422dab1  modules/38-conjoint/data/conjoint-ranks.csv
 a670ca1c4835944c412aa1ab8cf08ec14478d7bfc6f14a727a37e7ac1f3fecab  modules/39-mixture-designs/data/coolant-mixture.csv
-8ac178b137c5641aac13720c7bcaae6a06500f23a8f66ae9e53336e75b30c1ad  modules/40-robust-design/data/robust-bore.csv
+0c5a2c30096ab517990114ecd330b0594ddea6f4e5f3c2b59c474ebee41b12f3  modules/40-robust-design/data/robust-bore.csv
 d8411e8f75bddff98a45674859cb540f17ac2d76804251fab0d9a4def0355f78  modules/41-helicopter-rsm-lab/data/helicopter-rsm.csv
 9464c3ef0026ec61ba19de6648fd6bde910283a468ce9c5e78ff28afc22338f2  modules/42-prototype-pilot/data/pilot-bore-30day.csv
 0d53f90461497aacdfdbdb0ea7bf3d0dbe14e2b5bdabcdaa042089d57a75312f  modules/42-prototype-pilot/data/pilot-ra-daily.csv
@@ -264,18 +264,18 @@ the named owner then supplied the generator/seed or declared the file authored
 | `modules/24-multiple-regression/data/regression-multi.csv` | `02e88fe173b4` | 37 | 42401 (scripts/gen_regression_multi.py); byte-identical twin registered at data/regression-multi.csv |
 | `modules/26-design-fmea/data/dfmea-worksheet.csv` | `6ffde1dbd447` | 13 | authored deterministic (scripts/gen_dfmea.py, no RNG) |
 | `modules/27-detailed-design/data/design-control-checklist.csv` | `2e0fe0950901` | 19 | authored deterministic (design-control checklist mapping, no RNG); M27 derive_keys.py re-derives tolerance math + DFMEA linkage from raw CSV (exit 0 = 18 checks) |
-| `modules/27-detailed-design/data/thermal-warmup-study.csv` | `72e8b2612fe1` | 13 | seed 2711 via `scripts/gen_verification_dataset.py` (warmup/no-model deviation pairs, 12+12, byte-reproducible; previously mislabeled "authored deterministic, no RNG"); M27 derive_keys.py re-derives the warmup contrast from raw CSV (exit 0 = 18 checks) |
-| `modules/31-fractional-factorial-doe/data/fractional-2k5-2.csv` | `bb8a317b4c72` | 17 | 43108 (M31 solution-key) |
+| `modules/27-detailed-design/data/thermal-warmup-study.csv` | `810610266e69` | 13 | seed 2711 via `scripts/gen_verification_dataset.py` (warmup/no-model deviation pairs, 12+12, byte-reproducible; previously mislabeled "authored deterministic, no RNG"); M27 derive_keys.py re-derives the warmup contrast from raw CSV (exit 0 = 18 checks) |
+| `modules/31-fractional-factorial-doe/data/fractional-2k5-2.csv` | `506775fdf0e2` | 17 | 43108 (M31 solution-key) |
 | `modules/32-catapult-simulation/data/catapult-results.csv` | `a63fd2395b14` | 21 | 43201 (data/simulator.py) |
 | `modules/33-key-lean-concepts/data/vsm-baseline.csv` | `27e8b8ebffc4` | 8 | authored deterministic (VSM process table, no RNG); M33 court re-derives 15/15 checks from raw CSV (modules/33-key-lean-concepts/courts/court.py, exit 0) |
 | `modules/34-lean-design/data/gate-review-waits.csv` | `509217b6321f` | 6 | authored deterministic (gate-wait table, no RNG); M34 court re-derives 16/16 checks from raw CSV (modules/34-lean-design/courts/court.py, exit 0) |
 | `modules/35-dfma/data/gimbal-teardown.csv` | `1b36fdf07e08` | 15 | authored deterministic (teardown worksheet, no RNG); M35 court re-derives 21/21 checks from raw CSV (modules/35-dfma/courts/court.py, exit 0) |
 | `modules/36-intro-reliability/data/weibull-failure-times.csv` | `30bcced6e143` | 41 | 42114 (scripts/generate_dataset.py; byte-identical replay court-checked in M36 court) |
-| `modules/37-doe-curvature/data/bore-curvature.csv` | `9e81e142d1ae` | 23 | 37001 (data/compute.py, deterministic regen) |
+| `modules/37-doe-curvature/data/bore-curvature.csv` | `87affa7b6ec3` | 23 | 37001 (data/compute.py, deterministic regen) |
 | `modules/38-conjoint/data/conjoint-cards.csv` | `2eb238a284c6` | 10 | authored deterministic (data/compute.py card design, no RNG) |
 | `modules/38-conjoint/data/conjoint-ranks.csv` | `e91e311853e0` | 10 | 38001 (data/compute.py) |
 | `modules/39-mixture-designs/data/coolant-mixture.csv` | `a670ca1c4835` | 15 | 39001 (data/compute.py) |
-| `modules/40-robust-design/data/robust-bore.csv` | `8ac178b137c5` | 33 | 40001 (data/compute.py) |
+| `modules/40-robust-design/data/robust-bore.csv` | `0c5a2c30096a` | 33 | 40001 (data/compute.py) |
 | `modules/41-helicopter-rsm-lab/data/helicopter-rsm.csv` | `d8411e8f75bd` | 40 | 41001 (data/compute.py) |
 | `modules/42-prototype-pilot/data/pilot-bore-30day.csv` | `9464c3ef0026` | 1201 | 42016 (data/gen_pilot.py) |
 | `modules/42-prototype-pilot/data/pilot-ra-daily.csv` | `0d53f9046149` | 31 | 42016 (data/gen_scrap.py + gen_pilot.py) |

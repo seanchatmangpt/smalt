@@ -35,7 +35,7 @@ applied to corner-vs-center means.
 ## Slide 3 — The CPPC curvature experiment (20 min)
 - Design: 2^3 factorial, 2 reps per corner (16 obs) + 6 center points, randomized run order.
 - Factors (running case): A = spindle speed, B = feed rate, C = coolant concentration. Response: bore deviation from 12.000 mm, µm (smaller is better, 0 is perfect).
-- Dataset: `data/bore-curvature.csv` (seed 37001). Columns: std run, coded A/B/C, center flag, rep, y_um.
+- Dataset: `data/bore-curvature.csv` (seed 37001). Columns: std run, coded A/B/C, center flag, rep, bore_deviation_um.
 
 ## Slide 4 — Running the curvature test (25 min, worked, all numbers from the key)
 `python3 data/compute.py` prints:

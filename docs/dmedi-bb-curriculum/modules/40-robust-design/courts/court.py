@@ -31,16 +31,16 @@ def sn_ltb(ys):
 ctl = {}
 for run in range(1, 9):
     obs = per[run]
-    devs = [float(r["bore_dev_um"]) for r in obs]
+    devs = [float(r["bore_deviation_um"]) for r in obs]
     ctl[run] = dict(
         s=0 if obs[0]["speed"] == "V6000" else 1,
         f=0 if obs[0]["feed"] == "F220" else 1,
         c=0 if obs[0]["coating"] == "uncoated" else 1,
         m=st.mean(devs), sn=sn_stb(devs),
         lsn=sn_ltb([float(r["tool_life_min"]) for r in obs]),
-        m_soft=st.mean([float(r["bore_dev_um"]) for r in obs
+        m_soft=st.mean([float(r["bore_deviation_um"]) for r in obs
                         if r["hardness"] == "soft"]),
-        m_hard=st.mean([float(r["bore_dev_um"]) for r in obs
+        m_hard=st.mean([float(r["bore_deviation_um"]) for r in obs
                         if r["hardness"] == "hard"]))
 
 exp_table = {1: (6.79, -16.72, 30.10), 2: (5.12, -14.49, 31.75),
@@ -67,7 +67,7 @@ check("noise lift coated (-0.41 um)", eff("c", 1, "m_hard") -
       eff("c", 1, "m_soft"), -0.41, 0.01)
 check("best run on S/N is 6", 1.0 if max(ctl, key=lambda k: ctl[k]["sn"]) == 6
       else 0.0, 1.0, 0.0)
-check("run 6 raw deviations", 1.0 if [float(r["bore_dev_um"]) for r in per[6]]
+check("run 6 raw deviations", 1.0 if [float(r["bore_deviation_um"]) for r in per[6]]
       == [3.61, 3.70, 2.83, 2.78] else 0.0, 1.0, 0.0)
 
 md = open(f"{BASE}slides-outline.md").read()

@@ -53,7 +53,7 @@ for rep in (1, 2):
 Planted truth (um, deviation from 12.000 mm): intercept 9, A −8, B +6, C −4,
 AB +3, DE +2, noise sd 1.5. File shape: 16 rows × 9 cols
 (`replicate, std_order, run_order, A_speed, B_feed, C_coolant, D_coating,
-E_toolholder, dev_um`). Court: `csv.DictReader` reads back exactly 16 rows — exit 0.
+E_toolholder, bore_deviation_um`). Court: `csv.DictReader` reads back exactly 16 rows — exit 0.
 
 ## 3. Court 2 — effects re-derived from the raw CSV (exit-checked)
 

@@ -1,4 +1,4 @@
-std,A_speed_coded,B_feed_coded,C_coolant_coded,center,rep,y_um
+std,A_speed_coded,B_feed_coded,C_coolant_coded,center,rep,bore_deviation_um
 1,-1,-1,-1,0,1,15.66
 1,-1,-1,-1,0,2,13.82
 2,1,-1,-1,0,1,7.4

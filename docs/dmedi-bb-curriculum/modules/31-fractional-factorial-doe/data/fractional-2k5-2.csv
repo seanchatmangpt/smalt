@@ -1,4 +1,4 @@
-replicate,std_order,run_order,A_speed,B_feed,C_coolant,D_coating,E_toolholder,dev_um
+replicate,std_order,run_order,A_speed,B_feed,C_coolant,D_coating,E_toolholder,bore_deviation_um
 1,1,3,1,1,1,1,1,7.439
 1,2,2,1,1,-1,1,-1,13.577
 1,3,6,1,-1,1,-1,1,-16.281

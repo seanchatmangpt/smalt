@@ -42,7 +42,7 @@ def generate():
         w = csv.writer(f)
         w.writerow(["inner_run", "speed", "feed", "coating",
                     "hardness", "coolant_temp",
-                    "bore_dev_um", "tool_life_min"])
+                    "bore_deviation_um", "tool_life_min"])
         for run, s, f_, c in INNER:
             for hard, warm in NOISE:
                 hv = 0 if hard == "soft" else 1
@@ -69,7 +69,7 @@ print("inner L8 (control: speed, feed, coating) x outer 4 (noise: hardness,"
 per = []
 for run, s, f_, c in INNER:
     obs = [r for r in rows if int(r["inner_run"]) == run + 1]
-    devs = [float(r["bore_dev_um"]) for r in obs]
+    devs = [float(r["bore_deviation_um"]) for r in obs]
     lives = [float(r["tool_life_min"]) for r in obs]
     per.append(dict(run=run + 1, s=s, f=f_, c=c, devs=devs, lives=lives,
                     m=st.mean(devs), sd=st.stdev(devs),
@@ -108,17 +108,17 @@ print(f"\nbest setup on S/N_STB: run {best['run']} "
 print("\n-- noise main effects (averaged over all 8 controls) --")
 for i, (hard, warm) in enumerate(NOISE):
     obs = [r for r in rows if r["hardness"] == hard and r["coolant_temp"] == warm]
-    m = st.mean([float(r["bore_dev_um"]) for r in obs])
+    m = st.mean([float(r["bore_deviation_um"]) for r in obs])
     print(f"  {hard:<5}+{warm:<5} mean deviation {m:6.2f} um")
 
 # control-by-noise interaction: coating x hardness (does coating damp noise?)
 print("\n-- coating x hardness interaction (control x noise) --")
 for coat in (0, 1):
-    m_soft = st.mean([r["bore_dev_um"] and float(r["bore_dev_um"]) for r in rows
+    m_soft = st.mean([r["bore_deviation_um"] and float(r["bore_deviation_um"]) for r in rows
                       if int(r["inner_run"]) - 1 in
                       [i for i in range(8) if INNER[i][3] == coat]
                       and r["hardness"] == "soft"])
-    m_hard = st.mean([float(r["bore_dev_um"]) for r in rows
+    m_hard = st.mean([float(r["bore_deviation_um"]) for r in rows
                       if int(r["inner_run"]) - 1 in
                       [i for i in range(8) if INNER[i][3] == coat]
                       and r["hardness"] == "hard"])
