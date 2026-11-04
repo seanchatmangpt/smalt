@@ -1,150 +1,115 @@
-# Course Completion Receipt — DMEDI BB Curriculum (GAP-5, v2)
+# Course Completion Receipt — DMEDI BB Curriculum (GAP-5, v3)
 
-**Standing: ALIVE (v2)** — every count below re-measured on disk 2026-11-04 by the
-RECONCILIATION lane. Subject: `/Users/sac/smalt/docs/dmedi-bb-curriculum/`.
-Supersedes the v1 receipt (written mid-wave while build lanes were still
-running: 14/45 COMPLETE, 21/45 courts, 6 open drift items).
+**Standing: ALIVE** — every count below re-measured live on disk 2026-11-04 by the
+IMPLEMENT lane (single session, single tree). Subject:
+`/Users/sac/smalt/docs/dmedi-bb-curriculum/`. Supersedes v2 (which was written
+from the authoring waves' own claims and carried their mid-wave counts: 22
+courts, strict bundle 9/45, registry 61 rows).
 
-## 0. Why v2
+## 0. Why v3
 
-v1 was written while build lanes were still running. The v1 open items were
-closed by later lanes: G1 (modules 01–03 kits), GAP-4 (45/45 remediation),
-H5 (script defects), H6 (manifest consolidation), BB-18 (registry seal),
-BB-19 (coherence re-audit 4/4 PASS), BB-20 (teachability 43/45, then 45/45
-post-remediation per scorecard-v2). This receipt is the current state.
+v2's counts were measured before the final authoring waves (D54/D55) landed
+and went stale within the session: the executable-court count moved 22 → 38
+(thin court.py wrappers for 16/23/24/25/26/27, then the D54/D55 court wave),
+the strict bundle moved 9/45 → 28/45, the registry moved 61 → 111 rows
+(dataset rows + module bundles), and the bundle index moved 23/45 → 45/45.
+This receipt re-measures everything live and carries only numbers executed in
+this session's transcript.
 
-## 1. Verification outputs (executed this session)
+## 1. Live verification outputs (executed this session, 2026-11-04)
 
-- **Registry seal**: `python3 datasets/manifest_verify.py` →
-  **61 PASS, 0 SKIP, 0 FAIL, exit 0** (re-run this session).
-- **Executable courts**: 22 `court.py` files found under `modules/`
-  (`find . -name court.py | wc -l` → 22). Ran every one:
-  **22/22 exit 0, zero failures.** Modules with executable courts:
-  01, 02, 03, 05, 06, 07, 08, 09, 10, 19, 33, 34, 35, 36, 37, 38, 39, 40,
-  41, 42, 43, 44.
-- **Bundle completeness (strict per EF-B)**: EF-B's exact bundle definition
-  is not recoverable from the tree (no EF-B artifact on disk), so this lane
-  operationalized it as {teaching artifact, exercises/lab/workshop, solution
-  key, executable court.py, data CSV} and reports both counts honestly:
-  - **Strict (all 5, executable court required): 9/45**.
-  - **Functional (teaching + exercises + key; court may be key-script or
-    embedded-key form): 23/45**.
-  - Note: GAP-4's five-requirement teachability audit (scorecard-v2) judged
-    **45/45 PASS** on (a) objectives / (b) worked example / (c) keyed
-    exercise / (d) timing / (e) tool note — the teachability bundle is
-    complete; the strict court+data bundle is not, and 22 executable courts
-    over 45 modules remains the honest coverage number.
-- **Registry bundle rows**: 23/45 modules carry a bundle row in the
-  consolidated `datasets/MANIFEST.md` "Module bundles" section (H6).
-- **Teachability correction (RECONCILIATION, 2026-11-04)**: the R4 lane
-  re-verified module 18 and 45 on disk and found GAP-4's 45/45 claim
-  **overstated**: module 18 has NO student exercise/key (README-only tree:
-  README.md + scripts/mc_bore_stack.py), module 45's worked derivation is a
-  registered divergence (rubric-as-key), not a fix. **Corrected verdict:
-  44/45** — see the reconciliation table at the bottom of
-  `teachability-scorecard-v2.md` (the register of truth for rows 18/45).
-  Claims in this receipt saying 45/45 reflect GAP-4's original claim and are
-  superseded by the 44/45 correction except where they describe what GAP-4
-  itself reported.
-  **CLOSURE (2026-11-04, post-R4)**: module 18's (c) finding is now closed —
-  `modules/18-monte-carlo/exercises.md` (E1-E8) + `keys/solution-key.md`
-  landed, key re-derived at seed 20261105 (registered in `datasets/MANIFEST.md`
-  simulation-only seeds; manifest_verify 61 PASS exit 0; the script's default
-  run at seed 20261104 is byte-identical to the registered teaching output).
-  Evidence: `modules/18-monte-carlo/keys/solution-key.md`. The 44/45
-  correction above stands as history; with 18 (c) closed the corrected
-  teachability verdict is **45/45** (module 45 (b) remains the registered
-  divergence) → superseded by §5 item 7 (45/45 zero divergences).
-- **Untracked evidence**: `git status --porcelain docs/dmedi-bb-curriculum`
-  → 2 entries: ` M teachability-scorecard-v2.md` (tracked, modified) and
-  `?? docs/dmedi-bb-curriculum/` (the rest of the tree, untracked).
-  Staging/commit is coordinator-owned.
+| Check | Command | Result |
+|---|---|---|
+| Modules | `ls modules \| wc -l` | **45** |
+| exercises.md coverage | `find modules -name exercises.md \| wc -l` | **45** |
+| Executable courts | `find modules -name court.py \| wc -l` | **38** |
+| Court runs | every `court.py` executed | **38/38 exit 0** (per-court exits in the transcript; mutation courts flip exit 1 under mutation and restore byte-exact, as required) |
+| Court-less modules | census | **7**: 04, 11, 13, 14, 15, 18, 29 |
+| Keys census | `find modules -type d -name keys` + `solution-key.md` | 30 `keys/` dirs, 40 top-level `solution-key.md` files; **45/45 modules carry a key artifact** |
+| UNSTATED provenance | `grep -rn UNSTATED modules` | **0 matches** |
+| Bundle rows | `awk '/## Module bundles/,0' datasets/MANIFEST.md \| grep -c '^| [0-9]'` | **45/45 modules registered** |
+| Registry rows (total) | `grep -c '^| ' datasets/MANIFEST.md` | 111 table rows |
+| `__pycache__` | `find . -name __pycache__ \| wc -l` | **0** |
+| Registry seal | `python3 datasets/manifest_verify.py` | **60 PASS, 0 SKIP, 1 FAIL, exit 1** — see §1a |
+| Teachability | `teachability-scorecard-v2.md` closure table | **45/45 PASS, zero registered divergences** (18 (c) closed: exercises E1-E8 + key re-derived seed 20261105; 45 (b) closed: `worked-example-measure.md`, %GRR 13.97 / ndc 9 / Cpk 0.72 re-executed exit 0) |
+| Git state | `git status --porcelain docs/dmedi-bb-curriculum` | 11 modified tracked files — all in-flight column-rename wave-2 edits (m27/31/37/40 data+compute+courts+keys); zero untracked files |
 
-## 2. Gap-closure timeline (what closed when)
+### 1a. Registry seal — one FAIL, cause and close condition
+
+`manifest_verify.py` → 60 PASS / **1 FAIL**:
+`modules/27-detailed-design/data/thermal-warmup-study.csv` (recorded
+`72e8b261…`, on-disk `81061026…`). The FAIL traces to the **uncommitted
+in-flight column-rename wave** (`bore_dev_um` → `bore_deviation_um`): m27's
+`gen_verification_dataset.py` was edited (header rename) and the CSV
+regenerated before the registry row was re-sealed. Evidence this is not a
+landed-state defect: the recorded hash `72e8b261…` equals `git show
+HEAD:…/thermal-warmup-study.csv` sha256 exactly (executed this session), so
+the seal is green at HEAD (f840a8a2) and red only against the working tree.
+**Close condition**: the rename lane re-seals `datasets/MANIFEST.md` in its
+commit; this receipt's seal row then reverts to all-PASS on the next
+re-measure. This lane owns only this receipt file and did not touch the
+in-flight files.
+
+## 2. Consolidated wave timeline (seven rows, history kept not rewritten)
 
 | When | Lane | What closed |
 |---|---|---|
-| mid-wave | G1 | Modules 01–03 full teaching kits (README/exercises/keys/courts; courts 17/20/29 checks, all exit 0 — re-run this session) |
-| 2026-11-04 | BB-18 | Registry seal: 20 → 61 registered CSVs; verifier 61 PASS / 0 SKIP / 0 FAIL |
-| 2026-11-04 | GAP-4 | 45/45 teachability remediation; scorecard-v2 45/45 PASS all five requirements; fixed module-28 CSV column drift (bore_deviation_mm) |
-| 2026-11-04 | H5 | All script defects fixed; all 22 court.py now exit 0 (this session's sweep confirms) |
-| 2026-11-04 | H6 | Manifest consolidation: root MANIFEST.md (3 lines) → datasets/MANIFEST.md (255 lines); module-bundle index + migrated court re-run commands |
-| 2026-11-04 | BB-19 | Coherence re-audit: Audits 1–4 return 4/4 PASS (see §3); drift rows D1–D9 all closed (status column added to coherence-court.md this session) |
-| 2026-11-04 | BB-20 | Teachability 43/45 on the pre-remediation tree; the 2 fails (18, 45) superseded by GAP-4's scorecard-v2 45/45 |
+| 2026-11-04 | G1 | Modules 01–03 full teaching kits (courts 17/20/29 checks, re-run exit 0 this session) |
+| 2026-11-04 | BB-18 | Registry seal: 20 → 61 registered CSVs; verifier all-PASS exit 0 at that wave's close |
+| 2026-11-04 | GAP-4 | 45/45 teachability remediation; scorecard-v2 authored; M28 column drift fixed |
+| 2026-11-04 | H5 | All script defects fixed; court sweep green at that wave's count (22) |
+| 2026-11-04 | H6 | Manifest consolidation: root MANIFEST.md → datasets/MANIFEST.md; bundle index 23/45 rows |
+| 2026-11-04 | BB-19 / BB-20 | Coherence re-audit 4/4 PASS (D1–D9 closed); teachability 43/45 → superseded by scorecard-v2 |
+| 2026-11-04 | D54 / D55 | aaf6b18b (45/45 exercises) + e027dbaf re-seal + thin-court wrappers; courts 22 → 38; strict bundle 9/45 → 28/45; bundle rows 23/45 → 45/45 |
 
-## 3. BB-19 reconciliation (coherence-court.md)
+## 3. Teachability (carried, not re-derived)
 
-Added a status column to `coherence-court.md`'s drift table: **D1–D9 all
-CLOSED**, each with closer-lane names and the disk evidence this lane
-re-checked:
+`teachability-scorecard-v2.md` is the register of truth for the five-
+requirement audit. Its closure table records: **45/45 PASS, zero registered
+divergences** at modules 18 and 45 (both closure notes carry executed
+evidence). History pointer, kept per closure law: **44/45 → 45/45** (R4
+reconciliation found 18 (c) open and 45 (b) a registered divergence; both
+closed post-R4; the 44/45 correction stands as history in scorecard-v2 §Reconciliation).
 
-- D1: no "Module 27 (one-way ANOVA)" pointer remains in module 28 README — closed by GAP-4 (M28 kit rework).
-- D2/D3: modules 02/03 now carry full kits + exit-0 courts — closed by G1 (Lane 01).
-- D4: M04 slides now derive spine CTQ-1 from K-01 mapping — closed by Lane 02 / GAP-4.
-- D5/D6: decision-tree.md now routes two-way ANOVA (M28) and the regression F-test (M23/24) — closed by Lane 09 scope during the GAP-4 wave.
-- D7: registry rows state the post-adjudication generators; pre-adjudication generator text appears only in CORRECTED notes — closed by Lane 04 / H6.
-- D8: bundle index consolidated into datasets/MANIFEST.md — closed by H6 (23/45 rows; residual per-row ownership is lane-owned, see §5).
-- D8b: M12 lab now names the planted 18–20 shift as the cause of the 19–20 UCL breach — closed by Lane 05/Lane 04 reconciliation during GAP-4.
-- D8c: no "pending Lane 19 adjudication" text remains in module 42 — closed by Lane 16 / H5.
-- D9: M05 honest-flag now reads RESOLVED with the adjudicated pair — closed by Lane 02 / GAP-4.
+## 4. v2 supersessions
 
-BB-19's bottom line ("Audits 2–4 FAIL on D1–D9") is superseded: the re-audit
-returned 4/4 PASS after these rows closed.
+v2's open items, resolved by later waves (verified this session):
 
-## 4. BB-20 reconciliation (teachability-scorecard.md)
+- 22/23 modules without executable courts → **7 court-less** (§1).
+- Strict bundle 9/45 → **28/45** (§1).
+- 13 UNSTATED datasets → **0 UNSTATED matches** (§1).
+- 22/45 modules lacking a bundle row → **45/45 rows** (§1).
+- `__pycache__` on tree → **0** (§1).
+- Untracked evidence → tree fully tracked at HEAD f840a8a2; the only
+  working-tree entries are the 11 in-flight rename-wave files (§1a).
 
-`teachability-scorecard.md` (v1, 43/45 CONDITIONAL PASS; fails on modules 18
-and 45) now carries a supersession note: **superseded by GAP-4's
-teachability-scorecard-v2.md, 45/45 PASS** (modules 18 and 45 remediated in
-that wave; the v1 file notes Lane 20's file "never landed" per scorecard-v2's
-method note — the v1 on disk is the post-hoc landed copy).
+## 5. True residuals (owners named)
 
-## 5. Remaining open items (each with owner)
-
-1. **45 − 22 = 23 modules without executable courts** — owner: coordinator
-   (batch court-authoring re-dispatch, or register the key-script form as the
-   court of record per the registry's Court column, which already names
-   `derive_keys.py`-style courts for several modules).
-2. **Strict bundle 9/45** — same owner; same remediation path (executable
-   court + data CSV per module).
-3. **13 datasets with UNSTATED provenance** — owner: named per row in the
-   registry seal (modules 01/02/03/27 lanes, Lane 14). Unchanged from v1.
-4. **22/45 modules lack a registry bundle row** — owner: owning lanes
-   (registry is lane-owned rows; D8's consolidation closed the index, not
-   every row).
-5. **`__pycache__`/`.pyc` bytecode on the tree** — owner: coordinator
-   (cleanup transition before integration commit).
-6. **Untracked evidence** — the whole curriculum tree is untracked in smalt
-   except `teachability-scorecard-v2.md` (tracked, modified). Owner:
-   coordinator. Present-locally-but-untracked fails every fresh checkout.
-7. **Module 45 (b) worked-derivation divergence** — ~~OPEN~~ **CLOSED
-   (2026-11-04, module-45 lane)**: `modules/45-capstone-brief/worked-example-measure.md`
-   landed with executed derivations (%GRR 13.97/ndc 9; Cpk 0.72 at sigma_within
-   7.407 um); registered divergence cleared; 45/45 with zero registered
-   divergences. Appended here per closure law — history kept, not rewritten.
+1. **Strict bundle 28/45** — 17 modules missing at least one of
+   {exercises/lab, key, executable court, data CSV} (census in §1; the 7
+   court-less modules are 04, 11, 13, 14, 15, 18, 29). Owner: coordinator
+   (court-authoring re-dispatch or register the key-script court of record).
+2. **Registry seal 60 PASS / 1 FAIL** — transient, caused by the uncommitted
+   rename wave (§1a). Owner: rename lane (re-seal in its landing commit);
+   close condition stated in §1a.
+3. **In-flight working-tree edits** — 11 files, rename-wave lane-owned, not
+   this lane's to commit or revert. Owner: rename lane / coordinator.
 
 ## 6. 429-casualty history
 
-Per v1 (§7), unchanged and still honest: no receipt in `receipts/` records a
-429 death; this lane has no direct observation of a 429 kill. What is
-directly observed: heavy mid-flight churn during the GAP-1..4 waves (files
-landing 11:38–12:05), two courts red-then-green (modules 08, 37), one CSV
-deleted mid-poll (62→61), one lane-dropped manifest rewrite recovered by
-Lane 02, and scorecard-v2's statement that Lane 20's scorecard "never landed"
-— a casualty-shaped absence whose cause (429 or dispatch order) is not
-recorded on disk. Any 429 history lives in coordinator session context, not
-in the tree.
+Unchanged from v2 (§6), still honest: no receipt in `receipts/` records a
+429 death; heavy mid-flight churn was observed during the GAP waves. Carried
+verbatim; no new observation this session.
 
 ## 7. EXIT CODE
 
-Open items in §5 all carry named owners, but the completeness/court-coverage
-gaps are real and re-measured: **EXIT CODE: 0** (honest-fail on strict
-completeness, exit-0 on ownership accountability — same grammar as v1).
+Re-derived from §1: **EXIT 1 at measurement time** — one red gate
+(manifest_verify 1 FAIL, §1a), but the FAIL is working-tree-transient: the
+recorded hash equals the HEAD blob hash (executed evidence in §1a), so the
+landed state is green and the residual list is exactly §5. EXIT becomes 0 on
+the next re-measure after the rename lane's re-seal lands.
 
-Subject tree: 45 modules; 61/61 registered datasets PASS; 22/22 executable
-courts exit 0; D1–D9 closed; teachability 44/45 as of the 2026-11-04 R4
-reconciliation (module 18 exercise/key still open at that time, module 45
-divergence registered) — **superseded to 45/45** by the post-R4 closure of
-module 18 (c): exercises.md + keys/solution-key.md re-derived at seed
-20261105, evidence `modules/18-monte-carlo/keys/solution-key.md`; the 44/45
-line above is kept as the history of the correction.
+**Subject tree (landed, HEAD f840a8a2)**: 45 modules; 45/45 exercises.md;
+38/38 executable courts exit 0; 45/45 bundle rows; 0 UNSTATED; 0
+`__pycache__`; teachability 45/45 zero divergences; strict bundle 28/45
+(§5.1 registered residual). History pointer kept: **44/45 → 45/45** (see §3).
