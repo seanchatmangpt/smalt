@@ -250,7 +250,7 @@ func Step(state LifecycleState, event string, purgeProtected bool) (LifecycleSta
 	for _, t := range Lifecycle {
 		if t.From == state && t.Event == event {
 			if t.Refusal != "" {
-				return state, fmt.Errorf("kv7: %d %s", statusFor(t.Refusal), t.Refusal)
+				return state, fmt.Errorf("kv7: %d %s", StatusFor(t.Refusal), t.Refusal)
 			}
 			if event == "purge" && purgeProtected {
 				return state, fmt.Errorf("kv7: 409 %s", ErrConflictPurgeProt)
@@ -261,7 +261,9 @@ func Step(state LifecycleState, event string, purgeProtected bool) (LifecycleSta
 	return state, fmt.Errorf("kv7: no transition %s from %s", event, state)
 }
 
-func statusFor(c ErrCode) int {
+// StatusFor maps a typed refusal code to its HTTP status (the kv7.go edit
+// P-h step 3 allows: the translate half answers the wire, not the code).
+func StatusFor(c ErrCode) int {
 	if c == ErrConflictPurgeProt {
 		return 409
 	}
