@@ -40,9 +40,9 @@ start it with the lock fd closed (`9>&-`) so beams don't inherit the flock.
 concurrent lanes always use `substrate-up/down` (state in
 `/tmp/smalt-substrate-state/`; `substrate.sh` never reads `/tmp/smalt.pid`).
 Never pattern-pkill beams — use `scripts/port_sweep.sh` (dry-run default,
-`-y` to kill). SDK smoke: RETIRED with the v26.10.19 reset (test/sdk-smoke deleted at
-64f6099) — successor verification/ts SDK probes (V261019-08, not landed);
-`just sdk-ts` / `sdk-ts-court` exit 1 loudly until then.
+`-y` to kill). SDK verification: `just sdk-ts` / `sdk-py` run the real
+verification/ts and verification/py suites (justfile.d/04-sdk-recipes.just);
+typed SKIP rc=3 when the substrate is down.
 
 ### Test ladder
 
@@ -50,7 +50,7 @@ Never pattern-pkill beams — use `scripts/port_sweep.sh` (dry-run default,
 mix test                        # offline suite: self-boots app on EPHEMERAL ports, no external substrate needed
 mix test --include amqp_wire    # wire tier is excluded by default (:amqp_wire tag)
 scripts/fast_test.sh test/internal/vm_zero_growth_test.exs[:LINE] [--watch]  # per-hash private build root (_build-ft-<hash>; suites live in test/internal/)
-just sdk-ts / sdk-census / sdk-py / sdk-all   # RETIRED (test/sdk-* deleted at 64f6099); exit 1 loudly until verification/ts+py land (V261019-08/09)
+just sdk-ts / sdk-census / sdk-py / sdk-all   # real verification/ts+py suites; typed SKIP rc=3 when substrate down; nightly runs sdk-ts+sdk-py without || true
 just ws-lint / ws-build / ws-court / ws-converge   # Next.js workspace gates
 just cli-test                   # smalt-cli pytest (two venvs)
 just test-stress                # :stress tier (expensive bodies, excluded from plain mix test; mix test --include stress)
