@@ -169,7 +169,9 @@ Sequence taught here and executed in Module 30:
 
 ## Files
 
-This module is conceptual; the worked data lives in Module 30
+This is a terminology-only module BY DESIGN: no dataset and no court — the
+exercises verify terminology through `keys/solution-key.md` instead. The
+worked data lives in Module 30
 (`modules/30-full-factorial-doe/data/doe-2k-full.csv`).
 
 ## See also
