@@ -179,4 +179,19 @@ check(bad == [], f"stale-4.17 sweep: no unframed 4.17 um mention in the worked e
 print(f"\nModule 45 court: ALL {checks} CHECKS PASS "
       f"(%GRR 13.97 / ndc 9 re-derived; mu 12.0090 / sigma 7.407 um / Cpk 0.72 "
       f"re-derived; mutation rejected; stale 4.17 um sweep clean)")
+
+# ---------- mutation test (CLI): corrupt one pinned constant ----------
+# Mirrors module 12's contract: with --mutate, the court simulates a corrupted
+# pin (%GRR +1.0) and must exit 1; if the corruption still passed, exit 2
+# VACUOUS COURT.
+if len(sys.argv) > 1 and sys.argv[1] == "--mutate":
+    mutated_pin = dict(mine)
+    mutated_pin["pctGRR"] = round(pctGRR + 1.0, 2)
+    if all(mutated_pin[k] == v for k, v in doc.items()):
+        print("VACUOUS COURT: corrupted constant still passes")
+        sys.exit(2)
+    print(f"MUTATION DETECTED: pctGRR pinned {mutated_pin['pctGRR']} vs "
+          f"re-derived {round(pctGRR, 2)} -> the documented-value comparison "
+          f"rejects it; court exits nonzero")
+    sys.exit(1)
 sys.exit(0)
