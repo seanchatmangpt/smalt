@@ -81,5 +81,24 @@ func FirstFamilyRoutes() []Route {
 	add("GET", []string{"kv", ":key"}, "appconfigdata", "azure.appconfigdata.kv.get")
 	add("PUT", []string{"kv", ":key"}, "appconfigdata", "azure.appconfigdata.kv.set")
 	add("DELETE", []string{"kv", ":key"}, "appconfigdata", "azure.appconfigdata.kv.delete")
+
+	// --- Key Vault 8443 KV REST 7.4 Data Plane (/secrets..., /deletedsecrets...) ---
+	// Bare-path data-plane precedent (sbdata/cosmosdata/appconfigdata): no
+	// subscription nesting. Rows are routing geometry only in this lane —
+	// translate fns are the follow-up lane (P-h mount step 2); the ops are
+	// admitted fail-closed by RegisterFirstFamilies.
+	// Order is load-bearing among equal-length paths: the literal
+	// "versions" row must precede the ":version" parameter row.
+	add("GET", []string{"secrets"}, "kv7", "azure.kv7.secrets.list")
+	add("PUT", []string{"secrets", ":name"}, "kv7", "azure.kv7.secrets.put")
+	add("GET", []string{"secrets", ":name"}, "kv7", "azure.kv7.secrets.get")
+	add("PATCH", []string{"secrets", ":name"}, "kv7", "azure.kv7.secrets.patch")
+	add("DELETE", []string{"secrets", ":name"}, "kv7", "azure.kv7.secrets.delete")
+	add("GET", []string{"secrets", ":name", "versions"}, "kv7", "azure.kv7.secrets.versions")
+	add("GET", []string{"secrets", ":name", ":version"}, "kv7", "azure.kv7.secrets.version.get")
+	add("GET", []string{"deletedsecrets"}, "kv7", "azure.kv7.deletedsecrets.list")
+	add("GET", []string{"deletedsecrets", ":name"}, "kv7", "azure.kv7.deletedsecrets.get")
+	add("POST", []string{"deletedsecrets", ":name", "recover"}, "kv7", "azure.kv7.deletedsecrets.recover")
+	add("DELETE", []string{"deletedsecrets", ":name", "purge"}, "kv7", "azure.kv7.deletedsecrets.purge")
 	return rows
 }
