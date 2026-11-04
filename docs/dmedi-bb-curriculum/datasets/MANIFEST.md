@@ -116,7 +116,11 @@ datasets; params re-derive their CSVs byte-exact via the cited generators):
 
 Simulation-only seeds (no CSV; keys live inside the module scripts): 1507
 (Lane 06 / Module 15 claims-audit Monte Carlo, 20,000 trials, p = 0.06),
-1317 (Lane 06 / Module 13 raw-idea funnel counts).
+1317 (Lane 06 / Module 13 raw-idea funnel counts),
+20261105 (Lane 08 / Module 18 exercises re-derivation run of
+`modules/18-monte-carlo/scripts/mc_bore_stack.py`; registered teaching seed
+20261104 unchanged, 10k-run Cpk 1.598, 0 exceedances; key:
+`modules/18-monte-carlo/keys/solution-key.md`).
 
 Re-derivation court: every SS/F/effect in the keys above is recomputed from the
 raw CSV by the hand-shown python3 in the module README; the holdout prediction

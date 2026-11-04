@@ -46,6 +46,15 @@ post-remediation per scorecard-v2). This receipt is the current state.
   Claims in this receipt saying 45/45 reflect GAP-4's original claim and are
   superseded by the 44/45 correction except where they describe what GAP-4
   itself reported.
+  **CLOSURE (2026-11-04, post-R4)**: module 18's (c) finding is now closed —
+  `modules/18-monte-carlo/exercises.md` (E1-E8) + `keys/solution-key.md`
+  landed, key re-derived at seed 20261105 (registered in `datasets/MANIFEST.md`
+  simulation-only seeds; manifest_verify 61 PASS exit 0; the script's default
+  run at seed 20261104 is byte-identical to the registered teaching output).
+  Evidence: `modules/18-monte-carlo/keys/solution-key.md`. The 44/45
+  correction above stands as history; with 18 (c) closed the corrected
+  teachability verdict is **45/45** (module 45 (b) remains the registered
+  divergence).
 - **Untracked evidence**: `git status --porcelain docs/dmedi-bb-curriculum`
   → 2 entries: ` M teachability-scorecard-v2.md` (tracked, modified) and
   `?? docs/dmedi-bb-curriculum/` (the rest of the tree, untracked).
@@ -128,6 +137,9 @@ gaps are real and re-measured: **EXIT CODE: 0** (honest-fail on strict
 completeness, exit-0 on ownership accountability — same grammar as v1).
 
 Subject tree: 45 modules; 61/61 registered datasets PASS; 22/22 executable
-courts exit 0; D1–D9 closed; teachability 44/45 (scorecard-v2 as corrected by
-the 2026-11-04 R4 reconciliation — module 18 exercise/key still open,
-module 45 divergence registered).
+courts exit 0; D1–D9 closed; teachability 44/45 as of the 2026-11-04 R4
+reconciliation (module 18 exercise/key still open at that time, module 45
+divergence registered) — **superseded to 45/45** by the post-R4 closure of
+module 18 (c): exercises.md + keys/solution-key.md re-derived at seed
+20261105, evidence `modules/18-monte-carlo/keys/solution-key.md`; the 44/45
+line above is kept as the history of the correction.

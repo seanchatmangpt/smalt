@@ -26,7 +26,11 @@ import random
 import math
 import sys
 
+# Stated seed (data-provenance law). Optional argv[1] overrides it; the
+# default keeps the registered teaching run at 20261104.
 SEED = 20261104
+if len(sys.argv) > 1:
+    SEED = int(sys.argv[1])
 SPEC_LO, SPEC_HI = -25.0, 25.0          # um
 CPK_TARGET = 1.33
 RUNS = [1000, 5000, 10000]

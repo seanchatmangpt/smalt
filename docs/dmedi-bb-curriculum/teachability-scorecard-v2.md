@@ -42,7 +42,7 @@ Five requirements per module: (a) 3-5 measurable learning objectives;
 | 15-triz-transactional | PASS | case studies solved in full | PASS | PASS | PASS | nothing |
 | 16-concept-selection-pugh-ahp | PASS | §2-4 derivations shown | PASS | PASS | PASS | nothing; note: derive_selection.py is cwd-relative — run from module dir (exit 0) |
 | 17-statistical-tolerance | PASS | RSS derivation inline | answers shown inline w/ derivation + court | PASS | PASS | objectives + timing |
-| 18-monte-carlo | PASS | ladder/percentile/tornado shown | PASS | PASS | PASS | objectives + timing |
+| 18-monte-carlo | PASS | ladder/percentile/tornado shown | PASS — exercises.md E1-E8 + keys/solution-key.md authored (seed 20261105 re-run, every number re-derived from the script output, see the closure note below) | PASS | PASS | objectives + timing; exercises + key closed the R4 (c) finding |
 | 19-hypothesis-testing | PASS | worked 1-sample t §5 | PASS | PASS | PASS | objectives + timing + tools |
 | 20-confidence-intervals | PASS | CI construction §2 | PASS | PASS | PASS | objectives + timing + tools |
 | 21-testing-means-medians-variances | PASS | paired t / Levene derivations | PASS | PASS | PASS | objectives + timing + tools |
@@ -144,7 +144,7 @@ disk this session):
 
 | BB-20 finding | v2 status | Verified on disk |
 |---|---|---|
-| 18-monte-carlo (c) FAIL: no student exercise, no student-facing key | **NOT remediated — v2 row is wrong.** v2 lists 18 PASS with remediation "objectives + timing" only; (c) is still open. `modules/18-monte-carlo/` contains only `README.md` + `scripts/mc_bore_stack.py`; zero exercise/key matches in the README (grep exit 1). | CONFIRMED STILL FAILING — 18's (c) verdict reverts to FAIL; course tally is 44/45, not 45/45 |
+| 18-monte-carlo (c) FAIL: no student exercise, no student-facing key | **NOT remediated — v2 row is wrong.** v2 lists 18 PASS with remediation "objectives + timing" only; (c) is still open. `modules/18-monte-carlo/` contains only `README.md` + `scripts/mc_bore_stack.py`; zero exercise/key matches in the README (grep exit 1). | CONFIRMED STILL FAILING — 18's (c) verdict reverts to FAIL; course tally is 44/45, not 45/45. **→ CLOSED post-R4 (2026-11-04)**: exercises.md E1-E8 + keys/solution-key.md landed, key re-derived at seed 20261105; evidence `modules/18-monte-carlo/keys/solution-key.md` (see the closure note below) |
 | 45-capstone-brief (b) FAIL: no worked example with instructor derivation | **Registered divergence, not remediation.** v2 row states "n/a (brief; rubric = key)" — the rubric-as-key defense is a by-design substitute, same one BB-20 already rejected as "defensible-by-design substitute, fails the stated requirement". No worked mini-capstone or demonstrated derivation exists on disk (grep over all 5 module-45 files: derivation mentions are rubric/rejection criteria, not a demonstrated example). | CONFIRMED UNRESOLVED — 45 (b) stays FAIL-as-stated; v2 must carry it as a registered divergence, not PASS |
 | 45 (c) no solution key | Partially resolved by defense: rubric + phase-gate-checklist verified present (`scoring-rubric.md`, `phase-gate-checklist.md`); accepted only as the by-design substitute, not a key. | present on disk |
 | 18/45 objectives + timing | Remediated as v2 claims: 18 README has `## Learning objectives` (line 5) + `## Timing (per activity)` (line 24); 45 brief has `## 8. Learning objectives` (line 208) + `## 9. Timing and effort per phase` (line 218). | CONFIRMED PASS |
@@ -156,3 +156,16 @@ module 45 (b) remains a registered divergence (fix per BB-20: one worked mini-ca
 phase demonstrated end-to-end). The "45/45 PASS" claim in the Standing section above
 is corrected by this section; the table above is the register of truth for rows 18
 and 45.
+
+**CLOSURE (2026-11-04, post-R4): module 18 (c) is now CLOSED.** The BB-20-prescribed
+fix landed exactly as specified: `modules/18-monte-carlo/exercises.md` (E1-E8) +
+`modules/18-monte-carlo/keys/solution-key.md`, with the key re-derived at a DIFFERENT
+seed (20261105 — the registered teaching seed 20261104 is unchanged in README/CSV).
+The script now takes an optional seed argument (`python3 modules/18-monte-carlo/
+scripts/mc_bore_stack.py 20261105`, rc=0; default run byte-identical to the registered
+20261104 output); seed 20261105 is registered in `datasets/MANIFEST.md`
+simulation-only seeds; `datasets/manifest_verify.py` still exits 0 (61 PASS). Evidence:
+`modules/18-monte-carlo/keys/solution-key.md` (full captured 20261105 output + shown
+arithmetic). With 18 (c) closed, the corrected course-level verdict moves
+**44/45 → 45/45** (module 45 (b) remains the registered divergence counted within
+that tally per the table above).
