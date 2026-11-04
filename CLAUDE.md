@@ -23,7 +23,7 @@ just doctor        # preflight: deps/ports/certs/toolchain (~2s)
 just status        # beams, listening ports, latest receipts (report-only)
 just up / down     # boot/stop substrate (up is FOREGROUND; PID in /tmp/smalt.pid)
 just substrate-up / substrate-down / substrate-status   # flock-managed, lane-safe (scripts/substrate.sh)
-just court         # full admission court: doctor + test tiers + tf smoke + bench-check + mutation-court + census + invariant-gates + naming-sweep
+just court         # full admission court: doctor + test tiers + tf smoke + bench-check + mutation-court + census + invariant-gates + naming-sweep + verification-gates
 just court-x2      # two-green release receipt gate (~8 min)
 just verify-all    # offline stages: doctor, test-offline, ws-court, cli pytest, naming-sweep, invariant-gates, test-stress, test-budget, sleep-gate
 just publish-dry   # publish gates dry-run (tarball leak greps, ERROR_CODES identity)
