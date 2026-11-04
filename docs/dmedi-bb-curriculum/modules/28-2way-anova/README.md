@@ -192,7 +192,7 @@ any F ratio is computed.
   coating within each machine, and machine within each coating, using
   MS_E = 4.13e-6 mm^2 as the pooled error (df = 30). Simple-effect contrast on
   coating at M3: (16.2 - 7.9) = +8.3 um — coated is WORSE on M3 by ~8 um,
-  roughly 2 within-cell sigma; the opposite of the M1/M2 conclusion
+  roughly 4 within-cell sigma (8.3 / 2.03); the opposite of the M1/M2 conclusion
   (coated better by ~7.6-6.9 um).
 - **Engineering read.** The interaction is larger than either main effect
   (SS_AB = 0.000484 vs SS_A = 0.000038, SS_B = 0.000040). Run coated on M1/M2,
