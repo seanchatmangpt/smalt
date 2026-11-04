@@ -42,6 +42,7 @@ command -v mix >/dev/null 2>&1 || shim_court_skip "mix not on PATH"
 [ -f "$CO_SUBJECT" ] || shim_court_skip "co-subject missing: $CO_SUBJECT"
 grep -q 'mirror_message_renew(lock)' "$SUBJECT" \
     || shim_court_skip "subject degraded: lock_manager.ex lacks mirror_message_renew call (already mutated?)"
+[ -f "$TESTFILE" ] || shim_court_skip "test file removed (64f6099 reset): $TESTFILE"
 grep -q 'renew mirrors into message row' "$TESTFILE" \
     || shim_court_skip "witness missing: R194 test not in $TESTFILE"
 

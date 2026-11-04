@@ -43,6 +43,7 @@ command -v mix >/dev/null 2>&1 || shim_court_skip "mix not on PATH"
 [ -f "$SUBJECT" ] || shim_court_skip "subject missing: $SUBJECT"
 grep -q 'lock_token: dlv.lock_token' "$SUBJECT" \
     || shim_court_skip "subject degraded: connection.ex lacks lock_token: dlv.lock_token settle threading (already mutated?)"
+[ -f "$TESTFILE" ] || shim_court_skip "test file removed (64f6099 reset): $TESTFILE"
 grep -q 'stale-token disposition is refused' "$TESTFILE" \
     || shim_court_skip "witness missing: stale-token test not in $TESTFILE"
 

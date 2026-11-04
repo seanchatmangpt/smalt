@@ -36,6 +36,7 @@ command -v mix >/dev/null 2>&1 || shim_court_skip "mix not on PATH"
 [ -f "$SUBJECT" ] || shim_court_skip "subject missing: $SUBJECT"
 grep -q 'defp settle_token_ok?' "$SUBJECT" \
     || shim_court_skip "subject degraded: queue_store.ex lacks settle_token_ok? (already mutated?)"
+[ -f "$TESTFILE" ] || shim_court_skip "test file removed (64f6099 reset): $TESTFILE"
 grep -q 'token-scoped settlement (R244)' "$TESTFILE" \
     || shim_court_skip "witness missing: R244 describe not in $TESTFILE"
 
