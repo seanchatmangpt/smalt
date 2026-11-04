@@ -48,8 +48,10 @@ Same 25 parts measured before and after the feed change; H0: mu_d = 0.
   genuinely lowered bore ~3 um with the CI's entire range operationally
   meaningful (spec half-width is 25 um).
 - Contrast (why pairing matters): running the SAME numbers as an independent
-  2-sample t gives t = 2.508, p = 0.016 — it still rejects, but with 400x
-  the p-value; with weaker signal it would miss entirely. Pairing removes
+  2-sample t gives t = 2.508, p = 0.016 — it still rejects, but with an unpaired
+  p over 40,000x the paired p (executed ratio 2.36e-05, see
+  `keys/solution-key.md`); with weaker signal it would miss entirely.
+  Pairing removes
   part-to-part variance from the comparison. (Also the M20 trap: marginal
   CIs overlap, paired t rejects hard.)
 
@@ -114,7 +116,7 @@ By the end of this module you will be able to:
    result on coating A vs B.
 2. Compute a paired t (and its difference CI) by hand on
    `data/paired-feed.csv` and explain in one paragraph why pairing
-   removes part-to-part variance (400x p-value contrast, §3).
+   removes part-to-part variance (unpaired-p-over-40,000x contrast, §3).
 3. Run a one-way ANOVA on the three-coolant data and decompose its
    result into between/within variation (see `key.md` derivation).
 4. Select medians-class tests (Mann-Whitney) when normality fails and
@@ -126,7 +128,7 @@ By the end of this module you will be able to:
 
 - Tree orientation: where means/medians/variances tests sit (10 min)
 - Pooled vs Welch with the Levene gate, worked from `key.md` (20 min)
-- Paired t worked example with the 400x contrast demo (15 min)
+- Paired t worked example with the >40,000x p-ratio contrast demo (15 min)
 - One-way ANOVA on coolant data, instructor derivation visible (20 min)
 - Learner drill: medians-class switch scenario + tree placement of all
   five tests (15 min)
