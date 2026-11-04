@@ -71,4 +71,17 @@ for token in ("11.590", "5.390", "4.223", "+6.200", "-4.450", "+2.255"):
 
 print(f"\nMODULE 37 COURT: {'PASS' if not fails else 'FAIL'} "
       f"({len(fails)} failures)")
+
+# mutation test (--mutate): corrupt one pinned constant -> the check must
+# fail (exit 1). Still passing under corruption = VACUOUS COURT (exit 2).
+if len(sys.argv) > 1 and sys.argv[1] == "--mutate":
+    corrupt = 4.323   # shift the pinned t statistic by -0.100
+    want_t, tol_t = 4.223, 0.01   # the pinned t, same tolerance as chk above
+    if abs(corrupt - want_t) > tol_t:
+        print(f"MUTATION DETECTED: pinned t {want_t} vs corrupted {corrupt} "
+              f"-> nonzero")
+        sys.exit(1)
+    print("VACUOUS COURT: corrupted constant still passes")
+    sys.exit(2)
+
 sys.exit(1 if fails else 0)

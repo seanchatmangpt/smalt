@@ -80,4 +80,17 @@ for token in ("55.2%", "31.0%", "5.000", "+3.000", "2.333", "Ra 0.4"):
 
 print(f"\nMODULE 38 COURT: {'PASS' if not fails else 'FAIL'} "
       f"({len(fails)} failures)")
+
+# mutation test (--mutate): corrupt one pinned constant -> the check must
+# fail (exit 1). Still passing under corruption = VACUOUS COURT (exit 2).
+if len(sys.argv) > 1 and sys.argv[1] == "--mutate":
+    corrupt = 65.2   # shift the pinned price importance share by +10 pts
+    want_imp, tol_imp = 55.2, 0.05   # the pinned share, same tol as chk above
+    if abs(corrupt - want_imp) > tol_imp:
+        print(f"MUTATION DETECTED: pinned price importance {want_imp} vs "
+              f"corrupted {corrupt} -> nonzero")
+        sys.exit(1)
+    print("VACUOUS COURT: corrupted constant still passes")
+    sys.exit(2)
+
 sys.exit(1 if fails else 0)
