@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"smalt.dev/posh/internal/dialect/azure"
 	"smalt.dev/posh/internal/receipt"
 )
 
@@ -708,7 +709,21 @@ func (s *Server) handleGenericResource(w http.ResponseWriter, r *http.Request, r
 
 	case http.MethodPut:
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeContractError(w, azure.InvalidResourceShape(err.Error()))
+			return
+		}
+
+		// Contract error codes (P-i Wave A): exists-without-If-Match is a
+		// 409 WriteConflict (egress_router KV CAS law); with-If-Match
+		// overwrites unconditionally (no etag store on generic resources).
+		s.state.mu.RLock()
+		_, exists := s.state.resources[normKey]
+		s.state.mu.RUnlock()
+		if exists && r.Header.Get("If-Match") == "" {
+			writeContractError(w, azure.WriteConflict(normKey, "default"))
+			return
+		}
 
 		loc, _ := body["location"].(string)
 		if loc == "" {
@@ -738,17 +753,23 @@ func (s *Server) handleGenericResource(w http.ResponseWriter, r *http.Request, r
 		}
 
 		s.state.mu.Lock()
-		_, exists := s.state.resources[normKey]
+		_, existed := s.state.resources[normKey]
 		s.state.resources[normKey] = res
 		s.state.mu.Unlock()
 
 		status := http.StatusOK
-		if !exists {
+		if !existed {
 			status = http.StatusCreated
 		}
 		writeJSON(w, status, res)
 
 	case http.MethodPatch:
+		// Contract error codes (P-i Wave A): PATCH is a conditional verb —
+		// missing If-Match is a 412 PreconditionFailed (azapi lock law).
+		if r.Header.Get("If-Match") == "" {
+			writeContractError(w, azure.PreconditionFailedMissing(rawPath))
+			return
+		}
 		s.state.mu.Lock()
 		res, ok := s.state.resources[normKey]
 		if !ok {
@@ -757,7 +778,11 @@ func (s *Server) handleGenericResource(w http.ResponseWriter, r *http.Request, r
 			return
 		}
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.state.mu.Unlock()
+			writeContractError(w, azure.InvalidResourceShape(err.Error()))
+			return
+		}
 		if t, ok := body["tags"].(map[string]any); ok {
 			if res.Tags == nil {
 				res.Tags = make(map[string]string)
@@ -788,15 +813,27 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // sendARMError emits a compliant Azure Resource Manager error envelope.
+// Migrated onto azure.ErrorEnvelope.Render() (P-i Wave A): member order
+// code, message, target?, innererror — and the BEAM present-but-empty
+// innererror law now hold on every posh 4xx, where the old map-based body
+// dropped innererror entirely.
 func sendARMError(w http.ResponseWriter, status int, code, message, target string) {
-	envelope := map[string]any{
-		"error": map[string]string{
-			"code":    code,
-			"message": message,
-			"target":  target,
+	writeContractError(w, azure.ContractError{
+		Status: status,
+		Envelope: azure.ErrorEnvelope{
+			Code:    code,
+			Message: message,
+			Target:  target,
 		},
-	}
-	writeJSON(w, status, envelope)
+	})
+}
+
+// writeContractError renders a contract refusal through the dialect
+// envelope law (Render supplies the present-but-empty innererror).
+func writeContractError(w http.ResponseWriter, ce azure.ContractError) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(ce.Status)
+	_, _ = w.Write(ce.Envelope.Render())
 }
 
 // StringTrimRight trims trailing characters.

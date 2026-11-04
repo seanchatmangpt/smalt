@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -432,4 +433,125 @@ func BenchmarkMockARMServerThroughput(b *testing.B) {
 
 func stringsReader(s string) io.Reader {
 	return bytes.NewReader([]byte(s))
+}
+
+// TestContractErrorCodesMounted (P-i Wave A): real-HTTP witness for the
+// contract error codes mounted on the generic resource PUT/PATCH paths —
+// 409 WriteConflict (exists-without-If-Match), 412 PreconditionFailed
+// (PATCH missing If-Match), 400 InvalidResourceShape (malformed body), and
+// the envelope-law fix (innererror present-but-empty on legacy 404s).
+func TestContractErrorCodesMounted(t *testing.T) {
+	t.Parallel()
+
+	srv := mock.NewServer()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	base := ts.URL + "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-cec/providers/Microsoft.Test/type1/res1"
+
+	// Malformed PUT body -> 400 InvalidResourceShape.
+	req, _ := http.NewRequest(http.MethodPut, base, bytes.NewReader([]byte(`{not json`)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("malformed PUT: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed PUT: got %d want 400 (%s)", resp.StatusCode, body)
+	}
+	assertErrorCode(t, body, "InvalidResourceShape")
+
+	// Create the resource with If-None-Match: * semantics absent — plain
+	// PUT create (no conflict since resource absent, no If-Match required).
+	req, _ = http.NewRequest(http.MethodPut, base, bytes.NewReader([]byte(`{"location":"eastus"}`)))
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("create PUT: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create PUT: got %d want 201", resp.StatusCode)
+	}
+
+	// Exists-without-If-Match -> 409 WriteConflict.
+	req, _ = http.NewRequest(http.MethodPut, base, bytes.NewReader([]byte(`{"location":"westus"}`)))
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("conflict PUT: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("conflict PUT: got %d want 409 (%s)", resp.StatusCode, body)
+	}
+	assertErrorCode(t, body, "WriteConflict")
+
+	// Overwrite WITH If-Match -> 200 (CAS leg).
+	req, _ = http.NewRequest(http.MethodPut, base, bytes.NewReader([]byte(`{"location":"westus"}`)))
+	req.Header.Set("If-Match", "*")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("overwrite PUT: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("overwrite PUT: got %d want 200", resp.StatusCode)
+	}
+
+	// PATCH without If-Match -> 412 PreconditionFailed.
+	req, _ = http.NewRequest(http.MethodPatch, base, bytes.NewReader([]byte(`{"tags":{"a":"b"}}`)))
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("patch no-if-match: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusPreconditionFailed {
+		t.Fatalf("patch no-if-match: got %d want 412 (%s)", resp.StatusCode, body)
+	}
+	assertErrorCode(t, body, "PreconditionFailed")
+
+	// PATCH WITH If-Match -> 200.
+	req, _ = http.NewRequest(http.MethodPatch, base, bytes.NewReader([]byte(`{"tags":{"a":"b"}}`)))
+	req.Header.Set("If-Match", "*")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("patch if-match: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch if-match: got %d want 200", resp.StatusCode)
+	}
+
+	// Legacy 404 face now carries the present-but-empty innererror
+	// (sendARMError migration witness).
+	resp, err = http.Get(base + "/absent")
+	if err != nil {
+		t.Fatalf("404 GET: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("404 GET: got %d want 404", resp.StatusCode)
+	}
+	assertErrorCode(t, body, "ResourceNotFound")
+	if !strings.Contains(string(body), `"innererror":{}`) {
+		t.Fatalf("404 body missing present-but-empty innererror: %s", body)
+	}
+}
+
+func assertErrorCode(t *testing.T, body []byte, code string) {
+	t.Helper()
+	var parsed struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("invalid error body %s: %v", body, err)
+	}
+	if parsed.Error.Code != code {
+		t.Fatalf("error.code = %q, want %q (body: %s)", parsed.Error.Code, code, body)
+	}
 }
