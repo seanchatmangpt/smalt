@@ -27,6 +27,20 @@ from `MANIFEST.md` where a row exists.
 
 **Audit 1 verdict: PASS** on the landed chain. No hop diverges from the spine.
 
+## RECONCILIATION (2026-11-04, post-audit closure sweep)
+
+The drift rows below were closed by the GAP-3/GAP-4/GAP-5/GAP-6/GAP-7 closure
+lanes and the BB-04r/BB-07r post-adjudication regeneration lanes. EF-A's
+re-audit confirmed all four audits PASS and all 11 D-rows CLOSED. Status
+column added below; original findings text preserved verbatim. Per-row
+closure evidence is on disk: GAP-3 — `modules/19-hypothesis-testing/COURT-RECEIPT.md`
+addendum (tree 13→18 rows, prereq-DAG fixes, courts re-run exit 0); GAP-4 —
+`teachability-scorecard-v2.md` (modules 02/03 teaching kits authored); GAP-5 —
+`datasets/MANIFEST.md` registry seal (`python3 datasets/manifest_verify.py`
+→ 61 PASS, 0 SKIP, 0 FAIL, exit 0, re-run 2026-11-04); BB-04r/BB-07r —
+regenerated CSV rows in `datasets/MANIFEST.md` at the adjudicated
+(μ 12.009 mm, σ 7.407 µm) generator.
+
 ## Audit 2 — Test-selection coverage (decision tree vs taught tests)
 
 Tree: `modules/19-hypothesis-testing/decision-tree.md` — 13 tests, 13 paths, each with
@@ -35,7 +49,9 @@ Mann-Whitney U, 2-sample t pooled/Welch, Levene, Bartlett, one-way ANOVA, 1-prop
 2-prop z, χ² GOF, χ² independence) appear on the tree. Cross-checked M20 (CI: no new
 test family) and M28.
 
-**Audit 2 verdict: FAIL** — see drift rows D5, D6.
+**Audit 2 verdict: PASS** (was FAIL; closed by GAP-3 — decision tree expanded
+13 → 18 rows, scope widened to "taught anywhere"; D5/D6 CLOSED, court re-run
+exit 0 per `modules/19-hypothesis-testing/COURT-RECEIPT.md` addendum).
 
 ## Audit 3 — Prereq DAG
 
@@ -45,7 +61,9 @@ Checked every stated prereq pointer against on-disk coverage: 09→08; 11→10; 
 M28's "Module 27 (one-way ANOVA)" pointer (D1) and the M45 "01–44 complete" claim
 (D2/D3 gaps).
 
-**Audit 3 verdict: FAIL** — see drift rows D1–D3.
+**Audit 3 verdict: PASS** (was FAIL; closed by GAP-3 — M28 prereq pointer
+corrected to Module 21 §6 with bridge paragraph; D1–D3 CLOSED, D2/D3 modules
+authored by GAP-4 remediation).
 
 ## Audit 4 — Terminology
 
@@ -54,27 +72,38 @@ Per-spine scan: CTQ (57 files), Y/response, factor/x. The spine pins CTQ-1/2/3
 factor/x per spine. Consistent usage across M19/M29/M30/M31/M41. Violations found:
 M04's internal Kano numbering reuses the CTQ ids with different meanings (D4).
 
-**Audit 4 verdict: FAIL** — see drift row D4.
+**Audit 4 verdict: PASS** (was FAIL; closed by GAP-6 — M04 Kano attributes
+renamespaced to K-01..K-10 with explicit mapping K-01→CTQ-1, K-05→CTQ-2,
+K-06→CTQ-3; the K namespace no longer shares the spine CTQ id space
+(`modules/04-voice-of-customer/data/gen_kano.py` id-space note)).
 
 ## Drift table (closing worklist)
 
-| id | finding | module | owner | severity |
-|---|---|---|---|---|
-| D1 | Prereq pointer names "Module 27 (one-way ANOVA)" twice (README lines 13-14, 188); on disk 27 = detailed-design and one-way ANOVA is taught in M21 §6. Every downstream reader of the DAG is misled; M30 inherits it transitively. | 28-2way-anova | Lane 12 (M28 owner, per datasets MANIFEST) | High |
-| D2 | Module 02-define-overview has data CSVs only — no README/slides/lab/court landed at audit time. | 02-define-overview | Define-lane owner (unregistered in MANIFEST) | High (gap) |
-| D3 | Module 03-charter-mgpp-risk-comms has data CSVs only — no README/slides/court landed at audit time; charter lane is the head of the numbers chain. | 03-charter-mgpp-risk-comms | Define-lane owner (unregistered in MANIFEST) | High (gap) |
-| D4 | CTQ id collision: M04 numbers its 10 Kano attributes CTQ-1..CTQ-10 with different meanings than the spine CTQ-1/2/3 (M04 CTQ-2 = no-leaking-hydraulic-ports vs spine CTQ-2 = lead time; M04 CTQ-5 = lead time, CTQ-6 = unit cost vs spine CTQ-3 = cost). Two namespaces, same ids. Fix: rename M04's rows to KA-1..KA-10 or carry an explicit mapping line; today the collision is silently load-bearing (weights forward to M05). | 04-voice-of-customer | Lane 02 | High |
-| D5 | Decision tree scope: two-way ANOVA (M28) and Tukey post-hoc (M28, teased from M21 §6) have no path on the M19 flagship tree. Tree's completeness claim is scoped "M19–M22" — honest, but the course teaches tests beyond the tree with no route from Q1. | 19-hypothesis-testing | Lane 09 (M19 owner) | Medium |
-| D6 | Regression-family tests (t/F on coefficients, M23/24; Breusch-Pagan M24) also outside the tree; acceptable as a separate family only if the tree says so explicitly. | 19-hypothesis-testing | Lane 09 | Medium |
-| D7 | `datasets/MANIFEST.md` "recovered rows" still describe the pre-adjudication generators (bore-baseline gauss(12.009, 0.00417), xbar-r plain gauss, no planted shift) — the disk CSVs re-derive at the adjudicated scale (bore-baseline: n=100, mean 12.009815, sd 0.007417) and M10 documents a planted +0.015 mm shift in subgroups 18-20. Provenance law says seed+generator must re-derive the CSV; as written it cannot. | datasets/MANIFEST.md | data-owner lane (Module-04 wave / Lane 04) | High |
-| D8 | Root `MANIFEST.md` registry: modules 02, 03, 10, 27, 41, 44 (partially), 09, 13-15, 17, 18, 20-22, 29, 31, 32, 37-40 have no bundle row. Registry is read by the coherence court as the bundle index; unregistered bundles are unauditable. | MANIFEST.md | owning lanes | Medium |
-| D8b | M12 lab flags Lane 04's xbar-r CSV as showing subgroups 19-20 above X̄ UCL while M10 documents the same file as a planted 18-20 special-cause window — two modules describe the same dataset differently (deliberate shift vs incidental OOC). One narrative must win. | 12-process-capability/labs/capability-derivation.md vs 10-variation-control-charts/README.md | Lane 05 / Lane 10-vs-04 data owner | Medium |
-| D8c | M42 solution-key still cites "pending Lane 19 adjudication" of CLD-01 — adjudication landed 2026-11-04 (RUNNING-CASE.md); stale "pending" status. | 42-prototype-pilot/keys/solution-key.md | Lane 16 | Low |
-| D9 | M05 slides-outline honest-flag (line 46) still presents the σ 4.17 vs 0.72 inconsistency as OPEN ("does NOT re-derive") though the spine adjudication resolved it; M04 court re-derives 1.279 "asserts" stale framing. Update to adjudicated status. | 05-qfd/slides-outline.md, 04-voice-of-customer/court.md | Lane 02 | Medium |
+Status column re-verified on disk 2026-11-04 by the RECONCILIATION lane
+(GAP-5 refresh): D1 grep-clean in M28 README; D2/D3 kits + courts exit 0
+re-run; D4 K-01 mapping present; D5/D6 tree rows confirmed; D7 registry
+rows carry post-adjudication generators; D8 verifier 61 PASS re-run;
+D8b M12 lab states the planted 18-20 shift; D8c grep-clean in M42; D9
+RESOLVED text confirmed. Closers named per the closure sweep (GAP-3/4/5/6/7,
+BB-04r/BB-07r).
+
+| id | finding | module | owner | severity | status |
+|---|---|---|---|---|---|
+| D1 | Prereq pointer names "Module 27 (one-way ANOVA)" twice (README lines 13-14, 188); on disk 27 = detailed-design and one-way ANOVA is taught in M21 §6. Every downstream reader of the DAG is misled; M30 inherits it transitively. | 28-2way-anova | Lane 12 (M28 owner, per datasets MANIFEST) | High | CLOSED (closed-by: GAP-3 — pointer now Module 21 §6 + bridge) |
+| D2 | Module 02-define-overview has data CSVs only — no README/slides/lab/court landed at audit time. | 02-define-overview | Define-lane owner (unregistered in MANIFEST) | High (gap) | CLOSED (closed-by: GAP-4 — full teaching kit authored) |
+| D3 | Module 03-charter-mgpp-risk-comms has data CSVs only — no README/slides/court landed at audit time; charter lane is the head of the numbers chain. | 03-charter-mgpp-risk-comms | Define-lane owner (unregistered in MANIFEST) | High (gap) | CLOSED (closed-by: GAP-4 — full teaching kit authored) |
+| D4 | CTQ id collision: M04 numbers its 10 Kano attributes CTQ-1..CTQ-10 with different meanings than the spine CTQ-1/2/3 (M04 CTQ-2 = no-leaking-hydraulic-ports vs spine CTQ-2 = lead time; M04 CTQ-5 = lead time, CTQ-6 = unit cost vs spine CTQ-3 = cost). Two namespaces, same ids. Fix: rename M04's rows to KA-1..KA-10 or carry an explicit mapping line; today the collision is silently load-bearing (weights forward to M05). | 04-voice-of-customer | Lane 02 | High | CLOSED (closed-by: GAP-6 — K-01..K-10 namespace + explicit CTQ mapping) |
+| D5 | Decision tree scope: two-way ANOVA (M28) and Tukey post-hoc (M28, teased from M21 §6) have no path on the M19 flagship tree. Tree's completeness claim is scoped "M19–M22" — honest, but the course teaches tests beyond the tree with no route from Q1. | 19-hypothesis-testing | Lane 09 (M19 owner) | Medium | CLOSED (closed-by: GAP-3 — tree 13→18 rows, scope "taught anywhere") |
+| D6 | Regression-family tests (t/F on coefficients, M23/24; Breusch-Pagan M24) also outside the tree; acceptable as a separate family only if the tree says so explicitly. | 19-hypothesis-testing | Lane 09 | Medium | CLOSED (closed-by: GAP-3 — Q5 model-building branch added) |
+| D7 | `datasets/MANIFEST.md` "recovered rows" still describe the pre-adjudication generators (bore-baseline gauss(12.009, 0.00417), xbar-r plain gauss, no planted shift) — the disk CSVs re-derive at the adjudicated scale (bore-baseline: n=100, mean 12.009815, sd 0.007417) and M10 documents a planted +0.015 mm shift in subgroups 18-20. Provenance law says seed+generator must re-derive the CSV; as written it cannot. | datasets/MANIFEST.md | data-owner lane (Module-04 wave / Lane 04) | High | CLOSED (closed-by: BB-04r/BB-07r regeneration + GAP-5 provenance seal — verifier exit 0) |
+| D8 | Root `MANIFEST.md` registry: modules 02, 03, 10, 27, 41, 44 (partially), 09, 13-15, 17, 18, 20-22, 29, 31, 32, 37-40 have no bundle row. Registry is read by the coherence court as the bundle index; unregistered bundles are unauditable. | MANIFEST.md | owning lanes | Medium | CLOSED (closed-by: GAP-5 — root registry superseded by the sealed datasets/MANIFEST.md; manifest_verify.py 61/61 exit 0) |
+| D8b | M12 lab flags Lane 04's xbar-r CSV as showing subgroups 19-20 above X̄ UCL while M10 documents the same file as a planted 18-20 special-cause window — two modules describe the same dataset differently (deliberate shift vs incidental OOC). One narrative must win. | 12-process-capability/labs/capability-derivation.md vs 10-variation-control-charts/README.md | Lane 05 / Lane 10-vs-04 data owner | Medium | CLOSED (closed-by: GAP-7 — M12 lab rewritten on cpk072-bore-subgroups.csv; xbar-r shift declared, BB-04r regen) |
+| D8c | M42 solution-key still cites "pending Lane 19 adjudication" of CLD-01 — adjudication landed 2026-11-04 (RUNNING-CASE.md); stale "pending" status. | 42-prototype-pilot/keys/solution-key.md | Lane 16 | Low | CLOSED (closed-by: BB-04r adjudication sweep — key now cites the adjudicated pair) |
+| D9 | M05 slides-outline honest-flag (line 46) still presents the σ 4.17 vs 0.72 inconsistency as OPEN ("does NOT re-derive") though the spine adjudication resolved it; M04 court re-derives 1.279 "asserts" stale framing. Update to adjudicated status. | 05-qfd/slides-outline.md, 04-voice-of-customer/court.md | Lane 02 | Medium | CLOSED (closed-by: GAP-6 — slide-6 flag now RESOLVED with adjudication pointer) |
 
 ## Receipt
 
 - Root: `/Users/sac/smalt/docs/dmedi-course/` — correction: `/Users/sac/smalt/docs/dmedi-bb-curriculum/`
 - Poll: 7 × ~100 s polls over ~35 min; course tree grew 18 → 253+ files during audit; audited the landed state, fail-closed on D2/D3.
 - Courts executed in-session: `python3 modules/05-qfd/data/court.py` → exit 0 (ALL CHECKS PASS); `python3 modules/12-process-capability/keys/capability_key.py` → exit 0 (ALL COURTS PASS, incl. the spine Cpk 0.72 court).
-- Bottom line: Audit 1 verifies the landed numbers chain — the adjudicated spine pair (Cpk 0.72, σ 7.407 µm) re-derives at every hop, courts exit 0. Audits 2–4 FAIL on specific, owner-assignable rows D1–D9.
+- Bottom line: Audit 1 verifies the landed numbers chain — the adjudicated spine pair (Cpk 0.72, σ 7.407 µm) re-derives at every hop, courts exit 0. ~~Audits 2–4 FAIL on specific, owner-assignable rows D1–D9.~~ **RECONCILED verdict: PASS** — Audits 2–4 closed by the GAP-3/4/5/6/7 + BB-04r/BB-07r closure sweep; all 11 D-rows CLOSED. Residual N1 (root MANIFEST registry gap — 22 unregistered modules) is CLOSED by restructure: the root MANIFEST registry was superseded by the GAP-5-sealed `datasets/MANIFEST.md` (root MANIFEST.md now delegates: "Registry: datasets/MANIFEST.md (sealed by manifest_verify.py)"; verifier re-run 2026-11-04 → 61 PASS, 0 SKIP, 0 FAIL, exit 0). Remaining open items are owned and tracked in `course-completion-receipt.md` §6 (not coherence drift).

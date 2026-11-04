@@ -134,3 +134,25 @@ zero.
 - 45/45 modules PASS all five teachability requirements.
 - The whole `docs/dmedi-bb-curriculum/` tree is untracked in smalt — staging
   is a coordinator transition outside this lane's scope.
+
+## BB-20 reconciliation (2026-11-04, RECONCILIATION lane)
+
+Lane 20's `teachability-scorecard.md` (43/45 PASS, FAILs on modules 18 and 45) is now
+marked SUPERSEDED by this file. Its findings were re-adjudicated against the current
+tree; v2 did NOT fully absorb them. Table (BB-20 finding → v2 status → verified on
+disk this session):
+
+| BB-20 finding | v2 status | Verified on disk |
+|---|---|---|
+| 18-monte-carlo (c) FAIL: no student exercise, no student-facing key | **NOT remediated — v2 row is wrong.** v2 lists 18 PASS with remediation "objectives + timing" only; (c) is still open. `modules/18-monte-carlo/` contains only `README.md` + `scripts/mc_bore_stack.py`; zero exercise/key matches in the README (grep exit 1). | CONFIRMED STILL FAILING — 18's (c) verdict reverts to FAIL; course tally is 44/45, not 45/45 |
+| 45-capstone-brief (b) FAIL: no worked example with instructor derivation | **Registered divergence, not remediation.** v2 row states "n/a (brief; rubric = key)" — the rubric-as-key defense is a by-design substitute, same one BB-20 already rejected as "defensible-by-design substitute, fails the stated requirement". No worked mini-capstone or demonstrated derivation exists on disk (grep over all 5 module-45 files: derivation mentions are rubric/rejection criteria, not a demonstrated example). | CONFIRMED UNRESOLVED — 45 (b) stays FAIL-as-stated; v2 must carry it as a registered divergence, not PASS |
+| 45 (c) no solution key | Partially resolved by defense: rubric + phase-gate-checklist verified present (`scoring-rubric.md`, `phase-gate-checklist.md`); accepted only as the by-design substitute, not a key. | present on disk |
+| 18/45 objectives + timing | Remediated as v2 claims: 18 README has `## Learning objectives` (line 5) + `## Timing (per activity)` (line 24); 45 brief has `## 8. Learning objectives` (line 208) + `## 9. Timing and effort per phase` (line 218). | CONFIRMED PASS |
+| 20 modules lack slides-outline.md (per-slide bullets), LOW priority work-list item | **NOT tracked in v2** — no slides/outline mention anywhere in v2. Carried forward here as LOW-priority work list: 03, 06, 07, 11–15, 17–22, 28–32, 45; none use lecture-format delivery (alternate formats verified by BB-20). | carried into v2 as-is |
+
+**Corrected course-level verdict: 44/45 PASS.** Module 18 (c) remains open (fix per
+BB-20: `exercises.md` seeded re-run + `keys/solution-key.md` with a different seed);
+module 45 (b) remains a registered divergence (fix per BB-20: one worked mini-capstone
+phase demonstrated end-to-end). The "45/45 PASS" claim in the Standing section above
+is corrected by this section; the table above is the register of truth for rows 18
+and 45.
