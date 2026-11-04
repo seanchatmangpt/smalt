@@ -43,6 +43,40 @@ Azure-parity + KQL window (v26.10.28 lanes; receipts
   `comp=list` arms — closes `GAP(blob-error-envelope-json)`; non-blob faces
   keep byte-identical JSON (`7a80c75a`).
 
+2026-11-04 hygiene + gate wave (receipts `docs/jira/v26.10.31/` and tmp
+invariant-gates receipts).
+
+### Added
+
+- Nightly SDK harness re-wiring (`382db62f`): `justfile.d/34-nightly.just`
+  now invokes the real `sdk-ts`/`sdk-py` recipes with no `|| true` —
+  failures surface as FAIL lines in the nightly summary; the RETIRED
+  court-stub recipes (V261019-08/09) were deleted from the root Justfile.
+  CLAUDE.md sdk-* line updated to post-retirement reality (`038d3b0f`).
+
+### Changed
+
+- appconfig-etag-cas invariant gate flipped to the real Azure KV 7.4
+  contract — 201 on first create, 200 on update (KD-149 parity flip,
+  `6bb10a36`); probe now SKIPs loudly (exit 3) only when the substrate
+  answers the pre-flip 200-create.
+- The 7th invariant gate (`test-isolation-leak`, 526-line
+  `gates/test_isolation_leak_gate.py`) registered in
+  `scripts/invariant_gates.py` — it was an orphan since the v26.10.19
+  reset; runs honestly RED today (fail-closed surfacing real leak debt,
+  `40d00c38`).
+- CLAUDE.md `just court` composition line now includes verification-gates
+  (`341cd665`).
+
+### Removed
+
+- Tracked `_impl14` build-artifact directory (259 files, ~350M of lane
+  build-root leakage; zero source refs) — `0acc51b0`, merged to main via
+  `434321b0`.
+- `smalt.gen` cascade_edges generator stanza and the `cors_plug`
+  dependency (mix.exs + mix.lock pruned; THIRD_PARTY.md +
+  capabilities.json regenerated) — `9a3d0a79`.
+
 ## [26.10.25] - 2026-10-25
 
 Azure-fidelity control-plane window; landing commit recorded in
