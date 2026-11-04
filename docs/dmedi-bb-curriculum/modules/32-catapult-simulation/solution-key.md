@@ -41,7 +41,7 @@ B_stopang_deg, C_ballmass_g, D_pivot_m, dist_m`. Rows 1–16 factorial (±1 code
 | ABC | −0.0623 | |
 | D (pivot height) | **+0.0044** | ≈ 0 — but see §3 |
 | all D-interactions | ±0.004 or less | D is quiet on linear terms |
-| AD, BD, CD, ABCD … | < 0.002 | |
+| AD, BD, CD, ABCD … | ≤ 0.0027 (ABCD = −0.0027) | CSV-derived bound |
 
 Full 2^4: no aliasing — each coefficient is one effect. Naive ranking says: A↑,
 B↑, C↓, D nothing. Best run: std_order 3 (A+,B+,C−,D+) at 3.3372 m; factorial
