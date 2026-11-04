@@ -1618,12 +1618,18 @@ defmodule Smalt.DataPlane.Cosmos do
     end
   end
 
+  # S9 audit fix 8: Enum.fetch!/String.to_integer raised on malformed
+  # tokens; Integer.parse + Enum.at refuse typed {:error, :malformed}.
   defp descend_for_write(target, token) when is_list(target) do
-    if idx_before?(token, length(target)) do
-      child = Enum.fetch!(target, String.to_integer(token))
-      {:ok, child, fn child2 -> List.replace_at(target, String.to_integer(token), child2) end}
-    else
-      {:error, :malformed}
+    case Integer.parse(token) do
+      {idx, ""} when idx >= 0 ->
+        case Enum.at(target, idx, :__cosmos_index_not_found__) do
+          :__cosmos_index_not_found__ -> {:error, :malformed}
+          child -> {:ok, child, fn child2 -> List.replace_at(target, idx, child2) end}
+        end
+
+      _ ->
+        {:error, :malformed}
     end
   end
 

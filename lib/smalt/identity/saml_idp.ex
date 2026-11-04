@@ -634,15 +634,26 @@ defmodule Smalt.Identity.SamlIdp do
     |> List.last()
   end
 
+  # S9 audit fix 10: String.to_atom/1 on input-derived attribute names
+  # minted atoms; to_existing_atom + binary fallback keeps matching for
+  # known xmerl-parsed names without minting (frame_codec.ex:772 pattern).
   defp attr(node, name) do
+    name_atom = safe_atom(name)
+
     xmlElement(node, :attributes)
     |> Enum.find_value(fn
       a when is_record(a, :xmlAttribute) ->
-        if xmlAttribute(a, :name) == String.to_atom(name), do: to_string(xmlAttribute(a, :value))
+        if xmlAttribute(a, :name) == name_atom, do: to_string(xmlAttribute(a, :value))
 
       _ ->
         nil
     end)
+  end
+
+  defp safe_atom(name) when is_binary(name) do
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> name
   end
 
   defp text_of_child(node, name) do

@@ -642,14 +642,27 @@ defmodule Smalt.Posh.Ingress.ShapeValidator do
 
   defp key_present?(frame, key), do: frame_value(frame, key) != :__posh_missing__
 
+  # S9 audit fix 7: `String.to_atom/1` on input-derived keys minted atoms
+  # (unbounded atom-table flood channel). Wire-sourced keys are never minted:
+  # known atoms resolve via to_existing_atom, anything else stays a binary
+  # (frame_codec.ex:772 pattern).
   defp frame_value(frame, key) when is_map(frame) do
     kb = to_string(key)
+    ka = safe_atom(kb)
 
     cond do
       Map.has_key?(frame, kb) -> Map.fetch!(frame, kb)
-      Map.has_key?(frame, String.to_atom(kb)) -> Map.fetch!(frame, String.to_atom(kb))
+      Map.has_key?(frame, ka) -> Map.fetch!(frame, ka)
       true -> :__posh_missing__
     end
+  end
+
+  defp safe_atom(name) when is_atom(name), do: name
+
+  defp safe_atom(name) when is_binary(name) do
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> name
   end
 
   defp key_name(k) when is_binary(k), do: k

@@ -567,9 +567,14 @@ defmodule Smalt.SqlIngest.Mapping do
          {:ok, id} <- row_value(m.table, row, m.event_key),
          {:ok, type} <- row_value(m.table, row, m.event_type_column),
          {:ok, time} <- row_value(m.table, row, m.timestamp_column) do
+      # S9 audit fix 4: Map.fetch!/2 on the object columns raised on rows
+      # missing the column; absent columns are skipped (the module's
+      # row_value convention types required-column misses, but relationship
+      # object columns are optional projections).
       rels =
-        for col <- m.object_columns do
-          %{objectId: Map.fetch!(row, col), qualifier: m.qualifier || "related_to"}
+        for col <- m.object_columns,
+            oid when oid != nil <- [Map.get(row, col)] do
+          %{objectId: oid, qualifier: m.qualifier || "related_to"}
         end
 
       event = %{

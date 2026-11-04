@@ -230,8 +230,14 @@ defmodule Smalt.Telemetry.OcelNdjson do
           end
 
         case violations do
-          [] -> merge_doc(doc, acc)
-          violations -> {:error, violations}
+          [] ->
+            case merge_doc(doc, acc) do
+              {:ok, acc2} -> {:ok, acc2}
+              {:error, violations2} -> {:error, violations2}
+            end
+
+          violations ->
+            {:error, violations}
         end
 
       {:ok, other} ->
@@ -243,9 +249,18 @@ defmodule Smalt.Telemetry.OcelNdjson do
   end
 
   defp merge_doc(doc, acc) do
-    events = Map.fetch!(doc, "ocel:events")
-    objects = Map.fetch!(doc, "ocel:objects")
+    # S9 audit fix 6: Map.fetch!/2 crashed on a doc missing the OCEL
+    # members; a missing member refuses typed like the malformed-JSON branch.
+    with {:ok, events} <- Map.fetch(doc, "ocel:events"),
+         {:ok, objects} <- Map.fetch(doc, "ocel:objects") do
+      do_merge_doc(doc, events, objects, acc)
+    else
+      :error ->
+        {:error, [%{path: "$", reason: "malformed line: missing ocel:events/ocel:objects"}]}
+    end
+  end
 
+  defp do_merge_doc(doc, events, objects, acc) do
     {new_objects, object_ids} =
       Enum.reduce(objects, {acc.objects, acc.object_ids}, fn
         %{"id" => id} = object, {objs, ids} when is_binary(id) ->

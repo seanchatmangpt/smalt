@@ -1409,12 +1409,12 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
 
     case Smalt.SbRules.compile(props) do
       {:ok, _filter} ->
-        sub_id = base |> String.split("/") |> Enum.fetch!(2)
-        rg_name = base |> String.split("/") |> Enum.fetch!(4)
-        id = Smalt.SbRules.rule_wire_id(sub_id, rg_name, ns, topic, sub_name, rule_name)
-        record = Smalt.SbRules.build_rule_record(rule_name, id, wire_props)
-        Smalt.SbRules.put_rule(:smalt_sb_rules, rule_key, record)
-        send_json(conn, 201, Jason.encode!(record))
+        with {:ok, sub_id, rg_name} <- scope_ids(base) do
+          put_sb_rule(conn, base, sub_id, rg_name, ns, topic, sub_name, rule_name, wire_props)
+        else
+          :error ->
+            send_arm_error(conn, 400, "InvalidResourcePath", scope_error_message(base))
+        end
 
       {:error, :invalid_filter, fragment} ->
         send_arm_error(
@@ -1462,11 +1462,38 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
       String.downcase("#{base}/namespaces/#{ns}/topics/#{topic}/subscriptions/#{sub_name}/rules/")
 
     stored = Smalt.SbRules.list_rules(:smalt_sb_rules, prefix)
-    sub_id = base |> String.split("/") |> Enum.fetch!(2)
-    rg_name = base |> String.split("/") |> Enum.fetch!(4)
 
-    items = Smalt.SbRules.rules_payload(stored, sub_id, rg_name, ns, topic, sub_name)
-    send_list(conn, items)
+    with {:ok, sub_id, rg_name} <- scope_ids(base) do
+      items = Smalt.SbRules.rules_payload(stored, sub_id, rg_name, ns, topic, sub_name)
+      send_list(conn, items)
+    else
+      :error ->
+        send_arm_error(conn, 400, "InvalidResourcePath", scope_error_message(base))
+    end
+  end
+
+  # S9 audit fix 1: the rule PUT/LIST arms destructure the subscription and
+  # resource-group ids out of the request's `base` scope path with
+  # `Enum.fetch!/2` — a malformed scope crashed the request as a 500
+  # (ArgumentError via KeyError/IndexError). The split is now pattern-matched
+  # and a malformed scope refuses with a typed ARM 400 instead of raising.
+  defp scope_ids(base) do
+    case String.split(base, "/") do
+      [_, "subscriptions", sub_id, "resourceGroups", rg_name | _] -> {:ok, sub_id, rg_name}
+      _ -> :error
+    end
+  end
+
+  defp scope_error_message(base) do
+    "The resource path '#{base}' is not a valid subscription/resource-group scope."
+  end
+
+  defp put_sb_rule(conn, base, sub_id, rg_name, ns, topic, sub_name, rule_name, wire_props) do
+    rule_key = Smalt.SbRules.rule_key(base, ns, topic, sub_name, rule_name)
+    id = Smalt.SbRules.rule_wire_id(sub_id, rg_name, ns, topic, sub_name, rule_name)
+    record = Smalt.SbRules.build_rule_record(rule_name, id, wire_props)
+    Smalt.SbRules.put_rule(:smalt_sb_rules, rule_key, record)
+    send_json(conn, 201, Jason.encode!(record))
   end
 
   # KD-COVERS: KD-143
@@ -2446,14 +2473,27 @@ defmodule Smalt.ArmGateway.Plug.ResourceProviders do
       # AZURE-FIDELITY lane 1: the subscription-scope listing overlays the
       # persisted registration state per namespace (register/unregister are
       # stateful per subscription; the tenant listing keeps the constant).
+      # S9 audit fix 5: Map.update!/3 raised when the provider matrix lacked
+      # the "value" member; a missing/non-list member now leaves the listing
+      # unmodified (the matrix is compile-time constant — this is a
+      # raise-shape fix, not an input-reachable behavior change).
       listing =
-        ProviderMatrix.provider_listing()
-        |> Map.update!("value", fn providers ->
-          Enum.map(providers, fn p ->
-            stored = ProviderState.registration_state(sub_id, p["namespace"], p["registrationState"])
-            Map.put(p, "registrationState", stored)
-          end)
-        end)
+        case Map.get(ProviderMatrix.provider_listing(), "value") do
+          providers when is_list(providers) ->
+            Map.put(
+              ProviderMatrix.provider_listing(),
+              "value",
+              Enum.map(providers, fn p ->
+                stored =
+                  ProviderState.registration_state(sub_id, p["namespace"], p["registrationState"])
+
+                Map.put(p, "registrationState", stored)
+              end)
+            )
+
+          _ ->
+            ProviderMatrix.provider_listing()
+        end
 
       send_json(conn, 200, Jason.encode!(listing))
     else

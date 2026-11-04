@@ -258,7 +258,10 @@ defmodule Smalt.ArmGateway.CostManagement do
             [] ->
               Enum.map(Map.keys(projections), fn {service, currency} ->
                 [
-                  Map.fetch!(projections, {service, currency}),
+                  # S9 audit fix 2: Map.fetch!/2 over internally-derived keys
+                  # cannot miss, but fetch! is a raise arm; Map.get/3 with the
+                  # additive identity keeps the row shape and cannot raise.
+                  Map.get(projections, {service, currency}, 0.0),
                   currency,
                   Date.to_iso8601(date),
                   @charge_type,
@@ -271,7 +274,9 @@ defmodule Smalt.ArmGateway.CostManagement do
             keys ->
               Enum.map(Enum.sort(keys), fn {service, currency} = k ->
                 [
-                  Enum.sum(Map.fetch!(actuals, k)),
+                  # S9 audit fix 2 (mirrored): fetch! -> Map.get/3 additive
+                  # identity (keys are derived from this same map above).
+                  Enum.sum(Map.get(actuals, k, [])),
                   currency,
                   Date.to_iso8601(date),
                   @charge_type,
