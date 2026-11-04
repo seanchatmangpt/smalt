@@ -23,9 +23,44 @@ SRC = os.path.join(ROOT, "datasets", "gimbal-bore-stack-parameters.csv")
 if not os.path.exists(SRC):
     sys.exit("VACUOUS COURT: datasets/gimbal-bore-stack-parameters.csv missing")
 
-# reuse the module 18 MC model — one calculus, no re-implementation drift
-sys.path.insert(0, os.path.join(ROOT, "modules", "18-monte-carlo", "scripts"))
-import mc_bore_stack as mc
+# module 18 MC model, inlined (court portability law: no cross-module
+# sys.path imports; mc_bore_stack.py reads sys.argv at import time, which
+# breaks `court.py --mutate`). Same gauss model + seed 20261104 -> the
+# pinned MC quantities below re-derive identically.
+import random
+MC_SEED = 20261104                                   # module-18 registered seed
+CONTRIBUTORS = [                                     # (name, mean um, tol um)
+    ("bore_diameter",   0.0, 10.0),
+    ("spindle_thermal", 2.0,  8.0),
+    ("fixture_loc",     0.0,  6.0),
+    ("tool_deflection", -1.0, 5.0),
+]
+MC_SPEC_LO, MC_SPEC_HI = -25.0, 25.0
+
+def _percentile(sorted_xs, p):
+    """Linear-interpolated percentile, p in [0,100]."""
+    n = len(sorted_xs)
+    if n == 1:
+        return sorted_xs[0]
+    pos = (n - 1) * p / 100.0
+    lo = int(math.floor(pos))
+    hi = min(lo + 1, n - 1)
+    frac = pos - lo
+    return sorted_xs[lo] + (sorted_xs[hi] - sorted_xs[lo]) * frac
+
+def _mc_stats(n, seed=MC_SEED):
+    rng = random.Random(seed)
+    totals = []
+    for _ in range(n):
+        totals.append(sum(rng.gauss(m, t / 3.0) for _, m, t in CONTRIBUTORS))
+    st = sorted(totals)
+    mu = sum(st) / len(st)
+    sigma = math.sqrt(sum((t - mu) ** 2 for t in st) / (len(st) - 1))
+    exceed = sum(1 for t in st if t < MC_SPEC_LO or t > MC_SPEC_HI)
+    cpu, cpl = (MC_SPEC_HI - mu) / (3 * sigma), (mu - MC_SPEC_LO) / (3 * sigma)
+    return {"p013": _percentile(st, 0.13), "p9987": _percentile(st, 99.87),
+            "mu": mu, "sigma": sigma, "exceed": exceed,
+            "cpk": min(cpu, cpl)}
 
 fail = []
 def check(name, got, want, tol=0.0):
@@ -63,7 +98,7 @@ check("RSS_Cpk_1.60", round(cpk_rss, 2), 1.60, 1e-9)
 check("RSS_verdict_PASS_vs_1.33", cpk_rss >= 1.33, True)
 
 # ---------- method 3: Monte Carlo (seeded, executed here) ----------
-s = mc.stats(mc.simulate(10000, mc.SEED))
+s = _mc_stats(10000)
 check("MC_Cpk_1.588", round(s["cpk"], 3), 1.588, 1e-9)
 check("MC_P0.13", round(s["p013"], 2), -13.97, 1e-9)
 check("MC_P99.87", round(s["p9987"], 2), 16.60, 1e-9)

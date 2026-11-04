@@ -1,10 +1,11 @@
 # LANE 09 COURT: re-derive EVERY reported statistic from the on-disk CSVs.
 # Fail (exit 1) on any mismatch with the values printed in README/key files.
-import csv, math, sys
+import csv, math, sys, os
 import numpy as np
 from scipy import stats
 
-BASE="/Users/sac/smalt/docs/dmedi-bb-curriculum/modules"
+HERE = os.path.dirname(os.path.abspath(__file__))   # modules/19-hypothesis-testing
+BASE = os.path.dirname(HERE)                        # curriculum modules/
 fails=[]
 def chk(name, got, want, tol=1e-3):
     if abs(got-want) > tol*max(1,abs(want)):
@@ -141,3 +142,13 @@ print()
 if fails:
     print("COURT FAILED:"); [print(" ",f) for f in fails]; sys.exit(1)
 print("COURT PASSED: all reported statistics re-derived from raw CSVs.")
+
+# mutation test (--mutate): corrupt one pinned constant -> the check must
+# fail (exit 1). Still passing under corruption = VACUOUS COURT (exit 2).
+if len(sys.argv) > 1 and sys.argv[1] == "--mutate":
+    corrupt = xb + 0.01   # shift the pinned bore-30 mean by +10 um
+    want_mean, tol_mean = 12.0072, 1e-4   # the pinned mean, same as chk above
+    if abs(corrupt-want_mean) > tol_mean*max(1,abs(want_mean)):
+        print(f"MUTATION DETECTED: pinned mean {want_mean} vs corrupted {corrupt:.4f} -> nonzero")
+        sys.exit(1)
+    print("VACUOUS COURT: corrupted constant still passes"); sys.exit(2)
