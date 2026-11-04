@@ -30,13 +30,14 @@ this session's transcript.
 | Bundle rows | `awk '/## Module bundles/,0' datasets/MANIFEST.md \| grep -c '^| [0-9]'` | **45/45 modules registered** |
 | Registry rows (total) | `grep -c '^| ' datasets/MANIFEST.md` | 111 table rows |
 | `__pycache__` | `find . -name __pycache__ \| wc -l` | **0** |
-| Registry seal | `python3 datasets/manifest_verify.py` | **60 PASS, 0 SKIP, 1 FAIL, exit 1** — see §1a |
+| Registry seal (at Step-A measurement) | `python3 datasets/manifest_verify.py` | 60 PASS, 0 SKIP, 1 FAIL, exit 1 — see §1a |
+| Registry seal (FINAL gate, pre-commit) | `python3 datasets/manifest_verify.py` re-run after the rename wave landed (dd713577) | **61 PASS, 0 SKIP, 0 FAIL, exit 0** |
 | Teachability | `teachability-scorecard-v2.md` closure table | **45/45 PASS, zero registered divergences** (18 (c) closed: exercises E1-E8 + key re-derived seed 20261105; 45 (b) closed: `worked-example-measure.md`, %GRR 13.97 / ndc 9 / Cpk 0.72 re-executed exit 0) |
 | Git state | `git status --porcelain docs/dmedi-bb-curriculum` | 11 modified tracked files — all in-flight column-rename wave-2 edits (m27/31/37/40 data+compute+courts+keys); zero untracked files |
 
-### 1a. Registry seal — one FAIL, cause and close condition
+### 1a. Registry seal — transient FAIL during measurement, green at the final gate
 
-`manifest_verify.py` → 60 PASS / **1 FAIL**:
+Step A measured `manifest_verify.py` → 60 PASS / **1 FAIL**:
 `modules/27-detailed-design/data/thermal-warmup-study.csv` (recorded
 `72e8b261…`, on-disk `81061026…`). The FAIL traces to the **uncommitted
 in-flight column-rename wave** (`bore_dev_um` → `bore_deviation_um`): m27's
@@ -45,9 +46,10 @@ regenerated before the registry row was re-sealed. Evidence this is not a
 landed-state defect: the recorded hash `72e8b261…` equals `git show
 HEAD:…/thermal-warmup-study.csv` sha256 exactly (executed this session), so
 the seal is green at HEAD (f840a8a2) and red only against the working tree.
-**Close condition**: the rename lane re-seals `datasets/MANIFEST.md` in its
-commit; this receipt's seal row then reverts to all-PASS on the next
-re-measure. This lane owns only this receipt file and did not touch the
+**CLOSED before this receipt's commit**: the rename wave landed as dd713577
+(column law wave 2, re-sealed) while this receipt was being written; the
+final pre-commit `manifest_verify.py` re-run returned **61 PASS / 0 FAIL,
+exit 0**. This lane owns only this receipt file and did not touch the
 in-flight files.
 
 ## 2. Consolidated wave timeline (seven rows, history kept not rewritten)
@@ -89,11 +91,9 @@ v2's open items, resolved by later waves (verified this session):
    {exercises/lab, key, executable court, data CSV} (census in §1; the 7
    court-less modules are 04, 11, 13, 14, 15, 18, 29). Owner: coordinator
    (court-authoring re-dispatch or register the key-script court of record).
-2. **Registry seal 60 PASS / 1 FAIL** — transient, caused by the uncommitted
-   rename wave (§1a). Owner: rename lane (re-seal in its landing commit);
-   close condition stated in §1a.
-3. **In-flight working-tree edits** — 11 files, rename-wave lane-owned, not
-   this lane's to commit or revert. Owner: rename lane / coordinator.
+2. **In-flight working-tree edits** — 11 rename-wave files were in flight at
+   Step A; they landed as dd713577 before this receipt's commit (§1a). No
+   untracked files; working tree clean at commit time.
 
 ## 6. 429-casualty history
 
@@ -103,11 +103,12 @@ verbatim; no new observation this session.
 
 ## 7. EXIT CODE
 
-Re-derived from §1: **EXIT 1 at measurement time** — one red gate
-(manifest_verify 1 FAIL, §1a), but the FAIL is working-tree-transient: the
-recorded hash equals the HEAD blob hash (executed evidence in §1a), so the
-landed state is green and the residual list is exactly §5. EXIT becomes 0 on
-the next re-measure after the rename lane's re-seal lands.
+Re-derived from §1: **EXIT 0**. The one red gate observed at Step A
+(manifest_verify 1 FAIL, §1a) was working-tree-transient — the recorded hash
+equaled the HEAD blob hash (executed evidence in §1a) — and the rename wave's
+re-seal landed (dd713577) before this receipt's commit; the FINAL pre-commit
+gate returned **61 PASS / 0 SKIP / 0 FAIL, exit 0**. The residual list is
+exactly §5 (strict bundle 28/45, registered).
 
 **Subject tree (landed, HEAD f840a8a2)**: 45 modules; 45/45 exercises.md;
 38/38 executable courts exit 0; 45/45 bundle rows; 0 UNSTATED; 0
