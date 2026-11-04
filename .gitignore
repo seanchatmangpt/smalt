@@ -173,3 +173,6 @@ coverage.out
 
 # LaTeX thesis compilation intermediates & residual artifacts
 thesis/
+
+# TypeScript incremental build artifacts
+*.tsbuildinfo
