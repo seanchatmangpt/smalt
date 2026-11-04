@@ -29,7 +29,7 @@ just verify-all    # offline stages: doctor, test-offline, ws-court, cli pytest,
 just publish-dry   # publish gates dry-run (tarball leak greps, ERROR_CODES identity)
 just receipts      # recent court/bench receipts
 just shim-courts   # shim-court anti-vacuity mutations
-just invariant-gates  # 6 fail-closed gates (cosmos-etag-cas, appconfig-etag-cas, blob-worm, ledger-chain, queue-capacity, lock-clamp)
+just invariant-gates  # 7 fail-closed gates (cosmos-etag-cas, appconfig-etag-cas, blob-worm, ledger-chain, queue-capacity, lock-clamp, test-isolation-leak)
 just logs          # tail newest tmp/*.log (can FOLLOW/hang — prefer bounded: `tail -n 40 tmp/$(ls -t tmp | grep '\.log$' | head -1)`)
 just bootstrap     # zero-to-green first-run (deps, certs, doctor, boot smoke)
 ```

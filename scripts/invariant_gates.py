@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""invariant_gates.py — runner for the six fail-closed invariant gates.
+"""invariant_gates.py — runner for the seven fail-closed invariant gates.
 
 The legacy runner (test/invariant_gates_test.py) was deleted with test/ in
 the v26.10.19 clean-room reset (64f6099). This is the fresh successor: same
@@ -38,6 +38,7 @@ FILES = {
     "queue-capacity": "queue_capacity_gate.py",
     "lock-clamp": "lock_clamp_gate.py",
     "appconfig-etag-cas": "appconfig_etag_cas_gate.py",
+    "test-isolation-leak": "test_isolation_leak_gate.py",
 }
 
 
