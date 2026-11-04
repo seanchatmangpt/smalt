@@ -1,1 +1,0 @@
-{application,content_type,[{modules,['Elixir.ContentType']},{optional_applications,[]},{applications,[kernel,stdlib,elixir,logger]},{description,"A parser for the HTTP Content-Type header.\n"},{registered,[]},{vsn,"0.1.0"}]}.
