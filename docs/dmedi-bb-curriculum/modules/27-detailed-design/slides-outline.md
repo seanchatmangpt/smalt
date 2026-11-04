@@ -53,24 +53,31 @@ of 12.000 mm ± 0.008 mm, deliberately tighter than the customer spec of
 require two independent failures (process shift + gauge error), and it gives
 the control chart room to detect drift before the customer's limit.
 
-The math (derived, not asserted — the court recomputes it):
+The math (derived, not asserted — the court recomputes it). Historical note:
+the numbers below were first derived in the pre-adjudication regime
+(sigma 4.17 um), which RUNNING-CASE.md superseded on 2026-11-04 with the
+adjudicated spine pair (mu 12.009 mm, sigma 7.407 um). The live baseline is
+the adjudicated pair; the 4.17-era values are kept below in parentheses as
+the superseded historical regime:
 
-1. Required sigma for Cpk >= 1.33 on the guard band:
+1. Required sigma for Cpk >= 1.33 on the guard band (regime-independent):
    sigma_max = 0.008/(3 x 1.33) = **2.01 um**.
-2. Baseline capability against the guard band:
-   Cpk = 0.008/(3 x 0.00417) = **0.64**.
+2. Baseline capability against the guard band, live baseline at the
+   adjudicated 7.407 um regime: Cpk = 0.008/(3 x 0.007407) = **0.36**
+   (pre-adjudication 4.17 um-era value: 0.64 — superseded).
 3. Same baseline against the customer spec at mu = 12.009:
-   Cpk = (0.025 - 0.009)/(3 x 0.00417) = **1.28** (the MANIFEST cross-note
-   value; the pinned 0.72 constant contradiction is Lane 05's flagged item —
-   this module does not silently inherit it).
-4. Centered, the spec-level Cpk would be 0.025/(3 x 0.00417) = **2.00** —
-   the 1.28 vs 2.00 gap is the off-center mean (mu = 12.009), and closing it
+   Cpk = (0.025 - 0.009)/(3 x 0.007407) = **0.72** — the pinned running-case
+   constant (pre-adjudication 4.17 um-era value: 1.28, the MANIFEST
+   cross-note — superseded; the adjudication resolved Lane 05's flagged 0.72
+   constant contradiction).
+4. Centered, the spec-level Cpk would be 0.025/(3 x 0.007407) = **1.12** —
+   the 0.72 vs 1.12 gap is the off-center mean (mu = 12.009), and closing it
    is a CENTERING action (module 43 control planning), distinct from variation
-   reduction.
-5. What the DOE must deliver: in the RUNNING-CASE pinned regime (sigma
-   4.17 um) sigma must fall 4.17/2.01 = **2.08x** (4.33x variance); in the
-   adjudicated spine regime carried by MANIFEST rows 16/21/23 (sigma
-   7.407 um) the requirement is 7.407/2.01 = **3.69x** (13.6x variance).
+   reduction (4.17 um-era values: 2.00, gap 1.28 vs 2.00 — superseded).
+5. What the DOE must deliver: in the adjudicated spine regime carried by
+   MANIFEST rows 16/21/23 (sigma 7.407 um) sigma must fall 7.407/2.01 =
+   **3.69x** (13.6x variance); in the superseded pre-adjudication regime
+   (sigma 4.17 um) the requirement was 4.17/2.01 = 2.08x (4.33x variance).
    This number is the Develop-phase requirement handed to the DOE modules:
    if the spindle speed x feed rate x coolant x coating experiment cannot
    demonstrate the required sigma reduction on bore diameter, the guard band

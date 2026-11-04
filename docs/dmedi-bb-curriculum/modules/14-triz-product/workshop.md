@@ -23,7 +23,7 @@ is not admitted.
 
 From `datasets/tool-wear.csv`:
 
-1. Compute the regression of `diameter_drift_um` on `parts_since_tool_change`
+1. Compute the regression of `tool_wear_drift_um` on `parts_since_tool_change`
    (slope, intercept, residual s). Check against the README's 0.0079 / 0.3155
    / 0.56.
 2. Predict drift at 500 parts and at 4000 parts.

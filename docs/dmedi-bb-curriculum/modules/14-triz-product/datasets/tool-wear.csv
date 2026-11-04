@@ -1,4 +1,4 @@
-parts_since_tool_change,diameter_drift_um
+parts_since_tool_change,tool_wear_drift_um
 100,-0.26
 200,1.09
 300,2.76

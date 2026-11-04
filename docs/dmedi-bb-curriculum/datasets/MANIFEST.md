@@ -162,7 +162,7 @@ d703ba61a8a67e8a6278893534c0a39f622b6e34a87a71f4a9dcc8941e2ff245  data/lead-defe
 b1f826f95ccb7888d36508aad735cf8e2a3cb8a40f75ff77d98ec22c44953132  modules/28-2way-anova/data/anova-2way.csv
 adf2fbb03c57f2cb207347cdf8fc1cc40f8ed43f6db2f186b3700b8b720f6ccf  modules/30-full-factorial-doe/data/doe-2k-full.csv
 a86ea8c30adeda11e218acc71aee6f3067b5ac882d398db7d8913fb81e7dc8fd  modules/13-concept-generation/datasets/concept-portfolio.csv
-60fb91e96041cfdb43e0b580e6ab8af10f7eb93834067cd7f9998bb13595565e  modules/14-triz-product/datasets/tool-wear.csv
+32f76b9ae51750329a51aa0aba6fc4a63fdc4c2c94a2ef3a4797d70ea74cea46  modules/14-triz-product/datasets/tool-wear.csv
 79d6e3ae388c1acd4647d7e45f3efdd2ac8134b45462b407af7fc62855c115b9  modules/15-triz-transactional/datasets/onboarding-durations.csv
 dde34835770cce086c045ea577046164c2058a9125d7b8c830d0133a6fdbba44  datasets/gimbal-bore-stack-parameters.csv
 a4e1cc36ca7fea3cae083d0f8e507871163c5d01f060da5bafa598ea6c7e211c  datasets/monte-carlo-bore-stack-summary.csv
@@ -264,7 +264,7 @@ the named owner then supplied the generator/seed or declared the file authored
 | `modules/24-multiple-regression/data/regression-multi.csv` | `02e88fe173b4` | 37 | 42401 (scripts/gen_regression_multi.py); byte-identical twin registered at data/regression-multi.csv |
 | `modules/26-design-fmea/data/dfmea-worksheet.csv` | `6ffde1dbd447` | 13 | authored deterministic (scripts/gen_dfmea.py, no RNG) |
 | `modules/27-detailed-design/data/design-control-checklist.csv` | `2e0fe0950901` | 19 | authored deterministic (design-control checklist mapping, no RNG); M27 derive_keys.py re-derives tolerance math + DFMEA linkage from raw CSV (exit 0 = 18 checks) |
-| `modules/27-detailed-design/data/thermal-warmup-study.csv` | `72e8b2612fe1` | 13 | authored deterministic (warmup/no-model deviation pairs, no RNG); M27 derive_keys.py re-derives the warmup contrast from raw CSV (exit 0 = 18 checks) |
+| `modules/27-detailed-design/data/thermal-warmup-study.csv` | `72e8b2612fe1` | 13 | seed 2711 via `scripts/gen_verification_dataset.py` (warmup/no-model deviation pairs, 12+12, byte-reproducible; previously mislabeled "authored deterministic, no RNG"); M27 derive_keys.py re-derives the warmup contrast from raw CSV (exit 0 = 18 checks) |
 | `modules/31-fractional-factorial-doe/data/fractional-2k5-2.csv` | `bb8a317b4c72` | 17 | 43108 (M31 solution-key) |
 | `modules/32-catapult-simulation/data/catapult-results.csv` | `a63fd2395b14` | 21 | 43201 (data/simulator.py) |
 | `modules/33-key-lean-concepts/data/vsm-baseline.csv` | `27e8b8ebffc4` | 8 | authored deterministic (VSM process table, no RNG); M33 court re-derives 15/15 checks from raw CSV (modules/33-key-lean-concepts/courts/court.py, exit 0) |

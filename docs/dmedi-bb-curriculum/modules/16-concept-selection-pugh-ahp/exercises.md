@@ -49,7 +49,7 @@ dominates. Breadth vs depth is the whole lesson of this module.
 Concept E = helical interpolation + regrind hybrid: cycle 15 min, added
 capital $8k standard program template, 1 setup, flexibility ordinal 3,
 cost factor 2.0. Its pilot is synthetic: use mu = 12.0035 mm, sigma
-0.0055 mm, Ra center 1.8 um, seed 1607 + 1 (same generation law as
+0.0055 mm, Ra center 1.8 um, the registered seed 1607 (same generation law as
 `scripts/gen_trials.py`). Generate E's 30 trials, add to the CSV copy
 `data/concept_trials_plus_e.csv` (do NOT overwrite the registered CSV),
 re-run both methods on the 5-concept set, and report both rankings.

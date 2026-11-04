@@ -63,7 +63,9 @@ this improvement.
 ## Spine coherence note
 
 The ORIGINAL spine sigma 4.17 um contradicted the pinned Cpk 0.72 (gave 1.28);
-ADJUDICATED stale 2026-11-04. Lane 04's raw baseline re-derives Ppk 1.24 overall.
-This dataset keeps mu = 12.009 and reproduces Cpk = 0.72 exactly at sigma =
-7.407 um. The MANIFEST row records the adjudication; the spine court in `capability_key.py` enforces
+ADJUDICATED stale 2026-11-04. Lane 04's raw baseline
+(`data/bore-baseline-100.csv`, regenerated post-adjudication at
+gauss(12.009, 0.007407), sample s = 0.007417 mm) re-derives Ppk 0.68 overall,
+consistent with the pinned Cpk 0.72 (sampling variation). This dataset keeps
+mu = 12.009 and reproduces Cpk = 0.72 exactly at sigma = 7.407 um. The MANIFEST row records the adjudication; the spine court in `capability_key.py` enforces
 |Cpk − 0.72| ≤ 0.005 on every re-run.

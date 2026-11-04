@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Module 14 solution keys. Ground truth = datasets/tool-wear.csv (synthetic, seed 1419,
-diameter_drift_um rounded to 0.01 um). Keys re-derive from the CSV, never from memory."""
+tool_wear_drift_um rounded to 0.01 um). Keys re-derive from the CSV, never from memory."""
 import csv, statistics
-d=[(float(r["parts_since_tool_change"]), float(r["diameter_drift_um"]))
+d=[(float(r["parts_since_tool_change"]), float(r["tool_wear_drift_um"]))
    for r in csv.DictReader(open(__file__.rsplit("/scripts/",1)[0]+"/datasets/tool-wear.csv"))]
 xs=[x for x,_ in d]; ys=[y for _,y in d]
 mx=statistics.mean(xs); my=statistics.mean(ys)

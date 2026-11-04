@@ -40,9 +40,10 @@ grand mean 12.0090 mm →
 spine sigma = 4.17 um was inconsistent with the pinned Cpk = 0.72 and mu = 12.009
 (0.016/(3 × 0.00417) = 1.28) and was adjudicated stale. The adjudicated coherent
 pair is **sigma = 7.407 um with mu = 12.009** (reproduces Cpk = 0.72 exactly). Lane 04's raw individual baseline
-(`data/bore-baseline-100.csv`, seed 42008) re-derives Ppk = 1.24 overall —
-that dataset was drawn at the 4.17 um scale and cannot serve as the 0.72
-baseline. Downstream modules: use `data/cpk072-bore-subgroups.csv` for any
+(`data/bore-baseline-100.csv`, seed 42008) was regenerated post-adjudication at
+the 7.407 um scale — gauss(12.009, 0.007407), sample s = 0.007417 mm — and
+re-derives Ppk = 0.68 overall, consistent with the pinned Cpk = 0.72
+(sampling variation, cf. module 08). Downstream modules: use `data/cpk072-bore-subgroups.csv` for any
 "baseline Cpk = 0.72" narrative.
 
 ## Capability vs performance — the four indices

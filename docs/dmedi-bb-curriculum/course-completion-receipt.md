@@ -54,7 +54,7 @@ post-remediation per scorecard-v2). This receipt is the current state.
   Evidence: `modules/18-monte-carlo/keys/solution-key.md`. The 44/45
   correction above stands as history; with 18 (c) closed the corrected
   teachability verdict is **45/45** (module 45 (b) remains the registered
-  divergence).
+  divergence) → superseded by §5 item 7 (45/45 zero divergences).
 - **Untracked evidence**: `git status --porcelain docs/dmedi-bb-curriculum`
   → 2 entries: ` M teachability-scorecard-v2.md` (tracked, modified) and
   `?? docs/dmedi-bb-curriculum/` (the rest of the tree, untracked).
