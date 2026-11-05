@@ -2,7 +2,7 @@
 
 Standing: ALIVE
 
-## Files (staged explicit paths)
+## Files (landed via coordinator wip commit 87951df5; verified identical)
 
 - `rel/vm.args.eex` — `+sbt db`, `+sbwt none`, `+hms 2097152` (whole-line
   directives, fail-closed-checked); rationale comments for each flag.
@@ -33,6 +33,13 @@ the VM-wide backstop. Not owned by this lane; cited, not staged.
   pattern `:erlang.io_list`) — this lane waited (bounded poll, MIX_ENV=test
   compile deadline ~9 min, converged at attempt 7) until the owner landed a
   compiling state. Owner fixed both defects themselves.
+
+## Landing note
+
+The four lease files were swept into the coordinator's `wip: save WIP state`
+commit (87951df5) before this lane could commit them under its own subject;
+content verified byte-identical to this lane's on-disk state (`git diff HEAD`
+on all four paths: empty). This lane's commit carries the receipt only.
 
 ## Verification (receipt-cited)
 
