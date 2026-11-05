@@ -1,6 +1,6 @@
 # L15 Receipt — AOQ Cursor + persistent_term Tables
 
-Standing: PARTIAL_ALIVE
+Standing: ALIVE
 
 ## Subject
 
@@ -16,12 +16,12 @@ No supervisor/frame files touched.
 
 ## Standing
 
-PARTIAL_ALIVE: modules compile clean standalone and 16/16 tests green in
-an isolated ExUnit run; the shared `mix test` gate is currently frozen by
-other lanes' in-flight untracked `lib/smalt/aoq/{listener,transport,worker,worker_pool}.ex`
-(compile errors in files this lane does not own — compile-freeze SLA
-disclosed to the coordinator; the owning lanes supersedes at drain).
-Re-gate at integration.
+ALIVE: shared `mix test` gate went green post-push — the owning lanes
+landed fixes to the in-flight listener/transport/worker/worker_pool
+files while this lane waited; the gate then ran my two test files with
+`MIX_BUILD_ROOT=_build-lane15` and returned 16 passed / 0 failures
+(see Commands). Prior PARTIAL_ALIVE standing was compile-blocked by
+those in-flight files, disclosed per the compile-freeze SLA.
 
 ## What landed
 
@@ -89,8 +89,8 @@ worker_pool.ex — in-flight, other lanes)
   PASSED (near-max, half-mod boundary, equal, naive-< inversion case).
 - "Tables sealed after boot; mutation attempts raise and leave tables
   untouched" — PASSED.
-- Shared `mix test` green for my two files: BLOCKED (other lanes'
-  in-flight compile errors), re-gate at integration.
+- Shared `mix test` green for my two files: ALIVE (post-push re-gate,
+  `Result: 16 passed`, RC=0).
 
 ## Notes
 
