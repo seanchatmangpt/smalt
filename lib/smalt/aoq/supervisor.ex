@@ -41,11 +41,45 @@ defmodule Smalt.Aoq.Supervisor do
     # with the compile-time empty registry.
     Smalt.Aoq.Tables.boot(arrow_schemas: Smalt.Aoq.Arrow.Boot.registry())
 
-    children = [
-      {Smalt.Aoq.NifHolder, cfg},
-      {Smalt.Aoq.WorkerPool, cfg},
-      {Smalt.Aoq.Listener, cfg}
+    # Durable-cursor checkpoint chain (v26.11.6 offset-restart lane): the
+    # journal sink (matter scope "aoq") boots FIRST, then CursorPersist —
+    # which folds sealed checkpoints back into the ring cursor at boot
+    # (boot-only restore, fail-closed on integrity refusals) — and only
+    # then the NifHolder/WorkerPool/Listener data path consumes that
+    # cursor. The cursor is minted here and shared: restore happens before
+    # any worker can claim a slot.
+    cursor = Smalt.Aoq.Cursor.new()
+    journal_dir = Smalt.Aoq.CursorPersist.journal_dir(cfg)
+    sink = Smalt.Aoq.CursorPersist.Sink
+    cfg = Keyword.put(cfg, :cursor, cursor)
+
+    persist = [
+      {Smalt.Storage.JournalSink,
+       name: sink, dir: journal_dir, sync_interval_ms: Keyword.get(cfg, :journal_sync_ms, 500)},
+      {Smalt.Aoq.CursorPersist,
+       cursor: cursor,
+       sink: sink,
+       dir: journal_dir,
+       checkpoint_every: Keyword.get(cfg, :checkpoint_every, 1024)}
     ]
+
+    base =
+      persist ++
+        [
+          {Smalt.Aoq.NifHolder, cfg},
+          {Smalt.Aoq.WorkerPool, cfg},
+          {Smalt.Aoq.Listener, cfg}
+        ]
+
+    # Partitioned plane (LANE-05): config-gated, default OFF — byte-identical
+    # boot for every existing surface. Enable with
+    # `config :smalt, :aoq, partitioned: true`.
+    children =
+      if cfg[:partitioned] do
+        base ++ [{Smalt.Aoq.Partitions, cfg}, {Smalt.Aoq.PartitionSup, cfg}]
+      else
+        base
+      end
 
     Supervisor.init(children, strategy: :one_for_one)
   end

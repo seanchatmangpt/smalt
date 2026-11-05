@@ -8,9 +8,10 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
   # authority — this module mints a receipt over (shapes, data, digest) and
   # Smalt.GraphlawEx.AdmissionGate stays the host-side commit validator.
   #
-  # Dependency posture (loud typed refusals, no silent skips): :ash_graphlaw is
-  # dev/test-only in mix.exs (hex-publish promotion is the WO-10 residual).
-  # When the dep is absent, admit/2 answers
+  # Dependency posture (loud typed refusals, no silent skips): :ash_graphlaw
+  # is an unconditional path dep since WO-10 (v26.11.6, lane 9; relocatable
+  # via ASH_GRAPHLAW_PATH). The {:error, :ash_graphlaw_not_loaded} arm stays
+  # as the fail-closed witness for a broken install. When the dep is absent, admit/2 answers
   # {:refused, :smalt_graphlaw_engine_absent, _} — fail-closed, never a fake
   # admit. Same for an unpinned digest (:smalt_graphlaw_engine_unpinned), an
   # unreadable ontology (:smalt_shapes_unreadable) and a non-conforming
@@ -112,13 +113,25 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
       callers omit it so the MANIFEST pin is used).
     - :shape_iri — informative receipt field naming the governing shape.
     - :shapes — Turtle text overriding the canonical ontology (court seam;
-      production callers omit it). WO-09 note: the in-flight
-      public-cloud-core.ttl currently carries a bnode with two sh:pattern
-      values (lane 8's lease, ~lines 217-218), which the engine refuses at
-      shapes-graph meta-validation, so until lane 8's fix lands the canonical
-      file is engine-rejected wholesale and courts exercise the canonical
-      shape #2 via this override. Fail-closed: the override is explicit opt,
-      never a default.
+      production callers omit it). Fail-closed: the override is explicit opt,
+      never a default. (WO-09-era note removed: the two-sh:pattern bnode
+      lease is closed — the canonical file metashape-validates whole, proved
+      by test/integration/graphlaw_canonical_shapes_court_test.exs, lane G2.)
+    - :shacl_module — module overriding AshGraphLaw.Capability.Shacl for
+      admit/2's single engine call (court seam; production callers omit it).
+      Lets the conformance corpus exercise the admit pipeline on the
+      engine-absent leg without a wasm runtime: the module must export
+      run/2 with the Capability.Shacl signature. Fail-closed: explicit opt,
+      never a default; production callers route through the SAME
+      AshGraphLaw.Host seam (one Host, two callers — the shared-seam
+      contract is named in Smalt.Aoq.Admission's moduledoc).
+    - :data_fold — when true, `data` is a length-prefixed fold binary
+      `<<len::32-unsigned-big, frame::binary-size(len), ...>>` (the wire
+      form Smalt.Aoq.Admission.admit_batch/2 encodes); it is expanded to the
+      newline-joined frame documents and validated in ONE engine call
+      (O(batches), not O(frames)). Frame boundaries recover exactly because
+      the lengths ride the wire; a truncated tail answers
+      {:refused, :smalt_shacl_violation, %{data_fold: :truncated}}.
 
   Refusals: :smalt_shapes_unreadable, :smalt_graphlaw_engine_absent,
   :smalt_graphlaw_engine_unpinned, :smalt_shacl_violation,
@@ -127,7 +140,7 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
   @spec admit(String.t(), keyword()) :: admission()
   def admit(data, opts \\ []) when is_binary(data) do
     with {:ok, shapes} <- shapes_or_override(opts),
-         {:ok, shacl} <- shacl_module(),
+         {:ok, shacl} <- shacl_module(opts),
          {:ok, digest} <- ensure_digest(opts) do
       run_shacl(shacl, shapes, data, opts, digest)
     else
@@ -139,6 +152,9 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
 
       {:error, :ash_graphlaw_not_loaded} ->
         {:refused, :smalt_graphlaw_engine_absent, %{dep: :ash_graphlaw}}
+
+      {:error, {:shacl_module_not_module, other}} ->
+        {:refused, :smalt_graphlaw_engine_error, %{shacl_module: inspect(other)}}
 
       {:refused, _, _} = refused ->
         refused
@@ -172,14 +188,31 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
     # admit/2 opts double as the AshGraphLaw call opts: [server: pid] passed
     # by the caller flows straight to Capability.Shacl.run/2; :engine_opts
     # (when present) replaces them wholesale; admit-specific keys
-    # (:engine_digest, :shape_iri) are stripped so they never reach the wire.
-    engine_opts =
-      opts[:engine_opts] || Keyword.drop(opts, [:engine_digest, :shape_iri])
+    # (:engine_digest, :shape_iri, :shapes, :shacl_module, :data_fold) are
+    # stripped so they never reach the wire (engine_opts_for/1).
+    data =
+      case opts[:data_fold] do
+        true -> expand_fold(data)
+        _ -> data
+      end
 
-    case apply(shacl, :run, [[shapes: shapes, data: %{text: data}], engine_opts]) do
+    case data do
+      {:refused, _, _} = refused ->
+        refused
+
+      text when is_binary(text) ->
+        run_one(shacl, shapes, text, digest, opts)
+
+      other ->
+        {:refused, :smalt_graphlaw_engine_error, %{data_fold: {:bad_expansion, inspect(other)}}}
+    end
+  end
+
+  defp run_one(shacl, shapes, text, digest, opts) do
+    case apply(shacl, :run, [[shapes: shapes, data: %{text: text}], engine_opts_for(opts)]) do
       {:ok, result} ->
         if Map.get(result, :conforms) do
-          {:ok, mint_receipt(data, digest, opts)}
+          {:ok, mint_receipt(text, digest, opts)}
         else
           {:refused, :smalt_shacl_violation, %{results: Map.get(result, :results, [])}}
         end
@@ -188,6 +221,30 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
         {:refused, :smalt_graphlaw_engine_error, engine_refusal_details(refusal)}
     end
   end
+
+  defp engine_opts_for(opts) do
+    opts[:engine_opts] ||
+      Keyword.drop(opts, [:engine_digest, :shape_iri, :shapes, :shacl_module, :data_fold])
+  end
+
+  # Length-prefixed fold expansion: <<len::32, frame::binary-size(len), ...>>
+  # -> newline-joined Turtle documents (one engine call per fold). Builds an
+  # iolist and flattens — never an improper list.
+  @spec expand_fold(binary()) :: binary() | {:refused, :smalt_shacl_violation, map()}
+  defp expand_fold(<<>>), do: ""
+
+  defp expand_fold(fold) do
+    expand_fold_iolist(fold, []) |> IO.iodata_to_binary()
+  end
+
+  defp expand_fold_iolist(<<len::32-unsigned-big, frame::binary-size(len), rest::binary>>, acc) do
+    expand_fold_iolist(rest, [acc | [frame, "\n"]])
+  end
+
+  defp expand_fold_iolist(<<>>, acc), do: acc
+
+  defp expand_fold_iolist(_truncated, _acc),
+    do: {:refused, :smalt_shacl_violation, %{data_fold: :truncated}}
 
   defp mint_receipt(data, digest, opts) do
     shape_iri = opts[:shape_iri] || "tosca:ObjectStorageShape"
@@ -261,13 +318,22 @@ defmodule Smalt.GraphlawEx.ShaclAdmission do
     end
   end
 
-  defp shacl_module do
-    mod = Module.concat([AshGraphLaw, Capability, Shacl])
+  defp shacl_module(opts) do
+    case opts[:shacl_module] do
+      nil ->
+        mod = Module.concat([AshGraphLaw, Capability, Shacl])
 
-    if Code.ensure_loaded?(mod) do
-      {:ok, mod}
-    else
-      {:error, :ash_graphlaw_not_loaded}
+        if Code.ensure_loaded?(mod) do
+          {:ok, mod}
+        else
+          {:error, :ash_graphlaw_not_loaded}
+        end
+
+      mod when is_atom(mod) ->
+        {:ok, mod}
+
+      other ->
+        {:error, {:shacl_module_not_module, other}}
     end
   end
 

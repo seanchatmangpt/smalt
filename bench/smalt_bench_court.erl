@@ -11,7 +11,7 @@
 -module(smalt_bench_court).
 
 -export([run_benchmark/3, run_all/1, emit_receipt/2, add_target/3,
-         run_registered/2, list_targets/0, court_selftest/0]).
+         run_registered/2, list_targets/0, court_selftest/0, add_bc_targets/0]).
 
 -define(RECEIPT_DIR, "tmp/bench").
 -define(FIELDS, [n, wall_ms, ops_sec, ns_per_op, reds_per_op, heap_delta]).
@@ -183,3 +183,20 @@ ets_stub() ->
     T = ets_stub_table,
     ets:insert(T, {k, erlang:unique_integer()}),
     ets:lookup(T, k).
+
+%% ------------------------------------------------------------------
+%% BC lane (v26.11.6 wave+1) — ADDITIVE registrations only. The BC benches
+%% that fit the 0-arity Mod:Fun() contract register here; run_registered/2
+%% runs them through the standard run_benchmark/3 accounting. The ctx-bound
+%% pairs (ring/pool/log) boot their collaborators on first call.
+%% ------------------------------------------------------------------
+
+add_bc_targets() ->
+    ok = add_target(<<"bc_sasl_plain_admit">>, bench_bc_lane, sasl_admit0),
+    ok = add_target(<<"bc_plaintext_admit">>, bench_bc_lane, plaintext_admit0),
+    ok = add_target(<<"bc_ring_submit">>, bench_bc_lane, ring_submit0),
+    ok = add_target(<<"bc_pool_submit">>, bench_bc_lane, pool_submit0),
+    ok = add_target(<<"bc_partitionlog_produce">>, bench_bc_lane, produce0),
+    ok = add_target(<<"bc_journal_floor_append">>, bench_bc_lane, journal_floor0),
+    ok = add_target(<<"bc_partitionlog_fetch">>, bench_bc_lane, fetch0),
+    ok.

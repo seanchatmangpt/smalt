@@ -338,11 +338,28 @@ defmodule Smalt.Store.DetsMirror do
         # concurrent Smalt.Store.insert_new/3 and could clobber the fresh
         # value with a stale mirror value (lens-3 cycle-4 court kills that
         # interleaving; the old non-atomic form failed the court).
-        case Smalt.Store.insert_new(table, key, val) do
+        case Smalt.Store.insert_new(table, key, restore_transform(table, val)) do
           :ok -> n + 1
           {:error, :exists} -> n
         end
       end)
     end
   end
+
+  # EH checkpoint restore transform: a mirrored :smalt_eh_checkpoints row
+  # carries the processing-lease claim that was live at mirror time. That
+  # lease's owner died with the beam — restoring it verbatim would fence
+  # every live consumer out of the partition until TTL expiry (the checkpoint
+  # value is claim-blind CAS'd, but reserve_processing would see a
+  # live-looking claim from a dead owner). restore/0 strips the "claim"
+  # field so the restored partition is lease-free; checkpoint offsets
+  # themselves restore intact. All other tables restore verbatim (identity
+  # transform).
+  @claim_stripped_tables [:smalt_eh_checkpoints]
+
+  defp restore_transform(table, val) when is_map(val) and table in @claim_stripped_tables do
+    Map.delete(val, "claim")
+  end
+
+  defp restore_transform(_table, val), do: val
 end

@@ -1,0 +1,75 @@
+{
+  "domain": "SMALT/AOQ-LINK/v2",
+  "description": "Shared golden vectors for the ledger chain-link digest (lane 11, v26.11.6). link law (chain_gen=2): BLAKE3(domain_utf8 || raw32(prev_root) || u64BE(seq) || raw32(data_hash) || sub_ledger_id); merkle_root is lowercase hex on the wire. Legacy law (chain_gen=1): sha256((prev_root <> data_hash) as lowercase-hex text). data_hash is sha256 of sorted-key compact JSON of the contents. Asserted by the Elixir suite, the Go twin (posh/internal/receipt/chain_link_test.go), and gates/ledger_chain_gate.py via gates/blake3_ref.py.",
+  "blake3_kat": [
+    {
+      "name": "empty",
+      "input_hex": "",
+      "digest_hex": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+    },
+    {
+      "name": "one-zero-byte",
+      "input_hex": "00",
+      "digest_hex": "2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213"
+    }
+  ],
+  "hex_fold_differs": "c32787e63257f46212bd67bf01711ce545c1fed6c27fb3fe8eda1c01416b0176",
+  "link_vectors": [
+    {
+      "name": "gen2-link-1",
+      "chain_gen": 2,
+      "prev_root_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "seq": 1,
+      "data_hash_hex": "874f8d4b413217dab92576780d880af5a74a2981e2da75cdf1f9aec1cae07664",
+      "sub_ledger_id": "default_ledger",
+      "link_digest_hex": "6c0d1d955712a11197ee50d8519eeb5f53ee84cc7347470fb48917ae642862c6"
+    },
+    {
+      "name": "gen2-link-2",
+      "chain_gen": 2,
+      "prev_root_hex": "6c0d1d955712a11197ee50d8519eeb5f53ee84cc7347470fb48917ae642862c6",
+      "seq": 2,
+      "data_hash_hex": "f33bc795642c18d0bd68bfca43568c0c30eec4f63deed3ce6261b84eb20fe2d5",
+      "sub_ledger_id": "default_ledger",
+      "link_digest_hex": "2627ce6d5ed38aa47aa8236ccdc70796e696b40d0023cc5953b476dfb204f5bb"
+    },
+    {
+      "name": "gen2-link-3",
+      "chain_gen": 2,
+      "prev_root_hex": "2627ce6d5ed38aa47aa8236ccdc70796e696b40d0023cc5953b476dfb204f5bb",
+      "seq": 3,
+      "data_hash_hex": "54769a6bedb3d72fdf414ad476edf1a601167f7c3b3c5a10aa4b37cf6b675bc2",
+      "sub_ledger_id": "default_ledger",
+      "link_digest_hex": "5e762312acdf458c30a3ffac8e54adbde83104a47a4633aa9c7ead5b1263a2a7"
+    }
+  ],
+  "legacy_vectors": [
+    {
+      "name": "gen1-link-1",
+      "chain_gen": 1,
+      "prev_root_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "seq": 1,
+      "data_hash_hex": "874f8d4b413217dab92576780d880af5a74a2981e2da75cdf1f9aec1cae07664",
+      "sub_ledger_id": "default_ledger",
+      "link_digest_hex": "b116240711bf9ed2acdcb739b502a2dd58254c4734776dcd40e5bdac33e70ee1"
+    },
+    {
+      "name": "gen1-link-2",
+      "chain_gen": 1,
+      "prev_root_hex": "b116240711bf9ed2acdcb739b502a2dd58254c4734776dcd40e5bdac33e70ee1",
+      "seq": 2,
+      "data_hash_hex": "f33bc795642c18d0bd68bfca43568c0c30eec4f63deed3ce6261b84eb20fe2d5",
+      "sub_ledger_id": "default_ledger",
+      "link_digest_hex": "b4a19c1f8918a2064237da02b90d5f8b801e3f74de186a8d9eb65b52dc3255d1"
+    },
+    {
+      "name": "gen1-link-3",
+      "chain_gen": 1,
+      "prev_root_hex": "b4a19c1f8918a2064237da02b90d5f8b801e3f74de186a8d9eb65b52dc3255d1",
+      "seq": 3,
+      "data_hash_hex": "54769a6bedb3d72fdf414ad476edf1a601167f7c3b3c5a10aa4b37cf6b675bc2",
+      "sub_ledger_id": "default_ledger",
+      "link_digest_hex": "b0eb847a8cbfdc4847b7a795ff2c730fbd33b1330d6057cd1692070ef8a79135"
+    }
+  ]
+}

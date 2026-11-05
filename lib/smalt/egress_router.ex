@@ -173,6 +173,18 @@ defmodule Smalt.EgressRouter do
   # the reference never resolves at compile time; claims only /apim-gw/* and
   # passes everything else through un-halted.
   plug(:apim_gateway_plane)
+  # KINESIS lane (K-IN): POST / with X-Amz-Target: Kinesis_20131202.<Op> —
+  # the botocore-documented json 1.1 face (SigV4 kinesis service, pinned
+  # 2-shard registry on the EH partition store, 200+JSON success, AWS __type
+  # errors). Runtime atom plug (w6r idiom): claims only its target shape,
+  # passes everything else through un-halted.
+  plug(:kinesis_rest_face)
+  # SQS lane (K-SQ): POST / with Action= — the AWS query-protocol face
+  # (form-POST parse, XML envelopes, SigV4 service=sqs, E1 claim_wait
+  # long-poll). Runtime atom plug: claims only Action= POSTs on /,
+  # passes everything else through un-halted. BEFORE ServiceBusRestRoutes
+  # per the lane's disclosed mount (path / is claimed only on Action=).
+  plug(:sqs_query_face)
   plug(:w6r_fallthrough)
   plug(:match)
   plug(:dispatch)
@@ -195,6 +207,25 @@ defmodule Smalt.EgressRouter do
 
   defp apim_gateway_plane(conn, _opts) do
     Smalt.Apim.gateway(conn, [])
+  end
+
+  # KINESIS lane mount (see plug comment above): delegator with the same
+  # sent/halted end-of-chain law as w6r_fallthrough.
+  defp kinesis_rest_face(conn, _opts) do
+    if conn.halted or conn.state in [:sent, :chunked] do
+      conn
+    else
+      Smalt.Egress.KinesisRoutes.call(conn, [])
+    end
+  end
+
+  # SQS lane mount (see plug comment above): same delegator law.
+  defp sqs_query_face(conn, _opts) do
+    if conn.halted or conn.state in [:sent, :chunked] do
+      conn
+    else
+      Smalt.Egress.Sqs.SqsRoutes.call(conn, [])
+    end
   end
 
   defp w6r_fallthrough(conn, _opts) do

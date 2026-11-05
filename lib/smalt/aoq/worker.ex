@@ -69,24 +69,46 @@ defmodule Smalt.Aoq.Worker do
   def via(idx, count), do: registered(rem(idx, count))
 
   @doc false
-  def loop(index) do
-    receive do
-      {:aoq_frame, frame} ->
-        # The seam: behaviour dispatch, never a direct NIF call from here.
-        _parsed = Smalt.Aoq.NifHolder.parse(frame)
-        loop(index)
+  def loop(index), do: loop(index, [])
 
-      :stop ->
-        :ok
-    after
-      # SLEEP-CLASS: POLL-STEP — GC heartbeat, not coordination. max_heap_size
-      # enforcement is GC-gated and the idle zero-alloc loop never GCs on its
-      # own; this 30 s timeout forces a collection then recurses. The runtime
-      # owns the interval; the process has genuinely nothing to do until a
-      # frame or the heartbeat arrives.
-      30_000 ->
-        :erlang.garbage_collect()
-        loop(index)
+  # L9 cross-lane attach (disclosed per both-receipt law): the parse-discard
+  # arm became a micro-batch admission accumulate/dispatch. The cap is
+  # Admission.batch_max/0 (32); dead-letter on refusal is handled INSIDE
+  # admit_batch (Tables record + [:smalt, :aoq, :admission, :refused]
+  # telemetry) — the worker only accumulates and dispatches.
+  defp loop(index, pending) do
+    case length(pending) >= Smalt.Aoq.Admission.batch_max() do
+      true ->
+        Smalt.Aoq.Admission.admit_batch(:lists.reverse(pending))
+        loop(index, [])
+
+      false ->
+        receive do
+          {:aoq_frame, frame} ->
+            loop(index, [frame | pending])
+
+          :stop ->
+            # Drain the tail batch before stopping (refusals are dead-lettered
+            # inside admit_batch, never dropped silently here).
+            case :lists.reverse(pending) do
+              [] -> :ok
+              batch -> Smalt.Aoq.Admission.admit_batch(batch)
+            end
+        after
+          # SLEEP-CLASS: POLL-STEP — GC heartbeat, not coordination. max_heap_size
+          # enforcement is GC-gated and the idle zero-alloc loop never GCs on its
+          # own; this 30 s timeout forces a collection then recurses. The runtime
+          # owns the interval; the process has genuinely nothing to do until a
+          # frame or the heartbeat arrives.
+          30_000 ->
+            :erlang.garbage_collect()
+            case :lists.reverse(pending) do
+              [] -> loop(index, [])
+              batch ->
+                Smalt.Aoq.Admission.admit_batch(batch)
+                loop(index, [])
+            end
+        end
     end
   end
 end

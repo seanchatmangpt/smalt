@@ -1,0 +1,10 @@
+{"heap_delta_bytes":0,"n":2000,"name":"bc_journal_floor_append","ns_per_op":40821.1045,"ops_per_sec":24497.132359561707,"reds_per_op":3545.1625,"rounds":7,"wall_ms":81.642209}
+{"heap_delta_bytes":0,"n":500,"name":"bc_partitionlog_fetch","ns_per_op":5826555.334,"ops_per_sec":171.62799332989223,"reds_per_op":438529.33,"rounds":7,"wall_ms":2913.277667}
+{"heap_delta_bytes":0,"n":2000,"name":"bc_partitionlog_produce","ns_per_op":28303.0415,"ops_per_sec":35331.89180392503,"reds_per_op":2716.961,"rounds":7,"wall_ms":56.606083}
+{"heap_delta_bytes":0,"n":200000,"name":"bc_plaintext_admit","ns_per_op":4.48104,"ops_per_sec":223162480.13853925,"reds_per_op":4.0,"rounds":7,"wall_ms":0.896208}
+{"heap_delta_bytes":0,"n":20000,"name":"bc_pool_submit","ns_per_op":1604.88125,"ops_per_sec":623099.0610676024,"reds_per_op":273.6265,"rounds":7,"wall_ms":32.097625}
+{"heap_delta_bytes":0,"n":20000,"name":"bc_ring_submit","ns_per_op":1878.90205,"ops_per_sec":532225.721931593,"reds_per_op":128.70595,"rounds":7,"wall_ms":37.578041}
+{"heap_delta_bytes":0,"n":200000,"name":"bc_sasl_plain_admit","ns_per_op":232.206875,"ops_per_sec":4306504.706202175,"reds_per_op":15.021625,"rounds":7,"wall_ms":46.441375}
+{"fence":"bc_sasl_overhead_max","ratio":51.81986213021977,"verdict":"pass"}
+{"fence":"bc_ring_pool_ratio_min","ratio":1.1707421031929932,"verdict":"pass"}
+{"fence":"bc_log_engine_overhead_max","ratio":0.693343353803668,"verdict":"pass"}

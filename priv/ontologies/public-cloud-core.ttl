@@ -6,6 +6,7 @@
 @prefix sec:     <https://w3id.org/security#> .
 @prefix org:     <http://www.w3.org/ns/org#> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
 
 @prefix owl:     <http://www.w3.org/2002/07/owl#> .
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -479,3 +480,156 @@ tosca:GovernanceSurface
     a owl:Class ;
     rdfs:subClassOf tosca:CoreCapability ;
     rdfs:comment "Resource locks, policy exemptions/remediations/set-definitions, diagnostic settings, data-collection rules, security onboarding, purview accounts. Coverage: 8 admitted types." .
+
+# =============================================================================
+# EVENT / INGEST ADMISSION SECTION (WAVE C, lane G2)
+# =============================================================================
+#
+# Purpose: admission-shape (SHACL closed) vocabulary for the AoQ binary
+# frame stream and its schema-registered stream sources, expressed so the
+# ggen EvidenceProjector (crates/ggen-graph/src/ocel/projection.rs) can
+# project admitted frames as prov: quads without minting proprietary IRIs
+# in THIS file. Mapping law:
+#   - each AoQ frame  -> a prov:Activity node (an event/activity in the
+#     PROV-O sense; prov: is a W3C Recommendation and its IRIs pass the
+#     zero-proprietary court's w3.org allowance)
+#   - frame header fields -> cimi: local-extension datatype properties
+#     (disclosed below, per this file's established local-extension law)
+#   - epoch/seq identity -> dcterms:identifier as "epoch:seq"
+#   - ingest capture time -> prov:startedAtTime (xsd:dateTime)
+#   - stream source (EH Schema Registry subject) -> cimi:StreamSource
+#     entity carrying the schema id in dcterms:identifier
+#   - frame -> source linkage -> prov:used (prov:Activity prov:used Entity)
+#
+# ENGINE-LAW (v26.10.31 lane-9 finding, restated for this section): at most
+# ONE distinct sh:pattern per property shape (bnode). Every pattern below
+# is a single collapsed regex; no two-pattern bnodes exist here.
+#
+# LOCAL-EXTENSION DISCLOSURE (normative, extends the list above):
+# The following cimi: local names are LOCAL EXTENSIONS, not claims of DMTF
+# CIMI 2 provenance: cimi:StreamSource (class), cimi:frame.magic,
+# cimi:frame.version, cimi:frame.epoch, cimi:frame.sequence,
+# cimi:frame.type, cimi:frame.flags, cimi:frame.payloadLength,
+# cimi:frame.crc32. All other terms in this section are published terms of
+# W3C PROV-O (prov:) or Dublin Core (dcterms:).
+#
+# ZERO-PROPRIETARY NOTE: no vendor IRIs. The ocel-standard namespace used
+# by the ggen projector lives in the projector, not here; this graph only
+# fixes the ADMISSION shape of what may be projected.
+
+# 10. AoQ Stream Frame Admission Gate
+# Each admitted frame is a prov:Activity carrying its complete wire header
+# (magic AOQ1, version u16, epoch u16, seq u64, type u8, flags u16,
+# payload_len u64, crc32) plus its epoch:seq identity, capture time, and a
+# prov:used link to its cimi:StreamSource.
+prov:StreamFrameShape
+    a sh:NodeShape ;
+    sh:targetClass prov:Activity ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        # Frame identity "epoch:seq" (epoch u16, seq u64).
+        sh:pattern "^[0-9]{1,5}:[0-9]{1,20}$" ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.magic ;
+        sh:datatype xsd:string ;
+        sh:in ( "AOQ1" ) ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.version ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 65535 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.epoch ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 65535 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.sequence ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 18446744073709551615 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.type ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 255 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.flags ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 65535 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.payloadLength ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 18446744073709551615 ;
+    ] ;
+    sh:property [
+        sh:path cimi:frame.crc32 ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^[0-9a-fA-F]{8}$" ;
+    ] ;
+    sh:property [
+        sh:path prov:startedAtTime ;
+        sh:datatype xsd:dateTime ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path prov:used ;
+        sh:class cimi:StreamSource ;
+        sh:minCount 1 ;
+    ] .
+
+# 11. Stream Source Admission Gate
+# A registered stream source (EH Schema Registry subject): the schema id is
+# the dcterms:identifier; the event-type name is dcterms:title.
+cimi:StreamSourceShape
+    a sh:NodeShape ;
+    sh:targetClass cimi:StreamSource ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:property [
+        sh:path dcterms:identifier ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path dcterms:title ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] .
+
+cimi:StreamSource
+    a owl:Class ;
+    rdfs:label "Registered event stream source (local extension; schema-id carrier)." ;
+    rdfs:seeAlso prov:StreamFrameShape .

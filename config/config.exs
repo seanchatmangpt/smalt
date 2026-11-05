@@ -99,7 +99,13 @@ config :smalt, :throttle_clock, nil
 # boot for every existing surface. The subtree is mounted by the data plane
 # (Smalt.Plane.DataSupervisor) when enabled: true. Default port 9093 — 9092
 # is the Kafka wire face's default in the same plane.
-config :smalt, :aoq, enabled: false, port: 9093
+config :smalt, :aoq, enabled: false, port: 9093, pqc: false
+
+# PQC posture (v26.11.6 lane 13): `pqc: false` is the DEFAULT — flipping to
+# true requires a PQC-capable NIF; `Smalt.Aoq.NifHolder` refuses typed
+# (`{:pqc_nif_incapable, impl}`) rather than quietly falling back to
+# classical-only framing. config.ex is the GENERATED file — this gate lives
+# in the hand-written config.exs only.
 
 # AZURE-FIDELITY lane 8 + G2 gap-closure: Marketplace SaaS fulfillment face
 # (/saas/*) on the egress router. DEFAULT-ON as of 2026-10-25 (config flip) —

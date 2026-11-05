@@ -14,9 +14,29 @@ count, or PASS/FAIL token) found in the file.
 
 | Lane | Receipt | Standing | Summary |
 |---|---|---|---|
+| l11-supervis | [l11-supervisor.md](receipts/l11-supervisor.md) | ALIVE | L11 — AoQ supervisor skeleton (Smalt.Aoq.Supervisor subtree) **NO-CONTEXT** |
 | l12-bin-opt- | [l12-bin-opt-gate.md](receipts/l12-bin-opt-gate.md) | ALIVE | L12r — bin_opt gate + shim court (aq-architecture-spec §4) **NO-CONTEXT** |
-| l13-framing- | [l13-framing-court.md](receipts/l13-framing-court.md) | PARTIAL_ALIVE | L13 — AoQ Framing Law Court **NO-CONTEXT** |
+| l13-framing- | [l13-framing-court.md](receipts/l13-framing-court.md) | ALIVE | L13 — AoQ Framing Law Court **NO-CONTEXT** |
 | l15-cursor-t | [l15-cursor-tables.md](receipts/l15-cursor-tables.md) | ALIVE | L15 Receipt — AOQ Cursor + persistent_term Tables **NO-CONTEXT** |
+| l16-kv7-orac | [l16-kv7-oracle.md](receipts/l16-kv7-oracle.md) | ALIVE | L16 — kv7 BEAM-oracle live leg **NO-CONTEXT** |
+| l19-slab-fra | [l19-slab-frame-nif.md](receipts/l19-slab-frame-nif.md) | ALIVE | L19 — aq_slab NIF Surface 1 (slab frame + lease) **NO-CONTEXT** |
+| l23-slab-win | [l23-slab-window-nif.md](receipts/l23-slab-window-nif.md) | ALIVE | L23r — aq_slab_window NIF surface 2 (window views over slab frames) **NO-CONTEXT** |
+| l24-receipt- | [l24-receipt-lint.md](receipts/l24-receipt-lint.md) | ALIVE | L24 — Receipt Standing Lint Port (smalt) **NO-CONTEXT** |
+| l28-aoq-plan | [l28-aoq-plane.md](receipts/l28-aoq-plane.md) | PARTIAL_ALIVE | L28r — AoQ as a bootable plane name (spec §1.3) **NO-CONTEXT** |
+| l29-court-ch | [l29-court-chain.md](receipts/l29-court-chain.md) | PARTIAL_ALIVE | L29 — AoQ fences wired into the full court (spec §3/§4) **NO-CONTEXT** |
+| l32-kd178 | [l32-kd178.md](receipts/l32-kd178.md) | PASS | L32 / KD-178 — Web PubSub broker-restart state wipe **NO-CONTEXT** |
+| l34-kd176 | [l34-kd176.md](receipts/l34-kd176.md) | ALIVE | L34 — KD-176 MAA nonce registry bounds: close-condition verify + non-vacuity gate **NO-CONTEXT** |
+| l35-kd188 | [l35-kd188.md](receipts/l35-kd188.md) | PASS | L35 — KD-188: ARM storage managementPolicies child route **NO-CONTEXT** |
+| l37-kd50 | [l37-kd50.md](receipts/l37-kd50.md) | PASS | L37 — KD-50: SB queue property camelCase readback court |
+| l38-epoch-ro | [l38-epoch-rotate.md](receipts/l38-epoch-rotate.md) | PASS | L38 — AoQ epoch-rotate handler (frame 0x03) **NO-CONTEXT** |
+| l41-worker-b | [l41-worker-binopt.md](receipts/l41-worker-binopt.md) | PASS | L41 — bin-opt gate defect: `stage3_fields/2` context-reuse defeat (frame.ex, not worker.ex) **NO-CONTEXT** |
+| l42-kd99 | [l42-kd99.md](receipts/l42-kd99.md) | PASS | L42 KD-99 RS256+JWKS remainder court |
+| l44-kd130 | [l44-kd130.md](receipts/l44-kd130.md) | PASS | L44 — KD-130 close: blob container re-create answers unconditional 409 ContainerAlreadyExists |
+| l46-aoq-benc | [l46-aoq-bench.md](receipts/l46-aoq-bench.md) | ALIVE | L46 — AoQ bench lane: listener→pool→worker end-to-end throughput **NO-CONTEXT** |
+| l47-census-f | [l47-census-fence.md](receipts/l47-census-fence.md) | PASS | L47 — internal tier population-fence drift repair (census) **NO-CONTEXT** |
+| l52-arrow-bo | [l52-arrow-boot.md](receipts/l52-arrow-boot.md) | PASS | L52 — AoQ Arrow schema-bundle boot write path **NO-CONTEXT** |
+| l53-substrat | [l53-substrate-timeout.md](receipts/l53-substrate-timeout.md) | PASS | L53 — substrate.sh cold-boot readiness: budget not clock **NO-CONTEXT** |
+| l54-legalhol | [l54-legalhold.md](receipts/l54-legalhold.md) | PASS | L54 — KD-189: blob legal-hold PUT body divergence (candidate GENUINE, fixed) |
 | l9-vm-flags | [l9-vm-flags.md](receipts/l9-vm-flags.md) | ALIVE | L9r — AoQ VM flags surface (retry of dead L9) **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
@@ -99,6 +119,7 @@ No receipt file on disk: cli-01, cli-02, cli-03, cli-04, cli-05, cli-06, cli-07,
 | dod-61 | (no receipt file — justfile module `justfile.d/61-tripwire.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-62 | (no receipt file — justfile module `justfile.d/62-bin-opt.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-63 | (no receipt file — justfile module `justfile.d/63-aoq.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-64 | (no receipt file — justfile module `justfile.d/64-receipts.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

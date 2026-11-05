@@ -73,6 +73,11 @@ config :smalt,
   kafka_port: test_port.("KAFKA", 9092),
   kafka_log_dir: System.get_env("SMALT_KAFKA_LOG_DIR") ||
                    Path.join(System.tmp_dir!(), "smalt-kafka-journal-test-#{:rand.uniform(1_000_000_000)}"),
+  # v26.11.6 L6 (disclosed, config not lane-owned): AoQ log journal dir —
+  # same per-run tmp contract as kafka_log_dir (overridable via
+  # SMALT_AOQ_LOG_DIR).
+  aoq_log_dir: System.get_env("SMALT_AOQ_LOG_DIR") ||
+                 Path.join(System.tmp_dir!(), "smalt-aoq-journal-test-#{:rand.uniform(1_000_000_000)}"),
   # T02/T05 follow-up unblock (lane L02, disclosed): the SAML IdP face
   # (:saml_idp_port, fixed 9445 fallback in saml_idp.ex) and the OIDC IdP face
   # (:oidc_port, fixed 9446 fallback in oidc_idp.ex) bind FIXED ports in test —

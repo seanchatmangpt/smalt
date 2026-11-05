@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Invariant gate: Confidential Ledger Merkle-chain continuity (core).
 
-WO-22/23/24 gate retarget (v26.10.31 inversion, 2026-10-30). The ledger-chain
-invariant STAYS CORE per the L8 ruling (sha256 Merkle chain; the BLAKE3
-turnstile-digest retarget is PENDING THE CORE SWAP -- recorded here, not
-wired, because the serving face still folds sha256(prev <> data_hash)).
+v26.11.6 lane-11 retarget (CORE SWAP LANDED): the Merkle link is now
+chain-gen-2 BLAKE3 -- link_digest = BLAKE3("SMALT/AOQ-LINK/v2" ||
+raw32(prev_root) || seq::u64-BE || raw32(data_hash) || sub_ledger_id) --
+re-derivable here through the vendored, import-KAT-fenced gates/blake3_ref.py.
+The former "PENDING THE CORE SWAP" docstring note is RETIRED by this swap
+(receipt: docs/jira/v26.11.6/receipts/lane11-blake3-chain-retarget.md).
+Gen-1 receipts (no chain_gen key) verify forever under the legacy
+sha256 hex-fold law; verdict() dispatches on receipt["chain_gen"] || 1.
 
 The gate's subject moved twice under it:
 
@@ -42,15 +46,45 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import blake3_ref  # import-time BLAKE3 KAT: a broken hash law exits nonzero
 import common
 
 ZERO_HASH = "0" * 64
+LINK_DOMAIN = "SMALT/AOQ-LINK/v2"
 ENTRIES = [{"k": "gate-a"}, {"k": "gate-b"}, {"k": "gate-c"}]
 
 
 def data_hash(contents):
     canonical = json.dumps(contents, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def link_digest(prev_root_hex, seq, data_hash_hex, sub_ledger_id):
+    """Chain-gen-2 Merkle link (byte-exact with LedgerWriter.link_digest/4)."""
+    prev_raw = bytes.fromhex(prev_root_hex)
+    dh_raw = bytes.fromhex(data_hash_hex)
+    return blake3_ref.blake3_hex(
+        LINK_DOMAIN.encode() + prev_raw + seq.to_bytes(8, "big") + dh_raw
+        + sub_ledger_id.encode())
+
+
+def legacy_link(prev_root_hex, data_hash_hex):
+    """Chain-gen-1 Merkle link (sha256 hex-fold, verifies forever)."""
+    return hashlib.sha256((prev_root_hex + data_hash_hex).encode()).hexdigest()
+
+
+def receipt_link(receipt):
+    """Re-derive the link under the receipt's own chain generation."""
+    gen = receipt.get("chain_gen", 1)
+    seq = int(str(receipt.get("transactionId", "0")).split(".")[0])
+    if gen == 2:
+        return link_digest(receipt.get("prev_hash", ZERO_HASH), seq,
+                           receipt.get("data_hash", ""), 
+                           receipt.get("subLedgerId", ""))
+    if gen == 1:
+        return legacy_link(receipt.get("prev_hash", ZERO_HASH),
+                           receipt.get("data_hash", ""))
+    return None
 
 
 def capture(ports, shared_key):
@@ -80,6 +114,10 @@ def capture(ports, shared_key):
 
     s_latest, _, latest = common.http(egress, "GET", "/app/transactions/latest")
     return {
+        # Ledger binding pin: the face appends to one named ledger; every
+        # chain receipt must carry it (ledger-id-unbound fixture kills an
+        # unbound verifier).
+        "ledger": receipts[0].get("subLedgerId") if receipts else None,
         "appends": statuses,
         "receipts": receipts,
         "dup_status": s_dup,
@@ -123,19 +161,19 @@ def verdict(obs):
           "chain walk fetched every link incl. the duplicate")
 
     s_latest = obs.get("latest_status")
-    latest_tx = obs.get("latest", {}).get("transactionId")
+    latest_tx = (obs.get("latest") or {}).get("transactionId")
     check(s_latest == 200 and latest_tx == dup_tx,
           f"latest is the duplicate append (got {s_latest}, tx {latest_tx!r})")
 
     prev = ZERO_HASH
     seq = 0
     chain_ok = True
-    chain_msg = "chain continuity holds incl. duplicate link"
+    chain_msg = "chain continuity holds incl. duplicate link (gen dispatch)"
     for r in listed:
         seq += 1
         tx = r.get("transactionId", "")
         if tx != f"{seq}.1":
-            chain_ok, chain_msg = False, f"tx id {tx!r} != {seq}.1"
+            chain_ok, chain_msg = False, f"{tx}: tx id {tx!r} != {seq}.1"
             break
         dh = data_hash(r.get("contents", {}))
         if r.get("data_hash") != dh:
@@ -144,9 +182,15 @@ def verdict(obs):
         if r.get("prev_hash") != prev:
             chain_ok, chain_msg = False, f"{tx}: prev_hash does not link"
             break
-        root = hashlib.sha256((prev + dh).encode()).hexdigest()
+        root = receipt_link(r)
+        if root is None:
+            chain_ok, chain_msg = False, f"{tx}: unknown chain_gen"
+            break
         if r.get("merkle_root") != root:
             chain_ok, chain_msg = False, f"{tx}: merkle_root re-derivation mismatch"
+            break
+        if r.get("subLedgerId") != obs.get("ledger"):
+            chain_ok, chain_msg = False, f"{tx}: subLedgerId not bound to {obs.get('ledger')}"
             break
         prev = r.get("merkle_root")
     check(chain_ok, chain_msg)
@@ -205,6 +249,45 @@ def mutate_fixtures(obs):
     def short_chain(o):
         o["listed"] = o["listed"][:2]
 
+    def gen_erase(o):
+        # Kills the ignore-chain_gen mutant: erasing the field drops the
+        # receipt to gen-1 law, under which its gen-2 root mismatches.
+        o["listed"][0].pop("chain_gen", None)
+
+    def wrong_gen(o):
+        # Kills the stamp-back mutant: chain_gen 2 re-stamped as 1.
+        o["listed"][1]["chain_gen"] = 1
+
+    def seq_not_in_digest(o):
+        # Kills the seq-unbound verifier: forge a SELF-CONSISTENT chain whose
+        # roots were computed with the seq omitted from the link digest. Only
+        # a verifier that binds seq re-derives a mismatch.
+        prev = o["listed"][0].get("prev_hash", ZERO_HASH)
+        for r in o["listed"]:
+            dh = r.get("data_hash", "")
+            prev_raw = bytes.fromhex(prev)
+            dh_raw = bytes.fromhex(dh)
+            no_seq = blake3_ref.blake3_hex(
+                LINK_DOMAIN.encode() + prev_raw + dh_raw
+                + r.get("subLedgerId", "").encode())
+            r["merkle_root"] = no_seq
+            r["prev_hash"] = prev
+            prev = no_seq
+
+    def ledger_id_unbound(o):
+        # Kills the ledger-unbound verifier: rebind every receipt to a
+        # foreign subLedgerId and recompute all roots so the chain is fully
+        # self-consistent under an unbound law; only the obs["ledger"] pin
+        # catches it.
+        for r in o["listed"]:
+            r["subLedgerId"] = "attacker-ledger"
+        prev = ZERO_HASH
+        for i, r in enumerate(o["listed"], 1):
+            dh = r.get("data_hash", "")
+            r["merkle_root"] = link_digest(prev, i, dh, "attacker-ledger")
+            r["prev_hash"] = prev
+            prev = r["merkle_root"]
+
     return [(n, _mutate(obs, f)) for n, f in
             [("broken-link", broken_link), ("wrong-root", wrong_root),
              ("tampered-contents", tampered_contents),
@@ -214,8 +297,11 @@ def mutate_fixtures(obs):
              ("dup-txid-reuse", dup_txid_reuse),
              ("latest-mismatch", latest_mismatch),
              ("fetch-not-200", fetch_not_200),
-             ("short-chain", short_chain)]]
-
+             ("short-chain", short_chain),
+             ("gen-erase", gen_erase),
+             ("wrong-gen", wrong_gen),
+             ("seq-not-in-digest", seq_not_in_digest),
+             ("ledger-id-unbound", ledger_id_unbound)]]
 
 if __name__ == "__main__":
     sys.exit(common.run_gate("ledger-chain", capture, verdict, mutate_fixtures))

@@ -12,15 +12,35 @@ defmodule Smalt.Security.LedgerWriter do
   Started lazily on first append (unlinked, so a short-lived request process
   exiting cannot take the writer down); the name registration race resolves
   with exactly one writer.
+
+  ## Chain generations (v26.11.6 BLAKE3 retarget)
+
+  New appends are chain generation 2: the Merkle link digest is
+  `BLAKE3(domain || raw32(prev_root) || seq::u64-BE || raw32(data_hash) ||
+  sub_ledger_id)` with domain `SMALT/AOQ-LINK/v2` (see `link_digest/4`).
+  Unlike the legacy gen-1 sha256 hex-fold, the gen-2 link binds the sequence
+  number and the sub-ledger id into the digest itself, so reordering links
+  or transplanting them across ledgers breaks re-derivation. `data_hash`
+  stays sha256 (link-only retarget). Receipts carry `"chain_gen" => 2`
+  inside the signed payload; `verify_receipt/1` dispatches on it and gen-1
+  receipts verify forever under `legacy_link/2`. Golden vectors shared with
+  the posh Go twin live in `verification/chain_link_vectors.json`.
+
+  Stage 2 (Sync.Receipt journal face / `Smalt.Security.ConfidentialLedger`
+  service fold onto this writer) is deliberately OUT OF SCOPE here; this
+  module only owns the append-path link law.
   """
 
   use GenServer
 
   require Logger
 
+  alias Smalt.Posh.Blake3
   alias Smalt.Security.ReceiptSigner
   alias Smalt.Store
 
+  @link_domain "SMALT/AOQ-LINK/v2"
+  @chain_gen 2
   @zero_hash String.duplicate("0", 64)
   @call_timeout 30_000
 
@@ -30,6 +50,122 @@ defmodule Smalt.Security.LedgerWriter do
   "message" => message}}}` (SHIM-COURT R143-era convention: the envelope is
   wire-ready so the egress router renders it directly).
   """
+
+  @doc """
+  Chain-generation-2 Merkle link digest (lowercase hex, 64 chars):
+
+      BLAKE3(domain_utf8 || raw32(prev_root) || seq::u64-big-endian ||
+             raw32(data_hash) || sub_ledger_id)
+
+  with `@link_domain "SMALT/AOQ-LINK/v2"`. `prev_root` and `data_hash` enter
+  as RAW 32-byte decodes of their lowercase-hex wire forms (folding the hex
+  TEXT instead is the canonical mutant class — killed by the shared
+  golden-vector encoding-spec assertions in
+  `test/smalt/security/ledger_writer_blake3_test.exs` and
+  `posh/internal/receipt/chain_link_test.go`). Byte-exact with the posh Go
+  twin over `verification/chain_link_vectors.json`.
+  """
+  @spec link_digest(String.t(), pos_integer(), String.t(), String.t()) ::
+          String.t()
+  def link_digest(prev_root, seq, data_hash, sub_ledger_id)
+      when is_binary(prev_root) and is_integer(seq) and seq > 0 and
+             is_binary(data_hash) and is_binary(sub_ledger_id) do
+    <<prev_raw::binary-32>> = Base.decode16!(prev_root, case: :mixed)
+    <<dh_raw::binary-32>> = Base.decode16!(data_hash, case: :mixed)
+
+    Blake3.digest_prefixed(
+      @link_domain <>
+        prev_raw <>
+        <<seq::unsigned-big-integer-size(64)>> <>
+        dh_raw <>
+        sub_ledger_id
+    )
+    |> Base.encode16(case: :lower)
+  end
+
+  @doc """
+  Legacy chain-generation-1 link: sha256 over the hex-text fold
+  `prev_root <> data_hash` (lowercase hex in, lowercase hex out). Kept
+  forever for gen-1 receipt verification (`verify_receipt/1` dispatch) and
+  for the seam-continuity law: a gen-2 append chains off the raw-decoded
+  legacy root of the last gen-1 receipt.
+  """
+  @spec legacy_link(String.t(), String.t()) :: String.t()
+  def legacy_link(prev_hash, data_hash)
+      when is_binary(prev_hash) and is_binary(data_hash) do
+    hash(prev_hash <> data_hash)
+  end
+
+  @doc """
+  Verifies a ledger receipt's link integrity, dispatching on
+  `receipt["chain_gen"]` (default 1 for pre-retarget receipts, which verify
+  forever). Checks `data_hash` against `contents` when contents are present,
+  then re-derives the Merkle link under the receipt's own generation law and
+  compares to `merkle_root`. Returns `:ok` or `{:error, reason}`.
+  """
+  @spec verify_receipt(map()) :: :ok | {:error, term()}
+  def verify_receipt(%{"merkle_root" => root} = receipt)
+      when is_binary(root) do
+    prev = Map.get(receipt, "prev_hash", @zero_hash)
+    dh = Map.get(receipt, "data_hash")
+    ledger = Map.get(receipt, "subLedgerId", "")
+    gen = Map.get(receipt, "chain_gen", 1)
+
+    with :ok <- verify_data_hash(receipt, dh),
+         :ok <- verify_link(gen, prev, seq_of(receipt), dh, ledger, root) do
+      :ok
+    end
+  end
+
+  def verify_receipt(other), do: {:error, {:malformed_receipt, other}}
+
+  defp verify_data_hash(_receipt, nil), do: :ok
+
+  defp verify_data_hash(%{"contents" => contents}, dh)
+       when is_map(contents) do
+    case encode_contents(contents) do
+      {:ok, ^dh} -> :ok
+      {:ok, other} -> {:error, {:data_hash_mismatch, expected: other, got: dh}}
+      :error -> {:error, {:contents_not_canonicalizable, contents}}
+    end
+  end
+
+  defp verify_data_hash(_receipt, _dh), do: :ok
+
+  defp verify_link(2, prev, seq, dh, ledger, root)
+       when seq > 0 do
+    case link_digest(prev, seq, dh, ledger) do
+      ^root -> :ok
+      other -> {:error, {:link_mismatch, expected: other, got: root}}
+    end
+  end
+
+  defp verify_link(1, prev, _seq, dh, _ledger, root) do
+    case legacy_link(prev, dh) do
+      ^root -> :ok
+      other -> {:error, {:link_mismatch, expected: other, got: root}}
+    end
+  end
+
+  defp verify_link(gen, _prev, _seq, _dh, _ledger, _root)
+       when is_integer(gen) do
+    {:error, {:unknown_chain_gen, gen}}
+  end
+
+  defp verify_link(_gen, _prev, _seq, _dh, _ledger, _root) do
+    {:error, :non_integer_chain_gen}
+  end
+
+  # transactionId is the per-ledger display id "<seq>.<index>"; the seq is
+  # the leading integer before the dot.
+  defp seq_of(%{"transactionId" => tx}) when is_binary(tx) do
+    case Integer.parse(tx) do
+      {seq, _rest} when seq > 0 -> seq
+      :error -> 0
+    end
+  end
+
+  defp seq_of(_), do: 0
   @spec append(String.t(), map()) ::
           {:ok, map()} | {:error, pos_integer(), map()}
   def append(ledger, contents, opts \\ [])
@@ -143,11 +279,16 @@ defmodule Smalt.Security.LedgerWriter do
       # so it is deliberately NOT minted qualified — any cross-ledger consumer
       # (semantic projection, tests) must match on {subLedgerId, transactionId}.
     tx_id = "#{seq}.1"
-    merkle_root = hash(prev_hash <> data_hash)
+    # Chain-gen-2 link: BLAKE3 over domain || raw32(prev) || u64BE(seq) ||
+    # raw32(data_hash) || sub_ledger_id — binds seq and ledger id into the
+    # digest. prev_hash may be a legacy gen-1 sha256 hex root (seam
+    # continuity: raw-decoded the same way); data_hash stays sha256.
+    merkle_root = link_digest(prev_hash, seq, data_hash, ledger)
 
     receipt = %{
       "transactionId" => tx_id,
       "subLedgerId" => ledger,
+      "chain_gen" => @chain_gen,
       "data_hash" => data_hash,
       "prev_hash" => prev_hash,
       "merkle_root" => merkle_root,

@@ -905,14 +905,47 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   @impl true
-  def init(:ok), do: {:ok, %{}}
+  def init(:ok), do: {:ok, %{waiters: []}}
+
+  # -- E1 (lane K-SQ): long-poll receive ---------------------------------------
+  # {:claim_wait, queue, filter_session, now, lock_duration, deadline} parks the
+  # caller as a waiter when the claim comes up empty; every availability-
+  # changing mutation (enqueue/fanout, complete, release, deadletter, sweeps,
+  # cancel_scheduled, delete_by_sequence, purge) runs flush_waiters/1 so parked
+  # receivers are woken with a REAL claim result (claimed inside the same
+  # serialized server pass — race-free against concurrent receivers: the
+  # message is claimed at wake time, not handed off for a re-claim). Deadline
+  # expiry is enforced by Process.send_after ticks (runtime SCHEDULING, never
+  # Process.sleep); cap 20s is enforced by the public claim_wait/2 wrapper.
+  @max_wait_ms 20_000
+
+  @doc """
+  Long-poll claim (lane K-SQ, E1): like `dequeue_matching/2`, but when the
+  queue is empty the caller parks inside the serialized claim server until a
+  message becomes available (enqueue/complete/release/deadletter/sweep), the
+  wait deadline passes, or the cap (#{20_000} ms) is reached — whichever first.
+  Returns the claim result or `:empty`. No `Process.sleep` anywhere.
+  """
+  @spec claim_wait(String.t(), keyword()) :: {:ok, map(), map()} | :empty
+  def claim_wait(queue, opts \\ []) do
+    now = opts[:now_ms] || System.system_time(:millisecond)
+    filter_session = opts[:session_id]
+    lock_duration = opts[:lock_duration_ms] || queue_settings(queue).lock_duration_ms
+    wait_ms = (opts[:wait_ms] || 0) |> max(0) |> min(@max_wait_ms)
+
+    # Explicit call timeout > max possible park time (deadline + margin): the
+    # deferred reply can legitimately take up to wait_ms to arrive.
+    GenServer.call(server(), {:claim_wait, queue, filter_session, now, lock_duration, now + wait_ms},
+      wait_ms + 5_000
+    )
+  end
 
   @impl true
   def handle_call({:enqueue, queue, body, opts}, _from, state) do
     if capacity_full?(queue) do
-      {:reply, {:error, :capacity}, state}
+      {:reply, {:error, :capacity}, flush_waiters(state)}
     else
-      {:reply, do_enqueue_locked(queue, body, opts), state}
+      {:reply, do_enqueue_locked(queue, body, opts), flush_waiters(state)}
     end
   end
 
@@ -937,7 +970,7 @@ defmodule Smalt.Amqp.QueueStore do
           do_enqueue_locked(sub, body, opts)
         end
 
-        {:reply, {:ok, {:fanout, length(subs)}}, state}
+        {:reply, {:ok, {:fanout, length(subs)}}, flush_waiters(state)}
     end
   end
 
@@ -950,8 +983,72 @@ defmodule Smalt.Amqp.QueueStore do
     {:reply, reply, state}
   end
 
+  # E1 (lane K-SQ): see claim_wait/2 above.
+  def handle_call({:claim_wait, queue, filter_session, now, lock_duration, deadline}, from, state) do
+    case claim_candidates(queue, now, filter_session) |> claim_next(queue, now, lock_duration) do
+      {:ok, _, _} = ready ->
+        {:reply, ready, state}
+
+      :empty when now >= deadline ->
+        {:reply, :empty, state}
+
+      :empty ->
+        waiter = %{
+          from: from,
+          queue: queue,
+          session: filter_session,
+          lock_duration: lock_duration,
+          deadline: deadline
+        }
+
+        {:noreply, schedule_tick(%{state | waiters: [waiter | state.waiters]})}
+    end
+  end
+
+  @impl true
+  def handle_info(:waiters_tick, state) do
+    {:noreply, flush_waiters(state)}
+  end
+
+  # Schedule the nearest-deadline tick (idempotent: a redundant tick finding
+  # nothing expired is a no-op flush).
+  defp schedule_tick(%{waiters: []} = state), do: state
+
+  defp schedule_tick(%{waiters: waiters} = state) do
+    next = waiters |> Enum.map(& &1.deadline) |> Enum.min()
+    delay = max(next - System.system_time(:millisecond), 1)
+    Process.send_after(self(), :waiters_tick, delay)
+    state
+  end
+
+  # E1 (lane K-SQ): wake parked receivers after any availability-changing
+  # mutation. Runs INSIDE the serialized server; woken waiters get a REAL
+  # claim result (claimed here, atomically after the mutation).
+  defp flush_waiters(%{waiters: waiters} = state) do
+    now = System.system_time(:millisecond)
+
+    {replies, remaining} =
+      Enum.reduce(waiters, {[], []}, fn waiter, {replies, keep} ->
+        cond do
+          now >= waiter.deadline ->
+            {[{waiter.from, :empty} | replies], keep}
+
+          # Still nothing available for this waiter's queue: keep parked.
+          true ->
+            case claim_candidates(waiter.queue, now, waiter.session)
+                 |> claim_next(waiter.queue, now, waiter.lock_duration) do
+              {:ok, _, _} = ready -> {[{waiter.from, ready} | replies], keep}
+              :empty -> {replies, [waiter | keep]}
+            end
+        end
+      end)
+
+    Enum.each(replies, fn {from, reply} -> GenServer.reply(from, reply) end)
+    schedule_tick(%{state | waiters: remaining})
+  end
+
   def handle_call({:complete, queue, seq, opts}, _from, state) do
-    {:reply, do_complete(queue, seq, opts), state}
+    {:reply, do_complete(queue, seq, opts), flush_waiters(state)}
   end
 
   def handle_call({:defer, queue, seq}, _from, state) do
@@ -959,7 +1056,7 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   def handle_call({:release, queue, seq, opts}, _from, state) do
-    {:reply, do_release(queue, seq, opts), state}
+    {:reply, do_release(queue, seq, opts), flush_waiters(state)}
   end
 
   def handle_call({:receive_deferred, queue, sequence_numbers, now, filter_session}, _from, state) do
@@ -967,11 +1064,11 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   def handle_call({:deadletter, queue, seq, reason, description, opts}, _from, state) do
-    {:reply, do_deadletter(queue, seq, reason, description, opts), state}
+    {:reply, do_deadletter(queue, seq, reason, description, opts), flush_waiters(state)}
   end
 
   def handle_call(:sweep, _from, state) do
-    {:reply, do_sweep(), state}
+    {:reply, do_sweep(), flush_waiters(state)}
   end
 
   def handle_call({:session_claim, queue, session_id, now, opts}, _from, state) do
@@ -1008,21 +1105,21 @@ defmodule Smalt.Amqp.QueueStore do
   end
 
   def handle_call({:delete_by_sequence, queue, seqs}, _from, state_store) do
-    {:reply, do_delete_by_sequence(queue, seqs), state_store}
+    {:reply, do_delete_by_sequence(queue, seqs), flush_waiters(state_store)}
   end
 
   def handle_call({:purge_queue, queue}, _from, state_store) do
-    {:reply, do_purge_queue(queue), state_store}
+    {:reply, do_purge_queue(queue), flush_waiters(state_store)}
   end
 
   def handle_call({:cancel_scheduled, queue, seq}, _from, state_store) do
-    {:reply, do_cancel_scheduled(queue, seq), state_store}
+    {:reply, do_cancel_scheduled(queue, seq), flush_waiters(state_store)}
   end
 
   def handle_call({:lock_sweep, now}, _from, state) do
     # LockManager.sweep/0 GC of expired lock/session records, serialized with
     # claims so a lock deleted here can never belong to an in-flight claim.
-    {:reply, Smalt.Amqp.LockManager.do_sweep_expired(now), state}
+    {:reply, Smalt.Amqp.LockManager.do_sweep_expired(now), flush_waiters(state)}
   end
 
   # -- claim (runs inside the server) -------------------------------------------

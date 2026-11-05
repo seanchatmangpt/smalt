@@ -16,7 +16,7 @@ const CTL = path.join(REPO, "scripts/substrate-ctl");
 export interface Receipt {
   block: string;
   sharedKey?: string;
-  ports: number[]; // [amqp, eh, arm, egress, tls, mcp]
+  ports: number[]; // [amqp, eh, arm, egress, tls, mcp] (+ optional 7th: kafka)
   pid: number;
   reused: boolean;
   auth: string;
@@ -76,11 +76,15 @@ export async function bootShared(block: string): Promise<Receipt> {
 
 async function waitHealthy(r: Receipt) {
   const [amqp, eh, arm, egress, tls, mcp] = r.ports;
+  // HC lane additive: a 7-port receipt (bootPrivate) also gates on the kafka
+  // face port; shared receipts (substrate-ctl, 6 ports) are unchanged.
+  const kafka = r.ports[6];
+  const wanted = kafka ? [amqp, eh, arm, egress, tls, mcp, kafka] : [amqp, eh, arm, egress, tls, mcp];
   await boundedPoll(
     `substrate ${r.block} ports+health`,
     async () => {
       const up = (
-        await Promise.all([amqp, eh, arm, egress, tls, mcp].map((p) => tryConnect(p)))
+        await Promise.all(wanted.map((p) => tryConnect(p)))
       ).every(Boolean);
       if (!up) return null;
       const health = await fetch(`http://127.0.0.1:${arm}/metadata/endpoints`);
@@ -106,7 +110,7 @@ export async function bootPrivate(block: string, extraEnv: string, auth: "enforc
   if (!fs.existsSync(CA_CERT)) {
     throw new SubstrateBootError("missing TLS CA — run bash scripts/gen_dev_cert.sh", 3);
   }
-  const [amqp, eh, arm, egress, tls, mcp] = ports;
+  const [amqp, eh, arm, egress, tls, mcp, kafka] = ports;
   const sharedKey = Buffer.from(`${block}-${Date.now()}-ts-suite`).toString("base64");
   const bootEval = [
     `Application.put_env(:smalt, :sb_shared_key, "${sharedKey}")`,
@@ -117,13 +121,18 @@ export async function bootPrivate(block: string, extraEnv: string, auth: "enforc
     `Application.put_env(:smalt, :egress_port, ${egress})`,
     `Application.put_env(:smalt, :arm_tls_port, ${tls})`,
     `Application.put_env(:smalt, :mcp_port, ${mcp})`,
+    // HC lane: 7th slot — pin the AZ-1 Kafka wire face to the block's kafka
+    // port (config/test.exs default is ephemeral-probe; put_env wins here).
+    `Application.put_env(:smalt, :kafka_port, ${kafka})`,
     `Application.put_env(:smalt, :auth_mode, :${auth})`,
     extraEnv,
     `{:ok, _} = Application.ensure_all_started(:smalt)`,
   ].join("; ");
   const log = fs.openSync(`/tmp/smalt-substrate-state/logs/${block}.log`, "w");
   const child = spawn(
-    "mix",
+    // asdf-pinned elixir ~> 1.20 (homebrew mix 1.19.5 is refused by mix.exs;
+    // asdf shim dir first so PATH "mix" resolves lawfully)
+    process.env.SMALT_MIX || path.join(process.env.HOME || "", ".asdf/shims/mix"),
     ["run", "--no-start", "--no-halt", "-e", bootEval],
     {
       cwd: REPO,
@@ -139,8 +148,13 @@ export async function bootPrivate(block: string, extraEnv: string, auth: "enforc
   );
   fs.closeSync(log);
   const deadline = Date.now() + 90_000;
+  // WO-32 cordon (v26.10.31): the BEAM no longer binds arm_port (9443) or
+  // arm_tls_port (9444) — posh owns the 9443 wire. A private BEAM-only boot
+  // therefore binds amqp/eh/egress/mcp (+kafka); gating health on arm/tls
+  // never converges. HC lane: disclosed minimal unblock, bootPrivate only.
+  const bound = ports.filter((_, i) => ![2, 4].includes(i));
   for (;;) {
-    const up = (await Promise.all(ports.map((p) => tryConnect(p)))).every(Boolean);
+    const up = (await Promise.all(bound.map((p) => tryConnect(p)))).every(Boolean);
     const health = up
       ? await fetch(`http://127.0.0.1:${arm}/metadata/endpoints`).then((r) => r.status).catch(() => 0)
       : 0;
@@ -158,7 +172,10 @@ export function blockPorts(block: string): number[] {
   const m = /^v(\d+)$/.exec(block);
   if (!m) throw new SubstrateBootError(`unknown block ${block}`, 64);
   const n = Number(m[1]);
-  return [0, 1, 2, 3, 4, 5].map((i) => 39700 + 10 * n + i);
+  // 7 slots: [amqp, eh, arm, egress, tls, mcp, kafka] — kafka is the HC-lane
+  // additive 7th (39700+10n+6). Shared-substrate consumers destructuring six
+  // names are unaffected (JS destructuring ignores the extra element).
+  return [0, 1, 2, 3, 4, 5, 6].map((i) => 39700 + 10 * n + i);
 }
 
 export async function down(block: string, mode: "owner" | "sweep" = "owner") {

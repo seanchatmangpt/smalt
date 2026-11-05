@@ -58,7 +58,10 @@ for line in "${hits[@]}"; do
     *) allowed=1 ;;
   esac
   case "$file" in
-    lib/smalt/aoq/flags.ex | lib/smalt/aoq/tables.ex) allowed=1 ;;
+    lib/smalt/aoq/flags.ex | lib/smalt/aoq/tables.ex | lib/smalt/aoq/quic/nif.ex) allowed=1 ;;
+    # (LANE-4 v26.11.6, append-only: quic/nif.ex joins the flags.ex/
+    # tables.ex class - its only <>,s build Logger refusal prose, never
+    # wire egress; the AoQ QUIC frame path never flows through them.)
   esac
   if [ "$allowed" -eq 0 ] && printf '%s' "$content" | grep -q 'AOQ-FENCE-OK'; then
     allowed=1

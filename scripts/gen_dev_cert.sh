@@ -44,6 +44,33 @@ if ! flock -w 120 9; then
   exit 1
 fi
 
+# LANE-4 (v26.11.6): ECDSA P-256 QUIC leaf rider. rustls (the AoQ QUIC
+# NIF's TLS stack) ECDSA support is verified for P-256; RSA leaf reuse
+# under rustls is UNVERIFIED — so the quic leaf ships ECDSA as DEFAULT.
+# Minted under the same root CA, SAN localhost/127.0.0.1, serverAuth.
+QUIC_CERT="$CERT_DIR/quic-cert.pem"
+QUIC_KEY="$CERT_DIR/quic-key.pem"
+
+ensure_quic_leaf() {
+  if [ -f "$QUIC_CERT" ] && [ -f "$QUIC_KEY" ] &&
+     openssl x509 -checkend 2592000 -noout -in "$QUIC_CERT" 2>/dev/null &&
+     openssl verify -CAfile "$CA_CERT" "$QUIC_CERT" >/dev/null 2>&1; then
+    echo "[gen_dev_cert] reusing existing $QUIC_CERT"
+    return 0
+  fi
+  echo "[gen_dev_cert] minting ECDSA P-256 quic leaf $QUIC_CERT" >&2
+  openssl ecparam -name prime256v1 -genkey -noout -out "$QUIC_KEY" 2>/dev/null
+  openssl req -new -sha256 -key "$QUIC_KEY" \
+    -subj "/CN=localhost" -out "$CERT_DIR/quic-csr.pem" 2>/dev/null
+  openssl x509 -req -sha256 -days 800 \
+    -in "$CERT_DIR/quic-csr.pem" \
+    -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial \
+    -out "$QUIC_CERT" \
+    -extfile <(printf "subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n") >/dev/null 2>&1
+  chmod 600 "$QUIC_KEY"
+  echo "[gen_dev_cert] minted $QUIC_CERT (ECDSA P-256, + key at $QUIC_KEY)"
+}
+
 if [ -f "$CA_CERT" ] && [ -f "$CERT" ] && [ -f "$KEY" ]; then
   # Self-heal legacy keys minted before umask 077 (pre-2026-10-15 checkouts).
   chmod 600 "$KEY" "$CA_KEY" 2>/dev/null || true
@@ -52,6 +79,7 @@ if [ -f "$CA_CERT" ] && [ -f "$CERT" ] && [ -f "$KEY" ]; then
   if openssl x509 -checkend 2592000 -noout -in "$CERT" 2>/dev/null &&
      openssl verify -CAfile "$CA_CERT" "$CERT" >/dev/null 2>&1; then
     echo "[gen_dev_cert] reusing existing $CERT"
+    ensure_quic_leaf
     exit 0
   fi
   echo "[gen_dev_cert] leaf $CERT expired/expiring, or does not chain to the CA — reminting" >&2
@@ -96,3 +124,5 @@ openssl x509 -req -sha256 -days 800 \
 
 chmod 600 "$KEY" "$CA_KEY"
 echo "[gen_dev_cert] minted $CERT (+ CA at $CA_CERT)"
+ensure_quic_leaf
+

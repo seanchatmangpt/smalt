@@ -42,14 +42,44 @@ defmodule Smalt.Messaging.Kafka.Records do
   @legacy_min 14
 
   @doc """
-  Parse the Produce message-set framing: repeated
-  {int64 offset, int32 size, batch bytes}. Returns `{:ok, [batch_binary]}`
-  (wrapper stripped, raw batch bytes kept verbatim for byte-exact re-serving)
-  or `{:error, reason}`. CRC/magic verification is `verify_batch/1`'s
-  fail-closed job, not this parser's.
+  Parse the Produce record_set: EITHER the legacy message-set framing
+  (repeated {int64 offset, int32 size, batch bytes}) OR a bare magic-2
+  RecordBatch stream (the Produce v3+ record_set face — the batch is
+  self-delimiting via baseOffset/batchLength, no wrapper).
+
+  v26.11.6 L6 (witnessed defect, disclosed): the vendored kafka-python-ng
+  client at the (0,11,0) posture sends Produce v3 with a BARE magic-2
+  batch; the old parser assumed the wrapper framing, ate 12 bytes of the
+  batch, and the conn killed with {:corrupt_batch, :too_short} — a real
+  client produce was unservable. The bare face is detected mechanically:
+  a self-describing magic-2 batch (byte 16 == 2 AND byte_size == 12 +
+  batchLength). Returns `{:ok, [batch_binary]}` (raw batch bytes kept
+  verbatim for byte-exact re-serving) or `{:error, reason}`. CRC/magic
+  verification is `verify_batch/1`'s fail-closed job, not this parser's.
   """
   @spec parse_message_set(binary()) :: {:ok, [binary()]} | {:error, term()}
-  def parse_message_set(bin) when is_binary(bin), do: parse_ms(bin, [])
+  def parse_message_set(bin) when is_binary(bin) do
+    case bare_magic2_batch?(bin) do
+      true -> {:ok, [bin]}
+      false -> parse_ms(bin, [])
+    end
+  end
+
+  # Bare magic-2 RecordBatch (Produce v3+ record_set face): magic at byte
+  # 16 and byte_size == 12 + batchLength — the self-description the legacy
+  # {offset, size} wrapper framing cannot produce.
+  defp bare_magic2_batch?(bin) when is_binary(bin) and byte_size(bin) >= 21 do
+    case bin do
+      <<_::binary-size(8), blen::signed-integer-size(32), _::binary-size(4),
+        2::integer-size(8), _::binary>> ->
+        byte_size(bin) == 12 + blen
+
+      _ ->
+        false
+    end
+  end
+
+  defp bare_magic2_batch?(_), do: false
 
   defp parse_ms(<<>>, acc), do: {:ok, Enum.reverse(acc)}
 
@@ -162,6 +192,31 @@ defmodule Smalt.Messaging.Kafka.Records do
 
   def parse_records(_), do: {:error, :too_short}
 
+  # v26.11.6 L6: fused count+parse admission — the ONE parse the partition
+  # log engine rides ({Smalt.Messaging.Kafka.Records, :parse_verified, []}
+  # parser MFA). parse_records/1 already cross-checks recordsCount (F3);
+  # this wraps it with the declared-count face so the engine's admit leg
+  # gets {count, records} from a single verified pass — never a count from
+  # one parse and a record list from another.
+  @doc """
+  Fused count+parse admission: `{:ok, count, records}` — the declared
+  recordsCount cross-checked against the parsed record list in one pass.
+  Typed refusals as `parse_records/1` (`:too_short`,
+  `:record_count_mismatch`).
+  """
+  @spec parse_verified(binary()) ::
+          {:ok, pos_integer(), [kafka_record()]} | {:error, :too_short | :record_count_mismatch}
+  def parse_verified(batch) when is_binary(batch) do
+    with {:ok, records} <- parse_records(batch),
+         {:ok, declared} <- count(batch) do
+      if declared == length(records) do
+        {:ok, declared, records}
+      else
+        {:error, :record_count_mismatch}
+      end
+    end
+  end
+
   defp legacy_parse(magic, rest) do
     with {:ok, rest} <- legacy_ts(magic, rest),
          {:ok, klen, rest} <- legacy_len(rest),
@@ -263,4 +318,130 @@ defmodule Smalt.Messaging.Kafka.Records do
   end
 
   defp uvarint(_, _, _, _), do: {:error, :bad_varint}
+
+  # -- KD-174: magic-2 RecordBatch encoder ---------------------------------------
+  # # KD-COVERS: KD-174 — record format v2 ENCODE face (varint lengths,
+  # timestamps/offset deltas, headers, CRC32C) complementing the existing
+  # read face; used by the KD-174 roundtrip court to prove the produce path
+  # admits and byte-exactly re-serves broker-stamped magic-2 batches.
+
+  @typedoc "One record to encode: nil key/value = null; headers = {k, v | nil}."
+  @type encode_record :: %{key: binary() | nil, value: binary(), headers: [{binary(), binary() | nil}]}
+
+  @doc """
+  Encode records into a CRC-valid magic-2 RecordBatch (broker side is
+  normally the reader; this encoder exists for the KD-174 court and any
+  future broker-side batch synthesis). attributes=0 (no compression), the
+  client supplies producer id/epoch/sequence faces as -1/-1/-1 (legacy
+  idempotent-less producers). Returns the full batch binary (61-byte header
+  + records region).
+  """
+  @spec encode_batch([encode_record()]) :: binary()
+  def encode_batch(records) when is_list(records) and records != [] do
+    ts = System.system_time(:millisecond)
+
+    encoded =
+      records
+      |> Enum.with_index()
+      |> Enum.map(fn {rec, i} -> encode_record(rec, i, ts) end)
+
+    records_region = encoded |> IO.iodata_to_binary()
+
+    # batchLength = bytes from partitionLeaderEpoch to batch end
+    # = 61-byte header - 8 baseOffset - 4 batchLength + records region.
+    batch_length = byte_size(records_region) + 49
+
+    attrs = 0
+    last_offset_delta = length(records) - 1
+
+    header =
+      <<0::signed-integer-size(64), batch_length::signed-integer-size(32),
+        -1::signed-integer-size(32), 2::integer-size(8), 0::unsigned-integer-size(32),
+        attrs::integer-size(16), last_offset_delta::integer-size(32),
+        ts::signed-integer-size(64), ts::signed-integer-size(64),
+        -1::signed-integer-size(64), -1::signed-integer-size(16),
+        -1::signed-integer-size(32), length(records)::unsigned-integer-size(32)>>
+
+    crc = Wire.crc32c(rest_after_crc(header, records_region))
+    # Splice the CRC into bytes 17..20.
+    <<pre::binary-size(17), _::binary-size(4), post::binary>> =
+      IO.iodata_to_binary([header, records_region])
+
+    <<pre::binary, crc::unsigned-integer-size(32), post::binary>>
+  end
+
+  def encode_batch(_), do: {:error, :empty_batch}
+
+  defp rest_after_crc(header, records_region),
+    do: binary_part(header, 21, byte_size(header) - 21) <> records_region
+
+  defp encode_record(%{key: key, value: value} = rec, idx, ts) do
+    headers =
+      case Map.get(rec, :headers) do
+        nil -> []
+        hs -> hs
+      end
+
+    body =
+      [
+        <<0::8>>,
+        svarint_bin(0),
+        svarint_bin(idx)
+      ] ++
+        body_rest_iodata(key, value, headers)
+      |> IO.iodata_to_binary()
+
+    # record length covers attributes onward (attrs + ts + off + body
+    # fields); timestamp delta, offset delta, lengths, header count are
+    # ALL signed (zigzag) varints per record format v2.
+    [svarint_bin(IO.iodata_length(body)), body]
+  end
+
+  defp body_rest(key, value, headers),
+    do: key_part(key) <> value_part(value) <> header_parts(headers)
+
+  defp body_rest_iodata(key, value, headers),
+    do: [key_part(key), value_part(value), header_parts(headers)]
+
+  defp key_part(nil), do: svarint_bin(-1)
+  defp key_part(key), do: svarint_bin(byte_size(key)) <> key
+
+  defp value_part(nil), do: svarint_bin(-1)
+  defp value_part(value), do: svarint_bin(byte_size(value)) <> value
+
+  defp header_parts(headers) do
+    headers
+    |> Enum.map(fn {hk, hv} ->
+      [
+        svarint_bin(byte_size(hk)),
+        hk,
+        svarint_bin(if(hv == nil, do: -1, else: byte_size(hv))),
+        if(hv == nil, do: [], else: hv)
+      ]
+    end)
+    |> IO.iodata_to_binary()
+    |> then(fn bin ->
+      IO.iodata_to_binary([svarint_bin(length(headers)), bin])
+    end)
+  end
+
+  defp uvarint_bin(n) when n >= 0, do: uvarint_encode(n)
+  defp uvarint_encode(n), do: do_uvarint(n, [])
+
+  # L59 unblock (compile-freeze-class fix, disclosed in L59 receipt):
+  # the acc list was PREPENDED per group then returned head-first, so any
+  # varint >= 128 encoded BYTE-REVERSED (263 -> <<4, 0x8E>> not <<0x8E, 0x04>>)
+  # and every record whose length needed >1 varint byte failed the broker's
+  # own parse_records with :record_count_mismatch. LEB128 is little-endian:
+  # reverse the accumulated groups before flattening.
+  defp do_uvarint(n, acc) when n >= 0x80 do
+    do_uvarint(n >>> 7, [bor(band(n, 0x7F), 0x80) | acc])
+  end
+
+  defp do_uvarint(n, acc), do: IO.iodata_to_binary(Enum.reverse([n | acc]))
+
+  defp svarint_bin(n), do: n |> zigzag() |> uvarint_encode()
+
+  defp zigzag(n) when n >= 0, do: n * 2
+  defp zigzag(n), do: -n * 2 - 1
 end

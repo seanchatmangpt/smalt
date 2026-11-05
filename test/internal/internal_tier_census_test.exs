@@ -230,6 +230,16 @@ defmodule InternalTier.CensusTest do
     # Smalt.Planes.resolve/0 + ControlSupervisor children + a typed
     # econnrefused probe on the arm port — no token lifts required.
     "wo32_control_boot_court_test.exs" => :observer,
+    # -- v26.11.6 registrations (L6 census reconcile): the partition-log
+    # extraction wave. Each row names the tier class and the observed
+    # behavior it lifts.
+    # aoq_log court: in-process AoQ log face over the real PartitionLog
+    # engine + real JournalSink on disk + real named-GenServer restart —
+    # no wire traffic, no token lifts required.
+    "aoq_log_court_test.exs" => :internal,
+    # cross_face RYW court: real TCP ListOffsets/Fetch v0 over the real
+    # listener against an AoQ append — :wire, no exemption tokens.
+    "cross_face_ryw_court_test.exs" => :wire,
     @helper => :observer
   }
 
@@ -551,7 +561,8 @@ defmodule InternalTier.CensusTest do
                  "Smalt.ArmGateway.Plug",
                  "Smalt.Posh.Pipeline",
                  "Smalt.Posh.Egress",
-                 "Smalt.Aoq"
+                 "Smalt.Aoq",
+                 "Smalt.Messaging.PartitionLog"
                ])
 
   # -- v26.10.31 inversion (WO-06): dialect-tier classification ------------------

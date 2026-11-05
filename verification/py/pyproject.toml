@@ -16,7 +16,21 @@ azure = [
   "azure-identity",
   "azure-appconfiguration",
 ]
-dev = ["pytest", "pytest-asyncio", "pytest-timeout", "requests", "cryptography"]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-timeout",
+  "requests",
+  "cryptography",
+  # K-IN lane (v26.11.6+): real-AWS-SDK court for the Kinesis REST face.
+  "boto3",
+  "botocore",
+]
+
+kafka = [
+  # WF9 (HC lane): real confluent-kafka legs against the AZ-1 Kafka wire face.
+  "confluent-kafka",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

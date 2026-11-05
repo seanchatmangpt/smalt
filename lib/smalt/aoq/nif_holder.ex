@@ -9,6 +9,10 @@ defmodule Smalt.Aoq.Nif do
 
   @callback parse(frame :: binary) :: {:ok, term} | {:error, term}
   @callback encode(term) :: {:ok, iolist} | {:error, term}
+
+  # PQC capability face (v26.11.6 lane 13): a PQC-capable NIF declares
+  # itself; the default posture is incapable.
+  @callback pqc_capable?() :: boolean
 end
 
 defmodule Smalt.Aoq.Nif.Stub do
@@ -19,6 +23,9 @@ defmodule Smalt.Aoq.Nif.Stub do
   """
 
   @behaviour Smalt.Aoq.Nif
+
+  @impl true
+  def pqc_capable?, do: false
 
   @header_size 64
 
@@ -68,6 +75,24 @@ defmodule Smalt.Aoq.NifHolder do
   @spec impl() :: module
   def impl do
     :persistent_term.get(@impl_key, default_impl())
+  end
+
+  @doc """
+  PQC posture gate (v26.11.6 lane 13). Reads `config :smalt, :aoq, pqc:`
+  (default `false`). Returns `:ok` when pqc is off (classical framing is
+  the lawful posture) or when the configured NIF declares
+  `pqc_capable?/0` true. When pqc is ON and the NIF is incapable, this
+  returns a TYPED refusal — never a quiet classical fallback.
+  """
+  @spec pqc_gate() :: :ok | {:error, {:pqc_nif_incapable, module}}
+  def pqc_gate do
+    pqc? = :smalt |> Application.get_env(:aoq, []) |> Keyword.get(:pqc, false)
+
+    if pqc? and not impl().pqc_capable?() do
+      {:error, {:pqc_nif_incapable, impl()}}
+    else
+      :ok
+    end
   end
 
   @impl true

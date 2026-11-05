@@ -167,4 +167,60 @@ defmodule Smalt.Aoq.Cursor do
   def drop(cursor, n \\ 1) do
     :atomics.add_get(cursor, @drop_ctr + @off, n)
   end
+
+  @doc """
+  Point-in-time durable snapshot of the cursor counters (`head`, `tail`,
+  `seq`, `lease_gen`, `drop_ctr`) — the payload `CursorPersist` folds into
+  a journal checkpoint frame. Reads are individually atomic; the snapshot
+  is a safe upper-bound read (a concurrent producer can advance `head`
+  during the read; `CursorPersist` only ever checkpoints `tail` progress,
+  which is monotone).
+  """
+  @spec durable_snapshot(t()) :: %{
+          required(:head) => non_neg_integer(),
+          required(:tail) => non_neg_integer(),
+          required(:seq) => non_neg_integer(),
+          required(:lease_gen) => non_neg_integer(),
+          required(:drop_ctr) => non_neg_integer()
+        }
+  def durable_snapshot(cursor) do
+    %{
+      head: head(cursor),
+      tail: tail(cursor),
+      seq: :atomics.get(cursor, @seq + @off),
+      lease_gen: :atomics.get(cursor, @lease_gen + @off),
+      drop_ctr: drops(cursor)
+    }
+  end
+
+  @doc """
+  Boot-only restore of a durable snapshot into a FRESH cursor.
+
+  Law: the target cursor must be virgin — `tail == 0` or the restore
+  raises (`:restore_tail_nonzero`): restoring over live consumers would
+  silently rewind or fork the ring. `head` that LAGS the durable `tail`
+  (a snapshot taken mid-advance, head read before tail progressed) is
+  RAISED to the durable tail — head >= tail is the ring invariant, and
+  a head behind the restored tail would let producers claim already-
+  released slots. Beyond that the snapshot's head/seq/drop counters are
+  adopted verbatim (durable maxima; producers only advance them).
+  """
+  @spec restore_from_durable(t(), map()) :: :ok
+  def restore_from_durable(cursor, %{tail: tail} = snap) do
+    if tail(cursor) != 0 do
+      raise ArgumentError, ":restore_tail_nonzero — restore_from_durable/2 is boot-only"
+    end
+
+    head = max(snap[:head] || 0, tail)
+    :atomics.put(cursor, @head + @off, head)
+    :atomics.put(cursor, @tail + @off, tail)
+    :atomics.put(cursor, @seq + @off, snap[:seq] || 0)
+    :atomics.put(cursor, @drop_ctr + @off, snap[:drop_ctr] || 0)
+
+    :ok
+  end
+
+  def restore_from_durable(_cursor, snap) do
+    raise ArgumentError, ":bad_durable_snapshot — #{inspect(snap)}"
+  end
 end

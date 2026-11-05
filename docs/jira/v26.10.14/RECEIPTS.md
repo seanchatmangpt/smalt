@@ -1672,10 +1672,36 @@ count, or PASS/FAIL token) found in the file.
 | kd09-witness | [kd09-witness.md](../v26.10.31/receipts/kd09-witness.md) | ALIVE (SUSPECT) | KD-09 witness — built-in role GUID resolution on the Policy face |
 | kd187-stale- | [kd187-stale-image-falsifier.md](../v26.10.31/receipts/kd187-stale-image-falsifier.md) | ALIVE | KD-187 stale-image falsifier — ARM-container/blob-face namespace disconnect |
 | m16-byte-ide | [m16-byte-identity-guard-run.md](../v26.10.31/receipts/m16-byte-identity-guard-run.md) | ALIVE | M16 — Byte-Identity Guard first run (v26.10.31, lane 16) |
+| l11-supervis | [l11-supervisor.md](../v26.11.5/receipts/l11-supervisor.md) | ALIVE | L11 — AoQ supervisor skeleton (Smalt.Aoq.Supervisor subtree) **NO-CONTEXT** |
 | l12-bin-opt- | [l12-bin-opt-gate.md](../v26.11.5/receipts/l12-bin-opt-gate.md) | ALIVE | L12r — bin_opt gate + shim court (aq-architecture-spec §4) **NO-CONTEXT** |
-| l13-framing- | [l13-framing-court.md](../v26.11.5/receipts/l13-framing-court.md) | PARTIAL_ALIVE | L13 — AoQ Framing Law Court **NO-CONTEXT** |
+| l13-framing- | [l13-framing-court.md](../v26.11.5/receipts/l13-framing-court.md) | ALIVE | L13 — AoQ Framing Law Court **NO-CONTEXT** |
 | l15-cursor-t | [l15-cursor-tables.md](../v26.11.5/receipts/l15-cursor-tables.md) | ALIVE | L15 Receipt — AOQ Cursor + persistent_term Tables **NO-CONTEXT** |
+| l16-kv7-orac | [l16-kv7-oracle.md](../v26.11.5/receipts/l16-kv7-oracle.md) | ALIVE | L16 — kv7 BEAM-oracle live leg **NO-CONTEXT** |
+| l19-slab-fra | [l19-slab-frame-nif.md](../v26.11.5/receipts/l19-slab-frame-nif.md) | ALIVE | L19 — aq_slab NIF Surface 1 (slab frame + lease) **NO-CONTEXT** |
+| l23-slab-win | [l23-slab-window-nif.md](../v26.11.5/receipts/l23-slab-window-nif.md) | ALIVE | L23r — aq_slab_window NIF surface 2 (window views over slab frames) **NO-CONTEXT** |
+| l24-receipt- | [l24-receipt-lint.md](../v26.11.5/receipts/l24-receipt-lint.md) | ALIVE | L24 — Receipt Standing Lint Port (smalt) **NO-CONTEXT** |
+| l28-aoq-plan | [l28-aoq-plane.md](../v26.11.5/receipts/l28-aoq-plane.md) | PARTIAL_ALIVE | L28r — AoQ as a bootable plane name (spec §1.3) **NO-CONTEXT** |
+| l29-court-ch | [l29-court-chain.md](../v26.11.5/receipts/l29-court-chain.md) | PARTIAL_ALIVE | L29 — AoQ fences wired into the full court (spec §3/§4) **NO-CONTEXT** |
+| l32-kd178 | [l32-kd178.md](../v26.11.5/receipts/l32-kd178.md) | PASS | L32 / KD-178 — Web PubSub broker-restart state wipe **NO-CONTEXT** |
+| l34-kd176 | [l34-kd176.md](../v26.11.5/receipts/l34-kd176.md) | ALIVE | L34 — KD-176 MAA nonce registry bounds: close-condition verify + non-vacuity gate **NO-CONTEXT** |
+| l35-kd188 | [l35-kd188.md](../v26.11.5/receipts/l35-kd188.md) | PASS | L35 — KD-188: ARM storage managementPolicies child route **NO-CONTEXT** |
+| l37-kd50 | [l37-kd50.md](../v26.11.5/receipts/l37-kd50.md) | PASS | L37 — KD-50: SB queue property camelCase readback court |
+| l38-epoch-ro | [l38-epoch-rotate.md](../v26.11.5/receipts/l38-epoch-rotate.md) | PASS | L38 — AoQ epoch-rotate handler (frame 0x03) **NO-CONTEXT** |
+| l41-worker-b | [l41-worker-binopt.md](../v26.11.5/receipts/l41-worker-binopt.md) | PASS | L41 — bin-opt gate defect: `stage3_fields/2` context-reuse defeat (frame.ex, not worker.ex) **NO-CONTEXT** |
+| l42-kd99 | [l42-kd99.md](../v26.11.5/receipts/l42-kd99.md) | PASS | L42 KD-99 RS256+JWKS remainder court |
+| l44-kd130 | [l44-kd130.md](../v26.11.5/receipts/l44-kd130.md) | PASS | L44 — KD-130 close: blob container re-create answers unconditional 409 ContainerAlreadyExists |
+| l46-aoq-benc | [l46-aoq-bench.md](../v26.11.5/receipts/l46-aoq-bench.md) | ALIVE | L46 — AoQ bench lane: listener→pool→worker end-to-end throughput **NO-CONTEXT** |
+| l47-census-f | [l47-census-fence.md](../v26.11.5/receipts/l47-census-fence.md) | PASS | L47 — internal tier population-fence drift repair (census) **NO-CONTEXT** |
+| l52-arrow-bo | [l52-arrow-boot.md](../v26.11.5/receipts/l52-arrow-boot.md) | PASS | L52 — AoQ Arrow schema-bundle boot write path **NO-CONTEXT** |
+| l53-substrat | [l53-substrate-timeout.md](../v26.11.5/receipts/l53-substrate-timeout.md) | PASS | L53 — substrate.sh cold-boot readiness: budget not clock **NO-CONTEXT** |
+| l54-legalhol | [l54-legalhold.md](../v26.11.5/receipts/l54-legalhold.md) | PASS | L54 — KD-189: blob legal-hold PUT body divergence (candidate GENUINE, fixed) |
 | l9-vm-flags | [l9-vm-flags.md](../v26.11.5/receipts/l9-vm-flags.md) | ALIVE | L9r — AoQ VM flags surface (retry of dead L9) **NO-CONTEXT** |
+| kd191-kafka- | [kd191-kafka-sasl-lane10.md](../v26.11.6/receipts/kd191-kafka-sasl-lane10.md) | PARTIAL_ALIVE | KD-191 — Kafka SASL face (lane 10, v26.11.6 wave) **NO-CONTEXT** |
+| lane11-blake | [lane11-blake3-chain-retarget.md](../v26.11.6/receipts/lane11-blake3-chain-retarget.md) | ALIVE | 11 — BLAKE3 chain-link retarget (v26.11.6) **NO-CONTEXT** |
+| lane16-aoq-r | [lane16-aoq-rdf-projector.md](../v26.11.6/receipts/lane16-aoq-rdf-projector.md) | ALIVE | 16 — AoQ SchemaBindings + RdfProjector (v26.11.6) **NO-CONTEXT** |
+| lane4-aoq-qu | [lane4-aoq-quic-nif.md](../v26.11.6/receipts/lane4-aoq-quic-nif.md) | PARTIAL_ALIVE | 4 receipt — AoQ QUIC NIF face (v26.11.6) **NO-CONTEXT** |
+| lane5-aoq-pa | [lane5-aoq-partitioned-plane.md](../v26.11.6/receipts/lane5-aoq-partitioned-plane.md) | PARTIAL_ALIVE | 05 receipt — AOQ partitioned plane **NO-CONTEXT** |
+| lane9-aoq-ad | [lane9-aoq-admission.md](../v26.11.6/receipts/lane9-aoq-admission.md) | ALIVE | 9 — AoQ micro-batch SHACL admission (WO-10 promotion + admit_batch) **NO-CONTEXT** |
 
 ## Workspace (ws-01..12)
 
@@ -1844,6 +1870,7 @@ No receipt file on disk: cli-02.
 | dod-61 | (no receipt file — justfile module `justfile.d/61-tripwire.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-62 | (no receipt file — justfile module `justfile.d/62-bin-opt.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 | dod-63 | (no receipt file — justfile module `justfile.d/63-aoq.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
+| dod-64 | (no receipt file — justfile module `justfile.d/64-receipts.just`) | UNKNOWN | DoD lane module; no receipt filed at wrap. |
 
 ## Cross-check / SUSPECT flags
 

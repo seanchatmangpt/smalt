@@ -102,6 +102,10 @@ defmodule Smalt.MixProject do
 
   defp deps do
     [
+      # K-IN lane (v26.11.6+): SigV4 re-sign-and-compare verification for the
+      # Kinesis REST face (Smalt.Egress.KinesisRoutes). Already resolved in
+      # mix.lock (0.4.3, via explorer) — this pin is additive identity only.
+      {:aws_signature, "~> 0.4"},
       # GL28-2: the deterministic turnstile — admission gate before any
       # control-plane state mutation (path dep on the sibling checkout).
       # dev/test-gated: zero live code references to GraphlawEx.* modules
@@ -122,11 +126,15 @@ defmodule Smalt.MixProject do
       {:jason, "~> 1.4"},
       {:joken, "~> 2.6"},
       {:ash, "~> 3.33", optional: true},
-      # WO-09 (v26.10.31): widened from only: :dev so the SHACL admission
-      # integration court (test/integration/graphlaw_shacl_admission_test.exs)
-      # can run it in the test env. Prod promotion is still open (WO-10
-      # residual: hex publish / vendoring).
-      {:ash_graphlaw, path: "../ash_graphlaw", only: [:dev, :test], optional: true},
+      # WO-10 (v26.11.6, lane 9): promoted to an unconditional path dep —
+      # `only:` and `optional:` dropped so the admission path compiles in every
+      # env. The sibling checkout is relocatable via ASH_GRAPHLAW_PATH. Hex
+      # packaging of a prod-scoped path dep is fatal to hex.build — the
+      # publish-dry rider in justfile.d/08-publish-dry.just pins exactly this
+      # line's shape (no only: on ash_graphlaw) and WO-10's close condition is
+      # the hex publication of ash_graphlaw itself (vendoring fallback).
+      {:ash_graphlaw,
+       path: System.get_env("ASH_GRAPHLAW_PATH") || "../ash_graphlaw"},
       # Semantic projection (lane: semantic projection). Path deps per house
       # pattern; `only:` widened from the spec's :dev to [:dev, :test] so the
       # gate (`mix test test/semantic_projection_test.exs`, MIX_ENV=test) can
