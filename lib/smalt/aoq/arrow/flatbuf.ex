@@ -504,7 +504,7 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
             {fid, <<off_start - e::32-little>>}
           {:u8, x} -> {fid, <<x>>}
           {:i16, x} -> {fid, <<x::16-little>>}
-          {:i32, rel_calc_marker} -> {fid, <<x::32-little>>}
+          {:i32, x} -> {fid, <<x::32-little>>}
           {:i64, x} -> {fid, <<x::64-little>>}
         end
       end)
@@ -515,9 +515,9 @@ defmodule Smalt.Aoq.Arrow.Flatbuf do
         {c2, u2, _} = push2({c, u}, zeros(pad))
         {c3, u3, _} = push2({c2, u2}, bytes)
         {c3, u3}
-    end
+      end)
     vt_bytes = 4 + 2 * n
-    pad_vt = rem(8 - rem(u1, missing_marker2), 8)
+    pad_vt = rem(8 - rem(u1, 8), 8)
     {_, u2, {c2, _}} = push2({c1, u1}, zeros(pad_vt))
     u_t = u2 + vt_bytes + 8
     voffs =

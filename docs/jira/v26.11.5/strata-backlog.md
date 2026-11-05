@@ -35,6 +35,16 @@ admitted only after its falsifier runs on an exact subject.
 
 ## Multi-hyperscaler expansion (1/1/27 target — registered 2026-11-05)
 
+**ARCHITECTURE RULING (operator, 2026-11-05):** the multi-hyperscaler faces
+(Kinesis/SQS/PubSub) are owned by **arcus** (the peripheral membrane) —
+`internal/ingress/aws` + `internal/ingress/gcp` are the strategic faces
+(SigV4 in `ingress/auth`, adapter opTable aws-kinesis/aws-sqs/gcp-pubsub.*
+rows wired, REST-shaped json-envelope transport — no gRPC transport needed
+for the PubSub 80/20). smalt-side faces (KinesisRoutes, egress/sqs/,
+pubsub_grpc/) are **BEAM emulator-parity twins** (EH-REST precedent):
+kept, receipted, no further investment. GCP face: arcus REST form
+dissolves the F-P2/Bandit-h2/grpcio transport question entirely.
+
 Scope: AWS (MSK/Kinesis/SQS), Azure (EH/SB — largely landed), GCP (Pub/Sub
 gRPC/managed Kafka) unified behind the Arcus membrane → AoQ fabric → smalt
 substrate. Azure faces are ALIVE; AWS Kafka-wire is the same surface as the
