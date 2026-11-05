@@ -107,6 +107,9 @@ defmodule Smalt.Amqp.QueueStore do
           required(:lock_duration_ms) => pos_integer(),
           required(:max_delivery_count) => pos_integer()
         }
+  # KD-COVERS: KD-50 — reads the camelCase property keys (`lockDuration`,
+  # `requiresSession`, `maxDeliveryCount`) exactly as the ARM PUT persists
+  # them; no snake_case normalization on either side of the readback.
   def queue_settings(queue) when is_binary(queue) do
     props = arm_queue_properties(queue)
 
