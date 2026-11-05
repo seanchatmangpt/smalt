@@ -127,6 +127,29 @@ defmodule Smalt.Test.Integration.SignInsLogTest do
     assert ctx =~ "$metadata#signIns"
   end
 
+  test "257 mints -> exactly 256 events, newest first (ring cap)" do
+    Smalt.Egress.SignIns.clear()
+
+    for _ <- 1..257, do: mint()
+
+    events = Smalt.Egress.SignIns.events()
+    assert length(events) == 256
+
+    # hd is the most recently minted event (newest first) — mint one more
+    # and it must land at the head.
+    last_seen = Smalt.Egress.SignIns.events() |> hd()
+    mint()
+    assert hd(Smalt.Egress.SignIns.events()).id != last_seen.id
+    assert hd(Smalt.Egress.SignIns.events()).appid == last_seen.appid
+  end
+
+  test "clear -> zero events" do
+    mint()
+    assert Smalt.Egress.SignIns.events() != []
+    assert Smalt.Egress.SignIns.clear() == :ok
+    assert Smalt.Egress.SignIns.events() == []
+  end
+
   defp d!(iso) do
     {:ok, dt, _} = DateTime.from_iso8601(iso)
     dt
