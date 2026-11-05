@@ -356,6 +356,9 @@ defmodule Smalt.Attestation.Maa do
 
   ## -- nonce replay ----------------------------------------------------------
 
+  # KD-COVERS: KD-176 — MAA nonce registry bounded intake (key-size cap +
+  # TTL sweep + entry cap with oldest-consumed eviction). Row:
+  # docs/jira/v26.10.14/KNOWN_DIVERGENCES.md KD-176 (CLOSED-WITH-EVIDENCE).
   # BK-MAAP6 (P6 fix): the nonce registry is BOUNDED three ways.
   #
   #   1. Key-size cap at intake — a nonce over @nonce_max_key_bytes is a typed
