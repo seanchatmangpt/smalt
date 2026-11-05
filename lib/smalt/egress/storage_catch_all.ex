@@ -1113,12 +1113,10 @@ defmodule Smalt.Egress.StorageCatchAll do
                 |> put_resp_header("x-ms-version", "2021-12-02")
                 |> send_resp(201, "")
 
-              # Idempotent Put Container (real Azure semantics): re-PUT on an
-              # EXISTING container is 200 with the standard headers when the
-              # x-ms-meta-* set is IDENTICAL, 409 ContainerAlreadyExists when
-              # it differs. The WORM/lease gates stay AHEAD of the comparison
-              # (container_reput_arm) — a hold/locked re-PUT still refuses
-              # 409 ContainerLocked per the WORM arms.
+              # KD-COVERS: KD-130 — re-PUT on an EXISTING container is the
+              # unconditional real-Azure 409 ContainerAlreadyExists (see
+              # container_reput_arm below; the WORM/lease gates stay AHEAD —
+              # a hold/locked re-PUT still refuses 409 ContainerLocked).
               {:error, 409, "ContainerAlreadyExists", _msg} ->
                 container_reput_arm(conn, account, container)
 
@@ -1146,15 +1144,14 @@ defmodule Smalt.Egress.StorageCatchAll do
     end)
   end
 
-  # Idempotent Put Container arm (see the 409 ContainerAlreadyExists clause
-  # in the create route): WORM/lease gate FIRST (hold or locked-while-retention-
-  # live → 409 ContainerLocked, mirroring BlobService.check_metadata_worm
-  # semantics via BlobStorage.policy_state/3), then metadata comparison —
-  # IDENTICAL x-ms-meta-* → 200 with the standard headers; DIFFERENT →
-  # 409 ContainerAlreadyExists.
+  # KD-COVERS: KD-130 — Put Container on an EXISTING container answers the
+  # unconditional real-Azure envelope 409 ContainerAlreadyExists (never the
+  # prior idempotent 200-when-metadata-identical re-PUT: @azure/storage-blob
+  # createIfNotExists contractually treats only 201-as-success / 409-as-exists
+  # and a 200-empty breaks its exists-check). WORM/lease gate FIRST (hold or
+  # locked-while-retention-live → 409 ContainerLocked, mirroring
+  # BlobService.check_metadata_worm semantics via BlobStorage.policy_state/3).
   defp container_reput_arm(conn, account, container) do
-    requested = meta_headers(conn)
-
     case BlobStorage.policy_state(account, container) do
       {:ok, %{"legal_hold" => true}} ->
         blob_error(conn, 409, %{
@@ -1175,33 +1172,14 @@ defmodule Smalt.Egress.StorageCatchAll do
         })
 
       {:ok, _state} ->
-        existing =
-          case BlobStorage.get_policy(account, container) do
-            nil -> %{}
-            policy -> Map.get(policy, "metadata") || %{}
-          end
-
-        if existing == requested do
-          {:ok, record} = Store.get(:smalt_blob_containers, "#{account}/#{container}")
-          {:ok, created_dt, _} = DateTime.from_iso8601(record["created"])
-
-          conn
-          |> put_resp_header("etag", container_put_etag(record))
-          |> put_resp_header(
-            "last-modified",
-            Calendar.strftime(created_dt, "%a, %d %b %Y %H:%M:%S GMT")
-          )
-          |> put_resp_header("x-ms-request-id", generate_request_id())
-          |> put_resp_header("x-ms-version", "2021-12-02")
-          |> send_resp(200, "")
-        else
-          blob_error(conn, 409, %{
-            "error" => %{
-              "code" => "ContainerAlreadyExists",
-              "message" => "The specified container already exists with different metadata."
-            }
-          })
-        end
+        # KD-COVERS: KD-130 — unconditional 409 on the exists path, regardless
+        # of the re-PUT's x-ms-meta-* set.
+        blob_error(conn, 409, %{
+          "error" => %{
+            "code" => "ContainerAlreadyExists",
+            "message" => "The specified container already exists."
+          }
+        })
 
       {:error, :container_not_found} ->
         blob_error(conn, 404, %{
